@@ -1,59 +1,68 @@
-/**
- * Semantic design tokens for the mobile app.
- *
- * These tokens mirror the naming conventions used in web artifacts (index.css)
- * so that multi-artifact projects share a cohesive visual identity.
- *
- * Replace the placeholder values below with values that match the project's
- * brand. If a sibling web artifact exists, read its index.css and convert the
- * HSL values to hex so both artifacts use the same palette.
- *
- * To add dark mode, add a `dark` key with the same token names.
- * The useColors() hook will automatically pick it up.
- */
-
 const colors = {
   light: {
-    // Legacy aliases (kept for backward compatibility)
-    text: '#0a0a0a',
-    tint: '#2f95dc',
-
-    // Core surfaces
-    background: '#ffffff',
-    foreground: '#0a0a0a',
-
-    // Cards / elevated surfaces
-    card: '#f9f9f9',
-    cardForeground: '#0a0a0a',
-
-    // Primary action color (buttons, links, active states)
-    primary: '#2f95dc',
+    text: '#0d1b2a',
+    tint: '#1a6bff',
+    background: '#f2f5ff',
+    foreground: '#0d1b2a',
+    card: '#ffffff',
+    cardForeground: '#0d1b2a',
+    primary: '#1a6bff',
     primaryForeground: '#ffffff',
-
-    // Secondary / less-emphasis interactive surfaces
-    secondary: '#f0f0f0',
-    secondaryForeground: '#1a1a1a',
-
-    // Muted / subdued elements (dividers, timestamps, placeholders)
-    muted: '#f0f0f0',
-    mutedForeground: '#737373',
-
-    // Accent highlights (badges, selected items, focus rings)
-    accent: '#f0f0f0',
-    accentForeground: '#1a1a1a',
-
-    // Destructive actions (delete, error states)
-    destructive: '#ef4444',
+    secondary: '#e8edf8',
+    secondaryForeground: '#0d1b2a',
+    muted: '#eef1fb',
+    mutedForeground: '#5a6a85',
+    accent: '#eef1fb',
+    accentForeground: '#0d1b2a',
+    destructive: '#dc2626',
     destructiveForeground: '#ffffff',
-
-    // Borders and input outlines
-    border: '#e5e5e5',
-    input: '#e5e5e5',
+    border: '#d0d9ec',
+    input: '#d0d9ec',
+    // Finance-specific
+    buyColor: '#00b386',
+    sellColor: '#e53e3e',
+    holdColor: '#d97706',
+    buyBg: '#e6fff8',
+    sellBg: '#fff0f0',
+    holdBg: '#fff8e6',
   },
+  dark: {
+    text: '#e2eaf8',
+    tint: '#5ba3ff',
+    background: '#060d1a',
+    foreground: '#e2eaf8',
+    card: '#0c1829',
+    cardForeground: '#e2eaf8',
+    primary: '#5ba3ff',
+    primaryForeground: '#060d1a',
+    secondary: '#0e1e36',
+    secondaryForeground: '#e2eaf8',
+    muted: '#0e1e36',
+    mutedForeground: '#7a96b8',
+    accent: '#0e1e36',
+    accentForeground: '#e2eaf8',
+    destructive: '#f05252',
+    destructiveForeground: '#ffffff',
+    border: '#152540',
+    input: '#152540',
+    // Finance-specific
+    buyColor: '#00d4aa',
+    sellColor: '#ff5252',
+    holdColor: '#f5a623',
+    buyBg: '#00201a',
+    sellBg: '#200808',
+    holdBg: '#201400',
+  },
+  radius: 16,
+} as const;
 
-  // Border radius (in px). Sync from the sibling web artifact's --radius
-  // CSS variable. This value applies to cards, buttons, inputs, and modals.
-  radius: 8,
+export type ColorScheme = typeof colors.light & {
+  buyColor: string;
+  sellColor: string;
+  holdColor: string;
+  buyBg: string;
+  sellBg: string;
+  holdBg: string;
 };
 
 export default colors;
