@@ -17,7 +17,7 @@ import { useColors } from '@/hooks/useColors';
 import { useAnalyzeStock } from '@workspace/api-client-react';
 import type { StockAnalysis } from '@workspace/api-client-react';
 
-// ─── Helper functions ────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const fmtPrice = (n: number) =>
   n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 });
@@ -35,31 +35,31 @@ const fmtVol = (n: number) => {
   return n.toString();
 };
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function ScoreBar({ score, color }: { score: number; color: string }) {
   const anim = useRef(new Animated.Value(0)).current;
-
   useEffect(() => {
-    Animated.timing(anim, { toValue: score / 100, duration: 800, useNativeDriver: false }).start();
+    Animated.timing(anim, { toValue: score / 100, duration: 900, useNativeDriver: false }).start();
   }, [score]);
-
   return (
     <View style={scoreStyles.wrapper}>
       <View style={scoreStyles.track}>
         <Animated.View
-          style={[scoreStyles.fill, { width: anim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }), backgroundColor: color }]}
+          style={[scoreStyles.fill, {
+            width: anim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+            backgroundColor: color,
+          }]}
         />
       </View>
       <Text style={[scoreStyles.label, { color }]}>{score}</Text>
     </View>
   );
 }
-
 const scoreStyles = StyleSheet.create({
   wrapper: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
-  track: { flex: 1, height: 6, borderRadius: 3, backgroundColor: 'rgba(128,128,128,0.2)', overflow: 'hidden' },
-  fill: { height: '100%', borderRadius: 3 },
+  track: { flex: 1, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.08)', overflow: 'hidden' },
+  fill: { height: '100%', borderRadius: 2 },
   label: { fontSize: 13, fontFamily: 'Inter_700Bold', minWidth: 28, textAlign: 'right' },
 });
 
@@ -72,11 +72,10 @@ function MetricRow({ label, value, highlight }: { label: string; value: string; 
     </View>
   );
 }
-
 const metricStyles = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 },
-  label: { fontSize: 14 },
-  value: { fontSize: 14 },
+  label: { fontSize: 13 },
+  value: { fontSize: 13 },
 });
 
 function SectionCard({ title, icon, score, scoreColor, children }: {
@@ -92,7 +91,7 @@ function SectionCard({ title, icon, score, scoreColor, children }: {
       <View style={cardStyles.header}>
         <View style={cardStyles.titleRow}>
           {icon}
-          <Text style={[cardStyles.title, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>{title}</Text>
+          <Text style={[cardStyles.title, { color: colors.foreground, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5 }]}>{title}</Text>
         </View>
         {score != null && scoreColor && (
           <View style={cardStyles.scoreRow}>
@@ -106,14 +105,13 @@ function SectionCard({ title, icon, score, scoreColor, children }: {
     </View>
   );
 }
-
 const cardStyles = StyleSheet.create({
-  card: { borderRadius: 20, borderWidth: 1, marginBottom: 14, overflow: 'hidden' },
+  card: { borderRadius: 12, borderWidth: 1, marginBottom: 12, overflow: 'hidden' },
   header: { padding: 16, paddingBottom: 12 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
-  title: { fontSize: 16 },
+  title: { fontSize: 14 },
   scoreRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  scoreLabel: { fontSize: 12 },
+  scoreLabel: { fontSize: 11 },
   divider: { height: 1 },
 });
 
@@ -122,7 +120,6 @@ function AnalystBar({ buy, hold, sell, total }: { buy: number; hold: number; sel
   const bPct = total > 0 ? (buy / total) * 100 : 0;
   const hPct = total > 0 ? (hold / total) * 100 : 0;
   const sPct = total > 0 ? (sell / total) * 100 : 0;
-
   return (
     <View>
       <View style={analystStyles.bar}>
@@ -138,15 +135,14 @@ function AnalystBar({ buy, hold, sell, total }: { buy: number; hold: number; sel
     </View>
   );
 }
-
 const analystStyles = StyleSheet.create({
-  bar: { flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', marginBottom: 8 },
+  bar: { flexDirection: 'row', height: 6, borderRadius: 3, overflow: 'hidden', marginBottom: 8 },
   seg: { height: '100%' },
   legend: { flexDirection: 'row', justifyContent: 'space-around' },
-  leg: { fontSize: 13 },
+  leg: { fontSize: 12 },
 });
 
-// ─── Main Screen ─────────────────────────────────────────────────────────────
+// ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function AnalysisScreen() {
   const { symbol } = useLocalSearchParams<{ symbol: string }>();
@@ -156,9 +152,7 @@ export default function AnalysisScreen() {
   const { mutate, data, isPending, error } = useAnalyzeStock<Error>();
 
   useEffect(() => {
-    if (symbol) {
-      mutate({ symbol });
-    }
+    if (symbol) mutate({ symbol });
   }, [symbol]);
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
@@ -182,12 +176,11 @@ export default function AnalysisScreen() {
     return colors.holdColor;
   };
 
-  // ─── Header ────────────────────────────────────────────────────────────
+  // ─── Header ──────────────────────────────────────────────────────────────
   const renderHeader = (analysis?: StockAnalysis) => {
     const change = analysis?.priceChange ?? 0;
     const changePct = analysis?.priceChangePercent ?? 0;
     const positive = change >= 0;
-
     return (
       <View style={[headerStyles.container, { paddingTop: topPad + 8, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <View style={headerStyles.row}>
@@ -195,7 +188,7 @@ export default function AnalysisScreen() {
             <Feather name="chevron-left" size={26} color={colors.foreground} />
           </TouchableOpacity>
           <View style={headerStyles.center}>
-            <Text style={[headerStyles.symbol, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+            <Text style={[headerStyles.symbol, { color: colors.foreground, fontFamily: 'Inter_700Bold', letterSpacing: 1 }]}>
               {symbol}
             </Text>
             {analysis && (
@@ -209,7 +202,10 @@ export default function AnalysisScreen() {
               <Text style={[headerStyles.price, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
                 {fmtPrice(analysis.currentPrice)}
               </Text>
-              <Text style={[headerStyles.change, { color: positive ? colors.buyColor : colors.sellColor, fontFamily: 'Inter_500Medium' }]}>
+              <Text style={[headerStyles.change, {
+                color: positive ? colors.buyColor : colors.sellColor,
+                fontFamily: 'Inter_500Medium',
+              }]}>
                 {positive ? '+' : ''}{change.toFixed(2)} ({positive ? '+' : ''}{changePct.toFixed(2)}%)
               </Text>
             </View>
@@ -219,7 +215,7 @@ export default function AnalysisScreen() {
     );
   };
 
-  // ─── Loading State ──────────────────────────────────────────────────────
+  // ─── Loading ──────────────────────────────────────────────────────────────
   if (isPending) {
     return (
       <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -237,7 +233,7 @@ export default function AnalysisScreen() {
     );
   }
 
-  // ─── Error State ────────────────────────────────────────────────────────
+  // ─── Error ────────────────────────────────────────────────────────────────
   if (error || !data) {
     const errMsg = (error as any)?.response?.data?.message ?? error?.message ?? 'Could not load analysis.';
     return (
@@ -252,11 +248,11 @@ export default function AnalysisScreen() {
             {errMsg}
           </Text>
           <TouchableOpacity
-            style={[styles.retryBtn, { backgroundColor: colors.primary }]}
+            style={[styles.retryBtn, { backgroundColor: colors.muted, borderColor: colors.border, borderWidth: 1 }]}
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); mutate({ symbol: symbol! }); }}
             activeOpacity={0.8}
           >
-            <Text style={[styles.retryText, { color: colors.primaryForeground, fontFamily: 'Inter_600SemiBold' }]}>
+            <Text style={[styles.retryText, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
               Retry
             </Text>
           </TouchableOpacity>
@@ -265,7 +261,7 @@ export default function AnalysisScreen() {
     );
   }
 
-  // ─── Analysis Results ───────────────────────────────────────────────────
+  // ─── Results ──────────────────────────────────────────────────────────────
   const { technical, fundamental, behavioral, recommendation } = data;
   const action = recommendation.action;
 
@@ -287,11 +283,11 @@ export default function AnalysisScreen() {
                 {action.toUpperCase()}
               </Text>
             </View>
-            <View style={[recStyles.confidenceBadge, { backgroundColor: actionColor(action) }]}>
-              <Text style={[recStyles.confidenceNum, { fontFamily: 'Inter_700Bold' }]}>
+            <View style={[recStyles.confidenceBadge, { borderColor: actionColor(action), borderWidth: 1 }]}>
+              <Text style={[recStyles.confidenceNum, { color: actionColor(action), fontFamily: 'Inter_700Bold' }]}>
                 {recommendation.confidence}%
               </Text>
-              <Text style={[recStyles.confidenceLabel, { fontFamily: 'Inter_400Regular' }]}>
+              <Text style={[recStyles.confidenceLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                 confidence
               </Text>
             </View>
@@ -299,8 +295,6 @@ export default function AnalysisScreen() {
           <Text style={[recStyles.horizon, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
             Horizon: {recommendation.timeHorizon}
           </Text>
-
-          {/* Price Targets */}
           <View style={[recStyles.targetsRow, { borderTopColor: colors.border }]}>
             {[
               { label: action === 'sell' ? 'Sell At' : 'Entry', value: recommendation.buyPrice },
@@ -332,7 +326,10 @@ export default function AnalysisScreen() {
               const range = data.week52High - data.week52Low;
               const pos = range > 0 ? ((data.currentPrice - data.week52Low) / range) * 100 : 50;
               return (
-                <View style={[rangeStyles.thumb, { left: `${Math.min(95, Math.max(5, pos))}%` as any, backgroundColor: colors.primary }]} />
+                <View style={[rangeStyles.thumb, {
+                  left: `${Math.min(95, Math.max(5, pos))}%` as any,
+                  backgroundColor: colors.primary,
+                }]} />
               );
             })()}
           </View>
@@ -346,15 +343,14 @@ export default function AnalysisScreen() {
           </View>
         </View>
 
-        {/* Technical Analysis */}
+        {/* Technical */}
         <SectionCard
-          title="Technical Analysis"
-          icon={<Ionicons name="stats-chart" size={18} color={colors.primary} />}
+          title="TECHNICAL"
+          icon={<Ionicons name="stats-chart" size={16} color={colors.primary} />}
           score={technical.score}
           scoreColor={scoreColor(technical.score)}
         >
           <View style={{ padding: 16 }}>
-            {/* RSI Gauge */}
             <View style={rsiStyles.container}>
               <Text style={[rsiStyles.label, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>RSI (14)</Text>
               <View style={[rsiStyles.track, { backgroundColor: colors.muted }]}>
@@ -373,7 +369,6 @@ export default function AnalysisScreen() {
               </Text>
             </View>
             <View style={[divStyle, { backgroundColor: colors.border }]} />
-
             <MetricRow label="Trend" value={technical.trend.charAt(0).toUpperCase() + technical.trend.slice(1)}
               highlight={technical.trend === 'uptrend' ? colors.buyColor : technical.trend === 'downtrend' ? colors.sellColor : undefined}
             />
@@ -395,10 +390,10 @@ export default function AnalysisScreen() {
           </View>
         </SectionCard>
 
-        {/* Fundamental Analysis */}
+        {/* Fundamental */}
         <SectionCard
-          title="Fundamental Analysis"
-          icon={<Ionicons name="business" size={18} color={colors.primary} />}
+          title="FUNDAMENTAL"
+          icon={<Ionicons name="business" size={16} color={colors.primary} />}
           score={fundamental.score}
           scoreColor={scoreColor(fundamental.score)}
         >
@@ -420,10 +415,10 @@ export default function AnalysisScreen() {
           </View>
         </SectionCard>
 
-        {/* Behavioral Analysis */}
+        {/* Behavioral */}
         <SectionCard
-          title="Behavioral & Sentiment"
-          icon={<MaterialCommunityIcons name="chart-bell-curve-cumulative" size={18} color={colors.primary} />}
+          title="BEHAVIORAL"
+          icon={<MaterialCommunityIcons name="chart-bell-curve-cumulative" size={16} color={colors.primary} />}
           score={behavioral.score}
           scoreColor={scoreColor(behavioral.score)}
         >
@@ -457,8 +452,8 @@ export default function AnalysisScreen() {
         <View style={[cardStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={{ padding: 16 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <Ionicons name="sparkles" size={18} color={colors.primary} />
-              <Text style={[cardStyles.title, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>AI Reasoning</Text>
+              <Ionicons name="sparkles" size={16} color={colors.primary} />
+              <Text style={[cardStyles.title, { color: colors.foreground, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5 }]}>AI REASONING</Text>
             </View>
             <Text style={[reasonStyles.text, { color: colors.foreground, fontFamily: 'Inter_400Regular' }]}>
               {recommendation.reasoning}
@@ -468,23 +463,20 @@ export default function AnalysisScreen() {
 
         {/* Strengths & Risks */}
         <View style={srStyles.row}>
-          {/* Strengths */}
           <View style={[srStyles.col, { backgroundColor: colors.buyBg, borderColor: colors.buyColor }]}>
-            <Text style={[srStyles.title, { color: colors.buyColor, fontFamily: 'Inter_600SemiBold' }]}>Strengths</Text>
+            <Text style={[srStyles.title, { color: colors.buyColor, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5 }]}>STRENGTHS</Text>
             {recommendation.strengths.map((s, i) => (
               <View key={i} style={srStyles.item}>
-                <Ionicons name="checkmark-circle" size={14} color={colors.buyColor} />
+                <Ionicons name="checkmark-circle" size={13} color={colors.buyColor} />
                 <Text style={[srStyles.itemText, { color: colors.foreground, fontFamily: 'Inter_400Regular' }]}>{s}</Text>
               </View>
             ))}
           </View>
-
-          {/* Risks */}
           <View style={[srStyles.col, { backgroundColor: colors.sellBg, borderColor: colors.sellColor }]}>
-            <Text style={[srStyles.title, { color: colors.sellColor, fontFamily: 'Inter_600SemiBold' }]}>Risks</Text>
+            <Text style={[srStyles.title, { color: colors.sellColor, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5 }]}>RISKS</Text>
             {recommendation.risks.map((r, i) => (
               <View key={i} style={srStyles.item}>
-                <Ionicons name="warning" size={14} color={colors.sellColor} />
+                <Ionicons name="warning" size={13} color={colors.sellColor} />
                 <Text style={[srStyles.itemText, { color: colors.foreground, fontFamily: 'Inter_400Regular' }]}>{r}</Text>
               </View>
             ))}
@@ -492,7 +484,7 @@ export default function AnalysisScreen() {
         </View>
 
         <Text style={[discStyle, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-          For informational purposes only. Not financial advice. Always do your own research.
+          For informational purposes only. Not financial advice.
         </Text>
       </ScrollView>
     </View>
@@ -504,14 +496,14 @@ const discStyle = { textAlign: 'center' as const, fontSize: 11, paddingHorizonta
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  scroll: { padding: 16 },
+  scroll: { padding: 14 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 },
   loadingTitle: { fontSize: 18, marginTop: 16 },
   loadingSubtitle: { fontSize: 14, textAlign: 'center' },
   errorTitle: { fontSize: 18, marginTop: 12 },
   errorMsg: { fontSize: 14, textAlign: 'center', lineHeight: 20 },
-  retryBtn: { marginTop: 16, paddingHorizontal: 32, paddingVertical: 12, borderRadius: 12 },
-  retryText: { fontSize: 16 },
+  retryBtn: { marginTop: 16, paddingHorizontal: 32, paddingVertical: 12, borderRadius: 8 },
+  retryText: { fontSize: 15 },
 });
 
 const headerStyles = StyleSheet.create({
@@ -527,32 +519,32 @@ const headerStyles = StyleSheet.create({
 });
 
 const recStyles = StyleSheet.create({
-  hero: { borderRadius: 20, borderWidth: 1.5, padding: 20, marginBottom: 14 },
+  hero: { borderRadius: 12, borderWidth: 1, padding: 18, marginBottom: 12 },
   topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
-  actionLabel: { fontSize: 11, letterSpacing: 1 },
-  action: { fontSize: 38 },
-  confidenceBadge: { padding: 10, borderRadius: 14, alignItems: 'center' },
-  confidenceNum: { fontSize: 22, color: '#fff' },
-  confidenceLabel: { fontSize: 10, color: 'rgba(255,255,255,0.8)' },
-  horizon: { fontSize: 13, marginBottom: 16 },
-  targetsRow: { flexDirection: 'row', borderTopWidth: 1, paddingTop: 16, justifyContent: 'space-around' },
+  actionLabel: { fontSize: 10, letterSpacing: 1.5 },
+  action: { fontSize: 36 },
+  confidenceBadge: { padding: 10, borderRadius: 10, alignItems: 'center', backgroundColor: 'transparent' },
+  confidenceNum: { fontSize: 22 },
+  confidenceLabel: { fontSize: 10 },
+  horizon: { fontSize: 12, marginBottom: 14 },
+  targetsRow: { flexDirection: 'row', borderTopWidth: 1, paddingTop: 14, justifyContent: 'space-around' },
   targetItem: { alignItems: 'center', gap: 4 },
-  targetLabel: { fontSize: 11 },
-  targetValue: { fontSize: 15 },
+  targetLabel: { fontSize: 10 },
+  targetValue: { fontSize: 14 },
 });
 
 const rangeStyles = StyleSheet.create({
-  card: { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 14 },
+  card: { borderRadius: 12, borderWidth: 1, padding: 14, marginBottom: 12 },
   labels: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-  text: { fontSize: 12 },
-  track: { height: 6, borderRadius: 3, position: 'relative', marginBottom: 8 },
-  thumb: { position: 'absolute', top: -3, width: 12, height: 12, borderRadius: 6, marginLeft: -6 },
-  mktCap: { fontSize: 12 },
+  text: { fontSize: 11 },
+  track: { height: 4, borderRadius: 2, position: 'relative', marginBottom: 8 },
+  thumb: { position: 'absolute', top: -4, width: 12, height: 12, borderRadius: 6, marginLeft: -6 },
+  mktCap: { fontSize: 11 },
 });
 
 const rsiStyles = StyleSheet.create({
   container: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
-  label: { fontSize: 13, width: 60 },
+  label: { fontSize: 12, width: 60 },
   track: { flex: 1, height: 8, borderRadius: 4, overflow: 'hidden', position: 'relative' },
   fill: { height: '100%', borderRadius: 4 },
   marker: { position: 'absolute', top: 0, width: 2, height: '100%' },
@@ -560,7 +552,7 @@ const rsiStyles = StyleSheet.create({
 });
 
 const behavStyles = StyleSheet.create({
-  consensusLabel: { fontSize: 13, marginBottom: 10 },
+  consensusLabel: { fontSize: 12, marginBottom: 10 },
 });
 
 const reasonStyles = StyleSheet.create({
@@ -568,9 +560,9 @@ const reasonStyles = StyleSheet.create({
 });
 
 const srStyles = StyleSheet.create({
-  row: { flexDirection: 'row', gap: 10, marginBottom: 14 },
-  col: { flex: 1, borderRadius: 14, borderWidth: 1, padding: 14, gap: 10 },
-  title: { fontSize: 14, marginBottom: 2 },
+  row: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  col: { flex: 1, borderRadius: 12, borderWidth: 1, padding: 12, gap: 8 },
+  title: { fontSize: 11, marginBottom: 2 },
   item: { flexDirection: 'row', gap: 6, alignItems: 'flex-start' },
-  itemText: { fontSize: 13, flex: 1, lineHeight: 18 },
+  itemText: { fontSize: 12, flex: 1, lineHeight: 17 },
 });
