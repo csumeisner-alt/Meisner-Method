@@ -9,7 +9,10 @@ import {
 
 const router = Router();
 
-const openai = new OpenAI({ apiKey: process.env["OPENAI_API_KEY"] });
+const openai = new OpenAI({
+  apiKey: process.env["AI_INTEGRATIONS_OPENAI_API_KEY"] ?? process.env["OPENAI_API_KEY"],
+  baseURL: process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"] ?? undefined,
+});
 
 const fmt = (n: number | null, d = 2) => (n != null ? n.toFixed(d) : "N/A");
 const pct = (n: number | null) => (n != null ? `${(n * 100).toFixed(1)}%` : "N/A");
@@ -95,7 +98,7 @@ Respond ONLY with valid JSON (no markdown):
 }`;
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4o-mini",
       max_tokens: 2000,
       messages: [{ role: "user", content: prompt }],
       response_format: { type: "json_object" },
