@@ -17,6 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
+import { BottomTabBar } from '@/components/BottomTabBar';
 
 const POPULAR_TICKERS = [
   { symbol: 'AAPL', name: 'Apple' },
@@ -258,6 +259,7 @@ export default function HomeScreen() {
           For informational purposes only. Not financial advice.
         </Text>
       </ScrollView>
+      <BottomTabBar />
     </View>
   );
 }

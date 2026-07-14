@@ -1,11 +1,19 @@
 import { Router } from "express";
 import OpenAI from "openai";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
+import { join, dirname } from "node:path";
 import {
   fetchStockData,
   computeTechnicalScore,
   computeFundamentalScore,
   computeBehavioralScore,
 } from "../lib/yahoo.js";
+
+const execFileAsync = promisify(execFile);
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const QUOTE_SCRIPT = join(__dirname, "fetch_quote.py");
 
 const router = Router();
 
@@ -16,6 +24,29 @@ const openai = new OpenAI({
 
 const fmt = (n: number | null, d = 2) => (n != null ? n.toFixed(d) : "N/A");
 const pct = (n: number | null) => (n != null ? `${(n * 100).toFixed(1)}%` : "N/A");
+
+// Fast quote — current price only, no AI
+router.get("/stocks/quote/:symbol", async (req, res) => {
+  const symbol = (req.params["symbol"] ?? "").toUpperCase().trim();
+  if (!symbol) {
+    res.status(400).json({ error: "INVALID_SYMBOL", message: "Symbol is required" });
+    return;
+  }
+  try {
+    const { stdout } = await execFileAsync("python3", [QUOTE_SCRIPT, symbol], {
+      timeout: 30_000,
+      maxBuffer: 1024 * 1024,
+    });
+    const raw = JSON.parse(stdout.trim());
+    if (raw["error"]) {
+      res.status(422).json({ error: "QUOTE_FAILED", message: raw["error"] });
+      return;
+    }
+    res.json(raw);
+  } catch (err: any) {
+    res.status(422).json({ error: "QUOTE_FAILED", message: err.message });
+  }
+});
 
 router.post("/stocks/analyze", async (req, res) => {
   const { symbol } = req.body as { symbol?: string };

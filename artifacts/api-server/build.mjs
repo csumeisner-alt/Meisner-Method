@@ -122,11 +122,17 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
 
 buildAll()
   .then(() =>
-    // Copy Python fetcher script so subprocess can find it at dist/fetch_stock.py
-    copyFile(
-      path.resolve(artifactDir, "src/lib/fetch_stock.py"),
-      path.resolve(artifactDir, "dist/fetch_stock.py")
-    )
+    // Copy Python fetcher scripts so subprocesses can find them in dist/
+    Promise.all([
+      copyFile(
+        path.resolve(artifactDir, "src/lib/fetch_stock.py"),
+        path.resolve(artifactDir, "dist/fetch_stock.py")
+      ),
+      copyFile(
+        path.resolve(artifactDir, "src/lib/fetch_quote.py"),
+        path.resolve(artifactDir, "dist/fetch_quote.py")
+      ),
+    ])
   )
   .catch((err) => {
     console.error(err);

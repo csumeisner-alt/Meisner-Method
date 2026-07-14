@@ -152,7 +152,7 @@ export default function AnalysisScreen() {
   const { mutate, data, isPending, error } = useAnalyzeStock<Error>();
 
   useEffect(() => {
-    if (symbol) mutate({ symbol });
+    if (symbol) mutate({ data: { symbol } });
   }, [symbol]);
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;

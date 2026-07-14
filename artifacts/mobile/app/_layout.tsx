@@ -31,6 +31,7 @@ function RootLayoutNav() {
   return (
     <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="portfolio" options={{ headerShown: false }} />
       <Stack.Screen name="analysis/[symbol]" options={{ headerShown: false }} />
     </Stack>
   );
