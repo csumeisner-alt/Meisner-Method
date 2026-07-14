@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Feather } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
+import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import { useColors } from '@/hooks/useColors';
 import { BottomTabBar } from '@/components/BottomTabBar';
 
@@ -89,10 +90,21 @@ const CELEBRATION_IMAGES = [
   require('../assets/celebration/woman5.jpg'),
 ];
 
-function playCelebrationVoice(text: string) {
-  try { Speech.speak(text, { language: 'en-US', pitch: 1.12, rate: 0.9 }); } catch (_) {}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _celebPlayer: any = null;
+async function playCelebrationVoice(text: string) {
+  try {
+    await setAudioModeAsync({ playsInSilentModeIOS: true, allowsRecordingIOS: false });
+    const uri = `${BASE_URL}/api/tts?text=${encodeURIComponent(text)}`;
+    _celebPlayer = createAudioPlayer({ uri });
+    _celebPlayer.play();
+  } catch (_) {
+    // Fallback to on-device speech (Expo Go / no network)
+    try { Speech.speak(text, { language: 'en-US', pitch: 1.12, rate: 0.9 }); } catch (_) {}
+  }
 }
 function stopCelebrationVoice() {
+  try { if (_celebPlayer) { _celebPlayer.remove(); _celebPlayer = null; } } catch (_) {}
   try { Speech.stop(); } catch (_) {}
 }
 

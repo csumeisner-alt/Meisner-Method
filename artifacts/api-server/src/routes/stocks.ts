@@ -30,28 +30,31 @@ const openai = new OpenAI({
   baseURL: process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"] ?? undefined,
 });
 
-// Separate client for TTS — Replit AI proxy doesn't support /audio/speech,
-// so we use the direct OpenAI key without a baseURL override.
-const ttsOpenai = new OpenAI({
-  apiKey: process.env["OPENAI_API_KEY"],
-});
-
-// ── TTS endpoint — used by celebration overlay for natural voice ────────────
+// ── TTS endpoint — Microsoft Edge neural voice (free, no API key needed) ────
 router.get("/tts", async (req, res) => {
   try {
     const text = String(req.query["text"] ?? "").slice(0, 500);
     if (!text) { res.status(400).json({ error: "text required" }); return; }
-    const mp3 = await ttsOpenai.audio.speech.create({
-      model: "tts-1",
-      voice: "nova",
-      input: text,
-    });
-    const buffer = Buffer.from(await mp3.arrayBuffer());
+
+    // Lazy-require so the import only runs when the route is hit
+    const { MsEdgeTTS, OUTPUT_FORMAT } = await import("msedge-tts");
+    const tts = new MsEdgeTTS();
+    await tts.setMetadata(
+      "en-US-AriaNeural",          // warm, natural female voice — comparable to Nova
+      OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3,
+    );
+
     res.set("Content-Type", "audio/mpeg");
     res.set("Cache-Control", "no-store");
-    res.send(buffer);
+
+    // toStream() returns { audioStream, metadataStream, requestId }
+    const { audioStream } = tts.toStream(text);
+    audioStream.on("error", (e: Error) => {
+      if (!res.headersSent) res.status(500).json({ error: e.message });
+    });
+    audioStream.pipe(res);
   } catch (e: any) {
-    res.status(500).json({ error: e?.message ?? "tts failed" });
+    if (!res.headersSent) res.status(500).json({ error: e?.message ?? "tts failed" });
   }
 });
 
