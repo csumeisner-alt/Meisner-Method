@@ -14,6 +14,7 @@ import {
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const QUOTE_SCRIPT = join(__dirname, "fetch_quote.py");
+const INFO_SCRIPT = join(__dirname, "fetch_info_brief.py");
 const TRENDING_SCRIPT = join(__dirname, "fetch_trending.py");
 const TOP_PICKS_SCRIPT = join(__dirname, "fetch_top_picks.py");
 const CHART_SCRIPT = join(__dirname, "fetch_chart.py");
@@ -93,6 +94,29 @@ router.get("/stocks/trending", async (_req, res) => {
     res.json(raw);
   } catch (err: any) {
     res.status(422).json({ error: "TRENDING_FAILED", message: err.message });
+  }
+});
+
+// Brief stock info — company name, sector, dividend yield (for paper trading)
+router.get("/stocks/info/:symbol", async (req, res) => {
+  const symbol = (req.params["symbol"] ?? "").toUpperCase().trim();
+  if (!symbol) {
+    res.status(400).json({ error: "INVALID_SYMBOL", message: "Symbol is required" });
+    return;
+  }
+  try {
+    const { stdout } = await execFileAsync("python3", [INFO_SCRIPT, symbol], {
+      timeout: 30_000,
+      maxBuffer: 1024 * 1024,
+    });
+    const raw = JSON.parse(stdout.trim());
+    if (raw["error"]) {
+      res.status(422).json({ error: "INFO_FAILED", message: raw["error"] });
+      return;
+    }
+    res.json(raw);
+  } catch (err: any) {
+    res.status(422).json({ error: "INFO_FAILED", message: err.message });
   }
 });
 

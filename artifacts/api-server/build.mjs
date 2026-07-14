@@ -144,6 +144,10 @@ buildAll()
         path.resolve(artifactDir, "src/lib/fetch_chart.py"),
         path.resolve(artifactDir, "dist/fetch_chart.py")
       ),
+      copyFile(
+        path.resolve(artifactDir, "src/lib/fetch_info_brief.py"),
+        path.resolve(artifactDir, "dist/fetch_info_brief.py")
+      ),
     ])
   )
   .catch((err) => {
