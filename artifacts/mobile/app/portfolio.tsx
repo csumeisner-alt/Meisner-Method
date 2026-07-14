@@ -89,23 +89,8 @@ const CELEBRATION_IMAGES = [
   require('../assets/celebration/woman5.jpg'),
 ];
 
-async function playCelebrationVoice(text: string) {
-  // Try OpenAI TTS endpoint first for natural voice;
-  // fall back to on-device speech if unreachable or over quota.
-  try {
-    const uri = `${BASE_URL}/api/tts?text=${encodeURIComponent(text)}`;
-    const res = await fetch(uri);
-    if (!res.ok) throw new Error(`tts ${res.status}`);
-    // If we got audio back successfully the endpoint works — nothing more to do
-    // on web/Expo Go. Native audio playback from URLs requires expo-av (in the
-    // full EAS build). For now we fall through to expo-speech so there's always
-    // some voice feedback in development.
-    throw new Error('use speech fallback');
-  } catch (_) {
-    try {
-      Speech.speak(text, { language: 'en-US', pitch: 1.12, rate: 0.9 });
-    } catch (_) {}
-  }
+function playCelebrationVoice(text: string) {
+  try { Speech.speak(text, { language: 'en-US', pitch: 1.12, rate: 0.9 }); } catch (_) {}
 }
 function stopCelebrationVoice() {
   try { Speech.stop(); } catch (_) {}
@@ -623,20 +608,6 @@ function TradeCard({
         </View>
 
         <View style={tcStyles.topRight}>
-          {/* Grade badge — only for sell trades */}
-          {gradeInfo && (
-            <View style={[tcStyles.gradeBadge, { backgroundColor: gradeInfo.bgColor, borderColor: gradeInfo.color }]}>
-              <Text style={[tcStyles.gradeBadgeTxt, { color: gradeInfo.color, fontFamily: 'Inter_700Bold' }]}>
-                {gradeInfo.grade}
-              </Text>
-              <Text style={[tcStyles.gradeBadgeAmt, { color: gradeInfo.profit >= 0 ? '#00e5a0' : '#ff3b3b' }]}>
-                {gradeInfo.profit >= 0 ? '+' : ''}{fmtCurrency(gradeInfo.profit)}
-              </Text>
-              <Text style={[tcStyles.gradeBadgePct, { color: gradeInfo.color }]}>
-                {fmtPct(gradeInfo.returnPct)}
-              </Text>
-            </View>
-          )}
           <TouchableOpacity onPress={onEdit} style={tcStyles.iconBtn} activeOpacity={0.7}>
             <Feather name="edit-2" size={13} color={colors.mutedForeground} />
           </TouchableOpacity>
@@ -651,9 +622,9 @@ function TradeCard({
       {gradeInfo && !expanded && (
         <TouchableOpacity onPress={onToggleExpand} activeOpacity={0.7}
           style={[tcStyles.tapHint, { borderTopColor: colors.border }]}>
-          <Feather name="chevron-down" size={10} color={colors.mutedForeground} />
+          <Feather name="chevron-up" size={10} color={colors.mutedForeground} />
           <Text style={[tcStyles.tapHintTxt, { color: colors.mutedForeground }]}>TAP FOR TRADE ANALYSIS</Text>
-          <Feather name="chevron-down" size={10} color={colors.mutedForeground} />
+          <Feather name="chevron-up" size={10} color={colors.mutedForeground} />
         </TouchableOpacity>
       )}
 
@@ -661,17 +632,44 @@ function TradeCard({
 
       {/* Core metrics row */}
       <View style={tcStyles.metrics}>
-        {[
-          { label: 'SHARES', value: fmtNum(trade.shares, 4) },
-          { label: isBuy ? 'BUY PRICE' : 'SELL PRICE', value: fmtCurrency(trade.pricePerShare) },
-          { label: 'TOTAL', value: fmtCurrency(trade.shares * trade.pricePerShare) },
-          { label: 'CURRENT', value: quote ? fmtCurrency(quote.currentPrice) : '—' },
-        ].map(c => (
-          <View key={c.label} style={tcStyles.metricCell}>
-            <Text style={[tcStyles.metricLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>{c.label}</Text>
-            <Text style={[tcStyles.metricVal, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>{c.value}</Text>
+        {/* Left col: SHARES + TOTAL */}
+        <View style={tcStyles.metricCol}>
+          {[
+            { label: 'SHARES', value: fmtNum(trade.shares, 4) },
+            { label: 'TOTAL', value: fmtCurrency(trade.shares * trade.pricePerShare) },
+          ].map(c => (
+            <View key={c.label} style={tcStyles.metricCell}>
+              <Text style={[tcStyles.metricLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>{c.label}</Text>
+              <Text style={[tcStyles.metricVal, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>{c.value}</Text>
+            </View>
+          ))}
+        </View>
+        {/* Middle col: SELL/BUY PRICE + CURRENT */}
+        <View style={tcStyles.metricCol}>
+          {[
+            { label: isBuy ? 'BUY PRICE' : 'SELL PRICE', value: fmtCurrency(trade.pricePerShare) },
+            { label: 'CURRENT', value: quote ? fmtCurrency(quote.currentPrice) : '—' },
+          ].map(c => (
+            <View key={c.label} style={tcStyles.metricCell}>
+              <Text style={[tcStyles.metricLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>{c.label}</Text>
+              <Text style={[tcStyles.metricVal, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>{c.value}</Text>
+            </View>
+          ))}
+        </View>
+        {/* Right col: grade badge (sell trades only) */}
+        {gradeInfo && (
+          <View style={[tcStyles.gradeBadge, { backgroundColor: gradeInfo.bgColor, borderColor: gradeInfo.color }]}>
+            <Text style={[tcStyles.gradeBadgeTxt, { color: gradeInfo.color, fontFamily: 'Inter_700Bold' }]}>
+              {gradeInfo.grade}
+            </Text>
+            <Text style={[tcStyles.gradeBadgeAmt, { color: gradeInfo.profit >= 0 ? '#00e5a0' : '#ff3b3b' }]}>
+              {gradeInfo.profit >= 0 ? '+' : ''}{fmtCurrency(gradeInfo.profit)}
+            </Text>
+            <Text style={[tcStyles.gradeBadgePct, { color: gradeInfo.color }]}>
+              {fmtPct(gradeInfo.returnPct)}
+            </Text>
           </View>
-        ))}
+        )}
       </View>
 
       {/* Expanded analysis — sell trades only */}
@@ -789,14 +787,14 @@ const tcStyles = StyleSheet.create({
   typeBadgeTxt: { fontSize: 9, letterSpacing: 0.5 },
   date: { fontSize: 10 },
   gradeBadge: {
-    borderWidth: 1.5, borderRadius: 6,
-    paddingHorizontal: 8, paddingVertical: 4,
-    marginRight: 4,
-    alignItems: 'center',
+    borderWidth: 1.5, borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 8,
+    alignItems: 'center', justifyContent: 'center',
+    minWidth: 64,
   },
-  gradeBadgeTxt: { fontSize: 13, letterSpacing: 0.5 },
-  gradeBadgeAmt: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.2, marginTop: 1 },
-  gradeBadgePct: { fontSize: 8, fontFamily: 'Inter_400Regular', letterSpacing: 0.2 },
+  gradeBadgeTxt: { fontSize: 26, letterSpacing: 0.5, lineHeight: 30 },
+  gradeBadgeAmt: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.2, marginTop: 3 },
+  gradeBadgePct: { fontSize: 9, fontFamily: 'Inter_400Regular', letterSpacing: 0.2, marginTop: 1 },
   tapHint: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 5, paddingVertical: 5, borderTopWidth: 1,
@@ -804,8 +802,9 @@ const tcStyles = StyleSheet.create({
   tapHintTxt: { fontSize: 8, letterSpacing: 1, fontFamily: 'Inter_500Medium' },
   iconBtn: { padding: 4 },
   divider: { height: 1, marginHorizontal: 12 },
-  metrics: { flexDirection: 'row', flexWrap: 'wrap', padding: 12, gap: 10 },
-  metricCell: { width: '44%' },
+  metrics: { flexDirection: 'row', padding: 12, gap: 10, alignItems: 'center' },
+  metricCol: { flex: 1, gap: 10 },
+  metricCell: {},
   metricLabel: { fontSize: 8, letterSpacing: 0.8, marginBottom: 2 },
   metricVal: { fontSize: 13 },
   analysis: { borderTopWidth: 1, padding: 12, gap: 10 },
