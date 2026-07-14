@@ -1,6 +1,7 @@
 {
   "expo": {
     "name": "Meisner Method",
+    "owner": "meisnermethod",
     "slug": "meisnermethod",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -36,6 +37,11 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "5e8662d5-f093-48e0-b849-991d195b401b"
+      }
     }
   }
 }
