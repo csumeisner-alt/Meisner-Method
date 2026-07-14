@@ -295,13 +295,12 @@ function CelebrationOverlay({
   const womanImage = useRef(CELEBRATION_IMAGES[Math.floor(Math.random() * CELEBRATION_IMAGES.length)]).current;
   const compliment = useRef(pickCompliment(gradeInfo.grade)).current;
 
-  const backdropOp = useRef(new Animated.Value(0)).current;
+  const overlayOp  = useRef(new Animated.Value(0)).current;
   const cardY      = useRef(new Animated.Value(80)).current;
   const cardScale  = useRef(new Animated.Value(0.88)).current;
   const cardOp     = useRef(new Animated.Value(0)).current;
   const imageScale = useRef(new Animated.Value(1)).current;
   const glowPulse  = useRef(new Animated.Value(0)).current;
-  const fadeOut    = useRef(new Animated.Value(1)).current;
 
   const NUM_PARTICLES = 20;
   const particles = useRef(
@@ -319,8 +318,8 @@ function CelebrationOverlay({
   ).current;
 
   useEffect(() => {
-    // Fade in backdrop
-    Animated.timing(backdropOp, { toValue: 1, duration: 280, useNativeDriver: true }).start();
+    // Fade in overlay (single value — avoids Animated.multiply crash)
+    Animated.timing(overlayOp, { toValue: 1, duration: 280, useNativeDriver: true }).start();
 
     // Card slides up + springs in
     Animated.parallel([
@@ -368,9 +367,9 @@ function CelebrationOverlay({
     // Natural voice via OpenAI TTS
     playCelebrationVoice(compliment);
 
-    // Auto-dismiss after 7.5 s
+    // Auto-dismiss after 7.5 s — fade the whole overlay out then call onDismiss
     const fadeTimer = setTimeout(() => {
-      Animated.timing(fadeOut, { toValue: 0, duration: 600, useNativeDriver: true }).start(onDismiss);
+      Animated.timing(overlayOp, { toValue: 0, duration: 600, useNativeDriver: true }).start(onDismiss);
     }, 7500);
 
     return () => {
@@ -384,7 +383,7 @@ function CelebrationOverlay({
 
   return (
     <Animated.View
-      style={[celebStyles.overlay, { opacity: Animated.multiply(backdropOp, fadeOut) }]}
+      style={[celebStyles.overlay, { opacity: overlayOp }]}
       pointerEvents="box-none"
     >
       <Pressable style={StyleSheet.absoluteFillObject} onPress={onDismiss} />
