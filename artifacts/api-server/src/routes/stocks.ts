@@ -30,6 +30,31 @@ const openai = new OpenAI({
   baseURL: process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"] ?? undefined,
 });
 
+// Separate client for TTS — Replit AI proxy doesn't support /audio/speech,
+// so we use the direct OpenAI key without a baseURL override.
+const ttsOpenai = new OpenAI({
+  apiKey: process.env["OPENAI_API_KEY"],
+});
+
+// ── TTS endpoint — used by celebration overlay for natural voice ────────────
+router.get("/tts", async (req, res) => {
+  try {
+    const text = String(req.query["text"] ?? "").slice(0, 500);
+    if (!text) { res.status(400).json({ error: "text required" }); return; }
+    const mp3 = await ttsOpenai.audio.speech.create({
+      model: "tts-1",
+      voice: "nova",
+      input: text,
+    });
+    const buffer = Buffer.from(await mp3.arrayBuffer());
+    res.set("Content-Type", "audio/mpeg");
+    res.set("Cache-Control", "no-store");
+    res.send(buffer);
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message ?? "tts failed" });
+  }
+});
+
 const fmt = (n: number | null, d = 2) => (n != null ? n.toFixed(d) : "N/A");
 const pct = (n: number | null) => (n != null ? `${(n * 100).toFixed(1)}%` : "N/A");
 

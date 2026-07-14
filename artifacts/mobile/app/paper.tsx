@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  Pressable,
   RefreshControl,
   SafeAreaView,
   ScrollView,
@@ -940,10 +941,19 @@ export default function PaperScreen() {
         animationType="slide"
         onRequestClose={() => setShowTradeModal(false)}
       >
-        <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowTradeModal(false)} activeOpacity={1}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ justifyContent: 'flex-end' }}>
-            <TouchableOpacity activeOpacity={1}>
-              <View style={styles.bottomSheet}>
+        <KeyboardAvoidingView
+          style={{ flex: 1, justifyContent: 'flex-end' }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setShowTradeModal(false)} />
+          <ScrollView
+            style={styles.bottomSheet}
+            contentContainerStyle={{ paddingBottom: 8 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
+              <View>
                 <View style={styles.sheetHandle} />
 
                 {tradeMode === 'buy' ? (
@@ -1093,9 +1103,8 @@ export default function PaperScreen() {
                   <Text style={styles.cancelBtnText}>CANCEL</Text>
                 </TouchableOpacity>
               </View>
-            </TouchableOpacity>
-          </KeyboardAvoidingView>
-        </TouchableOpacity>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -1283,6 +1292,7 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     padding: 20,
     paddingBottom: 36,
+    maxHeight: '88%',
   },
   sheetHandle: { width: 36, height: 4, backgroundColor: BORDER, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
   sheetTitle: { fontFamily: 'Inter_700Bold', fontSize: 16, color: '#fff', letterSpacing: 1, marginBottom: 4 },

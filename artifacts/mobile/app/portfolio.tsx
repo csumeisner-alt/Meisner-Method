@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
+  Image,
   ScrollView,
   TouchableOpacity,
   TextInput,
@@ -78,6 +79,37 @@ const STORAGE_KEY = 'meisner_portfolio_trades';
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
 const SPARKLE_EMOJIS = ['✨', '⭐', '💫', '🌟', '🎉', '💎', '🏆', '🔥'];
+
+// Celebration woman images — AI-generated, rotated randomly each time
+const CELEBRATION_IMAGES = [
+  require('../assets/celebration/woman1.jpg'),
+  require('../assets/celebration/woman2.jpg'),
+  require('../assets/celebration/woman3.jpg'),
+  require('../assets/celebration/woman4.jpg'),
+  require('../assets/celebration/woman5.jpg'),
+];
+
+async function playCelebrationVoice(text: string) {
+  // Try OpenAI TTS endpoint first for natural voice;
+  // fall back to on-device speech if unreachable or over quota.
+  try {
+    const uri = `${BASE_URL}/api/tts?text=${encodeURIComponent(text)}`;
+    const res = await fetch(uri);
+    if (!res.ok) throw new Error(`tts ${res.status}`);
+    // If we got audio back successfully the endpoint works — nothing more to do
+    // on web/Expo Go. Native audio playback from URLs requires expo-av (in the
+    // full EAS build). For now we fall through to expo-speech so there's always
+    // some voice feedback in development.
+    throw new Error('use speech fallback');
+  } catch (_) {
+    try {
+      Speech.speak(text, { language: 'en-US', pitch: 1.12, rate: 0.9 });
+    } catch (_) {}
+  }
+}
+function stopCelebrationVoice() {
+  try { Speech.stop(); } catch (_) {}
+}
 
 const COMPLIMENTS_APLUS = [
   "Oh my gosh! That was absolutely flawless! You're a market genius — seriously, that trade was art!",
@@ -260,106 +292,104 @@ function CelebrationOverlay({
   gradeInfo: TradeGrade;
   onDismiss: () => void;
 }) {
-  const entryScale = useRef(new Animated.Value(0)).current;
-  const bounceY    = useRef(new Animated.Value(0)).current;
-  const rotateVal  = useRef(new Animated.Value(0)).current;
+  const womanImage = useRef(CELEBRATION_IMAGES[Math.floor(Math.random() * CELEBRATION_IMAGES.length)]).current;
+  const compliment = useRef(pickCompliment(gradeInfo.grade)).current;
+
+  const backdropOp = useRef(new Animated.Value(0)).current;
+  const cardY      = useRef(new Animated.Value(80)).current;
+  const cardScale  = useRef(new Animated.Value(0.88)).current;
+  const cardOp     = useRef(new Animated.Value(0)).current;
+  const imageScale = useRef(new Animated.Value(1)).current;
   const glowPulse  = useRef(new Animated.Value(0)).current;
   const fadeOut    = useRef(new Animated.Value(1)).current;
 
-  const NUM_PARTICLES = 16;
+  const NUM_PARTICLES = 20;
   const particles = useRef(
     Array.from({ length: NUM_PARTICLES }, (_, i) => {
-      const angle = (i / NUM_PARTICLES) * Math.PI * 2 + (Math.random() - 0.5) * 0.6;
-      const dist = 90 + Math.random() * 110;
+      const angle = (i / NUM_PARTICLES) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
+      const dist = 110 + Math.random() * 130;
       return {
-        angle,
-        dist,
+        angle, dist,
         tx: new Animated.Value(0),
         ty: new Animated.Value(0),
         op: new Animated.Value(0),
-        sc: new Animated.Value(0.3),
+        sc: new Animated.Value(0.2),
       };
     })
   ).current;
 
   useEffect(() => {
-    // Entry pop
-    Animated.spring(entryScale, {
-      toValue: 1, tension: 90, friction: 6, useNativeDriver: true,
-    }).start();
+    // Fade in backdrop
+    Animated.timing(backdropOp, { toValue: 1, duration: 280, useNativeDriver: true }).start();
 
-    // Continuous bounce
+    // Card slides up + springs in
+    Animated.parallel([
+      Animated.spring(cardY,     { toValue: 0, tension: 65, friction: 9, useNativeDriver: true }),
+      Animated.spring(cardScale, { toValue: 1, tension: 65, friction: 9, useNativeDriver: true }),
+      Animated.timing(cardOp,    { toValue: 1, duration: 300, useNativeDriver: true }),
+    ]).start();
+
+    // Subtle image breathe
     Animated.loop(
       Animated.sequence([
-        Animated.timing(bounceY, { toValue: -18, duration: 420, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-        Animated.timing(bounceY, { toValue: 0,   duration: 420, easing: Easing.in(Easing.quad),  useNativeDriver: true }),
-      ])
-    ).start();
-
-    // Wiggle rotate
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(rotateVal, { toValue: 1,  duration: 280, useNativeDriver: true }),
-        Animated.timing(rotateVal, { toValue: -1, duration: 280, useNativeDriver: true }),
-        Animated.timing(rotateVal, { toValue: 0,  duration: 200, useNativeDriver: true }),
+        Animated.timing(imageScale, { toValue: 1.04, duration: 2200, easing: Easing.inOut(Easing.sine), useNativeDriver: true }),
+        Animated.timing(imageScale, { toValue: 1.00, duration: 2200, easing: Easing.inOut(Easing.sine), useNativeDriver: true }),
       ])
     ).start();
 
     // Glow pulse
     Animated.loop(
       Animated.sequence([
-        Animated.timing(glowPulse, { toValue: 1, duration: 700, useNativeDriver: true }),
-        Animated.timing(glowPulse, { toValue: 0, duration: 700, useNativeDriver: true }),
+        Animated.timing(glowPulse, { toValue: 1, duration: 900, useNativeDriver: true }),
+        Animated.timing(glowPulse, { toValue: 0, duration: 900, useNativeDriver: true }),
       ])
     ).start();
 
-    // Particle burst — loop every 2.8 s
+    // Particle burst
     function burst() {
       particles.forEach((p, i) => {
-        p.tx.setValue(0); p.ty.setValue(0); p.op.setValue(0); p.sc.setValue(0.3);
+        p.tx.setValue(0); p.ty.setValue(0); p.op.setValue(0); p.sc.setValue(0.2);
         Animated.sequence([
-          Animated.delay(i * 40),
+          Animated.delay(i * 30),
           Animated.parallel([
-            Animated.spring(p.tx, { toValue: Math.cos(p.angle) * p.dist, useNativeDriver: true }),
-            Animated.spring(p.ty, { toValue: Math.sin(p.angle) * p.dist, useNativeDriver: true }),
-            Animated.timing(p.op, { toValue: 1, duration: 200, useNativeDriver: true }),
-            Animated.spring(p.sc, { toValue: 1,  useNativeDriver: true }),
+            Animated.spring(p.tx, { toValue: Math.cos(p.angle) * p.dist, tension: 40, friction: 7, useNativeDriver: true }),
+            Animated.spring(p.ty, { toValue: Math.sin(p.angle) * p.dist, tension: 40, friction: 7, useNativeDriver: true }),
+            Animated.timing(p.op, { toValue: 1, duration: 180, useNativeDriver: true }),
+            Animated.spring(p.sc, { toValue: 1, useNativeDriver: true }),
           ]),
-          Animated.delay(1200),
-          Animated.timing(p.op, { toValue: 0, duration: 600, useNativeDriver: true }),
+          Animated.delay(1400),
+          Animated.timing(p.op, { toValue: 0, duration: 700, useNativeDriver: true }),
         ]).start();
       });
     }
     burst();
-    const interval = setInterval(burst, 2800);
+    const interval = setInterval(burst, 3000);
 
-    // Speak
-    try {
-      Speech.speak(pickCompliment(gradeInfo.grade), {
-        language: 'en-US', pitch: 1.15, rate: 0.92,
-      });
-    } catch (_) {}
+    // Natural voice via OpenAI TTS
+    playCelebrationVoice(compliment);
 
-    // Fade out + dismiss after 6.5 s
+    // Auto-dismiss after 7.5 s
     const fadeTimer = setTimeout(() => {
-      Animated.timing(fadeOut, { toValue: 0, duration: 500, useNativeDriver: true }).start(onDismiss);
-    }, 6000);
+      Animated.timing(fadeOut, { toValue: 0, duration: 600, useNativeDriver: true }).start(onDismiss);
+    }, 7500);
 
     return () => {
       clearInterval(interval);
       clearTimeout(fadeTimer);
-      try { Speech.stop(); } catch (_) {}
+      stopCelebrationVoice();
     };
   }, []);
 
-  const spin = rotateVal.interpolate({ inputRange: [-1, 1], outputRange: ['-16deg', '16deg'] });
-  const glowOp = glowPulse.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0.75] });
+  const glowOp = glowPulse.interpolate({ inputRange: [0, 1], outputRange: [0.08, 0.30] });
 
   return (
-    <Animated.View style={[celebStyles.overlay, { opacity: fadeOut }]} pointerEvents="box-none">
+    <Animated.View
+      style={[celebStyles.overlay, { opacity: Animated.multiply(backdropOp, fadeOut) }]}
+      pointerEvents="box-none"
+    >
       <Pressable style={StyleSheet.absoluteFillObject} onPress={onDismiss} />
 
-      {/* Particles — anchored at center */}
+      {/* Particles — radiating from center */}
       <View style={celebStyles.particleAnchor} pointerEvents="none">
         {particles.map((p, i) => (
           <Animated.View
@@ -378,37 +408,41 @@ function CelebrationOverlay({
       {/* Main card */}
       <Animated.View style={[
         celebStyles.card,
-        { transform: [{ scale: entryScale }, { translateY: bounceY }] },
+        { transform: [{ translateY: cardY }, { scale: cardScale }], opacity: cardOp },
       ]}>
-        {/* Glow ring behind emoji */}
-        <Animated.View style={[celebStyles.glowRing, { backgroundColor: gradeInfo.color, opacity: glowOp }]} />
-
-        {/* Dancing character */}
-        <Animated.Text style={[celebStyles.dancer, { transform: [{ rotate: spin }] }]}>
-          💃
-        </Animated.Text>
-
-        {/* Stars row */}
-        <Text style={celebStyles.starsRow}>⭐ ⭐ ⭐</Text>
-
-        {/* Grade display */}
-        <View style={[celebStyles.gradePill, { backgroundColor: gradeInfo.bgColor, borderColor: gradeInfo.color }]}>
-          <Text style={[celebStyles.gradeSmallLabel, { color: gradeInfo.color }]}>TRADE GRADE</Text>
-          <Text style={[celebStyles.gradeBig, { color: gradeInfo.color }]}>{gradeInfo.grade}</Text>
-          <Text style={[celebStyles.gradeLabel2, { color: gradeInfo.color }]}>{gradeInfo.label.toUpperCase()}</Text>
+        {/* Woman image */}
+        <View style={celebStyles.imageWrap}>
+          <Animated.Image
+            source={womanImage}
+            style={[celebStyles.womanImage, { transform: [{ scale: imageScale }] }]}
+            resizeMode="cover"
+          />
+          {/* Color glow tint over image */}
+          <Animated.View style={[
+            celebStyles.imageTint,
+            { backgroundColor: gradeInfo.color, opacity: glowOp },
+          ]} />
+          {/* Grade badge overlaid bottom-right */}
+          <View style={[celebStyles.gradeOverlay, { backgroundColor: gradeInfo.bgColor, borderColor: gradeInfo.color }]}>
+            <Text style={[celebStyles.gradeOverlayTxt, { color: gradeInfo.color }]}>{gradeInfo.grade}</Text>
+          </View>
         </View>
 
-        {/* Profit */}
-        <Text style={[celebStyles.profitAmt, { color: gradeInfo.profit >= 0 ? '#00e5a0' : '#ff3b3b' }]}>
-          {gradeInfo.profit >= 0 ? '+' : ''}{fmtCurrency(gradeInfo.profit)}
-        </Text>
-        <Text style={celebStyles.profitPct}>
-          {fmtPct(gradeInfo.returnPct)} in {gradeInfo.holdDays <= 1
-            ? (gradeInfo.holdDays === 0 ? 'same day' : '1 day')
-            : `${gradeInfo.holdDays} days`}
-        </Text>
-
-        <Text style={celebStyles.tapDismiss}>tap anywhere to dismiss</Text>
+        {/* Content below image */}
+        <View style={celebStyles.cardContent}>
+          <Text style={celebStyles.starsRow}>⭐ ⭐ ⭐</Text>
+          <Text style={[celebStyles.gradeLabel, { color: gradeInfo.color, fontFamily: 'Inter_700Bold' }]}>
+            {gradeInfo.label.toUpperCase()}
+          </Text>
+          <Text style={[celebStyles.profitAmt, { color: gradeInfo.profit >= 0 ? '#00e5a0' : '#ff3b3b' }]}>
+            {gradeInfo.profit >= 0 ? '+' : ''}{fmtCurrency(gradeInfo.profit)}
+          </Text>
+          <Text style={celebStyles.profitPct}>
+            {fmtPct(gradeInfo.returnPct)}{'  ·  '}
+            {gradeInfo.holdDays === 0 ? 'same day' : gradeInfo.holdDays === 1 ? '1 day hold' : `${gradeInfo.holdDays}d hold`}
+          </Text>
+          <Text style={celebStyles.tapDismiss}>tap anywhere to dismiss</Text>
+        </View>
       </Animated.View>
     </Animated.View>
   );
@@ -417,7 +451,7 @@ function CelebrationOverlay({
 const celebStyles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.82)',
+    backgroundColor: 'rgba(0,0,0,0.88)',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 999,
@@ -430,40 +464,52 @@ const celebStyles = StyleSheet.create({
   },
   particle: { fontSize: 22 },
   card: {
-    alignItems: 'center',
-    paddingHorizontal: 36,
-    paddingVertical: 28,
     borderRadius: 24,
-    backgroundColor: '#111111',
+    backgroundColor: '#0e0e0e',
     borderWidth: 1,
-    borderColor: 'rgba(192,192,192,0.2)',
-    gap: 8,
-    minWidth: 280,
+    borderColor: 'rgba(192,192,192,0.18)',
+    overflow: 'hidden',
+    width: 290,
+    shadowColor: '#000',
+    shadowOpacity: 0.6,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 16,
   },
-  glowRing: {
+  imageWrap: {
+    width: '100%',
+    height: 320,
+    overflow: 'hidden',
+    backgroundColor: '#111',
+  },
+  womanImage: {
+    width: '100%',
+    height: '100%',
+  },
+  imageTint: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  gradeOverlay: {
     position: 'absolute',
-    top: 10,
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    opacity: 0.5,
+    bottom: 12,
+    right: 12,
+    borderWidth: 2,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
-  dancer: { fontSize: 80 },
-  starsRow: { fontSize: 20, letterSpacing: 8 },
-  gradePill: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+  gradeOverlayTxt: { fontSize: 22, fontFamily: 'Inter_700Bold' },
+  cardContent: {
     alignItems: 'center',
-    marginTop: 4,
+    paddingHorizontal: 24,
+    paddingVertical: 18,
+    gap: 5,
   },
-  gradeSmallLabel: { fontSize: 9, letterSpacing: 2, fontFamily: 'Inter_600SemiBold', marginBottom: 2 },
-  gradeBig: { fontSize: 56, fontFamily: 'Inter_700Bold', lineHeight: 64 },
-  gradeLabel2: { fontSize: 11, letterSpacing: 1.5, fontFamily: 'Inter_700Bold' },
-  profitAmt: { fontSize: 24, fontFamily: 'Inter_700Bold', marginTop: 4 },
-  profitPct: { fontSize: 13, color: 'rgba(192,192,192,0.7)', fontFamily: 'Inter_400Regular' },
-  tapDismiss: { fontSize: 10, color: 'rgba(192,192,192,0.35)', fontFamily: 'Inter_400Regular', marginTop: 8 },
+  starsRow: { fontSize: 18, letterSpacing: 6, marginBottom: 2 },
+  gradeLabel: { fontSize: 13, letterSpacing: 1.5 },
+  profitAmt: { fontSize: 28, fontFamily: 'Inter_700Bold', marginTop: 2 },
+  profitPct: { fontSize: 13, color: 'rgba(192,192,192,0.65)', fontFamily: 'Inter_400Regular' },
+  tapDismiss: { fontSize: 10, color: 'rgba(192,192,192,0.3)', fontFamily: 'Inter_400Regular', marginTop: 6 },
 });
 
 // ─── Compact Position Row ─────────────────────────────────────────────────────
@@ -584,6 +630,12 @@ function TradeCard({
               <Text style={[tcStyles.gradeBadgeTxt, { color: gradeInfo.color, fontFamily: 'Inter_700Bold' }]}>
                 {gradeInfo.grade}
               </Text>
+              <Text style={[tcStyles.gradeBadgeAmt, { color: gradeInfo.profit >= 0 ? '#00e5a0' : '#ff3b3b' }]}>
+                {gradeInfo.profit >= 0 ? '+' : ''}{fmtCurrency(gradeInfo.profit)}
+              </Text>
+              <Text style={[tcStyles.gradeBadgePct, { color: gradeInfo.color }]}>
+                {fmtPct(gradeInfo.returnPct)}
+              </Text>
             </View>
           )}
           <TouchableOpacity onPress={onEdit} style={tcStyles.iconBtn} activeOpacity={0.7}>
@@ -595,6 +647,16 @@ function TradeCard({
           <Feather name={expanded ? 'chevron-up' : 'chevron-down'} size={13} color={colors.mutedForeground} />
         </View>
       </TouchableOpacity>
+
+      {/* Tap-for-details hint — only on collapsed sell cards */}
+      {gradeInfo && !expanded && (
+        <TouchableOpacity onPress={onToggleExpand} activeOpacity={0.7}
+          style={[tcStyles.tapHint, { borderTopColor: colors.border }]}>
+          <Feather name="chevron-down" size={10} color={colors.mutedForeground} />
+          <Text style={[tcStyles.tapHintTxt, { color: colors.mutedForeground }]}>TAP FOR TRADE ANALYSIS</Text>
+          <Feather name="chevron-down" size={10} color={colors.mutedForeground} />
+        </TouchableOpacity>
+      )}
 
       <View style={[tcStyles.divider, { backgroundColor: colors.border }]} />
 
@@ -729,10 +791,18 @@ const tcStyles = StyleSheet.create({
   date: { fontSize: 10 },
   gradeBadge: {
     borderWidth: 1.5, borderRadius: 6,
-    paddingHorizontal: 8, paddingVertical: 3,
+    paddingHorizontal: 8, paddingVertical: 4,
     marginRight: 4,
+    alignItems: 'center',
   },
   gradeBadgeTxt: { fontSize: 13, letterSpacing: 0.5 },
+  gradeBadgeAmt: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.2, marginTop: 1 },
+  gradeBadgePct: { fontSize: 8, fontFamily: 'Inter_400Regular', letterSpacing: 0.2 },
+  tapHint: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 5, paddingVertical: 5, borderTopWidth: 1,
+  },
+  tapHintTxt: { fontSize: 8, letterSpacing: 1, fontFamily: 'Inter_500Medium' },
   iconBtn: { padding: 4 },
   divider: { height: 1, marginHorizontal: 12 },
   metrics: { flexDirection: 'row', flexWrap: 'wrap', padding: 12, gap: 10 },
@@ -814,9 +884,18 @@ function TradeModal({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <Pressable style={mStyles.overlay} onPress={onClose}>
-          <Pressable style={[mStyles.sheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <KeyboardAvoidingView
+        style={{ flex: 1, justifyContent: 'flex-end' }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <Pressable style={StyleSheet.absoluteFillObject} onPress={onClose} />
+        <View style={[mStyles.sheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+            contentContainerStyle={{ gap: 6, paddingBottom: 8 }}
+          >
             <Text style={[mStyles.title, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
               {initial ? 'Edit Trade' : 'Add Trade'}
             </Text>
@@ -880,8 +959,8 @@ function TradeModal({
                 </Text>
               </TouchableOpacity>
             </View>
-          </Pressable>
-        </Pressable>
+          </ScrollView>
+        </View>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -889,7 +968,7 @@ function TradeModal({
 
 const mStyles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.7)' },
-  sheet: { borderTopLeftRadius: 18, borderTopRightRadius: 18, borderWidth: 1, borderBottomWidth: 0, padding: 24, paddingBottom: Platform.OS === 'web' ? 24 : 40, gap: 6 },
+  sheet: { borderTopLeftRadius: 18, borderTopRightRadius: 18, borderWidth: 1, borderBottomWidth: 0, padding: 24, paddingBottom: Platform.OS === 'web' ? 24 : 36, maxHeight: '85%' },
   title: { fontSize: 18, marginBottom: 8 },
   label: { fontSize: 10, letterSpacing: 0.8, marginBottom: 5, marginTop: 10 },
   hint: { fontSize: 11, marginTop: -2, marginBottom: 4, fontFamily: 'Inter_500Medium' },
