@@ -15,6 +15,12 @@ const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const QUOTE_SCRIPT = join(__dirname, "fetch_quote.py");
 const TRENDING_SCRIPT = join(__dirname, "fetch_trending.py");
+const TOP_PICKS_SCRIPT = join(__dirname, "fetch_top_picks.py");
+const CHART_SCRIPT = join(__dirname, "fetch_chart.py");
+
+// Cache top picks for 4 hours (screener is expensive — 100+ stocks)
+let topPicksCache: { data: unknown; ts: number } | null = null;
+const TOP_PICKS_TTL = 4 * 60 * 60 * 1000;
 
 const router = Router();
 
@@ -25,6 +31,52 @@ const openai = new OpenAI({
 
 const fmt = (n: number | null, d = 2) => (n != null ? n.toFixed(d) : "N/A");
 const pct = (n: number | null) => (n != null ? `${(n * 100).toFixed(1)}%` : "N/A");
+
+// Top picks — multi-factor screener with 4-hour cache
+router.get("/stocks/top-picks", async (_req, res) => {
+  const now = Date.now();
+  if (topPicksCache && now - topPicksCache.ts < TOP_PICKS_TTL) {
+    res.json(topPicksCache.data);
+    return;
+  }
+  try {
+    const { stdout } = await execFileAsync("python3", [TOP_PICKS_SCRIPT], {
+      timeout: 180_000,
+      maxBuffer: 5 * 1024 * 1024,
+    });
+    const data = JSON.parse(stdout.trim());
+    if ((data as any).error) {
+      res.status(422).json({ error: "PICKS_FAILED", message: (data as any).error });
+      return;
+    }
+    topPicksCache = { data, ts: now };
+    res.json(data);
+  } catch (err: any) {
+    res.status(422).json({ error: "PICKS_FAILED", message: err.message });
+  }
+});
+
+// Chart OHLCV + moving averages
+router.get("/stocks/chart/:symbol", async (req, res) => {
+  const symbol = (req.params["symbol"] ?? "").toUpperCase().trim();
+  const period = (req.query["period"] as string) || "3mo";
+  const interval = (req.query["interval"] as string) || "1d";
+  const VALID_PERIODS = ["5d", "1mo", "3mo", "6mo", "1y", "2y"];
+  const VALID_INTERVALS = ["15m", "1h", "1d", "1wk"];
+  if (!symbol || !VALID_PERIODS.includes(period) || !VALID_INTERVALS.includes(interval)) {
+    res.status(400).json({ error: "INVALID_PARAMS" });
+    return;
+  }
+  try {
+    const { stdout } = await execFileAsync(
+      "python3", [CHART_SCRIPT, symbol, period, interval],
+      { timeout: 30_000, maxBuffer: 5 * 1024 * 1024 }
+    );
+    res.json(JSON.parse(stdout.trim()));
+  } catch (err: any) {
+    res.status(422).json({ error: "CHART_FAILED", message: err.message });
+  }
+});
 
 // Trending / most-active stocks with live price data
 router.get("/stocks/trending", async (_req, res) => {

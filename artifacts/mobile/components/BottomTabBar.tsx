@@ -15,26 +15,35 @@ export function BottomTabBar() {
   const insets = useSafeAreaInsets();
 
   const isHome = pathname === '/' || pathname === '';
+  const isPicks = pathname.startsWith('/picks');
   const isPortfolio = pathname === '/portfolio';
 
   const botPad = Platform.OS === 'web' ? 0 : insets.bottom;
 
-  function go(path: '/' | '/portfolio') {
+  function go(path: '/' | '/picks' | '/portfolio') {
     router.replace(path);
   }
 
   return (
     <View style={[styles.bar, { paddingBottom: botPad, borderTopColor: BORDER, backgroundColor: BG }]}>
       <TouchableOpacity style={styles.tab} onPress={() => go('/')} activeOpacity={0.7}>
-        <Feather name="trending-up" size={21} color={isHome ? SILVER : SILVER_DIM} />
+        <Feather name="search" size={20} color={isHome ? SILVER : SILVER_DIM} />
         <Text style={[styles.label, { color: isHome ? SILVER : SILVER_DIM }]}>ANALYZE</Text>
         {isHome && <View style={styles.dot} />}
       </TouchableOpacity>
 
       <View style={styles.divider} />
 
+      <TouchableOpacity style={styles.tab} onPress={() => go('/picks')} activeOpacity={0.7}>
+        <Feather name="star" size={20} color={isPicks ? SILVER : SILVER_DIM} />
+        <Text style={[styles.label, { color: isPicks ? SILVER : SILVER_DIM }]}>TOP PICKS</Text>
+        {isPicks && <View style={styles.dot} />}
+      </TouchableOpacity>
+
+      <View style={styles.divider} />
+
       <TouchableOpacity style={styles.tab} onPress={() => go('/portfolio')} activeOpacity={0.7}>
-        <Feather name="briefcase" size={21} color={isPortfolio ? SILVER : SILVER_DIM} />
+        <Feather name="briefcase" size={20} color={isPortfolio ? SILVER : SILVER_DIM} />
         <Text style={[styles.label, { color: isPortfolio ? SILVER : SILVER_DIM }]}>PORTFOLIO</Text>
         {isPortfolio && <View style={styles.dot} />}
       </TouchableOpacity>
@@ -61,7 +70,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontFamily: 'Inter_600SemiBold',
-    fontSize: 9,
+    fontSize: 8,
     letterSpacing: 1,
   },
   dot: {

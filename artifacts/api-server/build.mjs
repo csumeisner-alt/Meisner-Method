@@ -136,6 +136,14 @@ buildAll()
         path.resolve(artifactDir, "src/lib/fetch_trending.py"),
         path.resolve(artifactDir, "dist/fetch_trending.py")
       ),
+      copyFile(
+        path.resolve(artifactDir, "src/lib/fetch_top_picks.py"),
+        path.resolve(artifactDir, "dist/fetch_top_picks.py")
+      ),
+      copyFile(
+        path.resolve(artifactDir, "src/lib/fetch_chart.py"),
+        path.resolve(artifactDir, "dist/fetch_chart.py")
+      ),
     ])
   )
   .catch((err) => {
