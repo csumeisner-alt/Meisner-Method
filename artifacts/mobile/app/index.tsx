@@ -185,7 +185,7 @@ export default function HomeScreen() {
           <MMLogo size={44} />
           <View style={styles.brandText}>
             <Text style={[styles.brandName, { color: colors.foreground, fontFamily: 'Inter_700Bold', letterSpacing: 0.8 }]}>
-              Meisner Method
+              The Meisner Method
             </Text>
             <Text style={[styles.tagline, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
               AI-powered market intelligence
