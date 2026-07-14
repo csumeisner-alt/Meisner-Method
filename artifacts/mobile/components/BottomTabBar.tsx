@@ -7,7 +7,7 @@ import { Feather } from '@expo/vector-icons';
 const SILVER = '#e0e0e0';
 const SILVER_DIM = 'rgba(200,200,200,0.55)';
 const BG = '#000000';
-const BORDER = 'rgba(192,192,192,0.18)';
+const BORDER = 'rgba(192,192,192,0.32)';
 
 export function BottomTabBar() {
   const router = useRouter();

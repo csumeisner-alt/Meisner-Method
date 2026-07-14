@@ -19,7 +19,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
 import { BottomTabBar } from '@/components/BottomTabBar';
-import { MMLogo } from '@/components/MMLogo';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -40,15 +39,15 @@ interface Quote {
 
 interface Position {
   symbol: string;
-  netShares: number;        // positive = long, negative = short
-  avgCost: number;          // weighted avg buy price
-  avgSellPrice: number;     // weighted avg sell price (for realized P&L)
+  netShares: number;
+  avgCost: number;
+  avgSellPrice: number;
   totalBuyShares: number;
   totalSellShares: number;
-  realizedPnL: number;      // from sold shares
-  unrealizedPnL: number;    // on remaining shares at current price
-  marketValue: number;      // netShares * currentPrice
-  costBasis: number;        // netShares * avgCost (remaining position cost)
+  realizedPnL: number;
+  unrealizedPnL: number;
+  marketValue: number;
+  costBasis: number;
   currentPrice: number | null;
   pctChange: number | null;
   trades: Trade[];
@@ -64,7 +63,8 @@ const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 const fmtCurrency = (n: number) =>
   n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 });
 const fmtPct = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`;
-const fmtNum = (n: number, d = 4) => n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: d });
+const fmtNum = (n: number, d = 4) =>
+  n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: d });
 
 function uid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -78,7 +78,6 @@ async function fetchQuote(symbol: string): Promise<Quote> {
   return data;
 }
 
-/** Aggregate raw trades into net positions per symbol. */
 function computePositions(trades: Trade[], quotes: Record<string, Quote | null>): Position[] {
   const bySymbol: Record<string, Trade[]> = {};
   for (const t of trades) {
@@ -87,8 +86,9 @@ function computePositions(trades: Trade[], quotes: Record<string, Quote | null>)
   }
 
   return Object.entries(bySymbol).map(([symbol, sysTrades]) => {
-    // Sort chronologically so FIFO averaging makes sense
-    const sorted = [...sysTrades].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    const sorted = [...sysTrades].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
 
     let buyShares = 0, buyTotal = 0;
     let sellShares = 0, sellTotal = 0;
@@ -106,20 +106,17 @@ function computePositions(trades: Trade[], quotes: Record<string, Quote | null>)
     const netShares = buyShares - sellShares;
     const avgCost = buyShares > 0 ? buyTotal / buyShares : 0;
     const avgSellPrice = sellShares > 0 ? sellTotal / sellShares : 0;
-
-    // Realized P&L: on the portion that was sold
     const realizedPnL = sellShares > 0 ? sellShares * (avgSellPrice - avgCost) : 0;
 
     const q = quotes[symbol];
     const currentPrice = q?.currentPrice ?? null;
-
-    // Remaining position
     const costBasis = netShares * avgCost;
     const marketValue = currentPrice != null ? netShares * currentPrice : 0;
     const unrealizedPnL = currentPrice != null ? netShares * (currentPrice - avgCost) : 0;
-    const pctChange = avgCost > 0 && currentPrice != null
-      ? ((currentPrice - avgCost) / avgCost) * 100
-      : null;
+    const pctChange =
+      avgCost > 0 && currentPrice != null
+        ? ((currentPrice - avgCost) / avgCost) * 100
+        : null;
 
     return {
       symbol,
@@ -139,15 +136,15 @@ function computePositions(trades: Trade[], quotes: Record<string, Quote | null>)
   });
 }
 
-/** Returns how many shares of a symbol the user can sell (net long). */
 function availableToSell(symbol: string, trades: Trade[], excludeId?: string): number {
-  const sysTrades = trades.filter(t => t.symbol === symbol && t.id !== excludeId);
-  return sysTrades.reduce((n, t) => t.type === 'buy' ? n + t.shares : n - t.shares, 0);
+  return trades
+    .filter(t => t.symbol === symbol && t.id !== excludeId)
+    .reduce((n, t) => (t.type === 'buy' ? n + t.shares : n - t.shares), 0);
 }
 
-// ─── Position Card ────────────────────────────────────────────────────────────
+// ─── Compact Position Row ─────────────────────────────────────────────────────
 
-function PositionCard({
+function PositionRow({
   position,
   onSell,
   onBuyMore,
@@ -160,128 +157,129 @@ function PositionCard({
 }) {
   const isLong = position.netShares > 0;
   const isShort = position.netShares < 0;
-  const totalPnL = position.unrealizedPnL + position.realizedPnL;
-  const isGain = totalPnL >= 0;
-  const pnlColor = totalPnL > 0 ? colors.buyColor : totalPnL < 0 ? colors.sellColor : colors.mutedForeground;
+  const hasPrice = position.currentPrice != null;
+  const pnl = position.unrealizedPnL;
+  const pct = position.pctChange;
+  const pnlColor =
+    !hasPrice
+      ? colors.mutedForeground
+      : pnl > 0
+      ? colors.buyColor
+      : pnl < 0
+      ? colors.sellColor
+      : colors.mutedForeground;
 
   return (
-    <View style={[posStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      {/* Header row */}
-      <View style={posStyles.header}>
-        <View style={posStyles.headerLeft}>
-          <Text style={[posStyles.symbol, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
-            {position.symbol}
+    <View style={[rowStyles.row, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      {/* Symbol + badge */}
+      <View style={rowStyles.leftCol}>
+        <Text style={[rowStyles.sym, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+          {position.symbol}
+        </Text>
+        <View
+          style={[
+            rowStyles.badge,
+            {
+              backgroundColor: isLong ? colors.buyBg : colors.sellBg,
+              borderColor: isLong ? colors.buyColor : colors.sellColor,
+            },
+          ]}
+        >
+          <Text
+            style={[
+              rowStyles.badgeTxt,
+              { color: isLong ? colors.buyColor : colors.sellColor, fontFamily: 'Inter_700Bold' },
+            ]}
+          >
+            {isLong ? 'LONG' : 'SHORT'}
           </Text>
-          <View style={[posStyles.badge, {
-            backgroundColor: isLong ? colors.buyBg : isShort ? colors.sellBg : 'transparent',
-            borderColor: isLong ? colors.buyColor : isShort ? colors.sellColor : colors.border,
-          }]}>
-            <Text style={[posStyles.badgeText, {
-              color: isLong ? colors.buyColor : isShort ? colors.sellColor : colors.mutedForeground,
+        </View>
+      </View>
+
+      {/* Shares + avg cost */}
+      <View style={rowStyles.midCol}>
+        <Text style={[rowStyles.midTop, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
+          {fmtNum(Math.abs(position.netShares), 2)} sh
+        </Text>
+        <Text style={[rowStyles.midBot, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+          avg {fmtCurrency(position.avgCost)}
+        </Text>
+      </View>
+
+      {/* Unrealized P&L */}
+      <View style={rowStyles.pnlCol}>
+        <Text style={[rowStyles.pnlTop, { color: pnlColor, fontFamily: 'Inter_700Bold' }]}>
+          {hasPrice ? `${pnl >= 0 ? '+' : ''}${fmtCurrency(pnl)}` : '—'}
+        </Text>
+        <Text style={[rowStyles.pnlBot, { color: pnlColor, fontFamily: 'Inter_400Regular' }]}>
+          {hasPrice && pct != null ? fmtPct(pct) : '—'}
+        </Text>
+      </View>
+
+      {/* Action */}
+      <TouchableOpacity
+        style={[
+          rowStyles.actionBtn,
+          { borderColor: isLong ? colors.sellColor : colors.buyColor },
+        ]}
+        onPress={isLong ? onSell : onBuyMore}
+        activeOpacity={0.7}
+      >
+        <Text
+          style={[
+            rowStyles.actionTxt,
+            {
+              color: isLong ? colors.sellColor : colors.buyColor,
               fontFamily: 'Inter_700Bold',
-            }]}>
-              {isLong ? 'LONG' : isShort ? 'SHORT' : 'CLOSED'}
-            </Text>
-          </View>
-        </View>
-        {/* Action buttons */}
-        <View style={posStyles.actions}>
-          {isLong && (
-            <TouchableOpacity style={[posStyles.actionBtn, { borderColor: colors.sellColor }]} onPress={onSell} activeOpacity={0.7}>
-              <Text style={[posStyles.actionText, { color: colors.sellColor, fontFamily: 'Inter_700Bold' }]}>SELL</Text>
-            </TouchableOpacity>
-          )}
-          {isShort && (
-            <TouchableOpacity style={[posStyles.actionBtn, { borderColor: colors.buyColor }]} onPress={onBuyMore} activeOpacity={0.7}>
-              <Text style={[posStyles.actionText, { color: colors.buyColor, fontFamily: 'Inter_700Bold' }]}>BUY TO CLOSE</Text>
-            </TouchableOpacity>
-          )}
-          {!isShort && (
-            <TouchableOpacity style={[posStyles.actionBtn, { borderColor: colors.border, marginLeft: 6 }]} onPress={onBuyMore} activeOpacity={0.7}>
-              <Text style={[posStyles.actionText, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold' }]}>ADD</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-
-      <View style={[posStyles.divider, { backgroundColor: colors.border }]} />
-
-      {/* Metrics grid */}
-      <View style={posStyles.grid}>
-        <View style={posStyles.cell}>
-          <Text style={[posStyles.cellLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>NET SHARES</Text>
-          <Text style={[posStyles.cellVal, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
-            {fmtNum(Math.abs(position.netShares))}
-          </Text>
-        </View>
-        <View style={posStyles.cell}>
-          <Text style={[posStyles.cellLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>AVG COST</Text>
-          <Text style={[posStyles.cellVal, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
-            {fmtCurrency(position.avgCost)}
-          </Text>
-        </View>
-        <View style={posStyles.cell}>
-          <Text style={[posStyles.cellLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>CURRENT</Text>
-          <Text style={[posStyles.cellVal, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
-            {position.currentPrice != null ? fmtCurrency(position.currentPrice) : '—'}
-          </Text>
-        </View>
-        <View style={posStyles.cell}>
-          <Text style={[posStyles.cellLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>MKT VALUE</Text>
-          <Text style={[posStyles.cellVal, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
-            {position.currentPrice != null ? fmtCurrency(position.marketValue) : '—'}
-          </Text>
-        </View>
-      </View>
-
-      {/* P&L strip */}
-      <View style={[posStyles.pnlRow, { backgroundColor: isGain ? colors.buyBg : colors.sellBg }]}>
-        <View style={{ flex: 1 }}>
-          <Text style={[posStyles.pnlLabel, { color: colors.mutedForeground }]}>UNREALIZED P&L</Text>
-          <Text style={[posStyles.pnlVal, { color: pnlColor, fontFamily: 'Inter_700Bold' }]}>
-            {position.currentPrice != null
-              ? `${position.unrealizedPnL >= 0 ? '+' : ''}${fmtCurrency(position.unrealizedPnL)}`
-              : '—'}
-            {position.pctChange != null ? ` (${fmtPct(position.pctChange)})` : ''}
-          </Text>
-        </View>
-        {position.realizedPnL !== 0 && (
-          <View style={{ alignItems: 'flex-end' }}>
-            <Text style={[posStyles.pnlLabel, { color: colors.mutedForeground }]}>REALIZED P&L</Text>
-            <Text style={[posStyles.pnlVal, {
-              color: position.realizedPnL >= 0 ? colors.buyColor : colors.sellColor,
-              fontFamily: 'Inter_700Bold',
-            }]}>
-              {position.realizedPnL >= 0 ? '+' : ''}{fmtCurrency(position.realizedPnL)}
-            </Text>
-          </View>
-        )}
-      </View>
+            },
+          ]}
+        >
+          {isLong ? 'SELL' : 'CLOSE'}
+        </Text>
+      </TouchableOpacity>
     </View>
   );
 }
 
-const posStyles = StyleSheet.create({
-  card: { borderRadius: 12, borderWidth: 1, marginBottom: 12, overflow: 'hidden' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14, paddingBottom: 12 },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  symbol: { fontSize: 20 },
-  badge: { borderWidth: 1, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 2 },
-  badgeText: { fontSize: 10, letterSpacing: 0.5 },
-  actions: { flexDirection: 'row', alignItems: 'center' },
-  actionBtn: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5 },
-  actionText: { fontSize: 11, letterSpacing: 0.5 },
-  divider: { height: 1, marginHorizontal: 14 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', padding: 14, gap: 12 },
-  cell: { width: '44%' },
-  cellLabel: { fontSize: 9, letterSpacing: 0.8, marginBottom: 3 },
-  cellVal: { fontSize: 14 },
-  pnlRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 10 },
-  pnlLabel: { fontSize: 9, letterSpacing: 0.6, fontFamily: 'Inter_400Regular', marginBottom: 2 },
-  pnlVal: { fontSize: 14 },
+const rowStyles = StyleSheet.create({
+  row: {
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    gap: 8,
+  },
+  leftCol: { width: 60, gap: 4 },
+  sym: { fontSize: 15 },
+  badge: {
+    borderWidth: 1,
+    borderRadius: 3,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    alignSelf: 'flex-start',
+  },
+  badgeTxt: { fontSize: 7, letterSpacing: 0.4 },
+  midCol: { flex: 1, gap: 3 },
+  midTop: { fontSize: 12 },
+  midBot: { fontSize: 10 },
+  pnlCol: { alignItems: 'flex-end', gap: 3, minWidth: 86 },
+  pnlTop: { fontSize: 12 },
+  pnlBot: { fontSize: 10 },
+  actionBtn: {
+    borderWidth: 1,
+    borderRadius: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    minWidth: 40,
+    alignItems: 'center',
+  },
+  actionTxt: { fontSize: 9, letterSpacing: 0.5 },
 });
 
-// ─── Trade Card (history view) ────────────────────────────────────────────────
+// ─── Trade History Card ────────────────────────────────────────────────────────
 
 function TradeCard({
   trade,
@@ -299,7 +297,6 @@ function TradeCard({
   const isBuy = trade.type === 'buy';
   const costBasis = trade.shares * trade.pricePerShare;
   const currentVal = quote ? trade.shares * quote.currentPrice : null;
-  // P&L from this individual trade's perspective (cost vs current, directional)
   const pl = currentVal != null
     ? isBuy ? currentVal - costBasis : costBasis - currentVal
     : null;
@@ -310,18 +307,25 @@ function TradeCard({
   return (
     <View style={[cardStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
       <View style={cardStyles.top}>
-        <View style={cardStyles.left}>
+        <View style={cardStyles.topLeft}>
           <Text style={[cardStyles.symbol, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
             {trade.symbol}
           </Text>
-          <View style={[cardStyles.badge, {
-            backgroundColor: isBuy ? colors.buyBg : colors.sellBg,
-            borderColor: isBuy ? colors.buyColor : colors.sellColor,
-          }]}>
-            <Text style={[cardStyles.badgeText, {
-              color: isBuy ? colors.buyColor : colors.sellColor,
-              fontFamily: 'Inter_700Bold',
-            }]}>
+          <View
+            style={[
+              cardStyles.badge,
+              {
+                backgroundColor: isBuy ? colors.buyBg : colors.sellBg,
+                borderColor: isBuy ? colors.buyColor : colors.sellColor,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                cardStyles.badgeText,
+                { color: isBuy ? colors.buyColor : colors.sellColor, fontFamily: 'Inter_700Bold' },
+              ]}
+            >
               {isBuy ? 'BUY' : 'SELL'}
             </Text>
           </View>
@@ -333,7 +337,11 @@ function TradeCard({
           <TouchableOpacity onPress={onEdit} style={cardStyles.actionBtn} activeOpacity={0.7}>
             <Feather name="edit-2" size={14} color={colors.mutedForeground} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={onDelete} style={[cardStyles.actionBtn, { marginLeft: 4 }]} activeOpacity={0.7}>
+          <TouchableOpacity
+            onPress={onDelete}
+            style={[cardStyles.actionBtn, { marginLeft: 4 }]}
+            activeOpacity={0.7}
+          >
             <Feather name="trash-2" size={14} color={colors.sellColor} />
           </TouchableOpacity>
         </View>
@@ -342,30 +350,25 @@ function TradeCard({
       <View style={[cardStyles.divider, { backgroundColor: colors.border }]} />
 
       <View style={cardStyles.grid}>
-        <View style={cardStyles.cell}>
-          <Text style={[cardStyles.cellLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>SHARES</Text>
-          <Text style={[cardStyles.cellVal, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
-            {fmtNum(trade.shares)}
-          </Text>
-        </View>
-        <View style={cardStyles.cell}>
-          <Text style={[cardStyles.cellLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>YOUR PRICE</Text>
-          <Text style={[cardStyles.cellVal, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
-            {fmtCurrency(trade.pricePerShare)}
-          </Text>
-        </View>
-        <View style={cardStyles.cell}>
-          <Text style={[cardStyles.cellLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>CURRENT</Text>
-          <Text style={[cardStyles.cellVal, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
-            {quote ? fmtCurrency(quote.currentPrice) : '—'}
-          </Text>
-        </View>
-        <View style={cardStyles.cell}>
-          <Text style={[cardStyles.cellLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>P&L</Text>
-          <Text style={[cardStyles.cellVal, { color: plColor, fontFamily: 'Inter_700Bold' }]}>
-            {pl != null ? `${pl >= 0 ? '+' : ''}${fmtCurrency(pl)}` : '—'}
-          </Text>
-        </View>
+        {[
+          { label: 'SHARES', value: fmtNum(trade.shares) },
+          { label: 'YOUR PRICE', value: fmtCurrency(trade.pricePerShare) },
+          { label: 'CURRENT', value: quote ? fmtCurrency(quote.currentPrice) : '—' },
+          {
+            label: 'P&L',
+            value: pl != null ? `${pl >= 0 ? '+' : ''}${fmtCurrency(pl)}` : '—',
+            color: plColor,
+          },
+        ].map(c => (
+          <View key={c.label} style={cardStyles.cell}>
+            <Text style={[cardStyles.cellLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+              {c.label}
+            </Text>
+            <Text style={[cardStyles.cellVal, { color: c.color ?? colors.foreground, fontFamily: c.color ? 'Inter_700Bold' : 'Inter_600SemiBold' }]}>
+              {c.value}
+            </Text>
+          </View>
+        ))}
       </View>
 
       {pl != null && plPct != null && (
@@ -380,22 +383,22 @@ function TradeCard({
 }
 
 const cardStyles = StyleSheet.create({
-  card: { borderRadius: 12, borderWidth: 1, marginBottom: 12, overflow: 'hidden' },
-  top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14, paddingBottom: 12 },
-  left: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  symbol: { fontSize: 17 },
-  badge: { borderWidth: 1, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 2 },
-  badgeText: { fontSize: 10, letterSpacing: 0.5 },
+  card: { borderRadius: 12, borderWidth: 1, marginBottom: 10, overflow: 'hidden' },
+  top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, paddingBottom: 10 },
+  topLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  symbol: { fontSize: 16 },
+  badge: { borderWidth: 1, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
+  badgeText: { fontSize: 9, letterSpacing: 0.5 },
   date: { fontSize: 10 },
   actions: { flexDirection: 'row', alignItems: 'center' },
-  actionBtn: { padding: 6 },
-  divider: { height: 1, marginHorizontal: 14 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', padding: 14, gap: 14 },
+  actionBtn: { padding: 5 },
+  divider: { height: 1, marginHorizontal: 12 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', padding: 12, gap: 12 },
   cell: { width: '44%' },
-  cellLabel: { fontSize: 9, letterSpacing: 0.8, marginBottom: 3 },
-  cellVal: { fontSize: 14 },
-  plBar: { paddingHorizontal: 14, paddingVertical: 8 },
-  plBarText: { fontSize: 13 },
+  cellLabel: { fontSize: 9, letterSpacing: 0.8, marginBottom: 2 },
+  cellVal: { fontSize: 13 },
+  plBar: { paddingHorizontal: 12, paddingVertical: 7 },
+  plBarText: { fontSize: 12 },
 });
 
 // ─── Add/Edit Trade Modal ─────────────────────────────────────────────────────
@@ -433,17 +436,22 @@ function TradeModal({
     if (visible) {
       setErrors({});
       if (initial) {
-        setForm({ symbol: initial.symbol, type: initial.type, shares: String(initial.shares), price: String(initial.pricePerShare) });
+        setForm({
+          symbol: initial.symbol,
+          type: initial.type,
+          shares: String(initial.shares),
+          price: String(initial.pricePerShare),
+        });
       } else {
         setForm({ symbol: defaultSymbol ?? '', type: defaultType ?? 'buy', shares: '', price: '' });
       }
     }
   }, [visible, initial, defaultType, defaultSymbol]);
 
-  // How many shares available to sell for the current symbol
-  const available = form.type === 'sell' && form.symbol
-    ? availableToSell(form.symbol.trim().toUpperCase(), allTrades, initial?.id)
-    : null;
+  const available =
+    form.type === 'sell' && form.symbol
+      ? availableToSell(form.symbol.trim().toUpperCase(), allTrades, initial?.id)
+      : null;
 
   function validate(): boolean {
     const e: Partial<Record<keyof TradeForm, string>> = {};
@@ -452,9 +460,10 @@ function TradeModal({
     if (!form.shares || isNaN(s) || s <= 0) {
       e.shares = 'Enter valid shares';
     } else if (form.type === 'sell' && available != null && s > available) {
-      e.shares = available <= 0
-        ? `No long position in ${form.symbol.trim().toUpperCase()} to sell`
-        : `Max ${fmtNum(available)} shares available`;
+      e.shares =
+        available <= 0
+          ? `No long position in ${form.symbol.trim().toUpperCase()}`
+          : `Max ${fmtNum(available, 2)} shares available`;
     }
     const p = parseFloat(form.price);
     if (!form.price || isNaN(p) || p <= 0) e.price = 'Enter valid price';
@@ -481,8 +490,9 @@ function TradeModal({
               {initial ? 'Edit Trade' : 'Add Trade'}
             </Text>
 
-            {/* Symbol */}
-            <Text style={[modalStyles.label, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>TICKER SYMBOL</Text>
+            <Text style={[modalStyles.label, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
+              TICKER SYMBOL
+            </Text>
             <TextInput
               style={[modalStyles.input, {
                 color: colors.foreground, backgroundColor: colors.background,
@@ -496,44 +506,69 @@ function TradeModal({
               autoCapitalize="characters"
               autoCorrect={false}
             />
-            {errors.symbol && <Text style={[modalStyles.error, { color: colors.sellColor }]}>{errors.symbol}</Text>}
+            {errors.symbol && (
+              <Text style={[modalStyles.error, { color: colors.sellColor }]}>{errors.symbol}</Text>
+            )}
 
-            {/* Type toggle */}
-            <Text style={[modalStyles.label, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>TYPE</Text>
+            <Text style={[modalStyles.label, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
+              TYPE
+            </Text>
             <View style={modalStyles.toggle}>
               {(['buy', 'sell'] as const).map(t => (
                 <TouchableOpacity
                   key={t}
-                  style={[modalStyles.toggleBtn, {
-                    backgroundColor: form.type === t ? (t === 'buy' ? colors.buyBg : colors.sellBg) : 'transparent',
-                    borderColor: form.type === t ? (t === 'buy' ? colors.buyColor : colors.sellColor) : colors.border,
-                  }]}
+                  style={[
+                    modalStyles.toggleBtn,
+                    {
+                      backgroundColor:
+                        form.type === t
+                          ? t === 'buy' ? colors.buyBg : colors.sellBg
+                          : 'transparent',
+                      borderColor:
+                        form.type === t
+                          ? t === 'buy' ? colors.buyColor : colors.sellColor
+                          : colors.border,
+                    },
+                  ]}
                   onPress={() => setForm({ ...form, type: t })}
                   activeOpacity={0.75}
                 >
-                  <Text style={[modalStyles.toggleText, {
-                    color: form.type === t ? (t === 'buy' ? colors.buyColor : colors.sellColor) : colors.mutedForeground,
-                    fontFamily: 'Inter_700Bold',
-                  }]}>
-                    {t === 'buy' ? 'BUY' : 'SELL'}
+                  <Text
+                    style={[
+                      modalStyles.toggleText,
+                      {
+                        color:
+                          form.type === t
+                            ? t === 'buy' ? colors.buyColor : colors.sellColor
+                            : colors.mutedForeground,
+                        fontFamily: 'Inter_700Bold',
+                      },
+                    ]}
+                  >
+                    {t.toUpperCase()}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
 
-            {/* Available shares hint for sells */}
             {form.type === 'sell' && form.symbol.trim() && available != null && (
-              <Text style={[modalStyles.hint, { color: available > 0 ? colors.buyColor : colors.sellColor }]}>
+              <Text
+                style={[
+                  modalStyles.hint,
+                  { color: available > 0 ? colors.buyColor : colors.sellColor },
+                ]}
+              >
                 {available > 0
-                  ? `Available to sell: ${fmtNum(available)} shares`
-                  : `No long position in ${form.symbol.trim().toUpperCase()} — buy shares first`}
+                  ? `Available to sell: ${fmtNum(available, 2)} shares`
+                  : `No long position in ${form.symbol.trim().toUpperCase()} — buy first`}
               </Text>
             )}
 
-            {/* Shares & Price */}
             <View style={modalStyles.row}>
               <View style={{ flex: 1 }}>
-                <Text style={[modalStyles.label, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>SHARES</Text>
+                <Text style={[modalStyles.label, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
+                  SHARES
+                </Text>
                 <TextInput
                   style={[modalStyles.input, {
                     color: colors.foreground, backgroundColor: colors.background,
@@ -546,10 +581,14 @@ function TradeModal({
                   placeholderTextColor={colors.mutedForeground}
                   keyboardType="decimal-pad"
                 />
-                {errors.shares && <Text style={[modalStyles.error, { color: colors.sellColor }]}>{errors.shares}</Text>}
+                {errors.shares && (
+                  <Text style={[modalStyles.error, { color: colors.sellColor }]}>{errors.shares}</Text>
+                )}
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[modalStyles.label, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>PRICE / SHARE</Text>
+                <Text style={[modalStyles.label, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
+                  PRICE / SHARE
+                </Text>
                 <TextInput
                   style={[modalStyles.input, {
                     color: colors.foreground, backgroundColor: colors.background,
@@ -562,16 +601,27 @@ function TradeModal({
                   placeholderTextColor={colors.mutedForeground}
                   keyboardType="decimal-pad"
                 />
-                {errors.price && <Text style={[modalStyles.error, { color: colors.sellColor }]}>{errors.price}</Text>}
+                {errors.price && (
+                  <Text style={[modalStyles.error, { color: colors.sellColor }]}>{errors.price}</Text>
+                )}
               </View>
             </View>
 
-            {/* Buttons */}
             <View style={modalStyles.btnRow}>
-              <TouchableOpacity style={[modalStyles.cancelBtn, { borderColor: colors.border }]} onPress={onClose} activeOpacity={0.7}>
-                <Text style={[modalStyles.cancelText, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold' }]}>Cancel</Text>
+              <TouchableOpacity
+                style={[modalStyles.cancelBtn, { borderColor: colors.border }]}
+                onPress={onClose}
+                activeOpacity={0.7}
+              >
+                <Text style={[modalStyles.cancelText, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold' }]}>
+                  Cancel
+                </Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[modalStyles.saveBtn, { backgroundColor: colors.primary }]} onPress={submit} activeOpacity={0.8}>
+              <TouchableOpacity
+                style={[modalStyles.saveBtn, { backgroundColor: colors.primary }]}
+                onPress={submit}
+                activeOpacity={0.8}
+              >
                 <Text style={[modalStyles.saveText, { color: colors.primaryForeground, fontFamily: 'Inter_700Bold' }]}>
                   {initial ? 'Save Changes' : 'Add Trade'}
                 </Text>
@@ -587,12 +637,16 @@ function TradeModal({
 const modalStyles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.7)' },
   sheet: {
-    borderTopLeftRadius: 18, borderTopRightRadius: 18,
-    borderWidth: 1, borderBottomWidth: 0,
-    padding: 24, paddingBottom: Platform.OS === 'web' ? 24 : 40, gap: 6,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    padding: 24,
+    paddingBottom: Platform.OS === 'web' ? 24 : 40,
+    gap: 6,
   },
-  title: { fontSize: 18, marginBottom: 10 },
-  label: { fontSize: 10, letterSpacing: 0.8, marginBottom: 6, marginTop: 10 },
+  title: { fontSize: 18, marginBottom: 8 },
+  label: { fontSize: 10, letterSpacing: 0.8, marginBottom: 5, marginTop: 10 },
   hint: { fontSize: 11, marginTop: -2, marginBottom: 4, fontFamily: 'Inter_500Medium' },
   input: { height: 46, borderRadius: 8, borderWidth: 1, paddingHorizontal: 12, fontSize: 15 },
   error: { fontSize: 11, marginTop: 3, fontFamily: 'Inter_400Regular' },
@@ -611,12 +665,13 @@ const modalStyles = StyleSheet.create({
 
 function SummaryCard({
   positions,
+  onReset,
   colors,
 }: {
   positions: Position[];
+  onReset: () => void;
   colors: any;
 }) {
-  // Only count open (non-zero) positions for market value
   const openPositions = positions.filter(p => p.netShares !== 0);
   const totalCostBasis = openPositions.reduce((s, p) => s + Math.max(p.costBasis, 0), 0);
   const totalMarketValue = openPositions.reduce((s, p) => s + p.marketValue, 0);
@@ -625,75 +680,104 @@ function SummaryCard({
   const totalPnL = totalUnrealized + totalRealized;
   const totalPct = totalCostBasis > 0 ? (totalUnrealized / totalCostBasis) * 100 : 0;
   const isGain = totalPnL >= 0;
+  const unrealColor = totalUnrealized >= 0 ? colors.buyColor : colors.sellColor;
+  const realColor = totalRealized > 0 ? colors.buyColor : totalRealized < 0 ? colors.sellColor : colors.mutedForeground;
 
   return (
-    <View style={[summaryStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      <Text style={[summaryStyles.heading, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold' }]}>
-        PORTFOLIO SUMMARY
-      </Text>
+    <View style={[sumStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      {/* Title row */}
+      <View style={sumStyles.titleRow}>
+        <Text style={[sumStyles.heading, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold' }]}>
+          PORTFOLIO SUMMARY
+        </Text>
+        <TouchableOpacity style={sumStyles.resetBtn} onPress={onReset} activeOpacity={0.7}>
+          <Feather name="trash-2" size={12} color={colors.sellColor} />
+          <Text style={[sumStyles.resetTxt, { color: colors.sellColor, fontFamily: 'Inter_600SemiBold' }]}>
+            RESET
+          </Text>
+        </TouchableOpacity>
+      </View>
 
-      <View style={summaryStyles.row}>
-        <View style={summaryStyles.col}>
-          <Text style={[summaryStyles.colLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>COST BASIS</Text>
-          <Text style={[summaryStyles.colVal, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+      {/* Metrics */}
+      <View style={sumStyles.metricsRow}>
+        <View style={sumStyles.metricCell}>
+          <Text style={[sumStyles.metricLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+            COST BASIS
+          </Text>
+          <Text style={[sumStyles.metricVal, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
             {fmtCurrency(totalCostBasis)}
           </Text>
         </View>
-        <View style={summaryStyles.col}>
-          <Text style={[summaryStyles.colLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>MKT VALUE</Text>
-          <Text style={[summaryStyles.colVal, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+        <View style={[sumStyles.metricDivider, { backgroundColor: colors.border }]} />
+        <View style={sumStyles.metricCell}>
+          <Text style={[sumStyles.metricLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+            MKT VALUE
+          </Text>
+          <Text style={[sumStyles.metricVal, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
             {fmtCurrency(totalMarketValue)}
           </Text>
         </View>
-      </View>
-
-      <View style={summaryStyles.row}>
-        <View style={summaryStyles.col}>
-          <Text style={[summaryStyles.colLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>UNREALIZED</Text>
-          <Text style={[summaryStyles.colVal, {
-            color: totalUnrealized >= 0 ? colors.buyColor : colors.sellColor,
-            fontFamily: 'Inter_700Bold', fontSize: 15,
-          }]}>
-            {totalUnrealized >= 0 ? '+' : ''}{fmtCurrency(totalUnrealized)} ({fmtPct(totalPct)})
+        <View style={[sumStyles.metricDivider, { backgroundColor: colors.border }]} />
+        <View style={sumStyles.metricCell}>
+          <Text style={[sumStyles.metricLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+            REALIZED
           </Text>
-        </View>
-        <View style={summaryStyles.col}>
-          <Text style={[summaryStyles.colLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>REALIZED</Text>
-          <Text style={[summaryStyles.colVal, {
-            color: totalRealized >= 0 ? colors.buyColor : totalRealized < 0 ? colors.sellColor : colors.mutedForeground,
-            fontFamily: 'Inter_700Bold', fontSize: 15,
-          }]}>
+          <Text style={[sumStyles.metricVal, { color: realColor, fontFamily: 'Inter_700Bold' }]}>
             {totalRealized >= 0 ? '+' : ''}{fmtCurrency(totalRealized)}
           </Text>
         </View>
       </View>
 
-      <View style={[summaryStyles.plRow, {
-        backgroundColor: isGain ? colors.buyBg : colors.sellBg,
-        borderColor: isGain ? colors.buyColor : colors.sellColor,
-      }]}>
-        <Text style={[summaryStyles.plLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>TOTAL P&L</Text>
-        <Text style={[summaryStyles.plVal, {
-          color: isGain ? colors.buyColor : colors.sellColor,
-          fontFamily: 'Inter_700Bold',
-        }]}>
-          {totalPnL >= 0 ? '+' : ''}{fmtCurrency(totalPnL)}
+      {/* P&L strip */}
+      <View
+        style={[
+          sumStyles.plStrip,
+          {
+            backgroundColor: isGain ? colors.buyBg : colors.sellBg,
+            borderColor: isGain ? colors.buyColor : colors.sellColor,
+          },
+        ]}
+      >
+        <Text style={[sumStyles.plLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+          UNREALIZED
+        </Text>
+        <Text style={[sumStyles.plVal, { color: unrealColor, fontFamily: 'Inter_700Bold' }]}>
+          {totalUnrealized >= 0 ? '+' : ''}{fmtCurrency(totalUnrealized)}
+          {totalPct !== 0 ? `  ${fmtPct(totalPct)}` : ''}
+        </Text>
+        <Text style={[sumStyles.plTotal, { color: isGain ? colors.buyColor : colors.sellColor, fontFamily: 'Inter_700Bold' }]}>
+          TOTAL  {totalPnL >= 0 ? '+' : ''}{fmtCurrency(totalPnL)}
         </Text>
       </View>
     </View>
   );
 }
 
-const summaryStyles = StyleSheet.create({
-  card: { borderRadius: 12, borderWidth: 1, padding: 16, marginBottom: 16 },
-  heading: { fontSize: 10, letterSpacing: 1, marginBottom: 14 },
-  row: { flexDirection: 'row', gap: 16, marginBottom: 12 },
-  col: { flex: 1, gap: 4 },
-  colLabel: { fontSize: 9, letterSpacing: 0.6 },
-  colVal: { fontSize: 17 },
-  plRow: { borderRadius: 8, borderWidth: 1, padding: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
-  plLabel: { fontSize: 9, letterSpacing: 0.6 },
-  plVal: { fontSize: 16 },
+const sumStyles = StyleSheet.create({
+  card: { borderRadius: 12, borderWidth: 1, padding: 14, marginBottom: 12 },
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  heading: { fontSize: 9, letterSpacing: 1 },
+  resetBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  resetTxt: { fontSize: 10, letterSpacing: 0.5 },
+  metricsRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  metricCell: { flex: 1, gap: 3 },
+  metricDivider: { width: 1, height: 32, marginHorizontal: 8 },
+  metricLabel: { fontSize: 8, letterSpacing: 0.6 },
+  metricVal: { fontSize: 13 },
+  plStrip: {
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  plLabel: { fontSize: 8, letterSpacing: 0.6 },
+  plVal: { fontSize: 12 },
+  plTotal: { fontSize: 12 },
 });
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
@@ -715,9 +799,10 @@ export default function PortfolioScreen() {
 
   const topPad = Platform.OS === 'web' ? 16 : insets.top;
 
-  // Load trades
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY).then(v => { if (v) setTrades(JSON.parse(v)); });
+    AsyncStorage.getItem(STORAGE_KEY).then(v => {
+      if (v) setTrades(JSON.parse(v));
+    });
   }, []);
 
   const saveTrades = useCallback(async (next: Trade[]) => {
@@ -736,7 +821,9 @@ export default function PortfolioScreen() {
     setLoadingQuotes(false);
   }, []);
 
-  useEffect(() => { if (trades.length) fetchAllQuotes(trades); }, [trades.length]);
+  useEffect(() => {
+    if (trades.length) fetchAllQuotes(trades);
+  }, [trades.length]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -744,25 +831,45 @@ export default function PortfolioScreen() {
     setRefreshing(false);
   };
 
-  // Computed positions
-  const positions = computePositions(trades, quotes);
+  // All positions (including closed ones for trade history math)
+  const allPositions = computePositions(trades, quotes);
+  // Only open positions for the Positions tab
+  const openPositions = allPositions.filter(p => p.netShares !== 0);
+
+  function handleReset() {
+    Alert.alert(
+      'Reset Portfolio',
+      'This will permanently delete ALL trades, positions, and trade history. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Everything',
+          style: 'destructive',
+          onPress: async () => {
+            setTrades([]);
+            setQuotes({});
+            await AsyncStorage.removeItem(STORAGE_KEY);
+          },
+        },
+      ]
+    );
+  }
 
   function handleSave(data: Omit<Trade, 'id' | 'date'>) {
-    // Validate sell: must have a long position
     if (data.type === 'sell') {
       const avail = availableToSell(data.symbol, trades, editTarget?.id ?? undefined);
       if (avail <= 0) {
-        Alert.alert('No Position', `You don't have any shares of ${data.symbol} to sell. Add a BUY trade first.`);
+        Alert.alert('No Position', `You don't have any shares of ${data.symbol} to sell.`);
         return;
       }
       if (data.shares > avail) {
-        Alert.alert('Too Many Shares', `You only hold ${fmtNum(avail)} shares of ${data.symbol}.`);
+        Alert.alert('Too Many Shares', `You only hold ${fmtNum(avail, 2)} shares of ${data.symbol}.`);
         return;
       }
     }
 
     if (editTarget) {
-      saveTrades(trades.map(t => t.id === editTarget.id ? { ...t, ...data } : t));
+      saveTrades(trades.map(t => (t.id === editTarget.id ? { ...t, ...data } : t)));
     } else {
       saveTrades([...trades, { id: uid(), date: new Date().toISOString(), ...data }]);
     }
@@ -785,10 +892,9 @@ export default function PortfolioScreen() {
   }
 
   function handleDelete(id: string) {
-    const doDelete = () => saveTrades(trades.filter(t => t.id !== id));
     Alert.alert('Remove Trade', 'Remove this trade from history?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: doDelete },
+      { text: 'Remove', style: 'destructive', onPress: () => saveTrades(trades.filter(t => t.id !== id)) },
     ]);
   }
 
@@ -796,13 +902,12 @@ export default function PortfolioScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: topPad + 12 }]}>
+      {/* ── Header ─────────────────────────────────────────────────────── */}
+      <View style={[styles.header, { paddingTop: topPad + 10, borderBottomColor: colors.border }]}>
         <View style={styles.headerRow}>
-          <View style={styles.headerLeft}>
-            <MMLogo size={36} />
-            <Text style={[styles.title, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>PORTFOLIO</Text>
-          </View>
+          <Text style={[styles.title, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+            PORTFOLIO
+          </Text>
           <View style={styles.headerRight}>
             <TouchableOpacity
               style={styles.iconBtn}
@@ -810,36 +915,50 @@ export default function PortfolioScreen() {
               disabled={loadingQuotes || isEmpty}
               activeOpacity={0.7}
             >
-              {loadingQuotes
-                ? <ActivityIndicator size="small" color={colors.primary} />
-                : <Feather name="refresh-cw" size={16} color={isEmpty ? colors.mutedForeground : colors.primary} />}
+              {loadingQuotes ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Feather name="refresh-cw" size={16} color={isEmpty ? colors.mutedForeground : colors.primary} />
+              )}
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.addBtn, { backgroundColor: colors.primary }]}
               onPress={() => openAdd('buy')}
               activeOpacity={0.8}
             >
-              <Feather name="plus" size={16} color={colors.primaryForeground} />
-              <Text style={[styles.addBtnText, { color: colors.primaryForeground, fontFamily: 'Inter_700Bold' }]}>ADD TRADE</Text>
+              <Feather name="plus" size={15} color={colors.primaryForeground} />
+              <Text style={[styles.addBtnText, { color: colors.primaryForeground, fontFamily: 'Inter_700Bold' }]}>
+                ADD TRADE
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Tab selector */}
         {!isEmpty && (
-          <View style={[styles.tabRow, { borderColor: colors.border }]}>
+          <View style={[styles.tabRow, { borderBottomColor: colors.border }]}>
             {(['positions', 'trades'] as PortfolioTab[]).map(tab => (
               <TouchableOpacity
                 key={tab}
-                style={[styles.tabBtn, portfolioTab === tab && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]}
+                style={[
+                  styles.tabBtn,
+                  portfolioTab === tab && { borderBottomColor: colors.primary, borderBottomWidth: 2 },
+                ]}
                 onPress={() => setPortfolioTab(tab)}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.tabLabel, {
-                  color: portfolioTab === tab ? colors.primary : colors.mutedForeground,
-                  fontFamily: portfolioTab === tab ? 'Inter_700Bold' : 'Inter_400Regular',
-                }]}>
-                  {tab === 'positions' ? 'POSITIONS' : 'TRADE HISTORY'}
+                <Text
+                  style={[
+                    styles.tabLabel,
+                    {
+                      color: portfolioTab === tab ? colors.primary : colors.mutedForeground,
+                      fontFamily: portfolioTab === tab ? 'Inter_700Bold' : 'Inter_400Regular',
+                    },
+                  ]}
+                >
+                  {tab === 'positions'
+                    ? `POSITIONS (${openPositions.length})`
+                    : `HISTORY (${trades.length})`}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -847,17 +966,25 @@ export default function PortfolioScreen() {
         )}
       </View>
 
-      {/* Content */}
+      {/* ── Content ────────────────────────────────────────────────────── */}
       {isEmpty ? (
         <View style={styles.emptyWrap}>
-          <Feather name="briefcase" size={44} color="rgba(192,192,192,0.2)" />
-          <Text style={[styles.emptyTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>No trades yet</Text>
+          <Feather name="briefcase" size={40} color="rgba(192,192,192,0.18)" />
+          <Text style={[styles.emptyTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+            No trades yet
+          </Text>
           <Text style={[styles.emptySub, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
             Add a BUY trade to start tracking your real portfolio.
           </Text>
-          <TouchableOpacity style={[styles.emptyBtn, { borderColor: colors.primary }]} onPress={() => openAdd('buy')} activeOpacity={0.75}>
-            <Feather name="plus" size={16} color={colors.primary} />
-            <Text style={[styles.emptyBtnText, { color: colors.primary, fontFamily: 'Inter_600SemiBold' }]}>ADD TRADE</Text>
+          <TouchableOpacity
+            style={[styles.emptyBtn, { borderColor: colors.primary }]}
+            onPress={() => openAdd('buy')}
+            activeOpacity={0.75}
+          >
+            <Feather name="plus" size={15} color={colors.primary} />
+            <Text style={[styles.emptyBtnText, { color: colors.primary, fontFamily: 'Inter_600SemiBold' }]}>
+              ADD TRADE
+            </Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -865,34 +992,40 @@ export default function PortfolioScreen() {
           style={{ flex: 1 }}
           contentContainerStyle={[styles.list, { paddingBottom: 24 }]}
           showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+          }
         >
-          <SummaryCard positions={positions} colors={colors} />
+          <SummaryCard positions={allPositions} onReset={handleReset} colors={colors} />
 
           {portfolioTab === 'positions' ? (
             <>
-              <Text style={[styles.sectionLabel, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold' }]}>
-                POSITIONS ({positions.filter(p => p.netShares !== 0).length})
-              </Text>
-              {positions.length === 0 && (
-                <Text style={[styles.noData, { color: colors.mutedForeground }]}>No open positions yet.</Text>
+              {openPositions.length === 0 ? (
+                <View style={styles.closedNotice}>
+                  <Feather name="check-circle" size={28} color={colors.buyColor} />
+                  <Text style={[styles.closedTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+                    All positions closed
+                  </Text>
+                  <Text style={[styles.closedSub, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                    Your realized P&L is shown above. Switch to History to see all trades.
+                  </Text>
+                </View>
+              ) : (
+                openPositions.map(pos => (
+                  <PositionRow
+                    key={pos.symbol}
+                    position={pos}
+                    onSell={() => openAdd('sell', pos.symbol)}
+                    onBuyMore={() => openAdd('buy', pos.symbol)}
+                    colors={colors}
+                  />
+                ))
               )}
-              {positions.map(pos => (
-                <PositionCard
-                  key={pos.symbol}
-                  position={pos}
-                  onSell={() => openAdd('sell', pos.symbol)}
-                  onBuyMore={() => openAdd('buy', pos.symbol)}
-                  colors={colors}
-                />
-              ))}
             </>
           ) : (
-            <>
-              <Text style={[styles.sectionLabel, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold' }]}>
-                TRADE HISTORY ({trades.length})
-              </Text>
-              {[...trades].reverse().map(trade => (
+            [...trades]
+              .reverse()
+              .map(trade => (
                 <TradeCard
                   key={trade.id}
                   trade={trade}
@@ -901,8 +1034,7 @@ export default function PortfolioScreen() {
                   onDelete={() => handleDelete(trade.id)}
                   colors={colors}
                 />
-              ))}
-            </>
+              ))
           )}
         </ScrollView>
       )}
@@ -916,7 +1048,10 @@ export default function PortfolioScreen() {
         defaultSymbol={defaultSymbol}
         allTrades={trades}
         onSave={handleSave}
-        onClose={() => { setModalVisible(false); setEditTarget(null); }}
+        onClose={() => {
+          setModalVisible(false);
+          setEditTarget(null);
+        }}
         colors={colors}
       />
     </View>
@@ -925,23 +1060,45 @@ export default function PortfolioScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { paddingHorizontal: 16, paddingBottom: 0, borderBottomWidth: 1, borderBottomColor: 'rgba(192,192,192,0.1)' },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  header: { paddingHorizontal: 16, paddingBottom: 0, borderBottomWidth: 1 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   title: { fontSize: 18, letterSpacing: 2 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  iconBtn: { padding: 8 },
-  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
-  addBtnText: { fontSize: 12, letterSpacing: 0.5 },
-  tabRow: { flexDirection: 'row', borderBottomWidth: 1, marginTop: 4 },
-  tabBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  tabLabel: { fontSize: 11, letterSpacing: 0.8 },
-  list: { paddingHorizontal: 16, paddingTop: 16 },
-  sectionLabel: { fontSize: 10, letterSpacing: 1, marginBottom: 12 },
-  noData: { textAlign: 'center', paddingVertical: 24, fontSize: 13 },
-  emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40, gap: 12 },
-  emptyTitle: { fontSize: 18, marginTop: 12 },
-  emptySub: { fontSize: 13, textAlign: 'center', lineHeight: 20 },
-  emptyBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 20, paddingVertical: 10, marginTop: 8 },
+  iconBtn: { padding: 6 },
+  addBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 7,
+  },
+  addBtnText: { fontSize: 11, letterSpacing: 0.5 },
+  tabRow: { flexDirection: 'row', borderBottomWidth: 1 },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 9,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabLabel: { fontSize: 10, letterSpacing: 0.8 },
+  list: { paddingHorizontal: 14, paddingTop: 12 },
+  emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40, gap: 10 },
+  emptyTitle: { fontSize: 17, marginTop: 10 },
+  emptySub: { fontSize: 13, textAlign: 'center', lineHeight: 19 },
+  emptyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+    marginTop: 6,
+  },
   emptyBtnText: { fontSize: 13, letterSpacing: 0.5 },
+  closedNotice: { alignItems: 'center', paddingVertical: 32, gap: 8 },
+  closedTitle: { fontSize: 16, marginTop: 4 },
+  closedSub: { fontSize: 12, textAlign: 'center', lineHeight: 18, paddingHorizontal: 20 },
 });

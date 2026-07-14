@@ -83,8 +83,8 @@ const SILVER = '#c0c0c0';
 const DIM = 'rgba(192,192,192,0.38)';
 const BUY_COLOR = '#00e5a0';
 const SELL_COLOR = '#ff3b3b';
-const CARD_BG = 'rgba(192,192,192,0.06)';
-const BORDER = 'rgba(192,192,192,0.13)';
+const CARD_BG = 'rgba(192,192,192,0.08)';
+const BORDER = 'rgba(192,192,192,0.28)';
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'positions', label: 'POSITIONS', icon: 'list' },

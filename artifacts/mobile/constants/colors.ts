@@ -16,7 +16,7 @@ const colors = {
     accentForeground: '#e8e8e8',
     destructive: '#ff3b3b',
     destructiveForeground: '#000000',
-    border: '#2a2a2a',
+    border: '#484848',
     input: '#1a1a1a',
     // Finance-specific
     buyColor: '#00e5a0',
@@ -43,7 +43,7 @@ const colors = {
     accentForeground: '#e8e8e8',
     destructive: '#ff3b3b',
     destructiveForeground: '#000000',
-    border: '#2a2a2a',
+    border: '#484848',
     input: '#1a1a1a',
     // Finance-specific
     buyColor: '#00e5a0',
