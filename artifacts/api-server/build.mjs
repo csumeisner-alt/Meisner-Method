@@ -132,6 +132,10 @@ buildAll()
         path.resolve(artifactDir, "src/lib/fetch_quote.py"),
         path.resolve(artifactDir, "dist/fetch_quote.py")
       ),
+      copyFile(
+        path.resolve(artifactDir, "src/lib/fetch_trending.py"),
+        path.resolve(artifactDir, "dist/fetch_trending.py")
+      ),
     ])
   )
   .catch((err) => {

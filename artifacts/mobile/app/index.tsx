@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,27 +10,27 @@ import {
   Keyboard,
   Modal,
   Pressable,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Feather, Ionicons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
 import { BottomTabBar } from '@/components/BottomTabBar';
+import { MMLogo } from '@/components/MMLogo';
 
-const POPULAR_TICKERS = [
-  { symbol: 'AAPL', name: 'Apple' },
-  { symbol: 'MSFT', name: 'Microsoft' },
-  { symbol: 'NVDA', name: 'NVIDIA' },
-  { symbol: 'TSLA', name: 'Tesla' },
-  { symbol: 'AMZN', name: 'Amazon' },
-  { symbol: 'GOOGL', name: 'Alphabet' },
-  { symbol: 'META', name: 'Meta' },
-  { symbol: 'JPM', name: 'JPMorgan' },
-  { symbol: 'BRK-B', name: 'Berkshire' },
-  { symbol: 'SPY', name: 'S&P 500 ETF' },
-];
+const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
+
+interface TrendingTicker {
+  symbol: string;
+  name: string;
+  currentPrice: number;
+  priceChange: number;
+  priceChangePercent: number;
+  volume: number;
+}
 
 const TIPS = [
   // WW2
@@ -58,6 +58,18 @@ const TIPS = [
 ];
 
 const RECENT_KEY = 'meisner_recent';
+const REFRESH_INTERVAL = 60_000; // refresh trending every 60 seconds
+
+function formatPrice(p: number) {
+  if (p >= 1000) return `$${p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (p >= 1) return `$${p.toFixed(2)}`;
+  return `$${p.toFixed(4)}`;
+}
+
+function formatPct(p: number) {
+  const sign = p >= 0 ? '+' : '';
+  return `${sign}${p.toFixed(2)}%`;
+}
 
 export default function HomeScreen() {
   const colors = useColors();
@@ -67,12 +79,40 @@ export default function HomeScreen() {
   const [recent, setRecent] = useState<string[]>([]);
   const [tipVisible, setTipVisible] = useState(false);
   const [currentTip, setCurrentTip] = useState('');
+  const [trending, setTrending] = useState<TrendingTicker[]>([]);
+  const [trendingLoading, setTrendingLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     AsyncStorage.getItem(RECENT_KEY).then((v) => {
       if (v) setRecent(JSON.parse(v));
     });
   }, []);
+
+  const fetchTrending = useCallback(async (showLoader = false) => {
+    if (showLoader) setTrendingLoading(true);
+    try {
+      const res = await fetch(`${BASE_URL}/api/stocks/trending`);
+      if (res.ok) {
+        const data: TrendingTicker[] = await res.json();
+        setTrending(data);
+        setLastUpdated(new Date());
+      }
+    } catch {
+      // silently keep last data
+    } finally {
+      setTrendingLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchTrending(true);
+    intervalRef.current = setInterval(() => fetchTrending(false), REFRESH_INTERVAL);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [fetchTrending]);
 
   const showTip = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -103,6 +143,10 @@ export default function HomeScreen() {
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
   const botPad = Platform.OS === 'web' ? 34 : insets.bottom;
+
+  const timeStr = lastUpdated
+    ? lastUpdated.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    : null;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -136,19 +180,19 @@ export default function HomeScreen() {
       </Modal>
 
       {/* Header */}
-      <View style={[styles.header, { paddingTop: topPad + 16 }]}>
+      <View style={[styles.header, { paddingTop: topPad + 12 }]}>
         <TouchableOpacity style={styles.brandRow} onPress={showTip} activeOpacity={0.75}>
-          <View style={[styles.logoIcon, { borderColor: colors.primary }]}>
-            <Ionicons name="trending-up" size={18} color={colors.primary} />
+          <MMLogo size={44} />
+          <View style={styles.brandText}>
+            <Text style={[styles.brandName, { color: colors.foreground, fontFamily: 'Inter_700Bold', letterSpacing: 0.8 }]}>
+              Meisner Method
+            </Text>
+            <Text style={[styles.tagline, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+              AI-powered market intelligence
+            </Text>
           </View>
-          <Text style={[styles.brandName, { color: colors.foreground, fontFamily: 'Inter_700Bold', letterSpacing: 1 }]}>
-            Meisner Method
-          </Text>
-          <Feather name="info" size={13} color={colors.mutedForeground} style={{ marginLeft: 4 }} />
+          <Feather name="info" size={13} color={colors.mutedForeground} style={{ marginLeft: 'auto' }} />
         </TouchableOpacity>
-        <Text style={[styles.tagline, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-          AI-powered market intelligence
-        </Text>
       </View>
 
       {/* Search bar */}
@@ -229,29 +273,76 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* Popular tickers */}
+        {/* Trending tickers */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', letterSpacing: 1 }]}>
-            MARKETS
-          </Text>
-          <View style={styles.tickerGrid}>
-            {POPULAR_TICKERS.map((t) => (
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleRow}>
+              <Feather name="zap" size={11} color={colors.mutedForeground} />
+              <Text style={[styles.sectionTitle, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', letterSpacing: 1, marginLeft: 4 }]}>
+                TRENDING
+              </Text>
+            </View>
+            <View style={styles.refreshRow}>
+              {timeStr && (
+                <Text style={[styles.updatedText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                  {timeStr}
+                </Text>
+              )}
               <TouchableOpacity
-                key={t.symbol}
-                style={[styles.tickerCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-                onPress={() => navigateTo(t.symbol)}
-                activeOpacity={0.75}
+                onPress={() => fetchTrending(true)}
+                style={styles.refreshBtn}
+                disabled={trendingLoading}
               >
-                <Text style={[styles.tickerSymbol, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
-                  {t.symbol}
-                </Text>
-                <Text style={[styles.tickerName, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                  {t.name}
-                </Text>
-                <Ionicons name="chevron-forward" size={14} color={colors.primary} style={styles.tickerArrow} />
+                <Feather name="refresh-cw" size={13} color={trendingLoading ? colors.muted : colors.mutedForeground} />
               </TouchableOpacity>
-            ))}
+            </View>
           </View>
+
+          {trendingLoading && trending.length === 0 ? (
+            <View style={styles.loadingBox}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={[styles.loadingText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                Fetching live market data…
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.tickerGrid}>
+              {trending.map((t) => {
+                const up = t.priceChangePercent >= 0;
+                const pctColor = up ? colors.buyColor : colors.sellColor;
+                return (
+                  <TouchableOpacity
+                    key={t.symbol}
+                    style={[styles.tickerCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    onPress={() => navigateTo(t.symbol)}
+                    activeOpacity={0.75}
+                  >
+                    {/* Change badge */}
+                    <View style={[styles.pctBadge, { backgroundColor: up ? 'rgba(0,229,160,0.10)' : 'rgba(255,59,59,0.10)' }]}>
+                      <Feather
+                        name={up ? 'trending-up' : 'trending-down'}
+                        size={10}
+                        color={pctColor}
+                      />
+                      <Text style={[styles.pctText, { color: pctColor, fontFamily: 'Inter_700Bold' }]}>
+                        {formatPct(t.priceChangePercent)}
+                      </Text>
+                    </View>
+
+                    <Text style={[styles.tickerSymbol, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+                      {t.symbol}
+                    </Text>
+                    <Text style={[styles.tickerName, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]} numberOfLines={1}>
+                      {t.name}
+                    </Text>
+                    <Text style={[styles.tickerPrice, { color: colors.primary, fontFamily: 'Inter_600SemiBold' }]}>
+                      {formatPrice(t.currentPrice)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
         </View>
 
         {/* Disclaimer */}
@@ -266,19 +357,11 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingBottom: 20 },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
-  logoIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    backgroundColor: 'transparent',
-  },
-  brandName: { fontSize: 22 },
-  tagline: { fontSize: 13 },
+  header: { paddingHorizontal: 20, paddingBottom: 16 },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  brandText: { flex: 1 },
+  brandName: { fontSize: 21, lineHeight: 26 },
+  tagline: { fontSize: 12, marginTop: 1 },
   searchSection: { paddingHorizontal: 20, paddingBottom: 16, gap: 10 },
   searchRow: {
     flexDirection: 'row',
@@ -300,7 +383,11 @@ const styles = StyleSheet.create({
   analyzeBtnText: { fontSize: 14 },
   section: { paddingHorizontal: 20, marginBottom: 24 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center' },
   sectionTitle: { fontSize: 11 },
+  refreshRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  updatedText: { fontSize: 10 },
+  refreshBtn: { padding: 4 },
   clearText: { fontSize: 13 },
   chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
@@ -313,17 +400,36 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   chipText: { fontSize: 13 },
+  loadingBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 28,
+    justifyContent: 'center',
+  },
+  loadingText: { fontSize: 13 },
   tickerGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   tickerCard: {
     width: '47%',
     padding: 14,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
-    position: 'relative',
+    gap: 3,
   },
-  tickerSymbol: { fontSize: 16, marginBottom: 2 },
-  tickerName: { fontSize: 12 },
-  tickerArrow: { position: 'absolute', right: 12, top: '50%' },
+  pctBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 5,
+    marginBottom: 6,
+  },
+  pctText: { fontSize: 11 },
+  tickerSymbol: { fontSize: 17, lineHeight: 22 },
+  tickerName: { fontSize: 11, lineHeight: 15 },
+  tickerPrice: { fontSize: 14, marginTop: 4 },
   disclaimer: { textAlign: 'center', fontSize: 11, paddingHorizontal: 20, marginTop: 8 },
   // Modal
   modalOverlay: {
