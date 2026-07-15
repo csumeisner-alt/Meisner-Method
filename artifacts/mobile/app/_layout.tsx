@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { KeyboardProvider } from 'react-native-keyboard-controller';
+import { KeyboardProviderCompat } from '@/components/KeyboardProviderCompat';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import {
@@ -24,16 +24,6 @@ SplashScreen.preventAutoHideAsync();
 
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
 const proxyUrl = process.env.EXPO_PUBLIC_CLERK_PROXY_URL || undefined;
-
-// In dev (Expo Go), skip the forced sign-in redirect so you can preview the app
-// without logging in. __DEV__ is true only during `expo start` — production APK and
-// published builds enforce the full Clerk auth gate.
-//
-// NOTE: ClerkProvider is mounted in ALL environments (see RootLayout). Clerk hooks
-// (useAuth, useApi→getToken, the (auth) screens' hooks) throw when no provider is
-// mounted, so removing the provider in dev crashes the app on the very first screen.
-// Instead we always provide Clerk and merely relax the redirect in dev.
-const DEV_BYPASS_AUTH = __DEV__;
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -62,10 +52,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   }, [getToken]);
 
   useEffect(() => {
-    // In Expo Go dev, preview the app without logging in: skip the forced
-    // redirect but keep the token getter registered above so authed API calls
-    // still work if a session happens to exist.
-    if (DEV_BYPASS_AUTH) return;
+    // Enforce the real Clerk auth gate in every environment (Expo Go dev,
+    // dev-client, and production). Signed-out users are sent to the sign-in
+    // screen so they can log in and load their real data.
     if (!isLoaded) return;
     const inAuthGroup = segments[0] === '(auth)';
     if (!isSignedIn && !inAuthGroup) {
@@ -124,11 +113,11 @@ export default function RootLayout() {
           <ClerkLoaded>
             <QueryClientProvider client={queryClient}>
               <GestureHandlerRootView style={{ flex: 1 }}>
-                <KeyboardProvider>
+                <KeyboardProviderCompat>
                   <AuthGate>
                     <RootLayoutNav />
                   </AuthGate>
-                </KeyboardProvider>
+                </KeyboardProviderCompat>
               </GestureHandlerRootView>
             </QueryClientProvider>
           </ClerkLoaded>

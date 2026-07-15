@@ -14,6 +14,22 @@ poly, exp, circle, bounce, back, elastic, ease, linear, bezier). tsc catches thi
 (`Property 'sine' does not exist on type 'EasingStatic'`) — run `tsc --noEmit`
 before assuming a mount crash is native.
 
+## react-native-keyboard-controller crashes Expo Go at startup
+`<KeyboardProvider>` (react-native-keyboard-controller) is a THIRD-PARTY native
+module NOT in the Expo Go runtime. Mounting it at the app root (`_layout.tsx`)
+makes Expo Go show a blank/splash screen forever on launch — looks like a Clerk
+or fonts hang, but it's the native module. `KeyboardAwareScrollView` from the same
+lib crashes any screen that uses it in Expo Go too.
+**Why:** Expo Go bundles a fixed native module set; only Expo SDK modules
+(reanimated, gesture-handler, svg, safe-area-context, expo-audio) are present.
+Community native modules are not.
+**How to apply:** wrap such providers/components in a compat shim that skips them
+when `Platform.OS === 'web' || Constants.appOwnership === 'expo'` and only
+`require()`s the native module on the native path (use `import type` for types so
+the module is never loaded in Expo Go/web). Full functionality requires a
+dev-client or standalone (APK/AAB) build, not Expo Go. When an app has custom
+native deps, "work in dev" = a **development build**, not Expo Go.
+
 ## Expo Go can hard-crash on expo-audio native player
 `createAudioPlayer` / `setAudioModeAsync` (expo-audio) handed a remote stream can
 crash in Expo Go (native module set is fixed there). JS try/catch can't stop a
