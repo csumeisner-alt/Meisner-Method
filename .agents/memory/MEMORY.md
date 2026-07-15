@@ -2,3 +2,4 @@
 - [Expo Router auth gate](expo-router-auth-gate.md) — root layout must always render the navigator; returning `<Redirect>` instead = blank screen. Redirect imperatively via useSegments.
 - [Python JSON for Node](python-json-for-node.md) — Python `NaN`/`Infinity` breaks Node `JSON.parse`; sanitize + `json.dumps(allow_nan=False)`.
 - [RN-web TextInput in Playwright](rn-web-playwright-textinput.md) — `fill()` skips `onChangeText`; tester must type char-by-char or validation false-fails.
+- [Stable apiFetch vs Clerk getToken](useapi-stable-fetch.md) — Clerk `getToken` isn't stable; memoizing apiFetch on it → infinite fetch loop + Clerk rate-limit blank screen. Use a ref.
