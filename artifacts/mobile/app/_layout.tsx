@@ -25,6 +25,11 @@ SplashScreen.preventAutoHideAsync();
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
 const proxyUrl = process.env.EXPO_PUBLIC_CLERK_PROXY_URL || undefined;
 
+// In dev (Expo Go), skip auth entirely so you can preview the app without logging in.
+// __DEV__ is true only during `expo start` — production APK and published builds use the
+// full Clerk auth flow below.
+const DEV_BYPASS_AUTH = __DEV__;
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: { retry: 1, staleTime: 60_000 },
@@ -64,6 +69,20 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * Dev-only wrapper — skips Clerk entirely so Expo Go loads instantly
+ * without needing to log in. API calls that require auth will return
+ * 401s (expected), but all UI is visible and navigable.
+ */
+function DevLayout() {
+  // No-op token getter — API calls won't have a bearer token in dev
+  useEffect(() => {
+    setAuthTokenGetter(() => Promise.resolve(null));
+  }, []);
+
+  return <RootLayoutNav />;
+}
+
 function RootLayoutNav() {
   return (
     <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
@@ -96,6 +115,24 @@ export default function RootLayout() {
 
   if (!fontsLoaded && !fontError) return null;
 
+  // ── Dev mode (Expo Go) ── skip Clerk so the app loads immediately
+  if (DEV_BYPASS_AUTH) {
+    return (
+      <SafeAreaProvider>
+        <ErrorBoundary>
+          <QueryClientProvider client={queryClient}>
+            <GestureHandlerRootView style={{ flex: 1 }}>
+              <KeyboardProvider>
+                <DevLayout />
+              </KeyboardProvider>
+            </GestureHandlerRootView>
+          </QueryClientProvider>
+        </ErrorBoundary>
+      </SafeAreaProvider>
+    );
+  }
+
+  // ── Production (APK / published) ── full Clerk auth gate
   return (
     <SafeAreaProvider>
       <ErrorBoundary>
