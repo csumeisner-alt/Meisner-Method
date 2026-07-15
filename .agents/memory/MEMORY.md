@@ -1,0 +1,1 @@
+- [React Native / Expo gotchas](react-native-gotchas.md) — `Easing.sin` not `Easing.sine` (mount crash); gate expo-audio behind Expo Go check.

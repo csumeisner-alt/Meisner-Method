@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Feather } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
-import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
+import Constants from 'expo-constants';
 import { useColors } from '@/hooks/useColors';
 import { BottomTabBar } from '@/components/BottomTabBar';
 
@@ -90,17 +90,32 @@ const CELEBRATION_IMAGES = [
   require('../assets/celebration/woman5.jpg'),
 ];
 
+// Expo Go bundles a fixed set of native modules; expo-audio's native player can
+// hard-crash there when handed a remote stream. In Expo Go we use on-device
+// speech; in a real (EAS) build we stream the higher-quality Edge TTS voice.
+const IS_EXPO_GO = Constants.appOwnership === 'expo';
+
+function speakOnDevice(text: string) {
+  try { Speech.speak(text, { language: 'en-US', pitch: 1.12, rate: 0.9 }); } catch (_) {}
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _celebPlayer: any = null;
 async function playCelebrationVoice(text: string) {
+  if (IS_EXPO_GO) {
+    speakOnDevice(text);
+    return;
+  }
   try {
-    await setAudioModeAsync({ playsInSilentModeIOS: true, allowsRecordingIOS: false });
+    // Lazy-load expo-audio so Expo Go never touches its native module.
+    const { createAudioPlayer, setAudioModeAsync } = await import('expo-audio');
+    await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false });
     const uri = `${BASE_URL}/api/tts?text=${encodeURIComponent(text)}`;
     _celebPlayer = createAudioPlayer({ uri });
     _celebPlayer.play();
   } catch (_) {
-    // Fallback to on-device speech (Expo Go / no network)
-    try { Speech.speak(text, { language: 'en-US', pitch: 1.12, rate: 0.9 }); } catch (_) {}
+    // Fallback to on-device speech (no native audio / no network)
+    speakOnDevice(text);
   }
 }
 function stopCelebrationVoice() {
@@ -282,6 +297,25 @@ function pickCompliment(grade: string): string {
 
 // ─── Celebration Overlay ──────────────────────────────────────────────────────
 
+// Safety net: if anything inside the celebration throws while rendering, swallow
+// it and dismiss instead of crashing the whole app.
+class CelebrationBoundary extends React.Component<
+  { onError: () => void; children: React.ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch() {
+    this.props.onError();
+  }
+  render() {
+    if (this.state.failed) return null;
+    return this.props.children;
+  }
+}
+
 function CelebrationOverlay({
   gradeInfo,
   onDismiss,
@@ -315,6 +349,9 @@ function CelebrationOverlay({
   ).current;
 
   useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | undefined;
+    let fadeTimer: ReturnType<typeof setTimeout> | undefined;
+    try {
     // Fade in overlay (single value — avoids Animated.multiply crash)
     Animated.timing(overlayOp, { toValue: 1, duration: 280, useNativeDriver: true }).start();
 
@@ -328,8 +365,8 @@ function CelebrationOverlay({
     // Subtle image breathe
     Animated.loop(
       Animated.sequence([
-        Animated.timing(imageScale, { toValue: 1.04, duration: 2200, easing: Easing.inOut(Easing.sine), useNativeDriver: true }),
-        Animated.timing(imageScale, { toValue: 1.00, duration: 2200, easing: Easing.inOut(Easing.sine), useNativeDriver: true }),
+        Animated.timing(imageScale, { toValue: 1.04, duration: 2200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(imageScale, { toValue: 1.00, duration: 2200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
       ])
     ).start();
 
@@ -359,19 +396,23 @@ function CelebrationOverlay({
       });
     }
     burst();
-    const interval = setInterval(burst, 3000);
+    interval = setInterval(burst, 3000);
 
     // Natural voice via OpenAI TTS
     playCelebrationVoice(compliment);
 
     // Auto-dismiss after 7.5 s — fade the whole overlay out then call onDismiss
-    const fadeTimer = setTimeout(() => {
+    fadeTimer = setTimeout(() => {
       Animated.timing(overlayOp, { toValue: 0, duration: 600, useNativeDriver: true }).start(onDismiss);
     }, 7500);
+    } catch (_) {
+      // Effect-time failure — dismiss instead of crashing the app.
+      onDismiss();
+    }
 
     return () => {
-      clearInterval(interval);
-      clearTimeout(fadeTimer);
+      if (interval) clearInterval(interval);
+      if (fadeTimer) clearTimeout(fadeTimer);
       stopCelebrationVoice();
     };
   }, []);
@@ -1259,7 +1300,9 @@ export default function PortfolioScreen() {
 
       {/* Celebration overlay */}
       {celebration && (
-        <CelebrationOverlay gradeInfo={celebration} onDismiss={() => setCelebration(null)} />
+        <CelebrationBoundary onError={() => setCelebration(null)}>
+          <CelebrationOverlay gradeInfo={celebration} onDismiss={() => setCelebration(null)} />
+        </CelebrationBoundary>
       )}
     </View>
   );
