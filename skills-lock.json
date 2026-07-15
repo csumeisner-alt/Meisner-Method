@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "ai-voice-cloning": {
+      "source": "skill-zero/s",
+      "sourceType": "github",
+      "skillPath": "tools/audio/ai-voice-cloning/SKILL.md",
+      "computedHash": "c1b2a6ae8a54318ad39e8002be288ecf5b47caae17fdab16948af93a21181bb0"
+    }
+  }
+}

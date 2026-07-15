@@ -52,6 +52,17 @@ def safe_int(val, default=0):
     except Exception:
         return default
 
+def clean_nan(obj):
+    """Recursively replace NaN/inf floats with None so output is valid JSON.
+    Python's json.dumps emits bare `NaN`/`Infinity` tokens which JSON.parse rejects."""
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: clean_nan(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [clean_nan(v) for v in obj]
+    return obj
+
 def score_technical(info, history):
     """
     Returns 0-100 technical score.
@@ -485,9 +496,12 @@ def fetch_top_picks():
             price_target, confidence = compute_price_target(info, history, analyst_score)
 
             # Risk: volatility (annualized std of daily returns)
-            closes = list(history["Close"])
-            daily_rets = [(closes[i]-closes[i-1])/closes[i-1] for i in range(1, len(closes))]
-            vol_ann = (sum(r**2 for r in daily_rets) / len(daily_rets)) ** 0.5 * (252 ** 0.5)
+            closes = [c for c in list(history["Close"]) if safe_float(c) not in (None, 0)]
+            daily_rets = [(closes[i]-closes[i-1])/closes[i-1] for i in range(1, len(closes)) if closes[i-1]]
+            vol_ann = safe_float(
+                (sum(r**2 for r in daily_rets) / len(daily_rets)) ** 0.5 * (252 ** 0.5),
+                0,
+            ) if daily_rets else 0.0
 
             # Risk-adjusted composite: penalize high volatility unless upside is proportional
             upside = ((price_target or current) - current) / current if price_target else 0
@@ -530,7 +544,7 @@ def fetch_top_picks():
     # Take top 12
     top = filtered[:12]
 
-    print(json.dumps(top))
+    print(json.dumps(clean_nan(top), allow_nan=False))
 
 if __name__ == "__main__":
     try:

@@ -14,8 +14,9 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '@clerk/expo';
 import { Feather } from '@expo/vector-icons';
+import { useApi } from '@/hooks/useApi';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
 import { BottomTabBar } from '@/components/BottomTabBar';
@@ -57,7 +58,6 @@ const TIPS = [
   "🇺🇸 President Trump moved the US Embassy in Israel from Tel Aviv to Jerusalem in 2018 — fulfilling a decades-old campaign promise that previous presidents had avoided.",
 ];
 
-const RECENT_KEY = 'meisner_recent';
 const REFRESH_INTERVAL = 60_000; // refresh trending every 60 seconds
 
 function formatPrice(p: number) {
@@ -75,6 +75,8 @@ export default function HomeScreen() {
   const colors = useColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { signOut } = useAuth();
+  const { apiFetch } = useApi();
   const [query, setQuery] = useState('');
   const [recent, setRecent] = useState<string[]>([]);
   const [tipVisible, setTipVisible] = useState(false);
@@ -85,10 +87,8 @@ export default function HomeScreen() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    AsyncStorage.getItem(RECENT_KEY).then((v) => {
-      if (v) setRecent(JSON.parse(v));
-    });
-  }, []);
+    apiFetch<string[]>('/api/user/recent').then(setRecent).catch(() => {});
+  }, [apiFetch]);
 
   const fetchTrending = useCallback(async (showLoader = false) => {
     if (showLoader) setTrendingLoading(true);
@@ -128,7 +128,7 @@ export default function HomeScreen() {
     Keyboard.dismiss();
     const updated = [upper, ...recent.filter((s) => s !== upper)].slice(0, 8);
     setRecent(updated);
-    await AsyncStorage.setItem(RECENT_KEY, JSON.stringify(updated));
+    apiFetch('/api/user/recent', { method: 'PUT', body: JSON.stringify({ tickers: updated }) }).catch(() => {});
     router.push(`/analysis/${upper}`);
   }, [recent, router]);
 
@@ -136,9 +136,9 @@ export default function HomeScreen() {
     if (query.trim()) navigateTo(query.trim());
   };
 
-  const clearRecent = async () => {
+  const clearRecent = () => {
     setRecent([]);
-    await AsyncStorage.removeItem(RECENT_KEY);
+    apiFetch('/api/user/recent', { method: 'PUT', body: JSON.stringify({ tickers: [] }) }).catch(() => {});
   };
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
@@ -181,18 +181,23 @@ export default function HomeScreen() {
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: topPad + 12 }]}>
-        <TouchableOpacity style={styles.brandRow} onPress={showTip} activeOpacity={0.75}>
-          <MMLogo size={44} />
-          <View style={styles.brandText}>
-            <Text style={[styles.brandName, { color: colors.foreground, fontFamily: 'Inter_700Bold', letterSpacing: 0.8 }]}>
-              Meisner Method
-            </Text>
-            <Text style={[styles.tagline, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-              AI-powered market intelligence
-            </Text>
-          </View>
-          <Feather name="info" size={13} color={colors.mutedForeground} style={{ marginLeft: 'auto' }} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <TouchableOpacity style={[styles.brandRow, { flex: 1 }]} onPress={showTip} activeOpacity={0.75}>
+            <MMLogo size={44} />
+            <View style={styles.brandText}>
+              <Text style={[styles.brandName, { color: colors.foreground, fontFamily: 'Inter_700Bold', letterSpacing: 0.8 }]}>
+                Meisner Method
+              </Text>
+              <Text style={[styles.tagline, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                AI-powered market intelligence
+              </Text>
+            </View>
+            <Feather name="info" size={13} color={colors.mutedForeground} style={{ marginLeft: 'auto', marginRight: 8 }} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => signOut()} style={{ padding: 8 }} activeOpacity={0.7}>
+            <Feather name="log-out" size={17} color={colors.mutedForeground} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Search bar */}

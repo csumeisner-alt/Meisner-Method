@@ -18,8 +18,8 @@ import {
   Easing,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Feather } from '@expo/vector-icons';
+import { useApi } from '@/hooks/useApi';
 import * as Speech from 'expo-speech';
 import Constants from 'expo-constants';
 import { useColors } from '@/hooks/useColors';
@@ -76,7 +76,6 @@ type PortfolioTab = 'positions' | 'trades';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const STORAGE_KEY = 'meisner_portfolio_trades';
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
 const SPARKLE_EMOJIS = ['✨', '⭐', '💫', '🌟', '🎉', '💎', '🏆', '🔥'];
@@ -1120,17 +1119,32 @@ export default function PortfolioScreen() {
   const [defaultType, setDefaultType] = useState<'buy' | 'sell'>('buy');
   const [defaultSymbol, setDefaultSymbol] = useState<string | undefined>(undefined);
   const [celebration, setCelebration] = useState<TradeGrade | null>(null);
+  const { apiFetch } = useApi();
+  const tradesRef = useRef<Trade[]>([]);
 
   const topPad = Platform.OS === 'web' ? 16 : insets.top;
 
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY).then(v => { if (v) setTrades(JSON.parse(v)); });
-  }, []);
+    apiFetch<Trade[]>('/api/user/trades')
+      .then(data => { setTrades(data); tradesRef.current = data; })
+      .catch(() => {});
+  }, [apiFetch]);
 
   const saveTrades = useCallback(async (next: Trade[]) => {
+    const prev = tradesRef.current;
+    tradesRef.current = next;
     setTrades(next);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  }, []);
+    const nextIds = new Set(next.map(t => t.id));
+    const deleted = prev.filter(t => !nextIds.has(t.id));
+    const upserted = next.filter(t => {
+      const old = prev.find(p => p.id === t.id);
+      return !old || JSON.stringify(old) !== JSON.stringify(t);
+    });
+    await Promise.all([
+      ...deleted.map(t => apiFetch(`/api/user/trades/${t.id}`, { method: 'DELETE' }).catch(() => {})),
+      ...upserted.map(t => apiFetch('/api/user/trades', { method: 'POST', body: JSON.stringify(t) }).catch(() => {})),
+    ]);
+  }, [apiFetch]);
 
   const fetchAllQuotes = useCallback(async (tradeList: Trade[]) => {
     const symbols = [...new Set(tradeList.map(t => t.symbol))];
@@ -1153,7 +1167,11 @@ export default function PortfolioScreen() {
   function handleReset() {
     Alert.alert('Reset Portfolio', 'Permanently delete ALL trades, positions, and history? This cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete Everything', style: 'destructive', onPress: async () => { setTrades([]); setQuotes({}); await AsyncStorage.removeItem(STORAGE_KEY); } },
+      { text: 'Delete Everything', style: 'destructive', onPress: async () => {
+        const toDelete = [...trades];
+        setTrades([]); setQuotes({}); tradesRef.current = [];
+        await Promise.all(toDelete.map(t => apiFetch(`/api/user/trades/${t.id}`, { method: 'DELETE' }).catch(() => {})));
+      } },
     ]);
   }
 

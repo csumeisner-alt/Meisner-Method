@@ -20,8 +20,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useApi } from '@/hooks/useApi';
 import { Feather } from '@expo/vector-icons';
 import { MMLogo } from '@/components/MMLogo';
 import { BottomTabBar } from '@/components/BottomTabBar';
@@ -74,10 +74,6 @@ type StockInfo = {
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const INITIAL_BALANCE = 100_000;
-const STORAGE_ACCOUNTS = 'paper_accounts_v2';
-const STORAGE_POSITIONS = 'paper_positions_v2';
-const STORAGE_TRANSACTIONS = 'paper_txns_v2';
-const STORAGE_ACTIVE = 'paper_active_v2';
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
 const SILVER = '#c0c0c0';
@@ -126,23 +122,6 @@ function defaultAccounts(): PaperAccount[] {
   ];
 }
 
-async function loadAll() {
-  const [acctRaw, posRaw, txRaw, activeRaw] = await Promise.all([
-    AsyncStorage.getItem(STORAGE_ACCOUNTS),
-    AsyncStorage.getItem(STORAGE_POSITIONS),
-    AsyncStorage.getItem(STORAGE_TRANSACTIONS),
-    AsyncStorage.getItem(STORAGE_ACTIVE),
-  ]);
-  let accounts: PaperAccount[] = acctRaw ? JSON.parse(acctRaw) : [];
-  if (accounts.length === 0) {
-    accounts = defaultAccounts();
-    await AsyncStorage.setItem(STORAGE_ACCOUNTS, JSON.stringify(accounts));
-  }
-  const positions: PaperPosition[] = posRaw ? JSON.parse(posRaw) : [];
-  const transactions: PaperTransaction[] = txRaw ? JSON.parse(txRaw) : [];
-  const activeId = activeRaw ?? accounts[0].id;
-  return { accounts, positions, transactions, activeId };
-}
 
 function buildValueHistory(
   account: PaperAccount,
@@ -250,29 +229,69 @@ export default function PaperScreen() {
     (s, p) => s + p.shares * (quotes[p.symbol]?.change ?? 0), 0,
   );
 
+  const { apiFetch } = useApi();
+  const accountsRef = useRef<PaperAccount[]>([]);
+  const positionsRef = useRef<PaperPosition[]>([]);
+  const transactionsRef = useRef<PaperTransaction[]>([]);
+  const activeIdRef = useRef<string>('');
+
+  // ── Sync helper ───────────────────────────────────────────────────────────
+  const syncToServer = useCallback(async (
+    accts: PaperAccount[], pos: PaperPosition[], txns: PaperTransaction[], aid: string,
+  ) => {
+    await apiFetch('/api/user/paper/sync', {
+      method: 'POST',
+      body: JSON.stringify({ accounts: accts, positions: pos, transactions: txns, activeId: aid }),
+    });
+  }, [apiFetch]);
+
   // ── Storage helpers ───────────────────────────────────────────────────────
   const saveAccounts = useCallback(async (data: PaperAccount[]) => {
+    accountsRef.current = data;
     setAccounts(data);
-    await AsyncStorage.setItem(STORAGE_ACCOUNTS, JSON.stringify(data));
-  }, []);
+    await syncToServer(data, positionsRef.current, transactionsRef.current, activeIdRef.current).catch(() => {});
+  }, [syncToServer]);
   const savePositions = useCallback(async (data: PaperPosition[]) => {
+    positionsRef.current = data;
     setPositions(data);
-    await AsyncStorage.setItem(STORAGE_POSITIONS, JSON.stringify(data));
-  }, []);
+    await syncToServer(accountsRef.current, data, transactionsRef.current, activeIdRef.current).catch(() => {});
+  }, [syncToServer]);
   const saveTransactions = useCallback(async (data: PaperTransaction[]) => {
+    transactionsRef.current = data;
     setTransactions(data);
-    await AsyncStorage.setItem(STORAGE_TRANSACTIONS, JSON.stringify(data));
-  }, []);
+    await syncToServer(accountsRef.current, positionsRef.current, data, activeIdRef.current).catch(() => {});
+  }, [syncToServer]);
 
   // ── Init ─────────────────────────────────────────────────────────────────
   useEffect(() => {
-    loadAll().then(({ accounts: a, positions: p, transactions: t, activeId: id }) => {
-      setAccounts(a);
-      setPositions(p);
-      setTransactions(t);
-      setActiveId(id);
-    });
-  }, []);
+    async function init() {
+      try {
+        const [accts, pos, txns, active] = await Promise.all([
+          apiFetch<PaperAccount[]>('/api/user/paper/accounts'),
+          apiFetch<PaperPosition[]>('/api/user/paper/positions'),
+          apiFetch<PaperTransaction[]>('/api/user/paper/transactions'),
+          apiFetch<{ activeId: string | null }>('/api/user/paper/active'),
+        ]);
+        let finalAccounts = accts;
+        if (finalAccounts.length === 0) {
+          finalAccounts = defaultAccounts();
+          await syncToServer(finalAccounts, [], [], finalAccounts[0].id).catch(() => {});
+        }
+        accountsRef.current = finalAccounts;
+        positionsRef.current = pos;
+        transactionsRef.current = txns;
+        const id = active.activeId ?? finalAccounts[0].id;
+        activeIdRef.current = id;
+        setAccounts(finalAccounts);
+        setPositions(pos);
+        setTransactions(txns);
+        setActiveId(id);
+      } catch (e) {
+        console.error('Failed to load paper data:', e);
+      }
+    }
+    init();
+  }, [apiFetch, syncToServer]);
 
   // ── Fetch quotes ──────────────────────────────────────────────────────────
   const fetchQuotes = useCallback(async (positions: PaperPosition[], accountId: string) => {
@@ -314,9 +333,10 @@ export default function PaperScreen() {
 
   // ── Account actions ───────────────────────────────────────────────────────
   const switchAccount = async (id: string) => {
+    activeIdRef.current = id;
     setActiveId(id);
     setShowAccountDropdown(false);
-    await AsyncStorage.setItem(STORAGE_ACTIVE, id);
+    syncToServer(accountsRef.current, positionsRef.current, transactionsRef.current, id).catch(() => {});
     fetchQuotes(positions, id);
   };
 
