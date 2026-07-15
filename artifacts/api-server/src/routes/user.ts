@@ -259,15 +259,136 @@ router.put("/user/recent", requireAuth, async (req: any, res) => {
 
 // ── Bulk sync (paper): replace all user's data for accounts/positions/transactions ──
 // Called after local state changes to keep server fully in sync.
+//
+// This endpoint does full-replacement writes (delete + re-insert) inside a
+// transaction, so a malformed payload could otherwise wipe or corrupt good
+// data. We validate and normalize the entire body BEFORE opening the
+// transaction; on any bad input we return 400 and never touch the DB.
+
+// ── Sync payload validation ────────────────────────────────────────────────
+class ValidationError extends Error {}
+
+function reqString(value: any, field: string): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new ValidationError(`${field} must be a non-empty string`);
+  }
+  return value;
+}
+
+function optString(value: any, field: string, fallback: string): string {
+  if (value == null) return fallback;
+  if (typeof value !== "string") {
+    throw new ValidationError(`${field} must be a string`);
+  }
+  return value;
+}
+
+function reqNumber(value: any, field: string): number {
+  const n = typeof value === "string" && value.trim() !== "" ? Number(value) : value;
+  if (typeof n !== "number" || !Number.isFinite(n)) {
+    throw new ValidationError(`${field} must be a finite number`);
+  }
+  return n;
+}
+
+function optNumber(value: any, field: string, fallback: number): number {
+  if (value == null) return fallback;
+  return reqNumber(value, field);
+}
+
+function requireArray(value: any, field: string): any[] {
+  if (!Array.isArray(value)) {
+    throw new ValidationError(`${field} must be an array`);
+  }
+  return value;
+}
+
+function requireObject(value: any, field: string): any {
+  if (value == null || typeof value !== "object" || Array.isArray(value)) {
+    throw new ValidationError(`${field} must be an object`);
+  }
+  return value;
+}
+
+function validateSyncPayload(body: any) {
+  requireObject(body, "request body");
+  const accountsIn = requireArray(body.accounts, "accounts");
+  const positionsIn = requireArray(body.positions, "positions");
+  const transactionsIn = requireArray(body.transactions, "transactions");
+
+  const accounts = accountsIn.map((a, i) => {
+    requireObject(a, `accounts[${i}]`);
+    return {
+      id: reqString(a.id, `accounts[${i}].id`),
+      name: reqString(a.name, `accounts[${i}].name`),
+      cash: reqNumber(a.cash, `accounts[${i}].cash`),
+      createdAt: reqString(a.createdAt, `accounts[${i}].createdAt`),
+    };
+  });
+
+  const positions = positionsIn.map((p, i) => {
+    requireObject(p, `positions[${i}]`);
+    return {
+      id: reqString(p.id, `positions[${i}].id`),
+      accountId: reqString(p.accountId, `positions[${i}].accountId`),
+      symbol: reqString(p.symbol, `positions[${i}].symbol`),
+      companyName: optString(p.companyName, `positions[${i}].companyName`, ""),
+      shares: reqNumber(p.shares, `positions[${i}].shares`),
+      avgCost: reqNumber(p.avgCost, `positions[${i}].avgCost`),
+      openedAt: reqString(p.openedAt, `positions[${i}].openedAt`),
+      dividendYield: optNumber(p.dividendYield, `positions[${i}].dividendYield`, 0),
+      sector: optString(p.sector, `positions[${i}].sector`, ""),
+    };
+  });
+
+  const transactions = transactionsIn.map((t, i) => {
+    requireObject(t, `transactions[${i}]`);
+    return {
+      id: reqString(t.id, `transactions[${i}].id`),
+      accountId: reqString(t.accountId, `transactions[${i}].accountId`),
+      symbol: reqString(t.symbol, `transactions[${i}].symbol`),
+      companyName: optString(t.companyName, `transactions[${i}].companyName`, ""),
+      action: reqString(t.action, `transactions[${i}].action`),
+      shares: reqNumber(t.shares, `transactions[${i}].shares`),
+      price: reqNumber(t.price, `transactions[${i}].price`),
+      total: reqNumber(t.total, `transactions[${i}].total`),
+      date: reqString(t.date, `transactions[${i}].date`),
+      realizedPnL: t.realizedPnL == null ? null : reqNumber(t.realizedPnL, `transactions[${i}].realizedPnL`),
+    };
+  });
+
+  let activeId: string | null = null;
+  if (body.activeId != null) {
+    activeId = reqString(body.activeId, "activeId");
+  }
+
+  return { accounts, positions, transactions, activeId };
+}
+
 router.post("/user/paper/sync", requireAuth, async (req: any, res) => {
-  const { accounts, positions, transactions, activeId } = req.body;
+  // Validate + normalize the full payload before touching the DB. Any bad
+  // input aborts here with a 400, so a malformed body can never partially
+  // wipe or corrupt the user's stored paper-trading data.
+  let payload;
+  try {
+    payload = validateSyncPayload(req.body);
+  } catch (e: any) {
+    if (e instanceof ValidationError) {
+      res.status(400).json({ error: e.message });
+      return;
+    }
+    res.status(400).json({ error: "Invalid request body" });
+    return;
+  }
+  const { accounts, positions, transactions, activeId } = payload;
+
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
     // Sync accounts
     await client.query("DELETE FROM paper_accounts WHERE user_id=$1", [req.userId]);
-    for (const a of (accounts ?? [])) {
+    for (const a of accounts) {
       await client.query(
         "INSERT INTO paper_accounts (id, user_id, name, cash, created_at) VALUES ($1,$2,$3,$4,$5)",
         [a.id, req.userId, a.name, a.cash, a.createdAt],
@@ -276,19 +397,19 @@ router.post("/user/paper/sync", requireAuth, async (req: any, res) => {
 
     // Sync positions
     await client.query("DELETE FROM paper_positions WHERE user_id=$1", [req.userId]);
-    for (const p of (positions ?? [])) {
+    for (const p of positions) {
       await client.query(
         "INSERT INTO paper_positions (id, user_id, account_id, symbol, company_name, shares, avg_cost, opened_at, dividend_yield, sector) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
-        [p.id, req.userId, p.accountId, p.symbol, p.companyName, p.shares, p.avgCost, p.openedAt, p.dividendYield ?? 0, p.sector ?? ""],
+        [p.id, req.userId, p.accountId, p.symbol, p.companyName, p.shares, p.avgCost, p.openedAt, p.dividendYield, p.sector],
       );
     }
 
     // Sync transactions
     await client.query("DELETE FROM paper_transactions WHERE user_id=$1", [req.userId]);
-    for (const t of (transactions ?? [])) {
+    for (const t of transactions) {
       await client.query(
         "INSERT INTO paper_transactions (id, user_id, account_id, symbol, company_name, action, shares, price, total, date, realized_pnl) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
-        [t.id, req.userId, t.accountId, t.symbol, t.companyName, t.action, t.shares, t.price, t.total, t.date, t.realizedPnL ?? null],
+        [t.id, req.userId, t.accountId, t.symbol, t.companyName, t.action, t.shares, t.price, t.total, t.date, t.realizedPnL],
       );
     }
 
