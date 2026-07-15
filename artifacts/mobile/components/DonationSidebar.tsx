@@ -12,12 +12,15 @@ import {
   Dimensions,
   Linking,
   Platform,
+  AppState,
+  AppStateStatus,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
+import { Confetti } from '@/components/Confetti';
 
 // Creator's PUBLIC payment handles. These only ever build outbound payment
 // links — the app never touches logins, balances, or account data.
@@ -30,7 +33,11 @@ const MIN_AMOUNT = 1;
 const MAX_AMOUNT = 10000;
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
+const SCREEN_HEIGHT = Dimensions.get('window').height;
 const PANEL_WIDTH = Math.min(360, SCREEN_WIDTH * 0.88);
+
+// How long the celebratory thank-you lingers before gently fading out.
+const CELEBRATION_MS = 3200;
 
 const VENMO_BLUE = '#3D95CE';
 const CASHAPP_GREEN = '#00D632';
@@ -51,6 +58,14 @@ export function DonationSidebar({ visible, onClose, onSignOut }: Props) {
   const [selected, setSelected] = useState<number>(2.4);
   const [customText, setCustomText] = useState('');
   const [isCustom, setIsCustom] = useState(false);
+
+  // Celebration: shown when the user returns to the app after tapping a tip
+  // button. There is no payment webhook, so this is a best-effort "you came
+  // back" cue — not a confirmed-payment signal.
+  const [celebrating, setCelebrating] = useState(false);
+  const celebAnim = useRef(new Animated.Value(0)).current;
+  const tipAttemptedRef = useRef(false);
+  const celebTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const effectiveAmount = isCustom ? parseFloat(customText) || 0 : selected;
   const isValid = effectiveAmount >= MIN_AMOUNT && effectiveAmount <= MAX_AMOUNT;
@@ -75,6 +90,44 @@ export function DonationSidebar({ visible, onClose, onSignOut }: Props) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
+
+  // Fire the thank-you the moment the user returns to StockSense, but only if
+  // they actually tapped a tip button before leaving.
+  useEffect(() => {
+    const onAppStateChange = (state: AppStateStatus) => {
+      if (state === 'active' && tipAttemptedRef.current) {
+        tipAttemptedRef.current = false;
+        triggerCelebration();
+      }
+    };
+    const sub = AppState.addEventListener('change', onAppStateChange);
+    return () => {
+      sub.remove();
+      if (celebTimer.current) clearTimeout(celebTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const triggerCelebration = () => {
+    if (celebTimer.current) clearTimeout(celebTimer.current);
+    setCelebrating(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    celebAnim.setValue(0);
+    Animated.timing(celebAnim, {
+      toValue: 1,
+      duration: 320,
+      useNativeDriver: true,
+    }).start();
+    celebTimer.current = setTimeout(() => {
+      Animated.timing(celebAnim, {
+        toValue: 0,
+        duration: 440,
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished) setCelebrating(false);
+      });
+    }, CELEBRATION_MS);
+  };
 
   const pickPreset = (value: number) => {
     Haptics.selectionAsync();
@@ -103,9 +156,12 @@ export function DonationSidebar({ visible, onClose, onSignOut }: Props) {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     try {
       await Linking.openURL(appUrl);
+      // Arm the thank-you: it fires when the user comes back to StockSense.
+      tipAttemptedRef.current = true;
     } catch {
       try {
         await Linking.openURL(webUrl);
+        tipAttemptedRef.current = true;
       } catch {
         // Nothing we can do if neither opens.
       }
@@ -302,6 +358,41 @@ export function DonationSidebar({ visible, onClose, onSignOut }: Props) {
               </Text>
             </TouchableOpacity>
           </ScrollView>
+
+          {/* Celebratory thank-you shown when the user returns from a tip */}
+          {celebrating && (
+            <Animated.View
+              pointerEvents="none"
+              style={[styles.celebOverlay, { opacity: celebAnim }]}
+            >
+              <Confetti width={PANEL_WIDTH} height={SCREEN_HEIGHT} />
+              <Animated.View
+                style={[
+                  styles.celebCard,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                    transform: [
+                      {
+                        scale: celebAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.8, 1],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              >
+                <Text style={styles.celebEmoji}>🎉</Text>
+                <Text style={[styles.celebTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+                  Thank you!
+                </Text>
+                <Text style={[styles.celebBody, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
+                  You're keeping StockSense 100% ad-free. 💜
+                </Text>
+              </Animated.View>
+            </Animated.View>
+          )}
         </Animated.View>
       </View>
     </Modal>
@@ -379,4 +470,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   signOutText: { fontSize: 14 },
+  celebOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+  },
+  celebCard: {
+    alignItems: 'center',
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingVertical: 28,
+    paddingHorizontal: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  celebEmoji: { fontSize: 48, marginBottom: 10 },
+  celebTitle: { fontSize: 24, marginBottom: 8 },
+  celebBody: { fontSize: 14.5, lineHeight: 21, textAlign: 'center' },
 });
