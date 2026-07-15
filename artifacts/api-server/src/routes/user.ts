@@ -135,7 +135,7 @@ router.delete("/user/paper/accounts/:id", requireAuth, async (req: any, res) => 
 router.get("/user/paper/positions", requireAuth, async (req: any, res) => {
   try {
     const { rows } = await pool.query(
-      "SELECT id, account_id, symbol, company_name, shares, avg_cost, opened_at, dividend_yield, sector FROM paper_positions WHERE user_id=$1",
+      "SELECT id, account_id, symbol, company_name, shares, avg_cost, opened_at, dividend_yield, dividend_rate, sector FROM paper_positions WHERE user_id=$1",
       [req.userId],
     );
     res.json(rows.map((r: any) => ({
@@ -147,6 +147,7 @@ router.get("/user/paper/positions", requireAuth, async (req: any, res) => {
       avgCost: Number(r.avg_cost),
       openedAt: r.opened_at instanceof Date ? r.opened_at.toISOString() : r.opened_at,
       dividendYield: Number(r.dividend_yield),
+      dividendRate: Number(r.dividend_rate),
       sector: r.sector,
     })));
   } catch (e: any) {
@@ -155,13 +156,13 @@ router.get("/user/paper/positions", requireAuth, async (req: any, res) => {
 });
 
 router.post("/user/paper/positions", requireAuth, async (req: any, res) => {
-  const { id, accountId, symbol, companyName, shares, avgCost, openedAt, dividendYield, sector } = req.body;
+  const { id, accountId, symbol, companyName, shares, avgCost, openedAt, dividendYield, dividendRate, sector } = req.body;
   try {
     await pool.query(
-      `INSERT INTO paper_positions (id, user_id, account_id, symbol, company_name, shares, avg_cost, opened_at, dividend_yield, sector)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-       ON CONFLICT (id, user_id) DO UPDATE SET shares=$6, avg_cost=$7`,
-      [id, req.userId, accountId, symbol, companyName, shares, avgCost, openedAt, dividendYield ?? 0, sector ?? ""],
+      `INSERT INTO paper_positions (id, user_id, account_id, symbol, company_name, shares, avg_cost, opened_at, dividend_yield, dividend_rate, sector)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       ON CONFLICT (id, user_id) DO UPDATE SET shares=$6, avg_cost=$7, dividend_rate=$10`,
+      [id, req.userId, accountId, symbol, companyName, shares, avgCost, openedAt, dividendYield ?? 0, dividendRate ?? 0, sector ?? ""],
     );
     res.json({ ok: true });
   } catch (e: any) {
@@ -337,6 +338,7 @@ function validateSyncPayload(body: any) {
       avgCost: reqNumber(p.avgCost, `positions[${i}].avgCost`),
       openedAt: reqString(p.openedAt, `positions[${i}].openedAt`),
       dividendYield: optNumber(p.dividendYield, `positions[${i}].dividendYield`, 0),
+      dividendRate: optNumber(p.dividendRate, `positions[${i}].dividendRate`, 0),
       sector: optString(p.sector, `positions[${i}].sector`, ""),
     };
   });
@@ -399,8 +401,8 @@ router.post("/user/paper/sync", requireAuth, async (req: any, res) => {
     await client.query("DELETE FROM paper_positions WHERE user_id=$1", [req.userId]);
     for (const p of positions) {
       await client.query(
-        "INSERT INTO paper_positions (id, user_id, account_id, symbol, company_name, shares, avg_cost, opened_at, dividend_yield, sector) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
-        [p.id, req.userId, p.accountId, p.symbol, p.companyName, p.shares, p.avgCost, p.openedAt, p.dividendYield, p.sector],
+        "INSERT INTO paper_positions (id, user_id, account_id, symbol, company_name, shares, avg_cost, opened_at, dividend_yield, dividend_rate, sector) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
+        [p.id, req.userId, p.accountId, p.symbol, p.companyName, p.shares, p.avgCost, p.openedAt, p.dividendYield, p.dividendRate, p.sector],
       );
     }
 
