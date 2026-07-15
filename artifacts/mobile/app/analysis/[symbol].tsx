@@ -11,6 +11,7 @@ import {
   TextInput,
   useWindowDimensions,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -21,6 +22,10 @@ import { useAnalyzeStock } from '@workspace/api-client-react';
 import type { StockAnalysis } from '@workspace/api-client-react';
 import { ComparisonChart } from '@/components/ComparisonChart';
 import type { Candle } from '@/components/StockChart';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const PINNED_COMP_KEY = '@stocksense/pinned_comp_symbol';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -178,6 +183,16 @@ export default function AnalysisScreen() {
   const [compCandles, setCompCandles]         = useState<Candle[]>([]);
   const [compLoading, setCompLoading]         = useState(false);
 
+  // Load pinned comparison symbol from storage on first mount
+  useEffect(() => {
+    AsyncStorage.getItem(PINNED_COMP_KEY).then((stored) => {
+      if (stored) {
+        setCompInput(stored);
+        setCompSymbol(stored);
+      }
+    }).catch(() => { /* ignore storage errors */ });
+  }, []);
+
   // Fetch primary chart data whenever symbol or period changes
   useEffect(() => {
     if (!symbol) return;
@@ -206,14 +221,21 @@ export default function AnalysisScreen() {
 
   const commitCompSymbol = useCallback(() => {
     const s = compInput.trim().toUpperCase();
-    if (s && s !== compSymbol) setCompSymbol(s);
-    else if (!s) { setCompSymbol(''); setCompCandles([]); }
+    if (s && s !== compSymbol) {
+      setCompSymbol(s);
+      AsyncStorage.setItem(PINNED_COMP_KEY, s).catch(() => { /* ignore */ });
+    } else if (!s) {
+      setCompSymbol('');
+      setCompCandles([]);
+      AsyncStorage.removeItem(PINNED_COMP_KEY).catch(() => { /* ignore */ });
+    }
   }, [compInput, compSymbol]);
 
   const clearComp = useCallback(() => {
     setCompInput('');
     setCompSymbol('');
     setCompCandles([]);
+    AsyncStorage.removeItem(PINNED_COMP_KEY).catch(() => { /* ignore */ });
   }, []);
 
   // Chart card width = screen width minus scroll padding (14 each side) minus card padding (16 each side)
