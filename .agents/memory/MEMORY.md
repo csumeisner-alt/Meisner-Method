@@ -6,4 +6,5 @@
 - [RN-web TextInput in Playwright](rn-web-playwright-textinput.md) — `fill()` skips `onChangeText`; tester must type char-by-char or validation false-fails.
 - [Stable apiFetch vs Clerk getToken](useapi-stable-fetch.md) — Clerk `getToken` isn't stable; memoizing apiFetch on it → infinite fetch loop + Clerk rate-limit blank screen. Use a ref.
 - [EAS build Clerk + domain config](eas-build-clerk-config.md) — eas.json must set EXPO_PUBLIC_DOMAIN, EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY, and EXPO_PUBLIC_CLERK_PROXY_URL; build.js is not used for EAS.
-- [EAS build Clerk + domain config](eas-build-clerk-config.md) — eas.json must set EXPO_PUBLIC_DOMAIN, EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY, and EXPO_PUBLIC_CLERK_PROXY_URL; build.js is not used for EAS.
+- [EAS Android mergeReleaseJavaResource failure](eas-android-packaging-conflict.md) — duplicate META-INF from transitive jars (okhttp/jspecify) fails the Gradle merge; fix with expo-build-properties packagingOptions.pickFirst.
+- [Replit mobile artifact deploy = QR/OTA landing page](replit-mobile-artifact-deploy.md) — the published .replit.app of an Expo mobile app is a QR launcher, not a browser app; real access is the APK or Expo Go.
