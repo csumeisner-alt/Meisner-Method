@@ -21,6 +21,7 @@ import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
 import { BottomTabBar } from '@/components/BottomTabBar';
 import { MMLogo } from '@/components/MMLogo';
+import { DonationSidebar } from '@/components/DonationSidebar';
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
@@ -81,6 +82,7 @@ export default function HomeScreen() {
   const [recent, setRecent] = useState<string[]>([]);
   const [tipVisible, setTipVisible] = useState(false);
   const [currentTip, setCurrentTip] = useState('');
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [trending, setTrending] = useState<TrendingTicker[]>([]);
   const [trendingLoading, setTrendingLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -194,8 +196,15 @@ export default function HomeScreen() {
             </View>
             <Feather name="info" size={13} color={colors.mutedForeground} style={{ marginLeft: 'auto', marginRight: 8 }} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => signOut()} style={{ padding: 8 }} activeOpacity={0.7}>
-            <Feather name="log-out" size={17} color={colors.mutedForeground} />
+          <TouchableOpacity
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setSettingsOpen(true);
+            }}
+            style={{ padding: 8 }}
+            activeOpacity={0.7}
+          >
+            <Feather name="settings" size={20} color={colors.mutedForeground} />
           </TouchableOpacity>
         </View>
       </View>
@@ -356,6 +365,15 @@ export default function HomeScreen() {
         </Text>
       </ScrollView>
       <BottomTabBar />
+
+      <DonationSidebar
+        visible={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onSignOut={() => {
+          setSettingsOpen(false);
+          signOut();
+        }}
+      />
     </View>
   );
 }

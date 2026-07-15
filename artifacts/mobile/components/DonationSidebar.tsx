@@ -1,0 +1,382 @@
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Modal,
+  Pressable,
+  TouchableOpacity,
+  TextInput,
+  ScrollView,
+  Animated,
+  Dimensions,
+  Linking,
+  Platform,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
+import { useColors } from '@/hooks/useColors';
+
+// Creator's PUBLIC payment handles. These only ever build outbound payment
+// links — the app never touches logins, balances, or account data.
+const VENMO_HANDLE = 'SpinCycle1';
+const CASHAPP_CASHTAG = 'Spincycle01';
+const DONATION_NOTE = 'Keeping Meisner Method ad-free! 🎉 Thank you!';
+
+const PRESETS = [2.4, 5, 10];
+const MIN_AMOUNT = 1;
+const MAX_AMOUNT = 10000;
+
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const PANEL_WIDTH = Math.min(360, SCREEN_WIDTH * 0.88);
+
+const VENMO_BLUE = '#3D95CE';
+const CASHAPP_GREEN = '#00D632';
+
+interface Props {
+  visible: boolean;
+  onClose: () => void;
+  onSignOut: () => void;
+}
+
+export function DonationSidebar({ visible, onClose, onSignOut }: Props) {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+
+  const [rendered, setRendered] = useState(visible);
+  const anim = useRef(new Animated.Value(0)).current;
+
+  const [selected, setSelected] = useState<number>(2.4);
+  const [customText, setCustomText] = useState('');
+  const [isCustom, setIsCustom] = useState(false);
+
+  const effectiveAmount = isCustom ? parseFloat(customText) || 0 : selected;
+  const isValid = effectiveAmount >= MIN_AMOUNT && effectiveAmount <= MAX_AMOUNT;
+  const amountStr = effectiveAmount.toFixed(2);
+
+  useEffect(() => {
+    if (visible) {
+      setRendered(true);
+      Animated.timing(anim, {
+        toValue: 1,
+        duration: 260,
+        useNativeDriver: true,
+      }).start();
+    } else if (rendered) {
+      Animated.timing(anim, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished) setRendered(false);
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  const pickPreset = (value: number) => {
+    Haptics.selectionAsync();
+    setSelected(value);
+    setIsCustom(false);
+    setCustomText('');
+  };
+
+  const onCustomChange = (text: string) => {
+    // Keep digits + a single decimal point, max 2 decimals.
+    let cleaned = text.replace(/[^0-9.]/g, '');
+    const firstDot = cleaned.indexOf('.');
+    if (firstDot !== -1) {
+      cleaned =
+        cleaned.slice(0, firstDot + 1) +
+        cleaned.slice(firstDot + 1).replace(/\./g, '');
+      const [whole, dec] = cleaned.split('.');
+      cleaned = whole + '.' + (dec ?? '').slice(0, 2);
+    }
+    setCustomText(cleaned);
+    setIsCustom(true);
+  };
+
+  const openPayment = async (appUrl: string, webUrl: string) => {
+    if (!isValid) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    try {
+      await Linking.openURL(appUrl);
+    } catch {
+      try {
+        await Linking.openURL(webUrl);
+      } catch {
+        // Nothing we can do if neither opens.
+      }
+    }
+  };
+
+  const donateVenmo = () => {
+    const note = encodeURIComponent(DONATION_NOTE);
+    const appUrl = `venmo://paycharge?txn=pay&recipients=${VENMO_HANDLE}&amount=${amountStr}&note=${note}`;
+    const webUrl = `https://venmo.com/u/${VENMO_HANDLE}`;
+    openPayment(appUrl, webUrl);
+  };
+
+  const donateCashApp = () => {
+    // cash.app universal link opens the app if installed, otherwise the browser.
+    const url = `https://cash.app/$${CASHAPP_CASHTAG}/${amountStr}`;
+    openPayment(url, url);
+  };
+
+  if (!rendered) return null;
+
+  const backdropOpacity = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 0.72],
+  });
+  const translateX = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [PANEL_WIDTH, 0],
+  });
+
+  const topPad = (Platform.OS === 'web' ? 24 : insets.top) + 12;
+  const botPad = (Platform.OS === 'web' ? 24 : insets.bottom) + 20;
+
+  return (
+    <Modal transparent visible={rendered} onRequestClose={onClose} animationType="none">
+      <View style={styles.root}>
+        <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
+          <Pressable style={{ flex: 1 }} onPress={onClose} />
+        </Animated.View>
+
+        <Animated.View
+          style={[
+            styles.panel,
+            {
+              width: PANEL_WIDTH,
+              backgroundColor: colors.background,
+              borderLeftColor: colors.border,
+              transform: [{ translateX }],
+            },
+          ]}
+        >
+          {/* Header */}
+          <View style={[styles.panelHeader, { paddingTop: topPad, borderBottomColor: colors.border }]}>
+            <Text style={[styles.panelTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+              Settings
+            </Text>
+            <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.7} hitSlop={10}>
+              <Feather name="x" size={22} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ padding: 20, paddingBottom: botPad }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Donation hero */}
+            <LinearGradient
+              colors={['#7C3AED', '#DB2777', '#F59E0B']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.hero}
+            >
+              <Text style={styles.heroEmoji}>🎉</Text>
+              <Text style={[styles.heroTitle, { fontFamily: 'Inter_700Bold' }]}>
+                Keep it 100% ad-free!
+              </Text>
+              <Text style={[styles.heroBody, { fontFamily: 'Inter_500Medium' }]}>
+                No banners. No pop-ups. No selling your data. Just clean market
+                intelligence. A tiny tip helps The Creator keep it that way —
+                and keeps the ads out for good. 🙌
+              </Text>
+            </LinearGradient>
+
+            {/* Amount selector */}
+            <Text style={[styles.label, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold' }]}>
+              PICK YOUR TIP
+            </Text>
+            <View style={styles.presetRow}>
+              {PRESETS.map((value) => {
+                const active = !isCustom && selected === value;
+                return (
+                  <TouchableOpacity
+                    key={value}
+                    style={[
+                      styles.presetChip,
+                      {
+                        backgroundColor: active ? colors.primary : colors.card,
+                        borderColor: active ? colors.primary : colors.border,
+                      },
+                    ]}
+                    onPress={() => pickPreset(value)}
+                    activeOpacity={0.8}
+                  >
+                    <Text
+                      style={[
+                        styles.presetText,
+                        {
+                          color: active ? colors.primaryForeground : colors.foreground,
+                          fontFamily: 'Inter_700Bold',
+                        },
+                      ]}
+                    >
+                      ${value.toFixed(2)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Custom amount */}
+            <View
+              style={[
+                styles.customRow,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: isCustom ? colors.primary : colors.border,
+                },
+              ]}
+            >
+              <Text style={[styles.dollar, { color: colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+                $
+              </Text>
+              <TextInput
+                style={[styles.customInput, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}
+                placeholder="Custom amount"
+                placeholderTextColor={colors.mutedForeground}
+                keyboardType="decimal-pad"
+                value={customText}
+                onChangeText={onCustomChange}
+                onFocus={() => setIsCustom(true)}
+                returnKeyType="done"
+              />
+            </View>
+            {isCustom && customText.length > 0 && !isValid && (
+              <Text style={[styles.hint, { color: colors.destructive, fontFamily: 'Inter_400Regular' }]}>
+                Enter an amount between ${MIN_AMOUNT.toFixed(2)} and ${MAX_AMOUNT.toLocaleString()}.
+              </Text>
+            )}
+
+            {/* Donate buttons */}
+            <TouchableOpacity
+              style={[styles.payBtn, { backgroundColor: VENMO_BLUE, opacity: isValid ? 1 : 0.45 }]}
+              onPress={donateVenmo}
+              disabled={!isValid}
+              activeOpacity={0.85}
+            >
+              <Feather name="send" size={18} color="#fff" />
+              <Text style={[styles.payText, { fontFamily: 'Inter_700Bold' }]}>
+                Tip ${isValid ? amountStr : '—'} on Venmo
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.payBtn, { backgroundColor: CASHAPP_GREEN, opacity: isValid ? 1 : 0.45 }]}
+              onPress={donateCashApp}
+              disabled={!isValid}
+              activeOpacity={0.85}
+            >
+              <Feather name="dollar-sign" size={18} color="#fff" />
+              <Text style={[styles.payText, { fontFamily: 'Inter_700Bold' }]}>
+                Tip ${isValid ? amountStr : '—'} on Cash App
+              </Text>
+            </TouchableOpacity>
+
+            <Text style={[styles.thanks, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+              💜 Every tip goes straight to The Creator and keeps this app ad-free.
+              You're the best.
+            </Text>
+
+            {/* Divider */}
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+            {/* Sign out */}
+            <TouchableOpacity
+              style={[styles.signOutBtn, { borderColor: colors.border }]}
+              onPress={onSignOut}
+              activeOpacity={0.7}
+            >
+              <Feather name="log-out" size={16} color={colors.mutedForeground} />
+              <Text style={[styles.signOutText, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
+                Sign out
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1, flexDirection: 'row', justifyContent: 'flex-end' },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#000',
+  },
+  panel: {
+    height: '100%',
+    borderLeftWidth: 1,
+  },
+  panelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+  },
+  panelTitle: { fontSize: 18, letterSpacing: 0.4 },
+  closeBtn: { padding: 4 },
+  hero: {
+    borderRadius: 18,
+    padding: 20,
+    marginBottom: 24,
+  },
+  heroEmoji: { fontSize: 34, marginBottom: 6 },
+  heroTitle: { color: '#fff', fontSize: 21, lineHeight: 27, marginBottom: 8 },
+  heroBody: { color: 'rgba(255,255,255,0.94)', fontSize: 13.5, lineHeight: 20 },
+  label: { fontSize: 11, letterSpacing: 1.2, marginBottom: 10 },
+  presetRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  presetChip: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  presetText: { fontSize: 15 },
+  customRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    height: 50,
+  },
+  dollar: { fontSize: 16, marginRight: 6 },
+  customInput: { flex: 1, fontSize: 16, height: '100%' },
+  hint: { fontSize: 12, marginTop: 6 },
+  payBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 9,
+    height: 54,
+    borderRadius: 14,
+    marginTop: 16,
+  },
+  payText: { color: '#fff', fontSize: 15.5 },
+  thanks: { fontSize: 12.5, lineHeight: 19, marginTop: 18, textAlign: 'center' },
+  divider: { height: 1, marginVertical: 24 },
+  signOutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  signOutText: { fontSize: 14 },
+});
