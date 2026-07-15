@@ -27,6 +27,17 @@ function useWarmUpBrowser() {
   }, []);
 }
 
+// Extract a human-readable message from a Clerk error (futures API returns
+// `{ error }` whose shape is a ClerkAPIResponseError-like object).
+function getClerkErrorMessage(err: any): string {
+  return (
+    err?.errors?.[0]?.longMessage ||
+    err?.errors?.[0]?.message ||
+    err?.message ||
+    'Something went wrong. Please try again.'
+  );
+}
+
 export default function SignUpScreen() {
   useWarmUpBrowser();
   const insets = useSafeAreaInsets();
@@ -38,21 +49,49 @@ export default function SignUpScreen() {
   const [password, setPassword] = React.useState('');
   const [code, setCode] = React.useState('');
   const [googleLoading, setGoogleLoading] = React.useState(false);
+  const [formError, setFormError] = React.useState('');
 
+  // Navigate helper used by finalize()/setActive(). On native there is no
+  // window.location and decorateUrl('/') can return an absolute http(s) handoff
+  // URL that expo-router cannot navigate to — falling back to the app root in
+  // that case. AuthGate also redirects once the session is active.
   const navigateAfterAuth = ({ session, decorateUrl }: any) => {
-    if (session?.currentTask) return;
-    const url = decorateUrl('/');
-    router.replace(url as Href);
+    if (session?.currentTask) {
+      console.log('[auth] pending session task, staying put:', session.currentTask);
+      return;
+    }
+    let target = '/';
+    try {
+      // Only accept an internal router path. Any absolute URL (http(s)://,
+      // exp://, the app's custom scheme, etc.) is a handoff URL expo-router
+      // can't navigate to — fall back to the app root instead.
+      const url = decorateUrl?.('/');
+      if (typeof url === 'string' && url.startsWith('/')) {
+        target = url;
+      }
+    } catch (e) {
+      console.warn('[auth] decorateUrl failed, defaulting to /', e);
+    }
+    router.replace(target as Href);
   };
 
   const handleCreateAccount = async () => {
+    setFormError('');
     const { error } = await signUp.password({ emailAddress: email, password });
-    if (error) return;
+    if (error) {
+      setFormError(getClerkErrorMessage(error));
+      return;
+    }
     await signUp.verifications.sendEmailCode();
   };
 
   const handleVerifyCode = async () => {
-    await signUp.verifications.verifyEmailCode({ code });
+    setFormError('');
+    const { error } = await signUp.verifications.verifyEmailCode({ code });
+    if (error) {
+      setFormError(getClerkErrorMessage(error));
+      return;
+    }
     if (signUp.status === 'complete') {
       await signUp.finalize({ navigate: navigateAfterAuth });
     }
@@ -60,19 +99,33 @@ export default function SignUpScreen() {
 
   const handleGoogleSignUp = useCallback(async () => {
     setGoogleLoading(true);
+    setFormError('');
     try {
-      const { createdSessionId, setActive } = await startSSOFlow({
-        strategy: 'oauth_google',
-        redirectUrl: AuthSession.makeRedirectUri(),
+      const { createdSessionId, setActive, signIn: ssoSignIn, signUp: ssoSignUp } =
+        await startSSOFlow({
+          strategy: 'oauth_google',
+          redirectUrl: AuthSession.makeRedirectUri(),
+        });
+      console.log('[auth] Google SSO result:', {
+        createdSessionId,
+        signInStatus: ssoSignIn?.status,
+        signUpStatus: ssoSignUp?.status,
       });
       if (createdSessionId && setActive) {
         await setActive({
           session: createdSessionId,
           navigate: navigateAfterAuth,
         });
+        return;
       }
+      console.warn('[auth] SSO returned no createdSessionId', {
+        signInStatus: ssoSignIn?.status,
+        signUpStatus: ssoSignUp?.status,
+      });
+      setFormError('Could not complete Google sign-up. Please try again.');
     } catch (e) {
       console.error('Google sign-up error:', e);
+      setFormError(getClerkErrorMessage(e));
     } finally {
       setGoogleLoading(false);
     }
@@ -103,6 +156,7 @@ export default function SignUpScreen() {
           autoFocus
         />
         {errors.fields.code && <Text style={s.error}>{errors.fields.code.message}</Text>}
+        {formError ? <Text style={s.error}>{formError}</Text> : null}
 
         <Pressable
           style={[s.btn, fetchStatus === 'fetching' && s.disabled]}
@@ -192,6 +246,8 @@ export default function SignUpScreen() {
           <Text style={s.error}>{errors.fields.password.message}</Text>
         )}
 
+        {formError ? <Text style={s.error}>{formError}</Text> : null}
+
         <Pressable
           style={[s.btn, (!email || !password || fetchStatus === 'fetching') && s.disabled]}
           onPress={handleCreateAccount}
@@ -205,7 +261,7 @@ export default function SignUpScreen() {
 
         <View style={s.linkRow}>
           <Text style={s.linkText}>Already have an account? </Text>
-          <Link href={'/(auth)/sign-in' as Href}>
+          <Link href="/sign-in">
             <Text style={s.link}>Sign in</Text>
           </Link>
         </View>

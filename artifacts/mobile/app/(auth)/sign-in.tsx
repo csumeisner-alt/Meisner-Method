@@ -28,6 +28,17 @@ function useWarmUpBrowser() {
   }, []);
 }
 
+// Extract a human-readable message from a Clerk error (futures API returns
+// `{ error }` whose shape is a ClerkAPIResponseError-like object).
+function getClerkErrorMessage(err: any): string {
+  return (
+    err?.errors?.[0]?.longMessage ||
+    err?.errors?.[0]?.message ||
+    err?.message ||
+    'Something went wrong. Please try again.'
+  );
+}
+
 export default function SignInScreen() {
   useWarmUpBrowser();
   const insets = useSafeAreaInsets();
@@ -39,24 +50,52 @@ export default function SignInScreen() {
   const [password, setPassword] = React.useState('');
   const [code, setCode] = React.useState('');
   const [googleLoading, setGoogleLoading] = React.useState(false);
+  const [formError, setFormError] = React.useState('');
 
-  // Navigate helper used by finalize()
+  // Navigate helper used by finalize()/setActive(). On native there is no
+  // window.location and decorateUrl('/') can return an absolute http(s) handoff
+  // URL that expo-router cannot navigate to — falling back to the app root in
+  // that case. AuthGate also redirects once the session is active, so this is
+  // belt-and-suspenders against getting stuck on the sign-in screen.
   const navigateAfterAuth = ({ session, decorateUrl }: any) => {
-    if (session?.currentTask) return;
-    const url = decorateUrl('/');
-    router.replace(url as Href);
+    if (session?.currentTask) {
+      console.log('[auth] pending session task, staying put:', session.currentTask);
+      return;
+    }
+    let target = '/';
+    try {
+      // Only accept an internal router path. Any absolute URL (http(s)://,
+      // exp://, the app's custom scheme, etc.) is a handoff URL expo-router
+      // can't navigate to — fall back to the app root instead.
+      const url = decorateUrl?.('/');
+      if (typeof url === 'string' && url.startsWith('/')) {
+        target = url;
+      }
+    } catch (e) {
+      console.warn('[auth] decorateUrl failed, defaulting to /', e);
+    }
+    router.replace(target as Href);
   };
 
   const handleEmailSignIn = async () => {
+    setFormError('');
     const { error } = await signIn.password({ emailAddress: email, password });
-    if (error) return;
+    if (error) {
+      setFormError(getClerkErrorMessage(error));
+      return;
+    }
     if (signIn.status === 'complete') {
       await signIn.finalize({ navigate: navigateAfterAuth });
     }
   };
 
   const handleVerifyCode = async () => {
-    await signIn.mfa.verifyEmailCode({ code });
+    setFormError('');
+    const { error } = await signIn.mfa.verifyEmailCode({ code });
+    if (error) {
+      setFormError(getClerkErrorMessage(error));
+      return;
+    }
     if (signIn.status === 'complete') {
       await signIn.finalize({ navigate: navigateAfterAuth });
     }
@@ -64,19 +103,35 @@ export default function SignInScreen() {
 
   const handleGoogleSignIn = useCallback(async () => {
     setGoogleLoading(true);
+    setFormError('');
     try {
-      const { createdSessionId, setActive } = await startSSOFlow({
-        strategy: 'oauth_google',
-        redirectUrl: AuthSession.makeRedirectUri(),
+      const { createdSessionId, setActive, signIn: ssoSignIn, signUp: ssoSignUp } =
+        await startSSOFlow({
+          strategy: 'oauth_google',
+          redirectUrl: AuthSession.makeRedirectUri(),
+        });
+      console.log('[auth] Google SSO result:', {
+        createdSessionId,
+        signInStatus: ssoSignIn?.status,
+        signUpStatus: ssoSignUp?.status,
       });
       if (createdSessionId && setActive) {
         await setActive({
           session: createdSessionId,
           navigate: navigateAfterAuth,
         });
+        return;
       }
+      // No session created — log the state so re-login failures are diagnosable
+      // on-device instead of silently bouncing back to the sign-in screen.
+      console.warn('[auth] SSO returned no createdSessionId', {
+        signInStatus: ssoSignIn?.status,
+        signUpStatus: ssoSignUp?.status,
+      });
+      setFormError('Could not complete Google sign-in. Please try again.');
     } catch (e) {
       console.error('Google sign-in error:', e);
+      setFormError(getClerkErrorMessage(e));
     } finally {
       setGoogleLoading(false);
     }
@@ -97,6 +152,7 @@ export default function SignInScreen() {
           placeholderTextColor="#666"
         />
         {errors.fields.code && <Text style={s.error}>{errors.fields.code.message}</Text>}
+        {formError ? <Text style={s.error}>{formError}</Text> : null}
         <Pressable style={s.btn} onPress={handleVerifyCode}>
           <Text style={s.btnText}>Verify</Text>
         </Pressable>
@@ -179,6 +235,8 @@ export default function SignInScreen() {
           <Text style={s.error}>{errors.fields.password.message}</Text>
         )}
 
+        {formError ? <Text style={s.error}>{formError}</Text> : null}
+
         <Pressable
           style={[s.btn, (!email || !password || fetchStatus === 'fetching') && s.disabled]}
           onPress={handleEmailSignIn}
@@ -192,7 +250,7 @@ export default function SignInScreen() {
 
         <View style={s.linkRow}>
           <Text style={s.linkText}>Don't have an account? </Text>
-          <Link href={'/(auth)/sign-up' as Href}>
+          <Link href="/sign-up">
             <Text style={s.link}>Sign up</Text>
           </Link>
         </View>
