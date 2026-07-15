@@ -25,6 +25,13 @@ SplashScreen.preventAutoHideAsync();
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
 const proxyUrl = process.env.EXPO_PUBLIC_CLERK_PROXY_URL || undefined;
 
+// In dev (Expo Go / dev-client), skip the forced sign-in redirect so the app can
+// be previewed without logging in. __DEV__ is true only during `expo start`.
+// Production APK / published builds (__DEV__ === false) always enforce the full
+// Clerk auth gate. Note: with the bypass on and no session, authed API calls have
+// no bearer token, so backend data won't load until you actually sign in.
+const DEV_BYPASS_AUTH = __DEV__;
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: { retry: 1, staleTime: 60_000 },
@@ -52,9 +59,10 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   }, [getToken]);
 
   useEffect(() => {
-    // Enforce the real Clerk auth gate in every environment (Expo Go dev,
-    // dev-client, and production). Signed-out users are sent to the sign-in
-    // screen so they can log in and load their real data.
+    // In dev, skip the forced sign-in redirect so the app previews without login.
+    // The token getter above stays registered, so authed calls still work if a
+    // session happens to exist. Production always enforces the gate below.
+    if (DEV_BYPASS_AUTH) return;
     if (!isLoaded) return;
     const inAuthGroup = segments[0] === '(auth)';
     if (!isSignedIn && !inAuthGroup) {
