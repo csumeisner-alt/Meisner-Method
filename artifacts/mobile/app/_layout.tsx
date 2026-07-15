@@ -25,9 +25,14 @@ SplashScreen.preventAutoHideAsync();
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
 const proxyUrl = process.env.EXPO_PUBLIC_CLERK_PROXY_URL || undefined;
 
-// In dev (Expo Go), skip auth entirely so you can preview the app without logging in.
-// __DEV__ is true only during `expo start` — production APK and published builds use the
-// full Clerk auth flow below.
+// In dev (Expo Go), skip the forced sign-in redirect so you can preview the app
+// without logging in. __DEV__ is true only during `expo start` — production APK and
+// published builds enforce the full Clerk auth gate.
+//
+// NOTE: ClerkProvider is mounted in ALL environments (see RootLayout). Clerk hooks
+// (useAuth, useApi→getToken, the (auth) screens' hooks) throw when no provider is
+// mounted, so removing the provider in dev crashes the app on the very first screen.
+// Instead we always provide Clerk and merely relax the redirect in dev.
 const DEV_BYPASS_AUTH = __DEV__;
 
 const queryClient = new QueryClient({
@@ -57,6 +62,10 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   }, [getToken]);
 
   useEffect(() => {
+    // In Expo Go dev, preview the app without logging in: skip the forced
+    // redirect but keep the token getter registered above so authed API calls
+    // still work if a session happens to exist.
+    if (DEV_BYPASS_AUTH) return;
     if (!isLoaded) return;
     const inAuthGroup = segments[0] === '(auth)';
     if (!isSignedIn && !inAuthGroup) {
@@ -67,20 +76,6 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   }, [isLoaded, isSignedIn, segments, router]);
 
   return <>{children}</>;
-}
-
-/**
- * Dev-only wrapper — skips Clerk entirely so Expo Go loads instantly
- * without needing to log in. API calls that require auth will return
- * 401s (expected), but all UI is visible and navigable.
- */
-function DevLayout() {
-  // No-op token getter — API calls won't have a bearer token in dev
-  useEffect(() => {
-    setAuthTokenGetter(() => Promise.resolve(null));
-  }, []);
-
-  return <RootLayoutNav />;
 }
 
 function RootLayoutNav() {
@@ -115,24 +110,9 @@ export default function RootLayout() {
 
   if (!fontsLoaded && !fontError) return null;
 
-  // ── Dev mode (Expo Go) ── skip Clerk so the app loads immediately
-  if (DEV_BYPASS_AUTH) {
-    return (
-      <SafeAreaProvider>
-        <ErrorBoundary>
-          <QueryClientProvider client={queryClient}>
-            <GestureHandlerRootView style={{ flex: 1 }}>
-              <KeyboardProvider>
-                <DevLayout />
-              </KeyboardProvider>
-            </GestureHandlerRootView>
-          </QueryClientProvider>
-        </ErrorBoundary>
-      </SafeAreaProvider>
-    );
-  }
-
-  // ── Production (APK / published) ── full Clerk auth gate
+  // ClerkProvider is mounted in ALL environments so Clerk hooks always have a
+  // provider. In Expo Go (dev) the AuthGate relaxes the forced sign-in redirect,
+  // so the app previews without logging in; in production it enforces the gate.
   return (
     <SafeAreaProvider>
       <ErrorBoundary>

@@ -44,6 +44,19 @@ export function setAuthTokenGetter(getter: AuthTokenGetter | null): void {
   _authTokenGetter = getter;
 }
 
+/**
+ * Resolve the current bearer token via the registered auth token getter.
+ * Returns `null` when no getter is registered or the getter yields no token.
+ *
+ * Lets callers (e.g. an Expo `useApi` hook that builds its own requests)
+ * obtain the token without depending on any particular auth SDK/provider.
+ */
+export async function getAuthToken(): Promise<string | null> {
+  if (!_authTokenGetter) return null;
+  const token = await _authTokenGetter();
+  return token ?? null;
+}
+
 function isRequest(input: RequestInfo | URL): input is Request {
   return typeof Request !== "undefined" && input instanceof Request;
 }
