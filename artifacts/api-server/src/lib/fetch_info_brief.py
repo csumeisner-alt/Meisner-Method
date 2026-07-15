@@ -29,7 +29,18 @@ def main():
             or 0
         )
 
-        div_yield = info.get("dividendYield", 0) or 0
+        # yfinance returns dividendYield inconsistently — sometimes as a true
+        # decimal fraction (0.0099 = 0.99%) and sometimes as a percent-like
+        # value (0.99 = 0.99%). No real stock sustains a 50 %+ yield, so
+        # anything above 0.5 is treated as a percentage and normalised.
+        div_yield_raw = info.get("dividendYield", 0) or 0
+        div_yield = div_yield_raw / 100 if div_yield_raw > 0.5 else div_yield_raw
+
+        # dividendRate is the declared annual dividend per share in dollars
+        # (e.g. 0.83 for WMT). It avoids the yield × price approximation
+        # and is unaffected by the decimal/percent ambiguity.
+        div_rate = info.get("dividendRate", 0) or 0
+
         market_cap = info.get("marketCap", 0) or 0
         sector = info.get("sector", "") or ""
         industry = info.get("industry", "") or ""
@@ -42,6 +53,7 @@ def main():
             "industry": industry,
             "exchange": exchange,
             "dividendYield": div_yield,
+            "dividendRate": div_rate,
             "marketCap": market_cap,
             "currentPrice": float(price),
         }))

@@ -49,6 +49,9 @@ type PaperPosition = {
   avgCost: number;
   openedAt: string;
   dividendYield: number;
+  /** Declared annual dividend per share in dollars (e.g. 0.83 for WMT).
+   *  Optional so existing DB-loaded positions without this field still work. */
+  dividendRate?: number;
   sector: string;
 };
 type PaperTransaction = {
@@ -69,8 +72,30 @@ type StockInfo = {
   companyName: string;
   currentPrice: number;
   dividendYield: number;
+  dividendRate: number;
   sector: string;
 };
+
+// ── Dividend helpers ────────────────────────────────────────────────────────
+/**
+ * Normalise dividendYield to a true decimal fraction (0–1).
+ * yfinance occasionally returns the value in percent-like form (e.g. 0.99
+ * meaning 0.99%) rather than as a decimal (0.0099). No real stock sustains a
+ * yield above 50 %, so any value > 0.5 is divided by 100.
+ */
+function normYield(y: number): number {
+  return y > 0.5 ? y / 100 : y;
+}
+
+/**
+ * Estimate annual dividend income in dollars for a single position.
+ * Prefers the declared dividendRate ($/share/yr) when available; falls back
+ * to price × normalised yield for positions loaded from older DB records.
+ */
+function annualDivIncome(pos: { shares: number; dividendRate?: number; dividendYield: number }, price: number): number {
+  if (pos.dividendRate && pos.dividendRate > 0) return pos.shares * pos.dividendRate;
+  return pos.shares * price * normYield(pos.dividendYield);
+}
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const INITIAL_BALANCE = 100_000;
@@ -388,6 +413,7 @@ export default function PaperScreen() {
         companyName: info.companyName,
         currentPrice: quote.currentPrice,
         dividendYield: info.dividendYield ?? 0,
+        dividendRate: info.dividendRate ?? 0,
         sector: info.sector ?? '',
       });
       setQuotes(prev => ({
@@ -431,6 +457,7 @@ export default function PaperScreen() {
           avgCost: stockInfo.currentPrice,
           openedAt: now,
           dividendYield: stockInfo.dividendYield,
+          dividendRate: stockInfo.dividendRate,
           sector: stockInfo.sector,
         },
       ];
@@ -680,14 +707,14 @@ export default function PaperScreen() {
   };
 
   const renderDividends = () => {
-    const divPositions = myPositions.filter(p => p.dividendYield > 0);
+    const divPositions = myPositions.filter(p => p.dividendYield > 0 || (p.dividendRate ?? 0) > 0);
     const totalAnnualDiv = divPositions.reduce(
-      (s, p) => s + p.shares * (quotes[p.symbol]?.price ?? p.avgCost) * p.dividendYield, 0,
+      (s, p) => s + annualDivIncome(p, quotes[p.symbol]?.price ?? p.avgCost), 0,
     );
     const portfolioYield = portfolioValue > 0 ? (totalAnnualDiv / portfolioValue) * 100 : 0;
     const items = divPositions.map(p => ({
       symbol: p.symbol,
-      annual: p.shares * (quotes[p.symbol]?.price ?? p.avgCost) * p.dividendYield,
+      annual: annualDivIncome(p, quotes[p.symbol]?.price ?? p.avgCost),
     }));
 
     return (
@@ -719,12 +746,12 @@ export default function PaperScreen() {
             <Text style={styles.sectionTitle}>DIVIDEND BREAKDOWN</Text>
             {divPositions.map((p, i) => {
               const price = quotes[p.symbol]?.price ?? p.avgCost;
-              const annual = p.shares * price * p.dividendYield;
+              const annual = annualDivIncome(p, price);
               return (
                 <View key={p.id} style={styles.divDetailRow}>
                   <View style={[styles.allocDot, { backgroundColor: POSITION_COLORS[i % POSITION_COLORS.length] }]} />
                   <Text style={styles.divSym}>{p.symbol}</Text>
-                  <Text style={styles.divYield}>{(p.dividendYield * 100).toFixed(2)}% yield</Text>
+                  <Text style={styles.divYield}>{(normYield(p.dividendYield) * 100).toFixed(2)}% yield</Text>
                   <View style={{ flex: 1 }} />
                   <Text style={[styles.divAnnual, { color: BUY_COLOR }]}>{$fmt(annual)}/yr</Text>
                 </View>
@@ -1015,7 +1042,7 @@ export default function PaperScreen() {
                           <Text style={styles.stockInfoPrice}>${stockInfo.currentPrice.toFixed(2)}</Text>
                           {stockInfo.dividendYield > 0 && (
                             <Text style={styles.stockInfoDiv}>
-                              Dividend yield: {(stockInfo.dividendYield * 100).toFixed(2)}%
+                              Dividend yield: {(normYield(stockInfo.dividendYield) * 100).toFixed(2)}%
                             </Text>
                           )}
                         </View>
