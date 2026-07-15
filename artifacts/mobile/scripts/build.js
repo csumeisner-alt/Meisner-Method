@@ -138,12 +138,40 @@ async function startMetro(expoPublicDomain, expoPublicReplId) {
 
   console.log('Starting Metro...');
   console.log(`Setting EXPO_PUBLIC_DOMAIN=${expoPublicDomain}`);
+  // Build the Clerk Frontend API proxy URL from the provisioned proxy path
+  // (CLERK_PROXY_URL, e.g. "/api/__clerk") plus the deployment domain. This is
+  // empty in dev (CLERK_PROXY_URL is unset there), so Clerk talks to the dev
+  // FAPI directly. In production it must be set: without it, @clerk/expo falls
+  // back to the direct clerk.<domain> FAPI host, which has no valid TLS cert on
+  // .replit.app and leaves the app hung on a blank screen (Clerk never loads).
+  const clerkProxyUrl = process.env.CLERK_PROXY_URL
+    ? `https://${expoPublicDomain}${process.env.CLERK_PROXY_URL}`
+    : '';
+  console.log(
+    `Setting EXPO_PUBLIC_CLERK_PROXY_URL=${clerkProxyUrl || '(empty — dev, direct FAPI)'}`,
+  );
+  // Fail the build loudly instead of shipping a silently-broken app: a production
+  // Clerk key (pk_live_) MUST reach Clerk through the proxy. An empty proxy URL
+  // here means the published app would hit the direct clerk.<domain> FAPI (which
+  // has no valid TLS cert on .replit.app) and hang on a blank screen. Test keys
+  // (pk_test_) talk to the dev FAPI directly and need no proxy, so they're fine.
+  if (
+    (process.env.CLERK_PUBLISHABLE_KEY || '').startsWith('pk_live_') &&
+    !clerkProxyUrl
+  ) {
+    throw new Error(
+      'Clerk misconfiguration: a production publishable key (pk_live_) is set but ' +
+        'CLERK_PROXY_URL is missing, so the app would ship with no Clerk proxy URL ' +
+        'and hang on a blank screen in production. Ensure CLERK_PROXY_URL is ' +
+        'provisioned for the production build.',
+    );
+  }
   const env = {
     ...process.env,
     EXPO_PUBLIC_DOMAIN: expoPublicDomain,
     EXPO_PUBLIC_REPL_ID: expoPublicReplId,
     EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: process.env.CLERK_PUBLISHABLE_KEY || '',
-    EXPO_PUBLIC_CLERK_PROXY_URL: process.env.EXPO_PUBLIC_CLERK_PROXY_URL || '',
+    EXPO_PUBLIC_CLERK_PROXY_URL: clerkProxyUrl,
   };
 
   if (expoPublicReplId) {
