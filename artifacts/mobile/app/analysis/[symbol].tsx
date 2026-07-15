@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,14 +8,19 @@ import {
   Platform,
   ActivityIndicator,
   Animated,
+  TextInput,
+  useWindowDimensions,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
+import { useApi } from '@/hooks/useApi';
 import { useAnalyzeStock } from '@workspace/api-client-react';
 import type { StockAnalysis } from '@workspace/api-client-react';
+import { ComparisonChart } from '@/components/ComparisonChart';
+import type { Candle } from '@/components/StockChart';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -34,6 +39,17 @@ const fmtVol = (n: number) => {
   if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
   return n.toString();
 };
+
+// ── Chart period config ────────────────────────────────────────────────────────
+
+type Period = '1mo' | '3mo' | '6mo' | '1y' | '2y';
+const PERIODS: { label: string; value: Period }[] = [
+  { label: '1M', value: '1mo' },
+  { label: '3M', value: '3mo' },
+  { label: '6M', value: '6mo' },
+  { label: '1Y', value: '1y'  },
+  { label: '2Y', value: '2y'  },
+];
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -149,7 +165,59 @@ export default function AnalysisScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const colors = useColors();
+  const { width: screenWidth } = useWindowDimensions();
+  const { apiFetch } = useApi();
   const { mutate, data, isPending, error } = useAnalyzeStock<Error>();
+
+  // ── Chart state ──────────────────────────────────────────────────────────
+  const [period, setPeriod] = useState<Period>('3mo');
+  const [primaryCandles, setPrimaryCandles]   = useState<Candle[]>([]);
+  const [primaryLoading, setPrimaryLoading]   = useState(false);
+  const [compInput, setCompInput]             = useState('');       // text field
+  const [compSymbol, setCompSymbol]           = useState('');       // committed symbol
+  const [compCandles, setCompCandles]         = useState<Candle[]>([]);
+  const [compLoading, setCompLoading]         = useState(false);
+
+  // Fetch primary chart data whenever symbol or period changes
+  useEffect(() => {
+    if (!symbol) return;
+    let cancelled = false;
+    setPrimaryLoading(true);
+    setPrimaryCandles([]);
+    apiFetch<{ candles: Candle[] }>(`/api/stocks/chart/${encodeURIComponent(symbol)}?period=${period}&interval=1d`)
+      .then((res) => { if (!cancelled) setPrimaryCandles(res.candles ?? []); })
+      .catch(() => { if (!cancelled) setPrimaryCandles([]); })
+      .finally(() => { if (!cancelled) setPrimaryLoading(false); });
+    return () => { cancelled = true; };
+  }, [symbol, period]);
+
+  // Fetch comparison chart data whenever compSymbol or period changes
+  useEffect(() => {
+    if (!compSymbol) { setCompCandles([]); return; }
+    let cancelled = false;
+    setCompLoading(true);
+    setCompCandles([]);
+    apiFetch<{ candles: Candle[] }>(`/api/stocks/chart/${encodeURIComponent(compSymbol)}?period=${period}&interval=1d`)
+      .then((res) => { if (!cancelled) setCompCandles(res.candles ?? []); })
+      .catch(() => { if (!cancelled) setCompCandles([]); })
+      .finally(() => { if (!cancelled) setCompLoading(false); });
+    return () => { cancelled = true; };
+  }, [compSymbol, period]);
+
+  const commitCompSymbol = useCallback(() => {
+    const s = compInput.trim().toUpperCase();
+    if (s && s !== compSymbol) setCompSymbol(s);
+    else if (!s) { setCompSymbol(''); setCompCandles([]); }
+  }, [compInput, compSymbol]);
+
+  const clearComp = useCallback(() => {
+    setCompInput('');
+    setCompSymbol('');
+    setCompCandles([]);
+  }, []);
+
+  // Chart card width = screen width minus scroll padding (14 each side) minus card padding (16 each side)
+  const chartWidth = screenWidth - 28 - 32;
 
   useEffect(() => {
     if (symbol) mutate({ data: { symbol } });
@@ -448,6 +516,89 @@ export default function AnalysisScreen() {
           </View>
         </SectionCard>
 
+        {/* ── Price Chart ─────────────────────────────────────────────────── */}
+        <View style={[cardStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={chartCardStyles.header}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Feather name="trending-up" size={14} color={colors.primary} />
+              <Text style={[cardStyles.title, { color: colors.foreground, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5 }]}>
+                PRICE CHART
+              </Text>
+            </View>
+            {/* Period pills */}
+            <View style={chartCardStyles.periodRow}>
+              {PERIODS.map(({ label, value }) => (
+                <TouchableOpacity
+                  key={value}
+                  style={[
+                    chartCardStyles.pill,
+                    { borderColor: colors.border },
+                    period === value && { backgroundColor: colors.primary, borderColor: colors.primary },
+                  ]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setPeriod(value);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[
+                    chartCardStyles.pillText,
+                    { color: period === value ? '#000' : colors.mutedForeground, fontFamily: 'Inter_600SemiBold' },
+                  ]}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <View style={[cardStyles.divider, { backgroundColor: colors.border }]} />
+
+          <View style={chartCardStyles.chartArea}>
+            {primaryLoading ? (
+              <View style={[chartCardStyles.loader, { height: 240 }]}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={[chartCardStyles.loaderText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                  Loading chart…
+                </Text>
+              </View>
+            ) : (
+              <ComparisonChart
+                primaryCandles={primaryCandles}
+                primarySymbol={symbol ?? ''}
+                compCandles={compCandles.length > 0 ? compCandles : undefined}
+                compSymbol={compSymbol || undefined}
+                width={chartWidth}
+                height={240}
+              />
+            )}
+          </View>
+
+          {/* Comparison input */}
+          <View style={[chartCardStyles.compRow, { borderTopColor: colors.border }]}>
+            <Feather name="plus-circle" size={14} color={colors.mutedForeground} style={{ marginRight: 6 }} />
+            <TextInput
+              style={[chartCardStyles.compInput, { color: colors.foreground, fontFamily: 'Inter_400Regular' }]}
+              placeholder="Compare with… (e.g. SPY)"
+              placeholderTextColor={colors.mutedForeground}
+              value={compInput}
+              onChangeText={(t) => setCompInput(t.toUpperCase())}
+              onSubmitEditing={commitCompSymbol}
+              onBlur={commitCompSymbol}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              returnKeyType="search"
+              maxLength={10}
+            />
+            {compLoading && <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 6 }} />}
+            {(compSymbol !== '' || compInput !== '') && !compLoading && (
+              <TouchableOpacity onPress={clearComp} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Feather name="x" size={14} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
         {/* AI Reasoning */}
         <View style={[cardStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={{ padding: 16 }}>
@@ -565,4 +716,23 @@ const srStyles = StyleSheet.create({
   title: { fontSize: 11, marginBottom: 2 },
   item: { flexDirection: 'row', gap: 6, alignItems: 'flex-start' },
   itemText: { fontSize: 12, flex: 1, lineHeight: 17 },
+});
+
+const chartCardStyles = StyleSheet.create({
+  header: { padding: 16, paddingBottom: 10, gap: 10 },
+  periodRow: { flexDirection: 'row', gap: 6 },
+  pill: {
+    paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: 20, borderWidth: 1,
+  },
+  pillText: { fontSize: 11 },
+  chartArea: { padding: 16, paddingTop: 12 },
+  loader: { alignItems: 'center', justifyContent: 'center', gap: 8 },
+  loaderText: { fontSize: 12 },
+  compRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 10,
+    borderTopWidth: 1,
+  },
+  compInput: { flex: 1, fontSize: 13, paddingVertical: 2 },
 });
