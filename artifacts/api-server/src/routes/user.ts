@@ -6,6 +6,7 @@
 import { Router } from "express";
 import { getAuth } from "@clerk/express";
 import pg from "pg";
+import { logger } from "../lib/logger.js";
 
 const { Pool } = pg;
 
@@ -13,21 +14,55 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 // Idempotent schema migrations for columns added after the tables were first
 // created. Safe to run on every boot; existing rows get the DEFAULT.
-async function ensureSchema() {
-  try {
-    await pool.query(
-      "ALTER TABLE paper_positions ADD COLUMN IF NOT EXISTS expense_ratio DOUBLE PRECISION DEFAULT 0",
-    );
-    await pool.query(
-      "ALTER TABLE paper_transactions ADD COLUMN IF NOT EXISTS fee DOUBLE PRECISION DEFAULT 0",
-    );
-  } catch (e: any) {
-    console.error("[user] ensureSchema failed:", e.message);
-  }
+//
+// These migrations MUST complete before any endpoint that references the added
+// columns (expense_ratio, fee) serves traffic — otherwise a request that lands
+// during boot, or after a silent ALTER failure, would query a half-migrated
+// schema and error. We gate those endpoints on `ensureSchema()` (see
+// `requireSchema` below), and surface a migration failure loudly instead of
+// swallowing it: the failed promise is cleared so the next request retries,
+// and callers get a 503 in the meantime rather than a confusing 500.
+let schemaReady: Promise<void> | null = null;
+
+async function runSchemaMigrations(): Promise<void> {
+  await pool.query(
+    "ALTER TABLE paper_positions ADD COLUMN IF NOT EXISTS expense_ratio DOUBLE PRECISION DEFAULT 0",
+  );
+  await pool.query(
+    "ALTER TABLE paper_transactions ADD COLUMN IF NOT EXISTS fee DOUBLE PRECISION DEFAULT 0",
+  );
 }
-void ensureSchema();
+
+function ensureSchema(): Promise<void> {
+  if (!schemaReady) {
+    schemaReady = runSchemaMigrations().catch((e: any) => {
+      // Surface loudly and clear the cached promise so a later request retries
+      // the migration instead of permanently wedging the paper endpoints.
+      logger.error({ err: e }, "[user] schema migration failed");
+      schemaReady = null;
+      throw e;
+    });
+  }
+  return schemaReady;
+}
+
+// Kick off at boot so a healthy schema is ready before the first request.
+// A boot-time failure is logged by ensureSchema(); requests retry via the gate.
+void ensureSchema().catch(() => {});
 
 const router = Router();
+
+// Gate endpoints that reference the migrated columns (expense_ratio, fee) so
+// they never run against a half-migrated schema. Blocks until the migration
+// resolves; returns 503 (retryable) if it is still failing.
+async function requireSchema(_req: any, res: any, next: any) {
+  try {
+    await ensureSchema();
+    next();
+  } catch {
+    res.status(503).json({ error: "Database schema is not ready. Please retry shortly." });
+  }
+}
 
 // ── Auth middleware ────────────────────────────────────────────────────────
 function requireAuth(req: any, res: any, next: any) {
@@ -148,7 +183,7 @@ router.delete("/user/paper/accounts/:id", requireAuth, async (req: any, res) => 
 });
 
 // ── Paper Positions ───────────────────────────────────────────────────────
-router.get("/user/paper/positions", requireAuth, async (req: any, res) => {
+router.get("/user/paper/positions", requireAuth, requireSchema, async (req: any, res) => {
   try {
     const { rows } = await pool.query(
       "SELECT id, account_id, symbol, company_name, shares, avg_cost, opened_at, dividend_yield, dividend_rate, expense_ratio, sector FROM paper_positions WHERE user_id=$1",
@@ -172,7 +207,7 @@ router.get("/user/paper/positions", requireAuth, async (req: any, res) => {
   }
 });
 
-router.post("/user/paper/positions", requireAuth, async (req: any, res) => {
+router.post("/user/paper/positions", requireAuth, requireSchema, async (req: any, res) => {
   const { id, accountId, symbol, companyName, shares, avgCost, openedAt, dividendYield, dividendRate, expenseRatio, sector } = req.body;
   try {
     await pool.query(
@@ -197,7 +232,7 @@ router.delete("/user/paper/positions/:id", requireAuth, async (req: any, res) =>
 });
 
 // ── Paper Transactions ────────────────────────────────────────────────────
-router.get("/user/paper/transactions", requireAuth, async (req: any, res) => {
+router.get("/user/paper/transactions", requireAuth, requireSchema, async (req: any, res) => {
   try {
     const { rows } = await pool.query(
       "SELECT id, account_id, symbol, company_name, action, shares, price, total, date, realized_pnl, fee FROM paper_transactions WHERE user_id=$1 ORDER BY date ASC",
@@ -221,7 +256,7 @@ router.get("/user/paper/transactions", requireAuth, async (req: any, res) => {
   }
 });
 
-router.post("/user/paper/transactions", requireAuth, async (req: any, res) => {
+router.post("/user/paper/transactions", requireAuth, requireSchema, async (req: any, res) => {
   const { id, accountId, symbol, companyName, action, shares, price, total, date, realizedPnL, fee } = req.body;
   try {
     await pool.query(
@@ -387,7 +422,7 @@ function validateSyncPayload(body: any) {
   return { accounts, positions, transactions, activeId };
 }
 
-router.post("/user/paper/sync", requireAuth, async (req: any, res) => {
+router.post("/user/paper/sync", requireAuth, requireSchema, async (req: any, res) => {
   // Validate + normalize the full payload before touching the DB. Any bad
   // input aborts here with a 400, so a malformed body can never partially
   // wipe or corrupt the user's stored paper-trading data.
