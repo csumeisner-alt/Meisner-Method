@@ -207,6 +207,10 @@ export default function PaperScreen() {
   const [positions, setPositions] = useState<PaperPosition[]>([]);
   const [transactions, setTransactions] = useState<PaperTransaction[]>([]);
 
+  // Load state
+  const [loaded, setLoaded] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+
   // Live quotes
   const [quotes, setQuotes] = useState<Record<string, LiveQuote>>({});
   const [loadingQuotes, setLoadingQuotes] = useState(false);
@@ -288,35 +292,39 @@ export default function PaperScreen() {
   }, [syncToServer]);
 
   // ── Init ─────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    async function init() {
-      try {
-        const [accts, pos, txns, active] = await Promise.all([
-          apiFetch<PaperAccount[]>('/api/user/paper/accounts'),
-          apiFetch<PaperPosition[]>('/api/user/paper/positions'),
-          apiFetch<PaperTransaction[]>('/api/user/paper/transactions'),
-          apiFetch<{ activeId: string | null }>('/api/user/paper/active'),
-        ]);
-        let finalAccounts = accts;
-        if (finalAccounts.length === 0) {
-          finalAccounts = defaultAccounts();
-          await syncToServer(finalAccounts, [], [], finalAccounts[0].id).catch(() => {});
-        }
-        accountsRef.current = finalAccounts;
-        positionsRef.current = pos;
-        transactionsRef.current = txns;
-        const id = active.activeId ?? finalAccounts[0].id;
-        activeIdRef.current = id;
-        setAccounts(finalAccounts);
-        setPositions(pos);
-        setTransactions(txns);
-        setActiveId(id);
-      } catch (e) {
-        console.error('Failed to load paper data:', e);
+  const init = useCallback(async () => {
+    setErrorMsg('');
+    setLoaded(false);
+    try {
+      const [accts, pos, txns, active] = await Promise.all([
+        apiFetch<PaperAccount[]>('/api/user/paper/accounts'),
+        apiFetch<PaperPosition[]>('/api/user/paper/positions'),
+        apiFetch<PaperTransaction[]>('/api/user/paper/transactions'),
+        apiFetch<{ activeId: string | null }>('/api/user/paper/active'),
+      ]);
+      let finalAccounts = accts;
+      if (finalAccounts.length === 0) {
+        finalAccounts = defaultAccounts();
+        await syncToServer(finalAccounts, [], [], finalAccounts[0].id).catch(() => {});
       }
+      accountsRef.current = finalAccounts;
+      positionsRef.current = pos;
+      transactionsRef.current = txns;
+      const id = active.activeId ?? finalAccounts[0].id;
+      activeIdRef.current = id;
+      setAccounts(finalAccounts);
+      setPositions(pos);
+      setTransactions(txns);
+      setActiveId(id);
+    } catch (e) {
+      console.error('Failed to load paper data:', e);
+      setErrorMsg('Could not load your paper trading data. Check your connection and try again.');
+    } finally {
+      setLoaded(true);
     }
-    init();
   }, [apiFetch, syncToServer]);
+
+  useEffect(() => { init(); }, [init]);
 
   // ── Fetch quotes ──────────────────────────────────────────────────────────
   const fetchQuotes = useCallback(async (positions: PaperPosition[], accountId: string) => {
@@ -815,10 +823,27 @@ export default function PaperScreen() {
   const buyAfterCash = account ? account.cash - buyTotal : 0;
 
   // ── Render ────────────────────────────────────────────────────────────────
-  if (accounts.length === 0) {
+  if (!loaded) {
     return (
       <SafeAreaView style={styles.screen}>
         <ActivityIndicator color={SILVER} size="large" style={{ flex: 1 }} />
+      </SafeAreaView>
+    );
+  }
+
+  if (errorMsg) {
+    return (
+      <SafeAreaView style={styles.screen}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
+          <Text style={{ color: SILVER, fontSize: 15, textAlign: 'center', marginBottom: 20 }}>{errorMsg}</Text>
+          <TouchableOpacity
+            onPress={init}
+            style={{ backgroundColor: BUY_COLOR, borderRadius: 10, paddingVertical: 12, paddingHorizontal: 28 }}
+            activeOpacity={0.8}
+          >
+            <Text style={{ color: '#000', fontFamily: 'Inter_600SemiBold', fontSize: 15 }}>Try again</Text>
+          </TouchableOpacity>
+        </View>
       </SafeAreaView>
     );
   }
