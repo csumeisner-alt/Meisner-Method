@@ -10,7 +10,7 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import { useSignIn, useSSO } from '@clerk/expo';
+import { useClerk, useSignIn, useSSO } from '@clerk/expo';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
 import { type Href, Link, useRouter } from 'expo-router';
@@ -43,6 +43,7 @@ export default function SignInScreen() {
   useWarmUpBrowser();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { setActive } = useClerk();
   const { signIn, errors, fetchStatus } = useSignIn();
   const { startSSOFlow } = useSSO();
 
@@ -79,25 +80,27 @@ export default function SignInScreen() {
 
   const handleEmailSignIn = async () => {
     setFormError('');
-    const { error } = await signIn.password({ emailAddress: email, password });
+    const { error } = await signIn.create({ identifier: email, password });
     if (error) {
       setFormError(getClerkErrorMessage(error));
       return;
     }
-    if (signIn.status === 'complete') {
-      await signIn.finalize({ navigate: navigateAfterAuth });
+    if (signIn.status === 'complete' && signIn.createdSessionId) {
+      await setActive({ session: signIn.createdSessionId });
+      router.replace('/');
     }
   };
 
   const handleVerifyCode = async () => {
     setFormError('');
-    const { error } = await signIn.mfa.verifyEmailCode({ code });
+    const { error } = await signIn.emailCode.verifyCode({ code });
     if (error) {
       setFormError(getClerkErrorMessage(error));
       return;
     }
-    if (signIn.status === 'complete') {
-      await signIn.finalize({ navigate: navigateAfterAuth });
+    if (signIn.status === 'complete' && signIn.createdSessionId) {
+      await setActive({ session: signIn.createdSessionId });
+      router.replace('/');
     }
   };
 
@@ -156,7 +159,7 @@ export default function SignInScreen() {
         <Pressable style={s.btn} onPress={handleVerifyCode}>
           <Text style={s.btnText}>Verify</Text>
         </Pressable>
-        <Pressable style={s.secondaryBtn} onPress={() => signIn.mfa.sendEmailCode()}>
+        <Pressable style={s.secondaryBtn} onPress={() => signIn.emailCode.sendCode()}>
           <Text style={s.secondaryBtnText}>Resend code</Text>
         </Pressable>
         <Pressable style={s.secondaryBtn} onPress={() => signIn.reset()}>

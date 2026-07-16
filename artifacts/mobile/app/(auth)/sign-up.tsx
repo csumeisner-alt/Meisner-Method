@@ -10,7 +10,7 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import { useSignUp, useSSO } from '@clerk/expo';
+import { useClerk, useSignUp, useSSO } from '@clerk/expo';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
 import { type Href, Link, useRouter } from 'expo-router';
@@ -42,6 +42,7 @@ export default function SignUpScreen() {
   useWarmUpBrowser();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { setActive } = useClerk();
   const { signUp, errors, fetchStatus } = useSignUp();
   const { startSSOFlow } = useSSO();
 
@@ -77,12 +78,15 @@ export default function SignUpScreen() {
 
   const handleCreateAccount = async () => {
     setFormError('');
-    const { error } = await signUp.password({ emailAddress: email, password });
-    if (error) {
-      setFormError(getClerkErrorMessage(error));
+    const { error: createError } = await signUp.create({ emailAddress: email, password });
+    if (createError) {
+      setFormError(getClerkErrorMessage(createError));
       return;
     }
-    await signUp.verifications.sendEmailCode();
+    const { error: sendError } = await signUp.verifications.sendEmailCode();
+    if (sendError) {
+      setFormError(getClerkErrorMessage(sendError));
+    }
   };
 
   const handleVerifyCode = async () => {
@@ -92,8 +96,9 @@ export default function SignUpScreen() {
       setFormError(getClerkErrorMessage(error));
       return;
     }
-    if (signUp.status === 'complete') {
-      await signUp.finalize({ navigate: navigateAfterAuth });
+    if (signUp.status === 'complete' && signUp.createdSessionId) {
+      await setActive({ session: signUp.createdSessionId });
+      router.replace('/');
     }
   };
 
