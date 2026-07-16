@@ -1,6 +1,28 @@
 import { useCallback } from 'react';
 import * as AuthSession from 'expo-auth-session';
+import * as Network from 'expo-network';
 import { useClerk, useSignIn, useSignUp, useSSO } from '@clerk/expo';
+
+/** How long to wait for the OAuth flow before giving up (ms). */
+export const SSO_TIMEOUT_MS = 90_000;
+
+class SSOTimeoutError extends Error {
+  constructor() {
+    super('Sign-in timed out, please try again.');
+    this.name = 'SSOTimeoutError';
+  }
+}
+
+/** Reject if the promise does not settle within `ms`. */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new SSOTimeoutError()), ms);
+    promise.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); },
+    );
+  });
+}
 
 /** Extract a human-readable message from a Clerk error. */
 export function getClerkErrorMessage(err: any): string {
@@ -39,11 +61,36 @@ export function useGoogleAuth() {
   const { startSSOFlow } = useSSO();
 
   const signInWithGoogle = useCallback(async (): Promise<GoogleAuthResult> => {
-    const { createdSessionId, authSessionResult, signIn: ssoSignIn, signUp: ssoSignUp } =
-      await startSSOFlow({
-        strategy: 'oauth_google',
-        redirectUrl: AuthSession.makeRedirectUri(),
-      });
+    // Fail fast if the device is offline instead of waiting for a timeout.
+    try {
+      const netState = await Network.getNetworkStateAsync();
+      if (netState.isConnected === false || netState.isInternetReachable === false) {
+        return {
+          ok: false,
+          message: 'No internet connection. Please check your network and try again.',
+        };
+      }
+    } catch {
+      // Could not determine connectivity — proceed and let the flow itself fail.
+    }
+
+    let ssoResult;
+    try {
+      ssoResult = await withTimeout(
+        startSSOFlow({
+          strategy: 'oauth_google',
+          redirectUrl: AuthSession.makeRedirectUri(),
+        }),
+        SSO_TIMEOUT_MS,
+      );
+    } catch (e) {
+      if (e instanceof SSOTimeoutError) {
+        console.warn('[auth] Google SSO timed out after', SSO_TIMEOUT_MS, 'ms');
+        return { ok: false, message: 'Sign-in timed out, please try again.' };
+      }
+      throw e;
+    }
+    const { createdSessionId, authSessionResult, signIn: ssoSignIn, signUp: ssoSignUp } = ssoResult;
 
     console.log('[auth] Google SSO result:', {
       createdSessionId,
