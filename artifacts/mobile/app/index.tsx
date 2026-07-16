@@ -26,6 +26,7 @@ import { MMLogo } from '@/components/MMLogo';
 import { DonationSidebar } from '@/components/DonationSidebar';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { DraggableWatchlist } from '@/components/DraggableWatchlist';
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
@@ -291,6 +292,7 @@ export default function HomeScreen() {
   const [trendingLoading, setTrendingLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [scrollEnabled, setScrollEnabled] = useState(true);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Watchlist + push notifications
@@ -506,6 +508,7 @@ export default function HomeScreen() {
         contentContainerStyle={{ paddingBottom: botPad + 24 }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        scrollEnabled={scrollEnabled}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -583,56 +586,19 @@ export default function HomeScreen() {
                 </Text>
               </View>
             ) : (
-              watchlist.items.map((item) => {
-                const quote = watchlist.quotes.get(item.symbol);
-                const alert = watchlist.activeAlertFor(item.symbol);
-                const up = (quote?.priceChangePercent ?? 0) >= 0;
-                const pctColor = up ? colors.buyColor : colors.sellColor;
-                return (
-                  <View key={item.symbol} style={[styles.watchRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                    {/* Left: symbol + price */}
-                    <TouchableOpacity style={{ flex: 1 }} onPress={() => navigateTo(item.symbol)} activeOpacity={0.75}>
-                      <Text style={[styles.watchSym, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
-                        {item.symbol}
-                      </Text>
-                      {quote ? (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                          <Text style={[styles.watchPrice, { color: colors.primary, fontFamily: 'Inter_600SemiBold' }]}>
-                            {formatPrice(quote.currentPrice)}
-                          </Text>
-                          <Text style={[styles.watchPct, { color: pctColor, fontFamily: 'Inter_500Medium' }]}>
-                            {formatPct(quote.priceChangePercent)}
-                          </Text>
-                        </View>
-                      ) : (
-                        <ActivityIndicator size="small" color={colors.mutedForeground} style={{ alignSelf: 'flex-start', marginTop: 4 }} />
-                      )}
-                    </TouchableOpacity>
-
-                    {/* Right: bell + remove */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                      <TouchableOpacity
-                        onPress={() => openAlertModal(item.symbol, quote?.currentPrice)}
-                        style={[styles.watchIconBtn, alert ? { backgroundColor: colors.buyBg, borderColor: colors.buyColor, borderWidth: 1 } : {}]}
-                        activeOpacity={0.7}
-                      >
-                        <Feather
-                          name="bell"
-                          size={16}
-                          color={alert ? colors.buyColor : colors.mutedForeground}
-                        />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => watchlist.remove(item.symbol)}
-                        style={styles.watchIconBtn}
-                        activeOpacity={0.7}
-                      >
-                        <Feather name="x" size={16} color={colors.mutedForeground} />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                );
-              })
+              <DraggableWatchlist
+                items={watchlist.items}
+                quotes={watchlist.quotes}
+                activeAlertFor={watchlist.activeAlertFor}
+                onNavigate={navigateTo}
+                onRemove={watchlist.remove}
+                onReorder={watchlist.reorder}
+                onOpenAlert={openAlertModal}
+                onDragActive={(active) => setScrollEnabled(!active)}
+                colors={colors}
+                formatPrice={formatPrice}
+                formatPct={formatPct}
+              />
             )}
           </View>
         )}
@@ -850,17 +816,4 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
   },
   watchlistEmptyText: { fontSize: 13, flex: 1, lineHeight: 18 },
-  watchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 10,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 6,
-  },
-  watchSym: { fontSize: 16 },
-  watchPrice: { fontSize: 14 },
-  watchPct: { fontSize: 12 },
-  watchIconBtn: { padding: 8, borderRadius: 8 },
 });

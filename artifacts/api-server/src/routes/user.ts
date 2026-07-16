@@ -55,6 +55,10 @@ async function runSchemaMigrations(): Promise<void> {
       PRIMARY KEY (user_id, symbol)
     )
   `);
+  // Add sort_order column for user-defined drag ordering (added after initial creation)
+  await pool.query(
+    "ALTER TABLE watchlist ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0",
+  );
   // Enable pgcrypto as a safety net for any deployments that may still rely on
   // gen_random_uuid() elsewhere. IDs for price_alerts are now generated in
   // application code (randomUUID) so this extension is not strictly required.
@@ -544,12 +548,13 @@ router.post("/user/paper/sync", requireAuth, requireSchema, async (req: any, res
 router.get("/user/watchlist", requireAuth, requireSchema, async (req: any, res) => {
   try {
     const { rows } = await pool.query(
-      "SELECT symbol, created_at FROM watchlist WHERE user_id=$1 ORDER BY created_at DESC",
+      "SELECT symbol, created_at, sort_order FROM watchlist WHERE user_id=$1 ORDER BY sort_order ASC, created_at DESC",
       [req.userId],
     );
     res.json(rows.map((r: any) => ({
       symbol: r.symbol,
       createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
+      sortOrder: Number(r.sort_order ?? 0),
     })));
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -564,13 +569,46 @@ router.post("/user/watchlist", requireAuth, requireSchema, async (req: any, res)
   }
   const sym = symbol.toUpperCase().trim();
   try {
+    // New items get sort_order = 0 so they appear at the top (lowest value = first)
+    // existing items have higher sort_order values; we shift them down by 1 to make room
     await pool.query(
-      "INSERT INTO watchlist (user_id, symbol) VALUES ($1,$2) ON CONFLICT (user_id, symbol) DO NOTHING",
+      "UPDATE watchlist SET sort_order = sort_order + 1 WHERE user_id=$1",
+      [req.userId],
+    );
+    await pool.query(
+      "INSERT INTO watchlist (user_id, symbol, sort_order) VALUES ($1,$2,0) ON CONFLICT (user_id, symbol) DO NOTHING",
       [req.userId, sym],
     );
     res.json({ ok: true });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// Persist a user-defined drag order. Body: { symbols: string[] } in the
+// desired order. Assigns sort_order 0,1,2,... to each symbol.
+router.put("/user/watchlist/reorder", requireAuth, requireSchema, async (req: any, res) => {
+  const { symbols } = req.body;
+  if (!Array.isArray(symbols) || symbols.some((s: any) => typeof s !== "string")) {
+    res.status(400).json({ error: "symbols must be a string array" });
+    return;
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    for (let i = 0; i < symbols.length; i++) {
+      await client.query(
+        "UPDATE watchlist SET sort_order=$1 WHERE user_id=$2 AND symbol=$3",
+        [i, req.userId, (symbols[i] as string).toUpperCase().trim()],
+      );
+    }
+    await client.query("COMMIT");
+    res.json({ ok: true });
+  } catch (e: any) {
+    await client.query("ROLLBACK");
+    res.status(500).json({ error: e.message });
+  } finally {
+    client.release();
   }
 });
 

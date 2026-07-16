@@ -13,6 +13,7 @@ const WATCHLIST_POLL_INTERVAL = 60_000;
 export interface WatchlistItem {
   symbol: string;
   createdAt: string;
+  sortOrder?: number;
 }
 
 export interface QuoteData {
@@ -97,6 +98,25 @@ export function useWatchlist() {
     }, WATCHLIST_POLL_INTERVAL);
     return () => clearInterval(id);
   }, [refresh]);
+
+  const reorder = useCallback(async (symbols: string[]) => {
+    // Optimistic update
+    setItems((prev) => {
+      const map = new Map(prev.map((i) => [i.symbol, i]));
+      return symbols
+        .map((s, idx) => map.get(s) ?? { symbol: s, createdAt: new Date().toISOString(), sortOrder: idx })
+        .filter(Boolean) as WatchlistItem[];
+    });
+    try {
+      await apiFetch('/api/user/watchlist/reorder', {
+        method: 'PUT',
+        body: JSON.stringify({ symbols }),
+      });
+    } catch {
+      // Revert on failure by re-fetching
+      refresh();
+    }
+  }, [apiFetch, refresh]);
 
   const add = useCallback(async (symbol: string) => {
     // Optimistic update
@@ -185,6 +205,7 @@ export function useWatchlist() {
     refresh,
     add,
     remove,
+    reorder,
     isWatched,
     activeAlertFor,
     saveAlert,
