@@ -30,7 +30,7 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "pnpm --filter @workspace/mobile run test"
+args = "pnpm --filter @workspace/mobile run test && pnpm --filter @workspace/api-server run test"
 
 [workflows.workflow.metadata]
 isValidation = true
