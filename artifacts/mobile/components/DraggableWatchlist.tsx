@@ -34,6 +34,7 @@ import Animated, {
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { syncLocalOrder } from '@/lib/watchlistFilter';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -304,15 +305,14 @@ export function DraggableWatchlist({
   // Symbol of the currently-dragged item (JS state so FloatingGhost renders correctly)
   const [ghostSymbol, setGhostSymbol] = useState<string | null>(null);
 
-  // Keep localOrder in sync when items are added/removed
+  // Keep localOrder in sync with the incoming items. When the symbol *set*
+  // changes (filter applied/cleared, add/remove) we adopt the incoming order
+  // exactly; when the set is identical we keep the local order so an
+  // optimistic drag result isn't clobbered by a stale refresh.
   const itemKey = items.map((i) => i.symbol).join(',');
   useEffect(() => {
     const incoming = items.map((i) => i.symbol);
-    setLocalOrder((prev) => {
-      const kept = prev.filter((s) => incoming.includes(s));
-      const added = incoming.filter((s) => !prev.includes(s));
-      return [...kept, ...added];
-    });
+    setLocalOrder((prev) => syncLocalOrder(prev, incoming));
   }, [itemKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const orderedItems = localOrder

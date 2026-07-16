@@ -27,6 +27,10 @@ import { DonationSidebar } from '@/components/DonationSidebar';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { DraggableWatchlist } from '@/components/DraggableWatchlist';
+import { matchesFilter, mergeReorderedSubset } from '@/lib/watchlistFilter';
+
+/** Show the watchlist filter input when tracking this many tickers or more. */
+const WATCHLIST_FILTER_THRESHOLD = 6;
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
@@ -303,6 +307,32 @@ export default function HomeScreen() {
   const [alertModalSymbol, setAlertModalSymbol] = useState<string | null>(null);
   const [alertModalPrice, setAlertModalPrice] = useState<number | undefined>(undefined);
 
+  // Watchlist filter — only shown when the list gets long
+  const [watchFilter, setWatchFilter] = useState('');
+  const showWatchFilter = watchlist.items.length >= WATCHLIST_FILTER_THRESHOLD;
+
+  // Clear the filter when the list drops below the threshold
+  useEffect(() => {
+    if (!showWatchFilter && watchFilter) setWatchFilter('');
+  }, [showWatchFilter, watchFilter]);
+
+  const filteredWatchItems = showWatchFilter && watchFilter.trim()
+    ? watchlist.items.filter((i) => matchesFilter(i.symbol, watchFilter))
+    : watchlist.items;
+
+  // When a filtered subset is reordered, map it back onto the full list
+  const handleWatchReorder = useCallback(
+    (symbols: string[]) => {
+      const fullOrder = watchlist.items.map((i) => i.symbol);
+      if (symbols.length === fullOrder.length) {
+        watchlist.reorder(symbols);
+      } else {
+        watchlist.reorder(mergeReorderedSubset(fullOrder, symbols));
+      }
+    },
+    [watchlist.items, watchlist.reorder],
+  );
+
   useEffect(() => {
     apiFetch<string[]>('/api/user/recent').then(setRecent).catch(() => {});
   }, [apiFetch]);
@@ -578,6 +608,28 @@ export default function HomeScreen() {
               </View>
             </View>
 
+            {showWatchFilter && (
+              <View style={[styles.watchFilterRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Feather name="filter" size={14} color={colors.mutedForeground} style={{ marginRight: 8 }} />
+                <TextInput
+                  style={[styles.watchFilterInput, { color: colors.foreground, fontFamily: 'Inter_500Medium' }]}
+                  placeholder="Filter watchlist…"
+                  placeholderTextColor={colors.mutedForeground}
+                  value={watchFilter}
+                  onChangeText={setWatchFilter}
+                  onBlur={() => setWatchFilter('')}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  returnKeyType="done"
+                />
+                {watchFilter.length > 0 && (
+                  <TouchableOpacity onPress={() => setWatchFilter('')} style={{ padding: 4 }}>
+                    <Feather name="x" size={14} color={colors.mutedForeground} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
             {watchlist.items.length === 0 ? (
               <View style={[styles.watchlistEmpty, { borderColor: colors.border }]}>
                 <Feather name="star" size={20} color={colors.mutedForeground} />
@@ -585,14 +637,21 @@ export default function HomeScreen() {
                   Search for a stock and tap ★ to add it here
                 </Text>
               </View>
+            ) : filteredWatchItems.length === 0 ? (
+              <View style={[styles.watchlistEmpty, { borderColor: colors.border }]}>
+                <Feather name="search" size={20} color={colors.mutedForeground} />
+                <Text style={[styles.watchlistEmptyText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                  No tickers match “{watchFilter.trim().toUpperCase()}”
+                </Text>
+              </View>
             ) : (
               <DraggableWatchlist
-                items={watchlist.items}
+                items={filteredWatchItems}
                 quotes={watchlist.quotes}
                 activeAlertFor={watchlist.activeAlertFor}
                 onNavigate={navigateTo}
                 onRemove={watchlist.remove}
-                onReorder={watchlist.reorder}
+                onReorder={handleWatchReorder}
                 onOpenAlert={openAlertModal}
                 onDragActive={(active) => setScrollEnabled(!active)}
                 colors={colors}
@@ -805,6 +864,16 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   // Watchlist
+  watchFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    height: 40,
+    marginBottom: 10,
+  },
+  watchFilterInput: { flex: 1, fontSize: 14, height: '100%' },
   watchlistEmpty: {
     flexDirection: 'row',
     alignItems: 'center',
