@@ -2,27 +2,10 @@ import { useCallback } from 'react';
 import * as AuthSession from 'expo-auth-session';
 import * as Network from 'expo-network';
 import { useClerk, useSignIn, useSignUp, useSSO } from '@clerk/expo';
+import { withTimeout, SSOTimeoutError } from '../lib/withTimeout';
 
 /** How long to wait for the OAuth flow before giving up (ms). */
 export const SSO_TIMEOUT_MS = 90_000;
-
-class SSOTimeoutError extends Error {
-  constructor() {
-    super('Sign-in timed out, please try again.');
-    this.name = 'SSOTimeoutError';
-  }
-}
-
-/** Reject if the promise does not settle within `ms`. */
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new SSOTimeoutError()), ms);
-    promise.then(
-      (v) => { clearTimeout(timer); resolve(v); },
-      (e) => { clearTimeout(timer); reject(e); },
-    );
-  });
-}
 
 /** Extract a human-readable message from a Clerk error. */
 export function getClerkErrorMessage(err: any): string {
