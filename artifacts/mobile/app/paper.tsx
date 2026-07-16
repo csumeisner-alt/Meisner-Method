@@ -32,47 +32,20 @@ import {
   POSITION_COLORS,
   PortfolioLineChart,
 } from '@/components/PaperCharts';
+import {
+  INITIAL_BALANCE,
+  buildValueHistory,
+  computeRealizedPnL,
+  computeSellResult,
+  computeSellWinRate,
+  fundFee,
+  type LiveQuote,
+  type PaperAccount,
+  type PaperPosition,
+  type PaperTransaction,
+} from '@/lib/paperMath';
 
 // ── Types ──────────────────────────────────────────────────────────────────
-type PaperAccount = {
-  id: string;
-  name: string;
-  cash: number;
-  createdAt: string;
-};
-type PaperPosition = {
-  id: string;
-  accountId: string;
-  symbol: string;
-  companyName: string;
-  shares: number;
-  avgCost: number;
-  openedAt: string;
-  dividendYield: number;
-  /** Declared annual dividend per share in dollars (e.g. 0.83 for WMT).
-   *  Optional so existing DB-loaded positions without this field still work. */
-  dividendRate?: number;
-  /** Annual fund expense ratio as a decimal fraction (e.g. 0.0003 for VOO).
-   *  Optional/0 for individual stocks and older positions — those pay no fee. */
-  expenseRatio?: number;
-  sector: string;
-};
-type PaperTransaction = {
-  id: string;
-  accountId: string;
-  symbol: string;
-  companyName: string;
-  action: 'BUY' | 'SELL';
-  shares: number;
-  price: number;
-  total: number;
-  date: string;
-  /** Gross realized P&L (before fund fees). Net = realizedPnL - fee. */
-  realizedPnL?: number;
-  /** Fund fee charged on this closing trade (0 for non-fund symbols). */
-  fee?: number;
-};
-type LiveQuote = { price: number; change: number; pct: number };
 type TabId = 'positions' | 'analytics' | 'dividends' | 'growth';
 type StockInfo = {
   companyName: string;
@@ -104,33 +77,11 @@ function annualDivIncome(pos: { shares: number; dividendRate?: number; dividendY
   return _annualDivIncomeFallback(pos, price);
 }
 
-/**
- * Prorated fund fee charged when closing a position. Accrues the annual
- * expense ratio smoothly over the holding period:
- *   fee = value × expenseRatio × (daysHeld ÷ 365)
- * Returns 0 for symbols with no expense ratio (most individual stocks) and
- * for positions opened before this field existed.
- */
-function fundFee(
-  value: number,
-  expenseRatio: number | undefined,
-  openedAt: string,
-  soldAt: string,
-): number {
-  if (!expenseRatio || expenseRatio <= 0 || !value || value <= 0) return 0;
-  const days = Math.max(
-    0,
-    (new Date(soldAt).getTime() - new Date(openedAt).getTime()) / 86_400_000,
-  );
-  return value * expenseRatio * (days / 365);
-}
-
 function _annualDivIncomeFallback(pos: { shares: number; dividendRate?: number; dividendYield: number }, price: number): number {
   return pos.shares * price * normYield(pos.dividendYield);
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
-const INITIAL_BALANCE = 100_000;
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
 const SILVER = '#c0c0c0';
@@ -177,57 +128,6 @@ function defaultAccounts(): PaperAccount[] {
     { id: uid(), name: 'Strategy 2', cash: INITIAL_BALANCE, createdAt: now },
     { id: uid(), name: 'Strategy 3', cash: INITIAL_BALANCE, createdAt: now },
   ];
-}
-
-
-function buildValueHistory(
-  account: PaperAccount,
-  txns: PaperTransaction[],
-  currentCash: number,
-  currentPositions: PaperPosition[],
-  quotes: Record<string, LiveQuote>,
-): { date: string; value: number }[] {
-  const sorted = [...txns].sort(
-    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-  );
-  const points: { date: string; value: number }[] = [
-    { date: account.createdAt, value: INITIAL_BALANCE },
-  ];
-  let cash = INITIAL_BALANCE;
-  const posMap: Record<string, { shares: number; avgCost: number; lastPrice: number }> = {};
-
-  for (const tx of sorted) {
-    if (tx.action === 'BUY') {
-      cash -= tx.total;
-      if (!posMap[tx.symbol]) {
-        posMap[tx.symbol] = { shares: tx.shares, avgCost: tx.price, lastPrice: tx.price };
-      } else {
-        const p = posMap[tx.symbol];
-        const total = p.shares + tx.shares;
-        p.avgCost = (p.shares * p.avgCost + tx.shares * tx.price) / total;
-        p.shares = total;
-        p.lastPrice = tx.price;
-      }
-    } else {
-      // Credit proceeds net of the fund fee, mirroring the live cash update.
-      cash += tx.total - (tx.fee ?? 0);
-      if (posMap[tx.symbol]) {
-        posMap[tx.symbol].shares -= tx.shares;
-        posMap[tx.symbol].lastPrice = tx.price;
-        if (posMap[tx.symbol].shares <= 0) delete posMap[tx.symbol];
-      }
-    }
-    const posValue = Object.values(posMap).reduce(
-      (s, p) => s + p.shares * p.lastPrice, 0,
-    );
-    points.push({ date: tx.date, value: cash + posValue });
-  }
-
-  const livePosValue = currentPositions.reduce(
-    (s, p) => s + p.shares * (quotes[p.symbol]?.price ?? p.avgCost), 0,
-  );
-  points.push({ date: new Date().toISOString(), value: currentCash + livePosValue });
-  return points;
 }
 
 // ── Main Screen ────────────────────────────────────────────────────────────
@@ -282,9 +182,7 @@ export default function PaperScreen() {
     (s, p) => s + p.shares * ((quotes[p.symbol]?.price ?? p.avgCost) - p.avgCost), 0,
   );
   // Realized P&L is net of fund fees: gross realized minus fees charged at close.
-  const realizedPnL = myTxns
-    .filter(t => t.action === 'SELL')
-    .reduce((s, t) => s + (t.realizedPnL ?? 0) - (t.fee ?? 0), 0);
+  const realizedPnL = computeRealizedPnL(myTxns);
   const totalPnL = unrealizedPnL + realizedPnL;
   const totalReturn = ((portfolioValue - INITIAL_BALANCE) / INITIAL_BALANCE) * 100;
 
@@ -541,12 +439,16 @@ export default function PaperScreen() {
 
     const quote = quotes[selectedPos.symbol];
     const price = quote?.price ?? selectedPos.avgCost;
-    const total = numShares * price;
     const now = new Date().toISOString();
     // Gross P&L before fees; fund fee accrues on the cost basis of the shares
-    // being closed, prorated over the holding period. Net = gross - fee.
-    const realizedPnL = numShares * (price - selectedPos.avgCost);
-    const fee = fundFee(numShares * selectedPos.avgCost, selectedPos.expenseRatio, selectedPos.openedAt, now);
+    // being closed, prorated over the holding period. Net = gross - fee, and
+    // cash is credited net of the fee so equity reflects the fee.
+    const { total, realizedPnL, fee } = computeSellResult({
+      position: selectedPos,
+      shares: numShares,
+      price,
+      soldAt: now,
+    });
 
     let newPositions: PaperPosition[];
     const remaining = selectedPos.shares - numShares;
@@ -713,12 +615,9 @@ export default function PaperScreen() {
     }
 
     // Win/loss judged on net (after-fee) P&L: a win is net profit of $0.01+.
-    const netPnL = (t: PaperTransaction) => (t.realizedPnL ?? 0) - (t.fee ?? 0);
-    const winTrades = myTxns.filter(t => t.action === 'SELL' && netPnL(t) >= 0.01).length;
-    const lossTrades = myTxns.filter(t => t.action === 'SELL' && netPnL(t) < 0.01).length;
-    const winRate = winTrades + lossTrades > 0
-      ? ((winTrades / (winTrades + lossTrades)) * 100).toFixed(0)
-      : '—';
+    // Each sell (including a partial close) counts once toward the win rate.
+    const { rate: winRatePct } = computeSellWinRate(myTxns);
+    const winRate = winRatePct != null ? winRatePct.toFixed(0) : '—';
 
     return (
       <View style={{ gap: 12, paddingHorizontal: 16 }}>
