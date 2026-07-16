@@ -85,7 +85,9 @@ interface AlertModalProps {
   existingDirection?: 'above' | 'below';
   existingTarget?: number;
   pushToken: string | null;
-  notAvailable: boolean;
+  permissionStatus: 'unknown' | 'granted' | 'denied' | 'unavailable';
+  onRequestPermission: () => Promise<boolean>;
+  onOpenSettings: () => void;
   onSave: (direction: 'above' | 'below', targetPrice: number) => void;
   onDelete: () => void;
   onClose: () => void;
@@ -94,10 +96,12 @@ interface AlertModalProps {
 
 function AlertModal({
   visible, symbol, currentPrice, existingDirection, existingTarget,
-  pushToken, notAvailable, onSave, onDelete, onClose, colors,
+  pushToken, permissionStatus, onRequestPermission, onOpenSettings,
+  onSave, onDelete, onClose, colors,
 }: AlertModalProps) {
   const [direction, setDirection] = useState<'above' | 'below'>(existingDirection ?? 'above');
   const [targetInput, setTargetInput] = useState(existingTarget?.toFixed(2) ?? '');
+  const [requesting, setRequesting] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -129,13 +133,60 @@ function AlertModal({
             </Text>
           )}
 
-          {notAvailable || !pushToken ? (
+          {permissionStatus === 'unavailable' ? (
             <View style={[alertStyles.unavailableBox, { backgroundColor: colors.muted, borderColor: colors.border }]}>
               <Feather name="bell-off" size={16} color={colors.mutedForeground} />
               <Text style={[alertStyles.unavailableText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                 Push notifications are only available on a physical device with the app installed.
               </Text>
             </View>
+          ) : permissionStatus === 'denied' ? (
+            <>
+              <View style={[alertStyles.unavailableBox, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+                <Feather name="bell-off" size={16} color={colors.mutedForeground} />
+                <Text style={[alertStyles.unavailableText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                  Notifications are turned off for this app. To get price alerts, enable them in your phone's settings.
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[alertStyles.saveBtn, { backgroundColor: colors.primary }]}
+                onPress={onOpenSettings}
+                activeOpacity={0.8}
+              >
+                <Feather name="settings" size={14} color={colors.primaryForeground} />
+                <Text style={[alertStyles.saveTxt, { color: colors.primaryForeground, fontFamily: 'Inter_700Bold' }]}>
+                  Open Settings
+                </Text>
+              </TouchableOpacity>
+            </>
+          ) : !pushToken ? (
+            <>
+              <View style={[alertStyles.unavailableBox, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+                <Feather name="bell" size={16} color={colors.mutedForeground} />
+                <Text style={[alertStyles.unavailableText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                  We'll send you a notification when {symbol} crosses your target price. Allow notifications to set your alert.
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[alertStyles.saveBtn, { backgroundColor: colors.primary, opacity: requesting ? 0.6 : 1 }]}
+                onPress={async () => {
+                  if (requesting) return;
+                  setRequesting(true);
+                  try { await onRequestPermission(); } finally { setRequesting(false); }
+                }}
+                disabled={requesting}
+                activeOpacity={0.8}
+              >
+                {requesting ? (
+                  <ActivityIndicator size="small" color={colors.primaryForeground} />
+                ) : (
+                  <Feather name="bell" size={14} color={colors.primaryForeground} />
+                )}
+                <Text style={[alertStyles.saveTxt, { color: colors.primaryForeground, fontFamily: 'Inter_700Bold' }]}>
+                  Enable Notifications
+                </Text>
+              </TouchableOpacity>
+            </>
           ) : (
             <>
               {/* Direction toggle */}
@@ -244,7 +295,7 @@ export default function HomeScreen() {
 
   // Watchlist + push notifications
   const watchlist = useWatchlist();
-  const { pushToken, notAvailable } = usePushNotifications();
+  const { pushToken, status: pushStatus, requestPermission, openNotificationSettings } = usePushNotifications();
 
   // Alert modal state
   const [alertModalSymbol, setAlertModalSymbol] = useState<string | null>(null);
@@ -366,7 +417,9 @@ export default function HomeScreen() {
           existingDirection={activeAlert?.direction}
           existingTarget={activeAlert?.targetPrice}
           pushToken={pushToken}
-          notAvailable={notAvailable}
+          permissionStatus={pushStatus}
+          onRequestPermission={requestPermission}
+          onOpenSettings={openNotificationSettings}
           onSave={async (direction, targetPrice) => {
             if (!pushToken) return;
             await watchlist.saveAlert(alertModalSymbol, direction, targetPrice, pushToken).catch(() => {});

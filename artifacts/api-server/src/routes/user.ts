@@ -12,6 +12,11 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { join, dirname } from "node:path";
 import { randomUUID } from "node:crypto";
+import {
+  processPendingAlerts,
+  classifyExpoPushResponse,
+  type PendingAlert,
+} from "../lib/alertLogic.js";
 
 const { Pool } = pg;
 
@@ -57,6 +62,13 @@ async function runSchemaMigrations(): Promise<void> {
     // Non-fatal: extension may be unavailable on managed Postgres (e.g. Neon).
     // Application-level UUID generation ensures price_alerts still works.
   });
+  // Per-user notification preferences (global on/off toggle)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_prefs (
+      user_id TEXT PRIMARY KEY,
+      notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE
+    )
+  `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS price_alerts (
       id TEXT NOT NULL,
@@ -641,6 +653,37 @@ router.post("/user/push-token", requireAuth, async (req: any, res) => {
   res.json({ ok: true });
 });
 
+// ── Notification settings (global on/off toggle) ──────────────────────────
+router.get("/user/notification-settings", requireAuth, requireSchema, async (req: any, res) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT notifications_enabled FROM user_prefs WHERE user_id=$1",
+      [req.userId],
+    );
+    res.json({ enabled: rows[0]?.notifications_enabled ?? true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.put("/user/notification-settings", requireAuth, requireSchema, async (req: any, res) => {
+  const { enabled } = req.body;
+  if (typeof enabled !== "boolean") {
+    res.status(400).json({ error: "enabled must be a boolean" });
+    return;
+  }
+  try {
+    await pool.query(
+      `INSERT INTO user_prefs (user_id, notifications_enabled) VALUES ($1, $2)
+       ON CONFLICT (user_id) DO UPDATE SET notifications_enabled = EXCLUDED.notifications_enabled`,
+      [req.userId, enabled],
+    );
+    res.json({ enabled });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Price Alert Worker ─────────────────────────────────────────────────────
 // Runs every 5 minutes; fetches live prices and fires pending alerts.
 async function fetchCurrentPrice(symbol: string): Promise<number | null> {
@@ -657,70 +700,82 @@ async function fetchCurrentPrice(symbol: string): Promise<number | null> {
   }
 }
 
-async function runAlertCheck(): Promise<void> {
+async function sendExpoPush(alert: PendingAlert, price: number) {
+  const pushRes = await fetch("https://exp.host/--/api/v2/push/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+    body: JSON.stringify({
+      to: alert.pushToken,
+      title: `${alert.symbol} Price Alert`,
+      body: `${alert.symbol} hit ${price.toFixed(2)} — your target was ${alert.targetPrice.toFixed(2)}`,
+      sound: "default",
+      data: { symbol: alert.symbol },
+    }),
+  });
+  const body = await pushRes.json().catch(() => null);
+  const result = classifyExpoPushResponse(pushRes.ok, body);
+  if (!result.accepted) {
+    logger.warn(
+      { symbol: alert.symbol, status: pushRes.status, body, permanent: result.permanentFailure },
+      "[alert-worker] push not accepted",
+    );
+  }
+  return result;
+}
+
+// Prevent overlapping check cycles (scheduled interval + dev trigger) from
+// reading the same pending alerts and double-sending before fired_at is set.
+let alertCheckRunning = false;
+
+async function runAlertCheck() {
+  if (alertCheckRunning) {
+    logger.info("[alert-worker] check already running — skipping overlapping cycle");
+    return null;
+  }
+  alertCheckRunning = true;
   try {
-    const { rows: pending } = await pool.query(
-      "SELECT id, user_id, symbol, direction, target_price, push_token FROM price_alerts WHERE fired_at IS NULL",
+    // Skip alerts for users who turned notifications off in Settings.
+    // Their alerts stay pending and resume when the toggle is re-enabled.
+    const { rows } = await pool.query(
+      `SELECT a.id, a.user_id, a.symbol, a.direction, a.target_price, a.push_token
+       FROM price_alerts a
+       LEFT JOIN user_prefs p ON p.user_id = a.user_id
+       WHERE a.fired_at IS NULL AND COALESCE(p.notifications_enabled, TRUE)`,
     );
-    if (!pending.length) return;
+    const pending: PendingAlert[] = rows.map((r: any) => ({
+      id: r.id,
+      userId: r.user_id,
+      symbol: r.symbol,
+      direction: r.direction,
+      targetPrice: Number(r.target_price),
+      pushToken: r.push_token,
+    }));
 
-    // Fetch prices for unique symbols (batch to reduce API calls)
-    const symbols = [...new Set(pending.map((r: any) => r.symbol as string))];
-    const prices = new Map<string, number>();
-    await Promise.all(
-      symbols.map(async (sym) => {
-        const p = await fetchCurrentPrice(sym);
-        if (p != null) prices.set(sym, p);
-      }),
-    );
-
-    await Promise.all(
-      pending.map(async (alert: any) => {
-        const price = prices.get(alert.symbol);
-        if (price == null) return;
-        const triggered =
-          alert.direction === "above"
-            ? price >= Number(alert.target_price)
-            : price <= Number(alert.target_price);
-        if (!triggered) return;
-
-        // Send Expo push notification — only mark fired on confirmed delivery.
-        // A transient push API failure leaves the alert active so it retries
-        // on the next check cycle rather than silently dropping it.
-        let pushOk = false;
-        try {
-          const pushRes = await fetch("https://exp.host/--/api/v2/push/send", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "Accept": "application/json" },
-            body: JSON.stringify({
-              to: alert.push_token,
-              title: `${alert.symbol} Price Alert`,
-              body: `${alert.symbol} hit ${price.toFixed(2)} — your target was ${Number(alert.target_price).toFixed(2)}`,
-              sound: "default",
-              data: { symbol: alert.symbol },
-            }),
-          });
-          pushOk = pushRes.ok;
-          if (!pushOk) {
-            const body = await pushRes.text().catch(() => "");
-            logger.warn({ symbol: alert.symbol, status: pushRes.status, body }, "[alert-worker] push send failed — will retry");
-          }
-        } catch (e: any) {
-          logger.warn({ symbol: alert.symbol, err: e.message }, "[alert-worker] push network error — will retry");
-        }
-
-        if (!pushOk) return; // leave alert active for next cycle
-
-        await pool.query(
-          "UPDATE price_alerts SET fired_at=NOW() WHERE id=$1",
-          [alert.id],
-        );
-        logger.info({ symbol: alert.symbol, direction: alert.direction, price }, "[alert-worker] alert fired and delivered");
-      }),
-    );
+    const stats = await processPendingAlerts(pending, {
+      fetchPrice: fetchCurrentPrice,
+      sendPush: sendExpoPush,
+      markFired: async (id) => {
+        await pool.query("UPDATE price_alerts SET fired_at=NOW() WHERE id=$1", [id]);
+      },
+    });
+    if (stats.checked > 0) logger.info({ ...stats }, "[alert-worker] check cycle complete");
+    return stats;
   } catch (e: any) {
     logger.error({ err: e }, "[alert-worker] price check failed");
+    return null;
+  } finally {
+    alertCheckRunning = false;
   }
+}
+
+// Dev-only: trigger an alert check cycle on demand so the pipeline can be
+// verified without waiting for the 5-minute interval. Never mounted in prod.
+if (process.env.NODE_ENV !== "production") {
+  router.post("/user/dev/run-alert-check", requireAuth, requireSchema, async (_req, res) => {
+    const stats = await runAlertCheck();
+    if (!stats) { res.status(500).json({ error: "alert check failed" }); return; }
+    res.json(stats);
+  });
 }
 
 // Start worker after schema is ready. First run 30s after boot, then every 5 min.
