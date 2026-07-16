@@ -543,19 +543,19 @@ function PositionRow({
 }
 
 const rowStyles = StyleSheet.create({
-  row: { borderRadius: 10, borderWidth: 1, marginBottom: 6, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 9, gap: 8 },
-  leftCol: { width: 60, gap: 4 },
-  sym: { fontSize: 15 },
+  row: { borderRadius: 10, borderWidth: 1, marginBottom: 6, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, gap: 6 },
+  leftCol: { width: 68, gap: 2 },
+  sym: { fontSize: 18 },
   badge: { borderWidth: 1, borderRadius: 3, paddingHorizontal: 5, paddingVertical: 1, alignSelf: 'flex-start' },
-  badgeTxt: { fontSize: 7, letterSpacing: 0.4 },
-  midCol: { flex: 1, gap: 3 },
-  midTop: { fontSize: 12 },
-  midBot: { fontSize: 10 },
-  pnlCol: { alignItems: 'flex-end', gap: 3, minWidth: 86 },
-  pnlTop: { fontSize: 12 },
-  pnlBot: { fontSize: 10 },
-  actionBtn: { borderWidth: 1, borderRadius: 5, paddingHorizontal: 8, paddingVertical: 5, minWidth: 40, alignItems: 'center' },
-  actionTxt: { fontSize: 9, letterSpacing: 0.5 },
+  badgeTxt: { fontSize: 9, letterSpacing: 0.4 },
+  midCol: { flex: 1, gap: 1 },
+  midTop: { fontSize: 15 },
+  midBot: { fontSize: 13 },
+  pnlCol: { alignItems: 'flex-end', gap: 1, minWidth: 86 },
+  pnlTop: { fontSize: 15 },
+  pnlBot: { fontSize: 13 },
+  actionBtn: { borderWidth: 1, borderRadius: 5, paddingHorizontal: 10, paddingVertical: 6, minWidth: 52, alignItems: 'center' },
+  actionTxt: { fontSize: 13, letterSpacing: 0.5 },
 });
 
 // ─── Trade History Card ────────────────────────────────────────────────────────
@@ -1063,20 +1063,20 @@ function SummaryCard({ positions, closedTrades, onReset, colors }: { positions: 
 }
 
 const smStyles = StyleSheet.create({
-  card: { borderRadius: 12, borderWidth: 1, padding: 14, marginBottom: 12 },
-  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  heading: { fontSize: 9, letterSpacing: 1 },
+  card: { borderRadius: 12, borderWidth: 1, padding: 12, marginBottom: 12 },
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  heading: { fontSize: 12, letterSpacing: 1 },
   resetBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  resetTxt: { fontSize: 10, letterSpacing: 0.5 },
-  metricsRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  metricCell: { flex: 1, gap: 3 },
-  divider: { width: 1, height: 32, marginHorizontal: 8 },
-  metricLabel: { fontSize: 8, letterSpacing: 0.6 },
-  metricVal: { fontSize: 13 },
-  plStrip: { borderRadius: 8, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 4 },
-  plLabel: { fontSize: 8, letterSpacing: 0.6, fontFamily: 'Inter_400Regular' },
-  plVal: { fontSize: 12 },
-  plTotal: { fontSize: 12 },
+  resetTxt: { fontSize: 12, letterSpacing: 0.5 },
+  metricsRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  metricCell: { flex: 1, gap: 2 },
+  divider: { width: 1, height: 36, marginHorizontal: 8 },
+  metricLabel: { fontSize: 10, letterSpacing: 0.5 },
+  metricVal: { fontSize: 16 },
+  plStrip: { borderRadius: 8, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 6, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 4 },
+  plLabel: { fontSize: 10, letterSpacing: 0.5, fontFamily: 'Inter_400Regular' },
+  plVal: { fontSize: 15 },
+  plTotal: { fontSize: 15 },
 });
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
