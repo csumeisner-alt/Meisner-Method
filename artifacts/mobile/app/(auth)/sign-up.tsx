@@ -10,12 +10,12 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import { useClerk, useSignUp, useSSO } from '@clerk/expo';
+import { useClerk, useSignUp } from '@clerk/expo';
 import * as WebBrowser from 'expo-web-browser';
-import * as AuthSession from 'expo-auth-session';
 import { Link, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MMLogo } from '@/components/MMLogo';
+import { useGoogleAuth, getClerkErrorMessage } from '@/hooks/useGoogleAuth';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -27,24 +27,13 @@ function useWarmUpBrowser() {
   }, []);
 }
 
-// Extract a human-readable message from a Clerk error (futures API returns
-// `{ error }` whose shape is a ClerkAPIResponseError-like object).
-function getClerkErrorMessage(err: any): string {
-  return (
-    err?.errors?.[0]?.longMessage ||
-    err?.errors?.[0]?.message ||
-    err?.message ||
-    'Something went wrong. Please try again.'
-  );
-}
-
 export default function SignUpScreen() {
   useWarmUpBrowser();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { setActive } = useClerk();
   const { signUp, errors, fetchStatus } = useSignUp();
-  const { startSSOFlow } = useSSO();
+  const { signInWithGoogle } = useGoogleAuth();
 
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
@@ -60,10 +49,27 @@ export default function SignUpScreen() {
       setFormError(getClerkErrorMessage(createError));
       return;
     }
-    const { error: sendError } = await signUp.verifications.sendEmailCode();
-    if (sendError) {
-      setFormError(getClerkErrorMessage(sendError));
+    // Instance may not require email verification — session can be ready now.
+    if (signUp.status === 'complete' && signUp.createdSessionId) {
+      await setActive({ session: signUp.createdSessionId });
+      router.replace('/');
+      return;
     }
+    if (signUp.unverifiedFields.includes('email_address')) {
+      const { error: sendError } = await signUp.verifications.sendEmailCode();
+      if (sendError) {
+        setFormError(getClerkErrorMessage(sendError));
+      }
+      return;
+    }
+    // Neither complete nor awaiting email verification — surface it rather
+    // than leaving the button looking like it did nothing.
+    console.warn('[auth] sign-up in unexpected state', {
+      status: signUp.status,
+      missingFields: signUp.missingFields,
+      unverifiedFields: signUp.unverifiedFields,
+    });
+    setFormError('Could not create your account. Please try again.');
   };
 
   const handleVerifyCode = async () => {
@@ -76,54 +82,39 @@ export default function SignUpScreen() {
     if (signUp.status === 'complete' && signUp.createdSessionId) {
       await setActive({ session: signUp.createdSessionId });
       router.replace('/');
+      return;
     }
+    console.warn('[auth] verify code left sign-up incomplete', {
+      status: signUp.status,
+      missingFields: signUp.missingFields,
+    });
+    setFormError('Verification did not complete. Please try again.');
   };
 
   const handleGoogleSignUp = useCallback(async () => {
     setGoogleLoading(true);
     setFormError('');
     try {
-      const { createdSessionId, signIn: ssoSignIn, signUp: ssoSignUp } =
-        await startSSOFlow({
-          strategy: 'oauth_google',
-          redirectUrl: AuthSession.makeRedirectUri(),
-        });
-      console.log('[auth] Google SSO result:', {
-        createdSessionId,
-        signInStatus: ssoSignIn?.status,
-        signUpStatus: ssoSignUp?.status,
-      });
-      // Primary path: SSO returned a ready session ID
-      if (createdSessionId) {
-        await setActive({ session: createdSessionId });
+      const result = await signInWithGoogle();
+      if (result.ok) {
         router.replace('/');
-        return;
+      } else if (result.message) {
+        setFormError(result.message);
       }
-      // Fallback: existing account where Clerk marks the signIn complete but
-      // returns the session ID on the ssoSignIn object instead
-      if (ssoSignIn?.status === 'complete' && ssoSignIn?.createdSessionId) {
-        await setActive({ session: ssoSignIn.createdSessionId });
-        router.replace('/');
-        return;
-      }
-      console.warn('[auth] SSO returned no session', {
-        signInStatus: ssoSignIn?.status,
-        signUpStatus: ssoSignUp?.status,
-      });
-      setFormError('Could not complete Google sign-up. Please try again.');
     } catch (e) {
       console.error('Google sign-up error:', e);
       setFormError(getClerkErrorMessage(e));
     } finally {
       setGoogleLoading(false);
     }
-  }, [startSSOFlow, setActive, router]);
+  }, [signInWithGoogle, router]);
 
-  // Email verification step
+  // Email verification step. Do NOT additionally require missingFields to be
+  // empty — some instance configurations report benign missing fields here,
+  // and hiding the verification view makes the button look like it did nothing.
   if (
     signUp.status === 'missing_requirements' &&
-    signUp.unverifiedFields.includes('email_address') &&
-    signUp.missingFields.length === 0
+    signUp.unverifiedFields.includes('email_address')
   ) {
     return (
       <View style={[s.container, { paddingTop: insets.top + 60 }]}>

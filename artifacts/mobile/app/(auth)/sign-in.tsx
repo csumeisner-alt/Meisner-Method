@@ -10,12 +10,12 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import { useClerk, useSignIn, useSSO } from '@clerk/expo';
+import { useClerk, useSignIn } from '@clerk/expo';
 import * as WebBrowser from 'expo-web-browser';
-import * as AuthSession from 'expo-auth-session';
 import { Link, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MMLogo } from '@/components/MMLogo';
+import { useGoogleAuth, getClerkErrorMessage } from '@/hooks/useGoogleAuth';
 
 // Required: completes any pending web auth sessions on Android
 WebBrowser.maybeCompleteAuthSession();
@@ -28,24 +28,13 @@ function useWarmUpBrowser() {
   }, []);
 }
 
-// Extract a human-readable message from a Clerk error (futures API returns
-// `{ error }` whose shape is a ClerkAPIResponseError-like object).
-function getClerkErrorMessage(err: any): string {
-  return (
-    err?.errors?.[0]?.longMessage ||
-    err?.errors?.[0]?.message ||
-    err?.message ||
-    'Something went wrong. Please try again.'
-  );
-}
-
 export default function SignInScreen() {
   useWarmUpBrowser();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { setActive } = useClerk();
   const { signIn, errors, fetchStatus } = useSignIn();
-  const { startSSOFlow } = useSSO();
+  const { signInWithGoogle } = useGoogleAuth();
 
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
@@ -84,41 +73,19 @@ export default function SignInScreen() {
     setGoogleLoading(true);
     setFormError('');
     try {
-      const { createdSessionId, signIn: ssoSignIn, signUp: ssoSignUp } =
-        await startSSOFlow({
-          strategy: 'oauth_google',
-          redirectUrl: AuthSession.makeRedirectUri(),
-        });
-      console.log('[auth] Google SSO result:', {
-        createdSessionId,
-        signInStatus: ssoSignIn?.status,
-        signUpStatus: ssoSignUp?.status,
-      });
-      // Primary path: SSO returned a ready session ID
-      if (createdSessionId) {
-        await setActive({ session: createdSessionId });
+      const result = await signInWithGoogle();
+      if (result.ok) {
         router.replace('/');
-        return;
+      } else if (result.message) {
+        setFormError(result.message);
       }
-      // Fallback: existing account where Clerk marks the signIn complete but
-      // returns the session ID on the ssoSignIn object instead
-      if (ssoSignIn?.status === 'complete' && ssoSignIn?.createdSessionId) {
-        await setActive({ session: ssoSignIn.createdSessionId });
-        router.replace('/');
-        return;
-      }
-      console.warn('[auth] SSO returned no session', {
-        signInStatus: ssoSignIn?.status,
-        signUpStatus: ssoSignUp?.status,
-      });
-      setFormError('Could not complete Google sign-in. Please try again.');
     } catch (e) {
       console.error('Google sign-in error:', e);
       setFormError(getClerkErrorMessage(e));
     } finally {
       setGoogleLoading(false);
     }
-  }, [startSSOFlow, setActive, router]);
+  }, [signInWithGoogle, router]);
 
   // MFA / client-trust step
   if (signIn.status === 'needs_client_trust') {

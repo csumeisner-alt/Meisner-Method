@@ -4,6 +4,18 @@ import { getAuthToken } from '@workspace/api-client-react';
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
 /**
+ * Error thrown by `apiFetch` for non-2xx responses. Carries the HTTP status
+ * so callers can distinguish auth failures (401), temporary server
+ * unavailability (503), and genuine network/server errors.
+ */
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+/**
  * Returns an `apiFetch` wrapper that attaches a Bearer token.
  *
  * The token is resolved through the auth token getter registered on
@@ -30,7 +42,7 @@ export function useApi() {
     if (!res.ok) {
       let msg = `HTTP ${res.status}`;
       try { const j = await res.json(); msg = j.error ?? msg; } catch {}
-      throw new Error(msg);
+      throw new ApiError(msg, res.status);
     }
     return res.json() as Promise<T>;
   }, []);

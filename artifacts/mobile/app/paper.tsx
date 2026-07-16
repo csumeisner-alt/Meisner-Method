@@ -21,7 +21,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useApi } from '@/hooks/useApi';
+import { useApi, ApiError } from '@/hooks/useApi';
 import { Feather } from '@expo/vector-icons';
 import { MMLogo } from '@/components/MMLogo';
 import { BottomTabBar } from '@/components/BottomTabBar';
@@ -227,13 +227,32 @@ export default function PaperScreen() {
   const init = useCallback(async () => {
     setErrorMsg('');
     setLoaded(false);
-    try {
+
+    const loadAll = async () => {
       const [accts, pos, txns, active] = await Promise.all([
         apiFetch<PaperAccount[]>('/api/user/paper/accounts'),
         apiFetch<PaperPosition[]>('/api/user/paper/positions'),
         apiFetch<PaperTransaction[]>('/api/user/paper/transactions'),
         apiFetch<{ activeId: string | null }>('/api/user/paper/active'),
       ]);
+      return { accts, pos, txns, active };
+    };
+
+    try {
+      let data;
+      try {
+        data = await loadAll();
+      } catch (e) {
+        // 503 = server is finishing a schema update; retry once after a beat
+        // before surfacing anything to the user.
+        if (e instanceof ApiError && e.status === 503) {
+          await new Promise((r) => setTimeout(r, 2000));
+          data = await loadAll();
+        } else {
+          throw e;
+        }
+      }
+      const { accts, pos, txns, active } = data;
       let finalAccounts = accts;
       if (finalAccounts.length === 0) {
         finalAccounts = defaultAccounts();
@@ -250,7 +269,15 @@ export default function PaperScreen() {
       setActiveId(id);
     } catch (e) {
       console.error('Failed to load paper data:', e);
-      setErrorMsg('Could not load your paper trading data. Check your connection and try again.');
+      if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+        setErrorMsg('Please sign in to access your paper trading account.');
+      } else if (e instanceof ApiError && e.status === 503) {
+        setErrorMsg('The server is finishing an update. Please try again in a moment.');
+      } else if (e instanceof ApiError) {
+        setErrorMsg('Something went wrong loading your paper trading data. Please try again.');
+      } else {
+        setErrorMsg('Could not reach the server. Check your connection and try again.');
+      }
     } finally {
       setLoaded(true);
     }
