@@ -5,7 +5,23 @@ Usage: python3 fetch_stock.py AAPL
 """
 import sys
 import json
+import math
 import yfinance as yf
+
+
+def clean_nan(obj):
+    """Recursively replace NaN/inf floats with None so output is valid JSON.
+
+    Python's json.dumps emits bare `NaN`/`Infinity` tokens which JSON.parse
+    rejects, causing the Node API server to 500 on the affected symbol.
+    """
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: clean_nan(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [clean_nan(v) for v in obj]
+    return obj
 
 
 def expense_ratio(full_info):
@@ -20,14 +36,18 @@ def expense_ratio(full_info):
     v = full_info.get("annualReportExpenseRatio")
     if v is not None:
         try:
-            return float(v)
+            f = float(v)
+            if math.isfinite(f):
+                return f
         except (TypeError, ValueError):
             pass
     for key in ("netExpenseRatio", "grossExpenseRatio"):
         v = full_info.get(key)
         if v is not None:
             try:
-                return float(v) / 100.0
+                f = float(v) / 100.0
+                if math.isfinite(f):
+                    return f
             except (TypeError, ValueError):
                 pass
     return None
@@ -129,7 +149,7 @@ def main():
                 result["analystRating"] = "Hold"
             result["analystCount"] = total
 
-        print(json.dumps(result))
+        print(json.dumps(clean_nan(result), allow_nan=False))
 
     except Exception as e:
         print(json.dumps({"error": str(e)}))

@@ -2,7 +2,23 @@
 """Fast stock quote fetcher — uses fast_info only, no AI, no full history."""
 import sys
 import json
+import math
 import yfinance as yf
+
+
+def clean_nan(obj):
+    """Recursively replace NaN/inf floats with None so output is valid JSON.
+
+    Python's json.dumps emits bare `NaN`/`Infinity` tokens which JSON.parse
+    rejects, causing the Node API server to 500 on the affected symbol.
+    """
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: clean_nan(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [clean_nan(v) for v in obj]
+    return obj
 
 
 def expense_ratio(ticker):
@@ -19,14 +35,18 @@ def expense_ratio(ticker):
     v = full.get("annualReportExpenseRatio")
     if v is not None:
         try:
-            return float(v)
+            f = float(v)
+            if math.isfinite(f):
+                return f
         except (TypeError, ValueError):
             pass
     for key in ("netExpenseRatio", "grossExpenseRatio"):
         v = full.get(key)
         if v is not None:
             try:
-                return float(v) / 100.0
+                f = float(v) / 100.0
+                if math.isfinite(f):
+                    return f
             except (TypeError, ValueError):
                 pass
     return None
@@ -55,13 +75,13 @@ def main():
         change = price - prev
         pct = (change / prev * 100) if prev else 0
 
-        print(json.dumps({
+        print(json.dumps(clean_nan({
             "symbol": symbol,
             "currentPrice": price,
             "priceChange": change,
             "priceChangePercent": pct,
             "expenseRatio": expense_ratio(ticker),
-        }))
+        }), allow_nan=False))
 
     except Exception as e:
         print(json.dumps({"error": str(e)}))

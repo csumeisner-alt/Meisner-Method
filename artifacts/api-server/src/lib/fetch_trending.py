@@ -5,6 +5,23 @@ Returns top 10 by volume with price, change, and change%.
 """
 import sys
 import json
+import math
+
+
+def clean_nan(obj):
+    """Recursively replace NaN/inf floats with None so output is valid JSON.
+
+    Python's json.dumps emits bare `NaN`/`Infinity` tokens which JSON.parse
+    rejects, causing the Node API server to 500 on this endpoint.
+    """
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: clean_nan(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [clean_nan(v) for v in obj]
+    return obj
+
 
 def fetch_trending():
     import yfinance as yf
@@ -31,7 +48,7 @@ def fetch_trending():
                         "volume": int(volume),
                     })
             if result:
-                print(json.dumps(result))
+                print(json.dumps(clean_nan(result), allow_nan=False))
                 return
     except Exception:
         pass
@@ -70,7 +87,7 @@ def fetch_trending():
 
     # Sort by volume descending, take top 10
     result.sort(key=lambda x: x["volume"], reverse=True)
-    print(json.dumps(result[:10]))
+    print(json.dumps(clean_nan(result[:10]), allow_nan=False))
 
 
 if __name__ == "__main__":
