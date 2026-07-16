@@ -52,6 +52,9 @@ type PaperPosition = {
   /** Declared annual dividend per share in dollars (e.g. 0.83 for WMT).
    *  Optional so existing DB-loaded positions without this field still work. */
   dividendRate?: number;
+  /** Annual fund expense ratio as a decimal fraction (e.g. 0.0003 for VOO).
+   *  Optional/0 for individual stocks and older positions — those pay no fee. */
+  expenseRatio?: number;
   sector: string;
 };
 type PaperTransaction = {
@@ -64,7 +67,10 @@ type PaperTransaction = {
   price: number;
   total: number;
   date: string;
+  /** Gross realized P&L (before fund fees). Net = realizedPnL - fee. */
   realizedPnL?: number;
+  /** Fund fee charged on this closing trade (0 for non-fund symbols). */
+  fee?: number;
 };
 type LiveQuote = { price: number; change: number; pct: number };
 type TabId = 'positions' | 'analytics' | 'dividends' | 'growth';
@@ -73,6 +79,7 @@ type StockInfo = {
   currentPrice: number;
   dividendYield: number;
   dividendRate: number;
+  expenseRatio: number;
   sector: string;
 };
 
@@ -94,6 +101,31 @@ function normYield(y: number): number {
  */
 function annualDivIncome(pos: { shares: number; dividendRate?: number; dividendYield: number }, price: number): number {
   if (pos.dividendRate && pos.dividendRate > 0) return pos.shares * pos.dividendRate;
+  return _annualDivIncomeFallback(pos, price);
+}
+
+/**
+ * Prorated fund fee charged when closing a position. Accrues the annual
+ * expense ratio smoothly over the holding period:
+ *   fee = value × expenseRatio × (daysHeld ÷ 365)
+ * Returns 0 for symbols with no expense ratio (most individual stocks) and
+ * for positions opened before this field existed.
+ */
+function fundFee(
+  value: number,
+  expenseRatio: number | undefined,
+  openedAt: string,
+  soldAt: string,
+): number {
+  if (!expenseRatio || expenseRatio <= 0 || !value || value <= 0) return 0;
+  const days = Math.max(
+    0,
+    (new Date(soldAt).getTime() - new Date(openedAt).getTime()) / 86_400_000,
+  );
+  return value * expenseRatio * (days / 365);
+}
+
+function _annualDivIncomeFallback(pos: { shares: number; dividendRate?: number; dividendYield: number }, price: number): number {
   return pos.shares * price * normYield(pos.dividendYield);
 }
 
@@ -177,7 +209,8 @@ function buildValueHistory(
         p.lastPrice = tx.price;
       }
     } else {
-      cash += tx.total;
+      // Credit proceeds net of the fund fee, mirroring the live cash update.
+      cash += tx.total - (tx.fee ?? 0);
       if (posMap[tx.symbol]) {
         posMap[tx.symbol].shares -= tx.shares;
         posMap[tx.symbol].lastPrice = tx.price;
@@ -248,9 +281,10 @@ export default function PaperScreen() {
   const unrealizedPnL = myPositions.reduce(
     (s, p) => s + p.shares * ((quotes[p.symbol]?.price ?? p.avgCost) - p.avgCost), 0,
   );
+  // Realized P&L is net of fund fees: gross realized minus fees charged at close.
   const realizedPnL = myTxns
     .filter(t => t.action === 'SELL')
-    .reduce((s, t) => s + (t.realizedPnL ?? 0), 0);
+    .reduce((s, t) => s + (t.realizedPnL ?? 0) - (t.fee ?? 0), 0);
   const totalPnL = unrealizedPnL + realizedPnL;
   const totalReturn = ((portfolioValue - INITIAL_BALANCE) / INITIAL_BALANCE) * 100;
 
@@ -422,6 +456,7 @@ export default function PaperScreen() {
         currentPrice: quote.currentPrice,
         dividendYield: info.dividendYield ?? 0,
         dividendRate: info.dividendRate ?? 0,
+        expenseRatio: info.expenseRatio ?? 0,
         sector: info.sector ?? '',
       });
       setQuotes(prev => ({
@@ -451,7 +486,9 @@ export default function PaperScreen() {
       const totalShares = existingPos.shares + numShares;
       const newAvg = (existingPos.shares * existingPos.avgCost + numShares * stockInfo.currentPrice) / totalShares;
       newPositions = positions.map(p =>
-        p.id === existingPos.id ? { ...p, shares: totalShares, avgCost: newAvg } : p,
+        p.id === existingPos.id
+          ? { ...p, shares: totalShares, avgCost: newAvg, expenseRatio: stockInfo.expenseRatio }
+          : p,
       );
     } else {
       newPositions = [
@@ -466,6 +503,7 @@ export default function PaperScreen() {
           openedAt: now,
           dividendYield: stockInfo.dividendYield,
           dividendRate: stockInfo.dividendRate,
+          expenseRatio: stockInfo.expenseRatio,
           sector: stockInfo.sector,
         },
       ];
@@ -504,8 +542,11 @@ export default function PaperScreen() {
     const quote = quotes[selectedPos.symbol];
     const price = quote?.price ?? selectedPos.avgCost;
     const total = numShares * price;
-    const realizedPnL = numShares * (price - selectedPos.avgCost);
     const now = new Date().toISOString();
+    // Gross P&L before fees; fund fee accrues on the cost basis of the shares
+    // being closed, prorated over the holding period. Net = gross - fee.
+    const realizedPnL = numShares * (price - selectedPos.avgCost);
+    const fee = fundFee(numShares * selectedPos.avgCost, selectedPos.expenseRatio, selectedPos.openedAt, now);
 
     let newPositions: PaperPosition[];
     const remaining = selectedPos.shares - numShares;
@@ -520,11 +561,13 @@ export default function PaperScreen() {
     const tx: PaperTransaction = {
       id: uid(), accountId: activeId, symbol: selectedPos.symbol,
       companyName: selectedPos.companyName, action: 'SELL',
-      shares: numShares, price, total, date: now, realizedPnL,
+      shares: numShares, price, total, date: now, realizedPnL, fee,
     };
 
+    // Proceeds net of the fund fee are credited to cash, so account equity and
+    // total-return metrics reflect the fee — matching the net realized P&L.
     const updatedAccounts = accounts.map(a =>
-      a.id === activeId ? { ...a, cash: a.cash + total } : a,
+      a.id === activeId ? { ...a, cash: a.cash + total - fee } : a,
     );
 
     await Promise.all([
@@ -629,11 +672,21 @@ export default function PaperScreen() {
                 <View style={{ flex: 1 }} />
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={styles.txTotal}>{$fmt(tx.total)}</Text>
-                  {tx.realizedPnL != null && (
-                    <Text style={{ color: pnlColor(tx.realizedPnL), fontSize: 10, fontFamily: 'Inter_500Medium' }}>
-                      {tx.realizedPnL >= 0 ? '+' : ''}{$fmt(tx.realizedPnL)}
-                    </Text>
-                  )}
+                  {tx.realizedPnL != null && (() => {
+                    const net = tx.realizedPnL - (tx.fee ?? 0);
+                    return (
+                      <>
+                        <Text style={{ color: pnlColor(net), fontSize: 10, fontFamily: 'Inter_500Medium' }}>
+                          {net >= 0 ? '+' : ''}{$fmt(net)}
+                        </Text>
+                        {tx.fee != null && tx.fee > 0 && (
+                          <Text style={{ color: DIM, fontSize: 9, fontFamily: 'Inter_400Regular' }}>
+                            fee {$fmt(tx.fee)}
+                          </Text>
+                        )}
+                      </>
+                    );
+                  })()}
                 </View>
               </View>
             ))}
@@ -659,8 +712,10 @@ export default function PaperScreen() {
       segments.push({ label: 'Cash', value: account.cash, color: 'rgba(192,192,192,0.25)' });
     }
 
-    const winTrades = myTxns.filter(t => t.action === 'SELL' && (t.realizedPnL ?? 0) > 0).length;
-    const lossTrades = myTxns.filter(t => t.action === 'SELL' && (t.realizedPnL ?? 0) <= 0).length;
+    // Win/loss judged on net (after-fee) P&L: a win is net profit of $0.01+.
+    const netPnL = (t: PaperTransaction) => (t.realizedPnL ?? 0) - (t.fee ?? 0);
+    const winTrades = myTxns.filter(t => t.action === 'SELL' && netPnL(t) >= 0.01).length;
+    const lossTrades = myTxns.filter(t => t.action === 'SELL' && netPnL(t) < 0.01).length;
     const winRate = winTrades + lossTrades > 0
       ? ((winTrades / (winTrades + lossTrades)) * 100).toFixed(0)
       : '—';
@@ -816,8 +871,13 @@ export default function PaperScreen() {
 
   // ── Modals ────────────────────────────────────────────────────────────────
   const sellPrice = selectedPos ? (quotes[selectedPos.symbol]?.price ?? selectedPos.avgCost) : 0;
-  const sellTotal = parseFloat(sellShares || '0') * sellPrice;
-  const sellPnL = selectedPos ? parseFloat(sellShares || '0') * (sellPrice - selectedPos.avgCost) : 0;
+  const sellQty = parseFloat(sellShares || '0');
+  const sellTotal = sellQty * sellPrice;
+  const sellGross = selectedPos ? sellQty * (sellPrice - selectedPos.avgCost) : 0;
+  const sellFee = selectedPos
+    ? fundFee(sellQty * selectedPos.avgCost, selectedPos.expenseRatio, selectedPos.openedAt, new Date().toISOString())
+    : 0;
+  const sellNet = sellGross - sellFee;
 
   const buyTotal = stockInfo ? parseFloat(buyShares || '0') * stockInfo.currentPrice : 0;
   const buyAfterCash = account ? account.cash - buyTotal : 0;
@@ -1153,9 +1213,21 @@ export default function PaperScreen() {
                           <Text style={[styles.calcVal, { color: SILVER }]}>{$fmt(sellTotal)}</Text>
                         </View>
                         <View style={styles.calcRow}>
-                          <Text style={styles.calcLabel}>Realized P&L</Text>
-                          <Text style={[styles.calcVal, { color: pnlColor(sellPnL) }]}>
-                            {sellPnL >= 0 ? '+' : ''}{$fmt(sellPnL)}
+                          <Text style={styles.calcLabel}>Gross P&L</Text>
+                          <Text style={[styles.calcVal, { color: pnlColor(sellGross) }]}>
+                            {sellGross >= 0 ? '+' : ''}{$fmt(sellGross)}
+                          </Text>
+                        </View>
+                        {sellFee > 0 && (
+                          <View style={styles.calcRow}>
+                            <Text style={styles.calcLabel}>Fund Fee</Text>
+                            <Text style={[styles.calcVal, { color: SELL_COLOR }]}>−{$fmt(sellFee)}</Text>
+                          </View>
+                        )}
+                        <View style={styles.calcRow}>
+                          <Text style={styles.calcLabel}>Net P&L</Text>
+                          <Text style={[styles.calcVal, { color: pnlColor(sellNet) }]}>
+                            {sellNet >= 0 ? '+' : ''}{$fmt(sellNet)}
                           </Text>
                         </View>
                       </View>

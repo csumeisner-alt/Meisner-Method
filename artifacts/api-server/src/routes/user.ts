@@ -11,6 +11,22 @@ const { Pool } = pg;
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
+// Idempotent schema migrations for columns added after the tables were first
+// created. Safe to run on every boot; existing rows get the DEFAULT.
+async function ensureSchema() {
+  try {
+    await pool.query(
+      "ALTER TABLE paper_positions ADD COLUMN IF NOT EXISTS expense_ratio DOUBLE PRECISION DEFAULT 0",
+    );
+    await pool.query(
+      "ALTER TABLE paper_transactions ADD COLUMN IF NOT EXISTS fee DOUBLE PRECISION DEFAULT 0",
+    );
+  } catch (e: any) {
+    console.error("[user] ensureSchema failed:", e.message);
+  }
+}
+void ensureSchema();
+
 const router = Router();
 
 // ── Auth middleware ────────────────────────────────────────────────────────
@@ -135,7 +151,7 @@ router.delete("/user/paper/accounts/:id", requireAuth, async (req: any, res) => 
 router.get("/user/paper/positions", requireAuth, async (req: any, res) => {
   try {
     const { rows } = await pool.query(
-      "SELECT id, account_id, symbol, company_name, shares, avg_cost, opened_at, dividend_yield, dividend_rate, sector FROM paper_positions WHERE user_id=$1",
+      "SELECT id, account_id, symbol, company_name, shares, avg_cost, opened_at, dividend_yield, dividend_rate, expense_ratio, sector FROM paper_positions WHERE user_id=$1",
       [req.userId],
     );
     res.json(rows.map((r: any) => ({
@@ -148,6 +164,7 @@ router.get("/user/paper/positions", requireAuth, async (req: any, res) => {
       openedAt: r.opened_at instanceof Date ? r.opened_at.toISOString() : r.opened_at,
       dividendYield: Number(r.dividend_yield),
       dividendRate: Number(r.dividend_rate),
+      expenseRatio: r.expense_ratio != null ? Number(r.expense_ratio) : 0,
       sector: r.sector,
     })));
   } catch (e: any) {
@@ -156,13 +173,13 @@ router.get("/user/paper/positions", requireAuth, async (req: any, res) => {
 });
 
 router.post("/user/paper/positions", requireAuth, async (req: any, res) => {
-  const { id, accountId, symbol, companyName, shares, avgCost, openedAt, dividendYield, dividendRate, sector } = req.body;
+  const { id, accountId, symbol, companyName, shares, avgCost, openedAt, dividendYield, dividendRate, expenseRatio, sector } = req.body;
   try {
     await pool.query(
-      `INSERT INTO paper_positions (id, user_id, account_id, symbol, company_name, shares, avg_cost, opened_at, dividend_yield, dividend_rate, sector)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-       ON CONFLICT (id, user_id) DO UPDATE SET shares=$6, avg_cost=$7, dividend_rate=$10`,
-      [id, req.userId, accountId, symbol, companyName, shares, avgCost, openedAt, dividendYield ?? 0, dividendRate ?? 0, sector ?? ""],
+      `INSERT INTO paper_positions (id, user_id, account_id, symbol, company_name, shares, avg_cost, opened_at, dividend_yield, dividend_rate, expense_ratio, sector)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       ON CONFLICT (id, user_id) DO UPDATE SET shares=$6, avg_cost=$7, dividend_rate=$10, expense_ratio=$11`,
+      [id, req.userId, accountId, symbol, companyName, shares, avgCost, openedAt, dividendYield ?? 0, dividendRate ?? 0, expenseRatio ?? 0, sector ?? ""],
     );
     res.json({ ok: true });
   } catch (e: any) {
@@ -183,7 +200,7 @@ router.delete("/user/paper/positions/:id", requireAuth, async (req: any, res) =>
 router.get("/user/paper/transactions", requireAuth, async (req: any, res) => {
   try {
     const { rows } = await pool.query(
-      "SELECT id, account_id, symbol, company_name, action, shares, price, total, date, realized_pnl FROM paper_transactions WHERE user_id=$1 ORDER BY date ASC",
+      "SELECT id, account_id, symbol, company_name, action, shares, price, total, date, realized_pnl, fee FROM paper_transactions WHERE user_id=$1 ORDER BY date ASC",
       [req.userId],
     );
     res.json(rows.map((r: any) => ({
@@ -197,6 +214,7 @@ router.get("/user/paper/transactions", requireAuth, async (req: any, res) => {
       total: Number(r.total),
       date: r.date instanceof Date ? r.date.toISOString() : r.date,
       realizedPnL: r.realized_pnl != null ? Number(r.realized_pnl) : undefined,
+      fee: r.fee != null ? Number(r.fee) : undefined,
     })));
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -204,13 +222,13 @@ router.get("/user/paper/transactions", requireAuth, async (req: any, res) => {
 });
 
 router.post("/user/paper/transactions", requireAuth, async (req: any, res) => {
-  const { id, accountId, symbol, companyName, action, shares, price, total, date, realizedPnL } = req.body;
+  const { id, accountId, symbol, companyName, action, shares, price, total, date, realizedPnL, fee } = req.body;
   try {
     await pool.query(
-      `INSERT INTO paper_transactions (id, user_id, account_id, symbol, company_name, action, shares, price, total, date, realized_pnl)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      `INSERT INTO paper_transactions (id, user_id, account_id, symbol, company_name, action, shares, price, total, date, realized_pnl, fee)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
        ON CONFLICT (id, user_id) DO NOTHING`,
-      [id, req.userId, accountId, symbol, companyName, action, shares, price, total, date, realizedPnL ?? null],
+      [id, req.userId, accountId, symbol, companyName, action, shares, price, total, date, realizedPnL ?? null, fee ?? 0],
     );
     res.json({ ok: true });
   } catch (e: any) {
@@ -339,6 +357,7 @@ function validateSyncPayload(body: any) {
       openedAt: reqString(p.openedAt, `positions[${i}].openedAt`),
       dividendYield: optNumber(p.dividendYield, `positions[${i}].dividendYield`, 0),
       dividendRate: optNumber(p.dividendRate, `positions[${i}].dividendRate`, 0),
+      expenseRatio: optNumber(p.expenseRatio, `positions[${i}].expenseRatio`, 0),
       sector: optString(p.sector, `positions[${i}].sector`, ""),
     };
   });
@@ -356,6 +375,7 @@ function validateSyncPayload(body: any) {
       total: reqNumber(t.total, `transactions[${i}].total`),
       date: reqString(t.date, `transactions[${i}].date`),
       realizedPnL: t.realizedPnL == null ? null : reqNumber(t.realizedPnL, `transactions[${i}].realizedPnL`),
+      fee: optNumber(t.fee, `transactions[${i}].fee`, 0),
     };
   });
 
@@ -401,8 +421,8 @@ router.post("/user/paper/sync", requireAuth, async (req: any, res) => {
     await client.query("DELETE FROM paper_positions WHERE user_id=$1", [req.userId]);
     for (const p of positions) {
       await client.query(
-        "INSERT INTO paper_positions (id, user_id, account_id, symbol, company_name, shares, avg_cost, opened_at, dividend_yield, dividend_rate, sector) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
-        [p.id, req.userId, p.accountId, p.symbol, p.companyName, p.shares, p.avgCost, p.openedAt, p.dividendYield, p.dividendRate, p.sector],
+        "INSERT INTO paper_positions (id, user_id, account_id, symbol, company_name, shares, avg_cost, opened_at, dividend_yield, dividend_rate, expense_ratio, sector) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",
+        [p.id, req.userId, p.accountId, p.symbol, p.companyName, p.shares, p.avgCost, p.openedAt, p.dividendYield, p.dividendRate, p.expenseRatio, p.sector],
       );
     }
 
@@ -410,8 +430,8 @@ router.post("/user/paper/sync", requireAuth, async (req: any, res) => {
     await client.query("DELETE FROM paper_transactions WHERE user_id=$1", [req.userId]);
     for (const t of transactions) {
       await client.query(
-        "INSERT INTO paper_transactions (id, user_id, account_id, symbol, company_name, action, shares, price, total, date, realized_pnl) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
-        [t.id, req.userId, t.accountId, t.symbol, t.companyName, t.action, t.shares, t.price, t.total, t.date, t.realizedPnL],
+        "INSERT INTO paper_transactions (id, user_id, account_id, symbol, company_name, action, shares, price, total, date, realized_pnl, fee) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",
+        [t.id, req.userId, t.accountId, t.symbol, t.companyName, t.action, t.shares, t.price, t.total, t.date, t.realizedPnL, t.fee],
       );
     }
 

@@ -5,6 +5,33 @@ import json
 import yfinance as yf
 
 
+def expense_ratio(ticker):
+    """Best-effort annual expense ratio (decimal fraction) for funds/ETFs.
+
+    Must never break the quote: any failure returns None. yfinance reports
+    annualReportExpenseRatio as a fraction, but netExpenseRatio /
+    grossExpenseRatio in percent, so those are divided by 100.
+    """
+    try:
+        full = ticker.info or {}
+    except Exception:
+        return None
+    v = full.get("annualReportExpenseRatio")
+    if v is not None:
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            pass
+    for key in ("netExpenseRatio", "grossExpenseRatio"):
+        v = full.get(key)
+        if v is not None:
+            try:
+                return float(v) / 100.0
+            except (TypeError, ValueError):
+                pass
+    return None
+
+
 def main():
     if len(sys.argv) < 2:
         print(json.dumps({"error": "No symbol provided"}))
@@ -33,6 +60,7 @@ def main():
             "currentPrice": price,
             "priceChange": change,
             "priceChangePercent": pct,
+            "expenseRatio": expense_ratio(ticker),
         }))
 
     except Exception as e:

@@ -7,6 +7,32 @@ import sys
 import json
 import yfinance as yf
 
+
+def expense_ratio(full_info):
+    """Return the fund's annual expense ratio as a decimal fraction, or None.
+
+    yfinance is inconsistent about units:
+      - annualReportExpenseRatio is already a fraction (e.g. 0.0004 = 0.04%)
+      - netExpenseRatio / grossExpenseRatio are in percent (e.g. 0.04 = 0.04%)
+    Most individual equities report none of these, in which case we return None
+    so the app charges no fee.
+    """
+    v = full_info.get("annualReportExpenseRatio")
+    if v is not None:
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            pass
+    for key in ("netExpenseRatio", "grossExpenseRatio"):
+        v = full_info.get(key)
+        if v is not None:
+            try:
+                return float(v) / 100.0
+            except (TypeError, ValueError):
+                pass
+    return None
+
+
 def main():
     if len(sys.argv) < 2:
         print(json.dumps({"error": "No symbol provided"}))
@@ -64,6 +90,7 @@ def main():
             "earningsGrowth": float(full_info["earningsGrowth"]) if full_info.get("earningsGrowth") is not None else None,
             "debtEquity": float(full_info["debtToEquity"]) if full_info.get("debtToEquity") is not None else None,
             "dividendYield": float(full_info["dividendYield"]) if full_info.get("dividendYield") is not None else None,
+            "expenseRatio": expense_ratio(full_info),
             "profitMargin": float(full_info["profitMargins"]) if full_info.get("profitMargins") is not None else None,
             "returnOnEquity": float(full_info["returnOnEquity"]) if full_info.get("returnOnEquity") is not None else None,
             # Analyst data

@@ -40,6 +40,9 @@ interface Quote {
   currentPrice: number;
   priceChange: number;
   priceChangePercent: number;
+  /** Annual fund expense ratio as a decimal fraction (e.g. 0.0003 for VOO);
+   *  null/absent for individual stocks that report no expense ratio. */
+  expenseRatio?: number | null;
 }
 
 interface Position {
@@ -55,7 +58,19 @@ interface Position {
   costBasis: number;
   currentPrice: number | null;
   pctChange: number | null;
+  expenseRatio: number;
   trades: Trade[];
+}
+
+/** A single closing (sell) trade, with fund fee applied. */
+interface ClosedTrade {
+  sellId: string;
+  symbol: string;
+  shares: number;
+  gross: number;
+  fee: number;
+  net: number;
+  isWin: boolean;
 }
 
 interface TradeGrade {
@@ -188,10 +203,48 @@ function computePositions(trades: Trade[], quotes: Record<string, Quote | null>)
     const unrealizedPnL = currentPrice != null ? netShares * (currentPrice - avgCost) : 0;
     const pctChange = avgCost > 0 && currentPrice != null
       ? ((currentPrice - avgCost) / avgCost) * 100 : null;
+    const expenseRatio = q?.expenseRatio ?? 0;
     return { symbol, netShares, avgCost, avgSellPrice, totalBuyShares: buyShares,
       totalSellShares: sellShares, realizedPnL, unrealizedPnL, marketValue,
-      costBasis, currentPrice, pctChange, trades: sorted };
+      costBasis, currentPrice, pctChange, expenseRatio, trades: sorted };
   });
+}
+
+/**
+ * Break trade history into individual closing (sell) trades, applying a
+ * prorated fund fee to each. Each sell is evaluated on its own — a partial
+ * close counts as one closed trade — so the win rate reflects every sell,
+ * not just fully-closed positions.
+ *
+ * For each sell we use the volume-weighted average cost AND volume-weighted
+ * buy date of the buys made on/before that sell. The fee accrues the annual
+ * expense ratio over that holding period on the cost basis of the shares sold:
+ *   fee = (shares × avgCost) × expenseRatio × (daysHeld ÷ 365)
+ * Net P&L = gross P&L − fee; a win is net profit of $0.01 or more.
+ */
+function computeClosedTrades(trades: Trade[], quotes: Record<string, Quote | null>): ClosedTrade[] {
+  const result: ClosedTrade[] = [];
+  for (const sell of trades) {
+    if (sell.type !== 'sell') continue;
+    const sellDate = new Date(sell.date);
+    const priorBuys = trades.filter(
+      t => t.symbol === sell.symbol && t.type === 'buy'
+        && t.id !== sell.id
+        && new Date(t.date) <= sellDate,
+    );
+    const totalBuyShares = priorBuys.reduce((s, t) => s + t.shares, 0);
+    if (totalBuyShares <= 0) continue;
+    const avgCost = priorBuys.reduce((s, t) => s + t.shares * t.pricePerShare, 0) / totalBuyShares;
+    const weightedBuyMs = priorBuys.reduce((s, t) => s + t.shares * new Date(t.date).getTime(), 0) / totalBuyShares;
+    const days = Math.max(0, (sellDate.getTime() - weightedBuyMs) / 86_400_000);
+    const expenseRatio = quotes[sell.symbol]?.expenseRatio ?? 0;
+    const gross = (sell.pricePerShare - avgCost) * sell.shares;
+    const value = sell.shares * avgCost;
+    const fee = expenseRatio > 0 && value > 0 ? value * expenseRatio * (days / 365) : 0;
+    const net = gross - fee;
+    result.push({ sellId: sell.id, symbol: sell.symbol, shares: sell.shares, gross, fee, net, isWin: net >= 0.01 });
+  }
+  return result;
 }
 
 function availableToSell(symbol: string, trades: Trade[], excludeId?: string): number {
@@ -623,6 +676,7 @@ function TradeCard({
   trade,
   quote,
   gradeInfo,
+  closed,
   expanded,
   onToggleExpand,
   onEdit,
@@ -632,6 +686,7 @@ function TradeCard({
   trade: Trade;
   quote: Quote | null | undefined;
   gradeInfo: TradeGrade | null;
+  closed: ClosedTrade | null;
   expanded: boolean;
   onToggleExpand: () => void;
   onEdit: () => void;
@@ -764,6 +819,25 @@ function TradeCard({
                   : `${gradeInfo.holdDays} days`}
               </Text>
             </View>
+            {closed && closed.fee > 0 && (
+              <>
+                <View style={tcStyles.analysisCell}>
+                  <Text style={[tcStyles.aLabel, { color: colors.mutedForeground }]}>FUND FEE</Text>
+                  <Text style={[tcStyles.aVal, { color: colors.sellColor, fontFamily: 'Inter_700Bold' }]}>
+                    −{fmtCurrency(closed.fee)}
+                  </Text>
+                </View>
+                <View style={tcStyles.analysisCell}>
+                  <Text style={[tcStyles.aLabel, { color: colors.mutedForeground }]}>NET P&L</Text>
+                  <Text style={[tcStyles.aVal, {
+                    color: closed.net >= 0 ? colors.buyColor : colors.sellColor,
+                    fontFamily: 'Inter_700Bold',
+                  }]}>
+                    {closed.net >= 0 ? '+' : ''}{fmtCurrency(closed.net)}
+                  </Text>
+                </View>
+              </>
+            )}
           </View>
 
           {/* Grade breakdown */}
@@ -1037,12 +1111,17 @@ const mStyles = StyleSheet.create({
 
 // ─── Summary Card ─────────────────────────────────────────────────────────────
 
-function SummaryCard({ positions, onReset, colors }: { positions: Position[]; onReset: () => void; colors: any }) {
+function SummaryCard({ positions, closedTrades, onReset, colors }: { positions: Position[]; closedTrades: ClosedTrade[]; onReset: () => void; colors: any }) {
   const open = positions.filter(p => p.netShares !== 0);
   const totalCost = open.reduce((s, p) => s + Math.max(p.costBasis, 0), 0);
   const totalMkt = open.reduce((s, p) => s + p.marketValue, 0);
   const totalUnreal = open.reduce((s, p) => s + p.unrealizedPnL, 0);
-  const totalReal = positions.reduce((s, p) => s + p.realizedPnL, 0);
+  // Realized P&L and fees are computed per closing trade (net of fund fees).
+  const totalReal = closedTrades.reduce((s, c) => s + c.net, 0);
+  const totalFees = closedTrades.reduce((s, c) => s + c.fee, 0);
+  const wins = closedTrades.filter(c => c.isWin).length;
+  const totalClosed = closedTrades.length;
+  const winRate = totalClosed > 0 ? Math.round((wins / totalClosed) * 100) : null;
   const totalPnL = totalUnreal + totalReal;
   const totalPct = totalCost > 0 ? (totalUnreal / totalCost) * 100 : 0;
   const isGain = totalPnL >= 0;
@@ -1067,6 +1146,21 @@ function SummaryCard({ positions, onReset, colors }: { positions: Position[]; on
             <View style={smStyles.metricCell}>
               <Text style={[smStyles.metricLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>{m.label}</Text>
               <Text style={[smStyles.metricVal, { color: m.color, fontFamily: 'Inter_700Bold' }]}>{m.val}</Text>
+            </View>
+          </React.Fragment>
+        ))}
+      </View>
+      <View style={smStyles.metricsRow}>
+        {[
+          { label: 'WIN RATE', val: winRate != null ? `${winRate}%` : '—', sub: totalClosed > 0 ? `${wins}/${totalClosed} wins` : 'no closed trades', color: colors.foreground },
+          { label: 'FUND FEES', val: totalFees > 0 ? `-${fmtCurrency(totalFees)}` : fmtCurrency(0), sub: 'expense ratios', color: totalFees > 0 ? colors.sellColor : colors.mutedForeground },
+        ].map((m, i) => (
+          <React.Fragment key={m.label}>
+            {i > 0 && <View style={[smStyles.divider, { backgroundColor: colors.border }]} />}
+            <View style={smStyles.metricCell}>
+              <Text style={[smStyles.metricLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>{m.label}</Text>
+              <Text style={[smStyles.metricVal, { color: m.color, fontFamily: 'Inter_700Bold' }]}>{m.val}</Text>
+              <Text style={[smStyles.metricLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>{m.sub}</Text>
             </View>
           </React.Fragment>
         ))}
@@ -1163,6 +1257,7 @@ export default function PortfolioScreen() {
 
   const allPositions = computePositions(trades, quotes);
   const openPositions = allPositions.filter(p => p.netShares !== 0);
+  const closedTrades = computeClosedTrades(trades, quotes);
 
   function handleReset() {
     Alert.alert('Reset Portfolio', 'Permanently delete ALL trades, positions, and history? This cannot be undone.', [
@@ -1272,7 +1367,7 @@ export default function PortfolioScreen() {
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
         >
-          <SummaryCard positions={allPositions} onReset={handleReset} colors={colors} />
+          <SummaryCard positions={allPositions} closedTrades={closedTrades} onReset={handleReset} colors={colors} />
 
           {portfolioTab === 'positions' ? (
             openPositions.length === 0 ? (
@@ -1292,10 +1387,12 @@ export default function PortfolioScreen() {
           ) : (
             [...trades].reverse().map(trade => {
               const gradeInfo = trade.type === 'sell' ? computeSellGrade(trade, trades) : null;
+              const closed = trade.type === 'sell' ? closedTrades.find(c => c.sellId === trade.id) ?? null : null;
               return (
                 <TradeCard key={trade.id} trade={trade}
                   quote={quotes[trade.symbol]}
                   gradeInfo={gradeInfo}
+                  closed={closed}
                   expanded={expandedId === trade.id}
                   onToggleExpand={() => setExpandedId(prev => prev === trade.id ? null : trade.id)}
                   onEdit={() => handleEdit(trade)}
