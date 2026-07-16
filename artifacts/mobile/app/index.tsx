@@ -11,6 +11,7 @@ import {
   Modal,
   Pressable,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,6 +23,8 @@ import { useColors } from '@/hooks/useColors';
 import { BottomTabBar } from '@/components/BottomTabBar';
 import { MMLogo } from '@/components/MMLogo';
 import { DonationSidebar } from '@/components/DonationSidebar';
+import { useWatchlist } from '@/hooks/useWatchlist';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
@@ -59,7 +62,7 @@ const TIPS = [
   "🇺🇸 President Trump moved the US Embassy in Israel from Tel Aviv to Jerusalem in 2018 — fulfilling a decades-old campaign promise that previous presidents had avoided.",
 ];
 
-const REFRESH_INTERVAL = 60_000; // refresh trending every 60 seconds
+const REFRESH_INTERVAL = 60_000;
 
 function formatPrice(p: number) {
   if (p >= 1000) return `$${p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -72,11 +75,160 @@ function formatPct(p: number) {
   return `${sign}${p.toFixed(2)}%`;
 }
 
+// ─── Alert Modal ──────────────────────────────────────────────────────────────
+
+interface AlertModalProps {
+  visible: boolean;
+  symbol: string;
+  currentPrice?: number;
+  existingDirection?: 'above' | 'below';
+  existingTarget?: number;
+  pushToken: string | null;
+  notAvailable: boolean;
+  onSave: (direction: 'above' | 'below', targetPrice: number) => void;
+  onDelete: () => void;
+  onClose: () => void;
+  colors: any;
+}
+
+function AlertModal({
+  visible, symbol, currentPrice, existingDirection, existingTarget,
+  pushToken, notAvailable, onSave, onDelete, onClose, colors,
+}: AlertModalProps) {
+  const [direction, setDirection] = useState<'above' | 'below'>(existingDirection ?? 'above');
+  const [targetInput, setTargetInput] = useState(existingTarget?.toFixed(2) ?? '');
+
+  useEffect(() => {
+    if (visible) {
+      setDirection(existingDirection ?? 'above');
+      setTargetInput(existingTarget?.toFixed(2) ?? (currentPrice ? currentPrice.toFixed(2) : ''));
+    }
+  }, [visible, existingDirection, existingTarget, currentPrice]);
+
+  const handleSave = () => {
+    const val = parseFloat(targetInput);
+    if (!val || val <= 0) {
+      Alert.alert('Invalid price', 'Please enter a valid price target.');
+      return;
+    }
+    onSave(direction, val);
+    onClose();
+  };
+
+  return (
+    <Modal transparent animationType="fade" visible={visible} onRequestClose={onClose}>
+      <Pressable style={alertStyles.overlay} onPress={onClose}>
+        <Pressable style={[alertStyles.sheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[alertStyles.title, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+            Price Alert — {symbol}
+          </Text>
+          {currentPrice != null && (
+            <Text style={[alertStyles.subtitle, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+              Current: {formatPrice(currentPrice)}
+            </Text>
+          )}
+
+          {notAvailable || !pushToken ? (
+            <View style={[alertStyles.unavailableBox, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+              <Feather name="bell-off" size={16} color={colors.mutedForeground} />
+              <Text style={[alertStyles.unavailableText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                Push notifications are only available on a physical device with the app installed.
+              </Text>
+            </View>
+          ) : (
+            <>
+              {/* Direction toggle */}
+              <View style={alertStyles.dirRow}>
+                {(['above', 'below'] as const).map((d) => (
+                  <TouchableOpacity
+                    key={d}
+                    style={[
+                      alertStyles.dirBtn,
+                      { borderColor: colors.border },
+                      direction === d && { backgroundColor: d === 'above' ? colors.buyBg : colors.sellBg, borderColor: d === 'above' ? colors.buyColor : colors.sellColor },
+                    ]}
+                    onPress={() => setDirection(d)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[alertStyles.dirTxt, {
+                      color: direction === d ? (d === 'above' ? colors.buyColor : colors.sellColor) : colors.mutedForeground,
+                      fontFamily: 'Inter_600SemiBold',
+                    }]}>
+                      {d === 'above' ? '↑ Above' : '↓ Below'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Price input */}
+              <Text style={[alertStyles.label, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                Target price ($)
+              </Text>
+              <TextInput
+                style={[alertStyles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.muted, fontFamily: 'Inter_500Medium' }]}
+                value={targetInput}
+                onChangeText={setTargetInput}
+                keyboardType="decimal-pad"
+                placeholder="0.00"
+                placeholderTextColor={colors.mutedForeground}
+              />
+
+              <TouchableOpacity
+                style={[alertStyles.saveBtn, { backgroundColor: colors.primary }]}
+                onPress={handleSave}
+                activeOpacity={0.8}
+              >
+                <Feather name="bell" size={14} color={colors.primaryForeground} />
+                <Text style={[alertStyles.saveTxt, { color: colors.primaryForeground, fontFamily: 'Inter_700Bold' }]}>
+                  {existingTarget ? 'Update Alert' : 'Set Alert'}
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {existingTarget != null && (
+            <TouchableOpacity style={alertStyles.deleteBtn} onPress={() => { onDelete(); onClose(); }} activeOpacity={0.8}>
+              <Text style={[alertStyles.deleteTxt, { color: colors.sellColor, fontFamily: 'Inter_500Medium' }]}>
+                Remove alert
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity style={alertStyles.closeBtn} onPress={onClose} activeOpacity={0.7}>
+            <Feather name="x" size={20} color={colors.mutedForeground} />
+          </TouchableOpacity>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+const alertStyles = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  sheet: { borderRadius: 16, borderWidth: 1, padding: 24, width: '100%', maxWidth: 380 },
+  title: { fontSize: 15, letterSpacing: 0.5, marginBottom: 4 },
+  subtitle: { fontSize: 12, marginBottom: 20 },
+  unavailableBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, borderWidth: 1, borderRadius: 8, padding: 12, marginBottom: 8 },
+  unavailableText: { fontSize: 13, lineHeight: 19, flex: 1 },
+  dirRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+  dirBtn: { flex: 1, borderWidth: 1, borderRadius: 8, paddingVertical: 10, alignItems: 'center' },
+  dirTxt: { fontSize: 14 },
+  label: { fontSize: 11, letterSpacing: 0.5, marginBottom: 6 },
+  input: { height: 48, borderRadius: 8, borderWidth: 1, paddingHorizontal: 14, fontSize: 16, marginBottom: 16 },
+  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 48, borderRadius: 10, marginBottom: 8 },
+  saveTxt: { fontSize: 14, letterSpacing: 0.5 },
+  deleteBtn: { alignItems: 'center', paddingVertical: 10 },
+  deleteTxt: { fontSize: 13 },
+  closeBtn: { position: 'absolute', top: 16, right: 16, padding: 4 },
+});
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
+
 export default function HomeScreen() {
   const colors = useColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { signOut } = useAuth();
+  const { signOut, isSignedIn } = useAuth();
   const { apiFetch } = useApi();
   const [query, setQuery] = useState('');
   const [recent, setRecent] = useState<string[]>([]);
@@ -87,6 +239,14 @@ export default function HomeScreen() {
   const [trendingLoading, setTrendingLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Watchlist + push notifications
+  const watchlist = useWatchlist();
+  const { pushToken, notAvailable } = usePushNotifications();
+
+  // Alert modal state
+  const [alertModalSymbol, setAlertModalSymbol] = useState<string | null>(null);
+  const [alertModalPrice, setAlertModalPrice] = useState<number | undefined>(undefined);
 
   useEffect(() => {
     apiFetch<string[]>('/api/user/recent').then(setRecent).catch(() => {});
@@ -150,6 +310,14 @@ export default function HomeScreen() {
     ? lastUpdated.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
     : null;
 
+  const openAlertModal = (symbol: string, price?: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setAlertModalSymbol(symbol);
+    setAlertModalPrice(price);
+  };
+
+  const activeAlert = alertModalSymbol ? watchlist.activeAlertFor(alertModalSymbol) : null;
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Tip Modal */}
@@ -180,6 +348,28 @@ export default function HomeScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Alert Modal */}
+      {alertModalSymbol && (
+        <AlertModal
+          visible={!!alertModalSymbol}
+          symbol={alertModalSymbol}
+          currentPrice={alertModalPrice ?? watchlist.quotes.get(alertModalSymbol)?.currentPrice}
+          existingDirection={activeAlert?.direction}
+          existingTarget={activeAlert?.targetPrice}
+          pushToken={pushToken}
+          notAvailable={notAvailable}
+          onSave={async (direction, targetPrice) => {
+            if (!pushToken) return;
+            await watchlist.saveAlert(alertModalSymbol, direction, targetPrice, pushToken).catch(() => {});
+          }}
+          onDelete={async () => {
+            if (activeAlert) await watchlist.deleteAlert(activeAlert.id).catch(() => {});
+          }}
+          onClose={() => setAlertModalSymbol(null)}
+          colors={colors}
+        />
+      )}
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: topPad + 12 }]}>
@@ -287,6 +477,86 @@ export default function HomeScreen() {
           </View>
         )}
 
+        {/* ─── Watchlist ──────────────────────────────────────────────── */}
+        {isSignedIn && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionTitleRow}>
+                <Feather name="star" size={11} color={colors.mutedForeground} />
+                <Text style={[styles.sectionTitle, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', letterSpacing: 1, marginLeft: 4 }]}>
+                  WATCHLIST
+                  {watchlist.items.length > 0 && (
+                    <Text style={{ fontFamily: 'Inter_400Regular' }}> ({watchlist.items.length})</Text>
+                  )}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => watchlist.refresh()} style={styles.refreshBtn} disabled={watchlist.loading}>
+                <Feather name="refresh-cw" size={13} color={watchlist.loading ? colors.muted : colors.mutedForeground} />
+              </TouchableOpacity>
+            </View>
+
+            {watchlist.items.length === 0 ? (
+              <View style={[styles.watchlistEmpty, { borderColor: colors.border }]}>
+                <Feather name="star" size={20} color={colors.mutedForeground} />
+                <Text style={[styles.watchlistEmptyText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                  Search for a stock and tap ★ to add it here
+                </Text>
+              </View>
+            ) : (
+              watchlist.items.map((item) => {
+                const quote = watchlist.quotes.get(item.symbol);
+                const alert = watchlist.activeAlertFor(item.symbol);
+                const up = (quote?.priceChangePercent ?? 0) >= 0;
+                const pctColor = up ? colors.buyColor : colors.sellColor;
+                return (
+                  <View key={item.symbol} style={[styles.watchRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    {/* Left: symbol + price */}
+                    <TouchableOpacity style={{ flex: 1 }} onPress={() => navigateTo(item.symbol)} activeOpacity={0.75}>
+                      <Text style={[styles.watchSym, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+                        {item.symbol}
+                      </Text>
+                      {quote ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                          <Text style={[styles.watchPrice, { color: colors.primary, fontFamily: 'Inter_600SemiBold' }]}>
+                            {formatPrice(quote.currentPrice)}
+                          </Text>
+                          <Text style={[styles.watchPct, { color: pctColor, fontFamily: 'Inter_500Medium' }]}>
+                            {formatPct(quote.priceChangePercent)}
+                          </Text>
+                        </View>
+                      ) : (
+                        <ActivityIndicator size="small" color={colors.mutedForeground} style={{ alignSelf: 'flex-start', marginTop: 4 }} />
+                      )}
+                    </TouchableOpacity>
+
+                    {/* Right: bell + remove */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <TouchableOpacity
+                        onPress={() => openAlertModal(item.symbol, quote?.currentPrice)}
+                        style={[styles.watchIconBtn, alert ? { backgroundColor: colors.buyBg, borderColor: colors.buyColor, borderWidth: 1 } : {}]}
+                        activeOpacity={0.7}
+                      >
+                        <Feather
+                          name="bell"
+                          size={16}
+                          color={alert ? colors.buyColor : colors.mutedForeground}
+                        />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => watchlist.remove(item.symbol)}
+                        style={styles.watchIconBtn}
+                        activeOpacity={0.7}
+                      >
+                        <Feather name="x" size={16} color={colors.mutedForeground} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        )}
+
         {/* Trending tickers */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -331,18 +601,12 @@ export default function HomeScreen() {
                     onPress={() => navigateTo(t.symbol)}
                     activeOpacity={0.75}
                   >
-                    {/* Change badge */}
                     <View style={[styles.pctBadge, { backgroundColor: up ? 'rgba(0,229,160,0.10)' : 'rgba(255,59,59,0.10)' }]}>
-                      <Feather
-                        name={up ? 'trending-up' : 'trending-down'}
-                        size={10}
-                        color={pctColor}
-                      />
+                      <Feather name={up ? 'trending-up' : 'trending-down'} size={10} color={pctColor} />
                       <Text style={[styles.pctText, { color: pctColor, fontFamily: 'Inter_700Bold' }]}>
                         {formatPct(t.priceChangePercent)}
                       </Text>
                     </View>
-
                     <Text style={[styles.tickerSymbol, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
                       {t.symbol}
                     </Text>
@@ -494,4 +758,29 @@ const styles = StyleSheet.create({
     right: 16,
     padding: 4,
   },
+  // Watchlist
+  watchlistEmpty: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 10,
+    borderStyle: 'dashed',
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+  },
+  watchlistEmptyText: { fontSize: 13, flex: 1, lineHeight: 18 },
+  watchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 6,
+  },
+  watchSym: { fontSize: 16 },
+  watchPrice: { fontSize: 14 },
+  watchPct: { fontSize: 12 },
+  watchIconBtn: { padding: 8, borderRadius: 8 },
 });

@@ -7,10 +7,20 @@ import { Router } from "express";
 import { getAuth } from "@clerk/express";
 import pg from "pg";
 import { logger } from "../lib/logger.js";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
+import { join, dirname } from "node:path";
+import { randomUUID } from "node:crypto";
 
 const { Pool } = pg;
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+const execFileAsync = promisify(execFile);
+const __watchlistDirname = dirname(fileURLToPath(import.meta.url));
+// fetch_quote.py is copied to dist/ by build.mjs alongside this bundle
+const QUOTE_SCRIPT_PATH = join(__watchlistDirname, "fetch_quote.py");
 
 // Idempotent schema migrations for columns added after the tables were first
 // created. Safe to run on every boot; existing rows get the DEFAULT.
@@ -31,6 +41,35 @@ async function runSchemaMigrations(): Promise<void> {
   await pool.query(
     "ALTER TABLE paper_transactions ADD COLUMN IF NOT EXISTS fee DOUBLE PRECISION DEFAULT 0",
   );
+  // Watchlist and price alerts tables (safe to run on every boot)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS watchlist (
+      user_id TEXT NOT NULL,
+      symbol TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (user_id, symbol)
+    )
+  `);
+  // Enable pgcrypto as a safety net for any deployments that may still rely on
+  // gen_random_uuid() elsewhere. IDs for price_alerts are now generated in
+  // application code (randomUUID) so this extension is not strictly required.
+  await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto`).catch(() => {
+    // Non-fatal: extension may be unavailable on managed Postgres (e.g. Neon).
+    // Application-level UUID generation ensures price_alerts still works.
+  });
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS price_alerts (
+      id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      symbol TEXT NOT NULL,
+      direction TEXT NOT NULL CHECK (direction IN ('above','below')),
+      target_price DOUBLE PRECISION NOT NULL,
+      push_token TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      fired_at TIMESTAMPTZ,
+      PRIMARY KEY (id)
+    )
+  `);
 }
 
 function ensureSchema(): Promise<void> {
@@ -488,6 +527,211 @@ router.post("/user/paper/sync", requireAuth, requireSchema, async (req: any, res
     client.release();
   }
 });
+
+// ── Watchlist ─────────────────────────────────────────────────────────────
+router.get("/user/watchlist", requireAuth, requireSchema, async (req: any, res) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT symbol, created_at FROM watchlist WHERE user_id=$1 ORDER BY created_at DESC",
+      [req.userId],
+    );
+    res.json(rows.map((r: any) => ({
+      symbol: r.symbol,
+      createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
+    })));
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post("/user/watchlist", requireAuth, requireSchema, async (req: any, res) => {
+  const { symbol } = req.body;
+  if (!symbol || typeof symbol !== "string") {
+    res.status(400).json({ error: "symbol required" });
+    return;
+  }
+  const sym = symbol.toUpperCase().trim();
+  try {
+    await pool.query(
+      "INSERT INTO watchlist (user_id, symbol) VALUES ($1,$2) ON CONFLICT (user_id, symbol) DO NOTHING",
+      [req.userId, sym],
+    );
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.delete("/user/watchlist/:symbol", requireAuth, requireSchema, async (req: any, res) => {
+  try {
+    await pool.query(
+      "DELETE FROM watchlist WHERE user_id=$1 AND symbol=$2",
+      [req.userId, req.params.symbol.toUpperCase()],
+    );
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Price Alerts ───────────────────────────────────────────────────────────
+router.get("/user/alerts", requireAuth, requireSchema, async (req: any, res) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT id, symbol, direction, target_price, created_at, fired_at FROM price_alerts WHERE user_id=$1 ORDER BY created_at DESC",
+      [req.userId],
+    );
+    res.json(rows.map((r: any) => ({
+      id: r.id,
+      symbol: r.symbol,
+      direction: r.direction,
+      targetPrice: Number(r.target_price),
+      createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
+      firedAt: r.fired_at instanceof Date ? r.fired_at.toISOString() : r.fired_at ?? null,
+    })));
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post("/user/alerts", requireAuth, requireSchema, async (req: any, res) => {
+  const { symbol, direction, targetPrice, pushToken } = req.body;
+  if (!symbol || !direction || targetPrice == null || !pushToken) {
+    res.status(400).json({ error: "symbol, direction, targetPrice, pushToken required" });
+    return;
+  }
+  if (direction !== "above" && direction !== "below") {
+    res.status(400).json({ error: "direction must be 'above' or 'below'" });
+    return;
+  }
+  try {
+    const id = randomUUID();
+    await pool.query(
+      `INSERT INTO price_alerts (id, user_id, symbol, direction, target_price, push_token)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [id, req.userId, symbol.toUpperCase().trim(), direction, targetPrice, pushToken],
+    );
+    res.json({ id });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.delete("/user/alerts/:id", requireAuth, requireSchema, async (req: any, res) => {
+  try {
+    await pool.query(
+      "DELETE FROM price_alerts WHERE id=$1 AND user_id=$2",
+      [req.params.id, req.userId],
+    );
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Push Token ─────────────────────────────────────────────────────────────
+router.post("/user/push-token", requireAuth, async (req: any, res) => {
+  // No-op endpoint — the token is stored per-alert, not globally, because
+  // Expo push tokens can change. We accept and 200 so the client stays happy.
+  const { token } = req.body;
+  if (!token || typeof token !== "string") {
+    res.status(400).json({ error: "token required" });
+    return;
+  }
+  res.json({ ok: true });
+});
+
+// ── Price Alert Worker ─────────────────────────────────────────────────────
+// Runs every 5 minutes; fetches live prices and fires pending alerts.
+async function fetchCurrentPrice(symbol: string): Promise<number | null> {
+  try {
+    const { stdout } = await execFileAsync(
+      "python3", [QUOTE_SCRIPT_PATH, symbol],
+      { timeout: 20_000 },
+    );
+    const data = JSON.parse(stdout.trim());
+    if (data.error || !data.currentPrice) return null;
+    return data.currentPrice as number;
+  } catch {
+    return null;
+  }
+}
+
+async function runAlertCheck(): Promise<void> {
+  try {
+    const { rows: pending } = await pool.query(
+      "SELECT id, user_id, symbol, direction, target_price, push_token FROM price_alerts WHERE fired_at IS NULL",
+    );
+    if (!pending.length) return;
+
+    // Fetch prices for unique symbols (batch to reduce API calls)
+    const symbols = [...new Set(pending.map((r: any) => r.symbol as string))];
+    const prices = new Map<string, number>();
+    await Promise.all(
+      symbols.map(async (sym) => {
+        const p = await fetchCurrentPrice(sym);
+        if (p != null) prices.set(sym, p);
+      }),
+    );
+
+    await Promise.all(
+      pending.map(async (alert: any) => {
+        const price = prices.get(alert.symbol);
+        if (price == null) return;
+        const triggered =
+          alert.direction === "above"
+            ? price >= Number(alert.target_price)
+            : price <= Number(alert.target_price);
+        if (!triggered) return;
+
+        // Send Expo push notification — only mark fired on confirmed delivery.
+        // A transient push API failure leaves the alert active so it retries
+        // on the next check cycle rather than silently dropping it.
+        let pushOk = false;
+        try {
+          const pushRes = await fetch("https://exp.host/--/api/v2/push/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Accept": "application/json" },
+            body: JSON.stringify({
+              to: alert.push_token,
+              title: `${alert.symbol} Price Alert`,
+              body: `${alert.symbol} hit ${price.toFixed(2)} — your target was ${Number(alert.target_price).toFixed(2)}`,
+              sound: "default",
+              data: { symbol: alert.symbol },
+            }),
+          });
+          pushOk = pushRes.ok;
+          if (!pushOk) {
+            const body = await pushRes.text().catch(() => "");
+            logger.warn({ symbol: alert.symbol, status: pushRes.status, body }, "[alert-worker] push send failed — will retry");
+          }
+        } catch (e: any) {
+          logger.warn({ symbol: alert.symbol, err: e.message }, "[alert-worker] push network error — will retry");
+        }
+
+        if (!pushOk) return; // leave alert active for next cycle
+
+        await pool.query(
+          "UPDATE price_alerts SET fired_at=NOW() WHERE id=$1",
+          [alert.id],
+        );
+        logger.info({ symbol: alert.symbol, direction: alert.direction, price }, "[alert-worker] alert fired and delivered");
+      }),
+    );
+  } catch (e: any) {
+    logger.error({ err: e }, "[alert-worker] price check failed");
+  }
+}
+
+// Start worker after schema is ready. First run 30s after boot, then every 5 min.
+void ensureSchema()
+  .then(() => {
+    setTimeout(() => {
+      void runAlertCheck();
+      setInterval(() => void runAlertCheck(), 5 * 60 * 1000);
+    }, 30_000);
+  })
+  .catch(() => {});
 
 // Store active account id separately
 router.get("/user/paper/active", requireAuth, async (req: any, res) => {

@@ -11,6 +11,7 @@ import {
   TextInput,
   useWindowDimensions,
 } from 'react-native';
+import { useAuth } from '@clerk/expo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -172,7 +173,38 @@ export default function AnalysisScreen() {
   const colors = useColors();
   const { width: screenWidth } = useWindowDimensions();
   const { apiFetch } = useApi();
+  const { isSignedIn } = useAuth();
   const { mutate, data, isPending, error } = useAnalyzeStock<Error>();
+
+  // ── Watchlist star state ──────────────────────────────────────────────────
+  const [isWatched, setIsWatched] = useState(false);
+  const [watchlistLoading, setWatchlistLoading] = useState(false);
+
+  useEffect(() => {
+    if (!symbol || !isSignedIn) return;
+    apiFetch<{ symbol: string; createdAt: string }[]>('/api/user/watchlist')
+      .then((list) => setIsWatched(list.some((w) => w.symbol === symbol)))
+      .catch(() => {});
+  }, [symbol, apiFetch, isSignedIn]);
+
+  const toggleWatchlist = useCallback(async () => {
+    if (!symbol || watchlistLoading) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setWatchlistLoading(true);
+    const next = !isWatched;
+    setIsWatched(next); // optimistic
+    try {
+      if (next) {
+        await apiFetch('/api/user/watchlist', { method: 'POST', body: JSON.stringify({ symbol }) });
+      } else {
+        await apiFetch(`/api/user/watchlist/${encodeURIComponent(symbol)}`, { method: 'DELETE' });
+      }
+    } catch {
+      setIsWatched(!next); // revert
+    } finally {
+      setWatchlistLoading(false);
+    }
+  }, [symbol, isWatched, watchlistLoading, apiFetch]);
 
   // ── Chart state ──────────────────────────────────────────────────────────
   const [period, setPeriod] = useState<Period>('3mo');
@@ -287,6 +319,21 @@ export default function AnalysisScreen() {
               </Text>
             )}
           </View>
+          {/* Star / watchlist toggle — only shown when signed in */}
+          {isSignedIn && (
+            <TouchableOpacity
+              onPress={toggleWatchlist}
+              style={headerStyles.starBtn}
+              activeOpacity={0.7}
+              disabled={watchlistLoading}
+            >
+              <Feather
+                name={isWatched ? 'star' : 'star'}
+                size={22}
+                color={isWatched ? '#FFD700' : colors.mutedForeground}
+              />
+            </TouchableOpacity>
+          )}
           {analysis && (
             <View style={headerStyles.priceArea}>
               <Text style={[headerStyles.price, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
@@ -686,6 +733,7 @@ const headerStyles = StyleSheet.create({
   center: { flex: 1 },
   symbol: { fontSize: 20 },
   company: { fontSize: 12 },
+  starBtn: { padding: 6 },
   priceArea: { alignItems: 'flex-end' },
   price: { fontSize: 18 },
   change: { fontSize: 12 },
