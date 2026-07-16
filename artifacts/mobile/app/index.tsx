@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
+  RefreshControl,
   Platform,
   Keyboard,
   Modal,
@@ -238,6 +239,7 @@ export default function HomeScreen() {
   const [trending, setTrending] = useState<TrendingTicker[]>([]);
   const [trendingLoading, setTrendingLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Watchlist + push notifications
@@ -275,6 +277,12 @@ export default function HomeScreen() {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [fetchTrending]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([watchlist.refresh(), fetchTrending(false)]);
+    setRefreshing(false);
+  }, [watchlist.refresh, fetchTrending]);
 
   const showTip = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -445,6 +453,14 @@ export default function HomeScreen() {
         contentContainerStyle={{ paddingBottom: botPad + 24 }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.mutedForeground}
+            colors={[colors.primary]}
+          />
+        }
       >
         {/* Recent searches */}
         {recent.length > 0 && (
@@ -490,9 +506,20 @@ export default function HomeScreen() {
                   )}
                 </Text>
               </View>
-              <TouchableOpacity onPress={() => watchlist.refresh()} style={styles.refreshBtn} disabled={watchlist.loading}>
-                <Feather name="refresh-cw" size={13} color={watchlist.loading ? colors.muted : colors.mutedForeground} />
-              </TouchableOpacity>
+              <View style={styles.refreshRow}>
+                {watchlist.lastUpdated && (
+                  <Text style={[styles.updatedText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                    {watchlist.lastUpdated.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                  </Text>
+                )}
+                {watchlist.loading && !refreshing ? (
+                  <ActivityIndicator size="small" color={colors.mutedForeground} style={{ marginRight: 4 }} />
+                ) : (
+                  <TouchableOpacity onPress={() => watchlist.refresh()} style={styles.refreshBtn} disabled={watchlist.loading}>
+                    <Feather name="refresh-cw" size={13} color={watchlist.loading ? colors.muted : colors.mutedForeground} />
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
 
             {watchlist.items.length === 0 ? (

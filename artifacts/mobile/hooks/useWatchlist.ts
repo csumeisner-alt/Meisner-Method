@@ -8,6 +8,8 @@ import { useApi } from './useApi';
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
+const WATCHLIST_POLL_INTERVAL = 60_000;
+
 export interface WatchlistItem {
   symbol: string;
   createdAt: string;
@@ -34,6 +36,7 @@ export function useWatchlist() {
   const [quotes, setQuotes] = useState<Map<string, QuoteData>>(new Map());
   const [alerts, setAlerts] = useState<AlertData[]>([]);
   const [loading, setLoading] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -74,6 +77,7 @@ export function useWatchlist() {
         }
         setQuotes(qMap);
       }
+      if (mountedRef.current) setLastUpdated(new Date());
     } catch {
       // silently keep last data
     } finally {
@@ -81,8 +85,17 @@ export function useWatchlist() {
     }
   }, [apiFetch]);
 
+  // Initial fetch
   useEffect(() => {
     refresh();
+  }, [refresh]);
+
+  // Auto-poll every 60 seconds while the hook is mounted
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (mountedRef.current) refresh();
+    }, WATCHLIST_POLL_INTERVAL);
+    return () => clearInterval(id);
   }, [refresh]);
 
   const add = useCallback(async (symbol: string) => {
@@ -168,6 +181,7 @@ export function useWatchlist() {
     quotes,
     alerts,
     loading,
+    lastUpdated,
     refresh,
     add,
     remove,
