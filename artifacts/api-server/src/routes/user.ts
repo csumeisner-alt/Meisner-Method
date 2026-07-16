@@ -17,6 +17,12 @@ import {
   classifyExpoPushResponse,
   type PendingAlert,
 } from "../lib/alertLogic.js";
+import {
+  getWatchlist,
+  addToWatchlist,
+  reorderWatchlist,
+  removeFromWatchlist,
+} from "../lib/watchlistStore.js";
 
 const { Pool } = pg;
 
@@ -547,15 +553,7 @@ router.post("/user/paper/sync", requireAuth, requireSchema, async (req: any, res
 // ── Watchlist ─────────────────────────────────────────────────────────────
 router.get("/user/watchlist", requireAuth, requireSchema, async (req: any, res) => {
   try {
-    const { rows } = await pool.query(
-      "SELECT symbol, created_at, sort_order FROM watchlist WHERE user_id=$1 ORDER BY sort_order ASC, created_at DESC",
-      [req.userId],
-    );
-    res.json(rows.map((r: any) => ({
-      symbol: r.symbol,
-      createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
-      sortOrder: Number(r.sort_order ?? 0),
-    })));
+    res.json(await getWatchlist(pool, req.userId));
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
@@ -567,18 +565,10 @@ router.post("/user/watchlist", requireAuth, requireSchema, async (req: any, res)
     res.status(400).json({ error: "symbol required" });
     return;
   }
-  const sym = symbol.toUpperCase().trim();
   try {
     // New items get sort_order = 0 so they appear at the top (lowest value = first)
     // existing items have higher sort_order values; we shift them down by 1 to make room
-    await pool.query(
-      "UPDATE watchlist SET sort_order = sort_order + 1 WHERE user_id=$1",
-      [req.userId],
-    );
-    await pool.query(
-      "INSERT INTO watchlist (user_id, symbol, sort_order) VALUES ($1,$2,0) ON CONFLICT (user_id, symbol) DO NOTHING",
-      [req.userId, sym],
-    );
+    await addToWatchlist(pool, req.userId, symbol);
     res.json({ ok: true });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -593,31 +583,17 @@ router.put("/user/watchlist/reorder", requireAuth, requireSchema, async (req: an
     res.status(400).json({ error: "symbols must be a string array" });
     return;
   }
-  const client = await pool.connect();
   try {
-    await client.query("BEGIN");
-    for (let i = 0; i < symbols.length; i++) {
-      await client.query(
-        "UPDATE watchlist SET sort_order=$1 WHERE user_id=$2 AND symbol=$3",
-        [i, req.userId, (symbols[i] as string).toUpperCase().trim()],
-      );
-    }
-    await client.query("COMMIT");
+    await reorderWatchlist(pool, req.userId, symbols);
     res.json({ ok: true });
   } catch (e: any) {
-    await client.query("ROLLBACK");
     res.status(500).json({ error: e.message });
-  } finally {
-    client.release();
   }
 });
 
 router.delete("/user/watchlist/:symbol", requireAuth, requireSchema, async (req: any, res) => {
   try {
-    await pool.query(
-      "DELETE FROM watchlist WHERE user_id=$1 AND symbol=$2",
-      [req.userId, req.params.symbol.toUpperCase()],
-    );
+    await removeFromWatchlist(pool, req.userId, req.params.symbol);
     res.json({ ok: true });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
