@@ -13,7 +13,7 @@ import {
 import { useClerk, useSignIn, useSSO } from '@clerk/expo';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
-import { type Href, Link, useRouter } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MMLogo } from '@/components/MMLogo';
 
@@ -53,30 +53,6 @@ export default function SignInScreen() {
   const [googleLoading, setGoogleLoading] = React.useState(false);
   const [formError, setFormError] = React.useState('');
 
-  // Navigate helper used by finalize()/setActive(). On native there is no
-  // window.location and decorateUrl('/') can return an absolute http(s) handoff
-  // URL that expo-router cannot navigate to — falling back to the app root in
-  // that case. AuthGate also redirects once the session is active, so this is
-  // belt-and-suspenders against getting stuck on the sign-in screen.
-  const navigateAfterAuth = ({ session, decorateUrl }: any) => {
-    if (session?.currentTask) {
-      console.log('[auth] pending session task, staying put:', session.currentTask);
-      return;
-    }
-    let target = '/';
-    try {
-      // Only accept an internal router path. Any absolute URL (http(s)://,
-      // exp://, the app's custom scheme, etc.) is a handoff URL expo-router
-      // can't navigate to — fall back to the app root instead.
-      const url = decorateUrl?.('/');
-      if (typeof url === 'string' && url.startsWith('/')) {
-        target = url;
-      }
-    } catch (e) {
-      console.warn('[auth] decorateUrl failed, defaulting to /', e);
-    }
-    router.replace(target as Href);
-  };
 
   const handleEmailSignIn = async () => {
     setFormError('');
@@ -108,7 +84,7 @@ export default function SignInScreen() {
     setGoogleLoading(true);
     setFormError('');
     try {
-      const { createdSessionId, setActive, signIn: ssoSignIn, signUp: ssoSignUp } =
+      const { createdSessionId, signIn: ssoSignIn, signUp: ssoSignUp } =
         await startSSOFlow({
           strategy: 'oauth_google',
           redirectUrl: AuthSession.makeRedirectUri(),
@@ -118,16 +94,20 @@ export default function SignInScreen() {
         signInStatus: ssoSignIn?.status,
         signUpStatus: ssoSignUp?.status,
       });
-      if (createdSessionId && setActive) {
-        await setActive({
-          session: createdSessionId,
-          navigate: navigateAfterAuth,
-        });
+      // Primary path: SSO returned a ready session ID
+      if (createdSessionId) {
+        await setActive({ session: createdSessionId });
+        router.replace('/');
         return;
       }
-      // No session created — log the state so re-login failures are diagnosable
-      // on-device instead of silently bouncing back to the sign-in screen.
-      console.warn('[auth] SSO returned no createdSessionId', {
+      // Fallback: existing account where Clerk marks the signIn complete but
+      // returns the session ID on the ssoSignIn object instead
+      if (ssoSignIn?.status === 'complete' && ssoSignIn?.createdSessionId) {
+        await setActive({ session: ssoSignIn.createdSessionId });
+        router.replace('/');
+        return;
+      }
+      console.warn('[auth] SSO returned no session', {
         signInStatus: ssoSignIn?.status,
         signUpStatus: ssoSignUp?.status,
       });
@@ -138,7 +118,7 @@ export default function SignInScreen() {
     } finally {
       setGoogleLoading(false);
     }
-  }, [startSSOFlow]);
+  }, [startSSOFlow, setActive, router]);
 
   // MFA / client-trust step
   if (signIn.status === 'needs_client_trust') {
