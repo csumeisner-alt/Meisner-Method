@@ -60,3 +60,9 @@ id = "cMBak46j2lRpMoN5MAMd-"
 uri = "file://artifacts/mobile/assets/celebration/woman10.jpg"
 type = "image"
 title = "Updated celebration 10"
+
+[[outputs]]
+id = "HEzfkl1hr1tKwpL-2I2aZ"
+uri = "file://artifacts/mobile/assets/celebration/dave.jpg"
+type = "image"
+title = "Dave Ramsey lookalike"
