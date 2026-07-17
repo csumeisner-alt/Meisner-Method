@@ -44,7 +44,7 @@ export default function SignUpScreen() {
 
   const handleCreateAccount = async () => {
     setFormError('');
-    const { error: createError } = await signUp.create({ emailAddress: email, password });
+    const { error: createError } = await signUp.password({ emailAddress: email, password });
     if (createError) {
       setFormError(getClerkErrorMessage(createError));
       return;

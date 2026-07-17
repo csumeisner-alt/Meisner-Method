@@ -45,7 +45,7 @@ export default function SignInScreen() {
 
   const handleEmailSignIn = async () => {
     setFormError('');
-    const { error } = await signIn.create({ identifier: email, password });
+    const { error } = await signIn.password({ emailAddress: email, password });
     if (error) {
       setFormError(getClerkErrorMessage(error));
       return;
