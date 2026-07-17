@@ -46,12 +46,84 @@ const QUOTE_SCRIPT_PATH = join(__watchlistDirname, "fetch_quote.py");
 let schemaReady: Promise<void> | null = null;
 
 async function runSchemaMigrations(): Promise<void> {
-  await pool.query(
-    "ALTER TABLE paper_positions ADD COLUMN IF NOT EXISTS expense_ratio DOUBLE PRECISION DEFAULT 0",
-  );
-  await pool.query(
-    "ALTER TABLE paper_transactions ADD COLUMN IF NOT EXISTS fee DOUBLE PRECISION DEFAULT 0",
-  );
+  // ── Paper trading tables ───────────────────────────────────────────────────
+  // Create the base tables with composite keys if they don't exist, then add
+  // any columns that may be missing from older deployments.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS paper_accounts (
+      id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      cash DOUBLE PRECISION NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (id, user_id)
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS paper_positions (
+      id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      account_id TEXT NOT NULL,
+      symbol TEXT NOT NULL,
+      company_name TEXT,
+      shares DOUBLE PRECISION NOT NULL DEFAULT 0,
+      avg_cost DOUBLE PRECISION NOT NULL DEFAULT 0,
+      opened_at TIMESTAMPTZ,
+      dividend_yield DOUBLE PRECISION DEFAULT 0,
+      dividend_rate DOUBLE PRECISION DEFAULT 0,
+      expense_ratio DOUBLE PRECISION DEFAULT 0,
+      sector TEXT,
+      PRIMARY KEY (id, user_id)
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS paper_transactions (
+      id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      account_id TEXT NOT NULL,
+      symbol TEXT NOT NULL,
+      company_name TEXT,
+      action TEXT NOT NULL,
+      shares DOUBLE PRECISION NOT NULL DEFAULT 0,
+      price DOUBLE PRECISION NOT NULL DEFAULT 0,
+      total DOUBLE PRECISION NOT NULL DEFAULT 0,
+      date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      realized_pnl DOUBLE PRECISION,
+      fee DOUBLE PRECISION DEFAULT 0,
+      PRIMARY KEY (id, user_id)
+    )
+  `);
+
+  // Backfill missing columns for existing paper tables (idempotent).
+  const paperColumns = [
+    ["paper_accounts", "name", "TEXT"],
+    ["paper_accounts", "cash", "DOUBLE PRECISION"],
+    ["paper_accounts", "created_at", "TIMESTAMPTZ"],
+    ["paper_positions", "account_id", "TEXT"],
+    ["paper_positions", "symbol", "TEXT"],
+    ["paper_positions", "company_name", "TEXT"],
+    ["paper_positions", "shares", "DOUBLE PRECISION"],
+    ["paper_positions", "avg_cost", "DOUBLE PRECISION"],
+    ["paper_positions", "opened_at", "TIMESTAMPTZ"],
+    ["paper_positions", "dividend_yield", "DOUBLE PRECISION"],
+    ["paper_positions", "dividend_rate", "DOUBLE PRECISION"],
+    ["paper_positions", "expense_ratio", "DOUBLE PRECISION DEFAULT 0"],
+    ["paper_positions", "sector", "TEXT"],
+    ["paper_transactions", "account_id", "TEXT"],
+    ["paper_transactions", "symbol", "TEXT"],
+    ["paper_transactions", "company_name", "TEXT"],
+    ["paper_transactions", "action", "TEXT"],
+    ["paper_transactions", "shares", "DOUBLE PRECISION"],
+    ["paper_transactions", "price", "DOUBLE PRECISION"],
+    ["paper_transactions", "total", "DOUBLE PRECISION"],
+    ["paper_transactions", "date", "TIMESTAMPTZ"],
+    ["paper_transactions", "realized_pnl", "DOUBLE PRECISION"],
+    ["paper_transactions", "fee", "DOUBLE PRECISION DEFAULT 0"],
+  ] as const;
+  for (const [table, column, type] of paperColumns) {
+    await pool.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column} ${type}`);
+  }
+
   // Watchlist and price alerts tables (safe to run on every boot)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS watchlist (
