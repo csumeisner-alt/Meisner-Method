@@ -533,6 +533,30 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Watchlist filter — sticky bar between search and scroll so it's always reachable */}
+      {isSignedIn && showWatchFilter && (
+        <View style={[styles.watchFilterBar, { borderBottomColor: colors.border }]}>
+          <View style={[styles.watchFilterRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Feather name="filter" size={14} color={colors.mutedForeground} style={{ marginRight: 8 }} />
+            <TextInput
+              style={[styles.watchFilterInput, { color: colors.foreground, fontFamily: 'Inter_500Medium' }]}
+              placeholder="Filter watchlist…"
+              placeholderTextColor={colors.mutedForeground}
+              value={watchFilter}
+              onChangeText={setWatchFilter}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              returnKeyType="done"
+            />
+            {watchFilter.length > 0 && (
+              <TouchableOpacity onPress={() => setWatchFilter('')} style={{ padding: 4 }}>
+                <Feather name="x" size={14} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      )}
+
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: botPad + 24 }}
@@ -607,28 +631,6 @@ export default function HomeScreen() {
                 )}
               </View>
             </View>
-
-            {showWatchFilter && (
-              <View style={[styles.watchFilterRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <Feather name="filter" size={14} color={colors.mutedForeground} style={{ marginRight: 8 }} />
-                <TextInput
-                  style={[styles.watchFilterInput, { color: colors.foreground, fontFamily: 'Inter_500Medium' }]}
-                  placeholder="Filter watchlist…"
-                  placeholderTextColor={colors.mutedForeground}
-                  value={watchFilter}
-                  onChangeText={setWatchFilter}
-                  onBlur={() => setWatchFilter('')}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  returnKeyType="done"
-                />
-                {watchFilter.length > 0 && (
-                  <TouchableOpacity onPress={() => setWatchFilter('')} style={{ padding: 4 }}>
-                    <Feather name="x" size={14} color={colors.mutedForeground} />
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
 
             {watchlist.items.length === 0 ? (
               <View style={[styles.watchlistEmpty, { borderColor: colors.border }]}>
@@ -864,6 +866,11 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   // Watchlist
+  watchFilterBar: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
   watchFilterRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -871,7 +878,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingHorizontal: 10,
     height: 40,
-    marginBottom: 10,
   },
   watchFilterInput: { flex: 1, fontSize: 14, height: '100%' },
   watchlistEmpty: {
