@@ -25,6 +25,8 @@ async function getNativeNotifications() {
   return import('expo-notifications');
 }
 
+type NotificationsModule = NonNullable<Awaited<ReturnType<typeof getNativeNotifications>>>;
+
 export function usePushNotifications() {
   const { apiFetch } = useApi();
   const [pushToken, setPushToken] = useState<string | null>(null);
@@ -33,9 +35,9 @@ export function usePushNotifications() {
   );
   const cancelledRef = useRef(false);
 
-  const obtainToken = useCallback(async (Notifications: any): Promise<boolean> => {
+  const obtainToken = useCallback(async (Notifications: NotificationsModule): Promise<boolean> => {
     try {
-      const tokenData: { data: string } = await Notifications.getExpoPushTokenAsync();
+      const tokenData = await Notifications.getExpoPushTokenAsync();
       if (cancelledRef.current) return true;
       setPushToken(tokenData.data);
       // Register with server (non-critical)
@@ -72,8 +74,7 @@ export function usePushNotifications() {
           }),
         });
 
-        // Cast because pnpm type resolution flattens PermissionResponse
-        const perm = (await Notifications.getPermissionsAsync()) as any;
+        const perm = await Notifications.getPermissionsAsync();
         if (cancelledRef.current) return;
         const granted: boolean = perm.granted ?? perm.status === 'granted';
         if (granted) {
@@ -104,7 +105,7 @@ export function usePushNotifications() {
     try {
       const Notifications = await getNativeNotifications();
       if (!Notifications) { setStatus('unavailable'); return false; }
-      const perm = (await Notifications.requestPermissionsAsync()) as any;
+      const perm = await Notifications.requestPermissionsAsync();
       const granted: boolean = perm.granted ?? perm.status === 'granted';
       if (!granted) {
         setStatus(perm.canAskAgain === false ? 'denied' : 'unknown');
