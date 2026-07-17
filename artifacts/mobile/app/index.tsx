@@ -24,6 +24,8 @@ import { useColors } from '@/hooks/useColors';
 import { BottomTabBar } from '@/components/BottomTabBar';
 import { MMLogo } from '@/components/MMLogo';
 import { DonationSidebar } from '@/components/DonationSidebar';
+import { AmericanCelebration } from '@/components/AmericanCelebration';
+import { useAmericanMode } from '@/contexts/AmericanModeContext';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { DraggableWatchlist } from '@/components/DraggableWatchlist';
@@ -73,6 +75,28 @@ const TIPS = [
   "🇺🇸 Under Trump's first term, the US economy saw its lowest unemployment rate in 50 years — hitting 3.5% in 2019.",
   "🇺🇸 Trump became the first former US president to be convicted of felony crimes, with a New York jury returning 34 guilty counts in May 2024.",
   "🇺🇸 President Trump moved the US Embassy in Israel from Tel Aviv to Jerusalem in 2018 — fulfilling a decades-old campaign promise that previous presidents had avoided.",
+  // HK (Heckler & Koch)
+  "🔫 Heckler & Koch was founded in 1949 in Oberndorf am Neckar, Germany — rising from the ashes of WWII to become one of the world's premier firearms manufacturers.",
+  "🔫 The HK MP5 submachine gun, introduced in 1966, is one of the most iconic and widely-used law-enforcement firearms in history — carried by special forces in over 40 countries.",
+  "🔫 HK's roller-delayed blowback operating system, pioneered in the G3 battle rifle, is legendary for its reliability and accuracy — it remains in service in dozens of militaries worldwide.",
+  "🔫 The HK416 assault rifle replaced the M4/M16 in German KSK special forces and is the standard rifle of the French Army — it was also the weapon used in Operation Neptune Spear that killed Osama bin Laden.",
+  "🔫 HK developed the G11 rifle in the 1970s–80s — a futuristic caseless-ammunition weapon that achieved a cyclic rate of 2,000 rounds per minute in burst mode.",
+  "🔫 The HK USP (Universal Self-loading Pistol) was specifically engineered for US law enforcement and military trials, becoming the basis for the legendary HK Mark 23 SOCOM pistol.",
+  "🔫 HK's VP9 striker-fired pistol, released in 2014, became one of the best-reviewed duty pistols ever made — praised for its ergonomics, trigger quality, and near-zero malfunction rate.",
+  "🔫 The HK G36, adopted by the German Bundeswehr in 1997, was the first military service rifle made primarily of high-strength polymer, setting a new standard for lightweight modern infantry weapons.",
+  "🔫 HK's G28 Designated Marksman Rifle is used by US Army Rangers and USSOCOM — it delivers sub-MOA accuracy out to 800 meters with standard 7.62×51mm NATO ammunition.",
+  "🔫 HK introduced the 'No Compromise' slogan because their manufacturing tolerances are so tight that HK pistols routinely function for 20,000+ rounds without a single malfunction in independent testing.",
+  // Pro-2A / Second Amendment
+  "🦅 The Second Amendment was ratified on December 15, 1791 as part of the Bill of Rights — its 27 words have been the cornerstone of American individual liberty for over 230 years.",
+  "🦅 In District of Columbia v. Heller (2008), the Supreme Court ruled 5–4 that the Second Amendment protects an individual's right to keep and bear arms for self-defense — independent of service in a militia.",
+  "🦅 McDonald v. Chicago (2010) extended Heller nationwide, ruling that the 14th Amendment incorporates the Second Amendment against state and local governments — striking down Chicago's handgun ban.",
+  "🦅 There are an estimated 400–450 million privately owned firearms in the United States — more guns than people — making American gun ownership the highest per capita of any nation on Earth.",
+  "🦅 The right to bear arms predates the US Constitution: the English Bill of Rights of 1689 explicitly recognized the right of Protestants to keep arms for their defense, directly influencing America's Founders.",
+  "🦅 As of 2024, 29 states have enacted constitutional carry (permitless carry) laws — allowing law-abiding citizens to carry a concealed firearm without a government permit.",
+  "🦅 A CDC-funded study by criminologist Gary Kleck estimated that Americans use firearms defensively between 60,000 and 2.5 million times per year — the overwhelming majority without firing a shot.",
+  "🦅 The Founding Fathers were unambiguous about the 2A's purpose: James Madison wrote in Federalist No. 46 that an armed citizenry of 500,000 would be a powerful check against any federal tyranny.",
+  "🦅 New York State Rifle & Pistol Association v. Bruen (2022) was a landmark Supreme Court ruling striking down 'may-issue' concealed carry permit laws, affirming that law-abiding citizens have a right to carry outside the home.",
+  "🦅 Switzerland issues military rifles to most able-bodied men as part of its national defense doctrine — yet the country consistently ranks among the safest in the world, underlining that responsible gun ownership and safety are not mutually exclusive.",
 ];
 
 const REFRESH_INTERVAL = 60_000;
@@ -314,6 +338,17 @@ export default function HomeScreen() {
   const [alertModalSymbol, setAlertModalSymbol] = useState<string | null>(null);
   const [alertModalPrice, setAlertModalPrice] = useState<number | undefined>(undefined);
 
+  // American Mode — fact counter, unlock state, and celebration trigger
+  const { isActive, justUnlocked, incrementFact, clearJustUnlocked } = useAmericanMode();
+  const [showCelebration, setShowCelebration] = useState(false);
+
+  useEffect(() => {
+    if (justUnlocked) {
+      setShowCelebration(true);
+      clearJustUnlocked();
+    }
+  }, [justUnlocked, clearJustUnlocked]);
+
   // Watchlist filter — only shown when the list gets long.
   // Initialised from the module-level variable so the value survives navigation.
   const [watchFilter, setWatchFilterState] = useState(_persistedWatchFilter);
@@ -417,7 +452,8 @@ export default function HomeScreen() {
     const tip = TIPS[Math.floor(Math.random() * TIPS.length)]!;
     setCurrentTip(tip);
     setTipVisible(true);
-  }, []);
+    void incrementFact();
+  }, [incrementFact]);
 
   const navigateTo = useCallback(async (symbol: string) => {
     const upper = symbol.toUpperCase().trim();
@@ -461,7 +497,7 @@ export default function HomeScreen() {
         <Pressable style={styles.modalOverlay} onPress={() => setTipVisible(false)}>
           <Pressable style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.modalTitle, { color: colors.primary, fontFamily: 'Inter_700Bold' }]}>
-              Did You Know?
+              {isActive ? '🦅 ' : ''}Did You Know?
             </Text>
             <Text style={[styles.modalTip, { color: colors.foreground, fontFamily: 'Inter_400Regular' }]}>
               {currentTip}
@@ -471,6 +507,7 @@ export default function HomeScreen() {
               onPress={() => {
                 const tip = TIPS[Math.floor(Math.random() * TIPS.length)]!;
                 setCurrentTip(tip);
+                void incrementFact();
               }}
               activeOpacity={0.7}
             >
@@ -484,6 +521,12 @@ export default function HomeScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* American Mode celebration — fires once when 550 facts are read */}
+      <AmericanCelebration
+        visible={showCelebration}
+        onDismiss={() => setShowCelebration(false)}
+      />
 
       {/* Alert Modal */}
       {alertModalSymbol && (
@@ -516,7 +559,7 @@ export default function HomeScreen() {
             <MMLogo size={44} />
             <View style={styles.brandText}>
               <Text style={[styles.brandName, { color: colors.foreground, fontFamily: 'Inter_700Bold', letterSpacing: 0.8 }]}>
-                Meisner Method
+                Meisner Method{isActive ? ' 🇺🇸' : ''}
               </Text>
               <Text style={[styles.tagline, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                 AI-powered market intelligence

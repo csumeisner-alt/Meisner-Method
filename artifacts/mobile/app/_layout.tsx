@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { AmericanModeProvider } from '@/contexts/AmericanModeContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProviderCompat } from '@/components/KeyboardProviderCompat';
@@ -113,6 +114,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <ErrorBoundary>
+        <AmericanModeProvider>
         <ClerkProvider
           publishableKey={publishableKey}
           tokenCache={tokenCache}
@@ -130,6 +132,7 @@ export default function RootLayout() {
             </QueryClientProvider>
           </ClerkLoaded>
         </ClerkProvider>
+        </AmericanModeProvider>
       </ErrorBoundary>
     </SafeAreaProvider>
   );

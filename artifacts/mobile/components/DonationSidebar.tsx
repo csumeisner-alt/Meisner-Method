@@ -24,6 +24,7 @@ import { useColors } from '@/hooks/useColors';
 import { Confetti } from '@/components/Confetti';
 import { useApi } from '@/hooks/useApi';
 import { useAuth } from '@clerk/expo';
+import { useAmericanMode, AMERICAN_MODE_THRESHOLD } from '@/contexts/AmericanModeContext';
 
 // Creator's PUBLIC payment handles. These only ever build outbound payment
 // links — the app never touches logins, balances, or account data.
@@ -56,6 +57,12 @@ export function DonationSidebar({ visible, onClose, onSignOut }: Props) {
   const insets = useSafeAreaInsets();
   const { apiFetch } = useApi();
   const { isSignedIn } = useAuth();
+  const { factsRead, isUnlocked, isActive, setAmericanModeActive } = useAmericanMode();
+
+  const toggleAmericanMode = (value: boolean) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setAmericanModeActive(value);
+  };
 
   // Global notifications on/off preference (server-backed). Pausing keeps all
   // pending price alerts intact server-side — they simply aren't sent until
@@ -404,6 +411,37 @@ export function DonationSidebar({ visible, onClose, onSignOut }: Props) {
                 <View style={[styles.divider, { backgroundColor: colors.border }]} />
               </>
             )}
+
+            {/* American Mode unlock */}
+            <View
+              style={[
+                styles.notifRow,
+                {
+                  backgroundColor: isUnlocked ? '#1B1B4B' : colors.card,
+                  borderColor: isUnlocked ? '#B22234' : colors.border,
+                },
+              ]}
+            >
+              <Text style={{ fontSize: 22 }}>🇺🇸</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.notifTitle, { color: isUnlocked ? '#FFFFFF' : colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
+                  American Mode
+                </Text>
+                <Text style={[styles.notifSub, { color: isUnlocked ? '#9999CC' : colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                  {isUnlocked
+                    ? (isActive ? 'Active — Red, White & Blue 🦅' : 'Unlocked! Toggle to activate')
+                    : `${Math.min(factsRead, AMERICAN_MODE_THRESHOLD)} / ${AMERICAN_MODE_THRESHOLD} facts to unlock 🦅`}
+                </Text>
+              </View>
+              <Switch
+                value={isActive}
+                onValueChange={toggleAmericanMode}
+                disabled={!isUnlocked}
+                trackColor={{ false: colors.muted, true: '#B22234' }}
+                thumbColor={isUnlocked ? '#FFFFFF' : '#666'}
+              />
+            </View>
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
             {/* Sign out */}
             <TouchableOpacity

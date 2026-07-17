@@ -5,7 +5,7 @@ import { Animated, Easing, StyleSheet, View } from 'react-native';
 // Each piece falls from the top of the given area, drifting and spinning,
 // then fades out near the end of its run.
 
-const COLORS = ['#7C3AED', '#DB2777', '#F59E0B', '#00D632', '#3D95CE', '#22D3EE'];
+const DEFAULT_COLORS = ['#7C3AED', '#DB2777', '#F59E0B', '#00D632', '#3D95CE', '#22D3EE'];
 
 interface Piece {
   key: number;
@@ -23,16 +23,18 @@ interface ConfettiProps {
   height: number;
   count?: number;
   duration?: number;
+  /** Override confetti colors. Defaults to the purple/pink/yellow palette. */
+  colors?: string[];
 }
 
-export function Confetti({ width, height, count = 90, duration = 2600 }: ConfettiProps) {
+export function Confetti({ width, height, count = 90, duration = 2600, colors = DEFAULT_COLORS }: ConfettiProps) {
   const pieces = useMemo<Piece[]>(
     () =>
       Array.from({ length: count }).map((_, i) => ({
         key: i,
         x: Math.random() * width,
         size: 6 + Math.random() * 8,
-        color: COLORS[i % COLORS.length],
+        color: colors[i % colors.length],
         delay: Math.random() * 500,
         drift: (Math.random() - 0.5) * 140,
         rotations: 2 + Math.random() * 4,
