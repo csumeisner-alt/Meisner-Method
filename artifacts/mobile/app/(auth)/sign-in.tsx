@@ -10,9 +10,9 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import { useClerk, useSignIn } from '@clerk/expo';
+import { useSignIn } from '@clerk/expo';
 import * as WebBrowser from 'expo-web-browser';
-import { Link, useRouter } from 'expo-router';
+import { type Href, Link, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MMLogo } from '@/components/MMLogo';
 import { useGoogleAuth, getClerkErrorMessage } from '@/hooks/useGoogleAuth';
@@ -32,9 +32,8 @@ export default function SignInScreen() {
   useWarmUpBrowser();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { setActive } = useClerk();
   const { signIn, errors, fetchStatus } = useSignIn();
-  const { signInWithGoogle } = useGoogleAuth();
+  const { signInWithGoogle } = useGoogleAuth((url) => router.replace(url as Href));
 
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
@@ -43,6 +42,28 @@ export default function SignInScreen() {
   const [formError, setFormError] = React.useState('');
 
 
+  const finishSignIn = async () => {
+    if (signIn.status !== 'complete' || !signIn.createdSessionId) {
+      console.warn('[auth] sign-in not complete', { status: signIn.status });
+      setFormError('Could not sign in. Please try again.');
+      return;
+    }
+    await signIn.finalize({
+      navigate: ({ session, decorateUrl }) => {
+        if (session?.currentTask) {
+          console.log('[auth] pending session task', session.currentTask);
+          return;
+        }
+        const url = decorateUrl('/');
+        if (url.startsWith('http')) {
+          // Should not happen in the native app, but handle safely.
+          return;
+        }
+        router.replace(url as Href);
+      },
+    });
+  };
+
   const handleEmailSignIn = async () => {
     setFormError('');
     const { error } = await signIn.password({ emailAddress: email, password });
@@ -50,23 +71,17 @@ export default function SignInScreen() {
       setFormError(getClerkErrorMessage(error));
       return;
     }
-    if (signIn.status === 'complete' && signIn.createdSessionId) {
-      await setActive({ session: signIn.createdSessionId });
-      router.replace('/');
-    }
+    await finishSignIn();
   };
 
   const handleVerifyCode = async () => {
     setFormError('');
-    const { error } = await signIn.emailCode.verifyCode({ code });
+    const { error } = await signIn.mfa.verifyEmailCode({ code });
     if (error) {
       setFormError(getClerkErrorMessage(error));
       return;
     }
-    if (signIn.status === 'complete' && signIn.createdSessionId) {
-      await setActive({ session: signIn.createdSessionId });
-      router.replace('/');
-    }
+    await finishSignIn();
   };
 
   const handleGoogleSignIn = useCallback(async () => {
@@ -74,9 +89,7 @@ export default function SignInScreen() {
     setFormError('');
     try {
       const result = await signInWithGoogle();
-      if (result.ok) {
-        router.replace('/');
-      } else if (result.message) {
+      if (!result.ok && result.message) {
         setFormError(result.message);
       }
     } catch (e) {
@@ -85,7 +98,7 @@ export default function SignInScreen() {
     } finally {
       setGoogleLoading(false);
     }
-  }, [signInWithGoogle, router]);
+  }, [signInWithGoogle]);
 
   // MFA / client-trust step
   if (signIn.status === 'needs_client_trust') {
@@ -106,7 +119,7 @@ export default function SignInScreen() {
         <Pressable style={s.btn} onPress={handleVerifyCode}>
           <Text style={s.btnText}>Verify</Text>
         </Pressable>
-        <Pressable style={s.secondaryBtn} onPress={() => signIn.emailCode.sendCode()}>
+        <Pressable style={s.secondaryBtn} onPress={() => signIn.mfa.sendEmailCode()}>
           <Text style={s.secondaryBtnText}>Resend code</Text>
         </Pressable>
         <Pressable style={s.secondaryBtn} onPress={() => signIn.reset()}>

@@ -10,9 +10,9 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import { useClerk, useSignUp } from '@clerk/expo';
+import { useSignUp } from '@clerk/expo';
 import * as WebBrowser from 'expo-web-browser';
-import { Link, useRouter } from 'expo-router';
+import { type Href, Link, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MMLogo } from '@/components/MMLogo';
 import { useGoogleAuth, getClerkErrorMessage } from '@/hooks/useGoogleAuth';
@@ -31,9 +31,8 @@ export default function SignUpScreen() {
   useWarmUpBrowser();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { setActive } = useClerk();
   const { signUp, errors, fetchStatus } = useSignUp();
-  const { signInWithGoogle } = useGoogleAuth();
+  const { signInWithGoogle } = useGoogleAuth((url) => router.replace(url as Href));
 
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
@@ -42,6 +41,28 @@ export default function SignUpScreen() {
   const [formError, setFormError] = React.useState('');
 
 
+  const finishSignUp = async () => {
+    if (signUp.status !== 'complete' || !signUp.createdSessionId) {
+      console.warn('[auth] sign-up not complete', {
+        status: signUp.status,
+        missingFields: signUp.missingFields,
+      });
+      setFormError('Could not finish creating your account. Please try again.');
+      return;
+    }
+    await signUp.finalize({
+      navigate: ({ session, decorateUrl }) => {
+        if (session?.currentTask) {
+          console.log('[auth] pending session task', session.currentTask);
+          return;
+        }
+        const url = decorateUrl('/');
+        if (url.startsWith('http')) return;
+        router.replace(url as Href);
+      },
+    });
+  };
+
   const handleCreateAccount = async () => {
     setFormError('');
     const { error: createError } = await signUp.password({ emailAddress: email, password });
@@ -49,10 +70,10 @@ export default function SignUpScreen() {
       setFormError(getClerkErrorMessage(createError));
       return;
     }
-    // Instance may not require email verification — session can be ready now.
+    // If the instance does not require email verification, the sign-up may be
+    // complete immediately. Otherwise trigger the email verification flow.
     if (signUp.status === 'complete' && signUp.createdSessionId) {
-      await setActive({ session: signUp.createdSessionId });
-      router.replace('/');
+      await finishSignUp();
       return;
     }
     if (signUp.unverifiedFields.includes('email_address')) {
@@ -62,8 +83,6 @@ export default function SignUpScreen() {
       }
       return;
     }
-    // Neither complete nor awaiting email verification — surface it rather
-    // than leaving the button looking like it did nothing.
     console.warn('[auth] sign-up in unexpected state', {
       status: signUp.status,
       missingFields: signUp.missingFields,
@@ -79,16 +98,7 @@ export default function SignUpScreen() {
       setFormError(getClerkErrorMessage(error));
       return;
     }
-    if (signUp.status === 'complete' && signUp.createdSessionId) {
-      await setActive({ session: signUp.createdSessionId });
-      router.replace('/');
-      return;
-    }
-    console.warn('[auth] verify code left sign-up incomplete', {
-      status: signUp.status,
-      missingFields: signUp.missingFields,
-    });
-    setFormError('Verification did not complete. Please try again.');
+    await finishSignUp();
   };
 
   const handleGoogleSignUp = useCallback(async () => {
@@ -96,9 +106,7 @@ export default function SignUpScreen() {
     setFormError('');
     try {
       const result = await signInWithGoogle();
-      if (result.ok) {
-        router.replace('/');
-      } else if (result.message) {
+      if (!result.ok && result.message) {
         setFormError(result.message);
       }
     } catch (e) {
@@ -107,7 +115,7 @@ export default function SignUpScreen() {
     } finally {
       setGoogleLoading(false);
     }
-  }, [signInWithGoogle, router]);
+  }, [signInWithGoogle]);
 
   // Email verification step. Do NOT additionally require missingFields to be
   // empty — some instance configurations report benign missing fields here,

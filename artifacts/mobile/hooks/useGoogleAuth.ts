@@ -32,7 +32,7 @@ export type GoogleAuthResult =
  * Any missing requirements (MFA, required fields, etc.) fall through to the
  * error path so the UI can surface them.
  */
-export function useGoogleAuth() {
+export function useGoogleAuth(navigate: (url: string) => void) {
   const { startSSOFlow } = useSSO();
 
   const signInWithGoogle = useCallback(async (): Promise<GoogleAuthResult> => {
@@ -66,11 +66,13 @@ export function useGoogleAuth() {
       throw e;
     }
 
-    const { createdSessionId, authSessionResult, setActive } = ssoResult;
+    const { createdSessionId, authSessionResult, setActive, signIn, signUp } = ssoResult;
 
     console.log('[auth] Google SSO result:', {
       createdSessionId,
       authSessionType: authSessionResult?.type,
+      signInStatus: signIn?.status,
+      signUpStatus: signUp?.status,
     });
 
     // User closed the browser without completing — not an error.
@@ -79,7 +81,21 @@ export function useGoogleAuth() {
     }
 
     if (createdSessionId && setActive) {
-      await setActive({ session: createdSessionId });
+      await setActive({
+        session: createdSessionId,
+        navigate: ({ session, decorateUrl }) => {
+          if (session?.currentTask) {
+            console.log('[auth] pending session task', session.currentTask);
+            return;
+          }
+          const url = decorateUrl('/');
+          if (url.startsWith('http')) {
+            // Native app should not get an external URL here.
+            return;
+          }
+          navigate(url);
+        },
+      });
       return { ok: true };
     }
 
@@ -88,7 +104,7 @@ export function useGoogleAuth() {
       ok: false,
       message: 'Could not complete Google sign-in. Please try again.',
     };
-  }, [startSSOFlow]);
+  }, [startSSOFlow, navigate]);
 
   return { signInWithGoogle };
 }
