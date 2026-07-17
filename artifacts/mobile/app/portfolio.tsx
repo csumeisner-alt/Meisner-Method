@@ -1123,6 +1123,8 @@ export default function PortfolioScreen() {
   // History tab filter & sort
   const [filterSymbol, setFilterSymbol] = useState('');
   const [sortOrder, setSortOrder] = useState<'date' | 'symbol'>('date');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
   const [editTarget, setEditTarget] = useState<Trade | null>(null);
   const [defaultType, setDefaultType] = useState<'buy' | 'sell'>('buy');
@@ -1190,11 +1192,17 @@ export default function PortfolioScreen() {
   const openPositions = allPositions.filter(p => p.netShares !== 0);
   const closedTrades = computeClosedTrades(trades, quotes);
 
-  // Derived list for the History tab: symbol filter (partial match) then sort.
+  // Derived list for the History tab: symbol filter (partial match) + date range then sort.
   const filteredTrades = useMemo(() => {
     let result = [...trades];
     const q = filterSymbol.trim().toUpperCase();
     if (q) result = result.filter((t) => t.symbol.toUpperCase().includes(q));
+    const from = dateFrom.trim();
+    const to = dateTo.trim();
+    // trade.date may be a full ISO timestamp; slice to YYYY-MM-DD for comparison
+    // so same-day trades are correctly included in both bounds.
+    if (from) result = result.filter((t) => t.date.slice(0, 10) >= from);
+    if (to) result = result.filter((t) => t.date.slice(0, 10) <= to);
     if (sortOrder === 'symbol') {
       result.sort((a, b) => {
         const sym = a.symbol.localeCompare(b.symbol);
@@ -1207,7 +1215,7 @@ export default function PortfolioScreen() {
       result.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }
     return result;
-  }, [trades, filterSymbol, sortOrder]);
+  }, [trades, filterSymbol, sortOrder, dateFrom, dateTo]);
 
   function handleReset() {
     Alert.alert('Reset Portfolio', 'Permanently delete ALL trades, positions, and history? This cannot be undone.', [
@@ -1294,7 +1302,7 @@ export default function PortfolioScreen() {
                 }]}>
                   {tab === 'positions'
                     ? `POSITIONS (${openPositions.length})`
-                    : filterSymbol
+                    : (filterSymbol || dateFrom || dateTo)
                       ? `HISTORY (${filteredTrades.length}/${trades.length})`
                       : `HISTORY (${trades.length})`}
                 </Text>
@@ -1347,6 +1355,10 @@ export default function PortfolioScreen() {
                 setFilterSymbol={setFilterSymbol}
                 sortOrder={sortOrder}
                 setSortOrder={setSortOrder}
+                dateFrom={dateFrom}
+                setDateFrom={setDateFrom}
+                dateTo={dateTo}
+                setDateTo={setDateTo}
                 colors={colors}
               />
               {filteredTrades.length === 0 ? (
@@ -1356,7 +1368,7 @@ export default function PortfolioScreen() {
                     No matching trades
                   </Text>
                   <Text style={[mainStyles.closedSub, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                    No trades found for "{filterSymbol.trim().toUpperCase()}". Try a different ticker.
+                    No trades match the active filters. Try adjusting the ticker or date range.
                   </Text>
                 </View>
               ) : (

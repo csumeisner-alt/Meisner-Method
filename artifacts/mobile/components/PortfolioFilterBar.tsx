@@ -28,6 +28,11 @@ interface Props {
   setFilterSymbol: (v: string) => void;
   sortOrder: 'date' | 'symbol';
   setSortOrder: (v: 'date' | 'symbol') => void;
+  /** ISO date strings (YYYY-MM-DD) or empty string when not set. */
+  dateFrom: string;
+  setDateFrom: (v: string) => void;
+  dateTo: string;
+  setDateTo: (v: string) => void;
   colors: ColorScheme & { radius: number };
 }
 
@@ -37,9 +42,14 @@ export function PortfolioFilterBar({
   setFilterSymbol,
   sortOrder,
   setSortOrder,
+  dateFrom,
+  setDateFrom,
+  dateTo,
+  setDateTo,
   colors,
 }: Props) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [dateRowOpen, setDateRowOpen] = useState(false);
 
   // Unique, sorted list of symbols from the full (unfiltered) trade list.
   const allSymbols = useMemo(
@@ -51,6 +61,16 @@ export function PortfolioFilterBar({
   const isFiltered = trimmed.length > 0;
   // True when the search box exactly matches a traded ticker — highlights the picker button.
   const exactMatch = allSymbols.includes(trimmed);
+
+  const hasDateFilter = dateFrom.trim().length > 0 || dateTo.trim().length > 0;
+
+  // Format a YYYY-MM-DD date string into a friendlier MM/DD/YYYY label.
+  function fmtDate(iso: string) {
+    if (!iso) return '';
+    const parts = iso.split('-');
+    if (parts.length !== 3) return iso;
+    return `${parts[1]}/${parts[2]}/${parts[0]}`;
+  }
 
   return (
     <>
@@ -166,40 +186,168 @@ export function PortfolioFilterBar({
             color={exactMatch ? colors.primary : colors.mutedForeground}
           />
         </TouchableOpacity>
+
+        {/* Date range toggle button */}
+        <TouchableOpacity
+          style={[
+            styles.pickerBtn,
+            {
+              backgroundColor: colors.muted,
+              borderColor: (dateRowOpen || hasDateFilter) ? colors.primary : colors.border,
+            },
+          ]}
+          onPress={() => setDateRowOpen((v) => !v)}
+          activeOpacity={0.75}
+        >
+          <Feather
+            name="calendar"
+            size={12}
+            color={(dateRowOpen || hasDateFilter) ? colors.primary : colors.mutedForeground}
+          />
+          <Feather
+            name={dateRowOpen ? 'chevron-up' : 'chevron-down'}
+            size={11}
+            color={(dateRowOpen || hasDateFilter) ? colors.primary : colors.mutedForeground}
+          />
+        </TouchableOpacity>
       </View>
 
-      {/* ── Active-filter chip ──────────────────────────────────── */}
-      {isFiltered && (
-        <View style={styles.chipRow}>
-          <View
-            style={[
-              styles.chip,
-              { backgroundColor: colors.accent, borderColor: colors.primary },
-            ]}
-          >
-            <Text
+      {/* ── Collapsible date range row ───────────────────────────── */}
+      {dateRowOpen && (
+        <View
+          style={[
+            styles.dateRow,
+            { backgroundColor: colors.card, borderBottomColor: colors.border },
+          ]}
+        >
+          <View style={styles.dateField}>
+            <Text style={[styles.dateLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+              From
+            </Text>
+            <View
               style={[
-                styles.chipLabel,
-                { color: colors.primary, fontFamily: 'Inter_700Bold' },
+                styles.dateInputWrap,
+                {
+                  backgroundColor: colors.muted,
+                  borderColor: dateFrom ? colors.primary : colors.border,
+                },
               ]}
             >
-              {trimmed}
-            </Text>
-            <TouchableOpacity
-              onPress={() => setFilterSymbol('')}
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-            >
-              <Feather name="x" size={11} color={colors.primary} />
-            </TouchableOpacity>
+              <TextInput
+                style={[styles.dateInput, { color: colors.foreground, fontFamily: 'Inter_400Regular' }]}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={colors.mutedForeground}
+                value={dateFrom}
+                onChangeText={setDateFrom}
+                keyboardType="numbers-and-punctuation"
+                maxLength={10}
+                returnKeyType="done"
+              />
+              {dateFrom.length > 0 && (
+                <TouchableOpacity onPress={() => setDateFrom('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Feather name="x" size={11} color={colors.mutedForeground} />
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
-          <Text
-            style={[
-              styles.chipHint,
-              { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' },
-            ]}
-          >
-            tap ✕ to show all trades
-          </Text>
+
+          <View style={[styles.dateSep, { backgroundColor: colors.border }]} />
+
+          <View style={styles.dateField}>
+            <Text style={[styles.dateLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+              To
+            </Text>
+            <View
+              style={[
+                styles.dateInputWrap,
+                {
+                  backgroundColor: colors.muted,
+                  borderColor: dateTo ? colors.primary : colors.border,
+                },
+              ]}
+            >
+              <TextInput
+                style={[styles.dateInput, { color: colors.foreground, fontFamily: 'Inter_400Regular' }]}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={colors.mutedForeground}
+                value={dateTo}
+                onChangeText={setDateTo}
+                keyboardType="numbers-and-punctuation"
+                maxLength={10}
+                returnKeyType="done"
+              />
+              {dateTo.length > 0 && (
+                <TouchableOpacity onPress={() => setDateTo('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Feather name="x" size={11} color={colors.mutedForeground} />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* ── Active-filter chips ─────────────────────────────────── */}
+      {(isFiltered || hasDateFilter) && (
+        <View style={styles.chipRow}>
+          {isFiltered && (
+            <View
+              style={[
+                styles.chip,
+                { backgroundColor: colors.accent, borderColor: colors.primary },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.chipLabel,
+                  { color: colors.primary, fontFamily: 'Inter_700Bold' },
+                ]}
+              >
+                {trimmed}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setFilterSymbol('')}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
+                <Feather name="x" size={11} color={colors.primary} />
+              </TouchableOpacity>
+            </View>
+          )}
+          {hasDateFilter && (
+            <View
+              style={[
+                styles.chip,
+                { backgroundColor: colors.accent, borderColor: colors.primary },
+              ]}
+            >
+              <Feather name="calendar" size={10} color={colors.primary} />
+              <Text
+                style={[
+                  styles.chipLabel,
+                  { color: colors.primary, fontFamily: 'Inter_700Bold' },
+                ]}
+              >
+                {dateFrom ? fmtDate(dateFrom) : '…'}
+                {'  →  '}
+                {dateTo ? fmtDate(dateTo) : '…'}
+              </Text>
+              <TouchableOpacity
+                onPress={() => { setDateFrom(''); setDateTo(''); }}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
+                <Feather name="x" size={11} color={colors.primary} />
+              </TouchableOpacity>
+            </View>
+          )}
+          {!isFiltered && !hasDateFilter && (
+            <Text
+              style={[
+                styles.chipHint,
+                { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' },
+              ]}
+            >
+              tap ✕ to show all trades
+            </Text>
+          )}
         </View>
       )}
 
@@ -390,10 +538,11 @@ const styles = StyleSheet.create({
   chipRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    flexWrap: 'wrap',
+    gap: 6,
     paddingHorizontal: 12,
     paddingTop: 4,
-    paddingBottom: 2,
+    paddingBottom: 4,
   },
   chip: {
     flexDirection: 'row',
@@ -411,6 +560,45 @@ const styles = StyleSheet.create({
   chipHint: {
     fontSize: 11,
     opacity: 0.75,
+  },
+  // Date range row
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  dateField: {
+    flex: 1,
+    gap: 4,
+  },
+  dateLabel: {
+    fontSize: 10,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  dateInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  dateInput: {
+    flex: 1,
+    fontSize: 12,
+    padding: 0,
+    margin: 0,
+    minWidth: 0,
+  },
+  dateSep: {
+    width: StyleSheet.hairlineWidth,
+    height: 36,
+    marginHorizontal: 10,
   },
   // Modal backdrop
   backdrop: {
