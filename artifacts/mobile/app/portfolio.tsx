@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View,
@@ -25,6 +25,7 @@ import * as Speech from 'expo-speech';
 import Constants from 'expo-constants';
 import { useColors } from '@/hooks/useColors';
 import { BottomTabBar } from '@/components/BottomTabBar';
+import { PortfolioFilterBar } from '@/components/PortfolioFilterBar';
 import {
   availableToSell,
   computeClosedTrades,
@@ -1119,6 +1120,9 @@ export default function PortfolioScreen() {
 
   const [portfolioTab, setPortfolioTab] = useState<PortfolioTab>('positions');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // History tab filter & sort
+  const [filterSymbol, setFilterSymbol] = useState('');
+  const [sortOrder, setSortOrder] = useState<'date' | 'symbol'>('date');
   const [modalVisible, setModalVisible] = useState(false);
   const [editTarget, setEditTarget] = useState<Trade | null>(null);
   const [defaultType, setDefaultType] = useState<'buy' | 'sell'>('buy');
@@ -1185,6 +1189,25 @@ export default function PortfolioScreen() {
   const allPositions = computePositions(trades, quotes);
   const openPositions = allPositions.filter(p => p.netShares !== 0);
   const closedTrades = computeClosedTrades(trades, quotes);
+
+  // Derived list for the History tab: symbol filter (partial match) then sort.
+  const filteredTrades = useMemo(() => {
+    let result = [...trades];
+    const q = filterSymbol.trim().toUpperCase();
+    if (q) result = result.filter((t) => t.symbol.toUpperCase().includes(q));
+    if (sortOrder === 'symbol') {
+      result.sort((a, b) => {
+        const sym = a.symbol.localeCompare(b.symbol);
+        if (sym !== 0) return sym;
+        // Within the same symbol: newest first
+        return new Date(b.date).getTime() - new Date(a.date).getTime();
+      });
+    } else {
+      // Default: newest first
+      result.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }
+    return result;
+  }, [trades, filterSymbol, sortOrder]);
 
   function handleReset() {
     Alert.alert('Reset Portfolio', 'Permanently delete ALL trades, positions, and history? This cannot be undone.', [
@@ -1269,7 +1292,11 @@ export default function PortfolioScreen() {
                   color: portfolioTab === tab ? colors.primary : colors.mutedForeground,
                   fontFamily: portfolioTab === tab ? 'Inter_700Bold' : 'Inter_400Regular',
                 }]}>
-                  {tab === 'positions' ? `POSITIONS (${openPositions.length})` : `HISTORY (${trades.length})`}
+                  {tab === 'positions'
+                    ? `POSITIONS (${openPositions.length})`
+                    : filterSymbol
+                      ? `HISTORY (${filteredTrades.length}/${trades.length})`
+                      : `HISTORY (${trades.length})`}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -1313,21 +1340,43 @@ export default function PortfolioScreen() {
               ))
             )
           ) : (
-            [...trades].reverse().map(trade => {
-              const gradeInfo = trade.type === 'sell' ? computeSellGrade(trade, trades) : null;
-              const closed = trade.type === 'sell' ? closedTrades.find(c => c.sellId === trade.id) ?? null : null;
-              return (
-                <TradeCard key={trade.id} trade={trade}
-                  quote={quotes[trade.symbol]}
-                  gradeInfo={gradeInfo}
-                  closed={closed}
-                  expanded={expandedId === trade.id}
-                  onToggleExpand={() => setExpandedId(prev => prev === trade.id ? null : trade.id)}
-                  onEdit={() => handleEdit(trade)}
-                  onDelete={() => handleDelete(trade.id)}
-                  colors={colors} />
-              );
-            })
+            <>
+              <PortfolioFilterBar
+                trades={trades}
+                filterSymbol={filterSymbol}
+                setFilterSymbol={setFilterSymbol}
+                sortOrder={sortOrder}
+                setSortOrder={setSortOrder}
+                colors={colors}
+              />
+              {filteredTrades.length === 0 ? (
+                <View style={mainStyles.closedNotice}>
+                  <Feather name="search" size={28} color={colors.mutedForeground} style={{ opacity: 0.4 }} />
+                  <Text style={[mainStyles.closedTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+                    No matching trades
+                  </Text>
+                  <Text style={[mainStyles.closedSub, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                    No trades found for "{filterSymbol.trim().toUpperCase()}". Try a different ticker.
+                  </Text>
+                </View>
+              ) : (
+                filteredTrades.map(trade => {
+                  const gradeInfo = trade.type === 'sell' ? computeSellGrade(trade, trades) : null;
+                  const closed = trade.type === 'sell' ? closedTrades.find(c => c.sellId === trade.id) ?? null : null;
+                  return (
+                    <TradeCard key={trade.id} trade={trade}
+                      quote={quotes[trade.symbol]}
+                      gradeInfo={gradeInfo}
+                      closed={closed}
+                      expanded={expandedId === trade.id}
+                      onToggleExpand={() => setExpandedId(prev => prev === trade.id ? null : trade.id)}
+                      onEdit={() => handleEdit(trade)}
+                      onDelete={() => handleDelete(trade.id)}
+                      colors={colors} />
+                  );
+                })
+              )}
+            </>
           )}
         </ScrollView>
       )}
