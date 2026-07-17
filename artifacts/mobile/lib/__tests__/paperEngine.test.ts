@@ -385,4 +385,245 @@ test('multi-order: two pending sells — second rejected when first closes the p
   assert.ok((r2 as any).reason.includes('Insufficient shares'));
 });
 
+// ── Cache round-trip helpers ────────────────────────────────────────────────
+/**
+ * Simulate AsyncStorage serialization + deserialization by round-tripping
+ * the PaperCache through JSON.  This catches any data that would be silently
+ * dropped or corrupted (e.g. `undefined` fields, non-serialisable values).
+ */
+interface PaperCache {
+  accounts: PaperAccount[];
+  positions: PaperPosition[];
+  transactions: ReturnType<typeof mkOrder>[];  // PaperTransaction[]
+  orders: PaperOrder[];
+  lots: PaperLot[];
+  activeId: string;
+}
+
+function serializeCache(cache: PaperCache): PaperCache {
+  // Mirrors what AsyncStorage does: stringify → parse
+  return JSON.parse(JSON.stringify(cache)) as PaperCache;
+}
+
+// ── Order survive-restart round-trip tests ─────────────────────────────────
+
+test('round-trip: limit buy — order survives cache serialization and fills when price crosses', () => {
+  const account = mkAccount({ id: 'acc1', cash: 20_000 });
+  const order = mkOrder({
+    id: 'ord1',
+    accountId: 'acc1',
+    orderType: 'limit',
+    side: 'buy',
+    shares: 10,
+    limitPrice: 100,
+    status: 'pending',
+  });
+
+  // Simulate: place order, write cache
+  const cache: PaperCache = {
+    accounts: [account],
+    positions: [],
+    transactions: [],
+    orders: [order],
+    lots: [],
+    activeId: 'acc1',
+  };
+
+  // Deserialize (simulates app restart loading from AsyncStorage)
+  const restored = serializeCache(cache);
+
+  // Pull the order out of the restored cache
+  const restoredOrder = restored.orders[0] as PaperOrder;
+  assert.equal(restoredOrder.id, 'ord1', 'Order id survives serialization');
+  assert.equal(restoredOrder.orderType, 'limit', 'orderType survives');
+  assert.equal(restoredOrder.side, 'buy', 'side survives');
+  assert.equal(restoredOrder.limitPrice, 100, 'limitPrice survives');
+  assert.equal(restoredOrder.status, 'pending', 'status survives');
+
+  // Price tick: $99 ≤ $100 limit → should fill
+  const evalResult = evaluateOrder(restoredOrder, 99);
+  assert.equal(evalResult.shouldFill, true, 'Limit buy triggers when price falls to limit');
+
+  // Execute fill
+  const restoredAccount = restored.accounts[0] as PaperAccount;
+  const fillResult = fillOrder({
+    order: restoredOrder,
+    fillPrice: 99,
+    filledAt: new Date().toISOString(),
+    account: restoredAccount,
+    positions: [],
+    lots: [],
+    uid,
+  });
+
+  assert.equal(fillResult.ok, true, 'Fill succeeds');
+  if (!fillResult.ok) throw new Error('unexpected');
+  assert.equal(fillResult.newTransaction.action, 'BUY', 'Transaction action is BUY');
+  assert.equal(fillResult.newTransaction.shares, 10, 'Transaction shares correct');
+  assert.equal(fillResult.updatedPositions.length, 1, 'Position created after fill');
+  assert.equal(fillResult.updatedLots.length, 1, 'Lot created after fill');
+  assert.ok(fillResult.updatedAccount.cash < 20_000, 'Cash debited after fill');
+});
+
+test('round-trip: limit sell — order survives cache serialization and fills when price crosses', () => {
+  const account = mkAccount({ id: 'acc2', cash: 0 });
+  const pos = mkPosition({ accountId: 'acc2', shares: 10, avgCost: 100 });
+  const lot = mkLot({ accountId: 'acc2', shares: 10, cost: 100 });
+  const order = mkOrder({
+    id: 'ord2',
+    accountId: 'acc2',
+    orderType: 'limit',
+    side: 'sell',
+    shares: 10,
+    limitPrice: 150,
+    status: 'pending',
+  });
+
+  const cache: PaperCache = {
+    accounts: [account],
+    positions: [pos],
+    transactions: [],
+    orders: [order],
+    lots: [lot],
+    activeId: 'acc2',
+  };
+
+  // Deserialize — simulates restart
+  const restored = serializeCache(cache);
+
+  const restoredOrder = restored.orders[0] as PaperOrder;
+  assert.equal(restoredOrder.limitPrice, 150, 'limitPrice survives serialization');
+  assert.equal(restoredOrder.side, 'sell', 'sell side survives');
+
+  // Price at $149: below $150 limit → should NOT fill
+  assert.equal(evaluateOrder(restoredOrder, 149).shouldFill, false, 'Limit sell does not trigger below limit');
+
+  // Price at $151: above $150 limit → should fill
+  const evalResult = evaluateOrder(restoredOrder, 151);
+  assert.equal(evalResult.shouldFill, true, 'Limit sell triggers when price reaches limit');
+
+  const restoredAccount = restored.accounts[0] as PaperAccount;
+  const restoredPos = restored.positions[0] as PaperPosition;
+  const restoredLot = restored.lots[0] as PaperLot;
+
+  const fillResult = fillOrder({
+    order: restoredOrder,
+    fillPrice: 151,
+    filledAt: new Date().toISOString(),
+    account: restoredAccount,
+    positions: [restoredPos],
+    lots: [restoredLot],
+    uid,
+  });
+
+  assert.equal(fillResult.ok, true, 'Sell fill succeeds');
+  if (!fillResult.ok) throw new Error('unexpected');
+  assert.equal(fillResult.newTransaction.action, 'SELL', 'Transaction action is SELL');
+  assert.equal(fillResult.updatedPositions.length, 0, 'Position closed after full sell');
+  assert.equal(fillResult.updatedLots.length, 0, 'Lot consumed after full sell');
+  // T+2: cash doesn't settle immediately
+  assert.equal(fillResult.updatedAccount.cash, 0, 'Cash not immediately credited (T+2)');
+  assert.ok((fillResult.updatedAccount.unsettledCash ?? 0) > 0, 'Proceeds in unsettled cash (T+2)');
+});
+
+test('round-trip: trailing-stop sell — trail ref updates persist through serialization, order fills on reversal', () => {
+  const account = mkAccount({ id: 'acc3', cash: 0 });
+  const pos = mkPosition({ accountId: 'acc3', shares: 20, avgCost: 100 });
+  const lot = mkLot({ accountId: 'acc3', shares: 20, cost: 100 });
+
+  // Trailing stop: 10% trail from ref=$100 → triggers when price drops to $90
+  const order = mkOrder({
+    id: 'ord3',
+    accountId: 'acc3',
+    orderType: 'trailing_stop',
+    side: 'sell',
+    shares: 20,
+    trailPct: 10,
+    trailRef: 100,
+    status: 'pending',
+  });
+
+  // -- Tick 1: price rises to $120 → ref should move up to $120, no fill --
+  const tick1 = evaluateOrder(order, 120);
+  assert.equal(tick1.shouldFill, false, 'No fill when price rises');
+  assert.equal((tick1 as any).updatedTrailRef, 120, 'trailRef updated to 120');
+
+  // Persist updated order with new trailRef (simulates app saving state)
+  const updatedOrder = { ...order, trailRef: (tick1 as any).updatedTrailRef as number };
+
+  const cache: PaperCache = {
+    accounts: [account],
+    positions: [pos],
+    transactions: [],
+    orders: [updatedOrder],
+    lots: [lot],
+    activeId: 'acc3',
+  };
+
+  // -- Serialize + deserialize (simulates app restart) --
+  const restored = serializeCache(cache);
+  const restoredOrder = restored.orders[0] as PaperOrder;
+
+  assert.equal(restoredOrder.trailRef, 120, 'trailRef=120 survives serialization');
+  assert.equal(restoredOrder.trailPct, 10, 'trailPct survives serialization');
+  assert.equal(restoredOrder.status, 'pending', 'status=pending survives serialization');
+
+  // -- Tick 2 (after restart): price at $109 — above 10% trail (120 * 0.9 = 108) → no fill --
+  const tick2 = evaluateOrder(restoredOrder, 109);
+  assert.equal(tick2.shouldFill, false, 'No fill at $109 when 10% trail of $120 = $108');
+
+  // -- Tick 3: price drops to $107 — below $108 → should fill --
+  const tick3 = evaluateOrder(restoredOrder, 107);
+  assert.equal(tick3.shouldFill, true, 'Trailing stop fills when price drops 10%+ below high-water mark');
+
+  const restoredAccount = restored.accounts[0] as PaperAccount;
+  const restoredPos = restored.positions[0] as PaperPosition;
+  const restoredLot = restored.lots[0] as PaperLot;
+
+  const fillResult = fillOrder({
+    order: restoredOrder,
+    fillPrice: 107,
+    filledAt: new Date().toISOString(),
+    account: restoredAccount,
+    positions: [restoredPos],
+    lots: [restoredLot],
+    uid,
+  });
+
+  assert.equal(fillResult.ok, true, 'Trailing-stop fill succeeds after restart');
+  if (!fillResult.ok) throw new Error('unexpected');
+  assert.equal(fillResult.newTransaction.action, 'SELL', 'Transaction is a SELL');
+  assert.equal(fillResult.newTransaction.shares, 20, 'All shares sold');
+  assert.equal(fillResult.updatedPositions.length, 0, 'Position closed');
+});
+
+test('round-trip: pending order does NOT fill before price crosses (no false trigger after restart)', () => {
+  const account = mkAccount({ id: 'acc4', cash: 10_000 });
+  const order = mkOrder({
+    id: 'ord4',
+    accountId: 'acc4',
+    orderType: 'limit',
+    side: 'buy',
+    shares: 5,
+    limitPrice: 100,
+    status: 'pending',
+  });
+
+  const cache: PaperCache = {
+    accounts: [account],
+    positions: [],
+    transactions: [],
+    orders: [order],
+    lots: [],
+    activeId: 'acc4',
+  };
+
+  const restored = serializeCache(cache);
+  const restoredOrder = restored.orders[0] as PaperOrder;
+
+  // Price is $105 — above limit of $100 → must NOT fill
+  const evalResult = evaluateOrder(restoredOrder, 105);
+  assert.equal(evalResult.shouldFill, false, 'Limit buy does not trigger when price is above limit after restart');
+});
+
 console.log('All tests passed ✓');
