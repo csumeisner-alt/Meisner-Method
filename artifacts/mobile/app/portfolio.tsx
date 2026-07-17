@@ -88,6 +88,11 @@ const CELEBRATION_IMAGES = [
   require('../assets/celebration/woman3.jpg'),
   require('../assets/celebration/woman4.jpg'),
   require('../assets/celebration/woman5.jpg'),
+  require('../assets/celebration/woman6.jpg'),
+  require('../assets/celebration/woman7.jpg'),
+  require('../assets/celebration/woman8.jpg'),
+  require('../assets/celebration/woman9.jpg'),
+  require('../assets/celebration/woman10.jpg'),
 ];
 
 // Expo Go bundles a fixed set of native modules; expo-audio's native player can
