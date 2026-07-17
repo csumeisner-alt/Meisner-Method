@@ -32,6 +32,9 @@ import { matchesFilter, mergeReorderedSubset } from '@/lib/watchlistFilter';
 /** Show the watchlist filter input when tracking this many tickers or more. */
 const WATCHLIST_FILTER_THRESHOLD = 6;
 
+/** Persists the watchlist filter across navigation (module-level, resets on full app reload). */
+let _persistedWatchFilter = '';
+
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
 interface TrendingTicker {
@@ -307,14 +310,19 @@ export default function HomeScreen() {
   const [alertModalSymbol, setAlertModalSymbol] = useState<string | null>(null);
   const [alertModalPrice, setAlertModalPrice] = useState<number | undefined>(undefined);
 
-  // Watchlist filter — only shown when the list gets long
-  const [watchFilter, setWatchFilter] = useState('');
+  // Watchlist filter — only shown when the list gets long.
+  // Initialised from the module-level variable so the value survives navigation.
+  const [watchFilter, setWatchFilterState] = useState(_persistedWatchFilter);
+  const setWatchFilter = useCallback((v: string) => {
+    _persistedWatchFilter = v;
+    setWatchFilterState(v);
+  }, []);
   const showWatchFilter = watchlist.items.length >= WATCHLIST_FILTER_THRESHOLD;
 
   // Clear the filter when the list drops below the threshold
   useEffect(() => {
     if (!showWatchFilter && watchFilter) setWatchFilter('');
-  }, [showWatchFilter, watchFilter]);
+  }, [showWatchFilter, watchFilter, setWatchFilter]);
 
   const filteredWatchItems = showWatchFilter && watchFilter.trim()
     ? watchlist.items.filter((i) => matchesFilter(i.symbol, watchFilter))
