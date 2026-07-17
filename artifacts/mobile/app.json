@@ -19,7 +19,8 @@
       "bundleIdentifier": "com.meisnermethod.app"
     },
     "android": {
-      "package": "com.meisnermethod.app"
+      "package": "com.meisnermethod.app",
+      "versionCode": 2
     },
     "web": {
       "favicon": "./assets/images/icon.png"
