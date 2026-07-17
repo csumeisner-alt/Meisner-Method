@@ -6,6 +6,9 @@
  * at staggered horizontal positions and speeds, with heavy haptic pulses
  * timed to each jet's launch. Red/white/blue confetti rains down. The modal
  * auto-dismisses after 5 s.
+ *
+ * Audio: bald eagle screech on open + gunfire burst timed to first jet.
+ * Sounds respect the device mute/silent switch (playsInSilentMode: false).
  */
 import React, { useCallback, useEffect, useRef } from 'react';
 import {
@@ -20,6 +23,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
+import { useAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import Svg, { Circle, Ellipse, Path, Polygon, Rect } from 'react-native-svg';
 import { Confetti } from '@/components/Confetti';
 
@@ -271,6 +275,18 @@ export function AmericanCelebration({ visible, onDismiss }: Props) {
   const heroAnim = useRef(new Animated.Value(0)).current;
   const autoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hapticTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const soundTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  // Audio players — always initialised so hooks are unconditional.
+  // playsInSilentMode:false (set below) makes iOS respect the mute switch.
+  const eaglePlayer = useAudioPlayer(
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require('../assets/sounds/eagle_screech.wav'),
+  );
+  const gunfirePlayer = useAudioPlayer(
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require('../assets/sounds/gunfire_burst.wav'),
+  );
 
   const fireHaptics = useCallback(() => {
     // Staggered heavy haptic pulses aligned with each jet's launch + mid-flight
@@ -289,6 +305,35 @@ export function AmericanCelebration({ visible, onDismiss }: Props) {
     );
   }, []);
 
+  const playSounds = useCallback(() => {
+    // Configure audio mode: respect device mute/silent switch
+    setAudioModeAsync({ playsInSilentMode: false }).catch(() => {});
+
+    // Eagle screech plays immediately on modal open
+    soundTimers.current.push(
+      setTimeout(() => {
+        try {
+          eaglePlayer.seekTo(0).then(() => eaglePlayer.play()).catch(() => {});
+        } catch {
+          // silently ignore if audio unavailable (e.g. simulator)
+        }
+      }, 0),
+    );
+
+    // Gunfire burst plays when the first jet launches (delay 0 + 80 ms offset)
+    // The WAV already contains 5 rapid shots baked in.
+    const firstJetDelay = Math.min(...JETS.map((j) => j.delay)) + 80;
+    soundTimers.current.push(
+      setTimeout(() => {
+        try {
+          gunfirePlayer.seekTo(0).then(() => gunfirePlayer.play()).catch(() => {});
+        } catch {
+          // silently ignore
+        }
+      }, firstJetDelay),
+    );
+  }, [eaglePlayer, gunfirePlayer]);
+
   useEffect(() => {
     if (!visible) return;
 
@@ -301,14 +346,20 @@ export function AmericanCelebration({ visible, onDismiss }: Props) {
     }).start();
 
     fireHaptics();
+    playSounds();
 
     autoTimer.current = setTimeout(onDismiss, 5000);
 
     return () => {
       if (autoTimer.current) clearTimeout(autoTimer.current);
       hapticTimers.current.forEach(clearTimeout);
+      soundTimers.current.forEach(clearTimeout);
+      soundTimers.current = [];
+      // Pause players on cleanup so audio doesn't bleed into the next screen
+      try { eaglePlayer.pause(); } catch { /* ignore */ }
+      try { gunfirePlayer.pause(); } catch { /* ignore */ }
     };
-  }, [visible, fireHaptics, onDismiss, heroAnim]);
+  }, [visible, fireHaptics, playSounds, onDismiss, heroAnim, eaglePlayer, gunfirePlayer]);
 
   if (!visible) return null;
 
