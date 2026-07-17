@@ -1,0 +1,32 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "-4F8cTi22f-OOM-VyV--j"
+uri = "file://artifacts/mobile/assets/celebration/woman1.jpg"
+type = "image"
+title = "Celebration girl 1"
+
+[[outputs]]
+id = "gWi6JALvxk7lP1A8NZAch"
+uri = "file://artifacts/mobile/assets/celebration/woman2.jpg"
+type = "image"
+title = "Celebration girl 2"
+
+[[outputs]]
+id = "OGPI0mZJ-1ir-CpDyrLkt"
+uri = "file://artifacts/mobile/assets/celebration/woman3.jpg"
+type = "image"
+title = "Celebration girl 3"
+
+[[outputs]]
+id = "oJQzuMsfWhjjIxzOjuYhD"
+uri = "file://artifacts/mobile/assets/celebration/woman4.jpg"
+type = "image"
+title = "Celebration girl 4"
+
+[[outputs]]
+id = "l-0vuoEBs09yo_Yn4T01-"
+uri = "file://artifacts/mobile/assets/celebration/woman5.jpg"
+type = "image"
+title = "Celebration girl 5"

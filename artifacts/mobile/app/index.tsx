@@ -86,6 +86,11 @@ const TIPS = [
   "🔫 The HK G36, adopted by the German Bundeswehr in 1997, was the first military service rifle made primarily of high-strength polymer, setting a new standard for lightweight modern infantry weapons.",
   "🔫 HK's G28 Designated Marksman Rifle is used by US Army Rangers and USSOCOM — it delivers sub-MOA accuracy out to 800 meters with standard 7.62×51mm NATO ammunition.",
   "🔫 HK introduced the 'No Compromise' slogan because their manufacturing tolerances are so tight that HK pistols routinely function for 20,000+ rounds without a single malfunction in independent testing.",
+  "🔫 The HK 45 was designed to outperform the Colt 1911 in the US military's Joint Combat Pistol trial — it won fans for its reliability and ergonomic grip angle, even though the program was later cancelled.",
+  "🔫 HK's UMP submachine gun was engineered to fire .45 ACP at a cyclic rate of 600 rounds per minute, giving operators a suppressed, hard-hitting option for close-quarters battle.",
+  "🔫 The HK P30 served as the sidearm for Liam Neeson in the Taken film series — in real life, it has been adopted by German police and special units across Europe.",
+  "🔫 HK's SP5K is the semiautomatic civilian version of the iconic MP5K, bringing the same roller-delayed action to the US market with a 16-round magazine capacity.",
+  "🔫 The HK MR556A1 is the civilian version of the HK416, built with the same gas piston and cold-hammer-forged barrel but semi-automatic only — making it a prized premium rifle on the US market.",
   // Pro-2A / Second Amendment
   "🦅 The Second Amendment was ratified on December 15, 1791 as part of the Bill of Rights — its 27 words have been the cornerstone of American individual liberty for over 230 years.",
   "🦅 In District of Columbia v. Heller (2008), the Supreme Court ruled 5–4 that the Second Amendment protects an individual's right to keep and bear arms for self-defense — independent of service in a militia.",
@@ -97,6 +102,11 @@ const TIPS = [
   "🦅 The Founding Fathers were unambiguous about the 2A's purpose: James Madison wrote in Federalist No. 46 that an armed citizenry of 500,000 would be a powerful check against any federal tyranny.",
   "🦅 New York State Rifle & Pistol Association v. Bruen (2022) was a landmark Supreme Court ruling striking down 'may-issue' concealed carry permit laws, affirming that law-abiding citizens have a right to carry outside the home.",
   "🦅 Switzerland issues military rifles to most able-bodied men as part of its national defense doctrine — yet the country consistently ranks among the safest in the world, underlining that responsible gun ownership and safety are not mutually exclusive.",
+  "🦅 The US imported roughly 90% of its gunpowder from Britain before the Revolutionary War — securing domestic saltpeter supplies became a strategic priority for the colonies.",
+  "🦅 In 1857, the Supreme Court in Dred Scott v. Sandford held that free Black Americans could not be citizens — a ruling that also cited the fear that freed slaves would enjoy the right to keep and bear arms.",
+  "🦅 The first American 'assault weapons' ban expired in 2004 after a 10-year run; a federally funded study found it had no clear impact on crime rates.",
+  "🦅 Gun-maker Colt's Single Action Army revolver, adopted by the US military in 1873, was nicknamed 'the gun that won the West' and became a symbol of frontier American life.",
+  "🦅 American women are one of the fastest-growing demographics of gun owners, with permits and training courses among female shooters rising sharply in the 2010s and 2020s.",
 ];
 
 const REFRESH_INTERVAL = 60_000;
