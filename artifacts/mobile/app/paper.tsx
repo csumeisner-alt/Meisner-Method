@@ -212,6 +212,9 @@ export default function PaperScreen() {
   const [renameId, setRenameId] = useState('');
   const [renameDraft, setRenameDraft] = useState('');
 
+  // Expanded position (cost-basis lots)
+  const [expandedPosId, setExpandedPosId] = useState<string | null>(null);
+
   // ── Derived ──────────────────────────────────────────────────────────────
   const account = accounts.find(a => a.id === activeId);
   const myPositions = positions.filter(p => p.accountId === activeId);
@@ -783,41 +786,131 @@ export default function PaperScreen() {
           const pnlPct = ((price - pos.avgCost) / pos.avgCost) * 100;
           const mktVal = pos.shares * price;
           const color = POSITION_COLORS[i % POSITION_COLORS.length];
+          const isExpanded = expandedPosId === pos.id;
+
+          // Lots for this position (oldest first)
+          const posLots = lots
+            .filter(l => l.symbol === pos.symbol && l.accountId === activeId && l.shares > 0.0001)
+            .sort((a, b) => new Date(a.purchasedAt).getTime() - new Date(b.purchasedAt).getTime());
+
+          // Aggregate: total shares and FIFO-weighted avg cost from lots
+          const totalLotShares = posLots.reduce((s, l) => s + l.shares, 0);
+          const weightedAvgCost = totalLotShares > 0
+            ? posLots.reduce((s, l) => s + l.shares * l.cost, 0) / totalLotShares
+            : pos.avgCost;
+
           return (
-            <TouchableOpacity
-              key={pos.id}
-              style={styles.posCard}
-              onPress={() => openSellModal(pos)}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.posColorBar, { backgroundColor: color }]} />
-              <View style={{ flex: 1 }}>
-                <View style={styles.posRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.posSymbol}>{pos.symbol}</Text>
-                    <Text style={styles.posName} numberOfLines={1}>{pos.companyName}</Text>
+            <View key={pos.id}>
+              <TouchableOpacity
+                style={[styles.posCard, isExpanded && styles.posCardExpanded]}
+                onPress={() => setExpandedPosId(isExpanded ? null : pos.id)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.posColorBar, { backgroundColor: color }]} />
+                <View style={{ flex: 1 }}>
+                  <View style={styles.posRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.posSymbol}>{pos.symbol}</Text>
+                      <Text style={styles.posName} numberOfLines={1}>{pos.companyName}</Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={styles.posMktVal}>{$fmt(mktVal)}</Text>
+                      <Text style={[styles.posPnl, { color: pnlColor(pnl) }]}>
+                        {pnl >= 0 ? '+' : ''}{$fmt(pnl)} ({pctFmt(pnlPct)})
+                      </Text>
+                    </View>
                   </View>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={styles.posMktVal}>{$fmt(mktVal)}</Text>
-                    <Text style={[styles.posPnl, { color: pnlColor(pnl) }]}>
-                      {pnl >= 0 ? '+' : ''}{$fmt(pnl)} ({pctFmt(pnlPct)})
+                  <View style={styles.posMetaRow}>
+                    <Text style={styles.posMeta}>{pos.shares} shares</Text>
+                    <Text style={styles.posMeta}>Avg cost {$fmt(pos.avgCost)}</Text>
+                    <Text style={styles.posMeta}>
+                      {q ? (
+                        <Text style={{ color: pnlColor(q.change) }}>
+                          ${price.toFixed(2)} ({q.pct >= 0 ? '+' : ''}{q.pct.toFixed(2)}%)
+                        </Text>
+                      ) : `${price.toFixed(2)}`}
                     </Text>
                   </View>
                 </View>
-                <View style={styles.posMetaRow}>
-                  <Text style={styles.posMeta}>{pos.shares} shares</Text>
-                  <Text style={styles.posMeta}>Avg cost {$fmt(pos.avgCost)}</Text>
-                  <Text style={styles.posMeta}>
-                    {q ? (
-                      <Text style={{ color: pnlColor(q.change) }}>
-                        ${price.toFixed(2)} ({q.pct >= 0 ? '+' : ''}{q.pct.toFixed(2)}%)
-                      </Text>
-                    ) : `$${price.toFixed(2)}`}
-                  </Text>
+                <Feather
+                  name={isExpanded ? 'chevron-down' : 'chevron-right'}
+                  size={14}
+                  color={DIM}
+                  style={{ marginLeft: 8 }}
+                />
+              </TouchableOpacity>
+
+              {isExpanded && (
+                <View style={styles.lotsPanel}>
+                  {/* Header */}
+                  <Text style={styles.lotsPanelTitle}>COST BASIS LOTS</Text>
+
+                  {/* Column headers */}
+                  <View style={styles.lotHeaderRow}>
+                    <Text style={[styles.lotHeaderCell, { flex: 1.8 }]}>DATE</Text>
+                    <Text style={[styles.lotHeaderCell, { flex: 1, textAlign: 'right' }]}>SHARES</Text>
+                    <Text style={[styles.lotHeaderCell, { flex: 1.3, textAlign: 'right' }]}>COST/SH</Text>
+                    <Text style={[styles.lotHeaderCell, { flex: 1.3, textAlign: 'right' }]}>VALUE</Text>
+                    <Text style={[styles.lotHeaderCell, { flex: 1.4, textAlign: 'right' }]}>P&L</Text>
+                  </View>
+
+                  {/* Individual lots */}
+                  {posLots.length === 0 ? (
+                    <Text style={styles.lotsEmpty}>No lot data — lots are tracked for orders placed after the engine update.</Text>
+                  ) : (
+                    posLots.map(lot => {
+                      const lotVal = lot.shares * price;
+                      const lotPnl = lot.shares * (price - lot.cost);
+                      const lotPnlPct = ((price - lot.cost) / lot.cost) * 100;
+                      const dateStr = new Date(lot.purchasedAt).toLocaleDateString('en-US', {
+                        month: 'short', day: 'numeric', year: '2-digit',
+                      });
+                      return (
+                        <View key={lot.id} style={styles.lotRow}>
+                          <Text style={[styles.lotCell, { flex: 1.8 }]}>{dateStr}</Text>
+                          <Text style={[styles.lotCell, { flex: 1, textAlign: 'right' }]}>{lot.shares % 1 === 0 ? lot.shares : lot.shares.toFixed(4)}</Text>
+                          <Text style={[styles.lotCell, { flex: 1.3, textAlign: 'right' }]}>{$fmt(lot.cost)}</Text>
+                          <Text style={[styles.lotCell, { flex: 1.3, textAlign: 'right' }]}>{$short(lotVal)}</Text>
+                          <View style={{ flex: 1.4, alignItems: 'flex-end' }}>
+                            <Text style={[styles.lotPnlCell, { color: pnlColor(lotPnl) }]}>
+                              {lotPnl >= 0 ? '+' : ''}{$short(lotPnl)}
+                            </Text>
+                            <Text style={styles.lotPnlPct}>
+                              {pctFmt(lotPnlPct, 1)}
+                            </Text>
+                          </View>
+                        </View>
+                      );
+                    })
+                  )}
+
+                  {/* Aggregate row */}
+                  {posLots.length > 1 && (
+                    <View style={styles.lotAggRow}>
+                      <Text style={[styles.lotAggCell, { flex: 1.8 }]}>TOTAL</Text>
+                      <Text style={[styles.lotAggCell, { flex: 1, textAlign: 'right' }]}>{totalLotShares % 1 === 0 ? totalLotShares : totalLotShares.toFixed(4)}</Text>
+                      <Text style={[styles.lotAggCell, { flex: 1.3, textAlign: 'right' }]}>{$fmt(weightedAvgCost)}</Text>
+                      <Text style={[styles.lotAggCell, { flex: 1.3, textAlign: 'right' }]}>{$short(totalLotShares * price)}</Text>
+                      <View style={{ flex: 1.4, alignItems: 'flex-end' }}>
+                        <Text style={[styles.lotAggCell, { color: pnlColor(pnl) }]}>
+                          {pnl >= 0 ? '+' : ''}{$short(pnl)}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Sell button */}
+                  <TouchableOpacity
+                    style={styles.lotSellBtn}
+                    onPress={() => { setExpandedPosId(null); openSellModal(pos); }}
+                    activeOpacity={0.75}
+                  >
+                    <Feather name="trending-down" size={13} color="#000" />
+                    <Text style={styles.lotSellBtnText}>SELL {pos.symbol}</Text>
+                  </TouchableOpacity>
                 </View>
-              </View>
-              <Feather name="chevron-right" size={14} color={DIM} style={{ marginLeft: 8 }} />
-            </TouchableOpacity>
+              )}
+            </View>
           );
         })}
 
@@ -1564,6 +1657,104 @@ const styles = StyleSheet.create({
   yoyCell: { flex: 1, alignItems: 'center', backgroundColor: 'rgba(192,192,192,0.04)', borderRadius: 8, padding: 8 },
   yoyVal: { fontFamily: 'Inter_700Bold', fontSize: 11 },
   yoyYear: { fontFamily: 'Inter_400Regular', fontSize: 9, color: DIM, marginTop: 3 },
+
+  // Position card expanded state
+  posCardExpanded: {
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    borderBottomWidth: 0,
+  },
+
+  // Cost-basis lots panel
+  lotsPanel: {
+    backgroundColor: 'rgba(192,192,192,0.05)',
+    borderWidth: 1,
+    borderTopWidth: 0,
+    borderColor: BORDER,
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+    padding: 14,
+    paddingTop: 12,
+  },
+  lotsPanelTitle: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 9,
+    color: DIM,
+    letterSpacing: 1.5,
+    marginBottom: 10,
+  },
+  lotHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER,
+  },
+  lotHeaderCell: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 8,
+    color: 'rgba(192,192,192,0.35)',
+    letterSpacing: 1,
+  },
+  lotRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 7,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(192,192,192,0.07)',
+  },
+  lotCell: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 11,
+    color: SILVER,
+  },
+  lotPnlCell: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 11,
+  },
+  lotPnlPct: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 9,
+    color: DIM,
+    marginTop: 1,
+  },
+  lotAggRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 7,
+    marginTop: 2,
+    borderTopWidth: 1,
+    borderTopColor: BORDER,
+  },
+  lotAggCell: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 11,
+    color: SILVER,
+  },
+  lotsEmpty: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 11,
+    color: DIM,
+    paddingVertical: 8,
+    fontStyle: 'italic',
+  },
+  lotSellBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: SELL_COLOR,
+    borderRadius: 8,
+    paddingVertical: 10,
+    marginTop: 12,
+  },
+  lotSellBtnText: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 12,
+    color: '#000',
+    letterSpacing: 0.5,
+  },
 
   // Empty state
   emptyWrap: { alignItems: 'center', paddingVertical: 60, gap: 12 },
