@@ -28,11 +28,15 @@ import { useWatchlist } from '@/hooks/useWatchlist';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { DraggableWatchlist } from '@/components/DraggableWatchlist';
 import { matchesFilter, mergeReorderedSubset } from '@/lib/watchlistFilter';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /** Show the watchlist filter input when tracking this many tickers or more. */
 const WATCHLIST_FILTER_THRESHOLD = 6;
 
-/** Persists the watchlist filter across navigation (module-level, resets on full app reload). */
+/** AsyncStorage key for the persisted watchlist filter. */
+const WATCH_FILTER_KEY = '@stocksense/watchlist_filter';
+
+/** Persists the watchlist filter across navigation within a session (resets on full app reload). */
 let _persistedWatchFilter = '';
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
@@ -313,13 +317,46 @@ export default function HomeScreen() {
   // Watchlist filter — only shown when the list gets long.
   // Initialised from the module-level variable so the value survives navigation.
   const [watchFilter, setWatchFilterState] = useState(_persistedWatchFilter);
+  // Holds the filter value loaded from AsyncStorage before the watchlist is ready.
+  const pendingSavedFilterRef = useRef<string | null>(null);
+
   const setWatchFilter = useCallback((v: string) => {
     _persistedWatchFilter = v;
     setWatchFilterState(v);
+    if (v) {
+      AsyncStorage.setItem(WATCH_FILTER_KEY, v).catch(() => {});
+    } else {
+      AsyncStorage.removeItem(WATCH_FILTER_KEY).catch(() => {});
+    }
   }, []);
+
   const showWatchFilter = watchlist.items.length >= WATCHLIST_FILTER_THRESHOLD;
 
-  // Clear the filter when the list drops below the threshold
+  // On cold start, load the persisted filter from AsyncStorage.
+  useEffect(() => {
+    AsyncStorage.getItem(WATCH_FILTER_KEY).then((saved) => {
+      if (saved) {
+        pendingSavedFilterRef.current = saved;
+        // If the watchlist is already above threshold, apply immediately.
+        if (watchlist.items.length >= WATCHLIST_FILTER_THRESHOLD) {
+          setWatchFilter(saved);
+          pendingSavedFilterRef.current = null;
+        }
+      }
+    }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // When the watchlist crosses the threshold for the first time, apply any
+  // pending saved filter that was loaded before the list was ready.
+  useEffect(() => {
+    if (showWatchFilter && pendingSavedFilterRef.current) {
+      setWatchFilter(pendingSavedFilterRef.current);
+      pendingSavedFilterRef.current = null;
+    }
+  }, [showWatchFilter, setWatchFilter]);
+
+  // Clear the filter (and its persisted value) when the list drops below the threshold.
   useEffect(() => {
     if (!showWatchFilter && watchFilter) setWatchFilter('');
   }, [showWatchFilter, watchFilter, setWatchFilter]);
