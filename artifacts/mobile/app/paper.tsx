@@ -3,6 +3,7 @@
  * Supports 3 independent strategy accounts with live P&L, charts, and tracking.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ActivityIndicator,
   Alert,
@@ -55,6 +56,29 @@ type StockInfo = {
   expenseRatio: number;
   sector: string;
 };
+
+// ── Local cache ─────────────────────────────────────────────────────────────
+
+const PAPER_CACHE_KEY = '@stocksense/paper_v1';
+
+interface PaperCache {
+  accounts: PaperAccount[];
+  positions: PaperPosition[];
+  transactions: PaperTransaction[];
+  activeId: string;
+}
+
+async function readPaperCache(): Promise<PaperCache | null> {
+  try {
+    const raw = await AsyncStorage.getItem(PAPER_CACHE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as PaperCache;
+  } catch { return null; }
+}
+
+async function writePaperCache(data: PaperCache) {
+  try { await AsyncStorage.setItem(PAPER_CACHE_KEY, JSON.stringify(data)); } catch { /* non-fatal */ }
+}
 
 // ── Dividend helpers ────────────────────────────────────────────────────────
 /**
@@ -207,26 +231,49 @@ export default function PaperScreen() {
   }, [apiFetch]);
 
   // ── Storage helpers ───────────────────────────────────────────────────────
+  const flushCache = useCallback((
+    accts: PaperAccount[], pos: PaperPosition[], txns: PaperTransaction[], aid: string,
+  ) => {
+    void writePaperCache({ accounts: accts, positions: pos, transactions: txns, activeId: aid });
+  }, []);
+
   const saveAccounts = useCallback(async (data: PaperAccount[]) => {
     accountsRef.current = data;
     setAccounts(data);
+    flushCache(data, positionsRef.current, transactionsRef.current, activeIdRef.current);
     await syncToServer(data, positionsRef.current, transactionsRef.current, activeIdRef.current).catch(() => {});
-  }, [syncToServer]);
+  }, [syncToServer, flushCache]);
   const savePositions = useCallback(async (data: PaperPosition[]) => {
     positionsRef.current = data;
     setPositions(data);
+    flushCache(accountsRef.current, data, transactionsRef.current, activeIdRef.current);
     await syncToServer(accountsRef.current, data, transactionsRef.current, activeIdRef.current).catch(() => {});
-  }, [syncToServer]);
+  }, [syncToServer, flushCache]);
   const saveTransactions = useCallback(async (data: PaperTransaction[]) => {
     transactionsRef.current = data;
     setTransactions(data);
+    flushCache(accountsRef.current, positionsRef.current, data, activeIdRef.current);
     await syncToServer(accountsRef.current, positionsRef.current, data, activeIdRef.current).catch(() => {});
-  }, [syncToServer]);
+  }, [syncToServer, flushCache]);
 
   // ── Init ─────────────────────────────────────────────────────────────────
   const init = useCallback(async () => {
     setErrorMsg('');
     setLoaded(false);
+
+    // Seed from local cache immediately so data appears before the API responds,
+    // and survives offline / signed-out launches.
+    const cached = await readPaperCache();
+    if (cached && cached.accounts.length > 0) {
+      accountsRef.current = cached.accounts;
+      positionsRef.current = cached.positions;
+      transactionsRef.current = cached.transactions;
+      activeIdRef.current = cached.activeId;
+      setAccounts(cached.accounts);
+      setPositions(cached.positions);
+      setTransactions(cached.transactions);
+      setActiveId(cached.activeId);
+    }
 
     const loadAll = async () => {
       const [accts, pos, txns, active] = await Promise.all([
@@ -267,10 +314,15 @@ export default function PaperScreen() {
       setPositions(pos);
       setTransactions(txns);
       setActiveId(id);
+      // Refresh cache with authoritative server data
+      void writePaperCache({ accounts: finalAccounts, positions: pos, transactions: txns, activeId: id });
     } catch (e) {
       console.error('Failed to load paper data:', e);
       if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
-        setErrorMsg('Please sign in to access your paper trading account.');
+        // If we have cached data, stay on it silently rather than showing an error
+        if (!cached || cached.accounts.length === 0) {
+          setErrorMsg('Please sign in to access your paper trading account.');
+        }
       } else if (e instanceof ApiError && e.status === 503) {
         setErrorMsg('The server is finishing an update. Please try again in a moment.');
       } else if (e instanceof ApiError) {

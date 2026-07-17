@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View,
   Text,
@@ -56,6 +57,26 @@ type PortfolioTab = 'positions' | 'trades';
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
+
+// ─── Local cache ──────────────────────────────────────────────────────────────
+
+const TRADES_CACHE_KEY = '@stocksense/portfolio_trades_v1';
+
+async function readTradesCache(): Promise<Trade[]> {
+  try {
+    const raw = await AsyncStorage.getItem(TRADES_CACHE_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as Trade[];
+  } catch { return []; }
+}
+
+async function writeTradesCache(trades: Trade[]) {
+  try { await AsyncStorage.setItem(TRADES_CACHE_KEY, JSON.stringify(trades)); } catch { /* non-fatal */ }
+}
+
+async function clearTradesCache() {
+  try { await AsyncStorage.removeItem(TRADES_CACHE_KEY); } catch { /* non-fatal */ }
+}
 
 const SPARKLE_EMOJIS = ['✨', '⭐', '💫', '🌟', '🎉', '💎', '🏆', '🔥'];
 
@@ -1108,16 +1129,32 @@ export default function PortfolioScreen() {
 
   const topPad = Platform.OS === 'web' ? 16 : insets.top;
 
+  // Seed from local cache immediately so trades are visible before the API responds,
+  // and survive offline/signed-out launches.
   useEffect(() => {
+    let cancelled = false;
+    readTradesCache().then(cached => {
+      if (!cancelled && cached.length > 0) {
+        setTrades(cached);
+        tradesRef.current = cached;
+      }
+    });
     apiFetch<Trade[]>('/api/user/trades')
-      .then(data => { setTrades(data); tradesRef.current = data; })
+      .then(data => {
+        if (cancelled) return;
+        setTrades(data);
+        tradesRef.current = data;
+        void writeTradesCache(data);
+      })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, [apiFetch]);
 
   const saveTrades = useCallback(async (next: Trade[]) => {
     const prev = tradesRef.current;
     tradesRef.current = next;
     setTrades(next);
+    void writeTradesCache(next);
     const nextIds = new Set(next.map(t => t.id));
     const deleted = prev.filter(t => !nextIds.has(t.id));
     const upserted = next.filter(t => {
@@ -1155,6 +1192,7 @@ export default function PortfolioScreen() {
       { text: 'Delete Everything', style: 'destructive', onPress: async () => {
         const toDelete = [...trades];
         setTrades([]); setQuotes({}); tradesRef.current = [];
+        void clearTradesCache();
         await Promise.all(toDelete.map(t => apiFetch(`/api/user/trades/${t.id}`, { method: 'DELETE' }).catch(() => {})));
       } },
     ]);
