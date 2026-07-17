@@ -94,11 +94,52 @@ async function runSchemaMigrations(): Promise<void> {
     )
   `);
 
+  // Pending orders (limit, stop, trailing stop, etc.)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS paper_orders (
+      id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      account_id TEXT NOT NULL,
+      symbol TEXT NOT NULL,
+      company_name TEXT,
+      order_type TEXT NOT NULL DEFAULT 'market',
+      side TEXT NOT NULL DEFAULT 'buy',
+      shares DOUBLE PRECISION NOT NULL DEFAULT 0,
+      limit_price DOUBLE PRECISION,
+      stop_price DOUBLE PRECISION,
+      trail_pct DOUBLE PRECISION,
+      trail_abs DOUBLE PRECISION,
+      trail_ref DOUBLE PRECISION,
+      status TEXT NOT NULL DEFAULT 'pending',
+      filled_price DOUBLE PRECISION,
+      placed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      filled_at TIMESTAMPTZ,
+      PRIMARY KEY (id, user_id)
+    )
+  `);
+
+  // FIFO cost-basis lots for tracking realised P&L per lot
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS paper_lots (
+      id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      account_id TEXT NOT NULL,
+      symbol TEXT NOT NULL,
+      shares DOUBLE PRECISION NOT NULL DEFAULT 0,
+      cost DOUBLE PRECISION NOT NULL DEFAULT 0,
+      purchased_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (id, user_id)
+    )
+  `);
+
   // Backfill missing columns for existing paper tables (idempotent).
   const paperColumns = [
     ["paper_accounts", "name", "TEXT"],
     ["paper_accounts", "cash", "DOUBLE PRECISION"],
     ["paper_accounts", "created_at", "TIMESTAMPTZ"],
+    // T+2 settlement + dividend credit tracking
+    ["paper_accounts", "unsettled_items", "JSONB DEFAULT '[]'::jsonb"],
+    ["paper_accounts", "last_dividend_credit", "TIMESTAMPTZ"],
     ["paper_positions", "account_id", "TEXT"],
     ["paper_positions", "symbol", "TEXT"],
     ["paper_positions", "company_name", "TEXT"],
@@ -256,18 +297,28 @@ router.delete("/user/trades/:id", requireAuth, async (req: any, res) => {
 });
 
 // ── Paper Accounts ────────────────────────────────────────────────────────
-router.get("/user/paper/accounts", requireAuth, async (req: any, res) => {
+router.get("/user/paper/accounts", requireAuth, requireSchema, async (req: any, res) => {
   try {
     const { rows } = await pool.query(
-      "SELECT id, name, cash, created_at FROM paper_accounts WHERE user_id=$1 ORDER BY created_at ASC",
+      "SELECT id, name, cash, created_at, unsettled_items, last_dividend_credit FROM paper_accounts WHERE user_id=$1 ORDER BY created_at ASC",
       [req.userId],
     );
-    res.json(rows.map((r: any) => ({
-      id: r.id,
-      name: r.name,
-      cash: Number(r.cash),
-      createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
-    })));
+    res.json(rows.map((r: any) => {
+      const items: { amount: number; settlesAt: string }[] = Array.isArray(r.unsettled_items)
+        ? r.unsettled_items
+        : [];
+      return {
+        id: r.id,
+        name: r.name,
+        cash: Number(r.cash),
+        unsettledItems: items,
+        unsettledCash: items.reduce((s: number, i: any) => s + Number(i.amount), 0),
+        lastDividendCredit: r.last_dividend_credit instanceof Date
+          ? r.last_dividend_credit.toISOString()
+          : (r.last_dividend_credit ?? null),
+        createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
+      };
+    }));
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
@@ -502,14 +553,22 @@ function validateSyncPayload(body: any) {
   const accountsIn = requireArray(body.accounts, "accounts");
   const positionsIn = requireArray(body.positions, "positions");
   const transactionsIn = requireArray(body.transactions, "transactions");
+  const ordersIn = body.orders != null ? requireArray(body.orders, "orders") : [];
+  const lotsIn = body.lots != null ? requireArray(body.lots, "lots") : [];
 
   const accounts = accountsIn.map((a, i) => {
     requireObject(a, `accounts[${i}]`);
+    // unsettledItems is an optional JSON array; validate lightly
+    const unsettledItems = Array.isArray(a.unsettledItems) ? a.unsettledItems : [];
     return {
       id: reqString(a.id, `accounts[${i}].id`),
       name: reqString(a.name, `accounts[${i}].name`),
       cash: reqNumber(a.cash, `accounts[${i}].cash`),
       createdAt: reqString(a.createdAt, `accounts[${i}].createdAt`),
+      unsettledItems,
+      lastDividendCredit: a.lastDividendCredit != null
+        ? optString(a.lastDividendCredit, `accounts[${i}].lastDividendCredit`, "")
+        : null,
     };
   });
 
@@ -547,12 +606,46 @@ function validateSyncPayload(body: any) {
     };
   });
 
+  const orders = ordersIn.map((o: any, i: number) => {
+    requireObject(o, `orders[${i}]`);
+    return {
+      id: reqString(o.id, `orders[${i}].id`),
+      accountId: reqString(o.accountId, `orders[${i}].accountId`),
+      symbol: reqString(o.symbol, `orders[${i}].symbol`),
+      companyName: optString(o.companyName, `orders[${i}].companyName`, ""),
+      orderType: reqString(o.orderType, `orders[${i}].orderType`),
+      side: reqString(o.side, `orders[${i}].side`),
+      shares: reqNumber(o.shares, `orders[${i}].shares`),
+      limitPrice: o.limitPrice != null ? reqNumber(o.limitPrice, `orders[${i}].limitPrice`) : null,
+      stopPrice: o.stopPrice != null ? reqNumber(o.stopPrice, `orders[${i}].stopPrice`) : null,
+      trailPct: o.trailPct != null ? reqNumber(o.trailPct, `orders[${i}].trailPct`) : null,
+      trailAbs: o.trailAbs != null ? reqNumber(o.trailAbs, `orders[${i}].trailAbs`) : null,
+      trailRef: o.trailRef != null ? reqNumber(o.trailRef, `orders[${i}].trailRef`) : null,
+      status: reqString(o.status, `orders[${i}].status`),
+      filledPrice: o.filledPrice != null ? reqNumber(o.filledPrice, `orders[${i}].filledPrice`) : null,
+      placedAt: reqString(o.placedAt, `orders[${i}].placedAt`),
+      filledAt: o.filledAt != null ? reqString(o.filledAt, `orders[${i}].filledAt`) : null,
+    };
+  });
+
+  const lots = lotsIn.map((l: any, i: number) => {
+    requireObject(l, `lots[${i}]`);
+    return {
+      id: reqString(l.id, `lots[${i}].id`),
+      accountId: reqString(l.accountId, `lots[${i}].accountId`),
+      symbol: reqString(l.symbol, `lots[${i}].symbol`),
+      shares: reqNumber(l.shares, `lots[${i}].shares`),
+      cost: reqNumber(l.cost, `lots[${i}].cost`),
+      purchasedAt: reqString(l.purchasedAt, `lots[${i}].purchasedAt`),
+    };
+  });
+
   let activeId: string | null = null;
   if (body.activeId != null) {
     activeId = reqString(body.activeId, "activeId");
   }
 
-  return { accounts, positions, transactions, activeId };
+  return { accounts, positions, transactions, orders, lots, activeId };
 }
 
 router.post("/user/paper/sync", requireAuth, requireSchema, async (req: any, res) => {
@@ -570,18 +663,23 @@ router.post("/user/paper/sync", requireAuth, requireSchema, async (req: any, res
     res.status(400).json({ error: "Invalid request body" });
     return;
   }
-  const { accounts, positions, transactions, activeId } = payload;
+  const { accounts, positions, transactions, orders, lots, activeId } = payload;
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
-    // Sync accounts
+    // Sync accounts (now includes unsettled_items + last_dividend_credit)
     await client.query("DELETE FROM paper_accounts WHERE user_id=$1", [req.userId]);
     for (const a of accounts) {
       await client.query(
-        "INSERT INTO paper_accounts (id, user_id, name, cash, created_at) VALUES ($1,$2,$3,$4,$5)",
-        [a.id, req.userId, a.name, a.cash, a.createdAt],
+        `INSERT INTO paper_accounts (id, user_id, name, cash, created_at, unsettled_items, last_dividend_credit)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [
+          a.id, req.userId, a.name, a.cash, a.createdAt,
+          JSON.stringify(a.unsettledItems ?? []),
+          a.lastDividendCredit ?? null,
+        ],
       );
     }
 
@@ -603,6 +701,35 @@ router.post("/user/paper/sync", requireAuth, requireSchema, async (req: any, res
       );
     }
 
+    // Sync orders
+    await client.query("DELETE FROM paper_orders WHERE user_id=$1", [req.userId]);
+    for (const o of orders) {
+      await client.query(
+        `INSERT INTO paper_orders
+           (id, user_id, account_id, symbol, company_name, order_type, side, shares,
+            limit_price, stop_price, trail_pct, trail_abs, trail_ref,
+            status, filled_price, placed_at, filled_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+        [
+          o.id, req.userId, o.accountId, o.symbol, o.companyName,
+          o.orderType, o.side, o.shares,
+          o.limitPrice ?? null, o.stopPrice ?? null,
+          o.trailPct ?? null, o.trailAbs ?? null, o.trailRef ?? null,
+          o.status, o.filledPrice ?? null,
+          o.placedAt, o.filledAt ?? null,
+        ],
+      );
+    }
+
+    // Sync lots
+    await client.query("DELETE FROM paper_lots WHERE user_id=$1", [req.userId]);
+    for (const l of lots) {
+      await client.query(
+        "INSERT INTO paper_lots (id, user_id, account_id, symbol, shares, cost, purchased_at) VALUES ($1,$2,$3,$4,$5,$6,$7)",
+        [l.id, req.userId, l.accountId, l.symbol, l.shares, l.cost, l.purchasedAt],
+      );
+    }
+
     // Save active account id in recent_searches table (reusing as simple kv for active id)
     if (activeId) {
       await client.query(
@@ -619,6 +746,59 @@ router.post("/user/paper/sync", requireAuth, requireSchema, async (req: any, res
     res.status(500).json({ error: e.message });
   } finally {
     client.release();
+  }
+});
+
+// ── Paper Orders ──────────────────────────────────────────────────────────
+router.get("/user/paper/orders", requireAuth, requireSchema, async (req: any, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, account_id, symbol, company_name, order_type, side, shares,
+              limit_price, stop_price, trail_pct, trail_abs, trail_ref,
+              status, filled_price, placed_at, filled_at
+       FROM paper_orders WHERE user_id=$1 ORDER BY placed_at DESC`,
+      [req.userId],
+    );
+    res.json(rows.map((r: any) => ({
+      id: r.id,
+      accountId: r.account_id,
+      symbol: r.symbol,
+      companyName: r.company_name,
+      orderType: r.order_type,
+      side: r.side,
+      shares: Number(r.shares),
+      limitPrice: r.limit_price != null ? Number(r.limit_price) : undefined,
+      stopPrice: r.stop_price != null ? Number(r.stop_price) : undefined,
+      trailPct: r.trail_pct != null ? Number(r.trail_pct) : undefined,
+      trailAbs: r.trail_abs != null ? Number(r.trail_abs) : undefined,
+      trailRef: r.trail_ref != null ? Number(r.trail_ref) : undefined,
+      status: r.status,
+      filledPrice: r.filled_price != null ? Number(r.filled_price) : undefined,
+      placedAt: r.placed_at instanceof Date ? r.placed_at.toISOString() : r.placed_at,
+      filledAt: r.filled_at instanceof Date ? r.filled_at.toISOString() : (r.filled_at ?? undefined),
+    })));
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Paper Lots ────────────────────────────────────────────────────────────
+router.get("/user/paper/lots", requireAuth, requireSchema, async (req: any, res) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT id, account_id, symbol, shares, cost, purchased_at FROM paper_lots WHERE user_id=$1 ORDER BY purchased_at ASC",
+      [req.userId],
+    );
+    res.json(rows.map((r: any) => ({
+      id: r.id,
+      accountId: r.account_id,
+      symbol: r.symbol,
+      shares: Number(r.shares),
+      cost: Number(r.cost),
+      purchasedAt: r.purchased_at instanceof Date ? r.purchased_at.toISOString() : r.purchased_at,
+    })));
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
   }
 });
 

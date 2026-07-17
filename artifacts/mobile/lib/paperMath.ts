@@ -5,12 +5,27 @@
  */
 
 // ── Types ──────────────────────────────────────────────────────────────────
+
+/** A scheduled settlement event: cash from a sell that hasn't cleared yet. */
+export type UnsettledItem = {
+  amount: number;
+  settlesAt: string; // ISO — 2 calendar days after the sell
+};
+
 export type PaperAccount = {
   id: string;
   name: string;
+  /** Settled buying power (available for new buys). */
   cash: number;
+  /** Sum of unsettled sell proceeds (display only — updated by settleCash). */
+  unsettledCash?: number;
+  /** Individual T+2 settlement buckets. Serialised to DB via unsettled_items JSON column. */
+  unsettledItems?: UnsettledItem[];
+  /** ISO date of the last monthly dividend credit so we don't double-credit. */
+  lastDividendCredit?: string;
   createdAt: string;
 };
+
 export type PaperPosition = {
   id: string;
   accountId: string;
@@ -28,12 +43,13 @@ export type PaperPosition = {
   expenseRatio?: number;
   sector: string;
 };
+
 export type PaperTransaction = {
   id: string;
   accountId: string;
   symbol: string;
   companyName: string;
-  action: 'BUY' | 'SELL';
+  action: 'BUY' | 'SELL' | 'DIVIDEND';
   shares: number;
   price: number;
   total: number;
@@ -43,7 +59,55 @@ export type PaperTransaction = {
   /** Fund fee charged on this closing trade (0 for non-fund symbols). */
   fee?: number;
 };
+
 export type LiveQuote = { price: number; change: number; pct: number };
+
+// ── Order types ────────────────────────────────────────────────────────────
+
+export type OrderType = 'market' | 'limit' | 'stop' | 'stop_limit' | 'trailing_stop';
+export type OrderSide = 'buy' | 'sell';
+export type OrderStatus = 'pending' | 'filled' | 'cancelled';
+
+export type PaperOrder = {
+  id: string;
+  accountId: string;
+  symbol: string;
+  companyName: string;
+  orderType: OrderType;
+  side: OrderSide;
+  shares: number;
+  /** For limit and stop-limit orders. */
+  limitPrice?: number;
+  /** For stop and stop-limit orders. */
+  stopPrice?: number;
+  /** Trailing % distance (e.g. 5 = 5%). */
+  trailPct?: number;
+  /** Trailing absolute $ distance. */
+  trailAbs?: number;
+  /**
+   * Current trailing reference price. For sell trailing stops this is the
+   * high-water mark; for buy trailing stops this is the low-water mark.
+   * Updated on each price poll without changing the order status.
+   */
+  trailRef?: number;
+  status: OrderStatus;
+  /** Actual fill price (after slippage). */
+  filledPrice?: number;
+  placedAt: string;
+  filledAt?: string;
+};
+
+/** A single purchase lot for FIFO cost-basis tracking. */
+export type PaperLot = {
+  id: string;
+  accountId: string;
+  symbol: string;
+  /** Shares remaining in this lot (decreases as shares are sold FIFO). */
+  shares: number;
+  /** Cost per share for this lot. */
+  cost: number;
+  purchasedAt: string;
+};
 
 // ── Constants ──────────────────────────────────────────────────────────────
 export const INITIAL_BALANCE = 100_000;
@@ -168,7 +232,10 @@ export function buildValueHistory(
   const posMap: Record<string, { shares: number; avgCost: number; lastPrice: number }> = {};
 
   for (const tx of sorted) {
-    if (tx.action === 'BUY') {
+    if (tx.action === 'DIVIDEND') {
+      // Monthly dividend credit — add to cash directly (no position impact)
+      cash += tx.total;
+    } else if (tx.action === 'BUY') {
       cash -= tx.total;
       if (!posMap[tx.symbol]) {
         posMap[tx.symbol] = { shares: tx.shares, avgCost: tx.price, lastPrice: tx.price };
@@ -180,7 +247,7 @@ export function buildValueHistory(
         p.lastPrice = tx.price;
       }
     } else {
-      // Credit proceeds net of the fund fee, mirroring the live cash update.
+      // SELL: credit proceeds net of the fund fee, mirroring the live cash update.
       cash += tx.total - (tx.fee ?? 0);
       if (posMap[tx.symbol]) {
         posMap[tx.symbol].shares -= tx.shares;

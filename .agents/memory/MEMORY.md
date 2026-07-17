@@ -15,3 +15,4 @@
 - [Clerk Google SSO transfer flow](clerk-sso-transfer-flow.md) — must handle 'transferable' verifications via create({transfer:true})+finalize(); dev e2e blocked by captcha/allowlist; workspace secret key is prod-instance.
 - [Schema migration gate](schema-migration-gate.md) — after-the-fact columns are migrated once at boot behind a cached promise; any endpoint referencing them must sit behind `requireSchema` (awaits migration, 503 while failing).
 - [Paper table migration](paper-table-migration.md) — paper-trading migrations must create the base tables, not just add columns; missing `paper_positions` or `sector` column caused production 500s.
+- [Paper trading engine v2](paper-trading-v2.md) — orders/lots/T+2/FIFO/slippage/dividends; trailing stop uses trailRef not currentPrice; `.ts` extension needed for Node ESM; syncToServer takes 6 args now.
