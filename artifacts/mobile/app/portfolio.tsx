@@ -1050,13 +1050,17 @@ function SummaryCard({ positions, closedTrades, onReset, colors }: { positions: 
         ))}
       </View>
       <View style={[smStyles.plStrip, { backgroundColor: isGain ? colors.buyBg : colors.sellBg, borderColor: isGain ? colors.buyColor : colors.sellColor }]}>
-        <Text style={[smStyles.plLabel, { color: colors.mutedForeground }]}>UNREALIZED</Text>
-        <Text style={[smStyles.plVal, { color: totalUnreal >= 0 ? colors.buyColor : colors.sellColor, fontFamily: 'Inter_700Bold' }]}>
-          {totalUnreal >= 0 ? '+' : ''}{fmtCurrency(totalUnreal)}{totalPct !== 0 ? `  ${fmtPct(totalPct)}` : ''}
-        </Text>
-        <Text style={[smStyles.plTotal, { color: isGain ? colors.buyColor : colors.sellColor, fontFamily: 'Inter_700Bold' }]}>
-          TOTAL  {totalPnL >= 0 ? '+' : ''}{fmtCurrency(totalPnL)}
-        </Text>
+        <View style={smStyles.plTopRow}>
+          <Text style={[smStyles.plLabel, { color: colors.mutedForeground }]}>UNREALIZED</Text>
+        </View>
+        <View style={smStyles.plBottomRow}>
+          <Text style={[smStyles.plTotal, { color: isGain ? colors.buyColor : colors.sellColor, fontFamily: 'Inter_700Bold' }]}>
+            TOTAL  {totalPnL >= 0 ? '+' : ''}{fmtCurrency(totalPnL)}
+          </Text>
+          <Text style={[smStyles.plVal, { color: totalUnreal >= 0 ? colors.buyColor : colors.sellColor, fontFamily: 'Inter_700Bold' }]}>
+            {totalUnreal >= 0 ? '+' : ''}{fmtCurrency(totalUnreal)}{totalPct !== 0 ? `  ${fmtPct(totalPct)}` : ''}
+          </Text>
+        </View>
       </View>
     </View>
   );
@@ -1073,7 +1077,9 @@ const smStyles = StyleSheet.create({
   divider: { width: 1, height: 36, marginHorizontal: 8 },
   metricLabel: { fontSize: 10, letterSpacing: 0.5 },
   metricVal: { fontSize: 16 },
-  plStrip: { borderRadius: 8, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 6, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 4 },
+  plStrip: { borderRadius: 8, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 6, flexDirection: 'column', gap: 2 },
+  plTopRow: { flexDirection: 'row', justifyContent: 'flex-end' },
+  plBottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   plLabel: { fontSize: 10, letterSpacing: 0.5, fontFamily: 'Inter_400Regular' },
   plVal: { fontSize: 15 },
   plTotal: { fontSize: 15 },
