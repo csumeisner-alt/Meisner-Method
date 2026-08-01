@@ -22,7 +22,6 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useApi, ApiError } from '@/hooks/useApi';
 import { Feather } from '@expo/vector-icons';
 import { MMLogo } from '@/components/MMLogo';
 import { BottomTabBar } from '@/components/BottomTabBar';
@@ -95,8 +94,17 @@ async function readPaperCache(): Promise<PaperCache | null> {
 }
 
 async function writePaperCache(data: PaperCache) {
-  try { await AsyncStorage.setItem(PAPER_CACHE_KEY, JSON.stringify(data)); } catch { /* non-fatal */ }
+  // AsyncStorage writes are asynchronous and can complete out of order when
+  // an order fill and a quote poll save at nearly the same time. Serialize
+  // them so an older snapshot can never overwrite a newer position update.
+  paperCacheWriteQueue = paperCacheWriteQueue
+    .catch(() => {})
+    .then(() => AsyncStorage.setItem(PAPER_CACHE_KEY, JSON.stringify(data)))
+    .catch(() => {});
+  await paperCacheWriteQueue;
 }
+
+let paperCacheWriteQueue: Promise<void> = Promise.resolve();
 
 // ── Dividend helpers ────────────────────────────────────────────────────────
 /**
@@ -239,27 +247,12 @@ export default function PaperScreen() {
     (s, p) => s + p.shares * (quotes[p.symbol]?.change ?? 0), 0,
   );
 
-  const { apiFetch } = useApi();
   const accountsRef = useRef<PaperAccount[]>([]);
   const positionsRef = useRef<PaperPosition[]>([]);
   const transactionsRef = useRef<PaperTransaction[]>([]);
   const ordersRef = useRef<PaperOrder[]>([]);
   const lotsRef = useRef<PaperLot[]>([]);
   const activeIdRef = useRef<string>('');
-
-  // ── Sync helper ───────────────────────────────────────────────────────────
-  const syncToServer = useCallback(async (
-    accts: PaperAccount[], pos: PaperPosition[], txns: PaperTransaction[],
-    ords: PaperOrder[], ls: PaperLot[], aid: string,
-  ) => {
-    await apiFetch('/api/user/paper/sync', {
-      method: 'POST',
-      body: JSON.stringify({
-        accounts: accts, positions: pos, transactions: txns,
-        orders: ords, lots: ls, activeId: aid,
-      }),
-    });
-  }, [apiFetch]);
 
   // ── Storage helpers ───────────────────────────────────────────────────────
   const flushCache = useCallback((
@@ -286,41 +279,36 @@ export default function PaperScreen() {
     setOrders(ords);
     setLots(ls);
     flushCache(accts, pos, txns, ords, ls, aid);
-    await syncToServer(accts, pos, txns, ords, ls, aid).catch(() => {});
-  }, [syncToServer, flushCache]);
+  }, [flushCache]);
 
   const saveAccounts = useCallback(async (data: PaperAccount[]) => {
     accountsRef.current = data;
     setAccounts(data);
     flushCache(data, positionsRef.current, transactionsRef.current, ordersRef.current, lotsRef.current, activeIdRef.current);
-    await syncToServer(data, positionsRef.current, transactionsRef.current, ordersRef.current, lotsRef.current, activeIdRef.current).catch(() => {});
-  }, [syncToServer, flushCache]);
+  }, [flushCache]);
   const savePositions = useCallback(async (data: PaperPosition[]) => {
     positionsRef.current = data;
     setPositions(data);
     flushCache(accountsRef.current, data, transactionsRef.current, ordersRef.current, lotsRef.current, activeIdRef.current);
-    await syncToServer(accountsRef.current, data, transactionsRef.current, ordersRef.current, lotsRef.current, activeIdRef.current).catch(() => {});
-  }, [syncToServer, flushCache]);
+  }, [flushCache]);
   const saveTransactions = useCallback(async (data: PaperTransaction[]) => {
     transactionsRef.current = data;
     setTransactions(data);
     flushCache(accountsRef.current, positionsRef.current, data, ordersRef.current, lotsRef.current, activeIdRef.current);
-    await syncToServer(accountsRef.current, positionsRef.current, data, ordersRef.current, lotsRef.current, activeIdRef.current).catch(() => {});
-  }, [syncToServer, flushCache]);
+  }, [flushCache]);
   const saveOrders = useCallback(async (data: PaperOrder[]) => {
     ordersRef.current = data;
     setOrders(data);
     flushCache(accountsRef.current, positionsRef.current, transactionsRef.current, data, lotsRef.current, activeIdRef.current);
-    await syncToServer(accountsRef.current, positionsRef.current, transactionsRef.current, data, lotsRef.current, activeIdRef.current).catch(() => {});
-  }, [syncToServer, flushCache]);
+  }, [flushCache]);
 
   // ── Init ─────────────────────────────────────────────────────────────────
   const init = useCallback(async () => {
     setErrorMsg('');
     setLoaded(false);
 
-    // Seed from local cache so data appears before the API responds,
-    // and survives offline / signed-out launches.
+    // Paper trading is guest-local: load the exact state used by order
+    // execution and never replace it with an unauthenticated server response.
     const cached = await readPaperCache();
     if (cached && cached.accounts.length > 0) {
       accountsRef.current = cached.accounts;
@@ -336,112 +324,64 @@ export default function PaperScreen() {
       setLots(cached.lots ?? []);
       setActiveId(cached.activeId);
     }
-
-    const loadAll = async () => {
-      const [accts, pos, txns, ords, ls, active] = await Promise.all([
-        apiFetch<PaperAccount[]>('/api/user/paper/accounts'),
-        apiFetch<PaperPosition[]>('/api/user/paper/positions'),
-        apiFetch<PaperTransaction[]>('/api/user/paper/transactions'),
-        apiFetch<PaperOrder[]>('/api/user/paper/orders').catch(() => [] as PaperOrder[]),
-        apiFetch<PaperLot[]>('/api/user/paper/lots').catch(() => [] as PaperLot[]),
-        apiFetch<{ activeId: string | null }>('/api/user/paper/active'),
-      ]);
-      return { accts, pos, txns, ords, ls, active };
-    };
-
-    try {
-      let data;
-      try {
-        data = await loadAll();
-      } catch (e) {
-        if (e instanceof ApiError && e.status === 503) {
-          await new Promise((r) => setTimeout(r, 2000));
-          data = await loadAll();
-        } else {
-          throw e;
-        }
-      }
-      const { accts, pos, txns, ords, ls, active } = data;
-      let finalAccounts = accts;
-      if (finalAccounts.length === 0) {
-        finalAccounts = defaultAccounts();
-        await syncToServer(finalAccounts, [], [], [], [], finalAccounts[0].id).catch(() => {});
-      }
-
-      const id = active.activeId ?? finalAccounts[0].id;
-      const nowISO = new Date().toISOString();
-
-      // Run T+2 settlement and monthly dividend credits for every account.
-      let settledAccounts = finalAccounts;
-      let extraTxns: PaperTransaction[] = [];
-      settledAccounts = settledAccounts.map((a) => {
-        const { updated } = settleCash(a, nowISO);
-        return updated;
+    else {
+      const localAccounts = defaultAccounts();
+      const localActiveId = localAccounts[0].id;
+      accountsRef.current = localAccounts;
+      positionsRef.current = [];
+      transactionsRef.current = [];
+      ordersRef.current = [];
+      lotsRef.current = [];
+      activeIdRef.current = localActiveId;
+      setAccounts(localAccounts);
+      setPositions([]);
+      setTransactions([]);
+      setOrders([]);
+      setLots([]);
+      setActiveId(localActiveId);
+      void writePaperCache({
+        accounts: localAccounts,
+        positions: [],
+        transactions: [],
+        orders: [],
+        lots: [],
+        activeId: localActiveId,
       });
-      for (const a of settledAccounts) {
-        const accountPositions = pos.filter(p => p.accountId === a.id);
-        const { updatedAccount, newTransactions } = creditDividends(accountPositions, a, {}, nowISO, uid);
-        settledAccounts = settledAccounts.map(sa => sa.id === updatedAccount.id ? updatedAccount : sa);
-        extraTxns = [...extraTxns, ...newTransactions];
-      }
-      const finalTxns = extraTxns.length > 0 ? [...txns, ...extraTxns] : txns;
-
-      accountsRef.current = settledAccounts;
-      positionsRef.current = pos;
-      transactionsRef.current = finalTxns;
-      ordersRef.current = ords;
-      lotsRef.current = ls;
-      activeIdRef.current = id;
-      setAccounts(settledAccounts);
-      setPositions(pos);
-      setTransactions(finalTxns);
-      setOrders(ords);
-      setLots(ls);
-      setActiveId(id);
-      void writePaperCache({ accounts: settledAccounts, positions: pos, transactions: finalTxns, orders: ords, lots: ls, activeId: id });
-      if (extraTxns.length > 0) {
-        // Persist settlement results to server
-        await syncToServer(settledAccounts, pos, finalTxns, ords, ls, id).catch(() => {});
-      }
-    } catch (e) {
-      console.error('Failed to load paper data:', e);
-      // Guest mode never blocks entry on user-scoped API failures. Keep the
-      // cached paper account when available, otherwise create a local account.
-      // Server sync remains best-effort through saveAll/syncToServer.
-      if (cached && cached.accounts.length > 0) {
-        setErrorMsg('');
-      } else {
-        const localAccounts = defaultAccounts();
-        const localActiveId = localAccounts[0].id;
-        accountsRef.current = localAccounts;
-        positionsRef.current = [];
-        transactionsRef.current = [];
-        ordersRef.current = [];
-        lotsRef.current = [];
-        activeIdRef.current = localActiveId;
-        setAccounts(localAccounts);
-        setPositions([]);
-        setTransactions([]);
-        setOrders([]);
-        setLots([]);
-        setActiveId(localActiveId);
-        void writePaperCache({
-          accounts: localAccounts,
-          positions: [],
-          transactions: [],
-          orders: [],
-          lots: [],
-          activeId: localActiveId,
-        });
-        setErrorMsg('');
-      }
-      if (e instanceof ApiError && e.status === 503) {
-        setErrorMsg('The server is finishing an update. Please try again in a moment.');
-      }
-    } finally {
-      setLoaded(true);
     }
-  }, [apiFetch, syncToServer]);
+
+    const nowISO = new Date().toISOString();
+    const currentAccounts = accountsRef.current;
+    const currentPositions = positionsRef.current;
+    const currentTransactions = transactionsRef.current;
+    let settledAccounts = currentAccounts.map((a) => settleCash(a, nowISO).updated);
+    let extraTxns: PaperTransaction[] = [];
+    for (const a of settledAccounts) {
+      const accountPositions = currentPositions.filter(p => p.accountId === a.id);
+      const { updatedAccount, newTransactions } = creditDividends(accountPositions, a, {}, nowISO, uid);
+      settledAccounts = settledAccounts.map(sa => sa.id === updatedAccount.id ? updatedAccount : sa);
+      extraTxns = [...extraTxns, ...newTransactions];
+    }
+    const finalTxns = extraTxns.length > 0
+      ? [...currentTransactions, ...extraTxns]
+      : currentTransactions;
+    const id = activeIdRef.current || settledAccounts[0].id;
+    accountsRef.current = settledAccounts;
+    transactionsRef.current = finalTxns;
+    activeIdRef.current = id;
+    setAccounts(settledAccounts);
+    setTransactions(finalTxns);
+    setActiveId(id);
+    await writePaperCache({
+      accounts: settledAccounts,
+      positions: currentPositions,
+      transactions: finalTxns,
+      orders: ordersRef.current,
+      lots: lotsRef.current,
+      activeId: id,
+    });
+    setErrorMsg('');
+    setLoaded(true);
+  }, []);
 
   useEffect(() => { init(); }, [init]);
 
@@ -553,18 +493,18 @@ export default function PaperScreen() {
         }),
       );
       const next: Record<string, LiveQuote> = {};
-      setQuotes(prev => {
-        Object.assign(next, prev);
-        for (const r of results) {
-          if (r.status === 'fulfilled' && r.value.data.currentPrice) {
-            const { sym, data } = r.value;
-            next[sym] = { price: data.currentPrice, change: data.priceChange, pct: data.priceChangePercent };
-          }
+      for (const r of results) {
+        if (r.status === 'fulfilled' && Number.isFinite(r.value.data.currentPrice) && r.value.data.currentPrice > 0) {
+          const { sym, data } = r.value;
+          next[sym] = { price: data.currentPrice, change: data.priceChange, pct: data.priceChangePercent };
         }
-        return next;
+      }
+      setQuotes(prev => {
+        const merged = { ...prev, ...next };
+        return merged;
       });
       // Evaluate pending orders with the freshly-fetched quotes
-      evaluatePendingOrders(next);
+      evaluatePendingOrders({ ...quotes, ...next });
     } finally {
       setLoadingQuotes(false);
     }
@@ -589,7 +529,6 @@ export default function PaperScreen() {
     activeIdRef.current = id;
     setActiveId(id);
     setShowAccountDropdown(false);
-    syncToServer(accountsRef.current, positionsRef.current, transactionsRef.current, ordersRef.current, lotsRef.current, id).catch(() => {});
     fetchQuotes(positions, id);
   };
 
@@ -659,16 +598,26 @@ export default function PaperScreen() {
    * Non-market orders are added to the pending-orders queue.
    */
   const handleConfirmOrder = async (args: ConfirmOrderArgs) => {
-    if (!account) return;
+    const currentActiveId = activeIdRef.current;
+    const currentAccounts = accountsRef.current;
+    const currentPositions = positionsRef.current;
+    const currentTransactions = transactionsRef.current;
+    const currentOrders = ordersRef.current;
+    const currentLots = lotsRef.current;
+    const currentAccount = currentAccounts.find(a => a.id === currentActiveId);
+    if (!currentAccount) return;
+    const currentSelectedPos = selectedPos
+      ? currentPositions.find(p => p.id === selectedPos.id) ?? null
+      : null;
     // Symbol is resolved exclusively from its source — buy uses the looked-up ticker,
     // sell uses the selected position — with no cross-flow fallback so stale buy state
     // can never silently redirect a sell to the wrong symbol.
     const sym = args.side === 'sell'
-      ? (selectedPos?.symbol ?? '')
+      ? (currentSelectedPos?.symbol ?? '')
       : buySymbol.trim().toUpperCase();
     if (!sym) return;
     const companyName = args.side === 'sell'
-      ? (selectedPos?.companyName ?? sym)
+      ? (currentSelectedPos?.companyName ?? sym)
       : (args.stockInfo?.companyName ?? sym);
     const nowISO = new Date().toISOString();
 
@@ -676,14 +625,19 @@ export default function PaperScreen() {
       // Execute immediately at a slippage-adjusted price
       const basePrice = args.side === 'buy'
         ? (stockInfo?.currentPrice ?? quotes[sym]?.price ?? 0)
-        : (quotes[sym]?.price ?? selectedPos?.avgCost ?? 0);
+        : (quotes[sym]?.price ?? currentSelectedPos?.avgCost ?? 0);
+
+      if (!Number.isFinite(basePrice) || basePrice <= 0) {
+        Alert.alert('Order rejected', 'A live price is required before placing a market order.');
+        return;
+      }
 
       const fillPrice = applySlippage(basePrice, args.shares, args.side);
 
       // Build a synthetic PaperOrder for fillOrder()
       const syntheticOrder: PaperOrder = {
         id: uid(),
-        accountId: activeId,
+        accountId: currentActiveId,
         symbol: sym,
         companyName,
         orderType: 'market',
@@ -697,9 +651,9 @@ export default function PaperScreen() {
         order: syntheticOrder,
         fillPrice,
         filledAt: nowISO,
-        account,
-        positions,
-        lots,
+        account: currentAccount,
+        positions: currentPositions,
+        lots: currentLots,
         uid,
       });
 
@@ -718,25 +672,25 @@ export default function PaperScreen() {
       if (args.side === 'buy' && args.stockInfo) {
         const { dividendYield, dividendRate, expenseRatio, sector } = args.stockInfo;
         finalPositions = updatedPositions.map(p =>
-          p.symbol === sym && p.accountId === activeId
+          p.symbol === sym && p.accountId === currentActiveId
             ? { ...p, dividendYield, dividendRate, expenseRatio, sector }
             : p,
         );
       }
 
       await saveAll(
-        accounts.map(a => a.id === activeId ? updatedAccount : a),
+        currentAccounts.map(a => a.id === currentActiveId ? updatedAccount : a),
         finalPositions,
-        [...transactions, newTransaction],
-        orders,
+        [...currentTransactions, newTransaction],
+        currentOrders,
         updatedLots,
-        activeIdRef.current,
+        currentActiveId,
       );
     } else {
       // Non-market: create a pending order
       const newOrder: PaperOrder = {
         id: uid(),
-        accountId: activeId,
+        accountId: currentActiveId,
         symbol: sym,
         companyName,
         orderType: args.orderType,
@@ -752,7 +706,7 @@ export default function PaperScreen() {
         status: 'pending',
         placedAt: nowISO,
       };
-      await saveOrders([...orders, newOrder]);
+      await saveOrders([...currentOrders, newOrder]);
     }
 
     setShowOrderSheet(false);

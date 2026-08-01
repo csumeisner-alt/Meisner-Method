@@ -28,3 +28,7 @@ description: Key decisions, file layout, and gotchas for the upgraded paper trad
 **How to apply:** Any pure-math lib file that is imported by tests must use `.ts` extension for all sibling imports.
 
 **Why:** `syncToServer` now takes `(accts, pos, txns, orders, lots, aid)` — always pass all 6 args. Use `saveAll()` for multi-slice updates to avoid race conditions.
+
+**Why:** Order placement can race with quote polling because React render state may lag behind the mutable refs used by the polling loop; saving a fill from render-time arrays can deduct cash while overwriting the newly-created position.
+
+**How to apply:** Paper execution must read the latest refs, commit account/positions/lots/transactions/orders together, and serialize local cache writes so older async snapshots cannot overwrite newer fills.
