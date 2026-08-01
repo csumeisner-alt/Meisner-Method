@@ -11,7 +11,6 @@ import {
   TextInput,
   useWindowDimensions,
 } from 'react-native';
-import { useAuth } from '@clerk/expo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,6 +26,7 @@ import type { Candle } from '@/components/StockChart';
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const PINNED_COMP_KEY = '@stocksense/pinned_comp_symbol';
+const GUEST_WATCHLIST_KEY = '@stocksense/watchlist_v1/__guest__';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -173,7 +173,6 @@ export default function AnalysisScreen() {
   const colors = useColors();
   const { width: screenWidth } = useWindowDimensions();
   const { apiFetch } = useApi();
-  const { isSignedIn } = useAuth();
   const { mutate, data, isPending, error } = useAnalyzeStock<Error>();
 
   // ── Watchlist star state ──────────────────────────────────────────────────
@@ -181,11 +180,14 @@ export default function AnalysisScreen() {
   const [watchlistLoading, setWatchlistLoading] = useState(false);
 
   useEffect(() => {
-    if (!symbol || !isSignedIn) return;
-    apiFetch<{ symbol: string; createdAt: string }[]>('/api/user/watchlist')
-      .then((list) => setIsWatched(list.some((w) => w.symbol === symbol)))
+    if (!symbol) return;
+    AsyncStorage.getItem(GUEST_WATCHLIST_KEY)
+      .then((raw) => {
+        const list = raw ? JSON.parse(raw) as { symbol: string }[] : [];
+        setIsWatched(list.some((w) => w.symbol === symbol));
+      })
       .catch(() => {});
-  }, [symbol, apiFetch, isSignedIn]);
+  }, [symbol]);
 
   const toggleWatchlist = useCallback(async () => {
     if (!symbol || watchlistLoading) return;
@@ -194,17 +196,18 @@ export default function AnalysisScreen() {
     const next = !isWatched;
     setIsWatched(next); // optimistic
     try {
-      if (next) {
-        await apiFetch('/api/user/watchlist', { method: 'POST', body: JSON.stringify({ symbol }) });
-      } else {
-        await apiFetch(`/api/user/watchlist/${encodeURIComponent(symbol)}`, { method: 'DELETE' });
-      }
+      const raw = await AsyncStorage.getItem(GUEST_WATCHLIST_KEY);
+      const current = raw ? JSON.parse(raw) as { symbol: string; createdAt: string }[] : [];
+      const updated = next
+        ? [{ symbol, createdAt: new Date().toISOString() }, ...current.filter((item) => item.symbol !== symbol)]
+        : current.filter((item) => item.symbol !== symbol);
+      await AsyncStorage.setItem(GUEST_WATCHLIST_KEY, JSON.stringify(updated));
     } catch {
-      setIsWatched(!next); // revert
+      setIsWatched(!next);
     } finally {
       setWatchlistLoading(false);
     }
-  }, [symbol, isWatched, watchlistLoading, apiFetch]);
+  }, [symbol, isWatched, watchlistLoading]);
 
   // ── Chart state ──────────────────────────────────────────────────────────
   const [period, setPeriod] = useState<Period>('3mo');
@@ -319,8 +322,8 @@ export default function AnalysisScreen() {
               </Text>
             )}
           </View>
-          {/* Star / watchlist toggle — only shown when signed in */}
-          {isSignedIn && (
+          {/* Local guest watchlist toggle */}
+          {
             <TouchableOpacity
               onPress={toggleWatchlist}
               style={headerStyles.starBtn}
@@ -333,7 +336,7 @@ export default function AnalysisScreen() {
                 color={isWatched ? '#FFD700' : colors.mutedForeground}
               />
             </TouchableOpacity>
-          )}
+          }
           {analysis && (
             <View style={headerStyles.priceArea}>
               <Text style={[headerStyles.price, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>

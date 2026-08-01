@@ -16,7 +16,6 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAuth } from '@clerk/expo';
 import { Feather } from '@expo/vector-icons';
 import { useApi } from '@/hooks/useApi';
 import * as Haptics from 'expo-haptics';
@@ -326,7 +325,6 @@ export default function HomeScreen() {
   const colors = useColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { signOut, isSignedIn } = useAuth();
   const { apiFetch } = useApi();
   const [query, setQuery] = useState('');
   const [recent, setRecent] = useState<string[]>([]);
@@ -632,7 +630,7 @@ export default function HomeScreen() {
       </View>
 
       {/* Watchlist filter — sticky bar between search and scroll so it's always reachable */}
-      {isSignedIn && showWatchFilter && (
+      {showWatchFilter && (
         <View style={[styles.watchFilterBar, { borderBottomColor: colors.border }]}>
           <View style={[styles.watchFilterRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Feather name="filter" size={14} color={colors.mutedForeground} style={{ marginRight: 8 }} />
@@ -702,7 +700,7 @@ export default function HomeScreen() {
         )}
 
         {/* ─── Watchlist ──────────────────────────────────────────────── */}
-        {isSignedIn && (
+        <View>
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <View style={styles.sectionTitleRow}>
@@ -760,7 +758,7 @@ export default function HomeScreen() {
               />
             )}
           </View>
-        )}
+        </View>
 
         {/* Trending tickers */}
         <View style={styles.section}>
@@ -838,10 +836,6 @@ export default function HomeScreen() {
       <DonationSidebar
         visible={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-        onSignOut={() => {
-          setSettingsOpen(false);
-          signOut();
-        }}
       />
     </View>
   );

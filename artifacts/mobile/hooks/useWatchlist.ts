@@ -7,24 +7,17 @@
  * - On mount, the last-known watchlist is loaded from AsyncStorage immediately
  *   so the list is visible before the API responds (and when offline/signed-out).
  * - After every successful API fetch the cache is refreshed.
- * - Add/remove write through to the cache optimistically alongside the API call.
- * - The cache is keyed per-user so switching accounts doesn't mix data.
+ * - Add/remove write through to the local guest cache.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useApi } from './useApi';
-import { useAuth } from '@clerk/expo';
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
 const WATCHLIST_POLL_INTERVAL = 60_000;
 const CACHE_KEY_PREFIX = '@stocksense/watchlist_v1/';
 
-function cacheKey(userId: string | null | undefined) {
-  // Fall back to a shared key when signed out so unauthenticated users still
-  // see their locally-added tickers.
-  return CACHE_KEY_PREFIX + (userId ?? '__guest__');
-}
+const GUEST_CACHE_KEY = CACHE_KEY_PREFIX + '__guest__';
 
 async function readCache(key: string): Promise<WatchlistItem[]> {
   try {
@@ -66,8 +59,6 @@ export interface AlertData {
 }
 
 export function useWatchlist() {
-  const { apiFetch } = useApi();
-  const { userId } = useAuth();
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [quotes, setQuotes] = useState<Map<string, QuoteData>>(new Map());
   const [alerts, setAlerts] = useState<AlertData[]>([]);
@@ -84,27 +75,27 @@ export function useWatchlist() {
   // the list is visible before the first API round-trip completes.
   useEffect(() => {
     let cancelled = false;
-    readCache(cacheKey(userId)).then((cached) => {
+    readCache(GUEST_CACHE_KEY).then((cached) => {
       if (!cancelled && cached.length > 0) {
         setItems(cached);
       }
     });
     return () => { cancelled = true; };
-  }, [userId]);
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
       setLoading(true);
-      const [watchlist, alertList] = await Promise.all([
-        apiFetch<WatchlistItem[]>('/api/user/watchlist').catch(() => [] as WatchlistItem[]),
-        apiFetch<AlertData[]>('/api/user/alerts').catch(() => [] as AlertData[]),
-      ]);
+      // User-scoped endpoints require an account. Guest mode intentionally
+      // keeps the watchlist and alerts local so refreshes never erase them.
+      const watchlist = await readCache(GUEST_CACHE_KEY);
+      const alertList: AlertData[] = [];
       if (!mountedRef.current) return;
       setItems(watchlist);
       setAlerts(alertList);
 
       // Persist fresh server list to cache
-      void writeCache(cacheKey(userId), watchlist);
+      void writeCache(GUEST_CACHE_KEY, watchlist);
 
       // Fetch live quotes for all watched symbols in parallel
       if (watchlist.length > 0) {
@@ -134,7 +125,7 @@ export function useWatchlist() {
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [apiFetch, userId]);
+  }, []);
 
   // Initial fetch
   useEffect(() => {
@@ -156,61 +147,29 @@ export function useWatchlist() {
       const next = symbols
         .map((s, idx) => map.get(s) ?? { symbol: s, createdAt: new Date().toISOString(), sortOrder: idx })
         .filter(Boolean) as WatchlistItem[];
-      void writeCache(cacheKey(userId), next);
+       void writeCache(GUEST_CACHE_KEY, next);
       return next;
     });
-    try {
-      await apiFetch('/api/user/watchlist/reorder', {
-        method: 'PUT',
-        body: JSON.stringify({ symbols }),
-      });
-    } catch {
-      // Revert on failure by re-fetching
-      refresh();
-    }
-  }, [apiFetch, refresh, userId]);
+  }, []);
 
   const add = useCallback(async (symbol: string) => {
     // Optimistic update + cache write-through
     setItems((prev) => {
       if (prev.some((i) => i.symbol === symbol)) return prev;
       const next = [{ symbol, createdAt: new Date().toISOString() }, ...prev];
-      void writeCache(cacheKey(userId), next);
+      void writeCache(GUEST_CACHE_KEY, next);
       return next;
     });
-    try {
-      await apiFetch('/api/user/watchlist', {
-        method: 'POST',
-        body: JSON.stringify({ symbol }),
-      });
-    } catch {
-      // Revert on error
-      setItems((prev) => {
-        const next = prev.filter((i) => i.symbol !== symbol);
-        void writeCache(cacheKey(userId), next);
-        return next;
-      });
-    }
-  }, [apiFetch, userId]);
+  }, []);
 
   const remove = useCallback(async (symbol: string) => {
     // Optimistic update + cache write-through
     setItems((prev) => {
       const next = prev.filter((i) => i.symbol !== symbol);
-      void writeCache(cacheKey(userId), next);
+      void writeCache(GUEST_CACHE_KEY, next);
       return next;
     });
-    try {
-      await apiFetch(`/api/user/watchlist/${encodeURIComponent(symbol)}`, { method: 'DELETE' });
-    } catch {
-      // Re-add on error
-      setItems((prev) => {
-        const next = [{ symbol, createdAt: new Date().toISOString() }, ...prev];
-        void writeCache(cacheKey(userId), next);
-        return next;
-      });
-    }
-  }, [apiFetch, userId]);
+  }, []);
 
   const isWatched = useCallback(
     (symbol: string) => items.some((i) => i.symbol === symbol),
@@ -233,15 +192,10 @@ export function useWatchlist() {
       // Remove any existing active alert for this symbol first
       const existing = alerts.find((a) => a.symbol === symbol && !a.firedAt);
       if (existing) {
-        await apiFetch(`/api/user/alerts/${existing.id}`, { method: 'DELETE' }).catch(() => {});
         setAlerts((prev) => prev.filter((a) => a.id !== existing.id));
       }
-      const result = await apiFetch<{ id: string }>('/api/user/alerts', {
-        method: 'POST',
-        body: JSON.stringify({ symbol, direction, targetPrice, pushToken }),
-      });
       const newAlert: AlertData = {
-        id: result.id,
+        id: `${Date.now()}-${symbol}`,
         symbol,
         direction,
         targetPrice,
@@ -250,15 +204,14 @@ export function useWatchlist() {
       };
       setAlerts((prev) => [...prev, newAlert]);
     },
-    [apiFetch, alerts],
+    [alerts],
   );
 
   const deleteAlert = useCallback(
     async (id: string) => {
       setAlerts((prev) => prev.filter((a) => a.id !== id));
-      await apiFetch(`/api/user/alerts/${id}`, { method: 'DELETE' }).catch(() => {});
     },
-    [apiFetch],
+    [],
   );
 
   return {

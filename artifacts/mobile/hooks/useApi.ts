@@ -1,6 +1,4 @@
 import { useCallback } from 'react';
-import { getAuthToken } from '@workspace/api-client-react';
-
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
 /**
@@ -16,13 +14,9 @@ export class ApiError extends Error {
 }
 
 /**
- * Returns an `apiFetch` wrapper that attaches a Bearer token.
- *
- * The token is resolved through the auth token getter registered on
- * `@workspace/api-client-react` (`setAuthTokenGetter`, wired up in the root
- * layout). This decouples `useApi` from Clerk entirely, so it works whether or
- * not a `ClerkProvider` is mounted — critical for the Expo Go dev path where
- * the app is previewed without logging in.
+ * Returns a guest-safe API wrapper. Public market-data routes continue to work
+ * normally; user-scoped calls are intentionally best-effort and fall back to
+ * local mobile state rather than opening an account or showing a login wall.
  *
  * `apiFetch` is referentially stable (empty `useCallback` deps) so that
  * `useEffect(..., [apiFetch])` consumers don't re-fire forever.
@@ -32,9 +26,7 @@ export function useApi() {
     path: string,
     opts?: RequestInit,
   ): Promise<T> {
-    const token = await getAuthToken();
     const headers = new Headers(opts?.headers as HeadersInit | undefined);
-    if (token) headers.set('Authorization', `Bearer ${token}`);
     if (opts?.body && !headers.has('Content-Type')) {
       headers.set('Content-Type', 'application/json');
     }

@@ -405,16 +405,38 @@ export default function PaperScreen() {
       }
     } catch (e) {
       console.error('Failed to load paper data:', e);
-      if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
-        if (!cached || cached.accounts.length === 0) {
-          setErrorMsg('Please sign in to access your paper trading account.');
-        }
-      } else if (e instanceof ApiError && e.status === 503) {
-        setErrorMsg('The server is finishing an update. Please try again in a moment.');
-      } else if (e instanceof ApiError) {
-        setErrorMsg('Something went wrong loading your paper trading data. Please try again.');
+      // Guest mode never blocks entry on user-scoped API failures. Keep the
+      // cached paper account when available, otherwise create a local account.
+      // Server sync remains best-effort through saveAll/syncToServer.
+      if (cached && cached.accounts.length > 0) {
+        setErrorMsg('');
       } else {
-        setErrorMsg('Could not reach the server. Check your connection and try again.');
+        const localAccounts = defaultAccounts();
+        const localActiveId = localAccounts[0].id;
+        accountsRef.current = localAccounts;
+        positionsRef.current = [];
+        transactionsRef.current = [];
+        ordersRef.current = [];
+        lotsRef.current = [];
+        activeIdRef.current = localActiveId;
+        setAccounts(localAccounts);
+        setPositions([]);
+        setTransactions([]);
+        setOrders([]);
+        setLots([]);
+        setActiveId(localActiveId);
+        void writePaperCache({
+          accounts: localAccounts,
+          positions: [],
+          transactions: [],
+          orders: [],
+          lots: [],
+          activeId: localActiveId,
+        });
+        setErrorMsg('');
+      }
+      if (e instanceof ApiError && e.status === 503) {
+        setErrorMsg('The server is finishing an update. Please try again in a moment.');
       }
     } finally {
       setLoaded(true);

@@ -22,8 +22,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
 import { Confetti } from '@/components/Confetti';
-import { useApi } from '@/hooks/useApi';
-import { useAuth } from '@clerk/expo';
 import { useAmericanMode, AMERICAN_MODE_THRESHOLD } from '@/contexts/AmericanModeContext';
 
 // Creator's PUBLIC payment handles. These only ever build outbound payment
@@ -49,42 +47,16 @@ const CASHAPP_GREEN = '#00D632';
 interface Props {
   visible: boolean;
   onClose: () => void;
-  onSignOut: () => void;
 }
 
-export function DonationSidebar({ visible, onClose, onSignOut }: Props) {
+export function DonationSidebar({ visible, onClose }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { apiFetch } = useApi();
-  const { isSignedIn } = useAuth();
   const { factsRead, isUnlocked, isActive, setAmericanModeActive } = useAmericanMode();
 
   const toggleAmericanMode = (value: boolean) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setAmericanModeActive(value);
-  };
-
-  // Global notifications on/off preference (server-backed). Pausing keeps all
-  // pending price alerts intact server-side — they simply aren't sent until
-  // the toggle is turned back on.
-  const [notifEnabled, setNotifEnabled] = useState(true);
-  const [notifLoaded, setNotifLoaded] = useState(false);
-
-  useEffect(() => {
-    if (!visible || !isSignedIn) return;
-    apiFetch<{ enabled: boolean }>('/api/user/notification-settings')
-      .then((r) => { setNotifEnabled(r.enabled); setNotifLoaded(true); })
-      .catch(() => { setNotifLoaded(true); });
-  }, [visible, isSignedIn, apiFetch]);
-
-  const toggleNotifications = (value: boolean) => {
-    Haptics.selectionAsync();
-    const prev = notifEnabled;
-    setNotifEnabled(value); // optimistic
-    apiFetch('/api/user/notification-settings', {
-      method: 'PUT',
-      body: JSON.stringify({ enabled: value }),
-    }).catch(() => setNotifEnabled(prev)); // revert on failure
   };
 
   const [rendered, setRendered] = useState(visible);
@@ -381,37 +353,6 @@ export function DonationSidebar({ visible, onClose, onSignOut }: Props) {
             {/* Divider */}
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-            {/* Notifications toggle */}
-            {isSignedIn && (
-              <>
-                <View style={[styles.notifRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <Feather
-                    name={notifEnabled ? 'bell' : 'bell-off'}
-                    size={18}
-                    color={notifEnabled ? colors.primary : colors.mutedForeground}
-                  />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.notifTitle, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
-                      Notifications
-                    </Text>
-                    <Text style={[styles.notifSub, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                      {notifEnabled
-                        ? 'Price alerts are on'
-                        : 'Paused — alerts are kept but not sent'}
-                    </Text>
-                  </View>
-                  <Switch
-                    value={notifEnabled}
-                    onValueChange={toggleNotifications}
-                    disabled={!notifLoaded}
-                    trackColor={{ false: colors.muted, true: colors.primary }}
-                    thumbColor="#fff"
-                  />
-                </View>
-                <View style={[styles.divider, { backgroundColor: colors.border }]} />
-              </>
-            )}
-
             {/* American Mode unlock */}
             <View
               style={[
@@ -443,17 +384,6 @@ export function DonationSidebar({ visible, onClose, onSignOut }: Props) {
             </View>
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-            {/* Sign out */}
-            <TouchableOpacity
-              style={[styles.signOutBtn, { borderColor: colors.border }]}
-              onPress={onSignOut}
-              activeOpacity={0.7}
-            >
-              <Feather name="log-out" size={16} color={colors.mutedForeground} />
-              <Text style={[styles.signOutText, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
-                Sign out
-              </Text>
-            </TouchableOpacity>
           </ScrollView>
 
           {/* Celebratory thank-you shown when the user returns from a tip */}
@@ -568,16 +498,6 @@ const styles = StyleSheet.create({
   },
   notifTitle: { fontSize: 14 },
   notifSub: { fontSize: 12, marginTop: 2 },
-  signOutBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    height: 48,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  signOutText: { fontSize: 14 },
   celebOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',

@@ -8,9 +8,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_DOMAIN": "stock-analyzer-pro--npcommanderr.replit.app",
-        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuc3RvY2stYW5hbHl6ZXItcHJvLS1ucGNvbW1hbmRlcnIucmVwbGl0LmFwcCQ",
-        "EXPO_PUBLIC_CLERK_PROXY_URL": "https://stock-analyzer-pro--npcommanderr.replit.app/api/__clerk"
+        "EXPO_PUBLIC_DOMAIN": "stock-analyzer-pro--npcommanderr.replit.app"
       }
     },
     "production": {
@@ -18,9 +16,7 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_DOMAIN": "stock-analyzer-pro--npcommanderr.replit.app",
-        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuc3RvY2stYW5hbHl6ZXItcHJvLS1ucGNvbW1hbmRlcnIucmVwbGl0LmFwcCQ",
-        "EXPO_PUBLIC_CLERK_PROXY_URL": "https://stock-analyzer-pro--npcommanderr.replit.app/api/__clerk"
+        "EXPO_PUBLIC_DOMAIN": "stock-analyzer-pro--npcommanderr.replit.app"
       }
     }
   }
