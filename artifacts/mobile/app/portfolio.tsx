@@ -20,6 +20,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useApi } from '@/hooks/useApi';
 import * as Speech from 'expo-speech';
 import Constants from 'expo-constants';
@@ -36,6 +37,7 @@ import {
   type Quote,
   type Trade,
 } from '@/lib/portfolioMath';
+import { getTradeGradeFeedback } from '@/lib/tradeGradeFeedback';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -50,7 +52,7 @@ interface TradeGrade {
   profit: number;
   avgCost: number;
   compositeScore: number;
-  celebrate: boolean; // A- or better
+  celebrate: boolean; // A- or better gets the cinematic overlay
 }
 
 type PortfolioTab = 'positions' | 'trades';
@@ -262,6 +264,12 @@ function pickCompliment(grade: string): string {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+function feedbackHapticType(grade: string): Haptics.NotificationFeedbackType {
+  if (grade.startsWith('A') || grade.startsWith('B')) return Haptics.NotificationFeedbackType.Success;
+  if (grade.startsWith('C')) return Haptics.NotificationFeedbackType.Warning;
+  return Haptics.NotificationFeedbackType.Error;
+}
+
 // ─── Celebration Overlay ──────────────────────────────────────────────────────
 
 // Safety net: if anything inside the celebration throws while rendering, swallow
@@ -452,6 +460,106 @@ function CelebrationOverlay({
   );
 }
 
+function TradeFeedbackPopup({
+  gradeInfo,
+  onDismiss,
+  bottomInset,
+}: {
+  gradeInfo: TradeGrade;
+  onDismiss: () => void;
+  bottomInset: number;
+}) {
+  const feedback = getTradeGradeFeedback(gradeInfo.grade, gradeInfo.context);
+  const popupY = useRef(new Animated.Value(24)).current;
+  const popupOp = useRef(new Animated.Value(0)).current;
+  const bellRotate = useRef(new Animated.Value(0)).current;
+  const ringScale = useRef(new Animated.Value(0.65)).current;
+  const ringOp = useRef(new Animated.Value(0.85)).current;
+
+  useEffect(() => {
+    let dismissTimer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      Haptics.notificationAsync(feedbackHapticType(gradeInfo.grade)).catch(() => {});
+      Animated.parallel([
+        Animated.spring(popupY, { toValue: 0, tension: 70, friction: 9, useNativeDriver: true }),
+        Animated.timing(popupOp, { toValue: 1, duration: 220, useNativeDriver: true }),
+      ]).start();
+
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(bellRotate, { toValue: -1, duration: 90, useNativeDriver: true }),
+          Animated.timing(bellRotate, { toValue: 1, duration: 180, useNativeDriver: true }),
+          Animated.timing(bellRotate, { toValue: -0.65, duration: 140, useNativeDriver: true }),
+          Animated.timing(bellRotate, { toValue: 0, duration: 140, useNativeDriver: true }),
+          Animated.delay(900),
+        ]),
+        { iterations: 2 },
+      ).start();
+
+      Animated.parallel([
+        Animated.timing(ringScale, { toValue: 1.8, duration: 900, useNativeDriver: true }),
+        Animated.timing(ringOp, { toValue: 0, duration: 900, useNativeDriver: true }),
+      ]).start();
+
+      dismissTimer = setTimeout(() => {
+        Animated.timing(popupOp, { toValue: 0, duration: 250, useNativeDriver: true }).start(onDismiss);
+      }, 4800);
+    } catch (_) {
+      onDismiss();
+    }
+
+    return () => {
+      if (dismissTimer) clearTimeout(dismissTimer);
+    };
+  }, []);
+
+  const bellTilt = bellRotate.interpolate({
+    inputRange: [-1, 1],
+    outputRange: ['-16deg', '16deg'],
+  });
+
+  return (
+    <Animated.View
+      style={[
+        feedbackStyles.anchor,
+        { bottom: Math.max(bottomInset + 78, 92), opacity: popupOp, transform: [{ translateY: popupY }] },
+      ]}
+      pointerEvents="box-none"
+    >
+      <Pressable
+        onPress={onDismiss}
+        style={[feedbackStyles.card, { backgroundColor: gradeInfo.bgColor, borderColor: gradeInfo.color + '90' }]}
+      >
+        <View style={feedbackStyles.iconWrap}>
+          <Animated.View
+            style={[
+              feedbackStyles.ring,
+              { borderColor: gradeInfo.color, opacity: ringOp, transform: [{ scale: ringScale }] },
+            ]}
+          />
+          <Animated.View style={{ transform: [{ rotate: bellTilt }] }}>
+            <Feather name="bell" size={21} color={gradeInfo.color} />
+          </Animated.View>
+        </View>
+        <View style={feedbackStyles.copy}>
+          <View style={feedbackStyles.titleRow}>
+            <Text style={[feedbackStyles.eyebrow, { color: gradeInfo.color, fontFamily: 'Inter_600SemiBold' }]}>
+              TRADE GRADE
+            </Text>
+            <Text style={[feedbackStyles.grade, { color: gradeInfo.color, fontFamily: 'Inter_700Bold' }]}>
+              {gradeInfo.grade}
+            </Text>
+          </View>
+          <Text style={[feedbackStyles.headline, { color: gradeInfo.color, fontFamily: 'Inter_700Bold' }]}>
+            {feedback.headline}
+          </Text>
+          <Text style={feedbackStyles.note}>{feedback.guidance}</Text>
+        </View>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
 const celebStyles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
@@ -514,6 +622,52 @@ const celebStyles = StyleSheet.create({
   profitAmt: { fontSize: 28, fontFamily: 'Inter_700Bold', marginTop: 2 },
   profitPct: { fontSize: 13, color: 'rgba(192,192,192,0.65)', fontFamily: 'Inter_400Regular' },
   tapDismiss: { fontSize: 10, color: 'rgba(192,192,192,0.3)', fontFamily: 'Inter_400Regular', marginTop: 6 },
+});
+
+const feedbackStyles = StyleSheet.create({
+  anchor: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    zIndex: 998,
+    alignItems: 'center',
+  },
+  card: {
+    width: '100%',
+    maxWidth: 430,
+    minHeight: 82,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.4,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 14,
+  },
+  iconWrap: {
+    width: 42,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 11,
+  },
+  ring: {
+    position: 'absolute',
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1.5,
+  },
+  copy: { flex: 1, gap: 2 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  eyebrow: { fontSize: 9, letterSpacing: 1.1 },
+  grade: { fontSize: 20, lineHeight: 22 },
+  headline: { fontSize: 12, letterSpacing: 0.3 },
+  note: { color: 'rgba(255,255,255,0.72)', fontSize: 11, lineHeight: 15 },
 });
 
 // ─── Compact Position Row ─────────────────────────────────────────────────────
@@ -1135,8 +1289,10 @@ export default function PortfolioScreen() {
   const [defaultType, setDefaultType] = useState<'buy' | 'sell'>('buy');
   const [defaultSymbol, setDefaultSymbol] = useState<string | undefined>(undefined);
   const [celebration, setCelebration] = useState<TradeGrade | null>(null);
+  const [tradeFeedback, setTradeFeedback] = useState<TradeGrade | null>(null);
   const { apiFetch } = useApi();
   const tradesRef = useRef<Trade[]>([]);
+  const feedbackEventRef = useRef<string | null>(null);
 
   const topPad = Platform.OS === 'web' ? 16 : insets.top;
 
@@ -1248,11 +1404,17 @@ export default function PortfolioScreen() {
       const nextTrades = [...trades, newTrade];
       saveTrades(nextTrades);
 
-      // Trigger celebration for A- or better sell trades
+      // Only a newly-created sell produces feedback. Editing old trades must
+      // never replay a popup just because the portfolio rendered again.
       if (data.type === 'sell') {
         const grade = computeSellGrade(newTrade, nextTrades);
-        if (grade?.celebrate) {
-          setTimeout(() => setCelebration(grade), 600);
+        if (grade && feedbackEventRef.current !== newTrade.id) {
+          feedbackEventRef.current = newTrade.id;
+          if (grade.celebrate) {
+            setTimeout(() => setCelebration(grade), 600);
+          } else {
+            setTimeout(() => setTradeFeedback(grade), 250);
+          }
         }
       }
     }
@@ -1412,6 +1574,13 @@ export default function PortfolioScreen() {
         <CelebrationBoundary onError={() => setCelebration(null)}>
           <CelebrationOverlay gradeInfo={celebration} onDismiss={() => setCelebration(null)} />
         </CelebrationBoundary>
+      )}
+      {tradeFeedback && (
+        <TradeFeedbackPopup
+          gradeInfo={tradeFeedback}
+          bottomInset={insets.bottom}
+          onDismiss={() => setTradeFeedback(null)}
+        />
       )}
     </View>
   );
