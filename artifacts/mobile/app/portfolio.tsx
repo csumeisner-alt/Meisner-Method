@@ -227,9 +227,9 @@ function computeSellGrade(sellTrade: Trade, allTrades: Trade[]): TradeGrade | nu
 
   // Grade mapping
   let grade: string, color: string, bgColor: string, label: string;
-  if      (compositeScore >= 75)  { grade = 'A+'; color = '#00e5a0'; bgColor = '#001a12'; label = 'Market Genius' }
-  else if (compositeScore >= 50)  { grade = 'A';  color = '#00e5a0'; bgColor = '#001a12'; label = 'Excellent Trade' }
-  else if (compositeScore >= 30)  { grade = 'A-'; color = '#00e5a0'; bgColor = '#001a12'; label = 'Great Trade' }
+  if      (compositeScore >= 65)  { grade = 'A+'; color = '#00e5a0'; bgColor = '#001a12'; label = 'Market Genius' }
+  else if (compositeScore >= 45)  { grade = 'A';  color = '#00e5a0'; bgColor = '#001a12'; label = 'Excellent Trade' }
+  else if (compositeScore >= 25)  { grade = 'A-'; color = '#00e5a0'; bgColor = '#001a12'; label = 'Great Trade' }
   else if (compositeScore >= 18)  { grade = 'B+'; color = '#4ade80'; bgColor = '#0a1a0e'; label = 'Solid Profit' }
   else if (compositeScore >= 10)  { grade = 'B';  color = '#4ade80'; bgColor = '#0a1a0e'; label = 'Good Trade' }
   else if (compositeScore >= 4)   { grade = 'B-'; color = '#86efac'; bgColor = '#0a1a0e'; label = 'Decent Trade' }
