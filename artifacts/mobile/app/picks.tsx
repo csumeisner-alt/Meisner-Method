@@ -8,6 +8,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
 import { BottomTabBar } from '@/components/BottomTabBar';
+import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
+import { useAmericanMode } from '@/contexts/AmericanModeContext';
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
@@ -72,6 +74,7 @@ const badgeStyles = StyleSheet.create({
 
 export default function PicksScreen() {
   const colors = useColors();
+  const { isActive } = useAmericanMode();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [picks, setPicks] = useState<Pick[]>([]);
@@ -114,14 +117,14 @@ export default function PicksScreen() {
     : null;
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <AmericanSteelBackground>
       {/* Header */}
       <View style={[styles.header, { paddingTop: topPad + 12 }]}>
         <View style={styles.headerRow}>
           <View>
             <View style={styles.titleRow}>
               <Feather name="star" size={15} color={colors.primary} />
-              <Text style={[styles.title, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+              <Text style={[styles.title, { color: colors.heading, fontFamily: 'Inter_700Bold' }]}>
                 TOP PICKS
               </Text>
             </View>
@@ -191,7 +194,10 @@ export default function PicksScreen() {
             return (
               <TouchableOpacity
                 key={pick.symbol}
-                style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
+                style={[styles.card, {
+                  backgroundColor: colors.card,
+                  borderColor: isActive ? colors.gold : colors.border,
+                }]}
                 onPress={() => openPick(pick)}
                 activeOpacity={0.75}
               >
@@ -283,7 +289,7 @@ export default function PicksScreen() {
       )}
 
       <BottomTabBar />
-    </View>
+    </AmericanSteelBackground>
   );
 }
 

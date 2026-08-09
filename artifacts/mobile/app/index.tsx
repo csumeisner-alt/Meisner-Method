@@ -28,6 +28,7 @@ import { useAmericanMode } from '@/contexts/AmericanModeContext';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { DraggableWatchlist } from '@/components/DraggableWatchlist';
+import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { matchesFilter, mergeReorderedSubset } from '@/lib/watchlistFilter';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -499,7 +500,7 @@ export default function HomeScreen() {
   const activeAlert = alertModalSymbol ? watchlist.activeAlertFor(alertModalSymbol) : null;
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <AmericanSteelBackground>
       {/* Tip Modal */}
       <Modal transparent animationType="fade" visible={tipVisible} onRequestClose={() => setTipVisible(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setTipVisible(false)}>
@@ -566,7 +567,7 @@ export default function HomeScreen() {
           <TouchableOpacity style={[styles.brandRow, { flex: 1 }]} onPress={showTip} activeOpacity={0.75}>
             <MMLogo size={44} />
             <View style={styles.brandText}>
-              <Text style={[styles.brandName, { color: colors.foreground, fontFamily: 'Inter_700Bold', letterSpacing: 0.8 }]}>
+              <Text style={[styles.brandName, { color: colors.heading, fontFamily: 'Inter_700Bold', letterSpacing: 0.8 }]}>
                 Meisner Method{isActive ? ' 🇺🇸' : ''}
               </Text>
               <Text style={[styles.tagline, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
@@ -800,7 +801,13 @@ export default function HomeScreen() {
                 return (
                   <TouchableOpacity
                     key={t.symbol}
-                    style={[styles.tickerCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    style={[styles.tickerCard, {
+                      backgroundColor: colors.card,
+                      borderColor: isActive ? colors.gold : colors.border,
+                      shadowColor: isActive ? colors.gold : '#000',
+                      shadowOpacity: isActive ? 0.18 : 0,
+                      shadowRadius: isActive ? 8 : 0,
+                    }]}
                     onPress={() => navigateTo(t.symbol)}
                     activeOpacity={0.75}
                   >
@@ -810,7 +817,7 @@ export default function HomeScreen() {
                         {formatPct(t.priceChangePercent)}
                       </Text>
                     </View>
-                    <Text style={[styles.tickerSymbol, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+                    <Text style={[styles.tickerSymbol, { color: colors.heading, fontFamily: 'Inter_700Bold' }]}>
                       {t.symbol}
                     </Text>
                     <Text style={[styles.tickerName, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]} numberOfLines={1}>
@@ -837,7 +844,7 @@ export default function HomeScreen() {
         visible={settingsOpen}
         onClose={() => setSettingsOpen(false)}
       />
-    </View>
+    </AmericanSteelBackground>
   );
 }
 

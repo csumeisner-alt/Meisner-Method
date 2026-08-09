@@ -16,12 +16,15 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '@/hooks/useColors';
 import { useApi } from '@/hooks/useApi';
+import { useAmericanMode } from '@/contexts/AmericanModeContext';
 import { useAnalyzeStock } from '@workspace/api-client-react';
 import type { StockAnalysis } from '@workspace/api-client-react';
 import { ComparisonChart } from '@/components/ComparisonChart';
 import type { Candle } from '@/components/StockChart';
+import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -171,6 +174,7 @@ export default function AnalysisScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const colors = useColors();
+  const { isActive } = useAmericanMode();
   const { width: screenWidth } = useWindowDimensions();
   const { apiFetch } = useApi();
   const { mutate, data, isPending, error } = useAnalyzeStock<Error>();
@@ -217,6 +221,17 @@ export default function AnalysisScreen() {
   const [compSymbol, setCompSymbol]           = useState('');       // committed symbol
   const [compCandles, setCompCandles]         = useState<Candle[]>([]);
   const [compLoading, setCompLoading]         = useState(false);
+  const tickerGlow = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!isActive) return;
+    tickerGlow.setValue(0);
+    Animated.sequence([
+      Animated.timing(tickerGlow, { toValue: 1, duration: 260, useNativeDriver: true }),
+      Animated.delay(420),
+      Animated.timing(tickerGlow, { toValue: 0, duration: 620, useNativeDriver: true }),
+    ]).start();
+  }, [isActive, symbol, tickerGlow]);
 
   // Load pinned comparison symbol from storage on first mount
   useEffect(() => {
@@ -313,7 +328,17 @@ export default function AnalysisScreen() {
             <Feather name="chevron-left" size={26} color={colors.foreground} />
           </TouchableOpacity>
           <View style={headerStyles.center}>
-            <Text style={[headerStyles.symbol, { color: colors.foreground, fontFamily: 'Inter_700Bold', letterSpacing: 1 }]}>
+            {isActive && (
+              <Animated.View pointerEvents="none" style={[headerStyles.flagGlow, { opacity: tickerGlow }]}>
+                <LinearGradient
+                  colors={['#B22234', '#FFFFFF', '#3C3B6E']}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={StyleSheet.absoluteFill}
+                />
+              </Animated.View>
+            )}
+            <Text style={[headerStyles.symbol, { color: colors.heading, fontFamily: 'Inter_700Bold', letterSpacing: 1 }]}>
               {symbol}
             </Text>
             {analysis && (
@@ -358,7 +383,8 @@ export default function AnalysisScreen() {
   // ─── Loading ──────────────────────────────────────────────────────────────
   if (isPending) {
     return (
-      <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      <AmericanSteelBackground>
+        <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
         {renderHeader()}
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.primary} />
@@ -369,7 +395,8 @@ export default function AnalysisScreen() {
             Fetching market data & running AI models
           </Text>
         </View>
-      </View>
+        </View>
+      </AmericanSteelBackground>
     );
   }
 
@@ -377,7 +404,8 @@ export default function AnalysisScreen() {
   if (error || !data) {
     const errMsg = (error as any)?.response?.data?.message ?? error?.message ?? 'Could not load analysis.';
     return (
-      <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      <AmericanSteelBackground>
+        <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
         {renderHeader()}
         <View style={styles.centered}>
           <Ionicons name="alert-circle-outline" size={48} color={colors.sellColor} />
@@ -397,7 +425,8 @@ export default function AnalysisScreen() {
             </Text>
           </TouchableOpacity>
         </View>
-      </View>
+        </View>
+      </AmericanSteelBackground>
     );
   }
 
@@ -406,7 +435,8 @@ export default function AnalysisScreen() {
   const action = recommendation.action;
 
   return (
-    <View style={[styles.screen, { backgroundColor: colors.background }]}>
+    <AmericanSteelBackground>
+      <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
       {renderHeader(data)}
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: botPad + 24 }]}
@@ -710,7 +740,8 @@ export default function AnalysisScreen() {
           For informational purposes only. Not financial advice.
         </Text>
       </ScrollView>
-    </View>
+      </View>
+    </AmericanSteelBackground>
   );
 }
 
@@ -734,6 +765,15 @@ const headerStyles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, gap: 8 },
   back: { padding: 4 },
   center: { flex: 1 },
+  flagGlow: {
+    position: 'absolute',
+    left: -10,
+    right: -10,
+    top: -5,
+    bottom: -5,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
   symbol: { fontSize: 20 },
   company: { fontSize: 12 },
   starBtn: { padding: 6 },

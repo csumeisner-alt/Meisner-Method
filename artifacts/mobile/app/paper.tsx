@@ -25,6 +25,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { MMLogo } from '@/components/MMLogo';
 import { BottomTabBar } from '@/components/BottomTabBar';
+import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
+import { useColors } from '@/hooks/useColors';
 import {
   AllocationBar,
   DividendBarChart,
@@ -183,6 +185,7 @@ function defaultAccounts(): PaperAccount[] {
 
 // ── Main Screen ────────────────────────────────────────────────────────────
 export default function PaperScreen() {
+  const colors = useColors();
   const insets = useSafeAreaInsets();
 
   // Persisted state
@@ -1194,15 +1197,18 @@ export default function PaperScreen() {
   // ── Render ────────────────────────────────────────────────────────────────
   if (!loaded) {
     return (
-      <SafeAreaView style={styles.screen}>
+      <AmericanSteelBackground>
+        <SafeAreaView style={[styles.screen, { backgroundColor: 'transparent' }]}>
         <ActivityIndicator color={SILVER} size="large" style={{ flex: 1 }} />
-      </SafeAreaView>
+        </SafeAreaView>
+      </AmericanSteelBackground>
     );
   }
 
   if (errorMsg) {
     return (
-      <SafeAreaView style={styles.screen}>
+      <AmericanSteelBackground>
+        <SafeAreaView style={[styles.screen, { backgroundColor: 'transparent' }]}>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
           <Text style={{ color: SILVER, fontSize: 15, textAlign: 'center', marginBottom: 20 }}>{errorMsg}</Text>
           <TouchableOpacity
@@ -1213,16 +1219,18 @@ export default function PaperScreen() {
             <Text style={{ color: '#000', fontFamily: 'Inter_600SemiBold', fontSize: 15 }}>Try again</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+        </SafeAreaView>
+      </AmericanSteelBackground>
     );
   }
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <AmericanSteelBackground>
+    <SafeAreaView style={[styles.screen, { backgroundColor: 'transparent' }]}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: Platform.OS === 'android' ? insets.top + 8 : 0 }]}>
         <MMLogo size={36} />
-        <Text style={styles.headerTitle}>PAPER TRADE</Text>
+        <Text style={[styles.headerTitle, { color: colors.heading }]}>PAPER TRADE</Text>
         <View style={{ flex: 1 }} />
         <Text style={styles.headerSub}>Risk-free · $100k start</Text>
       </View>
@@ -1481,6 +1489,7 @@ export default function PaperScreen() {
         />
       )}
     </SafeAreaView>
+    </AmericanSteelBackground>
   );
 }
 

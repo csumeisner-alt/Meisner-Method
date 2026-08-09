@@ -26,6 +26,7 @@ import * as Speech from 'expo-speech';
 import Constants from 'expo-constants';
 import { useColors } from '@/hooks/useColors';
 import { BottomTabBar } from '@/components/BottomTabBar';
+import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { PortfolioFilterBar } from '@/components/PortfolioFilterBar';
 import {
   availableToSell,
@@ -1440,11 +1441,11 @@ export default function PortfolioScreen() {
   const isEmpty = trades.length === 0;
 
   return (
-    <View style={[mainStyles.container, { backgroundColor: colors.background }]}>
+    <AmericanSteelBackground>
       {/* Header */}
       <View style={[mainStyles.header, { paddingTop: topPad + 10, borderBottomColor: colors.border }]}>
         <View style={mainStyles.headerRow}>
-          <Text style={[mainStyles.title, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>PORTFOLIO</Text>
+          <Text style={[mainStyles.title, { color: colors.heading, fontFamily: 'Inter_700Bold' }]}>PORTFOLIO</Text>
           <View style={mainStyles.headerRight}>
             <TouchableOpacity style={mainStyles.iconBtn} onPress={onRefresh} disabled={loadingQuotes || isEmpty} activeOpacity={0.7}>
               {loadingQuotes ? <ActivityIndicator size="small" color={colors.primary} />
@@ -1582,7 +1583,7 @@ export default function PortfolioScreen() {
           onDismiss={() => setTradeFeedback(null)}
         />
       )}
-    </View>
+    </AmericanSteelBackground>
   );
 }
 

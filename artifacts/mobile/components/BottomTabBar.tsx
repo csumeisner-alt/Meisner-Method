@@ -3,13 +3,10 @@ import { View, TouchableOpacity, Text, StyleSheet, Platform } from 'react-native
 import { usePathname, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-
-const SILVER = '#e0e0e0';
-const SILVER_DIM = 'rgba(200,200,200,0.55)';
-const BG = '#000000';
-const BORDER = 'rgba(192,192,192,0.32)';
+import { useColors } from '@/hooks/useColors';
 
 export function BottomTabBar() {
+  const colors = useColors();
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
@@ -26,35 +23,35 @@ export function BottomTabBar() {
   }
 
   return (
-    <View style={[styles.bar, { paddingBottom: botPad, borderTopColor: BORDER, backgroundColor: BG }]}>
+    <View style={[styles.bar, { paddingBottom: botPad, borderTopColor: colors.border, backgroundColor: colors.background }]}>
       <TouchableOpacity style={styles.tab} onPress={() => go('/')} activeOpacity={0.7}>
-        <Feather name="search" size={24} color={isHome ? SILVER : SILVER_DIM} />
-        <Text style={[styles.label, { color: isHome ? SILVER : SILVER_DIM }]}>ANALYZE</Text>
-        {isHome && <View style={styles.dot} />}
+        <Feather name="search" size={24} color={isHome ? colors.heading : colors.mutedForeground} />
+        <Text style={[styles.label, { color: isHome ? colors.heading : colors.mutedForeground }]}>ANALYZE</Text>
+        {isHome && <View style={[styles.dot, { backgroundColor: colors.heading }]} />}
       </TouchableOpacity>
 
       <View style={styles.divider} />
 
       <TouchableOpacity style={styles.tab} onPress={() => go('/picks')} activeOpacity={0.7}>
-        <Feather name="star" size={24} color={isPicks ? SILVER : SILVER_DIM} />
-        <Text style={[styles.label, { color: isPicks ? SILVER : SILVER_DIM }]}>TOP PICKS</Text>
-        {isPicks && <View style={styles.dot} />}
+        <Feather name="star" size={24} color={isPicks ? colors.heading : colors.mutedForeground} />
+        <Text style={[styles.label, { color: isPicks ? colors.heading : colors.mutedForeground }]}>TOP PICKS</Text>
+        {isPicks && <View style={[styles.dot, { backgroundColor: colors.heading }]} />}
       </TouchableOpacity>
 
       <View style={styles.divider} />
 
       <TouchableOpacity style={styles.tab} onPress={() => go('/paper')} activeOpacity={0.7}>
-        <Feather name="activity" size={24} color={isPaper ? SILVER : SILVER_DIM} />
-        <Text style={[styles.label, { color: isPaper ? SILVER : SILVER_DIM }]}>PAPER</Text>
-        {isPaper && <View style={styles.dot} />}
+        <Feather name="activity" size={24} color={isPaper ? colors.heading : colors.mutedForeground} />
+        <Text style={[styles.label, { color: isPaper ? colors.heading : colors.mutedForeground }]}>PAPER</Text>
+        {isPaper && <View style={[styles.dot, { backgroundColor: colors.heading }]} />}
       </TouchableOpacity>
 
       <View style={styles.divider} />
 
       <TouchableOpacity style={styles.tab} onPress={() => go('/portfolio')} activeOpacity={0.7}>
-        <Feather name="briefcase" size={24} color={isPortfolio ? SILVER : SILVER_DIM} />
-        <Text style={[styles.label, { color: isPortfolio ? SILVER : SILVER_DIM }]}>PORTFOLIO</Text>
-        {isPortfolio && <View style={styles.dot} />}
+        <Feather name="briefcase" size={24} color={isPortfolio ? colors.heading : colors.mutedForeground} />
+        <Text style={[styles.label, { color: isPortfolio ? colors.heading : colors.mutedForeground }]}>PORTFOLIO</Text>
+        {isPortfolio && <View style={[styles.dot, { backgroundColor: colors.heading }]} />}
       </TouchableOpacity>
     </View>
   );
@@ -86,7 +83,6 @@ const styles = StyleSheet.create({
     width: 4,
     height: 4,
     borderRadius: 2,
-    backgroundColor: SILVER,
     marginTop: 1,
   },
 });
