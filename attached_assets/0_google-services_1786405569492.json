@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "95054042989",
+    "project_id": "meisnermethod",
+    "storage_bucket": "meisnermethod.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:95054042989:android:8478626613f5ba53fa6c64",
+        "android_client_info": {
+          "package_name": "com.meisnermethod.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCE7EIiXf71o7YuJjaCe87tiTCi-sR-LeE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

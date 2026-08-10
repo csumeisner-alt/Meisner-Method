@@ -20,7 +20,8 @@
     },
     "android": {
       "package": "com.meisnermethod.app",
-      "versionCode": 7
+      "versionCode": 7,
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/images/icon.png"

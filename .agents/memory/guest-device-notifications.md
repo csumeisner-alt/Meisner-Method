@@ -14,3 +14,9 @@ Registration failures must preserve the concrete token/configuration/API error i
 **Why:** A granted Android permission does not guarantee that Expo returned a token or that the token was accepted by the anonymous registration endpoint; hiding that distinction made “Try Again” impossible to diagnose.
 
 **How to apply:** Validate the project ID and token before POSTing, require `{ ok: true }`, and render the returned error detail in the alert modal.
+
+Android remote push also requires the Firebase client configuration to be bundled into the native app via Expo's `android.googleServicesFile`; a JavaScript bundle refresh cannot add this native initialization to an already-installed APK.
+
+**Why:** Without the Firebase Android app registration for the exact package, `getExpoPushTokenAsync()` fails with “Default FirebaseApp is not initialized” before the API registration request runs.
+
+**How to apply:** Keep the package registration and `google-services.json` in the mobile artifact, validate their package names match, and require a new native Android build before testing remote notifications.
