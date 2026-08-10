@@ -1,70 +1,107 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import Svg, { Defs, LinearGradient, Stop, Text as SvgText, Filter, FeDropShadow } from 'react-native-svg';
+import Svg, { Defs, LinearGradient, Stop, Text as SvgText, Rect, Circle } from 'react-native-svg';
 
 interface MMLogoProps {
   size?: number;
 }
 
 export function MMLogo({ size = 60 }: MMLogoProps) {
-  const topM = size * 0.48;
-  const bottomM = size * 0.56;
-  const totalHeight = topM + bottomM * 0.72; // overlap
-  const width = size * 1.1;
+  const width = size;
+  const totalHeight = size;
+  const inset = size * 0.08;
+  const corner = size * 0.18;
 
   return (
     <View style={[styles.container, { width, height: totalHeight }]}>
       <Svg width={width} height={totalHeight} viewBox={`0 0 ${width} ${totalHeight}`}>
         <Defs>
-          {/* Main silver metallic gradient — vertical sweep */}
-          <LinearGradient id="silverMain" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0%" stopColor="#e8e8e8" stopOpacity="1" />
-            <Stop offset="18%" stopColor="#ffffff" stopOpacity="1" />
-            <Stop offset="35%" stopColor="#c0c0c0" stopOpacity="1" />
-            <Stop offset="52%" stopColor="#8a8a8a" stopOpacity="1" />
-            <Stop offset="68%" stopColor="#d4d4d4" stopOpacity="1" />
-            <Stop offset="82%" stopColor="#ffffff" stopOpacity="1" />
-            <Stop offset="100%" stopColor="#9a9a9a" stopOpacity="1" />
+          <LinearGradient id="goldMain" x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0%" stopColor="#fff1a8" />
+            <Stop offset="22%" stopColor="#d99a22" />
+            <Stop offset="48%" stopColor="#fff0a1" />
+            <Stop offset="68%" stopColor="#a85f0b" />
+            <Stop offset="100%" stopColor="#f5c64e" />
           </LinearGradient>
-
-          {/* Darker silver for the bottom (shadow) M */}
-          <LinearGradient id="silverDark" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0%" stopColor="#c8c8c8" stopOpacity="1" />
-            <Stop offset="20%" stopColor="#ebebeb" stopOpacity="1" />
-            <Stop offset="40%" stopColor="#a0a0a0" stopOpacity="1" />
-            <Stop offset="60%" stopColor="#686868" stopOpacity="1" />
-            <Stop offset="80%" stopColor="#b8b8b8" stopOpacity="1" />
-            <Stop offset="100%" stopColor="#787878" stopOpacity="1" />
+          <LinearGradient id="goldShadow" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0%" stopColor="#b86b0d" />
+            <Stop offset="42%" stopColor="#ffe889" />
+            <Stop offset="70%" stopColor="#8b4c08" />
+            <Stop offset="100%" stopColor="#e6a92c" />
           </LinearGradient>
         </Defs>
 
-        {/* Bottom (larger) M — rendered first so top M overlaps */}
+        {/* Deep black plaque and double gold frame. The inset protects the border
+            from launcher masks and keeps the in-app mark readable at small sizes. */}
+        <Rect x="0" y="0" width={width} height={totalHeight} rx={corner} fill="#050403" />
+        <Rect
+          x={inset}
+          y={inset}
+          width={width - inset * 2}
+          height={totalHeight - inset * 2}
+          rx={corner * 0.72}
+          fill="none"
+          stroke="#8b5009"
+          strokeWidth={size * 0.055}
+        />
+        <Rect
+          x={inset + size * 0.018}
+          y={inset + size * 0.018}
+          width={width - (inset + size * 0.018) * 2}
+          height={totalHeight - (inset + size * 0.018) * 2}
+          rx={corner * 0.62}
+          fill="none"
+          stroke="url(#goldMain)"
+          strokeWidth={size * 0.018}
+        />
+        <Circle
+          cx={width / 2}
+          cy={totalHeight * 0.49}
+          r={size * 0.34}
+          fill="none"
+          stroke="#8b5009"
+          strokeWidth={size * 0.012}
+          opacity={0.8}
+        />
+
+        {/* Bottom M renders first so the compact stacked monogram has depth. */}
         <SvgText
           x={width / 2}
-          y={totalHeight}
+          y={totalHeight * 0.76}
           textAnchor="middle"
-          fontSize={bottomM}
+          fontSize={size * 0.48}
           fontWeight="900"
-          fontFamily="Arial Black, Arial, sans-serif"
-          fill="url(#silverDark)"
-          letterSpacing={-2}
+          fontFamily="Georgia, Times New Roman, serif"
+          fill="url(#goldShadow)"
+          stroke="#6d3e07"
+          strokeWidth={size * 0.008}
+          letterSpacing={-size * 0.04}
         >
           M
         </SvgText>
 
-        {/* Top (smaller) M */}
+        {/* Top M overlaps the bottom M, matching the reference mark. */}
         <SvgText
           x={width / 2}
-          y={topM * 0.92}
+          y={totalHeight * 0.51}
           textAnchor="middle"
-          fontSize={topM}
+          fontSize={size * 0.42}
           fontWeight="900"
-          fontFamily="Arial Black, Arial, sans-serif"
-          fill="url(#silverMain)"
-          letterSpacing={-2}
+          fontFamily="Georgia, Times New Roman, serif"
+          fill="url(#goldMain)"
+          stroke="#7a4307"
+          strokeWidth={size * 0.007}
+          letterSpacing={-size * 0.04}
         >
           M
         </SvgText>
+
+        <Circle
+          cx={width / 2}
+          cy={totalHeight * 0.62}
+          r={size * 0.025}
+          fill="#fff2a2"
+        />
       </Svg>
     </View>
   );
