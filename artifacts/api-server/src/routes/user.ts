@@ -374,10 +374,14 @@ router.put("/user/paper/accounts/:id", requireAuth, async (req: any, res) => {
 
 router.delete("/user/paper/accounts/:id", requireAuth, async (req: any, res) => {
   try {
-    await pool.query("DELETE FROM paper_accounts WHERE id=$1 AND user_id=$2", [req.params.id, req.userId]);
-    // Cascade clean positions and transactions for this account
+    // Remove dependent paper records first. These tables intentionally use
+    // explicit cleanup so deleting an account cannot leave pending orders or
+    // FIFO lots that reappear on a later sync.
+    await pool.query("DELETE FROM paper_orders WHERE account_id=$1 AND user_id=$2", [req.params.id, req.userId]);
+    await pool.query("DELETE FROM paper_lots WHERE account_id=$1 AND user_id=$2", [req.params.id, req.userId]);
     await pool.query("DELETE FROM paper_positions WHERE account_id=$1 AND user_id=$2", [req.params.id, req.userId]);
     await pool.query("DELETE FROM paper_transactions WHERE account_id=$1 AND user_id=$2", [req.params.id, req.userId]);
+    await pool.query("DELETE FROM paper_accounts WHERE id=$1 AND user_id=$2", [req.params.id, req.userId]);
     res.json({ ok: true });
   } catch (e: any) {
     res.status(500).json({ error: e.message });

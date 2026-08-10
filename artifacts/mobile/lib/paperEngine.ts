@@ -49,6 +49,21 @@ export function applySlippage(
   return Math.max(0.01, price * (1 + sign * pct));
 }
 
+/**
+ * Apply slippage without violating a limit price. A limit buy cannot fill
+ * above its limit and a limit sell cannot fill below its limit, including
+ * when the quote crossed the trigger by only a small amount.
+ */
+export function applyOrderSlippage(order: PaperOrder, marketPrice: number): number {
+  const slipped = applySlippage(marketPrice, order.shares, order.side);
+  if ((order.orderType === 'limit' || order.orderType === 'stop_limit') && order.limitPrice != null) {
+    return order.side === 'buy'
+      ? Math.min(slipped, order.limitPrice)
+      : Math.max(slipped, order.limitPrice);
+  }
+  return slipped;
+}
+
 // ── Order evaluation ──────────────────────────────────────────────────────
 export type EvaluateResult =
   | { shouldFill: false; updatedTrailRef?: number }
@@ -132,6 +147,8 @@ export function evaluateOrder(
 export type FifoSellResult = {
   /** Realised P&L computed lot-by-lot on FIFO basis. */
   realizedPnL: number;
+  /** Fund fee computed from each consumed lot, when metadata is provided. */
+  fee: number;
   /** Lot array after consuming the sold shares (oldest lots first). */
   updatedLots: PaperLot[];
 };
@@ -148,6 +165,8 @@ export function fifoSell(
   symbol: string,
   sharesSold: number,
   fillPrice: number,
+  expenseRatio?: number,
+  soldAt?: string,
 ): FifoSellResult {
   // Split by symbol / account for isolation
   const matching = lots
@@ -157,6 +176,7 @@ export function fifoSell(
 
   let remaining = sharesSold;
   let realizedPnL = 0;
+  let fee = 0;
   const updatedMatching: PaperLot[] = [];
 
   for (const lot of matching) {
@@ -166,6 +186,9 @@ export function fifoSell(
     }
     const consumed = Math.min(lot.shares, remaining);
     realizedPnL += consumed * (fillPrice - lot.cost);
+    if (soldAt) {
+      fee += fundFee(consumed * lot.cost, expenseRatio, lot.purchasedAt, soldAt);
+    }
     remaining -= consumed;
     const leftover = lot.shares - consumed;
     if (leftover > 0.0001) {
@@ -173,7 +196,7 @@ export function fifoSell(
     }
   }
 
-  return { realizedPnL, updatedLots: [...others, ...updatedMatching] };
+  return { realizedPnL, fee, updatedLots: [...others, ...updatedMatching] };
 }
 
 // ── T+2 settlement ────────────────────────────────────────────────────────
@@ -296,26 +319,63 @@ export function checkRisk(args: {
   shares: number;
   orderType: PaperOrder['orderType'];
   limitPrice?: number;
+  stopPrice?: number;
+  trailPct?: number;
+  trailAbs?: number;
   symbol: string;
   currentPrice: number;
   account: PaperAccount;
   accountPositions: PaperPosition[];
   quotes: Record<string, Pick<LiveQuote, 'price'>>;
+  /** Pending orders already committed by this account. */
+  pendingOrders?: PaperOrder[];
+  /** Exclude this order while editing it, so it is not double-counted. */
+  excludeOrderId?: string;
 }): string | null {
   const {
-    side, shares, orderType, limitPrice,
+    side, shares, orderType, limitPrice, stopPrice, trailPct, trailAbs,
     symbol, currentPrice,
-    account, accountPositions, quotes,
+    account, accountPositions, quotes, pendingOrders = [], excludeOrderId,
   } = args;
 
+  if (!Number.isFinite(shares) || shares <= 0) {
+    return 'Enter a positive number of shares.';
+  }
+  if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
+    return 'A valid live price is required.';
+  }
+
   // Estimate worst-case cost / proceeds for the risk check
-  const estimatedPrice =
-    orderType === 'limit' && limitPrice ? limitPrice : currentPrice;
+  const estimatedPrice = orderType === 'limit' && limitPrice
+    ? limitPrice
+    : orderType === 'stop' && stopPrice
+      ? stopPrice
+      : orderType === 'stop_limit' && stopPrice && limitPrice
+        ? Math.max(stopPrice, limitPrice)
+        : orderType === 'trailing_stop' && trailPct
+          ? currentPrice * (1 + trailPct / 100)
+          : orderType === 'trailing_stop' && trailAbs
+            ? currentPrice + trailAbs
+            : currentPrice;
+  if (!Number.isFinite(estimatedPrice) || estimatedPrice <= 0) {
+    return 'Enter a valid order price.';
+  }
+
+  const activePending = pendingOrders.filter(
+    o => o.status === 'pending' && o.id !== excludeOrderId && o.accountId === account.id,
+  );
+  const pendingBuyCost = activePending
+    .filter(o => o.side === 'buy')
+    .reduce((sum, o) => {
+      const orderPrice = pendingOrderPrice(o, currentPrice);
+      return sum + (Number.isFinite(orderPrice) && orderPrice > 0 ? o.shares * orderPrice : 0);
+    }, 0);
 
   if (side === 'buy') {
     const cost = shares * estimatedPrice;
-    if (cost > account.cash) {
-      return `Insufficient buying power. Need ${fmt(cost)}, have ${fmt(account.cash)}.`;
+    const availableCash = account.cash - pendingBuyCost;
+    if (cost > availableCash) {
+      return `Insufficient buying power. Need ${fmt(cost)}, but ${fmt(pendingBuyCost)} is already committed to pending buys.`;
     }
     // Max position size: 40 % of total portfolio value
     const portfolioValue =
@@ -329,18 +389,44 @@ export function checkRisk(args: {
     const existingValue = existingPos
       ? existingPos.shares * (quotes[symbol]?.price ?? existingPos.avgCost)
       : 0;
-    const newPositionValue = existingValue + cost;
-    if (portfolioValue > 0 && newPositionValue / portfolioValue > MAX_POSITION_FRACTION) {
-      const pct = ((newPositionValue / portfolioValue) * 100).toFixed(0);
+    const pendingSymbolValue = activePending
+      .filter(o => o.side === 'buy' && o.symbol === symbol)
+      .reduce((sum, o) => {
+        const orderPrice = pendingOrderPrice(o, quotes[symbol]?.price ?? currentPrice);
+        return sum + (Number.isFinite(orderPrice) && orderPrice > 0 ? o.shares * orderPrice : 0);
+      }, 0);
+    const newPositionValue = existingValue + pendingSymbolValue + cost;
+    const postTradeValue = portfolioValue + cost;
+    if (postTradeValue > 0 && newPositionValue / postTradeValue > MAX_POSITION_FRACTION) {
+      const pct = ((newPositionValue / postTradeValue) * 100).toFixed(0);
       return `This would put ${pct}% of your portfolio in ${symbol} (max 40%).`;
     }
   } else {
     const pos = accountPositions.find(p => p.symbol === symbol);
-    if (!pos || pos.shares < shares) {
-      return `You only hold ${pos?.shares ?? 0} shares of ${symbol}.`;
+    const reservedShares = activePending
+      .filter(o => o.side === 'sell' && o.symbol === symbol)
+      .reduce((sum, o) => sum + o.shares, 0);
+    const availableShares = (pos?.shares ?? 0) - reservedShares;
+    if (!pos || availableShares < shares) {
+      return `You only hold ${Math.max(0, availableShares)} shares of ${symbol} available after pending sells.`;
     }
   }
   return null;
+}
+
+function pendingOrderPrice(order: PaperOrder, fallbackPrice: number): number {
+  if (order.orderType === 'limit' && order.limitPrice) return order.limitPrice;
+  if (order.orderType === 'stop' && order.stopPrice) return order.stopPrice;
+  if (order.orderType === 'stop_limit' && order.stopPrice && order.limitPrice) {
+    return Math.max(order.stopPrice, order.limitPrice);
+  }
+  if (order.orderType === 'trailing_stop' && order.trailPct) {
+    return fallbackPrice * (1 + order.trailPct / 100);
+  }
+  if (order.orderType === 'trailing_stop' && order.trailAbs) {
+    return fallbackPrice + order.trailAbs;
+  }
+  return fallbackPrice;
 }
 
 function fmt(n: number) {
@@ -378,6 +464,14 @@ export function fillOrder(args: {
   const { order, fillPrice, filledAt, account, positions, lots, uid } = args;
   const { accountId, symbol, companyName, shares, side } = order;
 
+  if (
+    !Number.isFinite(shares) || shares <= 0 ||
+    !Number.isFinite(fillPrice) || fillPrice <= 0 ||
+    !filledAt || Number.isNaN(new Date(filledAt).getTime())
+  ) {
+    return { ok: false, reason: 'Order contains invalid shares, price, or fill time.' };
+  }
+
   let updatedAccount = { ...account };
   let updatedPositions = [...positions];
   let updatedLots = [...lots];
@@ -402,7 +496,17 @@ export function fillOrder(args: {
       const totalShares = existing.shares + shares;
       const newAvg = (existing.shares * existing.avgCost + shares * fillPrice) / totalShares;
       updatedPositions = updatedPositions.map(p =>
-        p.id === existing.id ? { ...p, shares: totalShares, avgCost: newAvg } : p,
+        p.id === existing.id
+          ? {
+              ...p,
+              shares: totalShares,
+              avgCost: newAvg,
+              ...(order.dividendYield != null ? { dividendYield: order.dividendYield } : {}),
+              ...(order.dividendRate != null ? { dividendRate: order.dividendRate } : {}),
+              ...(order.expenseRatio != null ? { expenseRatio: order.expenseRatio } : {}),
+              ...(order.sector != null ? { sector: order.sector } : {}),
+            }
+          : p,
       );
     } else {
       updatedPositions = [
@@ -415,10 +519,10 @@ export function fillOrder(args: {
           shares,
           avgCost: fillPrice,
           openedAt: filledAt,
-          dividendYield: 0,
-          dividendRate: 0,
-          expenseRatio: 0,
-          sector: '',
+          dividendYield: order.dividendYield ?? 0,
+          dividendRate: order.dividendRate ?? 0,
+          expenseRatio: order.expenseRatio ?? 0,
+          sector: order.sector ?? '',
         },
       ];
     }
@@ -459,19 +563,33 @@ export function fillOrder(args: {
       };
     }
 
-    const fee = fundFee(
-      shares * pos.avgCost,
-      pos.expenseRatio,
-      pos.openedAt,
-      filledAt,
-    );
     const total = shares * fillPrice;
-    const proceeds = total - fee; // net of fund fee
+    // Legacy v1 positions may have no persisted lots. Reconstruct only the
+    // missing shares from the aggregate position so FIFO P&L and fees remain
+    // internally consistent instead of silently reporting $0 P&L.
+    const matchingLotShares = lots
+      .filter(l => l.accountId === accountId && l.symbol === symbol)
+      .reduce((sum, lot) => sum + lot.shares, 0);
+    const missingLotShares = Math.max(0, pos.shares - matchingLotShares);
+    const lotsForSell = missingLotShares > 0
+      ? [
+          ...lots,
+          {
+            id: `legacy-${accountId}-${symbol}-${pos.id}`,
+            accountId,
+            symbol,
+            shares: missingLotShares,
+            cost: pos.avgCost,
+            purchasedAt: pos.openedAt,
+          },
+        ]
+      : lots;
 
     // FIFO P&L
-    const { realizedPnL, updatedLots: afterSellLots } = fifoSell(
-      lots, accountId, symbol, shares, fillPrice,
+    const { realizedPnL, fee, updatedLots: afterSellLots } = fifoSell(
+      lotsForSell, accountId, symbol, shares, fillPrice, pos.expenseRatio, filledAt,
     );
+    const proceeds = total - fee; // net of fund fee
     updatedLots = afterSellLots;
 
     // T+2 settlement — proceeds go into unsettledItems instead of cash

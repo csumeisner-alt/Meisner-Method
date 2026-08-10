@@ -90,6 +90,11 @@ export type PaperOrder = {
    * Updated on each price poll without changing the order status.
    */
   trailRef?: number;
+  /** Buy-side metadata retained until a delayed order fills. */
+  dividendYield?: number;
+  dividendRate?: number;
+  expenseRatio?: number;
+  sector?: string;
   status: OrderStatus;
   /** Actual fill price (after slippage). */
   filledPrice?: number;

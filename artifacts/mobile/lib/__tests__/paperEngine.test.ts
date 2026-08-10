@@ -8,6 +8,7 @@ import { test } from 'node:test';
 
 import {
   applySlippage,
+  applyOrderSlippage,
   evaluateOrder,
   fifoSell,
   settleCash,
@@ -65,6 +66,28 @@ test('applySlippage — sell receives less than base price', () => {
   const results = Array.from({ length: 20 }, () => applySlippage(100, 10, 'sell'));
   assert.ok(results.every(p => p < 100), 'Sell should always receive less');
   assert.ok(results.every(p => p >= 100 * 0.9969), 'Slippage should be under 0.31%');
+});
+
+test('applyOrderSlippage — limit buy never fills above its limit', () => {
+  const originalRandom = Math.random;
+  Math.random = () => 0.999;
+  try {
+    const order = mkOrder({ orderType: 'limit', side: 'buy', limitPrice: 100 });
+    assert.equal(applyOrderSlippage(order, 99.9), 100);
+  } finally {
+    Math.random = originalRandom;
+  }
+});
+
+test('applyOrderSlippage — limit sell never fills below its limit', () => {
+  const originalRandom = Math.random;
+  Math.random = () => 0.999;
+  try {
+    const order = mkOrder({ orderType: 'limit', side: 'sell', limitPrice: 100 });
+    assert.equal(applyOrderSlippage(order, 100.1), 100);
+  } finally {
+    Math.random = originalRandom;
+  }
 });
 
 // ── evaluateOrder ──────────────────────────────────────────────────────────
@@ -245,6 +268,83 @@ test('checkRisk — sell fails when insufficient shares', () => {
   assert.ok(result?.includes('only hold'));
 });
 
+test('checkRisk — pending buys reserve buying power', () => {
+  const account = mkAccount({ id: 'a1', cash: 1_500 });
+  const pendingBuy = mkOrder({
+    id: 'pending-buy',
+    accountId: 'a1',
+    side: 'buy',
+    shares: 5,
+    orderType: 'limit',
+    limitPrice: 200,
+  });
+  const result = checkRisk({
+    side: 'buy',
+    shares: 5,
+    orderType: 'limit',
+    limitPrice: 200,
+    symbol: 'MSFT',
+    currentPrice: 200,
+    account,
+    accountPositions: [],
+    quotes: {},
+    pendingOrders: [pendingBuy],
+  });
+  assert.ok(result?.includes('already committed'));
+});
+
+test('checkRisk — editing an order excludes its old reservation', () => {
+  const account = mkAccount({ id: 'a1', cash: 10_000 });
+  const existing = mkOrder({
+    id: 'editable-buy',
+    accountId: 'a1',
+    side: 'buy',
+    shares: 5,
+    orderType: 'limit',
+    limitPrice: 200,
+  });
+  const result = checkRisk({
+    side: 'buy',
+    shares: 5,
+    orderType: 'limit',
+    limitPrice: 200,
+    symbol: 'AAPL',
+    currentPrice: 200,
+    account,
+    accountPositions: [],
+    quotes: {},
+    pendingOrders: [existing],
+    excludeOrderId: existing.id,
+  });
+  assert.equal(result, null);
+});
+
+test('checkRisk — pending sells reserve shares', () => {
+  const account = mkAccount({ id: 'a1' });
+  const pos = mkPosition({ accountId: 'a1', shares: 10 });
+  const pendingSell = mkOrder({
+    id: 'pending-sell',
+    accountId: 'a1',
+    side: 'sell',
+    shares: 8,
+    orderType: 'stop',
+    stopPrice: 90,
+  });
+  const result = checkRisk({
+    side: 'sell',
+    shares: 3,
+    orderType: 'limit',
+    limitPrice: 110,
+    symbol: 'AAPL',
+    currentPrice: 100,
+    account,
+    accountPositions: [pos],
+    quotes: { AAPL: { price: 100 } },
+    pendingOrders: [pendingSell],
+  });
+  assert.ok(result?.includes('only hold'));
+});
+
 // ── fillOrder ─────────────────────────────────────────────────────────────
 test('fillOrder — market buy deducts cash and creates lot', () => {
   const account = mkAccount({ cash: 10_000 });
@@ -271,6 +371,48 @@ test('fillOrder — buy rejects when cash is insufficient at fill time', () => {
   });
   assert.equal(result.ok, false);
   assert.ok((result as any).reason.includes('Insufficient buying power'));
+});
+
+test('fillOrder — rejects invalid numeric input without changing state', () => {
+  const account = mkAccount({ cash: 10_000 });
+  const order = mkOrder({ side: 'buy', shares: 0 });
+  const result = fillOrder({
+    order,
+    fillPrice: 200,
+    filledAt: new Date().toISOString(),
+    account,
+    positions: [],
+    lots: [],
+    uid,
+  });
+  assert.equal(result.ok, false);
+  assert.equal(account.cash, 10_000);
+});
+
+test('fillOrder — delayed buy preserves position metadata', () => {
+  const account = mkAccount({ cash: 10_000 });
+  const order = mkOrder({
+    side: 'buy',
+    shares: 5,
+    dividendYield: 0.02,
+    dividendRate: 1.2,
+    expenseRatio: 0.0003,
+    sector: 'Technology',
+  });
+  const result = fillOrder({
+    order,
+    fillPrice: 200,
+    filledAt: new Date().toISOString(),
+    account,
+    positions: [],
+    lots: [],
+    uid,
+  });
+  assert.equal(result.ok, true);
+  if (!result.ok) throw new Error('unexpected');
+  assert.equal(result.updatedPositions[0].dividendRate, 1.2);
+  assert.equal(result.updatedPositions[0].expenseRatio, 0.0003);
+  assert.equal(result.updatedPositions[0].sector, 'Technology');
 });
 
 test('fillOrder — market sell creates T+2 unsettled item, not immediate cash', () => {

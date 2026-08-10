@@ -50,6 +50,7 @@ function $fmt(n: number) {
 
 // ── Props ──────────────────────────────────────────────────────────────────
 export type ConfirmOrderArgs = {
+  orderId?: string;
   orderType: OrderType;
   side: 'buy' | 'sell';
   shares: number;
@@ -86,6 +87,10 @@ type Props = {
     sector: string;
   };
   selectedPos?: PaperPosition | null;
+  /** Existing pending order when the user is editing it. */
+  existingOrder?: PaperOrder | null;
+  /** Other pending orders used to reserve cash and shares. */
+  pendingOrders?: PaperOrder[];
   onClose: () => void;
   onConfirm: (args: ConfirmOrderArgs) => void;
 };
@@ -94,7 +99,7 @@ type Props = {
 export default function OrderSheet({
   visible, side, symbol, companyName,
   currentPrice, account, accountPositions, quotes,
-  stockInfo, selectedPos, onClose, onConfirm,
+  stockInfo, selectedPos, existingOrder, pendingOrders = [], onClose, onConfirm,
 }: Props) {
   const [orderType, setOrderType] = useState<OrderType>('market');
   const [shares, setShares] = useState('');
@@ -108,16 +113,16 @@ export default function OrderSheet({
   // Reset when reopened or mode changes
   useEffect(() => {
     if (visible) {
-      setOrderType('market');
-      setShares(side === 'sell' ? String(selectedPos?.shares ?? '') : '');
-      setLimitPrice(currentPrice.toFixed(2));
-      setStopPrice(currentPrice.toFixed(2));
-      setTrailPct('5');
-      setTrailMode('pct');
-      setTrailAbs('');
+      setOrderType(existingOrder?.orderType ?? 'market');
+      setShares(String(existingOrder?.shares ?? (side === 'sell' ? selectedPos?.shares ?? '' : '')));
+      setLimitPrice(String(existingOrder?.limitPrice ?? currentPrice.toFixed(2)));
+      setStopPrice(String(existingOrder?.stopPrice ?? currentPrice.toFixed(2)));
+      setTrailPct(String(existingOrder?.trailPct ?? 5));
+      setTrailMode(existingOrder?.trailAbs != null ? 'abs' : 'pct');
+      setTrailAbs(String(existingOrder?.trailAbs ?? ''));
       setRiskError('');
     }
-  }, [visible, side, symbol]);
+  }, [visible, side, symbol, existingOrder?.id]);
 
   // Re-run risk check whenever relevant inputs change
   useEffect(() => {
@@ -129,14 +134,22 @@ export default function OrderSheet({
       shares: n,
       orderType,
       limitPrice: lp,
+      stopPrice: parseFloat(stopPrice) || undefined,
+      trailPct: parseFloat(trailPct) || undefined,
+      trailAbs: parseFloat(trailAbs) || undefined,
       symbol,
       currentPrice,
       account,
       accountPositions,
       quotes,
+      pendingOrders,
+      excludeOrderId: existingOrder?.id,
     });
     setRiskError(err ?? '');
-  }, [shares, orderType, limitPrice, side, symbol, currentPrice]);
+  }, [
+    shares, orderType, limitPrice, stopPrice, trailPct, trailAbs, side, symbol, currentPrice,
+    account, accountPositions, quotes, pendingOrders, existingOrder?.id,
+  ]);
 
   const numShares = parseFloat(shares) || 0;
   const estPrice =
@@ -159,6 +172,7 @@ export default function OrderSheet({
   const handleConfirm = () => {
     if (!canPlace) return;
     onConfirm({
+      orderId: existingOrder?.id,
       orderType,
       side,
       shares: numShares,
@@ -202,9 +216,17 @@ export default function OrderSheet({
                 <TouchableOpacity
                   key={ot.type}
                   style={[s.typeChip, orderType === ot.type && { borderColor: accentColor, backgroundColor: `${accentColor}18` }]}
-                  onPress={() => setOrderType(ot.type)}
+                  onPress={() => {
+                    if (existingOrder && ot.type === 'market') return;
+                    setOrderType(ot.type);
+                  }}
+                  disabled={!!existingOrder && ot.type === 'market'}
                 >
-                  <Text style={[s.typeChipText, orderType === ot.type && { color: accentColor }]}>{ot.label}</Text>
+                  <Text style={[
+                    s.typeChipText,
+                    existingOrder && ot.type === 'market' && { color: DIM },
+                    orderType === ot.type && { color: accentColor },
+                  ]}>{ot.label}</Text>
                 </TouchableOpacity>
               ))}
             </View>

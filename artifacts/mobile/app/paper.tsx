@@ -52,6 +52,8 @@ import {
 } from '@/lib/paperMath';
 import {
   applySlippage,
+  applyOrderSlippage,
+  checkRisk,
   evaluateOrder,
   fillOrder,
   settleCash,
@@ -212,6 +214,7 @@ export default function PaperScreen() {
   const [showOrderSheet, setShowOrderSheet] = useState(false);
   const [tradeMode, setTradeMode] = useState<'buy' | 'sell'>('buy');
   const [selectedPos, setSelectedPos] = useState<PaperPosition | null>(null);
+  const [editingOrder, setEditingOrder] = useState<PaperOrder | null>(null);
 
   // Buy modal state
   const [buySymbol, setBuySymbol] = useState('');
@@ -261,8 +264,8 @@ export default function PaperScreen() {
   const flushCache = useCallback((
     accts: PaperAccount[], pos: PaperPosition[], txns: PaperTransaction[],
     ords: PaperOrder[], ls: PaperLot[], aid: string,
-  ) => {
-    void writePaperCache({ accounts: accts, positions: pos, transactions: txns, orders: ords, lots: ls, activeId: aid });
+  ): Promise<void> => {
+    return writePaperCache({ accounts: accts, positions: pos, transactions: txns, orders: ords, lots: ls, activeId: aid });
   }, []);
 
   /** Save all mutable slices at once — avoids repeated flushCache calls on complex updates. */
@@ -281,28 +284,28 @@ export default function PaperScreen() {
     setTransactions(txns);
     setOrders(ords);
     setLots(ls);
-    flushCache(accts, pos, txns, ords, ls, aid);
+    await flushCache(accts, pos, txns, ords, ls, aid);
   }, [flushCache]);
 
   const saveAccounts = useCallback(async (data: PaperAccount[]) => {
     accountsRef.current = data;
     setAccounts(data);
-    flushCache(data, positionsRef.current, transactionsRef.current, ordersRef.current, lotsRef.current, activeIdRef.current);
+    await flushCache(data, positionsRef.current, transactionsRef.current, ordersRef.current, lotsRef.current, activeIdRef.current);
   }, [flushCache]);
   const savePositions = useCallback(async (data: PaperPosition[]) => {
     positionsRef.current = data;
     setPositions(data);
-    flushCache(accountsRef.current, data, transactionsRef.current, ordersRef.current, lotsRef.current, activeIdRef.current);
+    await flushCache(accountsRef.current, data, transactionsRef.current, ordersRef.current, lotsRef.current, activeIdRef.current);
   }, [flushCache]);
   const saveTransactions = useCallback(async (data: PaperTransaction[]) => {
     transactionsRef.current = data;
     setTransactions(data);
-    flushCache(accountsRef.current, positionsRef.current, data, ordersRef.current, lotsRef.current, activeIdRef.current);
+    await flushCache(accountsRef.current, positionsRef.current, data, ordersRef.current, lotsRef.current, activeIdRef.current);
   }, [flushCache]);
   const saveOrders = useCallback(async (data: PaperOrder[]) => {
     ordersRef.current = data;
     setOrders(data);
-    flushCache(accountsRef.current, positionsRef.current, transactionsRef.current, data, lotsRef.current, activeIdRef.current);
+    await flushCache(accountsRef.current, positionsRef.current, transactionsRef.current, data, lotsRef.current, activeIdRef.current);
   }, [flushCache]);
 
   // ── Init ─────────────────────────────────────────────────────────────────
@@ -342,7 +345,7 @@ export default function PaperScreen() {
       setOrders([]);
       setLots([]);
       setActiveId(localActiveId);
-      void writePaperCache({
+      await writePaperCache({
         accounts: localAccounts,
         positions: [],
         transactions: [],
@@ -426,7 +429,7 @@ export default function PaperScreen() {
       }
 
       // This order fills — apply slippage and execute
-      const fillPrice = applySlippage(q.price, order.shares, order.side);
+      const fillPrice = applyOrderSlippage(order, q.price);
       const account = updatedAccounts.find(a => a.id === order.accountId);
       if (!account) continue;
 
@@ -623,6 +626,34 @@ export default function PaperScreen() {
       ? (currentSelectedPos?.companyName ?? sym)
       : (args.stockInfo?.companyName ?? sym);
     const nowISO = new Date().toISOString();
+    const riskPrice = args.side === 'buy'
+      ? (stockInfo?.currentPrice ?? quotes[sym]?.price ?? 0)
+      : (quotes[sym]?.price ?? currentSelectedPos?.avgCost ?? 0);
+    const riskError = checkRisk({
+      side: args.side,
+      shares: args.shares,
+      orderType: args.orderType,
+      limitPrice: args.limitPrice,
+      stopPrice: args.stopPrice,
+      trailPct: args.trailPct,
+      trailAbs: args.trailAbs,
+      symbol: sym,
+      currentPrice: riskPrice,
+      account: currentAccount,
+      accountPositions: currentPositions.filter(p => p.accountId === currentActiveId),
+      quotes,
+      pendingOrders: currentOrders,
+      excludeOrderId: args.orderId,
+    });
+    if (riskError) {
+      Alert.alert('Order rejected', riskError);
+      return;
+    }
+
+    if (args.orderType === 'market' && args.orderId) {
+      Alert.alert('Market orders cannot be edited', 'Cancel this pending order and place a new market order instead.');
+      return;
+    }
 
     if (args.orderType === 'market') {
       // Execute immediately at a slippage-adjusted price
@@ -690,9 +721,18 @@ export default function PaperScreen() {
         currentActiveId,
       );
     } else {
-      // Non-market: create a pending order
+      // Non-market orders are editable until they fill. Editing preserves the
+      // order ID but resets its trailing reference and fill fields.
+      const priorOrder = args.orderId
+        ? currentOrders.find(o => o.id === args.orderId && o.status === 'pending')
+        : undefined;
+      if (args.orderId && !priorOrder) {
+        Alert.alert('Order no longer editable', 'That order has already filled or was cancelled.');
+        return;
+      }
+      const metadata = args.stockInfo ?? priorOrder;
       const newOrder: PaperOrder = {
-        id: uid(),
+        id: priorOrder?.id ?? uid(),
         accountId: currentActiveId,
         symbol: sym,
         companyName,
@@ -706,29 +746,60 @@ export default function PaperScreen() {
         trailRef: args.side === 'sell'
           ? (quotes[sym]?.price ?? selectedPos?.avgCost)
           : (quotes[sym]?.price ?? stockInfo?.currentPrice),
+        dividendYield: metadata?.dividendYield ?? 0,
+        dividendRate: metadata?.dividendRate ?? 0,
+        expenseRatio: metadata?.expenseRatio ?? 0,
+        sector: metadata?.sector ?? '',
         status: 'pending',
-        placedAt: nowISO,
+        placedAt: priorOrder?.placedAt ?? nowISO,
       };
-      await saveOrders([...currentOrders, newOrder]);
+      await saveOrders(priorOrder
+        ? currentOrders.map(o => o.id === priorOrder.id ? newOrder : o)
+        : [...currentOrders, newOrder]);
     }
 
     setShowOrderSheet(false);
     setShowTradeModal(false);
     setSelectedPos(null);
+    setEditingOrder(null);
     setStockInfo(null);
     setBuySymbol('');
   };
 
   // ── Cancel order ──────────────────────────────────────────────────────────
   const cancelOrder = async (orderId: string) => {
-    const updated = orders.map(o =>
+    const updated = ordersRef.current.map(o =>
       o.id === orderId ? { ...o, status: 'cancelled' as const } : o,
     );
     await saveOrders(updated);
   };
 
+  const editOrder = (order: PaperOrder) => {
+    if (order.status !== 'pending') return;
+    setEditingOrder(order);
+    setTradeMode(order.side);
+    setBuySymbol(order.symbol);
+    if (order.side === 'sell') {
+      setSelectedPos(positionsRef.current.find(p =>
+        p.accountId === activeIdRef.current && p.symbol === order.symbol,
+      ) ?? null);
+    } else {
+      const quote = quotes[order.symbol];
+      setStockInfo({
+        companyName: order.companyName,
+        currentPrice: quote?.price ?? order.limitPrice ?? order.stopPrice ?? 0,
+        dividendYield: order.dividendYield ?? 0,
+        dividendRate: order.dividendRate ?? 0,
+        expenseRatio: order.expenseRatio ?? 0,
+        sector: order.sector ?? '',
+      });
+    }
+    setShowOrderSheet(true);
+  };
+
   // ── Open modals ───────────────────────────────────────────────────────────
   const openBuyModal = () => {
+    setEditingOrder(null);
     setTradeMode('buy');
     setBuySymbol('');
     setStockInfo(null);
@@ -737,6 +808,7 @@ export default function PaperScreen() {
   };
 
   const openSellModal = (pos: PaperPosition) => {
+    setEditingOrder(null);
     setTradeMode('sell');
     setSelectedPos(pos);
     // Clear any stale buy-lookup state so it cannot bleed into sell execution
@@ -1174,15 +1246,29 @@ export default function PaperScreen() {
                 )}
                 <View style={{ flex: 1 }} />
                 {o.status === 'pending' && (
-                  <TouchableOpacity
-                    onPress={() => Alert.alert('Cancel Order', `Cancel ${o.side} ${o.shares} ${o.symbol}?`, [
-                      { text: 'No', style: 'cancel' },
-                      { text: 'Cancel Order', style: 'destructive', onPress: () => cancelOrder(o.id) },
-                    ])}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <Feather name="x" size={18} color={SELL_COLOR} />
-                  </TouchableOpacity>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                    <TouchableOpacity
+                      testID={`edit-order-${o.id}`}
+                      accessibilityLabel={`Edit ${o.symbol} order`}
+                      onPress={() => editOrder(o)}
+                      style={styles.orderAction}
+                    >
+                      <Feather name="edit-2" size={14} color={BUY_COLOR} />
+                      <Text style={[styles.orderActionText, { color: BUY_COLOR }]}>EDIT</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      testID={`cancel-order-${o.id}`}
+                      accessibilityLabel={`Cancel ${o.symbol} order`}
+                      onPress={() => Alert.alert('Cancel Order', `Cancel ${o.side} ${o.shares} ${o.symbol}?`, [
+                        { text: 'No', style: 'cancel' },
+                        { text: 'Cancel Order', style: 'destructive', onPress: () => cancelOrder(o.id) },
+                      ])}
+                      style={styles.orderAction}
+                    >
+                      <Feather name="x-circle" size={14} color={SELL_COLOR} />
+                      <Text style={[styles.orderActionText, { color: SELL_COLOR }]}>CANCEL</Text>
+                    </TouchableOpacity>
+                  </View>
                 )}
               </View>
             </View>
@@ -1484,7 +1570,13 @@ export default function PaperScreen() {
           quotes={quotes}
           stockInfo={tradeMode === 'buy' ? stockInfo ?? undefined : undefined}
           selectedPos={tradeMode === 'sell' ? selectedPos : null}
-          onClose={() => { setShowOrderSheet(false); if (tradeMode === 'sell') setSelectedPos(null); }}
+          existingOrder={editingOrder}
+          pendingOrders={orders.filter(o => o.accountId === activeId)}
+          onClose={() => {
+            setShowOrderSheet(false);
+            setEditingOrder(null);
+            if (tradeMode === 'sell') setSelectedPos(null);
+          }}
           onConfirm={handleConfirmOrder}
         />
       )}
@@ -1889,4 +1981,16 @@ const styles = StyleSheet.create({
   confirmBtnText: { fontFamily: 'Inter_700Bold', fontSize: 14, color: '#000', letterSpacing: 0.5 },
   cancelBtn: { paddingVertical: 12, alignItems: 'center' },
   cancelBtnText: { fontFamily: 'Inter_600SemiBold', fontSize: 13, color: DIM, letterSpacing: 1 },
+  orderAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  orderActionText: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 10,
+    letterSpacing: 1,
+  },
 });

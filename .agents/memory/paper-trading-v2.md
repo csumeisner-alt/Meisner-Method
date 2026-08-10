@@ -32,3 +32,17 @@ description: Key decisions, file layout, and gotchas for the upgraded paper trad
 **Why:** Order placement can race with quote polling because React render state may lag behind the mutable refs used by the polling loop; saving a fill from render-time arrays can deduct cash while overwriting the newly-created position.
 
 **How to apply:** Paper execution must read the latest refs, commit account/positions/lots/transactions/orders together, and serialize local cache writes so older async snapshots cannot overwrite newer fills.
+
+## Order lifecycle and execution safeguards
+
+Pending orders are user-editable and cancellable until filled. Their committed buying power or shares must be included in every risk check; editing excludes the existing order from its own reservation. A pending order must retain buy-side metadata until it fills.
+
+**Why:** Without visible lifecycle controls, limit/stop orders could remain indefinitely and users could unknowingly stack commitments that later failed or were auto-cancelled.
+
+**How to apply:** Preserve an edited order's ID and placement time, reset its trailing reference, clear edit state on dismissal, and use the latest refs for the submit-time risk check.
+
+Limit and stop-limit execution must clamp simulated slippage to the limit price. FIFO sells should use consumed lot cost/holding time for fund fees, and legacy positions without lots need a synthetic basis lot before closing.
+
+**Why:** Random slippage could make a limit fill worse than its limit, while aggregate-position fees and missing lots made realized P&L inconsistent with FIFO accounting.
+
+**How to apply:** Keep these safeguards in pure engine functions and cover them with Node tests before changing the paper screen.
