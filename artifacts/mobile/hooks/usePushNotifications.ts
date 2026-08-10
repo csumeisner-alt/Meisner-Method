@@ -44,29 +44,42 @@ export function usePushNotifications() {
       const projectId =
         Constants.expoConfig?.extra?.eas?.projectId ??
         Constants.easConfig?.projectId;
+      if (!projectId) {
+        throw new Error('This build is missing its Expo notification project configuration.');
+      }
       const tokenData = await Notifications.getExpoPushTokenAsync(
-        projectId ? { projectId } : undefined,
+        { projectId },
       );
+      const expoPushToken = typeof tokenData.data === 'string' ? tokenData.data.trim() : '';
+      if (!expoPushToken) {
+        throw new Error('Android granted permission but did not return a push token.');
+      }
       const installationId = await getInstallationId();
       if (cancelledRef.current) return true;
-      const response = await apiFetch<{ ok: boolean }>('/api/notifications/device', {
+      const response = await apiFetch<{ ok?: boolean }>('/api/notifications/device', {
         method: 'POST',
         body: JSON.stringify({
           installationId,
-          expoPushToken: tokenData.data,
+          expoPushToken,
           platform: Platform.OS,
         }),
       });
-      if (!response.ok) throw new Error('The notification service rejected this phone.');
+      if (response?.ok !== true) {
+        throw new Error('The notification service did not confirm this phone.');
+      }
       if (!cancelledRef.current) {
-        setPushToken(tokenData.data);
+        setPushToken(expoPushToken);
         setRegistrationError(null);
       }
       return true;
     } catch (error) {
       // Requires a real device + EAS build to get a production token
       if (!cancelledRef.current) {
-        setRegistrationError(error instanceof Error ? error.message : 'Could not register notifications.');
+        setRegistrationError(
+          error instanceof Error && error.message
+            ? error.message
+            : 'Could not register this phone for price alerts.',
+        );
       }
       return false;
     }

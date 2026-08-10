@@ -218,7 +218,8 @@ function AlertModal({
               <View style={[alertStyles.unavailableBox, { backgroundColor: colors.muted, borderColor: colors.border }]}>
                 <Feather name="wifi-off" size={16} color={colors.mutedForeground} />
                 <Text style={[alertStyles.unavailableText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                  Notifications are enabled on Android, but this phone could not be registered for price alerts. Check your connection and try again.
+                  Notifications are enabled, but this phone could not be registered for price alerts.
+                  {registrationError ? ` ${registrationError}` : ' Check your connection and try again.'}
                 </Text>
               </View>
               <TouchableOpacity

@@ -774,6 +774,11 @@ export default function PaperScreen() {
     await saveOrders(updated);
   };
 
+  const deleteOrder = async (order: PaperOrder) => {
+    if (order.status !== 'pending') return;
+    await saveOrders(ordersRef.current.filter(o => o.id !== order.id));
+  };
+
   const editOrder = (order: PaperOrder) => {
     if (order.status !== 'pending') return;
     setEditingOrder(order);
@@ -1201,10 +1206,10 @@ export default function PaperScreen() {
         {accountOrders.map(o => {
           const q = quotes[o.symbol];
           return (
-            <View key={o.id} style={[styles.posCard, { opacity: o.status === 'cancelled' ? 0.5 : 1 }]}>
+            <View key={o.id} style={[styles.orderCard, { opacity: o.status === 'cancelled' ? 0.5 : 1 }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
                 <View style={[styles.posAccentBar, { backgroundColor: o.side === 'buy' ? BUY_COLOR : SELL_COLOR }]} />
-                <Text style={styles.posSymbol}>{o.symbol}</Text>
+                <Text style={[styles.posSymbol, { flexShrink: 1 }]}>{o.symbol}</Text>
                 <View style={{ flex: 1 }} />
                 <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 11, color: o.side === 'buy' ? BUY_COLOR : SELL_COLOR, letterSpacing: 1 }}>
                   {o.side.toUpperCase()}
@@ -1239,14 +1244,14 @@ export default function PaperScreen() {
                   <Text style={styles.posVal}>${q.price.toFixed(2)}</Text>
                 </View>}
               </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 30 }}>
                 <Text style={[styles.posLabel, { color: statusColor(o.status) }]}>{o.status.toUpperCase()}</Text>
                 {o.filledPrice != null && (
                   <Text style={[styles.posLabel, { marginLeft: 8 }]}>@ ${o.filledPrice.toFixed(2)}</Text>
                 )}
                 <View style={{ flex: 1 }} />
                 {o.status === 'pending' && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                  <View style={styles.orderActions}>
                     <TouchableOpacity
                       testID={`edit-order-${o.id}`}
                       accessibilityLabel={`Edit ${o.symbol} order`}
@@ -1257,16 +1262,16 @@ export default function PaperScreen() {
                       <Text style={[styles.orderActionText, { color: BUY_COLOR }]}>EDIT</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      testID={`cancel-order-${o.id}`}
-                      accessibilityLabel={`Cancel ${o.symbol} order`}
-                      onPress={() => Alert.alert('Cancel Order', `Cancel ${o.side} ${o.shares} ${o.symbol}?`, [
+                      testID={`delete-order-${o.id}`}
+                      accessibilityLabel={`Delete ${o.symbol} order`}
+                      onPress={() => Alert.alert('Delete Order', `Delete pending ${o.side} ${o.shares} ${o.symbol}?`, [
                         { text: 'No', style: 'cancel' },
-                        { text: 'Cancel Order', style: 'destructive', onPress: () => cancelOrder(o.id) },
+                        { text: 'Delete Order', style: 'destructive', onPress: () => deleteOrder(o) },
                       ])}
                       style={styles.orderAction}
                     >
                       <Feather name="x-circle" size={14} color={SELL_COLOR} />
-                      <Text style={[styles.orderActionText, { color: SELL_COLOR }]}>CANCEL</Text>
+                      <Text style={[styles.orderActionText, { color: SELL_COLOR }]}>DELETE</Text>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -1677,6 +1682,13 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 10,
   },
+  orderCard: {
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 12,
+    padding: 14,
+  },
   posColorBar: { width: 3, height: '100%', borderRadius: 2, minHeight: 50 },
   posAccentBar: { width: 3, borderRadius: 2, minHeight: 40, marginRight: 2 },
   posRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 6 },
@@ -1987,6 +1999,11 @@ const styles = StyleSheet.create({
     gap: 5,
     paddingVertical: 6,
     paddingHorizontal: 4,
+  },
+  orderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
   },
   orderActionText: {
     fontFamily: 'Inter_700Bold',

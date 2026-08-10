@@ -46,3 +46,9 @@ Limit and stop-limit execution must clamp simulated slippage to the limit price.
 **Why:** Random slippage could make a limit fill worse than its limit, while aggregate-position fees and missing lots made realized P&L inconsistent with FIFO accounting.
 
 **How to apply:** Keep these safeguards in pure engine functions and cover them with Node tests before changing the paper screen.
+
+Order cards need their own vertical layout; they must not reuse the horizontal position-card container because the header, details, and edit/delete controls get clipped on narrow Android screens.
+
+**Why:** The pending-order actions existed in code but were visually off-screen in the installed app, so users had no way to edit or remove orders.
+
+**How to apply:** Keep pending-order actions full-width and visible, and persist deletion by removing the order from the local cache rather than only marking it cancelled.
