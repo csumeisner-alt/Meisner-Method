@@ -131,6 +131,7 @@ interface AlertModalProps {
   existingDirection?: 'above' | 'below';
   existingTarget?: number;
   pushToken: string | null;
+  registrationError?: string | null;
   permissionStatus: 'unknown' | 'granted' | 'denied' | 'unavailable';
   onRequestPermission: () => Promise<boolean>;
   onOpenSettings: () => void;
@@ -143,7 +144,7 @@ interface AlertModalProps {
 function AlertModal({
   visible, symbol, currentPrice, existingDirection, existingTarget,
   pushToken, permissionStatus, onRequestPermission, onOpenSettings,
-  onSave, onDelete, onClose, colors,
+  onSave, onDelete, onClose, colors, registrationError,
 }: AlertModalProps) {
   const [direction, setDirection] = useState<'above' | 'below'>(existingDirection ?? 'above');
   const [targetInput, setTargetInput] = useState(existingTarget?.toFixed(2) ?? '');
@@ -156,14 +157,21 @@ function AlertModal({
     }
   }, [visible, existingDirection, existingTarget, currentPrice]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const val = parseFloat(targetInput);
     if (!val || val <= 0) {
       Alert.alert('Invalid price', 'Please enter a valid price target.');
       return;
     }
-    onSave(direction, val);
-    onClose();
+    try {
+      await onSave(direction, val);
+      onClose();
+    } catch (error) {
+      Alert.alert(
+        'Could not save alert',
+        error instanceof Error ? error.message : 'Please check your connection and try again.',
+      );
+    }
   };
 
   return (
@@ -202,6 +210,34 @@ function AlertModal({
                 <Feather name="settings" size={14} color={colors.primaryForeground} />
                 <Text style={[alertStyles.saveTxt, { color: colors.primaryForeground, fontFamily: 'Inter_700Bold' }]}>
                   Open Settings
+                </Text>
+              </TouchableOpacity>
+            </>
+          ) : registrationError ? (
+            <>
+              <View style={[alertStyles.unavailableBox, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+                <Feather name="wifi-off" size={16} color={colors.mutedForeground} />
+                <Text style={[alertStyles.unavailableText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                  Notifications are enabled on Android, but this phone could not be registered for price alerts. Check your connection and try again.
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[alertStyles.saveBtn, { backgroundColor: colors.primary }]}
+                onPress={async () => {
+                  if (requesting) return;
+                  setRequesting(true);
+                  try { await onRequestPermission(); } finally { setRequesting(false); }
+                }}
+                disabled={requesting}
+                activeOpacity={0.8}
+              >
+                {requesting ? (
+                  <ActivityIndicator size="small" color={colors.primaryForeground} />
+                ) : (
+                  <Feather name="refresh-cw" size={14} color={colors.primaryForeground} />
+                )}
+                <Text style={[alertStyles.saveTxt, { color: colors.primaryForeground, fontFamily: 'Inter_700Bold' }]}>
+                  Try Again
                 </Text>
               </TouchableOpacity>
             </>
@@ -341,7 +377,13 @@ export default function HomeScreen() {
 
   // Watchlist + push notifications
   const watchlist = useWatchlist();
-  const { pushToken, status: pushStatus, requestPermission, openNotificationSettings } = usePushNotifications();
+  const {
+    pushToken,
+    status: pushStatus,
+    registrationError,
+    requestPermission,
+    openNotificationSettings,
+  } = usePushNotifications();
 
   // Alert modal state
   const [alertModalSymbol, setAlertModalSymbol] = useState<string | null>(null);
@@ -546,12 +588,13 @@ export default function HomeScreen() {
           existingDirection={activeAlert?.direction}
           existingTarget={activeAlert?.targetPrice}
           pushToken={pushToken}
+          registrationError={registrationError}
           permissionStatus={pushStatus}
           onRequestPermission={requestPermission}
           onOpenSettings={openNotificationSettings}
           onSave={async (direction, targetPrice) => {
             if (!pushToken) return;
-            await watchlist.saveAlert(alertModalSymbol, direction, targetPrice, pushToken).catch(() => {});
+            await watchlist.saveAlert(alertModalSymbol, direction, targetPrice, pushToken);
           }}
           onDelete={async () => {
             if (activeAlert) await watchlist.deleteAlert(activeAlert.id).catch(() => {});

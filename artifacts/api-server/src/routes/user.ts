@@ -1,7 +1,7 @@
 /**
- * Authenticated user-data routes.
- * All routes require a valid Clerk session token (Authorization: Bearer <token>).
- * userId is extracted from the verified Clerk session via getAuth().
+ * User-data routes plus anonymous device notification routes.
+ * Account-dependent routes require Clerk. Notification routes use a random
+ * installation ID so guests can receive alerts without creating an account.
  */
 import { Router } from "express";
 import { getAuth } from "@clerk/express";
@@ -205,6 +205,24 @@ async function runSchemaMigrations(): Promise<void> {
       PRIMARY KEY (id)
     )
   `);
+  // Guest notifications are associated with an anonymous app installation,
+  // not a Clerk account. Keep the legacy user_id/push_token columns for older
+  // authenticated alerts and migrate them to nullable compatibility fields.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS push_devices (
+      installation_id TEXT PRIMARY KEY,
+      expo_push_token TEXT NOT NULL,
+      platform TEXT NOT NULL DEFAULT 'android',
+      enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query("ALTER TABLE price_alerts ADD COLUMN IF NOT EXISTS installation_id TEXT");
+  await pool.query("ALTER TABLE price_alerts ALTER COLUMN user_id DROP NOT NULL");
+  await pool.query("ALTER TABLE price_alerts ALTER COLUMN push_token DROP NOT NULL");
+  await pool.query("CREATE INDEX IF NOT EXISTS price_alerts_installation_idx ON price_alerts (installation_id, fired_at)");
 }
 
 function ensureSchema(): Promise<void> {
@@ -907,6 +925,145 @@ router.delete("/user/alerts/:id", requireAuth, requireSchema, async (req: any, r
   }
 });
 
+// ── Anonymous device notifications ─────────────────────────────────────────
+// These routes intentionally do not use Clerk. The installation ID is
+// generated and persisted by the mobile app and is only a routing handle for
+// that phone's push token.
+function validInstallationId(value: unknown): value is string {
+  return typeof value === "string" && value.length >= 12 && value.length <= 128;
+}
+
+function validExpoPushToken(value: unknown): value is string {
+  return typeof value === "string"
+    && value.length >= 20
+    && value.length <= 256
+    && /^(Expo(nent)?PushToken)\[.+\]$/.test(value);
+}
+
+function normalizeAlertRow(row: any) {
+  return {
+    id: row.id,
+    symbol: row.symbol,
+    direction: row.direction,
+    targetPrice: Number(row.target_price),
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+    firedAt: row.fired_at instanceof Date ? row.fired_at.toISOString() : row.fired_at ?? null,
+  };
+}
+
+router.post("/notifications/device", requireSchema, async (req: any, res) => {
+  const { installationId, expoPushToken, platform } = req.body ?? {};
+  if (!validInstallationId(installationId) || !validExpoPushToken(expoPushToken)) {
+    res.status(400).json({ error: "valid installationId and Expo push token required" });
+    return;
+  }
+  const normalizedPlatform = platform === "ios" ? "ios" : "android";
+  try {
+    await pool.query(
+      `INSERT INTO push_devices (installation_id, expo_push_token, platform, enabled, last_seen_at, updated_at)
+       VALUES ($1,$2,$3,TRUE,NOW(),NOW())
+       ON CONFLICT (installation_id) DO UPDATE SET
+         expo_push_token = EXCLUDED.expo_push_token,
+         platform = EXCLUDED.platform,
+         enabled = TRUE,
+         last_seen_at = NOW(),
+         updated_at = NOW()`,
+      [installationId, expoPushToken, normalizedPlatform],
+    );
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.get("/notifications/alerts", requireSchema, async (req: any, res) => {
+  const installationId = req.query.installationId;
+  if (!validInstallationId(installationId)) {
+    res.status(400).json({ error: "valid installationId required" });
+    return;
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, symbol, direction, target_price, created_at, fired_at
+       FROM price_alerts
+       WHERE installation_id=$1
+       ORDER BY created_at DESC`,
+      [installationId],
+    );
+    res.json(rows.map(normalizeAlertRow));
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post("/notifications/alerts", requireSchema, async (req: any, res) => {
+  const { installationId, symbol, direction, targetPrice, pushToken } = req.body ?? {};
+  const normalizedSymbol = typeof symbol === "string" ? symbol.toUpperCase().trim() : "";
+  const numericTarget = Number(targetPrice);
+  if (
+    !validInstallationId(installationId)
+    || !normalizedSymbol
+    || normalizedSymbol.length > 12
+    || !validExpoPushToken(pushToken)
+    || !Number.isFinite(numericTarget)
+    || numericTarget <= 0
+    || (direction !== "above" && direction !== "below")
+  ) {
+    res.status(400).json({ error: "installationId, symbol, direction, targetPrice, and pushToken are required" });
+    return;
+  }
+  try {
+    await pool.query(
+      `INSERT INTO push_devices (installation_id, expo_push_token, platform, enabled, last_seen_at, updated_at)
+       VALUES ($1,$2,'android',TRUE,NOW(),NOW())
+       ON CONFLICT (installation_id) DO UPDATE SET
+         expo_push_token = EXCLUDED.expo_push_token,
+         enabled = TRUE,
+         last_seen_at = NOW(),
+         updated_at = NOW()`,
+      [installationId, pushToken],
+    );
+    const existing = await pool.query(
+      `UPDATE price_alerts
+       SET direction=$3, target_price=$4, push_token=$5, fired_at=NULL, created_at=NOW()
+       WHERE installation_id=$1 AND symbol=$2 AND fired_at IS NULL
+       RETURNING id, symbol, direction, target_price, created_at, fired_at`,
+      [installationId, normalizedSymbol, direction, numericTarget, pushToken],
+    );
+    if (existing.rows[0]) {
+      res.json(normalizeAlertRow(existing.rows[0]));
+      return;
+    }
+    const id = randomUUID();
+    const inserted = await pool.query(
+      `INSERT INTO price_alerts (id, user_id, installation_id, symbol, direction, target_price, push_token)
+       VALUES ($1,NULL,$2,$3,$4,$5,$6)
+       RETURNING id, symbol, direction, target_price, created_at, fired_at`,
+      [id, installationId, normalizedSymbol, direction, numericTarget, pushToken],
+    );
+    res.json(normalizeAlertRow(inserted.rows[0]));
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.delete("/notifications/alerts/:id", requireSchema, async (req: any, res) => {
+  const installationId = req.query.installationId;
+  if (!validInstallationId(installationId)) {
+    res.status(400).json({ error: "valid installationId required" });
+    return;
+  }
+  try {
+    await pool.query(
+      "DELETE FROM price_alerts WHERE id=$1 AND installation_id=$2",
+      [req.params.id, installationId],
+    );
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Push Token ─────────────────────────────────────────────────────────────
 router.post("/user/push-token", requireAuth, async (req: any, res) => {
   // No-op endpoint — the token is stored per-alert, not globally, because
@@ -975,6 +1132,7 @@ async function sendExpoPush(alert: PendingAlert, price: number) {
       title: `${alert.symbol} Price Alert`,
       body: `${alert.symbol} hit ${price.toFixed(2)} — your target was ${alert.targetPrice.toFixed(2)}`,
       sound: "default",
+      channelId: "price-alerts",
       data: { symbol: alert.symbol },
     }),
   });
@@ -1003,10 +1161,15 @@ async function runAlertCheck() {
     // Skip alerts for users who turned notifications off in Settings.
     // Their alerts stay pending and resume when the toggle is re-enabled.
     const { rows } = await pool.query(
-      `SELECT a.id, a.user_id, a.symbol, a.direction, a.target_price, a.push_token
+      `SELECT a.id, a.user_id, a.installation_id, a.symbol, a.direction, a.target_price,
+              COALESCE(d.expo_push_token, a.push_token) AS push_token
        FROM price_alerts a
        LEFT JOIN user_prefs p ON p.user_id = a.user_id
-       WHERE a.fired_at IS NULL AND COALESCE(p.notifications_enabled, TRUE)`,
+       LEFT JOIN push_devices d ON d.installation_id = a.installation_id
+       WHERE a.fired_at IS NULL
+         AND COALESCE(p.notifications_enabled, TRUE)
+         AND COALESCE(d.enabled, TRUE)
+         AND COALESCE(d.expo_push_token, a.push_token) IS NOT NULL`,
     );
     const pending: PendingAlert[] = rows.map((r: any) => ({
       id: r.id,

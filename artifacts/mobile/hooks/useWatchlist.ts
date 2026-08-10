@@ -11,6 +11,8 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useApi } from './useApi';
+import { getInstallationId } from '@/lib/installation';
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
@@ -18,6 +20,7 @@ const WATCHLIST_POLL_INTERVAL = 60_000;
 const CACHE_KEY_PREFIX = '@stocksense/watchlist_v1/';
 
 const GUEST_CACHE_KEY = CACHE_KEY_PREFIX + '__guest__';
+const ALERT_CACHE_KEY = '@stocksense/price_alerts_v1';
 
 async function readCache(key: string): Promise<WatchlistItem[]> {
   try {
@@ -34,6 +37,23 @@ async function writeCache(key: string, items: WatchlistItem[]) {
     await AsyncStorage.setItem(key, JSON.stringify(items));
   } catch {
     // Non-fatal — cache write failure should never surface to the user.
+  }
+}
+
+async function readAlertCache(): Promise<AlertData[]> {
+  try {
+    const raw = await AsyncStorage.getItem(ALERT_CACHE_KEY);
+    return raw ? JSON.parse(raw) as AlertData[] : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeAlertCache(alerts: AlertData[]) {
+  try {
+    await AsyncStorage.setItem(ALERT_CACHE_KEY, JSON.stringify(alerts));
+  } catch {
+    // Non-fatal — the server remains the source of truth for alerts.
   }
 }
 
@@ -59,6 +79,7 @@ export interface AlertData {
 }
 
 export function useWatchlist() {
+  const { apiFetch } = useApi();
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [quotes, setQuotes] = useState<Map<string, QuoteData>>(new Map());
   const [alerts, setAlerts] = useState<AlertData[]>([]);
@@ -83,13 +104,29 @@ export function useWatchlist() {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    readAlertCache().then((cached) => {
+      if (!cancelled && cached.length > 0) setAlerts(cached);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
   const refresh = useCallback(async () => {
     try {
       setLoading(true);
-      // User-scoped endpoints require an account. Guest mode intentionally
-      // keeps the watchlist and alerts local so refreshes never erase them.
       const watchlist = await readCache(GUEST_CACHE_KEY);
-      const alertList: AlertData[] = [];
+      const installationId = await getInstallationId();
+      let alertList = await readAlertCache();
+      try {
+        alertList = await apiFetch<AlertData[]>(
+          `/api/notifications/alerts?installationId=${encodeURIComponent(installationId)}`,
+        );
+        void writeAlertCache(alertList);
+      } catch {
+        // Keep the local copy visible while offline; saves still require the
+        // server so the user is never promised an undeliverable alert.
+      }
       if (!mountedRef.current) return;
       setItems(watchlist);
       setAlerts(alertList);
@@ -125,7 +162,7 @@ export function useWatchlist() {
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, []);
+  }, [apiFetch]);
 
   // Initial fetch
   useEffect(() => {
@@ -189,29 +226,38 @@ export function useWatchlist() {
       targetPrice: number,
       pushToken: string,
     ) => {
+      const installationId = await getInstallationId();
+      const saved = await apiFetch<AlertData>('/api/notifications/alerts', {
+        method: 'POST',
+        body: JSON.stringify({ installationId, symbol, direction, targetPrice, pushToken }),
+      });
       // Remove any existing active alert for this symbol first
       const existing = alerts.find((a) => a.symbol === symbol && !a.firedAt);
       if (existing) {
         setAlerts((prev) => prev.filter((a) => a.id !== existing.id));
       }
-      const newAlert: AlertData = {
-        id: `${Date.now()}-${symbol}`,
-        symbol,
-        direction,
-        targetPrice,
-        createdAt: new Date().toISOString(),
-        firedAt: null,
-      };
-      setAlerts((prev) => [...prev, newAlert]);
+      setAlerts((prev) => {
+        const next = [...prev.filter((a) => a.id !== existing?.id), saved];
+        void writeAlertCache(next);
+        return next;
+      });
     },
-    [alerts],
+    [alerts, apiFetch],
   );
 
   const deleteAlert = useCallback(
     async (id: string) => {
-      setAlerts((prev) => prev.filter((a) => a.id !== id));
+      const installationId = await getInstallationId();
+      await apiFetch(`/api/notifications/alerts/${encodeURIComponent(id)}?installationId=${encodeURIComponent(installationId)}`, {
+        method: 'DELETE',
+      });
+      setAlerts((prev) => {
+        const next = prev.filter((a) => a.id !== id);
+        void writeAlertCache(next);
+        return next;
+      });
     },
-    [],
+    [apiFetch],
   );
 
   return {

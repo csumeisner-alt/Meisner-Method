@@ -10,8 +10,10 @@
  * On web (or in Expo Go where remote push is unsupported) the hook no-ops.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Platform, Linking } from 'react-native';
+import { AppState, Platform, Linking } from 'react-native';
+import Constants from 'expo-constants';
 import { useApi } from './useApi';
+import { getInstallationId } from '@/lib/installation';
 
 export type PushPermissionStatus =
   | 'unknown'     // not yet determined — we may show the system pop-up
@@ -33,22 +35,39 @@ export function usePushNotifications() {
   const [status, setStatus] = useState<PushPermissionStatus>(
     Platform.OS === 'web' ? 'unavailable' : 'unknown',
   );
+  const [registrationError, setRegistrationError] = useState<string | null>(null);
   const cancelledRef = useRef(false);
 
   const obtainToken = useCallback(async (Notifications: NotificationsModule): Promise<boolean> => {
     try {
-      const tokenData = await Notifications.getExpoPushTokenAsync();
+      setRegistrationError(null);
+      const projectId =
+        Constants.expoConfig?.extra?.eas?.projectId ??
+        Constants.easConfig?.projectId;
+      const tokenData = await Notifications.getExpoPushTokenAsync(
+        projectId ? { projectId } : undefined,
+      );
+      const installationId = await getInstallationId();
       if (cancelledRef.current) return true;
-      setPushToken(tokenData.data);
-      // Register with server (non-critical)
-      apiFetch('/api/user/push-token', {
+      const response = await apiFetch<{ ok: boolean }>('/api/notifications/device', {
         method: 'POST',
-        body: JSON.stringify({ token: tokenData.data }),
-      }).catch(() => {});
+        body: JSON.stringify({
+          installationId,
+          expoPushToken: tokenData.data,
+          platform: Platform.OS,
+        }),
+      });
+      if (!response.ok) throw new Error('The notification service rejected this phone.');
+      if (!cancelledRef.current) {
+        setPushToken(tokenData.data);
+        setRegistrationError(null);
+      }
       return true;
-    } catch {
+    } catch (error) {
       // Requires a real device + EAS build to get a production token
-      if (!cancelledRef.current) setStatus('unavailable');
+      if (!cancelledRef.current) {
+        setRegistrationError(error instanceof Error ? error.message : 'Could not register notifications.');
+      }
       return false;
     }
   }, [apiFetch]);
@@ -73,6 +92,16 @@ export function usePushNotifications() {
             shouldShowList: true,
           }),
         });
+        if (Platform.OS === 'android') {
+          await Notifications.setNotificationChannelAsync('price-alerts', {
+            name: 'Price alerts',
+            description: 'Notifications when a watched stock reaches your target price.',
+            importance: Notifications.AndroidImportance.HIGH,
+            sound: 'default',
+            vibrationPattern: [0, 250, 150, 250],
+            lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+          });
+        }
 
         const perm = await Notifications.getPermissionsAsync();
         if (cancelledRef.current) return;
@@ -92,6 +121,32 @@ export function usePushNotifications() {
     })();
 
     return () => { cancelledRef.current = true; };
+  }, [obtainToken]);
+
+  // Android users who previously denied permission are sent to system
+  // settings. Re-check as soon as they return so the alert flow updates
+  // without requiring a restart.
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    const subscription = AppState.addEventListener('change', async (nextState) => {
+      if (nextState !== 'active' || cancelledRef.current) return;
+      try {
+        const Notifications = await getNativeNotifications();
+        if (!Notifications) return;
+        const permission = await Notifications.getPermissionsAsync();
+        const granted: boolean = permission.granted ?? permission.status === 'granted';
+        if (granted) {
+          setStatus('granted');
+          await obtainToken(Notifications);
+        } else {
+          setStatus(permission.canAskAgain === false ? 'denied' : 'unknown');
+          setPushToken(null);
+        }
+      } catch {
+        // Keep the existing state if the settings handoff was interrupted.
+      }
+    });
+    return () => subscription.remove();
   }, [obtainToken]);
 
   /**
@@ -127,6 +182,7 @@ export function usePushNotifications() {
   return {
     pushToken,
     status,
+    registrationError,
     requestPermission,
     openNotificationSettings,
     // Back-compat convenience flags
