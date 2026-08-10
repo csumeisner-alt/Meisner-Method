@@ -180,9 +180,11 @@ function WatchRow({
       {/* Bell + remove */}
       <View style={rowStyles.actions}>
         <TouchableOpacity
+          testID={`watchlist-alert-${item.symbol}`}
+          accessibilityLabel={`${alert ? 'Edit' : 'Set'} price alert for ${item.symbol}`}
           onPress={() => onOpenAlert(item.symbol, quote?.currentPrice)}
           style={[
-            rowStyles.iconBtn,
+            rowStyles.alertIconBtn,
             alert
               ? { backgroundColor: colors.buyBg, borderColor: colors.buyColor, borderWidth: 1 }
               : {},
@@ -191,11 +193,13 @@ function WatchRow({
         >
           <Feather
             name="bell"
-            size={16}
+            size={20}
             color={alert ? colors.buyColor : colors.mutedForeground}
           />
         </TouchableOpacity>
         <TouchableOpacity
+          testID={`watchlist-remove-${item.symbol}`}
+          accessibilityLabel={`Remove ${item.symbol} from watchlist`}
           onPress={() => onRemove(item.symbol)}
           style={rowStyles.iconBtn}
           activeOpacity={0.7}
@@ -279,11 +283,11 @@ function FloatingGhost({
       <View style={rowStyles.actions}>
         <View
           style={[
-            rowStyles.iconBtn,
+            rowStyles.alertIconBtn,
             alert ? { backgroundColor: colors.buyBg, borderColor: colors.buyColor, borderWidth: 1 } : {},
           ]}
         >
-          <Feather name="bell" size={16} color={alert ? colors.buyColor : colors.mutedForeground} />
+          <Feather name="bell" size={20} color={alert ? colors.buyColor : colors.mutedForeground} />
         </View>
         <View style={rowStyles.iconBtn}>
           <Feather name="x" size={16} color={colors.mutedForeground} />
@@ -459,6 +463,7 @@ const rowStyles = StyleSheet.create({
   sym: { fontSize: 16 },
   price: { fontSize: 14 },
   pct: { fontSize: 12 },
-  actions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   iconBtn: { padding: 8, borderRadius: 8 },
+  alertIconBtn: { padding: 10, borderRadius: 8, marginRight: 2 },
 });
