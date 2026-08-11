@@ -30,3 +30,20 @@ NODE_ENV = "production"
 
 [services.production.health.startup]
 path = "/api/healthz"
+
+[[services]]
+localPort = 8099
+name = "Alert Worker"
+paths = []
+
+[services.development]
+run = "pnpm --filter @workspace/api-server run dev:worker"
+
+[services.production]
+
+[services.production.run]
+args = ["node", "--enable-source-maps", "artifacts/api-server/dist/alert-worker.mjs"]
+
+[services.production.run.env]
+PORT = "8099"
+NODE_ENV = "production"

@@ -1232,15 +1232,9 @@ if (process.env.NODE_ENV !== "production") {
   });
 }
 
-// Start worker after schema is ready. First run 30s after boot, then every 5 min.
-void ensureSchema()
-  .then(() => {
-    setTimeout(() => {
-      void runAlertCheck();
-      setInterval(() => void runAlertCheck(), 5 * 60 * 1000);
-    }, 30_000);
-  })
-  .catch(() => {});
+// Alert checks are handled by the standalone alert-worker process
+// (src/alert-worker.ts → dist/alert-worker.mjs). The in-process timer has
+// been removed so checks continue even when the autoscaling API is idle.
 
 // Store active account id separately
 router.get("/user/paper/active", requireAuth, async (req: any, res) => {
