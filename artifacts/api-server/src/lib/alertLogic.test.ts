@@ -144,6 +144,36 @@ test("price fetched once per unique symbol", async () => {
   assert.equal(calls, 2); // AAPL once + TSLA once
 });
 
+test("quote fetches run sequentially to avoid provider bursts", async () => {
+  const order: string[] = [];
+  let active = 0;
+  let maxActive = 0;
+  const alerts = [
+    alert({ id: "a1", symbol: "AAPL" }),
+    alert({ id: "a2", symbol: "MSFT" }),
+    alert({ id: "a3", symbol: "NVDA" }),
+  ];
+  await processPendingAlerts(alerts, {
+    fetchPrice: async (symbol) => {
+      order.push(`${symbol}:start`);
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      active--;
+      order.push(`${symbol}:end`);
+      return 100;
+    },
+    sendPush: async () => ({ accepted: false, permanentFailure: false }),
+    markFired: async () => {},
+  });
+  assert.equal(maxActive, 1);
+  assert.deepEqual(order, [
+    "AAPL:start", "AAPL:end",
+    "MSFT:start", "MSFT:end",
+    "NVDA:start", "NVDA:end",
+  ]);
+});
+
 test("sendPush throwing is treated as transient", async () => {
   const fired: string[] = [];
   const stats = await processPendingAlerts([alert()], {

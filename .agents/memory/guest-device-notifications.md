@@ -20,3 +20,9 @@ Android remote push also requires the Firebase client configuration to be bundle
 **Why:** Without the Firebase Android app registration for the exact package, `getExpoPushTokenAsync()` fails with “Default FirebaseApp is not initialized” before the API registration request runs.
 
 **How to apply:** Keep the package registration and `google-services.json` in the mobile artifact, validate their package names match, and require a new native Android build before testing remote notifications.
+
+The alert worker must avoid bursting quote-provider subprocesses: fetch unique symbols sequentially, retry transient quote failures, and log the concrete failure before leaving an alert pending.
+
+**Why:** Production quote endpoints worked individually while concurrent worker fetches were all skipped as unavailable, so Expo was never called and the app gave no useful indication of the server-side failure.
+
+**How to apply:** Preserve pending alerts when price data is unavailable, but serialize provider calls and retry before incrementing `skippedNoPrice`; publish the API worker after changing this path.

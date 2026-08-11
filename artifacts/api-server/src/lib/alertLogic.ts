@@ -92,12 +92,13 @@ export async function processPendingAlerts(
 
   const symbols = [...new Set(alerts.map((a) => a.symbol))];
   const prices = new Map<string, number>();
-  await Promise.all(
-    symbols.map(async (sym) => {
-      const p = await deps.fetchPrice(sym);
-      if (p != null) prices.set(sym, p);
-    }),
-  );
+  // Keep provider calls sequential. Some quote providers throttle or reject
+  // a burst of subprocess requests even though each request works alone.
+  // A failed quote must not make every alert in the same cycle disappear.
+  for (const sym of symbols) {
+    const p = await deps.fetchPrice(sym);
+    if (p != null) prices.set(sym, p);
+  }
 
   await Promise.all(
     alerts.map(async (alert) => {

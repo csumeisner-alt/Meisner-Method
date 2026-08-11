@@ -1114,17 +1114,36 @@ router.put("/user/notification-settings", requireAuth, requireSchema, async (req
 // ── Price Alert Worker ─────────────────────────────────────────────────────
 // Runs every 5 minutes; fetches live prices and fires pending alerts.
 async function fetchCurrentPrice(symbol: string): Promise<number | null> {
-  try {
-    const { stdout } = await execFileAsync(
-      "python3", [QUOTE_SCRIPT_PATH, symbol],
-      { timeout: 20_000 },
-    );
-    const data = JSON.parse(stdout.trim());
-    if (data.error || !data.currentPrice) return null;
-    return data.currentPrice as number;
-  } catch {
-    return null;
+  const normalizedSymbol = symbol.toUpperCase().trim();
+  let lastError: unknown = null;
+
+  // Yahoo/yfinance can transiently reject a burst of concurrent requests.
+  // Retry the individual quote rather than turning a temporary provider
+  // response into a permanently skipped alert cycle.
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const { stdout } = await execFileAsync(
+        "python3", [QUOTE_SCRIPT_PATH, normalizedSymbol],
+        { timeout: 30_000, maxBuffer: 1024 * 1024 },
+      );
+      const data = JSON.parse(stdout.trim());
+      const price = Number(data.currentPrice);
+      if (!data.error && Number.isFinite(price) && price > 0) return price;
+      lastError = new Error(data.error || `No usable price returned for ${normalizedSymbol}`);
+    } catch (error) {
+      lastError = error;
+    }
+
+    if (attempt < 2) {
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+    }
   }
+
+  logger.warn(
+    { symbol: normalizedSymbol, err: lastError },
+    "[alert-worker] quote unavailable after retry",
+  );
+  return null;
 }
 
 async function sendExpoPush(alert: PendingAlert, price: number) {
