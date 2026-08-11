@@ -20,8 +20,12 @@
     },
     "android": {
       "package": "com.meisnermethod.app",
-      "versionCode": 8,
-      "googleServicesFile": "./google-services.json"
+      "versionCode": 9,
+      "googleServicesFile": "./google-services.json",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon-foreground.png",
+        "backgroundColor": "#050403"
+      }
     },
     "web": {
       "favicon": "./assets/images/icon.png"

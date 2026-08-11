@@ -14,3 +14,9 @@ Brand artwork should use a black-and-metallic-gold framed MM mark consistently i
 **Why:** Launcher icons are rendered small and aggressively masked, while the full wordmark is not readable at that size; a compact monogram preserves the identity and survives mobile safe areas.
 
 **How to apply:** Use a framed MM crop for the launcher icon and favicon, and a vector gold framed monogram for the in-app logo. Keep badges and the full wordmark out of the launcher asset.
+
+The Android launcher must define an explicit black adaptive-icon background and a transparent gold foreground; otherwise Android can place the mark on a default white field and make it appear undersized.
+
+**Why:** The previous raster icon and missing adaptive-icon configuration produced a white launcher surround and made the logo look unrelated to the in-app mark.
+
+**How to apply:** Keep the native launcher artwork and in-app logo generated from the same vector mark, with a black fallback icon and transparent adaptive foreground.
