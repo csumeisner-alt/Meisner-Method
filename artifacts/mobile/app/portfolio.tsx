@@ -109,7 +109,30 @@ function speakOnDevice(text: string) {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _celebPlayer: any = null;
-async function playCelebrationVoice(text: string) {
+function waitForPlayerLoaded(player: any, timeoutMs = 2500): Promise<boolean> {
+  if (player.isLoaded) return Promise.resolve(true);
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let subscription: { remove: () => void } | undefined;
+
+    const finish = (loaded: boolean) => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      subscription?.remove();
+      resolve(loaded);
+    };
+
+    subscription = player.addListener('playbackStatusUpdate', (status: { isLoaded?: boolean }) => {
+      if (status.isLoaded) finish(true);
+    });
+    timeout = setTimeout(() => finish(false), timeoutMs);
+  });
+}
+
+async function playCelebrationVoice(text: string): Promise<void> {
   if (IS_EXPO_GO) {
     speakOnDevice(text);
     return;
@@ -119,8 +142,15 @@ async function playCelebrationVoice(text: string) {
     const { createAudioPlayer, setAudioModeAsync } = await import('expo-audio');
     await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false });
     const uri = `${BASE_URL}/api/tts?text=${encodeURIComponent(text)}`;
-    _celebPlayer = createAudioPlayer({ uri });
-    _celebPlayer.play();
+    _celebPlayer = createAudioPlayer({ uri }, { downloadFirst: true });
+    const loaded = await waitForPlayerLoaded(_celebPlayer);
+    if (loaded) {
+      _celebPlayer.play();
+    } else {
+      try { _celebPlayer.remove(); } catch (_) {}
+      _celebPlayer = null;
+      speakOnDevice(text);
+    }
   } catch (_) {
     // Fallback to on-device speech (no native audio / no network)
     speakOnDevice(text);
@@ -327,9 +357,13 @@ function CelebrationOverlay({
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | undefined;
     let fadeTimer: ReturnType<typeof setTimeout> | undefined;
-    try {
-    // Fade in overlay (single value — avoids Animated.multiply crash)
-    Animated.timing(overlayOp, { toValue: 1, duration: 280, useNativeDriver: true }).start();
+    let cancelled = false;
+
+    const startAnimation = () => {
+      if (cancelled) return;
+      try {
+      // Fade in overlay (single value — avoids Animated.multiply crash)
+      Animated.timing(overlayOp, { toValue: 1, duration: 280, useNativeDriver: true }).start();
 
     // Card slides up + springs in
     Animated.parallel([
@@ -374,9 +408,6 @@ function CelebrationOverlay({
     burst();
     interval = setInterval(burst, 3000);
 
-    // Natural voice via OpenAI TTS
-    playCelebrationVoice(compliment);
-
     // Auto-dismiss after 7.5 s — fade the whole overlay out then call onDismiss
     fadeTimer = setTimeout(() => {
       Animated.timing(overlayOp, { toValue: 0, duration: 600, useNativeDriver: true }).start(onDismiss);
@@ -385,8 +416,14 @@ function CelebrationOverlay({
       // Effect-time failure — dismiss instead of crashing the app.
       onDismiss();
     }
+    };
+
+    // Hold the overlay transparent until playback can start, keeping the first
+    // visible frame and the first audible frame in sync.
+    void playCelebrationVoice(compliment).then(startAnimation).catch(startAnimation);
 
     return () => {
+      cancelled = true;
       if (interval) clearInterval(interval);
       if (fadeTimer) clearTimeout(fadeTimer);
       stopCelebrationVoice();
@@ -1412,7 +1449,7 @@ export default function PortfolioScreen() {
         if (grade && feedbackEventRef.current !== newTrade.id) {
           feedbackEventRef.current = newTrade.id;
           if (grade.celebrate) {
-            setTimeout(() => setCelebration(grade), 600);
+            setCelebration(grade);
           } else {
             setTimeout(() => setTradeFeedback(grade), 250);
           }
