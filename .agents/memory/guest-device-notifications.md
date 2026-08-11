@@ -32,3 +32,9 @@ The background worker must use a price-only provider path, not the app's richer 
 **Why:** The published worker was timing out in `fetch_quote.py` while the public quote endpoint eventually returned a price; this prevented the worker from ever contacting Expo.
 
 **How to apply:** Keep alert evaluation independent of metadata enrichment, and verify the published logs reference the price-only path after publishing. An in-process timer in an autoscaling API is also not a durable scheduler; production alert checks should eventually move to an always-on or scheduled worker.
+
+Expo can return HTTP 200 while rejecting a real Android token with `InvalidCredentials`; this indicates missing or invalid EAS FCM server credentials, not a mobile permission or database problem.
+
+**Why:** A direct send using a token stored from production returned an error ticket with `InvalidCredentials`, proving the request reached Expo but could not authenticate the Android delivery provider.
+
+**How to apply:** Configure an FCM v1 Firebase service-account credential on the EAS project/profile. The bundled `google-services.json` is only the client config and must not be substituted for the service-account credential.

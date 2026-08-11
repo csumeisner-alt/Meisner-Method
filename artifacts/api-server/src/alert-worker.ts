@@ -10,10 +10,6 @@
  *              node --experimental-strip-types src/alert-worker.ts (dev)
  */
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { fileURLToPath } from "node:url";
-import { join, dirname } from "node:path";
 import pg from "pg";
 import { logger } from "./lib/logger.js";
 import {
@@ -22,15 +18,11 @@ import {
 } from "./lib/alertLogic.js";
 import { runAlertCheckCycle } from "./lib/alertWorkerCycle.js";
 import { computeHealthStatus } from "./lib/alertWorkerHealth.js";
+import { fetchYahooChartPrice } from "./lib/marketPrice.js";
 
 const { Pool } = pg;
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-
-const execFileAsync = promisify(execFile);
-const __workerDirname = dirname(fileURLToPath(import.meta.url));
-// fetch_price.py is copied to dist/ by build.mjs alongside the bundle.
-const PRICE_SCRIPT_PATH = join(__workerDirname, "fetch_price.py");
 
 // ── Schema gate ────────────────────────────────────────────────────────────
 // The worker only reads price_alerts and push_devices, which are created by
@@ -68,14 +60,9 @@ async function fetchCurrentPrice(symbol: string): Promise<number | null> {
 
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const { stdout } = await execFileAsync(
-        "python3", [PRICE_SCRIPT_PATH, normalizedSymbol],
-        { timeout: 20_000, maxBuffer: 1024 * 1024 },
-      );
-      const data = JSON.parse(stdout.trim());
-      const price = Number(data.currentPrice);
-      if (!data.error && Number.isFinite(price) && price > 0) return price;
-      lastError = new Error(data.error || `No usable price returned for ${normalizedSymbol}`);
+      const price = await fetchYahooChartPrice(normalizedSymbol);
+      if (price != null) return price;
+      lastError = new Error(`No usable Yahoo chart price for ${normalizedSymbol}`);
     } catch (error) {
       lastError = error;
     }
