@@ -30,8 +30,10 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 const execFileAsync = promisify(execFile);
 const __watchlistDirname = dirname(fileURLToPath(import.meta.url));
-// fetch_quote.py is copied to dist/ by build.mjs alongside this bundle
-const QUOTE_SCRIPT_PATH = join(__watchlistDirname, "fetch_quote.py");
+// fetch_price.py is copied to dist/ by build.mjs alongside this bundle.
+// The alert worker only needs a current price; using the richer quote script
+// also loads ticker.info for metadata and can exceed the worker timeout.
+const PRICE_SCRIPT_PATH = join(__watchlistDirname, "fetch_price.py");
 
 // Idempotent schema migrations for columns added after the tables were first
 // created. Safe to run on every boot; existing rows get the DEFAULT.
@@ -1123,8 +1125,8 @@ async function fetchCurrentPrice(symbol: string): Promise<number | null> {
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
       const { stdout } = await execFileAsync(
-        "python3", [QUOTE_SCRIPT_PATH, normalizedSymbol],
-        { timeout: 30_000, maxBuffer: 1024 * 1024 },
+        "python3", [PRICE_SCRIPT_PATH, normalizedSymbol],
+        { timeout: 20_000, maxBuffer: 1024 * 1024 },
       );
       const data = JSON.parse(stdout.trim());
       const price = Number(data.currentPrice);

@@ -133,6 +133,10 @@ buildAll()
         path.resolve(artifactDir, "dist/fetch_quote.py")
       ),
       copyFile(
+        path.resolve(artifactDir, "src/lib/fetch_price.py"),
+        path.resolve(artifactDir, "dist/fetch_price.py")
+      ),
+      copyFile(
         path.resolve(artifactDir, "src/lib/fetch_trending.py"),
         path.resolve(artifactDir, "dist/fetch_trending.py")
       ),

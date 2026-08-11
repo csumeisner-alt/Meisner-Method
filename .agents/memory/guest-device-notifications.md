@@ -26,3 +26,9 @@ The alert worker must avoid bursting quote-provider subprocesses: fetch unique s
 **Why:** Production quote endpoints worked individually while concurrent worker fetches were all skipped as unavailable, so Expo was never called and the app gave no useful indication of the server-side failure.
 
 **How to apply:** Preserve pending alerts when price data is unavailable, but serialize provider calls and retry before incrementing `skippedNoPrice`; publish the API worker after changing this path.
+
+The background worker must use a price-only provider path, not the app's richer quote path: yfinance metadata lookups can exceed the worker timeout even when a current price is available.
+
+**Why:** The published worker was timing out in `fetch_quote.py` while the public quote endpoint eventually returned a price; this prevented the worker from ever contacting Expo.
+
+**How to apply:** Keep alert evaluation independent of metadata enrichment, and verify the published logs reference the price-only path after publishing. An in-process timer in an autoscaling API is also not a durable scheduler; production alert checks should eventually move to an always-on or scheduled worker.
