@@ -20,3 +20,9 @@ The Android launcher must define an explicit black adaptive-icon background and 
 **Why:** The previous raster icon and missing adaptive-icon configuration produced a white launcher surround and made the logo look unrelated to the in-app mark.
 
 **How to apply:** Keep the native launcher artwork and in-app logo generated from the same vector mark, with a black fallback icon and transparent adaptive foreground.
+
+American Mode action emphasis should use brief, low-frequency gold motion rather than continuous animation: a primary button can reveal a muted flag motif for roughly one second after a quiet interval, while preserving a high-contrast label.
+
+**Why:** Continuous or high-contrast patriotic motion competes with the financial workflow and can make a primary action feel promotional instead of premium.
+
+**How to apply:** Keep the effect local and GPU-friendly, avoid network or timer work outside the component, and ensure text remains readable at the animation peak.

@@ -29,6 +29,7 @@ import { useWatchlist } from '@/hooks/useWatchlist';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { DraggableWatchlist } from '@/components/DraggableWatchlist';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
+import { AmericanAnalyzeButton } from '@/components/AmericanAnalyzeButton';
 import { matchesFilter, mergeReorderedSubset } from '@/lib/watchlistFilter';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -654,24 +655,13 @@ export default function HomeScreen() {
             </TouchableOpacity>
           )}
         </View>
-        <TouchableOpacity
-          style={[styles.analyzeBtn, {
-            backgroundColor: query.trim() ? colors.primary : colors.muted,
-            borderWidth: 1,
-            borderColor: query.trim() ? colors.primary : colors.border,
-          }]}
-          onPress={handleSubmit}
+        <AmericanAnalyzeButton
+          active={isActive}
           disabled={!query.trim()}
-          activeOpacity={0.8}
-        >
-          <Text style={[styles.analyzeBtnText, {
-            color: query.trim() ? colors.primaryForeground : colors.mutedForeground,
-            fontFamily: 'Inter_700Bold',
-            letterSpacing: 1,
-          }]}>
-            ANALYZE
-          </Text>
-        </TouchableOpacity>
+          hasQuery={Boolean(query.trim())}
+          colors={colors}
+          onPress={handleSubmit}
+        />
       </View>
 
       {/* Watchlist filter — sticky bar between search and scroll so it's always reachable */}
@@ -911,13 +901,6 @@ const styles = StyleSheet.create({
   searchIcon: { marginRight: 10 },
   searchInput: { flex: 1, fontSize: 16, height: '100%' },
   clearBtn: { padding: 4 },
-  analyzeBtn: {
-    height: 52,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  analyzeBtnText: { fontSize: 14 },
   section: { paddingHorizontal: 20, marginBottom: 24 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   sectionTitleRow: { flexDirection: 'row', alignItems: 'center' },
