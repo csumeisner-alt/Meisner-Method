@@ -48,3 +48,6 @@ args = ["node", "--enable-source-maps", "artifacts/api-server/dist/alert-worker.
 [services.production.run.env]
 PORT = "8099"
 NODE_ENV = "production"
+
+[services.production.health.startup]
+path = "/healthz"

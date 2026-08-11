@@ -158,9 +158,14 @@ function sleep(ms: number): Promise<void> {
 import http from "node:http";
 
 function startHealthServer(port: number): void {
-  const server = http.createServer((_req, res) => {
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ ok: true, service: "alert-worker" }));
+  const server = http.createServer((req, res) => {
+    if (req.method === "GET" && req.url === "/healthz") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, service: "alert-worker" }));
+    } else {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "not found" }));
+    }
   });
   server.listen(port, () => {
     logger.info({ port }, "[alert-worker] health server listening");
