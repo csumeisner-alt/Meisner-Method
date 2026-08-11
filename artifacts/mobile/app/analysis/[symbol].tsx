@@ -25,11 +25,13 @@ import type { StockAnalysis } from '@workspace/api-client-react';
 import { ComparisonChart } from '@/components/ComparisonChart';
 import type { Candle } from '@/components/StockChart';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
+import { PriceAlertModal } from '@/components/PriceAlertModal';
+import { useWatchlist } from '@/hooks/useWatchlist';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const PINNED_COMP_KEY = '@stocksense/pinned_comp_symbol';
-const GUEST_WATCHLIST_KEY = '@stocksense/watchlist_v1/__guest__';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -178,40 +180,29 @@ export default function AnalysisScreen() {
   const { width: screenWidth } = useWindowDimensions();
   const { apiFetch } = useApi();
   const { mutate, data, isPending, error } = useAnalyzeStock<Error>();
+  const watchlist = useWatchlist();
+  const {
+    pushToken,
+    status: pushStatus,
+    registrationError,
+    requestPermission,
+    openNotificationSettings,
+  } = usePushNotifications();
 
   // ── Watchlist star state ──────────────────────────────────────────────────
-  const [isWatched, setIsWatched] = useState(false);
-  const [watchlistLoading, setWatchlistLoading] = useState(false);
-
-  useEffect(() => {
-    if (!symbol) return;
-    AsyncStorage.getItem(GUEST_WATCHLIST_KEY)
-      .then((raw) => {
-        const list = raw ? JSON.parse(raw) as { symbol: string }[] : [];
-        setIsWatched(list.some((w) => w.symbol === symbol));
-      })
-      .catch(() => {});
-  }, [symbol]);
+  const isWatched = symbol ? watchlist.isWatched(symbol) : false;
+  const activeAlert = symbol ? watchlist.activeAlertFor(symbol) : null;
+  const [alertVisible, setAlertVisible] = useState(false);
 
   const toggleWatchlist = useCallback(async () => {
-    if (!symbol || watchlistLoading) return;
+    if (!symbol) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setWatchlistLoading(true);
-    const next = !isWatched;
-    setIsWatched(next); // optimistic
-    try {
-      const raw = await AsyncStorage.getItem(GUEST_WATCHLIST_KEY);
-      const current = raw ? JSON.parse(raw) as { symbol: string; createdAt: string }[] : [];
-      const updated = next
-        ? [{ symbol, createdAt: new Date().toISOString() }, ...current.filter((item) => item.symbol !== symbol)]
-        : current.filter((item) => item.symbol !== symbol);
-      await AsyncStorage.setItem(GUEST_WATCHLIST_KEY, JSON.stringify(updated));
-    } catch {
-      setIsWatched(!next);
-    } finally {
-      setWatchlistLoading(false);
+    if (isWatched) {
+      await watchlist.remove(symbol);
+    } else {
+      await watchlist.add(symbol);
     }
-  }, [symbol, isWatched, watchlistLoading]);
+  }, [isWatched, symbol, watchlist]);
 
   // ── Chart state ──────────────────────────────────────────────────────────
   const [period, setPeriod] = useState<Period>('3mo');
@@ -353,7 +344,6 @@ export default function AnalysisScreen() {
               onPress={toggleWatchlist}
               style={headerStyles.starBtn}
               activeOpacity={0.7}
-              disabled={watchlistLoading}
             >
               <Feather
                 name={isWatched ? 'star' : 'star'}
@@ -437,6 +427,30 @@ export default function AnalysisScreen() {
   return (
     <AmericanSteelBackground>
       <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
+      <PriceAlertModal
+        visible={alertVisible}
+        symbol={symbol ?? ''}
+        currentPrice={data.currentPrice}
+        existingDirection={activeAlert?.direction}
+        existingTarget={activeAlert?.targetPrice}
+        pushToken={pushToken}
+        registrationError={registrationError}
+        permissionStatus={pushStatus}
+        onRequestPermission={requestPermission}
+        onOpenSettings={openNotificationSettings}
+        onSave={async (direction, targetPrice) => {
+          if (!symbol || !pushToken) return;
+          await watchlist.saveAlert(symbol, direction, targetPrice, pushToken);
+          if (!watchlist.isWatched(symbol)) {
+            await watchlist.add(symbol);
+          }
+        }}
+        onDelete={async () => {
+          if (activeAlert) await watchlist.deleteAlert(activeAlert.id).catch(() => {});
+        }}
+        onClose={() => setAlertVisible(false)}
+        colors={colors}
+      />
       {renderHeader(data)}
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: botPad + 24 }]}
@@ -480,6 +494,28 @@ export default function AnalysisScreen() {
             ))}
           </View>
         </View>
+
+        <TouchableOpacity
+          style={[styles.alertAction, { backgroundColor: colors.card, borderColor: colors.primary }]}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setAlertVisible(true);
+          }}
+          activeOpacity={0.8}
+        >
+          <Feather name="bell" size={17} color={colors.primary} />
+          <View style={styles.alertActionCopy}>
+            <Text style={[styles.alertActionTitle, { color: colors.primary, fontFamily: 'Inter_700Bold' }]}>
+              {activeAlert ? 'EDIT PRICE ALERT' : 'SET PRICE ALERT'}
+            </Text>
+            <Text style={[styles.alertActionSubtitle, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+              {activeAlert
+                ? `Alert ${activeAlert.direction === 'above' ? 'above' : 'below'} ${fmtPrice(activeAlert.targetPrice)}`
+                : isWatched ? 'Get notified when this stock reaches your target' : 'Adds this stock to your watchlist automatically'}
+            </Text>
+          </View>
+          <Feather name="chevron-right" size={17} color={colors.mutedForeground} />
+        </TouchableOpacity>
 
         {/* 52W Range */}
         <View style={[rangeStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -752,6 +788,19 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   scroll: { padding: 14 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 },
+  alertAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 12,
+  },
+  alertActionCopy: { flex: 1, gap: 3 },
+  alertActionTitle: { fontSize: 11, letterSpacing: 1 },
+  alertActionSubtitle: { fontSize: 12, lineHeight: 17 },
   loadingTitle: { fontSize: 18, marginTop: 16 },
   loadingSubtitle: { fontSize: 14, textAlign: 'center' },
   errorTitle: { fontSize: 18, marginTop: 12 },
