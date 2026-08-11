@@ -1,6 +1,6 @@
 /**
  * AmericanCelebration — full-screen cinematic celebration shown when the
- * user hits 550 facts read and unlocks American Mode.
+ * user hits 1,776 facts read and unlocks American Mode.
  *
  * 5 realistic F-35 SVG jets rise from the bottom of the screen to the top
  * at staggered horizontal positions and speeds, with heavy haptic pulses
@@ -26,6 +26,7 @@ import * as Haptics from 'expo-haptics';
 import { useAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import Svg, { Circle, Ellipse, Path, Polygon, Rect } from 'react-native-svg';
 import { Confetti } from '@/components/Confetti';
+import { AMERICAN_MODE_THRESHOLD } from '@/lib/factCountLogic';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
@@ -416,7 +417,7 @@ export function AmericanCelebration({ visible, onDismiss }: Props) {
           <Text style={styles.subline}>UNLOCKED</Text>
           <Text style={styles.eagleEmoji}>🦅</Text>
           <Text style={styles.body}>
-            You've read 550 facts.{'\n'}The eagle has landed.
+            You've read {AMERICAN_MODE_THRESHOLD.toLocaleString()} facts.{'\n'}The eagle has landed.
           </Text>
 
           <Pressable style={styles.dismissBtn} onPress={onDismiss}>

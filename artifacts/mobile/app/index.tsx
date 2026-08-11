@@ -575,7 +575,7 @@ export default function HomeScreen() {
         </Pressable>
       </Modal>
 
-      {/* American Mode celebration — fires once when 550 facts are read */}
+      {/* American Mode celebration — fires once when 1,776 facts are read */}
       <AmericanCelebration
         visible={showCelebration}
         onDismiss={() => setShowCelebration(false)}

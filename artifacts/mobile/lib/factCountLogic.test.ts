@@ -33,6 +33,10 @@ describe('parseStoredCount', () => {
   });
 });
 
+test('American Mode unlocks at the patriotic threshold', () => {
+  assert.equal(AMERICAN_MODE_THRESHOLD, 1_776);
+});
+
 describe('computeNextCount — hydration invariant', () => {
   test('increment from hydrated high count never regresses', () => {
     // Simulate: user had 347 facts, hydration loaded 347 into countRef,

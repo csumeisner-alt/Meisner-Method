@@ -3,7 +3,7 @@
  * with Node's built-in runner without needing React or AsyncStorage.
  */
 
-export const AMERICAN_MODE_THRESHOLD = 1_650;
+export const AMERICAN_MODE_THRESHOLD = 1_776;
 
 /** Parse a raw AsyncStorage string into a safe integer count. */
 export function parseStoredCount(raw: string | null | undefined): number {

@@ -26,3 +26,9 @@ American Mode action emphasis should use brief, low-frequency gold motion rather
 **Why:** Continuous or high-contrast patriotic motion competes with the financial workflow and can make a primary action feel promotional instead of premium.
 
 **How to apply:** Keep the effect local and GPU-friendly, avoid network or timer work outside the component, and ensure text remains readable at the animation peak.
+
+American Mode's fact-count unlock milestone is 1,776 taps.
+
+**Why:** The milestone intentionally uses the year associated with American independence as part of the mode's identity.
+
+**How to apply:** Keep the threshold centralized in the fact-count logic and derive progress/celebration copy from that shared constant.
