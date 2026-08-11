@@ -17,10 +17,10 @@ import { join, dirname } from "node:path";
 import pg from "pg";
 import { logger } from "./lib/logger.js";
 import {
-  processPendingAlerts,
   classifyExpoPushResponse,
   type PendingAlert,
 } from "./lib/alertLogic.js";
+import { runAlertCheckCycle } from "./lib/alertWorkerCycle.js";
 
 const { Pool } = pg;
 
@@ -128,33 +128,9 @@ async function runAlertCheck(): Promise<void> {
   }
   alertCheckRunning = true;
   try {
-    const { rows } = await pool.query(
-      `SELECT a.id, a.user_id, a.installation_id, a.symbol, a.direction, a.target_price,
-              COALESCE(d.expo_push_token, a.push_token) AS push_token
-       FROM price_alerts a
-       LEFT JOIN user_prefs p ON p.user_id = a.user_id
-       LEFT JOIN push_devices d ON d.installation_id = a.installation_id
-       WHERE a.fired_at IS NULL
-         AND COALESCE(p.notifications_enabled, TRUE)
-         AND COALESCE(d.enabled, TRUE)
-         AND COALESCE(d.expo_push_token, a.push_token) IS NOT NULL`,
-    );
-
-    const pending: PendingAlert[] = rows.map((r: any) => ({
-      id: r.id,
-      userId: r.user_id,
-      symbol: r.symbol,
-      direction: r.direction,
-      targetPrice: Number(r.target_price),
-      pushToken: r.push_token,
-    }));
-
-    const stats = await processPendingAlerts(pending, {
+    const stats = await runAlertCheckCycle(pool, {
       fetchPrice: fetchCurrentPrice,
       sendPush: sendExpoPush,
-      markFired: async (id) => {
-        await pool.query("UPDATE price_alerts SET fired_at=NOW() WHERE id=$1", [id]);
-      },
     });
 
     if (stats.checked > 0) {
