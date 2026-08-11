@@ -40,6 +40,7 @@ paths = []
 run = "pnpm --filter @workspace/api-server run dev:worker"
 
 [services.production]
+deploymentTarget = "reserved_vm"
 
 [services.production.run]
 args = ["node", "--enable-source-maps", "artifacts/api-server/dist/alert-worker.mjs"]
