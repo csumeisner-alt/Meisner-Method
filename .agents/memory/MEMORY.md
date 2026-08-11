@@ -18,3 +18,4 @@
 - [Paper trading engine v2](paper-trading-v2.md) — orders/lots/T+2/FIFO/slippage/dividends; trailing stop uses trailRef not currentPrice; `.ts` extension needed for Node ESM; syncToServer takes 6 args now.
 - [American Mode premium theme](american-mode-premium-theme.md) — use brushed steel and gold as the persistent premium language; reserve flag colors for brief entry motion.
 - [Guest device notifications](guest-device-notifications.md) — route alerts by anonymous installation ID and latest Expo token, not account auth.
+- [Meisner Method branding](meisner-method-branding.md) — public product branding is Meisner Method; legacy storage namespaces remain for local-data compatibility.

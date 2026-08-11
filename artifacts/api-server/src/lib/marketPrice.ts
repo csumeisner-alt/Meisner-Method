@@ -37,7 +37,7 @@ export async function fetchYahooChartPrice(symbol: string): Promise<number | nul
   const response = await fetch(url, {
     headers: {
       Accept: "application/json",
-      "User-Agent": "Mozilla/5.0 StockSense/1.0",
+      "User-Agent": "Mozilla/5.0 MeisnerMethod/1.0",
     },
     signal: AbortSignal.timeout(12_000),
   });

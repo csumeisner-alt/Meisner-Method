@@ -1,6 +1,6 @@
-# [Project name]
+# Meisner Method
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Meisner Method is a guest-friendly paper-trading and stock-learning app with watchlists, alerts, analysis, and American Mode.
 
 ## Run & Operate
 

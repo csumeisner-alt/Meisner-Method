@@ -98,7 +98,7 @@ export function DonationSidebar({ visible, onClose }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
-  // Fire the thank-you the moment the user returns to StockSense, but only if
+  // Fire the thank-you the moment the user returns to Meisner Method, but only if
   // they actually tapped a tip button before leaving.
   useEffect(() => {
     const onAppStateChange = (state: AppStateStatus) => {
@@ -163,7 +163,7 @@ export function DonationSidebar({ visible, onClose }: Props) {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     try {
       await Linking.openURL(appUrl);
-      // Arm the thank-you: it fires when the user comes back to StockSense.
+      // Arm the thank-you: it fires when the user comes back to Meisner Method.
       tipAttemptedRef.current = true;
     } catch {
       try {
@@ -415,7 +415,7 @@ export function DonationSidebar({ visible, onClose }: Props) {
                   Thank you!
                 </Text>
                 <Text style={[styles.celebBody, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
-                  You're keeping StockSense 100% ad-free. 💜
+                  You're keeping Meisner Method 100% ad-free. 💜
                 </Text>
               </Animated.View>
             </Animated.View>
