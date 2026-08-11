@@ -21,6 +21,7 @@ import {
   type PendingAlert,
 } from "./lib/alertLogic.js";
 import { runAlertCheckCycle } from "./lib/alertWorkerCycle.js";
+import { computeHealthStatus } from "./lib/alertWorkerHealth.js";
 
 const { Pool } = pg;
 
@@ -141,6 +142,10 @@ async function runAlertCheck(): Promise<void> {
   } catch (e: any) {
     logger.error({ err: e }, "[alert-worker] price check failed");
   } finally {
+    // Record completion time even when the cycle threw — what matters for
+    // liveness is that the loop is still advancing, not that every check
+    // succeeded.
+    lastCycleCompletedAt = Date.now();
     alertCheckRunning = false;
   }
 }
@@ -154,14 +159,45 @@ function sleep(ms: number): Promise<void> {
 // ── Health server ──────────────────────────────────────────────────────────
 // A minimal HTTP server so the alert worker can be registered as a proper
 // artifact service with a port and remain reachable for health checks.
+//
+// workerStartedAt is set at boot and used as the liveness baseline before the
+// first cycle completes, so a hang in schema-wait or the first runAlertCheck
+// call is also caught.  Once a cycle finishes, lastCycleCompletedAt takes over.
+// /healthz returns 503 when no progress has occurred in 2× CHECK_INTERVAL_MS.
 
 import http from "node:http";
+
+const workerStartedAt: number = Date.now();
+let lastCycleCompletedAt: number | null = null;
 
 function startHealthServer(port: number): void {
   const server = http.createServer((req, res) => {
     if (req.method === "GET" && req.url === "/healthz") {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ ok: true, service: "alert-worker" }));
+      const { healthy, secondsSinceProgress } = computeHealthStatus(
+        { workerStartedAt, lastCycleCompletedAt, checkIntervalMs: CHECK_INTERVAL_MS },
+        Date.now(),
+      );
+
+      if (!healthy) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: false,
+            service: "alert-worker",
+            lastCycleCompletedAt,
+            secondsSinceProgress,
+          }),
+        );
+      } else {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            service: "alert-worker",
+            lastCycleCompletedAt,
+          }),
+        );
+      }
     } else {
       res.writeHead(404, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: false, error: "not found" }));

@@ -51,3 +51,6 @@ NODE_ENV = "production"
 
 [services.production.health.startup]
 path = "/healthz"
+
+[services.production.health.liveness]
+path = "/healthz"
