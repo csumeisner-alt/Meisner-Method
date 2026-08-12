@@ -38,3 +38,9 @@ Expo can return HTTP 200 while rejecting a real Android token with `InvalidCrede
 **Why:** A direct send using a token stored from production returned an error ticket with `InvalidCredentials`, proving the request reached Expo but could not authenticate the Android delivery provider.
 
 **How to apply:** Configure an FCM v1 Firebase service-account credential on the EAS project/profile. The bundled `google-services.json` is only the client config and must not be substituted for the service-account credential.
+
+Expo push tickets with `status: ok` confirm that Expo accepted a payload, not that the phone displayed it; same-cycle alerts should be sent as one batch with each ticket handled independently.
+
+**Why:** Two alerts for one Android installation were both accepted by the worker, but only one appeared on the device. The provider recommends batching messages, and the current acceptance metric cannot prove device delivery.
+
+**How to apply:** Keep alert identity in each payload, batch up to Expo's per-request limit, retry only the ticket that is transient or malformed, and treat push receipts as the authoritative downstream delivery signal.

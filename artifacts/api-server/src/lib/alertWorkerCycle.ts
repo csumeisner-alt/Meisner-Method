@@ -12,6 +12,7 @@ import pg from "pg";
 import {
   processPendingAlerts,
   type PendingAlert,
+  type AlertPushRequest,
   type PushSendResult,
   type AlertCheckStats,
 } from "./alertLogic.ts";
@@ -23,6 +24,10 @@ export interface AlertCycleDeps {
   fetchPrice: (symbol: string) => Promise<number | null>;
   /** Sends a push notification and classifies the outcome. */
   sendPush: (alert: PendingAlert, price: number) => Promise<PushSendResult>;
+  /** Sends a same-cycle batch and returns one result per alert ID. */
+  sendPushBatch?: (
+    requests: AlertPushRequest[],
+  ) => Promise<Map<string, PushSendResult>>;
 }
 
 /**
@@ -101,6 +106,7 @@ export async function runAlertCheckCycle(
   return processPendingAlerts(pending, {
     fetchPrice: deps.fetchPrice,
     sendPush: deps.sendPush,
+    sendPushBatch: deps.sendPushBatch,
     markFired: async (id) => {
       await dbPool.query("UPDATE price_alerts SET fired_at=NOW() WHERE id=$1", [id]);
     },

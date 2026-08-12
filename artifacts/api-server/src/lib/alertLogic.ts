@@ -22,11 +22,24 @@ export interface PushSendResult {
   permanentFailure: boolean;
 }
 
+export interface AlertPushRequest {
+  alert: PendingAlert;
+  currentPrice: number;
+}
+
 export interface AlertCheckDeps {
   /** Returns the current price for a symbol, or null if unavailable. */
   fetchPrice: (symbol: string) => Promise<number | null>;
   /** Sends the push notification; classifies the outcome. */
   sendPush: (alert: PendingAlert, currentPrice: number) => Promise<PushSendResult>;
+  /**
+   * Optional batch sender for providers that support multiple messages in one
+   * request. Results must be keyed by alert ID so each ticket is handled
+   * independently.
+   */
+  sendPushBatch?: (
+    requests: AlertPushRequest[],
+  ) => Promise<Map<string, PushSendResult>>;
   /** Marks the alert as fired (sets fired_at) — must be idempotent. */
   markFired: (alertId: string) => Promise<void>;
 }
@@ -55,11 +68,16 @@ export function isAlertTriggered(
  * body carries the real outcome. DeviceNotRegistered is permanent — retrying
  * forever would loop, so callers should mark those alerts fired.
  */
-export function classifyExpoPushResponse(httpOk: boolean, body: unknown): PushSendResult {
+export function classifyExpoPushResponse(
+  httpOk: boolean,
+  body: unknown,
+  ticketIndex = 0,
+): PushSendResult {
   if (!httpOk) return { accepted: false, permanentFailure: false };
   const ticket = (body as any)?.data;
-  // Expo may return a single ticket object or an array of tickets.
-  const t = Array.isArray(ticket) ? ticket[0] : ticket;
+  // Expo may return a single ticket object or an array of tickets. For a
+  // batch, use the ticket at the same index as the submitted message.
+  const t = Array.isArray(ticket) ? ticket[ticketIndex] : ticket;
   // A missing/malformed ticket is NOT proof of acceptance — treat as transient
   // so the alert retries rather than being silently dropped.
   if (!t || typeof t !== "object") return { accepted: false, permanentFailure: false };
@@ -100,35 +118,57 @@ export async function processPendingAlerts(
     if (p != null) prices.set(sym, p);
   }
 
-  await Promise.all(
-    alerts.map(async (alert) => {
-      const price = prices.get(alert.symbol);
-      if (price == null) {
-        stats.skippedNoPrice++;
-        return;
-      }
-      if (!isAlertTriggered(alert.direction, alert.targetPrice, price)) return;
-      stats.triggered++;
+  const triggered: AlertPushRequest[] = [];
+  for (const alert of alerts) {
+    const price = prices.get(alert.symbol);
+    if (price == null) {
+      stats.skippedNoPrice++;
+      continue;
+    }
+    if (!isAlertTriggered(alert.direction, alert.targetPrice, price)) continue;
+    stats.triggered++;
+    triggered.push({ alert, currentPrice: price });
+  }
 
-      let result: PushSendResult;
+  let batchResults: Map<string, PushSendResult> | null = null;
+  if (deps.sendPushBatch && triggered.length > 0) {
+    try {
+      batchResults = await deps.sendPushBatch(triggered);
+    } catch {
+      batchResults = new Map();
+    }
+  }
+
+  // Handle each ticket independently. A batch can contain one successful
+  // message and one retryable failure; never let the first result determine
+  // what happens to the rest of the alerts.
+  for (const request of triggered) {
+    const { alert, currentPrice } = request;
+    let result: PushSendResult;
+    if (batchResults) {
+      result = batchResults.get(alert.id) ?? {
+        accepted: false,
+        permanentFailure: false,
+      };
+    } else {
       try {
-        result = await deps.sendPush(alert, price);
+        result = await deps.sendPush(alert, currentPrice);
       } catch {
         result = { accepted: false, permanentFailure: false };
       }
+    }
 
-      if (result.accepted) {
-        await deps.markFired(alert.id);
-        stats.delivered++;
-      } else if (result.permanentFailure) {
-        // Dead token — mark fired so we don't retry forever.
-        await deps.markFired(alert.id);
-        stats.firedPermanentFailure++;
-      } else {
-        stats.retriedTransient++;
-      }
-    }),
-  );
+    if (result.accepted) {
+      await deps.markFired(alert.id);
+      stats.delivered++;
+    } else if (result.permanentFailure) {
+      // Dead token — mark fired so we don't retry forever.
+      await deps.markFired(alert.id);
+      stats.firedPermanentFailure++;
+    } else {
+      stats.retriedTransient++;
+    }
+  }
 
   return stats;
 }

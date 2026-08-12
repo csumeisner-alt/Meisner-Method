@@ -14,7 +14,9 @@ import pg from "pg";
 import { logger } from "./lib/logger.js";
 import {
   classifyExpoPushResponse,
+  type AlertPushRequest,
   type PendingAlert,
+  type PushSendResult,
 } from "./lib/alertLogic.js";
 import { runAlertCheckCycle } from "./lib/alertWorkerCycle.js";
 import { computeHealthStatus } from "./lib/alertWorkerHealth.js";
@@ -81,28 +83,58 @@ async function fetchCurrentPrice(symbol: string): Promise<number | null> {
 
 // ── Push sender ────────────────────────────────────────────────────────────
 
-async function sendExpoPush(alert: PendingAlert, price: number) {
-  const pushRes = await fetch("https://exp.host/--/api/v2/push/send", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Accept": "application/json" },
-    body: JSON.stringify({
-      to: alert.pushToken,
-      title: `${alert.symbol} Price Alert`,
-      body: `${alert.symbol} hit ${price.toFixed(2)} — your target was ${alert.targetPrice.toFixed(2)}`,
-      sound: "default",
-      channelId: "price-alerts",
-      data: { symbol: alert.symbol },
-    }),
-  });
-  const body = await pushRes.json().catch(() => null);
-  const result = classifyExpoPushResponse(pushRes.ok, body);
-  if (!result.accepted) {
-    logger.warn(
-      { symbol: alert.symbol, status: pushRes.status, body, permanent: result.permanentFailure },
-      "[alert-worker] push not accepted",
-    );
+async function sendExpoPushBatch(
+  requests: AlertPushRequest[],
+): Promise<Map<string, PushSendResult>> {
+  const results = new Map<string, PushSendResult>();
+
+  // Expo accepts up to 100 messages in one request. Keeping same-cycle
+  // alerts together avoids issuing concurrent requests to the same device,
+  // while preserving one result per alert ticket.
+  for (let offset = 0; offset < requests.length; offset += 100) {
+    const chunk = requests.slice(offset, offset + 100);
+    const pushRes = await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify(
+        chunk.map(({ alert, currentPrice }) => ({
+          to: alert.pushToken,
+          title: `${alert.symbol} Price Alert`,
+          body: `${alert.symbol} hit ${currentPrice.toFixed(2)} — your target was ${alert.targetPrice.toFixed(2)}`,
+          sound: "default",
+          priority: "high",
+          channelId: "price-alerts",
+          data: { alertId: alert.id, symbol: alert.symbol },
+        })),
+      ),
+    });
+    const body = await pushRes.json().catch(() => null);
+    const ticketData = Array.isArray((body as any)?.data) ? body : { data: [] };
+
+    chunk.forEach(({ alert }, index) => {
+      const result = classifyExpoPushResponse(pushRes.ok, ticketData, index);
+      results.set(alert.id, result);
+      if (!result.accepted) {
+        logger.warn(
+          {
+            alertId: alert.id,
+            symbol: alert.symbol,
+            status: pushRes.status,
+            body,
+            permanent: result.permanentFailure,
+          },
+          "[alert-worker] push ticket not accepted",
+        );
+      }
+    });
   }
-  return result;
+
+  return results;
+}
+
+async function sendExpoPush(alert: PendingAlert, price: number) {
+  const results = await sendExpoPushBatch([{ alert, currentPrice: price }]);
+  return results.get(alert.id) ?? { accepted: false, permanentFailure: false };
 }
 
 // ── Alert check cycle ──────────────────────────────────────────────────────
@@ -119,6 +151,7 @@ async function runAlertCheck(): Promise<void> {
     const stats = await runAlertCheckCycle(pool, {
       fetchPrice: fetchCurrentPrice,
       sendPush: sendExpoPush,
+      sendPushBatch: sendExpoPushBatch,
     });
 
     if (stats.checked > 0) {

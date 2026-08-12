@@ -52,6 +52,16 @@ test("ticket array ok is accepted", () => {
   assert.equal(r.accepted, true);
 });
 
+test("ticket array classification uses the requested alert index", () => {
+  const r = classifyExpoPushResponse(true, {
+    data: [
+      { status: "error", details: { error: "MessageRateExceeded" } },
+      { status: "ok" },
+    ],
+  }, 1);
+  assert.equal(r.accepted, true);
+});
+
 test("missing or malformed ticket body is transient, never accepted", () => {
   assert.deepEqual(classifyExpoPushResponse(true, null), { accepted: false, permanentFailure: false });
   assert.deepEqual(classifyExpoPushResponse(true, {}), { accepted: false, permanentFailure: false });
@@ -85,6 +95,31 @@ test("triggered alert is delivered and marked fired exactly once", async () => {
   assert.equal(stats.triggered, 1);
   assert.equal(stats.delivered, 1);
   assert.deepEqual(fired, ["a1"]); // exactly once
+});
+
+test("batched push results are applied independently per alert", async () => {
+  const fired: string[] = [];
+  const stats = await processPendingAlerts(
+    [
+      alert({ id: "a1", symbol: "AAPL" }),
+      alert({ id: "a2", symbol: "TSLA" }),
+    ],
+    {
+      fetchPrice: async () => 150,
+      // The batch path must be used instead of sending two concurrent singles.
+      sendPush: async () => { throw new Error("single sender should not run"); },
+      sendPushBatch: async (requests) => new Map([
+        [requests[0]!.alert.id, { accepted: true, permanentFailure: false }],
+        [requests[1]!.alert.id, { accepted: false, permanentFailure: false }],
+      ]),
+      markFired: async (id) => { fired.push(id); },
+    },
+  );
+
+  assert.equal(stats.triggered, 2);
+  assert.equal(stats.delivered, 1);
+  assert.equal(stats.retriedTransient, 1);
+  assert.deepEqual(fired, ["a1"]);
 });
 
 test("non-triggered alert is untouched", async () => {
