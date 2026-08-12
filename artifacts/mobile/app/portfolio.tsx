@@ -99,8 +99,8 @@ const CELEBRATION_IMAGES = [
 ];
 
 // Expo Go bundles a fixed set of native modules; expo-audio's native player can
-// hard-crash there when handed a remote stream. In Expo Go we use on-device
-// speech; in a real (EAS) build we stream the higher-quality Edge TTS voice.
+// hard-crash there. In Expo Go we use on-device speech; in a standalone build
+// we play the user's bundled recordings so no network voice service is needed.
 const IS_EXPO_GO = Constants.appOwnership === 'expo';
 
 function speakOnDevice(text: string) {
@@ -132,28 +132,33 @@ function waitForPlayerLoaded(player: any, timeoutMs = 2500): Promise<boolean> {
   });
 }
 
-async function playCelebrationVoice(text: string): Promise<void> {
+interface CelebrationPhrase {
+  text: string;
+  source: number;
+}
+
+async function playCelebrationVoice(phrase: CelebrationPhrase): Promise<void> {
   if (IS_EXPO_GO) {
-    speakOnDevice(text);
+    speakOnDevice(phrase.text);
     return;
   }
   try {
-    // Lazy-load expo-audio so Expo Go never touches its native module.
+    // Lazy-load expo-audio so Expo Go never touches its native module. The
+    // recording is bundled in the app, so playback is offline and free.
     const { createAudioPlayer, setAudioModeAsync } = await import('expo-audio');
     await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false });
-    const uri = `${BASE_URL}/api/tts?text=${encodeURIComponent(text)}`;
-    _celebPlayer = createAudioPlayer({ uri }, { downloadFirst: true });
+    _celebPlayer = createAudioPlayer(phrase.source, { downloadFirst: true });
     const loaded = await waitForPlayerLoaded(_celebPlayer);
     if (loaded) {
       _celebPlayer.play();
     } else {
       try { _celebPlayer.remove(); } catch (_) {}
       _celebPlayer = null;
-      speakOnDevice(text);
+      speakOnDevice(phrase.text);
     }
   } catch (_) {
-    // Fallback to on-device speech (no native audio / no network)
-    speakOnDevice(text);
+    // Fallback to on-device speech (no native audio / no network).
+    speakOnDevice(phrase.text);
   }
 }
 function stopCelebrationVoice() {
@@ -161,20 +166,63 @@ function stopCelebrationVoice() {
   try { Speech.stop(); } catch (_) {}
 }
 
-const COMPLIMENTS_APLUS = [
-  "Oh my gosh! That was absolutely flawless! You're a market genius — seriously, that trade was art!",
-  "WOW! That return in that timeframe? You are on a completely different level! The market doesn't know what hit it!",
-  "Incredible! That's one of the most impressive trades I've ever seen! You're built different!",
-];
-const COMPLIMENTS_A = [
-  "Amazing trade! Your timing was spot-on and you absolutely cashed in. Keep going, you're on fire!",
-  "That was brilliant! Your market instincts are seriously sharp. Most people only dream of returns like that!",
-  "Beautiful trade! You read the market perfectly. You're making some serious moves!",
-];
-const COMPLIMENTS_AMINUS = [
-  "Nice trade! A solid return with great timing — you're definitely getting the hang of this. Well done!",
-  "Great job! That profit shows you know when to pull the trigger. Smart trading!",
-  "Well done! That was a really solid, disciplined trade. You should be proud of that one!",
+const CELEBRATION_PHRASES: CelebrationPhrase[] = [
+  {
+    text: "Congrats on the big win. You're a real crypto bro. I'd do anything for a true crypto gambler like yourself.",
+    source: require('../assets/celebration/voice01.m4a'),
+  },
+  {
+    text: "Nice job, trader. Keep up the good work, and maybe I'll have a little surprise for you later.",
+    source: require('../assets/celebration/voice02.m4a'),
+  },
+  {
+    text: "You didn't just catch that trend. You seduced it.",
+    source: require('../assets/celebration/voice03.m4a'),
+  },
+  {
+    text: "That was a spicy little profit. I see you.",
+    source: require('../assets/celebration/voice04.m4a'),
+  },
+  {
+    text: "You flirted with the market, and it definitely flirted back.",
+    source: require('../assets/celebration/voice05.m4a'),
+  },
+  {
+    text: "Mmm... that entry was dirty, but it came out clean. Almost too clean.",
+    source: require('../assets/celebration/voice06.m4a'),
+  },
+  {
+    text: "You handled those candles like someone who knows exactly where they're going.",
+    source: require('../assets/celebration/voice07.m4a'),
+  },
+  {
+    text: "You really like making the market behave for you, don't you?",
+    source: require('../assets/celebration/voice08.m4a'),
+  },
+  {
+    text: "That move was bold... and honestly, I'm all about the way you move.",
+    source: require('../assets/celebration/voice09.m4a'),
+  },
+  {
+    text: "Well, well... look at you moving those charts like you know exactly what you're doing.",
+    source: require('../assets/celebration/voice10.m4a'),
+  },
+  {
+    text: "You guided those candles exactly where you wanted them. Very assertive of you.",
+    source: require('../assets/celebration/voice11.m4a'),
+  },
+  {
+    text: "Look at you go. If I helped you catch that move, you can send a little love right back.",
+    source: require('../assets/celebration/voice12.m4a'),
+  },
+  {
+    text: "You held that trade with confidence... and the payoff was downright attractive.",
+    source: require('../assets/celebration/voice13.m4a'),
+  },
+  {
+    text: "You are clearly the alpha trader. I'm into that. Real alphas like yourself would consider leaving me a tip.",
+    source: require('../assets/celebration/voice14.m4a'),
+  },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -290,9 +338,8 @@ function computeSellGrade(sellTrade: Trade, allTrades: Trade[]): TradeGrade | nu
   return { grade, color, bgColor, label, context, returnPct, holdDays, profit, avgCost, compositeScore, celebrate };
 }
 
-function pickCompliment(grade: string): string {
-  const arr = grade === 'A+' ? COMPLIMENTS_APLUS : grade === 'A' ? COMPLIMENTS_A : COMPLIMENTS_AMINUS;
-  return arr[Math.floor(Math.random() * arr.length)];
+function pickCompliment(_grade: string): CelebrationPhrase {
+  return CELEBRATION_PHRASES[Math.floor(Math.random() * CELEBRATION_PHRASES.length)]!;
 }
 
 function feedbackHapticType(grade: string): Haptics.NotificationFeedbackType {
