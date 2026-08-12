@@ -1,17 +1,22 @@
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="gold" x1="184" y1="61" x2="840" y2="963" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FFF4BB"/>
-      <stop offset="0.24" stop-color="#E3B34D"/>
-      <stop offset="0.48" stop-color="#FFF0A0"/>
-      <stop offset="0.72" stop-color="#B87517"/>
-      <stop offset="1" stop-color="#F2C95F"/>
+    <linearGradient id="goldMain" x1="185" y1="155" x2="844" y2="860" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF1A8"/>
+      <stop offset="0.2" stop-color="#D99A22"/>
+      <stop offset="0.47" stop-color="#FFF0A1"/>
+      <stop offset="0.7" stop-color="#A85F0B"/>
+      <stop offset="1" stop-color="#F5C64E"/>
+    </linearGradient>
+    <linearGradient id="goldShadow" x1="512" y1="180" x2="512" y2="850" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF0A1"/>
+      <stop offset="0.4" stop-color="#C17A16"/>
+      <stop offset="0.66" stop-color="#8B4C08"/>
+      <stop offset="1" stop-color="#E6A92C"/>
     </linearGradient>
   </defs>
-  <circle cx="512" cy="512" r="435" fill="none" stroke="#5C390C" stroke-width="39"/>
-  <circle cx="512" cy="512" r="413" fill="none" stroke="url(#gold)" stroke-width="12"/>
-  <circle cx="512" cy="512" r="352" fill="none" stroke="#9A6817" stroke-width="5.6" opacity="0.72"/>
-  <path d="M358.4 276.5H419.8L512 399.4L604.2 276.5H665.6V460.8H604.2V375.8L542.7 460.8H481.3L419.8 375.8V460.8H358.4V276.5Z" fill="url(#gold)" stroke="#6C410B" stroke-width="6.7" stroke-linejoin="round"/>
-  <path d="M358.4 542.7H419.8L512 665.6L604.2 542.7H665.6V727H604.2V642L542.7 727H481.3L419.8 642V727H358.4V542.7Z" fill="url(#gold)" stroke="#6C410B" stroke-width="6.7" stroke-linejoin="round"/>
-  <circle cx="512" cy="512" r="8.2" fill="#FFF5BD"/>
+  <rect x="58" y="58" width="908" height="908" rx="156" stroke="#6D3E07" stroke-width="26"/>
+  <rect x="75" y="75" width="874" height="874" rx="142" stroke="url(#goldMain)" stroke-width="10"/>
+  <text x="482" y="518" text-anchor="middle" font-family="Georgia, Times New Roman, serif" font-size="392" font-weight="900" letter-spacing="-32" fill="url(#goldMain)" stroke="#7A4307" stroke-width="6">M</text>
+  <text x="482" y="832" text-anchor="middle" font-family="Georgia, Times New Roman, serif" font-size="392" font-weight="900" letter-spacing="-32" fill="url(#goldShadow)" stroke="#6D3E07" stroke-width="7">M</text>
+  <circle cx="482" cy="628" r="13" fill="#FFF2A2"/>
 </svg>

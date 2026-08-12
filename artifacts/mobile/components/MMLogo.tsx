@@ -1,20 +1,17 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Platform, View, StyleSheet } from 'react-native';
-import Svg, {
-  Circle,
-  Defs,
-  LinearGradient,
-  Path,
-  RadialGradient,
-  Rect,
-  Stop,
-} from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient, Stop, Text as SvgText, Rect } from 'react-native-svg';
 
 interface MMLogoProps {
   size?: number;
 }
 
 export function MMLogo({ size = 60 }: MMLogoProps) {
+  const width = size;
+  const totalHeight = size;
+  const inset = size * 0.08;
+  const corner = size * 0.18;
+  const monogramX = width * 0.47;
   const breathing = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -46,71 +43,100 @@ export function MMLogo({ size = 60 }: MMLogoProps) {
   });
 
   return (
-    <View style={[styles.container, { width: size, height: size }]}>
+    <View style={[styles.container, { width, height: totalHeight }]}>
       <Animated.View
         style={[
           styles.glow,
           {
-            width: size * 0.68,
-            height: size * 0.68,
-            borderRadius: size * 0.34,
+            width: width * 0.78,
+            height: totalHeight * 0.78,
+            borderRadius: corner,
             opacity: glowOpacity,
             transform: [{ scale: glowScale }],
           },
         ]}
       />
       <Svg
-        width={size}
-        height={size}
-        viewBox="0 0 100 100"
+        width={width}
+        height={totalHeight}
+        viewBox={`0 0 ${width} ${totalHeight}`}
         accessibilityLabel="Meisner Method"
       >
         <Defs>
-          <RadialGradient id="mmBackdrop" cx="50%" cy="36%" r="72%">
-            <Stop offset="0%" stopColor="#201707" />
-            <Stop offset="52%" stopColor="#0b0804" />
-            <Stop offset="100%" stopColor="#020202" />
-          </RadialGradient>
-          <LinearGradient id="mmGold" x1="18%" y1="6%" x2="82%" y2="94%">
-            <Stop offset="0%" stopColor="#fff4bb" />
-            <Stop offset="24%" stopColor="#e3b34d" />
-            <Stop offset="48%" stopColor="#fff0a0" />
-            <Stop offset="72%" stopColor="#b87517" />
-            <Stop offset="100%" stopColor="#f2c95f" />
+          <LinearGradient id="goldMain" x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0%" stopColor="#fff1a8" />
+            <Stop offset="22%" stopColor="#d99a22" />
+            <Stop offset="48%" stopColor="#fff0a1" />
+            <Stop offset="68%" stopColor="#a85f0b" />
+            <Stop offset="100%" stopColor="#f5c64e" />
           </LinearGradient>
-          <RadialGradient id="mmInnerGlow" cx="50%" cy="48%" r="58%">
-            <Stop offset="0%" stopColor="#f6cf69" stopOpacity="0.28" />
-            <Stop offset="55%" stopColor="#c58a28" stopOpacity="0.08" />
-            <Stop offset="100%" stopColor="#000000" stopOpacity="0" />
-          </RadialGradient>
+          <LinearGradient id="goldShadow" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0%" stopColor="#b86b0d" />
+            <Stop offset="42%" stopColor="#ffe889" />
+            <Stop offset="70%" stopColor="#8b4c08" />
+            <Stop offset="100%" stopColor="#e6a92c" />
+          </LinearGradient>
         </Defs>
 
-        {/* The mark is intentionally circular so the launcher, header, and paper
-            trading screen all share the same balanced silhouette. */}
-        <Rect width="100" height="100" rx="28" fill="url(#mmBackdrop)" />
-        <Circle cx="50" cy="50" r="42.5" fill="none" stroke="#5c390c" strokeWidth="3.8" />
-        <Circle cx="50" cy="50" r="40.35" fill="none" stroke="url(#mmGold)" strokeWidth="1.2" />
-        <Circle cx="50" cy="50" r="35.6" fill="url(#mmInnerGlow)" />
-        <Circle cx="50" cy="50" r="34.4" fill="none" stroke="#9a6817" strokeWidth="0.55" opacity="0.72" />
-        <Circle cx="50" cy="50" r="31.9" fill="none" stroke="#fff0a0" strokeWidth="0.3" opacity="0.24" />
+        {/* Deep black plaque and double gold frame from the earlier mark. */}
+        <Rect x="0" y="0" width={width} height={totalHeight} rx={corner} fill="#050403" />
+        <Rect
+          x={inset}
+          y={inset}
+          width={width - inset * 2}
+          height={totalHeight - inset * 2}
+          rx={corner * 0.72}
+          fill="none"
+          stroke="#8b5009"
+          strokeWidth={size * 0.055}
+        />
+        <Rect
+          x={inset + size * 0.018}
+          y={inset + size * 0.018}
+          width={width - (inset + size * 0.018) * 2}
+          height={totalHeight - (inset + size * 0.018) * 2}
+          rx={corner * 0.62}
+          fill="none"
+          stroke="url(#goldMain)"
+          strokeWidth={size * 0.018}
+        />
 
-        {/* Two identical, mirrored-in-their-own-axis M paths keep the monogram
-            crisp at small sizes without relying on platform font rendering. */}
-        <Path
-          d="M35 27H41L50 39L59 27H65V45H59V36.7L53 45H47L41 36.7V45H35V27Z"
-          fill="url(#mmGold)"
-          stroke="#6c410b"
-          strokeWidth="0.65"
-          strokeLinejoin="round"
+        {/* Stacked Ms are shifted slightly left to center their visible glyphs
+            inside the framed plaque. */}
+        <SvgText
+          x={monogramX}
+          y={totalHeight * 0.76}
+          textAnchor="middle"
+          fontSize={size * 0.48}
+          fontWeight="900"
+          fontFamily="Georgia, Times New Roman, serif"
+          fill="url(#goldShadow)"
+          stroke="#6d3e07"
+          strokeWidth={size * 0.008}
+          letterSpacing={-size * 0.04}
+        >
+          M
+        </SvgText>
+        <SvgText
+          x={monogramX}
+          y={totalHeight * 0.51}
+          textAnchor="middle"
+          fontSize={size * 0.42}
+          fontWeight="900"
+          fontFamily="Georgia, Times New Roman, serif"
+          fill="url(#goldMain)"
+          stroke="#7a4307"
+          strokeWidth={size * 0.007}
+          letterSpacing={-size * 0.04}
+        >
+          M
+        </SvgText>
+        <Circle
+          cx={monogramX}
+          cy={totalHeight * 0.62}
+          r={size * 0.025}
+          fill="#fff2a2"
         />
-        <Path
-          d="M35 53H41L50 65L59 53H65V71H59V62.7L53 71H47L41 62.7V71H35V53Z"
-          fill="url(#mmGold)"
-          stroke="#6c410b"
-          strokeWidth="0.65"
-          strokeLinejoin="round"
-        />
-        <Circle cx="50" cy="50" r="0.8" fill="#fff5bd" />
       </Svg>
     </View>
   );
@@ -126,7 +152,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     alignSelf: 'center',
     pointerEvents: 'none',
-    backgroundColor: '#D6AD54',
+    backgroundColor: '#D99A22',
     shadowColor: '#F5C64E',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.9,
