@@ -85,7 +85,7 @@ export function AmericanAnalyzeButton({
 
     const animation = Animated.loop(
       Animated.sequence([
-        Animated.delay(9_000),
+        Animated.delay(30_000),
         Animated.timing(pulse, {
           toValue: 1,
           duration: 650,

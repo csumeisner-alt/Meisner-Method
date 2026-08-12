@@ -1,0 +1,17 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="gold" x1="184" y1="61" x2="840" y2="963" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF4BB"/>
+      <stop offset="0.24" stop-color="#E3B34D"/>
+      <stop offset="0.48" stop-color="#FFF0A0"/>
+      <stop offset="0.72" stop-color="#B87517"/>
+      <stop offset="1" stop-color="#F2C95F"/>
+    </linearGradient>
+  </defs>
+  <circle cx="512" cy="512" r="435" fill="none" stroke="#5C390C" stroke-width="39"/>
+  <circle cx="512" cy="512" r="413" fill="none" stroke="url(#gold)" stroke-width="12"/>
+  <circle cx="512" cy="512" r="352" fill="none" stroke="#9A6817" stroke-width="5.6" opacity="0.72"/>
+  <path d="M358.4 276.5H419.8L512 399.4L604.2 276.5H665.6V460.8H604.2V375.8L542.7 460.8H481.3L419.8 375.8V460.8H358.4V276.5Z" fill="url(#gold)" stroke="#6C410B" stroke-width="6.7" stroke-linejoin="round"/>
+  <path d="M358.4 542.7H419.8L512 665.6L604.2 542.7H665.6V727H604.2V642L542.7 727H481.3L419.8 642V727H358.4V542.7Z" fill="url(#gold)" stroke="#6C410B" stroke-width="6.7" stroke-linejoin="round"/>
+  <circle cx="512" cy="512" r="8.2" fill="#FFF5BD"/>
+</svg>
