@@ -33,7 +33,7 @@ describe('parseStoredCount', () => {
   });
 });
 
-test('American Mode unlocks at the patriotic threshold', () => {
+test('Patriot Mode unlocks at the patriotic threshold', () => {
   assert.equal(AMERICAN_MODE_THRESHOLD, 1_776);
 });
 

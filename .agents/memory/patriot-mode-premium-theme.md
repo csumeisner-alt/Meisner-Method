@@ -1,13 +1,13 @@
 ---
-name: American Mode premium theme
-description: American Mode uses a shared brushed-steel surface and gold hierarchy instead of a flat patriotic palette.
+name: Patriot Mode premium theme
+description: Patriot Mode uses a shared brushed-steel surface and gold hierarchy instead of a flat patriotic palette.
 ---
 
-American Mode should feel like a premium dark-metal edition: use the shared American palette's steel/gold tokens, keep gold for primary headers and elevated card borders, and reserve red/white/blue motion for brief entry moments such as stock-analysis ticker glow.
+Patriot Mode should feel like a premium dark-metal edition: use the shared patriotic palette's steel/gold tokens, keep gold for primary headers and elevated card borders, and reserve red/white/blue motion for brief entry moments such as stock-analysis ticker glow.
 
 **Why:** The original flat navy treatment made the unlock feel like a temporary color swap rather than a premium mode.
 
-**How to apply:** Route American Mode screens through the shared steel background component and use the palette tokens for headers, navigation, cards, and accents; normal mode should remain visually unchanged.
+**How to apply:** Route Patriot Mode screens through the shared steel background component and use the palette tokens for headers, navigation, cards, and accents; normal mode should remain visually unchanged.
 
 Brand artwork should use a black-and-metallic-gold framed MM mark consistently in native assets and the in-app header; keep the frame inset from all edges so platform icon masks cannot clip it.
 
@@ -21,13 +21,13 @@ The Android launcher must define an explicit black adaptive-icon background and 
 
 **How to apply:** Keep the native launcher artwork and in-app logo generated from the same vector mark, with a black fallback icon and transparent adaptive foreground.
 
-American Mode action emphasis should use brief, low-frequency gold motion rather than continuous animation: a primary button can reveal a muted flag motif for roughly one second after a quiet interval, while preserving a high-contrast label.
+Patriot Mode action emphasis should use brief, low-frequency gold motion rather than continuous animation: a primary button can reveal a muted flag motif for roughly one second after a quiet interval, while preserving a high-contrast label.
 
 **Why:** Continuous or high-contrast patriotic motion competes with the financial workflow and can make a primary action feel promotional instead of premium.
 
 **How to apply:** Keep the effect local and GPU-friendly, avoid network or timer work outside the component, and ensure text remains readable at the animation peak.
 
-American Mode's fact-count unlock milestone is 1,776 taps.
+Patriot Mode's fact-count unlock milestone is 1,776 taps.
 
 **Why:** The milestone intentionally uses the year associated with American independence as part of the mode's identity.
 

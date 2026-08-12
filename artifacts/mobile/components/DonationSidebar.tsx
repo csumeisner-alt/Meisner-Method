@@ -353,7 +353,7 @@ export function DonationSidebar({ visible, onClose }: Props) {
             {/* Divider */}
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-            {/* American Mode unlock */}
+            {/* Patriot Mode unlock */}
             <View
               style={[
                 styles.notifRow,
@@ -366,7 +366,7 @@ export function DonationSidebar({ visible, onClose }: Props) {
               <Text style={{ fontSize: 22 }}>🇺🇸</Text>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.notifTitle, { color: isUnlocked ? '#FFFFFF' : colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
-                  American Mode
+                  Patriot Mode
                 </Text>
                 <Text style={[styles.notifSub, { color: isUnlocked ? '#9999CC' : colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                   {isUnlocked

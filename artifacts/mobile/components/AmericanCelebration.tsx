@@ -1,6 +1,6 @@
 /**
  * AmericanCelebration — full-screen cinematic celebration shown when the
- * user hits 1,776 facts read and unlocks American Mode.
+ * user hits 1,776 facts read and unlocks Patriot Mode.
  *
  * 5 realistic F-35 SVG jets rise from the bottom of the screen to the top
  * at staggered horizontal positions and speeds, with heavy haptic pulses
@@ -413,7 +413,7 @@ export function AmericanCelebration({ visible, onDismiss }: Props) {
           ]}
         >
           <Text style={styles.flagEmoji}>🇺🇸</Text>
-          <Text style={styles.headline}>AMERICAN MODE</Text>
+          <Text style={styles.headline}>PATRIOT MODE</Text>
           <Text style={styles.subline}>UNLOCKED</Text>
           <Text style={styles.eagleEmoji}>🦅</Text>
           <Text style={styles.body}>

@@ -10,7 +10,7 @@ interface Props {
 }
 
 /**
- * Premium American Mode surface: a dark brushed-steel field with restrained
+ * Premium Patriot Mode surface: a dark brushed-steel field with restrained
  * diagonal grain. Normal mode stays a plain view so existing screens remain
  * visually unchanged.
  */

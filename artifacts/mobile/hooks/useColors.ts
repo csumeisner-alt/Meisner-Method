@@ -5,7 +5,7 @@ import { AmericanModeContext } from '@/contexts/AmericanModeContext';
 
 /**
  * Returns the design tokens for the current color scheme.
- * When American Mode is active, returns the red/white/blue patriotic palette.
+ * When Patriot Mode is active, returns the red/white/blue patriotic palette.
  * Falls back gracefully when called outside AmericanModeProvider (e.g. auth screens).
  */
 export function useColors(): ColorScheme & { radius: number } {

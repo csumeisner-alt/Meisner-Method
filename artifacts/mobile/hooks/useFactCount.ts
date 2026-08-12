@@ -1,6 +1,6 @@
 /**
  * Tracks how many Meisner Method facts the user has read across all sessions,
- * and manages the American Mode unlock state.
+ * and manages the Patriot Mode unlock state.
  *
  * HYDRATION GATE: `incrementFact` and `setAmericanModeActive` both await a
  * hydration promise before touching countRef or AsyncStorage. This prevents

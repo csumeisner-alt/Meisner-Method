@@ -1,6 +1,6 @@
 # Meisner Method
 
-Meisner Method is a guest-friendly paper-trading and stock-learning app with watchlists, alerts, analysis, and American Mode.
+Meisner Method is a guest-friendly paper-trading and stock-learning app with watchlists, alerts, analysis, and Patriot Mode.
 
 ## Run & Operate
 

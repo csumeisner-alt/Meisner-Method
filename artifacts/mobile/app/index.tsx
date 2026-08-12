@@ -156,7 +156,7 @@ export default function HomeScreen() {
   const [alertModalSymbol, setAlertModalSymbol] = useState<string | null>(null);
   const [alertModalPrice, setAlertModalPrice] = useState<number | undefined>(undefined);
 
-  // American Mode — fact counter, unlock state, and celebration trigger
+  // Patriot Mode — fact counter, unlock state, and celebration trigger
   const { isActive, justUnlocked, incrementFact, clearJustUnlocked } = useAmericanMode();
   const [showCelebration, setShowCelebration] = useState(false);
 
@@ -340,7 +340,7 @@ export default function HomeScreen() {
         </Pressable>
       </Modal>
 
-      {/* American Mode celebration — fires once when 1,776 facts are read */}
+      {/* Patriot Mode celebration — fires once when 1,776 facts are read */}
       <AmericanCelebration
         visible={showCelebration}
         onDismiss={() => setShowCelebration(false)}

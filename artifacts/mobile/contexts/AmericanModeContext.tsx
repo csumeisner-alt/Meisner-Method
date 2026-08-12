@@ -1,5 +1,5 @@
 /**
- * AmericanModeContext — provides the American Mode unlock/active state
+ * AmericanModeContext — provides the Patriot Mode unlock/active state
  * (and the underlying fact counter) to the entire app.
  *
  * Wrap the root layout with <AmericanModeProvider> once; consume with
