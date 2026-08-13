@@ -66,3 +66,10 @@ id = "HEzfkl1hr1tKwpL-2I2aZ"
 uri = "file://artifacts/mobile/assets/celebration/dave.jpg"
 type = "image"
 title = "Dave Ramsey lookalike"
+
+[[outputs]]
+id = "9muEzx5TbdZ7qm6WKZiS0"
+uri = "file://artifacts/mobile/assets/images/icon.png"
+type = "image"
+title = "Meisner Method app logo"
+description = "Tightly cropped square logo with the centered visible gold frame, cleaned badge, and preserved gold glow."
