@@ -17,6 +17,7 @@ import {
   RefreshControl,
   Animated,
   Easing,
+  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -25,9 +26,11 @@ import { useApi } from '@/hooks/useApi';
 import * as Speech from 'expo-speech';
 import Constants from 'expo-constants';
 import { useColors } from '@/hooks/useColors';
+import { useAmericanMode } from '@/contexts/AmericanModeContext';
 import { BottomTabBar } from '@/components/BottomTabBar';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { PortfolioFilterBar } from '@/components/PortfolioFilterBar';
+import { GRADE_ORDER, GradeHistoryChart, type GradeHistoryPoint } from '@/components/GradeHistoryChart';
 import {
   availableToSell,
   computeDividendTotal,
@@ -1405,11 +1408,91 @@ const smStyles = StyleSheet.create({
   plTotal: { fontSize: 15 },
 });
 
+function GradeHistoryModal({
+  visible,
+  points,
+  colors,
+  onClose,
+}: {
+  visible: boolean;
+  points: GradeHistoryPoint[];
+  colors: any;
+  onClose: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
+  const chartWidth = Math.max(width - 28, 280);
+  const chartHeight = Math.max(Math.min(height * 0.58, 560), 360);
+  const topPad = Platform.OS === 'web' ? 16 : insets.top;
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <AmericanSteelBackground>
+        <View style={[gradeModalStyles.root, { backgroundColor: colors.background }]}>
+          <View style={[gradeModalStyles.header, { paddingTop: topPad + 8, borderBottomColor: colors.border }]}>
+            <TouchableOpacity
+              style={gradeModalStyles.closeBtn}
+              onPress={onClose}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Close trade grade history"
+            >
+              <Feather name="arrow-left" size={20} color={colors.primary} />
+            </TouchableOpacity>
+            <View style={gradeModalStyles.headerCopy}>
+              <Text style={[gradeModalStyles.title, { color: colors.heading, fontFamily: 'Inter_700Bold' }]}>
+                TRADE GRADE HISTORY
+              </Text>
+              <Text style={[gradeModalStyles.subtitle, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                Completed trades · tap a dot for details
+              </Text>
+            </View>
+          </View>
+
+          <ScrollView
+            style={gradeModalStyles.scroll}
+            contentContainerStyle={[gradeModalStyles.content, { paddingBottom: Math.max(insets.bottom, 18) + 20 }]}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={[gradeModalStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={gradeModalStyles.chartHeading}>
+                <Text style={[gradeModalStyles.chartTitle, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
+                  ARE YOUR TRADES IMPROVING?
+                </Text>
+                <Text style={[gradeModalStyles.chartHint, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                  A+ at the top · F- at the bottom
+                </Text>
+              </View>
+              <GradeHistoryChart points={points} width={chartWidth} height={chartHeight} colors={colors} />
+            </View>
+          </ScrollView>
+        </View>
+      </AmericanSteelBackground>
+    </Modal>
+  );
+}
+
+const gradeModalStyles = StyleSheet.create({
+  root: { flex: 1 },
+  header: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, paddingHorizontal: 14, paddingBottom: 12, gap: 8 },
+  closeBtn: { padding: 7 },
+  headerCopy: { flex: 1 },
+  title: { fontSize: 16, letterSpacing: 1.1 },
+  subtitle: { fontSize: 11, marginTop: 3 },
+  scroll: { flex: 1 },
+  content: { paddingHorizontal: 14, paddingTop: 14 },
+  card: { borderWidth: 1, borderRadius: 12, padding: 10 },
+  chartHeading: { paddingHorizontal: 4, paddingBottom: 10 },
+  chartTitle: { fontSize: 12, letterSpacing: 0.7 },
+  chartHint: { fontSize: 10, marginTop: 3 },
+});
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function PortfolioScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { isUnlocked } = useAmericanMode();
 
   const [trades, setTrades] = useState<Trade[]>([]);
   const [quotes, setQuotes] = useState<Record<string, Quote | null>>({});
@@ -1424,6 +1507,7 @@ export default function PortfolioScreen() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
+  const [gradeHistoryVisible, setGradeHistoryVisible] = useState(false);
   const [editTarget, setEditTarget] = useState<Trade | null>(null);
   const [defaultType, setDefaultType] = useState<'buy' | 'sell' | 'dividend'>('buy');
   const [defaultSymbol, setDefaultSymbol] = useState<string | undefined>(undefined);
@@ -1491,6 +1575,31 @@ export default function PortfolioScreen() {
   const allPositions = computePositions(trades, quotes);
   const openPositions = allPositions.filter(p => p.netShares !== 0);
   const closedTrades = computeClosedTrades(trades, quotes);
+  const gradeHistoryPoints = useMemo<GradeHistoryPoint[]>(() => (
+    trades
+      .filter(trade => trade.type === 'sell')
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .flatMap(sellTrade => {
+        const closed = closedTrades.find(item => item.sellId === sellTrade.id);
+        const gradeInfo = computeSellGrade(sellTrade, trades);
+        const gradeIndex = gradeInfo ? GRADE_ORDER.indexOf(gradeInfo.grade as typeof GRADE_ORDER[number]) : -1;
+        if (!closed || !gradeInfo || gradeIndex < 0) return [];
+        return [{
+          id: sellTrade.id,
+          symbol: sellTrade.symbol,
+          date: sellTrade.date,
+          grade: gradeInfo.grade,
+          gradeIndex,
+          shares: sellTrade.shares,
+          sellPrice: sellTrade.pricePerShare,
+          grossPnL: closed.gross,
+          fee: closed.fee,
+          netPnL: closed.net,
+          returnPct: gradeInfo.returnPct,
+          holdDays: gradeInfo.holdDays,
+        }];
+      })
+  ), [closedTrades, trades]);
 
   // Derived list for the History tab: symbol filter (partial match) + date range then sort.
   const filteredTrades = useMemo(() => {
@@ -1583,7 +1692,20 @@ export default function PortfolioScreen() {
       {/* Header */}
       <View style={[mainStyles.header, { paddingTop: topPad + 10, borderBottomColor: colors.border }]}>
         <View style={mainStyles.headerRow}>
-          <Text style={[mainStyles.title, { color: colors.heading, fontFamily: 'Inter_700Bold' }]}>PORTFOLIO</Text>
+          {isUnlocked ? (
+            <TouchableOpacity
+              onPress={() => setGradeHistoryVisible(true)}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Open trade grade history"
+              style={mainStyles.titleButton}
+            >
+              <Text style={[mainStyles.title, { color: colors.heading, fontFamily: 'Inter_700Bold' }]}>PORTFOLIO</Text>
+              <Feather name="bar-chart-2" size={13} color={colors.primary} />
+            </TouchableOpacity>
+          ) : (
+            <Text style={[mainStyles.title, { color: colors.heading, fontFamily: 'Inter_700Bold' }]}>PORTFOLIO</Text>
+          )}
           <View style={mainStyles.headerRight}>
             <TouchableOpacity style={mainStyles.iconBtn} onPress={onRefresh} disabled={loadingQuotes || isEmpty} activeOpacity={0.7}>
               {loadingQuotes ? <ActivityIndicator size="small" color={colors.primary} />
@@ -1708,6 +1830,15 @@ export default function PortfolioScreen() {
         onClose={() => { setModalVisible(false); setEditTarget(null); }}
         colors={colors} />
 
+      {isUnlocked && (
+        <GradeHistoryModal
+          visible={gradeHistoryVisible}
+          points={gradeHistoryPoints}
+          colors={colors}
+          onClose={() => setGradeHistoryVisible(false)}
+        />
+      )}
+
       {/* Celebration overlay */}
       {celebration && (
         <CelebrationBoundary onError={() => setCelebration(null)}>
@@ -1729,6 +1860,7 @@ const mainStyles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 16, paddingBottom: 0, borderBottomWidth: 1 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  titleButton: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 4 },
   title: { fontSize: 18, letterSpacing: 2 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   iconBtn: { padding: 6 },
