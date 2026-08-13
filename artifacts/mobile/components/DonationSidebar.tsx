@@ -14,7 +14,6 @@ import {
   Platform,
   AppState,
   AppStateStatus,
-  Switch,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
@@ -374,13 +373,28 @@ export function DonationSidebar({ visible, onClose }: Props) {
                     : `${Math.min(factsRead, AMERICAN_MODE_THRESHOLD)} / ${AMERICAN_MODE_THRESHOLD} facts to unlock 🦅`}
                 </Text>
               </View>
-              <Switch
-                value={isActive}
-                onValueChange={toggleAmericanMode}
+              <Pressable
+                accessibilityRole="switch"
+                accessibilityState={{ checked: isActive, disabled: !isUnlocked }}
+                accessibilityLabel="Toggle Patriot Mode"
                 disabled={!isUnlocked}
-                trackColor={{ false: colors.muted, true: '#B22234' }}
-                thumbColor={isUnlocked ? '#FFFFFF' : '#666'}
-              />
+                hitSlop={8}
+                onPress={() => toggleAmericanMode(!isActive)}
+                style={[
+                  styles.patriotToggle,
+                  {
+                    backgroundColor: isActive ? '#B22234' : colors.muted,
+                    opacity: isUnlocked ? 1 : 0.6,
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.patriotToggleThumb,
+                    { alignSelf: isActive ? 'flex-end' : 'flex-start' },
+                  ]}
+                />
+              </Pressable>
             </View>
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
@@ -498,6 +512,19 @@ const styles = StyleSheet.create({
   },
   notifTitle: { fontSize: 14 },
   notifSub: { fontSize: 12, marginTop: 2 },
+  patriotToggle: {
+    width: 42,
+    height: 26,
+    borderRadius: 13,
+    padding: 2,
+    justifyContent: 'center',
+  },
+  patriotToggleThumb: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#fff',
+  },
   celebOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',

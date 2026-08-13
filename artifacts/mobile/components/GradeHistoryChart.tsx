@@ -243,6 +243,7 @@ export function GradeHistoryChart({ points, width, height, colors }: Props) {
         {GRADE_ORDER.map((grade, index) => {
           const y = toY(index);
           const isSelected = selected?.grade === grade;
+          const showAxisLabel = index > 0 && index < GRADE_ORDER.length - 1;
           return (
             <React.Fragment key={grade}>
               <Line
@@ -254,15 +255,17 @@ export function GradeHistoryChart({ points, width, height, colors }: Props) {
                 strokeOpacity={isSelected ? 0.65 : 0.25}
                 strokeWidth={isSelected ? 1.4 : 1}
               />
-              <SvgText
-                x={PAD.left + chartWidth + 7}
-                y={y + 3}
-                fontSize={9}
-                fill={isSelected ? gradeColor(grade, colors) : colors.mutedForeground}
-                fontWeight={isSelected ? '700' : '400'}
-              >
-                {grade}
-              </SvgText>
+              {showAxisLabel && (
+                <SvgText
+                  x={PAD.left + chartWidth + 7}
+                  y={y + 3}
+                  fontSize={9}
+                  fill={isSelected ? gradeColor(grade, colors) : colors.mutedForeground}
+                  fontWeight={isSelected ? '700' : '400'}
+                >
+                  {grade}
+                </SvgText>
+              )}
             </React.Fragment>
           );
         })}
@@ -373,13 +376,13 @@ function DetailMetric({ label, value, color }: { label: string; value: string; c
 }
 
 const styles = StyleSheet.create({
-  toolbar: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 10, marginBottom: 8 },
+  toolbar: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'flex-start', gap: 18, marginBottom: 8 },
   toolbarLabel: { fontSize: 9, letterSpacing: 0.8, fontFamily: 'Inter_600SemiBold' },
-  rangeGroup: { flex: 1 },
+  rangeGroup: { flex: 0 },
   rangeButtons: { flexDirection: 'row', gap: 4, marginTop: 5 },
   rangeButton: { minWidth: 31, height: 28, paddingHorizontal: 7, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 6 },
   rangeText: { fontSize: 9, fontFamily: 'Inter_700Bold', letterSpacing: 0.3 },
-  zoomGroup: { alignItems: 'flex-end' },
+  zoomGroup: { alignItems: 'center' },
   zoomButtons: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 },
   zoomButton: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 6 },
   disabledButton: { opacity: 0.45 },
@@ -391,14 +394,14 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: 16, fontFamily: 'Inter_700Bold', marginBottom: 6 },
   emptyCopy: { fontSize: 12, fontFamily: 'Inter_400Regular', textAlign: 'center', lineHeight: 18 },
   detailCard: { borderWidth: 1, borderRadius: 12, padding: 14, marginTop: 4 },
-  detailHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  detailHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
   detailEyebrow: { fontSize: 9, letterSpacing: 1, fontFamily: 'Inter_500Medium' },
   detailTitle: { fontSize: 21, letterSpacing: 1, fontFamily: 'Inter_700Bold', marginTop: 2 },
-  detailDate: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 2 },
+  detailDate: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 2, textAlign: 'center' },
   gradePill: { borderWidth: 1, borderRadius: 7, paddingHorizontal: 12, paddingVertical: 6 },
   gradeText: { fontSize: 22, fontFamily: 'Inter_700Bold' },
-  detailGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 14 },
-  metric: { minWidth: '43%' },
+  detailGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 12, marginTop: 14 },
+  metric: { minWidth: '43%', alignItems: 'center' },
   metricLabel: { fontSize: 9, letterSpacing: 0.6, fontFamily: 'Inter_400Regular' },
   metricValue: { fontSize: 14, fontFamily: 'Inter_600SemiBold', marginTop: 3 },
 });

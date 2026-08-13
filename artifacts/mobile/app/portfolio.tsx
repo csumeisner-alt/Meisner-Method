@@ -1459,9 +1459,6 @@ function GradeHistoryModal({
                 <Text style={[gradeModalStyles.chartTitle, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
                   ARE YOUR TRADES IMPROVING?
                 </Text>
-                <Text style={[gradeModalStyles.chartHint, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                  A+ at the top · F- at the bottom
-                </Text>
               </View>
               <GradeHistoryChart points={points} width={chartWidth} height={chartHeight} colors={colors} />
             </View>
