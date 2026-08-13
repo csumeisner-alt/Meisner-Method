@@ -7,6 +7,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   computeClosedTrades,
+  computeDividendTotal,
+  computePositions,
   computeTradeSummary,
   type Quote,
   type Trade,
@@ -117,4 +119,17 @@ test('computeTradeSummary: no closed trades → winRate null, zeros elsewhere', 
   assert.equal(s.totalClosed, 0);
   approx(s.totalReal, 0);
   approx(s.totalFees, 0);
+});
+
+test('computeDividendTotal: sums received cash without affecting trade totals', () => {
+  const trades: Trade[] = [
+    buy({ id: 'b1', shares: 10 }),
+    { id: 'd1', symbol: 'VOO', type: 'dividend', shares: 10, pricePerShare: 0.83, date: DAY365 },
+    sell({ id: 's1', shares: 2 }),
+  ];
+  approx(computeDividendTotal(trades), 8.3);
+  const positions = computePositions(trades, { VOO: fundQuote.VOO });
+  assert.equal(positions[0].netShares, 8);
+  assert.equal(positions[0].totalSellShares, 2);
+  assert.equal(positions[0].trades.length, 2);
 });

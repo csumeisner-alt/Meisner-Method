@@ -9,7 +9,7 @@
 export interface Trade {
   id: string;
   symbol: string;
-  type: 'buy' | 'sell';
+  type: 'buy' | 'sell' | 'dividend';
   shares: number;
   pricePerShare: number;
   date: string;
@@ -69,7 +69,7 @@ export function computePositions(trades: Trade[], quotes: Record<string, Quote |
     let buyShares = 0, buyTotal = 0, sellShares = 0, sellTotal = 0;
     for (const t of sorted) {
       if (t.type === 'buy') { buyShares += t.shares; buyTotal += t.shares * t.pricePerShare; }
-      else { sellShares += t.shares; sellTotal += t.shares * t.pricePerShare; }
+      else if (t.type === 'sell') { sellShares += t.shares; sellTotal += t.shares * t.pricePerShare; }
     }
     const netShares = buyShares - sellShares;
     const avgCost = buyShares > 0 ? buyTotal / buyShares : 0;
@@ -85,7 +85,7 @@ export function computePositions(trades: Trade[], quotes: Record<string, Quote |
     const expenseRatio = q?.expenseRatio ?? 0;
     return { symbol, netShares, avgCost, avgSellPrice, totalBuyShares: buyShares,
       totalSellShares: sellShares, realizedPnL, unrealizedPnL, marketValue,
-      costBasis, currentPrice, pctChange, expenseRatio, trades: sorted };
+      costBasis, currentPrice, pctChange, expenseRatio, trades: sorted.filter(t => t.type !== 'dividend') };
   });
 }
 
@@ -130,7 +130,18 @@ export function computeClosedTrades(trades: Trade[], quotes: Record<string, Quot
 export function availableToSell(symbol: string, trades: Trade[], excludeId?: string): number {
   return trades
     .filter(t => t.symbol === symbol && t.id !== excludeId)
-    .reduce((n, t) => (t.type === 'buy' ? n + t.shares : n - t.shares), 0);
+    .reduce((n, t) => (
+      t.type === 'buy' ? n + t.shares
+        : t.type === 'sell' ? n - t.shares
+          : n
+    ), 0);
+}
+
+/** Sum cash dividends recorded in the portfolio history. */
+export function computeDividendTotal(trades: Trade[]): number {
+  return trades
+    .filter(t => t.type === 'dividend')
+    .reduce((sum, t) => sum + t.shares * t.pricePerShare, 0);
 }
 
 // ── Trade summary (SummaryCard) ────────────────────────────────────────────────

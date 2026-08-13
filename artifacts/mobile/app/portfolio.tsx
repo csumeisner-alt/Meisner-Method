@@ -30,6 +30,7 @@ import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { PortfolioFilterBar } from '@/components/PortfolioFilterBar';
 import {
   availableToSell,
+  computeDividendTotal,
   computeClosedTrades,
   computePositions,
   computeTradeSummary,
@@ -849,6 +850,9 @@ function TradeCard({
   colors: any;
 }) {
   const isBuy = trade.type === 'buy';
+  const isDividend = trade.type === 'dividend';
+  const badgeColor = isDividend ? colors.primary : isBuy ? colors.buyColor : colors.sellColor;
+  const badgeBg = isDividend ? colors.primary + '20' : isBuy ? colors.buyBg : colors.sellBg;
 
   return (
     <View style={[tcStyles.card, { backgroundColor: colors.card, borderColor: gradeInfo ? gradeInfo.color + '60' : colors.border }]}>
@@ -857,11 +861,11 @@ function TradeCard({
         <View style={tcStyles.topLeft}>
           <Text style={[tcStyles.symbol, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>{trade.symbol}</Text>
           <View style={[tcStyles.typeBadge, {
-            backgroundColor: isBuy ? colors.buyBg : colors.sellBg,
-            borderColor: isBuy ? colors.buyColor : colors.sellColor,
+            backgroundColor: badgeBg,
+            borderColor: badgeColor,
           }]}>
-            <Text style={[tcStyles.typeBadgeTxt, { color: isBuy ? colors.buyColor : colors.sellColor, fontFamily: 'Inter_700Bold' }]}>
-              {isBuy ? 'BUY' : 'SELL'}
+            <Text style={[tcStyles.typeBadgeTxt, { color: badgeColor, fontFamily: 'Inter_700Bold' }]}>
+              {isDividend ? 'DIVIDEND' : isBuy ? 'BUY' : 'SELL'}
             </Text>
           </View>
           <Text style={[tcStyles.date, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
@@ -898,7 +902,7 @@ function TradeCard({
         <View style={tcStyles.metricCol}>
           {[
             { label: 'SHARES', value: fmtNum(trade.shares, 4) },
-            { label: 'TOTAL', value: fmtCurrency(trade.shares * trade.pricePerShare) },
+            { label: 'TOTAL RECEIVED', value: fmtCurrency(trade.shares * trade.pricePerShare) },
           ].map(c => (
             <View key={c.label} style={tcStyles.metricCell}>
               <Text style={[tcStyles.metricLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>{c.label}</Text>
@@ -909,8 +913,8 @@ function TradeCard({
         {/* Middle col: SELL/BUY PRICE + CURRENT */}
         <View style={tcStyles.metricCol}>
           {[
-            { label: isBuy ? 'BUY PRICE' : 'SELL PRICE', value: fmtCurrency(trade.pricePerShare) },
-            { label: 'CURRENT', value: quote ? fmtCurrency(quote.currentPrice) : '—' },
+            { label: isDividend ? 'DIV / SHARE' : isBuy ? 'BUY PRICE' : 'SELL PRICE', value: fmtCurrency(trade.pricePerShare) },
+            { label: isDividend ? 'STATUS' : 'CURRENT', value: isDividend ? 'RECEIVED' : quote ? fmtCurrency(quote.currentPrice) : '—' },
           ].map(c => (
             <View key={c.label} style={tcStyles.metricCell}>
               <Text style={[tcStyles.metricLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>{c.label}</Text>
@@ -1020,7 +1024,35 @@ function TradeCard({
       )}
 
       {/* Expanded analysis — buy trades */}
-      {expanded && !gradeInfo && (
+      {expanded && isDividend && (
+        <View style={[tcStyles.analysis, { borderTopColor: colors.border }]}>
+          <Text style={[tcStyles.analysisTitle, { color: colors.primary, fontFamily: 'Inter_700Bold' }]}>
+            DIVIDEND RECEIVED
+          </Text>
+          <View style={tcStyles.analysisGrid}>
+            <View style={tcStyles.analysisCell}>
+              <Text style={[tcStyles.aLabel, { color: colors.mutedForeground }]}>SHARES HELD</Text>
+              <Text style={[tcStyles.aVal, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
+                {fmtNum(trade.shares, 4)}
+              </Text>
+            </View>
+            <View style={tcStyles.analysisCell}>
+              <Text style={[tcStyles.aLabel, { color: colors.mutedForeground }]}>PER SHARE</Text>
+              <Text style={[tcStyles.aVal, { color: colors.primary, fontFamily: 'Inter_700Bold' }]}>
+                {fmtCurrency(trade.pricePerShare)}
+              </Text>
+            </View>
+            <View style={tcStyles.analysisCell}>
+              <Text style={[tcStyles.aLabel, { color: colors.mutedForeground }]}>CASH RECEIVED</Text>
+              <Text style={[tcStyles.aVal, { color: colors.buyColor, fontFamily: 'Inter_700Bold' }]}>
+                +{fmtCurrency(trade.shares * trade.pricePerShare)}
+              </Text>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {expanded && !gradeInfo && !isDividend && (
         <View style={[tcStyles.analysis, { borderTopColor: colors.border }]}>
           <Text style={[tcStyles.analysisTitle, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold' }]}>
             OPEN POSITION COST
@@ -1115,12 +1147,12 @@ const tcStyles = StyleSheet.create({
 
 // ─── Add/Edit Trade Modal ─────────────────────────────────────────────────────
 
-interface TradeForm { symbol: string; type: 'buy' | 'sell'; shares: string; price: string; }
+interface TradeForm { symbol: string; type: 'buy' | 'sell' | 'dividend'; shares: string; price: string; }
 
 function TradeModal({
   visible, initial, defaultType, defaultSymbol, allTrades, onSave, onClose, colors,
 }: {
-  visible: boolean; initial?: Trade | null; defaultType?: 'buy' | 'sell'; defaultSymbol?: string;
+  visible: boolean; initial?: Trade | null; defaultType?: 'buy' | 'sell' | 'dividend'; defaultSymbol?: string;
   allTrades: Trade[]; onSave: (t: Omit<Trade, 'id' | 'date'>) => void; onClose: () => void; colors: any;
 }) {
   const [form, setForm] = useState<TradeForm>({ symbol: '', type: 'buy', shares: '', price: '' });
@@ -1190,16 +1222,16 @@ function TradeModal({
 
             <Text style={[mStyles.label, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>TYPE</Text>
             <View style={mStyles.toggle}>
-              {(['buy', 'sell'] as const).map(t => (
+              {(['buy', 'sell', 'dividend'] as const).map(t => (
                 <TouchableOpacity key={t}
                   style={[mStyles.toggleBtn, {
-                    backgroundColor: form.type === t ? (t === 'buy' ? colors.buyBg : colors.sellBg) : 'transparent',
-                    borderColor: form.type === t ? (t === 'buy' ? colors.buyColor : colors.sellColor) : colors.border,
+                    backgroundColor: form.type === t ? (t === 'buy' ? colors.buyBg : t === 'sell' ? colors.sellBg : colors.primary + '20') : 'transparent',
+                    borderColor: form.type === t ? (t === 'buy' ? colors.buyColor : t === 'sell' ? colors.sellColor : colors.primary) : colors.border,
                   }]}
                   onPress={() => setForm({ ...form, type: t })} activeOpacity={0.75}
                 >
-                  <Text style={[mStyles.toggleText, { color: form.type === t ? (t === 'buy' ? colors.buyColor : colors.sellColor) : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
-                    {t.toUpperCase()}
+                  <Text style={[mStyles.toggleText, { color: form.type === t ? (t === 'buy' ? colors.buyColor : t === 'sell' ? colors.sellColor : colors.primary) : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+                    {t === 'dividend' ? 'DIV' : t.toUpperCase()}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -1213,8 +1245,8 @@ function TradeModal({
 
             <View style={mStyles.row}>
               {[
-                { key: 'shares' as const, label: 'SHARES', ph: '10' },
-                { key: 'price' as const, label: 'PRICE / SHARE', ph: '150.00' },
+                { key: 'shares' as const, label: form.type === 'dividend' ? 'SHARES HELD' : 'SHARES', ph: '10' },
+                { key: 'price' as const, label: form.type === 'dividend' ? 'DIV / SHARE' : 'PRICE / SHARE', ph: form.type === 'dividend' ? '0.83' : '150.00' },
               ].map(f => (
                 <View key={f.key} style={{ flex: 1 }}>
                   <Text style={[mStyles.label, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>{f.label}</Text>
@@ -1234,7 +1266,7 @@ function TradeModal({
               </TouchableOpacity>
               <TouchableOpacity style={[mStyles.saveBtn, { backgroundColor: colors.primary }]} onPress={submit} activeOpacity={0.8}>
                 <Text style={[mStyles.saveText, { color: colors.primaryForeground, fontFamily: 'Inter_700Bold' }]}>
-                  {initial ? 'Save Changes' : 'Add Trade'}
+                  {initial ? 'Save Changes' : form.type === 'dividend' ? 'Add Dividend' : 'Add Trade'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1266,13 +1298,14 @@ const mStyles = StyleSheet.create({
 
 // ─── Summary Card ─────────────────────────────────────────────────────────────
 
-function SummaryCard({ positions, closedTrades, onReset, colors }: { positions: Position[]; closedTrades: ClosedTrade[]; onReset: () => void; colors: any }) {
+function SummaryCard({ positions, trades, closedTrades, onReset, onAddDividend, colors }: { positions: Position[]; trades: Trade[]; closedTrades: ClosedTrade[]; onReset: () => void; onAddDividend: () => void; colors: any }) {
   const open = positions.filter(p => p.netShares !== 0);
   const totalCost = open.reduce((s, p) => s + Math.max(p.costBasis, 0), 0);
   const totalMkt = open.reduce((s, p) => s + p.marketValue, 0);
   const totalUnreal = open.reduce((s, p) => s + p.unrealizedPnL, 0);
   // Realized P&L and fees are computed per closing trade (net of fund fees).
   const { totalReal, totalFees, wins, totalClosed, winRate } = computeTradeSummary(closedTrades);
+  const totalDividends = computeDividendTotal(trades);
   const totalPnL = totalUnreal + totalReal;
   const totalPct = totalCost > 0 ? (totalUnreal / totalCost) * 100 : 0;
   const isGain = totalPnL >= 0;
@@ -1281,10 +1314,16 @@ function SummaryCard({ positions, closedTrades, onReset, colors }: { positions: 
     <View style={[smStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
       <View style={smStyles.titleRow}>
         <Text style={[smStyles.heading, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold' }]}>PORTFOLIO SUMMARY</Text>
-        <TouchableOpacity style={smStyles.resetBtn} onPress={onReset} activeOpacity={0.7}>
-          <Feather name="trash-2" size={12} color={colors.sellColor} />
-          <Text style={[smStyles.resetTxt, { color: colors.sellColor, fontFamily: 'Inter_600SemiBold' }]}>RESET</Text>
-        </TouchableOpacity>
+        <View style={smStyles.titleActions}>
+          <TouchableOpacity style={smStyles.resetBtn} onPress={onAddDividend} activeOpacity={0.7}>
+            <Feather name="dollar-sign" size={12} color={colors.primary} />
+            <Text style={[smStyles.resetTxt, { color: colors.primary, fontFamily: 'Inter_600SemiBold' }]}>DIVIDEND</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={smStyles.resetBtn} onPress={onReset} activeOpacity={0.7}>
+            <Feather name="trash-2" size={12} color={colors.sellColor} />
+            <Text style={[smStyles.resetTxt, { color: colors.sellColor, fontFamily: 'Inter_600SemiBold' }]}>RESET</Text>
+          </TouchableOpacity>
+        </View>
       </View>
       <View style={smStyles.metricsRow}>
         {[
@@ -1316,6 +1355,17 @@ function SummaryCard({ positions, closedTrades, onReset, colors }: { positions: 
           </React.Fragment>
         ))}
       </View>
+      {totalDividends > 0 && (
+        <View style={smStyles.dividendRow}>
+          <View>
+            <Text style={[smStyles.metricLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>DIVIDENDS</Text>
+            <Text style={[smStyles.metricLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>received</Text>
+          </View>
+          <Text style={[smStyles.dividendVal, { color: colors.buyColor, fontFamily: 'Inter_700Bold' }]}>
+            +{fmtCurrency(totalDividends)}
+          </Text>
+        </View>
+      )}
       <View style={[smStyles.plStrip, { backgroundColor: isGain ? colors.buyBg : colors.sellBg, borderColor: isGain ? colors.buyColor : colors.sellColor }]}>
         <View style={smStyles.plTopRow}>
           <Text style={[smStyles.plLabel, { color: colors.mutedForeground }]}>UNREALIZED</Text>
@@ -1336,6 +1386,7 @@ function SummaryCard({ positions, closedTrades, onReset, colors }: { positions: 
 const smStyles = StyleSheet.create({
   card: { borderRadius: 12, borderWidth: 1, padding: 12, marginBottom: 12 },
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  titleActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   heading: { fontSize: 12, letterSpacing: 1 },
   resetBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   resetTxt: { fontSize: 12, letterSpacing: 0.5 },
@@ -1344,6 +1395,8 @@ const smStyles = StyleSheet.create({
   divider: { width: 1, height: 36, marginHorizontal: 8 },
   metricLabel: { fontSize: 10, letterSpacing: 0.5 },
   metricVal: { fontSize: 16 },
+  dividendRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 2, marginBottom: 8, paddingTop: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(192,192,192,0.18)' },
+  dividendVal: { fontSize: 16 },
   plStrip: { borderRadius: 8, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 6, flexDirection: 'column', gap: 2 },
   plTopRow: { flexDirection: 'row', justifyContent: 'flex-end' },
   plBottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -1372,7 +1425,7 @@ export default function PortfolioScreen() {
   const [dateTo, setDateTo] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
   const [editTarget, setEditTarget] = useState<Trade | null>(null);
-  const [defaultType, setDefaultType] = useState<'buy' | 'sell'>('buy');
+  const [defaultType, setDefaultType] = useState<'buy' | 'sell' | 'dividend'>('buy');
   const [defaultSymbol, setDefaultSymbol] = useState<string | undefined>(undefined);
   const [celebration, setCelebration] = useState<TradeGrade | null>(null);
   const [tradeFeedback, setTradeFeedback] = useState<TradeGrade | null>(null);
@@ -1465,7 +1518,7 @@ export default function PortfolioScreen() {
   }, [trades, filterSymbol, sortOrder, dateFrom, dateTo]);
 
   function handleReset() {
-    Alert.alert('Reset Portfolio', 'Permanently delete ALL trades, positions, and history? This cannot be undone.', [
+    Alert.alert('Reset Portfolio', 'Permanently delete ALL trades, dividends, positions, and history? This cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete Everything', style: 'destructive', onPress: async () => {
         const toDelete = [...trades];
@@ -1508,7 +1561,7 @@ export default function PortfolioScreen() {
     setEditTarget(null);
   }
 
-  function openAdd(type: 'buy' | 'sell' = 'buy', symbol?: string) {
+  function openAdd(type: 'buy' | 'sell' | 'dividend' = 'buy', symbol?: string) {
     setEditTarget(null); setDefaultType(type); setDefaultSymbol(symbol); setModalVisible(true);
   }
 
@@ -1583,7 +1636,7 @@ export default function PortfolioScreen() {
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
         >
-          <SummaryCard positions={allPositions} closedTrades={closedTrades} onReset={handleReset} colors={colors} />
+          <SummaryCard positions={allPositions} trades={trades} closedTrades={closedTrades} onReset={handleReset} onAddDividend={() => openAdd('dividend')} colors={colors} />
 
           {portfolioTab === 'positions' ? (
             openPositions.length === 0 ? (
