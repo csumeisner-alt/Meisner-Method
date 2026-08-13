@@ -1345,7 +1345,10 @@ function SummaryCard({ positions, trades, closedTrades, onReset, onAddDividend, 
       </View>
       <View style={smStyles.metricsRow}>
         {[
-          { label: 'WIN RATE', val: winRate != null ? `${winRate}%` : '—', sub: totalClosed > 0 ? `${wins}/${totalClosed} wins` : 'no closed trades', color: colors.foreground, flex: 2 },
+          { label: 'WIN RATE', val: winRate != null ? `${winRate}%` : '—', sub: totalClosed > 0 ? `${wins}/${totalClosed} wins` : 'no closed trades', color: colors.foreground, flex: totalDividends > 0 ? 1 : 2 },
+          ...(totalDividends > 0
+            ? [{ label: 'DIVIDENDS', val: `+${fmtCurrency(totalDividends)}`, sub: 'received', color: colors.buyColor, flex: 1 }]
+            : []),
           { label: 'FUND FEES', val: totalFees > 0 ? `-${fmtCurrency(totalFees)}` : fmtCurrency(0), sub: 'expense ratios', color: totalFees > 0 ? colors.sellColor : colors.mutedForeground, flex: 1 },
         ].map((m, i) => (
           <React.Fragment key={m.label}>
@@ -1358,17 +1361,6 @@ function SummaryCard({ positions, trades, closedTrades, onReset, onAddDividend, 
           </React.Fragment>
         ))}
       </View>
-      {totalDividends > 0 && (
-        <View style={smStyles.dividendRow}>
-          <View>
-            <Text style={[smStyles.metricLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>DIVIDENDS</Text>
-            <Text style={[smStyles.metricLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>received</Text>
-          </View>
-          <Text style={[smStyles.dividendVal, { color: colors.buyColor, fontFamily: 'Inter_700Bold' }]}>
-            +{fmtCurrency(totalDividends)}
-          </Text>
-        </View>
-      )}
       <View style={[smStyles.plStrip, { backgroundColor: isGain ? colors.buyBg : colors.sellBg, borderColor: isGain ? colors.buyColor : colors.sellColor }]}>
         <View style={smStyles.plTopRow}>
           <Text style={[smStyles.plLabel, { color: colors.mutedForeground }]}>UNREALIZED</Text>
@@ -1398,8 +1390,6 @@ const smStyles = StyleSheet.create({
   divider: { width: 1, height: 36, marginHorizontal: 8 },
   metricLabel: { fontSize: 10, letterSpacing: 0.5 },
   metricVal: { fontSize: 16 },
-  dividendRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 2, marginBottom: 8, paddingTop: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(192,192,192,0.18)' },
-  dividendVal: { fontSize: 16 },
   plStrip: { borderRadius: 8, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 6, flexDirection: 'column', gap: 2 },
   plTopRow: { flexDirection: 'row', justifyContent: 'flex-end' },
   plBottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

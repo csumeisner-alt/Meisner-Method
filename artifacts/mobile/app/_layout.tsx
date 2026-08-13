@@ -30,7 +30,15 @@ const queryClient = new QueryClient({
 
 function RootLayoutNav() {
   return (
-    <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+    <Stack
+      screenOptions={({ route }) => {
+        const transition = (route.params as { transition?: 'left' | 'right' } | undefined)?.transition;
+        return {
+          headerShown: false,
+          animation: transition === 'left' ? 'slide_from_left' : 'slide_from_right',
+        };
+      }}
+    >
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="portfolio" options={{ headerShown: false }} />
       <Stack.Screen name="paper" options={{ headerShown: false }} />

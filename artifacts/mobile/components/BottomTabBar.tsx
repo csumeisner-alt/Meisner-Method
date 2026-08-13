@@ -17,9 +17,20 @@ export function BottomTabBar() {
   const isPortfolio = pathname === '/portfolio';
 
   const botPad = Platform.OS === 'web' ? 0 : insets.bottom;
+  const tabOrder = ['/', '/picks', '/paper', '/portfolio'] as const;
 
   function go(path: '/' | '/picks' | '/paper' | '/portfolio') {
-    router.replace(path);
+    const currentTab = pathname.startsWith('/picks')
+      ? '/picks'
+      : pathname === '/paper'
+        ? '/paper'
+        : pathname === '/portfolio'
+          ? '/portfolio'
+          : '/';
+    const currentIndex = tabOrder.indexOf(currentTab);
+    const targetIndex = tabOrder.indexOf(path);
+    const transition = targetIndex < currentIndex ? 'left' : 'right';
+    router.replace({ pathname: path, params: { transition } });
   }
 
   return (
