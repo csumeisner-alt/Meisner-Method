@@ -1,21 +1,22 @@
 /**
  * ComparisonChart
  *
- * Plots one or two price series as % return from the first candle, so stocks
- * at wildly different absolute prices share the same Y-axis.
+ * Plots one or two price series as either % return from the first candle or
+ * absolute prices. Percentage mode remains the default so stocks at wildly
+ * different absolute prices share the same Y-axis.
  *
  * Primary series    → green accent  (#00e5a0)
  * Comparison series → blue          (#60a5fa)
  *
  * Features
- *  - Normalised % return Y-axis
- *  - Touch crosshair showing % return for both series
+ *  - Percentage/price display toggle
+ *  - Matching Y-axis and touch crosshair values for both modes
  *  - End-of-line ticker labels (right edge)
  *  - Legend row with color swatches and current period return
  */
 
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Svg, { Path, Line, Text as SvgText, Circle, G, Rect } from 'react-native-svg';
 import type { GestureResponderEvent } from 'react-native';
 import type { Candle } from './StockChart';
@@ -38,9 +39,23 @@ function normalize(candles: Candle[]): number[] {
   return candles.map((c) => ((c.c - base) / base) * 100);
 }
 
+type ChartMode = 'percent' | 'price';
+
 function fmtPct(v: number): string {
   const sign = v >= 0 ? '+' : '';
   return `${sign}${v.toFixed(2)}%`;
+}
+
+function fmtPrice(v: number): string {
+  if (v >= 1000) return `$${(v / 1000).toFixed(1)}k`;
+  if (v >= 1) return `$${v.toFixed(2)}`;
+  return `$${v.toFixed(4)}`;
+}
+
+function fmtAxisValue(v: number, mode: ChartMode): string {
+  return mode === 'percent'
+    ? `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`
+    : fmtPrice(v);
 }
 
 function fmtDate(d: string): string {
@@ -64,14 +79,26 @@ interface Props {
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
-function LegendItem({ color, ticker, ret }: { color: string; ticker: string; ret: number | null }) {
-  const retColor = ret == null ? color : ret >= 0 ? color : '#ff3b3b';
+function LegendItem({
+  color,
+  ticker,
+  value,
+  mode,
+}: {
+  color: string;
+  ticker: string;
+  value: number | null;
+  mode: ChartMode;
+}) {
+  const valueColor = value == null ? color : value >= 0 || mode === 'price' ? color : '#ff3b3b';
   return (
     <View style={s.legendItem}>
       <View style={[s.swatch, { backgroundColor: color }]} />
       <Text style={[s.legendTicker, { color }]}>{ticker}</Text>
-      {ret != null && (
-        <Text style={[s.legendRet, { color: retColor }]}>{fmtPct(ret)}</Text>
+      {value != null && (
+        <Text style={[s.legendRet, { color: valueColor }]}>
+          {mode === 'percent' ? fmtPct(value) : fmtPrice(value)}
+        </Text>
       )}
     </View>
   );
@@ -109,21 +136,26 @@ export function ComparisonChart({
   height = 240,
 }: Props) {
   const [touched, setTouched] = useState<number | null>(null);
+  const [mode, setMode] = useState<ChartMode>('percent');
 
   const chartW = width - PAD.left - PAD.right;
   const chartH = height - PAD.top - PAD.bottom;
 
-  const primRet = normalize(primaryCandles);
-  const compRet = compCandles && compCandles.length > 0 ? normalize(compCandles) : null;
-  const hasComp = compRet !== null && compRet.length > 0;
+  const primValues = mode === 'percent'
+    ? normalize(primaryCandles)
+    : primaryCandles.map((c) => c.c);
+  const compValues = compCandles && compCandles.length > 0
+    ? mode === 'percent' ? normalize(compCandles) : compCandles.map((c) => c.c)
+    : null;
+  const hasComp = compValues !== null && compValues.length > 0;
 
-  const nPrim = primRet.length;
-  const nComp = compRet?.length ?? 0;
+  const nPrim = primValues.length;
+  const nComp = compValues?.length ?? 0;
 
   // Combined Y domain
-  const allVals = [...primRet, ...(compRet ?? [])];
-  const rawMin = allVals.length > 0 ? Math.min(...allVals) : -5;
-  const rawMax = allVals.length > 0 ? Math.max(...allVals) : 5;
+  const allVals = [...primValues, ...(compValues ?? [])];
+  const rawMin = allVals.length > 0 ? Math.min(...allVals) : mode === 'percent' ? -5 : 0;
+  const rawMax = allVals.length > 0 ? Math.max(...allVals) : mode === 'percent' ? 5 : 1;
   const yPad  = Math.max((rawMax - rawMin) * 0.12, 2);
   const minY  = rawMin - yPad;
   const maxY  = rawMax + yPad;
@@ -171,17 +203,17 @@ export function ComparisonChart({
   );
 
   // Crosshair values
-  const touchPrimRet = touched !== null ? primRet[touched] : null;
+  const touchPrimValue = touched !== null ? primValues[touched] : null;
   const touchCompIdx =
     touched !== null && hasComp && nPrim > 1
       ? Math.round((touched / (nPrim - 1)) * (nComp - 1))
       : null;
-  const touchCompRet =
-    touchCompIdx !== null && compRet ? compRet[touchCompIdx] : null;
+  const touchCompValue =
+    touchCompIdx !== null && compValues ? compValues[touchCompIdx] : null;
 
-  // Period-end returns for legend
-  const primFinal = nPrim > 0 ? primRet[nPrim - 1] : null;
-  const compFinal = hasComp && compRet ? compRet[nComp - 1] : null;
+  // Period-end values for legend
+  const primFinal = nPrim > 0 ? primValues[nPrim - 1] : null;
+  const compFinal = hasComp && compValues ? compValues[nComp - 1] : null;
 
   if (nPrim === 0) {
     return (
@@ -192,8 +224,8 @@ export function ComparisonChart({
   }
 
   // End-of-line label positions
-  const primEndY = pyVal(primRet[nPrim - 1]);
-  const compEndY = hasComp && compRet ? pyVal(compRet[nComp - 1]) : null;
+  const primEndY = pyVal(primValues[nPrim - 1]);
+  const compEndY = hasComp && compValues ? pyVal(compValues[nComp - 1]) : null;
   // Nudge comparison label if too close to primary label
   const compLabelY = compEndY !== null
     ? (Math.abs(compEndY - primEndY) < 12 ? compEndY + 13 : compEndY)
@@ -201,11 +233,42 @@ export function ComparisonChart({
 
   return (
     <View style={{ width }}>
+      {/* ── Display mode ───────────────────────────────────────────────── */}
+      <View style={s.modeRow}>
+        <Text style={s.modeLabel}>VIEW</Text>
+        <View style={s.modeToggle}>
+          {([
+            { key: 'percent' as const, label: '%' },
+            { key: 'price' as const, label: '$' },
+          ]).map((option) => {
+            const selected = mode === option.key;
+            return (
+              <Pressable
+                key={option.key}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                accessibilityLabel={`Show chart in ${option.key === 'percent' ? 'percentage' : 'price'} mode`}
+                onPress={() => {
+                  setTouched(null);
+                  setMode(option.key);
+                }}
+                style={[s.modeButton, selected && s.modeButtonActive]}
+              >
+                <Text style={[s.modeButtonText, selected && s.modeButtonTextActive]}>
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <Text style={s.modeValueLabel}>{mode === 'percent' ? 'PERCENT' : 'PRICE'}</Text>
+      </View>
+
       {/* ── Legend ─────────────────────────────────────────────────────── */}
       <View style={s.legend}>
-        <LegendItem color={PRIMARY_COLOR} ticker={primarySymbol} ret={primFinal} />
+        <LegendItem color={PRIMARY_COLOR} ticker={primarySymbol} value={primFinal} mode={mode} />
         {hasComp && compSymbol && (
-          <LegendItem color={COMP_COLOR} ticker={compSymbol} ret={compFinal} />
+          <LegendItem color={COMP_COLOR} ticker={compSymbol} value={compFinal} mode={mode} />
         )}
       </View>
 
@@ -224,17 +287,19 @@ export function ComparisonChart({
           />
         ))}
 
-        {/* Zero baseline */}
-        <Line
-          x1={PAD.left} y1={py0} x2={PAD.left + chartW} y2={py0}
-          stroke="rgba(192,192,192,0.22)" strokeWidth={1} strokeDasharray="4 3"
-        />
+        {/* Zero-return baseline only applies to percentage mode. */}
+        {mode === 'percent' && (
+          <Line
+            x1={PAD.left} y1={py0} x2={PAD.left + chartW} y2={py0}
+            stroke="rgba(192,192,192,0.22)" strokeWidth={1} strokeDasharray="4 3"
+          />
+        )}
 
         {/* Y-axis labels */}
         {yTicks.map(({ val, y }, i) => (
           <SvgText key={i} x={PAD.left + chartW + 4} y={y + 4}
             fontSize={9} fill={AXIS_COLOR} textAnchor="start">
-            {val >= 0 ? '+' : ''}{val.toFixed(1)}%
+             {fmtAxisValue(val, mode)}
           </SvgText>
         ))}
 
@@ -247,16 +312,16 @@ export function ComparisonChart({
         ))}
 
         {/* Comparison line (drawn first, behind primary) */}
-        {hasComp && compRet && (
+        {hasComp && compValues && (
           <Path
-            d={buildPath(compRet, pxComp)}
+            d={buildPath(compValues ?? [], pxComp)}
             stroke={COMP_COLOR} strokeWidth={1.8} fill="none" strokeOpacity={0.85}
           />
         )}
 
         {/* Primary line */}
         <Path
-          d={buildPath(primRet, pxPrim)}
+          d={buildPath(primValues, pxPrim)}
           stroke={PRIMARY_COLOR} strokeWidth={2} fill="none"
         />
 
@@ -281,7 +346,7 @@ export function ComparisonChart({
         )}
 
         {/* ── Crosshair ───────────────────────────────────────────────── */}
-        {touched !== null && touchPrimRet !== null && (
+        {touched !== null && touchPrimValue !== null && (
           <G>
             <Line
               x1={pxPrim(touched)} y1={PAD.top}
@@ -290,16 +355,16 @@ export function ComparisonChart({
             />
 
             {/* Dots */}
-            <Circle cx={pxPrim(touched)} cy={pyVal(touchPrimRet)} r={4} fill={PRIMARY_COLOR} />
-            {touchCompRet !== null && touchCompIdx !== null && (
-              <Circle cx={pxComp(touchCompIdx)} cy={pyVal(touchCompRet)} r={4} fill={COMP_COLOR} />
+            <Circle cx={pxPrim(touched)} cy={pyVal(touchPrimValue)} r={4} fill={PRIMARY_COLOR} />
+            {touchCompValue !== null && touchCompIdx !== null && (
+              <Circle cx={pxComp(touchCompIdx)} cy={pyVal(touchCompValue)} r={4} fill={COMP_COLOR} />
             )}
 
             {/* Primary bubble */}
             <Bubble
               x={pxPrim(touched)}
-              y={pyVal(touchPrimRet)}
-              label={`${primarySymbol}  ${fmtPct(touchPrimRet)}`}
+              y={pyVal(touchPrimValue)}
+              label={`${primarySymbol}  ${mode === 'percent' ? fmtPct(touchPrimValue) : fmtPrice(touchPrimValue)}`}
               color={PRIMARY_COLOR}
               chartLeft={PAD.left}
               chartRight={PAD.left + chartW}
@@ -307,16 +372,16 @@ export function ComparisonChart({
             />
 
             {/* Comparison bubble — offset if overlapping */}
-            {touchCompRet !== null && touchCompIdx !== null && (
+            {touchCompValue !== null && touchCompIdx !== null && (
               <Bubble
                 x={pxPrim(touched)}
-                y={pyVal(touchCompRet)}
-                label={`${compSymbol}  ${fmtPct(touchCompRet)}`}
+                y={pyVal(touchCompValue)}
+                label={`${compSymbol}  ${mode === 'percent' ? fmtPct(touchCompValue) : fmtPrice(touchCompValue)}`}
                 color={COMP_COLOR}
                 chartLeft={PAD.left}
                 chartRight={PAD.left + chartW}
                 offsetY={
-                  Math.abs(pyVal(touchCompRet) - pyVal(touchPrimRet)) < 30 ? 22 : 0
+                   Math.abs(pyVal(touchCompValue) - pyVal(touchPrimValue)) < 30 ? 22 : 0
                 }
               />
             )}
@@ -339,6 +404,14 @@ export function ComparisonChart({
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
+  modeRow:      { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 6, paddingBottom: 7 },
+  modeLabel:    { color: 'rgba(192,192,192,0.42)', fontSize: 9, fontFamily: 'Inter_700Bold', letterSpacing: 0.8 },
+  modeValueLabel: { color: 'rgba(192,192,192,0.42)', fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5 },
+  modeToggle:   { flexDirection: 'row', borderRadius: 5, borderWidth: 1, borderColor: 'rgba(192,192,192,0.22)', overflow: 'hidden' },
+  modeButton:   { minWidth: 28, height: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(192,192,192,0.06)' },
+  modeButtonActive: { backgroundColor: 'rgba(0,229,160,0.18)' },
+  modeButtonText: { color: 'rgba(192,192,192,0.58)', fontSize: 12, fontFamily: 'Inter_700Bold' },
+  modeButtonTextActive: { color: PRIMARY_COLOR },
   legend:       { flexDirection: 'row', gap: 16, paddingHorizontal: 6, paddingBottom: 6 },
   legendItem:   { flexDirection: 'row', alignItems: 'center', gap: 5 },
   swatch:       { width: 10, height: 10, borderRadius: 2 },
