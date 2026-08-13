@@ -32,6 +32,7 @@ type ChartColors = {
   mutedForeground: string;
   border: string;
   primary: string;
+  primaryForeground: string;
   buyColor: string;
   sellColor: string;
   holdColor: string;
@@ -45,6 +46,18 @@ type Props = {
 };
 
 const PAD = { left: 12, right: 52, top: 22, bottom: 38 };
+type TimeRange = '7d' | '4w' | '6m' | '1y' | 'all';
+type ZoomLevel = 1 | 2 | 4 | 8;
+
+const TIME_RANGES: { key: TimeRange; label: string; durationMs?: number }[] = [
+  { key: '7d', label: '7D', durationMs: 7 * 86_400_000 },
+  { key: '4w', label: '4W', durationMs: 28 * 86_400_000 },
+  { key: '6m', label: '6M', durationMs: 183 * 86_400_000 },
+  { key: '1y', label: '1Y', durationMs: 365 * 86_400_000 },
+  { key: 'all', label: 'ALL' },
+];
+
+const ZOOM_LEVELS: ZoomLevel[] = [1, 2, 4, 8];
 
 function fmtCurrency(value: number) {
   return value.toLocaleString('en-US', {
@@ -75,53 +88,157 @@ function clamp(value: number, min: number, max: number) {
 
 export function GradeHistoryChart({ points, width, height, colors }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [timeRange, setTimeRange] = useState<TimeRange>('all');
+  const [zoomLevel, setZoomLevel] = useState<ZoomLevel>(1);
+
+  const rangePoints = useMemo(() => {
+    if (timeRange === 'all' || points.length === 0) return points;
+    const range = TIME_RANGES.find(option => option.key === timeRange);
+    const latestTime = new Date(points[points.length - 1]!.date).getTime();
+    const cutoff = latestTime - (range?.durationMs ?? 0);
+    return points.filter(point => new Date(point.date).getTime() >= cutoff);
+  }, [points, timeRange]);
+
+  const visiblePoints = useMemo(() => {
+    if (zoomLevel === 1 || rangePoints.length <= 2) return rangePoints;
+    const count = Math.max(2, Math.ceil(rangePoints.length / zoomLevel));
+    return rangePoints.slice(-count);
+  }, [rangePoints, zoomLevel]);
+
   const chartWidth = Math.max(width - PAD.left - PAD.right, 1);
   const chartHeight = Math.max(height - PAD.top - PAD.bottom, 1);
-  const selected = points.find(point => point.id === selectedId) ?? null;
+  const selected = visiblePoints.find(point => point.id === selectedId) ?? null;
 
   const toX = useCallback((index: number) => (
-    PAD.left + (points.length <= 1 ? chartWidth / 2 : (index / (points.length - 1)) * chartWidth)
-  ), [chartWidth, points.length]);
+    PAD.left + (visiblePoints.length <= 1 ? chartWidth / 2 : (index / (visiblePoints.length - 1)) * chartWidth)
+  ), [chartWidth, visiblePoints.length]);
 
   const toY = useCallback((gradeIndex: number) => (
     PAD.top + (gradeIndex / (GRADE_ORDER.length - 1)) * chartHeight
   ), [chartHeight]);
 
-  const path = useMemo(() => points
+  const path = useMemo(() => visiblePoints
     .map((point, index) => `${index === 0 ? 'M' : 'L'}${toX(index).toFixed(1)},${toY(point.gradeIndex).toFixed(1)}`)
-    .join(' '), [points, toX, toY]);
+    .join(' '), [visiblePoints, toX, toY]);
 
   const xLabelIndexes = useMemo(() => {
-    const count = Math.min(points.length, 5);
+    const count = Math.min(visiblePoints.length, 5);
     return Array.from(
       new Set(Array.from({ length: count }, (_, index) => (
-        Math.round((index / Math.max(count - 1, 1)) * Math.max(points.length - 1, 0))
+        Math.round((index / Math.max(count - 1, 1)) * Math.max(visiblePoints.length - 1, 0))
       ))),
     );
-  }, [points.length]);
+  }, [visiblePoints.length]);
 
   const handleChartPress = useCallback((event: GestureResponderEvent) => {
-    if (!points.length) return;
+    if (!visiblePoints.length) return;
     const localX = clamp(event.nativeEvent.locationX - PAD.left, 0, chartWidth);
-    const index = points.length <= 1
+    const index = visiblePoints.length <= 1
       ? 0
-      : Math.round((localX / chartWidth) * (points.length - 1));
-    setSelectedId(points[index]?.id ?? null);
-  }, [chartWidth, points]);
+      : Math.round((localX / chartWidth) * (visiblePoints.length - 1));
+    setSelectedId(visiblePoints[index]?.id ?? null);
+  }, [chartWidth, visiblePoints]);
 
-  if (points.length === 0) {
-    return (
-      <View style={[styles.empty, { width, height, backgroundColor: colors.card, borderColor: colors.border }]}>
-        <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No completed trades yet</Text>
-        <Text style={[styles.emptyCopy, { color: colors.mutedForeground }]}>
-          Complete a sell trade to start tracking your grade history.
-        </Text>
-      </View>
-    );
-  }
+  const zoomOut = () => {
+    const currentIndex = ZOOM_LEVELS.indexOf(zoomLevel);
+    setZoomLevel(ZOOM_LEVELS[Math.max(0, currentIndex - 1)]!);
+    setSelectedId(null);
+  };
+
+  const zoomIn = () => {
+    const currentIndex = ZOOM_LEVELS.indexOf(zoomLevel);
+    setZoomLevel(ZOOM_LEVELS[Math.min(ZOOM_LEVELS.length - 1, currentIndex + 1)]!);
+    setSelectedId(null);
+  };
+
+  const setRange = (range: TimeRange) => {
+    setTimeRange(range);
+    setZoomLevel(1);
+    setSelectedId(null);
+  };
+
+  const latestDate = points.length > 0 ? fmtDate(points[points.length - 1]!.date) : 'No trades';
 
   return (
     <View style={{ width }}>
+      <View style={styles.toolbar}>
+        <View style={styles.rangeGroup}>
+          <Text style={[styles.toolbarLabel, { color: colors.mutedForeground }]}>PERIOD</Text>
+          <View style={styles.rangeButtons}>
+            {TIME_RANGES.map(option => {
+              const active = timeRange === option.key;
+              return (
+                <Pressable
+                  key={option.key}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={`Show ${option.label} of trade history`}
+                  onPress={() => setRange(option.key)}
+                  style={[
+                    styles.rangeButton,
+                    { borderColor: colors.border },
+                    active && { backgroundColor: colors.primary, borderColor: colors.primary },
+                  ]}
+                >
+                  <Text style={[styles.rangeText, { color: active ? colors.primaryForeground : colors.mutedForeground }]}>
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+        <View style={styles.zoomGroup}>
+          <Text style={[styles.toolbarLabel, { color: colors.mutedForeground }]}>ZOOM</Text>
+          <View style={styles.zoomButtons}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Zoom out"
+              accessibilityState={{ disabled: zoomLevel === 1 }}
+              disabled={zoomLevel === 1}
+              onPress={zoomOut}
+              style={[styles.zoomButton, { borderColor: colors.border }, zoomLevel === 1 && styles.disabledButton]}
+            >
+              <Text style={[styles.zoomButtonText, { color: zoomLevel === 1 ? colors.border : colors.foreground }]}>−</Text>
+            </Pressable>
+            <Text style={[styles.zoomValue, { color: colors.primary }]}>{zoomLevel}×</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Zoom in"
+              accessibilityState={{ disabled: zoomLevel === ZOOM_LEVELS[ZOOM_LEVELS.length - 1] }}
+              disabled={zoomLevel === ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}
+              onPress={zoomIn}
+              style={[
+                styles.zoomButton,
+                { borderColor: colors.border },
+                zoomLevel === ZOOM_LEVELS[ZOOM_LEVELS.length - 1] && styles.disabledButton,
+              ]}
+            >
+              <Text style={[styles.zoomButtonText, { color: zoomLevel === ZOOM_LEVELS[ZOOM_LEVELS.length - 1] ? colors.border : colors.foreground }]}>+</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+      <View style={styles.metaRow}>
+        <Text style={[styles.metaText, { color: colors.mutedForeground }]}>
+          {visiblePoints.length} {visiblePoints.length === 1 ? 'trade' : 'trades'} in view
+        </Text>
+        <Text style={[styles.metaText, { color: colors.mutedForeground }]}>Latest · {latestDate}</Text>
+      </View>
+
+      {visiblePoints.length === 0 ? (
+        <View style={[styles.empty, { width, height, backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+            {points.length === 0 ? 'No completed trades yet' : 'No trades in this period'}
+          </Text>
+          <Text style={[styles.emptyCopy, { color: colors.mutedForeground }]}>
+            {points.length === 0
+              ? 'Complete a sell trade to start tracking your grade history.'
+              : 'Choose a wider period to see more of your trade history.'}
+          </Text>
+        </View>
+      ) : (
+        <>
       <Svg width={width} height={height} onPress={handleChartPress}>
         {GRADE_ORDER.map((grade, index) => {
           const y = toY(index);
@@ -159,15 +276,15 @@ export function GradeHistoryChart({ points, width, height, colors }: Props) {
             fontSize={9}
             fill={colors.mutedForeground}
           >
-            {fmtDate(points[index]!.date)}
+            {fmtDate(visiblePoints[index]!.date)}
           </SvgText>
         ))}
 
-        {points.length > 1 && (
+        {visiblePoints.length > 1 && (
           <Path d={path} stroke={colors.primary} strokeWidth={2.4} fill="none" />
         )}
 
-        {points.map((point, index) => {
+        {visiblePoints.map((point, index) => {
           const x = toX(index);
           const y = toY(point.gradeIndex);
           const isSelected = point.id === selectedId;
@@ -188,16 +305,16 @@ export function GradeHistoryChart({ points, width, height, colors }: Props) {
         {selected && (
           <G pointerEvents="none">
             <Line
-              x1={toX(points.indexOf(selected))}
+              x1={toX(visiblePoints.indexOf(selected))}
               y1={PAD.top}
-              x2={toX(points.indexOf(selected))}
+              x2={toX(visiblePoints.indexOf(selected))}
               y2={PAD.top + chartHeight}
               stroke={colors.foreground}
               strokeOpacity={0.45}
               strokeDasharray="4 3"
             />
             <Rect
-              x={clamp(toX(points.indexOf(selected)) - 46, PAD.left, PAD.left + chartWidth - 92)}
+              x={clamp(toX(visiblePoints.indexOf(selected)) - 46, PAD.left, PAD.left + chartWidth - 92)}
               y={Math.max(PAD.top - 17, 2)}
               width={92}
               height={17}
@@ -207,7 +324,7 @@ export function GradeHistoryChart({ points, width, height, colors }: Props) {
               strokeWidth={1}
             />
             <SvgText
-              x={clamp(toX(points.indexOf(selected)), PAD.left + 46, PAD.left + chartWidth - 46)}
+              x={clamp(toX(visiblePoints.indexOf(selected)), PAD.left + 46, PAD.left + chartWidth - 46)}
               y={PAD.top - 5}
               textAnchor="middle"
               fontSize={9}
@@ -240,6 +357,8 @@ export function GradeHistoryChart({ points, width, height, colors }: Props) {
           </View>
         </View>
       )}
+        </>
+      )}
     </View>
   );
 }
@@ -254,6 +373,20 @@ function DetailMetric({ label, value, color }: { label: string; value: string; c
 }
 
 const styles = StyleSheet.create({
+  toolbar: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 10, marginBottom: 8 },
+  toolbarLabel: { fontSize: 9, letterSpacing: 0.8, fontFamily: 'Inter_600SemiBold' },
+  rangeGroup: { flex: 1 },
+  rangeButtons: { flexDirection: 'row', gap: 4, marginTop: 5 },
+  rangeButton: { minWidth: 31, height: 28, paddingHorizontal: 7, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 6 },
+  rangeText: { fontSize: 9, fontFamily: 'Inter_700Bold', letterSpacing: 0.3 },
+  zoomGroup: { alignItems: 'flex-end' },
+  zoomButtons: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 },
+  zoomButton: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 6 },
+  disabledButton: { opacity: 0.45 },
+  zoomButtonText: { fontSize: 19, lineHeight: 20, fontFamily: 'Inter_500Medium' },
+  zoomValue: { width: 25, textAlign: 'center', fontSize: 10, fontFamily: 'Inter_700Bold' },
+  metaRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2, paddingHorizontal: 2 },
+  metaText: { fontSize: 10, fontFamily: 'Inter_400Regular' },
   empty: { alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 12, paddingHorizontal: 24 },
   emptyTitle: { fontSize: 16, fontFamily: 'Inter_700Bold', marginBottom: 6 },
   emptyCopy: { fontSize: 12, fontFamily: 'Inter_400Regular', textAlign: 'center', lineHeight: 18 },
