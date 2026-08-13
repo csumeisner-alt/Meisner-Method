@@ -232,6 +232,7 @@ const fmtCurrency = (n: number) =>
 const fmtPct = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`;
 const fmtNum = (n: number, d = 4) =>
   n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: d });
+const A_PLUS_SCORE_THRESHOLD = 65;
 
 function uid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -306,7 +307,7 @@ function computeSellGrade(sellTrade: Trade, allTrades: Trade[]): TradeGrade | nu
 
   // Grade mapping
   let grade: string, color: string, bgColor: string, label: string;
-  if      (compositeScore >= 65)  { grade = 'A+'; color = '#00e5a0'; bgColor = '#001a12'; label = 'Market Genius' }
+  if      (compositeScore >= A_PLUS_SCORE_THRESHOLD)  { grade = 'A+'; color = '#00e5a0'; bgColor = '#001a12'; label = 'Market Genius' }
   else if (compositeScore >= 45)  { grade = 'A';  color = '#00e5a0'; bgColor = '#001a12'; label = 'Excellent Trade' }
   else if (compositeScore >= 25)  { grade = 'A-'; color = '#00e5a0'; bgColor = '#001a12'; label = 'Great Trade' }
   else if (compositeScore >= 18)  { grade = 'B+'; color = '#4ade80'; bgColor = '#0a1a0e'; label = 'Solid Profit' }
@@ -1013,7 +1014,7 @@ function TradeCard({
 
           {/* Scoring explanation */}
           <Text style={[tcStyles.scoringNote, { color: colors.mutedForeground }]}>
-            Score: {gradeInfo.compositeScore.toFixed(1)} pts  ·  A+ requires ≥75 pts (high return × fast execution)
+            Score: {gradeInfo.compositeScore.toFixed(1)} pts  ·  A+ requires ≥{A_PLUS_SCORE_THRESHOLD} pts (high return × fast execution)
           </Text>
         </View>
       )}
