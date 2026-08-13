@@ -243,7 +243,6 @@ export function GradeHistoryChart({ points, width, height, colors }: Props) {
         {GRADE_ORDER.map((grade, index) => {
           const y = toY(index);
           const isSelected = selected?.grade === grade;
-          const showAxisLabel = index > 0 && index < GRADE_ORDER.length - 1;
           return (
             <React.Fragment key={grade}>
               <Line
@@ -255,17 +254,15 @@ export function GradeHistoryChart({ points, width, height, colors }: Props) {
                 strokeOpacity={isSelected ? 0.65 : 0.25}
                 strokeWidth={isSelected ? 1.4 : 1}
               />
-              {showAxisLabel && (
-                <SvgText
-                  x={PAD.left + chartWidth + 7}
-                  y={y + 3}
-                  fontSize={9}
-                  fill={isSelected ? gradeColor(grade, colors) : colors.mutedForeground}
-                  fontWeight={isSelected ? '700' : '400'}
-                >
-                  {grade}
-                </SvgText>
-              )}
+              <SvgText
+                x={PAD.left + chartWidth + 7}
+                y={y + 3}
+                fontSize={9}
+                fill={isSelected ? gradeColor(grade, colors) : colors.mutedForeground}
+                fontWeight={isSelected ? '700' : '400'}
+              >
+                {grade}
+              </SvgText>
             </React.Fragment>
           );
         })}
