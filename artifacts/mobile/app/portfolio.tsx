@@ -1303,12 +1303,12 @@ function SummaryCard({ positions, closedTrades, onReset, colors }: { positions: 
       </View>
       <View style={smStyles.metricsRow}>
         {[
-          { label: 'WIN RATE', val: winRate != null ? `${winRate}%` : '—', sub: totalClosed > 0 ? `${wins}/${totalClosed} wins` : 'no closed trades', color: colors.foreground },
-          { label: 'FUND FEES', val: totalFees > 0 ? `-${fmtCurrency(totalFees)}` : fmtCurrency(0), sub: 'expense ratios', color: totalFees > 0 ? colors.sellColor : colors.mutedForeground },
+          { label: 'WIN RATE', val: winRate != null ? `${winRate}%` : '—', sub: totalClosed > 0 ? `${wins}/${totalClosed} wins` : 'no closed trades', color: colors.foreground, flex: 2 },
+          { label: 'FUND FEES', val: totalFees > 0 ? `-${fmtCurrency(totalFees)}` : fmtCurrency(0), sub: 'expense ratios', color: totalFees > 0 ? colors.sellColor : colors.mutedForeground, flex: 1 },
         ].map((m, i) => (
           <React.Fragment key={m.label}>
             {i > 0 && <View style={[smStyles.divider, { backgroundColor: colors.border }]} />}
-            <View style={smStyles.metricCell}>
+            <View style={[smStyles.metricCell, { flex: m.flex }]}>
               <Text style={[smStyles.metricLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>{m.label}</Text>
               <Text style={[smStyles.metricVal, { color: m.color, fontFamily: 'Inter_700Bold' }]}>{m.val}</Text>
               <Text style={[smStyles.metricLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>{m.sub}</Text>
