@@ -31,6 +31,7 @@ import { BottomTabBar } from '@/components/BottomTabBar';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { PortfolioFilterBar } from '@/components/PortfolioFilterBar';
 import { GRADE_ORDER, GradeHistoryChart, type GradeHistoryPoint } from '@/components/GradeHistoryChart';
+import { TrainingTapeModal } from '@/components/TrainingTapeModal';
 import {
   availableToSell,
   computeDividendTotal,
@@ -1414,6 +1415,7 @@ function GradeHistoryModal({
   const chartWidth = Math.max(width - 28, 280);
   const chartHeight = Math.max(Math.min(height * 0.58, 560), 360);
   const topPad = Platform.OS === 'web' ? 16 : insets.top;
+  const [trainingTapeVisible, setTrainingTapeVisible] = useState(false);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -1430,9 +1432,15 @@ function GradeHistoryModal({
               <Feather name="arrow-left" size={20} color={colors.primary} />
             </TouchableOpacity>
             <View style={gradeModalStyles.headerCopy}>
-              <Text style={[gradeModalStyles.title, { color: colors.heading, fontFamily: 'Inter_700Bold' }]}>
-                TRADE GRADE HISTORY
-              </Text>
+              <Pressable
+                onLongPress={() => setTrainingTapeVisible(true)}
+                delayLongPress={900}
+                accessibilityLabel="Trade grade history"
+              >
+                <Text style={[gradeModalStyles.title, { color: colors.heading, fontFamily: 'Inter_700Bold' }]}>
+                  TRADE GRADE HISTORY
+                </Text>
+              </Pressable>
               <Text style={[gradeModalStyles.subtitle, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                 Completed trades · tap a dot for details
               </Text>
@@ -1453,6 +1461,11 @@ function GradeHistoryModal({
               <GradeHistoryChart points={points} width={chartWidth} height={chartHeight} colors={colors} />
             </View>
           </ScrollView>
+          <TrainingTapeModal
+            visible={trainingTapeVisible}
+            colors={colors}
+            onClose={() => setTrainingTapeVisible(false)}
+          />
         </View>
       </AmericanSteelBackground>
     </Modal>
