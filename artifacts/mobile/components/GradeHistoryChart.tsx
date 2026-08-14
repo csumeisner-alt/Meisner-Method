@@ -36,6 +36,10 @@ type ChartColors = {
   buyColor: string;
   sellColor: string;
   holdColor: string;
+  gradeGood: string;
+  gradeCaution: string;
+  gradeWarning: string;
+  gradeFail: string;
 };
 
 type Props = {
@@ -77,9 +81,10 @@ function fmtDate(iso: string) {
 }
 
 function gradeColor(grade: string, colors: ChartColors) {
-  if (grade.startsWith('A') || grade.startsWith('B')) return colors.buyColor;
-  if (grade.startsWith('F')) return colors.sellColor;
-  return colors.holdColor;
+  if (grade.startsWith('A') || grade.startsWith('B')) return colors.gradeGood;
+  if (grade.startsWith('C')) return colors.gradeCaution;
+  if (grade.startsWith('D')) return colors.gradeWarning;
+  return colors.gradeFail;
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -160,7 +165,7 @@ export function GradeHistoryChart({ points, width, height, colors }: Props) {
   const latestDate = points.length > 0 ? fmtDate(points[points.length - 1]!.date) : 'No trades';
 
   return (
-    <View style={{ width }}>
+    <View style={[styles.chartRoot, { width }]}>
       <View style={styles.toolbar}>
         <View style={styles.rangeGroup}>
           <Text style={[styles.toolbarLabel, { color: colors.mutedForeground }]}>PERIOD</Text>
@@ -338,22 +343,24 @@ export function GradeHistoryChart({ points, width, height, colors }: Props) {
       </Svg>
 
       {selected && (
-        <View style={[styles.detailCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={styles.detailHeader}>
-            <View>
-              <Text style={[styles.detailEyebrow, { color: colors.mutedForeground }]}>COMPLETED TRADE</Text>
-              <Text style={[styles.detailTitle, { color: colors.foreground }]}>{selected.symbol}</Text>
+        <View style={styles.detailOverlay}>
+          <View style={[styles.detailCard, { backgroundColor: colors.card, borderColor: gradeColor(selected.grade, colors) }]}>
+            <View style={styles.detailHeader}>
+              <View>
+                <Text style={[styles.detailEyebrow, { color: colors.mutedForeground }]}>COMPLETED TRADE</Text>
+                <Text style={[styles.detailTitle, { color: colors.foreground }]}>{selected.symbol}</Text>
+              </View>
+              <View style={[styles.gradePill, { backgroundColor: gradeColor(selected.grade, colors) + '20', borderColor: gradeColor(selected.grade, colors) }]}>
+                <Text style={[styles.gradeText, { color: gradeColor(selected.grade, colors) }]}>{selected.grade}</Text>
+              </View>
             </View>
-            <View style={[styles.gradePill, { backgroundColor: gradeColor(selected.grade, colors) + '20', borderColor: gradeColor(selected.grade, colors) }]}>
-              <Text style={[styles.gradeText, { color: gradeColor(selected.grade, colors) }]}>{selected.grade}</Text>
+            <Text style={[styles.detailDate, { color: colors.mutedForeground }]}>{fmtDate(selected.date)}</Text>
+            <View style={styles.detailGrid}>
+              <DetailMetric label="NET P&L" value={`${selected.netPnL >= 0 ? '+' : ''}${fmtCurrency(selected.netPnL)}`} color={selected.netPnL >= 0 ? colors.buyColor : colors.sellColor} />
+              <DetailMetric label="RETURN" value={`${selected.returnPct >= 0 ? '+' : ''}${selected.returnPct.toFixed(1)}%`} color={selected.returnPct >= 0 ? colors.buyColor : colors.sellColor} />
+              <DetailMetric label="SHARES" value={selected.shares.toLocaleString('en-US', { maximumFractionDigits: 4 })} color={colors.foreground} />
+              <DetailMetric label="HELD FOR" value={selected.holdDays === 0 ? 'same day' : `${selected.holdDays}d`} color={colors.foreground} />
             </View>
-          </View>
-          <Text style={[styles.detailDate, { color: colors.mutedForeground }]}>{fmtDate(selected.date)}</Text>
-          <View style={styles.detailGrid}>
-            <DetailMetric label="NET P&L" value={`${selected.netPnL >= 0 ? '+' : ''}${fmtCurrency(selected.netPnL)}`} color={selected.netPnL >= 0 ? colors.buyColor : colors.sellColor} />
-            <DetailMetric label="RETURN" value={`${selected.returnPct >= 0 ? '+' : ''}${selected.returnPct.toFixed(1)}%`} color={selected.returnPct >= 0 ? colors.buyColor : colors.sellColor} />
-            <DetailMetric label="SHARES" value={selected.shares.toLocaleString('en-US', { maximumFractionDigits: 4 })} color={colors.foreground} />
-            <DetailMetric label="HELD FOR" value={selected.holdDays === 0 ? 'same day' : `${selected.holdDays}d`} color={colors.foreground} />
           </View>
         </View>
       )}
@@ -373,6 +380,7 @@ function DetailMetric({ label, value, color }: { label: string; value: string; c
 }
 
 const styles = StyleSheet.create({
+  chartRoot: { position: 'relative' },
   toolbar: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'flex-start', gap: 18, marginBottom: 8 },
   toolbarLabel: { fontSize: 9, letterSpacing: 0.8, fontFamily: 'Inter_600SemiBold' },
   rangeGroup: { flex: 0 },
@@ -390,7 +398,14 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 12, paddingHorizontal: 24 },
   emptyTitle: { fontSize: 16, fontFamily: 'Inter_700Bold', marginBottom: 6 },
   emptyCopy: { fontSize: 12, fontFamily: 'Inter_400Regular', textAlign: 'center', lineHeight: 18 },
-  detailCard: { borderWidth: 1, borderRadius: 12, padding: 14, marginTop: 4 },
+  detailOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    top: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+    pointerEvents: 'none',
+  },
+  detailCard: { width: '100%', borderWidth: 1.5, borderRadius: 12, padding: 14 },
   detailHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
   detailEyebrow: { fontSize: 9, letterSpacing: 1, fontFamily: 'Inter_500Medium' },
   detailTitle: { fontSize: 21, letterSpacing: 1, fontFamily: 'Inter_700Bold', marginTop: 2 },
