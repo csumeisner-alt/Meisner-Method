@@ -20,6 +20,7 @@ const WATCHLIST_POLL_INTERVAL = 60_000;
 const CACHE_KEY_PREFIX = '@stocksense/watchlist_v1/';
 
 const GUEST_CACHE_KEY = CACHE_KEY_PREFIX + '__guest__';
+const QUOTE_CACHE_KEY = CACHE_KEY_PREFIX + '__quotes__';
 const ALERT_CACHE_KEY = '@stocksense/price_alerts_v1';
 
 async function readCache(key: string): Promise<WatchlistItem[]> {
@@ -37,6 +38,35 @@ async function writeCache(key: string, items: WatchlistItem[]) {
     await AsyncStorage.setItem(key, JSON.stringify(items));
   } catch {
     // Non-fatal — cache write failure should never surface to the user.
+  }
+}
+
+async function readQuoteCache(): Promise<Map<string, QuoteData>> {
+  try {
+    const raw = await AsyncStorage.getItem(QUOTE_CACHE_KEY);
+    if (!raw) return new Map();
+    const parsed = JSON.parse(raw) as Record<string, QuoteData>;
+    const cached = new Map<string, QuoteData>();
+    for (const [symbol, quote] of Object.entries(parsed)) {
+      if (
+        Number.isFinite(quote?.currentPrice) &&
+        Number.isFinite(quote?.priceChange) &&
+        Number.isFinite(quote?.priceChangePercent)
+      ) {
+        cached.set(symbol, quote);
+      }
+    }
+    return cached;
+  } catch {
+    return new Map();
+  }
+}
+
+async function writeQuoteCache(quotes: Map<string, QuoteData>) {
+  try {
+    await AsyncStorage.setItem(QUOTE_CACHE_KEY, JSON.stringify(Object.fromEntries(quotes)));
+  } catch {
+    // Non-fatal — quote cache failure should never affect live refreshes.
   }
 }
 
@@ -104,6 +134,16 @@ export function useWatchlist() {
     return () => { cancelled = true; };
   }, []);
 
+  // Seed cached prices independently of the watchlist/API refresh so returning
+  // users see useful prices immediately while fresh quotes load in the background.
+  useEffect(() => {
+    let cancelled = false;
+    readQuoteCache().then((cached) => {
+      if (!cancelled && cached.size > 0) setQuotes(cached);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     readAlertCache().then((cached) => {
@@ -115,46 +155,63 @@ export function useWatchlist() {
   const refresh = useCallback(async () => {
     try {
       setLoading(true);
-      const watchlist = await readCache(GUEST_CACHE_KEY);
-      const installationId = await getInstallationId();
-      let alertList = await readAlertCache();
-      try {
-        alertList = await apiFetch<AlertData[]>(
-          `/api/notifications/alerts?installationId=${encodeURIComponent(installationId)}`,
-        );
-        void writeAlertCache(alertList);
-      } catch {
-        // Keep the local copy visible while offline; saves still require the
-        // server so the user is never promised an undeliverable alert.
-      }
+      const [watchlist, cachedAlerts] = await Promise.all([
+        readCache(GUEST_CACHE_KEY),
+        readAlertCache(),
+      ]);
       if (!mountedRef.current) return;
+
+      // Make the locally saved list available before waiting on alert or quote
+      // requests. This keeps the list interactive even on a slow connection.
       setItems(watchlist);
-      setAlerts(alertList);
+      setAlerts(cachedAlerts);
 
       // Persist fresh server list to cache
       void writeCache(GUEST_CACHE_KEY, watchlist);
 
-      // Fetch live quotes for all watched symbols in parallel
-      if (watchlist.length > 0) {
-        const results = await Promise.all(
-          watchlist.map(async (w) => {
-            try {
-              const r = await fetch(`${BASE_URL}/api/stocks/quote/${encodeURIComponent(w.symbol)}`);
-              if (!r.ok) return null;
-              const d = await r.json();
-              if (d.error) return null;
-              return { symbol: w.symbol, data: d as QuoteData };
-            } catch {
-              return null;
-            }
-          }),
-        );
-        if (!mountedRef.current) return;
+      const installationIdPromise = getInstallationId();
+      const alertPromise = installationIdPromise
+        .then((installationId) => apiFetch<AlertData[]>(
+          `/api/notifications/alerts?installationId=${encodeURIComponent(installationId)}`,
+        ))
+        .then((alertList) => {
+          void writeAlertCache(alertList);
+          return alertList;
+        })
+        .catch(() => {
+          // Keep the local copy visible while offline; saves still require the
+          // server so the user is never promised an undeliverable alert.
+          return cachedAlerts;
+        });
+
+      // Fetch live quotes in parallel with alerts rather than making the
+      // watchlist wait for the alert request first.
+      const quotePromise = Promise.all(
+        watchlist.map(async (w) => {
+          try {
+            const r = await fetch(`${BASE_URL}/api/stocks/quote/${encodeURIComponent(w.symbol)}`);
+            if (!r.ok) return null;
+            const d = await r.json();
+            if (d.error) return null;
+            return { symbol: w.symbol, data: d as QuoteData };
+          } catch {
+            return null;
+          }
+        }),
+      ).then((results) => {
         const qMap = new Map<string, QuoteData>();
         for (const r of results) {
           if (r) qMap.set(r.symbol, r.data);
         }
-        setQuotes(qMap);
+        return qMap;
+      });
+
+      const [alertList, freshQuotes] = await Promise.all([alertPromise, quotePromise]);
+      if (!mountedRef.current) return;
+      setAlerts(alertList);
+      if (freshQuotes.size > 0) {
+        setQuotes(freshQuotes);
+        void writeQuoteCache(freshQuotes);
       }
       if (mountedRef.current) setLastUpdated(new Date());
     } catch {
