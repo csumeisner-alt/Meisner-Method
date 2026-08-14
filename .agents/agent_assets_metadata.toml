@@ -73,3 +73,10 @@ uri = "file://artifacts/mobile/assets/images/icon.png"
 type = "image"
 title = "Meisner Method app logo"
 description = "Tightly cropped square logo with the centered visible gold frame, cleaned badge, and preserved gold glow."
+
+[[outputs]]
+id = "ge9FqqvBGbgCCllNmV4kx"
+uri = "file://attached_assets/generated_audio/sound_effect_brew_token_vault_unlock.mp3"
+type = "audio"
+title = "brew-token-vault-unlock"
+description = "Generated sound effect: A short realistic mechanical bank vault opening sound: heavy steel wheel turning, deep metal latch releasing, solid vault door seal clack, subtle metallic resonance, premium c…"

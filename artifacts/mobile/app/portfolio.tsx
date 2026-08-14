@@ -32,6 +32,9 @@ import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { PortfolioFilterBar } from '@/components/PortfolioFilterBar';
 import { GRADE_ORDER, GradeHistoryChart, type GradeHistoryPoint } from '@/components/GradeHistoryChart';
 import { TrainingTapeModal } from '@/components/TrainingTapeModal';
+import { BrewTokenBank } from '@/components/BrewTokenBank';
+import { BrewTokenUnlockCelebration } from '@/components/BrewTokenUnlockCelebration';
+import { useBrewTokens } from '@/hooks/useBrewTokens';
 import {
   availableToSell,
   computeDividendTotal,
@@ -1416,6 +1419,37 @@ function GradeHistoryModal({
   const chartHeight = Math.max(Math.min(height * 0.58, 560), 360);
   const topPad = Platform.OS === 'web' ? 16 : insets.top;
   const [trainingTapeVisible, setTrainingTapeVisible] = useState(false);
+  const [brewBankVisible, setBrewBankVisible] = useState(false);
+  const [brewCelebrationVisible, setBrewCelebrationVisible] = useState(false);
+  const {
+    quotesViewed,
+    isUnlocked: brewBankUnlocked,
+    brewTokens,
+    justUnlocked,
+    incrementQuoteViewed,
+    resolveBet,
+    clearJustUnlocked,
+  } = useBrewTokens();
+  const isWeekend = [0, 6].includes(new Date().getDay());
+
+  const handleQuoteViewed = useCallback(() => {
+    void incrementQuoteViewed();
+  }, [incrementQuoteViewed]);
+
+  useEffect(() => {
+    if (!justUnlocked) return;
+    setTrainingTapeVisible(false);
+    setBrewCelebrationVisible(true);
+    clearJustUnlocked();
+  }, [clearJustUnlocked, justUnlocked]);
+
+  const handleHeaderLongPress = () => {
+    if (brewBankUnlocked && isWeekend) {
+      setBrewBankVisible(true);
+      return;
+    }
+    setTrainingTapeVisible(true);
+  };
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -1433,7 +1467,7 @@ function GradeHistoryModal({
             </TouchableOpacity>
             <View style={gradeModalStyles.headerCopy}>
               <Pressable
-                onLongPress={() => setTrainingTapeVisible(true)}
+                onLongPress={handleHeaderLongPress}
                 delayLongPress={900}
                 accessibilityLabel="Trade grade history"
               >
@@ -1465,6 +1499,20 @@ function GradeHistoryModal({
             visible={trainingTapeVisible}
             colors={colors}
             onClose={() => setTrainingTapeVisible(false)}
+            onQuoteViewed={handleQuoteViewed}
+          />
+          <BrewTokenBank
+            visible={brewBankVisible}
+            colors={colors}
+            tokens={brewTokens}
+            quotesViewed={quotesViewed}
+            onClose={() => setBrewBankVisible(false)}
+            onResolveBet={resolveBet}
+          />
+          <BrewTokenUnlockCelebration
+            visible={brewCelebrationVisible}
+            colors={colors}
+            onDismiss={() => setBrewCelebrationVisible(false)}
           />
         </View>
       </AmericanSteelBackground>

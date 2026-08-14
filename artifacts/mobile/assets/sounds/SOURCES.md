@@ -13,3 +13,8 @@
 - **Recorded by:** Mike Koenig (soundbible.com)
 - **License:** CC BY 3.0 — https://creativecommons.org/licenses/by/3.0/
 - **Processing:** Single-shot recording trimmed to 0.35 s transient, replicated 5 times at 155 ms intervals, assembled into a 0.9 s burst, normalized to stereo 22050 Hz WAV.
+
+## brew_vault_unlock.mp3
+- **Source:** Generated sound effect using Replit's managed media generation
+- **Prompt:** Short realistic mechanical bank vault opening with a steel wheel, latch release, and metal resonance; no music, voice, or weapons.
+- **Processing:** Bundled as a short 22050 Hz MP3 for offline playback during the Brew Token unlock celebration.
