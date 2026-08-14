@@ -198,7 +198,11 @@ export function DonationSidebar({ visible, onClose }: Props) {
     outputRange: [PANEL_WIDTH, 0],
   });
 
-  const topPad = (Platform.OS === 'web' ? 24 : insets.top) + 12;
+  // Keep the panel itself below the system status bar. The header retains the
+  // same visual position with a small internal top pad, while the notification
+  // area remains outside the Settings surface.
+  const panelTopInset = Platform.OS === 'web' ? 0 : insets.top;
+  const topPad = Platform.OS === 'web' ? 24 : 12;
   const botPad = (Platform.OS === 'web' ? 24 : insets.bottom) + 20;
 
   return (
@@ -213,6 +217,8 @@ export function DonationSidebar({ visible, onClose }: Props) {
             styles.panel,
             {
               width: PANEL_WIDTH,
+              marginTop: panelTopInset,
+              height: Platform.OS === 'web' ? '100%' : SCREEN_HEIGHT - panelTopInset,
               backgroundColor: colors.background,
               borderLeftColor: colors.border,
               transform: [{ translateX }],

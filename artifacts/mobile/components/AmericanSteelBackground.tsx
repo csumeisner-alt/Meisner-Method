@@ -18,35 +18,35 @@ export function AmericanSteelBackground({ children, style }: Props) {
   const colors = useColors();
   const { isActive } = useAmericanMode();
 
-  if (!isActive) {
-    return <View style={[styles.root, { backgroundColor: colors.background }, style]}>{children}</View>;
-  }
-
   return (
     <View style={[styles.root, { backgroundColor: colors.background }, style]}>
-      <LinearGradient
-        colors={[colors.steelShadow, colors.background, colors.steelHighlight, colors.background, colors.steelShadow]}
-        locations={[0, 0.22, 0.48, 0.7, 1]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={StyleSheet.absoluteFill}
-        pointerEvents="none"
-      />
-      <View style={styles.grain} pointerEvents="none">
-        {Array.from({ length: 18 }, (_, index) => (
-          <View
-            key={index}
-            style={[
-              styles.brush,
-              {
-                top: `${index * 6.5}%`,
-                backgroundColor: index % 3 === 0 ? '#ffffff' : '#000000',
-                opacity: index % 3 === 0 ? 0.035 : 0.05,
-              },
-            ]}
+      {isActive && (
+        <>
+          <LinearGradient
+            colors={[colors.steelShadow, colors.background, colors.steelHighlight, colors.background, colors.steelShadow]}
+            locations={[0, 0.22, 0.48, 0.7, 1]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
           />
-        ))}
-      </View>
+          <View style={styles.grain} pointerEvents="none">
+            {Array.from({ length: 18 }, (_, index) => (
+              <View
+                key={index}
+                style={[
+                  styles.brush,
+                  {
+                    top: `${index * 6.5}%`,
+                    backgroundColor: index % 3 === 0 ? '#ffffff' : '#000000',
+                    opacity: index % 3 === 0 ? 0.035 : 0.05,
+                  },
+                ]}
+              />
+            ))}
+          </View>
+        </>
+      )}
       <View style={styles.content}>{children}</View>
     </View>
   );
