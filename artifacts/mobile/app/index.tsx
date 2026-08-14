@@ -39,6 +39,9 @@ const WATCHLIST_FILTER_THRESHOLD = 6;
 /** AsyncStorage key for the persisted watchlist filter. */
 const WATCH_FILTER_KEY = '@stocksense/watchlist_filter';
 
+/** AsyncStorage key for the persisted watchlist open/collapsed state. */
+const WATCHLIST_COLLAPSED_KEY = '@stocksense/watchlist_collapsed';
+
 /** Persists the watchlist filter across navigation within a session (resets on full app reload). */
 let _persistedWatchFilter = '';
 
@@ -140,6 +143,7 @@ export default function HomeScreen() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [scrollEnabled, setScrollEnabled] = useState(true);
+  const [watchlistCollapsed, setWatchlistCollapsed] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Watchlist + push notifications
@@ -184,6 +188,23 @@ export default function HomeScreen() {
   }, []);
 
   const showWatchFilter = watchlist.items.length >= WATCHLIST_FILTER_THRESHOLD;
+
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.getItem(WATCHLIST_COLLAPSED_KEY).then((saved) => {
+      if (!cancelled && saved === '1') setWatchlistCollapsed(true);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const toggleWatchlist = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setWatchlistCollapsed((current) => {
+      const next = !current;
+      AsyncStorage.setItem(WATCHLIST_COLLAPSED_KEY, next ? '1' : '0').catch(() => {});
+      return next;
+    });
+  }, []);
 
   // On cold start, load the persisted filter from AsyncStorage.
   useEffect(() => {
@@ -430,7 +451,7 @@ export default function HomeScreen() {
       </View>
 
       {/* Watchlist filter — sticky bar between search and scroll so it's always reachable */}
-      {showWatchFilter && (
+      {showWatchFilter && !watchlistCollapsed && (
         <View style={[styles.watchFilterBar, { borderBottomColor: colors.border }]}>
           <View style={[styles.watchFilterRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Feather name="filter" size={14} color={colors.mutedForeground} style={{ marginRight: 8 }} />
@@ -503,7 +524,14 @@ export default function HomeScreen() {
         <View>
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleRow}>
+              <TouchableOpacity
+                style={styles.sectionTitleRow}
+                onPress={toggleWatchlist}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`${watchlistCollapsed ? 'Expand' : 'Collapse'} watchlist`}
+                accessibilityState={{ expanded: !watchlistCollapsed }}
+              >
                 <Feather name="star" size={11} color={colors.mutedForeground} />
                 <Text style={[styles.sectionTitle, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', letterSpacing: 1, marginLeft: 4 }]}>
                   WATCHLIST
@@ -511,7 +539,13 @@ export default function HomeScreen() {
                     <Text style={{ fontFamily: 'Inter_400Regular' }}> ({watchlist.items.length})</Text>
                   )}
                 </Text>
-              </View>
+                <Feather
+                  name={watchlistCollapsed ? 'chevron-right' : 'chevron-down'}
+                  size={15}
+                  color={colors.mutedForeground}
+                  style={{ marginLeft: 5 }}
+                />
+              </TouchableOpacity>
               <View style={styles.refreshRow}>
                 {watchlist.lastUpdated && (
                   <Text style={[styles.updatedText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
@@ -528,21 +562,21 @@ export default function HomeScreen() {
               </View>
             </View>
 
-            {watchlist.items.length === 0 ? (
+            {!watchlistCollapsed && watchlist.items.length === 0 ? (
               <View style={[styles.watchlistEmpty, { borderColor: colors.border }]}>
                 <Feather name="star" size={20} color={colors.mutedForeground} />
                 <Text style={[styles.watchlistEmptyText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                   Search for a stock and tap ★ to add it here
                 </Text>
               </View>
-            ) : filteredWatchItems.length === 0 ? (
+            ) : !watchlistCollapsed && filteredWatchItems.length === 0 ? (
               <View style={[styles.watchlistEmpty, { borderColor: colors.border }]}>
                 <Feather name="search" size={20} color={colors.mutedForeground} />
                 <Text style={[styles.watchlistEmptyText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                   No tickers match “{watchFilter.trim().toUpperCase()}”
                 </Text>
               </View>
-            ) : (
+            ) : !watchlistCollapsed ? (
               <DraggableWatchlist
                 items={filteredWatchItems}
                 quotes={watchlist.quotes}
@@ -556,7 +590,7 @@ export default function HomeScreen() {
                 formatPrice={formatPrice}
                 formatPct={formatPct}
               />
-            )}
+            ) : null}
           </View>
         </View>
 
