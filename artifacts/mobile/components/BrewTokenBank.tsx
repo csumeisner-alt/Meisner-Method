@@ -4,10 +4,12 @@ import {
   Modal,
   Pressable,
   StyleSheet,
+  Switch,
   Text,
   View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
 import type { ColorScheme } from '@/constants/colors';
@@ -32,14 +34,29 @@ type Props = {
   colors: ColorScheme;
   tokens: number;
   quotesViewed: number;
+  soundEnabled: boolean;
+  hapticsEnabled: boolean;
   onClose: () => void;
   onResolveBet: (bet: number, won: boolean) => Promise<void>;
+  onSoundEnabledChange: (value: boolean) => Promise<void>;
+  onHapticsEnabledChange: (value: boolean) => Promise<void>;
 };
 
-export function BrewTokenBank({ visible, colors, tokens, quotesViewed, onClose, onResolveBet }: Props) {
+export function BrewTokenBank({
+  visible,
+  colors,
+  tokens,
+  quotesViewed,
+  soundEnabled,
+  hapticsEnabled,
+  onClose,
+  onResolveBet,
+  onSoundEnabledChange,
+  onHapticsEnabledChange,
+}: Props) {
   const insets = useSafeAreaInsets();
   const [selectedBet, setSelectedBet] = useState(1);
-  const [result, setResult] = useState<'won' | 'lost' | null>(null);
+  const [result, setResult] = useState<{ won: boolean; bet: number } | null>(null);
   const [resolving, setResolving] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -57,7 +74,12 @@ export function BrewTokenBank({ visible, colors, tokens, quotesViewed, onClose, 
     setResolving(true);
     timerRef.current = setTimeout(() => {
       void onResolveBet(bet, won).finally(() => {
-        setResult(won ? 'won' : 'lost');
+        if (hapticsEnabled) {
+          Haptics.notificationAsync(
+            won ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning,
+          ).catch(() => {});
+        }
+        setResult({ won, bet });
         setResolving(false);
       });
     }, 650);
@@ -124,9 +146,20 @@ export function BrewTokenBank({ visible, colors, tokens, quotesViewed, onClose, 
             55% chance to double your deposit. 45% chance to lose only the tokens deposited.
           </Text>
 
+          {tokens === 0 && (
+            <Text style={[styles.emptyMessage, { color: colors.gold, fontFamily: 'Inter_500Medium' }]}>
+              The reserve is empty. View another Biden quote during the week to earn a Brew Token.
+            </Text>
+          )}
+
           {result && (
-            <Text style={[styles.result, { color: result === 'won' ? colors.buyColor : colors.sellColor, fontFamily: 'Inter_700Bold' }]}>
-              {result === 'won' ? `THE BANK PAID ${bet} ${bet === 1 ? 'TOKEN' : 'TOKENS'}.` : `THE BANK KEPT ${bet} ${bet === 1 ? 'TOKEN' : 'TOKENS'}.`}
+            <Text
+              accessibilityLiveRegion="polite"
+              style={[styles.result, { color: result.won ? colors.buyColor : colors.sellColor, fontFamily: 'Inter_700Bold' }]}
+            >
+              {result.won
+                ? `BANK PAID +${result.bet} ${result.bet === 1 ? 'TOKEN' : 'TOKENS'} · NEW BALANCE ${tokens}.`
+                : `BANK KEPT ${result.bet} ${result.bet === 1 ? 'TOKEN' : 'TOKENS'} · NEW BALANCE ${tokens}.`}
             </Text>
           )}
 
@@ -146,8 +179,40 @@ export function BrewTokenBank({ visible, colors, tokens, quotesViewed, onClose, 
             )}
           </Pressable>
 
+          <Text style={[styles.feedbackHeading, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
+            FEEDBACK
+          </Text>
+          <View style={[styles.feedbackRow, { borderTopColor: colors.border }]}>
+            <View style={styles.feedbackLabel}>
+              <Feather name="volume-2" size={15} color={colors.mutedForeground} />
+              <Text style={[styles.feedbackText, { color: colors.foreground, fontFamily: 'Inter_500Medium' }]}>SOUND</Text>
+            </View>
+            <Switch
+              value={soundEnabled}
+              onValueChange={value => { void onSoundEnabledChange(value); }}
+              trackColor={{ false: colors.border, true: colors.goldMuted }}
+              thumbColor={soundEnabled ? colors.gold : colors.mutedForeground}
+              accessibilityLabel="Brew Bank celebration sound"
+              accessibilityState={{ checked: soundEnabled }}
+            />
+          </View>
+          <View style={[styles.feedbackRow, { borderTopColor: colors.border }]}>
+            <View style={styles.feedbackLabel}>
+              <Feather name="smartphone" size={15} color={colors.mutedForeground} />
+              <Text style={[styles.feedbackText, { color: colors.foreground, fontFamily: 'Inter_500Medium' }]}>HAPTICS</Text>
+            </View>
+            <Switch
+              value={hapticsEnabled}
+              onValueChange={value => { void onHapticsEnabledChange(value); }}
+              trackColor={{ false: colors.border, true: colors.goldMuted }}
+              thumbColor={hapticsEnabled ? colors.gold : colors.mutedForeground}
+              accessibilityLabel="Brew Bank haptic feedback"
+              accessibilityState={{ checked: hapticsEnabled }}
+            />
+          </View>
+
           <Text style={[styles.footnote, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-            Fictional tokens only · no cash value · {quotesViewed} quotes logged
+            Fictional tokens only · no cash value · earn 1 token per weekday quote · {quotesViewed} quotes logged
           </Text>
         </View>
       </View>
@@ -192,8 +257,13 @@ const styles = StyleSheet.create({
   stepButton: { width: 36, height: 34, borderWidth: 1, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   disabled: { opacity: 0.4 },
   rules: { fontSize: 11, lineHeight: 17, marginTop: 13 },
+  emptyMessage: { fontSize: 11, lineHeight: 17, marginTop: 12 },
   result: { fontSize: 11, letterSpacing: 0.7, marginTop: 12 },
   depositButton: { minHeight: 46, borderRadius: 9, alignItems: 'center', justifyContent: 'center', marginTop: 17, paddingHorizontal: 12 },
   depositButtonText: { fontSize: 11, letterSpacing: 0.7, textAlign: 'center' },
+  feedbackHeading: { fontSize: 9, letterSpacing: 1, marginTop: 18 },
+  feedbackRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 42, borderTopWidth: 1 },
+  feedbackLabel: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  feedbackText: { fontSize: 10, letterSpacing: 0.8 },
   footnote: { fontSize: 9, textAlign: 'center', marginTop: 13 },
 });

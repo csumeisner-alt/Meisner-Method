@@ -1425,9 +1425,13 @@ function GradeHistoryModal({
     quotesViewed,
     isUnlocked: brewBankUnlocked,
     brewTokens,
+    soundEnabled,
+    hapticsEnabled,
     justUnlocked,
     incrementQuoteViewed,
     resolveBet,
+    setSoundEnabled,
+    setHapticsEnabled,
     clearJustUnlocked,
   } = useBrewTokens();
   const isWeekend = [0, 6].includes(new Date().getDay());
@@ -1506,12 +1510,20 @@ function GradeHistoryModal({
             colors={colors}
             tokens={brewTokens}
             quotesViewed={quotesViewed}
+            soundEnabled={soundEnabled}
+            hapticsEnabled={hapticsEnabled}
             onClose={() => setBrewBankVisible(false)}
             onResolveBet={resolveBet}
+            onSoundEnabledChange={setSoundEnabled}
+            onHapticsEnabledChange={setHapticsEnabled}
           />
           <BrewTokenUnlockCelebration
             visible={brewCelebrationVisible}
             colors={colors}
+            soundEnabled={soundEnabled}
+            hapticsEnabled={hapticsEnabled}
+            onSoundEnabledChange={setSoundEnabled}
+            onHapticsEnabledChange={setHapticsEnabled}
             onDismiss={() => setBrewCelebrationVisible(false)}
           />
         </View>

@@ -4,6 +4,7 @@ import {
   BREW_TOKEN_QUOTE_THRESHOLD,
   INITIAL_BREW_TOKENS,
   isBrewBankUnlock,
+  isWeekday,
   parseStoredNonNegative,
   resolveBrewBet,
 } from '../brewTokenLogic.ts';
@@ -17,6 +18,13 @@ test('Brew Token storage parsing rejects invalid and negative values', () => {
   assert.equal(parseStoredNonNegative('12'), 12);
   assert.equal(parseStoredNonNegative('-4'), 0);
   assert.equal(parseStoredNonNegative('not-a-number'), 0);
+});
+
+test('weekday detection includes Monday through Friday only', () => {
+  assert.equal(isWeekday(1), true);
+  assert.equal(isWeekday(5), true);
+  assert.equal(isWeekday(0), false);
+  assert.equal(isWeekday(6), false);
 });
 
 test('winning a bet returns the stake as profit and losing removes only the stake', () => {

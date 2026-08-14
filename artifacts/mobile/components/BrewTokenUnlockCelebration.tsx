@@ -21,10 +21,22 @@ const { width, height } = Dimensions.get('window');
 type Props = {
   visible: boolean;
   colors: ColorScheme;
+  soundEnabled: boolean;
+  hapticsEnabled: boolean;
+  onSoundEnabledChange: (value: boolean) => Promise<void>;
+  onHapticsEnabledChange: (value: boolean) => Promise<void>;
   onDismiss: () => void;
 };
 
-export function BrewTokenUnlockCelebration({ visible, colors, onDismiss }: Props) {
+export function BrewTokenUnlockCelebration({
+  visible,
+  colors,
+  soundEnabled,
+  hapticsEnabled,
+  onSoundEnabledChange,
+  onHapticsEnabledChange,
+  onDismiss,
+}: Props) {
   const doorProgress = useRef(new Animated.Value(0)).current;
   const cardProgress = useRef(new Animated.Value(0)).current;
   const playerRef = useRef<{ play: () => void; remove: () => void } | null>(null);
@@ -34,7 +46,9 @@ export function BrewTokenUnlockCelebration({ visible, colors, onDismiss }: Props
 
     doorProgress.setValue(0);
     cardProgress.setValue(0);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    if (hapticsEnabled) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    }
 
     Animated.parallel([
       Animated.timing(doorProgress, {
@@ -51,7 +65,7 @@ export function BrewTokenUnlockCelebration({ visible, colors, onDismiss }: Props
 
     let cancelled = false;
     const playVaultSound = async () => {
-      if (Constants.appOwnership === 'expo') return;
+      if (Constants.appOwnership === 'expo' || !soundEnabled) return;
       try {
         const { createAudioPlayer, setAudioModeAsync } = await import('expo-audio');
         await setAudioModeAsync({ playsInSilentMode: false, allowsRecording: false });
@@ -70,7 +84,7 @@ export function BrewTokenUnlockCelebration({ visible, colors, onDismiss }: Props
       try { playerRef.current?.remove(); } catch { /* ignore */ }
       playerRef.current = null;
     };
-  }, [visible, cardProgress, doorProgress]);
+  }, [cardProgress, doorProgress, hapticsEnabled, soundEnabled, visible]);
 
   if (!visible) return null;
 
@@ -113,6 +127,32 @@ export function BrewTokenUnlockCelebration({ visible, colors, onDismiss }: Props
           <Text style={[styles.body, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
             You viewed 22 Biden quotes.{'\n'}The vault is open for weekend decisions.
           </Text>
+          <View style={styles.feedbackControls}>
+            <Pressable
+              onPress={() => { void onSoundEnabledChange(!soundEnabled); }}
+              style={[styles.feedbackButton, { borderColor: colors.border }]}
+              accessibilityRole="button"
+              accessibilityState={{ checked: soundEnabled }}
+              accessibilityLabel={`Celebration sound ${soundEnabled ? 'on' : 'off'}`}
+            >
+              <Feather name={soundEnabled ? 'volume-2' : 'volume-x'} size={14} color={colors.mutedForeground} />
+              <Text style={[styles.feedbackButtonText, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
+                SOUND {soundEnabled ? 'ON' : 'OFF'}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => { void onHapticsEnabledChange(!hapticsEnabled); }}
+              style={[styles.feedbackButton, { borderColor: colors.border }]}
+              accessibilityRole="button"
+              accessibilityState={{ checked: hapticsEnabled }}
+              accessibilityLabel={`Celebration haptics ${hapticsEnabled ? 'on' : 'off'}`}
+            >
+              <Feather name="smartphone" size={14} color={colors.mutedForeground} />
+              <Text style={[styles.feedbackButtonText, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
+                HAPTICS {hapticsEnabled ? 'ON' : 'OFF'}
+              </Text>
+            </Pressable>
+          </View>
           <Pressable
             onPress={onDismiss}
             style={[styles.button, { backgroundColor: colors.gold }]}
@@ -142,6 +182,9 @@ const styles = StyleSheet.create({
   amount: { fontSize: 34, lineHeight: 39 },
   tokenLabel: { fontSize: 10, letterSpacing: 1.1 },
   body: { fontSize: 13, lineHeight: 20, textAlign: 'center', marginTop: 20 },
+  feedbackControls: { flexDirection: 'row', gap: 8, marginTop: 17 },
+  feedbackButton: { minHeight: 32, borderWidth: 1, borderRadius: 7, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  feedbackButtonText: { fontSize: 8, letterSpacing: 0.5 },
   button: { minHeight: 45, borderRadius: 9, paddingHorizontal: 22, alignItems: 'center', justifyContent: 'center', marginTop: 22 },
   buttonText: { fontSize: 11, letterSpacing: 0.8 },
 });

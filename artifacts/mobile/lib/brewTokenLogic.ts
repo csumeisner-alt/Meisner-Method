@@ -18,6 +18,10 @@ export function isBrewBankUnlock(prev: number, next: number): boolean {
   return prev < BREW_TOKEN_QUOTE_THRESHOLD && next >= BREW_TOKEN_QUOTE_THRESHOLD;
 }
 
+export function isWeekday(day: number): boolean {
+  return day >= 1 && day <= 5;
+}
+
 export function resolveBrewBet(balance: number, bet: number, won: boolean): number {
   const safeBalance = Math.max(0, Math.floor(balance));
   const safeBet = Math.max(0, Math.min(Math.floor(bet), safeBalance));
