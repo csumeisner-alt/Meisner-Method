@@ -69,6 +69,7 @@ type PortfolioTab = 'positions' | 'trades';
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
+const BREW_BANK_ENABLED = false;
 
 // ─── Local cache ──────────────────────────────────────────────────────────────
 
@@ -1442,13 +1443,17 @@ function GradeHistoryModal({
 
   useEffect(() => {
     if (!justUnlocked) return;
+    if (!BREW_BANK_ENABLED) {
+      clearJustUnlocked();
+      return;
+    }
     setTrainingTapeVisible(false);
     setBrewCelebrationVisible(true);
     clearJustUnlocked();
   }, [clearJustUnlocked, justUnlocked]);
 
   const handleHeaderLongPress = () => {
-    if (brewBankUnlocked && isWeekend) {
+    if (BREW_BANK_ENABLED && brewBankUnlocked && isWeekend) {
       setBrewBankVisible(true);
       return;
     }
@@ -1503,29 +1508,33 @@ function GradeHistoryModal({
             visible={trainingTapeVisible}
             colors={colors}
             onClose={() => setTrainingTapeVisible(false)}
-            onQuoteViewed={handleQuoteViewed}
+            onQuoteViewed={BREW_BANK_ENABLED ? handleQuoteViewed : undefined}
           />
-          <BrewTokenBank
-            visible={brewBankVisible}
-            colors={colors}
-            tokens={brewTokens}
-            quotesViewed={quotesViewed}
-            soundEnabled={soundEnabled}
-            hapticsEnabled={hapticsEnabled}
-            onClose={() => setBrewBankVisible(false)}
-            onResolveBet={resolveBet}
-            onSoundEnabledChange={setSoundEnabled}
-            onHapticsEnabledChange={setHapticsEnabled}
-          />
-          <BrewTokenUnlockCelebration
-            visible={brewCelebrationVisible}
-            colors={colors}
-            soundEnabled={soundEnabled}
-            hapticsEnabled={hapticsEnabled}
-            onSoundEnabledChange={setSoundEnabled}
-            onHapticsEnabledChange={setHapticsEnabled}
-            onDismiss={() => setBrewCelebrationVisible(false)}
-          />
+          {BREW_BANK_ENABLED && (
+            <>
+              <BrewTokenBank
+                visible={brewBankVisible}
+                colors={colors}
+                tokens={brewTokens}
+                quotesViewed={quotesViewed}
+                soundEnabled={soundEnabled}
+                hapticsEnabled={hapticsEnabled}
+                onClose={() => setBrewBankVisible(false)}
+                onResolveBet={resolveBet}
+                onSoundEnabledChange={setSoundEnabled}
+                onHapticsEnabledChange={setHapticsEnabled}
+              />
+              <BrewTokenUnlockCelebration
+                visible={brewCelebrationVisible}
+                colors={colors}
+                soundEnabled={soundEnabled}
+                hapticsEnabled={hapticsEnabled}
+                onSoundEnabledChange={setSoundEnabled}
+                onHapticsEnabledChange={setHapticsEnabled}
+                onDismiss={() => setBrewCelebrationVisible(false)}
+              />
+            </>
+          )}
         </View>
       </AmericanSteelBackground>
     </Modal>
