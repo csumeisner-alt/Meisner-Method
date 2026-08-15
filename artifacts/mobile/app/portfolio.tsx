@@ -32,9 +32,6 @@ import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { PortfolioFilterBar } from '@/components/PortfolioFilterBar';
 import { GRADE_ORDER, GradeHistoryChart, type GradeHistoryPoint } from '@/components/GradeHistoryChart';
 import { TrainingTapeModal } from '@/components/TrainingTapeModal';
-import { BrewTokenBank } from '@/components/BrewTokenBank';
-import { BrewTokenUnlockCelebration } from '@/components/BrewTokenUnlockCelebration';
-import { useBrewTokens } from '@/hooks/useBrewTokens';
 import {
   availableToSell,
   computeDividendTotal,
@@ -69,7 +66,6 @@ type PortfolioTab = 'positions' | 'trades';
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
-const BREW_BANK_ENABLED = false;
 
 // ─── Local cache ──────────────────────────────────────────────────────────────
 
@@ -1420,45 +1416,6 @@ function GradeHistoryModal({
   const chartHeight = Math.max(Math.min(height * 0.58, 560), 360);
   const topPad = Platform.OS === 'web' ? 16 : insets.top;
   const [trainingTapeVisible, setTrainingTapeVisible] = useState(false);
-  const [brewBankVisible, setBrewBankVisible] = useState(false);
-  const [brewCelebrationVisible, setBrewCelebrationVisible] = useState(false);
-  const {
-    quotesViewed,
-    isUnlocked: brewBankUnlocked,
-    brewTokens,
-    soundEnabled,
-    hapticsEnabled,
-    justUnlocked,
-    incrementQuoteViewed,
-    resolveBet,
-    setSoundEnabled,
-    setHapticsEnabled,
-    clearJustUnlocked,
-  } = useBrewTokens();
-  const isWeekend = [0, 6].includes(new Date().getDay());
-
-  const handleQuoteViewed = useCallback(() => {
-    void incrementQuoteViewed();
-  }, [incrementQuoteViewed]);
-
-  useEffect(() => {
-    if (!justUnlocked) return;
-    if (!BREW_BANK_ENABLED) {
-      clearJustUnlocked();
-      return;
-    }
-    setTrainingTapeVisible(false);
-    setBrewCelebrationVisible(true);
-    clearJustUnlocked();
-  }, [clearJustUnlocked, justUnlocked]);
-
-  const handleHeaderLongPress = () => {
-    if (BREW_BANK_ENABLED && brewBankUnlocked && isWeekend) {
-      setBrewBankVisible(true);
-      return;
-    }
-    setTrainingTapeVisible(true);
-  };
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -1476,7 +1433,7 @@ function GradeHistoryModal({
             </TouchableOpacity>
             <View style={gradeModalStyles.headerCopy}>
               <Pressable
-                onLongPress={handleHeaderLongPress}
+                onLongPress={() => setTrainingTapeVisible(true)}
                 delayLongPress={900}
                 accessibilityLabel="Trade grade history"
               >
@@ -1508,33 +1465,7 @@ function GradeHistoryModal({
             visible={trainingTapeVisible}
             colors={colors}
             onClose={() => setTrainingTapeVisible(false)}
-            onQuoteViewed={BREW_BANK_ENABLED ? handleQuoteViewed : undefined}
           />
-          {BREW_BANK_ENABLED && (
-            <>
-              <BrewTokenBank
-                visible={brewBankVisible}
-                colors={colors}
-                tokens={brewTokens}
-                quotesViewed={quotesViewed}
-                soundEnabled={soundEnabled}
-                hapticsEnabled={hapticsEnabled}
-                onClose={() => setBrewBankVisible(false)}
-                onResolveBet={resolveBet}
-                onSoundEnabledChange={setSoundEnabled}
-                onHapticsEnabledChange={setHapticsEnabled}
-              />
-              <BrewTokenUnlockCelebration
-                visible={brewCelebrationVisible}
-                colors={colors}
-                soundEnabled={soundEnabled}
-                hapticsEnabled={hapticsEnabled}
-                onSoundEnabledChange={setSoundEnabled}
-                onHapticsEnabledChange={setHapticsEnabled}
-                onDismiss={() => setBrewCelebrationVisible(false)}
-              />
-            </>
-          )}
         </View>
       </AmericanSteelBackground>
     </Modal>
