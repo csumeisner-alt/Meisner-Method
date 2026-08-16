@@ -24,7 +24,7 @@ export interface BrewTokenState {
   soundEnabled: boolean;
   hapticsEnabled: boolean;
   justUnlocked: boolean;
-  incrementQuoteViewed: (quoteViewId?: string) => Promise<void>;
+  incrementQuoteViewed: (quoteViewId?: string) => Promise<boolean>;
   resolveBet: (bet: number, won: boolean) => Promise<void>;
   setSoundEnabled: (value: boolean) => Promise<void>;
   setHapticsEnabled: (value: boolean) => Promise<void>;
@@ -89,7 +89,7 @@ export function useBrewTokens(): BrewTokenState {
     await hydrationRef.current!.promise;
 
     if (quoteViewId && !claimQuoteView(rememberedQuoteViewsRef.current, quoteViewId)) {
-      return;
+      return false;
     }
 
     const previous = quotesRef.current;
@@ -98,6 +98,7 @@ export function useBrewTokens(): BrewTokenState {
     setQuotesViewed(next);
 
     let tokenWrite: (() => Promise<void>) | null = null;
+    let earnedToken = false;
     if (!unlockedRef.current && isBrewBankUnlock(previous, next)) {
       unlockedRef.current = true;
       tokensRef.current = INITIAL_BREW_TOKENS;
@@ -112,6 +113,7 @@ export function useBrewTokens(): BrewTokenState {
       const nextTokens = tokensRef.current + 1;
       tokensRef.current = nextTokens;
       setBrewTokens(nextTokens);
+      earnedToken = true;
       tokenWrite = () => AsyncStorage.setItem(BREW_TOKENS_KEY, String(nextTokens));
     }
 
@@ -119,6 +121,7 @@ export function useBrewTokens(): BrewTokenState {
       await AsyncStorage.setItem(QUOTES_VIEWED_KEY, String(next));
       if (tokenWrite) await tokenWrite();
     }).catch(() => {});
+    return earnedToken;
   }, []);
 
   const resolveBet = useCallback(async (bet: number, won: boolean) => {

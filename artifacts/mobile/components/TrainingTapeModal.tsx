@@ -87,7 +87,7 @@ export function TrainingTapeModal({
   visible: boolean;
   colors: ColorScheme;
   onClose: () => void;
-  onQuoteViewed?: (quoteViewId: string) => void;
+  onQuoteViewed?: (quoteViewId: string) => Promise<boolean>;
 }) {
   const insets = useSafeAreaInsets();
   const [quoteMode, setQuoteMode] = useState(false);
@@ -116,9 +116,17 @@ export function TrainingTapeModal({
 
     if (useQuote) {
       const index = Math.floor(Math.random() * BIDEN_QUOTES.length);
-      setMessage(BIDEN_QUOTES[index] ?? BIDEN_QUOTES[0]);
+      const quote = BIDEN_QUOTES[index] ?? BIDEN_QUOTES[0];
+      setMessage(quote);
       setLoading(false);
-      onQuoteViewed?.(`training-tape-${quoteSessionRef.current}`);
+      const rewardPromise = onQuoteViewed?.(`training-tape-${quoteSessionRef.current}`);
+      if (rewardPromise) {
+        void rewardPromise.then(earnedToken => {
+          if (!cancelled && earnedToken) {
+            setMessage(`BREW TOKEN EARNED · +1 ADDED TO THE CENTRAL BANK\n\n${quote}`);
+          }
+        });
+      }
       return () => {
         cancelled = true;
       };

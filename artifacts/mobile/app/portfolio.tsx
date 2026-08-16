@@ -1440,7 +1440,7 @@ function GradeHistoryModal({
   const isWeekend = [0, 6].includes(new Date().getDay());
 
   const handleQuoteViewed = useCallback((quoteViewId: string) => {
-    void incrementQuoteViewed(quoteViewId);
+    return incrementQuoteViewed(quoteViewId);
   }, [incrementQuoteViewed]);
 
   useEffect(() => {
