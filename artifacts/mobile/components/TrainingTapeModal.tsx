@@ -82,10 +82,12 @@ export function TrainingTapeModal({
   visible,
   colors,
   onClose,
+  onQuoteViewed,
 }: {
   visible: boolean;
   colors: ColorScheme;
   onClose: () => void;
+  onQuoteViewed?: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const [quoteMode, setQuoteMode] = useState(false);
@@ -103,6 +105,7 @@ export function TrainingTapeModal({
       const index = Math.floor(Math.random() * BIDEN_QUOTES.length);
       setMessage(BIDEN_QUOTES[index] ?? BIDEN_QUOTES[0]);
       setLoading(false);
+      onQuoteViewed?.();
       return () => {
         cancelled = true;
       };
@@ -130,7 +133,7 @@ export function TrainingTapeModal({
     return () => {
       cancelled = true;
     };
-  }, [visible]);
+  }, [onQuoteViewed, visible]);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
