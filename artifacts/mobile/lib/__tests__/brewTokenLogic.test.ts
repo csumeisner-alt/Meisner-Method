@@ -5,6 +5,7 @@ import {
   BREW_TOKEN_QUOTE_THRESHOLD,
   createSerialWriteQueue,
   INITIAL_BREW_TOKENS,
+  isBrewBankHalfway,
   isBrewBankUnlock,
   isWeekday,
   parseStoredNonNegative,
@@ -14,6 +15,12 @@ import {
 test('Brew Bank unlocks exactly when the quote threshold is crossed', () => {
   assert.equal(isBrewBankUnlock(BREW_TOKEN_QUOTE_THRESHOLD - 1, BREW_TOKEN_QUOTE_THRESHOLD), true);
   assert.equal(isBrewBankUnlock(BREW_TOKEN_QUOTE_THRESHOLD, BREW_TOKEN_QUOTE_THRESHOLD + 1), false);
+});
+
+test('Brew Bank halfway milestone triggers only when crossing the midpoint', () => {
+  assert.equal(isBrewBankHalfway(10, 11), true);
+  assert.equal(isBrewBankHalfway(11, 12), false);
+  assert.equal(isBrewBankHalfway(0, 10), false);
 });
 
 test('Brew Token storage parsing rejects invalid and negative values', () => {

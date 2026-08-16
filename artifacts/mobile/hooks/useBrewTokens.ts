@@ -5,6 +5,7 @@ import {
   INITIAL_BREW_TOKENS,
   claimQuoteView,
   createSerialWriteQueue,
+  isBrewBankHalfway,
   isBrewBankUnlock,
   isWeekday,
   parseStoredNonNegative,
@@ -24,11 +25,16 @@ export interface BrewTokenState {
   soundEnabled: boolean;
   hapticsEnabled: boolean;
   justUnlocked: boolean;
-  incrementQuoteViewed: (quoteViewId?: string) => Promise<boolean>;
+  incrementQuoteViewed: (quoteViewId?: string) => Promise<QuoteViewUpdate>;
   resolveBet: (bet: number, won: boolean) => Promise<void>;
   setSoundEnabled: (value: boolean) => Promise<void>;
   setHapticsEnabled: (value: boolean) => Promise<void>;
   clearJustUnlocked: () => void;
+}
+
+export interface QuoteViewUpdate {
+  earnedToken: boolean;
+  halfway: boolean;
 }
 
 export function useBrewTokens(): BrewTokenState {
@@ -89,11 +95,12 @@ export function useBrewTokens(): BrewTokenState {
     await hydrationRef.current!.promise;
 
     if (quoteViewId && !claimQuoteView(rememberedQuoteViewsRef.current, quoteViewId)) {
-      return false;
+      return { earnedToken: false, halfway: false };
     }
 
     const previous = quotesRef.current;
     const next = previous + 1;
+    const halfway = isBrewBankHalfway(previous, next);
     quotesRef.current = next;
     setQuotesViewed(next);
 
@@ -121,7 +128,7 @@ export function useBrewTokens(): BrewTokenState {
       await AsyncStorage.setItem(QUOTES_VIEWED_KEY, String(next));
       if (tokenWrite) await tokenWrite();
     }).catch(() => {});
-    return earnedToken;
+    return { earnedToken, halfway };
   }, []);
 
   const resolveBet = useCallback(async (bet: number, won: boolean) => {

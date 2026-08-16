@@ -87,7 +87,7 @@ export function TrainingTapeModal({
   visible: boolean;
   colors: ColorScheme;
   onClose: () => void;
-  onQuoteViewed?: (quoteViewId: string) => Promise<boolean>;
+  onQuoteViewed?: (quoteViewId: string) => Promise<{ earnedToken: boolean; halfway: boolean }>;
 }) {
   const insets = useSafeAreaInsets();
   const [quoteMode, setQuoteMode] = useState(false);
@@ -121,8 +121,11 @@ export function TrainingTapeModal({
       setLoading(false);
       const rewardPromise = onQuoteViewed?.(`training-tape-${quoteSessionRef.current}`);
       if (rewardPromise) {
-        void rewardPromise.then(earnedToken => {
-          if (!cancelled && earnedToken) {
+        void rewardPromise.then(update => {
+          if (cancelled) return;
+          if (update.halfway) {
+            setMessage(`HALFWAY THERE · 50% COMPLETE\n\n${quote}`);
+          } else if (update.earnedToken) {
             setMessage(`BREW TOKEN EARNED · +1 ADDED TO THE CENTRAL BANK\n\n${quote}`);
           }
         });

@@ -19,6 +19,10 @@ export function isBrewBankUnlock(prev: number, next: number): boolean {
   return prev < BREW_TOKEN_QUOTE_THRESHOLD && next >= BREW_TOKEN_QUOTE_THRESHOLD;
 }
 
+export function isBrewBankHalfway(prev: number, next: number): boolean {
+  return prev < BREW_TOKEN_QUOTE_THRESHOLD / 2 && next >= BREW_TOKEN_QUOTE_THRESHOLD / 2;
+}
+
 export function isWeekday(day: number): boolean {
   return day >= 1 && day <= 5;
 }
