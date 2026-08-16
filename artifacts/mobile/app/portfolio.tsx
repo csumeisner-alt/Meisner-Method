@@ -1479,7 +1479,7 @@ function GradeHistoryModal({
             <View style={gradeModalStyles.headerCopy}>
               <Pressable
                 onLongPress={handleHeaderLongPress}
-                delayLongPress={900}
+                delayLongPress={800}
                 accessibilityLabel="Trade grade history"
               >
                 <Text style={[gradeModalStyles.title, { color: colors.heading, fontFamily: 'Inter_700Bold' }]}>
