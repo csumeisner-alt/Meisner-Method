@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  claimQuoteView,
   BREW_TOKEN_QUOTE_THRESHOLD,
+  createSerialWriteQueue,
   INITIAL_BREW_TOKENS,
   isBrewBankUnlock,
   isWeekday,
@@ -31,4 +33,33 @@ test('winning a bet returns the stake as profit and losing removes only the stak
   assert.equal(resolveBrewBet(INITIAL_BREW_TOKENS, 2, true), 7);
   assert.equal(resolveBrewBet(INITIAL_BREW_TOKENS, 2, false), 3);
   assert.equal(resolveBrewBet(1, 4, false), 0);
+});
+
+test('quote view claims are idempotent and bounded', () => {
+  const remembered = new Set<string>();
+  assert.equal(claimQuoteView(remembered, 'tape-1', 2), true);
+  assert.equal(claimQuoteView(remembered, 'tape-1', 2), false);
+  assert.equal(claimQuoteView(remembered, 'tape-2', 2), true);
+  assert.equal(claimQuoteView(remembered, 'tape-3', 2), true);
+  assert.equal(remembered.has('tape-1'), false);
+  assert.equal(claimQuoteView(remembered, 'tape-1', 2), true);
+});
+
+test('serial write queue preserves mutation order after an earlier failure', async () => {
+  const queue = createSerialWriteQueue();
+  const events: string[] = [];
+
+  const first = queue(async () => {
+    events.push('first:start');
+    await new Promise(resolve => setTimeout(resolve, 5));
+    events.push('first:fail');
+    throw new Error('simulated storage failure');
+  }).catch(() => {});
+  const second = queue(async () => {
+    events.push('second:start');
+    events.push('second:finish');
+  });
+
+  await Promise.all([first, second]);
+  assert.deepEqual(events, ['first:start', 'first:fail', 'second:start', 'second:finish']);
 });

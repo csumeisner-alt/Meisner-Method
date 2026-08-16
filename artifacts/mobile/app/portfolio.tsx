@@ -1439,8 +1439,8 @@ function GradeHistoryModal({
   } = useBrewTokens();
   const isWeekend = [0, 6].includes(new Date().getDay());
 
-  const handleQuoteViewed = useCallback(() => {
-    void incrementQuoteViewed();
+  const handleQuoteViewed = useCallback((quoteViewId: string) => {
+    void incrementQuoteViewed(quoteViewId);
   }, [incrementQuoteViewed]);
 
   useEffect(() => {

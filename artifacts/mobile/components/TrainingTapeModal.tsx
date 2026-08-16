@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -87,12 +87,25 @@ export function TrainingTapeModal({
   visible: boolean;
   colors: ColorScheme;
   onClose: () => void;
-  onQuoteViewed?: () => void;
+  onQuoteViewed?: (quoteViewId: string) => void;
 }) {
   const insets = useSafeAreaInsets();
   const [quoteMode, setQuoteMode] = useState(false);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const visibleSessionRef = useRef(false);
+  const quoteSessionRef = useRef(0);
+
+  useEffect(() => {
+    if (!visible) {
+      visibleSessionRef.current = false;
+      return;
+    }
+    if (!visibleSessionRef.current) {
+      visibleSessionRef.current = true;
+      quoteSessionRef.current += 1;
+    }
+  }, [visible]);
 
   useEffect(() => {
     if (!visible) return;
@@ -105,7 +118,7 @@ export function TrainingTapeModal({
       const index = Math.floor(Math.random() * BIDEN_QUOTES.length);
       setMessage(BIDEN_QUOTES[index] ?? BIDEN_QUOTES[0]);
       setLoading(false);
-      onQuoteViewed?.();
+      onQuoteViewed?.(`training-tape-${quoteSessionRef.current}`);
       return () => {
         cancelled = true;
       };
