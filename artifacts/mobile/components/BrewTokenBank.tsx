@@ -10,6 +10,15 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import Animated, {
+  Easing,
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Path } from 'react-native-svg';
 import type { ColorScheme } from '@/constants/colors';
@@ -58,11 +67,65 @@ export function BrewTokenBank({
   const [selectedBet, setSelectedBet] = useState(1);
   const [result, setResult] = useState<{ won: boolean; bet: number } | null>(null);
   const [resolving, setResolving] = useState(false);
+  const [displayedTokens, setDisplayedTokens] = useState(tokens);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const balanceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const displayedTokensRef = useRef(tokens);
+  const coinProgress = useSharedValue(0);
+  const vaultPulse = useSharedValue(0);
+  const resultProgress = useSharedValue(0);
 
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
+    if (balanceTimerRef.current) clearInterval(balanceTimerRef.current);
   }, []);
+
+  useEffect(() => {
+    const from = displayedTokensRef.current;
+    if (from === tokens) return;
+
+    if (balanceTimerRef.current) clearInterval(balanceTimerRef.current);
+    const startedAt = Date.now();
+    const duration = 420;
+    balanceTimerRef.current = setInterval(() => {
+      const progress = Math.min((Date.now() - startedAt) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const next = Math.round(from + (tokens - from) * eased);
+      displayedTokensRef.current = next;
+      setDisplayedTokens(next);
+      if (progress >= 1) {
+        if (balanceTimerRef.current) clearInterval(balanceTimerRef.current);
+        balanceTimerRef.current = null;
+        displayedTokensRef.current = tokens;
+        setDisplayedTokens(tokens);
+      }
+    }, 32);
+
+    return () => {
+      if (balanceTimerRef.current) clearInterval(balanceTimerRef.current);
+    };
+  }, [tokens]);
+
+  const coinAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: interpolate(coinProgress.value, [0, 0.45, 0.8, 1], [0, -26, 8, 0]) },
+      { scale: interpolate(coinProgress.value, [0, 0.45, 0.8, 1], [1, 1.18, 0.94, 1]) },
+      { rotateZ: `${interpolate(coinProgress.value, [0, 0.45, 0.8, 1], [0, 155, 315, 360])}deg` },
+    ],
+  }));
+
+  const vaultGlowAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(vaultPulse.value, [0, 0.25, 0.65, 1], [0, 0.8, 0.45, 0]),
+    transform: [{ scale: interpolate(vaultPulse.value, [0, 0.5, 1], [0.78, 1.12, 1.34]) }],
+  }));
+
+  const resultAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: resultProgress.value,
+    transform: [
+      { translateY: interpolate(resultProgress.value, [0, 1], [8, 0]) },
+      { scale: interpolate(resultProgress.value, [0, 1], [0.94, 1]) },
+    ],
+  }));
 
   const bet = Math.min(Math.max(selectedBet, 1), Math.max(tokens, 1));
   const canPlay = tokens > 0 && !resolving;
@@ -72,6 +135,16 @@ export function BrewTokenBank({
     const won = Math.random() < BREW_TOKEN_WIN_PROBABILITY;
     setResult(null);
     setResolving(true);
+    resultProgress.value = 0;
+    coinProgress.value = withSequence(
+      withTiming(0.45, { duration: 220, easing: Easing.out(Easing.cubic) }),
+      withTiming(0.8, { duration: 210, easing: Easing.inOut(Easing.cubic) }),
+      withTiming(1, { duration: 250, easing: Easing.out(Easing.cubic) }),
+    );
+    vaultPulse.value = withSequence(
+      withTiming(0.5, { duration: 200, easing: Easing.out(Easing.cubic) }),
+      withTiming(1, { duration: 250, easing: Easing.inOut(Easing.cubic) }),
+    );
     timerRef.current = setTimeout(() => {
       void onResolveBet(bet, won).finally(() => {
         if (hapticsEnabled) {
@@ -81,6 +154,7 @@ export function BrewTokenBank({
         }
         setResult({ won, bet });
         setResolving(false);
+        resultProgress.value = withSpring(1, { damping: 13, stiffness: 180 });
       });
     }, 650);
   };
@@ -101,11 +175,17 @@ export function BrewTokenBank({
           </View>
 
           <View style={[styles.vault, { backgroundColor: colors.steelShadow, borderColor: colors.goldMuted }]}>
-            <View style={styles.coinStage}><BrewCoin colors={colors} size={76} /></View>
+            <Animated.View
+              pointerEvents="none"
+              style={[styles.vaultGlow, { backgroundColor: colors.gold }, vaultGlowAnimatedStyle]}
+            />
+            <Animated.View style={[styles.coinStage, coinAnimatedStyle]}>
+              <BrewCoin colors={colors} size={76} />
+            </Animated.View>
             <Text style={[styles.vaultLabel, { color: colors.gold, fontFamily: 'Inter_600SemiBold' }]}>BREW TOKEN RESERVE</Text>
-            <Text style={[styles.balance, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>{tokens}</Text>
+            <Text style={[styles.balance, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>{displayedTokens}</Text>
             <Text style={[styles.balanceLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-              {tokens === 1 ? 'TOKEN AVAILABLE' : 'TOKENS AVAILABLE'}
+              {displayedTokens === 1 ? 'TOKEN AVAILABLE' : 'TOKENS AVAILABLE'}
             </Text>
           </View>
 
@@ -147,14 +227,25 @@ export function BrewTokenBank({
           )}
 
           {result && (
-            <Text
+            <Animated.View
               accessibilityLiveRegion="polite"
-              style={[styles.result, { color: result.won ? colors.buyColor : colors.sellColor, fontFamily: 'Inter_700Bold' }]}
+              style={[
+                styles.resultCard,
+                { borderColor: result.won ? colors.buyColor : colors.sellColor },
+                resultAnimatedStyle,
+              ]}
             >
-              {result.won
-                ? `BANK PAID +${result.bet} ${result.bet === 1 ? 'TOKEN' : 'TOKENS'} · NEW BALANCE ${tokens}.`
-                : `BANK KEPT ${result.bet} ${result.bet === 1 ? 'TOKEN' : 'TOKENS'} · NEW BALANCE ${tokens}.`}
-            </Text>
+              <Feather
+                name={result.won ? 'check-circle' : 'x-circle'}
+                size={17}
+                color={result.won ? colors.buyColor : colors.sellColor}
+              />
+              <Text style={[styles.result, { color: result.won ? colors.buyColor : colors.sellColor, fontFamily: 'Inter_700Bold' }]}>
+                {result.won
+                  ? `BANK PAID +${result.bet} ${result.bet === 1 ? 'TOKEN' : 'TOKENS'} · NEW BALANCE ${tokens}.`
+                  : `BANK KEPT ${result.bet} ${result.bet === 1 ? 'TOKEN' : 'TOKENS'} · NEW BALANCE ${tokens}.`}
+              </Text>
+            </Animated.View>
           )}
 
           <Pressable
@@ -237,7 +328,8 @@ const styles = StyleSheet.create({
   eyebrow: { fontSize: 9, letterSpacing: 1.2 },
   title: { fontSize: 19, letterSpacing: 1.1, marginTop: 2 },
   subtitle: { fontSize: 11, letterSpacing: 2.5 },
-  vault: { alignItems: 'center', borderWidth: 1, borderRadius: 10, paddingVertical: 16 },
+  vault: { alignItems: 'center', borderWidth: 1, borderRadius: 10, paddingVertical: 16, overflow: 'hidden' },
+  vaultGlow: { position: 'absolute', top: 12, width: 128, height: 128, borderRadius: 64 },
   coinStage: { marginBottom: 5 },
   vaultLabel: { fontSize: 9, letterSpacing: 1.3 },
   balance: { fontSize: 35, lineHeight: 40, marginTop: 2 },
@@ -250,7 +342,8 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.4 },
   rules: { fontSize: 11, lineHeight: 17, marginTop: 13 },
   emptyMessage: { fontSize: 11, lineHeight: 17, marginTop: 12 },
-  result: { fontSize: 11, letterSpacing: 0.7, marginTop: 12 },
+  resultCard: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, marginTop: 12 },
+  result: { flex: 1, fontSize: 11, letterSpacing: 0.7 },
   depositButton: { minHeight: 46, borderRadius: 9, alignItems: 'center', justifyContent: 'center', marginTop: 17, paddingHorizontal: 12 },
   depositButtonText: { fontSize: 11, letterSpacing: 0.7, textAlign: 'center' },
   feedbackHeading: { fontSize: 9, letterSpacing: 1, marginTop: 18 },
