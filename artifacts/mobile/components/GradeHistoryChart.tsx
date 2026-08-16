@@ -343,7 +343,7 @@ export function GradeHistoryChart({ points, width, height, colors }: Props) {
       </Svg>
 
       {selected && (
-        <View style={styles.detailOverlay}>
+        <View style={styles.detailSection}>
           <View style={[styles.detailCard, { backgroundColor: colors.card, borderColor: gradeColor(selected.grade, colors) }]}>
             <View style={styles.detailHeader}>
               <View>
@@ -398,13 +398,7 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 12, paddingHorizontal: 24 },
   emptyTitle: { fontSize: 16, fontFamily: 'Inter_700Bold', marginBottom: 6 },
   emptyCopy: { fontSize: 12, fontFamily: 'Inter_400Regular', textAlign: 'center', lineHeight: 18 },
-  detailOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    top: 64,
-    alignItems: 'center',
-    justifyContent: 'center',
-    pointerEvents: 'none',
-  },
+  detailSection: { width: '100%', marginTop: 12 },
   detailCard: { width: '100%', borderWidth: 1.5, borderRadius: 12, padding: 14 },
   detailHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
   detailEyebrow: { fontSize: 9, letterSpacing: 1, fontFamily: 'Inter_500Medium' },

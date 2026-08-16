@@ -1412,7 +1412,9 @@ function GradeHistoryModal({
 }) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
-  const chartWidth = Math.max(width - 28, 280);
+  // The chart sits inside the modal content padding and the card's padding.
+  // Keep its detail card aligned with the chart instead of overflowing right.
+  const chartWidth = Math.max(width - 48, 280);
   const chartHeight = Math.max(Math.min(height * 0.58, 560), 360);
   const topPad = Platform.OS === 'web' ? 16 : insets.top;
   const [trainingTapeVisible, setTrainingTapeVisible] = useState(false);
