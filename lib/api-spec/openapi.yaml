@@ -1,0 +1,303 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: stocks
+    description: Stock analysis operations
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /stocks/analyze:
+    post:
+      operationId: analyzeStock
+      tags: [stocks]
+      summary: Analyze a stock ticker
+      description: Fetches real market data and runs technical, fundamental, and behavioral analysis with AI-powered buy/sell recommendations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyzeStockRequest"
+      responses:
+        "200":
+          description: Full stock analysis result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockAnalysis"
+        "400":
+          description: Invalid symbol or request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "422":
+          description: Could not analyze stock
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    AnalyzeStockRequest:
+      type: object
+      properties:
+        symbol:
+          type: string
+          description: Stock ticker symbol (e.g. AAPL, TSLA, MSFT)
+      required:
+        - symbol
+
+    TechnicalAnalysis:
+      type: object
+      properties:
+        rsi:
+          type: number
+          description: Relative Strength Index (0-100)
+        macdSignal:
+          type: string
+          enum: [bullish, bearish, neutral]
+        trend:
+          type: string
+          enum: [uptrend, downtrend, sideways]
+        support:
+          type: number
+        resistance:
+          type: number
+        ma20:
+          type: number
+        ma50:
+          type: number
+        ma200:
+          type: number
+        bollingerUpper:
+          type: number
+        bollingerLower:
+          type: number
+        bollingerMiddle:
+          type: number
+        volumeRatio:
+          type: number
+          description: Current volume / average volume
+        score:
+          type: number
+          description: Technical score 0-100
+      required:
+        - rsi
+        - macdSignal
+        - trend
+        - support
+        - resistance
+        - ma20
+        - ma50
+        - ma200
+        - bollingerUpper
+        - bollingerLower
+        - bollingerMiddle
+        - volumeRatio
+        - score
+
+    FundamentalAnalysis:
+      type: object
+      properties:
+        pe:
+          type: number
+          nullable: true
+        pb:
+          type: number
+          nullable: true
+        eps:
+          type: number
+          nullable: true
+        revenueGrowth:
+          type: number
+          nullable: true
+          description: Year-over-year revenue growth as decimal (0.15 = 15%)
+        earningsGrowth:
+          type: number
+          nullable: true
+        debtEquity:
+          type: number
+          nullable: true
+        dividendYield:
+          type: number
+          nullable: true
+        profitMargin:
+          type: number
+          nullable: true
+        returnOnEquity:
+          type: number
+          nullable: true
+        score:
+          type: number
+          description: Fundamental score 0-100
+      required:
+        - score
+
+    BehavioralAnalysis:
+      type: object
+      properties:
+        analystRating:
+          type: string
+          description: Consensus analyst rating
+        analystCount:
+          type: number
+        priceTarget:
+          type: number
+          nullable: true
+        shortInterest:
+          type: number
+          nullable: true
+          description: Short interest as decimal
+        insiderSentiment:
+          type: string
+          enum: [positive, negative, neutral]
+        buyCount:
+          type: number
+        holdCount:
+          type: number
+        sellCount:
+          type: number
+        score:
+          type: number
+          description: Behavioral/sentiment score 0-100
+      required:
+        - analystRating
+        - analystCount
+        - insiderSentiment
+        - buyCount
+        - holdCount
+        - sellCount
+        - score
+
+    Recommendation:
+      type: object
+      properties:
+        action:
+          type: string
+          enum: [buy, sell, hold]
+        buyPrice:
+          type: number
+          nullable: true
+          description: Recommended price to buy / add position
+        sellPrice:
+          type: number
+          nullable: true
+          description: Price target / recommended exit
+        stopLoss:
+          type: number
+          nullable: true
+          description: Stop-loss price level
+        confidence:
+          type: number
+          description: Confidence level 0-100
+        timeHorizon:
+          type: string
+          description: Recommended holding period (e.g. "3-6 months")
+        reasoning:
+          type: string
+          description: Full AI-generated analysis and reasoning
+        risks:
+          type: array
+          items:
+            type: string
+        strengths:
+          type: array
+          items:
+            type: string
+      required:
+        - action
+        - confidence
+        - timeHorizon
+        - reasoning
+        - risks
+        - strengths
+
+    StockAnalysis:
+      type: object
+      properties:
+        symbol:
+          type: string
+        companyName:
+          type: string
+        exchange:
+          type: string
+        currency:
+          type: string
+        currentPrice:
+          type: number
+        priceChange:
+          type: number
+        priceChangePercent:
+          type: number
+        volume:
+          type: number
+        marketCap:
+          type: number
+          nullable: true
+        week52High:
+          type: number
+        week52Low:
+          type: number
+        technical:
+          $ref: "#/components/schemas/TechnicalAnalysis"
+        fundamental:
+          $ref: "#/components/schemas/FundamentalAnalysis"
+        behavioral:
+          $ref: "#/components/schemas/BehavioralAnalysis"
+        recommendation:
+          $ref: "#/components/schemas/Recommendation"
+      required:
+        - symbol
+        - companyName
+        - exchange
+        - currency
+        - currentPrice
+        - priceChange
+        - priceChangePercent
+        - volume
+        - week52High
+        - week52Low
+        - technical
+        - fundamental
+        - behavioral
+        - recommendation
+
+    AnalysisError:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      required:
+        - error
+        - message
