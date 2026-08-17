@@ -1,5 +1,0 @@
-Trigger file created to start Expo build
-
-This is a harmless no-op commit created by an automated assistant to trigger the repository's CI/Expo build process. Timestamp:
-
-2026-08-15T00:00:00Z

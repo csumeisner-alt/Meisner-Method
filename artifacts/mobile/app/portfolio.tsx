@@ -1439,8 +1439,8 @@ function GradeHistoryModal({
   } = useBrewTokens();
   const isWeekend = [0, 6].includes(new Date().getDay());
 
-  const handleQuoteViewed = useCallback(() => {
-    void incrementQuoteViewed();
+  const handleQuoteViewed = useCallback((quoteViewId: string) => {
+    return incrementQuoteViewed(quoteViewId);
   }, [incrementQuoteViewed]);
 
   useEffect(() => {
@@ -1479,7 +1479,7 @@ function GradeHistoryModal({
             <View style={gradeModalStyles.headerCopy}>
               <Pressable
                 onLongPress={handleHeaderLongPress}
-                delayLongPress={900}
+                delayLongPress={800}
                 accessibilityLabel="Trade grade history"
               >
                 <Text style={[gradeModalStyles.title, { color: colors.heading, fontFamily: 'Inter_700Bold' }]}>

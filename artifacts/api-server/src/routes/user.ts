@@ -27,6 +27,12 @@ import {
 const { Pool } = pg;
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.on("error", (err) => {
+  // pg emits idle-client errors on the pool. Without a listener Node treats
+  // a database restart/connection termination as an uncaught exception and
+  // takes down the entire API process, including database-independent routes.
+  logger.error({ err }, "PostgreSQL pool connection error");
+});
 
 const execFileAsync = promisify(execFile);
 const __watchlistDirname = dirname(fileURLToPath(import.meta.url));

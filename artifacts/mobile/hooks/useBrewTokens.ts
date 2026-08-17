@@ -3,6 +3,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   BREW_TOKEN_QUOTE_THRESHOLD,
   INITIAL_BREW_TOKENS,
+  claimQuoteView,
+  createSerialWriteQueue,
+  isBrewBankHalfway,
   isBrewBankUnlock,
   isWeekday,
   parseStoredNonNegative,
@@ -22,11 +25,16 @@ export interface BrewTokenState {
   soundEnabled: boolean;
   hapticsEnabled: boolean;
   justUnlocked: boolean;
-  incrementQuoteViewed: () => Promise<void>;
+  incrementQuoteViewed: (quoteViewId?: string) => Promise<QuoteViewUpdate>;
   resolveBet: (bet: number, won: boolean) => Promise<void>;
   setSoundEnabled: (value: boolean) => Promise<void>;
   setHapticsEnabled: (value: boolean) => Promise<void>;
   clearJustUnlocked: () => void;
+}
+
+export interface QuoteViewUpdate {
+  earnedToken: boolean;
+  halfway: boolean;
 }
 
 export function useBrewTokens(): BrewTokenState {
@@ -40,7 +48,13 @@ export function useBrewTokens(): BrewTokenState {
   const quotesRef = useRef(0);
   const unlockedRef = useRef(false);
   const tokensRef = useRef(0);
+  const rememberedQuoteViewsRef = useRef(new Set<string>());
+  const writeQueueRef = useRef<ReturnType<typeof createSerialWriteQueue> | null>(null);
   const hydrationRef = useRef<{ promise: Promise<void>; resolve: () => void } | null>(null);
+
+  if (!writeQueueRef.current) {
+    writeQueueRef.current = createSerialWriteQueue();
+  }
 
   if (!hydrationRef.current) {
     let resolve!: () => void;
@@ -77,31 +91,44 @@ export function useBrewTokens(): BrewTokenState {
     });
   }, []);
 
-  const incrementQuoteViewed = useCallback(async () => {
+  const incrementQuoteViewed = useCallback(async (quoteViewId?: string) => {
     await hydrationRef.current!.promise;
+
+    if (quoteViewId && !claimQuoteView(rememberedQuoteViewsRef.current, quoteViewId)) {
+      return { earnedToken: false, halfway: false };
+    }
 
     const previous = quotesRef.current;
     const next = previous + 1;
+    const halfway = isBrewBankHalfway(previous, next);
     quotesRef.current = next;
     setQuotesViewed(next);
-    await AsyncStorage.setItem(QUOTES_VIEWED_KEY, String(next)).catch(() => {});
 
+    let tokenWrite: (() => Promise<void>) | null = null;
+    let earnedToken = false;
     if (!unlockedRef.current && isBrewBankUnlock(previous, next)) {
       unlockedRef.current = true;
       tokensRef.current = INITIAL_BREW_TOKENS;
       setIsUnlocked(true);
       setBrewTokens(INITIAL_BREW_TOKENS);
       setJustUnlocked(true);
-      await Promise.all([
+      tokenWrite = () => Promise.all([
         AsyncStorage.setItem(BREW_UNLOCKED_KEY, 'true'),
         AsyncStorage.setItem(BREW_TOKENS_KEY, String(INITIAL_BREW_TOKENS)),
-      ]).catch(() => {});
+      ]).then(() => undefined);
     } else if (unlockedRef.current && isWeekday(new Date().getDay())) {
       const nextTokens = tokensRef.current + 1;
       tokensRef.current = nextTokens;
       setBrewTokens(nextTokens);
-      await AsyncStorage.setItem(BREW_TOKENS_KEY, String(nextTokens)).catch(() => {});
+      earnedToken = true;
+      tokenWrite = () => AsyncStorage.setItem(BREW_TOKENS_KEY, String(nextTokens));
     }
+
+    await writeQueueRef.current!(async () => {
+      await AsyncStorage.setItem(QUOTES_VIEWED_KEY, String(next));
+      if (tokenWrite) await tokenWrite();
+    }).catch(() => {});
+    return { earnedToken, halfway };
   }, []);
 
   const resolveBet = useCallback(async (bet: number, won: boolean) => {
@@ -110,19 +137,25 @@ export function useBrewTokens(): BrewTokenState {
     const next = resolveBrewBet(tokensRef.current, bet, won);
     tokensRef.current = next;
     setBrewTokens(next);
-    await AsyncStorage.setItem(BREW_TOKENS_KEY, String(next)).catch(() => {});
+    await writeQueueRef.current!(
+      () => AsyncStorage.setItem(BREW_TOKENS_KEY, String(next)),
+    ).catch(() => {});
   }, []);
 
   const setSoundEnabled = useCallback(async (value: boolean) => {
     await hydrationRef.current!.promise;
     setSoundEnabledState(value);
-    await AsyncStorage.setItem(BREW_SOUND_KEY, value ? 'true' : 'false').catch(() => {});
+    await writeQueueRef.current!(
+      () => AsyncStorage.setItem(BREW_SOUND_KEY, value ? 'true' : 'false'),
+    ).catch(() => {});
   }, []);
 
   const setHapticsEnabled = useCallback(async (value: boolean) => {
     await hydrationRef.current!.promise;
     setHapticsEnabledState(value);
-    await AsyncStorage.setItem(BREW_HAPTICS_KEY, value ? 'true' : 'false').catch(() => {});
+    await writeQueueRef.current!(
+      () => AsyncStorage.setItem(BREW_HAPTICS_KEY, value ? 'true' : 'false'),
+    ).catch(() => {});
   }, []);
 
   const clearJustUnlocked = useCallback(() => setJustUnlocked(false), []);

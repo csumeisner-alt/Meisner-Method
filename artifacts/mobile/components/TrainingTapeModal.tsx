@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -15,8 +15,21 @@ const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
 type TrendingTicker = {
   symbol: string;
-  priceChangePercent: number;
-  volume: number;
+  currentPrice?: number | null;
+  priceChange?: number | null;
+  priceChangePercent?: number | null;
+  volume?: number | null;
+  name?: string;
+};
+
+type MarketSnapshot = {
+  total: number;
+  advancers: number;
+  decliners: number;
+  unchanged: number;
+  topGainers: TrendingTicker[];
+  topDecliners: TrendingTicker[];
+  mostActive: TrendingTicker[];
 };
 
 const BIDEN_QUOTES = [
@@ -39,34 +52,171 @@ const BIDEN_QUOTES = [
   `Lets go Brandon I agree.`,
 ];
 
-function buildMarketSummary(tickers: TrendingTicker[]): string {
+function buildMarketSnapshot(tickers: TrendingTicker[]): MarketSnapshot {
   const valid = tickers
-    .filter(ticker => Number.isFinite(ticker.priceChangePercent))
-    .sort((a, b) => (b.volume || 0) - (a.volume || 0));
-  const gainers = valid.filter(ticker => ticker.priceChangePercent > 0);
-  const decliners = valid.filter(ticker => ticker.priceChangePercent < 0);
+    .filter(ticker => (
+      Number.isFinite(ticker.priceChangePercent) &&
+      Number.isFinite(ticker.volume)
+    ));
+  const gainers = valid
+    .filter(ticker => (ticker.priceChangePercent ?? 0) > 0)
+    .sort((a, b) => (b.priceChangePercent ?? 0) - (a.priceChangePercent ?? 0));
+  const decliners = valid
+    .filter(ticker => (ticker.priceChangePercent ?? 0) < 0)
+    .sort((a, b) => (a.priceChangePercent ?? 0) - (b.priceChangePercent ?? 0));
 
-  if (valid.length === 0) {
-    return `Today’s tape is focused on momentum and volume: traders are watching whether early moves broaden beyond a few active names. Follow-through matters more than any single print in a session like this.`;
+  return {
+    total: valid.length,
+    advancers: gainers.length,
+    decliners: decliners.length,
+    unchanged: valid.length - gainers.length - decliners.length,
+    topGainers: gainers.slice(0, 2),
+    topDecliners: decliners.slice(0, 2),
+    mostActive: [...valid]
+      .sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))
+      .slice(0, 3),
+  };
+}
+
+function formatCompactNumber(value: number | null | undefined) {
+  if (!Number.isFinite(value)) return '—';
+  if ((value ?? 0) >= 1e9) return `${((value ?? 0) / 1e9).toFixed(1)}B`;
+  if ((value ?? 0) >= 1e6) return `${((value ?? 0) / 1e6).toFixed(1)}M`;
+  if ((value ?? 0) >= 1e3) return `${((value ?? 0) / 1e3).toFixed(1)}K`;
+  return `${Math.round(value ?? 0)}`;
+}
+
+function formatPercent(value: number | null | undefined) {
+  if (!Number.isFinite(value)) return '—';
+  return `${(value ?? 0) >= 0 ? '+' : ''}${(value ?? 0).toFixed(2)}%`;
+}
+
+function formatPrice(value: number | null | undefined) {
+  if (!Number.isFinite(value)) return '—';
+  return `$${(value ?? 0).toFixed(2)}`;
+}
+
+function SnapshotStat({
+  label,
+  value,
+  color,
+  colors,
+}: {
+  label: string;
+  value: number;
+  color: string;
+  colors: ColorScheme;
+}) {
+  return (
+    <View style={styles.stat}>
+      <Text style={[styles.statValue, { color, fontFamily: 'Inter_700Bold' }]}>{value}</Text>
+      <Text style={[styles.statLabel, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function MoverRow({
+  ticker,
+  color,
+  colors,
+}: {
+  ticker?: TrendingTicker;
+  color: string;
+  colors: ColorScheme;
+}) {
+  if (!ticker) {
+    return <Text style={[styles.emptyMover, { color: colors.mutedForeground }]}>—</Text>;
   }
 
-  const active = valid[0]!.symbol;
-  const leaders = gainers.slice(0, 2).map(ticker => ticker.symbol).join(' and ');
-  const laggards = decliners.slice(0, 2).map(ticker => ticker.symbol).join(' and ');
+  return (
+    <View style={styles.moverRow}>
+      <Text style={[styles.moverSymbol, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+        {ticker.symbol}
+      </Text>
+      <Text style={[styles.moverChange, { color, fontFamily: 'Inter_600SemiBold' }]}>
+        {formatPercent(ticker.priceChangePercent)}
+      </Text>
+    </View>
+  );
+}
 
-  if (leaders && laggards) {
-    return `Today’s tape is being driven by buying interest in ${leaders}, with ${laggards} showing the other side of the move. Volume is concentrated in ${active}, so breadth and follow-through are the key tells.`;
+function MarketSnapshotView({ snapshot, colors }: { snapshot: MarketSnapshot; colors: ColorScheme }) {
+  if (snapshot.total === 0) {
+    return (
+      <View style={styles.unavailable}>
+        <Feather name="radio" size={18} color={colors.goldMuted} />
+        <Text style={[styles.unavailableTitle, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
+          LIVE SNAPSHOT UNAVAILABLE
+        </Text>
+        <Text style={[styles.unavailableText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+          The market data provider returned no active names.
+        </Text>
+      </View>
+    );
   }
 
-  if (leaders) {
-    return `Today’s tape is being driven by upside momentum in ${leaders}, led by the most-active names. Traders are watching whether that strength broadens beyond ${active} before calling it a durable move.`;
-  }
+  return (
+    <View style={styles.snapshot}>
+      <View style={[styles.breadthRow, { borderColor: colors.border }]}>
+        <SnapshotStat label="ADVANCING" value={snapshot.advancers} color={colors.buyColor} colors={colors} />
+        <SnapshotStat label="DECLINING" value={snapshot.decliners} color={colors.sellColor} colors={colors} />
+        <SnapshotStat label="FLAT" value={snapshot.unchanged} color={colors.mutedForeground} colors={colors} />
+        <SnapshotStat label="TRACKED" value={snapshot.total} color={colors.gold} colors={colors} />
+      </View>
 
-  if (laggards) {
-    return `Today’s tape is being driven by downside pressure in ${laggards}, with ${active} drawing the most attention. Traders are watching for stabilization and whether selling spreads across the active list.`;
-  }
+      <View style={styles.section}>
+        <Text style={[styles.sectionLabel, { color: colors.goldMuted, fontFamily: 'Inter_600SemiBold' }]}>
+          TOP MOVERS · % TODAY
+        </Text>
+        <View style={styles.moverColumns}>
+          <View style={styles.moverColumn}>
+            <Text style={[styles.columnLabel, { color: colors.buyColor, fontFamily: 'Inter_600SemiBold' }]}>GAINERS</Text>
+            <MoverRow ticker={snapshot.topGainers[0]} color={colors.buyColor} colors={colors} />
+            <MoverRow ticker={snapshot.topGainers[1]} color={colors.buyColor} colors={colors} />
+          </View>
+          <View style={styles.moverColumn}>
+            <Text style={[styles.columnLabel, { color: colors.sellColor, fontFamily: 'Inter_600SemiBold' }]}>DECLINERS</Text>
+            <MoverRow ticker={snapshot.topDecliners[0]} color={colors.sellColor} colors={colors} />
+            <MoverRow ticker={snapshot.topDecliners[1]} color={colors.sellColor} colors={colors} />
+          </View>
+        </View>
+      </View>
 
-  return `Today’s tape is quiet but volume is still the signal: ${active} is the most-active name in the snapshot. Traders are waiting for a clearer directional move before committing to a trend.`;
+      <View style={styles.section}>
+        <Text style={[styles.sectionLabel, { color: colors.goldMuted, fontFamily: 'Inter_600SemiBold' }]}>
+          MOST ACTIVE · VOLUME / PRICE
+        </Text>
+        <View style={styles.activeRow}>
+          {snapshot.mostActive.map(ticker => (
+            <View key={ticker.symbol} style={styles.activeItem}>
+              <Text style={[styles.activeSymbol, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+                {ticker.symbol}
+              </Text>
+              <Text style={[styles.activePrice, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                {formatPrice(ticker.currentPrice)}
+              </Text>
+              <Text
+                style={[
+                  styles.activeChange,
+                  {
+                    color: (ticker.priceChangePercent ?? 0) >= 0 ? colors.buyColor : colors.sellColor,
+                    fontFamily: 'Inter_600SemiBold',
+                  },
+                ]}
+              >
+                {formatPercent(ticker.priceChangePercent)}
+              </Text>
+              <Text style={[styles.activeVolume, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                {formatCompactNumber(ticker.volume)}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </View>
+    </View>
+  );
 }
 
 function formatTapeDate() {
@@ -87,12 +237,27 @@ export function TrainingTapeModal({
   visible: boolean;
   colors: ColorScheme;
   onClose: () => void;
-  onQuoteViewed?: () => void;
+  onQuoteViewed?: (quoteViewId: string) => Promise<{ earnedToken: boolean; halfway: boolean }>;
 }) {
   const insets = useSafeAreaInsets();
   const [quoteMode, setQuoteMode] = useState(false);
   const [message, setMessage] = useState('');
+  const [marketSnapshot, setMarketSnapshot] = useState<MarketSnapshot | null>(null);
+  const [marketError, setMarketError] = useState(false);
   const [loading, setLoading] = useState(false);
+  const visibleSessionRef = useRef(false);
+  const quoteSessionRef = useRef(0);
+
+  useEffect(() => {
+    if (!visible) {
+      visibleSessionRef.current = false;
+      return;
+    }
+    if (!visibleSessionRef.current) {
+      visibleSessionRef.current = true;
+      quoteSessionRef.current += 1;
+    }
+  }, [visible]);
 
   useEffect(() => {
     if (!visible) return;
@@ -100,12 +265,25 @@ export function TrainingTapeModal({
     let cancelled = false;
     const useQuote = Math.random() < 0.15;
     setQuoteMode(useQuote);
+    setMarketSnapshot(null);
+    setMarketError(false);
 
     if (useQuote) {
       const index = Math.floor(Math.random() * BIDEN_QUOTES.length);
-      setMessage(BIDEN_QUOTES[index] ?? BIDEN_QUOTES[0]);
+      const quote = BIDEN_QUOTES[index] ?? BIDEN_QUOTES[0];
+      setMessage(quote);
       setLoading(false);
-      onQuoteViewed?.();
+      const rewardPromise = onQuoteViewed?.(`training-tape-${quoteSessionRef.current}`);
+      if (rewardPromise) {
+        void rewardPromise.then(update => {
+          if (cancelled) return;
+          if (update.halfway) {
+            setMessage(`HALFWAY THERE · 50% COMPLETE\n\n${quote}`);
+          } else if (update.earnedToken) {
+            setMessage(`BREW TOKEN EARNED · +1 ADDED TO THE CENTRAL BANK\n\n${quote}`);
+          }
+        });
+      }
       return () => {
         cancelled = true;
       };
@@ -119,11 +297,11 @@ export function TrainingTapeModal({
         return await response.json() as TrendingTicker[];
       })
       .then(data => {
-        if (!cancelled) setMessage(buildMarketSummary(Array.isArray(data) ? data : []));
+        if (!cancelled) setMarketSnapshot(buildMarketSnapshot(Array.isArray(data) ? data : []));
       })
       .catch(() => {
         if (!cancelled) {
-          setMessage(`The live tape is temporarily offline. Today’s market still comes down to momentum, volume, and whether early moves find broader follow-through.`);
+          setMarketError(true);
         }
       })
       .finally(() => {
@@ -172,21 +350,35 @@ export function TrainingTapeModal({
             <View style={styles.scanlineOne} />
             <View style={styles.scanlineTwo} />
             <Text style={[styles.displayLabel, { color: colors.goldMuted, fontFamily: 'Inter_600SemiBold' }]}>
-              {quoteMode ? 'ARCHIVE VOICE / OFF-SCRIPT' : 'TODAY’S MARKET TAPE'}
+              {quoteMode ? 'ARCHIVE VOICE / OFF-SCRIPT' : 'LIVE MARKET SNAPSHOT'}
             </Text>
             {loading ? (
               <ActivityIndicator color={colors.gold} style={styles.loader} />
-            ) : (
-              <Text style={[styles.message, { color: colors.foreground, fontFamily: 'Inter_500Medium' }, quoteMode && styles.quote]}>
+            ) : quoteMode ? (
+              <Text style={[styles.message, { color: colors.foreground, fontFamily: 'Inter_500Medium' }, styles.quote]}>
                 {message}
               </Text>
+            ) : marketError ? (
+              <View style={styles.unavailable}>
+                <Feather name="wifi-off" size={18} color={colors.goldMuted} />
+                <Text style={[styles.unavailableTitle, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
+                  LIVE SNAPSHOT OFFLINE
+                </Text>
+                <Text style={[styles.unavailableText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                  Try opening the tape again for a fresh market read.
+                </Text>
+              </View>
+            ) : marketSnapshot ? (
+              <MarketSnapshotView snapshot={marketSnapshot} colors={colors} />
+            ) : (
+              <ActivityIndicator color={colors.gold} style={styles.loader} />
             )}
           </View>
 
           <View style={styles.footer}>
             <Feather name="radio" size={13} color={colors.goldMuted} />
             <Text style={[styles.footerText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-              {quoteMode ? 'ARCHIVAL RECORDING' : 'LIVE MARKET SNAPSHOT'}  •  {formatTapeDate()}
+              {quoteMode ? 'ARCHIVAL RECORDING' : 'MOST-ACTIVE UNIVERSE'}  •  {formatTapeDate()}
             </Text>
           </View>
         </View>
@@ -257,7 +449,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   display: {
-    minHeight: 210,
+    minHeight: 292,
     borderWidth: 1,
     borderRadius: 3,
     padding: 18,
@@ -296,6 +488,104 @@ const styles = StyleSheet.create({
   quote: {
     fontSize: 15,
     lineHeight: 24,
+  },
+  snapshot: {
+    width: '100%',
+    gap: 13,
+  },
+  breadthRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    paddingBottom: 11,
+  },
+  stat: {
+    alignItems: 'center',
+    minWidth: 45,
+  },
+  statValue: {
+    fontSize: 17,
+    lineHeight: 20,
+  },
+  statLabel: {
+    fontSize: 7,
+    letterSpacing: 0.5,
+    marginTop: 3,
+  },
+  section: {
+    gap: 7,
+  },
+  sectionLabel: {
+    fontSize: 8,
+    letterSpacing: 1,
+  },
+  moverColumns: {
+    flexDirection: 'row',
+    gap: 18,
+  },
+  moverColumn: {
+    flex: 1,
+    gap: 4,
+  },
+  columnLabel: {
+    fontSize: 8,
+    letterSpacing: 0.8,
+    marginBottom: 1,
+  },
+  moverRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 18,
+  },
+  moverSymbol: {
+    fontSize: 12,
+  },
+  moverChange: {
+    fontSize: 11,
+  },
+  emptyMover: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  activeRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  activeItem: {
+    flex: 1,
+    minWidth: 0,
+  },
+  activeSymbol: {
+    fontSize: 11,
+  },
+  activePrice: {
+    fontSize: 9,
+    marginTop: 2,
+  },
+  activeChange: {
+    fontSize: 10,
+    marginTop: 2,
+  },
+  activeVolume: {
+    fontSize: 8,
+    marginTop: 2,
+  },
+  unavailable: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 18,
+  },
+  unavailableTitle: {
+    fontSize: 11,
+    letterSpacing: 0.9,
+    textAlign: 'center',
+  },
+  unavailableText: {
+    fontSize: 11,
+    lineHeight: 17,
+    textAlign: 'center',
   },
   footer: {
     flexDirection: 'row',

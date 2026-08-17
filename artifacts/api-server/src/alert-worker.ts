@@ -25,6 +25,11 @@ import { fetchYahooChartPrice } from "./lib/marketPrice.js";
 const { Pool } = pg;
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.on("error", (err) => {
+  // Keep a transient database connection reset from terminating the worker.
+  // The next cycle will retry its schema/alert queries.
+  logger.error({ err }, "[alert-worker] PostgreSQL pool connection error");
+});
 
 // ── Schema gate ────────────────────────────────────────────────────────────
 // The worker only reads price_alerts and push_devices, which are created by

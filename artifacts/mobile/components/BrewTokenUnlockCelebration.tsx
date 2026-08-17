@@ -39,7 +39,9 @@ export function BrewTokenUnlockCelebration({
 }: Props) {
   const doorProgress = useRef(new Animated.Value(0)).current;
   const cardProgress = useRef(new Animated.Value(0)).current;
+  const animationRef = useRef<{ stop: () => void } | null>(null);
   const playerRef = useRef<{ play: () => void; remove: () => void } | null>(null);
+  const audioPlayedRef = useRef(false);
 
   useEffect(() => {
     if (!visible) return;
@@ -50,7 +52,7 @@ export function BrewTokenUnlockCelebration({
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     }
 
-    Animated.parallel([
+    const animation = Animated.parallel([
       Animated.timing(doorProgress, {
         toValue: 1,
         duration: 900,
@@ -61,8 +63,24 @@ export function BrewTokenUnlockCelebration({
         Animated.delay(260),
         Animated.spring(cardProgress, { toValue: 1, tension: 65, friction: 9, useNativeDriver: true }),
       ]),
-    ]).start();
+    ]);
+    animationRef.current = animation;
+    animation.start();
 
+    return () => {
+      animation.stop();
+      animationRef.current = null;
+    };
+  }, [cardProgress, doorProgress, visible]);
+
+  useEffect(() => {
+    if (!visible) {
+      audioPlayedRef.current = false;
+      return;
+    }
+    if (!soundEnabled || audioPlayedRef.current) return;
+
+    audioPlayedRef.current = true;
     let cancelled = false;
     const playVaultSound = async () => {
       if (Constants.appOwnership === 'expo' || !soundEnabled) return;
@@ -85,7 +103,7 @@ export function BrewTokenUnlockCelebration({
       try { playerRef.current?.remove(); } catch { /* ignore */ }
       playerRef.current = null;
     };
-  }, [cardProgress, doorProgress, hapticsEnabled, soundEnabled, visible]);
+  }, [soundEnabled, visible]);
 
   if (!visible) return null;
 
