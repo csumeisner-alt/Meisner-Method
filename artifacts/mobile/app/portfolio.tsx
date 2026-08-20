@@ -177,7 +177,7 @@ function stopCelebrationVoice() {
 
 const CELEBRATION_PHRASES: CelebrationPhrase[] = [
   {
-    text: "Congrats on the big win. You're a real crypto bro. I'd do anything for a true crypto gambler like yourself.",
+    text: "Mm, congrats, you really are a true crypto bro. Why don't you come see what's inside my special vault?",
     source: require('../assets/celebration/voice01.m4a'),
   },
   {
