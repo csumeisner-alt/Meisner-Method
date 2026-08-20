@@ -13,3 +13,7 @@
 - **Recorded by:** Mike Koenig (soundbible.com)
 - **License:** CC BY 3.0 — https://creativecommons.org/licenses/by/3.0/
 - **Processing:** Single-shot recording trimmed to 0.35 s transient, replicated 5 times at 155 ms intervals, assembled into a 0.9 s burst, normalized to stereo 22050 Hz WAV.
+
+## win_chime.wav
+- **Source:** Original locally synthesized sound effect for Meisner Method.
+- **Processing:** Two bright ascending tones with short harmonic tails, rendered as stereo 22050 Hz WAV and kept under one second for a quick token-win confirmation.

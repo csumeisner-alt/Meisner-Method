@@ -111,9 +111,11 @@ export function BrewTokenBank({
   const balanceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lossVoiceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const machineSoundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const winSoundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const displayedTokensRef = useRef(tokens);
   const lossPlayerRef = useRef<AudioPlayerHandle | null>(null);
   const machinePlayerRef = useRef<AudioPlayerHandle | null>(null);
+  const winPlayerRef = useRef<AudioPlayerHandle | null>(null);
   const activeLossPhraseRef = useRef<LossPhrase | null>(null);
   const coinProgress = useSharedValue(0);
   const vaultPulse = useSharedValue(0);
@@ -138,11 +140,19 @@ export function BrewTokenBank({
     machinePlayerRef.current = null;
   };
 
+  const stopWinSound = () => {
+    if (winSoundTimerRef.current) clearTimeout(winSoundTimerRef.current);
+    winSoundTimerRef.current = null;
+    try { winPlayerRef.current?.remove(); } catch (_) {}
+    winPlayerRef.current = null;
+  };
+
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
     if (balanceTimerRef.current) clearInterval(balanceTimerRef.current);
     stopLossVoice(true);
     stopMachineSound();
+    stopWinSound();
   }, []);
 
   useEffect(() => {
@@ -207,6 +217,22 @@ export function BrewTokenBank({
       machineSoundTimerRef.current = setTimeout(stopMachineSound, 1300);
     } catch {
       // The animation and haptics remain useful if native audio is unavailable.
+    }
+  };
+
+  const playWinSound = async () => {
+    if (!soundEnabled || Constants.appOwnership === 'expo') return;
+    stopWinSound();
+    stopMachineSound();
+    try {
+      const { createAudioPlayer, setAudioModeAsync } = await import('expo-audio');
+      await setAudioModeAsync({ playsInSilentMode: false, allowsRecording: false });
+      const player = createAudioPlayer(require('../assets/sounds/win_chime.wav'), { downloadFirst: true });
+      winPlayerRef.current = player;
+      player.play();
+      winSoundTimerRef.current = setTimeout(stopWinSound, 900);
+    } catch {
+      // The success haptic and result card remain useful if native audio is unavailable.
     }
   };
 
@@ -279,6 +305,7 @@ export function BrewTokenBank({
     );
     timerRef.current = setTimeout(() => {
       void onResolveBet(bet, won).finally(() => {
+        if (won) void playWinSound();
         if (hapticsEnabled) {
           Haptics.notificationAsync(
             won ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning,
