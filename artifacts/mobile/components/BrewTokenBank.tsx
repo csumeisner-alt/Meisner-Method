@@ -294,7 +294,10 @@ export function BrewTokenBank({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
-      <View style={[styles.overlay, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}>
+      <View
+        style={[styles.overlay, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}
+        onTouchEnd={() => stopLossVoice()}
+      >
         <View style={[styles.shell, { backgroundColor: colors.card, borderColor: colors.goldMuted }]}>
           <View style={styles.header}>
             <View style={styles.headerCopy}>
@@ -334,7 +337,7 @@ export function BrewTokenBank({
             </Text>
             {lossVoicePlaying && (
               <Text style={[styles.skipVoiceHint, { color: protectedVoicePlaying ? colors.gold : colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
-                {protectedVoicePlaying ? 'LISTEN CLOSELY' : 'TAP THE VAULT TO SKIP VOICE'}
+                {protectedVoicePlaying ? 'LISTEN CLOSELY' : 'TAP ANYWHERE TO SKIP VOICE'}
               </Text>
             )}
           </Pressable>
