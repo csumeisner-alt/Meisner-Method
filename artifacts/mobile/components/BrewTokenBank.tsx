@@ -9,7 +9,9 @@ import {
   View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import * as Haptics from 'expo-haptics';
+import * as Speech from 'expo-speech';
 import Animated, {
   Easing,
   interpolate,
@@ -51,6 +53,41 @@ type Props = {
   onHapticsEnabledChange: (value: boolean) => Promise<void>;
 };
 
+type AudioPlayerHandle = {
+  play: () => void;
+  remove: () => void;
+};
+
+type LossPhrase = {
+  text: string;
+  source: number;
+  durationMs: number;
+  protectedFromDismiss?: boolean;
+};
+
+// These recordings are bundled from the supplied vault-voice session. Keeping
+// them local makes loss feedback work offline without a per-play voice request.
+const VAULT_LOSS_PHRASES: readonly LossPhrase[] = [
+  { text: "You were right on the edge of something sharp. One more breath and you'll land it.", source: require('../assets/vault-loss/loss01.m4a'), durationMs: 8010 },
+  { text: 'That was inches away from clicking into place. Your instincts are warming up.', source: require('../assets/vault-loss/loss02.m4a'), durationMs: 8740 },
+  { text: "You almost hit a perfect line of truth. Hold that tension — it's working. It's working.", source: require('../assets/vault-loss/loss03.m4a'), durationMs: 11060 },
+  { text: 'You brushed right up against the moment.', source: require('../assets/vault-loss/loss04.m4a'), durationMs: 4470 },
+  { text: "Stay with it — it's opening.", source: require('../assets/vault-loss/loss05.m4a'), durationMs: 3050 },
+  { text: "You were a breath away from real precision. That's where the good work lives.", source: require('../assets/vault-loss/loss06.m4a'), durationMs: 7910 },
+  { text: "It almost snapped into clarity. Keep that pressure — you're close.", source: require('../assets/vault-loss/loss07.m4a'), durationMs: 6670 },
+  { text: 'You nearly locked into the rhythm. Your timing is waking up.', source: require('../assets/vault-loss/loss08.m4a'), durationMs: 7850 },
+  { text: "You hovered right over a breakthrough. That's the zone you want.", source: require('../assets/vault-loss/loss09.m4a'), durationMs: 6190 },
+  { text: "It was sitting just under the surface. You're circling the right place.", source: require('../assets/vault-loss/loss10.m4a'), durationMs: 7490 },
+  { text: "You're not a gambler, you're a sophisticated investor.", source: require('../assets/vault-loss/loss11.m4a'), durationMs: 4690 },
+  { text: "You're so close to that big win, I can feel it.", source: require('../assets/vault-loss/loss12.m4a'), durationMs: 4350 },
+  {
+    text: 'How bad do you want to unlock this super secret hidden theme?',
+    source: require('../assets/vault-loss/loss13.m4a'),
+    durationMs: 6520,
+    protectedFromDismiss: true,
+  },
+];
+
 export function BrewTokenBank({
   visible,
   colors,
@@ -68,16 +105,44 @@ export function BrewTokenBank({
   const [result, setResult] = useState<{ won: boolean; bet: number } | null>(null);
   const [resolving, setResolving] = useState(false);
   const [displayedTokens, setDisplayedTokens] = useState(tokens);
+  const [lossVoicePlaying, setLossVoicePlaying] = useState(false);
+  const [protectedVoicePlaying, setProtectedVoicePlaying] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const balanceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lossVoiceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const machineSoundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const displayedTokensRef = useRef(tokens);
+  const lossPlayerRef = useRef<AudioPlayerHandle | null>(null);
+  const machinePlayerRef = useRef<AudioPlayerHandle | null>(null);
+  const activeLossPhraseRef = useRef<LossPhrase | null>(null);
   const coinProgress = useSharedValue(0);
   const vaultPulse = useSharedValue(0);
   const resultProgress = useSharedValue(0);
 
+  const stopLossVoice = (force = false) => {
+    if (!force && activeLossPhraseRef.current?.protectedFromDismiss) return;
+    if (lossVoiceTimerRef.current) clearTimeout(lossVoiceTimerRef.current);
+    lossVoiceTimerRef.current = null;
+    try { lossPlayerRef.current?.remove(); } catch (_) {}
+    lossPlayerRef.current = null;
+    try { Speech.stop(); } catch (_) {}
+    activeLossPhraseRef.current = null;
+    setLossVoicePlaying(false);
+    setProtectedVoicePlaying(false);
+  };
+
+  const stopMachineSound = () => {
+    if (machineSoundTimerRef.current) clearTimeout(machineSoundTimerRef.current);
+    machineSoundTimerRef.current = null;
+    try { machinePlayerRef.current?.remove(); } catch (_) {}
+    machinePlayerRef.current = null;
+  };
+
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
     if (balanceTimerRef.current) clearInterval(balanceTimerRef.current);
+    stopLossVoice(true);
+    stopMachineSound();
   }, []);
 
   useEffect(() => {
@@ -128,7 +193,70 @@ export function BrewTokenBank({
   }));
 
   const bet = Math.min(Math.max(selectedBet, 1), Math.max(tokens, 1));
-  const canPlay = tokens > 0 && !resolving;
+  const canPlay = tokens > 0 && !resolving && !protectedVoicePlaying;
+
+  const playMachineStartSound = async () => {
+    if (!soundEnabled || Constants.appOwnership === 'expo') return;
+    stopMachineSound();
+    try {
+      const { createAudioPlayer, setAudioModeAsync } = await import('expo-audio');
+      await setAudioModeAsync({ playsInSilentMode: false, allowsRecording: false });
+      const player = createAudioPlayer(require('../assets/sounds/gunfire_burst.wav'), { downloadFirst: true });
+      machinePlayerRef.current = player;
+      player.play();
+      machineSoundTimerRef.current = setTimeout(stopMachineSound, 1300);
+    } catch {
+      // The animation and haptics remain useful if native audio is unavailable.
+    }
+  };
+
+  const playLossVoice = async () => {
+    if (!soundEnabled) return;
+
+    stopLossVoice(true);
+    const phrase = VAULT_LOSS_PHRASES[Math.floor(Math.random() * VAULT_LOSS_PHRASES.length)]!;
+    activeLossPhraseRef.current = phrase;
+    setLossVoicePlaying(true);
+    setProtectedVoicePlaying(!!phrase.protectedFromDismiss);
+
+    const finish = () => {
+      if (activeLossPhraseRef.current !== phrase) return;
+      stopLossVoice(true);
+    };
+
+    if (Constants.appOwnership === 'expo') {
+      Speech.speak(phrase.text, {
+        rate: 0.94,
+        onDone: finish,
+        onStopped: finish,
+        onError: finish,
+      });
+      return;
+    }
+
+    try {
+      const { createAudioPlayer, setAudioModeAsync } = await import('expo-audio');
+      await setAudioModeAsync({ playsInSilentMode: false, allowsRecording: false });
+      const player = createAudioPlayer(phrase.source, { downloadFirst: true });
+      lossPlayerRef.current = player;
+      player.play();
+      lossVoiceTimerRef.current = setTimeout(finish, phrase.durationMs + 250);
+    } catch {
+      Speech.speak(phrase.text, {
+        rate: 0.94,
+        onDone: finish,
+        onStopped: finish,
+        onError: finish,
+      });
+    }
+  };
+
+  const handleClose = () => {
+    if (protectedVoicePlaying) return;
+    stopLossVoice(true);
+    stopMachineSound();
+    onClose();
+  };
 
   const handleBet = () => {
     if (!canPlay) return;
@@ -136,6 +264,10 @@ export function BrewTokenBank({
     setResult(null);
     setResolving(true);
     resultProgress.value = 0;
+    if (hapticsEnabled) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    }
+    void playMachineStartSound();
     coinProgress.value = withSequence(
       withTiming(0.45, { duration: 220, easing: Easing.out(Easing.cubic) }),
       withTiming(0.8, { duration: 210, easing: Easing.inOut(Easing.cubic) }),
@@ -155,12 +287,13 @@ export function BrewTokenBank({
         setResult({ won, bet });
         setResolving(false);
         resultProgress.value = withSpring(1, { damping: 13, stiffness: 180 });
+        if (!won) void playLossVoice();
       });
     }, 650);
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
       <View style={[styles.overlay, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}>
         <View style={[styles.shell, { backgroundColor: colors.card, borderColor: colors.goldMuted }]}>
           <View style={styles.header}>
@@ -169,12 +302,24 @@ export function BrewTokenBank({
               <Text style={[styles.title, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>THE CENTRAL BANK</Text>
               <Text style={[styles.subtitle, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>OF BAD DECISIONS</Text>
             </View>
-            <Pressable onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close Central Bank">
+            <Pressable
+              onPress={handleClose}
+              disabled={protectedVoicePlaying}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel={protectedVoicePlaying ? 'Voice message is playing' : 'Close Central Bank'}
+            >
               <Feather name="x" size={21} color={colors.mutedForeground} />
             </Pressable>
           </View>
 
-          <View style={[styles.vault, { backgroundColor: colors.steelShadow, borderColor: colors.goldMuted }]}>
+          <Pressable
+            onPress={() => stopLossVoice()}
+            disabled={!lossVoicePlaying || protectedVoicePlaying}
+            style={[styles.vault, { backgroundColor: colors.steelShadow, borderColor: colors.goldMuted }]}
+            accessibilityRole={lossVoicePlaying && !protectedVoicePlaying ? 'button' : undefined}
+            accessibilityLabel={lossVoicePlaying && !protectedVoicePlaying ? 'Stop vault voice message' : 'Brew Token reserve'}
+          >
             <Animated.View
               pointerEvents="none"
               style={[styles.vaultGlow, { backgroundColor: colors.gold }, vaultGlowAnimatedStyle]}
@@ -187,7 +332,12 @@ export function BrewTokenBank({
             <Text style={[styles.balanceLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
               {displayedTokens === 1 ? 'TOKEN AVAILABLE' : 'TOKENS AVAILABLE'}
             </Text>
-          </View>
+            {lossVoicePlaying && (
+              <Text style={[styles.skipVoiceHint, { color: protectedVoicePlaying ? colors.gold : colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
+                {protectedVoicePlaying ? 'LISTEN CLOSELY' : 'TAP THE VAULT TO SKIP VOICE'}
+              </Text>
+            )}
+          </Pressable>
 
           <View style={styles.betRow}>
             <View>
@@ -259,7 +409,7 @@ export function BrewTokenBank({
               <ActivityIndicator color={colors.primaryForeground} />
             ) : (
               <Text style={[styles.depositButtonText, { color: colors.primaryForeground, fontFamily: 'Inter_700Bold' }]}>
-                {tokens === 0 ? 'RESERVE EMPTY' : 'TOSS TOKENS INTO THE BANK'}
+                {tokens === 0 ? 'RESERVE EMPTY' : protectedVoicePlaying ? 'VOICE MESSAGE PLAYING' : 'TOSS TOKENS INTO THE BANK'}
               </Text>
             )}
           </Pressable>
@@ -334,6 +484,7 @@ const styles = StyleSheet.create({
   vaultLabel: { fontSize: 9, letterSpacing: 1.3 },
   balance: { fontSize: 35, lineHeight: 40, marginTop: 2 },
   balanceLabel: { fontSize: 9, letterSpacing: 1.1 },
+  skipVoiceHint: { fontSize: 8, letterSpacing: 0.8, marginTop: 9 },
   betRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18 },
   sectionLabel: { fontSize: 9, letterSpacing: 1 },
   betValue: { fontSize: 18, marginTop: 3 },
