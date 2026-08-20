@@ -350,14 +350,19 @@ export function TrainingTapeModal({
             <View style={styles.scanlineOne} />
             <View style={styles.scanlineTwo} />
             <Text style={[styles.displayLabel, { color: colors.goldMuted, fontFamily: 'Inter_600SemiBold' }]}>
-              {quoteMode ? 'ARCHIVE VOICE / OFF-SCRIPT' : 'LIVE MARKET SNAPSHOT'}
+              {quoteMode ? 'ARCHIVE VOICE / FORMER PRESIDENT BIDEN' : 'LIVE MARKET SNAPSHOT'}
             </Text>
             {loading ? (
               <ActivityIndicator color={colors.gold} style={styles.loader} />
             ) : quoteMode ? (
-              <Text style={[styles.message, { color: colors.foreground, fontFamily: 'Inter_500Medium' }, styles.quote]}>
-                {message}
-              </Text>
+              <View style={styles.quoteBlock}>
+                <Text style={[styles.message, { color: colors.foreground, fontFamily: 'Inter_500Medium' }, styles.quote]}>
+                  {message}
+                </Text>
+                <Text style={[styles.quoteAttribution, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
+                  — FORMER PRESIDENT JOE BIDEN
+                </Text>
+              </View>
             ) : marketError ? (
               <View style={styles.unavailable}>
                 <Feather name="wifi-off" size={18} color={colors.goldMuted} />
@@ -378,7 +383,7 @@ export function TrainingTapeModal({
           <View style={styles.footer}>
             <Feather name="radio" size={13} color={colors.goldMuted} />
             <Text style={[styles.footerText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-              {quoteMode ? 'ARCHIVAL RECORDING' : 'MOST-ACTIVE UNIVERSE'}  •  {formatTapeDate()}
+              {quoteMode ? 'ARCHIVAL RECORDING · JOE BIDEN' : 'MOST-ACTIVE UNIVERSE'}  •  {formatTapeDate()}
             </Text>
           </View>
         </View>
@@ -488,6 +493,13 @@ const styles = StyleSheet.create({
   quote: {
     fontSize: 15,
     lineHeight: 24,
+  },
+  quoteBlock: {
+    gap: 16,
+  },
+  quoteAttribution: {
+    fontSize: 10,
+    letterSpacing: 0.8,
   },
   snapshot: {
     width: '100%',
