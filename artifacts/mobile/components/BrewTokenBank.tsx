@@ -126,6 +126,7 @@ export function BrewTokenBank({
   const [machineStatusIndex, setMachineStatusIndex] = useState(0);
   const [shopOpen, setShopOpen] = useState(false);
   const [shopMessage, setShopMessage] = useState<string | null>(null);
+  const [shopBusy, setShopBusy] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const balanceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const machineStatusTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -247,15 +248,19 @@ export function BrewTokenBank({
   const canActivateKey = isWeekday(new Date().getDay()) && bankKeys > 0 && !bankAccessActive && !resolving;
 
   const handleBuyKey = async () => {
-    if (tokens < BREW_BANK_KEY_PRICE || resolving) return;
+    if (tokens < BREW_BANK_KEY_PRICE || resolving || shopBusy) return;
+    setShopBusy(true);
     const purchased = await onBuyBankKey();
     setShopMessage(purchased ? 'KEY ADDED TO INVENTORY' : 'NOT ENOUGH BREW TOKENS');
+    setShopBusy(false);
   };
 
   const handleActivateKey = async () => {
-    if (!canActivateKey) return;
+    if (!canActivateKey || shopBusy) return;
+    setShopBusy(true);
     const activated = await onActivateBankKey();
     setShopMessage(activated ? 'ACCESS GRANTED FOR 12 HOURS' : 'KEYS CAN ONLY BE ACTIVATED ON WEEKDAYS');
+    setShopBusy(false);
   };
 
   const accessExpiryLabel = bankAccessExpiresAt
@@ -509,8 +514,8 @@ export function BrewTokenBank({
               <View style={styles.shopActions}>
                 <Pressable
                   onPress={() => { void handleBuyKey(); }}
-                  disabled={tokens < BREW_BANK_KEY_PRICE || resolving}
-                  style={[styles.shopButton, { borderColor: colors.goldMuted }, (tokens < BREW_BANK_KEY_PRICE || resolving) && styles.disabled]}
+                  disabled={tokens < BREW_BANK_KEY_PRICE || resolving || shopBusy}
+                  style={[styles.shopButton, { borderColor: colors.goldMuted }, (tokens < BREW_BANK_KEY_PRICE || resolving || shopBusy) && styles.disabled]}
                   accessibilityRole="button"
                   accessibilityLabel={`Buy a bank access key for ${BREW_BANK_KEY_PRICE} Brew Tokens`}
                 >
@@ -520,8 +525,8 @@ export function BrewTokenBank({
                 </Pressable>
                 <Pressable
                   onPress={() => { void handleActivateKey(); }}
-                  disabled={!canActivateKey}
-                  style={[styles.shopButton, { backgroundColor: colors.gold }, !canActivateKey && styles.disabled]}
+                  disabled={!canActivateKey || shopBusy}
+                  style={[styles.shopButton, { backgroundColor: colors.gold }, (!canActivateKey || shopBusy) && styles.disabled]}
                   accessibilityRole="button"
                   accessibilityLabel="Activate bank access key"
                 >

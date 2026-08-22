@@ -47,6 +47,7 @@ import {
   type Trade,
 } from '@/lib/portfolioMath';
 import { getTradeGradeFeedback } from '@/lib/tradeGradeFeedback';
+import { hasBrewBankAccess } from '@/lib/brewTokenLogic';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1442,7 +1443,7 @@ function GradeHistoryModal({
     clearJustUnlocked,
   } = useBrewTokens();
   const isWeekend = [0, 6].includes(new Date().getDay());
-  const hasActiveBankAccess = bankAccessExpiresAt != null;
+  const hasActiveBankAccess = hasBrewBankAccess(bankAccessExpiresAt, Date.now());
 
   const handleQuoteViewed = useCallback((quoteViewId: string) => {
     return incrementQuoteViewed(quoteViewId);
