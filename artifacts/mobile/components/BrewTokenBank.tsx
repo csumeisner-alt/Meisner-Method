@@ -88,6 +88,13 @@ const VAULT_LOSS_PHRASES: readonly LossPhrase[] = [
   },
 ];
 
+const MACHINE_STATUS_LINES = [
+  'RUNNING THE NUMBERS',
+  'CONSULTING THE RESERVE',
+  'CHECKING THE VAULT',
+  'PRICING YOUR CONFIDENCE',
+] as const;
+
 export function BrewTokenBank({
   visible,
   colors,
@@ -107,8 +114,10 @@ export function BrewTokenBank({
   const [displayedTokens, setDisplayedTokens] = useState(tokens);
   const [lossVoicePlaying, setLossVoicePlaying] = useState(false);
   const [protectedVoicePlaying, setProtectedVoicePlaying] = useState(false);
+  const [machineStatusIndex, setMachineStatusIndex] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const balanceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const machineStatusTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lossVoiceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const machineSoundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const winSoundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -147,9 +156,15 @@ export function BrewTokenBank({
     winPlayerRef.current = null;
   };
 
+  const stopMachineStatus = () => {
+    if (machineStatusTimerRef.current) clearInterval(machineStatusTimerRef.current);
+    machineStatusTimerRef.current = null;
+  };
+
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
     if (balanceTimerRef.current) clearInterval(balanceTimerRef.current);
+    stopMachineStatus();
     stopLossVoice(true);
     stopMachineSound();
     stopWinSound();
@@ -279,6 +294,7 @@ export function BrewTokenBank({
 
   const handleClose = () => {
     if (protectedVoicePlaying) return;
+    stopMachineStatus();
     stopLossVoice(true);
     stopMachineSound();
     onClose();
@@ -289,6 +305,11 @@ export function BrewTokenBank({
     const won = Math.random() < BREW_TOKEN_WIN_PROBABILITY;
     setResult(null);
     setResolving(true);
+    setMachineStatusIndex(0);
+    stopMachineStatus();
+    machineStatusTimerRef.current = setInterval(() => {
+      setMachineStatusIndex(index => (index + 1) % MACHINE_STATUS_LINES.length);
+    }, 260);
     resultProgress.value = 0;
     if (hapticsEnabled) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
@@ -305,6 +326,7 @@ export function BrewTokenBank({
     );
     timerRef.current = setTimeout(() => {
       void onResolveBet(bet, won).finally(() => {
+        stopMachineStatus();
         if (won) void playWinSound();
         if (hapticsEnabled) {
           Haptics.notificationAsync(
@@ -314,6 +336,10 @@ export function BrewTokenBank({
         setResult({ won, bet });
         setResolving(false);
         resultProgress.value = withSpring(1, { damping: 13, stiffness: 180 });
+        vaultPulse.value = withSequence(
+          withTiming(1, { duration: 120, easing: Easing.out(Easing.cubic) }),
+          withTiming(0, { duration: 520, easing: Easing.out(Easing.cubic) }),
+        );
         if (!won) void playLossVoice();
       });
     }, 650);
@@ -367,6 +393,11 @@ export function BrewTokenBank({
                 {protectedVoicePlaying ? 'LISTEN CLOSELY' : 'TAP ANYWHERE TO SKIP VOICE'}
               </Text>
             )}
+            {resolving && (
+              <Text style={[styles.machineStatus, { color: colors.gold, fontFamily: 'Inter_600SemiBold' }]}>
+                {MACHINE_STATUS_LINES[machineStatusIndex]}
+              </Text>
+            )}
           </Pressable>
 
           <View style={styles.betRow}>
@@ -396,8 +427,37 @@ export function BrewTokenBank({
             </View>
           </View>
 
+          <View style={[styles.payoutPreview, { backgroundColor: colors.steelShadow, borderColor: colors.border }]}>
+            <Text style={[styles.payoutHeading, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
+              PAYOUT PREVIEW
+            </Text>
+            <View style={styles.payoutColumns}>
+              <View style={styles.payoutColumn}>
+                <Text style={[styles.payoutLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>WIN</Text>
+                <Text style={[styles.payoutValue, { color: colors.buyColor, fontFamily: 'Inter_700Bold' }]}>+{bet}</Text>
+                <Text style={[styles.payoutUnit, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                  {bet === 1 ? 'TOKEN' : 'TOKENS'}
+                </Text>
+              </View>
+              <View style={[styles.payoutDivider, { backgroundColor: colors.border }]} />
+              <View style={styles.payoutColumn}>
+                <Text style={[styles.payoutLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>LOSS</Text>
+                <Text style={[styles.payoutValue, { color: colors.sellColor, fontFamily: 'Inter_700Bold' }]}>−{bet}</Text>
+                <Text style={[styles.payoutUnit, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                  {bet === 1 ? 'TOKEN' : 'TOKENS'}
+                </Text>
+              </View>
+              <View style={[styles.payoutDivider, { backgroundColor: colors.border }]} />
+              <View style={styles.payoutColumn}>
+                <Text style={[styles.payoutLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>ODDS</Text>
+                <Text style={[styles.payoutValue, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>55%</Text>
+                <Text style={[styles.payoutUnit, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>TO WIN</Text>
+              </View>
+            </View>
+          </View>
+
           <Text style={[styles.rules, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-            55% chance to double your deposit. 45% chance to lose only the tokens deposited.
+            Win returns your deposit plus an equal payout. Lose only the tokens deposited.
           </Text>
 
           {tokens === 0 && (
@@ -420,11 +480,21 @@ export function BrewTokenBank({
                 size={17}
                 color={result.won ? colors.buyColor : colors.sellColor}
               />
-              <Text style={[styles.result, { color: result.won ? colors.buyColor : colors.sellColor, fontFamily: 'Inter_700Bold' }]}>
-                {result.won
-                  ? `BANK PAID +${result.bet} ${result.bet === 1 ? 'TOKEN' : 'TOKENS'} · NEW BALANCE ${tokens}.`
-                  : `BANK KEPT ${result.bet} ${result.bet === 1 ? 'TOKEN' : 'TOKENS'} · NEW BALANCE ${tokens}.`}
+              <View style={styles.resultCopy}>
+              <Text style={[styles.resultHeadline, { color: result.won ? colors.buyColor : colors.sellColor, fontFamily: 'Inter_700Bold' }]}>
+                {result.won ? 'THE BANK PAID' : 'THE BANK KEPT ITS CUT'}
               </Text>
+              <Text style={[styles.result, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
+                {result.won
+                  ? `+${result.bet} ${result.bet === 1 ? 'TOKEN' : 'TOKENS'} · NEW BALANCE ${tokens}`
+                  : `−${result.bet} ${result.bet === 1 ? 'TOKEN' : 'TOKENS'} · NEW BALANCE ${tokens}`}
+              </Text>
+              {!result.won && soundEnabled && (
+                <Text style={[styles.resultHint, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                  A message from the vault is incoming.
+                </Text>
+              )}
+              </View>
             </Animated.View>
           )}
 
