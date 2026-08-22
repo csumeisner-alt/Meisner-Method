@@ -51,6 +51,8 @@ const BIDEN_QUOTES = [
   `That’s why I and so damn many other people I grew up have cancer.`,
   `Lets go Brandon I agree.`,
   `If we do everything right, if we do it with absolute certainty, there's still a 30% chance we're going to get it wrong.`,
+  /*
+  "Look, John's last-minute economic plan does nothing to tackle the number-one job facing the middle class, and it happens to be, as Barack
   "Look, John's last-minute economic plan does nothing to tackle the number-one job facing the middle class, and it happens to be, as Barack says, a three-letter
 ];
 
