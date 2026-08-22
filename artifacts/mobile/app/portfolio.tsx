@@ -1503,6 +1503,34 @@ function GradeHistoryModal({
             contentContainerStyle={[gradeModalStyles.content, { paddingBottom: Math.max(insets.bottom, 18) + 20 }]}
             showsVerticalScrollIndicator={false}
           >
+            {BREW_BANK_ENABLED && brewBankUnlocked && (
+              <Pressable
+                onPress={() => setBrewBankVisible(true)}
+                style={[gradeModalStyles.bankShortcut, { backgroundColor: colors.card, borderColor: colors.goldMuted }]}
+                accessibilityRole="button"
+                accessibilityLabel="Open Central Bank"
+                testID="central-bank-shortcut"
+              >
+                <View style={[gradeModalStyles.bankShortcutIcon, { backgroundColor: colors.steelShadow }]}>
+                  <Feather name="key" size={16} color={colors.gold} />
+                </View>
+                <View style={gradeModalStyles.bankShortcutCopy}>
+                  <Text style={[gradeModalStyles.bankShortcutTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+                    CENTRAL BANK
+                  </Text>
+                  <Text style={[gradeModalStyles.bankShortcutStatus, { color: hasActiveBankAccess || isWeekend ? colors.gold : colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
+                    {hasActiveBankAccess && bankAccessExpiresAt
+                      ? `ACCESS ACTIVE · OPEN UNTIL ${new Date(bankAccessExpiresAt).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' }).toUpperCase()}`
+                      : isWeekend
+                        ? 'OPEN THIS WEEKEND · NO KEY NEEDED'
+                        : bankKeys > 0
+                          ? 'WEEKDAY ACCESS · KEY READY TO ACTIVATE'
+                          : 'WEEKDAY ACCESS · USE A BANK KEY'}
+                  </Text>
+                </View>
+                <Feather name="chevron-right" size={17} color={colors.mutedForeground} />
+              </Pressable>
+            )}
             <View style={[gradeModalStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={gradeModalStyles.chartHeading}>
                 <Text style={[gradeModalStyles.chartTitle, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
@@ -1566,6 +1594,11 @@ const gradeModalStyles = StyleSheet.create({
   chartHeading: { paddingHorizontal: 4, paddingBottom: 10 },
   chartTitle: { fontSize: 12, letterSpacing: 0.7 },
   chartHint: { fontSize: 10, marginTop: 3 },
+  bankShortcut: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 12, padding: 11, marginBottom: 12, gap: 10 },
+  bankShortcutIcon: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  bankShortcutCopy: { flex: 1, gap: 3 },
+  bankShortcutTitle: { fontSize: 11, letterSpacing: 1 },
+  bankShortcutStatus: { fontSize: 10, letterSpacing: 0.2 },
 });
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
