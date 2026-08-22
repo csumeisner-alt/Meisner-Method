@@ -25,7 +25,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Path } from 'react-native-svg';
 import type { ColorScheme } from '@/constants/colors';
-import { BREW_TOKEN_WIN_PROBABILITY } from '@/lib/brewTokenLogic';
+import { BREW_BANK_KEY_PRICE, BREW_TOKEN_WIN_PROBABILITY, hasBrewBankAccess, isWeekday } from '@/lib/brewTokenLogic';
 
 export function BrewCoin({ colors, size = 66 }: { colors: ColorScheme; size?: number }) {
   return (
@@ -48,10 +48,14 @@ type Props = {
   quotesViewed: number;
   soundEnabled: boolean;
   hapticsEnabled: boolean;
+  bankKeys: number;
+  bankAccessExpiresAt: number | null;
   onClose: () => void;
   onResolveBet: (bet: number, won: boolean) => Promise<void>;
   onSoundEnabledChange: (value: boolean) => Promise<void>;
   onHapticsEnabledChange: (value: boolean) => Promise<void>;
+  onBuyBankKey: () => Promise<boolean>;
+  onActivateBankKey: () => Promise<boolean>;
 };
 
 type AudioPlayerHandle = {
@@ -103,10 +107,14 @@ export function BrewTokenBank({
   quotesViewed,
   soundEnabled,
   hapticsEnabled,
+  bankKeys,
+  bankAccessExpiresAt,
   onClose,
   onResolveBet,
   onSoundEnabledChange,
   onHapticsEnabledChange,
+  onBuyBankKey,
+  onActivateBankKey,
 }: Props) {
   const insets = useSafeAreaInsets();
   const [selectedBet, setSelectedBet] = useState(1);
@@ -116,6 +124,8 @@ export function BrewTokenBank({
   const [lossVoicePlaying, setLossVoicePlaying] = useState(false);
   const [protectedVoicePlaying, setProtectedVoicePlaying] = useState(false);
   const [machineStatusIndex, setMachineStatusIndex] = useState(0);
+  const [shopOpen, setShopOpen] = useState(false);
+  const [shopMessage, setShopMessage] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const balanceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const machineStatusTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -233,6 +243,24 @@ export function BrewTokenBank({
 
   const bet = Math.min(Math.max(selectedBet, 1), Math.max(tokens, 1));
   const canPlay = tokens > 0 && !resolving && !protectedVoicePlaying;
+  const bankAccessActive = hasBrewBankAccess(bankAccessExpiresAt, Date.now());
+  const canActivateKey = isWeekday(new Date().getDay()) && bankKeys > 0 && !bankAccessActive && !resolving;
+
+  const handleBuyKey = async () => {
+    if (tokens < BREW_BANK_KEY_PRICE || resolving) return;
+    const purchased = await onBuyBankKey();
+    setShopMessage(purchased ? 'KEY ADDED TO INVENTORY' : 'NOT ENOUGH BREW TOKENS');
+  };
+
+  const handleActivateKey = async () => {
+    if (!canActivateKey) return;
+    const activated = await onActivateBankKey();
+    setShopMessage(activated ? 'ACCESS GRANTED FOR 12 HOURS' : 'KEYS CAN ONLY BE ACTIVATED ON WEEKDAYS');
+  };
+
+  const accessExpiryLabel = bankAccessExpiresAt
+    ? new Date(bankAccessExpiresAt).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })
+    : null;
 
   const playMachineStartSound = async () => {
     if (!soundEnabled || Constants.appOwnership === 'expo') return;
@@ -431,6 +459,82 @@ export function BrewTokenBank({
               </Text>
             )}
           </Pressable>
+
+          <Pressable
+            onPress={() => { setShopOpen(value => !value); setShopMessage(null); }}
+            style={[styles.shopToggle, { borderColor: colors.goldMuted, backgroundColor: colors.steelShadow }]}
+            accessibilityRole="button"
+            accessibilityLabel={shopOpen ? 'Close Central Bank shop and inventory' : 'Open Central Bank shop and inventory'}
+            accessibilityState={{ expanded: shopOpen }}
+          >
+            <View style={styles.shopToggleCopy}>
+              <Feather name="briefcase" size={15} color={colors.gold} />
+              <Text style={[styles.shopToggleText, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
+                SHOP / INVENTORY
+              </Text>
+            </View>
+            <View style={styles.shopToggleRight}>
+              <Text style={[styles.keyCount, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>{bankKeys}</Text>
+              <Feather name={shopOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.mutedForeground} />
+            </View>
+          </Pressable>
+
+          {shopOpen && (
+            <View style={[styles.shopPanel, { backgroundColor: colors.steelShadow, borderColor: colors.border }]}>
+              <View style={styles.shopHeadingRow}>
+                <View>
+                  <Text style={[styles.shopTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>BANK ACCESS KEY</Text>
+                  <Text style={[styles.shopDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                    Activate on a weekday for 12 hours inside the Central Bank.
+                  </Text>
+                </View>
+                <Feather name="key" size={23} color={colors.gold} />
+              </View>
+              <View style={styles.inventoryRow}>
+                <Text style={[styles.inventoryLabel, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>IN INVENTORY</Text>
+                <Text style={[styles.inventoryValue, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
+                  {bankKeys} {bankKeys === 1 ? 'KEY' : 'KEYS'}
+                </Text>
+              </View>
+              {bankAccessActive && accessExpiryLabel && (
+                <Text style={[styles.accessStatus, { color: colors.buyColor, fontFamily: 'Inter_600SemiBold' }]}>
+                  ACCESS ACTIVE · EXPIRES {accessExpiryLabel.toUpperCase()}
+                </Text>
+              )}
+              {!bankAccessActive && bankKeys > 0 && !isWeekday(new Date().getDay()) && (
+                <Text style={[styles.accessStatus, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                  KEYS CAN BE ACTIVATED MONDAY–FRIDAY
+                </Text>
+              )}
+              <View style={styles.shopActions}>
+                <Pressable
+                  onPress={() => { void handleBuyKey(); }}
+                  disabled={tokens < BREW_BANK_KEY_PRICE || resolving}
+                  style={[styles.shopButton, { borderColor: colors.goldMuted }, (tokens < BREW_BANK_KEY_PRICE || resolving) && styles.disabled]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Buy a bank access key for ${BREW_BANK_KEY_PRICE} Brew Tokens`}
+                >
+                  <Text style={[styles.shopButtonText, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
+                    BUY KEY · {BREW_BANK_KEY_PRICE} TOKENS
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => { void handleActivateKey(); }}
+                  disabled={!canActivateKey}
+                  style={[styles.shopButton, { backgroundColor: colors.gold }, !canActivateKey && styles.disabled]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Activate bank access key"
+                >
+                  <Text style={[styles.shopButtonText, { color: colors.primaryForeground, fontFamily: 'Inter_700Bold' }]}>
+                    {bankAccessActive ? 'ACCESS ACTIVE' : 'ACTIVATE KEY'}
+                  </Text>
+                </Pressable>
+              </View>
+              {shopMessage && (
+                <Text style={[styles.shopMessage, { color: colors.gold, fontFamily: 'Inter_600SemiBold' }]}>{shopMessage}</Text>
+              )}
+            </View>
+          )}
 
           <View style={styles.betRow}>
             <View>
@@ -631,6 +735,23 @@ const styles = StyleSheet.create({
   skipVoiceHint: { fontSize: 8, letterSpacing: 0.8, marginTop: 9 },
   machineStatus: { fontSize: 8, letterSpacing: 1.15, marginTop: 9 },
   betRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18 },
+  shopToggle: { minHeight: 44, borderWidth: 1, borderRadius: 9, marginTop: 14, paddingHorizontal: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  shopToggleCopy: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  shopToggleRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  shopToggleText: { fontSize: 10, letterSpacing: 0.8 },
+  keyCount: { fontSize: 15 },
+  shopPanel: { borderWidth: 1, borderRadius: 9, marginTop: 8, padding: 12 },
+  shopHeadingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
+  shopTitle: { fontSize: 11, letterSpacing: 0.8 },
+  shopDescription: { fontSize: 10, lineHeight: 15, marginTop: 4, maxWidth: 270 },
+  inventoryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 13 },
+  inventoryLabel: { fontSize: 9, letterSpacing: 0.9 },
+  inventoryValue: { fontSize: 13 },
+  accessStatus: { fontSize: 9, letterSpacing: 0.6, marginTop: 9 },
+  shopActions: { gap: 8, marginTop: 12 },
+  shopButton: { minHeight: 38, borderWidth: 1, borderRadius: 8, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 10 },
+  shopButtonText: { fontSize: 10, letterSpacing: 0.5 },
+  shopMessage: { fontSize: 9, letterSpacing: 0.7, textAlign: 'center', marginTop: 10 },
   sectionLabel: { fontSize: 9, letterSpacing: 1 },
   betValue: { fontSize: 18, marginTop: 3 },
   stepper: { flexDirection: 'row', gap: 7 },

@@ -1435,9 +1435,14 @@ function GradeHistoryModal({
     resolveBet,
     setSoundEnabled,
     setHapticsEnabled,
+    bankKeys,
+    bankAccessExpiresAt,
+    buyBankKey,
+    activateBankKey,
     clearJustUnlocked,
   } = useBrewTokens();
   const isWeekend = [0, 6].includes(new Date().getDay());
+  const hasActiveBankAccess = bankAccessExpiresAt != null;
 
   const handleQuoteViewed = useCallback((quoteViewId: string) => {
     return incrementQuoteViewed(quoteViewId);
@@ -1455,7 +1460,7 @@ function GradeHistoryModal({
   }, [clearJustUnlocked, justUnlocked]);
 
   const handleHeaderLongPress = () => {
-    if (BREW_BANK_ENABLED && brewBankUnlocked && isWeekend) {
+    if (BREW_BANK_ENABLED && brewBankUnlocked && (isWeekend || hasActiveBankAccess || bankKeys > 0)) {
       setBrewBankVisible(true);
       return;
     }
@@ -1521,10 +1526,14 @@ function GradeHistoryModal({
                 quotesViewed={quotesViewed}
                 soundEnabled={soundEnabled}
                 hapticsEnabled={hapticsEnabled}
+                bankKeys={bankKeys}
+                bankAccessExpiresAt={bankAccessExpiresAt}
                 onClose={() => setBrewBankVisible(false)}
                 onResolveBet={resolveBet}
                 onSoundEnabledChange={setSoundEnabled}
                 onHapticsEnabledChange={setHapticsEnabled}
+                onBuyBankKey={buyBankKey}
+                onActivateBankKey={activateBankKey}
               />
               <BrewTokenUnlockCelebration
                 visible={brewCelebrationVisible}
