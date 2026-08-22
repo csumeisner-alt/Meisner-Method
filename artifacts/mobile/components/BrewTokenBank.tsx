@@ -12,6 +12,7 @@ import { Feather } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import * as Haptics from 'expo-haptics';
 import * as Speech from 'expo-speech';
+import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   Easing,
   interpolate,
@@ -209,6 +210,19 @@ export function BrewTokenBank({
     transform: [{ scale: interpolate(vaultPulse.value, [0, 0.5, 1], [0.78, 1.12, 1.34]) }],
   }));
 
+  const vaultPerspectiveStyle = useAnimatedStyle(() => ({
+    transform: [
+      { perspective: 520 },
+      { rotateX: `${interpolate(coinProgress.value, [0, 0.45, 0.8, 1], [0, -3.5, 3, 0])}deg` },
+      { rotateY: `${interpolate(coinProgress.value, [0, 0.45, 0.8, 1], [0, 5, -4, 0])}deg` },
+    ],
+  }));
+
+  const vaultSheenStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(coinProgress.value, [0, 0.25, 0.55, 0.9, 1], [0.12, 0.3, 0.58, 0.2, 0.12]),
+    transform: [{ translateX: interpolate(coinProgress.value, [0, 1], [-170, 170]) }],
+  }));
+
   const resultAnimatedStyle = useAnimatedStyle(() => ({
     opacity: resultProgress.value,
     transform: [
@@ -376,10 +390,28 @@ export function BrewTokenBank({
             accessibilityRole={lossVoicePlaying && !protectedVoicePlaying ? 'button' : undefined}
             accessibilityLabel={lossVoicePlaying && !protectedVoicePlaying ? 'Stop vault voice message' : 'Brew Token reserve'}
           >
+            <Animated.View pointerEvents="none" style={[styles.vaultPerspectiveFrame, vaultPerspectiveStyle]}>
+              <View style={[styles.vaultBackplate, { backgroundColor: colors.card, borderColor: colors.border }]} />
+              <View style={[styles.vaultTopDepth, { backgroundColor: colors.goldMuted }]} />
+              <View style={[styles.vaultLeftDepth, { backgroundColor: colors.border }]} />
+              <View style={[styles.vaultRightDepth, { backgroundColor: colors.border }]} />
+              <LinearGradient
+                pointerEvents="none"
+                colors={['transparent', colors.foreground, 'transparent']}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={[styles.vaultSheen, vaultSheenStyle]}
+              />
+              <View style={[styles.vaultRivet, styles.vaultRivetTopLeft, { backgroundColor: colors.goldMuted }]} />
+              <View style={[styles.vaultRivet, styles.vaultRivetTopRight, { backgroundColor: colors.goldMuted }]} />
+              <View style={[styles.vaultRivet, styles.vaultRivetBottomLeft, { backgroundColor: colors.goldMuted }]} />
+              <View style={[styles.vaultRivet, styles.vaultRivetBottomRight, { backgroundColor: colors.goldMuted }]} />
+            </Animated.View>
             <Animated.View
               pointerEvents="none"
               style={[styles.vaultGlow, { backgroundColor: colors.gold }, vaultGlowAnimatedStyle]}
             />
+            <View pointerEvents="none" style={[styles.vaultFloorShadow, { backgroundColor: colors.background }]} />
             <Animated.View style={[styles.coinStage, coinAnimatedStyle]}>
               <BrewCoin colors={colors} size={76} />
             </Animated.View>
@@ -579,7 +611,19 @@ const styles = StyleSheet.create({
   title: { fontSize: 19, letterSpacing: 1.1, marginTop: 2 },
   subtitle: { fontSize: 11, letterSpacing: 2.5 },
   vault: { alignItems: 'center', borderWidth: 1, borderRadius: 10, paddingVertical: 16, overflow: 'hidden' },
+  vaultPerspectiveFrame: { position: 'absolute', top: 9, left: 9, right: 9, bottom: 9, borderRadius: 8, overflow: 'hidden' },
+  vaultBackplate: { position: 'absolute', top: 5, left: 5, right: 5, bottom: 5, borderWidth: 1, borderRadius: 7, opacity: 0.78 },
+  vaultTopDepth: { position: 'absolute', top: 0, left: 14, right: 14, height: 5, borderRadius: 3, opacity: 0.85 },
+  vaultLeftDepth: { position: 'absolute', top: 12, bottom: 12, left: 0, width: 5, borderRadius: 3, opacity: 0.6 },
+  vaultRightDepth: { position: 'absolute', top: 12, bottom: 12, right: 0, width: 5, borderRadius: 3, opacity: 0.35 },
+  vaultSheen: { position: 'absolute', top: -20, bottom: -20, width: 34, transform: [{ rotateZ: '16deg' }], opacity: 0.2 },
+  vaultRivet: { position: 'absolute', width: 5, height: 5, borderRadius: 3, opacity: 0.9 },
+  vaultRivetTopLeft: { top: 8, left: 8 },
+  vaultRivetTopRight: { top: 8, right: 8 },
+  vaultRivetBottomLeft: { bottom: 8, left: 8 },
+  vaultRivetBottomRight: { bottom: 8, right: 8 },
   vaultGlow: { position: 'absolute', top: 12, width: 128, height: 128, borderRadius: 64 },
+  vaultFloorShadow: { position: 'absolute', bottom: 21, width: 86, height: 10, borderRadius: 43, opacity: 0.42, transform: [{ scaleX: 1.35 }] },
   coinStage: { marginBottom: 5 },
   vaultLabel: { fontSize: 9, letterSpacing: 1.3 },
   balance: { fontSize: 35, lineHeight: 40, marginTop: 2 },
