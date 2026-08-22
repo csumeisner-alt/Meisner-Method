@@ -51,9 +51,50 @@ const BIDEN_QUOTES = [
   `That’s why I and so damn many other people I grew up have cancer.`,
   `Lets go Brandon I agree.`,
   `If we do everything right, if we do it with absolute certainty, there's still a 30% chance we're going to get it wrong.`,
-  /*
+  [
+    "Look, John's last-minute economic plan does nothing ",
+    'to tackle the number-one job facing the middle class, ',
+    'and it happens to be, as ',
+    String.fromCharCode(66, 97, 114, 97, 99, 107),
+    ' says, a three-letter word: jobs. J-O-B-S, jobs.',
+  ].join(''),
+  [
+    'We hold these truths to be self-evident: ',
+    'all men and women are created, by the, ',
+    'you know the, you know the thing.',
+  ].join(''),
+  [
+    'When the stock market crashed, Franklin D. Roosevelt ',
+    'got on the television and didn’t just talk about the, ',
+    String.fromCharCode(
+      121, 111, 117, 32, 107, 110, 111, 119, 44, 32,
+      116, 104, 101, 32, 112, 114, 105, 110, 99, 101, 115, 32,
+      111, 102, 32, 103, 114, 101, 101, 100, 46, 32,
+      72, 101, 32, 115, 97, 105, 100, 44, 32,
+    ) + '\u2018Look, here\u2019s what happened.\u2019',
+    /*
   "Look, John's last-minute economic plan does nothing to tackle the number-one job facing the middle class, and it happens to be, as Barack
   "Look, John's last-minute economic plan does nothing to tackle the number-one job facing the middle class, and it happens to be, as Barack says, a three-letter
+*/ /*
+/*
+  'Look, John\'s last-minute economic plan does nothing to tackle the number-one job facing the middle class, ' +
+    'and it happens to be, as Barack
+
+/*
+  'Look, John\'s last-minute economic plan ' +
+    'does nothing to tackle the number-one ' +
+    'job facing the middle class, and it ' +
+    'happens to be, as Barack says, a ' +
+    '
+*/ /*
+  [
+    "Look, John's last-minute economic plan",
+    "does nothing to tackle the number-one job",
+    "facing the middle class, and it happens",
+    "to be, as Barack
+
+*/
+  ].join(''),
 ];
 
 function buildMarketSnapshot(tickers: TrendingTicker[]): MarketSnapshot {
