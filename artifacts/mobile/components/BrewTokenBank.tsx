@@ -25,7 +25,13 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Path } from 'react-native-svg';
 import type { ColorScheme } from '@/constants/colors';
-import { BREW_BANK_KEY_PRICE, BREW_TOKEN_WIN_PROBABILITY, hasBrewBankAccess, isWeekday } from '@/lib/brewTokenLogic';
+import {
+  BREW_BANK_KEY_PRICE,
+  BREW_TOKEN_WIN_PROBABILITY,
+  formatBrewBankAccessRemaining,
+  hasBrewBankAccess,
+  isWeekday,
+} from '@/lib/brewTokenLogic';
 
 export function BrewCoin({ colors, size = 66 }: { colors: ColorScheme; size?: number }) {
   return (
@@ -127,6 +133,7 @@ export function BrewTokenBank({
   const [shopOpen, setShopOpen] = useState(false);
   const [shopMessage, setShopMessage] = useState<string | null>(null);
   const [shopBusy, setShopBusy] = useState(false);
+  const [countdownNow, setCountdownNow] = useState(() => Date.now());
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const balanceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const machineStatusTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -181,6 +188,13 @@ export function BrewTokenBank({
     stopMachineSound();
     stopWinSound();
   }, []);
+
+  useEffect(() => {
+    if (!visible) return;
+    setCountdownNow(Date.now());
+    const countdownTimer = setInterval(() => setCountdownNow(Date.now()), 1000);
+    return () => clearInterval(countdownTimer);
+  }, [visible]);
 
   useEffect(() => {
     const from = displayedTokensRef.current;
@@ -244,7 +258,7 @@ export function BrewTokenBank({
 
   const bet = Math.min(Math.max(selectedBet, 1), Math.max(tokens, 1));
   const canPlay = tokens > 0 && !resolving && !protectedVoicePlaying;
-  const bankAccessActive = hasBrewBankAccess(bankAccessExpiresAt, Date.now());
+  const bankAccessActive = hasBrewBankAccess(bankAccessExpiresAt, countdownNow);
   const canActivateKey = isWeekday(new Date().getDay()) && bankKeys > 0 && !bankAccessActive && !resolving;
 
   const handleBuyKey = async () => {
@@ -266,6 +280,7 @@ export function BrewTokenBank({
   const accessExpiryLabel = bankAccessExpiresAt
     ? new Date(bankAccessExpiresAt).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })
     : null;
+  const accessRemainingLabel = formatBrewBankAccessRemaining(bankAccessExpiresAt, countdownNow);
 
   const playMachineStartSound = async () => {
     if (!soundEnabled || Constants.appOwnership === 'expo') return;
@@ -501,9 +516,9 @@ export function BrewTokenBank({
                   {bankKeys} {bankKeys === 1 ? 'KEY' : 'KEYS'}
                 </Text>
               </View>
-              {bankAccessActive && accessExpiryLabel && (
+              {bankAccessActive && accessExpiryLabel && accessRemainingLabel && (
                 <Text style={[styles.accessStatus, { color: colors.buyColor, fontFamily: 'Inter_600SemiBold' }]}>
-                  ACCESS ACTIVE · EXPIRES {accessExpiryLabel.toUpperCase()}
+                  ACCESS ACTIVE · {accessRemainingLabel.toUpperCase()} · EXPIRES {accessExpiryLabel.toUpperCase()}
                 </Text>
               )}
               {!bankAccessActive && bankKeys > 0 && !isWeekday(new Date().getDay()) && (

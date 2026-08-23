@@ -33,6 +33,17 @@ export function hasBrewBankAccess(expiresAt: number | null | undefined, now: num
   return typeof expiresAt === 'number' && Number.isFinite(expiresAt) && expiresAt > now;
 }
 
+export function formatBrewBankAccessRemaining(
+  expiresAt: number | null | undefined,
+  now: number,
+): string | null {
+  if (!hasBrewBankAccess(expiresAt, now)) return null;
+  const remainingMinutes = Math.ceil((expiresAt! - now) / 60_000);
+  const hours = Math.floor(remainingMinutes / 60);
+  const minutes = remainingMinutes % 60;
+  return `${hours}h ${String(minutes).padStart(2, '0')}m remaining`;
+}
+
 export function canActivateBrewBankKey(
   keyCount: number,
   day: number,

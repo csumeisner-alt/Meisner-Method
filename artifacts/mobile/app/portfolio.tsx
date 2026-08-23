@@ -47,7 +47,7 @@ import {
   type Trade,
 } from '@/lib/portfolioMath';
 import { getTradeGradeFeedback } from '@/lib/tradeGradeFeedback';
-import { hasBrewBankAccess } from '@/lib/brewTokenLogic';
+import { formatBrewBankAccessRemaining, hasBrewBankAccess } from '@/lib/brewTokenLogic';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1425,6 +1425,7 @@ function GradeHistoryModal({
   const [trainingTapeVisible, setTrainingTapeVisible] = useState(false);
   const [brewBankVisible, setBrewBankVisible] = useState(false);
   const [brewCelebrationVisible, setBrewCelebrationVisible] = useState(false);
+  const [countdownNow, setCountdownNow] = useState(() => Date.now());
   const {
     quotesViewed,
     isUnlocked: brewBankUnlocked,
@@ -1443,7 +1444,15 @@ function GradeHistoryModal({
     clearJustUnlocked,
   } = useBrewTokens();
   const isWeekend = [0, 6].includes(new Date().getDay());
-  const hasActiveBankAccess = hasBrewBankAccess(bankAccessExpiresAt, Date.now());
+  const hasActiveBankAccess = hasBrewBankAccess(bankAccessExpiresAt, countdownNow);
+  const bankAccessRemaining = formatBrewBankAccessRemaining(bankAccessExpiresAt, countdownNow);
+
+  useEffect(() => {
+    if (!visible) return;
+    setCountdownNow(Date.now());
+    const countdownTimer = setInterval(() => setCountdownNow(Date.now()), 1000);
+    return () => clearInterval(countdownTimer);
+  }, [visible]);
 
   const handleQuoteViewed = useCallback((quoteViewId: string) => {
     return incrementQuoteViewed(quoteViewId);
@@ -1519,8 +1528,8 @@ function GradeHistoryModal({
                     CENTRAL BANK
                   </Text>
                   <Text style={[gradeModalStyles.bankShortcutStatus, { color: hasActiveBankAccess || isWeekend ? colors.gold : colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
-                    {hasActiveBankAccess && bankAccessExpiresAt
-                      ? `ACCESS ACTIVE · OPEN UNTIL ${new Date(bankAccessExpiresAt).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' }).toUpperCase()}`
+                    {hasActiveBankAccess && bankAccessExpiresAt && bankAccessRemaining
+                      ? `ACCESS ACTIVE · ${bankAccessRemaining.toUpperCase()} · OPEN UNTIL ${new Date(bankAccessExpiresAt).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' }).toUpperCase()}`
                       : isWeekend
                         ? 'OPEN THIS WEEKEND · NO KEY NEEDED'
                         : bankKeys > 0

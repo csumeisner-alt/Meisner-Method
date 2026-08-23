@@ -8,6 +8,7 @@ import {
   createSerialWriteQueue,
   buyBrewBankKey,
   canActivateBrewBankKey,
+  formatBrewBankAccessRemaining,
   hasBrewBankAccess,
   INITIAL_BREW_TOKENS,
   isBrewBankHalfway,
@@ -53,6 +54,13 @@ test('bank key access can only activate on weekdays and lasts twelve hours', () 
   assert.equal(canActivateBrewBankKey(1, 1, mondayMorning + 1_000, mondayMorning), false);
   assert.equal(hasBrewBankAccess(mondayMorning + BREW_BANK_ACCESS_DURATION_MS, mondayMorning), true);
   assert.equal(hasBrewBankAccess(mondayMorning + BREW_BANK_ACCESS_DURATION_MS, mondayMorning + BREW_BANK_ACCESS_DURATION_MS), false);
+});
+
+test('bank access countdown formats remaining hours and minutes and expires at zero', () => {
+  const now = new Date('2026-08-17T09:00:00').getTime();
+  assert.equal(formatBrewBankAccessRemaining(now + 2 * 60 * 60 * 1000 + 31_000, now), '2h 01m remaining');
+  assert.equal(formatBrewBankAccessRemaining(now + 59_000, now), '0h 01m remaining');
+  assert.equal(formatBrewBankAccessRemaining(now, now), null);
 });
 
 test('winning a bet returns the stake as profit and losing removes only the stake', () => {
