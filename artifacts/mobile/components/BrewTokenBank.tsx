@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   Modal,
   Pressable,
   StyleSheet,
@@ -191,9 +192,16 @@ export function BrewTokenBank({
 
   useEffect(() => {
     if (!visible) return;
-    setCountdownNow(Date.now());
+    const refreshCountdown = () => setCountdownNow(Date.now());
+    refreshCountdown();
     const countdownTimer = setInterval(() => setCountdownNow(Date.now()), 1000);
-    return () => clearInterval(countdownTimer);
+    const appStateSubscription = AppState.addEventListener('change', nextState => {
+      if (nextState === 'active') refreshCountdown();
+    });
+    return () => {
+      clearInterval(countdownTimer);
+      appStateSubscription.remove();
+    };
   }, [visible]);
 
   useEffect(() => {
