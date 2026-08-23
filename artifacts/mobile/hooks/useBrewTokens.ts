@@ -116,6 +116,27 @@ export function useBrewTokens(): BrewTokenState {
     });
   }, []);
 
+  useEffect(() => {
+    const expiresAt = bankAccessExpiresAt;
+    if (expiresAt == null) return;
+
+    const clearExpiredAccess = () => {
+      if (bankAccessExpiresAtRef.current !== expiresAt) return;
+      if (hasBrewBankAccess(expiresAt, Date.now())) return;
+      bankAccessExpiresAtRef.current = null;
+      setBankAccessExpiresAt(null);
+    };
+
+    const remaining = expiresAt - Date.now();
+    if (remaining <= 0) {
+      clearExpiredAccess();
+      return;
+    }
+
+    const timeout = setTimeout(clearExpiredAccess, remaining);
+    return () => clearTimeout(timeout);
+  }, [bankAccessExpiresAt]);
+
   const incrementQuoteViewed = useCallback(async (quoteViewId?: string) => {
     await hydrationRef.current!.promise;
 
@@ -224,7 +245,7 @@ export function useBrewTokens(): BrewTokenState {
     soundEnabled,
     hapticsEnabled,
     bankKeys,
-    bankAccessExpiresAt: hasBrewBankAccess(bankAccessExpiresAt, Date.now()) ? bankAccessExpiresAt : null,
+    bankAccessExpiresAt,
     justUnlocked,
     incrementQuoteViewed,
     resolveBet,
