@@ -139,6 +139,7 @@ export function BrewTokenBank({
   const [protectedVoicePlaying, setProtectedVoicePlaying] = useState(false);
   const [machineStatusIndex, setMachineStatusIndex] = useState(0);
   const [shopOpen, setShopOpen] = useState(false);
+  const [payoutPreviewOpen, setPayoutPreviewOpen] = useState(false);
   const [shopMessage, setShopMessage] = useState<string | null>(null);
   const [shopBusy, setShopBusy] = useState(false);
   const [countdownNow, setCountdownNow] = useState(() => Date.now());
@@ -662,34 +663,49 @@ export function BrewTokenBank({
             </View>
           </View>
 
-          <View style={[styles.payoutPreview, { backgroundColor: colors.steelShadow, borderColor: colors.border }]}>
+          <Pressable
+            onPress={() => setPayoutPreviewOpen(value => !value)}
+            style={[
+              styles.payoutToggle,
+              { backgroundColor: colors.steelShadow, borderColor: colors.border },
+              payoutPreviewOpen && styles.payoutToggleOpen,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={payoutPreviewOpen ? 'Hide payout preview' : 'Show payout preview'}
+            accessibilityState={{ expanded: payoutPreviewOpen }}
+          >
             <Text style={[styles.payoutHeading, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
               PAYOUT PREVIEW
             </Text>
-            <View style={styles.payoutColumns}>
-              <View style={styles.payoutColumn}>
-                <Text style={[styles.payoutLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>WIN</Text>
-                <Text style={[styles.payoutValue, { color: colors.buyColor, fontFamily: 'Inter_700Bold' }]}>+{bet}</Text>
-                <Text style={[styles.payoutUnit, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                  {bet === 1 ? 'TOKEN' : 'TOKENS'}
-                </Text>
-              </View>
-              <View style={[styles.payoutDivider, { backgroundColor: colors.border }]} />
-              <View style={styles.payoutColumn}>
-                <Text style={[styles.payoutLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>LOSS</Text>
-                <Text style={[styles.payoutValue, { color: colors.sellColor, fontFamily: 'Inter_700Bold' }]}>−{bet}</Text>
-                <Text style={[styles.payoutUnit, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                  {bet === 1 ? 'TOKEN' : 'TOKENS'}
-                </Text>
-              </View>
-              <View style={[styles.payoutDivider, { backgroundColor: colors.border }]} />
-              <View style={styles.payoutColumn}>
-                <Text style={[styles.payoutLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>ODDS</Text>
-                <Text style={[styles.payoutValue, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>55%</Text>
-                <Text style={[styles.payoutUnit, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>TO WIN</Text>
+            <Feather name={payoutPreviewOpen ? 'chevron-up' : 'chevron-down'} size={15} color={colors.mutedForeground} />
+          </Pressable>
+          {payoutPreviewOpen && (
+            <View style={[styles.payoutPreview, { backgroundColor: colors.steelShadow, borderColor: colors.border }]}>
+              <View style={styles.payoutColumns}>
+                <View style={styles.payoutColumn}>
+                  <Text style={[styles.payoutLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>WIN</Text>
+                  <Text style={[styles.payoutValue, { color: colors.buyColor, fontFamily: 'Inter_700Bold' }]}>+{bet}</Text>
+                  <Text style={[styles.payoutUnit, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                    {bet === 1 ? 'TOKEN' : 'TOKENS'}
+                  </Text>
+                </View>
+                <View style={[styles.payoutDivider, { backgroundColor: colors.border }]} />
+                <View style={styles.payoutColumn}>
+                  <Text style={[styles.payoutLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>LOSS</Text>
+                  <Text style={[styles.payoutValue, { color: colors.sellColor, fontFamily: 'Inter_700Bold' }]}>−{bet}</Text>
+                  <Text style={[styles.payoutUnit, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                    {bet === 1 ? 'TOKEN' : 'TOKENS'}
+                  </Text>
+                </View>
+                <View style={[styles.payoutDivider, { backgroundColor: colors.border }]} />
+                <View style={styles.payoutColumn}>
+                  <Text style={[styles.payoutLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>ODDS</Text>
+                  <Text style={[styles.payoutValue, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>55%</Text>
+                  <Text style={[styles.payoutUnit, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>TO WIN</Text>
+                </View>
               </View>
             </View>
-          </View>
+          )}
 
           <Text style={[styles.rules, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
             Win returns your deposit plus an equal payout. Lose only the tokens deposited.
@@ -864,6 +880,8 @@ const styles = StyleSheet.create({
   stepButton: { width: 36, height: 34, borderWidth: 1, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   disabled: { opacity: 0.4 },
   payoutPreview: { borderWidth: 1, borderRadius: 9, marginTop: 13, paddingVertical: 10, paddingHorizontal: 12 },
+  payoutToggle: { minHeight: 36, borderWidth: 1, borderRadius: 9, marginTop: 13, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  payoutToggleOpen: { borderBottomLeftRadius: 5, borderBottomRightRadius: 5, marginBottom: -13 },
   payoutHeading: { fontSize: 8, letterSpacing: 1.05, marginBottom: 8 },
   payoutColumns: { flexDirection: 'row', alignItems: 'center' },
   payoutColumn: { flex: 1, alignItems: 'center' },
