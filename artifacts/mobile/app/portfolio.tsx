@@ -48,7 +48,7 @@ import {
   type Trade,
 } from '@/lib/portfolioMath';
 import { getTradeGradeFeedback } from '@/lib/tradeGradeFeedback';
-import { formatBrewBankAccessRemaining, hasBrewBankAccess } from '@/lib/brewTokenLogic';
+import { canEnterBrewBank, formatBrewBankAccessRemaining, hasBrewBankAccess } from '@/lib/brewTokenLogic';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1478,7 +1478,11 @@ function GradeHistoryModal({
   }, [clearJustUnlocked, justUnlocked]);
 
   const handleHeaderLongPress = () => {
-    if (BREW_BANK_ENABLED && brewBankUnlocked && (isWeekend || hasActiveBankAccess || bankKeys > 0)) {
+    if (
+      BREW_BANK_ENABLED
+      && brewBankUnlocked
+      && canEnterBrewBank(new Date(countdownNow).getDay(), bankKeys, bankAccessExpiresAt, countdownNow)
+    ) {
       setBrewBankVisible(true);
       return;
     }
@@ -1520,9 +1524,14 @@ function GradeHistoryModal({
             contentContainerStyle={[gradeModalStyles.content, { paddingBottom: Math.max(insets.bottom, 18) + 20 }]}
             showsVerticalScrollIndicator={false}
           >
-            {BREW_BANK_ENABLED && brewBankUnlocked && (
+            {BREW_BANK_ENABLED && brewBankUnlocked && canEnterBrewBank(
+              new Date(countdownNow).getDay(),
+              bankKeys,
+              bankAccessExpiresAt,
+              countdownNow,
+            ) && (
               <Pressable
-                onPress={() => setBrewBankVisible(true)}
+                onPress={handleHeaderLongPress}
                 style={[gradeModalStyles.bankShortcut, { backgroundColor: colors.card, borderColor: colors.goldMuted }]}
                 accessibilityRole="button"
                 accessibilityLabel="Open Central Bank"
