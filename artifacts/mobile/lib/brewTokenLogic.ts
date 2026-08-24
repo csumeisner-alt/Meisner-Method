@@ -8,6 +8,8 @@ export const BREW_TOKEN_QUOTE_THRESHOLD = 22;
 export const INITIAL_BREW_TOKENS = 5;
 export const BREW_TOKEN_WIN_PROBABILITY = 0.55;
 export const MAX_REMEMBERED_QUOTE_VIEWS = 32;
+export const BREW_BANK_KEY_PRICE = 10;
+export const BREW_BANK_ACCESS_DURATION_MS = 12 * 60 * 60 * 1000;
 
 export function parseStoredNonNegative(raw: string | null | undefined): number {
   if (!raw) return 0;
@@ -25,6 +27,43 @@ export function isBrewBankHalfway(prev: number, next: number): boolean {
 
 export function isWeekday(day: number): boolean {
   return day >= 1 && day <= 5;
+}
+
+export function hasBrewBankAccess(expiresAt: number | null | undefined, now: number): boolean {
+  return typeof expiresAt === 'number' && Number.isFinite(expiresAt) && expiresAt > now;
+}
+
+export function formatBrewBankAccessRemaining(
+  expiresAt: number | null | undefined,
+  now: number,
+): string | null {
+  if (!hasBrewBankAccess(expiresAt, now)) return null;
+  const remainingMinutes = Math.ceil((expiresAt! - now) / 60_000);
+  const hours = Math.floor(remainingMinutes / 60);
+  const minutes = remainingMinutes % 60;
+  return `${hours}h ${String(minutes).padStart(2, '0')}m remaining`;
+}
+
+export function canActivateBrewBankKey(
+  keyCount: number,
+  day: number,
+  expiresAt: number | null | undefined,
+  now: number,
+): boolean {
+  return isWeekday(day) && keyCount > 0 && !hasBrewBankAccess(expiresAt, now);
+}
+
+export function buyBrewBankKey(
+  tokenBalance: number,
+  keyCount: number,
+): { tokenBalance: number; keyCount: number } | null {
+  const safeBalance = Math.max(0, Math.floor(tokenBalance));
+  const safeKeys = Math.max(0, Math.floor(keyCount));
+  if (safeBalance < BREW_BANK_KEY_PRICE) return null;
+  return {
+    tokenBalance: safeBalance - BREW_BANK_KEY_PRICE,
+    keyCount: safeKeys + 1,
+  };
 }
 
 export function resolveBrewBet(balance: number, bet: number, won: boolean): number {

@@ -1,0 +1,23 @@
+- [React Native / Expo gotchas](react-native-gotchas.md) — `Easing.sin` not `Easing.sine` (mount crash); gate expo-audio behind Expo Go check.
+- [Expo Router auth gate](expo-router-auth-gate.md) — root layout must always render the navigator; returning `<Redirect>` instead = blank screen. Redirect imperatively via useSegments.
+- [Clerk provider must always be mounted](clerk-provider-dev-bypass.md) — Clerk hooks throw without a provider; a dev "preview without login" bypass must keep ClerkProvider mounted and only skip the redirect.
+- [minimumReleaseAge blocks same-day Expo bumps](pnpm-minimum-release-age-expo.md) — bumping expo to a just-released SDK patch fails install; allowlist Expo-org globs; expo-doctor reads package.json not the linked tree.
+- [Expo package/SDK mismatch = APK-only launch crash](expo-sdk-package-mismatch.md) — wrong-SDK expo-* pkg works in Expo Go but crashes standalone at boot; `expo install --check` gates builds; diff APK zips to find native deltas.
+- [Python JSON for Node](python-json-for-node.md) — Python `NaN`/`Infinity` breaks Node `JSON.parse`; sanitize + `json.dumps(allow_nan=False)`.
+- [RN-web TextInput in Playwright](rn-web-playwright-textinput.md) — `fill()` skips `onChangeText`; tester must type char-by-char or validation false-fails.
+- [Stable apiFetch vs Clerk getToken](useapi-stable-fetch.md) — Clerk `getToken` isn't stable; memoizing apiFetch on it → infinite fetch loop + Clerk rate-limit blank screen. Use a ref.
+- [EAS build Clerk + domain config](eas-build-clerk-config.md) — eas.json must set EXPO_PUBLIC_DOMAIN, EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY, and EXPO_PUBLIC_CLERK_PROXY_URL; build.js is not used for EAS.
+- [EAS Android mergeReleaseJavaResource failure](eas-android-packaging-conflict.md) — duplicate META-INF from transitive jars (okhttp/jspecify) fails the Gradle merge; fix with expo-build-properties packagingOptions.pickFirst.
+- [TS project references use dist .d.ts](ts-project-reference-stale-dist.md) — "no exported member" for a symbol src exports = stale lib dist; rebuild with `tsc -b --force`, don't rewrite the consumer.
+- [Replit mobile artifact deploy = QR/OTA landing page](replit-mobile-artifact-deploy.md) — the published .replit.app of an Expo mobile app is a QR launcher, not a browser app; real access is the APK or Expo Go.
+- [Paper-trading fee/cash consistency](paper-trading-fee-cashflow.md) — any per-trade cost (fee) shown in net P&L must ALSO be debited from account cash AND from buildValueHistory's reconstructed cash flow, or equity/returns silently overstate.
+- [Mobile pure-math testing](mobile-pure-math-testing.md) — pure fee/win-rate math lives in `artifacts/mobile/lib/*.ts` (no RN imports); tested via Node's built-in runner with type-stripping. Screens import from these libs.
+- [Clerk Google SSO transfer flow](clerk-sso-transfer-flow.md) — must handle 'transferable' verifications via create({transfer:true})+finalize(); dev e2e blocked by captcha/allowlist; workspace secret key is prod-instance.
+- [Schema migration gate](schema-migration-gate.md) — after-the-fact columns are migrated once at boot behind a cached promise; any endpoint referencing them must sit behind `requireSchema` (awaits migration, 503 while failing).
+- [Paper table migration](paper-table-migration.md) — paper-trading migrations must create the base tables, not just add columns; missing `paper_positions` or `sector` column caused production 500s.
+- [Paper trading engine v2](paper-trading-v2.md) — orders/lots/T+2/FIFO/slippage/dividends; trailing stop uses trailRef not currentPrice; `.ts` extension needed for Node ESM; syncToServer takes 6 args now.
+- [Patriot Mode premium theme](patriot-mode-premium-theme.md) — use brushed steel and gold as the persistent premium language; reserve flag colors for brief entry motion.
+- [Guest device notifications](guest-device-notifications.md) — route alerts by anonymous installation ID and latest Expo token, not account auth.
+- [Meisner Method branding](meisner-method-branding.md) — public product branding is Meisner Method; legacy storage namespaces remain for local-data compatibility.
+- [Celebration audio cost model](celebration-audio-cost.md) — bundle approved celebration recordings locally; do not reintroduce per-play network TTS.
+- [Expo APK build workflow](expo-apk-build-workflow.md) — GitHub build uses base `artifacts/mobile`, profile `preview`, Preview environment, and exact branch/full SHA.

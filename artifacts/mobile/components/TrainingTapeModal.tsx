@@ -50,6 +50,51 @@ const BIDEN_QUOTES = [
     `The share of women in business is also on the rise.`,
   `That’s why I and so damn many other people I grew up have cancer.`,
   `Lets go Brandon I agree.`,
+  `If we do everything right, if we do it with absolute certainty, there's still a 30% chance we're going to get it wrong.`,
+  [
+    "Look, John's last-minute economic plan does nothing ",
+    'to tackle the number-one job facing the middle class, ',
+    'and it happens to be, as ',
+    String.fromCharCode(66, 97, 114, 97, 99, 107),
+    ' says, a three-letter word: jobs. J-O-B-S, jobs.',
+  ].join(''),
+  [
+    'We hold these truths to be self-evident: ',
+    'all men and women are created, by the, ',
+    'you know the, you know the thing.',
+  ].join(''),
+  [
+    'When the stock market crashed, Franklin D. Roosevelt ',
+    'got on the television and didn’t just talk about the, ',
+    String.fromCharCode(
+      121, 111, 117, 32, 107, 110, 111, 119, 44, 32,
+      116, 104, 101, 32, 112, 114, 105, 110, 99, 101, 115, 32,
+      111, 102, 32, 103, 114, 101, 101, 100, 46, 32,
+      72, 101, 32, 115, 97, 105, 100, 44, 32,
+    ) + '\u2018Look, here\u2019s what happened.\u2019',
+    /*
+  "Look, John's last-minute economic plan does nothing to tackle the number-one job facing the middle class, and it happens to be, as Barack
+  "Look, John's last-minute economic plan does nothing to tackle the number-one job facing the middle class, and it happens to be, as Barack says, a three-letter
+*/ /*
+/*
+  'Look, John\'s last-minute economic plan does nothing to tackle the number-one job facing the middle class, ' +
+    'and it happens to be, as Barack
+
+/*
+  'Look, John\'s last-minute economic plan ' +
+    'does nothing to tackle the number-one ' +
+    'job facing the middle class, and it ' +
+    'happens to be, as Barack says, a ' +
+    '
+*/ /*
+  [
+    "Look, John's last-minute economic plan",
+    "does nothing to tackle the number-one job",
+    "facing the middle class, and it happens",
+    "to be, as Barack
+
+*/
+  ].join(''),
 ];
 
 function buildMarketSnapshot(tickers: TrendingTicker[]): MarketSnapshot {
@@ -350,14 +395,19 @@ export function TrainingTapeModal({
             <View style={styles.scanlineOne} />
             <View style={styles.scanlineTwo} />
             <Text style={[styles.displayLabel, { color: colors.goldMuted, fontFamily: 'Inter_600SemiBold' }]}>
-              {quoteMode ? 'ARCHIVE VOICE / OFF-SCRIPT' : 'LIVE MARKET SNAPSHOT'}
+              {quoteMode ? 'ARCHIVE VOICE / FORMER PRESIDENT BIDEN' : 'LIVE MARKET SNAPSHOT'}
             </Text>
             {loading ? (
               <ActivityIndicator color={colors.gold} style={styles.loader} />
             ) : quoteMode ? (
-              <Text style={[styles.message, { color: colors.foreground, fontFamily: 'Inter_500Medium' }, styles.quote]}>
-                {message}
-              </Text>
+              <View style={styles.quoteBlock}>
+                <Text style={[styles.message, { color: colors.foreground, fontFamily: 'Inter_500Medium' }, styles.quote]}>
+                  {message}
+                </Text>
+                <Text style={[styles.quoteAttribution, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
+                  — FORMER PRESIDENT JOE BIDEN
+                </Text>
+              </View>
             ) : marketError ? (
               <View style={styles.unavailable}>
                 <Feather name="wifi-off" size={18} color={colors.goldMuted} />
@@ -378,7 +428,7 @@ export function TrainingTapeModal({
           <View style={styles.footer}>
             <Feather name="radio" size={13} color={colors.goldMuted} />
             <Text style={[styles.footerText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-              {quoteMode ? 'ARCHIVAL RECORDING' : 'MOST-ACTIVE UNIVERSE'}  •  {formatTapeDate()}
+              {quoteMode ? 'ARCHIVAL RECORDING · JOE BIDEN' : 'MOST-ACTIVE UNIVERSE'}  •  {formatTapeDate()}
             </Text>
           </View>
         </View>
@@ -488,6 +538,13 @@ const styles = StyleSheet.create({
   quote: {
     fontSize: 15,
     lineHeight: 24,
+  },
+  quoteBlock: {
+    gap: 16,
+  },
+  quoteAttribution: {
+    fontSize: 10,
+    letterSpacing: 0.8,
   },
   snapshot: {
     width: '100%',

@@ -5,6 +5,7 @@ import {
   Text,
   Image,
   ScrollView,
+  AppState,
   TouchableOpacity,
   TextInput,
   StyleSheet,
@@ -47,6 +48,7 @@ import {
   type Trade,
 } from '@/lib/portfolioMath';
 import { getTradeGradeFeedback } from '@/lib/tradeGradeFeedback';
+import { formatBrewBankAccessRemaining, hasBrewBankAccess } from '@/lib/brewTokenLogic';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -177,7 +179,7 @@ function stopCelebrationVoice() {
 
 const CELEBRATION_PHRASES: CelebrationPhrase[] = [
   {
-    text: "Congrats on the big win. You're a real crypto bro. I'd do anything for a true crypto gambler like yourself.",
+    text: "Mm, congrats, you really are a true crypto bro. Why don't you come see what's inside my special vault?",
     source: require('../assets/celebration/voice01.m4a'),
   },
   {
@@ -1424,6 +1426,7 @@ function GradeHistoryModal({
   const [trainingTapeVisible, setTrainingTapeVisible] = useState(false);
   const [brewBankVisible, setBrewBankVisible] = useState(false);
   const [brewCelebrationVisible, setBrewCelebrationVisible] = useState(false);
+  const [countdownNow, setCountdownNow] = useState(() => Date.now());
   const {
     quotesViewed,
     isUnlocked: brewBankUnlocked,
@@ -1435,9 +1438,29 @@ function GradeHistoryModal({
     resolveBet,
     setSoundEnabled,
     setHapticsEnabled,
+    bankKeys,
+    bankAccessExpiresAt,
+    buyBankKey,
+    activateBankKey,
     clearJustUnlocked,
   } = useBrewTokens();
   const isWeekend = [0, 6].includes(new Date().getDay());
+  const hasActiveBankAccess = hasBrewBankAccess(bankAccessExpiresAt, countdownNow);
+  const bankAccessRemaining = formatBrewBankAccessRemaining(bankAccessExpiresAt, countdownNow);
+
+  useEffect(() => {
+    if (!visible) return;
+    const refreshCountdown = () => setCountdownNow(Date.now());
+    refreshCountdown();
+    const countdownTimer = setInterval(() => setCountdownNow(Date.now()), 1000);
+    const appStateSubscription = AppState.addEventListener('change', nextState => {
+      if (nextState === 'active') refreshCountdown();
+    });
+    return () => {
+      clearInterval(countdownTimer);
+      appStateSubscription.remove();
+    };
+  }, [visible]);
 
   const handleQuoteViewed = useCallback((quoteViewId: string) => {
     return incrementQuoteViewed(quoteViewId);
@@ -1455,7 +1478,7 @@ function GradeHistoryModal({
   }, [clearJustUnlocked, justUnlocked]);
 
   const handleHeaderLongPress = () => {
-    if (BREW_BANK_ENABLED && brewBankUnlocked && isWeekend) {
+    if (BREW_BANK_ENABLED && brewBankUnlocked && (isWeekend || hasActiveBankAccess || bankKeys > 0)) {
       setBrewBankVisible(true);
       return;
     }
@@ -1497,6 +1520,34 @@ function GradeHistoryModal({
             contentContainerStyle={[gradeModalStyles.content, { paddingBottom: Math.max(insets.bottom, 18) + 20 }]}
             showsVerticalScrollIndicator={false}
           >
+            {BREW_BANK_ENABLED && brewBankUnlocked && (
+              <Pressable
+                onPress={() => setBrewBankVisible(true)}
+                style={[gradeModalStyles.bankShortcut, { backgroundColor: colors.card, borderColor: colors.goldMuted }]}
+                accessibilityRole="button"
+                accessibilityLabel="Open Central Bank"
+                testID="central-bank-shortcut"
+              >
+                <View style={[gradeModalStyles.bankShortcutIcon, { backgroundColor: colors.steelShadow }]}>
+                  <Feather name="key" size={16} color={colors.gold} />
+                </View>
+                <View style={gradeModalStyles.bankShortcutCopy}>
+                  <Text style={[gradeModalStyles.bankShortcutTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+                    CENTRAL BANK
+                  </Text>
+                  <Text style={[gradeModalStyles.bankShortcutStatus, { color: hasActiveBankAccess || isWeekend ? colors.gold : colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
+                    {hasActiveBankAccess && bankAccessExpiresAt && bankAccessRemaining
+                      ? `ACCESS ACTIVE · ${bankAccessRemaining.toUpperCase()} · OPEN UNTIL ${new Date(bankAccessExpiresAt).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' }).toUpperCase()}`
+                      : isWeekend
+                        ? 'OPEN THIS WEEKEND · NO KEY NEEDED'
+                        : bankKeys > 0
+                          ? 'WEEKDAY ACCESS · KEY READY TO ACTIVATE'
+                          : 'WEEKDAY ACCESS · USE A BANK KEY'}
+                  </Text>
+                </View>
+                <Feather name="chevron-right" size={17} color={colors.mutedForeground} />
+              </Pressable>
+            )}
             <View style={[gradeModalStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={gradeModalStyles.chartHeading}>
                 <Text style={[gradeModalStyles.chartTitle, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
@@ -1521,10 +1572,14 @@ function GradeHistoryModal({
                 quotesViewed={quotesViewed}
                 soundEnabled={soundEnabled}
                 hapticsEnabled={hapticsEnabled}
+                bankKeys={bankKeys}
+                bankAccessExpiresAt={bankAccessExpiresAt}
                 onClose={() => setBrewBankVisible(false)}
                 onResolveBet={resolveBet}
                 onSoundEnabledChange={setSoundEnabled}
                 onHapticsEnabledChange={setHapticsEnabled}
+                onBuyBankKey={buyBankKey}
+                onActivateBankKey={activateBankKey}
               />
               <BrewTokenUnlockCelebration
                 visible={brewCelebrationVisible}
@@ -1556,6 +1611,11 @@ const gradeModalStyles = StyleSheet.create({
   chartHeading: { paddingHorizontal: 4, paddingBottom: 10 },
   chartTitle: { fontSize: 12, letterSpacing: 0.7 },
   chartHint: { fontSize: 10, marginTop: 3 },
+  bankShortcut: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 12, padding: 11, marginBottom: 12, gap: 10 },
+  bankShortcutIcon: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  bankShortcutCopy: { flex: 1, gap: 3 },
+  bankShortcutTitle: { fontSize: 11, letterSpacing: 1 },
+  bankShortcutStatus: { fontSize: 10, letterSpacing: 0.2 },
 });
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────

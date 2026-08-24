@@ -1,9 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  BREW_BANK_ACCESS_DURATION_MS,
+  BREW_BANK_KEY_PRICE,
   claimQuoteView,
   BREW_TOKEN_QUOTE_THRESHOLD,
   createSerialWriteQueue,
+  buyBrewBankKey,
+  canActivateBrewBankKey,
+  formatBrewBankAccessRemaining,
+  hasBrewBankAccess,
   INITIAL_BREW_TOKENS,
   isBrewBankHalfway,
   isBrewBankUnlock,
@@ -34,6 +40,27 @@ test('weekday detection includes Monday through Friday only', () => {
   assert.equal(isWeekday(5), true);
   assert.equal(isWeekday(0), false);
   assert.equal(isWeekday(6), false);
+});
+
+test('bank keys cost ten tokens and never overspend', () => {
+  assert.deepEqual(buyBrewBankKey(12, 1), { tokenBalance: 2, keyCount: 2 });
+  assert.equal(buyBrewBankKey(BREW_BANK_KEY_PRICE - 1, 0), null);
+});
+
+test('bank key access can only activate on weekdays and lasts twelve hours', () => {
+  const mondayMorning = new Date('2026-08-17T09:00:00').getTime();
+  assert.equal(canActivateBrewBankKey(1, 1, null, mondayMorning), true);
+  assert.equal(canActivateBrewBankKey(1, 0, null, mondayMorning), false);
+  assert.equal(canActivateBrewBankKey(1, 1, mondayMorning + 1_000, mondayMorning), false);
+  assert.equal(hasBrewBankAccess(mondayMorning + BREW_BANK_ACCESS_DURATION_MS, mondayMorning), true);
+  assert.equal(hasBrewBankAccess(mondayMorning + BREW_BANK_ACCESS_DURATION_MS, mondayMorning + BREW_BANK_ACCESS_DURATION_MS), false);
+});
+
+test('bank access countdown formats remaining hours and minutes and expires at zero', () => {
+  const now = new Date('2026-08-17T09:00:00').getTime();
+  assert.equal(formatBrewBankAccessRemaining(now + 2 * 60 * 60 * 1000 + 31_000, now), '2h 01m remaining');
+  assert.equal(formatBrewBankAccessRemaining(now + 59_000, now), '0h 01m remaining');
+  assert.equal(formatBrewBankAccessRemaining(now, now), null);
 });
 
 test('winning a bet returns the stake as profit and losing removes only the stake', () => {

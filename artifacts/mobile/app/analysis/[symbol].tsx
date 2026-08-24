@@ -3,6 +3,8 @@ import {
   View,
   Text,
   ScrollView,
+  Modal,
+  Pressable,
   TouchableOpacity,
   StyleSheet,
   Platform,
@@ -62,6 +64,46 @@ const PERIODS: { label: string; value: Period }[] = [
   { label: '2Y', value: '2y'  },
 ];
 
+type HelpTopic = 'technical' | 'fundamental';
+
+const METRIC_GUIDES: Record<HelpTopic, {
+  title: string;
+  intro: string;
+  items: { term: string; explanation: string }[];
+}> = {
+  technical: {
+    title: 'Understanding technicals',
+    intro: 'Technical analysis looks at price and trading activity to describe momentum, trend, and levels where buyers or sellers have reacted before.',
+    items: [
+      { term: 'Score', explanation: 'A 0–100 summary of the technical signals shown here. A higher score means more of the signals are currently supportive, not that a profit is guaranteed.' },
+      { term: 'RSI (14)', explanation: 'Relative Strength Index measures recent price momentum on a 0–100 scale. Below 30 can mean the stock has been sold heavily; above 70 can mean it has risen quickly. It is a clue, not an automatic buy or sell signal.' },
+      { term: 'Trend', explanation: 'The stock’s recent direction. Uptrend means prices have generally been making progress higher; downtrend means they have generally been moving lower.' },
+      { term: 'MACD Signal', explanation: 'A momentum comparison between short- and long-term price averages. Bullish suggests momentum is improving; bearish suggests momentum is weakening.' },
+      { term: 'Volume vs Avg', explanation: 'Today’s trading volume compared with its recent average. 2.00x means about twice the usual number of shares are changing hands.' },
+      { term: 'MA 20 / 50 / 200', explanation: 'Moving averages smooth price over 20, 50, or 200 trading days. Shorter averages react faster; the 200-day average gives a longer-term reference point.' },
+      { term: 'Support', explanation: 'An estimated price area where buyers have stepped in before. It can act like a floor, but it can also break.' },
+      { term: 'Resistance', explanation: 'An estimated price area where sellers have appeared before. It can act like a ceiling, but it can also be exceeded.' },
+      { term: 'Bollinger Upper / Lower', explanation: 'The upper and lower edges of a moving price range. A wider gap usually means more volatility; touching an edge does not by itself mean the price must reverse.' },
+    ],
+  },
+  fundamental: {
+    title: 'Understanding fundamentals',
+    intro: 'Fundamental analysis looks at a company’s business performance, valuation, profitability, debt, and shareholder payments.',
+    items: [
+      { term: 'Score', explanation: 'A 0–100 summary of the fundamental measures shown here. It reflects the current data available and is not a prediction of future returns.' },
+      { term: 'P/E Ratio', explanation: 'Price-to-earnings compares the share price with earnings per share. A higher number means investors are paying more for each dollar of current earnings.' },
+      { term: 'P/B Ratio', explanation: 'Price-to-book compares the company’s market value with the accounting value of its assets minus liabilities. It is most useful when compared with similar companies.' },
+      { term: 'EPS', explanation: 'Earnings per share is the portion of the company’s profit assigned to each share. It helps put the company’s total earnings into a per-share context.' },
+      { term: 'Revenue Growth', explanation: 'How quickly the company’s sales are increasing or decreasing. Growth is generally encouraging, but growth that does not become profit may not be sustainable.' },
+      { term: 'Earnings Growth', explanation: 'How quickly profit is increasing or decreasing. It can differ from revenue growth because costs, taxes, and other expenses affect earnings.' },
+      { term: 'Profit Margin', explanation: 'The percentage of revenue left as profit after expenses. A 20% margin means the company keeps about $0.20 from each $1.00 of revenue.' },
+      { term: 'Return on Equity', explanation: 'Profit generated for each dollar shareholders have invested in the company. Compare it with companies in the same industry because business models differ.' },
+      { term: 'Debt / Equity', explanation: 'The company’s debt compared with shareholders’ equity. More debt can increase risk, especially when interest rates or cash needs rise.' },
+      { term: 'Dividend Yield', explanation: 'Estimated yearly dividend payments as a percentage of the share price. Dividends can change or be suspended, so yield is not guaranteed income.' },
+    ],
+  },
+};
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function ScoreBar({ score, color }: { score: number; color: string }) {
@@ -105,12 +147,14 @@ const metricStyles = StyleSheet.create({
   value: { fontSize: 13 },
 });
 
-function SectionCard({ title, icon, score, scoreColor, children }: {
+function SectionCard({ title, icon, score, scoreColor, children, helpTopic, onHelp }: {
   title: string;
   icon: React.ReactNode;
   score?: number;
   scoreColor?: string;
   children: React.ReactNode;
+  helpTopic?: HelpTopic;
+  onHelp?: (topic: HelpTopic) => void;
 }) {
   const colors = useColors();
   return (
@@ -119,6 +163,21 @@ function SectionCard({ title, icon, score, scoreColor, children }: {
         <View style={cardStyles.titleRow}>
           {icon}
           <Text style={[cardStyles.title, { color: colors.foreground, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5 }]}>{title}</Text>
+          {helpTopic && onHelp && (
+            <TouchableOpacity
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                onHelp(helpTopic);
+              }}
+              style={cardStyles.helpButton}
+              hitSlop={8}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`Understand ${title.toLowerCase()} metrics`}
+            >
+              <Feather name="help-circle" size={17} color={colors.primary} />
+            </TouchableOpacity>
+          )}
         </View>
         {score != null && scoreColor && (
           <View style={cardStyles.scoreRow}>
@@ -137,6 +196,7 @@ const cardStyles = StyleSheet.create({
   header: { padding: 16, paddingBottom: 12 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   title: { fontSize: 14 },
+  helpButton: { marginLeft: 1 },
   scoreRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   scoreLabel: { fontSize: 11 },
   divider: { height: 1 },
@@ -193,6 +253,7 @@ export default function AnalysisScreen() {
   const isWatched = symbol ? watchlist.isWatched(symbol) : false;
   const activeAlert = symbol ? watchlist.activeAlertFor(symbol) : null;
   const [alertVisible, setAlertVisible] = useState(false);
+  const [helpTopic, setHelpTopic] = useState<HelpTopic | null>(null);
 
   const toggleWatchlist = useCallback(async () => {
     if (!symbol) return;
@@ -423,6 +484,7 @@ export default function AnalysisScreen() {
   // ─── Results ──────────────────────────────────────────────────────────────
   const { technical, fundamental, behavioral, recommendation } = data;
   const action = recommendation.action;
+  const guide = helpTopic ? METRIC_GUIDES[helpTopic] : null;
 
   return (
     <AmericanSteelBackground>
@@ -451,6 +513,65 @@ export default function AnalysisScreen() {
         onClose={() => setAlertVisible(false)}
         colors={colors}
       />
+      <Modal
+        visible={guide != null}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setHelpTopic(null)}
+      >
+        <Pressable style={guideStyles.backdrop} onPress={() => setHelpTopic(null)}>
+          <Pressable
+            style={[guideStyles.sheet, { backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={(event) => event.stopPropagation()}
+          >
+            <View style={guideStyles.sheetHeader}>
+              <View style={guideStyles.sheetTitleRow}>
+                <View style={[guideStyles.bookIcon, { backgroundColor: colors.primary }]}>
+                  <Feather name="book-open" size={16} color={colors.primaryForeground} />
+                </View>
+                <View style={guideStyles.sheetTitleCopy}>
+                  <Text style={[guideStyles.sheetEyebrow, { color: colors.primary, fontFamily: 'Inter_600SemiBold' }]}>
+                    BEGINNER GUIDE
+                  </Text>
+                  <Text style={[guideStyles.sheetTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+                    {guide?.title}
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => setHelpTopic(null)}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Close metric guide"
+              >
+                <Feather name="x" size={21} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              style={guideStyles.guideScroll}
+              contentContainerStyle={guideStyles.guideContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <Text style={[guideStyles.intro, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                {guide?.intro}
+              </Text>
+              {guide?.items.map((item) => (
+                <View key={item.term} style={[guideStyles.guideItem, { borderTopColor: colors.border }]}>
+                  <Text style={[guideStyles.term, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
+                    {item.term}
+                  </Text>
+                  <Text style={[guideStyles.explanation, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                    {item.explanation}
+                  </Text>
+                </View>
+              ))}
+              <Text style={[guideStyles.disclaimer, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                These indicators are educational context, not guarantees or personalized financial advice.
+              </Text>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
       {renderHeader(data)}
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: botPad + 24 }]}
@@ -555,6 +676,8 @@ export default function AnalysisScreen() {
           icon={<Ionicons name="stats-chart" size={16} color={colors.primary} />}
           score={technical.score}
           scoreColor={scoreColor(technical.score)}
+          helpTopic="technical"
+          onHelp={setHelpTopic}
         >
           <View style={{ padding: 16 }}>
             <View style={rsiStyles.container}>
@@ -602,6 +725,8 @@ export default function AnalysisScreen() {
           icon={<Ionicons name="business" size={16} color={colors.primary} />}
           score={fundamental.score}
           scoreColor={scoreColor(fundamental.score)}
+          helpTopic="fundamental"
+          onHelp={setHelpTopic}
         >
           <View style={{ padding: 16 }}>
             <MetricRow label="P/E Ratio" value={fmtNum(fundamental.pe)} />
@@ -878,6 +1003,41 @@ const srStyles = StyleSheet.create({
   title: { fontSize: 11, marginBottom: 2 },
   item: { flexDirection: 'row', gap: 6, alignItems: 'flex-start' },
   itemText: { fontSize: 12, flex: 1, lineHeight: 17 },
+});
+
+const guideStyles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.68)',
+  },
+  sheet: {
+    maxHeight: '86%',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderWidth: 1,
+    paddingTop: 18,
+    paddingHorizontal: 18,
+    paddingBottom: 8,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingBottom: 16,
+  },
+  sheetTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  bookIcon: { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  sheetTitleCopy: { flex: 1, gap: 2 },
+  sheetEyebrow: { fontSize: 10, letterSpacing: 1.2 },
+  sheetTitle: { fontSize: 20 },
+  guideScroll: { flexGrow: 0 },
+  guideContent: { paddingBottom: 18 },
+  intro: { fontSize: 14, lineHeight: 21, marginBottom: 8 },
+  guideItem: { borderTopWidth: 1, paddingVertical: 12 },
+  term: { fontSize: 14, marginBottom: 4 },
+  explanation: { fontSize: 13, lineHeight: 19 },
+  disclaimer: { fontSize: 11, lineHeight: 16, marginTop: 4 },
 });
 
 const chartCardStyles = StyleSheet.create({

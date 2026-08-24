@@ -1,0 +1,75 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "-4F8cTi22f-OOM-VyV--j"
+uri = "file://artifacts/mobile/assets/celebration/woman1.jpg"
+type = "image"
+title = "Patriotic celebration 1"
+
+[[outputs]]
+id = "gWi6JALvxk7lP1A8NZAch"
+uri = "file://artifacts/mobile/assets/celebration/woman2.jpg"
+type = "image"
+title = "Patriotic celebration 2"
+
+[[outputs]]
+id = "OGPI0mZJ-1ir-CpDyrLkt"
+uri = "file://artifacts/mobile/assets/celebration/woman3.jpg"
+type = "image"
+title = "Patriotic celebration 3"
+
+[[outputs]]
+id = "oJQzuMsfWhjjIxzOjuYhD"
+uri = "file://artifacts/mobile/assets/celebration/woman4.jpg"
+type = "image"
+title = "Updated celebration 4"
+
+[[outputs]]
+id = "l-0vuoEBs09yo_Yn4T01-"
+uri = "file://artifacts/mobile/assets/celebration/woman5.jpg"
+type = "image"
+title = "Updated celebration 5"
+
+[[outputs]]
+id = "Ylx6GOz8JnQXN_khpvz96"
+uri = "file://artifacts/mobile/assets/celebration/woman6.jpg"
+type = "image"
+title = "Updated celebration 6"
+
+[[outputs]]
+id = "DIV7VU0R1uWmvdNKZb7sE"
+uri = "file://artifacts/mobile/assets/celebration/woman7.jpg"
+type = "image"
+title = "Patriotic celebration 7"
+
+[[outputs]]
+id = "Qtb9--7p50V1YrMPpUrrI"
+uri = "file://artifacts/mobile/assets/celebration/woman8.jpg"
+type = "image"
+title = "Updated celebration 8"
+
+[[outputs]]
+id = "hS-KeeCWQd8lRyx-s56mJ"
+uri = "file://artifacts/mobile/assets/celebration/woman9.jpg"
+type = "image"
+title = "Updated celebration 9"
+
+[[outputs]]
+id = "cMBak46j2lRpMoN5MAMd-"
+uri = "file://artifacts/mobile/assets/celebration/woman10.jpg"
+type = "image"
+title = "Updated celebration 10"
+
+[[outputs]]
+id = "HEzfkl1hr1tKwpL-2I2aZ"
+uri = "file://artifacts/mobile/assets/celebration/dave.jpg"
+type = "image"
+title = "Dave Ramsey lookalike"
+
+[[outputs]]
+id = "9muEzx5TbdZ7qm6WKZiS0"
+uri = "file://artifacts/mobile/assets/images/icon.png"
+type = "image"
+title = "Meisner Method app logo"
+description = "Tightly cropped square logo with the centered visible gold frame, cleaned badge, and preserved gold glow."
