@@ -16,10 +16,12 @@ import * as Haptics from 'expo-haptics';
 import * as Speech from 'expo-speech';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
+  cancelAnimation,
   Easing,
   interpolate,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
   withSequence,
   withSpring,
   withTiming,
@@ -108,6 +110,10 @@ const MACHINE_STATUS_LINES = [
   'PRICING YOUR CONFIDENCE',
 ] as const;
 
+const SLOT_SYMBOLS = ['coffee', 'star', 'zap', 'award', 'trending-up'] as const;
+type SlotSymbol = typeof SLOT_SYMBOLS[number];
+const SLOT_REEL_HEIGHT = 58;
+
 export function BrewTokenBank({
   visible,
   colors,
@@ -147,9 +153,13 @@ export function BrewTokenBank({
   const machinePlayerRef = useRef<AudioPlayerHandle | null>(null);
   const winPlayerRef = useRef<AudioPlayerHandle | null>(null);
   const activeLossPhraseRef = useRef<LossPhrase | null>(null);
+  const reelStopTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const coinProgress = useSharedValue(0);
   const vaultPulse = useSharedValue(0);
   const resultProgress = useSharedValue(0);
+  const reelOnePosition = useSharedValue(0);
+  const reelTwoPosition = useSharedValue(0);
+  const reelThreePosition = useSharedValue(0);
 
   const stopLossVoice = (force = false) => {
     if (!force && activeLossPhraseRef.current?.protectedFromDismiss) return;
@@ -185,6 +195,9 @@ export function BrewTokenBank({
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
     if (balanceTimerRef.current) clearInterval(balanceTimerRef.current);
+    reelStopTimersRef.current.forEach(timer => clearTimeout(timer));
+    reelStopTimersRef.current = [];
+    [reelOnePosition, reelTwoPosition, reelThreePosition].forEach(position => cancelAnimation(position));
     stopMachineStatus();
     stopLossVoice(true);
     stopMachineSound();
@@ -264,6 +277,9 @@ export function BrewTokenBank({
       { scale: interpolate(resultProgress.value, [0, 1], [0.94, 1]) },
     ],
   }));
+  const reelOneStyle = useAnimatedStyle(() => ({ transform: [{ translateY: reelOnePosition.value }] }));
+  const reelTwoStyle = useAnimatedStyle(() => ({ transform: [{ translateY: reelTwoPosition.value }] }));
+  const reelThreeStyle = useAnimatedStyle(() => ({ transform: [{ translateY: reelThreePosition.value }] }));
 
   const bet = Math.min(Math.max(selectedBet, 1), Math.max(tokens, 1));
   const canPlay = tokens > 0 && !resolving && !protectedVoicePlaying;
@@ -376,6 +392,30 @@ export function BrewTokenBank({
     const won = Math.random() < BREW_TOKEN_WIN_PROBABILITY;
     setResult(null);
     setResolving(true);
+    reelStopTimersRef.current.forEach(timer => clearTimeout(timer));
+    reelStopTimersRef.current = [];
+    const reelPositions = [reelOnePosition, reelTwoPosition, reelThreePosition];
+    reelPositions.forEach(position => {
+      cancelAnimation(position);
+      position.value = withRepeat(
+        withSequence(
+          withTiming(-SLOT_REEL_HEIGHT * (SLOT_SYMBOLS.length - 1), { duration: 560, easing: Easing.linear }),
+          withTiming(0, { duration: 1 }),
+        ),
+        -1,
+        false,
+      );
+    });
+    const finalIndexes = won ? [0, 0, 0] : [1, 3, 4];
+    [650, 950, 1250].forEach((delay, index) => {
+      reelStopTimersRef.current.push(setTimeout(() => {
+        cancelAnimation(reelPositions[index]!);
+        reelPositions[index]!.value = withTiming(-finalIndexes[index]! * SLOT_REEL_HEIGHT, {
+          duration: 180,
+          easing: Easing.out(Easing.cubic),
+        });
+      }, delay));
+    });
     setMachineStatusIndex(0);
     stopMachineStatus();
     machineStatusTimerRef.current = setInterval(() => {
@@ -413,8 +453,24 @@ export function BrewTokenBank({
         );
         if (!won) void playLossVoice();
       });
-    }, 650);
+    }, 1450);
   };
+
+  const renderReel = (
+    positionStyle: any,
+    reelIndex: number,
+    tint: string,
+  ) => (
+    <View style={[styles.reelWindow, { borderColor: tint }]}>
+      <Animated.View style={positionStyle}>
+        {SLOT_SYMBOLS.map((symbol, symbolIndex) => (
+          <View style={styles.reelSymbol} key={`${reelIndex}-${symbol}`}>
+            <Feather name={symbol as SlotSymbol} size={reelIndex === 0 ? 28 : 31} color={tint} />
+          </View>
+        ))}
+      </Animated.View>
+    </View>
+  );
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
@@ -481,9 +537,11 @@ export function BrewTokenBank({
               style={[styles.vaultGlow, { backgroundColor: colors.gold }, vaultGlowAnimatedStyle]}
             />
             <View pointerEvents="none" style={[styles.vaultFloorShadow, { backgroundColor: colors.background }]} />
-            <Animated.View style={[styles.coinStage, coinAnimatedStyle]}>
-              <BrewCoin colors={colors} size={76} />
-            </Animated.View>
+            <View style={styles.slotMachine}>
+              {renderReel(reelOneStyle, 0, result ? (result.won ? colors.buyColor : colors.sellColor) : colors.gold)}
+              {renderReel(reelTwoStyle, 1, result ? (result.won ? colors.buyColor : colors.sellColor) : colors.gold)}
+              {renderReel(reelThreeStyle, 2, result ? (result.won ? colors.buyColor : colors.sellColor) : colors.gold)}
+            </View>
             <Text style={[styles.vaultLabel, { color: colors.gold, fontFamily: 'Inter_600SemiBold' }]}>BREW TOKEN RESERVE</Text>
             <Text style={[styles.balance, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>{displayedTokens}</Text>
             <Text style={[styles.balanceLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
@@ -774,7 +832,9 @@ const styles = StyleSheet.create({
   vaultRivetBottomRight: { bottom: 8, right: 8 },
   vaultGlow: { position: 'absolute', top: 12, width: 128, height: 128, borderRadius: 64 },
   vaultFloorShadow: { position: 'absolute', bottom: 21, width: 86, height: 10, borderRadius: 43, opacity: 0.42, transform: [{ scaleX: 1.35 }] },
-  coinStage: { marginBottom: 5 },
+  slotMachine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, height: SLOT_REEL_HEIGHT, marginBottom: 11 },
+  reelWindow: { width: 64, height: SLOT_REEL_HEIGHT, borderWidth: 1, borderRadius: 9, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.22)' },
+  reelSymbol: { width: 64, height: SLOT_REEL_HEIGHT, alignItems: 'center', justifyContent: 'center' },
   vaultLabel: { fontSize: 9, letterSpacing: 1.3 },
   balance: { fontSize: 35, lineHeight: 40, marginTop: 2 },
   balanceLabel: { fontSize: 9, letterSpacing: 1.1 },
