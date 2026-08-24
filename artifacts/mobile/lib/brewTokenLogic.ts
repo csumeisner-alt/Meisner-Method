@@ -39,7 +39,7 @@ export function canEnterBrewBank(
   expiresAt: number | null | undefined,
   now: number,
 ): boolean {
-  return !isWeekday(day) || keyCount > 0 || hasBrewBankAccess(expiresAt, now);
+  return !isWeekday(day) || hasBrewBankAccess(expiresAt, now);
 }
 
 export function formatBrewBankAccessRemaining(

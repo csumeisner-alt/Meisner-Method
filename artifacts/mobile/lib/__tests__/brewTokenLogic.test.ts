@@ -60,7 +60,7 @@ test('bank key access can only activate on weekdays and lasts twelve hours', () 
 test('weekday bank entry requires a key or active access', () => {
   const mondayMorning = new Date('2026-08-17T09:00:00').getTime();
   assert.equal(canEnterBrewBank(1, 0, null, mondayMorning), false);
-  assert.equal(canEnterBrewBank(1, 1, null, mondayMorning), true);
+  assert.equal(canEnterBrewBank(1, 1, null, mondayMorning), false);
   assert.equal(canEnterBrewBank(1, 0, mondayMorning + 1_000, mondayMorning), true);
   assert.equal(canEnterBrewBank(0, 0, null, mondayMorning), true);
 });
