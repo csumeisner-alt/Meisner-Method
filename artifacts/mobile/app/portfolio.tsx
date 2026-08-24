@@ -1482,7 +1482,7 @@ function GradeHistoryModal({
     if (bankEntryBusy || !BREW_BANK_ENABLED || !brewBankUnlocked) return;
 
     const day = new Date(countdownNow).getDay();
-    if (canEnterBrewBank(day, bankKeys, bankAccessExpiresAt, countdownNow)) {
+    if (canEnterBrewBank(day, bankAccessExpiresAt, countdownNow)) {
       setBrewBankVisible(true);
       return;
     }

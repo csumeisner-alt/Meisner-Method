@@ -35,7 +35,6 @@ export function hasBrewBankAccess(expiresAt: number | null | undefined, now: num
 
 export function canEnterBrewBank(
   day: number,
-  keyCount: number,
   expiresAt: number | null | undefined,
   now: number,
 ): boolean {
