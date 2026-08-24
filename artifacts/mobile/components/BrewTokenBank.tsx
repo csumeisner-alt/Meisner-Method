@@ -526,7 +526,7 @@ export function BrewTokenBank({
                 <View>
                   <Text style={[styles.shopTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>BANK ACCESS KEY</Text>
                   <Text style={[styles.shopDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                    Activate on a weekday for 12 hours inside the Central Bank.
+                    Weekday entry requires a key. Buy one for {BREW_BANK_KEY_PRICE} Brew Tokens, then activate it to unlock 12 hours inside the Central Bank.
                   </Text>
                 </View>
                 <Feather name="key" size={23} color={colors.gold} />
@@ -567,7 +567,7 @@ export function BrewTokenBank({
                   accessibilityLabel="Activate bank access key"
                 >
                   <Text style={[styles.shopButtonText, { color: colors.primaryForeground, fontFamily: 'Inter_700Bold' }]}>
-                    {bankAccessActive ? 'ACCESS ACTIVE' : 'ACTIVATE KEY'}
+                    {bankAccessActive ? 'ACCESS ACTIVE' : 'ACTIVATE KEY · 12H ENTRY'}
                   </Text>
                 </Pressable>
               </View>
