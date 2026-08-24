@@ -4,6 +4,7 @@ import {
   AppState,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -418,10 +419,22 @@ export function BrewTokenBank({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
       <View
-        style={[styles.overlay, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}
+        style={[
+          styles.overlay,
+          {
+            paddingTop: Math.max(insets.top, Constants.statusBarHeight ?? 0) + 12,
+            paddingBottom: Math.max(insets.bottom, 8) + 12,
+          },
+        ]}
         onTouchEnd={() => stopLossVoice()}
       >
-        <View style={[styles.shell, { backgroundColor: colors.card, borderColor: colors.goldMuted }]}>
+        <ScrollView
+          style={styles.modalScroll}
+          contentContainerStyle={styles.modalScrollContent}
+          showsVerticalScrollIndicator={false}
+          nestedScrollEnabled
+        >
+          <View style={[styles.shell, { backgroundColor: colors.card, borderColor: colors.goldMuted }]}>
           <View style={styles.header}>
             <View style={styles.headerCopy}>
               <Text style={[styles.eyebrow, { color: colors.gold, fontFamily: 'Inter_600SemiBold' }]}>WEEKEND FEATURE</Text>
@@ -711,7 +724,8 @@ export function BrewTokenBank({
           <Text style={[styles.footnote, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
             Fictional tokens only · no cash value · earn 1 token per weekday quote · {quotesViewed} quotes logged
           </Text>
-        </View>
+          </View>
+        </ScrollView>
       </View>
     </Modal>
   );
@@ -722,12 +736,16 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     backgroundColor: 'rgba(0,0,0,0.86)',
   },
+  modalScroll: { width: '100%' },
+  modalScrollContent: { flexGrow: 1, justifyContent: 'center', paddingVertical: 4 },
   shell: {
     width: '100%',
     maxWidth: 460,
+    alignSelf: 'center',
+    flexShrink: 1,
     borderWidth: 1,
     borderRadius: 16,
     padding: 18,
