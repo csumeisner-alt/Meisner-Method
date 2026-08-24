@@ -33,6 +33,15 @@ export function hasBrewBankAccess(expiresAt: number | null | undefined, now: num
   return typeof expiresAt === 'number' && Number.isFinite(expiresAt) && expiresAt > now;
 }
 
+export function canEnterBrewBank(
+  day: number,
+  keyCount: number,
+  expiresAt: number | null | undefined,
+  now: number,
+): boolean {
+  return !isWeekday(day) || keyCount > 0 || hasBrewBankAccess(expiresAt, now);
+}
+
 export function formatBrewBankAccessRemaining(
   expiresAt: number | null | undefined,
   now: number,
