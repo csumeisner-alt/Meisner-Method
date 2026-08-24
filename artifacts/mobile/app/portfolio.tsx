@@ -1425,6 +1425,7 @@ function GradeHistoryModal({
   const topPad = Platform.OS === 'web' ? 16 : insets.top;
   const [trainingTapeVisible, setTrainingTapeVisible] = useState(false);
   const [brewBankVisible, setBrewBankVisible] = useState(false);
+  const [bankEntryBusy, setBankEntryBusy] = useState(false);
   const [brewCelebrationVisible, setBrewCelebrationVisible] = useState(false);
   const [countdownNow, setCountdownNow] = useState(() => Date.now());
   const {
@@ -1477,13 +1478,29 @@ function GradeHistoryModal({
     clearJustUnlocked();
   }, [clearJustUnlocked, justUnlocked]);
 
-  const handleHeaderLongPress = () => {
-    if (
-      BREW_BANK_ENABLED
-      && brewBankUnlocked
-      && canEnterBrewBank(new Date(countdownNow).getDay(), bankKeys, bankAccessExpiresAt, countdownNow)
-    ) {
+  const handleOpenBank = async () => {
+    if (bankEntryBusy || !BREW_BANK_ENABLED || !brewBankUnlocked) return;
+
+    const day = new Date(countdownNow).getDay();
+    if (canEnterBrewBank(day, bankAccessExpiresAt, countdownNow)) {
       setBrewBankVisible(true);
+      return;
+    }
+
+    if (isWeekend || bankKeys <= 0) {
+      setTrainingTapeVisible(true);
+      return;
+    }
+
+    setBankEntryBusy(true);
+    const redeemed = await activateBankKey(countdownNow);
+    setBankEntryBusy(false);
+    if (redeemed) setBrewBankVisible(true);
+  };
+
+  const handleHeaderLongPress = () => {
+    if (BREW_BANK_ENABLED && brewBankUnlocked && (isWeekend || bankKeys > 0 || hasActiveBankAccess)) {
+      void handleOpenBank();
       return;
     }
     setTrainingTapeVisible(true);
@@ -1524,14 +1541,10 @@ function GradeHistoryModal({
             contentContainerStyle={[gradeModalStyles.content, { paddingBottom: Math.max(insets.bottom, 18) + 20 }]}
             showsVerticalScrollIndicator={false}
           >
-            {BREW_BANK_ENABLED && brewBankUnlocked && canEnterBrewBank(
-              new Date(countdownNow).getDay(),
-              bankKeys,
-              bankAccessExpiresAt,
-              countdownNow,
-            ) && (
+            {BREW_BANK_ENABLED && brewBankUnlocked && (isWeekend || bankKeys > 0 || hasActiveBankAccess) && (
               <Pressable
-                onPress={handleHeaderLongPress}
+                onPress={() => { void handleOpenBank(); }}
+                disabled={bankEntryBusy}
                 style={[gradeModalStyles.bankShortcut, { backgroundColor: colors.card, borderColor: colors.goldMuted }]}
                 accessibilityRole="button"
                 accessibilityLabel="Open Central Bank"
@@ -1550,7 +1563,7 @@ function GradeHistoryModal({
                       : isWeekend
                         ? 'OPEN THIS WEEKEND · NO KEY NEEDED'
                         : bankKeys > 0
-                          ? 'WEEKDAY ACCESS · KEY READY TO ACTIVATE'
+                          ? 'WEEKDAY ENTRY · REDEEM KEY TO ENTER'
                           : 'WEEKDAY ACCESS · USE A BANK KEY'}
                   </Text>
                 </View>

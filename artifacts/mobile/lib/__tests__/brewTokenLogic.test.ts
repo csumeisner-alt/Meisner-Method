@@ -57,12 +57,11 @@ test('bank key access can only activate on weekdays and lasts twelve hours', () 
   assert.equal(hasBrewBankAccess(mondayMorning + BREW_BANK_ACCESS_DURATION_MS, mondayMorning + BREW_BANK_ACCESS_DURATION_MS), false);
 });
 
-test('weekday bank entry requires a key or active access', () => {
+test('weekday bank entry requires redeemed active access', () => {
   const mondayMorning = new Date('2026-08-17T09:00:00').getTime();
-  assert.equal(canEnterBrewBank(1, 0, null, mondayMorning), false);
-  assert.equal(canEnterBrewBank(1, 1, null, mondayMorning), true);
-  assert.equal(canEnterBrewBank(1, 0, mondayMorning + 1_000, mondayMorning), true);
-  assert.equal(canEnterBrewBank(0, 0, null, mondayMorning), true);
+  assert.equal(canEnterBrewBank(1, null, mondayMorning), false);
+  assert.equal(canEnterBrewBank(1, mondayMorning + 1_000, mondayMorning), true);
+  assert.equal(canEnterBrewBank(0, null, mondayMorning), true);
 });
 
 test('bank access countdown formats remaining hours and minutes and expires at zero', () => {
