@@ -512,7 +512,7 @@ export function BrewTokenBank({
       );
     });
     const finalIndexes = won ? [0, 0, 0] : [1, 3, 4];
-    [1_700, 2_900, 4_100].forEach((delay, index) => {
+    [1_700, 2_900, 4_600].forEach((delay, index) => {
       reelStopTimersRef.current.push(setTimeout(() => {
         cancelAnimation(reelPositions[index]!);
         reelPositions[index]!.value = withTiming(-finalIndexes[index]! * SLOT_REEL_HEIGHT, {
