@@ -3,13 +3,20 @@ import test from 'node:test';
 import {
   BREW_BANK_ACCESS_DURATION_MS,
   BREW_BANK_KEY_PRICE,
+  BREW_TOKEN_WIN_PROBABILITY,
+  QUICK_REVIVE_BOTTLE_PRICE,
+  QUICK_REVIVE_UNLOCK_PRICE,
+  QUICK_REVIVE_WIN_PROBABILITY,
   claimQuoteView,
   BREW_TOKEN_QUOTE_THRESHOLD,
   createSerialWriteQueue,
   buyBrewBankKey,
+  buyQuickReviveBottle,
+  buyQuickReviveUnlock,
   canEnterBrewBank,
   canActivateBrewBankKey,
   formatBrewBankAccessRemaining,
+  getBrewWinProbability,
   hasBrewBankAccess,
   INITIAL_BREW_TOKENS,
   isBrewBankHalfway,
@@ -17,6 +24,7 @@ import {
   isWeekday,
   parseStoredNonNegative,
   resolveBrewBet,
+  redeemQuickReviveBottle,
 } from '../brewTokenLogic.ts';
 
 test('Brew Bank unlocks exactly when the quote threshold is crossed', () => {
@@ -46,6 +54,30 @@ test('weekday detection includes Monday through Friday only', () => {
 test('bank keys cost ten tokens and never overspend', () => {
   assert.deepEqual(buyBrewBankKey(12, 1), { tokenBalance: 2, keyCount: 2 });
   assert.equal(buyBrewBankKey(BREW_BANK_KEY_PRICE - 1, 0), null);
+});
+
+test('Quick Revive unlock costs forty tokens exactly once', () => {
+  assert.deepEqual(buyQuickReviveUnlock(QUICK_REVIVE_UNLOCK_PRICE, false), {
+    tokenBalance: 0,
+    unlocked: true,
+  });
+  assert.equal(buyQuickReviveUnlock(QUICK_REVIVE_UNLOCK_PRICE - 1, false), null);
+  assert.equal(buyQuickReviveUnlock(99, true), null);
+});
+
+test('Quick Revive bottles cost two tokens only after the item is unlocked', () => {
+  assert.equal(buyQuickReviveBottle(20, 0, false), null);
+  assert.equal(buyQuickReviveBottle(QUICK_REVIVE_BOTTLE_PRICE - 1, 0, true), null);
+  assert.deepEqual(buyQuickReviveBottle(7, 2, true), { tokenBalance: 5, bottleCount: 3 });
+  assert.deepEqual(buyQuickReviveBottle(2.9, -6, true), { tokenBalance: 0, bottleCount: 1 });
+});
+
+test('Quick Revive consumes one bottle to arm one boosted toss', () => {
+  assert.deepEqual(redeemQuickReviveBottle(2, false), { bottleCount: 1, armed: true });
+  assert.equal(redeemQuickReviveBottle(0, false), null);
+  assert.equal(redeemQuickReviveBottle(1, true), null);
+  assert.equal(getBrewWinProbability(false), BREW_TOKEN_WIN_PROBABILITY);
+  assert.equal(getBrewWinProbability(true), QUICK_REVIVE_WIN_PROBABILITY);
 });
 
 test('bank key access can only activate on weekdays and lasts twelve hours', () => {

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AccessibilityInfo,
   AppState,
   Modal,
   Pressable,
@@ -31,8 +32,10 @@ import Svg, { Circle, Line, Path } from 'react-native-svg';
 import type { ColorScheme } from '@/constants/colors';
 import {
   BREW_BANK_KEY_PRICE,
-  BREW_TOKEN_WIN_PROBABILITY,
+  QUICK_REVIVE_BOTTLE_PRICE,
+  QUICK_REVIVE_UNLOCK_PRICE,
   formatBrewBankAccessRemaining,
+  getBrewWinProbability,
   hasBrewBankAccess,
   isWeekday,
 } from '@/lib/brewTokenLogic';
@@ -51,6 +54,22 @@ export function BrewCoin({ colors, size = 66 }: { colors: ColorScheme; size?: nu
   );
 }
 
+function QuickReviveBottle({ size = 54, muted = false }: { size?: number; muted?: boolean }) {
+  const glass = muted ? '#77808b' : '#a9d7ed';
+  const liquid = muted ? '#4f6572' : '#168df2';
+  const cap = muted ? '#58616b' : '#b9c8d4';
+  return (
+    <Svg width={size} height={size * 1.34} viewBox="0 0 60 80" accessibilityLabel="Quick Revive blue lightning bottle">
+      <Path d="M23 4h14v10l5 7v45c0 6-5 10-12 10s-12-4-12-10V21l5-7V4Z" fill="rgba(225,246,255,0.12)" stroke={glass} strokeWidth="2.2" />
+      <Path d="M21 37h18v29c0 4-3.3 7-9 7s-9-3-9-7V37Z" fill={liquid} opacity={muted ? 0.52 : 0.9} />
+      <Path d="M25 4h10v5H25z" fill={cap} />
+      <Path d="M23 22h14" stroke={glass} strokeWidth="1.5" opacity="0.8" />
+      <Path d="M33 29l-8 13h6l-4 12 10-15h-6l2-10Z" fill="#fff" />
+      <Path d="M21 61c5 2 13 2 18 0" stroke="#e5f7ff" strokeOpacity="0.52" strokeWidth="1.2" />
+    </Svg>
+  );
+}
+
 type Props = {
   visible: boolean;
   colors: ColorScheme;
@@ -60,12 +79,18 @@ type Props = {
   hapticsEnabled: boolean;
   bankKeys: number;
   bankAccessExpiresAt: number | null;
+  quickReviveUnlocked: boolean;
+  quickReviveBottles: number;
+  quickReviveArmed: boolean;
   onClose: () => void;
   onResolveBet: (bet: number, won: boolean) => Promise<void>;
   onSoundEnabledChange: (value: boolean) => Promise<void>;
   onHapticsEnabledChange: (value: boolean) => Promise<void>;
   onBuyBankKey: () => Promise<boolean>;
   onActivateBankKey: () => Promise<boolean>;
+  onUnlockQuickRevive: () => Promise<boolean>;
+  onBuyQuickReviveBottle: () => Promise<boolean>;
+  onRedeemQuickRevive: () => Promise<boolean>;
 };
 
 type AudioPlayerHandle = {
@@ -123,16 +148,22 @@ export function BrewTokenBank({
   hapticsEnabled,
   bankKeys,
   bankAccessExpiresAt,
+  quickReviveUnlocked,
+  quickReviveBottles,
+  quickReviveArmed,
   onClose,
   onResolveBet,
   onSoundEnabledChange,
   onHapticsEnabledChange,
   onBuyBankKey,
   onActivateBankKey,
+  onUnlockQuickRevive,
+  onBuyQuickReviveBottle,
+  onRedeemQuickRevive,
 }: Props) {
   const insets = useSafeAreaInsets();
   const [selectedBet, setSelectedBet] = useState(1);
-  const [result, setResult] = useState<{ won: boolean; bet: number } | null>(null);
+  const [result, setResult] = useState<{ won: boolean; bet: number; boosted: boolean } | null>(null);
   const [resolving, setResolving] = useState(false);
   const [displayedTokens, setDisplayedTokens] = useState(tokens);
   const [lossVoicePlaying, setLossVoicePlaying] = useState(false);
@@ -143,6 +174,8 @@ export function BrewTokenBank({
   const [shopMessage, setShopMessage] = useState<string | null>(null);
   const [shopBusy, setShopBusy] = useState(false);
   const [countdownNow, setCountdownNow] = useState(() => Date.now());
+  const [quickReviveBurstVisible, setQuickReviveBurstVisible] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const balanceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const machineStatusTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -155,12 +188,14 @@ export function BrewTokenBank({
   const winPlayerRef = useRef<AudioPlayerHandle | null>(null);
   const activeLossPhraseRef = useRef<LossPhrase | null>(null);
   const reelStopTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const quickReviveBurstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const coinProgress = useSharedValue(0);
   const vaultPulse = useSharedValue(0);
   const resultProgress = useSharedValue(0);
   const reelOnePosition = useSharedValue(0);
   const reelTwoPosition = useSharedValue(0);
   const reelThreePosition = useSharedValue(0);
+  const quickReviveProgress = useSharedValue(0);
 
   const stopLossVoice = (force = false) => {
     if (!force && activeLossPhraseRef.current?.protectedFromDismiss) return;
@@ -196,6 +231,7 @@ export function BrewTokenBank({
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
     if (balanceTimerRef.current) clearInterval(balanceTimerRef.current);
+    if (quickReviveBurstTimerRef.current) clearTimeout(quickReviveBurstTimerRef.current);
     reelStopTimersRef.current.forEach(timer => clearTimeout(timer));
     reelStopTimersRef.current = [];
     [reelOnePosition, reelTwoPosition, reelThreePosition].forEach(position => cancelAnimation(position));
@@ -203,6 +239,12 @@ export function BrewTokenBank({
     stopLossVoice(true);
     stopMachineSound();
     stopWinSound();
+  }, []);
+
+  useEffect(() => {
+    void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {});
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => subscription.remove();
   }, []);
 
   useEffect(() => {
@@ -281,11 +323,29 @@ export function BrewTokenBank({
   const reelOneStyle = useAnimatedStyle(() => ({ transform: [{ translateY: reelOnePosition.value }] }));
   const reelTwoStyle = useAnimatedStyle(() => ({ transform: [{ translateY: reelTwoPosition.value }] }));
   const reelThreeStyle = useAnimatedStyle(() => ({ transform: [{ translateY: reelThreePosition.value }] }));
+  const quickReviveBottleStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(quickReviveProgress.value, [0, 0.42, 0.72, 1], [1, 1, 0.2, 0]),
+    transform: [
+      { translateY: interpolate(quickReviveProgress.value, [0, 0.4, 1], [0, -12, 14]) },
+      { rotateZ: `${interpolate(quickReviveProgress.value, [0, 0.38, 1], [0, -14, 22])}deg` },
+      { scale: interpolate(quickReviveProgress.value, [0, 0.5, 1], [0.9, 1.12, 0.58]) },
+    ],
+  }));
+  const quickReviveOozeStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(quickReviveProgress.value, [0, 0.35, 0.55, 1], [0, 0, 0.92, 0]),
+    transform: [
+      { translateY: interpolate(quickReviveProgress.value, [0, 0.55, 1], [-18, 4, 35]) },
+      { scaleX: interpolate(quickReviveProgress.value, [0, 0.55, 1], [0.45, 1.1, 1.55]) },
+      { scaleY: interpolate(quickReviveProgress.value, [0, 0.55, 1], [0.3, 1, 0.72]) },
+    ],
+  }));
 
   const bet = Math.min(Math.max(selectedBet, 1), Math.max(tokens, 1));
   const canPlay = tokens > 0 && !resolving && !protectedVoicePlaying;
   const bankAccessActive = hasBrewBankAccess(bankAccessExpiresAt, countdownNow);
   const canActivateKey = isWeekday(new Date().getDay()) && bankKeys > 0 && !bankAccessActive && !resolving;
+  const activeWinProbability = getBrewWinProbability(quickReviveArmed);
+  const activeOddsLabel = `${Math.round(activeWinProbability * 100)}%`;
 
   const handleBuyKey = async () => {
     if (tokens < BREW_BANK_KEY_PRICE || resolving || shopBusy) return;
@@ -301,6 +361,48 @@ export function BrewTokenBank({
     const activated = await onActivateBankKey();
     setShopMessage(activated ? 'ACCESS GRANTED FOR 12 HOURS' : 'KEYS CAN ONLY BE ACTIVATED ON WEEKDAYS');
     setShopBusy(false);
+  };
+
+  const handleUnlockQuickRevive = async () => {
+    if (tokens < QUICK_REVIVE_UNLOCK_PRICE || quickReviveUnlocked || resolving || shopBusy) return;
+    setShopBusy(true);
+    const unlocked = await onUnlockQuickRevive();
+    setShopMessage(unlocked ? 'QUICK REVIVE UNLOCKED · BOTTLES ARE NOW 2 TOKENS' : 'NOT ENOUGH BREW TOKENS');
+    setShopBusy(false);
+  };
+
+  const handleBuyQuickReviveBottle = async () => {
+    if (!quickReviveUnlocked || tokens < QUICK_REVIVE_BOTTLE_PRICE || resolving || shopBusy) return;
+    setShopBusy(true);
+    const purchased = await onBuyQuickReviveBottle();
+    setShopMessage(purchased ? 'QUICK REVIVE BOTTLE ADDED TO INVENTORY' : 'NOT ENOUGH BREW TOKENS');
+    setShopBusy(false);
+  };
+
+  const handleRedeemQuickRevive = async () => {
+    if (!quickReviveUnlocked || quickReviveBottles < 1 || quickReviveArmed || resolving || shopBusy) return;
+    setShopBusy(true);
+    const redeemed = await onRedeemQuickRevive();
+    setShopBusy(false);
+    if (!redeemed) return;
+
+    setShopMessage('QUICK REVIVE ARMED · NEXT TOSS HAS 62% ODDS');
+    if (hapticsEnabled) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    }
+    if (quickReviveBurstTimerRef.current) clearTimeout(quickReviveBurstTimerRef.current);
+    setQuickReviveBurstVisible(true);
+    quickReviveProgress.value = 0;
+    quickReviveProgress.value = reduceMotion
+      ? withTiming(1, { duration: 160 })
+      : withSequence(
+        withTiming(0.43, { duration: 240, easing: Easing.out(Easing.cubic) }),
+        withTiming(1, { duration: 720, easing: Easing.inOut(Easing.cubic) }),
+      );
+    quickReviveBurstTimerRef.current = setTimeout(
+      () => setQuickReviveBurstVisible(false),
+      reduceMotion ? 220 : 1080,
+    );
   };
 
   const accessExpiryLabel = bankAccessExpiresAt
@@ -390,7 +492,8 @@ export function BrewTokenBank({
 
   const handleBet = () => {
     if (!canPlay) return;
-    const won = Math.random() < BREW_TOKEN_WIN_PROBABILITY;
+    const boosted = quickReviveArmed;
+    const won = Math.random() < getBrewWinProbability(boosted);
     setResult(null);
     setResolving(true);
     reelStopTimersRef.current.forEach(timer => clearTimeout(timer));
@@ -445,7 +548,7 @@ export function BrewTokenBank({
             won ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning,
           ).catch(() => {});
         }
-        setResult({ won, bet });
+        setResult({ won, bet, boosted });
         setResolving(false);
         resultProgress.value = withSpring(1, { damping: 13, stiffness: 180 });
         vaultPulse.value = withSequence(
@@ -538,6 +641,18 @@ export function BrewTokenBank({
               style={[styles.vaultGlow, { backgroundColor: colors.gold }, vaultGlowAnimatedStyle]}
             />
             <View pointerEvents="none" style={[styles.vaultFloorShadow, { backgroundColor: colors.background }]} />
+             {quickReviveBurstVisible && (
+               <View pointerEvents="none" style={styles.quickReviveBurst}>
+                 <Animated.View style={[styles.quickReviveBurstBottle, quickReviveBottleStyle]}>
+                   <QuickReviveBottle size={40} />
+                 </Animated.View>
+                 <Animated.View style={[styles.quickReviveOoze, quickReviveOozeStyle]}>
+                   <View style={styles.quickReviveOozeDrop} />
+                   <View style={[styles.quickReviveOozeDrop, styles.quickReviveOozeDropWide]} />
+                   <View style={[styles.quickReviveOozeDrop, styles.quickReviveOozeDropSmall]} />
+                 </Animated.View>
+               </View>
+             )}
             <View style={styles.slotMachine}>
               {renderReel(reelOneStyle, 0, result ? (result.won ? colors.buyColor : colors.sellColor) : colors.gold)}
               {renderReel(reelTwoStyle, 1, result ? (result.won ? colors.buyColor : colors.sellColor) : colors.gold)}
@@ -630,6 +745,58 @@ export function BrewTokenBank({
                   </Text>
                 </Pressable>
               </View>
+               <View style={[styles.quickReviveShop, { borderTopColor: colors.border }]}>
+                 <View style={styles.shopHeadingRow}>
+                   <View style={styles.quickReviveShopCopy}>
+                     <Text style={[styles.shopTitle, { color: quickReviveUnlocked ? colors.foreground : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+                       QUICK REVIVE
+                     </Text>
+                     <Text style={[styles.shopDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                       Break one into the machine before a toss to raise your next win chance by 7 points, from 55% to 62%.
+                     </Text>
+                   </View>
+                   <QuickReviveBottle size={31} muted={!quickReviveUnlocked} />
+                 </View>
+                 <View style={styles.inventoryRow}>
+                   <Text style={[styles.inventoryLabel, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>BOTTLES IN INVENTORY</Text>
+                   <Text style={[styles.inventoryValue, { color: quickReviveUnlocked ? colors.gold : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+                     {quickReviveUnlocked ? quickReviveBottles : 'LOCKED'}
+                   </Text>
+                 </View>
+                 {!quickReviveUnlocked ? (
+                   <Pressable
+                     onPress={() => { void handleUnlockQuickRevive(); }}
+                     disabled={tokens < QUICK_REVIVE_UNLOCK_PRICE || resolving || shopBusy}
+                     style={[
+                       styles.shopButton,
+                       { borderColor: colors.border, backgroundColor: colors.card },
+                       (tokens < QUICK_REVIVE_UNLOCK_PRICE || resolving || shopBusy) && styles.disabled,
+                     ]}
+                     accessibilityRole="button"
+                     accessibilityLabel={`Unlock Quick Revive for ${QUICK_REVIVE_UNLOCK_PRICE} Brew Tokens`}
+                   >
+                     <Text style={[styles.shopButtonText, { color: colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+                       UNLOCK RECIPE · {QUICK_REVIVE_UNLOCK_PRICE} TOKENS
+                     </Text>
+                   </Pressable>
+                 ) : (
+                   <Pressable
+                     onPress={() => { void handleBuyQuickReviveBottle(); }}
+                     disabled={tokens < QUICK_REVIVE_BOTTLE_PRICE || resolving || shopBusy}
+                     style={[
+                       styles.shopButton,
+                       { borderColor: colors.goldMuted },
+                       (tokens < QUICK_REVIVE_BOTTLE_PRICE || resolving || shopBusy) && styles.disabled,
+                     ]}
+                     accessibilityRole="button"
+                     accessibilityLabel={`Buy one Quick Revive bottle for ${QUICK_REVIVE_BOTTLE_PRICE} Brew Tokens`}
+                   >
+                     <Text style={[styles.shopButtonText, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
+                       BUY BOTTLE · {QUICK_REVIVE_BOTTLE_PRICE} TOKENS
+                     </Text>
+                   </Pressable>
+                 )}
+               </View>
               {shopMessage && (
                 <Text style={[styles.shopMessage, { color: colors.gold, fontFamily: 'Inter_600SemiBold' }]}>{shopMessage}</Text>
               )}
@@ -662,6 +829,38 @@ export function BrewTokenBank({
               </Pressable>
             </View>
           </View>
+
+          {quickReviveUnlocked && (
+            <Pressable
+              onPress={() => { void handleRedeemQuickRevive(); }}
+              disabled={quickReviveBottles < 1 || quickReviveArmed || resolving || shopBusy}
+              style={[
+                styles.quickReviveArm,
+                { borderColor: quickReviveArmed ? colors.buyColor : colors.goldMuted, backgroundColor: colors.steelShadow },
+                (quickReviveBottles < 1 || quickReviveArmed || resolving || shopBusy) && !quickReviveArmed && styles.disabled,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={
+                quickReviveArmed
+                  ? 'Quick Revive armed. Your next toss has 62 percent odds.'
+                  : `Redeem a Quick Revive bottle. ${quickReviveBottles} bottles available.`
+              }
+              accessibilityState={{ disabled: quickReviveBottles < 1 || quickReviveArmed || resolving || shopBusy }}
+            >
+              <QuickReviveBottle size={26} muted={!quickReviveArmed && quickReviveBottles < 1} />
+              <View style={styles.quickReviveArmCopy}>
+                <Text style={[styles.quickReviveArmTitle, { color: quickReviveArmed ? colors.buyColor : colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+                  {quickReviveArmed ? 'QUICK REVIVE ARMED · 62% ODDS' : 'REDEEM QUICK REVIVE · +7% ODDS'}
+                </Text>
+                <Text style={[styles.quickReviveArmDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                  {quickReviveArmed
+                    ? 'Blue liquid is in the machine. It applies to your next toss only.'
+                    : `${quickReviveBottles} ${quickReviveBottles === 1 ? 'BOTTLE' : 'BOTTLES'} READY · CONSUMES ONE BOTTLE`}
+                </Text>
+              </View>
+              <Feather name={quickReviveArmed ? 'check-circle' : 'zap'} size={17} color={quickReviveArmed ? colors.buyColor : colors.gold} />
+            </Pressable>
+          )}
 
           <Pressable
             onPress={() => setPayoutPreviewOpen(value => !value)}
@@ -700,7 +899,7 @@ export function BrewTokenBank({
                 <View style={[styles.payoutDivider, { backgroundColor: colors.border }]} />
                 <View style={styles.payoutColumn}>
                   <Text style={[styles.payoutLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>ODDS</Text>
-                  <Text style={[styles.payoutValue, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>55%</Text>
+                  <Text style={[styles.payoutValue, { color: quickReviveArmed ? colors.buyColor : colors.gold, fontFamily: 'Inter_700Bold' }]}>{activeOddsLabel}</Text>
                   <Text style={[styles.payoutUnit, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>TO WIN</Text>
                 </View>
               </View>
@@ -740,6 +939,11 @@ export function BrewTokenBank({
                   ? `+${result.bet} ${result.bet === 1 ? 'TOKEN' : 'TOKENS'} · NEW BALANCE ${tokens}`
                   : `−${result.bet} ${result.bet === 1 ? 'TOKEN' : 'TOKENS'} · NEW BALANCE ${tokens}`}
               </Text>
+              {result.boosted && (
+                <Text style={[styles.resultHint, { color: colors.buyColor, fontFamily: 'Inter_600SemiBold' }]}>
+                  QUICK REVIVE APPLIED · 62% ODDS WERE ACTIVE
+                </Text>
+              )}
               {!result.won && soundEnabled && (
                 <Text style={[styles.resultHint, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                   A message from the vault is incoming.
@@ -848,6 +1052,12 @@ const styles = StyleSheet.create({
   vaultRivetBottomRight: { bottom: 8, right: 8 },
   vaultGlow: { position: 'absolute', top: 12, width: 128, height: 128, borderRadius: 64 },
   vaultFloorShadow: { position: 'absolute', bottom: 21, width: 86, height: 10, borderRadius: 43, opacity: 0.42, transform: [{ scaleX: 1.35 }] },
+  quickReviveBurst: { position: 'absolute', top: 10, bottom: 8, left: 0, right: 0, alignItems: 'center', justifyContent: 'center' },
+  quickReviveBurstBottle: { position: 'absolute', top: 3 },
+  quickReviveOoze: { position: 'absolute', top: 63, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  quickReviveOozeDrop: { width: 26, height: 17, borderRadius: 13, backgroundColor: '#168df2', shadowColor: '#168df2', shadowOpacity: 0.9, shadowRadius: 9, elevation: 6 },
+  quickReviveOozeDropWide: { width: 39, height: 11, opacity: 0.82 },
+  quickReviveOozeDropSmall: { width: 12, height: 12, opacity: 0.72 },
   slotMachine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, height: SLOT_REEL_HEIGHT, marginBottom: 11 },
   reelWindow: { width: 64, height: SLOT_REEL_HEIGHT, borderWidth: 1, borderRadius: 9, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.22)' },
   reelSymbol: { width: 64, height: SLOT_REEL_HEIGHT, alignItems: 'center', justifyContent: 'center' },
@@ -873,11 +1083,17 @@ const styles = StyleSheet.create({
   shopActions: { gap: 8, marginTop: 12 },
   shopButton: { minHeight: 38, borderWidth: 1, borderRadius: 8, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 10 },
   shopButtonText: { fontSize: 10, letterSpacing: 0.5 },
+  quickReviveShop: { borderTopWidth: 1, marginTop: 14, paddingTop: 13 },
+  quickReviveShopCopy: { flex: 1 },
   shopMessage: { fontSize: 9, letterSpacing: 0.7, textAlign: 'center', marginTop: 10 },
   sectionLabel: { fontSize: 9, letterSpacing: 1 },
   betValue: { fontSize: 18, marginTop: 3 },
   stepper: { flexDirection: 'row', gap: 7 },
   stepButton: { width: 36, height: 34, borderWidth: 1, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  quickReviveArm: { minHeight: 58, borderWidth: 1, borderRadius: 9, marginTop: 12, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', gap: 9 },
+  quickReviveArmCopy: { flex: 1, gap: 3 },
+  quickReviveArmTitle: { fontSize: 9, letterSpacing: 0.55 },
+  quickReviveArmDescription: { fontSize: 8, lineHeight: 12, letterSpacing: 0.15 },
   disabled: { opacity: 0.4 },
   payoutPreview: { borderWidth: 1, borderRadius: 9, marginTop: 13, paddingVertical: 10, paddingHorizontal: 12 },
   payoutToggle: { minHeight: 36, borderWidth: 1, borderRadius: 9, marginTop: 13, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

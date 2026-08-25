@@ -7,9 +7,12 @@
 export const BREW_TOKEN_QUOTE_THRESHOLD = 22;
 export const INITIAL_BREW_TOKENS = 5;
 export const BREW_TOKEN_WIN_PROBABILITY = 0.55;
+export const QUICK_REVIVE_WIN_PROBABILITY = 0.62;
 export const MAX_REMEMBERED_QUOTE_VIEWS = 32;
 export const BREW_BANK_KEY_PRICE = 10;
 export const BREW_BANK_ACCESS_DURATION_MS = 12 * 60 * 60 * 1000;
+export const QUICK_REVIVE_UNLOCK_PRICE = 40;
+export const QUICK_REVIVE_BOTTLE_PRICE = 2;
 
 export function parseStoredNonNegative(raw: string | null | undefined): number {
   if (!raw) return 0;
@@ -72,6 +75,42 @@ export function buyBrewBankKey(
     tokenBalance: safeBalance - BREW_BANK_KEY_PRICE,
     keyCount: safeKeys + 1,
   };
+}
+
+export function buyQuickReviveUnlock(
+  tokenBalance: number,
+  alreadyUnlocked: boolean,
+): { tokenBalance: number; unlocked: true } | null {
+  const safeBalance = Math.max(0, Math.floor(tokenBalance));
+  if (alreadyUnlocked || safeBalance < QUICK_REVIVE_UNLOCK_PRICE) return null;
+  return { tokenBalance: safeBalance - QUICK_REVIVE_UNLOCK_PRICE, unlocked: true };
+}
+
+export function buyQuickReviveBottle(
+  tokenBalance: number,
+  bottleCount: number,
+  unlocked: boolean,
+): { tokenBalance: number; bottleCount: number } | null {
+  const safeBalance = Math.max(0, Math.floor(tokenBalance));
+  const safeBottles = Math.max(0, Math.floor(bottleCount));
+  if (!unlocked || safeBalance < QUICK_REVIVE_BOTTLE_PRICE) return null;
+  return {
+    tokenBalance: safeBalance - QUICK_REVIVE_BOTTLE_PRICE,
+    bottleCount: safeBottles + 1,
+  };
+}
+
+export function redeemQuickReviveBottle(
+  bottleCount: number,
+  alreadyArmed: boolean,
+): { bottleCount: number; armed: true } | null {
+  const safeBottles = Math.max(0, Math.floor(bottleCount));
+  if (alreadyArmed || safeBottles < 1) return null;
+  return { bottleCount: safeBottles - 1, armed: true };
+}
+
+export function getBrewWinProbability(quickReviveArmed: boolean): number {
+  return quickReviveArmed ? QUICK_REVIVE_WIN_PROBABILITY : BREW_TOKEN_WIN_PROBABILITY;
 }
 
 export function resolveBrewBet(balance: number, bet: number, won: boolean): number {

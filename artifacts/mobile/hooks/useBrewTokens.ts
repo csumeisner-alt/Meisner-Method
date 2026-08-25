@@ -4,6 +4,8 @@ import {
   BREW_TOKEN_QUOTE_THRESHOLD,
   BREW_BANK_ACCESS_DURATION_MS,
   buyBrewBankKey,
+  buyQuickReviveBottle as purchaseQuickReviveBottle,
+  buyQuickReviveUnlock,
   canActivateBrewBankKey,
   INITIAL_BREW_TOKENS,
   claimQuoteView,
@@ -13,6 +15,7 @@ import {
   isWeekday,
   hasBrewBankAccess,
   parseStoredNonNegative,
+  redeemQuickReviveBottle as armQuickReviveBottle,
   resolveBrewBet,
 } from '@/lib/brewTokenLogic';
 
@@ -23,6 +26,9 @@ const BREW_SOUND_KEY = '@stocksense/brew_sound_enabled_v1';
 const BREW_HAPTICS_KEY = '@stocksense/brew_haptics_enabled_v1';
 const BREW_BANK_KEYS_KEY = '@stocksense/brew_bank_keys_v1';
 const BREW_BANK_ACCESS_EXPIRES_KEY = '@stocksense/brew_bank_access_expires_v1';
+const QUICK_REVIVE_UNLOCKED_KEY = '@stocksense/quick_revive_unlocked_v1';
+const QUICK_REVIVE_BOTTLES_KEY = '@stocksense/quick_revive_bottles_v1';
+const QUICK_REVIVE_ARMED_KEY = '@stocksense/quick_revive_armed_v1';
 
 export interface BrewTokenState {
   quotesViewed: number;
@@ -32,6 +38,9 @@ export interface BrewTokenState {
   hapticsEnabled: boolean;
   bankKeys: number;
   bankAccessExpiresAt: number | null;
+  quickReviveUnlocked: boolean;
+  quickReviveBottles: number;
+  quickReviveArmed: boolean;
   justUnlocked: boolean;
   incrementQuoteViewed: (quoteViewId?: string) => Promise<QuoteViewUpdate>;
   resolveBet: (bet: number, won: boolean) => Promise<void>;
@@ -39,6 +48,9 @@ export interface BrewTokenState {
   setHapticsEnabled: (value: boolean) => Promise<void>;
   buyBankKey: () => Promise<boolean>;
   activateBankKey: (now?: number) => Promise<boolean>;
+  unlockQuickRevive: () => Promise<boolean>;
+  buyQuickReviveBottle: () => Promise<boolean>;
+  redeemQuickReviveBottle: () => Promise<boolean>;
   clearJustUnlocked: () => void;
 }
 
@@ -56,12 +68,18 @@ export function useBrewTokens(): BrewTokenState {
   const [justUnlocked, setJustUnlocked] = useState(false);
   const [bankKeys, setBankKeys] = useState(0);
   const [bankAccessExpiresAt, setBankAccessExpiresAt] = useState<number | null>(null);
+  const [quickReviveUnlocked, setQuickReviveUnlocked] = useState(false);
+  const [quickReviveBottles, setQuickReviveBottles] = useState(0);
+  const [quickReviveArmed, setQuickReviveArmed] = useState(false);
 
   const quotesRef = useRef(0);
   const unlockedRef = useRef(false);
   const tokensRef = useRef(0);
   const bankKeysRef = useRef(0);
   const bankAccessExpiresAtRef = useRef<number | null>(null);
+  const quickReviveUnlockedRef = useRef(false);
+  const quickReviveBottlesRef = useRef(0);
+  const quickReviveArmedRef = useRef(false);
   const rememberedQuoteViewsRef = useRef(new Set<string>());
   const writeQueueRef = useRef<ReturnType<typeof createSerialWriteQueue> | null>(null);
   const hydrationRef = useRef<{ promise: Promise<void>; resolve: () => void } | null>(null);
@@ -85,7 +103,21 @@ export function useBrewTokens(): BrewTokenState {
       AsyncStorage.getItem(BREW_HAPTICS_KEY),
       AsyncStorage.getItem(BREW_BANK_KEYS_KEY),
       AsyncStorage.getItem(BREW_BANK_ACCESS_EXPIRES_KEY),
-    ]).then(([rawQuotes, rawUnlocked, rawTokens, rawSound, rawHaptics, rawKeys, rawAccessExpires]) => {
+      AsyncStorage.getItem(QUICK_REVIVE_UNLOCKED_KEY),
+      AsyncStorage.getItem(QUICK_REVIVE_BOTTLES_KEY),
+      AsyncStorage.getItem(QUICK_REVIVE_ARMED_KEY),
+    ]).then(([
+      rawQuotes,
+      rawUnlocked,
+      rawTokens,
+      rawSound,
+      rawHaptics,
+      rawKeys,
+      rawAccessExpires,
+      rawQuickReviveUnlocked,
+      rawQuickReviveBottles,
+      rawQuickReviveArmed,
+    ]) => {
       const viewed = parseStoredNonNegative(rawQuotes);
       const unlocked = viewed >= BREW_TOKEN_QUOTE_THRESHOLD || rawUnlocked === 'true';
       const tokens = unlocked
@@ -96,17 +128,26 @@ export function useBrewTokens(): BrewTokenState {
       const accessExpires = parsedExpires != null && Number.isFinite(parsedExpires) && parsedExpires > 0
         ? parsedExpires
         : null;
+      const reviveUnlocked = rawQuickReviveUnlocked === 'true';
+      const reviveBottles = reviveUnlocked ? parseStoredNonNegative(rawQuickReviveBottles) : 0;
+      const reviveArmed = reviveUnlocked && rawQuickReviveArmed === 'true';
 
       quotesRef.current = viewed;
       unlockedRef.current = unlocked;
       tokensRef.current = tokens;
       bankKeysRef.current = keys;
       bankAccessExpiresAtRef.current = accessExpires;
+      quickReviveUnlockedRef.current = reviveUnlocked;
+      quickReviveBottlesRef.current = reviveBottles;
+      quickReviveArmedRef.current = reviveArmed;
       setQuotesViewed(viewed);
       setIsUnlocked(unlocked);
       setBrewTokens(tokens);
       setBankKeys(keys);
       setBankAccessExpiresAt(accessExpires);
+      setQuickReviveUnlocked(reviveUnlocked);
+      setQuickReviveBottles(reviveBottles);
+      setQuickReviveArmed(reviveArmed);
       setSoundEnabledState(rawSound !== 'false');
       setHapticsEnabledState(rawHaptics !== 'false');
     }).catch(() => {
@@ -183,8 +224,14 @@ export function useBrewTokens(): BrewTokenState {
     const next = resolveBrewBet(tokensRef.current, bet, won);
     tokensRef.current = next;
     setBrewTokens(next);
+    const hadQuickReviveArmed = quickReviveArmedRef.current;
+    quickReviveArmedRef.current = false;
+    setQuickReviveArmed(false);
     await writeQueueRef.current!(
-      () => AsyncStorage.setItem(BREW_TOKENS_KEY, String(next)),
+      () => Promise.all([
+        AsyncStorage.setItem(BREW_TOKENS_KEY, String(next)),
+        ...(hadQuickReviveArmed ? [AsyncStorage.removeItem(QUICK_REVIVE_ARMED_KEY)] : []),
+      ]).then(() => undefined),
     ).catch(() => {});
   }, []);
 
@@ -236,6 +283,55 @@ export function useBrewTokens(): BrewTokenState {
     return true;
   }, []);
 
+  const unlockQuickRevive = useCallback(async () => {
+    await hydrationRef.current!.promise;
+    const next = buyQuickReviveUnlock(tokensRef.current, quickReviveUnlockedRef.current);
+    if (!next) return false;
+    tokensRef.current = next.tokenBalance;
+    quickReviveUnlockedRef.current = true;
+    setBrewTokens(next.tokenBalance);
+    setQuickReviveUnlocked(true);
+    await writeQueueRef.current!(() => Promise.all([
+      AsyncStorage.setItem(BREW_TOKENS_KEY, String(next.tokenBalance)),
+      AsyncStorage.setItem(QUICK_REVIVE_UNLOCKED_KEY, 'true'),
+    ]).then(() => undefined)).catch(() => {});
+    return true;
+  }, []);
+
+  const buyQuickReviveBottle = useCallback(async () => {
+    await hydrationRef.current!.promise;
+    const next = purchaseQuickReviveBottle(
+      tokensRef.current,
+      quickReviveBottlesRef.current,
+      quickReviveUnlockedRef.current,
+    );
+    if (!next) return false;
+    tokensRef.current = next.tokenBalance;
+    quickReviveBottlesRef.current = next.bottleCount;
+    setBrewTokens(next.tokenBalance);
+    setQuickReviveBottles(next.bottleCount);
+    await writeQueueRef.current!(() => Promise.all([
+      AsyncStorage.setItem(BREW_TOKENS_KEY, String(next.tokenBalance)),
+      AsyncStorage.setItem(QUICK_REVIVE_BOTTLES_KEY, String(next.bottleCount)),
+    ]).then(() => undefined)).catch(() => {});
+    return true;
+  }, []);
+
+  const redeemQuickReviveBottle = useCallback(async () => {
+    await hydrationRef.current!.promise;
+    const next = armQuickReviveBottle(quickReviveBottlesRef.current, quickReviveArmedRef.current);
+    if (!next) return false;
+    quickReviveBottlesRef.current = next.bottleCount;
+    quickReviveArmedRef.current = true;
+    setQuickReviveBottles(next.bottleCount);
+    setQuickReviveArmed(true);
+    await writeQueueRef.current!(() => Promise.all([
+      AsyncStorage.setItem(QUICK_REVIVE_BOTTLES_KEY, String(next.bottleCount)),
+      AsyncStorage.setItem(QUICK_REVIVE_ARMED_KEY, 'true'),
+    ]).then(() => undefined)).catch(() => {});
+    return true;
+  }, []);
+
   const clearJustUnlocked = useCallback(() => setJustUnlocked(false), []);
 
   return {
@@ -246,6 +342,9 @@ export function useBrewTokens(): BrewTokenState {
     hapticsEnabled,
     bankKeys,
     bankAccessExpiresAt,
+    quickReviveUnlocked,
+    quickReviveBottles,
+    quickReviveArmed,
     justUnlocked,
     incrementQuoteViewed,
     resolveBet,
@@ -253,6 +352,9 @@ export function useBrewTokens(): BrewTokenState {
     setHapticsEnabled,
     buyBankKey,
     activateBankKey,
+    unlockQuickRevive,
+    buyQuickReviveBottle,
+    redeemQuickReviveBottle,
     clearJustUnlocked,
   };
 }

@@ -1441,8 +1441,14 @@ function GradeHistoryModal({
     setHapticsEnabled,
     bankKeys,
     bankAccessExpiresAt,
+    quickReviveUnlocked,
+    quickReviveBottles,
+    quickReviveArmed,
     buyBankKey,
     activateBankKey,
+    unlockQuickRevive,
+    buyQuickReviveBottle,
+    redeemQuickReviveBottle,
     clearJustUnlocked,
   } = useBrewTokens();
   const isWeekend = [0, 6].includes(new Date().getDay());
@@ -1596,12 +1602,18 @@ function GradeHistoryModal({
                 hapticsEnabled={hapticsEnabled}
                 bankKeys={bankKeys}
                 bankAccessExpiresAt={bankAccessExpiresAt}
+                quickReviveUnlocked={quickReviveUnlocked}
+                quickReviveBottles={quickReviveBottles}
+                quickReviveArmed={quickReviveArmed}
                 onClose={() => setBrewBankVisible(false)}
                 onResolveBet={resolveBet}
                 onSoundEnabledChange={setSoundEnabled}
                 onHapticsEnabledChange={setHapticsEnabled}
                 onBuyBankKey={buyBankKey}
                 onActivateBankKey={activateBankKey}
+                onUnlockQuickRevive={unlockQuickRevive}
+                onBuyQuickReviveBottle={buyQuickReviveBottle}
+                onRedeemQuickRevive={redeemQuickReviveBottle}
               />
               <BrewTokenUnlockCelebration
                 visible={brewCelebrationVisible}
