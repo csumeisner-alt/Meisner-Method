@@ -1505,10 +1505,6 @@ function GradeHistoryModal({
   };
 
   const handleHeaderLongPress = () => {
-    if (BREW_BANK_ENABLED && brewBankUnlocked && (isWeekend || bankKeys > 0 || hasActiveBankAccess)) {
-      void handleOpenBank();
-      return;
-    }
     setTrainingTapeVisible(true);
   };
 
