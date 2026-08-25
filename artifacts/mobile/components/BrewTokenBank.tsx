@@ -138,6 +138,7 @@ const MACHINE_STATUS_LINES = [
 const SLOT_SYMBOLS = ['coffee', 'star', 'zap', 'award', 'trending-up'] as const;
 type SlotSymbol = typeof SLOT_SYMBOLS[number];
 const SLOT_REEL_HEIGHT = 58;
+const BREW_BET_RESOLUTION_MS = 5_000;
 
 export function BrewTokenBank({
   visible,
@@ -511,7 +512,7 @@ export function BrewTokenBank({
       );
     });
     const finalIndexes = won ? [0, 0, 0] : [1, 3, 4];
-    [650, 950, 1250].forEach((delay, index) => {
+    [1_700, 2_900, 4_100].forEach((delay, index) => {
       reelStopTimersRef.current.push(setTimeout(() => {
         cancelAnimation(reelPositions[index]!);
         reelPositions[index]!.value = withTiming(-finalIndexes[index]! * SLOT_REEL_HEIGHT, {
@@ -557,7 +558,7 @@ export function BrewTokenBank({
         );
         if (!won) void playLossVoice();
       });
-    }, 1450);
+    }, BREW_BET_RESOLUTION_MS);
   };
 
   const renderReel = (
