@@ -32,9 +32,14 @@ import Svg, { Circle, Line, Path } from 'react-native-svg';
 import type { ColorScheme } from '@/constants/colors';
 import {
   BREW_BANK_KEY_PRICE,
+  DAIQUIRI_BOTTLE_PRICE,
+  DAIQUIRI_LOSS_PROBABILITY,
+  DAIQUIRI_PAYOUT_MULTIPLIER,
+  DAIQUIRI_UNLOCK_PRICE,
   QUICK_REVIVE_BOTTLE_PRICE,
   QUICK_REVIVE_UNLOCK_PRICE,
   formatBrewBankAccessRemaining,
+  getDaiquiriWinProbability,
   getBrewWinProbability,
   hasBrewBankAccess,
   isWeekday,
@@ -70,6 +75,24 @@ function QuickReviveBottle({ size = 54, muted = false }: { size?: number; muted?
   );
 }
 
+function DaiquiriBottle({ size = 54, muted = false }: { size?: number; muted?: boolean }) {
+  const glass = muted ? '#77808b' : '#b9eaff';
+  const yellow = muted ? '#6e6940' : '#f6d64a';
+  const blue = muted ? '#4f6572' : '#69c8ff';
+  const cap = muted ? '#58616b' : '#d7eefb';
+  return (
+    <Svg width={size} height={size * 1.34} viewBox="0 0 60 80" accessibilityLabel="Dave Ramsey Daiquiri light blue bottle with yellow liquid and white D">
+      <Path d="M23 4h14v10l5 7v45c0 6-5 10-12 10s-12-4-12-10V21l5-7V4Z" fill="rgba(205,244,255,0.14)" stroke={glass} strokeWidth="2.2" />
+      <Path d="M21 37h18v29c0 4-3.3 7-9 7s-9-3-9-7V37Z" fill={yellow} opacity={muted ? 0.48 : 0.92} />
+      <Path d="M21 37h18v10H21z" fill={blue} opacity={muted ? 0.44 : 0.8} />
+      <Path d="M25 4h10v5H25z" fill={cap} />
+      <Path d="M23 22h14" stroke={glass} strokeWidth="1.5" opacity="0.85" />
+      <Path d="M25 29h5.4c5.2 0 7.6 2.5 7.6 6.3 0 3.9-2.4 6.5-7.6 6.5H25V29Zm4 3.4v6h1.2c2.4 0 3.6-1.1 3.6-3.1 0-1.9-1.2-2.9-3.6-2.9H29Z" fill="#fff" />
+      <Path d="M21 61c5 2 13 2 18 0" stroke="#fff5ad" strokeOpacity="0.7" strokeWidth="1.2" />
+    </Svg>
+  );
+}
+
 type Props = {
   visible: boolean;
   colors: ColorScheme;
@@ -82,8 +105,11 @@ type Props = {
   quickReviveUnlocked: boolean;
   quickReviveBottles: number;
   quickReviveArmed: boolean;
+  daiquiriUnlocked: boolean;
+  daiquiriBottles: number;
+  daiquiriArmed: boolean;
   onClose: () => void;
-  onResolveBet: (bet: number, won: boolean) => Promise<void>;
+  onResolveBet: (bet: number, won: boolean, payoutMultiplier?: number) => Promise<void>;
   onSoundEnabledChange: (value: boolean) => Promise<void>;
   onHapticsEnabledChange: (value: boolean) => Promise<void>;
   onBuyBankKey: () => Promise<boolean>;
@@ -91,6 +117,9 @@ type Props = {
   onUnlockQuickRevive: () => Promise<boolean>;
   onBuyQuickReviveBottle: () => Promise<boolean>;
   onRedeemQuickRevive: () => Promise<boolean>;
+  onUnlockDaiquiri: () => Promise<boolean>;
+  onBuyDaiquiriBottle: () => Promise<boolean>;
+  onRedeemDaiquiri: () => Promise<boolean>;
 };
 
 type AudioPlayerHandle = {
@@ -103,6 +132,11 @@ type LossPhrase = {
   source: number;
   durationMs: number;
   protectedFromDismiss?: boolean;
+};
+
+type DaiquiriVoiceClip = {
+  source: number;
+  durationMs: number;
 };
 
 // These recordings are bundled from the supplied vault-voice session. Keeping
@@ -126,6 +160,14 @@ const VAULT_LOSS_PHRASES: readonly LossPhrase[] = [
     durationMs: 6520,
     protectedFromDismiss: true,
   },
+];
+
+const DAIQUIRI_VOICE_CLIPS: readonly DaiquiriVoiceClip[] = [
+  { source: require('../assets/daiquiri-voice/voice01.m4a'), durationMs: 5_060 },
+  { source: require('../assets/daiquiri-voice/voice02.m4a'), durationMs: 2_150 },
+  { source: require('../assets/daiquiri-voice/voice03.m4a'), durationMs: 4_120 },
+  { source: require('../assets/daiquiri-voice/voice04.m4a'), durationMs: 7_055 },
+  { source: require('../assets/daiquiri-voice/voice05.m4a'), durationMs: 2_670 },
 ];
 
 const MACHINE_STATUS_LINES = [
@@ -152,6 +194,9 @@ export function BrewTokenBank({
   quickReviveUnlocked,
   quickReviveBottles,
   quickReviveArmed,
+  daiquiriUnlocked,
+  daiquiriBottles,
+  daiquiriArmed,
   onClose,
   onResolveBet,
   onSoundEnabledChange,
@@ -161,10 +206,13 @@ export function BrewTokenBank({
   onUnlockQuickRevive,
   onBuyQuickReviveBottle,
   onRedeemQuickRevive,
+  onUnlockDaiquiri,
+  onBuyDaiquiriBottle,
+  onRedeemDaiquiri,
 }: Props) {
   const insets = useSafeAreaInsets();
   const [selectedBet, setSelectedBet] = useState(1);
-  const [result, setResult] = useState<{ won: boolean; bet: number; boosted: boolean } | null>(null);
+  const [result, setResult] = useState<{ won: boolean; bet: number; quickRevive: boolean; daiquiri: boolean; award: number } | null>(null);
   const [resolving, setResolving] = useState(false);
   const [displayedTokens, setDisplayedTokens] = useState(tokens);
   const [lossVoicePlaying, setLossVoicePlaying] = useState(false);
@@ -176,6 +224,7 @@ export function BrewTokenBank({
   const [shopBusy, setShopBusy] = useState(false);
   const [countdownNow, setCountdownNow] = useState(() => Date.now());
   const [quickReviveBurstVisible, setQuickReviveBurstVisible] = useState(false);
+  const [daiquiriBurstVisible, setDaiquiriBurstVisible] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const balanceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -183,13 +232,16 @@ export function BrewTokenBank({
   const lossVoiceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const machineSoundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const winSoundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const daiquiriVoiceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const displayedTokensRef = useRef(tokens);
   const lossPlayerRef = useRef<AudioPlayerHandle | null>(null);
   const machinePlayerRef = useRef<AudioPlayerHandle | null>(null);
   const winPlayerRef = useRef<AudioPlayerHandle | null>(null);
+  const daiquiriVoicePlayerRef = useRef<AudioPlayerHandle | null>(null);
   const activeLossPhraseRef = useRef<LossPhrase | null>(null);
   const reelStopTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const quickReviveBurstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const daiquiriBurstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const coinProgress = useSharedValue(0);
   const vaultPulse = useSharedValue(0);
   const resultProgress = useSharedValue(0);
@@ -197,6 +249,7 @@ export function BrewTokenBank({
   const reelTwoPosition = useSharedValue(0);
   const reelThreePosition = useSharedValue(0);
   const quickReviveProgress = useSharedValue(0);
+  const daiquiriProgress = useSharedValue(0);
 
   const stopLossVoice = (force = false) => {
     if (!force && activeLossPhraseRef.current?.protectedFromDismiss) return;
@@ -224,6 +277,13 @@ export function BrewTokenBank({
     winPlayerRef.current = null;
   };
 
+  const stopDaiquiriVoice = () => {
+    if (daiquiriVoiceTimerRef.current) clearTimeout(daiquiriVoiceTimerRef.current);
+    daiquiriVoiceTimerRef.current = null;
+    try { daiquiriVoicePlayerRef.current?.remove(); } catch (_) {}
+    daiquiriVoicePlayerRef.current = null;
+  };
+
   const stopMachineStatus = () => {
     if (machineStatusTimerRef.current) clearInterval(machineStatusTimerRef.current);
     machineStatusTimerRef.current = null;
@@ -233,6 +293,7 @@ export function BrewTokenBank({
     if (timerRef.current) clearTimeout(timerRef.current);
     if (balanceTimerRef.current) clearInterval(balanceTimerRef.current);
     if (quickReviveBurstTimerRef.current) clearTimeout(quickReviveBurstTimerRef.current);
+    if (daiquiriBurstTimerRef.current) clearTimeout(daiquiriBurstTimerRef.current);
     reelStopTimersRef.current.forEach(timer => clearTimeout(timer));
     reelStopTimersRef.current = [];
     [reelOnePosition, reelTwoPosition, reelThreePosition].forEach(position => cancelAnimation(position));
@@ -240,6 +301,7 @@ export function BrewTokenBank({
     stopLossVoice(true);
     stopMachineSound();
     stopWinSound();
+    stopDaiquiriVoice();
   }, []);
 
   useEffect(() => {
@@ -340,12 +402,30 @@ export function BrewTokenBank({
       { scaleY: interpolate(quickReviveProgress.value, [0, 0.55, 1], [0.3, 1, 0.72]) },
     ],
   }));
+  const daiquiriBottleStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(daiquiriProgress.value, [0, 0.42, 0.72, 1], [1, 1, 0.2, 0]),
+    transform: [
+      { translateY: interpolate(daiquiriProgress.value, [0, 0.4, 1], [0, -12, 14]) },
+      { rotateZ: `${interpolate(daiquiriProgress.value, [0, 0.38, 1], [14, -22])}deg` },
+      { scale: interpolate(daiquiriProgress.value, [0, 0.5, 1], [0.9, 1.12, 0.58]) },
+    ],
+  }));
+  const daiquiriOozeStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(daiquiriProgress.value, [0, 0.35, 0.55, 1], [0, 0, 0.95, 0]),
+    transform: [
+      { translateY: interpolate(daiquiriProgress.value, [0, 0.55, 1], [-18, 4, 35]) },
+      { scaleX: interpolate(daiquiriProgress.value, [0, 0.55, 1], [0.45, 1.16, 1.6]) },
+      { scaleY: interpolate(daiquiriProgress.value, [0, 0.55, 1], [0.3, 1.08, 0.72]) },
+    ],
+  }));
 
   const bet = Math.min(Math.max(selectedBet, 1), Math.max(tokens, 1));
   const canPlay = tokens > 0 && !resolving && !protectedVoicePlaying;
   const bankAccessActive = hasBrewBankAccess(bankAccessExpiresAt, countdownNow);
   const canActivateKey = isWeekday(new Date().getDay()) && bankKeys > 0 && !bankAccessActive && !resolving;
-  const activeWinProbability = getBrewWinProbability(quickReviveArmed);
+  const activeWinProbability = daiquiriArmed
+    ? getDaiquiriWinProbability(true)
+    : getBrewWinProbability(quickReviveArmed);
   const activeOddsLabel = `${Math.round(activeWinProbability * 100)}%`;
 
   const handleBuyKey = async () => {
@@ -381,7 +461,7 @@ export function BrewTokenBank({
   };
 
   const handleRedeemQuickRevive = async () => {
-    if (!quickReviveUnlocked || quickReviveBottles < 1 || quickReviveArmed || resolving || shopBusy) return;
+    if (!quickReviveUnlocked || quickReviveBottles < 1 || quickReviveArmed || daiquiriArmed || resolving || shopBusy) return;
     setShopBusy(true);
     const redeemed = await onRedeemQuickRevive();
     setShopBusy(false);
@@ -404,6 +484,65 @@ export function BrewTokenBank({
       () => setQuickReviveBurstVisible(false),
       reduceMotion ? 220 : 1080,
     );
+  };
+
+  const handleUnlockDaiquiri = async () => {
+    if (tokens < DAIQUIRI_UNLOCK_PRICE || daiquiriUnlocked || resolving || shopBusy) return;
+    setShopBusy(true);
+    const unlocked = await onUnlockDaiquiri();
+    setShopMessage(unlocked ? 'DAIQUIRI UNLOCKED · BOTTLES ARE NOW 8 TOKENS' : 'NOT ENOUGH BREW TOKENS');
+    setShopBusy(false);
+  };
+
+  const handleBuyDaiquiriBottle = async () => {
+    if (!daiquiriUnlocked || tokens < DAIQUIRI_BOTTLE_PRICE || resolving || shopBusy) return;
+    setShopBusy(true);
+    const purchased = await onBuyDaiquiriBottle();
+    setShopMessage(purchased ? 'DAIQUIRI BOTTLE ADDED TO INVENTORY' : 'NOT ENOUGH BREW TOKENS');
+    setShopBusy(false);
+  };
+
+  const playDaiquiriVoice = async () => {
+    if (!soundEnabled || Constants.appOwnership === 'expo') return;
+    stopDaiquiriVoice();
+    const clip = DAIQUIRI_VOICE_CLIPS[Math.floor(Math.random() * DAIQUIRI_VOICE_CLIPS.length)]!;
+    try {
+      const { createAudioPlayer, setAudioModeAsync } = await import('expo-audio');
+      await setAudioModeAsync({ playsInSilentMode: false, allowsRecording: false });
+      const player = createAudioPlayer(clip.source, { downloadFirst: true });
+      daiquiriVoicePlayerRef.current = player;
+      player.play();
+      daiquiriVoiceTimerRef.current = setTimeout(stopDaiquiriVoice, clip.durationMs + 250);
+    } catch {
+      // The redemption animation remains useful if native audio is unavailable.
+    }
+  };
+
+  const handleRedeemDaiquiri = async () => {
+    if (!daiquiriUnlocked || daiquiriBottles < 1 || daiquiriArmed || quickReviveArmed || resolving || shopBusy) return;
+    setShopBusy(true);
+    const redeemed = await onRedeemDaiquiri();
+    setShopBusy(false);
+    if (!redeemed) return;
+
+    setShopMessage('DAIQUIRI ARMED · 45% WIN · 65% LOSS · DOUBLE AWARD');
+    if (hapticsEnabled) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    }
+    if (daiquiriBurstTimerRef.current) clearTimeout(daiquiriBurstTimerRef.current);
+    setDaiquiriBurstVisible(true);
+    daiquiriProgress.value = 0;
+    daiquiriProgress.value = reduceMotion
+      ? withTiming(1, { duration: 160 })
+      : withSequence(
+        withTiming(0.43, { duration: 240, easing: Easing.out(Easing.cubic) }),
+        withTiming(1, { duration: 720, easing: Easing.inOut(Easing.cubic) }),
+      );
+    daiquiriBurstTimerRef.current = setTimeout(
+      () => setDaiquiriBurstVisible(false),
+      reduceMotion ? 220 : 1080,
+    );
+    void playDaiquiriVoice();
   };
 
   const accessExpiryLabel = bankAccessExpiresAt
@@ -488,13 +627,16 @@ export function BrewTokenBank({
     stopMachineStatus();
     stopLossVoice(true);
     stopMachineSound();
+    stopDaiquiriVoice();
     onClose();
   };
 
   const handleBet = () => {
     if (!canPlay) return;
-    const boosted = quickReviveArmed;
-    const won = Math.random() < getBrewWinProbability(boosted);
+    const daiquiri = daiquiriArmed;
+    const quickRevive = quickReviveArmed && !daiquiri;
+    const payoutMultiplier = daiquiri ? DAIQUIRI_PAYOUT_MULTIPLIER : 1;
+    const won = Math.random() < (daiquiri ? getDaiquiriWinProbability(true) : getBrewWinProbability(quickRevive));
     setResult(null);
     setResolving(true);
     reelStopTimersRef.current.forEach(timer => clearTimeout(timer));
@@ -541,7 +683,7 @@ export function BrewTokenBank({
       withTiming(1, { duration: 250, easing: Easing.inOut(Easing.cubic) }),
     );
     timerRef.current = setTimeout(() => {
-      void onResolveBet(bet, won).finally(() => {
+      void onResolveBet(bet, won, payoutMultiplier).finally(() => {
         stopMachineStatus();
         if (won) void playWinSound();
         if (hapticsEnabled) {
@@ -549,7 +691,7 @@ export function BrewTokenBank({
             won ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning,
           ).catch(() => {});
         }
-        setResult({ won, bet, boosted });
+        setResult({ won, bet, quickRevive, daiquiri, award: won ? bet * payoutMultiplier : bet });
         setResolving(false);
         resultProgress.value = withSpring(1, { damping: 13, stiffness: 180 });
         vaultPulse.value = withSequence(
@@ -654,6 +796,18 @@ export function BrewTokenBank({
                  </Animated.View>
                </View>
              )}
+              {daiquiriBurstVisible && (
+                <View pointerEvents="none" style={styles.daiquiriBurst}>
+                  <Animated.View style={[styles.quickReviveBurstBottle, daiquiriBottleStyle]}>
+                    <DaiquiriBottle size={40} />
+                  </Animated.View>
+                  <Animated.View style={[styles.daiquiriOoze, daiquiriOozeStyle]}>
+                    <View style={styles.daiquiriOozeDrop} />
+                    <View style={[styles.daiquiriOozeDrop, styles.daiquiriOozeDropWide]} />
+                    <View style={[styles.daiquiriOozeDrop, styles.daiquiriOozeDropSmall]} />
+                  </Animated.View>
+                </View>
+              )}
             <View style={styles.slotMachine}>
               {renderReel(reelOneStyle, 0, result ? (result.won ? colors.buyColor : colors.sellColor) : colors.gold)}
               {renderReel(reelTwoStyle, 1, result ? (result.won ? colors.buyColor : colors.sellColor) : colors.gold)}
@@ -798,6 +952,58 @@ export function BrewTokenBank({
                    </Pressable>
                  )}
                </View>
+                <View style={[styles.quickReviveShop, { borderTopColor: colors.border }]}>
+                  <View style={styles.shopHeadingRow}>
+                    <View style={styles.quickReviveShopCopy}>
+                      <Text style={[styles.shopTitle, { color: daiquiriUnlocked ? colors.foreground : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+                        DAVE RAMSEY DAIQUIRI
+                      </Text>
+                      <Text style={[styles.shopDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                        Crack one into the machine before a toss: 45% win odds, 65% loss odds, and a double award if it pays.
+                      </Text>
+                    </View>
+                    <DaiquiriBottle size={31} muted={!daiquiriUnlocked} />
+                  </View>
+                  <View style={styles.inventoryRow}>
+                    <Text style={[styles.inventoryLabel, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>BOTTLES IN INVENTORY</Text>
+                    <Text style={[styles.inventoryValue, { color: daiquiriUnlocked ? colors.gold : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+                      {daiquiriUnlocked ? daiquiriBottles : 'LOCKED'}
+                    </Text>
+                  </View>
+                  {!daiquiriUnlocked ? (
+                    <Pressable
+                      onPress={() => { void handleUnlockDaiquiri(); }}
+                      disabled={tokens < DAIQUIRI_UNLOCK_PRICE || resolving || shopBusy}
+                      style={[
+                        styles.shopButton,
+                        { borderColor: colors.border, backgroundColor: colors.card },
+                        (tokens < DAIQUIRI_UNLOCK_PRICE || resolving || shopBusy) && styles.disabled,
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Unlock Dave Ramsey Daiquiri for ${DAIQUIRI_UNLOCK_PRICE} Brew Tokens`}
+                    >
+                      <Text style={[styles.shopButtonText, { color: colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+                        UNLOCK RECIPE · {DAIQUIRI_UNLOCK_PRICE} TOKENS
+                      </Text>
+                    </Pressable>
+                  ) : (
+                    <Pressable
+                      onPress={() => { void handleBuyDaiquiriBottle(); }}
+                      disabled={tokens < DAIQUIRI_BOTTLE_PRICE || resolving || shopBusy}
+                      style={[
+                        styles.shopButton,
+                        { borderColor: '#8edbff' },
+                        (tokens < DAIQUIRI_BOTTLE_PRICE || resolving || shopBusy) && styles.disabled,
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Buy one Dave Ramsey Daiquiri bottle for ${DAIQUIRI_BOTTLE_PRICE} Brew Tokens`}
+                    >
+                      <Text style={[styles.shopButtonText, { color: '#a8e5ff', fontFamily: 'Inter_700Bold' }]}>
+                        BUY BOTTLE · {DAIQUIRI_BOTTLE_PRICE} TOKENS
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
               {shopMessage && (
                 <Text style={[styles.shopMessage, { color: colors.gold, fontFamily: 'Inter_600SemiBold' }]}>{shopMessage}</Text>
               )}
@@ -834,7 +1040,7 @@ export function BrewTokenBank({
           {quickReviveUnlocked && (
             <Pressable
               onPress={() => { void handleRedeemQuickRevive(); }}
-              disabled={quickReviveBottles < 1 || quickReviveArmed || resolving || shopBusy}
+              disabled={quickReviveBottles < 1 || quickReviveArmed || daiquiriArmed || resolving || shopBusy}
               style={[
                 styles.quickReviveArm,
                 { borderColor: quickReviveArmed ? colors.buyColor : colors.goldMuted, backgroundColor: colors.steelShadow },
@@ -862,6 +1068,37 @@ export function BrewTokenBank({
               <Feather name={quickReviveArmed ? 'check-circle' : 'zap'} size={17} color={quickReviveArmed ? colors.buyColor : colors.gold} />
             </Pressable>
           )}
+          {daiquiriUnlocked && (
+            <Pressable
+              onPress={() => { void handleRedeemDaiquiri(); }}
+              disabled={daiquiriBottles < 1 || daiquiriArmed || quickReviveArmed || resolving || shopBusy}
+              style={[
+                styles.quickReviveArm,
+                { borderColor: daiquiriArmed ? '#8edbff' : '#e9c64d', backgroundColor: colors.steelShadow },
+                (daiquiriBottles < 1 || daiquiriArmed || quickReviveArmed || resolving || shopBusy) && !daiquiriArmed && styles.disabled,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={
+                daiquiriArmed
+                  ? 'Dave Ramsey Daiquiri armed. Your next toss has 45 percent win odds, 65 percent loss odds, and double award on a win.'
+                  : `Redeem a Dave Ramsey Daiquiri bottle. ${daiquiriBottles} bottles available.`
+              }
+              accessibilityState={{ disabled: daiquiriBottles < 1 || daiquiriArmed || quickReviveArmed || resolving || shopBusy }}
+            >
+              <DaiquiriBottle size={26} muted={!daiquiriArmed && daiquiriBottles < 1} />
+              <View style={styles.quickReviveArmCopy}>
+                <Text style={[styles.quickReviveArmTitle, { color: daiquiriArmed ? '#a8e5ff' : colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+                  {daiquiriArmed ? 'DAIQUIRI ARMED · 45% WIN · DOUBLE AWARD' : 'REDEEM DAIQUIRI · DOUBLE WIN AWARD'}
+                </Text>
+                <Text style={[styles.quickReviveArmDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                  {daiquiriArmed
+                    ? 'Light blue and yellow liquid is in the machine. It applies to your next toss only.'
+                    : `${daiquiriBottles} ${daiquiriBottles === 1 ? 'BOTTLE' : 'BOTTLES'} READY · 45% WIN · 65% LOSS`}
+                </Text>
+              </View>
+              <Feather name={daiquiriArmed ? 'check-circle' : 'droplet'} size={17} color={daiquiriArmed ? '#a8e5ff' : '#f6d64a'} />
+            </Pressable>
+          )}
 
           <Pressable
             onPress={() => setPayoutPreviewOpen(value => !value)}
@@ -884,7 +1121,7 @@ export function BrewTokenBank({
               <View style={styles.payoutColumns}>
                 <View style={styles.payoutColumn}>
                   <Text style={[styles.payoutLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>WIN</Text>
-                  <Text style={[styles.payoutValue, { color: colors.buyColor, fontFamily: 'Inter_700Bold' }]}>+{bet}</Text>
+                  <Text style={[styles.payoutValue, { color: daiquiriArmed ? '#a8e5ff' : colors.buyColor, fontFamily: 'Inter_700Bold' }]}>+{daiquiriArmed ? bet * DAIQUIRI_PAYOUT_MULTIPLIER : bet}</Text>
                   <Text style={[styles.payoutUnit, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                     {bet === 1 ? 'TOKEN' : 'TOKENS'}
                   </Text>
@@ -900,15 +1137,22 @@ export function BrewTokenBank({
                 <View style={[styles.payoutDivider, { backgroundColor: colors.border }]} />
                 <View style={styles.payoutColumn}>
                   <Text style={[styles.payoutLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>ODDS</Text>
-                  <Text style={[styles.payoutValue, { color: quickReviveArmed ? colors.buyColor : colors.gold, fontFamily: 'Inter_700Bold' }]}>{activeOddsLabel}</Text>
+                  <Text style={[styles.payoutValue, { color: daiquiriArmed ? '#a8e5ff' : quickReviveArmed ? colors.buyColor : colors.gold, fontFamily: 'Inter_700Bold' }]}>{activeOddsLabel}</Text>
                   <Text style={[styles.payoutUnit, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>TO WIN</Text>
+                  {daiquiriArmed && (
+                    <Text style={[styles.payoutUnit, { color: '#f6d64a', fontFamily: 'Inter_500Medium' }]}>
+                      {Math.round(DAIQUIRI_LOSS_PROBABILITY * 100)}% LOSS
+                    </Text>
+                  )}
                 </View>
               </View>
             </View>
           )}
 
           <Text style={[styles.rules, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-            Win returns your deposit plus an equal payout. Lose only the tokens deposited.
+            {daiquiriArmed
+              ? 'Daiquiri doubles this toss’s winning award. Lose only the tokens deposited.'
+              : 'Win returns your deposit plus an equal payout. Lose only the tokens deposited.'}
           </Text>
 
           {tokens === 0 && (
@@ -937,14 +1181,19 @@ export function BrewTokenBank({
               </Text>
               <Text style={[styles.result, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
                 {result.won
-                  ? `+${result.bet} ${result.bet === 1 ? 'TOKEN' : 'TOKENS'} · NEW BALANCE ${tokens}`
+                  ? `+${result.award} ${result.award === 1 ? 'TOKEN' : 'TOKENS'} · NEW BALANCE ${tokens}`
                   : `−${result.bet} ${result.bet === 1 ? 'TOKEN' : 'TOKENS'} · NEW BALANCE ${tokens}`}
               </Text>
-              {result.boosted && (
+               {result.quickRevive && (
                 <Text style={[styles.resultHint, { color: colors.buyColor, fontFamily: 'Inter_600SemiBold' }]}>
                   QUICK REVIVE APPLIED · 62% ODDS WERE ACTIVE
                 </Text>
               )}
+               {result.daiquiri && (
+                 <Text style={[styles.resultHint, { color: '#a8e5ff', fontFamily: 'Inter_600SemiBold' }]}>
+                   DAIQUIRI APPLIED · 45% WIN / 65% LOSS · {result.won ? 'DOUBLE AWARD PAID' : 'BOTTLE CONSUMED'}
+                 </Text>
+               )}
               {!result.won && soundEnabled && (
                 <Text style={[styles.resultHint, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                   A message from the vault is incoming.
@@ -1059,6 +1308,11 @@ const styles = StyleSheet.create({
   quickReviveOozeDrop: { width: 26, height: 17, borderRadius: 13, backgroundColor: '#168df2', shadowColor: '#168df2', shadowOpacity: 0.9, shadowRadius: 9, elevation: 6 },
   quickReviveOozeDropWide: { width: 39, height: 11, opacity: 0.82 },
   quickReviveOozeDropSmall: { width: 12, height: 12, opacity: 0.72 },
+  daiquiriBurst: { position: 'absolute', top: 10, bottom: 8, left: 0, right: 0, alignItems: 'center', justifyContent: 'center' },
+  daiquiriOoze: { position: 'absolute', top: 63, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  daiquiriOozeDrop: { width: 26, height: 17, borderRadius: 13, backgroundColor: '#69c8ff', borderWidth: 1, borderColor: '#f6d64a', shadowColor: '#69c8ff', shadowOpacity: 0.92, shadowRadius: 9, elevation: 6 },
+  daiquiriOozeDropWide: { width: 39, height: 11, opacity: 0.84 },
+  daiquiriOozeDropSmall: { width: 12, height: 12, opacity: 0.74 },
   slotMachine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, height: SLOT_REEL_HEIGHT, marginBottom: 11 },
   reelWindow: { width: 64, height: SLOT_REEL_HEIGHT, borderWidth: 1, borderRadius: 9, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.22)' },
   reelSymbol: { width: 64, height: SLOT_REEL_HEIGHT, alignItems: 'center', justifyContent: 'center' },

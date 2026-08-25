@@ -1444,11 +1444,17 @@ function GradeHistoryModal({
     quickReviveUnlocked,
     quickReviveBottles,
     quickReviveArmed,
+    daiquiriUnlocked,
+    daiquiriBottles,
+    daiquiriArmed,
     buyBankKey,
     activateBankKey,
     unlockQuickRevive,
     buyQuickReviveBottle,
     redeemQuickReviveBottle,
+    unlockDaiquiri,
+    buyDaiquiriBottle,
+    redeemDaiquiriBottle,
     clearJustUnlocked,
   } = useBrewTokens();
   const isWeekend = [0, 6].includes(new Date().getDay());
@@ -1601,6 +1607,9 @@ function GradeHistoryModal({
                 quickReviveUnlocked={quickReviveUnlocked}
                 quickReviveBottles={quickReviveBottles}
                 quickReviveArmed={quickReviveArmed}
+                daiquiriUnlocked={daiquiriUnlocked}
+                daiquiriBottles={daiquiriBottles}
+                daiquiriArmed={daiquiriArmed}
                 onClose={() => setBrewBankVisible(false)}
                 onResolveBet={resolveBet}
                 onSoundEnabledChange={setSoundEnabled}
@@ -1610,6 +1619,9 @@ function GradeHistoryModal({
                 onUnlockQuickRevive={unlockQuickRevive}
                 onBuyQuickReviveBottle={buyQuickReviveBottle}
                 onRedeemQuickRevive={redeemQuickReviveBottle}
+                onUnlockDaiquiri={unlockDaiquiri}
+                onBuyDaiquiriBottle={buyDaiquiriBottle}
+                onRedeemDaiquiri={redeemDaiquiriBottle}
               />
               <BrewTokenUnlockCelebration
                 visible={brewCelebrationVisible}

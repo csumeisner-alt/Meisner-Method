@@ -21,3 +21,4 @@
 - [Meisner Method branding](meisner-method-branding.md) — public product branding is Meisner Method; legacy storage namespaces remain for local-data compatibility.
 - [Celebration audio cost model](celebration-audio-cost.md) — bundle approved celebration recordings locally; do not reintroduce per-play network TTS.
 - [Expo APK build workflow](expo-apk-build-workflow.md) — GitHub build uses base `artifacts/mobile`, profile `preview`, Preview environment, and exact branch/full SHA.
+- [Dave Ramsey Daiquiri odds](daiquiri-odds-and-payout.md) — show requested 45% win / 65% loss copy; use 45% win internally and double only a win.
