@@ -6,6 +6,8 @@ import {
   buyBrewBankKey,
   buyQuickReviveBottle as purchaseQuickReviveBottle,
   buyQuickReviveUnlock,
+  buyDaiquiriBottle as purchaseDaiquiriBottle,
+  buyDaiquiriUnlock,
   canActivateBrewBankKey,
   INITIAL_BREW_TOKENS,
   claimQuoteView,
@@ -16,6 +18,7 @@ import {
   hasBrewBankAccess,
   parseStoredNonNegative,
   redeemQuickReviveBottle as armQuickReviveBottle,
+  redeemDaiquiriBottle as armDaiquiriBottle,
   resolveBrewBet,
 } from '@/lib/brewTokenLogic';
 
@@ -29,6 +32,9 @@ const BREW_BANK_ACCESS_EXPIRES_KEY = '@stocksense/brew_bank_access_expires_v1';
 const QUICK_REVIVE_UNLOCKED_KEY = '@stocksense/quick_revive_unlocked_v1';
 const QUICK_REVIVE_BOTTLES_KEY = '@stocksense/quick_revive_bottles_v1';
 const QUICK_REVIVE_ARMED_KEY = '@stocksense/quick_revive_armed_v1';
+const DAIQUIRI_UNLOCKED_KEY = '@stocksense/daiquiri_unlocked_v1';
+const DAIQUIRI_BOTTLES_KEY = '@stocksense/daiquiri_bottles_v1';
+const DAIQUIRI_ARMED_KEY = '@stocksense/daiquiri_armed_v1';
 
 export interface BrewTokenState {
   quotesViewed: number;
@@ -41,9 +47,12 @@ export interface BrewTokenState {
   quickReviveUnlocked: boolean;
   quickReviveBottles: number;
   quickReviveArmed: boolean;
+  daiquiriUnlocked: boolean;
+  daiquiriBottles: number;
+  daiquiriArmed: boolean;
   justUnlocked: boolean;
   incrementQuoteViewed: (quoteViewId?: string) => Promise<QuoteViewUpdate>;
-  resolveBet: (bet: number, won: boolean) => Promise<void>;
+  resolveBet: (bet: number, won: boolean, payoutMultiplier?: number) => Promise<void>;
   setSoundEnabled: (value: boolean) => Promise<void>;
   setHapticsEnabled: (value: boolean) => Promise<void>;
   buyBankKey: () => Promise<boolean>;
@@ -51,6 +60,9 @@ export interface BrewTokenState {
   unlockQuickRevive: () => Promise<boolean>;
   buyQuickReviveBottle: () => Promise<boolean>;
   redeemQuickReviveBottle: () => Promise<boolean>;
+  unlockDaiquiri: () => Promise<boolean>;
+  buyDaiquiriBottle: () => Promise<boolean>;
+  redeemDaiquiriBottle: () => Promise<boolean>;
   clearJustUnlocked: () => void;
 }
 
@@ -71,6 +83,9 @@ export function useBrewTokens(): BrewTokenState {
   const [quickReviveUnlocked, setQuickReviveUnlocked] = useState(false);
   const [quickReviveBottles, setQuickReviveBottles] = useState(0);
   const [quickReviveArmed, setQuickReviveArmed] = useState(false);
+  const [daiquiriUnlocked, setDaiquiriUnlocked] = useState(false);
+  const [daiquiriBottles, setDaiquiriBottles] = useState(0);
+  const [daiquiriArmed, setDaiquiriArmed] = useState(false);
 
   const quotesRef = useRef(0);
   const unlockedRef = useRef(false);
@@ -80,6 +95,9 @@ export function useBrewTokens(): BrewTokenState {
   const quickReviveUnlockedRef = useRef(false);
   const quickReviveBottlesRef = useRef(0);
   const quickReviveArmedRef = useRef(false);
+  const daiquiriUnlockedRef = useRef(false);
+  const daiquiriBottlesRef = useRef(0);
+  const daiquiriArmedRef = useRef(false);
   const rememberedQuoteViewsRef = useRef(new Set<string>());
   const writeQueueRef = useRef<ReturnType<typeof createSerialWriteQueue> | null>(null);
   const hydrationRef = useRef<{ promise: Promise<void>; resolve: () => void } | null>(null);
@@ -106,6 +124,9 @@ export function useBrewTokens(): BrewTokenState {
       AsyncStorage.getItem(QUICK_REVIVE_UNLOCKED_KEY),
       AsyncStorage.getItem(QUICK_REVIVE_BOTTLES_KEY),
       AsyncStorage.getItem(QUICK_REVIVE_ARMED_KEY),
+      AsyncStorage.getItem(DAIQUIRI_UNLOCKED_KEY),
+      AsyncStorage.getItem(DAIQUIRI_BOTTLES_KEY),
+      AsyncStorage.getItem(DAIQUIRI_ARMED_KEY),
     ]).then(([
       rawQuotes,
       rawUnlocked,
@@ -117,6 +138,9 @@ export function useBrewTokens(): BrewTokenState {
       rawQuickReviveUnlocked,
       rawQuickReviveBottles,
       rawQuickReviveArmed,
+      rawDaiquiriUnlocked,
+      rawDaiquiriBottles,
+      rawDaiquiriArmed,
     ]) => {
       const viewed = parseStoredNonNegative(rawQuotes);
       const unlocked = viewed >= BREW_TOKEN_QUOTE_THRESHOLD || rawUnlocked === 'true';
@@ -131,6 +155,9 @@ export function useBrewTokens(): BrewTokenState {
       const reviveUnlocked = rawQuickReviveUnlocked === 'true';
       const reviveBottles = reviveUnlocked ? parseStoredNonNegative(rawQuickReviveBottles) : 0;
       const reviveArmed = reviveUnlocked && rawQuickReviveArmed === 'true';
+      const daiquiriIsUnlocked = rawDaiquiriUnlocked === 'true';
+      const daiquiriCount = daiquiriIsUnlocked ? parseStoredNonNegative(rawDaiquiriBottles) : 0;
+      const daiquiriIsArmed = daiquiriIsUnlocked && rawDaiquiriArmed === 'true';
 
       quotesRef.current = viewed;
       unlockedRef.current = unlocked;
@@ -140,6 +167,9 @@ export function useBrewTokens(): BrewTokenState {
       quickReviveUnlockedRef.current = reviveUnlocked;
       quickReviveBottlesRef.current = reviveBottles;
       quickReviveArmedRef.current = reviveArmed;
+      daiquiriUnlockedRef.current = daiquiriIsUnlocked;
+      daiquiriBottlesRef.current = daiquiriCount;
+      daiquiriArmedRef.current = daiquiriIsArmed;
       setQuotesViewed(viewed);
       setIsUnlocked(unlocked);
       setBrewTokens(tokens);
@@ -148,6 +178,9 @@ export function useBrewTokens(): BrewTokenState {
       setQuickReviveUnlocked(reviveUnlocked);
       setQuickReviveBottles(reviveBottles);
       setQuickReviveArmed(reviveArmed);
+      setDaiquiriUnlocked(daiquiriIsUnlocked);
+      setDaiquiriBottles(daiquiriCount);
+      setDaiquiriArmed(daiquiriIsArmed);
       setSoundEnabledState(rawSound !== 'false');
       setHapticsEnabledState(rawHaptics !== 'false');
     }).catch(() => {
@@ -218,19 +251,23 @@ export function useBrewTokens(): BrewTokenState {
     return { earnedToken, halfway };
   }, []);
 
-  const resolveBet = useCallback(async (bet: number, won: boolean) => {
+  const resolveBet = useCallback(async (bet: number, won: boolean, payoutMultiplier = 1) => {
     await hydrationRef.current!.promise;
 
-    const next = resolveBrewBet(tokensRef.current, bet, won);
+    const next = resolveBrewBet(tokensRef.current, bet, won, payoutMultiplier);
     tokensRef.current = next;
     setBrewTokens(next);
     const hadQuickReviveArmed = quickReviveArmedRef.current;
+    const hadDaiquiriArmed = daiquiriArmedRef.current;
     quickReviveArmedRef.current = false;
+    daiquiriArmedRef.current = false;
     setQuickReviveArmed(false);
+    setDaiquiriArmed(false);
     await writeQueueRef.current!(
       () => Promise.all([
         AsyncStorage.setItem(BREW_TOKENS_KEY, String(next)),
         ...(hadQuickReviveArmed ? [AsyncStorage.removeItem(QUICK_REVIVE_ARMED_KEY)] : []),
+        ...(hadDaiquiriArmed ? [AsyncStorage.removeItem(DAIQUIRI_ARMED_KEY)] : []),
       ]).then(() => undefined),
     ).catch(() => {});
   }, []);
@@ -332,6 +369,55 @@ export function useBrewTokens(): BrewTokenState {
     return true;
   }, []);
 
+  const unlockDaiquiri = useCallback(async () => {
+    await hydrationRef.current!.promise;
+    const next = buyDaiquiriUnlock(tokensRef.current, daiquiriUnlockedRef.current);
+    if (!next) return false;
+    tokensRef.current = next.tokenBalance;
+    daiquiriUnlockedRef.current = true;
+    setBrewTokens(next.tokenBalance);
+    setDaiquiriUnlocked(true);
+    await writeQueueRef.current!(() => Promise.all([
+      AsyncStorage.setItem(BREW_TOKENS_KEY, String(next.tokenBalance)),
+      AsyncStorage.setItem(DAIQUIRI_UNLOCKED_KEY, 'true'),
+    ]).then(() => undefined)).catch(() => {});
+    return true;
+  }, []);
+
+  const buyDaiquiriBottle = useCallback(async () => {
+    await hydrationRef.current!.promise;
+    const next = purchaseDaiquiriBottle(
+      tokensRef.current,
+      daiquiriBottlesRef.current,
+      daiquiriUnlockedRef.current,
+    );
+    if (!next) return false;
+    tokensRef.current = next.tokenBalance;
+    daiquiriBottlesRef.current = next.bottleCount;
+    setBrewTokens(next.tokenBalance);
+    setDaiquiriBottles(next.bottleCount);
+    await writeQueueRef.current!(() => Promise.all([
+      AsyncStorage.setItem(BREW_TOKENS_KEY, String(next.tokenBalance)),
+      AsyncStorage.setItem(DAIQUIRI_BOTTLES_KEY, String(next.bottleCount)),
+    ]).then(() => undefined)).catch(() => {});
+    return true;
+  }, []);
+
+  const redeemDaiquiriBottle = useCallback(async () => {
+    await hydrationRef.current!.promise;
+    const next = armDaiquiriBottle(daiquiriBottlesRef.current, daiquiriArmedRef.current);
+    if (!next) return false;
+    daiquiriBottlesRef.current = next.bottleCount;
+    daiquiriArmedRef.current = true;
+    setDaiquiriBottles(next.bottleCount);
+    setDaiquiriArmed(true);
+    await writeQueueRef.current!(() => Promise.all([
+      AsyncStorage.setItem(DAIQUIRI_BOTTLES_KEY, String(next.bottleCount)),
+      AsyncStorage.setItem(DAIQUIRI_ARMED_KEY, 'true'),
+    ]).then(() => undefined)).catch(() => {});
+    return true;
+  }, []);
+
   const clearJustUnlocked = useCallback(() => setJustUnlocked(false), []);
 
   return {
@@ -345,6 +431,9 @@ export function useBrewTokens(): BrewTokenState {
     quickReviveUnlocked,
     quickReviveBottles,
     quickReviveArmed,
+    daiquiriUnlocked,
+    daiquiriBottles,
+    daiquiriArmed,
     justUnlocked,
     incrementQuoteViewed,
     resolveBet,
@@ -355,6 +444,9 @@ export function useBrewTokens(): BrewTokenState {
     unlockQuickRevive,
     buyQuickReviveBottle,
     redeemQuickReviveBottle,
+    unlockDaiquiri,
+    buyDaiquiriBottle,
+    redeemDaiquiriBottle,
     clearJustUnlocked,
   };
 }

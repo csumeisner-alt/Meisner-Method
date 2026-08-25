@@ -13,6 +13,11 @@ export const BREW_BANK_KEY_PRICE = 10;
 export const BREW_BANK_ACCESS_DURATION_MS = 12 * 60 * 60 * 1000;
 export const QUICK_REVIVE_UNLOCK_PRICE = 40;
 export const QUICK_REVIVE_BOTTLE_PRICE = 2;
+export const DAIQUIRI_WIN_PROBABILITY = 0.45;
+export const DAIQUIRI_LOSS_PROBABILITY = 0.65;
+export const DAIQUIRI_PAYOUT_MULTIPLIER = 2;
+export const DAIQUIRI_UNLOCK_PRICE = 100;
+export const DAIQUIRI_BOTTLE_PRICE = 8;
 
 export function parseStoredNonNegative(raw: string | null | undefined): number {
   if (!raw) return 0;
@@ -113,10 +118,52 @@ export function getBrewWinProbability(quickReviveArmed: boolean): number {
   return quickReviveArmed ? QUICK_REVIVE_WIN_PROBABILITY : BREW_TOKEN_WIN_PROBABILITY;
 }
 
-export function resolveBrewBet(balance: number, bet: number, won: boolean): number {
+export function buyDaiquiriUnlock(
+  tokenBalance: number,
+  alreadyUnlocked: boolean,
+): { tokenBalance: number; unlocked: true } | null {
+  const safeBalance = Math.max(0, Math.floor(tokenBalance));
+  if (alreadyUnlocked || safeBalance < DAIQUIRI_UNLOCK_PRICE) return null;
+  return { tokenBalance: safeBalance - DAIQUIRI_UNLOCK_PRICE, unlocked: true };
+}
+
+export function buyDaiquiriBottle(
+  tokenBalance: number,
+  bottleCount: number,
+  unlocked: boolean,
+): { tokenBalance: number; bottleCount: number } | null {
+  const safeBalance = Math.max(0, Math.floor(tokenBalance));
+  const safeBottles = Math.max(0, Math.floor(bottleCount));
+  if (!unlocked || safeBalance < DAIQUIRI_BOTTLE_PRICE) return null;
+  return {
+    tokenBalance: safeBalance - DAIQUIRI_BOTTLE_PRICE,
+    bottleCount: safeBottles + 1,
+  };
+}
+
+export function redeemDaiquiriBottle(
+  bottleCount: number,
+  alreadyArmed: boolean,
+): { bottleCount: number; armed: true } | null {
+  const safeBottles = Math.max(0, Math.floor(bottleCount));
+  if (alreadyArmed || safeBottles < 1) return null;
+  return { bottleCount: safeBottles - 1, armed: true };
+}
+
+export function getDaiquiriWinProbability(daiquiriArmed: boolean): number {
+  return daiquiriArmed ? DAIQUIRI_WIN_PROBABILITY : BREW_TOKEN_WIN_PROBABILITY;
+}
+
+export function resolveBrewBet(
+  balance: number,
+  bet: number,
+  won: boolean,
+  payoutMultiplier = 1,
+): number {
   const safeBalance = Math.max(0, Math.floor(balance));
   const safeBet = Math.max(0, Math.min(Math.floor(bet), safeBalance));
-  return won ? safeBalance + safeBet : safeBalance - safeBet;
+  const safeMultiplier = Math.max(1, Math.floor(payoutMultiplier));
+  return won ? safeBalance + safeBet * safeMultiplier : safeBalance - safeBet;
 }
 
 /**
