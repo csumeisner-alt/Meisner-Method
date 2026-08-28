@@ -152,14 +152,18 @@
   animation: staminLabelCharge 2.4s ease both;
 }
 
-.stamin-up-group .glow-panel.is-active .stamin-charge-ring {
-  animation: staminRingCharge 2.4s ease both;
-}
-
-.stamin-up-group .glow-panel.is-active .stamin-emblem {
-  animation: staminEmblemCharge 2.4s ease both;
+.stamin-up-group .glow-panel.is-active .stamin-tornado {
+  animation: staminTornadoSpin 2.4s cubic-bezier(.17,.82,.24,1) both;
   transform-box: fill-box;
   transform-origin: center;
+}
+
+.stamin-up-group .glow-panel.is-active .stamin-tornado-swirl {
+  animation: staminTornadoDraw 2.4s ease both;
+}
+
+.stamin-up-group .glow-panel.is-active .stamin-tornado-core {
+  animation: staminTornadoCore 2.4s ease both;
 }
 
 .stamin-up-group .glow-panel.is-active .ring-one,
@@ -215,16 +219,23 @@
   65%, 100% { filter: brightness(1); transform: scale(1); }
 }
 
-@keyframes staminRingCharge {
-  0%, 25% { opacity: .45; stroke-width: 2; transform: scale(.86) rotate(0); }
-  46% { opacity: 1; stroke-width: 3; transform: scale(1.04) rotate(80deg); }
-  68%, 100% { opacity: .62; stroke-width: 2; transform: scale(1) rotate(140deg); }
+@keyframes staminTornadoSpin {
+  0%, 20% { opacity: .35; filter: brightness(1); transform: translateY(8px) rotate(-10deg) scale(.74); }
+  38% { opacity: 1; filter: brightness(1.35) drop-shadow(0 0 9px rgba(255, 188, 65, .58)); transform: translateY(-2px) rotate(8deg) scale(1.08); }
+  54% { transform: translateY(0) rotate(-5deg) scale(.98); }
+  70%, 100% { opacity: 1; filter: brightness(1); transform: translateY(0) rotate(0) scale(1); }
 }
 
-@keyframes staminEmblemCharge {
-  0%, 24% { transform: translateY(0) scale(1); }
-  44% { transform: translateY(-2px) scale(1.12); }
-  64%, 100% { transform: translateY(0) scale(1); }
+@keyframes staminTornadoDraw {
+  0%, 18% { stroke-dasharray: 145; stroke-dashoffset: 145; }
+  47% { stroke-dasharray: 145; stroke-dashoffset: 0; }
+  70%, 100% { stroke-dasharray: 145; stroke-dashoffset: 0; }
+}
+
+@keyframes staminTornadoCore {
+  0%, 28% { opacity: 0; transform: scale(.7); }
+  48% { opacity: 1; transform: scale(1.08); }
+  68%, 100% { opacity: .86; transform: scale(1); }
 }
 
 @media (max-width: 380px) {

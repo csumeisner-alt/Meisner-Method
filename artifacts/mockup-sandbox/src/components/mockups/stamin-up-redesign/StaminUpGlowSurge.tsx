@@ -67,11 +67,12 @@ function StaminUpBottle() {
       <g className="stamin-bottle-label" filter="url(#staminLabelShadow)">
         <circle cx="130" cy="322" r="80" fill="#ffe4a0" fillOpacity=".94" stroke="#fff0bd" strokeWidth="2" />
         <circle cx="130" cy="322" r="72" fill="#16324a" stroke="#f8c95f" strokeOpacity=".9" strokeWidth="3" />
-        <circle className="stamin-charge-ring" cx="130" cy="322" r="52" fill="none" stroke="#f6b942" strokeOpacity=".62" strokeWidth="2" strokeDasharray="5 7" />
         <text x="130" y="280" textAnchor="middle" fill="#ffe7aa" fontFamily="DM Mono, monospace" fontSize="12" fontWeight="700" letterSpacing="1.1">STAMIN UP</text>
-        <path className="stamin-emblem" d="M130 296l11 20h-8l7 11-20 22 4-17h-8l14-36Z" fill="#ffd66c" stroke="#fff0bb" strokeOpacity=".7" strokeWidth="1" />
+        <g className="stamin-tornado">
+          <path className="stamin-tornado-swirl" d="M103 303c10-12 43-14 54 0 5 7-3 14-17 15-13 1-23 3-23 10 0 8 12 10 21 10 13 0 18 4 15 10-3 7-11 11-18 14" fill="none" stroke="#ffd66c" strokeWidth="4.2" strokeLinecap="round" />
+          <path className="stamin-tornado-core" d="M108 305c10 5 30 5 44 0M115 319c8 4 20 4 29 0M122 333c5 3 11 3 16 0M127 349h7" fill="none" stroke="#fff0bb" strokeOpacity=".86" strokeWidth="2.2" strokeLinecap="round" />
+        </g>
         <path d="M113 350c10 5 24 5 34 0" fill="none" stroke="#f5c65b" strokeOpacity=".62" strokeWidth="1.5" strokeLinecap="round" />
-        <text x="130" y="372" textAnchor="middle" fill="#ffe7aa" fontFamily="Outfit, sans-serif" fontSize="10" fontWeight="600" letterSpacing="2">POWER RESERVE</text>
       </g>
 
       <g className="stamin-cap">
@@ -104,7 +105,7 @@ export function StaminUpGlowSurge() {
         <header className="glow-header">
           <div>
             <p className="eyebrow mono">REWARDS MACHINE / COLLECTIBLE 03</p>
-            <h1 className="serif">Stamin Up<br /><em>Power Reserve</em></h1>
+            <h1 className="serif">Stamin Up</h1>
           </div>
           <div className="seal mono">S</div>
         </header>
@@ -123,7 +124,7 @@ export function StaminUpGlowSurge() {
           <div className="detail-heading">
             <div>
               <p className="eyebrow mono">ONE-SPIN BOOST</p>
-              <h2>Charge the reserve.</h2>
+              <h2>Spin the storm.</h2>
             </div>
             <span className="bottle-count mono">01 / 01</span>
           </div>
