@@ -28,7 +28,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Circle, Line, Path } from 'react-native-svg';
+import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
 import type { ColorScheme } from '@/constants/colors';
 import {
   BREW_BANK_KEY_PRICE,
@@ -63,17 +63,34 @@ export function BrewCoin({ colors, size = 66 }: { colors: ColorScheme; size?: nu
 }
 
 function QuickReviveBottle({ size = 54, muted = false }: { size?: number; muted?: boolean }) {
-  const glass = muted ? '#77808b' : '#a9d7ed';
-  const liquid = muted ? '#4f6572' : '#168df2';
-  const cap = muted ? '#58616b' : '#b9c8d4';
+  const glass = muted ? '#617b8a' : '#a9f0ff';
+  const liquid = muted ? '#345a75' : '#1aaef2';
+  const label = muted ? '#274d68' : '#086cae';
+  const labelInk = muted ? '#90a5af' : '#dffaff';
+  const cap = muted ? '#263d50' : '#061d38';
   return (
-    <Svg width={size} height={size * 1.34} viewBox="0 0 60 80" accessibilityLabel="Quick Revive blue lightning bottle">
-      <Path d="M23 4h14v10l5 7v45c0 6-5 10-12 10s-12-4-12-10V21l5-7V4Z" fill="rgba(225,246,255,0.12)" stroke={glass} strokeWidth="2.2" />
-      <Path d="M21 37h18v29c0 4-3.3 7-9 7s-9-3-9-7V37Z" fill={liquid} opacity={muted ? 0.52 : 0.9} />
+    <Svg width={size} height={size * 1.34} viewBox="0 0 60 80" accessibilityLabel="Quick Revive glowing blue soda bottle">
+      <Path d="M23 4h14v10l5 7v45c0 6-5 10-12 10s-12-4-12-10V21l5-7V4Z" fill="rgba(184,244,255,0.16)" stroke={glass} strokeWidth="2.2" />
+      <Path d="M21 27h18v39c0 4-3.3 7-9 7s-9-3-9-7V27Z" fill={liquid} opacity={muted ? 0.56 : 0.94} />
+      <Path d="M23 19h14l2 13H21l2-13Z" fill={label} opacity={muted ? 0.74 : 0.94} />
       <Path d="M25 4h10v5H25z" fill={cap} />
-      <Path d="M23 22h14" stroke={glass} strokeWidth="1.5" opacity="0.8" />
-      <Path d="M33 29l-8 13h6l-4 12 10-15h-6l2-10Z" fill="#fff" />
-      <Path d="M21 61c5 2 13 2 18 0" stroke="#e5f7ff" strokeOpacity="0.52" strokeWidth="1.2" />
+      <Path d="M24 7h12" stroke={glass} strokeWidth="1.2" opacity="0.7" />
+      <Path d="M23 22h14" stroke={glass} strokeWidth="1.3" opacity="0.72" />
+      <Circle cx="30" cy="25.5" r="3.2" fill="none" stroke={labelInk} strokeWidth="1" opacity="0.9" />
+      <Path d="M27.3 25.5h5.4M30 22.8v5.4" stroke={labelInk} strokeWidth="0.8" opacity="0.8" />
+      <Circle cx="30" cy="50" r="13.5" fill={label} stroke={labelInk} strokeWidth="1.4" opacity={muted ? 0.75 : 0.98} />
+      <SvgText x="30" y="42" fill={labelInk} fontSize="5.2" fontWeight="700" textAnchor="middle" letterSpacing="0.35">REVIVE</SvgText>
+      <Path d="M25.5 48l4.5-2.5 4.5 2.5v5.3c0 3-4.5 5.2-4.5 5.2s-4.5-2.2-4.5-5.2V48Z" fill="none" stroke={labelInk} strokeWidth="1.3" />
+      <Path d="M27.8 52.5h4.4M30 49.5v6" stroke={labelInk} strokeWidth="1.1" strokeLinecap="round" />
+      <SvgText x="30" y="63" fill={labelInk} fontSize="4.3" fontWeight="600" textAnchor="middle" letterSpacing="0.25">SODA</SvgText>
+      <Circle cx="24.5" cy="35" r="1.1" fill="#e8ffff" opacity={muted ? 0.35 : 0.9} />
+      <Circle cx="35.5" cy="37" r="0.8" fill="#e8ffff" opacity={muted ? 0.3 : 0.8} />
+      <Circle cx="25.5" cy="68" r="0.75" fill="#f1ffff" opacity={muted ? 0.3 : 0.86} />
+      <Circle cx="34.5" cy="69" r="1.1" fill="#f1ffff" opacity={muted ? 0.25 : 0.8} />
+      <Circle cx="29" cy="33.5" r="0.65" fill="#fff" opacity={muted ? 0.28 : 0.82} />
+      <Circle cx="33" cy="34.5" r="0.45" fill="#fff" opacity={muted ? 0.25 : 0.76} />
+      <Path d="M23 31c-1 8-1 24 1 34" stroke="#efffff" strokeOpacity={muted ? 0.26 : 0.58} strokeWidth="1.5" strokeLinecap="round" />
+      <Path d="M21 61c5 2 13 2 18 0" stroke="#e5ffff" strokeOpacity={muted ? 0.38 : 0.78} strokeWidth="1.2" />
     </Svg>
   );
 }
@@ -271,11 +288,13 @@ export function BrewTokenBank({
   const lossVoiceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const machineSoundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const winSoundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const quickReviveVoiceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const daiquiriVoiceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const displayedTokensRef = useRef(tokens);
   const lossPlayerRef = useRef<AudioPlayerHandle | null>(null);
   const machinePlayerRef = useRef<AudioPlayerHandle | null>(null);
   const winPlayerRef = useRef<AudioPlayerHandle | null>(null);
+  const quickReviveVoicePlayerRef = useRef<AudioPlayerHandle | null>(null);
   const daiquiriVoicePlayerRef = useRef<AudioPlayerHandle | null>(null);
   const activeLossPhraseRef = useRef<LossPhrase | null>(null);
   const reelStopTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -318,6 +337,13 @@ export function BrewTokenBank({
     winPlayerRef.current = null;
   };
 
+  const stopQuickReviveVoice = () => {
+    if (quickReviveVoiceTimerRef.current) clearTimeout(quickReviveVoiceTimerRef.current);
+    quickReviveVoiceTimerRef.current = null;
+    try { quickReviveVoicePlayerRef.current?.remove(); } catch (_) {}
+    quickReviveVoicePlayerRef.current = null;
+  };
+
   const stopDaiquiriVoice = () => {
     if (daiquiriVoiceTimerRef.current) clearTimeout(daiquiriVoiceTimerRef.current);
     daiquiriVoiceTimerRef.current = null;
@@ -343,6 +369,7 @@ export function BrewTokenBank({
     stopLossVoice(true);
     stopMachineSound();
     stopWinSound();
+    stopQuickReviveVoice();
     stopDaiquiriVoice();
   }, []);
 
@@ -561,12 +588,13 @@ export function BrewTokenBank({
       ? withTiming(1, { duration: 160 })
       : withSequence(
         withTiming(0.43, { duration: 240, easing: Easing.out(Easing.cubic) }),
-        withTiming(1, { duration: 720, easing: Easing.inOut(Easing.cubic) }),
+        withTiming(1, { duration: 980, easing: Easing.inOut(Easing.cubic) }),
       );
     quickReviveBurstTimerRef.current = setTimeout(
       () => setQuickReviveBurstVisible(false),
-      reduceMotion ? 220 : 1080,
+      reduceMotion ? 220 : 1_380,
     );
+    void playQuickReviveVoice();
   };
 
   const handleUnlockDaiquiri = async () => {
@@ -598,6 +626,21 @@ export function BrewTokenBank({
       daiquiriVoiceTimerRef.current = setTimeout(stopDaiquiriVoice, clip.durationMs + 250);
     } catch {
       // The redemption animation remains useful if native audio is unavailable.
+    }
+  };
+
+  const playQuickReviveVoice = async () => {
+    if (!soundEnabled || Constants.appOwnership === 'expo') return;
+    stopQuickReviveVoice();
+    try {
+      const { createAudioPlayer, setAudioModeAsync } = await import('expo-audio');
+      await setAudioModeAsync({ playsInSilentMode: false, allowsRecording: false });
+      const player = createAudioPlayer(require('../assets/quick-revive-voice/revive-soda.m4a'), { downloadFirst: true });
+      quickReviveVoicePlayerRef.current = player;
+      player.play();
+      quickReviveVoiceTimerRef.current = setTimeout(stopQuickReviveVoice, 6_150);
+    } catch {
+      // The glowing bottle animation remains useful if native audio is unavailable.
     }
   };
 
