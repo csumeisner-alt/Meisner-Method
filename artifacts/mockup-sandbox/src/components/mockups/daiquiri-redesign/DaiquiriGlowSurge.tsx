@@ -37,7 +37,11 @@ function GlowBottle() {
           <stop offset="1" stopColor="#bf7b1e" stopOpacity="0" />
         </radialGradient>
         <filter id="softGlow"><feGaussianBlur stdDeviation="9" /></filter>
+        <filter id="labelShadow" x="-30%" y="-30%" width="160%" height="170%">
+          <feDropShadow dx="0" dy="7" stdDeviation="7" floodColor="#020812" floodOpacity=".72" />
+        </filter>
         <clipPath id="liquidClip"><path d="M46 202h168v236c0 34-29 54-84 54s-84-20-84-54V202Z" /></clipPath>
+        <clipPath id="portraitClip"><circle cx="130" cy="322" r="51" /></clipPath>
       </defs>
 
       <ellipse className="bottle-warm-glow" cx="130" cy="362" rx="101" ry="143" fill="url(#warmGlow)" filter="url(#softGlow)" />
@@ -49,12 +53,21 @@ function GlowBottle() {
         {bubbles.map(([cx, cy, r, delay], index) => <circle key={index} className="bubble" cx={cx * 2.6} cy={cy * 5.1} r={r * 2.1} style={{ animationDelay: `${delay}s` }} />)}
       </g>
       <image className="neck-label" href="/__mockup/images/dave-ramsey-neck-label.png" x="91" y="105" width="78" height="40" preserveAspectRatio="xMidYMid slice" />
-      <image href="/__mockup/images/dave-ramsey-label.png" x="51" y="220" width="158" height="205" preserveAspectRatio="xMidYMid slice" />
-      <path d="M51 322c0-57 35-103 79-103s79 46 79 103-35 103-79 103-79-46-79-103Z" fill="none" stroke="#f8de77" strokeOpacity=".72" strokeWidth="2" />
+      <g className="bottle-label" filter="url(#labelShadow)">
+        <circle cx="130" cy="322" r="80" fill="url(#capGold)" stroke="#fff0a0" strokeWidth="2" />
+        <circle cx="130" cy="322" r="72" fill="#08264a" stroke="#163f69" strokeWidth="3" />
+        <image href="/__mockup/images/dave-ramsey-portrait.png" x="79" y="271" width="102" height="102" clipPath="url(#portraitClip)" preserveAspectRatio="xMidYMid slice" />
+        <rect x="77" y="251" width="106" height="27" rx="13.5" fill="url(#capGold)" stroke="#fff0a0" strokeWidth="1" />
+        <text x="130" y="269" textAnchor="middle" fill="#08264a" fontFamily="Playfair Display, Georgia, serif" fontSize="12" fontWeight="700" letterSpacing=".8">DAVE RAMSEY</text>
+        <rect x="73" y="366" width="114" height="31" rx="15.5" fill="url(#capGold)" stroke="#fff0a0" strokeWidth="1" />
+        <text x="130" y="388" textAnchor="middle" fill="#08264a" fontFamily="Playfair Display, Georgia, serif" fontSize="18" fontWeight="700" fontStyle="italic">Daiquiri</text>
+      </g>
       <path d="M99 46c-12 36-7 80-7 122v221c0 45 11 70 21 78" fill="none" stroke="#dff8ff" strokeOpacity=".7" strokeWidth="5" strokeLinecap="round" className="glass-highlight" />
       <path d="M157 52c13 33 8 72 9 116" fill="none" stroke="#fff" strokeOpacity=".42" strokeWidth="3" strokeLinecap="round" />
-      <path d="M88 27h84v17c0 8-7 13-16 13h-52c-9 0-16-5-16-13V27Z" fill="#071429" stroke="#7599b6" strokeWidth="2" />
-      <path d="M86 42h88" stroke="#f4d56c" strokeWidth="3" className="cap-glint" />
+      <path d="M88 27h84v17c0 8-7 13-16 13h-52c-9 0-16-5-16-13V27Z" fill="url(#capGold)" stroke="#fff0a0" strokeWidth="2" />
+      <circle cx="130" cy="36" r="10" fill="#e4b843" stroke="#0a2242" strokeWidth="1.5" />
+      <text x="130" y="42" textAnchor="middle" fill="#0a2242" fontFamily="Georgia, serif" fontSize="13" fontWeight="700">R</text>
+      <path d="M86 42h88" stroke="#fff2a2" strokeWidth="3" className="cap-glint" />
       <path d="M85 50h90" stroke="#a77a25" strokeWidth="5" opacity=".7" />
     </svg>
   );
