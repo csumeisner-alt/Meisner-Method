@@ -25,3 +25,4 @@
 - [Dark Brew Token economy](dark-brew-token-economy.md) — Stamin Up converts one winning award only; Dark Brew stays isolated from regular wagering and portfolio value.
 - [Quick Revive visual direction](quick-revive-visual-direction.md) — use a luminous cyan soda bottle with fizz and a round Revive label, not a generic lightning potion.
 - [Daiquiri visual direction](daiquiri-visual-direction.md) — use a cinematic navy-and-gold collectible bottle with carbonation, label flare, liquid surge, and controlled splash.
+- [Mockup sandbox React types](mockup-sandbox-react-types.md) — keep sandbox React type packages aligned with runtime React 19.1 to avoid nominal ref incompatibilities.
