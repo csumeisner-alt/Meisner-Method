@@ -45,11 +45,11 @@ function QuickReviveBottle() {
       <ellipse className="bottle-warm-glow" cx="130" cy="358" rx="106" ry="149" fill="url(#quickGlow)" filter="url(#quickSoftGlow)" />
       <path d="M92 29h76v47c0 20 5 34 14 47l24 34c8 12 12 26 12 42v239c0 34-32 52-88 52s-88-18-88-52V199c0-16 4-30 12-42l24-34c9-13 14-27 14-47V29Z" fill="url(#quickGlassBody)" stroke="#b6f5ff" strokeOpacity=".76" strokeWidth="3" />
       <path d="M99 34h62v43c0 22 5 37 15 51l22 32c6 10 9 22 9 35v239c0 25-25 40-77 40s-77-15-77-40V195c0-13 3-25 9-35l22-32c10-14 15-29 15-51V34Z" fill="#092b4b" fillOpacity=".42" />
-      <path d="M46 202h168v236c0 34-29 54-84 54s-84-20-84-54V202Z" fill="url(#quickLiquid)" className="liquid-fill" />
+      <path d="M46 202h168v236c0 34-29 54-84 54s-84-20-84-54V202Z" fill="url(#quickLiquid)" className="liquid-fill quick-liquid-fill" />
       <g clipPath="url(#quickLiquidClip)">
         <path d="M52 229c40-22 79 12 157-18v235H52Z" fill="#ddffff" fillOpacity=".2" className="liquid-line" />
         {bubbles.map(([cx, cy, r, delay], index) => (
-          <circle key={index} className="bubble" cx={cx} cy={cy} r={r} fill="#eaffff" fillOpacity=".72" style={{ animationDelay: `${delay}s` }} />
+          <circle key={index} className="bubble quick-fizz-bubble" cx={cx} cy={cy} r={r} fill="#eaffff" fillOpacity=".72" style={{ animationDelay: `${delay}s` }} />
         ))}
       </g>
 
@@ -72,8 +72,10 @@ function QuickReviveBottle() {
         <text x="130" y="373" textAnchor="middle" fill="#edffff" fontFamily="Outfit, sans-serif" fontSize="12" fontWeight="600" letterSpacing="2.4">SODA</text>
       </g>
 
-      <path d="M88 27h84v17c0 8-7 13-16 13h-52c-9 0-16-5-16-13V27Z" fill="url(#quickCap)" stroke="#8fdff3" strokeOpacity=".72" strokeWidth="2" />
-      <path d="M101 34h58" stroke="#d8fbff" strokeOpacity=".22" strokeWidth="2" strokeLinecap="round" />
+      <g className="quick-cap">
+        <path d="M88 27h84v17c0 8-7 13-16 13h-52c-9 0-16-5-16-13V27Z" fill="url(#quickCap)" stroke="#8fdff3" strokeOpacity=".72" strokeWidth="2" />
+        <path className="quick-cap-glint" d="M101 34h58" stroke="#d8fbff" strokeOpacity=".22" strokeWidth="2" strokeLinecap="round" />
+      </g>
     </svg>
   );
 }
