@@ -24,19 +24,26 @@ function GlowBottle() {
           <stop offset=".72" stopColor="#c89027" />
           <stop offset="1" stopColor="#ffe878" />
         </linearGradient>
+        <linearGradient id="capGold" x1="0" x2="1" y1="0" y2="1">
+          <stop stopColor="#6f5016" />
+          <stop offset=".22" stopColor="#f9df76" />
+          <stop offset=".5" stopColor="#fff1a1" />
+          <stop offset=".76" stopColor="#c89b32" />
+          <stop offset="1" stopColor="#624411" />
+        </linearGradient>
         <radialGradient id="warmGlow">
           <stop stopColor="#ffe777" stopOpacity=".95" />
           <stop offset=".5" stopColor="#e9ad34" stopOpacity=".5" />
           <stop offset="1" stopColor="#bf7b1e" stopOpacity="0" />
         </radialGradient>
         <filter id="softGlow"><feGaussianBlur stdDeviation="9" /></filter>
-        <clipPath id="liquidClip"><path d="M70 202h120v246c0 25-24 42-60 42s-60-17-60-42V202Z" /></clipPath>
+        <clipPath id="liquidClip"><path d="M46 202h168v236c0 34-29 54-84 54s-84-20-84-54V202Z" /></clipPath>
       </defs>
 
       <ellipse className="bottle-warm-glow" cx="130" cy="362" rx="101" ry="143" fill="url(#warmGlow)" filter="url(#softGlow)" />
-      <path d="M83 30h94v43l19 31v320c0 50-28 73-66 73s-66-23-66-73V104l19-31V30Z" fill="url(#glassBody)" stroke="#a9d7ed" strokeOpacity=".72" strokeWidth="3" />
-      <path d="M92 32h76v46l18 30v314c0 41-21 61-56 61s-56-20-56-61V108l18-30V32Z" fill="#0c2844" fillOpacity=".43" />
-      <path d="M70 202h120v246c0 25-24 42-60 42s-60-17-60-42V202Z" fill="url(#goldLiquid)" className="liquid-fill" />
+      <path d="M91 29h78v46c0 22 4 32 16 49l20 29c7 11 10 24 10 37v270c0 32-27 51-85 51s-85-19-85-51V190c0-13 3-26 10-37l20-29c12-17 16-27 16-49V29Z" fill="url(#glassBody)" stroke="#a9d7ed" strokeOpacity=".72" strokeWidth="3" />
+      <path d="M99 34h62v43c0 24 5 36 17 52l19 28c5 9 7 19 7 31v267c0 24-24 39-74 39s-74-15-74-39V188c0-12 2-22 7-31l19-28c12-16 17-28 17-52V34Z" fill="#0c2844" fillOpacity=".43" />
+      <path d="M46 202h168v236c0 34-29 54-84 54s-84-20-84-54V202Z" fill="url(#goldLiquid)" className="liquid-fill" />
       <g clipPath="url(#liquidClip)">
         <path d="M53 238c33-21 75 10 154-17v225H53Z" fill="#ffec7d" fillOpacity=".35" className="liquid-line" />
         {bubbles.map(([cx, cy, r, delay], index) => <circle key={index} className="bubble" cx={cx * 2.6} cy={cy * 5.1} r={r * 2.1} style={{ animationDelay: `${delay}s` }} />)}
