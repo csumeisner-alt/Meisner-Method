@@ -277,6 +277,10 @@
   content: "";
 }
 
+.glow-panel::after {
+  display: none;
+}
+
 .glow-panel::before {
   top: -100px;
   left: 18%;
@@ -404,7 +408,7 @@
 
 .bottle-wrap {
   position: absolute;
-  z-index: 2;
+  z-index: 4;
   top: 5px;
   left: 50%;
   width: min(50vw, 200px);
@@ -421,7 +425,7 @@
 
 .pedestal {
   position: absolute;
-  z-index: 3;
+  z-index: 2;
   bottom: 11px;
   left: 50%;
   width: 195px;
