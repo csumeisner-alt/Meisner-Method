@@ -24,11 +24,6 @@ function GlowBottle() {
           <stop offset=".72" stopColor="#c89027" />
           <stop offset="1" stopColor="#ffe878" />
         </linearGradient>
-        <linearGradient id="labelBlue" x1="0" x2="1">
-          <stop stopColor="#071e3d" />
-          <stop offset=".5" stopColor="#123f6d" />
-          <stop offset="1" stopColor="#06182f" />
-        </linearGradient>
         <radialGradient id="warmGlow">
           <stop stopColor="#ffe777" stopOpacity=".95" />
           <stop offset=".5" stopColor="#e9ad34" stopOpacity=".5" />
@@ -36,7 +31,6 @@ function GlowBottle() {
         </radialGradient>
         <filter id="softGlow"><feGaussianBlur stdDeviation="9" /></filter>
         <clipPath id="liquidClip"><path d="M70 202h120v246c0 25-24 42-60 42s-60-17-60-42V202Z" /></clipPath>
-        <clipPath id="labelClip"><ellipse cx="130" cy="322" rx="76" ry="98" /></clipPath>
       </defs>
 
       <ellipse className="bottle-warm-glow" cx="130" cy="362" rx="101" ry="143" fill="url(#warmGlow)" filter="url(#softGlow)" />
@@ -47,23 +41,9 @@ function GlowBottle() {
         <path d="M53 238c33-21 75 10 154-17v225H53Z" fill="#ffec7d" fillOpacity=".35" className="liquid-line" />
         {bubbles.map(([cx, cy, r, delay], index) => <circle key={index} className="bubble" cx={cx * 2.6} cy={cy * 5.1} r={r * 2.1} style={{ animationDelay: `${delay}s` }} />)}
       </g>
-      <path d="M91 105h78v40H91z" fill="#0a2242" stroke="#e0b84d" strokeWidth="2" />
-      <path d="M93 109h74v32H93z" fill="#123b68" />
-      <circle cx="130" cy="125" r="18" fill="#dbad39" stroke="#ffe78a" strokeWidth="2" className="neck-medallion" />
-      <path d="M123 137v-24h8c6 0 7 10 0 10h-8m8 0 9 14" fill="none" stroke="#082243" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-
-      <ellipse cx="130" cy="322" rx="79" ry="101" fill="#d5a63d" fillOpacity=".92" />
-      <ellipse cx="130" cy="322" rx="73" ry="95" fill="url(#labelBlue)" stroke="#f4d56c" strokeWidth="2" />
-      <g clipPath="url(#labelClip)" opacity=".8" fill="none" stroke="#d5b24e" strokeWidth="1.5">
-        <path d="M79 360c15-47 22-76 50-81 34 6 36 43 52 84" />
-        <path d="M84 376c12-26 32-37 46-37 17 0 36 14 47 42" />
-        <path d="M90 291c18 10 55 9 80-1M86 306c27 13 59 12 89-1M84 328c32 12 61 10 92-2" />
-        <path d="M113 284c-6 20-7 38 0 55m32-55c7 20 8 38 0 55" />
-      </g>
-      <path d="M91 283c22-17 56-17 78 0" fill="none" stroke="#f8de77" strokeWidth="2" />
-      <text x="130" y="277" textAnchor="middle" fill="#f8de77" fontFamily="DM Mono, monospace" fontSize="9" letterSpacing="1.5">DAVE RAMSEY</text>
-      <text x="130" y="405" textAnchor="middle" fill="#f8de77" fontFamily="Playfair Display, serif" fontSize="22" fontWeight="700">Daiquiri</text>
-      <path d="M99 420h62" stroke="#f8de77" strokeOpacity=".75" />
+      <image className="neck-label" href="/__mockup/images/dave-ramsey-neck-label.png" x="91" y="105" width="78" height="40" preserveAspectRatio="xMidYMid slice" />
+      <image href="/__mockup/images/dave-ramsey-label.png" x="51" y="220" width="158" height="205" preserveAspectRatio="xMidYMid slice" />
+      <path d="M51 322c0-57 35-103 79-103s79 46 79 103-35 103-79 103-79-46-79-103Z" fill="none" stroke="#f8de77" strokeOpacity=".72" strokeWidth="2" />
       <path d="M99 46c-12 36-7 80-7 122v221c0 45 11 70 21 78" fill="none" stroke="#dff8ff" strokeOpacity=".7" strokeWidth="5" strokeLinecap="round" className="glass-highlight" />
       <path d="M157 52c13 33 8 72 9 116" fill="none" stroke="#fff" strokeOpacity=".42" strokeWidth="3" strokeLinecap="round" />
       <path d="M88 27h84v17c0 8-7 13-16 13h-52c-9 0-16-5-16-13V27Z" fill="#071429" stroke="#7599b6" strokeWidth="2" />
@@ -134,7 +114,7 @@ export function DaiquiriGlowSurge() {
           <span>{active ? "BOTTLE CRACKED" : "REDEEM DAIQUIRI"}</span><b>↗</b>
         </button>
         <div className="glow-footer">
-          <span>LIGHT BLUE + YELLOW LIQUID · DOUBLE AWARD ON WIN</span>
+      <span>NAVY GLASS + GOLD LIQUID · DOUBLE AWARD ON WIN</span>
           <button type="button" className="motion-toggle mono" onClick={() => setReducedMotion((value) => !value)} aria-pressed={reducedMotion}>
             {reducedMotion ? "REDUCED MOTION: ON" : "REDUCED MOTION: OFF"}
           </button>
