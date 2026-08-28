@@ -47,7 +47,6 @@ function QuickReviveBottle() {
       <path d="M99 34h62v43c0 22 5 37 15 51l22 32c6 10 9 22 9 35v239c0 25-25 40-77 40s-77-15-77-40V195c0-13 3-25 9-35l22-32c10-14 15-29 15-51V34Z" fill="#092b4b" fillOpacity=".42" />
       <path d="M46 202h168v236c0 34-29 54-84 54s-84-20-84-54V202Z" fill="url(#quickLiquid)" className="liquid-fill quick-liquid-fill" />
       <g clipPath="url(#quickLiquidClip)">
-        <path d="M52 229c40-22 79 12 157-18v235H52Z" fill="#ddffff" fillOpacity=".2" className="liquid-line" />
         {bubbles.map(([cx, cy, r, delay], index) => (
           <circle key={index} className="bubble quick-fizz-bubble" cx={cx} cy={cy} r={r} fill="#eaffff" fillOpacity=".72" style={{ animationDelay: `${delay}s` }} />
         ))}
