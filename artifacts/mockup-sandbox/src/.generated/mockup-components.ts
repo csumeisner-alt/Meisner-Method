@@ -2,5 +2,6 @@
 type ModuleMap = Record<string, () => Promise<Record<string, unknown>>>;
 export const modules: ModuleMap = {
   "./components/mockups/daiquiri-redesign/Current.tsx": () => import("../components/mockups/daiquiri-redesign/Current.tsx"),
-  "./components/mockups/daiquiri-redesign/DaiquiriGlowSurge.tsx": () => import("../components/mockups/daiquiri-redesign/DaiquiriGlowSurge.tsx")
+  "./components/mockups/daiquiri-redesign/DaiquiriGlowSurge.tsx": () => import("../components/mockups/daiquiri-redesign/DaiquiriGlowSurge.tsx"),
+  "./components/mockups/quick-revive-redesign/QuickReviveGlowSurge.tsx": () => import("../components/mockups/quick-revive-redesign/QuickReviveGlowSurge.tsx")
 };
