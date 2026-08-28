@@ -422,7 +422,7 @@
 .pedestal {
   position: absolute;
   z-index: 3;
-  bottom: 7px;
+  bottom: 11px;
   left: 50%;
   width: 195px;
   height: 39px;
@@ -701,7 +701,7 @@
   .glow-stage { height: 390px; }
   .glow-details { padding-top: 0; }
   .bottle-wrap { top: 0; width: min(50vw, 190px); }
-  .pedestal { bottom: -12px; }
+  .pedestal { bottom: -8px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

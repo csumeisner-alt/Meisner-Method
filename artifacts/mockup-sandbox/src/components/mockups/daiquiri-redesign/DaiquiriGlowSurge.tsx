@@ -50,7 +50,18 @@ function GlowBottle() {
       <path d="M46 202h168v236c0 34-29 54-84 54s-84-20-84-54V202Z" fill="url(#goldLiquid)" className="liquid-fill" />
       <g clipPath="url(#liquidClip)">
         <path d="M53 238c33-21 75 10 154-17v225H53Z" fill="#ffec7d" fillOpacity=".35" className="liquid-line" />
-        {bubbles.map(([cx, cy, r, delay], index) => <circle key={index} className="bubble" cx={cx * 2.6} cy={cy * 5.1} r={r * 2.1} style={{ animationDelay: `${delay}s` }} />)}
+        {bubbles.map(([cx, cy, r, delay], index) => (
+          <circle
+            key={index}
+            className="bubble"
+            cx={cx * 2.6}
+            cy={cy * 5.1}
+            r={r * 2.1}
+            fill="#fff4a1"
+            fillOpacity=".68"
+            style={{ animationDelay: `${delay}s` }}
+          />
+        ))}
       </g>
       <image className="neck-label" href="/__mockup/images/dave-ramsey-neck-label.png" x="91" y="105" width="78" height="40" preserveAspectRatio="xMidYMid slice" />
       <g className="bottle-label" filter="url(#labelShadow)">
