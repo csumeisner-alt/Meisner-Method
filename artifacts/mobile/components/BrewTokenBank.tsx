@@ -115,6 +115,7 @@ function DaiquiriBottle({ size = 54, muted = false }: { size?: number; muted?: b
   const blue = muted ? '#304b60' : '#123d69';
   const cap = muted ? '#273442' : '#061429';
   const daiquiriLabel = require('../assets/daiquiri/dave-ramsey-label.png');
+  const daiquiriNeckLabel = require('../assets/daiquiri/dave-ramsey-neck-label.png');
   return (
     <Svg width={size} height={size * 1.96} viewBox="0 0 260 510" accessibilityLabel="Dave Ramsey Daiquiri navy and gold collectible bottle with sparkling yellow liquid">
       <Defs>
@@ -152,10 +153,15 @@ function DaiquiriBottle({ size = 54, muted = false }: { size?: number; muted?: b
           <Circle key={index} cx={cx} cy={cy} r={r} fill="#fff4a1" fillOpacity={muted ? 0.22 : 0.78} />
         ))}
       </G>
-      <Path d="M91 105h78v40H91z" fill="#0a2242" stroke={yellowBright} strokeOpacity={muted ? 0.3 : 0.82} strokeWidth="2" />
-      <Path d="M93 109h74v32H93z" fill="#123b68" />
-      <Circle cx="130" cy="125" r="17" fill={muted ? '#6d6139' : '#dbad39'} stroke={yellowBright} strokeWidth="2" />
-      <SvgText x="130" y="132" fill="#082243" fontSize="19" fontWeight="700" textAnchor="middle">R</SvgText>
+      <SvgImage
+        href={daiquiriNeckLabel}
+        x="91"
+        y="105"
+        width="78"
+        height="40"
+        opacity={muted ? 0.5 : 1}
+        preserveAspectRatio="xMidYMid slice"
+      />
       <SvgImage
         href={daiquiriLabel}
         x="51"
@@ -554,9 +560,10 @@ export function BrewTokenBank({
   const daiquiriBottleStyle = useAnimatedStyle(() => ({
     opacity: interpolate(daiquiriProgress.value, [0, 0.42, 0.72, 1], [1, 1, 0.2, 0]),
     transform: [
-      { translateY: interpolate(daiquiriProgress.value, [0, 0.4, 1], [0, -12, 14]) },
-      { rotateZ: `${interpolate(daiquiriProgress.value, [0, 0.38, 1], [14, -22])}deg` },
-      { scale: interpolate(daiquiriProgress.value, [0, 0.5, 1], [0.9, 1.12, 0.58]) },
+      { translateY: interpolate(daiquiriProgress.value, [0, 0.38, 0.72, 1], [0, -18, -5, 0]) },
+      { translateX: interpolate(daiquiriProgress.value, [0, 0.38, 0.72, 1], [0, -3, 3, 0]) },
+      { rotateZ: `${interpolate(daiquiriProgress.value, [0, 0.38, 0.72, 1], [0, -7, 5, 0])}deg` },
+      { scale: interpolate(daiquiriProgress.value, [0, 0.5, 0.78, 1], [0.82, 1.06, 0.92, 0.72]) },
     ],
   }));
   const daiquiriWarmGlowStyle = useAnimatedStyle(() => ({
@@ -1107,7 +1114,11 @@ export function BrewTokenBank({
                      <View style={[styles.daiquiriBubble, styles.daiquiriBubbleFive]} />
                   </Animated.View>
                    <Animated.View style={[styles.daiquiriSurgeRing, daiquiriSurgeRingStyle]} />
-                   <Animated.View style={[styles.quickReviveBurstBottle, daiquiriBottleStyle]}>
+                    <View style={styles.daiquiriPedestal}>
+                      <View style={styles.daiquiriPedestalTop} />
+                      <View style={styles.daiquiriPedestalBody} />
+                    </View>
+                    <Animated.View style={[styles.daiquiriBurstBottle, daiquiriBottleStyle]}>
                      <DaiquiriBottle size={42} />
                    </Animated.View>
                    <Animated.View style={[styles.daiquiriLabelFlare, daiquiriLabelFlareStyle]} />
@@ -1749,6 +1760,10 @@ const styles = StyleSheet.create({
    daiquiriBubbleFour: { width: 8, height: 8, right: 39, top: 31 },
    daiquiriBubbleFive: { width: 10, height: 10, left: 55, top: 11 },
    daiquiriSurgeRing: { position: 'absolute', top: 81, width: 82, height: 24, borderWidth: 1.5, borderColor: '#ffe979', borderRadius: 42, backgroundColor: 'rgba(246,214,74,0.1)', shadowColor: '#f6d64a', shadowOpacity: 0.9, shadowRadius: 9, elevation: 6 },
+   daiquiriPedestal: { position: 'absolute', top: 84, width: 104, height: 22, alignItems: 'center', zIndex: 1 },
+   daiquiriPedestalTop: { position: 'absolute', top: 0, width: 104, height: 10, borderWidth: 1, borderColor: '#e4c45b', borderRadius: 52, backgroundColor: '#3b4a55', shadowColor: '#f6d64a', shadowOpacity: 0.65, shadowRadius: 7, elevation: 5 },
+   daiquiriPedestalBody: { position: 'absolute', top: 5, width: 82, height: 17, borderWidth: 1, borderColor: '#7f8e96', borderRadius: 5, backgroundColor: '#111b25', shadowColor: '#000', shadowOpacity: 0.55, shadowRadius: 5, elevation: 4 },
+   daiquiriBurstBottle: { position: 'absolute', top: 3, zIndex: 2 },
    daiquiriLabelFlare: { position: 'absolute', top: 34, width: 62, height: 62, borderRadius: 31, borderWidth: 1.5, borderColor: '#fff1a3', shadowColor: '#f6d64a', shadowOpacity: 0.96, shadowRadius: 13, elevation: 7 },
    daiquiriSplash: { position: 'absolute', top: 91, flexDirection: 'row', gap: 6, alignItems: 'center' },
    daiquiriSplashDrop: { width: 7, height: 16, borderRadius: 8, backgroundColor: '#ffe979', shadowColor: '#f6d64a', shadowOpacity: 0.95, shadowRadius: 8, elevation: 6 },
