@@ -38,6 +38,9 @@ import {
   DAIQUIRI_UNLOCK_PRICE,
   QUICK_REVIVE_BOTTLE_PRICE,
   QUICK_REVIVE_UNLOCK_PRICE,
+  STAMIN_UP_BOTTLE_PRICE,
+  STAMIN_UP_UNLOCK_PRICE,
+  type BrewBetEffect,
   formatBrewBankAccessRemaining,
   getDaiquiriWinProbability,
   getBrewWinProbability,
@@ -93,6 +96,27 @@ function DaiquiriBottle({ size = 54, muted = false }: { size?: number; muted?: b
   );
 }
 
+function StaminUpBottle({ size = 54, muted = false }: { size?: number; muted?: boolean }) {
+  const glass = muted ? '#85755d' : '#ffd08a';
+  const liquid = muted ? '#7f5426' : '#f28a1c';
+  const highlight = muted ? '#9f7e47' : '#ffd35c';
+  const cap = muted ? '#786443' : '#ffe55c';
+  return (
+    <Svg width={size} height={size * 1.34} viewBox="0 0 60 80" accessibilityLabel="Stamin Up amber orange glass soda bottle">
+      <Path d="M23 4h14v10l5 7v45c0 6-5 10-12 10s-12-4-12-10V21l5-7V4Z" fill="rgba(255,221,153,0.14)" stroke={glass} strokeWidth="2.2" />
+      <Path d="M21 33h18v33c0 4-3.3 7-9 7s-9-3-9-7V33Z" fill={liquid} opacity={muted ? 0.52 : 0.9} />
+      <Path d="M25 4h10v5H25z" fill={cap} />
+      <Path d="M24 7h12" stroke="#6e5317" strokeWidth="1.1" opacity="0.7" />
+      <Path d="M23 22h14" stroke={glass} strokeWidth="1.5" opacity="0.86" />
+      <Circle cx="30" cy="49" r="10.5" fill="#e67b17" stroke={highlight} strokeWidth="1.4" />
+      <Path d="M21.5 49h17" stroke={highlight} strokeWidth="0.9" opacity="0.75" />
+      <Path d="M25 45c2-2.4 8-2.4 10 0M25 53c2 2.4 8 2.4 10 0" fill="none" stroke="#fff5c6" strokeWidth="1" />
+      <Path d="M28 44l5 5-5 5M32 44l-5 5 5 5" fill="none" stroke="#fff" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M23 61c5 2 13 2 18 0" stroke="#ffec9d" strokeOpacity="0.75" strokeWidth="1.2" />
+    </Svg>
+  );
+}
+
 type Props = {
   visible: boolean;
   colors: ColorScheme;
@@ -108,8 +132,12 @@ type Props = {
   daiquiriUnlocked: boolean;
   daiquiriBottles: number;
   daiquiriArmed: boolean;
+  staminUpUnlocked: boolean;
+  staminUpBottles: number;
+  staminUpArmed: boolean;
+  darkBrewTokens: number;
   onClose: () => void;
-  onResolveBet: (bet: number, won: boolean, payoutMultiplier?: number) => Promise<void>;
+  onResolveBet: (bet: number, won: boolean, effect?: BrewBetEffect) => Promise<void>;
   onSoundEnabledChange: (value: boolean) => Promise<void>;
   onHapticsEnabledChange: (value: boolean) => Promise<void>;
   onBuyBankKey: () => Promise<boolean>;
@@ -120,6 +148,9 @@ type Props = {
   onUnlockDaiquiri: () => Promise<boolean>;
   onBuyDaiquiriBottle: () => Promise<boolean>;
   onRedeemDaiquiri: () => Promise<boolean>;
+  onUnlockStaminUp: () => Promise<boolean>;
+  onBuyStaminUpBottle: () => Promise<boolean>;
+  onRedeemStaminUp: () => Promise<boolean>;
 };
 
 type AudioPlayerHandle = {
@@ -197,6 +228,10 @@ export function BrewTokenBank({
   daiquiriUnlocked,
   daiquiriBottles,
   daiquiriArmed,
+  staminUpUnlocked,
+  staminUpBottles,
+  staminUpArmed,
+  darkBrewTokens,
   onClose,
   onResolveBet,
   onSoundEnabledChange,
@@ -209,10 +244,13 @@ export function BrewTokenBank({
   onUnlockDaiquiri,
   onBuyDaiquiriBottle,
   onRedeemDaiquiri,
+  onUnlockStaminUp,
+  onBuyStaminUpBottle,
+  onRedeemStaminUp,
 }: Props) {
   const insets = useSafeAreaInsets();
   const [selectedBet, setSelectedBet] = useState(1);
-  const [result, setResult] = useState<{ won: boolean; bet: number; quickRevive: boolean; daiquiri: boolean; award: number } | null>(null);
+  const [result, setResult] = useState<{ won: boolean; bet: number; quickRevive: boolean; daiquiri: boolean; staminUp: boolean; award: number } | null>(null);
   const [resolving, setResolving] = useState(false);
   const [displayedTokens, setDisplayedTokens] = useState(tokens);
   const [lossVoicePlaying, setLossVoicePlaying] = useState(false);
@@ -225,6 +263,7 @@ export function BrewTokenBank({
   const [countdownNow, setCountdownNow] = useState(() => Date.now());
   const [quickReviveBurstVisible, setQuickReviveBurstVisible] = useState(false);
   const [daiquiriBurstVisible, setDaiquiriBurstVisible] = useState(false);
+  const [staminUpBurstVisible, setStaminUpBurstVisible] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const balanceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -242,6 +281,7 @@ export function BrewTokenBank({
   const reelStopTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const quickReviveBurstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const daiquiriBurstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const staminUpBurstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const coinProgress = useSharedValue(0);
   const vaultPulse = useSharedValue(0);
   const resultProgress = useSharedValue(0);
@@ -250,6 +290,7 @@ export function BrewTokenBank({
   const reelThreePosition = useSharedValue(0);
   const quickReviveProgress = useSharedValue(0);
   const daiquiriProgress = useSharedValue(0);
+  const staminUpProgress = useSharedValue(0);
 
   const stopLossVoice = (force = false) => {
     if (!force && activeLossPhraseRef.current?.protectedFromDismiss) return;
@@ -294,6 +335,7 @@ export function BrewTokenBank({
     if (balanceTimerRef.current) clearInterval(balanceTimerRef.current);
     if (quickReviveBurstTimerRef.current) clearTimeout(quickReviveBurstTimerRef.current);
     if (daiquiriBurstTimerRef.current) clearTimeout(daiquiriBurstTimerRef.current);
+    if (staminUpBurstTimerRef.current) clearTimeout(staminUpBurstTimerRef.current);
     reelStopTimersRef.current.forEach(timer => clearTimeout(timer));
     reelStopTimersRef.current = [];
     [reelOnePosition, reelTwoPosition, reelThreePosition].forEach(position => cancelAnimation(position));
@@ -418,6 +460,47 @@ export function BrewTokenBank({
       { scaleY: interpolate(daiquiriProgress.value, [0, 0.55, 1], [0.3, 1.08, 0.72]) },
     ],
   }));
+  const staminUpBottleStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(staminUpProgress.value, [0, 0.62, 0.84, 1], [1, 1, 0.32, 0]),
+    transform: [
+      { translateY: interpolate(staminUpProgress.value, [0, 0.55, 1], [0, -28, -54]) },
+      { translateX: interpolate(staminUpProgress.value, [0, 0.3, 0.6, 1], [0, 18, -20, 5]) },
+      { rotateZ: `${interpolate(staminUpProgress.value, [0, 1], [0, 780])}deg` },
+      { scale: interpolate(staminUpProgress.value, [0, 0.6, 1], [0.92, 1.05, 0.4]) },
+    ],
+  }));
+  const staminUpTornadoUpperStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(staminUpProgress.value, [0, 0.12, 0.84, 1], [0, 0.86, 0.72, 0]),
+    transform: [
+      { translateY: interpolate(staminUpProgress.value, [0, 1], [18, -42]) },
+      { scaleX: interpolate(staminUpProgress.value, [0, 0.58, 1], [0.22, 1.25, 1.65]) },
+      { rotateZ: `${interpolate(staminUpProgress.value, [0, 1], [0, 520])}deg` },
+    ],
+  }));
+  const staminUpTornadoMiddleStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(staminUpProgress.value, [0, 0.12, 0.9, 1], [0, 0.9, 0.72, 0]),
+    transform: [
+      { translateY: interpolate(staminUpProgress.value, [0, 1], [26, -4]) },
+      { scaleX: interpolate(staminUpProgress.value, [0, 0.6, 1], [0.3, 1.48, 1.9]) },
+      { rotateZ: `${interpolate(staminUpProgress.value, [0, 1], [0, -480])}deg` },
+    ],
+  }));
+  const staminUpTornadoBaseStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(staminUpProgress.value, [0, 0.18, 0.95, 1], [0, 0.85, 0.72, 0]),
+    transform: [
+      { translateY: interpolate(staminUpProgress.value, [0, 1], [34, 27]) },
+      { scaleX: interpolate(staminUpProgress.value, [0, 0.65, 1], [0.4, 1.7, 2.15]) },
+      { rotateZ: `${interpolate(staminUpProgress.value, [0, 1], [0, 430])}deg` },
+    ],
+  }));
+  const staminUpSplashStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(staminUpProgress.value, [0, 0.54, 0.76, 1], [0, 0, 1, 0]),
+    transform: [
+      { translateY: interpolate(staminUpProgress.value, [0, 0.74, 1], [24, 10, 45]) },
+      { scaleX: interpolate(staminUpProgress.value, [0, 0.76, 1], [0.18, 1.7, 2.4]) },
+      { scaleY: interpolate(staminUpProgress.value, [0, 0.76, 1], [0.1, 1.08, 0.55]) },
+    ],
+  }));
 
   const bet = Math.min(Math.max(selectedBet, 1), Math.max(tokens, 1));
   const canPlay = tokens > 0 && !resolving && !protectedVoicePlaying;
@@ -461,7 +544,7 @@ export function BrewTokenBank({
   };
 
   const handleRedeemQuickRevive = async () => {
-    if (!quickReviveUnlocked || quickReviveBottles < 1 || quickReviveArmed || daiquiriArmed || resolving || shopBusy) return;
+    if (!quickReviveUnlocked || quickReviveBottles < 1 || quickReviveArmed || daiquiriArmed || staminUpArmed || resolving || shopBusy) return;
     setShopBusy(true);
     const redeemed = await onRedeemQuickRevive();
     setShopBusy(false);
@@ -519,7 +602,7 @@ export function BrewTokenBank({
   };
 
   const handleRedeemDaiquiri = async () => {
-    if (!daiquiriUnlocked || daiquiriBottles < 1 || daiquiriArmed || quickReviveArmed || resolving || shopBusy) return;
+    if (!daiquiriUnlocked || daiquiriBottles < 1 || daiquiriArmed || quickReviveArmed || staminUpArmed || resolving || shopBusy) return;
     setShopBusy(true);
     const redeemed = await onRedeemDaiquiri();
     setShopBusy(false);
@@ -543,6 +626,48 @@ export function BrewTokenBank({
       reduceMotion ? 220 : 1080,
     );
     void playDaiquiriVoice();
+  };
+
+  const handleUnlockStaminUp = async () => {
+    if (tokens < STAMIN_UP_UNLOCK_PRICE || staminUpUnlocked || resolving || shopBusy) return;
+    setShopBusy(true);
+    const unlocked = await onUnlockStaminUp();
+    setShopMessage(unlocked ? 'STAMIN UP UNLOCKED · BOTTLES ARE NOW 16 TOKENS' : 'NOT ENOUGH BREW TOKENS');
+    setShopBusy(false);
+  };
+
+  const handleBuyStaminUpBottle = async () => {
+    if (!staminUpUnlocked || tokens < STAMIN_UP_BOTTLE_PRICE || resolving || shopBusy) return;
+    setShopBusy(true);
+    const purchased = await onBuyStaminUpBottle();
+    setShopMessage(purchased ? 'STAMIN UP BOTTLE ADDED TO INVENTORY' : 'NOT ENOUGH BREW TOKENS');
+    setShopBusy(false);
+  };
+
+  const handleRedeemStaminUp = async () => {
+    if (!staminUpUnlocked || staminUpBottles < 1 || staminUpArmed || quickReviveArmed || daiquiriArmed || resolving || shopBusy) return;
+    setShopBusy(true);
+    const redeemed = await onRedeemStaminUp();
+    setShopBusy(false);
+    if (!redeemed) return;
+
+    setShopMessage('STAMIN UP ARMED · NEXT WIN PAYS DARK BREW TOKENS');
+    if (hapticsEnabled) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    }
+    if (staminUpBurstTimerRef.current) clearTimeout(staminUpBurstTimerRef.current);
+    setStaminUpBurstVisible(true);
+    staminUpProgress.value = 0;
+    staminUpProgress.value = reduceMotion
+      ? withTiming(1, { duration: 180 })
+      : withSequence(
+        withTiming(0.58, { duration: 600, easing: Easing.inOut(Easing.cubic) }),
+        withTiming(1, { duration: 670, easing: Easing.out(Easing.cubic) }),
+      );
+    staminUpBurstTimerRef.current = setTimeout(
+      () => setStaminUpBurstVisible(false),
+      reduceMotion ? 240 : 1_380,
+    );
   };
 
   const accessExpiryLabel = bankAccessExpiresAt
@@ -633,10 +758,16 @@ export function BrewTokenBank({
 
   const handleBet = () => {
     if (!canPlay) return;
-    const daiquiri = daiquiriArmed;
-    const quickRevive = quickReviveArmed && !daiquiri;
+    const staminUp = staminUpArmed;
+    const daiquiri = daiquiriArmed && !staminUp;
+    const quickRevive = quickReviveArmed && !daiquiri && !staminUp;
     const payoutMultiplier = daiquiri ? DAIQUIRI_PAYOUT_MULTIPLIER : 1;
     const won = Math.random() < (daiquiri ? getDaiquiriWinProbability(true) : getBrewWinProbability(quickRevive));
+    const effect: BrewBetEffect = staminUp
+      ? { rewardAsDarkBrew: true }
+      : daiquiri
+        ? { payoutMultiplier }
+        : {};
     setResult(null);
     setResolving(true);
     reelStopTimersRef.current.forEach(timer => clearTimeout(timer));
@@ -683,7 +814,7 @@ export function BrewTokenBank({
       withTiming(1, { duration: 250, easing: Easing.inOut(Easing.cubic) }),
     );
     timerRef.current = setTimeout(() => {
-      void onResolveBet(bet, won, payoutMultiplier).finally(() => {
+      void onResolveBet(bet, won, effect).finally(() => {
         stopMachineStatus();
         if (won) void playWinSound();
         if (hapticsEnabled) {
@@ -691,7 +822,7 @@ export function BrewTokenBank({
             won ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning,
           ).catch(() => {});
         }
-        setResult({ won, bet, quickRevive, daiquiri, award: won ? bet * payoutMultiplier : bet });
+        setResult({ won, bet, quickRevive, daiquiri, staminUp, award: won ? bet * payoutMultiplier : bet });
         setResolving(false);
         resultProgress.value = withSpring(1, { damping: 13, stiffness: 180 });
         vaultPulse.value = withSequence(
@@ -808,6 +939,21 @@ export function BrewTokenBank({
                   </Animated.View>
                 </View>
               )}
+              {staminUpBurstVisible && (
+                <View pointerEvents="none" style={styles.staminUpBurst}>
+                  <Animated.View style={[styles.staminUpTornadoRing, styles.staminUpTornadoUpper, staminUpTornadoUpperStyle]} />
+                  <Animated.View style={[styles.staminUpTornadoRing, styles.staminUpTornadoMiddle, staminUpTornadoMiddleStyle]} />
+                  <Animated.View style={[styles.staminUpTornadoRing, styles.staminUpTornadoBase, staminUpTornadoBaseStyle]} />
+                  <Animated.View style={[styles.quickReviveBurstBottle, staminUpBottleStyle]}>
+                    <StaminUpBottle size={42} />
+                  </Animated.View>
+                  <Animated.View style={[styles.staminUpSplash, staminUpSplashStyle]}>
+                    <View style={styles.staminUpSplashDrop} />
+                    <View style={[styles.staminUpSplashDrop, styles.staminUpSplashDropWide]} />
+                    <View style={[styles.staminUpSplashDrop, styles.staminUpSplashDropSmall]} />
+                  </Animated.View>
+                </View>
+              )}
             <View style={styles.slotMachine}>
               {renderReel(reelOneStyle, 0, result ? (result.won ? colors.buyColor : colors.sellColor) : colors.gold)}
               {renderReel(reelTwoStyle, 1, result ? (result.won ? colors.buyColor : colors.sellColor) : colors.gold)}
@@ -818,6 +964,14 @@ export function BrewTokenBank({
             <Text style={[styles.balanceLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
               {displayedTokens === 1 ? 'TOKEN AVAILABLE' : 'TOKENS AVAILABLE'}
             </Text>
+             {darkBrewTokens > 0 && (
+               <View style={styles.darkBrewBalance}>
+                 <Feather name="moon" size={12} color="#f29b38" />
+                 <Text style={[styles.darkBrewBalanceText, { fontFamily: 'Inter_700Bold' }]}>
+                   {darkBrewTokens} DARK BREW {darkBrewTokens === 1 ? 'TOKEN' : 'TOKENS'}
+                 </Text>
+               </View>
+             )}
             {lossVoicePlaying && (
               <Text style={[styles.skipVoiceHint, { color: protectedVoicePlaying ? colors.gold : colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
                 {protectedVoicePlaying ? 'LISTEN CLOSELY' : 'TAP ANYWHERE TO SKIP VOICE'}
@@ -911,6 +1065,58 @@ export function BrewTokenBank({
                      </Text>
                    </View>
                    <QuickReviveBottle size={31} muted={!quickReviveUnlocked} />
+                 </View>
+                 <View style={[styles.quickReviveShop, { borderTopColor: colors.border }]}>
+                   <View style={styles.shopHeadingRow}>
+                     <View style={styles.quickReviveShopCopy}>
+                       <Text style={[styles.shopTitle, { color: staminUpUnlocked ? colors.foreground : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+                         STAMIN UP
+                       </Text>
+                       <Text style={[styles.shopDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                         A rare amber soda. Break one into the machine and a winning toss pays Dark Brew Tokens instead of normal Brew Token winnings.
+                       </Text>
+                     </View>
+                     <StaminUpBottle size={31} muted={!staminUpUnlocked} />
+                   </View>
+                   <View style={styles.inventoryRow}>
+                     <Text style={[styles.inventoryLabel, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>BOTTLES IN INVENTORY</Text>
+                     <Text style={[styles.inventoryValue, { color: staminUpUnlocked ? '#f29b38' : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+                       {staminUpUnlocked ? staminUpBottles : 'LOCKED'}
+                     </Text>
+                   </View>
+                   {!staminUpUnlocked ? (
+                     <Pressable
+                       onPress={() => { void handleUnlockStaminUp(); }}
+                       disabled={tokens < STAMIN_UP_UNLOCK_PRICE || resolving || shopBusy}
+                       style={[
+                         styles.shopButton,
+                         { borderColor: colors.border, backgroundColor: colors.card },
+                         (tokens < STAMIN_UP_UNLOCK_PRICE || resolving || shopBusy) && styles.disabled,
+                       ]}
+                       accessibilityRole="button"
+                       accessibilityLabel={`Unlock Stamin Up for ${STAMIN_UP_UNLOCK_PRICE} Brew Tokens`}
+                     >
+                       <Text style={[styles.shopButtonText, { color: colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+                         UNLOCK RECIPE · {STAMIN_UP_UNLOCK_PRICE} TOKENS
+                       </Text>
+                     </Pressable>
+                   ) : (
+                     <Pressable
+                       onPress={() => { void handleBuyStaminUpBottle(); }}
+                       disabled={tokens < STAMIN_UP_BOTTLE_PRICE || resolving || shopBusy}
+                       style={[
+                         styles.shopButton,
+                         { borderColor: '#f29b38' },
+                         (tokens < STAMIN_UP_BOTTLE_PRICE || resolving || shopBusy) && styles.disabled,
+                       ]}
+                       accessibilityRole="button"
+                       accessibilityLabel={`Buy one Stamin Up bottle for ${STAMIN_UP_BOTTLE_PRICE} Brew Tokens`}
+                     >
+                       <Text style={[styles.shopButtonText, { color: '#ffc169', fontFamily: 'Inter_700Bold' }]}>
+                         BUY BOTTLE · {STAMIN_UP_BOTTLE_PRICE} TOKENS
+                       </Text>
+                     </Pressable>
+                   )}
                  </View>
                  <View style={styles.inventoryRow}>
                    <Text style={[styles.inventoryLabel, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>BOTTLES IN INVENTORY</Text>
@@ -1040,11 +1246,11 @@ export function BrewTokenBank({
           {quickReviveUnlocked && (
             <Pressable
               onPress={() => { void handleRedeemQuickRevive(); }}
-              disabled={quickReviveBottles < 1 || quickReviveArmed || daiquiriArmed || resolving || shopBusy}
+              disabled={quickReviveBottles < 1 || quickReviveArmed || daiquiriArmed || staminUpArmed || resolving || shopBusy}
               style={[
                 styles.quickReviveArm,
                 { borderColor: quickReviveArmed ? colors.buyColor : colors.goldMuted, backgroundColor: colors.steelShadow },
-                (quickReviveBottles < 1 || quickReviveArmed || resolving || shopBusy) && !quickReviveArmed && styles.disabled,
+                (quickReviveBottles < 1 || quickReviveArmed || daiquiriArmed || staminUpArmed || resolving || shopBusy) && !quickReviveArmed && styles.disabled,
               ]}
               accessibilityRole="button"
               accessibilityLabel={
@@ -1052,7 +1258,7 @@ export function BrewTokenBank({
                   ? 'Quick Revive armed. Your next toss has 62 percent odds.'
                   : `Redeem a Quick Revive bottle. ${quickReviveBottles} bottles available.`
               }
-              accessibilityState={{ disabled: quickReviveBottles < 1 || quickReviveArmed || resolving || shopBusy }}
+              accessibilityState={{ disabled: quickReviveBottles < 1 || quickReviveArmed || daiquiriArmed || staminUpArmed || resolving || shopBusy }}
             >
               <QuickReviveBottle size={26} muted={!quickReviveArmed && quickReviveBottles < 1} />
               <View style={styles.quickReviveArmCopy}>
@@ -1071,11 +1277,11 @@ export function BrewTokenBank({
           {daiquiriUnlocked && (
             <Pressable
               onPress={() => { void handleRedeemDaiquiri(); }}
-              disabled={daiquiriBottles < 1 || daiquiriArmed || quickReviveArmed || resolving || shopBusy}
+              disabled={daiquiriBottles < 1 || daiquiriArmed || quickReviveArmed || staminUpArmed || resolving || shopBusy}
               style={[
                 styles.quickReviveArm,
                 { borderColor: daiquiriArmed ? '#8edbff' : '#e9c64d', backgroundColor: colors.steelShadow },
-                (daiquiriBottles < 1 || daiquiriArmed || quickReviveArmed || resolving || shopBusy) && !daiquiriArmed && styles.disabled,
+                (daiquiriBottles < 1 || daiquiriArmed || quickReviveArmed || staminUpArmed || resolving || shopBusy) && !daiquiriArmed && styles.disabled,
               ]}
               accessibilityRole="button"
               accessibilityLabel={
@@ -1083,7 +1289,7 @@ export function BrewTokenBank({
                   ? 'Dave Ramsey Daiquiri armed. Your next toss has 45 percent win odds, 65 percent loss odds, and double award on a win.'
                   : `Redeem a Dave Ramsey Daiquiri bottle. ${daiquiriBottles} bottles available.`
               }
-              accessibilityState={{ disabled: daiquiriBottles < 1 || daiquiriArmed || quickReviveArmed || resolving || shopBusy }}
+              accessibilityState={{ disabled: daiquiriBottles < 1 || daiquiriArmed || quickReviveArmed || staminUpArmed || resolving || shopBusy }}
             >
               <DaiquiriBottle size={26} muted={!daiquiriArmed && daiquiriBottles < 1} />
               <View style={styles.quickReviveArmCopy}>
@@ -1097,6 +1303,37 @@ export function BrewTokenBank({
                 </Text>
               </View>
               <Feather name={daiquiriArmed ? 'check-circle' : 'droplet'} size={17} color={daiquiriArmed ? '#a8e5ff' : '#f6d64a'} />
+            </Pressable>
+          )}
+          {staminUpUnlocked && (
+            <Pressable
+              onPress={() => { void handleRedeemStaminUp(); }}
+              disabled={staminUpBottles < 1 || staminUpArmed || quickReviveArmed || daiquiriArmed || resolving || shopBusy}
+              style={[
+                styles.quickReviveArm,
+                { borderColor: staminUpArmed ? '#ffc169' : '#d27620', backgroundColor: colors.steelShadow },
+                (staminUpBottles < 1 || staminUpArmed || quickReviveArmed || daiquiriArmed || resolving || shopBusy) && !staminUpArmed && styles.disabled,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={
+                staminUpArmed
+                  ? 'Stamin Up armed. The next winning toss pays Dark Brew Tokens instead of regular Brew Tokens.'
+                  : `Redeem a Stamin Up bottle. ${staminUpBottles} bottles available.`
+              }
+              accessibilityState={{ disabled: staminUpBottles < 1 || staminUpArmed || quickReviveArmed || daiquiriArmed || resolving || shopBusy }}
+            >
+              <StaminUpBottle size={26} muted={!staminUpArmed && staminUpBottles < 1} />
+              <View style={styles.quickReviveArmCopy}>
+                <Text style={[styles.quickReviveArmTitle, { color: staminUpArmed ? '#ffc169' : colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+                  {staminUpArmed ? 'STAMIN UP ARMED · DARK BREW WIN' : 'REDEEM STAMIN UP · DARK BREW WIN'}
+                </Text>
+                <Text style={[styles.quickReviveArmDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                  {staminUpArmed
+                    ? 'The amber liquid is in the machine. Your stake stays regular; one win pays Dark Brew Tokens.'
+                    : `${staminUpBottles} ${staminUpBottles === 1 ? 'BOTTLE' : 'BOTTLES'} READY · CONSUMES ONE BOTTLE`}
+                </Text>
+              </View>
+              <Feather name={staminUpArmed ? 'check-circle' : 'wind'} size={17} color={staminUpArmed ? '#ffc169' : '#f29b38'} />
             </Pressable>
           )}
 
@@ -1121,9 +1358,9 @@ export function BrewTokenBank({
               <View style={styles.payoutColumns}>
                 <View style={styles.payoutColumn}>
                   <Text style={[styles.payoutLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>WIN</Text>
-                  <Text style={[styles.payoutValue, { color: daiquiriArmed ? '#a8e5ff' : colors.buyColor, fontFamily: 'Inter_700Bold' }]}>+{daiquiriArmed ? bet * DAIQUIRI_PAYOUT_MULTIPLIER : bet}</Text>
+                  <Text style={[styles.payoutValue, { color: staminUpArmed ? '#ffc169' : daiquiriArmed ? '#a8e5ff' : colors.buyColor, fontFamily: 'Inter_700Bold' }]}>+{daiquiriArmed ? bet * DAIQUIRI_PAYOUT_MULTIPLIER : bet}</Text>
                   <Text style={[styles.payoutUnit, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                    {bet === 1 ? 'TOKEN' : 'TOKENS'}
+                    {staminUpArmed ? `DARK BREW ${bet === 1 ? 'TOKEN' : 'TOKENS'}` : bet === 1 ? 'TOKEN' : 'TOKENS'}
                   </Text>
                 </View>
                 <View style={[styles.payoutDivider, { backgroundColor: colors.border }]} />
@@ -1150,7 +1387,9 @@ export function BrewTokenBank({
           )}
 
           <Text style={[styles.rules, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-            {daiquiriArmed
+            {staminUpArmed
+              ? 'Stamin Up keeps your Brew Token stake on a win and sends an equal reward to Dark Brew Tokens. Dark Brew Tokens cannot be bet or lost.'
+              : daiquiriArmed
               ? 'Daiquiri doubles this toss’s winning award. Lose only the tokens deposited.'
               : 'Win returns your deposit plus an equal payout. Lose only the tokens deposited.'}
           </Text>
@@ -1181,7 +1420,9 @@ export function BrewTokenBank({
               </Text>
               <Text style={[styles.result, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
                 {result.won
-                  ? `+${result.award} ${result.award === 1 ? 'TOKEN' : 'TOKENS'} · NEW BALANCE ${tokens}`
+                  ? result.staminUp
+                    ? `+${result.award} DARK BREW ${result.award === 1 ? 'TOKEN' : 'TOKENS'} · BREW BALANCE ${tokens}`
+                    : `+${result.award} ${result.award === 1 ? 'TOKEN' : 'TOKENS'} · NEW BALANCE ${tokens}`
                   : `−${result.bet} ${result.bet === 1 ? 'TOKEN' : 'TOKENS'} · NEW BALANCE ${tokens}`}
               </Text>
                {result.quickRevive && (
@@ -1192,6 +1433,11 @@ export function BrewTokenBank({
                {result.daiquiri && (
                  <Text style={[styles.resultHint, { color: '#a8e5ff', fontFamily: 'Inter_600SemiBold' }]}>
                    DAIQUIRI APPLIED · 45% WIN / 65% LOSS · {result.won ? 'DOUBLE AWARD PAID' : 'BOTTLE CONSUMED'}
+                 </Text>
+               )}
+               {result.staminUp && (
+                 <Text style={[styles.resultHint, { color: '#ffc169', fontFamily: 'Inter_600SemiBold' }]}>
+                   STAMIN UP APPLIED · {result.won ? `DARK BREW BALANCE ${darkBrewTokens}` : 'BOTTLE CONSUMED'}
                  </Text>
                )}
               {!result.won && soundEnabled && (
@@ -1313,12 +1559,23 @@ const styles = StyleSheet.create({
   daiquiriOozeDrop: { width: 26, height: 17, borderRadius: 13, backgroundColor: '#69c8ff', borderWidth: 1, borderColor: '#f6d64a', shadowColor: '#69c8ff', shadowOpacity: 0.92, shadowRadius: 9, elevation: 6 },
   daiquiriOozeDropWide: { width: 39, height: 11, opacity: 0.84 },
   daiquiriOozeDropSmall: { width: 12, height: 12, opacity: 0.74 },
+  staminUpBurst: { position: 'absolute', top: 5, bottom: 6, left: 0, right: 0, alignItems: 'center', justifyContent: 'center' },
+  staminUpTornadoRing: { position: 'absolute', height: 11, borderWidth: 2, borderColor: '#ffc169', borderRadius: 22, backgroundColor: 'rgba(242,138,28,0.14)', shadowColor: '#f28a1c', shadowOpacity: 0.8, shadowRadius: 7, elevation: 5 },
+  staminUpTornadoUpper: { top: 20, width: 30 },
+  staminUpTornadoMiddle: { top: 47, width: 38 },
+  staminUpTornadoBase: { top: 73, width: 45 },
+  staminUpSplash: { position: 'absolute', top: 75, flexDirection: 'row', gap: 5, alignItems: 'center' },
+  staminUpSplashDrop: { width: 27, height: 17, borderRadius: 14, backgroundColor: '#f28a1c', borderWidth: 1, borderColor: '#ffdf77', shadowColor: '#f28a1c', shadowOpacity: 0.95, shadowRadius: 9, elevation: 6 },
+  staminUpSplashDropWide: { width: 43, height: 11, opacity: 0.84 },
+  staminUpSplashDropSmall: { width: 13, height: 13, opacity: 0.76 },
   slotMachine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, height: SLOT_REEL_HEIGHT, marginBottom: 11 },
   reelWindow: { width: 64, height: SLOT_REEL_HEIGHT, borderWidth: 1, borderRadius: 9, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.22)' },
   reelSymbol: { width: 64, height: SLOT_REEL_HEIGHT, alignItems: 'center', justifyContent: 'center' },
   vaultLabel: { fontSize: 9, letterSpacing: 1.3 },
   balance: { fontSize: 35, lineHeight: 40, marginTop: 2 },
   balanceLabel: { fontSize: 9, letterSpacing: 1.1 },
+  darkBrewBalance: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 7, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 12, backgroundColor: 'rgba(242,138,28,0.12)', borderWidth: 1, borderColor: '#b36321' },
+  darkBrewBalanceText: { color: '#ffc169', fontSize: 8, letterSpacing: 0.8 },
   skipVoiceHint: { fontSize: 8, letterSpacing: 0.8, marginTop: 9 },
   machineStatus: { fontSize: 8, letterSpacing: 1.15, marginTop: 9 },
   betRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18 },

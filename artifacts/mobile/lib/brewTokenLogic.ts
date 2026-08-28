@@ -18,6 +18,8 @@ export const DAIQUIRI_LOSS_PROBABILITY = 0.65;
 export const DAIQUIRI_PAYOUT_MULTIPLIER = 2;
 export const DAIQUIRI_UNLOCK_PRICE = 100;
 export const DAIQUIRI_BOTTLE_PRICE = 8;
+export const STAMIN_UP_UNLOCK_PRICE = 500;
+export const STAMIN_UP_BOTTLE_PRICE = 16;
 
 export function parseStoredNonNegative(raw: string | null | undefined): number {
   if (!raw) return 0;
@@ -150,8 +152,74 @@ export function redeemDaiquiriBottle(
   return { bottleCount: safeBottles - 1, armed: true };
 }
 
+export function buyStaminUpUnlock(
+  tokenBalance: number,
+  alreadyUnlocked: boolean,
+): { tokenBalance: number; unlocked: true } | null {
+  const safeBalance = Math.max(0, Math.floor(tokenBalance));
+  if (alreadyUnlocked || safeBalance < STAMIN_UP_UNLOCK_PRICE) return null;
+  return { tokenBalance: safeBalance - STAMIN_UP_UNLOCK_PRICE, unlocked: true };
+}
+
+export function buyStaminUpBottle(
+  tokenBalance: number,
+  bottleCount: number,
+  unlocked: boolean,
+): { tokenBalance: number; bottleCount: number } | null {
+  const safeBalance = Math.max(0, Math.floor(tokenBalance));
+  const safeBottles = Math.max(0, Math.floor(bottleCount));
+  if (!unlocked || safeBalance < STAMIN_UP_BOTTLE_PRICE) return null;
+  return {
+    tokenBalance: safeBalance - STAMIN_UP_BOTTLE_PRICE,
+    bottleCount: safeBottles + 1,
+  };
+}
+
+export function redeemStaminUpBottle(
+  bottleCount: number,
+  alreadyArmed: boolean,
+): { bottleCount: number; armed: true } | null {
+  const safeBottles = Math.max(0, Math.floor(bottleCount));
+  if (alreadyArmed || safeBottles < 1) return null;
+  return { bottleCount: safeBottles - 1, armed: true };
+}
+
+export function canArmBrewBottle(
+  quickReviveArmed: boolean,
+  daiquiriArmed: boolean,
+  staminUpArmed: boolean,
+): boolean {
+  return !quickReviveArmed && !daiquiriArmed && !staminUpArmed;
+}
+
 export function getDaiquiriWinProbability(daiquiriArmed: boolean): number {
   return daiquiriArmed ? DAIQUIRI_WIN_PROBABILITY : BREW_TOKEN_WIN_PROBABILITY;
+}
+
+export type BrewBetEffect = {
+  payoutMultiplier?: number;
+  rewardAsDarkBrew?: boolean;
+};
+
+export function resolveBrewBetOutcome(
+  brewTokenBalance: number,
+  darkBrewTokenBalance: number,
+  bet: number,
+  won: boolean,
+  effect: BrewBetEffect = {},
+): { brewTokens: number; darkBrewTokens: number } {
+  const safeBrewBalance = Math.max(0, Math.floor(brewTokenBalance));
+  const safeDarkBalance = Math.max(0, Math.floor(darkBrewTokenBalance));
+  const safeBet = Math.max(0, Math.min(Math.floor(bet), safeBrewBalance));
+
+  if (effect.rewardAsDarkBrew && won) {
+    return { brewTokens: safeBrewBalance, darkBrewTokens: safeDarkBalance + safeBet };
+  }
+
+  return {
+    brewTokens: resolveBrewBet(safeBrewBalance, safeBet, won, effect.payoutMultiplier),
+    darkBrewTokens: safeDarkBalance,
+  };
 }
 
 export function resolveBrewBet(

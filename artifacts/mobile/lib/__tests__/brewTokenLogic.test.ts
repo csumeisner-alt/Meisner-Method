@@ -9,6 +9,8 @@ import {
   DAIQUIRI_PAYOUT_MULTIPLIER,
   DAIQUIRI_UNLOCK_PRICE,
   DAIQUIRI_WIN_PROBABILITY,
+  STAMIN_UP_BOTTLE_PRICE,
+  STAMIN_UP_UNLOCK_PRICE,
   QUICK_REVIVE_BOTTLE_PRICE,
   QUICK_REVIVE_UNLOCK_PRICE,
   QUICK_REVIVE_WIN_PROBABILITY,
@@ -20,7 +22,10 @@ import {
   buyQuickReviveUnlock,
   buyDaiquiriBottle,
   buyDaiquiriUnlock,
+  buyStaminUpBottle,
+  buyStaminUpUnlock,
   canEnterBrewBank,
+  canArmBrewBottle,
   canActivateBrewBankKey,
   formatBrewBankAccessRemaining,
   getBrewWinProbability,
@@ -32,8 +37,10 @@ import {
   isWeekday,
   parseStoredNonNegative,
   resolveBrewBet,
+  resolveBrewBetOutcome,
   redeemQuickReviveBottle,
   redeemDaiquiriBottle,
+  redeemStaminUpBottle,
 } from '../brewTokenLogic.ts';
 
 test('Brew Bank unlocks exactly when the quote threshold is crossed', () => {
@@ -114,6 +121,28 @@ test('Dave Ramsey Daiquiri consumes one bottle and applies its requested odds fo
   assert.equal(DAIQUIRI_LOSS_PROBABILITY, 0.65);
 });
 
+test('Stamin Up unlocks at five hundred tokens and its bottles cost sixteen tokens', () => {
+  assert.deepEqual(buyStaminUpUnlock(STAMIN_UP_UNLOCK_PRICE, false), {
+    tokenBalance: 0,
+    unlocked: true,
+  });
+  assert.equal(buyStaminUpUnlock(STAMIN_UP_UNLOCK_PRICE - 1, false), null);
+  assert.equal(buyStaminUpUnlock(900, true), null);
+  assert.equal(buyStaminUpBottle(20, 0, false), null);
+  assert.equal(buyStaminUpBottle(STAMIN_UP_BOTTLE_PRICE - 1, 0, true), null);
+  assert.deepEqual(buyStaminUpBottle(32, -2, true), { tokenBalance: 16, bottleCount: 1 });
+});
+
+test('Stamin Up consumes exactly one bottle and no two bottle effects can arm together', () => {
+  assert.deepEqual(redeemStaminUpBottle(2, false), { bottleCount: 1, armed: true });
+  assert.equal(redeemStaminUpBottle(0, false), null);
+  assert.equal(redeemStaminUpBottle(1, true), null);
+  assert.equal(canArmBrewBottle(false, false, false), true);
+  assert.equal(canArmBrewBottle(true, false, false), false);
+  assert.equal(canArmBrewBottle(false, true, false), false);
+  assert.equal(canArmBrewBottle(false, false, true), false);
+});
+
 test('bank key access can only activate on weekdays and lasts twelve hours', () => {
   const mondayMorning = new Date('2026-08-17T09:00:00').getTime();
   assert.equal(canActivateBrewBankKey(1, 1, null, mondayMorning), true);
@@ -147,6 +176,21 @@ test('Dave Ramsey Daiquiri doubles a winning award but never reduces a losing st
   assert.equal(resolveBrewBet(10, 3, true, DAIQUIRI_PAYOUT_MULTIPLIER), 16);
   assert.equal(resolveBrewBet(10, 3, false, DAIQUIRI_PAYOUT_MULTIPLIER), 7);
   assert.equal(resolveBrewBet(10, 3, true, 0), 13);
+});
+
+test('Stamin Up sends only a win award to Dark Brew Tokens and never allows them to be lost', () => {
+  assert.deepEqual(resolveBrewBetOutcome(10, 4, 3, true, { rewardAsDarkBrew: true }), {
+    brewTokens: 10,
+    darkBrewTokens: 7,
+  });
+  assert.deepEqual(resolveBrewBetOutcome(10, 4, 3, false, { rewardAsDarkBrew: true }), {
+    brewTokens: 7,
+    darkBrewTokens: 4,
+  });
+  assert.deepEqual(resolveBrewBetOutcome(10, -3, 8, true, { rewardAsDarkBrew: true }), {
+    brewTokens: 10,
+    darkBrewTokens: 8,
+  });
 });
 
 test('quote view claims are idempotent and bounded', () => {
