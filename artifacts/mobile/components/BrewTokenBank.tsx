@@ -36,8 +36,8 @@ import Svg, {
   LinearGradient as SvgLinearGradient,
   Line,
   Path,
-  RadialGradient,
   Stop,
+  Image as SvgImage,
   Text as SvgText,
 } from 'react-native-svg';
 import type { ColorScheme } from '@/constants/colors';
@@ -114,6 +114,7 @@ function DaiquiriBottle({ size = 54, muted = false }: { size?: number; muted?: b
   const yellowBright = muted ? '#8b7944' : '#ffe979';
   const blue = muted ? '#304b60' : '#123d69';
   const cap = muted ? '#273442' : '#061429';
+  const daiquiriLabel = require('../assets/daiquiri/dave-ramsey-label.png');
   return (
     <Svg width={size} height={size * 1.96} viewBox="0 0 260 510" accessibilityLabel="Dave Ramsey Daiquiri navy and gold collectible bottle with sparkling yellow liquid">
       <Defs>
@@ -135,21 +136,15 @@ function DaiquiriBottle({ size = 54, muted = false }: { size?: number; muted?: b
           <Stop offset="0.5" stopColor={blue} />
           <Stop offset="1" stopColor="#06152b" />
         </SvgLinearGradient>
-        <RadialGradient id={`${prefix}-glow`}>
-          <Stop stopColor="#fff0a0" stopOpacity={muted ? 0.16 : 0.9} />
-          <Stop offset="0.52" stopColor="#e9ad34" stopOpacity={muted ? 0.08 : 0.42} />
-          <Stop offset="1" stopColor="#bf7b1e" stopOpacity="0" />
-        </RadialGradient>
         <ClipPath id={`${prefix}-liquid-clip`}>
           <Path d="M70 202h120v246c0 25-24 42-60 42s-60-17-60-42V202Z" />
         </ClipPath>
       </Defs>
-      <Circle cx="130" cy="350" r="116" fill={`url(#${prefix}-glow)`} opacity={muted ? 0.45 : 0.9} />
       <Path d="M83 30h94v43l19 31v320c0 50-28 73-66 73s-66-23-66-73V104l19-31V30Z" fill={`url(#${prefix}-glass)`} stroke={glass} strokeOpacity={muted ? 0.45 : 0.78} strokeWidth="3" />
-      <Path d="M92 32h76v46l18 30v314c0 41-21 61-56 61s-56-20-56-61V108l18-30V32Z" fill="#0c2844" fillOpacity={muted ? 0.62 : 0.36} />
-      <Path d="M70 202h120v246c0 25-24 42-60 42s-60-17-60-42V202Z" fill={`url(#${prefix}-liquid)`} opacity={muted ? 0.48 : 0.96} />
+      <Path d="M93 35h74v43l17 30v314c0 39-20 58-54 58s-54-19-54-58V108l17-30V35Z" fill="#06182d" fillOpacity={muted ? 0.62 : 0.28} />
+      <Path d="M70 202h120v246c0 25-24 42-60 42s-60-17-60-42V202Z" fill={`url(#${prefix}-liquid)`} opacity={muted ? 0.46 : 0.95} clipPath={`url(#${prefix}-liquid-clip)`} />
       <G clipPath={`url(#${prefix}-liquid-clip)`}>
-        <Path d="M53 238c33-21 75 10 154-17v225H53Z" fill="#ffec7d" fillOpacity={muted ? 0.13 : 0.36} />
+        <Path d="M53 238c33-21 75 10 154-17v225H53Z" fill="#ffec7d" fillOpacity={muted ? 0.1 : 0.3} />
         {[
           [88, 357, 4], [109, 296, 3], [127, 386, 4], [147, 332, 3], [166, 374, 5],
           [101, 414, 2.5], [151, 421, 3], [119, 249, 2.5], [138, 282, 2], [176, 301, 2.5],
@@ -157,21 +152,20 @@ function DaiquiriBottle({ size = 54, muted = false }: { size?: number; muted?: b
           <Circle key={index} cx={cx} cy={cy} r={r} fill="#fff4a1" fillOpacity={muted ? 0.22 : 0.78} />
         ))}
       </G>
-      <Path d="M91 105h78v40H91z" fill="#0a2242" stroke={yellowBright} strokeOpacity={muted ? 0.35 : 0.9} strokeWidth="2" />
+      <Path d="M91 105h78v40H91z" fill="#0a2242" stroke={yellowBright} strokeOpacity={muted ? 0.3 : 0.82} strokeWidth="2" />
       <Path d="M93 109h74v32H93z" fill="#123b68" />
-      <Circle cx="130" cy="125" r="18" fill={muted ? '#6d6139' : '#dbad39'} stroke={yellowBright} strokeWidth="2" />
-      <Path d="M123 137v-24h8c6 0 7 10 0 10h-8m8 0 9 14" fill="none" stroke="#082243" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-      <Circle cx="130" cy="322" r="80" fill={muted ? '#6b5d35' : '#d5a63d'} fillOpacity="0.94" />
-      <Circle cx="130" cy="322" r="74" fill={`url(#${prefix}-label)`} stroke={yellowBright} strokeWidth="2" />
-      <G opacity={muted ? 0.24 : 0.72} fill="none" stroke="#d5b24e" strokeWidth="1.5">
-        <Path d="M79 360c15-47 22-76 50-81 34 6 36 43 52 84" />
-        <Path d="M84 376c12-26 32-37 46-37 17 0 36 14 47 42" />
-        <Path d="M90 291c18 10 55 9 80-1M86 306c27 13 59 12 89-1M84 328c32 12 61 10 92-2" />
-        <Path d="M113 284c-6 20-7 38 0 55m32-55c7 20 8 38 0 55" />
-      </G>
-      <SvgText x="130" y="276" fill={yellowBright} fontSize="9" fontWeight="700" textAnchor="middle" letterSpacing="1.3">DAVE RAMSEY</SvgText>
-      <SvgText x="130" y="405" fill={yellowBright} fontSize="22" fontWeight="700" textAnchor="middle">Daiquiri</SvgText>
-      <Path d="M99 420h62" stroke={yellowBright} strokeOpacity="0.75" />
+      <Circle cx="130" cy="125" r="17" fill={muted ? '#6d6139' : '#dbad39'} stroke={yellowBright} strokeWidth="2" />
+      <SvgText x="130" y="132" fill="#082243" fontSize="19" fontWeight="700" textAnchor="middle">R</SvgText>
+      <SvgImage
+        href={daiquiriLabel}
+        x="51"
+        y="220"
+        width="158"
+        height="205"
+        opacity={muted ? 0.48 : 0.98}
+        preserveAspectRatio="xMidYMid slice"
+      />
+      <Path d="M51 322c0-57 35-103 79-103s79 46 79 103-35 103-79 103-79-46-79-103Z" fill="none" stroke={yellowBright} strokeOpacity={muted ? 0.28 : 0.72} strokeWidth="2" />
       <Path d="M99 46c-12 36-7 80-7 122v221c0 45 11 70 21 78" fill="none" stroke="#dff8ff" strokeOpacity={muted ? 0.24 : 0.7} strokeWidth="5" strokeLinecap="round" />
       <Path d="M157 52c13 33 8 72 9 116" fill="none" stroke="#fff" strokeOpacity={muted ? 0.14 : 0.42} strokeWidth="3" strokeLinecap="round" />
       <Path d="M88 27h84v17c0 8-7 13-16 13h-52c-9 0-16-5-16-13V27Z" fill={cap} stroke="#7599b6" strokeOpacity={muted ? 0.3 : 0.8} strokeWidth="2" />
