@@ -73,13 +73,9 @@ function GlowBottle() {
         <rect x="73" y="366" width="114" height="31" rx="15.5" fill="url(#capGold)" stroke="#fff0a0" strokeWidth="1" />
         <text x="130" y="388" textAnchor="middle" fill="#08264a" fontFamily="Playfair Display, Georgia, serif" fontSize="18" fontWeight="700" fontStyle="italic">Daiquiri</text>
       </g>
-      <path d="M112 72c-4 37-3 89-3 139v206c0 28 5 47 13 60" fill="none" stroke="#dff8ff" strokeOpacity=".48" strokeWidth="4" strokeLinecap="round" className="glass-highlight" />
-      <path d="M153 62c5 28 5 54 5 83" fill="none" stroke="#fff" strokeOpacity=".24" strokeWidth="2.5" strokeLinecap="round" />
       <path d="M88 27h84v17c0 8-7 13-16 13h-52c-9 0-16-5-16-13V27Z" fill="url(#capGold)" stroke="#fff0a0" strokeWidth="2" />
       <circle cx="130" cy="36" r="10" fill="#e4b843" stroke="#0a2242" strokeWidth="1.5" />
       <text x="130" y="42" textAnchor="middle" fill="#0a2242" fontFamily="Georgia, serif" fontSize="13" fontWeight="700">R</text>
-      <path d="M86 42h88" stroke="#fff2a2" strokeWidth="3" className="cap-glint" />
-      <path d="M85 50h90" stroke="#a77a25" strokeWidth="5" opacity=".7" />
     </svg>
   );
 }
