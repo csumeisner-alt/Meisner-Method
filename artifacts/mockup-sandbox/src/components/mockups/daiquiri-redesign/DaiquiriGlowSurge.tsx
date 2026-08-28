@@ -65,9 +65,12 @@ function GlowBottle() {
         ))}
       </g>
       <g className="neck-medallion" filter="url(#labelShadow)">
-        <rect x="100" y="106" width="60" height="39" rx="19.5" fill="#09284a" fillOpacity=".86" stroke="#76aaca" strokeOpacity=".45" strokeWidth="1.5" />
-        <image className="neck-label" href="/__mockup/images/dave-ramsey-neck-label.png" x="100" y="106" width="60" height="39" clipPath="url(#neckLabelClip)" preserveAspectRatio="xMidYMid slice" opacity=".92" />
-        <path d="M105 111h50" stroke="#d9f5ff" strokeOpacity=".2" strokeWidth="1.5" strokeLinecap="round" />
+        <rect x="99" y="106" width="62" height="39" rx="7" fill="#0c3158" fillOpacity=".94" stroke="#6e9fbd" strokeOpacity=".54" strokeWidth="1.5" />
+        <rect x="102" y="109" width="56" height="33" rx="4.5" fill="none" stroke="#b8e0ed" strokeOpacity=".18" strokeWidth="1" />
+        <circle cx="130" cy="125.5" r="13" fill="#f0c75e" fillOpacity=".38" stroke="#f6da86" strokeOpacity=".76" strokeWidth="1.5" />
+        <circle cx="130" cy="125.5" r="9.5" fill="#071f39" fillOpacity=".12" />
+        <text x="130" y="132" textAnchor="middle" fill="#09284a" fillOpacity=".94" fontFamily="Georgia, serif" fontSize="18" fontWeight="700">R</text>
+        <path d="M104 111h52" stroke="#d9f5ff" strokeOpacity=".2" strokeWidth="1.5" strokeLinecap="round" />
       </g>
       <g className="bottle-label" filter="url(#labelShadow)">
         <circle cx="130" cy="322" r="80" fill="url(#capGold)" stroke="#fff0a0" strokeWidth="2" />
