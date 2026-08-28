@@ -45,8 +45,8 @@ function GlowBottle() {
       </defs>
 
       <ellipse className="bottle-warm-glow" cx="130" cy="362" rx="101" ry="143" fill="url(#warmGlow)" filter="url(#softGlow)" />
-      <path d="M91 29h78v46c0 22 4 32 16 49l20 29c7 11 10 24 10 37v270c0 32-27 51-85 51s-85-19-85-51V190c0-13 3-26 10-37l20-29c12-17 16-27 16-49V29Z" fill="url(#glassBody)" stroke="#a9d7ed" strokeOpacity=".72" strokeWidth="3" />
-      <path d="M99 34h62v43c0 24 5 36 17 52l19 28c5 9 7 19 7 31v267c0 24-24 39-74 39s-74-15-74-39V188c0-12 2-22 7-31l19-28c12-16 17-28 17-52V34Z" fill="#0c2844" fillOpacity=".43" />
+      <path d="M92 29h76v47c0 20 5 34 14 47l24 34c8 12 12 26 12 42v239c0 34-32 52-88 52s-88-18-88-52V199c0-16 4-30 12-42l24-34c9-13 14-27 14-47V29Z" fill="url(#glassBody)" stroke="#a9d7ed" strokeOpacity=".72" strokeWidth="3" />
+      <path d="M99 34h62v43c0 22 5 37 15 51l22 32c6 10 9 22 9 35v239c0 25-25 40-77 40s-77-15-77-40V195c0-13 3-25 9-35l22-32c10-14 15-29 15-51V34Z" fill="#0c2844" fillOpacity=".43" />
       <path d="M46 202h168v236c0 34-29 54-84 54s-84-20-84-54V202Z" fill="url(#goldLiquid)" className="liquid-fill" />
       <g clipPath="url(#liquidClip)">
         <path d="M53 238c33-21 75 10 154-17v225H53Z" fill="#ffec7d" fillOpacity=".35" className="liquid-line" />
@@ -73,8 +73,8 @@ function GlowBottle() {
         <rect x="73" y="366" width="114" height="31" rx="15.5" fill="url(#capGold)" stroke="#fff0a0" strokeWidth="1" />
         <text x="130" y="388" textAnchor="middle" fill="#08264a" fontFamily="Playfair Display, Georgia, serif" fontSize="18" fontWeight="700" fontStyle="italic">Daiquiri</text>
       </g>
-      <path d="M99 46c-12 36-7 80-7 122v221c0 45 11 70 21 78" fill="none" stroke="#dff8ff" strokeOpacity=".7" strokeWidth="5" strokeLinecap="round" className="glass-highlight" />
-      <path d="M157 52c13 33 8 72 9 116" fill="none" stroke="#fff" strokeOpacity=".42" strokeWidth="3" strokeLinecap="round" />
+      <path d="M112 72c-4 37-3 89-3 139v206c0 28 5 47 13 60" fill="none" stroke="#dff8ff" strokeOpacity=".48" strokeWidth="4" strokeLinecap="round" className="glass-highlight" />
+      <path d="M153 62c5 28 5 54 5 83" fill="none" stroke="#fff" strokeOpacity=".24" strokeWidth="2.5" strokeLinecap="round" />
       <path d="M88 27h84v17c0 8-7 13-16 13h-52c-9 0-16-5-16-13V27Z" fill="url(#capGold)" stroke="#fff0a0" strokeWidth="2" />
       <circle cx="130" cy="36" r="10" fill="#e4b843" stroke="#0a2242" strokeWidth="1.5" />
       <text x="130" y="42" textAnchor="middle" fill="#0a2242" fontFamily="Georgia, serif" fontSize="13" fontWeight="700">R</text>
