@@ -42,7 +42,6 @@ function GlowBottle() {
         </filter>
         <clipPath id="liquidClip"><path d="M46 202h168v236c0 34-29 54-84 54s-84-20-84-54V202Z" /></clipPath>
         <clipPath id="portraitClip"><circle cx="130" cy="322" r="51" /></clipPath>
-        <clipPath id="neckLabelClip"><rect x="100" y="106" width="60" height="39" rx="19.5" /></clipPath>
       </defs>
 
       <ellipse className="bottle-warm-glow" cx="130" cy="362" rx="101" ry="143" fill="url(#warmGlow)" filter="url(#softGlow)" />
@@ -64,7 +63,7 @@ function GlowBottle() {
           />
         ))}
       </g>
-      <g className="neck-medallion" filter="url(#labelShadow)">
+      <g className="neck-medallion neck-label" filter="url(#labelShadow)">
         <rect x="99" y="106" width="62" height="39" rx="7" fill="#0c3158" fillOpacity=".94" stroke="#6e9fbd" strokeOpacity=".54" strokeWidth="1.5" />
         <rect x="102" y="109" width="56" height="33" rx="4.5" fill="none" stroke="#b8e0ed" strokeOpacity=".18" strokeWidth="1" />
         <circle cx="130" cy="125.5" r="13" fill="#f0c75e" fillOpacity=".38" stroke="#f6da86" strokeOpacity=".76" strokeWidth="1.5" />
