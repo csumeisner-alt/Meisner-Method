@@ -42,6 +42,7 @@ function GlowBottle() {
         </filter>
         <clipPath id="liquidClip"><path d="M46 202h168v236c0 34-29 54-84 54s-84-20-84-54V202Z" /></clipPath>
         <clipPath id="portraitClip"><circle cx="130" cy="322" r="51" /></clipPath>
+        <clipPath id="neckLabelClip"><rect x="100" y="106" width="60" height="39" rx="19.5" /></clipPath>
       </defs>
 
       <ellipse className="bottle-warm-glow" cx="130" cy="362" rx="101" ry="143" fill="url(#warmGlow)" filter="url(#softGlow)" />
@@ -63,7 +64,11 @@ function GlowBottle() {
           />
         ))}
       </g>
-      <image className="neck-label" href="/__mockup/images/dave-ramsey-neck-label.png" x="91" y="105" width="78" height="40" preserveAspectRatio="xMidYMid slice" />
+      <g className="neck-medallion" filter="url(#labelShadow)">
+        <rect x="100" y="106" width="60" height="39" rx="19.5" fill="#09284a" fillOpacity=".86" stroke="#76aaca" strokeOpacity=".45" strokeWidth="1.5" />
+        <image className="neck-label" href="/__mockup/images/dave-ramsey-neck-label.png" x="100" y="106" width="60" height="39" clipPath="url(#neckLabelClip)" preserveAspectRatio="xMidYMid slice" opacity=".92" />
+        <path d="M105 111h50" stroke="#d9f5ff" strokeOpacity=".2" strokeWidth="1.5" strokeLinecap="round" />
+      </g>
       <g className="bottle-label" filter="url(#labelShadow)">
         <circle cx="130" cy="322" r="80" fill="url(#capGold)" stroke="#fff0a0" strokeWidth="2" />
         <circle cx="130" cy="322" r="72" fill="#08264a" stroke="#163f69" strokeWidth="3" />
@@ -74,8 +79,8 @@ function GlowBottle() {
         <text x="130" y="388" textAnchor="middle" fill="#08264a" fontFamily="Playfair Display, Georgia, serif" fontSize="18" fontWeight="700" fontStyle="italic">Daiquiri</text>
       </g>
       <path d="M88 27h84v17c0 8-7 13-16 13h-52c-9 0-16-5-16-13V27Z" fill="url(#capGold)" stroke="#fff0a0" strokeWidth="2" />
-      <circle cx="130" cy="36" r="10" fill="#e4b843" stroke="#0a2242" strokeWidth="1.5" />
-      <text x="130" y="42" textAnchor="middle" fill="#0a2242" fontFamily="Georgia, serif" fontSize="13" fontWeight="700">R</text>
+      <circle cx="130" cy="38" r="10" fill="#e4b843" stroke="#0a2242" strokeWidth="1.5" />
+      <text x="130" y="44" textAnchor="middle" fill="#0a2242" fontFamily="Georgia, serif" fontSize="13" fontWeight="700">R</text>
     </svg>
   );
 }
