@@ -456,11 +456,12 @@ export function BrewTokenBank({
   const reelTwoStyle = useAnimatedStyle(() => ({ transform: [{ translateY: reelTwoPosition.value }] }));
   const reelThreeStyle = useAnimatedStyle(() => ({ transform: [{ translateY: reelThreePosition.value }] }));
   const quickReviveBottleStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(quickReviveProgress.value, [0, 0.42, 0.72, 1], [1, 1, 0.2, 0]),
+    opacity: interpolate(quickReviveProgress.value, [0, 0.46, 0.74, 1], [1, 1, 0.38, 0]),
     transform: [
-      { translateY: interpolate(quickReviveProgress.value, [0, 0.4, 1], [0, -12, 14]) },
-      { rotateZ: `${interpolate(quickReviveProgress.value, [0, 0.38, 1], [0, -14, 22])}deg` },
-      { scale: interpolate(quickReviveProgress.value, [0, 0.5, 1], [0.9, 1.12, 0.58]) },
+      { translateY: interpolate(quickReviveProgress.value, [0, 0.4, 0.72, 1], [10, -20, -7, 22]) },
+      { translateX: interpolate(quickReviveProgress.value, [0, 0.38, 0.7, 1], [0, -8, 10, 3]) },
+      { rotateZ: `${interpolate(quickReviveProgress.value, [0, 0.36, 0.74, 1], [0, -12, 15, 32])}deg` },
+      { scale: interpolate(quickReviveProgress.value, [0, 0.46, 1], [0.9, 1.17, 0.55]) },
     ],
   }));
   const quickReviveOozeStyle = useAnimatedStyle(() => ({
@@ -469,6 +470,13 @@ export function BrewTokenBank({
       { translateY: interpolate(quickReviveProgress.value, [0, 0.55, 1], [-18, 4, 35]) },
       { scaleX: interpolate(quickReviveProgress.value, [0, 0.55, 1], [0.45, 1.1, 1.55]) },
       { scaleY: interpolate(quickReviveProgress.value, [0, 0.55, 1], [0.3, 1, 0.72]) },
+    ],
+  }));
+  const quickReviveBubbleFieldStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(quickReviveProgress.value, [0, 0.22, 0.65, 1], [0, 0.96, 0.78, 0]),
+    transform: [
+      { translateY: interpolate(quickReviveProgress.value, [0, 1], [22, -44]) },
+      { scale: interpolate(quickReviveProgress.value, [0, 0.55, 1], [0.46, 1.18, 1.5]) },
     ],
   }));
   const daiquiriBottleStyle = useAnimatedStyle(() => ({
@@ -960,6 +968,12 @@ export function BrewTokenBank({
             <View pointerEvents="none" style={[styles.vaultFloorShadow, { backgroundColor: colors.background }]} />
              {quickReviveBurstVisible && (
                <View pointerEvents="none" style={styles.quickReviveBurst}>
+                  <Animated.View style={[styles.quickReviveBubbleField, quickReviveBubbleFieldStyle]}>
+                    <View style={[styles.quickReviveBubble, styles.quickReviveBubbleOne]} />
+                    <View style={[styles.quickReviveBubble, styles.quickReviveBubbleTwo]} />
+                    <View style={[styles.quickReviveBubble, styles.quickReviveBubbleThree]} />
+                    <View style={[styles.quickReviveBubble, styles.quickReviveBubbleFour]} />
+                  </Animated.View>
                  <Animated.View style={[styles.quickReviveBurstBottle, quickReviveBottleStyle]}>
                    <QuickReviveBottle size={40} />
                  </Animated.View>
@@ -1593,6 +1607,12 @@ const styles = StyleSheet.create({
   vaultFloorShadow: { position: 'absolute', bottom: 21, width: 86, height: 10, borderRadius: 43, opacity: 0.42, transform: [{ scaleX: 1.35 }] },
   quickReviveBurst: { position: 'absolute', top: 10, bottom: 8, left: 0, right: 0, alignItems: 'center', justifyContent: 'center' },
   quickReviveBurstBottle: { position: 'absolute', top: 3 },
+  quickReviveBubbleField: { position: 'absolute', top: 26, width: 118, height: 104 },
+  quickReviveBubble: { position: 'absolute', borderRadius: 99, borderWidth: 1, borderColor: '#d9ffff', backgroundColor: 'rgba(26,174,242,0.3)', shadowColor: '#35ccff', shadowOpacity: 0.95, shadowRadius: 8, elevation: 5 },
+  quickReviveBubbleOne: { width: 18, height: 18, left: 7, top: 54 },
+  quickReviveBubbleTwo: { width: 10, height: 10, right: 8, top: 60 },
+  quickReviveBubbleThree: { width: 13, height: 13, left: 25, top: 10 },
+  quickReviveBubbleFour: { width: 8, height: 8, right: 28, top: 21 },
   quickReviveOoze: { position: 'absolute', top: 63, flexDirection: 'row', alignItems: 'center', gap: 5 },
   quickReviveOozeDrop: { width: 26, height: 17, borderRadius: 13, backgroundColor: '#168df2', shadowColor: '#168df2', shadowOpacity: 0.9, shadowRadius: 9, elevation: 6 },
   quickReviveOozeDropWide: { width: 39, height: 11, opacity: 0.82 },
