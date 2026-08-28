@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./_group.css";
 
 const bubbles = [
@@ -83,12 +83,35 @@ export function QuickReviveGlowSurge() {
   const [active, setActive] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [status, setStatus] = useState("SEALED · FIZZ BOOST READY");
+  const statusTimer = useRef<number | null>(null);
+  const replayFrame = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (statusTimer.current !== null) {
+      window.clearTimeout(statusTimer.current);
+    }
+    if (replayFrame.current !== null) {
+      window.cancelAnimationFrame(replayFrame.current);
+    }
+  }, []);
 
   const replay = () => {
+    if (statusTimer.current !== null) {
+      window.clearTimeout(statusTimer.current);
+    }
+    if (replayFrame.current !== null) {
+      window.cancelAnimationFrame(replayFrame.current);
+    }
     setActive(false);
-    requestAnimationFrame(() => setActive(true));
+    replayFrame.current = window.requestAnimationFrame(() => {
+      replayFrame.current = null;
+      setActive(true);
+    });
     setStatus(reducedMotion ? "QUICK REVIVE ARMED · 62% WIN ODDS" : "FIZZ RELEASED · QUICK REVIVE LOADED");
-    window.setTimeout(() => setStatus("QUICK REVIVE ARMED · 62% WIN ODDS"), reducedMotion ? 180 : 2400);
+    statusTimer.current = window.setTimeout(() => {
+      statusTimer.current = null;
+      setStatus("QUICK REVIVE ARMED · 62% WIN ODDS");
+    }, reducedMotion ? 180 : 2400);
   };
 
   return (

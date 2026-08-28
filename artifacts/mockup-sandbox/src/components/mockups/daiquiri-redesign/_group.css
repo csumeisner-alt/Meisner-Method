@@ -38,7 +38,13 @@
 
 .daiquiri-group .motion-static *,
 .daiquiri-group .motion-static *::before,
-.daiquiri-group .motion-static *::after {
+.daiquiri-group .motion-static *::after,
+.quick-revive-group .motion-static *,
+.quick-revive-group .motion-static *::before,
+.quick-revive-group .motion-static *::after,
+.stamin-up-group .motion-static *,
+.stamin-up-group .motion-static *::before,
+.stamin-up-group .motion-static *::after {
   animation: none !important;
   transition: none !important;
 }
@@ -712,6 +718,18 @@
   .daiquiri-group *,
   .daiquiri-group *::before,
   .daiquiri-group *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+  }
+
+  .quick-revive-group *,
+  .quick-revive-group *::before,
+  .quick-revive-group *::after,
+  .stamin-up-group *,
+  .stamin-up-group *::before,
+  .stamin-up-group *::after {
     animation-duration: .01ms !important;
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;

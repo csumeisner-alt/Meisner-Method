@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./_group.css";
 
 const bubbles = [
@@ -87,12 +87,35 @@ export function StaminUpGlowSurge() {
   const [active, setActive] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [status, setStatus] = useState("SEALED · DARK BREW CONVERSION READY");
+  const statusTimer = useRef<number | null>(null);
+  const replayFrame = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (statusTimer.current !== null) {
+      window.clearTimeout(statusTimer.current);
+    }
+    if (replayFrame.current !== null) {
+      window.cancelAnimationFrame(replayFrame.current);
+    }
+  }, []);
 
   const replay = () => {
+    if (statusTimer.current !== null) {
+      window.clearTimeout(statusTimer.current);
+    }
+    if (replayFrame.current !== null) {
+      window.cancelAnimationFrame(replayFrame.current);
+    }
     setActive(false);
-    requestAnimationFrame(() => setActive(true));
+    replayFrame.current = window.requestAnimationFrame(() => {
+      replayFrame.current = null;
+      setActive(true);
+    });
     setStatus(reducedMotion ? "STAMIN UP ARMED · WIN AWARD CONVERTS TO DARK BREW" : "CHARGE RELEASED · DARK BREW RESERVE LOADED");
-    window.setTimeout(() => setStatus("STAMIN UP ARMED · WIN AWARD CONVERTS TO DARK BREW"), reducedMotion ? 180 : 2400);
+    statusTimer.current = window.setTimeout(() => {
+      statusTimer.current = null;
+      setStatus("STAMIN UP ARMED · WIN AWARD CONVERTS TO DARK BREW");
+    }, reducedMotion ? 180 : 2400);
   };
 
   return (
