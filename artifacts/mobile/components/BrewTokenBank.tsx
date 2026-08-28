@@ -289,12 +289,14 @@ export function BrewTokenBank({
   const machineSoundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const winSoundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const quickReviveVoiceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const staminUpVoiceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const daiquiriVoiceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const displayedTokensRef = useRef(tokens);
   const lossPlayerRef = useRef<AudioPlayerHandle | null>(null);
   const machinePlayerRef = useRef<AudioPlayerHandle | null>(null);
   const winPlayerRef = useRef<AudioPlayerHandle | null>(null);
   const quickReviveVoicePlayerRef = useRef<AudioPlayerHandle | null>(null);
+  const staminUpVoicePlayerRef = useRef<AudioPlayerHandle | null>(null);
   const daiquiriVoicePlayerRef = useRef<AudioPlayerHandle | null>(null);
   const activeLossPhraseRef = useRef<LossPhrase | null>(null);
   const reelStopTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -344,6 +346,13 @@ export function BrewTokenBank({
     quickReviveVoicePlayerRef.current = null;
   };
 
+  const stopStaminUpVoice = () => {
+    if (staminUpVoiceTimerRef.current) clearTimeout(staminUpVoiceTimerRef.current);
+    staminUpVoiceTimerRef.current = null;
+    try { staminUpVoicePlayerRef.current?.remove(); } catch (_) {}
+    staminUpVoicePlayerRef.current = null;
+  };
+
   const stopDaiquiriVoice = () => {
     if (daiquiriVoiceTimerRef.current) clearTimeout(daiquiriVoiceTimerRef.current);
     daiquiriVoiceTimerRef.current = null;
@@ -370,6 +379,7 @@ export function BrewTokenBank({
     stopMachineSound();
     stopWinSound();
     stopQuickReviveVoice();
+    stopStaminUpVoice();
     stopDaiquiriVoice();
   }, []);
 
@@ -652,6 +662,21 @@ export function BrewTokenBank({
     }
   };
 
+  const playStaminUpVoice = async () => {
+    if (!soundEnabled || Constants.appOwnership === 'expo') return;
+    stopStaminUpVoice();
+    try {
+      const { createAudioPlayer, setAudioModeAsync } = await import('expo-audio');
+      await setAudioModeAsync({ playsInSilentMode: false, allowsRecording: false });
+      const player = createAudioPlayer(require('../assets/stamin-up-voice/stamin-up.m4a'), { downloadFirst: true });
+      staminUpVoicePlayerRef.current = player;
+      player.play();
+      staminUpVoiceTimerRef.current = setTimeout(stopStaminUpVoice, 6_070);
+    } catch {
+      // The tornado and bottle-break animation remain useful if native audio is unavailable.
+    }
+  };
+
   const handleRedeemDaiquiri = async () => {
     if (!daiquiriUnlocked || daiquiriBottles < 1 || daiquiriArmed || quickReviveArmed || staminUpArmed || resolving || shopBusy) return;
     setShopBusy(true);
@@ -719,6 +744,7 @@ export function BrewTokenBank({
       () => setStaminUpBurstVisible(false),
       reduceMotion ? 240 : 1_380,
     );
+    void playStaminUpVoice();
   };
 
   const accessExpiryLabel = bankAccessExpiresAt
