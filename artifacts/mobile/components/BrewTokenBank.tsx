@@ -74,34 +74,72 @@ export function BrewCoin({ colors, size = 66 }: { colors: ColorScheme; size?: nu
 }
 
 function QuickReviveBottle({ size = 54, muted = false }: { size?: number; muted?: boolean }) {
-  const glass = muted ? '#617b8a' : '#a9f0ff';
-  const liquid = muted ? '#345a75' : '#1aaef2';
-  const label = muted ? '#274d68' : '#086cae';
-  const labelInk = muted ? '#90a5af' : '#dffaff';
-  const cap = muted ? '#263d50' : '#061d38';
+  const prefix = `quick-revive-${size}-${muted ? 'muted' : 'live'}`;
+  const glass = muted ? '#617b8a' : '#b6f5ff';
+  const glassDeep = muted ? '#273b4b' : '#061c35';
+  const liquidBright = muted ? '#587b92' : '#c8ffff';
+  const liquid = muted ? '#345a75' : '#159ed7';
+  const label = muted ? '#274d68' : '#0873aa';
+  const labelInk = muted ? '#90a5af' : '#edffff';
+  const cap = muted ? '#263d50' : '#061c37';
   return (
-    <Svg width={size} height={size * 1.34} viewBox="0 0 60 80" accessibilityLabel="Quick Revive glowing blue soda bottle">
-      <Path d="M23 4h14v10l5 7v45c0 6-5 10-12 10s-12-4-12-10V21l5-7V4Z" fill="rgba(184,244,255,0.16)" stroke={glass} strokeWidth="2.2" />
-      <Path d="M21 27h18v39c0 4-3.3 7-9 7s-9-3-9-7V27Z" fill={liquid} opacity={muted ? 0.56 : 0.94} />
-      <Path d="M23 19h14l2 13H21l2-13Z" fill={label} opacity={muted ? 0.74 : 0.94} />
-      <Path d="M25 4h10v5H25z" fill={cap} />
-      <Path d="M24 7h12" stroke={glass} strokeWidth="1.2" opacity="0.7" />
-      <Path d="M23 22h14" stroke={glass} strokeWidth="1.3" opacity="0.72" />
-      <Circle cx="30" cy="25.5" r="3.2" fill="none" stroke={labelInk} strokeWidth="1" opacity="0.9" />
-      <Path d="M27.3 25.5h5.4M30 22.8v5.4" stroke={labelInk} strokeWidth="0.8" opacity="0.8" />
-      <Circle cx="30" cy="50" r="13.5" fill={label} stroke={labelInk} strokeWidth="1.4" opacity={muted ? 0.75 : 0.98} />
-      <SvgText x="30" y="42" fill={labelInk} fontSize="5.2" fontWeight="700" textAnchor="middle" letterSpacing="0.35">REVIVE</SvgText>
-      <Path d="M25.5 48l4.5-2.5 4.5 2.5v5.3c0 3-4.5 5.2-4.5 5.2s-4.5-2.2-4.5-5.2V48Z" fill="none" stroke={labelInk} strokeWidth="1.3" />
-      <Path d="M27.8 52.5h4.4M30 49.5v6" stroke={labelInk} strokeWidth="1.1" strokeLinecap="round" />
-      <SvgText x="30" y="63" fill={labelInk} fontSize="4.3" fontWeight="600" textAnchor="middle" letterSpacing="0.25">SODA</SvgText>
-      <Circle cx="24.5" cy="35" r="1.1" fill="#e8ffff" opacity={muted ? 0.35 : 0.9} />
-      <Circle cx="35.5" cy="37" r="0.8" fill="#e8ffff" opacity={muted ? 0.3 : 0.8} />
-      <Circle cx="25.5" cy="68" r="0.75" fill="#f1ffff" opacity={muted ? 0.3 : 0.86} />
-      <Circle cx="34.5" cy="69" r="1.1" fill="#f1ffff" opacity={muted ? 0.25 : 0.8} />
-      <Circle cx="29" cy="33.5" r="0.65" fill="#fff" opacity={muted ? 0.28 : 0.82} />
-      <Circle cx="33" cy="34.5" r="0.45" fill="#fff" opacity={muted ? 0.25 : 0.76} />
-      <Path d="M23 31c-1 8-1 24 1 34" stroke="#efffff" strokeOpacity={muted ? 0.26 : 0.58} strokeWidth="1.5" strokeLinecap="round" />
-      <Path d="M21 61c5 2 13 2 18 0" stroke="#e5ffff" strokeOpacity={muted ? 0.38 : 0.78} strokeWidth="1.2" />
+    <Svg width={size} height={size * 1.96} viewBox="0 0 260 510" accessibilityLabel="Quick Revive glowing cyan soda bottle">
+      <Defs>
+        <SvgLinearGradient id={`${prefix}-glass`} x1="0" x2="1">
+          <Stop stopColor={glassDeep} />
+          <Stop offset="0.2" stopColor={muted ? '#315b70' : '#165b7d'} />
+          <Stop offset="0.43" stopColor={muted ? '#1b3b53' : '#092f53'} />
+          <Stop offset="0.74" stopColor={muted ? '#112b40' : '#06213e'} />
+          <Stop offset="1" stopColor={muted ? '#456d7f' : '#5aa7c1'} />
+        </SvgLinearGradient>
+        <SvgLinearGradient id={`${prefix}-liquid`} x1="0" y1="0" x2="1" y2="1">
+          <Stop stopColor={liquidBright} />
+          <Stop offset="0.2" stopColor={muted ? '#3f9bb8' : '#5be3ff'} />
+          <Stop offset="0.62" stopColor={liquid} />
+          <Stop offset="1" stopColor={muted ? '#214c6a' : '#075589'} />
+        </SvgLinearGradient>
+        <SvgLinearGradient id={`${prefix}-cap`} x1="0" x2="1" y1="0" y2="1">
+          <Stop stopColor={muted ? '#172b3d' : '#020b1c'} />
+          <Stop offset="0.42" stopColor={muted ? '#2c5870' : '#123b5d'} />
+          <Stop offset="0.68" stopColor={cap} />
+          <Stop offset="1" stopColor={muted ? '#0e1d2d' : '#010914'} />
+        </SvgLinearGradient>
+        <ClipPath id={`${prefix}-liquid-clip`}>
+          <Path d="M46 202h168v236c0 34-29 54-84 54s-84-20-84-54V202Z" />
+        </ClipPath>
+      </Defs>
+      <Path d="M92 29h76v47c0 20 5 34 14 47l24 34c8 12 12 26 12 42v239c0 34-32 52-88 52s-88-18-88-52V199c0-16 4-30 12-42l24-34c9-13 14-27 14-47V29Z" fill={`url(#${prefix}-glass)`} stroke={glass} strokeOpacity={muted ? 0.42 : 0.76} strokeWidth="3" />
+      <Path d="M99 34h62v43c0 22 5 37 15 51l22 32c6 10 9 22 9 35v239c0 25-25 40-77 40s-77-15-77-40V195c0-13 3-25 9-35l22-32c10-14 15-29 15-51V34Z" fill={glassDeep} fillOpacity={muted ? 0.58 : 0.42} />
+      <Path d="M46 202h168v236c0 34-29 54-84 54s-84-20-84-54V202Z" fill={`url(#${prefix}-liquid)`} fillOpacity={muted ? 0.52 : 0.96} />
+      <G clipPath={`url(#${prefix}-liquid-clip)`}>
+        {[
+          [58, 424, 3.5], [78, 391, 2.4], [101, 448, 3], [124, 410, 4],
+          [151, 438, 2.6], [173, 370, 2.2], [190, 426, 3.3], [86, 345, 2],
+          [117, 362, 2.8], [143, 332, 1.8], [69, 454, 1.7], [181, 391, 2],
+        ].map(([cx, cy, r], index) => (
+          <Circle key={index} cx={cx} cy={cy} r={r} fill="#eaffff" fillOpacity={muted ? 0.22 : 0.72} />
+        ))}
+      </G>
+      <Path d="M102 72c-8 54-6 102-6 157v183c0 28 8 51 18 67l11-5c-10-22-14-41-14-66V213c0-57-2-101 8-146Z" fill="#dcffff" fillOpacity={muted ? 0.06 : 0.12} />
+      <G opacity={muted ? 0.56 : 1}>
+        <Path d="M98 106h64v39H98Z" fill="#075b91" fillOpacity={muted ? 0.7 : 0.94} stroke="#a5f5ff" strokeOpacity={muted ? 0.3 : 0.56} strokeWidth="1.5" />
+        <Path d="M102 110h56v31h-56Z" fill="#0b77ad" fillOpacity={muted ? 0.26 : 0.42} stroke="#d9ffff" strokeOpacity="0.2" />
+        <Circle cx="130" cy="125.5" r="12.5" fill="#f0ffff" fillOpacity={muted ? 0.08 : 0.14} stroke="#d8ffff" strokeOpacity={muted ? 0.34 : 0.64} strokeWidth="1.3" />
+        <Path d="M126 119h8v3l2.5 3.5v8c0 2-2.3 3.4-6.5 3.4s-6.5-1.4-6.5-3.4v-8L126 122v-3Z" fill="none" stroke={labelInk} strokeOpacity="0.9" strokeWidth="1.2" />
+        <Path d="M124 126h12M127 121h6" stroke={labelInk} strokeOpacity="0.8" strokeWidth="1" strokeLinecap="round" />
+      </G>
+      <G opacity={muted ? 0.58 : 1}>
+        <Circle cx="130" cy="322" r="80" fill="#dfffff" fillOpacity={muted ? 0.48 : 0.94} stroke="#b7f8ff" strokeWidth="2" />
+        <Circle cx="130" cy="322" r="72" fill={label} stroke="#dfffff" strokeOpacity="0.58" strokeWidth="2.5" />
+        <SvgText x="130" y="280" fill={labelInk} fontSize="13" fontWeight="700" textAnchor="middle" letterSpacing="1.2">REVIVE</SvgText>
+        <Path d="M118 301h24v7l4 5v27c0 5-5.4 9-16 9s-16-4-16-9v-27l4-5v-7Z" fill="none" stroke={labelInk} strokeOpacity="0.96" strokeWidth="2" />
+        <Path d="M118 316h24M123 306h14M125 328h10M130 321v14" fill="none" stroke={labelInk} strokeOpacity="0.94" strokeWidth="1.7" strokeLinecap="round" />
+        <SvgText x="130" y="373" fill={labelInk} fontSize="12" fontWeight="600" textAnchor="middle" letterSpacing="2.4">SODA</SvgText>
+      </G>
+      <G>
+        <Path d="M88 27h84v17c0 8-7 13-16 13h-52c-9 0-16-5-16-13V27Z" fill={`url(#${prefix}-cap)`} stroke="#8fdff3" strokeOpacity={muted ? 0.28 : 0.72} strokeWidth="2" />
+        <Path d="M101 34h58" stroke="#d8fbff" strokeOpacity={muted ? 0.1 : 0.22} strokeWidth="2" strokeLinecap="round" />
+      </G>
     </Svg>
   );
 }
@@ -136,6 +174,13 @@ function DaiquiriBottle({ size = 54, muted = false }: { size?: number; muted?: b
           <Stop stopColor="#061a36" />
           <Stop offset="0.5" stopColor={blue} />
           <Stop offset="1" stopColor="#06152b" />
+        </SvgLinearGradient>
+        <SvgLinearGradient id={`${prefix}-cap`} x1="0" x2="1" y1="0" y2="1">
+          <Stop stopColor={muted ? '#4c3714' : '#6f5016'} />
+          <Stop offset="0.22" stopColor={muted ? '#9a7832' : '#f9df76'} />
+          <Stop offset="0.5" stopColor={muted ? '#aa8b45' : '#fff1a1'} />
+          <Stop offset="0.76" stopColor={muted ? '#76551f' : '#c89b32'} />
+          <Stop offset="1" stopColor={muted ? '#3d2a0d' : '#624411'} />
         </SvgLinearGradient>
         <ClipPath id={`${prefix}-liquid-clip`}>
           <Path d="M70 202h120v246c0 25-24 42-60 42s-60-17-60-42V202Z" />
@@ -174,30 +219,84 @@ function DaiquiriBottle({ size = 54, muted = false }: { size?: number; muted?: b
       <Path d="M51 322c0-57 35-103 79-103s79 46 79 103-35 103-79 103-79-46-79-103Z" fill="none" stroke={yellowBright} strokeOpacity={muted ? 0.28 : 0.72} strokeWidth="2" />
       <Path d="M99 46c-12 36-7 80-7 122v221c0 45 11 70 21 78" fill="none" stroke="#dff8ff" strokeOpacity={muted ? 0.24 : 0.7} strokeWidth="5" strokeLinecap="round" />
       <Path d="M157 52c13 33 8 72 9 116" fill="none" stroke="#fff" strokeOpacity={muted ? 0.14 : 0.42} strokeWidth="3" strokeLinecap="round" />
-      <Path d="M88 27h84v17c0 8-7 13-16 13h-52c-9 0-16-5-16-13V27Z" fill={cap} stroke="#7599b6" strokeOpacity={muted ? 0.3 : 0.8} strokeWidth="2" />
-      <Path d="M86 42h88" stroke={yellowBright} strokeOpacity={muted ? 0.3 : 0.9} strokeWidth="3" />
-      <Path d="M85 50h90" stroke="#a77a25" strokeWidth="5" opacity={muted ? 0.25 : 0.7} />
+      <Path d="M88 27h84v17c0 8-7 13-16 13h-52c-9 0-16-5-16-13V27Z" fill={`url(#${prefix}-cap)`} stroke="#fff0a0" strokeOpacity={muted ? 0.32 : 0.9} strokeWidth="2" />
+      <Circle cx="130" cy="38" r="10" fill={muted ? '#8c6e2d' : '#e4b843'} stroke={muted ? '#25394b' : '#0a2242'} strokeWidth="1.5" />
+      <SvgText x="130" y="44" textAnchor="middle" fill={muted ? '#25394b' : '#0a2242'} fontSize="13" fontWeight="700">R</SvgText>
+      <Path d="M86 50h88" stroke={muted ? '#70551f' : '#a77a25'} strokeWidth="5" opacity={muted ? 0.25 : 0.7} />
     </Svg>
   );
 }
 
 function StaminUpBottle({ size = 54, muted = false }: { size?: number; muted?: boolean }) {
-  const glass = muted ? '#85755d' : '#ffd08a';
-  const liquid = muted ? '#7f5426' : '#f28a1c';
-  const highlight = muted ? '#9f7e47' : '#ffd35c';
-  const cap = muted ? '#786443' : '#ffe55c';
+  const prefix = `stamin-up-${size}-${muted ? 'muted' : 'live'}`;
+  const glass = muted ? '#85755d' : '#ffd38c';
+  const glassDeep = muted ? '#4b2a13' : '#211006';
+  const liquid = muted ? '#7f5426' : '#c45d12';
+  const liquidBright = muted ? '#b18a51' : '#ffd779';
+  const highlight = muted ? '#9f7e47' : '#ffd66c';
+  const cap = muted ? '#786443' : '#fff0a0';
   return (
-    <Svg width={size} height={size * 1.34} viewBox="0 0 60 80" accessibilityLabel="Stamin Up amber orange glass soda bottle">
-      <Path d="M23 4h14v10l5 7v45c0 6-5 10-12 10s-12-4-12-10V21l5-7V4Z" fill="rgba(255,221,153,0.14)" stroke={glass} strokeWidth="2.2" />
-      <Path d="M21 33h18v33c0 4-3.3 7-9 7s-9-3-9-7V33Z" fill={liquid} opacity={muted ? 0.52 : 0.9} />
-      <Path d="M25 4h10v5H25z" fill={cap} />
-      <Path d="M24 7h12" stroke="#6e5317" strokeWidth="1.1" opacity="0.7" />
-      <Path d="M23 22h14" stroke={glass} strokeWidth="1.5" opacity="0.86" />
-      <Circle cx="30" cy="49" r="10.5" fill="#e67b17" stroke={highlight} strokeWidth="1.4" />
-      <Path d="M21.5 49h17" stroke={highlight} strokeWidth="0.9" opacity="0.75" />
-      <Path d="M25 45c2-2.4 8-2.4 10 0M25 53c2 2.4 8 2.4 10 0" fill="none" stroke="#fff5c6" strokeWidth="1" />
-      <Path d="M28 44l5 5-5 5M32 44l-5 5 5 5" fill="none" stroke="#fff" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" />
-      <Path d="M23 61c5 2 13 2 18 0" stroke="#ffec9d" strokeOpacity="0.75" strokeWidth="1.2" />
+    <Svg width={size} height={size * 1.96} viewBox="0 0 260 510" accessibilityLabel="Stamin Up premium amber glass soda bottle">
+      <Defs>
+        <SvgLinearGradient id={`${prefix}-glass`} x1="0" x2="1">
+          <Stop stopColor={glassDeep} />
+          <Stop offset="0.18" stopColor={muted ? '#5b3215' : '#7a3c14'} />
+          <Stop offset="0.42" stopColor={muted ? '#2e1709' : '#3f1b08'} />
+          <Stop offset="0.72" stopColor={muted ? '#211006' : '#281006'} />
+          <Stop offset="1" stopColor={muted ? '#76502a' : '#b16a27'} />
+        </SvgLinearGradient>
+        <SvgLinearGradient id={`${prefix}-liquid`} x1="0" y1="0" x2="1" y2="1">
+          <Stop stopColor={liquidBright} />
+          <Stop offset="0.2" stopColor={muted ? '#bb7731' : '#f5a32c'} />
+          <Stop offset="0.6" stopColor={liquid} />
+          <Stop offset="1" stopColor={muted ? '#4a1c0b' : '#70260d'} />
+        </SvgLinearGradient>
+        <SvgLinearGradient id={`${prefix}-cap`} x1="0" x2="1" y1="0" y2="1">
+          <Stop stopColor={muted ? '#513712' : '#7d4a12'} />
+          <Stop offset="0.22" stopColor={muted ? '#9b7430' : '#f8cf5d'} />
+          <Stop offset="0.5" stopColor={cap} />
+          <Stop offset="0.78" stopColor={muted ? '#76501a' : '#c18722'} />
+          <Stop offset="1" stopColor={muted ? '#42280b' : '#6a3d0b'} />
+        </SvgLinearGradient>
+        <ClipPath id={`${prefix}-liquid-clip`}>
+          <Path d="M46 202h168v236c0 34-29 54-84 54s-84-20-84-54V202Z" />
+        </ClipPath>
+      </Defs>
+      <Path d="M92 29h76v47c0 20 5 34 14 47l24 34c8 12 12 26 12 42v239c0 34-32 52-88 52s-88-18-88-52V199c0-16 4-30 12-42l24-34c9-13 14-27 14-47V29Z" fill={`url(#${prefix}-glass)`} stroke={glass} strokeOpacity={muted ? 0.44 : 0.78} strokeWidth="3" />
+      <Path d="M99 34h62v43c0 22 5 37 15 51l22 32c6 10 9 22 9 35v239c0 25-25 40-77 40s-77-15-77-40V195c0-13 3-25 9-35l22-32c10-14 15-29 15-51V34Z" fill={glassDeep} fillOpacity={muted ? 0.58 : 0.38} />
+      <Path d="M46 202h168v236c0 34-29 54-84 54s-84-20-84-54V202Z" fill={`url(#${prefix}-liquid)`} fillOpacity={muted ? 0.55 : 0.96} />
+      <G clipPath={`url(#${prefix}-liquid-clip)`}>
+        {[
+          [58, 432, 3.2], [79, 393, 2.3], [101, 449, 3.5], [124, 408, 2.7],
+          [150, 437, 3.1], [177, 382, 2.1], [193, 424, 3.5], [86, 355, 2.2],
+          [117, 372, 2.8], [144, 339, 1.8], [70, 461, 1.6], [181, 403, 2],
+        ].map(([cx, cy, r], index) => (
+          <Circle key={index} cx={cx} cy={cy} r={r} fill="#fff0b0" fillOpacity={muted ? 0.2 : 0.66} />
+        ))}
+      </G>
+      <Path d="M103 70c-8 55-6 104-6 158v183c0 28 8 51 18 67l11-5c-10-22-14-41-14-66V212c0-56-2-101 8-145Z" fill="#fff0bd" fillOpacity={muted ? 0.06 : 0.1} />
+      <G opacity={muted ? 0.62 : 1}>
+        <Path d="M98 106h64v39H98Z" fill="#132c43" fillOpacity="0.94" stroke="#f2bd55" strokeOpacity={muted ? 0.36 : 0.76} strokeWidth="1.5" />
+        <Path d="M102 110h56v31h-56Z" fill="#214968" fillOpacity={muted ? 0.26 : 0.46} stroke="#ffe2a1" strokeOpacity="0.2" />
+        <Circle cx="130" cy="125.5" r="12.5" fill="#f6c65b" fillOpacity={muted ? 0.2 : 0.45} stroke="#ffe5a1" strokeOpacity={muted ? 0.38 : 0.8} strokeWidth="1.3" />
+        <Path d="M130 116v19M123 125.5h14" stroke="#172b3c" strokeOpacity="0.92" strokeWidth="2.2" strokeLinecap="round" />
+        <Circle cx="130" cy="125.5" r="4" fill="none" stroke="#172b3c" strokeOpacity="0.72" strokeWidth="1" />
+        <Path d="M104 111h52" stroke="#fff0bd" strokeOpacity="0.2" strokeWidth="1.5" strokeLinecap="round" />
+      </G>
+      <G opacity={muted ? 0.62 : 1}>
+        <Circle cx="130" cy="322" r="80" fill="#ffe4a0" fillOpacity={muted ? 0.48 : 0.94} stroke="#fff0bd" strokeWidth="2" />
+        <Circle cx="130" cy="322" r="72" fill="#16324a" stroke="#f8c95f" strokeOpacity={muted ? 0.38 : 0.9} strokeWidth="3" />
+        <SvgText x="130" y="280" fill="#ffe7aa" fontSize="12" fontWeight="700" textAnchor="middle" letterSpacing="1.1">STAMIN UP</SvgText>
+        <G>
+          <Path d="M103 303c10-12 43-14 54 0 5 7-3 14-17 15-13 1-23 3-23 10 0 8 12 10 21 10 13 0 18 4 15 10-3 7-11 11-18 14" fill="none" stroke="#ffd66c" strokeWidth="4.2" strokeLinecap="round" />
+          <Path d="M108 305c10 5 30 5 44 0M115 319c8 4 20 4 29 0M122 333c5 3 11 3 16 0M127 349h7" fill="none" stroke="#fff0bb" strokeOpacity="0.86" strokeWidth="2.2" strokeLinecap="round" />
+        </G>
+        <Path d="M113 350c10 5 24 5 34 0" fill="none" stroke="#f5c65b" strokeOpacity="0.62" strokeWidth="1.5" strokeLinecap="round" />
+      </G>
+      <G>
+        <Path d="M88 27h84v17c0 8-7 13-16 13h-52c-9 0-16-5-16-13V27Z" fill={`url(#${prefix}-cap)`} stroke="#fff0bd" strokeOpacity={muted ? 0.3 : 0.8} strokeWidth="2" />
+        <Path d="M101 34h58" stroke="#fff8cf" strokeOpacity={muted ? 0.1 : 0.28} strokeWidth="2" strokeLinecap="round" />
+      </G>
     </Svg>
   );
 }
