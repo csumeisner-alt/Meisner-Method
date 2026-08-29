@@ -14,7 +14,7 @@ export const BREW_BANK_ACCESS_DURATION_MS = 12 * 60 * 60 * 1000;
 export const QUICK_REVIVE_UNLOCK_PRICE = 40;
 export const QUICK_REVIVE_BOTTLE_PRICE = 2;
 export const DAIQUIRI_WIN_PROBABILITY = 0.45;
-export const DAIQUIRI_LOSS_PROBABILITY = 0.55;
+export const DAIQUIRI_LOSS_PROBABILITY = 1 - DAIQUIRI_WIN_PROBABILITY;
 export const DAIQUIRI_PAYOUT_MULTIPLIER = 2;
 export const DAIQUIRI_UNLOCK_PRICE = 100;
 export const DAIQUIRI_BOTTLE_PRICE = 8;
@@ -82,7 +82,7 @@ export function getBrewBottlePreview(kind: BrewBottlePreviewKind): BrewBottlePre
         bottlePrice: DAIQUIRI_BOTTLE_PRICE,
         winProbability: DAIQUIRI_WIN_PROBABILITY,
         lossProbability: DAIQUIRI_LOSS_PROBABILITY,
-        description: 'Crack one into the machine before a toss: 45% win odds, 55% loss odds, and a double award if it pays.',
+        description: `Crack one into the machine before a toss: ${Math.round(DAIQUIRI_WIN_PROBABILITY * 100)}% win odds, ${Math.round(DAIQUIRI_LOSS_PROBABILITY * 100)}% loss odds, and a double award if it pays.`,
         conversionCopy: null,
       };
     case 'staminUp':

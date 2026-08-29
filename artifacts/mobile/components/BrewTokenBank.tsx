@@ -47,6 +47,7 @@ import {
   DAIQUIRI_LOSS_PROBABILITY,
   DAIQUIRI_PAYOUT_MULTIPLIER,
   DAIQUIRI_UNLOCK_PRICE,
+  DAIQUIRI_WIN_PROBABILITY,
   QUICK_REVIVE_BOTTLE_PRICE,
   QUICK_REVIVE_UNLOCK_PRICE,
   SMART_PRO_BOTTLE_PRICE,
@@ -66,6 +67,11 @@ import {
   hasSmartProSale,
   isWeekday,
 } from '@/lib/brewTokenLogic';
+
+const DAIQUIRI_WIN_PERCENT = Math.round(DAIQUIRI_WIN_PROBABILITY * 100);
+const DAIQUIRI_LOSS_PERCENT = Math.round(DAIQUIRI_LOSS_PROBABILITY * 100);
+const DAIQUIRI_ODDS_LABEL = `${DAIQUIRI_WIN_PERCENT}% WIN · ${DAIQUIRI_LOSS_PERCENT}% LOSS`;
+const DAIQUIRI_DESCRIPTION = `Crack one into the machine before a toss: ${DAIQUIRI_WIN_PERCENT}% win odds, ${DAIQUIRI_LOSS_PERCENT}% loss odds, and a double award if it pays.`;
 
 export function BrewCoin({ colors, size = 66 }: { colors: ColorScheme; size?: number }) {
   return (
@@ -1151,7 +1157,7 @@ export function BrewTokenBank({
     setShopBusy(false);
     if (!redeemed) return;
 
-    setShopMessage('DAIQUIRI ARMED · 45% WIN · 55% LOSS · DOUBLE AWARD');
+    setShopMessage(`DAIQUIRI ARMED · ${DAIQUIRI_ODDS_LABEL} · DOUBLE AWARD`);
     if (hapticsEnabled) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     }
@@ -1791,7 +1797,7 @@ export function BrewTokenBank({
                         DAVE RAMSEY DAIQUIRI
                       </Text>
                       <Text style={[styles.shopDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                        Crack one into the machine before a toss: 45% win odds, 55% loss odds, and a double award if it pays.
+                        {DAIQUIRI_DESCRIPTION}
                       </Text>
                     </View>
                     <Pressable
@@ -2020,7 +2026,7 @@ export function BrewTokenBank({
               accessibilityRole="button"
               accessibilityLabel={
                 daiquiriArmed
-                  ? 'Dave Ramsey Daiquiri armed. Your next toss has 45 percent win odds, 65 percent loss odds, and double award on a win.'
+                  ? `Dave Ramsey Daiquiri armed. Your next toss has ${DAIQUIRI_WIN_PERCENT} percent win odds, ${DAIQUIRI_LOSS_PERCENT} percent loss odds, and double award on a win.`
                   : `Redeem a Dave Ramsey Daiquiri bottle. ${daiquiriBottles} bottles available.`
               }
               accessibilityState={{ disabled: daiquiriBottles < 1 || daiquiriArmed || quickReviveArmed || staminUpArmed || resolving || shopBusy }}
@@ -2028,12 +2034,12 @@ export function BrewTokenBank({
               <DaiquiriBottle size={26} muted={!daiquiriArmed && daiquiriBottles < 1} />
               <View style={styles.quickReviveArmCopy}>
                 <Text style={[styles.quickReviveArmTitle, { color: daiquiriArmed ? '#a8e5ff' : colors.foreground, fontFamily: 'Inter_700Bold' }]}>
-                  {daiquiriArmed ? 'DAIQUIRI ARMED · 45% WIN · DOUBLE AWARD' : 'REDEEM DAIQUIRI · DOUBLE WIN AWARD'}
+                  {daiquiriArmed ? `DAIQUIRI ARMED · ${DAIQUIRI_WIN_PERCENT}% WIN · DOUBLE AWARD` : 'REDEEM DAIQUIRI · DOUBLE WIN AWARD'}
                 </Text>
                 <Text style={[styles.quickReviveArmDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                   {daiquiriArmed
                     ? 'Light blue and yellow liquid is in the machine. It applies to your next toss only.'
-                    : `${daiquiriBottles} ${daiquiriBottles === 1 ? 'BOTTLE' : 'BOTTLES'} READY · 45% WIN · 55% LOSS`}
+                    : `${daiquiriBottles} ${daiquiriBottles === 1 ? 'BOTTLE' : 'BOTTLES'} READY · ${DAIQUIRI_ODDS_LABEL}`}
                 </Text>
               </View>
               <Feather name={daiquiriArmed ? 'check-circle' : 'droplet'} size={17} color={daiquiriArmed ? '#a8e5ff' : '#f6d64a'} />
@@ -2166,7 +2172,7 @@ export function BrewTokenBank({
               )}
                {result.daiquiri && (
                  <Text style={[styles.resultHint, { color: '#a8e5ff', fontFamily: 'Inter_600SemiBold' }]}>
-                    DAIQUIRI APPLIED · 45% WIN / 55% LOSS · {result.won ? 'DOUBLE AWARD PAID' : 'BOTTLE CONSUMED'}
+                    DAIQUIRI APPLIED · {DAIQUIRI_WIN_PERCENT}% WIN / {DAIQUIRI_LOSS_PERCENT}% LOSS · {result.won ? 'DOUBLE AWARD PAID' : 'BOTTLE CONSUMED'}
                  </Text>
                )}
                {result.staminUp && (

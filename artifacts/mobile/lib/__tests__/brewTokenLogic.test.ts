@@ -194,7 +194,25 @@ test('Dave Ramsey Daiquiri consumes one bottle and applies its requested odds fo
   assert.equal(redeemDaiquiriBottle(1, true), null);
   assert.equal(getDaiquiriWinProbability(false), BREW_TOKEN_WIN_PROBABILITY);
   assert.equal(getDaiquiriWinProbability(true), DAIQUIRI_WIN_PROBABILITY);
-   assert.equal(DAIQUIRI_LOSS_PROBABILITY, 0.55);
+  assert.equal(DAIQUIRI_WIN_PROBABILITY + DAIQUIRI_LOSS_PROBABILITY, 1);
+  assert.equal(DAIQUIRI_LOSS_PROBABILITY, 0.55);
+});
+
+test('Dave Ramsey Daiquiri odds produce the expected payout with its double award', () => {
+  const startingBalance = 10;
+  const bet = 3;
+  const winBalance = resolveBrewBetOutcome(startingBalance, 0, bet, true, {
+    payoutMultiplier: DAIQUIRI_PAYOUT_MULTIPLIER,
+  }).brewTokens;
+  const lossBalance = resolveBrewBetOutcome(startingBalance, 0, bet, false, {
+    payoutMultiplier: DAIQUIRI_PAYOUT_MULTIPLIER,
+  }).brewTokens;
+  const expectedBalance = DAIQUIRI_WIN_PROBABILITY * winBalance
+    + DAIQUIRI_LOSS_PROBABILITY * lossBalance;
+
+  assert.equal(winBalance, 16);
+  assert.equal(lossBalance, 7);
+  assert.equal(Math.round(expectedBalance * 100) / 100, 11.05);
 });
 
 test('Stamin Up unlocks at five hundred tokens and its bottles cost sixteen tokens', () => {
