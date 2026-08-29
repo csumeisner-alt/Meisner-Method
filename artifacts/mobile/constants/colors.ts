@@ -71,13 +71,61 @@ const americanPalette = {
   steelShadow: '#080a0d',
 };
 
+const neonGucciPalette = {
+  text: '#fffaf0',
+  tint: '#8cf3cf',
+  background: '#1c1413',
+  foreground: '#fffaf0',
+  card: '#2b211e',
+  cardForeground: '#fffaf0',
+  primary: '#8cf3cf',
+  primaryForeground: '#14231e',
+  secondary: '#34251f',
+  secondaryForeground: '#fffaf0',
+  muted: '#2d221f',
+  mutedForeground: '#cdbfaa',
+  accent: '#6b502c',
+  accentForeground: '#fffaf0',
+  destructive: '#ff5b64',
+  destructiveForeground: '#fffaf0',
+  border: '#8f7448',
+  input: '#2a201d',
+  buyColor: '#75f2c6',
+  sellColor: '#ff6972',
+  holdColor: '#f1ca73',
+  gradeGood: '#75f2c6',
+  gradeCaution: '#f1ca73',
+  gradeWarning: '#ff9f66',
+  gradeFail: '#ff6972',
+  buyBg: '#16382d',
+  sellBg: '#3d1c21',
+  holdBg: '#3b2d17',
+  heading: '#ffe1a0',
+  gold: '#efc86e',
+  goldMuted: '#a98545',
+  steelHighlight: '#553d2d',
+  steelShadow: '#100d10',
+};
+
 const colors = {
   light: defaultPalette,
   dark: defaultPalette,
   american: americanPalette,
+  neonGucci: neonGucciPalette,
   radius: 16,
 };
 
 export type ColorScheme = typeof defaultPalette;
+
+export const NEON_GUCCI_DECOR = {
+  beige: '#d8c39a',
+  deepBeige: '#8c7249',
+  green: '#117a55',
+  red: '#a62132',
+  cyan: '#55ecff',
+  mint: '#8cf3cf',
+  gold: '#efc86e',
+  ink: '#14100f',
+} as const;
 
 export default colors;

@@ -1,0 +1,229 @@
+@import url("../daiquiri-redesign/_group.css");
+
+.quick-revive-group {
+  --quick-cyan: #68eaff;
+  --quick-cyan-bright: #c7ffff;
+  --quick-blue: #118dcc;
+  --quick-deep: #061a32;
+}
+
+.quick-revive-group.glow-shell {
+  background:
+    radial-gradient(ellipse at 50% 34%, rgba(26, 173, 220, .28), transparent 42%),
+    #041321;
+}
+
+.quick-revive-group .glow-panel {
+  border-color: rgba(105, 229, 255, .38);
+  background:
+    linear-gradient(145deg, rgba(10, 54, 78, .94), rgba(3, 19, 36, .99) 44%),
+    #061a2d;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, .46), inset 0 0 0 1px rgba(120, 238, 255, .07);
+}
+
+.quick-revive-group .glow-panel::before {
+  background: linear-gradient(90deg, transparent, rgba(133, 245, 255, .1), transparent);
+}
+
+.quick-revive-group .vault-lock {
+  color: var(--quick-cyan);
+}
+
+.quick-revive-group .glow-header .eyebrow {
+  color: var(--quick-cyan);
+}
+
+.quick-revive-group .glow-header h1 em {
+  color: var(--quick-cyan);
+}
+
+.quick-revive-group .seal {
+  border-color: var(--quick-cyan);
+  color: var(--quick-cyan-bright);
+  background: #075279;
+  box-shadow: 0 0 0 5px rgba(104, 234, 255, .1), 0 0 24px rgba(44, 211, 250, .22);
+  font-family: "Outfit", sans-serif;
+  font-size: 32px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.quick-revive-group .stage-grid {
+  opacity: .38;
+  background-image: linear-gradient(rgba(94, 221, 249, .16) 1px, transparent 1px), linear-gradient(90deg, rgba(94, 221, 249, .16) 1px, transparent 1px);
+}
+
+.quick-revive-group .stage-spotlight {
+  background: radial-gradient(ellipse, rgba(96, 239, 255, .3), rgba(27, 176, 230, .15) 35%, transparent 68%);
+}
+
+.quick-revive-group .quick-neck-label {
+  transform-origin: center;
+}
+
+.quick-revive-group .quick-bottle-label {
+  transform-origin: center;
+}
+
+.quick-revive-group .pedestal {
+  border-color: rgba(100, 232, 255, .58);
+  background: linear-gradient(#285166, #0a2537 35%, #03101b);
+  box-shadow: 0 -2px 16px rgba(57, 220, 255, .4), 0 15px 18px rgba(0, 0, 0, .34);
+}
+
+.quick-revive-group .pedestal::before {
+  background: rgba(48, 213, 246, .18);
+}
+
+.quick-revive-group .pedestal span {
+  background: var(--quick-cyan);
+  box-shadow: 0 0 12px var(--quick-cyan);
+}
+
+.quick-revive-group .surge-ring {
+  border-color: rgba(99, 231, 255, .78);
+  box-shadow: 0 0 12px rgba(68, 217, 255, .28);
+}
+
+.quick-revive-group .splash i {
+  background: var(--quick-cyan-bright);
+  box-shadow: 0 0 10px var(--quick-cyan);
+}
+
+.quick-revive-group .detail-heading .eyebrow {
+  color: #8edff4;
+}
+
+.quick-revive-group .odds-strip {
+  border-color: rgba(78, 213, 245, .28);
+  background: rgba(78, 213, 245, .22);
+}
+
+.quick-revive-group .odds-strip strong {
+  color: var(--quick-cyan-bright);
+  font-size: 18px;
+  white-space: nowrap;
+}
+
+.quick-revive-group .glow-status {
+  border-color: rgba(87, 226, 252, .24);
+  color: #b4f4ff;
+}
+
+.quick-revive-group .pulse-dot {
+  background: var(--quick-cyan);
+  box-shadow: 0 0 0 4px rgba(104, 234, 255, .13), 0 0 14px rgba(104, 234, 255, .5);
+}
+
+.quick-revive-group .glow-redeem {
+  border-color: var(--quick-cyan);
+  color: #041725;
+  background: var(--quick-cyan);
+  box-shadow: 0 8px 24px rgba(65, 220, 250, .18);
+}
+
+.quick-revive-group .glow-redeem:hover {
+  background: var(--quick-cyan-bright);
+}
+
+.quick-revive-group .motion-toggle {
+  color: var(--quick-cyan);
+}
+
+.quick-revive-group .glow-panel.is-active .quick-neck-label {
+  animation: quickNeckFlare 2.4s ease both;
+}
+
+.quick-revive-group .glow-panel.is-active .quick-bottle-label {
+  animation: quickLabelFlare 2.4s ease both;
+}
+
+.quick-revive-group .glow-panel.is-active .bottle-warm-glow {
+  animation: quickWarmth 2.4s ease both;
+}
+
+.quick-revive-group .glow-panel.is-active .bottle-wrap {
+  animation: quickFizzBurst 2.4s cubic-bezier(.18,.75,.24,1) both;
+}
+
+.quick-revive-group .glow-panel.is-active .quick-cap {
+  animation: quickCapPop 2.4s cubic-bezier(.18,.75,.24,1) both;
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+
+.quick-revive-group .glow-panel.is-active .quick-cap-glint {
+  animation: quickCapSheen 2.4s ease both;
+}
+
+.quick-revive-group .glow-panel.is-active .quick-liquid-fill {
+  animation: quickSodaSurge 2.4s cubic-bezier(.17,.82,.24,1) both;
+  transform-origin: center bottom;
+}
+
+.quick-revive-group .glow-panel.is-active .quick-fizz-bubble {
+  animation: quickFizzRise 2.2s ease-out infinite;
+}
+
+.quick-revive-group .glow-panel.is-active .ring-one,
+.quick-revive-group .glow-panel.is-active .ring-two,
+.quick-revive-group .glow-panel.is-active .splash {
+  animation: none;
+  opacity: 0;
+}
+
+@keyframes quickFizzBurst {
+  0%, 8% { transform: translateX(-50%) translateY(0) rotate(0) scale(1); }
+  17% { transform: translateX(-50%) translateY(-2px) rotate(-1.2deg) scale(1.01); }
+  25% { transform: translateX(-50%) translateY(0) rotate(1deg) scale(1); }
+  34% { transform: translateX(-50%) translateY(-1px) rotate(-.7deg) scale(1.005); }
+  48%, 100% { transform: translateX(-50%) translateY(0) rotate(0) scale(1); }
+}
+
+@keyframes quickCapPop {
+  0%, 13% { transform: translateY(0) rotate(0); }
+  23% { transform: translateY(-8px) rotate(-3deg); }
+  32% { transform: translateY(-3px) rotate(1.7deg); }
+  43%, 100% { transform: translateY(0) rotate(0); }
+}
+
+@keyframes quickCapSheen {
+  0%, 18% { stroke: #d8fbff; stroke-opacity: .22; stroke-width: 2; }
+  28% { stroke: #eaffff; stroke-opacity: .75; stroke-width: 3; }
+  45%, 100% { stroke: #d8fbff; stroke-opacity: .22; stroke-width: 2; }
+}
+
+@keyframes quickSodaSurge {
+  0%, 14% { transform: scaleY(.9) translateY(9%); }
+  28% { transform: scaleY(1.07) translateY(-4%); }
+  42% { transform: scaleY(.98) translateY(1%); }
+  57%, 100% { transform: scaleY(1) translateY(0); }
+}
+
+@keyframes quickFizzRise {
+  0% { opacity: 0; transform: translateY(18px) scale(.5); }
+  18% { opacity: .92; }
+  62% { opacity: .72; transform: translateY(-42px) scale(1.08); }
+  100% { opacity: 0; transform: translateY(-78px) scale(1.16); }
+}
+
+@keyframes quickNeckFlare {
+  0%, 25% { filter: brightness(1); transform: scale(1); }
+  43% { filter: brightness(1.55) drop-shadow(0 0 8px rgba(103, 239, 255, .7)); transform: scale(1.1); }
+  60%, 100% { filter: brightness(1); transform: scale(1); }
+}
+
+@keyframes quickLabelFlare {
+  0%, 27% { filter: brightness(1); transform: scale(1); }
+  45% { filter: brightness(1.18) drop-shadow(0 0 12px rgba(91, 234, 255, .54)); transform: scale(1.025); }
+  65%, 100% { filter: brightness(1); transform: scale(1); }
+}
+
+@keyframes quickWarmth {
+  0%, 100% { opacity: .56; }
+  45% { opacity: 1; }
+}
+
+@media (max-width: 380px) {
+  .quick-revive-group .glow-header h1 { font-size: 31px; }
+}

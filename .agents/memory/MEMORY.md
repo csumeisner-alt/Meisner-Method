@@ -21,3 +21,11 @@
 - [Meisner Method branding](meisner-method-branding.md) — public product branding is Meisner Method; legacy storage namespaces remain for local-data compatibility.
 - [Celebration audio cost model](celebration-audio-cost.md) — bundle approved celebration recordings locally; do not reintroduce per-play network TTS.
 - [Expo APK build workflow](expo-apk-build-workflow.md) — GitHub build uses base `artifacts/mobile`, profile `preview`, Preview environment, and exact branch/full SHA.
+- [Dave Ramsey Daiquiri odds](daiquiri-odds-and-payout.md) — show requested 45% win / 65% loss copy; use 45% win internally and double only a win.
+- [Dark Brew Token economy](dark-brew-token-economy.md) — Stamin Up converts one winning award only; Dark Brew stays isolated from regular wagering and portfolio value.
+- [Quick Revive visual direction](quick-revive-visual-direction.md) — use a luminous cyan soda bottle with fizz and a round Revive label, not a generic lightning potion.
+- [Daiquiri visual direction](daiquiri-visual-direction.md) — use a cinematic navy-and-gold collectible bottle with carbonation, label flare, liquid surge, and controlled splash.
+- [Mockup sandbox React types](mockup-sandbox-react-types.md) — keep sandbox React type packages aligned with runtime React 19.1 to avoid nominal ref incompatibilities.
+- [Brew token snapshot persistence](brew-token-snapshot-persistence.md) — persist the complete economy and quote claims together; verify uncertain writes by reading back the snapshot.
+- [Third-theme unlock](third-theme-unlock.md) — reveal Hybrid Neon Gucci after first Dark Brew Token; unlock at 10,000; persist it with the economy and keep themes exclusive.
+- [Brew activity history](brew-activity-history.md) — token, bottle, bank, toss, and theme events travel with the economy snapshot; older snapshots read as an empty history.

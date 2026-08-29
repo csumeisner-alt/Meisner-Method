@@ -21,7 +21,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
 import { Confetti } from '@/components/Confetti';
-import { useAmericanMode, AMERICAN_MODE_THRESHOLD } from '@/contexts/AmericanModeContext';
+import {
+  useAmericanMode,
+  AMERICAN_MODE_THRESHOLD,
+  NEON_GUCCI_UNLOCK_COST,
+} from '@/contexts/AmericanModeContext';
 
 // Creator's PUBLIC payment handles. These only ever build outbound payment
 // links — the app never touches logins, balances, or account data.
@@ -51,11 +55,34 @@ interface Props {
 export function DonationSidebar({ visible, onClose }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { factsRead, isUnlocked, isActive, setAmericanModeActive } = useAmericanMode();
+  const {
+    factsRead,
+    isUnlocked,
+    isActive,
+    setAmericanModeActive,
+    neonGucciActive,
+    neonGucciUnlocked,
+    setNeonGucciActive,
+    brew,
+  } = useAmericanMode();
+  const neonProgress = Math.min(brew.darkBrewTokens / NEON_GUCCI_UNLOCK_COST, 1);
+  const neonProgressPercent = Math.round(neonProgress * 100);
+  const neonNextMilestone = neonGucciUnlocked
+    ? 'UNLOCKED · READY TO ACTIVATE'
+    : brew.darkBrewTokens < 1000
+      ? 'NEXT MILESTONE · 1,000 TOKENS'
+      : brew.darkBrewTokens < NEON_GUCCI_UNLOCK_COST
+        ? 'NEXT MILESTONE · 10,000 TOKENS'
+        : 'UNLOCKED · READY TO ACTIVATE';
 
   const toggleAmericanMode = (value: boolean) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setAmericanModeActive(value);
+  };
+
+  const toggleNeonGucciMode = (value: boolean) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setNeonGucciActive(value);
   };
 
   const [rendered, setRendered] = useState(visible);
@@ -69,9 +96,12 @@ export function DonationSidebar({ visible, onClose }: Props) {
   // button. There is no payment webhook, so this is a best-effort "you came
   // back" cue — not a confirmed-payment signal.
   const [celebrating, setCelebrating] = useState(false);
+  const [neonCelebrating, setNeonCelebrating] = useState(false);
   const celebAnim = useRef(new Animated.Value(0)).current;
+  const neonCelebAnim = useRef(new Animated.Value(0)).current;
   const tipAttemptedRef = useRef(false);
   const celebTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const neonCelebTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const effectiveAmount = isCustom ? parseFloat(customText) || 0 : selected;
   const isValid = effectiveAmount >= MIN_AMOUNT && effectiveAmount <= MAX_AMOUNT;
@@ -110,9 +140,25 @@ export function DonationSidebar({ visible, onClose }: Props) {
     return () => {
       sub.remove();
       if (celebTimer.current) clearTimeout(celebTimer.current);
+      if (neonCelebTimer.current) clearTimeout(neonCelebTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!brew.neonGucciJustUnlocked) return;
+    setNeonCelebrating(true);
+    neonCelebAnim.setValue(0);
+    Animated.spring(neonCelebAnim, {
+      toValue: 1,
+      friction: 7,
+      tension: 55,
+      useNativeDriver: true,
+    }).start();
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    neonCelebTimer.current = setTimeout(() => setNeonCelebrating(false), 4_800);
+    brew.clearNeonGucciJustUnlocked();
+  }, [brew.clearNeonGucciJustUnlocked, brew.neonGucciJustUnlocked, neonCelebAnim]);
 
   const triggerCelebration = () => {
     if (celebTimer.current) clearTimeout(celebTimer.current);
@@ -402,9 +448,120 @@ export function DonationSidebar({ visible, onClose }: Props) {
                 />
               </Pressable>
             </View>
+            {brew.darkBrewTokens > 0 && (
+              <View
+                style={[
+                  styles.neonThemeCard,
+                  {
+                    backgroundColor: neonGucciActive ? '#271e1a' : colors.card,
+                    borderColor: neonGucciUnlocked ? '#8cf3cf' : colors.border,
+                    opacity: neonGucciUnlocked ? 1 : 0.68,
+                  },
+                ]}
+              >
+                <View style={styles.neonThemeTop}>
+                  <Text style={styles.neonThemeMark}>GG</Text>
+                  <View style={{ flex: 1 }}>
+                     <View style={styles.neonTitleRow}>
+                       <Text style={[styles.notifTitle, { color: neonGucciUnlocked ? '#ffe1a0' : colors.mutedForeground, fontFamily: 'Inter_600SemiBold' }]}>
+                         Hybrid Neon Gucci
+                       </Text>
+                       <View style={[styles.neonStatusPill, { backgroundColor: neonGucciUnlocked ? '#8cf3cf' : '#5b554d' }]}>
+                         <Text style={[styles.neonStatusPillText, { color: neonGucciUnlocked ? '#14231e' : '#e8dbc5' }]}>
+                           {neonGucciUnlocked ? 'UNLOCKED' : 'REVEALED'}
+                         </Text>
+                       </View>
+                     </View>
+                    <Text style={[styles.notifSub, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                      {neonGucciUnlocked
+                         ? (neonGucciActive ? 'Active — mint, gold & electric cyan' : 'Unlocked — toggle to activate')
+                         : `Reveal complete · ${brew.darkBrewTokens.toLocaleString()} / ${NEON_GUCCI_UNLOCK_COST.toLocaleString()} Dark Brew Tokens to unlock`}
+                    </Text>
+                  </View>
+                  <Pressable
+                    accessibilityRole="switch"
+                    accessibilityState={{ checked: neonGucciActive, disabled: !neonGucciUnlocked }}
+                    accessibilityLabel="Toggle Hybrid Neon Gucci theme"
+                    disabled={!neonGucciUnlocked}
+                    hitSlop={8}
+                    onPress={() => toggleNeonGucciMode(!neonGucciActive)}
+                    style={[
+                      styles.patriotToggle,
+                      {
+                        backgroundColor: neonGucciActive ? '#8cf3cf' : colors.muted,
+                        opacity: neonGucciUnlocked ? 1 : 0.55,
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.patriotToggleThumb,
+                        {
+                          alignSelf: neonGucciActive ? 'flex-end' : 'flex-start',
+                          backgroundColor: neonGucciActive ? '#14231e' : '#fff',
+                        },
+                      ]}
+                    />
+                  </Pressable>
+                </View>
+                <View style={[styles.neonProgressTrack, { backgroundColor: colors.muted }]}>
+                  <LinearGradient
+                    colors={['#117a55', '#8cf3cf', '#efc86e']}
+                    style={[styles.neonProgressFill, { width: `${neonProgress * 100}%` }]}
+                  />
+                </View>
+                <View style={styles.neonProgressMeta}>
+                  <Text style={[styles.neonProgressPercent, { color: neonGucciUnlocked ? '#8cf3cf' : '#ffe1a0', fontFamily: 'Inter_700Bold' }]}>
+                    {neonProgressPercent}% TO UNLOCK
+                  </Text>
+                  <Text style={[styles.neonProgressMilestone, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
+                    {neonNextMilestone}
+                  </Text>
+                </View>
+                {!neonGucciUnlocked && (
+                  <Text style={[styles.neonLockedCopy, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                    Keep earning Dark Brew Tokens to reveal the third theme.
+                  </Text>
+                )}
+              </View>
+            )}
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
           </ScrollView>
+
+          {neonCelebrating && (
+            <Animated.View
+              style={[
+                styles.celebOverlay,
+                {
+                  backgroundColor: 'rgba(20,14,15,0.62)',
+                  opacity: neonCelebAnim,
+                },
+              ]}
+            >
+              <Confetti width={PANEL_WIDTH} height={SCREEN_HEIGHT} />
+              <Animated.View
+                style={[
+                  styles.neonUnlockCard,
+                  {
+                    transform: [{
+                      scale: neonCelebAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.72, 1],
+                      }),
+                    }],
+                  },
+                ]}
+              >
+                <Text style={styles.neonUnlockMark}>GG</Text>
+                <Text style={styles.neonUnlockTitle}>THE REVEAL IS COMPLETE</Text>
+                <Text style={styles.neonUnlockBody}>
+                  Hybrid Neon Gucci is unlocked at 10,000 Dark Brew Tokens.
+                </Text>
+                <Text style={styles.neonUnlockHint}>TOGGLE IT ON FROM THIS CARD</Text>
+              </Animated.View>
+            </Animated.View>
+          )}
 
           {/* Celebratory thank-you shown when the user returns from a tip */}
           {celebrating && (
@@ -531,6 +688,41 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     backgroundColor: '#fff',
   },
+  neonThemeCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    marginTop: 12,
+  },
+  neonThemeTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  neonTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 7, flexWrap: 'wrap' },
+  neonStatusPill: { borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2 },
+  neonStatusPillText: { fontSize: 7, fontWeight: '800', letterSpacing: 0.5 },
+  neonThemeMark: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    overflow: 'hidden',
+    backgroundColor: '#8cf3cf',
+    color: '#14231e',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: -1,
+  },
+  neonProgressTrack: { height: 5, borderRadius: 3, overflow: 'hidden', marginTop: 12 },
+  neonProgressFill: { height: 5, borderRadius: 3 },
+  neonLockedCopy: { fontSize: 10, marginTop: 7 },
+  neonProgressMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 7 },
+  neonProgressPercent: { fontSize: 9, letterSpacing: 0.6 },
+  neonProgressMilestone: { fontSize: 9, textAlign: 'right' },
+  neonUnlockCard: { alignItems: 'center', borderRadius: 20, borderWidth: 1, borderColor: '#8cf3cf', backgroundColor: '#271e1a', paddingVertical: 26, paddingHorizontal: 22, shadowColor: '#55ecff', shadowOpacity: 0.5, shadowRadius: 22, elevation: 10 },
+  neonUnlockMark: { color: '#14231e', backgroundColor: '#8cf3cf', borderRadius: 34, width: 68, height: 68, textAlign: 'center', textAlignVertical: 'center', fontSize: 23, fontWeight: '900', letterSpacing: -2, marginBottom: 14 },
+  neonUnlockTitle: { color: '#ffe1a0', fontSize: 16, fontWeight: '900', letterSpacing: 1.1, textAlign: 'center' },
+  neonUnlockBody: { color: '#f5eadb', fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 9 },
+  neonUnlockHint: { color: '#8cf3cf', fontSize: 9, fontWeight: '800', letterSpacing: 0.8, marginTop: 15, textAlign: 'center' },
   celebOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',

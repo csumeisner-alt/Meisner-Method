@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -27,6 +27,7 @@ import type { StockAnalysis } from '@workspace/api-client-react';
 import { ComparisonChart } from '@/components/ComparisonChart';
 import type { Candle } from '@/components/StockChart';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
+import { NeonAnalysisLoader } from '@/components/NeonAnalysisLoader';
 import { PriceAlertModal } from '@/components/PriceAlertModal';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
@@ -109,7 +110,9 @@ const METRIC_GUIDES: Record<HelpTopic, {
 function ScoreBar({ score, color }: { score: number; color: string }) {
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.timing(anim, { toValue: score / 100, duration: 900, useNativeDriver: false }).start();
+    const animation = Animated.timing(anim, { toValue: score / 100, duration: 900, useNativeDriver: false });
+    animation.start();
+    return () => animation.stop();
   }, [score]);
   return (
     <View style={scoreStyles.wrapper}>
@@ -231,12 +234,39 @@ const analystStyles = StyleSheet.create({
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
+const ANALYSIS_LOADING_STAGES = [
+  'Reading the tape',
+  'Checking momentum',
+  'Comparing the sector',
+  'Building the lesson',
+] as const;
+
+const NEON_GUCCI_LOADING_PHRASES = [
+  'Checking in with Sam Bankman-Fried',
+  'Gambling all your money into penny stocks',
+  "Telling Dave Ramsey that you aren't following the baby steps",
+  'Finding out why you continually make dangerous financial decisions',
+  'Alerting FINRA as there appears to be insider trading on your account',
+  'Matching you with local singles in your area',
+  'Looking into why a new line of credit was opened in your name',
+  'Relaying to your spouse about how much money you lose while trading',
+] as const;
+
+function shuffledLoadingPhrases(): string[] {
+  const phrases = [...NEON_GUCCI_LOADING_PHRASES];
+  for (let index = phrases.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+    [phrases[index], phrases[randomIndex]] = [phrases[randomIndex], phrases[index]];
+  }
+  return phrases;
+}
+
 export default function AnalysisScreen() {
   const { symbol } = useLocalSearchParams<{ symbol: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const colors = useColors();
-  const { isActive } = useAmericanMode();
+  const { isActive, neonGucciActive, neonGucciUnlocked } = useAmericanMode();
   const { width: screenWidth } = useWindowDimensions();
   const { apiFetch } = useApi();
   const { mutate, data, isPending, error } = useAnalyzeStock<Error>();
@@ -273,7 +303,23 @@ export default function AnalysisScreen() {
   const [compSymbol, setCompSymbol]           = useState('');       // committed symbol
   const [compCandles, setCompCandles]         = useState<Candle[]>([]);
   const [compLoading, setCompLoading]         = useState(false);
+  const [loadingStageIndex, setLoadingStageIndex] = useState(0);
   const tickerGlow = useRef(new Animated.Value(0)).current;
+  const loadingStages = useMemo<readonly string[]>(
+    () => (neonGucciUnlocked ? shuffledLoadingPhrases() : ANALYSIS_LOADING_STAGES),
+    [isPending, neonGucciUnlocked, symbol],
+  );
+
+  useEffect(() => {
+    if (!isPending) {
+      setLoadingStageIndex(0);
+      return;
+    }
+    const timer = setInterval(() => {
+      setLoadingStageIndex((current) => (current + 1) % loadingStages.length);
+    }, 2_200);
+    return () => clearInterval(timer);
+  }, [isPending, loadingStages.length]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -398,6 +444,11 @@ export default function AnalysisScreen() {
                 {analysis.companyName}
               </Text>
             )}
+            {neonGucciActive && (
+              <View style={headerStyles.neonBadge}>
+                <Text style={headerStyles.neonBadgeText}>HYBRID NEON GUCCI · ACTIVE</Text>
+              </View>
+            )}
           </View>
           {/* Local guest watchlist toggle */}
           {
@@ -433,17 +484,20 @@ export default function AnalysisScreen() {
 
   // ─── Loading ──────────────────────────────────────────────────────────────
   if (isPending) {
+    const loadingStage = loadingStages[loadingStageIndex % loadingStages.length] ?? loadingStages[0];
     return (
       <AmericanSteelBackground>
         <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
         {renderHeader()}
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          {neonGucciActive
+            ? <NeonAnalysisLoader symbol={symbol ?? ''} stage={loadingStage} />
+            : <ActivityIndicator size="large" color={colors.primary} />}
           <Text style={[styles.loadingTitle, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
-            Analyzing {symbol}...
+            {loadingStage} · {symbol}
           </Text>
           <Text style={[styles.loadingSubtitle, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-            Fetching market data & running AI models
+            Fetching market data, validating the quote, and shaping a focused lesson
           </Text>
         </View>
         </View>
@@ -950,6 +1004,8 @@ const headerStyles = StyleSheet.create({
   },
   symbol: { fontSize: 20 },
   company: { fontSize: 12 },
+  neonBadge: { alignSelf: 'flex-start', marginTop: 4, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 7, backgroundColor: 'rgba(85,236,255,0.13)', borderWidth: 1, borderColor: '#55ecff' },
+  neonBadgeText: { color: '#b9ffcf', fontSize: 7, fontWeight: '800', letterSpacing: 0.45 },
   starBtn: { padding: 6 },
   priceArea: { alignItems: 'flex-end' },
   price: { fontSize: 18 },

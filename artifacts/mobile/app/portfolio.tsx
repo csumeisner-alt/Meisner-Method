@@ -27,6 +27,7 @@ import { useApi } from '@/hooks/useApi';
 import * as Speech from 'expo-speech';
 import Constants from 'expo-constants';
 import { useColors } from '@/hooks/useColors';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { useAmericanMode } from '@/contexts/AmericanModeContext';
 import { BottomTabBar } from '@/components/BottomTabBar';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
@@ -35,7 +36,6 @@ import { GRADE_ORDER, GradeHistoryChart, type GradeHistoryPoint } from '@/compon
 import { TrainingTapeModal } from '@/components/TrainingTapeModal';
 import { BrewTokenBank } from '@/components/BrewTokenBank';
 import { BrewTokenUnlockCelebration } from '@/components/BrewTokenUnlockCelebration';
-import { useBrewTokens } from '@/hooks/useBrewTokens';
 import {
   availableToSell,
   computeDividendTotal,
@@ -412,82 +412,127 @@ function CelebrationOverlay({
       };
     })
   ).current;
+  const reduceMotion = useReduceMotion();
+  const [voiceReady, setVoiceReady] = useState(false);
+  const onDismissRef = useRef(onDismiss);
+  onDismissRef.current = onDismiss;
 
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval> | undefined;
-    let fadeTimer: ReturnType<typeof setTimeout> | undefined;
     let cancelled = false;
-
-    const startAnimation = () => {
-      if (cancelled) return;
-      try {
-      // Fade in overlay (single value — avoids Animated.multiply crash)
-      Animated.timing(overlayOp, { toValue: 1, duration: 280, useNativeDriver: true }).start();
-
-    // Card slides up + springs in
-    Animated.parallel([
-      Animated.spring(cardY,     { toValue: 0, tension: 65, friction: 9, useNativeDriver: true }),
-      Animated.spring(cardScale, { toValue: 1, tension: 65, friction: 9, useNativeDriver: true }),
-      Animated.timing(cardOp,    { toValue: 1, duration: 300, useNativeDriver: true }),
-    ]).start();
-
-    // Subtle image breathe
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(imageScale, { toValue: 1.04, duration: 2200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(imageScale, { toValue: 1.00, duration: 2200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-      ])
-    ).start();
-
-    // Glow pulse
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(glowPulse, { toValue: 1, duration: 900, useNativeDriver: true }),
-        Animated.timing(glowPulse, { toValue: 0, duration: 900, useNativeDriver: true }),
-      ])
-    ).start();
-
-    // Particle burst
-    function burst() {
-      particles.forEach((p, i) => {
-        p.tx.setValue(0); p.ty.setValue(0); p.op.setValue(0); p.sc.setValue(0.2);
-        Animated.sequence([
-          Animated.delay(i * 30),
-          Animated.parallel([
-            Animated.spring(p.tx, { toValue: Math.cos(p.angle) * p.dist, tension: 40, friction: 7, useNativeDriver: true }),
-            Animated.spring(p.ty, { toValue: Math.sin(p.angle) * p.dist, tension: 40, friction: 7, useNativeDriver: true }),
-            Animated.timing(p.op, { toValue: 1, duration: 180, useNativeDriver: true }),
-            Animated.spring(p.sc, { toValue: 1, useNativeDriver: true }),
-          ]),
-          Animated.delay(1400),
-          Animated.timing(p.op, { toValue: 0, duration: 700, useNativeDriver: true }),
-        ]).start();
+    void playCelebrationVoice(compliment)
+      .then(() => {
+        if (!cancelled) setVoiceReady(true);
+      })
+      .catch(() => {
+        if (!cancelled) setVoiceReady(true);
       });
-    }
-    burst();
-    interval = setInterval(burst, 3000);
-
-    // Auto-dismiss after 7.5 s — fade the whole overlay out then call onDismiss
-    fadeTimer = setTimeout(() => {
-      Animated.timing(overlayOp, { toValue: 0, duration: 600, useNativeDriver: true }).start(onDismiss);
-    }, 7500);
-    } catch (_) {
-      // Effect-time failure — dismiss instead of crashing the app.
-      onDismiss();
-    }
-    };
-
-    // Hold the overlay transparent until playback can start, keeping the first
-    // visible frame and the first audible frame in sync.
-    void playCelebrationVoice(compliment).then(startAnimation).catch(startAnimation);
-
     return () => {
       cancelled = true;
-      if (interval) clearInterval(interval);
-      if (fadeTimer) clearTimeout(fadeTimer);
       stopCelebrationVoice();
     };
-  }, []);
+  }, [compliment]);
+
+  useEffect(() => {
+    Haptics.notificationAsync(feedbackHapticType(gradeInfo.grade)).catch(() => {});
+  }, [gradeInfo.grade]);
+
+  useEffect(() => {
+    if (!voiceReady) return;
+    let interval: ReturnType<typeof setInterval> | undefined;
+    let fadeTimer: ReturnType<typeof setTimeout> | undefined;
+    const runningAnimations: Animated.CompositeAnimation[] = [];
+
+    try {
+      if (reduceMotion) {
+        overlayOp.setValue(1);
+        cardY.setValue(0);
+        cardScale.setValue(1);
+        cardOp.setValue(1);
+        imageScale.setValue(1);
+        glowPulse.setValue(0);
+        particles.forEach(p => {
+          p.tx.setValue(0);
+          p.ty.setValue(0);
+          p.op.setValue(0);
+          p.sc.setValue(0.2);
+        });
+      } else {
+        // Fade in overlay (single value — avoids Animated.multiply crash)
+        const overlayAnimation = Animated.timing(overlayOp, { toValue: 1, duration: 280, useNativeDriver: true });
+        runningAnimations.push(overlayAnimation);
+        overlayAnimation.start();
+
+        // Card slides up + springs in
+        const cardAnimation = Animated.parallel([
+          Animated.spring(cardY,     { toValue: 0, tension: 65, friction: 9, useNativeDriver: true }),
+          Animated.spring(cardScale, { toValue: 1, tension: 65, friction: 9, useNativeDriver: true }),
+          Animated.timing(cardOp,    { toValue: 1, duration: 300, useNativeDriver: true }),
+        ]);
+        runningAnimations.push(cardAnimation);
+        cardAnimation.start();
+
+        // Subtle image breathe
+        const imageAnimation = Animated.loop(
+          Animated.sequence([
+            Animated.timing(imageScale, { toValue: 1.04, duration: 2200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+            Animated.timing(imageScale, { toValue: 1.00, duration: 2200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+          ])
+        );
+        runningAnimations.push(imageAnimation);
+        imageAnimation.start();
+
+        // Glow pulse
+        const glowAnimation = Animated.loop(
+          Animated.sequence([
+            Animated.timing(glowPulse, { toValue: 1, duration: 900, useNativeDriver: true }),
+            Animated.timing(glowPulse, { toValue: 0, duration: 900, useNativeDriver: true }),
+          ])
+        );
+        runningAnimations.push(glowAnimation);
+        glowAnimation.start();
+
+        // Particle burst
+        function burst() {
+          particles.forEach((p, i) => {
+            p.tx.setValue(0); p.ty.setValue(0); p.op.setValue(0); p.sc.setValue(0.2);
+            Animated.sequence([
+              Animated.delay(i * 30),
+              Animated.parallel([
+                Animated.spring(p.tx, { toValue: Math.cos(p.angle) * p.dist, tension: 40, friction: 7, useNativeDriver: true }),
+                Animated.spring(p.ty, { toValue: Math.sin(p.angle) * p.dist, tension: 40, friction: 7, useNativeDriver: true }),
+                Animated.timing(p.op, { toValue: 1, duration: 180, useNativeDriver: true }),
+                Animated.spring(p.sc, { toValue: 1, useNativeDriver: true }),
+              ]),
+              Animated.delay(1400),
+              Animated.timing(p.op, { toValue: 0, duration: 700, useNativeDriver: true }),
+            ]).start();
+          });
+        }
+        burst();
+        interval = setInterval(burst, 3000);
+      }
+
+      // Auto-dismiss after 7.5 s — fade the whole overlay out then call onDismiss
+      fadeTimer = setTimeout(() => {
+        const fadeAnimation = Animated.timing(overlayOp, {
+          toValue: 0,
+          duration: reduceMotion ? 0 : 600,
+          useNativeDriver: true,
+        });
+        runningAnimations.push(fadeAnimation);
+        fadeAnimation.start(() => onDismissRef.current());
+      }, 7500);
+    } catch (_) {
+      // Effect-time failure — dismiss instead of crashing the app.
+      onDismissRef.current();
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+      if (fadeTimer) clearTimeout(fadeTimer);
+      runningAnimations.forEach((animation) => animation.stop());
+    };
+  }, [reduceMotion, voiceReady]);
 
   const glowOp = glowPulse.interpolate({ inputRange: [0, 1], outputRange: [0.08, 0.30] });
 
@@ -572,34 +617,55 @@ function TradeFeedbackPopup({
   const bellRotate = useRef(new Animated.Value(0)).current;
   const ringScale = useRef(new Animated.Value(0.65)).current;
   const ringOp = useRef(new Animated.Value(0.85)).current;
+  const reduceMotion = useReduceMotion();
+
+  useEffect(() => {
+    Haptics.notificationAsync(feedbackHapticType(gradeInfo.grade)).catch(() => {});
+  }, [gradeInfo.grade]);
 
   useEffect(() => {
     let dismissTimer: ReturnType<typeof setTimeout> | undefined;
+    const runningAnimations: Animated.CompositeAnimation[] = [];
     try {
-      Haptics.notificationAsync(feedbackHapticType(gradeInfo.grade)).catch(() => {});
-      Animated.parallel([
-        Animated.spring(popupY, { toValue: 0, tension: 70, friction: 9, useNativeDriver: true }),
-        Animated.timing(popupOp, { toValue: 1, duration: 220, useNativeDriver: true }),
-      ]).start();
+      if (reduceMotion) {
+        popupY.setValue(0);
+        popupOp.setValue(1);
+        bellRotate.setValue(0);
+        ringScale.setValue(1);
+        ringOp.setValue(0);
+      } else {
+        const entranceAnimation = Animated.parallel([
+          Animated.spring(popupY, { toValue: 0, tension: 70, friction: 9, useNativeDriver: true }),
+          Animated.timing(popupOp, { toValue: 1, duration: 220, useNativeDriver: true }),
+        ]);
+        runningAnimations.push(entranceAnimation);
+        entranceAnimation.start();
 
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(bellRotate, { toValue: -1, duration: 90, useNativeDriver: true }),
-          Animated.timing(bellRotate, { toValue: 1, duration: 180, useNativeDriver: true }),
-          Animated.timing(bellRotate, { toValue: -0.65, duration: 140, useNativeDriver: true }),
-          Animated.timing(bellRotate, { toValue: 0, duration: 140, useNativeDriver: true }),
-          Animated.delay(900),
-        ]),
-        { iterations: 2 },
-      ).start();
+        const bellAnimation = Animated.loop(
+          Animated.sequence([
+            Animated.timing(bellRotate, { toValue: -1, duration: 90, useNativeDriver: true }),
+            Animated.timing(bellRotate, { toValue: 1, duration: 180, useNativeDriver: true }),
+            Animated.timing(bellRotate, { toValue: -0.65, duration: 140, useNativeDriver: true }),
+            Animated.timing(bellRotate, { toValue: 0, duration: 140, useNativeDriver: true }),
+            Animated.delay(900),
+          ]),
+          { iterations: 2 },
+        );
+        runningAnimations.push(bellAnimation);
+        bellAnimation.start();
 
-      Animated.parallel([
-        Animated.timing(ringScale, { toValue: 1.8, duration: 900, useNativeDriver: true }),
-        Animated.timing(ringOp, { toValue: 0, duration: 900, useNativeDriver: true }),
-      ]).start();
+        const ringAnimation = Animated.parallel([
+          Animated.timing(ringScale, { toValue: 1.8, duration: 900, useNativeDriver: true }),
+          Animated.timing(ringOp, { toValue: 0, duration: 900, useNativeDriver: true }),
+        ]);
+        runningAnimations.push(ringAnimation);
+        ringAnimation.start();
+      }
 
       dismissTimer = setTimeout(() => {
-        Animated.timing(popupOp, { toValue: 0, duration: 250, useNativeDriver: true }).start(onDismiss);
+        const fadeAnimation = Animated.timing(popupOp, { toValue: 0, duration: reduceMotion ? 0 : 250, useNativeDriver: true });
+        runningAnimations.push(fadeAnimation);
+        fadeAnimation.start(onDismiss);
       }, 4800);
     } catch (_) {
       onDismiss();
@@ -607,8 +673,9 @@ function TradeFeedbackPopup({
 
     return () => {
       if (dismissTimer) clearTimeout(dismissTimer);
+      runningAnimations.forEach((animation) => animation.stop());
     };
-  }, []);
+  }, [onDismiss, reduceMotion]);
 
   const bellTilt = bellRotate.interpolate({
     inputRange: [-1, 1],
@@ -1441,10 +1508,36 @@ function GradeHistoryModal({
     setHapticsEnabled,
     bankKeys,
     bankAccessExpiresAt,
+    quickReviveUnlocked,
+    quickReviveBottles,
+    quickReviveArmed,
+    daiquiriUnlocked,
+    daiquiriBottles,
+    daiquiriArmed,
+    staminUpUnlocked,
+    staminUpBottles,
+    staminUpArmed,
+    smartProUnlocked,
+    smartProBottles,
+    smartProSaleExpiresAt,
+    darkBrewTokens,
+    activityLog,
     buyBankKey,
     activateBankKey,
+    unlockQuickRevive,
+    buyQuickReviveBottle,
+    redeemQuickReviveBottle,
+    unlockDaiquiri,
+    buyDaiquiriBottle,
+    redeemDaiquiriBottle,
+    unlockStaminUp,
+    buyStaminUpBottle,
+    redeemStaminUpBottle,
+    unlockSmartPro,
+    buySmartProBottle,
+    redeemSmartProBottle,
     clearJustUnlocked,
-  } = useBrewTokens();
+  } = useAmericanMode().brew;
   const isWeekend = [0, 6].includes(new Date().getDay());
   const hasActiveBankAccess = hasBrewBankAccess(bankAccessExpiresAt, countdownNow);
   const bankAccessRemaining = formatBrewBankAccessRemaining(bankAccessExpiresAt, countdownNow);
@@ -1499,10 +1592,6 @@ function GradeHistoryModal({
   };
 
   const handleHeaderLongPress = () => {
-    if (BREW_BANK_ENABLED && brewBankUnlocked && (isWeekend || bankKeys > 0 || hasActiveBankAccess)) {
-      void handleOpenBank();
-      return;
-    }
     setTrainingTapeVisible(true);
   };
 
@@ -1596,12 +1685,38 @@ function GradeHistoryModal({
                 hapticsEnabled={hapticsEnabled}
                 bankKeys={bankKeys}
                 bankAccessExpiresAt={bankAccessExpiresAt}
+                quickReviveUnlocked={quickReviveUnlocked}
+                quickReviveBottles={quickReviveBottles}
+                quickReviveArmed={quickReviveArmed}
+                daiquiriUnlocked={daiquiriUnlocked}
+                daiquiriBottles={daiquiriBottles}
+                daiquiriArmed={daiquiriArmed}
+                staminUpUnlocked={staminUpUnlocked}
+                staminUpBottles={staminUpBottles}
+                staminUpArmed={staminUpArmed}
+                smartProUnlocked={smartProUnlocked}
+                smartProBottles={smartProBottles}
+                smartProSaleExpiresAt={smartProSaleExpiresAt}
+                darkBrewTokens={darkBrewTokens}
+                activityLog={activityLog}
                 onClose={() => setBrewBankVisible(false)}
                 onResolveBet={resolveBet}
                 onSoundEnabledChange={setSoundEnabled}
                 onHapticsEnabledChange={setHapticsEnabled}
                 onBuyBankKey={buyBankKey}
                 onActivateBankKey={activateBankKey}
+                onUnlockQuickRevive={unlockQuickRevive}
+                onBuyQuickReviveBottle={buyQuickReviveBottle}
+                onRedeemQuickRevive={redeemQuickReviveBottle}
+                onUnlockDaiquiri={unlockDaiquiri}
+                onBuyDaiquiriBottle={buyDaiquiriBottle}
+                onRedeemDaiquiri={redeemDaiquiriBottle}
+                onUnlockStaminUp={unlockStaminUp}
+                onBuyStaminUpBottle={buyStaminUpBottle}
+                onRedeemStaminUp={redeemStaminUpBottle}
+                onUnlockSmartPro={unlockSmartPro}
+                onBuySmartProBottle={buySmartProBottle}
+                onRedeemSmartPro={redeemSmartProBottle}
               />
               <BrewTokenUnlockCelebration
                 visible={brewCelebrationVisible}

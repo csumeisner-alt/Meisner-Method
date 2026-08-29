@@ -15,6 +15,7 @@ import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { ColorScheme } from '@/constants/colors';
 import { BrewCoin } from '@/components/BrewTokenBank';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 
 const { width } = Dimensions.get('window');
 
@@ -42,14 +43,28 @@ export function BrewTokenUnlockCelebration({
   const animationRef = useRef<{ stop: () => void } | null>(null);
   const playerRef = useRef<{ play: () => void; remove: () => void } | null>(null);
   const audioPlayedRef = useRef(false);
+  const hapticsPlayedRef = useRef(false);
+  const reduceMotion = useReduceMotion();
+
+  useEffect(() => {
+    if (!visible) {
+      hapticsPlayedRef.current = false;
+      return;
+    }
+    if (!hapticsEnabled || hapticsPlayedRef.current) return;
+    hapticsPlayedRef.current = true;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+  }, [hapticsEnabled, visible]);
 
   useEffect(() => {
     if (!visible) return;
-
     doorProgress.setValue(0);
     cardProgress.setValue(0);
-    if (hapticsEnabled) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    if (reduceMotion) {
+      doorProgress.setValue(1);
+      cardProgress.setValue(1);
+      animationRef.current = null;
+      return;
     }
 
     const animation = Animated.parallel([
@@ -71,7 +86,7 @@ export function BrewTokenUnlockCelebration({
       animation.stop();
       animationRef.current = null;
     };
-  }, [cardProgress, doorProgress, visible]);
+  }, [cardProgress, doorProgress, reduceMotion, visible]);
 
   useEffect(() => {
     if (!visible) {

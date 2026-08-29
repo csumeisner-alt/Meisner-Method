@@ -1,5 +1,6 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
+  AccessibilityInfo,
   Animated,
   Platform,
   StyleSheet,
@@ -8,10 +9,12 @@ import {
   View,
 } from 'react-native';
 import Svg, { Rect, Polygon } from 'react-native-svg';
-import type { ColorScheme } from '@/constants/colors';
+import { LinearGradient } from 'expo-linear-gradient';
+import { NEON_GUCCI_DECOR, type ColorScheme } from '@/constants/colors';
 
 interface AmericanAnalyzeButtonProps {
   active: boolean;
+  neonActive?: boolean;
   disabled: boolean;
   hasQuery: boolean;
   colors: ColorScheme;
@@ -69,6 +72,7 @@ function GoldenFlag() {
 
 export function AmericanAnalyzeButton({
   active,
+  neonActive = false,
   disabled,
   hasQuery,
   colors,
@@ -76,12 +80,19 @@ export function AmericanAnalyzeButton({
 }: AmericanAnalyzeButtonProps) {
   const pulse = useRef(new Animated.Value(0)).current;
   const nativeDriver = Platform.OS !== 'web';
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  useEffect(() => {
+    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {});
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     pulse.stopAnimation();
     pulse.setValue(0);
 
-    if (!active) return;
+    if (reduceMotion || (!active && !neonActive)) return;
 
     const animation = Animated.loop(
       Animated.sequence([
@@ -101,7 +112,7 @@ export function AmericanAnalyzeButton({
 
     animation.start();
     return () => animation.stop();
-  }, [active, nativeDriver, pulse]);
+  }, [active, nativeDriver, neonActive, pulse, reduceMotion]);
 
   const flagOpacity = pulse.interpolate({
     inputRange: [0, 1],
@@ -132,6 +143,31 @@ export function AmericanAnalyzeButton({
           <GoldenFlag />
         </Animated.View>
       )}
+      {neonActive && (
+        <Animated.View
+          style={[
+            StyleSheet.absoluteFillObject,
+            {
+              opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.62, 1] }),
+              transform: [{
+                scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] }),
+              }],
+            },
+          ]}
+        >
+          <LinearGradient
+            colors={[NEON_GUCCI_DECOR.green, NEON_GUCCI_DECOR.mint, NEON_GUCCI_DECOR.gold]}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.neonStripe}>
+            <View style={[styles.neonStripePart, { backgroundColor: NEON_GUCCI_DECOR.green }]} />
+            <View style={[styles.neonStripePart, { backgroundColor: NEON_GUCCI_DECOR.red }]} />
+            <View style={[styles.neonStripePart, { backgroundColor: NEON_GUCCI_DECOR.green }]} />
+          </View>
+        </Animated.View>
+      )}
       <Text
         style={[
           styles.label,
@@ -143,13 +179,15 @@ export function AmericanAnalyzeButton({
       >
         ANALYZE
       </Text>
-      {active && (
+      {(active || neonActive) && (
         <Animated.Text
           style={[
             styles.label,
             styles.pulseLabel,
             {
-              opacity: pulseTextOpacity,
+              opacity: neonActive ? 0.9 : pulseTextOpacity,
+              color: neonActive ? NEON_GUCCI_DECOR.ink : '#1B1206',
+              textShadowColor: neonActive ? NEON_GUCCI_DECOR.cyan : '#FFE39A',
               fontFamily: 'Inter_700Bold',
             },
           ]}
@@ -179,9 +217,16 @@ const styles = StyleSheet.create({
   },
   pulseLabel: {
     position: 'absolute',
-    color: '#1B1206',
-    textShadowColor: '#FFE39A',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
   },
+  neonStripe: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 4,
+    flexDirection: 'row',
+  },
+  neonStripePart: { flex: 1 },
 });

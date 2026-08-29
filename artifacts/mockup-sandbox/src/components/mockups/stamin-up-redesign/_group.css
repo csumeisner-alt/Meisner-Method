@@ -1,0 +1,243 @@
+@import url("../daiquiri-redesign/_group.css");
+
+.stamin-up-group {
+  --stamin-gold: #f5c75a;
+  --stamin-bright: #ffe8a5;
+  --stamin-amber: #e98320;
+  --stamin-deep: #1d0d06;
+}
+
+.stamin-up-group.glow-shell {
+  background:
+    radial-gradient(ellipse at 50% 34%, rgba(190, 92, 27, .3), transparent 42%),
+    #130a07;
+}
+
+.stamin-up-group .glow-panel {
+  border-color: rgba(244, 186, 77, .4);
+  background:
+    linear-gradient(145deg, rgba(67, 31, 13, .94), rgba(19, 10, 7, .99) 44%),
+    #1b0c06;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, .52), inset 0 0 0 1px rgba(255, 214, 119, .07);
+}
+
+.stamin-up-group .glow-panel::before {
+  background: linear-gradient(90deg, transparent, rgba(255, 218, 130, .1), transparent);
+}
+
+.stamin-up-group .vault-lock {
+  color: var(--stamin-gold);
+}
+
+.stamin-up-group .glow-header .eyebrow {
+  color: var(--stamin-gold);
+}
+
+.stamin-up-group .glow-header h1 em {
+  color: var(--stamin-bright);
+}
+
+.stamin-up-group .seal {
+  border-color: var(--stamin-gold);
+  color: var(--stamin-bright);
+  background: #3b1b0b;
+  box-shadow: 0 0 0 5px rgba(245, 199, 90, .1), 0 0 24px rgba(245, 153, 52, .2);
+}
+
+.stamin-up-group .stage-grid {
+  opacity: .34;
+  background-image: linear-gradient(rgba(214, 145, 70, .15) 1px, transparent 1px), linear-gradient(90deg, rgba(214, 145, 70, .15) 1px, transparent 1px);
+}
+
+.stamin-up-group .stage-spotlight {
+  background: radial-gradient(ellipse, rgba(255, 191, 76, .28), rgba(183, 73, 20, .14) 35%, transparent 68%);
+}
+
+.stamin-up-group .stamin-neck-label,
+.stamin-up-group .stamin-bottle-label,
+.stamin-up-group .stamin-cap {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.stamin-up-group .pedestal {
+  border-color: rgba(246, 197, 89, .62);
+  background: linear-gradient(#594127, #25150c 35%, #0b0704);
+  box-shadow: 0 -2px 16px rgba(245, 167, 47, .4), 0 15px 18px rgba(0, 0, 0, .38);
+}
+
+.stamin-up-group .pedestal::before {
+  background: rgba(226, 141, 40, .18);
+}
+
+.stamin-up-group .pedestal span {
+  background: var(--stamin-gold);
+  box-shadow: 0 0 12px var(--stamin-gold);
+}
+
+.stamin-up-group .surge-ring {
+  border-color: rgba(248, 193, 74, .8);
+  box-shadow: 0 0 12px rgba(234, 130, 24, .34);
+}
+
+.stamin-up-group .splash i {
+  background: var(--stamin-bright);
+  box-shadow: 0 0 10px var(--stamin-amber);
+}
+
+.stamin-up-group .detail-heading .eyebrow {
+  color: #d2a15d;
+}
+
+.stamin-up-group .odds-strip {
+  border-color: rgba(225, 154, 51, .3);
+  background: rgba(225, 154, 51, .22);
+}
+
+.stamin-up-group .odds-strip strong {
+  color: var(--stamin-bright);
+}
+
+.stamin-up-group .glow-status {
+  border-color: rgba(241, 178, 65, .28);
+  color: #f2d49b;
+}
+
+.stamin-up-group .pulse-dot {
+  background: var(--stamin-gold);
+  box-shadow: 0 0 0 4px rgba(245, 199, 90, .13), 0 0 14px rgba(245, 199, 90, .5);
+}
+
+.stamin-up-group .glow-redeem {
+  border-color: var(--stamin-gold);
+  color: #211006;
+  background: var(--stamin-gold);
+  box-shadow: 0 8px 24px rgba(235, 153, 46, .18);
+}
+
+.stamin-up-group .glow-redeem:hover {
+  background: var(--stamin-bright);
+}
+
+.stamin-up-group .motion-toggle {
+  color: var(--stamin-gold);
+}
+
+.stamin-up-group .glow-panel.is-active .bottle-wrap {
+  animation: staminChargeLift 2.4s cubic-bezier(.2,.74,.23,1) both;
+}
+
+.stamin-up-group .glow-panel.is-active .stamin-cap {
+  animation: staminCapFlash 2.4s ease both;
+}
+
+.stamin-up-group .glow-panel.is-active .stamin-cap-glint {
+  animation: staminCapSheen 2.4s ease both;
+}
+
+.stamin-up-group .glow-panel.is-active .stamin-liquid-fill {
+  animation: staminLiquidCharge 2.4s cubic-bezier(.17,.82,.24,1) both;
+  transform-origin: center bottom;
+}
+
+.stamin-up-group .glow-panel.is-active .stamin-bubble {
+  animation: staminBubbleRise 2.1s ease-out infinite;
+}
+
+.stamin-up-group .glow-panel.is-active .stamin-neck-label {
+  animation: staminNeckCharge 2.4s ease both;
+}
+
+.stamin-up-group .glow-panel.is-active .stamin-bottle-label {
+  animation: staminLabelCharge 2.4s ease both;
+}
+
+.stamin-up-group .glow-panel.is-active .stamin-tornado {
+  animation: staminTornadoSpin 2.4s cubic-bezier(.17,.82,.24,1) both;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.stamin-up-group .glow-panel.is-active .stamin-tornado-swirl {
+  animation: staminTornadoDraw 2.4s ease both;
+}
+
+.stamin-up-group .glow-panel.is-active .stamin-tornado-core {
+  animation: staminTornadoCore 2.4s ease both;
+}
+
+.stamin-up-group .glow-panel.is-active .ring-one,
+.stamin-up-group .glow-panel.is-active .ring-two,
+.stamin-up-group .glow-panel.is-active .splash {
+  animation: none;
+  opacity: 0;
+}
+
+@keyframes staminChargeLift {
+  0%, 12% { transform: translateX(-50%) translateY(0) rotate(0) scale(1); }
+  24% { transform: translateX(-50%) translateY(-7px) rotate(-1.2deg) scale(1.015); }
+  36% { transform: translateX(-50%) translateY(1px) rotate(1deg) scale(1); }
+  47% { transform: translateX(-50%) translateY(-3px) rotate(-.5deg) scale(1.008); }
+  62%, 100% { transform: translateX(-50%) translateY(0) rotate(0) scale(1); }
+}
+
+@keyframes staminCapFlash {
+  0%, 20% { transform: translateY(0) rotate(0); }
+  29% { transform: translateY(-5px) rotate(1.5deg); }
+  40%, 100% { transform: translateY(0) rotate(0); }
+}
+
+@keyframes staminCapSheen {
+  0%, 23% { stroke: #fff8cf; stroke-opacity: .28; }
+  34% { stroke: #fff8cf; stroke-opacity: .8; }
+  50%, 100% { stroke: #fff8cf; stroke-opacity: .28; }
+}
+
+@keyframes staminLiquidCharge {
+  0%, 16% { transform: scaleY(.91) translateY(8%); }
+  31% { transform: scaleY(1.06) translateY(-3%); }
+  46% { transform: scaleY(.99) translateY(1%); }
+  58%, 100% { transform: scaleY(1) translateY(0); }
+}
+
+@keyframes staminBubbleRise {
+  0% { opacity: 0; transform: translateY(16px) scale(.5); }
+  20% { opacity: .88; }
+  62% { opacity: .7; transform: translateY(-38px) scale(1.08); }
+  100% { opacity: 0; transform: translateY(-75px) scale(1.18); }
+}
+
+@keyframes staminNeckCharge {
+  0%, 24% { filter: brightness(1); transform: scale(1); }
+  42% { filter: brightness(1.45) drop-shadow(0 0 8px rgba(255, 198, 77, .55)); transform: scale(1.08); }
+  60%, 100% { filter: brightness(1); transform: scale(1); }
+}
+
+@keyframes staminLabelCharge {
+  0%, 26% { filter: brightness(1); transform: scale(1); }
+  45% { filter: brightness(1.2) drop-shadow(0 0 13px rgba(249, 176, 47, .5)); transform: scale(1.025); }
+  65%, 100% { filter: brightness(1); transform: scale(1); }
+}
+
+@keyframes staminTornadoSpin {
+  0%, 20% { opacity: .35; filter: brightness(1); transform: translateY(8px) rotate(-10deg) scale(.74); }
+  38% { opacity: 1; filter: brightness(1.35) drop-shadow(0 0 9px rgba(255, 188, 65, .58)); transform: translateY(-2px) rotate(8deg) scale(1.08); }
+  54% { transform: translateY(0) rotate(-5deg) scale(.98); }
+  70%, 100% { opacity: 1; filter: brightness(1); transform: translateY(0) rotate(0) scale(1); }
+}
+
+@keyframes staminTornadoDraw {
+  0%, 18% { stroke-dasharray: 145; stroke-dashoffset: 145; }
+  47% { stroke-dasharray: 145; stroke-dashoffset: 0; }
+  70%, 100% { stroke-dasharray: 145; stroke-dashoffset: 0; }
+}
+
+@keyframes staminTornadoCore {
+  0%, 28% { opacity: 0; transform: scale(.7); }
+  48% { opacity: 1; transform: scale(1.08); }
+  68%, 100% { opacity: .86; transform: scale(1); }
+}
+
+@media (max-width: 380px) {
+  .stamin-up-group .glow-header h1 { font-size: 30px; }
+}
