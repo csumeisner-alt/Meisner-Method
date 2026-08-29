@@ -3,6 +3,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   BREW_TOKEN_QUOTE_THRESHOLD,
   BREW_BANK_ACCESS_DURATION_MS,
+  DAIQUIRI_BOTTLE_PRICE,
+  DAIQUIRI_UNLOCK_PRICE,
+  QUICK_REVIVE_BOTTLE_PRICE,
+  QUICK_REVIVE_UNLOCK_PRICE,
+  STAMIN_UP_BOTTLE_PRICE,
+  STAMIN_UP_UNLOCK_PRICE,
   buyBrewBankKey,
   buyQuickReviveBottle as purchaseQuickReviveBottle,
   buyQuickReviveUnlock,
@@ -444,7 +450,7 @@ export function useBrewTokens(): BrewTokenState {
     const next = buyQuickReviveUnlock(
       tokensRef.current,
       quickReviveUnlockedRef.current,
-      getSmartProSalePrice(40, saleActive),
+      getSmartProSalePrice(QUICK_REVIVE_UNLOCK_PRICE, saleActive),
     );
     if (!next) return false;
     tokensRef.current = next.tokenBalance;
@@ -464,7 +470,7 @@ export function useBrewTokens(): BrewTokenState {
       tokensRef.current,
       quickReviveBottlesRef.current,
       quickReviveUnlockedRef.current,
-      getSmartProSalePrice(2, hasSmartProSale(smartProSaleExpiresAtRef.current, Date.now())),
+      getSmartProSalePrice(QUICK_REVIVE_BOTTLE_PRICE, hasSmartProSale(smartProSaleExpiresAtRef.current, Date.now())),
     );
     if (!next) return false;
     tokensRef.current = next.tokenBalance;
@@ -499,7 +505,7 @@ export function useBrewTokens(): BrewTokenState {
     const next = buyDaiquiriUnlock(
       tokensRef.current,
       daiquiriUnlockedRef.current,
-      getSmartProSalePrice(100, hasSmartProSale(smartProSaleExpiresAtRef.current, Date.now())),
+      getSmartProSalePrice(DAIQUIRI_UNLOCK_PRICE, hasSmartProSale(smartProSaleExpiresAtRef.current, Date.now())),
     );
     if (!next) return false;
     tokensRef.current = next.tokenBalance;
@@ -519,7 +525,7 @@ export function useBrewTokens(): BrewTokenState {
       tokensRef.current,
       daiquiriBottlesRef.current,
       daiquiriUnlockedRef.current,
-      getSmartProSalePrice(8, hasSmartProSale(smartProSaleExpiresAtRef.current, Date.now())),
+      getSmartProSalePrice(DAIQUIRI_BOTTLE_PRICE, hasSmartProSale(smartProSaleExpiresAtRef.current, Date.now())),
     );
     if (!next) return false;
     tokensRef.current = next.tokenBalance;
@@ -554,7 +560,7 @@ export function useBrewTokens(): BrewTokenState {
     const next = buyStaminUpUnlock(
       tokensRef.current,
       staminUpUnlockedRef.current,
-      getSmartProSalePrice(500, hasSmartProSale(smartProSaleExpiresAtRef.current, Date.now())),
+      getSmartProSalePrice(STAMIN_UP_UNLOCK_PRICE, hasSmartProSale(smartProSaleExpiresAtRef.current, Date.now())),
     );
     if (!next) return false;
     tokensRef.current = next.tokenBalance;
@@ -574,7 +580,7 @@ export function useBrewTokens(): BrewTokenState {
       tokensRef.current,
       staminUpBottlesRef.current,
       staminUpUnlockedRef.current,
-      getSmartProSalePrice(16, hasSmartProSale(smartProSaleExpiresAtRef.current, Date.now())),
+      getSmartProSalePrice(STAMIN_UP_BOTTLE_PRICE, hasSmartProSale(smartProSaleExpiresAtRef.current, Date.now())),
     );
     if (!next) return false;
     tokensRef.current = next.tokenBalance;

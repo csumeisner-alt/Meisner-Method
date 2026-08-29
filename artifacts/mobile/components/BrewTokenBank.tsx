@@ -1052,15 +1052,15 @@ export function BrewTokenBank({
   };
 
   const handleUnlockQuickRevive = async () => {
-    if (tokens < QUICK_REVIVE_UNLOCK_PRICE || quickReviveUnlocked || resolving || shopBusy) return;
+    if (tokens < quickReviveUnlockPrice || quickReviveUnlocked || resolving || shopBusy) return;
     setShopBusy(true);
     const unlocked = await onUnlockQuickRevive();
-    setShopMessage(unlocked ? 'QUICK REVIVE UNLOCKED · BOTTLES ARE NOW 2 TOKENS' : 'NOT ENOUGH BREW TOKENS');
+    setShopMessage(unlocked ? `QUICK REVIVE UNLOCKED · BOTTLES ARE NOW ${quickReviveBottlePrice} ${quickReviveBottlePrice === 1 ? 'TOKEN' : 'TOKENS'}` : 'NOT ENOUGH BREW TOKENS');
     setShopBusy(false);
   };
 
   const handleBuyQuickReviveBottle = async () => {
-    if (!quickReviveUnlocked || tokens < QUICK_REVIVE_BOTTLE_PRICE || resolving || shopBusy) return;
+    if (!quickReviveUnlocked || tokens < quickReviveBottlePrice || resolving || shopBusy) return;
     setShopBusy(true);
     const purchased = await onBuyQuickReviveBottle();
     setShopMessage(purchased ? 'QUICK REVIVE BOTTLE ADDED TO INVENTORY' : 'NOT ENOUGH BREW TOKENS');
@@ -1083,15 +1083,15 @@ export function BrewTokenBank({
   };
 
   const handleUnlockDaiquiri = async () => {
-    if (tokens < DAIQUIRI_UNLOCK_PRICE || daiquiriUnlocked || resolving || shopBusy) return;
+    if (tokens < daiquiriUnlockPrice || daiquiriUnlocked || resolving || shopBusy) return;
     setShopBusy(true);
     const unlocked = await onUnlockDaiquiri();
-    setShopMessage(unlocked ? 'DAIQUIRI UNLOCKED · BOTTLES ARE NOW 8 TOKENS' : 'NOT ENOUGH BREW TOKENS');
+    setShopMessage(unlocked ? `DAIQUIRI UNLOCKED · BOTTLES ARE NOW ${daiquiriBottlePrice} TOKENS` : 'NOT ENOUGH BREW TOKENS');
     setShopBusy(false);
   };
 
   const handleBuyDaiquiriBottle = async () => {
-    if (!daiquiriUnlocked || tokens < DAIQUIRI_BOTTLE_PRICE || resolving || shopBusy) return;
+    if (!daiquiriUnlocked || tokens < daiquiriBottlePrice || resolving || shopBusy) return;
     setShopBusy(true);
     const purchased = await onBuyDaiquiriBottle();
     setShopMessage(purchased ? 'DAIQUIRI BOTTLE ADDED TO INVENTORY' : 'NOT ENOUGH BREW TOKENS');
@@ -1160,15 +1160,15 @@ export function BrewTokenBank({
   };
 
   const handleUnlockStaminUp = async () => {
-    if (tokens < STAMIN_UP_UNLOCK_PRICE || staminUpUnlocked || resolving || shopBusy) return;
+    if (tokens < staminUpUnlockPrice || staminUpUnlocked || resolving || shopBusy) return;
     setShopBusy(true);
     const unlocked = await onUnlockStaminUp();
-    setShopMessage(unlocked ? 'STAMIN UP UNLOCKED · BOTTLES ARE NOW 16 TOKENS' : 'NOT ENOUGH BREW TOKENS');
+    setShopMessage(unlocked ? `STAMIN UP UNLOCKED · BOTTLES ARE NOW ${staminUpBottlePrice} TOKENS` : 'NOT ENOUGH BREW TOKENS');
     setShopBusy(false);
   };
 
   const handleBuyStaminUpBottle = async () => {
-    if (!staminUpUnlocked || tokens < STAMIN_UP_BOTTLE_PRICE || resolving || shopBusy) return;
+    if (!staminUpUnlocked || tokens < staminUpBottlePrice || resolving || shopBusy) return;
     setShopBusy(true);
     const purchased = await onBuyStaminUpBottle();
     setShopMessage(purchased ? 'STAMIN UP BOTTLE ADDED TO INVENTORY' : 'NOT ENOUGH BREW TOKENS');
@@ -1188,6 +1188,36 @@ export function BrewTokenBank({
     }
     triggerBottleBurst('staminUp', 'vault');
     void playStaminUpVoice();
+  };
+
+  const handleUnlockSmartPro = async () => {
+    if (tokens < SMART_PRO_UNLOCK_PRICE || smartProUnlocked || resolving || shopBusy) return;
+    setShopBusy(true);
+    const unlocked = await onUnlockSmartPro();
+    setShopMessage(unlocked ? `SMARTPRO RECIPE UNLOCKED · BOTTLES ARE ${SMART_PRO_BOTTLE_PRICE} TOKENS` : 'NOT ENOUGH BREW TOKENS');
+    setShopBusy(false);
+  };
+
+  const handleBuySmartProBottle = async () => {
+    if (!smartProUnlocked || tokens < SMART_PRO_BOTTLE_PRICE || resolving || shopBusy) return;
+    setShopBusy(true);
+    const purchased = await onBuySmartProBottle();
+    setShopMessage(purchased ? 'SMARTPRO SODA ADDED TO INVENTORY' : 'NOT ENOUGH BREW TOKENS');
+    setShopBusy(false);
+  };
+
+  const handleRedeemSmartPro = async () => {
+    if (!smartProUnlocked || smartProBottles < 1 || smartProSaleActive || resolving || shopBusy) return;
+    setShopBusy(true);
+    const redeemed = await onRedeemSmartPro();
+    setShopBusy(false);
+    if (!redeemed) return;
+
+    setShopMessage('SMARTPRO SALE ACTIVE · NON-KEY SHOP ITEMS ARE HALF PRICE');
+    if (hapticsEnabled) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    }
+    triggerBottleBurst('smartPro', 'vault');
   };
 
   const accessExpiryLabel = bankAccessExpiresAt
@@ -1390,11 +1420,13 @@ export function BrewTokenBank({
           showsVerticalScrollIndicator={false}
           nestedScrollEnabled
         >
-          <View style={[styles.shell, { backgroundColor: colors.card, borderColor: colors.goldMuted }]}>
+          <View style={[styles.shell, { backgroundColor: bankSurface, borderColor: bankAccentMuted }]}>
           <View style={styles.header}>
             <View style={styles.headerCopy}>
-              <Text style={[styles.eyebrow, { color: colors.gold, fontFamily: 'Inter_600SemiBold' }]}>WEEKEND FEATURE</Text>
-              <Text style={[styles.title, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>THE CENTRAL BANK</Text>
+              <Text style={[styles.eyebrow, { color: bankAccent, fontFamily: 'Inter_600SemiBold' }]}>
+                {smartProSaleActive ? 'SMARTPRO FLASH SALE' : 'WEEKEND FEATURE'}
+              </Text>
+              <Text style={[styles.title, { color: bankWhite, fontFamily: 'Inter_700Bold' }]}>THE CENTRAL BANK</Text>
               <Text style={[styles.subtitle, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>OF BAD DECISIONS</Text>
             </View>
             <Pressable
@@ -1408,33 +1440,47 @@ export function BrewTokenBank({
             </Pressable>
           </View>
 
+          {smartProSaleActive && smartProRemainingLabel && (
+            <View style={[styles.smartProSaleBanner, { borderColor: bankAccent }]}>
+              <View style={styles.smartProSaleBannerIcon}>
+                <Feather name="zap" size={16} color="#17361c" />
+              </View>
+              <View style={styles.smartProSaleBannerCopy}>
+                <Text style={[styles.smartProSaleBannerTitle, { fontFamily: 'Inter_700Bold' }]}>50% OFF · {smartProRemainingLabel}</Text>
+                <Text style={[styles.smartProSaleBannerText, { fontFamily: 'Inter_500Medium' }]}>
+                  OTHER BOTTLES & RECIPES · BANK KEY EXCLUDED
+                </Text>
+              </View>
+            </View>
+          )}
+
           <Pressable
             onPress={() => stopLossVoice()}
             disabled={!lossVoicePlaying || protectedVoicePlaying}
-            style={[styles.vault, { backgroundColor: colors.steelShadow, borderColor: colors.goldMuted }]}
+            style={[styles.vault, { backgroundColor: bankSteel, borderColor: bankAccentMuted }]}
             accessibilityRole={lossVoicePlaying && !protectedVoicePlaying ? 'button' : undefined}
             accessibilityLabel={lossVoicePlaying && !protectedVoicePlaying ? 'Stop vault voice message' : 'Brew Token reserve'}
           >
             <Animated.View pointerEvents="none" style={[styles.vaultPerspectiveFrame, vaultPerspectiveStyle]}>
-              <View style={[styles.vaultBackplate, { backgroundColor: colors.card, borderColor: colors.border }]} />
-              <View style={[styles.vaultTopDepth, { backgroundColor: colors.goldMuted }]} />
+              <View style={[styles.vaultBackplate, { backgroundColor: bankSurface, borderColor: smartProSaleActive ? '#315f3f' : colors.border }]} />
+              <View style={[styles.vaultTopDepth, { backgroundColor: bankAccentMuted }]} />
               <View style={[styles.vaultLeftDepth, { backgroundColor: colors.border }]} />
               <View style={[styles.vaultRightDepth, { backgroundColor: colors.border }]} />
               <LinearGradient
                 pointerEvents="none"
-                colors={['transparent', colors.foreground, 'transparent']}
+                colors={['transparent', bankWhite, 'transparent']}
                 start={{ x: 0, y: 0.5 }}
                 end={{ x: 1, y: 0.5 }}
                 style={[styles.vaultSheen, vaultSheenStyle]}
               />
-              <View style={[styles.vaultRivet, styles.vaultRivetTopLeft, { backgroundColor: colors.goldMuted }]} />
-              <View style={[styles.vaultRivet, styles.vaultRivetTopRight, { backgroundColor: colors.goldMuted }]} />
-              <View style={[styles.vaultRivet, styles.vaultRivetBottomLeft, { backgroundColor: colors.goldMuted }]} />
-              <View style={[styles.vaultRivet, styles.vaultRivetBottomRight, { backgroundColor: colors.goldMuted }]} />
+              <View style={[styles.vaultRivet, styles.vaultRivetTopLeft, { backgroundColor: bankAccentMuted }]} />
+              <View style={[styles.vaultRivet, styles.vaultRivetTopRight, { backgroundColor: bankAccentMuted }]} />
+              <View style={[styles.vaultRivet, styles.vaultRivetBottomLeft, { backgroundColor: bankAccentMuted }]} />
+              <View style={[styles.vaultRivet, styles.vaultRivetBottomRight, { backgroundColor: bankAccentMuted }]} />
             </Animated.View>
             <Animated.View
               pointerEvents="none"
-              style={[styles.vaultGlow, { backgroundColor: colors.gold }, vaultGlowAnimatedStyle]}
+              style={[styles.vaultGlow, { backgroundColor: bankAccent }, vaultGlowAnimatedStyle]}
             />
             <View pointerEvents="none" style={[styles.vaultFloorShadow, { backgroundColor: colors.background }]} />
              {quickReviveBurstVisible && bottleBurstLocation === 'vault' && (
@@ -1496,13 +1542,33 @@ export function BrewTokenBank({
                   </Animated.View>
                 </View>
               )}
+               {smartProBurstVisible && bottleBurstLocation === 'vault' && (
+                 <View pointerEvents="none" style={styles.smartProBurst}>
+                   <Animated.View style={[styles.smartProHalo, smartProHaloStyle]} />
+                   <Animated.View style={[styles.smartProBubbleField, smartProBubbleFieldStyle]}>
+                     <View style={[styles.smartProBubble, styles.smartProBubbleOne]} />
+                     <View style={[styles.smartProBubble, styles.smartProBubbleTwo]} />
+                     <View style={[styles.smartProBubble, styles.smartProBubbleThree]} />
+                     <View style={[styles.smartProBubble, styles.smartProBubbleFour]} />
+                     <View style={[styles.smartProBubble, styles.smartProBubbleFive]} />
+                   </Animated.View>
+                   <Animated.View style={[styles.smartProSpark, smartProSparkStyle]}>
+                     <Feather name="zap" size={36} color="#f6ffdf" />
+                   </Animated.View>
+                   <Animated.View style={[styles.quickReviveBurstBottle, smartProBottleStyle]}>
+                     <SmartProBottle size={42} />
+                   </Animated.View>
+                 </View>
+               )}
             <View style={styles.slotMachine}>
-              {renderReel(reelOneStyle, 0, result ? (result.won ? colors.buyColor : colors.sellColor) : colors.gold)}
-              {renderReel(reelTwoStyle, 1, result ? (result.won ? colors.buyColor : colors.sellColor) : colors.gold)}
-              {renderReel(reelThreeStyle, 2, result ? (result.won ? colors.buyColor : colors.sellColor) : colors.gold)}
+              {renderReel(reelOneStyle, 0, result ? (result.won ? colors.buyColor : colors.sellColor) : bankAccent)}
+              {renderReel(reelTwoStyle, 1, result ? (result.won ? colors.buyColor : colors.sellColor) : bankAccent)}
+              {renderReel(reelThreeStyle, 2, result ? (result.won ? colors.buyColor : colors.sellColor) : bankAccent)}
             </View>
-            <Text style={[styles.vaultLabel, { color: colors.gold, fontFamily: 'Inter_600SemiBold' }]}>BREW TOKEN RESERVE</Text>
-            <Text style={[styles.balance, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>{displayedTokens}</Text>
+            <Text style={[styles.vaultLabel, { color: bankAccent, fontFamily: 'Inter_600SemiBold' }]}>
+              {smartProSaleActive ? 'SMARTPRO RESERVE' : 'BREW TOKEN RESERVE'}
+            </Text>
+            <Text style={[styles.balance, { color: bankWhite, fontFamily: 'Inter_700Bold' }]}>{displayedTokens}</Text>
             <Text style={[styles.balanceLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
               {displayedTokens === 1 ? 'TOKEN AVAILABLE' : 'TOKENS AVAILABLE'}
             </Text>
@@ -1515,12 +1581,12 @@ export function BrewTokenBank({
                </View>
              )}
             {lossVoicePlaying && (
-              <Text style={[styles.skipVoiceHint, { color: protectedVoicePlaying ? colors.gold : colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
+              <Text style={[styles.skipVoiceHint, { color: protectedVoicePlaying ? bankAccent : colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
                 {protectedVoicePlaying ? 'LISTEN CLOSELY' : 'TAP ANYWHERE TO SKIP VOICE'}
               </Text>
             )}
             {resolving && (
-              <Text style={[styles.machineStatus, { color: colors.gold, fontFamily: 'Inter_600SemiBold' }]}>
+              <Text style={[styles.machineStatus, { color: bankAccent, fontFamily: 'Inter_600SemiBold' }]}>
                 {MACHINE_STATUS_LINES[machineStatusIndex]}
               </Text>
             )}
@@ -1528,37 +1594,37 @@ export function BrewTokenBank({
 
           <Pressable
             onPress={() => { setShopOpen(value => !value); setShopMessage(null); }}
-            style={[styles.shopToggle, { borderColor: colors.goldMuted, backgroundColor: colors.steelShadow }]}
+            style={[styles.shopToggle, { borderColor: bankAccentMuted, backgroundColor: bankSteel }]}
             accessibilityRole="button"
             accessibilityLabel={shopOpen ? 'Close Central Bank shop and inventory' : 'Open Central Bank shop and inventory'}
             accessibilityState={{ expanded: shopOpen }}
           >
             <View style={styles.shopToggleCopy}>
-              <Feather name="briefcase" size={15} color={colors.gold} />
-              <Text style={[styles.shopToggleText, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
+              <Feather name="briefcase" size={15} color={bankAccent} />
+              <Text style={[styles.shopToggleText, { color: bankWhite, fontFamily: 'Inter_600SemiBold' }]}>
                 SHOP / INVENTORY
               </Text>
             </View>
             <View style={styles.shopToggleRight}>
-              <Text style={[styles.keyCount, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>{bankKeys}</Text>
+              <Text style={[styles.keyCount, { color: bankAccent, fontFamily: 'Inter_700Bold' }]}>{bankKeys}</Text>
               <Feather name={shopOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.mutedForeground} />
             </View>
           </Pressable>
 
           {shopOpen && (
-            <View style={[styles.shopPanel, { backgroundColor: colors.steelShadow, borderColor: colors.border }]}>
+            <View style={[styles.shopPanel, { backgroundColor: bankSteel, borderColor: smartProSaleActive ? '#315f3f' : colors.border }]}>
               <View style={styles.shopHeadingRow}>
                 <View>
-                  <Text style={[styles.shopTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>BANK ACCESS KEY</Text>
+                  <Text style={[styles.shopTitle, { color: bankWhite, fontFamily: 'Inter_700Bold' }]}>BANK ACCESS KEY</Text>
                   <Text style={[styles.shopDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                     Weekday entry requires a key. Buy one for {BREW_BANK_KEY_PRICE} Brew Tokens, then activate it to unlock 12 hours inside the Central Bank.
                   </Text>
                 </View>
-                <Feather name="key" size={23} color={colors.gold} />
+                <Feather name="key" size={23} color={bankAccent} />
               </View>
               <View style={styles.inventoryRow}>
                 <Text style={[styles.inventoryLabel, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>IN INVENTORY</Text>
-                <Text style={[styles.inventoryValue, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
+                <Text style={[styles.inventoryValue, { color: bankAccent, fontFamily: 'Inter_700Bold' }]}>
                   {bankKeys} {bankKeys === 1 ? 'KEY' : 'KEYS'}
                 </Text>
               </View>
@@ -1576,22 +1642,22 @@ export function BrewTokenBank({
                 <Pressable
                   onPress={() => { void handleBuyKey(); }}
                   disabled={tokens < BREW_BANK_KEY_PRICE || resolving || shopBusy}
-                  style={[styles.shopButton, { borderColor: colors.goldMuted }, (tokens < BREW_BANK_KEY_PRICE || resolving || shopBusy) && styles.disabled]}
+                  style={[styles.shopButton, { borderColor: bankAccentMuted }, (tokens < BREW_BANK_KEY_PRICE || resolving || shopBusy) && styles.disabled]}
                   accessibilityRole="button"
                   accessibilityLabel={`Buy a bank access key for ${BREW_BANK_KEY_PRICE} Brew Tokens`}
                 >
-                  <Text style={[styles.shopButtonText, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
+                  <Text style={[styles.shopButtonText, { color: bankAccent, fontFamily: 'Inter_700Bold' }]}>
                     BUY KEY · {BREW_BANK_KEY_PRICE} TOKENS
                   </Text>
                 </Pressable>
                 <Pressable
                   onPress={() => { void handleActivateKey(); }}
                   disabled={!canActivateKey || shopBusy}
-                  style={[styles.shopButton, { backgroundColor: colors.gold }, (!canActivateKey || shopBusy) && styles.disabled]}
+                  style={[styles.shopButton, { backgroundColor: bankAccent }, (!canActivateKey || shopBusy) && styles.disabled]}
                   accessibilityRole="button"
                   accessibilityLabel="Activate bank access key"
                 >
-                  <Text style={[styles.shopButtonText, { color: colors.primaryForeground, fontFamily: 'Inter_700Bold' }]}>
+                  <Text style={[styles.shopButtonText, { color: smartProSaleActive ? '#102817' : colors.primaryForeground, fontFamily: 'Inter_700Bold' }]}>
                     {bankAccessActive ? 'ACCESS ACTIVE' : 'ACTIVATE KEY · 12H ENTRY'}
                   </Text>
                 </Pressable>
@@ -1647,33 +1713,33 @@ export function BrewTokenBank({
                    {!staminUpUnlocked ? (
                      <Pressable
                        onPress={() => { void handleUnlockStaminUp(); }}
-                       disabled={tokens < STAMIN_UP_UNLOCK_PRICE || resolving || shopBusy}
+                        disabled={tokens < staminUpUnlockPrice || resolving || shopBusy}
                        style={[
                          styles.shopButton,
                          { borderColor: colors.border, backgroundColor: colors.card },
-                         (tokens < STAMIN_UP_UNLOCK_PRICE || resolving || shopBusy) && styles.disabled,
+                          (tokens < staminUpUnlockPrice || resolving || shopBusy) && styles.disabled,
                        ]}
                        accessibilityRole="button"
-                       accessibilityLabel={`Unlock Stamin Up for ${STAMIN_UP_UNLOCK_PRICE} Brew Tokens`}
+                        accessibilityLabel={`Unlock Stamin Up for ${staminUpUnlockPrice} Brew Tokens`}
                      >
                        <Text style={[styles.shopButtonText, { color: colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
-                         UNLOCK RECIPE · {STAMIN_UP_UNLOCK_PRICE} TOKENS
+                          UNLOCK RECIPE · {staminUpUnlockPrice} TOKENS{smartProSaleActive ? ' · 50% OFF' : ''}
                        </Text>
                      </Pressable>
                    ) : (
                      <Pressable
                        onPress={() => { void handleBuyStaminUpBottle(); }}
-                       disabled={tokens < STAMIN_UP_BOTTLE_PRICE || resolving || shopBusy}
+                        disabled={tokens < staminUpBottlePrice || resolving || shopBusy}
                        style={[
                          styles.shopButton,
                          { borderColor: '#f29b38' },
-                         (tokens < STAMIN_UP_BOTTLE_PRICE || resolving || shopBusy) && styles.disabled,
+                          (tokens < staminUpBottlePrice || resolving || shopBusy) && styles.disabled,
                        ]}
                        accessibilityRole="button"
-                       accessibilityLabel={`Buy one Stamin Up bottle for ${STAMIN_UP_BOTTLE_PRICE} Brew Tokens`}
+                        accessibilityLabel={`Buy one Stamin Up bottle for ${staminUpBottlePrice} Brew Tokens`}
                      >
                        <Text style={[styles.shopButtonText, { color: '#ffc169', fontFamily: 'Inter_700Bold' }]}>
-                         BUY BOTTLE · {STAMIN_UP_BOTTLE_PRICE} TOKENS
+                          BUY BOTTLE · {staminUpBottlePrice} TOKENS{smartProSaleActive ? ' · 50% OFF' : ''}
                        </Text>
                      </Pressable>
                    )}
@@ -1687,33 +1753,33 @@ export function BrewTokenBank({
                  {!quickReviveUnlocked ? (
                    <Pressable
                      onPress={() => { void handleUnlockQuickRevive(); }}
-                     disabled={tokens < QUICK_REVIVE_UNLOCK_PRICE || resolving || shopBusy}
+                      disabled={tokens < quickReviveUnlockPrice || resolving || shopBusy}
                      style={[
                        styles.shopButton,
                        { borderColor: colors.border, backgroundColor: colors.card },
-                       (tokens < QUICK_REVIVE_UNLOCK_PRICE || resolving || shopBusy) && styles.disabled,
+                        (tokens < quickReviveUnlockPrice || resolving || shopBusy) && styles.disabled,
                      ]}
                      accessibilityRole="button"
-                     accessibilityLabel={`Unlock Quick Revive for ${QUICK_REVIVE_UNLOCK_PRICE} Brew Tokens`}
+                      accessibilityLabel={`Unlock Quick Revive for ${quickReviveUnlockPrice} Brew Tokens`}
                    >
                      <Text style={[styles.shopButtonText, { color: colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
-                       UNLOCK RECIPE · {QUICK_REVIVE_UNLOCK_PRICE} TOKENS
+                        UNLOCK RECIPE · {quickReviveUnlockPrice} TOKENS{smartProSaleActive ? ' · 50% OFF' : ''}
                      </Text>
                    </Pressable>
                  ) : (
                    <Pressable
                      onPress={() => { void handleBuyQuickReviveBottle(); }}
-                     disabled={tokens < QUICK_REVIVE_BOTTLE_PRICE || resolving || shopBusy}
+                      disabled={tokens < quickReviveBottlePrice || resolving || shopBusy}
                      style={[
                        styles.shopButton,
                        { borderColor: colors.goldMuted },
-                       (tokens < QUICK_REVIVE_BOTTLE_PRICE || resolving || shopBusy) && styles.disabled,
+                        (tokens < quickReviveBottlePrice || resolving || shopBusy) && styles.disabled,
                      ]}
                      accessibilityRole="button"
-                     accessibilityLabel={`Buy one Quick Revive bottle for ${QUICK_REVIVE_BOTTLE_PRICE} Brew Tokens`}
+                      accessibilityLabel={`Buy one Quick Revive bottle for ${quickReviveBottlePrice} Brew Tokens`}
                    >
                      <Text style={[styles.shopButtonText, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
-                       BUY BOTTLE · {QUICK_REVIVE_BOTTLE_PRICE} TOKENS
+                        BUY BOTTLE · {quickReviveBottlePrice} {quickReviveBottlePrice === 1 ? 'TOKEN' : 'TOKENS'}{smartProSaleActive ? ' · 50% OFF' : ''}
                      </Text>
                    </Pressable>
                  )}
@@ -1748,39 +1814,105 @@ export function BrewTokenBank({
                   {!daiquiriUnlocked ? (
                     <Pressable
                       onPress={() => { void handleUnlockDaiquiri(); }}
-                      disabled={tokens < DAIQUIRI_UNLOCK_PRICE || resolving || shopBusy}
+                      disabled={tokens < daiquiriUnlockPrice || resolving || shopBusy}
                       style={[
                         styles.shopButton,
                         { borderColor: colors.border, backgroundColor: colors.card },
-                        (tokens < DAIQUIRI_UNLOCK_PRICE || resolving || shopBusy) && styles.disabled,
+                        (tokens < daiquiriUnlockPrice || resolving || shopBusy) && styles.disabled,
                       ]}
                       accessibilityRole="button"
-                      accessibilityLabel={`Unlock Dave Ramsey Daiquiri for ${DAIQUIRI_UNLOCK_PRICE} Brew Tokens`}
+                      accessibilityLabel={`Unlock Dave Ramsey Daiquiri for ${daiquiriUnlockPrice} Brew Tokens`}
                     >
                       <Text style={[styles.shopButtonText, { color: colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
-                        UNLOCK RECIPE · {DAIQUIRI_UNLOCK_PRICE} TOKENS
+                        UNLOCK RECIPE · {daiquiriUnlockPrice} TOKENS{smartProSaleActive ? ' · 50% OFF' : ''}
                       </Text>
                     </Pressable>
                   ) : (
                     <Pressable
                       onPress={() => { void handleBuyDaiquiriBottle(); }}
-                      disabled={tokens < DAIQUIRI_BOTTLE_PRICE || resolving || shopBusy}
+                      disabled={tokens < daiquiriBottlePrice || resolving || shopBusy}
                       style={[
                         styles.shopButton,
                         { borderColor: '#8edbff' },
-                        (tokens < DAIQUIRI_BOTTLE_PRICE || resolving || shopBusy) && styles.disabled,
+                        (tokens < daiquiriBottlePrice || resolving || shopBusy) && styles.disabled,
                       ]}
                       accessibilityRole="button"
-                      accessibilityLabel={`Buy one Dave Ramsey Daiquiri bottle for ${DAIQUIRI_BOTTLE_PRICE} Brew Tokens`}
+                      accessibilityLabel={`Buy one Dave Ramsey Daiquiri bottle for ${daiquiriBottlePrice} Brew Tokens`}
                     >
                       <Text style={[styles.shopButtonText, { color: '#a8e5ff', fontFamily: 'Inter_700Bold' }]}>
-                        BUY BOTTLE · {DAIQUIRI_BOTTLE_PRICE} TOKENS
+                        BUY BOTTLE · {daiquiriBottlePrice} TOKENS{smartProSaleActive ? ' · 50% OFF' : ''}
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
+                <View style={[styles.quickReviveShop, styles.smartProShop, { borderTopColor: smartProSaleActive ? '#78c84b' : colors.border }]}>
+                  <View style={styles.shopHeadingRow}>
+                    <View style={styles.quickReviveShopCopy}>
+                      <View style={styles.smartProTitleRow}>
+                        <Text style={[styles.shopTitle, { color: smartProUnlocked ? '#b9ff45' : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+                          SMARTPRO SODA
+                        </Text>
+                        <View style={styles.smartProNewPill}>
+                          <Text style={[styles.smartProNewPillText, { fontFamily: 'Inter_700Bold' }]}>FLASH SALE</Text>
+                        </View>
+                      </View>
+                      <Text style={[styles.shopDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                        Redeem one to turn every other bottle and recipe unlock half price for {SMART_PRO_SALE_DURATION_MS / 1000} seconds. The bank key stays full price.
+                      </Text>
+                    </View>
+                    <Pressable
+                      onPress={() => setBottlePreview('smartPro')}
+                      style={styles.bottleInspectButton}
+                      accessibilityRole="button"
+                      accessibilityLabel="Inspect SmartPro Soda bottle"
+                      testID="inspect-smart-pro"
+                    >
+                      <SmartProBottle size={31} muted={!smartProUnlocked} />
+                      <Feather name="maximize-2" size={13} color={colors.mutedForeground} />
+                    </Pressable>
+                  </View>
+                  <View style={styles.inventoryRow}>
+                    <Text style={[styles.inventoryLabel, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>BOTTLES IN INVENTORY</Text>
+                    <Text style={[styles.inventoryValue, { color: smartProUnlocked ? '#b9ff45' : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+                      {smartProUnlocked ? smartProBottles : 'LOCKED'}
+                    </Text>
+                  </View>
+                  {!smartProUnlocked ? (
+                    <Pressable
+                      onPress={() => { void handleUnlockSmartPro(); }}
+                      disabled={tokens < SMART_PRO_UNLOCK_PRICE || resolving || shopBusy}
+                      style={[
+                        styles.shopButton,
+                        { borderColor: '#4f8c3b', backgroundColor: colors.card },
+                        (tokens < SMART_PRO_UNLOCK_PRICE || resolving || shopBusy) && styles.disabled,
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Unlock SmartPro Soda for ${SMART_PRO_UNLOCK_PRICE} Brew Tokens`}
+                    >
+                      <Text style={[styles.shopButtonText, { color: '#b9ff45', fontFamily: 'Inter_700Bold' }]}>
+                        UNLOCK RECIPE · {SMART_PRO_UNLOCK_PRICE} TOKENS
+                      </Text>
+                    </Pressable>
+                  ) : (
+                    <Pressable
+                      onPress={() => { void handleBuySmartProBottle(); }}
+                      disabled={tokens < SMART_PRO_BOTTLE_PRICE || resolving || shopBusy}
+                      style={[
+                        styles.shopButton,
+                        { borderColor: '#8fe35a' },
+                        (tokens < SMART_PRO_BOTTLE_PRICE || resolving || shopBusy) && styles.disabled,
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Buy one SmartPro Soda for ${SMART_PRO_BOTTLE_PRICE} Brew Tokens`}
+                    >
+                      <Text style={[styles.shopButtonText, { color: '#dfffc8', fontFamily: 'Inter_700Bold' }]}>
+                        BUY BOTTLE · {SMART_PRO_BOTTLE_PRICE} TOKENS
                       </Text>
                     </Pressable>
                   )}
                 </View>
               {shopMessage && (
-                <Text style={[styles.shopMessage, { color: colors.gold, fontFamily: 'Inter_600SemiBold' }]}>{shopMessage}</Text>
+                <Text style={[styles.shopMessage, { color: bankAccent, fontFamily: 'Inter_600SemiBold' }]}>{shopMessage}</Text>
               )}
             </View>
           )}
@@ -1812,13 +1944,46 @@ export function BrewTokenBank({
             </View>
           </View>
 
+          {smartProUnlocked && (
+            <Pressable
+              onPress={() => { void handleRedeemSmartPro(); }}
+              disabled={smartProBottles < 1 || smartProSaleActive || resolving || shopBusy}
+              style={[
+                styles.quickReviveArm,
+                styles.smartProArm,
+                { borderColor: smartProSaleActive ? '#dfffc8' : '#79c94c', backgroundColor: bankSteel },
+                (smartProBottles < 1 || smartProSaleActive || resolving || shopBusy) && !smartProSaleActive && styles.disabled,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={
+                smartProSaleActive
+                  ? `SmartPro sale active. ${smartProRemainingLabel ?? 'Less than one second'} remaining.`
+                  : `Redeem a SmartPro Soda. ${smartProBottles} bottles available.`
+              }
+              accessibilityState={{ disabled: smartProBottles < 1 || smartProSaleActive || resolving || shopBusy }}
+            >
+              <SmartProBottle size={26} muted={!smartProSaleActive && smartProBottles < 1} />
+              <View style={styles.quickReviveArmCopy}>
+                <Text style={[styles.quickReviveArmTitle, { color: smartProSaleActive ? '#dfffc8' : bankWhite, fontFamily: 'Inter_700Bold' }]}>
+                  {smartProSaleActive ? `SMARTPRO SALE ACTIVE · ${smartProRemainingLabel ?? '0:01'}` : 'REDEEM SMARTPRO · 90-SECOND SALE'}
+                </Text>
+                <Text style={[styles.quickReviveArmDescription, { color: smartProSaleActive ? '#b9eaaa' : colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                  {smartProSaleActive
+                    ? 'OTHER BOTTLES & RECIPES ARE HALF PRICE · BANK KEY EXCLUDED'
+                    : `${smartProBottles} ${smartProBottles === 1 ? 'BOTTLE' : 'BOTTLES'} READY · SMARTPRO STAYS 3 TOKENS`}
+                </Text>
+              </View>
+              <Feather name={smartProSaleActive ? 'clock' : 'zap'} size={17} color="#b9ff45" />
+            </Pressable>
+          )}
+
           {quickReviveUnlocked && (
             <Pressable
               onPress={() => { void handleRedeemQuickRevive(); }}
               disabled={quickReviveBottles < 1 || quickReviveArmed || daiquiriArmed || staminUpArmed || resolving || shopBusy}
               style={[
                 styles.quickReviveArm,
-                { borderColor: quickReviveArmed ? colors.buyColor : colors.goldMuted, backgroundColor: colors.steelShadow },
+                { borderColor: quickReviveArmed ? colors.buyColor : bankAccentMuted, backgroundColor: bankSteel },
                 (quickReviveBottles < 1 || quickReviveArmed || daiquiriArmed || staminUpArmed || resolving || shopBusy) && !quickReviveArmed && styles.disabled,
               ]}
               accessibilityRole="button"
@@ -1840,7 +2005,7 @@ export function BrewTokenBank({
                     : `${quickReviveBottles} ${quickReviveBottles === 1 ? 'BOTTLE' : 'BOTTLES'} READY · CONSUMES ONE BOTTLE`}
                 </Text>
               </View>
-              <Feather name={quickReviveArmed ? 'check-circle' : 'zap'} size={17} color={quickReviveArmed ? colors.buyColor : colors.gold} />
+              <Feather name={quickReviveArmed ? 'check-circle' : 'zap'} size={17} color={quickReviveArmed ? colors.buyColor : bankAccent} />
             </Pressable>
           )}
           {daiquiriUnlocked && (
@@ -1849,7 +2014,7 @@ export function BrewTokenBank({
               disabled={daiquiriBottles < 1 || daiquiriArmed || quickReviveArmed || staminUpArmed || resolving || shopBusy}
               style={[
                 styles.quickReviveArm,
-                { borderColor: daiquiriArmed ? '#8edbff' : '#e9c64d', backgroundColor: colors.steelShadow },
+                { borderColor: daiquiriArmed ? '#8edbff' : '#e9c64d', backgroundColor: bankSteel },
                 (daiquiriBottles < 1 || daiquiriArmed || quickReviveArmed || staminUpArmed || resolving || shopBusy) && !daiquiriArmed && styles.disabled,
               ]}
               accessibilityRole="button"
@@ -1880,7 +2045,7 @@ export function BrewTokenBank({
               disabled={staminUpBottles < 1 || staminUpArmed || quickReviveArmed || daiquiriArmed || resolving || shopBusy}
               style={[
                 styles.quickReviveArm,
-                { borderColor: staminUpArmed ? '#ffc169' : '#d27620', backgroundColor: colors.steelShadow },
+                { borderColor: staminUpArmed ? '#ffc169' : '#d27620', backgroundColor: bankSteel },
                 (staminUpBottles < 1 || staminUpArmed || quickReviveArmed || daiquiriArmed || resolving || shopBusy) && !staminUpArmed && styles.disabled,
               ]}
               accessibilityRole="button"
@@ -1910,7 +2075,7 @@ export function BrewTokenBank({
             onPress={() => setPayoutPreviewOpen(value => !value)}
             style={[
               styles.payoutToggle,
-              { backgroundColor: colors.steelShadow, borderColor: colors.border },
+              { backgroundColor: bankSteel, borderColor: colors.border },
               payoutPreviewOpen && styles.payoutToggleOpen,
             ]}
             accessibilityRole="button"
@@ -1923,7 +2088,7 @@ export function BrewTokenBank({
             <Feather name={payoutPreviewOpen ? 'chevron-up' : 'chevron-down'} size={15} color={colors.mutedForeground} />
           </Pressable>
           {payoutPreviewOpen && (
-            <View style={[styles.payoutPreview, { backgroundColor: colors.steelShadow, borderColor: colors.border }]}>
+            <View style={[styles.payoutPreview, { backgroundColor: bankSteel, borderColor: colors.border }]}>
               <View style={styles.payoutColumns}>
                 <View style={styles.payoutColumn}>
                   <Text style={[styles.payoutLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>WIN</Text>
@@ -1943,7 +2108,7 @@ export function BrewTokenBank({
                 <View style={[styles.payoutDivider, { backgroundColor: colors.border }]} />
                 <View style={styles.payoutColumn}>
                   <Text style={[styles.payoutLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>ODDS</Text>
-                  <Text style={[styles.payoutValue, { color: daiquiriArmed ? '#a8e5ff' : quickReviveArmed ? colors.buyColor : colors.gold, fontFamily: 'Inter_700Bold' }]}>{activeOddsLabel}</Text>
+                  <Text style={[styles.payoutValue, { color: daiquiriArmed ? '#a8e5ff' : quickReviveArmed ? colors.buyColor : bankAccent, fontFamily: 'Inter_700Bold' }]}>{activeOddsLabel}</Text>
                   <Text style={[styles.payoutUnit, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>TO WIN</Text>
                   {daiquiriArmed && (
                     <Text style={[styles.payoutUnit, { color: '#f6d64a', fontFamily: 'Inter_500Medium' }]}>
@@ -1964,7 +2129,7 @@ export function BrewTokenBank({
           </Text>
 
           {tokens === 0 && (
-            <Text style={[styles.emptyMessage, { color: colors.gold, fontFamily: 'Inter_500Medium' }]}>
+            <Text style={[styles.emptyMessage, { color: bankAccent, fontFamily: 'Inter_500Medium' }]}>
               The reserve is empty. View another Biden quote during the week to earn a Brew Token.
             </Text>
           )}
@@ -2021,14 +2186,14 @@ export function BrewTokenBank({
           <Pressable
             onPress={handleBet}
             disabled={!canPlay}
-            style={[styles.depositButton, { backgroundColor: colors.gold }, !canPlay && styles.disabled]}
+            style={[styles.depositButton, { backgroundColor: bankAccent }, !canPlay && styles.disabled]}
             accessibilityRole="button"
             accessibilityLabel="Deposit Brew Tokens"
           >
             {resolving ? (
               <ActivityIndicator color={colors.primaryForeground} />
             ) : (
-              <Text style={[styles.depositButtonText, { color: colors.primaryForeground, fontFamily: 'Inter_700Bold' }]}>
+              <Text style={[styles.depositButtonText, { color: smartProSaleActive ? '#102817' : colors.primaryForeground, fontFamily: 'Inter_700Bold' }]}>
                 {tokens === 0 ? 'RESERVE EMPTY' : protectedVoicePlaying ? 'VOICE MESSAGE PLAYING' : 'TOSS TOKENS INTO THE BANK'}
               </Text>
             )}
@@ -2043,8 +2208,8 @@ export function BrewTokenBank({
             <Switch
               value={soundEnabled}
               onValueChange={value => { void onSoundEnabledChange(value); }}
-              trackColor={{ false: colors.border, true: colors.goldMuted }}
-              thumbColor={soundEnabled ? colors.gold : colors.mutedForeground}
+              trackColor={{ false: colors.border, true: bankAccentMuted }}
+              thumbColor={soundEnabled ? bankAccent : colors.mutedForeground}
               accessibilityLabel="Brew Bank celebration sound"
               accessibilityState={{ checked: soundEnabled }}
             />
@@ -2057,8 +2222,8 @@ export function BrewTokenBank({
             <Switch
               value={hapticsEnabled}
               onValueChange={value => { void onHapticsEnabledChange(value); }}
-              trackColor={{ false: colors.border, true: colors.goldMuted }}
-              thumbColor={hapticsEnabled ? colors.gold : colors.mutedForeground}
+              trackColor={{ false: colors.border, true: bankAccentMuted }}
+              thumbColor={hapticsEnabled ? bankAccent : colors.mutedForeground}
               accessibilityLabel="Brew Bank haptic feedback"
               accessibilityState={{ checked: hapticsEnabled }}
             />
@@ -2129,6 +2294,7 @@ export function BrewTokenBank({
                   {bottlePreview === 'quickRevive' && <QuickReviveBottle size={112} muted={!selectedBottleUnlocked} />}
                   {bottlePreview === 'daiquiri' && <DaiquiriBottle size={112} muted={!selectedBottleUnlocked} />}
                   {bottlePreview === 'staminUp' && <StaminUpBottle size={112} muted={!selectedBottleUnlocked} />}
+                  {bottlePreview === 'smartPro' && <SmartProBottle size={112} muted={!selectedBottleUnlocked} />}
                   {quickReviveBurstVisible && bottleBurstLocation === 'preview' && bottlePreview === 'quickRevive' && (
                     <View pointerEvents="none" style={[styles.quickReviveBurst, styles.previewBurst]}>
                       <Animated.View style={[styles.quickReviveBubbleField, quickReviveBubbleFieldStyle]}>
@@ -2188,6 +2354,24 @@ export function BrewTokenBank({
                       </Animated.View>
                     </View>
                   )}
+                  {smartProBurstVisible && bottleBurstLocation === 'preview' && bottlePreview === 'smartPro' && (
+                    <View pointerEvents="none" style={[styles.smartProBurst, styles.previewBurst]}>
+                      <Animated.View style={[styles.smartProHalo, smartProHaloStyle]} />
+                      <Animated.View style={[styles.smartProBubbleField, smartProBubbleFieldStyle]}>
+                        <View style={[styles.smartProBubble, styles.smartProBubbleOne]} />
+                        <View style={[styles.smartProBubble, styles.smartProBubbleTwo]} />
+                        <View style={[styles.smartProBubble, styles.smartProBubbleThree]} />
+                        <View style={[styles.smartProBubble, styles.smartProBubbleFour]} />
+                        <View style={[styles.smartProBubble, styles.smartProBubbleFive]} />
+                      </Animated.View>
+                      <Animated.View style={[styles.smartProSpark, smartProSparkStyle]}>
+                        <Feather name="zap" size={42} color="#f6ffdf" />
+                      </Animated.View>
+                      <Animated.View style={[styles.quickReviveBurstBottle, smartProBottleStyle]}>
+                        <SmartProBottle size={74} />
+                      </Animated.View>
+                    </View>
+                  )}
                   <View pointerEvents="none" style={styles.previewBottleHint}>
                     <Feather name={selectedBottleUnlocked ? 'play-circle' : 'lock'} size={12} color={selectedBottleUnlocked ? colors.gold : colors.mutedForeground} />
                     <Text style={[styles.previewBottleHintText, { color: selectedBottleUnlocked ? colors.gold : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
@@ -2232,14 +2416,16 @@ export function BrewTokenBank({
                   <View style={styles.previewDetailRow}>
                     <Text style={[styles.previewDetailLabel, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>STATUS</Text>
                     <Text style={[styles.previewDetailValue, { color: selectedBottleArmed ? colors.buyColor : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
-                      {selectedBottleArmed ? 'ARMED FOR NEXT TOSS' : selectedBottleUnlocked ? 'READY TO REDEEM' : 'RECIPE LOCKED'}
+                      {selectedBottleArmed
+                        ? bottlePreview === 'smartPro' ? '90-SECOND SALE ACTIVE' : 'ARMED FOR NEXT TOSS'
+                        : selectedBottleUnlocked ? 'READY TO REDEEM' : 'RECIPE LOCKED'}
                     </Text>
                   </View>
                 </View>
 
                 {selectedBottlePreview.conversionCopy && (
-                  <View style={[styles.previewConversion, { backgroundColor: colors.steelShadow, borderColor: '#b36321' }]}>
-                    <Feather name="moon" size={15} color="#f29b38" />
+                  <View style={[styles.previewConversion, { backgroundColor: colors.steelShadow, borderColor: bottlePreview === 'smartPro' ? '#78c84b' : '#b36321' }]}>
+                    <Feather name={bottlePreview === 'smartPro' ? 'zap' : 'moon'} size={15} color={bottlePreview === 'smartPro' ? '#b9ff45' : '#f29b38'} />
                     <Text style={[styles.previewConversionText, { fontFamily: 'Inter_500Medium' }]}>
                       {selectedBottlePreview.conversionCopy}
                     </Text>
@@ -2287,6 +2473,29 @@ const styles = StyleSheet.create({
   eyebrow: { fontSize: 9, letterSpacing: 1.2 },
   title: { fontSize: 19, letterSpacing: 1.1, marginTop: 2 },
   subtitle: { fontSize: 11, letterSpacing: 2.5 },
+  smartProSaleBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    borderWidth: 1,
+    borderRadius: 10,
+    backgroundColor: '#efffe6',
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    marginTop: -6,
+    marginBottom: 12,
+  },
+  smartProSaleBannerIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#b9ff45',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  smartProSaleBannerCopy: { flex: 1, gap: 2 },
+  smartProSaleBannerTitle: { color: '#12351d', fontSize: 12, letterSpacing: 0.8 },
+  smartProSaleBannerText: { color: '#31523b', fontSize: 8, letterSpacing: 0.45, lineHeight: 12 },
   vault: { alignItems: 'center', borderWidth: 1, borderRadius: 10, paddingVertical: 16, overflow: 'hidden' },
   vaultPerspectiveFrame: { position: 'absolute', top: 9, left: 9, right: 9, bottom: 9, borderRadius: 8, overflow: 'hidden' },
   vaultBackplate: { position: 'absolute', top: 5, left: 5, right: 5, bottom: 5, borderWidth: 1, borderRadius: 7, opacity: 0.78 },
@@ -2341,6 +2550,52 @@ const styles = StyleSheet.create({
   staminUpSplashDrop: { width: 27, height: 17, borderRadius: 14, backgroundColor: '#f28a1c', borderWidth: 1, borderColor: '#ffdf77', shadowColor: '#f28a1c', shadowOpacity: 0.95, shadowRadius: 9, elevation: 6 },
   staminUpSplashDropWide: { width: 43, height: 11, opacity: 0.84 },
   staminUpSplashDropSmall: { width: 13, height: 13, opacity: 0.76 },
+  smartProBurst: { position: 'absolute', top: 5, bottom: 6, left: 0, right: 0, alignItems: 'center', justifyContent: 'center' },
+  smartProHalo: {
+    position: 'absolute',
+    top: 7,
+    width: 126,
+    height: 126,
+    borderRadius: 63,
+    borderWidth: 2,
+    borderColor: '#b9ff45',
+    backgroundColor: 'rgba(185,255,69,0.12)',
+    shadowColor: '#9dff39',
+    shadowOpacity: 0.95,
+    shadowRadius: 20,
+    elevation: 9,
+  },
+  smartProBubbleField: { position: 'absolute', top: 7, width: 132, height: 150 },
+  smartProBubble: {
+    position: 'absolute',
+    borderRadius: 99,
+    borderWidth: 1,
+    borderColor: '#efffdc',
+    backgroundColor: 'rgba(185,255,69,0.27)',
+    shadowColor: '#a6ff3e',
+    shadowOpacity: 0.92,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  smartProBubbleOne: { width: 13, height: 13, left: 9, top: 82 },
+  smartProBubbleTwo: { width: 8, height: 8, left: 37, top: 42 },
+  smartProBubbleThree: { width: 16, height: 16, right: 10, top: 79 },
+  smartProBubbleFour: { width: 9, height: 9, right: 35, top: 28 },
+  smartProBubbleFive: { width: 7, height: 7, left: 61, top: 4 },
+  smartProSpark: {
+    position: 'absolute',
+    top: 43,
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(185,255,69,0.14)',
+    shadowColor: '#b9ff45',
+    shadowOpacity: 0.9,
+    shadowRadius: 16,
+    elevation: 8,
+  },
   slotMachine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, height: SLOT_REEL_HEIGHT, marginBottom: 11 },
   reelWindow: { width: 64, height: SLOT_REEL_HEIGHT, borderWidth: 1, borderRadius: 9, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.22)' },
   reelSymbol: { width: 64, height: SLOT_REEL_HEIGHT, alignItems: 'center', justifyContent: 'center' },
@@ -2371,6 +2626,10 @@ const styles = StyleSheet.create({
   shopButtonText: { fontSize: 10, letterSpacing: 0.5 },
   quickReviveShop: { borderTopWidth: 1, marginTop: 14, paddingTop: 13 },
   quickReviveShopCopy: { flex: 1 },
+  smartProShop: { backgroundColor: 'rgba(116,199,70,0.055)' },
+  smartProTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 7, flexWrap: 'wrap' },
+  smartProNewPill: { borderRadius: 9, backgroundColor: '#b9ff45', paddingHorizontal: 6, paddingVertical: 2 },
+  smartProNewPillText: { color: '#17361c', fontSize: 7, letterSpacing: 0.6 },
   shopMessage: { fontSize: 9, letterSpacing: 0.7, textAlign: 'center', marginTop: 10 },
   sectionLabel: { fontSize: 9, letterSpacing: 1 },
   betValue: { fontSize: 18, marginTop: 3 },
@@ -2380,6 +2639,7 @@ const styles = StyleSheet.create({
   quickReviveArmCopy: { flex: 1, gap: 3 },
   quickReviveArmTitle: { fontSize: 9, letterSpacing: 0.55 },
   quickReviveArmDescription: { fontSize: 8, lineHeight: 12, letterSpacing: 0.15 },
+  smartProArm: { shadowColor: '#9dff39', shadowOpacity: 0.24, shadowRadius: 10, elevation: 3 },
   disabled: { opacity: 0.4 },
   payoutPreview: { borderWidth: 1, borderRadius: 9, marginTop: 13, paddingVertical: 10, paddingHorizontal: 12 },
   payoutToggle: { minHeight: 36, borderWidth: 1, borderRadius: 9, marginTop: 13, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

@@ -11,6 +11,9 @@ import {
   DAIQUIRI_WIN_PROBABILITY,
   STAMIN_UP_BOTTLE_PRICE,
   STAMIN_UP_UNLOCK_PRICE,
+  SMART_PRO_BOTTLE_PRICE,
+  SMART_PRO_SALE_DURATION_MS,
+  SMART_PRO_UNLOCK_PRICE,
   QUICK_REVIVE_BOTTLE_PRICE,
   QUICK_REVIVE_UNLOCK_PRICE,
   QUICK_REVIVE_WIN_PROBABILITY,
@@ -24,15 +27,20 @@ import {
   buyDaiquiriUnlock,
   buyStaminUpBottle,
   buyStaminUpUnlock,
+  buySmartProBottle,
+  buySmartProUnlock,
   canEnterBrewBank,
   canArmBrewBottle,
   canActivateBrewBankKey,
   formatBrewBankAccessRemaining,
+  formatSmartProRemaining,
+  getSmartProSalePrice,
   getBrewBottleInspection,
   getBrewBottlePreview,
   getBrewWinProbability,
   getDaiquiriWinProbability,
   hasBrewBankAccess,
+  hasSmartProSale,
   INITIAL_BREW_TOKENS,
   isBrewBankHalfway,
   isBrewBankUnlock,
@@ -43,6 +51,7 @@ import {
   redeemQuickReviveBottle,
   redeemDaiquiriBottle,
   redeemStaminUpBottle,
+  redeemSmartProBottle,
 } from '../brewTokenLogic.ts';
 
 test('Brew Bank unlocks exactly when the quote threshold is crossed', () => {
@@ -125,15 +134,19 @@ test('opening and closing every bottle inspection preserves balance, inventory, 
     staminUpUnlocked: true,
     staminUpBottles: 4,
     staminUpArmed: false,
+    smartProUnlocked: true,
+    smartProBottles: 5,
+    smartProActive: false,
   };
 
   const expected = {
     quickRevive: { bottlePrice: 2, odds: '62% WIN · 38% LOSS', bottles: 3, armed: false },
     daiquiri: { bottlePrice: 8, odds: '45% WIN · 65% LOSS', bottles: 2, armed: true },
     staminUp: { bottlePrice: 16, odds: '55% WIN · 45% LOSS', bottles: 4, armed: false },
+    smartPro: { bottlePrice: 3, odds: '55% WIN · 45% LOSS', bottles: 5, armed: false },
   } as const;
 
-  for (const kind of ['quickRevive', 'daiquiri', 'staminUp'] as const) {
+  for (const kind of ['quickRevive', 'daiquiri', 'staminUp', 'smartPro'] as const) {
     const inspection = getBrewBottleInspection(kind, before);
 
     assert.equal(inspection.preview.bottlePrice, expected[kind].bottlePrice);
@@ -196,6 +209,73 @@ test('Stamin Up consumes exactly one bottle and no two bottle effects can arm to
   assert.equal(canArmBrewBottle(true, false, false), false);
   assert.equal(canArmBrewBottle(false, true, false), false);
   assert.equal(canArmBrewBottle(false, false, true), false);
+});
+
+test('SmartPro unlocks for one hundred tokens and its own bottles always cost three', () => {
+  assert.deepEqual(buySmartProUnlock(SMART_PRO_UNLOCK_PRICE, false), {
+    tokenBalance: 0,
+    unlocked: true,
+  });
+  assert.equal(buySmartProUnlock(SMART_PRO_UNLOCK_PRICE - 1, false), null);
+  assert.equal(buySmartProUnlock(200, true), null);
+  assert.equal(buySmartProBottle(20, 0, false), null);
+  assert.equal(buySmartProBottle(SMART_PRO_BOTTLE_PRICE - 1, 0, true), null);
+  assert.deepEqual(buySmartProBottle(9, 2, true), { tokenBalance: 6, bottleCount: 3 });
+});
+
+test('SmartPro redemption consumes one bottle and activates a restart-safe 90-second sale', () => {
+  const now = new Date('2026-08-29T12:00:00').getTime();
+  const redeemed = redeemSmartProBottle(2, now);
+  assert.deepEqual(redeemed, {
+    bottleCount: 1,
+    expiresAt: now + SMART_PRO_SALE_DURATION_MS,
+  });
+  assert.equal(hasSmartProSale(redeemed!.expiresAt, now + 89_999), true);
+  assert.equal(hasSmartProSale(redeemed!.expiresAt, now + 90_000), false);
+  assert.equal(redeemSmartProBottle(1, now + 1_000, redeemed!.expiresAt), null);
+  assert.equal(redeemSmartProBottle(0, now), null);
+  assert.equal(formatSmartProRemaining(redeemed!.expiresAt, now), '1:30');
+  assert.equal(formatSmartProRemaining(redeemed!.expiresAt, now + 89_001), '0:01');
+  assert.equal(formatSmartProRemaining(redeemed!.expiresAt, now + 90_000), null);
+});
+
+test('SmartPro halves other recipe and bottle prices while key and SmartPro stay full price', () => {
+  assert.equal(getSmartProSalePrice(QUICK_REVIVE_UNLOCK_PRICE, true), 20);
+  assert.equal(getSmartProSalePrice(QUICK_REVIVE_BOTTLE_PRICE, true), 1);
+  assert.equal(getSmartProSalePrice(DAIQUIRI_UNLOCK_PRICE, true), 50);
+  assert.equal(getSmartProSalePrice(DAIQUIRI_BOTTLE_PRICE, true), 4);
+  assert.equal(getSmartProSalePrice(STAMIN_UP_UNLOCK_PRICE, true), 250);
+  assert.equal(getSmartProSalePrice(STAMIN_UP_BOTTLE_PRICE, true), 8);
+  assert.deepEqual(buyQuickReviveUnlock(20, false, 20), { tokenBalance: 0, unlocked: true });
+  assert.deepEqual(buyDaiquiriBottle(4, 0, true, 4), { tokenBalance: 0, bottleCount: 1 });
+  assert.deepEqual(buyStaminUpUnlock(250, false, 250), { tokenBalance: 0, unlocked: true });
+  assert.deepEqual(buyBrewBankKey(BREW_BANK_KEY_PRICE, 0), { tokenBalance: 0, keyCount: 1 });
+  assert.deepEqual(buySmartProBottle(SMART_PRO_BOTTLE_PRICE, 0, true), { tokenBalance: 0, bottleCount: 1 });
+});
+
+test('SmartPro inspection is read-only and applies sale prices only to other bottles', () => {
+  const activeSnapshot = {
+    tokens: 180,
+    quickReviveUnlocked: false,
+    quickReviveBottles: 0,
+    quickReviveArmed: false,
+    daiquiriUnlocked: false,
+    daiquiriBottles: 0,
+    daiquiriArmed: false,
+    staminUpUnlocked: false,
+    staminUpBottles: 0,
+    staminUpArmed: false,
+    smartProUnlocked: true,
+    smartProBottles: 2,
+    smartProActive: true,
+  };
+
+  assert.equal(getBrewBottleInspection('quickRevive', activeSnapshot).preview.unlockPrice, 20);
+  const smartProInspection = getBrewBottleInspection('smartPro', activeSnapshot);
+  assert.equal(smartProInspection.preview.unlockPrice, SMART_PRO_UNLOCK_PRICE);
+  assert.equal(smartProInspection.preview.bottlePrice, SMART_PRO_BOTTLE_PRICE);
+  assert.equal(smartProInspection.armed, true);
+  assert.deepEqual(smartProInspection.snapshot, activeSnapshot);
 });
 
 test('bank key access can only activate on weekdays and lasts twelve hours', () => {
