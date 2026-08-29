@@ -7,6 +7,16 @@ import {
 export const BREW_ECONOMY_SNAPSHOT_KEY = '@stocksense/brew_economy_snapshot_v1';
 export const BREW_ECONOMY_SNAPSHOT_VERSION = 1 as const;
 
+export type BrewActivityKind = 'quote' | 'unlock' | 'purchase' | 'redeem' | 'toss' | 'bank' | 'theme';
+
+export type BrewActivityEntry = {
+  id: string;
+  kind: BrewActivityKind;
+  label: string;
+  detail: string;
+  createdAt: number;
+};
+
 export type BrewEconomySnapshot = {
   version: typeof BREW_ECONOMY_SNAPSHOT_VERSION;
   quotesViewed: number;
@@ -29,6 +39,7 @@ export type BrewEconomySnapshot = {
   darkBrewTokens: number;
   neonGucciActive: boolean;
   claimedQuoteViewIds: string[];
+  activityLog: BrewActivityEntry[];
 };
 
 export type LegacyBrewEconomyStorage = {
@@ -57,8 +68,9 @@ export type BrewEconomySnapshotStorage = {
   getItem: (key: string) => Promise<string | null>;
 };
 
-type BrewEconomySnapshotInput = Omit<BrewEconomySnapshot, 'version' | 'neonGucciActive'> & {
+type BrewEconomySnapshotInput = Omit<BrewEconomySnapshot, 'version' | 'neonGucciActive' | 'activityLog'> & {
   neonGucciActive?: boolean;
+  activityLog?: BrewActivityEntry[];
 };
 
 function normalizeNonNegative(value: unknown): number {
@@ -74,6 +86,21 @@ function normalizeExpiry(value: unknown): number | null {
 function normalizeClaims(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return [...new Set(value.filter((id): id is string => typeof id === 'string' && id.length > 0))];
+}
+
+function normalizeActivityLog(value: unknown): BrewActivityEntry[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((entry): entry is BrewActivityEntry => (
+      isRecord(entry)
+      && typeof entry.id === 'string'
+      && typeof entry.kind === 'string'
+      && typeof entry.label === 'string'
+      && typeof entry.detail === 'string'
+      && typeof entry.createdAt === 'number'
+      && Number.isFinite(entry.createdAt)
+    ))
+    .slice(-40);
 }
 
 export function createBrewEconomySnapshot(input: BrewEconomySnapshotInput): BrewEconomySnapshot {
@@ -105,6 +132,7 @@ export function createBrewEconomySnapshot(input: BrewEconomySnapshotInput): Brew
     darkBrewTokens: normalizeNonNegative(input.darkBrewTokens),
     neonGucciActive: input.neonGucciActive === true,
     claimedQuoteViewIds: normalizeClaims(input.claimedQuoteViewIds),
+    activityLog: normalizeActivityLog(input.activityLog),
   };
 }
 
@@ -168,6 +196,7 @@ export function parseBrewEconomySnapshot(raw: string | null | undefined): BrewEc
       darkBrewTokens: parsed.darkBrewTokens as number,
       neonGucciActive: parsed.neonGucciActive === true,
       claimedQuoteViewIds: normalizeClaims(parsed.claimedQuoteViewIds),
+      activityLog: normalizeActivityLog(parsed.activityLog),
     });
   } catch {
     return null;
@@ -228,5 +257,6 @@ export function migrateLegacyBrewEconomy(raw: LegacyBrewEconomyStorage): BrewEco
     darkBrewTokens: parseStoredNonNegative(raw.rawDarkBrewTokens),
     neonGucciActive: false,
     claimedQuoteViewIds: [],
+    activityLog: [],
   });
 }

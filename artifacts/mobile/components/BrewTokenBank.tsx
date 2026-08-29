@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   AccessibilityInfo,
   AppState,
   Modal,
@@ -408,6 +409,13 @@ type Props = {
   smartProBottles: number;
   smartProSaleExpiresAt: number | null;
   darkBrewTokens: number;
+  activityLog: Array<{
+    id: string;
+    kind: string;
+    label: string;
+    detail: string;
+    createdAt: number;
+  }>;
   onClose: () => void;
   onResolveBet: (bet: number, won: boolean, effect?: BrewBetEffect) => Promise<void>;
   onSoundEnabledChange: (value: boolean) => Promise<void>;
@@ -513,6 +521,7 @@ export function BrewTokenBank({
   smartProBottles,
   smartProSaleExpiresAt,
   darkBrewTokens,
+  activityLog,
   onClose,
   onResolveBet,
   onSoundEnabledChange,
@@ -545,6 +554,7 @@ export function BrewTokenBank({
   const [payoutPreviewOpen, setPayoutPreviewOpen] = useState(false);
   const [shopMessage, setShopMessage] = useState<string | null>(null);
   const [shopBusy, setShopBusy] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
   const [countdownNow, setCountdownNow] = useState(() => Date.now());
   const [quickReviveBurstVisible, setQuickReviveBurstVisible] = useState(false);
   const [daiquiriBurstVisible, setDaiquiriBurstVisible] = useState(false);
@@ -1041,8 +1051,23 @@ export function BrewTokenBank({
     triggerBottleBurst(bottlePreview, 'preview');
   };
 
-  const handleBuyKey = async () => {
+  const confirmExpensiveAction = (title: string, message: string, action: () => void) => {
+    Alert.alert(title, message, [
+      { text: 'CANCEL', style: 'cancel' },
+      { text: 'CONFIRM', onPress: action },
+    ]);
+  };
+
+  const handleBuyKey = async (confirmed = false) => {
     if (tokens < BREW_BANK_KEY_PRICE || resolving || shopBusy) return;
+    if (!confirmed) {
+      confirmExpensiveAction(
+        'BUY CENTRAL BANK KEY?',
+        `Spend ${BREW_BANK_KEY_PRICE} Brew Tokens for one weekday access key?`,
+        () => { void handleBuyKey(true); },
+      );
+      return;
+    }
     setShopBusy(true);
     const purchased = await onBuyBankKey();
     setShopMessage(purchased ? 'KEY ADDED TO INVENTORY' : 'NOT ENOUGH BREW TOKENS');
@@ -1057,8 +1082,16 @@ export function BrewTokenBank({
     setShopBusy(false);
   };
 
-  const handleUnlockQuickRevive = async () => {
+  const handleUnlockQuickRevive = async (confirmed = false) => {
     if (tokens < quickReviveUnlockPrice || quickReviveUnlocked || resolving || shopBusy) return;
+    if (!confirmed) {
+      confirmExpensiveAction(
+        'UNLOCK QUICK REVIVE?',
+        `Spend ${quickReviveUnlockPrice} Brew Tokens to unlock this recipe?`,
+        () => { void handleUnlockQuickRevive(true); },
+      );
+      return;
+    }
     setShopBusy(true);
     const unlocked = await onUnlockQuickRevive();
     setShopMessage(unlocked ? `QUICK REVIVE UNLOCKED · BOTTLES ARE NOW ${quickReviveBottlePrice} ${quickReviveBottlePrice === 1 ? 'TOKEN' : 'TOKENS'}` : 'NOT ENOUGH BREW TOKENS');
@@ -1088,16 +1121,32 @@ export function BrewTokenBank({
     void playQuickReviveVoice();
   };
 
-  const handleUnlockDaiquiri = async () => {
+  const handleUnlockDaiquiri = async (confirmed = false) => {
     if (tokens < daiquiriUnlockPrice || daiquiriUnlocked || resolving || shopBusy) return;
+    if (!confirmed) {
+      confirmExpensiveAction(
+        'UNLOCK DAIQUIRI?',
+        `Spend ${daiquiriUnlockPrice} Brew Tokens to unlock the 45% win recipe?`,
+        () => { void handleUnlockDaiquiri(true); },
+      );
+      return;
+    }
     setShopBusy(true);
     const unlocked = await onUnlockDaiquiri();
     setShopMessage(unlocked ? `DAIQUIRI UNLOCKED · BOTTLES ARE NOW ${daiquiriBottlePrice} TOKENS` : 'NOT ENOUGH BREW TOKENS');
     setShopBusy(false);
   };
 
-  const handleBuyDaiquiriBottle = async () => {
+  const handleBuyDaiquiriBottle = async (confirmed = false) => {
     if (!daiquiriUnlocked || tokens < daiquiriBottlePrice || resolving || shopBusy) return;
+    if (!confirmed && daiquiriBottlePrice >= 8) {
+      confirmExpensiveAction(
+        'BUY DAIQUIRI?',
+        `Spend ${daiquiriBottlePrice} Brew Tokens for one 45% win bottle?`,
+        () => { void handleBuyDaiquiriBottle(true); },
+      );
+      return;
+    }
     setShopBusy(true);
     const purchased = await onBuyDaiquiriBottle();
     setShopMessage(purchased ? 'DAIQUIRI BOTTLE ADDED TO INVENTORY' : 'NOT ENOUGH BREW TOKENS');
@@ -1165,16 +1214,32 @@ export function BrewTokenBank({
     void playDaiquiriVoice();
   };
 
-  const handleUnlockStaminUp = async () => {
+  const handleUnlockStaminUp = async (confirmed = false) => {
     if (tokens < staminUpUnlockPrice || staminUpUnlocked || resolving || shopBusy) return;
+    if (!confirmed) {
+      confirmExpensiveAction(
+        'UNLOCK STAMIN UP?',
+        `Spend ${staminUpUnlockPrice} Brew Tokens to unlock the Dark Brew recipe?`,
+        () => { void handleUnlockStaminUp(true); },
+      );
+      return;
+    }
     setShopBusy(true);
     const unlocked = await onUnlockStaminUp();
     setShopMessage(unlocked ? `STAMIN UP UNLOCKED · BOTTLES ARE NOW ${staminUpBottlePrice} TOKENS` : 'NOT ENOUGH BREW TOKENS');
     setShopBusy(false);
   };
 
-  const handleBuyStaminUpBottle = async () => {
+  const handleBuyStaminUpBottle = async (confirmed = false) => {
     if (!staminUpUnlocked || tokens < staminUpBottlePrice || resolving || shopBusy) return;
+    if (!confirmed && staminUpBottlePrice >= 8) {
+      confirmExpensiveAction(
+        'BUY STAMIN UP?',
+        `Spend ${staminUpBottlePrice} Brew Tokens for one 65% win bottle?`,
+        () => { void handleBuyStaminUpBottle(true); },
+      );
+      return;
+    }
     setShopBusy(true);
     const purchased = await onBuyStaminUpBottle();
     setShopMessage(purchased ? 'STAMIN UP BOTTLE ADDED TO INVENTORY' : 'NOT ENOUGH BREW TOKENS');
@@ -1196,8 +1261,16 @@ export function BrewTokenBank({
     void playStaminUpVoice();
   };
 
-  const handleUnlockSmartPro = async () => {
+  const handleUnlockSmartPro = async (confirmed = false) => {
     if (tokens < SMART_PRO_UNLOCK_PRICE || smartProUnlocked || resolving || shopBusy) return;
+    if (!confirmed) {
+      confirmExpensiveAction(
+        'UNLOCK SMARTPRO?',
+        `Spend ${SMART_PRO_UNLOCK_PRICE} Brew Tokens to unlock the flash-sale recipe?`,
+        () => { void handleUnlockSmartPro(true); },
+      );
+      return;
+    }
     setShopBusy(true);
     const unlocked = await onUnlockSmartPro();
     setShopMessage(unlocked ? `SMARTPRO RECIPE UNLOCKED · BOTTLES ARE ${SMART_PRO_BOTTLE_PRICE} TOKENS` : 'NOT ENOUGH BREW TOKENS');
@@ -1608,7 +1681,7 @@ export function BrewTokenBank({
             <View style={styles.shopToggleCopy}>
               <Feather name="briefcase" size={15} color={bankAccent} />
               <Text style={[styles.shopToggleText, { color: bankWhite, fontFamily: 'Inter_600SemiBold' }]}>
-                SHOP / INVENTORY
+                 BOTTLE LAB / INVENTORY
               </Text>
             </View>
             <View style={styles.shopToggleRight}>
@@ -1619,6 +1692,18 @@ export function BrewTokenBank({
 
           {shopOpen && (
             <View style={[styles.shopPanel, { backgroundColor: bankSteel, borderColor: smartProSaleActive ? '#315f3f' : colors.border }]}>
+               <View style={[styles.labHeader, { borderColor: bankAccentMuted, backgroundColor: bankSurface }]}>
+                 <View style={styles.labHeaderIcon}>
+                   <Feather name="activity" size={15} color={bankAccent} />
+                 </View>
+                 <View style={styles.labHeaderCopy}>
+                   <Text style={[styles.labHeaderTitle, { color: bankWhite, fontFamily: 'Inter_700Bold' }]}>BOTTLE LAB</Text>
+                   <Text style={[styles.labHeaderSubtitle, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                     RECIPE · ODDS · EFFECT · INVENTORY · REDEMPTION
+                   </Text>
+                 </View>
+                 <Text style={[styles.labHeaderBalance, { color: bankAccent, fontFamily: 'Inter_700Bold' }]}>{tokens} TOKENS</Text>
+               </View>
               <View style={styles.shopHeadingRow}>
                 <View>
                   <Text style={[styles.shopTitle, { color: bankWhite, fontFamily: 'Inter_700Bold' }]}>BANK ACCESS KEY</Text>
@@ -1677,6 +1762,10 @@ export function BrewTokenBank({
                      <Text style={[styles.shopDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                        Break one into the machine before a toss to raise your next win chance by 7 points, from 55% to 62%.
                      </Text>
+                      <View style={styles.bottleSpecRow}>
+                        <Text style={[styles.bottleSpec, { color: colors.buyColor, fontFamily: 'Inter_700Bold' }]}>62% WIN · +7 POINTS</Text>
+                        <Text style={[styles.bottleSpec, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>NEXT TOSS</Text>
+                      </View>
                    </View>
                     <Pressable
                       onPress={() => setBottlePreview('quickRevive')}
@@ -1698,6 +1787,10 @@ export function BrewTokenBank({
                        <Text style={[styles.shopDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                          A rare amber soda. Break one into the machine and a winning toss pays Dark Brew Tokens instead of normal Brew Token winnings.
                        </Text>
+                        <View style={styles.bottleSpecRow}>
+                          <Text style={[styles.bottleSpec, { color: '#f2ad55', fontFamily: 'Inter_700Bold' }]}>65% WIN · DARK BREW</Text>
+                          <Text style={[styles.bottleSpec, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>NEXT TOSS</Text>
+                        </View>
                      </View>
                       <Pressable
                         onPress={() => setBottlePreview('staminUp')}
@@ -1799,6 +1892,10 @@ export function BrewTokenBank({
                       <Text style={[styles.shopDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                         {DAIQUIRI_DESCRIPTION}
                       </Text>
+                       <View style={styles.bottleSpecRow}>
+                         <Text style={[styles.bottleSpec, { color: '#8edbff', fontFamily: 'Inter_700Bold' }]}>{DAIQUIRI_ODDS_LABEL}</Text>
+                         <Text style={[styles.bottleSpec, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>2× WIN AWARD</Text>
+                       </View>
                     </View>
                     <Pressable
                       onPress={() => setBottlePreview('daiquiri')}
@@ -1865,6 +1962,10 @@ export function BrewTokenBank({
                       <Text style={[styles.shopDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                         Redeem one to make every other bottle half price for {SMART_PRO_SALE_DURATION_MS / 1000} seconds. Recipe unlocks and the bank key stay full price.
                       </Text>
+                      <View style={styles.bottleSpecRow}>
+                        <Text style={[styles.bottleSpec, { color: '#b9ff45', fontFamily: 'Inter_700Bold' }]}>90 SEC · 50% SALE</Text>
+                        <Text style={[styles.bottleSpec, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>SHOP EFFECT</Text>
+                      </View>
                     </View>
                     <Pressable
                       onPress={() => setBottlePreview('smartPro')}
@@ -1922,6 +2023,45 @@ export function BrewTokenBank({
               )}
             </View>
           )}
+
+           <Pressable
+             onPress={() => setActivityOpen(value => !value)}
+             style={[styles.activityToggle, { borderColor: bankAccentMuted, backgroundColor: bankSteel }]}
+             accessibilityRole="button"
+             accessibilityLabel={activityOpen ? 'Close token activity history' : 'Open token activity history'}
+             accessibilityState={{ expanded: activityOpen }}
+           >
+             <View style={styles.shopToggleCopy}>
+               <Feather name="clock" size={15} color={bankAccent} />
+               <Text style={[styles.shopToggleText, { color: bankWhite, fontFamily: 'Inter_600SemiBold' }]}>TOKEN ACTIVITY</Text>
+             </View>
+             <View style={styles.shopToggleRight}>
+               <Text style={[styles.activityCount, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
+                 {activityLog.length ? `${Math.min(activityLog.length, 8)} RECENT` : 'NO EVENTS'}
+               </Text>
+               <Feather name={activityOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.mutedForeground} />
+             </View>
+           </Pressable>
+           {activityOpen && (
+             <View style={[styles.activityPanel, { backgroundColor: bankSteel, borderColor: colors.border }]}>
+               {activityLog.length === 0 ? (
+                 <Text style={[styles.activityEmpty, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                   Your token, bottle, and effect history will appear here.
+                 </Text>
+               ) : activityLog.slice(-8).reverse().map((entry) => (
+                 <View key={entry.id} style={[styles.activityRow, { borderBottomColor: colors.border }]}>
+                   <View style={[styles.activityDot, { backgroundColor: entry.kind === 'toss' ? colors.buyColor : bankAccent }]} />
+                   <View style={styles.activityCopy}>
+                     <Text style={[styles.activityLabel, { color: bankWhite, fontFamily: 'Inter_700Bold' }]}>{entry.label}</Text>
+                     <Text style={[styles.activityDetail, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>{entry.detail}</Text>
+                   </View>
+                   <Text style={[styles.activityTime, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
+                     {new Date(entry.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                   </Text>
+                 </View>
+               ))}
+             </View>
+           )}
 
           <View style={styles.betRow}>
             <View>
@@ -2619,9 +2759,17 @@ const styles = StyleSheet.create({
   shopToggleText: { fontSize: 10, letterSpacing: 0.8 },
   keyCount: { fontSize: 15 },
   shopPanel: { borderWidth: 1, borderRadius: 9, marginTop: 8, padding: 12 },
+  labHeader: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  labHeaderIcon: { width: 27, height: 27, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.08)' },
+  labHeaderCopy: { flex: 1, gap: 2 },
+  labHeaderTitle: { fontSize: 10, letterSpacing: 1 },
+  labHeaderSubtitle: { fontSize: 7, letterSpacing: 0.45 },
+  labHeaderBalance: { fontSize: 8, letterSpacing: 0.5 },
   shopHeadingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
   shopTitle: { fontSize: 11, letterSpacing: 0.8 },
   shopDescription: { fontSize: 10, lineHeight: 15, marginTop: 4, maxWidth: 270 },
+  bottleSpecRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 7 },
+  bottleSpec: { fontSize: 8, letterSpacing: 0.45 },
   bottleInspectButton: { alignItems: 'center', justifyContent: 'center', gap: 3, paddingHorizontal: 2 },
   inventoryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 13 },
   inventoryLabel: { fontSize: 9, letterSpacing: 0.9 },
@@ -2637,6 +2785,16 @@ const styles = StyleSheet.create({
   smartProNewPill: { borderRadius: 9, backgroundColor: '#b9ff45', paddingHorizontal: 6, paddingVertical: 2 },
   smartProNewPillText: { color: '#17361c', fontSize: 7, letterSpacing: 0.6 },
   shopMessage: { fontSize: 9, letterSpacing: 0.7, textAlign: 'center', marginTop: 10 },
+  activityToggle: { minHeight: 44, borderWidth: 1, borderRadius: 9, marginTop: 8, paddingHorizontal: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  activityCount: { fontSize: 8, letterSpacing: 0.6 },
+  activityPanel: { borderWidth: 1, borderRadius: 9, marginTop: 8, paddingHorizontal: 12, paddingVertical: 2 },
+  activityEmpty: { fontSize: 10, lineHeight: 15, paddingVertical: 12 },
+  activityRow: { minHeight: 48, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  activityDot: { width: 6, height: 6, borderRadius: 3 },
+  activityCopy: { flex: 1, gap: 2 },
+  activityLabel: { fontSize: 8, letterSpacing: 0.45 },
+  activityDetail: { fontSize: 9 },
+  activityTime: { fontSize: 8 },
   sectionLabel: { fontSize: 9, letterSpacing: 1 },
   betValue: { fontSize: 18, marginTop: 3 },
   stepper: { flexDirection: 'row', gap: 7 },

@@ -1,5 +1,6 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
+  AccessibilityInfo,
   Animated,
   Platform,
   StyleSheet,
@@ -79,12 +80,19 @@ export function AmericanAnalyzeButton({
 }: AmericanAnalyzeButtonProps) {
   const pulse = useRef(new Animated.Value(0)).current;
   const nativeDriver = Platform.OS !== 'web';
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  useEffect(() => {
+    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {});
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     pulse.stopAnimation();
     pulse.setValue(0);
 
-    if (!active && !neonActive) return;
+    if (reduceMotion || (!active && !neonActive)) return;
 
     const animation = Animated.loop(
       Animated.sequence([
@@ -104,7 +112,7 @@ export function AmericanAnalyzeButton({
 
     animation.start();
     return () => animation.stop();
-  }, [active, nativeDriver, neonActive, pulse]);
+  }, [active, nativeDriver, neonActive, pulse, reduceMotion]);
 
   const flagOpacity = pulse.interpolate({
     inputRange: [0, 1],

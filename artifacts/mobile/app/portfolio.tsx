@@ -1453,6 +1453,7 @@ function GradeHistoryModal({
     smartProBottles,
     smartProSaleExpiresAt,
     darkBrewTokens,
+    activityLog,
     buyBankKey,
     activateBankKey,
     unlockQuickRevive,
@@ -1629,6 +1630,7 @@ function GradeHistoryModal({
                 smartProBottles={smartProBottles}
                 smartProSaleExpiresAt={smartProSaleExpiresAt}
                 darkBrewTokens={darkBrewTokens}
+                activityLog={activityLog}
                 onClose={() => setBrewBankVisible(false)}
                 onResolveBet={resolveBet}
                 onSoundEnabledChange={setSoundEnabled}

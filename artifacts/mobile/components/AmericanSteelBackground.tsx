@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from 'react';
-import { Animated, Platform, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { AccessibilityInfo, Animated, Platform, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '@/hooks/useColors';
 import { useAmericanMode } from '@/contexts/AmericanModeContext';
@@ -19,14 +19,21 @@ export function AmericanSteelBackground({ children, style }: Props) {
   const colors = useColors();
   const { isActive, neonGucciActive } = useAmericanMode();
   const neonOpacity = useRef(new Animated.Value(neonGucciActive ? 1 : 0)).current;
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  useEffect(() => {
+    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {});
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     Animated.timing(neonOpacity, {
       toValue: neonGucciActive ? 1 : 0,
-      duration: 1700,
+      duration: reduceMotion ? 0 : 1700,
       useNativeDriver: Platform.OS !== 'web',
     }).start();
-  }, [neonGucciActive, neonOpacity]);
+  }, [neonGucciActive, neonOpacity, reduceMotion]);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }, style]}>
@@ -96,7 +103,7 @@ export function AmericanSteelBackground({ children, style }: Props) {
           style={StyleSheet.absoluteFill}
         />
       </Animated.View>
-      <View style={styles.content}>{children}</View>
+      <View style={[styles.content, neonGucciActive && styles.neonContentContrast]}>{children}</View>
     </View>
   );
 }
@@ -104,6 +111,7 @@ export function AmericanSteelBackground({ children, style }: Props) {
 const styles = StyleSheet.create({
   root: { flex: 1, overflow: 'hidden' },
   content: { flex: 1 },
+  neonContentContrast: { backgroundColor: 'rgba(16,14,18,0.09)' },
   grain: { ...StyleSheet.absoluteFillObject, transform: [{ rotate: '-8deg' }, { scale: 1.2 }] },
   brush: { position: 'absolute', left: -40, right: -40, height: 1 },
   monogramField: {

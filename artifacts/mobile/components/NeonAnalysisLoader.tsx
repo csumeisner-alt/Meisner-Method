@@ -1,15 +1,29 @@
-import React, { useEffect, useRef } from 'react';
-import { Animated, Easing, Platform, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { AccessibilityInfo, Animated, Easing, Platform, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { NEON_GUCCI_DECOR } from '@/constants/colors';
 
-export function NeonAnalysisLoader({ symbol }: { symbol: string }) {
+export function NeonAnalysisLoader({ symbol, stage = 'Reading the tape' }: { symbol: string; stage?: string }) {
   const nativeDriver = Platform.OS !== 'web';
+  const [reduceMotion, setReduceMotion] = useState(false);
 
   const spin = useRef(new Animated.Value(0)).current;
   const pulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {});
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    if (reduceMotion) {
+      spin.stopAnimation();
+      pulse.stopAnimation();
+      spin.setValue(0);
+      pulse.setValue(0.35);
+      return;
+    }
     const spinAnimation = Animated.loop(
       Animated.timing(spin, {
         toValue: 1,
@@ -30,7 +44,7 @@ export function NeonAnalysisLoader({ symbol }: { symbol: string }) {
       spinAnimation.stop();
       pulseAnimation.stop();
     };
-  }, [nativeDriver, pulse, spin]);
+  }, [nativeDriver, pulse, reduceMotion, spin]);
 
   return (
     <View style={styles.stage} accessibilityLabel={`Analyzing ${symbol}`}>
@@ -68,6 +82,7 @@ export function NeonAnalysisLoader({ symbol }: { symbol: string }) {
         <View style={[styles.stripePart, { backgroundColor: NEON_GUCCI_DECOR.red }]} />
         <View style={[styles.stripePart, { backgroundColor: NEON_GUCCI_DECOR.green }]} />
       </View>
+      <Text style={styles.stageLabel}>{stage.toUpperCase()}</Text>
     </View>
   );
 }
@@ -125,4 +140,5 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   stripePart: { flex: 1 },
+  stageLabel: { position: 'absolute', bottom: -22, color: NEON_GUCCI_DECOR.mint, fontSize: 9, letterSpacing: 1, fontWeight: '700' },
 });

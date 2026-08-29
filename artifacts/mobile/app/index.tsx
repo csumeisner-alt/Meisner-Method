@@ -404,6 +404,12 @@ export default function HomeScreen() {
               <Text style={[styles.tagline, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                 AI-powered market intelligence
               </Text>
+              {neonGucciActive && (
+                <View style={styles.neonThemeBadge}>
+                  <View style={styles.neonThemeDot} />
+                  <Text style={styles.neonThemeBadgeText}>HYBRID NEON GUCCI · ACTIVE</Text>
+                </View>
+              )}
             </View>
             <Feather name="info" size={13} color={colors.mutedForeground} style={{ marginLeft: 'auto', marginRight: 8 }} />
           </TouchableOpacity>
@@ -689,6 +695,9 @@ const styles = StyleSheet.create({
   brandText: { flex: 1 },
   brandName: { fontSize: 21, lineHeight: 26 },
   tagline: { fontSize: 12, marginTop: 1 },
+  neonThemeBadge: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, backgroundColor: 'rgba(85,236,255,0.12)', borderWidth: 1, borderColor: '#55ecff' },
+  neonThemeDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#55ecff' },
+  neonThemeBadgeText: { color: '#b9ffcf', fontSize: 7, fontWeight: '800', letterSpacing: 0.55 },
   searchSection: { paddingHorizontal: 20, paddingBottom: 16, gap: 10 },
   searchRow: {
     flexDirection: 'row',

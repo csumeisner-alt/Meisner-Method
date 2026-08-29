@@ -232,6 +232,13 @@ const analystStyles = StyleSheet.create({
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
+const ANALYSIS_LOADING_STAGES = [
+  'Reading the tape',
+  'Checking momentum',
+  'Comparing the sector',
+  'Building the lesson',
+] as const;
+
 export default function AnalysisScreen() {
   const { symbol } = useLocalSearchParams<{ symbol: string }>();
   const router = useRouter();
@@ -274,7 +281,19 @@ export default function AnalysisScreen() {
   const [compSymbol, setCompSymbol]           = useState('');       // committed symbol
   const [compCandles, setCompCandles]         = useState<Candle[]>([]);
   const [compLoading, setCompLoading]         = useState(false);
+  const [loadingStageIndex, setLoadingStageIndex] = useState(0);
   const tickerGlow = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!isPending) {
+      setLoadingStageIndex(0);
+      return;
+    }
+    const timer = setInterval(() => {
+      setLoadingStageIndex((current) => (current + 1) % ANALYSIS_LOADING_STAGES.length);
+    }, 2_200);
+    return () => clearInterval(timer);
+  }, [isPending]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -399,6 +418,11 @@ export default function AnalysisScreen() {
                 {analysis.companyName}
               </Text>
             )}
+            {neonGucciActive && (
+              <View style={headerStyles.neonBadge}>
+                <Text style={headerStyles.neonBadgeText}>HYBRID NEON GUCCI · ACTIVE</Text>
+              </View>
+            )}
           </View>
           {/* Local guest watchlist toggle */}
           {
@@ -440,13 +464,13 @@ export default function AnalysisScreen() {
         {renderHeader()}
         <View style={styles.centered}>
           {neonGucciActive
-            ? <NeonAnalysisLoader symbol={symbol ?? ''} />
+            ? <NeonAnalysisLoader symbol={symbol ?? ''} stage={ANALYSIS_LOADING_STAGES[loadingStageIndex]} />
             : <ActivityIndicator size="large" color={colors.primary} />}
           <Text style={[styles.loadingTitle, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
-            Analyzing {symbol}...
+            {ANALYSIS_LOADING_STAGES[loadingStageIndex]} · {symbol}
           </Text>
           <Text style={[styles.loadingSubtitle, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-            Fetching market data & running AI models
+            Fetching market data, validating the quote, and shaping a focused lesson
           </Text>
         </View>
         </View>
@@ -953,6 +977,8 @@ const headerStyles = StyleSheet.create({
   },
   symbol: { fontSize: 20 },
   company: { fontSize: 12 },
+  neonBadge: { alignSelf: 'flex-start', marginTop: 4, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 7, backgroundColor: 'rgba(85,236,255,0.13)', borderWidth: 1, borderColor: '#55ecff' },
+  neonBadgeText: { color: '#b9ffcf', fontSize: 7, fontWeight: '800', letterSpacing: 0.45 },
   starBtn: { padding: 6 },
   priceArea: { alignItems: 'flex-end' },
   price: { fontSize: 18 },

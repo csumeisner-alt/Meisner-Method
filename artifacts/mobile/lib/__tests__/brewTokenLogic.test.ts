@@ -410,6 +410,13 @@ test('economy snapshots round-trip all balances and claimed quote sessions', () 
     darkBrewTokens: 6,
     neonGucciActive: true,
     claimedQuoteViewIds: ['tape-1', 'tape-2', 'tape-1'],
+    activityLog: [{
+      id: 'event-1',
+      kind: 'redeem',
+      label: 'SMARTPRO SALE ACTIVE',
+      detail: '90-second eligible bottle discount',
+      createdAt: 1_800_000_000_000,
+    }],
   });
 
   const serialized = serializeBrewEconomySnapshot(snapshot);
@@ -449,6 +456,7 @@ test('legacy economy fields migrate into one snapshot without losing item state'
   assert.equal(snapshot.smartProSaleExpiresAt, 1_800_000_090_000);
   assert.equal(snapshot.neonGucciActive, false);
   assert.deepEqual(snapshot.claimedQuoteViewIds, []);
+  assert.deepEqual(snapshot.activityLog, []);
 });
 
 test('invalid economy snapshots are rejected instead of replacing legacy data', () => {
