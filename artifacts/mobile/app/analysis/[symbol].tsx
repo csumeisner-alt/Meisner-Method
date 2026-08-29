@@ -27,6 +27,7 @@ import type { StockAnalysis } from '@workspace/api-client-react';
 import { ComparisonChart } from '@/components/ComparisonChart';
 import type { Candle } from '@/components/StockChart';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
+import { NeonAnalysisLoader } from '@/components/NeonAnalysisLoader';
 import { PriceAlertModal } from '@/components/PriceAlertModal';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
@@ -236,7 +237,7 @@ export default function AnalysisScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const colors = useColors();
-  const { isActive } = useAmericanMode();
+  const { isActive, neonGucciActive } = useAmericanMode();
   const { width: screenWidth } = useWindowDimensions();
   const { apiFetch } = useApi();
   const { mutate, data, isPending, error } = useAnalyzeStock<Error>();
@@ -438,7 +439,9 @@ export default function AnalysisScreen() {
         <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
         {renderHeader()}
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          {neonGucciActive
+            ? <NeonAnalysisLoader symbol={symbol ?? ''} />
+            : <ActivityIndicator size="large" color={colors.primary} />}
           <Text style={[styles.loadingTitle, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
             Analyzing {symbol}...
           </Text>

@@ -27,3 +27,4 @@
 - [Daiquiri visual direction](daiquiri-visual-direction.md) — use a cinematic navy-and-gold collectible bottle with carbonation, label flare, liquid surge, and controlled splash.
 - [Mockup sandbox React types](mockup-sandbox-react-types.md) — keep sandbox React type packages aligned with runtime React 19.1 to avoid nominal ref incompatibilities.
 - [Brew token snapshot persistence](brew-token-snapshot-persistence.md) — persist the complete economy and quote claims together; verify uncertain writes by reading back the snapshot.
+- [Third-theme unlock](third-theme-unlock.md) — reveal Hybrid Neon Gucci after first Dark Brew Token; unlock at 10,000; persist it with the economy and keep themes exclusive.

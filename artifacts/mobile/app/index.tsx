@@ -161,7 +161,7 @@ export default function HomeScreen() {
   const [alertModalPrice, setAlertModalPrice] = useState<number | undefined>(undefined);
 
   // Patriot Mode — fact counter, unlock state, and celebration trigger
-  const { isActive, justUnlocked, incrementFact, clearJustUnlocked } = useAmericanMode();
+  const { isActive, neonGucciActive, justUnlocked, incrementFact, clearJustUnlocked } = useAmericanMode();
   const [showCelebration, setShowCelebration] = useState(false);
 
   useEffect(() => {
@@ -443,6 +443,7 @@ export default function HomeScreen() {
         </View>
         <AmericanAnalyzeButton
           active={isActive}
+          neonActive={neonGucciActive}
           disabled={!query.trim()}
           hasQuery={Boolean(query.trim())}
           colors={colors}

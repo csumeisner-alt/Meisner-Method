@@ -408,6 +408,7 @@ test('economy snapshots round-trip all balances and claimed quote sessions', () 
     smartProBottles: 2,
     smartProSaleExpiresAt: 1_800_000_090_000,
     darkBrewTokens: 6,
+    neonGucciActive: true,
     claimedQuoteViewIds: ['tape-1', 'tape-2', 'tape-1'],
   });
 
@@ -446,6 +447,7 @@ test('legacy economy fields migrate into one snapshot without losing item state'
   assert.equal(snapshot.quickReviveBottles, 3);
   assert.equal(snapshot.quickReviveArmed, true);
   assert.equal(snapshot.smartProSaleExpiresAt, 1_800_000_090_000);
+  assert.equal(snapshot.neonGucciActive, false);
   assert.deepEqual(snapshot.claimedQuoteViewIds, []);
 });
 

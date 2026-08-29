@@ -1,8 +1,9 @@
-import React from 'react';
-import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Animated, Platform, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '@/hooks/useColors';
 import { useAmericanMode } from '@/contexts/AmericanModeContext';
+import { NEON_GUCCI_DECOR } from '@/constants/colors';
 
 interface Props {
   children: React.ReactNode;
@@ -16,11 +17,20 @@ interface Props {
  */
 export function AmericanSteelBackground({ children, style }: Props) {
   const colors = useColors();
-  const { isActive } = useAmericanMode();
+  const { isActive, neonGucciActive } = useAmericanMode();
+  const neonOpacity = useRef(new Animated.Value(neonGucciActive ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.timing(neonOpacity, {
+      toValue: neonGucciActive ? 1 : 0,
+      duration: 1700,
+      useNativeDriver: Platform.OS !== 'web',
+    }).start();
+  }, [neonGucciActive, neonOpacity]);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }, style]}>
-      {isActive && (
+      {isActive && !neonGucciActive && (
         <>
           <LinearGradient
             colors={[colors.steelShadow, colors.background, colors.steelHighlight, colors.background, colors.steelShadow]}
@@ -47,6 +57,45 @@ export function AmericanSteelBackground({ children, style }: Props) {
           </View>
         </>
       )}
+      <Animated.View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFillObject, { opacity: neonOpacity }]}
+      >
+        <LinearGradient
+          colors={['#3d2d25', '#211817', '#100e12']}
+          locations={[0, 0.58, 1]}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.monogramField}>
+          {Array.from({ length: 56 }, (_, index) => (
+            <Text
+              key={index}
+              style={[
+                styles.monogram,
+                {
+                  color: index % 4 === 0 ? NEON_GUCCI_DECOR.gold : NEON_GUCCI_DECOR.beige,
+                  transform: [{ rotate: index % 2 === 0 ? '-18deg' : '18deg' }],
+                },
+              ]}
+            >
+              GG
+            </Text>
+          ))}
+        </View>
+        <View style={styles.headerStripe}>
+          <View style={[styles.stripeEdge, { backgroundColor: NEON_GUCCI_DECOR.gold }]} />
+          <View style={[styles.stripeWide, { backgroundColor: NEON_GUCCI_DECOR.green }]} />
+          <View style={[styles.stripeNarrow, { backgroundColor: NEON_GUCCI_DECOR.red }]} />
+          <View style={[styles.stripeWide, { backgroundColor: NEON_GUCCI_DECOR.green }]} />
+          <View style={[styles.stripeEdge, { backgroundColor: NEON_GUCCI_DECOR.gold }]} />
+        </View>
+        <LinearGradient
+          colors={['rgba(85,236,255,0.16)', 'transparent', 'rgba(239,200,110,0.12)']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
       <View style={styles.content}>{children}</View>
     </View>
   );
@@ -57,4 +106,28 @@ const styles = StyleSheet.create({
   content: { flex: 1 },
   grain: { ...StyleSheet.absoluteFillObject, transform: [{ rotate: '-8deg' }, { scale: 1.2 }] },
   brush: { position: 'absolute', left: -40, right: -40, height: 1 },
+  monogramField: {
+    ...StyleSheet.absoluteFillObject,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignContent: 'space-around',
+    justifyContent: 'space-around',
+    paddingHorizontal: 4,
+    opacity: 0.16,
+  },
+  monogram: { width: '14%', fontSize: 13, fontWeight: '900', letterSpacing: -2 },
+  headerStripe: {
+    position: 'absolute',
+    top: 58,
+    left: 0,
+    right: 0,
+    height: 10,
+    flexDirection: 'row',
+    shadowColor: NEON_GUCCI_DECOR.cyan,
+    shadowOpacity: 0.45,
+    shadowRadius: 9,
+  },
+  stripeEdge: { flex: 0.08 },
+  stripeWide: { flex: 1 },
+  stripeNarrow: { flex: 0.58 },
 });

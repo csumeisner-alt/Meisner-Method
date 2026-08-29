@@ -27,6 +27,7 @@ export type BrewEconomySnapshot = {
   smartProBottles: number;
   smartProSaleExpiresAt: number | null;
   darkBrewTokens: number;
+  neonGucciActive: boolean;
   claimedQuoteViewIds: string[];
 };
 
@@ -56,7 +57,9 @@ export type BrewEconomySnapshotStorage = {
   getItem: (key: string) => Promise<string | null>;
 };
 
-type BrewEconomySnapshotInput = Omit<BrewEconomySnapshot, 'version'>;
+type BrewEconomySnapshotInput = Omit<BrewEconomySnapshot, 'version' | 'neonGucciActive'> & {
+  neonGucciActive?: boolean;
+};
 
 function normalizeNonNegative(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
@@ -100,6 +103,7 @@ export function createBrewEconomySnapshot(input: BrewEconomySnapshotInput): Brew
     smartProBottles: smartProUnlocked ? normalizeNonNegative(input.smartProBottles) : 0,
     smartProSaleExpiresAt: normalizeExpiry(input.smartProSaleExpiresAt),
     darkBrewTokens: normalizeNonNegative(input.darkBrewTokens),
+    neonGucciActive: input.neonGucciActive === true,
     claimedQuoteViewIds: normalizeClaims(input.claimedQuoteViewIds),
   };
 }
@@ -162,6 +166,7 @@ export function parseBrewEconomySnapshot(raw: string | null | undefined): BrewEc
       smartProBottles: parsed.smartProBottles as number,
       smartProSaleExpiresAt: parsed.smartProSaleExpiresAt as number | null,
       darkBrewTokens: parsed.darkBrewTokens as number,
+      neonGucciActive: parsed.neonGucciActive === true,
       claimedQuoteViewIds: normalizeClaims(parsed.claimedQuoteViewIds),
     });
   } catch {
@@ -221,6 +226,7 @@ export function migrateLegacyBrewEconomy(raw: LegacyBrewEconomyStorage): BrewEco
     smartProBottles: parseStoredNonNegative(raw.rawSmartProBottles),
     smartProSaleExpiresAt: parsedSmartProExpires,
     darkBrewTokens: parseStoredNonNegative(raw.rawDarkBrewTokens),
+    neonGucciActive: false,
     claimedQuoteViewIds: [],
   });
 }

@@ -35,7 +35,6 @@ import { GRADE_ORDER, GradeHistoryChart, type GradeHistoryPoint } from '@/compon
 import { TrainingTapeModal } from '@/components/TrainingTapeModal';
 import { BrewTokenBank } from '@/components/BrewTokenBank';
 import { BrewTokenUnlockCelebration } from '@/components/BrewTokenUnlockCelebration';
-import { useBrewTokens } from '@/hooks/useBrewTokens';
 import {
   availableToSell,
   computeDividendTotal,
@@ -1469,7 +1468,7 @@ function GradeHistoryModal({
     buySmartProBottle,
     redeemSmartProBottle,
     clearJustUnlocked,
-  } = useBrewTokens();
+  } = useAmericanMode().brew;
   const isWeekend = [0, 6].includes(new Date().getDay());
   const hasActiveBankAccess = hasBrewBankAccess(bankAccessExpiresAt, countdownNow);
   const bankAccessRemaining = formatBrewBankAccessRemaining(bankAccessExpiresAt, countdownNow);
