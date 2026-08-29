@@ -27,6 +27,7 @@ import { useAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import Svg, { Circle, Ellipse, Path, Polygon, Rect } from 'react-native-svg';
 import { Confetti } from '@/components/Confetti';
 import { AMERICAN_MODE_THRESHOLD } from '@/lib/factCountLogic';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
@@ -225,10 +226,16 @@ const JETS: JetConfig[] = [
   { x: 0.80, delay: 1150, duration: 1200, size: 80,  tilt:  7  },
 ];
 
-function AnimatedJet({ cfg }: { cfg: JetConfig }) {
+function AnimatedJet({ cfg, reducedMotion }: { cfg: JetConfig; reducedMotion: boolean }) {
   const translateY = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    if (reducedMotion) {
+      translateY.stopAnimation();
+      translateY.setValue(1);
+      return;
+    }
+    translateY.setValue(0);
     const animation = Animated.timing(translateY, {
       toValue: 1,
       duration: cfg.duration,
@@ -238,7 +245,7 @@ function AnimatedJet({ cfg }: { cfg: JetConfig }) {
     });
     animation.start();
     return () => animation.stop();
-  }, [cfg.delay, cfg.duration, translateY]);
+  }, [cfg.delay, cfg.duration, reducedMotion, translateY]);
 
   const ty = translateY.interpolate({
     inputRange: [0, 1],
@@ -279,6 +286,7 @@ export function AmericanCelebration({ visible, onDismiss }: Props) {
   const autoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hapticTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const soundTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const reduceMotion = useReduceMotion();
 
   // Audio players — always initialised so hooks are unconditional.
   // playsInSilentMode:false (set below) makes iOS respect the mute switch.
@@ -340,7 +348,8 @@ export function AmericanCelebration({ visible, onDismiss }: Props) {
   useEffect(() => {
     if (!visible) return;
 
-    heroAnim.setValue(0);
+    heroAnim.setValue(reduceMotion ? 1 : 0);
+    if (reduceMotion) return;
     const heroAnimation = Animated.spring(heroAnim, {
       toValue: 1,
       tension: 60,
@@ -349,22 +358,29 @@ export function AmericanCelebration({ visible, onDismiss }: Props) {
     });
     heroAnimation.start();
 
+    return () => {
+      heroAnimation.stop();
+    };
+  }, [visible, reduceMotion, heroAnim]);
+
+  useEffect(() => {
+    if (!visible) return;
+
     fireHaptics();
     playSounds();
-
     autoTimer.current = setTimeout(onDismiss, 5000);
 
     return () => {
-      heroAnimation.stop();
       if (autoTimer.current) clearTimeout(autoTimer.current);
       hapticTimers.current.forEach(clearTimeout);
+      hapticTimers.current = [];
       soundTimers.current.forEach(clearTimeout);
       soundTimers.current = [];
       // Pause players on cleanup so audio doesn't bleed into the next screen
       try { eaglePlayer.pause(); } catch { /* ignore */ }
       try { gunfirePlayer.pause(); } catch { /* ignore */ }
     };
-  }, [visible, fireHaptics, playSounds, onDismiss, heroAnim, eaglePlayer, gunfirePlayer]);
+  }, [visible, fireHaptics, playSounds, onDismiss, eaglePlayer, gunfirePlayer]);
 
   if (!visible) return null;
 
@@ -403,11 +419,18 @@ export function AmericanCelebration({ visible, onDismiss }: Props) {
 
         {/* F-35 jets — each independently animated */}
         {JETS.map((cfg, i) => (
-          <AnimatedJet key={i} cfg={cfg} />
+          <AnimatedJet key={i} cfg={cfg} reducedMotion={reduceMotion} />
         ))}
 
         {/* Confetti in red/white/blue */}
-        <Confetti width={SW} height={SH} count={120} duration={3200} colors={RWB_CONFETTI} />
+        <Confetti
+          width={SW}
+          height={SH}
+          count={120}
+          duration={3200}
+          colors={RWB_CONFETTI}
+          reducedMotion={reduceMotion}
+        />
 
         {/* Hero card */}
         <Animated.View

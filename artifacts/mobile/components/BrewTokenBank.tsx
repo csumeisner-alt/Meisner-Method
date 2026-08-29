@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  AccessibilityInfo,
   AppState,
   Modal,
   Pressable,
@@ -29,6 +28,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 import Svg, {
   Circle,
   ClipPath,
@@ -561,7 +561,7 @@ export function BrewTokenBank({
   const [staminUpBurstVisible, setStaminUpBurstVisible] = useState(false);
   const [smartProBurstVisible, setSmartProBurstVisible] = useState(false);
   const [bottleBurstLocation, setBottleBurstLocation] = useState<BottleBurstLocation | null>(null);
-  const [reduceMotion, setReduceMotion] = useState(false);
+  const reduceMotion = useReduceMotion();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const balanceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const machineStatusTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -657,10 +657,20 @@ export function BrewTokenBank({
     staminUpBurstTimerRef.current = null;
     smartProBurstTimerRef.current = null;
 
+    [
+      quickReviveProgress,
+      daiquiriProgress,
+      staminUpProgress,
+      smartProProgress,
+    ].forEach(position => cancelAnimation(position));
     setQuickReviveBurstVisible(false);
     setDaiquiriBurstVisible(false);
     setStaminUpBurstVisible(false);
     setSmartProBurstVisible(false);
+    if (reduceMotion) {
+      setBottleBurstLocation(null);
+      return;
+    }
     setBottleBurstLocation(location);
 
     if (kind === 'quickRevive') {
@@ -783,12 +793,6 @@ export function BrewTokenBank({
     stopQuickReviveVoice();
     stopStaminUpVoice();
     stopDaiquiriVoice();
-  }, []);
-
-  useEffect(() => {
-    void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {});
-    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
-    return () => subscription.remove();
   }, []);
 
   useEffect(() => {
@@ -1377,13 +1381,27 @@ export function BrewTokenBank({
   };
 
   const handleClose = () => {
-    if (protectedVoicePlaying) return;
+    if (protectedVoicePlaying || resolving) return;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = null;
+    reelStopTimersRef.current.forEach(timer => clearTimeout(timer));
+    reelStopTimersRef.current = [];
+    [reelOnePosition, reelTwoPosition, reelThreePosition].forEach(position => cancelAnimation(position));
+    [coinProgress, vaultPulse, resultProgress].forEach(position => cancelAnimation(position));
     stopPreviewBottleBurst();
     setBottlePreview(null);
+    setQuickReviveBurstVisible(false);
+    setDaiquiriBurstVisible(false);
+    setStaminUpBurstVisible(false);
+    setSmartProBurstVisible(false);
+    setBottleBurstLocation(null);
     stopMachineStatus();
     stopLossVoice(true);
     stopMachineSound();
     stopDaiquiriVoice();
+    stopWinSound();
+    stopQuickReviveVoice();
+    stopStaminUpVoice();
     onClose();
   };
 
@@ -1404,46 +1422,59 @@ export function BrewTokenBank({
     reelStopTimersRef.current.forEach(timer => clearTimeout(timer));
     reelStopTimersRef.current = [];
     const reelPositions = [reelOnePosition, reelTwoPosition, reelThreePosition];
-    reelPositions.forEach(position => {
-      cancelAnimation(position);
-      position.value = withRepeat(
-        withSequence(
-          withTiming(-SLOT_REEL_HEIGHT * (SLOT_SYMBOLS.length - 1), { duration: 560, easing: Easing.linear }),
-          withTiming(0, { duration: 1 }),
-        ),
-        -1,
-        false,
-      );
-    });
     const finalIndexes = won ? [0, 0, 0] : [1, 3, 4];
-    [1_700, 2_900, 4_600].forEach((delay, index) => {
-      reelStopTimersRef.current.push(setTimeout(() => {
-        cancelAnimation(reelPositions[index]!);
-        reelPositions[index]!.value = withTiming(-finalIndexes[index]! * SLOT_REEL_HEIGHT, {
-          duration: 180,
-          easing: Easing.out(Easing.cubic),
-        });
-      }, delay));
-    });
+    if (reduceMotion) {
+      reelPositions.forEach((position, index) => {
+        position.value = -finalIndexes[index]! * SLOT_REEL_HEIGHT;
+      });
+    } else {
+      reelPositions.forEach(position => {
+        cancelAnimation(position);
+        position.value = withRepeat(
+          withSequence(
+            withTiming(-SLOT_REEL_HEIGHT * (SLOT_SYMBOLS.length - 1), { duration: 560, easing: Easing.linear }),
+            withTiming(0, { duration: 1 }),
+          ),
+          -1,
+          false,
+        );
+      });
+      [1_700, 2_900, 4_600].forEach((delay, index) => {
+        reelStopTimersRef.current.push(setTimeout(() => {
+          cancelAnimation(reelPositions[index]!);
+          reelPositions[index]!.value = withTiming(-finalIndexes[index]! * SLOT_REEL_HEIGHT, {
+            duration: 180,
+            easing: Easing.out(Easing.cubic),
+          });
+        }, delay));
+      });
+    }
     setMachineStatusIndex(0);
     stopMachineStatus();
-    machineStatusTimerRef.current = setInterval(() => {
-      setMachineStatusIndex(index => (index + 1) % MACHINE_STATUS_LINES.length);
-    }, 260);
+    if (!reduceMotion) {
+      machineStatusTimerRef.current = setInterval(() => {
+        setMachineStatusIndex(index => (index + 1) % MACHINE_STATUS_LINES.length);
+      }, 260);
+    }
     resultProgress.value = 0;
     if (hapticsEnabled) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     }
     void playMachineStartSound();
-    coinProgress.value = withSequence(
-      withTiming(0.45, { duration: 220, easing: Easing.out(Easing.cubic) }),
-      withTiming(0.8, { duration: 210, easing: Easing.inOut(Easing.cubic) }),
-      withTiming(1, { duration: 250, easing: Easing.out(Easing.cubic) }),
-    );
-    vaultPulse.value = withSequence(
-      withTiming(0.5, { duration: 200, easing: Easing.out(Easing.cubic) }),
-      withTiming(1, { duration: 250, easing: Easing.inOut(Easing.cubic) }),
-    );
+    if (reduceMotion) {
+      coinProgress.value = 1;
+      vaultPulse.value = 0;
+    } else {
+      coinProgress.value = withSequence(
+        withTiming(0.45, { duration: 220, easing: Easing.out(Easing.cubic) }),
+        withTiming(0.8, { duration: 210, easing: Easing.inOut(Easing.cubic) }),
+        withTiming(1, { duration: 250, easing: Easing.out(Easing.cubic) }),
+      );
+      vaultPulse.value = withSequence(
+        withTiming(0.5, { duration: 200, easing: Easing.out(Easing.cubic) }),
+        withTiming(1, { duration: 250, easing: Easing.inOut(Easing.cubic) }),
+      );
+    }
     timerRef.current = setTimeout(() => {
       void onResolveBet(bet, won, effect).finally(() => {
         stopMachineStatus();
@@ -1455,11 +1486,16 @@ export function BrewTokenBank({
         }
         setResult({ won, bet, quickRevive, daiquiri, staminUp, award: won ? bet * payoutMultiplier : bet });
         setResolving(false);
-        resultProgress.value = withSpring(1, { damping: 13, stiffness: 180 });
-        vaultPulse.value = withSequence(
-          withTiming(1, { duration: 120, easing: Easing.out(Easing.cubic) }),
-          withTiming(0, { duration: 520, easing: Easing.out(Easing.cubic) }),
-        );
+        if (reduceMotion) {
+          resultProgress.value = 1;
+          vaultPulse.value = 0;
+        } else {
+          resultProgress.value = withSpring(1, { damping: 13, stiffness: 180 });
+          vaultPulse.value = withSequence(
+            withTiming(1, { duration: 120, easing: Easing.out(Easing.cubic) }),
+            withTiming(0, { duration: 520, easing: Easing.out(Easing.cubic) }),
+          );
+        }
         if (!won) void playLossVoice();
       });
     }, BREW_BET_RESOLUTION_MS);
@@ -1510,7 +1546,7 @@ export function BrewTokenBank({
             </View>
             <Pressable
               onPress={handleClose}
-              disabled={protectedVoicePlaying}
+              disabled={protectedVoicePlaying || resolving}
               hitSlop={10}
               accessibilityRole="button"
               accessibilityLabel={protectedVoicePlaying ? 'Voice message is playing' : 'Close Central Bank'}

@@ -23,11 +23,19 @@ interface ConfettiProps {
   height: number;
   count?: number;
   duration?: number;
+  reducedMotion?: boolean;
   /** Override confetti colors. Defaults to the purple/pink/yellow palette. */
   colors?: string[];
 }
 
-export function Confetti({ width, height, count = 90, duration = 2600, colors = DEFAULT_COLORS }: ConfettiProps) {
+export function Confetti({
+  width,
+  height,
+  count = 90,
+  duration = 2600,
+  reducedMotion = false,
+  colors = DEFAULT_COLORS,
+}: ConfettiProps) {
   const pieces = useMemo<Piece[]>(
     () =>
       Array.from({ length: count }).map((_, i) => ({
@@ -40,8 +48,10 @@ export function Confetti({ width, height, count = 90, duration = 2600, colors = 
         rotations: 2 + Math.random() * 4,
         duration: duration * (0.7 + Math.random() * 0.5),
       })),
-    [count, width, duration],
+    [colors, count, duration, width],
   );
+
+  if (reducedMotion) return null;
 
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>

@@ -1,20 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Easing, Platform, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Platform, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { NEON_GUCCI_DECOR } from '@/constants/colors';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 
 export function NeonAnalysisLoader({ symbol, stage = 'Reading the tape' }: { symbol: string; stage?: string }) {
   const nativeDriver = Platform.OS !== 'web';
-  const [reduceMotion, setReduceMotion] = useState(false);
+  const reduceMotion = useReduceMotion();
 
   const spin = useRef(new Animated.Value(0)).current;
   const pulse = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {});
-    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
-    return () => subscription.remove();
-  }, []);
 
   useEffect(() => {
     if (reduceMotion) {
