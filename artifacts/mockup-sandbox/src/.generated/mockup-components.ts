@@ -4,5 +4,6 @@ export const modules: ModuleMap = {
   "./components/mockups/daiquiri-redesign/Current.tsx": () => import("../components/mockups/daiquiri-redesign/Current.tsx"),
   "./components/mockups/daiquiri-redesign/DaiquiriGlowSurge.tsx": () => import("../components/mockups/daiquiri-redesign/DaiquiriGlowSurge.tsx"),
   "./components/mockups/quick-revive-redesign/QuickReviveGlowSurge.tsx": () => import("../components/mockups/quick-revive-redesign/QuickReviveGlowSurge.tsx"),
+  "./components/mockups/smart-pro-bottle/Current.tsx": () => import("../components/mockups/smart-pro-bottle/Current.tsx"),
   "./components/mockups/stamin-up-redesign/StaminUpGlowSurge.tsx": () => import("../components/mockups/stamin-up-redesign/StaminUpGlowSurge.tsx")
 };
