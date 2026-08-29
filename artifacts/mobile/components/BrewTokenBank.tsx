@@ -51,8 +51,10 @@ import {
   QUICK_REVIVE_UNLOCK_PRICE,
   STAMIN_UP_BOTTLE_PRICE,
   STAMIN_UP_UNLOCK_PRICE,
+  type BrewBottlePreviewKind,
   type BrewBetEffect,
   formatBrewBankAccessRemaining,
+  getBrewBottlePreview,
   getDaiquiriWinProbability,
   getBrewWinProbability,
   hasBrewBankAccess,
@@ -441,6 +443,7 @@ export function BrewTokenBank({
   const [protectedVoicePlaying, setProtectedVoicePlaying] = useState(false);
   const [machineStatusIndex, setMachineStatusIndex] = useState(0);
   const [shopOpen, setShopOpen] = useState(false);
+  const [bottlePreview, setBottlePreview] = useState<BrewBottlePreviewKind | null>(null);
   const [payoutPreviewOpen, setPayoutPreviewOpen] = useState(false);
   const [shopMessage, setShopMessage] = useState<string | null>(null);
   const [shopBusy, setShopBusy] = useState(false);
@@ -747,6 +750,28 @@ export function BrewTokenBank({
     ? getDaiquiriWinProbability(true)
     : getBrewWinProbability(quickReviveArmed);
   const activeOddsLabel = `${Math.round(activeWinProbability * 100)}%`;
+  const selectedBottlePreview = bottlePreview ? getBrewBottlePreview(bottlePreview) : null;
+  const selectedBottleUnlocked = bottlePreview === 'quickRevive'
+    ? quickReviveUnlocked
+    : bottlePreview === 'daiquiri'
+      ? daiquiriUnlocked
+      : bottlePreview === 'staminUp'
+        ? staminUpUnlocked
+        : false;
+  const selectedBottleCount = bottlePreview === 'quickRevive'
+    ? quickReviveBottles
+    : bottlePreview === 'daiquiri'
+      ? daiquiriBottles
+      : bottlePreview === 'staminUp'
+        ? staminUpBottles
+        : 0;
+  const selectedBottleArmed = bottlePreview === 'quickRevive'
+    ? quickReviveArmed
+    : bottlePreview === 'daiquiri'
+      ? daiquiriArmed
+      : bottlePreview === 'staminUp'
+        ? staminUpArmed
+        : false;
 
   const handleBuyKey = async () => {
     if (tokens < BREW_BANK_KEY_PRICE || resolving || shopBusy) return;
@@ -1018,6 +1043,7 @@ export function BrewTokenBank({
 
   const handleClose = () => {
     if (protectedVoicePlaying) return;
+    setBottlePreview(null);
     stopMachineStatus();
     stopLossVoice(true);
     stopMachineSound();
@@ -1353,7 +1379,16 @@ export function BrewTokenBank({
                        Break one into the machine before a toss to raise your next win chance by 7 points, from 55% to 62%.
                      </Text>
                    </View>
-                   <QuickReviveBottle size={31} muted={!quickReviveUnlocked} />
+                    <Pressable
+                      onPress={() => setBottlePreview('quickRevive')}
+                      style={styles.bottleInspectButton}
+                      accessibilityRole="button"
+                      accessibilityLabel="Inspect Quick Revive bottle"
+                      testID="inspect-quick-revive"
+                    >
+                      <QuickReviveBottle size={31} muted={!quickReviveUnlocked} />
+                      <Feather name="maximize-2" size={13} color={colors.mutedForeground} />
+                    </Pressable>
                  </View>
                  <View style={[styles.quickReviveShop, { borderTopColor: colors.border }]}>
                    <View style={styles.shopHeadingRow}>
@@ -1365,7 +1400,16 @@ export function BrewTokenBank({
                          A rare amber soda. Break one into the machine and a winning toss pays Dark Brew Tokens instead of normal Brew Token winnings.
                        </Text>
                      </View>
-                     <StaminUpBottle size={31} muted={!staminUpUnlocked} />
+                      <Pressable
+                        onPress={() => setBottlePreview('staminUp')}
+                        style={styles.bottleInspectButton}
+                        accessibilityRole="button"
+                        accessibilityLabel="Inspect Stamin Up bottle"
+                        testID="inspect-stamin-up"
+                      >
+                        <StaminUpBottle size={31} muted={!staminUpUnlocked} />
+                        <Feather name="maximize-2" size={13} color={colors.mutedForeground} />
+                      </Pressable>
                    </View>
                    <View style={styles.inventoryRow}>
                      <Text style={[styles.inventoryLabel, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>BOTTLES IN INVENTORY</Text>
@@ -1457,7 +1501,16 @@ export function BrewTokenBank({
                         Crack one into the machine before a toss: 45% win odds, 65% loss odds, and a double award if it pays.
                       </Text>
                     </View>
-                    <DaiquiriBottle size={31} muted={!daiquiriUnlocked} />
+                    <Pressable
+                      onPress={() => setBottlePreview('daiquiri')}
+                      style={styles.bottleInspectButton}
+                      accessibilityRole="button"
+                      accessibilityLabel="Inspect Dave Ramsey Daiquiri bottle"
+                      testID="inspect-daiquiri"
+                    >
+                      <DaiquiriBottle size={31} muted={!daiquiriUnlocked} />
+                      <Feather name="maximize-2" size={13} color={colors.mutedForeground} />
+                    </Pressable>
                   </View>
                   <View style={styles.inventoryRow}>
                     <Text style={[styles.inventoryLabel, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>BOTTLES IN INVENTORY</Text>
@@ -1790,6 +1843,112 @@ export function BrewTokenBank({
           </View>
         </ScrollView>
       </View>
+      <Modal
+        visible={selectedBottlePreview !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setBottlePreview(null)}
+      >
+        <View
+          style={[
+            styles.previewOverlay,
+            {
+              paddingTop: Math.max(insets.top, Constants.statusBarHeight ?? 0) + 12,
+              paddingBottom: Math.max(insets.bottom, 8) + 12,
+            },
+          ]}
+        >
+          <ScrollView
+            style={styles.previewScroll}
+            contentContainerStyle={styles.previewScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {selectedBottlePreview && (
+              <View style={[styles.previewCard, { backgroundColor: colors.card, borderColor: colors.goldMuted }]}>
+                <View style={styles.previewHeader}>
+                  <View style={styles.previewHeaderCopy}>
+                    <Text style={[styles.previewEyebrow, { color: colors.gold, fontFamily: 'Inter_600SemiBold' }]}>
+                      BOTTLE INSPECTION
+                    </Text>
+                    <Text style={[styles.previewTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+                      {selectedBottlePreview.title}
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={() => setBottlePreview(null)}
+                    hitSlop={10}
+                    accessibilityRole="button"
+                    accessibilityLabel="Close bottle inspection"
+                    testID="close-bottle-inspection"
+                  >
+                    <Feather name="x" size={21} color={colors.mutedForeground} />
+                  </Pressable>
+                </View>
+
+                <View style={[styles.previewBottleStage, { backgroundColor: colors.steelShadow, borderColor: colors.border }]}>
+                  {bottlePreview === 'quickRevive' && <QuickReviveBottle size={112} muted={!selectedBottleUnlocked} />}
+                  {bottlePreview === 'daiquiri' && <DaiquiriBottle size={112} muted={!selectedBottleUnlocked} />}
+                  {bottlePreview === 'staminUp' && <StaminUpBottle size={112} muted={!selectedBottleUnlocked} />}
+                </View>
+
+                <Text style={[styles.previewDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                  {selectedBottlePreview.description}
+                </Text>
+
+                <View style={[styles.previewDetails, { borderColor: colors.border }]}>
+                  <View style={styles.previewDetailRow}>
+                    <Text style={[styles.previewDetailLabel, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>RECIPE UNLOCK</Text>
+                    <Text style={[styles.previewDetailValue, { color: selectedBottleUnlocked ? colors.buyColor : colors.gold, fontFamily: 'Inter_700Bold' }]}>
+                      {selectedBottlePreview.unlockPrice} TOKENS{selectedBottleUnlocked ? ' · UNLOCKED' : ''}
+                    </Text>
+                  </View>
+                  <View style={[styles.previewDetailDivider, { backgroundColor: colors.border }]} />
+                  <View style={styles.previewDetailRow}>
+                    <Text style={[styles.previewDetailLabel, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>BOTTLE COST</Text>
+                    <Text style={[styles.previewDetailValue, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
+                      {selectedBottlePreview.bottlePrice} TOKENS
+                    </Text>
+                  </View>
+                  <View style={[styles.previewDetailDivider, { backgroundColor: colors.border }]} />
+                  <View style={styles.previewDetailRow}>
+                    <Text style={[styles.previewDetailLabel, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>TOSS ODDS</Text>
+                    <Text style={[styles.previewDetailValue, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+                      {Math.round(selectedBottlePreview.winProbability * 100)}% WIN · {Math.round(selectedBottlePreview.lossProbability * 100)}% LOSS
+                    </Text>
+                  </View>
+                  <View style={[styles.previewDetailDivider, { backgroundColor: colors.border }]} />
+                  <View style={styles.previewDetailRow}>
+                    <Text style={[styles.previewDetailLabel, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>INVENTORY</Text>
+                    <Text style={[styles.previewDetailValue, { color: selectedBottleUnlocked ? colors.gold : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+                      {selectedBottleUnlocked ? `${selectedBottleCount} ${selectedBottleCount === 1 ? 'BOTTLE' : 'BOTTLES'}` : 'LOCKED'}
+                    </Text>
+                  </View>
+                  <View style={[styles.previewDetailDivider, { backgroundColor: colors.border }]} />
+                  <View style={styles.previewDetailRow}>
+                    <Text style={[styles.previewDetailLabel, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>STATUS</Text>
+                    <Text style={[styles.previewDetailValue, { color: selectedBottleArmed ? colors.buyColor : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+                      {selectedBottleArmed ? 'ARMED FOR NEXT TOSS' : selectedBottleUnlocked ? 'READY TO REDEEM' : 'RECIPE LOCKED'}
+                    </Text>
+                  </View>
+                </View>
+
+                {selectedBottlePreview.conversionCopy && (
+                  <View style={[styles.previewConversion, { backgroundColor: colors.steelShadow, borderColor: '#b36321' }]}>
+                    <Feather name="moon" size={15} color="#f29b38" />
+                    <Text style={[styles.previewConversionText, { fontFamily: 'Inter_500Medium' }]}>
+                      {selectedBottlePreview.conversionCopy}
+                    </Text>
+                  </View>
+                )}
+
+                <Text style={[styles.previewSafetyNote, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
+                  INSPECTION ONLY · NOTHING SPENT OR CONSUMED
+                </Text>
+              </View>
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
     </Modal>
   );
 }
@@ -1897,6 +2056,7 @@ const styles = StyleSheet.create({
   shopHeadingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
   shopTitle: { fontSize: 11, letterSpacing: 0.8 },
   shopDescription: { fontSize: 10, lineHeight: 15, marginTop: 4, maxWidth: 270 },
+  bottleInspectButton: { alignItems: 'center', justifyContent: 'center', gap: 3, paddingHorizontal: 2 },
   inventoryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 13 },
   inventoryLabel: { fontSize: 9, letterSpacing: 0.9 },
   inventoryValue: { fontSize: 13 },
@@ -1940,4 +2100,22 @@ const styles = StyleSheet.create({
   feedbackLabel: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   feedbackText: { fontSize: 10, letterSpacing: 0.8 },
   footnote: { fontSize: 9, textAlign: 'center', marginTop: 13 },
+  previewOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 14, backgroundColor: 'rgba(0,0,0,0.9)' },
+  previewScroll: { width: '100%' },
+  previewScrollContent: { flexGrow: 1, justifyContent: 'center', paddingVertical: 4 },
+  previewCard: { width: '100%', maxWidth: 460, alignSelf: 'center', borderWidth: 1, borderRadius: 16, padding: 18, shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.5, shadowRadius: 24, elevation: 16 },
+  previewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 13 },
+  previewHeaderCopy: { gap: 3 },
+  previewEyebrow: { fontSize: 9, letterSpacing: 1.2 },
+  previewTitle: { fontSize: 18, letterSpacing: 0.9 },
+  previewBottleStage: { minHeight: 245, borderWidth: 1, borderRadius: 11, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  previewDescription: { fontSize: 11, lineHeight: 17, marginTop: 13 },
+  previewDetails: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 3, marginTop: 13 },
+  previewDetailRow: { minHeight: 38, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+  previewDetailLabel: { fontSize: 8, letterSpacing: 0.8 },
+  previewDetailValue: { fontSize: 10, textAlign: 'right', flexShrink: 1 },
+  previewDetailDivider: { height: 1, width: '100%' },
+  previewConversion: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, borderWidth: 1, borderRadius: 10, paddingHorizontal: 11, paddingVertical: 10, marginTop: 12 },
+  previewConversionText: { flex: 1, color: '#ffc169', fontSize: 10, lineHeight: 15 },
+  previewSafetyNote: { fontSize: 8, letterSpacing: 0.8, textAlign: 'center', marginTop: 14 },
 });

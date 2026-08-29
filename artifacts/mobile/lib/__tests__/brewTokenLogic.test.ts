@@ -28,6 +28,7 @@ import {
   canArmBrewBottle,
   canActivateBrewBankKey,
   formatBrewBankAccessRemaining,
+  getBrewBottlePreview,
   getBrewWinProbability,
   getDaiquiriWinProbability,
   hasBrewBankAccess,
@@ -94,6 +95,21 @@ test('Quick Revive consumes one bottle to arm one boosted toss', () => {
   assert.equal(redeemQuickReviveBottle(1, true), null);
   assert.equal(getBrewWinProbability(false), BREW_TOKEN_WIN_PROBABILITY);
   assert.equal(getBrewWinProbability(true), QUICK_REVIVE_WIN_PROBABILITY);
+});
+
+test('bottle inspection metadata mirrors shop costs, odds, and Stamin Up conversion', () => {
+  assert.deepEqual(getBrewBottlePreview('quickRevive'), {
+    kind: 'quickRevive',
+    title: 'QUICK REVIVE',
+    unlockPrice: QUICK_REVIVE_UNLOCK_PRICE,
+    bottlePrice: QUICK_REVIVE_BOTTLE_PRICE,
+    winProbability: QUICK_REVIVE_WIN_PROBABILITY,
+    lossProbability: 1 - QUICK_REVIVE_WIN_PROBABILITY,
+    description: 'Break one into the machine before a toss to raise your next win chance by 7 points, from 55% to 62%.',
+    conversionCopy: null,
+  });
+  assert.equal(getBrewBottlePreview('daiquiri').lossProbability, DAIQUIRI_LOSS_PROBABILITY);
+  assert.equal(getBrewBottlePreview('staminUp').conversionCopy, 'Stamin Up keeps your Brew Token stake on a win and sends an equal reward to Dark Brew Tokens. Dark Brew Tokens cannot be bet or lost.');
 });
 
 test('Dave Ramsey Daiquiri unlock costs one hundred tokens exactly once', () => {

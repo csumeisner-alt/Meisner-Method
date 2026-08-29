@@ -21,6 +21,57 @@ export const DAIQUIRI_BOTTLE_PRICE = 8;
 export const STAMIN_UP_UNLOCK_PRICE = 500;
 export const STAMIN_UP_BOTTLE_PRICE = 16;
 
+export type BrewBottlePreviewKind = 'quickRevive' | 'daiquiri' | 'staminUp';
+
+export type BrewBottlePreview = {
+  kind: BrewBottlePreviewKind;
+  title: string;
+  unlockPrice: number;
+  bottlePrice: number;
+  winProbability: number;
+  lossProbability: number;
+  description: string;
+  conversionCopy: string | null;
+};
+
+export function getBrewBottlePreview(kind: BrewBottlePreviewKind): BrewBottlePreview {
+  switch (kind) {
+    case 'quickRevive':
+      return {
+        kind,
+        title: 'QUICK REVIVE',
+        unlockPrice: QUICK_REVIVE_UNLOCK_PRICE,
+        bottlePrice: QUICK_REVIVE_BOTTLE_PRICE,
+        winProbability: QUICK_REVIVE_WIN_PROBABILITY,
+        lossProbability: 1 - QUICK_REVIVE_WIN_PROBABILITY,
+        description: 'Break one into the machine before a toss to raise your next win chance by 7 points, from 55% to 62%.',
+        conversionCopy: null,
+      };
+    case 'daiquiri':
+      return {
+        kind,
+        title: 'DAVE RAMSEY DAIQUIRI',
+        unlockPrice: DAIQUIRI_UNLOCK_PRICE,
+        bottlePrice: DAIQUIRI_BOTTLE_PRICE,
+        winProbability: DAIQUIRI_WIN_PROBABILITY,
+        lossProbability: DAIQUIRI_LOSS_PROBABILITY,
+        description: 'Crack one into the machine before a toss: 45% win odds, 65% loss odds, and a double award if it pays.',
+        conversionCopy: null,
+      };
+    case 'staminUp':
+      return {
+        kind,
+        title: 'STAMIN UP',
+        unlockPrice: STAMIN_UP_UNLOCK_PRICE,
+        bottlePrice: STAMIN_UP_BOTTLE_PRICE,
+        winProbability: BREW_TOKEN_WIN_PROBABILITY,
+        lossProbability: 1 - BREW_TOKEN_WIN_PROBABILITY,
+        description: 'A rare amber soda. Break one into the machine and a winning toss pays Dark Brew Tokens instead of normal Brew Token winnings.',
+        conversionCopy: 'Stamin Up keeps your Brew Token stake on a win and sends an equal reward to Dark Brew Tokens. Dark Brew Tokens cannot be bet or lost.',
+      };
+  }
+}
+
 export function parseStoredNonNegative(raw: string | null | undefined): number {
   if (!raw) return 0;
   const value = Number.parseInt(raw, 10);
