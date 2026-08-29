@@ -23,6 +23,7 @@ export const STAMIN_UP_BOTTLE_PRICE = 16;
 export const SMART_PRO_UNLOCK_PRICE = 100;
 export const SMART_PRO_BOTTLE_PRICE = 3;
 export const SMART_PRO_SALE_DURATION_MS = 90_000;
+export const NEON_GUCCI_UNLOCK_COST = 10_000;
 
 export type BrewBottlePreviewKind = 'quickRevive' | 'daiquiri' | 'staminUp' | 'smartPro';
 
