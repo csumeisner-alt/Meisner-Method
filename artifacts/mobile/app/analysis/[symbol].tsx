@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -241,12 +241,32 @@ const ANALYSIS_LOADING_STAGES = [
   'Building the lesson',
 ] as const;
 
+const NEON_GUCCI_LOADING_PHRASES = [
+  'Checking in with Sam Bankman-Fried',
+  'Gambling all your money into penny stocks',
+  "Telling Dave Ramsey that you aren't following the baby steps",
+  'Finding out why you continually make dangerous financial decisions',
+  'Alerting FINRA as there appears to be insider trading on your account',
+  'Matching you with local singles in your area',
+  'Looking into why a new line of credit was opened in your name',
+  'Relaying to your spouse about how much money you lose while trading',
+] as const;
+
+function shuffledLoadingPhrases(): string[] {
+  const phrases = [...NEON_GUCCI_LOADING_PHRASES];
+  for (let index = phrases.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+    [phrases[index], phrases[randomIndex]] = [phrases[randomIndex], phrases[index]];
+  }
+  return phrases;
+}
+
 export default function AnalysisScreen() {
   const { symbol } = useLocalSearchParams<{ symbol: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const colors = useColors();
-  const { isActive, neonGucciActive } = useAmericanMode();
+  const { isActive, neonGucciActive, neonGucciUnlocked } = useAmericanMode();
   const { width: screenWidth } = useWindowDimensions();
   const { apiFetch } = useApi();
   const { mutate, data, isPending, error } = useAnalyzeStock<Error>();
@@ -285,6 +305,10 @@ export default function AnalysisScreen() {
   const [compLoading, setCompLoading]         = useState(false);
   const [loadingStageIndex, setLoadingStageIndex] = useState(0);
   const tickerGlow = useRef(new Animated.Value(0)).current;
+  const loadingStages = useMemo<readonly string[]>(
+    () => (neonGucciUnlocked ? shuffledLoadingPhrases() : ANALYSIS_LOADING_STAGES),
+    [isPending, neonGucciUnlocked, symbol],
+  );
 
   useEffect(() => {
     if (!isPending) {
@@ -292,10 +316,10 @@ export default function AnalysisScreen() {
       return;
     }
     const timer = setInterval(() => {
-      setLoadingStageIndex((current) => (current + 1) % ANALYSIS_LOADING_STAGES.length);
+      setLoadingStageIndex((current) => (current + 1) % loadingStages.length);
     }, 2_200);
     return () => clearInterval(timer);
-  }, [isPending]);
+  }, [isPending, loadingStages.length]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -460,16 +484,17 @@ export default function AnalysisScreen() {
 
   // ─── Loading ──────────────────────────────────────────────────────────────
   if (isPending) {
+    const loadingStage = loadingStages[loadingStageIndex % loadingStages.length] ?? loadingStages[0];
     return (
       <AmericanSteelBackground>
         <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
         {renderHeader()}
         <View style={styles.centered}>
           {neonGucciActive
-            ? <NeonAnalysisLoader symbol={symbol ?? ''} stage={ANALYSIS_LOADING_STAGES[loadingStageIndex]} />
+            ? <NeonAnalysisLoader symbol={symbol ?? ''} stage={loadingStage} />
             : <ActivityIndicator size="large" color={colors.primary} />}
           <Text style={[styles.loadingTitle, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
-            {ANALYSIS_LOADING_STAGES[loadingStageIndex]} · {symbol}
+            {loadingStage} · {symbol}
           </Text>
           <Text style={[styles.loadingSubtitle, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
             Fetching market data, validating the quote, and shaping a focused lesson
