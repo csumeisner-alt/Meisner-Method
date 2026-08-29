@@ -62,7 +62,7 @@ import {
   getDaiquiriWinProbability,
   getBrewWinProbability,
   hasBrewBankAccess,
-  getSmartProSalePrice,
+  getSmartProBottleSalePrice,
   hasSmartProSale,
   isWeekday,
 } from '@/lib/brewTokenLogic';
@@ -993,12 +993,12 @@ export function BrewTokenBank({
   const bankAccessActive = hasBrewBankAccess(bankAccessExpiresAt, countdownNow);
   const smartProSaleActive = hasSmartProSale(smartProSaleExpiresAt, countdownNow);
   const smartProRemainingLabel = formatSmartProRemaining(smartProSaleExpiresAt, countdownNow);
-  const quickReviveUnlockPrice = getSmartProSalePrice(QUICK_REVIVE_UNLOCK_PRICE, smartProSaleActive);
-  const quickReviveBottlePrice = getSmartProSalePrice(QUICK_REVIVE_BOTTLE_PRICE, smartProSaleActive);
-  const daiquiriUnlockPrice = getSmartProSalePrice(DAIQUIRI_UNLOCK_PRICE, smartProSaleActive);
-  const daiquiriBottlePrice = getSmartProSalePrice(DAIQUIRI_BOTTLE_PRICE, smartProSaleActive);
-  const staminUpUnlockPrice = getSmartProSalePrice(STAMIN_UP_UNLOCK_PRICE, smartProSaleActive);
-  const staminUpBottlePrice = getSmartProSalePrice(STAMIN_UP_BOTTLE_PRICE, smartProSaleActive);
+  const quickReviveUnlockPrice = QUICK_REVIVE_UNLOCK_PRICE;
+  const quickReviveBottlePrice = getSmartProBottleSalePrice(QUICK_REVIVE_BOTTLE_PRICE, smartProSaleActive);
+  const daiquiriUnlockPrice = DAIQUIRI_UNLOCK_PRICE;
+  const daiquiriBottlePrice = getSmartProBottleSalePrice(DAIQUIRI_BOTTLE_PRICE, smartProSaleActive);
+  const staminUpUnlockPrice = STAMIN_UP_UNLOCK_PRICE;
+  const staminUpBottlePrice = getSmartProBottleSalePrice(STAMIN_UP_BOTTLE_PRICE, smartProSaleActive);
   const bankAccent = smartProSaleActive ? '#b9ff45' : colors.gold;
   const bankAccentMuted = smartProSaleActive ? '#5c9b36' : colors.goldMuted;
   const bankSurface = smartProSaleActive ? '#071b13' : colors.card;
@@ -1857,7 +1857,7 @@ export function BrewTokenBank({
                         </View>
                       </View>
                       <Text style={[styles.shopDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                        Redeem one to turn every other bottle and recipe unlock half price for {SMART_PRO_SALE_DURATION_MS / 1000} seconds. The bank key stays full price.
+                        Redeem one to make every other bottle half price for {SMART_PRO_SALE_DURATION_MS / 1000} seconds. Recipe unlocks and the bank key stay full price.
                       </Text>
                     </View>
                     <Pressable
@@ -1969,7 +1969,7 @@ export function BrewTokenBank({
                 </Text>
                 <Text style={[styles.quickReviveArmDescription, { color: smartProSaleActive ? '#b9eaaa' : colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                   {smartProSaleActive
-                    ? 'OTHER BOTTLES & RECIPES ARE HALF PRICE · BANK KEY EXCLUDED'
+                    ? 'OTHER BOTTLES ARE HALF PRICE · UNLOCKS & BANK KEY FULL PRICE'
                     : `${smartProBottles} ${smartProBottles === 1 ? 'BOTTLE' : 'BOTTLES'} READY · SMARTPRO STAYS 3 TOKENS`}
                 </Text>
               </View>

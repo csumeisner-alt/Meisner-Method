@@ -99,7 +99,7 @@ export function Current() {
           <p className="smart-pro-eyebrow">SMARTPRO SODA</p>
           <h1>The lime-green<br />flash sale.</h1>
           <p className="smart-pro-description">
-            One bottle opens a 90-second window where every other bottle and recipe is half price.
+             One bottle opens a 90-second window where every other bottle is half price. Recipe unlocks stay full price.
           </p>
           <div className="smart-pro-meta">
             <span>100 TOKENS TO UNLOCK</span>

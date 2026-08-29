@@ -213,9 +213,10 @@ export function Interactive() {
                  <span>LIVE SHOP</span>
                  <strong>{formatCountdown(secondsLeft)}</strong>
                </div>
-               <div className="smart-pro-sale-row"><span>QUICK REVIVE · RECIPE</span><b>½ PRICE</b></div>
+               <div className="smart-pro-sale-row"><span>QUICK REVIVE · BOTTLE</span><b>½ PRICE</b></div>
                <div className="smart-pro-sale-row"><span>DAIQUIRI · BOTTLE</span><b>½ PRICE</b></div>
                <div className="smart-pro-sale-row is-full"><span>SMARTPRO · BOTTLE</span><b>3 TOKENS</b></div>
+               <div className="smart-pro-sale-row"><span>STAMIN UP · BOTTLE</span><b>½ PRICE</b></div>
              </div>
            )}
         </div>
@@ -264,7 +265,7 @@ export function Interactive() {
                  : stage === "unlocked"
                    ? "Tap the bottle to preview the animation; redeem with the green button."
                    : stage === "active"
-                     ? "Other bottles + recipes are half price until the timer runs out."
+                     ? "Other bottles are half price until the timer runs out; recipe unlocks stay full price."
                      : "The flash-sale window has closed. Buy another bottle to run the test again."}
           </div>
         </div>

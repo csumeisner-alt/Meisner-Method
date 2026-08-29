@@ -104,8 +104,8 @@ export function getBrewBottlePreview(kind: BrewBottlePreviewKind): BrewBottlePre
         bottlePrice: SMART_PRO_BOTTLE_PRICE,
         winProbability: BREW_TOKEN_WIN_PROBABILITY,
         lossProbability: 1 - BREW_TOKEN_WIN_PROBABILITY,
-        description: 'A neon-green smart soda that turns the Central Bank into a 90-second flash sale. Every recipe and bottle except the bank key is half price.',
-        conversionCopy: 'Redeem one to activate 90 seconds of 50% off on every other bottle and recipe unlock. The bank key stays at full price while the SmartPro sale is active.',
+        description: 'A neon-green smart soda that turns the Central Bank into a 90-second flash sale. Every other bottle is half price; recipe unlocks and the bank key stay full price.',
+        conversionCopy: 'Redeem one to activate 90 seconds of 50% off on every other bottle. Recipe unlocks and the bank key stay at full price while the SmartPro sale is active.',
       };
   }
 }
@@ -147,8 +147,7 @@ export function getBrewBottleInspection(
   const discountedPreview = snapshot.smartProActive && kind !== 'smartPro'
     ? {
         ...preview,
-        unlockPrice: getSmartProSalePrice(preview.unlockPrice, true),
-        bottlePrice: getSmartProSalePrice(preview.bottlePrice, true),
+        bottlePrice: getSmartProBottleSalePrice(preview.bottlePrice, true),
       }
     : preview;
 
@@ -159,7 +158,7 @@ export function getBrewBottleInspection(
   };
 }
 
-export function getSmartProSalePrice(basePrice: number, saleActive: boolean): number {
+export function getSmartProBottleSalePrice(basePrice: number, saleActive: boolean): number {
   const safePrice = Math.max(0, Math.floor(basePrice));
   return saleActive ? Math.max(1, Math.ceil(safePrice / 2)) : safePrice;
 }

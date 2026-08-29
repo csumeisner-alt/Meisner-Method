@@ -34,7 +34,7 @@ import {
   canActivateBrewBankKey,
   formatBrewBankAccessRemaining,
   formatSmartProRemaining,
-  getSmartProSalePrice,
+  getSmartProBottleSalePrice,
   getBrewBottleInspection,
   getBrewBottlePreview,
   getBrewWinProbability,
@@ -239,13 +239,13 @@ test('SmartPro redemption consumes one bottle and activates a restart-safe 90-se
   assert.equal(formatSmartProRemaining(redeemed!.expiresAt, now + 90_000), null);
 });
 
-test('SmartPro halves other recipe and bottle prices while key and SmartPro stay full price', () => {
-  assert.equal(getSmartProSalePrice(QUICK_REVIVE_UNLOCK_PRICE, true), 20);
-  assert.equal(getSmartProSalePrice(QUICK_REVIVE_BOTTLE_PRICE, true), 1);
-  assert.equal(getSmartProSalePrice(DAIQUIRI_UNLOCK_PRICE, true), 50);
-  assert.equal(getSmartProSalePrice(DAIQUIRI_BOTTLE_PRICE, true), 4);
-  assert.equal(getSmartProSalePrice(STAMIN_UP_UNLOCK_PRICE, true), 250);
-  assert.equal(getSmartProSalePrice(STAMIN_UP_BOTTLE_PRICE, true), 8);
+test('SmartPro halves other bottle prices while unlocks, key, and SmartPro stay full price', () => {
+  assert.equal(getSmartProBottleSalePrice(QUICK_REVIVE_BOTTLE_PRICE, true), 1);
+  assert.equal(getSmartProBottleSalePrice(DAIQUIRI_BOTTLE_PRICE, true), 4);
+  assert.equal(getSmartProBottleSalePrice(STAMIN_UP_BOTTLE_PRICE, true), 8);
+  assert.deepEqual(buyQuickReviveUnlock(QUICK_REVIVE_UNLOCK_PRICE, false, QUICK_REVIVE_UNLOCK_PRICE), { tokenBalance: 0, unlocked: true });
+  assert.deepEqual(buyDaiquiriUnlock(DAIQUIRI_UNLOCK_PRICE, false, DAIQUIRI_UNLOCK_PRICE), { tokenBalance: 0, unlocked: true });
+  assert.deepEqual(buyStaminUpUnlock(STAMIN_UP_UNLOCK_PRICE, false, STAMIN_UP_UNLOCK_PRICE), { tokenBalance: 0, unlocked: true });
   assert.deepEqual(buyQuickReviveUnlock(20, false, 20), { tokenBalance: 0, unlocked: true });
   assert.deepEqual(buyDaiquiriBottle(4, 0, true, 4), { tokenBalance: 0, bottleCount: 1 });
   assert.deepEqual(buyStaminUpUnlock(250, false, 250), { tokenBalance: 0, unlocked: true });
@@ -270,7 +270,12 @@ test('SmartPro inspection is read-only and applies sale prices only to other bot
     smartProActive: true,
   };
 
-  assert.equal(getBrewBottleInspection('quickRevive', activeSnapshot).preview.unlockPrice, 20);
+  assert.equal(getBrewBottleInspection('quickRevive', activeSnapshot).preview.unlockPrice, QUICK_REVIVE_UNLOCK_PRICE);
+  assert.equal(getBrewBottleInspection('quickRevive', activeSnapshot).preview.bottlePrice, 1);
+  assert.equal(getBrewBottleInspection('daiquiri', activeSnapshot).preview.unlockPrice, DAIQUIRI_UNLOCK_PRICE);
+  assert.equal(getBrewBottleInspection('daiquiri', activeSnapshot).preview.bottlePrice, 4);
+  assert.equal(getBrewBottleInspection('staminUp', activeSnapshot).preview.unlockPrice, STAMIN_UP_UNLOCK_PRICE);
+  assert.equal(getBrewBottleInspection('staminUp', activeSnapshot).preview.bottlePrice, 8);
   const smartProInspection = getBrewBottleInspection('smartPro', activeSnapshot);
   assert.equal(smartProInspection.preview.unlockPrice, SMART_PRO_UNLOCK_PRICE);
   assert.equal(smartProInspection.preview.bottlePrice, SMART_PRO_BOTTLE_PRICE);
