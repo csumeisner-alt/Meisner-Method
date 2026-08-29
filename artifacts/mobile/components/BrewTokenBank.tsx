@@ -54,7 +54,7 @@ import {
   type BrewBottlePreviewKind,
   type BrewBetEffect,
   formatBrewBankAccessRemaining,
-  getBrewBottlePreview,
+  getBrewBottleInspection,
   getDaiquiriWinProbability,
   getBrewWinProbability,
   hasBrewBankAccess,
@@ -750,28 +750,24 @@ export function BrewTokenBank({
     ? getDaiquiriWinProbability(true)
     : getBrewWinProbability(quickReviveArmed);
   const activeOddsLabel = `${Math.round(activeWinProbability * 100)}%`;
-  const selectedBottlePreview = bottlePreview ? getBrewBottlePreview(bottlePreview) : null;
-  const selectedBottleUnlocked = bottlePreview === 'quickRevive'
-    ? quickReviveUnlocked
-    : bottlePreview === 'daiquiri'
-      ? daiquiriUnlocked
-      : bottlePreview === 'staminUp'
-        ? staminUpUnlocked
-        : false;
-  const selectedBottleCount = bottlePreview === 'quickRevive'
-    ? quickReviveBottles
-    : bottlePreview === 'daiquiri'
-      ? daiquiriBottles
-      : bottlePreview === 'staminUp'
-        ? staminUpBottles
-        : 0;
-  const selectedBottleArmed = bottlePreview === 'quickRevive'
-    ? quickReviveArmed
-    : bottlePreview === 'daiquiri'
-      ? daiquiriArmed
-      : bottlePreview === 'staminUp'
-        ? staminUpArmed
-        : false;
+  const selectedBottleInspection = bottlePreview
+    ? getBrewBottleInspection(bottlePreview, {
+        tokens,
+        quickReviveUnlocked,
+        quickReviveBottles,
+        quickReviveArmed,
+        daiquiriUnlocked,
+        daiquiriBottles,
+        daiquiriArmed,
+        staminUpUnlocked,
+        staminUpBottles,
+        staminUpArmed,
+      })
+    : null;
+  const selectedBottlePreview = selectedBottleInspection?.preview ?? null;
+  const selectedBottleUnlocked = selectedBottleInspection?.unlocked ?? false;
+  const selectedBottleCount = selectedBottleInspection?.bottleCount ?? 0;
+  const selectedBottleArmed = selectedBottleInspection?.armed ?? false;
 
   const handleBuyKey = async () => {
     if (tokens < BREW_BANK_KEY_PRICE || resolving || shopBusy) return;

@@ -34,6 +34,27 @@ export type BrewBottlePreview = {
   conversionCopy: string | null;
 };
 
+export type BrewBottleInspectionSnapshot = {
+  tokens: number;
+  quickReviveUnlocked: boolean;
+  quickReviveBottles: number;
+  quickReviveArmed: boolean;
+  daiquiriUnlocked: boolean;
+  daiquiriBottles: number;
+  daiquiriArmed: boolean;
+  staminUpUnlocked: boolean;
+  staminUpBottles: number;
+  staminUpArmed: boolean;
+};
+
+export type BrewBottleInspection = {
+  preview: BrewBottlePreview;
+  unlocked: boolean;
+  bottleCount: number;
+  armed: boolean;
+  snapshot: BrewBottleInspectionSnapshot;
+};
+
 export function getBrewBottlePreview(kind: BrewBottlePreviewKind): BrewBottlePreview {
   switch (kind) {
     case 'quickRevive':
@@ -70,6 +91,40 @@ export function getBrewBottlePreview(kind: BrewBottlePreviewKind): BrewBottlePre
         conversionCopy: 'Stamin Up keeps your Brew Token stake on a win and sends an equal reward to Dark Brew Tokens. Dark Brew Tokens cannot be bet or lost.',
       };
   }
+}
+
+/**
+ * Builds the read-only view for a bottle inspection. Keeping the account
+ * snapshot in the result makes it explicit that opening or closing a preview
+ * cannot spend tokens, consume a bottle, or arm an effect.
+ */
+export function getBrewBottleInspection(
+  kind: BrewBottlePreviewKind,
+  snapshot: BrewBottleInspectionSnapshot,
+): BrewBottleInspection {
+  const selected = kind === 'quickRevive'
+    ? {
+        unlocked: snapshot.quickReviveUnlocked,
+        bottleCount: snapshot.quickReviveBottles,
+        armed: snapshot.quickReviveArmed,
+      }
+    : kind === 'daiquiri'
+      ? {
+          unlocked: snapshot.daiquiriUnlocked,
+          bottleCount: snapshot.daiquiriBottles,
+          armed: snapshot.daiquiriArmed,
+        }
+      : {
+          unlocked: snapshot.staminUpUnlocked,
+          bottleCount: snapshot.staminUpBottles,
+          armed: snapshot.staminUpArmed,
+        };
+
+  return {
+    preview: getBrewBottlePreview(kind),
+    ...selected,
+    snapshot: { ...snapshot },
+  };
 }
 
 export function parseStoredNonNegative(raw: string | null | undefined): number {

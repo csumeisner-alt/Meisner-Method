@@ -28,6 +28,7 @@ import {
   canArmBrewBottle,
   canActivateBrewBankKey,
   formatBrewBankAccessRemaining,
+  getBrewBottleInspection,
   getBrewBottlePreview,
   getBrewWinProbability,
   getDaiquiriWinProbability,
@@ -110,6 +111,44 @@ test('bottle inspection metadata mirrors shop costs, odds, and Stamin Up convers
   });
   assert.equal(getBrewBottlePreview('daiquiri').lossProbability, DAIQUIRI_LOSS_PROBABILITY);
   assert.equal(getBrewBottlePreview('staminUp').conversionCopy, 'Stamin Up keeps your Brew Token stake on a win and sends an equal reward to Dark Brew Tokens. Dark Brew Tokens cannot be bet or lost.');
+});
+
+test('opening and closing every bottle inspection preserves balance, inventory, and armed state', () => {
+  const before = {
+    tokens: 47,
+    quickReviveUnlocked: true,
+    quickReviveBottles: 3,
+    quickReviveArmed: false,
+    daiquiriUnlocked: true,
+    daiquiriBottles: 2,
+    daiquiriArmed: true,
+    staminUpUnlocked: true,
+    staminUpBottles: 4,
+    staminUpArmed: false,
+  };
+
+  const expected = {
+    quickRevive: { bottlePrice: 2, odds: '62% WIN · 38% LOSS', bottles: 3, armed: false },
+    daiquiri: { bottlePrice: 8, odds: '45% WIN · 65% LOSS', bottles: 2, armed: true },
+    staminUp: { bottlePrice: 16, odds: '55% WIN · 45% LOSS', bottles: 4, armed: false },
+  } as const;
+
+  for (const kind of ['quickRevive', 'daiquiri', 'staminUp'] as const) {
+    const inspection = getBrewBottleInspection(kind, before);
+
+    assert.equal(inspection.preview.bottlePrice, expected[kind].bottlePrice);
+    assert.equal(
+      `${Math.round(inspection.preview.winProbability * 100)}% WIN · ${Math.round(inspection.preview.lossProbability * 100)}% LOSS`,
+      expected[kind].odds,
+    );
+    assert.equal(inspection.bottleCount, expected[kind].bottles);
+    assert.equal(inspection.armed, expected[kind].armed);
+    assert.equal(inspection.snapshot.tokens, before.tokens);
+
+    // Closing the preview returns the unchanged account snapshot; inspection
+    // itself has no purchase, redemption, or balance mutation side effect.
+    assert.deepEqual(inspection.snapshot, before);
+  }
 });
 
 test('Dave Ramsey Daiquiri unlock costs one hundred tokens exactly once', () => {
