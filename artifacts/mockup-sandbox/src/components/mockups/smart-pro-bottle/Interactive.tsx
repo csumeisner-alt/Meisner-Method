@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
 function SmartProBottle({ active }: { active: boolean }) {
   const prefix = "smart-pro-interactive";
@@ -65,12 +65,11 @@ function SmartProBottle({ active }: { active: boolean }) {
         <text x="130" y="133" fill="#f7fff0" fontSize="23" fontWeight="900" textAnchor="middle">S</text>
       </g>
       <g>
-        <circle cx="130" cy="322" r="80" fill="#e8ffd4" fillOpacity="0.96" stroke="#54c28d" strokeWidth="2" />
-        <circle cx="130" cy="322" r="72" fill="#092c3c" stroke="#b9e8cd" strokeOpacity="0.78" strokeWidth="2.5" />
-        <circle cx="130" cy="322" r="50" fill="none" stroke="#54c28d" strokeOpacity="0.85" strokeWidth="1.5" />
-        <text x="130" y="283" fill="#f7fff0" fontSize="12" fontWeight="800" textAnchor="middle" letterSpacing="1.4">SMARTPRO</text>
-        <text x="130" y="350" fill="#54c28d" fontSize="62" fontWeight="900" textAnchor="middle">S</text>
-        <text x="130" y="375" fill="#f7fff0" fontSize="11" fontWeight="700" textAnchor="middle" letterSpacing="2.2">SODA</text>
+        <rect x="73" y="264" width="114" height="116" rx="3" fill="#050708" fillOpacity="0.97" stroke="#67ce9e" strokeWidth="2.5" />
+        <path d="M83 274h94v96H83Z" fill="none" stroke="#314d42" strokeWidth="1" />
+        <text x="130" y="339" fill="#d7e0db" fontSize="48" fontWeight="900" textAnchor="middle" letterSpacing="-3">SP</text>
+        <path d="M94 351h72" stroke="#67ce9e" strokeWidth="2" strokeLinecap="round" />
+        <text x="130" y="365" fill="#67ce9e" fontSize="7" fontWeight="900" textAnchor="middle" letterSpacing="2.2">SMARTPRO</text>
       </g>
       <g>
         <path d="M88 27h84v17c0 8-7 13-16 13h-52c-9 0-16-5-16-13V27Z" fill={`url(#${prefix}-cap)`} stroke="#b9e7ff" strokeOpacity="0.86" strokeWidth="2" />
@@ -80,11 +79,36 @@ function SmartProBottle({ active }: { active: boolean }) {
   );
 }
 
+type Stage = "locked" | "unlocked" | "active" | "expired";
+
+const formatCountdown = (seconds: number) => {
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return `${minutes}:${remainder.toString().padStart(2, "0")}`;
+};
+
 export function Interactive() {
-  const [stage, setStage] = useState<"locked" | "unlocked" | "active">("locked");
+  const [stage, setStage] = useState<Stage>("locked");
   const [tokens, setTokens] = useState(140);
   const [bottles, setBottles] = useState(0);
   const [animationKey, setAnimationKey] = useState(0);
+  const [secondsLeft, setSecondsLeft] = useState(90);
+
+  useEffect(() => {
+    if (stage !== "active") return;
+    setSecondsLeft(90);
+    const timer = window.setInterval(() => {
+      setSecondsLeft((value) => {
+        if (value <= 1) {
+          window.clearInterval(timer);
+          setStage("expired");
+          return 0;
+        }
+        return value - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [stage]);
 
   const unlock = () => {
     if (stage !== "locked" || tokens < 100) return;
@@ -96,24 +120,41 @@ export function Interactive() {
     if (stage === "locked" || tokens < 3) return;
     setTokens((value) => value - 3);
     setBottles((value) => value + 1);
+    if (stage === "expired") setStage("unlocked");
   };
 
   const redeem = () => {
     if (stage !== "unlocked" || bottles < 1) return;
     setBottles((value) => value - 1);
     setStage("active");
+    setSecondsLeft(90);
     setAnimationKey((value) => value + 1);
+    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+      navigator.vibrate([28, 48, 90]);
+    }
   };
 
   const reset = () => {
     setStage("locked");
     setTokens(140);
     setBottles(0);
+    setSecondsLeft(90);
     setAnimationKey((value) => value + 1);
   };
 
-  const stageLabel = stage === "locked" ? "RECIPE LOCKED" : stage === "unlocked" ? "READY TO REDEEM" : "SALE ACTIVE · 1:30";
-  const actionLabel = stage === "locked" ? "UNLOCK RECIPE · 100 TOKENS" : stage === "unlocked" && bottles > 0 ? "REDEEM BOTTLE · OPEN SALE" : "BUY BOTTLE · 3 TOKENS";
+  const stageLabel = stage === "locked"
+    ? "RECIPE LOCKED"
+    : stage === "unlocked"
+      ? "READY TO REDEEM"
+      : stage === "active"
+        ? `SALE ACTIVE · ${formatCountdown(secondsLeft)}`
+        : "SALE EXPIRED · RESET TO REPLAY";
+  const actionLabel = stage === "locked"
+    ? "UNLOCK RECIPE · 100 TOKENS"
+    : stage === "unlocked" && bottles > 0
+      ? "REDEEM BOTTLE · OPEN SALE"
+      : "BUY SMARTPRO BOTTLE · 3 TOKENS";
+  const isTapReady = stage === "unlocked" && bottles > 0;
 
   return (
     <main className="smart-pro-interactive-frame">
@@ -138,30 +179,57 @@ export function Interactive() {
             <strong>{tokens} TOKENS</strong>
             <span>{bottles} BOTTLE{bottles === 1 ? "" : "S"}</span>
           </div>
+           {stage === "active" && (
+             <div className="smart-pro-sale-panel" aria-label="Active sale shop">
+               <div className="smart-pro-sale-panel-heading">
+                 <span>LIVE SHOP</span>
+                 <strong>{formatCountdown(secondsLeft)}</strong>
+               </div>
+               <div className="smart-pro-sale-row"><span>QUICK REVIVE · RECIPE</span><b>½ PRICE</b></div>
+               <div className="smart-pro-sale-row"><span>DAIQUIRI · BOTTLE</span><b>½ PRICE</b></div>
+               <div className="smart-pro-sale-row is-full"><span>SMARTPRO · BOTTLE</span><b>3 TOKENS</b></div>
+             </div>
+           )}
         </div>
         <div className="smart-pro-interactive-stage">
           <div className="smart-pro-stage-status">{stageLabel}</div>
+           {stage === "active" && (
+             <div className="smart-pro-countdown" aria-live="polite">
+               <strong>{formatCountdown(secondsLeft)}</strong>
+               <span>LEFT IN FLASH SALE</span>
+               <div className="smart-pro-countdown-track"><i style={{ width: `${(secondsLeft / 90) * 100}%` }} /></div>
+             </div>
+           )}
           <div className={`smart-pro-interactive-halo ${stage === "active" ? "is-active" : ""}`} key={`halo-${animationKey}`} />
           <div className={`smart-pro-interactive-bubbles ${stage === "active" ? "is-bursting" : ""}`} key={`bubbles-${animationKey}`}>
             <i /><i /><i /><i /><i /><i />
           </div>
           <button
             type="button"
-            className={`smart-pro-bottle-button ${stage === "unlocked" && bottles > 0 ? "is-tappable" : ""} ${stage === "active" ? "is-redeemed" : ""}`}
+             className={`smart-pro-bottle-button ${isTapReady ? "is-tappable" : ""} ${stage === "active" ? "is-redeemed" : ""}`}
             onClick={redeem}
-            aria-label={stage === "unlocked" && bottles > 0 ? "Tap to redeem SmartPro bottle" : "SmartPro bottle preview"}
+             aria-label={isTapReady ? "Tap to redeem SmartPro bottle" : "SmartPro bottle preview"}
           >
+             {isTapReady && <span className="smart-pro-tap-ring" aria-hidden="true" />}
             <SmartProBottle active={stage === "active"} />
-            {stage === "unlocked" && bottles > 0 && <span className="smart-pro-tap-hint">TAP TO REDEEM</span>}
+             {isTapReady && <span className="smart-pro-tap-hint">TAP BOTTLE TO REDEEM</span>}
           </button>
           {stage === "active" && (
-            <div className="smart-pro-sale-burst" key={`burst-${animationKey}`}>
-              <span>SALE OPEN</span>
+             <div className="smart-pro-sale-burst" role="status" aria-live="polite" key={`burst-${animationKey}`}>
+               <span>SALE ACTIVATED</span>
               <strong>½ PRICE</strong>
             </div>
           )}
           <div className="smart-pro-stage-note">
-            {stage === "locked" ? "The bottle stays quiet until the recipe is unlocked." : stage === "unlocked" && bottles === 0 ? "Buy a bottle below, then tap it to redeem." : stage === "unlocked" ? "Tap the bottle to trigger the creative reveal." : "Other bottles + recipes are half price for 90 seconds."}
+             {stage === "locked"
+               ? "The bottle stays quiet until the recipe is unlocked."
+               : stage === "unlocked" && bottles === 0
+                 ? "Buy a bottle below, then tap it to redeem."
+                 : stage === "unlocked"
+                   ? "Tap the bottle to trigger the creative reveal."
+                   : stage === "active"
+                     ? "Other bottles + recipes are half price until the timer runs out."
+                     : "The flash-sale window has closed. Buy another bottle to run the test again."}
           </div>
         </div>
       </section>
@@ -200,14 +268,26 @@ export function Interactive() {
         .smart-pro-wallet { display: flex; align-items: baseline; flex-wrap: wrap; gap: 9px 14px; margin-top: 34px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.12); color: #799087; font-size: 9px; font-weight: 800; letter-spacing: .13em; }
         .smart-pro-wallet strong { color: #f3f6f3; }
         .smart-pro-wallet span:last-child { color: #67ce9e; }
+         .smart-pro-sale-panel { margin-top: 22px; max-width: 330px; padding: 13px 14px 11px; border: 1px solid rgba(103,206,158,.34); border-radius: 12px; background: rgba(5,19,15,.46); box-shadow: inset 0 1px rgba(255,255,255,.06); }
+         .smart-pro-sale-panel-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; color: #67ce9e; font-size: 9px; font-weight: 900; letter-spacing: .16em; }
+         .smart-pro-sale-panel-heading strong { color: #efffdc; font-size: 18px; letter-spacing: -.04em; }
+         .smart-pro-sale-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 7px 0; border-top: 1px solid rgba(255,255,255,.08); color: #b7c9bf; font-size: 8px; font-weight: 800; letter-spacing: .08em; }
+         .smart-pro-sale-row b { color: #b9ff45; font-size: 9px; white-space: nowrap; }
+         .smart-pro-sale-row.is-full b { color: #d7e0db; }
         .smart-pro-interactive-stage { min-height: 640px; position: relative; display: grid; place-items: center; }
         .smart-pro-stage-status { position: absolute; top: 34px; right: 42px; z-index: 5; color: #67ce9e; font-size: 10px; font-weight: 900; letter-spacing: .13em; }
+         .smart-pro-countdown { position: absolute; top: 65px; right: 42px; z-index: 5; width: 142px; display: flex; flex-direction: column; gap: 5px; text-align: right; }
+         .smart-pro-countdown strong { color: #efffdc; font-size: 28px; line-height: .9; letter-spacing: -.06em; }
+         .smart-pro-countdown span { color: #8fa299; font-size: 7px; font-weight: 900; letter-spacing: .14em; }
+         .smart-pro-countdown-track { width: 100%; height: 3px; overflow: hidden; border-radius: 999px; background: rgba(103,206,158,.18); }
+         .smart-pro-countdown-track i { display: block; height: 100%; border-radius: inherit; background: #b9ff45; box-shadow: 0 0 10px rgba(185,255,69,.8); transition: width 1s linear; }
         .smart-pro-interactive-halo { position: absolute; width: 430px; height: 430px; border-radius: 50%; border: 1px solid rgba(103,206,158,.27); background: radial-gradient(circle, rgba(103,206,158,.13), transparent 67%); box-shadow: 0 0 80px rgba(103,206,158,.14); animation: smart-idle-pulse 3.3s ease-in-out infinite; transition: transform .35s, border-color .35s; }
         .smart-pro-interactive-halo.is-active { border-color: rgba(185,255,69,.72); background: radial-gradient(circle, rgba(185,255,69,.2), transparent 64%); box-shadow: 0 0 100px rgba(185,255,69,.32); animation: smart-active-pulse .9s ease-in-out 3; }
         .smart-pro-bottle-button { appearance: none; border: 0; padding: 0; margin: 0; position: relative; z-index: 3; background: transparent; color: inherit; cursor: default; filter: drop-shadow(0 26px 25px rgba(0,0,0,.58)); }
         .smart-pro-bottle-button.is-tappable { cursor: pointer; animation: smart-tap-float 2.3s ease-in-out infinite; }
         .smart-pro-bottle-button.is-tappable:hover { filter: drop-shadow(0 26px 30px rgba(103,206,158,.35)); }
         .smart-pro-bottle-button.is-redeemed { animation: smart-redeem-bottle 1.5s cubic-bezier(.18,.82,.31,1) both; }
+         .smart-pro-tap-ring { position: absolute; z-index: -1; inset: 20px -22px; border: 1px solid rgba(185,255,69,.65); border-radius: 50%; box-shadow: 0 0 0 8px rgba(103,206,158,.06), 0 0 30px rgba(185,255,69,.18); animation: smart-tap-ring 1.7s ease-out infinite; pointer-events: none; }
         .smart-pro-art { display: block; width: min(260px, 29vw); height: auto; transition: filter .3s; }
         .smart-pro-art-active { filter: drop-shadow(0 0 24px rgba(185,255,69,.8)); }
         .smart-pro-tap-hint { position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); color: #67ce9e; font-size: 9px; font-weight: 900; letter-spacing: .18em; white-space: nowrap; animation: smart-hint 1.4s ease-in-out infinite; }
@@ -242,6 +322,7 @@ export function Interactive() {
         @keyframes smart-bubble-burst { 0% { transform: translate(0,0) scale(.6); opacity: .2; } 45% { opacity: 1; } 100% { transform: translate(var(--smart-x, 20px), -115px) scale(1.55); opacity: 0; } }
         @keyframes smart-sale-burst { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.55); } 26% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); } 100% { opacity: 0; transform: translate(-50%, -80%) scale(1); } }
         @keyframes smart-hint { 0%,100% { opacity: .55; transform: translate(-50%, 0); } 50% { opacity: 1; transform: translate(-50%, -4px); } }
+         @keyframes smart-tap-ring { 0% { transform: scale(.82); opacity: .15; } 45% { opacity: .9; } 100% { transform: scale(1.08); opacity: 0; } }
         @media (max-width: 720px) {
           .smart-pro-interactive-frame { padding: 20px; }
           .smart-pro-interactive-header { align-items: flex-start; flex-direction: column; }
@@ -250,12 +331,14 @@ export function Interactive() {
           .smart-pro-interactive-copy { padding: 34px 28px 8px; }
           .smart-pro-interactive-stage { min-height: 540px; }
           .smart-pro-stage-status { top: 22px; right: 24px; }
+           .smart-pro-countdown { top: 52px; right: 24px; }
           .smart-pro-interactive-halo { width: 340px; height: 340px; }
+           .smart-pro-sale-panel { max-width: none; }
           .smart-pro-interactive-controls { flex-direction: column; }
           .smart-pro-stage-note { bottom: 25px; left: 24px; right: 24px; }
         }
         @media (prefers-reduced-motion: reduce) {
-          .smart-pro-interactive-halo, .smart-pro-bottle-button, .smart-pro-tap-hint, .smart-pro-interactive-bubbles.is-bursting i, .smart-pro-sale-burst { animation: none; }
+           .smart-pro-interactive-halo, .smart-pro-bottle-button, .smart-pro-tap-ring, .smart-pro-tap-hint, .smart-pro-interactive-bubbles.is-bursting i, .smart-pro-sale-burst { animation: none; }
         }
       `}</style>
     </main>
