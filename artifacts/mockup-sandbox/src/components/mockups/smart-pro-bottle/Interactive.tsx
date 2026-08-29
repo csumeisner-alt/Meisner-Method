@@ -153,10 +153,6 @@ export function Interactive() {
   };
 
   const handleBottleTap = () => {
-    if (stage === "unlocked" && bottles > 0) {
-      redeem();
-      return;
-    }
     playCreativeAnimation();
   };
 
@@ -199,7 +195,7 @@ export function Interactive() {
           <p className="smart-pro-interactive-eyebrow">SMARTPRO SODA</p>
           <h1>Tap into<br /><em>the edge.</em></h1>
           <p className="smart-pro-interactive-description">
-            Unlock the recipe, buy a bottle, then tap the bottle itself to open the flash-sale window.
+             Unlock the recipe, buy a bottle, then use the green action button to open the flash-sale window.
           </p>
           <div className="smart-pro-step-list">
             <div className={stage === "locked" ? "smart-pro-step is-current" : "smart-pro-step is-done"}><b>01</b><span>UNLOCK THE RECIPE</span></div>
@@ -246,7 +242,7 @@ export function Interactive() {
              <span className={`smart-pro-bottle-art ${animationMode === "redeem" ? "is-redeemed" : ""} ${animationMode === "creative" ? "is-creative" : ""}`} key={`bottle-art-${animationKey}`}>
                <SmartProBottle active={stage === "active"} />
              </span>
-             {canTapBottle && <span className="smart-pro-tap-hint">{tapLabel}</span>}
+             {canTapBottle && <span className="smart-pro-tap-hint">{tapLabel === "TAP TO REDEEM" ? "TAP TO PREVIEW" : tapLabel}</span>}
           </button>
           {stage === "active" && (
              <div className="smart-pro-sale-burst" role="status" aria-live="polite" key={`burst-${animationKey}`}>
@@ -264,9 +260,9 @@ export function Interactive() {
              {stage === "locked"
                ? "The bottle stays quiet until the recipe is unlocked."
                : stage === "unlocked" && bottles === 0
-                 ? "Buy a bottle below, then tap it to redeem."
+                 ? "Buy a bottle below, then use the green button to redeem."
                  : stage === "unlocked"
-                   ? "Tap the bottle to trigger the creative reveal."
+                   ? "Tap the bottle to preview the animation; redeem with the green button."
                    : stage === "active"
                      ? "Other bottles + recipes are half price until the timer runs out."
                      : "The flash-sale window has closed. Buy another bottle to run the test again."}
