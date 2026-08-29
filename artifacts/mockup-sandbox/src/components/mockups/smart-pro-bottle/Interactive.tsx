@@ -26,10 +26,10 @@ function SmartProBottle({ active }: { active: boolean }) {
           <stop offset="1" stopColor="#51a51f" />
         </linearGradient>
         <linearGradient id={`${prefix}-cap`} x1="0" x2="1" y1="0" y2="1">
-          <stop stopColor="#173f74" />
-          <stop offset="0.42" stopColor="#4fa0de" />
-          <stop offset="0.68" stopColor="#1e5b9b" />
-          <stop offset="1" stopColor="#0d2d59" />
+          <stop stopColor="#050708" />
+          <stop offset="0.42" stopColor="#263831" />
+          <stop offset="0.68" stopColor="#0b1511" />
+          <stop offset="1" stopColor="#020303" />
         </linearGradient>
         <clipPath id={`${prefix}-liquid-clip`}>
           <path d="M46 202h168v236c0 34-29 54-84 54s-84-20-84-54V202Z" />
@@ -93,6 +93,15 @@ export function Interactive() {
   const [bottles, setBottles] = useState(0);
   const [animationKey, setAnimationKey] = useState(0);
   const [secondsLeft, setSecondsLeft] = useState(90);
+  const [animationMode, setAnimationMode] = useState<"idle" | "redeem" | "creative">("idle");
+
+  const triggerHaptic = (pattern: number | number[]) => {
+    const reducedMotion = typeof window !== "undefined"
+      && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (!reducedMotion && typeof navigator !== "undefined" && "vibrate" in navigator) {
+      navigator.vibrate(pattern);
+    }
+  };
 
   useEffect(() => {
     if (stage !== "active") return;
@@ -120,7 +129,10 @@ export function Interactive() {
     if (stage === "locked" || tokens < 3) return;
     setTokens((value) => value - 3);
     setBottles((value) => value + 1);
-    if (stage === "expired") setStage("unlocked");
+    if (stage === "expired") {
+      setStage("unlocked");
+      setAnimationMode("idle");
+    }
   };
 
   const redeem = () => {
@@ -128,10 +140,24 @@ export function Interactive() {
     setBottles((value) => value - 1);
     setStage("active");
     setSecondsLeft(90);
+    setAnimationMode("redeem");
     setAnimationKey((value) => value + 1);
-    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
-      navigator.vibrate([28, 48, 90]);
+    triggerHaptic([28, 48, 90]);
+  };
+
+  const playCreativeAnimation = () => {
+    if (stage === "locked") return;
+    setAnimationMode("creative");
+    setAnimationKey((value) => value + 1);
+    triggerHaptic([18, 30, 18]);
+  };
+
+  const handleBottleTap = () => {
+    if (stage === "unlocked" && bottles > 0) {
+      redeem();
+      return;
     }
+    playCreativeAnimation();
   };
 
   const reset = () => {
@@ -139,6 +165,7 @@ export function Interactive() {
     setTokens(140);
     setBottles(0);
     setSecondsLeft(90);
+    setAnimationMode("idle");
     setAnimationKey((value) => value + 1);
   };
 
@@ -154,7 +181,12 @@ export function Interactive() {
     : stage === "unlocked" && bottles > 0
       ? "REDEEM BOTTLE · OPEN SALE"
       : "BUY SMARTPRO BOTTLE · 3 TOKENS";
-  const isTapReady = stage === "unlocked" && bottles > 0;
+  const canTapBottle = stage !== "locked";
+  const tapLabel = stage === "unlocked" && bottles > 0
+    ? "TAP TO REDEEM"
+    : stage === "active"
+      ? "TAP TO REPLAY"
+      : "TAP TO PREVIEW";
 
   return (
     <main className="smart-pro-interactive-frame">
@@ -200,26 +232,34 @@ export function Interactive() {
                <div className="smart-pro-countdown-track"><i style={{ width: `${(secondsLeft / 90) * 100}%` }} /></div>
              </div>
            )}
-          <div className={`smart-pro-interactive-halo ${stage === "active" ? "is-active" : ""}`} key={`halo-${animationKey}`} />
-          <div className={`smart-pro-interactive-bubbles ${stage === "active" ? "is-bursting" : ""}`} key={`bubbles-${animationKey}`}>
+           <div className={`smart-pro-interactive-halo ${stage === "active" || animationMode === "creative" ? "is-active" : ""}`} key={`halo-${animationKey}`} />
+           <div className={`smart-pro-interactive-bubbles ${stage === "active" || animationMode === "creative" ? "is-bursting" : ""}`} key={`bubbles-${animationKey}`}>
             <i /><i /><i /><i /><i /><i />
           </div>
           <button
             type="button"
-             className={`smart-pro-bottle-button ${isTapReady ? "is-tappable" : ""} ${stage === "active" ? "is-redeemed" : ""}`}
-            onClick={redeem}
-             aria-label={isTapReady ? "Tap to redeem SmartPro bottle" : "SmartPro bottle preview"}
+             className={`smart-pro-bottle-button ${canTapBottle ? "is-tappable" : ""}`}
+             onClick={handleBottleTap}
+             aria-label={stage === "unlocked" && bottles > 0 ? "Tap to redeem SmartPro bottle" : stage === "locked" ? "SmartPro bottle preview" : "Tap to replay SmartPro bottle animation"}
           >
-             {isTapReady && <span className="smart-pro-tap-ring" aria-hidden="true" />}
-            <SmartProBottle active={stage === "active"} />
-             {isTapReady && <span className="smart-pro-tap-hint">TAP BOTTLE TO REDEEM</span>}
+             {canTapBottle && <span className="smart-pro-tap-ring" aria-hidden="true" />}
+             <span className={`smart-pro-bottle-art ${animationMode === "redeem" ? "is-redeemed" : ""} ${animationMode === "creative" ? "is-creative" : ""}`} key={`bottle-art-${animationKey}`}>
+               <SmartProBottle active={stage === "active"} />
+             </span>
+             {canTapBottle && <span className="smart-pro-tap-hint">{tapLabel}</span>}
           </button>
           {stage === "active" && (
              <div className="smart-pro-sale-burst" role="status" aria-live="polite" key={`burst-${animationKey}`}>
-               <span>SALE ACTIVATED</span>
-              <strong>½ PRICE</strong>
+               <span>{animationMode === "redeem" ? "SALE ACTIVATED" : "SMARTPRO LIVE"}</span>
+               <strong>{animationMode === "redeem" ? "½ PRICE" : "EDGE TAP"}</strong>
             </div>
           )}
+           {animationMode === "creative" && (
+             <div className="smart-pro-creative-flare" role="status" aria-live="polite" key={`creative-flare-${animationKey}`}>
+               <span>SMARTPRO</span>
+               <strong>EDGE TAP</strong>
+             </div>
+           )}
           <div className="smart-pro-stage-note">
              {stage === "locked"
                ? "The bottle stays quiet until the recipe is unlocked."
@@ -284,11 +324,13 @@ export function Interactive() {
         .smart-pro-interactive-halo { position: absolute; width: 430px; height: 430px; border-radius: 50%; border: 1px solid rgba(103,206,158,.27); background: radial-gradient(circle, rgba(103,206,158,.13), transparent 67%); box-shadow: 0 0 80px rgba(103,206,158,.14); animation: smart-idle-pulse 3.3s ease-in-out infinite; transition: transform .35s, border-color .35s; }
         .smart-pro-interactive-halo.is-active { border-color: rgba(185,255,69,.72); background: radial-gradient(circle, rgba(185,255,69,.2), transparent 64%); box-shadow: 0 0 100px rgba(185,255,69,.32); animation: smart-active-pulse .9s ease-in-out 3; }
         .smart-pro-bottle-button { appearance: none; border: 0; padding: 0; margin: 0; position: relative; z-index: 3; background: transparent; color: inherit; cursor: default; filter: drop-shadow(0 26px 25px rgba(0,0,0,.58)); }
-        .smart-pro-bottle-button.is-tappable { cursor: pointer; animation: smart-tap-float 2.3s ease-in-out infinite; }
+         .smart-pro-bottle-button.is-tappable { cursor: pointer; animation: smart-tap-float 2.3s ease-in-out infinite; }
         .smart-pro-bottle-button.is-tappable:hover { filter: drop-shadow(0 26px 30px rgba(103,206,158,.35)); }
-        .smart-pro-bottle-button.is-redeemed { animation: smart-redeem-bottle 1.5s cubic-bezier(.18,.82,.31,1) both; }
          .smart-pro-tap-ring { position: absolute; z-index: -1; inset: 20px -22px; border: 1px solid rgba(185,255,69,.65); border-radius: 50%; box-shadow: 0 0 0 8px rgba(103,206,158,.06), 0 0 30px rgba(185,255,69,.18); animation: smart-tap-ring 1.7s ease-out infinite; pointer-events: none; }
-        .smart-pro-art { display: block; width: min(260px, 29vw); height: auto; transition: filter .3s; }
+         .smart-pro-bottle-art { display: block; position: relative; z-index: 2; }
+         .smart-pro-bottle-art.is-redeemed { animation: smart-redeem-bottle 1.5s cubic-bezier(.18,.82,.31,1) both; }
+         .smart-pro-bottle-art.is-creative { animation: smart-creative-bottle 1.35s cubic-bezier(.16,.82,.3,1) both; }
+         .smart-pro-art { display: block; width: min(260px, 29vw); height: auto; transition: filter .3s; }
         .smart-pro-art-active { filter: drop-shadow(0 0 24px rgba(185,255,69,.8)); }
         .smart-pro-tap-hint { position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); color: #67ce9e; font-size: 9px; font-weight: 900; letter-spacing: .18em; white-space: nowrap; animation: smart-hint 1.4s ease-in-out infinite; }
         .smart-pro-interactive-bubbles { position: absolute; width: 400px; height: 510px; pointer-events: none; }
@@ -308,6 +350,10 @@ export function Interactive() {
         .smart-pro-sale-burst { position: absolute; z-index: 6; top: 40%; left: 50%; display: flex; flex-direction: column; align-items: center; color: #f1ffd9; text-shadow: 0 0 18px #b9ff45; transform: translate(-50%, -50%); animation: smart-sale-burst 1.6s cubic-bezier(.15,.8,.3,1) both; pointer-events: none; }
         .smart-pro-sale-burst span { font-size: 12px; font-weight: 900; letter-spacing: .22em; }
         .smart-pro-sale-burst strong { color: #b9ff45; font-size: 46px; line-height: .95; letter-spacing: -.08em; }
+         .smart-pro-creative-flare { position: absolute; z-index: 7; top: 46%; left: 50%; display: flex; flex-direction: column; align-items: center; color: #efffdc; text-shadow: 0 0 18px rgba(185,255,69,.92); transform: translate(-50%, -50%); animation: smart-creative-flare 1.35s cubic-bezier(.15,.8,.3,1) both; pointer-events: none; }
+         .smart-pro-creative-flare::before { content: ""; position: absolute; width: 210px; height: 210px; border: 1px solid rgba(185,255,69,.68); border-radius: 50%; box-shadow: 0 0 34px rgba(185,255,69,.32), inset 0 0 24px rgba(103,206,158,.2); animation: smart-creative-orbit 1.35s ease-out both; }
+         .smart-pro-creative-flare span { position: relative; font-size: 10px; font-weight: 900; letter-spacing: .3em; }
+         .smart-pro-creative-flare strong { position: relative; color: #b9ff45; font-size: 40px; line-height: .95; letter-spacing: -.08em; }
         .smart-pro-stage-note { position: absolute; bottom: 32px; left: 42px; right: 42px; color: #8fa299; text-align: center; font-size: 11px; line-height: 1.4; }
         .smart-pro-interactive-controls { max-width: 1040px; margin: 18px auto 0; display: flex; gap: 10px; }
         .smart-pro-primary-control, .smart-pro-secondary-control { min-height: 44px; border-radius: 10px; padding: 0 17px; border: 1px solid #67ce9e; font-size: 10px; font-weight: 900; letter-spacing: .12em; cursor: pointer; }
@@ -323,6 +369,9 @@ export function Interactive() {
         @keyframes smart-sale-burst { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.55); } 26% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); } 100% { opacity: 0; transform: translate(-50%, -80%) scale(1); } }
         @keyframes smart-hint { 0%,100% { opacity: .55; transform: translate(-50%, 0); } 50% { opacity: 1; transform: translate(-50%, -4px); } }
          @keyframes smart-tap-ring { 0% { transform: scale(.82); opacity: .15; } 45% { opacity: .9; } 100% { transform: scale(1.08); opacity: 0; } }
+         @keyframes smart-creative-bottle { 0% { transform: scale(1) translateY(0) rotate(0); filter: drop-shadow(0 26px 25px rgba(0,0,0,.58)); } 22% { transform: scale(1.08) translateY(-16px) rotate(-3deg); filter: drop-shadow(0 0 32px rgba(185,255,69,.86)); } 58% { transform: scale(.96) translateY(4px) rotate(3deg); filter: drop-shadow(0 0 52px rgba(103,206,158,.76)); } 100% { transform: scale(1) translateY(0) rotate(0); filter: drop-shadow(0 26px 25px rgba(0,0,0,.58)); } }
+         @keyframes smart-creative-flare { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.3); } 28% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); } 100% { opacity: 0; transform: translate(-50%, -68%) scale(1.18); } }
+         @keyframes smart-creative-orbit { 0% { transform: scale(.4) rotate(-22deg); opacity: 0; } 35% { opacity: 1; } 100% { transform: scale(1.2) rotate(28deg); opacity: 0; } }
         @media (max-width: 720px) {
           .smart-pro-interactive-frame { padding: 20px; }
           .smart-pro-interactive-header { align-items: flex-start; flex-direction: column; }
@@ -338,7 +387,7 @@ export function Interactive() {
           .smart-pro-stage-note { bottom: 25px; left: 24px; right: 24px; }
         }
         @media (prefers-reduced-motion: reduce) {
-           .smart-pro-interactive-halo, .smart-pro-bottle-button, .smart-pro-tap-ring, .smart-pro-tap-hint, .smart-pro-interactive-bubbles.is-bursting i, .smart-pro-sale-burst { animation: none; }
+           .smart-pro-interactive-halo, .smart-pro-bottle-button, .smart-pro-tap-ring, .smart-pro-tap-hint, .smart-pro-bottle-art, .smart-pro-interactive-bubbles.is-bursting i, .smart-pro-sale-burst, .smart-pro-creative-flare, .smart-pro-creative-flare::before { animation: none; }
         }
       `}</style>
     </main>

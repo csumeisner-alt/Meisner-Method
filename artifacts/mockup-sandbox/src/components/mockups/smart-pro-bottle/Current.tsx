@@ -25,10 +25,10 @@ function SmartProBottle() {
           <stop offset="1" stopColor="#51a51f" />
         </linearGradient>
         <linearGradient id={`${prefix}-cap`} x1="0" x2="1" y1="0" y2="1">
-          <stop stopColor="#173f74" />
-          <stop offset="0.42" stopColor="#4fa0de" />
-          <stop offset="0.68" stopColor="#1e5b9b" />
-          <stop offset="1" stopColor="#0d2d59" />
+          <stop stopColor="#050708" />
+          <stop offset="0.42" stopColor="#263831" />
+          <stop offset="0.68" stopColor="#0b1511" />
+          <stop offset="1" stopColor="#020303" />
         </linearGradient>
         <clipPath id={`${prefix}-liquid-clip`}>
           <path d="M46 202h168v236c0 34-29 54-84 54s-84-20-84-54V202Z" />
