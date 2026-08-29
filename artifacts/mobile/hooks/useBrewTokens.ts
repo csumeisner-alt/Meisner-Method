@@ -10,6 +10,8 @@ import {
   buyDaiquiriUnlock,
   buyStaminUpBottle as purchaseStaminUpBottle,
   buyStaminUpUnlock,
+  buySmartProBottle as purchaseSmartProBottle,
+  buySmartProUnlock,
   canArmBrewBottle,
   canActivateBrewBankKey,
   INITIAL_BREW_TOKENS,
@@ -19,10 +21,13 @@ import {
   isBrewBankUnlock,
   isWeekday,
   hasBrewBankAccess,
+  getSmartProSalePrice,
+  hasSmartProSale,
   parseStoredNonNegative,
   redeemQuickReviveBottle as armQuickReviveBottle,
   redeemDaiquiriBottle as armDaiquiriBottle,
   redeemStaminUpBottle as armStaminUpBottle,
+  redeemSmartProBottle as activateSmartProSale,
   resolveBrewBetOutcome,
   type BrewBetEffect,
 } from '@/lib/brewTokenLogic';
@@ -43,6 +48,9 @@ const DAIQUIRI_ARMED_KEY = '@stocksense/daiquiri_armed_v1';
 const STAMIN_UP_UNLOCKED_KEY = '@stocksense/stamin_up_unlocked_v1';
 const STAMIN_UP_BOTTLES_KEY = '@stocksense/stamin_up_bottles_v1';
 const STAMIN_UP_ARMED_KEY = '@stocksense/stamin_up_armed_v1';
+const SMART_PRO_UNLOCKED_KEY = '@stocksense/smart_pro_unlocked_v1';
+const SMART_PRO_BOTTLES_KEY = '@stocksense/smart_pro_bottles_v1';
+const SMART_PRO_SALE_EXPIRES_KEY = '@stocksense/smart_pro_sale_expires_v1';
 const DARK_BREW_TOKENS_KEY = '@stocksense/dark_brew_tokens_v1';
 
 export interface BrewTokenState {
@@ -62,6 +70,9 @@ export interface BrewTokenState {
   staminUpUnlocked: boolean;
   staminUpBottles: number;
   staminUpArmed: boolean;
+  smartProUnlocked: boolean;
+  smartProBottles: number;
+  smartProSaleExpiresAt: number | null;
   darkBrewTokens: number;
   justUnlocked: boolean;
   incrementQuoteViewed: (quoteViewId?: string) => Promise<QuoteViewUpdate>;
@@ -79,6 +90,9 @@ export interface BrewTokenState {
   unlockStaminUp: () => Promise<boolean>;
   buyStaminUpBottle: () => Promise<boolean>;
   redeemStaminUpBottle: () => Promise<boolean>;
+  unlockSmartPro: () => Promise<boolean>;
+  buySmartProBottle: () => Promise<boolean>;
+  redeemSmartProBottle: () => Promise<boolean>;
   clearJustUnlocked: () => void;
 }
 
@@ -105,6 +119,9 @@ export function useBrewTokens(): BrewTokenState {
   const [staminUpUnlocked, setStaminUpUnlocked] = useState(false);
   const [staminUpBottles, setStaminUpBottles] = useState(0);
   const [staminUpArmed, setStaminUpArmed] = useState(false);
+  const [smartProUnlocked, setSmartProUnlocked] = useState(false);
+  const [smartProBottles, setSmartProBottles] = useState(0);
+  const [smartProSaleExpiresAt, setSmartProSaleExpiresAt] = useState<number | null>(null);
   const [darkBrewTokens, setDarkBrewTokens] = useState(0);
 
   const quotesRef = useRef(0);
@@ -121,6 +138,9 @@ export function useBrewTokens(): BrewTokenState {
   const staminUpUnlockedRef = useRef(false);
   const staminUpBottlesRef = useRef(0);
   const staminUpArmedRef = useRef(false);
+  const smartProUnlockedRef = useRef(false);
+  const smartProBottlesRef = useRef(0);
+  const smartProSaleExpiresAtRef = useRef<number | null>(null);
   const darkBrewTokensRef = useRef(0);
   const rememberedQuoteViewsRef = useRef(new Set<string>());
   const writeQueueRef = useRef<ReturnType<typeof createSerialWriteQueue> | null>(null);
@@ -154,6 +174,9 @@ export function useBrewTokens(): BrewTokenState {
       AsyncStorage.getItem(STAMIN_UP_UNLOCKED_KEY),
       AsyncStorage.getItem(STAMIN_UP_BOTTLES_KEY),
       AsyncStorage.getItem(STAMIN_UP_ARMED_KEY),
+      AsyncStorage.getItem(SMART_PRO_UNLOCKED_KEY),
+      AsyncStorage.getItem(SMART_PRO_BOTTLES_KEY),
+      AsyncStorage.getItem(SMART_PRO_SALE_EXPIRES_KEY),
       AsyncStorage.getItem(DARK_BREW_TOKENS_KEY),
     ]).then(([
       rawQuotes,
@@ -172,6 +195,9 @@ export function useBrewTokens(): BrewTokenState {
       rawStaminUpUnlocked,
       rawStaminUpBottles,
       rawStaminUpArmed,
+      rawSmartProUnlocked,
+      rawSmartProBottles,
+      rawSmartProSaleExpires,
       rawDarkBrewTokens,
     ]) => {
       const viewed = parseStoredNonNegative(rawQuotes);
@@ -193,6 +219,14 @@ export function useBrewTokens(): BrewTokenState {
       const staminIsUnlocked = rawStaminUpUnlocked === 'true';
       const staminCount = staminIsUnlocked ? parseStoredNonNegative(rawStaminUpBottles) : 0;
       const staminIsArmed = staminIsUnlocked && rawStaminUpArmed === 'true';
+      const smartProIsUnlocked = rawSmartProUnlocked === 'true';
+      const smartProCount = smartProIsUnlocked ? parseStoredNonNegative(rawSmartProBottles) : 0;
+      const parsedSmartProExpires = rawSmartProSaleExpires == null ? null : Number(rawSmartProSaleExpires);
+      const smartProExpires = parsedSmartProExpires != null
+        && Number.isFinite(parsedSmartProExpires)
+        && parsedSmartProExpires > 0
+        ? parsedSmartProExpires
+        : null;
       const darkTokens = parseStoredNonNegative(rawDarkBrewTokens);
 
       quotesRef.current = viewed;
@@ -209,6 +243,9 @@ export function useBrewTokens(): BrewTokenState {
       staminUpUnlockedRef.current = staminIsUnlocked;
       staminUpBottlesRef.current = staminCount;
       staminUpArmedRef.current = staminIsArmed;
+      smartProUnlockedRef.current = smartProIsUnlocked;
+      smartProBottlesRef.current = smartProCount;
+      smartProSaleExpiresAtRef.current = smartProExpires;
       darkBrewTokensRef.current = darkTokens;
       setQuotesViewed(viewed);
       setIsUnlocked(unlocked);
@@ -224,6 +261,9 @@ export function useBrewTokens(): BrewTokenState {
       setStaminUpUnlocked(staminIsUnlocked);
       setStaminUpBottles(staminCount);
       setStaminUpArmed(staminIsArmed);
+      setSmartProUnlocked(smartProIsUnlocked);
+      setSmartProBottles(smartProCount);
+      setSmartProSaleExpiresAt(smartProExpires);
       setDarkBrewTokens(darkTokens);
       setSoundEnabledState(rawSound !== 'false');
       setHapticsEnabledState(rawHaptics !== 'false');
@@ -254,6 +294,30 @@ export function useBrewTokens(): BrewTokenState {
     const timeout = setTimeout(clearExpiredAccess, remaining);
     return () => clearTimeout(timeout);
   }, [bankAccessExpiresAt]);
+
+  useEffect(() => {
+    const expiresAt = smartProSaleExpiresAt;
+    if (expiresAt == null) return;
+
+    const clearExpiredSale = () => {
+      if (smartProSaleExpiresAtRef.current !== expiresAt) return;
+      if (hasSmartProSale(expiresAt, Date.now())) return;
+      smartProSaleExpiresAtRef.current = null;
+      setSmartProSaleExpiresAt(null);
+      void writeQueueRef.current!(
+        () => AsyncStorage.removeItem(SMART_PRO_SALE_EXPIRES_KEY),
+      ).catch(() => {});
+    };
+
+    const remaining = expiresAt - Date.now();
+    if (remaining <= 0) {
+      clearExpiredSale();
+      return;
+    }
+
+    const timeout = setTimeout(clearExpiredSale, remaining);
+    return () => clearTimeout(timeout);
+  }, [smartProSaleExpiresAt]);
 
   const incrementQuoteViewed = useCallback(async (quoteViewId?: string) => {
     await hydrationRef.current!.promise;
@@ -376,7 +440,12 @@ export function useBrewTokens(): BrewTokenState {
 
   const unlockQuickRevive = useCallback(async () => {
     await hydrationRef.current!.promise;
-    const next = buyQuickReviveUnlock(tokensRef.current, quickReviveUnlockedRef.current);
+    const saleActive = hasSmartProSale(smartProSaleExpiresAtRef.current, Date.now());
+    const next = buyQuickReviveUnlock(
+      tokensRef.current,
+      quickReviveUnlockedRef.current,
+      getSmartProSalePrice(40, saleActive),
+    );
     if (!next) return false;
     tokensRef.current = next.tokenBalance;
     quickReviveUnlockedRef.current = true;
@@ -395,6 +464,7 @@ export function useBrewTokens(): BrewTokenState {
       tokensRef.current,
       quickReviveBottlesRef.current,
       quickReviveUnlockedRef.current,
+      getSmartProSalePrice(2, hasSmartProSale(smartProSaleExpiresAtRef.current, Date.now())),
     );
     if (!next) return false;
     tokensRef.current = next.tokenBalance;
@@ -426,7 +496,11 @@ export function useBrewTokens(): BrewTokenState {
 
   const unlockDaiquiri = useCallback(async () => {
     await hydrationRef.current!.promise;
-    const next = buyDaiquiriUnlock(tokensRef.current, daiquiriUnlockedRef.current);
+    const next = buyDaiquiriUnlock(
+      tokensRef.current,
+      daiquiriUnlockedRef.current,
+      getSmartProSalePrice(100, hasSmartProSale(smartProSaleExpiresAtRef.current, Date.now())),
+    );
     if (!next) return false;
     tokensRef.current = next.tokenBalance;
     daiquiriUnlockedRef.current = true;
@@ -445,6 +519,7 @@ export function useBrewTokens(): BrewTokenState {
       tokensRef.current,
       daiquiriBottlesRef.current,
       daiquiriUnlockedRef.current,
+      getSmartProSalePrice(8, hasSmartProSale(smartProSaleExpiresAtRef.current, Date.now())),
     );
     if (!next) return false;
     tokensRef.current = next.tokenBalance;
@@ -476,7 +551,11 @@ export function useBrewTokens(): BrewTokenState {
 
   const unlockStaminUp = useCallback(async () => {
     await hydrationRef.current!.promise;
-    const next = buyStaminUpUnlock(tokensRef.current, staminUpUnlockedRef.current);
+    const next = buyStaminUpUnlock(
+      tokensRef.current,
+      staminUpUnlockedRef.current,
+      getSmartProSalePrice(500, hasSmartProSale(smartProSaleExpiresAtRef.current, Date.now())),
+    );
     if (!next) return false;
     tokensRef.current = next.tokenBalance;
     staminUpUnlockedRef.current = true;
@@ -495,6 +574,7 @@ export function useBrewTokens(): BrewTokenState {
       tokensRef.current,
       staminUpBottlesRef.current,
       staminUpUnlockedRef.current,
+      getSmartProSalePrice(16, hasSmartProSale(smartProSaleExpiresAtRef.current, Date.now())),
     );
     if (!next) return false;
     tokensRef.current = next.tokenBalance;
@@ -524,6 +604,60 @@ export function useBrewTokens(): BrewTokenState {
     return true;
   }, []);
 
+  const unlockSmartPro = useCallback(async () => {
+    await hydrationRef.current!.promise;
+    const next = buySmartProUnlock(tokensRef.current, smartProUnlockedRef.current);
+    if (!next) return false;
+    tokensRef.current = next.tokenBalance;
+    smartProUnlockedRef.current = true;
+    setBrewTokens(next.tokenBalance);
+    setSmartProUnlocked(true);
+    await writeQueueRef.current!(() => Promise.all([
+      AsyncStorage.setItem(BREW_TOKENS_KEY, String(next.tokenBalance)),
+      AsyncStorage.setItem(SMART_PRO_UNLOCKED_KEY, 'true'),
+    ]).then(() => undefined)).catch(() => {});
+    return true;
+  }, []);
+
+  const buySmartProBottle = useCallback(async () => {
+    await hydrationRef.current!.promise;
+    const next = purchaseSmartProBottle(
+      tokensRef.current,
+      smartProBottlesRef.current,
+      smartProUnlockedRef.current,
+    );
+    if (!next) return false;
+    tokensRef.current = next.tokenBalance;
+    smartProBottlesRef.current = next.bottleCount;
+    setBrewTokens(next.tokenBalance);
+    setSmartProBottles(next.bottleCount);
+    await writeQueueRef.current!(() => Promise.all([
+      AsyncStorage.setItem(BREW_TOKENS_KEY, String(next.tokenBalance)),
+      AsyncStorage.setItem(SMART_PRO_BOTTLES_KEY, String(next.bottleCount)),
+    ]).then(() => undefined)).catch(() => {});
+    return true;
+  }, []);
+
+  const redeemSmartProBottle = useCallback(async () => {
+    await hydrationRef.current!.promise;
+    const now = Date.now();
+    const next = activateSmartProSale(
+      smartProBottlesRef.current,
+      now,
+      smartProSaleExpiresAtRef.current,
+    );
+    if (!next) return false;
+    smartProBottlesRef.current = next.bottleCount;
+    smartProSaleExpiresAtRef.current = next.expiresAt;
+    setSmartProBottles(next.bottleCount);
+    setSmartProSaleExpiresAt(next.expiresAt);
+    await writeQueueRef.current!(() => Promise.all([
+      AsyncStorage.setItem(SMART_PRO_BOTTLES_KEY, String(next.bottleCount)),
+      AsyncStorage.setItem(SMART_PRO_SALE_EXPIRES_KEY, String(next.expiresAt)),
+    ]).then(() => undefined)).catch(() => {});
+    return true;
+  }, []);
+
   const clearJustUnlocked = useCallback(() => setJustUnlocked(false), []);
 
   return {
@@ -543,6 +677,9 @@ export function useBrewTokens(): BrewTokenState {
     staminUpUnlocked,
     staminUpBottles,
     staminUpArmed,
+    smartProUnlocked,
+    smartProBottles,
+    smartProSaleExpiresAt,
     darkBrewTokens,
     justUnlocked,
     incrementQuoteViewed,
@@ -560,6 +697,9 @@ export function useBrewTokens(): BrewTokenState {
     unlockStaminUp,
     buyStaminUpBottle,
     redeemStaminUpBottle,
+    unlockSmartPro,
+    buySmartProBottle,
+    redeemSmartProBottle,
     clearJustUnlocked,
   };
 }

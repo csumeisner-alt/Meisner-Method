@@ -20,8 +20,11 @@ export const DAIQUIRI_UNLOCK_PRICE = 100;
 export const DAIQUIRI_BOTTLE_PRICE = 8;
 export const STAMIN_UP_UNLOCK_PRICE = 500;
 export const STAMIN_UP_BOTTLE_PRICE = 16;
+export const SMART_PRO_UNLOCK_PRICE = 100;
+export const SMART_PRO_BOTTLE_PRICE = 3;
+export const SMART_PRO_SALE_DURATION_MS = 90_000;
 
-export type BrewBottlePreviewKind = 'quickRevive' | 'daiquiri' | 'staminUp';
+export type BrewBottlePreviewKind = 'quickRevive' | 'daiquiri' | 'staminUp' | 'smartPro';
 
 export type BrewBottlePreview = {
   kind: BrewBottlePreviewKind;
@@ -45,6 +48,9 @@ export type BrewBottleInspectionSnapshot = {
   staminUpUnlocked: boolean;
   staminUpBottles: number;
   staminUpArmed: boolean;
+  smartProUnlocked: boolean;
+  smartProBottles: number;
+  smartProActive?: boolean;
 };
 
 export type BrewBottleInspection = {
@@ -90,6 +96,17 @@ export function getBrewBottlePreview(kind: BrewBottlePreviewKind): BrewBottlePre
         description: 'A rare amber soda. Break one into the machine and a winning toss pays Dark Brew Tokens instead of normal Brew Token winnings.',
         conversionCopy: 'Stamin Up keeps your Brew Token stake on a win and sends an equal reward to Dark Brew Tokens. Dark Brew Tokens cannot be bet or lost.',
       };
+    case 'smartPro':
+      return {
+        kind,
+        title: 'SMARTPRO SODA',
+        unlockPrice: SMART_PRO_UNLOCK_PRICE,
+        bottlePrice: SMART_PRO_BOTTLE_PRICE,
+        winProbability: BREW_TOKEN_WIN_PROBABILITY,
+        lossProbability: 1 - BREW_TOKEN_WIN_PROBABILITY,
+        description: 'A neon-green smart soda that turns the Central Bank into a 90-second flash sale. Every recipe and bottle except the bank key is half price.',
+        conversionCopy: 'Redeem one to activate 90 seconds of 50% off on every other bottle and recipe unlock. The bank key stays at full price while the SmartPro sale is active.',
+      };
   }
 }
 
@@ -114,17 +131,83 @@ export function getBrewBottleInspection(
           bottleCount: snapshot.daiquiriBottles,
           armed: snapshot.daiquiriArmed,
         }
-      : {
+    : kind === 'staminUp'
+      ? {
           unlocked: snapshot.staminUpUnlocked,
           bottleCount: snapshot.staminUpBottles,
           armed: snapshot.staminUpArmed,
+        }
+      : {
+          unlocked: snapshot.smartProUnlocked,
+          bottleCount: snapshot.smartProBottles,
+          armed: snapshot.smartProActive === true,
         };
 
+  const preview = getBrewBottlePreview(kind);
+  const discountedPreview = snapshot.smartProActive && kind !== 'smartPro'
+    ? {
+        ...preview,
+        unlockPrice: getSmartProSalePrice(preview.unlockPrice, true),
+        bottlePrice: getSmartProSalePrice(preview.bottlePrice, true),
+      }
+    : preview;
+
   return {
-    preview: getBrewBottlePreview(kind),
+    preview: discountedPreview,
     ...selected,
     snapshot: { ...snapshot },
   };
+}
+
+export function getSmartProSalePrice(basePrice: number, saleActive: boolean): number {
+  const safePrice = Math.max(0, Math.floor(basePrice));
+  return saleActive ? Math.max(1, Math.ceil(safePrice / 2)) : safePrice;
+}
+
+export function hasSmartProSale(expiresAt: number | null | undefined, now: number): boolean {
+  return typeof expiresAt === 'number' && Number.isFinite(expiresAt) && expiresAt > now;
+}
+
+export function formatSmartProRemaining(
+  expiresAt: number | null | undefined,
+  now: number,
+): string | null {
+  if (!hasSmartProSale(expiresAt, now)) return null;
+  const remainingSeconds = Math.ceil((expiresAt! - now) / 1_000);
+  return `${Math.floor(remainingSeconds / 60)}:${String(remainingSeconds % 60).padStart(2, '0')}`;
+}
+
+export function buySmartProUnlock(
+  tokenBalance: number,
+  alreadyUnlocked: boolean,
+): { tokenBalance: number; unlocked: true } | null {
+  const safeBalance = Math.max(0, Math.floor(tokenBalance));
+  if (alreadyUnlocked || safeBalance < SMART_PRO_UNLOCK_PRICE) return null;
+  return { tokenBalance: safeBalance - SMART_PRO_UNLOCK_PRICE, unlocked: true };
+}
+
+export function buySmartProBottle(
+  tokenBalance: number,
+  bottleCount: number,
+  unlocked: boolean,
+): { tokenBalance: number; bottleCount: number } | null {
+  const safeBalance = Math.max(0, Math.floor(tokenBalance));
+  const safeBottles = Math.max(0, Math.floor(bottleCount));
+  if (!unlocked || safeBalance < SMART_PRO_BOTTLE_PRICE) return null;
+  return {
+    tokenBalance: safeBalance - SMART_PRO_BOTTLE_PRICE,
+    bottleCount: safeBottles + 1,
+  };
+}
+
+export function redeemSmartProBottle(
+  bottleCount: number,
+  now: number,
+  activeExpiresAt: number | null | undefined = null,
+): { bottleCount: number; expiresAt: number } | null {
+  const safeBottles = Math.max(0, Math.floor(bottleCount));
+  if (safeBottles < 1 || hasSmartProSale(activeExpiresAt, now)) return null;
+  return { bottleCount: safeBottles - 1, expiresAt: now + SMART_PRO_SALE_DURATION_MS };
 }
 
 export function parseStoredNonNegative(raw: string | null | undefined): number {
@@ -193,22 +276,26 @@ export function buyBrewBankKey(
 export function buyQuickReviveUnlock(
   tokenBalance: number,
   alreadyUnlocked: boolean,
+  price = QUICK_REVIVE_UNLOCK_PRICE,
 ): { tokenBalance: number; unlocked: true } | null {
   const safeBalance = Math.max(0, Math.floor(tokenBalance));
-  if (alreadyUnlocked || safeBalance < QUICK_REVIVE_UNLOCK_PRICE) return null;
-  return { tokenBalance: safeBalance - QUICK_REVIVE_UNLOCK_PRICE, unlocked: true };
+  const safePrice = Math.max(1, Math.floor(price));
+  if (alreadyUnlocked || safeBalance < safePrice) return null;
+  return { tokenBalance: safeBalance - safePrice, unlocked: true };
 }
 
 export function buyQuickReviveBottle(
   tokenBalance: number,
   bottleCount: number,
   unlocked: boolean,
+  price = QUICK_REVIVE_BOTTLE_PRICE,
 ): { tokenBalance: number; bottleCount: number } | null {
   const safeBalance = Math.max(0, Math.floor(tokenBalance));
   const safeBottles = Math.max(0, Math.floor(bottleCount));
-  if (!unlocked || safeBalance < QUICK_REVIVE_BOTTLE_PRICE) return null;
+  const safePrice = Math.max(1, Math.floor(price));
+  if (!unlocked || safeBalance < safePrice) return null;
   return {
-    tokenBalance: safeBalance - QUICK_REVIVE_BOTTLE_PRICE,
+    tokenBalance: safeBalance - safePrice,
     bottleCount: safeBottles + 1,
   };
 }
@@ -229,22 +316,26 @@ export function getBrewWinProbability(quickReviveArmed: boolean): number {
 export function buyDaiquiriUnlock(
   tokenBalance: number,
   alreadyUnlocked: boolean,
+  price = DAIQUIRI_UNLOCK_PRICE,
 ): { tokenBalance: number; unlocked: true } | null {
   const safeBalance = Math.max(0, Math.floor(tokenBalance));
-  if (alreadyUnlocked || safeBalance < DAIQUIRI_UNLOCK_PRICE) return null;
-  return { tokenBalance: safeBalance - DAIQUIRI_UNLOCK_PRICE, unlocked: true };
+  const safePrice = Math.max(1, Math.floor(price));
+  if (alreadyUnlocked || safeBalance < safePrice) return null;
+  return { tokenBalance: safeBalance - safePrice, unlocked: true };
 }
 
 export function buyDaiquiriBottle(
   tokenBalance: number,
   bottleCount: number,
   unlocked: boolean,
+  price = DAIQUIRI_BOTTLE_PRICE,
 ): { tokenBalance: number; bottleCount: number } | null {
   const safeBalance = Math.max(0, Math.floor(tokenBalance));
   const safeBottles = Math.max(0, Math.floor(bottleCount));
-  if (!unlocked || safeBalance < DAIQUIRI_BOTTLE_PRICE) return null;
+  const safePrice = Math.max(1, Math.floor(price));
+  if (!unlocked || safeBalance < safePrice) return null;
   return {
-    tokenBalance: safeBalance - DAIQUIRI_BOTTLE_PRICE,
+    tokenBalance: safeBalance - safePrice,
     bottleCount: safeBottles + 1,
   };
 }
@@ -261,22 +352,26 @@ export function redeemDaiquiriBottle(
 export function buyStaminUpUnlock(
   tokenBalance: number,
   alreadyUnlocked: boolean,
+  price = STAMIN_UP_UNLOCK_PRICE,
 ): { tokenBalance: number; unlocked: true } | null {
   const safeBalance = Math.max(0, Math.floor(tokenBalance));
-  if (alreadyUnlocked || safeBalance < STAMIN_UP_UNLOCK_PRICE) return null;
-  return { tokenBalance: safeBalance - STAMIN_UP_UNLOCK_PRICE, unlocked: true };
+  const safePrice = Math.max(1, Math.floor(price));
+  if (alreadyUnlocked || safeBalance < safePrice) return null;
+  return { tokenBalance: safeBalance - safePrice, unlocked: true };
 }
 
 export function buyStaminUpBottle(
   tokenBalance: number,
   bottleCount: number,
   unlocked: boolean,
+  price = STAMIN_UP_BOTTLE_PRICE,
 ): { tokenBalance: number; bottleCount: number } | null {
   const safeBalance = Math.max(0, Math.floor(tokenBalance));
   const safeBottles = Math.max(0, Math.floor(bottleCount));
-  if (!unlocked || safeBalance < STAMIN_UP_BOTTLE_PRICE) return null;
+  const safePrice = Math.max(1, Math.floor(price));
+  if (!unlocked || safeBalance < safePrice) return null;
   return {
-    tokenBalance: safeBalance - STAMIN_UP_BOTTLE_PRICE,
+    tokenBalance: safeBalance - safePrice,
     bottleCount: safeBottles + 1,
   };
 }

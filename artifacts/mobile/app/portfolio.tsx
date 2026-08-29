@@ -1450,6 +1450,9 @@ function GradeHistoryModal({
     staminUpUnlocked,
     staminUpBottles,
     staminUpArmed,
+    smartProUnlocked,
+    smartProBottles,
+    smartProSaleExpiresAt,
     darkBrewTokens,
     buyBankKey,
     activateBankKey,
@@ -1462,6 +1465,9 @@ function GradeHistoryModal({
     unlockStaminUp,
     buyStaminUpBottle,
     redeemStaminUpBottle,
+    unlockSmartPro,
+    buySmartProBottle,
+    redeemSmartProBottle,
     clearJustUnlocked,
   } = useBrewTokens();
   const isWeekend = [0, 6].includes(new Date().getDay());
@@ -1620,6 +1626,9 @@ function GradeHistoryModal({
                 staminUpUnlocked={staminUpUnlocked}
                 staminUpBottles={staminUpBottles}
                 staminUpArmed={staminUpArmed}
+                smartProUnlocked={smartProUnlocked}
+                smartProBottles={smartProBottles}
+                smartProSaleExpiresAt={smartProSaleExpiresAt}
                 darkBrewTokens={darkBrewTokens}
                 onClose={() => setBrewBankVisible(false)}
                 onResolveBet={resolveBet}
@@ -1636,6 +1645,9 @@ function GradeHistoryModal({
                 onUnlockStaminUp={unlockStaminUp}
                 onBuyStaminUpBottle={buyStaminUpBottle}
                 onRedeemStaminUp={redeemStaminUpBottle}
+                onUnlockSmartPro={unlockSmartPro}
+                onBuySmartProBottle={buySmartProBottle}
+                onRedeemSmartPro={redeemSmartProBottle}
               />
               <BrewTokenUnlockCelebration
                 visible={brewCelebrationVisible}

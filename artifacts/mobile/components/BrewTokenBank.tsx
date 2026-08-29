@@ -49,15 +49,21 @@ import {
   DAIQUIRI_UNLOCK_PRICE,
   QUICK_REVIVE_BOTTLE_PRICE,
   QUICK_REVIVE_UNLOCK_PRICE,
+  SMART_PRO_BOTTLE_PRICE,
+  SMART_PRO_SALE_DURATION_MS,
+  SMART_PRO_UNLOCK_PRICE,
   STAMIN_UP_BOTTLE_PRICE,
   STAMIN_UP_UNLOCK_PRICE,
   type BrewBottlePreviewKind,
   type BrewBetEffect,
   formatBrewBankAccessRemaining,
+  formatSmartProRemaining,
   getBrewBottleInspection,
   getDaiquiriWinProbability,
   getBrewWinProbability,
   hasBrewBankAccess,
+  getSmartProSalePrice,
+  hasSmartProSale,
   isWeekday,
 } from '@/lib/brewTokenLogic';
 
@@ -303,6 +309,77 @@ function StaminUpBottle({ size = 54, muted = false }: { size?: number; muted?: b
   );
 }
 
+function SmartProBottle({ size = 54, muted = false }: { size?: number; muted?: boolean }) {
+  const prefix = `smart-pro-${size}-${muted ? 'muted' : 'live'}`;
+  const glass = muted ? '#718878' : '#ddffd0';
+  const glassDeep = muted ? '#183426' : '#071c17';
+  const liquid = muted ? '#567b35' : '#a8f52b';
+  const liquidBright = muted ? '#91b96b' : '#f2ffd0';
+  const green = muted ? '#668c43' : '#b9ff45';
+  const blue = muted ? '#38516a' : '#1e5b9b';
+  const label = muted ? '#253f36' : '#092c3c';
+  const ink = muted ? '#a6b8a8' : '#f7fff0';
+  return (
+    <Svg width={size} height={size * 1.96} viewBox="0 0 260 510" accessibilityLabel="SmartPro Soda glowing lime-green bottle">
+      <Defs>
+        <SvgLinearGradient id={`${prefix}-glass`} x1="0" x2="1">
+          <Stop stopColor={glassDeep} />
+          <Stop offset="0.2" stopColor={muted ? '#315542' : '#2c7d45'} />
+          <Stop offset="0.46" stopColor={muted ? '#163525' : '#0c3a2b'} />
+          <Stop offset="0.76" stopColor={muted ? '#10271c' : '#09251d'} />
+          <Stop offset="1" stopColor={muted ? '#56745b' : '#96d86d'} />
+        </SvgLinearGradient>
+        <SvgLinearGradient id={`${prefix}-liquid`} x1="0" y1="0" x2="1" y2="1">
+          <Stop stopColor={liquidBright} />
+          <Stop offset="0.2" stopColor={muted ? '#86b55b' : '#d9ff65'} />
+          <Stop offset="0.62" stopColor={liquid} />
+          <Stop offset="1" stopColor={muted ? '#315b2c' : '#51a51f'} />
+        </SvgLinearGradient>
+        <SvgLinearGradient id={`${prefix}-cap`} x1="0" x2="1" y1="0" y2="1">
+          <Stop stopColor={muted ? '#263a4a' : '#173f74'} />
+          <Stop offset="0.42" stopColor={muted ? '#426a8a' : '#4fa0de'} />
+          <Stop offset="0.68" stopColor={blue} />
+          <Stop offset="1" stopColor={muted ? '#172a3a' : '#0d2d59'} />
+        </SvgLinearGradient>
+        <ClipPath id={`${prefix}-liquid-clip`}>
+          <Path d="M46 202h168v236c0 34-29 54-84 54s-84-20-84-54V202Z" />
+        </ClipPath>
+      </Defs>
+      <Path d="M92 29h76v47c0 20 5 34 14 47l24 34c8 12 12 26 12 42v239c0 34-32 52-88 52s-88-18-88-52V199c0-16 4-30 12-42l24-34c9-13 14-27 14-47V29Z" fill={`url(#${prefix}-glass)`} stroke={glass} strokeOpacity={muted ? 0.42 : 0.86} strokeWidth="3" />
+      <Path d="M99 34h62v43c0 22 5 37 15 51l22 32c6 10 9 22 9 35v239c0 25-25 40-77 40s-77-15-77-40V195c0-13 3-25 9-35l22-32c10-14 15-29 15-51V34Z" fill={glassDeep} fillOpacity={muted ? 0.6 : 0.34} />
+      <Path d="M46 202h168v236c0 34-29 54-84 54s-84-20-84-54V202Z" fill={`url(#${prefix}-liquid)`} fillOpacity={muted ? 0.5 : 0.97} />
+      <G clipPath={`url(#${prefix}-liquid-clip)`}>
+        <Path d="M42 245c45-18 88 12 177-20v220H42Z" fill="#f4ffd4" fillOpacity={muted ? 0.08 : 0.25} />
+        {[
+          [58, 424, 3.5], [78, 391, 2.4], [101, 448, 3], [124, 410, 4],
+          [151, 438, 2.6], [173, 370, 2.2], [190, 426, 3.3], [86, 345, 2],
+          [117, 362, 2.8], [143, 332, 1.8], [69, 454, 1.7], [181, 391, 2],
+        ].map(([cx, cy, r], index) => (
+          <Circle key={index} cx={cx} cy={cy} r={r} fill="#f4ffd9" fillOpacity={muted ? 0.2 : 0.78} />
+        ))}
+      </G>
+      <Path d="M103 70c-8 55-6 104-6 158v183c0 28 8 51 18 67l11-5c-10-22-14-41-14-66V212c0-56-2-101 8-145Z" fill="#f4ffe9" fillOpacity={muted ? 0.06 : 0.17} />
+      <G opacity={muted ? 0.58 : 1}>
+        <Path d="M98 106h64v39H98Z" fill={label} stroke={green} strokeOpacity={muted ? 0.3 : 0.74} strokeWidth="1.5" />
+        <Path d="M102 110h56v31h-56Z" fill="#2e7b49" fillOpacity={muted ? 0.22 : 0.44} stroke={ink} strokeOpacity="0.2" />
+        <SvgText x="130" y="133" fill={ink} fontSize="23" fontWeight="900" textAnchor="middle">S</SvgText>
+      </G>
+      <G opacity={muted ? 0.58 : 1}>
+        <Circle cx="130" cy="322" r="80" fill="#e8ffd4" fillOpacity={muted ? 0.38 : 0.96} stroke={green} strokeWidth="2" />
+        <Circle cx="130" cy="322" r="72" fill={label} stroke="#dcffc0" strokeOpacity="0.65" strokeWidth="2.5" />
+        <Circle cx="130" cy="322" r="50" fill="none" stroke={green} strokeOpacity="0.7" strokeWidth="1.5" />
+        <SvgText x="130" y="283" fill={ink} fontSize="12" fontWeight="800" textAnchor="middle" letterSpacing="1.4">SMARTPRO</SvgText>
+        <SvgText x="130" y="350" fill={green} fontSize="62" fontWeight="900" textAnchor="middle">S</SvgText>
+        <SvgText x="130" y="375" fill={ink} fontSize="11" fontWeight="700" textAnchor="middle" letterSpacing="2.2">SODA</SvgText>
+      </G>
+      <G>
+        <Path d="M88 27h84v17c0 8-7 13-16 13h-52c-9 0-16-5-16-13V27Z" fill={`url(#${prefix}-cap)`} stroke="#b9e7ff" strokeOpacity={muted ? 0.3 : 0.86} strokeWidth="2" />
+        <Path d="M101 34h58" stroke="#e8f6ff" strokeOpacity={muted ? 0.1 : 0.34} strokeWidth="2" strokeLinecap="round" />
+      </G>
+    </Svg>
+  );
+}
+
 type Props = {
   visible: boolean;
   colors: ColorScheme;
@@ -321,6 +398,9 @@ type Props = {
   staminUpUnlocked: boolean;
   staminUpBottles: number;
   staminUpArmed: boolean;
+  smartProUnlocked: boolean;
+  smartProBottles: number;
+  smartProSaleExpiresAt: number | null;
   darkBrewTokens: number;
   onClose: () => void;
   onResolveBet: (bet: number, won: boolean, effect?: BrewBetEffect) => Promise<void>;
@@ -337,6 +417,9 @@ type Props = {
   onUnlockStaminUp: () => Promise<boolean>;
   onBuyStaminUpBottle: () => Promise<boolean>;
   onRedeemStaminUp: () => Promise<boolean>;
+  onUnlockSmartPro: () => Promise<boolean>;
+  onBuySmartProBottle: () => Promise<boolean>;
+  onRedeemSmartPro: () => Promise<boolean>;
 };
 
 type AudioPlayerHandle = {
@@ -420,6 +503,9 @@ export function BrewTokenBank({
   staminUpUnlocked,
   staminUpBottles,
   staminUpArmed,
+  smartProUnlocked,
+  smartProBottles,
+  smartProSaleExpiresAt,
   darkBrewTokens,
   onClose,
   onResolveBet,
@@ -436,6 +522,9 @@ export function BrewTokenBank({
   onUnlockStaminUp,
   onBuyStaminUpBottle,
   onRedeemStaminUp,
+  onUnlockSmartPro,
+  onBuySmartProBottle,
+  onRedeemSmartPro,
 }: Props) {
   const insets = useSafeAreaInsets();
   const [selectedBet, setSelectedBet] = useState(1);
@@ -454,6 +543,7 @@ export function BrewTokenBank({
   const [quickReviveBurstVisible, setQuickReviveBurstVisible] = useState(false);
   const [daiquiriBurstVisible, setDaiquiriBurstVisible] = useState(false);
   const [staminUpBurstVisible, setStaminUpBurstVisible] = useState(false);
+  const [smartProBurstVisible, setSmartProBurstVisible] = useState(false);
   const [bottleBurstLocation, setBottleBurstLocation] = useState<BottleBurstLocation | null>(null);
   const [reduceMotion, setReduceMotion] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -477,6 +567,7 @@ export function BrewTokenBank({
   const quickReviveBurstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const daiquiriBurstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const staminUpBurstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const smartProBurstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const coinProgress = useSharedValue(0);
   const vaultPulse = useSharedValue(0);
   const resultProgress = useSharedValue(0);
@@ -486,6 +577,7 @@ export function BrewTokenBank({
   const quickReviveProgress = useSharedValue(0);
   const daiquiriProgress = useSharedValue(0);
   const staminUpProgress = useSharedValue(0);
+  const smartProProgress = useSharedValue(0);
 
   const stopLossVoice = (force = false) => {
     if (!force && activeLossPhraseRef.current?.protectedFromDismiss) return;
@@ -543,13 +635,16 @@ export function BrewTokenBank({
     if (quickReviveBurstTimerRef.current) clearTimeout(quickReviveBurstTimerRef.current);
     if (daiquiriBurstTimerRef.current) clearTimeout(daiquiriBurstTimerRef.current);
     if (staminUpBurstTimerRef.current) clearTimeout(staminUpBurstTimerRef.current);
+    if (smartProBurstTimerRef.current) clearTimeout(smartProBurstTimerRef.current);
     quickReviveBurstTimerRef.current = null;
     daiquiriBurstTimerRef.current = null;
     staminUpBurstTimerRef.current = null;
+    smartProBurstTimerRef.current = null;
 
     setQuickReviveBurstVisible(false);
     setDaiquiriBurstVisible(false);
     setStaminUpBurstVisible(false);
+    setSmartProBurstVisible(false);
     setBottleBurstLocation(location);
 
     if (kind === 'quickRevive') {
@@ -592,21 +687,41 @@ export function BrewTokenBank({
       return;
     }
 
-    cancelAnimation(staminUpProgress);
-    setStaminUpBurstVisible(true);
-    staminUpProgress.value = 0;
-    staminUpProgress.value = reduceMotion
+    if (kind === 'staminUp') {
+      cancelAnimation(staminUpProgress);
+      setStaminUpBurstVisible(true);
+      staminUpProgress.value = 0;
+      staminUpProgress.value = reduceMotion
+        ? withTiming(1, { duration: 180 })
+        : withSequence(
+          withTiming(0.58, { duration: 600, easing: Easing.inOut(Easing.cubic) }),
+          withTiming(1, { duration: 670, easing: Easing.out(Easing.cubic) }),
+        );
+      staminUpBurstTimerRef.current = setTimeout(
+        () => {
+          setStaminUpBurstVisible(false);
+          setBottleBurstLocation(current => current === location ? null : current);
+        },
+        reduceMotion ? 240 : 1_380,
+      );
+      return;
+    }
+
+    cancelAnimation(smartProProgress);
+    setSmartProBurstVisible(true);
+    smartProProgress.value = 0;
+    smartProProgress.value = reduceMotion
       ? withTiming(1, { duration: 180 })
       : withSequence(
-        withTiming(0.58, { duration: 600, easing: Easing.inOut(Easing.cubic) }),
-        withTiming(1, { duration: 670, easing: Easing.out(Easing.cubic) }),
+        withTiming(0.44, { duration: 260, easing: Easing.out(Easing.cubic) }),
+        withTiming(1, { duration: 1_080, easing: Easing.inOut(Easing.cubic) }),
       );
-    staminUpBurstTimerRef.current = setTimeout(
+    smartProBurstTimerRef.current = setTimeout(
       () => {
-        setStaminUpBurstVisible(false);
+        setSmartProBurstVisible(false);
         setBottleBurstLocation(current => current === location ? null : current);
       },
-      reduceMotion ? 240 : 1_380,
+      reduceMotion ? 240 : 1_420,
     );
   };
 
@@ -627,6 +742,11 @@ export function BrewTokenBank({
       staminUpBurstTimerRef.current = null;
       setStaminUpBurstVisible(false);
     }
+    if (bottlePreview === 'smartPro' && smartProBurstTimerRef.current) {
+      clearTimeout(smartProBurstTimerRef.current);
+      smartProBurstTimerRef.current = null;
+      setSmartProBurstVisible(false);
+    }
     setBottleBurstLocation(null);
   };
 
@@ -636,6 +756,7 @@ export function BrewTokenBank({
     if (quickReviveBurstTimerRef.current) clearTimeout(quickReviveBurstTimerRef.current);
     if (daiquiriBurstTimerRef.current) clearTimeout(daiquiriBurstTimerRef.current);
     if (staminUpBurstTimerRef.current) clearTimeout(staminUpBurstTimerRef.current);
+    if (smartProBurstTimerRef.current) clearTimeout(smartProBurstTimerRef.current);
     reelStopTimersRef.current.forEach(timer => clearTimeout(timer));
     reelStopTimersRef.current = [];
     [reelOnePosition, reelTwoPosition, reelThreePosition].forEach(position => cancelAnimation(position));
@@ -836,10 +957,53 @@ export function BrewTokenBank({
       { scaleY: interpolate(staminUpProgress.value, [0, 0.76, 1], [0.1, 1.08, 0.55]) },
     ],
   }));
+  const smartProBottleStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(smartProProgress.value, [0, 0.42, 0.74, 1], [1, 1, 0.25, 0]),
+    transform: [
+      { translateY: interpolate(smartProProgress.value, [0, 0.38, 0.7, 1], [8, -30, -5, 18]) },
+      { translateX: interpolate(smartProProgress.value, [0, 0.4, 0.72, 1], [0, -5, 8, 1]) },
+      { rotateZ: `${interpolate(smartProProgress.value, [0, 0.35, 0.72, 1], [0, 9, -7, 18])}deg` },
+      { scale: interpolate(smartProProgress.value, [0, 0.45, 0.74, 1], [0.86, 1.14, 0.93, 0.5]) },
+    ],
+  }));
+  const smartProHaloStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(smartProProgress.value, [0, 0.18, 0.62, 1], [0, 0.82, 0.54, 0]),
+    transform: [
+      { scale: interpolate(smartProProgress.value, [0, 0.5, 1], [0.45, 1.2, 2]) },
+      { rotateZ: `${interpolate(smartProProgress.value, [0, 1], [0, 180])}deg` },
+    ],
+  }));
+  const smartProBubbleFieldStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(smartProProgress.value, [0, 0.18, 0.72, 1], [0, 0.96, 0.66, 0]),
+    transform: [
+      { translateY: interpolate(smartProProgress.value, [0, 1], [28, -48]) },
+      { scale: interpolate(smartProProgress.value, [0, 0.54, 1], [0.42, 1.12, 1.55]) },
+    ],
+  }));
+  const smartProSparkStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(smartProProgress.value, [0, 0.36, 0.7, 1], [0, 0.2, 0.98, 0]),
+    transform: [
+      { translateY: interpolate(smartProProgress.value, [0, 0.72, 1], [12, -34, -46]) },
+      { scale: interpolate(smartProProgress.value, [0, 0.62, 1], [0.4, 1.1, 1.8]) },
+    ],
+  }));
 
   const bet = Math.min(Math.max(selectedBet, 1), Math.max(tokens, 1));
   const canPlay = tokens > 0 && !resolving && !protectedVoicePlaying;
   const bankAccessActive = hasBrewBankAccess(bankAccessExpiresAt, countdownNow);
+  const smartProSaleActive = hasSmartProSale(smartProSaleExpiresAt, countdownNow);
+  const smartProRemainingLabel = formatSmartProRemaining(smartProSaleExpiresAt, countdownNow);
+  const quickReviveUnlockPrice = getSmartProSalePrice(QUICK_REVIVE_UNLOCK_PRICE, smartProSaleActive);
+  const quickReviveBottlePrice = getSmartProSalePrice(QUICK_REVIVE_BOTTLE_PRICE, smartProSaleActive);
+  const daiquiriUnlockPrice = getSmartProSalePrice(DAIQUIRI_UNLOCK_PRICE, smartProSaleActive);
+  const daiquiriBottlePrice = getSmartProSalePrice(DAIQUIRI_BOTTLE_PRICE, smartProSaleActive);
+  const staminUpUnlockPrice = getSmartProSalePrice(STAMIN_UP_UNLOCK_PRICE, smartProSaleActive);
+  const staminUpBottlePrice = getSmartProSalePrice(STAMIN_UP_BOTTLE_PRICE, smartProSaleActive);
+  const bankAccent = smartProSaleActive ? '#b9ff45' : colors.gold;
+  const bankAccentMuted = smartProSaleActive ? '#5c9b36' : colors.goldMuted;
+  const bankSurface = smartProSaleActive ? '#071b13' : colors.card;
+  const bankSteel = smartProSaleActive ? '#0b2719' : colors.steelShadow;
+  const bankWhite = smartProSaleActive ? '#f5fff0' : colors.foreground;
   const canActivateKey = isWeekday(new Date().getDay()) && bankKeys > 0 && !bankAccessActive && !resolving;
   const activeWinProbability = daiquiriArmed
     ? getDaiquiriWinProbability(true)
@@ -857,6 +1021,9 @@ export function BrewTokenBank({
         staminUpUnlocked,
         staminUpBottles,
         staminUpArmed,
+         smartProUnlocked,
+         smartProBottles,
+         smartProActive: smartProSaleActive,
       })
     : null;
   const selectedBottlePreview = selectedBottleInspection?.preview ?? null;
