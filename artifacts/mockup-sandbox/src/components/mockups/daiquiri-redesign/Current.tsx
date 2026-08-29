@@ -33,8 +33,8 @@ export function Current() {
   const redeem = () => {
     setBurst(false);
     requestAnimationFrame(() => setBurst(true));
-    setStatus(reducedMotion ? "DAIQUIRI ARMED · 45% WIN · 65% LOSS · DOUBLE AWARD" : "CRACKING OPEN · WATCH THE SURGE");
-    window.setTimeout(() => setStatus("DAIQUIRI ARMED · 45% WIN · 65% LOSS · DOUBLE AWARD"), reducedMotion ? 180 : 1100);
+    setStatus(reducedMotion ? "DAIQUIRI ARMED · 45% WIN · 55% LOSS · DOUBLE AWARD" : "CRACKING OPEN · WATCH THE SURGE");
+    window.setTimeout(() => setStatus("DAIQUIRI ARMED · 45% WIN · 55% LOSS · DOUBLE AWARD"), reducedMotion ? 180 : 1100);
   };
 
   return (
@@ -55,10 +55,10 @@ export function Current() {
         </div>
 
         <div className="current-copy">
-          <p>Crack one into the machine before a toss: 45% win odds, 65% loss odds, and a double award if it pays.</p>
+          <p>Crack one into the machine before a toss: 45% win odds, 55% loss odds, and a double award if it pays.</p>
           <div className="odds-row mono">
             <span><b>45%</b> WIN</span>
-            <span><b>65%</b> LOSS</span>
+            <span><b>55%</b> LOSS</span>
             <span><b>2×</b> AWARD</span>
           </div>
         </div>

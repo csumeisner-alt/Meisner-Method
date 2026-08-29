@@ -141,7 +141,7 @@ test('opening and closing every bottle inspection preserves balance, inventory, 
 
   const expected = {
     quickRevive: { bottlePrice: 2, odds: '62% WIN · 38% LOSS', bottles: 3, armed: false },
-    daiquiri: { bottlePrice: 8, odds: '45% WIN · 65% LOSS', bottles: 2, armed: true },
+    daiquiri: { bottlePrice: 8, odds: '45% WIN · 55% LOSS', bottles: 2, armed: true },
     staminUp: { bottlePrice: 16, odds: '55% WIN · 45% LOSS', bottles: 4, armed: false },
     smartPro: { bottlePrice: 3, odds: '55% WIN · 45% LOSS', bottles: 5, armed: false },
   } as const;
@@ -186,7 +186,7 @@ test('Dave Ramsey Daiquiri consumes one bottle and applies its requested odds fo
   assert.equal(redeemDaiquiriBottle(1, true), null);
   assert.equal(getDaiquiriWinProbability(false), BREW_TOKEN_WIN_PROBABILITY);
   assert.equal(getDaiquiriWinProbability(true), DAIQUIRI_WIN_PROBABILITY);
-  assert.equal(DAIQUIRI_LOSS_PROBABILITY, 0.65);
+   assert.equal(DAIQUIRI_LOSS_PROBABILITY, 0.55);
 });
 
 test('Stamin Up unlocks at five hundred tokens and its bottles cost sixteen tokens', () => {

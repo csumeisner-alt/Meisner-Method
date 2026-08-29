@@ -115,10 +115,10 @@ export function DaiquiriGlowSurge() {
       replayFrame.current = null;
       setActive(true);
     });
-    setStatus(reducedMotion ? "DAIQUIRI ARMED · 45% WIN · 65% LOSS · DOUBLE AWARD" : "SURGE IN PROGRESS · DOUBLE AWARD LOADED");
+    setStatus(reducedMotion ? "DAIQUIRI ARMED · 45% WIN · 55% LOSS · DOUBLE AWARD" : "SURGE IN PROGRESS · DOUBLE AWARD LOADED");
     statusTimer.current = window.setTimeout(() => {
       statusTimer.current = null;
-      setStatus("DAIQUIRI ARMED · 45% WIN · 65% LOSS · DOUBLE AWARD");
+      setStatus("DAIQUIRI ARMED · 45% WIN · 55% LOSS · DOUBLE AWARD");
     }, reducedMotion ? 180 : 2400);
   };
 
@@ -155,10 +155,10 @@ export function DaiquiriGlowSurge() {
             </div>
             <span className="bottle-count mono">01 / 01</span>
           </div>
-          <p className="detail-copy">Crack one into the machine before a toss: 45% win odds, 65% loss odds, and a double award if it pays.</p>
+          <p className="detail-copy">Crack one into the machine before a toss: 45% win odds, 55% loss odds, and a double award if it pays.</p>
           <div className="odds-strip">
             <div><span className="mono">WIN ODDS</span><strong>45%</strong></div>
-            <div><span className="mono">LOSS ODDS</span><strong>65%</strong></div>
+             <div><span className="mono">LOSS ODDS</span><strong>55%</strong></div>
             <div><span className="mono">PAYOUT</span><strong>2×</strong></div>
           </div>
         </div>
