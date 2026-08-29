@@ -53,6 +53,14 @@ import {
   redeemStaminUpBottle,
   redeemSmartProBottle,
 } from '../brewTokenLogic.ts';
+import {
+  BREW_ECONOMY_SNAPSHOT_VERSION,
+  createBrewEconomySnapshot,
+  migrateLegacyBrewEconomy,
+  parseBrewEconomySnapshot,
+  persistBrewEconomySnapshot,
+  serializeBrewEconomySnapshot,
+} from '../brewTokenPersistence.ts';
 
 test('Brew Bank unlocks exactly when the quote threshold is crossed', () => {
   assert.equal(isBrewBankUnlock(BREW_TOKEN_QUOTE_THRESHOLD - 1, BREW_TOKEN_QUOTE_THRESHOLD), true);
@@ -360,4 +368,166 @@ test('serial write queue preserves mutation order after an earlier failure', asy
 
   await Promise.all([first, second]);
   assert.deepEqual(events, ['first:start', 'first:fail', 'second:start', 'second:finish']);
+});
+
+test('economy snapshots round-trip all balances and claimed quote sessions', () => {
+  const snapshot = createBrewEconomySnapshot({
+    quotesViewed: 27,
+    isUnlocked: true,
+    brewTokens: 91,
+    bankKeys: 2,
+    bankAccessExpiresAt: 1_800_000_000_000,
+    quickReviveUnlocked: true,
+    quickReviveBottles: 3,
+    quickReviveArmed: true,
+    daiquiriUnlocked: true,
+    daiquiriBottles: 4,
+    daiquiriArmed: false,
+    staminUpUnlocked: true,
+    staminUpBottles: 1,
+    staminUpArmed: false,
+    smartProUnlocked: true,
+    smartProBottles: 2,
+    smartProSaleExpiresAt: 1_800_000_090_000,
+    darkBrewTokens: 6,
+    claimedQuoteViewIds: ['tape-1', 'tape-2', 'tape-1'],
+  });
+
+  const serialized = serializeBrewEconomySnapshot(snapshot);
+  assert.equal(snapshot.version, BREW_ECONOMY_SNAPSHOT_VERSION);
+  assert.deepEqual(parseBrewEconomySnapshot(serialized), {
+    ...snapshot,
+    claimedQuoteViewIds: ['tape-1', 'tape-2'],
+  });
+});
+
+test('legacy economy fields migrate into one snapshot without losing item state', () => {
+  const snapshot = migrateLegacyBrewEconomy({
+    rawQuotes: '22',
+    rawUnlocked: 'true',
+    rawTokens: '73',
+    rawKeys: '2',
+    rawAccessExpires: '1800000000000',
+    rawQuickReviveUnlocked: 'true',
+    rawQuickReviveBottles: '3',
+    rawQuickReviveArmed: 'true',
+    rawDaiquiriUnlocked: 'true',
+    rawDaiquiriBottles: '4',
+    rawDaiquiriArmed: 'false',
+    rawStaminUpUnlocked: 'true',
+    rawStaminUpBottles: '1',
+    rawStaminUpArmed: 'false',
+    rawSmartProUnlocked: 'true',
+    rawSmartProBottles: '2',
+    rawSmartProSaleExpires: '1800000090000',
+    rawDarkBrewTokens: '6',
+  });
+
+  assert.equal(snapshot.quotesViewed, 22);
+  assert.equal(snapshot.brewTokens, 73);
+  assert.equal(snapshot.quickReviveBottles, 3);
+  assert.equal(snapshot.quickReviveArmed, true);
+  assert.equal(snapshot.smartProSaleExpiresAt, 1_800_000_090_000);
+  assert.deepEqual(snapshot.claimedQuoteViewIds, []);
+});
+
+test('invalid economy snapshots are rejected instead of replacing legacy data', () => {
+  assert.equal(parseBrewEconomySnapshot('not-json'), null);
+  assert.equal(parseBrewEconomySnapshot(JSON.stringify({ version: BREW_ECONOMY_SNAPSHOT_VERSION })), null);
+});
+
+test('a quote claim remains unavailable after snapshot reload', () => {
+  const snapshot = createBrewEconomySnapshot({
+    quotesViewed: 23,
+    isUnlocked: true,
+    brewTokens: 6,
+    bankKeys: 0,
+    bankAccessExpiresAt: null,
+    quickReviveUnlocked: false,
+    quickReviveBottles: 0,
+    quickReviveArmed: false,
+    daiquiriUnlocked: false,
+    daiquiriBottles: 0,
+    daiquiriArmed: false,
+    staminUpUnlocked: false,
+    staminUpBottles: 0,
+    staminUpArmed: false,
+    smartProUnlocked: false,
+    smartProBottles: 0,
+    smartProSaleExpiresAt: null,
+    darkBrewTokens: 0,
+    claimedQuoteViewIds: ['session-1'],
+  });
+
+  const reloaded = parseBrewEconomySnapshot(serializeBrewEconomySnapshot(snapshot));
+  assert.ok(reloaded);
+  assert.equal(reloaded.claimedQuoteViewIds.includes('session-1'), true);
+});
+
+test('read-back verification accepts a write that rejects after committing', async () => {
+  let stored: string | null = null;
+  const storage = {
+    setItem: async (_key: string, value: string) => {
+      stored = value;
+      throw new Error('reported failure after native commit');
+    },
+    getItem: async () => stored,
+  };
+  const snapshot = createBrewEconomySnapshot({
+    quotesViewed: 22,
+    isUnlocked: true,
+    brewTokens: 5,
+    bankKeys: 0,
+    bankAccessExpiresAt: null,
+    quickReviveUnlocked: false,
+    quickReviveBottles: 0,
+    quickReviveArmed: false,
+    daiquiriUnlocked: false,
+    daiquiriBottles: 0,
+    daiquiriArmed: false,
+    staminUpUnlocked: false,
+    staminUpBottles: 0,
+    staminUpArmed: false,
+    smartProUnlocked: false,
+    smartProBottles: 0,
+    smartProSaleExpiresAt: null,
+    darkBrewTokens: 0,
+    claimedQuoteViewIds: [],
+  });
+
+  assert.equal(await persistBrewEconomySnapshot(storage, snapshot), true);
+  assert.deepEqual(parseBrewEconomySnapshot(stored), snapshot);
+});
+
+test('rapid queued snapshot mutations each build from the latest committed balance', async () => {
+  let snapshot = createBrewEconomySnapshot({
+    quotesViewed: 22,
+    isUnlocked: true,
+    brewTokens: 0,
+    bankKeys: 0,
+    bankAccessExpiresAt: null,
+    quickReviveUnlocked: false,
+    quickReviveBottles: 0,
+    quickReviveArmed: false,
+    daiquiriUnlocked: false,
+    daiquiriBottles: 0,
+    daiquiriArmed: false,
+    staminUpUnlocked: false,
+    staminUpBottles: 0,
+    staminUpArmed: false,
+    smartProUnlocked: false,
+    smartProBottles: 0,
+    smartProSaleExpiresAt: null,
+    darkBrewTokens: 0,
+    claimedQuoteViewIds: [],
+  });
+  const queue = createSerialWriteQueue();
+
+  await Promise.all([1, 1, 1, 1, 1].map(() => queue(async () => {
+    const next = createBrewEconomySnapshot({ ...snapshot, brewTokens: snapshot.brewTokens + 1 });
+    await new Promise(resolve => setTimeout(resolve, 1));
+    snapshot = next;
+  })));
+
+  assert.equal(snapshot.brewTokens, 5);
 });

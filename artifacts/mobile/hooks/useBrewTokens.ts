@@ -21,7 +21,6 @@ import {
   canArmBrewBottle,
   canActivateBrewBankKey,
   INITIAL_BREW_TOKENS,
-  claimQuoteView,
   createSerialWriteQueue,
   isBrewBankHalfway,
   isBrewBankUnlock,
@@ -37,6 +36,14 @@ import {
   resolveBrewBetOutcome,
   type BrewBetEffect,
 } from '@/lib/brewTokenLogic';
+import {
+  BREW_ECONOMY_SNAPSHOT_KEY,
+  createBrewEconomySnapshot,
+  migrateLegacyBrewEconomy,
+  parseBrewEconomySnapshot,
+  persistBrewEconomySnapshot,
+  type BrewEconomySnapshot,
+} from '@/lib/brewTokenPersistence';
 
 const QUOTES_VIEWED_KEY = '@stocksense/biden_quotes_viewed_v1';
 const BREW_UNLOCKED_KEY = '@stocksense/brew_bank_unlocked_v1';
@@ -149,6 +156,8 @@ export function useBrewTokens(): BrewTokenState {
   const smartProSaleExpiresAtRef = useRef<number | null>(null);
   const darkBrewTokensRef = useRef(0);
   const rememberedQuoteViewsRef = useRef(new Set<string>());
+  const economyRef = useRef<BrewEconomySnapshot | null>(null);
+  const hydrationFailedRef = useRef(false);
   const writeQueueRef = useRef<ReturnType<typeof createSerialWriteQueue> | null>(null);
   const hydrationRef = useRef<{ promise: Promise<void>; resolve: () => void } | null>(null);
 
@@ -162,8 +171,66 @@ export function useBrewTokens(): BrewTokenState {
     hydrationRef.current = { promise, resolve };
   }
 
+  const applyEconomySnapshot = (snapshot: BrewEconomySnapshot) => {
+    economyRef.current = snapshot;
+    rememberedQuoteViewsRef.current = new Set(snapshot.claimedQuoteViewIds);
+    quotesRef.current = snapshot.quotesViewed;
+    unlockedRef.current = snapshot.isUnlocked;
+    tokensRef.current = snapshot.brewTokens;
+    bankKeysRef.current = snapshot.bankKeys;
+    bankAccessExpiresAtRef.current = snapshot.bankAccessExpiresAt;
+    quickReviveUnlockedRef.current = snapshot.quickReviveUnlocked;
+    quickReviveBottlesRef.current = snapshot.quickReviveBottles;
+    quickReviveArmedRef.current = snapshot.quickReviveArmed;
+    daiquiriUnlockedRef.current = snapshot.daiquiriUnlocked;
+    daiquiriBottlesRef.current = snapshot.daiquiriBottles;
+    daiquiriArmedRef.current = snapshot.daiquiriArmed;
+    staminUpUnlockedRef.current = snapshot.staminUpUnlocked;
+    staminUpBottlesRef.current = snapshot.staminUpBottles;
+    staminUpArmedRef.current = snapshot.staminUpArmed;
+    smartProUnlockedRef.current = snapshot.smartProUnlocked;
+    smartProBottlesRef.current = snapshot.smartProBottles;
+    smartProSaleExpiresAtRef.current = snapshot.smartProSaleExpiresAt;
+    darkBrewTokensRef.current = snapshot.darkBrewTokens;
+    setQuotesViewed(snapshot.quotesViewed);
+    setIsUnlocked(snapshot.isUnlocked);
+    setBrewTokens(snapshot.brewTokens);
+    setBankKeys(snapshot.bankKeys);
+    setBankAccessExpiresAt(snapshot.bankAccessExpiresAt);
+    setQuickReviveUnlocked(snapshot.quickReviveUnlocked);
+    setQuickReviveBottles(snapshot.quickReviveBottles);
+    setQuickReviveArmed(snapshot.quickReviveArmed);
+    setDaiquiriUnlocked(snapshot.daiquiriUnlocked);
+    setDaiquiriBottles(snapshot.daiquiriBottles);
+    setDaiquiriArmed(snapshot.daiquiriArmed);
+    setStaminUpUnlocked(snapshot.staminUpUnlocked);
+    setStaminUpBottles(snapshot.staminUpBottles);
+    setStaminUpArmed(snapshot.staminUpArmed);
+    setSmartProUnlocked(snapshot.smartProUnlocked);
+    setSmartProBottles(snapshot.smartProBottles);
+    setSmartProSaleExpiresAt(snapshot.smartProSaleExpiresAt);
+    setDarkBrewTokens(snapshot.darkBrewTokens);
+  };
+
+  const commitEconomyMutation = async <T,>(
+    mutate: (current: BrewEconomySnapshot) => { snapshot: BrewEconomySnapshot; result: T } | null,
+  ): Promise<T | null> => {
+    await hydrationRef.current!.promise;
+    if (hydrationFailedRef.current || !economyRef.current) return null;
+
+    return writeQueueRef.current!(async () => {
+      const current = economyRef.current;
+      if (!current) return null;
+      const mutation = mutate(current);
+      if (!mutation || !(await persistBrewEconomySnapshot(AsyncStorage, mutation.snapshot))) return null;
+      applyEconomySnapshot(mutation.snapshot);
+      return mutation.result;
+    }).catch(() => null);
+  };
+
   useEffect(() => {
     Promise.all([
+      AsyncStorage.getItem(BREW_ECONOMY_SNAPSHOT_KEY),
       AsyncStorage.getItem(QUOTES_VIEWED_KEY),
       AsyncStorage.getItem(BREW_UNLOCKED_KEY),
       AsyncStorage.getItem(BREW_TOKENS_KEY),
@@ -185,6 +252,7 @@ export function useBrewTokens(): BrewTokenState {
       AsyncStorage.getItem(SMART_PRO_SALE_EXPIRES_KEY),
       AsyncStorage.getItem(DARK_BREW_TOKENS_KEY),
     ]).then(([
+      rawSnapshot,
       rawQuotes,
       rawUnlocked,
       rawTokens,
@@ -206,75 +274,41 @@ export function useBrewTokens(): BrewTokenState {
       rawSmartProSaleExpires,
       rawDarkBrewTokens,
     ]) => {
-      const viewed = parseStoredNonNegative(rawQuotes);
-      const unlocked = viewed >= BREW_TOKEN_QUOTE_THRESHOLD || rawUnlocked === 'true';
-      const tokens = unlocked
-        ? rawTokens == null ? INITIAL_BREW_TOKENS : parseStoredNonNegative(rawTokens)
-        : 0;
-      const keys = parseStoredNonNegative(rawKeys);
-      const parsedExpires = rawAccessExpires == null ? null : Number(rawAccessExpires);
-      const accessExpires = parsedExpires != null && Number.isFinite(parsedExpires) && parsedExpires > 0
-        ? parsedExpires
-        : null;
-      const reviveUnlocked = rawQuickReviveUnlocked === 'true';
-      const reviveBottles = reviveUnlocked ? parseStoredNonNegative(rawQuickReviveBottles) : 0;
-      const reviveArmed = reviveUnlocked && rawQuickReviveArmed === 'true';
-      const daiquiriIsUnlocked = rawDaiquiriUnlocked === 'true';
-      const daiquiriCount = daiquiriIsUnlocked ? parseStoredNonNegative(rawDaiquiriBottles) : 0;
-      const daiquiriIsArmed = daiquiriIsUnlocked && rawDaiquiriArmed === 'true';
-      const staminIsUnlocked = rawStaminUpUnlocked === 'true';
-      const staminCount = staminIsUnlocked ? parseStoredNonNegative(rawStaminUpBottles) : 0;
-      const staminIsArmed = staminIsUnlocked && rawStaminUpArmed === 'true';
-      const smartProIsUnlocked = rawSmartProUnlocked === 'true';
-      const smartProCount = smartProIsUnlocked ? parseStoredNonNegative(rawSmartProBottles) : 0;
-      const parsedSmartProExpires = rawSmartProSaleExpires == null ? null : Number(rawSmartProSaleExpires);
-      const smartProExpires = parsedSmartProExpires != null
-        && Number.isFinite(parsedSmartProExpires)
-        && parsedSmartProExpires > 0
-        ? parsedSmartProExpires
-        : null;
-      const darkTokens = parseStoredNonNegative(rawDarkBrewTokens);
+      const parsedSnapshot = parseBrewEconomySnapshot(rawSnapshot);
+      const snapshot = parsedSnapshot ?? migrateLegacyBrewEconomy({
+        rawQuotes,
+        rawUnlocked,
+        rawTokens,
+        rawKeys,
+        rawAccessExpires,
+        rawQuickReviveUnlocked,
+        rawQuickReviveBottles,
+        rawQuickReviveArmed,
+        rawDaiquiriUnlocked,
+        rawDaiquiriBottles,
+        rawDaiquiriArmed,
+        rawStaminUpUnlocked,
+        rawStaminUpBottles,
+        rawStaminUpArmed,
+        rawSmartProUnlocked,
+        rawSmartProBottles,
+        rawSmartProSaleExpires,
+        rawDarkBrewTokens,
+      });
 
-      quotesRef.current = viewed;
-      unlockedRef.current = unlocked;
-      tokensRef.current = tokens;
-      bankKeysRef.current = keys;
-      bankAccessExpiresAtRef.current = accessExpires;
-      quickReviveUnlockedRef.current = reviveUnlocked;
-      quickReviveBottlesRef.current = reviveBottles;
-      quickReviveArmedRef.current = reviveArmed;
-      daiquiriUnlockedRef.current = daiquiriIsUnlocked;
-      daiquiriBottlesRef.current = daiquiriCount;
-      daiquiriArmedRef.current = daiquiriIsArmed;
-      staminUpUnlockedRef.current = staminIsUnlocked;
-      staminUpBottlesRef.current = staminCount;
-      staminUpArmedRef.current = staminIsArmed;
-      smartProUnlockedRef.current = smartProIsUnlocked;
-      smartProBottlesRef.current = smartProCount;
-      smartProSaleExpiresAtRef.current = smartProExpires;
-      darkBrewTokensRef.current = darkTokens;
-      setQuotesViewed(viewed);
-      setIsUnlocked(unlocked);
-      setBrewTokens(tokens);
-      setBankKeys(keys);
-      setBankAccessExpiresAt(accessExpires);
-      setQuickReviveUnlocked(reviveUnlocked);
-      setQuickReviveBottles(reviveBottles);
-      setQuickReviveArmed(reviveArmed);
-      setDaiquiriUnlocked(daiquiriIsUnlocked);
-      setDaiquiriBottles(daiquiriCount);
-      setDaiquiriArmed(daiquiriIsArmed);
-      setStaminUpUnlocked(staminIsUnlocked);
-      setStaminUpBottles(staminCount);
-      setStaminUpArmed(staminIsArmed);
-      setSmartProUnlocked(smartProIsUnlocked);
-      setSmartProBottles(smartProCount);
-      setSmartProSaleExpiresAt(smartProExpires);
-      setDarkBrewTokens(darkTokens);
+      applyEconomySnapshot(snapshot);
       setSoundEnabledState(rawSound !== 'false');
       setHapticsEnabledState(rawHaptics !== 'false');
+
+      if (!parsedSnapshot) {
+        void writeQueueRef.current!(
+          () => persistBrewEconomySnapshot(AsyncStorage, snapshot),
+        ).catch(() => {});
+      }
     }).catch(() => {
-      // Storage failure should not block the app or the quote experience.
+      // Keep default UI state visible, but prevent it from overwriting storage
+      // that could not be read during hydration.
+      hydrationFailedRef.current = true;
     }).finally(() => {
       hydrationRef.current!.resolve();
     });
@@ -287,8 +321,12 @@ export function useBrewTokens(): BrewTokenState {
     const clearExpiredAccess = () => {
       if (bankAccessExpiresAtRef.current !== expiresAt) return;
       if (hasBrewBankAccess(expiresAt, Date.now())) return;
-      bankAccessExpiresAtRef.current = null;
-      setBankAccessExpiresAt(null);
+      void commitEconomyMutation((current) => current.bankAccessExpiresAt === expiresAt
+        ? {
+            snapshot: createBrewEconomySnapshot({ ...current, bankAccessExpiresAt: null }),
+            result: true,
+          }
+        : null);
     };
 
     const remaining = expiresAt - Date.now();
@@ -308,11 +346,12 @@ export function useBrewTokens(): BrewTokenState {
     const clearExpiredSale = () => {
       if (smartProSaleExpiresAtRef.current !== expiresAt) return;
       if (hasSmartProSale(expiresAt, Date.now())) return;
-      smartProSaleExpiresAtRef.current = null;
-      setSmartProSaleExpiresAt(null);
-      void writeQueueRef.current!(
-        () => AsyncStorage.removeItem(SMART_PRO_SALE_EXPIRES_KEY),
-      ).catch(() => {});
+      void commitEconomyMutation((current) => current.smartProSaleExpiresAt === expiresAt
+        ? {
+            snapshot: createBrewEconomySnapshot({ ...current, smartProSaleExpiresAt: null }),
+            result: true,
+          }
+        : null);
     };
 
     const remaining = expiresAt - Date.now();
@@ -326,341 +365,336 @@ export function useBrewTokens(): BrewTokenState {
   }, [smartProSaleExpiresAt]);
 
   const incrementQuoteViewed = useCallback(async (quoteViewId?: string) => {
-    await hydrationRef.current!.promise;
+    const outcome = await commitEconomyMutation((current) => {
+      if (quoteViewId && current.claimedQuoteViewIds.includes(quoteViewId)) return null;
 
-    if (quoteViewId && !claimQuoteView(rememberedQuoteViewsRef.current, quoteViewId)) {
-      return { earnedToken: false, halfway: false };
-    }
+      const previous = current.quotesViewed;
+      const nextQuotesViewed = previous + 1;
+      const halfway = isBrewBankHalfway(previous, nextQuotesViewed);
+      const justUnlocked = !current.isUnlocked && isBrewBankUnlock(previous, nextQuotesViewed);
+      const earnedToken = current.isUnlocked && isWeekday(new Date().getDay());
+      const nextClaimedQuoteViewIds = quoteViewId
+        ? [...current.claimedQuoteViewIds, quoteViewId]
+        : current.claimedQuoteViewIds;
 
-    const previous = quotesRef.current;
-    const next = previous + 1;
-    const halfway = isBrewBankHalfway(previous, next);
-    quotesRef.current = next;
-    setQuotesViewed(next);
+      const snapshot = createBrewEconomySnapshot({
+        ...current,
+        quotesViewed: nextQuotesViewed,
+        isUnlocked: current.isUnlocked || justUnlocked,
+        brewTokens: justUnlocked
+          ? INITIAL_BREW_TOKENS
+          : earnedToken
+            ? current.brewTokens + 1
+            : current.brewTokens,
+        claimedQuoteViewIds: nextClaimedQuoteViewIds,
+      });
 
-    let tokenWrite: (() => Promise<void>) | null = null;
-    let earnedToken = false;
-    if (!unlockedRef.current && isBrewBankUnlock(previous, next)) {
-      unlockedRef.current = true;
-      tokensRef.current = INITIAL_BREW_TOKENS;
-      setIsUnlocked(true);
-      setBrewTokens(INITIAL_BREW_TOKENS);
-      setJustUnlocked(true);
-      tokenWrite = () => Promise.all([
-        AsyncStorage.setItem(BREW_UNLOCKED_KEY, 'true'),
-        AsyncStorage.setItem(BREW_TOKENS_KEY, String(INITIAL_BREW_TOKENS)),
-      ]).then(() => undefined);
-    } else if (unlockedRef.current && isWeekday(new Date().getDay())) {
-      const nextTokens = tokensRef.current + 1;
-      tokensRef.current = nextTokens;
-      setBrewTokens(nextTokens);
-      earnedToken = true;
-      tokenWrite = () => AsyncStorage.setItem(BREW_TOKENS_KEY, String(nextTokens));
-    }
+      return {
+        snapshot,
+        result: { earnedToken, halfway, justUnlocked },
+      };
+    });
 
-    await writeQueueRef.current!(async () => {
-      await AsyncStorage.setItem(QUOTES_VIEWED_KEY, String(next));
-      if (tokenWrite) await tokenWrite();
-    }).catch(() => {});
-    return { earnedToken, halfway };
+    if (!outcome) return { earnedToken: false, halfway: false };
+    if (outcome.justUnlocked) setJustUnlocked(true);
+    return { earnedToken: outcome.earnedToken, halfway: outcome.halfway };
   }, []);
 
   const resolveBet = useCallback(async (bet: number, won: boolean, effect: BrewBetEffect = {}) => {
-    await hydrationRef.current!.promise;
-
-    const previousDarkBrewTokens = darkBrewTokensRef.current;
-    const next = resolveBrewBetOutcome(tokensRef.current, darkBrewTokensRef.current, bet, won, effect);
-    tokensRef.current = next.brewTokens;
-    darkBrewTokensRef.current = next.darkBrewTokens;
-    setBrewTokens(next.brewTokens);
-    setDarkBrewTokens(next.darkBrewTokens);
-    const hadQuickReviveArmed = quickReviveArmedRef.current;
-    const hadDaiquiriArmed = daiquiriArmedRef.current;
-    const hadStaminUpArmed = staminUpArmedRef.current;
-    quickReviveArmedRef.current = false;
-    daiquiriArmedRef.current = false;
-    staminUpArmedRef.current = false;
-    setQuickReviveArmed(false);
-    setDaiquiriArmed(false);
-    setStaminUpArmed(false);
-    await writeQueueRef.current!(
-      () => Promise.all([
-        AsyncStorage.setItem(BREW_TOKENS_KEY, String(next.brewTokens)),
-        ...(next.darkBrewTokens !== previousDarkBrewTokens
-          ? [AsyncStorage.setItem(DARK_BREW_TOKENS_KEY, String(next.darkBrewTokens))]
-          : []),
-        ...(hadQuickReviveArmed ? [AsyncStorage.removeItem(QUICK_REVIVE_ARMED_KEY)] : []),
-        ...(hadDaiquiriArmed ? [AsyncStorage.removeItem(DAIQUIRI_ARMED_KEY)] : []),
-        ...(hadStaminUpArmed ? [AsyncStorage.removeItem(STAMIN_UP_ARMED_KEY)] : []),
-      ]).then(() => undefined),
-    ).catch(() => {});
+    const outcome = await commitEconomyMutation((current) => {
+      const next = resolveBrewBetOutcome(current.brewTokens, current.darkBrewTokens, bet, won, effect);
+      return {
+        snapshot: createBrewEconomySnapshot({
+          ...current,
+          brewTokens: next.brewTokens,
+          darkBrewTokens: next.darkBrewTokens,
+          quickReviveArmed: false,
+          daiquiriArmed: false,
+          staminUpArmed: false,
+        }),
+        result: true,
+      };
+    });
+    void outcome;
   }, []);
 
   const setSoundEnabled = useCallback(async (value: boolean) => {
     await hydrationRef.current!.promise;
-    setSoundEnabledState(value);
-    await writeQueueRef.current!(
+    if (hydrationFailedRef.current) return;
+    const saved = await writeQueueRef.current!(
       () => AsyncStorage.setItem(BREW_SOUND_KEY, value ? 'true' : 'false'),
-    ).catch(() => {});
+    ).then(() => true).catch(() => false);
+    if (saved) setSoundEnabledState(value);
   }, []);
 
   const setHapticsEnabled = useCallback(async (value: boolean) => {
     await hydrationRef.current!.promise;
-    setHapticsEnabledState(value);
-    await writeQueueRef.current!(
+    if (hydrationFailedRef.current) return;
+    const saved = await writeQueueRef.current!(
       () => AsyncStorage.setItem(BREW_HAPTICS_KEY, value ? 'true' : 'false'),
-    ).catch(() => {});
+    ).then(() => true).catch(() => false);
+    if (saved) setHapticsEnabledState(value);
   }, []);
 
   const buyBankKey = useCallback(async () => {
-    await hydrationRef.current!.promise;
-    const next = buyBrewBankKey(tokensRef.current, bankKeysRef.current);
-    if (!next) return false;
-    tokensRef.current = next.tokenBalance;
-    bankKeysRef.current = next.keyCount;
-    setBrewTokens(next.tokenBalance);
-    setBankKeys(next.keyCount);
-    await writeQueueRef.current!(() => Promise.all([
-      AsyncStorage.setItem(BREW_TOKENS_KEY, String(next.tokenBalance)),
-      AsyncStorage.setItem(BREW_BANK_KEYS_KEY, String(next.keyCount)),
-    ])).catch(() => {});
-    return true;
+    const outcome = await commitEconomyMutation((current) => {
+      const next = buyBrewBankKey(current.brewTokens, current.bankKeys);
+      return next
+        ? {
+            snapshot: createBrewEconomySnapshot({
+              ...current,
+              brewTokens: next.tokenBalance,
+              bankKeys: next.keyCount,
+            }),
+            result: true,
+          }
+        : null;
+    });
+    return outcome === true;
   }, []);
 
   const activateBankKey = useCallback(async (now = Date.now()) => {
-    await hydrationRef.current!.promise;
-    if (!canActivateBrewBankKey(bankKeysRef.current, new Date(now).getDay(), bankAccessExpiresAtRef.current, now)) {
-      return false;
-    }
-    const expiresAt = now + BREW_BANK_ACCESS_DURATION_MS;
-    bankKeysRef.current -= 1;
-    bankAccessExpiresAtRef.current = expiresAt;
-    setBankKeys(bankKeysRef.current);
-    setBankAccessExpiresAt(expiresAt);
-    await writeQueueRef.current!(() => Promise.all([
-      AsyncStorage.setItem(BREW_BANK_KEYS_KEY, String(bankKeysRef.current)),
-      AsyncStorage.setItem(BREW_BANK_ACCESS_EXPIRES_KEY, String(expiresAt)),
-    ])).catch(() => {});
-    return true;
+    const outcome = await commitEconomyMutation((current) => {
+      if (!canActivateBrewBankKey(current.bankKeys, new Date(now).getDay(), current.bankAccessExpiresAt, now)) {
+        return null;
+      }
+      return {
+        snapshot: createBrewEconomySnapshot({
+          ...current,
+          bankKeys: current.bankKeys - 1,
+          bankAccessExpiresAt: now + BREW_BANK_ACCESS_DURATION_MS,
+        }),
+        result: true,
+      };
+    });
+    return outcome === true;
   }, []);
 
   const unlockQuickRevive = useCallback(async () => {
-    await hydrationRef.current!.promise;
-    const next = buyQuickReviveUnlock(
-      tokensRef.current,
-      quickReviveUnlockedRef.current,
-      QUICK_REVIVE_UNLOCK_PRICE,
-    );
-    if (!next) return false;
-    tokensRef.current = next.tokenBalance;
-    quickReviveUnlockedRef.current = true;
-    setBrewTokens(next.tokenBalance);
-    setQuickReviveUnlocked(true);
-    await writeQueueRef.current!(() => Promise.all([
-      AsyncStorage.setItem(BREW_TOKENS_KEY, String(next.tokenBalance)),
-      AsyncStorage.setItem(QUICK_REVIVE_UNLOCKED_KEY, 'true'),
-    ]).then(() => undefined)).catch(() => {});
-    return true;
+    const outcome = await commitEconomyMutation((current) => {
+      const next = buyQuickReviveUnlock(current.brewTokens, current.quickReviveUnlocked, QUICK_REVIVE_UNLOCK_PRICE);
+      return next
+        ? {
+            snapshot: createBrewEconomySnapshot({
+              ...current,
+              brewTokens: next.tokenBalance,
+              quickReviveUnlocked: next.unlocked,
+            }),
+            result: true,
+          }
+        : null;
+    });
+    return outcome === true;
   }, []);
 
   const buyQuickReviveBottle = useCallback(async () => {
-    await hydrationRef.current!.promise;
-    const next = purchaseQuickReviveBottle(
-      tokensRef.current,
-      quickReviveBottlesRef.current,
-      quickReviveUnlockedRef.current,
-      getSmartProBottleSalePrice(QUICK_REVIVE_BOTTLE_PRICE, hasSmartProSale(smartProSaleExpiresAtRef.current, Date.now())),
-    );
-    if (!next) return false;
-    tokensRef.current = next.tokenBalance;
-    quickReviveBottlesRef.current = next.bottleCount;
-    setBrewTokens(next.tokenBalance);
-    setQuickReviveBottles(next.bottleCount);
-    await writeQueueRef.current!(() => Promise.all([
-      AsyncStorage.setItem(BREW_TOKENS_KEY, String(next.tokenBalance)),
-      AsyncStorage.setItem(QUICK_REVIVE_BOTTLES_KEY, String(next.bottleCount)),
-    ]).then(() => undefined)).catch(() => {});
-    return true;
+    const outcome = await commitEconomyMutation((current) => {
+      const next = purchaseQuickReviveBottle(
+        current.brewTokens,
+        current.quickReviveBottles,
+        current.quickReviveUnlocked,
+        getSmartProBottleSalePrice(QUICK_REVIVE_BOTTLE_PRICE, hasSmartProSale(current.smartProSaleExpiresAt, Date.now())),
+      );
+      return next
+        ? {
+            snapshot: createBrewEconomySnapshot({
+              ...current,
+              brewTokens: next.tokenBalance,
+              quickReviveBottles: next.bottleCount,
+            }),
+            result: true,
+          }
+        : null;
+    });
+    return outcome === true;
   }, []);
 
   const redeemQuickReviveBottle = useCallback(async () => {
-    await hydrationRef.current!.promise;
-    if (!canArmBrewBottle(quickReviveArmedRef.current, daiquiriArmedRef.current, staminUpArmedRef.current)) return false;
-    const next = armQuickReviveBottle(quickReviveBottlesRef.current, quickReviveArmedRef.current);
-    if (!next) return false;
-    quickReviveBottlesRef.current = next.bottleCount;
-    quickReviveArmedRef.current = true;
-    setQuickReviveBottles(next.bottleCount);
-    setQuickReviveArmed(true);
-    await writeQueueRef.current!(() => Promise.all([
-      AsyncStorage.setItem(QUICK_REVIVE_BOTTLES_KEY, String(next.bottleCount)),
-      AsyncStorage.setItem(QUICK_REVIVE_ARMED_KEY, 'true'),
-    ]).then(() => undefined)).catch(() => {});
-    return true;
+    const outcome = await commitEconomyMutation((current) => {
+      if (!canArmBrewBottle(current.quickReviveArmed, current.daiquiriArmed, current.staminUpArmed)) return null;
+      const next = armQuickReviveBottle(current.quickReviveBottles, current.quickReviveArmed);
+      return next
+        ? {
+            snapshot: createBrewEconomySnapshot({
+              ...current,
+              quickReviveBottles: next.bottleCount,
+              quickReviveArmed: next.armed,
+            }),
+            result: true,
+          }
+        : null;
+    });
+    return outcome === true;
   }, []);
 
   const unlockDaiquiri = useCallback(async () => {
-    await hydrationRef.current!.promise;
-    const next = buyDaiquiriUnlock(
-      tokensRef.current,
-      daiquiriUnlockedRef.current,
-      DAIQUIRI_UNLOCK_PRICE,
-    );
-    if (!next) return false;
-    tokensRef.current = next.tokenBalance;
-    daiquiriUnlockedRef.current = true;
-    setBrewTokens(next.tokenBalance);
-    setDaiquiriUnlocked(true);
-    await writeQueueRef.current!(() => Promise.all([
-      AsyncStorage.setItem(BREW_TOKENS_KEY, String(next.tokenBalance)),
-      AsyncStorage.setItem(DAIQUIRI_UNLOCKED_KEY, 'true'),
-    ]).then(() => undefined)).catch(() => {});
-    return true;
+    const outcome = await commitEconomyMutation((current) => {
+      const next = buyDaiquiriUnlock(current.brewTokens, current.daiquiriUnlocked, DAIQUIRI_UNLOCK_PRICE);
+      return next
+        ? {
+            snapshot: createBrewEconomySnapshot({
+              ...current,
+              brewTokens: next.tokenBalance,
+              daiquiriUnlocked: next.unlocked,
+            }),
+            result: true,
+          }
+        : null;
+    });
+    return outcome === true;
   }, []);
 
   const buyDaiquiriBottle = useCallback(async () => {
-    await hydrationRef.current!.promise;
-    const next = purchaseDaiquiriBottle(
-      tokensRef.current,
-      daiquiriBottlesRef.current,
-      daiquiriUnlockedRef.current,
-      getSmartProBottleSalePrice(DAIQUIRI_BOTTLE_PRICE, hasSmartProSale(smartProSaleExpiresAtRef.current, Date.now())),
-    );
-    if (!next) return false;
-    tokensRef.current = next.tokenBalance;
-    daiquiriBottlesRef.current = next.bottleCount;
-    setBrewTokens(next.tokenBalance);
-    setDaiquiriBottles(next.bottleCount);
-    await writeQueueRef.current!(() => Promise.all([
-      AsyncStorage.setItem(BREW_TOKENS_KEY, String(next.tokenBalance)),
-      AsyncStorage.setItem(DAIQUIRI_BOTTLES_KEY, String(next.bottleCount)),
-    ]).then(() => undefined)).catch(() => {});
-    return true;
+    const outcome = await commitEconomyMutation((current) => {
+      const next = purchaseDaiquiriBottle(
+        current.brewTokens,
+        current.daiquiriBottles,
+        current.daiquiriUnlocked,
+        getSmartProBottleSalePrice(DAIQUIRI_BOTTLE_PRICE, hasSmartProSale(current.smartProSaleExpiresAt, Date.now())),
+      );
+      return next
+        ? {
+            snapshot: createBrewEconomySnapshot({
+              ...current,
+              brewTokens: next.tokenBalance,
+              daiquiriBottles: next.bottleCount,
+            }),
+            result: true,
+          }
+        : null;
+    });
+    return outcome === true;
   }, []);
 
   const redeemDaiquiriBottle = useCallback(async () => {
-    await hydrationRef.current!.promise;
-    if (!canArmBrewBottle(quickReviveArmedRef.current, daiquiriArmedRef.current, staminUpArmedRef.current)) return false;
-    const next = armDaiquiriBottle(daiquiriBottlesRef.current, daiquiriArmedRef.current);
-    if (!next) return false;
-    daiquiriBottlesRef.current = next.bottleCount;
-    daiquiriArmedRef.current = true;
-    setDaiquiriBottles(next.bottleCount);
-    setDaiquiriArmed(true);
-    await writeQueueRef.current!(() => Promise.all([
-      AsyncStorage.setItem(DAIQUIRI_BOTTLES_KEY, String(next.bottleCount)),
-      AsyncStorage.setItem(DAIQUIRI_ARMED_KEY, 'true'),
-    ]).then(() => undefined)).catch(() => {});
-    return true;
+    const outcome = await commitEconomyMutation((current) => {
+      if (!canArmBrewBottle(current.quickReviveArmed, current.daiquiriArmed, current.staminUpArmed)) return null;
+      const next = armDaiquiriBottle(current.daiquiriBottles, current.daiquiriArmed);
+      return next
+        ? {
+            snapshot: createBrewEconomySnapshot({
+              ...current,
+              daiquiriBottles: next.bottleCount,
+              daiquiriArmed: next.armed,
+            }),
+            result: true,
+          }
+        : null;
+    });
+    return outcome === true;
   }, []);
 
   const unlockStaminUp = useCallback(async () => {
-    await hydrationRef.current!.promise;
-    const next = buyStaminUpUnlock(
-      tokensRef.current,
-      staminUpUnlockedRef.current,
-      STAMIN_UP_UNLOCK_PRICE,
-    );
-    if (!next) return false;
-    tokensRef.current = next.tokenBalance;
-    staminUpUnlockedRef.current = true;
-    setBrewTokens(next.tokenBalance);
-    setStaminUpUnlocked(true);
-    await writeQueueRef.current!(() => Promise.all([
-      AsyncStorage.setItem(BREW_TOKENS_KEY, String(next.tokenBalance)),
-      AsyncStorage.setItem(STAMIN_UP_UNLOCKED_KEY, 'true'),
-    ]).then(() => undefined)).catch(() => {});
-    return true;
+    const outcome = await commitEconomyMutation((current) => {
+      const next = buyStaminUpUnlock(current.brewTokens, current.staminUpUnlocked, STAMIN_UP_UNLOCK_PRICE);
+      return next
+        ? {
+            snapshot: createBrewEconomySnapshot({
+              ...current,
+              brewTokens: next.tokenBalance,
+              staminUpUnlocked: next.unlocked,
+            }),
+            result: true,
+          }
+        : null;
+    });
+    return outcome === true;
   }, []);
 
   const buyStaminUpBottle = useCallback(async () => {
-    await hydrationRef.current!.promise;
-    const next = purchaseStaminUpBottle(
-      tokensRef.current,
-      staminUpBottlesRef.current,
-      staminUpUnlockedRef.current,
-      getSmartProBottleSalePrice(STAMIN_UP_BOTTLE_PRICE, hasSmartProSale(smartProSaleExpiresAtRef.current, Date.now())),
-    );
-    if (!next) return false;
-    tokensRef.current = next.tokenBalance;
-    staminUpBottlesRef.current = next.bottleCount;
-    setBrewTokens(next.tokenBalance);
-    setStaminUpBottles(next.bottleCount);
-    await writeQueueRef.current!(() => Promise.all([
-      AsyncStorage.setItem(BREW_TOKENS_KEY, String(next.tokenBalance)),
-      AsyncStorage.setItem(STAMIN_UP_BOTTLES_KEY, String(next.bottleCount)),
-    ]).then(() => undefined)).catch(() => {});
-    return true;
+    const outcome = await commitEconomyMutation((current) => {
+      const next = purchaseStaminUpBottle(
+        current.brewTokens,
+        current.staminUpBottles,
+        current.staminUpUnlocked,
+        getSmartProBottleSalePrice(STAMIN_UP_BOTTLE_PRICE, hasSmartProSale(current.smartProSaleExpiresAt, Date.now())),
+      );
+      return next
+        ? {
+            snapshot: createBrewEconomySnapshot({
+              ...current,
+              brewTokens: next.tokenBalance,
+              staminUpBottles: next.bottleCount,
+            }),
+            result: true,
+          }
+        : null;
+    });
+    return outcome === true;
   }, []);
 
   const redeemStaminUpBottle = useCallback(async () => {
-    await hydrationRef.current!.promise;
-    if (!canArmBrewBottle(quickReviveArmedRef.current, daiquiriArmedRef.current, staminUpArmedRef.current)) return false;
-    const next = armStaminUpBottle(staminUpBottlesRef.current, staminUpArmedRef.current);
-    if (!next) return false;
-    staminUpBottlesRef.current = next.bottleCount;
-    staminUpArmedRef.current = true;
-    setStaminUpBottles(next.bottleCount);
-    setStaminUpArmed(true);
-    await writeQueueRef.current!(() => Promise.all([
-      AsyncStorage.setItem(STAMIN_UP_BOTTLES_KEY, String(next.bottleCount)),
-      AsyncStorage.setItem(STAMIN_UP_ARMED_KEY, 'true'),
-    ]).then(() => undefined)).catch(() => {});
-    return true;
+    const outcome = await commitEconomyMutation((current) => {
+      if (!canArmBrewBottle(current.quickReviveArmed, current.daiquiriArmed, current.staminUpArmed)) return null;
+      const next = armStaminUpBottle(current.staminUpBottles, current.staminUpArmed);
+      return next
+        ? {
+            snapshot: createBrewEconomySnapshot({
+              ...current,
+              staminUpBottles: next.bottleCount,
+              staminUpArmed: next.armed,
+            }),
+            result: true,
+          }
+        : null;
+    });
+    return outcome === true;
   }, []);
 
   const unlockSmartPro = useCallback(async () => {
-    await hydrationRef.current!.promise;
-    const next = buySmartProUnlock(tokensRef.current, smartProUnlockedRef.current);
-    if (!next) return false;
-    tokensRef.current = next.tokenBalance;
-    smartProUnlockedRef.current = true;
-    setBrewTokens(next.tokenBalance);
-    setSmartProUnlocked(true);
-    await writeQueueRef.current!(() => Promise.all([
-      AsyncStorage.setItem(BREW_TOKENS_KEY, String(next.tokenBalance)),
-      AsyncStorage.setItem(SMART_PRO_UNLOCKED_KEY, 'true'),
-    ]).then(() => undefined)).catch(() => {});
-    return true;
+    const outcome = await commitEconomyMutation((current) => {
+      const next = buySmartProUnlock(current.brewTokens, current.smartProUnlocked);
+      return next
+        ? {
+            snapshot: createBrewEconomySnapshot({
+              ...current,
+              brewTokens: next.tokenBalance,
+              smartProUnlocked: next.unlocked,
+            }),
+            result: true,
+          }
+        : null;
+    });
+    return outcome === true;
   }, []);
 
   const buySmartProBottle = useCallback(async () => {
-    await hydrationRef.current!.promise;
-    const next = purchaseSmartProBottle(
-      tokensRef.current,
-      smartProBottlesRef.current,
-      smartProUnlockedRef.current,
-    );
-    if (!next) return false;
-    tokensRef.current = next.tokenBalance;
-    smartProBottlesRef.current = next.bottleCount;
-    setBrewTokens(next.tokenBalance);
-    setSmartProBottles(next.bottleCount);
-    await writeQueueRef.current!(() => Promise.all([
-      AsyncStorage.setItem(BREW_TOKENS_KEY, String(next.tokenBalance)),
-      AsyncStorage.setItem(SMART_PRO_BOTTLES_KEY, String(next.bottleCount)),
-    ]).then(() => undefined)).catch(() => {});
-    return true;
+    const outcome = await commitEconomyMutation((current) => {
+      const next = purchaseSmartProBottle(
+        current.brewTokens,
+        current.smartProBottles,
+        current.smartProUnlocked,
+      );
+      return next
+        ? {
+            snapshot: createBrewEconomySnapshot({
+              ...current,
+              brewTokens: next.tokenBalance,
+              smartProBottles: next.bottleCount,
+            }),
+            result: true,
+          }
+        : null;
+    });
+    return outcome === true;
   }, []);
 
   const redeemSmartProBottle = useCallback(async () => {
-    await hydrationRef.current!.promise;
-    const now = Date.now();
-    const next = activateSmartProSale(
-      smartProBottlesRef.current,
-      now,
-      smartProSaleExpiresAtRef.current,
-    );
-    if (!next) return false;
-    smartProBottlesRef.current = next.bottleCount;
-    smartProSaleExpiresAtRef.current = next.expiresAt;
-    setSmartProBottles(next.bottleCount);
-    setSmartProSaleExpiresAt(next.expiresAt);
-    await writeQueueRef.current!(() => Promise.all([
-      AsyncStorage.setItem(SMART_PRO_BOTTLES_KEY, String(next.bottleCount)),
-      AsyncStorage.setItem(SMART_PRO_SALE_EXPIRES_KEY, String(next.expiresAt)),
-    ]).then(() => undefined)).catch(() => {});
-    return true;
+    const outcome = await commitEconomyMutation((current) => {
+      const now = Date.now();
+      const next = activateSmartProSale(current.smartProBottles, now, current.smartProSaleExpiresAt);
+      return next
+        ? {
+            snapshot: createBrewEconomySnapshot({
+              ...current,
+              smartProBottles: next.bottleCount,
+              smartProSaleExpiresAt: next.expiresAt,
+            }),
+            result: true,
+          }
+        : null;
+    });
+    return outcome === true;
   }, []);
 
   const clearJustUnlocked = useCallback(() => setJustUnlocked(false), []);
