@@ -344,6 +344,9 @@ type AudioPlayerHandle = {
   remove: () => void;
 };
 
+type BottleBurstKind = BrewBottlePreviewKind;
+type BottleBurstLocation = 'vault' | 'preview';
+
 type LossPhrase = {
   text: string;
   source: number;
@@ -451,6 +454,7 @@ export function BrewTokenBank({
   const [quickReviveBurstVisible, setQuickReviveBurstVisible] = useState(false);
   const [daiquiriBurstVisible, setDaiquiriBurstVisible] = useState(false);
   const [staminUpBurstVisible, setStaminUpBurstVisible] = useState(false);
+  const [bottleBurstLocation, setBottleBurstLocation] = useState<BottleBurstLocation | null>(null);
   const [reduceMotion, setReduceMotion] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const balanceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -533,6 +537,97 @@ export function BrewTokenBank({
   const stopMachineStatus = () => {
     if (machineStatusTimerRef.current) clearInterval(machineStatusTimerRef.current);
     machineStatusTimerRef.current = null;
+  };
+
+  const triggerBottleBurst = (kind: BottleBurstKind, location: BottleBurstLocation) => {
+    if (quickReviveBurstTimerRef.current) clearTimeout(quickReviveBurstTimerRef.current);
+    if (daiquiriBurstTimerRef.current) clearTimeout(daiquiriBurstTimerRef.current);
+    if (staminUpBurstTimerRef.current) clearTimeout(staminUpBurstTimerRef.current);
+    quickReviveBurstTimerRef.current = null;
+    daiquiriBurstTimerRef.current = null;
+    staminUpBurstTimerRef.current = null;
+
+    setQuickReviveBurstVisible(false);
+    setDaiquiriBurstVisible(false);
+    setStaminUpBurstVisible(false);
+    setBottleBurstLocation(location);
+
+    if (kind === 'quickRevive') {
+      cancelAnimation(quickReviveProgress);
+      setQuickReviveBurstVisible(true);
+      quickReviveProgress.value = 0;
+      quickReviveProgress.value = reduceMotion
+        ? withTiming(1, { duration: 160 })
+        : withSequence(
+          withTiming(0.43, { duration: 240, easing: Easing.out(Easing.cubic) }),
+          withTiming(1, { duration: 980, easing: Easing.inOut(Easing.cubic) }),
+        );
+      quickReviveBurstTimerRef.current = setTimeout(
+        () => {
+          setQuickReviveBurstVisible(false);
+          setBottleBurstLocation(current => current === location ? null : current);
+        },
+        reduceMotion ? 220 : 1_380,
+      );
+      return;
+    }
+
+    if (kind === 'daiquiri') {
+      cancelAnimation(daiquiriProgress);
+      setDaiquiriBurstVisible(true);
+      daiquiriProgress.value = 0;
+      daiquiriProgress.value = reduceMotion
+        ? withTiming(1, { duration: 160 })
+        : withSequence(
+          withTiming(0.38, { duration: 220, easing: Easing.out(Easing.cubic) }),
+          withTiming(1, { duration: 1_080, easing: Easing.inOut(Easing.cubic) }),
+        );
+      daiquiriBurstTimerRef.current = setTimeout(
+        () => {
+          setDaiquiriBurstVisible(false);
+          setBottleBurstLocation(current => current === location ? null : current);
+        },
+        reduceMotion ? 220 : 1_420,
+      );
+      return;
+    }
+
+    cancelAnimation(staminUpProgress);
+    setStaminUpBurstVisible(true);
+    staminUpProgress.value = 0;
+    staminUpProgress.value = reduceMotion
+      ? withTiming(1, { duration: 180 })
+      : withSequence(
+        withTiming(0.58, { duration: 600, easing: Easing.inOut(Easing.cubic) }),
+        withTiming(1, { duration: 670, easing: Easing.out(Easing.cubic) }),
+      );
+    staminUpBurstTimerRef.current = setTimeout(
+      () => {
+        setStaminUpBurstVisible(false);
+        setBottleBurstLocation(current => current === location ? null : current);
+      },
+      reduceMotion ? 240 : 1_380,
+    );
+  };
+
+  const stopPreviewBottleBurst = () => {
+    if (bottleBurstLocation !== 'preview') return;
+    if (bottlePreview === 'quickRevive' && quickReviveBurstTimerRef.current) {
+      clearTimeout(quickReviveBurstTimerRef.current);
+      quickReviveBurstTimerRef.current = null;
+      setQuickReviveBurstVisible(false);
+    }
+    if (bottlePreview === 'daiquiri' && daiquiriBurstTimerRef.current) {
+      clearTimeout(daiquiriBurstTimerRef.current);
+      daiquiriBurstTimerRef.current = null;
+      setDaiquiriBurstVisible(false);
+    }
+    if (bottlePreview === 'staminUp' && staminUpBurstTimerRef.current) {
+      clearTimeout(staminUpBurstTimerRef.current);
+      staminUpBurstTimerRef.current = null;
+      setStaminUpBurstVisible(false);
+    }
+    setBottleBurstLocation(null);
   };
 
   useEffect(() => () => {
@@ -768,6 +863,10 @@ export function BrewTokenBank({
   const selectedBottleUnlocked = selectedBottleInspection?.unlocked ?? false;
   const selectedBottleCount = selectedBottleInspection?.bottleCount ?? 0;
   const selectedBottleArmed = selectedBottleInspection?.armed ?? false;
+  const handleReplayBottlePreview = () => {
+    if (!bottlePreview || !selectedBottleUnlocked) return;
+    triggerBottleBurst(bottlePreview, 'preview');
+  };
 
   const handleBuyKey = async () => {
     if (tokens < BREW_BANK_KEY_PRICE || resolving || shopBusy) return;
@@ -812,19 +911,7 @@ export function BrewTokenBank({
     if (hapticsEnabled) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     }
-    if (quickReviveBurstTimerRef.current) clearTimeout(quickReviveBurstTimerRef.current);
-    setQuickReviveBurstVisible(true);
-    quickReviveProgress.value = 0;
-    quickReviveProgress.value = reduceMotion
-      ? withTiming(1, { duration: 160 })
-      : withSequence(
-        withTiming(0.43, { duration: 240, easing: Easing.out(Easing.cubic) }),
-        withTiming(1, { duration: 980, easing: Easing.inOut(Easing.cubic) }),
-      );
-    quickReviveBurstTimerRef.current = setTimeout(
-      () => setQuickReviveBurstVisible(false),
-      reduceMotion ? 220 : 1_380,
-    );
+    triggerBottleBurst('quickRevive', 'vault');
     void playQuickReviveVoice();
   };
 
@@ -901,19 +988,7 @@ export function BrewTokenBank({
     if (hapticsEnabled) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     }
-    if (daiquiriBurstTimerRef.current) clearTimeout(daiquiriBurstTimerRef.current);
-    setDaiquiriBurstVisible(true);
-    daiquiriProgress.value = 0;
-    daiquiriProgress.value = reduceMotion
-      ? withTiming(1, { duration: 160 })
-      : withSequence(
-         withTiming(0.38, { duration: 220, easing: Easing.out(Easing.cubic) }),
-         withTiming(1, { duration: 1_080, easing: Easing.inOut(Easing.cubic) }),
-      );
-    daiquiriBurstTimerRef.current = setTimeout(
-      () => setDaiquiriBurstVisible(false),
-      reduceMotion ? 220 : 1_420,
-    );
+    triggerBottleBurst('daiquiri', 'vault');
     void playDaiquiriVoice();
   };
 
@@ -944,19 +1019,7 @@ export function BrewTokenBank({
     if (hapticsEnabled) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     }
-    if (staminUpBurstTimerRef.current) clearTimeout(staminUpBurstTimerRef.current);
-    setStaminUpBurstVisible(true);
-    staminUpProgress.value = 0;
-    staminUpProgress.value = reduceMotion
-      ? withTiming(1, { duration: 180 })
-      : withSequence(
-        withTiming(0.58, { duration: 600, easing: Easing.inOut(Easing.cubic) }),
-        withTiming(1, { duration: 670, easing: Easing.out(Easing.cubic) }),
-      );
-    staminUpBurstTimerRef.current = setTimeout(
-      () => setStaminUpBurstVisible(false),
-      reduceMotion ? 240 : 1_380,
-    );
+    triggerBottleBurst('staminUp', 'vault');
     void playStaminUpVoice();
   };
 
@@ -1039,6 +1102,7 @@ export function BrewTokenBank({
 
   const handleClose = () => {
     if (protectedVoicePlaying) return;
+    stopPreviewBottleBurst();
     setBottlePreview(null);
     stopMachineStatus();
     stopLossVoice(true);
@@ -1206,7 +1270,7 @@ export function BrewTokenBank({
               style={[styles.vaultGlow, { backgroundColor: colors.gold }, vaultGlowAnimatedStyle]}
             />
             <View pointerEvents="none" style={[styles.vaultFloorShadow, { backgroundColor: colors.background }]} />
-             {quickReviveBurstVisible && (
+             {quickReviveBurstVisible && bottleBurstLocation === 'vault' && (
                <View pointerEvents="none" style={styles.quickReviveBurst}>
                   <Animated.View style={[styles.quickReviveBubbleField, quickReviveBubbleFieldStyle]}>
                     <View style={[styles.quickReviveBubble, styles.quickReviveBubbleOne]} />
@@ -1224,7 +1288,7 @@ export function BrewTokenBank({
                  </Animated.View>
                </View>
              )}
-              {daiquiriBurstVisible && (
+               {daiquiriBurstVisible && bottleBurstLocation === 'vault' && (
                 <View pointerEvents="none" style={styles.daiquiriBurst}>
                    <Animated.View style={[styles.daiquiriWarmGlow, daiquiriWarmGlowStyle]} />
                    <Animated.View style={[styles.daiquiriBubbleField, daiquiriBubbleFieldStyle]}>
@@ -1250,7 +1314,7 @@ export function BrewTokenBank({
                   </Animated.View>
                 </View>
               )}
-              {staminUpBurstVisible && (
+               {staminUpBurstVisible && bottleBurstLocation === 'vault' && (
                 <View pointerEvents="none" style={styles.staminUpBurst}>
                   <Animated.View style={[styles.staminUpTornadoRing, styles.staminUpTornadoUpper, staminUpTornadoUpperStyle]} />
                   <Animated.View style={[styles.staminUpTornadoRing, styles.staminUpTornadoMiddle, staminUpTornadoMiddleStyle]} />
@@ -1843,7 +1907,10 @@ export function BrewTokenBank({
         visible={selectedBottlePreview !== null}
         transparent
         animationType="fade"
-        onRequestClose={() => setBottlePreview(null)}
+        onRequestClose={() => {
+          stopPreviewBottleBurst();
+          setBottlePreview(null);
+        }}
       >
         <View
           style={[
@@ -1871,7 +1938,10 @@ export function BrewTokenBank({
                     </Text>
                   </View>
                   <Pressable
-                    onPress={() => setBottlePreview(null)}
+                    onPress={() => {
+                      stopPreviewBottleBurst();
+                      setBottlePreview(null);
+                    }}
                     hitSlop={10}
                     accessibilityRole="button"
                     accessibilityLabel="Close bottle inspection"
@@ -1881,11 +1951,83 @@ export function BrewTokenBank({
                   </Pressable>
                 </View>
 
-                <View style={[styles.previewBottleStage, { backgroundColor: colors.steelShadow, borderColor: colors.border }]}>
+                <Pressable
+                  onPress={handleReplayBottlePreview}
+                  disabled={!selectedBottleUnlocked}
+                  style={[styles.previewBottleStage, { backgroundColor: colors.steelShadow, borderColor: selectedBottleUnlocked ? colors.goldMuted : colors.border }]}
+                  accessibilityRole={selectedBottleUnlocked ? 'button' : undefined}
+                  accessibilityLabel={selectedBottleUnlocked ? `Replay ${selectedBottlePreview.title} animation` : `${selectedBottlePreview.title} recipe locked`}
+                  testID="replay-bottle-animation"
+                >
                   {bottlePreview === 'quickRevive' && <QuickReviveBottle size={112} muted={!selectedBottleUnlocked} />}
                   {bottlePreview === 'daiquiri' && <DaiquiriBottle size={112} muted={!selectedBottleUnlocked} />}
                   {bottlePreview === 'staminUp' && <StaminUpBottle size={112} muted={!selectedBottleUnlocked} />}
-                </View>
+                  {quickReviveBurstVisible && bottleBurstLocation === 'preview' && bottlePreview === 'quickRevive' && (
+                    <View pointerEvents="none" style={[styles.quickReviveBurst, styles.previewBurst]}>
+                      <Animated.View style={[styles.quickReviveBubbleField, quickReviveBubbleFieldStyle]}>
+                        <View style={[styles.quickReviveBubble, styles.quickReviveBubbleOne]} />
+                        <View style={[styles.quickReviveBubble, styles.quickReviveBubbleTwo]} />
+                        <View style={[styles.quickReviveBubble, styles.quickReviveBubbleThree]} />
+                        <View style={[styles.quickReviveBubble, styles.quickReviveBubbleFour]} />
+                      </Animated.View>
+                      <Animated.View style={[styles.quickReviveBurstBottle, quickReviveBottleStyle]}>
+                        <QuickReviveBottle size={72} />
+                      </Animated.View>
+                      <Animated.View style={[styles.quickReviveOoze, quickReviveOozeStyle]}>
+                        <View style={styles.quickReviveOozeDrop} />
+                        <View style={[styles.quickReviveOozeDrop, styles.quickReviveOozeDropWide]} />
+                        <View style={[styles.quickReviveOozeDrop, styles.quickReviveOozeDropSmall]} />
+                      </Animated.View>
+                    </View>
+                  )}
+                  {daiquiriBurstVisible && bottleBurstLocation === 'preview' && bottlePreview === 'daiquiri' && (
+                    <View pointerEvents="none" style={[styles.daiquiriBurst, styles.previewBurst]}>
+                      <Animated.View style={[styles.daiquiriWarmGlow, daiquiriWarmGlowStyle]} />
+                      <Animated.View style={[styles.daiquiriBubbleField, daiquiriBubbleFieldStyle]}>
+                        <View style={[styles.daiquiriBubble, styles.daiquiriBubbleOne]} />
+                        <View style={[styles.daiquiriBubble, styles.daiquiriBubbleTwo]} />
+                        <View style={[styles.daiquiriBubble, styles.daiquiriBubbleThree]} />
+                        <View style={[styles.daiquiriBubble, styles.daiquiriBubbleFour]} />
+                        <View style={[styles.daiquiriBubble, styles.daiquiriBubbleFive]} />
+                      </Animated.View>
+                      <Animated.View style={[styles.daiquiriSurgeRing, daiquiriSurgeRingStyle]} />
+                      <View style={styles.daiquiriPedestal}>
+                        <View style={styles.daiquiriPedestalTop} />
+                        <View style={styles.daiquiriPedestalBody} />
+                      </View>
+                      <Animated.View style={[styles.daiquiriBurstBottle, daiquiriBottleStyle]}>
+                        <DaiquiriBottle size={74} />
+                      </Animated.View>
+                      <Animated.View style={[styles.daiquiriLabelFlare, daiquiriLabelFlareStyle]} />
+                      <Animated.View style={[styles.daiquiriSplash, daiquiriSplashStyle]}>
+                        <View style={styles.daiquiriSplashDrop} />
+                        <View style={[styles.daiquiriSplashDrop, styles.daiquiriSplashDropWide]} />
+                        <View style={[styles.daiquiriSplashDrop, styles.daiquiriSplashDropSmall]} />
+                      </Animated.View>
+                    </View>
+                  )}
+                  {staminUpBurstVisible && bottleBurstLocation === 'preview' && bottlePreview === 'staminUp' && (
+                    <View pointerEvents="none" style={[styles.staminUpBurst, styles.previewBurst]}>
+                      <Animated.View style={[styles.staminUpTornadoRing, styles.staminUpTornadoUpper, staminUpTornadoUpperStyle]} />
+                      <Animated.View style={[styles.staminUpTornadoRing, styles.staminUpTornadoMiddle, staminUpTornadoMiddleStyle]} />
+                      <Animated.View style={[styles.staminUpTornadoRing, styles.staminUpTornadoBase, staminUpTornadoBaseStyle]} />
+                      <Animated.View style={[styles.quickReviveBurstBottle, staminUpBottleStyle]}>
+                        <StaminUpBottle size={74} />
+                      </Animated.View>
+                      <Animated.View style={[styles.staminUpSplash, staminUpSplashStyle]}>
+                        <View style={styles.staminUpSplashDrop} />
+                        <View style={[styles.staminUpSplashDrop, styles.staminUpSplashDropWide]} />
+                        <View style={[styles.staminUpSplashDrop, styles.staminUpSplashDropSmall]} />
+                      </Animated.View>
+                    </View>
+                  )}
+                  <View pointerEvents="none" style={styles.previewBottleHint}>
+                    <Feather name={selectedBottleUnlocked ? 'play-circle' : 'lock'} size={12} color={selectedBottleUnlocked ? colors.gold : colors.mutedForeground} />
+                    <Text style={[styles.previewBottleHintText, { color: selectedBottleUnlocked ? colors.gold : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+                      {selectedBottleUnlocked ? 'TAP TO REPLAY ANIMATION' : 'RECIPE LOCKED'}
+                    </Text>
+                  </View>
+                </Pressable>
 
                 <Text style={[styles.previewDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                   {selectedBottlePreview.description}
@@ -2104,7 +2246,10 @@ const styles = StyleSheet.create({
   previewHeaderCopy: { gap: 3 },
   previewEyebrow: { fontSize: 9, letterSpacing: 1.2 },
   previewTitle: { fontSize: 18, letterSpacing: 0.9 },
-  previewBottleStage: { minHeight: 245, borderWidth: 1, borderRadius: 11, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  previewBottleStage: { minHeight: 245, borderWidth: 1, borderRadius: 11, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative' },
+  previewBurst: { transform: [{ scale: 1.45 }] },
+  previewBottleHint: { position: 'absolute', left: 10, right: 10, bottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 5, borderRadius: 7, backgroundColor: 'rgba(0,0,0,0.42)' },
+  previewBottleHintText: { fontSize: 8, letterSpacing: 0.9 },
   previewDescription: { fontSize: 11, lineHeight: 17, marginTop: 13 },
   previewDetails: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 3, marginTop: 13 },
   previewDetailRow: { minHeight: 38, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
