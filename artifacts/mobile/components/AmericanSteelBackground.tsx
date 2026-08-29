@@ -28,11 +28,13 @@ export function AmericanSteelBackground({ children, style }: Props) {
   }, []);
 
   useEffect(() => {
-    Animated.timing(neonOpacity, {
+    const animation = Animated.timing(neonOpacity, {
       toValue: neonGucciActive ? 1 : 0,
       duration: reduceMotion ? 0 : 1700,
       useNativeDriver: Platform.OS !== 'web',
-    }).start();
+    });
+    animation.start();
+    return () => animation.stop();
   }, [neonGucciActive, neonOpacity, reduceMotion]);
 
   return (

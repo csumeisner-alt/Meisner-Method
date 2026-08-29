@@ -56,13 +56,15 @@ function ConfettiPiece({ piece, height }: { piece: Piece; height: number }) {
   const progress = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.timing(progress, {
+    const animation = Animated.timing(progress, {
       toValue: 1,
       duration: piece.duration,
       delay: piece.delay,
       easing: Easing.linear,
       useNativeDriver: true,
-    }).start();
+    });
+    animation.start();
+    return () => animation.stop();
   }, [piece.duration, piece.delay, progress]);
 
   const translateY = progress.interpolate({

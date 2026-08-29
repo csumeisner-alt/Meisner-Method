@@ -229,13 +229,15 @@ function AnimatedJet({ cfg }: { cfg: JetConfig }) {
   const translateY = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.timing(translateY, {
+    const animation = Animated.timing(translateY, {
       toValue: 1,
       duration: cfg.duration,
       delay: cfg.delay,
       easing: Easing.in(Easing.quad),
       useNativeDriver: true,
-    }).start();
+    });
+    animation.start();
+    return () => animation.stop();
   }, [cfg.delay, cfg.duration, translateY]);
 
   const ty = translateY.interpolate({
@@ -339,12 +341,13 @@ export function AmericanCelebration({ visible, onDismiss }: Props) {
     if (!visible) return;
 
     heroAnim.setValue(0);
-    Animated.spring(heroAnim, {
+    const heroAnimation = Animated.spring(heroAnim, {
       toValue: 1,
       tension: 60,
       friction: 8,
       useNativeDriver: true,
-    }).start();
+    });
+    heroAnimation.start();
 
     fireHaptics();
     playSounds();
@@ -352,6 +355,7 @@ export function AmericanCelebration({ visible, onDismiss }: Props) {
     autoTimer.current = setTimeout(onDismiss, 5000);
 
     return () => {
+      heroAnimation.stop();
       if (autoTimer.current) clearTimeout(autoTimer.current);
       hapticTimers.current.forEach(clearTimeout);
       soundTimers.current.forEach(clearTimeout);

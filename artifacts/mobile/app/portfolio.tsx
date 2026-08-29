@@ -416,35 +416,44 @@ function CelebrationOverlay({
     let interval: ReturnType<typeof setInterval> | undefined;
     let fadeTimer: ReturnType<typeof setTimeout> | undefined;
     let cancelled = false;
+    const runningAnimations: Animated.CompositeAnimation[] = [];
 
     const startAnimation = () => {
       if (cancelled) return;
       try {
       // Fade in overlay (single value — avoids Animated.multiply crash)
-      Animated.timing(overlayOp, { toValue: 1, duration: 280, useNativeDriver: true }).start();
+      const overlayAnimation = Animated.timing(overlayOp, { toValue: 1, duration: 280, useNativeDriver: true });
+      runningAnimations.push(overlayAnimation);
+      overlayAnimation.start();
 
     // Card slides up + springs in
-    Animated.parallel([
+    const cardAnimation = Animated.parallel([
       Animated.spring(cardY,     { toValue: 0, tension: 65, friction: 9, useNativeDriver: true }),
       Animated.spring(cardScale, { toValue: 1, tension: 65, friction: 9, useNativeDriver: true }),
       Animated.timing(cardOp,    { toValue: 1, duration: 300, useNativeDriver: true }),
-    ]).start();
+    ]);
+    runningAnimations.push(cardAnimation);
+    cardAnimation.start();
 
     // Subtle image breathe
-    Animated.loop(
+    const imageAnimation = Animated.loop(
       Animated.sequence([
         Animated.timing(imageScale, { toValue: 1.04, duration: 2200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
         Animated.timing(imageScale, { toValue: 1.00, duration: 2200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
       ])
-    ).start();
+    );
+    runningAnimations.push(imageAnimation);
+    imageAnimation.start();
 
     // Glow pulse
-    Animated.loop(
+    const glowAnimation = Animated.loop(
       Animated.sequence([
         Animated.timing(glowPulse, { toValue: 1, duration: 900, useNativeDriver: true }),
         Animated.timing(glowPulse, { toValue: 0, duration: 900, useNativeDriver: true }),
       ])
-    ).start();
+    );
+    runningAnimations.push(glowAnimation);
+    glowAnimation.start();
 
     // Particle burst
     function burst() {
@@ -468,7 +477,9 @@ function CelebrationOverlay({
 
     // Auto-dismiss after 7.5 s — fade the whole overlay out then call onDismiss
     fadeTimer = setTimeout(() => {
-      Animated.timing(overlayOp, { toValue: 0, duration: 600, useNativeDriver: true }).start(onDismiss);
+      const fadeAnimation = Animated.timing(overlayOp, { toValue: 0, duration: 600, useNativeDriver: true });
+      runningAnimations.push(fadeAnimation);
+      fadeAnimation.start(onDismiss);
     }, 7500);
     } catch (_) {
       // Effect-time failure — dismiss instead of crashing the app.
@@ -484,6 +495,7 @@ function CelebrationOverlay({
       cancelled = true;
       if (interval) clearInterval(interval);
       if (fadeTimer) clearTimeout(fadeTimer);
+      runningAnimations.forEach((animation) => animation.stop());
       stopCelebrationVoice();
     };
   }, []);
@@ -574,14 +586,17 @@ function TradeFeedbackPopup({
 
   useEffect(() => {
     let dismissTimer: ReturnType<typeof setTimeout> | undefined;
+    const runningAnimations: Animated.CompositeAnimation[] = [];
     try {
       Haptics.notificationAsync(feedbackHapticType(gradeInfo.grade)).catch(() => {});
-      Animated.parallel([
+      const entranceAnimation = Animated.parallel([
         Animated.spring(popupY, { toValue: 0, tension: 70, friction: 9, useNativeDriver: true }),
         Animated.timing(popupOp, { toValue: 1, duration: 220, useNativeDriver: true }),
-      ]).start();
+      ]);
+      runningAnimations.push(entranceAnimation);
+      entranceAnimation.start();
 
-      Animated.loop(
+      const bellAnimation = Animated.loop(
         Animated.sequence([
           Animated.timing(bellRotate, { toValue: -1, duration: 90, useNativeDriver: true }),
           Animated.timing(bellRotate, { toValue: 1, duration: 180, useNativeDriver: true }),
@@ -590,15 +605,21 @@ function TradeFeedbackPopup({
           Animated.delay(900),
         ]),
         { iterations: 2 },
-      ).start();
+      );
+      runningAnimations.push(bellAnimation);
+      bellAnimation.start();
 
-      Animated.parallel([
+      const ringAnimation = Animated.parallel([
         Animated.timing(ringScale, { toValue: 1.8, duration: 900, useNativeDriver: true }),
         Animated.timing(ringOp, { toValue: 0, duration: 900, useNativeDriver: true }),
-      ]).start();
+      ]);
+      runningAnimations.push(ringAnimation);
+      ringAnimation.start();
 
       dismissTimer = setTimeout(() => {
-        Animated.timing(popupOp, { toValue: 0, duration: 250, useNativeDriver: true }).start(onDismiss);
+        const fadeAnimation = Animated.timing(popupOp, { toValue: 0, duration: 250, useNativeDriver: true });
+        runningAnimations.push(fadeAnimation);
+        fadeAnimation.start(onDismiss);
       }, 4800);
     } catch (_) {
       onDismiss();
@@ -606,6 +627,7 @@ function TradeFeedbackPopup({
 
     return () => {
       if (dismissTimer) clearTimeout(dismissTimer);
+      runningAnimations.forEach((animation) => animation.stop());
     };
   }, []);
 

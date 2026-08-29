@@ -110,7 +110,9 @@ const METRIC_GUIDES: Record<HelpTopic, {
 function ScoreBar({ score, color }: { score: number; color: string }) {
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.timing(anim, { toValue: score / 100, duration: 900, useNativeDriver: false }).start();
+    const animation = Animated.timing(anim, { toValue: score / 100, duration: 900, useNativeDriver: false });
+    animation.start();
+    return () => animation.stop();
   }, [score]);
   return (
     <View style={scoreStyles.wrapper}>
