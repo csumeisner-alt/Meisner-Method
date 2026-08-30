@@ -21,6 +21,7 @@
 - [Meisner Method branding](meisner-method-branding.md) — public product branding is Meisner Method; legacy storage namespaces remain for local-data compatibility.
 - [Celebration audio cost model](celebration-audio-cost.md) — bundle approved celebration recordings locally; do not reintroduce per-play network TTS.
 - [Expo APK build workflow](expo-apk-build-workflow.md) — GitHub build uses base `artifacts/mobile`, profile `preview`, Preview environment, and exact branch/full SHA.
+- [Android APK release versioning](android-apk-release-versioning.md) — increment versionCode for every installable APK; keep preview builds internal-distribution APKs.
 - [Dave Ramsey Daiquiri odds](daiquiri-odds-and-payout.md) — show requested 45% win / 65% loss copy; use 45% win internally and double only a win.
 - [Dark Brew Token economy](dark-brew-token-economy.md) — Stamin Up converts one winning award only; Dark Brew stays isolated from regular wagering and portfolio value.
 - [Quick Revive visual direction](quick-revive-visual-direction.md) — use a luminous cyan soda bottle with fizz and a round Revive label, not a generic lightning potion.
