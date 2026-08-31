@@ -56,6 +56,7 @@ import {
   SMART_PRO_UNLOCK_PRICE,
   STAMIN_UP_BOTTLE_PRICE,
   STAMIN_UP_UNLOCK_PRICE,
+  NEON_GUCCI_PHRASE_PACK_PRICE,
   type BrewBottlePreviewKind,
   type BrewBetEffect,
   formatBrewBankAccessRemaining,
@@ -409,6 +410,8 @@ type Props = {
   smartProBottles: number;
   smartProSaleExpiresAt: number | null;
   darkBrewTokens: number;
+  neonGucciPhrasesUnlocked: boolean;
+  neonGucciPhrasesActive: boolean;
   activityLog: Array<{
     id: string;
     kind: string;
@@ -434,6 +437,8 @@ type Props = {
   onUnlockSmartPro: () => Promise<boolean>;
   onBuySmartProBottle: () => Promise<boolean>;
   onRedeemSmartPro: () => Promise<boolean>;
+  onUnlockNeonGucciPhrases: () => Promise<boolean>;
+  onSetNeonGucciPhrasesActive: (value: boolean) => Promise<boolean>;
 };
 
 type AudioPlayerHandle = {
@@ -521,6 +526,8 @@ export function BrewTokenBank({
   smartProBottles,
   smartProSaleExpiresAt,
   darkBrewTokens,
+  neonGucciPhrasesUnlocked,
+  neonGucciPhrasesActive,
   activityLog,
   onClose,
   onResolveBet,
@@ -540,6 +547,8 @@ export function BrewTokenBank({
   onUnlockSmartPro,
   onBuySmartProBottle,
   onRedeemSmartPro,
+  onUnlockNeonGucciPhrases,
+  onSetNeonGucciPhrasesActive,
 }: Props) {
   const insets = useSafeAreaInsets();
   const [selectedBet, setSelectedBet] = useState(1);
@@ -554,6 +563,7 @@ export function BrewTokenBank({
   const [payoutPreviewOpen, setPayoutPreviewOpen] = useState(false);
   const [shopMessage, setShopMessage] = useState<string | null>(null);
   const [shopBusy, setShopBusy] = useState(false);
+  const [phrasePackOpen, setPhrasePackOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [countdownNow, setCountdownNow] = useState(() => Date.now());
   const [quickReviveBurstVisible, setQuickReviveBurstVisible] = useState(false);
@@ -1303,6 +1313,32 @@ export function BrewTokenBank({
     triggerBottleBurst('smartPro', 'vault');
   };
 
+  const handleUnlockNeonGucciPhrases = async (confirmed = false) => {
+    if (tokens < NEON_GUCCI_PHRASE_PACK_PRICE || neonGucciPhrasesUnlocked || resolving || shopBusy) return;
+    if (!confirmed) {
+      confirmExpensiveAction(
+        'UNLOCK NEON GUCCI PHRASES?',
+        `Spend ${NEON_GUCCI_PHRASE_PACK_PRICE} Brew Tokens for 15 unhinged analysis loading lines?`,
+        () => { void handleUnlockNeonGucciPhrases(true); },
+      );
+      return;
+    }
+    setShopBusy(true);
+    const unlocked = await onUnlockNeonGucciPhrases();
+    setShopMessage(unlocked ? 'NEON GUCCI PHRASES UNLOCKED · NOW ON' : 'NOT ENOUGH BREW TOKENS');
+    setShopBusy(false);
+  };
+
+  const handleSetNeonGucciPhrasesActive = async (value: boolean) => {
+    if (!neonGucciPhrasesUnlocked || resolving || shopBusy) return;
+    setShopBusy(true);
+    const updated = await onSetNeonGucciPhrasesActive(value);
+    if (updated) {
+      setShopMessage(value ? 'NEON GUCCI PHRASES ON · ANALYSIS IS NOW UNHINGED' : 'NEON GUCCI PHRASES OFF · NORMAL LOADING RESTORED');
+    }
+    setShopBusy(false);
+  };
+
   const accessExpiryLabel = bankAccessExpiresAt
     ? new Date(bankAccessExpiresAt).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })
     : null;
@@ -1982,6 +2018,83 @@ export function BrewTokenBank({
                         BUY BOTTLE · {daiquiriBottlePrice} TOKENS{smartProSaleActive ? ' · 50% OFF' : ''}
                       </Text>
                     </Pressable>
+                  )}
+                </View>
+                <View style={[styles.quickReviveShop, styles.phrasePackShop, { borderTopColor: colors.border }]}>
+                  <Pressable
+                    onPress={() => setPhrasePackOpen(value => !value)}
+                    style={styles.phrasePackHeader}
+                    accessibilityRole="button"
+                    accessibilityLabel={phrasePackOpen ? 'Collapse Neon Gucci loading phrase pack' : 'Inspect Neon Gucci loading phrase pack'}
+                    accessibilityState={{ expanded: phrasePackOpen }}
+                  >
+                    <View style={styles.quickReviveShopCopy}>
+                      <View style={styles.smartProTitleRow}>
+                        <Text style={[styles.shopTitle, { color: neonGucciPhrasesUnlocked ? colors.foreground : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+                          NEON GUCCI LOADING PACK
+                        </Text>
+                        <View style={styles.phrasePackPill}>
+                          <Text style={[styles.phrasePackPillText, { fontFamily: 'Inter_700Bold' }]}>
+                            {neonGucciPhrasesUnlocked ? (neonGucciPhrasesActive ? 'ON' : 'OFF') : `${NEON_GUCCI_PHRASE_PACK_PRICE} TOKENS`}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={[styles.shopDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                        Swap the normal analysis loading steps for 15 chaotic one-liners. It changes the copy only — your analysis, data, and trades stay exactly the same.
+                      </Text>
+                      <View style={styles.bottleSpecRow}>
+                        <Text style={[styles.bottleSpec, { color: '#d8a4ff', fontFamily: 'Inter_700Bold' }]}>15 LINES · COPY ONLY</Text>
+                        <Text style={[styles.bottleSpec, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
+                          {neonGucciPhrasesUnlocked ? 'TAP TO TOGGLE' : 'NEW SHOP ITEM'}
+                        </Text>
+                      </View>
+                    </View>
+                    <Feather name={phrasePackOpen ? 'chevron-up' : 'chevron-down'} size={17} color={neonGucciPhrasesUnlocked ? '#d8a4ff' : colors.mutedForeground} />
+                  </Pressable>
+                  {phrasePackOpen && (
+                    <View style={styles.phrasePackDetails}>
+                      <Text style={[styles.phrasePackDetailsText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                        {neonGucciPhrasesUnlocked
+                          ? 'When on, these lines appear while stock analysis is loading. Turn them off any time; the pack stays yours permanently.'
+                          : 'A tiny luxury purchase for a very specific kind of financial chaos. Unlock once, then decide whether your loading screen gets the unhinged version.'}
+                      </Text>
+                      {!neonGucciPhrasesUnlocked ? (
+                        <Pressable
+                          onPress={() => { void handleUnlockNeonGucciPhrases(); }}
+                          disabled={tokens < NEON_GUCCI_PHRASE_PACK_PRICE || resolving || shopBusy}
+                          style={[
+                            styles.shopButton,
+                            { borderColor: '#9e62c9', backgroundColor: 'rgba(158,98,201,0.12)' },
+                            (tokens < NEON_GUCCI_PHRASE_PACK_PRICE || resolving || shopBusy) && styles.disabled,
+                          ]}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Unlock Neon Gucci loading phrases for ${NEON_GUCCI_PHRASE_PACK_PRICE} Brew Tokens`}
+                        >
+                          <Text style={[styles.shopButtonText, { color: '#e2b8ff', fontFamily: 'Inter_700Bold' }]}>
+                            UNLOCK 15 PHRASES · {NEON_GUCCI_PHRASE_PACK_PRICE} TOKENS
+                          </Text>
+                        </Pressable>
+                      ) : (
+                        <View style={[styles.phrasePackToggleRow, { borderColor: '#9e62c9', backgroundColor: 'rgba(158,98,201,0.1)' }]}>
+                          <View style={styles.phrasePackToggleCopy}>
+                            <Text style={[styles.phrasePackToggleTitle, { color: '#e2b8ff', fontFamily: 'Inter_700Bold' }]}>
+                              {neonGucciPhrasesActive ? 'UNHINGED LOADING COPY' : 'NORMAL LOADING COPY'}
+                            </Text>
+                            <Text style={[styles.phrasePackToggleSubtitle, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                              {neonGucciPhrasesActive ? 'The 15-pack is active' : 'The 15-pack is resting'}
+                            </Text>
+                          </View>
+                          <Switch
+                            value={neonGucciPhrasesActive}
+                            onValueChange={(value) => { void handleSetNeonGucciPhrasesActive(value); }}
+                            disabled={resolving || shopBusy}
+                            trackColor={{ false: colors.border, true: '#9e62c9' }}
+                            thumbColor={neonGucciPhrasesActive ? '#f2dcff' : colors.mutedForeground}
+                            accessibilityLabel="Toggle Neon Gucci loading phrases"
+                          />
+                        </View>
+                      )}
+                    </View>
                   )}
                 </View>
                 <View style={[styles.quickReviveShop, styles.smartProShop, { borderTopColor: smartProSaleActive ? '#78c84b' : colors.border }]}>
@@ -2817,6 +2930,16 @@ const styles = StyleSheet.create({
   quickReviveShop: { borderTopWidth: 1, marginTop: 14, paddingTop: 13 },
   quickReviveShopCopy: { flex: 1 },
   smartProShop: { backgroundColor: 'rgba(116,199,70,0.055)' },
+  phrasePackShop: { backgroundColor: 'rgba(158,98,201,0.055)' },
+  phrasePackHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
+  phrasePackPill: { borderRadius: 9, backgroundColor: 'rgba(158,98,201,0.2)', paddingHorizontal: 6, paddingVertical: 2 },
+  phrasePackPillText: { color: '#e2b8ff', fontSize: 7, letterSpacing: 0.6 },
+  phrasePackDetails: { gap: 10, marginTop: 11 },
+  phrasePackDetailsText: { fontSize: 10, lineHeight: 15 },
+  phrasePackToggleRow: { minHeight: 54, borderWidth: 1, borderRadius: 8, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  phrasePackToggleCopy: { flex: 1, gap: 3 },
+  phrasePackToggleTitle: { fontSize: 9, letterSpacing: 0.6 },
+  phrasePackToggleSubtitle: { fontSize: 9 },
   smartProTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 7, flexWrap: 'wrap' },
   smartProNewPill: { borderRadius: 9, backgroundColor: '#b9ff45', paddingHorizontal: 6, paddingVertical: 2 },
   smartProNewPillText: { color: '#17361c', fontSize: 7, letterSpacing: 0.6 },

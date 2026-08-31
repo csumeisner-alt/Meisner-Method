@@ -7,7 +7,7 @@ import {
 export const BREW_ECONOMY_SNAPSHOT_KEY = '@stocksense/brew_economy_snapshot_v1';
 export const BREW_ECONOMY_SNAPSHOT_VERSION = 1 as const;
 
-export type BrewActivityKind = 'quote' | 'unlock' | 'purchase' | 'redeem' | 'toss' | 'bank' | 'theme';
+export type BrewActivityKind = 'quote' | 'unlock' | 'purchase' | 'redeem' | 'toss' | 'bank' | 'theme' | 'setting';
 
 export type BrewActivityEntry = {
   id: string;
@@ -38,6 +38,8 @@ export type BrewEconomySnapshot = {
   smartProSaleExpiresAt: number | null;
   darkBrewTokens: number;
   neonGucciActive: boolean;
+  neonGucciPhrasesUnlocked: boolean;
+  neonGucciPhrasesActive: boolean;
   claimedQuoteViewIds: string[];
   activityLog: BrewActivityEntry[];
 };
@@ -68,8 +70,10 @@ export type BrewEconomySnapshotStorage = {
   getItem: (key: string) => Promise<string | null>;
 };
 
-type BrewEconomySnapshotInput = Omit<BrewEconomySnapshot, 'version' | 'neonGucciActive' | 'activityLog'> & {
+type BrewEconomySnapshotInput = Omit<BrewEconomySnapshot, 'version' | 'neonGucciActive' | 'neonGucciPhrasesUnlocked' | 'neonGucciPhrasesActive' | 'activityLog'> & {
   neonGucciActive?: boolean;
+  neonGucciPhrasesUnlocked?: boolean;
+  neonGucciPhrasesActive?: boolean;
   activityLog?: BrewActivityEntry[];
 };
 
@@ -109,6 +113,7 @@ export function createBrewEconomySnapshot(input: BrewEconomySnapshotInput): Brew
   const daiquiriUnlocked = input.daiquiriUnlocked === true;
   const staminUpUnlocked = input.staminUpUnlocked === true;
   const smartProUnlocked = input.smartProUnlocked === true;
+  const neonGucciPhrasesUnlocked = input.neonGucciPhrasesUnlocked === true;
 
   return {
     version: BREW_ECONOMY_SNAPSHOT_VERSION,
@@ -131,6 +136,8 @@ export function createBrewEconomySnapshot(input: BrewEconomySnapshotInput): Brew
     smartProSaleExpiresAt: normalizeExpiry(input.smartProSaleExpiresAt),
     darkBrewTokens: normalizeNonNegative(input.darkBrewTokens),
     neonGucciActive: input.neonGucciActive === true,
+    neonGucciPhrasesUnlocked,
+    neonGucciPhrasesActive: neonGucciPhrasesUnlocked && input.neonGucciPhrasesActive === true,
     claimedQuoteViewIds: normalizeClaims(input.claimedQuoteViewIds),
     activityLog: normalizeActivityLog(input.activityLog),
   };
@@ -195,6 +202,8 @@ export function parseBrewEconomySnapshot(raw: string | null | undefined): BrewEc
       smartProSaleExpiresAt: parsed.smartProSaleExpiresAt as number | null,
       darkBrewTokens: parsed.darkBrewTokens as number,
       neonGucciActive: parsed.neonGucciActive === true,
+      neonGucciPhrasesUnlocked: parsed.neonGucciPhrasesUnlocked === true,
+      neonGucciPhrasesActive: parsed.neonGucciPhrasesActive === true,
       claimedQuoteViewIds: normalizeClaims(parsed.claimedQuoteViewIds),
       activityLog: normalizeActivityLog(parsed.activityLog),
     });
@@ -256,6 +265,8 @@ export function migrateLegacyBrewEconomy(raw: LegacyBrewEconomyStorage): BrewEco
     smartProSaleExpiresAt: parsedSmartProExpires,
     darkBrewTokens: parseStoredNonNegative(raw.rawDarkBrewTokens),
     neonGucciActive: false,
+    neonGucciPhrasesUnlocked: false,
+    neonGucciPhrasesActive: false,
     claimedQuoteViewIds: [],
     activityLog: [],
   });

@@ -1539,6 +1539,8 @@ function GradeHistoryModal({
     smartProBottles,
     smartProSaleExpiresAt,
     darkBrewTokens,
+    neonGucciPhrasesUnlocked,
+    neonGucciPhrasesActive,
     activityLog,
     buyBankKey,
     activateBankKey,
@@ -1554,6 +1556,8 @@ function GradeHistoryModal({
     unlockSmartPro,
     buySmartProBottle,
     redeemSmartProBottle,
+    unlockNeonGucciPhrases,
+    setNeonGucciPhrasesActive,
     clearJustUnlocked,
   } = useAmericanMode().brew;
   const isWeekend = [0, 6].includes(new Date().getDay());
@@ -1716,6 +1720,8 @@ function GradeHistoryModal({
                 smartProBottles={smartProBottles}
                 smartProSaleExpiresAt={smartProSaleExpiresAt}
                 darkBrewTokens={darkBrewTokens}
+                neonGucciPhrasesUnlocked={neonGucciPhrasesUnlocked}
+                neonGucciPhrasesActive={neonGucciPhrasesActive}
                 activityLog={activityLog}
                 onClose={() => setBrewBankVisible(false)}
                 onResolveBet={resolveBet}
@@ -1735,6 +1741,8 @@ function GradeHistoryModal({
                 onUnlockSmartPro={unlockSmartPro}
                 onBuySmartProBottle={buySmartProBottle}
                 onRedeemSmartPro={redeemSmartProBottle}
+                onUnlockNeonGucciPhrases={unlockNeonGucciPhrases}
+                onSetNeonGucciPhrasesActive={setNeonGucciPhrasesActive}
               />
               <BrewTokenUnlockCelebration
                 visible={brewCelebrationVisible}

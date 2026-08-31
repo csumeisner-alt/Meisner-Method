@@ -18,11 +18,13 @@ import {
   buyStaminUpUnlock,
   buySmartProBottle as purchaseSmartProBottle,
   buySmartProUnlock,
+  buyNeonGucciPhrasePack,
   canArmBrewBottle,
   canActivateBrewBankKey,
   INITIAL_BREW_TOKENS,
   BREW_BANK_KEY_PRICE,
   NEON_GUCCI_UNLOCK_COST,
+  NEON_GUCCI_PHRASE_PACK_PRICE,
   SMART_PRO_BOTTLE_PRICE,
   SMART_PRO_UNLOCK_PRICE,
   createSerialWriteQueue,
@@ -93,6 +95,8 @@ export interface BrewTokenState {
   smartProSaleExpiresAt: number | null;
   darkBrewTokens: number;
   neonGucciActive: boolean;
+  neonGucciPhrasesUnlocked: boolean;
+  neonGucciPhrasesActive: boolean;
   activityLog: BrewActivityEntry[];
   neonGucciJustUnlocked: boolean;
   justUnlocked: boolean;
@@ -115,6 +119,8 @@ export interface BrewTokenState {
   buySmartProBottle: () => Promise<boolean>;
   redeemSmartProBottle: () => Promise<boolean>;
   setNeonGucciActive: (value: boolean) => Promise<boolean>;
+  unlockNeonGucciPhrases: () => Promise<boolean>;
+  setNeonGucciPhrasesActive: (value: boolean) => Promise<boolean>;
   clearNeonGucciJustUnlocked: () => void;
   clearJustUnlocked: () => void;
 }
@@ -147,6 +153,8 @@ export function useBrewTokens(): BrewTokenState {
   const [smartProSaleExpiresAt, setSmartProSaleExpiresAt] = useState<number | null>(null);
   const [darkBrewTokens, setDarkBrewTokens] = useState(0);
   const [neonGucciActive, setNeonGucciActiveState] = useState(false);
+  const [neonGucciPhrasesUnlocked, setNeonGucciPhrasesUnlockedState] = useState(false);
+  const [neonGucciPhrasesActive, setNeonGucciPhrasesActiveState] = useState(false);
   const [activityLog, setActivityLog] = useState<BrewActivityEntry[]>([]);
   const [neonGucciJustUnlocked, setNeonGucciJustUnlocked] = useState(false);
 
@@ -169,6 +177,8 @@ export function useBrewTokens(): BrewTokenState {
   const smartProSaleExpiresAtRef = useRef<number | null>(null);
   const darkBrewTokensRef = useRef(0);
   const neonGucciActiveRef = useRef(false);
+  const neonGucciPhrasesUnlockedRef = useRef(false);
+  const neonGucciPhrasesActiveRef = useRef(false);
   const rememberedQuoteViewsRef = useRef(new Set<string>());
   const economyRef = useRef<BrewEconomySnapshot | null>(null);
   const hydrationFailedRef = useRef(false);
@@ -211,6 +221,8 @@ export function useBrewTokens(): BrewTokenState {
     smartProSaleExpiresAtRef.current = snapshot.smartProSaleExpiresAt;
     darkBrewTokensRef.current = snapshot.darkBrewTokens;
     neonGucciActiveRef.current = snapshot.neonGucciActive;
+    neonGucciPhrasesUnlockedRef.current = snapshot.neonGucciPhrasesUnlocked;
+    neonGucciPhrasesActiveRef.current = snapshot.neonGucciPhrasesActive;
     setQuotesViewed(snapshot.quotesViewed);
     setIsUnlocked(snapshot.isUnlocked);
     setBrewTokens(snapshot.brewTokens);
@@ -230,6 +242,8 @@ export function useBrewTokens(): BrewTokenState {
     setSmartProSaleExpiresAt(snapshot.smartProSaleExpiresAt);
     setDarkBrewTokens(snapshot.darkBrewTokens);
     setNeonGucciActiveState(snapshot.neonGucciActive);
+    setNeonGucciPhrasesUnlockedState(snapshot.neonGucciPhrasesUnlocked);
+    setNeonGucciPhrasesActiveState(snapshot.neonGucciPhrasesActive);
     setActivityLog(snapshot.activityLog);
     if (crossedNeonThreshold) setNeonGucciJustUnlocked(true);
   };
@@ -821,6 +835,46 @@ export function useBrewTokens(): BrewTokenState {
     return outcome === true;
   }, []);
 
+  const unlockNeonGucciPhrases = useCallback(async () => {
+    const outcome = await commitEconomyMutation((current) => {
+      const next = buyNeonGucciPhrasePack(current.brewTokens, current.neonGucciPhrasesUnlocked);
+      return next
+        ? {
+            snapshot: withActivity(createBrewEconomySnapshot({
+              ...current,
+              brewTokens: next.tokenBalance,
+              neonGucciPhrasesUnlocked: next.unlocked,
+              neonGucciPhrasesActive: next.active,
+            }), {
+              kind: 'unlock',
+              label: 'NEON GUCCI PHRASES UNLOCKED',
+              detail: `-${NEON_GUCCI_PHRASE_PACK_PRICE} Brew Tokens · 15 loading lines`,
+            }),
+            result: true,
+          }
+        : null;
+    });
+    return outcome === true;
+  }, []);
+
+  const setNeonGucciPhrasesActive = useCallback(async (value: boolean) => {
+    const outcome = await commitEconomyMutation((current) => {
+      if (value && !current.neonGucciPhrasesUnlocked) return null;
+      return {
+        snapshot: withActivity(createBrewEconomySnapshot({
+          ...current,
+          neonGucciPhrasesActive: value,
+        }), {
+          kind: 'setting',
+          label: value ? 'NEON GUCCI PHRASES ON' : 'NEON GUCCI PHRASES OFF',
+          detail: value ? 'Analysis loading copy is now unhinged' : 'Analysis loading copy returned to normal',
+        }),
+        result: true,
+      };
+    });
+    return outcome === true;
+  }, []);
+
   const clearJustUnlocked = useCallback(() => setJustUnlocked(false), []);
   const clearNeonGucciJustUnlocked = useCallback(() => setNeonGucciJustUnlocked(false), []);
 
@@ -846,6 +900,8 @@ export function useBrewTokens(): BrewTokenState {
     smartProSaleExpiresAt,
     darkBrewTokens,
     neonGucciActive,
+    neonGucciPhrasesUnlocked,
+    neonGucciPhrasesActive,
     activityLog,
     neonGucciJustUnlocked,
     justUnlocked,
@@ -868,6 +924,8 @@ export function useBrewTokens(): BrewTokenState {
     buySmartProBottle,
     redeemSmartProBottle,
     setNeonGucciActive,
+    unlockNeonGucciPhrases,
+    setNeonGucciPhrasesActive,
     clearNeonGucciJustUnlocked,
     clearJustUnlocked,
   };
