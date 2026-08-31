@@ -102,6 +102,62 @@ test('each sell (partial close) counts once toward the win-rate denominator', ()
   assert.equal(summary.winRate, 50);
 });
 
+test('fully closed shares do not affect the average cost of a reopened position', () => {
+  const trades: Trade[] = [
+    buy({ id: 'mara-old-buy', symbol: 'MARA', shares: 100, pricePerShare: 9.98, date: '2026-08-28T14:00:00.000Z' }),
+    sell({ id: 'mara-close', symbol: 'MARA', shares: 100, pricePerShare: 10.50, date: '2026-08-29T14:00:00.000Z' }),
+    buy({ id: 'mara-new-buy', symbol: 'MARA', shares: 200, pricePerShare: 10.82, date: '2026-08-31T11:00:00.000Z' }),
+  ];
+
+  const [position] = computePositions(trades, {
+    MARA: { currentPrice: 11.09, priceChange: 0.27, priceChangePercent: 2.5 },
+  });
+
+  assert.equal(position.netShares, 200);
+  approx(position.avgCost, 10.82);
+  approx(position.costBasis, 2164);
+  approx(position.unrealizedPnL, 54);
+});
+
+test('partial FIFO close leaves only the remaining lot costs in the open average', () => {
+  const trades: Trade[] = [
+    buy({ id: 'b1', shares: 100, pricePerShare: 10, date: '2026-08-27T14:00:00.000Z' }),
+    buy({ id: 'b2', shares: 100, pricePerShare: 12, date: '2026-08-28T14:00:00.000Z' }),
+    sell({ id: 's1', shares: 150, pricePerShare: 13, date: '2026-08-29T14:00:00.000Z' }),
+  ];
+
+  const [position] = computePositions(trades, {});
+  assert.equal(position.netShares, 50);
+  approx(position.avgCost, 12);
+  approx(position.costBasis, 600);
+
+  const [closed] = computeClosedTrades(trades, {});
+  assert.equal(closed.shares, 150);
+  approx(closed.avgCost, 10 + (2 / 3));
+  approx(closed.gross, 350);
+});
+
+test('a closed cycle keeps its own realized basis after the symbol is bought again', () => {
+  const trades: Trade[] = [
+    buy({ id: 'b1', shares: 10, pricePerShare: 100, date: '2026-01-01T00:00:00.000Z' }),
+    sell({ id: 's1', shares: 10, pricePerShare: 110, date: '2026-01-02T00:00:00.000Z' }),
+    buy({ id: 'b2', shares: 10, pricePerShare: 200, date: '2026-01-03T00:00:00.000Z' }),
+    sell({ id: 's2', shares: 5, pricePerShare: 190, date: '2026-01-04T00:00:00.000Z' }),
+  ];
+
+  const closed = computeClosedTrades(trades, {});
+  assert.equal(closed.length, 2);
+  approx(closed[0].avgCost, 100);
+  approx(closed[0].gross, 100);
+  approx(closed[1].avgCost, 200);
+  approx(closed[1].gross, -50);
+
+  const [position] = computePositions(trades, {});
+  assert.equal(position.netShares, 5);
+  approx(position.avgCost, 200);
+  approx(position.realizedPnL, 50);
+});
+
 // ── computeTradeSummary (SummaryCard) ───────────────────────────────────────────
 test('computeTradeSummary: aggregates net realized, fees and win rate', () => {
   const closed = computeClosedTrades([buy({ id: 'b1' }), sell({ id: 's1' })], fundQuote);

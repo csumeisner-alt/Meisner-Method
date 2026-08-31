@@ -261,33 +261,13 @@ async function fetchQuote(symbol: string): Promise<Quote> {
   return data;
 }
 
-/** Compute A+→F- grade for a sell trade. */
-function computeSellGrade(sellTrade: Trade, allTrades: Trade[]): TradeGrade | null {
-  if (sellTrade.type !== 'sell') return null;
+/** Compute A+→F- grade for a sell trade from its matched FIFO lots. */
+function computeSellGrade(sellTrade: Trade, closedTrade: ClosedTrade | null): TradeGrade | null {
+  if (sellTrade.type !== 'sell' || !closedTrade) return null;
 
-  const sellDate = new Date(sellTrade.date);
-
-  // All buy trades for this symbol before (or on) the sell date
-  const priorBuys = allTrades.filter(
-    t => t.symbol === sellTrade.symbol && t.type === 'buy'
-      && t.id !== sellTrade.id
-      && new Date(t.date) <= sellDate
-  );
-  if (!priorBuys.length) return null;
-
-  const totalBuyShares = priorBuys.reduce((s, t) => s + t.shares, 0);
-  const totalBuyCost = priorBuys.reduce((s, t) => s + t.shares * t.pricePerShare, 0);
-  const avgCost = totalBuyCost / totalBuyShares;
-
-  const profit = (sellTrade.pricePerShare - avgCost) * sellTrade.shares;
+  const { avgCost, holdDays } = closedTrade;
+  const profit = closedTrade.gross;
   const returnPct = ((sellTrade.pricePerShare - avgCost) / avgCost) * 100;
-
-  const firstBuy = priorBuys.reduce((e, t) =>
-    new Date(t.date) < new Date(e.date) ? t : e
-  );
-  const holdDays = Math.max(0, Math.floor(
-    (sellDate.getTime() - new Date(firstBuy.date).getTime()) / 86_400_000
-  ));
 
   // Time multiplier — reward quick profits, penalise slow losses
   function timeMult(days: number, positive: boolean): number {
@@ -1849,7 +1829,7 @@ export default function PortfolioScreen() {
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
       .flatMap(sellTrade => {
         const closed = closedTrades.find(item => item.sellId === sellTrade.id);
-        const gradeInfo = computeSellGrade(sellTrade, trades);
+        const gradeInfo = computeSellGrade(sellTrade, closed ?? null);
         const gradeIndex = gradeInfo ? GRADE_ORDER.indexOf(gradeInfo.grade as typeof GRADE_ORDER[number]) : -1;
         if (!closed || !gradeInfo || gradeIndex < 0) return [];
         return [{
@@ -1923,7 +1903,9 @@ export default function PortfolioScreen() {
       // Only a newly-created sell produces feedback. Editing old trades must
       // never replay a popup just because the portfolio rendered again.
       if (data.type === 'sell') {
-        const grade = computeSellGrade(newTrade, nextTrades);
+        const closed = computeClosedTrades(nextTrades, quotes)
+          .find(item => item.sellId === newTrade.id) ?? null;
+        const grade = computeSellGrade(newTrade, closed);
         if (grade && feedbackEventRef.current !== newTrade.id) {
           feedbackEventRef.current = newTrade.id;
           if (grade.celebrate) {
@@ -2069,8 +2051,8 @@ export default function PortfolioScreen() {
                 </View>
               ) : (
                 filteredTrades.map(trade => {
-                  const gradeInfo = trade.type === 'sell' ? computeSellGrade(trade, trades) : null;
                   const closed = trade.type === 'sell' ? closedTrades.find(c => c.sellId === trade.id) ?? null : null;
+                  const gradeInfo = trade.type === 'sell' ? computeSellGrade(trade, closed) : null;
                   return (
                     <TradeCard key={trade.id} trade={trade}
                       quote={quotes[trade.symbol]}
