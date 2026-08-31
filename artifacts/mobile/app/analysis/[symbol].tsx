@@ -255,6 +255,7 @@ const NEON_GUCCI_LOADING_PHRASES = [
   'Loading… selecting the cheapest casket for your investments',
   'Please wait while we profit off your trade before you even place it',
   'Adjusting prices by fractions so tiny that only your anxiety notices',
+  'Loading… Dave just saw your spending history and threw a chair',
 ] as const;
 
 function shuffledLoadingPhrases(): string[] {
