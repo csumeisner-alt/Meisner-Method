@@ -9,6 +9,7 @@ import {
   computeClosedTrades,
   computeDividendTotal,
   computePositions,
+  computeTradeReconciliation,
   computeTradeSummary,
   type Quote,
   type Trade,
@@ -47,6 +48,46 @@ test('no prior buys: the sell is skipped entirely', () => {
   const trades = [sell({ id: 's1' })]; // sell with nothing bought before it
   const closed = computeClosedTrades(trades, fundQuote);
   assert.equal(closed.length, 0);
+});
+
+test('unmatched sell shares are reported without inventing realized P&L', () => {
+  const reconciliation = computeTradeReconciliation(
+    [sell({ id: 's1', shares: 4 })],
+    fundQuote,
+  );
+
+  assert.equal(reconciliation.closedTrades.length, 0);
+  assert.deepEqual(reconciliation.unmatchedSells, [{
+    sellId: 's1',
+    symbol: 'VOO',
+    date: DAY365,
+    requestedShares: 4,
+    matchedShares: 0,
+    unmatchedShares: 4,
+  }]);
+});
+
+test('partially unmatched sells keep matched FIFO totals and report only the remainder', () => {
+  const reconciliation = computeTradeReconciliation(
+    [buy({ id: 'b1', shares: 2 }), sell({ id: 's1', shares: 4 })],
+    {},
+  );
+
+  assert.equal(reconciliation.closedTrades.length, 1);
+  approx(reconciliation.closedTrades[0].shares, 2);
+  approx(reconciliation.closedTrades[0].gross, 40);
+  assert.equal(reconciliation.unmatchedSells[0].matchedShares, 2);
+  assert.equal(reconciliation.unmatchedSells[0].unmatchedShares, 2);
+});
+
+test('fully matched histories have no reconciliation warnings', () => {
+  const reconciliation = computeTradeReconciliation(
+    [buy({ id: 'b1' }), sell({ id: 's1' })],
+    fundQuote,
+  );
+
+  assert.deepEqual(reconciliation.unmatchedSells, []);
+  assert.equal(reconciliation.closedTrades.length, 1);
 });
 
 test('missing/zero expense ratio: no fee, net equals gross', () => {

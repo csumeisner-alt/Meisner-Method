@@ -41,8 +41,10 @@ import {
   computeDividendTotal,
   computeClosedTrades,
   computePositions,
+  computeTradeReconciliation,
   computeTradeSummary,
   type ClosedTrade,
+  type UnmatchedSell,
   type Position,
   type Quote,
   type Trade,
@@ -1355,7 +1357,7 @@ const mStyles = StyleSheet.create({
 
 // ─── Summary Card ─────────────────────────────────────────────────────────────
 
-function SummaryCard({ positions, trades, closedTrades, onReset, onAddDividend, colors }: { positions: Position[]; trades: Trade[]; closedTrades: ClosedTrade[]; onReset: () => void; onAddDividend: () => void; colors: any }) {
+function SummaryCard({ positions, trades, closedTrades, unmatchedSells, onReset, onAddDividend, colors }: { positions: Position[]; trades: Trade[]; closedTrades: ClosedTrade[]; unmatchedSells: UnmatchedSell[]; onReset: () => void; onAddDividend: () => void; colors: any }) {
   const open = positions.filter(p => p.netShares !== 0);
   const totalCost = open.reduce((s, p) => s + Math.max(p.costBasis, 0), 0);
   const totalMkt = open.reduce((s, p) => s + p.marketValue, 0);
@@ -1382,6 +1384,34 @@ function SummaryCard({ positions, trades, closedTrades, onReset, onAddDividend, 
           </TouchableOpacity>
         </View>
       </View>
+      {unmatchedSells.length > 0 && (
+        <View style={[smStyles.warning, { backgroundColor: colors.holdBg, borderColor: colors.gradeWarning }]}>
+          <View style={smStyles.warningHeading}>
+            <Feather name="alert-triangle" size={15} color={colors.gradeWarning} />
+            <Text style={[smStyles.warningTitle, { color: colors.gradeWarning, fontFamily: 'Inter_700Bold' }]}>
+              TRADE HISTORY NEEDS ATTENTION
+            </Text>
+          </View>
+          <Text style={[smStyles.warningCopy, { color: colors.foreground, fontFamily: 'Inter_400Regular' }]}>
+            {unmatchedSells.reduce((sum, sell) => sum + sell.unmatchedShares, 0).toLocaleString('en-US', {
+              maximumFractionDigits: 4,
+            })} shares from {unmatchedSells.length === 1 ? 'this sell' : `${unmatchedSells.length} sells`} could not be matched to earlier buys. Realized P&L excludes those shares.
+          </Text>
+          <Text style={[smStyles.warningHint, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+            Add the missing BUY or edit/remove the affected SELL in History.
+          </Text>
+          {unmatchedSells.map(sell => (
+            <View key={sell.sellId} style={smStyles.warningDetail}>
+              <Text style={[smStyles.warningDetailSymbol, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+                {sell.symbol}
+              </Text>
+              <Text style={[smStyles.warningDetailText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                {fmtNum(sell.unmatchedShares)} unmatched · {formatDateShort(sell.date)}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
       <View style={smStyles.metricsRow}>
         {[
           { label: 'COST BASIS', val: fmtCurrency(totalCost), color: colors.foreground },
@@ -1439,6 +1469,14 @@ const smStyles = StyleSheet.create({
   heading: { fontSize: 12, letterSpacing: 1 },
   resetBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   resetTxt: { fontSize: 12, letterSpacing: 0.5 },
+  warning: { borderRadius: 8, borderWidth: 1, padding: 10, marginBottom: 10, gap: 6 },
+  warningHeading: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  warningTitle: { fontSize: 10, letterSpacing: 0.6 },
+  warningCopy: { fontSize: 12, lineHeight: 17 },
+  warningHint: { fontSize: 11, lineHeight: 16 },
+  warningDetail: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  warningDetailSymbol: { fontSize: 11, minWidth: 48 },
+  warningDetailText: { fontSize: 11 },
   metricsRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   metricCell: { flex: 1, gap: 2 },
   divider: { width: 1, height: 36, marginHorizontal: 8 },
@@ -1822,7 +1860,7 @@ export default function PortfolioScreen() {
 
   const allPositions = computePositions(trades, quotes);
   const openPositions = allPositions.filter(p => p.netShares !== 0);
-  const closedTrades = computeClosedTrades(trades, quotes);
+  const { closedTrades, unmatchedSells } = computeTradeReconciliation(trades, quotes);
   const gradeHistoryPoints = useMemo<GradeHistoryPoint[]>(() => (
     trades
       .filter(trade => trade.type === 'sell')
@@ -2008,7 +2046,7 @@ export default function PortfolioScreen() {
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
         >
-          <SummaryCard positions={allPositions} trades={trades} closedTrades={closedTrades} onReset={handleReset} onAddDividend={() => openAdd('dividend')} colors={colors} />
+          <SummaryCard positions={allPositions} trades={trades} closedTrades={closedTrades} unmatchedSells={unmatchedSells} onReset={handleReset} onAddDividend={() => openAdd('dividend')} colors={colors} />
 
           {portfolioTab === 'positions' ? (
             openPositions.length === 0 ? (

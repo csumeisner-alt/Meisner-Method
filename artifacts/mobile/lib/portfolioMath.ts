@@ -54,6 +54,21 @@ export interface ClosedTrade {
   isWin: boolean;
 }
 
+/** A sell whose requested shares could not all be matched to prior buys. */
+export interface UnmatchedSell {
+  sellId: string;
+  symbol: string;
+  date: string;
+  requestedShares: number;
+  matchedShares: number;
+  unmatchedShares: number;
+}
+
+export interface TradeReconciliation {
+  closedTrades: ClosedTrade[];
+  unmatchedSells: UnmatchedSell[];
+}
+
 /** Win threshold: a sell counts as a win when net (after-fee) P&L ≥ this. */
 export const WIN_THRESHOLD = 0.01;
 
@@ -66,6 +81,7 @@ type OpenLot = {
 
 type MatchedSell = {
   shares: number;
+  unmatchedShares: number;
   cost: number;
   weightedPurchaseMs: number;
   gross: number;
@@ -114,7 +130,14 @@ function consumeFifoLots(
     if (lot.shares <= 0.0001) lots.shift();
   }
 
-  return { shares, cost, weightedPurchaseMs, gross, fee };
+  return {
+    shares,
+    unmatchedShares: remaining > 0.0001 ? remaining : 0,
+    cost,
+    weightedPurchaseMs,
+    gross,
+    fee,
+  };
 }
 
 export function computePositions(trades: Trade[], quotes: Record<string, Quote | null>): Position[] {
@@ -172,8 +195,12 @@ export function computePositions(trades: Trade[], quotes: Record<string, Quote |
  *   fee = (shares × avgCost) × expenseRatio × (daysHeld ÷ 365)
  * Net P&L = gross P&L − fee; a win is net profit of $0.01 or more.
  */
-export function computeClosedTrades(trades: Trade[], quotes: Record<string, Quote | null>): ClosedTrade[] {
-  const result: ClosedTrade[] = [];
+export function computeTradeReconciliation(
+  trades: Trade[],
+  quotes: Record<string, Quote | null>,
+): TradeReconciliation {
+  const closedTrades: ClosedTrade[] = [];
+  const unmatchedSells: UnmatchedSell[] = [];
   const lotsBySymbol: Record<string, OpenLot[]> = {};
 
   for (const trade of sortTradesChronologically(trades)) {
@@ -189,27 +216,42 @@ export function computeClosedTrades(trades: Trade[], quotes: Record<string, Quot
     }
 
     const matched = consumeFifoLots(lots, trade, quotes[trade.symbol]?.expenseRatio ?? 0);
-    if (matched.shares <= 0) continue;
-    const avgCost = matched.cost / matched.shares;
-    const weightedBuyMs = matched.weightedPurchaseMs / matched.shares;
-    const holdDays = Math.max(
-      0,
-      Math.floor((new Date(trade.date).getTime() - weightedBuyMs) / 86_400_000),
-    );
-    const net = matched.gross - matched.fee;
-    result.push({
-      sellId: trade.id,
-      symbol: trade.symbol,
-      shares: matched.shares,
-      avgCost,
-      holdDays,
-      gross: matched.gross,
-      fee: matched.fee,
-      net,
-      isWin: net >= WIN_THRESHOLD,
-    });
+    if (matched.shares > 0) {
+      const avgCost = matched.cost / matched.shares;
+      const weightedBuyMs = matched.weightedPurchaseMs / matched.shares;
+      const holdDays = Math.max(
+        0,
+        Math.floor((new Date(trade.date).getTime() - weightedBuyMs) / 86_400_000),
+      );
+      const net = matched.gross - matched.fee;
+      closedTrades.push({
+        sellId: trade.id,
+        symbol: trade.symbol,
+        shares: matched.shares,
+        avgCost,
+        holdDays,
+        gross: matched.gross,
+        fee: matched.fee,
+        net,
+        isWin: net >= WIN_THRESHOLD,
+      });
+    }
+    if (matched.unmatchedShares > 0) {
+      unmatchedSells.push({
+        sellId: trade.id,
+        symbol: trade.symbol,
+        date: trade.date,
+        requestedShares: trade.shares,
+        matchedShares: matched.shares,
+        unmatchedShares: matched.unmatchedShares,
+      });
+    }
   }
-  return result;
+  return { closedTrades, unmatchedSells };
+}
+
+export function computeClosedTrades(trades: Trade[], quotes: Record<string, Quote | null>): ClosedTrade[] {
+  return computeTradeReconciliation(trades, quotes).closedTrades;
 }
 
 export function availableToSell(symbol: string, trades: Trade[], excludeId?: string): number {
