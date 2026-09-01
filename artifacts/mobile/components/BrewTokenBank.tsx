@@ -42,6 +42,7 @@ import Svg, {
   Text as SvgText,
 } from 'react-native-svg';
 import type { ColorScheme } from '@/constants/colors';
+import type { BrewActionResult } from '@/hooks/useBrewTokens';
 import {
   BREW_BANK_KEY_PRICE,
   DAIQUIRI_BOTTLE_PRICE,
@@ -77,6 +78,14 @@ const DAIQUIRI_LOSS_PERCENT = Math.round(DAIQUIRI_LOSS_PROBABILITY * 100);
 const DAIQUIRI_ODDS_LABEL = `${DAIQUIRI_WIN_PERCENT}% WIN · ${DAIQUIRI_LOSS_PERCENT}% LOSS`;
 const DAIQUIRI_DESCRIPTION = `Crack one into the machine before a toss: ${DAIQUIRI_WIN_PERCENT}% win odds, ${DAIQUIRI_LOSS_PERCENT}% loss odds, and a double award if it pays.`;
 const STAMIN_UP_WIN_PERCENT = Math.round(BREW_TOKEN_WIN_PROBABILITY * 100);
+const SHOP_ACTION_COOLDOWN_MS = 350;
+
+const getActionFailureMessage = (result: BrewActionResult, unavailableMessage: string) =>
+  result.ok
+    ? null
+    : result.reason === 'save_failed'
+      ? 'COULD NOT SAVE CHANGE · TRY AGAIN'
+      : unavailableMessage;
 
 export function BrewCoin({ colors, size = 66 }: { colors: ColorScheme; size?: number }) {
   return (
@@ -426,22 +435,22 @@ type Props = {
   onResolveBet: (bet: number, won: boolean, effect?: BrewBetEffect) => Promise<void>;
   onSoundEnabledChange: (value: boolean) => Promise<void>;
   onHapticsEnabledChange: (value: boolean) => Promise<void>;
-  onBuyBankKey: () => Promise<boolean>;
-  onActivateBankKey: () => Promise<boolean>;
-  onUnlockQuickRevive: () => Promise<boolean>;
-  onBuyQuickReviveBottle: () => Promise<boolean>;
-  onRedeemQuickRevive: () => Promise<boolean>;
-  onUnlockDaiquiri: () => Promise<boolean>;
-  onBuyDaiquiriBottle: () => Promise<boolean>;
-  onRedeemDaiquiri: () => Promise<boolean>;
-  onUnlockStaminUp: () => Promise<boolean>;
-  onBuyStaminUpBottle: () => Promise<boolean>;
-  onRedeemStaminUp: () => Promise<boolean>;
-  onUnlockSmartPro: () => Promise<boolean>;
-  onBuySmartProBottle: () => Promise<boolean>;
-  onRedeemSmartPro: () => Promise<boolean>;
-  onUnlockNeonGucciPhrases: () => Promise<boolean>;
-  onSetNeonGucciPhrasesActive: (value: boolean) => Promise<boolean>;
+  onBuyBankKey: () => Promise<BrewActionResult>;
+  onActivateBankKey: () => Promise<BrewActionResult>;
+  onUnlockQuickRevive: () => Promise<BrewActionResult>;
+  onBuyQuickReviveBottle: () => Promise<BrewActionResult>;
+  onRedeemQuickRevive: () => Promise<BrewActionResult>;
+  onUnlockDaiquiri: () => Promise<BrewActionResult>;
+  onBuyDaiquiriBottle: () => Promise<BrewActionResult>;
+  onRedeemDaiquiri: () => Promise<BrewActionResult>;
+  onUnlockStaminUp: () => Promise<BrewActionResult>;
+  onBuyStaminUpBottle: () => Promise<BrewActionResult>;
+  onRedeemStaminUp: () => Promise<BrewActionResult>;
+  onUnlockSmartPro: () => Promise<BrewActionResult>;
+  onBuySmartProBottle: () => Promise<BrewActionResult>;
+  onRedeemSmartPro: () => Promise<BrewActionResult>;
+  onUnlockNeonGucciPhrases: () => Promise<BrewActionResult>;
+  onSetNeonGucciPhrasesActive: (value: boolean) => Promise<BrewActionResult>;
 };
 
 type AudioPlayerHandle = {
@@ -611,6 +620,7 @@ export function BrewTokenBank({
   const lossVoiceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const machineSoundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const winSoundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shopCooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const quickReviveVoiceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const staminUpVoiceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const daiquiriVoiceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -622,6 +632,8 @@ export function BrewTokenBank({
   const staminUpVoicePlayerRef = useRef<AudioPlayerHandle | null>(null);
   const daiquiriVoicePlayerRef = useRef<AudioPlayerHandle | null>(null);
   const activeLossPhraseRef = useRef<LossPhrase | null>(null);
+  const shopBusyRef = useRef(false);
+  const resolvingRef = useRef(false);
   const reelStopTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const quickReviveBurstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const daiquiriBurstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -637,6 +649,37 @@ export function BrewTokenBank({
   const daiquiriProgress = useSharedValue(0);
   const staminUpProgress = useSharedValue(0);
   const smartProProgress = useSharedValue(0);
+
+  const beginShopAction = () => {
+    if (shopBusyRef.current) return false;
+    if (shopCooldownTimerRef.current) {
+      clearTimeout(shopCooldownTimerRef.current);
+      shopCooldownTimerRef.current = null;
+    }
+    shopBusyRef.current = true;
+    setShopBusy(true);
+    return true;
+  };
+
+  const endShopAction = () => {
+    if (shopCooldownTimerRef.current) clearTimeout(shopCooldownTimerRef.current);
+    shopCooldownTimerRef.current = setTimeout(() => {
+      shopBusyRef.current = false;
+      shopCooldownTimerRef.current = null;
+      setShopBusy(false);
+    }, SHOP_ACTION_COOLDOWN_MS);
+  };
+
+  const runShopAction = async (action: () => Promise<BrewActionResult>) => {
+    if (!beginShopAction()) return null;
+    try {
+      return await action();
+    } catch {
+      return { ok: false, reason: 'save_failed' as const };
+    } finally {
+      endShopAction();
+    }
+  };
 
   const stopLossVoice = (force = false) => {
     if (!force && activeLossPhraseRef.current?.protectedFromDismiss) return;
@@ -822,6 +865,7 @@ export function BrewTokenBank({
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
     if (balanceTimerRef.current) clearInterval(balanceTimerRef.current);
+    if (shopCooldownTimerRef.current) clearTimeout(shopCooldownTimerRef.current);
     if (quickReviveBurstTimerRef.current) clearTimeout(quickReviveBurstTimerRef.current);
     if (daiquiriBurstTimerRef.current) clearTimeout(daiquiriBurstTimerRef.current);
     if (staminUpBurstTimerRef.current) clearTimeout(staminUpBurstTimerRef.current);
@@ -1052,7 +1096,7 @@ export function BrewTokenBank({
   }));
 
   const bet = Math.min(Math.max(selectedBet, 1), Math.max(tokens, 1));
-  const canPlay = tokens > 0 && !resolving && !protectedVoicePlaying;
+  const canPlay = tokens > 0 && !resolving && !protectedVoicePlaying && !shopBusy;
   const bankAccessActive = hasBrewBankAccess(bankAccessExpiresAt, countdownNow);
   const smartProSaleActive = hasSmartProSale(smartProSaleExpiresAt, countdownNow);
   const smartProRemainingLabel = formatSmartProRemaining(smartProSaleExpiresAt, countdownNow);
@@ -1067,11 +1111,38 @@ export function BrewTokenBank({
   const bankSurface = smartProSaleActive ? '#071b13' : colors.card;
   const bankSteel = smartProSaleActive ? '#0b2719' : colors.steelShadow;
   const bankWhite = smartProSaleActive ? '#f5fff0' : colors.foreground;
-  const canActivateKey = isWeekday(new Date().getDay()) && bankKeys > 0 && !bankAccessActive && !resolving;
+  const canActivateKey = isWeekday(new Date().getDay()) && bankKeys > 0 && !bankAccessActive && !resolving && !shopBusy;
   const activeWinProbability = daiquiriArmed
     ? getDaiquiriWinProbability(true)
     : getBrewWinProbability(quickReviveArmed);
   const activeOddsLabel = `${Math.round(activeWinProbability * 100)}%`;
+  const activeEffectStatus = staminUpArmed
+    ? {
+        title: `STAMIN UP ARMED · ${STAMIN_UP_WIN_PERCENT}% ODDS`,
+        detail: 'NEXT WIN PAYS DARK BREW · STAKE STAYS IN BREW',
+        color: '#ffc169',
+        icon: 'wind' as const,
+      }
+    : daiquiriArmed
+      ? {
+          title: `DAIQUIRI ARMED · ${DAIQUIRI_WIN_PERCENT}% WIN · DOUBLE AWARD`,
+          detail: `NEXT TOSS ONLY · ${DAIQUIRI_LOSS_PERCENT}% LOSS ODDS`,
+          color: '#a8e5ff',
+          icon: 'droplet' as const,
+        }
+      : quickReviveArmed
+        ? {
+            title: 'QUICK REVIVE ARMED · 62% ODDS',
+            detail: 'NEXT TOSS ONLY · ONE BOTTLE CONSUMED',
+            color: colors.buyColor,
+            icon: 'zap' as const,
+          }
+        : {
+            title: `STANDARD TOSS · ${Math.round(BREW_TOKEN_WIN_PROBABILITY * 100)}% ODDS`,
+            detail: 'NO SODA EFFECT ARMED · STAKE IS AT RISK',
+            color: bankAccent,
+            icon: 'circle' as const,
+          };
   const selectedBottleInspection = bottlePreview
     ? getBrewBottleInspection(bottlePreview, {
         tokens,
@@ -1106,7 +1177,7 @@ export function BrewTokenBank({
   };
 
   const handleBuyKey = async (confirmed = false) => {
-    if (tokens < BREW_BANK_KEY_PRICE || resolving || shopBusy) return;
+    if (tokens < BREW_BANK_KEY_PRICE || resolvingRef.current || shopBusyRef.current) return;
     if (!confirmed) {
       confirmExpensiveAction(
         'BUY CENTRAL BANK KEY?',
@@ -1115,22 +1186,20 @@ export function BrewTokenBank({
       );
       return;
     }
-    setShopBusy(true);
-    const purchased = await onBuyBankKey();
-    setShopMessage(purchased ? 'KEY ADDED TO INVENTORY' : 'NOT ENOUGH BREW TOKENS');
-    setShopBusy(false);
+    const purchased = await runShopAction(onBuyBankKey);
+    if (!purchased) return;
+    setShopMessage(purchased.ok ? 'KEY ADDED TO INVENTORY' : getActionFailureMessage(purchased, 'NOT ENOUGH BREW TOKENS'));
   };
 
   const handleActivateKey = async () => {
-    if (!canActivateKey || shopBusy) return;
-    setShopBusy(true);
-    const activated = await onActivateBankKey();
-    setShopMessage(activated ? 'ACCESS GRANTED FOR 12 HOURS' : 'KEYS CAN ONLY BE ACTIVATED ON WEEKDAYS');
-    setShopBusy(false);
+    if (!canActivateKey || resolvingRef.current || shopBusyRef.current) return;
+    const activated = await runShopAction(onActivateBankKey);
+    if (!activated) return;
+    setShopMessage(activated.ok ? 'ACCESS GRANTED FOR 12 HOURS' : getActionFailureMessage(activated, 'KEYS CAN ONLY BE ACTIVATED ON WEEKDAYS'));
   };
 
   const handleUnlockQuickRevive = async (confirmed = false) => {
-    if (tokens < quickReviveUnlockPrice || quickReviveUnlocked || resolving || shopBusy) return;
+    if (tokens < quickReviveUnlockPrice || quickReviveUnlocked || resolvingRef.current || shopBusyRef.current) return;
     if (!confirmed) {
       confirmExpensiveAction(
         'UNLOCK QUICK REVIVE?',
@@ -1139,26 +1208,28 @@ export function BrewTokenBank({
       );
       return;
     }
-    setShopBusy(true);
-    const unlocked = await onUnlockQuickRevive();
-    setShopMessage(unlocked ? `QUICK REVIVE UNLOCKED · BOTTLES ARE NOW ${quickReviveBottlePrice} ${quickReviveBottlePrice === 1 ? 'TOKEN' : 'TOKENS'}` : 'NOT ENOUGH BREW TOKENS');
-    setShopBusy(false);
+    const unlocked = await runShopAction(onUnlockQuickRevive);
+    if (!unlocked) return;
+    setShopMessage(unlocked.ok
+      ? `QUICK REVIVE UNLOCKED · BOTTLES ARE NOW ${quickReviveBottlePrice} ${quickReviveBottlePrice === 1 ? 'TOKEN' : 'TOKENS'}`
+      : getActionFailureMessage(unlocked, 'NOT ENOUGH BREW TOKENS'));
   };
 
   const handleBuyQuickReviveBottle = async () => {
-    if (!quickReviveUnlocked || tokens < quickReviveBottlePrice || resolving || shopBusy) return;
-    setShopBusy(true);
-    const purchased = await onBuyQuickReviveBottle();
-    setShopMessage(purchased ? 'QUICK REVIVE BOTTLE ADDED TO INVENTORY' : 'NOT ENOUGH BREW TOKENS');
-    setShopBusy(false);
+    if (!quickReviveUnlocked || tokens < quickReviveBottlePrice || resolvingRef.current || shopBusyRef.current) return;
+    const purchased = await runShopAction(onBuyQuickReviveBottle);
+    if (!purchased) return;
+    setShopMessage(purchased.ok ? 'QUICK REVIVE BOTTLE ADDED TO INVENTORY' : getActionFailureMessage(purchased, 'NOT ENOUGH BREW TOKENS'));
   };
 
   const handleRedeemQuickRevive = async () => {
-    if (!quickReviveUnlocked || quickReviveBottles < 1 || quickReviveArmed || daiquiriArmed || staminUpArmed || resolving || shopBusy) return;
-    setShopBusy(true);
-    const redeemed = await onRedeemQuickRevive();
-    setShopBusy(false);
+    if (!quickReviveUnlocked || quickReviveBottles < 1 || quickReviveArmed || daiquiriArmed || staminUpArmed || resolvingRef.current || shopBusyRef.current) return;
+    const redeemed = await runShopAction(onRedeemQuickRevive);
     if (!redeemed) return;
+    if (!redeemed.ok) {
+      setShopMessage(getActionFailureMessage(redeemed, 'QUICK REVIVE IS NOT AVAILABLE RIGHT NOW'));
+      return;
+    }
 
     setShopMessage('QUICK REVIVE ARMED · NEXT TOSS HAS 62% ODDS');
     if (hapticsEnabled) {
@@ -1169,7 +1240,7 @@ export function BrewTokenBank({
   };
 
   const handleUnlockDaiquiri = async (confirmed = false) => {
-    if (tokens < daiquiriUnlockPrice || daiquiriUnlocked || resolving || shopBusy) return;
+    if (tokens < daiquiriUnlockPrice || daiquiriUnlocked || resolvingRef.current || shopBusyRef.current) return;
     if (!confirmed) {
       confirmExpensiveAction(
         'UNLOCK DAIQUIRI?',
@@ -1178,14 +1249,13 @@ export function BrewTokenBank({
       );
       return;
     }
-    setShopBusy(true);
-    const unlocked = await onUnlockDaiquiri();
-    setShopMessage(unlocked ? `DAIQUIRI UNLOCKED · BOTTLES ARE NOW ${daiquiriBottlePrice} TOKENS` : 'NOT ENOUGH BREW TOKENS');
-    setShopBusy(false);
+    const unlocked = await runShopAction(onUnlockDaiquiri);
+    if (!unlocked) return;
+    setShopMessage(unlocked.ok ? `DAIQUIRI UNLOCKED · BOTTLES ARE NOW ${daiquiriBottlePrice} TOKENS` : getActionFailureMessage(unlocked, 'NOT ENOUGH BREW TOKENS'));
   };
 
   const handleBuyDaiquiriBottle = async (confirmed = false) => {
-    if (!daiquiriUnlocked || tokens < daiquiriBottlePrice || resolving || shopBusy) return;
+    if (!daiquiriUnlocked || tokens < daiquiriBottlePrice || resolvingRef.current || shopBusyRef.current) return;
     if (!confirmed && daiquiriBottlePrice >= 8) {
       confirmExpensiveAction(
         'BUY DAIQUIRI?',
@@ -1194,10 +1264,9 @@ export function BrewTokenBank({
       );
       return;
     }
-    setShopBusy(true);
-    const purchased = await onBuyDaiquiriBottle();
-    setShopMessage(purchased ? 'DAIQUIRI BOTTLE ADDED TO INVENTORY' : 'NOT ENOUGH BREW TOKENS');
-    setShopBusy(false);
+    const purchased = await runShopAction(onBuyDaiquiriBottle);
+    if (!purchased) return;
+    setShopMessage(purchased.ok ? 'DAIQUIRI BOTTLE ADDED TO INVENTORY' : getActionFailureMessage(purchased, 'NOT ENOUGH BREW TOKENS'));
   };
 
   const playDaiquiriVoice = async () => {
@@ -1247,11 +1316,13 @@ export function BrewTokenBank({
   };
 
   const handleRedeemDaiquiri = async () => {
-    if (!daiquiriUnlocked || daiquiriBottles < 1 || daiquiriArmed || quickReviveArmed || staminUpArmed || resolving || shopBusy) return;
-    setShopBusy(true);
-    const redeemed = await onRedeemDaiquiri();
-    setShopBusy(false);
+    if (!daiquiriUnlocked || daiquiriBottles < 1 || daiquiriArmed || quickReviveArmed || staminUpArmed || resolvingRef.current || shopBusyRef.current) return;
+    const redeemed = await runShopAction(onRedeemDaiquiri);
     if (!redeemed) return;
+    if (!redeemed.ok) {
+      setShopMessage(getActionFailureMessage(redeemed, 'DAIQUIRI IS NOT AVAILABLE RIGHT NOW'));
+      return;
+    }
 
     setShopMessage(`DAIQUIRI ARMED · ${DAIQUIRI_ODDS_LABEL} · DOUBLE AWARD`);
     if (hapticsEnabled) {
@@ -1262,7 +1333,7 @@ export function BrewTokenBank({
   };
 
   const handleUnlockStaminUp = async (confirmed = false) => {
-    if (tokens < staminUpUnlockPrice || staminUpUnlocked || resolving || shopBusy) return;
+    if (tokens < staminUpUnlockPrice || staminUpUnlocked || resolvingRef.current || shopBusyRef.current) return;
     if (!confirmed) {
       confirmExpensiveAction(
         'UNLOCK STAMIN UP?',
@@ -1271,14 +1342,13 @@ export function BrewTokenBank({
       );
       return;
     }
-    setShopBusy(true);
-    const unlocked = await onUnlockStaminUp();
-    setShopMessage(unlocked ? `STAMIN UP UNLOCKED · BOTTLES ARE NOW ${staminUpBottlePrice} TOKENS` : 'NOT ENOUGH BREW TOKENS');
-    setShopBusy(false);
+    const unlocked = await runShopAction(onUnlockStaminUp);
+    if (!unlocked) return;
+    setShopMessage(unlocked.ok ? `STAMIN UP UNLOCKED · BOTTLES ARE NOW ${staminUpBottlePrice} TOKENS` : getActionFailureMessage(unlocked, 'NOT ENOUGH BREW TOKENS'));
   };
 
   const handleBuyStaminUpBottle = async (confirmed = false) => {
-    if (!staminUpUnlocked || tokens < staminUpBottlePrice || resolving || shopBusy) return;
+    if (!staminUpUnlocked || tokens < staminUpBottlePrice || resolvingRef.current || shopBusyRef.current) return;
     if (!confirmed && staminUpBottlePrice >= 8) {
       confirmExpensiveAction(
         'BUY STAMIN UP?',
@@ -1287,18 +1357,19 @@ export function BrewTokenBank({
       );
       return;
     }
-    setShopBusy(true);
-    const purchased = await onBuyStaminUpBottle();
-    setShopMessage(purchased ? 'STAMIN UP BOTTLE ADDED TO INVENTORY' : 'NOT ENOUGH BREW TOKENS');
-    setShopBusy(false);
+    const purchased = await runShopAction(onBuyStaminUpBottle);
+    if (!purchased) return;
+    setShopMessage(purchased.ok ? 'STAMIN UP BOTTLE ADDED TO INVENTORY' : getActionFailureMessage(purchased, 'NOT ENOUGH BREW TOKENS'));
   };
 
   const handleRedeemStaminUp = async () => {
-    if (!staminUpUnlocked || staminUpBottles < 1 || staminUpArmed || quickReviveArmed || daiquiriArmed || resolving || shopBusy) return;
-    setShopBusy(true);
-    const redeemed = await onRedeemStaminUp();
-    setShopBusy(false);
+    if (!staminUpUnlocked || staminUpBottles < 1 || staminUpArmed || quickReviveArmed || daiquiriArmed || resolvingRef.current || shopBusyRef.current) return;
+    const redeemed = await runShopAction(onRedeemStaminUp);
     if (!redeemed) return;
+    if (!redeemed.ok) {
+      setShopMessage(getActionFailureMessage(redeemed, 'STAMIN UP IS NOT AVAILABLE RIGHT NOW'));
+      return;
+    }
 
     setShopMessage('STAMIN UP ARMED · NEXT WIN PAYS DARK BREW TOKENS');
     if (hapticsEnabled) {
@@ -1309,7 +1380,7 @@ export function BrewTokenBank({
   };
 
   const handleUnlockSmartPro = async (confirmed = false) => {
-    if (tokens < SMART_PRO_UNLOCK_PRICE || smartProUnlocked || resolving || shopBusy) return;
+    if (tokens < SMART_PRO_UNLOCK_PRICE || smartProUnlocked || resolvingRef.current || shopBusyRef.current) return;
     if (!confirmed) {
       confirmExpensiveAction(
         'UNLOCK SMARTPRO?',
@@ -1318,26 +1389,26 @@ export function BrewTokenBank({
       );
       return;
     }
-    setShopBusy(true);
-    const unlocked = await onUnlockSmartPro();
-    setShopMessage(unlocked ? `SMARTPRO RECIPE UNLOCKED · BOTTLES ARE ${SMART_PRO_BOTTLE_PRICE} TOKENS` : 'NOT ENOUGH BREW TOKENS');
-    setShopBusy(false);
+    const unlocked = await runShopAction(onUnlockSmartPro);
+    if (!unlocked) return;
+    setShopMessage(unlocked.ok ? `SMARTPRO RECIPE UNLOCKED · BOTTLES ARE ${SMART_PRO_BOTTLE_PRICE} TOKENS` : getActionFailureMessage(unlocked, 'NOT ENOUGH BREW TOKENS'));
   };
 
   const handleBuySmartProBottle = async () => {
-    if (!smartProUnlocked || tokens < SMART_PRO_BOTTLE_PRICE || resolving || shopBusy) return;
-    setShopBusy(true);
-    const purchased = await onBuySmartProBottle();
-    setShopMessage(purchased ? 'SMARTPRO SODA ADDED TO INVENTORY' : 'NOT ENOUGH BREW TOKENS');
-    setShopBusy(false);
+    if (!smartProUnlocked || tokens < SMART_PRO_BOTTLE_PRICE || resolvingRef.current || shopBusyRef.current) return;
+    const purchased = await runShopAction(onBuySmartProBottle);
+    if (!purchased) return;
+    setShopMessage(purchased.ok ? 'SMARTPRO SODA ADDED TO INVENTORY' : getActionFailureMessage(purchased, 'NOT ENOUGH BREW TOKENS'));
   };
 
   const handleRedeemSmartPro = async () => {
-    if (!smartProUnlocked || smartProBottles < 1 || smartProSaleActive || resolving || shopBusy) return;
-    setShopBusy(true);
-    const redeemed = await onRedeemSmartPro();
-    setShopBusy(false);
+    if (!smartProUnlocked || smartProBottles < 1 || smartProSaleActive || resolvingRef.current || shopBusyRef.current) return;
+    const redeemed = await runShopAction(onRedeemSmartPro);
     if (!redeemed) return;
+    if (!redeemed.ok) {
+      setShopMessage(getActionFailureMessage(redeemed, 'SMARTPRO IS NOT AVAILABLE RIGHT NOW'));
+      return;
+    }
 
     setShopMessage('SMARTPRO SALE ACTIVE · NON-KEY SHOP ITEMS ARE HALF PRICE');
     if (hapticsEnabled) {
@@ -1347,7 +1418,7 @@ export function BrewTokenBank({
   };
 
   const handleUnlockNeonGucciPhrases = async (confirmed = false) => {
-    if (tokens < NEON_GUCCI_PHRASE_PACK_PRICE || neonGucciPhrasesUnlocked || resolving || shopBusy) return;
+    if (tokens < NEON_GUCCI_PHRASE_PACK_PRICE || neonGucciPhrasesUnlocked || resolvingRef.current || shopBusyRef.current) return;
     if (!confirmed) {
       confirmExpensiveAction(
         'UNLOCK NEON GUCCI PHRASES?',
@@ -1356,20 +1427,20 @@ export function BrewTokenBank({
       );
       return;
     }
-    setShopBusy(true);
-    const unlocked = await onUnlockNeonGucciPhrases();
-    setShopMessage(unlocked ? 'NEON GUCCI PHRASES UNLOCKED · NOW ON' : 'NOT ENOUGH BREW TOKENS');
-    setShopBusy(false);
+    const unlocked = await runShopAction(onUnlockNeonGucciPhrases);
+    if (!unlocked) return;
+    setShopMessage(unlocked.ok ? 'NEON GUCCI PHRASES UNLOCKED · NOW ON' : getActionFailureMessage(unlocked, 'NOT ENOUGH BREW TOKENS'));
   };
 
   const handleSetNeonGucciPhrasesActive = async (value: boolean) => {
-    if (!neonGucciPhrasesUnlocked || resolving || shopBusy) return;
-    setShopBusy(true);
-    const updated = await onSetNeonGucciPhrasesActive(value);
-    if (updated) {
+    if (!neonGucciPhrasesUnlocked || resolvingRef.current || shopBusyRef.current) return;
+    const updated = await runShopAction(() => onSetNeonGucciPhrasesActive(value));
+    if (!updated) return;
+    if (updated.ok) {
       setShopMessage(value ? 'NEON GUCCI PHRASES ON · ANALYSIS IS NOW UNHINGED' : 'NEON GUCCI PHRASES OFF · NORMAL LOADING RESTORED');
+    } else {
+      setShopMessage(getActionFailureMessage(updated, 'PHRASE SETTING COULD NOT BE UPDATED'));
     }
-    setShopBusy(false);
   };
 
   const accessExpiryLabel = bankAccessExpiresAt
@@ -1461,7 +1532,7 @@ export function BrewTokenBank({
   };
 
   const handleClose = () => {
-    if (protectedVoicePlaying || resolving) return;
+    if (protectedVoicePlaying || resolving || resolvingRef.current || shopBusyRef.current) return;
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = null;
     reelStopTimersRef.current.forEach(timer => clearTimeout(timer));
@@ -1486,7 +1557,7 @@ export function BrewTokenBank({
   };
 
   const handleBet = () => {
-    if (!canPlay) return;
+    if (!canPlay || resolvingRef.current || shopBusyRef.current) return;
     // A normal loss voice may still be finishing after the result card appears.
     // A new gamble should replace it cleanly with the next anticipation track.
     stopLossVoice(true);
@@ -1501,6 +1572,7 @@ export function BrewTokenBank({
         ? { payoutMultiplier }
         : {};
     setResult(null);
+    resolvingRef.current = true;
     setResolving(true);
     reelStopTimersRef.current.forEach(timer => clearTimeout(timer));
     reelStopTimersRef.current = [];
@@ -1572,6 +1644,7 @@ export function BrewTokenBank({
           ).catch(() => {});
         }
         setResult({ won, bet, quickRevive, daiquiri, staminUp, award: won ? bet * payoutMultiplier : bet });
+        resolvingRef.current = false;
         setResolving(false);
         if (reduceMotion) {
           resultProgress.value = 1;
@@ -1632,10 +1705,17 @@ export function BrewTokenBank({
             </View>
             <Pressable
               onPress={handleClose}
-              disabled={protectedVoicePlaying || resolving}
+              disabled={protectedVoicePlaying || resolving || shopBusy}
               hitSlop={10}
               accessibilityRole="button"
-              accessibilityLabel={protectedVoicePlaying ? 'Voice message is playing' : 'Close Central Bank'}
+              accessibilityLabel={
+                protectedVoicePlaying
+                  ? 'Voice message is playing'
+                  : shopBusy
+                    ? 'Central Bank is saving a change'
+                    : 'Close Central Bank'
+              }
+              accessibilityState={{ disabled: protectedVoicePlaying || resolving || shopBusy }}
             >
               <Feather name="x" size={21} color={colors.mutedForeground} />
             </Pressable>
@@ -2262,7 +2342,21 @@ export function BrewTokenBank({
              </View>
            )}
 
-          <View style={styles.betRow}>
+           <View style={[styles.armedStatus, { borderColor: activeEffectStatus.color, backgroundColor: bankSteel }]}>
+             <View style={[styles.armedStatusIcon, { backgroundColor: `${activeEffectStatus.color}22` }]}>
+               <Feather name={activeEffectStatus.icon} size={14} color={activeEffectStatus.color} />
+             </View>
+             <View style={styles.armedStatusCopy}>
+               <Text style={[styles.armedStatusTitle, { color: activeEffectStatus.color, fontFamily: 'Inter_700Bold' }]}>
+                 {activeEffectStatus.title}
+               </Text>
+               <Text style={[styles.armedStatusDetail, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                 {activeEffectStatus.detail}
+               </Text>
+             </View>
+           </View>
+
+           <View style={styles.betRow}>
             <View>
               <Text style={[styles.sectionLabel, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>DEPOSIT</Text>
               <Text style={[styles.betValue, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>{bet} {bet === 1 ? 'TOKEN' : 'TOKENS'}</Text>
@@ -2951,6 +3045,11 @@ const styles = StyleSheet.create({
   darkBrewBalanceText: { color: '#ffc169', fontSize: 8, letterSpacing: 0.8 },
   skipVoiceHint: { fontSize: 8, letterSpacing: 0.8, marginTop: 9 },
   machineStatus: { fontSize: 8, letterSpacing: 1.15, marginTop: 9 },
+  armedStatus: { minHeight: 53, borderWidth: 1, borderRadius: 9, marginTop: 16, paddingHorizontal: 11, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 9 },
+  armedStatusIcon: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  armedStatusCopy: { flex: 1, gap: 3 },
+  armedStatusTitle: { fontSize: 9, letterSpacing: 0.65 },
+  armedStatusDetail: { fontSize: 8, lineHeight: 12, letterSpacing: 0.2 },
   betRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18 },
   shopToggle: { minHeight: 44, borderWidth: 1, borderRadius: 9, marginTop: 14, paddingHorizontal: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   shopToggleCopy: { flexDirection: 'row', alignItems: 'center', gap: 8 },
