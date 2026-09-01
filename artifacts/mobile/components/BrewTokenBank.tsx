@@ -2090,7 +2090,7 @@ export function BrewTokenBank({
                       accessibilityLabel="Inspect Dave Ramsey Daiquiri bottle"
                       testID="inspect-daiquiri"
                     >
-                      <DaiquiriBottle size={31} muted={!daiquiriUnlocked} />
+                      <DaiquiriBottle size={31} />
                       <Feather name="maximize-2" size={13} color={colors.mutedForeground} />
                     </Pressable>
                   </View>
@@ -2237,7 +2237,7 @@ export function BrewTokenBank({
                       accessibilityLabel="Inspect SmartPro Soda bottle"
                       testID="inspect-smart-pro"
                     >
-                      <SmartProBottle size={31} muted={!smartProUnlocked} />
+                      <SmartProBottle size={31} />
                       <Feather name="maximize-2" size={13} color={colors.mutedForeground} />
                     </Pressable>
                   </View>
@@ -2715,9 +2715,9 @@ export function BrewTokenBank({
                   testID="replay-bottle-animation"
                 >
                   {bottlePreview === 'quickRevive' && <QuickReviveBottle size={112} muted={!selectedBottleUnlocked} />}
-                  {bottlePreview === 'daiquiri' && <DaiquiriBottle size={112} muted={!selectedBottleUnlocked} />}
+                  {bottlePreview === 'daiquiri' && <DaiquiriBottle size={112} />}
                   {bottlePreview === 'staminUp' && <StaminUpBottle size={112} muted={!selectedBottleUnlocked} />}
-                  {bottlePreview === 'smartPro' && <SmartProBottle size={112} muted={!selectedBottleUnlocked} />}
+                  {bottlePreview === 'smartPro' && <SmartProBottle size={112} />}
                   {quickReviveBurstVisible && bottleBurstLocation === 'preview' && bottlePreview === 'quickRevive' && (
                     <View pointerEvents="none" style={[styles.quickReviveBurst, styles.previewBurst]}>
                       <Animated.View style={[styles.quickReviveBubbleField, quickReviveBubbleFieldStyle]}>
