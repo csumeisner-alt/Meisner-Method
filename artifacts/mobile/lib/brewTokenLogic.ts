@@ -28,6 +28,31 @@ export const NEON_GUCCI_PHRASE_PACK_PRICE = 10;
 
 export type BrewBottlePreviewKind = 'quickRevive' | 'daiquiri' | 'staminUp' | 'smartPro';
 
+export type NeonGucciPhrasePackDisplay = {
+  pill: string;
+  title: 'UNHINGED LOADING COPY' | 'NORMAL LOADING COPY' | null;
+  subtitle: 'The 15-pack is active' | 'The 15-pack is resting' | null;
+};
+
+export function getNeonGucciPhrasePackDisplay(
+  unlocked: boolean,
+  active: boolean,
+): NeonGucciPhrasePackDisplay {
+  if (!unlocked) {
+    return {
+      pill: `${NEON_GUCCI_PHRASE_PACK_PRICE} TOKENS`,
+      title: null,
+      subtitle: null,
+    };
+  }
+
+  return {
+    pill: active ? 'ON' : 'OFF',
+    title: active ? 'UNHINGED LOADING COPY' : 'NORMAL LOADING COPY',
+    subtitle: active ? 'The 15-pack is active' : 'The 15-pack is resting',
+  };
+}
+
 export type BrewBottlePreview = {
   kind: BrewBottlePreviewKind;
   title: string;

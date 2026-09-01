@@ -31,7 +31,7 @@ import { NeonAnalysisLoader } from '@/components/NeonAnalysisLoader';
 import { PriceAlertModal } from '@/components/PriceAlertModal';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
-import { NEON_GUCCI_LOADING_PHRASES } from '@/lib/neonGucciPhrases';
+import { getAnalysisLoadingStages } from '@/lib/analysisLoadingStages';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -235,15 +235,8 @@ const analystStyles = StyleSheet.create({
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
-const ANALYSIS_LOADING_STAGES = [
-  'Reading the tape',
-  'Checking momentum',
-  'Comparing the sector',
-  'Building the lesson',
-] as const;
-
 function shuffledLoadingPhrases(): string[] {
-  const phrases = [...NEON_GUCCI_LOADING_PHRASES];
+  const phrases = [...getAnalysisLoadingStages(true)];
   for (let index = phrases.length - 1; index > 0; index -= 1) {
     const randomIndex = Math.floor(Math.random() * (index + 1));
     [phrases[index], phrases[randomIndex]] = [phrases[randomIndex], phrases[index]];
@@ -296,7 +289,7 @@ export default function AnalysisScreen() {
   const [loadingStageIndex, setLoadingStageIndex] = useState(0);
   const tickerGlow = useRef(new Animated.Value(0)).current;
   const loadingStages = useMemo<readonly string[]>(
-    () => (brew.neonGucciPhrasesActive ? shuffledLoadingPhrases() : ANALYSIS_LOADING_STAGES),
+    () => (brew.neonGucciPhrasesActive ? shuffledLoadingPhrases() : getAnalysisLoadingStages(false)),
     [brew.neonGucciPhrasesActive, isPending, symbol],
   );
 

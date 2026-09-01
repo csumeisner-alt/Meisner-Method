@@ -69,6 +69,7 @@ import {
   getSmartProBottleSalePrice,
   hasSmartProSale,
   isWeekday,
+  getNeonGucciPhrasePackDisplay,
 } from '@/lib/brewTokenLogic';
 
 const DAIQUIRI_WIN_PERCENT = Math.round(DAIQUIRI_WIN_PROBABILITY * 100);
@@ -1345,6 +1346,7 @@ export function BrewTokenBank({
     ? new Date(bankAccessExpiresAt).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })
     : null;
   const accessRemainingLabel = formatBrewBankAccessRemaining(bankAccessExpiresAt, countdownNow);
+  const phrasePackDisplay = getNeonGucciPhrasePackDisplay(neonGucciPhrasesUnlocked, neonGucciPhrasesActive);
 
   const playMachineStartSound = async () => {
     if (!soundEnabled || Constants.appOwnership === 'expo') return;
@@ -2037,7 +2039,7 @@ export function BrewTokenBank({
                         </Text>
                         <View style={styles.phrasePackPill}>
                           <Text style={[styles.phrasePackPillText, { fontFamily: 'Inter_700Bold' }]}>
-                            {neonGucciPhrasesUnlocked ? (neonGucciPhrasesActive ? 'ON' : 'OFF') : `${NEON_GUCCI_PHRASE_PACK_PRICE} TOKENS`}
+                            {phrasePackDisplay.pill}
                           </Text>
                         </View>
                       </View>
@@ -2080,10 +2082,10 @@ export function BrewTokenBank({
                         <View style={[styles.phrasePackToggleRow, { borderColor: '#9e62c9', backgroundColor: 'rgba(158,98,201,0.1)' }]}>
                           <View style={styles.phrasePackToggleCopy}>
                             <Text style={[styles.phrasePackToggleTitle, { color: '#e2b8ff', fontFamily: 'Inter_700Bold' }]}>
-                              {neonGucciPhrasesActive ? 'UNHINGED LOADING COPY' : 'NORMAL LOADING COPY'}
+                              {phrasePackDisplay.title}
                             </Text>
                             <Text style={[styles.phrasePackToggleSubtitle, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                              {neonGucciPhrasesActive ? 'The 15-pack is active' : 'The 15-pack is resting'}
+                              {phrasePackDisplay.subtitle}
                             </Text>
                           </View>
                           <Switch
