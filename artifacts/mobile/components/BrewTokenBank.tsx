@@ -447,7 +447,36 @@ type Props = {
 type AudioPlayerHandle = {
   play: () => void;
   remove: () => void;
+  isLoaded?: boolean;
+  addListener?: (
+    eventName: 'playbackStatusUpdate',
+    listener: (status: { isLoaded?: boolean }) => void,
+  ) => { remove: () => void };
 };
+
+function waitForAudioPlayerLoaded(player: AudioPlayerHandle, timeoutMs = 2_500): Promise<boolean> {
+  if (player.isLoaded) return Promise.resolve(true);
+  if (!player.addListener) return Promise.resolve(true);
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let subscription: { remove: () => void } | undefined;
+
+    const finish = (loaded: boolean) => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      subscription?.remove();
+      resolve(loaded);
+    };
+
+    subscription = player.addListener!('playbackStatusUpdate', (status) => {
+      if (status.isLoaded) finish(true);
+    });
+    timeout = setTimeout(() => finish(false), timeoutMs);
+  });
+}
 
 type BottleBurstKind = BrewBottlePreviewKind;
 type BottleBurstLocation = 'vault' | 'preview';
@@ -1406,12 +1435,22 @@ export function BrewTokenBank({
 
     try {
       const { createAudioPlayer, setAudioModeAsync } = await import('expo-audio');
-      await setAudioModeAsync({ playsInSilentMode: false, allowsRecording: false });
+      await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false });
       const player = createAudioPlayer(phrase.source, { downloadFirst: true });
       lossPlayerRef.current = player;
+      const loaded = await waitForAudioPlayerLoaded(player);
+      if (activeLossPhraseRef.current !== phrase || lossPlayerRef.current !== player) {
+        return;
+      }
+      if (!loaded) {
+        throw new Error('Loss voice recording did not finish loading');
+      }
       player.play();
       lossVoiceTimerRef.current = setTimeout(finish, phrase.durationMs + 250);
     } catch {
+      if (activeLossPhraseRef.current !== phrase) return;
+      try { lossPlayerRef.current?.remove(); } catch (_) {}
+      lossPlayerRef.current = null;
       Speech.speak(phrase.text, {
         rate: 0.94,
         onDone: finish,
