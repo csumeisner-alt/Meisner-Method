@@ -1980,6 +1980,46 @@ export function BrewTokenBank({
                       <Feather name="maximize-2" size={13} color={colors.mutedForeground} />
                     </Pressable>
                  </View>
+                 <View style={styles.inventoryRow}>
+                   <Text style={[styles.inventoryLabel, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>BOTTLES IN INVENTORY</Text>
+                   <Text style={[styles.inventoryValue, { color: quickReviveUnlocked ? colors.gold : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+                     {quickReviveUnlocked ? quickReviveBottles : 'LOCKED'}
+                   </Text>
+                 </View>
+                 {!quickReviveUnlocked ? (
+                   <Pressable
+                     onPress={() => { void handleUnlockQuickRevive(); }}
+                     disabled={tokens < quickReviveUnlockPrice || resolving || shopBusy}
+                     style={[
+                       styles.shopButton,
+                       { borderColor: colors.border, backgroundColor: colors.card },
+                       (tokens < quickReviveUnlockPrice || resolving || shopBusy) && styles.disabled,
+                     ]}
+                     accessibilityRole="button"
+                     accessibilityLabel={`Unlock Quick Revive for ${quickReviveUnlockPrice} Brew Tokens`}
+                   >
+                     <Text style={[styles.shopButtonText, { color: colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+                       UNLOCK RECIPE · {quickReviveUnlockPrice} TOKENS{smartProSaleActive ? ' · 50% OFF' : ''}
+                     </Text>
+                   </Pressable>
+                 ) : (
+                   <Pressable
+                     onPress={() => { void handleBuyQuickReviveBottle(); }}
+                     disabled={tokens < quickReviveBottlePrice || resolving || shopBusy}
+                     style={[
+                       styles.shopButton,
+                       { borderColor: colors.goldMuted },
+                       (tokens < quickReviveBottlePrice || resolving || shopBusy) && styles.disabled,
+                     ]}
+                     accessibilityRole="button"
+                     accessibilityLabel={`Buy one Quick Revive bottle for ${quickReviveBottlePrice} Brew Tokens`}
+                   >
+                     <Text style={[styles.shopButtonText, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
+                       BUY BOTTLE · {quickReviveBottlePrice} {quickReviveBottlePrice === 1 ? 'TOKEN' : 'TOKENS'}{smartProSaleActive ? ' · 50% OFF' : ''}
+                     </Text>
+                   </Pressable>
+                 )}
+               </View>
                  <View style={[styles.quickReviveShop, { borderTopColor: colors.border }]}>
                    <View style={styles.shopHeadingRow}>
                      <View style={styles.quickReviveShopCopy}>
@@ -2045,46 +2085,6 @@ export function BrewTokenBank({
                      </Pressable>
                    )}
                  </View>
-                 <View style={styles.inventoryRow}>
-                   <Text style={[styles.inventoryLabel, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>BOTTLES IN INVENTORY</Text>
-                   <Text style={[styles.inventoryValue, { color: quickReviveUnlocked ? colors.gold : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
-                     {quickReviveUnlocked ? quickReviveBottles : 'LOCKED'}
-                   </Text>
-                 </View>
-                 {!quickReviveUnlocked ? (
-                   <Pressable
-                     onPress={() => { void handleUnlockQuickRevive(); }}
-                      disabled={tokens < quickReviveUnlockPrice || resolving || shopBusy}
-                     style={[
-                       styles.shopButton,
-                       { borderColor: colors.border, backgroundColor: colors.card },
-                        (tokens < quickReviveUnlockPrice || resolving || shopBusy) && styles.disabled,
-                     ]}
-                     accessibilityRole="button"
-                      accessibilityLabel={`Unlock Quick Revive for ${quickReviveUnlockPrice} Brew Tokens`}
-                   >
-                     <Text style={[styles.shopButtonText, { color: colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
-                        UNLOCK RECIPE · {quickReviveUnlockPrice} TOKENS{smartProSaleActive ? ' · 50% OFF' : ''}
-                     </Text>
-                   </Pressable>
-                 ) : (
-                   <Pressable
-                     onPress={() => { void handleBuyQuickReviveBottle(); }}
-                      disabled={tokens < quickReviveBottlePrice || resolving || shopBusy}
-                     style={[
-                       styles.shopButton,
-                       { borderColor: colors.goldMuted },
-                        (tokens < quickReviveBottlePrice || resolving || shopBusy) && styles.disabled,
-                     ]}
-                     accessibilityRole="button"
-                      accessibilityLabel={`Buy one Quick Revive bottle for ${quickReviveBottlePrice} Brew Tokens`}
-                   >
-                     <Text style={[styles.shopButtonText, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
-                        BUY BOTTLE · {quickReviveBottlePrice} {quickReviveBottlePrice === 1 ? 'TOKEN' : 'TOKENS'}{smartProSaleActive ? ' · 50% OFF' : ''}
-                     </Text>
-                   </Pressable>
-                 )}
-               </View>
                 <View style={[styles.quickReviveShop, { borderTopColor: colors.border }]}>
                   <View style={styles.shopHeadingRow}>
                     <View style={styles.quickReviveShopCopy}>
