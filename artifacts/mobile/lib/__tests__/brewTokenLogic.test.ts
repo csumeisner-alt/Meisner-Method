@@ -89,8 +89,8 @@ test('weekday detection includes Monday through Friday only', () => {
   assert.equal(isWeekday(6), false);
 });
 
-test('bank keys cost ten tokens and never overspend', () => {
-  assert.deepEqual(buyBrewBankKey(12, 1), { tokenBalance: 2, keyCount: 2 });
+test('bank keys cost five tokens and never overspend', () => {
+  assert.deepEqual(buyBrewBankKey(6, 1), { tokenBalance: 1, keyCount: 2 });
   assert.equal(buyBrewBankKey(BREW_BANK_KEY_PRICE - 1, 0), null);
 });
 
