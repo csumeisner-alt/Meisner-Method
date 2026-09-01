@@ -3,7 +3,7 @@
     "name": "Meisner Method",
     "owner": "meisnermethod",
     "slug": "meisnermethod",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "meisnermethod",
@@ -20,7 +20,7 @@
     },
     "android": {
       "package": "com.meisnermethod.app",
-      "versionCode": 12,
+      "versionCode": 13,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon-foreground.png",
