@@ -506,6 +506,7 @@ const SLOT_SYMBOLS = ['coffee', 'star', 'zap', 'award', 'trending-up'] as const;
 type SlotSymbol = typeof SLOT_SYMBOLS[number];
 const SLOT_REEL_HEIGHT = 58;
 const BREW_BET_RESOLUTION_MS = 5_000;
+const SLOT_ANTICIPATION_DURATION_MS = 5_000;
 
 export function BrewTokenBank({
   visible,
@@ -1354,10 +1355,10 @@ export function BrewTokenBank({
     try {
       const { createAudioPlayer, setAudioModeAsync } = await import('expo-audio');
       await setAudioModeAsync({ playsInSilentMode: false, allowsRecording: false });
-      const player = createAudioPlayer(require('../assets/sounds/gunfire_burst.wav'), { downloadFirst: true });
+      const player = createAudioPlayer(require('../assets/sounds/casino_slot_anticipation.wav'), { downloadFirst: true });
       machinePlayerRef.current = player;
       player.play();
-      machineSoundTimerRef.current = setTimeout(stopMachineSound, 1300);
+      machineSoundTimerRef.current = setTimeout(stopMachineSound, SLOT_ANTICIPATION_DURATION_MS + 250);
     } catch {
       // The animation and haptics remain useful if native audio is unavailable.
     }
@@ -1516,9 +1517,13 @@ export function BrewTokenBank({
       );
     }
     timerRef.current = setTimeout(() => {
+      // The anticipation track is exactly five seconds, so begin the outcome
+      // feedback at the same resolution point instead of waiting for storage.
+      stopMachineSound();
+      if (won) void playWinSound();
+      else void playLossVoice();
       void onResolveBet(bet, won, effect).finally(() => {
         stopMachineStatus();
-        if (won) void playWinSound();
         if (hapticsEnabled) {
           Haptics.notificationAsync(
             won ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning,
@@ -1536,7 +1541,6 @@ export function BrewTokenBank({
             withTiming(0, { duration: 520, easing: Easing.out(Easing.cubic) }),
           );
         }
-        if (!won) void playLossVoice();
       });
     }, BREW_BET_RESOLUTION_MS);
   };

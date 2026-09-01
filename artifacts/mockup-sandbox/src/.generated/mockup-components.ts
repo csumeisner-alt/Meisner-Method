@@ -9,7 +9,7 @@ export const modules: ModuleMap = {
   "./components/mockups/daiquiri-redesign/DaiquiriGlowSurge.tsx": () => import("../components/mockups/daiquiri-redesign/DaiquiriGlowSurge.tsx"),
   "./components/mockups/hybrid-neon-gucci/ActiveTheme.tsx": () => import("../components/mockups/hybrid-neon-gucci/ActiveTheme.tsx"),
   "./components/mockups/quick-revive-redesign/QuickReviveGlowSurge.tsx": () => import("../components/mockups/quick-revive-redesign/QuickReviveGlowSurge.tsx"),
-  "./components/mockups/stamin-up-redesign/StaminUpGlowSurge.tsx": () => import("../components/mockups/stamin-up-redesign/StaminUpGlowSurge.tsx"),
   "./components/mockups/smart-pro-bottle/Current.tsx": () => import("../components/mockups/smart-pro-bottle/Current.tsx"),
-  "./components/mockups/smart-pro-bottle/Interactive.tsx": () => import("../components/mockups/smart-pro-bottle/Interactive.tsx")
+  "./components/mockups/smart-pro-bottle/Interactive.tsx": () => import("../components/mockups/smart-pro-bottle/Interactive.tsx"),
+  "./components/mockups/stamin-up-redesign/StaminUpGlowSurge.tsx": () => import("../components/mockups/stamin-up-redesign/StaminUpGlowSurge.tsx")
 };
