@@ -1487,6 +1487,9 @@ export function BrewTokenBank({
 
   const handleBet = () => {
     if (!canPlay) return;
+    // A normal loss voice may still be finishing after the result card appears.
+    // A new gamble should replace it cleanly with the next anticipation track.
+    stopLossVoice(true);
     const staminUp = staminUpArmed;
     const daiquiri = daiquiriArmed && !staminUp;
     const quickRevive = quickReviveArmed && !daiquiri && !staminUp;
