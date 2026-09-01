@@ -22,7 +22,6 @@ import Animated, {
   interpolate,
   useAnimatedStyle,
   useSharedValue,
-  withRepeat,
   withSequence,
   withSpring,
   withTiming,
@@ -543,6 +542,9 @@ const MACHINE_STATUS_LINES = [
 const SLOT_SYMBOLS = ['coffee', 'star', 'zap', 'award', 'trending-up'] as const;
 type SlotSymbol = typeof SLOT_SYMBOLS[number];
 const SLOT_REEL_HEIGHT = 58;
+const SLOT_REEL_CYCLES = [3, 5, 8] as const;
+const SLOT_REEL_TRACK_CYCLES = Math.max(...SLOT_REEL_CYCLES) + 1;
+const SLOT_STOP_DELAYS_MS = [1_700, 2_900, 4_600] as const;
 const BREW_BET_RESOLUTION_MS = 5_000;
 const SLOT_ANTICIPATION_DURATION_MS = 5_000;
 
@@ -634,7 +636,6 @@ export function BrewTokenBank({
   const activeLossPhraseRef = useRef<LossPhrase | null>(null);
   const shopBusyRef = useRef(false);
   const resolvingRef = useRef(false);
-  const reelStopTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const quickReviveBurstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const daiquiriBurstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const staminUpBurstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -870,8 +871,6 @@ export function BrewTokenBank({
     if (daiquiriBurstTimerRef.current) clearTimeout(daiquiriBurstTimerRef.current);
     if (staminUpBurstTimerRef.current) clearTimeout(staminUpBurstTimerRef.current);
     if (smartProBurstTimerRef.current) clearTimeout(smartProBurstTimerRef.current);
-    reelStopTimersRef.current.forEach(timer => clearTimeout(timer));
-    reelStopTimersRef.current = [];
     [reelOnePosition, reelTwoPosition, reelThreePosition].forEach(position => cancelAnimation(position));
     stopMachineStatus();
     stopLossVoice(true);
@@ -1535,8 +1534,6 @@ export function BrewTokenBank({
     if (protectedVoicePlaying || resolving || resolvingRef.current || shopBusyRef.current) return;
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = null;
-    reelStopTimersRef.current.forEach(timer => clearTimeout(timer));
-    reelStopTimersRef.current = [];
     [reelOnePosition, reelTwoPosition, reelThreePosition].forEach(position => cancelAnimation(position));
     [coinProgress, vaultPulse, resultProgress].forEach(position => cancelAnimation(position));
     stopPreviewBottleBurst();
@@ -1574,36 +1571,21 @@ export function BrewTokenBank({
     setResult(null);
     resolvingRef.current = true;
     setResolving(true);
-    reelStopTimersRef.current.forEach(timer => clearTimeout(timer));
-    reelStopTimersRef.current = [];
     const reelPositions = [reelOnePosition, reelTwoPosition, reelThreePosition];
     const finalIndexes = won ? [0, 0, 0] : [1, 3, 4];
-    if (reduceMotion) {
-      reelPositions.forEach((position, index) => {
+    reelPositions.forEach((position, index) => {
+      cancelAnimation(position);
+      position.value = 0;
+      if (reduceMotion) {
         position.value = -finalIndexes[index]! * SLOT_REEL_HEIGHT;
+        return;
+      }
+      const stopIndex = SLOT_REEL_CYCLES[index]! * SLOT_SYMBOLS.length + finalIndexes[index]!;
+      position.value = withTiming(-stopIndex * SLOT_REEL_HEIGHT, {
+        duration: SLOT_STOP_DELAYS_MS[index]!,
+        easing: Easing.out(Easing.cubic),
       });
-    } else {
-      reelPositions.forEach(position => {
-        cancelAnimation(position);
-        position.value = withRepeat(
-          withSequence(
-            withTiming(-SLOT_REEL_HEIGHT * (SLOT_SYMBOLS.length - 1), { duration: 560, easing: Easing.linear }),
-            withTiming(0, { duration: 1 }),
-          ),
-          -1,
-          false,
-        );
-      });
-      [1_700, 2_900, 4_600].forEach((delay, index) => {
-        reelStopTimersRef.current.push(setTimeout(() => {
-          cancelAnimation(reelPositions[index]!);
-          reelPositions[index]!.value = withTiming(-finalIndexes[index]! * SLOT_REEL_HEIGHT, {
-            duration: 180,
-            easing: Easing.out(Easing.cubic),
-          });
-        }, delay));
-      });
-    }
+    });
     setMachineStatusIndex(0);
     stopMachineStatus();
     if (!reduceMotion) {
@@ -1667,11 +1649,13 @@ export function BrewTokenBank({
   ) => (
     <View style={[styles.reelWindow, { borderColor: tint }]}>
       <Animated.View style={positionStyle}>
-        {SLOT_SYMBOLS.map((symbol, symbolIndex) => (
-          <View style={styles.reelSymbol} key={`${reelIndex}-${symbol}`}>
-            <Feather name={symbol as SlotSymbol} size={reelIndex === 0 ? 28 : 31} color={tint} />
-          </View>
-        ))}
+        {Array.from({ length: SLOT_REEL_TRACK_CYCLES }, (_, cycleIndex) =>
+          SLOT_SYMBOLS.map((symbol, symbolIndex) => (
+            <View style={styles.reelSymbol} key={`${reelIndex}-${cycleIndex}-${symbolIndex}`}>
+              <Feather name={symbol as SlotSymbol} size={reelIndex === 0 ? 28 : 31} color={tint} />
+            </View>
+          )),
+        )}
       </Animated.View>
     </View>
   );
