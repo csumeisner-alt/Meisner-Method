@@ -56,6 +56,7 @@ import {
   SMART_PRO_UNLOCK_PRICE,
   STAMIN_UP_BOTTLE_PRICE,
   STAMIN_UP_UNLOCK_PRICE,
+  BREW_TOKEN_WIN_PROBABILITY,
   NEON_GUCCI_PHRASE_PACK_PRICE,
   type BrewBottlePreviewKind,
   type BrewBetEffect,
@@ -74,6 +75,7 @@ const DAIQUIRI_WIN_PERCENT = Math.round(DAIQUIRI_WIN_PROBABILITY * 100);
 const DAIQUIRI_LOSS_PERCENT = Math.round(DAIQUIRI_LOSS_PROBABILITY * 100);
 const DAIQUIRI_ODDS_LABEL = `${DAIQUIRI_WIN_PERCENT}% WIN · ${DAIQUIRI_LOSS_PERCENT}% LOSS`;
 const DAIQUIRI_DESCRIPTION = `Crack one into the machine before a toss: ${DAIQUIRI_WIN_PERCENT}% win odds, ${DAIQUIRI_LOSS_PERCENT}% loss odds, and a double award if it pays.`;
+const STAMIN_UP_WIN_PERCENT = Math.round(BREW_TOKEN_WIN_PROBABILITY * 100);
 
 export function BrewCoin({ colors, size = 66 }: { colors: ColorScheme; size?: number }) {
   return (
@@ -1249,7 +1251,7 @@ export function BrewTokenBank({
     if (!confirmed && staminUpBottlePrice >= 8) {
       confirmExpensiveAction(
         'BUY STAMIN UP?',
-        `Spend ${staminUpBottlePrice} Brew Tokens for one 65% win bottle?`,
+        `Spend ${staminUpBottlePrice} Brew Tokens for one ${STAMIN_UP_WIN_PERCENT}% win bottle?`,
         () => { void handleBuyStaminUpBottle(true); },
       );
       return;
@@ -1860,7 +1862,7 @@ export function BrewTokenBank({
                          A rare amber soda. Break one into the machine and a winning toss pays Dark Brew Tokens instead of normal Brew Token winnings.
                        </Text>
                         <View style={styles.bottleSpecRow}>
-                          <Text style={[styles.bottleSpec, { color: '#f2ad55', fontFamily: 'Inter_700Bold' }]}>65% WIN · DARK BREW</Text>
+                        <Text style={[styles.bottleSpec, { color: '#f2ad55', fontFamily: 'Inter_700Bold' }]}>{STAMIN_UP_WIN_PERCENT}% WIN · DARK BREW</Text>
                           <Text style={[styles.bottleSpec, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>NEXT TOSS</Text>
                         </View>
                      </View>

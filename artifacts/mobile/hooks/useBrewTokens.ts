@@ -27,6 +27,7 @@ import {
   NEON_GUCCI_PHRASE_PACK_PRICE,
   SMART_PRO_BOTTLE_PRICE,
   SMART_PRO_UNLOCK_PRICE,
+  BREW_TOKEN_WIN_PROBABILITY,
   createSerialWriteQueue,
   isBrewBankHalfway,
   isBrewBankUnlock,
@@ -740,7 +741,7 @@ export function useBrewTokens(): BrewTokenState {
             }), {
               kind: 'redeem',
               label: 'STAMIN UP ARMED',
-              detail: '65% win odds · +7 tokens on a win',
+              detail: `${Math.round(BREW_TOKEN_WIN_PROBABILITY * 100)}% win odds · equal Dark Brew award on a win`,
             }),
             result: true,
           }
