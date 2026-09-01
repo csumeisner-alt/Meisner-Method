@@ -41,8 +41,10 @@ import {
   computeDividendTotal,
   computeClosedTrades,
   computePositions,
+  computeTradeReconciliation,
   computeTradeSummary,
   type ClosedTrade,
+  type UnmatchedSell,
   type Position,
   type Quote,
   type Trade,
@@ -261,33 +263,13 @@ async function fetchQuote(symbol: string): Promise<Quote> {
   return data;
 }
 
-/** Compute A+→F- grade for a sell trade. */
-function computeSellGrade(sellTrade: Trade, allTrades: Trade[]): TradeGrade | null {
-  if (sellTrade.type !== 'sell') return null;
+/** Compute A+→F- grade for a sell trade from its matched FIFO lots. */
+function computeSellGrade(sellTrade: Trade, closedTrade: ClosedTrade | null): TradeGrade | null {
+  if (sellTrade.type !== 'sell' || !closedTrade) return null;
 
-  const sellDate = new Date(sellTrade.date);
-
-  // All buy trades for this symbol before (or on) the sell date
-  const priorBuys = allTrades.filter(
-    t => t.symbol === sellTrade.symbol && t.type === 'buy'
-      && t.id !== sellTrade.id
-      && new Date(t.date) <= sellDate
-  );
-  if (!priorBuys.length) return null;
-
-  const totalBuyShares = priorBuys.reduce((s, t) => s + t.shares, 0);
-  const totalBuyCost = priorBuys.reduce((s, t) => s + t.shares * t.pricePerShare, 0);
-  const avgCost = totalBuyCost / totalBuyShares;
-
-  const profit = (sellTrade.pricePerShare - avgCost) * sellTrade.shares;
+  const { avgCost, holdDays } = closedTrade;
+  const profit = closedTrade.gross;
   const returnPct = ((sellTrade.pricePerShare - avgCost) / avgCost) * 100;
-
-  const firstBuy = priorBuys.reduce((e, t) =>
-    new Date(t.date) < new Date(e.date) ? t : e
-  );
-  const holdDays = Math.max(0, Math.floor(
-    (sellDate.getTime() - new Date(firstBuy.date).getTime()) / 86_400_000
-  ));
 
   // Time multiplier — reward quick profits, penalise slow losses
   function timeMult(days: number, positive: boolean): number {
@@ -1375,7 +1357,7 @@ const mStyles = StyleSheet.create({
 
 // ─── Summary Card ─────────────────────────────────────────────────────────────
 
-function SummaryCard({ positions, trades, closedTrades, onReset, onAddDividend, colors }: { positions: Position[]; trades: Trade[]; closedTrades: ClosedTrade[]; onReset: () => void; onAddDividend: () => void; colors: any }) {
+function SummaryCard({ positions, trades, closedTrades, unmatchedSells, onReset, onAddDividend, colors }: { positions: Position[]; trades: Trade[]; closedTrades: ClosedTrade[]; unmatchedSells: UnmatchedSell[]; onReset: () => void; onAddDividend: () => void; colors: any }) {
   const open = positions.filter(p => p.netShares !== 0);
   const totalCost = open.reduce((s, p) => s + Math.max(p.costBasis, 0), 0);
   const totalMkt = open.reduce((s, p) => s + p.marketValue, 0);
@@ -1402,6 +1384,34 @@ function SummaryCard({ positions, trades, closedTrades, onReset, onAddDividend, 
           </TouchableOpacity>
         </View>
       </View>
+      {unmatchedSells.length > 0 && (
+        <View style={[smStyles.warning, { backgroundColor: colors.holdBg, borderColor: colors.gradeWarning }]}>
+          <View style={smStyles.warningHeading}>
+            <Feather name="alert-triangle" size={15} color={colors.gradeWarning} />
+            <Text style={[smStyles.warningTitle, { color: colors.gradeWarning, fontFamily: 'Inter_700Bold' }]}>
+              TRADE HISTORY NEEDS ATTENTION
+            </Text>
+          </View>
+          <Text style={[smStyles.warningCopy, { color: colors.foreground, fontFamily: 'Inter_400Regular' }]}>
+            {unmatchedSells.reduce((sum, sell) => sum + sell.unmatchedShares, 0).toLocaleString('en-US', {
+              maximumFractionDigits: 4,
+            })} shares from {unmatchedSells.length === 1 ? 'this sell' : `${unmatchedSells.length} sells`} could not be matched to earlier buys. Realized P&L excludes those shares.
+          </Text>
+          <Text style={[smStyles.warningHint, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+            Add the missing BUY or edit/remove the affected SELL in History.
+          </Text>
+          {unmatchedSells.map(sell => (
+            <View key={sell.sellId} style={smStyles.warningDetail}>
+              <Text style={[smStyles.warningDetailSymbol, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+                {sell.symbol}
+              </Text>
+              <Text style={[smStyles.warningDetailText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                {fmtNum(sell.unmatchedShares)} unmatched · {formatDateShort(sell.date)}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
       <View style={smStyles.metricsRow}>
         {[
           { label: 'COST BASIS', val: fmtCurrency(totalCost), color: colors.foreground },
@@ -1459,6 +1469,14 @@ const smStyles = StyleSheet.create({
   heading: { fontSize: 12, letterSpacing: 1 },
   resetBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   resetTxt: { fontSize: 12, letterSpacing: 0.5 },
+  warning: { borderRadius: 8, borderWidth: 1, padding: 10, marginBottom: 10, gap: 6 },
+  warningHeading: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  warningTitle: { fontSize: 10, letterSpacing: 0.6 },
+  warningCopy: { fontSize: 12, lineHeight: 17 },
+  warningHint: { fontSize: 11, lineHeight: 16 },
+  warningDetail: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  warningDetailSymbol: { fontSize: 11, minWidth: 48 },
+  warningDetailText: { fontSize: 11 },
   metricsRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   metricCell: { flex: 1, gap: 2 },
   divider: { width: 1, height: 36, marginHorizontal: 8 },
@@ -1521,6 +1539,8 @@ function GradeHistoryModal({
     smartProBottles,
     smartProSaleExpiresAt,
     darkBrewTokens,
+    neonGucciPhrasesUnlocked,
+    neonGucciPhrasesActive,
     activityLog,
     buyBankKey,
     activateBankKey,
@@ -1536,6 +1556,8 @@ function GradeHistoryModal({
     unlockSmartPro,
     buySmartProBottle,
     redeemSmartProBottle,
+    unlockNeonGucciPhrases,
+    setNeonGucciPhrasesActive,
     clearJustUnlocked,
   } = useAmericanMode().brew;
   const isWeekend = [0, 6].includes(new Date().getDay());
@@ -1698,6 +1720,8 @@ function GradeHistoryModal({
                 smartProBottles={smartProBottles}
                 smartProSaleExpiresAt={smartProSaleExpiresAt}
                 darkBrewTokens={darkBrewTokens}
+                neonGucciPhrasesUnlocked={neonGucciPhrasesUnlocked}
+                neonGucciPhrasesActive={neonGucciPhrasesActive}
                 activityLog={activityLog}
                 onClose={() => setBrewBankVisible(false)}
                 onResolveBet={resolveBet}
@@ -1717,6 +1741,8 @@ function GradeHistoryModal({
                 onUnlockSmartPro={unlockSmartPro}
                 onBuySmartProBottle={buySmartProBottle}
                 onRedeemSmartPro={redeemSmartProBottle}
+                onUnlockNeonGucciPhrases={unlockNeonGucciPhrases}
+                onSetNeonGucciPhrasesActive={setNeonGucciPhrasesActive}
               />
               <BrewTokenUnlockCelebration
                 visible={brewCelebrationVisible}
@@ -1842,14 +1868,14 @@ export default function PortfolioScreen() {
 
   const allPositions = computePositions(trades, quotes);
   const openPositions = allPositions.filter(p => p.netShares !== 0);
-  const closedTrades = computeClosedTrades(trades, quotes);
+  const { closedTrades, unmatchedSells } = computeTradeReconciliation(trades, quotes);
   const gradeHistoryPoints = useMemo<GradeHistoryPoint[]>(() => (
     trades
       .filter(trade => trade.type === 'sell')
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
       .flatMap(sellTrade => {
         const closed = closedTrades.find(item => item.sellId === sellTrade.id);
-        const gradeInfo = computeSellGrade(sellTrade, trades);
+        const gradeInfo = computeSellGrade(sellTrade, closed ?? null);
         const gradeIndex = gradeInfo ? GRADE_ORDER.indexOf(gradeInfo.grade as typeof GRADE_ORDER[number]) : -1;
         if (!closed || !gradeInfo || gradeIndex < 0) return [];
         return [{
@@ -1923,7 +1949,9 @@ export default function PortfolioScreen() {
       // Only a newly-created sell produces feedback. Editing old trades must
       // never replay a popup just because the portfolio rendered again.
       if (data.type === 'sell') {
-        const grade = computeSellGrade(newTrade, nextTrades);
+        const closed = computeClosedTrades(nextTrades, quotes)
+          .find(item => item.sellId === newTrade.id) ?? null;
+        const grade = computeSellGrade(newTrade, closed);
         if (grade && feedbackEventRef.current !== newTrade.id) {
           feedbackEventRef.current = newTrade.id;
           if (grade.celebrate) {
@@ -2026,7 +2054,7 @@ export default function PortfolioScreen() {
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
         >
-          <SummaryCard positions={allPositions} trades={trades} closedTrades={closedTrades} onReset={handleReset} onAddDividend={() => openAdd('dividend')} colors={colors} />
+          <SummaryCard positions={allPositions} trades={trades} closedTrades={closedTrades} unmatchedSells={unmatchedSells} onReset={handleReset} onAddDividend={() => openAdd('dividend')} colors={colors} />
 
           {portfolioTab === 'positions' ? (
             openPositions.length === 0 ? (
@@ -2069,8 +2097,8 @@ export default function PortfolioScreen() {
                 </View>
               ) : (
                 filteredTrades.map(trade => {
-                  const gradeInfo = trade.type === 'sell' ? computeSellGrade(trade, trades) : null;
                   const closed = trade.type === 'sell' ? closedTrades.find(c => c.sellId === trade.id) ?? null : null;
+                  const gradeInfo = trade.type === 'sell' ? computeSellGrade(trade, closed) : null;
                   return (
                     <TradeCard key={trade.id} trade={trade}
                       quote={quotes[trade.symbol]}

@@ -46,16 +46,100 @@ export interface ClosedTrade {
   sellId: string;
   symbol: string;
   shares: number;
+  avgCost: number;
+  holdDays: number;
   gross: number;
   fee: number;
   net: number;
   isWin: boolean;
 }
 
+/** A sell whose requested shares could not all be matched to prior buys. */
+export interface UnmatchedSell {
+  sellId: string;
+  symbol: string;
+  date: string;
+  requestedShares: number;
+  matchedShares: number;
+  unmatchedShares: number;
+}
+
+export interface TradeReconciliation {
+  closedTrades: ClosedTrade[];
+  unmatchedSells: UnmatchedSell[];
+}
+
 /** Win threshold: a sell counts as a win when net (after-fee) P&L ≥ this. */
 export const WIN_THRESHOLD = 0.01;
 
 // ── Positions ────────────────────────────────────────────────────────────────
+type OpenLot = {
+  shares: number;
+  pricePerShare: number;
+  purchasedAtMs: number;
+};
+
+type MatchedSell = {
+  shares: number;
+  unmatchedShares: number;
+  cost: number;
+  weightedPurchaseMs: number;
+  gross: number;
+  fee: number;
+};
+
+function sortTradesChronologically(trades: Trade[]): Trade[] {
+  return trades
+    .map((trade, index) => ({ trade, index }))
+    .sort((a, b) => {
+      const timeDiff = new Date(a.trade.date).getTime() - new Date(b.trade.date).getTime();
+      return timeDiff !== 0 ? timeDiff : a.index - b.index;
+    })
+    .map(({ trade }) => trade);
+}
+
+function consumeFifoLots(
+  lots: OpenLot[],
+  sell: Trade,
+  expenseRatio = 0,
+): MatchedSell {
+  let remaining = sell.shares;
+  let shares = 0;
+  let cost = 0;
+  let weightedPurchaseMs = 0;
+  let gross = 0;
+  let fee = 0;
+  const sellMs = new Date(sell.date).getTime();
+
+  while (remaining > 0.0001 && lots.length > 0) {
+    const lot = lots[0]!;
+    const consumed = Math.min(lot.shares, remaining);
+    const consumedCost = consumed * lot.pricePerShare;
+    const daysHeld = Math.max(0, (sellMs - lot.purchasedAtMs) / 86_400_000);
+
+    shares += consumed;
+    cost += consumedCost;
+    weightedPurchaseMs += consumed * lot.purchasedAtMs;
+    gross += consumed * (sell.pricePerShare - lot.pricePerShare);
+    if (expenseRatio > 0) {
+      fee += consumedCost * expenseRatio * (daysHeld / 365);
+    }
+
+    lot.shares -= consumed;
+    remaining -= consumed;
+    if (lot.shares <= 0.0001) lots.shift();
+  }
+
+  return {
+    shares,
+    unmatchedShares: remaining > 0.0001 ? remaining : 0,
+    cost,
+    weightedPurchaseMs,
+    gross,
+    fee,
+  };
+}
+
 export function computePositions(trades: Trade[], quotes: Record<string, Quote | null>): Position[] {
   const bySymbol: Record<string, Trade[]> = {};
   for (const t of trades) {
@@ -63,18 +147,28 @@ export function computePositions(trades: Trade[], quotes: Record<string, Quote |
     bySymbol[t.symbol].push(t);
   }
   return Object.entries(bySymbol).map(([symbol, sysTrades]) => {
-    const sorted = [...sysTrades].sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
-    let buyShares = 0, buyTotal = 0, sellShares = 0, sellTotal = 0;
+    const sorted = sortTradesChronologically(sysTrades);
+    let buyShares = 0, sellShares = 0, sellTotal = 0;
+    let realizedPnL = 0;
+    const lots: OpenLot[] = [];
     for (const t of sorted) {
-      if (t.type === 'buy') { buyShares += t.shares; buyTotal += t.shares * t.pricePerShare; }
-      else if (t.type === 'sell') { sellShares += t.shares; sellTotal += t.shares * t.pricePerShare; }
+      if (t.type === 'buy') {
+        buyShares += t.shares;
+        lots.push({
+          shares: t.shares,
+          pricePerShare: t.pricePerShare,
+          purchasedAtMs: new Date(t.date).getTime(),
+        });
+      } else if (t.type === 'sell') {
+        sellShares += t.shares;
+        sellTotal += t.shares * t.pricePerShare;
+        realizedPnL += consumeFifoLots(lots, t).gross;
+      }
     }
-    const netShares = buyShares - sellShares;
-    const avgCost = buyShares > 0 ? buyTotal / buyShares : 0;
+    const netShares = lots.reduce((sum, lot) => sum + lot.shares, 0);
+    const openCost = lots.reduce((sum, lot) => sum + lot.shares * lot.pricePerShare, 0);
+    const avgCost = netShares > 0 ? openCost / netShares : 0;
     const avgSellPrice = sellShares > 0 ? sellTotal / sellShares : 0;
-    const realizedPnL = sellShares > 0 ? sellShares * (avgSellPrice - avgCost) : 0;
     const q = quotes[symbol];
     const currentPrice = q?.currentPrice ?? null;
     const costBasis = netShares * avgCost;
@@ -96,35 +190,68 @@ export function computePositions(trades: Trade[], quotes: Record<string, Quote |
  * close counts as one closed trade — so the win rate reflects every sell,
  * not just fully-closed positions.
  *
- * For each sell we use the volume-weighted average cost AND volume-weighted
- * buy date of the buys made on/before that sell. The fee accrues the annual
- * expense ratio over that holding period on the cost basis of the shares sold:
+ * Each sell consumes the oldest remaining buy lots. The fee accrues separately
+ * for every consumed lot over its actual holding period:
  *   fee = (shares × avgCost) × expenseRatio × (daysHeld ÷ 365)
  * Net P&L = gross P&L − fee; a win is net profit of $0.01 or more.
  */
-export function computeClosedTrades(trades: Trade[], quotes: Record<string, Quote | null>): ClosedTrade[] {
-  const result: ClosedTrade[] = [];
-  for (const sell of trades) {
-    if (sell.type !== 'sell') continue;
-    const sellDate = new Date(sell.date);
-    const priorBuys = trades.filter(
-      t => t.symbol === sell.symbol && t.type === 'buy'
-        && t.id !== sell.id
-        && new Date(t.date) <= sellDate,
-    );
-    const totalBuyShares = priorBuys.reduce((s, t) => s + t.shares, 0);
-    if (totalBuyShares <= 0) continue;
-    const avgCost = priorBuys.reduce((s, t) => s + t.shares * t.pricePerShare, 0) / totalBuyShares;
-    const weightedBuyMs = priorBuys.reduce((s, t) => s + t.shares * new Date(t.date).getTime(), 0) / totalBuyShares;
-    const days = Math.max(0, (sellDate.getTime() - weightedBuyMs) / 86_400_000);
-    const expenseRatio = quotes[sell.symbol]?.expenseRatio ?? 0;
-    const gross = (sell.pricePerShare - avgCost) * sell.shares;
-    const value = sell.shares * avgCost;
-    const fee = expenseRatio > 0 && value > 0 ? value * expenseRatio * (days / 365) : 0;
-    const net = gross - fee;
-    result.push({ sellId: sell.id, symbol: sell.symbol, shares: sell.shares, gross, fee, net, isWin: net >= WIN_THRESHOLD });
+export function computeTradeReconciliation(
+  trades: Trade[],
+  quotes: Record<string, Quote | null>,
+): TradeReconciliation {
+  const closedTrades: ClosedTrade[] = [];
+  const unmatchedSells: UnmatchedSell[] = [];
+  const lotsBySymbol: Record<string, OpenLot[]> = {};
+
+  for (const trade of sortTradesChronologically(trades)) {
+    if (trade.type === 'dividend') continue;
+    const lots = lotsBySymbol[trade.symbol] ?? (lotsBySymbol[trade.symbol] = []);
+    if (trade.type === 'buy') {
+      lots.push({
+        shares: trade.shares,
+        pricePerShare: trade.pricePerShare,
+        purchasedAtMs: new Date(trade.date).getTime(),
+      });
+      continue;
+    }
+
+    const matched = consumeFifoLots(lots, trade, quotes[trade.symbol]?.expenseRatio ?? 0);
+    if (matched.shares > 0) {
+      const avgCost = matched.cost / matched.shares;
+      const weightedBuyMs = matched.weightedPurchaseMs / matched.shares;
+      const holdDays = Math.max(
+        0,
+        Math.floor((new Date(trade.date).getTime() - weightedBuyMs) / 86_400_000),
+      );
+      const net = matched.gross - matched.fee;
+      closedTrades.push({
+        sellId: trade.id,
+        symbol: trade.symbol,
+        shares: matched.shares,
+        avgCost,
+        holdDays,
+        gross: matched.gross,
+        fee: matched.fee,
+        net,
+        isWin: net >= WIN_THRESHOLD,
+      });
+    }
+    if (matched.unmatchedShares > 0) {
+      unmatchedSells.push({
+        sellId: trade.id,
+        symbol: trade.symbol,
+        date: trade.date,
+        requestedShares: trade.shares,
+        matchedShares: matched.shares,
+        unmatchedShares: matched.unmatchedShares,
+      });
+    }
   }
-  return result;
+  return { closedTrades, unmatchedSells };
+}
+
+export function computeClosedTrades(trades: Trade[], quotes: Record<string, Quote | null>): ClosedTrade[] {
+  return computeTradeReconciliation(trades, quotes).closedTrades;
 }
 
 export function availableToSell(symbol: string, trades: Trade[], excludeId?: string): number {

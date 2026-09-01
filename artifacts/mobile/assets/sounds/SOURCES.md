@@ -14,6 +14,11 @@
 - **License:** CC BY 3.0 — https://creativecommons.org/licenses/by/3.0/
 - **Processing:** Single-shot recording trimmed to 0.35 s transient, replicated 5 times at 155 ms intervals, assembled into a 0.9 s burst, normalized to stereo 22050 Hz WAV.
 
+## casino_slot_anticipation.wav
+- **Source:** Supplied by the user for the Central Bank slot-machine reel.
+- **Duration:** Exactly 5 seconds; mono PCM WAV at 44.1 kHz.
+- **Use:** Plays for the full reel spin. Win or loss feedback begins at the five-second resolution point.
+
 ## win_chime.wav
 - **Source:** Original locally synthesized sound effect for Meisner Method.
 - **Processing:** Two bright ascending tones with short harmonic tails, rendered as stereo 22050 Hz WAV and kept under one second for a quick token-win confirmation.

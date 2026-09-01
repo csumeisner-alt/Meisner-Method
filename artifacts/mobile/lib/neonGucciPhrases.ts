@@ -1,0 +1,17 @@
+export const NEON_GUCCI_LOADING_PHRASES = [
+  'Checking in with Sam Bankman-Fried',
+  'Gambling all your money into penny stocks',
+  "Telling Dave Ramsey that you aren't following the baby steps",
+  'Finding out why you continually make dangerous financial decisions',
+  'Alerting FINRA as there appears to be insider trading on your account',
+  'Matching you with local singles in your area',
+  'Looking into why a new line of credit was opened in your name',
+  'Relaying to your spouse about how much money you lose while trading',
+  'Hold on, your portfolio is being gently escorted to the financial graveyard',
+  'Don’t worry, your stock is just trying to remember what “value” felt like',
+  'Loading… selecting the cheapest casket for your investments',
+  'Please wait while we profit off your trade before you even place it',
+  'Adjusting prices by fractions so tiny that only your anxiety notices',
+  'Loading… Dave just saw your spending history and threw a chair',
+  'Looking Into Why Your Budget App Keeps Crashing — It’s overwhelmed. By you.',
+] as const;

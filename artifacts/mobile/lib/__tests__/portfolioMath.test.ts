@@ -9,6 +9,7 @@ import {
   computeClosedTrades,
   computeDividendTotal,
   computePositions,
+  computeTradeReconciliation,
   computeTradeSummary,
   type Quote,
   type Trade,
@@ -47,6 +48,46 @@ test('no prior buys: the sell is skipped entirely', () => {
   const trades = [sell({ id: 's1' })]; // sell with nothing bought before it
   const closed = computeClosedTrades(trades, fundQuote);
   assert.equal(closed.length, 0);
+});
+
+test('unmatched sell shares are reported without inventing realized P&L', () => {
+  const reconciliation = computeTradeReconciliation(
+    [sell({ id: 's1', shares: 4 })],
+    fundQuote,
+  );
+
+  assert.equal(reconciliation.closedTrades.length, 0);
+  assert.deepEqual(reconciliation.unmatchedSells, [{
+    sellId: 's1',
+    symbol: 'VOO',
+    date: DAY365,
+    requestedShares: 4,
+    matchedShares: 0,
+    unmatchedShares: 4,
+  }]);
+});
+
+test('partially unmatched sells keep matched FIFO totals and report only the remainder', () => {
+  const reconciliation = computeTradeReconciliation(
+    [buy({ id: 'b1', shares: 2 }), sell({ id: 's1', shares: 4 })],
+    {},
+  );
+
+  assert.equal(reconciliation.closedTrades.length, 1);
+  approx(reconciliation.closedTrades[0].shares, 2);
+  approx(reconciliation.closedTrades[0].gross, 40);
+  assert.equal(reconciliation.unmatchedSells[0].matchedShares, 2);
+  assert.equal(reconciliation.unmatchedSells[0].unmatchedShares, 2);
+});
+
+test('fully matched histories have no reconciliation warnings', () => {
+  const reconciliation = computeTradeReconciliation(
+    [buy({ id: 'b1' }), sell({ id: 's1' })],
+    fundQuote,
+  );
+
+  assert.deepEqual(reconciliation.unmatchedSells, []);
+  assert.equal(reconciliation.closedTrades.length, 1);
 });
 
 test('missing/zero expense ratio: no fee, net equals gross', () => {
@@ -100,6 +141,62 @@ test('each sell (partial close) counts once toward the win-rate denominator', ()
   assert.equal(summary.totalClosed, 2);
   assert.equal(summary.wins, 1);
   assert.equal(summary.winRate, 50);
+});
+
+test('fully closed shares do not affect the average cost of a reopened position', () => {
+  const trades: Trade[] = [
+    buy({ id: 'mara-old-buy', symbol: 'MARA', shares: 100, pricePerShare: 9.98, date: '2026-08-28T14:00:00.000Z' }),
+    sell({ id: 'mara-close', symbol: 'MARA', shares: 100, pricePerShare: 10.50, date: '2026-08-29T14:00:00.000Z' }),
+    buy({ id: 'mara-new-buy', symbol: 'MARA', shares: 200, pricePerShare: 10.82, date: '2026-08-31T11:00:00.000Z' }),
+  ];
+
+  const [position] = computePositions(trades, {
+    MARA: { currentPrice: 11.09, priceChange: 0.27, priceChangePercent: 2.5 },
+  });
+
+  assert.equal(position.netShares, 200);
+  approx(position.avgCost, 10.82);
+  approx(position.costBasis, 2164);
+  approx(position.unrealizedPnL, 54);
+});
+
+test('partial FIFO close leaves only the remaining lot costs in the open average', () => {
+  const trades: Trade[] = [
+    buy({ id: 'b1', shares: 100, pricePerShare: 10, date: '2026-08-27T14:00:00.000Z' }),
+    buy({ id: 'b2', shares: 100, pricePerShare: 12, date: '2026-08-28T14:00:00.000Z' }),
+    sell({ id: 's1', shares: 150, pricePerShare: 13, date: '2026-08-29T14:00:00.000Z' }),
+  ];
+
+  const [position] = computePositions(trades, {});
+  assert.equal(position.netShares, 50);
+  approx(position.avgCost, 12);
+  approx(position.costBasis, 600);
+
+  const [closed] = computeClosedTrades(trades, {});
+  assert.equal(closed.shares, 150);
+  approx(closed.avgCost, 10 + (2 / 3));
+  approx(closed.gross, 350);
+});
+
+test('a closed cycle keeps its own realized basis after the symbol is bought again', () => {
+  const trades: Trade[] = [
+    buy({ id: 'b1', shares: 10, pricePerShare: 100, date: '2026-01-01T00:00:00.000Z' }),
+    sell({ id: 's1', shares: 10, pricePerShare: 110, date: '2026-01-02T00:00:00.000Z' }),
+    buy({ id: 'b2', shares: 10, pricePerShare: 200, date: '2026-01-03T00:00:00.000Z' }),
+    sell({ id: 's2', shares: 5, pricePerShare: 190, date: '2026-01-04T00:00:00.000Z' }),
+  ];
+
+  const closed = computeClosedTrades(trades, {});
+  assert.equal(closed.length, 2);
+  approx(closed[0].avgCost, 100);
+  approx(closed[0].gross, 100);
+  approx(closed[1].avgCost, 200);
+  approx(closed[1].gross, -50);
+
+  const [position] = computePositions(trades, {});
+  assert.equal(position.netShares, 5);
+  approx(position.avgCost, 200);
+  approx(position.realizedPnL, 50);
 });
 
 // ── computeTradeSummary (SummaryCard) ───────────────────────────────────────────

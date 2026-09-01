@@ -14,6 +14,7 @@ import {
   SMART_PRO_BOTTLE_PRICE,
   SMART_PRO_SALE_DURATION_MS,
   SMART_PRO_UNLOCK_PRICE,
+  NEON_GUCCI_PHRASE_PACK_PRICE,
   QUICK_REVIVE_BOTTLE_PRICE,
   QUICK_REVIVE_UNLOCK_PRICE,
   QUICK_REVIVE_WIN_PROBABILITY,
@@ -29,6 +30,7 @@ import {
   buyStaminUpUnlock,
   buySmartProBottle,
   buySmartProUnlock,
+  buyNeonGucciPhrasePack,
   canEnterBrewBank,
   canArmBrewBottle,
   canActivateBrewBankKey,
@@ -61,6 +63,7 @@ import {
   persistBrewEconomySnapshot,
   serializeBrewEconomySnapshot,
 } from '../brewTokenPersistence.ts';
+import { NEON_GUCCI_LOADING_PHRASES } from '../neonGucciPhrases.ts';
 
 test('Brew Bank unlocks exactly when the quote threshold is crossed', () => {
   assert.equal(isBrewBankUnlock(BREW_TOKEN_QUOTE_THRESHOLD - 1, BREW_TOKEN_QUOTE_THRESHOLD), true);
@@ -249,6 +252,22 @@ test('SmartPro unlocks for one hundred tokens and its own bottles always cost th
   assert.deepEqual(buySmartProBottle(9, 2, true), { tokenBalance: 6, bottleCount: 3 });
 });
 
+test('Neon Gucci loading phrase pack costs ten Brew Tokens exactly once and starts active', () => {
+  assert.deepEqual(buyNeonGucciPhrasePack(NEON_GUCCI_PHRASE_PACK_PRICE, false), {
+    tokenBalance: 0,
+    unlocked: true,
+    active: true,
+  });
+  assert.deepEqual(buyNeonGucciPhrasePack(17, false), {
+    tokenBalance: 7,
+    unlocked: true,
+    active: true,
+  });
+  assert.equal(buyNeonGucciPhrasePack(NEON_GUCCI_PHRASE_PACK_PRICE - 1, false), null);
+  assert.equal(buyNeonGucciPhrasePack(100, true), null);
+  assert.equal(NEON_GUCCI_LOADING_PHRASES.length, 15);
+});
+
 test('SmartPro redemption consumes one bottle and activates a restart-safe 90-second sale', () => {
   const now = new Date('2026-08-29T12:00:00').getTime();
   const redeemed = redeemSmartProBottle(2, now);
@@ -409,6 +428,8 @@ test('economy snapshots round-trip all balances and claimed quote sessions', () 
     smartProSaleExpiresAt: 1_800_000_090_000,
     darkBrewTokens: 6,
     neonGucciActive: true,
+    neonGucciPhrasesUnlocked: true,
+    neonGucciPhrasesActive: true,
     claimedQuoteViewIds: ['tape-1', 'tape-2', 'tape-1'],
     activityLog: [{
       id: 'event-1',
@@ -455,6 +476,8 @@ test('legacy economy fields migrate into one snapshot without losing item state'
   assert.equal(snapshot.quickReviveArmed, true);
   assert.equal(snapshot.smartProSaleExpiresAt, 1_800_000_090_000);
   assert.equal(snapshot.neonGucciActive, false);
+  assert.equal(snapshot.neonGucciPhrasesUnlocked, false);
+  assert.equal(snapshot.neonGucciPhrasesActive, false);
   assert.deepEqual(snapshot.claimedQuoteViewIds, []);
   assert.deepEqual(snapshot.activityLog, []);
 });

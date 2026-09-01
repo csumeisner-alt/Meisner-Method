@@ -31,6 +31,7 @@ import { NeonAnalysisLoader } from '@/components/NeonAnalysisLoader';
 import { PriceAlertModal } from '@/components/PriceAlertModal';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { getAnalysisLoadingStages } from '@/lib/analysisLoadingStages';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -234,26 +235,8 @@ const analystStyles = StyleSheet.create({
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
-const ANALYSIS_LOADING_STAGES = [
-  'Reading the tape',
-  'Checking momentum',
-  'Comparing the sector',
-  'Building the lesson',
-] as const;
-
-const NEON_GUCCI_LOADING_PHRASES = [
-  'Checking in with Sam Bankman-Fried',
-  'Gambling all your money into penny stocks',
-  "Telling Dave Ramsey that you aren't following the baby steps",
-  'Finding out why you continually make dangerous financial decisions',
-  'Alerting FINRA as there appears to be insider trading on your account',
-  'Matching you with local singles in your area',
-  'Looking into why a new line of credit was opened in your name',
-  'Relaying to your spouse about how much money you lose while trading',
-] as const;
-
 function shuffledLoadingPhrases(): string[] {
-  const phrases = [...NEON_GUCCI_LOADING_PHRASES];
+  const phrases = [...getAnalysisLoadingStages(true)];
   for (let index = phrases.length - 1; index > 0; index -= 1) {
     const randomIndex = Math.floor(Math.random() * (index + 1));
     [phrases[index], phrases[randomIndex]] = [phrases[randomIndex], phrases[index]];
@@ -266,7 +249,7 @@ export default function AnalysisScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const colors = useColors();
-  const { isActive, neonGucciActive, neonGucciUnlocked } = useAmericanMode();
+  const { isActive, neonGucciActive, brew } = useAmericanMode();
   const { width: screenWidth } = useWindowDimensions();
   const { apiFetch } = useApi();
   const { mutate, data, isPending, error } = useAnalyzeStock<Error>();
@@ -306,8 +289,8 @@ export default function AnalysisScreen() {
   const [loadingStageIndex, setLoadingStageIndex] = useState(0);
   const tickerGlow = useRef(new Animated.Value(0)).current;
   const loadingStages = useMemo<readonly string[]>(
-    () => (neonGucciUnlocked ? shuffledLoadingPhrases() : ANALYSIS_LOADING_STAGES),
-    [isPending, neonGucciUnlocked, symbol],
+    () => (brew.neonGucciPhrasesActive ? shuffledLoadingPhrases() : getAnalysisLoadingStages(false)),
+    [brew.neonGucciPhrasesActive, isPending, symbol],
   );
 
   useEffect(() => {
