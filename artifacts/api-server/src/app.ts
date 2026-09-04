@@ -43,6 +43,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Public legal page used by the mobile app's store listing.
 app.use(privacyRouter);
+app.use("/api", privacyRouter);
 
 // Resolve publishable key from request host so the same server can serve
 // multiple Clerk custom domains. Falls back to CLERK_PUBLISHABLE_KEY.
