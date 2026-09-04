@@ -18,6 +18,7 @@ import {
   RefreshControl,
   Animated,
   Easing,
+  PanResponder,
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -1512,7 +1513,9 @@ function GradeHistoryModal({
   const [brewBankVisible, setBrewBankVisible] = useState(false);
   const [bankEntryBusy, setBankEntryBusy] = useState(false);
   const [brewCelebrationVisible, setBrewCelebrationVisible] = useState(false);
+  const [headerHintVisible, setHeaderHintVisible] = useState(false);
   const [countdownNow, setCountdownNow] = useState(() => Date.now());
+  const headerHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const {
     quotesViewed,
     isUnlocked: brewBankUnlocked,
@@ -1613,7 +1616,40 @@ function GradeHistoryModal({
     if (redeemed) setBrewBankVisible(true);
   };
 
+  const hideHeaderHint = useCallback(() => {
+    if (headerHintTimerRef.current) clearTimeout(headerHintTimerRef.current);
+    headerHintTimerRef.current = null;
+    setHeaderHintVisible(false);
+  }, []);
+
+  const showHeaderHint = useCallback(() => {
+    if (brewBankUnlocked) return;
+    if (headerHintTimerRef.current) clearTimeout(headerHintTimerRef.current);
+    setHeaderHintVisible(true);
+    headerHintTimerRef.current = setTimeout(() => {
+      headerHintTimerRef.current = null;
+      setHeaderHintVisible(false);
+    }, 2_400);
+  }, [brewBankUnlocked]);
+
+  useEffect(() => () => {
+    if (headerHintTimerRef.current) clearTimeout(headerHintTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (brewBankUnlocked) hideHeaderHint();
+  }, [brewBankUnlocked, hideHeaderHint]);
+
+  const headerGestureResponder = useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gestureState) => (
+      !brewBankUnlocked
+      && (Math.abs(gestureState.dx) > 8 || Math.abs(gestureState.dy) > 8)
+    ),
+    onPanResponderMove: showHeaderHint,
+  }), [brewBankUnlocked, showHeaderHint]);
+
   const handleHeaderLongPress = () => {
+    hideHeaderHint();
     setTrainingTapeVisible(true);
   };
 
@@ -1633,6 +1669,8 @@ function GradeHistoryModal({
             </TouchableOpacity>
             <View style={gradeModalStyles.headerCopy}>
               <Pressable
+                {...headerGestureResponder.panHandlers}
+                onPress={showHeaderHint}
                 onLongPress={handleHeaderLongPress}
                 delayLongPress={800}
                 accessibilityLabel="Trade grade history"
@@ -1644,6 +1682,17 @@ function GradeHistoryModal({
               <Text style={[gradeModalStyles.subtitle, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                 Completed trades · tap a dot for details
               </Text>
+              {headerHintVisible && !brewBankUnlocked && (
+                <View
+                  pointerEvents="none"
+                  style={[gradeModalStyles.headerHint, { backgroundColor: colors.steelShadow, borderColor: colors.goldMuted }]}
+                >
+                  <Feather name="radio" size={10} color={colors.gold} />
+                  <Text style={[gradeModalStyles.headerHintText, { color: colors.gold, fontFamily: 'Inter_600SemiBold' }]}>
+                    SIGNAL FOUND · TRY HOLDING
+                  </Text>
+                </View>
+              )}
             </View>
           </View>
 
@@ -1768,6 +1817,8 @@ const gradeModalStyles = StyleSheet.create({
   headerCopy: { flex: 1 },
   title: { fontSize: 16, letterSpacing: 1.1 },
   subtitle: { fontSize: 11, marginTop: 3 },
+  headerHint: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 5, borderWidth: 1, borderRadius: 5, paddingHorizontal: 7, paddingVertical: 4, marginTop: 7 },
+  headerHintText: { fontSize: 8, letterSpacing: 0.75 },
   scroll: { flex: 1 },
   content: { paddingHorizontal: 14, paddingTop: 14 },
   card: { borderWidth: 1, borderRadius: 12, padding: 10 },

@@ -68,6 +68,11 @@ const TIPS = [
   "🪖 The Battle of Stalingrad (1942–43) was the bloodiest battle in human history, with combined casualties estimated at nearly 2 million.",
   "🪖 Nazi Germany's Blitzkrieg strategy conquered France in just 46 days in 1940 — shocking the world.",
   "🪖 The Tuskegee Airmen were the first African American military aviators in the US Army Air Corps, flying over 15,000 missions during WW2.",
+  "🪖 Navajo Code Talkers used a code based on the Diné language for secure US military communications in the Pacific — Japanese forces never broke it during the war.",
+  "🪖 The Battle of Midway in June 1942 was a decisive Pacific turning point: US forces sank four Japanese fleet carriers while losing one carrier of their own.",
+  "🪖 Operation Fortitude used dummy tanks, fake radio traffic, and a fictional army to convince Germany that the main D-Day landing would come at Pas-de-Calais.",
+  "🪖 The Women Airforce Service Pilots, or WASP, flew, ferried, and tested military aircraft across the United States so more male pilots could serve overseas.",
+  "🪖 The Battle of Leyte Gulf in October 1944 is widely regarded as the largest naval battle in history and left Japan's navy unable to mount another major fleet action.",
   // Trump
   "🇺🇸 Donald Trump was the first US president elected without prior military service or government office since Dwight D. Eisenhower.",
   "🇺🇸 Trump's 2016 victory is considered one of the biggest upsets in modern American political history — virtually every major poll predicted a Clinton win.",

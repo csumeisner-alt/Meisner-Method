@@ -22,7 +22,6 @@ import Animated, {
   interpolate,
   useAnimatedStyle,
   useSharedValue,
-  withRepeat,
   withSequence,
   withSpring,
   withTiming,
@@ -543,6 +542,9 @@ const MACHINE_STATUS_LINES = [
 const SLOT_SYMBOLS = ['coffee', 'star', 'zap', 'award', 'trending-up'] as const;
 type SlotSymbol = typeof SLOT_SYMBOLS[number];
 const SLOT_REEL_HEIGHT = 58;
+const SLOT_REEL_CYCLES = [3, 5, 8] as const;
+const SLOT_REEL_TRACK_CYCLES = Math.max(...SLOT_REEL_CYCLES) + 1;
+const SLOT_STOP_DELAYS_MS = [1_700, 2_900, 4_600] as const;
 const BREW_BET_RESOLUTION_MS = 5_000;
 const SLOT_ANTICIPATION_DURATION_MS = 5_000;
 
@@ -634,7 +636,6 @@ export function BrewTokenBank({
   const activeLossPhraseRef = useRef<LossPhrase | null>(null);
   const shopBusyRef = useRef(false);
   const resolvingRef = useRef(false);
-  const reelStopTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const quickReviveBurstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const daiquiriBurstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const staminUpBurstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -870,8 +871,6 @@ export function BrewTokenBank({
     if (daiquiriBurstTimerRef.current) clearTimeout(daiquiriBurstTimerRef.current);
     if (staminUpBurstTimerRef.current) clearTimeout(staminUpBurstTimerRef.current);
     if (smartProBurstTimerRef.current) clearTimeout(smartProBurstTimerRef.current);
-    reelStopTimersRef.current.forEach(timer => clearTimeout(timer));
-    reelStopTimersRef.current = [];
     [reelOnePosition, reelTwoPosition, reelThreePosition].forEach(position => cancelAnimation(position));
     stopMachineStatus();
     stopLossVoice(true);
@@ -1535,8 +1534,6 @@ export function BrewTokenBank({
     if (protectedVoicePlaying || resolving || resolvingRef.current || shopBusyRef.current) return;
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = null;
-    reelStopTimersRef.current.forEach(timer => clearTimeout(timer));
-    reelStopTimersRef.current = [];
     [reelOnePosition, reelTwoPosition, reelThreePosition].forEach(position => cancelAnimation(position));
     [coinProgress, vaultPulse, resultProgress].forEach(position => cancelAnimation(position));
     stopPreviewBottleBurst();
@@ -1574,36 +1571,21 @@ export function BrewTokenBank({
     setResult(null);
     resolvingRef.current = true;
     setResolving(true);
-    reelStopTimersRef.current.forEach(timer => clearTimeout(timer));
-    reelStopTimersRef.current = [];
     const reelPositions = [reelOnePosition, reelTwoPosition, reelThreePosition];
     const finalIndexes = won ? [0, 0, 0] : [1, 3, 4];
-    if (reduceMotion) {
-      reelPositions.forEach((position, index) => {
+    reelPositions.forEach((position, index) => {
+      cancelAnimation(position);
+      position.value = 0;
+      if (reduceMotion) {
         position.value = -finalIndexes[index]! * SLOT_REEL_HEIGHT;
+        return;
+      }
+      const stopIndex = SLOT_REEL_CYCLES[index]! * SLOT_SYMBOLS.length + finalIndexes[index]!;
+      position.value = withTiming(-stopIndex * SLOT_REEL_HEIGHT, {
+        duration: SLOT_STOP_DELAYS_MS[index]!,
+        easing: Easing.out(Easing.cubic),
       });
-    } else {
-      reelPositions.forEach(position => {
-        cancelAnimation(position);
-        position.value = withRepeat(
-          withSequence(
-            withTiming(-SLOT_REEL_HEIGHT * (SLOT_SYMBOLS.length - 1), { duration: 560, easing: Easing.linear }),
-            withTiming(0, { duration: 1 }),
-          ),
-          -1,
-          false,
-        );
-      });
-      [1_700, 2_900, 4_600].forEach((delay, index) => {
-        reelStopTimersRef.current.push(setTimeout(() => {
-          cancelAnimation(reelPositions[index]!);
-          reelPositions[index]!.value = withTiming(-finalIndexes[index]! * SLOT_REEL_HEIGHT, {
-            duration: 180,
-            easing: Easing.out(Easing.cubic),
-          });
-        }, delay));
-      });
-    }
+    });
     setMachineStatusIndex(0);
     stopMachineStatus();
     if (!reduceMotion) {
@@ -1667,11 +1649,13 @@ export function BrewTokenBank({
   ) => (
     <View style={[styles.reelWindow, { borderColor: tint }]}>
       <Animated.View style={positionStyle}>
-        {SLOT_SYMBOLS.map((symbol, symbolIndex) => (
-          <View style={styles.reelSymbol} key={`${reelIndex}-${symbol}`}>
-            <Feather name={symbol as SlotSymbol} size={reelIndex === 0 ? 28 : 31} color={tint} />
-          </View>
-        ))}
+        {Array.from({ length: SLOT_REEL_TRACK_CYCLES }, (_, cycleIndex) =>
+          SLOT_SYMBOLS.map((symbol, symbolIndex) => (
+            <View style={styles.reelSymbol} key={`${reelIndex}-${cycleIndex}-${symbolIndex}`}>
+              <Feather name={symbol as SlotSymbol} size={reelIndex === 0 ? 28 : 31} color={tint} />
+            </View>
+          )),
+        )}
       </Animated.View>
     </View>
   );
@@ -1980,6 +1964,46 @@ export function BrewTokenBank({
                       <Feather name="maximize-2" size={13} color={colors.mutedForeground} />
                     </Pressable>
                  </View>
+                 <View style={styles.inventoryRow}>
+                   <Text style={[styles.inventoryLabel, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>BOTTLES IN INVENTORY</Text>
+                   <Text style={[styles.inventoryValue, { color: quickReviveUnlocked ? colors.gold : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+                     {quickReviveUnlocked ? quickReviveBottles : 'LOCKED'}
+                   </Text>
+                 </View>
+                 {!quickReviveUnlocked ? (
+                   <Pressable
+                     onPress={() => { void handleUnlockQuickRevive(); }}
+                     disabled={tokens < quickReviveUnlockPrice || resolving || shopBusy}
+                     style={[
+                       styles.shopButton,
+                       { borderColor: colors.border, backgroundColor: colors.card },
+                       (tokens < quickReviveUnlockPrice || resolving || shopBusy) && styles.disabled,
+                     ]}
+                     accessibilityRole="button"
+                     accessibilityLabel={`Unlock Quick Revive for ${quickReviveUnlockPrice} Brew Tokens`}
+                   >
+                     <Text style={[styles.shopButtonText, { color: colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+                       UNLOCK RECIPE · {quickReviveUnlockPrice} TOKENS{smartProSaleActive ? ' · 50% OFF' : ''}
+                     </Text>
+                   </Pressable>
+                 ) : (
+                   <Pressable
+                     onPress={() => { void handleBuyQuickReviveBottle(); }}
+                     disabled={tokens < quickReviveBottlePrice || resolving || shopBusy}
+                     style={[
+                       styles.shopButton,
+                       { borderColor: colors.goldMuted },
+                       (tokens < quickReviveBottlePrice || resolving || shopBusy) && styles.disabled,
+                     ]}
+                     accessibilityRole="button"
+                     accessibilityLabel={`Buy one Quick Revive bottle for ${quickReviveBottlePrice} Brew Tokens`}
+                   >
+                     <Text style={[styles.shopButtonText, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
+                       BUY BOTTLE · {quickReviveBottlePrice} {quickReviveBottlePrice === 1 ? 'TOKEN' : 'TOKENS'}{smartProSaleActive ? ' · 50% OFF' : ''}
+                     </Text>
+                   </Pressable>
+                 )}
+               </View>
                  <View style={[styles.quickReviveShop, { borderTopColor: colors.border }]}>
                    <View style={styles.shopHeadingRow}>
                      <View style={styles.quickReviveShopCopy}>
@@ -2045,46 +2069,6 @@ export function BrewTokenBank({
                      </Pressable>
                    )}
                  </View>
-                 <View style={styles.inventoryRow}>
-                   <Text style={[styles.inventoryLabel, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>BOTTLES IN INVENTORY</Text>
-                   <Text style={[styles.inventoryValue, { color: quickReviveUnlocked ? colors.gold : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
-                     {quickReviveUnlocked ? quickReviveBottles : 'LOCKED'}
-                   </Text>
-                 </View>
-                 {!quickReviveUnlocked ? (
-                   <Pressable
-                     onPress={() => { void handleUnlockQuickRevive(); }}
-                      disabled={tokens < quickReviveUnlockPrice || resolving || shopBusy}
-                     style={[
-                       styles.shopButton,
-                       { borderColor: colors.border, backgroundColor: colors.card },
-                        (tokens < quickReviveUnlockPrice || resolving || shopBusy) && styles.disabled,
-                     ]}
-                     accessibilityRole="button"
-                      accessibilityLabel={`Unlock Quick Revive for ${quickReviveUnlockPrice} Brew Tokens`}
-                   >
-                     <Text style={[styles.shopButtonText, { color: colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
-                        UNLOCK RECIPE · {quickReviveUnlockPrice} TOKENS{smartProSaleActive ? ' · 50% OFF' : ''}
-                     </Text>
-                   </Pressable>
-                 ) : (
-                   <Pressable
-                     onPress={() => { void handleBuyQuickReviveBottle(); }}
-                      disabled={tokens < quickReviveBottlePrice || resolving || shopBusy}
-                     style={[
-                       styles.shopButton,
-                       { borderColor: colors.goldMuted },
-                        (tokens < quickReviveBottlePrice || resolving || shopBusy) && styles.disabled,
-                     ]}
-                     accessibilityRole="button"
-                      accessibilityLabel={`Buy one Quick Revive bottle for ${quickReviveBottlePrice} Brew Tokens`}
-                   >
-                     <Text style={[styles.shopButtonText, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
-                        BUY BOTTLE · {quickReviveBottlePrice} {quickReviveBottlePrice === 1 ? 'TOKEN' : 'TOKENS'}{smartProSaleActive ? ' · 50% OFF' : ''}
-                     </Text>
-                   </Pressable>
-                 )}
-               </View>
                 <View style={[styles.quickReviveShop, { borderTopColor: colors.border }]}>
                   <View style={styles.shopHeadingRow}>
                     <View style={styles.quickReviveShopCopy}>
@@ -2106,7 +2090,7 @@ export function BrewTokenBank({
                       accessibilityLabel="Inspect Dave Ramsey Daiquiri bottle"
                       testID="inspect-daiquiri"
                     >
-                      <DaiquiriBottle size={31} muted={!daiquiriUnlocked} />
+                      <DaiquiriBottle size={31} />
                       <Feather name="maximize-2" size={13} color={colors.mutedForeground} />
                     </Pressable>
                   </View>
@@ -2253,7 +2237,7 @@ export function BrewTokenBank({
                       accessibilityLabel="Inspect SmartPro Soda bottle"
                       testID="inspect-smart-pro"
                     >
-                      <SmartProBottle size={31} muted={!smartProUnlocked} />
+                      <SmartProBottle size={31} />
                       <Feather name="maximize-2" size={13} color={colors.mutedForeground} />
                     </Pressable>
                   </View>
@@ -2731,9 +2715,9 @@ export function BrewTokenBank({
                   testID="replay-bottle-animation"
                 >
                   {bottlePreview === 'quickRevive' && <QuickReviveBottle size={112} muted={!selectedBottleUnlocked} />}
-                  {bottlePreview === 'daiquiri' && <DaiquiriBottle size={112} muted={!selectedBottleUnlocked} />}
+                  {bottlePreview === 'daiquiri' && <DaiquiriBottle size={112} />}
                   {bottlePreview === 'staminUp' && <StaminUpBottle size={112} muted={!selectedBottleUnlocked} />}
-                  {bottlePreview === 'smartPro' && <SmartProBottle size={112} muted={!selectedBottleUnlocked} />}
+                  {bottlePreview === 'smartPro' && <SmartProBottle size={112} />}
                   {quickReviveBurstVisible && bottleBurstLocation === 'preview' && bottlePreview === 'quickRevive' && (
                     <View pointerEvents="none" style={[styles.quickReviveBurst, styles.previewBurst]}>
                       <Animated.View style={[styles.quickReviveBubbleField, quickReviveBubbleFieldStyle]}>
