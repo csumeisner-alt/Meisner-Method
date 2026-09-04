@@ -9,6 +9,7 @@ import {
   getClerkProxyHost,
 } from "./middlewares/clerkProxyMiddleware.js";
 import router from "./routes/index.js";
+import privacyRouter from "./routes/privacy.js";
 import { logger } from "./lib/logger.js";
 
 const app: Express = express();
@@ -39,6 +40,9 @@ app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 app.use(cors({ credentials: true, origin: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Public legal page used by the mobile app's store listing.
+app.use(privacyRouter);
 
 // Resolve publishable key from request host so the same server can serve
 // multiple Clerk custom domains. Falls back to CLERK_PUBLISHABLE_KEY.
