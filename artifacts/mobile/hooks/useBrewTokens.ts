@@ -31,7 +31,7 @@ import {
   createSerialWriteQueue,
   isBrewBankHalfway,
   isBrewBankUnlock,
-  isWeekday,
+  shouldAwardBrewTokenForQuote,
   hasBrewBankAccess,
   getSmartProBottleSalePrice,
   hasSmartProSale,
@@ -439,7 +439,7 @@ export function useBrewTokens(): BrewTokenState {
       const nextQuotesViewed = previous + 1;
       const halfway = isBrewBankHalfway(previous, nextQuotesViewed);
       const justUnlocked = !current.isUnlocked && isBrewBankUnlock(previous, nextQuotesViewed);
-      const earnedToken = current.isUnlocked && isWeekday(new Date().getDay());
+      const earnedToken = shouldAwardBrewTokenForQuote(current.isUnlocked, new Date().getDay());
       const nextClaimedQuoteViewIds = quoteViewId
         ? [...current.claimedQuoteViewIds, quoteViewId]
         : current.claimedQuoteViewIds;

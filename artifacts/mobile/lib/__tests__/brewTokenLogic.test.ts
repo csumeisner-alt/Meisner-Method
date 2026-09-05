@@ -47,6 +47,7 @@ import {
   isBrewBankHalfway,
   isBrewBankUnlock,
   isWeekday,
+  shouldAwardBrewTokenForQuote,
   parseStoredNonNegative,
   resolveBrewBet,
   resolveBrewBetOutcome,
@@ -87,6 +88,13 @@ test('weekday detection includes Monday through Friday only', () => {
   assert.equal(isWeekday(5), true);
   assert.equal(isWeekday(0), false);
   assert.equal(isWeekday(6), false);
+});
+
+test('unlocked Training Tape quotes award Brew Tokens on weekends too', () => {
+  assert.equal(shouldAwardBrewTokenForQuote(true, 0), true);
+  assert.equal(shouldAwardBrewTokenForQuote(true, 6), true);
+  assert.equal(shouldAwardBrewTokenForQuote(true, 3), true);
+  assert.equal(shouldAwardBrewTokenForQuote(false, 0), false);
 });
 
 test('bank keys cost five tokens and never overspend', () => {

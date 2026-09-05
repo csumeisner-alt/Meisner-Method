@@ -31,7 +31,11 @@ import { NeonAnalysisLoader } from '@/components/NeonAnalysisLoader';
 import { PriceAlertModal } from '@/components/PriceAlertModal';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
-import { getAnalysisLoadingStages } from '@/lib/analysisLoadingStages';
+import {
+  formatAnalysisLoadingStage,
+  getAnalysisLoadingStageInterval,
+  getAnalysisLoadingStages,
+} from '@/lib/analysisLoadingStages';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -300,9 +304,9 @@ export default function AnalysisScreen() {
     }
     const timer = setInterval(() => {
       setLoadingStageIndex((current) => (current + 1) % loadingStages.length);
-    }, 2_200);
+    }, getAnalysisLoadingStageInterval(brew.neonGucciPhrasesActive));
     return () => clearInterval(timer);
-  }, [isPending, loadingStages.length]);
+  }, [brew.neonGucciPhrasesActive, isPending, loadingStages.length]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -477,7 +481,7 @@ export default function AnalysisScreen() {
             ? <NeonAnalysisLoader symbol={symbol ?? ''} stage={loadingStage} />
             : <ActivityIndicator size="large" color={colors.primary} />}
           <Text style={[styles.loadingTitle, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
-            {loadingStage} · {symbol}
+            {formatAnalysisLoadingStage(loadingStage, symbol, brew.neonGucciPhrasesActive)}
           </Text>
           <Text style={[styles.loadingSubtitle, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
             Fetching market data, validating the quote, and shaping a focused lesson
