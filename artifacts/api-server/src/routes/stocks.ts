@@ -10,6 +10,7 @@ import {
   computeFundamentalScore,
   computeBehavioralScore,
 } from "../lib/yahoo.js";
+import { buildStockRecommendation } from "../lib/stockRecommendation.js";
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -187,6 +188,17 @@ router.post("/stocks/analyze", async (req, res) => {
     const technicalScore = computeTechnicalScore(data);
     const fundamentalScore = computeFundamentalScore(data);
     const behavioralScore = computeBehavioralScore(data);
+    const recommendation = buildStockRecommendation({
+      currentPrice: data.currentPrice,
+      support: data.support,
+      resistance: data.resistance,
+      week52High: data.week52High,
+      week52Low: data.week52Low,
+      analystPriceTarget: data.priceTarget,
+      technicalScore,
+      fundamentalScore,
+      behavioralScore,
+    });
 
     const price = data.currentPrice;
 
@@ -208,7 +220,7 @@ router.post("/stocks/analyze", async (req, res) => {
       ? ((data.priceTarget - price) / price * 100).toFixed(1)
       : "N/A";
 
-    const prompt = `You are a senior financial analyst. Analyze the following real market data and provide an investment recommendation.
+    const prompt = `You are a senior financial analyst. Explain the following rules-based investment recommendation using the supplied real market data.
 
 STOCK: ${data.symbol} (${data.companyName}) — ${data.exchange}
 PRICE: $${fmt(price)} | Change: ${data.priceChange >= 0 ? "+" : ""}${fmt(data.priceChange)} (${data.priceChangePercent >= 0 ? "+" : ""}${fmt(data.priceChangePercent)}%)
@@ -236,17 +248,18 @@ Analysts: ${data.analystRating} (${data.buyCount} Buy, ${data.holdCount} Hold, $
 Price Target: ${data.priceTarget ? `$${fmt(data.priceTarget)} (${upside}% upside)` : "N/A"}
 Short Interest: ${data.shortInterest ? pct(data.shortInterest) : "N/A"}
 
-Based on all three models, provide a structured recommendation. Include specific price levels. Be direct.
+LOCKED RULES-BASED RECOMMENDATION:
+Action: ${recommendation.action.toUpperCase()}
+Composite Score: ${recommendation.compositeScore}/100
+Entry: $${fmt(recommendation.buyPrice)}
+Target: $${fmt(recommendation.sellPrice)}
+Stop Loss: $${fmt(recommendation.stopLoss)}
+Confidence: ${recommendation.confidence}%
+Time Horizon: ${recommendation.timeHorizon}
 
 Respond ONLY with valid JSON (no markdown):
 {
-  "action": "buy" | "sell" | "hold",
-  "buyPrice": number or null,
-  "sellPrice": number or null,
-  "stopLoss": number or null,
-  "confidence": number 0-100,
-  "timeHorizon": "1-3 months" | "3-6 months" | "6-12 months" | "1-2 years",
-  "reasoning": "3-4 paragraph analysis",
+  "reasoning": "3-4 paragraph analysis supporting the locked recommendation without changing it",
   "risks": ["risk 1", "risk 2", "risk 3"],
   "strengths": ["strength 1", "strength 2", "strength 3"]
 }`;
@@ -254,18 +267,13 @@ Respond ONLY with valid JSON (no markdown):
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       max_tokens: 2000,
+      temperature: 0,
       messages: [{ role: "user", content: prompt }],
       response_format: { type: "json_object" },
     });
 
     const rawContent = completion.choices[0]?.message?.content ?? "{}";
     const rec = JSON.parse(rawContent) as {
-      action?: string;
-      buyPrice?: number | null;
-      sellPrice?: number | null;
-      stopLoss?: number | null;
-      confidence?: number;
-      timeHorizon?: string;
       reasoning?: string;
       risks?: string[];
       strengths?: string[];
@@ -322,12 +330,12 @@ Respond ONLY with valid JSON (no markdown):
         score: behavioralScore,
       },
       recommendation: {
-        action: rec.action ?? "hold",
-        buyPrice: rec.buyPrice ?? null,
-        sellPrice: rec.sellPrice ?? null,
-        stopLoss: rec.stopLoss ?? null,
-        confidence: rec.confidence ?? 50,
-        timeHorizon: rec.timeHorizon ?? "3-6 months",
+        action: recommendation.action,
+        buyPrice: recommendation.buyPrice,
+        sellPrice: recommendation.sellPrice,
+        stopLoss: recommendation.stopLoss,
+        confidence: recommendation.confidence,
+        timeHorizon: recommendation.timeHorizon,
         reasoning: rec.reasoning ?? "Analysis complete.",
         risks: rec.risks ?? [],
         strengths: rec.strengths ?? [],

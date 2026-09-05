@@ -623,7 +623,7 @@ export default function AnalysisScreen() {
           <View style={recStyles.topRow}>
             <View>
               <Text style={[recStyles.actionLabel, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
-                AI RECOMMENDATION
+                ANALYSIS RECOMMENDATION
               </Text>
               <Text style={[recStyles.action, { color: actionColor(action), fontFamily: 'Inter_700Bold' }]}>
                 {action.toUpperCase()}
