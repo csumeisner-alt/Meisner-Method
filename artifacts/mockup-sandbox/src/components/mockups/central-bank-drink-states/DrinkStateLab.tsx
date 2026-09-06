@@ -18,6 +18,7 @@ type DrinkState = {
   stage: DrinkStage;
   bottles: number;
   pulse: number;
+  animation: "idle" | "edge" | "surge";
 };
 
 const INITIAL_TOKENS = 220;
@@ -183,6 +184,7 @@ function DrinkCard({
   onRedeem,
   onReset,
   onPreview,
+  saleSeconds,
 }: {
   kind: DrinkKind;
   state: DrinkState;
@@ -192,6 +194,7 @@ function DrinkCard({
   onRedeem: () => void;
   onReset: () => void;
   onPreview: () => void;
+  saleSeconds?: number;
 }) {
   const copy = drinkCopy[kind];
   const locked = state.stage === "locked";
@@ -212,7 +215,7 @@ function DrinkCard({
         <StatePill stage={state.stage} accent={copy.accent} />
       </div>
 
-      <div className="drink-stage">
+      <div className={`drink-stage ${kind === "smartPro" && state.animation === "edge" ? "is-edge-tap" : ""} ${kind === "daiquiri" && state.animation === "surge" ? "is-surge" : ""}`}>
         <div className="stage-orbit" />
         <div className="stage-grid" />
         <div className={`bottle-wrap ${state.pulse ? "is-pulsing" : ""}`} key={state.pulse}>
@@ -230,6 +233,12 @@ function DrinkCard({
           </button>
         )}
         {armed && <div className="armed-burst"><Check size={15} /> {kind === "daiquiri" ? "2× AWARD LOADED" : "50% SALE LOADED"}</div>}
+        {kind === "smartPro" && state.animation === "edge" && (
+          <div className="edge-tap-flare" role="status"><span>SMARTPRO</span><strong>EDGE TAP</strong></div>
+        )}
+        {kind === "daiquiri" && state.animation === "surge" && (
+          <div className="daiquiri-surge-flare" role="status"><span>DAIQUIRI</span><strong>GOLD SURGE</strong></div>
+        )}
       </div>
 
       <div className="drink-copy">
@@ -244,6 +253,15 @@ function DrinkCard({
           </div>
         </div>
         <p className="drink-description">{copy.description}</p>
+          {kind === "smartPro" && state.stage === "armed" && saleSeconds && saleSeconds > 0 && (
+            <div className="smart-sale-panel" aria-label="SmartPro live shop">
+              <div className="smart-sale-heading"><span>LIVE SHOP</span><strong>{Math.floor(saleSeconds / 60)}:{(saleSeconds % 60).toString().padStart(2, "0")}</strong></div>
+              <div><span>QUICK REVIVE · BOTTLE</span><b>½ PRICE</b></div>
+              <div><span>DAIQUIRI · BOTTLE</span><b>½ PRICE</b></div>
+              <div className="is-full"><span>SMARTPRO · BOTTLE</span><b>3 TOKENS</b></div>
+              <div><span>STAMIN UP · BOTTLE</span><b>½ PRICE</b></div>
+            </div>
+          )}
         <div className="spec-row">
           <span>{armed ? copy.armedDetail : locked ? copy.lockedDetail : copy.unlockedDetail}</span>
           <span className="spec-accent">{copy.detail}</span>
@@ -277,8 +295,8 @@ function DrinkCard({
 
 export function DrinkStateLab() {
   const [tokens, setTokens] = useState(INITIAL_TOKENS);
-  const [daiquiri, setDaiquiri] = useState<DrinkState>({ stage: "locked", bottles: 0, pulse: 0 });
-  const [smartPro, setSmartPro] = useState<DrinkState>({ stage: "unlocked", bottles: 1, pulse: 0 });
+  const [daiquiri, setDaiquiri] = useState<DrinkState>({ stage: "locked", bottles: 0, pulse: 0, animation: "idle" });
+  const [smartPro, setSmartPro] = useState<DrinkState>({ stage: "unlocked", bottles: 1, pulse: 0, animation: "idle" });
   const [saleSeconds, setSaleSeconds] = useState(0);
   const [activity, setActivity] = useState("TEST WALLET READY · NO REAL TOKENS OR PURCHASES");
 
@@ -316,7 +334,7 @@ export function DrinkStateLab() {
 
   const redeemDaiquiri = () => {
     if (daiquiri.stage !== "unlocked" || daiquiri.bottles < 1) return;
-    updateDaiquiri({ bottles: daiquiri.bottles - 1, stage: "armed", pulse: daiquiri.pulse + 1 });
+    updateDaiquiri({ bottles: daiquiri.bottles - 1, stage: "armed", pulse: daiquiri.pulse + 1, animation: "surge" });
     setActivity("DAIQUIRI ARMED · NEXT TOSS HAS 45% WIN ODDS · DOUBLE AWARD");
   };
 
@@ -336,25 +354,25 @@ export function DrinkStateLab() {
 
   const redeemSmartPro = () => {
     if (smartPro.stage !== "unlocked" || smartPro.bottles < 1) return;
-    updateSmartPro({ bottles: smartPro.bottles - 1, stage: "armed", pulse: smartPro.pulse + 1 });
+    updateSmartPro({ bottles: smartPro.bottles - 1, stage: "armed", pulse: smartPro.pulse + 1, animation: "edge" });
     setSaleSeconds(90);
     setActivity("SMARTPRO ACTIVE · 90 SECONDS OF 50% OFF LOADED");
   };
 
   const resetAll = () => {
     setTokens(INITIAL_TOKENS);
-    setDaiquiri({ stage: "locked", bottles: 0, pulse: 0 });
-    setSmartPro({ stage: "unlocked", bottles: 1, pulse: 0 });
+    setDaiquiri({ stage: "locked", bottles: 0, pulse: 0, animation: "idle" });
+    setSmartPro({ stage: "unlocked", bottles: 1, pulse: 0, animation: "idle" });
     setSaleSeconds(0);
     setActivity("TEST LAB RESET · DAVE LOCKED · SMARTPRO UNLOCKED");
   };
 
   const preview = (kind: DrinkKind) => {
     if (kind === "daiquiri") {
-      updateDaiquiri({ pulse: daiquiri.pulse + 1 });
+      updateDaiquiri({ pulse: daiquiri.pulse + 1, animation: "surge" });
       setActivity("DAIQUIRI PREVIEW · LABEL FLARE AND GOLDEN LIQUID SURGE");
     } else {
-      updateSmartPro({ pulse: smartPro.pulse + 1 });
+      updateSmartPro({ pulse: smartPro.pulse + 1, animation: "edge" });
       setActivity("SMARTPRO PREVIEW · NEON BUBBLES AND EDGE TAP");
     }
   };
@@ -391,10 +409,11 @@ export function DrinkStateLab() {
           onBuy={buyDaiquiri}
           onRedeem={redeemDaiquiri}
           onReset={() => {
-            setDaiquiri({ stage: "locked", bottles: 0, pulse: 0 });
+             setDaiquiri({ stage: "locked", bottles: 0, pulse: 0, animation: "idle" });
             setActivity("DAIQUIRI CARD RESET");
           }}
           onPreview={() => preview("daiquiri")}
+           saleSeconds={saleSeconds}
         />
         <DrinkCard
           kind="smartPro"
@@ -404,11 +423,12 @@ export function DrinkStateLab() {
           onBuy={buySmartPro}
           onRedeem={redeemSmartPro}
           onReset={() => {
-            setSmartPro({ stage: "unlocked", bottles: 1, pulse: 0 });
+             setSmartPro({ stage: "unlocked", bottles: 1, pulse: 0, animation: "idle" });
             setSaleSeconds(0);
             setActivity("SMARTPRO CARD RESET · 01 BOTTLE RESTORED");
           }}
           onPreview={() => preview("smartPro")}
+           saleSeconds={saleSeconds}
         />
       </section>
 
@@ -467,6 +487,8 @@ export function DrinkStateLab() {
         .stage-grid { position: absolute; inset: 0; opacity: .19; background: linear-gradient(90deg, transparent 49.5%, var(--accent) 50%, transparent 50.5%), linear-gradient(0deg, transparent 49.5%, var(--accent) 50%, transparent 50.5%); background-size: 100% 68px, 68px 100%; mask-image: radial-gradient(circle, black, transparent 70%); }
         .bottle-wrap { position: relative; z-index: 2; display: grid; place-items: center; filter: drop-shadow(0 22px 20px rgba(0,0,0,.62)); animation: bottle-float 4.5s ease-in-out infinite; }
         .bottle-wrap.is-pulsing { animation: bottle-crack 1.2s cubic-bezier(.15,.8,.3,1) both; }
+         .drink-stage.is-edge-tap .bottle-wrap { animation: edge-tap-bottle 1.35s cubic-bezier(.16,.82,.3,1) both; filter: drop-shadow(0 0 32px rgba(185,255,69,.86)); }
+         .drink-stage.is-surge .bottle-wrap { animation: dai-surge-bottle 1.5s cubic-bezier(.18,.82,.31,1) both; }
         .bottle-wrap svg { display: block; width: 210px; height: auto; }
         .is-locked .stage-orbit { border-color: rgba(126,138,146,.28); box-shadow: none; animation: none; }
         .is-locked .bottle-wrap { animation: none; filter: grayscale(.45) saturate(.5) drop-shadow(0 17px 18px rgba(0,0,0,.6)); }
@@ -474,6 +496,20 @@ export function DrinkStateLab() {
         .preview-hotspot { position: absolute; z-index: 5; bottom: 12px; left: 50%; display: flex; align-items: center; gap: 6px; padding: 7px 9px; border: 1px solid color-mix(in srgb, var(--accent) 58%, #41484e); border-radius: 999px; color: var(--accent-strong); background: rgba(8,12,13,.75); cursor: pointer; transform: translateX(-50%); font-size: 8px; font-weight: 900; letter-spacing: .1em; }
         .preview-hotspot:hover { background: color-mix(in srgb, var(--accent) 14%, #080c0d); }
         .armed-burst { position: absolute; z-index: 6; top: 18px; left: 50%; display: flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid var(--accent); border-radius: 999px; color: #07100c; background: var(--accent); box-shadow: 0 0 22px color-mix(in srgb, var(--accent) 44%, transparent); transform: translateX(-50%); font-size: 8px; font-weight: 950; letter-spacing: .1em; animation: pop-in .5s ease both; white-space: nowrap; }
+         .edge-tap-flare, .daiquiri-surge-flare { position: absolute; z-index: 7; top: 44%; left: 50%; display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -50%); pointer-events: none; animation: edge-flare 1.35s cubic-bezier(.15,.8,.3,1) both; text-shadow: 0 0 18px rgba(185,255,69,.95); }
+         .edge-tap-flare::before, .daiquiri-surge-flare::before { position: absolute; width: 220px; height: 220px; border: 1px solid rgba(185,255,69,.7); border-radius: 50%; box-shadow: 0 0 34px rgba(185,255,69,.3), inset 0 0 24px rgba(103,206,158,.2); content: ""; animation: edge-orbit 1.35s ease-out both; }
+         .daiquiri-surge-flare { text-shadow: 0 0 18px rgba(246,214,74,.95); animation-name: gold-flare; }
+         .daiquiri-surge-flare::before { border-color: rgba(246,214,74,.7); box-shadow: 0 0 34px rgba(246,214,74,.3), inset 0 0 24px rgba(105,200,255,.2); }
+         .edge-tap-flare span, .daiquiri-surge-flare span { position: relative; color: #efffdc; font-size: 10px; font-weight: 900; letter-spacing: .3em; }
+         .edge-tap-flare strong, .daiquiri-surge-flare strong { position: relative; color: #b9ff45; font-size: 35px; line-height: .95; letter-spacing: -.08em; }
+         .daiquiri-surge-flare strong { color: #f6d64a; }
+         .smart-sale-panel { margin: 4px 0 12px; padding: 11px 12px 8px; border: 1px solid rgba(103,206,158,.34); border-radius: 10px; background: rgba(5,19,15,.46); box-shadow: inset 0 1px rgba(255,255,255,.06); color: #b7c9bf; font-size: 8px; font-weight: 800; letter-spacing: .08em; }
+         .smart-sale-heading, .smart-sale-panel > div:not(.smart-sale-heading) { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; }
+         .smart-sale-heading { color: #67ce9e; font-size: 9px; letter-spacing: .16em; }
+         .smart-sale-heading strong { color: #efffdc; font-size: 18px; letter-spacing: -.04em; }
+         .smart-sale-panel > div:not(.smart-sale-heading) { border-top: 1px solid rgba(255,255,255,.08); }
+         .smart-sale-panel b { color: #b9ff45; white-space: nowrap; }
+         .smart-sale-panel .is-full b { color: #d7e0db; }
         .drink-copy { padding: 16px 18px 0; }
         .drink-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
         .drink-eyebrow { margin: 0 0 6px; color: var(--accent); font-size: 8px; font-weight: 900; letter-spacing: .18em; }
@@ -502,6 +538,11 @@ export function DrinkStateLab() {
         .footer-note { margin-top: 12px; color: #606a70; font-size: 7px; font-weight: 800; letter-spacing: .14em; text-align: center; }
         @keyframes bottle-float { 0%, 100% { transform: translateY(5px) rotate(-1deg); } 50% { transform: translateY(-8px) rotate(1deg); } }
         @keyframes bottle-crack { 0% { transform: scale(1) translateY(0) rotate(0); } 22% { transform: scale(1.08) translateY(-9px) rotate(-4deg); } 58% { transform: scale(1.03) translateY(2px) rotate(3deg); } 100% { transform: scale(1) translateY(0) rotate(0); } }
+         @keyframes edge-tap-bottle { 0% { transform: scale(1) translateY(0) rotate(0); filter: drop-shadow(0 22px 20px rgba(0,0,0,.62)); } 22% { transform: scale(1.08) translateY(-16px) rotate(-3deg); filter: drop-shadow(0 0 32px rgba(185,255,69,.86)); } 58% { transform: scale(.96) translateY(4px) rotate(3deg); filter: drop-shadow(0 0 52px rgba(103,206,158,.76)); } 100% { transform: scale(1) translateY(0) rotate(0); filter: drop-shadow(0 22px 20px rgba(0,0,0,.62)); } }
+         @keyframes dai-surge-bottle { 0% { transform: scale(.92) translateY(10px) rotate(0); } 34% { transform: scale(1.1) translateY(-18px) rotate(-5deg); } 68% { transform: scale(1.03) translateY(0) rotate(3deg); } 100% { transform: scale(1) translateY(0) rotate(0); } }
+         @keyframes edge-flare { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.3); } 28% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); } 100% { opacity: 0; transform: translate(-50%, -68%) scale(1.18); } }
+         @keyframes gold-flare { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.3); } 28% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); } 100% { opacity: 0; transform: translate(-50%, -70%) scale(1.18); } }
+         @keyframes edge-orbit { 0% { transform: scale(.4) rotate(-22deg); opacity: 0; } 35% { opacity: 1; } 100% { transform: scale(1.2) rotate(28deg); opacity: 0; } }
         @keyframes orbit-pulse { 0%, 100% { transform: scale(.96); opacity: .62; } 50% { transform: scale(1.04); opacity: 1; } }
         @keyframes pop-in { from { opacity: 0; transform: translate(-50%, -8px) scale(.85); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
         @media (max-width: 820px) {
@@ -514,7 +555,7 @@ export function DrinkStateLab() {
           .drink-grid { grid-template-columns: 1fr; }
         }
         @media (prefers-reduced-motion: reduce) {
-          .stage-orbit, .bottle-wrap { animation: none; }
+           .stage-orbit, .bottle-wrap, .edge-tap-flare, .daiquiri-surge-flare, .edge-tap-flare::before, .daiquiri-surge-flare::before { animation: none; }
         }
       `}</style>
     </main>

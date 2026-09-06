@@ -173,12 +173,11 @@ function QuickReviveBottle({ size = 54, muted = false }: { size?: number; muted?
 
 function DaiquiriBottle({ size = 54, muted = false }: { size?: number; muted?: boolean }) {
   const prefix = `daiquiri-${size}-${muted ? 'muted' : 'live'}`;
-  const glass = muted ? '#5c6b78' : '#b9eaff';
-  const glassDeep = muted ? '#273b4b' : '#08192f';
-  const yellow = muted ? '#6e6940' : '#f6d64a';
-  const yellowBright = muted ? '#8b7944' : '#ffe979';
-  const blue = muted ? '#304b60' : '#123d69';
-  const cap = muted ? '#273442' : '#061429';
+  const glass = muted ? '#5c6b78' : '#a9d7ed';
+  const glassDeep = muted ? '#273b4b' : '#07192f';
+  const yellow = muted ? '#6e6940' : '#f8d34c';
+  const yellowBright = muted ? '#8b7944' : '#fff3a0';
+  const cap = muted ? '#273442' : '#071b35';
   const daiquiriLabel = require('../assets/daiquiri/dave-ramsey-label.png');
   return (
     <Svg width={size} height={size * 1.96} viewBox="0 0 260 510" accessibilityLabel="Dave Ramsey Daiquiri navy and gold collectible bottle with sparkling yellow liquid">
@@ -196,11 +195,6 @@ function DaiquiriBottle({ size = 54, muted = false }: { size?: number; muted?: b
           <Stop offset="0.72" stopColor="#c58b25" />
           <Stop offset="1" stopColor="#ffe878" />
         </SvgLinearGradient>
-        <SvgLinearGradient id={`${prefix}-label`} x1="0" x2="1">
-          <Stop stopColor="#061a36" />
-          <Stop offset="0.5" stopColor={blue} />
-          <Stop offset="1" stopColor="#06152b" />
-        </SvgLinearGradient>
         <SvgLinearGradient id={`${prefix}-cap`} x1="0" x2="1" y1="0" y2="1">
           <Stop stopColor={muted ? '#4c3714' : '#6f5016'} />
           <Stop offset="0.22" stopColor={muted ? '#9a7832' : '#f9df76'} />
@@ -209,22 +203,22 @@ function DaiquiriBottle({ size = 54, muted = false }: { size?: number; muted?: b
           <Stop offset="1" stopColor={muted ? '#3d2a0d' : '#624411'} />
         </SvgLinearGradient>
         <ClipPath id={`${prefix}-liquid-clip`}>
-          <Path d="M70 202h120v246c0 25-24 42-60 42s-60-17-60-42V202Z" />
+          <Path d="M46 202h168v236c0 34-29 54-84 54s-84-20-84-54V202Z" />
         </ClipPath>
         <ClipPath id={`${prefix}-portrait-clip`}>
           <Circle cx="130" cy="322" r="51" />
         </ClipPath>
       </Defs>
-      <Path d="M83 30h94v43l19 31v320c0 50-28 73-66 73s-66-23-66-73V104l19-31V30Z" fill={`url(#${prefix}-glass)`} stroke={glass} strokeOpacity={muted ? 0.45 : 0.78} strokeWidth="3" />
-      <Path d="M93 35h74v43l17 30v314c0 39-20 58-54 58s-54-19-54-58V108l17-30V35Z" fill="#06182d" fillOpacity={muted ? 0.62 : 0.28} />
-      <Path d="M70 202h120v246c0 25-24 42-60 42s-60-17-60-42V202Z" fill={`url(#${prefix}-liquid)`} opacity={muted ? 0.46 : 0.95} clipPath={`url(#${prefix}-liquid-clip)`} />
+      <Path d="M92 29h76v47c0 20 5 34 14 47l24 34c8 12 12 26 12 42v239c0 34-32 52-88 52s-88-18-88-52V199c0-16 4-30 12-42l24-34c9-13 14-27 14-47V29Z" fill={`url(#${prefix}-glass)`} stroke={glass} strokeOpacity={muted ? 0.45 : 0.78} strokeWidth="3" />
+      <Path d="M99 34h62v43c0 22 5 37 15 51l22 32c6 10 9 22 9 35v239c0 25-25 40-77 40s-77-15-77-40V195c0-13 3-25 9-35l22-32c10-14 15-29 15-51V34Z" fill="#0c2844" fillOpacity={muted ? 0.62 : 0.43} />
+      <Path d="M46 202h168v236c0 34-29 54-84 54s-84-20-84-54V202Z" fill={`url(#${prefix}-liquid)`} fillOpacity={muted ? 0.46 : 0.95} />
       <G clipPath={`url(#${prefix}-liquid-clip)`}>
-        <Path d="M53 238c33-21 75 10 154-17v225H53Z" fill="#ffec7d" fillOpacity={muted ? 0.1 : 0.3} />
+        <Path d="M53 238c33-21 75 10 154-17v225H53Z" fill="#ffec7d" fillOpacity={muted ? 0.1 : 0.35} />
         {[
           [88, 357, 4], [109, 296, 3], [127, 386, 4], [147, 332, 3], [166, 374, 5],
-          [101, 414, 2.5], [151, 421, 3], [119, 249, 2.5], [138, 282, 2], [176, 301, 2.5],
+          [101, 414, 2.5], [151, 421, 3], [119, 249, 2.5], [138, 282, 2.2],
         ].map(([cx, cy, r], index) => (
-          <Circle key={index} cx={cx} cy={cy} r={r} fill="#fff4a1" fillOpacity={muted ? 0.22 : 0.78} />
+          <Circle key={index} cx={cx} cy={cy} r={r} fill="#fff4a1" fillOpacity={muted ? 0.22 : 0.68} />
         ))}
       </G>
       <G opacity={muted ? 0.52 : 1}>
@@ -1095,6 +1089,13 @@ export function BrewTokenBank({
     transform: [
       { translateY: interpolate(smartProProgress.value, [0, 0.72, 1], [12, -34, -46]) },
       { scale: interpolate(smartProProgress.value, [0, 0.62, 1], [0.4, 1.1, 1.8]) },
+    ],
+  }));
+  const smartProEdgeTapStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(smartProProgress.value, [0, 0.18, 0.62, 1], [0, 1, 1, 0]),
+    transform: [
+      { translateY: interpolate(smartProProgress.value, [0, 0.7, 1], [12, -30, -46]) },
+      { scale: interpolate(smartProProgress.value, [0, 0.45, 1], [0.42, 1.05, 1.2]) },
     ],
   }));
 
@@ -2262,6 +2263,18 @@ export function BrewTokenBank({
                         <Text style={[styles.bottleSpec, { color: '#b9ff45', fontFamily: 'Inter_700Bold' }]}>90 SEC · 50% SALE</Text>
                         <Text style={[styles.bottleSpec, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>SHOP EFFECT</Text>
                       </View>
+                       {smartProSaleActive && (
+                         <View style={styles.smartProSalePanel} accessibilityLiveRegion="polite">
+                           <View style={styles.smartProSalePanelHeading}>
+                             <Text style={[styles.smartProSalePanelLabel, { fontFamily: 'Inter_700Bold' }]}>LIVE SHOP</Text>
+                             <Text style={[styles.smartProSalePanelCountdown, { fontFamily: 'Inter_700Bold' }]}>{smartProRemainingLabel}</Text>
+                           </View>
+                           <View style={styles.smartProSaleRow}><Text style={styles.smartProSaleRowLabel}>QUICK REVIVE · BOTTLE</Text><Text style={styles.smartProSaleRowValue}>½ PRICE</Text></View>
+                           <View style={styles.smartProSaleRow}><Text style={styles.smartProSaleRowLabel}>DAIQUIRI · BOTTLE</Text><Text style={styles.smartProSaleRowValue}>½ PRICE</Text></View>
+                           <View style={styles.smartProSaleRow}><Text style={styles.smartProSaleRowLabel}>SMARTPRO · BOTTLE</Text><Text style={styles.smartProSaleRowValueFull}>3 TOKENS</Text></View>
+                           <View style={styles.smartProSaleRow}><Text style={styles.smartProSaleRowLabel}>STAMIN UP · BOTTLE</Text><Text style={styles.smartProSaleRowValue}>½ PRICE</Text></View>
+                         </View>
+                       )}
                     </View>
                     <Pressable
                       onPress={() => setBottlePreview('smartPro')}
@@ -2824,6 +2837,10 @@ export function BrewTokenBank({
                       <Animated.View style={[styles.smartProSpark, smartProSparkStyle]}>
                         <Feather name="zap" size={42} color="#f6ffdf" />
                       </Animated.View>
+                      <Animated.View pointerEvents="none" style={[styles.smartProEdgeTap, smartProEdgeTapStyle]}>
+                        <Text style={styles.smartProEdgeTapLabel}>SMARTPRO</Text>
+                        <Text style={styles.smartProEdgeTapTitle}>EDGE TAP</Text>
+                      </Animated.View>
                       <Animated.View style={[styles.quickReviveBurstBottle, smartProBottleStyle]}>
                         <SmartProBottle size={74} />
                       </Animated.View>
@@ -3053,6 +3070,33 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 8,
   },
+  smartProEdgeTap: {
+    position: 'absolute',
+    zIndex: 7,
+    top: 108,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 180,
+    minHeight: 112,
+    borderWidth: 1,
+    borderColor: 'rgba(185,255,69,0.68)',
+    borderRadius: 90,
+    backgroundColor: 'rgba(7,27,19,0.28)',
+    shadowColor: '#b9ff45',
+    shadowOpacity: 0.85,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+  smartProEdgeTapLabel: { color: '#efffdc', fontSize: 9, letterSpacing: 2.8 },
+  smartProEdgeTapTitle: { color: '#b9ff45', fontSize: 28, fontWeight: '900', letterSpacing: -1.5 },
+  smartProSalePanel: { marginTop: 11, paddingHorizontal: 11, paddingVertical: 8, borderWidth: 1, borderColor: 'rgba(103,206,158,0.34)', borderRadius: 9, backgroundColor: 'rgba(5,19,15,0.46)' },
+  smartProSalePanelHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 },
+  smartProSalePanelLabel: { color: '#67ce9e', fontSize: 8, letterSpacing: 1.3 },
+  smartProSalePanelCountdown: { color: '#efffdc', fontSize: 18, letterSpacing: -0.5 },
+  smartProSaleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingVertical: 5, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)' },
+  smartProSaleRowLabel: { color: '#b7c9bf', fontSize: 7, letterSpacing: 0.5 },
+  smartProSaleRowValue: { color: '#b9ff45', fontSize: 8, fontWeight: '800' },
+  smartProSaleRowValueFull: { color: '#d7e0db', fontSize: 8, fontWeight: '800' },
   slotMachine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, height: SLOT_REEL_HEIGHT, marginBottom: 11 },
   reelWindow: { width: 64, height: SLOT_REEL_HEIGHT, borderWidth: 1, borderRadius: 9, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.22)' },
   reelSymbol: { width: 64, height: SLOT_REEL_HEIGHT, alignItems: 'center', justifyContent: 'center' },
