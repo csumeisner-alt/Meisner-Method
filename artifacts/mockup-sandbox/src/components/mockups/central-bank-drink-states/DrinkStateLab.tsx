@@ -82,6 +82,7 @@ function DaiquiriBottle({ muted = false }: { muted?: boolean }) {
         <clipPath id={`${prefix}-liquid-clip`}>
           <path d="M70 202h120v246c0 25-24 42-60 42s-60-17-60-42V202Z" />
         </clipPath>
+        <clipPath id={`${prefix}-portrait-clip`}><circle cx="130" cy="322" r="51" /></clipPath>
       </defs>
       <path d="M83 30h94v43l19 31v320c0 50-28 73-66 73s-66-23-66-73V104l19-31V30Z" fill={`url(#${prefix}-glass)`} stroke={glass} strokeOpacity={muted ? .45 : .78} strokeWidth="3" />
       <path d="M93 35h74v43l17 30v314c0 39-20 58-54 58s-54-19-54-58V108l17-30V35Z" fill="#06182d" fillOpacity={muted ? .62 : .28} />
@@ -92,9 +93,20 @@ function DaiquiriBottle({ muted = false }: { muted?: boolean }) {
           <circle key={index} cx={cx} cy={cy} r={r} fill="#fff4a1" fillOpacity={muted ? .22 : .78} />
         ))}
       </g>
-      <image href="/__mockup/images/dave-ramsey-neck-label.png" x="91" y="105" width="78" height="40" opacity={muted ? .5 : 1} preserveAspectRatio="xMidYMid slice" />
-      <image href="/__mockup/images/dave-ramsey-label.png" x="51" y="220" width="158" height="205" opacity={muted ? .48 : .98} preserveAspectRatio="xMidYMid slice" />
-      <path d="M51 322c0-57 35-103 79-103s79 46 79 103-35 103-79 103-79-46-79-103Z" fill="none" stroke={yellowBright} strokeOpacity={muted ? .28 : .72} strokeWidth="2" />
+      <g opacity={muted ? .52 : 1}>
+        <path d="M99 106h62v39H99Z" fill="#0c3158" stroke="#9bd6ee" strokeOpacity=".7" strokeWidth="1.5" />
+        <circle cx="130" cy="125.5" r="13" fill="#f0c75e" fillOpacity=".42" stroke="#f6da86" strokeWidth="1.5" />
+        <text x="130" y="132" textAnchor="middle" fill="#09284a" fontSize="18" fontWeight="700">R</text>
+      </g>
+      <g opacity={muted ? .48 : 1}>
+        <circle cx="130" cy="322" r="80" fill={`url(#${prefix}-liquid)`} stroke="#fff0a0" strokeWidth="2" />
+        <circle cx="130" cy="322" r="72" fill="#08264a" stroke="#163f69" strokeWidth="3" />
+        <image href="/__mockup/images/dave-ramsey-portrait.png" x="79" y="271" width="102" height="102" clipPath={`url(#${prefix}-portrait-clip)`} preserveAspectRatio="xMidYMid slice" />
+        <rect x="77" y="251" width="106" height="27" rx="13.5" fill={yellowBright} stroke="#fff0a0" strokeWidth="1" />
+        <text x="130" y="269" textAnchor="middle" fill="#08264a" fontSize="12" fontWeight="700" letterSpacing=".8">DAVE RAMSEY</text>
+        <rect x="73" y="366" width="114" height="31" rx="15.5" fill={yellowBright} stroke="#fff0a0" strokeWidth="1" />
+        <text x="130" y="388" textAnchor="middle" fill="#08264a" fontSize="18" fontWeight="700" fontStyle="italic">Daiquiri</text>
+      </g>
       <path d="M99 46c-12 36-7 80-7 122v221c0 45 11 70 21 78" fill="none" stroke="#dff8ff" strokeOpacity={muted ? .24 : .7} strokeWidth="5" strokeLinecap="round" />
       <path d="M88 27h84v17c0 8-7 13-16 13h-52c-9 0-16-5-16-13V27Z" fill={cap} stroke="#fff0a0" strokeOpacity={muted ? .32 : .9} strokeWidth="2" />
       <circle cx="130" cy="38" r="10" fill={muted ? "#8c6e2d" : "#e4b843"} stroke={muted ? "#25394b" : "#0a2242"} strokeWidth="1.5" />
@@ -140,12 +152,13 @@ function SmartProBottle({ muted = false }: { muted?: boolean }) {
       <path d="M103 70c-8 55-6 104-6 158v183c0 28 8 51 18 67l11-5c-10-22-14-41-14-66V212c0-56-2-101 8-145Z" fill="#f4ffe9" fillOpacity={muted ? .06 : .16} />
       <path d="M98 106h64v39H98Z" fill="#092c3c" stroke={green} strokeOpacity={muted ? .35 : .74} strokeWidth="1.5" />
       <text x="130" y="133" fill={muted ? "#9db2a1" : "#f7fff0"} fontSize="23" fontWeight="900" textAnchor="middle">S</text>
-      <circle cx="130" cy="322" r="80" fill="#e8ffd4" fillOpacity={muted ? .48 : .96} stroke={green} strokeWidth="2" />
-      <circle cx="130" cy="322" r="72" fill="#092c3c" stroke="#dcffc0" strokeOpacity={muted ? .32 : .65} strokeWidth="2.5" />
-      <circle cx="130" cy="322" r="50" fill="none" stroke={green} strokeOpacity={muted ? .3 : .7} strokeWidth="1.5" />
-      <text x="130" y="283" fill={muted ? "#a6b8a8" : "#f7fff0"} fontSize="12" fontWeight="800" textAnchor="middle" letterSpacing="1.4">SMARTPRO</text>
-      <text x="130" y="350" fill={green} fontSize="62" fontWeight="900" textAnchor="middle">S</text>
-      <text x="130" y="375" fill={muted ? "#a6b8a8" : "#f7fff0"} fontSize="11" fontWeight="700" textAnchor="middle" letterSpacing="2.2">SODA</text>
+      <g opacity={muted ? .58 : 1}>
+        <rect x="73" y="264" width="114" height="116" rx="3" fill="#050708" fillOpacity=".97" stroke="#67ce9e" strokeWidth="2.5" />
+        <path d="M83 274h94v96H83Z" fill="none" stroke="#314d42" strokeWidth="1" />
+        <text x="130" y="339" fill="#d7e0db" fontSize="48" fontWeight="900" textAnchor="middle" letterSpacing="-3">SP</text>
+        <path d="M94 351h72" stroke="#67ce9e" strokeWidth="2" strokeLinecap="round" />
+        <text x="130" y="365" fill="#67ce9e" fontSize="7" fontWeight="900" textAnchor="middle" letterSpacing="2.2">SMARTPRO</text>
+      </g>
       <path d="M88 27h84v17c0 8-7 13-16 13h-52c-9 0-16-5-16-13V27Z" fill="#0a0f0d" stroke="#b9e7ff" strokeOpacity={muted ? .28 : .86} strokeWidth="2" />
     </svg>
   );
