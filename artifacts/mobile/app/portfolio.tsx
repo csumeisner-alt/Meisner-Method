@@ -1214,6 +1214,26 @@ interface TickerCheck {
   status: TickerCheckStatus;
 }
 
+function classifyTickerCheckError(error: unknown): TickerCheckStatus {
+  const status = typeof error === 'object' && error !== null && 'status' in error
+    ? (error as { status?: unknown }).status
+    : undefined;
+  const message = error instanceof Error ? error.message : '';
+  return status === 404 || status === 422 ||
+    message.includes('HTTP 404') || message.includes('HTTP 422')
+    ? 'unavailable'
+    : 'error';
+}
+
+async function lookupTicker(symbol: string): Promise<TickerCheckStatus> {
+  try {
+    await fetchQuote(symbol);
+    return 'valid';
+  } catch (error: unknown) {
+    return classifyTickerCheckError(error);
+  }
+}
+
 function TradeModal({
   visible, initial, defaultType, defaultSymbol, allTrades, onSave, onClose, colors,
 }: {
@@ -1223,6 +1243,7 @@ function TradeModal({
   const [form, setForm] = useState<TradeForm>({ symbol: '', type: 'buy', shares: '', price: '' });
   const [errors, setErrors] = useState<Partial<Record<keyof TradeForm, string>>>({});
   const [tickerCheck, setTickerCheck] = useState<TickerCheck>({ symbol: '', status: 'idle' });
+  const submitInFlightRef = useRef(false);
 
   useEffect(() => {
     if (visible) {
@@ -1248,17 +1269,9 @@ function TradeModal({
     setTickerCheck({ symbol, status: 'checking' });
     let cancelled = false;
     const timer = setTimeout(() => {
-      fetchQuote(symbol)
-        .then(() => {
-          if (!cancelled) setTickerCheck({ symbol, status: 'valid' });
-        })
-        .catch((error: unknown) => {
-          if (cancelled) return;
-          const message = error instanceof Error ? error.message : '';
-          setTickerCheck({
-            symbol,
-            status: message.includes('HTTP 422') ? 'unavailable' : 'error',
-          });
+      lookupTicker(symbol)
+        .then((status) => {
+          if (!cancelled) setTickerCheck({ symbol, status });
         });
     }, 500);
 
@@ -1312,30 +1325,49 @@ function TradeModal({
     });
   }
 
-  function submit() {
+  async function submit() {
+    // Prevent a double tap from opening two confirmation dialogs while the
+    // submit-time lookup is still in flight.
+    if (submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
+
     const validationErrors = validate();
-    if (Object.keys(validationErrors).length === 0) {
-      saveForm();
-      return;
-    }
-
     const symbol = form.symbol.trim().toUpperCase();
-    const tickerWasNotFound = form.type !== 'dividend' &&
-      tickerCheck.symbol === symbol &&
-      tickerCheck.status === 'unavailable';
+    const symbolNeedsVerification = form.type !== 'dividend' &&
+      (!initial || symbol !== initial.symbol.toUpperCase());
+    const nonTickerErrors = Object.keys(validationErrors).filter(key => key !== 'symbol');
 
-    // A provider-confirmed missing quote is the one case where the user can
-    // intentionally override the warning. Other validation errors (bad shares,
-    // price, blank symbol, or an unfinished check) remain blocking.
-    if (tickerWasNotFound && Object.keys(validationErrors).length === 1 && validationErrors.symbol) {
-      Alert.alert(
-        `Ticker ${symbol} not found`,
-        `We could not find a live quote for ${symbol}. It may be mistyped, unsupported, or delisted. Add this trade anyway? Current value and P&L may remain unavailable until a quote exists.`,
-        [
-          { text: 'Go Back', style: 'cancel' },
-          { text: 'Add Anyway', style: 'destructive', onPress: saveForm },
-        ],
-      );
+    try {
+      // Required shares/price validation remains blocking. The ticker itself
+      // is handled below so a fast submit can finish its lookup and still
+      // reach the intentional "Add Anyway" confirmation.
+      if (nonTickerErrors.length > 0 || !symbol) return;
+
+      let status = tickerCheck.symbol === symbol ? tickerCheck.status : 'idle';
+      if (symbolNeedsVerification && (status === 'idle' || status === 'checking')) {
+        setTickerCheck({ symbol, status: 'checking' });
+        status = await lookupTicker(symbol);
+        setTickerCheck({ symbol, status });
+      }
+
+      if (symbolNeedsVerification && status === 'unavailable') {
+        setErrors({ symbol: `${symbol} was not found. Check for a mistyped ticker symbol.` });
+        Alert.alert(
+          `Ticker ${symbol} not found`,
+          `We could not find a live quote for ${symbol}. It may be mistyped, unsupported, or delisted. Add this trade anyway? Current value and P&L may remain unavailable until a quote exists.`,
+          [
+            { text: 'Go Back', style: 'cancel' },
+            { text: 'Add Anyway', style: 'destructive', onPress: saveForm },
+          ],
+        );
+        return;
+      }
+
+      // A temporary lookup failure is allowed for offline entry.
+      setErrors({});
+      saveForm();
+    } finally {
+      submitInFlightRef.current = false;
     }
   }
 
