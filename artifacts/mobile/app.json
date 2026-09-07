@@ -20,7 +20,7 @@
     },
     "android": {
       "package": "com.meisnermethod.app",
-      "versionCode": 14,
+      "versionCode": 15,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon-foreground.png",
