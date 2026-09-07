@@ -1055,6 +1055,7 @@ const guideStyles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.68)',
   },
   sheet: {
+    height: '86%',
     maxHeight: '86%',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
@@ -1074,7 +1075,7 @@ const guideStyles = StyleSheet.create({
   sheetTitleCopy: { flex: 1, gap: 2 },
   sheetEyebrow: { fontSize: 10, letterSpacing: 1.2 },
   sheetTitle: { fontSize: 20 },
-  guideScroll: { flexGrow: 0 },
+  guideScroll: { flex: 1, minHeight: 0 },
   guideContent: { paddingBottom: 18 },
   intro: { fontSize: 14, lineHeight: 21, marginBottom: 8 },
   guideItem: { borderTopWidth: 1, paddingVertical: 12 },
