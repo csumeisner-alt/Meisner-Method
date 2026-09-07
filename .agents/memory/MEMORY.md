@@ -6,7 +6,7 @@
 - [Python JSON for Node](python-json-for-node.md) — Python `NaN`/`Infinity` breaks Node `JSON.parse`; sanitize + `json.dumps(allow_nan=False)`.
 - [RN-web TextInput in Playwright](rn-web-playwright-textinput.md) — `fill()` skips `onChangeText`; tester must type char-by-char or validation false-fails.
 - [Stable apiFetch vs Clerk getToken](useapi-stable-fetch.md) — Clerk `getToken` isn't stable; memoizing apiFetch on it → infinite fetch loop + Clerk rate-limit blank screen. Use a ref.
-- [EAS build Clerk + domain config](eas-build-clerk-config.md) — eas.json must set EXPO_PUBLIC_DOMAIN, EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY, and EXPO_PUBLIC_CLERK_PROXY_URL; build.js is not used for EAS.
+- [EAS build environment](eas-build-clerk-config.md) — current account-free mobile builds need the deployment domain; the old Clerk requirement is no longer active.
 - [EAS Android mergeReleaseJavaResource failure](eas-android-packaging-conflict.md) — duplicate META-INF from transitive jars (okhttp/jspecify) fails the Gradle merge; fix with expo-build-properties packagingOptions.pickFirst.
 - [TS project references use dist .d.ts](ts-project-reference-stale-dist.md) — "no exported member" for a symbol src exports = stale lib dist; rebuild with `tsc -b --force`, don't rewrite the consumer.
 - [Replit mobile artifact deploy = QR/OTA landing page](replit-mobile-artifact-deploy.md) — the published .replit.app of an Expo mobile app is a QR launcher, not a browser app; real access is the APK or Expo Go.
