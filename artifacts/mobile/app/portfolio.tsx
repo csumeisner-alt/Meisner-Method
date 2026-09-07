@@ -1271,7 +1271,7 @@ function TradeModal({
   const available = form.type === 'sell' && form.symbol
     ? availableToSell(form.symbol.trim().toUpperCase(), allTrades, initial?.id) : null;
 
-  function validate() {
+  function getValidationErrors(): Partial<Record<keyof TradeForm, string>> {
     const e: Partial<Record<keyof TradeForm, string>> = {};
     const symbol = form.symbol.trim().toUpperCase();
     const symbolNeedsVerification = form.type !== 'dividend' &&
@@ -1294,13 +1294,49 @@ function TradeModal({
     }
     const p = parseFloat(form.price);
     if (!form.price || isNaN(p) || p <= 0) e.price = 'Enter valid price';
+    return e;
+  }
+
+  function validate() {
+    const e = getValidationErrors();
     setErrors(e);
-    return Object.keys(e).length === 0;
+    return e;
+  }
+
+  function saveForm() {
+    onSave({
+      symbol: form.symbol.trim().toUpperCase(),
+      type: form.type,
+      shares: parseFloat(form.shares),
+      pricePerShare: parseFloat(form.price),
+    });
   }
 
   function submit() {
-    if (!validate()) return;
-    onSave({ symbol: form.symbol.trim().toUpperCase(), type: form.type, shares: parseFloat(form.shares), pricePerShare: parseFloat(form.price) });
+    const validationErrors = validate();
+    if (Object.keys(validationErrors).length === 0) {
+      saveForm();
+      return;
+    }
+
+    const symbol = form.symbol.trim().toUpperCase();
+    const tickerWasNotFound = form.type !== 'dividend' &&
+      tickerCheck.symbol === symbol &&
+      tickerCheck.status === 'unavailable';
+
+    // A provider-confirmed missing quote is the one case where the user can
+    // intentionally override the warning. Other validation errors (bad shares,
+    // price, blank symbol, or an unfinished check) remain blocking.
+    if (tickerWasNotFound && Object.keys(validationErrors).length === 1 && validationErrors.symbol) {
+      Alert.alert(
+        `Ticker ${symbol} not found`,
+        `We could not find a live quote for ${symbol}. It may be mistyped, unsupported, or delisted. Add this trade anyway? Current value and P&L may remain unavailable until a quote exists.`,
+        [
+          { text: 'Go Back', style: 'cancel' },
+          { text: 'Add Anyway', style: 'destructive', onPress: saveForm },
+        ],
+      );
+    }
   }
 
   return (
