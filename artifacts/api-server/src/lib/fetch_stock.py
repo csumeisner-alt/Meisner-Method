@@ -110,6 +110,7 @@ def main():
             "earningsGrowth": float(full_info["earningsGrowth"]) if full_info.get("earningsGrowth") is not None else None,
             "debtEquity": float(full_info["debtToEquity"]) if full_info.get("debtToEquity") is not None else None,
             "dividendYield": float(full_info["dividendYield"]) if full_info.get("dividendYield") is not None else None,
+            "dividendRate": float(full_info["dividendRate"]) if full_info.get("dividendRate") is not None else None,
             "expenseRatio": expense_ratio(full_info),
             "profitMargin": float(full_info["profitMargins"]) if full_info.get("profitMargins") is not None else None,
             "returnOnEquity": float(full_info["returnOnEquity"]) if full_info.get("returnOnEquity") is not None else None,

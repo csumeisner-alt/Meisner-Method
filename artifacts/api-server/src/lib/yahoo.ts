@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { join, dirname } from "node:path";
 import { logger } from "./logger.js";
+import { normalizeDividendYield } from "./dividendYield.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -195,7 +196,11 @@ export async function fetchStockData(symbol: string): Promise<YahooStockData> {
     revenueGrowth: raw["revenueGrowth"] ?? null,
     earningsGrowth: raw["earningsGrowth"] ?? null,
     debtEquity: raw["debtEquity"] ?? null,
-    dividendYield: raw["dividendYield"] ?? null,
+    dividendYield: normalizeDividendYield(
+      raw["dividendYield"],
+      raw["dividendRate"],
+      raw["currentPrice"] ?? closes.at(-1),
+    ) || null,
     profitMargin: raw["profitMargin"] ?? null,
     returnOnEquity: raw["returnOnEquity"] ?? null,
     analystRating: raw["analystRating"] ?? "Neutral",

@@ -10,6 +10,7 @@ import {
   computeFundamentalScore,
   computeBehavioralScore,
 } from "../lib/yahoo.js";
+import { normalizeDividendYield } from "../lib/dividendYield.js";
 import { buildStockRecommendation } from "../lib/stockRecommendation.js";
 
 const execFileAsync = promisify(execFile);
@@ -143,7 +144,10 @@ router.get("/stocks/info/:symbol", async (req, res) => {
       res.status(422).json({ error: "INFO_FAILED", message: raw["error"] });
       return;
     }
-    res.json(raw);
+    res.json({
+      ...raw,
+      dividendYield: normalizeDividendYield(raw["dividendYield"], raw["dividendRate"], raw["currentPrice"]) || null,
+    });
   } catch (err: any) {
     res.status(422).json({ error: "INFO_FAILED", message: err.message });
   }

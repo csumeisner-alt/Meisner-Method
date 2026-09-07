@@ -42,6 +42,7 @@ import {
   computeSellResult,
   computeSellWinRate,
   fundFee,
+  normalizeDividendYield,
   type LiveQuote,
   type PaperAccount,
   type PaperLot,
@@ -112,16 +113,6 @@ let paperCacheWriteQueue: Promise<void> = Promise.resolve();
 
 // ── Dividend helpers ────────────────────────────────────────────────────────
 /**
- * Normalise dividendYield to a true decimal fraction (0–1).
- * yfinance occasionally returns the value in percent-like form (e.g. 0.99
- * meaning 0.99%) rather than as a decimal (0.0099). No real stock sustains a
- * yield above 50 %, so any value > 0.5 is divided by 100.
- */
-function normYield(y: number): number {
-  return y > 0.5 ? y / 100 : y;
-}
-
-/**
  * Estimate annual dividend income in dollars for a single position.
  * Prefers the declared dividendRate ($/share/yr) when available; falls back
  * to price × normalised yield for positions loaded from older DB records.
@@ -132,7 +123,7 @@ function annualDivIncome(pos: { shares: number; dividendRate?: number; dividendY
 }
 
 function _annualDivIncomeFallback(pos: { shares: number; dividendRate?: number; dividendYield: number }, price: number): number {
-  return pos.shares * price * normYield(pos.dividendYield);
+  return pos.shares * price * normalizeDividendYield(pos.dividendYield, pos.dividendRate, price);
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -1125,7 +1116,7 @@ export default function PaperScreen() {
                 <View key={p.id} style={styles.divDetailRow}>
                   <View style={[styles.allocDot, { backgroundColor: POSITION_COLORS[i % POSITION_COLORS.length] }]} />
                   <Text style={styles.divSym}>{p.symbol}</Text>
-                  <Text style={styles.divYield}>{(normYield(p.dividendYield) * 100).toFixed(2)}% yield</Text>
+                  <Text style={styles.divYield}>{(normalizeDividendYield(p.dividendYield, p.dividendRate, price) * 100).toFixed(2)}% yield</Text>
                   <View style={{ flex: 1 }} />
                   <Text style={[styles.divAnnual, { color: BUY_COLOR }]}>{$fmt(annual)}/yr</Text>
                 </View>
@@ -1539,7 +1530,7 @@ export default function PaperScreen() {
                     <Text style={styles.stockInfoPrice}>${stockInfo.currentPrice.toFixed(2)}</Text>
                     {stockInfo.dividendYield > 0 && (
                       <Text style={styles.stockInfoDiv}>
-                        Dividend yield: {(normYield(stockInfo.dividendYield) * 100).toFixed(2)}%
+                         Dividend yield: {(normalizeDividendYield(stockInfo.dividendYield, stockInfo.dividendRate, stockInfo.currentPrice) * 100).toFixed(2)}%
                       </Text>
                     )}
                   </View>

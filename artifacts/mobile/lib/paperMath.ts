@@ -62,6 +62,38 @@ export type PaperTransaction = {
 
 export type LiveQuote = { price: number; change: number; pct: number };
 
+/**
+ * Return dividend yield as a decimal fraction (0.0043 = 0.43%).
+ *
+ * The market-data provider has returned this field both as a decimal fraction
+ * and as a percent-like number. A declared annual dividend plus the current
+ * price disambiguates the two formats for saved positions and live lookups.
+ */
+export function normalizeDividendYield(
+  raw: number | null | undefined,
+  dividendRate?: number | null,
+  price?: number | null,
+): number {
+  const value = Number(raw);
+  const rate = Number(dividendRate);
+  const currentPrice = Number(price);
+  const expected = Number.isFinite(rate) && rate > 0 && Number.isFinite(currentPrice) && currentPrice > 0
+    ? rate / currentPrice
+    : null;
+
+  if (!Number.isFinite(value) || value <= 0) return expected ?? 0;
+
+  if (expected != null) {
+    const decimalCandidate = value;
+    const percentCandidate = value / 100;
+    return Math.abs(percentCandidate - expected) < Math.abs(decimalCandidate - expected)
+      ? percentCandidate
+      : decimalCandidate;
+  }
+
+  return value > 0.2 ? value / 100 : value;
+}
+
 // ── Order types ────────────────────────────────────────────────────────────
 
 export type OrderType = 'market' | 'limit' | 'stop' | 'stop_limit' | 'trailing_stop';
