@@ -1208,6 +1208,11 @@ const tcStyles = StyleSheet.create({
 // ─── Add/Edit Trade Modal ─────────────────────────────────────────────────────
 
 interface TradeForm { symbol: string; type: 'buy' | 'sell' | 'dividend'; shares: string; price: string; }
+type TickerCheckStatus = 'idle' | 'checking' | 'valid' | 'unavailable' | 'error';
+interface TickerCheck {
+  symbol: string;
+  status: TickerCheckStatus;
+}
 
 function TradeModal({
   visible, initial, defaultType, defaultSymbol, allTrades, onSave, onClose, colors,
@@ -1217,6 +1222,7 @@ function TradeModal({
 }) {
   const [form, setForm] = useState<TradeForm>({ symbol: '', type: 'buy', shares: '', price: '' });
   const [errors, setErrors] = useState<Partial<Record<keyof TradeForm, string>>>({});
+  const [tickerCheck, setTickerCheck] = useState<TickerCheck>({ symbol: '', status: 'idle' });
 
   useEffect(() => {
     if (visible) {
@@ -1229,12 +1235,56 @@ function TradeModal({
     }
   }, [visible, initial, defaultType, defaultSymbol]);
 
+  // Check the symbol after the user pauses typing. A failed quote with HTTP 422
+  // means the provider definitively does not know the ticker; other failures
+  // are treated as temporary so offline trade entry remains possible.
+  useEffect(() => {
+    const symbol = form.symbol.trim().toUpperCase();
+    if (!visible || form.type === 'dividend' || !symbol) {
+      setTickerCheck({ symbol, status: 'idle' });
+      return;
+    }
+
+    setTickerCheck({ symbol, status: 'checking' });
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      fetchQuote(symbol)
+        .then(() => {
+          if (!cancelled) setTickerCheck({ symbol, status: 'valid' });
+        })
+        .catch((error: unknown) => {
+          if (cancelled) return;
+          const message = error instanceof Error ? error.message : '';
+          setTickerCheck({
+            symbol,
+            status: message.includes('HTTP 422') ? 'unavailable' : 'error',
+          });
+        });
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [visible, form.symbol, form.type]);
+
   const available = form.type === 'sell' && form.symbol
     ? availableToSell(form.symbol.trim().toUpperCase(), allTrades, initial?.id) : null;
 
   function validate() {
     const e: Partial<Record<keyof TradeForm, string>> = {};
-    if (!form.symbol.trim()) e.symbol = 'Required';
+    const symbol = form.symbol.trim().toUpperCase();
+    const symbolNeedsVerification = form.type !== 'dividend' &&
+      (!initial || symbol !== initial.symbol.toUpperCase());
+    if (!symbol) {
+      e.symbol = 'Required';
+    } else if (symbolNeedsVerification && tickerCheck.symbol !== symbol) {
+      e.symbol = 'Checking ticker…';
+    } else if (symbolNeedsVerification && tickerCheck.status === 'checking') {
+      e.symbol = 'Wait for the ticker check to finish';
+    } else if (symbolNeedsVerification && tickerCheck.status === 'unavailable') {
+      e.symbol = `${symbol} was not found. Check for a mistyped ticker symbol.`;
+    }
     const s = parseFloat(form.shares);
     if (!form.shares || isNaN(s) || s <= 0) { e.shares = 'Enter valid shares'; }
     else if (form.type === 'sell' && available != null && s > available) {
@@ -1274,11 +1324,31 @@ function TradeModal({
             <Text style={[mStyles.label, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>TICKER SYMBOL</Text>
             <TextInput
               style={[mStyles.input, { color: colors.foreground, backgroundColor: colors.background, borderColor: errors.symbol ? colors.sellColor : colors.border, fontFamily: 'Inter_600SemiBold' }]}
-              value={form.symbol} onChangeText={v => setForm({ ...form, symbol: v.toUpperCase() })}
+              value={form.symbol}
+              onChangeText={v => {
+                setForm({ ...form, symbol: v.toUpperCase() });
+                if (errors.symbol) setErrors(prev => ({ ...prev, symbol: undefined }));
+              }}
               placeholder="AAPL" placeholderTextColor={colors.mutedForeground}
               autoCapitalize="characters" autoCorrect={false}
             />
             {errors.symbol && <Text style={[mStyles.error, { color: colors.sellColor }]}>{errors.symbol}</Text>}
+            {tickerCheck.status === 'checking' && (
+              <Text style={[mStyles.verification, { color: colors.mutedForeground }]}>Checking ticker and live quote…</Text>
+            )}
+            {tickerCheck.status === 'valid' && (
+              <Text style={[mStyles.verification, { color: colors.buyColor }]}>Ticker verified · live quote available</Text>
+            )}
+            {tickerCheck.status === 'unavailable' && (
+              <Text style={[mStyles.verification, { color: colors.sellColor }]}>
+                No quote found for {tickerCheck.symbol}. The ticker may be mistyped or unsupported.
+              </Text>
+            )}
+            {tickerCheck.status === 'error' && (
+              <Text style={[mStyles.verification, { color: colors.gradeWarning }]}>
+                Could not verify this ticker right now. Check the spelling; you can still save while offline.
+              </Text>
+            )}
 
             <Text style={[mStyles.label, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>TYPE</Text>
             <View style={mStyles.toggle}>
@@ -1343,6 +1413,7 @@ const mStyles = StyleSheet.create({
   title: { fontSize: 18, marginBottom: 8 },
   label: { fontSize: 10, letterSpacing: 0.8, marginBottom: 5, marginTop: 10 },
   hint: { fontSize: 11, marginTop: -2, marginBottom: 4, fontFamily: 'Inter_500Medium' },
+  verification: { fontSize: 11, marginTop: -2, lineHeight: 15, fontFamily: 'Inter_400Regular' },
   input: { height: 46, borderRadius: 8, borderWidth: 1, paddingHorizontal: 12, fontSize: 15 },
   error: { fontSize: 11, marginTop: 3, fontFamily: 'Inter_400Regular' },
   row: { flexDirection: 'row', gap: 12 },
