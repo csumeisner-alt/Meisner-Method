@@ -188,6 +188,13 @@ router.post("/stocks/analyze", async (req, res) => {
     req.log.info({ symbol }, "Analyzing stock");
 
     const data = await fetchStockData(symbol);
+    // Keep the public analysis contract in decimal-fraction form even if a
+    // provider or a future fetcher returns a percent-like value such as 0.43.
+    const normalizedDividendYield = normalizeDividendYield(
+      data.dividendYield,
+      undefined,
+      data.currentPrice,
+    );
 
     const technicalScore = computeTechnicalScore(data);
     const fundamentalScore = computeFundamentalScore(data);
@@ -245,7 +252,7 @@ FUNDAMENTAL (Score ${fundamentalScore}/100):
 P/E: ${fmt(data.pe)}, P/B: ${fmt(data.pb)}, EPS: $${fmt(data.eps)}
 Revenue Growth: ${pct(data.revenueGrowth)}, Earnings Growth: ${pct(data.earningsGrowth)}
 Profit Margin: ${pct(data.profitMargin)}, ROE: ${pct(data.returnOnEquity)}
-Debt/Equity: ${fmt(data.debtEquity)}, Dividend Yield: ${pct(data.dividendYield)}
+Debt/Equity: ${fmt(data.debtEquity)}, Dividend Yield: ${pct(normalizedDividendYield)}
 
 BEHAVIORAL (Score ${behavioralScore}/100):
 Analysts: ${data.analystRating} (${data.buyCount} Buy, ${data.holdCount} Hold, ${data.sellCount} Sell, ${data.analystCount} total)
@@ -317,7 +324,7 @@ Respond ONLY with valid JSON (no markdown):
         revenueGrowth: data.revenueGrowth,
         earningsGrowth: data.earningsGrowth,
         debtEquity: data.debtEquity,
-        dividendYield: data.dividendYield,
+        dividendYield: normalizedDividendYield || null,
         profitMargin: data.profitMargin,
         returnOnEquity: data.returnOnEquity,
         score: fundamentalScore,
