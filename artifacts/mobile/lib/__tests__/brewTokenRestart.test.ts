@@ -15,6 +15,10 @@ import {
 } from '../brewTokenPersistence.ts';
 import {
   ANALYSIS_LOADING_STAGES,
+  ANALYSIS_LOADING_STAGE_INTERVAL_MS,
+  NEON_GUCCI_LOADING_STAGE_INTERVAL_MS,
+  formatAnalysisLoadingStage,
+  getAnalysisLoadingStageInterval,
   getAnalysisLoadingStages,
 } from '../analysisLoadingStages.ts';
 
@@ -139,4 +143,18 @@ test('phrase-pack settings survive Central Bank restart flow without changing th
   assert.equal(finalRestart.neonGucciActive, true);
   assert.deepEqual(getAnalysisLoadingStages(finalRestart.neonGucciPhrasesActive), ANALYSIS_LOADING_STAGES);
   assert.equal(serializeBrewEconomySnapshot(finalRestart), serializeBrewEconomySnapshot(afterToggleOff));
+});
+
+test('Neon Gucci loading phrases stay readable and omit the ticker suffix', () => {
+  assert.equal(
+    getAnalysisLoadingStageInterval(true),
+    NEON_GUCCI_LOADING_STAGE_INTERVAL_MS,
+  );
+  assert.equal(NEON_GUCCI_LOADING_STAGE_INTERVAL_MS, 5_000);
+  assert.equal(
+    getAnalysisLoadingStageInterval(false),
+    ANALYSIS_LOADING_STAGE_INTERVAL_MS,
+  );
+  assert.equal(formatAnalysisLoadingStage('Chaotic loading line', 'AAPL', true), 'Chaotic loading line');
+  assert.equal(formatAnalysisLoadingStage('Reading the tape', 'AAPL', false), 'Reading the tape · AAPL');
 });

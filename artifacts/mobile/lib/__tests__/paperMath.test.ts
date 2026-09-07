@@ -12,6 +12,7 @@ import {
   computeSellWinRate,
   fundFee,
   isWinningSell,
+  normalizeDividendYield,
   sellNetPnL,
   type PaperAccount,
   type PaperPosition,
@@ -24,6 +25,16 @@ const approx = (a: number, b: number, msg?: string) =>
 
 const DAY0 = '2025-01-01T00:00:00.000Z';
 const DAY365 = '2026-01-01T00:00:00.000Z'; // exactly 365 days after DAY0 (2025 is not a leap year)
+
+test('normalizeDividendYield: provider percent-like values become decimal fractions', () => {
+  approx(normalizeDividendYield(0.43, 1, 230.36), 0.0043);
+  approx(normalizeDividendYield(0.34, 1.08, 319.97), 0.0034);
+});
+
+test('normalizeDividendYield: provider decimal values remain decimal fractions', () => {
+  approx(normalizeDividendYield(0.0073, 3.64, 499.7), 0.0073);
+  approx(normalizeDividendYield(0.43), 0.0043);
+});
 
 function pos(overrides: Partial<PaperPosition> = {}): PaperPosition {
   return {

@@ -20,6 +20,7 @@ import {
   type UnsettledItem,
   type LiveQuote,
   fundFee,
+  normalizeDividendYield,
 } from './paperMath.ts';
 
 // ── Constants ─────────────────────────────────────────────────────────────
@@ -278,7 +279,7 @@ export function creditDividends(
     if ((pos.dividendRate ?? 0) > 0) {
       annual = pos.shares * pos.dividendRate!;
     } else if (pos.dividendYield > 0) {
-      const y = pos.dividendYield > 0.5 ? pos.dividendYield / 100 : pos.dividendYield;
+      const y = normalizeDividendYield(pos.dividendYield, pos.dividendRate, price);
       annual = pos.shares * price * y;
     }
     if (annual <= 0) continue;

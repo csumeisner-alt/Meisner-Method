@@ -31,7 +31,11 @@ import { NeonAnalysisLoader } from '@/components/NeonAnalysisLoader';
 import { PriceAlertModal } from '@/components/PriceAlertModal';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
-import { getAnalysisLoadingStages } from '@/lib/analysisLoadingStages';
+import {
+  formatAnalysisLoadingStage,
+  getAnalysisLoadingStageInterval,
+  getAnalysisLoadingStages,
+} from '@/lib/analysisLoadingStages';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -300,9 +304,9 @@ export default function AnalysisScreen() {
     }
     const timer = setInterval(() => {
       setLoadingStageIndex((current) => (current + 1) % loadingStages.length);
-    }, 2_200);
+    }, getAnalysisLoadingStageInterval(brew.neonGucciPhrasesActive));
     return () => clearInterval(timer);
-  }, [isPending, loadingStages.length]);
+  }, [brew.neonGucciPhrasesActive, isPending, loadingStages.length]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -477,7 +481,7 @@ export default function AnalysisScreen() {
             ? <NeonAnalysisLoader symbol={symbol ?? ''} stage={loadingStage} />
             : <ActivityIndicator size="large" color={colors.primary} />}
           <Text style={[styles.loadingTitle, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
-            {loadingStage} · {symbol}
+            {formatAnalysisLoadingStage(loadingStage, symbol, brew.neonGucciPhrasesActive)}
           </Text>
           <Text style={[styles.loadingSubtitle, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
             Fetching market data, validating the quote, and shaping a focused lesson
@@ -619,7 +623,7 @@ export default function AnalysisScreen() {
           <View style={recStyles.topRow}>
             <View>
               <Text style={[recStyles.actionLabel, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
-                AI RECOMMENDATION
+                ANALYSIS RECOMMENDATION
               </Text>
               <Text style={[recStyles.action, { color: actionColor(action), fontFamily: 'Inter_700Bold' }]}>
                 {action.toUpperCase()}
@@ -1051,6 +1055,7 @@ const guideStyles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.68)',
   },
   sheet: {
+    height: '86%',
     maxHeight: '86%',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
@@ -1070,7 +1075,7 @@ const guideStyles = StyleSheet.create({
   sheetTitleCopy: { flex: 1, gap: 2 },
   sheetEyebrow: { fontSize: 10, letterSpacing: 1.2 },
   sheetTitle: { fontSize: 20 },
-  guideScroll: { flexGrow: 0 },
+  guideScroll: { flex: 1, minHeight: 0 },
   guideContent: { paddingBottom: 18 },
   intro: { fontSize: 14, lineHeight: 21, marginBottom: 8 },
   guideItem: { borderTopWidth: 1, paddingVertical: 12 },

@@ -267,6 +267,12 @@ export function isWeekday(day: number): boolean {
   return day >= 1 && day <= 5;
 }
 
+export function shouldAwardBrewTokenForQuote(isUnlocked: boolean, _day: number): boolean {
+  // Training Tape quotes can be viewed on weekends, so an unlocked bank must
+  // reward them on weekends as well as weekdays.
+  return isUnlocked;
+}
+
 export function hasBrewBankAccess(expiresAt: number | null | undefined, now: number): boolean {
   return typeof expiresAt === 'number' && Number.isFinite(expiresAt) && expiresAt > now;
 }

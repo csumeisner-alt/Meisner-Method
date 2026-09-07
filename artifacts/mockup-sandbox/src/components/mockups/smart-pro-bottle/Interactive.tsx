@@ -292,8 +292,8 @@ export function Interactive() {
         .smart-pro-state-active { border-color: rgba(103,206,158,.78); background: linear-gradient(120deg, rgba(47,54,53,.96), rgba(10,58,40,.94)); }
         .smart-pro-interactive-copy { padding: 62px 30px 42px 56px; display: flex; flex-direction: column; justify-content: center; position: relative; z-index: 4; }
         .smart-pro-interactive-eyebrow { margin: 0 0 14px; color: #67ce9e; font-size: 11px; font-weight: 900; letter-spacing: .24em; }
-        h1 { margin: 0; font-size: clamp(42px, 5.7vw, 74px); line-height: .92; letter-spacing: -.065em; font-weight: 850; }
-        h1 em { color: #67ce9e; font-style: normal; }
+        .smart-pro-interactive-frame h1 { margin: 0; font-size: clamp(42px, 5.7vw, 74px); line-height: .92; letter-spacing: -.065em; font-weight: 850; }
+        .smart-pro-interactive-frame h1 em { color: #67ce9e; font-style: normal; }
         .smart-pro-interactive-description { max-width: 330px; color: #bac9c1; font-size: 15px; line-height: 1.55; margin: 22px 0 28px; }
         .smart-pro-step-list { display: flex; flex-direction: column; gap: 10px; }
         .smart-pro-step { display: flex; gap: 12px; align-items: center; color: #71817a; font-size: 10px; font-weight: 800; letter-spacing: .1em; transition: color .2s; }

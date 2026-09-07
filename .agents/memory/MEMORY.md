@@ -26,7 +26,9 @@
 - [Dark Brew Token economy](dark-brew-token-economy.md) — Stamin Up converts one winning award only; Dark Brew stays isolated from regular wagering and portfolio value.
 - [Quick Revive visual direction](quick-revive-visual-direction.md) — use a luminous cyan soda bottle with fizz and a round Revive label, not a generic lightning potion.
 - [Daiquiri visual direction](daiquiri-visual-direction.md) — use a cinematic navy-and-gold collectible bottle with carbonation, label flare, liquid surge, and controlled splash.
+- [SmartPro bottle direction](smartpro-bottle-direction.md) — use vivid lime liquid, dark green glass, and the approved rectangular black SP/SMARTPRO label; never revert to the circular S badge.
 - [Mockup sandbox React types](mockup-sandbox-react-types.md) — keep sandbox React type packages aligned with runtime React 19.1 to avoid nominal ref incompatibilities.
 - [Brew token snapshot persistence](brew-token-snapshot-persistence.md) — persist the complete economy and quote claims together; verify uncertain writes by reading back the snapshot.
 - [Third-theme unlock](third-theme-unlock.md) — reveal Hybrid Neon Gucci after first Dark Brew Token; unlock at 10,000; persist it with the economy and keep themes exclusive.
 - [Brew activity history](brew-activity-history.md) — token, bottle, bank, toss, and theme events travel with the economy snapshot; older snapshots read as an empty history.
+- [Stock recommendation stability](stock-recommendation-stability.md) — action and price levels are deterministic; AI explains them but cannot override or invert them.

@@ -173,14 +173,12 @@ function QuickReviveBottle({ size = 54, muted = false }: { size?: number; muted?
 
 function DaiquiriBottle({ size = 54, muted = false }: { size?: number; muted?: boolean }) {
   const prefix = `daiquiri-${size}-${muted ? 'muted' : 'live'}`;
-  const glass = muted ? '#5c6b78' : '#b9eaff';
-  const glassDeep = muted ? '#273b4b' : '#08192f';
-  const yellow = muted ? '#6e6940' : '#f6d64a';
-  const yellowBright = muted ? '#8b7944' : '#ffe979';
-  const blue = muted ? '#304b60' : '#123d69';
-  const cap = muted ? '#273442' : '#061429';
+  const glass = muted ? '#5c6b78' : '#a9d7ed';
+  const glassDeep = muted ? '#273b4b' : '#07192f';
+  const yellow = muted ? '#6e6940' : '#f8d34c';
+  const yellowBright = muted ? '#8b7944' : '#fff3a0';
+  const cap = muted ? '#273442' : '#071b35';
   const daiquiriLabel = require('../assets/daiquiri/dave-ramsey-label.png');
-  const daiquiriNeckLabel = require('../assets/daiquiri/dave-ramsey-neck-label.png');
   return (
     <Svg width={size} height={size * 1.96} viewBox="0 0 260 510" accessibilityLabel="Dave Ramsey Daiquiri navy and gold collectible bottle with sparkling yellow liquid">
       <Defs>
@@ -197,11 +195,6 @@ function DaiquiriBottle({ size = 54, muted = false }: { size?: number; muted?: b
           <Stop offset="0.72" stopColor="#c58b25" />
           <Stop offset="1" stopColor="#ffe878" />
         </SvgLinearGradient>
-        <SvgLinearGradient id={`${prefix}-label`} x1="0" x2="1">
-          <Stop stopColor="#061a36" />
-          <Stop offset="0.5" stopColor={blue} />
-          <Stop offset="1" stopColor="#06152b" />
-        </SvgLinearGradient>
         <SvgLinearGradient id={`${prefix}-cap`} x1="0" x2="1" y1="0" y2="1">
           <Stop stopColor={muted ? '#4c3714' : '#6f5016'} />
           <Stop offset="0.22" stopColor={muted ? '#9a7832' : '#f9df76'} />
@@ -210,40 +203,46 @@ function DaiquiriBottle({ size = 54, muted = false }: { size?: number; muted?: b
           <Stop offset="1" stopColor={muted ? '#3d2a0d' : '#624411'} />
         </SvgLinearGradient>
         <ClipPath id={`${prefix}-liquid-clip`}>
-          <Path d="M70 202h120v246c0 25-24 42-60 42s-60-17-60-42V202Z" />
+          <Path d="M46 202h168v236c0 34-29 54-84 54s-84-20-84-54V202Z" />
+        </ClipPath>
+        <ClipPath id={`${prefix}-portrait-clip`}>
+          <Circle cx="130" cy="322" r="51" />
         </ClipPath>
       </Defs>
-      <Path d="M83 30h94v43l19 31v320c0 50-28 73-66 73s-66-23-66-73V104l19-31V30Z" fill={`url(#${prefix}-glass)`} stroke={glass} strokeOpacity={muted ? 0.45 : 0.78} strokeWidth="3" />
-      <Path d="M93 35h74v43l17 30v314c0 39-20 58-54 58s-54-19-54-58V108l17-30V35Z" fill="#06182d" fillOpacity={muted ? 0.62 : 0.28} />
-      <Path d="M70 202h120v246c0 25-24 42-60 42s-60-17-60-42V202Z" fill={`url(#${prefix}-liquid)`} opacity={muted ? 0.46 : 0.95} clipPath={`url(#${prefix}-liquid-clip)`} />
+      <Path d="M92 29h76v47c0 20 5 34 14 47l24 34c8 12 12 26 12 42v239c0 34-32 52-88 52s-88-18-88-52V199c0-16 4-30 12-42l24-34c9-13 14-27 14-47V29Z" fill={`url(#${prefix}-glass)`} stroke={glass} strokeOpacity={muted ? 0.45 : 0.78} strokeWidth="3" />
+      <Path d="M99 34h62v43c0 22 5 37 15 51l22 32c6 10 9 22 9 35v239c0 25-25 40-77 40s-77-15-77-40V195c0-13 3-25 9-35l22-32c10-14 15-29 15-51V34Z" fill="#0c2844" fillOpacity={muted ? 0.62 : 0.43} />
+      <Path d="M46 202h168v236c0 34-29 54-84 54s-84-20-84-54V202Z" fill={`url(#${prefix}-liquid)`} fillOpacity={muted ? 0.46 : 0.95} />
       <G clipPath={`url(#${prefix}-liquid-clip)`}>
-        <Path d="M53 238c33-21 75 10 154-17v225H53Z" fill="#ffec7d" fillOpacity={muted ? 0.1 : 0.3} />
+        <Path d="M53 238c33-21 75 10 154-17v225H53Z" fill="#ffec7d" fillOpacity={muted ? 0.1 : 0.35} />
         {[
           [88, 357, 4], [109, 296, 3], [127, 386, 4], [147, 332, 3], [166, 374, 5],
-          [101, 414, 2.5], [151, 421, 3], [119, 249, 2.5], [138, 282, 2], [176, 301, 2.5],
+          [101, 414, 2.5], [151, 421, 3], [119, 249, 2.5], [138, 282, 2.2],
         ].map(([cx, cy, r], index) => (
-          <Circle key={index} cx={cx} cy={cy} r={r} fill="#fff4a1" fillOpacity={muted ? 0.22 : 0.78} />
+          <Circle key={index} cx={cx} cy={cy} r={r} fill="#fff4a1" fillOpacity={muted ? 0.22 : 0.68} />
         ))}
       </G>
-      <SvgImage
-        href={daiquiriNeckLabel}
-        x="91"
-        y="105"
-        width="78"
-        height="40"
-        opacity={muted ? 0.5 : 1}
-        preserveAspectRatio="xMidYMid slice"
-      />
-      <SvgImage
-        href={daiquiriLabel}
-        x="51"
-        y="220"
-        width="158"
-        height="205"
-        opacity={muted ? 0.48 : 0.98}
-        preserveAspectRatio="xMidYMid slice"
-      />
-      <Path d="M51 322c0-57 35-103 79-103s79 46 79 103-35 103-79 103-79-46-79-103Z" fill="none" stroke={yellowBright} strokeOpacity={muted ? 0.28 : 0.72} strokeWidth="2" />
+      <G opacity={muted ? 0.52 : 1}>
+        <Path d="M99 106h62v39H99Z" fill="#0c3158" stroke="#9bd6ee" strokeOpacity="0.7" strokeWidth="1.5" />
+        <Circle cx="130" cy="125.5" r="13" fill="#f0c75e" fillOpacity="0.42" stroke="#f6da86" strokeWidth="1.5" />
+        <SvgText x="130" y="132" textAnchor="middle" fill="#09284a" fontSize="18" fontWeight="700">R</SvgText>
+      </G>
+      <G opacity={muted ? 0.48 : 1}>
+        <Circle cx="130" cy="322" r="80" fill={`url(#${prefix}-cap)`} stroke="#fff0a0" strokeWidth="2" />
+        <Circle cx="130" cy="322" r="72" fill="#08264a" stroke="#163f69" strokeWidth="3" />
+        <SvgImage
+          href={daiquiriLabel}
+          x="79"
+          y="271"
+          width="102"
+          height="102"
+          clipPath={`url(#${prefix}-portrait-clip)`}
+          preserveAspectRatio="xMidYMid slice"
+        />
+        <Path d="M77 251h106v27H77Z" fill={`url(#${prefix}-cap)`} stroke="#fff0a0" strokeWidth="1" />
+        <SvgText x="130" y="269" textAnchor="middle" fill="#08264a" fontSize="12" fontWeight="700" letterSpacing="0.8">DAVE RAMSEY</SvgText>
+        <Path d="M73 366h114v31H73Z" fill={`url(#${prefix}-cap)`} stroke="#fff0a0" strokeWidth="1" />
+        <SvgText x="130" y="388" textAnchor="middle" fill="#08264a" fontSize="18" fontWeight="700" fontStyle="italic">Daiquiri</SvgText>
+      </G>
       <Path d="M99 46c-12 36-7 80-7 122v221c0 45 11 70 21 78" fill="none" stroke="#dff8ff" strokeOpacity={muted ? 0.24 : 0.7} strokeWidth="5" strokeLinecap="round" />
       <Path d="M157 52c13 33 8 72 9 116" fill="none" stroke="#fff" strokeOpacity={muted ? 0.14 : 0.42} strokeWidth="3" strokeLinecap="round" />
       <Path d="M88 27h84v17c0 8-7 13-16 13h-52c-9 0-16-5-16-13V27Z" fill={`url(#${prefix}-cap)`} stroke="#fff0a0" strokeOpacity={muted ? 0.32 : 0.9} strokeWidth="2" />
@@ -384,12 +383,11 @@ function SmartProBottle({ size = 54, muted = false }: { size?: number; muted?: b
         <SvgText x="130" y="133" fill={ink} fontSize="23" fontWeight="900" textAnchor="middle">S</SvgText>
       </G>
       <G opacity={muted ? 0.58 : 1}>
-        <Circle cx="130" cy="322" r="80" fill="#e8ffd4" fillOpacity={muted ? 0.38 : 0.96} stroke={green} strokeWidth="2" />
-        <Circle cx="130" cy="322" r="72" fill={label} stroke="#dcffc0" strokeOpacity="0.65" strokeWidth="2.5" />
-        <Circle cx="130" cy="322" r="50" fill="none" stroke={green} strokeOpacity="0.7" strokeWidth="1.5" />
-        <SvgText x="130" y="283" fill={ink} fontSize="12" fontWeight="800" textAnchor="middle" letterSpacing="1.4">SMARTPRO</SvgText>
-        <SvgText x="130" y="350" fill={green} fontSize="62" fontWeight="900" textAnchor="middle">S</SvgText>
-        <SvgText x="130" y="375" fill={ink} fontSize="11" fontWeight="700" textAnchor="middle" letterSpacing="2.2">SODA</SvgText>
+        <Path d="M73 264h114v116H73Z" fill="#050708" fillOpacity="0.97" stroke="#67ce9e" strokeWidth="2.5" />
+        <Path d="M83 274h94v96H83Z" fill="none" stroke="#314d42" strokeWidth="1" />
+        <SvgText x="130" y="339" fill="#d7e0db" fontSize="48" fontWeight="900" textAnchor="middle" letterSpacing="-3">SP</SvgText>
+        <Path d="M94 351h72" stroke="#67ce9e" strokeWidth="2" strokeLinecap="round" />
+        <SvgText x="130" y="365" fill="#67ce9e" fontSize="7" fontWeight="900" textAnchor="middle" letterSpacing="2.2">SMARTPRO</SvgText>
       </G>
       <G>
         <Path d="M88 27h84v17c0 8-7 13-16 13h-52c-9 0-16-5-16-13V27Z" fill={`url(#${prefix}-cap)`} stroke="#b9e7ff" strokeOpacity={muted ? 0.3 : 0.86} strokeWidth="2" />
@@ -1093,6 +1091,13 @@ export function BrewTokenBank({
       { scale: interpolate(smartProProgress.value, [0, 0.62, 1], [0.4, 1.1, 1.8]) },
     ],
   }));
+  const smartProEdgeTapStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(smartProProgress.value, [0, 0.18, 0.62, 1], [0, 1, 1, 0]),
+    transform: [
+      { translateY: interpolate(smartProProgress.value, [0, 0.7, 1], [12, -30, -46]) },
+      { scale: interpolate(smartProProgress.value, [0, 0.45, 1], [0.42, 1.05, 1.2]) },
+    ],
+  }));
 
   const bet = Math.min(Math.max(selectedBet, 1), Math.max(tokens, 1));
   const canPlay = tokens > 0 && !resolving && !protectedVoicePlaying && !shopBusy;
@@ -1163,6 +1168,20 @@ export function BrewTokenBank({
   const selectedBottleUnlocked = selectedBottleInspection?.unlocked ?? false;
   const selectedBottleCount = selectedBottleInspection?.bottleCount ?? 0;
   const selectedBottleArmed = selectedBottleInspection?.armed ?? false;
+  const selectedBottleAccent = bottlePreview === 'daiquiri'
+    ? '#f6d64a'
+    : bottlePreview === 'smartPro'
+      ? '#b9ff45'
+      : bottlePreview === 'quickRevive'
+        ? '#48d8ff'
+        : '#f29b38';
+  const selectedBottleStageColor = bottlePreview === 'daiquiri'
+    ? 'rgba(8, 38, 74, 0.72)'
+    : bottlePreview === 'smartPro'
+      ? 'rgba(7, 45, 29, 0.72)'
+      : bottlePreview === 'quickRevive'
+        ? 'rgba(5, 42, 69, 0.72)'
+        : 'rgba(61, 28, 7, 0.72)';
   const handleReplayBottlePreview = () => {
     if (!bottlePreview || !selectedBottleUnlocked) return;
     triggerBottleBurst(bottlePreview, 'preview');
@@ -2004,7 +2023,14 @@ export function BrewTokenBank({
                    </Pressable>
                  )}
                </View>
-                 <View style={[styles.quickReviveShop, { borderTopColor: colors.border }]}>
+                 <View style={[
+                   styles.quickReviveShop,
+                   styles.drinkShopTint,
+                   {
+                     borderTopColor: daiquiriUnlocked ? '#f6d64a' : colors.border,
+                     backgroundColor: daiquiriUnlocked ? 'rgba(8,38,74,0.34)' : 'rgba(8,38,74,0.14)',
+                   },
+                 ]}>
                    <View style={styles.shopHeadingRow}>
                      <View style={styles.quickReviveShopCopy}>
                        <Text style={[styles.shopTitle, { color: staminUpUnlocked ? colors.foreground : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
@@ -2072,7 +2098,7 @@ export function BrewTokenBank({
                 <View style={[styles.quickReviveShop, { borderTopColor: colors.border }]}>
                   <View style={styles.shopHeadingRow}>
                     <View style={styles.quickReviveShopCopy}>
-                      <Text style={[styles.shopTitle, { color: daiquiriUnlocked ? colors.foreground : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+                       <Text style={[styles.shopTitle, { color: daiquiriUnlocked ? '#f6d64a' : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
                         DAVE RAMSEY DAIQUIRI
                       </Text>
                       <Text style={[styles.shopDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
@@ -2090,7 +2116,7 @@ export function BrewTokenBank({
                       accessibilityLabel="Inspect Dave Ramsey Daiquiri bottle"
                       testID="inspect-daiquiri"
                     >
-                      <DaiquiriBottle size={31} />
+                       <DaiquiriBottle size={31} muted={!daiquiriUnlocked} />
                       <Feather name="maximize-2" size={13} color={colors.mutedForeground} />
                     </Pressable>
                   </View>
@@ -2211,7 +2237,15 @@ export function BrewTokenBank({
                     </View>
                   )}
                 </View>
-                <View style={[styles.quickReviveShop, styles.smartProShop, { borderTopColor: smartProSaleActive ? '#78c84b' : colors.border }]}>
+                <View style={[
+                  styles.quickReviveShop,
+                  styles.smartProShop,
+                  styles.drinkShopTint,
+                  {
+                    borderTopColor: smartProUnlocked ? '#78c84b' : colors.border,
+                    backgroundColor: smartProUnlocked ? 'rgba(7,45,29,0.34)' : 'rgba(7,45,29,0.14)',
+                  },
+                ]}>
                   <View style={styles.shopHeadingRow}>
                     <View style={styles.quickReviveShopCopy}>
                       <View style={styles.smartProTitleRow}>
@@ -2229,6 +2263,18 @@ export function BrewTokenBank({
                         <Text style={[styles.bottleSpec, { color: '#b9ff45', fontFamily: 'Inter_700Bold' }]}>90 SEC · 50% SALE</Text>
                         <Text style={[styles.bottleSpec, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>SHOP EFFECT</Text>
                       </View>
+                       {smartProSaleActive && (
+                         <View style={styles.smartProSalePanel} accessibilityLiveRegion="polite">
+                           <View style={styles.smartProSalePanelHeading}>
+                             <Text style={[styles.smartProSalePanelLabel, { fontFamily: 'Inter_700Bold' }]}>LIVE SHOP</Text>
+                             <Text style={[styles.smartProSalePanelCountdown, { fontFamily: 'Inter_700Bold' }]}>{smartProRemainingLabel}</Text>
+                           </View>
+                           <View style={styles.smartProSaleRow}><Text style={styles.smartProSaleRowLabel}>QUICK REVIVE · BOTTLE</Text><Text style={styles.smartProSaleRowValue}>½ PRICE</Text></View>
+                           <View style={styles.smartProSaleRow}><Text style={styles.smartProSaleRowLabel}>DAIQUIRI · BOTTLE</Text><Text style={styles.smartProSaleRowValue}>½ PRICE</Text></View>
+                           <View style={styles.smartProSaleRow}><Text style={styles.smartProSaleRowLabel}>SMARTPRO · BOTTLE</Text><Text style={styles.smartProSaleRowValueFull}>3 TOKENS</Text></View>
+                           <View style={styles.smartProSaleRow}><Text style={styles.smartProSaleRowLabel}>STAMIN UP · BOTTLE</Text><Text style={styles.smartProSaleRowValue}>½ PRICE</Text></View>
+                         </View>
+                       )}
                     </View>
                     <Pressable
                       onPress={() => setBottlePreview('smartPro')}
@@ -2237,7 +2283,7 @@ export function BrewTokenBank({
                       accessibilityLabel="Inspect SmartPro Soda bottle"
                       testID="inspect-smart-pro"
                     >
-                      <SmartProBottle size={31} />
+                      <SmartProBottle size={31} muted={!smartProUnlocked} />
                       <Feather name="maximize-2" size={13} color={colors.mutedForeground} />
                     </Pressable>
                   </View>
@@ -2682,10 +2728,10 @@ export function BrewTokenBank({
             showsVerticalScrollIndicator={false}
           >
             {selectedBottlePreview && (
-              <View style={[styles.previewCard, { backgroundColor: colors.card, borderColor: colors.goldMuted }]}>
+                <View style={[styles.previewCard, { backgroundColor: colors.card, borderColor: selectedBottleAccent }]}>
                 <View style={styles.previewHeader}>
                   <View style={styles.previewHeaderCopy}>
-                    <Text style={[styles.previewEyebrow, { color: colors.gold, fontFamily: 'Inter_600SemiBold' }]}>
+                    <Text style={[styles.previewEyebrow, { color: selectedBottleAccent, fontFamily: 'Inter_600SemiBold' }]}>
                       BOTTLE INSPECTION
                     </Text>
                     <Text style={[styles.previewTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
@@ -2709,15 +2755,16 @@ export function BrewTokenBank({
                 <Pressable
                   onPress={handleReplayBottlePreview}
                   disabled={!selectedBottleUnlocked}
-                  style={[styles.previewBottleStage, { backgroundColor: colors.steelShadow, borderColor: selectedBottleUnlocked ? colors.goldMuted : colors.border }]}
+                  style={[styles.previewBottleStage, { backgroundColor: selectedBottleStageColor, borderColor: selectedBottleUnlocked ? selectedBottleAccent : colors.border }]}
                   accessibilityRole={selectedBottleUnlocked ? 'button' : undefined}
                   accessibilityLabel={selectedBottleUnlocked ? `Replay ${selectedBottlePreview.title} animation` : `${selectedBottlePreview.title} recipe locked`}
                   testID="replay-bottle-animation"
                 >
                   {bottlePreview === 'quickRevive' && <QuickReviveBottle size={112} muted={!selectedBottleUnlocked} />}
-                  {bottlePreview === 'daiquiri' && <DaiquiriBottle size={112} />}
+                  <View pointerEvents="none" style={[styles.previewBottleGlow, { backgroundColor: selectedBottleAccent, shadowColor: selectedBottleAccent }]} />
+                  {bottlePreview === 'daiquiri' && <DaiquiriBottle size={112} muted={!selectedBottleUnlocked} />}
                   {bottlePreview === 'staminUp' && <StaminUpBottle size={112} muted={!selectedBottleUnlocked} />}
-                  {bottlePreview === 'smartPro' && <SmartProBottle size={112} />}
+                  {bottlePreview === 'smartPro' && <SmartProBottle size={112} muted={!selectedBottleUnlocked} />}
                   {quickReviveBurstVisible && bottleBurstLocation === 'preview' && bottlePreview === 'quickRevive' && (
                     <View pointerEvents="none" style={[styles.quickReviveBurst, styles.previewBurst]}>
                       <Animated.View style={[styles.quickReviveBubbleField, quickReviveBubbleFieldStyle]}>
@@ -2790,14 +2837,18 @@ export function BrewTokenBank({
                       <Animated.View style={[styles.smartProSpark, smartProSparkStyle]}>
                         <Feather name="zap" size={42} color="#f6ffdf" />
                       </Animated.View>
+                      <Animated.View pointerEvents="none" style={[styles.smartProEdgeTap, smartProEdgeTapStyle]}>
+                        <Text style={styles.smartProEdgeTapLabel}>SMARTPRO</Text>
+                        <Text style={styles.smartProEdgeTapTitle}>EDGE TAP</Text>
+                      </Animated.View>
                       <Animated.View style={[styles.quickReviveBurstBottle, smartProBottleStyle]}>
                         <SmartProBottle size={74} />
                       </Animated.View>
                     </View>
                   )}
                   <View pointerEvents="none" style={styles.previewBottleHint}>
-                    <Feather name={selectedBottleUnlocked ? 'play-circle' : 'lock'} size={12} color={selectedBottleUnlocked ? colors.gold : colors.mutedForeground} />
-                    <Text style={[styles.previewBottleHintText, { color: selectedBottleUnlocked ? colors.gold : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+                    <Feather name={selectedBottleUnlocked ? 'play-circle' : 'lock'} size={12} color={selectedBottleUnlocked ? selectedBottleAccent : colors.mutedForeground} />
+                    <Text style={[styles.previewBottleHintText, { color: selectedBottleUnlocked ? selectedBottleAccent : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
                       {selectedBottleUnlocked ? 'TAP TO REPLAY ANIMATION' : 'RECIPE LOCKED'}
                     </Text>
                   </View>
@@ -3019,6 +3070,33 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 8,
   },
+  smartProEdgeTap: {
+    position: 'absolute',
+    zIndex: 7,
+    top: 108,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 180,
+    minHeight: 112,
+    borderWidth: 1,
+    borderColor: 'rgba(185,255,69,0.68)',
+    borderRadius: 90,
+    backgroundColor: 'rgba(7,27,19,0.28)',
+    shadowColor: '#b9ff45',
+    shadowOpacity: 0.85,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+  smartProEdgeTapLabel: { color: '#efffdc', fontSize: 9, letterSpacing: 2.8 },
+  smartProEdgeTapTitle: { color: '#b9ff45', fontSize: 28, fontWeight: '900', letterSpacing: -1.5 },
+  smartProSalePanel: { marginTop: 11, paddingHorizontal: 11, paddingVertical: 8, borderWidth: 1, borderColor: 'rgba(103,206,158,0.34)', borderRadius: 9, backgroundColor: 'rgba(5,19,15,0.46)' },
+  smartProSalePanelHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 },
+  smartProSalePanelLabel: { color: '#67ce9e', fontSize: 8, letterSpacing: 1.3 },
+  smartProSalePanelCountdown: { color: '#efffdc', fontSize: 18, letterSpacing: -0.5 },
+  smartProSaleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingVertical: 5, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)' },
+  smartProSaleRowLabel: { color: '#b7c9bf', fontSize: 7, letterSpacing: 0.5 },
+  smartProSaleRowValue: { color: '#b9ff45', fontSize: 8, fontWeight: '800' },
+  smartProSaleRowValueFull: { color: '#d7e0db', fontSize: 8, fontWeight: '800' },
   slotMachine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, height: SLOT_REEL_HEIGHT, marginBottom: 11 },
   reelWindow: { width: 64, height: SLOT_REEL_HEIGHT, borderWidth: 1, borderRadius: 9, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.22)' },
   reelSymbol: { width: 64, height: SLOT_REEL_HEIGHT, alignItems: 'center', justifyContent: 'center' },
@@ -3061,6 +3139,7 @@ const styles = StyleSheet.create({
   shopButton: { minHeight: 38, borderWidth: 1, borderRadius: 8, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 10 },
   shopButtonText: { fontSize: 10, letterSpacing: 0.5 },
   quickReviveShop: { borderTopWidth: 1, marginTop: 14, paddingTop: 13 },
+  drinkShopTint: { marginHorizontal: -8, paddingHorizontal: 8, paddingBottom: 10, borderRadius: 10 },
   quickReviveShopCopy: { flex: 1 },
   smartProShop: { backgroundColor: 'rgba(116,199,70,0.055)' },
   phrasePackShop: { backgroundColor: 'rgba(158,98,201,0.055)' },
@@ -3130,6 +3209,7 @@ const styles = StyleSheet.create({
   previewEyebrow: { fontSize: 9, letterSpacing: 1.2 },
   previewTitle: { fontSize: 18, letterSpacing: 0.9 },
   previewBottleStage: { minHeight: 245, borderWidth: 1, borderRadius: 11, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative' },
+  previewBottleGlow: { position: 'absolute', width: 176, height: 176, borderRadius: 88, opacity: 0.12, shadowOpacity: 0.65, shadowRadius: 28, elevation: 10 },
   previewBurst: { transform: [{ scale: 1.45 }] },
   previewBottleHint: { position: 'absolute', left: 10, right: 10, bottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 5, borderRadius: 7, backgroundColor: 'rgba(0,0,0,0.42)' },
   previewBottleHintText: { fontSize: 8, letterSpacing: 0.9 },
