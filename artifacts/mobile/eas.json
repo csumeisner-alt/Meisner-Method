@@ -10,7 +10,8 @@
         "image": "latest"
       },
       "env": {
-        "EXPO_PUBLIC_DOMAIN": "stock-analyzer-pro--npcommanderr.replit.app"
+        "EXPO_PUBLIC_DOMAIN": "stock-analyzer-pro--npcommanderr.replit.app",
+        "ANALYSIS_SMOKE_SYMBOL": "AAPL"
       }
     },
     "production": {
@@ -19,7 +20,8 @@
         "image": "latest"
       },
       "env": {
-        "EXPO_PUBLIC_DOMAIN": "stock-analyzer-pro--npcommanderr.replit.app"
+        "EXPO_PUBLIC_DOMAIN": "stock-analyzer-pro--npcommanderr.replit.app",
+        "ANALYSIS_SMOKE_SYMBOL": "AAPL"
       }
     }
   }
