@@ -12,6 +12,7 @@ import {
 } from "../lib/yahoo.js";
 import { normalizeDividendYield } from "../lib/dividendYield.js";
 import { buildStockRecommendation } from "../lib/stockRecommendation.js";
+import { fallbackAiAnalysis, parseAiAnalysis } from "../lib/analysisResponse.js";
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -283,12 +284,15 @@ Respond ONLY with valid JSON (no markdown):
       response_format: { type: "json_object" },
     });
 
-    const rawContent = completion.choices[0]?.message?.content ?? "{}";
-    const rec = JSON.parse(rawContent) as {
-      reasoning?: string;
-      risks?: string[];
-      strengths?: string[];
-    };
+    const rawContent = completion.choices[0]?.message?.content ?? "";
+    const rec = parseAiAnalysis(rawContent);
+    const aiAnalysis = rec ?? fallbackAiAnalysis();
+    if (!rec) {
+      req.log.warn(
+        { symbol, contentLength: rawContent.length },
+        "AI recommendation response was not valid JSON; using fallback explanation",
+      );
+    }
 
     res.json({
       symbol: data.symbol,
@@ -347,9 +351,9 @@ Respond ONLY with valid JSON (no markdown):
         stopLoss: recommendation.stopLoss,
         confidence: recommendation.confidence,
         timeHorizon: recommendation.timeHorizon,
-        reasoning: rec.reasoning ?? "Analysis complete.",
-        risks: rec.risks ?? [],
-        strengths: rec.strengths ?? [],
+        reasoning: aiAnalysis.reasoning,
+        risks: aiAnalysis.risks,
+        strengths: aiAnalysis.strengths,
       },
     });
   } catch (err: unknown) {
