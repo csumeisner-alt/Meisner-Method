@@ -1976,7 +1976,6 @@ const gradeModalStyles = StyleSheet.create({
 export default function PortfolioScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { isUnlocked } = useAmericanMode();
 
   const [trades, setTrades] = useState<Trade[]>([]);
   const [quotes, setQuotes] = useState<Record<string, Quote | null>>({});
@@ -2178,20 +2177,16 @@ export default function PortfolioScreen() {
       {/* Header */}
       <View style={[mainStyles.header, { paddingTop: topPad + 10, borderBottomColor: colors.border }]}>
         <View style={mainStyles.headerRow}>
-          {isUnlocked ? (
-            <TouchableOpacity
-              onPress={() => setGradeHistoryVisible(true)}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel="Open trade grade history"
-              style={mainStyles.titleButton}
-            >
-              <Text style={[mainStyles.title, { color: colors.heading, fontFamily: 'Inter_700Bold' }]}>PORTFOLIO</Text>
-              <Feather name="bar-chart-2" size={13} color={colors.primary} />
-            </TouchableOpacity>
-          ) : (
+          <TouchableOpacity
+            onPress={() => setGradeHistoryVisible(true)}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Open trade grade history"
+            style={mainStyles.titleButton}
+          >
             <Text style={[mainStyles.title, { color: colors.heading, fontFamily: 'Inter_700Bold' }]}>PORTFOLIO</Text>
-          )}
+            <Feather name="bar-chart-2" size={13} color={colors.primary} />
+          </TouchableOpacity>
           <View style={mainStyles.headerRight}>
             <TouchableOpacity style={mainStyles.iconBtn} onPress={onRefresh} disabled={loadingQuotes || isEmpty} activeOpacity={0.7}>
               {loadingQuotes ? <ActivityIndicator size="small" color={colors.primary} />
@@ -2316,14 +2311,12 @@ export default function PortfolioScreen() {
         onClose={() => { setModalVisible(false); setEditTarget(null); }}
         colors={colors} />
 
-      {isUnlocked && (
-        <GradeHistoryModal
-          visible={gradeHistoryVisible}
-          points={gradeHistoryPoints}
-          colors={colors}
-          onClose={() => setGradeHistoryVisible(false)}
-        />
-      )}
+      <GradeHistoryModal
+        visible={gradeHistoryVisible}
+        points={gradeHistoryPoints}
+        colors={colors}
+        onClose={() => setGradeHistoryVisible(false)}
+      />
 
       {/* Celebration overlay */}
       {celebration && (
