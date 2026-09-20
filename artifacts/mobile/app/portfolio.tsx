@@ -79,6 +79,7 @@ const BREW_BANK_ENABLED = true;
 // ─── Local cache ──────────────────────────────────────────────────────────────
 
 const TRADES_CACHE_KEY = '@stocksense/portfolio_trades_v1';
+const GRADE_HISTORY_HINT_KEY = '@stocksense/grade_history_hint_shown_v1';
 
 async function readTradesCache(): Promise<Trade[]> {
   try {
@@ -1999,6 +2000,15 @@ export default function PortfolioScreen() {
   const { apiFetch } = useApi();
   const tradesRef = useRef<Trade[]>([]);
   const feedbackEventRef = useRef<string | null>(null);
+  const gradeHistoryHintShownRef = useRef(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem(GRADE_HISTORY_HINT_KEY)
+      .then(value => {
+        if (value === 'true') gradeHistoryHintShownRef.current = true;
+      })
+      .catch(() => {});
+  }, []);
 
   const topPad = Platform.OS === 'web' ? 16 : insets.top;
 
@@ -2138,6 +2148,7 @@ export default function PortfolioScreen() {
       // Only a newly-created sell produces feedback. Editing old trades must
       // never replay a popup just because the portfolio rendered again.
       if (data.type === 'sell') {
+        const wasFirstCompletedSell = closedTrades.length === 0;
         const closed = computeClosedTrades(nextTrades, quotes)
           .find(item => item.sellId === newTrade.id) ?? null;
         const grade = computeSellGrade(newTrade, closed);
@@ -2148,6 +2159,16 @@ export default function PortfolioScreen() {
           } else {
             setTimeout(() => setTradeFeedback(grade), 250);
           }
+        }
+        if (closed && wasFirstCompletedSell && !gradeHistoryHintShownRef.current) {
+          gradeHistoryHintShownRef.current = true;
+          void AsyncStorage.setItem(GRADE_HISTORY_HINT_KEY, 'true').catch(() => {});
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          Alert.alert(
+            'TRADE GRADE HISTORY UNLOCKED',
+            'Your first completed sell is now being tracked. Tap the PORTFOLIO header to view your trade grade history.',
+            [{ text: 'Got it' }],
+          );
         }
       }
     }
