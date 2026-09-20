@@ -79,7 +79,7 @@ const BREW_BANK_ENABLED = true;
 // ─── Local cache ──────────────────────────────────────────────────────────────
 
 const TRADES_CACHE_KEY = '@stocksense/portfolio_trades_v1';
-const GRADE_HISTORY_HINT_KEY = '@stocksense/grade_history_hint_shown_v1';
+const GRADE_HISTORY_HINT_KEY = '@stocksense/grade_history_hint_shown_v2';
 
 async function readTradesCache(): Promise<Trade[]> {
   try {
@@ -708,6 +708,66 @@ function TradeFeedbackPopup({
   );
 }
 
+function GradeHistoryHintModal({
+  visible,
+  colors,
+  onDismiss,
+  onViewHistory,
+}: {
+  visible: boolean;
+  colors: any;
+  onDismiss: () => void;
+  onViewHistory: () => void;
+}) {
+  useEffect(() => {
+    if (!visible) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+  }, [visible]);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
+      <View style={gradeHintStyles.backdrop}>
+        <View style={[gradeHintStyles.card, { backgroundColor: colors.card, borderColor: colors.primary }]}>
+          <View style={[gradeHintStyles.iconWrap, { backgroundColor: colors.primary + '20', borderColor: colors.primary }]}>
+            <Feather name="bar-chart-2" size={27} color={colors.primary} />
+          </View>
+          <Text style={[gradeHintStyles.eyebrow, { color: colors.primary, fontFamily: 'Inter_700Bold' }]}>
+            TRADE GRADE HISTORY UNLOCKED
+          </Text>
+          <Text style={[gradeHintStyles.title, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+            Your first completed sell is now being tracked.
+          </Text>
+          <Text style={[gradeHintStyles.copy, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+            Tap the PORTFOLIO header anytime to view your trade grade history chart and review your completed trades.
+          </Text>
+          <View style={gradeHintStyles.actions}>
+            <Pressable
+              onPress={onDismiss}
+              style={[gradeHintStyles.secondaryButton, { borderColor: colors.border }]}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss trade grade history notice"
+            >
+              <Text style={[gradeHintStyles.secondaryText, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold' }]}>
+                GOT IT
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={onViewHistory}
+              style={[gradeHintStyles.primaryButton, { backgroundColor: colors.primary }]}
+              accessibilityRole="button"
+              accessibilityLabel="Open trade grade history"
+            >
+              <Text style={[gradeHintStyles.primaryText, { color: colors.primaryForeground, fontFamily: 'Inter_700Bold' }]}>
+                VIEW HISTORY
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 const celebStyles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
@@ -816,6 +876,47 @@ const feedbackStyles = StyleSheet.create({
   grade: { fontSize: 20, lineHeight: 22 },
   headline: { fontSize: 12, letterSpacing: 0.3 },
   note: { color: 'rgba(255,255,255,0.72)', fontSize: 11, lineHeight: 15 },
+});
+
+const gradeHintStyles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    backgroundColor: 'rgba(0,0,0,0.78)',
+  },
+  card: {
+    width: '100%',
+    maxWidth: 380,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 22,
+    paddingVertical: 24,
+    shadowColor: '#000',
+    shadowOpacity: 0.55,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 18,
+  },
+  iconWrap: {
+    width: 58,
+    height: 58,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: 16,
+    marginBottom: 14,
+  },
+  eyebrow: { fontSize: 11, letterSpacing: 1.1, textAlign: 'center' },
+  title: { fontSize: 18, lineHeight: 23, textAlign: 'center', marginTop: 10 },
+  copy: { fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 9 },
+  actions: { flexDirection: 'row', width: '100%', gap: 10, marginTop: 20 },
+  secondaryButton: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 44, borderWidth: 1, borderRadius: 9 },
+  primaryButton: { flex: 1.4, alignItems: 'center', justifyContent: 'center', minHeight: 44, borderRadius: 9 },
+  secondaryText: { fontSize: 11, letterSpacing: 0.6 },
+  primaryText: { fontSize: 11, letterSpacing: 0.5 },
 });
 
 // ─── Compact Position Row ─────────────────────────────────────────────────────
@@ -1997,18 +2098,11 @@ export default function PortfolioScreen() {
   const [defaultSymbol, setDefaultSymbol] = useState<string | undefined>(undefined);
   const [celebration, setCelebration] = useState<TradeGrade | null>(null);
   const [tradeFeedback, setTradeFeedback] = useState<TradeGrade | null>(null);
+  const [gradeHistoryHintVisible, setGradeHistoryHintVisible] = useState(false);
   const { apiFetch } = useApi();
   const tradesRef = useRef<Trade[]>([]);
   const feedbackEventRef = useRef<string | null>(null);
   const gradeHistoryHintShownRef = useRef(false);
-
-  useEffect(() => {
-    AsyncStorage.getItem(GRADE_HISTORY_HINT_KEY)
-      .then(value => {
-        if (value === 'true') gradeHistoryHintShownRef.current = true;
-      })
-      .catch(() => {});
-  }, []);
 
   const topPad = Platform.OS === 'web' ? 16 : insets.top;
 
@@ -2119,6 +2213,27 @@ export default function PortfolioScreen() {
     return result;
   }, [trades, filterSymbol, sortOrder, dateFrom, dateTo]);
 
+  const showGradeHistoryHint = useCallback(() => {
+    if (gradeHistoryHintShownRef.current) return;
+    gradeHistoryHintShownRef.current = true;
+    setGradeHistoryHintVisible(true);
+    void AsyncStorage.setItem(GRADE_HISTORY_HINT_KEY, 'true').catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.getItem(GRADE_HISTORY_HINT_KEY)
+      .then(value => {
+        if (value === 'true') gradeHistoryHintShownRef.current = true;
+      })
+      .catch(() => {});
+  }, []);
+
+  // Also recover users who already had a completed sell before this notice was
+  // added, so they still learn where the newly available chart lives.
+  useEffect(() => {
+    if (closedTrades.length > 0) showGradeHistoryHint();
+  }, [closedTrades.length, showGradeHistoryHint]);
+
   function handleReset() {
     Alert.alert('Reset Portfolio', 'Permanently delete ALL trades, dividends, positions, and history? This cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
@@ -2148,7 +2263,6 @@ export default function PortfolioScreen() {
       // Only a newly-created sell produces feedback. Editing old trades must
       // never replay a popup just because the portfolio rendered again.
       if (data.type === 'sell') {
-        const wasFirstCompletedSell = closedTrades.length === 0;
         const closed = computeClosedTrades(nextTrades, quotes)
           .find(item => item.sellId === newTrade.id) ?? null;
         const grade = computeSellGrade(newTrade, closed);
@@ -2160,16 +2274,7 @@ export default function PortfolioScreen() {
             setTimeout(() => setTradeFeedback(grade), 250);
           }
         }
-        if (closed && wasFirstCompletedSell && !gradeHistoryHintShownRef.current) {
-          gradeHistoryHintShownRef.current = true;
-          void AsyncStorage.setItem(GRADE_HISTORY_HINT_KEY, 'true').catch(() => {});
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-          Alert.alert(
-            'TRADE GRADE HISTORY UNLOCKED',
-            'Your first completed sell is now being tracked. Tap the PORTFOLIO header to view your trade grade history.',
-            [{ text: 'Got it' }],
-          );
-        }
+        if (closed) showGradeHistoryHint();
       }
     }
     setModalVisible(false);
@@ -2337,6 +2442,15 @@ export default function PortfolioScreen() {
         points={gradeHistoryPoints}
         colors={colors}
         onClose={() => setGradeHistoryVisible(false)}
+      />
+      <GradeHistoryHintModal
+        visible={gradeHistoryHintVisible}
+        colors={colors}
+        onDismiss={() => setGradeHistoryHintVisible(false)}
+        onViewHistory={() => {
+          setGradeHistoryHintVisible(false);
+          setGradeHistoryVisible(true);
+        }}
       />
 
       {/* Celebration overlay */}
