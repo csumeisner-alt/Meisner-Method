@@ -79,6 +79,7 @@ const BREW_BANK_ENABLED = true;
 // ─── Local cache ──────────────────────────────────────────────────────────────
 
 const TRADES_CACHE_KEY = '@stocksense/portfolio_trades_v1';
+const GRADE_HISTORY_HINT_KEY = '@stocksense/grade_history_hint_shown_v2';
 
 async function readTradesCache(): Promise<Trade[]> {
   try {
@@ -707,6 +708,66 @@ function TradeFeedbackPopup({
   );
 }
 
+function GradeHistoryHintModal({
+  visible,
+  colors,
+  onDismiss,
+  onViewHistory,
+}: {
+  visible: boolean;
+  colors: any;
+  onDismiss: () => void;
+  onViewHistory: () => void;
+}) {
+  useEffect(() => {
+    if (!visible) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+  }, [visible]);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
+      <View style={gradeHintStyles.backdrop}>
+        <View style={[gradeHintStyles.card, { backgroundColor: colors.card, borderColor: colors.primary }]}>
+          <View style={[gradeHintStyles.iconWrap, { backgroundColor: colors.primary + '20', borderColor: colors.primary }]}>
+            <Feather name="bar-chart-2" size={27} color={colors.primary} />
+          </View>
+          <Text style={[gradeHintStyles.eyebrow, { color: colors.primary, fontFamily: 'Inter_700Bold' }]}>
+            TRADE GRADE HISTORY UNLOCKED
+          </Text>
+          <Text style={[gradeHintStyles.title, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+            Your first completed sell is now being tracked.
+          </Text>
+          <Text style={[gradeHintStyles.copy, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+            Tap the PORTFOLIO header anytime to view your trade grade history chart and review your completed trades.
+          </Text>
+          <View style={gradeHintStyles.actions}>
+            <Pressable
+              onPress={onDismiss}
+              style={[gradeHintStyles.secondaryButton, { borderColor: colors.border }]}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss trade grade history notice"
+            >
+              <Text style={[gradeHintStyles.secondaryText, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold' }]}>
+                GOT IT
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={onViewHistory}
+              style={[gradeHintStyles.primaryButton, { backgroundColor: colors.primary }]}
+              accessibilityRole="button"
+              accessibilityLabel="Open trade grade history"
+            >
+              <Text style={[gradeHintStyles.primaryText, { color: colors.primaryForeground, fontFamily: 'Inter_700Bold' }]}>
+                VIEW HISTORY
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 const celebStyles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
@@ -815,6 +876,47 @@ const feedbackStyles = StyleSheet.create({
   grade: { fontSize: 20, lineHeight: 22 },
   headline: { fontSize: 12, letterSpacing: 0.3 },
   note: { color: 'rgba(255,255,255,0.72)', fontSize: 11, lineHeight: 15 },
+});
+
+const gradeHintStyles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    backgroundColor: 'rgba(0,0,0,0.78)',
+  },
+  card: {
+    width: '100%',
+    maxWidth: 380,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 22,
+    paddingVertical: 24,
+    shadowColor: '#000',
+    shadowOpacity: 0.55,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 18,
+  },
+  iconWrap: {
+    width: 58,
+    height: 58,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: 16,
+    marginBottom: 14,
+  },
+  eyebrow: { fontSize: 11, letterSpacing: 1.1, textAlign: 'center' },
+  title: { fontSize: 18, lineHeight: 23, textAlign: 'center', marginTop: 10 },
+  copy: { fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 9 },
+  actions: { flexDirection: 'row', width: '100%', gap: 10, marginTop: 20 },
+  secondaryButton: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 44, borderWidth: 1, borderRadius: 9 },
+  primaryButton: { flex: 1.4, alignItems: 'center', justifyContent: 'center', minHeight: 44, borderRadius: 9 },
+  secondaryText: { fontSize: 11, letterSpacing: 0.6 },
+  primaryText: { fontSize: 11, letterSpacing: 0.5 },
 });
 
 // ─── Compact Position Row ─────────────────────────────────────────────────────
@@ -1208,6 +1310,31 @@ const tcStyles = StyleSheet.create({
 // ─── Add/Edit Trade Modal ─────────────────────────────────────────────────────
 
 interface TradeForm { symbol: string; type: 'buy' | 'sell' | 'dividend'; shares: string; price: string; }
+type TickerCheckStatus = 'idle' | 'checking' | 'valid' | 'unavailable' | 'error';
+interface TickerCheck {
+  symbol: string;
+  status: TickerCheckStatus;
+}
+
+function classifyTickerCheckError(error: unknown): TickerCheckStatus {
+  const status = typeof error === 'object' && error !== null && 'status' in error
+    ? (error as { status?: unknown }).status
+    : undefined;
+  const message = error instanceof Error ? error.message : '';
+  return status === 404 || status === 422 ||
+    message.includes('HTTP 404') || message.includes('HTTP 422')
+    ? 'unavailable'
+    : 'error';
+}
+
+async function lookupTicker(symbol: string): Promise<TickerCheckStatus> {
+  try {
+    await fetchQuote(symbol);
+    return 'valid';
+  } catch (error: unknown) {
+    return classifyTickerCheckError(error);
+  }
+}
 
 function TradeModal({
   visible, initial, defaultType, defaultSymbol, allTrades, onSave, onClose, colors,
@@ -1217,6 +1344,8 @@ function TradeModal({
 }) {
   const [form, setForm] = useState<TradeForm>({ symbol: '', type: 'buy', shares: '', price: '' });
   const [errors, setErrors] = useState<Partial<Record<keyof TradeForm, string>>>({});
+  const [tickerCheck, setTickerCheck] = useState<TickerCheck>({ symbol: '', status: 'idle' });
+  const submitInFlightRef = useRef(false);
 
   useEffect(() => {
     if (visible) {
@@ -1229,12 +1358,48 @@ function TradeModal({
     }
   }, [visible, initial, defaultType, defaultSymbol]);
 
+  // Check the symbol after the user pauses typing. A failed quote with HTTP 422
+  // means the provider definitively does not know the ticker; other failures
+  // are treated as temporary so offline trade entry remains possible.
+  useEffect(() => {
+    const symbol = form.symbol.trim().toUpperCase();
+    if (!visible || form.type === 'dividend' || !symbol) {
+      setTickerCheck({ symbol, status: 'idle' });
+      return;
+    }
+
+    setTickerCheck({ symbol, status: 'checking' });
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      lookupTicker(symbol)
+        .then((status) => {
+          if (!cancelled) setTickerCheck({ symbol, status });
+        });
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [visible, form.symbol, form.type]);
+
   const available = form.type === 'sell' && form.symbol
     ? availableToSell(form.symbol.trim().toUpperCase(), allTrades, initial?.id) : null;
 
-  function validate() {
+  function getValidationErrors(): Partial<Record<keyof TradeForm, string>> {
     const e: Partial<Record<keyof TradeForm, string>> = {};
-    if (!form.symbol.trim()) e.symbol = 'Required';
+    const symbol = form.symbol.trim().toUpperCase();
+    const symbolNeedsVerification = form.type !== 'dividend' &&
+      (!initial || symbol !== initial.symbol.toUpperCase());
+    if (!symbol) {
+      e.symbol = 'Required';
+    } else if (symbolNeedsVerification && tickerCheck.symbol !== symbol) {
+      e.symbol = 'Checking ticker…';
+    } else if (symbolNeedsVerification && tickerCheck.status === 'checking') {
+      e.symbol = 'Wait for the ticker check to finish';
+    } else if (symbolNeedsVerification && tickerCheck.status === 'unavailable') {
+      e.symbol = `${symbol} was not found. Check for a mistyped ticker symbol.`;
+    }
     const s = parseFloat(form.shares);
     if (!form.shares || isNaN(s) || s <= 0) { e.shares = 'Enter valid shares'; }
     else if (form.type === 'sell' && available != null && s > available) {
@@ -1244,13 +1409,68 @@ function TradeModal({
     }
     const p = parseFloat(form.price);
     if (!form.price || isNaN(p) || p <= 0) e.price = 'Enter valid price';
-    setErrors(e);
-    return Object.keys(e).length === 0;
+    return e;
   }
 
-  function submit() {
-    if (!validate()) return;
-    onSave({ symbol: form.symbol.trim().toUpperCase(), type: form.type, shares: parseFloat(form.shares), pricePerShare: parseFloat(form.price) });
+  function validate() {
+    const e = getValidationErrors();
+    setErrors(e);
+    return e;
+  }
+
+  function saveForm() {
+    onSave({
+      symbol: form.symbol.trim().toUpperCase(),
+      type: form.type,
+      shares: parseFloat(form.shares),
+      pricePerShare: parseFloat(form.price),
+    });
+  }
+
+  async function submit() {
+    // Prevent a double tap from opening two confirmation dialogs while the
+    // submit-time lookup is still in flight.
+    if (submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
+
+    const validationErrors = validate();
+    const symbol = form.symbol.trim().toUpperCase();
+    const symbolNeedsVerification = form.type !== 'dividend' &&
+      (!initial || symbol !== initial.symbol.toUpperCase());
+    const nonTickerErrors = Object.keys(validationErrors).filter(key => key !== 'symbol');
+
+    try {
+      // Required shares/price validation remains blocking. The ticker itself
+      // is handled below so a fast submit can finish its lookup and still
+      // reach the intentional "Add Anyway" confirmation.
+      if (nonTickerErrors.length > 0 || !symbol) return;
+
+      let status = tickerCheck.symbol === symbol ? tickerCheck.status : 'idle';
+      if (symbolNeedsVerification && (status === 'idle' || status === 'checking')) {
+        setTickerCheck({ symbol, status: 'checking' });
+        status = await lookupTicker(symbol);
+        setTickerCheck({ symbol, status });
+      }
+
+      if (symbolNeedsVerification && status === 'unavailable') {
+        setErrors({ symbol: `${symbol} was not found. Check for a mistyped ticker symbol.` });
+        Alert.alert(
+          `Ticker ${symbol} not found`,
+          `We could not find a live quote for ${symbol}. It may be mistyped, unsupported, or delisted. Add this trade anyway? Current value and P&L may remain unavailable until a quote exists.`,
+          [
+            { text: 'Go Back', style: 'cancel' },
+            { text: 'Add Anyway', style: 'destructive', onPress: saveForm },
+          ],
+        );
+        return;
+      }
+
+      // A temporary lookup failure is allowed for offline entry.
+      setErrors({});
+      saveForm();
+    } finally {
+      submitInFlightRef.current = false;
+    }
   }
 
   return (
@@ -1274,11 +1494,31 @@ function TradeModal({
             <Text style={[mStyles.label, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>TICKER SYMBOL</Text>
             <TextInput
               style={[mStyles.input, { color: colors.foreground, backgroundColor: colors.background, borderColor: errors.symbol ? colors.sellColor : colors.border, fontFamily: 'Inter_600SemiBold' }]}
-              value={form.symbol} onChangeText={v => setForm({ ...form, symbol: v.toUpperCase() })}
+              value={form.symbol}
+              onChangeText={v => {
+                setForm({ ...form, symbol: v.toUpperCase() });
+                if (errors.symbol) setErrors(prev => ({ ...prev, symbol: undefined }));
+              }}
               placeholder="AAPL" placeholderTextColor={colors.mutedForeground}
               autoCapitalize="characters" autoCorrect={false}
             />
             {errors.symbol && <Text style={[mStyles.error, { color: colors.sellColor }]}>{errors.symbol}</Text>}
+            {tickerCheck.status === 'checking' && (
+              <Text style={[mStyles.verification, { color: colors.mutedForeground }]}>Checking ticker and live quote…</Text>
+            )}
+            {tickerCheck.status === 'valid' && (
+              <Text style={[mStyles.verification, { color: colors.buyColor }]}>Ticker verified · live quote available</Text>
+            )}
+            {tickerCheck.status === 'unavailable' && (
+              <Text style={[mStyles.verification, { color: colors.sellColor }]}>
+                No quote found for {tickerCheck.symbol}. The ticker may be mistyped or unsupported.
+              </Text>
+            )}
+            {tickerCheck.status === 'error' && (
+              <Text style={[mStyles.verification, { color: colors.gradeWarning }]}>
+                Could not verify this ticker right now. Check the spelling; you can still save while offline.
+              </Text>
+            )}
 
             <Text style={[mStyles.label, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>TYPE</Text>
             <View style={mStyles.toggle}>
@@ -1343,6 +1583,7 @@ const mStyles = StyleSheet.create({
   title: { fontSize: 18, marginBottom: 8 },
   label: { fontSize: 10, letterSpacing: 0.8, marginBottom: 5, marginTop: 10 },
   hint: { fontSize: 11, marginTop: -2, marginBottom: 4, fontFamily: 'Inter_500Medium' },
+  verification: { fontSize: 11, marginTop: -2, lineHeight: 15, fontFamily: 'Inter_400Regular' },
   input: { height: 46, borderRadius: 8, borderWidth: 1, paddingHorizontal: 12, fontSize: 15 },
   error: { fontSize: 11, marginTop: 3, fontFamily: 'Inter_400Regular' },
   row: { flexDirection: 'row', gap: 12 },
@@ -1837,7 +2078,6 @@ const gradeModalStyles = StyleSheet.create({
 export default function PortfolioScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { isUnlocked } = useAmericanMode();
 
   const [trades, setTrades] = useState<Trade[]>([]);
   const [quotes, setQuotes] = useState<Record<string, Quote | null>>({});
@@ -1858,9 +2098,11 @@ export default function PortfolioScreen() {
   const [defaultSymbol, setDefaultSymbol] = useState<string | undefined>(undefined);
   const [celebration, setCelebration] = useState<TradeGrade | null>(null);
   const [tradeFeedback, setTradeFeedback] = useState<TradeGrade | null>(null);
+  const [gradeHistoryHintVisible, setGradeHistoryHintVisible] = useState(false);
   const { apiFetch } = useApi();
   const tradesRef = useRef<Trade[]>([]);
   const feedbackEventRef = useRef<string | null>(null);
+  const gradeHistoryHintShownRef = useRef(false);
 
   const topPad = Platform.OS === 'web' ? 16 : insets.top;
 
@@ -1971,6 +2213,27 @@ export default function PortfolioScreen() {
     return result;
   }, [trades, filterSymbol, sortOrder, dateFrom, dateTo]);
 
+  const showGradeHistoryHint = useCallback(() => {
+    if (gradeHistoryHintShownRef.current) return;
+    gradeHistoryHintShownRef.current = true;
+    setGradeHistoryHintVisible(true);
+    void AsyncStorage.setItem(GRADE_HISTORY_HINT_KEY, 'true').catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.getItem(GRADE_HISTORY_HINT_KEY)
+      .then(value => {
+        if (value === 'true') gradeHistoryHintShownRef.current = true;
+      })
+      .catch(() => {});
+  }, []);
+
+  // Also recover users who already had a completed sell before this notice was
+  // added, so they still learn where the newly available chart lives.
+  useEffect(() => {
+    if (closedTrades.length > 0) showGradeHistoryHint();
+  }, [closedTrades.length, showGradeHistoryHint]);
+
   function handleReset() {
     Alert.alert('Reset Portfolio', 'Permanently delete ALL trades, dividends, positions, and history? This cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
@@ -2011,6 +2274,7 @@ export default function PortfolioScreen() {
             setTimeout(() => setTradeFeedback(grade), 250);
           }
         }
+        if (closed) showGradeHistoryHint();
       }
     }
     setModalVisible(false);
@@ -2039,20 +2303,16 @@ export default function PortfolioScreen() {
       {/* Header */}
       <View style={[mainStyles.header, { paddingTop: topPad + 10, borderBottomColor: colors.border }]}>
         <View style={mainStyles.headerRow}>
-          {isUnlocked ? (
-            <TouchableOpacity
-              onPress={() => setGradeHistoryVisible(true)}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel="Open trade grade history"
-              style={mainStyles.titleButton}
-            >
-              <Text style={[mainStyles.title, { color: colors.heading, fontFamily: 'Inter_700Bold' }]}>PORTFOLIO</Text>
-              <Feather name="bar-chart-2" size={13} color={colors.primary} />
-            </TouchableOpacity>
-          ) : (
+          <TouchableOpacity
+            onPress={() => setGradeHistoryVisible(true)}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Open trade grade history"
+            style={mainStyles.titleButton}
+          >
             <Text style={[mainStyles.title, { color: colors.heading, fontFamily: 'Inter_700Bold' }]}>PORTFOLIO</Text>
-          )}
+            <Feather name="bar-chart-2" size={13} color={colors.primary} />
+          </TouchableOpacity>
           <View style={mainStyles.headerRight}>
             <TouchableOpacity style={mainStyles.iconBtn} onPress={onRefresh} disabled={loadingQuotes || isEmpty} activeOpacity={0.7}>
               {loadingQuotes ? <ActivityIndicator size="small" color={colors.primary} />
@@ -2177,14 +2437,21 @@ export default function PortfolioScreen() {
         onClose={() => { setModalVisible(false); setEditTarget(null); }}
         colors={colors} />
 
-      {isUnlocked && (
-        <GradeHistoryModal
-          visible={gradeHistoryVisible}
-          points={gradeHistoryPoints}
-          colors={colors}
-          onClose={() => setGradeHistoryVisible(false)}
-        />
-      )}
+      <GradeHistoryModal
+        visible={gradeHistoryVisible}
+        points={gradeHistoryPoints}
+        colors={colors}
+        onClose={() => setGradeHistoryVisible(false)}
+      />
+      <GradeHistoryHintModal
+        visible={gradeHistoryHintVisible}
+        colors={colors}
+        onDismiss={() => setGradeHistoryHintVisible(false)}
+        onViewHistory={() => {
+          setGradeHistoryHintVisible(false);
+          setGradeHistoryVisible(true);
+        }}
+      />
 
       {/* Celebration overlay */}
       {celebration && (
