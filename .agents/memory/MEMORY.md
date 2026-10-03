@@ -2,6 +2,7 @@
 - [Expo Router auth gate](expo-router-auth-gate.md) — root layout must always render the navigator; returning `<Redirect>` instead = blank screen. Redirect imperatively via useSegments.
 - [Clerk provider must always be mounted](clerk-provider-dev-bypass.md) — Clerk hooks throw without a provider; a dev "preview without login" bypass must keep ClerkProvider mounted and only skip the redirect.
 - [minimumReleaseAge blocks same-day Expo bumps](pnpm-minimum-release-age-expo.md) — bumping expo to a just-released SDK patch fails install; allowlist Expo-org globs; expo-doctor reads package.json not the linked tree.
+- [Expo install-check can block validation](expo-install-check-prompt.md) — minor Expo patch drift makes `expo install --check` prompt interactively; CI mode reports outdated packages and exits nonzero.
 - [Expo package/SDK mismatch = APK-only launch crash](expo-sdk-package-mismatch.md) — wrong-SDK expo-* pkg works in Expo Go but crashes standalone at boot; `expo install --check` gates builds; diff APK zips to find native deltas.
 - [Python JSON for Node](python-json-for-node.md) — Python `NaN`/`Infinity` breaks Node `JSON.parse`; sanitize + `json.dumps(allow_nan=False)`.
 - [RN-web TextInput in Playwright](rn-web-playwright-textinput.md) — `fill()` skips `onChangeText`; tester must type char-by-char or validation false-fails.

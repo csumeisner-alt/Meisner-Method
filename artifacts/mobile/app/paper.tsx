@@ -1523,7 +1523,7 @@ export default function PaperScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* ── Buy Lookup Modal (ticker search only) ────────────────── */}
+      {/* ── Buy Lookup Modal (company name or ticker) ─────────────── */}
       <Modal
         visible={showTradeModal}
         transparent
@@ -1547,29 +1547,87 @@ export default function PaperScreen() {
               <Text style={styles.sheetTitle}>BUY STOCK</Text>
               <Text style={styles.sheetSub}>Buying power: {$fmt(account?.cash ?? 0)}</Text>
 
-              {/* Symbol lookup */}
+              {/* Company and ticker lookup */}
               <View style={styles.lookupRow}>
                 <TextInput
+                  testID="paper-stock-search-input"
                   style={styles.symbolInput}
                   value={buySymbol}
-                  onChangeText={t => { setBuySymbol(t.toUpperCase()); setStockInfo(null); setInfoError(''); }}
-                  placeholder="Ticker (e.g. AAPL)"
+                  onChangeText={text => { setBuySymbol(text); setStockInfo(null); setInfoError(''); }}
+                  placeholder="Company name or ticker"
                   placeholderTextColor={DIM}
-                  autoCapitalize="characters"
+                  autoCapitalize="none"
                   autoCorrect={false}
                   returnKeyType="search"
-                  onSubmitEditing={lookUpStock}
+                  editable={!infoLoading}
+                  accessibilityLabel="Search by company name or ticker"
+                  onSubmitEditing={() => {
+                    if (resolvedBuySymbol) void lookUpStock(resolvedBuySymbol);
+                  }}
                 />
                 <TouchableOpacity
-                  style={[styles.lookupBtn, infoLoading && { opacity: 0.5 }]}
-                  onPress={lookUpStock}
-                  disabled={infoLoading || !buySymbol.trim()}
+                  testID="paper-stock-lookup-button"
+                  accessibilityRole="button"
+                  accessibilityLabel="Look up selected ticker"
+                  style={[styles.lookupBtn, (infoLoading || !resolvedBuySymbol) && { opacity: 0.5 }]}
+                  onPress={() => {
+                    if (resolvedBuySymbol) void lookUpStock(resolvedBuySymbol);
+                  }}
+                  disabled={infoLoading || !resolvedBuySymbol}
                 >
                   {infoLoading
                     ? <ActivityIndicator size="small" color="#000" />
                     : <Text style={styles.lookupBtnText}>LOOK UP</Text>}
                 </TouchableOpacity>
               </View>
+
+              {buySuggestions.length > 0 && (
+                <View style={styles.searchResults}>
+                  {buySuggestions.map((suggestion, index) => (
+                    <TouchableOpacity
+                      key={suggestion.symbol}
+                      testID={`paper-stock-result-${suggestion.symbol}`}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Select ${suggestion.name}, ${suggestion.symbol}`}
+                      style={[
+                        styles.searchResultRow,
+                        index < buySuggestions.length - 1 && styles.searchResultDivider,
+                      ]}
+                      onPress={() => { void lookUpStock(suggestion.symbol); }}
+                      activeOpacity={0.7}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.searchResultName} numberOfLines={1}>{suggestion.name}</Text>
+                        {suggestion.exchange ? (
+                          <Text style={styles.searchResultExchange} numberOfLines={1}>{suggestion.exchange}</Text>
+                        ) : null}
+                      </View>
+                      <Text style={styles.searchResultSymbol}>{suggestion.symbol}</Text>
+                      <Feather name="chevron-right" size={15} color={DIM} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {isCurrentBuySearch && stockSearch.isFetching && buySuggestions.length === 0 && (
+                <View style={styles.searchStatus}>
+                  <ActivityIndicator size="small" color={SILVER} />
+                  <Text style={styles.searchHint}>Searching companies…</Text>
+                </View>
+              )}
+              {isCurrentBuySearch && !stockSearch.isFetching && stockSearch.isError && (
+                <Text style={styles.searchHint}>
+                  Company search is unavailable. Enter a ticker symbol to look it up directly.
+                </Text>
+              )}
+              {isCurrentBuySearch && !stockSearch.isFetching && stockSearch.isSuccess && buySuggestions.length === 0 && (
+                <Text style={styles.searchHint}>
+                  No matching companies. Enter a ticker symbol if you know it.
+                </Text>
+              )}
+              {showTradeModal && buySearchText.length === 1 && !infoLoading && (
+                <Text style={styles.searchHint}>Type at least 2 characters to search companies.</Text>
+              )}
 
               {infoError ? (
                 <Text style={styles.errorText}>{infoError}</Text>
@@ -1826,7 +1884,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     fontSize: 8,
     color: 'rgba(192,192,192,0.35)',
-    letterSpacing: 1,
+    letterSpacing: 0.25,
   },
   lotRow: {
     flexDirection: 'row',
@@ -1979,6 +2037,28 @@ const styles = StyleSheet.create({
     minWidth: 88,
   },
   lookupBtnText: { fontFamily: 'Inter_700Bold', fontSize: 12, color: '#000', letterSpacing: 0.5 },
+  searchResults: {
+    backgroundColor: 'rgba(192,192,192,0.04)',
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 10,
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  searchResultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    minHeight: 56,
+  },
+  searchResultDivider: { borderBottomWidth: 1, borderBottomColor: BORDER },
+  searchResultName: { fontFamily: 'Inter_600SemiBold', fontSize: 13, color: '#fff' },
+  searchResultExchange: { fontFamily: 'Inter_400Regular', fontSize: 10, color: DIM, marginTop: 3 },
+  searchResultSymbol: { fontFamily: 'Inter_700Bold', fontSize: 12, color: BUY_COLOR, letterSpacing: 0.5 },
+  searchStatus: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, paddingHorizontal: 2 },
+  searchHint: { fontFamily: 'Inter_400Regular', fontSize: 11, color: DIM, marginBottom: 10 },
   errorText: { fontFamily: 'Inter_400Regular', fontSize: 12, color: SELL_COLOR, marginBottom: 8 },
   stockInfoCard: {
     backgroundColor: CARD_BG,
