@@ -4,6 +4,58 @@ export interface StockSearchMatch {
   exchange: string;
 }
 
+export interface BuyStockInfo {
+  companyName: string;
+  currentPrice: number;
+  dividendYield: number;
+  dividendRate: number;
+  expenseRatio: number;
+  sector: string;
+}
+
+export type StockSearchFeedback =
+  | { kind: 'loading'; message: string }
+  | { kind: 'error'; message: string }
+  | { kind: 'empty'; message: string };
+
+export function getStockSearchFeedback({
+  isFetching,
+  isError,
+  isSuccess,
+  suggestionCount,
+}: {
+  isFetching: boolean;
+  isError: boolean;
+  isSuccess: boolean;
+  suggestionCount: number;
+}): StockSearchFeedback | null {
+  if (isFetching && suggestionCount === 0) {
+    return { kind: 'loading', message: 'Searching companies…' };
+  }
+  if (!isFetching && isError) {
+    return {
+      kind: 'error',
+      message: 'Company search is unavailable. Enter a ticker symbol to look it up directly.',
+    };
+  }
+  if (!isFetching && isSuccess && suggestionCount === 0) {
+    return {
+      kind: 'empty',
+      message: 'No matching companies. Enter a ticker symbol if you know it.',
+    };
+  }
+  return null;
+}
+
+export function getBuyOrderDetails(symbol: string, stockInfo: BuyStockInfo | null) {
+  return {
+    symbol: symbol.trim().toUpperCase(),
+    companyName: stockInfo?.companyName ?? '',
+    currentPrice: stockInfo?.currentPrice ?? 0,
+    stockInfo: stockInfo ?? undefined,
+  };
+}
+
 export function resolveStockSearchSymbol(
   input: string,
   suggestions: readonly StockSearchMatch[],

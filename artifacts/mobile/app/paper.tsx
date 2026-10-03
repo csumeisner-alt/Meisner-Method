@@ -61,7 +61,12 @@ import {
   creditDividends,
   fifoSell,
 } from '@/lib/paperEngine';
-import { resolveStockSearchSymbol } from '@/lib/stockSearch';
+import {
+  getBuyOrderDetails,
+  getStockSearchFeedback,
+  resolveStockSearchSymbol,
+  type BuyStockInfo,
+} from '@/lib/stockSearch';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import {
   getSearchStockSymbolsQueryKey,
@@ -70,14 +75,7 @@ import {
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type TabId = 'positions' | 'orders' | 'analytics' | 'dividends' | 'growth';
-type StockInfo = {
-  companyName: string;
-  currentPrice: number;
-  dividendYield: number;
-  dividendRate: number;
-  expenseRatio: number;
-  sector: string;
-};
+type StockInfo = BuyStockInfo;
 
 // ── Local cache ─────────────────────────────────────────────────────────────
 // Bumped to v2: adds orders, lots, and extended account fields.
@@ -265,6 +263,15 @@ export default function PaperScreen() {
     null,
     allowRawBuyTicker,
   );
+  const buySearchFeedback = isCurrentBuySearch
+    ? getStockSearchFeedback({
+        isFetching: stockSearch.isFetching,
+        isError: stockSearch.isError,
+        isSuccess: stockSearch.isSuccess,
+        suggestionCount: buySuggestions.length,
+      })
+    : null;
+  const buyOrderDetails = getBuyOrderDetails(buySymbol, stockInfo);
 
   useEffect(() => {
     const query = buySymbol.trim();
@@ -1603,7 +1610,15 @@ export default function PaperScreen() {
                         styles.searchResultRow,
                         index < buySuggestions.length - 1 && styles.searchResultDivider,
                       ]}
-                      onPress={() => { void lookUpStock(suggestion.symbol); }}
+                      onPress={() => {
+                        const selectedSymbol = resolveStockSearchSymbol(
+                          buySymbol,
+                          buySuggestions,
+                          suggestion,
+                          false,
+                        );
+                        if (selectedSymbol) void lookUpStock(selectedSymbol);
+                      }}
                       activeOpacity={0.7}
                     >
                       <View style={{ flex: 1 }}>
@@ -1619,21 +1634,14 @@ export default function PaperScreen() {
                 </View>
               )}
 
-              {isCurrentBuySearch && stockSearch.isFetching && buySuggestions.length === 0 && (
+              {buySearchFeedback?.kind === 'loading' && (
                 <View style={styles.searchStatus}>
                   <ActivityIndicator size="small" color={SILVER} />
-                  <Text style={styles.searchHint}>Searching companies…</Text>
+                  <Text style={styles.searchHint}>{buySearchFeedback.message}</Text>
                 </View>
               )}
-              {isCurrentBuySearch && !stockSearch.isFetching && stockSearch.isError && (
-                <Text style={styles.searchHint}>
-                  Company search is unavailable. Enter a ticker symbol to look it up directly.
-                </Text>
-              )}
-              {isCurrentBuySearch && !stockSearch.isFetching && stockSearch.isSuccess && buySuggestions.length === 0 && (
-                <Text style={styles.searchHint}>
-                  No matching companies. Enter a ticker symbol if you know it.
-                </Text>
+              {buySearchFeedback && buySearchFeedback.kind !== 'loading' && (
+                <Text style={styles.searchHint}>{buySearchFeedback.message}</Text>
               )}
               {showTradeModal && buySearchText.length === 1 && !infoLoading && (
                 <Text style={styles.searchHint}>Type at least 2 characters to search companies.</Text>
@@ -1643,7 +1651,7 @@ export default function PaperScreen() {
                 <Text style={styles.errorText}>{infoError}</Text>
               ) : stockInfo ? (
                 <>
-                  <View style={styles.stockInfoCard}>
+                  <View testID="paper-stock-info-card" style={styles.stockInfoCard}>
                     <Text style={styles.stockInfoName}>{stockInfo.companyName}</Text>
                     {stockInfo.sector ? <Text style={styles.stockInfoSector}>{stockInfo.sector}</Text> : null}
                     <Text style={styles.stockInfoPrice}>${stockInfo.currentPrice.toFixed(2)}</Text>
@@ -1687,6 +1695,8 @@ export default function PaperScreen() {
 
                   {/* PLACE ORDER opens the full OrderSheet with order-type picker */}
                   <TouchableOpacity
+                    testID="paper-stock-place-order-button"
+                    accessibilityRole="button"
                     style={[styles.confirmBtn, styles.buyBtn]}
                     onPress={() => { setShowOrderSheet(true); setShowTradeModal(false); }}
                   >
@@ -1708,13 +1718,13 @@ export default function PaperScreen() {
         <OrderSheet
           visible={showOrderSheet}
           side={tradeMode}
-          symbol={tradeMode === 'buy' ? buySymbol.trim().toUpperCase() : (selectedPos?.symbol ?? '')}
-          companyName={tradeMode === 'buy' ? (stockInfo?.companyName ?? '') : (selectedPos?.companyName ?? '')}
-          currentPrice={tradeMode === 'buy' ? (stockInfo?.currentPrice ?? 0) : (quotes[selectedPos?.symbol ?? '']?.price ?? selectedPos?.avgCost ?? 0)}
+          symbol={tradeMode === 'buy' ? buyOrderDetails.symbol : (selectedPos?.symbol ?? '')}
+          companyName={tradeMode === 'buy' ? buyOrderDetails.companyName : (selectedPos?.companyName ?? '')}
+          currentPrice={tradeMode === 'buy' ? buyOrderDetails.currentPrice : (quotes[selectedPos?.symbol ?? '']?.price ?? selectedPos?.avgCost ?? 0)}
           account={account}
           accountPositions={myPositions}
           quotes={quotes}
-          stockInfo={tradeMode === 'buy' ? stockInfo ?? undefined : undefined}
+          stockInfo={tradeMode === 'buy' ? buyOrderDetails.stockInfo : undefined}
           selectedPos={tradeMode === 'sell' ? selectedPos : null}
           existingOrder={editingOrder}
           pendingOrders={orders.filter(o => o.accountId === activeId)}

@@ -14,6 +14,7 @@
 - [Replit mobile artifact deploy = QR/OTA landing page](replit-mobile-artifact-deploy.md) — the published .replit.app of an Expo mobile app is a QR launcher, not a browser app; real access is the APK or Expo Go.
 - [Paper-trading fee/cash consistency](paper-trading-fee-cashflow.md) — any per-trade cost (fee) shown in net P&L must ALSO be debited from account cash AND from buildValueHistory's reconstructed cash flow, or equity/returns silently overstate.
 - [Mobile pure-math testing](mobile-pure-math-testing.md) — pure fee/win-rate math lives in `artifacts/mobile/lib/*.ts` (no RN imports); tested via Node's built-in runner with type-stripping. Screens import from these libs.
+- [Mobile UI smoke tests](mobile-ui-smoke-tests.md) — when no component renderer exists, test extracted flow logic plus focused source wiring rather than adding a test stack for one screen.
 - [Clerk Google SSO transfer flow](clerk-sso-transfer-flow.md) — must handle 'transferable' verifications via create({transfer:true})+finalize(); dev e2e blocked by captcha/allowlist; workspace secret key is prod-instance.
 - [Schema migration gate](schema-migration-gate.md) — after-the-fact columns are migrated once at boot behind a cached promise; any endpoint referencing them must sit behind `requireSchema` (awaits migration, 503 while failing).
 - [Paper table migration](paper-table-migration.md) — paper-trading migrations must create the base tables, not just add columns; missing `paper_positions` or `sector` column caused production 500s.
