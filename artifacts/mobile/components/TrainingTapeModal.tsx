@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -470,9 +471,10 @@ export function TrainingTapeModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View
-        style={[
-          styles.overlay,
+      <ScrollView
+        style={styles.overlay}
+        contentContainerStyle={[
+          styles.overlayContent,
           {
             paddingTop: insets.top + 18,
             paddingBottom: insets.bottom + 18,
@@ -542,7 +544,7 @@ export function TrainingTapeModal({
                 { backgroundColor: colors.steelShadow, borderColor: colors.vaultBlueMuted },
               ]}
               testID="brew-bank-quote-progress"
-              accessibilityLabel={`Brew Bank unlock progress: ${quoteProgress.quotesViewed} of ${BREW_TOKEN_QUOTE_THRESHOLD} Biden quotes viewed`}
+              accessibilityLabel={`Biden quote vault progress: ${quoteProgress.quotesViewed} of ${BREW_TOKEN_QUOTE_THRESHOLD} quote views; ${quotesRemaining} more to unlock`}
             >
               <View style={styles.progressHeading}>
                 <View style={styles.progressTitleGroup}>
@@ -551,21 +553,15 @@ export function TrainingTapeModal({
                     VAULT PROGRESS
                   </Text>
                 </View>
-                <Text style={[styles.progressCount, { color: colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
-                  {quoteProgress.quotesViewed}/{BREW_TOKEN_QUOTE_THRESHOLD}
-                </Text>
               </View>
               <View style={styles.progressHero}>
                 <View style={styles.progressHeroCopy}>
                   <Text style={[styles.progressEyebrow, { color: colors.vaultBlueMuted, fontFamily: 'Inter_600SemiBold' }]}>
-                    YOUR PROGRESS
+                    QUOTE VIEWS
                   </Text>
                   <Text style={[styles.progressHeroCount, { fontFamily: 'Inter_700Bold' }]}>
                     <Text style={{ color: colors.vaultBlue }}>{quoteProgress.quotesViewed}</Text>
                     <Text style={{ color: colors.foreground }}> / {BREW_TOKEN_QUOTE_THRESHOLD}</Text>
-                  </Text>
-                  <Text style={[styles.progressViewedLabel, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold' }]}>
-                    QUOTES VIEWED
                   </Text>
                 </View>
                 <VaultProgressEmblem colors={colors} />
@@ -598,43 +594,11 @@ export function TrainingTapeModal({
                   />
                 ))}
               </View>
-              <View style={styles.progressScale}>
-                <Text style={[styles.progressScaleEnd, { color: colors.vaultBlue, fontFamily: 'Inter_700Bold' }]}>1</Text>
-                <Text style={[styles.progressScaleLabel, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold' }]}>
-                  {BREW_TOKEN_QUOTE_THRESHOLD} QUOTES TO UNLOCK
-                </Text>
-                <Text style={[styles.progressScaleEnd, { color: colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
-                  {BREW_TOKEN_QUOTE_THRESHOLD}
-                </Text>
-              </View>
               <View style={[styles.progressUnlockRow, { borderColor: colors.vaultBlueMuted }]}>
-                <View style={styles.progressKeepGoing}>
-                  <View style={[styles.progressIconRing, { borderColor: colors.vaultBlue }]}>
-                    <Feather name="file-text" size={16} color={colors.vaultBlue} />
-                  </View>
-                  <View style={styles.progressKeepGoingCopy}>
-                    <Text style={[styles.progressKeepGoingTitle, { color: colors.vaultBlue, fontFamily: 'Inter_700Bold' }]}>
-                      KEEP GOING!
-                    </Text>
-                    <Text style={[styles.progressKeepGoingBody, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                      {quoteProgress.firstQuoteView
-                        ? `Your first quote is logged. ${quotesRemaining} more to go.`
-                        : `${quotesRemaining} more ${quotesRemaining === 1 ? 'quote' : 'quotes'} to unlock the vault.`}
-                    </Text>
-                  </View>
-                </View>
-                <View style={[styles.progressDivider, { backgroundColor: colors.vaultBlueMuted }]} />
-                <View style={styles.progressLocked}>
-                  <Feather name="lock" size={15} color={colors.mutedForeground} />
-                  <View style={styles.progressLockedCopy}>
-                    <Text style={[styles.progressLockedTitle, { color: colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
-                      VAULT LOCKED
-                    </Text>
-                    <Text style={[styles.progressLockedBody, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                      View all 22 quotes
-                    </Text>
-                  </View>
-                </View>
+                <Feather name="lock" size={14} color={colors.vaultBlue} />
+                <Text style={[styles.progressUnlockText, { color: colors.vaultBlue, fontFamily: 'Inter_700Bold' }]}>
+                  {quotesRemaining} MORE {quotesRemaining === 1 ? 'QUOTE VIEW' : 'QUOTE VIEWS'} TO UNLOCK
+                </Text>
               </View>
             </View>
           )}
@@ -646,7 +610,7 @@ export function TrainingTapeModal({
             </Text>
           </View>
         </View>
-      </View>
+      </ScrollView>
     </Modal>
   );
 }
