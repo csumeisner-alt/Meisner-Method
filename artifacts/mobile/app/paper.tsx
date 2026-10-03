@@ -61,6 +61,11 @@ import {
   creditDividends,
   fifoSell,
 } from '@/lib/paperEngine';
+import { resolveStockSearchSymbol } from '@/lib/stockSearch';
+import {
+  getSearchStockSymbolsQueryKey,
+  useSearchStockSymbols,
+} from '@workspace/api-client-react';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type TabId = 'positions' | 'orders' | 'analytics' | 'dividends' | 'growth';
@@ -212,6 +217,7 @@ export default function PaperScreen() {
   const [stockInfo, setStockInfo] = useState<StockInfo | null>(null);
   const [infoLoading, setInfoLoading] = useState(false);
   const [infoError, setInfoError] = useState('');
+  const [debouncedBuyQuery, setDebouncedBuyQuery] = useState('');
 
   // Rename state
   const [renameId, setRenameId] = useState('');
@@ -220,10 +226,52 @@ export default function PaperScreen() {
   // Expanded position (cost-basis lots)
   const [expandedPosId, setExpandedPosId] = useState<string | null>(null);
 
+  const stockSearch = useSearchStockSymbols(
+    { q: debouncedBuyQuery },
+    {
+      query: {
+        queryKey: getSearchStockSymbolsQueryKey({ q: debouncedBuyQuery }),
+        enabled: showTradeModal && !stockInfo && !infoLoading && !infoError && debouncedBuyQuery.length >= 2,
+        staleTime: 45_000,
+      },
+    },
+  );
+
   // ── Derived ──────────────────────────────────────────────────────────────
   const account = accounts.find(a => a.id === activeId);
   const myPositions = positions.filter(p => p.accountId === activeId);
   const myTxns = transactions.filter(t => t.accountId === activeId);
+  const buySearchText = buySymbol.trim();
+  const isCurrentBuySearch = showTradeModal
+    && !stockInfo
+    && !infoLoading
+    && !infoError
+    && buySearchText.length >= 2
+    && debouncedBuyQuery === buySearchText;
+  const buySuggestions = isCurrentBuySearch ? stockSearch.data ?? [] : [];
+  const allowRawBuyTicker = buySearchText.length === 1
+    || (
+      isCurrentBuySearch
+      && !stockSearch.isFetching
+      && (stockSearch.isSuccess || stockSearch.isError)
+    );
+  const resolvedBuySymbol = resolveStockSearchSymbol(
+    buySymbol,
+    buySuggestions,
+    null,
+    allowRawBuyTicker,
+  );
+
+  useEffect(() => {
+    const query = buySymbol.trim();
+    if (!showTradeModal || stockInfo || infoLoading || infoError || query.length < 2) {
+      setDebouncedBuyQuery('');
+      return;
+    }
+
+    const timer = setTimeout(() => setDebouncedBuyQuery(query), 250);
+    return () => clearTimeout(timer);
+  }, [buySymbol, infoError, infoLoading, showTradeModal, stockInfo]);
 
   // Total equity includes settled cash + unsettled T+2 proceeds + market value of positions.
   // Buying power is restricted to settled cash only (enforced in fillOrder / OrderSheet risk check).
@@ -555,9 +603,11 @@ export default function PaperScreen() {
   };
 
   // ── Buy ───────────────────────────────────────────────────────────────────
-  const lookUpStock = async () => {
-    const sym = buySymbol.trim().toUpperCase();
+  const lookUpStock = async (symbolOverride?: string) => {
+    const sym = (symbolOverride ?? resolvedBuySymbol ?? '').trim().toUpperCase();
     if (!sym) return;
+    setBuySymbol(sym);
+    setDebouncedBuyQuery('');
     setInfoLoading(true);
     setInfoError('');
     setStockInfo(null);
@@ -798,6 +848,7 @@ export default function PaperScreen() {
     setEditingOrder(null);
     setTradeMode('buy');
     setBuySymbol('');
+    setDebouncedBuyQuery('');
     setStockInfo(null);
     setInfoError('');
     setShowTradeModal(true);
