@@ -62,6 +62,7 @@ import {
   fifoSell,
 } from '@/lib/paperEngine';
 import { resolveStockSearchSymbol } from '@/lib/stockSearch';
+import { useWatchlist } from '@/hooks/useWatchlist';
 import {
   getSearchStockSymbolsQueryKey,
   useSearchStockSymbols,
@@ -185,6 +186,7 @@ function defaultAccounts(): PaperAccount[] {
 export default function PaperScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const watchlist = useWatchlist();
 
   // Persisted state
   const [accounts, setAccounts] = useState<PaperAccount[]>([]);
@@ -242,6 +244,8 @@ export default function PaperScreen() {
   const myPositions = positions.filter(p => p.accountId === activeId);
   const myTxns = transactions.filter(t => t.accountId === activeId);
   const buySearchText = buySymbol.trim();
+  const buyTicker = buySymbol.trim().toUpperCase();
+  const buyTickerIsWatched = stockInfo ? watchlist.isWatched(buyTicker) : false;
   const isCurrentBuySearch = showTradeModal
     && !stockInfo
     && !infoLoading
@@ -637,6 +641,12 @@ export default function PaperScreen() {
     } finally {
       setInfoLoading(false);
     }
+  };
+
+  const addBuyTickerToWatchlist = async () => {
+    if (!stockInfo || !buyTicker || buyTickerIsWatched) return;
+    await watchlist.add(buyTicker);
+    Alert.alert('Added to watchlist', `${buyTicker} was added to your watchlist.`);
   };
 
   /**
@@ -1642,6 +1652,37 @@ export default function PaperScreen() {
                          Dividend yield: {(normalizeDividendYield(stockInfo.dividendYield, stockInfo.dividendRate, stockInfo.currentPrice) * 100).toFixed(2)}%
                       </Text>
                     )}
+                    <TouchableOpacity
+                      testID="paper-add-to-watchlist-button"
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        buyTickerIsWatched
+                          ? `${buyTicker} is already on your watchlist`
+                          : `Add ${buyTicker} to your watchlist`
+                      }
+                      accessibilityState={{ disabled: buyTickerIsWatched }}
+                      style={[
+                        styles.watchlistAction,
+                        buyTickerIsWatched && styles.watchlistActionAdded,
+                      ]}
+                      onPress={() => { void addBuyTickerToWatchlist(); }}
+                      disabled={buyTickerIsWatched}
+                      activeOpacity={0.75}
+                    >
+                      <Feather
+                        name={buyTickerIsWatched ? 'check' : 'plus'}
+                        size={15}
+                        color={buyTickerIsWatched ? BUY_COLOR : SILVER}
+                      />
+                      <Text
+                        style={[
+                          styles.watchlistActionText,
+                          buyTickerIsWatched && styles.watchlistActionTextAdded,
+                        ]}
+                      >
+                        {buyTickerIsWatched ? 'ALREADY ON WATCHLIST' : 'ADD TO WATCHLIST'}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
 
                   {/* PLACE ORDER opens the full OrderSheet with order-type picker */}
@@ -2072,6 +2113,25 @@ const styles = StyleSheet.create({
   stockInfoSector: { fontFamily: 'Inter_400Regular', fontSize: 11, color: DIM, marginBottom: 8 },
   stockInfoPrice: { fontFamily: 'Inter_700Bold', fontSize: 24, color: SILVER, marginBottom: 4 },
   stockInfoDiv: { fontFamily: 'Inter_400Regular', fontSize: 11, color: BUY_COLOR },
+  watchlistAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    minHeight: 42,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 9,
+  },
+  watchlistActionAdded: { borderColor: BUY_COLOR },
+  watchlistActionText: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 11,
+    color: SILVER,
+    letterSpacing: 0.6,
+  },
+  watchlistActionTextAdded: { color: BUY_COLOR },
   inputLabel: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 10,
