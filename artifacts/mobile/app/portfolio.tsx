@@ -1983,6 +1983,7 @@ function GradeHistoryModal({
           <TrainingTapeModal
             visible={trainingTapeVisible}
             colors={colors}
+            soundEnabled={soundEnabled}
             onClose={() => setTrainingTapeVisible(false)}
             onQuoteViewed={BREW_BANK_ENABLED ? handleQuoteViewed : undefined}
             isBankUnlocked={brewBankUnlocked}

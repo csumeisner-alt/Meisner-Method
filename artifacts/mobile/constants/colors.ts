@@ -33,6 +33,8 @@ const defaultPalette = {
   goldMuted: '#8f753f',
   steelHighlight: '#20252b',
   steelShadow: '#080a0d',
+  vaultBlue: '#168eff',
+  vaultBlueMuted: '#315e8a',
 };
 
 const americanPalette = {
@@ -69,6 +71,8 @@ const americanPalette = {
   goldMuted: '#8F753F',
   steelHighlight: '#2b3138',
   steelShadow: '#080a0d',
+  vaultBlue: '#39a6ff',
+  vaultBlueMuted: '#376180',
 };
 
 const neonGucciPalette = {
@@ -105,6 +109,8 @@ const neonGucciPalette = {
   goldMuted: '#a98545',
   steelHighlight: '#553d2d',
   steelShadow: '#100d10',
+  vaultBlue: '#68dfff',
+  vaultBlueMuted: '#387e95',
 };
 
 const colors = {

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import Constants from 'expo-constants';
 import {
   ActivityIndicator,
   Modal,
@@ -8,11 +9,74 @@ import {
   View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import Svg, { Circle, Line } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { AudioPlayer } from 'expo-audio';
 import type { ColorScheme } from '@/constants/colors';
 import { BREW_TOKEN_QUOTE_THRESHOLD } from '@/lib/brewTokenLogic';
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
+const IS_EXPO_GO = Constants.appOwnership === 'expo';
+
+let activeQuoteCue: AudioPlayer | null = null;
+let quoteCueTimeout: ReturnType<typeof setTimeout> | null = null;
+let quoteCueAudioMode: Promise<void> | null = null;
+
+function stopQuoteViewCue() {
+  if (quoteCueTimeout) clearTimeout(quoteCueTimeout);
+  quoteCueTimeout = null;
+  try {
+    activeQuoteCue?.remove();
+  } catch (_) {}
+  activeQuoteCue = null;
+}
+
+async function playQuoteViewCue(enabled: boolean, isCurrent: () => boolean) {
+  if (!enabled || IS_EXPO_GO || !isCurrent()) return;
+
+  let player: AudioPlayer | null = null;
+  try {
+    const { createAudioPlayer, setAudioModeAsync } = await import('expo-audio');
+    quoteCueAudioMode ??= setAudioModeAsync({
+      playsInSilentMode: true,
+      allowsRecording: false,
+    }).catch(error => {
+      quoteCueAudioMode = null;
+      throw error;
+    });
+    await quoteCueAudioMode;
+    if (!isCurrent()) return;
+
+    stopQuoteViewCue();
+    player = createAudioPlayer(require('../assets/sounds/quote_vault_tick.wav'), {
+      downloadFirst: true,
+    });
+    player.volume = 0.18;
+    activeQuoteCue = player;
+    let started = false;
+    let loadSubscription: { remove: () => void } | null = null;
+    const startWhenLoaded = () => {
+      if (started || !player?.isLoaded) return;
+      started = true;
+      loadSubscription?.remove();
+      if (isCurrent()) player.play();
+      else stopQuoteViewCue();
+    };
+    loadSubscription = player.addListener('playbackStatusUpdate', startWhenLoaded);
+    startWhenLoaded();
+    quoteCueTimeout = setTimeout(() => {
+      if (activeQuoteCue === player) {
+        loadSubscription?.remove();
+        stopQuoteViewCue();
+      }
+    }, 1_000);
+  } catch (_) {
+    try {
+      player?.remove();
+    } catch (_) {}
+    if (activeQuoteCue === player) activeQuoteCue = null;
+  }
+}
 
 type TrendingTicker = {
   symbol: string;
@@ -277,12 +341,14 @@ function formatTapeDate() {
 export function TrainingTapeModal({
   visible,
   colors,
+  soundEnabled,
   onClose,
   onQuoteViewed,
   isBankUnlocked,
 }: {
   visible: boolean;
   colors: ColorScheme;
+  soundEnabled: boolean;
   onClose: () => void;
   onQuoteViewed?: (quoteViewId: string) => Promise<{
     earnedToken: boolean;
@@ -305,6 +371,19 @@ export function TrainingTapeModal({
   const visibleSessionRef = useRef(false);
   const quoteSessionRef = useRef(0);
   const quoteViewIdRef = useRef('');
+  const soundEnabledRef = useRef(soundEnabled);
+  const quoteSoundSessionRef = useRef(0);
+  soundEnabledRef.current = soundEnabled;
+  const quotesRemaining = Math.max(
+    0,
+    BREW_TOKEN_QUOTE_THRESHOLD - (quoteProgress?.quotesViewed ?? 0),
+  );
+
+  useEffect(() => {
+    if (visible && soundEnabled) return;
+    quoteSoundSessionRef.current += 1;
+    stopQuoteViewCue();
+  }, [soundEnabled, visible]);
 
   useEffect(() => {
     if (!visible) {
@@ -338,6 +417,11 @@ export function TrainingTapeModal({
       const quote = BIDEN_QUOTES[index] ?? BIDEN_QUOTES[0];
       setMessage(quote);
       setLoading(false);
+      const soundSession = ++quoteSoundSessionRef.current;
+      void playQuoteViewCue(
+        soundEnabledRef.current,
+        () => quoteSoundSessionRef.current === soundSession,
+      );
       const rewardPromise = onQuoteViewed?.(quoteViewIdRef.current);
       if (rewardPromise) {
         void rewardPromise.then(update => {
@@ -455,31 +539,39 @@ export function TrainingTapeModal({
             <View
               style={[
                 styles.progressCard,
-                { backgroundColor: colors.steelShadow, borderColor: colors.goldMuted },
+                { backgroundColor: colors.steelShadow, borderColor: colors.vaultBlueMuted },
               ]}
               testID="brew-bank-quote-progress"
               accessibilityLabel={`Brew Bank unlock progress: ${quoteProgress.quotesViewed} of ${BREW_TOKEN_QUOTE_THRESHOLD} Biden quotes viewed`}
             >
               <View style={styles.progressHeading}>
                 <View style={styles.progressTitleGroup}>
-                  <Feather name="lock" size={13} color={colors.gold} />
-                  <Text style={[styles.progressTitle, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
-                    CENTRAL BANK UNLOCK
+                  <Feather name="lock" size={12} color={colors.vaultBlue} />
+                  <Text style={[styles.progressTitle, { color: colors.vaultBlue, fontFamily: 'Inter_700Bold' }]}>
+                    VAULT PROGRESS
                   </Text>
                 </View>
-                <Text style={[styles.progressCount, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+                <Text style={[styles.progressCount, { color: colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
                   {quoteProgress.quotesViewed}/{BREW_TOKEN_QUOTE_THRESHOLD}
                 </Text>
               </View>
-              <Text style={[styles.progressMessage, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                {quoteProgress.firstQuoteView
-                  ? 'Your first Biden quote is logged. View 21 more to unlock the Central Bank.'
-                  : `View ${BREW_TOKEN_QUOTE_THRESHOLD - quoteProgress.quotesViewed} more Biden ${
-                      BREW_TOKEN_QUOTE_THRESHOLD - quoteProgress.quotesViewed === 1 ? 'quote' : 'quotes'
-                    } to unlock the Central Bank.`}
-              </Text>
+              <View style={styles.progressHero}>
+                <View style={styles.progressHeroCopy}>
+                  <Text style={[styles.progressEyebrow, { color: colors.vaultBlueMuted, fontFamily: 'Inter_600SemiBold' }]}>
+                    YOUR PROGRESS
+                  </Text>
+                  <Text style={[styles.progressHeroCount, { fontFamily: 'Inter_700Bold' }]}>
+                    <Text style={{ color: colors.vaultBlue }}>{quoteProgress.quotesViewed}</Text>
+                    <Text style={{ color: colors.foreground }}> / {BREW_TOKEN_QUOTE_THRESHOLD}</Text>
+                  </Text>
+                  <Text style={[styles.progressViewedLabel, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold' }]}>
+                    QUOTES VIEWED
+                  </Text>
+                </View>
+                <VaultProgressEmblem colors={colors} />
+              </View>
               <View
-                style={[styles.progressTrack, { backgroundColor: colors.background }]}
+                style={styles.progressSegments}
                 accessible
                 accessibilityRole="progressbar"
                 accessibilityValue={{
@@ -488,15 +580,61 @@ export function TrainingTapeModal({
                   now: quoteProgress.quotesViewed,
                 }}
               >
-                <View
-                  style={[
-                    styles.progressFill,
-                    {
-                      backgroundColor: colors.gold,
-                      width: `${Math.min(100, (quoteProgress.quotesViewed / BREW_TOKEN_QUOTE_THRESHOLD) * 100)}%`,
-                    },
-                  ]}
-                />
+                {Array.from({ length: BREW_TOKEN_QUOTE_THRESHOLD }, (_, index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.progressSegment,
+                      {
+                        backgroundColor: index < quoteProgress.quotesViewed
+                          ? colors.vaultBlue
+                          : colors.background,
+                        borderColor: index < quoteProgress.quotesViewed
+                          ? colors.vaultBlue
+                          : colors.vaultBlueMuted,
+                        marginRight: index === BREW_TOKEN_QUOTE_THRESHOLD - 1 ? 0 : 2,
+                      },
+                    ]}
+                  />
+                ))}
+              </View>
+              <View style={styles.progressScale}>
+                <Text style={[styles.progressScaleEnd, { color: colors.vaultBlue, fontFamily: 'Inter_700Bold' }]}>1</Text>
+                <Text style={[styles.progressScaleLabel, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold' }]}>
+                  {BREW_TOKEN_QUOTE_THRESHOLD} QUOTES TO UNLOCK
+                </Text>
+                <Text style={[styles.progressScaleEnd, { color: colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+                  {BREW_TOKEN_QUOTE_THRESHOLD}
+                </Text>
+              </View>
+              <View style={[styles.progressUnlockRow, { borderColor: colors.vaultBlueMuted }]}>
+                <View style={styles.progressKeepGoing}>
+                  <View style={[styles.progressIconRing, { borderColor: colors.vaultBlue }]}>
+                    <Feather name="file-text" size={16} color={colors.vaultBlue} />
+                  </View>
+                  <View style={styles.progressKeepGoingCopy}>
+                    <Text style={[styles.progressKeepGoingTitle, { color: colors.vaultBlue, fontFamily: 'Inter_700Bold' }]}>
+                      KEEP GOING!
+                    </Text>
+                    <Text style={[styles.progressKeepGoingBody, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                      {quoteProgress.firstQuoteView
+                        ? `Your first quote is logged. ${quotesRemaining} more to go.`
+                        : `${quotesRemaining} more ${quotesRemaining === 1 ? 'quote' : 'quotes'} to unlock the vault.`}
+                    </Text>
+                  </View>
+                </View>
+                <View style={[styles.progressDivider, { backgroundColor: colors.vaultBlueMuted }]} />
+                <View style={styles.progressLocked}>
+                  <Feather name="lock" size={15} color={colors.mutedForeground} />
+                  <View style={styles.progressLockedCopy}>
+                    <Text style={[styles.progressLockedTitle, { color: colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+                      VAULT LOCKED
+                    </Text>
+                    <Text style={[styles.progressLockedBody, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                      View all 22 quotes
+                    </Text>
+                  </View>
+                </View>
               </View>
             </View>
           )}
@@ -510,6 +648,25 @@ export function TrainingTapeModal({
         </View>
       </View>
     </Modal>
+  );
+}
+
+function VaultProgressEmblem({ colors }: { colors: ColorScheme }) {
+  return (
+    <Svg width={64} height={64} viewBox="0 0 100 100" accessible={false}>
+      <Circle cx="50" cy="50" r="46" fill={colors.steelHighlight} stroke={colors.vaultBlue} strokeWidth="3" />
+      <Circle cx="50" cy="50" r="37" fill={colors.steelShadow} stroke={colors.border} strokeWidth="3" />
+      <Circle cx="50" cy="50" r="25" fill={colors.steelHighlight} stroke={colors.vaultBlueMuted} strokeWidth="3" />
+      <Circle cx="50" cy="50" r="8" fill={colors.vaultBlue} />
+      <Line x1="50" y1="25" x2="50" y2="9" stroke={colors.border} strokeWidth="4" strokeLinecap="round" />
+      <Line x1="50" y1="75" x2="50" y2="91" stroke={colors.border} strokeWidth="4" strokeLinecap="round" />
+      <Line x1="25" y1="50" x2="9" y2="50" stroke={colors.border} strokeWidth="4" strokeLinecap="round" />
+      <Line x1="75" y1="50" x2="91" y2="50" stroke={colors.border} strokeWidth="4" strokeLinecap="round" />
+      <Line x1="32" y1="32" x2="21" y2="21" stroke={colors.border} strokeWidth="4" strokeLinecap="round" />
+      <Line x1="68" y1="32" x2="79" y2="21" stroke={colors.border} strokeWidth="4" strokeLinecap="round" />
+      <Line x1="32" y1="68" x2="21" y2="79" stroke={colors.border} strokeWidth="4" strokeLinecap="round" />
+      <Line x1="68" y1="68" x2="79" y2="79" stroke={colors.border} strokeWidth="4" strokeLinecap="round" />
+    </Svg>
   );
 }
 
@@ -585,10 +742,10 @@ const styles = StyleSheet.create({
   progressCard: {
     marginTop: 10,
     borderWidth: 1,
-    borderRadius: 3,
+    borderRadius: 5,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 7,
+    paddingVertical: 11,
+    gap: 8,
   },
   progressHeading: {
     flexDirection: 'row',
@@ -602,24 +759,119 @@ const styles = StyleSheet.create({
   },
   progressTitle: {
     fontSize: 9,
-    letterSpacing: 1,
+    letterSpacing: 1.25,
   },
   progressCount: {
-    fontSize: 11,
+    fontSize: 10,
     letterSpacing: 0.6,
   },
-  progressMessage: {
-    fontSize: 11,
-    lineHeight: 16,
+  progressHero: {
+    minHeight: 63,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingLeft: 2,
   },
-  progressTrack: {
-    height: 6,
-    borderRadius: 3,
-    overflow: 'hidden',
+  progressHeroCopy: {
+    gap: 1,
   },
-  progressFill: {
-    height: '100%',
-    borderRadius: 3,
+  progressEyebrow: {
+    fontSize: 8,
+    letterSpacing: 1.5,
+  },
+  progressHeroCount: {
+    fontSize: 32,
+    lineHeight: 36,
+    letterSpacing: 0.2,
+  },
+  progressViewedLabel: {
+    fontSize: 8,
+    letterSpacing: 1.2,
+  },
+  progressSegments: {
+    flexDirection: 'row',
+    height: 13,
+    width: '100%',
+  },
+  progressSegment: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 2,
+  },
+  progressScale: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: -4,
+  },
+  progressScaleEnd: {
+    fontSize: 8,
+  },
+  progressScaleLabel: {
+    fontSize: 7,
+    letterSpacing: 1.15,
+  },
+  progressUnlockRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 50,
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 5,
+  },
+  progressKeepGoing: {
+    flex: 1.15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingRight: 6,
+  },
+  progressIconRing: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  progressKeepGoingCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  progressKeepGoingTitle: {
+    fontSize: 8,
+    letterSpacing: 0.9,
+  },
+  progressKeepGoingBody: {
+    fontSize: 8,
+    lineHeight: 11,
+  },
+  progressDivider: {
+    width: 1,
+    alignSelf: 'stretch',
+    opacity: 0.6,
+    marginVertical: 2,
+  },
+  progressLocked: {
+    flex: 0.85,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingLeft: 6,
+  },
+  progressLockedCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  progressLockedTitle: {
+    fontSize: 8,
+    letterSpacing: 0.5,
+  },
+  progressLockedBody: {
+    fontSize: 8,
+    lineHeight: 11,
   },
   scanlineOne: {
     position: 'absolute',
