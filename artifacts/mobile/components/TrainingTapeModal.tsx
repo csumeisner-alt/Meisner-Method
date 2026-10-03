@@ -10,6 +10,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ColorScheme } from '@/constants/colors';
+import { BREW_TOKEN_QUOTE_THRESHOLD } from '@/lib/brewTokenLogic';
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
@@ -278,11 +279,18 @@ export function TrainingTapeModal({
   colors,
   onClose,
   onQuoteViewed,
+  isBankUnlocked,
 }: {
   visible: boolean;
   colors: ColorScheme;
   onClose: () => void;
-  onQuoteViewed?: (quoteViewId: string) => Promise<{ earnedToken: boolean; halfway: boolean }>;
+  onQuoteViewed?: (quoteViewId: string) => Promise<{
+    earnedToken: boolean;
+    halfway: boolean;
+    quotesViewed: number;
+    firstQuoteView: boolean;
+  }>;
+  isBankUnlocked: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const [quoteMode, setQuoteMode] = useState(false);
@@ -290,8 +298,13 @@ export function TrainingTapeModal({
   const [marketSnapshot, setMarketSnapshot] = useState<MarketSnapshot | null>(null);
   const [marketError, setMarketError] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [quoteProgress, setQuoteProgress] = useState<{
+    quotesViewed: number;
+    firstQuoteView: boolean;
+  } | null>(null);
   const visibleSessionRef = useRef(false);
   const quoteSessionRef = useRef(0);
+  const quoteViewIdRef = useRef('');
 
   useEffect(() => {
     if (!visible) {
@@ -301,6 +314,12 @@ export function TrainingTapeModal({
     if (!visibleSessionRef.current) {
       visibleSessionRef.current = true;
       quoteSessionRef.current += 1;
+      quoteViewIdRef.current = [
+        'training-tape',
+        Date.now(),
+        Math.random().toString(36).slice(2, 8),
+        quoteSessionRef.current,
+      ].join('-');
     }
   }, [visible]);
 
@@ -309,6 +328,7 @@ export function TrainingTapeModal({
 
     let cancelled = false;
     const useQuote = Math.random() < 0.15;
+    setQuoteProgress(null);
     setQuoteMode(useQuote);
     setMarketSnapshot(null);
     setMarketError(false);
@@ -318,10 +338,16 @@ export function TrainingTapeModal({
       const quote = BIDEN_QUOTES[index] ?? BIDEN_QUOTES[0];
       setMessage(quote);
       setLoading(false);
-      const rewardPromise = onQuoteViewed?.(`training-tape-${quoteSessionRef.current}`);
+      const rewardPromise = onQuoteViewed?.(quoteViewIdRef.current);
       if (rewardPromise) {
         void rewardPromise.then(update => {
           if (cancelled) return;
+          setQuoteProgress(current => current?.quotesViewed === update.quotesViewed
+            ? current
+            : {
+                quotesViewed: update.quotesViewed,
+                firstQuoteView: update.firstQuoteView,
+              });
           if (update.halfway) {
             setMessage(`HALFWAY THERE · 50% COMPLETE\n\n${quote}`);
           } else if (update.earnedToken) {
@@ -425,6 +451,56 @@ export function TrainingTapeModal({
             )}
           </View>
 
+          {quoteMode && !isBankUnlocked && quoteProgress && quoteProgress.quotesViewed < BREW_TOKEN_QUOTE_THRESHOLD && (
+            <View
+              style={[
+                styles.progressCard,
+                { backgroundColor: colors.steelShadow, borderColor: colors.goldMuted },
+              ]}
+              testID="brew-bank-quote-progress"
+              accessibilityLabel={`Brew Bank unlock progress: ${quoteProgress.quotesViewed} of ${BREW_TOKEN_QUOTE_THRESHOLD} Biden quotes viewed`}
+            >
+              <View style={styles.progressHeading}>
+                <View style={styles.progressTitleGroup}>
+                  <Feather name="lock" size={13} color={colors.gold} />
+                  <Text style={[styles.progressTitle, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
+                    CENTRAL BANK UNLOCK
+                  </Text>
+                </View>
+                <Text style={[styles.progressCount, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+                  {quoteProgress.quotesViewed}/{BREW_TOKEN_QUOTE_THRESHOLD}
+                </Text>
+              </View>
+              <Text style={[styles.progressMessage, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                {quoteProgress.firstQuoteView
+                  ? 'Your first Biden quote is logged. View 21 more to unlock the Central Bank.'
+                  : `View ${BREW_TOKEN_QUOTE_THRESHOLD - quoteProgress.quotesViewed} more Biden ${
+                      BREW_TOKEN_QUOTE_THRESHOLD - quoteProgress.quotesViewed === 1 ? 'quote' : 'quotes'
+                    } to unlock the Central Bank.`}
+              </Text>
+              <View
+                style={[styles.progressTrack, { backgroundColor: colors.background }]}
+                accessible
+                accessibilityRole="progressbar"
+                accessibilityValue={{
+                  min: 0,
+                  max: BREW_TOKEN_QUOTE_THRESHOLD,
+                  now: quoteProgress.quotesViewed,
+                }}
+              >
+                <View
+                  style={[
+                    styles.progressFill,
+                    {
+                      backgroundColor: colors.gold,
+                      width: `${Math.min(100, (quoteProgress.quotesViewed / BREW_TOKEN_QUOTE_THRESHOLD) * 100)}%`,
+                    },
+                  ]}
+                />
+              </View>
+            </View>
+          )}
+
           <View style={styles.footer}>
             <Feather name="radio" size={13} color={colors.goldMuted} />
             <Text style={[styles.footerText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
@@ -505,6 +581,45 @@ const styles = StyleSheet.create({
     padding: 18,
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+  progressCard: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderRadius: 3,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 7,
+  },
+  progressHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  progressTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  progressTitle: {
+    fontSize: 9,
+    letterSpacing: 1,
+  },
+  progressCount: {
+    fontSize: 11,
+    letterSpacing: 0.6,
+  },
+  progressMessage: {
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  progressTrack: {
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 3,
   },
   scanlineOne: {
     position: 'absolute',

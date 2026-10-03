@@ -1985,6 +1985,7 @@ function GradeHistoryModal({
             colors={colors}
             onClose={() => setTrainingTapeVisible(false)}
             onQuoteViewed={BREW_BANK_ENABLED ? handleQuoteViewed : undefined}
+            isBankUnlocked={brewBankUnlocked}
           />
           {BREW_BANK_ENABLED && (
             <>

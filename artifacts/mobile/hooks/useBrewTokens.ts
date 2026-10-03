@@ -140,6 +140,8 @@ export interface BrewTokenState {
 export interface QuoteViewUpdate {
   earnedToken: boolean;
   halfway: boolean;
+  quotesViewed: number;
+  firstQuoteView: boolean;
 }
 
 export function useBrewTokens(): BrewTokenState {
@@ -462,13 +464,31 @@ export function useBrewTokens(): BrewTokenState {
 
       return {
         snapshot,
-        result: { earnedToken, halfway, justUnlocked },
+        result: {
+          earnedToken,
+          halfway,
+          justUnlocked,
+          quotesViewed: nextQuotesViewed,
+          firstQuoteView: previous === 0,
+        },
       };
     });
 
-    if (!outcome.ok) return { earnedToken: false, halfway: false };
+    if (!outcome.ok) {
+      return {
+        earnedToken: false,
+        halfway: false,
+        quotesViewed: quotesRef.current,
+        firstQuoteView: false,
+      };
+    }
     if (outcome.value.justUnlocked) setJustUnlocked(true);
-    return { earnedToken: outcome.value.earnedToken, halfway: outcome.value.halfway };
+    return {
+      earnedToken: outcome.value.earnedToken,
+      halfway: outcome.value.halfway,
+      quotesViewed: outcome.value.quotesViewed,
+      firstQuoteView: outcome.value.firstQuoteView,
+    };
   }, []);
 
   const resolveBet = useCallback(async (bet: number, won: boolean, effect: BrewBetEffect = {}) => {
