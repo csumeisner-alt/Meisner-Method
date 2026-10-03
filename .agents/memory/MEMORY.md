@@ -34,3 +34,4 @@
 - [Brew activity history](brew-activity-history.md) — token, bottle, bank, toss, and theme events travel with the economy snapshot; older snapshots read as an empty history.
 - [Stock recommendation stability](stock-recommendation-stability.md) — action and price levels are deterministic; AI explains them but cannot override or invert them.
 - [GitHub release sync](github-release-sync.md) — if the HTTPS remote credential is stale, sync through the authorized GitHub API and throttle blob writes below the proxy limit.
+- [Biden quote progress tracker](biden-quote-progress-tracker.md) — keep this as a visual layer over the existing persisted view count and shared unlock threshold.

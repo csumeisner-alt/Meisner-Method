@@ -490,6 +490,33 @@ test('legacy economy fields migrate into one snapshot without losing item state'
   assert.deepEqual(snapshot.activityLog, []);
 });
 
+test('a saved five-quote count survives migration and snapshot hydration', () => {
+  const migrated = migrateLegacyBrewEconomy({
+    rawQuotes: '5',
+    rawUnlocked: null,
+    rawTokens: null,
+    rawKeys: null,
+    rawAccessExpires: null,
+    rawQuickReviveUnlocked: null,
+    rawQuickReviveBottles: null,
+    rawQuickReviveArmed: null,
+    rawDaiquiriUnlocked: null,
+    rawDaiquiriBottles: null,
+    rawDaiquiriArmed: null,
+    rawStaminUpUnlocked: null,
+    rawStaminUpBottles: null,
+    rawStaminUpArmed: null,
+    rawSmartProUnlocked: null,
+    rawSmartProBottles: null,
+    rawSmartProSaleExpires: null,
+    rawDarkBrewTokens: null,
+  });
+  const hydrated = parseBrewEconomySnapshot(serializeBrewEconomySnapshot(migrated));
+
+  assert.equal(migrated.quotesViewed, 5);
+  assert.equal(hydrated?.quotesViewed, 5);
+});
+
 test('invalid economy snapshots are rejected instead of replacing legacy data', () => {
   assert.equal(parseBrewEconomySnapshot('not-json'), null);
   assert.equal(parseBrewEconomySnapshot(JSON.stringify({ version: BREW_ECONOMY_SNAPSHOT_VERSION })), null);

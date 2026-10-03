@@ -617,7 +617,7 @@ export function TrainingTapeModal({
 
 function VaultProgressEmblem({ colors }: { colors: ColorScheme }) {
   return (
-    <Svg width={64} height={64} viewBox="0 0 100 100" accessible={false}>
+    <Svg width={56} height={56} viewBox="0 0 100 100" accessible={false}>
       <Circle cx="50" cy="50" r="46" fill={colors.steelHighlight} stroke={colors.vaultBlue} strokeWidth="3" />
       <Circle cx="50" cy="50" r="37" fill={colors.steelShadow} stroke={colors.border} strokeWidth="3" />
       <Circle cx="50" cy="50" r="25" fill={colors.steelHighlight} stroke={colors.vaultBlueMuted} strokeWidth="3" />
@@ -637,10 +637,13 @@ function VaultProgressEmblem({ colors }: { colors: ColorScheme }) {
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.88)',
+  },
+  overlayContent: {
+    flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 18,
-    backgroundColor: 'rgba(0,0,0,0.88)',
   },
   shell: {
     width: '100%',
@@ -708,8 +711,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 5,
     paddingHorizontal: 12,
-    paddingVertical: 11,
-    gap: 8,
+    paddingVertical: 10,
+    gap: 6,
   },
   progressHeading: {
     flexDirection: 'row',
@@ -725,18 +728,17 @@ const styles = StyleSheet.create({
     fontSize: 9,
     letterSpacing: 1.25,
   },
-  progressCount: {
-    fontSize: 10,
-    letterSpacing: 0.6,
-  },
   progressHero: {
-    minHeight: 63,
+    minHeight: 56,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 6,
     paddingLeft: 2,
   },
   progressHeroCopy: {
+    flex: 1,
+    minWidth: 0,
     gap: 1,
   },
   progressEyebrow: {
@@ -744,17 +746,14 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
   },
   progressHeroCount: {
-    fontSize: 32,
+    fontSize: 30,
     lineHeight: 36,
     letterSpacing: 0.2,
-  },
-  progressViewedLabel: {
-    fontSize: 8,
-    letterSpacing: 1.2,
+    flexShrink: 1,
   },
   progressSegments: {
     flexDirection: 'row',
-    height: 13,
+    height: 12,
     width: '100%',
   },
   progressSegment: {
@@ -762,80 +761,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 2,
   },
-  progressScale: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: -4,
-  },
-  progressScaleEnd: {
-    fontSize: 8,
-  },
-  progressScaleLabel: {
-    fontSize: 7,
-    letterSpacing: 1.15,
-  },
   progressUnlockRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 50,
-    borderWidth: 1,
-    borderRadius: 4,
-    paddingHorizontal: 7,
-    paddingVertical: 5,
+    minHeight: 30,
+    borderTopWidth: 1,
+    paddingTop: 7,
+    gap: 8,
   },
-  progressKeepGoing: {
-    flex: 1.15,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    paddingRight: 6,
-  },
-  progressIconRing: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  progressKeepGoingCopy: {
+  progressUnlockText: {
     flex: 1,
-    gap: 2,
-  },
-  progressKeepGoingTitle: {
-    fontSize: 8,
-    letterSpacing: 0.9,
-  },
-  progressKeepGoingBody: {
-    fontSize: 8,
-    lineHeight: 11,
-  },
-  progressDivider: {
-    width: 1,
-    alignSelf: 'stretch',
-    opacity: 0.6,
-    marginVertical: 2,
-  },
-  progressLocked: {
-    flex: 0.85,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingLeft: 6,
-  },
-  progressLockedCopy: {
-    flex: 1,
-    gap: 2,
-  },
-  progressLockedTitle: {
-    fontSize: 8,
-    letterSpacing: 0.5,
-  },
-  progressLockedBody: {
-    fontSize: 8,
-    lineHeight: 11,
+    flexShrink: 1,
+    fontSize: 9,
+    letterSpacing: 0.7,
+    lineHeight: 14,
   },
   scanlineOne: {
     position: 'absolute',

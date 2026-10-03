@@ -31,61 +31,122 @@
   width: min(100%, 360px);
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  margin-top: 10px;
-  border: 1px solid #8f753f;
-  border-radius: 3px;
-  padding: 10px 12px;
-  background: #080a0d;
+  gap: 10px;
+  border: 1px solid var(--biden-vault-blue-soft);
+  border-radius: 5px;
+  padding: 12px 14px;
+  background: linear-gradient(145deg, #0d1520, var(--biden-vault-panel));
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.36);
 }
 
 .vault-current-heading {
   display: flex;
   align-items: center;
-  justify-content: space-between;
 }
 
 .vault-current-title {
   display: flex;
   align-items: center;
   gap: 7px;
-  color: #d6ad54;
-  font-size: 9px;
+  color: var(--biden-vault-blue);
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 1px;
+  letter-spacing: 1.2px;
 }
 
 .vault-current-title svg {
-  width: 13px;
-  height: 13px;
+  width: 15px;
+  height: 15px;
+}
+
+.vault-current-hero {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.vault-current-count-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vault-current-eyebrow {
+  color: var(--biden-vault-blue-soft);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 1.35px;
 }
 
 .vault-current-count {
   color: var(--biden-vault-white);
-  font-size: 11px;
+  font-size: 32px;
   font-weight: 700;
-  letter-spacing: 0.6px;
+  letter-spacing: -0.4px;
+  line-height: 1.1;
 }
 
-.vault-current-copy {
-  color: #888;
-  font-size: 11px;
-  font-weight: 400;
-  line-height: 16px;
+.vault-current-count strong {
+  color: var(--biden-vault-blue);
 }
 
-.vault-current-track {
-  height: 6px;
-  overflow: hidden;
-  border-radius: 3px;
-  background: #000;
+.vault-current-emblem {
+  width: 56px;
+  height: 56px;
+  flex: 0 0 56px;
 }
 
-.vault-current-fill {
-  width: 63.64%;
-  height: 100%;
-  border-radius: inherit;
-  background: #d6ad54;
+.vault-current-meter {
+  display: flex;
+  width: 100%;
+  height: 12px;
+  gap: 2px;
+}
+
+.vault-current-segment {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid var(--biden-vault-blue-soft);
+  border-radius: 2px;
+  background: var(--biden-vault-ink);
+}
+
+.vault-current-segment.is-filled {
+  border-color: var(--biden-vault-blue);
+  background: var(--biden-vault-blue);
+}
+
+.vault-current-remaining {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--biden-vault-blue-soft);
+  padding-top: 7px;
+  color: var(--biden-vault-blue);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.7px;
+  line-height: 14px;
+}
+
+.vault-current-remaining svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+}
+
+@media (max-width: 360px) {
+  .vault-current-stage {
+    padding: 16px;
+  }
+
+  .vault-current-card {
+    padding: 11px 12px;
+  }
 }
 
 .vault-story {
