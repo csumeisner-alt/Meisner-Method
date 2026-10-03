@@ -18,6 +18,27 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
+ * Returns matching listed equities for company-name and ticker autocomplete
+ * @summary Search stocks by company name or ticker
+ */
+export const searchStockSymbolsQueryQMin = 2;
+export const searchStockSymbolsQueryQMax = 80;
+
+
+
+export const SearchStockSymbolsQueryParams = zod.object({
+  "q": zod.coerce.string().min(searchStockSymbolsQueryQMin).max(searchStockSymbolsQueryQMax)
+})
+
+export const SearchStockSymbolsResponseItem = zod.object({
+  "symbol": zod.string(),
+  "name": zod.string(),
+  "exchange": zod.string()
+})
+export const SearchStockSymbolsResponse = zod.array(SearchStockSymbolsResponseItem)
+
+
+/**
  * Fetches real market data and runs technical, fundamental, and behavioral analysis with AI-powered buy/sell recommendations
  * @summary Analyze a stock ticker
  */

@@ -10,6 +10,7 @@ import {
   computeFundamentalScore,
   computeBehavioralScore,
 } from "../lib/yahoo.js";
+import { searchYahooStocks } from "../lib/stockSymbolSearch.js";
 import { normalizeDividendYield } from "../lib/dividendYield.js";
 import { buildStockRecommendation } from "../lib/stockRecommendation.js";
 import { fallbackAiAnalysis, parseAiAnalysis } from "../lib/analysisResponse.js";
@@ -151,6 +152,30 @@ router.get("/stocks/info/:symbol", async (req, res) => {
     });
   } catch (err: any) {
     res.status(422).json({ error: "INFO_FAILED", message: err.message });
+  }
+});
+
+// Company-name and ticker autocomplete for the Analyze Stock search field.
+router.get("/stocks/search", async (req, res) => {
+  const rawQuery = req.query["q"];
+  const query = typeof rawQuery === "string" ? rawQuery.trim() : "";
+  if (query.length < 2 || query.length > 80) {
+    res.status(400).json({
+      error: "INVALID_QUERY",
+      message: "Search text must be between 2 and 80 characters.",
+    });
+    return;
+  }
+
+  try {
+    const suggestions = await searchYahooStocks(query);
+    res.set("Cache-Control", "private, max-age=30").json(suggestions);
+  } catch (err: any) {
+    req.log.error({ err }, "Company symbol search failed");
+    res.status(502).json({
+      error: "STOCK_SEARCH_FAILED",
+      message: "Company search is temporarily unavailable.",
+    });
   }
 });
 

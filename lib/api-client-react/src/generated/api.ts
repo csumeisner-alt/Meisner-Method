@@ -23,7 +23,9 @@ import type {
   AnalysisError,
   AnalyzeStockRequest,
   HealthStatus,
-  StockAnalysis
+  SearchStockSymbolsParams,
+  StockAnalysis,
+  StockSymbolSuggestion
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -119,6 +121,91 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getHealthCheckQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSearchStockSymbolsUrl = (params: SearchStockSymbolsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/stocks/search?${stringifiedParams}` : `/api/stocks/search`
+}
+
+/**
+ * Returns matching listed equities for company-name and ticker autocomplete
+ * @summary Search stocks by company name or ticker
+ */
+export const searchStockSymbols = async (params: SearchStockSymbolsParams, options?: RequestInit): Promise<StockSymbolSuggestion[]> => {
+
+  return customFetch<StockSymbolSuggestion[]>(getSearchStockSymbolsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getSearchStockSymbolsQueryKey = (params?: SearchStockSymbolsParams,) => {
+    return [
+    `/api/stocks/search`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getSearchStockSymbolsQueryOptions = <TData = Awaited<ReturnType<typeof searchStockSymbols>>, TError = ErrorType<AnalysisError>>(params: SearchStockSymbolsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchStockSymbols>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getSearchStockSymbolsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof searchStockSymbols>>> = ({ signal }) => searchStockSymbols(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof searchStockSymbols>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type SearchStockSymbolsQueryResult = NonNullable<Awaited<ReturnType<typeof searchStockSymbols>>>
+export type SearchStockSymbolsQueryError = ErrorType<AnalysisError>
+
+
+/**
+ * @summary Search stocks by company name or ticker
+ */
+
+export function useSearchStockSymbols<TData = Awaited<ReturnType<typeof searchStockSymbols>>, TError = ErrorType<AnalysisError>>(
+ params: SearchStockSymbolsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchStockSymbols>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getSearchStockSymbolsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

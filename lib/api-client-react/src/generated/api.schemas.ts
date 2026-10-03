@@ -14,6 +14,12 @@ export interface AnalyzeStockRequest {
   symbol: string;
 }
 
+export interface StockSymbolSuggestion {
+  symbol: string;
+  name: string;
+  exchange: string;
+}
+
 export type TechnicalAnalysisMacdSignal = typeof TechnicalAnalysisMacdSignal[keyof typeof TechnicalAnalysisMacdSignal];
 
 
@@ -139,4 +145,12 @@ export interface AnalysisError {
   error: string;
   message: string;
 }
+
+export type SearchStockSymbolsParams = {
+/**
+ * @minLength 2
+ * @maxLength 80
+ */
+q: string;
+};
 

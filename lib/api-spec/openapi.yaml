@@ -26,6 +26,41 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /stocks/search:
+    get:
+      operationId: searchStockSymbols
+      tags: [stocks]
+      summary: Search stocks by company name or ticker
+      description: Returns matching listed equities for company-name and ticker autocomplete
+      parameters:
+        - in: query
+          name: q
+          required: true
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 80
+      responses:
+        "200":
+          description: Matching stock symbols
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StockSymbolSuggestion"
+        "400":
+          description: Search text is missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "502":
+          description: The upstream company search is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
   /stocks/analyze:
     post:
       operationId: analyzeStock
@@ -75,6 +110,20 @@ components:
           description: Stock ticker symbol (e.g. AAPL, TSLA, MSFT)
       required:
         - symbol
+
+    StockSymbolSuggestion:
+      type: object
+      properties:
+        symbol:
+          type: string
+        name:
+          type: string
+        exchange:
+          type: string
+      required:
+        - symbol
+        - name
+        - exchange
 
     TechnicalAnalysis:
       type: object

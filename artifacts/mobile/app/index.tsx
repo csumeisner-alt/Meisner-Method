@@ -31,6 +31,12 @@ import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { AmericanAnalyzeButton } from '@/components/AmericanAnalyzeButton';
 import { PriceAlertModal } from '@/components/PriceAlertModal';
 import { matchesFilter, mergeReorderedSubset } from '@/lib/watchlistFilter';
+import { resolveStockSearchSymbol } from '@/lib/stockSearch';
+import {
+  getSearchStockSymbolsQueryKey,
+  useSearchStockSymbols,
+  type StockSymbolSuggestion,
+} from '@workspace/api-client-react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /** Show the watchlist filter input when tracking this many tickers or more. */
@@ -139,6 +145,8 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { apiFetch } = useApi();
   const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [selectedStock, setSelectedStock] = useState<StockSymbolSuggestion | null>(null);
   const [recent, setRecent] = useState<string[]>([]);
   const [tipVisible, setTipVisible] = useState(false);
   const [currentTip, setCurrentTip] = useState('');
@@ -148,6 +156,16 @@ export default function HomeScreen() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [scrollEnabled, setScrollEnabled] = useState(true);
+  const stockSearch = useSearchStockSymbols(
+    { q: debouncedQuery },
+    {
+      query: {
+        queryKey: getSearchStockSymbolsQueryKey({ q: debouncedQuery }),
+        enabled: debouncedQuery.length >= 2 && !selectedStock,
+        staleTime: 45_000,
+      },
+    },
+  );
   const [watchlistCollapsed, setWatchlistCollapsed] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -285,6 +303,15 @@ export default function HomeScreen() {
     };
   }, [fetchTrending]);
 
+  useEffect(() => {
+    setDebouncedQuery('');
+    const searchText = query.trim();
+    if (selectedStock || searchText.length < 2) return;
+
+    const timeout = setTimeout(() => setDebouncedQuery(searchText), 280);
+    return () => clearTimeout(timeout);
+  }, [query, selectedStock]);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await Promise.all([watchlist.refresh(), fetchTrending(false)]);
@@ -310,8 +337,33 @@ export default function HomeScreen() {
     router.push(`/analysis/${upper}`);
   }, [recent, router]);
 
+  const searchText = query.trim();
+  const isCurrentStockSearch = !selectedStock
+    && searchText.length >= 2
+    && debouncedQuery === searchText;
+  const stockSuggestions = isCurrentStockSearch ? stockSearch.data ?? [] : [];
+  const allowRawTicker = searchText.length === 1
+    || (
+      isCurrentStockSearch
+      && !stockSearch.isFetching
+      && (stockSearch.isSuccess || stockSearch.isError)
+    );
+  const resolvedSymbol = resolveStockSearchSymbol(
+    query,
+    stockSuggestions,
+    selectedStock,
+    allowRawTicker,
+  );
+
   const handleSubmit = () => {
-    if (query.trim()) navigateTo(query.trim());
+    if (resolvedSymbol) navigateTo(resolvedSymbol);
+  };
+
+  const selectStock = (stock: StockSymbolSuggestion) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedStock(stock);
+    setQuery(`${stock.name} (${stock.symbol})`);
+    Keyboard.dismiss();
   };
 
   const clearRecent = () => {
@@ -437,25 +489,95 @@ export default function HomeScreen() {
           <Feather name="search" size={20} color={colors.mutedForeground} style={styles.searchIcon} />
           <TextInput
             style={[styles.searchInput, { color: colors.foreground, fontFamily: 'Inter_500Medium' }]}
-            placeholder="Enter ticker (AAPL, TSLA...)"
+            placeholder="Company name or ticker (Apple, AAPL)"
             placeholderTextColor={colors.mutedForeground}
             value={query}
-            onChangeText={setQuery}
-            autoCapitalize="characters"
+            onChangeText={(value) => {
+              setSelectedStock(null);
+              setQuery(value);
+            }}
+            autoCapitalize="none"
             autoCorrect={false}
             returnKeyType="search"
             onSubmitEditing={handleSubmit}
           />
           {query.length > 0 && (
-            <TouchableOpacity onPress={() => setQuery('')} style={styles.clearBtn}>
+            <TouchableOpacity
+              onPress={() => {
+                setSelectedStock(null);
+                setQuery('');
+              }}
+              style={styles.clearBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Clear stock search"
+            >
               <Feather name="x" size={18} color={colors.mutedForeground} />
             </TouchableOpacity>
           )}
         </View>
+        {isCurrentStockSearch && (
+          <View style={[styles.suggestionPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            {stockSearch.isFetching ? (
+              <View style={styles.searchStatusRow}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={[styles.searchStatus, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                  Finding companies…
+                </Text>
+              </View>
+            ) : stockSearch.isError ? (
+              <Text style={[styles.searchStatus, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                Company lookup is unavailable. Enter a ticker in uppercase to continue.
+              </Text>
+            ) : stockSuggestions.length === 0 ? (
+              <Text style={[styles.searchStatus, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                No matching companies. Try another name or enter a ticker.
+              </Text>
+            ) : (
+              <ScrollView
+                style={styles.suggestionsList}
+                keyboardShouldPersistTaps="handled"
+                nestedScrollEnabled
+                showsVerticalScrollIndicator={false}
+              >
+                {stockSuggestions.map((stock, index) => (
+                  <TouchableOpacity
+                    key={stock.symbol}
+                    style={[
+                      styles.suggestionRow,
+                      { borderBottomColor: index === stockSuggestions.length - 1 ? 'transparent' : colors.border },
+                    ]}
+                    onPress={() => selectStock(stock)}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Select ${stock.name}, ticker ${stock.symbol}, ${stock.exchange}`}
+                  >
+                    <View style={styles.suggestionCopy}>
+                      <Text
+                        numberOfLines={1}
+                        style={[styles.suggestionName, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}
+                      >
+                        {stock.name}
+                      </Text>
+                      <Text
+                        numberOfLines={1}
+                        style={[styles.suggestionExchange, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}
+                      >
+                        {stock.exchange}
+                      </Text>
+                    </View>
+                    <Text style={[styles.suggestionSymbol, { color: colors.primary, fontFamily: 'Inter_700Bold' }]}>
+                      {stock.symbol}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        )}
         <AmericanAnalyzeButton
           active={isActive}
           neonActive={neonGucciActive}
-          disabled={!query.trim()}
+          disabled={!resolvedSymbol}
           hasQuery={Boolean(query.trim())}
           colors={colors}
           onPress={handleSubmit}
@@ -715,6 +837,28 @@ const styles = StyleSheet.create({
   searchIcon: { marginRight: 10 },
   searchInput: { flex: 1, fontSize: 16, height: '100%' },
   clearBtn: { padding: 4 },
+  suggestionPanel: {
+    maxHeight: 224,
+    borderWidth: 1,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  suggestionsList: { maxHeight: 224 },
+  suggestionRow: {
+    minHeight: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  suggestionCopy: { flex: 1, minWidth: 0, gap: 3 },
+  suggestionName: { fontSize: 14 },
+  suggestionExchange: { fontSize: 11 },
+  suggestionSymbol: { fontSize: 13, marginLeft: 12 },
+  searchStatusRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  searchStatus: { fontSize: 12, paddingHorizontal: 12, paddingVertical: 14, textAlign: 'center' },
   section: { paddingHorizontal: 20, marginBottom: 24 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   sectionTitleRow: { flexDirection: 'row', alignItems: 'center' },
