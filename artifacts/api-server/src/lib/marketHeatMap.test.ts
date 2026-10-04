@@ -63,3 +63,33 @@ test("quote and response validators reject missing, stale-shaped, or non-finite 
     false,
   );
 });
+
+test("heat-map responses reject stale or undated continuous-futures quotes", () => {
+  const updatedAt = 2_000_000_000;
+  const futuresQuote = {
+    symbol: "ES=F",
+    name: "E-mini S&P 500",
+    price: 5_000,
+    priceChangePercent: 0.2,
+    priceTimestamp: updatedAt - 5 * 60,
+    marketSession: "regular",
+    assetType: "future",
+    sector: null,
+  };
+  const response = (quote: typeof futuresQuote | (typeof futuresQuote & { priceTimestamp: null })) => ({
+    category: "futures",
+    quotes: [quote],
+    unavailableSymbols: [],
+    updatedAt,
+  });
+
+  assert.equal(isHeatMapResponse(response(futuresQuote), "futures"), true);
+  assert.equal(
+    isHeatMapResponse(
+      response({ ...futuresQuote, priceTimestamp: updatedAt - 24 * 60 * 60 - 1 }),
+      "futures",
+    ),
+    false,
+  );
+  assert.equal(isHeatMapResponse(response({ ...futuresQuote, priceTimestamp: null }), "futures"), false);
+});

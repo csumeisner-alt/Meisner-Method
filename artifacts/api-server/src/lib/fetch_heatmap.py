@@ -96,13 +96,22 @@ def asset_type_for(category, symbol):
     return "stock"
 
 
-def market_session(timestamp, asset_type):
-    age_seconds = datetime.now(timezone.utc).timestamp() - timestamp
+def as_utc_datetime(value=None):
+    if value is None:
+        return datetime.now(timezone.utc)
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def market_session(timestamp, asset_type, now=None):
+    as_of = as_utc_datetime(now)
+    age_seconds = as_of.timestamp() - timestamp
     if asset_type == "cryptocurrency":
         return "regular" if age_seconds <= 30 * 60 else "closed"
     try:
         local = datetime.fromtimestamp(timestamp, ZoneInfo("America/New_York"))
-        current = datetime.now(ZoneInfo("America/New_York"))
+        current = as_of.astimezone(ZoneInfo("America/New_York"))
     except Exception:
         return "unknown"
     if local.date() != current.date() or local.weekday() >= 5 or age_seconds > 30 * 60:
@@ -157,11 +166,11 @@ def previous_daily_close(frame, symbol, latest_index):
         row_date = index_value.date() if hasattr(index_value, "date") else None
         price = finite_number(raw_price)
         if price is not None and price > 0 and latest_date is not None and row_date < latest_date:
-            prior_rows.append(price)
-    return prior_rows[-1] if prior_rows else None
+            prior_rows.append((row_date, price))
+    return max(prior_rows, key=lambda row: row[0])[1] if prior_rows else None
 
 
-def quote_from_frame(frame, symbol, category, require_prior_close=True, previous_close=None):
+def quote_from_frame(frame, symbol, category, require_prior_close=True, previous_close=None, now=None):
     if frame is None or "Close" not in frame:
         return None
     close = frame["Close"]
@@ -181,8 +190,11 @@ def quote_from_frame(frame, symbol, category, require_prior_close=True, previous
     latest_index, latest_timestamp, latest_price = rows[-1]
     asset_type = asset_type_for(category, symbol)
     max_age = 48 * 60 * 60 if asset_type == "cryptocurrency" else 120 * 60 * 60
-    now = datetime.now(timezone.utc).timestamp()
-    if latest_timestamp > now + 3600 or now - latest_timestamp > max_age:
+    if asset_type == "future" or symbol.endswith("=F"):
+        max_age = 24 * 60 * 60
+    as_of = as_utc_datetime(now)
+    now_timestamp = as_of.timestamp()
+    if latest_timestamp > now_timestamp + 3600 or now_timestamp - latest_timestamp > max_age:
         return None
 
     latest_date = latest_index.date() if hasattr(latest_index, "date") else None
@@ -208,13 +220,13 @@ def quote_from_frame(frame, symbol, category, require_prior_close=True, previous
         "price": round(latest_price, 6),
         "priceChangePercent": round(change_percent, 4),
         "priceTimestamp": latest_timestamp,
-        "marketSession": market_session(latest_timestamp, asset_type),
+        "marketSession": market_session(latest_timestamp, asset_type, now=as_of),
         "assetType": asset_type,
         "sector": sector,
     }
 
 
-def download_quotes(symbols, category, interval):
+def download_quotes(symbols, category, interval, now=None):
     if not symbols:
         return {}
     try:
@@ -262,6 +274,7 @@ def download_quotes(symbols, category, interval):
                 category,
                 require_prior_close=interval != "5m",
                 previous_close=reference_close,
+                now=now,
             )
             if quote:
                 quotes[symbol] = quote

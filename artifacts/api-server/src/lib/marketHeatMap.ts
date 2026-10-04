@@ -30,6 +30,8 @@ export interface HeatMapResponse {
 const SYMBOL_PATTERN = /^[A-Z0-9.^=-]{1,15}$/;
 const ASSET_TYPES = new Set(["stock", "etf", "commodity", "future", "cryptocurrency"]);
 const MARKET_SESSIONS = new Set(["pre_market", "regular", "after_hours", "closed", "unknown"]);
+const FUTURE_QUOTE_MAX_AGE_SECONDS = 24 * 60 * 60;
+const MAX_FUTURE_TIMESTAMP_SKEW_SECONDS = 60 * 60;
 
 export function isHeatMapCategory(value: unknown): value is HeatMapCategory {
   return typeof value === "string" && HEAT_MAP_CATEGORIES.includes(value as HeatMapCategory);
@@ -98,7 +100,7 @@ export function isHeatMapQuote(value: unknown): value is HeatMapQuote {
 export function isHeatMapResponse(value: unknown, category: HeatMapCategory): value is HeatMapResponse {
   if (!value || typeof value !== "object") return false;
   const response = value as Record<string, unknown>;
-  return (
+  if (!(
     response["category"] === category &&
     Array.isArray(response["quotes"]) &&
     response["quotes"].every(isHeatMapQuote) &&
@@ -106,5 +108,18 @@ export function isHeatMapResponse(value: unknown, category: HeatMapCategory): va
     response["unavailableSymbols"].every((symbol) => typeof symbol === "string") &&
     typeof response["updatedAt"] === "number" &&
     Number.isFinite(response["updatedAt"])
-  );
+  )) {
+    return false;
+  }
+
+  const updatedAt = response["updatedAt"];
+  return (response["quotes"] as HeatMapQuote[]).every((quote) => {
+    if (quote.assetType !== "future" && !quote.symbol.endsWith("=F")) return true;
+    const timestamp = quote.priceTimestamp;
+    return (
+      timestamp !== null &&
+      timestamp <= updatedAt + MAX_FUTURE_TIMESTAMP_SKEW_SECONDS &&
+      updatedAt - timestamp <= FUTURE_QUOTE_MAX_AGE_SECONDS
+    );
+  });
 }
