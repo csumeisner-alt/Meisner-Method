@@ -97,7 +97,7 @@ paths:
       operationId: getMarketHeatMap
       tags: [stocks]
       summary: Get batched quotes for a market heat map
-      description: Returns a cached batch of current or latest-available market quotes for one heat-map category. Custom maps pass symbols as a comma-separated query array.
+      description: Returns a cached batch of quotes, selected-period returns, and available provider metadata for one heat-map category. Custom maps pass symbols as a comma-separated query array.
       parameters:
         - in: query
           name: category
@@ -105,6 +105,14 @@ paths:
           schema:
             type: string
             enum: [stocks, etfs, commodities, futures, cryptocurrency, custom]
+        - in: query
+          name: period
+          required: false
+          schema:
+            type: string
+            enum: [1d, 1w, 1m, 3m, 6m, 1y, 3y, 5y, max]
+            default: 1d
+          description: Return window. Risk levels always use trailing-year annualized daily volatility.
         - in: query
           name: symbols
           required: false
@@ -427,6 +435,22 @@ components:
         priceChangePercent:
           type: number
           description: Percentage change from the previous close, in percentage points (1.25 means 1.25%).
+        returnPercent:
+          type: number
+          nullable: true
+          description: Selected-period return in percentage points, or null when the requested history is unavailable.
+        returnBasis:
+          type: string
+          enum: [adjusted_total_return, price_return_proxy]
+          description: Adjusted total return for stocks/ETFs where supported, otherwise a price-return proxy.
+        returnUnavailableReason:
+          type: string
+          nullable: true
+          description: Why the requested return could not be calculated.
+        historyStartDate:
+          type: string
+          nullable: true
+          description: Earliest available daily observation in YYYY-MM-DD; populated for Max.
         priceTimestamp:
           type: integer
           nullable: true
@@ -441,15 +465,41 @@ components:
         sector:
           type: string
           nullable: true
+          description: Normalized provider sector; stocks without metadata use Unknown.
+        exchange:
+          type: string
+          nullable: true
+          description: Normalized provider exchange when available.
+        marketCapUsd:
+          type: number
+          nullable: true
+          description: Provider market capitalization in USD. ETF assets-under-management are not substituted.
+        annualizedVolatilityPercent:
+          type: number
+          nullable: true
+          description: Trailing-year annualized standard deviation of daily returns, requiring at least 60 observations.
+        riskBand:
+          type: string
+          enum: [Conservative, Moderate Conservative, Moderate, Moderate Aggressive, Aggressive]
+          nullable: true
+          description: Historical-volatility band; not personalized investment suitability.
       required:
         - symbol
         - name
         - price
         - priceChangePercent
+        - returnPercent
+        - returnBasis
+        - returnUnavailableReason
+        - historyStartDate
         - priceTimestamp
         - marketSession
         - assetType
         - sector
+        - exchange
+        - marketCapUsd
+        - annualizedVolatilityPercent
+        - riskBand
 
     HeatMapResponse:
       type: object
@@ -457,6 +507,9 @@ components:
         category:
           type: string
           enum: [stocks, etfs, commodities, futures, cryptocurrency, custom]
+        period:
+          type: string
+          enum: [1d, 1w, 1m, 3m, 6m, 1y, 3y, 5y, max]
         quotes:
           type: array
           items:
@@ -470,6 +523,7 @@ components:
           description: Unix timestamp in seconds when this batch was assembled.
       required:
         - category
+        - period
         - quotes
         - unavailableSymbols
         - updatedAt

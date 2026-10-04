@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Fetch one batched, freshness-checked set of market heat-map quotes."""
+import calendar
 import json
 import math
+import os
 import sys
-from datetime import datetime, timezone
+import tempfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import yfinance as yf
@@ -56,6 +60,55 @@ UNIVERSES = {
     "futures": FUTURE_SYMBOLS,
     "cryptocurrency": CRYPTO_SYMBOLS,
 }
+PERIOD_LOOKBACKS = {
+    "1w": ("days", 7),
+    "1m": ("months", 1),
+    "3m": ("months", 3),
+    "6m": ("months", 6),
+    "1y": ("months", 12),
+    "3y": ("months", 36),
+    "5y": ("months", 60),
+}
+RISK_BANDS = (
+    (15, "Conservative"),
+    (25, "Moderate Conservative"),
+    (40, "Moderate"),
+    (60, "Moderate Aggressive"),
+    (math.inf, "Aggressive"),
+)
+SECTOR_ALIASES = {
+    "technology": "Technology",
+    "information technology": "Technology",
+    "communication services": "Communication Services",
+    "consumer cyclical": "Consumer Cyclical",
+    "consumer discretionary": "Consumer Cyclical",
+    "consumer defensive": "Consumer Defensive",
+    "consumer staples": "Consumer Defensive",
+    "financials": "Financials",
+    "financial services": "Financials",
+    "healthcare": "Healthcare",
+    "health care": "Healthcare",
+    "industrials": "Industrials",
+    "real estate": "Real Estate",
+    "energy": "Energy",
+    "utilities": "Utilities",
+    "basic materials": "Basic Materials",
+    "materials": "Basic Materials",
+}
+EXCHANGE_ALIASES = {
+    "nms": "NASDAQ", "ngm": "NASDAQ", "ncm": "NASDAQ", "nas": "NASDAQ",
+    "nasdaq": "NASDAQ", "nasdaq global select": "NASDAQ", "nasdaq global market": "NASDAQ",
+    "nasdaqgs": "NASDAQ", "nasdaqgm": "NASDAQ", "nasdaqcm": "NASDAQ",
+    "nyq": "NYSE", "nyse": "NYSE", "new york stock exchange": "NYSE",
+    "pcx": "NYSE Arca", "arca": "NYSE Arca", "nyse arca": "NYSE Arca",
+    "ase": "NYSE American", "amex": "NYSE American", "nyse american": "NYSE American",
+    "bts": "Cboe", "cboe": "Cboe",
+    "otc": "OTC", "pinksheet": "OTC",
+}
+METADATA_CACHE_PATH = os.path.join(tempfile.gettempdir(), "meisner_heat_map_metadata.json")
+METADATA_CACHE_TTL_SECONDS = 24 * 60 * 60
+MIN_VOLATILITY_RETURNS = 60
+HISTORY_BATCH_SIZE = 40
 
 
 def finite_number(value):
@@ -64,6 +117,111 @@ def finite_number(value):
     except (TypeError, ValueError):
         return None
     return number if math.isfinite(number) else None
+
+
+def normalize_sector(value, symbol=None):
+    raw = str(value or "").strip()
+    normalized = SECTOR_ALIASES.get(raw.casefold())
+    if normalized:
+        return normalized
+    if not raw and symbol:
+        return STOCK_SECTORS.get(symbol, "Unknown")
+    return raw if raw else "Unknown"
+
+
+def normalize_exchange(value):
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    return EXCHANGE_ALIASES.get(raw.casefold(), raw.upper() if len(raw) <= 6 else raw)
+
+
+def risk_band_for_volatility(volatility_percent):
+    if volatility_percent is None or not math.isfinite(volatility_percent):
+        return None
+    for upper_bound, label in RISK_BANDS:
+        if volatility_percent < upper_bound:
+            return label
+    return "Aggressive"
+
+
+def market_cap_bucket(market_cap_usd):
+    if market_cap_usd is None or not math.isfinite(market_cap_usd) or market_cap_usd <= 0:
+        return None
+    if market_cap_usd < 300_000_000:
+        return "Micro"
+    if market_cap_usd < 2_000_000_000:
+        return "Small"
+    if market_cap_usd < 10_000_000_000:
+        return "Mid"
+    if market_cap_usd < 200_000_000_000:
+        return "Large"
+    return "Mega"
+
+
+def read_metadata_cache(now=None):
+    now_timestamp = as_utc_datetime(now).timestamp()
+    try:
+        with open(METADATA_CACHE_PATH, "r", encoding="utf-8") as cache_file:
+            stored = json.load(cache_file)
+        return {
+            symbol: item["metadata"]
+            for symbol, item in stored.items()
+            if isinstance(item, dict)
+            and isinstance(item.get("metadata"), dict)
+            and now_timestamp - finite_number(item.get("timestamp")) <= METADATA_CACHE_TTL_SECONDS
+        }
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def write_metadata_cache(cache, now=None):
+    timestamp = as_utc_datetime(now).timestamp()
+    payload = {
+        symbol: {"timestamp": timestamp, "metadata": metadata}
+        for symbol, metadata in cache.items()
+    }
+    temp_path = f"{METADATA_CACHE_PATH}.{os.getpid()}.tmp"
+    try:
+        with open(temp_path, "w", encoding="utf-8") as cache_file:
+            json.dump(payload, cache_file, allow_nan=False)
+        os.replace(temp_path, METADATA_CACHE_PATH)
+    except OSError:
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+
+
+def metadata_from_provider(info, symbol, asset_type):
+    sector_value = info.get("sectorDisp") or info.get("sector")
+    sector = normalize_sector(sector_value, symbol) if asset_type == "stock" else None
+    market_cap = (
+        finite_number(info.get("marketCap"))
+        if asset_type == "stock" and str(info.get("currency") or "").upper() == "USD"
+        else None
+    )
+    return {
+        "sector": sector,
+        "exchange": normalize_exchange(info.get("fullExchangeName") or info.get("exchange")),
+        "marketCapUsd": market_cap if market_cap and market_cap > 0 else None,
+    }
+
+
+def merge_metadata(primary, fallback, asset_type):
+    result = dict(primary or {})
+    backup = fallback or {}
+    for field in ("sector", "exchange", "marketCapUsd"):
+        missing = result.get(field) is None or (field == "sector" and result.get(field) == "Unknown")
+        if missing and backup.get(field) is not None:
+            result[field] = backup[field]
+    if asset_type == "stock":
+        result["sector"] = normalize_sector(result.get("sector"))
+    else:
+        result["sector"] = None
+        result["marketCapUsd"] = None
+    result["exchange"] = normalize_exchange(result.get("exchange"))
+    return result
 
 
 def clean_nan(value):
@@ -170,6 +328,128 @@ def previous_daily_close(frame, symbol, latest_index):
     return max(prior_rows, key=lambda row: row[0])[1] if prior_rows else None
 
 
+def daily_rows_from_frame(frame, symbol):
+    daily_frame = frame_for_symbol(frame, symbol)
+    if daily_frame is None or "Close" not in daily_frame:
+        return []
+    rows = []
+    for index_value, raw_price in daily_frame["Close"].items():
+        price = finite_number(raw_price)
+        if price is None or price <= 0:
+            continue
+        try:
+            day = index_value.date()
+        except Exception:
+            continue
+        adjusted_price = None
+        if "Adj Close" in daily_frame:
+            try:
+                adjusted_price = finite_number(daily_frame["Adj Close"].loc[index_value])
+            except (KeyError, TypeError, ValueError):
+                adjusted_price = None
+        rows.append({"date": day, "close": price, "adjusted": adjusted_price})
+    return sorted(rows, key=lambda row: row["date"])
+
+
+def date_for_timestamp(timestamp, asset_type):
+    timezone_name = "UTC" if asset_type == "cryptocurrency" else "America/New_York"
+    try:
+        return datetime.fromtimestamp(timestamp, ZoneInfo(timezone_name)).date()
+    except Exception:
+        return datetime.fromtimestamp(timestamp, timezone.utc).date()
+
+
+def return_baseline(rows, period, quote_day, now_day):
+    if not rows:
+        return None
+    if period == "1d":
+        return next((row for row in reversed(rows) if row["date"] < quote_day), None)
+    if period == "max":
+        return rows[0]
+    lookback = PERIOD_LOOKBACKS.get(period)
+    if lookback is None:
+        return None
+    unit, count = lookback
+    if unit == "days":
+        target_day = now_day - timedelta(days=count)
+    else:
+        month_index = now_day.year * 12 + now_day.month - 1 - count
+        target_year, target_month_zero_based = divmod(month_index, 12)
+        target_month = target_month_zero_based + 1
+        target_day_of_month = min(now_day.day, calendar.monthrange(target_year, target_month)[1])
+        target_day = now_day.replace(year=target_year, month=target_month, day=target_day_of_month)
+    return next((row for row in reversed(rows) if row["date"] <= target_day), None)
+
+
+def daily_volatility_percent(rows, asset_type, now_day, use_adjusted):
+    year_start = now_day - timedelta(days=365)
+    prices = [
+        row["adjusted"] if use_adjusted else row["close"]
+        for row in rows
+        if year_start <= row["date"] <= now_day
+        and (row["adjusted"] if use_adjusted else row["close"]) is not None
+    ]
+    daily_returns = [
+        (prices[index] / prices[index - 1]) - 1
+        for index in range(1, len(prices))
+        if prices[index - 1] > 0 and math.isfinite(prices[index] / prices[index - 1])
+    ]
+    if len(daily_returns) < MIN_VOLATILITY_RETURNS:
+        return None
+    mean_return = sum(daily_returns) / len(daily_returns)
+    variance = sum((value - mean_return) ** 2 for value in daily_returns) / (len(daily_returns) - 1)
+    annualization_days = 365 if asset_type == "cryptocurrency" else 252
+    return math.sqrt(variance) * math.sqrt(annualization_days) * 100
+
+
+def enrich_quote_with_history(quote, frame, period, now=None):
+    rows = daily_rows_from_frame(frame, quote["symbol"])
+    asset_type = quote["assetType"]
+    now_datetime = as_utc_datetime(now)
+    quote_day = date_for_timestamp(quote["priceTimestamp"], asset_type) if quote.get("priceTimestamp") else now_datetime.date()
+    basis_adjustable = asset_type in ("stock", "etf") and bool(rows) and all(
+        row["adjusted"] is not None and row["adjusted"] > 0 for row in rows
+    )
+    selected_basis = "adjusted_total_return" if basis_adjustable else "price_return_proxy"
+    selected_price_field = "adjusted" if basis_adjustable else "close"
+    scale_row = next((row for row in reversed(rows) if row["date"] <= quote_day), rows[-1] if rows else None)
+    scale = (
+        scale_row["adjusted"] / scale_row["close"]
+        if basis_adjustable and scale_row and scale_row["close"] > 0
+        else 1.0
+    )
+    current_price = quote["price"] * scale
+    baseline = return_baseline(rows, period, quote_day, now_datetime.date())
+    baseline_price = baseline.get(selected_price_field) if baseline else None
+    return_percent = None
+    unavailable_reason = None
+    if baseline_price is None or baseline_price <= 0:
+        unavailable_reason = "Not enough history for the selected period"
+    else:
+        candidate = (current_price / baseline_price - 1) * 100
+        if math.isfinite(candidate):
+            return_percent = round(candidate, 4)
+        else:
+            unavailable_reason = "No valid baseline close for the selected period"
+    start_date = rows[0]["date"].isoformat() if rows else None
+    volatility = daily_volatility_percent(
+        rows,
+        asset_type,
+        now_datetime.date(),
+        basis_adjustable,
+    )
+    volatility = round(volatility, 4) if volatility is not None else None
+    quote.update({
+        "returnPercent": return_percent,
+        "returnBasis": selected_basis,
+        "returnUnavailableReason": unavailable_reason,
+        "historyStartDate": start_date,
+        "annualizedVolatilityPercent": volatility,
+        "riskBand": risk_band_for_volatility(volatility),
+    })
+    return quote
+
+
 def quote_from_frame(frame, symbol, category, require_prior_close=True, previous_close=None, now=None):
     if frame is None or "Close" not in frame:
         return None
@@ -211,18 +491,23 @@ def quote_from_frame(frame, symbol, category, require_prior_close=True, previous
     change_percent = (latest_price - prior_price) / prior_price * 100.0
     if not math.isfinite(change_percent):
         return None
-    sector = STOCK_SECTORS.get(symbol) if asset_type == "stock" else None
-    if category == "stocks" and not sector:
-        sector = "Other"
     return {
         "symbol": symbol,
         "name": symbol,
         "price": round(latest_price, 6),
         "priceChangePercent": round(change_percent, 4),
+        "returnPercent": None,
+        "returnBasis": "adjusted_total_return" if asset_type in ("stock", "etf") else "price_return_proxy",
+        "returnUnavailableReason": None,
+        "historyStartDate": None,
         "priceTimestamp": latest_timestamp,
         "marketSession": market_session(latest_timestamp, asset_type, now=as_of),
         "assetType": asset_type,
-        "sector": sector,
+        "sector": normalize_sector(STOCK_SECTORS.get(symbol), symbol) if asset_type == "stock" else None,
+        "exchange": None,
+        "marketCapUsd": None,
+        "annualizedVolatilityPercent": None,
+        "riskBand": None,
     }
 
 
@@ -314,15 +599,35 @@ def quote_from_screener(item):
         change_percent = (price - previous_close) / previous_close * 100.0
     if change_percent is None or not math.isfinite(change_percent):
         return None
+    asset_type = "stock" if str(item.get("quoteType") or "").upper() != "ETF" else "etf"
+    metadata = {
+        "sector": normalize_sector(item.get("sectorDisp") or item.get("sector"), symbol) if asset_type == "stock" else None,
+        "exchange": normalize_exchange(item.get("fullExchangeName") or item.get("exchange")),
+        "marketCapUsd": (
+            finite_number(item.get("marketCap"))
+            if asset_type == "stock" and str(item.get("currency") or "").upper() == "USD"
+            else None
+        ),
+    }
+    if metadata["marketCapUsd"] is not None and metadata["marketCapUsd"] <= 0:
+        metadata["marketCapUsd"] = None
     return {
         "symbol": symbol,
         "name": str(item.get("shortName") or item.get("longName") or symbol),
         "price": round(price, 6),
         "priceChangePercent": round(change_percent, 4),
+        "returnPercent": None,
+        "returnBasis": "adjusted_total_return" if asset_type in ("stock", "etf") else "price_return_proxy",
+        "returnUnavailableReason": None,
+        "historyStartDate": None,
         "priceTimestamp": int(stamp),
         "marketSession": session,
-        "assetType": "stock" if str(item.get("quoteType") or "").upper() != "ETF" else "etf",
-        "sector": str(item.get("sector") or item.get("sectorDisp") or STOCK_SECTORS.get(symbol) or "Other"),
+        "assetType": asset_type,
+        "sector": metadata["sector"],
+        "exchange": metadata["exchange"],
+        "marketCapUsd": metadata["marketCapUsd"],
+        "annualizedVolatilityPercent": None,
+        "riskBand": None,
     }
 
 
@@ -344,7 +649,7 @@ def screener_quotes(category):
             continue
         if category == "stocks":
             parsed["assetType"] = "stock"
-            parsed["sector"] = str(item.get("sector") or item.get("sectorDisp") or STOCK_SECTORS.get(parsed["symbol"]) or "Other")
+            parsed["sector"] = normalize_sector(item.get("sectorDisp") or item.get("sector"), parsed["symbol"])
         else:
             parsed["assetType"] = "etf"
             parsed["sector"] = None
@@ -358,19 +663,114 @@ def get_requested_symbols(category, symbols):
     return UNIVERSES.get(category, [])
 
 
-def fetch_heat_map(category, symbols):
-    requested = get_requested_symbols(category, symbols)
-    if category in ("stocks", "etfs"):
-        quotes = screener_quotes(category)
-        if quotes:
-            available = {quote["symbol"]: quote for quote in quotes}
-            return available, list(available)
+def fetch_provider_info(symbol):
+    try:
+        return yf.Ticker(symbol).get_info()
+    except Exception:
+        return {}
 
-    intraday = download_quotes(requested, category, "5m")
-    missing = [symbol for symbol in requested if symbol not in intraday]
-    if missing:
-        intraday.update(download_quotes(missing, category, "1d"))
-    return intraday, requested
+
+def enrich_quote_metadata(quotes_by_symbol, now=None):
+    cached = read_metadata_cache(now)
+    symbols_to_fetch = []
+    for symbol, quote in quotes_by_symbol.items():
+        asset_type = quote["assetType"]
+        cached_metadata = cached.get(symbol, {})
+        metadata = merge_metadata(
+            {
+                "sector": quote.get("sector"),
+                "exchange": quote.get("exchange"),
+                "marketCapUsd": quote.get("marketCapUsd"),
+            },
+            cached_metadata,
+            asset_type,
+        )
+        quote.update(metadata)
+        if asset_type in ("stock", "etf") and (
+            (asset_type == "stock" and metadata["sector"] == "Unknown")
+            or metadata["exchange"] is None
+            or (asset_type == "stock" and metadata["marketCapUsd"] is None)
+        ) and symbol not in cached:
+            symbols_to_fetch.append(symbol)
+
+    if symbols_to_fetch:
+        fetched = {}
+        with ThreadPoolExecutor(max_workers=min(8, len(symbols_to_fetch))) as executor:
+            futures = {executor.submit(fetch_provider_info, symbol): symbol for symbol in symbols_to_fetch}
+            for future in as_completed(futures):
+                symbol = futures[future]
+                try:
+                    fetched[symbol] = future.result()
+                except Exception:
+                    fetched[symbol] = {}
+        for symbol, info in fetched.items():
+            quote = quotes_by_symbol[symbol]
+            provider_metadata = metadata_from_provider(info, symbol, quote["assetType"])
+            merged = merge_metadata(
+                {
+                    "sector": quote.get("sector"),
+                    "exchange": quote.get("exchange"),
+                    "marketCapUsd": quote.get("marketCapUsd"),
+                },
+                provider_metadata,
+                quote["assetType"],
+            )
+            quote.update(merged)
+            cached[symbol] = merge_metadata(provider_metadata, cached.get(symbol), quote["assetType"])
+    write_metadata_cache(cached, now)
+    return quotes_by_symbol
+
+
+def download_history(symbols, period):
+    histories = {}
+    if not symbols:
+        return histories
+    for start in range(0, len(symbols), HISTORY_BATCH_SIZE):
+        batch = symbols[start:start + HISTORY_BATCH_SIZE]
+        try:
+            data = yf.download(
+                tickers=" ".join(batch),
+                period=period,
+                interval="1d",
+                prepost=False,
+                auto_adjust=False,
+                actions=False,
+                group_by="ticker",
+                threads=True,
+                progress=False,
+                timeout=35,
+            )
+        except Exception:
+            continue
+        for symbol in batch:
+            frame = frame_for_symbol(data, symbol)
+            if frame is not None:
+                histories[symbol] = frame
+    return histories
+
+
+def fetch_heat_map(category, symbols, period="1d", now=None):
+    requested = get_requested_symbols(category, symbols)
+    quotes_by_symbol = {}
+    if category in ("stocks", "etfs"):
+        screened = screener_quotes(category)
+        if screened:
+            quotes_by_symbol = {quote["symbol"]: quote for quote in screened}
+            requested = list(quotes_by_symbol)
+
+    if not quotes_by_symbol:
+        intraday = download_quotes(requested, category, "5m", now=now)
+        missing = [symbol for symbol in requested if symbol not in intraday]
+        if missing:
+            intraday.update(download_quotes(missing, category, "1d", now=now))
+        quotes_by_symbol = intraday
+
+    enrich_quote_metadata(quotes_by_symbol, now)
+    history_period = "max" if period == "max" else ("2y" if period in ("1d", "1w", "1m", "3m", "6m", "1y") else "5y")
+    histories = download_history(list(quotes_by_symbol), history_period)
+    for symbol, quote in quotes_by_symbol.items():
+        enrich_quote_with_history(quote, histories.get(symbol), period, now=now)
+    return quotes_by_symbol, requested
 
 
 def main():
@@ -385,7 +785,10 @@ def main():
         raise ValueError("custom maps support at most 40 symbols")
     if any(not symbol or len(symbol) > 15 or any(char not in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.^=-" for char in symbol) for symbol in symbols):
         raise ValueError("invalid ticker symbol")
-    quotes_by_symbol, requested = fetch_heat_map(category, symbols)
+    period = sys.argv[3].strip().lower() if len(sys.argv) > 3 and sys.argv[3] else "1d"
+    if period not in ("1d", "1w", "1m", "3m", "6m", "1y", "3y", "5y", "max"):
+        raise ValueError("unsupported period")
+    quotes_by_symbol, requested = fetch_heat_map(category, symbols, period)
     ordered_quotes = [quotes_by_symbol[symbol] for symbol in requested if symbol in quotes_by_symbol]
     if category in ("stocks", "etfs") and quotes_by_symbol:
         # Screener results are ranked by activity; preserve that order.
@@ -393,6 +796,7 @@ def main():
     unavailable = [symbol for symbol in requested if symbol not in quotes_by_symbol]
     response = {
         "category": category,
+        "period": period,
         "quotes": ordered_quotes,
         "unavailableSymbols": unavailable,
         "updatedAt": int(datetime.now(timezone.utc).timestamp()),

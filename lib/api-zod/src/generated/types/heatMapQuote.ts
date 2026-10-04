@@ -7,6 +7,8 @@
  */
 import type { HeatMapQuoteAssetType } from './heatMapQuoteAssetType';
 import type { HeatMapQuoteMarketSession } from './heatMapQuoteMarketSession';
+import type { HeatMapQuoteReturnBasis } from './heatMapQuoteReturnBasis';
+import type { HeatMapQuoteRiskBand } from './heatMapQuoteRiskBand';
 
 export interface HeatMapQuote {
   symbol: string;
@@ -15,10 +17,27 @@ export interface HeatMapQuote {
   price: number;
   /** Percentage change from the previous close, in percentage points (1.25 means 1.25%). */
   priceChangePercent: number;
+  /** Selected-period return in percentage points, or null when the requested history is unavailable. */
+  returnPercent: number | null;
+  /** Adjusted total return for stocks/ETFs where supported, otherwise a price-return proxy. */
+  returnBasis: HeatMapQuoteReturnBasis;
+  /** Why the requested return could not be calculated. */
+  returnUnavailableReason: string | null;
+  /** Earliest available daily observation in YYYY-MM-DD; populated for Max. */
+  historyStartDate: string | null;
   /** Unix timestamp in seconds for this quote or last available close. Quotes without a timestamp are not displayable. */
   priceTimestamp: number | null;
   /** Session for this quote. closed identifies the latest available close; unknown means the provider could not identify the session. */
   marketSession: HeatMapQuoteMarketSession;
   assetType: HeatMapQuoteAssetType;
+  /** Normalized provider sector; stocks without metadata use Unknown. */
   sector: string | null;
+  /** Normalized provider exchange when available. */
+  exchange: string | null;
+  /** Provider market capitalization in USD. ETF assets-under-management are not substituted. */
+  marketCapUsd: number | null;
+  /** Trailing-year annualized standard deviation of daily returns, requiring at least 60 observations. */
+  annualizedVolatilityPercent: number | null;
+  /** Historical-volatility band; not personalized investment suitability. */
+  riskBand: HeatMapQuoteRiskBand;
 }

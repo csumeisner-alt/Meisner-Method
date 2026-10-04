@@ -142,6 +142,17 @@ export interface StockAnalysis {
 }
 
 /**
+ * Adjusted total return for stocks/ETFs where supported, otherwise a price-return proxy.
+ */
+export type HeatMapQuoteReturnBasis = typeof HeatMapQuoteReturnBasis[keyof typeof HeatMapQuoteReturnBasis];
+
+
+export const HeatMapQuoteReturnBasis = {
+  adjusted_total_return: 'adjusted_total_return',
+  price_return_proxy: 'price_return_proxy',
+} as const;
+
+/**
  * Session for this quote. closed identifies the latest available close; unknown means the provider could not identify the session.
  */
 export type HeatMapQuoteMarketSession = typeof HeatMapQuoteMarketSession[keyof typeof HeatMapQuoteMarketSession];
@@ -166,6 +177,20 @@ export const HeatMapQuoteAssetType = {
   cryptocurrency: 'cryptocurrency',
 } as const;
 
+/**
+ * Historical-volatility band; not personalized investment suitability.
+ */
+export type HeatMapQuoteRiskBand = typeof HeatMapQuoteRiskBand[keyof typeof HeatMapQuoteRiskBand] | null;
+
+
+export const HeatMapQuoteRiskBand = {
+  Conservative: 'Conservative',
+  Moderate_Conservative: 'Moderate Conservative',
+  Moderate: 'Moderate',
+  Moderate_Aggressive: 'Moderate Aggressive',
+  Aggressive: 'Aggressive',
+} as const;
+
 export interface HeatMapQuote {
   symbol: string;
   name: string;
@@ -173,12 +198,29 @@ export interface HeatMapQuote {
   price: number;
   /** Percentage change from the previous close, in percentage points (1.25 means 1.25%). */
   priceChangePercent: number;
+  /** Selected-period return in percentage points, or null when the requested history is unavailable. */
+  returnPercent: number | null;
+  /** Adjusted total return for stocks/ETFs where supported, otherwise a price-return proxy. */
+  returnBasis: HeatMapQuoteReturnBasis;
+  /** Why the requested return could not be calculated. */
+  returnUnavailableReason: string | null;
+  /** Earliest available daily observation in YYYY-MM-DD; populated for Max. */
+  historyStartDate: string | null;
   /** Unix timestamp in seconds for this quote or last available close. Quotes without a timestamp are not displayable. */
   priceTimestamp: number | null;
   /** Session for this quote. closed identifies the latest available close; unknown means the provider could not identify the session. */
   marketSession: HeatMapQuoteMarketSession;
   assetType: HeatMapQuoteAssetType;
+  /** Normalized provider sector; stocks without metadata use Unknown. */
   sector: string | null;
+  /** Normalized provider exchange when available. */
+  exchange: string | null;
+  /** Provider market capitalization in USD. ETF assets-under-management are not substituted. */
+  marketCapUsd: number | null;
+  /** Trailing-year annualized standard deviation of daily returns, requiring at least 60 observations. */
+  annualizedVolatilityPercent: number | null;
+  /** Historical-volatility band; not personalized investment suitability. */
+  riskBand: HeatMapQuoteRiskBand;
 }
 
 export type HeatMapResponseCategory = typeof HeatMapResponseCategory[keyof typeof HeatMapResponseCategory];
@@ -193,8 +235,24 @@ export const HeatMapResponseCategory = {
   custom: 'custom',
 } as const;
 
+export type HeatMapResponsePeriod = typeof HeatMapResponsePeriod[keyof typeof HeatMapResponsePeriod];
+
+
+export const HeatMapResponsePeriod = {
+  '1d': '1d',
+  '1w': '1w',
+  '1m': '1m',
+  '3m': '3m',
+  '6m': '6m',
+  '1y': '1y',
+  '3y': '3y',
+  '5y': '5y',
+  max: 'max',
+} as const;
+
 export interface HeatMapResponse {
   category: HeatMapResponseCategory;
+  period: HeatMapResponsePeriod;
   quotes: HeatMapQuote[];
   unavailableSymbols: string[];
   /** Unix timestamp in seconds when this batch was assembled. */
@@ -226,6 +284,10 @@ q: string;
 export type GetMarketHeatMapParams = {
 category: GetMarketHeatMapCategory;
 /**
+ * Return window. Risk levels always use trailing-year annualized daily volatility.
+ */
+period?: GetMarketHeatMapPeriod;
+/**
  * @maxItems 40
  * @items.minLength 1
  * @items.maxLength 15
@@ -243,5 +305,20 @@ export const GetMarketHeatMapCategory = {
   futures: 'futures',
   cryptocurrency: 'cryptocurrency',
   custom: 'custom',
+} as const;
+
+export type GetMarketHeatMapPeriod = typeof GetMarketHeatMapPeriod[keyof typeof GetMarketHeatMapPeriod];
+
+
+export const GetMarketHeatMapPeriod = {
+  '1d': '1d',
+  '1w': '1w',
+  '1m': '1m',
+  '3m': '3m',
+  '6m': '6m',
+  '1y': '1y',
+  '3y': '3y',
+  '5y': '5y',
+  max: 'max',
 } as const;
 

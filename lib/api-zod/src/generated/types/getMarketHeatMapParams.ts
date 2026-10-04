@@ -6,9 +6,14 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { GetMarketHeatMapCategory } from './getMarketHeatMapCategory';
+import type { GetMarketHeatMapPeriod } from './getMarketHeatMapPeriod';
 
 export type GetMarketHeatMapParams = {
 category: GetMarketHeatMapCategory;
+/**
+ * Return window. Risk levels always use trailing-year annualized daily volatility.
+ */
+period?: GetMarketHeatMapPeriod;
 /**
  * @maxItems 40
  * @items.minLength 1

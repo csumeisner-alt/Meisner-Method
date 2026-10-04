@@ -1,61 +1,96 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Keyboard, Platform, RefreshControl, ScrollView, StyleSheet,
-  Text, TextInput, TouchableOpacity, View,
-  useWindowDimensions,
+  ActivityIndicator, Animated, Keyboard, Modal, Platform, Pressable, RefreshControl,
+  ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Polygon } from 'react-native-svg';
-import { getGetMarketHeatMapQueryKey, useGetMarketHeatMap, useValidateHeatMapSymbol } from '@workspace/api-client-react';
-import type { GetMarketHeatMapCategory, HeatMapQuote } from '@workspace/api-client-react';
+import { useReducedMotion } from 'react-native-reanimated';
+import {
+  getGetMarketHeatMapQueryKey, useGetMarketHeatMap, useValidateHeatMapSymbol,
+} from '@workspace/api-client-react';
+import type {
+  GetMarketHeatMapCategory, GetMarketHeatMapPeriod, HeatMapQuote,
+} from '@workspace/api-client-react';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { BottomTabBar } from '@/components/BottomTabBar';
 import { useColors } from '@/hooks/useColors';
-import { summarizeHeatMap } from '@/lib/heatMapMetrics';
-import { formatHeatMapQuoteAge, getHeatMapSessionLabel, isDisplayableHeatMapQuote } from '@/lib/heatMapQuoteDisplay';
+import {
+  countActiveHeatMapFilters, filterHeatMapQuotes,
+  heatMapResponseMatchesSelection, layoutHoneycomb, summarizeHeatMap,
+  type HeatMapFilters, type HeatMapCapBucket, type HeatMapRiskBand, type HeatMapRiskFilter,
+} from '@/lib/heatMapMetrics';
+import {
+  formatHeatMapQuoteAge, getHeatMapSessionLabel, isDisplayableHeatMapQuote,
+} from '@/lib/heatMapQuoteDisplay';
 import { MAX_CUSTOM_HEAT_MAP_SYMBOLS, normalizeCustomHeatMapSymbols } from '@/lib/heatMapSymbols';
 
 const STORAGE_KEY = 'meisner.heat-map.custom-symbols.v1';
-const CATEGORIES: { id: GetMarketHeatMapCategory; label: string; icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'] }[] = [
-  { id: 'stocks', label: 'Stocks', icon: 'chart-line' },
-  { id: 'etfs', label: 'ETFs', icon: 'view-grid-outline' },
-  { id: 'commodities', label: 'Commodities', icon: 'cube-outline' },
-  { id: 'futures', label: 'Futures', icon: 'clock-fast' },
-  { id: 'cryptocurrency', label: 'Cryptocurrency', icon: 'bitcoin' },
-  { id: 'custom', label: 'Custom', icon: 'tune-variant' },
+const CATEGORIES: { id: GetMarketHeatMapCategory; label: string }[] = [
+  { id: 'stocks', label: 'Stocks' }, { id: 'etfs', label: 'ETFs' },
+  { id: 'commodities', label: 'Commodities' }, { id: 'futures', label: 'Futures' },
+  { id: 'cryptocurrency', label: 'Cryptocurrency' }, { id: 'custom', label: 'Custom' },
 ];
+const PERIODS: { id: GetMarketHeatMapPeriod; label: string }[] = [
+  { id: '1d', label: '1D' }, { id: '1w', label: '1W' }, { id: '1m', label: '1M' },
+  { id: '3m', label: '3M' }, { id: '6m', label: '6M' }, { id: '1y', label: '1Y' },
+  { id: '3y', label: '3Y' }, { id: '5y', label: '5Y' }, { id: 'max', label: 'Max' },
+];
+const CAP_BUCKETS: HeatMapCapBucket[] = ['Micro', 'Small', 'Mid', 'Large', 'Mega'];
+const CAP_BUCKET_LABELS: Record<HeatMapCapBucket, string> = {
+  Micro: 'Micro · under $300M',
+  Small: 'Small · $300M–under $2B',
+  Mid: 'Mid · $2B–under $10B',
+  Large: 'Large · $10B–under $200B',
+  Mega: 'Mega · $200B or more',
+};
+const RISK_BANDS: HeatMapRiskBand[] = [
+  'Conservative', 'Moderate Conservative', 'Moderate', 'Moderate Aggressive', 'Aggressive',
+];
+const RISK_BAND_LABELS: Record<HeatMapRiskBand, string> = {
+  Conservative: 'Conservative · <15%',
+  'Moderate Conservative': 'Moderate Conservative · 15–<25%',
+  Moderate: 'Moderate · 25–<40%',
+  'Moderate Aggressive': 'Moderate Aggressive · 40–<60%',
+  Aggressive: 'Aggressive · 60%+',
+};
+const EMPTY_FILTERS: HeatMapFilters = { sector: null, marketCap: null, exchange: null, risk: null };
 
 function formatPrice(price: number) {
   return `$${price.toLocaleString('en-US', { minimumFractionDigits: price >= 1 ? 2 : 4, maximumFractionDigits: price >= 1 ? 2 : 4 })}`;
 }
-
-function formatUpdated(timestamp: number | undefined) {
-  if (!timestamp) return 'Awaiting quote batch';
-  return `Quotes checked ${new Date(timestamp * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+function formatUpdated(timestamp?: number) {
+  if (!timestamp) return 'Waiting for quote batch';
+  return `Updated ${new Date(timestamp * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
 }
 
-function HexTile({ quote, width, colors }: { quote: HeatMapQuote; width: number; colors: ReturnType<typeof useColors> }) {
-  const change = quote.priceChangePercent;
-  const tone = change > 0.25 ? colors.buyColor : change < -0.25 ? colors.sellColor : colors.holdColor;
-  const bg = change > 0.25 ? colors.buyBg : change < -0.25 ? colors.sellBg : colors.holdBg;
-  const height = Math.round(width * 0.88);
-  const sessionLabel = getHeatMapSessionLabel(quote.marketSession);
-  const quoteAge = formatHeatMapQuoteAge(quote.priceTimestamp);
+function HexTile({ quote, width, height, colors, period }: {
+  quote: HeatMapQuote; width: number; height: number; colors: ReturnType<typeof useColors>; period: GetMarketHeatMapPeriod;
+}) {
+  const value = quote.returnPercent;
+  const available = typeof value === 'number' && Number.isFinite(value);
+  const positive = available && value! > 0.25;
+  const negative = available && value! < -0.25;
+  const tone = !available ? colors.mutedForeground : positive ? colors.buyColor : negative ? colors.sellColor : colors.holdColor;
+  const bg = !available ? colors.secondary : positive ? colors.buyBg : negative ? colors.sellBg : colors.holdBg;
+  const label = available ? `${value! > 0 ? '+' : ''}${value!.toFixed(2)}%` : 'Unavailable';
+  const session = getHeatMapSessionLabel(quote.marketSession);
+  const age = formatHeatMapQuoteAge(quote.priceTimestamp);
   return (
-    <View style={[styles.tile, { width, height }]}>
-      <Svg width={width} height={height} viewBox="0 0 100 88" style={StyleSheet.absoluteFill}>
-        <Polygon points="25,2 75,2 98,44 75,86 25,86 2,44" fill={bg} stroke={tone} strokeWidth="1.4" />
+    <View style={[styles.tile, { width, height }]} accessibilityLabel={`${quote.symbol}, ${label}, ${session}, ${age}`}>
+      <Svg width={width} height={height} viewBox="0 0 100 86.6" style={StyleSheet.absoluteFill}>
+        <Polygon points="1,43.3 25,1 75,1 99,43.3 75,85.6 25,85.6" fill={bg} stroke={tone} strokeWidth="1.5" />
       </Svg>
-      <Text numberOfLines={1} style={[styles.tileSymbol, { color: colors.foreground }]}>{quote.symbol}</Text>
-      <Text numberOfLines={1} style={[styles.tileChange, { color: tone }]}>
-        {change > 0 ? '+' : ''}{change.toFixed(2)}%
-      </Text>
+      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={[styles.tileSymbol, { color: colors.foreground }]}>{quote.symbol}</Text>
+      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={[styles.tileChange, { color: tone }]}>{label}</Text>
       <Text numberOfLines={1} style={[styles.tilePrice, { color: colors.mutedForeground }]}>{formatPrice(quote.price)}</Text>
-      <Text testID={`heat-map-session-${quote.symbol}`} numberOfLines={1} style={[styles.tileSession, { color: colors.foreground }]}>{sessionLabel}</Text>
-      <Text testID={`heat-map-quote-age-${quote.symbol}`} numberOfLines={1} style={[styles.tileAge, { color: colors.mutedForeground }]}>{quoteAge}</Text>
+      <Text testID={`heat-map-session-${quote.symbol}`} numberOfLines={1} style={[styles.tileSession, { color: colors.foreground }]}>{session}</Text>
+      <Text testID={`heat-map-quote-age-${quote.symbol}`} numberOfLines={1} style={[styles.tileAge, { color: colors.mutedForeground }]}>{age}</Text>
+      {quote.returnBasis === 'price_return_proxy' && <Text numberOfLines={1} style={[styles.tileBasis, { color: colors.mutedForeground }]}>Price-return proxy</Text>}
+      {period === 'max' && <Text numberOfLines={1} style={[styles.tileBasis, { color: colors.mutedForeground }]}>Since {quote.historyStartDate ?? 'unknown'}</Text>}
     </View>
   );
 }
@@ -65,309 +100,366 @@ export default function HeatMapScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { width: viewportWidth } = useWindowDimensions();
+  const reduceMotion = useReducedMotion();
   const [category, setCategory] = useState<GetMarketHeatMapCategory>('stocks');
+  const [period, setPeriod] = useState<GetMarketHeatMapPeriod>('1d');
   const [customSymbols, setCustomSymbols] = useState<string[]>([]);
   const [storageReady, setStorageReady] = useState(false);
   const [symbolInput, setSymbolInput] = useState('');
   const [formError, setFormError] = useState('');
   const [nowSeconds, setNowSeconds] = useState(() => Date.now() / 1000);
+  const [filters, setFilters] = useState<HeatMapFilters>(EMPTY_FILTERS);
+  const [draftFilters, setDraftFilters] = useState<HeatMapFilters>(EMPTY_FILTERS);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
+  const directionPulse = useRef(new Animated.Value(0)).current;
   const validateSymbol = useValidateHeatMapSymbol();
 
   useEffect(() => {
     const interval = setInterval(() => setNowSeconds(Date.now() / 1000), 60_000);
     return () => clearInterval(interval);
   }, []);
-
   useEffect(() => {
     let mounted = true;
-    AsyncStorage.getItem(STORAGE_KEY)
-      .then((value) => {
-        if (mounted && value) {
-          try {
-            const parsed: unknown = JSON.parse(value);
-            if (Array.isArray(parsed)) setCustomSymbols(normalizeCustomHeatMapSymbols(parsed));
-          } catch { /* Ignore corrupt local preferences and let the user start fresh. */ }
-        }
-      })
-      .catch(() => { if (mounted) setFormError("Couldn't load saved tickers from this device."); })
+    AsyncStorage.getItem(STORAGE_KEY).then((value) => {
+      if (mounted && value) {
+        try {
+          const parsed: unknown = JSON.parse(value);
+          if (Array.isArray(parsed)) setCustomSymbols(normalizeCustomHeatMapSymbols(parsed));
+        } catch { /* Discard corrupt local preferences. */ }
+      }
+    }).catch(() => { if (mounted) setFormError("Couldn't load saved tickers from this device."); })
       .finally(() => { if (mounted) setStorageReady(true); });
     return () => { mounted = false; };
   }, []);
 
   const params = useMemo(() => ({
-    category,
-    ...(category === 'custom' ? { symbols: customSymbols } : {}),
-  }), [category, customSymbols]);
+    category, period, ...(category === 'custom' ? { symbols: customSymbols } : {}),
+  }), [category, period, customSymbols]);
   const mapQuery = useGetMarketHeatMap(params, {
     query: {
       enabled: category !== 'custom' || (storageReady && customSymbols.length > 0),
       queryKey: getGetMarketHeatMapQueryKey(params),
     },
   });
-  const sourceQuotes = mapQuery.data?.quotes ?? [];
-  const quotes = sourceQuotes.filter((quote) => isDisplayableHeatMapQuote(quote, nowSeconds));
+
+  const response = mapQuery.data;
+  const responseMatches = heatMapResponseMatchesSelection(
+    response,
+    category,
+    period,
+    category === 'custom' ? customSymbols : undefined,
+  );
+  const sourceQuotes = responseMatches ? response!.quotes : [];
+  const staleQuotes = sourceQuotes.filter((quote) => !isDisplayableHeatMapQuote(quote, nowSeconds));
+  const validAgeQuotes = sourceQuotes.filter((quote) => isDisplayableHeatMapQuote(quote, nowSeconds));
   const unavailableSymbols = [...new Set([
-    ...(mapQuery.data?.unavailableSymbols ?? []),
-    ...sourceQuotes.filter((quote) => !isDisplayableHeatMapQuote(quote, nowSeconds)).map((quote) => quote.symbol),
+    ...(responseMatches ? response!.unavailableSymbols : []),
+    ...staleQuotes.map((quote) => quote.symbol),
   ])];
-  const summary = summarizeHeatMap(quotes);
-  const hotCold = summary.tone === 'HOT'
-    ? { label: summary.tone, icon: 'fire' as const, color: colors.buyColor }
-    : summary.tone === 'COLD'
-      ? { label: summary.tone, icon: 'snowflake' as const, color: colors.sellColor }
-      : { label: summary.tone, icon: 'minus' as const, color: colors.holdColor };
+
+  const choices = useMemo(() => {
+    const unique = <T,>(items: T[]) => [...new Set(items)].filter(Boolean);
+    return {
+      sectors: unique(validAgeQuotes.map((q) => q.sector?.trim() || 'Unknown')).sort(),
+      exchanges: unique(validAgeQuotes.map((q) => q.exchange ?? '')).sort(),
+      hasUnknownRisk: validAgeQuotes.some((q) => !q.riskBand),
+    };
+  }, [validAgeQuotes]);
+  const supportsSectorFilter = category === 'stocks'
+    || (category === 'custom' && validAgeQuotes.some((quote) => quote.sector !== null));
+  const supportsMarketCapFilter = category === 'stocks'
+    || (category === 'custom' && validAgeQuotes.some((quote) => quote.assetType === 'stock' && quote.marketCapUsd !== null));
+  const filterableQuotes = useMemo(() => filterHeatMapQuotes(validAgeQuotes, filters), [validAgeQuotes, filters]);
+  const summary = summarizeHeatMap(filterableQuotes);
+  const toneColor = summary.tone === 'HOT' ? colors.buyColor : summary.tone === 'COLD' ? colors.sellColor : colors.holdColor;
+  const directionalLabel = summary.tone === 'HOT' ? 'Market direction rising' : summary.tone === 'COLD' ? 'Market direction falling' : 'Market direction sideways';
+  const directionalWord = summary.tone === 'HOT' ? 'Rising' : summary.tone === 'COLD' ? 'Falling' : 'Sideways';
+  const directionScale = directionPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
+  const activeFilterCount = countActiveHeatMapFilters(filters);
+
+  useEffect(() => {
+    if (reduceMotion) {
+      directionPulse.setValue(0);
+      return;
+    }
+    const animation = Animated.loop(Animated.sequence([
+      Animated.timing(directionPulse, { toValue: 1, duration: 900, useNativeDriver: Platform.OS !== 'web' }),
+      Animated.timing(directionPulse, { toValue: 0, duration: 900, useNativeDriver: Platform.OS !== 'web' }),
+    ]));
+    animation.start();
+    return () => animation.stop();
+  }, [directionPulse, reduceMotion, summary.tone]);
 
   const sectors = useMemo(() => {
-    if (category !== 'stocks') return [{ name: '', quotes }];
+    if (category !== 'stocks' && category !== 'custom') return [{ name: '', quotes: filterableQuotes }];
     const grouped = new Map<string, HeatMapQuote[]>();
-    quotes.forEach((quote) => {
-      const sector = quote.sector?.trim() || 'Other';
+    filterableQuotes.forEach((quote) => {
+      const sector = quote.sector?.trim() || 'Unknown';
       grouped.set(sector, [...(grouped.get(sector) ?? []), quote]);
     });
     return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([name, items]) => ({ name, quotes: items }));
-  }, [category, quotes]);
-  const contentWidth = Math.max(280, viewportWidth - 36);
-  const tileWidth = Math.min(114, Math.max(82, (contentWidth - 16) / 3));
+  }, [category, filterableQuotes]);
+
+  const contentWidth = Math.max(0, viewportWidth - 36);
+  const tileWidth = Math.min(116, Math.max(84, contentWidth / 2.9));
+  const tileHeight = tileWidth * Math.sqrt(3) / 2;
 
   async function persistSymbols(next: string[]) {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     setCustomSymbols(next);
     setFormError('');
   }
-
   async function addSymbol() {
     const symbol = symbolInput.trim().toUpperCase();
     if (!symbol) return;
-    if (customSymbols.includes(symbol)) {
-      setFormError(`${symbol} is already in your map.`);
-      return;
-    }
+    if (customSymbols.includes(symbol)) { setFormError(`${symbol} is already in your map.`); return; }
     if (customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS) {
-      setFormError(`A custom map can contain at most ${MAX_CUSTOM_HEAT_MAP_SYMBOLS} tickers.`);
-      return;
+      setFormError(`A custom map can contain at most ${MAX_CUSTOM_HEAT_MAP_SYMBOLS} tickers.`); return;
     }
     setFormError('');
     Keyboard.dismiss();
     try {
       const quote = await validateSymbol.mutateAsync({ data: { symbol } });
-      if (!customSymbols.some((existing) => existing === quote.symbol)) {
-        try {
-          await persistSymbols([...customSymbols, quote.symbol]);
-        } catch {
-          setFormError(`Couldn't save ${quote.symbol} on this device. Try again.`);
-          return;
-        }
+      if (!customSymbols.includes(quote.symbol)) {
+        try { await persistSymbols([...customSymbols, quote.symbol]); }
+        catch { setFormError(`Couldn't save ${quote.symbol} on this device. Try again.`); return; }
       }
       setSymbolInput('');
-    } catch {
-      setFormError(`We couldn't validate ${symbol}. Check the ticker and try again.`);
-    }
+    } catch { setFormError(`We couldn't validate ${symbol}. Check the ticker and try again.`); }
   }
-
   async function removeSymbol(symbol: string) {
-    try {
-      await persistSymbols(customSymbols.filter((item) => item !== symbol));
-    } catch {
-      setFormError(`Couldn't remove ${symbol} from this device. Try again.`);
-    }
+    try { await persistSymbols(customSymbols.filter((item) => item !== symbol)); }
+    catch { setFormError(`Couldn't remove ${symbol} from this device. Try again.`); }
   }
-
+  function selectCategory(nextCategory: GetMarketHeatMapCategory) {
+    setCategory(nextCategory);
+    setFilters(EMPTY_FILTERS);
+    setDraftFilters(EMPTY_FILTERS);
+    setFormError('');
+  }
+  function toggleFilter<K extends keyof HeatMapFilters>(key: K, value: HeatMapFilters[K]) {
+    setDraftFilters((current) => ({ ...current, [key]: current[key] === value ? null : value }));
+  }
+  function FilterChoice({ label, selected, onPress, testID }: {
+    label: string; selected: boolean; onPress: () => void; testID: string;
+  }) {
+    return (
+      <TouchableOpacity testID={testID} accessibilityRole="button" accessibilityState={{ selected }} onPress={onPress}
+        style={[styles.filterChoice, { borderColor: selected ? colors.primary : colors.border, backgroundColor: selected ? colors.accent : colors.card }]}>
+        <Text style={[styles.filterChoiceText, { color: selected ? colors.foreground : colors.mutedForeground }]}>{label}</Text>
+        {selected && <MaterialCommunityIcons name="check" size={15} color={colors.primary} />}
+      </TouchableOpacity>
+    );
+  }
+  function FilterSection({ title, children }: { title: string; children: React.ReactNode }) {
+    return <View style={styles.filterSection}><Text style={[styles.filterSectionTitle, { color: colors.foreground }]}>{title}</Text><View style={styles.filterChoices}>{children}</View></View>;
+  }
+  function stateCard(icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'], title: string, copy: string, action?: React.ReactNode) {
+    return <View style={[styles.statePanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <MaterialCommunityIcons name={icon} size={27} color={colors.primary} />
+      <Text style={[styles.stateTitle, { color: colors.foreground }]}>{title}</Text>
+      <Text style={[styles.stateCopy, { color: colors.mutedForeground }]}>{copy}</Text>{action}
+    </View>;
+  }
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
-  const bottomPad = Platform.OS === 'web' ? 34 : 24;
+  const bottomPad = Platform.OS === 'web' ? 34 : Math.max(insets.bottom, 16);
+  const busy = mapQuery.isLoading || !responseMatches || (category === 'custom' && !storageReady);
+
   return (
     <AmericanSteelBackground>
       <View style={styles.screen}>
-        <ScrollView
-          contentContainerStyle={[styles.scrollContent, { paddingTop: topPad + 12, paddingBottom: bottomPad }]}
-          keyboardShouldPersistTaps="handled"
-          refreshControl={<RefreshControl refreshing={mapQuery.isRefetching} onRefresh={() => mapQuery.refetch()} tintColor={colors.primary} />}
-        >
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.scrollContent, { paddingTop: topPad + 12, paddingBottom: bottomPad + 18 }]}
+          refreshControl={<RefreshControl refreshing={mapQuery.isRefetching} onRefresh={() => mapQuery.refetch()} tintColor={colors.primary} />}>
           <View style={styles.header}>
-            <TouchableOpacity
-              testID="heat-map-back"
-              accessibilityRole="button"
-              accessibilityLabel="Back to Analyze"
-              onPress={() => router.canGoBack() ? router.back() : router.replace('/')}
-              style={[styles.backButton, { borderColor: colors.border }]}
-            >
+            <TouchableOpacity testID="heat-map-back" accessibilityRole="button" accessibilityLabel="Back to Analyze"
+              onPress={() => router.canGoBack() ? router.back() : router.replace('/')} style={[styles.iconButton, { borderColor: colors.border }]}>
               <MaterialCommunityIcons name="arrow-left" size={20} color={colors.foreground} />
             </TouchableOpacity>
             <View style={styles.headingCopy}>
-              <Text style={[styles.eyebrow, { color: colors.gold }]}>MARKET PULSE</Text>
-              <Text style={[styles.title, { color: colors.heading }]}>Heat map</Text>
-              <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>Each tile shows its session and quote age.</Text>
+              <Text style={[styles.eyebrow, { color: colors.gold }]}>MEISNER METHOD  /  EXPLORE</Text>
+              <Text style={[styles.title, { color: colors.heading }]}>Market heat map</Text>
             </View>
-            <TouchableOpacity
-              testID="heat-map-refresh"
-              accessibilityRole="button"
-              accessibilityLabel="Refresh heat map"
-              onPress={() => mapQuery.refetch()}
-              style={[styles.refreshButton, { borderColor: colors.border }]}
-            >
-              <MaterialCommunityIcons name="refresh" size={20} color={colors.foreground} />
+            <TouchableOpacity testID="heat-map-refresh" accessibilityRole="button" accessibilityLabel="Refresh heat map"
+              onPress={() => mapQuery.refetch()} style={[styles.iconButton, { borderColor: colors.border }]}>
+              <MaterialCommunityIcons name="refresh" size={19} color={colors.foreground} />
             </TouchableOpacity>
           </View>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRail}>
-            {CATEGORIES.map((item) => {
-              const active = category === item.id;
-              return (
-                <TouchableOpacity
-                  key={item.id}
-                  testID={`heat-map-category-${item.id}`}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  onPress={() => { setCategory(item.id); setFormError(''); }}
-                  style={[styles.categoryButton, { backgroundColor: active ? colors.accent : colors.card, borderColor: active ? colors.primary : colors.border }]}
-                >
-                  <MaterialCommunityIcons name={item.icon} size={15} color={active ? colors.primary : colors.mutedForeground} />
-                  <Text style={[styles.categoryLabel, { color: active ? colors.foreground : colors.mutedForeground }]}>{item.label}</Text>
-                </TouchableOpacity>
-              );
+          <View style={styles.controlRow}>
+            <TouchableOpacity testID="heat-map-category-picker" accessibilityRole="button" accessibilityLabel={`Market category: ${CATEGORIES.find((item) => item.id === category)?.label}`}
+              accessibilityState={{ expanded: categoryMenuOpen }} onPress={() => setCategoryMenuOpen(true)}
+              style={[styles.categoryPicker, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.categoryPickerLabel, { color: colors.foreground }]}>{CATEGORIES.find((item) => item.id === category)?.label}</Text>
+              <MaterialCommunityIcons name="chevron-down" size={18} color={colors.mutedForeground} />
+            </TouchableOpacity>
+            <TouchableOpacity testID="heat-map-filter-open" accessibilityRole="button" accessibilityLabel={`Filters${activeFilterCount ? `, ${activeFilterCount} active` : ''}`}
+              onPress={() => { setDraftFilters(filters); setDrawerOpen(true); }}
+              style={[styles.filterButton, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <MaterialCommunityIcons name="tune-variant" size={17} color={colors.foreground} />
+              <Text style={[styles.filterButtonText, { color: colors.foreground }]}>Filter</Text>
+              {activeFilterCount > 0 && <Text style={[styles.filterCount, { color: colors.primaryForeground, backgroundColor: colors.primary }]}>{activeFilterCount}</Text>}
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.periodHeader}>
+            <View><Text style={[styles.periodKicker, { color: colors.mutedForeground }]}>SELECTED RETURN WINDOW</Text>
+              <Text testID="heat-map-selected-period" style={[styles.periodTitle, { color: colors.heading }]}>{PERIODS.find((item) => item.id === period)?.label} <Text style={{ color: colors.mutedForeground }}>performance</Text></Text></View>
+            <Text style={[styles.timestamp, { color: colors.mutedForeground }]}>{formatUpdated(responseMatches ? response!.updatedAt : undefined)}</Text>
+          </View>
+          <View style={styles.periodRail}>
+            {PERIODS.map((item) => {
+              const selected = period === item.id;
+              return <TouchableOpacity key={item.id} testID={`heat-map-period-${item.id}`} accessibilityRole="button" accessibilityState={{ selected }}
+                onPress={() => setPeriod(item.id)} style={[styles.periodOption, { backgroundColor: selected ? colors.primary : colors.card, borderColor: selected ? colors.primary : colors.border }]}>
+                <Text style={[styles.periodOptionText, { color: selected ? colors.primaryForeground : colors.mutedForeground }]}>{item.label}</Text>
+              </TouchableOpacity>;
             })}
-          </ScrollView>
+          </View>
 
           <View style={[styles.summaryPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={styles.summaryMain}>
-              <View style={[styles.marketIcon, { backgroundColor: `${hotCold.color}18` }]}>
-                <MaterialCommunityIcons name={hotCold.icon} size={19} color={hotCold.color} />
-              </View>
-              <View>
-                <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>MARKET TONE</Text>
-                <Text testID="heat-map-market-tone" style={[styles.summaryValue, { color: hotCold.color }]}>{hotCold.label}</Text>
-              </View>
+            <View style={styles.summaryTone}>
+              <Animated.View accessibilityRole="image" accessibilityLabel={directionalLabel}
+                style={{ transform: [{ scale: directionScale }] }}>
+                <MaterialCommunityIcons name={summary.tone === 'HOT' ? 'trending-up' : summary.tone === 'COLD' ? 'trending-down' : 'arrow-left-right'}
+                  size={20} color={toneColor} />
+              </Animated.View>
+              <View><Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>MARKET TONE</Text>
+                <Text testID="heat-map-market-tone" style={[styles.summaryValue, { color: toneColor }]}>{summary.tone}</Text>
+                <Text style={[styles.directionWord, { color: toneColor }]}>{directionalWord}</Text></View>
             </View>
             <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
-            <View style={styles.countBlock}>
-              <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>QUOTED</Text>
-              <Text style={[styles.countValue, { color: colors.foreground }]}>{summary.quoted}</Text>
-            </View>
+            <View style={styles.summaryCount}><Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>COUNTED</Text>
+              <Text style={[styles.countValue, { color: colors.foreground }]}>{summary.quoted}</Text></View>
             <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
-            <View style={styles.countBlock}>
-              <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>UP / DOWN</Text>
-              <Text style={[styles.countValue, { color: colors.foreground }]}>{summary.positive}<Text style={{ color: colors.mutedForeground }}> / </Text>{summary.negative}</Text>
-            </View>
+            <View style={styles.summaryCount}><Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>UP / DOWN</Text>
+              <Text style={[styles.countValue, { color: colors.foreground }]}>{summary.positive}<Text style={{ color: colors.mutedForeground }}> / </Text>{summary.negative}</Text></View>
           </View>
-          <Text style={[styles.timestamp, { color: colors.mutedForeground }]}>{formatUpdated(mapQuery.data?.updatedAt)}</Text>
+          <Text style={[styles.summaryNote, { color: colors.mutedForeground }]}>Breadth uses {PERIODS.find((item) => item.id === period)?.label} return where available; missing history is excluded.</Text>
 
-          {category === 'custom' && (
-            <View style={[styles.customPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Your watch map</Text>
-              <Text style={[styles.customHint, { color: colors.mutedForeground }]}>
-                Add tickers to compare recent moves. {customSymbols.length}/{MAX_CUSTOM_HEAT_MAP_SYMBOLS}; saved only on this device.
-              </Text>
-              <View style={styles.addRow}>
-                <TextInput
-                  testID="heat-map-custom-input"
-                  value={symbolInput}
-                  onChangeText={(value) => { setSymbolInput(value.toUpperCase()); setFormError(''); }}
-                  placeholder="Ticker symbol"
-                  placeholderTextColor={colors.mutedForeground}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  maxLength={15}
-                  returnKeyType="done"
-                  onSubmitEditing={addSymbol}
-                  style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.input }]}
-                />
-                <TouchableOpacity
-                  testID="heat-map-custom-add"
-                  accessibilityRole="button"
-                  accessibilityLabel="Validate and add ticker"
-                  disabled={!symbolInput.trim() || validateSymbol.isPending || customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS}
-                  onPress={addSymbol}
-                  style={[styles.addButton, { backgroundColor: colors.primary, opacity: !symbolInput.trim() || validateSymbol.isPending || customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS ? 0.55 : 1 }]}
-                >
-                  {validateSymbol.isPending ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <MaterialCommunityIcons name="plus" size={20} color={colors.primaryForeground} />}
-                </TouchableOpacity>
-              </View>
-              {!!formError && <Text testID="heat-map-custom-error" style={[styles.formError, { color: colors.sellColor }]}>{formError}</Text>}
-              {customSymbols.length > 0 && (
-                <View style={styles.chipList}>
-                  {customSymbols.map((symbol) => (
-                    <View key={symbol} style={[styles.symbolChip, { borderColor: colors.border, backgroundColor: colors.secondary }]}>
-                      <Text style={[styles.chipText, { color: colors.foreground }]}>{symbol}</Text>
-                      <TouchableOpacity
-                        testID={`heat-map-custom-remove-${symbol}`}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Remove ${symbol}`}
-                        onPress={() => removeSymbol(symbol)}
-                        hitSlop={8}
-                      >
-                        <MaterialCommunityIcons name="close" size={15} color={colors.mutedForeground} />
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                </View>
-              )}
-            </View>
-          )}
+          {category === 'custom' && <View style={[styles.customPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Your watch map</Text>
+            <Text style={[styles.customHint, { color: colors.mutedForeground }]}>Compare validated tickers. {customSymbols.length}/{MAX_CUSTOM_HEAT_MAP_SYMBOLS}; saved on this device.</Text>
+            <View style={styles.addRow}><TextInput testID="heat-map-custom-input" value={symbolInput} onChangeText={(value) => { setSymbolInput(value.toUpperCase()); setFormError(''); }}
+              placeholder="Ticker symbol" placeholderTextColor={colors.mutedForeground} autoCapitalize="characters" autoCorrect={false} maxLength={15}
+              returnKeyType="done" onSubmitEditing={addSymbol} style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.input }]} />
+              <TouchableOpacity testID="heat-map-custom-add" accessibilityRole="button" accessibilityLabel="Validate and add ticker"
+                disabled={!symbolInput.trim() || validateSymbol.isPending || customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS} onPress={addSymbol}
+                style={[styles.addButton, { backgroundColor: colors.primary, opacity: !symbolInput.trim() || validateSymbol.isPending || customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS ? 0.55 : 1 }]}>
+                {validateSymbol.isPending ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <MaterialCommunityIcons name="plus" size={20} color={colors.primaryForeground} />}
+              </TouchableOpacity></View>
+            {!!formError && <Text testID="heat-map-custom-error" style={[styles.formError, { color: colors.sellColor }]}>{formError}</Text>}
+            {!!customSymbols.length && <View style={styles.chipList}>{customSymbols.map((symbol) => <View key={symbol} style={[styles.symbolChip, { borderColor: colors.border, backgroundColor: colors.secondary }]}>
+              <Text style={[styles.chipText, { color: colors.foreground }]}>{symbol}</Text><TouchableOpacity testID={`heat-map-custom-remove-${symbol}`} accessibilityRole="button"
+                accessibilityLabel={`Remove ${symbol}`} onPress={() => removeSymbol(symbol)} hitSlop={8}><MaterialCommunityIcons name="close" size={15} color={colors.mutedForeground} /></TouchableOpacity>
+            </View>)}</View>}
+          </View>}
 
-          {category === 'custom' && storageReady && customSymbols.length === 0 ? (
-            <View style={[styles.statePanel, { borderColor: colors.border }]}>
-              <MaterialCommunityIcons name="hexagon-multiple-outline" size={29} color={colors.primary} />
-              <Text style={[styles.stateTitle, { color: colors.foreground }]}>Start your own map</Text>
-              <Text style={[styles.stateCopy, { color: colors.mutedForeground }]}>Validated tickers are saved on this device and kept after app restarts.</Text>
-            </View>
-          ) : mapQuery.isLoading || (category === 'custom' && !storageReady) ? (
-            <View style={[styles.statePanel, { borderColor: colors.border }]}>
-              <ActivityIndicator color={colors.primary} />
-              <Text style={[styles.stateTitle, { color: colors.foreground }]}>Gathering the latest quotes</Text>
-              <Text style={[styles.stateCopy, { color: colors.mutedForeground }]}>One batched read for this market.</Text>
-            </View>
-          ) : mapQuery.isError ? (
-            <View style={[styles.statePanel, { borderColor: colors.border }]}>
-              <MaterialCommunityIcons name="alert-circle-outline" size={28} color={colors.sellColor} />
-              <Text style={[styles.stateTitle, { color: colors.foreground }]}>Market data is unavailable</Text>
-              <Text style={[styles.stateCopy, { color: colors.mutedForeground }]}>Your map couldn't be refreshed just now.</Text>
-              <TouchableOpacity testID="heat-map-retry" onPress={() => mapQuery.refetch()} style={[styles.retryButton, { borderColor: colors.border }]}>
-                <Text style={[styles.retryText, { color: colors.primary }]}>Try again</Text>
-              </TouchableOpacity>
-            </View>
-          ) : quotes.length === 0 ? (
-            <View style={[styles.statePanel, { borderColor: colors.border }]}>
-              <MaterialCommunityIcons name="chart-box-outline" size={29} color={colors.mutedForeground} />
-              <Text style={[styles.stateTitle, { color: colors.foreground }]}>No quotes available</Text>
-              <Text style={[styles.stateCopy, { color: colors.mutedForeground }]}>
-                {unavailableSymbols.length ? `No valid current or recent quotes for ${unavailableSymbols.join(', ')}.` : 'There are no valid quotes in this map right now.'}
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.mapWrap}>
-              {sectors.map((group) => (
-                <View key={group.name || 'all'} style={styles.sectorGroup}>
-                  {category === 'stocks' && (
-                    <View style={styles.sectorHeading}>
-                      <Text style={[styles.sectorName, { color: colors.foreground }]}>{group.name}</Text>
-                      <Text style={[styles.sectorCount, { color: colors.mutedForeground }]}>{group.quotes.length} {group.quotes.length === 1 ? 'asset' : 'assets'}</Text>
-                    </View>
-                  )}
-                  <View style={styles.honeycomb}>
-                    {group.quotes.map((quote, index) => (
-                      <View key={quote.symbol} style={index % 3 === 1 ? styles.offsetTile : undefined}>
-                        <HexTile quote={quote} width={tileWidth} colors={colors} />
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              ))}
-              {!!unavailableSymbols.length && (
-                <Text style={[styles.unavailable, { color: colors.mutedForeground }]}>
-                  No recent quote: {unavailableSymbols.join(' · ')}
-                </Text>
-              )}
-            </View>
-          )}
-          <View style={styles.footerNote}>
-            <View style={[styles.legendDot, { backgroundColor: colors.buyColor }]} />
-            <Text style={[styles.legendText, { color: colors.mutedForeground }]}>Up</Text>
-            <View style={[styles.legendDot, { backgroundColor: colors.holdColor }]} />
-            <Text style={[styles.legendText, { color: colors.mutedForeground }]}>Within ±0.25%</Text>
-            <View style={[styles.legendDot, { backgroundColor: colors.sellColor }]} />
-            <Text style={[styles.legendText, { color: colors.mutedForeground }]}>Down</Text>
+          {!!staleQuotes.length && <View style={[styles.notice, styles.staleNotice, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <MaterialCommunityIcons name="clock-alert-outline" size={15} color={colors.gold} />
+            <Text style={[styles.noticeText, { color: colors.mutedForeground }]}>Stale or invalid quote timestamps are excluded: {staleQuotes.map((quote) => quote.symbol).join(', ')}.</Text>
+          </View>}
+          {mapQuery.isError && responseMatches && <View style={[styles.notice, styles.staleNotice, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <MaterialCommunityIcons name="alert-circle-outline" size={15} color={colors.gold} />
+            <Text style={[styles.noticeText, { color: colors.mutedForeground }]}>Refresh failed. Showing the last successful quote batch from {formatUpdated(response!.updatedAt).replace('Updated ', '')}.</Text>
+          </View>}
+
+          {category === 'custom' && storageReady && customSymbols.length === 0
+            ? stateCard('hexagon-multiple-outline', 'Build a personal comparison', 'Add validated tickers above. Your symbols remain private and stored on this device.')
+              : mapQuery.isError && !responseMatches
+              ? stateCard('alert-circle-outline', 'Market data is unavailable', "This quote batch couldn't be refreshed.", <TouchableOpacity testID="heat-map-retry" onPress={() => mapQuery.refetch()} style={[styles.retryButton, { borderColor: colors.border }]}><Text style={[styles.retryText, { color: colors.primary }]}>Try again</Text></TouchableOpacity>)
+              : busy
+                ? stateCard('chart-timeline-variant', 'Loading selected market', 'Preparing one quote batch for this category and return window.')
+                : filterableQuotes.length === 0 && activeFilterCount > 0
+                  ? stateCard('filter-off-outline', 'No matches for these filters', 'Clear or adjust a filter to see instruments in this map.')
+                  : filterableQuotes.length === 0
+                    ? stateCard('chart-box-outline', 'No current quotes', unavailableSymbols.length ? `No recent valid quotes for ${unavailableSymbols.join(', ')}.` : 'There are no current quotes available in this market.')
+                    : <View style={styles.mapWrap}>
+                      {sectors.map((group) => {
+                        const layout = layoutHoneycomb(group.quotes.length, contentWidth, tileWidth);
+                        const tileHeight = tileWidth * Math.sqrt(3) / 2;
+                        return <View key={group.name || 'all'} style={styles.sectorGroup}>
+                          {(category === 'stocks' || category === 'custom') && <View style={styles.sectorHeading}>
+                            <Text style={[styles.sectorName, { color: colors.foreground }]}>{group.name}</Text>
+                            <Text style={[styles.sectorCount, { color: colors.mutedForeground }]}>{group.quotes.length} instruments</Text>
+                          </View>}
+                          <View style={[styles.honeycomb, { width: contentWidth, height: layout.height }]}>
+                            {layout.positions.map((position) => {
+                              const quote = group.quotes[position.index];
+                              return <View key={quote.symbol} style={{ position: 'absolute', left: position.left, top: position.top }}>
+                                <HexTile quote={quote} width={tileWidth} height={tileHeight} colors={colors} period={period} />
+                              </View>;
+                            })}
+                          </View>
+                        </View>;
+                      })}
+                      {!!unavailableSymbols.length && <Text style={[styles.unavailable, { color: colors.mutedForeground }]}>No recent quote: {unavailableSymbols.join(' · ')}</Text>}
+                      {!!filterableQuotes.some((quote) => quote.returnPercent === null) && <View style={[styles.notice, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                        <MaterialCommunityIcons name="information-outline" size={15} color={colors.primary} />
+                        <Text style={[styles.noticeText, { color: colors.mutedForeground }]}>Unavailable returns have no performance color and are excluded from breadth.</Text>
+                      </View>}
+                    </View>}
+
+          {responseMatches && period === 'max' && <Text style={[styles.disclosure, { color: colors.mutedForeground }]}>
+            Each Max tile shows the actual first available history date for that instrument; start dates vary.
+          </Text>}
+          <View style={[styles.disclosureCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.disclosure, { color: colors.mutedForeground }]}>Risk bands use trailing-year historical volatility. They describe past price behavior, not investment suitability.</Text>
+            <Text style={[styles.disclosure, { color: colors.mutedForeground }]}>Price-return proxies exclude distributions where adjusted total return is unavailable. Continuous futures may be affected by contract-roll methodology.</Text>
+          </View>
+          <View style={styles.footerNote}><View style={[styles.legendDot, { backgroundColor: colors.buyColor }]} /><Text style={[styles.legendText, { color: colors.mutedForeground }]}>Positive</Text>
+            <View style={[styles.legendDot, { backgroundColor: colors.holdColor }]} /><Text style={[styles.legendText, { color: colors.mutedForeground }]}>Within ±0.25%</Text>
+            <View style={[styles.legendDot, { backgroundColor: colors.sellColor }]} /><Text style={[styles.legendText, { color: colors.mutedForeground }]}>Negative</Text>
           </View>
         </ScrollView>
         <BottomTabBar />
+
+        <Modal visible={categoryMenuOpen} transparent animationType="fade" onRequestClose={() => setCategoryMenuOpen(false)}>
+          <Pressable style={styles.modalScrim} onPress={() => setCategoryMenuOpen(false)}>
+            <View style={[styles.categoryMenu, { top: topPad + 78, left: 68, backgroundColor: colors.card, borderColor: colors.border }]}>
+              {CATEGORIES.map((item) => <TouchableOpacity key={item.id} testID={`heat-map-category-${item.id}`} accessibilityRole="button"
+                accessibilityState={{ selected: item.id === category }} onPress={() => { selectCategory(item.id); setCategoryMenuOpen(false); }}
+                style={[styles.categoryMenuItem, { borderBottomColor: colors.border }]}>
+                <Text style={[styles.categoryMenuText, { color: item.id === category ? colors.primary : colors.foreground }]}>{item.label}</Text>
+                {item.id === category && <MaterialCommunityIcons name="check" size={17} color={colors.primary} />}
+              </TouchableOpacity>)}
+            </View>
+          </Pressable>
+        </Modal>
+
+        <Modal visible={drawerOpen} transparent animationType="fade" onRequestClose={() => setDrawerOpen(false)}>
+          <View style={styles.drawerRoot}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Close filters" onPress={() => setDrawerOpen(false)} style={styles.drawerBackdrop} />
+            <View style={[styles.drawer, { backgroundColor: colors.background, paddingTop: Math.max(insets.top, 18) + 12, paddingBottom: Math.max(insets.bottom, 14) }]}>
+              <View style={styles.drawerHeader}>
+                <View><Text style={[styles.drawerKicker, { color: colors.gold }]}>REFINE THE FIELD</Text><Text style={[styles.drawerTitle, { color: colors.heading }]}>Filters</Text></View>
+                <TouchableOpacity testID="heat-map-filter-close" accessibilityRole="button" accessibilityLabel="Close filters" onPress={() => setDrawerOpen(false)} style={[styles.drawerClose, { borderColor: colors.border }]}>
+                  <MaterialCommunityIcons name="close" size={20} color={colors.foreground} />
+                </TouchableOpacity>
+              </View>
+              <Text style={[styles.drawerFeedback, { color: colors.mutedForeground }]}>{countActiveHeatMapFilters(draftFilters)} selected · filters combine together</Text>
+              <ScrollView style={styles.drawerScroll} contentContainerStyle={styles.drawerScrollContent} showsVerticalScrollIndicator>
+                <FilterSection title="Return period">{PERIODS.map((item) => <FilterChoice key={item.id} label={item.label} selected={period === item.id}
+                  onPress={() => setPeriod(item.id)} testID={`heat-map-drawer-period-${item.id}`} />)}</FilterSection>
+                {supportsSectorFilter && <FilterSection title="Sector">{choices.sectors.map((value) => <FilterChoice key={value} label={value} selected={draftFilters.sector === value} onPress={() => toggleFilter('sector', value)} testID={`heat-map-filter-sector-${value}`} />)}</FilterSection>}
+                {supportsMarketCapFilter && <FilterSection title="Market cap (USD)">{CAP_BUCKETS.map((value) => <FilterChoice key={value} label={CAP_BUCKET_LABELS[value]} selected={draftFilters.marketCap === value} onPress={() => toggleFilter('marketCap', value)} testID={`heat-map-filter-cap-${value}`} />)}</FilterSection>}
+                {choices.exchanges.length > 0 && <FilterSection title="Exchange">{choices.exchanges.map((value) => <FilterChoice key={value} label={value} selected={draftFilters.exchange === value} onPress={() => toggleFilter('exchange', value)} testID={`heat-map-filter-exchange-${value}`} />)}</FilterSection>}
+                <FilterSection title="Historical risk">{RISK_BANDS.map((value) => <FilterChoice key={value} label={RISK_BAND_LABELS[value]} selected={draftFilters.risk === value} onPress={() => toggleFilter('risk', value)} testID={`heat-map-filter-risk-${value}`} />)}
+                  {choices.hasUnknownRisk && <FilterChoice label="Unknown" selected={draftFilters.risk === 'Unknown'} onPress={() => toggleFilter('risk', 'Unknown')} testID="heat-map-filter-risk-Unknown" />}</FilterSection>
+                <Text style={[styles.riskExplanation, { color: colors.mutedForeground }]}>Risk uses trailing-year daily returns, annualized with 252 trading days (stocks and funds) or 365 days (crypto); at least 60 observations are required. These labels describe historical volatility, not personal suitability. Unknown means history is insufficient.</Text>
+              </ScrollView>
+              <View style={[styles.drawerActions, { borderTopColor: colors.border }]}>
+                <TouchableOpacity testID="heat-map-filter-reset" accessibilityRole="button" onPress={() => { setDraftFilters(EMPTY_FILTERS); setFilters(EMPTY_FILTERS); }} style={[styles.resetButton, { borderColor: colors.border }]}>
+                  <Text style={[styles.resetText, { color: colors.foreground }]}>Clear all</Text>
+                </TouchableOpacity>
+                <TouchableOpacity testID="heat-map-filter-apply" accessibilityRole="button" onPress={() => { setFilters(draftFilters); setDrawerOpen(false); }}
+                  style={[styles.applyButton, { backgroundColor: colors.primary }]}>
+                  <Text style={[styles.applyText, { color: colors.primaryForeground }]}>Apply filters</Text><Text style={[styles.applyCount, { color: colors.primaryForeground }]}>{countActiveHeatMapFilters(draftFilters)}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </View>
     </AmericanSteelBackground>
   );
@@ -375,29 +467,37 @@ export default function HeatMapScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  scrollContent: { paddingHorizontal: 18, paddingBottom: 24 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
-  backButton: { width: 40, height: 40, borderWidth: 1, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 11 },
-  headingCopy: { flex: 1 },
-  eyebrow: { fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1.8, marginBottom: 6 },
-  title: { fontFamily: 'Inter_700Bold', fontSize: 29, letterSpacing: -0.7 },
-  subtitle: { fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 5 },
-  refreshButton: { width: 42, height: 42, borderWidth: 1, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginLeft: 12 },
-  categoryRail: { gap: 8, paddingBottom: 17 },
-  categoryButton: { height: 36, paddingHorizontal: 11, borderWidth: 1, borderRadius: 18, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  categoryLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 11 },
-  summaryPanel: { minHeight: 76, borderWidth: 1, borderRadius: 17, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 13 },
-  summaryMain: { flex: 1.15, flexDirection: 'row', alignItems: 'center', gap: 9 },
-  marketIcon: { height: 35, width: 35, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  scrollContent: { paddingHorizontal: 18 },
+  header: { flexDirection: 'row', alignItems: 'center', marginBottom: 18 },
+  iconButton: { width: 40, height: 40, borderWidth: 1, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  headingCopy: { flex: 1, marginHorizontal: 12 },
+  eyebrow: { fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.45, marginBottom: 4 },
+  title: { fontFamily: 'Inter_700Bold', fontSize: 24, letterSpacing: -0.45 },
+  controlRow: { flexDirection: 'row', gap: 9, marginBottom: 20 },
+  categoryPicker: { height: 42, flex: 1, borderWidth: 1, borderRadius: 12, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  categoryPickerLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 13 },
+  filterButton: { height: 42, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 7 },
+  filterButtonText: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
+  filterCount: { minWidth: 18, height: 18, borderRadius: 9, overflow: 'hidden', textAlign: 'center', textAlignVertical: 'center', fontFamily: 'Inter_700Bold', fontSize: 10 },
+  periodHeader: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 11 },
+  periodKicker: { fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 1.2 },
+  periodTitle: { fontFamily: 'Inter_700Bold', fontSize: 20, marginTop: 4 },
+  timestamp: { fontFamily: 'Inter_400Regular', fontSize: 9, textAlign: 'right', marginBottom: 3, flexShrink: 1 },
+  periodRail: { flexDirection: 'row', justifyContent: 'space-between', gap: 4, marginBottom: 17 },
+  periodOption: { flex: 1, minWidth: 0, height: 32, borderWidth: 1, borderRadius: 9, justifyContent: 'center', alignItems: 'center' },
+  periodOptionText: { fontFamily: 'Inter_600SemiBold', fontSize: 10 },
+  summaryPanel: { minHeight: 72, borderWidth: 1, borderRadius: 15, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10 },
+  summaryTone: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
   summaryLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.8 },
-  summaryValue: { fontFamily: 'Inter_700Bold', fontSize: 14, marginTop: 3, letterSpacing: 0.6 },
-  summaryDivider: { width: 1, height: 34, marginHorizontal: 10 },
-  countBlock: { alignItems: 'center', minWidth: 48 },
+  summaryValue: { fontFamily: 'Inter_700Bold', fontSize: 13, marginTop: 3, letterSpacing: 0.5 },
+  directionWord: { fontFamily: 'Inter_600SemiBold', fontSize: 9, marginTop: 1 },
+  summaryDivider: { width: 1, height: 32, marginHorizontal: 8 },
+  summaryCount: { alignItems: 'center', minWidth: 52 },
   countValue: { fontFamily: 'Inter_700Bold', fontSize: 14, marginTop: 5 },
-  timestamp: { fontFamily: 'Inter_400Regular', fontSize: 10, textAlign: 'right', marginTop: 8, marginBottom: 20 },
-  customPanel: { borderWidth: 1, borderRadius: 16, padding: 14, marginBottom: 18 },
+  summaryNote: { fontFamily: 'Inter_400Regular', fontSize: 9, lineHeight: 14, textAlign: 'right', marginTop: 7, marginBottom: 15 },
+  customPanel: { borderWidth: 1, borderRadius: 15, padding: 14, marginBottom: 16 },
   sectionTitle: { fontFamily: 'Inter_700Bold', fontSize: 15 },
-  customHint: { fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 4 },
+  customHint: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 4 },
   addRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
   input: { flex: 1, height: 42, borderRadius: 11, borderWidth: 1, paddingHorizontal: 12, fontFamily: 'Inter_500Medium', fontSize: 13 },
   addButton: { width: 43, height: 42, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
@@ -405,26 +505,57 @@ const styles = StyleSheet.create({
   chipList: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 12 },
   symbolChip: { flexDirection: 'row', alignItems: 'center', gap: 7, borderWidth: 1, borderRadius: 15, paddingLeft: 10, paddingRight: 7, paddingVertical: 5 },
   chipText: { fontFamily: 'Inter_600SemiBold', fontSize: 10 },
-  statePanel: { minHeight: 190, borderWidth: 1, borderStyle: 'dashed', borderRadius: 18, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 8, marginTop: 2 },
-  stateTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 14, textAlign: 'center', marginTop: 4 },
+  statePanel: { minHeight: 170, borderWidth: 1, borderStyle: 'dashed', borderRadius: 17, alignItems: 'center', justifyContent: 'center', padding: 22, gap: 8, marginTop: 3 },
+  stateTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 14, textAlign: 'center', marginTop: 3 },
   stateCopy: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 17, textAlign: 'center', maxWidth: 280 },
   retryButton: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 15, paddingVertical: 8, marginTop: 6 },
   retryText: { fontFamily: 'Inter_600SemiBold', fontSize: 11 },
-  mapWrap: { gap: 20 },
+  mapWrap: { gap: 18 },
   sectorGroup: { gap: 7 },
   sectorHeading: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingHorizontal: 3 },
   sectorName: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   sectorCount: { fontFamily: 'Inter_400Regular', fontSize: 9 },
-  honeycomb: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center' },
-  offsetTile: { marginTop: 31 },
-  tile: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14, gap: 2 },
-  tileSymbol: { maxWidth: 70, fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 0.2 },
-  tileChange: { fontFamily: 'Inter_700Bold', fontSize: 11 },
-  tilePrice: { fontFamily: 'Inter_500Medium', fontSize: 8 },
-  tileSession: { fontFamily: 'Inter_600SemiBold', fontSize: 7.5, letterSpacing: 0.15 },
-  tileAge: { fontFamily: 'Inter_400Regular', fontSize: 7.5 },
+  honeycomb: { alignSelf: 'center', position: 'relative' },
+  tile: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 13, gap: 1 },
+  tileSymbol: { maxWidth: '90%', fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 0.2 },
+  tileChange: { maxWidth: '90%', fontFamily: 'Inter_700Bold', fontSize: 10 },
+  tilePrice: { maxWidth: '90%', fontFamily: 'Inter_500Medium', fontSize: 8 },
+  tileSession: { maxWidth: '92%', fontFamily: 'Inter_600SemiBold', fontSize: 7, letterSpacing: 0.05 },
+  tileAge: { maxWidth: '92%', fontFamily: 'Inter_400Regular', fontSize: 7 },
+  tileBasis: { maxWidth: '92%', fontFamily: 'Inter_400Regular', fontSize: 6.2, letterSpacing: -0.1 },
   unavailable: { fontFamily: 'Inter_400Regular', fontSize: 10, textAlign: 'center', marginTop: 2 },
-  footerNote: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 23, paddingBottom: 8 },
+  notice: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 11, padding: 10 },
+  staleNotice: { marginBottom: 12 },
+  noticeText: { flex: 1, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15 },
+  disclosureCard: { borderWidth: 1, borderRadius: 13, padding: 12, gap: 8, marginTop: 19 },
+  disclosure: { fontFamily: 'Inter_400Regular', fontSize: 9, lineHeight: 14, marginTop: 10 },
+  footerNote: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 17, paddingBottom: 8 },
   legendDot: { width: 6, height: 6, borderRadius: 3, marginLeft: 6 },
   legendText: { fontFamily: 'Inter_400Regular', fontSize: 9 },
+  modalScrim: { flex: 1, backgroundColor: 'rgba(0,0,0,0.34)' },
+  categoryMenu: { position: 'absolute', width: 220, borderWidth: 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 5, elevation: 8 },
+  categoryMenuItem: { minHeight: 44, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  categoryMenuText: { fontFamily: 'Inter_600SemiBold', fontSize: 13 },
+  drawerRoot: { flex: 1, flexDirection: 'row', justifyContent: 'flex-end' },
+  drawerBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.48)' },
+  drawer: { width: '88%', maxWidth: 420, height: '100%', borderTopLeftRadius: 22, borderBottomLeftRadius: 22, paddingHorizontal: 20, elevation: 14 },
+  drawerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  drawerKicker: { fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.35 },
+  drawerTitle: { fontFamily: 'Inter_700Bold', fontSize: 25, marginTop: 3 },
+  drawerClose: { width: 38, height: 38, borderWidth: 1, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  drawerFeedback: { fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 7, marginBottom: 9 },
+  drawerScroll: { flex: 1 },
+  drawerScrollContent: { paddingBottom: 18 },
+  filterSection: { paddingVertical: 14, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(128,128,128,0.35)' },
+  filterSectionTitle: { fontFamily: 'Inter_700Bold', fontSize: 13, marginBottom: 10 },
+  filterChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  filterChoice: { minHeight: 36, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
+  filterChoiceText: { fontFamily: 'Inter_500Medium', fontSize: 10 },
+  riskExplanation: { fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 4 },
+  drawerActions: { borderTopWidth: 1, paddingTop: 13, flexDirection: 'row', gap: 10 },
+  resetButton: { minWidth: 83, height: 46, borderWidth: 1, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  resetText: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
+  applyButton: { flex: 1, height: 46, borderRadius: 12, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 },
+  applyText: { fontFamily: 'Inter_700Bold', fontSize: 12 },
+  applyCount: { fontFamily: 'Inter_600SemiBold', fontSize: 11 },
 });

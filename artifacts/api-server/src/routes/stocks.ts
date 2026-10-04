@@ -15,11 +15,13 @@ import { normalizeDividendYield } from "../lib/dividendYield.js";
 import { buildStockRecommendation } from "../lib/stockRecommendation.js";
 import { fallbackAiAnalysis, parseAiAnalysis } from "../lib/analysisResponse.js";
 import {
-  heatMapCacheKey,
+  heatMapRequestCacheKey,
   isHeatMapCategory,
+  isHeatMapPeriod,
   isHeatMapResponse,
   normalizeHeatMapSymbols,
   type HeatMapCategory,
+  type HeatMapPeriod,
   type HeatMapResponse,
 } from "../lib/marketHeatMap.js";
 
@@ -77,19 +79,37 @@ router.get("/tts", async (req, res) => {
 const fmt = (n: number | null, d = 2) => (n != null ? n.toFixed(d) : "N/A");
 const pct = (n: number | null) => (n != null ? `${(n * 100).toFixed(1)}%` : "N/A");
 
-async function fetchHeatMapBatch(category: HeatMapCategory, symbols: string[]): Promise<HeatMapResponse> {
-  const key = heatMapCacheKey(category, symbols);
+function orderCustomHeatMapResponse(data: HeatMapResponse, symbols: string[]): HeatMapResponse {
+  if (data.category !== "custom") return data;
+  const quotes = new Map(data.quotes.map((quote) => [quote.symbol, quote]));
+  const unavailable = new Set(data.unavailableSymbols);
+  return {
+    ...data,
+    quotes: symbols.flatMap((symbol) => {
+      const quote = quotes.get(symbol);
+      return quote ? [quote] : [];
+    }),
+    unavailableSymbols: symbols.filter((symbol) => unavailable.has(symbol)),
+  };
+}
+
+async function fetchHeatMapBatch(
+  category: HeatMapCategory,
+  symbols: string[],
+  period: HeatMapPeriod,
+): Promise<HeatMapResponse> {
+  const key = heatMapRequestCacheKey(category, period, symbols);
   const now = Date.now();
   const cached = heatMapCache.get(key);
-  if (cached && now - cached.ts < HEAT_MAP_TTL) return cached.data;
+  if (cached && now - cached.ts < HEAT_MAP_TTL) return orderCustomHeatMapResponse(cached.data, symbols);
 
   const pending = heatMapRequests.get(key);
-  if (pending) return pending;
+  if (pending) return pending.then((data) => orderCustomHeatMapResponse(data, symbols));
 
   const request = (async () => {
     const { stdout } = await execFileAsync(
       "python3",
-      [HEAT_MAP_SCRIPT, category, symbols.join(",")],
+      [HEAT_MAP_SCRIPT, category, symbols.join(","), period],
       { timeout: 75_000, maxBuffer: 5 * 1024 * 1024 },
     );
     const raw: unknown = JSON.parse(stdout.trim());
@@ -100,7 +120,7 @@ async function fetchHeatMapBatch(category: HeatMapCategory, symbols: string[]): 
     ) {
       throw new Error(String((raw as Record<string, unknown>)["error"]));
     }
-    if (!isHeatMapResponse(raw, category)) {
+    if (!isHeatMapResponse(raw, category, period)) {
       throw new Error("Market data provider returned an invalid heat-map response");
     }
     heatMapCache.set(key, { data: raw, ts: Date.now() });
@@ -113,7 +133,7 @@ async function fetchHeatMapBatch(category: HeatMapCategory, symbols: string[]): 
 
   heatMapRequests.set(key, request);
   try {
-    return await request;
+    return orderCustomHeatMapResponse(await request, symbols);
   } finally {
     heatMapRequests.delete(key);
   }
@@ -126,6 +146,16 @@ router.get("/stocks/heat-map", async (req, res) => {
     res.status(400).json({
       error: "INVALID_CATEGORY",
       message: "Choose stocks, ETFs, commodities, futures, cryptocurrency, or custom.",
+    });
+    return;
+  }
+
+  const rawPeriod = req.query["period"] ?? "1d";
+  const period = typeof rawPeriod === "string" ? rawPeriod.toLowerCase() : "";
+  if (!isHeatMapPeriod(period)) {
+    res.status(400).json({
+      error: "INVALID_PERIOD",
+      message: "Choose 1d, 1w, 1m, 3m, 6m, 1y, 3y, 5y, or max.",
     });
     return;
   }
@@ -149,6 +179,7 @@ router.get("/stocks/heat-map", async (req, res) => {
   if (category === "custom" && normalized.symbols.length === 0) {
     res.set("Cache-Control", "private, max-age=30").json({
       category,
+      period,
       quotes: [],
       unavailableSymbols: [],
       updatedAt: Math.floor(Date.now() / 1000),
@@ -157,7 +188,7 @@ router.get("/stocks/heat-map", async (req, res) => {
   }
 
   try {
-    const data = await fetchHeatMapBatch(category, normalized.symbols);
+    const data = await fetchHeatMapBatch(category, normalized.symbols, period);
     res
       .set("Cache-Control", category === "custom" ? "private, max-age=60" : "public, max-age=60")
       .json(data);
@@ -187,7 +218,7 @@ router.post("/stocks/heat-map/validate", async (req, res) => {
   }
 
   try {
-    const data = await fetchHeatMapBatch("custom", normalized.symbols);
+    const data = await fetchHeatMapBatch("custom", normalized.symbols, "1d");
     const quote = data.quotes.find((item) => item.symbol === normalized.symbols[0]);
     if (!quote) {
       res.status(422).json({

@@ -7,9 +7,11 @@
  */
 import type { HeatMapQuote } from './heatMapQuote';
 import type { HeatMapResponseCategory } from './heatMapResponseCategory';
+import type { HeatMapResponsePeriod } from './heatMapResponsePeriod';
 
 export interface HeatMapResponse {
   category: HeatMapResponseCategory;
+  period: HeatMapResponsePeriod;
   quotes: HeatMapQuote[];
   unavailableSymbols: string[];
   /** Unix timestamp in seconds when this batch was assembled. */

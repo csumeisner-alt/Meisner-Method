@@ -310,7 +310,7 @@ export const getGetMarketHeatMapUrl = (params: GetMarketHeatMapParams,) => {
 }
 
 /**
- * Returns a cached batch of current or latest-available market quotes for one heat-map category. Custom maps pass symbols as a comma-separated query array.
+ * Returns a cached batch of quotes, selected-period returns, and available provider metadata for one heat-map category. Custom maps pass symbols as a comma-separated query array.
  * @summary Get batched quotes for a market heat map
  */
 export const getMarketHeatMap = async (params: GetMarketHeatMapParams, options?: RequestInit): Promise<HeatMapResponse> => {

@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   heatMapCacheKey,
+  heatMapRequestCacheKey,
   isHeatMapCategory,
+  isHeatMapPeriod,
   isHeatMapQuote,
   isHeatMapResponse,
   normalizeHeatMapSymbols,
@@ -12,6 +14,19 @@ test("heat-map category validation accepts only supported maps", () => {
   assert.equal(isHeatMapCategory("stocks"), true);
   assert.equal(isHeatMapCategory("custom"), true);
   assert.equal(isHeatMapCategory("options"), false);
+});
+
+test("heat-map periods and cache keys include the selected historical range", () => {
+  assert.equal(isHeatMapPeriod("1d"), true);
+  assert.equal(isHeatMapPeriod("max"), true);
+  assert.equal(isHeatMapPeriod("2y"), false);
+  assert.equal(heatMapRequestCacheKey("stocks", "1d", []), "stocks:1d:");
+  assert.equal(heatMapRequestCacheKey("stocks", "1y", []), "stocks:1y:");
+  assert.equal(heatMapRequestCacheKey("custom", "max", ["AAPL"]), "custom:max:AAPL");
+  assert.equal(
+    heatMapRequestCacheKey("custom", "max", ["MSFT", "AAPL"]),
+    heatMapRequestCacheKey("custom", "max", ["AAPL", "MSFT"]),
+  );
 });
 
 test("custom symbols normalize case, remove duplicates, and accept common market suffixes", () => {
@@ -37,29 +52,39 @@ test("quote and response validators reject missing, stale-shaped, or non-finite 
     name: "Apple",
     price: 200,
     priceChangePercent: -0.25,
+    returnPercent: -0.25,
+    returnBasis: "adjusted_total_return",
+    returnUnavailableReason: null,
+    historyStartDate: "2010-01-04",
     priceTimestamp: 1_760_000_000,
     marketSession: "closed",
     assetType: "stock",
     sector: "Technology",
+    exchange: "NASDAQ",
+    marketCapUsd: 2_000_000_000_000,
+    annualizedVolatilityPercent: 22.5,
+    riskBand: "Moderate Conservative",
   };
   assert.equal(isHeatMapQuote(quote), true);
   assert.equal(isHeatMapQuote({ ...quote, price: Number.NaN }), false);
   assert.equal(
     isHeatMapResponse({
       category: "stocks",
+      period: "1d",
       quotes: [quote],
       unavailableSymbols: [],
       updatedAt: 1_760_000_000,
-    }, "stocks"),
+    }, "stocks", "1d"),
     true,
   );
   assert.equal(
     isHeatMapResponse({
       category: "stocks",
+      period: "1d",
       quotes: [{ ...quote, price: 0 }],
       unavailableSymbols: [],
       updatedAt: 1_760_000_000,
-    }, "stocks"),
+    }, "stocks", "1d"),
     false,
   );
 });
@@ -71,13 +96,22 @@ test("heat-map responses reject stale or undated continuous-futures quotes", () 
     name: "E-mini S&P 500",
     price: 5_000,
     priceChangePercent: 0.2,
+    returnPercent: 0.2,
+    returnBasis: "price_return_proxy",
+    returnUnavailableReason: null,
+    historyStartDate: null,
     priceTimestamp: updatedAt - 5 * 60,
     marketSession: "regular",
     assetType: "future",
     sector: null,
+    exchange: null,
+    marketCapUsd: null,
+    annualizedVolatilityPercent: null,
+    riskBand: null,
   };
   const response = (quote: typeof futuresQuote | (typeof futuresQuote & { priceTimestamp: null })) => ({
     category: "futures",
+    period: "1d",
     quotes: [quote],
     unavailableSymbols: [],
     updatedAt,
@@ -86,7 +120,7 @@ test("heat-map responses reject stale or undated continuous-futures quotes", () 
   assert.equal(isHeatMapResponse(response(futuresQuote), "futures"), true);
   assert.equal(
     isHeatMapResponse(
-      response({ ...futuresQuote, priceTimestamp: updatedAt - 24 * 60 * 60 - 1 }),
+      { ...response(futuresQuote), quotes: [{ ...futuresQuote, priceTimestamp: updatedAt - 24 * 60 * 60 - 1 }] },
       "futures",
     ),
     false,

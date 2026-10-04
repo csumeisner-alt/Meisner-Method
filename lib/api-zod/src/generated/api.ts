@@ -111,9 +111,10 @@ export const AnalyzeStockResponse = zod.object({
 
 
 /**
- * Returns a cached batch of current or latest-available market quotes for one heat-map category. Custom maps pass symbols as a comma-separated query array.
+ * Returns a cached batch of quotes, selected-period returns, and available provider metadata for one heat-map category. Custom maps pass symbols as a comma-separated query array.
  * @summary Get batched quotes for a market heat map
  */
+export const getMarketHeatMapQueryPeriodDefault = `1d`;
 export const getMarketHeatMapQuerySymbolsItemMax = 15;
 
 export const getMarketHeatMapQuerySymbolsMax = 40;
@@ -122,6 +123,7 @@ export const getMarketHeatMapQuerySymbolsMax = 40;
 
 export const GetMarketHeatMapQueryParams = zod.object({
   "category": zod.enum(['stocks', 'etfs', 'commodities', 'futures', 'cryptocurrency', 'custom']),
+  "period": zod.enum(['1d', '1w', '1m', '3m', '6m', '1y', '3y', '5y', 'max']).default(getMarketHeatMapQueryPeriodDefault).describe('Return window. Risk levels always use trailing-year annualized daily volatility.'),
   "symbols": zod.array(zod.coerce.string().min(1).max(getMarketHeatMapQuerySymbolsItemMax)).max(getMarketHeatMapQuerySymbolsMax).optional()
 })
 
@@ -131,15 +133,24 @@ export const getMarketHeatMapResponseQuotesItemPriceExclusiveMin = 0;
 
 export const GetMarketHeatMapResponse = zod.object({
   "category": zod.enum(['stocks', 'etfs', 'commodities', 'futures', 'cryptocurrency', 'custom']),
+  "period": zod.enum(['1d', '1w', '1m', '3m', '6m', '1y', '3y', '5y', 'max']),
   "quotes": zod.array(zod.object({
   "symbol": zod.string(),
   "name": zod.string(),
   "price": zod.number().gt(getMarketHeatMapResponseQuotesItemPriceExclusiveMin),
   "priceChangePercent": zod.number().describe('Percentage change from the previous close, in percentage points (1.25 means 1.25%).'),
+  "returnPercent": zod.number().nullable().describe('Selected-period return in percentage points, or null when the requested history is unavailable.'),
+  "returnBasis": zod.enum(['adjusted_total_return', 'price_return_proxy']).describe('Adjusted total return for stocks\/ETFs where supported, otherwise a price-return proxy.'),
+  "returnUnavailableReason": zod.string().nullable().describe('Why the requested return could not be calculated.'),
+  "historyStartDate": zod.string().nullable().describe('Earliest available daily observation in YYYY-MM-DD; populated for Max.'),
   "priceTimestamp": zod.number().nullable().describe('Unix timestamp in seconds for this quote or last available close. Quotes without a timestamp are not displayable.'),
   "marketSession": zod.enum(['pre_market', 'regular', 'after_hours', 'closed', 'unknown']).describe('Session for this quote. closed identifies the latest available close; unknown means the provider could not identify the session.'),
   "assetType": zod.enum(['stock', 'etf', 'commodity', 'future', 'cryptocurrency']),
-  "sector": zod.string().nullable()
+  "sector": zod.string().nullable().describe('Normalized provider sector; stocks without metadata use Unknown.'),
+  "exchange": zod.string().nullable().describe('Normalized provider exchange when available.'),
+  "marketCapUsd": zod.number().nullable().describe('Provider market capitalization in USD. ETF assets-under-management are not substituted.'),
+  "annualizedVolatilityPercent": zod.number().nullable().describe('Trailing-year annualized standard deviation of daily returns, requiring at least 60 observations.'),
+  "riskBand": zod.enum(['Conservative', 'Moderate Conservative', 'Moderate', 'Moderate Aggressive', 'Aggressive']).nullable().describe('Historical-volatility band; not personalized investment suitability.')
 })),
   "unavailableSymbols": zod.array(zod.string()),
   "updatedAt": zod.number().describe('Unix timestamp in seconds when this batch was assembled.')
@@ -168,10 +179,18 @@ export const ValidateHeatMapSymbolResponse = zod.object({
   "name": zod.string(),
   "price": zod.number().gt(validateHeatMapSymbolResponsePriceExclusiveMin),
   "priceChangePercent": zod.number().describe('Percentage change from the previous close, in percentage points (1.25 means 1.25%).'),
+  "returnPercent": zod.number().nullable().describe('Selected-period return in percentage points, or null when the requested history is unavailable.'),
+  "returnBasis": zod.enum(['adjusted_total_return', 'price_return_proxy']).describe('Adjusted total return for stocks\/ETFs where supported, otherwise a price-return proxy.'),
+  "returnUnavailableReason": zod.string().nullable().describe('Why the requested return could not be calculated.'),
+  "historyStartDate": zod.string().nullable().describe('Earliest available daily observation in YYYY-MM-DD; populated for Max.'),
   "priceTimestamp": zod.number().nullable().describe('Unix timestamp in seconds for this quote or last available close. Quotes without a timestamp are not displayable.'),
   "marketSession": zod.enum(['pre_market', 'regular', 'after_hours', 'closed', 'unknown']).describe('Session for this quote. closed identifies the latest available close; unknown means the provider could not identify the session.'),
   "assetType": zod.enum(['stock', 'etf', 'commodity', 'future', 'cryptocurrency']),
-  "sector": zod.string().nullable()
+  "sector": zod.string().nullable().describe('Normalized provider sector; stocks without metadata use Unknown.'),
+  "exchange": zod.string().nullable().describe('Normalized provider exchange when available.'),
+  "marketCapUsd": zod.number().nullable().describe('Provider market capitalization in USD. ETF assets-under-management are not substituted.'),
+  "annualizedVolatilityPercent": zod.number().nullable().describe('Trailing-year annualized standard deviation of daily returns, requiring at least 60 observations.'),
+  "riskBand": zod.enum(['Conservative', 'Moderate Conservative', 'Moderate', 'Moderate Aggressive', 'Aggressive']).nullable().describe('Historical-volatility band; not personalized investment suitability.')
 })
 
 
