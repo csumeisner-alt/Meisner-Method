@@ -48,6 +48,9 @@ const WATCH_FILTER_KEY = '@stocksense/watchlist_filter';
 /** AsyncStorage key for the persisted watchlist open/collapsed state. */
 const WATCHLIST_COLLAPSED_KEY = '@stocksense/watchlist_collapsed';
 
+/** AsyncStorage key for the persisted trending tickers open/collapsed state. */
+const TRENDING_COLLAPSED_KEY = '@stocksense/trending_collapsed';
+
 /** Persists the watchlist filter across navigation within a session (resets on full app reload). */
 let _persistedWatchFilter = '';
 
@@ -167,6 +170,7 @@ export default function HomeScreen() {
     },
   );
   const [watchlistCollapsed, setWatchlistCollapsed] = useState(false);
+  const [trendingCollapsed, setTrendingCollapsed] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Watchlist + push notifications
@@ -225,6 +229,23 @@ export default function HomeScreen() {
     setWatchlistCollapsed((current) => {
       const next = !current;
       AsyncStorage.setItem(WATCHLIST_COLLAPSED_KEY, next ? '1' : '0').catch(() => {});
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.getItem(TRENDING_COLLAPSED_KEY).then((saved) => {
+      if (!cancelled && saved === '1') setTrendingCollapsed(true);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const toggleTrendingTickers = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setTrendingCollapsed((current) => {
+      const next = !current;
+      AsyncStorage.setItem(TRENDING_COLLAPSED_KEY, next ? '1' : '0').catch(() => {});
       return next;
     });
   }, []);
@@ -731,12 +752,28 @@ export default function HomeScreen() {
         {/* Trending tickers */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleRow}>
+            <TouchableOpacity
+              style={styles.sectionTitleRow}
+              onPress={toggleTrendingTickers}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`${trendingCollapsed ? 'Expand' : 'Collapse'} trending tickers`}
+              accessibilityState={{ expanded: !trendingCollapsed }}
+            >
               <Feather name="zap" size={11} color={colors.mutedForeground} />
               <Text style={[styles.sectionTitle, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', letterSpacing: 1, marginLeft: 4 }]}>
                 TRENDING
+                {trending.length > 0 && (
+                  <Text style={{ fontFamily: 'Inter_400Regular' }}> ({trending.length})</Text>
+                )}
               </Text>
-            </View>
+              <Feather
+                name={trendingCollapsed ? 'chevron-right' : 'chevron-down'}
+                size={15}
+                color={colors.mutedForeground}
+                style={{ marginLeft: 5 }}
+              />
+            </TouchableOpacity>
             <View style={styles.refreshRow}>
               {timeStr && (
                 <Text style={[styles.updatedText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
@@ -753,50 +790,52 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          {trendingLoading && trending.length === 0 ? (
-            <View style={styles.loadingBox}>
-              <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={[styles.loadingText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                Fetching live market data…
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.tickerGrid}>
-              {trending.map((t) => {
-                const up = t.priceChangePercent >= 0;
-                const pctColor = up ? colors.buyColor : colors.sellColor;
-                return (
-                  <TouchableOpacity
-                    key={t.symbol}
-                    style={[styles.tickerCard, {
-                      backgroundColor: colors.card,
-                      borderColor: isActive ? colors.gold : colors.border,
-                      shadowColor: isActive ? colors.gold : '#000',
-                      shadowOpacity: isActive ? 0.18 : 0,
-                      shadowRadius: isActive ? 8 : 0,
-                    }]}
-                    onPress={() => navigateTo(t.symbol)}
-                    activeOpacity={0.75}
-                  >
-                    <View style={[styles.pctBadge, { backgroundColor: up ? 'rgba(0,229,160,0.10)' : 'rgba(255,59,59,0.10)' }]}>
-                      <Feather name={up ? 'trending-up' : 'trending-down'} size={10} color={pctColor} />
-                      <Text style={[styles.pctText, { color: pctColor, fontFamily: 'Inter_700Bold' }]}>
-                        {formatPct(t.priceChangePercent)}
+          {!trendingCollapsed && (
+            trendingLoading && trending.length === 0 ? (
+              <View style={styles.loadingBox}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={[styles.loadingText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                  Fetching live market data…
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.tickerGrid}>
+                {trending.map((t) => {
+                  const up = t.priceChangePercent >= 0;
+                  const pctColor = up ? colors.buyColor : colors.sellColor;
+                  return (
+                    <TouchableOpacity
+                      key={t.symbol}
+                      style={[styles.tickerCard, {
+                        backgroundColor: colors.card,
+                        borderColor: isActive ? colors.gold : colors.border,
+                        shadowColor: isActive ? colors.gold : '#000',
+                        shadowOpacity: isActive ? 0.18 : 0,
+                        shadowRadius: isActive ? 8 : 0,
+                      }]}
+                      onPress={() => navigateTo(t.symbol)}
+                      activeOpacity={0.75}
+                    >
+                      <View style={[styles.pctBadge, { backgroundColor: up ? 'rgba(0,229,160,0.10)' : 'rgba(255,59,59,0.10)' }]}>
+                        <Feather name={up ? 'trending-up' : 'trending-down'} size={10} color={pctColor} />
+                        <Text style={[styles.pctText, { color: pctColor, fontFamily: 'Inter_700Bold' }]}>
+                          {formatPct(t.priceChangePercent)}
+                        </Text>
+                      </View>
+                      <Text style={[styles.tickerSymbol, { color: colors.heading, fontFamily: 'Inter_700Bold' }]}>
+                        {t.symbol}
                       </Text>
-                    </View>
-                    <Text style={[styles.tickerSymbol, { color: colors.heading, fontFamily: 'Inter_700Bold' }]}>
-                      {t.symbol}
-                    </Text>
-                    <Text style={[styles.tickerName, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]} numberOfLines={1}>
-                      {t.name}
-                    </Text>
-                    <Text style={[styles.tickerPrice, { color: colors.primary, fontFamily: 'Inter_600SemiBold' }]}>
-                      {formatPrice(t.currentPrice)}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+                      <Text style={[styles.tickerName, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]} numberOfLines={1}>
+                        {t.name}
+                      </Text>
+                      <Text style={[styles.tickerPrice, { color: colors.primary, fontFamily: 'Inter_600SemiBold' }]}>
+                        {formatPrice(t.currentPrice)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )
           )}
         </View>
 
