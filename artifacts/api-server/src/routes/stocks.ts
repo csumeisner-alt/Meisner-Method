@@ -14,6 +14,14 @@ import { searchYahooStocks } from "../lib/stockSymbolSearch.js";
 import { normalizeDividendYield } from "../lib/dividendYield.js";
 import { buildStockRecommendation } from "../lib/stockRecommendation.js";
 import { fallbackAiAnalysis, parseAiAnalysis } from "../lib/analysisResponse.js";
+import {
+  heatMapCacheKey,
+  isHeatMapCategory,
+  isHeatMapResponse,
+  normalizeHeatMapSymbols,
+  type HeatMapCategory,
+  type HeatMapResponse,
+} from "../lib/marketHeatMap.js";
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -22,10 +30,14 @@ const INFO_SCRIPT = join(__dirname, "fetch_info_brief.py");
 const TRENDING_SCRIPT = join(__dirname, "fetch_trending.py");
 const TOP_PICKS_SCRIPT = join(__dirname, "fetch_top_picks.py");
 const CHART_SCRIPT = join(__dirname, "fetch_chart.py");
+const HEAT_MAP_SCRIPT = join(__dirname, "fetch_heatmap.py");
 
 // Cache top picks for 4 hours (screener is expensive — 100+ stocks)
 let topPicksCache: { data: unknown; ts: number } | null = null;
 const TOP_PICKS_TTL = 4 * 60 * 60 * 1000;
+const HEAT_MAP_TTL = 2 * 60 * 1000;
+const heatMapCache = new Map<string, { data: HeatMapResponse; ts: number }>();
+const heatMapRequests = new Map<string, Promise<HeatMapResponse>>();
 
 const router = Router();
 
@@ -64,6 +76,135 @@ router.get("/tts", async (req, res) => {
 
 const fmt = (n: number | null, d = 2) => (n != null ? n.toFixed(d) : "N/A");
 const pct = (n: number | null) => (n != null ? `${(n * 100).toFixed(1)}%` : "N/A");
+
+async function fetchHeatMapBatch(category: HeatMapCategory, symbols: string[]): Promise<HeatMapResponse> {
+  const key = heatMapCacheKey(category, symbols);
+  const now = Date.now();
+  const cached = heatMapCache.get(key);
+  if (cached && now - cached.ts < HEAT_MAP_TTL) return cached.data;
+
+  const pending = heatMapRequests.get(key);
+  if (pending) return pending;
+
+  const request = (async () => {
+    const { stdout } = await execFileAsync(
+      "python3",
+      [HEAT_MAP_SCRIPT, category, symbols.join(",")],
+      { timeout: 75_000, maxBuffer: 5 * 1024 * 1024 },
+    );
+    const raw: unknown = JSON.parse(stdout.trim());
+    if (
+      raw &&
+      typeof raw === "object" &&
+      typeof (raw as Record<string, unknown>)["error"] === "string"
+    ) {
+      throw new Error(String((raw as Record<string, unknown>)["error"]));
+    }
+    if (!isHeatMapResponse(raw, category)) {
+      throw new Error("Market data provider returned an invalid heat-map response");
+    }
+    heatMapCache.set(key, { data: raw, ts: Date.now() });
+    if (heatMapCache.size > 100) {
+      const oldestKey = heatMapCache.keys().next().value;
+      if (oldestKey) heatMapCache.delete(oldestKey);
+    }
+    return raw;
+  })();
+
+  heatMapRequests.set(key, request);
+  try {
+    return await request;
+  } finally {
+    heatMapRequests.delete(key);
+  }
+}
+
+router.get("/stocks/heat-map", async (req, res) => {
+  const rawCategory = req.query["category"];
+  const category = typeof rawCategory === "string" ? rawCategory.toLowerCase() : "";
+  if (!isHeatMapCategory(category)) {
+    res.status(400).json({
+      error: "INVALID_CATEGORY",
+      message: "Choose stocks, ETFs, commodities, futures, cryptocurrency, or custom.",
+    });
+    return;
+  }
+
+  const normalized = normalizeHeatMapSymbols(req.query["symbols"]);
+  if (normalized.invalid || (category === "custom" && normalized.symbols.length > 40)) {
+    res.status(400).json({
+      error: "INVALID_SYMBOLS",
+      message: "Use up to 40 valid ticker symbols.",
+    });
+    return;
+  }
+  if (category !== "custom" && normalized.symbols.length > 0) {
+    res.status(400).json({
+      error: "UNEXPECTED_SYMBOLS",
+      message: "Ticker symbols are only accepted for a custom heat map.",
+    });
+    return;
+  }
+
+  if (category === "custom" && normalized.symbols.length === 0) {
+    res.set("Cache-Control", "private, max-age=30").json({
+      category,
+      quotes: [],
+      unavailableSymbols: [],
+      updatedAt: Math.floor(Date.now() / 1000),
+    });
+    return;
+  }
+
+  try {
+    const data = await fetchHeatMapBatch(category, normalized.symbols);
+    res
+      .set("Cache-Control", category === "custom" ? "private, max-age=60" : "public, max-age=60")
+      .json(data);
+  } catch (err: any) {
+    req.log.error({ err, category }, "Market heat-map quote batch failed");
+    res.status(422).json({
+      error: "HEAT_MAP_FAILED",
+      message: "Market data is temporarily unavailable. Try refreshing the map.",
+    });
+  }
+});
+
+router.post("/stocks/heat-map/validate", async (req, res) => {
+  const rawSymbol = req.body?.symbol;
+  const normalized = normalizeHeatMapSymbols(rawSymbol);
+  if (
+    typeof rawSymbol !== "string" ||
+    rawSymbol.includes(",") ||
+    normalized.invalid ||
+    normalized.symbols.length !== 1
+  ) {
+    res.status(400).json({
+      error: "INVALID_SYMBOL",
+      message: "Enter one valid ticker symbol.",
+    });
+    return;
+  }
+
+  try {
+    const data = await fetchHeatMapBatch("custom", normalized.symbols);
+    const quote = data.quotes.find((item) => item.symbol === normalized.symbols[0]);
+    if (!quote) {
+      res.status(422).json({
+        error: "QUOTE_UNAVAILABLE",
+        message: "No current or recent quote was found for that ticker.",
+      });
+      return;
+    }
+    res.set("Cache-Control", "private, max-age=60").json(quote);
+  } catch (err: any) {
+    req.log.error({ err, symbol: normalized.symbols[0] }, "Custom heat-map ticker validation failed");
+    res.status(422).json({
+      error: "QUOTE_UNAVAILABLE",
+      message: "Market data is temporarily unavailable. Try again.",
+    });
+  }
+});
 
 // Top picks — multi-factor screener with 4-hour cache
 router.get("/stocks/top-picks", async (_req, res) => {

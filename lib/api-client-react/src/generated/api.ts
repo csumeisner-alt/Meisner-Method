@@ -22,10 +22,14 @@ import type {
 import type {
   AnalysisError,
   AnalyzeStockRequest,
+  GetMarketHeatMapParams,
   HealthStatus,
+  HeatMapQuote,
+  HeatMapResponse,
   SearchStockSymbolsParams,
   StockAnalysis,
-  StockSymbolSuggestion
+  StockSymbolSuggestion,
+  ValidateHeatMapSymbolRequest
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -288,5 +292,161 @@ export const useAnalyzeStock = <TError = ErrorType<AnalysisError>,
         TContext
       > => {
       return useMutation(getAnalyzeStockMutationOptions(options));
+    }
+
+export const getGetMarketHeatMapUrl = (params: GetMarketHeatMapParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/stocks/heat-map?${stringifiedParams}` : `/api/stocks/heat-map`
+}
+
+/**
+ * Returns a cached batch of current or latest-available market quotes for one heat-map category. Custom maps pass symbols as a comma-separated query array.
+ * @summary Get batched quotes for a market heat map
+ */
+export const getMarketHeatMap = async (params: GetMarketHeatMapParams, options?: RequestInit): Promise<HeatMapResponse> => {
+
+  return customFetch<HeatMapResponse>(getGetMarketHeatMapUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMarketHeatMapQueryKey = (params?: GetMarketHeatMapParams,) => {
+    return [
+    `/api/stocks/heat-map`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetMarketHeatMapQueryOptions = <TData = Awaited<ReturnType<typeof getMarketHeatMap>>, TError = ErrorType<AnalysisError>>(params: GetMarketHeatMapParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMarketHeatMap>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMarketHeatMapQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMarketHeatMap>>> = ({ signal }) => getMarketHeatMap(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMarketHeatMap>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMarketHeatMapQueryResult = NonNullable<Awaited<ReturnType<typeof getMarketHeatMap>>>
+export type GetMarketHeatMapQueryError = ErrorType<AnalysisError>
+
+
+/**
+ * @summary Get batched quotes for a market heat map
+ */
+
+export function useGetMarketHeatMap<TData = Awaited<ReturnType<typeof getMarketHeatMap>>, TError = ErrorType<AnalysisError>>(
+ params: GetMarketHeatMapParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMarketHeatMap>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMarketHeatMapQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getValidateHeatMapSymbolUrl = () => {
+
+
+
+
+  return `/api/stocks/heat-map/validate`
+}
+
+/**
+ * @summary Validate a custom heat-map ticker against live market data
+ */
+export const validateHeatMapSymbol = async (validateHeatMapSymbolRequest: ValidateHeatMapSymbolRequest, options?: RequestInit): Promise<HeatMapQuote> => {
+
+  return customFetch<HeatMapQuote>(getValidateHeatMapSymbolUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(validateHeatMapSymbolRequest)
+  }
+);}
+
+
+
+
+
+export const getValidateHeatMapSymbolMutationOptions = <TError = ErrorType<AnalysisError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof validateHeatMapSymbol>>, TError,{data: BodyType<ValidateHeatMapSymbolRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof validateHeatMapSymbol>>, TError,{data: BodyType<ValidateHeatMapSymbolRequest>}, TContext> => {
+
+const mutationKey = ['validateHeatMapSymbol'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof validateHeatMapSymbol>>, {data: BodyType<ValidateHeatMapSymbolRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  validateHeatMapSymbol(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ValidateHeatMapSymbolMutationResult = NonNullable<Awaited<ReturnType<typeof validateHeatMapSymbol>>>
+    export type ValidateHeatMapSymbolMutationBody = BodyType<ValidateHeatMapSymbolRequest>
+    export type ValidateHeatMapSymbolMutationError = ErrorType<AnalysisError>
+
+    /**
+ * @summary Validate a custom heat-map ticker against live market data
+ */
+export const useValidateHeatMapSymbol = <TError = ErrorType<AnalysisError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof validateHeatMapSymbol>>, TError,{data: BodyType<ValidateHeatMapSymbolRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof validateHeatMapSymbol>>,
+        TError,
+        {data: BodyType<ValidateHeatMapSymbolRequest>},
+        TContext
+      > => {
+      return useMutation(getValidateHeatMapSymbolMutationOptions(options));
     }
 

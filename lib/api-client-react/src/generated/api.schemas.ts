@@ -141,6 +141,71 @@ export interface StockAnalysis {
   recommendation: Recommendation;
 }
 
+export type HeatMapQuoteMarketSession = typeof HeatMapQuoteMarketSession[keyof typeof HeatMapQuoteMarketSession];
+
+
+export const HeatMapQuoteMarketSession = {
+  pre_market: 'pre_market',
+  regular: 'regular',
+  after_hours: 'after_hours',
+  closed: 'closed',
+  unknown: 'unknown',
+} as const;
+
+export type HeatMapQuoteAssetType = typeof HeatMapQuoteAssetType[keyof typeof HeatMapQuoteAssetType];
+
+
+export const HeatMapQuoteAssetType = {
+  stock: 'stock',
+  etf: 'etf',
+  commodity: 'commodity',
+  future: 'future',
+  cryptocurrency: 'cryptocurrency',
+} as const;
+
+export interface HeatMapQuote {
+  symbol: string;
+  name: string;
+  /** @exclusiveMinimum 0 */
+  price: number;
+  /** Percentage change from the previous close, in percentage points (1.25 means 1.25%). */
+  priceChangePercent: number;
+  /** Unix timestamp in seconds for the quote or last available close. */
+  priceTimestamp: number | null;
+  marketSession: HeatMapQuoteMarketSession;
+  assetType: HeatMapQuoteAssetType;
+  sector: string | null;
+}
+
+export type HeatMapResponseCategory = typeof HeatMapResponseCategory[keyof typeof HeatMapResponseCategory];
+
+
+export const HeatMapResponseCategory = {
+  stocks: 'stocks',
+  etfs: 'etfs',
+  commodities: 'commodities',
+  futures: 'futures',
+  cryptocurrency: 'cryptocurrency',
+  custom: 'custom',
+} as const;
+
+export interface HeatMapResponse {
+  category: HeatMapResponseCategory;
+  quotes: HeatMapQuote[];
+  unavailableSymbols: string[];
+  /** Unix timestamp in seconds when this batch was assembled. */
+  updatedAt: number;
+}
+
+export interface ValidateHeatMapSymbolRequest {
+  /**
+     * @minLength 1
+     * @maxLength 15
+     * @pattern ^[A-Za-z0-9.^=-]+$
+     */
+  symbol: string;
+}
+
 export interface AnalysisError {
   error: string;
   message: string;
@@ -153,4 +218,26 @@ export type SearchStockSymbolsParams = {
  */
 q: string;
 };
+
+export type GetMarketHeatMapParams = {
+category: GetMarketHeatMapCategory;
+/**
+ * @maxItems 40
+ * @items.minLength 1
+ * @items.maxLength 15
+ */
+symbols?: string[];
+};
+
+export type GetMarketHeatMapCategory = typeof GetMarketHeatMapCategory[keyof typeof GetMarketHeatMapCategory];
+
+
+export const GetMarketHeatMapCategory = {
+  stocks: 'stocks',
+  etfs: 'etfs',
+  commodities: 'commodities',
+  futures: 'futures',
+  cryptocurrency: 'cryptocurrency',
+  custom: 'custom',
+} as const;
 

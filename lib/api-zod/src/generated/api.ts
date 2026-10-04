@@ -110,3 +110,68 @@ export const AnalyzeStockResponse = zod.object({
 })
 
 
+/**
+ * Returns a cached batch of current or latest-available market quotes for one heat-map category. Custom maps pass symbols as a comma-separated query array.
+ * @summary Get batched quotes for a market heat map
+ */
+export const getMarketHeatMapQuerySymbolsItemMax = 15;
+
+export const getMarketHeatMapQuerySymbolsMax = 40;
+
+
+
+export const GetMarketHeatMapQueryParams = zod.object({
+  "category": zod.enum(['stocks', 'etfs', 'commodities', 'futures', 'cryptocurrency', 'custom']),
+  "symbols": zod.array(zod.coerce.string().min(1).max(getMarketHeatMapQuerySymbolsItemMax)).max(getMarketHeatMapQuerySymbolsMax).optional()
+})
+
+export const getMarketHeatMapResponseQuotesItemPriceExclusiveMin = 0;
+
+
+
+export const GetMarketHeatMapResponse = zod.object({
+  "category": zod.enum(['stocks', 'etfs', 'commodities', 'futures', 'cryptocurrency', 'custom']),
+  "quotes": zod.array(zod.object({
+  "symbol": zod.string(),
+  "name": zod.string(),
+  "price": zod.number().gt(getMarketHeatMapResponseQuotesItemPriceExclusiveMin),
+  "priceChangePercent": zod.number().describe('Percentage change from the previous close, in percentage points (1.25 means 1.25%).'),
+  "priceTimestamp": zod.number().nullable().describe('Unix timestamp in seconds for the quote or last available close.'),
+  "marketSession": zod.enum(['pre_market', 'regular', 'after_hours', 'closed', 'unknown']),
+  "assetType": zod.enum(['stock', 'etf', 'commodity', 'future', 'cryptocurrency']),
+  "sector": zod.string().nullable()
+})),
+  "unavailableSymbols": zod.array(zod.string()),
+  "updatedAt": zod.number().describe('Unix timestamp in seconds when this batch was assembled.')
+})
+
+
+/**
+ * @summary Validate a custom heat-map ticker against live market data
+ */
+export const validateHeatMapSymbolBodySymbolMax = 15;
+
+
+export const validateHeatMapSymbolBodySymbolRegExp = new RegExp('^[A-Za-z0-9.^=-]+$');
+
+
+export const ValidateHeatMapSymbolBody = zod.object({
+  "symbol": zod.string().min(1).max(validateHeatMapSymbolBodySymbolMax).regex(validateHeatMapSymbolBodySymbolRegExp)
+})
+
+export const validateHeatMapSymbolResponsePriceExclusiveMin = 0;
+
+
+
+export const ValidateHeatMapSymbolResponse = zod.object({
+  "symbol": zod.string(),
+  "name": zod.string(),
+  "price": zod.number().gt(validateHeatMapSymbolResponsePriceExclusiveMin),
+  "priceChangePercent": zod.number().describe('Percentage change from the previous close, in percentage points (1.25 means 1.25%).'),
+  "priceTimestamp": zod.number().nullable().describe('Unix timestamp in seconds for the quote or last available close.'),
+  "marketSession": zod.enum(['pre_market', 'regular', 'after_hours', 'closed', 'unknown']),
+  "assetType": zod.enum(['stock', 'etf', 'commodity', 'future', 'cryptocurrency']),
+  "sector": zod.string().nullable()
+})
+
+

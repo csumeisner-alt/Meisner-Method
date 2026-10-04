@@ -92,6 +92,80 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AnalysisError"
+  /stocks/heat-map:
+    get:
+      operationId: getMarketHeatMap
+      tags: [stocks]
+      summary: Get batched quotes for a market heat map
+      description: Returns a cached batch of current or latest-available market quotes for one heat-map category. Custom maps pass symbols as a comma-separated query array.
+      parameters:
+        - in: query
+          name: category
+          required: true
+          schema:
+            type: string
+            enum: [stocks, etfs, commodities, futures, cryptocurrency, custom]
+        - in: query
+          name: symbols
+          required: false
+          style: form
+          explode: false
+          schema:
+            type: array
+            maxItems: 40
+            items:
+              type: string
+              minLength: 1
+              maxLength: 15
+      responses:
+        "200":
+          description: Market quotes for the selected heat map
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HeatMapResponse"
+        "400":
+          description: Invalid category or custom ticker list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "422":
+          description: Market data is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+  /stocks/heat-map/validate:
+    post:
+      operationId: validateHeatMapSymbol
+      tags: [stocks]
+      summary: Validate a custom heat-map ticker against live market data
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidateHeatMapSymbolRequest"
+      responses:
+        "200":
+          description: Valid ticker with an available quote
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HeatMapQuote"
+        "400":
+          description: Invalid ticker syntax
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "422":
+          description: No current or recent quote was found for the ticker
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
 components:
   schemas:
     HealthStatus:
@@ -339,6 +413,76 @@ components:
         - fundamental
         - behavioral
         - recommendation
+
+    HeatMapQuote:
+      type: object
+      properties:
+        symbol:
+          type: string
+        name:
+          type: string
+        price:
+          type: number
+          exclusiveMinimum: 0
+        priceChangePercent:
+          type: number
+          description: Percentage change from the previous close, in percentage points (1.25 means 1.25%).
+        priceTimestamp:
+          type: integer
+          nullable: true
+          description: Unix timestamp in seconds for the quote or last available close.
+        marketSession:
+          type: string
+          enum: [pre_market, regular, after_hours, closed, unknown]
+        assetType:
+          type: string
+          enum: [stock, etf, commodity, future, cryptocurrency]
+        sector:
+          type: string
+          nullable: true
+      required:
+        - symbol
+        - name
+        - price
+        - priceChangePercent
+        - priceTimestamp
+        - marketSession
+        - assetType
+        - sector
+
+    HeatMapResponse:
+      type: object
+      properties:
+        category:
+          type: string
+          enum: [stocks, etfs, commodities, futures, cryptocurrency, custom]
+        quotes:
+          type: array
+          items:
+            $ref: "#/components/schemas/HeatMapQuote"
+        unavailableSymbols:
+          type: array
+          items:
+            type: string
+        updatedAt:
+          type: integer
+          description: Unix timestamp in seconds when this batch was assembled.
+      required:
+        - category
+        - quotes
+        - unavailableSymbols
+        - updatedAt
+
+    ValidateHeatMapSymbolRequest:
+      type: object
+      properties:
+        symbol:
+          type: string
+          minLength: 1
+          maxLength: 15
+          pattern: "^[A-Za-z0-9.^=-]+$"
+      required:
+        - symbol
 
     AnalysisError:
       type: object
