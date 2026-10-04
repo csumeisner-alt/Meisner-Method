@@ -7,6 +7,7 @@
  */
 import type { GetMarketHeatMapCategory } from './getMarketHeatMapCategory';
 import type { GetMarketHeatMapPeriod } from './getMarketHeatMapPeriod';
+import type { GetMarketHeatMapSector } from './getMarketHeatMapSector';
 
 export type GetMarketHeatMapParams = {
 category: GetMarketHeatMapCategory;
@@ -14,6 +15,10 @@ category: GetMarketHeatMapCategory;
  * Return window. Risk levels always use trailing-year annualized daily volatility.
  */
 period?: GetMarketHeatMapPeriod;
+/**
+ * For Stocks, fetch an expanded, liquid US-listed quote set for the selected sector.
+ */
+sector?: GetMarketHeatMapSector;
 /**
  * @maxItems 40
  * @items.minLength 1

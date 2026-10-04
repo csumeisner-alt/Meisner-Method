@@ -21,6 +21,7 @@ test("heat-map filters stale and undated quotes before summarizing and rendering
 
 test("heat-map queries and renders only the active category, period, and custom symbol set", () => {
   assert.match(screenSource, /category,\s*period,\s*\.\.\.\(category === 'custom' \? \{ symbols: customSymbols \} : \{\}\)/);
+  assert.match(screenSource, /\.\.\.\(requestedSector \? \{ sector: requestedSector \} : \{\}\)/);
   assert.match(screenSource, /heatMapResponseMatchesSelection\(/);
   assert.match(screenSource, /testID=\{`heat-map-period-\$\{item\.id\}`\}/);
   assert.match(screenSource, /heat-map-drawer-period-/);
@@ -46,4 +47,10 @@ test("heat-map has a right-side filter drawer and reduced-motion-aware direction
   assert.match(screenSource, /Animated\.loop/);
   assert.match(screenSource, /accessibilityLabel=\{directionalLabel\}/);
   assert.match(screenSource, /Price-return proxy/);
+});
+
+test("stock sector selection offers all supported sectors and requests matching expanded data", () => {
+  assert.match(screenSource, /const STOCK_SECTORS: GetMarketHeatMapSector\[\] = \[/);
+  assert.match(screenSource, /category === 'stocks'\s*&&\s*filters\.sector !== 'Unknown'/);
+  assert.match(screenSource, /requestedSector,\s*\);/);
 });

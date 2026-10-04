@@ -18,10 +18,12 @@ import {
   heatMapRequestCacheKey,
   isHeatMapCategory,
   isHeatMapPeriod,
+  isHeatMapSector,
   isHeatMapResponse,
   normalizeHeatMapSymbols,
   type HeatMapCategory,
   type HeatMapPeriod,
+  type HeatMapSector,
   type HeatMapResponse,
 } from "../lib/marketHeatMap.js";
 
@@ -97,8 +99,9 @@ async function fetchHeatMapBatch(
   category: HeatMapCategory,
   symbols: string[],
   period: HeatMapPeriod,
+  requestedSector: HeatMapSector | null,
 ): Promise<HeatMapResponse> {
-  const key = heatMapRequestCacheKey(category, period, symbols);
+  const key = heatMapRequestCacheKey(category, period, symbols, requestedSector);
   const now = Date.now();
   const cached = heatMapCache.get(key);
   if (cached && now - cached.ts < HEAT_MAP_TTL) return orderCustomHeatMapResponse(cached.data, symbols);
@@ -109,7 +112,7 @@ async function fetchHeatMapBatch(
   const request = (async () => {
     const { stdout } = await execFileAsync(
       "python3",
-      [HEAT_MAP_SCRIPT, category, symbols.join(","), period],
+      [HEAT_MAP_SCRIPT, category, symbols.join(","), period, requestedSector ?? ""],
       { timeout: 75_000, maxBuffer: 5 * 1024 * 1024 },
     );
     const raw: unknown = JSON.parse(stdout.trim());
@@ -120,7 +123,7 @@ async function fetchHeatMapBatch(
     ) {
       throw new Error(String((raw as Record<string, unknown>)["error"]));
     }
-    if (!isHeatMapResponse(raw, category, period)) {
+    if (!isHeatMapResponse(raw, category, period, requestedSector)) {
       throw new Error("Market data provider returned an invalid heat-map response");
     }
     heatMapCache.set(key, { data: raw, ts: Date.now() });
@@ -160,6 +163,19 @@ router.get("/stocks/heat-map", async (req, res) => {
     return;
   }
 
+  const rawSector = req.query["sector"];
+  let requestedSector: HeatMapSector | null = null;
+  if (rawSector !== undefined) {
+    if (category !== "stocks" || typeof rawSector !== "string" || !isHeatMapSector(rawSector)) {
+      res.status(400).json({
+        error: "INVALID_SECTOR",
+        message: "Choose a supported sector for the Stocks heat map.",
+      });
+      return;
+    }
+    requestedSector = rawSector;
+  }
+
   const normalized = normalizeHeatMapSymbols(req.query["symbols"]);
   if (normalized.invalid || (category === "custom" && normalized.symbols.length > 40)) {
     res.status(400).json({
@@ -180,6 +196,7 @@ router.get("/stocks/heat-map", async (req, res) => {
     res.set("Cache-Control", "private, max-age=30").json({
       category,
       period,
+      requestedSector: null,
       quotes: [],
       unavailableSymbols: [],
       updatedAt: Math.floor(Date.now() / 1000),
@@ -188,7 +205,7 @@ router.get("/stocks/heat-map", async (req, res) => {
   }
 
   try {
-    const data = await fetchHeatMapBatch(category, normalized.symbols, period);
+    const data = await fetchHeatMapBatch(category, normalized.symbols, period, requestedSector);
     res
       .set("Cache-Control", category === "custom" ? "private, max-age=60" : "public, max-age=60")
       .json(data);
@@ -218,7 +235,7 @@ router.post("/stocks/heat-map/validate", async (req, res) => {
   }
 
   try {
-    const data = await fetchHeatMapBatch("custom", normalized.symbols, "1d");
+    const data = await fetchHeatMapBatch("custom", normalized.symbols, "1d", null);
     const quote = data.quotes.find((item) => item.symbol === normalized.symbols[0]);
     if (!quote) {
       res.status(422).json({

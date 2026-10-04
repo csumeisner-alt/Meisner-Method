@@ -124,6 +124,7 @@ export const getMarketHeatMapQuerySymbolsMax = 40;
 export const GetMarketHeatMapQueryParams = zod.object({
   "category": zod.enum(['stocks', 'etfs', 'commodities', 'futures', 'cryptocurrency', 'custom']),
   "period": zod.enum(['1d', '1w', '1m', '3m', '6m', '1y', '3y', '5y', 'max']).default(getMarketHeatMapQueryPeriodDefault).describe('Return window. Risk levels always use trailing-year annualized daily volatility.'),
+  "sector": zod.enum(['Technology', 'Communication Services', 'Consumer Cyclical', 'Consumer Defensive', 'Financials', 'Healthcare', 'Industrials', 'Real Estate', 'Energy', 'Utilities', 'Basic Materials']).optional().describe('For Stocks, fetch an expanded, liquid US-listed quote set for the selected sector.'),
   "symbols": zod.array(zod.coerce.string().min(1).max(getMarketHeatMapQuerySymbolsItemMax)).max(getMarketHeatMapQuerySymbolsMax).optional()
 })
 
@@ -134,6 +135,7 @@ export const getMarketHeatMapResponseQuotesItemPriceExclusiveMin = 0;
 export const GetMarketHeatMapResponse = zod.object({
   "category": zod.enum(['stocks', 'etfs', 'commodities', 'futures', 'cryptocurrency', 'custom']),
   "period": zod.enum(['1d', '1w', '1m', '3m', '6m', '1y', '3y', '5y', 'max']),
+  "requestedSector": zod.enum(['Technology', 'Communication Services', 'Consumer Cyclical', 'Consumer Defensive', 'Financials', 'Healthcare', 'Industrials', 'Real Estate', 'Energy', 'Utilities', 'Basic Materials']).nullable().describe('Sector used for a Stocks expansion request, or null for the normal category list.'),
   "quotes": zod.array(zod.object({
   "symbol": zod.string(),
   "name": zod.string(),

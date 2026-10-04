@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import yfinance as yf
+from yfinance import EquityQuery
 
 
 STOCK_SECTORS = {
@@ -109,6 +110,19 @@ METADATA_CACHE_PATH = os.path.join(tempfile.gettempdir(), "meisner_heat_map_meta
 METADATA_CACHE_TTL_SECONDS = 24 * 60 * 60
 MIN_VOLATILITY_RETURNS = 60
 HISTORY_BATCH_SIZE = 40
+SECTOR_SCREEN_PAGE_SIZE = 50
+MAX_SECTOR_SCREEN_CANDIDATES = 250
+MIN_SECTOR_QUOTES = 15
+US_EQUITY_EXCHANGES = ("NMS", "NGM", "NCM", "NYQ", "PCX", "ASE", "BTS")
+US_EQUITY_EXCHANGE_LABELS = {
+    "NASDAQ",
+    "NYSE",
+    "NYSE Arca",
+    "NYSE American",
+    "Cboe",
+}
+VALID_STOCK_SECTORS = frozenset(SECTOR_ALIASES.values())
+YAHOO_SECTOR_SCREEN_LABELS = {"Financials": "Financial Services"}
 
 
 def finite_number(value):
@@ -631,7 +645,77 @@ def quote_from_screener(item):
     }
 
 
-def screener_quotes(category):
+def build_sector_screen_query(sector):
+    normalized_sector = normalize_sector(sector)
+    if normalized_sector not in VALID_STOCK_SECTORS:
+        raise ValueError("unsupported stock sector")
+    provider_sector = YAHOO_SECTOR_SCREEN_LABELS.get(normalized_sector, normalized_sector)
+    return EquityQuery("and", [
+        EquityQuery("eq", ["region", "us"]),
+        EquityQuery("eq", ["sector", provider_sector]),
+        EquityQuery("is-in", ["exchange", *US_EQUITY_EXCHANGES]),
+    ])
+
+
+def sector_screener_quotes(sector):
+    query = build_sector_screen_query(sector)
+    result = {}
+    offset = 0
+    while offset < MAX_SECTOR_SCREEN_CANDIDATES:
+        page_size = min(SECTOR_SCREEN_PAGE_SIZE, MAX_SECTOR_SCREEN_CANDIDATES - offset)
+        try:
+            response = yf.screen(
+                query,
+                offset=offset,
+                size=page_size,
+                sortField="dayvolume",
+                sortAsc=False,
+            )
+        except Exception:
+            break
+        rows = response.get("quotes", []) if isinstance(response, dict) else []
+        if not isinstance(rows, list) or not rows:
+            break
+        for item in rows:
+            if not isinstance(item, dict):
+                continue
+            exchange = normalize_exchange(item.get("exchange") or item.get("fullExchangeName"))
+            if exchange not in US_EQUITY_EXCHANGE_LABELS:
+                continue
+            if str(item.get("quoteType") or item.get("typeDisp") or "").upper() == "ETF":
+                continue
+            parsed = quote_from_screener(item)
+            if parsed is None:
+                continue
+            parsed["assetType"] = "stock"
+            # Yahoo's equity screener applies the sector query but omits sector
+            # fields from its quote rows, so retain the verified query label.
+            parsed["sector"] = normalize_sector(sector)
+            result.setdefault(parsed["symbol"], parsed)
+        offset += len(rows)
+        total = finite_number(response.get("total")) if isinstance(response, dict) else None
+        if len(result) >= MIN_SECTOR_QUOTES:
+            break
+        if total is not None and offset >= total:
+            break
+        if total is None and len(rows) < page_size:
+            break
+    return list(result.values())
+
+
+def screener_quotes(category, sector=None):
+    if category == "stocks" and sector is not None:
+        targeted_quotes = sector_screener_quotes(sector)
+        if len(targeted_quotes) >= MIN_SECTOR_QUOTES:
+            return targeted_quotes
+        # If the provider's targeted result is temporarily sparse, preserve any
+        # matching liquid names already available from the standard screener.
+        merged = {quote["symbol"]: quote for quote in targeted_quotes}
+        for quote in screener_quotes(category):
+            if quote.get("sector") == normalize_sector(sector):
+                merged.setdefault(quote["symbol"], quote)
+        return list(merged.values())
+
     try:
         quotes = yf.screen("most_actives", count=100).get("quotes", [])
     except Exception:
@@ -749,11 +833,11 @@ def download_history(symbols, period):
     return histories
 
 
-def fetch_heat_map(category, symbols, period="1d", now=None):
+def fetch_heat_map(category, symbols, period="1d", sector=None, now=None):
     requested = get_requested_symbols(category, symbols)
     quotes_by_symbol = {}
     if category in ("stocks", "etfs"):
-        screened = screener_quotes(category)
+        screened = screener_quotes(category, sector)
         if screened:
             quotes_by_symbol = {quote["symbol"]: quote for quote in screened}
             requested = list(quotes_by_symbol)
@@ -788,7 +872,11 @@ def main():
     period = sys.argv[3].strip().lower() if len(sys.argv) > 3 and sys.argv[3] else "1d"
     if period not in ("1d", "1w", "1m", "3m", "6m", "1y", "3y", "5y", "max"):
         raise ValueError("unsupported period")
-    quotes_by_symbol, requested = fetch_heat_map(category, symbols, period)
+    raw_sector = sys.argv[4].strip() if len(sys.argv) > 4 and sys.argv[4] else ""
+    requested_sector = normalize_sector(raw_sector) if raw_sector else None
+    if requested_sector is not None and (category != "stocks" or requested_sector not in VALID_STOCK_SECTORS):
+        raise ValueError("unsupported sector filter")
+    quotes_by_symbol, requested = fetch_heat_map(category, symbols, period, requested_sector)
     ordered_quotes = [quotes_by_symbol[symbol] for symbol in requested if symbol in quotes_by_symbol]
     if category in ("stocks", "etfs") and quotes_by_symbol:
         # Screener results are ranked by activity; preserve that order.
@@ -797,6 +885,7 @@ def main():
     response = {
         "category": category,
         "period": period,
+        "requestedSector": requested_sector,
         "quotes": ordered_quotes,
         "unavailableSymbols": unavailable,
         "updatedAt": int(datetime.now(timezone.utc).timestamp()),

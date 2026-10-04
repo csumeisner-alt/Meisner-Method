@@ -114,6 +114,13 @@ paths:
             default: 1d
           description: Return window. Risk levels always use trailing-year annualized daily volatility.
         - in: query
+          name: sector
+          required: false
+          schema:
+            type: string
+            enum: [Technology, Communication Services, Consumer Cyclical, Consumer Defensive, Financials, Healthcare, Industrials, Real Estate, Energy, Utilities, Basic Materials]
+          description: For Stocks, fetch an expanded, liquid US-listed quote set for the selected sector.
+        - in: query
           name: symbols
           required: false
           style: form
@@ -510,6 +517,11 @@ components:
         period:
           type: string
           enum: [1d, 1w, 1m, 3m, 6m, 1y, 3y, 5y, max]
+        requestedSector:
+          type: string
+          enum: [Technology, Communication Services, Consumer Cyclical, Consumer Defensive, Financials, Healthcare, Industrials, Real Estate, Energy, Utilities, Basic Materials]
+          nullable: true
+          description: Sector used for a Stocks expansion request, or null for the normal category list.
         quotes:
           type: array
           items:
@@ -524,6 +536,7 @@ components:
       required:
         - category
         - period
+        - requestedSector
         - quotes
         - unavailableSymbols
         - updatedAt

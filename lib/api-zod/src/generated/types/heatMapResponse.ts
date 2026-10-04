@@ -8,10 +8,13 @@
 import type { HeatMapQuote } from './heatMapQuote';
 import type { HeatMapResponseCategory } from './heatMapResponseCategory';
 import type { HeatMapResponsePeriod } from './heatMapResponsePeriod';
+import type { HeatMapResponseRequestedSector } from './heatMapResponseRequestedSector';
 
 export interface HeatMapResponse {
   category: HeatMapResponseCategory;
   period: HeatMapResponsePeriod;
+  /** Sector used for a Stocks expansion request, or null for the normal category list. */
+  requestedSector: HeatMapResponseRequestedSector;
   quotes: HeatMapQuote[];
   unavailableSymbols: string[];
   /** Unix timestamp in seconds when this batch was assembled. */

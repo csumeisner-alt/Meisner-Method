@@ -250,9 +250,31 @@ export const HeatMapResponsePeriod = {
   max: 'max',
 } as const;
 
+/**
+ * Sector used for a Stocks expansion request, or null for the normal category list.
+ */
+export type HeatMapResponseRequestedSector = typeof HeatMapResponseRequestedSector[keyof typeof HeatMapResponseRequestedSector] | null;
+
+
+export const HeatMapResponseRequestedSector = {
+  Technology: 'Technology',
+  Communication_Services: 'Communication Services',
+  Consumer_Cyclical: 'Consumer Cyclical',
+  Consumer_Defensive: 'Consumer Defensive',
+  Financials: 'Financials',
+  Healthcare: 'Healthcare',
+  Industrials: 'Industrials',
+  Real_Estate: 'Real Estate',
+  Energy: 'Energy',
+  Utilities: 'Utilities',
+  Basic_Materials: 'Basic Materials',
+} as const;
+
 export interface HeatMapResponse {
   category: HeatMapResponseCategory;
   period: HeatMapResponsePeriod;
+  /** Sector used for a Stocks expansion request, or null for the normal category list. */
+  requestedSector: HeatMapResponseRequestedSector;
   quotes: HeatMapQuote[];
   unavailableSymbols: string[];
   /** Unix timestamp in seconds when this batch was assembled. */
@@ -288,6 +310,10 @@ category: GetMarketHeatMapCategory;
  */
 period?: GetMarketHeatMapPeriod;
 /**
+ * For Stocks, fetch an expanded, liquid US-listed quote set for the selected sector.
+ */
+sector?: GetMarketHeatMapSector;
+/**
  * @maxItems 40
  * @items.minLength 1
  * @items.maxLength 15
@@ -320,5 +346,22 @@ export const GetMarketHeatMapPeriod = {
   '3y': '3y',
   '5y': '5y',
   max: 'max',
+} as const;
+
+export type GetMarketHeatMapSector = typeof GetMarketHeatMapSector[keyof typeof GetMarketHeatMapSector];
+
+
+export const GetMarketHeatMapSector = {
+  Technology: 'Technology',
+  Communication_Services: 'Communication Services',
+  Consumer_Cyclical: 'Consumer Cyclical',
+  Consumer_Defensive: 'Consumer Defensive',
+  Financials: 'Financials',
+  Healthcare: 'Healthcare',
+  Industrials: 'Industrials',
+  Real_Estate: 'Real Estate',
+  Energy: 'Energy',
+  Utilities: 'Utilities',
+  Basic_Materials: 'Basic Materials',
 } as const;
 

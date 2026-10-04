@@ -7,6 +7,7 @@ import {
   isHeatMapPeriod,
   isHeatMapQuote,
   isHeatMapResponse,
+  isHeatMapSector,
   normalizeHeatMapSymbols,
 } from "./marketHeatMap.ts";
 
@@ -20,12 +21,18 @@ test("heat-map periods and cache keys include the selected historical range", ()
   assert.equal(isHeatMapPeriod("1d"), true);
   assert.equal(isHeatMapPeriod("max"), true);
   assert.equal(isHeatMapPeriod("2y"), false);
+  assert.equal(isHeatMapSector("Real Estate"), true);
+  assert.equal(isHeatMapSector("Unknown"), false);
   assert.equal(heatMapRequestCacheKey("stocks", "1d", []), "stocks:1d:");
   assert.equal(heatMapRequestCacheKey("stocks", "1y", []), "stocks:1y:");
   assert.equal(heatMapRequestCacheKey("custom", "max", ["AAPL"]), "custom:max:AAPL");
   assert.equal(
     heatMapRequestCacheKey("custom", "max", ["MSFT", "AAPL"]),
     heatMapRequestCacheKey("custom", "max", ["AAPL", "MSFT"]),
+  );
+  assert.notEqual(
+    heatMapRequestCacheKey("stocks", "1d", [], "Real Estate"),
+    heatMapRequestCacheKey("stocks", "1d", [], "Technology"),
   );
 });
 
@@ -71,6 +78,7 @@ test("quote and response validators reject missing, stale-shaped, or non-finite 
     isHeatMapResponse({
       category: "stocks",
       period: "1d",
+      requestedSector: null,
       quotes: [quote],
       unavailableSymbols: [],
       updatedAt: 1_760_000_000,
@@ -81,6 +89,7 @@ test("quote and response validators reject missing, stale-shaped, or non-finite 
     isHeatMapResponse({
       category: "stocks",
       period: "1d",
+      requestedSector: null,
       quotes: [{ ...quote, price: 0 }],
       unavailableSymbols: [],
       updatedAt: 1_760_000_000,
@@ -112,6 +121,7 @@ test("heat-map responses reject stale or undated continuous-futures quotes", () 
   const response = (quote: typeof futuresQuote | (typeof futuresQuote & { priceTimestamp: null })) => ({
     category: "futures",
     period: "1d",
+    requestedSector: null,
     quotes: [quote],
     unavailableSymbols: [],
     updatedAt,
@@ -126,4 +136,18 @@ test("heat-map responses reject stale or undated continuous-futures quotes", () 
     false,
   );
   assert.equal(isHeatMapResponse(response({ ...futuresQuote, priceTimestamp: null }), "futures"), false);
+});
+
+test("sector-expanded responses must match the selected sector", () => {
+  const response = {
+    category: "stocks",
+    period: "1d",
+    requestedSector: "Real Estate",
+    quotes: [],
+    unavailableSymbols: [],
+    updatedAt: 1_760_000_000,
+  };
+  assert.equal(isHeatMapResponse(response, "stocks", "1d", "Real Estate"), true);
+  assert.equal(isHeatMapResponse(response, "stocks", "1d", "Technology"), false);
+  assert.equal(isHeatMapResponse({ ...response, requestedSector: null }, "stocks", "1d", "Real Estate"), false);
 });

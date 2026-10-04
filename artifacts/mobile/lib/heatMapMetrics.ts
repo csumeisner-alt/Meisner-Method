@@ -85,14 +85,17 @@ export function heatMapResponseMatchesSelection(
   response: {
     category: string;
     period: string;
+    requestedSector?: string | null;
     quotes: { symbol: string }[];
     unavailableSymbols: string[];
   } | null | undefined,
   category: string,
   period: string,
   symbols?: string[],
+  requestedSector: string | null = null,
 ): boolean {
   if (!response || response.category !== category || response.period !== period) return false;
+  if ((response.requestedSector ?? null) !== requestedSector) return false;
   if (symbols === undefined) return true;
   const reportedSymbols = new Set([
     ...response.quotes.map((quote) => quote.symbol),

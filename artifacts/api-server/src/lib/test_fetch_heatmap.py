@@ -175,6 +175,54 @@ class HeatMapQuoteTests(unittest.TestCase):
             "Healthcare",
         )
 
+    def test_sector_query_uses_provider_sector_names_and_primary_us_exchanges(self):
+        query = fetch_heatmap.build_sector_screen_query("Real Estate").to_dict()
+        encoded = str(query)
+        self.assertIn("['sector', 'Real Estate']", encoded)
+        self.assertIn("['region', 'us']", encoded)
+        self.assertIn("['exchange', 'NMS']", encoded)
+        self.assertNotIn("PNK", encoded)
+
+        financials = str(fetch_heatmap.build_sector_screen_query("Financials").to_dict())
+        self.assertIn("['sector', 'Financial Services']", financials)
+        with self.assertRaises(ValueError):
+            fetch_heatmap.build_sector_screen_query("Unknown")
+
+    def test_sector_screener_pages_until_at_least_fifteen_valid_quotes(self):
+        now = int(datetime.now(timezone.utc).timestamp())
+
+        def screener_row(symbol, timestamp):
+            return {
+                "symbol": symbol,
+                "quoteType": "EQUITY",
+                "exchange": "NMS",
+                "currency": "USD",
+                "marketState": "CLOSED",
+                "regularMarketPrice": 25,
+                "regularMarketChangePercent": 1,
+                "regularMarketTime": timestamp,
+                "regularMarketPreviousClose": 24,
+            }
+
+        first_page = [screener_row(f"RE{index:02}", now) for index in range(10)]
+        first_page += [screener_row(f"OLD{index:02}", 1) for index in range(40)]
+        second_page = [screener_row(f"RE{index:02}", now) for index in range(10, 15)]
+        second_page += [screener_row(f"OLD2{index:02}", 1) for index in range(45)]
+        with patch.object(
+            fetch_heatmap.yf,
+            "screen",
+            side_effect=[
+                {"quotes": first_page, "total": 100},
+                {"quotes": second_page, "total": 100},
+            ],
+        ) as screen:
+            quotes = fetch_heatmap.sector_screener_quotes("Real Estate")
+
+        self.assertEqual(len(quotes), 15)
+        self.assertTrue(all(quote["sector"] == "Real Estate" for quote in quotes))
+        self.assertEqual([call.kwargs["offset"] for call in screen.call_args_list], [0, 50])
+        self.assertTrue(all(call.kwargs["size"] == 50 for call in screen.call_args_list))
+
     def test_risk_levels_use_the_exact_historical_volatility_boundaries(self):
         expected = [
             (14.999, "Conservative"),

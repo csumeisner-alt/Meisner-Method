@@ -82,6 +82,7 @@ test("heat-map does not show responses from an earlier category, period, or cust
   const response = {
     category: "custom",
     period: "1m",
+    requestedSector: null,
     quotes: [{ symbol: "AAPL" }],
     unavailableSymbols: ["MSFT"],
   };
@@ -89,6 +90,19 @@ test("heat-map does not show responses from an earlier category, period, or cust
   assert.equal(heatMapResponseMatchesSelection(response, "custom", "1d", ["AAPL", "MSFT"]), false);
   assert.equal(heatMapResponseMatchesSelection(response, "custom", "1m", ["AAPL"]), false);
   assert.equal(heatMapResponseMatchesSelection(response, "custom", "1m", ["AAPL", "MSFT"]), true);
+});
+
+test("heat-map does not render an earlier sector response while an expanded request is pending", () => {
+  const response = {
+    category: "stocks",
+    period: "1d",
+    requestedSector: "Technology",
+    quotes: [{ symbol: "AAPL" }],
+    unavailableSymbols: [],
+  };
+  assert.equal(heatMapResponseMatchesSelection(response, "stocks", "1d", undefined, "Technology"), true);
+  assert.equal(heatMapResponseMatchesSelection(response, "stocks", "1d", undefined, "Real Estate"), false);
+  assert.equal(heatMapResponseMatchesSelection(response, "stocks", "1d"), false);
 });
 
 test("honeycomb cells remain in bounds and share the regular hexagon lattice on phone widths", () => {

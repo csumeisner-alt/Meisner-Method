@@ -13,7 +13,7 @@ import {
   getGetMarketHeatMapQueryKey, useGetMarketHeatMap, useValidateHeatMapSymbol,
 } from '@workspace/api-client-react';
 import type {
-  GetMarketHeatMapCategory, GetMarketHeatMapPeriod, HeatMapQuote,
+  GetMarketHeatMapCategory, GetMarketHeatMapPeriod, GetMarketHeatMapSector, HeatMapQuote,
 } from '@workspace/api-client-react';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { BottomTabBar } from '@/components/BottomTabBar';
@@ -33,6 +33,10 @@ const CATEGORIES: { id: GetMarketHeatMapCategory; label: string }[] = [
   { id: 'stocks', label: 'Stocks' }, { id: 'etfs', label: 'ETFs' },
   { id: 'commodities', label: 'Commodities' }, { id: 'futures', label: 'Futures' },
   { id: 'cryptocurrency', label: 'Cryptocurrency' }, { id: 'custom', label: 'Custom' },
+];
+const STOCK_SECTORS: GetMarketHeatMapSector[] = [
+  'Technology', 'Communication Services', 'Consumer Cyclical', 'Consumer Defensive',
+  'Financials', 'Healthcare', 'Industrials', 'Real Estate', 'Energy', 'Utilities', 'Basic Materials',
 ];
 const PERIODS: { id: GetMarketHeatMapPeriod; label: string }[] = [
   { id: '1d', label: '1D' }, { id: '1w', label: '1W' }, { id: '1m', label: '1M' },
@@ -133,9 +137,17 @@ export default function HeatMapScreen() {
     return () => { mounted = false; };
   }, []);
 
+  const requestedSector: GetMarketHeatMapSector | null = category === 'stocks'
+    && filters.sector !== 'Unknown'
+    && STOCK_SECTORS.includes(filters.sector as GetMarketHeatMapSector)
+    ? filters.sector as GetMarketHeatMapSector
+    : null;
   const params = useMemo(() => ({
-    category, period, ...(category === 'custom' ? { symbols: customSymbols } : {}),
-  }), [category, period, customSymbols]);
+    category,
+    period,
+    ...(category === 'custom' ? { symbols: customSymbols } : {}),
+    ...(requestedSector ? { sector: requestedSector } : {}),
+  }), [category, period, customSymbols, requestedSector]);
   const mapQuery = useGetMarketHeatMap(params, {
     query: {
       enabled: category !== 'custom' || (storageReady && customSymbols.length > 0),
@@ -149,6 +161,7 @@ export default function HeatMapScreen() {
     category,
     period,
     category === 'custom' ? customSymbols : undefined,
+    requestedSector,
   );
   const sourceQuotes = responseMatches ? response!.quotes : [];
   const staleQuotes = sourceQuotes.filter((quote) => !isDisplayableHeatMapQuote(quote, nowSeconds));
@@ -161,11 +174,13 @@ export default function HeatMapScreen() {
   const choices = useMemo(() => {
     const unique = <T,>(items: T[]) => [...new Set(items)].filter(Boolean);
     return {
-      sectors: unique(validAgeQuotes.map((q) => q.sector?.trim() || 'Unknown')).sort(),
+      sectors: category === 'stocks'
+        ? [...new Set([...STOCK_SECTORS, ...validAgeQuotes.map((q) => q.sector?.trim() || 'Unknown')])].sort()
+        : unique(validAgeQuotes.map((q) => q.sector?.trim() || 'Unknown')).sort(),
       exchanges: unique(validAgeQuotes.map((q) => q.exchange ?? '')).sort(),
       hasUnknownRisk: validAgeQuotes.some((q) => !q.riskBand),
     };
-  }, [validAgeQuotes]);
+  }, [category, validAgeQuotes]);
   const supportsSectorFilter = category === 'stocks'
     || (category === 'custom' && validAgeQuotes.some((quote) => quote.sector !== null));
   const supportsMarketCapFilter = category === 'stocks'

@@ -11,6 +11,20 @@ export type HeatMapCategory = (typeof HEAT_MAP_CATEGORIES)[number];
 
 export const HEAT_MAP_PERIODS = ["1d", "1w", "1m", "3m", "6m", "1y", "3y", "5y", "max"] as const;
 export type HeatMapPeriod = (typeof HEAT_MAP_PERIODS)[number];
+export const HEAT_MAP_SECTORS = [
+  "Technology",
+  "Communication Services",
+  "Consumer Cyclical",
+  "Consumer Defensive",
+  "Financials",
+  "Healthcare",
+  "Industrials",
+  "Real Estate",
+  "Energy",
+  "Utilities",
+  "Basic Materials",
+] as const;
+export type HeatMapSector = (typeof HEAT_MAP_SECTORS)[number];
 export const HEAT_MAP_RISK_BANDS = [
   "Conservative",
   "Moderate Conservative",
@@ -44,6 +58,7 @@ export interface HeatMapQuote {
 export interface HeatMapResponse {
   category: HeatMapCategory;
   period: HeatMapPeriod;
+  requestedSector: HeatMapSector | null;
   quotes: HeatMapQuote[];
   unavailableSymbols: string[];
   updatedAt: number;
@@ -54,6 +69,7 @@ const ASSET_TYPES = new Set(["stock", "etf", "commodity", "future", "cryptocurre
 const MARKET_SESSIONS = new Set(["pre_market", "regular", "after_hours", "closed", "unknown"]);
 const RETURN_BASES: ReadonlySet<string> = new Set(HEAT_MAP_RETURN_BASES);
 const RISK_BANDS: ReadonlySet<string> = new Set(HEAT_MAP_RISK_BANDS);
+const SECTORS: ReadonlySet<string> = new Set(HEAT_MAP_SECTORS);
 const FUTURE_QUOTE_MAX_AGE_SECONDS = 24 * 60 * 60;
 const MAX_FUTURE_TIMESTAMP_SKEW_SECONDS = 60 * 60;
 
@@ -63,6 +79,10 @@ export function isHeatMapCategory(value: unknown): value is HeatMapCategory {
 
 export function isHeatMapPeriod(value: unknown): value is HeatMapPeriod {
   return typeof value === "string" && HEAT_MAP_PERIODS.includes(value as HeatMapPeriod);
+}
+
+export function isHeatMapSector(value: unknown): value is HeatMapSector {
+  return typeof value === "string" && SECTORS.has(value);
 }
 
 export function normalizeHeatMapSymbols(value: unknown): {
@@ -108,8 +128,10 @@ export function heatMapRequestCacheKey(
   category: HeatMapCategory,
   period: HeatMapPeriod,
   symbols: string[],
+  requestedSector: HeatMapSector | null = null,
 ): string {
-  return `${category}:${period}:${[...symbols].sort().join(",")}`;
+  const sectorKey = requestedSector ? `${encodeURIComponent(requestedSector)}:` : "";
+  return `${category}:${period}:${sectorKey}${[...symbols].sort().join(",")}`;
 }
 
 function isNullableFiniteNumber(value: unknown): value is number | null {
@@ -150,6 +172,7 @@ export function isHeatMapResponse(
   value: unknown,
   category: HeatMapCategory,
   period?: HeatMapPeriod,
+  requestedSector: HeatMapSector | null = null,
 ): value is HeatMapResponse {
   if (!value || typeof value !== "object") return false;
   const response = value as Record<string, unknown>;
@@ -157,6 +180,8 @@ export function isHeatMapResponse(
     response["category"] === category &&
     isHeatMapPeriod(response["period"]) &&
     (period === undefined || response["period"] === period) &&
+    (response["requestedSector"] === null || isHeatMapSector(response["requestedSector"])) &&
+    response["requestedSector"] === requestedSector &&
     Array.isArray(response["quotes"]) &&
     response["quotes"].every(isHeatMapQuote) &&
     Array.isArray(response["unavailableSymbols"]) &&
