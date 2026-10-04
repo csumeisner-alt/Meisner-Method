@@ -8,6 +8,7 @@ import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from zoneinfo import ZoneInfo
 
 import yfinance as yf
@@ -276,6 +277,13 @@ def as_utc_datetime(value=None):
     return value.astimezone(timezone.utc)
 
 
+@lru_cache(maxsize=1)
+def us_equity_calendar():
+    import exchange_calendars
+
+    return exchange_calendars.get_calendar("XNYS")
+
+
 def market_session(timestamp, asset_type, now=None):
     as_of = as_utc_datetime(now)
     age_seconds = as_of.timestamp() - timestamp
@@ -301,12 +309,24 @@ def market_session(timestamp, asset_type, now=None):
         return "regular"
     if local.date() != current.date() or local.weekday() >= 5 or age_seconds > 30 * 60:
         return "closed"
-    minute = local.hour * 60 + local.minute
-    if 4 * 60 <= minute < 9 * 60 + 30:
-        return "pre_market"
-    if 9 * 60 + 30 <= minute < 16 * 60:
+    try:
+        exchange_calendar = us_equity_calendar()
+        session = local.date().isoformat()
+        if not exchange_calendar.is_session(session):
+            return "closed"
+        market_open = exchange_calendar.session_open(session).to_pydatetime().astimezone(
+            ZoneInfo("America/New_York")
+        )
+        market_close = exchange_calendar.session_close(session).to_pydatetime().astimezone(
+            ZoneInfo("America/New_York")
+        )
+    except Exception:
+        return "unknown"
+    if local < market_open:
+        return "pre_market" if local.hour >= 4 else "closed"
+    if local < market_close:
         return "regular"
-    if 16 * 60 <= minute < 20 * 60:
+    if local.hour < 20:
         return "after_hours"
     return "closed"
 
@@ -595,10 +615,11 @@ def download_quotes(symbols, category, interval, now=None):
     return quotes
 
 
-def quote_from_screener(item):
+def quote_from_screener(item, now=None):
     symbol = str(item.get("symbol") or "").upper().strip()
     if not symbol:
         return None
+    asset_type = "stock" if str(item.get("quoteType") or "").upper() != "ETF" else "etf"
     market_state = str(item.get("marketState") or "").upper()
     if market_state in ("PRE", "PREPRE"):
         price = finite_number(item.get("preMarketPrice")) or finite_number(item.get("regularMarketPrice"))
@@ -619,14 +640,16 @@ def quote_from_screener(item):
     previous_close = finite_number(item.get("regularMarketPreviousClose")) or finite_number(item.get("previousClose"))
     if price is None or price <= 0 or stamp is None:
         return None
-    now = datetime.now(timezone.utc).timestamp()
-    if stamp > now + 3600 or now - stamp > 120 * 60 * 60:
+    as_of = as_utc_datetime(now)
+    now_timestamp = as_of.timestamp()
+    if stamp > now_timestamp + 3600 or now_timestamp - stamp > 120 * 60 * 60:
         return None
     if change_percent is None and previous_close and previous_close > 0:
         change_percent = (price - previous_close) / previous_close * 100.0
     if change_percent is None or not math.isfinite(change_percent):
         return None
-    asset_type = "stock" if str(item.get("quoteType") or "").upper() != "ETF" else "etf"
+    if market_state in ("PRE", "PREPRE", "REGULAR", "POST", "POSTPOST"):
+        session = market_session(stamp, asset_type, now=as_of)
     metadata = {
         "sector": normalize_sector(item.get("sectorDisp") or item.get("sector"), symbol) if asset_type == "stock" else None,
         "exchange": normalize_exchange(item.get("fullExchangeName") or item.get("exchange")),

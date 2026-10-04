@@ -66,6 +66,66 @@ class HeatMapQuoteTests(unittest.TestCase):
             "after_hours",
         )
 
+    def test_equity_sessions_follow_early_closes_and_exchange_holidays(self):
+        cases = [
+            # The Friday after Thanksgiving closes at 1 p.m. Eastern.
+            (eastern(2024, 11, 29, 12, 55), eastern(2024, 11, 29, 13, 0), "regular", "AAPL", "stocks"),
+            (eastern(2024, 11, 29, 13, 0), eastern(2024, 11, 29, 13, 5), "after_hours", "SPY", "etfs"),
+            # Independence Day is an exchange holiday, even during normal hours.
+            (eastern(2024, 7, 4, 10, 0), eastern(2024, 7, 4, 10, 5), "closed", "AAPL", "stocks"),
+        ]
+        for latest, now, expected_session, symbol, category in cases:
+            with self.subTest(latest=latest, symbol=symbol):
+                self.assert_quote_session(
+                    latest,
+                    now,
+                    expected_session,
+                    symbol=symbol,
+                    category=category,
+                )
+
+    def test_equity_calendar_failure_never_marks_quotes_regular(self):
+        latest = eastern(2024, 11, 29, 13, 5)
+        now = eastern(2024, 11, 29, 13, 10)
+        with patch.object(fetch_heatmap, "us_equity_calendar", side_effect=RuntimeError("calendar unavailable")):
+            self.assert_quote_session(latest, now, "unknown")
+
+            # Even without a schedule, a quote older than the freshness window stays inactive.
+            self.assert_quote_session(
+                eastern(2024, 11, 29, 13, 0),
+                eastern(2024, 11, 29, 13, 45),
+                "closed",
+            )
+
+    def test_screener_regular_labels_are_checked_against_the_equity_calendar(self):
+        early_close_quote = fetch_heatmap.quote_from_screener(
+            {
+                "symbol": "SPY",
+                "quoteType": "ETF",
+                "marketState": "REGULAR",
+                "regularMarketPrice": 100,
+                "regularMarketChangePercent": 1,
+                "regularMarketTime": eastern(2024, 11, 29, 13, 5).timestamp(),
+                "regularMarketPreviousClose": 99,
+            },
+            now=eastern(2024, 11, 29, 13, 10),
+        )
+        self.assertEqual(early_close_quote["marketSession"], "after_hours")
+
+        holiday_quote = fetch_heatmap.quote_from_screener(
+            {
+                "symbol": "AAPL",
+                "quoteType": "EQUITY",
+                "marketState": "REGULAR",
+                "regularMarketPrice": 100,
+                "regularMarketChangePercent": 1,
+                "regularMarketTime": eastern(2024, 7, 4, 10, 0).timestamp(),
+                "regularMarketPreviousClose": 99,
+            },
+            now=eastern(2024, 7, 4, 10, 5),
+        )
+        self.assertEqual(holiday_quote["marketSession"], "closed")
+
     def test_futures_are_active_during_overnight_sessions_and_closed_for_maintenance(self):
         cases = [
             (eastern(2024, 6, 4, 2, 0), eastern(2024, 6, 4, 2, 5), "regular"),
