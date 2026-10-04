@@ -15,8 +15,9 @@ export interface HeatMapQuote {
   price: number;
   /** Percentage change from the previous close, in percentage points (1.25 means 1.25%). */
   priceChangePercent: number;
-  /** Unix timestamp in seconds for the quote or last available close. */
+  /** Unix timestamp in seconds for this quote or last available close. Quotes without a timestamp are not displayable. */
   priceTimestamp: number | null;
+  /** Session for this quote. closed identifies the latest available close; unknown means the provider could not identify the session. */
   marketSession: HeatMapQuoteMarketSession;
   assetType: HeatMapQuoteAssetType;
   sector: string | null;

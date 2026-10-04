@@ -15,6 +15,7 @@ import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { BottomTabBar } from '@/components/BottomTabBar';
 import { useColors } from '@/hooks/useColors';
 import { summarizeHeatMap } from '@/lib/heatMapMetrics';
+import { formatHeatMapQuoteAge, getHeatMapSessionLabel, isDisplayableHeatMapQuote } from '@/lib/heatMapQuoteDisplay';
 import { MAX_CUSTOM_HEAT_MAP_SYMBOLS, normalizeCustomHeatMapSymbols } from '@/lib/heatMapSymbols';
 
 const STORAGE_KEY = 'meisner.heat-map.custom-symbols.v1';
@@ -41,6 +42,8 @@ function HexTile({ quote, width, colors }: { quote: HeatMapQuote; width: number;
   const tone = change > 0.25 ? colors.buyColor : change < -0.25 ? colors.sellColor : colors.holdColor;
   const bg = change > 0.25 ? colors.buyBg : change < -0.25 ? colors.sellBg : colors.holdBg;
   const height = Math.round(width * 0.88);
+  const sessionLabel = getHeatMapSessionLabel(quote.marketSession);
+  const quoteAge = formatHeatMapQuoteAge(quote.priceTimestamp);
   return (
     <View style={[styles.tile, { width, height }]}>
       <Svg width={width} height={height} viewBox="0 0 100 88" style={StyleSheet.absoluteFill}>
@@ -51,6 +54,8 @@ function HexTile({ quote, width, colors }: { quote: HeatMapQuote; width: number;
         {change > 0 ? '+' : ''}{change.toFixed(2)}%
       </Text>
       <Text numberOfLines={1} style={[styles.tilePrice, { color: colors.mutedForeground }]}>{formatPrice(quote.price)}</Text>
+      <Text testID={`heat-map-session-${quote.symbol}`} numberOfLines={1} style={[styles.tileSession, { color: colors.foreground }]}>{sessionLabel}</Text>
+      <Text testID={`heat-map-quote-age-${quote.symbol}`} numberOfLines={1} style={[styles.tileAge, { color: colors.mutedForeground }]}>{quoteAge}</Text>
     </View>
   );
 }
@@ -65,7 +70,13 @@ export default function HeatMapScreen() {
   const [storageReady, setStorageReady] = useState(false);
   const [symbolInput, setSymbolInput] = useState('');
   const [formError, setFormError] = useState('');
+  const [nowSeconds, setNowSeconds] = useState(() => Date.now() / 1000);
   const validateSymbol = useValidateHeatMapSymbol();
+
+  useEffect(() => {
+    const interval = setInterval(() => setNowSeconds(Date.now() / 1000), 60_000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -93,7 +104,12 @@ export default function HeatMapScreen() {
       queryKey: getGetMarketHeatMapQueryKey(params),
     },
   });
-  const quotes = mapQuery.data?.quotes ?? [];
+  const sourceQuotes = mapQuery.data?.quotes ?? [];
+  const quotes = sourceQuotes.filter((quote) => isDisplayableHeatMapQuote(quote, nowSeconds));
+  const unavailableSymbols = [...new Set([
+    ...(mapQuery.data?.unavailableSymbols ?? []),
+    ...sourceQuotes.filter((quote) => !isDisplayableHeatMapQuote(quote, nowSeconds)).map((quote) => quote.symbol),
+  ])];
   const summary = summarizeHeatMap(quotes);
   const hotCold = summary.tone === 'HOT'
     ? { label: summary.tone, icon: 'fire' as const, color: colors.buyColor }
@@ -179,7 +195,7 @@ export default function HeatMapScreen() {
             <View style={styles.headingCopy}>
               <Text style={[styles.eyebrow, { color: colors.gold }]}>MARKET PULSE</Text>
               <Text style={[styles.title, { color: colors.heading }]}>Heat map</Text>
-              <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>Live while open, otherwise the latest close.</Text>
+              <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>Each tile shows its session and quote age.</Text>
             </View>
             <TouchableOpacity
               testID="heat-map-refresh"
@@ -313,7 +329,7 @@ export default function HeatMapScreen() {
               <MaterialCommunityIcons name="chart-box-outline" size={29} color={colors.mutedForeground} />
               <Text style={[styles.stateTitle, { color: colors.foreground }]}>No quotes available</Text>
               <Text style={[styles.stateCopy, { color: colors.mutedForeground }]}>
-                {mapQuery.data?.unavailableSymbols?.length ? `No valid current or recent quotes for ${mapQuery.data.unavailableSymbols.join(', ')}.` : 'There are no valid quotes in this map right now.'}
+                {unavailableSymbols.length ? `No valid current or recent quotes for ${unavailableSymbols.join(', ')}.` : 'There are no valid quotes in this map right now.'}
               </Text>
             </View>
           ) : (
@@ -335,9 +351,9 @@ export default function HeatMapScreen() {
                   </View>
                 </View>
               ))}
-              {!!mapQuery.data?.unavailableSymbols?.length && (
+              {!!unavailableSymbols.length && (
                 <Text style={[styles.unavailable, { color: colors.mutedForeground }]}>
-                  No recent quote: {mapQuery.data.unavailableSymbols.join(' · ')}
+                  No recent quote: {unavailableSymbols.join(' · ')}
                 </Text>
               )}
             </View>
@@ -405,6 +421,8 @@ const styles = StyleSheet.create({
   tileSymbol: { maxWidth: 70, fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 0.2 },
   tileChange: { fontFamily: 'Inter_700Bold', fontSize: 11 },
   tilePrice: { fontFamily: 'Inter_500Medium', fontSize: 8 },
+  tileSession: { fontFamily: 'Inter_600SemiBold', fontSize: 7.5, letterSpacing: 0.15 },
+  tileAge: { fontFamily: 'Inter_400Regular', fontSize: 7.5 },
   unavailable: { fontFamily: 'Inter_400Regular', fontSize: 10, textAlign: 'center', marginTop: 2 },
   footerNote: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 23, paddingBottom: 8 },
   legendDot: { width: 6, height: 6, borderRadius: 3, marginLeft: 6 },

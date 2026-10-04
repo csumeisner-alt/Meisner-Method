@@ -136,8 +136,8 @@ export const GetMarketHeatMapResponse = zod.object({
   "name": zod.string(),
   "price": zod.number().gt(getMarketHeatMapResponseQuotesItemPriceExclusiveMin),
   "priceChangePercent": zod.number().describe('Percentage change from the previous close, in percentage points (1.25 means 1.25%).'),
-  "priceTimestamp": zod.number().nullable().describe('Unix timestamp in seconds for the quote or last available close.'),
-  "marketSession": zod.enum(['pre_market', 'regular', 'after_hours', 'closed', 'unknown']),
+  "priceTimestamp": zod.number().nullable().describe('Unix timestamp in seconds for this quote or last available close. Quotes without a timestamp are not displayable.'),
+  "marketSession": zod.enum(['pre_market', 'regular', 'after_hours', 'closed', 'unknown']).describe('Session for this quote. closed identifies the latest available close; unknown means the provider could not identify the session.'),
   "assetType": zod.enum(['stock', 'etf', 'commodity', 'future', 'cryptocurrency']),
   "sector": zod.string().nullable()
 })),
@@ -168,8 +168,8 @@ export const ValidateHeatMapSymbolResponse = zod.object({
   "name": zod.string(),
   "price": zod.number().gt(validateHeatMapSymbolResponsePriceExclusiveMin),
   "priceChangePercent": zod.number().describe('Percentage change from the previous close, in percentage points (1.25 means 1.25%).'),
-  "priceTimestamp": zod.number().nullable().describe('Unix timestamp in seconds for the quote or last available close.'),
-  "marketSession": zod.enum(['pre_market', 'regular', 'after_hours', 'closed', 'unknown']),
+  "priceTimestamp": zod.number().nullable().describe('Unix timestamp in seconds for this quote or last available close. Quotes without a timestamp are not displayable.'),
+  "marketSession": zod.enum(['pre_market', 'regular', 'after_hours', 'closed', 'unknown']).describe('Session for this quote. closed identifies the latest available close; unknown means the provider could not identify the session.'),
   "assetType": zod.enum(['stock', 'etf', 'commodity', 'future', 'cryptocurrency']),
   "sector": zod.string().nullable()
 })

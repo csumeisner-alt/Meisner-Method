@@ -6,6 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
+/**
+ * Session for this quote. closed identifies the latest available close; unknown means the provider could not identify the session.
+ */
 export type HeatMapQuoteMarketSession = typeof HeatMapQuoteMarketSession[keyof typeof HeatMapQuoteMarketSession];
 
 
