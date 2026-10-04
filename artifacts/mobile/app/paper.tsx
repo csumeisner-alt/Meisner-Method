@@ -64,7 +64,9 @@ import {
 import {
   createLatestRequestGuard,
   getBuyOrderDetails,
+  getStockSearchQueryFromKey,
   getStockSearchFeedback,
+  isStockSearchCurrent,
   resolveStockSearchSymbol,
   type BuyStockInfo,
 } from '@/lib/stockSearch';
@@ -220,6 +222,11 @@ export default function PaperScreen() {
   const [infoError, setInfoError] = useState('');
   const [debouncedBuyQuery, setDebouncedBuyQuery] = useState('');
   const stockLookupRequestRef = useRef(createLatestRequestGuard());
+  const buySearchContextRef = useRef({
+    input: '',
+    settledQuery: '',
+    enabled: false,
+  });
 
   // Rename state
   const [renameId, setRenameId] = useState('');
@@ -246,12 +253,19 @@ export default function PaperScreen() {
   const buySearchText = buySymbol.trim();
   const buyTicker = buySymbol.trim().toUpperCase();
   const buyTickerIsWatched = stockInfo ? watchlist.isWatched(buyTicker) : false;
-  const isCurrentBuySearch = showTradeModal
+  const isCurrentBuySearchInput = showTradeModal
     && !stockInfo
     && !infoLoading
     && !infoError
     && buySearchText.length >= 2
     && debouncedBuyQuery === buySearchText;
+  const buySearchResultQuery = getStockSearchQueryFromKey(stockSearch.queryKey);
+  const isCurrentBuySearch = isCurrentBuySearchInput && isStockSearchCurrent({
+    input: buySearchText,
+    settledQuery: debouncedBuyQuery,
+    resultQuery: buySearchResultQuery,
+    isPlaceholderData: stockSearch.isPlaceholderData,
+  });
   const buySuggestions = isCurrentBuySearch ? stockSearch.data ?? [] : [];
   const allowRawBuyTicker = buySearchText.length === 1
     || (
@@ -265,15 +279,21 @@ export default function PaperScreen() {
     null,
     allowRawBuyTicker,
   );
-  const buySearchFeedback = isCurrentBuySearch
+  const buySearchFeedback = isCurrentBuySearchInput
     ? getStockSearchFeedback({
         isFetching: stockSearch.isFetching,
-        isError: stockSearch.isError,
-        isSuccess: stockSearch.isSuccess,
+        isError: isCurrentBuySearch && stockSearch.isError,
+        isSuccess: isCurrentBuySearch && stockSearch.isSuccess,
         suggestionCount: buySuggestions.length,
       })
     : null;
   const buyOrderDetails = getBuyOrderDetails(buySymbol, stockInfo);
+
+  buySearchContextRef.current = {
+    input: buySearchText,
+    settledQuery: debouncedBuyQuery,
+    enabled: showTradeModal && !stockInfo && !infoLoading && !infoError,
+  };
 
   useEffect(() => () => {
     stockLookupRequestRef.current.invalidate();
@@ -1605,6 +1625,10 @@ export default function PaperScreen() {
                   value={buySymbol}
                   onChangeText={text => {
                     invalidateStockLookup();
+                    buySearchContextRef.current = {
+                      ...buySearchContextRef.current,
+                      input: text.trim(),
+                    };
                     setBuySymbol(text);
                     setStockInfo(null);
                     setInfoError('');
@@ -1649,6 +1673,17 @@ export default function PaperScreen() {
                         index < buySuggestions.length - 1 && styles.searchResultDivider,
                       ]}
                       onPress={() => {
+                        const currentSearch = buySearchContextRef.current;
+                        if (
+                          !currentSearch.enabled
+                          || !isStockSearchCurrent({
+                            input: currentSearch.input,
+                            settledQuery: currentSearch.settledQuery,
+                            resultQuery: buySearchResultQuery,
+                            isPlaceholderData: stockSearch.isPlaceholderData,
+                          })
+                        ) return;
+
                         const selectedSymbol = resolveStockSearchSymbol(
                           buySymbol,
                           buySuggestions,

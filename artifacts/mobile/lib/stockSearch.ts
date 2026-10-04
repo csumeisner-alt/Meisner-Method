@@ -29,6 +29,32 @@ export function createLatestRequestGuard(): LatestRequestGuard {
   };
 }
 
+export function getStockSearchQueryFromKey(queryKey: readonly unknown[]): string | null {
+  const params = queryKey[1];
+  if (!params || typeof params !== 'object' || !('q' in params)) return null;
+
+  const query = (params as { q?: unknown }).q;
+  return typeof query === 'string' ? query : null;
+}
+
+export function isStockSearchCurrent({
+  input,
+  settledQuery,
+  resultQuery,
+  isPlaceholderData,
+}: {
+  input: string;
+  settledQuery: string;
+  resultQuery: string | null;
+  isPlaceholderData: boolean;
+}): boolean {
+  const currentInput = input.trim();
+  return currentInput.length >= 2
+    && currentInput === settledQuery
+    && currentInput === resultQuery
+    && !isPlaceholderData;
+}
+
 export type StockSearchFeedback =
   | { kind: 'loading'; message: string }
   | { kind: 'error'; message: string }

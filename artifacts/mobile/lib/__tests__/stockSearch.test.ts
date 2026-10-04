@@ -3,7 +3,9 @@ import test from 'node:test';
 import {
   createLatestRequestGuard,
   getBuyOrderDetails,
+  getStockSearchQueryFromKey,
   getStockSearchFeedback,
+  isStockSearchCurrent,
   resolveStockSearchSymbol,
 } from '../stockSearch.ts';
 
@@ -68,6 +70,65 @@ test('a delayed lookup cannot replace company details from a newer lookup', asyn
     currentPrice: 510.25,
     stockInfo: microsoftInfo,
   });
+});
+
+test('a late company-search response stays tied to its query and cannot be selected', async () => {
+  const cache = new Map<string, { query: string; results: typeof apple[] }>();
+  const makeSearch = (query: string) => {
+    let resolve!: (results: typeof apple[]) => void;
+    const request = new Promise<typeof apple[]>(res => {
+      resolve = res;
+    }).then(results => {
+      cache.set(query, { query, results });
+    });
+    return { resolve: (results: typeof apple[]) => resolve(results), request };
+  };
+  const olderSearch = makeSearch('Apple');
+  const newerSearch = makeSearch('Microsoft');
+
+  newerSearch.resolve([{ symbol: 'MSFT', name: 'Microsoft Corporation', exchange: 'NASDAQ' }]);
+  await newerSearch.request;
+  olderSearch.resolve([apple]);
+  await olderSearch.request;
+
+  const currentResult = cache.get('Microsoft');
+  const lateOlderResult = cache.get('Apple');
+  assert.ok(currentResult);
+  assert.ok(lateOlderResult);
+  assert.deepEqual(currentResult.results.map(result => result.symbol), ['MSFT']);
+  assert.equal(
+    isStockSearchCurrent({
+      input: 'Microsoft',
+      settledQuery: 'Microsoft',
+      resultQuery: lateOlderResult.query,
+      isPlaceholderData: false,
+    }),
+    false,
+  );
+  assert.equal(
+    isStockSearchCurrent({
+      input: 'Microsoft',
+      settledQuery: 'Microsoft',
+      resultQuery: currentResult.query,
+      isPlaceholderData: false,
+    }),
+    true,
+  );
+});
+
+test('company search query identity is read from the active query key', () => {
+  assert.equal(getStockSearchQueryFromKey(['/api/stocks/search', { q: 'Microsoft' }]), 'Microsoft');
+  assert.equal(getStockSearchQueryFromKey(['/api/stocks/search', { q: 42 }]), null);
+  assert.equal(getStockSearchQueryFromKey(['/api/stocks/search']), null);
+  assert.equal(
+    isStockSearchCurrent({
+      input: 'Microsoft',
+      settledQuery: 'Microsoft',
+      resultQuery: 'Microsoft',
+      isPlaceholderData: true,
+    }),
+    false,
+  );
 });
 
 test('ticker entry resolves case-insensitively when a matching suggestion exists', () => {
