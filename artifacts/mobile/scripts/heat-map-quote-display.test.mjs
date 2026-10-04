@@ -74,7 +74,7 @@ test("custom map removal uses an edit toggle and animated, tappable hexagons ins
   assert.match(screenSource, /Animated\.loop\(Animated\.sequence\(\[/);
   assert.match(screenSource, /editing=\{category === 'custom' && isEditingCustomMap\}/);
   assert.match(screenSource, /testID=\{`heat-map-remove-tile-\$\{quote\.symbol\}`\}/);
-  assert.match(screenSource, /onPress=\{\(\) => void removeSymbol\(quote\.symbol\)\}/);
+  assert.match(screenSource, /onRemove=\{\(\) => void removeSymbol\(quote\.symbol\)\}/);
   assert.match(screenSource, /editFallbackSymbols\.map\(\(symbol\)/);
   assert.doesNotMatch(screenSource, /styles\.chipList|styles\.symbolChip|styles\.chipText/);
 });
