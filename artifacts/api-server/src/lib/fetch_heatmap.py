@@ -286,6 +286,19 @@ def market_session(timestamp, asset_type, now=None):
         current = as_of.astimezone(ZoneInfo("America/New_York"))
     except Exception:
         return "unknown"
+    if asset_type == "future":
+        if age_seconds > 30 * 60:
+            return "closed"
+        minute = current.hour * 60 + current.minute
+        weekday = current.weekday()
+        if (
+            weekday == 5
+            or (weekday == 6 and minute < 18 * 60)
+            or (weekday == 4 and minute >= 17 * 60)
+            or (weekday < 5 and 17 * 60 <= minute < 18 * 60)
+        ):
+            return "closed"
+        return "regular"
     if local.date() != current.date() or local.weekday() >= 5 or age_seconds > 30 * 60:
         return "closed"
     minute = local.hour * 60 + local.minute

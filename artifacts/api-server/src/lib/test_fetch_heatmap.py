@@ -33,7 +33,7 @@ def adjusted_frame(rows):
 
 
 class HeatMapQuoteTests(unittest.TestCase):
-    def assert_quote_session(self, latest, now, expected_session):
+    def assert_quote_session(self, latest, now, expected_session, symbol="AAPL", category="stocks"):
         frame = close_frame([
             (latest - timedelta(days=1), 98),
             (latest - timedelta(minutes=5), 99),
@@ -41,8 +41,8 @@ class HeatMapQuoteTests(unittest.TestCase):
         ])
         quote = fetch_heatmap.quote_from_frame(
             frame,
-            "AAPL",
-            "stocks",
+            symbol,
+            category,
             require_prior_close=False,
             now=now,
         )
@@ -65,6 +65,42 @@ class HeatMapQuoteTests(unittest.TestCase):
             eastern(2024, 6, 4, 17, 5),
             "after_hours",
         )
+
+    def test_futures_are_active_during_overnight_sessions_and_closed_for_maintenance(self):
+        cases = [
+            (eastern(2024, 6, 4, 2, 0), eastern(2024, 6, 4, 2, 5), "regular"),
+            (eastern(2024, 6, 4, 16, 54), eastern(2024, 6, 4, 16, 59), "regular"),
+            (eastern(2024, 6, 4, 17, 0), eastern(2024, 6, 4, 17, 0), "closed"),
+            (eastern(2024, 6, 4, 17, 25), eastern(2024, 6, 4, 17, 30), "closed"),
+            (eastern(2024, 6, 4, 17, 59), eastern(2024, 6, 4, 17, 59), "closed"),
+            (eastern(2024, 6, 4, 18, 0), eastern(2024, 6, 4, 18, 0), "regular"),
+        ]
+        for latest, now, expected_session in cases:
+            with self.subTest(latest=latest, now=now):
+                self.assert_quote_session(
+                    latest,
+                    now,
+                    expected_session,
+                    symbol="ES=F",
+                    category="futures",
+                )
+
+    def test_futures_close_for_weekend_and_reopen_sunday_evening(self):
+        cases = [
+            (eastern(2024, 6, 7, 16, 59), eastern(2024, 6, 7, 16, 59), "regular"),
+            (eastern(2024, 6, 7, 17, 0), eastern(2024, 6, 7, 17, 0), "closed"),
+            (eastern(2024, 6, 9, 17, 59), eastern(2024, 6, 9, 17, 59), "closed"),
+            (eastern(2024, 6, 9, 18, 0), eastern(2024, 6, 9, 18, 0), "regular"),
+        ]
+        for latest, now, expected_session in cases:
+            with self.subTest(latest=latest, now=now):
+                self.assert_quote_session(
+                    latest,
+                    now,
+                    expected_session,
+                    symbol="ES=F",
+                    category="futures",
+                )
 
     def test_weekend_and_holiday_quotes_are_closed_not_active(self):
         cases = [
@@ -104,7 +140,7 @@ class HeatMapQuoteTests(unittest.TestCase):
             quotes = fetch_heatmap.download_quotes(["ES=F"], "futures", "5m", now=now)
 
         self.assertEqual(quotes["ES=F"]["priceChangePercent"], 4.0)
-        self.assertEqual(quotes["ES=F"]["marketSession"], "pre_market")
+        self.assertEqual(quotes["ES=F"]["marketSession"], "regular")
 
     def test_stale_stock_and_futures_quotes_are_omitted(self):
         now = eastern(2024, 6, 12, 12, 0)
