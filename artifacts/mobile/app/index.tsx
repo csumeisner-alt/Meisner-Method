@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -29,8 +29,11 @@ import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { DraggableWatchlist } from '@/components/DraggableWatchlist';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { AmericanAnalyzeButton } from '@/components/AmericanAnalyzeButton';
+import { MarketHeatMapInsightButton } from '@/components/MarketHeatMapInsightButton';
 import { PriceAlertModal } from '@/components/PriceAlertModal';
 import { matchesFilter, mergeReorderedSubset } from '@/lib/watchlistFilter';
+import { getMarketBreadthInsight } from '@/lib/marketBreadth';
+import { getGetMarketHeatMapQueryKey, useGetMarketHeatMap } from '@workspace/api-client-react';
 import {
   getStockSearchQueryFromKey,
   isStockSearchCurrent,
@@ -43,6 +46,8 @@ import {
   type StockSymbolSuggestion,
 } from '@workspace/api-client-react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const MARKET_PULSE_PARAMS = { category: 'stocks', period: '1d' } as const;
 
 /** Show the watchlist filter input when tracking this many tickers or more. */
 const WATCHLIST_FILTER_THRESHOLD = 6;
@@ -204,6 +209,18 @@ export default function HomeScreen() {
   // Patriot Mode — fact counter, unlock state, and celebration trigger
   const { isActive, neonGucciActive, justUnlocked, incrementFact, clearJustUnlocked } = useAmericanMode();
   const [showCelebration, setShowCelebration] = useState(false);
+  const marketPulseQuery = useGetMarketHeatMap(MARKET_PULSE_PARAMS, {
+    query: {
+      queryKey: getGetMarketHeatMapQueryKey(MARKET_PULSE_PARAMS),
+      staleTime: 120_000,
+      refetchInterval: 120_000,
+      refetchIntervalInBackground: false,
+    },
+  });
+  const marketBreadth = useMemo(
+    () => getMarketBreadthInsight(marketPulseQuery.data?.quotes ?? []),
+    [marketPulseQuery.data?.quotes],
+  );
 
   useEffect(() => {
     if (justUnlocked) {
@@ -633,27 +650,15 @@ export default function HomeScreen() {
           colors={colors}
           onPress={handleSubmit}
         />
-        <TouchableOpacity
-          testID="open-heat-map"
-          accessibilityRole="button"
-          accessibilityLabel="Open market heat map"
+        <MarketHeatMapInsightButton
+          active={isActive}
+          neonActive={neonGucciActive}
+          colors={colors}
+          breadth={marketBreadth}
+          loading={marketPulseQuery.isLoading && !marketPulseQuery.data}
+          error={marketPulseQuery.isError && !marketPulseQuery.data}
           onPress={() => router.push('/heat-map')}
-          activeOpacity={0.78}
-          style={[styles.heatMapEntry, { backgroundColor: colors.card, borderColor: colors.border }]}
-        >
-          <View style={[styles.heatMapIcon, { backgroundColor: colors.accent }]}>
-            <Feather name="grid" size={17} color={colors.primary} />
-          </View>
-          <View style={styles.heatMapCopy}>
-            <Text style={[styles.heatMapTitle, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
-              Heat Map
-            </Text>
-            <Text style={[styles.heatMapSubtitle, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-              Explore market moves by sector
-            </Text>
-          </View>
-          <Feather name="chevron-right" size={17} color={colors.mutedForeground} />
-        </TouchableOpacity>
+        />
       </View>
 
       {/* Watchlist filter — sticky bar between search and scroll so it's always reachable */}
@@ -907,11 +912,6 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  heatMapEntry: { minHeight: 54, borderWidth: 1, borderRadius: 14, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  heatMapIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  heatMapCopy: { flex: 1, gap: 2 },
-  heatMapTitle: { fontSize: 12 },
-  heatMapSubtitle: { fontSize: 10 },
   header: { paddingHorizontal: 20, paddingBottom: 16 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   brandText: { flex: 1 },
