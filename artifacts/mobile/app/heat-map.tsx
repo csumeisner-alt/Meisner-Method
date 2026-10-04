@@ -10,10 +10,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Polygon } from 'react-native-svg';
 import { useReducedMotion } from 'react-native-reanimated';
 import {
-  getGetMarketHeatMapQueryKey, useGetMarketHeatMap, useValidateHeatMapSymbol,
+  getGetMarketHeatMapQueryKey, getSearchStockSymbolsQueryKey,
+  useGetMarketHeatMap, useSearchStockSymbols, useValidateHeatMapSymbol,
 } from '@workspace/api-client-react';
 import type {
-  GetMarketHeatMapCategory, GetMarketHeatMapPeriod, GetMarketHeatMapSector, HeatMapQuote,
+  GetMarketHeatMapCategory, GetMarketHeatMapPeriod, GetMarketHeatMapSector,
+  HeatMapQuote, StockSymbolSuggestion,
 } from '@workspace/api-client-react';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { BottomTabBar } from '@/components/BottomTabBar';
@@ -27,6 +29,9 @@ import {
   formatHeatMapQuoteAge, getHeatMapSessionLabel, isDisplayableHeatMapQuote,
 } from '@/lib/heatMapQuoteDisplay';
 import { MAX_CUSTOM_HEAT_MAP_SYMBOLS, normalizeCustomHeatMapSymbols } from '@/lib/heatMapSymbols';
+import {
+  getStockSearchFeedback, getStockSearchQueryFromKey, isStockSearchCurrent,
+} from '@/lib/stockSearch';
 
 const STORAGE_KEY = 'meisner.heat-map.custom-symbols.v1';
 const CATEGORIES: { id: GetMarketHeatMapCategory; label: string }[] = [
@@ -110,6 +115,7 @@ export default function HeatMapScreen() {
   const [customSymbols, setCustomSymbols] = useState<string[]>([]);
   const [storageReady, setStorageReady] = useState(false);
   const [symbolInput, setSymbolInput] = useState('');
+  const [debouncedSymbolSearch, setDebouncedSymbolSearch] = useState('');
   const [formError, setFormError] = useState('');
   const [nowSeconds, setNowSeconds] = useState(() => Date.now() / 1000);
   const [filters, setFilters] = useState<HeatMapFilters>(EMPTY_FILTERS);
@@ -118,11 +124,26 @@ export default function HeatMapScreen() {
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
   const directionPulse = useRef(new Animated.Value(0)).current;
   const validateSymbol = useValidateHeatMapSymbol();
+  const symbolSearchQueryKey = getSearchStockSymbolsQueryKey({ q: debouncedSymbolSearch });
+  const stockSearch = useSearchStockSymbols(
+    { q: debouncedSymbolSearch },
+    {
+      query: {
+        queryKey: symbolSearchQueryKey,
+        enabled: category === 'custom' && debouncedSymbolSearch.length >= 2,
+        staleTime: 45_000,
+      },
+    },
+  );
 
   useEffect(() => {
     const interval = setInterval(() => setNowSeconds(Date.now() / 1000), 60_000);
     return () => clearInterval(interval);
   }, []);
+  useEffect(() => {
+    const timeout = setTimeout(() => setDebouncedSymbolSearch(symbolInput.trim()), 300);
+    return () => clearTimeout(timeout);
+  }, [symbolInput]);
   useEffect(() => {
     let mounted = true;
     AsyncStorage.getItem(STORAGE_KEY).then((value) => {
@@ -141,6 +162,28 @@ export default function HeatMapScreen() {
     && filters.sector !== 'Unknown'
     && STOCK_SECTORS.includes(filters.sector as GetMarketHeatMapSector)
     ? filters.sector as GetMarketHeatMapSector
+    : null;
+  const searchText = symbolInput.trim();
+  const isCustomSearchInput = category === 'custom'
+    && searchText.length >= 2
+    && !validateSymbol.isPending;
+  const searchResultQuery = getStockSearchQueryFromKey(stockSearch.queryKey);
+  const isCurrentCustomSearch = isCustomSearchInput && isStockSearchCurrent({
+    input: searchText,
+    settledQuery: debouncedSymbolSearch,
+    resultQuery: searchResultQuery,
+    isPlaceholderData: stockSearch.isPlaceholderData,
+  });
+  const customSuggestions: StockSymbolSuggestion[] = isCurrentCustomSearch
+    ? stockSearch.data ?? []
+    : [];
+  const customSearchFeedback = isCustomSearchInput
+    ? getStockSearchFeedback({
+        isFetching: !isCurrentCustomSearch || stockSearch.isFetching,
+        isError: isCurrentCustomSearch && stockSearch.isError,
+        isSuccess: isCurrentCustomSearch && stockSearch.isSuccess,
+        suggestionCount: customSuggestions.length,
+      })
     : null;
   const params = useMemo(() => ({
     category,
@@ -225,14 +268,16 @@ export default function HeatMapScreen() {
     setCustomSymbols(next);
     setFormError('');
   }
-  async function addSymbol() {
-    const symbol = symbolInput.trim().toUpperCase();
+  async function addSymbol(rawSymbol = symbolInput) {
+    const symbol = rawSymbol.trim().toUpperCase();
     if (!symbol) return;
+    if (validateSymbol.isPending) return;
     if (customSymbols.includes(symbol)) { setFormError(`${symbol} is already in your map.`); return; }
     if (customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS) {
       setFormError(`A custom map can contain at most ${MAX_CUSTOM_HEAT_MAP_SYMBOLS} tickers.`); return;
     }
     setFormError('');
+    setSymbolInput(symbol);
     Keyboard.dismiss();
     try {
       const quote = await validateSymbol.mutateAsync({ data: { symbol } });
@@ -355,14 +400,39 @@ export default function HeatMapScreen() {
           {category === 'custom' && <View style={[styles.customPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Your watch map</Text>
             <Text style={[styles.customHint, { color: colors.mutedForeground }]}>Compare validated tickers. {customSymbols.length}/{MAX_CUSTOM_HEAT_MAP_SYMBOLS}; saved on this device.</Text>
-            <View style={styles.addRow}><TextInput testID="heat-map-custom-input" value={symbolInput} onChangeText={(value) => { setSymbolInput(value.toUpperCase()); setFormError(''); }}
-              placeholder="Ticker symbol" placeholderTextColor={colors.mutedForeground} autoCapitalize="characters" autoCorrect={false} maxLength={15}
-              returnKeyType="done" onSubmitEditing={addSymbol} style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.input }]} />
+            <View style={styles.addRow}><TextInput testID="heat-map-custom-input" value={symbolInput} onChangeText={(value) => { setSymbolInput(value); setFormError(''); }}
+              placeholder="Ticker or company name" placeholderTextColor={colors.mutedForeground} autoCapitalize="none" autoCorrect={false} maxLength={80}
+              returnKeyType="done" onSubmitEditing={() => void addSymbol()} style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.input }]} />
               <TouchableOpacity testID="heat-map-custom-add" accessibilityRole="button" accessibilityLabel="Validate and add ticker"
-                disabled={!symbolInput.trim() || validateSymbol.isPending || customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS} onPress={addSymbol}
+                disabled={!symbolInput.trim() || validateSymbol.isPending || customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS} onPress={() => void addSymbol()}
                 style={[styles.addButton, { backgroundColor: colors.primary, opacity: !symbolInput.trim() || validateSymbol.isPending || customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS ? 0.55 : 1 }]}>
                 {validateSymbol.isPending ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <MaterialCommunityIcons name="plus" size={20} color={colors.primaryForeground} />}
               </TouchableOpacity></View>
+            {isCustomSearchInput && <View testID="heat-map-custom-suggestions" style={[styles.suggestionsPanel, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              {customSuggestions.map((suggestion, index) => <TouchableOpacity
+                key={suggestion.symbol}
+                testID={`heat-map-custom-suggestion-${suggestion.symbol}`}
+                accessibilityRole="button"
+                accessibilityLabel={`Add ${suggestion.name}, ticker ${suggestion.symbol}, ${suggestion.exchange}`}
+                disabled={validateSymbol.isPending || customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS}
+                onPress={() => void addSymbol(suggestion.symbol)}
+                style={[styles.suggestionRow, index < customSuggestions.length - 1 && { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth }]}
+              >
+                <View style={styles.suggestionCopy}>
+                  <Text numberOfLines={1} style={[styles.suggestionName, { color: colors.foreground }]}>{suggestion.name}</Text>
+                  <Text numberOfLines={1} style={[styles.suggestionExchange, { color: colors.mutedForeground }]}>{suggestion.exchange}</Text>
+                </View>
+                <Text style={[styles.suggestionSymbol, { color: colors.primary }]}>{suggestion.symbol}</Text>
+                <MaterialCommunityIcons name="plus" size={17} color={colors.primary} />
+              </TouchableOpacity>)}
+              {customSearchFeedback?.kind === 'loading' && <View style={styles.searchStatus}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={[styles.searchHint, { color: colors.mutedForeground }]}>{customSearchFeedback.message}</Text>
+              </View>}
+              {customSearchFeedback && customSearchFeedback.kind !== 'loading' && <Text style={[styles.searchHint, { color: colors.mutedForeground }]}>
+                {customSearchFeedback.message}
+              </Text>}
+            </View>}
             {!!formError && <Text testID="heat-map-custom-error" style={[styles.formError, { color: colors.sellColor }]}>{formError}</Text>}
             {!!customSymbols.length && <View style={styles.chipList}>{customSymbols.map((symbol) => <View key={symbol} style={[styles.symbolChip, { borderColor: colors.border, backgroundColor: colors.secondary }]}>
               <Text style={[styles.chipText, { color: colors.foreground }]}>{symbol}</Text><TouchableOpacity testID={`heat-map-custom-remove-${symbol}`} accessibilityRole="button"
@@ -516,6 +586,14 @@ const styles = StyleSheet.create({
   addRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
   input: { flex: 1, height: 42, borderRadius: 11, borderWidth: 1, paddingHorizontal: 12, fontFamily: 'Inter_500Medium', fontSize: 13 },
   addButton: { width: 43, height: 42, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  suggestionsPanel: { marginTop: 8, borderWidth: 1, borderRadius: 11, overflow: 'hidden' },
+  suggestionRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 11, paddingVertical: 8 },
+  suggestionCopy: { flex: 1, minWidth: 0 },
+  suggestionName: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
+  suggestionExchange: { fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 },
+  suggestionSymbol: { fontFamily: 'Inter_700Bold', fontSize: 11 },
+  searchStatus: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 11 },
+  searchHint: { flex: 1, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, paddingHorizontal: 11, paddingVertical: 10 },
   formError: { fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 8 },
   chipList: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 12 },
   symbolChip: { flexDirection: 'row', alignItems: 'center', gap: 7, borderWidth: 1, borderRadius: 15, paddingLeft: 10, paddingRight: 7, paddingVertical: 5 },

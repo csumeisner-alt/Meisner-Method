@@ -54,3 +54,16 @@ test("stock sector selection offers all supported sectors and requests matching 
   assert.match(screenSource, /category === 'stocks'\s*&&\s*filters\.sector !== 'Unknown'/);
   assert.match(screenSource, /requestedSector,\s*\);/);
 });
+
+test("custom heat-map search offers company suggestions and adds a selected ticker through validation", () => {
+  assert.match(screenSource, /useSearchStockSymbols/);
+  assert.match(screenSource, /getSearchStockSymbolsQueryKey\(\{ q: debouncedSymbolSearch \}\)/);
+  assert.match(screenSource, /getStockSearchQueryFromKey\(stockSearch\.queryKey\)/);
+  assert.match(screenSource, /isStockSearchCurrent\(\{/);
+  assert.match(screenSource, /placeholder="Ticker or company name"/);
+  assert.match(screenSource, /\{suggestion\.name\}/);
+  assert.match(screenSource, /\{suggestion\.symbol\}/);
+  assert.match(screenSource, /onPress=\{\(\) => void addSymbol\(suggestion\.symbol\)\}/);
+  assert.match(screenSource, /validateSymbol\.mutateAsync\(\{ data: \{ symbol \} \}\)/);
+  assert.match(screenSource, /keyboardShouldPersistTaps="handled"/);
+});
