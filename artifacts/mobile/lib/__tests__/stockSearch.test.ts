@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  createLatestRequestGuard,
   getBuyOrderDetails,
   getStockSearchFeedback,
   resolveStockSearchSymbol,
@@ -8,10 +9,65 @@ import {
 
 const apple = { symbol: 'AAPL', name: 'Apple Inc.', exchange: 'NASDAQ' };
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(res => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
 test('company names require a selected suggestion instead of being sent as ticker symbols', () => {
   assert.equal(resolveStockSearchSymbol('Apple', [apple], null, true), null);
   assert.equal(resolveStockSearchSymbol('APPLE', [apple], null, true), null);
   assert.equal(resolveStockSearchSymbol('Apple', [apple], apple, false), 'AAPL');
+});
+
+test('a delayed lookup cannot replace company details from a newer lookup', async () => {
+  const guard = createLatestRequestGuard();
+  const appleInfo = {
+    companyName: 'Apple Inc.',
+    currentPrice: 225.5,
+    dividendYield: 0.004,
+    dividendRate: 0.96,
+    expenseRatio: 0,
+    sector: 'Technology',
+  };
+  const microsoftInfo = {
+    companyName: 'Microsoft Corporation',
+    currentPrice: 510.25,
+    dividendYield: 0.006,
+    dividendRate: 3.08,
+    expenseRatio: 0,
+    sector: 'Technology',
+  };
+  let stockInfo: typeof appleInfo | null = null;
+
+  const firstResponse = deferred<typeof appleInfo>();
+  const firstRequestId = guard.begin();
+  const firstRequest = firstResponse.promise.then(result => {
+    if (guard.isCurrent(firstRequestId)) stockInfo = result;
+  });
+
+  // Closing the modal invalidates its outstanding lookup before another opens.
+  guard.invalidate();
+  const secondResponse = deferred<typeof microsoftInfo>();
+  const secondRequestId = guard.begin();
+  const secondRequest = secondResponse.promise.then(result => {
+    if (guard.isCurrent(secondRequestId)) stockInfo = result;
+  });
+
+  secondResponse.resolve(microsoftInfo);
+  await secondRequest;
+  firstResponse.resolve(appleInfo);
+  await firstRequest;
+
+  assert.deepEqual(getBuyOrderDetails('MSFT', stockInfo), {
+    symbol: 'MSFT',
+    companyName: 'Microsoft Corporation',
+    currentPrice: 510.25,
+    stockInfo: microsoftInfo,
+  });
 });
 
 test('ticker entry resolves case-insensitively when a matching suggestion exists', () => {

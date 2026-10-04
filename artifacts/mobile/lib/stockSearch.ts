@@ -13,6 +13,22 @@ export interface BuyStockInfo {
   sector: string;
 }
 
+export interface LatestRequestGuard {
+  begin(): number;
+  isCurrent(requestId: number): boolean;
+  invalidate(): void;
+}
+
+export function createLatestRequestGuard(): LatestRequestGuard {
+  let currentRequestId = 0;
+
+  return {
+    begin: () => ++currentRequestId,
+    isCurrent: requestId => requestId === currentRequestId,
+    invalidate: () => { currentRequestId += 1; },
+  };
+}
+
 export type StockSearchFeedback =
   | { kind: 'loading'; message: string }
   | { kind: 'error'; message: string }

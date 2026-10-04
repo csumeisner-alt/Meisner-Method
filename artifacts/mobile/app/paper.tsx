@@ -62,6 +62,7 @@ import {
   fifoSell,
 } from '@/lib/paperEngine';
 import {
+  createLatestRequestGuard,
   getBuyOrderDetails,
   getStockSearchFeedback,
   resolveStockSearchSymbol,
@@ -218,6 +219,7 @@ export default function PaperScreen() {
   const [infoLoading, setInfoLoading] = useState(false);
   const [infoError, setInfoError] = useState('');
   const [debouncedBuyQuery, setDebouncedBuyQuery] = useState('');
+  const stockLookupRequestRef = useRef(createLatestRequestGuard());
 
   // Rename state
   const [renameId, setRenameId] = useState('');
@@ -272,6 +274,10 @@ export default function PaperScreen() {
       })
     : null;
   const buyOrderDetails = getBuyOrderDetails(buySymbol, stockInfo);
+
+  useEffect(() => () => {
+    stockLookupRequestRef.current.invalidate();
+  }, []);
 
   useEffect(() => {
     const query = buySymbol.trim();
@@ -614,9 +620,15 @@ export default function PaperScreen() {
   };
 
   // ── Buy ───────────────────────────────────────────────────────────────────
+  const invalidateStockLookup = () => {
+    stockLookupRequestRef.current.invalidate();
+    setInfoLoading(false);
+  };
+
   const lookUpStock = async (symbolOverride?: string) => {
     const sym = (symbolOverride ?? resolvedBuySymbol ?? '').trim().toUpperCase();
     if (!sym) return;
+    const requestId = stockLookupRequestRef.current.begin();
     setBuySymbol(sym);
     setDebouncedBuyQuery('');
     setInfoLoading(true);
@@ -627,8 +639,10 @@ export default function PaperScreen() {
         fetch(`${BASE_URL}/api/stocks/info/${sym}`),
         fetch(`${BASE_URL}/api/stocks/quote/${sym}`),
       ]);
+      if (!stockLookupRequestRef.current.isCurrent(requestId)) return;
       const info = await infoRes.json();
       const quote = await quoteRes.json();
+      if (!stockLookupRequestRef.current.isCurrent(requestId)) return;
       if (info.error) throw new Error(info.error);
       if (quote.error) throw new Error(quote.error);
       setStockInfo({
@@ -644,9 +658,13 @@ export default function PaperScreen() {
         [sym]: { price: quote.currentPrice, change: quote.priceChange, pct: quote.priceChangePercent },
       }));
     } catch (e: any) {
-      setInfoError(e.message ?? 'Could not fetch stock info');
+      if (stockLookupRequestRef.current.isCurrent(requestId)) {
+        setInfoError(e.message ?? 'Could not fetch stock info');
+      }
     } finally {
-      setInfoLoading(false);
+      if (stockLookupRequestRef.current.isCurrent(requestId)) {
+        setInfoLoading(false);
+      }
     }
   };
 
@@ -753,6 +771,7 @@ export default function PaperScreen() {
         // Execution-time constraint violation — surface as an alert (rare: e.g. price gap)
         Alert.alert('Order rejected', fillResult.reason);
         setShowOrderSheet(false);
+        invalidateStockLookup();
         setShowTradeModal(false);
         return;
       }
@@ -817,6 +836,7 @@ export default function PaperScreen() {
     }
 
     setShowOrderSheet(false);
+    invalidateStockLookup();
     setShowTradeModal(false);
     setSelectedPos(null);
     setEditingOrder(null);
@@ -862,6 +882,7 @@ export default function PaperScreen() {
 
   // ── Open modals ───────────────────────────────────────────────────────────
   const openBuyModal = () => {
+    invalidateStockLookup();
     setEditingOrder(null);
     setTradeMode('buy');
     setBuySymbol('');
@@ -872,6 +893,7 @@ export default function PaperScreen() {
   };
 
   const openSellModal = (pos: PaperPosition) => {
+    invalidateStockLookup();
     setEditingOrder(null);
     setTradeMode('sell');
     setSelectedPos(pos);
@@ -1545,13 +1567,24 @@ export default function PaperScreen() {
         visible={showTradeModal}
         transparent
         animationType="slide"
-        onRequestClose={() => { setShowTradeModal(false); setStockInfo(null); }}
+        onRequestClose={() => {
+          invalidateStockLookup();
+          setShowTradeModal(false);
+          setStockInfo(null);
+        }}
       >
         <KeyboardAvoidingView
           style={{ flex: 1, justifyContent: 'flex-end' }}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          <Pressable style={StyleSheet.absoluteFillObject} onPress={() => { setShowTradeModal(false); setStockInfo(null); }} />
+          <Pressable
+            style={StyleSheet.absoluteFillObject}
+            onPress={() => {
+              invalidateStockLookup();
+              setShowTradeModal(false);
+              setStockInfo(null);
+            }}
+          />
           <ScrollView
             style={styles.bottomSheet}
             contentContainerStyle={{ paddingBottom: 8 }}
@@ -1570,7 +1603,12 @@ export default function PaperScreen() {
                   testID="paper-stock-search-input"
                   style={styles.symbolInput}
                   value={buySymbol}
-                  onChangeText={text => { setBuySymbol(text); setStockInfo(null); setInfoError(''); }}
+                  onChangeText={text => {
+                    invalidateStockLookup();
+                    setBuySymbol(text);
+                    setStockInfo(null);
+                    setInfoError('');
+                  }}
                   placeholder="Company name or ticker"
                   placeholderTextColor={DIM}
                   autoCapitalize="none"
@@ -1698,14 +1736,25 @@ export default function PaperScreen() {
                     testID="paper-stock-place-order-button"
                     accessibilityRole="button"
                     style={[styles.confirmBtn, styles.buyBtn]}
-                    onPress={() => { setShowOrderSheet(true); setShowTradeModal(false); }}
+                    onPress={() => {
+                      invalidateStockLookup();
+                      setShowOrderSheet(true);
+                      setShowTradeModal(false);
+                    }}
                   >
                     <Text style={styles.confirmBtnText}>PLACE ORDER →</Text>
                   </TouchableOpacity>
                 </>
               ) : null}
 
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => { setShowTradeModal(false); setStockInfo(null); }}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => {
+                  invalidateStockLookup();
+                  setShowTradeModal(false);
+                  setStockInfo(null);
+                }}
+              >
                 <Text style={styles.cancelBtnText}>CANCEL</Text>
               </TouchableOpacity>
             </View>

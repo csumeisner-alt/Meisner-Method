@@ -37,7 +37,36 @@ test("the selected ticker feeds the stock-information card and order-sheet props
   assert.match(paperScreen, /testID="paper-stock-place-order-button"/);
   assert.match(
     paperScreen,
-    /testID="paper-stock-place-order-button"[\s\S]*?onPress=\{\(\) => \{ setShowOrderSheet\(true\); setShowTradeModal\(false\); \}\}/,
+    /testID="paper-stock-place-order-button"[\s\S]*?onPress=\{\(\) => \{\s*invalidateStockLookup\(\);\s*setShowOrderSheet\(true\);\s*setShowTradeModal\(false\);/,
+  );
+});
+
+test("closed or superseded stock lookups cannot update the Buy modal", () => {
+  assert.match(paperScreen, /stockLookupRequestRef\.current\.begin\(\)/);
+
+  const lookupHandler = paperScreen.match(
+    /const lookUpStock = async \(symbolOverride\?: string\) => \{([\s\S]*?)\n  \};/,
+  )?.[1];
+  assert.ok(lookupHandler, "the stock lookup handler should remain identifiable");
+  assert.match(
+    lookupHandler,
+    /if \(!stockLookupRequestRef\.current\.isCurrent\(requestId\)\) return;/,
+    "stale lookup responses must stop before updating stock information",
+  );
+  assert.match(
+    lookupHandler,
+    /if \(stockLookupRequestRef\.current\.isCurrent\(requestId\)\) \{\s*setInfoError/,
+    "stale lookup failures must not replace the current error",
+  );
+  assert.match(
+    lookupHandler,
+    /finally \{\s*if \(stockLookupRequestRef\.current\.isCurrent\(requestId\)\) \{\s*setInfoLoading\(false\)/,
+    "stale lookups must not clear the loading state of a newer request",
+  );
+  assert.match(
+    paperScreen,
+    /onRequestClose=\{\(\) => \{\s*invalidateStockLookup\(\);\s*setShowTradeModal\(false\)/,
+    "closing the Buy modal must invalidate its active stock lookup",
   );
 });
 
