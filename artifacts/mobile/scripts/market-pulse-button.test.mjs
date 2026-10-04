@@ -14,9 +14,17 @@ test('Analyze market heat-map button is driven by fresh breadth data and remains
   assert.match(buttonSource, /onPress=\{onPress\}/);
 });
 
-test('heat-map insight badge keeps the American and Neon Gucci flame treatments with reduced-motion support', () => {
+test('heat-map badge uses gentle campfire kindling and respects reduced motion', () => {
   assert.match(buttonSource, /AccessibilityInfo\.addEventListener\('reduceMotionChanged'/);
   assert.match(buttonSource, /Animated\.loop\(Animated\.sequence\(\[/);
+  assert.match(buttonSource, /function createKindlingCycle/);
+  assert.match(buttonSource, /Animated\.delay\(restDuration\)/);
+  assert.match(buttonSource, /function FlameTongue/);
+  assert.match(buttonSource, /Easing\.inOut\(Easing\.sin\)/);
+  assert.match(buttonSource, /toValue: 2,[\s\S]*duration: 680/);
+  assert.match(buttonSource, /inputRange: \[0, 0\.15, 1, 2\]/);
+  assert.match(buttonSource, /createKindlingCycle\(centerLick, 460, 1_620, 560, nativeDriver\)/);
+  assert.doesNotMatch(buttonSource, /const step = directional \? 145/);
   assert.match(buttonSource, /active && !reduceMotion/);
   assert.match(buttonSource, /NEON_GUCCI_DECOR\.cyan/);
   assert.match(buttonSource, /borderColor: '#C4CDD7'/);

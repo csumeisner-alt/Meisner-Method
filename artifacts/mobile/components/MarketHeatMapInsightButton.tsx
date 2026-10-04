@@ -71,9 +71,15 @@ function createKindlingCycle(
       useNativeDriver: nativeDriver,
     }),
     Animated.timing(progress, {
+      toValue: 2,
+      duration: 680,
+      easing: Easing.inOut(Easing.sin),
+      useNativeDriver: nativeDriver,
+    }),
+    Animated.timing(progress, {
       toValue: 0,
-      duration: 520,
-      easing: Easing.in(Easing.quad),
+      duration: 60,
+      easing: Easing.linear,
       useNativeDriver: nativeDriver,
     }),
     Animated.delay(restDuration),
@@ -100,12 +106,12 @@ function FlameTongue({
   height,
 }: FlameTongueProps) {
   const opacity = progress.interpolate({
-    inputRange: [0, 0.2, 0.68, 1],
-    outputRange: [0, 0.9, 0.58, 0],
+    inputRange: [0, 0.15, 1, 2],
+    outputRange: [0, 0.9, 0.72, 0],
   });
-  const rise = progress.interpolate({ inputRange: [0, 1], outputRange: [5, -10] });
-  const scaleX = progress.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.65, 1.08, 0.82] });
-  const scaleY = progress.interpolate({ inputRange: [0, 0.7, 1], outputRange: [0.68, 1.22, 1.04] });
+  const rise = progress.interpolate({ inputRange: [0, 1, 2], outputRange: [5, -10, -19] });
+  const scaleX = progress.interpolate({ inputRange: [0, 0.55, 1, 2], outputRange: [0.65, 1.08, 0.82, 0.3] });
+  const scaleY = progress.interpolate({ inputRange: [0, 1, 2], outputRange: [0.68, 1.04, 0.25] });
 
   return (
     <Animated.View
