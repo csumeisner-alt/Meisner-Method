@@ -34,7 +34,7 @@ test("custom tickers stay device-local and are validated before being added", ()
   assert.match(screenSource, /AsyncStorage\.setItem\(STORAGE_KEY/);
   assert.match(screenSource, /useValidateHeatMapSymbol\(\)/);
   assert.match(screenSource, /validateSymbol\.mutateAsync/);
-  assert.match(screenSource, /removeSymbol\(symbol\)/);
+  assert.match(screenSource, /removeSymbol\(quote\.symbol\)/);
   assert.match(screenSource, /normalizeCustomHeatMapSymbols/);
 });
 
@@ -66,4 +66,15 @@ test("custom heat-map search offers company suggestions and adds a selected tick
   assert.match(screenSource, /onPress=\{\(\) => void addSymbol\(suggestion\.symbol\)\}/);
   assert.match(screenSource, /validateSymbol\.mutateAsync\(\{ data: \{ symbol \} \}\)/);
   assert.match(screenSource, /keyboardShouldPersistTaps="handled"/);
+});
+
+test("custom map removal uses an edit toggle and animated, tappable hexagons instead of ticker chips", () => {
+  assert.match(screenSource, /testID="heat-map-custom-edit"/);
+  assert.match(screenSource, /isEditingCustomMap \? 'Done editing custom heat map' : 'Edit custom heat map'/);
+  assert.match(screenSource, /Animated\.loop\(Animated\.sequence\(\[/);
+  assert.match(screenSource, /editing=\{category === 'custom' && isEditingCustomMap\}/);
+  assert.match(screenSource, /testID=\{`heat-map-remove-tile-\$\{quote\.symbol\}`\}/);
+  assert.match(screenSource, /onPress=\{\(\) => void removeSymbol\(quote\.symbol\)\}/);
+  assert.match(screenSource, /editFallbackSymbols\.map\(\(symbol\)/);
+  assert.doesNotMatch(screenSource, /styles\.chipList|styles\.symbolChip|styles\.chipText/);
 });

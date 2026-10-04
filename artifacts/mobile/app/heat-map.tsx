@@ -76,9 +76,32 @@ function formatUpdated(timestamp?: number) {
   return `Updated ${new Date(timestamp * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
 }
 
-function HexTile({ quote, width, height, colors, period }: {
-  quote: HeatMapQuote; width: number; height: number; colors: ReturnType<typeof useColors>; period: GetMarketHeatMapPeriod;
+function HexTile({ quote, width, height, colors, period, editing, reduceMotion, removing, onRemove }: {
+  quote: HeatMapQuote;
+  width: number;
+  height: number;
+  colors: ReturnType<typeof useColors>;
+  period: GetMarketHeatMapPeriod;
+  editing: boolean;
+  reduceMotion: boolean;
+  removing: boolean;
+  onRemove: () => void;
 }) {
+  const wiggle = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!editing || reduceMotion) {
+      wiggle.stopAnimation();
+      wiggle.setValue(0);
+      return;
+    }
+    const animation = Animated.loop(Animated.sequence([
+      Animated.timing(wiggle, { toValue: 1, duration: 105, useNativeDriver: Platform.OS !== 'web' }),
+      Animated.timing(wiggle, { toValue: -1, duration: 105, useNativeDriver: Platform.OS !== 'web' }),
+      Animated.timing(wiggle, { toValue: 0, duration: 105, useNativeDriver: Platform.OS !== 'web' }),
+    ]));
+    animation.start();
+    return () => animation.stop();
+  }, [editing, reduceMotion, wiggle]);
   const value = quote.returnPercent;
   const available = typeof value === 'number' && Number.isFinite(value);
   const positive = available && value! > 0.25;
@@ -88,7 +111,9 @@ function HexTile({ quote, width, height, colors, period }: {
   const label = available ? `${value! > 0 ? '+' : ''}${value!.toFixed(2)}%` : 'Unavailable';
   const session = getHeatMapSessionLabel(quote.marketSession);
   const age = formatHeatMapQuoteAge(quote.priceTimestamp);
-  return (
+  const rotation = wiggle.interpolate({ inputRange: [-1, 1], outputRange: ['-2.4deg', '2.4deg'] });
+  const tile = (
+    <Animated.View style={[{ width, height }, { transform: [{ rotate: rotation }] }]}>
     <View style={[styles.tile, { width, height }]} accessibilityLabel={`${quote.symbol}, ${label}, ${session}, ${age}`}>
       <Svg width={width} height={height} viewBox="0 0 100 86.6" style={StyleSheet.absoluteFill}>
         <Polygon points="1,43.3 25,1 75,1 99,43.3 75,85.6 25,85.6" fill={bg} stroke={tone} strokeWidth="1.5" />
@@ -101,6 +126,25 @@ function HexTile({ quote, width, height, colors, period }: {
       {quote.returnBasis === 'price_return_proxy' && <Text numberOfLines={1} style={[styles.tileBasis, { color: colors.mutedForeground }]}>Price-return proxy</Text>}
       {period === 'max' && <Text numberOfLines={1} style={[styles.tileBasis, { color: colors.mutedForeground }]}>Since {quote.historyStartDate ?? 'unknown'}</Text>}
     </View>
+    </Animated.View>
+  );
+  if (!editing) return tile;
+  return (
+    <TouchableOpacity
+      testID={`heat-map-remove-tile-${quote.symbol}`}
+      accessibilityRole="button"
+      accessibilityLabel={`Remove ${quote.symbol} from your custom heat map`}
+      accessibilityHint="Removes this ticker from the custom map."
+      disabled={removing}
+      onPress={onRemove}
+      activeOpacity={0.78}
+      style={[styles.editTileButton, { width, height, opacity: removing ? 0.72 : 1 }]}
+    >
+      {tile}
+      <View style={[styles.tileRemoveBadge, { right: width * 0.18, backgroundColor: colors.sellColor }]}>
+        <MaterialCommunityIcons name="close" size={11} color="#FFFFFF" />
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -114,6 +158,8 @@ export default function HeatMapScreen() {
   const [period, setPeriod] = useState<GetMarketHeatMapPeriod>('1d');
   const [customSymbols, setCustomSymbols] = useState<string[]>([]);
   const [storageReady, setStorageReady] = useState(false);
+  const [isEditingCustomMap, setIsEditingCustomMap] = useState(false);
+  const [removingSymbol, setRemovingSymbol] = useState<string | null>(null);
   const [symbolInput, setSymbolInput] = useState('');
   const [debouncedSymbolSearch, setDebouncedSymbolSearch] = useState('');
   const [formError, setFormError] = useState('');
@@ -123,6 +169,7 @@ export default function HeatMapScreen() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
   const directionPulse = useRef(new Animated.Value(0)).current;
+  const removeInProgress = useRef(false);
   const validateSymbol = useValidateHeatMapSymbol();
   const symbolSearchQueryKey = getSearchStockSymbolsQueryKey({ q: debouncedSymbolSearch });
   const stockSearch = useSearchStockSymbols(
@@ -258,6 +305,11 @@ export default function HeatMapScreen() {
     });
     return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([name, items]) => ({ name, quotes: items }));
   }, [category, filterableQuotes]);
+  const editFallbackSymbols = category === 'custom' && isEditingCustomMap
+    ? (sectors.length === 0
+        ? customSymbols
+        : unavailableSymbols.filter((symbol) => customSymbols.includes(symbol)))
+    : [];
 
   const contentWidth = Math.max(0, viewportWidth - 36);
   const tileWidth = Math.min(116, Math.max(84, contentWidth / 2.9));
@@ -289,11 +341,23 @@ export default function HeatMapScreen() {
     } catch { setFormError(`We couldn't validate ${symbol}. Check the ticker and try again.`); }
   }
   async function removeSymbol(symbol: string) {
-    try { await persistSymbols(customSymbols.filter((item) => item !== symbol)); }
+    if (removeInProgress.current) return;
+    removeInProgress.current = true;
+    setRemovingSymbol(symbol);
+    const next = customSymbols.filter((item) => item !== symbol);
+    try {
+      await persistSymbols(next);
+      if (next.length === 0) setIsEditingCustomMap(false);
+    }
     catch { setFormError(`Couldn't remove ${symbol} from this device. Try again.`); }
+    finally {
+      removeInProgress.current = false;
+      setRemovingSymbol(null);
+    }
   }
   function selectCategory(nextCategory: GetMarketHeatMapCategory) {
     setCategory(nextCategory);
+    setIsEditingCustomMap(false);
     setFilters(EMPTY_FILTERS);
     setDraftFilters(EMPTY_FILTERS);
     setFormError('');
@@ -398,9 +462,22 @@ export default function HeatMapScreen() {
           <Text style={[styles.summaryNote, { color: colors.mutedForeground }]}>Breadth uses {PERIODS.find((item) => item.id === period)?.label} return where available; missing history is excluded.</Text>
 
           {category === 'custom' && <View style={[styles.customPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Your watch map</Text>
+            <View style={styles.customHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Your watch map</Text>
+              {sectors.length === 0 && customSymbols.length > 0 && <TouchableOpacity
+                testID="heat-map-custom-edit"
+                accessibilityRole="button"
+                accessibilityLabel={isEditingCustomMap ? 'Done editing custom heat map' : 'Edit custom heat map'}
+                accessibilityState={{ selected: isEditingCustomMap }}
+                onPress={() => setIsEditingCustomMap((current) => !current)}
+                style={[styles.editButton, { borderColor: colors.border, backgroundColor: colors.background }]}
+              >
+                <MaterialCommunityIcons name={isEditingCustomMap ? 'check' : 'pencil-outline'} size={13} color={colors.primary} />
+                <Text style={[styles.editButtonText, { color: colors.primary }]}>{isEditingCustomMap ? 'Done' : 'Edit'}</Text>
+              </TouchableOpacity>}
+            </View>
             <Text style={[styles.customHint, { color: colors.mutedForeground }]}>Compare validated tickers. {customSymbols.length}/{MAX_CUSTOM_HEAT_MAP_SYMBOLS}; saved on this device.</Text>
-            <View style={styles.addRow}><TextInput testID="heat-map-custom-input" value={symbolInput} onChangeText={(value) => { setSymbolInput(value); setFormError(''); }}
+            <View style={styles.addRow}><TextInput testID="heat-map-custom-input" value={symbolInput} onFocus={() => setIsEditingCustomMap(false)} onChangeText={(value) => { setSymbolInput(value); setFormError(''); }}
               placeholder="Ticker or company name" placeholderTextColor={colors.mutedForeground} autoCapitalize="none" autoCorrect={false} maxLength={80}
               returnKeyType="done" onSubmitEditing={() => void addSymbol()} style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.input }]} />
               <TouchableOpacity testID="heat-map-custom-add" accessibilityRole="button" accessibilityLabel="Validate and add ticker"
@@ -434,10 +511,21 @@ export default function HeatMapScreen() {
               </Text>}
             </View>}
             {!!formError && <Text testID="heat-map-custom-error" style={[styles.formError, { color: colors.sellColor }]}>{formError}</Text>}
-            {!!customSymbols.length && <View style={styles.chipList}>{customSymbols.map((symbol) => <View key={symbol} style={[styles.symbolChip, { borderColor: colors.border, backgroundColor: colors.secondary }]}>
-              <Text style={[styles.chipText, { color: colors.foreground }]}>{symbol}</Text><TouchableOpacity testID={`heat-map-custom-remove-${symbol}`} accessibilityRole="button"
-                accessibilityLabel={`Remove ${symbol}`} onPress={() => removeSymbol(symbol)} hitSlop={8}><MaterialCommunityIcons name="close" size={15} color={colors.mutedForeground} /></TouchableOpacity>
-            </View>)}</View>}
+            {!!editFallbackSymbols.length && <View style={styles.editFallbackList}>
+              <Text style={[styles.editFallbackHint, { color: colors.mutedForeground }]}>No visible hexagon for these tickers. Tap to remove:</Text>
+              <View style={styles.editFallbackItems}>{editFallbackSymbols.map((symbol) => <TouchableOpacity
+                key={symbol}
+                testID={`heat-map-remove-unavailable-${symbol}`}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${symbol} from your custom heat map`}
+                disabled={removingSymbol !== null}
+                onPress={() => void removeSymbol(symbol)}
+                style={[styles.editFallbackItem, { borderColor: colors.border, opacity: removingSymbol === symbol ? 0.6 : 1 }]}
+              >
+                <Text style={[styles.editFallbackTicker, { color: colors.foreground }]}>{symbol}</Text>
+                <MaterialCommunityIcons name="close" size={13} color={colors.sellColor} />
+              </TouchableOpacity>)}</View>
+            </View>}
           </View>}
 
           {!!staleQuotes.length && <View style={[styles.notice, styles.staleNotice, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -460,19 +548,41 @@ export default function HeatMapScreen() {
                   : filterableQuotes.length === 0
                     ? stateCard('chart-box-outline', 'No current quotes', unavailableSymbols.length ? `No recent valid quotes for ${unavailableSymbols.join(', ')}.` : 'There are no current quotes available in this market.')
                     : <View style={styles.mapWrap}>
-                      {sectors.map((group) => {
+                      {sectors.map((group, groupIndex) => {
                         const layout = layoutHoneycomb(group.quotes.length, contentWidth, tileWidth);
                         const tileHeight = tileWidth * Math.sqrt(3) / 2;
                         return <View key={group.name || 'all'} style={styles.sectorGroup}>
                           {(category === 'stocks' || category === 'custom') && <View style={styles.sectorHeading}>
                             <Text style={[styles.sectorName, { color: colors.foreground }]}>{group.name}</Text>
-                            <Text style={[styles.sectorCount, { color: colors.mutedForeground }]}>{group.quotes.length} instruments</Text>
+                            {category === 'custom' && groupIndex === 0
+                              ? <TouchableOpacity
+                                  testID="heat-map-custom-edit"
+                                  accessibilityRole="button"
+                                  accessibilityLabel={isEditingCustomMap ? 'Done editing custom heat map' : 'Edit custom heat map'}
+                                  accessibilityState={{ selected: isEditingCustomMap }}
+                                  onPress={() => setIsEditingCustomMap((current) => !current)}
+                                  style={[styles.editButton, { borderColor: colors.border, backgroundColor: colors.card }]}
+                                >
+                                  <MaterialCommunityIcons name={isEditingCustomMap ? 'check' : 'pencil-outline'} size={13} color={colors.primary} />
+                                  <Text style={[styles.editButtonText, { color: colors.primary }]}>{isEditingCustomMap ? 'Done' : 'Edit'}</Text>
+                                </TouchableOpacity>
+                              : <Text style={[styles.sectorCount, { color: colors.mutedForeground }]}>{group.quotes.length} instruments</Text>}
                           </View>}
                           <View style={[styles.honeycomb, { width: contentWidth, height: layout.height }]}>
                             {layout.positions.map((position) => {
                               const quote = group.quotes[position.index];
                               return <View key={quote.symbol} style={{ position: 'absolute', left: position.left, top: position.top }}>
-                                <HexTile quote={quote} width={tileWidth} height={tileHeight} colors={colors} period={period} />
+                                <HexTile
+                                  quote={quote}
+                                  width={tileWidth}
+                                  height={tileHeight}
+                                  colors={colors}
+                                  period={period}
+                                  editing={category === 'custom' && isEditingCustomMap}
+                                  reduceMotion={reduceMotion}
+                                  removing={removingSymbol !== null}
+                                  onRemove={() => void removeSymbol(quote.symbol)}
+                                />
                               </View>;
                             })}
                           </View>
@@ -581,6 +691,7 @@ const styles = StyleSheet.create({
   countValue: { fontFamily: 'Inter_700Bold', fontSize: 14, marginTop: 5 },
   summaryNote: { fontFamily: 'Inter_400Regular', fontSize: 9, lineHeight: 14, textAlign: 'right', marginTop: 7, marginBottom: 15 },
   customPanel: { borderWidth: 1, borderRadius: 15, padding: 14, marginBottom: 16 },
+  customHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   sectionTitle: { fontFamily: 'Inter_700Bold', fontSize: 15 },
   customHint: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 4 },
   addRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
@@ -595,9 +706,13 @@ const styles = StyleSheet.create({
   searchStatus: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 11 },
   searchHint: { flex: 1, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, paddingHorizontal: 11, paddingVertical: 10 },
   formError: { fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 8 },
-  chipList: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 12 },
-  symbolChip: { flexDirection: 'row', alignItems: 'center', gap: 7, borderWidth: 1, borderRadius: 15, paddingLeft: 10, paddingRight: 7, paddingVertical: 5 },
-  chipText: { fontFamily: 'Inter_600SemiBold', fontSize: 10 },
+  editButton: { minHeight: 27, borderWidth: 1, borderRadius: 8, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
+  editButtonText: { fontFamily: 'Inter_700Bold', fontSize: 10 },
+  editFallbackList: { marginTop: 10, gap: 7 },
+  editFallbackHint: { fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 14 },
+  editFallbackItems: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  editFallbackItem: { minHeight: 28, borderWidth: 1, borderRadius: 9, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  editFallbackTicker: { fontFamily: 'Inter_600SemiBold', fontSize: 10 },
   statePanel: { minHeight: 170, borderWidth: 1, borderStyle: 'dashed', borderRadius: 17, alignItems: 'center', justifyContent: 'center', padding: 22, gap: 8, marginTop: 3 },
   stateTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 14, textAlign: 'center', marginTop: 3 },
   stateCopy: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 17, textAlign: 'center', maxWidth: 280 },
@@ -606,10 +721,12 @@ const styles = StyleSheet.create({
   mapWrap: { gap: 18 },
   sectorGroup: { gap: 7 },
   sectorHeading: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingHorizontal: 3 },
-  sectorName: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
+  sectorName: { flex: 1, marginRight: 8, fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   sectorCount: { fontFamily: 'Inter_400Regular', fontSize: 9 },
   honeycomb: { alignSelf: 'center', position: 'relative' },
   tile: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 13, gap: 1 },
+  editTileButton: { alignItems: 'center', justifyContent: 'center' },
+  tileRemoveBadge: { position: 'absolute', top: 9, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   tileSymbol: { maxWidth: '90%', fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 0.2 },
   tileChange: { maxWidth: '90%', fontFamily: 'Inter_700Bold', fontSize: 10 },
   tilePrice: { maxWidth: '90%', fontFamily: 'Inter_500Medium', fontSize: 8 },
