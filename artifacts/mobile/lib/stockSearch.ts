@@ -55,6 +55,23 @@ export function isStockSearchCurrent({
     && !isPlaceholderData;
 }
 
+export function isStockSearchSelectionCurrent({
+  input,
+  settledQuery,
+  resultQuery,
+  selectionQuery,
+  isPlaceholderData,
+}: {
+  input: string;
+  settledQuery: string;
+  resultQuery: string | null;
+  selectionQuery: string | null;
+  isPlaceholderData: boolean;
+}): boolean {
+  return selectionQuery === resultQuery
+    && isStockSearchCurrent({ input, settledQuery, resultQuery, isPlaceholderData });
+}
+
 export type StockSearchFeedback =
   | { kind: 'loading'; message: string }
   | { kind: 'error'; message: string }

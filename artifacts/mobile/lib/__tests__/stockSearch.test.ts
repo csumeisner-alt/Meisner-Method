@@ -6,6 +6,7 @@ import {
   getStockSearchQueryFromKey,
   getStockSearchFeedback,
   isStockSearchCurrent,
+  isStockSearchSelectionCurrent,
   resolveStockSearchSymbol,
 } from '../stockSearch.ts';
 
@@ -114,6 +115,26 @@ test('a late company-search response stays tied to its query and cannot be selec
     }),
     true,
   );
+
+  const lateApple = lateOlderResult.results[0]!;
+  const latestMicrosoft = currentResult.results[0]!;
+  const selected: typeof apple[] = [];
+  const selectResult = (stock: typeof apple, selectionQuery: string) => {
+    if (isStockSearchSelectionCurrent({
+      input: 'Microsoft',
+      settledQuery: 'Microsoft',
+      resultQuery: 'Microsoft',
+      selectionQuery,
+      isPlaceholderData: false,
+    })) {
+      selected.push(stock);
+    }
+  };
+
+  selectResult(lateApple, lateOlderResult.query);
+  assert.equal(selected.length, 0);
+  selectResult(latestMicrosoft, currentResult.query);
+  assert.deepEqual(selected.map(stock => stock.symbol), ['MSFT']);
 });
 
 test('company search query identity is read from the active query key', () => {

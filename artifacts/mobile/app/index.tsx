@@ -31,7 +31,12 @@ import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { AmericanAnalyzeButton } from '@/components/AmericanAnalyzeButton';
 import { PriceAlertModal } from '@/components/PriceAlertModal';
 import { matchesFilter, mergeReorderedSubset } from '@/lib/watchlistFilter';
-import { resolveStockSearchSymbol } from '@/lib/stockSearch';
+import {
+  getStockSearchQueryFromKey,
+  isStockSearchCurrent,
+  isStockSearchSelectionCurrent,
+  resolveStockSearchSymbol,
+} from '@/lib/stockSearch';
 import {
   getSearchStockSymbolsQueryKey,
   useSearchStockSymbols,
@@ -159,16 +164,25 @@ export default function HomeScreen() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [scrollEnabled, setScrollEnabled] = useState(true);
+  const stockSearchQueryKey = getSearchStockSymbolsQueryKey({ q: debouncedQuery });
   const stockSearch = useSearchStockSymbols(
     { q: debouncedQuery },
     {
       query: {
-        queryKey: getSearchStockSymbolsQueryKey({ q: debouncedQuery }),
+        queryKey: stockSearchQueryKey,
         enabled: debouncedQuery.length >= 2 && !selectedStock,
         staleTime: 45_000,
       },
     },
   );
+  const latestSearchInputRef = useRef(query);
+  const latestSettledQueryRef = useRef(debouncedQuery);
+  const latestResultQueryRef = useRef<string | null>(null);
+  const latestPlaceholderDataRef = useRef(false);
+  const activeStockSearchQuery = getStockSearchQueryFromKey(stockSearchQueryKey);
+  latestSettledQueryRef.current = debouncedQuery;
+  latestResultQueryRef.current = activeStockSearchQuery;
+  latestPlaceholderDataRef.current = stockSearch.isPlaceholderData;
   const [watchlistCollapsed, setWatchlistCollapsed] = useState(false);
   const [trendingCollapsed, setTrendingCollapsed] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -360,8 +374,12 @@ export default function HomeScreen() {
 
   const searchText = query.trim();
   const isCurrentStockSearch = !selectedStock
-    && searchText.length >= 2
-    && debouncedQuery === searchText;
+    && isStockSearchCurrent({
+      input: query,
+      settledQuery: debouncedQuery,
+      resultQuery: activeStockSearchQuery,
+      isPlaceholderData: stockSearch.isPlaceholderData,
+    });
   const stockSuggestions = isCurrentStockSearch ? stockSearch.data ?? [] : [];
   const allowRawTicker = searchText.length === 1
     || (
@@ -380,10 +398,20 @@ export default function HomeScreen() {
     if (resolvedSymbol) navigateTo(resolvedSymbol);
   };
 
-  const selectStock = (stock: StockSymbolSuggestion) => {
+  const selectStock = (stock: StockSymbolSuggestion, selectionQuery: string | null) => {
+    if (!isStockSearchSelectionCurrent({
+      input: latestSearchInputRef.current,
+      settledQuery: latestSettledQueryRef.current,
+      resultQuery: latestResultQueryRef.current,
+      selectionQuery,
+      isPlaceholderData: latestPlaceholderDataRef.current,
+    })) return;
+
+    const selectedQuery = `${stock.name} (${stock.symbol})`;
+    latestSearchInputRef.current = selectedQuery;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedStock(stock);
-    setQuery(`${stock.name} (${stock.symbol})`);
+    setQuery(selectedQuery);
     Keyboard.dismiss();
   };
 
@@ -514,6 +542,7 @@ export default function HomeScreen() {
             placeholderTextColor={colors.mutedForeground}
             value={query}
             onChangeText={(value) => {
+              latestSearchInputRef.current = value;
               setSelectedStock(null);
               setQuery(value);
             }}
@@ -525,6 +554,7 @@ export default function HomeScreen() {
           {query.length > 0 && (
             <TouchableOpacity
               onPress={() => {
+                latestSearchInputRef.current = '';
                 setSelectedStock(null);
                 setQuery('');
               }}
@@ -567,7 +597,7 @@ export default function HomeScreen() {
                       styles.suggestionRow,
                       { borderBottomColor: index === stockSuggestions.length - 1 ? 'transparent' : colors.border },
                     ]}
-                    onPress={() => selectStock(stock)}
+                    onPress={() => selectStock(stock, activeStockSearchQuery)}
                     activeOpacity={0.7}
                     accessibilityRole="button"
                     accessibilityLabel={`Select ${stock.name}, ticker ${stock.symbol}, ${stock.exchange}`}
