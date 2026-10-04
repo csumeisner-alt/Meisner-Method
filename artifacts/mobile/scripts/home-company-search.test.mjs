@@ -73,3 +73,60 @@ test("rapid home search edits reject a delayed tap from an earlier query", () =>
     true,
   );
 });
+
+test("home search submits a raw ticker after lookup finishes without blocking company names", () => {
+  const rawTickerGate = homeScreen.match(
+    /const allowRawTicker = ([\s\S]*?);\s*const resolvedSymbol = resolveStockSearchSymbol\(/,
+  )?.[1];
+  assert.ok(rawTickerGate, "the home screen should gate raw ticker entry on current lookup state");
+  assert.match(
+    rawTickerGate,
+    /isCurrentStockSearch\s*&&\s*!stockSearch\.isFetching\s*&&\s*\(stockSearch\.isSuccess\s*\|\|\s*stockSearch\.isError\)/,
+    "raw ticker entry should work after either a no-match response or a lookup error",
+  );
+
+  const resolverCall = homeScreen.match(
+    /const resolvedSymbol = resolveStockSearchSymbol\(([\s\S]*?)\);/,
+  )?.[1];
+  assert.ok(resolverCall, "the home search should resolve the query before submitting");
+  assert.match(
+    resolverCall,
+    /query,\s*stockSuggestions,\s*selectedStock,\s*allowRawTicker/,
+    "the resolver should receive only current suggestions, the selection, and lookup availability",
+  );
+
+  const submitHandler = homeScreen.match(
+    /const handleSubmit = \(\) => \{([\s\S]*?)\n  \};/,
+  )?.[1];
+  assert.ok(submitHandler, "the home search submit handler should remain identifiable");
+  assert.match(
+    submitHandler,
+    /if\s*\(resolvedSymbol\)\s*navigateTo\(resolvedSymbol\)/,
+    "the home search should submit a resolved ticker and keep unresolved company names blocked",
+  );
+  assert.match(
+    homeScreen,
+    /onSubmitEditing=\{handleSubmit\}/,
+    "the keyboard search action should submit through the same validation",
+  );
+  assert.match(
+    homeScreen,
+    /disabled=\{!resolvedSymbol\}[\s\S]*?onPress=\{handleSubmit\}/,
+    "the Analyze button should be enabled only for a resolved symbol and use the same submit handler",
+  );
+
+  const navigationHandler = homeScreen.match(
+    /const navigateTo = useCallback\(async \(symbol: string\) => \{([\s\S]*?)\n  \}, \[recent, router\]\);/,
+  )?.[1];
+  assert.ok(navigationHandler, "the shared home navigation handler should remain identifiable");
+  assert.match(
+    navigationHandler,
+    /const upper = symbol\.toUpperCase\(\)\.trim\(\);/,
+    "the submitted ticker should be normalized before navigation",
+  );
+  assert.match(
+    navigationHandler,
+    /router\.push\(`\/analysis\/\$\{upper\}`\)/,
+    "the normalized ticker should open its analysis screen",
+  );
+});
