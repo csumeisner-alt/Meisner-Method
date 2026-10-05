@@ -45,6 +45,13 @@ COMMODITY_SYMBOLS = [
     "GC=F", "SI=F", "CL=F", "NG=F", "HG=F", "ZC=F", "ZW=F", "ZS=F",
     "KC=F", "CT=F", "SB=F", "PL=F", "PA=F", "LE=F", "HE=F",
 ]
+COMMODITY_SESSION_FAMILIES = {
+    "cme_nearly_24h": frozenset(("GC=F", "SI=F", "CL=F", "NG=F", "HG=F", "PL=F", "PA=F")),
+    "cme_grains": frozenset(("ZC=F", "ZW=F", "ZS=F")),
+    "ice_cotton": frozenset(("CT=F",)),
+    "ice_day": frozenset(("KC=F", "SB=F")),
+    "cme_livestock": frozenset(("LE=F", "HE=F")),
+}
 FUTURE_SYMBOLS = [
     "ES=F", "NQ=F", "YM=F", "RTY=F", "ZN=F", "ZB=F", "ZF=F",
     "6E=F", "6J=F", "6B=F", "6C=F", "DX=F",
@@ -284,7 +291,43 @@ def us_equity_calendar():
     return exchange_calendars.get_calendar("XNYS")
 
 
-def market_session(timestamp, asset_type, now=None):
+def commodity_session_family(symbol):
+    for family, symbols in COMMODITY_SESSION_FAMILIES.items():
+        if symbol in symbols:
+            return family
+    return None
+
+
+def commodity_market_is_open(symbol, current):
+    family = commodity_session_family(symbol)
+    weekday = current.weekday()
+    minute = current.hour * 60 + current.minute
+
+    if family == "cme_nearly_24h":
+        return not (
+            weekday == 5
+            or (weekday == 6 and minute < 18 * 60)
+            or (weekday == 4 and minute >= 17 * 60)
+            or (weekday < 5 and 17 * 60 <= minute < 18 * 60)
+        )
+    if family == "cme_grains":
+        overnight = weekday < 5 and minute < 8 * 60 + 45
+        daytime = weekday < 5 and 9 * 60 + 30 <= minute < 14 * 60 + 20
+        evening = (weekday < 4 or weekday == 6) and minute >= 20 * 60
+        return overnight or daytime or evening
+    if family == "ice_cotton":
+        overnight_or_daytime = weekday < 5 and minute < 14 * 60 + 20
+        evening = (weekday < 4 or weekday == 6) and minute >= 21 * 60
+        return overnight_or_daytime or evening
+    if family == "ice_day":
+        start, end = (4 * 60 + 15, 13 * 60 + 30) if symbol == "KC=F" else (3 * 60 + 30, 13 * 60)
+        return weekday < 5 and start <= minute < end
+    if family == "cme_livestock":
+        return weekday < 5 and 9 * 60 + 30 <= minute < 14 * 60 + 5
+    return None
+
+
+def market_session(timestamp, asset_type, now=None, symbol=None):
     as_of = as_utc_datetime(now)
     age_seconds = as_of.timestamp() - timestamp
     if asset_type == "cryptocurrency":
@@ -307,6 +350,13 @@ def market_session(timestamp, asset_type, now=None):
         ):
             return "closed"
         return "regular"
+    if asset_type == "commodity":
+        if age_seconds > 30 * 60:
+            return "closed"
+        is_open = commodity_market_is_open(symbol, current)
+        if is_open is None:
+            return "unknown"
+        return "regular" if is_open else "closed"
     if local.date() != current.date() or local.weekday() >= 5 or age_seconds > 30 * 60:
         return "closed"
     try:
@@ -548,7 +598,7 @@ def quote_from_frame(frame, symbol, category, require_prior_close=True, previous
         "returnUnavailableReason": None,
         "historyStartDate": None,
         "priceTimestamp": latest_timestamp,
-        "marketSession": market_session(latest_timestamp, asset_type, now=as_of),
+        "marketSession": market_session(latest_timestamp, asset_type, now=as_of, symbol=symbol),
         "assetType": asset_type,
         "sector": normalize_sector(STOCK_SECTORS.get(symbol), symbol) if asset_type == "stock" else None,
         "exchange": None,
@@ -649,7 +699,7 @@ def quote_from_screener(item, now=None):
     if change_percent is None or not math.isfinite(change_percent):
         return None
     if market_state in ("PRE", "PREPRE", "REGULAR", "POST", "POSTPOST"):
-        session = market_session(stamp, asset_type, now=as_of)
+        session = market_session(stamp, asset_type, now=as_of, symbol=symbol)
     metadata = {
         "sector": normalize_sector(item.get("sectorDisp") or item.get("sector"), symbol) if asset_type == "stock" else None,
         "exchange": normalize_exchange(item.get("fullExchangeName") or item.get("exchange")),

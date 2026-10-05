@@ -162,6 +162,84 @@ class HeatMapQuoteTests(unittest.TestCase):
                     category="futures",
                 )
 
+    def test_commodity_globex_contracts_follow_daily_breaks_and_weekly_open(self):
+        cases = [
+            ("GC=F", eastern(2024, 6, 4, 2, 0), "regular"),
+            ("CL=F", eastern(2024, 6, 4, 16, 59), "regular"),
+            ("SI=F", eastern(2024, 6, 4, 17, 0), "closed"),
+            ("NG=F", eastern(2024, 6, 4, 17, 59), "closed"),
+            ("HG=F", eastern(2024, 6, 4, 18, 0), "regular"),
+            ("PL=F", eastern(2024, 6, 7, 16, 59), "regular"),
+            ("PA=F", eastern(2024, 6, 7, 17, 0), "closed"),
+            ("GC=F", eastern(2024, 6, 9, 17, 59), "closed"),
+            ("CL=F", eastern(2024, 6, 9, 18, 0), "regular"),
+        ]
+        for symbol, now, expected_session in cases:
+            with self.subTest(symbol=symbol, now=now):
+                self.assert_quote_session(
+                    now,
+                    now,
+                    expected_session,
+                    symbol=symbol,
+                    category="commodities",
+                )
+
+    def test_commodity_grains_follow_split_sessions_and_sunday_open(self):
+        cases = [
+            ("ZC=F", eastern(2024, 6, 9, 19, 59), "closed"),
+            ("ZW=F", eastern(2024, 6, 9, 20, 0), "regular"),
+            ("ZS=F", eastern(2024, 6, 10, 8, 44), "regular"),
+            ("ZC=F", eastern(2024, 6, 10, 8, 45), "closed"),
+            ("ZW=F", eastern(2024, 6, 10, 9, 29), "closed"),
+            ("ZS=F", eastern(2024, 6, 10, 9, 30), "regular"),
+            ("ZC=F", eastern(2024, 6, 10, 14, 19), "regular"),
+            ("ZW=F", eastern(2024, 6, 10, 14, 20), "closed"),
+            ("ZS=F", eastern(2024, 6, 14, 20, 0), "closed"),
+        ]
+        for symbol, now, expected_session in cases:
+            with self.subTest(symbol=symbol, now=now):
+                self.assert_quote_session(
+                    now,
+                    now,
+                    expected_session,
+                    symbol=symbol,
+                    category="commodities",
+                )
+
+    def test_commodity_ice_and_livestock_schedule_families(self):
+        cases = [
+            # ICE cotton opens Sunday evening and runs overnight through its weekday close.
+            ("CT=F", eastern(2024, 6, 9, 20, 59), "closed"),
+            ("CT=F", eastern(2024, 6, 9, 21, 0), "regular"),
+            ("CT=F", eastern(2024, 6, 10, 14, 19), "regular"),
+            ("CT=F", eastern(2024, 6, 10, 14, 20), "closed"),
+            ("CT=F", eastern(2024, 6, 14, 21, 0), "closed"),
+            # ICE coffee and sugar, and CME livestock, have weekday daytime sessions.
+            ("KC=F", eastern(2024, 6, 10, 4, 14), "closed"),
+            ("KC=F", eastern(2024, 6, 10, 4, 15), "regular"),
+            ("KC=F", eastern(2024, 6, 10, 13, 30), "closed"),
+            ("SB=F", eastern(2024, 6, 10, 3, 29), "closed"),
+            ("SB=F", eastern(2024, 6, 10, 3, 30), "regular"),
+            ("SB=F", eastern(2024, 6, 10, 13, 0), "closed"),
+            ("LE=F", eastern(2024, 6, 10, 9, 29), "closed"),
+            ("HE=F", eastern(2024, 6, 10, 9, 30), "regular"),
+            ("LE=F", eastern(2024, 6, 10, 14, 5), "closed"),
+            ("HE=F", eastern(2024, 6, 8, 10, 0), "closed"),
+        ]
+        for symbol, now, expected_session in cases:
+            with self.subTest(symbol=symbol, now=now):
+                self.assert_quote_session(
+                    now,
+                    now,
+                    expected_session,
+                    symbol=symbol,
+                    category="commodities",
+                )
+
+    def test_every_supported_commodity_has_a_session_family(self):
+        mapped = set().union(*fetch_heatmap.COMMODITY_SESSION_FAMILIES.values())
+        self.assertEqual(mapped, set(fetch_heatmap.COMMODITY_SYMBOLS))
+
     def test_weekend_and_holiday_quotes_are_closed_not_active(self):
         cases = [
             (eastern(2024, 6, 7, 15, 55), eastern(2024, 6, 8, 12, 0)),  # Saturday
