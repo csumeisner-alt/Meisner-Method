@@ -410,6 +410,73 @@ class HeatMapQuoteTests(unittest.TestCase):
                     int(calendar.session_open(next_session).timestamp()),
                 )
 
+    def test_verified_xetra_extended_sessions_follow_local_time_boundaries(self):
+        zone = ZoneInfo("Europe/Berlin")
+        for year, month, day in ((2026, 2, 3), (2026, 7, 7)):
+            with self.subTest(date=(year, month, day)):
+                cases = (
+                    (7, 59, "closed"),
+                    (8, 0, "pre_market"),
+                    (8, 54, "pre_market"),
+                    # Xetra's opening auction follows early retail trading.
+                    (8, 55, "pre_market"),
+                    (8, 59, "pre_market"),
+                    (9, 0, "regular"),
+                    (17, 29, "regular"),
+                    (17, 30, "closed"),
+                    (17, 34, "closed"),
+                    (17, 35, "after_hours"),
+                    (21, 59, "after_hours"),
+                    (22, 0, "closed"),
+                )
+                for hour, minute, expected in cases:
+                    local = datetime(year, month, day, hour, minute, tzinfo=zone)
+                    with self.subTest(local=local):
+                        self.assertEqual(
+                            fetch_heatmap.equity_market_session(
+                                local.timestamp(),
+                                local,
+                                "XETR",
+                            ),
+                            expected,
+                        )
+
+    def test_xetra_extended_sessions_are_inactive_on_holidays_and_without_a_schedule(self):
+        berlin = ZoneInfo("Europe/Berlin")
+        for hour, expected in ((8, "closed"), (18, "closed")):
+            local = datetime(2026, 12, 25, hour, 30, tzinfo=berlin)
+            self.assertEqual(
+                fetch_heatmap.equity_market_session(
+                    local.timestamp(),
+                    local,
+                    "XETR",
+                ),
+                expected,
+            )
+
+        london = ZoneInfo("Europe/London")
+        for hour in (7, 18):
+            local = datetime(2024, 8, 27, hour, 0, tzinfo=london)
+            self.assertEqual(
+                fetch_heatmap.equity_market_session(
+                    local.timestamp(),
+                    local,
+                    "XLON",
+                ),
+                "closed",
+            )
+
+        local = datetime(2026, 2, 3, 8, 30, tzinfo=berlin)
+        with patch.object(fetch_heatmap, "calendar_for_exchange", return_value=None):
+            self.assertEqual(
+                fetch_heatmap.equity_market_session(
+                    local.timestamp(),
+                    local,
+                    "XETR",
+                ),
+                "unknown",
+            )
+
     def test_supported_asian_exchange_lunch_breaks_are_not_active(self):
         for exchange, timezone_name, lunch_clock in INTERNATIONAL_LUNCH_BREAKS:
             with self.subTest(exchange=exchange):

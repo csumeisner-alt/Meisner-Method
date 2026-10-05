@@ -215,6 +215,18 @@ EXCHANGE_CALENDAR_IDS = {
     "Bolsa de Madrid": "XMAD",
     "Borsa Italiana": "XMIL",
 }
+# Verified Xetra Retail Service schedule, effective 1 Dec 2025. Early trading
+# runs 08:00-08:55 local time, followed by the opening auction until the regular
+# session opens. Late trading / Trade-at-Close is active from 17:35 to 22:00.
+# https://www.cashmarket.deutsche-boerse.com/cash-en/Stay-Informed/circulars-newsletters/deutsche-boerse-circulars/Introduction-of-the-Extended-Xetra-Retail-Service-early-and-late-trading-Planned-changes-to-the-trading-process-valid-from-1-December-2025-4793480
+INTERNATIONAL_EXTENDED_SESSION_SCHEDULES = {
+    "Deutsche Börse Xetra": {
+        "pre_market_start_minute": 8 * 60,
+        "after_hours_start_minute": 17 * 60 + 35,
+        "after_hours_end_minute": 22 * 60,
+        "regular_close_minute": 17 * 60 + 30,
+    },
+}
 METADATA_CACHE_PATH = os.path.join(tempfile.gettempdir(), "meisner_heat_map_metadata.json")
 METADATA_CACHE_TTL_SECONDS = 24 * 60 * 60
 MIN_VOLATILITY_RETURNS = 60
@@ -666,13 +678,37 @@ def equity_market_session(timestamp, as_of, exchange):
     except Exception:
         return "unknown"
     if local < market_open:
-        return "pre_market" if exchange_calendar.name == "XNYS" and local.hour >= 4 else "closed"
+        if exchange_calendar.name == "XNYS" and local.hour >= 4:
+            return "pre_market"
+        extended_schedule = INTERNATIONAL_EXTENDED_SESSION_SCHEDULES.get(
+            normalize_exchange(exchange)
+        )
+        local_minute = local.hour * 60 + local.minute
+        if (
+            extended_schedule
+            and extended_schedule["pre_market_start_minute"] <= local_minute
+        ):
+            return "pre_market"
+        return "closed"
     if local < market_close:
         try:
             return "regular" if exchange_calendar.is_open_on_minute(local) else "closed"
         except Exception:
             return "unknown"
     if exchange_calendar.name == "XNYS" and local.hour < 20:
+        return "after_hours"
+    extended_schedule = INTERNATIONAL_EXTENDED_SESSION_SCHEDULES.get(
+        normalize_exchange(exchange)
+    )
+    local_minute = local.hour * 60 + local.minute
+    regular_close_minute = market_close.hour * 60 + market_close.minute
+    if (
+        extended_schedule
+        and regular_close_minute == extended_schedule["regular_close_minute"]
+        and extended_schedule["after_hours_start_minute"]
+        <= local_minute
+        < extended_schedule["after_hours_end_minute"]
+    ):
         return "after_hours"
     return "closed"
 
