@@ -15,6 +15,148 @@ def eastern(year, month, day, hour, minute=0):
     return datetime(year, month, day, hour, minute, tzinfo=EASTERN)
 
 
+SUPPORTED_INTERNATIONAL_EXCHANGES = (
+    (
+        "London Stock Exchange",
+        "XLON",
+        "Europe/London",
+        ("lse", "xlon", "london stock exchange", "london"),
+        date(2024, 12, 25),
+    ),
+    (
+        "Tokyo Stock Exchange",
+        "XTKS",
+        "Asia/Tokyo",
+        ("jpx", "xtks", "tyo", "tokyo", "tokyo stock exchange"),
+        date(2024, 1, 1),
+    ),
+    (
+        "Hong Kong Stock Exchange",
+        "XHKG",
+        "Asia/Hong_Kong",
+        ("hkex", "hkse", "xhkg", "hkg", "hong kong", "hong kong stock exchange"),
+        date(2024, 12, 25),
+    ),
+    (
+        "Australian Securities Exchange",
+        "XASX",
+        "Australia/Sydney",
+        ("asx", "xasx", "australian securities exchange"),
+        date(2024, 12, 25),
+    ),
+    (
+        "Toronto Stock Exchange",
+        "XTSE",
+        "America/Toronto",
+        ("tsx", "tor", "xtse", "toronto", "toronto stock exchange"),
+        date(2024, 12, 25),
+    ),
+    (
+        "Deutsche Börse Xetra",
+        "XETR",
+        "Europe/Berlin",
+        (
+            "xetr",
+            "xetra",
+            "fra",
+            "frankfurt",
+            "frankfurt stock exchange",
+            "deutsche börse",
+            "deutsche boerse",
+        ),
+        date(2024, 12, 25),
+    ),
+    (
+        "Euronext Paris",
+        "XPAR",
+        "Europe/Paris",
+        ("xpar", "par", "paris", "euronext paris"),
+        date(2024, 12, 25),
+    ),
+    (
+        "SIX Swiss Exchange",
+        "XSWX",
+        "Europe/Zurich",
+        ("xswx", "six", "swiss", "six swiss exchange"),
+        date(2024, 12, 25),
+    ),
+    (
+        "Korea Exchange",
+        "XKRX",
+        "Asia/Seoul",
+        ("xkrx", "krx", "seoul", "korea exchange"),
+        date(2024, 12, 25),
+    ),
+    (
+        "Taiwan Stock Exchange",
+        "XTAI",
+        "Asia/Taipei",
+        ("xtai", "tai", "taiwan", "taiwan stock exchange"),
+        date(2024, 1, 1),
+    ),
+    (
+        "Singapore Exchange",
+        "XSES",
+        "Asia/Singapore",
+        ("xses", "ses", "singapore", "singapore exchange"),
+        date(2024, 12, 25),
+    ),
+    (
+        "Shanghai Stock Exchange",
+        "XSHG",
+        "Asia/Shanghai",
+        ("xshg", "shh", "shanghai", "shanghai stock exchange"),
+        date(2024, 1, 1),
+    ),
+    (
+        "Euronext Amsterdam",
+        "XAMS",
+        "Europe/Amsterdam",
+        ("xams", "ams", "amsterdam", "euronext amsterdam"),
+        date(2024, 12, 25),
+    ),
+    (
+        "Euronext Brussels",
+        "XBRU",
+        "Europe/Brussels",
+        ("xbru", "bru", "brussels", "euronext brussels"),
+        date(2024, 12, 25),
+    ),
+    (
+        "Bolsa de Madrid",
+        "XMAD",
+        "Europe/Madrid",
+        ("xmad", "mad", "mce", "madrid", "bolsa de madrid"),
+        date(2024, 12, 25),
+    ),
+    (
+        "Borsa Italiana",
+        "XMIL",
+        "Europe/Rome",
+        ("xmil", "mil", "milan", "borsa italiana"),
+        date(2024, 12, 25),
+    ),
+)
+
+INTERNATIONAL_SPECIAL_CLOSES = (
+    ("London Stock Exchange", date(2024, 12, 24), "Europe/London", (12, 30)),
+    ("Hong Kong Stock Exchange", date(2024, 12, 24), "Asia/Hong_Kong", (12, 0)),
+    ("Australian Securities Exchange", date(2024, 12, 24), "Australia/Sydney", (14, 10)),
+    ("Toronto Stock Exchange", date(2024, 12, 24), "America/Toronto", (13, 0)),
+    ("Deutsche Börse Xetra", date(2024, 12, 30), "Europe/Berlin", (14, 0)),
+    ("Euronext Paris", date(2024, 12, 24), "Europe/Paris", (14, 5)),
+    ("Euronext Amsterdam", date(2024, 12, 24), "Europe/Amsterdam", (14, 5)),
+    ("Euronext Brussels", date(2024, 12, 24), "Europe/Brussels", (14, 5)),
+    ("Bolsa de Madrid", date(2024, 12, 24), "Europe/Madrid", (14, 0)),
+)
+
+INTERNATIONAL_LUNCH_BREAKS = (
+    ("Tokyo Stock Exchange", "Asia/Tokyo", (12, 0)),
+    ("Hong Kong Stock Exchange", "Asia/Hong_Kong", (12, 30)),
+    ("Shanghai Stock Exchange", "Asia/Shanghai", (12, 0)),
+)
+
+
 def close_frame(rows):
     return pd.DataFrame(
         {"Close": [price for _, price in rows]},
@@ -125,11 +267,187 @@ class HeatMapQuoteTests(unittest.TestCase):
             exchange="XLON",
         )
 
+    def test_every_supported_international_alias_resolves_to_its_calendar(self):
+        expected_aliases = {}
+        expected_calendars = {}
+        for exchange, calendar_id, timezone_name, aliases, _holiday in (
+            SUPPORTED_INTERNATIONAL_EXCHANGES
+        ):
+            expected_calendars[exchange] = calendar_id
+            for alias in aliases:
+                expected_aliases[alias] = exchange
+
+        actual_supported_aliases = {
+            alias: exchange
+            for alias, exchange in fetch_heatmap.EXCHANGE_ALIASES.items()
+            if exchange in fetch_heatmap.EXCHANGE_CALENDAR_IDS
+            and exchange not in fetch_heatmap.US_EQUITY_EXCHANGE_LABELS
+        }
+        self.assertEqual(actual_supported_aliases, expected_aliases)
+
+        actual_supported_calendars = {
+            exchange: calendar_id
+            for exchange, calendar_id in fetch_heatmap.EXCHANGE_CALENDAR_IDS.items()
+            if exchange not in fetch_heatmap.US_EQUITY_EXCHANGE_LABELS
+        }
+        self.assertEqual(actual_supported_calendars, expected_calendars)
+
+        for exchange, calendar_id, timezone_name, aliases, _holiday in (
+            SUPPORTED_INTERNATIONAL_EXCHANGES
+        ):
+            for alias in aliases:
+                with self.subTest(alias=alias, exchange=exchange):
+                    self.assertEqual(fetch_heatmap.normalize_exchange(alias), exchange)
+                    calendar = fetch_heatmap.calendar_for_exchange(alias)
+                    self.assertIsNotNone(calendar)
+                    self.assertEqual(calendar.name, calendar_id)
+                    self.assertEqual(getattr(calendar.tz, "key", None), timezone_name)
+                    local_now = datetime(
+                        2024,
+                        8,
+                        27,
+                        10,
+                        0,
+                        tzinfo=ZoneInfo(timezone_name),
+                    )
+                    quote = fetch_heatmap.quote_from_screener(
+                        {
+                            "symbol": "INTL",
+                            "quoteType": "EQUITY",
+                            "exchange": alias,
+                            "marketState": "REGULAR",
+                            "regularMarketPrice": 100,
+                            "regularMarketChangePercent": 1,
+                            "regularMarketTime": local_now.timestamp(),
+                            "regularMarketPreviousClose": 99,
+                        },
+                        now=local_now,
+                    )
+                    self.assertEqual(quote["exchange"], exchange)
+                    self.assertEqual(quote["exchangeTimezone"], timezone_name)
+                    self.assertEqual(quote["marketSession"], "regular")
+
+    def test_supported_international_calendars_observe_local_holidays(self):
+        for exchange, calendar_id, timezone_name, _aliases, holiday in (
+            SUPPORTED_INTERNATIONAL_EXCHANGES
+        ):
+            with self.subTest(exchange=exchange, holiday=holiday):
+                calendar = fetch_heatmap.calendar_for_exchange(exchange)
+                self.assertIsNotNone(calendar)
+                self.assertFalse(calendar.is_session(holiday.isoformat()))
+
+                as_of = datetime(
+                    holiday.year,
+                    holiday.month,
+                    holiday.day,
+                    10,
+                    0,
+                    tzinfo=ZoneInfo(timezone_name),
+                )
+                self.assertEqual(
+                    fetch_heatmap.equity_market_session(
+                        as_of.timestamp(),
+                        as_of,
+                        exchange,
+                    ),
+                    "closed",
+                )
+                next_session = calendar.date_to_session(
+                    holiday.isoformat(),
+                    direction="next",
+                )
+                expected_open = int(calendar.session_open(next_session).timestamp())
+                self.assertEqual(
+                    fetch_heatmap.next_regular_open_timestamp(as_of, exchange=exchange),
+                    expected_open,
+                )
+
+    def test_international_special_closes_end_regular_hours_on_schedule(self):
+        for exchange, session_date, timezone_name, close_clock in INTERNATIONAL_SPECIAL_CLOSES:
+            with self.subTest(exchange=exchange, session_date=session_date):
+                calendar = fetch_heatmap.calendar_for_exchange(exchange)
+                self.assertIsNotNone(calendar)
+                session = calendar.date_to_session(session_date.isoformat(), direction="none")
+                actual_close = calendar.session_close(session).to_pydatetime().astimezone(
+                    ZoneInfo(timezone_name)
+                )
+                self.assertEqual(
+                    (actual_close.hour, actual_close.minute),
+                    close_clock,
+                )
+
+                close_at = datetime(
+                    session_date.year,
+                    session_date.month,
+                    session_date.day,
+                    close_clock[0],
+                    close_clock[1],
+                    tzinfo=ZoneInfo(timezone_name),
+                )
+                before_close = close_at - timedelta(minutes=5)
+                self.assertEqual(
+                    fetch_heatmap.equity_market_session(
+                        before_close.timestamp(),
+                        before_close,
+                        exchange,
+                    ),
+                    "regular",
+                )
+                self.assertEqual(
+                    fetch_heatmap.equity_market_session(
+                        close_at.timestamp(),
+                        close_at,
+                        exchange,
+                    ),
+                    "closed",
+                )
+                next_session = calendar.next_session(session)
+                self.assertEqual(
+                    fetch_heatmap.next_regular_open_timestamp(
+                        close_at + timedelta(minutes=1),
+                        exchange=exchange,
+                    ),
+                    int(calendar.session_open(next_session).timestamp()),
+                )
+
+    def test_supported_asian_exchange_lunch_breaks_are_not_active(self):
+        for exchange, timezone_name, lunch_clock in INTERNATIONAL_LUNCH_BREAKS:
+            with self.subTest(exchange=exchange):
+                zone = ZoneInfo(timezone_name)
+                lunch = datetime(2024, 8, 27, *lunch_clock, tzinfo=zone)
+                after_lunch = datetime(2024, 8, 27, 13, 15, tzinfo=zone)
+                self.assertEqual(
+                    fetch_heatmap.equity_market_session(
+                        lunch.timestamp(),
+                        lunch,
+                        exchange,
+                    ),
+                    "closed",
+                )
+                self.assertEqual(
+                    fetch_heatmap.equity_market_session(
+                        after_lunch.timestamp(),
+                        after_lunch,
+                        exchange,
+                    ),
+                    "regular",
+                )
+
     def test_missing_or_unsupported_exchange_never_falls_back_to_us_hours(self):
         latest = eastern(2024, 6, 4, 10, 0)
         now = eastern(2024, 6, 4, 10, 5)
-        self.assert_quote_session(latest, now, "unknown", exchange=None)
-        self.assert_quote_session(latest, now, "unknown", exchange="Unmapped Exchange")
+        for exchange in (None, "OTC", "Unmapped Exchange"):
+            with self.subTest(exchange=exchange):
+                self.assert_quote_session(latest, now, "unknown", exchange=exchange)
+                self.assertIsNone(fetch_heatmap.calendar_for_exchange(exchange))
+                self.assertIsNone(fetch_heatmap.exchange_timezone(exchange))
+                self.assertEqual(
+                    fetch_heatmap.equity_market_session(latest.timestamp(), now, exchange),
+                    "unknown",
+                )
+                self.assertIsNone(
+                    fetch_heatmap.next_regular_open_timestamp(now, exchange=exchange)
+                )
 
     def test_non_us_screener_quote_uses_its_exchange_calendar_and_timezone(self):
         london = ZoneInfo("Europe/London")
