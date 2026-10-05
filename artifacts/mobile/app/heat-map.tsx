@@ -26,7 +26,7 @@ import {
   type HeatMapFilters, type HeatMapCapBucket, type HeatMapRiskBand, type HeatMapRiskFilter,
 } from '@/lib/heatMapMetrics';
 import {
-  formatHeatMapQuoteAge, getHeatMapSessionLabel, isDisplayableHeatMapQuote,
+  formatHeatMapNextOpen, formatHeatMapQuoteAge, getHeatMapSessionLabel, isDisplayableHeatMapQuote,
 } from '@/lib/heatMapQuoteDisplay';
 import { MAX_CUSTOM_HEAT_MAP_SYMBOLS, normalizeCustomHeatMapSymbols } from '@/lib/heatMapSymbols';
 import {
@@ -111,10 +111,15 @@ function HexTile({ quote, width, height, colors, period, editing, reduceMotion, 
   const label = available ? `${value! > 0 ? '+' : ''}${value!.toFixed(2)}%` : 'Unavailable';
   const session = getHeatMapSessionLabel(quote.marketSession);
   const age = formatHeatMapQuoteAge(quote.priceTimestamp);
+  const nextOpen = formatHeatMapNextOpen(
+    quote.nextRegularOpenTimestamp,
+    quote.marketSession,
+    quote.assetType,
+  );
   const rotation = wiggle.interpolate({ inputRange: [-1, 1], outputRange: ['-2.4deg', '2.4deg'] });
   const tile = (
     <Animated.View style={[{ width, height }, { transform: [{ rotate: rotation }] }]}>
-    <View style={[styles.tile, { width, height }]} accessibilityLabel={`${quote.symbol}, ${label}, ${session}, ${age}`}>
+    <View style={[styles.tile, { width, height }]} accessibilityLabel={`${quote.symbol}, ${label}, ${session}, ${nextOpen ?? ''}, ${age}`}>
       <Svg width={width} height={height} viewBox="0 0 100 86.6" style={StyleSheet.absoluteFill}>
         <Polygon points="1,43.3 25,1 75,1 99,43.3 75,85.6 25,85.6" fill={bg} stroke={tone} strokeWidth="1.5" />
       </Svg>
@@ -122,6 +127,7 @@ function HexTile({ quote, width, height, colors, period, editing, reduceMotion, 
       <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={[styles.tileChange, { color: tone }]}>{label}</Text>
       <Text numberOfLines={1} style={[styles.tilePrice, { color: colors.mutedForeground }]}>{formatPrice(quote.price)}</Text>
       <Text testID={`heat-map-session-${quote.symbol}`} numberOfLines={1} style={[styles.tileSession, { color: colors.foreground }]}>{session}</Text>
+      {nextOpen && <Text testID={`heat-map-next-open-${quote.symbol}`} numberOfLines={2} style={[styles.tileNextOpen, { color: colors.foreground }]}>{nextOpen}</Text>}
       <Text testID={`heat-map-quote-age-${quote.symbol}`} numberOfLines={1} style={[styles.tileAge, { color: colors.mutedForeground }]}>{age}</Text>
       {quote.returnBasis === 'price_return_proxy' && <Text numberOfLines={1} style={[styles.tileBasis, { color: colors.mutedForeground }]}>Price-return proxy</Text>}
       {period === 'max' && <Text numberOfLines={1} style={[styles.tileBasis, { color: colors.mutedForeground }]}>Since {quote.historyStartDate ?? 'unknown'}</Text>}
@@ -731,6 +737,7 @@ const styles = StyleSheet.create({
   tileChange: { maxWidth: '90%', fontFamily: 'Inter_700Bold', fontSize: 10 },
   tilePrice: { maxWidth: '90%', fontFamily: 'Inter_500Medium', fontSize: 8 },
   tileSession: { maxWidth: '92%', fontFamily: 'Inter_600SemiBold', fontSize: 7, letterSpacing: 0.05 },
+  tileNextOpen: { maxWidth: '92%', fontFamily: 'Inter_600SemiBold', fontSize: 6.2, lineHeight: 7.2, textAlign: 'center' },
   tileAge: { maxWidth: '92%', fontFamily: 'Inter_400Regular', fontSize: 7 },
   tileBasis: { maxWidth: '92%', fontFamily: 'Inter_400Regular', fontSize: 6.2, letterSpacing: -0.1 },
   unavailable: { fontFamily: 'Inter_400Regular', fontSize: 10, textAlign: 'center', marginTop: 2 },

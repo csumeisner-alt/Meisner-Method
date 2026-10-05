@@ -65,6 +65,7 @@ test("quote and response validators reject missing, stale-shaped, or non-finite 
     historyStartDate: "2010-01-04",
     priceTimestamp: 1_760_000_000,
     marketSession: "closed",
+    nextRegularOpenTimestamp: null,
     assetType: "stock",
     sector: "Technology",
     exchange: "NASDAQ",
@@ -74,6 +75,8 @@ test("quote and response validators reject missing, stale-shaped, or non-finite 
   };
   assert.equal(isHeatMapQuote(quote), true);
   assert.equal(isHeatMapQuote({ ...quote, price: Number.NaN }), false);
+  assert.equal(isHeatMapQuote({ ...quote, nextRegularOpenTimestamp: Number.NaN }), false);
+  assert.equal(isHeatMapQuote({ ...quote, nextRegularOpenTimestamp: undefined }), false);
   assert.equal(
     isHeatMapResponse({
       category: "stocks",
@@ -111,6 +114,7 @@ test("heat-map responses reject stale or undated continuous-futures quotes", () 
     historyStartDate: null,
     priceTimestamp: updatedAt - 5 * 60,
     marketSession: "regular",
+    nextRegularOpenTimestamp: null,
     assetType: "future",
     sector: null,
     exchange: null,

@@ -7,7 +7,9 @@ const screenSource = readFileSync(new URL("../app/heat-map.tsx", import.meta.url
 test("heat-map tiles render the session and age from each quote's own metadata", () => {
   assert.match(screenSource, /getHeatMapSessionLabel\(quote\.marketSession\)/);
   assert.match(screenSource, /formatHeatMapQuoteAge\(quote\.priceTimestamp\)/);
+  assert.match(screenSource, /formatHeatMapNextOpen\(\s*quote\.nextRegularOpenTimestamp,\s*quote\.marketSession,\s*quote\.assetType,/);
   assert.match(screenSource, /testID=\{`heat-map-session-\$\{quote\.symbol\}`\}/);
+  assert.match(screenSource, /testID=\{`heat-map-next-open-\$\{quote\.symbol\}`\}/);
   assert.match(screenSource, /testID=\{`heat-map-quote-age-\$\{quote\.symbol\}`\}/);
 });
 

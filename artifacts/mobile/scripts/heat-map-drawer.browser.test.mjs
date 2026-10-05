@@ -83,6 +83,7 @@ function quote(symbol, overrides = {}) {
     historyStartDate: "2020-01-01",
     priceTimestamp: Date.now() / 1000,
     marketSession: "regular",
+    nextRegularOpenTimestamp: null,
     assetType: "stock",
     sector: "Technology",
     exchange: "NASDAQ",
@@ -99,7 +100,12 @@ function makeResponse(category, period, symbol, requestedSector = null) {
     period,
     requestedSector,
     updatedAt: Date.now() / 1000,
-    quotes: category === "custom" ? [] : [quote(symbol)],
+    quotes: category === "custom"
+      ? []
+      : [quote(symbol, {
+        marketSession: "after_hours",
+        nextRegularOpenTimestamp: Date.parse("2030-11-29T14:30:00Z") / 1000,
+      })],
     unavailableSymbols: [],
   };
 }
@@ -317,6 +323,10 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
         `!!document.querySelector(${JSON.stringify(selector(`heat-map-session-${currentSymbol}`))})`,
         `The selected ${nextPeriod} response should render.`,
       );
+      const nextOpenText = await browser.evaluate(
+        `document.querySelector(${JSON.stringify(selector(`heat-map-next-open-${currentSymbol}`))})?.textContent`,
+      );
+      assert.match(nextOpenText, /Next open: Nov 29\s*9:30 AM ET/);
       assert.match(
         await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-selected-period"))}).textContent`),
         new RegExp(periodLabels.get(nextPeriod)),

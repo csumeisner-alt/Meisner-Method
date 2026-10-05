@@ -210,6 +210,8 @@ export interface HeatMapQuote {
   priceTimestamp: number | null;
   /** Session for this quote. closed identifies the latest available close; unknown means the provider could not identify the session. */
   marketSession: HeatMapQuoteMarketSession;
+  /** Unix timestamp in seconds for the next scheduled U.S. equity regular-session open, populated only when a stock or ETF is closed or in after-hours; null when unavailable or not applicable. */
+  nextRegularOpenTimestamp: number | null;
   assetType: HeatMapQuoteAssetType;
   /** Normalized provider sector; stocks without metadata use Unknown. */
   sector: string | null;

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  formatHeatMapNextOpen,
   formatHeatMapQuoteAge,
   getHeatMapSessionLabel,
   isDisplayableHeatMapQuote,
@@ -20,6 +21,27 @@ test("heat-map quote ages stay compact across minutes, hours, and days", () => {
   assert.equal(formatHeatMapQuoteAge(now - 4 * 60 * 60, now), "4h ago");
   assert.equal(formatHeatMapQuoteAge(now - 2 * 24 * 60 * 60, now), "2d ago");
   assert.equal(formatHeatMapQuoteAge(null, now), "Time unavailable");
+});
+
+test("heat-map next-open time is clearly labeled Eastern and includes the next session date", () => {
+  const nextOpen = Date.parse("2024-12-02T14:30:00Z") / 1000;
+  assert.equal(
+    formatHeatMapNextOpen(nextOpen, "after_hours", "etf", 1_700_000_000),
+    "Next open: Dec 2\n9:30 AM ET",
+  );
+  assert.equal(
+    formatHeatMapNextOpen(nextOpen, "closed", "stock", 1_700_000_000),
+    "Next open: Dec 2\n9:30 AM ET",
+  );
+});
+
+test("heat-map next-open time is omitted when not applicable or unavailable", () => {
+  const nextOpen = Date.parse("2024-12-02T14:30:00Z") / 1000;
+  assert.equal(formatHeatMapNextOpen(nextOpen, "regular", "stock", 1_700_000_000), null);
+  assert.equal(formatHeatMapNextOpen(nextOpen, "closed", "cryptocurrency", 1_700_000_000), null);
+  assert.equal(formatHeatMapNextOpen(null, "closed", "stock", 1_700_000_000), null);
+  assert.equal(formatHeatMapNextOpen(Number.NaN, "closed", "stock", 1_700_000_000), null);
+  assert.equal(formatHeatMapNextOpen(nextOpen, "closed", "stock", nextOpen), null);
 });
 
 test("heat-map excludes missing and stale quotes, with a shorter crypto freshness window", () => {

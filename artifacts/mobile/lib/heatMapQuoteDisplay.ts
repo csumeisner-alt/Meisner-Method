@@ -35,6 +35,38 @@ export function getHeatMapSessionLabel(session: HeatMapQuote["marketSession"]): 
   }
 }
 
+export function formatHeatMapNextOpen(
+  timestamp: number | null,
+  session: HeatMapQuote["marketSession"],
+  assetType: HeatMapQuote["assetType"],
+  nowSeconds = Date.now() / 1000,
+): string | null {
+  if (
+    (assetType !== "stock" && assetType !== "etf") ||
+    (session !== "closed" && session !== "after_hours") ||
+    timestamp === null ||
+    !Number.isFinite(timestamp) ||
+    timestamp <= nowSeconds
+  ) {
+    return null;
+  }
+
+  try {
+    const easternDateTime = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date(timestamp * 1000));
+    const [date, time] = easternDateTime.split(", ");
+    if (!date || !time) return null;
+    return `Next open: ${date}\n${time} ET`;
+  } catch {
+    return null;
+  }
+}
+
 export function formatHeatMapQuoteAge(timestamp: number | null, nowSeconds = Date.now() / 1000): string {
   if (timestamp === null || !Number.isFinite(timestamp) || timestamp <= 0 || timestamp > nowSeconds + 60) {
     return "Time unavailable";

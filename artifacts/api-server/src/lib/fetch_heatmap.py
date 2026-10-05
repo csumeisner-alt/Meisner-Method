@@ -291,6 +291,28 @@ def us_equity_calendar():
     return exchange_calendars.get_calendar("XNYS")
 
 
+def next_regular_open_timestamp(now=None):
+    as_of = as_utc_datetime(now)
+    try:
+        eastern = ZoneInfo("America/New_York")
+        current_date = as_of.astimezone(eastern).date()
+        calendar = us_equity_calendar()
+        sessions = calendar.sessions_in_range(
+            current_date.isoformat(),
+            (current_date + timedelta(days=14)).isoformat(),
+        )
+        for session in sessions:
+            session_open = calendar.session_open(session).to_pydatetime()
+            if session_open.tzinfo is None:
+                session_open = session_open.replace(tzinfo=timezone.utc)
+            session_open = session_open.astimezone(timezone.utc)
+            if session_open > as_of:
+                return int(session_open.timestamp())
+    except Exception:
+        return None
+    return None
+
+
 @lru_cache(maxsize=1)
 def cme_futures_calendar():
     import exchange_calendars
@@ -615,6 +637,12 @@ def quote_from_frame(frame, symbol, category, require_prior_close=True, previous
     change_percent = (latest_price - prior_price) / prior_price * 100.0
     if not math.isfinite(change_percent):
         return None
+    session = market_session(latest_timestamp, asset_type, now=as_of, symbol=symbol)
+    next_open = (
+        next_regular_open_timestamp(as_of)
+        if asset_type in ("stock", "etf") and session in ("closed", "after_hours")
+        else None
+    )
     return {
         "symbol": symbol,
         "name": symbol,
@@ -625,7 +653,8 @@ def quote_from_frame(frame, symbol, category, require_prior_close=True, previous
         "returnUnavailableReason": None,
         "historyStartDate": None,
         "priceTimestamp": latest_timestamp,
-        "marketSession": market_session(latest_timestamp, asset_type, now=as_of, symbol=symbol),
+        "marketSession": session,
+        "nextRegularOpenTimestamp": next_open,
         "assetType": asset_type,
         "sector": normalize_sector(STOCK_SECTORS.get(symbol), symbol) if asset_type == "stock" else None,
         "exchange": None,
@@ -727,6 +756,11 @@ def quote_from_screener(item, now=None):
         return None
     if market_state in ("PRE", "PREPRE", "REGULAR", "POST", "POSTPOST"):
         session = market_session(stamp, asset_type, now=as_of, symbol=symbol)
+    next_open = (
+        next_regular_open_timestamp(as_of)
+        if asset_type in ("stock", "etf") and session in ("closed", "after_hours")
+        else None
+    )
     metadata = {
         "sector": normalize_sector(item.get("sectorDisp") or item.get("sector"), symbol) if asset_type == "stock" else None,
         "exchange": normalize_exchange(item.get("fullExchangeName") or item.get("exchange")),
@@ -749,6 +783,7 @@ def quote_from_screener(item, now=None):
         "historyStartDate": None,
         "priceTimestamp": int(stamp),
         "marketSession": session,
+        "nextRegularOpenTimestamp": next_open,
         "assetType": asset_type,
         "sector": metadata["sector"],
         "exchange": metadata["exchange"],

@@ -47,6 +47,7 @@ export interface HeatMapQuote {
   historyStartDate: string | null;
   priceTimestamp: number | null;
   marketSession: "pre_market" | "regular" | "after_hours" | "closed" | "unknown";
+  nextRegularOpenTimestamp: number | null;
   assetType: "stock" | "etf" | "commodity" | "future" | "cryptocurrency";
   sector: string | null;
   exchange: string | null;
@@ -158,6 +159,7 @@ export function isHeatMapQuote(value: unknown): value is HeatMapQuote {
       (typeof quote["priceTimestamp"] === "number" && Number.isFinite(quote["priceTimestamp"]))) &&
     typeof quote["marketSession"] === "string" &&
     MARKET_SESSIONS.has(quote["marketSession"]) &&
+    isNullableFiniteNumber(quote["nextRegularOpenTimestamp"]) &&
     typeof quote["assetType"] === "string" &&
     ASSET_TYPES.has(quote["assetType"]) &&
     (quote["sector"] === null || typeof quote["sector"] === "string") &&

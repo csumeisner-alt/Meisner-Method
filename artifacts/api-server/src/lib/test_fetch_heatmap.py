@@ -84,6 +84,75 @@ class HeatMapQuoteTests(unittest.TestCase):
                     category=category,
                 )
 
+    def test_next_regular_open_includes_early_close_and_holiday_schedules(self):
+        friday_after_early_close = eastern(2024, 11, 29, 13, 5)
+        holiday = eastern(2024, 7, 4, 10, 5)
+
+        monday_open = fetch_heatmap.next_regular_open_timestamp(friday_after_early_close)
+        friday_open = fetch_heatmap.next_regular_open_timestamp(holiday)
+
+        self.assertEqual(
+            datetime.fromtimestamp(monday_open, timezone.utc),
+            eastern(2024, 12, 2, 9, 30).astimezone(timezone.utc),
+        )
+        self.assertEqual(
+            datetime.fromtimestamp(friday_open, timezone.utc),
+            eastern(2024, 7, 5, 9, 30).astimezone(timezone.utc),
+        )
+
+    def test_quotes_include_next_open_only_for_closed_or_after_hours_equities(self):
+        frame_quote = fetch_heatmap.quote_from_frame(
+            close_frame([
+                (eastern(2024, 11, 27, 16, 0), 98),
+                (eastern(2024, 11, 29, 12, 55), 99),
+                (eastern(2024, 11, 29, 13, 0), 100),
+            ]),
+            "SPY",
+            "etfs",
+            require_prior_close=False,
+            now=eastern(2024, 11, 29, 13, 5),
+        )
+        after_hours = fetch_heatmap.quote_from_screener(
+            {
+                "symbol": "SPY",
+                "quoteType": "ETF",
+                "marketState": "POST",
+                "postMarketPrice": 100,
+                "postMarketChangePercent": 1,
+                "postMarketTime": eastern(2024, 11, 29, 13, 5).timestamp(),
+                "regularMarketPreviousClose": 99,
+            },
+            now=eastern(2024, 11, 29, 13, 10),
+        )
+        regular = fetch_heatmap.quote_from_screener(
+            {
+                "symbol": "AAPL",
+                "quoteType": "EQUITY",
+                "marketState": "REGULAR",
+                "regularMarketPrice": 100,
+                "regularMarketChangePercent": 1,
+                "regularMarketTime": eastern(2024, 11, 29, 12, 0).timestamp(),
+                "regularMarketPreviousClose": 99,
+            },
+            now=eastern(2024, 11, 29, 12, 5),
+        )
+
+        self.assertEqual(frame_quote["marketSession"], "after_hours")
+        self.assertEqual(
+            datetime.fromtimestamp(frame_quote["nextRegularOpenTimestamp"], timezone.utc),
+            eastern(2024, 12, 2, 9, 30).astimezone(timezone.utc),
+        )
+        self.assertEqual(after_hours["marketSession"], "after_hours")
+        self.assertEqual(
+            datetime.fromtimestamp(after_hours["nextRegularOpenTimestamp"], timezone.utc),
+            eastern(2024, 12, 2, 9, 30).astimezone(timezone.utc),
+        )
+        self.assertIsNone(regular["nextRegularOpenTimestamp"])
+
+    def test_missing_equity_schedule_omits_next_open_time(self):
+        with patch.object(fetch_heatmap, "us_equity_calendar", side_effect=RuntimeError("calendar unavailable")):
+            self.assertIsNone(fetch_heatmap.next_regular_open_timestamp(eastern(2024, 11, 29, 13, 10)))
+
     def test_equity_calendar_failure_never_marks_quotes_regular(self):
         latest = eastern(2024, 11, 29, 13, 5)
         now = eastern(2024, 11, 29, 13, 10)
