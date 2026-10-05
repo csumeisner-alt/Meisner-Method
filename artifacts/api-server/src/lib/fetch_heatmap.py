@@ -56,6 +56,34 @@ FUTURE_SYMBOLS = [
     "ES=F", "NQ=F", "YM=F", "RTY=F", "ZN=F", "ZB=F", "ZF=F",
     "6E=F", "6J=F", "6B=F", "6C=F", "DX=F",
 ]
+CME_FUTURES_PRODUCT_GROUPS = {
+    "equity_index": frozenset(("ES=F", "NQ=F", "YM=F", "RTY=F")),
+    "interest_rates": frozenset(("ZN=F", "ZB=F", "ZF=F")),
+    "fx": frozenset(("6E=F", "6J=F", "6B=F", "6C=F")),
+}
+# DX=F is ICE's U.S. Dollar Index future, not a CME FX future.
+OTHER_FUTURES_PRODUCT_GROUPS = {
+    "ice_dollar_index": frozenset(("DX=F",)),
+}
+FUTURES_PRODUCT_GROUP_BY_SYMBOL = {
+    symbol: group
+    for group, group_symbols in {
+        **CME_FUTURES_PRODUCT_GROUPS,
+        **OTHER_FUTURES_PRODUCT_GROUPS,
+    }.items()
+    for symbol in group_symbols
+}
+# CME Group's published 2026 Thanksgiving schedule has distinct Friday closes
+# for FX versus Equities and Interest Rates. Times are Central Time:
+# https://www.cmegroup.com/tools-information/holiday-calendar.html
+# Keep this exact-date override narrow; CME notes that holiday schedules can change.
+CME_FUTURES_HOLIDAY_CLOSES_CT = {
+    date(2026, 11, 27): {
+        "equity_index": 12 * 60 + 15,
+        "interest_rates": 12 * 60 + 15,
+        "fx": 13 * 60 + 45,
+    },
+}
 CRYPTO_SYMBOLS = [
     "BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "BNB-USD", "DOGE-USD",
     "ADA-USD", "TRX-USD", "AVAX-USD", "LINK-USD", "LTC-USD", "BCH-USD",
@@ -412,6 +440,21 @@ def cme_futures_calendar():
     return exchange_calendars.get_calendar("CMES")
 
 
+def cme_futures_group_holiday_session(symbol, current):
+    group = FUTURES_PRODUCT_GROUP_BY_SYMBOL.get(symbol)
+    if group not in CME_FUTURES_PRODUCT_GROUPS:
+        return None
+    central = current.astimezone(ZoneInfo("America/Chicago"))
+    group_closes = CME_FUTURES_HOLIDAY_CLOSES_CT.get(central.date())
+    if group_closes is None:
+        return None
+    close_minute = group_closes.get(group)
+    if close_minute is None:
+        return None
+    current_minute = central.hour * 60 + central.minute
+    return "regular" if current_minute < close_minute else "closed"
+
+
 def observed_juneteenth(year):
     holiday = date(year, 6, 19)
     if holiday.weekday() == 5:
@@ -485,6 +528,9 @@ def market_session(timestamp, asset_type, now=None, symbol=None, exchange=None):
             return "closed"
         if current.date() == observed_juneteenth(current.year) and minute >= 13 * 60:
             return "closed"
+        group_session = cme_futures_group_holiday_session(symbol, current)
+        if group_session is not None:
+            return group_session
         try:
             is_open = cme_futures_calendar().is_open_on_minute(current)
         except Exception:

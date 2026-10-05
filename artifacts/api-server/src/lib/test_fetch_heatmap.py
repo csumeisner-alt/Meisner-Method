@@ -388,6 +388,55 @@ class HeatMapQuoteTests(unittest.TestCase):
                     category="futures",
                 )
 
+    def test_futures_symbols_map_to_product_groups_and_venue(self):
+        expected_cme_groups = {
+            "equity_index": {"ES=F", "NQ=F", "YM=F", "RTY=F"},
+            "interest_rates": {"ZN=F", "ZB=F", "ZF=F"},
+            "fx": {"6E=F", "6J=F", "6B=F", "6C=F"},
+        }
+        self.assertEqual(
+            {
+                group: set(symbols)
+                for group, symbols in fetch_heatmap.CME_FUTURES_PRODUCT_GROUPS.items()
+            },
+            expected_cme_groups,
+        )
+        self.assertEqual(fetch_heatmap.OTHER_FUTURES_PRODUCT_GROUPS["ice_dollar_index"], {"DX=F"})
+        self.assertEqual(
+            set(fetch_heatmap.FUTURES_PRODUCT_GROUP_BY_SYMBOL),
+            set(fetch_heatmap.FUTURE_SYMBOLS),
+        )
+
+    def test_2026_thanksgiving_futures_follow_product_group_close_boundaries_offline(self):
+        cases = [
+            # CME lists Equity Index and Interest Rates through 12:15 p.m. CT.
+            ("ES=F", eastern(2026, 11, 27, 13, 14), "regular"),
+            ("ES=F", eastern(2026, 11, 27, 13, 15), "closed"),
+            ("ZN=F", eastern(2026, 11, 27, 13, 14), "regular"),
+            ("ZN=F", eastern(2026, 11, 27, 13, 15), "closed"),
+            # At 1:30 p.m. CT, only the FX group remains open.
+            ("ES=F", eastern(2026, 11, 27, 14, 30), "closed"),
+            ("ZN=F", eastern(2026, 11, 27, 14, 30), "closed"),
+            ("6E=F", eastern(2026, 11, 27, 14, 30), "regular"),
+            # FX remains open until 1:45 p.m. CT, 90 minutes later.
+            ("6E=F", eastern(2026, 11, 27, 14, 44), "regular"),
+            ("6E=F", eastern(2026, 11, 27, 14, 45), "closed"),
+        ]
+        with patch.object(
+            fetch_heatmap,
+            "cme_futures_calendar",
+            side_effect=RuntimeError("holiday override must not need a calendar"),
+        ):
+            for symbol, now, expected_session in cases:
+                with self.subTest(symbol=symbol, now=now):
+                    self.assert_quote_session(
+                        now,
+                        now,
+                        expected_session,
+                        symbol=symbol,
+                        category="futures",
+                    )
+
     def test_futures_calendar_failure_never_marks_quotes_regular(self):
         latest = eastern(2024, 6, 4, 10, 0)
         now = eastern(2024, 6, 4, 10, 5)
