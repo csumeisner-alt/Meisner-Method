@@ -21,6 +21,8 @@ test('market insight turns green when at least 55 percent of fresh stocks are po
     tone: 'HOT',
     greenPercent: 55,
     redPercent: 0,
+    greenCount: 55,
+    redCount: 0,
     quoted: 100,
   });
 });
@@ -35,6 +37,8 @@ test('market insight turns orange-red when at least 55 percent of fresh stocks a
     tone: 'COLD',
     greenPercent: 0,
     redPercent: 55,
+    greenCount: 0,
+    redCount: 55,
     quoted: 100,
   });
 });
@@ -52,7 +56,25 @@ test('market insight excludes stale, unavailable, and neutral-band quotes from d
     tone: 'NEUTRAL',
     greenPercent: 54,
     redPercent: 46,
+    greenCount: 54,
+    redCount: 46,
     quoted: 100,
+  });
+});
+
+test('market insight shows the count and rounded percentage for a partial quote sample', () => {
+  const quotes = [
+    ...Array.from({ length: 56 }, () => quote(1)),
+    ...Array.from({ length: 38 }, () => quote(0)),
+  ];
+
+  assert.deepEqual(getMarketBreadthInsight(quotes, 1_000), {
+    tone: 'HOT',
+    greenPercent: 60,
+    redPercent: 0,
+    greenCount: 56,
+    redCount: 0,
+    quoted: 94,
   });
 });
 
@@ -61,6 +83,8 @@ test('market insight has no percentage when no fresh quote can be counted', () =
     tone: 'NEUTRAL',
     greenPercent: null,
     redPercent: null,
+    greenCount: 0,
+    redCount: 0,
     quoted: 0,
   });
 });

@@ -180,17 +180,17 @@ export function MarketHeatMapInsightButton({
     : loading ? 'READING MARKET' : error ? 'MARKET SIGNAL PAUSED' : 'MARKET UNAVAILABLE';
   const detail = hasBreadth
     ? isHot
-      ? `${breadth.greenPercent}% OF STOCKS GREEN`
+      ? `${breadth.greenPercent}% GREEN · ${breadth.greenCount}/${breadth.quoted} QUOTED`
       : isCold
-        ? `${breadth.redPercent}% OF STOCKS RED`
-        : `${breadth.greenPercent}% GREEN  ·  ${breadth.redPercent}% RED`
+        ? `${breadth.redPercent}% RED · ${breadth.redCount}/${breadth.quoted} QUOTED`
+        : `${breadth.greenPercent}% GREEN (${breadth.greenCount}/${breadth.quoted}) · ${breadth.redPercent}% RED (${breadth.redCount}/${breadth.quoted})`
     : loading
       ? 'Checking live stock breadth…'
       : error
         ? 'Stock breadth is temporarily unavailable'
         : 'Waiting for fresh stock quotes';
   const accessibilityLabel = hasBreadth
-    ? `Open market heat map. ${headline.toLowerCase()}, ${breadth.greenPercent} percent green and ${breadth.redPercent} percent red across ${breadth.quoted} stocks.`
+    ? `Open market heat map. ${headline.toLowerCase()}, ${breadth.greenPercent} percent green (${breadth.greenCount} of ${breadth.quoted} quoted stocks) and ${breadth.redPercent} percent red (${breadth.redCount} of ${breadth.quoted} quoted stocks).`
     : `Open market heat map. ${headline.toLowerCase()}. ${detail}.`;
 
   useEffect(() => {

@@ -779,5 +779,38 @@ class HeatMapQuoteTests(unittest.TestCase):
         self.assertAlmostEqual(crypto / stocks, (365 / 252) ** 0.5)
 
 
+class HeatMapScreenerTests(unittest.TestCase):
+    def test_stock_breadth_pages_up_to_250_most_active_results(self):
+        def page(start, count, total):
+            return {
+                "quotes": [{"symbol": f"SYM{index}"} for index in range(start, start + count)],
+                "total": total,
+            }
+
+        with patch.object(
+            fetch_heatmap.yf,
+            "screen",
+            side_effect=[page(0, 25, 54), page(25, 25, 54), page(50, 4, 54)],
+        ) as screen:
+            rows = fetch_heatmap.most_active_screen_rows(250)
+
+        self.assertEqual(len(rows), 54)
+        self.assertEqual(
+            [call.kwargs["offset"] for call in screen.call_args_list],
+            [0, 25, 50],
+        )
+        self.assertTrue(all(call.kwargs["count"] == 25 for call in screen.call_args_list))
+
+    def test_etf_screener_request_remains_unchanged(self):
+        with patch.object(
+            fetch_heatmap.yf,
+            "screen",
+            return_value={"quotes": []},
+        ) as screen:
+            self.assertEqual(fetch_heatmap.screener_quotes("etfs"), [])
+
+        screen.assert_called_once_with("most_actives", count=100)
+
+
 if __name__ == "__main__":
     unittest.main()

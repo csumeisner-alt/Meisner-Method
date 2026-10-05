@@ -181,6 +181,8 @@ MIN_VOLATILITY_RETURNS = 60
 HISTORY_BATCH_SIZE = 40
 SECTOR_SCREEN_PAGE_SIZE = 50
 MAX_SECTOR_SCREEN_CANDIDATES = 250
+MOST_ACTIVE_SCREEN_PAGE_SIZE = 25
+MAX_STOCK_BREADTH_SCREEN_RESULTS = 250
 MIN_SECTOR_QUOTES = 15
 US_EQUITY_EXCHANGES = ("NMS", "NGM", "NCM", "NYQ", "PCX", "ASE", "BTS")
 US_EQUITY_EXCHANGE_LABELS = {
@@ -978,6 +980,26 @@ def sector_screener_quotes(sector):
     return list(result.values())
 
 
+def most_active_screen_rows(max_results):
+    rows = []
+    offset = 0
+    while offset < max_results:
+        page_size = min(MOST_ACTIVE_SCREEN_PAGE_SIZE, max_results - offset)
+        try:
+            response = yf.screen("most_actives", count=page_size, offset=offset)
+        except Exception:
+            break
+        page = response.get("quotes", []) if isinstance(response, dict) else []
+        if not page:
+            break
+        rows.extend(page[:max_results - len(rows)])
+        offset += len(page)
+        total = finite_number(response.get("total"))
+        if (total is not None and offset >= total) or len(page) < page_size:
+            break
+    return rows
+
+
 def screener_quotes(category, sector=None):
     if category == "stocks" and sector is not None:
         targeted_quotes = sector_screener_quotes(sector)
@@ -992,7 +1014,11 @@ def screener_quotes(category, sector=None):
         return list(merged.values())
 
     try:
-        quotes = yf.screen("most_actives", count=100).get("quotes", [])
+        quotes = (
+            most_active_screen_rows(MAX_STOCK_BREADTH_SCREEN_RESULTS)
+            if category == "stocks"
+            else yf.screen("most_actives", count=100).get("quotes", [])
+        )
     except Exception:
         return []
     result = []

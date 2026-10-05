@@ -12,6 +12,8 @@ test('Analyze market heat-map button is driven by fresh breadth data and remains
   assert.match(buttonSource, /testID="open-heat-map"/);
   assert.match(buttonSource, /accessibilityRole="button"/);
   assert.match(buttonSource, /onPress=\{onPress\}/);
+  assert.match(buttonSource, /greenCount\}\/\$\{breadth\.quoted\}/);
+  assert.match(buttonSource, /redCount\}\/\$\{breadth\.quoted\}/);
 });
 
 test('heat-map badge uses gentle campfire kindling and respects reduced motion', () => {

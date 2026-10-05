@@ -11,6 +11,8 @@ export interface MarketBreadthInsight {
   tone: HeatMapTone;
   greenPercent: number | null;
   redPercent: number | null;
+  greenCount: number;
+  redCount: number;
   quoted: number;
 }
 
@@ -21,13 +23,15 @@ export function getMarketBreadthInsight(
   const freshQuotes = quotes.filter((quote) => isDisplayableHeatMapQuote(quote, nowSeconds));
   const summary = summarizeHeatMap(freshQuotes);
   const percent = (count: number) => summary.quoted > 0
-    ? Math.floor((count / summary.quoted) * 100)
+    ? Math.round((count / summary.quoted) * 100)
     : null;
 
   return {
     tone: summary.tone,
     greenPercent: percent(summary.positive),
     redPercent: percent(summary.negative),
+    greenCount: summary.positive,
+    redCount: summary.negative,
     quoted: summary.quoted,
   };
 }
