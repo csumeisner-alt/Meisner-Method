@@ -35,6 +35,31 @@ export function getHeatMapSessionLabel(session: HeatMapQuote["marketSession"]): 
   }
 }
 
+export function getNextHeatMapRegularOpenTimestamp(
+  quotes: readonly Pick<HeatMapQuote, "assetType" | "marketSession" | "nextRegularOpenTimestamp">[],
+  nowSeconds = Date.now() / 1000,
+): number | null {
+  let nextOpen: number | null = null;
+  for (const quote of quotes) {
+    if (
+      (quote.assetType !== "stock" && quote.assetType !== "etf") ||
+      (quote.marketSession !== "closed" && quote.marketSession !== "after_hours")
+    ) {
+      continue;
+    }
+    const timestamp = quote.nextRegularOpenTimestamp;
+    if (
+      timestamp !== null &&
+      Number.isFinite(timestamp) &&
+      timestamp > nowSeconds &&
+      (nextOpen === null || timestamp < nextOpen)
+    ) {
+      nextOpen = timestamp;
+    }
+  }
+  return nextOpen;
+}
+
 export function formatHeatMapNextOpen(
   timestamp: number | null,
   session: HeatMapQuote["marketSession"],

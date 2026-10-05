@@ -4,6 +4,7 @@ import {
   formatHeatMapNextOpen,
   formatHeatMapQuoteAge,
   getHeatMapSessionLabel,
+  getNextHeatMapRegularOpenTimestamp,
   isDisplayableHeatMapQuote,
 } from "../heatMapQuoteDisplay.ts";
 
@@ -12,6 +13,19 @@ test("heat-map labels each quote session distinctly", () => {
     (["regular", "pre_market", "after_hours", "closed", "unknown"] as const).map(getHeatMapSessionLabel),
     ["Regular", "Pre-market", "After-hours", "Last close", "Unknown"],
   );
+});
+
+test("heat-map schedules the earliest upcoming regular open for closed and after-hours stock quotes", () => {
+  const now = 1_800_000_000;
+  assert.equal(getNextHeatMapRegularOpenTimestamp([
+    { assetType: "stock", marketSession: "closed", nextRegularOpenTimestamp: now + 120 },
+    { assetType: "etf", marketSession: "after_hours", nextRegularOpenTimestamp: now + 60 },
+    { assetType: "stock", marketSession: "regular", nextRegularOpenTimestamp: now + 1 },
+    { assetType: "cryptocurrency", marketSession: "closed", nextRegularOpenTimestamp: now + 2 },
+    { assetType: "stock", marketSession: "closed", nextRegularOpenTimestamp: now - 1 },
+    { assetType: "stock", marketSession: "closed", nextRegularOpenTimestamp: null },
+  ], now), now + 60);
+  assert.equal(getNextHeatMapRegularOpenTimestamp([], now), null);
 });
 
 test("heat-map quote ages stay compact across minutes, hours, and days", () => {

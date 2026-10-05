@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Animated, Keyboard, Modal, Platform, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,7 +26,8 @@ import {
   type HeatMapFilters, type HeatMapCapBucket, type HeatMapRiskBand, type HeatMapRiskFilter,
 } from '@/lib/heatMapMetrics';
 import {
-  formatHeatMapNextOpen, formatHeatMapQuoteAge, getHeatMapSessionLabel, isDisplayableHeatMapQuote,
+  formatHeatMapNextOpen, formatHeatMapQuoteAge, getHeatMapSessionLabel,
+  getNextHeatMapRegularOpenTimestamp, isDisplayableHeatMapQuote,
 } from '@/lib/heatMapQuoteDisplay';
 import { MAX_CUSTOM_HEAT_MAP_SYMBOLS, normalizeCustomHeatMapSymbols } from '@/lib/heatMapSymbols';
 import {
@@ -177,6 +178,7 @@ export default function HeatMapScreen() {
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
   const directionPulse = useRef(new Animated.Value(0)).current;
   const removeInProgress = useRef(false);
+  const lastScheduledOpenRefresh = useRef<string | null>(null);
   const validateSymbol = useValidateHeatMapSymbol();
   const symbolSearchQueryKey = getSearchStockSymbolsQueryKey({ q: debouncedSymbolSearch });
   const stockSearch = useSearchStockSymbols(
@@ -261,6 +263,29 @@ export default function HeatMapScreen() {
     requestedSector,
   );
   const sourceQuotes = responseMatches ? response!.quotes : [];
+  const nextRegularOpenTimestamp = responseMatches
+    ? getNextHeatMapRegularOpenTimestamp(sourceQuotes, nowSeconds)
+    : null;
+  const scheduledOpenRefreshKey = nextRegularOpenTimestamp === null
+    ? null
+    : `${JSON.stringify(params)}:${nextRegularOpenTimestamp}`;
+  useFocusEffect(useCallback(() => {
+    if (
+      nextRegularOpenTimestamp === null ||
+      scheduledOpenRefreshKey === null ||
+      lastScheduledOpenRefresh.current === scheduledOpenRefreshKey
+    ) {
+      return;
+    }
+
+    const refreshAt = nextRegularOpenTimestamp * 1000 + 1_500;
+    const timeout = setTimeout(() => {
+      if (lastScheduledOpenRefresh.current === scheduledOpenRefreshKey) return;
+      lastScheduledOpenRefresh.current = scheduledOpenRefreshKey;
+      void mapQuery.refetch();
+    }, Math.max(0, refreshAt - Date.now()));
+    return () => clearTimeout(timeout);
+  }, [mapQuery.refetch, nextRegularOpenTimestamp, scheduledOpenRefreshKey]));
   const staleQuotes = sourceQuotes.filter((quote) => !isDisplayableHeatMapQuote(quote, nowSeconds));
   const validAgeQuotes = sourceQuotes.filter((quote) => isDisplayableHeatMapQuote(quote, nowSeconds));
   const unavailableSymbols = [...new Set([

@@ -32,6 +32,7 @@ export interface HeatMapBrowserResponse {
 interface HeatMapBrowserState {
   data: HeatMapBrowserResponse;
   requests: Record<string, unknown>[];
+  refetches: Record<string, unknown>[];
   listeners: Set<() => void>;
   setResponse: (response: HeatMapBrowserResponse) => void;
 }
@@ -101,6 +102,7 @@ export function initializeHeatMapBrowserState(): HeatMapBrowserState {
   const state: HeatMapBrowserState = {
     data: response("stocks", "1d", makeFilterTestQuotes()),
     requests: [],
+    refetches: [],
     listeners: new Set(),
     setResponse(next) {
       state.data = next;
@@ -139,7 +141,9 @@ export function useGetMarketHeatMap(params: Record<string, unknown>) {
     data: state.data,
     isLoading: false,
     isRefetching: false,
-    refetch: async () => undefined,
+    refetch: async () => {
+      state.refetches.push(JSON.parse(requestKey) as Record<string, unknown>);
+    },
   };
 }
 

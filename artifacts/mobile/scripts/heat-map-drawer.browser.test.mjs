@@ -497,6 +497,95 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       /4 active/,
     );
 
+    // Keep a non-default period, stock sector, and client filters selected while
+    // the screen crosses the next regular open.
+    await clickTestID(browser, "heat-map-filter-open");
+    await clickTestID(browser, "heat-map-drawer-period-1w");
+    await clickTestID(browser, "heat-map-filter-apply");
+    await waitForRequest(
+      browser,
+      `(request) => request.category === "stocks" && request.period === "1w" && request.sector === "Technology"`,
+      "the selected period with the stock sector",
+    );
+
+    const simulatedNowMs = await browser.evaluate(`(() => {
+      window.__heatMapOriginalDateNow = Date.now;
+      const now = Date.now() + 3_000;
+      Date.now = () => now;
+      return now;
+    })()`);
+    const scheduledOpen = simulatedNowMs / 1000 + 0.3;
+    const refetchCountBeforeOpen = await browser.evaluate("window.__heatMapBrowserTest.refetches.length");
+    await setResponse(browser, {
+      category: "stocks",
+      period: "1w",
+      requestedSector: "Technology",
+      updatedAt: simulatedNowMs / 1000,
+      quotes: [quote("MATCH", {
+        priceTimestamp: simulatedNowMs / 1000,
+        marketSession: "closed",
+        nextRegularOpenTimestamp: scheduledOpen,
+      })],
+      unavailableSymbols: [],
+    });
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-session-MATCH"))})?.textContent === "Last close"`,
+      "The selected map should show its closed-session quote before the scheduled open.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.refetches.length === ${refetchCountBeforeOpen + 1}`,
+      "The open heat map should automatically refresh once after the scheduled regular open.",
+    );
+    assert.deepEqual(
+      await browser.evaluate("window.__heatMapBrowserTest.refetches.at(-1)"),
+      { category: "stocks", period: "1w", sector: "Technology" },
+      "The scheduled refresh should reuse the selected category, period, and sector.",
+    );
+    await delay(250);
+    assert.equal(
+      await browser.evaluate("window.__heatMapBrowserTest.refetches.length"),
+      refetchCountBeforeOpen + 1,
+      "Crossing the open should not create repeated automatic requests.",
+    );
+
+    const refreshedAt = await browser.evaluate(`(() => {
+      Date.now = window.__heatMapOriginalDateNow;
+      delete window.__heatMapOriginalDateNow;
+      return Date.now() / 1000;
+    })()`);
+    await setResponse(browser, {
+      category: "stocks",
+      period: "1w",
+      requestedSector: "Technology",
+      updatedAt: refreshedAt,
+      quotes: [quote("MATCH", {
+        priceTimestamp: refreshedAt,
+        marketSession: "regular",
+        nextRegularOpenTimestamp: null,
+      })],
+      unavailableSymbols: [],
+    });
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-session-MATCH"))})?.textContent === "Regular"`,
+      "The refreshed quote should replace the closed-session label with Regular.",
+    );
+    assert.match(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-selected-period"))}).textContent`),
+      /1W/,
+    );
+    assert.match(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-filter-open"))}).getAttribute("aria-label")`),
+      /4 active/,
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-counted-quotes"))})?.textContent`),
+      "1",
+      "The selected filters should remain applied after the refreshed response arrives.",
+    );
+
     await clickTestID(browser, "heat-map-filter-open");
     await clickTestID(browser, "heat-map-filter-reset");
     assert.match(
@@ -505,10 +594,10 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     );
     await waitForRequest(
       browser,
-      `(request) => request.category === "stocks" && request.period === "1d" && request.sector === undefined`,
+      `(request) => request.category === "stocks" && request.period === "1w" && request.sector === undefined`,
       "the cleared stock filters",
     );
-    await setResponse(browser, makeFilterResponse());
+    await setResponse(browser, { ...makeFilterResponse(), period: "1w" });
     assert.match(
       await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-filter-apply"))}).textContent`),
       /0/,
@@ -519,6 +608,15 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       `document.querySelector(${JSON.stringify(selector("heat-map-counted-quotes"))})?.textContent === "6"`,
       "Clearing selections should restore all quotes.",
     );
+    await clickTestID(browser, "heat-map-filter-open");
+    await clickTestID(browser, "heat-map-drawer-period-1d");
+    await clickTestID(browser, "heat-map-filter-apply");
+    await waitForRequest(
+      browser,
+      `(request) => request.category === "stocks" && request.period === "1d" && request.sector === undefined`,
+      "returning to the default period",
+    );
+    await setResponse(browser, makeFilterResponse());
     assert.equal(
       await browser.evaluate(
         "document.documentElement.scrollWidth <= window.innerWidth && document.body.scrollWidth <= window.innerWidth",
