@@ -168,6 +168,7 @@ export default function HeatMapScreen() {
   const [storageReady, setStorageReady] = useState(false);
   const [isEditingCustomMap, setIsEditingCustomMap] = useState(false);
   const [removingSymbol, setRemovingSymbol] = useState<string | null>(null);
+  const [lastRemovedTicker, setLastRemovedTicker] = useState<{ symbol: string; index: number } | null>(null);
   const [symbolInput, setSymbolInput] = useState('');
   const [debouncedSymbolSearch, setDebouncedSymbolSearch] = useState('');
   const [formError, setFormError] = useState('');
@@ -368,21 +369,50 @@ export default function HeatMapScreen() {
       if (!customSymbols.includes(quote.symbol)) {
         try { await persistSymbols([...customSymbols, quote.symbol]); }
         catch { setFormError(`Couldn't save ${quote.symbol} on this device. Try again.`); return; }
+        setLastRemovedTicker(null);
       }
       setSymbolInput('');
     } catch { setFormError(`We couldn't validate ${symbol}. Check the ticker and try again.`); }
   }
   async function removeSymbol(symbol: string) {
     if (removeInProgress.current) return;
+    const removedIndex = customSymbols.indexOf(symbol);
+    if (removedIndex === -1) return;
     removeInProgress.current = true;
     setRemovingSymbol(symbol);
     const next = customSymbols.filter((item) => item !== symbol);
     try {
       await persistSymbols(next);
+      setLastRemovedTicker({ symbol, index: removedIndex });
       if (next.length === 0) setIsEditingCustomMap(false);
     }
     catch { setFormError(`Couldn't remove ${symbol} from this device. Try again.`); }
     finally {
+      removeInProgress.current = false;
+      setRemovingSymbol(null);
+    }
+  }
+  async function restoreLastRemovedTicker() {
+    if (!lastRemovedTicker || removeInProgress.current) return;
+    if (customSymbols.includes(lastRemovedTicker.symbol)) {
+      setLastRemovedTicker(null);
+      return;
+    }
+    if (customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS) {
+      setFormError(`There's no room to restore ${lastRemovedTicker.symbol}. Remove another ticker first.`);
+      return;
+    }
+    removeInProgress.current = true;
+    setRemovingSymbol(lastRemovedTicker.symbol);
+    const next = [...customSymbols];
+    next.splice(Math.min(lastRemovedTicker.index, next.length), 0, lastRemovedTicker.symbol);
+    try {
+      await persistSymbols(next);
+      setLastRemovedTicker(null);
+      setIsEditingCustomMap(true);
+    } catch {
+      setFormError(`Couldn't restore ${lastRemovedTicker.symbol} on this device. Try again.`);
+    } finally {
       removeInProgress.current = false;
       setRemovingSymbol(null);
     }
@@ -509,6 +539,20 @@ export default function HeatMapScreen() {
               </TouchableOpacity>}
             </View>
             <Text style={[styles.customHint, { color: colors.mutedForeground }]}>Compare validated tickers. {customSymbols.length}/{MAX_CUSTOM_HEAT_MAP_SYMBOLS}; saved on this device.</Text>
+            {lastRemovedTicker && <View testID="heat-map-custom-undo-banner" style={[styles.undoBanner, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <Text style={[styles.undoMessage, { color: colors.foreground }]}>{lastRemovedTicker.symbol} removed</Text>
+              <TouchableOpacity
+                testID="heat-map-custom-undo"
+                accessibilityRole="button"
+                accessibilityLabel={`Undo removing ${lastRemovedTicker.symbol}`}
+                disabled={removingSymbol !== null || validateSymbol.isPending}
+                onPress={() => void restoreLastRemovedTicker()}
+                style={[styles.undoButton, { borderColor: colors.primary, opacity: removingSymbol !== null || validateSymbol.isPending ? 0.55 : 1 }]}
+              >
+                <MaterialCommunityIcons name="undo-variant" size={14} color={colors.primary} />
+                <Text style={[styles.undoButtonText, { color: colors.primary }]}>Undo</Text>
+              </TouchableOpacity>
+            </View>}
             <View style={styles.addRow}><TextInput testID="heat-map-custom-input" value={symbolInput} onFocus={() => setIsEditingCustomMap(false)} onChangeText={(value) => { setSymbolInput(value); setFormError(''); }}
               placeholder="Ticker or company name" placeholderTextColor={colors.mutedForeground} autoCapitalize="none" autoCorrect={false} maxLength={80}
               returnKeyType="done" onSubmitEditing={() => void addSymbol()} style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.input }]} />
@@ -726,6 +770,10 @@ const styles = StyleSheet.create({
   customHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   sectionTitle: { fontFamily: 'Inter_700Bold', fontSize: 15 },
   customHint: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 4 },
+  undoBanner: { minHeight: 40, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, marginTop: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  undoMessage: { flex: 1, fontFamily: 'Inter_500Medium', fontSize: 11 },
+  undoButton: { minHeight: 28, borderWidth: 1, borderRadius: 8, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  undoButtonText: { fontFamily: 'Inter_700Bold', fontSize: 10 },
   addRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
   input: { flex: 1, height: 42, borderRadius: 11, borderWidth: 1, paddingHorizontal: 12, fontFamily: 'Inter_500Medium', fontSize: 13 },
   addButton: { width: 43, height: 42, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
