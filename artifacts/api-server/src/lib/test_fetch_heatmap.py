@@ -162,6 +162,43 @@ class HeatMapQuoteTests(unittest.TestCase):
                     category="futures",
                 )
 
+    def test_futures_follow_cme_holiday_closures_and_early_closes(self):
+        cases = [
+            # CME Globex does not trade on Good Friday.
+            (eastern(2024, 3, 29, 10, 0), eastern(2024, 3, 29, 10, 0), "closed"),
+            # CME's Independence Day schedule closes at 1 p.m. Eastern.
+            (eastern(2024, 7, 4, 12, 55), eastern(2024, 7, 4, 12, 55), "regular"),
+            (eastern(2024, 7, 4, 13, 0), eastern(2024, 7, 4, 13, 0), "closed"),
+            # Juneteenth's observed CME schedule also closes at 1 p.m. Eastern.
+            (eastern(2024, 6, 19, 12, 55), eastern(2024, 6, 19, 12, 55), "regular"),
+            (eastern(2024, 6, 19, 13, 0), eastern(2024, 6, 19, 13, 0), "closed"),
+        ]
+        for latest, now, expected_session in cases:
+            with self.subTest(latest=latest, now=now):
+                self.assert_quote_session(
+                    latest,
+                    now,
+                    expected_session,
+                    symbol="ES=F",
+                    category="futures",
+                )
+
+    def test_futures_calendar_failure_never_marks_quotes_regular(self):
+        latest = eastern(2024, 6, 4, 10, 0)
+        now = eastern(2024, 6, 4, 10, 5)
+        with patch.object(
+            fetch_heatmap,
+            "cme_futures_calendar",
+            side_effect=RuntimeError("calendar unavailable"),
+        ):
+            self.assert_quote_session(
+                latest,
+                now,
+                "unknown",
+                symbol="ES=F",
+                category="futures",
+            )
+
     def test_commodity_globex_contracts_follow_daily_breaks_and_weekly_open(self):
         cases = [
             ("GC=F", eastern(2024, 6, 4, 2, 0), "regular"),

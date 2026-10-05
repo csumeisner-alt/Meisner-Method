@@ -7,7 +7,7 @@ import os
 import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 from zoneinfo import ZoneInfo
 
@@ -291,6 +291,27 @@ def us_equity_calendar():
     return exchange_calendars.get_calendar("XNYS")
 
 
+@lru_cache(maxsize=1)
+def cme_futures_calendar():
+    import exchange_calendars
+
+    # Use the bundled CMES calendar as a deterministic, offline holiday source.
+    # Its holiday and special-close rules are maintained by exchange_calendars.
+    # Juneteenth is handled separately because this calendar's built-in rules
+    # predate that holiday. CME's published Globex hours are the venue reference:
+    # https://www.cmegroup.com/tools-information/holiday-calendar.html
+    return exchange_calendars.get_calendar("CMES")
+
+
+def observed_juneteenth(year):
+    holiday = date(year, 6, 19)
+    if holiday.weekday() == 5:
+        return holiday - timedelta(days=1)
+    if holiday.weekday() == 6:
+        return holiday + timedelta(days=1)
+    return holiday
+
+
 def commodity_session_family(symbol):
     for family, symbols in COMMODITY_SESSION_FAMILIES.items():
         if symbol in symbols:
@@ -349,7 +370,13 @@ def market_session(timestamp, asset_type, now=None, symbol=None):
             or (weekday < 5 and 17 * 60 <= minute < 18 * 60)
         ):
             return "closed"
-        return "regular"
+        if current.date() == observed_juneteenth(current.year) and minute >= 13 * 60:
+            return "closed"
+        try:
+            is_open = cme_futures_calendar().is_open_on_minute(current)
+        except Exception:
+            return "unknown"
+        return "regular" if is_open else "closed"
     if asset_type == "commodity":
         if age_seconds > 30 * 60:
             return "closed"
