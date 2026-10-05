@@ -91,5 +91,9 @@ test("custom map removal uses an edit toggle and animated, tappable hexagons ins
   assert.match(screenSource, /testID=\{`heat-map-remove-tile-\$\{quote\.symbol\}`\}/);
   assert.match(screenSource, /onRemove=\{\(\) => void removeSymbol\(quote\.symbol\)\}/);
   assert.match(screenSource, /editFallbackSymbols\.map\(\(symbol\)/);
+  assert.match(screenSource, /const next = customSymbols\.filter\(\(item\) => item !== symbol\)/);
+  assert.match(screenSource, /await AsyncStorage\.setItem\(STORAGE_KEY, JSON\.stringify\(next\)\)/);
+  assert.match(screenSource, /testID=\{`heat-map-remove-unavailable-\$\{symbol\}`\}/);
+  assert.match(screenSource, /No visible hexagon for these tickers\. Tap to remove:/);
   assert.doesNotMatch(screenSource, /styles\.chipList|styles\.symbolChip|styles\.chipText/);
 });

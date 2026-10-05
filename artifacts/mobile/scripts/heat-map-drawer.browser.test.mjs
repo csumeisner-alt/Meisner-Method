@@ -111,6 +111,17 @@ function makeResponse(category, period, symbol, requestedSector = null) {
   };
 }
 
+function makeCustomResponse(period, quotes, unavailableSymbols = []) {
+  return {
+    category: "custom",
+    period,
+    requestedSector: null,
+    updatedAt: Date.now() / 1000,
+    quotes,
+    unavailableSymbols,
+  };
+}
+
 function makeFilterResponse(requestedSector = null) {
   return {
     category: "stocks",
@@ -514,6 +525,109 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       ),
       true,
       "The drawer flow must finish without horizontal overflow at 320px.",
+    );
+
+    // Exercise actual custom-map taps against device-persistent AsyncStorage.
+    const customSymbolsStorageKey = "__async_storage__:meisner.heat-map.custom-symbols.v1";
+    await browser.evaluate(
+      `localStorage.setItem(${JSON.stringify(customSymbolsStorageKey)}, ${JSON.stringify(JSON.stringify(["AAPL", "MSFT", "MISSING"]))})`,
+    );
+    await browser.send("Page.reload", { ignoreCache: true });
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-category-picker"))})`,
+      "The heat-map screen should reopen before selecting the custom map.",
+    );
+
+    await clickTestID(browser, "heat-map-category-picker");
+    await clickTestID(browser, "heat-map-category-custom");
+    await waitForRequest(
+      browser,
+      `(request) => request.category === "custom" && JSON.stringify(request.symbols) === '["AAPL","MSFT","MISSING"]'`,
+      "the saved custom tickers",
+    );
+    await setResponse(browser, makeCustomResponse("1d", [quote("AAPL"), quote("MSFT")], ["MISSING"]));
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-session-AAPL"))}) && !!document.querySelector(${JSON.stringify(selector("heat-map-session-MSFT"))})`,
+      "Both available custom tickers should appear as heat-map hexagons.",
+    );
+
+    await clickTestID(browser, "heat-map-custom-edit");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-remove-tile-AAPL"))})`,
+      "Edit mode should make each visible ticker hexagon tappable for removal.",
+    );
+    await clickTestID(browser, "heat-map-remove-tile-AAPL");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}) === ${JSON.stringify(JSON.stringify(["MSFT", "MISSING"]))}`,
+      "Removing AAPL should save only the remaining tickers to device storage.",
+    );
+    await waitForRequest(
+      browser,
+      `(request) => request.category === "custom" && JSON.stringify(request.symbols) === '["MSFT","MISSING"]'`,
+      "the custom map after removing AAPL",
+    );
+    await setResponse(browser, makeCustomResponse("1d", [quote("MSFT")], ["MISSING"]));
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!document.querySelector(${JSON.stringify(selector("heat-map-session-AAPL"))}) && !!document.querySelector(${JSON.stringify(selector("heat-map-session-MSFT"))})`,
+      "Removing one hexagon should keep the other ticker visible and remove only the selected ticker.",
+    );
+    assert.ok(
+      await browser.evaluate(`!!document.querySelector(${JSON.stringify(selector("heat-map-remove-unavailable-MISSING"))})`),
+      "An unavailable ticker with no hexagon should still have a removal fallback in edit mode.",
+    );
+    await setResponse(browser, makeCustomResponse("1d", [], ["MSFT", "MISSING"]));
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!document.querySelector(${JSON.stringify(selector("heat-map-session-MSFT"))}) && !document.querySelector(${JSON.stringify(selector("heat-map-session-MISSING"))}) && !!document.querySelector(${JSON.stringify(selector("heat-map-remove-unavailable-MSFT"))}) && !!document.querySelector(${JSON.stringify(selector("heat-map-remove-unavailable-MISSING"))})`,
+      "When every custom ticker is unavailable, edit mode should show fallback removal controls instead of hexagons.",
+    );
+    await clickTestID(browser, "heat-map-remove-unavailable-MISSING");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}) === ${JSON.stringify(JSON.stringify(["MSFT"]))}`,
+      "Removing an unavailable ticker should leave the visible ticker saved.",
+    );
+    await waitForRequest(
+      browser,
+      `(request) => request.category === "custom" && JSON.stringify(request.symbols) === '["MSFT"]'`,
+      "the custom map after removing its unavailable ticker",
+    );
+
+    await browser.send("Page.reload", { ignoreCache: true });
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-category-picker"))})`,
+      "The heat-map screen should be available after reopening.",
+    );
+    await clickTestID(browser, "heat-map-category-picker");
+    await clickTestID(browser, "heat-map-category-custom");
+    await waitForRequest(
+      browser,
+      `(request) => request.category === "custom" && JSON.stringify(request.symbols) === '["MSFT"]'`,
+      "the saved custom map after reopening",
+    );
+    await setResponse(browser, makeCustomResponse("1d", [quote("MSFT")]));
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-session-MSFT"))})`,
+      "The remaining custom ticker should render after reopening the map.",
+    );
+    assert.equal(
+      await browser.evaluate(`localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)})`),
+      JSON.stringify(["MSFT"]),
+      "The custom map should preserve the saved symbols after reopening.",
+    );
+    assert.equal(
+      await browser.evaluate(
+        `!document.querySelector(${JSON.stringify(selector("heat-map-session-AAPL"))}) && !document.querySelector(${JSON.stringify(selector("heat-map-session-MISSING"))})`,
+      ),
+      true,
+      "Removed and unavailable tickers should remain absent after reopening.",
     );
   } finally {
     browser?.close();
