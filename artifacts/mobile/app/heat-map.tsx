@@ -454,7 +454,7 @@ export default function HeatMapScreen() {
             </View>
             <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
             <View style={styles.summaryCount}><Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>COUNTED</Text>
-              <Text style={[styles.countValue, { color: colors.foreground }]}>{summary.quoted}</Text></View>
+              <Text testID="heat-map-counted-quotes" style={[styles.countValue, { color: colors.foreground }]}>{summary.quoted}</Text></View>
             <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
             <View style={styles.summaryCount}><Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>UP / DOWN</Text>
               <Text style={[styles.countValue, { color: colors.foreground }]}>{summary.positive}<Text style={{ color: colors.mutedForeground }}> / </Text>{summary.negative}</Text></View>
@@ -623,17 +623,17 @@ export default function HeatMapScreen() {
         </Modal>
 
         <Modal visible={drawerOpen} transparent animationType="fade" onRequestClose={() => setDrawerOpen(false)}>
-          <View style={styles.drawerRoot}>
-            <Pressable accessibilityRole="button" accessibilityLabel="Close filters" onPress={() => setDrawerOpen(false)} style={styles.drawerBackdrop} />
-            <View style={[styles.drawer, { backgroundColor: colors.background, paddingTop: Math.max(insets.top, 18) + 12, paddingBottom: Math.max(insets.bottom, 14) }]}>
+          <View testID="heat-map-filter-drawer-root" style={styles.drawerRoot}>
+            <Pressable testID="heat-map-filter-backdrop" accessibilityRole="button" accessibilityLabel="Close filters" onPress={() => setDrawerOpen(false)} style={styles.drawerBackdrop} />
+            <View testID="heat-map-filter-drawer" style={[styles.drawer, { backgroundColor: colors.background, paddingTop: Math.max(insets.top, 18) + 12, paddingBottom: Math.max(insets.bottom, 14) }]}>
               <View style={styles.drawerHeader}>
                 <View><Text style={[styles.drawerKicker, { color: colors.gold }]}>REFINE THE FIELD</Text><Text style={[styles.drawerTitle, { color: colors.heading }]}>Filters</Text></View>
                 <TouchableOpacity testID="heat-map-filter-close" accessibilityRole="button" accessibilityLabel="Close filters" onPress={() => setDrawerOpen(false)} style={[styles.drawerClose, { borderColor: colors.border }]}>
                   <MaterialCommunityIcons name="close" size={20} color={colors.foreground} />
                 </TouchableOpacity>
               </View>
-              <Text style={[styles.drawerFeedback, { color: colors.mutedForeground }]}>{countActiveHeatMapFilters(draftFilters)} selected · filters combine together</Text>
-              <ScrollView style={styles.drawerScroll} contentContainerStyle={styles.drawerScrollContent} showsVerticalScrollIndicator>
+              <Text testID="heat-map-filter-selection-count" style={[styles.drawerFeedback, { color: colors.mutedForeground }]}>{countActiveHeatMapFilters(draftFilters)} selected · filters combine together</Text>
+              <ScrollView testID="heat-map-filter-scroll" style={styles.drawerScroll} contentContainerStyle={styles.drawerScrollContent} showsVerticalScrollIndicator>
                 <FilterSection title="Return period">{PERIODS.map((item) => <FilterChoice key={item.id} label={item.label} selected={period === item.id}
                   onPress={() => setPeriod(item.id)} testID={`heat-map-drawer-period-${item.id}`} />)}</FilterSection>
                 {supportsSectorFilter && <FilterSection title="Sector">{choices.sectors.map((value) => <FilterChoice key={value} label={value} selected={draftFilters.sector === value} onPress={() => toggleFilter('sector', value)} testID={`heat-map-filter-sector-${value}`} />)}</FilterSection>}
@@ -641,9 +641,9 @@ export default function HeatMapScreen() {
                 {choices.exchanges.length > 0 && <FilterSection title="Exchange">{choices.exchanges.map((value) => <FilterChoice key={value} label={value} selected={draftFilters.exchange === value} onPress={() => toggleFilter('exchange', value)} testID={`heat-map-filter-exchange-${value}`} />)}</FilterSection>}
                 <FilterSection title="Historical risk">{RISK_BANDS.map((value) => <FilterChoice key={value} label={RISK_BAND_LABELS[value]} selected={draftFilters.risk === value} onPress={() => toggleFilter('risk', value)} testID={`heat-map-filter-risk-${value}`} />)}
                   {choices.hasUnknownRisk && <FilterChoice label="Unknown" selected={draftFilters.risk === 'Unknown'} onPress={() => toggleFilter('risk', 'Unknown')} testID="heat-map-filter-risk-Unknown" />}</FilterSection>
-                <Text style={[styles.riskExplanation, { color: colors.mutedForeground }]}>Risk uses trailing-year daily returns, annualized with 252 trading days (stocks and funds) or 365 days (crypto); at least 60 observations are required. These labels describe historical volatility, not personal suitability. Unknown means history is insufficient.</Text>
+                <Text testID="heat-map-filter-risk-explanation" style={[styles.riskExplanation, { color: colors.mutedForeground }]}>Risk uses trailing-year daily returns, annualized with 252 trading days (stocks and funds) or 365 days (crypto); at least 60 observations are required. These labels describe historical volatility, not personal suitability. Unknown means history is insufficient.</Text>
               </ScrollView>
-              <View style={[styles.drawerActions, { borderTopColor: colors.border }]}>
+              <View testID="heat-map-filter-actions" style={[styles.drawerActions, { borderTopColor: colors.border }]}>
                 <TouchableOpacity testID="heat-map-filter-reset" accessibilityRole="button" onPress={() => { setDraftFilters(EMPTY_FILTERS); setFilters(EMPTY_FILTERS); }} style={[styles.resetButton, { borderColor: colors.border }]}>
                   <Text style={[styles.resetText, { color: colors.foreground }]}>Clear all</Text>
                 </TouchableOpacity>
