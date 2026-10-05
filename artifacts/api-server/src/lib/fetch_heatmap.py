@@ -57,6 +57,13 @@ COMMODITY_SESSION_FAMILIES = {
 # symbol to weekday (Monday=0) -> (start minute, end minute) windows. End times
 # are exclusive; use 1440 for midnight. The windows describe that local date.
 ICE_COMMODITY_SCHEDULE_OVERRIDES = ()
+# Temporary, confirmed U.S. equity-market closures can be entered here without
+# depending on a calendar-package release. Each entry has inclusive
+# start_date/end_date values and a timezone-aware reopen_at datetime for the
+# next regular open. Use None when the reopening time is not confirmed; the app
+# then omits the estimate. Remove an entry after the authoritative calendar is
+# current again.
+US_EQUITY_TEMPORARY_CLOSURE_OVERRIDES = ()
 FUTURE_SYMBOLS = [
     "ES=F", "NQ=F", "YM=F", "RTY=F", "ZN=F", "ZB=F", "ZF=F",
     "6E=F", "6J=F", "6B=F", "6C=F", "DX=F",
@@ -410,8 +417,64 @@ def exchange_timezone(exchange):
     return getattr(exchange_calendar.tz, "key", None)
 
 
+def temporary_us_equity_closure_for_date(session_date, exchange):
+    if normalize_exchange(exchange) not in US_EQUITY_EXCHANGE_LABELS:
+        return False, None
+    matches = []
+    for override in US_EQUITY_TEMPORARY_CLOSURE_OVERRIDES:
+        start_date = override.get("start_date")
+        end_date = override.get("end_date")
+        if (
+            isinstance(start_date, date)
+            and isinstance(end_date, date)
+            and start_date <= session_date <= end_date
+        ):
+            matches.append(override)
+    if not matches:
+        return False, None
+
+    reopen_times = []
+    for override in matches:
+        reopen_at = override.get("reopen_at")
+        if not isinstance(reopen_at, datetime) or reopen_at.tzinfo is None:
+            return True, None
+        reopen_times.append(reopen_at.astimezone(timezone.utc))
+    return True, max(reopen_times)
+
+
+def active_temporary_us_equity_closure(now, exchange):
+    if normalize_exchange(exchange) not in US_EQUITY_EXCHANGE_LABELS:
+        return False, None
+    as_of = as_utc_datetime(now)
+    local_date = as_of.astimezone(ZoneInfo("America/New_York")).date()
+    active_reopen_times = []
+    has_unconfirmed_reopen = False
+    for override in US_EQUITY_TEMPORARY_CLOSURE_OVERRIDES:
+        start_date = override.get("start_date")
+        end_date = override.get("end_date")
+        if not isinstance(start_date, date) or not isinstance(end_date, date):
+            continue
+        if start_date > local_date:
+            continue
+        reopen_at = override.get("reopen_at")
+        if not isinstance(reopen_at, datetime) or reopen_at.tzinfo is None:
+            has_unconfirmed_reopen = True
+            continue
+        reopen_at = reopen_at.astimezone(timezone.utc)
+        if reopen_at > as_of:
+            active_reopen_times.append(reopen_at)
+    if has_unconfirmed_reopen:
+        return True, None
+    if active_reopen_times:
+        return True, max(active_reopen_times)
+    return False, None
+
+
 def next_regular_open_timestamp(now=None, exchange=None):
     as_of = as_utc_datetime(now)
+    closure_active, reopen_at = active_temporary_us_equity_closure(as_of, exchange)
+    if closure_active:
+        return int(reopen_at.timestamp()) if reopen_at is not None else None
     try:
         calendar = calendar_for_exchange(exchange)
         if calendar is None:
@@ -427,6 +490,17 @@ def next_regular_open_timestamp(now=None, exchange=None):
                 session_open = session_open.replace(tzinfo=timezone.utc)
             session_open = session_open.astimezone(timezone.utc)
             if session_open > as_of:
+                session_date = session_open.astimezone(calendar.tz).date()
+                is_override_closure, override_reopen_at = temporary_us_equity_closure_for_date(
+                    session_date,
+                    exchange,
+                )
+                if is_override_closure:
+                    if override_reopen_at is None:
+                        return None
+                    if override_reopen_at > as_of:
+                        return int(override_reopen_at.timestamp())
+                    continue
                 return int(session_open.timestamp())
     except Exception:
         return None
@@ -569,6 +643,9 @@ def market_session(timestamp, asset_type, now=None, symbol=None, exchange=None):
 
 
 def equity_market_session(timestamp, as_of, exchange):
+    closure_active, _ = active_temporary_us_equity_closure(as_of, exchange)
+    if closure_active:
+        return "closed"
     exchange_calendar = calendar_for_exchange(exchange)
     if exchange_calendar is None:
         return "unknown"

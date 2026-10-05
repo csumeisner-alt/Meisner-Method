@@ -226,6 +226,140 @@ class HeatMapQuoteTests(unittest.TestCase):
             eastern(2024, 7, 5, 9, 30).astimezone(timezone.utc),
         )
 
+    def test_temporary_us_closure_override_is_applied_and_removal_restores_calendar(self):
+        class WeekdayCalendar:
+            tz = EASTERN
+
+            def sessions_in_range(self, start, end):
+                first = date.fromisoformat(start)
+                last = date.fromisoformat(end)
+                sessions = []
+                current = first
+                while current <= last:
+                    if current.weekday() < 5:
+                        sessions.append(current)
+                    current += timedelta(days=1)
+                return sessions
+
+            def session_open(self, session):
+                return pd.Timestamp(
+                    datetime(
+                        session.year,
+                        session.month,
+                        session.day,
+                        9,
+                        30,
+                        tzinfo=self.tz,
+                    )
+                )
+
+        as_of = eastern(2026, 10, 8, 16, 0)
+        override = {
+            "start_date": date(2026, 10, 9),
+            "end_date": date(2026, 10, 9),
+            "reopen_at": eastern(2026, 10, 12, 9, 30),
+        }
+        with patch.object(
+            fetch_heatmap,
+            "calendar_for_exchange",
+            return_value=WeekdayCalendar(),
+        ):
+            with patch.object(
+                fetch_heatmap,
+                "US_EQUITY_TEMPORARY_CLOSURE_OVERRIDES",
+                (override,),
+            ):
+                overridden_open = fetch_heatmap.next_regular_open_timestamp(
+                    as_of,
+                    exchange="NYSE",
+                )
+                self.assertEqual(
+                    datetime.fromtimestamp(overridden_open, timezone.utc),
+                    eastern(2026, 10, 12, 9, 30).astimezone(timezone.utc),
+                )
+
+            with patch.object(
+                fetch_heatmap,
+                "US_EQUITY_TEMPORARY_CLOSURE_OVERRIDES",
+                (),
+            ):
+                normal_open = fetch_heatmap.next_regular_open_timestamp(
+                    as_of,
+                    exchange="NYSE",
+                )
+                self.assertEqual(
+                    datetime.fromtimestamp(normal_open, timezone.utc),
+                    eastern(2026, 10, 9, 9, 30).astimezone(timezone.utc),
+                )
+
+    def test_confirmed_temporary_closure_supplies_reopen_without_calendar(self):
+        now = eastern(2026, 10, 9, 10, 0)
+        reopen_at = eastern(2026, 10, 12, 9, 30)
+        override = {
+            "start_date": date(2026, 10, 9),
+            "end_date": date(2026, 10, 9),
+            "reopen_at": reopen_at,
+        }
+        frame = close_frame([
+            (eastern(2026, 10, 8, 15, 55), 98),
+            (eastern(2026, 10, 9, 9, 50), 99),
+            (eastern(2026, 10, 9, 9, 55), 100),
+        ])
+        with (
+            patch.object(
+                fetch_heatmap,
+                "US_EQUITY_TEMPORARY_CLOSURE_OVERRIDES",
+                (override,),
+            ),
+            patch.object(fetch_heatmap, "calendar_for_exchange", return_value=None),
+        ):
+            quote = fetch_heatmap.quote_from_frame(
+                frame,
+                "SPY",
+                "etfs",
+                require_prior_close=False,
+                now=now,
+                exchange="NYSE",
+            )
+
+        self.assertEqual(quote["marketSession"], "closed")
+        self.assertEqual(
+            datetime.fromtimestamp(quote["nextRegularOpenTimestamp"], timezone.utc),
+            reopen_at.astimezone(timezone.utc),
+        )
+
+    def test_unconfirmed_temporary_closure_omits_reopen_estimate(self):
+        now = eastern(2026, 10, 9, 10, 0)
+        override = {
+            "start_date": date(2026, 10, 9),
+            "end_date": date(2026, 10, 9),
+            "reopen_at": None,
+        }
+        frame = close_frame([
+            (eastern(2026, 10, 8, 15, 55), 98),
+            (eastern(2026, 10, 9, 9, 50), 99),
+            (eastern(2026, 10, 9, 9, 55), 100),
+        ])
+        with (
+            patch.object(
+                fetch_heatmap,
+                "US_EQUITY_TEMPORARY_CLOSURE_OVERRIDES",
+                (override,),
+            ),
+            patch.object(fetch_heatmap, "calendar_for_exchange", return_value=None),
+        ):
+            quote = fetch_heatmap.quote_from_frame(
+                frame,
+                "SPY",
+                "etfs",
+                require_prior_close=False,
+                now=now,
+                exchange="NYSE",
+            )
+
+        self.assertEqual(quote["marketSession"], "closed")
+        self.assertIsNone(quote["nextRegularOpenTimestamp"])
+
     def test_quotes_include_next_open_only_for_closed_or_after_hours_equities(self):
         frame_quote = fetch_heatmap.quote_from_frame(
             close_frame([
