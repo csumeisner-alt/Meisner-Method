@@ -41,3 +41,4 @@
 - [GitHub release sync](github-release-sync.md) — if the HTTPS remote credential is stale, sync through the authorized GitHub API and throttle blob writes below the proxy limit.
 - [Biden quote progress tracker](biden-quote-progress-tracker.md) — keep this as a visual layer over the existing persisted view count and shared unlock threshold.
 - [Heat-map extended-hours schedules](heatmap-extended-hours-schedules.md) — only label international extensions from official venue-specific schedules; a regular-hours calendar is not enough.
+- [ICE Dollar Index sessions](ice-dollar-index-sessions.md) — DX=F has its own ICE evening schedule and holiday baseline; do not route it through CME calendars or product groups.

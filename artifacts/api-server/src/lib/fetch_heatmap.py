@@ -555,6 +555,53 @@ def observed_juneteenth(year):
     return holiday
 
 
+def observed_ice_holiday(holiday):
+    if holiday.weekday() == 5:
+        return holiday - timedelta(days=1)
+    if holiday.weekday() == 6:
+        return holiday + timedelta(days=1)
+    return holiday
+
+
+def ice_dollar_index_has_full_day_holiday(session_date):
+    # ICE's published U.S. Dollar Index calendar marks New Year's Day and
+    # Christmas as full closures. Other holiday hours are handled separately
+    # through exchange notices and must not inherit CME closures.
+    for year in (session_date.year, session_date.year + 1):
+        holidays = (date(year, 1, 1), date(year, 12, 25))
+        if any(
+            session_date in (holiday, observed_ice_holiday(holiday))
+            for holiday in holidays
+        ):
+            return True
+    return False
+
+
+def ice_dollar_index_market_is_open(current):
+    weekday = current.weekday()
+    minute = current.hour * 60 + current.minute
+
+    if weekday == 5:
+        return False
+    if weekday == 6:
+        if minute < 18 * 60:
+            return False
+    elif weekday == 4:
+        if minute >= 17 * 60:
+            return False
+    elif 17 * 60 <= minute < 20 * 60:
+        return False
+
+    # Evening sessions belong to the following ICE trade date. Sunday opens
+    # at 6 p.m. ET; weekday sessions open at 8 p.m. ET.
+    session_date = current.date()
+    if (weekday == 6 and minute >= 18 * 60) or (
+        weekday < 4 and minute >= 20 * 60
+    ):
+        session_date += timedelta(days=1)
+    return not ice_dollar_index_has_full_day_holiday(session_date)
+
+
 def commodity_session_family(symbol):
     for family, symbols in COMMODITY_SESSION_FAMILIES.items():
         if symbol in symbols:
@@ -623,6 +670,12 @@ def market_session(timestamp, asset_type, now=None, symbol=None, exchange=None):
     if asset_type == "future":
         if age_seconds > 30 * 60:
             return "closed"
+        if symbol == "DX=F":
+            return (
+                "regular"
+                if ice_dollar_index_market_is_open(current)
+                else "closed"
+            )
         minute = current.hour * 60 + current.minute
         weekday = current.weekday()
         if (

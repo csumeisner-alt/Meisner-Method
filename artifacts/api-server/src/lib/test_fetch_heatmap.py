@@ -886,6 +886,65 @@ class HeatMapQuoteTests(unittest.TestCase):
                     category="futures",
                 )
 
+    def test_dollar_index_futures_follow_ice_regular_session_boundaries(self):
+        cases = [
+            (eastern(2024, 6, 9, 17, 59), "closed"),
+            (eastern(2024, 6, 9, 18, 0), "regular"),
+            (eastern(2024, 6, 10, 16, 59), "regular"),
+            (eastern(2024, 6, 10, 17, 0), "closed"),
+            (eastern(2024, 6, 10, 19, 59), "closed"),
+            (eastern(2024, 6, 10, 20, 0), "regular"),
+            (eastern(2024, 6, 7, 16, 59), "regular"),
+            (eastern(2024, 6, 7, 17, 0), "closed"),
+            (eastern(2024, 6, 8, 12, 0), "closed"),
+        ]
+        with patch.object(
+            fetch_heatmap,
+            "cme_futures_calendar",
+            side_effect=RuntimeError("DX=F must not use the CME calendar"),
+        ):
+            for now, expected_session in cases:
+                with self.subTest(now=now):
+                    self.assert_quote_session(
+                        now,
+                        now,
+                        expected_session,
+                        symbol="DX=F",
+                        category="futures",
+                    )
+
+    def test_dollar_index_futures_use_ice_holidays_not_cme_holidays(self):
+        cases = [
+            # ICE lists DX as open on Good Friday, unlike the CME calendar.
+            (eastern(2024, 3, 29, 10, 0), "regular"),
+            # The 2026 ICE calendar closes DX on New Year's Day, including
+            # the evening session that would otherwise open for that trade date.
+            (eastern(2025, 12, 31, 20, 0), "closed"),
+            (eastern(2026, 1, 1, 10, 0), "closed"),
+            (eastern(2026, 1, 2, 10, 0), "regular"),
+            # Christmas closure also applies to the prior evening's session,
+            # and the next Monday resumes regular trading.
+            (eastern(2026, 12, 24, 20, 0), "closed"),
+            (eastern(2026, 12, 25, 10, 0), "closed"),
+            (eastern(2026, 12, 28, 10, 0), "regular"),
+            # CME's Juneteenth 1 p.m. cutoff must not close the ICE contract.
+            (eastern(2026, 6, 19, 13, 1), "regular"),
+        ]
+        with patch.object(
+            fetch_heatmap,
+            "cme_futures_calendar",
+            side_effect=RuntimeError("DX=F must not use the CME calendar"),
+        ):
+            for now, expected_session in cases:
+                with self.subTest(now=now):
+                    self.assert_quote_session(
+                        now,
+                        now,
+                        expected_session,
+                        symbol="DX=F",
+                        category="futures",
+                    )
+
     def test_futures_follow_cme_holiday_closures_and_early_closes(self):
         cases = [
             # CME Globex does not trade on Good Friday.
@@ -924,6 +983,11 @@ class HeatMapQuoteTests(unittest.TestCase):
         self.assertEqual(
             set(fetch_heatmap.FUTURES_PRODUCT_GROUP_BY_SYMBOL),
             set(fetch_heatmap.FUTURE_SYMBOLS),
+        )
+        self.assertIsNone(
+            fetch_heatmap.cme_futures_group_holiday_session(
+                "DX=F", eastern(2026, 11, 27, 12, 0)
+            )
         )
 
     def test_2026_thanksgiving_futures_follow_product_group_close_boundaries_offline(self):
