@@ -52,6 +52,11 @@ COMMODITY_SESSION_FAMILIES = {
     "ice_day": frozenset(("KC=F", "SB=F")),
     "cme_livestock": frozenset(("LE=F", "HE=F")),
 }
+# Temporary ICE notices can be entered here without changing regular schedules.
+# Each entry has inclusive start_date/end_date values and a sessions map from
+# symbol to weekday (Monday=0) -> (start minute, end minute) windows. End times
+# are exclusive; use 1440 for midnight. The windows describe that local date.
+ICE_COMMODITY_SCHEDULE_OVERRIDES = ()
 FUTURE_SYMBOLS = [
     "ES=F", "NQ=F", "YM=F", "RTY=F", "ZN=F", "ZB=F", "ZF=F",
     "6E=F", "6J=F", "6B=F", "6C=F", "DX=F",
@@ -470,11 +475,26 @@ def commodity_session_family(symbol):
             return family
     return None
 
-
+def ice_commodity_schedule_override(symbol, current):
+    for override in ICE_COMMODITY_SCHEDULE_OVERRIDES:
+        if (
+            override["start_date"] <= current.date() <= override["end_date"]
+            and symbol in override["sessions"]
+        ):
+            return override["sessions"][symbol]
+    return None
 def commodity_market_is_open(symbol, current):
     family = commodity_session_family(symbol)
     weekday = current.weekday()
     minute = current.hour * 60 + current.minute
+
+    if family in ("ice_cotton", "ice_day"):
+        override = ice_commodity_schedule_override(symbol, current)
+        if override is not None:
+            return any(
+                start_minute <= minute < end_minute
+                for start_minute, end_minute in override.get(weekday, ())
+            )
 
     if family == "cme_nearly_24h":
         return not (

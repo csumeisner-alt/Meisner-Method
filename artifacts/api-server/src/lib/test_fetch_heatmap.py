@@ -527,6 +527,70 @@ class HeatMapQuoteTests(unittest.TestCase):
                     category="commodities",
                 )
 
+    def test_temporary_ice_schedule_override_is_limited_to_its_dates_and_products(self):
+        override = {
+            "start_date": date(2024, 6, 11),
+            "end_date": date(2024, 6, 12),
+            "sessions": {
+                "KC=F": {
+                    1: ((5 * 60 + 15, 13 * 60 + 30),),
+                    2: ((5 * 60 + 15, 13 * 60 + 30),),
+                },
+                "CT=F": {
+                    1: ((22 * 60, 24 * 60),),
+                    2: ((22 * 60, 24 * 60),),
+                },
+            },
+        }
+        cases = [
+            # Immediately before the override, coffee follows regular hours.
+            (eastern(2024, 6, 10, 4, 30), "regular"),
+            # During the override, the later opening time applies on both dates.
+            (eastern(2024, 6, 11, 4, 30), "closed"),
+            (eastern(2024, 6, 11, 5, 15), "regular"),
+            (eastern(2024, 6, 12, 4, 30), "closed"),
+            # Immediately after the override, regular hours resume.
+            (eastern(2024, 6, 13, 4, 30), "regular"),
+        ]
+        with patch.object(
+            fetch_heatmap,
+            "ICE_COMMODITY_SCHEDULE_OVERRIDES",
+            (override,),
+        ):
+            for now, expected_session in cases:
+                with self.subTest(now=now):
+                    self.assert_quote_session(
+                        now,
+                        now,
+                        expected_session,
+                        symbol="KC=F",
+                        category="commodities",
+                    )
+
+            cotton_cases = [
+                # Cotton also uses the override, with its own temporary opening.
+                (eastern(2024, 6, 11, 21, 30), "closed"),
+                (eastern(2024, 6, 11, 22, 0), "regular"),
+            ]
+            for now, expected_session in cotton_cases:
+                with self.subTest(symbol="CT=F", now=now):
+                    self.assert_quote_session(
+                        now,
+                        now,
+                        expected_session,
+                        symbol="CT=F",
+                        category="commodities",
+                    )
+
+            # ICE schedule data cannot change a CME commodity's regular hours.
+            self.assert_quote_session(
+                eastern(2024, 6, 11, 4, 30),
+                eastern(2024, 6, 11, 4, 30),
+                "regular",
+                symbol="ZW=F",
+                category="commodities",
+            )
+
     def test_every_supported_commodity_has_a_session_family(self):
         mapped = set().union(*fetch_heatmap.COMMODITY_SESSION_FAMILIES.values())
         self.assertEqual(mapped, set(fetch_heatmap.COMMODITY_SYMBOLS))
