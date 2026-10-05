@@ -1,16 +1,29 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
+import { formatHeatMapNextOpen } from "../lib/heatMapQuoteDisplay.ts";
 
 const screenSource = readFileSync(new URL("../app/heat-map.tsx", import.meta.url), "utf8");
 
 test("heat-map tiles render the session and age from each quote's own metadata", () => {
   assert.match(screenSource, /getHeatMapSessionLabel\(quote\.marketSession\)/);
   assert.match(screenSource, /formatHeatMapQuoteAge\(quote\.priceTimestamp\)/);
-  assert.match(screenSource, /formatHeatMapNextOpen\(\s*quote\.nextRegularOpenTimestamp,\s*quote\.marketSession,\s*quote\.assetType,/);
+  assert.match(screenSource, /formatHeatMapNextOpen\(\s*quote\.nextRegularOpenTimestamp,\s*quote\.marketSession,\s*quote\.assetType,\s*quote\.exchangeTimezone,/);
   assert.match(screenSource, /testID=\{`heat-map-session-\$\{quote\.symbol\}`\}/);
   assert.match(screenSource, /testID=\{`heat-map-next-open-\$\{quote\.symbol\}`\}/);
   assert.match(screenSource, /testID=\{`heat-map-quote-age-\$\{quote\.symbol\}`\}/);
+});
+
+test("next-open time uses the listed exchange timezone", () => {
+  const nextOpen = Date.parse("2024-12-27T08:00:00Z") / 1000;
+  assert.equal(
+    formatHeatMapNextOpen(nextOpen, "closed", "stock", "Europe/London", nextOpen - 1),
+    "Next open: Dec 27\n8:00 AM GMT",
+  );
+  assert.equal(
+    formatHeatMapNextOpen(nextOpen, "closed", "stock", null, nextOpen - 1),
+    null,
+  );
 });
 
 test("heat-map filters stale and undated quotes before summarizing and rendering tiles", () => {

@@ -87,6 +87,7 @@ function quote(symbol, overrides = {}) {
     assetType: "stock",
     sector: "Technology",
     exchange: "NASDAQ",
+    exchangeTimezone: "America/New_York",
     marketCapUsd: 250_000_000_000,
     annualizedVolatilityPercent: 72,
     riskBand: "Aggressive",
@@ -326,7 +327,7 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       const nextOpenText = await browser.evaluate(
         `document.querySelector(${JSON.stringify(selector(`heat-map-next-open-${currentSymbol}`))})?.textContent`,
       );
-      assert.match(nextOpenText, /Next open: Nov 29\s*9:30 AM ET/);
+      assert.match(nextOpenText, /Next open: Nov 29\s*9:30 AM EST/);
       assert.match(
         await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-selected-period"))}).textContent`),
         new RegExp(periodLabels.get(nextPeriod)),

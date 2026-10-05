@@ -115,6 +115,7 @@ function HexTile({ quote, width, height, colors, period, editing, reduceMotion, 
     quote.nextRegularOpenTimestamp,
     quote.marketSession,
     quote.assetType,
+    quote.exchangeTimezone,
   );
   const rotation = wiggle.interpolate({ inputRange: [-1, 1], outputRange: ['-2.4deg', '2.4deg'] });
   const tile = (

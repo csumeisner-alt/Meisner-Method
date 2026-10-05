@@ -51,6 +51,7 @@ export interface HeatMapQuote {
   assetType: "stock" | "etf" | "commodity" | "future" | "cryptocurrency";
   sector: string | null;
   exchange: string | null;
+  exchangeTimezone: string | null;
   marketCapUsd: number | null;
   annualizedVolatilityPercent: number | null;
   riskBand: HeatMapRiskBand | null;
@@ -164,6 +165,7 @@ export function isHeatMapQuote(value: unknown): value is HeatMapQuote {
     ASSET_TYPES.has(quote["assetType"]) &&
     (quote["sector"] === null || typeof quote["sector"] === "string") &&
     (quote["exchange"] === null || typeof quote["exchange"] === "string") &&
+    (quote["exchangeTimezone"] === null || typeof quote["exchangeTimezone"] === "string") &&
     isNullableFiniteNumber(quote["marketCapUsd"]) &&
     isNullableFiniteNumber(quote["annualizedVolatilityPercent"]) &&
     (quote["riskBand"] === null || (typeof quote["riskBand"] === "string" && RISK_BANDS.has(quote["riskBand"])))

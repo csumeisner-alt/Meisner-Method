@@ -23,25 +23,26 @@ test("heat-map quote ages stay compact across minutes, hours, and days", () => {
   assert.equal(formatHeatMapQuoteAge(null, now), "Time unavailable");
 });
 
-test("heat-map next-open time is clearly labeled Eastern and includes the next session date", () => {
+test("heat-map next-open time uses the listed exchange timezone and includes the next session date", () => {
   const nextOpen = Date.parse("2024-12-02T14:30:00Z") / 1000;
   assert.equal(
-    formatHeatMapNextOpen(nextOpen, "after_hours", "etf", 1_700_000_000),
-    "Next open: Dec 2\n9:30 AM ET",
+    formatHeatMapNextOpen(nextOpen, "after_hours", "etf", "America/New_York", 1_700_000_000),
+    "Next open: Dec 2\n9:30 AM EST",
   );
   assert.equal(
-    formatHeatMapNextOpen(nextOpen, "closed", "stock", 1_700_000_000),
-    "Next open: Dec 2\n9:30 AM ET",
+    formatHeatMapNextOpen(nextOpen, "closed", "stock", "America/New_York", 1_700_000_000),
+    "Next open: Dec 2\n9:30 AM EST",
   );
 });
 
 test("heat-map next-open time is omitted when not applicable or unavailable", () => {
   const nextOpen = Date.parse("2024-12-02T14:30:00Z") / 1000;
-  assert.equal(formatHeatMapNextOpen(nextOpen, "regular", "stock", 1_700_000_000), null);
-  assert.equal(formatHeatMapNextOpen(nextOpen, "closed", "cryptocurrency", 1_700_000_000), null);
-  assert.equal(formatHeatMapNextOpen(null, "closed", "stock", 1_700_000_000), null);
-  assert.equal(formatHeatMapNextOpen(Number.NaN, "closed", "stock", 1_700_000_000), null);
-  assert.equal(formatHeatMapNextOpen(nextOpen, "closed", "stock", nextOpen), null);
+  assert.equal(formatHeatMapNextOpen(nextOpen, "regular", "stock", "America/New_York", 1_700_000_000), null);
+  assert.equal(formatHeatMapNextOpen(nextOpen, "closed", "cryptocurrency", "America/New_York", 1_700_000_000), null);
+  assert.equal(formatHeatMapNextOpen(null, "closed", "stock", "America/New_York", 1_700_000_000), null);
+  assert.equal(formatHeatMapNextOpen(Number.NaN, "closed", "stock", "America/New_York", 1_700_000_000), null);
+  assert.equal(formatHeatMapNextOpen(nextOpen, "closed", "stock", "America/New_York", nextOpen), null);
+  assert.equal(formatHeatMapNextOpen(nextOpen, "closed", "stock", null, 1_700_000_000), null);
 });
 
 test("heat-map excludes missing and stale quotes, with a shorter crypto freshness window", () => {

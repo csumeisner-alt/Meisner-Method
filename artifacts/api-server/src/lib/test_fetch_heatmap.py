@@ -33,7 +33,15 @@ def adjusted_frame(rows):
 
 
 class HeatMapQuoteTests(unittest.TestCase):
-    def assert_quote_session(self, latest, now, expected_session, symbol="AAPL", category="stocks"):
+    def assert_quote_session(
+        self,
+        latest,
+        now,
+        expected_session,
+        symbol="AAPL",
+        category="stocks",
+        exchange="NASDAQ",
+    ):
         frame = close_frame([
             (latest - timedelta(days=1), 98),
             (latest - timedelta(minutes=5), 99),
@@ -45,6 +53,7 @@ class HeatMapQuoteTests(unittest.TestCase):
             category,
             require_prior_close=False,
             now=now,
+            exchange=exchange,
         )
         self.assertIsNotNone(quote)
         self.assertEqual(quote["marketSession"], expected_session)
@@ -84,12 +93,129 @@ class HeatMapQuoteTests(unittest.TestCase):
                     category=category,
                 )
 
+    def test_non_us_equity_sessions_use_exchange_timezone_holidays_and_early_closes(self):
+        london = ZoneInfo("Europe/London")
+        self.assert_quote_session(
+            datetime(2024, 8, 27, 10, 0, tzinfo=london),
+            datetime(2024, 8, 27, 10, 5, tzinfo=london),
+            "regular",
+            symbol="VOD",
+            exchange="London Stock Exchange",
+        )
+        # The London Stock Exchange closes at 12:30 local time on Christmas Eve.
+        self.assert_quote_session(
+            datetime(2024, 12, 24, 12, 25, tzinfo=london),
+            datetime(2024, 12, 24, 12, 30, tzinfo=london),
+            "regular",
+            symbol="VOD",
+            exchange="LSE",
+        )
+        self.assert_quote_session(
+            datetime(2024, 12, 24, 12, 30, tzinfo=london),
+            datetime(2024, 12, 24, 12, 35, tzinfo=london),
+            "closed",
+            symbol="VOD",
+            exchange="XLON",
+        )
+        self.assert_quote_session(
+            datetime(2024, 12, 25, 10, 0, tzinfo=london),
+            datetime(2024, 12, 25, 10, 5, tzinfo=london),
+            "closed",
+            symbol="VOD",
+            exchange="XLON",
+        )
+
+    def test_missing_or_unsupported_exchange_never_falls_back_to_us_hours(self):
+        latest = eastern(2024, 6, 4, 10, 0)
+        now = eastern(2024, 6, 4, 10, 5)
+        self.assert_quote_session(latest, now, "unknown", exchange=None)
+        self.assert_quote_session(latest, now, "unknown", exchange="Unmapped Exchange")
+
+    def test_non_us_screener_quote_uses_its_exchange_calendar_and_timezone(self):
+        london = ZoneInfo("Europe/London")
+        quote = fetch_heatmap.quote_from_screener(
+            {
+                "symbol": "VOD",
+                "quoteType": "EQUITY",
+                "exchange": "XLON",
+                "marketState": "REGULAR",
+                "regularMarketPrice": 100,
+                "regularMarketChangePercent": 1,
+                "regularMarketTime": datetime(2024, 8, 27, 10, 0, tzinfo=london).timestamp(),
+                "regularMarketPreviousClose": 99,
+            },
+            now=datetime(2024, 8, 27, 10, 5, tzinfo=london),
+        )
+        self.assertEqual(quote["marketSession"], "regular")
+        self.assertEqual(quote["exchange"], "London Stock Exchange")
+        self.assertEqual(quote["exchangeTimezone"], "Europe/London")
+
+        missing_exchange = fetch_heatmap.quote_from_screener(
+            {
+                "symbol": "VOD",
+                "quoteType": "EQUITY",
+                "marketState": "REGULAR",
+                "regularMarketPrice": 100,
+                "regularMarketChangePercent": 1,
+                "regularMarketTime": datetime(2024, 8, 27, 10, 0, tzinfo=london).timestamp(),
+                "regularMarketPreviousClose": 99,
+            },
+            now=datetime(2024, 8, 27, 10, 5, tzinfo=london),
+        )
+        self.assertEqual(missing_exchange["marketSession"], "unknown")
+        self.assertIsNone(missing_exchange["nextRegularOpenTimestamp"])
+        self.assertIsNone(missing_exchange["exchangeTimezone"])
+
+    def test_frame_quote_uses_exchange_metadata_after_enrichment(self):
+        london = ZoneInfo("Europe/London")
+        now = datetime(2024, 8, 27, 10, 5, tzinfo=london)
+        frame = close_frame([
+            (datetime(2024, 8, 26, 10, 0, tzinfo=london), 98),
+            (datetime(2024, 8, 27, 9, 55, tzinfo=london), 99),
+            (datetime(2024, 8, 27, 10, 0, tzinfo=london), 100),
+        ])
+        quote = fetch_heatmap.quote_from_frame(
+            frame,
+            "VOD",
+            "custom",
+            require_prior_close=False,
+            now=now,
+        )
+        self.assertEqual(quote["marketSession"], "unknown")
+
+        with (
+            patch.object(
+                fetch_heatmap,
+                "read_metadata_cache",
+                return_value={"VOD": {"exchange": "LSE"}},
+            ),
+            patch.object(fetch_heatmap, "write_metadata_cache"),
+        ):
+            fetch_heatmap.enrich_quote_metadata({"VOD": quote}, now)
+
+        self.assertEqual(quote["marketSession"], "regular")
+        self.assertEqual(quote["exchangeTimezone"], "Europe/London")
+
+    def test_next_open_uses_the_listed_exchange_after_its_early_close(self):
+        london = ZoneInfo("Europe/London")
+        next_open = fetch_heatmap.next_regular_open_timestamp(
+            datetime(2024, 12, 24, 12, 35, tzinfo=london),
+            exchange="LSE",
+        )
+        self.assertEqual(
+            datetime.fromtimestamp(next_open, timezone.utc),
+            datetime(2024, 12, 27, 8, 0, tzinfo=london).astimezone(timezone.utc),
+        )
+
     def test_next_regular_open_includes_early_close_and_holiday_schedules(self):
         friday_after_early_close = eastern(2024, 11, 29, 13, 5)
         holiday = eastern(2024, 7, 4, 10, 5)
 
-        monday_open = fetch_heatmap.next_regular_open_timestamp(friday_after_early_close)
-        friday_open = fetch_heatmap.next_regular_open_timestamp(holiday)
+        monday_open = fetch_heatmap.next_regular_open_timestamp(
+            friday_after_early_close,
+            exchange="NYSE",
+        )
+        friday_open = fetch_heatmap.next_regular_open_timestamp(holiday, exchange="NASDAQ")
 
         self.assertEqual(
             datetime.fromtimestamp(monday_open, timezone.utc),
@@ -111,11 +237,13 @@ class HeatMapQuoteTests(unittest.TestCase):
             "etfs",
             require_prior_close=False,
             now=eastern(2024, 11, 29, 13, 5),
+            exchange="NYSE",
         )
         after_hours = fetch_heatmap.quote_from_screener(
             {
                 "symbol": "SPY",
                 "quoteType": "ETF",
+                "exchange": "NYQ",
                 "marketState": "POST",
                 "postMarketPrice": 100,
                 "postMarketChangePercent": 1,
@@ -128,6 +256,7 @@ class HeatMapQuoteTests(unittest.TestCase):
             {
                 "symbol": "AAPL",
                 "quoteType": "EQUITY",
+                "exchange": "NMS",
                 "marketState": "REGULAR",
                 "regularMarketPrice": 100,
                 "regularMarketChangePercent": 1,
@@ -150,13 +279,18 @@ class HeatMapQuoteTests(unittest.TestCase):
         self.assertIsNone(regular["nextRegularOpenTimestamp"])
 
     def test_missing_equity_schedule_omits_next_open_time(self):
-        with patch.object(fetch_heatmap, "us_equity_calendar", side_effect=RuntimeError("calendar unavailable")):
-            self.assertIsNone(fetch_heatmap.next_regular_open_timestamp(eastern(2024, 11, 29, 13, 10)))
+        with patch.object(fetch_heatmap, "calendar_for_exchange", return_value=None):
+            self.assertIsNone(
+                fetch_heatmap.next_regular_open_timestamp(
+                    eastern(2024, 11, 29, 13, 10),
+                    exchange="NYSE",
+                )
+            )
 
     def test_equity_calendar_failure_never_marks_quotes_regular(self):
         latest = eastern(2024, 11, 29, 13, 5)
         now = eastern(2024, 11, 29, 13, 10)
-        with patch.object(fetch_heatmap, "us_equity_calendar", side_effect=RuntimeError("calendar unavailable")):
+        with patch.object(fetch_heatmap, "calendar_for_exchange", return_value=None):
             self.assert_quote_session(latest, now, "unknown")
 
             # Even without a schedule, a quote older than the freshness window stays inactive.
@@ -171,6 +305,7 @@ class HeatMapQuoteTests(unittest.TestCase):
             {
                 "symbol": "SPY",
                 "quoteType": "ETF",
+                "exchange": "NYSE",
                 "marketState": "REGULAR",
                 "regularMarketPrice": 100,
                 "regularMarketChangePercent": 1,
@@ -185,6 +320,7 @@ class HeatMapQuoteTests(unittest.TestCase):
             {
                 "symbol": "AAPL",
                 "quoteType": "EQUITY",
+                "exchange": "NASDAQ",
                 "marketState": "REGULAR",
                 "regularMarketPrice": 100,
                 "regularMarketChangePercent": 1,
@@ -364,6 +500,7 @@ class HeatMapQuoteTests(unittest.TestCase):
                     "stocks",
                     require_prior_close=False,
                     now=now,
+                    exchange="NYSE",
                 )
                 self.assertIsNotNone(quote)
                 self.assertEqual(quote["marketSession"], "closed")
@@ -446,6 +583,8 @@ class HeatMapQuoteTests(unittest.TestCase):
         self.assertEqual(fetch_heatmap.normalize_sector(None, "UNLISTED"), "Unknown")
         self.assertEqual(fetch_heatmap.normalize_exchange("NMS"), "NASDAQ")
         self.assertEqual(fetch_heatmap.normalize_exchange("NasdaqGS"), "NASDAQ")
+        self.assertEqual(fetch_heatmap.normalize_exchange("XLON"), "London Stock Exchange")
+        self.assertEqual(fetch_heatmap.normalize_exchange("XNAS"), "NASDAQ")
         self.assertEqual(
             fetch_heatmap.merge_metadata(
                 {"sector": "Unknown"},

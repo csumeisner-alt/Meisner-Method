@@ -69,6 +69,7 @@ test("quote and response validators reject missing, stale-shaped, or non-finite 
     assetType: "stock",
     sector: "Technology",
     exchange: "NASDAQ",
+    exchangeTimezone: "America/New_York",
     marketCapUsd: 2_000_000_000_000,
     annualizedVolatilityPercent: 22.5,
     riskBand: "Moderate Conservative",
@@ -77,6 +78,7 @@ test("quote and response validators reject missing, stale-shaped, or non-finite 
   assert.equal(isHeatMapQuote({ ...quote, price: Number.NaN }), false);
   assert.equal(isHeatMapQuote({ ...quote, nextRegularOpenTimestamp: Number.NaN }), false);
   assert.equal(isHeatMapQuote({ ...quote, nextRegularOpenTimestamp: undefined }), false);
+  assert.equal(isHeatMapQuote({ ...quote, exchangeTimezone: undefined }), false);
   assert.equal(
     isHeatMapResponse({
       category: "stocks",
@@ -118,6 +120,7 @@ test("heat-map responses reject stale or undated continuous-futures quotes", () 
     assetType: "future",
     sector: null,
     exchange: null,
+    exchangeTimezone: null,
     marketCapUsd: null,
     annualizedVolatilityPercent: null,
     riskBand: null,

@@ -109,10 +109,71 @@ EXCHANGE_ALIASES = {
     "nasdaq": "NASDAQ", "nasdaq global select": "NASDAQ", "nasdaq global market": "NASDAQ",
     "nasdaqgs": "NASDAQ", "nasdaqgm": "NASDAQ", "nasdaqcm": "NASDAQ",
     "nyq": "NYSE", "nyse": "NYSE", "new york stock exchange": "NYSE",
+    "xnys": "NYSE", "xnas": "NASDAQ",
     "pcx": "NYSE Arca", "arca": "NYSE Arca", "nyse arca": "NYSE Arca",
-    "ase": "NYSE American", "amex": "NYSE American", "nyse american": "NYSE American",
+    "ase": "NYSE American", "amex": "NYSE American", "xase": "NYSE American", "nyse american": "NYSE American",
     "bts": "Cboe", "cboe": "Cboe",
     "otc": "OTC", "pinksheet": "OTC",
+    "lse": "London Stock Exchange", "xlon": "London Stock Exchange",
+    "london stock exchange": "London Stock Exchange", "london": "London Stock Exchange",
+    "jpx": "Tokyo Stock Exchange", "xtks": "Tokyo Stock Exchange",
+    "tyo": "Tokyo Stock Exchange", "tokyo": "Tokyo Stock Exchange",
+    "tokyo stock exchange": "Tokyo Stock Exchange",
+    "hkex": "Hong Kong Stock Exchange", "hkse": "Hong Kong Stock Exchange",
+    "xhkg": "Hong Kong Stock Exchange", "hkg": "Hong Kong Stock Exchange",
+    "hong kong": "Hong Kong Stock Exchange", "hong kong stock exchange": "Hong Kong Stock Exchange",
+    "asx": "Australian Securities Exchange", "xasx": "Australian Securities Exchange",
+    "australian securities exchange": "Australian Securities Exchange",
+    "tsx": "Toronto Stock Exchange", "tor": "Toronto Stock Exchange",
+    "xtse": "Toronto Stock Exchange", "toronto": "Toronto Stock Exchange",
+    "toronto stock exchange": "Toronto Stock Exchange",
+    "xetr": "Deutsche Börse Xetra", "xetra": "Deutsche Börse Xetra",
+    "fra": "Deutsche Börse Xetra", "frankfurt": "Deutsche Börse Xetra",
+    "frankfurt stock exchange": "Deutsche Börse Xetra",
+    "deutsche börse": "Deutsche Börse Xetra", "deutsche boerse": "Deutsche Börse Xetra",
+    "xpar": "Euronext Paris", "par": "Euronext Paris", "paris": "Euronext Paris",
+    "euronext paris": "Euronext Paris",
+    "xswx": "SIX Swiss Exchange", "six": "SIX Swiss Exchange",
+    "swiss": "SIX Swiss Exchange", "six swiss exchange": "SIX Swiss Exchange",
+    "xkrx": "Korea Exchange", "krx": "Korea Exchange", "seoul": "Korea Exchange",
+    "korea exchange": "Korea Exchange",
+    "xtai": "Taiwan Stock Exchange", "tai": "Taiwan Stock Exchange",
+    "taiwan": "Taiwan Stock Exchange", "taiwan stock exchange": "Taiwan Stock Exchange",
+    "xses": "Singapore Exchange", "ses": "Singapore Exchange",
+    "singapore": "Singapore Exchange", "singapore exchange": "Singapore Exchange",
+    "xshg": "Shanghai Stock Exchange", "shh": "Shanghai Stock Exchange",
+    "shanghai": "Shanghai Stock Exchange", "shanghai stock exchange": "Shanghai Stock Exchange",
+    "xams": "Euronext Amsterdam", "ams": "Euronext Amsterdam",
+    "amsterdam": "Euronext Amsterdam", "euronext amsterdam": "Euronext Amsterdam",
+    "xbru": "Euronext Brussels", "bru": "Euronext Brussels",
+    "brussels": "Euronext Brussels", "euronext brussels": "Euronext Brussels",
+    "xmad": "Bolsa de Madrid", "mad": "Bolsa de Madrid", "mce": "Bolsa de Madrid",
+    "madrid": "Bolsa de Madrid", "bolsa de madrid": "Bolsa de Madrid",
+    "xmil": "Borsa Italiana", "mil": "Borsa Italiana",
+    "milan": "Borsa Italiana", "borsa italiana": "Borsa Italiana",
+}
+EXCHANGE_CALENDAR_IDS = {
+    "NASDAQ": "XNYS",
+    "NYSE": "XNYS",
+    "NYSE Arca": "XNYS",
+    "NYSE American": "XNYS",
+    "Cboe": "XNYS",
+    "London Stock Exchange": "XLON",
+    "Tokyo Stock Exchange": "XTKS",
+    "Hong Kong Stock Exchange": "XHKG",
+    "Australian Securities Exchange": "XASX",
+    "Toronto Stock Exchange": "XTSE",
+    "Deutsche Börse Xetra": "XETR",
+    "Euronext Paris": "XPAR",
+    "SIX Swiss Exchange": "XSWX",
+    "Korea Exchange": "XKRX",
+    "Taiwan Stock Exchange": "XTAI",
+    "Singapore Exchange": "XSES",
+    "Shanghai Stock Exchange": "XSHG",
+    "Euronext Amsterdam": "XAMS",
+    "Euronext Brussels": "XBRU",
+    "Bolsa de Madrid": "XMAD",
+    "Borsa Italiana": "XMIL",
 }
 METADATA_CACHE_PATH = os.path.join(tempfile.gettempdir(), "meisner_heat_map_metadata.json")
 METADATA_CACHE_TTL_SECONDS = 24 * 60 * 60
@@ -291,12 +352,36 @@ def us_equity_calendar():
     return exchange_calendars.get_calendar("XNYS")
 
 
-def next_regular_open_timestamp(now=None):
+@lru_cache(maxsize=32)
+def calendar_for_exchange(exchange):
+    normalized = normalize_exchange(exchange)
+    calendar_id = EXCHANGE_CALENDAR_IDS.get(normalized)
+    if calendar_id is None:
+        return None
+    try:
+        if calendar_id == "XNYS":
+            return us_equity_calendar()
+        import exchange_calendars
+
+        return exchange_calendars.get_calendar(calendar_id)
+    except Exception:
+        return None
+
+
+def exchange_timezone(exchange):
+    exchange_calendar = calendar_for_exchange(exchange)
+    if exchange_calendar is None:
+        return None
+    return getattr(exchange_calendar.tz, "key", None)
+
+
+def next_regular_open_timestamp(now=None, exchange=None):
     as_of = as_utc_datetime(now)
     try:
-        eastern = ZoneInfo("America/New_York")
-        current_date = as_of.astimezone(eastern).date()
-        calendar = us_equity_calendar()
+        calendar = calendar_for_exchange(exchange)
+        if calendar is None:
+            return None
+        current_date = as_of.astimezone(calendar.tz).date()
         sessions = calendar.sessions_in_range(
             current_date.isoformat(),
             (current_date + timedelta(days=14)).isoformat(),
@@ -370,11 +455,15 @@ def commodity_market_is_open(symbol, current):
     return None
 
 
-def market_session(timestamp, asset_type, now=None, symbol=None):
+def market_session(timestamp, asset_type, now=None, symbol=None, exchange=None):
     as_of = as_utc_datetime(now)
     age_seconds = as_of.timestamp() - timestamp
     if asset_type == "cryptocurrency":
         return "regular" if age_seconds <= 30 * 60 else "closed"
+    if asset_type in ("stock", "etf"):
+        if age_seconds > 30 * 60:
+            return "closed"
+        return equity_market_session(timestamp, as_of, exchange)
     try:
         local = datetime.fromtimestamp(timestamp, ZoneInfo("America/New_York"))
         current = as_of.astimezone(ZoneInfo("America/New_York"))
@@ -406,26 +495,39 @@ def market_session(timestamp, asset_type, now=None, symbol=None):
         if is_open is None:
             return "unknown"
         return "regular" if is_open else "closed"
-    if local.date() != current.date() or local.weekday() >= 5 or age_seconds > 30 * 60:
+    if local.date() != current.date() or local.weekday() >= 5:
         return "closed"
+    return "unknown"
+
+
+def equity_market_session(timestamp, as_of, exchange):
+    exchange_calendar = calendar_for_exchange(exchange)
+    if exchange_calendar is None:
+        return "unknown"
     try:
-        exchange_calendar = us_equity_calendar()
+        local = datetime.fromtimestamp(timestamp, exchange_calendar.tz)
+        current = as_of.astimezone(exchange_calendar.tz)
+        if local.date() != current.date():
+            return "closed"
         session = local.date().isoformat()
         if not exchange_calendar.is_session(session):
             return "closed"
         market_open = exchange_calendar.session_open(session).to_pydatetime().astimezone(
-            ZoneInfo("America/New_York")
+            exchange_calendar.tz
         )
         market_close = exchange_calendar.session_close(session).to_pydatetime().astimezone(
-            ZoneInfo("America/New_York")
+            exchange_calendar.tz
         )
     except Exception:
         return "unknown"
     if local < market_open:
-        return "pre_market" if local.hour >= 4 else "closed"
+        return "pre_market" if exchange_calendar.name == "XNYS" and local.hour >= 4 else "closed"
     if local < market_close:
-        return "regular"
-    if local.hour < 20:
+        try:
+            return "regular" if exchange_calendar.is_open_on_minute(local) else "closed"
+        except Exception:
+            return "unknown"
+    if exchange_calendar.name == "XNYS" and local.hour < 20:
         return "after_hours"
     return "closed"
 
@@ -596,7 +698,15 @@ def enrich_quote_with_history(quote, frame, period, now=None):
     return quote
 
 
-def quote_from_frame(frame, symbol, category, require_prior_close=True, previous_close=None, now=None):
+def quote_from_frame(
+    frame,
+    symbol,
+    category,
+    require_prior_close=True,
+    previous_close=None,
+    now=None,
+    exchange=None,
+):
     if frame is None or "Close" not in frame:
         return None
     close = frame["Close"]
@@ -637,9 +747,15 @@ def quote_from_frame(frame, symbol, category, require_prior_close=True, previous
     change_percent = (latest_price - prior_price) / prior_price * 100.0
     if not math.isfinite(change_percent):
         return None
-    session = market_session(latest_timestamp, asset_type, now=as_of, symbol=symbol)
+    session = market_session(
+        latest_timestamp,
+        asset_type,
+        now=as_of,
+        symbol=symbol,
+        exchange=exchange,
+    )
     next_open = (
-        next_regular_open_timestamp(as_of)
+        next_regular_open_timestamp(as_of, exchange)
         if asset_type in ("stock", "etf") and session in ("closed", "after_hours")
         else None
     )
@@ -657,7 +773,8 @@ def quote_from_frame(frame, symbol, category, require_prior_close=True, previous
         "nextRegularOpenTimestamp": next_open,
         "assetType": asset_type,
         "sector": normalize_sector(STOCK_SECTORS.get(symbol), symbol) if asset_type == "stock" else None,
-        "exchange": None,
+        "exchange": normalize_exchange(exchange),
+        "exchangeTimezone": exchange_timezone(exchange),
         "marketCapUsd": None,
         "annualizedVolatilityPercent": None,
         "riskBand": None,
@@ -754,16 +871,25 @@ def quote_from_screener(item, now=None):
         change_percent = (price - previous_close) / previous_close * 100.0
     if change_percent is None or not math.isfinite(change_percent):
         return None
-    if market_state in ("PRE", "PREPRE", "REGULAR", "POST", "POSTPOST"):
+    exchange = normalize_exchange(item.get("fullExchangeName") or item.get("exchange"))
+    if asset_type in ("stock", "etf"):
+        session = market_session(
+            stamp,
+            asset_type,
+            now=as_of,
+            symbol=symbol,
+            exchange=exchange,
+        )
+    elif market_state in ("PRE", "PREPRE", "REGULAR", "POST", "POSTPOST"):
         session = market_session(stamp, asset_type, now=as_of, symbol=symbol)
     next_open = (
-        next_regular_open_timestamp(as_of)
+        next_regular_open_timestamp(as_of, exchange)
         if asset_type in ("stock", "etf") and session in ("closed", "after_hours")
         else None
     )
     metadata = {
         "sector": normalize_sector(item.get("sectorDisp") or item.get("sector"), symbol) if asset_type == "stock" else None,
-        "exchange": normalize_exchange(item.get("fullExchangeName") or item.get("exchange")),
+        "exchange": exchange,
         "marketCapUsd": (
             finite_number(item.get("marketCap"))
             if asset_type == "stock" and str(item.get("currency") or "").upper() == "USD"
@@ -787,6 +913,7 @@ def quote_from_screener(item, now=None):
         "assetType": asset_type,
         "sector": metadata["sector"],
         "exchange": metadata["exchange"],
+        "exchangeTimezone": exchange_timezone(metadata["exchange"]),
         "marketCapUsd": metadata["marketCapUsd"],
         "annualizedVolatilityPercent": None,
         "riskBand": None,
@@ -950,6 +1077,23 @@ def enrich_quote_metadata(quotes_by_symbol, now=None):
             quote.update(merged)
             cached[symbol] = merge_metadata(provider_metadata, cached.get(symbol), quote["assetType"])
     write_metadata_cache(cached, now)
+    for quote in quotes_by_symbol.values():
+        if quote["assetType"] in ("stock", "etf"):
+            exchange = quote.get("exchange")
+            quote["exchangeTimezone"] = exchange_timezone(exchange)
+            session = market_session(
+                quote.get("priceTimestamp"),
+                quote["assetType"],
+                now=now,
+                symbol=quote.get("symbol"),
+                exchange=exchange,
+            )
+            quote["marketSession"] = session
+            quote["nextRegularOpenTimestamp"] = (
+                next_regular_open_timestamp(now, exchange)
+                if session in ("closed", "after_hours")
+                else None
+            )
     return quotes_by_symbol
 
 

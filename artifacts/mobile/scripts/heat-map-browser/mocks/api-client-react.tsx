@@ -14,6 +14,7 @@ export interface HeatMapBrowserQuote {
   assetType: "stock" | "etf" | "commodity" | "future" | "cryptocurrency";
   sector: string | null;
   exchange: string | null;
+  exchangeTimezone: string | null;
   marketCapUsd: number | null;
   annualizedVolatilityPercent: number | null;
   riskBand: "Conservative" | "Moderate Conservative" | "Moderate" | "Moderate Aggressive" | "Aggressive" | null;
@@ -59,6 +60,7 @@ function quote(
     assetType: "stock",
     sector: "Technology",
     exchange: "NASDAQ",
+    exchangeTimezone: "America/New_York",
     marketCapUsd: 250_000_000_000,
     annualizedVolatilityPercent: 72,
     riskBand: "Aggressive",

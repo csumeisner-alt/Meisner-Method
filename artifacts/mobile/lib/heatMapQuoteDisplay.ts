@@ -39,6 +39,7 @@ export function formatHeatMapNextOpen(
   timestamp: number | null,
   session: HeatMapQuote["marketSession"],
   assetType: HeatMapQuote["assetType"],
+  exchangeTimezone: string | null,
   nowSeconds = Date.now() / 1000,
 ): string | null {
   if (
@@ -46,22 +47,31 @@ export function formatHeatMapNextOpen(
     (session !== "closed" && session !== "after_hours") ||
     timestamp === null ||
     !Number.isFinite(timestamp) ||
-    timestamp <= nowSeconds
+    timestamp <= nowSeconds ||
+    !exchangeTimezone
   ) {
     return null;
   }
 
   try {
-    const easternDateTime = new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/New_York",
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: exchangeTimezone,
       month: "short",
       day: "numeric",
       hour: "numeric",
       minute: "2-digit",
-    }).format(new Date(timestamp * 1000));
-    const [date, time] = easternDateTime.split(", ");
-    if (!date || !time) return null;
-    return `Next open: ${date}\n${time} ET`;
+      timeZoneName: "short",
+    }).formatToParts(new Date(timestamp * 1000));
+    const getPart = (type: Intl.DateTimeFormatPartTypes) =>
+      parts.find((part) => part.type === type)?.value;
+    const month = getPart("month");
+    const day = getPart("day");
+    const hour = getPart("hour");
+    const minute = getPart("minute");
+    const dayPeriod = getPart("dayPeriod");
+    const timeZoneName = getPart("timeZoneName");
+    if (!month || !day || !hour || !minute || !timeZoneName) return null;
+    return `Next open: ${month} ${day}\n${hour}:${minute}${dayPeriod ? ` ${dayPeriod}` : ""} ${timeZoneName}`;
   } catch {
     return null;
   }

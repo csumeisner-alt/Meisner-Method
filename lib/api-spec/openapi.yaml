@@ -469,7 +469,7 @@ components:
         nextRegularOpenTimestamp:
           type: integer
           nullable: true
-          description: Unix timestamp in seconds for the next scheduled U.S. equity regular-session open, populated only when a stock or ETF is closed or in after-hours; null when unavailable or not applicable.
+          description: Unix timestamp in seconds for the next scheduled listed-exchange regular-session open, populated only when a stock or ETF is closed or in after-hours; null when unavailable or not applicable.
         assetType:
           type: string
           enum: [stock, etf, commodity, future, cryptocurrency]
@@ -481,6 +481,10 @@ components:
           type: string
           nullable: true
           description: Normalized provider exchange when available.
+        exchangeTimezone:
+          type: string
+          nullable: true
+          description: IANA timezone for a supported listed-exchange calendar, used to display the next open; null when unavailable.
         marketCapUsd:
           type: number
           nullable: true
@@ -509,6 +513,7 @@ components:
         - assetType
         - sector
         - exchange
+        - exchangeTimezone
         - marketCapUsd
         - annualizedVolatilityPercent
         - riskBand
