@@ -192,6 +192,7 @@ export default function HeatMapScreen() {
   const [period, setPeriod] = useState<GetMarketHeatMapPeriod>('1d');
   const [customSymbols, setCustomSymbols] = useState<string[]>([]);
   const [storageReady, setStorageReady] = useState(false);
+  const [storageLoadError, setStorageLoadError] = useState(false);
   const [isEditingCustomMap, setIsEditingCustomMap] = useState(false);
   const [removingSymbol, setRemovingSymbol] = useState<string | null>(null);
   const [lastRemovedTicker, setLastRemovedTicker] = useState<{ symbol: string; index: number } | null>(null);
@@ -205,6 +206,7 @@ export default function HeatMapScreen() {
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
   const directionPulse = useRef(new Animated.Value(0)).current;
   const removeInProgress = useRef(false);
+  const customStorageReadId = useRef(0);
   const lastScheduledOpenRefresh = useRef<string | null>(null);
   const heatMapRefreshInFlight = useRef(false);
   const validateSymbol = useValidateHeatMapSymbol();
@@ -228,19 +230,33 @@ export default function HeatMapScreen() {
     const timeout = setTimeout(() => setDebouncedSymbolSearch(symbolInput.trim()), 300);
     return () => clearTimeout(timeout);
   }, [symbolInput]);
-  useEffect(() => {
-    let mounted = true;
-    AsyncStorage.getItem(STORAGE_KEY).then((value) => {
-      if (mounted && value) {
+  const loadSavedCustomSymbols = useCallback(async () => {
+    const readId = ++customStorageReadId.current;
+    setStorageReady(false);
+    try {
+      const value = await AsyncStorage.getItem(STORAGE_KEY);
+      let symbols: string[] = [];
+      if (value) {
         try {
           const parsed: unknown = JSON.parse(value);
-          if (Array.isArray(parsed)) setCustomSymbols(normalizeCustomHeatMapSymbols(parsed));
+          if (Array.isArray(parsed)) symbols = normalizeCustomHeatMapSymbols(parsed);
         } catch { /* Discard corrupt local preferences. */ }
       }
-    }).catch(() => { if (mounted) setFormError("Couldn't load saved tickers from this device."); })
-      .finally(() => { if (mounted) setStorageReady(true); });
-    return () => { mounted = false; };
+      if (readId !== customStorageReadId.current) return;
+      setCustomSymbols(symbols);
+      setStorageLoadError(false);
+      setFormError('');
+    } catch {
+      if (readId !== customStorageReadId.current) return;
+      setStorageLoadError(true);
+    } finally {
+      if (readId === customStorageReadId.current) setStorageReady(true);
+    }
   }, []);
+  useEffect(() => {
+    void loadSavedCustomSymbols();
+    return () => { customStorageReadId.current += 1; };
+  }, [loadSavedCustomSymbols]);
 
   const requestedSector: GetMarketHeatMapSector | null = category === 'stocks'
     && filters.sector !== 'Unknown'
@@ -502,6 +518,11 @@ export default function HeatMapScreen() {
   const contentWidth = Math.max(0, viewportWidth - 36);
   const tileWidth = getHeatMapTileWidth(contentWidth);
   const tileHeight = tileWidth * Math.sqrt(3) / 2;
+  const canAddCustomSymbol = storageReady
+    && !storageLoadError
+    && Boolean(symbolInput.trim())
+    && !validateSymbol.isPending
+    && customSymbols.length < MAX_CUSTOM_HEAT_MAP_SYMBOLS;
 
   async function persistSymbols(next: string[]) {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -708,12 +729,12 @@ export default function HeatMapScreen() {
                 <Text style={[styles.undoButtonText, { color: colors.primary }]}>Undo</Text>
               </TouchableOpacity>
             </View>}
-            <View style={styles.addRow}><TextInput testID="heat-map-custom-input" value={symbolInput} onFocus={() => setIsEditingCustomMap(false)} onChangeText={(value) => { setSymbolInput(value); setFormError(''); }}
+            <View style={styles.addRow}><TextInput testID="heat-map-custom-input" value={symbolInput} editable={storageReady && !storageLoadError} onFocus={() => setIsEditingCustomMap(false)} onChangeText={(value) => { setSymbolInput(value); setFormError(''); }}
               placeholder="Ticker or company name" placeholderTextColor={colors.mutedForeground} autoCapitalize="none" autoCorrect={false} maxLength={80}
               returnKeyType="done" onSubmitEditing={() => void addSymbol()} style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.input }]} />
               <TouchableOpacity testID="heat-map-custom-add" accessibilityRole="button" accessibilityLabel="Validate and add ticker"
-                disabled={!symbolInput.trim() || validateSymbol.isPending || customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS} onPress={() => void addSymbol()}
-                style={[styles.addButton, { backgroundColor: colors.primary, opacity: !symbolInput.trim() || validateSymbol.isPending || customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS ? 0.55 : 1 }]}>
+                disabled={!canAddCustomSymbol} onPress={() => void addSymbol()}
+                style={[styles.addButton, { backgroundColor: colors.primary, opacity: canAddCustomSymbol ? 1 : 0.55 }]}>
                 {validateSymbol.isPending ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <MaterialCommunityIcons name="plus" size={20} color={colors.primaryForeground} />}
               </TouchableOpacity></View>
             {isCustomSearchInput && <View testID="heat-map-custom-suggestions" style={[styles.suggestionsPanel, { backgroundColor: colors.background, borderColor: colors.border }]}>
@@ -740,6 +761,23 @@ export default function HeatMapScreen() {
               {customSearchFeedback && customSearchFeedback.kind !== 'loading' && <Text style={[styles.searchHint, { color: colors.mutedForeground }]}>
                 {customSearchFeedback.message}
               </Text>}
+            </View>}
+            {storageLoadError && <View style={styles.storageReadError}>
+              <Text testID="heat-map-storage-error" style={[styles.formError, { color: colors.sellColor }]}>
+                Couldn't load saved tickers from this device.
+              </Text>
+              <TouchableOpacity
+                testID="heat-map-storage-retry"
+                accessibilityRole="button"
+                accessibilityLabel="Retry loading saved tickers"
+                disabled={!storageReady}
+                onPress={() => void loadSavedCustomSymbols()}
+                style={[styles.retryButton, { borderColor: colors.border, opacity: storageReady ? 1 : 0.55 }]}
+              >
+                {!storageReady
+                  ? <ActivityIndicator size="small" color={colors.primary} />
+                  : <Text style={[styles.retryText, { color: colors.primary }]}>Retry</Text>}
+              </TouchableOpacity>
             </View>}
             {!!formError && <Text testID="heat-map-custom-error" style={[styles.formError, { color: colors.sellColor }]}>{formError}</Text>}
             {!!editFallbackSymbols.length && <View style={styles.editFallbackList}>
@@ -929,6 +967,7 @@ const styles = StyleSheet.create({
   customHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   sectionTitle: { fontFamily: 'Inter_700Bold', fontSize: 15 },
   customHint: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 4 },
+  storageReadError: { alignItems: 'flex-start', gap: 2 },
   undoBanner: { minHeight: 40, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, marginTop: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   undoMessage: { flex: 1, fontFamily: 'Inter_500Medium', fontSize: 11 },
   undoButton: { minHeight: 28, borderWidth: 1, borderRadius: 8, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },

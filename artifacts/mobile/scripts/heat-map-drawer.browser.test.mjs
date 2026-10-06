@@ -1010,6 +1010,23 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     await browser.evaluate(
       `localStorage.setItem(${JSON.stringify(customSymbolsStorageKey)}, ${JSON.stringify(JSON.stringify(["AAPL", "MSFT", "MISSING"]))})`,
     );
+    await browser.evaluate(
+      `sessionStorage.setItem("__heat_map_fail_custom_storage_read_once", "armed")`,
+    );
+    await browser.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => {
+      const failureFlag = "__heat_map_fail_custom_storage_read_once";
+      if (sessionStorage.getItem(failureFlag) !== "armed") return;
+      sessionStorage.removeItem(failureFlag);
+      const originalGetItem = Storage.prototype.getItem;
+      let failuresRemaining = 1;
+      Storage.prototype.getItem = function(key) {
+        if (key === ${JSON.stringify(customSymbolsStorageKey)} && failuresRemaining > 0) {
+          failuresRemaining -= 1;
+          throw new DOMException("Temporary device storage failure.", "UnknownError");
+        }
+        return originalGetItem.call(this, key);
+      };
+    })()` });
     await browser.send("Page.reload", { ignoreCache: true });
     await waitFor(
       (expression) => browser.evaluate(expression),
@@ -1019,16 +1036,32 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
 
     await clickTestID(browser, "heat-map-category-picker");
     await clickTestID(browser, "heat-map-category-custom");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-storage-error"))})?.textContent.trim() === "Couldn't load saved tickers from this device." && !!document.querySelector(${JSON.stringify(selector("heat-map-storage-retry"))})`,
+      "A failed saved-ticker read should explain the error and offer a retry.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-custom-add"))})?.disabled`),
+      true,
+      "Adding tickers must stay disabled until the saved list can be read, avoiding an overwrite.",
+    );
+    assert.equal(
+      await browser.evaluate(`localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)})`),
+      JSON.stringify(["AAPL", "MSFT", "MISSING"]),
+      "A failed storage read must not change the saved custom ticker list.",
+    );
+    await clickTestID(browser, "heat-map-storage-retry");
     await waitForRequest(
       browser,
       `(request) => request.category === "custom" && JSON.stringify(request.symbols) === '["AAPL","MSFT","MISSING"]'`,
-      "the saved custom tickers",
+      "the saved custom tickers after retry",
     );
     await setResponse(browser, makeCustomResponse("1d", [quote("AAPL"), quote("MSFT")], ["MISSING"]));
     await waitFor(
       (expression) => browser.evaluate(expression),
-      `!!document.querySelector(${JSON.stringify(selector("heat-map-session-AAPL"))}) && !!document.querySelector(${JSON.stringify(selector("heat-map-session-MSFT"))})`,
-      "Both available custom tickers should appear as heat-map hexagons.",
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-session-AAPL"))}) && !!document.querySelector(${JSON.stringify(selector("heat-map-session-MSFT"))}) && !document.querySelector(${JSON.stringify(selector("heat-map-storage-error"))})`,
+      "A successful retry should load the saved tickers, render available hexagons, and clear the error.",
     );
 
     await clickTestID(browser, "heat-map-custom-edit");
