@@ -22,6 +22,7 @@ test("heat-map resume refresh imports React Native AppState before subscribing",
   assert.match(source, /import\s*\{[^}]*\bAppState\b[^}]*\}\s*from\s*['"]react-native['"]/s);
   assert.match(source, /AppState\?\.addEventListener\?\.\('change'/);
   assert.match(source, /import\s*\{[^}]*\bgetHeatMapRegularOpenRefreshTimestamp\b[^}]*\}\s*from\s*['"]@\/lib\/heatMapQuoteDisplay['"]/s);
+  assert.match(source, /import\s*\{[^}]*\bHEAT_MAP_CRYPTO_REFRESH_INTERVAL_MS\b[^}]*\}\s*from\s*['"]@\/lib\/heatMapQuoteDisplay['"]/s);
   assert.match(source, /import\s*\{[^}]*\bshouldRefreshCryptoHeatMapOnResume\b[^}]*\}\s*from\s*['"]@\/lib\/heatMapQuoteDisplay['"]/s);
 });
 
@@ -1245,8 +1246,103 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       "the selected local crypto filters should leave only BTC visible.",
     );
 
-    const refetchCountBeforeCryptoResume = await browser.evaluate("window.__heatMapBrowserTest.refetches.length");
     const freshCryptoResponse = cryptoResponse(Date.now() / 1000);
+
+    const refetchCountBeforeCryptoCadence = await browser.evaluate("window.__heatMapBrowserTest.refetches.length");
+    await browser.evaluate(`(() => {
+      const activeIntervals = window.__heatMapTrackedIntervals.filter((item) => item.delay === 60_000 && !item.cleared);
+      window.__heatMapTestCryptoInterval = activeIntervals.at(-1);
+      if (!window.__heatMapTestCryptoInterval) throw new Error("The foreground crypto refresh interval was not started.");
+    })()`);
+    await browser.evaluate(`window.__heatMapBrowserTest.setNextRefetchResponse(${JSON.stringify(freshCryptoResponse)})`);
+    await browser.evaluate(`window.__heatMapTestCryptoInterval.callback(...window.__heatMapTestCryptoInterval.args)`);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.refetches.length === ${refetchCountBeforeCryptoCadence + 1}`,
+      "one foreground cadence tick should refresh the selected cryptocurrency map.",
+    );
+    assert.deepEqual(
+      await browser.evaluate("window.__heatMapBrowserTest.refetches.at(-1)"),
+      { category: "cryptocurrency", period: "1w" },
+      "the crypto cadence refresh should preserve the selected category and period.",
+    );
+    assert.match(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-selected-period"))}).textContent`),
+      /1W/,
+      "the crypto cadence refresh should preserve the selected return period.",
+    );
+    assert.match(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-filter-open"))}).getAttribute("aria-label")`),
+      /2 active/,
+      "the crypto cadence refresh should preserve local filters.",
+    );
+
+    const refetchCountBeforeCryptoRetry = await browser.evaluate("window.__heatMapBrowserTest.refetches.length");
+    await browser.evaluate("window.__heatMapBrowserTest.setRefetchFailures(2)");
+    await browser.evaluate(`window.__heatMapTestCryptoInterval.callback(...window.__heatMapTestCryptoInterval.args)`);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.refetches.length === ${refetchCountBeforeCryptoRetry + 2}`,
+      "a failed crypto cadence tick should make only one delayed retry.",
+    );
+    await delay(50);
+    assert.equal(
+      await browser.evaluate("window.__heatMapBrowserTest.refetches.length"),
+      refetchCountBeforeCryptoRetry + 2,
+      "a second crypto refresh failure should not create an unbounded retry loop.",
+    );
+
+    const refetchCountBeforeCryptoBackground = await browser.evaluate("window.__heatMapBrowserTest.refetches.length");
+    await browser.evaluate(`(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    })()`);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      "window.__heatMapTestCryptoInterval.cleared",
+      "backgrounding the app should stop the crypto refresh interval.",
+    );
+    await browser.evaluate(`window.__heatMapTestCryptoInterval.callback(...window.__heatMapTestCryptoInterval.args)`);
+    await delay(50);
+    assert.equal(
+      await browser.evaluate("window.__heatMapBrowserTest.refetches.length"),
+      refetchCountBeforeCryptoBackground,
+      "a stale crypto interval callback must not refresh while the app is backgrounded.",
+    );
+    await browser.evaluate(`(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    })()`);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      "window.__heatMapTrackedIntervals.filter((item) => item.delay === 60_000 && !item.cleared).at(-1) !== window.__heatMapTestCryptoInterval",
+      "returning to the foreground should start a fresh crypto refresh interval.",
+    );
+    await browser.evaluate(`window.__heatMapTestCryptoInterval = window.__heatMapTrackedIntervals.filter((item) => item.delay === 60_000 && !item.cleared).at(-1)`);
+
+    const refetchCountBeforeCryptoBlur = await browser.evaluate("window.__heatMapBrowserTest.refetches.length");
+    await browser.evaluate("window.__heatMapSetFocused(false)");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      "window.__heatMapTestCryptoInterval.cleared",
+      "leaving the heat-map screen should stop the crypto refresh interval.",
+    );
+    await browser.evaluate(`window.__heatMapTestCryptoInterval.callback(...window.__heatMapTestCryptoInterval.args)`);
+    await delay(50);
+    assert.equal(
+      await browser.evaluate("window.__heatMapBrowserTest.refetches.length"),
+      refetchCountBeforeCryptoBlur,
+      "a stale crypto interval callback must not refresh after the heat-map screen loses focus.",
+    );
+    await browser.evaluate("window.__heatMapSetFocused(true)");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      "window.__heatMapTrackedIntervals.filter((item) => item.delay === 60_000 && !item.cleared).at(-1) !== window.__heatMapTestCryptoInterval",
+      "returning to the heat-map screen should start a fresh crypto refresh interval.",
+    );
+    await browser.evaluate(`window.__heatMapTestCryptoInterval = window.__heatMapTrackedIntervals.filter((item) => item.delay === 60_000 && !item.cleared).at(-1)`);
+
+    const refetchCountBeforeCryptoResume = await browser.evaluate("window.__heatMapBrowserTest.refetches.length");
     await browser.evaluate(`window.__heatMapBrowserTest.setNextRefetchResponse(${JSON.stringify(freshCryptoResponse)})`);
     await setResponse(browser, cryptoResponse(Date.now() / 1000 - 6 * 60));
     await browser.evaluate(`(() => {

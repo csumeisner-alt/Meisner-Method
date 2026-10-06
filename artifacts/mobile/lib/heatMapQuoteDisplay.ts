@@ -1,6 +1,7 @@
 import type { GetMarketHeatMapCategory, HeatMapQuote } from "@workspace/api-client-react";
 
 export const HEAT_MAP_REGULAR_SESSION_REFRESH_INTERVAL_MS = 60_000;
+export const HEAT_MAP_CRYPTO_REFRESH_INTERVAL_MS = 60_000;
 export const HEAT_MAP_CRYPTO_RESUME_STALE_AFTER_SECONDS = 5 * 60;
 
 const MAX_QUOTE_AGE_SECONDS = {

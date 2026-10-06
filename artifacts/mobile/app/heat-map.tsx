@@ -31,6 +31,7 @@ import { getHeatMapInstrumentDisplay } from '@/lib/heatMapInstrumentDisplay';
 import {
   formatHeatMapNextOpen, formatHeatMapQuoteAge, getHeatMapSessionLabel,
   getHeatMapRegularOpenRefreshTimestamp, getNextHeatMapRegularOpenTimestamp,
+  HEAT_MAP_CRYPTO_REFRESH_INTERVAL_MS,
   HEAT_MAP_REGULAR_SESSION_REFRESH_INTERVAL_MS, isDisplayableHeatMapQuote,
   shouldRefreshCryptoHeatMapOnResume, shouldRefreshHeatMapDuringRegularSession,
 } from '@/lib/heatMapQuoteDisplay';
@@ -388,6 +389,61 @@ export default function HeatMapScreen() {
       appStateSubscription?.remove();
     };
   }, [shouldRefreshDuringRegularSession, refetchHeatMap]));
+  useFocusEffect(useCallback(() => {
+    if (category !== 'cryptocurrency' || !responseMatches) return;
+
+    let isFocused = true;
+    let appIsActive = AppState?.currentState !== 'background' && AppState?.currentState !== 'inactive';
+    let interval: ReturnType<typeof setInterval> | null = null;
+    let retryTimeout: ReturnType<typeof setTimeout> | null = null;
+    const stopRetry = () => {
+      if (retryTimeout === null) return;
+      clearTimeout(retryTimeout);
+      retryTimeout = null;
+    };
+    const refresh = (allowRetry = true) => {
+      if (!isFocused || !appIsActive) return;
+      void (async () => {
+        try {
+          const result = await refetchHeatMap();
+          if (result === null || !result.isError) return;
+        } catch {
+          // The single delayed retry below handles thrown and resolved failures.
+        }
+        if (!allowRetry || !isFocused || !appIsActive || retryTimeout !== null) return;
+        retryTimeout = setTimeout(() => {
+          retryTimeout = null;
+          refresh(false);
+        }, SCHEDULED_OPEN_REFRESH_RETRY_DELAY_MS);
+      })();
+    };
+    const startInterval = () => {
+      if (interval !== null) return;
+      interval = setInterval(() => refresh(), HEAT_MAP_CRYPTO_REFRESH_INTERVAL_MS);
+    };
+    const stopInterval = () => {
+      if (interval === null) return;
+      clearInterval(interval);
+      interval = null;
+    };
+    const appStateSubscription = AppState?.addEventListener?.('change', (nextState) => {
+      appIsActive = nextState === 'active';
+      if (!appIsActive) {
+        stopInterval();
+        stopRetry();
+        return;
+      }
+      startInterval();
+    });
+    if (appIsActive) startInterval();
+
+    return () => {
+      isFocused = false;
+      stopInterval();
+      stopRetry();
+      appStateSubscription?.remove();
+    };
+  }, [category, responseMatches, refetchHeatMap]));
   useFocusEffect(useCallback(() => {
     if (category !== 'cryptocurrency' || !responseMatches) return;
 
