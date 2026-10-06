@@ -964,11 +964,28 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       "the custom map after removing its unavailable ticker",
     );
     await setResponse(browser, makeCustomResponse("1d", [quote("AAPL"), quote("MSFT")]));
+    await browser.evaluate(`(() => {
+      const originalSetItem = Storage.prototype.setItem;
+      let failuresRemaining = 1;
+      Storage.prototype.setItem = function(key, value) {
+        if (key === ${JSON.stringify(customSymbolsStorageKey)} && failuresRemaining > 0) {
+          failuresRemaining -= 1;
+          throw new DOMException("Temporary device storage failure.", "QuotaExceededError");
+        }
+        return originalSetItem.call(this, key, value);
+      };
+    })()`);
+    await clickTestID(browser, "heat-map-custom-undo");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}) === ${JSON.stringify(JSON.stringify(["AAPL", "MSFT"]))} && document.querySelector(${JSON.stringify(selector("heat-map-custom-error"))})?.textContent === "Couldn't restore MISSING on this device. Try again." && !!document.querySelector(${JSON.stringify(selector("heat-map-custom-undo"))})`,
+      "A failed restore should leave saved tickers unchanged, explain the failure, and keep Undo available.",
+    );
     await clickTestID(browser, "heat-map-custom-undo");
     await waitFor(
       (expression) => browser.evaluate(expression),
       `localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}) === ${JSON.stringify(JSON.stringify(["AAPL", "MSFT", "MISSING"]))}`,
-      "Undoing an unavailable ticker removal should preserve all other saved tickers.",
+      "Retrying the restore should recover the removed ticker and preserve all other saved tickers.",
     );
     await waitForRequest(
       browser,
