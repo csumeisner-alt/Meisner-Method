@@ -96,6 +96,14 @@ function quote(symbol, overrides = {}) {
 }
 
 function makeResponse(category, period, symbol, requestedSector = null) {
+  const assetType = {
+    stocks: "stock",
+    etfs: "etf",
+    commodities: "commodity",
+    futures: "future",
+    cryptocurrency: "cryptocurrency",
+    custom: "stock",
+  }[category];
   return {
     category,
     period,
@@ -104,6 +112,7 @@ function makeResponse(category, period, symbol, requestedSector = null) {
     quotes: category === "custom"
       ? []
       : [quote(symbol, {
+        assetType,
         marketSession: "after_hours",
         nextRegularOpenTimestamp: Date.parse("2030-11-29T14:30:00Z") / 1000,
       })],
@@ -377,13 +386,38 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       assert.equal(staleVisible, false, `A late ${previousCategory} response must not replace ${nextCategory}.`);
 
       if (nextCategory !== "custom") {
-        const currentSymbol = `CURRENT_CATEGORY_${nextCategory.toUpperCase()}`;
+        const currentSymbol = nextCategory === "commodities"
+          ? "GC=F"
+          : nextCategory === "futures"
+            ? "ES=F"
+            : `CURRENT_CATEGORY_${nextCategory.toUpperCase()}`;
         await setResponse(browser, makeResponse(nextCategory, "1d", currentSymbol));
         await waitFor(
           (expression) => browser.evaluate(expression),
           `!!document.querySelector(${JSON.stringify(selector(`heat-map-session-${currentSymbol}`))})`,
           `The selected ${nextCategory} response should render.`,
         );
+        const expectedName = nextCategory === "commodities"
+          ? "Gold"
+          : nextCategory === "futures"
+            ? "S&P 500"
+            : null;
+        if (expectedName) {
+          assert.equal(
+            await browser.evaluate(
+              `document.querySelector(${JSON.stringify(selector(`heat-map-instrument-name-${currentSymbol}`))})?.textContent.trim()`,
+            ),
+            expectedName,
+            `${nextCategory} tiles should show a clear instrument name.`,
+          );
+          assert.equal(
+            await browser.evaluate(
+              `!!document.querySelector(${JSON.stringify(selector(`heat-map-instrument-icon-${currentSymbol}`))})`,
+            ),
+            true,
+            `${nextCategory} tiles should show a matching illustration.`,
+          );
+        }
       } else {
         await setResponse(browser, makeResponse("custom", "1d", ""));
       }

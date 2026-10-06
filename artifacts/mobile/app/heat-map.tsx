@@ -20,11 +20,13 @@ import type {
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { BottomTabBar } from '@/components/BottomTabBar';
 import { useColors } from '@/hooks/useColors';
+import { HeatMapInstrumentIcon } from '@/components/HeatMapInstrumentIcon';
 import {
   countActiveHeatMapFilters, filterHeatMapQuotes,
   getHeatMapTileWidth, heatMapResponseMatchesSelection, layoutHoneycomb, summarizeHeatMap,
   type HeatMapFilters, type HeatMapCapBucket, type HeatMapRiskBand, type HeatMapRiskFilter,
 } from '@/lib/heatMapMetrics';
+import { getHeatMapInstrumentDisplay } from '@/lib/heatMapInstrumentDisplay';
 import {
   formatHeatMapNextOpen, formatHeatMapQuoteAge, getHeatMapSessionLabel,
   getNextHeatMapRegularOpenTimestamp, isDisplayableHeatMapQuote,
@@ -111,6 +113,7 @@ function HexTile({ quote, width, height, colors, period, editing, reduceMotion, 
   const tone = !available ? colors.mutedForeground : positive ? colors.buyColor : negative ? colors.sellColor : colors.holdColor;
   const bg = !available ? colors.secondary : positive ? colors.buyBg : negative ? colors.sellBg : colors.holdBg;
   const label = available ? `${value! > 0 ? '+' : ''}${value!.toFixed(2)}%` : 'Unavailable';
+  const instrument = getHeatMapInstrumentDisplay(quote);
   const session = getHeatMapSessionLabel(quote.marketSession);
   const age = formatHeatMapQuoteAge(quote.priceTimestamp);
   const nextOpen = formatHeatMapNextOpen(
@@ -122,11 +125,30 @@ function HexTile({ quote, width, height, colors, period, editing, reduceMotion, 
   const rotation = wiggle.interpolate({ inputRange: [-1, 1], outputRange: ['-2.4deg', '2.4deg'] });
   const tile = (
     <Animated.View style={[{ width, height }, { transform: [{ rotate: rotation }] }]}>
-    <View style={[styles.tile, { width, height }]} accessibilityLabel={`${quote.symbol}, ${label}, ${session}, ${nextOpen ?? ''}, ${age}`}>
+    <View style={[styles.tile, { width, height }]} accessibilityLabel={`${instrument ? `${instrument.name}, ${quote.symbol}` : quote.symbol}, ${label}, ${session}, ${nextOpen ?? ''}, ${age}`}>
       <Svg width={width} height={height} viewBox="0 0 100 86.6" style={StyleSheet.absoluteFill}>
         <Polygon points="1,43.3 25,1 75,1 99,43.3 75,85.6 25,85.6" fill={bg} stroke={tone} strokeWidth="1.5" />
       </Svg>
-      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={[styles.tileSymbol, { color: colors.foreground }]}>{quote.symbol}</Text>
+      {instrument ? (
+        <View style={styles.tileInstrumentRow}>
+          <HeatMapInstrumentIcon
+            kind={instrument.icon}
+            colors={colors}
+            testID={`heat-map-instrument-icon-${quote.symbol}`}
+          />
+          <Text
+            testID={`heat-map-instrument-name-${quote.symbol}`}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.58}
+            style={[styles.tileSymbol, styles.tileInstrumentName, { color: colors.foreground }]}
+          >
+            {instrument.name}
+          </Text>
+        </View>
+      ) : (
+        <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={[styles.tileSymbol, { color: colors.foreground }]}>{quote.symbol}</Text>
+      )}
       <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={[styles.tileChange, { color: tone }]}>{label}</Text>
       <Text numberOfLines={1} style={[styles.tilePrice, { color: colors.mutedForeground }]}>{formatPrice(quote.price)}</Text>
       <Text testID={`heat-map-session-${quote.symbol}`} numberOfLines={1} style={[styles.tileSession, { color: colors.foreground }]}>{session}</Text>
@@ -830,6 +852,8 @@ const styles = StyleSheet.create({
   sectorCount: { fontFamily: 'Inter_400Regular', fontSize: 9 },
   honeycomb: { alignSelf: 'center', position: 'relative' },
   tile: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8, gap: 1 },
+  tileInstrumentRow: { width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3 },
+  tileInstrumentName: { flex: 1, minWidth: 0, maxWidth: '100%', textAlign: 'left' },
   editTileButton: { alignItems: 'center', justifyContent: 'center' },
   tileRemoveBadge: { position: 'absolute', top: 9, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   tileSymbol: { maxWidth: '92%', fontFamily: 'Inter_700Bold', fontSize: 13, letterSpacing: 0.2 },
