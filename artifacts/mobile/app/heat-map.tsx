@@ -175,8 +175,8 @@ function HexTile({ quote, width, height, colors, period, category, editing, redu
           {quote.symbol}
         </Text>
       )}
-      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={[styles.tileChange, { color: tone }]}>{label}</Text>
-      <Text numberOfLines={1} style={[styles.tilePrice, { color: colors.mutedForeground }]}>{formatPrice(quote.price)}</Text>
+      <Text testID={`heat-map-change-${quote.symbol}`} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={[styles.tileChange, { color: tone }]}>{label}</Text>
+      <Text testID={`heat-map-price-${quote.symbol}`} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82} style={[styles.tilePrice, { color: colors.foreground }]}>{formatPrice(quote.price)}</Text>
       <Text testID={`heat-map-session-${quote.symbol}`} numberOfLines={1} style={[styles.tileSession, { color: colors.foreground }]}>{session}</Text>
       {nextOpen && <Text testID={`heat-map-next-open-${quote.symbol}`} numberOfLines={2} style={[styles.tileNextOpen, { color: colors.foreground }]}>{nextOpen}</Text>}
       <Text testID={`heat-map-quote-age-${quote.symbol}`} numberOfLines={1} style={[styles.tileAge, { color: colors.mutedForeground }]}>{age}</Text>
@@ -1085,7 +1085,7 @@ const styles = StyleSheet.create({
   tileSymbol: { maxWidth: '92%', fontFamily: 'Inter_700Bold', fontSize: 13, letterSpacing: 0.2 },
   tileSymbolEmphasized: { fontSize: 16 },
   tileChange: { maxWidth: '92%', fontFamily: 'Inter_700Bold', fontSize: 12 },
-  tilePrice: { maxWidth: '92%', fontFamily: 'Inter_500Medium', fontSize: 10 },
+  tilePrice: { maxWidth: '92%', fontFamily: 'Inter_600SemiBold', fontSize: 11, letterSpacing: 0.1 },
   tileSession: { maxWidth: '94%', fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.05 },
   tileNextOpen: { maxWidth: '94%', fontFamily: 'Inter_600SemiBold', fontSize: 7.2, lineHeight: 8.4, textAlign: 'center' },
   tileAge: { maxWidth: '94%', fontFamily: 'Inter_400Regular', fontSize: 8 },

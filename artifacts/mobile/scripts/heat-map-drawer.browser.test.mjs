@@ -535,16 +535,24 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     );
     const tileVisuals = await browser.evaluate(`(() => {
       const session = document.querySelector(${JSON.stringify(selector("heat-map-session-MATCH"))});
+      const change = document.querySelector(${JSON.stringify(selector("heat-map-change-MATCH"))});
+      const price = document.querySelector(${JSON.stringify(selector("heat-map-price-MATCH"))});
       const tile = session?.parentElement;
-      if (!session || !tile) return null;
+      if (!session || !change || !price || !tile) return null;
       return {
         width: tile.getBoundingClientRect().width,
         sessionFontSize: Number.parseFloat(getComputedStyle(session).fontSize),
+        changeFontSize: Number.parseFloat(getComputedStyle(change).fontSize),
+        priceFontSize: Number.parseFloat(getComputedStyle(price).fontSize),
+        priceColor: getComputedStyle(price).color,
       };
     })()`);
     assert.ok(tileVisuals, "A fixture quote should render its session label inside a hexagon.");
     assert.ok(tileVisuals.width > 98, "The rendered hexagon should be larger than the previous 98px narrow-phone size.");
     assert.ok(tileVisuals.sessionFontSize > 7, "The session label should be larger than the previous 7px size.");
+    assert.ok(tileVisuals.priceFontSize > 10, "The price should be larger than its previous 10px size.");
+    assert.ok(tileVisuals.priceFontSize < tileVisuals.changeFontSize, "The percentage change should remain the primary label.");
+    assert.equal(tileVisuals.priceColor, "rgb(234, 240, 246)", "The price should use the brighter foreground color.");
     assert.equal(
       await browser.evaluate("document.documentElement.scrollWidth <= window.innerWidth && document.body.scrollWidth <= window.innerWidth"),
       true,
