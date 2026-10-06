@@ -1,4 +1,6 @@
-import type { HeatMapQuote } from "@workspace/api-client-react";
+import type { GetMarketHeatMapCategory, HeatMapQuote } from "@workspace/api-client-react";
+
+export const HEAT_MAP_REGULAR_SESSION_REFRESH_INTERVAL_MS = 60_000;
 
 const MAX_QUOTE_AGE_SECONDS = {
   cryptocurrency: 48 * 60 * 60,
@@ -82,6 +84,24 @@ export function getHeatMapRegularOpenRefreshTimestamp(
     }
   }
   return refreshTimestamp;
+}
+
+export function shouldRefreshHeatMapDuringRegularSession(
+  category: GetMarketHeatMapCategory,
+  quotes: readonly Pick<HeatMapQuote, "assetType" | "marketSession">[],
+): boolean {
+  if (category === "stocks") {
+    return quotes.some((quote) => quote.assetType === "stock" && quote.marketSession === "regular");
+  }
+  if (category === "etfs") {
+    return quotes.some((quote) => quote.assetType === "etf" && quote.marketSession === "regular");
+  }
+  if (category === "custom") {
+    return quotes.some(
+      (quote) => (quote.assetType === "stock" || quote.assetType === "etf") && quote.marketSession === "regular",
+    );
+  }
+  return false;
 }
 
 export function formatHeatMapNextOpen(

@@ -1,5 +1,22 @@
 import React from "react";
 
+let focused = true;
+const focusListeners = new Set<() => void>();
+
+declare global {
+  interface Window {
+    __heatMapSetFocused?: (nextFocused: boolean) => void;
+  }
+}
+
+if (typeof window !== "undefined") {
+  window.__heatMapSetFocused = (nextFocused) => {
+    if (focused === nextFocused) return;
+    focused = nextFocused;
+    focusListeners.forEach((listener) => listener());
+  };
+}
+
 export function useRouter() {
   return {
     canGoBack: () => false,
@@ -9,5 +26,16 @@ export function useRouter() {
 }
 
 export function useFocusEffect(effect: () => void | (() => void)) {
-  React.useEffect(effect, [effect]);
+  const isFocused = React.useSyncExternalStore(
+    (listener) => {
+      focusListeners.add(listener);
+      return () => focusListeners.delete(listener);
+    },
+    () => focused,
+    () => focused,
+  );
+  React.useEffect(() => {
+    if (!isFocused) return;
+    return effect();
+  }, [effect, isFocused]);
 }

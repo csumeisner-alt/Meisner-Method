@@ -6,7 +6,9 @@ import {
   getHeatMapSessionLabel,
   getHeatMapRegularOpenRefreshTimestamp,
   getNextHeatMapRegularOpenTimestamp,
+  HEAT_MAP_REGULAR_SESSION_REFRESH_INTERVAL_MS,
   isDisplayableHeatMapQuote,
+  shouldRefreshHeatMapDuringRegularSession,
 } from "../heatMapQuoteDisplay.ts";
 
 test("heat-map labels each quote session distinctly", () => {
@@ -39,6 +41,31 @@ test("heat-map retains the scheduled refresh deadline after a missed regular ope
     { assetType: "stock", marketSession: "closed", nextRegularOpenTimestamp: null },
   ]), open - 60);
   assert.equal(getHeatMapRegularOpenRefreshTimestamp([]), null);
+});
+
+test("heat-map refreshes stocks and ETFs on a one-minute cadence only during their regular session", () => {
+  assert.equal(HEAT_MAP_REGULAR_SESSION_REFRESH_INTERVAL_MS, 60_000);
+  assert.equal(shouldRefreshHeatMapDuringRegularSession("stocks", [
+    { assetType: "stock", marketSession: "regular" },
+  ]), true);
+  assert.equal(shouldRefreshHeatMapDuringRegularSession("etfs", [
+    { assetType: "etf", marketSession: "regular" },
+  ]), true);
+  assert.equal(shouldRefreshHeatMapDuringRegularSession("custom", [
+    { assetType: "etf", marketSession: "regular" },
+  ]), true);
+  assert.equal(shouldRefreshHeatMapDuringRegularSession("stocks", [
+    { assetType: "stock", marketSession: "after_hours" },
+  ]), false);
+  assert.equal(shouldRefreshHeatMapDuringRegularSession("etfs", [
+    { assetType: "etf", marketSession: "closed" },
+  ]), false);
+  assert.equal(shouldRefreshHeatMapDuringRegularSession("commodities", [
+    { assetType: "stock", marketSession: "regular" },
+  ]), false);
+  assert.equal(shouldRefreshHeatMapDuringRegularSession("cryptocurrency", [
+    { assetType: "cryptocurrency", marketSession: "regular" },
+  ]), false);
 });
 
 test("heat-map quote ages stay compact across minutes, hours, and days", () => {

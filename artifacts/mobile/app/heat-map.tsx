@@ -31,7 +31,8 @@ import { getHeatMapInstrumentDisplay } from '@/lib/heatMapInstrumentDisplay';
 import {
   formatHeatMapNextOpen, formatHeatMapQuoteAge, getHeatMapSessionLabel,
   getHeatMapRegularOpenRefreshTimestamp, getNextHeatMapRegularOpenTimestamp,
-  isDisplayableHeatMapQuote,
+  HEAT_MAP_REGULAR_SESSION_REFRESH_INTERVAL_MS, isDisplayableHeatMapQuote,
+  shouldRefreshHeatMapDuringRegularSession,
 } from '@/lib/heatMapQuoteDisplay';
 import { MAX_CUSTOM_HEAT_MAP_SYMBOLS, normalizeCustomHeatMapSymbols } from '@/lib/heatMapSymbols';
 import {
@@ -205,6 +206,7 @@ export default function HeatMapScreen() {
   const directionPulse = useRef(new Animated.Value(0)).current;
   const removeInProgress = useRef(false);
   const lastScheduledOpenRefresh = useRef<string | null>(null);
+  const heatMapRefreshInFlight = useRef(false);
   const validateSymbol = useValidateHeatMapSymbol();
   const symbolSearchQueryKey = getSearchStockSymbolsQueryKey({ q: debouncedSymbolSearch });
   const stockSearch = useSearchStockSymbols(
@@ -291,6 +293,15 @@ export default function HeatMapScreen() {
   });
   const mapQueryRefetch = useRef(mapQuery.refetch);
   mapQueryRefetch.current = mapQuery.refetch;
+  const refetchHeatMap = useCallback(async () => {
+    if (heatMapRefreshInFlight.current) return null;
+    heatMapRefreshInFlight.current = true;
+    try {
+      return await mapQueryRefetch.current();
+    } finally {
+      heatMapRefreshInFlight.current = false;
+    }
+  }, []);
 
   const fullResponseMatches = heatMapResponseMatchesSelection(
     mapQuery.data,
@@ -320,6 +331,47 @@ export default function HeatMapScreen() {
   const scheduledOpenRefreshKey = scheduledRegularOpenTimestamp === null
     ? null
     : `${JSON.stringify(params)}:${scheduledRegularOpenTimestamp}`;
+  const shouldRefreshDuringRegularSession = responseMatches
+    && shouldRefreshHeatMapDuringRegularSession(category, sourceQuotes);
+  useFocusEffect(useCallback(() => {
+    if (!shouldRefreshDuringRegularSession) return;
+
+    let isFocused = true;
+    let appIsActive = AppState?.currentState !== 'background' && AppState?.currentState !== 'inactive';
+    let interval: ReturnType<typeof setInterval> | null = null;
+    const refresh = () => {
+      if (!isFocused || !appIsActive) return;
+      void refetchHeatMap().catch(() => {
+        // The next cadence tick will retry transient quote failures.
+      });
+    };
+    const startInterval = () => {
+      if (interval !== null) return;
+      interval = setInterval(refresh, HEAT_MAP_REGULAR_SESSION_REFRESH_INTERVAL_MS);
+    };
+    const stopInterval = () => {
+      if (interval === null) return;
+      clearInterval(interval);
+      interval = null;
+    };
+    const appStateSubscription = AppState?.addEventListener?.('change', (nextState) => {
+      const wasActive = appIsActive;
+      appIsActive = nextState === 'active';
+      if (!appIsActive) {
+        stopInterval();
+        return;
+      }
+      startInterval();
+      if (!wasActive) refresh();
+    });
+    if (appIsActive) startInterval();
+
+    return () => {
+      isFocused = false;
+      stopInterval();
+      appStateSubscription?.remove();
+    };
+  }, [shouldRefreshDuringRegularSession, refetchHeatMap]));
   useFocusEffect(useCallback(() => {
     if (
       scheduledRegularOpenTimestamp === null ||
@@ -331,12 +383,12 @@ export default function HeatMapScreen() {
 
     let isActive = true;
     let retryTimeout: ReturnType<typeof setTimeout> | null = null;
-    const refetch = mapQueryRefetch.current;
     const refreshAt = scheduledRegularOpenTimestamp * 1000 + 1_500;
     const retryOnceIfFailed = (allowRetry: boolean) => {
       void (async () => {
         try {
-          const result = await refetch();
+          const result = await refetchHeatMap();
+          if (result === null) return;
           if (!result.isError) return;
         } catch {
           // Some query configurations reject instead of returning an error result.
@@ -366,7 +418,7 @@ export default function HeatMapScreen() {
       if (retryTimeout !== null) clearTimeout(retryTimeout);
       appStateSubscription?.remove();
     };
-  }, [scheduledRegularOpenTimestamp, scheduledOpenRefreshKey]));
+  }, [scheduledRegularOpenTimestamp, scheduledOpenRefreshKey, refetchHeatMap]));
   const staleQuotes = sourceQuotes.filter((quote) => !isDisplayableHeatMapQuote(quote, nowSeconds));
   const validAgeQuotes = sourceQuotes.filter((quote) => isDisplayableHeatMapQuote(quote, nowSeconds));
   const unavailableSymbols = [...new Set([

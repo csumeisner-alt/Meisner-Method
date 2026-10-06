@@ -265,7 +265,21 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     response.end(`<!doctype html>
       <html><head><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
       <style>html,body,#root{width:100%;height:100%;margin:0;padding:0}body{overflow-x:auto}</style>
-      </head><body><div id="root"></div><script src="/bundle.js"></script></body></html>`);
+      </head><body><div id="root"></div><script>
+        window.__heatMapTrackedIntervals = [];
+        const originalSetInterval = window.setInterval.bind(window);
+        const originalClearInterval = window.clearInterval.bind(window);
+        window.setInterval = (callback, delay, ...args) => {
+          const id = originalSetInterval(() => {}, delay);
+          window.__heatMapTrackedIntervals.push({ callback, delay, args, id, cleared: false });
+          return id;
+        };
+        window.clearInterval = (id) => {
+          const tracked = window.__heatMapTrackedIntervals.find((interval) => interval.id === id);
+          if (tracked) tracked.cleared = true;
+          return originalClearInterval(id);
+        };
+      </script><script src="/bundle.js"></script></body></html>`);
   });
   await new Promise((resolveListen, rejectListen) => {
     server.once("error", rejectListen);
@@ -600,6 +614,124 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       `(request) => request.category === "stocks" && request.period === "1w" && request.sector === "Technology"`,
       "the selected period with the stock sector",
     );
+    const regularQuoteResponse = {
+      category: "stocks",
+      period: "1w",
+      requestedSector: "Technology",
+      updatedAt: Date.now() / 1000,
+      quotes: [quote("MATCH", { marketSession: "regular" })],
+      unavailableSymbols: [],
+    };
+    await setResponse(browser, regularQuoteResponse);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-counted-quotes"))})?.textContent === "1"`,
+      "the selected filters should match the active regular-session response.",
+    );
+
+    const refetchCountBeforeCadence = await browser.evaluate("window.__heatMapBrowserTest.refetches.length");
+    await browser.evaluate("window.__heatMapBrowserTest.setRefetchFailures(1)");
+    await browser.evaluate(`(() => {
+      const activeIntervals = window.__heatMapTrackedIntervals.filter((item) => item.delay === 60_000 && !item.cleared);
+      window.__heatMapTestRegularInterval = activeIntervals.at(-1);
+      if (!window.__heatMapTestRegularInterval) throw new Error("The regular-session refresh interval was not started.");
+      window.__heatMapTestRegularInterval.callback(...window.__heatMapTestRegularInterval.args);
+      window.__heatMapTestRegularInterval.callback(...window.__heatMapTestRegularInterval.args);
+    })()`);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.refetches.length === ${refetchCountBeforeCadence + 1}`,
+      "one cadence tick should refresh the active regular-session map.",
+    );
+    await delay(50);
+    assert.equal(
+      await browser.evaluate("window.__heatMapBrowserTest.refetches.length"),
+      refetchCountBeforeCadence + 1,
+      "rapid duplicate cadence callbacks should not create duplicate quote requests.",
+    );
+    assert.deepEqual(
+      await browser.evaluate("window.__heatMapBrowserTest.refetches.at(-1)"),
+      { category: "stocks", period: "1w", sector: "Technology" },
+      "the cadence refresh should keep the selected query parameters.",
+    );
+    assert.match(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-filter-open"))}).getAttribute("aria-label")`),
+      /4 active/,
+      "the cadence refresh should keep the locally selected filters.",
+    );
+    await browser.evaluate(`window.__heatMapTestRegularInterval.callback(...window.__heatMapTestRegularInterval.args)`);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.refetches.length === ${refetchCountBeforeCadence + 2}`,
+      "a later cadence tick should recover after one quote request fails.",
+    );
+    await delay(50);
+    assert.equal(
+      await browser.evaluate("window.__heatMapBrowserTest.refetches.length"),
+      refetchCountBeforeCadence + 2,
+      "a recovered cadence tick should not cause an extra request.",
+    );
+
+    const refetchCountBeforeBackground = await browser.evaluate("window.__heatMapBrowserTest.refetches.length");
+    await browser.evaluate(`(() => {
+      window.__heatMapOriginalVisibilityDescriptor = Object.getOwnPropertyDescriptor(document, "visibilityState");
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    })()`);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      "window.__heatMapTestRegularInterval.cleared",
+      "backgrounding the app should stop its regular-session refresh interval.",
+    );
+    await browser.evaluate(`window.__heatMapTestRegularInterval.callback(...window.__heatMapTestRegularInterval.args)`);
+    await delay(50);
+    assert.equal(
+      await browser.evaluate("window.__heatMapBrowserTest.refetches.length"),
+      refetchCountBeforeBackground,
+      "a stale interval callback must not refresh while the app is backgrounded.",
+    );
+    await browser.evaluate(`(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    })()`);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.refetches.length === ${refetchCountBeforeBackground + 1}`,
+      "returning to the foreground should refresh the active map once.",
+    );
+    await browser.evaluate(`(() => {
+      const activeIntervals = window.__heatMapTrackedIntervals.filter((item) => item.delay === 60_000 && !item.cleared);
+      window.__heatMapTestRegularInterval = activeIntervals.at(-1);
+      if (!window.__heatMapTestRegularInterval) throw new Error("The refresh interval did not resume in the foreground.");
+      window.__heatMapSetFocused(false);
+    })()`);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      "window.__heatMapTestRegularInterval.cleared",
+      "leaving the heat-map screen should stop its regular-session refresh interval.",
+    );
+    const refetchCountBeforeBlur = await browser.evaluate("window.__heatMapBrowserTest.refetches.length");
+    await browser.evaluate(`window.__heatMapTestRegularInterval.callback(...window.__heatMapTestRegularInterval.args)`);
+    await delay(50);
+    assert.equal(
+      await browser.evaluate("window.__heatMapBrowserTest.refetches.length"),
+      refetchCountBeforeBlur,
+      "a stale interval callback must not refresh after the heat-map screen loses focus.",
+    );
+    await browser.evaluate("window.__heatMapSetFocused(true)");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      "window.__heatMapTrackedIntervals.filter((item) => item.delay === 60_000 && !item.cleared).length === 2",
+      "returning to the heat-map screen should start one fresh refresh interval.",
+    );
+    await browser.evaluate(`(() => {
+      if (window.__heatMapOriginalVisibilityDescriptor) {
+        Object.defineProperty(document, "visibilityState", window.__heatMapOriginalVisibilityDescriptor);
+        delete window.__heatMapOriginalVisibilityDescriptor;
+      } else {
+        delete document.visibilityState;
+      }
+    })()`);
 
     const simulatedNowMs = await browser.evaluate(`(() => {
       window.__heatMapOriginalDateNow = Date.now;
