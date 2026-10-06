@@ -289,15 +289,15 @@ export default function HeatMapScreen() {
     requestedSector,
   );
   const sourceQuotes = responseMatches ? response!.quotes : [];
-  const nextRegularOpenTimestamp = responseMatches
-    ? getNextHeatMapRegularOpenTimestamp(sourceQuotes, nowSeconds)
+  const scheduledRegularOpenTimestamp = responseMatches
+    ? getHeatMapRegularOpenRefreshTimestamp(sourceQuotes)
     : null;
-  const scheduledOpenRefreshKey = nextRegularOpenTimestamp === null
+  const scheduledOpenRefreshKey = scheduledRegularOpenTimestamp === null
     ? null
-    : `${JSON.stringify(params)}:${nextRegularOpenTimestamp}`;
+    : `${JSON.stringify(params)}:${scheduledRegularOpenTimestamp}`;
   useFocusEffect(useCallback(() => {
     if (
-      nextRegularOpenTimestamp === null ||
+      scheduledRegularOpenTimestamp === null ||
       scheduledOpenRefreshKey === null ||
       lastScheduledOpenRefresh.current === scheduledOpenRefreshKey
     ) {
@@ -307,6 +307,7 @@ export default function HeatMapScreen() {
     let isActive = true;
     let retryTimeout: ReturnType<typeof setTimeout> | null = null;
     const refetch = mapQueryRefetch.current;
+    const refreshAt = scheduledRegularOpenTimestamp * 1000 + 1_500;
     const retryOnceIfFailed = (allowRetry: boolean) => {
       void (async () => {
         try {
@@ -322,18 +323,25 @@ export default function HeatMapScreen() {
         }, SCHEDULED_OPEN_REFRESH_RETRY_DELAY_MS);
       })();
     };
-    const refreshAt = nextRegularOpenTimestamp * 1000 + 1_500;
-    const timeout = setTimeout(() => {
+    const refreshOnce = () => {
       if (lastScheduledOpenRefresh.current === scheduledOpenRefreshKey) return;
       lastScheduledOpenRefresh.current = scheduledOpenRefreshKey;
       retryOnceIfFailed(true);
-    }, Math.max(0, refreshAt - Date.now()));
+    };
+    const timeout = setTimeout(refreshOnce, Math.max(0, refreshAt - Date.now()));
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState !== 'active') return;
+      const resumedAt = Date.now();
+      setNowSeconds(resumedAt / 1000);
+      if (resumedAt >= refreshAt) refreshOnce();
+    });
     return () => {
       isActive = false;
       clearTimeout(timeout);
       if (retryTimeout !== null) clearTimeout(retryTimeout);
+      appStateSubscription?.remove();
     };
-  }, [nextRegularOpenTimestamp, scheduledOpenRefreshKey]));
+  }, [scheduledRegularOpenTimestamp, scheduledOpenRefreshKey]));
   const staleQuotes = sourceQuotes.filter((quote) => !isDisplayableHeatMapQuote(quote, nowSeconds));
   const validAgeQuotes = sourceQuotes.filter((quote) => isDisplayableHeatMapQuote(quote, nowSeconds));
   const unavailableSymbols = [...new Set([

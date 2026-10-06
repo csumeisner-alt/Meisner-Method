@@ -4,6 +4,7 @@ import {
   formatHeatMapNextOpen,
   formatHeatMapQuoteAge,
   getHeatMapSessionLabel,
+  getHeatMapRegularOpenRefreshTimestamp,
   getNextHeatMapRegularOpenTimestamp,
   isDisplayableHeatMapQuote,
 } from "../heatMapQuoteDisplay.ts";
@@ -26,6 +27,18 @@ test("heat-map schedules the earliest upcoming regular open for closed and after
     { assetType: "stock", marketSession: "closed", nextRegularOpenTimestamp: null },
   ], now), now + 60);
   assert.equal(getNextHeatMapRegularOpenTimestamp([], now), null);
+});
+
+test("heat-map retains the scheduled refresh deadline after a missed regular open", () => {
+  const open = 1_800_000_000;
+  assert.equal(getHeatMapRegularOpenRefreshTimestamp([
+    { assetType: "stock", marketSession: "closed", nextRegularOpenTimestamp: open - 60 },
+    { assetType: "etf", marketSession: "after_hours", nextRegularOpenTimestamp: open + 60 },
+    { assetType: "stock", marketSession: "regular", nextRegularOpenTimestamp: open - 120 },
+    { assetType: "cryptocurrency", marketSession: "closed", nextRegularOpenTimestamp: open - 180 },
+    { assetType: "stock", marketSession: "closed", nextRegularOpenTimestamp: null },
+  ]), open - 60);
+  assert.equal(getHeatMapRegularOpenRefreshTimestamp([]), null);
 });
 
 test("heat-map quote ages stay compact across minutes, hours, and days", () => {

@@ -60,6 +60,30 @@ export function getNextHeatMapRegularOpenTimestamp(
   return nextOpen;
 }
 
+export function getHeatMapRegularOpenRefreshTimestamp(
+  quotes: readonly Pick<HeatMapQuote, "assetType" | "marketSession" | "nextRegularOpenTimestamp">[],
+): number | null {
+  let refreshTimestamp: number | null = null;
+  for (const quote of quotes) {
+    if (
+      (quote.assetType !== "stock" && quote.assetType !== "etf") ||
+      (quote.marketSession !== "closed" && quote.marketSession !== "after_hours")
+    ) {
+      continue;
+    }
+    const timestamp = quote.nextRegularOpenTimestamp;
+    if (
+      timestamp !== null &&
+      Number.isFinite(timestamp) &&
+      timestamp > 0 &&
+      (refreshTimestamp === null || timestamp < refreshTimestamp)
+    ) {
+      refreshTimestamp = timestamp;
+    }
+  }
+  return refreshTimestamp;
+}
+
 export function formatHeatMapNextOpen(
   timestamp: number | null,
   session: HeatMapQuote["marketSession"],

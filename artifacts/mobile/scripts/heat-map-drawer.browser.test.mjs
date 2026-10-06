@@ -709,6 +709,101 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       /4 active/,
       "Retry exhaustion should not change active map filters.",
     );
+    const missedOpen = simulatedNowMs / 1000 + 2;
+    const resumedAtMs = (missedOpen + 2) * 1000;
+    const refetchCountBeforeResume = await browser.evaluate("window.__heatMapBrowserTest.refetches.length");
+    await browser.evaluate(`(() => {
+      window.__heatMapHeldOpenTimeouts = [];
+      window.__heatMapOriginalSetTimeout = window.setTimeout;
+      window.__holdHeatMapOpenTimeout = true;
+      window.setTimeout = function(callback, delay, ...args) {
+        if (window.__holdHeatMapOpenTimeout && delay > 1_500 && delay < 10_000) {
+          const id = window.__heatMapOriginalSetTimeout(() => {}, 60_000);
+          window.__heatMapHeldOpenTimeouts.push({ callback, args, id });
+          return id;
+        }
+        return window.__heatMapOriginalSetTimeout(callback, delay, ...args);
+      };
+      window.__heatMapOriginalVisibilityDescriptor = Object.getOwnPropertyDescriptor(document, "visibilityState");
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    })()`);
+    await browser.evaluate(`window.__heatMapBrowserTest.setNextRefetchResponse({
+      category: "stocks",
+      period: "1w",
+      requestedSector: "Technology",
+      updatedAt: ${missedOpen + 2},
+      quotes: [${JSON.stringify(quote("MATCH", {
+        priceTimestamp: missedOpen + 2,
+        marketSession: "regular",
+        nextRegularOpenTimestamp: null,
+      }))}],
+      unavailableSymbols: [],
+    })`);
+    await setResponse(browser, {
+      category: "stocks",
+      period: "1w",
+      requestedSector: "Technology",
+      updatedAt: simulatedNowMs / 1000,
+      quotes: [quote("MATCH", {
+        priceTimestamp: simulatedNowMs / 1000,
+        marketSession: "closed",
+        nextRegularOpenTimestamp: missedOpen,
+      })],
+      unavailableSymbols: [],
+    });
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      "window.__heatMapHeldOpenTimeouts.length === 1",
+      "The scheduled-open timer should be held to simulate the phone suspending.",
+    );
+    await browser.evaluate(`(() => {
+      Date.now = () => ${resumedAtMs};
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    })()`);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-session-MATCH"))})?.textContent === "Regular"`,
+      "Resuming after the scheduled open should refresh the still-closed quote.",
+    );
+    assert.equal(
+      await browser.evaluate("window.__heatMapBrowserTest.refetches.length"),
+      refetchCountBeforeResume + 1,
+      "Resuming after a delayed timer should issue exactly one refresh.",
+    );
+    assert.deepEqual(
+      await browser.evaluate("window.__heatMapBrowserTest.refetches.at(-1)"),
+      { category: "stocks", period: "1w", sector: "Technology" },
+      "The resume refresh should preserve the selected category, period, and sector.",
+    );
+    assert.match(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-selected-period"))}).textContent`),
+      /1W/,
+      "Resuming should preserve the selected period.",
+    );
+    assert.match(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-filter-open"))}).getAttribute("aria-label")`),
+      /4 active/,
+      "Resuming should preserve locally selected filters.",
+    );
+    await browser.evaluate(`(() => {
+      const held = window.__heatMapHeldOpenTimeouts[0];
+      held.callback(...held.args);
+      window.setTimeout = window.__heatMapOriginalSetTimeout;
+      window.__holdHeatMapOpenTimeout = false;
+      if (window.__heatMapOriginalVisibilityDescriptor) {
+        Object.defineProperty(document, "visibilityState", window.__heatMapOriginalVisibilityDescriptor);
+      } else {
+        delete document.visibilityState;
+      }
+    })()`);
+    await delay(100);
+    assert.equal(
+      await browser.evaluate("window.__heatMapBrowserTest.refetches.length"),
+      refetchCountBeforeResume + 1,
+      "The delayed timer callback should not duplicate the resume refresh.",
+    );
     await browser.evaluate(`(() => {
       Date.now = window.__heatMapOriginalDateNow;
       delete window.__heatMapOriginalDateNow;
