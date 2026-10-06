@@ -1344,6 +1344,7 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
 
     const refetchCountBeforeCryptoResume = await browser.evaluate("window.__heatMapBrowserTest.refetches.length");
     await browser.evaluate(`window.__heatMapBrowserTest.setNextRefetchResponse(${JSON.stringify(freshCryptoResponse)})`);
+    await browser.evaluate("window.__heatMapBrowserTest.setRefetchFailures(1)");
     await setResponse(browser, cryptoResponse(Date.now() / 1000 - 6 * 60));
     await browser.evaluate(`(() => {
       Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
@@ -1356,22 +1357,32 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     await waitFor(
       (expression) => browser.evaluate(expression),
       `window.__heatMapBrowserTest.refetches.length === ${refetchCountBeforeCryptoResume + 1}`,
-      "resuming with a stale cryptocurrency batch should refresh the selected map once.",
+      "resuming with a stale cryptocurrency batch should make its initial refresh attempt.",
+    );
+    assert.deepEqual(
+      await browser.evaluate("window.__heatMapBrowserTest.refetches.slice(-1)"),
+      [{ category: "cryptocurrency", period: "1w" }],
+      "the initial stale-crypto resume attempt should preserve the selected map.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.refetches.length === ${refetchCountBeforeCryptoResume + 2}`,
+      "a failed stale-crypto resume refresh should get one delayed retry.",
     );
     assert.deepEqual(
       await browser.evaluate("window.__heatMapBrowserTest.refetches.at(-1)"),
       { category: "cryptocurrency", period: "1w" },
-      "the crypto resume refresh should keep the selected category and period.",
+      "the successful retry should keep the selected category and period.",
     );
     assert.match(
       await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-selected-period"))}).textContent`),
       /1W/,
-      "a stale crypto refresh should preserve the selected return period.",
+      "the stale crypto retry should preserve the selected return period.",
     );
     assert.match(
       await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-filter-open"))}).getAttribute("aria-label")`),
       /2 active/,
-      "a stale crypto refresh should preserve local filters.",
+      "the stale crypto retry should preserve local filters.",
     );
 
     await browser.evaluate(`(() => {
@@ -1385,13 +1396,108 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     await delay(100);
     assert.equal(
       await browser.evaluate("window.__heatMapBrowserTest.refetches.length"),
-      refetchCountBeforeCryptoResume + 1,
-      "resuming with the fresh cryptocurrency batch should not make another request.",
+      refetchCountBeforeCryptoResume + 2,
+      "a successful retry should leave the fresh cryptocurrency batch without another automatic request.",
     );
     assert.equal(
       await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-counted-quotes"))})?.textContent`),
       "1",
       "the local crypto filters should remain applied after both resumes.",
+    );
+
+    const refetchCountBeforeFailedCryptoResumeRetry = await browser.evaluate("window.__heatMapBrowserTest.refetches.length");
+    await browser.evaluate("window.__heatMapBrowserTest.setRefetchFailures(2)");
+    await setResponse(browser, cryptoResponse(Date.now() / 1000 - 6 * 60));
+    await delay(50);
+    await browser.evaluate(`(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    })()`);
+    await delay(50);
+    await browser.evaluate(`(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    })()`);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.refetches.length === ${refetchCountBeforeFailedCryptoResumeRetry + 1}`,
+      "a stale crypto resume should start its first attempt when testing a failed retry.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.refetches.length === ${refetchCountBeforeFailedCryptoResumeRetry + 2}`,
+      "a failed stale-crypto resume attempt should make only one retry.",
+    );
+    await delay(100);
+    assert.equal(
+      await browser.evaluate("window.__heatMapBrowserTest.refetches.length"),
+      refetchCountBeforeFailedCryptoResumeRetry + 2,
+      "a failed resume retry must not create a third automatic request.",
+    );
+
+    const refetchCountBeforeCryptoBlurRetry = await browser.evaluate("window.__heatMapBrowserTest.refetches.length");
+    await browser.evaluate("window.__heatMapBrowserTest.setRefetchFailures(1)");
+    await setResponse(browser, cryptoResponse(Date.now() / 1000 - 6 * 60));
+    await delay(50);
+    await browser.evaluate(`(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    })()`);
+    await delay(50);
+    await browser.evaluate(`(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    })()`);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.refetches.length === ${refetchCountBeforeCryptoBlurRetry + 1}`,
+      "a stale crypto resume should start before testing blur cancellation.",
+    );
+    await delay(50);
+    await browser.evaluate("window.__heatMapSetFocused(false)");
+    await delay(1_100);
+    assert.equal(
+      await browser.evaluate("window.__heatMapBrowserTest.refetches.length"),
+      refetchCountBeforeCryptoBlurRetry + 1,
+      "blurring the heat-map screen should cancel its pending resume retry.",
+    );
+
+    await browser.evaluate("window.__heatMapSetFocused(true)");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      "window.__heatMapTrackedIntervals.filter((item) => item.delay === 60_000 && !item.cleared).at(-1) !== window.__heatMapTestCryptoInterval",
+      "returning to the heat-map screen should reattach the crypto refresh listeners.",
+    );
+    await browser.evaluate(`window.__heatMapTestCryptoInterval = window.__heatMapTrackedIntervals.filter((item) => item.delay === 60_000 && !item.cleared).at(-1)`);
+    const refetchCountBeforeCryptoMapChange = await browser.evaluate("window.__heatMapBrowserTest.refetches.length");
+    await browser.evaluate("window.__heatMapBrowserTest.setRefetchFailures(1)");
+    await browser.evaluate(`(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    })()`);
+    await delay(50);
+    await browser.evaluate(`(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    })()`);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.refetches.length === ${refetchCountBeforeCryptoMapChange + 1}`,
+      "the focused stale crypto map should start another resume attempt.",
+    );
+    await delay(50);
+    await clickTestID(browser, "heat-map-category-picker");
+    await clickTestID(browser, "heat-map-category-etfs");
+    await waitForRequest(
+      browser,
+      `(request) => request.category === "etfs" && request.period === "1w"`,
+      "the newly selected ETF map",
+    );
+    await delay(1_100);
+    assert.equal(
+      await browser.evaluate("window.__heatMapBrowserTest.refetches.length"),
+      refetchCountBeforeCryptoMapChange + 1,
+      "changing the selected map should cancel the pending crypto resume retry.",
     );
   } finally {
     browser?.close();

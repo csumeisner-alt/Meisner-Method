@@ -449,24 +449,49 @@ export default function HeatMapScreen() {
 
     let isFocused = true;
     let appIsActive = AppState?.currentState !== 'background' && AppState?.currentState !== 'inactive';
+    let retryTimeout: ReturnType<typeof setTimeout> | null = null;
+    const stopRetry = () => {
+      if (retryTimeout === null) return;
+      clearTimeout(retryTimeout);
+      retryTimeout = null;
+    };
+    const refresh = (allowRetry = true) => {
+      if (!isFocused || !appIsActive) return;
+      void (async () => {
+        try {
+          const result = await refetchHeatMap();
+          if (result === null || !result.isError) return;
+        } catch {
+          // Some query configurations reject instead of returning an error result.
+        }
+        if (!allowRetry || !isFocused || !appIsActive || retryTimeout !== null) return;
+        retryTimeout = setTimeout(() => {
+          retryTimeout = null;
+          refresh(false);
+        }, SCHEDULED_OPEN_REFRESH_RETRY_DELAY_MS);
+      })();
+    };
     const appStateSubscription = AppState?.addEventListener?.('change', (nextState) => {
       const wasActive = appIsActive;
       appIsActive = nextState === 'active';
-      if (!appIsActive || wasActive || !isFocused) return;
+      if (!appIsActive) {
+        stopRetry();
+        return;
+      }
+      if (wasActive || !isFocused) return;
 
       const resumedAtSeconds = Date.now() / 1000;
       setNowSeconds(resumedAtSeconds);
       if (!shouldRefreshCryptoHeatMapOnResume(category, response?.updatedAt, resumedAtSeconds)) return;
-      void refetchHeatMap().catch(() => {
-        // A later app resume can retry if this quote batch is still stale.
-      });
+      refresh();
     });
 
     return () => {
       isFocused = false;
+      stopRetry();
       appStateSubscription?.remove();
     };
-  }, [category, responseMatches, response?.updatedAt, refetchHeatMap]));
+  }, [category, params, responseMatches, response?.updatedAt, refetchHeatMap]));
   useFocusEffect(useCallback(() => {
     if (
       scheduledRegularOpenTimestamp === null ||
