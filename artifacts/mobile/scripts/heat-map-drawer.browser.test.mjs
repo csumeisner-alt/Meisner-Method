@@ -1192,6 +1192,57 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       "The unavailable ticker should remain saved and available for editing after reopening.",
     );
 
+    const malformedCustomSymbols = "{not valid JSON";
+    await browser.evaluate(
+      `localStorage.setItem(${JSON.stringify(customSymbolsStorageKey)}, ${JSON.stringify(malformedCustomSymbols)})`,
+    );
+    await browser.send("Page.reload", { ignoreCache: true });
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-category-picker"))})`,
+      "The heat-map screen should reopen before checking malformed saved tickers.",
+    );
+    await clickTestID(browser, "heat-map-category-picker");
+    await clickTestID(browser, "heat-map-category-custom");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-storage-error"))})?.textContent.includes("device data is invalid") && !!document.querySelector(${JSON.stringify(selector("heat-map-storage-reset"))})`,
+      "Malformed saved tickers should be identified and offer an explicit reset.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-custom-add"))})?.disabled`),
+      true,
+      "Adding tickers must stay disabled while the saved value is malformed.",
+    );
+    assert.equal(
+      await browser.evaluate(`localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)})`),
+      malformedCustomSymbols,
+      "Loading malformed saved tickers must preserve the exact unreadable value.",
+    );
+    await browser.evaluate(`(() => {
+      const originalSetItem = Storage.prototype.setItem;
+      let failuresRemaining = 1;
+      Storage.prototype.setItem = function(key, value) {
+        if (key === ${JSON.stringify(customSymbolsStorageKey)} && failuresRemaining > 0) {
+          failuresRemaining -= 1;
+          throw new DOMException("Temporary device storage failure.", "QuotaExceededError");
+        }
+        return originalSetItem.call(this, key, value);
+      };
+    })()`);
+    await clickTestID(browser, "heat-map-storage-reset");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}) === ${JSON.stringify(malformedCustomSymbols)} && document.querySelector(${JSON.stringify(selector("heat-map-custom-error"))})?.textContent === "Couldn't reset saved tickers on this device. Try again." && !!document.querySelector(${JSON.stringify(selector("heat-map-storage-reset"))})`,
+      "A failed reset should preserve the malformed value and allow the user to retry.",
+    );
+    await clickTestID(browser, "heat-map-storage-reset");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}) === "[]" && !document.querySelector(${JSON.stringify(selector("heat-map-storage-error"))}) && document.body.innerText.includes("Build a personal comparison")`,
+      "Choosing reset should replace the malformed value with an empty custom map.",
+    );
+
     // A stale crypto batch refreshes when the focused screen resumes, while a fresh
     // batch does not. The user's selected period and local filters remain intact.
     await clickTestID(browser, "heat-map-category-picker");

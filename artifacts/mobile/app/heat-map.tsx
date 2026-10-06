@@ -193,7 +193,8 @@ export default function HeatMapScreen() {
   const [period, setPeriod] = useState<GetMarketHeatMapPeriod>('1d');
   const [customSymbols, setCustomSymbols] = useState<string[]>([]);
   const [storageReady, setStorageReady] = useState(false);
-  const [storageLoadError, setStorageLoadError] = useState(false);
+  const [storageLoadError, setStorageLoadError] = useState<'read' | 'malformed' | null>(null);
+  const [isResettingSavedTickers, setIsResettingSavedTickers] = useState(false);
   const [isEditingCustomMap, setIsEditingCustomMap] = useState(false);
   const [removingSymbol, setRemovingSymbol] = useState<string | null>(null);
   const [lastRemovedTicker, setLastRemovedTicker] = useState<{ symbol: string; index: number } | null>(null);
@@ -237,19 +238,23 @@ export default function HeatMapScreen() {
     try {
       const value = await AsyncStorage.getItem(STORAGE_KEY);
       let symbols: string[] = [];
-      if (value) {
+      let malformed = false;
+      if (value !== null) {
         try {
           const parsed: unknown = JSON.parse(value);
           if (Array.isArray(parsed)) symbols = normalizeCustomHeatMapSymbols(parsed);
-        } catch { /* Discard corrupt local preferences. */ }
+          else malformed = true;
+        } catch {
+          malformed = true;
+        }
       }
       if (readId !== customStorageReadId.current) return;
-      setCustomSymbols(symbols);
-      setStorageLoadError(false);
+      setCustomSymbols(malformed ? [] : symbols);
+      setStorageLoadError(malformed ? 'malformed' : null);
       setFormError('');
     } catch {
       if (readId !== customStorageReadId.current) return;
-      setStorageLoadError(true);
+      setStorageLoadError('read');
     } finally {
       if (readId === customStorageReadId.current) setStorageReady(true);
     }
@@ -610,6 +615,22 @@ export default function HeatMapScreen() {
     setCustomSymbols(next);
     setFormError('');
   }
+  async function resetMalformedSavedTickers() {
+    if (!storageReady || storageLoadError !== 'malformed' || isResettingSavedTickers) return;
+    setIsResettingSavedTickers(true);
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([]));
+      setCustomSymbols([]);
+      setStorageLoadError(null);
+      setFormError('');
+      setLastRemovedTicker(null);
+      setIsEditingCustomMap(false);
+    } catch {
+      setFormError("Couldn't reset saved tickers on this device. Try again.");
+    } finally {
+      setIsResettingSavedTickers(false);
+    }
+  }
   async function addSymbol(rawSymbol = symbolInput) {
     const symbol = rawSymbol.trim().toUpperCase();
     if (!symbol) return;
@@ -843,22 +864,39 @@ export default function HeatMapScreen() {
                 {customSearchFeedback.message}
               </Text>}
             </View>}
-            {storageLoadError && <View style={styles.storageReadError}>
+          {storageLoadError && <View style={styles.storageReadError}>
               <Text testID="heat-map-storage-error" style={[styles.formError, { color: colors.sellColor }]}>
-                Couldn't load saved tickers from this device.
+                {storageLoadError === 'malformed'
+                  ? "Saved tickers couldn't be read because their device data is invalid. It hasn't been changed."
+                  : "Couldn't load saved tickers from this device."}
               </Text>
+              {storageLoadError === 'malformed' && <Text style={[styles.searchHint, { color: colors.mutedForeground }]}>
+                Resetting replaces the unreadable saved value with an empty list.
+              </Text>}
               <TouchableOpacity
                 testID="heat-map-storage-retry"
                 accessibilityRole="button"
                 accessibilityLabel="Retry loading saved tickers"
-                disabled={!storageReady}
+                disabled={!storageReady || isResettingSavedTickers}
                 onPress={() => void loadSavedCustomSymbols()}
-                style={[styles.retryButton, { borderColor: colors.border, opacity: storageReady ? 1 : 0.55 }]}
+                style={[styles.retryButton, { borderColor: colors.border, opacity: storageReady && !isResettingSavedTickers ? 1 : 0.55 }]}
               >
                 {!storageReady
                   ? <ActivityIndicator size="small" color={colors.primary} />
                   : <Text style={[styles.retryText, { color: colors.primary }]}>Retry</Text>}
               </TouchableOpacity>
+              {storageLoadError === 'malformed' && <TouchableOpacity
+                testID="heat-map-storage-reset"
+                accessibilityRole="button"
+                accessibilityLabel="Replace unreadable saved tickers with an empty list"
+                disabled={!storageReady || isResettingSavedTickers}
+                onPress={() => void resetMalformedSavedTickers()}
+                style={[styles.retryButton, { borderColor: colors.sellColor, opacity: storageReady && !isResettingSavedTickers ? 1 : 0.55 }]}
+              >
+                {isResettingSavedTickers
+                  ? <ActivityIndicator size="small" color={colors.sellColor} />
+                  : <Text style={[styles.retryText, { color: colors.sellColor }]}>Reset saved tickers</Text>}
+              </TouchableOpacity>}
             </View>}
             {!!formError && <Text testID="heat-map-custom-error" style={[styles.formError, { color: colors.sellColor }]}>{formError}</Text>}
             {!!editFallbackSymbols.length && <View style={styles.editFallbackList}>
@@ -891,7 +929,7 @@ export default function HeatMapScreen() {
             <Text style={[styles.noticeText, { color: colors.mutedForeground }]}>Quick 1D quotes are shown while detailed history and risk labels load.</Text>
           </View>}
 
-          {category === 'custom' && storageReady && customSymbols.length === 0
+          {category === 'custom' && storageReady && !storageLoadError && customSymbols.length === 0
             ? stateCard('hexagon-multiple-outline', 'Build a personal comparison', 'Add validated tickers above. Your symbols remain private and stored on this device.')
               : mapQuery.isError && !responseMatches
               ? stateCard('alert-circle-outline', 'Market data is unavailable', "This quote batch couldn't be refreshed.", <TouchableOpacity testID="heat-map-retry" onPress={() => mapQuery.refetch()} style={[styles.retryButton, { borderColor: colors.border }]}><Text style={[styles.retryText, { color: colors.primary }]}>Try again</Text></TouchableOpacity>)
