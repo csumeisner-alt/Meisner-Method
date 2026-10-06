@@ -12,6 +12,7 @@ import {
   isDisplayableHeatMapQuote,
   shouldRefreshCryptoHeatMapOnResume,
   shouldRefreshHeatMapDuringRegularSession,
+  shouldRefreshHeatMapOnForegroundCadence,
 } from "../heatMapQuoteDisplay.ts";
 
 test("heat-map labels each quote session distinctly", () => {
@@ -68,6 +69,25 @@ test("heat-map refreshes stocks and ETFs on a one-minute cadence only during the
   ]), false);
   assert.equal(shouldRefreshHeatMapDuringRegularSession("cryptocurrency", [
     { assetType: "cryptocurrency", marketSession: "regular" },
+  ]), false);
+});
+
+test("heat-map foreground cadence supports crypto batches and only regular-session stock maps", () => {
+  assert.equal(shouldRefreshHeatMapOnForegroundCadence("cryptocurrency", []), true);
+  assert.equal(shouldRefreshHeatMapOnForegroundCadence("stocks", [
+    { assetType: "stock", marketSession: "regular" },
+  ]), true);
+  assert.equal(shouldRefreshHeatMapOnForegroundCadence("etfs", [
+    { assetType: "etf", marketSession: "regular" },
+  ]), true);
+  assert.equal(shouldRefreshHeatMapOnForegroundCadence("custom", [
+    { assetType: "etf", marketSession: "regular" },
+  ]), true);
+  assert.equal(shouldRefreshHeatMapOnForegroundCadence("stocks", [
+    { assetType: "stock", marketSession: "after_hours" },
+  ]), false);
+  assert.equal(shouldRefreshHeatMapOnForegroundCadence("commodities", [
+    { assetType: "stock", marketSession: "regular" },
   ]), false);
 });
 

@@ -106,6 +106,13 @@ export function shouldRefreshHeatMapDuringRegularSession(
   return false;
 }
 
+export function shouldRefreshHeatMapOnForegroundCadence(
+  category: GetMarketHeatMapCategory,
+  quotes: readonly Pick<HeatMapQuote, "assetType" | "marketSession">[],
+): boolean {
+  return category === "cryptocurrency" || shouldRefreshHeatMapDuringRegularSession(category, quotes);
+}
+
 export function shouldRefreshCryptoHeatMapOnResume(
   category: GetMarketHeatMapCategory,
   batchUpdatedAt: number | null | undefined,

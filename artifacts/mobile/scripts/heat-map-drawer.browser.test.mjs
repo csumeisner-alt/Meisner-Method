@@ -23,6 +23,7 @@ test("heat-map resume refresh imports React Native AppState before subscribing",
   assert.match(source, /AppState\?\.addEventListener\?\.\('change'/);
   assert.match(source, /import\s*\{[^}]*\bgetHeatMapRegularOpenRefreshTimestamp\b[^}]*\}\s*from\s*['"]@\/lib\/heatMapQuoteDisplay['"]/s);
   assert.match(source, /import\s*\{[^}]*\bHEAT_MAP_CRYPTO_REFRESH_INTERVAL_MS\b[^}]*\}\s*from\s*['"]@\/lib\/heatMapQuoteDisplay['"]/s);
+  assert.match(source, /import\s*\{[^}]*\bshouldRefreshHeatMapOnForegroundCadence\b[^}]*\}\s*from\s*['"]@\/lib\/heatMapQuoteDisplay['"]/s);
   assert.match(source, /import\s*\{[^}]*\bshouldRefreshCryptoHeatMapOnResume\b[^}]*\}\s*from\s*['"]@\/lib\/heatMapQuoteDisplay['"]/s);
 });
 
@@ -1342,6 +1343,40 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       refetchCountBeforeCryptoRetry + 2,
       "a second crypto refresh failure should not create an unbounded retry loop.",
     );
+
+    const refetchCountBeforeBackgroundRetryCancellation = await browser.evaluate("window.__heatMapBrowserTest.refetches.length");
+    await browser.evaluate("window.__heatMapBrowserTest.setRefetchFailures(1)");
+    await browser.evaluate(`window.__heatMapTestCryptoInterval.callback(...window.__heatMapTestCryptoInterval.args)`);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.refetches.length === ${refetchCountBeforeBackgroundRetryCancellation + 1}`,
+      "a failed crypto cadence tick should start its bounded retry before backgrounding.",
+    );
+    await browser.evaluate(`(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    })()`);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      "window.__heatMapTestCryptoInterval.cleared",
+      "backgrounding should stop the crypto interval and cancel its pending retry.",
+    );
+    await delay(1_100);
+    assert.equal(
+      await browser.evaluate("window.__heatMapBrowserTest.refetches.length"),
+      refetchCountBeforeBackgroundRetryCancellation + 1,
+      "a pending crypto retry must not run after the app backgrounds.",
+    );
+    await browser.evaluate(`(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    })()`);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      "window.__heatMapTrackedIntervals.filter((item) => item.delay === 60_000 && !item.cleared).at(-1) !== window.__heatMapTestCryptoInterval",
+      "returning to the foreground should start a fresh crypto interval after canceling a retry.",
+    );
+    await browser.evaluate(`window.__heatMapTestCryptoInterval = window.__heatMapTrackedIntervals.filter((item) => item.delay === 60_000 && !item.cleared).at(-1)`);
 
     const refetchCountBeforeCryptoBackground = await browser.evaluate("window.__heatMapBrowserTest.refetches.length");
     await browser.evaluate(`(() => {

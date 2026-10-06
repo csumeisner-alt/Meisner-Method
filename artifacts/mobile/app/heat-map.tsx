@@ -33,7 +33,7 @@ import {
   getHeatMapRegularOpenRefreshTimestamp, getNextHeatMapRegularOpenTimestamp,
   HEAT_MAP_CRYPTO_REFRESH_INTERVAL_MS,
   HEAT_MAP_REGULAR_SESSION_REFRESH_INTERVAL_MS, isDisplayableHeatMapQuote,
-  shouldRefreshCryptoHeatMapOnResume, shouldRefreshHeatMapDuringRegularSession,
+  shouldRefreshCryptoHeatMapOnResume, shouldRefreshHeatMapOnForegroundCadence,
 } from '@/lib/heatMapQuoteDisplay';
 import { MAX_CUSTOM_HEAT_MAP_SYMBOLS, normalizeCustomHeatMapSymbols } from '@/lib/heatMapSymbols';
 import {
@@ -346,6 +346,8 @@ export default function HeatMapScreen() {
     category === 'custom' ? customSymbols : undefined,
     requestedSector,
   );
+  const responseUpdatedAtRef = useRef(response?.updatedAt);
+  responseUpdatedAtRef.current = response?.updatedAt;
   const sourceQuotes = responseMatches ? response!.quotes : [];
   const scheduledRegularOpenTimestamp = responseMatches
     ? getHeatMapRegularOpenRefreshTimestamp(sourceQuotes)
@@ -353,23 +355,43 @@ export default function HeatMapScreen() {
   const scheduledOpenRefreshKey = scheduledRegularOpenTimestamp === null
     ? null
     : `${JSON.stringify(params)}:${scheduledRegularOpenTimestamp}`;
-  const shouldRefreshDuringRegularSession = responseMatches
-    && shouldRefreshHeatMapDuringRegularSession(category, sourceQuotes);
+  const shouldRefreshOnForegroundCadence = responseMatches
+    && shouldRefreshHeatMapOnForegroundCadence(category, sourceQuotes);
   useFocusEffect(useCallback(() => {
-    if (!shouldRefreshDuringRegularSession) return;
+    if (!shouldRefreshOnForegroundCadence) return;
 
     let isFocused = true;
     let appIsActive = AppState?.currentState !== 'background' && AppState?.currentState !== 'inactive';
     let interval: ReturnType<typeof setInterval> | null = null;
-    const refresh = () => {
+    let retryTimeout: ReturnType<typeof setTimeout> | null = null;
+    const isCryptoCategory = category === 'cryptocurrency';
+    const stopRetry = () => {
+      if (retryTimeout === null) return;
+      clearTimeout(retryTimeout);
+      retryTimeout = null;
+    };
+    const refresh = (allowRetry = isCryptoCategory) => {
       if (!isFocused || !appIsActive) return;
-      void refetchHeatMap().catch(() => {
-        // The next cadence tick will retry transient quote failures.
-      });
+      void (async () => {
+        try {
+          const result = await refetchHeatMap();
+          if (result === null || !result.isError) return;
+        } catch {
+          // Crypto refreshes allow one delayed retry for resolved and thrown failures.
+        }
+        if (!isCryptoCategory || !allowRetry || !isFocused || !appIsActive || retryTimeout !== null) return;
+        retryTimeout = setTimeout(() => {
+          retryTimeout = null;
+          refresh(false);
+        }, SCHEDULED_OPEN_REFRESH_RETRY_DELAY_MS);
+      })();
     };
     const startInterval = () => {
       if (interval !== null) return;
-      interval = setInterval(refresh, HEAT_MAP_REGULAR_SESSION_REFRESH_INTERVAL_MS);
+      const intervalMs = isCryptoCategory
+        ? HEAT_MAP_CRYPTO_REFRESH_INTERVAL_MS
+        : HEAT_MAP_REGULAR_SESSION_REFRESH_INTERVAL_MS;
+      interval = setInterval(() => refresh(), intervalMs);
     };
     const stopInterval = () => {
       if (interval === null) return;
@@ -381,122 +403,31 @@ export default function HeatMapScreen() {
       appIsActive = nextState === 'active';
       if (!appIsActive) {
         stopInterval();
-        return;
-      }
-      startInterval();
-      if (!wasActive) refresh();
-    });
-    if (appIsActive) startInterval();
-
-    return () => {
-      isFocused = false;
-      stopInterval();
-      appStateSubscription?.remove();
-    };
-  }, [shouldRefreshDuringRegularSession, refetchHeatMap]));
-  useFocusEffect(useCallback(() => {
-    if (category !== 'cryptocurrency' || !responseMatches) return;
-
-    let isFocused = true;
-    let appIsActive = AppState?.currentState !== 'background' && AppState?.currentState !== 'inactive';
-    let interval: ReturnType<typeof setInterval> | null = null;
-    let retryTimeout: ReturnType<typeof setTimeout> | null = null;
-    const stopRetry = () => {
-      if (retryTimeout === null) return;
-      clearTimeout(retryTimeout);
-      retryTimeout = null;
-    };
-    const refresh = (allowRetry = true) => {
-      if (!isFocused || !appIsActive) return;
-      void (async () => {
-        try {
-          const result = await refetchHeatMap();
-          if (result === null || !result.isError) return;
-        } catch {
-          // The single delayed retry below handles thrown and resolved failures.
-        }
-        if (!allowRetry || !isFocused || !appIsActive || retryTimeout !== null) return;
-        retryTimeout = setTimeout(() => {
-          retryTimeout = null;
-          refresh(false);
-        }, SCHEDULED_OPEN_REFRESH_RETRY_DELAY_MS);
-      })();
-    };
-    const startInterval = () => {
-      if (interval !== null) return;
-      interval = setInterval(() => refresh(), HEAT_MAP_CRYPTO_REFRESH_INTERVAL_MS);
-    };
-    const stopInterval = () => {
-      if (interval === null) return;
-      clearInterval(interval);
-      interval = null;
-    };
-    const appStateSubscription = AppState?.addEventListener?.('change', (nextState) => {
-      appIsActive = nextState === 'active';
-      if (!appIsActive) {
-        stopInterval();
         stopRetry();
         return;
       }
       startInterval();
-    });
-    if (appIsActive) startInterval();
-
-    return () => {
-      isFocused = false;
-      stopInterval();
-      stopRetry();
-      appStateSubscription?.remove();
-    };
-  }, [category, responseMatches, refetchHeatMap]));
-  useFocusEffect(useCallback(() => {
-    if (category !== 'cryptocurrency' || !responseMatches) return;
-
-    let isFocused = true;
-    let appIsActive = AppState?.currentState !== 'background' && AppState?.currentState !== 'inactive';
-    let retryTimeout: ReturnType<typeof setTimeout> | null = null;
-    const stopRetry = () => {
-      if (retryTimeout === null) return;
-      clearTimeout(retryTimeout);
-      retryTimeout = null;
-    };
-    const refresh = (allowRetry = true) => {
-      if (!isFocused || !appIsActive) return;
-      void (async () => {
-        try {
-          const result = await refetchHeatMap();
-          if (result === null || !result.isError) return;
-        } catch {
-          // Some query configurations reject instead of returning an error result.
-        }
-        if (!allowRetry || !isFocused || !appIsActive || retryTimeout !== null) return;
-        retryTimeout = setTimeout(() => {
-          retryTimeout = null;
-          refresh(false);
-        }, SCHEDULED_OPEN_REFRESH_RETRY_DELAY_MS);
-      })();
-    };
-    const appStateSubscription = AppState?.addEventListener?.('change', (nextState) => {
-      const wasActive = appIsActive;
-      appIsActive = nextState === 'active';
-      if (!appIsActive) {
-        stopRetry();
+      if (wasActive) return;
+      if (!isCryptoCategory) {
+        refresh();
         return;
       }
-      if (wasActive || !isFocused) return;
 
       const resumedAtSeconds = Date.now() / 1000;
       setNowSeconds(resumedAtSeconds);
-      if (!shouldRefreshCryptoHeatMapOnResume(category, response?.updatedAt, resumedAtSeconds)) return;
-      refresh();
+      if (shouldRefreshCryptoHeatMapOnResume(category, responseUpdatedAtRef.current, resumedAtSeconds)) {
+        refresh();
+      }
     });
+    if (appIsActive) startInterval();
 
     return () => {
       isFocused = false;
+      stopInterval();
       stopRetry();
       appStateSubscription?.remove();
     };
-  }, [category, params, responseMatches, response?.updatedAt, refetchHeatMap]));
+  }, [category, shouldRefreshOnForegroundCadence, refetchHeatMap]));
   useFocusEffect(useCallback(() => {
     if (
       scheduledRegularOpenTimestamp === null ||
