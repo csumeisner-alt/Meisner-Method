@@ -104,6 +104,11 @@ export function heatMapResponseMatchesSelection(
   return reportedSymbols.size === symbols.length && symbols.every((symbol) => reportedSymbols.has(symbol));
 }
 
+export function getHeatMapTileWidth(availableWidth: number): number {
+  if (!Number.isFinite(availableWidth) || availableWidth <= 0) return 0;
+  return Math.min(availableWidth, 136, Math.max(84, availableWidth / 2.65));
+}
+
 /**
  * Places flat-top regular hexagons on the standard honeycomb lattice.
  * Neighboring rows are half a tile-height apart and offset by 3/4 tile-width.

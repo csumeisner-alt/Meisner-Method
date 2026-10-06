@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   countActiveHeatMapFilters,
   filterHeatMapQuotes,
+  getHeatMapTileWidth,
   heatMapResponseMatchesSelection,
   layoutHoneycomb,
   marketCapBucketForUsd,
@@ -105,12 +106,17 @@ test("heat-map does not render an earlier sector response while an expanded requ
   assert.equal(heatMapResponseMatchesSelection(response, "stocks", "1d"), false);
 });
 
-test("honeycomb cells remain in bounds and share the regular hexagon lattice on phone widths", () => {
-  for (const [viewportWidth, contentWidth, tileWidth] of [
+test("heat-map hexagons use more phone width while staying within the available area", () => {
+  const cases = [
     [320, 284, 98],
     [402, 366, 116],
     [600, 564, 116],
-  ]) {
+  ];
+
+  for (const [viewportWidth, contentWidth, previousTileWidth] of cases) {
+    const tileWidth = getHeatMapTileWidth(contentWidth);
+    assert.ok(tileWidth > previousTileWidth, `${viewportWidth}px: hexagons are larger than before`);
+    assert.ok(tileWidth <= contentWidth, `${viewportWidth}px: hexagons fit within the screen`);
     const { positions, height } = layoutHoneycomb(12, contentWidth, tileWidth);
     const tileHeight = tileWidth * Math.sqrt(3) / 2;
     assert.equal(positions.length, 12);

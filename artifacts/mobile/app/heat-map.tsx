@@ -22,7 +22,7 @@ import { BottomTabBar } from '@/components/BottomTabBar';
 import { useColors } from '@/hooks/useColors';
 import {
   countActiveHeatMapFilters, filterHeatMapQuotes,
-  heatMapResponseMatchesSelection, layoutHoneycomb, summarizeHeatMap,
+  getHeatMapTileWidth, heatMapResponseMatchesSelection, layoutHoneycomb, summarizeHeatMap,
   type HeatMapFilters, type HeatMapCapBucket, type HeatMapRiskBand, type HeatMapRiskFilter,
 } from '@/lib/heatMapMetrics';
 import {
@@ -370,7 +370,7 @@ export default function HeatMapScreen() {
     : [];
 
   const contentWidth = Math.max(0, viewportWidth - 36);
-  const tileWidth = Math.min(116, Math.max(84, contentWidth / 2.9));
+  const tileWidth = getHeatMapTileWidth(contentWidth);
   const tileHeight = tileWidth * Math.sqrt(3) / 2;
 
   async function persistSymbols(next: string[]) {
@@ -829,16 +829,16 @@ const styles = StyleSheet.create({
   sectorName: { flex: 1, marginRight: 8, fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   sectorCount: { fontFamily: 'Inter_400Regular', fontSize: 9 },
   honeycomb: { alignSelf: 'center', position: 'relative' },
-  tile: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 13, gap: 1 },
+  tile: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8, gap: 1 },
   editTileButton: { alignItems: 'center', justifyContent: 'center' },
   tileRemoveBadge: { position: 'absolute', top: 9, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  tileSymbol: { maxWidth: '90%', fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 0.2 },
-  tileChange: { maxWidth: '90%', fontFamily: 'Inter_700Bold', fontSize: 10 },
-  tilePrice: { maxWidth: '90%', fontFamily: 'Inter_500Medium', fontSize: 8 },
-  tileSession: { maxWidth: '92%', fontFamily: 'Inter_600SemiBold', fontSize: 7, letterSpacing: 0.05 },
-  tileNextOpen: { maxWidth: '92%', fontFamily: 'Inter_600SemiBold', fontSize: 6.2, lineHeight: 7.2, textAlign: 'center' },
-  tileAge: { maxWidth: '92%', fontFamily: 'Inter_400Regular', fontSize: 7 },
-  tileBasis: { maxWidth: '92%', fontFamily: 'Inter_400Regular', fontSize: 6.2, letterSpacing: -0.1 },
+  tileSymbol: { maxWidth: '92%', fontFamily: 'Inter_700Bold', fontSize: 13, letterSpacing: 0.2 },
+  tileChange: { maxWidth: '92%', fontFamily: 'Inter_700Bold', fontSize: 12 },
+  tilePrice: { maxWidth: '92%', fontFamily: 'Inter_500Medium', fontSize: 10 },
+  tileSession: { maxWidth: '94%', fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.05 },
+  tileNextOpen: { maxWidth: '94%', fontFamily: 'Inter_600SemiBold', fontSize: 7.2, lineHeight: 8.4, textAlign: 'center' },
+  tileAge: { maxWidth: '94%', fontFamily: 'Inter_400Regular', fontSize: 8 },
+  tileBasis: { maxWidth: '94%', fontFamily: 'Inter_400Regular', fontSize: 7, letterSpacing: -0.1 },
   unavailable: { fontFamily: 'Inter_400Regular', fontSize: 10, textAlign: 'center', marginTop: 2 },
   notice: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 11, padding: 10 },
   staleNotice: { marginBottom: 12 },
