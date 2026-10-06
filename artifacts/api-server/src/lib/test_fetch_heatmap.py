@@ -1476,6 +1476,42 @@ class HeatMapQuoteTests(unittest.TestCase):
 
 
 class HeatMapScreenerTests(unittest.TestCase):
+    def test_market_breadth_uses_daily_screener_change_without_downloading_history(self):
+        quote = {
+            "symbol": "AAPL",
+            "name": "Apple Inc.",
+            "price": 100.0,
+            "priceChangePercent": 1.25,
+            "returnPercent": None,
+            "returnBasis": "adjusted_total_return",
+            "returnUnavailableReason": None,
+            "historyStartDate": None,
+            "priceTimestamp": int(datetime(2026, 10, 5, 15, tzinfo=timezone.utc).timestamp()),
+            "marketSession": "regular",
+            "nextRegularOpenTimestamp": None,
+            "assetType": "stock",
+            "sector": "Technology",
+            "exchange": "NASDAQ",
+            "exchangeTimezone": "America/New_York",
+            "marketCapUsd": 1_000_000,
+            "annualizedVolatilityPercent": None,
+            "riskBand": None,
+        }
+        now = datetime(2026, 10, 5, 15, 1, tzinfo=timezone.utc)
+        with patch.object(fetch_heatmap, "screener_quotes", return_value=[quote]), patch.object(
+            fetch_heatmap,
+            "download_history",
+            side_effect=AssertionError("the fast breadth request must not fetch historical data"),
+        ):
+            response = fetch_heatmap.market_breadth_response(now)
+
+        self.assertEqual(response["category"], "stocks")
+        self.assertEqual(response["period"], "1d")
+        self.assertEqual(response["updatedAt"], int(now.timestamp()))
+        self.assertEqual(response["quotes"][0]["returnPercent"], 1.25)
+        self.assertEqual(response["quotes"][0]["returnBasis"], "price_return_proxy")
+        self.assertEqual(response["quotes"][0]["assetType"], "stock")
+
     def test_stock_breadth_pages_up_to_250_most_active_results(self):
         def page(start, count, total):
             return {

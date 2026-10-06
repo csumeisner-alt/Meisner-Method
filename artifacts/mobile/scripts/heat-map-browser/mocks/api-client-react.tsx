@@ -30,13 +30,15 @@ export interface HeatMapBrowserResponse {
 }
 
 interface HeatMapBrowserState {
-  data: HeatMapBrowserResponse;
+  data: HeatMapBrowserResponse | null;
+  initialData: HeatMapBrowserResponse;
+  breadthData: HeatMapBrowserResponse;
   requests: Record<string, unknown>[];
   refetches: Record<string, unknown>[];
   refetchFailuresRemaining: number;
   nextRefetchResponse: HeatMapBrowserResponse | null;
   listeners: Set<() => void>;
-  setResponse: (response: HeatMapBrowserResponse) => void;
+  setResponse: (response: HeatMapBrowserResponse | null) => void;
   setRefetchFailures: (count: number) => void;
   setNextRefetchResponse: (response: HeatMapBrowserResponse) => void;
 }
@@ -103,8 +105,21 @@ function response(
 export function initializeHeatMapBrowserState(): HeatMapBrowserState {
   if (window.__heatMapBrowserTest) return window.__heatMapBrowserTest;
 
+  const initialData = response("stocks", "1d", makeFilterTestQuotes());
+  const breadthData = response(
+    "stocks",
+    "1d",
+    initialData.quotes.map((item) => ({
+      ...item,
+      returnBasis: "price_return_proxy" as const,
+      annualizedVolatilityPercent: null,
+      riskBand: null,
+    })),
+  );
   const state: HeatMapBrowserState = {
-    data: response("stocks", "1d", makeFilterTestQuotes()),
+    data: initialData,
+    initialData,
+    breadthData,
     requests: [],
     refetches: [],
     refetchFailuresRemaining: 0,
@@ -129,6 +144,10 @@ export function getGetMarketHeatMapQueryKey(params: Record<string, unknown>) {
   return ["market-heat-map", params];
 }
 
+export function getGetMarketBreadthQueryKey() {
+  return ["market-breadth"];
+}
+
 export function getSearchStockSymbolsQueryKey(params: { q: string }) {
   return ["stock-symbol-search", params.q];
 }
@@ -151,7 +170,8 @@ export function useGetMarketHeatMap(params: Record<string, unknown>) {
 
   return {
     data: state.data,
-    isLoading: false,
+    isLoading: state.data === null,
+    isFetching: state.data === null,
     isRefetching: false,
     refetch: async () => {
       state.refetches.push(JSON.parse(requestKey) as Record<string, unknown>);
@@ -166,6 +186,24 @@ export function useGetMarketHeatMap(params: Record<string, unknown>) {
       }
       return { isError: false };
     },
+  };
+}
+
+export function useGetMarketBreadth() {
+  const state = initializeHeatMapBrowserState();
+  const [, forceRender] = React.useReducer((value: number) => value + 1, 0);
+
+  React.useEffect(() => {
+    state.listeners.add(forceRender);
+    return () => {
+      state.listeners.delete(forceRender);
+    };
+  }, [state]);
+
+  return {
+    data: state.breadthData,
+    isLoading: false,
+    isError: false,
   };
 }
 

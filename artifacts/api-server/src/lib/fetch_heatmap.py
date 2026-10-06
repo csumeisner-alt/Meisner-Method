@@ -1383,6 +1383,28 @@ def download_history(symbols, period):
     return histories
 
 
+def market_breadth_response(now=None):
+    quotes = []
+    for source_quote in screener_quotes("stocks"):
+        return_percent = finite_number(source_quote.get("priceChangePercent"))
+        if return_percent is None:
+            continue
+        quote = dict(source_quote)
+        quote["returnPercent"] = round(return_percent, 4)
+        quote["returnBasis"] = "price_return_proxy"
+        quote["returnUnavailableReason"] = None
+        quotes.append(quote)
+
+    return {
+        "category": "stocks",
+        "period": "1d",
+        "requestedSector": None,
+        "quotes": quotes,
+        "unavailableSymbols": [],
+        "updatedAt": int(as_utc_datetime(now).timestamp()),
+    }
+
+
 def fetch_heat_map(category, symbols, period="1d", sector=None, now=None):
     requested = get_requested_symbols(category, symbols)
     quotes_by_symbol = {}
@@ -1426,6 +1448,14 @@ def main():
     requested_sector = normalize_sector(raw_sector) if raw_sector else None
     if requested_sector is not None and (category != "stocks" or requested_sector not in VALID_STOCK_SECTORS):
         raise ValueError("unsupported sector filter")
+    mode = sys.argv[5].strip().lower() if len(sys.argv) > 5 and sys.argv[5] else ""
+    if mode == "breadth":
+        if category != "stocks" or symbols or period != "1d" or requested_sector is not None:
+            raise ValueError("breadth mode only supports the unfiltered 1d stock sample")
+        print(json.dumps(market_breadth_response(), allow_nan=False))
+        return
+    if mode:
+        raise ValueError("unsupported heat-map mode")
     quotes_by_symbol, requested = fetch_heat_map(category, symbols, period, requested_sector)
     ordered_quotes = [quotes_by_symbol[symbol] for symbol in requested if symbol in quotes_by_symbol]
     if category in ("stocks", "etfs") and quotes_by_symbol:

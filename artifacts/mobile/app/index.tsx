@@ -33,7 +33,7 @@ import { MarketHeatMapInsightButton } from '@/components/MarketHeatMapInsightBut
 import { PriceAlertModal } from '@/components/PriceAlertModal';
 import { matchesFilter, mergeReorderedSubset } from '@/lib/watchlistFilter';
 import { getMarketBreadthInsight } from '@/lib/marketBreadth';
-import { getGetMarketHeatMapQueryKey, useGetMarketHeatMap } from '@workspace/api-client-react';
+import { getGetMarketBreadthQueryKey, useGetMarketBreadth } from '@workspace/api-client-react';
 import {
   getStockSearchQueryFromKey,
   isStockSearchCurrent,
@@ -46,8 +46,6 @@ import {
   type StockSymbolSuggestion,
 } from '@workspace/api-client-react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const MARKET_PULSE_PARAMS = { category: 'stocks', period: '1d' } as const;
 
 /** Show the watchlist filter input when tracking this many tickers or more. */
 const WATCHLIST_FILTER_THRESHOLD = 6;
@@ -209,11 +207,11 @@ export default function HomeScreen() {
   // Patriot Mode — fact counter, unlock state, and celebration trigger
   const { isActive, neonGucciActive, justUnlocked, incrementFact, clearJustUnlocked } = useAmericanMode();
   const [showCelebration, setShowCelebration] = useState(false);
-  const marketPulseQuery = useGetMarketHeatMap(MARKET_PULSE_PARAMS, {
+  const marketPulseQuery = useGetMarketBreadth({
     query: {
-      queryKey: getGetMarketHeatMapQueryKey(MARKET_PULSE_PARAMS),
-      staleTime: 120_000,
-      refetchInterval: 120_000,
+      queryKey: getGetMarketBreadthQueryKey(),
+      staleTime: 45_000,
+      refetchInterval: 60_000,
       refetchIntervalInBackground: false,
     },
   });

@@ -44,3 +44,4 @@
 - [Heat-map scheduled refresh failures](heatmap-scheduled-refresh-failures.md) — React Query refetch usually resolves with `isError`; retry logic must inspect the result and also handle rejection.
 - [ICE Dollar Index sessions](ice-dollar-index-sessions.md) — DX=F has its own ICE evening schedule and holiday baseline; do not route it through CME calendars or product groups.
 - [Artifact workflow listener conflicts](artifact-workflow-listener-conflicts.md) — a failed service workflow can leave an older healthy child holding the same port.
+- [Preview capture request aborts](preview-capture-request-aborts.md) — screenshots may close slow API requests before they finish; verify with a direct request or a later capture.

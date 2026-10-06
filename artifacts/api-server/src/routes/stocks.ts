@@ -40,8 +40,11 @@ const HEAT_MAP_SCRIPT = join(__dirname, "fetch_heatmap.py");
 let topPicksCache: { data: unknown; ts: number } | null = null;
 const TOP_PICKS_TTL = 4 * 60 * 60 * 1000;
 const HEAT_MAP_TTL = 2 * 60 * 1000;
+const MARKET_BREADTH_TTL = 60 * 1000;
 const heatMapCache = new Map<string, { data: HeatMapResponse; ts: number }>();
 const heatMapRequests = new Map<string, Promise<HeatMapResponse>>();
+let marketBreadthCache: { data: HeatMapResponse; ts: number } | null = null;
+let marketBreadthRequest: Promise<HeatMapResponse> | null = null;
 
 const router = Router();
 
@@ -141,6 +144,54 @@ async function fetchHeatMapBatch(
     heatMapRequests.delete(key);
   }
 }
+
+async function fetchMarketBreadthSnapshot(): Promise<HeatMapResponse> {
+  const now = Date.now();
+  if (marketBreadthCache && now - marketBreadthCache.ts < MARKET_BREADTH_TTL) {
+    return marketBreadthCache.data;
+  }
+  if (marketBreadthRequest) return marketBreadthRequest;
+
+  const request = (async () => {
+    const { stdout } = await execFileAsync(
+      "python3",
+      [HEAT_MAP_SCRIPT, "stocks", "", "1d", "", "breadth"],
+      { timeout: 30_000, maxBuffer: 5 * 1024 * 1024 },
+    );
+    const raw: unknown = JSON.parse(stdout.trim());
+    if (
+      raw &&
+      typeof raw === "object" &&
+      typeof (raw as Record<string, unknown>)["error"] === "string"
+    ) {
+      throw new Error(String((raw as Record<string, unknown>)["error"]));
+    }
+    if (!isHeatMapResponse(raw, "stocks", "1d", null)) {
+      throw new Error("Market data provider returned an invalid breadth response");
+    }
+    marketBreadthCache = { data: raw, ts: Date.now() };
+    return raw;
+  })();
+  marketBreadthRequest = request;
+  try {
+    return await request;
+  } finally {
+    if (marketBreadthRequest === request) marketBreadthRequest = null;
+  }
+}
+
+router.get("/stocks/market-breadth", async (req, res) => {
+  try {
+    const data = await fetchMarketBreadthSnapshot();
+    res.set("Cache-Control", "public, max-age=30").json(data);
+  } catch (err: any) {
+    req.log.error({ err }, "Market breadth quote batch failed");
+    res.status(422).json({
+      error: "MARKET_BREADTH_FAILED",
+      message: "Market breadth is temporarily unavailable. Try again shortly.",
+    });
+  }
+});
 
 router.get("/stocks/heat-map", async (req, res) => {
   const rawCategory = req.query["category"];

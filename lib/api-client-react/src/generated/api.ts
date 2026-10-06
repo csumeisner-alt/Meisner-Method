@@ -294,6 +294,84 @@ export const useAnalyzeStock = <TError = ErrorType<AnalysisError>,
       return useMutation(getAnalyzeStockMutationOptions(options));
     }
 
+export const getGetMarketBreadthUrl = () => {
+
+
+
+
+  return `/api/stocks/market-breadth`
+}
+
+/**
+ * Returns the regular-session daily price changes for the same active-stock sample as the heat map, without fetching historical series or volatility data.
+ * @summary Get a fast stock-market breadth snapshot
+ */
+export const getMarketBreadth = async ( options?: RequestInit): Promise<HeatMapResponse> => {
+
+  return customFetch<HeatMapResponse>(getGetMarketBreadthUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMarketBreadthQueryKey = () => {
+    return [
+    `/api/stocks/market-breadth`
+    ] as const;
+    }
+
+
+export const getGetMarketBreadthQueryOptions = <TData = Awaited<ReturnType<typeof getMarketBreadth>>, TError = ErrorType<AnalysisError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMarketBreadth>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMarketBreadthQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMarketBreadth>>> = ({ signal }) => getMarketBreadth({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMarketBreadth>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMarketBreadthQueryResult = NonNullable<Awaited<ReturnType<typeof getMarketBreadth>>>
+export type GetMarketBreadthQueryError = ErrorType<AnalysisError>
+
+
+/**
+ * @summary Get a fast stock-market breadth snapshot
+ */
+
+export function useGetMarketBreadth<TData = Awaited<ReturnType<typeof getMarketBreadth>>, TError = ErrorType<AnalysisError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMarketBreadth>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMarketBreadthQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getGetMarketHeatMapUrl = (params: GetMarketHeatMapParams,) => {
   const normalizedParams = new URLSearchParams();
 

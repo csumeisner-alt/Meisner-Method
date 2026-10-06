@@ -17,6 +17,13 @@ const require = createRequire(import.meta.url);
 const reactNativeWebEntry = require.resolve("react-native-web", { paths: [mobileDir] });
 const delay = (ms) => new Promise((resolveDelay) => setTimeout(resolveDelay, ms));
 
+test("heat-map resume refresh imports React Native AppState before subscribing", async () => {
+  const source = await readFile(join(mobileDir, "app/heat-map.tsx"), "utf8");
+  assert.match(source, /import\s*\{[^}]*\bAppState\b[^}]*\}\s*from\s*['"]react-native['"]/s);
+  assert.match(source, /AppState\?\.addEventListener\?\.\('change'/);
+  assert.match(source, /import\s*\{[^}]*\bgetHeatMapRegularOpenRefreshTimestamp\b[^}]*\}\s*from\s*['"]@\/lib\/heatMapQuoteDisplay['"]/s);
+});
+
 function browserExecutable() {
   if (process.env.CHROMIUM_PATH) return process.env.CHROMIUM_PATH;
   if (existsSync("/repl/tools/bin/chromium")) return "/repl/tools/bin/chromium";
@@ -309,6 +316,23 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       "document.documentElement.scrollWidth <= window.innerWidth && document.body.scrollWidth <= window.innerWidth",
     );
     assert.equal(pageFitsPhone, true, "The heat-map page must not overflow horizontally at 320px.");
+
+    await browser.evaluate("window.__heatMapBrowserTest.setResponse(null)");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-fast-snapshot-note"))})`,
+      "The quick daily snapshot should display while the full history request is pending.",
+    );
+    const quickSnapshotShowsQuotes = await browser.evaluate(
+      'document.body.innerText.includes("MATCH")',
+    );
+    assert.equal(quickSnapshotShowsQuotes, true, "The map should show daily quotes before history finishes loading.");
+    await browser.evaluate("window.__heatMapBrowserTest.setResponse(window.__heatMapBrowserTest.initialData)");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!document.querySelector(${JSON.stringify(selector("heat-map-fast-snapshot-note"))})`,
+      "The full history response should replace the quick snapshot when it arrives.",
+    );
 
     // Each period, including 1D, must become stale when a later period is selected.
     await clickTestID(browser, "heat-map-filter-open");

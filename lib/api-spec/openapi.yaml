@@ -92,6 +92,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AnalysisError"
+  /stocks/market-breadth:
+    get:
+      operationId: getMarketBreadth
+      tags: [stocks]
+      summary: Get a fast stock-market breadth snapshot
+      description: Returns the regular-session daily price changes for the same active-stock sample as the heat map, without fetching historical series or volatility data.
+      responses:
+        "200":
+          description: Current market breadth quotes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HeatMapResponse"
+        "422":
+          description: Market breadth is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
   /stocks/heat-map:
     get:
       operationId: getMarketHeatMap

@@ -111,6 +111,43 @@ export const AnalyzeStockResponse = zod.object({
 
 
 /**
+ * Returns the regular-session daily price changes for the same active-stock sample as the heat map, without fetching historical series or volatility data.
+ * @summary Get a fast stock-market breadth snapshot
+ */
+export const getMarketBreadthResponseQuotesItemPriceExclusiveMin = 0;
+
+
+
+export const GetMarketBreadthResponse = zod.object({
+  "category": zod.enum(['stocks', 'etfs', 'commodities', 'futures', 'cryptocurrency', 'custom']),
+  "period": zod.enum(['1d', '1w', '1m', '3m', '6m', '1y', '3y', '5y', 'max']),
+  "requestedSector": zod.enum(['Technology', 'Communication Services', 'Consumer Cyclical', 'Consumer Defensive', 'Financials', 'Healthcare', 'Industrials', 'Real Estate', 'Energy', 'Utilities', 'Basic Materials']).nullable().describe('Sector used for a Stocks expansion request, or null for the normal category list.'),
+  "quotes": zod.array(zod.object({
+  "symbol": zod.string(),
+  "name": zod.string(),
+  "price": zod.number().gt(getMarketBreadthResponseQuotesItemPriceExclusiveMin),
+  "priceChangePercent": zod.number().describe('Percentage change from the previous close, in percentage points (1.25 means 1.25%).'),
+  "returnPercent": zod.number().nullable().describe('Selected-period return in percentage points, or null when the requested history is unavailable.'),
+  "returnBasis": zod.enum(['adjusted_total_return', 'price_return_proxy']).describe('Adjusted total return for stocks\/ETFs where supported, otherwise a price-return proxy.'),
+  "returnUnavailableReason": zod.string().nullable().describe('Why the requested return could not be calculated.'),
+  "historyStartDate": zod.string().nullable().describe('Earliest available daily observation in YYYY-MM-DD; populated for Max.'),
+  "priceTimestamp": zod.number().nullable().describe('Unix timestamp in seconds for this quote or last available close. Quotes without a timestamp are not displayable.'),
+  "marketSession": zod.enum(['pre_market', 'regular', 'after_hours', 'closed', 'unknown']).describe('Session for this quote. closed identifies the latest available close; unknown means the provider could not identify the session.'),
+  "nextRegularOpenTimestamp": zod.number().nullable().describe('Unix timestamp in seconds for the next scheduled listed-exchange regular-session open, populated only when a stock or ETF is closed or in after-hours; null when unavailable or not applicable.'),
+  "assetType": zod.enum(['stock', 'etf', 'commodity', 'future', 'cryptocurrency']),
+  "sector": zod.string().nullable().describe('Normalized provider sector; stocks without metadata use Unknown.'),
+  "exchange": zod.string().nullable().describe('Normalized provider exchange when available.'),
+  "exchangeTimezone": zod.string().nullable().describe('IANA timezone for a supported listed-exchange calendar, used to display the next open; null when unavailable.'),
+  "marketCapUsd": zod.number().nullable().describe('Provider market capitalization in USD. ETF assets-under-management are not substituted.'),
+  "annualizedVolatilityPercent": zod.number().nullable().describe('Trailing-year annualized standard deviation of daily returns, requiring at least 60 observations.'),
+  "riskBand": zod.enum(['Conservative', 'Moderate Conservative', 'Moderate', 'Moderate Aggressive', 'Aggressive']).nullable().describe('Historical-volatility band; not personalized investment suitability.')
+})),
+  "unavailableSymbols": zod.array(zod.string()),
+  "updatedAt": zod.number().describe('Unix timestamp in seconds when this batch was assembled.')
+})
+
+
+/**
  * Returns a cached batch of quotes, selected-period returns, and available provider metadata for one heat-map category. Custom maps pass symbols as a comma-separated query array.
  * @summary Get batched quotes for a market heat map
  */

@@ -6,8 +6,11 @@ const homeSource = readFileSync(new URL('../app/index.tsx', import.meta.url), 'u
 const buttonSource = readFileSync(new URL('../components/MarketHeatMapInsightButton.tsx', import.meta.url), 'utf8');
 
 test('Analyze market heat-map button is driven by fresh breadth data and remains an accessible navigation action', () => {
-  assert.match(homeSource, /useGetMarketHeatMap\(MARKET_PULSE_PARAMS/);
+  assert.match(homeSource, /useGetMarketBreadth\(/);
+  assert.match(homeSource, /getGetMarketBreadthQueryKey\(\)/);
   assert.match(homeSource, /getMarketBreadthInsight\(marketPulseQuery\.data\?\.quotes \?\? \[\]\)/);
+  assert.match(homeSource, /refetchInterval: 60_000/);
+  assert.doesNotMatch(homeSource, /useGetMarketHeatMap\(MARKET_PULSE_PARAMS/);
   assert.match(homeSource, /MarketHeatMapInsightButton/);
   assert.match(buttonSource, /testID="open-heat-map"/);
   assert.match(buttonSource, /accessibilityRole="button"/);

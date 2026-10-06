@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Animated, Keyboard, Modal, Platform, Pressable, RefreshControl,
+  ActivityIndicator, Animated, AppState, Keyboard, Modal, Platform, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -10,8 +10,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Polygon } from 'react-native-svg';
 import { useReducedMotion } from 'react-native-reanimated';
 import {
-  getGetMarketHeatMapQueryKey, getSearchStockSymbolsQueryKey,
-  useGetMarketHeatMap, useSearchStockSymbols, useValidateHeatMapSymbol,
+  getGetMarketBreadthQueryKey, getGetMarketHeatMapQueryKey,
+  getSearchStockSymbolsQueryKey, useGetMarketBreadth, useGetMarketHeatMap,
+  useSearchStockSymbols, useValidateHeatMapSymbol,
 } from '@workspace/api-client-react';
 import type {
   GetMarketHeatMapCategory, GetMarketHeatMapPeriod, GetMarketHeatMapSector,
@@ -29,7 +30,8 @@ import {
 import { getHeatMapInstrumentDisplay } from '@/lib/heatMapInstrumentDisplay';
 import {
   formatHeatMapNextOpen, formatHeatMapQuoteAge, getHeatMapSessionLabel,
-  getNextHeatMapRegularOpenTimestamp, isDisplayableHeatMapQuote,
+  getHeatMapRegularOpenRefreshTimestamp, getNextHeatMapRegularOpenTimestamp,
+  isDisplayableHeatMapQuote,
 } from '@/lib/heatMapQuoteDisplay';
 import { MAX_CUSTOM_HEAT_MAP_SYMBOLS, normalizeCustomHeatMapSymbols } from '@/lib/heatMapSymbols';
 import {
@@ -243,6 +245,16 @@ export default function HeatMapScreen() {
     && STOCK_SECTORS.includes(filters.sector as GetMarketHeatMapSector)
     ? filters.sector as GetMarketHeatMapSector
     : null;
+  const canUseFastSnapshot = category === 'stocks' && period === '1d' && requestedSector === null;
+  const marketBreadthQuery = useGetMarketBreadth({
+    query: {
+      queryKey: getGetMarketBreadthQueryKey(),
+      enabled: canUseFastSnapshot,
+      staleTime: 45_000,
+      refetchInterval: 60_000,
+      refetchIntervalInBackground: false,
+    },
+  });
   const searchText = symbolInput.trim();
   const isCustomSearchInput = category === 'custom'
     && searchText.length >= 2
@@ -280,7 +292,20 @@ export default function HeatMapScreen() {
   const mapQueryRefetch = useRef(mapQuery.refetch);
   mapQueryRefetch.current = mapQuery.refetch;
 
-  const response = mapQuery.data;
+  const fullResponseMatches = heatMapResponseMatchesSelection(
+    mapQuery.data,
+    category,
+    period,
+    category === 'custom' ? customSymbols : undefined,
+    requestedSector,
+  );
+  const showingBreadthSnapshot = !fullResponseMatches && canUseFastSnapshot
+    && Boolean(marketBreadthQuery.data);
+  const response = fullResponseMatches
+    ? mapQuery.data
+    : showingBreadthSnapshot
+      ? marketBreadthQuery.data
+      : undefined;
   const responseMatches = heatMapResponseMatchesSelection(
     response,
     category,
@@ -329,7 +354,7 @@ export default function HeatMapScreen() {
       retryOnceIfFailed(true);
     };
     const timeout = setTimeout(refreshOnce, Math.max(0, refreshAt - Date.now()));
-    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+    const appStateSubscription = AppState?.addEventListener?.('change', (nextState) => {
       if (nextState !== 'active') return;
       const resumedAt = Date.now();
       setNowSeconds(resumedAt / 1000);
@@ -505,7 +530,7 @@ export default function HeatMapScreen() {
   }
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
   const bottomPad = Platform.OS === 'web' ? 34 : Math.max(insets.bottom, 16);
-  const busy = mapQuery.isLoading || !responseMatches || (category === 'custom' && !storageReady);
+  const busy = !responseMatches || (category === 'custom' && !storageReady);
 
   return (
     <AmericanSteelBackground>
@@ -666,6 +691,10 @@ export default function HeatMapScreen() {
           {mapQuery.isError && responseMatches && <View style={[styles.notice, styles.staleNotice, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <MaterialCommunityIcons name="alert-circle-outline" size={15} color={colors.gold} />
             <Text style={[styles.noticeText, { color: colors.mutedForeground }]}>Refresh failed. Showing the last successful quote batch from {formatUpdated(response!.updatedAt).replace('Updated ', '')}.</Text>
+          </View>}
+          {showingBreadthSnapshot && mapQuery.isFetching && <View testID="heat-map-fast-snapshot-note" style={[styles.notice, styles.staleNotice, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <MaterialCommunityIcons name="clock-outline" size={15} color={colors.primary} />
+            <Text style={[styles.noticeText, { color: colors.mutedForeground }]}>Quick 1D quotes are shown while detailed history and risk labels load.</Text>
           </View>}
 
           {category === 'custom' && storageReady && customSymbols.length === 0
