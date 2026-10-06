@@ -14,6 +14,7 @@ import { searchYahooStocks } from "../lib/stockSymbolSearch.js";
 import { normalizeDividendYield } from "../lib/dividendYield.js";
 import { buildStockRecommendation } from "../lib/stockRecommendation.js";
 import { fallbackAiAnalysis, parseAiAnalysis } from "../lib/analysisResponse.js";
+import { logger } from "../lib/logger.js";
 import {
   heatMapRequestCacheKey,
   isHeatMapCategory,
@@ -145,13 +146,8 @@ async function fetchHeatMapBatch(
   }
 }
 
-async function fetchMarketBreadthSnapshot(): Promise<HeatMapResponse> {
-  const now = Date.now();
-  if (marketBreadthCache && now - marketBreadthCache.ts < MARKET_BREADTH_TTL) {
-    return marketBreadthCache.data;
-  }
+function refreshMarketBreadthSnapshot(logFailure: boolean): Promise<HeatMapResponse> {
   if (marketBreadthRequest) return marketBreadthRequest;
-
   const request = (async () => {
     const { stdout } = await execFileAsync(
       "python3",
@@ -173,11 +169,40 @@ async function fetchMarketBreadthSnapshot(): Promise<HeatMapResponse> {
     return raw;
   })();
   marketBreadthRequest = request;
-  try {
-    return await request;
-  } finally {
-    if (marketBreadthRequest === request) marketBreadthRequest = null;
+  void request.then(
+    () => {
+      if (marketBreadthRequest === request) marketBreadthRequest = null;
+    },
+    (err: unknown) => {
+      if (marketBreadthRequest === request) marketBreadthRequest = null;
+      if (logFailure) logger.warn({ err }, "Background market breadth refresh failed");
+    },
+  );
+  return request;
+}
+
+async function fetchMarketBreadthSnapshot(): Promise<HeatMapResponse> {
+  const now = Date.now();
+  if (marketBreadthCache) {
+    if (now - marketBreadthCache.ts >= MARKET_BREADTH_TTL && !marketBreadthRequest) {
+      void refreshMarketBreadthSnapshot(true).catch(() => {});
+    }
+    return marketBreadthCache.data;
   }
+  if (marketBreadthRequest) return marketBreadthRequest;
+  return refreshMarketBreadthSnapshot(false);
+}
+
+export function warmMarketBreadthCache(): void {
+  const startedAt = Date.now();
+  void refreshMarketBreadthSnapshot(true)
+    .then((data) => {
+      logger.info(
+        { quoteCount: data.quotes.length, elapsedMs: Date.now() - startedAt },
+        "Market breadth cache warmed",
+      );
+    })
+    .catch(() => {});
 }
 
 router.get("/stocks/market-breadth", async (req, res) => {

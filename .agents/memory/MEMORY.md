@@ -45,3 +45,4 @@
 - [ICE Dollar Index sessions](ice-dollar-index-sessions.md) — DX=F has its own ICE evening schedule and holiday baseline; do not route it through CME calendars or product groups.
 - [Artifact workflow listener conflicts](artifact-workflow-listener-conflicts.md) — a failed service workflow can leave an older healthy child holding the same port.
 - [Preview capture request aborts](preview-capture-request-aborts.md) — screenshots may close slow API requests before they finish; verify with a direct request or a later capture.
+- [Market breadth cache behavior](market-breadth-cache.md) — prewarm the full sample and serve the last good snapshot while slow quote refreshes run in the background.
