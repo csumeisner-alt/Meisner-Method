@@ -516,6 +516,7 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     })()`);
     const scheduledOpen = simulatedNowMs / 1000 + 0.3;
     const refetchCountBeforeOpen = await browser.evaluate("window.__heatMapBrowserTest.refetches.length");
+    await browser.evaluate("window.__heatMapBrowserTest.setRefetchFailures(1)");
     await setResponse(browser, {
       category: "stocks",
       period: "1w",
@@ -536,41 +537,47 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     await waitFor(
       (expression) => browser.evaluate(expression),
       `window.__heatMapBrowserTest.refetches.length === ${refetchCountBeforeOpen + 1}`,
-      "The open heat map should automatically refresh once after the scheduled regular open.",
+      "The open heat map should automatically refresh after the scheduled regular open.",
     );
     assert.deepEqual(
       await browser.evaluate("window.__heatMapBrowserTest.refetches.at(-1)"),
       { category: "stocks", period: "1w", sector: "Technology" },
       "The scheduled refresh should reuse the selected category, period, and sector.",
     );
-    await delay(250);
-    assert.equal(
-      await browser.evaluate("window.__heatMapBrowserTest.refetches.length"),
-      refetchCountBeforeOpen + 1,
-      "Crossing the open should not create repeated automatic requests.",
-    );
-
-    const refreshedAt = await browser.evaluate(`(() => {
-      Date.now = window.__heatMapOriginalDateNow;
-      delete window.__heatMapOriginalDateNow;
-      return Date.now() / 1000;
-    })()`);
-    await setResponse(browser, {
+    const recoveredAt = await browser.evaluate("Date.now() / 1000");
+    await browser.evaluate(`window.__heatMapBrowserTest.setNextRefetchResponse({
       category: "stocks",
       period: "1w",
       requestedSector: "Technology",
-      updatedAt: refreshedAt,
-      quotes: [quote("MATCH", {
-        priceTimestamp: refreshedAt,
+      updatedAt: ${recoveredAt},
+      quotes: [${JSON.stringify(quote("MATCH", {
+        priceTimestamp: Date.now() / 1000,
         marketSession: "regular",
         nextRegularOpenTimestamp: null,
-      })],
+      }))}],
       unavailableSymbols: [],
-    });
+    })`);
+    await delay(300);
+    assert.equal(
+      await browser.evaluate("window.__heatMapBrowserTest.refetches.length"),
+      refetchCountBeforeOpen + 1,
+      "A failed scheduled request should wait before retrying.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.refetches.length === ${refetchCountBeforeOpen + 2}`,
+      "The failed scheduled refresh should get exactly one delayed retry.",
+    );
     await waitFor(
       (expression) => browser.evaluate(expression),
       `document.querySelector(${JSON.stringify(selector("heat-map-session-MATCH"))})?.textContent === "Regular"`,
-      "The refreshed quote should replace the closed-session label with Regular.",
+      "The successful retry should replace the closed-session label with Regular.",
+    );
+    await delay(250);
+    assert.equal(
+      await browser.evaluate("window.__heatMapBrowserTest.refetches.length"),
+      refetchCountBeforeOpen + 2,
+      "A successful retry should not trigger further automatic requests.",
     );
     assert.match(
       await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-selected-period"))}).textContent`),
@@ -585,6 +592,58 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       "1",
       "The selected filters should remain applied after the refreshed response arrives.",
     );
+
+    // Two failures exhaust the one-retry budget for a separate scheduled open.
+    const exhaustedOpen = simulatedNowMs / 1000 + 0.6;
+    const refetchCountBeforeExhaustion = await browser.evaluate("window.__heatMapBrowserTest.refetches.length");
+    await browser.evaluate("window.__heatMapBrowserTest.setRefetchFailures(2)");
+    await setResponse(browser, {
+      category: "stocks",
+      period: "1w",
+      requestedSector: "Technology",
+      updatedAt: simulatedNowMs / 1000,
+      quotes: [quote("MATCH", {
+        priceTimestamp: simulatedNowMs / 1000,
+        marketSession: "closed",
+        nextRegularOpenTimestamp: exhaustedOpen,
+      })],
+      unavailableSymbols: [],
+    });
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.refetches.length === ${refetchCountBeforeExhaustion + 1}`,
+      "The second scheduled-open refresh should make its initial attempt.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.refetches.length === ${refetchCountBeforeExhaustion + 2}`,
+      "A second failure should still receive only one retry.",
+    );
+    await delay(1_250);
+    assert.equal(
+      await browser.evaluate("window.__heatMapBrowserTest.refetches.length"),
+      refetchCountBeforeExhaustion + 2,
+      "Repeated failures must exhaust the retry budget without further requests.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-session-MATCH"))})?.textContent`),
+      "Last close",
+      "The map should retain its last valid session label after retry exhaustion.",
+    );
+    assert.match(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-selected-period"))}).textContent`),
+      /1W/,
+      "Retry exhaustion should not change the active map period.",
+    );
+    assert.match(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-filter-open"))}).getAttribute("aria-label")`),
+      /4 active/,
+      "Retry exhaustion should not change active map filters.",
+    );
+    await browser.evaluate(`(() => {
+      Date.now = window.__heatMapOriginalDateNow;
+      delete window.__heatMapOriginalDateNow;
+    })()`);
 
     await clickTestID(browser, "heat-map-filter-open");
     await clickTestID(browser, "heat-map-filter-reset");

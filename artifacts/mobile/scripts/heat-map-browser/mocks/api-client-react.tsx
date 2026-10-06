@@ -33,8 +33,12 @@ interface HeatMapBrowserState {
   data: HeatMapBrowserResponse;
   requests: Record<string, unknown>[];
   refetches: Record<string, unknown>[];
+  refetchFailuresRemaining: number;
+  nextRefetchResponse: HeatMapBrowserResponse | null;
   listeners: Set<() => void>;
   setResponse: (response: HeatMapBrowserResponse) => void;
+  setRefetchFailures: (count: number) => void;
+  setNextRefetchResponse: (response: HeatMapBrowserResponse) => void;
 }
 
 declare global {
@@ -103,10 +107,18 @@ export function initializeHeatMapBrowserState(): HeatMapBrowserState {
     data: response("stocks", "1d", makeFilterTestQuotes()),
     requests: [],
     refetches: [],
+    refetchFailuresRemaining: 0,
+    nextRefetchResponse: null,
     listeners: new Set(),
     setResponse(next) {
       state.data = next;
       state.listeners.forEach((listener) => listener());
+    },
+    setRefetchFailures(count) {
+      state.refetchFailuresRemaining = count;
+    },
+    setNextRefetchResponse(next) {
+      state.nextRefetchResponse = next;
     },
   };
   window.__heatMapBrowserTest = state;
@@ -143,6 +155,16 @@ export function useGetMarketHeatMap(params: Record<string, unknown>) {
     isRefetching: false,
     refetch: async () => {
       state.refetches.push(JSON.parse(requestKey) as Record<string, unknown>);
+      if (state.refetchFailuresRemaining > 0) {
+        state.refetchFailuresRemaining -= 1;
+        return { isError: true };
+      }
+      if (state.nextRefetchResponse) {
+        state.data = state.nextRefetchResponse;
+        state.nextRefetchResponse = null;
+        state.listeners.forEach((listener) => listener());
+      }
+      return { isError: false };
     },
   };
 }

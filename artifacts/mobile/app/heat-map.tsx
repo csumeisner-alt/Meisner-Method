@@ -68,6 +68,7 @@ const RISK_BAND_LABELS: Record<HeatMapRiskBand, string> = {
   Aggressive: 'Aggressive · 60%+',
 };
 const EMPTY_FILTERS: HeatMapFilters = { sector: null, marketCap: null, exchange: null, risk: null };
+const SCHEDULED_OPEN_REFRESH_RETRY_DELAY_MS = 1_000;
 
 function formatPrice(price: number) {
   return `$${price.toLocaleString('en-US', { minimumFractionDigits: price >= 1 ? 2 : 4, maximumFractionDigits: price >= 1 ? 2 : 4 })}`;
@@ -254,6 +255,8 @@ export default function HeatMapScreen() {
       queryKey: getGetMarketHeatMapQueryKey(params),
     },
   });
+  const mapQueryRefetch = useRef(mapQuery.refetch);
+  mapQueryRefetch.current = mapQuery.refetch;
 
   const response = mapQuery.data;
   const responseMatches = heatMapResponseMatchesSelection(
@@ -279,14 +282,36 @@ export default function HeatMapScreen() {
       return;
     }
 
+    let isActive = true;
+    let retryTimeout: ReturnType<typeof setTimeout> | null = null;
+    const refetch = mapQueryRefetch.current;
+    const retryOnceIfFailed = (allowRetry: boolean) => {
+      void (async () => {
+        try {
+          const result = await refetch();
+          if (!result.isError) return;
+        } catch {
+          // Some query configurations reject instead of returning an error result.
+        }
+        if (!allowRetry || !isActive) return;
+        retryTimeout = setTimeout(() => {
+          if (!isActive) return;
+          retryOnceIfFailed(false);
+        }, SCHEDULED_OPEN_REFRESH_RETRY_DELAY_MS);
+      })();
+    };
     const refreshAt = nextRegularOpenTimestamp * 1000 + 1_500;
     const timeout = setTimeout(() => {
       if (lastScheduledOpenRefresh.current === scheduledOpenRefreshKey) return;
       lastScheduledOpenRefresh.current = scheduledOpenRefreshKey;
-      void mapQuery.refetch();
+      retryOnceIfFailed(true);
     }, Math.max(0, refreshAt - Date.now()));
-    return () => clearTimeout(timeout);
-  }, [mapQuery.refetch, nextRegularOpenTimestamp, scheduledOpenRefreshKey]));
+    return () => {
+      isActive = false;
+      clearTimeout(timeout);
+      if (retryTimeout !== null) clearTimeout(retryTimeout);
+    };
+  }, [nextRegularOpenTimestamp, scheduledOpenRefreshKey]));
   const staleQuotes = sourceQuotes.filter((quote) => !isDisplayableHeatMapQuote(quote, nowSeconds));
   const validAgeQuotes = sourceQuotes.filter((quote) => isDisplayableHeatMapQuote(quote, nowSeconds));
   const unavailableSymbols = [...new Set([
