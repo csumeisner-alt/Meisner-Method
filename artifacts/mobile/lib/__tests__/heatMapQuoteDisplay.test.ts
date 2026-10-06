@@ -6,8 +6,10 @@ import {
   getHeatMapSessionLabel,
   getHeatMapRegularOpenRefreshTimestamp,
   getNextHeatMapRegularOpenTimestamp,
+  HEAT_MAP_CRYPTO_RESUME_STALE_AFTER_SECONDS,
   HEAT_MAP_REGULAR_SESSION_REFRESH_INTERVAL_MS,
   isDisplayableHeatMapQuote,
+  shouldRefreshCryptoHeatMapOnResume,
   shouldRefreshHeatMapDuringRegularSession,
 } from "../heatMapQuoteDisplay.ts";
 
@@ -66,6 +68,18 @@ test("heat-map refreshes stocks and ETFs on a one-minute cadence only during the
   assert.equal(shouldRefreshHeatMapDuringRegularSession("cryptocurrency", [
     { assetType: "cryptocurrency", marketSession: "regular" },
   ]), false);
+});
+
+test("crypto heat-map refreshes on resume only when its quote batch is stale", () => {
+  const now = 1_800_000_000;
+  const freshBatch = now - HEAT_MAP_CRYPTO_RESUME_STALE_AFTER_SECONDS + 1;
+  const staleBatch = now - HEAT_MAP_CRYPTO_RESUME_STALE_AFTER_SECONDS;
+
+  assert.equal(HEAT_MAP_CRYPTO_RESUME_STALE_AFTER_SECONDS, 5 * 60);
+  assert.equal(shouldRefreshCryptoHeatMapOnResume("cryptocurrency", freshBatch, now), false);
+  assert.equal(shouldRefreshCryptoHeatMapOnResume("cryptocurrency", staleBatch, now), true);
+  assert.equal(shouldRefreshCryptoHeatMapOnResume("cryptocurrency", null, now), true);
+  assert.equal(shouldRefreshCryptoHeatMapOnResume("stocks", staleBatch, now), false);
 });
 
 test("heat-map quote ages stay compact across minutes, hours, and days", () => {

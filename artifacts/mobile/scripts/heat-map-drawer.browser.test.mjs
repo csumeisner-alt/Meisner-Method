@@ -22,6 +22,7 @@ test("heat-map resume refresh imports React Native AppState before subscribing",
   assert.match(source, /import\s*\{[^}]*\bAppState\b[^}]*\}\s*from\s*['"]react-native['"]/s);
   assert.match(source, /AppState\?\.addEventListener\?\.\('change'/);
   assert.match(source, /import\s*\{[^}]*\bgetHeatMapRegularOpenRefreshTimestamp\b[^}]*\}\s*from\s*['"]@\/lib\/heatMapQuoteDisplay['"]/s);
+  assert.match(source, /import\s*\{[^}]*\bshouldRefreshCryptoHeatMapOnResume\b[^}]*\}\s*from\s*['"]@\/lib\/heatMapQuoteDisplay['"]/s);
 });
 
 function browserExecutable() {
@@ -1155,6 +1156,113 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       await browser.evaluate(`!!document.querySelector(${JSON.stringify(selector("heat-map-remove-unavailable-MISSING"))})`),
       true,
       "The unavailable ticker should remain saved and available for editing after reopening.",
+    );
+
+    // A stale crypto batch refreshes when the focused screen resumes, while a fresh
+    // batch does not. The user's selected period and local filters remain intact.
+    await clickTestID(browser, "heat-map-category-picker");
+    await clickTestID(browser, "heat-map-category-cryptocurrency");
+    await waitForRequest(
+      browser,
+      `(request) => request.category === "cryptocurrency" && request.period === "1d"`,
+      "the cryptocurrency map",
+    );
+    await clickTestID(browser, "heat-map-filter-open");
+    await clickTestID(browser, "heat-map-drawer-period-1w");
+    await clickTestID(browser, "heat-map-filter-apply");
+    await waitForRequest(
+      browser,
+      `(request) => request.category === "cryptocurrency" && request.period === "1w"`,
+      "the cryptocurrency map with the selected period",
+    );
+    const cryptoResponse = (updatedAt) => ({
+      category: "cryptocurrency",
+      period: "1w",
+      requestedSector: null,
+      updatedAt,
+      quotes: [
+        quote("BTC-USD", {
+          assetType: "cryptocurrency",
+          exchange: "COINBASE",
+          priceTimestamp: Date.now() / 1000,
+          riskBand: "Aggressive",
+        }),
+        quote("ETH-USD", {
+          assetType: "cryptocurrency",
+          exchange: "KRAKEN",
+          priceTimestamp: Date.now() / 1000,
+          riskBand: "Conservative",
+        }),
+      ],
+      unavailableSymbols: [],
+    });
+    await setResponse(browser, cryptoResponse(Date.now() / 1000));
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-session-BTC-USD"))}) && !!document.querySelector(${JSON.stringify(selector("heat-map-session-ETH-USD"))})`,
+      "fresh cryptocurrency quotes should render before filtering.",
+    );
+    await clickTestID(browser, "heat-map-filter-open");
+    await clickTestID(browser, "heat-map-filter-exchange-COINBASE");
+    await clickTestID(browser, "heat-map-filter-risk-Aggressive");
+    await clickTestID(browser, "heat-map-filter-apply");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-counted-quotes"))})?.textContent === "1"`,
+      "the selected local crypto filters should leave only BTC visible.",
+    );
+
+    const refetchCountBeforeCryptoResume = await browser.evaluate("window.__heatMapBrowserTest.refetches.length");
+    const freshCryptoResponse = cryptoResponse(Date.now() / 1000);
+    await browser.evaluate(`window.__heatMapBrowserTest.setNextRefetchResponse(${JSON.stringify(freshCryptoResponse)})`);
+    await setResponse(browser, cryptoResponse(Date.now() / 1000 - 6 * 60));
+    await browser.evaluate(`(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    })()`);
+    await browser.evaluate(`(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    })()`);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.refetches.length === ${refetchCountBeforeCryptoResume + 1}`,
+      "resuming with a stale cryptocurrency batch should refresh the selected map once.",
+    );
+    assert.deepEqual(
+      await browser.evaluate("window.__heatMapBrowserTest.refetches.at(-1)"),
+      { category: "cryptocurrency", period: "1w" },
+      "the crypto resume refresh should keep the selected category and period.",
+    );
+    assert.match(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-selected-period"))}).textContent`),
+      /1W/,
+      "a stale crypto refresh should preserve the selected return period.",
+    );
+    assert.match(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-filter-open"))}).getAttribute("aria-label")`),
+      /2 active/,
+      "a stale crypto refresh should preserve local filters.",
+    );
+
+    await browser.evaluate(`(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    })()`);
+    await browser.evaluate(`(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    })()`);
+    await delay(100);
+    assert.equal(
+      await browser.evaluate("window.__heatMapBrowserTest.refetches.length"),
+      refetchCountBeforeCryptoResume + 1,
+      "resuming with the fresh cryptocurrency batch should not make another request.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-counted-quotes"))})?.textContent`),
+      "1",
+      "the local crypto filters should remain applied after both resumes.",
     );
   } finally {
     browser?.close();

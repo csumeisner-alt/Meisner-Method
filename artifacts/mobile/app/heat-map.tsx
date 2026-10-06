@@ -32,7 +32,7 @@ import {
   formatHeatMapNextOpen, formatHeatMapQuoteAge, getHeatMapSessionLabel,
   getHeatMapRegularOpenRefreshTimestamp, getNextHeatMapRegularOpenTimestamp,
   HEAT_MAP_REGULAR_SESSION_REFRESH_INTERVAL_MS, isDisplayableHeatMapQuote,
-  shouldRefreshHeatMapDuringRegularSession,
+  shouldRefreshCryptoHeatMapOnResume, shouldRefreshHeatMapDuringRegularSession,
 } from '@/lib/heatMapQuoteDisplay';
 import { MAX_CUSTOM_HEAT_MAP_SYMBOLS, normalizeCustomHeatMapSymbols } from '@/lib/heatMapSymbols';
 import {
@@ -372,6 +372,29 @@ export default function HeatMapScreen() {
       appStateSubscription?.remove();
     };
   }, [shouldRefreshDuringRegularSession, refetchHeatMap]));
+  useFocusEffect(useCallback(() => {
+    if (category !== 'cryptocurrency' || !responseMatches) return;
+
+    let isFocused = true;
+    let appIsActive = AppState?.currentState !== 'background' && AppState?.currentState !== 'inactive';
+    const appStateSubscription = AppState?.addEventListener?.('change', (nextState) => {
+      const wasActive = appIsActive;
+      appIsActive = nextState === 'active';
+      if (!appIsActive || wasActive || !isFocused) return;
+
+      const resumedAtSeconds = Date.now() / 1000;
+      setNowSeconds(resumedAtSeconds);
+      if (!shouldRefreshCryptoHeatMapOnResume(category, response?.updatedAt, resumedAtSeconds)) return;
+      void refetchHeatMap().catch(() => {
+        // A later app resume can retry if this quote batch is still stale.
+      });
+    });
+
+    return () => {
+      isFocused = false;
+      appStateSubscription?.remove();
+    };
+  }, [category, responseMatches, response?.updatedAt, refetchHeatMap]));
   useFocusEffect(useCallback(() => {
     if (
       scheduledRegularOpenTimestamp === null ||

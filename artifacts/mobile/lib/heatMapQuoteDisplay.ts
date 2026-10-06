@@ -1,6 +1,7 @@
 import type { GetMarketHeatMapCategory, HeatMapQuote } from "@workspace/api-client-react";
 
 export const HEAT_MAP_REGULAR_SESSION_REFRESH_INTERVAL_MS = 60_000;
+export const HEAT_MAP_CRYPTO_RESUME_STALE_AFTER_SECONDS = 5 * 60;
 
 const MAX_QUOTE_AGE_SECONDS = {
   cryptocurrency: 48 * 60 * 60,
@@ -102,6 +103,23 @@ export function shouldRefreshHeatMapDuringRegularSession(
     );
   }
   return false;
+}
+
+export function shouldRefreshCryptoHeatMapOnResume(
+  category: GetMarketHeatMapCategory,
+  batchUpdatedAt: number | null | undefined,
+  nowSeconds = Date.now() / 1000,
+): boolean {
+  if (category !== "cryptocurrency") return false;
+  if (
+    typeof batchUpdatedAt !== "number" ||
+    !Number.isFinite(batchUpdatedAt) ||
+    batchUpdatedAt <= 0 ||
+    batchUpdatedAt > nowSeconds + MAX_FUTURE_TIMESTAMP_SECONDS
+  ) {
+    return true;
+  }
+  return nowSeconds - batchUpdatedAt >= HEAT_MAP_CRYPTO_RESUME_STALE_AFTER_SECONDS;
 }
 
 export function formatHeatMapNextOpen(
