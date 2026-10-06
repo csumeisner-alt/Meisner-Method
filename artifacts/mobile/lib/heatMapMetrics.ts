@@ -28,6 +28,15 @@ export interface HeatMapFilters {
   risk: HeatMapRiskFilter;
 }
 
+export function uniqueHeatMapQuotesBySymbol<T extends { symbol: string }>(quotes: readonly T[]): T[] {
+  const seen = new Set<string>();
+  return quotes.filter((quote) => {
+    if (seen.has(quote.symbol)) return false;
+    seen.add(quote.symbol);
+    return true;
+  });
+}
+
 export interface HeatMapFilterableQuote {
   sector: string | null;
   exchange: string | null;

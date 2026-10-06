@@ -1358,6 +1358,15 @@ def most_active_screen_rows(max_results):
     return rows
 
 
+def deduplicate_quotes_by_symbol(quotes):
+    unique = {}
+    for quote in quotes:
+        symbol = quote.get("symbol")
+        if isinstance(symbol, str):
+            unique.setdefault(symbol, quote)
+    return list(unique.values())
+
+
 def screener_quotes(category, sector=None):
     if category == "stocks" and sector is not None:
         targeted_quotes = sector_screener_quotes(sector)
@@ -1379,7 +1388,7 @@ def screener_quotes(category, sector=None):
         )
     except Exception:
         return []
-    result = []
+    result = {}
     for item in quotes:
         quote_type = str(item.get("quoteType") or item.get("typeDisp") or "").upper()
         is_etf = quote_type == "ETF" or "ETF" in quote_type
@@ -1396,8 +1405,8 @@ def screener_quotes(category, sector=None):
         else:
             parsed["assetType"] = "etf"
             parsed["sector"] = None
-        result.append(parsed)
-    return result
+        result.setdefault(parsed["symbol"], parsed)
+    return list(result.values())
 
 
 def get_requested_symbols(category, symbols):
@@ -1511,7 +1520,7 @@ def download_history(symbols, period):
 
 def market_breadth_response(now=None):
     quotes = []
-    for source_quote in screener_quotes("stocks"):
+    for source_quote in deduplicate_quotes_by_symbol(screener_quotes("stocks")):
         return_percent = finite_number(source_quote.get("priceChangePercent"))
         if return_percent is None:
             continue

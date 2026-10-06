@@ -1586,6 +1586,36 @@ class HeatMapQuoteTests(unittest.TestCase):
 
 
 class HeatMapScreenerTests(unittest.TestCase):
+    def test_stock_screener_deduplicates_overlapping_ticker_rows_preserving_rank_order(self):
+        now = datetime.now(timezone.utc)
+        stamp = int(now.timestamp())
+
+        def row(symbol, price, name):
+            return {
+                "symbol": symbol,
+                "shortName": name,
+                "quoteType": "EQUITY",
+                "marketState": "REGULAR",
+                "regularMarketPrice": price,
+                "regularMarketChangePercent": 1.0,
+                "regularMarketTime": stamp,
+                "regularMarketPreviousClose": price - 1,
+                "exchange": "NMS",
+                "currency": "USD",
+                "sector": "Technology",
+            }
+
+        with patch.object(
+            fetch_heatmap,
+            "most_active_screen_rows",
+            return_value=[row("HPE", 20.0, "HPE"), row("PURR", 4.0, "PURR"), row("HPE", 99.0, "Duplicate HPE")],
+        ):
+            quotes = fetch_heatmap.screener_quotes("stocks")
+
+        self.assertEqual([quote["symbol"] for quote in quotes], ["HPE", "PURR"])
+        self.assertEqual(quotes[0]["price"], 20.0)
+        self.assertEqual(quotes[0]["name"], "HPE")
+
     def test_market_breadth_uses_daily_screener_change_without_downloading_history(self):
         quote = {
             "symbol": "AAPL",
@@ -1608,7 +1638,7 @@ class HeatMapScreenerTests(unittest.TestCase):
             "riskBand": None,
         }
         now = datetime(2026, 10, 5, 15, 1, tzinfo=timezone.utc)
-        with patch.object(fetch_heatmap, "screener_quotes", return_value=[quote]), patch.object(
+        with patch.object(fetch_heatmap, "screener_quotes", return_value=[quote, dict(quote)]), patch.object(
             fetch_heatmap,
             "download_history",
             side_effect=AssertionError("the fast breadth request must not fetch historical data"),
@@ -1621,6 +1651,7 @@ class HeatMapScreenerTests(unittest.TestCase):
         self.assertEqual(response["quotes"][0]["returnPercent"], 1.25)
         self.assertEqual(response["quotes"][0]["returnBasis"], "price_return_proxy")
         self.assertEqual(response["quotes"][0]["assetType"], "stock")
+        self.assertEqual([item["symbol"] for item in response["quotes"]], ["AAPL"])
 
     def test_stock_breadth_pages_up_to_250_most_active_results(self):
         def page(start, count, total):

@@ -8,6 +8,7 @@ import {
   layoutHoneycomb,
   marketCapBucketForUsd,
   summarizeHeatMap,
+  uniqueHeatMapQuotesBySymbol,
 } from "../heatMapMetrics.ts";
 
 test("heat-map treats the full neutral band as neutral and keeps it in the denominator", () => {
@@ -77,6 +78,22 @@ test("combined filters retain missing metadata only when that filter is unset", 
     risk: "Unknown",
   }).map((quote) => quote.symbol), ["B"]);
   assert.equal(countActiveHeatMapFilters({ sector: "Technology", marketCap: null, exchange: null, risk: "Moderate" }), 2);
+});
+
+test("heat-map keeps the first quote for each repeated ticker in stable order", () => {
+  const quotes = [
+    { symbol: "HPE", price: 20 },
+    { symbol: "PURR", price: 4 },
+    { symbol: "HPE", price: 99 },
+    { symbol: "UUUU", price: 8 },
+    { symbol: "PURR", price: 100 },
+  ];
+
+  assert.deepEqual(uniqueHeatMapQuotesBySymbol(quotes), [
+    { symbol: "HPE", price: 20 },
+    { symbol: "PURR", price: 4 },
+    { symbol: "UUUU", price: 8 },
+  ]);
 });
 
 test("heat-map does not show responses from an earlier category, period, or custom symbol set", () => {

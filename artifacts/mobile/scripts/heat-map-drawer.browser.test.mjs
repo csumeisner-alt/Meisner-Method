@@ -269,6 +269,13 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       <html><head><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
       <style>html,body,#root{width:100%;height:100%;margin:0;padding:0}body{overflow-x:auto}</style>
       </head><body><div id="root"></div><script>
+        window.__heatMapReactKeyWarnings = [];
+        const originalConsoleError = console.error.bind(console);
+        console.error = (...args) => {
+          const message = args.map((arg) => String(arg)).join(" ");
+          if (/same key|unique.*key/i.test(message)) window.__heatMapReactKeyWarnings.push(message);
+          originalConsoleError(...args);
+        };
         window.__heatMapTrackedIntervals = [];
         const originalSetInterval = window.setInterval.bind(window);
         const originalClearInterval = window.clearInterval.bind(window);
@@ -344,6 +351,43 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       'document.body.innerText.includes("MATCH")',
     );
     assert.equal(quickSnapshotShowsQuotes, true, "The map should show daily quotes before history finishes loading.");
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-counted-quotes"))})?.textContent`),
+      "11",
+      "The breadth snapshot should count each ticker only once even when the quote response repeats it.",
+    );
+    for (const symbol of ["HPE", "PURR", "UUUU", "SLB", "KLAC"]) {
+      assert.equal(
+        await browser.evaluate(`document.querySelectorAll(${JSON.stringify(selector(`heat-map-session-${symbol}`))}).length`),
+        1,
+        `${symbol} should appear as one tile even when it is repeated in the response.`,
+      );
+    }
+    const hpeTileBoundsBeforeRepeat = await browser.evaluate(`(() => {
+      const tile = document.querySelector(${JSON.stringify(selector("heat-map-session-HPE"))});
+      const bounds = tile?.getBoundingClientRect();
+      return bounds ? [bounds.x, bounds.y, bounds.width, bounds.height] : null;
+    })()`);
+    await browser.evaluate("window.__heatMapBrowserTest.setResponse(null)");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-counted-quotes"))})?.textContent === "11"`,
+      "Repeated screener data should still render after a subsequent update.",
+    );
+    assert.deepEqual(
+      await browser.evaluate(`(() => {
+        const tile = document.querySelector(${JSON.stringify(selector("heat-map-session-HPE"))});
+        const bounds = tile?.getBoundingClientRect();
+        return bounds ? [bounds.x, bounds.y, bounds.width, bounds.height] : null;
+      })()`),
+      hpeTileBoundsBeforeRepeat,
+      "HPE should keep its tile position when the same duplicate response is rendered again.",
+    );
+    assert.deepEqual(
+      await browser.evaluate("window.__heatMapReactKeyWarnings"),
+      [],
+      "Repeated screener tickers must not produce React key warnings.",
+    );
     await browser.evaluate("window.__heatMapBrowserTest.setResponse(window.__heatMapBrowserTest.initialData)");
     await waitFor(
       (expression) => browser.evaluate(expression),

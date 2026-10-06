@@ -25,6 +25,7 @@ import { HeatMapInstrumentIcon } from '@/components/HeatMapInstrumentIcon';
 import {
   countActiveHeatMapFilters, filterHeatMapQuotes,
   getHeatMapTileWidth, heatMapResponseMatchesSelection, layoutHoneycomb, summarizeHeatMap,
+  uniqueHeatMapQuotesBySymbol,
   type HeatMapFilters, type HeatMapCapBucket, type HeatMapRiskBand, type HeatMapRiskFilter,
 } from '@/lib/heatMapMetrics';
 import { getHeatMapInstrumentDisplay } from '@/lib/heatMapInstrumentDisplay';
@@ -369,7 +370,7 @@ export default function HeatMapScreen() {
   );
   const responseUpdatedAtRef = useRef(response?.updatedAt);
   responseUpdatedAtRef.current = response?.updatedAt;
-  const sourceQuotes = responseMatches ? response!.quotes : [];
+  const sourceQuotes = responseMatches ? uniqueHeatMapQuotesBySymbol(response!.quotes) : [];
   const scheduledRegularOpenTimestamp = responseMatches
     ? getHeatMapRegularOpenRefreshTimestamp(sourceQuotes)
     : null;

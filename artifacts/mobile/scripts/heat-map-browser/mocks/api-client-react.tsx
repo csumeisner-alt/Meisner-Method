@@ -109,12 +109,28 @@ export function initializeHeatMapBrowserState(): HeatMapBrowserState {
   const breadthData = response(
     "stocks",
     "1d",
-    initialData.quotes.map((item) => ({
-      ...item,
-      returnBasis: "price_return_proxy" as const,
-      annualizedVolatilityPercent: null,
-      riskBand: null,
-    })),
+    [
+      ...initialData.quotes.map((item) => ({
+        ...item,
+        returnBasis: "price_return_proxy" as const,
+        annualizedVolatilityPercent: null,
+        riskBand: null,
+      })),
+      ...["HPE", "PURR", "UUUU", "SLB", "KLAC"].flatMap((symbol) => [
+        quote(symbol, {
+          returnBasis: "price_return_proxy",
+          annualizedVolatilityPercent: null,
+          riskBand: null,
+        }),
+        quote(symbol, {
+          returnBasis: "price_return_proxy",
+          annualizedVolatilityPercent: null,
+          riskBand: null,
+          sector: symbol === "HPE" ? "Financials" : "Technology",
+          price: 321,
+        }),
+      ]),
+    ],
   );
   const state: HeatMapBrowserState = {
     data: initialData,
