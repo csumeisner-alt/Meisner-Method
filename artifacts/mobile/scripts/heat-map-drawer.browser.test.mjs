@@ -396,6 +396,23 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       `document.querySelector(${JSON.stringify(selector("heat-map-counted-quotes"))})?.textContent === "6"`,
       "The stock fixture should contain all six filter test quotes.",
     );
+    const tileVisuals = await browser.evaluate(`(() => {
+      const session = document.querySelector(${JSON.stringify(selector("heat-map-session-MATCH"))});
+      const tile = session?.parentElement;
+      if (!session || !tile) return null;
+      return {
+        width: tile.getBoundingClientRect().width,
+        sessionFontSize: Number.parseFloat(getComputedStyle(session).fontSize),
+      };
+    })()`);
+    assert.ok(tileVisuals, "A fixture quote should render its session label inside a hexagon.");
+    assert.ok(tileVisuals.width > 98, "The rendered hexagon should be larger than the previous 98px narrow-phone size.");
+    assert.ok(tileVisuals.sessionFontSize > 7, "The session label should be larger than the previous 7px size.");
+    assert.equal(
+      await browser.evaluate("document.documentElement.scrollWidth <= window.innerWidth && document.body.scrollWidth <= window.innerWidth"),
+      true,
+      "The enlarged heat-map tiles must not overflow horizontally at 320px.",
+    );
 
     // Open, close with the button, reopen, dismiss through the backdrop.
     await clickTestID(browser, "heat-map-filter-open");
