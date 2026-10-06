@@ -417,6 +417,24 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
             true,
             `${nextCategory} tiles should show a matching illustration.`,
           );
+          const identityLayout = await browser.evaluate(`(() => {
+              const name = document.querySelector(${JSON.stringify(selector(`heat-map-instrument-name-${currentSymbol}`))});
+              const icon = document.querySelector(${JSON.stringify(selector(`heat-map-instrument-icon-${currentSymbol}`))});
+              const tile = name?.parentElement?.parentElement;
+              if (!name || !icon || !tile) return null;
+              const nameRect = name.getBoundingClientRect();
+              const iconRect = icon.getBoundingClientRect();
+              const tileRect = tile.getBoundingClientRect();
+              return {
+                textAlign: getComputedStyle(name).textAlign,
+                centerOffset: Math.abs((nameRect.left + nameRect.right) / 2 - (tileRect.left + tileRect.right) / 2),
+                iconAboveName: iconRect.bottom <= nameRect.top + 1,
+              };
+            })()`);
+          assert.ok(identityLayout, `${nextCategory} names and icons should share the centered tile header.`);
+          assert.equal(identityLayout.textAlign, "center", `${nextCategory} names should be centered in the hexagon.`);
+          assert.ok(identityLayout.centerOffset <= 1, `${nextCategory} names should align with the hexagon center.`);
+          assert.equal(identityLayout.iconAboveName, true, `The ${nextCategory} illustration should sit above the centered name.`);
         }
       } else {
         await setResponse(browser, makeResponse("custom", "1d", ""));

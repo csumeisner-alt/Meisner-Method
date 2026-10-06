@@ -43,3 +43,4 @@
 - [Heat-map extended-hours schedules](heatmap-extended-hours-schedules.md) — only label international extensions from official venue-specific schedules; a regular-hours calendar is not enough.
 - [Heat-map scheduled refresh failures](heatmap-scheduled-refresh-failures.md) — React Query refetch usually resolves with `isError`; retry logic must inspect the result and also handle rejection.
 - [ICE Dollar Index sessions](ice-dollar-index-sessions.md) — DX=F has its own ICE evening schedule and holiday baseline; do not route it through CME calendars or product groups.
+- [Artifact workflow listener conflicts](artifact-workflow-listener-conflicts.md) — a failed service workflow can leave an older healthy child holding the same port.

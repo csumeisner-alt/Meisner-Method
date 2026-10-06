@@ -165,8 +165,8 @@ export function HeatMapInstrumentIcon({
 
 const styles = StyleSheet.create({
   root: {
-    width: 27,
-    height: 22,
+    width: 23,
+    height: 17,
     flexShrink: 0,
     alignItems: "center",
     justifyContent: "center",
