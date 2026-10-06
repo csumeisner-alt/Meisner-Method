@@ -46,6 +46,9 @@ const CATEGORIES: { id: GetMarketHeatMapCategory; label: string }[] = [
   { id: 'commodities', label: 'Commodities' }, { id: 'futures', label: 'Futures' },
   { id: 'cryptocurrency', label: 'Cryptocurrency' }, { id: 'custom', label: 'Custom' },
 ];
+const LARGE_TICKER_LABEL_CATEGORIES = new Set<GetMarketHeatMapCategory>([
+  'stocks', 'etfs', 'commodities', 'custom',
+]);
 const STOCK_SECTORS: GetMarketHeatMapSector[] = [
   'Technology', 'Communication Services', 'Consumer Cyclical', 'Consumer Defensive',
   'Financials', 'Healthcare', 'Industrials', 'Real Estate', 'Energy', 'Utilities', 'Basic Materials',
@@ -84,12 +87,13 @@ function formatUpdated(timestamp?: number) {
   return `Updated ${new Date(timestamp * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
 }
 
-function HexTile({ quote, width, height, colors, period, editing, reduceMotion, removing, onRemove }: {
+function HexTile({ quote, width, height, colors, period, category, editing, reduceMotion, removing, onRemove }: {
   quote: HeatMapQuote;
   width: number;
   height: number;
   colors: ReturnType<typeof useColors>;
   period: GetMarketHeatMapPeriod;
+  category: GetMarketHeatMapCategory;
   editing: boolean;
   reduceMotion: boolean;
   removing: boolean;
@@ -116,6 +120,7 @@ function HexTile({ quote, width, height, colors, period, editing, reduceMotion, 
   const negative = available && value! < -0.25;
   const tone = !available ? colors.mutedForeground : positive ? colors.buyColor : negative ? colors.sellColor : colors.holdColor;
   const bg = !available ? colors.secondary : positive ? colors.buyBg : negative ? colors.sellBg : colors.holdBg;
+  const largerTickerLabel = LARGE_TICKER_LABEL_CATEGORIES.has(category);
   const label = available ? `${value! > 0 ? '+' : ''}${value!.toFixed(2)}%` : 'Unavailable';
   const instrument = getHeatMapInstrumentDisplay(quote);
   const session = getHeatMapSessionLabel(quote.marketSession);
@@ -145,13 +150,29 @@ function HexTile({ quote, width, height, colors, period, editing, reduceMotion, 
             numberOfLines={1}
             adjustsFontSizeToFit
             minimumFontScale={0.58}
-            style={[styles.tileSymbol, styles.tileInstrumentName, { color: colors.foreground }]}
+            style={[
+              styles.tileSymbol,
+              styles.tileInstrumentName,
+              largerTickerLabel ? styles.tileInstrumentNameEmphasized : null,
+              { color: colors.foreground },
+            ]}
           >
             {instrument.name}
           </Text>
         </View>
       ) : (
-        <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={[styles.tileSymbol, { color: colors.foreground }]}>{quote.symbol}</Text>
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.72}
+          style={[
+            styles.tileSymbol,
+            largerTickerLabel ? styles.tileSymbolEmphasized : null,
+            { color: colors.foreground },
+          ]}
+        >
+          {quote.symbol}
+        </Text>
       )}
       <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={[styles.tileChange, { color: tone }]}>{label}</Text>
       <Text numberOfLines={1} style={[styles.tilePrice, { color: colors.mutedForeground }]}>{formatPrice(quote.price)}</Text>
@@ -901,6 +922,7 @@ export default function HeatMapScreen() {
                                   height={tileHeight}
                                   colors={colors}
                                   period={period}
+                                  category={category}
                                   editing={category === 'custom' && isEditingCustomMap}
                                   reduceMotion={reduceMotion}
                                   removing={removingSymbol !== null}
@@ -1056,9 +1078,11 @@ const styles = StyleSheet.create({
   tileInstrument: { gap: 0 },
   tileInstrumentIdentity: { width: '100%', alignItems: 'center', justifyContent: 'center' },
   tileInstrumentName: { width: '100%', minWidth: 0, maxWidth: '100%', textAlign: 'center', fontSize: 11, lineHeight: 13, letterSpacing: 0.3 },
+  tileInstrumentNameEmphasized: { fontSize: 14, lineHeight: 16 },
   editTileButton: { alignItems: 'center', justifyContent: 'center' },
   tileRemoveBadge: { position: 'absolute', top: 9, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   tileSymbol: { maxWidth: '92%', fontFamily: 'Inter_700Bold', fontSize: 13, letterSpacing: 0.2 },
+  tileSymbolEmphasized: { fontSize: 16 },
   tileChange: { maxWidth: '92%', fontFamily: 'Inter_700Bold', fontSize: 12 },
   tilePrice: { maxWidth: '92%', fontFamily: 'Inter_500Medium', fontSize: 10 },
   tileSession: { maxWidth: '94%', fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.05 },
