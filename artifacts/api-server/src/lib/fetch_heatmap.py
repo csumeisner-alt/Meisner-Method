@@ -168,6 +168,7 @@ EXCHANGE_ALIASES = {
     "xtse": "Toronto Stock Exchange", "toronto": "Toronto Stock Exchange",
     "toronto stock exchange": "Toronto Stock Exchange",
     "xetr": "Deutsche Börse Xetra", "xetra": "Deutsche Börse Xetra",
+    "deutsche boerse xetra": "Deutsche Börse Xetra",
     "fra": "Deutsche Börse Xetra", "frankfurt": "Deutsche Börse Xetra",
     "frankfurt stock exchange": "Deutsche Börse Xetra",
     "deutsche börse": "Deutsche Börse Xetra", "deutsche boerse": "Deutsche Börse Xetra",
@@ -215,18 +216,53 @@ EXCHANGE_CALENDAR_IDS = {
     "Bolsa de Madrid": "XMAD",
     "Borsa Italiana": "XMIL",
 }
-# Verified Xetra Retail Service schedule, effective 1 Dec 2025. Early trading
-# runs 08:00-08:55 local time, followed by the opening auction until the regular
-# session opens. Late trading / Trade-at-Close is active from 17:35 to 22:00.
-# https://www.cashmarket.deutsche-boerse.com/cash-en/Stay-Informed/circulars-newsletters/deutsche-boerse-circulars/Introduction-of-the-Extended-Xetra-Retail-Service-early-and-late-trading-Planned-changes-to-the-trading-process-valid-from-1-December-2025-4793480
+# Xetra schedule reviewed 6 Oct 2026. The current timetable is published at
+# https://cashmarket.deutsche-boerse.com/cash-en/trading/trading-calendar-and-trading-hours
+# and the service details at
+# https://cashmarket.deutsche-boerse.com/cash-en/Data-Tech/Initiatives-Releases/extended-xetra-retail-service
+# The early retail window is 08:00-08:55 local time; the opening auction then
+# runs until regular trading begins. Late trading starts after the closing
+# auction and any Trade-at-Close phase. Since that transition can vary by
+# instrument and the heat map has no auction-status data, 17:35 is the
+# conservative common boundary; do not mark the preceding interval active.
+# Official venue coverage is Xetra-listed equities, ETFs, ETCs, and ETNs.
+# The heat map currently applies this schedule only to XETR stock and ETF
+# quotes. Extended service participation is limited to participating members.
+# Xetra lists special 2026 public-holiday hours and possible deviations on
+# 30 Dec 2026. Extended phases on those dates remain inactive until their
+# instrument-specific schedule is verified against a venue notice.
 INTERNATIONAL_EXTENDED_SESSION_SCHEDULES = {
     "Deutsche Börse Xetra": {
+        "venue": "XETR",
+        "verified_on": "2026-10-06",
+        "source_urls": (
+            "https://cashmarket.deutsche-boerse.com/cash-en/trading/trading-calendar-and-trading-hours",
+            "https://cashmarket.deutsche-boerse.com/cash-en/Data-Tech/Initiatives-Releases/extended-xetra-retail-service",
+        ),
+        "venue_coverage": ("equities", "ETFs", "ETCs", "ETNs"),
+        "heatmap_coverage": ("stock", "etf"),
+        "timezone": "Europe/Berlin",
+        "unverified_special_session_dates": (
+            "2026-05-14",
+            "2026-05-25",
+            "2026-06-04",
+            "2026-12-30",
+        ),
         "pre_market_start_minute": 8 * 60,
+        "early_trading_end_minute": 8 * 60 + 55,
+        "opening_auction_start_minute": 8 * 60 + 55,
+        "regular_open_minute": 9 * 60,
         "after_hours_start_minute": 17 * 60 + 35,
         "after_hours_end_minute": 22 * 60,
         "regular_close_minute": 17 * 60 + 30,
     },
 }
+XETRA_EXTENDED_SESSION_ALIASES = frozenset({
+    "xetr",
+    "xetra",
+    "deutsche börse xetra",
+    "deutsche boerse xetra",
+})
 METADATA_CACHE_PATH = os.path.join(tempfile.gettempdir(), "meisner_heat_map_metadata.json")
 METADATA_CACHE_TTL_SECONDS = 24 * 60 * 60
 MIN_VOLATILITY_RETURNS = 60
@@ -706,7 +742,87 @@ def market_session(timestamp, asset_type, now=None, symbol=None, exchange=None):
         return "closed"
     return "unknown"
 
+def verified_international_extended_schedule(
+    exchange,
+    exchange_calendar,
+    session_date,
+):
+    raw_exchange = str(exchange or "").strip().casefold()
+    if raw_exchange not in XETRA_EXTENDED_SESSION_ALIASES:
+        return None
 
+    schedule = INTERNATIONAL_EXTENDED_SESSION_SCHEDULES.get(
+        normalize_exchange(exchange)
+    )
+    if not isinstance(schedule, dict):
+        return None
+
+    try:
+        date.fromisoformat(schedule["verified_on"])
+        source_urls = schedule["source_urls"]
+        venue_coverage = schedule["venue_coverage"]
+        heatmap_coverage = schedule["heatmap_coverage"]
+        unverified_dates = schedule["unverified_special_session_dates"]
+        timezone_name = schedule["timezone"]
+        minute_fields = (
+            "pre_market_start_minute",
+            "early_trading_end_minute",
+            "opening_auction_start_minute",
+            "regular_open_minute",
+            "regular_close_minute",
+            "after_hours_start_minute",
+            "after_hours_end_minute",
+        )
+        minutes = {key: schedule[key] for key in minute_fields}
+    except (KeyError, TypeError, ValueError):
+        return None
+
+    if (
+        schedule.get("venue") != "XETR"
+        or not isinstance(source_urls, (tuple, list))
+        or not source_urls
+        or any(
+            not isinstance(url, str)
+            or not url.startswith("https://")
+            or ".deutsche-boerse.com/" not in url
+            for url in source_urls
+        )
+        or not isinstance(venue_coverage, (tuple, list))
+        or not venue_coverage
+        or not isinstance(heatmap_coverage, (tuple, list))
+        or not heatmap_coverage
+        or not isinstance(unverified_dates, (tuple, list))
+        or timezone_name != getattr(exchange_calendar.tz, "key", None)
+    ):
+        return None
+
+    try:
+        unverified_date_strings = tuple(
+            date.fromisoformat(value) for value in unverified_dates
+        )
+    except (TypeError, ValueError):
+        return None
+    if session_date in unverified_date_strings:
+        return None
+
+    if any(
+        isinstance(value, bool) or not isinstance(value, int) or not 0 <= value < 24 * 60
+        for value in minutes.values()
+    ):
+        return None
+
+    if not (
+        minutes["pre_market_start_minute"]
+        < minutes["early_trading_end_minute"]
+        == minutes["opening_auction_start_minute"]
+        < minutes["regular_open_minute"]
+        < minutes["regular_close_minute"]
+        < minutes["after_hours_start_minute"]
+        < minutes["after_hours_end_minute"]
+    ):
+        return None
+
+    return schedule
 def equity_market_session(timestamp, as_of, exchange):
     closure_active, _ = active_temporary_us_equity_closure(as_of, exchange)
     if closure_active:
@@ -733,12 +849,18 @@ def equity_market_session(timestamp, as_of, exchange):
     if local < market_open:
         if exchange_calendar.name == "XNYS" and local.hour >= 4:
             return "pre_market"
-        extended_schedule = INTERNATIONAL_EXTENDED_SESSION_SCHEDULES.get(
-            normalize_exchange(exchange)
+        extended_schedule = verified_international_extended_schedule(
+            exchange,
+            exchange_calendar,
+            local.date(),
         )
         local_minute = local.hour * 60 + local.minute
         if (
             extended_schedule
+            and market_open.hour * 60 + market_open.minute
+            == extended_schedule["regular_open_minute"]
+            and market_close.hour * 60 + market_close.minute
+            == extended_schedule["regular_close_minute"]
             and extended_schedule["pre_market_start_minute"] <= local_minute
         ):
             return "pre_market"
@@ -750,13 +872,17 @@ def equity_market_session(timestamp, as_of, exchange):
             return "unknown"
     if exchange_calendar.name == "XNYS" and local.hour < 20:
         return "after_hours"
-    extended_schedule = INTERNATIONAL_EXTENDED_SESSION_SCHEDULES.get(
-        normalize_exchange(exchange)
+    extended_schedule = verified_international_extended_schedule(
+        exchange,
+        exchange_calendar,
+        local.date(),
     )
     local_minute = local.hour * 60 + local.minute
     regular_close_minute = market_close.hour * 60 + market_close.minute
     if (
         extended_schedule
+        and market_open.hour * 60 + market_open.minute
+        == extended_schedule["regular_open_minute"]
         and regular_close_minute == extended_schedule["regular_close_minute"]
         and extended_schedule["after_hours_start_minute"]
         <= local_minute

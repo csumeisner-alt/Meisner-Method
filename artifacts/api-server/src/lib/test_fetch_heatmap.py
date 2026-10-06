@@ -58,6 +58,7 @@ SUPPORTED_INTERNATIONAL_EXCHANGES = (
         (
             "xetr",
             "xetra",
+            "deutsche boerse xetra",
             "fra",
             "frankfurt",
             "frankfurt stock exchange",
@@ -440,6 +441,115 @@ class HeatMapQuoteTests(unittest.TestCase):
                             ),
                             expected,
                         )
+
+    def test_xetra_schedule_documents_official_sources_coverage_and_boundaries(self):
+        schedule = fetch_heatmap.INTERNATIONAL_EXTENDED_SESSION_SCHEDULES[
+            "Deutsche Börse Xetra"
+        ]
+        self.assertEqual(schedule["venue"], "XETR")
+        self.assertEqual(schedule["verified_on"], "2026-10-06")
+        self.assertEqual(
+            schedule["source_urls"],
+            (
+                "https://cashmarket.deutsche-boerse.com/cash-en/trading/trading-calendar-and-trading-hours",
+                "https://cashmarket.deutsche-boerse.com/cash-en/Data-Tech/Initiatives-Releases/extended-xetra-retail-service",
+            ),
+        )
+        self.assertEqual(
+            schedule["venue_coverage"],
+            ("equities", "ETFs", "ETCs", "ETNs"),
+        )
+        self.assertEqual(schedule["heatmap_coverage"], ("stock", "etf"))
+        self.assertEqual(schedule["timezone"], "Europe/Berlin")
+        self.assertEqual(
+            schedule["unverified_special_session_dates"],
+            ("2026-05-14", "2026-05-25", "2026-06-04", "2026-12-30"),
+        )
+        self.assertEqual(
+            (
+                schedule["pre_market_start_minute"],
+                schedule["early_trading_end_minute"],
+                schedule["opening_auction_start_minute"],
+                schedule["regular_open_minute"],
+                schedule["regular_close_minute"],
+                schedule["after_hours_start_minute"],
+                schedule["after_hours_end_minute"],
+            ),
+            (8 * 60, 8 * 60 + 55, 8 * 60 + 55, 9 * 60, 17 * 60 + 30, 17 * 60 + 35, 22 * 60),
+        )
+
+    def test_xetra_schedule_is_inactive_when_unverified_or_ambiguous(self):
+        berlin = ZoneInfo("Europe/Berlin")
+        valid_schedule = fetch_heatmap.INTERNATIONAL_EXTENDED_SESSION_SCHEDULES[
+            "Deutsche Börse Xetra"
+        ]
+        invalid_schedules = (
+            None,
+            {},
+            {**valid_schedule, "source_urls": ()},
+            {**valid_schedule, "venue_coverage": ()},
+            {**valid_schedule, "unverified_special_session_dates": ("not-a-date",)},
+            {**valid_schedule, "after_hours_end_minute": 17 * 60 + 34},
+        )
+        for schedule in invalid_schedules:
+            with self.subTest(schedule=schedule):
+                with patch.object(
+                    fetch_heatmap,
+                    "INTERNATIONAL_EXTENDED_SESSION_SCHEDULES",
+                    {"Deutsche Börse Xetra": schedule},
+                ):
+                    for hour in (8, 18):
+                        local = datetime(2026, 2, 3, hour, 30, tzinfo=berlin)
+                        self.assertEqual(
+                            fetch_heatmap.equity_market_session(
+                                local.timestamp(),
+                                local,
+                                "XETR",
+                            ),
+                            "closed",
+                        )
+
+        for ambiguous_alias in (
+            "FRA",
+            "Frankfurt",
+            "Frankfurt Stock Exchange",
+            "Deutsche Börse",
+            "Deutsche Boerse",
+        ):
+            with self.subTest(exchange=ambiguous_alias):
+                for hour in (8, 18):
+                    local = datetime(2026, 2, 3, hour, 30, tzinfo=berlin)
+                    self.assertEqual(
+                        fetch_heatmap.equity_market_session(
+                            local.timestamp(),
+                            local,
+                            ambiguous_alias,
+                        ),
+                        "closed",
+                    )
+
+    def test_xetra_extended_sessions_stay_inactive_on_unverified_special_dates(self):
+        berlin = ZoneInfo("Europe/Berlin")
+        for day in ("2026-05-14", "2026-05-25", "2026-06-04", "2026-12-30"):
+            session_date = date.fromisoformat(day)
+            with self.subTest(date=day):
+                for hour in (8, 18):
+                    local = datetime(
+                        session_date.year,
+                        session_date.month,
+                        session_date.day,
+                        hour,
+                        30,
+                        tzinfo=berlin,
+                    )
+                    self.assertEqual(
+                        fetch_heatmap.equity_market_session(
+                            local.timestamp(),
+                            local,
+                            "XETR",
+                        ),
+                        "closed",
+                    )
 
     def test_xetra_extended_sessions_are_inactive_on_holidays_and_without_a_schedule(self):
         berlin = ZoneInfo("Europe/Berlin")
