@@ -25,6 +25,10 @@ interface MarketHeatMapInsightButtonProps {
   onPress: () => void;
 }
 
+const COLD_SIGNAL_BLUE = '#8EDFFF';
+const COLD_SIGNAL_WHITE = '#F4FCFF';
+const COLD_FLAME_GLOW = '#78D8FF';
+
 function flameColors(active: boolean, neonActive: boolean, tone: MarketBreadthInsight['tone']) {
   if (neonActive) {
     return {
@@ -40,7 +44,7 @@ function flameColors(active: boolean, neonActive: boolean, tone: MarketBreadthIn
     return { base: '#07843F', middle: '#35E86F', core: '#E5FF8C' };
   }
   if (tone === 'COLD') {
-    return { base: '#1D63D8', middle: '#6BC8FF', core: '#F4FCFF' };
+    return { base: '#1D63D8', middle: '#6BC8FF', core: COLD_SIGNAL_WHITE };
   }
   return { base: '#9B7427', middle: '#E6BD61', core: '#FFF1C9' };
 }
@@ -165,15 +169,16 @@ export function MarketHeatMapInsightButton({
   const signalColor = isHot
     ? colors.buyColor
     : isCold
-      ? (neonActive ? '#FF6972' : '#FF593D')
+      ? COLD_SIGNAL_BLUE
       : active || neonActive
         ? colors.gold
         : colors.holdColor;
   const glowColor = isHot
     ? colors.buyColor
     : isCold
-      ? (neonActive ? '#FF6972' : '#78D8FF')
+      ? COLD_FLAME_GLOW
       : colors.gold;
+  const detailColor = isCold ? COLD_SIGNAL_WHITE : colors.foreground;
   const fireColors = flameColors(active, neonActive, hasBreadth ? breadth.tone : 'NEUTRAL');
   const headline = hasBreadth
     ? isHot ? 'MARKET HOT' : isCold ? 'MARKET COLD' : 'MARKET MIXED'
@@ -374,7 +379,7 @@ export function MarketHeatMapInsightButton({
           <View style={styles.insightCopy}>
             <Text style={[styles.eyebrow, { color: colors.mutedForeground }]}>MARKET HEAT MAP</Text>
             <Text numberOfLines={1} style={[styles.headline, { color: signalColor }]}>{headline}</Text>
-            <Text numberOfLines={1} style={[styles.detail, { color: colors.foreground }]}>{detail}</Text>
+            <Text numberOfLines={1} style={[styles.detail, { color: detailColor }]}>{detail}</Text>
           </View>
           <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
         </View>

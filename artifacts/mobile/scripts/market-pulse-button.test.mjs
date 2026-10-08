@@ -36,13 +36,14 @@ test('heat-map badge uses gentle campfire kindling and respects reduced motion',
   assert.match(buttonSource, /colors\.gold/);
 });
 
-test('cold-market flame uses icy colors while the bearish signal remains clear', () => {
+test('cold-market flame and signal use icy blue and white', () => {
   assert.match(
     buttonSource,
-    /if \(tone === 'COLD'\) \{\s*return \{ base: '#1D63D8', middle: '#6BC8FF', core: '#F4FCFF' \};\s*\}/,
+    /if \(tone === 'COLD'\) \{\s*return \{ base: '#1D63D8', middle: '#6BC8FF', core: COLD_SIGNAL_WHITE \};\s*\}/,
   );
   const signalColor = buttonSource.match(/const signalColor =([\s\S]*?);/)?.[1];
   const glowColor = buttonSource.match(/const glowColor =([\s\S]*?);/)?.[1];
-  assert.match(signalColor ?? '', /isCold[\s\S]*'#FF593D'/);
-  assert.match(glowColor ?? '', /isCold[\s\S]*'#78D8FF'/);
+  assert.match(signalColor ?? '', /isCold[\s\S]*COLD_SIGNAL_BLUE/);
+  assert.match(glowColor ?? '', /isCold[\s\S]*COLD_FLAME_GLOW/);
+  assert.match(buttonSource, /const detailColor = isCold \? COLD_SIGNAL_WHITE : colors\.foreground/);
 });
