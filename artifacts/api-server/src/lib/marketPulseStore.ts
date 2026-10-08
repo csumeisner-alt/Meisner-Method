@@ -59,7 +59,8 @@ export function createMarketPulseStore(query: Query) {
          ON CONFLICT (cache_key) DO UPDATE SET
            change_percent = EXCLUDED.change_percent,
            price_timestamp = EXCLUDED.price_timestamp,
-           updated_at = EXCLUDED.updated_at`,
+           updated_at = EXCLUDED.updated_at
+         WHERE market_pulse_cache.price_timestamp <= EXCLUDED.price_timestamp`,
         [CACHE_KEY, data.changePercent, data.priceTimestamp, data.updatedAt],
       );
     },
