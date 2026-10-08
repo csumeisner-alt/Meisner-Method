@@ -2302,9 +2302,16 @@ export default function PortfolioScreen() {
   }
 
   function handleDelete(id: string) {
+    const removeTrade = () => saveTrades(trades.filter(t => t.id !== id));
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Remove this trade?')) removeTrade();
+      return;
+    }
+
     Alert.alert('Remove Trade', 'Remove this trade?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => saveTrades(trades.filter(t => t.id !== id)) },
+      { text: 'Remove', style: 'destructive', onPress: removeTrade },
     ]);
   }
 

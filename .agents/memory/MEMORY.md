@@ -48,3 +48,4 @@
 - [Preview capture request aborts](preview-capture-request-aborts.md) — screenshots may close slow API requests before they finish; verify with a direct request or a later capture.
 - [Market breadth cache behavior](market-breadth-cache.md) — prewarm the full sample and serve the last good snapshot while slow quote refreshes run in the background.
 - [Heat-map screener deduplication](heat-map-screener-deduplication.md) — breadth serialization bypasses the normal symbol-keyed map; dedupe screener rows by ticker, keeping the first-ranked quote.
+- [React Native Web alerts](react-native-web-alerts.md) — `Alert.alert` is a no-op in the browser preview; critical confirmation flows need a web-specific path.
