@@ -40,6 +40,7 @@
 - [Stock recommendation stability](stock-recommendation-stability.md) — action and price levels are deterministic; AI explains them but cannot override or invert them.
 - [GitHub release sync](github-release-sync.md) — if the HTTPS remote credential is stale, sync through the authorized GitHub API and throttle blob writes below the proxy limit.
 - [Biden quote progress tracker](biden-quote-progress-tracker.md) — keep this as a visual layer over the existing persisted view count and shared unlock threshold.
+- [Shared heat-map market status](heatmap-shared-market-status.md) — show one open/pre-market/extended/closed indicator for Stocks, ETFs, and Custom instead of repeating next-open times in hexes.
 - [Heat-map extended-hours schedules](heatmap-extended-hours-schedules.md) — only label international extensions from official venue-specific schedules; a regular-hours calendar is not enough.
 - [Heat-map scheduled refresh failures](heatmap-scheduled-refresh-failures.md) — React Query refetch usually resolves with `isError`; retry logic must inspect the result and also handle rejection.
 - [ICE Dollar Index sessions](ice-dollar-index-sessions.md) — DX=F has its own ICE evening schedule and holiday baseline; do not route it through CME calendars or product groups.

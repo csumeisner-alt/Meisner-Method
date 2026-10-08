@@ -460,6 +460,34 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       "The drawer should close after testing its period choices.",
     );
 
+    const preMarketResponse = makeResponse("stocks", "1d", "PREMARKET_STATUS");
+    preMarketResponse.quotes[0].marketSession = "pre_market";
+    await setResponse(browser, preMarketResponse);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-market-status-label"))})?.textContent.trim() === "OPEN · PRE-MARKET"`,
+      "Pre-market trading should appear as open with its session identified.",
+    );
+    assert.equal(
+      await browser.evaluate(`getComputedStyle(document.querySelector(${JSON.stringify(selector("heat-map-market-status-label"))})).color`),
+      "rgb(101, 201, 139)",
+      "Pre-market trading should use the green open color.",
+    );
+
+    const closedResponse = makeResponse("stocks", "1d", "CLOSED_STATUS");
+    closedResponse.quotes[0].marketSession = "closed";
+    await setResponse(browser, closedResponse);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-market-status-label"))})?.textContent.trim() === "MARKET CLOSED"`,
+      "Closed regular trading should appear as market closed.",
+    );
+    assert.equal(
+      await browser.evaluate(`getComputedStyle(document.querySelector(${JSON.stringify(selector("heat-map-market-status-label"))})).color`),
+      "rgb(240, 124, 121)",
+      "A closed session should use the red closed color.",
+    );
+
     // Change through every category and send each old category's response after selection changes.
     const categories = ["etfs", "commodities", "futures", "cryptocurrency", "custom", "stocks"];
     let previousCategory = "stocks";
@@ -537,7 +565,20 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
         }
       } else {
         await setResponse(browser, makeResponse("custom", "1d", ""));
+        assert.equal(
+          await browser.evaluate(`!!document.querySelector(${JSON.stringify(selector("heat-map-market-status"))})`),
+          false,
+          "An empty custom map should not show market status without quote data.",
+        );
       }
+      const hasSharedStatus = await browser.evaluate(
+        `!!document.querySelector(${JSON.stringify(selector("heat-map-market-status"))})`,
+      );
+      assert.equal(
+        hasSharedStatus,
+        nextCategory === "etfs" || nextCategory === "stocks",
+        `${nextCategory} should only show the shared market status when it is an equity category with quotes.`,
+      );
       previousCategory = nextCategory;
     }
 
@@ -1125,11 +1166,25 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       `(request) => request.category === "custom" && JSON.stringify(request.symbols) === '["AAPL","MSFT","MISSING"]'`,
       "the saved custom tickers after retry",
     );
-    await setResponse(browser, makeCustomResponse("1d", [quote("AAPL"), quote("MSFT")], ["MISSING"]));
+    const customNextOpen = Date.parse("2030-11-29T14:30:00Z") / 1000;
+    await setResponse(browser, makeCustomResponse("1d", [
+      quote("AAPL", { marketSession: "after_hours", nextRegularOpenTimestamp: customNextOpen }),
+      quote("MSFT", { marketSession: "after_hours", nextRegularOpenTimestamp: customNextOpen }),
+    ], ["MISSING"]));
     await waitFor(
       (expression) => browser.evaluate(expression),
       `!!document.querySelector(${JSON.stringify(selector("heat-map-session-AAPL"))}) && !!document.querySelector(${JSON.stringify(selector("heat-map-session-MSFT"))}) && !document.querySelector(${JSON.stringify(selector("heat-map-storage-error"))})`,
       "A successful retry should load the saved tickers, render available hexagons, and clear the error.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-market-status-label"))})?.textContent.trim()`),
+      "OPEN · EXTENDED HOURS",
+      "Custom maps should show one shared status for their extended-hours quotes.",
+    );
+    assert.equal(
+      await browser.evaluate(`!!document.querySelector(${JSON.stringify(selector("heat-map-next-open-AAPL"))})`),
+      false,
+      "Custom-map hexagons should not repeat the next-open time.",
     );
 
     await clickTestID(browser, "heat-map-custom-edit");
