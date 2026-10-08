@@ -111,6 +111,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AnalysisError"
+  /stocks/market-pulse:
+    get:
+      operationId: getMarketPulse
+      tags: [stocks]
+      summary: Get the total-market daily move
+      description: Returns the daily percentage change and quote timestamp for Yahoo Finance's Dow Jones U.S. Total Stock Market Index (^DWCF). The index price is not returned.
+      responses:
+        "200":
+          description: Total-market daily percentage move
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketPulseResponse"
+        "422":
+          description: Market pulse is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
   /stocks/heat-map:
     get:
       operationId: getMarketHeatMap
@@ -568,6 +587,23 @@ components:
         - requestedSector
         - quotes
         - unavailableSymbols
+        - updatedAt
+
+    MarketPulseResponse:
+      type: object
+      properties:
+        changePercent:
+          type: number
+          description: Daily percentage move from the previous close, in percentage points.
+        priceTimestamp:
+          type: integer
+          description: Unix timestamp in seconds for the Yahoo Finance quote used to calculate the daily move.
+        updatedAt:
+          type: integer
+          description: Unix timestamp in seconds when this response was assembled.
+      required:
+        - changePercent
+        - priceTimestamp
         - updatedAt
 
     ValidateHeatMapSymbolRequest:
