@@ -29,10 +29,10 @@ import {
   type HeatMapResponse,
 } from "../lib/marketHeatMap.js";
 import {
-  isMarketPulseResponse,
-  type MarketPulseResponse,
-} from "../lib/marketPulse.js";
+  createMarketPulseService,
+} from "../lib/marketPulseService.ts";
 import { createMarketPulseStore } from "../lib/marketPulseStore.js";
+import { createMarketPulseRouter } from "./marketPulse.js";
 
 const { Pool } = pg;
 const execFileAsync = promisify(execFile);
@@ -49,14 +49,10 @@ let topPicksCache: { data: unknown; ts: number } | null = null;
 const TOP_PICKS_TTL = 4 * 60 * 60 * 1000;
 const HEAT_MAP_TTL = 2 * 60 * 1000;
 const MARKET_BREADTH_TTL = 60 * 1000;
-const MARKET_PULSE_TTL = 60 * 1000;
 const heatMapCache = new Map<string, { data: HeatMapResponse; ts: number }>();
 const heatMapRequests = new Map<string, Promise<HeatMapResponse>>();
 let marketBreadthCache: { data: HeatMapResponse; ts: number } | null = null;
 let marketBreadthRequest: Promise<HeatMapResponse> | null = null;
-let marketPulseCache: { data: MarketPulseResponse; ts: number } | null = null;
-let marketPulseRequest: Promise<MarketPulseResponse> | null = null;
-let marketPulseRestoreRequest: Promise<void> | null = null;
 const marketPulsePool = new Pool({
   connectionString: process.env["DATABASE_URL"],
   connectionTimeoutMillis: 3_000,
@@ -214,9 +210,8 @@ async function fetchMarketBreadthSnapshot(): Promise<HeatMapResponse> {
   return refreshMarketBreadthSnapshot(false);
 }
 
-function refreshMarketPulseSnapshot(logFailure: boolean): Promise<MarketPulseResponse> {
-  if (marketPulseRequest) return marketPulseRequest;
-  const request = (async () => {
+const marketPulseService = createMarketPulseService({
+  fetchSnapshot: async () => {
     const { stdout } = await execFileAsync(
       "python3",
       [HEAT_MAP_SCRIPT, "stocks", "", "1d", "", "market-pulse"],
@@ -230,91 +225,32 @@ function refreshMarketPulseSnapshot(logFailure: boolean): Promise<MarketPulseRes
     ) {
       throw new Error(String((raw as Record<string, unknown>)["error"]));
     }
-    if (!isMarketPulseResponse(raw)) {
-      throw new Error("Market data provider returned an invalid market-pulse response");
-    }
-    marketPulseCache = { data: raw, ts: Date.now() };
-    try {
-      await marketPulseStore.write(raw);
-    } catch (err) {
-      logger.warn({ err }, "Failed to persist market-pulse snapshot");
-    }
     return raw;
-  })();
-  marketPulseRequest = request;
-  void request.then(
-    () => {
-      if (marketPulseRequest === request) marketPulseRequest = null;
-    },
-    (err: unknown) => {
-      if (marketPulseRequest === request) marketPulseRequest = null;
-      if (logFailure) logger.warn({ err }, "Background market-pulse refresh failed");
-    },
-  );
-  return request;
-}
-
-async function fetchMarketPulseSnapshot(): Promise<MarketPulseResponse> {
-  await restoreMarketPulseCache();
-  const now = Date.now();
-  if (marketPulseCache) {
-    if (now - marketPulseCache.ts >= MARKET_PULSE_TTL && !marketPulseRequest) {
-      void refreshMarketPulseSnapshot(true).catch(() => {});
-    }
-    return marketPulseCache.data;
-  }
-  if (marketPulseRequest) return marketPulseRequest;
-  return refreshMarketPulseSnapshot(false);
-}
+  },
+  store: marketPulseStore,
+  onRestored: (data) => {
+    logger.info(
+      { priceTimestamp: data.priceTimestamp, updatedAt: data.updatedAt },
+      "Restored market-pulse cache",
+    );
+  },
+  onRestoreFailure: (err) => logger.warn({ err }, "Failed to restore market-pulse cache"),
+  onRefreshFailure: (err) => logger.warn({ err }, "Background market-pulse refresh failed"),
+  onPersistFailure: (err) => logger.warn({ err }, "Failed to persist market-pulse snapshot"),
+  onWarmed: (data, elapsedMs) => {
+    logger.info(
+      { priceTimestamp: data.priceTimestamp, elapsedMs },
+      "Market-pulse cache warmed",
+    );
+  },
+});
+router.use(createMarketPulseRouter(marketPulseService, (err) => {
+  logger.error({ err }, "Market-pulse quote fetch failed");
+}));
 
 export function warmMarketPulseCache(): void {
-  const startedAt = Date.now();
-  void restoreMarketPulseCache()
-    .then(() => refreshMarketPulseSnapshot(true))
-    .then((data) => {
-      logger.info(
-        { priceTimestamp: data.priceTimestamp, elapsedMs: Date.now() - startedAt },
-        "Market-pulse cache warmed",
-      );
-    })
-    .catch(() => {});
+  void marketPulseService.warm();
 }
-
-function restoreMarketPulseCache(): Promise<void> {
-  if (marketPulseRestoreRequest) return marketPulseRestoreRequest;
-  let request: Promise<void>;
-  request = marketPulseStore.read()
-    .then((data) => {
-      if (data && !marketPulseCache) {
-        // Restored data is immediately eligible for refresh. Keep both source
-        // timestamps intact so a restart never makes an old quote look new.
-        marketPulseCache = { data, ts: Date.now() - MARKET_PULSE_TTL - 1 };
-        logger.info(
-          { priceTimestamp: data.priceTimestamp, updatedAt: data.updatedAt },
-          "Restored market-pulse cache",
-        );
-      }
-    })
-    .catch((err: unknown) => {
-      logger.warn({ err }, "Failed to restore market-pulse cache");
-      if (marketPulseRestoreRequest === request) marketPulseRestoreRequest = null;
-    });
-  marketPulseRestoreRequest = request;
-  return request;
-}
-
-router.get("/stocks/market-pulse", async (req, res) => {
-  try {
-    const data = await fetchMarketPulseSnapshot();
-    res.set("Cache-Control", "public, max-age=30").json(data);
-  } catch (err: any) {
-    req.log.error({ err }, "Market-pulse quote fetch failed");
-    res.status(422).json({
-      error: "MARKET_PULSE_FAILED",
-      message: "The total-market signal is temporarily unavailable. Try again shortly.",
-    });
-  }
-});
 
 router.get("/stocks/market-breadth", async (req, res) => {
   try {
