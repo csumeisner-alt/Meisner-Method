@@ -39,6 +39,33 @@ export function getHeatMapSessionLabel(session: HeatMapQuote["marketSession"]): 
   }
 }
 
+export type HeatMapMarketStatus = "open" | "pre_market" | "extended" | "closed" | "mixed" | "unknown";
+
+export function getHeatMapMarketStatus(
+  quotes: readonly Pick<HeatMapQuote, "marketSession">[],
+): HeatMapMarketStatus {
+  const knownSessions = [...new Set(
+    quotes
+      .map((quote) => quote.marketSession)
+      .filter((session) => session !== "unknown"),
+  )];
+  if (knownSessions.length === 0) return "unknown";
+  if (knownSessions.length > 1) return "mixed";
+
+  switch (knownSessions[0]) {
+    case "regular":
+      return "open";
+    case "pre_market":
+      return "pre_market";
+    case "after_hours":
+      return "extended";
+    case "closed":
+      return "closed";
+    default:
+      return "unknown";
+  }
+}
+
 export function getNextHeatMapRegularOpenTimestamp(
   quotes: readonly Pick<HeatMapQuote, "assetType" | "marketSession" | "nextRegularOpenTimestamp">[],
   nowSeconds = Date.now() / 1000,

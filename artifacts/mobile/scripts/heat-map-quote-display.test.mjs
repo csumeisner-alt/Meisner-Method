@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { formatHeatMapNextOpen } from "../lib/heatMapQuoteDisplay.ts";
+import {
+  formatHeatMapNextOpen,
+  getHeatMapMarketStatus,
+} from "../lib/heatMapQuoteDisplay.ts";
 
 const screenSource = readFileSync(new URL("../app/heat-map.tsx", import.meta.url), "utf8");
 
@@ -10,8 +13,10 @@ test("heat-map tiles render the session and age from each quote's own metadata",
   assert.match(screenSource, /formatHeatMapQuoteAge\(quote\.priceTimestamp\)/);
   assert.match(screenSource, /formatHeatMapNextOpen\(\s*quote\.nextRegularOpenTimestamp,\s*quote\.marketSession,\s*quote\.assetType,\s*quote\.exchangeTimezone,/);
   assert.match(screenSource, /testID=\{`heat-map-session-\$\{quote\.symbol\}`\}/);
-  assert.match(screenSource, /testID=\{`heat-map-next-open-\$\{quote\.symbol\}`\}/);
+  assert.match(screenSource, /showNextOpen && nextOpen && <Text testID=\{`heat-map-next-open-\$\{quote\.symbol\}`\}/);
   assert.match(screenSource, /testID=\{`heat-map-quote-age-\$\{quote\.symbol\}`\}/);
+  assert.match(screenSource, /getHeatMapMarketStatus\(validAgeQuotes\)/);
+  assert.match(screenSource, /testID="heat-map-market-status"/);
 });
 
 test("next-open time uses the listed exchange timezone", () => {
@@ -24,6 +29,23 @@ test("next-open time uses the listed exchange timezone", () => {
     formatHeatMapNextOpen(nextOpen, "closed", "stock", null, nextOpen - 1),
     null,
   );
+});
+
+test("shared market status distinguishes open, pre-market, extended, closed, mixed, and unknown sessions", () => {
+  assert.equal(getHeatMapMarketStatus([{ marketSession: "regular" }]), "open");
+  assert.equal(getHeatMapMarketStatus([{ marketSession: "pre_market" }]), "pre_market");
+  assert.equal(getHeatMapMarketStatus([{ marketSession: "after_hours" }]), "extended");
+  assert.equal(getHeatMapMarketStatus([{ marketSession: "closed" }]), "closed");
+  assert.equal(getHeatMapMarketStatus([
+    { marketSession: "regular" },
+    { marketSession: "closed" },
+  ]), "mixed");
+  assert.equal(getHeatMapMarketStatus([
+    { marketSession: "regular" },
+    { marketSession: "unknown" },
+  ]), "open");
+  assert.equal(getHeatMapMarketStatus([{ marketSession: "unknown" }]), "unknown");
+  assert.equal(getHeatMapMarketStatus([]), "unknown");
 });
 
 test("heat-map filters stale and undated quotes before summarizing and rendering tiles", () => {

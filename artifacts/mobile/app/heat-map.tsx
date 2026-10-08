@@ -30,7 +30,7 @@ import {
 } from '@/lib/heatMapMetrics';
 import { getHeatMapInstrumentDisplay } from '@/lib/heatMapInstrumentDisplay';
 import {
-  formatHeatMapNextOpen, formatHeatMapQuoteAge, getHeatMapSessionLabel,
+  formatHeatMapNextOpen, formatHeatMapQuoteAge, getHeatMapMarketStatus, getHeatMapSessionLabel,
   getHeatMapRegularOpenRefreshTimestamp, getNextHeatMapRegularOpenTimestamp,
   HEAT_MAP_CRYPTO_REFRESH_INTERVAL_MS,
   HEAT_MAP_REGULAR_SESSION_REFRESH_INTERVAL_MS, isDisplayableHeatMapQuote,
@@ -50,6 +50,25 @@ const CATEGORIES: { id: GetMarketHeatMapCategory; label: string }[] = [
 const LARGE_TICKER_LABEL_CATEGORIES = new Set<GetMarketHeatMapCategory>([
   'stocks', 'etfs', 'commodities', 'custom',
 ]);
+const SHARED_MARKET_STATUS_CATEGORIES = new Set<GetMarketHeatMapCategory>([
+  'stocks', 'etfs', 'custom',
+]);
+const MARKET_STATUS_LABELS: Record<ReturnType<typeof getHeatMapMarketStatus>, string> = {
+  open: 'MARKET OPEN',
+  pre_market: 'OPEN · PRE-MARKET',
+  extended: 'OPEN · EXTENDED HOURS',
+  closed: 'MARKET CLOSED',
+  mixed: 'MIXED HOURS',
+  unknown: 'STATUS UNKNOWN',
+};
+const MARKET_STATUS_ACCESSIBILITY_LABELS: Record<ReturnType<typeof getHeatMapMarketStatus>, string> = {
+  open: 'Market open during regular trading',
+  pre_market: 'Market open for pre-market trading',
+  extended: 'Market open for extended-hours trading',
+  closed: 'Market closed',
+  mixed: 'Market sessions differ across displayed instruments',
+  unknown: 'Market status unavailable',
+};
 const STOCK_SECTORS: GetMarketHeatMapSector[] = [
   'Technology', 'Communication Services', 'Consumer Cyclical', 'Consumer Defensive',
   'Financials', 'Healthcare', 'Industrials', 'Real Estate', 'Energy', 'Utilities', 'Basic Materials',
@@ -132,10 +151,19 @@ function HexTile({ quote, width, height, colors, period, category, editing, redu
     quote.assetType,
     quote.exchangeTimezone,
   );
+  const showNextOpen = !SHARED_MARKET_STATUS_CATEGORIES.has(category);
+  const identityLabel = instrument ? `${instrument.name}, ${quote.symbol}` : quote.symbol;
+  const tileAccessibilityLabel = [
+    identityLabel,
+    label,
+    session,
+    ...(showNextOpen && nextOpen ? [nextOpen] : []),
+    age,
+  ].join(', ');
   const rotation = wiggle.interpolate({ inputRange: [-1, 1], outputRange: ['-2.4deg', '2.4deg'] });
   const tile = (
     <Animated.View style={[{ width, height }, { transform: [{ rotate: rotation }] }]}>
-    <View style={[styles.tile, instrument ? styles.tileInstrument : null, { width, height }]} accessibilityLabel={`${instrument ? `${instrument.name}, ${quote.symbol}` : quote.symbol}, ${label}, ${session}, ${nextOpen ?? ''}, ${age}`}>
+    <View style={[styles.tile, instrument ? styles.tileInstrument : null, { width, height }]} accessibilityLabel={tileAccessibilityLabel}>
       <Svg width={width} height={height} viewBox="0 0 100 86.6" style={StyleSheet.absoluteFill}>
         <Polygon points="1,43.3 25,1 75,1 99,43.3 75,85.6 25,85.6" fill={bg} stroke={tone} strokeWidth="1.5" />
       </Svg>
@@ -178,7 +206,7 @@ function HexTile({ quote, width, height, colors, period, category, editing, redu
       <Text testID={`heat-map-change-${quote.symbol}`} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={[styles.tileChange, { color: tone }]}>{label}</Text>
       <Text testID={`heat-map-price-${quote.symbol}`} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82} style={[styles.tilePrice, { color: colors.foreground }]}>{formatPrice(quote.price)}</Text>
       <Text testID={`heat-map-session-${quote.symbol}`} numberOfLines={1} style={[styles.tileSession, { color: colors.foreground }]}>{session}</Text>
-      {nextOpen && <Text testID={`heat-map-next-open-${quote.symbol}`} numberOfLines={2} style={[styles.tileNextOpen, { color: colors.foreground }]}>{nextOpen}</Text>}
+      {showNextOpen && nextOpen && <Text testID={`heat-map-next-open-${quote.symbol}`} numberOfLines={2} style={[styles.tileNextOpen, { color: colors.foreground }]}>{nextOpen}</Text>}
       <Text testID={`heat-map-quote-age-${quote.symbol}`} numberOfLines={1} style={[styles.tileAge, { color: colors.mutedForeground }]}>{age}</Text>
       {quote.returnBasis === 'price_return_proxy' && <Text numberOfLines={1} style={[styles.tileBasis, { color: colors.mutedForeground }]}>Price-return proxy</Text>}
       {period === 'max' && <Text numberOfLines={1} style={[styles.tileBasis, { color: colors.mutedForeground }]}>Since {quote.historyStartDate ?? 'unknown'}</Text>}
@@ -499,6 +527,22 @@ export default function HeatMapScreen() {
   }, [scheduledRegularOpenTimestamp, scheduledOpenRefreshKey, refetchHeatMap]));
   const staleQuotes = sourceQuotes.filter((quote) => !isDisplayableHeatMapQuote(quote, nowSeconds));
   const validAgeQuotes = sourceQuotes.filter((quote) => isDisplayableHeatMapQuote(quote, nowSeconds));
+  const marketStatus = getHeatMapMarketStatus(validAgeQuotes);
+  const marketStatusColor = marketStatus === 'closed'
+    ? colors.sellColor
+    : marketStatus === 'mixed'
+      ? colors.primary
+      : marketStatus === 'unknown'
+        ? colors.mutedForeground
+        : colors.buyColor;
+  const marketStatusBackground = marketStatus === 'closed'
+    ? colors.sellBg
+    : marketStatus === 'mixed'
+      ? colors.accent
+      : marketStatus === 'unknown'
+        ? colors.secondary
+        : colors.buyBg;
+  const showMarketStatus = SHARED_MARKET_STATUS_CATEGORIES.has(category) && validAgeQuotes.length > 0;
   const unavailableSymbols = [...new Set([
     ...(responseMatches ? response!.unavailableSymbols : []),
     ...staleQuotes.map((quote) => quote.symbol),
@@ -720,9 +764,29 @@ export default function HeatMapScreen() {
           </View>
 
           <View style={styles.periodHeader}>
-            <View><Text style={[styles.periodKicker, { color: colors.mutedForeground }]}>SELECTED RETURN WINDOW</Text>
+            <View style={styles.periodCopy}><Text style={[styles.periodKicker, { color: colors.mutedForeground }]}>SELECTED RETURN WINDOW</Text>
               <Text testID="heat-map-selected-period" style={[styles.periodTitle, { color: colors.heading }]}>{PERIODS.find((item) => item.id === period)?.label} <Text style={{ color: colors.mutedForeground }}>performance</Text></Text></View>
-            <Text style={[styles.timestamp, { color: colors.mutedForeground }]}>{formatUpdated(responseMatches ? response!.updatedAt : undefined)}</Text>
+            <View style={styles.periodMeta}>
+              {showMarketStatus && <View
+                testID="heat-map-market-status"
+                accessible
+                accessibilityRole="text"
+                accessibilityLabel={MARKET_STATUS_ACCESSIBILITY_LABELS[marketStatus]}
+                style={[styles.marketStatusBadge, { borderColor: marketStatusColor, backgroundColor: marketStatusBackground }]}
+              >
+                <View style={[styles.marketStatusDot, { backgroundColor: marketStatusColor }]} />
+                <Text
+                  testID="heat-map-market-status-label"
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
+                  style={[styles.marketStatusText, { color: marketStatusColor }]}
+                >
+                  {MARKET_STATUS_LABELS[marketStatus]}
+                </Text>
+              </View>}
+              <Text style={[styles.timestamp, { color: colors.mutedForeground }]}>{formatUpdated(responseMatches ? response!.updatedAt : undefined)}</Text>
+            </View>
           </View>
           <View style={styles.periodRail}>
             {PERIODS.map((item) => {
@@ -1021,6 +1085,11 @@ const styles = StyleSheet.create({
   filterButtonText: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   filterCount: { minWidth: 18, height: 18, borderRadius: 9, overflow: 'hidden', textAlign: 'center', textAlignVertical: 'center', fontFamily: 'Inter_700Bold', fontSize: 10 },
   periodHeader: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 11 },
+  periodCopy: { flex: 1, minWidth: 0, marginRight: 8 },
+  periodMeta: { maxWidth: '50%', alignItems: 'flex-end', gap: 4 },
+  marketStatusBadge: { maxWidth: '100%', flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderRadius: 9, paddingHorizontal: 7, paddingVertical: 4 },
+  marketStatusDot: { width: 6, height: 6, borderRadius: 3 },
+  marketStatusText: { flexShrink: 1, fontFamily: 'Inter_700Bold', fontSize: 8, letterSpacing: 0.35 },
   periodKicker: { fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 1.2 },
   periodTitle: { fontFamily: 'Inter_700Bold', fontSize: 20, marginTop: 4 },
   timestamp: { fontFamily: 'Inter_400Regular', fontSize: 9, textAlign: 'right', marginBottom: 3, flexShrink: 1 },

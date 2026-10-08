@@ -429,10 +429,24 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
         `!!document.querySelector(${JSON.stringify(selector(`heat-map-session-${currentSymbol}`))})`,
         `The selected ${nextPeriod} response should render.`,
       );
-      const nextOpenText = await browser.evaluate(
-        `document.querySelector(${JSON.stringify(selector(`heat-map-next-open-${currentSymbol}`))})?.textContent`,
+      assert.equal(
+        await browser.evaluate(`!!document.querySelector(${JSON.stringify(selector(`heat-map-next-open-${currentSymbol}`))})`),
+        false,
+        "Stocks should show one shared market status instead of next-open text in every hexagon.",
       );
-      assert.match(nextOpenText, /Next open: Nov 29\s*9:30 AM EST/);
+      const statusVisual = await browser.evaluate(`(() => {
+        const status = document.querySelector(${JSON.stringify(selector("heat-map-market-status"))});
+        const label = document.querySelector(${JSON.stringify(selector("heat-map-market-status-label"))});
+        const tile = document.querySelector(${JSON.stringify(selector(`heat-map-session-${currentSymbol}`))});
+        return {
+          text: label?.textContent.trim(),
+          color: label ? getComputedStyle(label).color : null,
+          aboveTiles: Boolean(status && tile && status.getBoundingClientRect().bottom < tile.getBoundingClientRect().top),
+        };
+      })()`);
+      assert.equal(statusVisual.text, "OPEN · EXTENDED HOURS", "After-hours trading should be called out in the shared status.");
+      assert.equal(statusVisual.color, "rgb(101, 201, 139)", "An active extended-hours session should use the green open color.");
+      assert.equal(statusVisual.aboveTiles, true, "The shared status should sit above the hexagons.");
       assert.match(
         await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-selected-period"))}).textContent`),
         new RegExp(periodLabels.get(nextPeriod)),
