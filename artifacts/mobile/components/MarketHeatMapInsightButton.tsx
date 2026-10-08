@@ -40,7 +40,7 @@ function flameColors(active: boolean, neonActive: boolean, tone: MarketBreadthIn
     return { base: '#07843F', middle: '#35E86F', core: '#E5FF8C' };
   }
   if (tone === 'COLD') {
-    return { base: '#C6212C', middle: '#FF6A32', core: '#FFE19A' };
+    return { base: '#1D63D8', middle: '#6BC8FF', core: '#F4FCFF' };
   }
   return { base: '#9B7427', middle: '#E6BD61', core: '#FFF1C9' };
 }
@@ -172,7 +172,7 @@ export function MarketHeatMapInsightButton({
   const glowColor = isHot
     ? colors.buyColor
     : isCold
-      ? (neonActive ? '#FF6972' : '#FF593D')
+      ? (neonActive ? '#FF6972' : '#78D8FF')
       : colors.gold;
   const fireColors = flameColors(active, neonActive, hasBreadth ? breadth.tone : 'NEUTRAL');
   const headline = hasBreadth
