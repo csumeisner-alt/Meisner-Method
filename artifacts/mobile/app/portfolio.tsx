@@ -1036,13 +1036,23 @@ function TradeCard({
         </View>
 
         <View style={tcStyles.topRight}>
-          <TouchableOpacity onPress={onEdit} style={tcStyles.iconBtn} activeOpacity={0.7}>
-            <Feather name="edit-2" size={13} color={colors.mutedForeground} />
+          <TouchableOpacity
+            onPress={onEdit}
+            style={tcStyles.iconBtn}
+            hitSlop={{ top: 11, bottom: 11, left: 4, right: 4 }}
+            activeOpacity={0.7}
+          >
+            <Feather name="edit-2" size={18} color={colors.mutedForeground} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={onDelete} style={tcStyles.iconBtn} activeOpacity={0.7}>
-            <Feather name="trash-2" size={13} color={colors.sellColor} />
+          <TouchableOpacity
+            onPress={onDelete}
+            style={tcStyles.iconBtn}
+            hitSlop={{ top: 11, bottom: 11, left: 4, right: 4 }}
+            activeOpacity={0.7}
+          >
+            <Feather name="trash-2" size={18} color={colors.sellColor} />
           </TouchableOpacity>
-          <Feather name={expanded ? 'chevron-up' : 'chevron-down'} size={13} color={colors.mutedForeground} />
+          <Feather name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={colors.mutedForeground} />
         </View>
       </TouchableOpacity>
 
@@ -1256,7 +1266,7 @@ const tcStyles = StyleSheet.create({
   card: { borderRadius: 12, borderWidth: 1, marginBottom: 10, overflow: 'hidden' },
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, paddingBottom: 10 },
   topLeft: { flexDirection: 'row', alignItems: 'center', gap: 7, flex: 1, flexWrap: 'wrap' },
-  topRight: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  topRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   symbol: { fontSize: 18 },
   typeBadge: { borderWidth: 1, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
   typeBadgeTxt: { fontSize: 11, letterSpacing: 0.5 },
@@ -1275,7 +1285,7 @@ const tcStyles = StyleSheet.create({
     gap: 5, paddingVertical: 5, borderTopWidth: 1,
   },
   tapHintTxt: { fontSize: 10, letterSpacing: 1, fontFamily: 'Inter_500Medium' },
-  iconBtn: { padding: 4 },
+  iconBtn: { width: 21, height: 21, alignItems: 'center', justifyContent: 'center' },
   divider: { height: 1, marginHorizontal: 12 },
   metrics: { flexDirection: 'row', padding: 12, gap: 10, alignItems: 'center' },
   metricCol: { flex: 1, gap: 10 },
