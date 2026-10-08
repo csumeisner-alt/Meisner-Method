@@ -11,7 +11,7 @@ type Query = (text: string, values?: unknown[]) => Promise<QueryResult>;
 
 const CACHE_KEY = "market-pulse";
 
-export function createMarketPulseStore(query: Query) {
+export function createMarketPulseStore(query: Query, cacheKey = CACHE_KEY) {
   let schemaReady: Promise<void> | null = null;
 
   async function ensureSchema(): Promise<void> {
@@ -37,7 +37,7 @@ export function createMarketPulseStore(query: Query) {
       const result = await query(
         `SELECT change_percent, price_timestamp, updated_at
          FROM market_pulse_cache WHERE cache_key = $1`,
-        [CACHE_KEY],
+        [cacheKey],
       );
       const row = result.rows[0];
       if (!row) return null;
@@ -61,7 +61,7 @@ export function createMarketPulseStore(query: Query) {
            price_timestamp = EXCLUDED.price_timestamp,
            updated_at = EXCLUDED.updated_at
          WHERE market_pulse_cache.price_timestamp <= EXCLUDED.price_timestamp`,
-        [CACHE_KEY, data.changePercent, data.priceTimestamp, data.updatedAt],
+        [cacheKey, data.changePercent, data.priceTimestamp, data.updatedAt],
       );
     },
   };
