@@ -25,6 +25,7 @@ export * from './heatMapResponse';
 export * from './heatMapResponseCategory';
 export * from './heatMapResponsePeriod';
 export * from './heatMapResponseRequestedSector';
+export * from './marketPulseResponse';
 export * from './recommendation';
 export * from './recommendationAction';
 export * from './searchStockSymbolsParams';

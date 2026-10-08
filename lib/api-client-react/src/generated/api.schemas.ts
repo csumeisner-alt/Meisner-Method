@@ -285,6 +285,15 @@ export interface HeatMapResponse {
   updatedAt: number;
 }
 
+export interface MarketPulseResponse {
+  /** Daily percentage move from the previous close, in percentage points. */
+  changePercent: number;
+  /** Unix timestamp in seconds for the Yahoo Finance quote used to calculate the daily move. */
+  priceTimestamp: number;
+  /** Unix timestamp in seconds when this response was assembled. */
+  updatedAt: number;
+}
+
 export interface ValidateHeatMapSymbolRequest {
   /**
      * @minLength 1

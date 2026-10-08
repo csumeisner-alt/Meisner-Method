@@ -1540,6 +1540,53 @@ def market_breadth_response(now=None):
     }
 
 
+def market_pulse_response(now=None):
+    ticker = yf.Ticker("^DWCF")
+    history = ticker.history(
+        period="5d",
+        interval="1m",
+        prepost=False,
+        auto_adjust=False,
+        actions=False,
+        timeout=20,
+    )
+    if history is None or history.empty or "Close" not in history.columns:
+        raise RuntimeError("Yahoo Finance returned no intraday history for ^DWCF")
+
+    closes_by_session = {}
+    for raw_timestamp, raw_close in history["Close"].items():
+        close = finite_number(raw_close)
+        if close is None or close <= 0:
+            continue
+        timestamp = (
+            raw_timestamp.to_pydatetime()
+            if hasattr(raw_timestamp, "to_pydatetime")
+            else raw_timestamp
+        )
+        if not isinstance(timestamp, datetime):
+            continue
+        market_date = as_utc_datetime(timestamp).astimezone(ZoneInfo("America/New_York")).date()
+        closes_by_session[market_date] = (close, timestamp)
+
+    sessions = sorted(closes_by_session)
+    if len(sessions) < 2:
+        raise RuntimeError("Yahoo Finance returned fewer than two trading sessions for ^DWCF")
+
+    previous_close = closes_by_session[sessions[-2]][0]
+    current_close, quote_timestamp = closes_by_session[sessions[-1]]
+    if previous_close <= 0:
+        raise RuntimeError("Yahoo Finance returned an invalid previous close for ^DWCF")
+    change_percent = ((current_close / previous_close) - 1) * 100
+    if not math.isfinite(change_percent):
+        raise RuntimeError("Yahoo Finance returned an invalid daily change for ^DWCF")
+
+    return {
+        "changePercent": round(change_percent, 4),
+        "priceTimestamp": int(as_utc_datetime(quote_timestamp).timestamp()),
+        "updatedAt": int(as_utc_datetime(now).timestamp()),
+    }
+
+
 def fetch_heat_map(category, symbols, period="1d", sector=None, now=None):
     requested = get_requested_symbols(category, symbols)
     quotes_by_symbol = {}
@@ -1588,6 +1635,11 @@ def main():
         if category != "stocks" or symbols or period != "1d" or requested_sector is not None:
             raise ValueError("breadth mode only supports the unfiltered 1d stock sample")
         print(json.dumps(market_breadth_response(), allow_nan=False))
+        return
+    if mode == "market-pulse":
+        if category != "stocks" or symbols or period != "1d" or requested_sector is not None:
+            raise ValueError("market-pulse mode only supports the unfiltered 1d stock request")
+        print(json.dumps(market_pulse_response(), allow_nan=False))
         return
     if mode:
         raise ValueError("unsupported heat-map mode")

@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { warmMarketBreadthCache } from "./routes/stocks";
+import { warmMarketPulseCache } from "./routes/stocks";
 
 const rawPort = process.env["PORT"];
 
@@ -23,5 +23,5 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
-  warmMarketBreadthCache();
+  warmMarketPulseCache();
 });

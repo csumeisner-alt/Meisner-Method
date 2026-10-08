@@ -148,6 +148,17 @@ export const GetMarketBreadthResponse = zod.object({
 
 
 /**
+ * Returns the daily percentage change and quote timestamp for Yahoo Finance's Dow Jones U.S. Total Stock Market Index (^DWCF). The index price is not returned.
+ * @summary Get the total-market daily move
+ */
+export const GetMarketPulseResponse = zod.object({
+  "changePercent": zod.number().describe('Daily percentage move from the previous close, in percentage points.'),
+  "priceTimestamp": zod.number().describe('Unix timestamp in seconds for the Yahoo Finance quote used to calculate the daily move.'),
+  "updatedAt": zod.number().describe('Unix timestamp in seconds when this response was assembled.')
+})
+
+
+/**
  * Returns a cached batch of quotes, selected-period returns, and available provider metadata for one heat-map category. Custom maps pass symbols as a comma-separated query array.
  * @summary Get batched quotes for a market heat map
  */

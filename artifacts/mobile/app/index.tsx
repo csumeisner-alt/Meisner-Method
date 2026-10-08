@@ -32,8 +32,8 @@ import { AmericanAnalyzeButton } from '@/components/AmericanAnalyzeButton';
 import { MarketHeatMapInsightButton } from '@/components/MarketHeatMapInsightButton';
 import { PriceAlertModal } from '@/components/PriceAlertModal';
 import { matchesFilter, mergeReorderedSubset } from '@/lib/watchlistFilter';
-import { getMarketBreadthInsight } from '@/lib/marketBreadth';
-import { getGetMarketBreadthQueryKey, useGetMarketBreadth } from '@workspace/api-client-react';
+import { getMarketPulseInsight } from '@/lib/marketPulse';
+import { getGetMarketPulseQueryKey, useGetMarketPulse } from '@workspace/api-client-react';
 import {
   getStockSearchQueryFromKey,
   isStockSearchCurrent,
@@ -207,17 +207,17 @@ export default function HomeScreen() {
   // Patriot Mode — fact counter, unlock state, and celebration trigger
   const { isActive, neonGucciActive, justUnlocked, incrementFact, clearJustUnlocked } = useAmericanMode();
   const [showCelebration, setShowCelebration] = useState(false);
-  const marketPulseQuery = useGetMarketBreadth({
+  const marketPulseQuery = useGetMarketPulse({
     query: {
-      queryKey: getGetMarketBreadthQueryKey(),
+      queryKey: getGetMarketPulseQueryKey(),
       staleTime: 45_000,
       refetchInterval: 60_000,
       refetchIntervalInBackground: false,
     },
   });
-  const marketBreadth = useMemo(
-    () => getMarketBreadthInsight(marketPulseQuery.data?.quotes ?? []),
-    [marketPulseQuery.data?.quotes],
+  const marketPulse = useMemo(
+    () => getMarketPulseInsight(marketPulseQuery.data),
+    [marketPulseQuery.data],
   );
 
   useEffect(() => {
@@ -652,7 +652,7 @@ export default function HomeScreen() {
           active={isActive}
           neonActive={neonGucciActive}
           colors={colors}
-          breadth={marketBreadth}
+          pulse={marketPulse}
           loading={marketPulseQuery.isLoading && !marketPulseQuery.data}
           error={marketPulseQuery.isError && !marketPulseQuery.data}
           onPress={() => router.push('/heat-map')}

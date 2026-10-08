@@ -5,18 +5,19 @@ import { readFileSync } from 'node:fs';
 const homeSource = readFileSync(new URL('../app/index.tsx', import.meta.url), 'utf8');
 const buttonSource = readFileSync(new URL('../components/MarketHeatMapInsightButton.tsx', import.meta.url), 'utf8');
 
-test('Analyze market heat-map button is driven by fresh breadth data and remains an accessible navigation action', () => {
-  assert.match(homeSource, /useGetMarketBreadth\(/);
-  assert.match(homeSource, /getGetMarketBreadthQueryKey\(\)/);
-  assert.match(homeSource, /getMarketBreadthInsight\(marketPulseQuery\.data\?\.quotes \?\? \[\]\)/);
+test('Analyze market heat-map button is driven by the total-market move and remains an accessible navigation action', () => {
+  assert.match(homeSource, /useGetMarketPulse\(/);
+  assert.match(homeSource, /getGetMarketPulseQueryKey\(\)/);
+  assert.match(homeSource, /getMarketPulseInsight\(marketPulseQuery\.data\)/);
   assert.match(homeSource, /refetchInterval: 60_000/);
   assert.doesNotMatch(homeSource, /useGetMarketHeatMap\(MARKET_PULSE_PARAMS/);
   assert.match(homeSource, /MarketHeatMapInsightButton/);
   assert.match(buttonSource, /testID="open-heat-map"/);
   assert.match(buttonSource, /accessibilityRole="button"/);
   assert.match(buttonSource, /onPress=\{onPress\}/);
-  assert.match(buttonSource, /greenCount\}\/\$\{breadth\.quoted\}/);
-  assert.match(buttonSource, /redCount\}\/\$\{breadth\.quoted\}/);
+  assert.match(buttonSource, /formatMarketPulseDetail\(pulse\)/);
+  assert.match(buttonSource, /pulse\.changePercent/);
+  assert.doesNotMatch(buttonSource, /pulse\.price\b/);
 });
 
 test('heat-map badge uses gentle campfire kindling and respects reduced motion', () => {

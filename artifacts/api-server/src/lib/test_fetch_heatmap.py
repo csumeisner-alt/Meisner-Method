@@ -1653,6 +1653,48 @@ class HeatMapScreenerTests(unittest.TestCase):
         self.assertEqual(response["quotes"][0]["assetType"], "stock")
         self.assertEqual([item["symbol"] for item in response["quotes"]], ["AAPL"])
 
+    def test_market_pulse_uses_dwcf_session_change_and_omits_the_index_price(self):
+        history = pd.DataFrame(
+            {"Close": [100.0, 101.0, 102.5, 103.0]},
+            index=pd.DatetimeIndex([
+                eastern(2026, 10, 5, 15, 59),
+                eastern(2026, 10, 6, 9, 30),
+                eastern(2026, 10, 6, 10, 0),
+                eastern(2026, 10, 6, 10, 1),
+            ]),
+        )
+        now = datetime(2026, 10, 6, 14, 2, tzinfo=timezone.utc)
+        with patch.object(fetch_heatmap.yf, "Ticker") as ticker_factory:
+            ticker_factory.return_value.history.return_value = history
+            response = fetch_heatmap.market_pulse_response(now)
+
+        ticker_factory.assert_called_once_with("^DWCF")
+        ticker_factory.return_value.history.assert_called_once_with(
+            period="5d",
+            interval="1m",
+            prepost=False,
+            auto_adjust=False,
+            actions=False,
+            timeout=20,
+        )
+        self.assertEqual(response["changePercent"], 3.0)
+        self.assertEqual(
+            response["priceTimestamp"],
+            int(eastern(2026, 10, 6, 10, 1).astimezone(timezone.utc).timestamp()),
+        )
+        self.assertEqual(response["updatedAt"], int(now.timestamp()))
+        self.assertNotIn("price", response)
+
+    def test_market_pulse_fails_when_yahoo_has_no_two_sessions(self):
+        history = pd.DataFrame(
+            {"Close": [100.0]},
+            index=pd.DatetimeIndex([eastern(2026, 10, 6, 10, 0)]),
+        )
+        with patch.object(fetch_heatmap.yf, "Ticker") as ticker_factory:
+            ticker_factory.return_value.history.return_value = history
+            with self.assertRaisesRegex(RuntimeError, "fewer than two trading sessions"):
+                fetch_heatmap.market_pulse_response()
+
     def test_stock_breadth_pages_up_to_250_most_active_results(self):
         def page(start, count, total):
             return {

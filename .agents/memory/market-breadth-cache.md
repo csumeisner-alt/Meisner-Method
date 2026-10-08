@@ -1,10 +1,10 @@
 ---
-name: Market breadth cache behavior
-description: Why the broad market indicator uses startup warming and stale-while-revalidate.
+name: Market heat/cold index signal
+description: Product meaning and data-source tradeoff for the home market indicator.
 ---
 
-Keep the market breadth sample at up to 250 active stocks. Yahoo's cold screener request has exceeded a 30-second client wait, while a warmed response completed in under 50 ms.
+Use Yahoo's `^DWCF` daily percentage move (change versus the previous close) for the home heat/cold indicator, not a sampled breadth percentage. Positive is HOT, negative is COLD, and zero is NEUTRAL. Show the signed percentage and quote time; never display the index price. This is a cap-weighted index move, not the share of stocks advancing.
 
-**Why:** The Analyze badge needs broad-market coverage, but making each client request wait on the external screener makes first load and periodic refreshes feel broken.
+**Why:** The user wants a free, simple, near-real-time total-market direction signal and accepts Yahoo's delayed index quote.
 
-**How to apply:** Warm market breadth when the API starts. After the first good snapshot, return it immediately when stale and refresh in the background; keep quote timestamps visible to freshness filtering. Do not shrink the sample just to hide cache timing without revisiting the product tradeoff.
+**How to apply:** Refresh about once a minute and retain the last successful quote through temporary Yahoo failures, while showing its actual quote timestamp. Do not describe Yahoo's delay as guaranteed real-time.

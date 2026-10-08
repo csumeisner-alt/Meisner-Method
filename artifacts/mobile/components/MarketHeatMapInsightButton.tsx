@@ -13,13 +13,13 @@ import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, Stop } from 'react-native-svg';
 import { NEON_GUCCI_DECOR, type ColorScheme } from '@/constants/colors';
-import type { MarketBreadthInsight } from '@/lib/marketBreadth';
+import { formatMarketPulseDetail, type MarketPulseInsight } from '@/lib/marketPulse';
 
 interface MarketHeatMapInsightButtonProps {
   active: boolean;
   neonActive: boolean;
   colors: ColorScheme;
-  breadth: MarketBreadthInsight;
+  pulse: MarketPulseInsight;
   loading: boolean;
   error: boolean;
   onPress: () => void;
@@ -29,7 +29,7 @@ const COLD_SIGNAL_BLUE = '#8EDFFF';
 const COLD_SIGNAL_WHITE = '#F4FCFF';
 const COLD_FLAME_GLOW = '#78D8FF';
 
-function flameColors(active: boolean, neonActive: boolean, tone: MarketBreadthInsight['tone']) {
+function flameColors(active: boolean, neonActive: boolean, tone: MarketPulseInsight['tone']) {
   if (neonActive) {
     return {
       base: NEON_GUCCI_DECOR.green,
@@ -150,7 +150,7 @@ export function MarketHeatMapInsightButton({
   active,
   neonActive,
   colors,
-  breadth,
+  pulse,
   loading,
   error,
   onPress,
@@ -162,10 +162,10 @@ export function MarketHeatMapInsightButton({
   const flagSweep = useRef(new Animated.Value(0)).current;
   const [reduceMotion, setReduceMotion] = useState(false);
   const nativeDriver = Platform.OS !== 'web';
-  const hasBreadth = breadth.quoted > 0;
-  const directional = hasBreadth && breadth.tone !== 'NEUTRAL';
-  const isHot = hasBreadth && breadth.tone === 'HOT';
-  const isCold = hasBreadth && breadth.tone === 'COLD';
+  const hasPulse = pulse.changePercent !== null;
+  const directional = hasPulse && pulse.tone !== 'NEUTRAL';
+  const isHot = hasPulse && pulse.tone === 'HOT';
+  const isCold = hasPulse && pulse.tone === 'COLD';
   const signalColor = isHot
     ? colors.buyColor
     : isCold
@@ -179,23 +179,29 @@ export function MarketHeatMapInsightButton({
       ? COLD_FLAME_GLOW
       : colors.gold;
   const detailColor = isCold ? COLD_SIGNAL_WHITE : colors.foreground;
-  const fireColors = flameColors(active, neonActive, hasBreadth ? breadth.tone : 'NEUTRAL');
-  const headline = hasBreadth
+  const fireColors = flameColors(active, neonActive, hasPulse ? pulse.tone : 'NEUTRAL');
+  const headline = hasPulse
     ? isHot ? 'MARKET HOT' : isCold ? 'MARKET COLD' : 'MARKET MIXED'
     : loading ? 'READING MARKET' : error ? 'MARKET SIGNAL PAUSED' : 'MARKET UNAVAILABLE';
-  const detail = hasBreadth
-    ? isHot
-      ? `${breadth.greenPercent}% GREEN · ${breadth.greenCount}/${breadth.quoted} QUOTED`
-      : isCold
-        ? `${breadth.redPercent}% RED · ${breadth.redCount}/${breadth.quoted} QUOTED`
-        : `${breadth.greenPercent}% GREEN (${breadth.greenCount}/${breadth.quoted}) · ${breadth.redPercent}% RED (${breadth.redCount}/${breadth.quoted})`
+  const detail = hasPulse
+    ? formatMarketPulseDetail(pulse) ?? 'Waiting for a fresh index quote'
     : loading
-      ? 'Checking live stock breadth…'
+      ? 'Checking the total-market move…'
       : error
-        ? 'Stock breadth is temporarily unavailable'
-        : 'Waiting for fresh stock quotes';
-  const accessibilityLabel = hasBreadth
-    ? `Open market heat map. ${headline.toLowerCase()}, ${breadth.greenPercent} percent green (${breadth.greenCount} of ${breadth.quoted} quoted stocks) and ${breadth.redPercent} percent red (${breadth.redCount} of ${breadth.quoted} quoted stocks).`
+        ? 'The total-market signal is temporarily unavailable'
+        : 'Waiting for the total-market quote';
+  const moveDescription = pulse.changePercent === null
+    ? ''
+    : pulse.changePercent > 0
+      ? `${pulse.changePercent.toFixed(2)} percent up for the session`
+      : pulse.changePercent < 0
+        ? `${Math.abs(pulse.changePercent).toFixed(2)} percent down for the session`
+        : 'flat for the session';
+  const quoteTime = pulse.priceTimestamp === null
+    ? ''
+    : new Date(pulse.priceTimestamp * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const accessibilityLabel = hasPulse
+    ? `Open market heat map. ${headline.toLowerCase()}. Total U.S. market ${moveDescription}${quoteTime ? ` as of ${quoteTime}` : ''}.`
     : `Open market heat map. ${headline.toLowerCase()}. ${detail}.`;
 
   useEffect(() => {
@@ -266,7 +272,7 @@ export function MarketHeatMapInsightButton({
   const fireScaleY = fire.interpolate({ inputRange: [0, 1], outputRange: [0.985, 1.045] });
   const fireRise = fire.interpolate({ inputRange: [0, 1], outputRange: [0.5, -1.2] });
   const auraOpacity = reduceMotion
-    ? directional ? 0.38 : hasBreadth ? 0.27 : 0.2
+    ? directional ? 0.38 : hasPulse ? 0.27 : 0.2
     : fire.interpolate({ inputRange: [0, 1], outputRange: [directional ? 0.29 : 0.18, directional ? 0.39 : 0.27] });
   const auraScale = reduceMotion
     ? 1
