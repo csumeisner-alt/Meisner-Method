@@ -1416,12 +1416,16 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
         const logo = document.querySelector(${JSON.stringify(selector("heat-map-crypto-logo-BTC-USD"))});
         const ticker = document.querySelector(${JSON.stringify(selector("heat-map-crypto-symbol-BTC-USD"))});
         const image = logo?.querySelector("img");
-        return !!image
-          && image.naturalWidth > 0
-          && !!ticker
-          && logo.getBoundingClientRect().bottom <= ticker.getBoundingClientRect().top + 1;
+        if (!logo || !ticker || !image) return false;
+        const logoBounds = logo.getBoundingClientRect();
+        const tickerBounds = ticker.getBoundingClientRect();
+        const translateY = new DOMMatrixReadOnly(getComputedStyle(logo).transform).m42;
+        return image.naturalWidth > 0
+          && logoBounds.width >= 24
+          && translateY < 0
+          && logoBounds.bottom <= tickerBounds.top + 1;
       })()`,
-      "the local Bitcoin logo should load above its ticker in the cryptocurrency tile.",
+      "the larger local Bitcoin logo should sit slightly higher than its ticker in the cryptocurrency tile.",
     );
     await clickTestID(browser, "heat-map-filter-open");
     await clickTestID(browser, "heat-map-filter-exchange-COINBASE");

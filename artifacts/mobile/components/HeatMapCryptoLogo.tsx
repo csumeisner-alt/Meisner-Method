@@ -42,11 +42,12 @@ export function HeatMapCryptoLogo({
 
 const styles = StyleSheet.create({
   root: {
-    width: 19,
-    height: 19,
+    width: 25,
+    height: 25,
     flexShrink: 0,
     alignItems: "center",
     justifyContent: "center",
+    transform: [{ translateY: -2 }],
   },
   image: {
     width: "100%",
