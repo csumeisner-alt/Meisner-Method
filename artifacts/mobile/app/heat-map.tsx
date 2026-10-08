@@ -21,6 +21,7 @@ import type {
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { BottomTabBar } from '@/components/BottomTabBar';
 import { useColors } from '@/hooks/useColors';
+import { HeatMapCryptoLogo } from '@/components/HeatMapCryptoLogo';
 import { HeatMapInstrumentIcon } from '@/components/HeatMapInstrumentIcon';
 import {
   countActiveHeatMapFilters, filterHeatMapQuotes,
@@ -29,6 +30,7 @@ import {
   type HeatMapFilters, type HeatMapCapBucket, type HeatMapRiskBand, type HeatMapRiskFilter,
 } from '@/lib/heatMapMetrics';
 import { getHeatMapInstrumentDisplay } from '@/lib/heatMapInstrumentDisplay';
+import { getHeatMapCryptoLogoCode } from '@/lib/heatMapCryptoLogo';
 import {
   formatHeatMapNextOpen, formatHeatMapQuoteAge, getHeatMapMarketStatus, getHeatMapSessionLabel,
   getHeatMapRegularOpenRefreshTimestamp, getNextHeatMapRegularOpenTimestamp,
@@ -143,6 +145,9 @@ function HexTile({ quote, width, height, colors, period, category, editing, redu
   const largerTickerLabel = LARGE_TICKER_LABEL_CATEGORIES.has(category);
   const label = available ? `${value! > 0 ? '+' : ''}${value!.toFixed(2)}%` : 'Unavailable';
   const instrument = getHeatMapInstrumentDisplay(quote);
+  const cryptoLogoCode = category === 'cryptocurrency'
+    ? getHeatMapCryptoLogoCode(quote.symbol)
+    : null;
   const session = getHeatMapSessionLabel(quote.marketSession);
   const age = formatHeatMapQuoteAge(quote.priceTimestamp);
   const nextOpen = formatHeatMapNextOpen(
@@ -163,11 +168,35 @@ function HexTile({ quote, width, height, colors, period, category, editing, redu
   const rotation = wiggle.interpolate({ inputRange: [-1, 1], outputRange: ['-2.4deg', '2.4deg'] });
   const tile = (
     <Animated.View style={[{ width, height }, { transform: [{ rotate: rotation }] }]}>
-    <View style={[styles.tile, instrument ? styles.tileInstrument : null, { width, height }]} accessibilityLabel={tileAccessibilityLabel}>
+    <View style={[
+      styles.tile,
+      instrument ? styles.tileInstrument : cryptoLogoCode ? styles.tileCrypto : null,
+      { width, height },
+    ]} accessibilityLabel={tileAccessibilityLabel}>
       <Svg width={width} height={height} viewBox="0 0 100 86.6" style={StyleSheet.absoluteFill}>
         <Polygon points="1,43.3 25,1 75,1 99,43.3 75,85.6 25,85.6" fill={bg} stroke={tone} strokeWidth="1.5" />
       </Svg>
-      {instrument ? (
+      {cryptoLogoCode ? (
+        <View style={styles.tileInstrumentIdentity} testID={`heat-map-crypto-identity-${quote.symbol}`}>
+          <HeatMapCryptoLogo
+            code={cryptoLogoCode}
+            testID={`heat-map-crypto-logo-${quote.symbol}`}
+          />
+          <Text
+            testID={`heat-map-crypto-symbol-${quote.symbol}`}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.72}
+            style={[
+              styles.tileSymbol,
+              styles.tileCryptoSymbol,
+              { color: colors.foreground },
+            ]}
+          >
+            {quote.symbol}
+          </Text>
+        </View>
+      ) : instrument ? (
         <View style={styles.tileInstrumentIdentity}>
           <HeatMapInstrumentIcon
             kind={instrument.icon}
@@ -1146,9 +1175,11 @@ const styles = StyleSheet.create({
   honeycomb: { alignSelf: 'center', position: 'relative' },
   tile: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8, gap: 1 },
   tileInstrument: { gap: 0 },
+  tileCrypto: { gap: 0 },
   tileInstrumentIdentity: { width: '100%', alignItems: 'center', justifyContent: 'center' },
   tileInstrumentName: { width: '100%', minWidth: 0, maxWidth: '100%', textAlign: 'center', fontSize: 11, lineHeight: 13, letterSpacing: 0.3 },
   tileInstrumentNameEmphasized: { fontSize: 14, lineHeight: 16 },
+  tileCryptoSymbol: { maxWidth: '96%', fontSize: 10, lineHeight: 11, letterSpacing: 0.1 },
   editTileButton: { alignItems: 'center', justifyContent: 'center' },
   tileRemoveBadge: { position: 'absolute', top: 9, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   tileSymbol: { maxWidth: '92%', fontFamily: 'Inter_700Bold', fontSize: 13, letterSpacing: 0.2 },

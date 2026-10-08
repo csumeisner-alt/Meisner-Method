@@ -55,6 +55,7 @@ async function buildScreenBundle() {
     platform: "browser",
     target: "es2022",
     jsx: "automatic",
+    loader: { ".png": "dataurl" },
     mainFields: ["browser", "module", "main"],
     conditions: ["browser"],
     plugins: [{
@@ -1408,6 +1409,19 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       (expression) => browser.evaluate(expression),
       `!!document.querySelector(${JSON.stringify(selector("heat-map-session-BTC-USD"))}) && !!document.querySelector(${JSON.stringify(selector("heat-map-session-ETH-USD"))})`,
       "fresh cryptocurrency quotes should render before filtering.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `(() => {
+        const logo = document.querySelector(${JSON.stringify(selector("heat-map-crypto-logo-BTC-USD"))});
+        const ticker = document.querySelector(${JSON.stringify(selector("heat-map-crypto-symbol-BTC-USD"))});
+        const image = logo?.querySelector("img");
+        return !!image
+          && image.naturalWidth > 0
+          && !!ticker
+          && logo.getBoundingClientRect().bottom <= ticker.getBoundingClientRect().top + 1;
+      })()`,
+      "the local Bitcoin logo should load above its ticker in the cryptocurrency tile.",
     );
     await clickTestID(browser, "heat-map-filter-open");
     await clickTestID(browser, "heat-map-filter-exchange-COINBASE");
