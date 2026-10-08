@@ -1587,6 +1587,26 @@ def market_pulse_response(now=None):
     }
 
 
+def market_pulse_session_response(now=None):
+    as_of = as_utc_datetime(now)
+    calendar = us_equity_calendar()
+    closure_active, _ = active_temporary_us_equity_closure(as_of, "NYSE")
+    if closure_active:
+        return {"marketOpen": False}
+
+    local = as_of.astimezone(calendar.tz)
+    try:
+        session = local.date().isoformat()
+        market_open = (
+            calendar.is_session(session)
+            and calendar.is_open_on_minute(local)
+        )
+    except Exception as error:
+        raise RuntimeError("Unable to determine the U.S. equity market session") from error
+
+    return {"marketOpen": bool(market_open)}
+
+
 def fetch_heat_map(category, symbols, period="1d", sector=None, now=None):
     requested = get_requested_symbols(category, symbols)
     quotes_by_symbol = {}
@@ -1640,6 +1660,11 @@ def main():
         if category != "stocks" or symbols or period != "1d" or requested_sector is not None:
             raise ValueError("market-pulse mode only supports the unfiltered 1d stock request")
         print(json.dumps(market_pulse_response(), allow_nan=False))
+        return
+    if mode == "market-pulse-session":
+        if category != "stocks" or symbols or period != "1d" or requested_sector is not None:
+            raise ValueError("market-pulse-session mode only supports the unfiltered 1d stock request")
+        print(json.dumps(market_pulse_session_response(), allow_nan=False))
         return
     if mode:
         raise ValueError("unsupported heat-map mode")

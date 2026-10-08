@@ -13,7 +13,7 @@ import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, Stop } from 'react-native-svg';
 import { NEON_GUCCI_DECOR, type ColorScheme } from '@/constants/colors';
-import { formatMarketPulseDetail, type MarketPulseInsight } from '@/lib/marketPulse';
+import { formatMarketPulseDetail, isMarketPulseStale, type MarketPulseInsight } from '@/lib/marketPulse';
 
 interface MarketHeatMapInsightButtonProps {
   active: boolean;
@@ -161,12 +161,17 @@ export function MarketHeatMapInsightButton({
   const rightLick = useRef(new Animated.Value(0)).current;
   const flagSweep = useRef(new Animated.Value(0)).current;
   const [reduceMotion, setReduceMotion] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const nativeDriver = Platform.OS !== 'web';
   const hasPulse = pulse.changePercent !== null;
-  const directional = hasPulse && pulse.tone !== 'NEUTRAL';
-  const isHot = hasPulse && pulse.tone === 'HOT';
-  const isCold = hasPulse && pulse.tone === 'COLD';
-  const signalColor = isHot
+  const stale = isMarketPulseStale(pulse, nowMs);
+  const currentPulse = hasPulse && !stale;
+  const directional = currentPulse && pulse.tone !== 'NEUTRAL';
+  const isHot = currentPulse && pulse.tone === 'HOT';
+  const isCold = currentPulse && pulse.tone === 'COLD';
+  const signalColor = stale
+    ? colors.mutedForeground
+    : isHot
     ? colors.buyColor
     : isCold
       ? COLD_SIGNAL_BLUE
@@ -177,14 +182,27 @@ export function MarketHeatMapInsightButton({
     ? colors.buyColor
     : isCold
       ? COLD_FLAME_GLOW
-      : colors.gold;
+      : stale
+        ? colors.mutedForeground
+        : colors.gold;
   const detailColor = isCold ? COLD_SIGNAL_WHITE : colors.foreground;
-  const fireColors = flameColors(active, neonActive, hasPulse ? pulse.tone : 'NEUTRAL');
-  const headline = hasPulse
+  const fireColors = stale
+    ? {
+        base: colors.mutedForeground,
+        middle: colors.mutedForeground,
+        core: colors.foreground,
+      }
+    : flameColors(active, neonActive, currentPulse ? pulse.tone : 'NEUTRAL');
+  const headline = stale
+    ? 'MARKET SIGNAL PAUSED'
+    : hasPulse
     ? isHot ? 'MARKET HOT' : isCold ? 'MARKET COLD' : 'MARKET MIXED'
     : loading ? 'READING MARKET' : error ? 'MARKET SIGNAL PAUSED' : 'MARKET UNAVAILABLE';
+  const quoteDetail = formatMarketPulseDetail(pulse);
   const detail = hasPulse
-    ? formatMarketPulseDetail(pulse) ?? 'Waiting for a fresh index quote'
+    ? stale
+      ? `${quoteDetail ?? 'Last quote unavailable'} · PAUSED`
+      : quoteDetail ?? 'Waiting for a fresh index quote'
     : loading
       ? 'Checking the total-market move…'
       : error
@@ -193,16 +211,22 @@ export function MarketHeatMapInsightButton({
   const moveDescription = pulse.changePercent === null
     ? ''
     : pulse.changePercent > 0
-      ? `${pulse.changePercent.toFixed(2)} percent up for the session`
+      ? `${pulse.changePercent.toFixed(2)} percent up${stale ? ' in the last reported session' : ' for the session'}`
       : pulse.changePercent < 0
-        ? `${Math.abs(pulse.changePercent).toFixed(2)} percent down for the session`
-        : 'flat for the session';
+        ? `${Math.abs(pulse.changePercent).toFixed(2)} percent down${stale ? ' in the last reported session' : ' for the session'}`
+        : stale ? 'flat in the last reported session' : 'flat for the session';
   const quoteTime = pulse.priceTimestamp === null
     ? ''
     : new Date(pulse.priceTimestamp * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   const accessibilityLabel = hasPulse
     ? `Open market heat map. ${headline.toLowerCase()}. Total U.S. market ${moveDescription}${quoteTime ? ` as of ${quoteTime}` : ''}.`
     : `Open market heat map. ${headline.toLowerCase()}. ${detail}.`;
+
+  useEffect(() => {
+    if (pulse.marketOpen !== true || pulse.priceTimestamp === null) return;
+    const timer = setInterval(() => setNowMs(Date.now()), 15_000);
+    return () => clearInterval(timer);
+  }, [pulse.marketOpen, pulse.priceTimestamp]);
 
   useEffect(() => {
     let mounted = true;
@@ -219,7 +243,7 @@ export function MarketHeatMapInsightButton({
   useEffect(() => {
     fire.stopAnimation();
     fire.setValue(0);
-    if (reduceMotion) return;
+    if (reduceMotion || stale) return;
     const animation = Animated.loop(Animated.sequence([
       Animated.timing(fire, {
         toValue: 1,
@@ -236,7 +260,7 @@ export function MarketHeatMapInsightButton({
     ]));
     animation.start();
     return () => animation.stop();
-  }, [fire, nativeDriver, reduceMotion]);
+  }, [fire, nativeDriver, reduceMotion, stale]);
 
   useEffect(() => {
     const lickValues = [leftLick, centerLick, rightLick];
@@ -244,7 +268,7 @@ export function MarketHeatMapInsightButton({
       progress.stopAnimation();
       progress.setValue(0);
     }
-    if (reduceMotion) return;
+    if (reduceMotion || stale) return;
 
     const animations = [
       createKindlingCycle(leftLick, 0, 1_380, 720, nativeDriver),
@@ -253,7 +277,7 @@ export function MarketHeatMapInsightButton({
     ];
     animations.forEach((animation) => animation.start());
     return () => animations.forEach((animation) => animation.stop());
-  }, [centerLick, leftLick, nativeDriver, reduceMotion, rightLick]);
+  }, [centerLick, leftLick, nativeDriver, reduceMotion, rightLick, stale]);
 
   useEffect(() => {
     flagSweep.stopAnimation();

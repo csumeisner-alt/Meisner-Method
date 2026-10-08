@@ -46,6 +46,6 @@
 - [ICE Dollar Index sessions](ice-dollar-index-sessions.md) — DX=F has its own ICE evening schedule and holiday baseline; do not route it through CME calendars or product groups.
 - [Artifact workflow listener conflicts](artifact-workflow-listener-conflicts.md) — a failed service workflow can leave an older healthy child holding the same port.
 - [Preview capture request aborts](preview-capture-request-aborts.md) — screenshots may close slow API requests before they finish; verify with a direct request or a later capture.
-- [Market heat/cold index signal](market-breadth-cache.md) — use Yahoo ^DWCF daily % movement, show no price, and classify by direction—not market breadth.
+- [Market heat/cold index signal](market-breadth-cache.md) — use Yahoo ^DWCF daily % movement; stale only during the official session and keep the last session readable after close.
 - [Heat-map screener deduplication](heat-map-screener-deduplication.md) — breadth serialization bypasses the normal symbol-keyed map; dedupe screener rows by ticker, keeping the first-ranked quote.
 - [React Native Web alerts](react-native-web-alerts.md) — `Alert.alert` is a no-op in the browser preview; critical confirmation flows need a web-specific path.

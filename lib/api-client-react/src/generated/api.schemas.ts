@@ -286,6 +286,8 @@ export interface HeatMapResponse {
 }
 
 export interface MarketPulseResponse {
+  /** Whether the XNYS regular trading session is currently open. */
+  marketOpen: boolean;
   /** Daily percentage move from the previous close, in percentage points. */
   changePercent: number;
   /** Unix timestamp in seconds for the Yahoo Finance quote used to calculate the daily move. */

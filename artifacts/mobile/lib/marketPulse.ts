@@ -5,10 +5,13 @@ export interface MarketPulseInsight {
   tone: HeatMapTone;
   changePercent: number | null;
   priceTimestamp: number | null;
+  marketOpen: boolean | null;
 }
 
+export const MARKET_PULSE_FRESHNESS_LIMIT_SECONDS = 5 * 60;
+
 export function getMarketPulseInsight(
-  pulse: Pick<MarketPulseResponse, 'changePercent' | 'priceTimestamp'> | null | undefined,
+  pulse: Partial<Pick<MarketPulseResponse, 'changePercent' | 'priceTimestamp' | 'marketOpen'>> | null | undefined,
 ): MarketPulseInsight {
   const changePercent = typeof pulse?.changePercent === 'number' && Number.isFinite(pulse.changePercent)
     ? pulse.changePercent
@@ -26,7 +29,19 @@ export function getMarketPulseInsight(
     priceTimestamp: typeof pulse?.priceTimestamp === 'number' && Number.isFinite(pulse.priceTimestamp)
       ? pulse.priceTimestamp
       : null,
+    marketOpen: typeof pulse?.marketOpen === 'boolean' ? pulse.marketOpen : null,
   };
+}
+
+export function isMarketPulseStale(
+  pulse: MarketPulseInsight,
+  nowMs = Date.now(),
+): boolean {
+  if (pulse.marketOpen !== true || pulse.priceTimestamp === null || !Number.isFinite(nowMs)) {
+    return false;
+  }
+  const ageSeconds = nowMs / 1000 - pulse.priceTimestamp;
+  return ageSeconds > MARKET_PULSE_FRESHNESS_LIMIT_SECONDS;
 }
 
 export function formatMarketPulseDetail(
@@ -37,7 +52,9 @@ export function formatMarketPulseDetail(
   const quoteDate = new Date(pulse.priceTimestamp * 1000);
   if (Number.isNaN(quoteDate.getTime())) return null;
 
-  const dayLabel = quoteDate.toDateString() === new Date(nowMs).toDateString()
+  const dayLabel = pulse.marketOpen === false
+    ? 'LAST SESSION'
+    : quoteDate.toDateString() === new Date(nowMs).toDateString()
     ? 'TODAY'
     : 'LAST SESSION';
   const signedChange = pulse.changePercent > 0

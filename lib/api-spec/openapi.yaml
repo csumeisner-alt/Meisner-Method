@@ -116,7 +116,7 @@ paths:
       operationId: getMarketPulse
       tags: [stocks]
       summary: Get the total-market daily move
-      description: Returns the daily percentage change and quote timestamp for Yahoo Finance's Dow Jones U.S. Total Stock Market Index (^DWCF). The index price is not returned.
+      description: Returns the daily percentage change and quote timestamp for Yahoo Finance's Dow Jones U.S. Total Stock Market Index (^DWCF), plus whether the official XNYS regular session is open. The index price is not returned.
       responses:
         "200":
           description: Total-market daily percentage move
@@ -592,6 +592,9 @@ components:
     MarketPulseResponse:
       type: object
       properties:
+        marketOpen:
+          type: boolean
+          description: Whether the XNYS regular trading session is currently open.
         changePercent:
           type: number
           description: Daily percentage move from the previous close, in percentage points.
@@ -602,6 +605,7 @@ components:
           type: integer
           description: Unix timestamp in seconds when this response was assembled.
       required:
+        - marketOpen
         - changePercent
         - priceTimestamp
         - updatedAt

@@ -49,10 +49,13 @@ let topPicksCache: { data: unknown; ts: number } | null = null;
 const TOP_PICKS_TTL = 4 * 60 * 60 * 1000;
 const HEAT_MAP_TTL = 2 * 60 * 1000;
 const MARKET_BREADTH_TTL = 60 * 1000;
+const MARKET_PULSE_SESSION_TTL = 30 * 1000;
 const heatMapCache = new Map<string, { data: HeatMapResponse; ts: number }>();
 const heatMapRequests = new Map<string, Promise<HeatMapResponse>>();
 let marketBreadthCache: { data: HeatMapResponse; ts: number } | null = null;
 let marketBreadthRequest: Promise<HeatMapResponse> | null = null;
+let marketPulseSessionCache: { marketOpen: boolean; ts: number } | null = null;
+let marketPulseSessionRequest: Promise<boolean> | null = null;
 const marketPulsePool = new Pool({
   connectionString: process.env["DATABASE_URL"],
   connectionTimeoutMillis: 3_000,
@@ -65,6 +68,39 @@ const marketPulseStore = createMarketPulseStore(
 );
 
 const router = Router();
+async function fetchMarketPulseSession(): Promise<boolean> {
+  const now = Date.now();
+  if (marketPulseSessionCache && now - marketPulseSessionCache.ts < MARKET_PULSE_SESSION_TTL) {
+    return marketPulseSessionCache.marketOpen;
+  }
+  if (marketPulseSessionRequest) return marketPulseSessionRequest;
+
+  const request = (async () => {
+    const { stdout } = await execFileAsync(
+      "python3",
+      [HEAT_MAP_SCRIPT, "stocks", "", "1d", "", "market-pulse-session"],
+      { timeout: 10_000, maxBuffer: 1024 * 1024 },
+    );
+    const raw: unknown = JSON.parse(stdout.trim());
+    if (
+      !raw ||
+      typeof raw !== "object" ||
+      typeof (raw as Record<string, unknown>)["marketOpen"] !== "boolean"
+    ) {
+      throw new Error("Market data provider returned an invalid market-session response");
+    }
+    const marketOpen = (raw as { marketOpen: boolean }).marketOpen;
+    marketPulseSessionCache = { marketOpen, ts: Date.now() };
+    return marketOpen;
+  })();
+
+  marketPulseSessionRequest = request;
+  try {
+    return await request;
+  } finally {
+    if (marketPulseSessionRequest === request) marketPulseSessionRequest = null;
+  }
+}
 
 const openai = new OpenAI({
   apiKey: process.env["AI_INTEGRATIONS_OPENAI_API_KEY"] ?? process.env["OPENAI_API_KEY"],
@@ -244,9 +280,11 @@ const marketPulseService = createMarketPulseService({
     );
   },
 });
-router.use(createMarketPulseRouter(marketPulseService, (err) => {
-  logger.error({ err }, "Market-pulse quote fetch failed");
-}));
+router.use(createMarketPulseRouter(
+  marketPulseService,
+  fetchMarketPulseSession,
+  (err) => logger.error({ err }, "Market-pulse quote fetch failed"),
+));
 
 export function warmMarketPulseCache(): void {
   void marketPulseService.warm();

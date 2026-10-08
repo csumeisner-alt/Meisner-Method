@@ -16,6 +16,9 @@ test('Analyze market heat-map button is driven by the total-market move and rema
   assert.match(buttonSource, /accessibilityRole="button"/);
   assert.match(buttonSource, /onPress=\{onPress\}/);
   assert.match(buttonSource, /formatMarketPulseDetail\(pulse\)/);
+  assert.match(buttonSource, /isMarketPulseStale\(pulse, nowMs\)/);
+  assert.match(buttonSource, /'MARKET SIGNAL PAUSED'/);
+  assert.match(buttonSource, /`\$\{quoteDetail \?\? 'Last quote unavailable'\} · PAUSED`/);
   assert.match(buttonSource, /pulse\.changePercent/);
   assert.doesNotMatch(buttonSource, /pulse\.price\b/);
 });

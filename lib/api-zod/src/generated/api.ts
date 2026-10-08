@@ -152,6 +152,7 @@ export const GetMarketBreadthResponse = zod.object({
  * @summary Get the total-market daily move
  */
 export const GetMarketPulseResponse = zod.object({
+  "marketOpen": zod.boolean().describe('Whether the XNYS regular trading session is currently open.'),
   "changePercent": zod.number().describe('Daily percentage move from the previous close, in percentage points.'),
   "priceTimestamp": zod.number().describe('Unix timestamp in seconds for the Yahoo Finance quote used to calculate the daily move.'),
   "updatedAt": zod.number().describe('Unix timestamp in seconds when this response was assembled.')

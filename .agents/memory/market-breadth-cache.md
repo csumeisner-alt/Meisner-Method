@@ -7,4 +7,8 @@ Use Yahoo's `^DWCF` daily percentage move (change versus the previous close) for
 
 **Why:** The user wants a free, simple, near-real-time total-market direction signal and accepts Yahoo's delayed index quote.
 
-**How to apply:** Refresh about once a minute and retain the last successful quote through temporary Yahoo failures, while showing its actual quote timestamp. Do not describe Yahoo's delay as guaranteed real-time.
+Determine whether the regular U.S. equity session is open independently of Yahoo quote refreshes. Pause the directional badge only when the quote is older than the in-session freshness limit; when the market is closed, retain the last percentage and timestamp and label it as the last session.
+
+**Why:** A quote outage can continue through the close. Using only a cached “market open” value would incorrectly pause a prior-session quote after hours; use the official exchange calendar so holidays and early closes are respected.
+
+**How to apply:** Refresh the quote about once a minute and retain the last successful quote through temporary Yahoo failures. Compute session status from the official calendar, not quote availability or a weekday/time approximation. Do not describe Yahoo's delay as guaranteed real-time.

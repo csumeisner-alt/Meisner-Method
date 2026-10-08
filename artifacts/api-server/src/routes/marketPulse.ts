@@ -3,14 +3,18 @@ import type { MarketPulseService } from "../lib/marketPulseService.ts";
 
 export function createMarketPulseRouter(
   service: Pick<MarketPulseService, "getSnapshot">,
+  isMarketOpen: () => Promise<boolean>,
   onFailure?: (err: unknown) => void,
 ) {
   const router = Router();
 
   router.get("/stocks/market-pulse", async (_req, res) => {
     try {
-      const data = await service.getSnapshot();
-      res.set("Cache-Control", "public, max-age=30").json(data);
+      const [data, marketOpen] = await Promise.all([
+        service.getSnapshot(),
+        isMarketOpen(),
+      ]);
+      res.set("Cache-Control", "public, max-age=30").json({ ...data, marketOpen });
     } catch (err: unknown) {
       onFailure?.(err);
       res.status(422).json({

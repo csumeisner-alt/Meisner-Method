@@ -1695,6 +1695,20 @@ class HeatMapScreenerTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "fewer than two trading sessions"):
                 fetch_heatmap.market_pulse_response()
 
+    def test_market_pulse_session_uses_regular_hours_and_official_holidays(self):
+        self.assertEqual(
+            fetch_heatmap.market_pulse_session_response(eastern(2026, 10, 6, 10, 0)),
+            {"marketOpen": True},
+        )
+        self.assertEqual(
+            fetch_heatmap.market_pulse_session_response(eastern(2026, 10, 6, 16, 0)),
+            {"marketOpen": False},
+        )
+        self.assertEqual(
+            fetch_heatmap.market_pulse_session_response(eastern(2026, 11, 26, 10, 0)),
+            {"marketOpen": False},
+        )
+
     def test_stock_breadth_pages_up_to_250_most_active_results(self):
         def page(start, count, total):
             return {

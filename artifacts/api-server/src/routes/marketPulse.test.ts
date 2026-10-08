@@ -56,7 +56,7 @@ test("public market-pulse endpoint serves the persisted signal through a Yahoo o
   assert.ok(yahooAttempts >= 1, "startup attempted a Yahoo refresh");
 
   const app = express();
-  app.use(createMarketPulseRouter(service));
+  app.use(createMarketPulseRouter(service, async () => true));
   const server = app.listen(0, "127.0.0.1");
   try {
     await once(server, "listening");
@@ -66,7 +66,7 @@ test("public market-pulse endpoint serves the persisted signal through a Yahoo o
     const response = await fetch(`http://127.0.0.1:${address.port}/stocks/market-pulse`);
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("cache-control"), "public, max-age=30");
-    assert.deepEqual(await response.json(), savedSnapshot);
+    assert.deepEqual(await response.json(), { ...savedSnapshot, marketOpen: true });
 
     const storedAfterRestart = await restartedStore.read();
     assert.deepEqual(storedAfterRestart, savedSnapshot);
