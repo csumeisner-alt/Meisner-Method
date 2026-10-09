@@ -90,6 +90,9 @@ test("heat-map loading reveals shuffled hexagons and respects reduced motion", (
   assert.match(screenSource, /testID="heat-map-loading-state"/);
   assert.match(screenSource, /getHeatMapLoadingDelays\(layout\.positions\.length\)/);
   assert.match(screenSource, /withDelay\(\s*delayMs,\s*withTiming\(1/);
+  assert.match(screenSource, /delayMs \+ LOADING_HEX_REVEAL_MS/);
+  assert.match(screenSource, /withRepeat\(\s*withSequence\(/);
+  assert.match(screenSource, /pulse\.value \* 0\.16/);
   assert.match(screenSource, /reduceMotion\s*\?\s*1\s*:\s*0/);
   assert.match(screenSource, /reduceMotion=\{reduceMotion\}/);
 });

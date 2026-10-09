@@ -15,6 +15,8 @@ import Reanimated, {
   useReducedMotion,
   useSharedValue,
   withDelay,
+  withRepeat,
+  withSequence,
   withTiming,
 } from 'react-native-reanimated';
 import {
@@ -110,6 +112,8 @@ const RISK_BAND_LABELS: Record<HeatMapRiskBand, string> = {
 const EMPTY_FILTERS: HeatMapFilters = { sector: null, marketCap: null, exchange: null, risk: null };
 const SCHEDULED_OPEN_REFRESH_RETRY_DELAY_MS = 1_000;
 const LOADING_HEX_COUNT = 6;
+const LOADING_HEX_REVEAL_MS = 380;
+const LOADING_HEX_PULSE_HALF_CYCLE_MS = 900;
 const HEX_REVEAL_SPREAD_MS = 1_100;
 const HEX_REVEAL_DURATION_MS = 680;
 
@@ -317,27 +321,52 @@ function LoadingHexagon({ index, width, height, delayMs, colors, reduceMotion }:
   reduceMotion: boolean;
 }) {
   const progress = useSharedValue(reduceMotion ? 1 : 0);
+  const pulse = useSharedValue(0);
 
   useEffect(() => {
     cancelAnimation(progress);
+    cancelAnimation(pulse);
     if (reduceMotion) {
       progress.value = 1;
-      return () => cancelAnimation(progress);
+      pulse.value = 0;
+      return () => {
+        cancelAnimation(progress);
+        cancelAnimation(pulse);
+      };
     }
 
     progress.value = withDelay(
       delayMs,
       withTiming(1, {
-        duration: 380,
+        duration: LOADING_HEX_REVEAL_MS,
         easing: ReanimatedEasing.out(ReanimatedEasing.cubic),
       }),
     );
-    return () => cancelAnimation(progress);
-  }, [delayMs, progress, reduceMotion]);
+    pulse.value = withDelay(
+      delayMs + LOADING_HEX_REVEAL_MS,
+      withRepeat(
+        withSequence(
+          withTiming(1, {
+            duration: LOADING_HEX_PULSE_HALF_CYCLE_MS,
+            easing: ReanimatedEasing.inOut(ReanimatedEasing.cubic),
+          }),
+          withTiming(0, {
+            duration: LOADING_HEX_PULSE_HALF_CYCLE_MS,
+            easing: ReanimatedEasing.inOut(ReanimatedEasing.cubic),
+          }),
+        ),
+        -1,
+      ),
+    );
+    return () => {
+      cancelAnimation(progress);
+      cancelAnimation(pulse);
+    };
+  }, [delayMs, progress, pulse, reduceMotion]);
 
   const animatedStyle = useAnimatedStyle(() => ({
-    opacity: 0.12 + progress.value * 0.54,
-    transform: [{ scale: 0.88 + progress.value * 0.12 }],
+    opacity: 0.12 + progress.value * 0.5 + pulse.value * 0.16,
+    transform: [{ scale: 0.88 + progress.value * 0.12 + pulse.value * 0.028 }],
   }));
 
   return (

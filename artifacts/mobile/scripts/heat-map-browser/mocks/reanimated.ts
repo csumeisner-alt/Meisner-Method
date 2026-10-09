@@ -25,7 +25,16 @@ export function withTiming(value: number) {
   return value;
 }
 
+export function withSequence(...animations: number[]) {
+  return animations.length ? animations[animations.length - 1] : 0;
+}
+
+export function withRepeat(animation: number, _repetitions: number, _reverse?: boolean) {
+  return animation;
+}
+
 export const Easing = {
   cubic: (value: number) => value,
   out: (easing: (value: number) => number) => easing,
+  inOut: (easing: (value: number) => number) => easing,
 };
