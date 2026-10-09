@@ -382,6 +382,59 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
 
     await setDetailResponses(browser, [
       { type: "reject" },
+      { type: "resolve", payload: { previousClose: 121, marketCap: 100_000_000_000 } },
+    ]);
+    const matchDetailRequestsBeforeRefresh = await browser.evaluate(
+      'window.__heatMapBrowserTest.detailRequests.filter((url) => url.endsWith("/MATCH")).length',
+    );
+    const expiredCacheAt = (await browser.evaluate("Date.now()")) + 6 * 60_000;
+    await browser.evaluate(`(() => {
+      window.__heatMapDetailOriginalDateNow = Date.now;
+      Date.now = () => ${expiredCacheAt};
+    })()`);
+    await clickTestID(browser, "heat-map-open-detail-MATCH");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.detailRequests.filter((url) => url.endsWith("/MATCH")).length === ${matchDetailRequestsBeforeRefresh + 1}`,
+      "Opening a detail card with expired cached statistics should refresh them.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-detail-error"))}) && document.querySelector(${JSON.stringify(selector("heat-map-detail-stat-previous-close"))})?.textContent === "$122.00"`,
+      "A failed refresh should keep the expired previous-close value visible with the warning.",
+    );
+    assert.match(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-error"))})?.textContent`),
+      /figures may be out of date/i,
+      "A failed refresh with cached statistics should clearly identify them as potentially stale.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelectorAll(${JSON.stringify(selector("heat-map-detail-retry"))}).length`),
+      1,
+      "The stale-statistics warning should keep its retry control.",
+    );
+
+    await clickTestID(browser, "heat-map-detail-retry");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.detailRequests.filter((url) => url.endsWith("/MATCH")).length === ${matchDetailRequestsBeforeRefresh + 2}`,
+      "Retry should request updated statistics after the cached refresh fails.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-detail-stat-previous-close"))})?.textContent === "$121.00" && !document.querySelector(${JSON.stringify(selector("heat-map-detail-error"))})`,
+      "A successful retry should replace the expired statistic and clear the stale-data warning.",
+    );
+    await browser.evaluate("Date.now = window.__heatMapDetailOriginalDateNow");
+    await clickTestID(browser, "heat-map-detail-close");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
+      "The recovered market detail card should close before testing a separate instrument.",
+    );
+
+    await setDetailResponses(browser, [
+      { type: "reject" },
       { type: "resolve", payload: [] },
       { type: "resolve", payload: { previousClose: 119, marketCap: 75_000_000_000 } },
     ]);
