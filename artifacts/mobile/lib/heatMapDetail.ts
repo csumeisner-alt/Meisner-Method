@@ -485,6 +485,20 @@ export function getHeatMapDetailStatRows(
 
   if (assetType !== 'cryptocurrency') return rows;
 
+  const hasCirculatingSupplyOverReportedCap = stats?.maxSupplyStatus === 'capped'
+    && stats.circulatingSupply !== null
+    && Number.isFinite(stats.circulatingSupply)
+    && stats.maxSupply !== null
+    && Number.isFinite(stats.maxSupply)
+    && stats.maxSupply > 0
+    && stats.circulatingSupply > stats.maxSupply;
+  if (hasCirculatingSupplyOverReportedCap) {
+    const circulatingSupplyRow = rows.find(({ label }) => label === 'Circulating Supply');
+    if (circulatingSupplyRow) {
+      circulatingSupplyRow.detail = 'Reported circulating supply exceeds the fixed maximum; circulating share is omitted.';
+    }
+  }
+
   const circulatingShare = stats?.maxSupplyConflict
     ? null
     : getCirculatingSupplySharePercent(

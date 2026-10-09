@@ -171,6 +171,25 @@ test('crypto detail rows show supply and 24-hour volume instead of stock-only me
   ]);
 });
 
+test('crypto detail explains when circulating supply exceeds a reported fixed cap without showing a share', () => {
+  const stats = parseHeatMapDetailStats({
+    circulatingSupply: 22_000_000,
+    maxSupply: 21_000_000,
+    maxSupplyStatus: 'capped',
+  });
+  const rows = getHeatMapDetailStatRows('cryptocurrency', stats, null, false);
+
+  assert.deepEqual(
+    rows.find(({ label }) => label === 'Circulating Supply'),
+    {
+      label: 'Circulating Supply',
+      value: '22M',
+      detail: 'Reported circulating supply exceeds the fixed maximum; circulating share is omitted.',
+    },
+  );
+  assert.equal(rows.some(({ label }) => label === 'Circulating share'), false);
+});
+
 test('crypto detail shows 100% circulating when the full maximum supply is in circulation', () => {
   const stats = parseHeatMapDetailStats({
     circulatingSupply: 21_000_000,
@@ -182,6 +201,11 @@ test('crypto detail shows 100% circulating when the full maximum supply is in ci
     getHeatMapDetailStatRows('cryptocurrency', stats, null, false)
       .find(({ label }) => label === 'Circulating share')?.value,
     '100%',
+  );
+  assert.equal(
+    getHeatMapDetailStatRows('cryptocurrency', stats, null, false)
+      .find(({ label }) => label === 'Circulating Supply')?.detail,
+    undefined,
   );
 });
 
@@ -234,11 +258,9 @@ test('crypto detail labels explicitly uncapped supply without a numerical maximu
     maxSupplyStatus: 'uncapped',
   });
 
-  assert.equal(
-    getHeatMapDetailStatRows('cryptocurrency', stats, null, false)
-      .find(({ label }) => label === 'Max Supply')?.value,
-    'No fixed cap',
-  );
+  const rows = getHeatMapDetailStatRows('cryptocurrency', stats, null, false);
+  assert.equal(rows.find(({ label }) => label === 'Max Supply')?.value, 'No fixed cap');
+  assert.equal(rows.find(({ label }) => label === 'Circulating Supply')?.detail, undefined);
 });
 
 test('crypto detail displays the confirmed maximum-supply source', () => {
@@ -279,6 +301,7 @@ test('crypto detail flags conflicting reports and omits a disputed circulating s
     },
   );
   assert.equal(rows.some(({ label }) => label === 'Circulating share'), false);
+  assert.equal(rows.find(({ label }) => label === 'Circulating Supply')?.detail, undefined);
 });
 
 test('crypto detail does not infer uncapped supply from a missing status or zero alone', () => {
@@ -294,6 +317,17 @@ test('crypto detail does not infer uncapped supply from a missing status or zero
       'Not reported',
     );
   }
+
+  const unreportedLargerSupply = parseHeatMapDetailStats({
+    circulatingSupply: 22_000_000,
+    maxSupply: 21_000_000,
+    maxSupplyStatus: 'unreported',
+  });
+  assert.equal(
+    getHeatMapDetailStatRows('cryptocurrency', unreportedLargerSupply, null, false)
+      .find(({ label }) => label === 'Circulating Supply')?.detail,
+    undefined,
+  );
 });
 
 test('crypto detail omits circulating share when the maximum supply is unavailable or unusable', () => {
