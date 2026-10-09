@@ -120,6 +120,7 @@ test("public market-pulse endpoint recovers the persisted signal after startup d
   const service = createMarketPulseService({
     store: createMarketPulseStore(query),
     now: () => now,
+    random: () => 1,
     fetchSnapshot: async () => {
       yahooAttempts += 1;
       throw new Error("Yahoo is unavailable");
@@ -179,6 +180,74 @@ test("public market-pulse endpoint recovers the persisted signal after startup d
   } finally {
     server.close();
     await once(server, "close");
+  }
+});
+
+test("market-pulse instances jitter their retries without exceeding the first retry window", async () => {
+  let now = 1_800_000_000_000;
+  let earlyAttempts = 0;
+  let lateAttempts = 0;
+  const store = {
+    read: async () => null,
+    write: async () => null,
+  };
+  const makeService = (random: () => number, onAttempt: () => void) => createMarketPulseService({
+    store,
+    now: () => now,
+    random,
+    fetchSnapshot: async () => {
+      onAttempt();
+      throw new Error("Yahoo is unavailable");
+    },
+  });
+  const earlyService = makeService(() => 0, () => { earlyAttempts += 1; });
+  const lateService = makeService(() => 1, () => { lateAttempts += 1; });
+
+  await Promise.all([earlyService.warm(), lateService.warm()]);
+  assert.equal(earlyAttempts, 1);
+  assert.equal(lateAttempts, 1);
+
+  now += 499;
+  await Promise.all([earlyService.warm(), lateService.warm()]);
+  assert.equal(earlyAttempts, 1, "the earliest jittered retry still waits at least half a second");
+  assert.equal(lateAttempts, 1);
+
+  now += 1;
+  await Promise.all([earlyService.warm(), lateService.warm()]);
+  assert.equal(earlyAttempts, 2, "the short-jitter instance retries at 500ms");
+  assert.equal(lateAttempts, 1, "the long-jitter instance does not retry at the same instant");
+
+  now += 500;
+  await lateService.warm();
+  assert.equal(lateAttempts, 2, "the long-jitter instance retries by the existing 1s maximum");
+});
+
+test("market-pulse retry delay remains capped at 30 seconds after repeated failures", async () => {
+  let now = 1_800_000_000_000;
+  let attempts = 0;
+  const service = createMarketPulseService({
+    store: {
+      read: async () => null,
+      write: async () => null,
+    },
+    now: () => now,
+    random: () => 1,
+    fetchSnapshot: async () => {
+      attempts += 1;
+      throw new Error("Yahoo is unavailable");
+    },
+  });
+
+  await service.warm();
+  const retryWindows = [1_000, 2_000, 4_000, 8_000, 16_000, 30_000, 30_000];
+  for (const [index, delay] of retryWindows.entries()) {
+    now += delay - 1;
+    await service.warm();
+    assert.equal(attempts, index + 1, `retry ${index + 1} waits for its full delay`);
+
+    now += 1;
+    await service.warm();
+    assert.equal(attempts, index + 2, `retry ${index + 1} becomes eligible on time`);
   }
 });
 

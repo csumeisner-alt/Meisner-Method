@@ -12,6 +12,7 @@ interface MarketPulseServiceOptions {
   fetchSnapshot: () => Promise<unknown>;
   store: MarketPulseStore;
   now?: () => number;
+  random?: () => number;
   onRestored?: (data: MarketPulseResponse) => void;
   onRestoreFailure?: (err: unknown) => void;
   onRefreshFailure?: (err: unknown) => void;
@@ -23,14 +24,18 @@ const MARKET_PULSE_TTL = 60 * 1000;
 const RETRY_BASE_DELAY_MS = 1_000;
 const RETRY_MAX_DELAY_MS = 30 * 1000;
 
-function retryDelay(failures: number): number {
-  return Math.min(RETRY_BASE_DELAY_MS * 2 ** (failures - 1), RETRY_MAX_DELAY_MS);
+function retryDelay(failures: number, random: () => number): number {
+  const maxDelay = Math.min(RETRY_BASE_DELAY_MS * 2 ** (failures - 1), RETRY_MAX_DELAY_MS);
+  const minDelay = maxDelay / 2;
+  const sample = Math.max(0, Math.min(1, random()));
+  return minDelay + sample * (maxDelay - minDelay);
 }
 
 export function createMarketPulseService({
   fetchSnapshot,
   store,
   now = Date.now,
+  random = Math.random,
   onRestored,
   onRestoreFailure,
   onRefreshFailure,
@@ -82,7 +87,7 @@ export function createMarketPulseService({
       (err: unknown) => {
         if (refreshRequest === request) refreshRequest = null;
         refreshFailures += 1;
-        refreshRetryAt = now() + retryDelay(refreshFailures);
+        refreshRetryAt = now() + retryDelay(refreshFailures, random);
         lastRefreshError = err;
         if (logFailure) onRefreshFailure?.(err);
       },
@@ -108,7 +113,7 @@ export function createMarketPulseService({
       .catch((err: unknown) => {
         onRestoreFailure?.(err);
         restoreFailures += 1;
-        restoreRetryAt = now() + retryDelay(restoreFailures);
+        restoreRetryAt = now() + retryDelay(restoreFailures, random);
         if (restoreRequest === request) restoreRequest = null;
       });
     restoreRequest = request;
