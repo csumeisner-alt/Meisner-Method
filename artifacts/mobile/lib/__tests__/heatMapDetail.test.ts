@@ -185,6 +185,20 @@ test('crypto detail shows 100% circulating when the full maximum supply is in ci
   );
 });
 
+test('crypto detail omits circulating share when supply exceeds a reported cap', () => {
+  const stats = parseHeatMapDetailStats({
+    circulatingSupply: 21_000_001,
+    maxSupply: 21_000_000,
+    maxSupplyStatus: 'capped',
+  });
+
+  assert.equal(
+    getHeatMapDetailStatRows('cryptocurrency', stats, null, false)
+      .some(({ label }) => label === 'Circulating share'),
+    false,
+  );
+});
+
 test('crypto detail rows distinguish unreported supply data and retain quote market cap', () => {
   const stats = parseHeatMapDetailStats({
     circulatingSupply: 1000,

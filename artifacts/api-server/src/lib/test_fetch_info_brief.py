@@ -25,6 +25,21 @@ class InfoBriefCryptoFieldTests(unittest.TestCase):
         self.assertFalse(payload["maxSupplyConflict"])
         self.assertEqual(payload["volume24Hr"], 18_400_000_000)
 
+    def test_crypto_circulating_supply_above_reported_cap_is_preserved(self):
+        payload = fetch_info_brief.build_info_brief_payload(
+            "BTC-USD",
+            {
+                "longName": "Bitcoin USD",
+                "circulatingSupply": 21_000_001,
+                "maxSupply": 21_000_000,
+            },
+        )
+
+        self.assertEqual(payload["circulatingSupply"], 21_000_001)
+        self.assertEqual(payload["maxSupply"], 21_000_000)
+        self.assertEqual(payload["maxSupplyStatus"], "capped")
+        self.assertFalse(payload["maxSupplyConflict"])
+
     def test_explicit_zero_max_supply_marks_crypto_as_uncapped(self):
         payload = fetch_info_brief.build_info_brief_payload(
             "ETH-USD",

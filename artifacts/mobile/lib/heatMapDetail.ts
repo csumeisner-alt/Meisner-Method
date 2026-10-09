@@ -333,6 +333,7 @@ function getCirculatingSupplySharePercent(
     || !Number.isFinite(maxSupply)
     || circulatingSupply <= 0
     || maxSupply <= 0
+    || circulatingSupply > maxSupply
   ) {
     return null;
   }
