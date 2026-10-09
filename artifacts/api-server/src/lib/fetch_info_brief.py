@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Brief stock info — company name, sector, dividend yield, market cap."""
+"""Stock/market detail fields for the heat-map detail card and paper trading."""
 import sys
 import json
 import math
@@ -19,6 +19,15 @@ def clean_nan(obj):
     if isinstance(obj, list):
         return [clean_nan(v) for v in obj]
     return obj
+
+
+def first_present(info, *keys):
+    """Return the first provider value that is present, preserving valid zeroes."""
+    for key in keys:
+        value = info.get(key)
+        if value is not None:
+            return value
+    return None
 
 
 def main():
@@ -74,6 +83,23 @@ def main():
             "dividendRate": div_rate,
             "marketCap": market_cap,
             "currentPrice": float(price),
+            "previousClose": first_present(info, "previousClose", "regularMarketPreviousClose"),
+            "open": first_present(info, "open", "regularMarketOpen"),
+            "dayLow": first_present(info, "dayLow", "regularMarketDayLow"),
+            "dayHigh": first_present(info, "dayHigh", "regularMarketDayHigh"),
+            "fiftyTwoWeekLow": info.get("fiftyTwoWeekLow"),
+            "fiftyTwoWeekHigh": info.get("fiftyTwoWeekHigh"),
+            "volume": first_present(info, "volume", "regularMarketVolume"),
+            "averageVolume3Month": first_present(
+                info, "averageDailyVolume3Month", "averageVolume",
+            ),
+            "beta": info.get("beta"),
+            "earningsTimestamp": first_present(
+                info, "earningsTimestampStart", "earningsTimestamp",
+            ),
+            "targetMeanPrice": info.get("targetMeanPrice"),
+            "trailingEps": info.get("trailingEps"),
+            "totalRevenue": info.get("totalRevenue"),
         }), allow_nan=False))
 
     except Exception as e:

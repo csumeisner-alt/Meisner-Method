@@ -32,6 +32,7 @@ import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { BottomTabBar } from '@/components/BottomTabBar';
 import { useColors } from '@/hooks/useColors';
 import { HeatMapCryptoLogo } from '@/components/HeatMapCryptoLogo';
+import { HeatMapDetailModal } from '@/components/HeatMapDetailModal';
 import { HeatMapInstrumentIcon } from '@/components/HeatMapInstrumentIcon';
 import {
   countActiveHeatMapFilters, filterHeatMapQuotes,
@@ -125,7 +126,7 @@ function formatUpdated(timestamp?: number) {
   return `Updated ${new Date(timestamp * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
 }
 
-function HexTile({ quote, width, height, colors, period, category, editing, reduceMotion, revealDelayMs, removing, onRemove }: {
+function HexTile({ quote, width, height, colors, period, category, editing, reduceMotion, revealDelayMs, removing, onRemove, onSelect }: {
   quote: HeatMapQuote;
   width: number;
   height: number;
@@ -137,6 +138,7 @@ function HexTile({ quote, width, height, colors, period, category, editing, redu
   revealDelayMs: number;
   removing: boolean;
   onRemove: () => void;
+  onSelect: () => void;
 }) {
   const wiggle = useRef(new Animated.Value(0)).current;
   const revealProgress = useSharedValue(reduceMotion ? 1 : 0);
@@ -292,7 +294,21 @@ function HexTile({ quote, width, height, colors, period, category, editing, redu
       </Animated.View>
     </Reanimated.View>
   );
-  if (!editing) return tile;
+  if (!editing) {
+    return (
+      <TouchableOpacity
+        testID={`heat-map-open-detail-${quote.symbol}`}
+        accessibilityRole="button"
+        accessibilityLabel={`${identityLabel}, ${formatPrice(quote.price)}, ${label}. View market details.`}
+        accessibilityHint="Opens the market detail card."
+        onPress={onSelect}
+        activeOpacity={0.86}
+        style={{ width, height }}
+      >
+        {tile}
+      </TouchableOpacity>
+    );
+  }
   return (
     <TouchableOpacity
       testID={`heat-map-remove-tile-${quote.symbol}`}
@@ -475,6 +491,7 @@ export default function HeatMapScreen() {
   const [draftFilters, setDraftFilters] = useState<HeatMapFilters>(EMPTY_FILTERS);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
+  const [selectedQuote, setSelectedQuote] = useState<HeatMapQuote | null>(null);
   const directionPulse = useRef(new Animated.Value(0)).current;
   const removeInProgress = useRef(false);
   const customStorageReadId = useRef(0);
@@ -1229,6 +1246,7 @@ export default function HeatMapScreen() {
                                   revealDelayMs={revealDelayBySymbol.get(quote.symbol) ?? 0}
                                   removing={removingSymbol !== null}
                                   onRemove={() => void removeSymbol(quote.symbol)}
+                                  onSelect={() => setSelectedQuote(quote)}
                                 />
                               </View>;
                             })}
@@ -1302,6 +1320,11 @@ export default function HeatMapScreen() {
             </View>
           </View>
         </Modal>
+        <HeatMapDetailModal
+          quote={selectedQuote}
+          visible={selectedQuote !== null}
+          onClose={() => setSelectedQuote(null)}
+        />
       </View>
     </AmericanSteelBackground>
   );
