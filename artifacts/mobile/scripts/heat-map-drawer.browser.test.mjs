@@ -443,6 +443,80 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       `!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
       "The response-order test detail card should close before testing a separate instrument.",
     );
+
+    await setDetailResponses(browser, [
+      { type: "defer" },
+      { type: "resolve", payload: { previousClose: 115, marketCap: 80_000_000_000 } },
+    ]);
+    await browser.evaluate(`(() => {
+      const state = window.__heatMapBrowserTest;
+      state.setResponse({
+        ...state.data,
+        quotes: state.data.quotes.map((item) => item.symbol === "OTHER_RISK"
+          ? { ...item, name: "Other Risk Holdings", price: 345.67 }
+          : item),
+      });
+    })()`);
+    await clickTestID(browser, "heat-map-open-detail-OTHER_COMBINATION");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.pendingDetailRequests.some((request) => request.url.endsWith("/OTHER_COMBINATION"))`,
+      "The first statistics request should remain pending before changing instruments.",
+    );
+    await clickTestID(browser, "heat-map-detail-close");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
+      "The first instrument should close while its statistics request is pending.",
+    );
+    await clickTestID(browser, "heat-map-open-detail-OTHER_RISK");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent === "Other Risk Holdings" && document.querySelector(${JSON.stringify(selector("heat-map-detail-stat-previous-close"))})?.textContent === "$115.00"`,
+      "The newly selected instrument should load its own statistics successfully.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-price"))})?.textContent`),
+      "$345.67",
+      "The newly selected instrument's quote should be visible before the old request fails.",
+    );
+    assert.equal(
+      await browser.evaluate(`window.__heatMapBrowserTest.rejectPendingDetailRequest("/api/stocks/info/OTHER_COMBINATION")`),
+      true,
+      "The test should reject the first instrument's delayed statistics request.",
+    );
+    await delay(120);
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent`),
+      "Other Risk Holdings",
+      "A late failure must not replace the newly selected instrument's name.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-price"))})?.textContent`),
+      "$345.67",
+      "A late failure must not replace the newly selected instrument's quote.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-stat-previous-close"))})?.textContent`),
+      "$115.00",
+      "A late failure must not replace the newly selected instrument's statistics.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelectorAll(${JSON.stringify(selector("heat-map-detail-error"))}).length`),
+      0,
+      "A late failure must not show an error on the newly selected instrument.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelectorAll(${JSON.stringify(selector("heat-map-detail-retry"))}).length`),
+      0,
+      "A late failure must not add a retry prompt to the newly selected instrument.",
+    );
+    await clickTestID(browser, "heat-map-detail-close");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
+      "The delayed-failure test detail card should close before testing a separate instrument.",
+    );
     await browser.evaluate("window.__heatMapBrowserTest.setResponse(window.__heatMapBrowserTest.initialData)");
 
     await setDetailResponses(browser, [

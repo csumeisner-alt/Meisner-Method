@@ -37,13 +37,18 @@ interface HeatMapBrowserState {
   refetches: Record<string, unknown>[];
   detailRequests: string[];
   detailResponses: ({ type: "reject" } | { type: "resolve"; payload: unknown } | { type: "defer" })[];
-  pendingDetailRequests: { url: string; resolve: (payload: unknown) => void }[];
+  pendingDetailRequests: {
+    url: string;
+    resolve: (payload: unknown) => void;
+    reject: (error: Error) => void;
+  }[];
   refetchFailuresRemaining: number;
   nextRefetchResponse: HeatMapBrowserResponse | null;
   listeners: Set<() => void>;
   setResponse: (response: HeatMapBrowserResponse | null) => void;
   setDetailResponses: (responses: ({ type: "reject" } | { type: "resolve"; payload: unknown } | { type: "defer" })[]) => void;
   resolvePendingDetailRequest: (url: string, payload: unknown) => boolean;
+  rejectPendingDetailRequest: (url: string) => boolean;
   setRefetchFailures: (count: number) => void;
   setNextRefetchResponse: (response: HeatMapBrowserResponse) => void;
 }
@@ -161,6 +166,13 @@ export function initializeHeatMapBrowserState(): HeatMapBrowserState {
       if (pendingIndex === -1) return false;
       const [pending] = state.pendingDetailRequests.splice(pendingIndex, 1);
       pending.resolve(payload);
+      return true;
+    },
+    rejectPendingDetailRequest(url) {
+      const pendingIndex = state.pendingDetailRequests.findIndex((request) => request.url === url);
+      if (pendingIndex === -1) return false;
+      const [pending] = state.pendingDetailRequests.splice(pendingIndex, 1);
+      pending.reject(new Error("Mock market statistics request failed."));
       return true;
     },
     setRefetchFailures(count) {

@@ -8,10 +8,11 @@ async function mockApiFetch<T>(url: string): Promise<T> {
     if (response?.type === "reject") throw new Error("Mock market statistics request failed.");
     if (response?.type === "resolve") return response.payload as T;
     if (response?.type === "defer") {
-      return new Promise<T>((resolve) => {
+      return new Promise<T>((resolve, reject) => {
         state.pendingDetailRequests.push({
           url,
           resolve: (payload) => resolve(payload as T),
+          reject,
         });
       });
     }
