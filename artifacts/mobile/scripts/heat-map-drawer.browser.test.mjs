@@ -44,6 +44,7 @@ async function buildScreenBundle() {
     ["react-native-reanimated", join(fixtureDir, "mocks/reanimated.ts")],
     ["@/components/AmericanSteelBackground", join(fixtureDir, "mocks/american-steel-background.tsx")],
     ["@/components/BottomTabBar", join(fixtureDir, "mocks/bottom-tab-bar.tsx")],
+    ["@/hooks/useApi", join(fixtureDir, "mocks/use-api.ts")],
     ["@/hooks/useColors", join(fixtureDir, "mocks/use-colors.ts")],
   ]);
 
@@ -341,6 +342,34 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       "document.documentElement.scrollWidth <= window.innerWidth && document.body.scrollWidth <= window.innerWidth",
     );
     assert.equal(pageFitsPhone, true, "The heat-map page must not overflow horizontally at 320px.");
+
+    await clickTestID(browser, "heat-map-open-detail-MATCH");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
+      "Tapping a heat-map tile should open its market detail card.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent`),
+      "MATCH",
+      "The detail card should show the instrument name.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-price"))})?.textContent`),
+      "$123.45",
+      "The current heat-map quote should display immediately in the detail card.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-detail-stat-previous-close"))})?.textContent === "$122.00"`,
+      "The detail card should fill its statistics from the market-info response.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-stat-revenue-ttm"))})?.textContent`),
+      "$30B",
+      "The detail card should show revenue with a compact value.",
+    );
+    await clickTestID(browser, "heat-map-detail-close");
 
     await browser.evaluate("window.__heatMapBrowserTest.setResponse(null)");
     await waitFor(

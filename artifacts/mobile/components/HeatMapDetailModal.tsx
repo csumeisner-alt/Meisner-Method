@@ -24,8 +24,10 @@ const DETAIL_CACHE_TTL_MS = 5 * 60_000;
 const detailCache = new Map<string, { stats: HeatMapDetailStats; expiresAt: number }>();
 
 function formatPrice(value: number) {
-  const fractionDigits = value >= 1 ? 2 : value >= 0.01 ? 4 : 6;
-  return `$${value.toLocaleString('en-US', {
+  const absolute = Math.abs(value);
+  const fractionDigits = absolute >= 1 ? 2 : absolute >= 0.01 ? 4 : 6;
+  const sign = value < 0 ? '-' : '';
+  return `${sign}$${absolute.toLocaleString('en-US', {
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits,
   })}`;
@@ -305,7 +307,7 @@ export function HeatMapDetailModal({
                 <View key={item.label} style={[styles.statCell, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{item.label}</Text>
                   <Text
-                    testID={`heat-map-detail-stat-${item.label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
+                    testID={`heat-map-detail-stat-${item.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`}
                     numberOfLines={1}
                     adjustsFontSizeToFit
                     minimumFontScale={0.78}
