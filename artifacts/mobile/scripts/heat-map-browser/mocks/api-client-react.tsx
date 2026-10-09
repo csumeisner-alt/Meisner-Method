@@ -36,12 +36,14 @@ interface HeatMapBrowserState {
   requests: Record<string, unknown>[];
   refetches: Record<string, unknown>[];
   detailRequests: string[];
-  detailResponses: ({ type: "reject" } | { type: "resolve"; payload: unknown })[];
+  detailResponses: ({ type: "reject" } | { type: "resolve"; payload: unknown } | { type: "defer" })[];
+  pendingDetailRequests: { url: string; resolve: (payload: unknown) => void }[];
   refetchFailuresRemaining: number;
   nextRefetchResponse: HeatMapBrowserResponse | null;
   listeners: Set<() => void>;
   setResponse: (response: HeatMapBrowserResponse | null) => void;
-  setDetailResponses: (responses: ({ type: "reject" } | { type: "resolve"; payload: unknown })[]) => void;
+  setDetailResponses: (responses: ({ type: "reject" } | { type: "resolve"; payload: unknown } | { type: "defer" })[]) => void;
+  resolvePendingDetailRequest: (url: string, payload: unknown) => boolean;
   setRefetchFailures: (count: number) => void;
   setNextRefetchResponse: (response: HeatMapBrowserResponse) => void;
 }
@@ -143,6 +145,7 @@ export function initializeHeatMapBrowserState(): HeatMapBrowserState {
     refetches: [],
     detailRequests: [],
     detailResponses: [],
+    pendingDetailRequests: [],
     refetchFailuresRemaining: 0,
     nextRefetchResponse: null,
     listeners: new Set(),
@@ -152,6 +155,13 @@ export function initializeHeatMapBrowserState(): HeatMapBrowserState {
     },
     setDetailResponses(responses) {
       state.detailResponses = [...responses];
+    },
+    resolvePendingDetailRequest(url, payload) {
+      const pendingIndex = state.pendingDetailRequests.findIndex((request) => request.url === url);
+      if (pendingIndex === -1) return false;
+      const [pending] = state.pendingDetailRequests.splice(pendingIndex, 1);
+      pending.resolve(payload);
+      return true;
     },
     setRefetchFailures(count) {
       state.refetchFailuresRemaining = count;

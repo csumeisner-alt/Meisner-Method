@@ -381,6 +381,71 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     );
 
     await setDetailResponses(browser, [
+      { type: "defer" },
+      { type: "resolve", payload: { previousClose: 111, marketCap: 50_000_000_000 } },
+    ]);
+    await browser.evaluate(`(() => {
+      const state = window.__heatMapBrowserTest;
+      state.setResponse({
+        ...state.data,
+        quotes: state.data.quotes.map((item) => item.symbol === "OTHER_EXCHANGE"
+          ? { ...item, name: "Other Exchange Corp.", price: 234.56 }
+          : item),
+      });
+    })()`);
+    await clickTestID(browser, "heat-map-open-detail-OTHER_SECTOR");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.pendingDetailRequests.some((request) => request.url.endsWith("/OTHER_SECTOR"))`,
+      "The first instrument's statistics response should remain pending.",
+    );
+    await clickTestID(browser, "heat-map-detail-close");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
+      "The first instrument should close while its statistics request is pending.",
+    );
+    await clickTestID(browser, "heat-map-open-detail-OTHER_EXCHANGE");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent === "Other Exchange Corp." && document.querySelector(${JSON.stringify(selector("heat-map-detail-stat-previous-close"))})?.textContent === "$111.00"`,
+      "The second instrument should load its own details before the older response arrives.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-price"))})?.textContent`),
+      "$234.56",
+      "The second instrument's current quote should be visible while the older request is pending.",
+    );
+    assert.equal(
+      await browser.evaluate(`window.__heatMapBrowserTest.resolvePendingDetailRequest("/api/stocks/info/OTHER_SECTOR", { previousClose: 101, marketCap: 1_000_000_000 })`),
+      true,
+      "The test should deliver the first instrument's delayed statistics response.",
+    );
+    await delay(120);
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent`),
+      "Other Exchange Corp.",
+      "The late response must not replace the second instrument's name.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-price"))})?.textContent`),
+      "$234.56",
+      "The late response must not replace the second instrument's quote.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-stat-previous-close"))})?.textContent`),
+      "$111.00",
+      "The late response must not replace the second instrument's statistics.",
+    );
+    await clickTestID(browser, "heat-map-detail-close");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
+      "The response-order test detail card should close before testing a separate instrument.",
+    );
+    await browser.evaluate("window.__heatMapBrowserTest.setResponse(window.__heatMapBrowserTest.initialData)");
+
+    await setDetailResponses(browser, [
       { type: "reject" },
       { type: "resolve", payload: { previousClose: 121, marketCap: 100_000_000_000 } },
     ]);

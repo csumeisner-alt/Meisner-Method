@@ -224,7 +224,7 @@ export function HeatMapDetailModal({
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { apiFetch } = useApi();
-  const [stats, setStats] = useState<HeatMapDetailStats | null>(null);
+  const [statsEntry, setStatsEntry] = useState<{ symbol: string; stats: HeatMapDetailStats } | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
@@ -236,7 +236,7 @@ export function HeatMapDetailModal({
     const cached = detailCache.get(cacheKey);
     const hasFreshCache = cached !== undefined && cached.expiresAt > Date.now();
 
-    setStats(cached?.stats ?? null);
+    setStatsEntry(cached ? { symbol: cacheKey, stats: cached.stats } : null);
     setLoadError(false);
     if (hasFreshCache) {
       setLoading(false);
@@ -254,7 +254,7 @@ export function HeatMapDetailModal({
           if (oldestKey !== undefined) detailCache.delete(oldestKey);
         }
         if (isCurrent) {
-          setStats(parsed);
+          setStatsEntry({ symbol: cacheKey, stats: parsed });
           setLoadError(false);
         }
       })
@@ -270,6 +270,7 @@ export function HeatMapDetailModal({
 
   if (!quote) return null;
 
+  const stats = statsEntry?.symbol === quote.symbol.toUpperCase() ? statsEntry.stats : null;
   const marketCap = stats?.marketCap ?? quote.marketCapUsd;
   const change = quote.priceChangePercent;
   const changeColor = change >= 0 ? colors.buyColor : colors.sellColor;
