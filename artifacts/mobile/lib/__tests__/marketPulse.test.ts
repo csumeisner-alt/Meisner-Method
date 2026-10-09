@@ -66,6 +66,37 @@ test('market pulse pauses only after the freshness limit while the regular sessi
   );
 });
 
+test('market pulse applies freshness through an early close and keeps the last quote readable afterward', () => {
+  const quoteTimestamp = Date.parse('2024-11-29T17:54:00.000Z') / 1000;
+  const pulse = getMarketPulseInsight({
+    changePercent: 1.25,
+    priceTimestamp: quoteTimestamp,
+    marketOpen: true,
+  });
+
+  // 12:59 p.m. Eastern is still before the scheduled 1 p.m. close.
+  assert.equal(
+    isMarketPulseStale(pulse, Date.parse('2024-11-29T17:59:00.000Z')),
+    false,
+  );
+  assert.equal(
+    isMarketPulseStale(pulse, Date.parse('2024-11-29T17:59:01.000Z')),
+    true,
+  );
+
+  const afterClose = getMarketPulseInsight({
+    changePercent: 1.25,
+    priceTimestamp: quoteTimestamp,
+    marketOpen: false,
+  });
+  const afterCloseNow = Date.parse('2024-11-29T18:05:00.000Z');
+  assert.equal(isMarketPulseStale(afterClose, afterCloseNow), false);
+  assert.match(
+    formatMarketPulseDetail(afterClose, afterCloseNow) ?? '',
+    /^\+1\.25% LAST SESSION · /,
+  );
+});
+
 test('market pulse detail shows only the signed percentage and quote time, never the index price', () => {
   const quoteTime = new Date('2026-10-06T15:30:00.000Z');
   const insight = getMarketPulseInsight({

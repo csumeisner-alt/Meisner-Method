@@ -1709,6 +1709,17 @@ class HeatMapScreenerTests(unittest.TestCase):
             {"marketOpen": False},
         )
 
+    def test_market_pulse_session_respects_the_thanksgiving_early_close(self):
+        # U.S. equities close at 1 p.m. Eastern on the Friday after Thanksgiving.
+        self.assertEqual(
+            fetch_heatmap.market_pulse_session_response(eastern(2024, 11, 29, 12, 59)),
+            {"marketOpen": True},
+        )
+        self.assertEqual(
+            fetch_heatmap.market_pulse_session_response(eastern(2024, 11, 29, 13, 0)),
+            {"marketOpen": False},
+        )
+
     def test_stock_breadth_pages_up_to_250_most_active_results(self):
         def page(start, count, total):
             return {
