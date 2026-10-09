@@ -11,6 +11,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { HeatMapQuote } from '@workspace/api-client-react';
+import { CommodityPriceDrivers } from '@/components/CommodityPriceDrivers';
 import { useApi } from '@/hooks/useApi';
 import { useColors } from '@/hooks/useColors';
 import {
@@ -273,6 +274,7 @@ export function HeatMapDetailModal({
   const change = quote.priceChangePercent;
   const changeColor = change >= 0 ? colors.buyColor : colors.sellColor;
   const isEtf = quote.assetType === 'etf';
+  const isCommodity = quote.assetType === 'commodity';
   const displayedStats = getHeatMapDetailStatRows(
     quote.assetType,
     stats,
@@ -376,7 +378,7 @@ export function HeatMapDetailModal({
 
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-                {isEtf ? 'ETF essentials' : 'Key statistics'}
+                {isEtf ? 'ETF essentials' : isCommodity ? 'Commodity snapshot' : 'Key statistics'}
               </Text>
               {loading && <Text style={[styles.loadingLabel, { color: colors.mutedForeground }]}>Updating</Text>}
             </View>
@@ -396,22 +398,28 @@ export function HeatMapDetailModal({
                 </Pressable>
               </View>
             )}
-            <View testID="heat-map-detail-stats" style={styles.statsGrid}>
-              {displayedStats.map((item) => (
-                <View key={item.label} style={[styles.statCell, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{item.label}</Text>
-                  <Text
-                    testID={`heat-map-detail-stat-${item.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.78}
-                    style={[styles.statValue, { color: colors.foreground }]}
-                  >
-                    {item.value}
-                  </Text>
-                </View>
-              ))}
-            </View>
+            {displayedStats.length > 0 ? (
+              <View testID="heat-map-detail-stats" style={styles.statsGrid}>
+                {displayedStats.map((item) => (
+                  <View key={item.label} style={[styles.statCell, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{item.label}</Text>
+                    <Text
+                      testID={`heat-map-detail-stat-${item.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.78}
+                      style={[styles.statValue, { color: colors.foreground }]}
+                    >
+                      {item.value}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : isCommodity && !loading && !loadError ? (
+              <Text testID="heat-map-commodity-stats-unavailable" style={[styles.emptyStats, { color: colors.mutedForeground }]}>
+                No additional trading statistics were reported for this commodity.
+              </Text>
+            ) : null}
             {isEtf && (
               <EtfAdditionalDetails
                 profile={stats?.etfProfile ?? null}
@@ -419,9 +427,14 @@ export function HeatMapDetailModal({
                 colors={colors}
               />
             )}
+            {isCommodity && (
+              <CommodityPriceDrivers symbol={quote.symbol} colors={colors} />
+            )}
             <Text style={[styles.disclaimer, { color: colors.mutedForeground }]}>
               {isEtf
                 ? 'ETF details reflect the latest provider data. Distribution yield and beta can change.'
+                : isCommodity
+                  ? 'Commodity prices can respond to several forces at once. The drivers above are educational context, not buy/sell signals.'
                 : '— means the data provider does not report that figure for this instrument. Figures may be delayed.'}
             </Text>
           </ScrollView>
@@ -475,6 +488,7 @@ const styles = StyleSheet.create({
   statCell: { width: '48.5%', minHeight: 58, borderWidth: 1, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 9, justifyContent: 'space-between' },
   statLabel: { fontFamily: 'Inter_500Medium', fontSize: 9, lineHeight: 13 },
   statValue: { fontFamily: 'Inter_700Bold', fontSize: 14, marginTop: 5 },
+  emptyStats: { fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15 },
   etfDetails: { gap: 18, marginTop: 21 },
   etfSubsectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 },
   etfSubsectionTitleBlock: { flex: 1 },

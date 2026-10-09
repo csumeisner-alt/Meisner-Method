@@ -234,6 +234,13 @@ const STOCK_STAT_DEFINITIONS: StatDefinition[] = [
   { label: 'Revenue (TTM)', key: 'totalRevenue', format: 'currency' },
 ];
 
+const COMMODITY_STAT_DEFINITIONS: StatDefinition[] = [
+  { label: 'Previous Close', key: 'previousClose', format: 'price' },
+  { label: 'Open', key: 'open', format: 'price' },
+  { label: 'Volume', key: 'volume', format: 'compact' },
+  { label: 'Avg. Volume (3M)', key: 'averageVolume', format: 'compact' },
+];
+
 function formatPercent(decimal: number, signed = false) {
   const percentage = decimal * 100;
   const minimumFractionDigits = Math.abs(percentage) < 0.1 ? 2 : 0;
@@ -331,6 +338,8 @@ export function getHeatMapDetailStatRows(
 
   const definitions = assetType === 'cryptocurrency'
     ? CRYPTO_STAT_DEFINITIONS
+    : assetType === 'commodity'
+      ? COMMODITY_STAT_DEFINITIONS
     : STOCK_STAT_DEFINITIONS;
 
   const rows = definitions.map(({ label, key, format }) => {
@@ -380,6 +389,11 @@ export function getHeatMapDetailStatRows(
         return { label, value: formatDate(rawValue) };
     }
   });
+
+  if (assetType === 'commodity') {
+    if (!stats) return loading ? rows : [];
+    return rows.filter(({ value }) => value !== '—');
+  }
 
   if (assetType !== 'cryptocurrency') return rows;
 

@@ -210,6 +210,39 @@ test('stock detail rows keep their stock-specific statistics', () => {
   assert.equal(rows.find(({ label }) => label === 'Beta')?.value, '1.23');
 });
 
+test('commodity detail rows show trading context and omit company-only statistics', () => {
+  const stats = parseHeatMapDetailStats({
+    previousClose: 74.25,
+    open: 75.5,
+    volume: 1_200_000,
+    averageVolume3Month: 900_000,
+    marketCap: 15_000_000_000,
+    beta: 1.2,
+    earningsTimestamp: 1_800_000_000,
+  });
+
+  assert.deepEqual(getHeatMapDetailStatRows('commodity', stats, 15_000_000_000, false), [
+    { label: 'Previous Close', value: '$74.25' },
+    { label: 'Open', value: '$75.50' },
+    { label: 'Volume', value: '1.2M' },
+    { label: 'Avg. Volume (3M)', value: '900K' },
+  ]);
+  assert.deepEqual(
+    getHeatMapDetailStatRows(
+      'commodity',
+      parseHeatMapDetailStats({ previousClose: 74.25, marketCap: 500_000_000 }),
+      null,
+      false,
+    ),
+    [{ label: 'Previous Close', value: '$74.25' }],
+  );
+  assert.deepEqual(
+    getHeatMapDetailStatRows('commodity', null, null, true).map(({ value }) => value),
+    ['Loading…', 'Loading…', 'Loading…', 'Loading…'],
+  );
+  assert.deepEqual(getHeatMapDetailStatRows('commodity', null, null, false), []);
+});
+
 test('ETF detail rows show investor-relevant fund facts instead of stock fundamentals', () => {
   const stats = parseHeatMapDetailStats({
     beta: 1.2,
