@@ -5,7 +5,7 @@ import {
 
 export interface MarketPulseStore {
   read(): Promise<MarketPulseResponse | null>;
-  write(data: MarketPulseResponse): Promise<void>;
+  write(data: MarketPulseResponse): Promise<MarketPulseResponse | null>;
 }
 
 interface MarketPulseServiceOptions {
@@ -42,13 +42,20 @@ export function createMarketPulseService({
       if (!isMarketPulseResponse(raw)) {
         throw new Error("Market data provider returned an invalid market-pulse response");
       }
-      cache = { data: raw, ts: now() };
+      let snapshotToServe = raw;
       try {
-        await store.write(raw);
+        const persisted = await store.write(raw);
+        if (isMarketPulseResponse(persisted)) snapshotToServe = persisted;
       } catch (err) {
         onPersistFailure?.(err);
       }
-      return raw;
+
+      // A refresh can finish after another instance has persisted a newer
+      // quote. Keep this instance's snapshot monotonic as well.
+      if (!cache || snapshotToServe.priceTimestamp >= cache.data.priceTimestamp) {
+        cache = { data: snapshotToServe, ts: now() };
+      }
+      return cache.data;
     })();
     refreshRequest = request;
     void request.then(
