@@ -79,6 +79,80 @@ test("public market-pulse endpoint serves the persisted signal through a Yahoo o
   }
 });
 
+test("public market-pulse endpoint recovers the persisted signal after startup database and Yahoo outages", async () => {
+  const rows = new Map<string, Record<string, unknown>>();
+  let failNextRead = false;
+  const query = async (sql: string, values: unknown[] = []) => {
+    if (sql.includes("INSERT INTO market_pulse_cache")) {
+      const key = String(values[0]);
+      const row = {
+        change_percent: values[1],
+        price_timestamp: values[2],
+        updated_at: values[3],
+      };
+      rows.set(key, row);
+      return { rows: [row] };
+    }
+    if (sql.includes("SELECT change_percent")) {
+      if (failNextRead) {
+        failNextRead = false;
+        throw new Error("Temporary database read outage");
+      }
+      const row = rows.get(String(values[0]));
+      return { rows: row ? [row] : [] };
+    }
+    return { rows: [] };
+  };
+
+  const savedSnapshot = {
+    changePercent: -2.3456,
+    priceTimestamp: 1_760_100_000,
+    updatedAt: 1_760_100_060,
+  };
+  await createMarketPulseStore(query).write(savedSnapshot);
+
+  const restartTime = 1_800_000_000_000;
+  failNextRead = true;
+  let yahooAttempts = 0;
+  let restoreFailures = 0;
+  let restoredSnapshot: typeof savedSnapshot | null = null;
+  const service = createMarketPulseService({
+    store: createMarketPulseStore(query),
+    now: () => restartTime,
+    fetchSnapshot: async () => {
+      yahooAttempts += 1;
+      throw new Error("Yahoo is unavailable");
+    },
+    onRestoreFailure: () => {
+      restoreFailures += 1;
+    },
+    onRestored: (data) => {
+      restoredSnapshot = data;
+    },
+  });
+
+  await service.warm();
+  assert.equal(restoreFailures, 1, "the startup database read failed");
+  assert.equal(yahooAttempts, 1, "startup attempted a Yahoo refresh");
+
+  const app = express();
+  app.use(createMarketPulseRouter(service, async () => true));
+  const server = app.listen(0, "127.0.0.1");
+  try {
+    await once(server, "listening");
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+
+    const response = await fetch(`http://127.0.0.1:${address.port}/stocks/market-pulse`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { ...savedSnapshot, marketOpen: true });
+    assert.deepEqual(restoredSnapshot, savedSnapshot);
+  } finally {
+    server.close();
+    await once(server, "close");
+  }
+});
+
 test("market-pulse endpoint serves an in-memory snapshot during a write outage and restores the later saved refresh", async () => {
   const rows = new Map<string, Record<string, unknown>>();
   let writeAttempts = 0;
