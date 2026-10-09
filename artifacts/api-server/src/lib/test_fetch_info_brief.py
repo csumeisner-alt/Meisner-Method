@@ -25,6 +25,26 @@ class InfoBriefCryptoFieldTests(unittest.TestCase):
         self.assertFalse(payload["maxSupplyConflict"])
         self.assertEqual(payload["volume24Hr"], 18_400_000_000)
 
+    def test_valid_circulating_supply_boundaries_are_preserved(self):
+        for supply in (0, 19_800_000):
+            with self.subTest(supply=supply):
+                payload = fetch_info_brief.build_info_brief_payload(
+                    "BTC-USD",
+                    {"longName": "Bitcoin USD", "circulatingSupply": supply},
+                )
+
+                self.assertEqual(payload["circulatingSupply"], supply)
+
+    def test_invalid_circulating_supply_values_are_unavailable(self):
+        for supply in (-1, float("nan"), float("inf"), float("-inf"), True):
+            with self.subTest(supply=supply):
+                payload = fetch_info_brief.build_info_brief_payload(
+                    "BTC-USD",
+                    {"longName": "Bitcoin USD", "circulatingSupply": supply},
+                )
+
+                self.assertIsNone(payload["circulatingSupply"])
+
     def test_crypto_circulating_supply_above_reported_cap_is_preserved(self):
         payload = fetch_info_brief.build_info_brief_payload(
             "BTC-USD",

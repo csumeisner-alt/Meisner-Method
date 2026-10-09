@@ -178,6 +178,28 @@ test('heat-map detail stats reject non-object payloads and non-finite provider v
   });
 });
 
+test('crypto circulating supply rejects negative and non-finite values but preserves zero and positives', () => {
+  for (const circulatingSupply of [-1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    const stats = parseHeatMapDetailStats({ circulatingSupply });
+    assert.equal(stats?.circulatingSupply, null);
+    assert.equal(
+      getHeatMapDetailStatRows('cryptocurrency', stats, null, false)
+        .find(({ label }) => label === 'Circulating Supply')?.value,
+      '—',
+    );
+  }
+
+  for (const [circulatingSupply, expected] of [[0, '0'], [19_800_000, '19.8M']] as const) {
+    const stats = parseHeatMapDetailStats({ circulatingSupply });
+    assert.equal(stats?.circulatingSupply, circulatingSupply);
+    assert.equal(
+      getHeatMapDetailStatRows('cryptocurrency', stats, null, false)
+        .find(({ label }) => label === 'Circulating Supply')?.value,
+      expected,
+    );
+  }
+});
+
 test('crypto detail rows show supply and 24-hour volume instead of stock-only metrics', () => {
   const stats = parseHeatMapDetailStats({
     circulatingSupply: 19_800_000,

@@ -103,6 +103,11 @@ function numericField(value: unknown, key: string): number | null {
     : null;
 }
 
+function nonNegativeNumericField(value: unknown, key: string): number | null {
+  const candidate = numericField(value, key);
+  return candidate !== null && candidate >= 0 ? candidate : null;
+}
+
 function maxSupplyStatusField(value: unknown): HeatMapDetailStats['maxSupplyStatus'] {
   const candidate = record(value)?.maxSupplyStatus;
   return candidate === 'capped' || candidate === 'uncapped'
@@ -208,7 +213,7 @@ export function parseHeatMapDetailStats(value: unknown): HeatMapDetailStats | nu
     targetMeanPrice: numericField(value, 'targetMeanPrice'),
     trailingEps: numericField(value, 'trailingEps'),
     totalRevenue: numericField(value, 'totalRevenue'),
-    circulatingSupply: numericField(value, 'circulatingSupply'),
+    circulatingSupply: nonNegativeNumericField(value, 'circulatingSupply'),
     maxSupply: numericField(value, 'maxSupply'),
     maxSupplyStatus: maxSupplyStatusField(value),
     maxSupplySource: stringField(value, 'maxSupplySource'),

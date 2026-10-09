@@ -59,6 +59,16 @@ def finite_number(value):
     return number if math.isfinite(number) else None
 
 
+def get_circulating_supply(info):
+    """Return a reported circulating supply only when it is a valid non-negative number."""
+    value = info.get("circulatingSupply")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return value if value >= 0 else None
+
+
 def get_max_supply_status(info):
     """Classify Yahoo's explicit maxSupply value without guessing from absence.
 
@@ -442,7 +452,7 @@ def build_info_brief_payload(
         "targetMeanPrice": info.get("targetMeanPrice"),
         "trailingEps": info.get("trailingEps"),
         "totalRevenue": info.get("totalRevenue"),
-        "circulatingSupply": info.get("circulatingSupply"),
+        "circulatingSupply": get_circulating_supply(info),
         "maxSupply": max_supply,
         "maxSupplyStatus": max_supply_status,
         "maxSupplySource": max_supply_source,
