@@ -30,6 +30,58 @@ def first_present(info, *keys):
     return None
 
 
+def build_info_brief_payload(symbol, info):
+    """Project provider fields used by market detail cards and paper trading."""
+    name = info.get("longName") or info.get("shortName") or ""
+    price = (
+        info.get("currentPrice")
+        or info.get("regularMarketPrice")
+        or info.get("previousClose")
+        or 0
+    )
+
+    # yfinance returns dividendYield inconsistently — sometimes as a true
+    # decimal fraction (0.0099 = 0.99%) and sometimes as a percent-like
+    # value (0.99 = 0.99%). No real stock sustains a 50 %+ yield, so
+    # anything above 0.5 is treated as a percentage and normalised.
+    div_yield_raw = info.get("dividendYield", 0) or 0
+    if not isinstance(div_yield_raw, (int, float)) or not math.isfinite(div_yield_raw):
+        div_yield_raw = 0
+    div_yield = div_yield_raw / 100 if div_yield_raw > 0.5 else div_yield_raw
+
+    return {
+        "symbol": symbol,
+        "companyName": name,
+        "sector": info.get("sector", "") or "",
+        "industry": info.get("industry", "") or "",
+        "exchange": info.get("exchange", "") or info.get("fullExchangeName", "") or "",
+        "dividendYield": div_yield,
+        "dividendRate": info.get("dividendRate", 0) or 0,
+        "marketCap": info.get("marketCap", 0) or 0,
+        "currentPrice": float(price),
+        "previousClose": first_present(info, "previousClose", "regularMarketPreviousClose"),
+        "open": first_present(info, "open", "regularMarketOpen"),
+        "dayLow": first_present(info, "dayLow", "regularMarketDayLow"),
+        "dayHigh": first_present(info, "dayHigh", "regularMarketDayHigh"),
+        "fiftyTwoWeekLow": info.get("fiftyTwoWeekLow"),
+        "fiftyTwoWeekHigh": info.get("fiftyTwoWeekHigh"),
+        "volume": first_present(info, "volume", "regularMarketVolume"),
+        "averageVolume3Month": first_present(
+            info, "averageDailyVolume3Month", "averageVolume",
+        ),
+        "beta": info.get("beta"),
+        "earningsTimestamp": first_present(
+            info, "earningsTimestampStart", "earningsTimestamp",
+        ),
+        "targetMeanPrice": info.get("targetMeanPrice"),
+        "trailingEps": info.get("trailingEps"),
+        "totalRevenue": info.get("totalRevenue"),
+        "circulatingSupply": info.get("circulatingSupply"),
+        "maxSupply": info.get("maxSupply"),
+        "volume24Hr": info.get("volume24Hr"),
+    }
+
+
 def main():
     if len(sys.argv) < 2:
         print(json.dumps({"error": "No symbol provided"}))
@@ -46,61 +98,9 @@ def main():
             print(json.dumps({"error": f"No data found for {symbol}"}))
             sys.exit(1)
 
-        # Current price — try multiple fields
-        price = (
-            info.get("currentPrice")
-            or info.get("regularMarketPrice")
-            or info.get("previousClose")
-            or 0
-        )
-
-        # yfinance returns dividendYield inconsistently — sometimes as a true
-        # decimal fraction (0.0099 = 0.99%) and sometimes as a percent-like
-        # value (0.99 = 0.99%). No real stock sustains a 50 %+ yield, so
-        # anything above 0.5 is treated as a percentage and normalised.
-        div_yield_raw = info.get("dividendYield", 0) or 0
-        if not isinstance(div_yield_raw, (int, float)) or not math.isfinite(div_yield_raw):
-            div_yield_raw = 0
-        div_yield = div_yield_raw / 100 if div_yield_raw > 0.5 else div_yield_raw
-
-        # dividendRate is the declared annual dividend per share in dollars
-        # (e.g. 0.83 for WMT). It avoids the yield × price approximation
-        # and is unaffected by the decimal/percent ambiguity.
-        div_rate = info.get("dividendRate", 0) or 0
-
-        market_cap = info.get("marketCap", 0) or 0
-        sector = info.get("sector", "") or ""
-        industry = info.get("industry", "") or ""
-        exchange = info.get("exchange", "") or info.get("fullExchangeName", "") or ""
-
-        print(json.dumps(clean_nan({
-            "symbol": symbol,
-            "companyName": name,
-            "sector": sector,
-            "industry": industry,
-            "exchange": exchange,
-            "dividendYield": div_yield,
-            "dividendRate": div_rate,
-            "marketCap": market_cap,
-            "currentPrice": float(price),
-            "previousClose": first_present(info, "previousClose", "regularMarketPreviousClose"),
-            "open": first_present(info, "open", "regularMarketOpen"),
-            "dayLow": first_present(info, "dayLow", "regularMarketDayLow"),
-            "dayHigh": first_present(info, "dayHigh", "regularMarketDayHigh"),
-            "fiftyTwoWeekLow": info.get("fiftyTwoWeekLow"),
-            "fiftyTwoWeekHigh": info.get("fiftyTwoWeekHigh"),
-            "volume": first_present(info, "volume", "regularMarketVolume"),
-            "averageVolume3Month": first_present(
-                info, "averageDailyVolume3Month", "averageVolume",
-            ),
-            "beta": info.get("beta"),
-            "earningsTimestamp": first_present(
-                info, "earningsTimestampStart", "earningsTimestamp",
-            ),
-            "targetMeanPrice": info.get("targetMeanPrice"),
-            "trailingEps": info.get("trailingEps"),
-            "totalRevenue": info.get("totalRevenue"),
-        }), allow_nan=False))
+        print(json.dumps(clean_nan(
+            build_info_brief_payload(symbol, info),
+        ), allow_nan=False))
 
     except Exception as e:
         print(json.dumps({"error": str(e)}))

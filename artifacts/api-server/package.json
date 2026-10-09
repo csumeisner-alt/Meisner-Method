@@ -8,7 +8,7 @@
     "dev:worker": "export NODE_ENV=development && pnpm run build && node --enable-source-maps ./dist/alert-worker.mjs",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
-    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\" && python3 -m unittest discover -s src/lib -p 'test_fetch_heatmap.py'",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\" && python3 -m unittest discover -s src/lib -p 'test_fetch_*.py'",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

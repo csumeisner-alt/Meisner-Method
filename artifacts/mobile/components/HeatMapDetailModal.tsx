@@ -14,6 +14,7 @@ import type { HeatMapQuote } from '@workspace/api-client-react';
 import { useApi } from '@/hooks/useApi';
 import { useColors } from '@/hooks/useColors';
 import {
+  getHeatMapDetailStatRows,
   getHeatMapRangePosition,
   parseHeatMapDetailStats,
   type HeatMapDetailStats,
@@ -31,34 +32,6 @@ function formatPrice(value: number) {
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits,
   })}`;
-}
-
-function formatCompact(value: number | null, currency = false) {
-  if (value === null || !Number.isFinite(value)) return '—';
-  const absolute = Math.abs(value);
-  const suffix = absolute >= 1e12 ? 'T'
-    : absolute >= 1e9 ? 'B'
-      : absolute >= 1e6 ? 'M'
-        : absolute >= 1e3 ? 'K'
-          : '';
-  const divisor = suffix === 'T' ? 1e12
-    : suffix === 'B' ? 1e9
-      : suffix === 'M' ? 1e6
-        : suffix === 'K' ? 1e3
-          : 1;
-  const amount = value / divisor;
-  const formatted = suffix
-    ? amount.toLocaleString('en-US', { maximumFractionDigits: 2 })
-    : amount.toLocaleString('en-US', { maximumFractionDigits: 0 });
-  return `${currency ? '$' : ''}${formatted}${suffix}`;
-}
-
-function formatDate(timestamp: number | null) {
-  if (timestamp === null || timestamp <= 0) return '—';
-  const date = new Date(timestamp * 1000);
-  return Number.isNaN(date.getTime())
-    ? '—'
-    : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function getAssetLabel(assetType: HeatMapQuote['assetType']) {
@@ -175,18 +148,12 @@ export function HeatMapDetailModal({
   const marketCap = stats?.marketCap ?? quote.marketCapUsd;
   const change = quote.priceChangePercent;
   const changeColor = change >= 0 ? colors.buyColor : colors.sellColor;
-  const displayedStats: { label: string; value: string }[] = [
-    { label: 'Previous Close', value: stats?.previousClose === null || !stats ? loading ? 'Loading…' : '—' : formatPrice(stats.previousClose) },
-    { label: 'Open', value: stats?.open === null || !stats ? loading ? 'Loading…' : '—' : formatPrice(stats.open) },
-    { label: 'Volume', value: stats?.volume === null || !stats ? loading ? 'Loading…' : '—' : formatCompact(stats.volume) },
-    { label: 'Avg. Volume (3M)', value: stats?.averageVolume === null || !stats ? loading ? 'Loading…' : '—' : formatCompact(stats.averageVolume) },
-    { label: 'Market Cap', value: marketCap === null ? loading ? 'Loading…' : '—' : formatCompact(marketCap, true) },
-    { label: 'Beta', value: stats?.beta === null || !stats ? loading ? 'Loading…' : '—' : stats.beta.toFixed(2) },
-    { label: 'Earnings Date', value: stats?.earningsTimestamp === null || !stats ? loading ? 'Loading…' : '—' : formatDate(stats.earningsTimestamp) },
-    { label: '1y Target Est.', value: stats?.targetMeanPrice === null || !stats ? loading ? 'Loading…' : '—' : formatPrice(stats.targetMeanPrice) },
-    { label: 'EPS (TTM)', value: stats?.trailingEps === null || !stats ? loading ? 'Loading…' : '—' : formatPrice(stats.trailingEps) },
-    { label: 'Revenue (TTM)', value: stats?.totalRevenue === null || !stats ? loading ? 'Loading…' : '—' : formatCompact(stats.totalRevenue, true) },
-  ];
+  const displayedStats = getHeatMapDetailStatRows(
+    quote.assetType,
+    stats,
+    marketCap,
+    loading,
+  );
 
   return (
     <Modal
