@@ -78,3 +78,100 @@ test("public market-pulse endpoint serves the persisted signal through a Yahoo o
     await once(server, "close");
   }
 });
+
+test("market-pulse endpoint serves an in-memory snapshot during a write outage and restores the later saved refresh", async () => {
+  const rows = new Map<string, Record<string, unknown>>();
+  let writeAttempts = 0;
+  const query = async (sql: string, values: unknown[] = []) => {
+    if (sql.includes("INSERT INTO market_pulse_cache")) {
+      writeAttempts += 1;
+      if (writeAttempts === 1) throw new Error("Temporary database write outage");
+      rows.set(String(values[0]), {
+        change_percent: values[1],
+        price_timestamp: values[2],
+        updated_at: values[3],
+      });
+    }
+    if (sql.includes("SELECT change_percent")) {
+      const row = rows.get(String(values[0]));
+      return { rows: row ? [row] : [] };
+    }
+    return { rows: [] };
+  };
+
+  const firstSnapshot = {
+    changePercent: 0.75,
+    priceTimestamp: 1_800_000_000,
+    updatedAt: 1_800_000_060,
+  };
+  const latestSnapshot = {
+    changePercent: 1.25,
+    priceTimestamp: 1_800_000_120,
+    updatedAt: 1_800_000_180,
+  };
+  const store = createMarketPulseStore(query);
+  let fetchAttempts = 0;
+  let persistFailures = 0;
+  const service = createMarketPulseService({
+    store,
+    fetchSnapshot: async () => {
+      fetchAttempts += 1;
+      return fetchAttempts === 1 ? firstSnapshot : latestSnapshot;
+    },
+    onPersistFailure: () => {
+      persistFailures += 1;
+    },
+  });
+
+  await service.warm();
+  assert.equal(persistFailures, 1);
+  assert.deepEqual(await service.getSnapshot(), firstSnapshot);
+  assert.equal(await store.read(), null, "the first snapshot was not saved during the outage");
+
+  const app = express();
+  app.use(createMarketPulseRouter(service, async () => true));
+  const server = app.listen(0, "127.0.0.1");
+  try {
+    await once(server, "listening");
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+
+    const duringOutage = await fetch(`http://127.0.0.1:${address.port}/stocks/market-pulse`);
+    assert.equal(duringOutage.status, 200);
+    assert.deepEqual(await duringOutage.json(), { ...firstSnapshot, marketOpen: true });
+
+    await service.warm();
+    assert.deepEqual(await store.read(), latestSnapshot);
+
+    const restartedService = createMarketPulseService({
+      store: createMarketPulseStore(query),
+      fetchSnapshot: async () => {
+        throw new Error("Yahoo is unavailable");
+      },
+    });
+    await restartedService.warm();
+
+    const restartedApp = express();
+    restartedApp.use(createMarketPulseRouter(restartedService, async () => true));
+    const restartedServer = restartedApp.listen(0, "127.0.0.1");
+    try {
+      await once(restartedServer, "listening");
+      const restartedAddress = restartedServer.address();
+      assert.ok(restartedAddress && typeof restartedAddress !== "string");
+
+      const afterRestart = await fetch(
+        `http://127.0.0.1:${restartedAddress.port}/stocks/market-pulse`,
+      );
+      assert.equal(afterRestart.status, 200);
+      assert.deepEqual(await afterRestart.json(), { ...latestSnapshot, marketOpen: true });
+      assert.ok(fetchAttempts >= 2, "a later provider refresh ran after the failed write");
+      assert.equal(writeAttempts, 2, "the later refresh persisted the latest snapshot");
+    } finally {
+      restartedServer.close();
+      await once(restartedServer, "close");
+    }
+  } finally {
+    server.close();
+    await once(server, "close");
+  }
+});
