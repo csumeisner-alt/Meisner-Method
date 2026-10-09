@@ -1,20 +1,32 @@
-export function useApi() {
+import { initializeHeatMapBrowserState } from "./api-client-react";
+
+async function mockApiFetch<T>(url: string): Promise<T> {
+  if (url.startsWith("/api/stocks/info/")) {
+    const state = initializeHeatMapBrowserState();
+    state.detailRequests.push(url);
+    const response = state.detailResponses.shift();
+    if (response?.type === "reject") throw new Error("Mock market statistics request failed.");
+    if (response?.type === "resolve") return response.payload as T;
+  }
+
   return {
-    apiFetch: async () => ({
-      previousClose: 122,
-      open: 123,
-      dayLow: 120,
-      dayHigh: 126,
-      fiftyTwoWeekLow: 90,
-      fiftyTwoWeekHigh: 140,
-      volume: 1_000_000,
-      averageVolume3Month: 800_000,
-      marketCap: 250_000_000_000,
-      beta: 1.21,
-      earningsTimestamp: Date.parse('2030-06-12T00:00:00Z') / 1000,
-      targetMeanPrice: 135,
-      trailingEps: 6.21,
-      totalRevenue: 30_000_000_000,
-    }),
-  };
+    previousClose: 122,
+    open: 123,
+    dayLow: 120,
+    dayHigh: 126,
+    fiftyTwoWeekLow: 90,
+    fiftyTwoWeekHigh: 140,
+    volume: 1_000_000,
+    averageVolume3Month: 800_000,
+    marketCap: 250_000_000_000,
+    beta: 1.21,
+    earningsTimestamp: Date.parse("2030-06-12T00:00:00Z") / 1000,
+    targetMeanPrice: 135,
+    trailingEps: 6.21,
+    totalRevenue: 30_000_000_000,
+  } as T;
+}
+
+export function useApi() {
+  return { apiFetch: mockApiFetch };
 }

@@ -151,7 +151,7 @@ function makeFilterResponse(requestedSector = null) {
     updatedAt: Date.now() / 1000,
     quotes: [
       quote("MATCH"),
-      quote("OTHER_CAP", { marketCapUsd: 1_000_000_000, riskBand: "Moderate" }),
+      quote("OTHER_CAP", { name: "Other Capital Inc.", marketCapUsd: 1_000_000_000, riskBand: "Moderate" }),
       quote("OTHER_SECTOR", { sector: "Financials" }),
       quote("OTHER_EXCHANGE", { exchange: "NYSE" }),
       quote("OTHER_RISK", { riskBand: "Conservative" }),
@@ -256,6 +256,10 @@ async function waitForRequest(browser, predicateExpression, description) {
 
 async function setResponse(browser, response) {
   await browser.evaluate(`window.__heatMapBrowserTest.setResponse(${JSON.stringify(response)})`);
+}
+
+async function setDetailResponses(browser, responses) {
+  await browser.evaluate(`window.__heatMapBrowserTest.setDetailResponses(${JSON.stringify(responses)})`);
 }
 
 test("heat-map drawer interaction, late responses, and narrow-phone layout render correctly", async () => {
@@ -368,6 +372,93 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-stat-revenue-ttm"))})?.textContent`),
       "$30B",
       "The detail card should show revenue with a compact value.",
+    );
+    await clickTestID(browser, "heat-map-detail-close");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
+      "The successful market detail card should close before testing a separate instrument.",
+    );
+
+    await setDetailResponses(browser, [
+      { type: "reject" },
+      { type: "resolve", payload: [] },
+      { type: "resolve", payload: { previousClose: 119, marketCap: 75_000_000_000 } },
+    ]);
+    await clickTestID(browser, "heat-map-open-detail-OTHER_CAP");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-detail-error"))})`,
+      "A failed statistics request should show an unavailable-data message and retry control.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent`),
+      "Other Capital Inc.",
+      "A failed statistics request must leave the instrument name visible.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-price"))})?.textContent`),
+      "$123.45",
+      "A failed statistics request must leave the current quote visible.",
+    );
+    assert.match(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-error"))})?.textContent`),
+      /Market statistics could not be loaded/,
+      "A provider or network failure should explain that statistics are unavailable.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelectorAll(${JSON.stringify(selector("heat-map-detail-retry"))}).length`),
+      1,
+      "The unavailable-data message should include a retry control.",
+    );
+    assert.equal(
+      await browser.evaluate(`window.__heatMapBrowserTest.detailRequests.filter((url) => url.endsWith("/OTHER_CAP")).length`),
+      1,
+      "Opening the card should make one statistics request for the selected instrument.",
+    );
+
+    await clickTestID(browser, "heat-map-detail-retry");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.detailRequests.filter((url) => url.endsWith("/OTHER_CAP")).length === 2`,
+      "Retry should request statistics again after a network failure.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-detail-error"))})`,
+      "A malformed statistics response should keep the unavailable-data message visible.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent`),
+      "Other Capital Inc.",
+      "A malformed statistics response must leave the instrument name visible.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-price"))})?.textContent`),
+      "$123.45",
+      "A malformed statistics response must leave the current quote visible.",
+    );
+
+    await clickTestID(browser, "heat-map-detail-retry");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.detailRequests.filter((url) => url.endsWith("/OTHER_CAP")).length === 3`,
+      "Retry should make another statistics request after a malformed response.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-detail-stat-previous-close"))})?.textContent === "$119.00" && !document.querySelector(${JSON.stringify(selector("heat-map-detail-error"))})`,
+      "Retry should load fresh statistics and clear the unavailable-data message.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent`),
+      "Other Capital Inc.",
+      "Successful retry should keep the instrument name visible.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-price"))})?.textContent`),
+      "$123.45",
+      "Successful retry should keep the current quote visible.",
     );
     await clickTestID(browser, "heat-map-detail-close");
 

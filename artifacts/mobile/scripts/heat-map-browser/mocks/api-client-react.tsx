@@ -35,10 +35,13 @@ interface HeatMapBrowserState {
   breadthData: HeatMapBrowserResponse;
   requests: Record<string, unknown>[];
   refetches: Record<string, unknown>[];
+  detailRequests: string[];
+  detailResponses: ({ type: "reject" } | { type: "resolve"; payload: unknown })[];
   refetchFailuresRemaining: number;
   nextRefetchResponse: HeatMapBrowserResponse | null;
   listeners: Set<() => void>;
   setResponse: (response: HeatMapBrowserResponse | null) => void;
+  setDetailResponses: (responses: ({ type: "reject" } | { type: "resolve"; payload: unknown })[]) => void;
   setRefetchFailures: (count: number) => void;
   setNextRefetchResponse: (response: HeatMapBrowserResponse) => void;
 }
@@ -78,7 +81,7 @@ function quote(
 export function makeFilterTestQuotes(): HeatMapBrowserQuote[] {
   return [
     quote("MATCH"),
-    quote("OTHER_CAP", { marketCapUsd: 1_000_000_000, riskBand: "Moderate" }),
+    quote("OTHER_CAP", { name: "Other Capital Inc.", marketCapUsd: 1_000_000_000, riskBand: "Moderate" }),
     quote("OTHER_SECTOR", { sector: "Financials" }),
     quote("OTHER_EXCHANGE", { exchange: "NYSE" }),
     quote("OTHER_RISK", { riskBand: "Conservative" }),
@@ -138,12 +141,17 @@ export function initializeHeatMapBrowserState(): HeatMapBrowserState {
     breadthData,
     requests: [],
     refetches: [],
+    detailRequests: [],
+    detailResponses: [],
     refetchFailuresRemaining: 0,
     nextRefetchResponse: null,
     listeners: new Set(),
     setResponse(next) {
       state.data = next;
       state.listeners.forEach((listener) => listener());
+    },
+    setDetailResponses(responses) {
+      state.detailResponses = [...responses];
     },
     setRefetchFailures(count) {
       state.refetchFailuresRemaining = count;
