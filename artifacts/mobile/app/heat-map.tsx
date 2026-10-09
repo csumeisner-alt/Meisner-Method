@@ -8,7 +8,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Polygon } from 'react-native-svg';
-import { useReducedMotion } from 'react-native-reanimated';
+import Reanimated, {
+  cancelAnimation,
+  Easing as ReanimatedEasing,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withDelay,
+  withTiming,
+} from 'react-native-reanimated';
 import {
   getGetMarketBreadthQueryKey, getGetMarketHeatMapQueryKey,
   getSearchStockSymbolsQueryKey, useGetMarketBreadth, useGetMarketHeatMap,
@@ -25,7 +33,8 @@ import { HeatMapCryptoLogo } from '@/components/HeatMapCryptoLogo';
 import { HeatMapInstrumentIcon } from '@/components/HeatMapInstrumentIcon';
 import {
   countActiveHeatMapFilters, filterHeatMapQuotes,
-  getHeatMapTileWidth, heatMapResponseMatchesSelection, layoutHoneycomb, summarizeHeatMap,
+  getHeatMapLoadingDelays, getHeatMapTileWidth, heatMapResponseMatchesSelection,
+  layoutHoneycomb, summarizeHeatMap,
   uniqueHeatMapQuotesBySymbol,
   type HeatMapFilters, type HeatMapCapBucket, type HeatMapRiskBand, type HeatMapRiskFilter,
 } from '@/lib/heatMapMetrics';
@@ -100,6 +109,7 @@ const RISK_BAND_LABELS: Record<HeatMapRiskBand, string> = {
 };
 const EMPTY_FILTERS: HeatMapFilters = { sector: null, marketCap: null, exchange: null, risk: null };
 const SCHEDULED_OPEN_REFRESH_RETRY_DELAY_MS = 1_000;
+const LOADING_HEX_COUNT = 6;
 
 function formatPrice(price: number) {
   return `$${price.toLocaleString('en-US', { minimumFractionDigits: price >= 1 ? 2 : 4, maximumFractionDigits: price >= 1 ? 2 : 4 })}`;
@@ -259,6 +269,121 @@ function HexTile({ quote, width, height, colors, period, category, editing, redu
         <MaterialCommunityIcons name="close" size={11} color="#FFFFFF" />
       </View>
     </TouchableOpacity>
+  );
+}
+
+function LoadingHexagon({ index, width, height, delayMs, colors, reduceMotion }: {
+  index: number;
+  width: number;
+  height: number;
+  delayMs: number;
+  colors: ReturnType<typeof useColors>;
+  reduceMotion: boolean;
+}) {
+  const progress = useSharedValue(reduceMotion ? 1 : 0);
+
+  useEffect(() => {
+    cancelAnimation(progress);
+    if (reduceMotion) {
+      progress.value = 1;
+      return () => cancelAnimation(progress);
+    }
+
+    progress.value = withDelay(
+      delayMs,
+      withTiming(1, {
+        duration: 380,
+        easing: ReanimatedEasing.out(ReanimatedEasing.cubic),
+      }),
+    );
+    return () => cancelAnimation(progress);
+  }, [delayMs, progress, reduceMotion]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: 0.12 + progress.value * 0.54,
+    transform: [{ scale: 0.88 + progress.value * 0.12 }],
+  }));
+
+  return (
+    <Reanimated.View
+      testID={`heat-map-loading-hex-${index}`}
+      accessible={false}
+      style={[{ width, height }, animatedStyle]}
+    >
+      <Svg width={width} height={height} viewBox="0 0 100 86.6" style={StyleSheet.absoluteFill}>
+        <Polygon
+          points="1,43.3 25,1 75,1 99,43.3 75,85.6 25,85.6"
+          fill={colors.card}
+          fillOpacity={0.7}
+          stroke={colors.gold}
+          strokeOpacity={0.74}
+          strokeWidth="1.5"
+        />
+      </Svg>
+    </Reanimated.View>
+  );
+}
+
+function HeatMapLoadingState({ contentWidth, tileWidth, tileHeight, colors, reduceMotion }: {
+  contentWidth: number;
+  tileWidth: number;
+  tileHeight: number;
+  colors: ReturnType<typeof useColors>;
+  reduceMotion: boolean;
+}) {
+  const layout = useMemo(
+    () => layoutHoneycomb(LOADING_HEX_COUNT, contentWidth, tileWidth),
+    [contentWidth, tileWidth],
+  );
+  const delays = useMemo(
+    () => getHeatMapLoadingDelays(layout.positions.length),
+    [layout.positions.length],
+  );
+
+  return (
+    <View
+      testID="heat-map-loading-state"
+      style={[
+        styles.loadingPanel,
+        { backgroundColor: colors.card, borderColor: colors.border },
+      ]}
+    >
+      <View style={styles.loadingHeader}>
+        <MaterialCommunityIcons name="chart-timeline-variant" size={19} color={colors.gold} accessible={false} />
+        <Text accessibilityRole="header" style={[styles.loadingTitle, { color: colors.foreground }]}>
+          Loading selected market
+        </Text>
+      </View>
+      <View
+        style={[styles.loadingHoneycomb, { width: contentWidth, height: layout.height }]}
+        accessible={false}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      >
+        {layout.positions.map((position) => (
+          <View
+            key={position.index}
+            style={{
+              position: 'absolute',
+              left: position.left,
+              top: position.top,
+            }}
+          >
+            <LoadingHexagon
+              index={position.index}
+              width={tileWidth}
+              height={tileHeight}
+              delayMs={delays[position.index] ?? 0}
+              colors={colors}
+              reduceMotion={reduceMotion}
+            />
+          </View>
+        ))}
+      </View>
+      <Text style={[styles.stateCopy, { color: colors.mutedForeground }]}>
+        Preparing one quote batch for this category and return window.
+      </Text>
+    </View>
   );
 }
 
@@ -980,7 +1105,14 @@ export default function HeatMapScreen() {
               : mapQuery.isError && !responseMatches
               ? stateCard('alert-circle-outline', 'Market data is unavailable', "This quote batch couldn't be refreshed.", <TouchableOpacity testID="heat-map-retry" onPress={() => mapQuery.refetch()} style={[styles.retryButton, { borderColor: colors.border }]}><Text style={[styles.retryText, { color: colors.primary }]}>Try again</Text></TouchableOpacity>)
               : busy
-                ? stateCard('chart-timeline-variant', 'Loading selected market', 'Preparing one quote batch for this category and return window.')
+                ? <HeatMapLoadingState
+                    key={JSON.stringify(params)}
+                    contentWidth={contentWidth}
+                    tileWidth={tileWidth}
+                    tileHeight={tileHeight}
+                    colors={colors}
+                    reduceMotion={reduceMotion}
+                  />
                 : filterableQuotes.length === 0 && activeFilterCount > 0
                   ? stateCard('filter-off-outline', 'No matches for these filters', 'Clear or adjust a filter to see instruments in this map.')
                   : filterableQuotes.length === 0
@@ -1165,6 +1297,10 @@ const styles = StyleSheet.create({
   statePanel: { minHeight: 170, borderWidth: 1, borderStyle: 'dashed', borderRadius: 17, alignItems: 'center', justifyContent: 'center', padding: 22, gap: 8, marginTop: 3 },
   stateTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 14, textAlign: 'center', marginTop: 3 },
   stateCopy: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 17, textAlign: 'center', maxWidth: 280 },
+  loadingPanel: { minHeight: 170, borderWidth: 1, borderRadius: 17, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12, paddingVertical: 14, gap: 5, marginTop: 3 },
+  loadingHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  loadingTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 14, textAlign: 'center' },
+  loadingHoneycomb: { alignSelf: 'center', position: 'relative', marginVertical: 4 },
   retryButton: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 15, paddingVertical: 8, marginTop: 6 },
   retryText: { fontFamily: 'Inter_600SemiBold', fontSize: 11 },
   mapWrap: { gap: 18 },

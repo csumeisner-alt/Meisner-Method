@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   countActiveHeatMapFilters,
   filterHeatMapQuotes,
+  getHeatMapLoadingDelays,
   getHeatMapTileWidth,
   heatMapResponseMatchesSelection,
   layoutHoneycomb,
@@ -165,4 +166,17 @@ test("heat-map hexagons use more phone width while staying within the available 
       }
     }
   }
+});
+
+test("loading hexagons receive a randomized one-by-one reveal order", () => {
+  assert.deepEqual(
+    getHeatMapLoadingDelays(5, () => 0),
+    [320, 240, 160, 80, 0],
+  );
+  assert.deepEqual(
+    getHeatMapLoadingDelays(5, () => 0.999),
+    [0, 80, 160, 240, 320],
+  );
+  assert.deepEqual(getHeatMapLoadingDelays(0), []);
+  assert.deepEqual(getHeatMapLoadingDelays(Number.NaN), []);
 });

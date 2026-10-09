@@ -86,6 +86,14 @@ test("heat-map has a right-side filter drawer and reduced-motion-aware direction
   assert.match(screenSource, /Price-return proxy/);
 });
 
+test("heat-map loading reveals shuffled hexagons and respects reduced motion", () => {
+  assert.match(screenSource, /testID="heat-map-loading-state"/);
+  assert.match(screenSource, /getHeatMapLoadingDelays\(layout\.positions\.length\)/);
+  assert.match(screenSource, /withDelay\(delayMs,\s*withTiming\(1/);
+  assert.match(screenSource, /reduceMotion\s*\?\s*1\s*:\s*0/);
+  assert.match(screenSource, /reduceMotion=\{reduceMotion\}/);
+});
+
 test("stock sector selection offers all supported sectors and requests matching expanded data", () => {
   assert.match(screenSource, /const STOCK_SECTORS: GetMarketHeatMapSector\[\] = \[/);
   assert.match(screenSource, /category === 'stocks'\s*&&\s*filters\.sector !== 'Unknown'/);

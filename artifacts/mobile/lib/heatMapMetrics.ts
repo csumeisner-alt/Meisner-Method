@@ -118,6 +118,33 @@ export function getHeatMapTileWidth(availableWidth: number): number {
   return Math.min(availableWidth, 136, Math.max(84, availableWidth / 2.65));
 }
 
+export function getHeatMapLoadingDelays(
+  itemCount: number,
+  random: () => number = Math.random,
+): number[] {
+  const count = Math.floor(itemCount);
+  if (!Number.isFinite(itemCount) || count <= 0) return [];
+
+  const revealOrder = Array.from({ length: count }, (_, index) => index);
+  for (let index = count - 1; index > 0; index--) {
+    const sample = random();
+    const boundedSample = Number.isFinite(sample)
+      ? Math.max(0, Math.min(sample, 1 - Number.EPSILON))
+      : 0;
+    const swapIndex = Math.floor(boundedSample * (index + 1));
+    [revealOrder[index], revealOrder[swapIndex]] = [
+      revealOrder[swapIndex],
+      revealOrder[index],
+    ];
+  }
+
+  const delays = new Array<number>(count);
+  revealOrder.forEach((tileIndex, step) => {
+    delays[tileIndex] = step * 80;
+  });
+  return delays;
+}
+
 /**
  * Places flat-top regular hexagons on the standard honeycomb lattice.
  * Neighboring rows are half a tile-height apart and offset by 3/4 tile-width.
