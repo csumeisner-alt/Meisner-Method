@@ -14,9 +14,11 @@ import type { HeatMapQuote } from '@workspace/api-client-react';
 import { useApi } from '@/hooks/useApi';
 import { useColors } from '@/hooks/useColors';
 import {
+  formatHeatMapRegimeReturn,
   getHeatMapDetailStatRows,
   getHeatMapRangePosition,
   parseHeatMapDetailStats,
+  type HeatMapEtfProfile,
   type HeatMapDetailStats,
 } from '@/lib/heatMapDetail';
 import { formatHeatMapQuoteAge } from '@/lib/heatMapQuoteDisplay';
@@ -87,6 +89,128 @@ function RangeBar({
   );
 }
 
+const ETF_REGIME_ORDER = ['bull', 'bear', 'mixed'] as const;
+
+function getRegimeTitle(regime: typeof ETF_REGIME_ORDER[number]) {
+  return regime.charAt(0).toUpperCase() + regime.slice(1);
+}
+
+function formatRegimeThreshold(value: number) {
+  const formatted = `${Math.abs(value * 100).toFixed(0)}%`;
+  return value < 0 ? `−${formatted}` : `+${formatted}`;
+}
+
+function EtfAdditionalDetails({
+  profile,
+  loading,
+  colors,
+}: {
+  profile: HeatMapEtfProfile | null;
+  loading: boolean;
+  colors: ReturnType<typeof useColors>;
+}) {
+  const regime = profile?.marketRegime ?? null;
+  const comparableRegimeCount = regime
+    ? ETF_REGIME_ORDER.filter((key) => regime.periods[key].years >= 2).length
+    : 0;
+  const bestRegime = regime?.bestRegime ?? null;
+  const headline = bestRegime
+    ? `Best observed in ${getRegimeTitle(bestRegime)} years`
+    : regime && comparableRegimeCount >= 2
+      ? 'No clear standout'
+      : regime
+        ? 'Not enough full-year history'
+        : 'History comparison unavailable';
+  const methodology = regime
+    ? `${regime.firstYear}–${regime.lastYear} complete calendar years. ${regime.benchmarkSymbol} (an S&P 500 proxy) annual total returns define the groups: bull ≥ ${formatRegimeThreshold(regime.bullThreshold)}, bear ≤ ${formatRegimeThreshold(regime.bearThreshold)}, mixed otherwise. ETF returns use dividend-adjusted monthly closes. Historical only—not a forecast.`
+    : 'Uses complete calendar years of dividend-adjusted ETF returns grouped by annual SPY returns, an S&P 500 proxy. This historical comparison is not a forecast.';
+
+  return (
+    <View style={styles.etfDetails}>
+      <View>
+        <View style={styles.etfSubsectionHeader}>
+          <View style={styles.etfSubsectionTitleBlock}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Largest holdings</Text>
+            <Text style={[styles.etfSubsectionCaption, { color: colors.mutedForeground }]}>
+              Top positions by fund weight
+            </Text>
+          </View>
+        </View>
+        <View style={[styles.holdingsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          {profile?.topHoldings.length ? profile.topHoldings.map((holding, index) => (
+            <View
+              key={holding.symbol}
+              style={[
+                styles.holdingRow,
+                index < profile.topHoldings.length - 1 && { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth },
+              ]}
+            >
+              <View style={styles.holdingIdentity}>
+                <Text numberOfLines={1} style={[styles.holdingName, { color: colors.foreground }]}>
+                  {holding.name}
+                </Text>
+                <Text style={[styles.holdingSymbol, { color: colors.mutedForeground }]}>
+                  {holding.symbol}
+                </Text>
+              </View>
+              <Text style={[styles.holdingWeight, { color: colors.foreground }]}>
+                {formatHeatMapRegimeReturn(holding.weight)}
+              </Text>
+            </View>
+          )) : (
+            <Text style={[styles.etfEmptyText, { color: colors.mutedForeground }]}>
+              {loading && !profile ? 'Loading holdings…' : profile ? 'Holdings breakdown not reported.' : 'Holdings data unavailable.'}
+            </Text>
+          )}
+        </View>
+      </View>
+
+      <View>
+        <View style={styles.etfSubsectionHeader}>
+          <View style={styles.etfSubsectionTitleBlock}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Market-history fit</Text>
+            <Text style={[styles.etfSubsectionCaption, { color: colors.mutedForeground }]}>
+              Average annual ETF return by market type
+            </Text>
+          </View>
+          <View style={[styles.regimeBadge, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.regimeBadgeText, { color: bestRegime ? colors.gold : colors.mutedForeground }]}>
+              {headline}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.regimeGrid}>
+          {ETF_REGIME_ORDER.map((key) => {
+            const period = regime?.periods[key];
+            const averageReturn = period?.averageAnnualReturn ?? null;
+            return (
+              <View
+                key={key}
+                testID={`heat-map-etf-regime-${key}`}
+                style={[styles.regimeCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+              >
+                <Text style={[styles.regimeLabel, { color: colors.mutedForeground }]}>
+                  {getRegimeTitle(key)}
+                </Text>
+                <Text style={[
+                  styles.regimeReturn,
+                  { color: averageReturn === null ? colors.mutedForeground : averageReturn >= 0 ? colors.buyColor : colors.sellColor },
+                ]}>
+                  {formatHeatMapRegimeReturn(averageReturn)}
+                </Text>
+                <Text style={[styles.regimeSample, { color: colors.mutedForeground }]}>
+                  {period?.years ? `${period.years} ${period.years === 1 ? 'year' : 'years'}` : 'No years'}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+        <Text style={[styles.methodology, { color: colors.mutedForeground }]}>{methodology}</Text>
+      </View>
+    </View>
+  );
+}
+
 export function HeatMapDetailModal({
   quote,
   visible,
@@ -148,6 +272,7 @@ export function HeatMapDetailModal({
   const marketCap = stats?.marketCap ?? quote.marketCapUsd;
   const change = quote.priceChangePercent;
   const changeColor = change >= 0 ? colors.buyColor : colors.sellColor;
+  const isEtf = quote.assetType === 'etf';
   const displayedStats = getHeatMapDetailStatRows(
     quote.assetType,
     stats,
@@ -250,7 +375,9 @@ export function HeatMapDetailModal({
             </View>
 
             <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Key statistics</Text>
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+                {isEtf ? 'ETF essentials' : 'Key statistics'}
+              </Text>
               {loading && <Text style={[styles.loadingLabel, { color: colors.mutedForeground }]}>Updating</Text>}
             </View>
             {loadError && (
@@ -285,8 +412,17 @@ export function HeatMapDetailModal({
                 </View>
               ))}
             </View>
+            {isEtf && (
+              <EtfAdditionalDetails
+                profile={stats?.etfProfile ?? null}
+                loading={loading}
+                colors={colors}
+              />
+            )}
             <Text style={[styles.disclaimer, { color: colors.mutedForeground }]}>
-              — means the data provider does not report that figure for this instrument. Figures may be delayed.
+              {isEtf
+                ? 'ETF details reflect the latest provider data. Distribution yield and beta can change.'
+                : '— means the data provider does not report that figure for this instrument. Figures may be delayed.'}
             </Text>
           </ScrollView>
         </View>
@@ -339,6 +475,25 @@ const styles = StyleSheet.create({
   statCell: { width: '48.5%', minHeight: 58, borderWidth: 1, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 9, justifyContent: 'space-between' },
   statLabel: { fontFamily: 'Inter_500Medium', fontSize: 9, lineHeight: 13 },
   statValue: { fontFamily: 'Inter_700Bold', fontSize: 14, marginTop: 5 },
+  etfDetails: { gap: 18, marginTop: 21 },
+  etfSubsectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 },
+  etfSubsectionTitleBlock: { flex: 1 },
+  etfSubsectionCaption: { fontFamily: 'Inter_400Regular', fontSize: 9, lineHeight: 13, marginTop: 2 },
+  holdingsCard: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 11 },
+  holdingRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingVertical: 8 },
+  holdingIdentity: { flex: 1, minWidth: 0 },
+  holdingName: { fontFamily: 'Inter_600SemiBold', fontSize: 11 },
+  holdingSymbol: { fontFamily: 'Inter_500Medium', fontSize: 9, marginTop: 3 },
+  holdingWeight: { fontFamily: 'Inter_700Bold', fontSize: 12 },
+  etfEmptyText: { fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, paddingVertical: 11 },
+  regimeBadge: { maxWidth: '48%', borderWidth: 1, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 5 },
+  regimeBadgeText: { fontFamily: 'Inter_700Bold', fontSize: 9, textAlign: 'center' },
+  regimeGrid: { flexDirection: 'row', gap: 7 },
+  regimeCard: { flex: 1, minWidth: 0, borderWidth: 1, borderRadius: 12, paddingHorizontal: 9, paddingVertical: 10 },
+  regimeLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 9 },
+  regimeReturn: { fontFamily: 'Inter_700Bold', fontSize: 15, marginTop: 5 },
+  regimeSample: { fontFamily: 'Inter_400Regular', fontSize: 8, marginTop: 2 },
+  methodology: { fontFamily: 'Inter_400Regular', fontSize: 9, lineHeight: 13, marginTop: 8 },
   errorPanel: { borderWidth: 1, borderRadius: 11, padding: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 9 },
   errorText: { flex: 1, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 14 },
   retryButton: { minHeight: 28, borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 4 },

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  formatHeatMapRegimeReturn,
   getHeatMapDetailStatRows,
   getHeatMapRangePosition,
   parseHeatMapDetailStats,
@@ -172,6 +173,7 @@ test('ETF detail rows show investor-relevant fund facts instead of stock fundame
 
   assert.deepEqual(getHeatMapDetailStatRows('etf', stats, null, false), [
     { label: 'Fund category', value: 'Large Blend' },
+    { label: 'Fund family', value: 'Example Funds' },
     { label: 'Largest sector exposure', value: 'Technology · 40.45%' },
     { label: 'Expense ratio', value: '0.0945%' },
     { label: 'Annual cost per $10K', value: '$9.45' },
@@ -188,6 +190,7 @@ test('ETF detail rows clearly distinguish loading from unavailable provider data
     getHeatMapDetailStatRows('etf', null, null, true),
     [
       { label: 'Fund category', value: 'Loading…' },
+      { label: 'Fund family', value: 'Loading…' },
       { label: 'Largest sector exposure', value: 'Loading…' },
       { label: 'Expense ratio', value: 'Loading…' },
       { label: 'Annual cost per $10K', value: 'Loading…' },

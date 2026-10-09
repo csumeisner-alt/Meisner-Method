@@ -26,6 +26,7 @@ import type {
   HealthStatus,
   HeatMapQuote,
   HeatMapResponse,
+  MarketInstrumentInfo,
   MarketPulseResponse,
   SearchStockSymbolsParams,
   StockAnalysis,
@@ -295,6 +296,84 @@ export const useAnalyzeStock = <TError = ErrorType<AnalysisError>,
       return useMutation(getAnalyzeStockMutationOptions(options));
     }
 
+export const getGetStockInfoUrl = (symbol: string,) => {
+
+
+
+
+  return `/api/stocks/info/${symbol}`
+}
+
+/**
+ * Returns provider-backed quote statistics and, for ETFs, fund facts and historical market-regime comparisons.
+ * @summary Get market detail statistics for a symbol
+ */
+export const getStockInfo = async (symbol: string, options?: RequestInit): Promise<MarketInstrumentInfo> => {
+
+  return customFetch<MarketInstrumentInfo>(getGetStockInfoUrl(symbol),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStockInfoQueryKey = (symbol: string,) => {
+    return [
+    `/api/stocks/info/${symbol}`
+    ] as const;
+    }
+
+
+export const getGetStockInfoQueryOptions = <TData = Awaited<ReturnType<typeof getStockInfo>>, TError = ErrorType<AnalysisError>>(symbol: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStockInfo>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStockInfoQueryKey(symbol);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStockInfo>>> = ({ signal }) => getStockInfo(symbol, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: symbol !== null && symbol !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStockInfo>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetStockInfoQueryResult = NonNullable<Awaited<ReturnType<typeof getStockInfo>>>
+export type GetStockInfoQueryError = ErrorType<AnalysisError>
+
+
+/**
+ * @summary Get market detail statistics for a symbol
+ */
+
+export function useGetStockInfo<TData = Awaited<ReturnType<typeof getStockInfo>>, TError = ErrorType<AnalysisError>>(
+ symbol: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStockInfo>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetStockInfoQueryOptions(symbol,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getGetMarketBreadthUrl = () => {
 
 
@@ -382,7 +461,7 @@ export const getGetMarketPulseUrl = () => {
 }
 
 /**
- * Returns the daily percentage change and quote timestamp for Yahoo Finance's Dow Jones U.S. Total Stock Market Index (^DWCF). The index price is not returned.
+ * Returns the daily percentage change and quote timestamp for Yahoo Finance's Dow Jones U.S. Total Stock Market Index (^DWCF), plus whether the official XNYS regular session is open. The index price is not returned.
  * @summary Get the total-market daily move
  */
 export const getMarketPulse = async ( options?: RequestInit): Promise<MarketPulseResponse> => {

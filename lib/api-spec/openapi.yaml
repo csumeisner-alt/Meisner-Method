@@ -92,6 +92,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AnalysisError"
+  /stocks/info/{symbol}:
+    get:
+      operationId: getStockInfo
+      tags: [stocks]
+      summary: Get market detail statistics for a symbol
+      description: Returns provider-backed quote statistics and, for ETFs, fund facts and historical market-regime comparisons.
+      parameters:
+        - in: path
+          name: symbol
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 15
+      responses:
+        "200":
+          description: Market detail statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketInstrumentInfo"
+        "400":
+          description: Symbol is missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "422":
+          description: Provider data is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
   /stocks/market-breadth:
     get:
       operationId: getMarketBreadth
@@ -466,6 +499,229 @@ components:
         - fundamental
         - behavioral
         - recommendation
+
+    MarketInstrumentInfo:
+      type: object
+      properties:
+        symbol:
+          type: string
+        companyName:
+          type: string
+        sector:
+          type: string
+        industry:
+          type: string
+        exchange:
+          type: string
+        dividendYield:
+          type: number
+          nullable: true
+          description: Distribution yield as a decimal fraction (0.01 = 1%).
+        dividendRate:
+          type: number
+          nullable: true
+        marketCap:
+          type: number
+          nullable: true
+        currentPrice:
+          type: number
+        previousClose:
+          type: number
+          nullable: true
+        open:
+          type: number
+          nullable: true
+        dayLow:
+          type: number
+          nullable: true
+        dayHigh:
+          type: number
+          nullable: true
+        fiftyTwoWeekLow:
+          type: number
+          nullable: true
+        fiftyTwoWeekHigh:
+          type: number
+          nullable: true
+        volume:
+          type: number
+          nullable: true
+        averageVolume3Month:
+          type: number
+          nullable: true
+        beta:
+          type: number
+          nullable: true
+        earningsTimestamp:
+          type: number
+          nullable: true
+        targetMeanPrice:
+          type: number
+          nullable: true
+        trailingEps:
+          type: number
+          nullable: true
+        totalRevenue:
+          type: number
+          nullable: true
+        circulatingSupply:
+          type: number
+          nullable: true
+        maxSupply:
+          type: number
+          nullable: true
+        volume24Hr:
+          type: number
+          nullable: true
+        etfProfile:
+          $ref: "#/components/schemas/EtfProfile"
+      required:
+        - symbol
+        - companyName
+        - sector
+        - industry
+        - exchange
+        - dividendYield
+        - dividendRate
+        - marketCap
+        - currentPrice
+        - previousClose
+        - open
+        - dayLow
+        - dayHigh
+        - fiftyTwoWeekLow
+        - fiftyTwoWeekHigh
+        - volume
+        - averageVolume3Month
+        - beta
+        - earningsTimestamp
+        - targetMeanPrice
+        - trailingEps
+        - totalRevenue
+        - circulatingSupply
+        - maxSupply
+        - volume24Hr
+
+    EtfProfile:
+      type: object
+      description: Provider-reported fund facts, present for ETFs. Ratios and weights are decimal fractions.
+      properties:
+        fundCategory:
+          type: string
+          nullable: true
+        fundFamily:
+          type: string
+          nullable: true
+        expenseRatio:
+          type: number
+          nullable: true
+          description: Annual expense ratio as a decimal fraction (0.001 = 0.1%).
+        totalAssets:
+          type: number
+          nullable: true
+          description: Fund assets under management in USD.
+        dividendYield:
+          type: number
+          nullable: true
+        beta3Year:
+          type: number
+          nullable: true
+        largestSector:
+          type: string
+          nullable: true
+        largestSectorWeight:
+          type: number
+          nullable: true
+        topHoldings:
+          type: array
+          items:
+            $ref: "#/components/schemas/EtfHolding"
+        marketRegime:
+          allOf:
+            - $ref: "#/components/schemas/EtfMarketRegime"
+          nullable: true
+      required:
+        - fundCategory
+        - fundFamily
+        - expenseRatio
+        - totalAssets
+        - dividendYield
+        - beta3Year
+        - largestSector
+        - largestSectorWeight
+        - topHoldings
+        - marketRegime
+
+    EtfHolding:
+      type: object
+      properties:
+        symbol:
+          type: string
+        name:
+          type: string
+        weight:
+          type: number
+          description: Holding weight as a decimal fraction.
+      required:
+        - symbol
+        - name
+        - weight
+
+    EtfMarketRegime:
+      type: object
+      description: Historical comparison, not a forecast. Based on complete calendar-year adjusted total returns.
+      properties:
+        bestRegime:
+          type: string
+          enum: [bull, bear, mixed]
+          nullable: true
+        lookbackYears:
+          type: integer
+        firstYear:
+          type: integer
+        lastYear:
+          type: integer
+        benchmarkSymbol:
+          type: string
+        bullThreshold:
+          type: number
+          description: Minimum annual benchmark return for a bull year, as a decimal fraction.
+        bearThreshold:
+          type: number
+          description: Maximum annual benchmark return for a bear year, as a decimal fraction.
+        periods:
+          type: object
+          properties:
+            bull:
+              $ref: "#/components/schemas/EtfRegimePeriod"
+            bear:
+              $ref: "#/components/schemas/EtfRegimePeriod"
+            mixed:
+              $ref: "#/components/schemas/EtfRegimePeriod"
+          required: [bull, bear, mixed]
+      required:
+        - bestRegime
+        - lookbackYears
+        - firstYear
+        - lastYear
+        - benchmarkSymbol
+        - bullThreshold
+        - bearThreshold
+        - periods
+
+    EtfRegimePeriod:
+      type: object
+      properties:
+        averageAnnualReturn:
+          type: number
+          nullable: true
+          description: Arithmetic average of adjusted annual total returns.
+        years:
+          type: integer
+          description: Number of complete calendar years in this regime.
+      required:
+        - averageAnnualReturn
+        - years
 
     HeatMapQuote:
       type: object

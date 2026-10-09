@@ -68,10 +68,13 @@ def get_expense_ratio(info):
 
 
 def get_fund_yield(info):
-    value = finite_number(first_present(info, "yield", "dividendYield"))
-    if value is None or value < 0:
-        return None
-    return value / 100 if value > 0.5 else value
+    candidates = []
+    for key in ("yield", "dividendYield"):
+        value = finite_number(info.get(key))
+        if value is None or value < 0:
+            continue
+        candidates.append(value / 100 if value > 0.5 else value)
+    return next((value for value in candidates if value > 0), candidates[0] if candidates else None)
 
 
 def get_dominant_sector(sector_weightings):
@@ -289,15 +292,22 @@ def get_fund_data_details(ticker):
     except Exception:
         return None, []
 
-    sector_weightings = getattr(fund_data, "sector_weightings", None)
-    top_holdings_frame = getattr(fund_data, "top_holdings", None)
+    try:
+        sector_weightings = getattr(fund_data, "sector_weightings", None)
+    except Exception:
+        sector_weightings = None
+    try:
+        top_holdings_frame = getattr(fund_data, "top_holdings", None)
+    except Exception:
+        top_holdings_frame = None
     top_holdings = []
     if top_holdings_frame is not None and hasattr(top_holdings_frame, "iterrows"):
         try:
             for symbol, row in top_holdings_frame.head(5).iterrows():
+                raw_name = row.get("Name")
                 top_holdings.append({
                     "symbol": str(symbol),
-                    "name": row.get("Name") or str(symbol),
+                    "name": raw_name.strip() if isinstance(raw_name, str) and raw_name.strip() else str(symbol),
                     "weight": row.get("Holding Percent"),
                 })
         except Exception:

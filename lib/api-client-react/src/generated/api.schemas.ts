@@ -141,6 +141,99 @@ export interface StockAnalysis {
   recommendation: Recommendation;
 }
 
+export interface EtfHolding {
+  symbol: string;
+  name: string;
+  /** Holding weight as a decimal fraction. */
+  weight: number;
+}
+
+export type EtfMarketRegimeBestRegime = typeof EtfMarketRegimeBestRegime[keyof typeof EtfMarketRegimeBestRegime] | null;
+
+
+export const EtfMarketRegimeBestRegime = {
+  bull: 'bull',
+  bear: 'bear',
+  mixed: 'mixed',
+} as const;
+
+export interface EtfRegimePeriod {
+  /** Arithmetic average of adjusted annual total returns. */
+  averageAnnualReturn: number | null;
+  /** Number of complete calendar years in this regime. */
+  years: number;
+}
+
+export type EtfMarketRegimePeriods = {
+  bull: EtfRegimePeriod;
+  bear: EtfRegimePeriod;
+  mixed: EtfRegimePeriod;
+};
+
+/**
+ * Historical comparison, not a forecast. Based on complete calendar-year adjusted total returns.
+ */
+export interface EtfMarketRegime {
+  bestRegime: EtfMarketRegimeBestRegime;
+  lookbackYears: number;
+  firstYear: number;
+  lastYear: number;
+  benchmarkSymbol: string;
+  /** Minimum annual benchmark return for a bull year, as a decimal fraction. */
+  bullThreshold: number;
+  /** Maximum annual benchmark return for a bear year, as a decimal fraction. */
+  bearThreshold: number;
+  periods: EtfMarketRegimePeriods;
+}
+
+/**
+ * Provider-reported fund facts, present for ETFs. Ratios and weights are decimal fractions.
+ */
+export interface EtfProfile {
+  fundCategory: string | null;
+  fundFamily: string | null;
+  /** Annual expense ratio as a decimal fraction (0.001 = 0.1%). */
+  expenseRatio: number | null;
+  /** Fund assets under management in USD. */
+  totalAssets: number | null;
+  dividendYield: number | null;
+  beta3Year: number | null;
+  largestSector: string | null;
+  largestSectorWeight: number | null;
+  topHoldings: EtfHolding[];
+  marketRegime: EtfMarketRegime | null;
+}
+
+export interface MarketInstrumentInfo {
+  symbol: string;
+  companyName: string;
+  sector: string;
+  industry: string;
+  exchange: string;
+  /** Distribution yield as a decimal fraction (0.01 = 1%). */
+  dividendYield: number | null;
+  dividendRate: number | null;
+  marketCap: number | null;
+  currentPrice: number;
+  previousClose: number | null;
+  open: number | null;
+  dayLow: number | null;
+  dayHigh: number | null;
+  fiftyTwoWeekLow: number | null;
+  fiftyTwoWeekHigh: number | null;
+  volume: number | null;
+  averageVolume3Month: number | null;
+  beta: number | null;
+  earningsTimestamp: number | null;
+  targetMeanPrice: number | null;
+  trailingEps: number | null;
+  totalRevenue: number | null;
+  circulatingSupply: number | null;
+  maxSupply: number | null;
+  volume24Hr: number | null;
+  etfProfile?: EtfProfile;
+}
+
 /**
  * Adjusted total return for stocks/ETFs where supported, otherwise a price-return proxy.
  */

@@ -67,12 +67,12 @@ export type HeatMapDetailAssetType =
 
 interface StatDefinition {
   label: string;
-  key: keyof HeatMapDetailStats;
+  key: Exclude<keyof HeatMapDetailStats, 'etfProfile'>;
   format: 'price' | 'compact' | 'currency' | 'number' | 'date';
 }
 
 function numericField(value: unknown, key: string): number | null {
-  const candidate = (value as Record<string, unknown>)[key];
+  const candidate = record(value)?.[key];
   return typeof candidate === 'number' && Number.isFinite(candidate)
     ? candidate
     : null;
@@ -251,6 +251,7 @@ function getEtfStatRows(
   const expenseRatio = profile?.expenseRatio;
   return [
     { label: 'Fund category', value: profile?.fundCategory ?? absentValue },
+    { label: 'Fund family', value: profile?.fundFamily ?? absentValue },
     {
       label: 'Largest sector exposure',
       value: profile?.largestSector
