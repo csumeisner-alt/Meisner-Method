@@ -81,7 +81,8 @@ test("public market-pulse endpoint serves the persisted signal through a Yahoo o
 
 test("public market-pulse endpoint recovers the persisted signal after startup database and Yahoo outages", async () => {
   const rows = new Map<string, Record<string, unknown>>();
-  let failNextRead = false;
+  let databaseUnavailable = false;
+  let readAttempts = 0;
   const query = async (sql: string, values: unknown[] = []) => {
     if (sql.includes("INSERT INTO market_pulse_cache")) {
       const key = String(values[0]);
@@ -94,8 +95,8 @@ test("public market-pulse endpoint recovers the persisted signal after startup d
       return { rows: [row] };
     }
     if (sql.includes("SELECT change_percent")) {
-      if (failNextRead) {
-        failNextRead = false;
+      readAttempts += 1;
+      if (databaseUnavailable) {
         throw new Error("Temporary database read outage");
       }
       const row = rows.get(String(values[0]));
@@ -111,14 +112,14 @@ test("public market-pulse endpoint recovers the persisted signal after startup d
   };
   await createMarketPulseStore(query).write(savedSnapshot);
 
-  const restartTime = 1_800_000_000_000;
-  failNextRead = true;
+  let now = 1_800_000_000_000;
+  databaseUnavailable = true;
   let yahooAttempts = 0;
   let restoreFailures = 0;
   let restoredSnapshot: typeof savedSnapshot | null = null;
   const service = createMarketPulseService({
     store: createMarketPulseStore(query),
-    now: () => restartTime,
+    now: () => now,
     fetchSnapshot: async () => {
       yahooAttempts += 1;
       throw new Error("Yahoo is unavailable");
@@ -134,6 +135,7 @@ test("public market-pulse endpoint recovers the persisted signal after startup d
   await service.warm();
   assert.equal(restoreFailures, 1, "the startup database read failed");
   assert.equal(yahooAttempts, 1, "startup attempted a Yahoo refresh");
+  assert.equal(readAttempts, 1);
 
   const app = express();
   app.use(createMarketPulseRouter(service, async () => true));
@@ -143,10 +145,37 @@ test("public market-pulse endpoint recovers the persisted signal after startup d
     const address = server.address();
     assert.ok(address && typeof address !== "string");
 
-    const response = await fetch(`http://127.0.0.1:${address.port}/stocks/market-pulse`);
-    assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { ...savedSnapshot, marketOpen: true });
+    const url = `http://127.0.0.1:${address.port}/stocks/market-pulse`;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const response = await fetch(url);
+      assert.equal(response.status, 422);
+    }
+    assert.equal(readAttempts, 1, "requests during backoff do not repeat the database read");
+    assert.equal(yahooAttempts, 1, "requests during backoff do not repeat the Yahoo refresh");
+
+    now += 999;
+    const beforeRetryWindow = await fetch(url);
+    assert.equal(beforeRetryWindow.status, 422);
+    assert.equal(readAttempts, 1, "the first retry waits for its backoff window");
+
+    now += 1;
+    const secondFailure = await fetch(url);
+    assert.equal(secondFailure.status, 422);
+    assert.equal(readAttempts, 2, "the database is retried after the first window");
+    assert.equal(yahooAttempts, 2, "Yahoo is retried after its first backoff window");
+
+    now += 1_999;
+    const beforeSecondRetryWindow = await fetch(url);
+    assert.equal(beforeSecondRetryWindow.status, 422);
+    assert.equal(readAttempts, 2, "the next retry uses a longer backoff");
+
+    now += 1;
+    databaseUnavailable = false;
+    const recovered = await fetch(url);
+    assert.equal(recovered.status, 200);
+    assert.deepEqual(await recovered.json(), { ...savedSnapshot, marketOpen: true });
     assert.deepEqual(restoredSnapshot, savedSnapshot);
+    assert.equal(readAttempts, 3, "storage recovery is detected after the retry window");
   } finally {
     server.close();
     await once(server, "close");

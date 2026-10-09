@@ -20,6 +20,12 @@ interface MarketPulseServiceOptions {
 }
 
 const MARKET_PULSE_TTL = 60 * 1000;
+const RETRY_BASE_DELAY_MS = 1_000;
+const RETRY_MAX_DELAY_MS = 30 * 1000;
+
+function retryDelay(failures: number): number {
+  return Math.min(RETRY_BASE_DELAY_MS * 2 ** (failures - 1), RETRY_MAX_DELAY_MS);
+}
 
 export function createMarketPulseService({
   fetchSnapshot,
@@ -34,9 +40,17 @@ export function createMarketPulseService({
   let cache: { data: MarketPulseResponse; ts: number } | null = null;
   let refreshRequest: Promise<MarketPulseResponse> | null = null;
   let restoreRequest: Promise<void> | null = null;
+  let refreshFailures = 0;
+  let refreshRetryAt = 0;
+  let lastRefreshError: unknown;
+  let restoreFailures = 0;
+  let restoreRetryAt = 0;
 
   function refresh(logFailure: boolean): Promise<MarketPulseResponse> {
     if (refreshRequest) return refreshRequest;
+    if (now() < refreshRetryAt) {
+      return Promise.reject(lastRefreshError ?? new Error("Market-pulse refresh is in backoff"));
+    }
     const request = (async () => {
       const raw = await fetchSnapshot();
       if (!isMarketPulseResponse(raw)) {
@@ -61,9 +75,15 @@ export function createMarketPulseService({
     void request.then(
       () => {
         if (refreshRequest === request) refreshRequest = null;
+        refreshFailures = 0;
+        refreshRetryAt = 0;
+        lastRefreshError = undefined;
       },
       (err: unknown) => {
         if (refreshRequest === request) refreshRequest = null;
+        refreshFailures += 1;
+        refreshRetryAt = now() + retryDelay(refreshFailures);
+        lastRefreshError = err;
         if (logFailure) onRefreshFailure?.(err);
       },
     );
@@ -72,9 +92,12 @@ export function createMarketPulseService({
 
   function restore(): Promise<void> {
     if (restoreRequest) return restoreRequest;
+    if (now() < restoreRetryAt) return Promise.resolve();
     let request: Promise<void>;
     request = store.read()
       .then((data) => {
+        restoreFailures = 0;
+        restoreRetryAt = 0;
         if (data && !cache) {
           // Make restored data eligible for refresh without changing its
           // provider timestamps; a restart must not make an old quote look new.
@@ -84,6 +107,8 @@ export function createMarketPulseService({
       })
       .catch((err: unknown) => {
         onRestoreFailure?.(err);
+        restoreFailures += 1;
+        restoreRetryAt = now() + retryDelay(restoreFailures);
         if (restoreRequest === request) restoreRequest = null;
       });
     restoreRequest = request;
