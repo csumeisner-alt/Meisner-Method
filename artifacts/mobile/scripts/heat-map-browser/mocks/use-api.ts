@@ -1,19 +1,40 @@
 import { initializeHeatMapBrowserState } from "./api-client-react";
 
-async function mockApiFetch<T>(url: string): Promise<T> {
+async function mockApiFetch<T>(url: string, options?: RequestInit): Promise<T> {
   if (url.startsWith("/api/stocks/info/")) {
     const state = initializeHeatMapBrowserState();
     state.detailRequests.push(url);
+    const signal = options?.signal ?? null;
+    state.detailRequestSignals.push({ url, signal });
     const response = state.detailResponses.shift();
     if (response?.type === "reject") throw new Error("Mock market statistics request failed.");
     if (response?.type === "resolve") return response.payload as T;
     if (response?.type === "defer") {
       return new Promise<T>((resolve, reject) => {
-        state.pendingDetailRequests.push({
+        let abort = () => {};
+        const pending = {
           url,
-          resolve: (payload) => resolve(payload as T),
-          reject,
-        });
+          signal,
+          resolve: (payload: unknown) => {
+            signal?.removeEventListener("abort", abort);
+            resolve(payload as T);
+          },
+          reject: (error: Error) => {
+            signal?.removeEventListener("abort", abort);
+            reject(error);
+          },
+        };
+        abort = () => {
+          const pendingIndex = state.pendingDetailRequests.indexOf(pending);
+          if (pendingIndex !== -1) state.pendingDetailRequests.splice(pendingIndex, 1);
+          pending.reject(new DOMException("The operation was aborted.", "AbortError"));
+        };
+        if (signal?.aborted) {
+          abort();
+          return;
+        }
+        signal?.addEventListener("abort", abort, { once: true });
+        state.pendingDetailRequests.push(pending);
       });
     }
   }

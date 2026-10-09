@@ -399,11 +399,21 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       `window.__heatMapBrowserTest.pendingDetailRequests.some((request) => request.url.endsWith("/OTHER_SECTOR"))`,
       "The first instrument's statistics response should remain pending.",
     );
+    assert.equal(
+      await browser.evaluate(`window.__heatMapBrowserTest.detailRequestSignals.findLast((request) => request.url.endsWith("/OTHER_SECTOR"))?.signal?.aborted`),
+      false,
+      "A market statistics request should receive an active abort signal while its detail card is open.",
+    );
     await clickTestID(browser, "heat-map-detail-close");
     await waitFor(
       (expression) => browser.evaluate(expression),
       `!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
       "The first instrument should close while its statistics request is pending.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.detailRequestSignals.findLast((request) => request.url.endsWith("/OTHER_SECTOR"))?.signal?.aborted`,
+      "Closing a detail card should abort its outstanding statistics request.",
     );
     await clickTestID(browser, "heat-map-open-detail-OTHER_EXCHANGE");
     await waitFor(
@@ -415,11 +425,6 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-price"))})?.textContent`),
       "$234.56",
       "The second instrument's current quote should be visible while the older request is pending.",
-    );
-    assert.equal(
-      await browser.evaluate(`window.__heatMapBrowserTest.resolvePendingDetailRequest("/api/stocks/info/OTHER_SECTOR", { previousClose: 101, marketCap: 1_000_000_000 })`),
-      true,
-      "The test should deliver the first instrument's delayed statistics response.",
     );
     await delay(120);
     assert.equal(
@@ -463,11 +468,21 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       `window.__heatMapBrowserTest.pendingDetailRequests.some((request) => request.url.endsWith("/OTHER_COMBINATION"))`,
       "The first statistics request should remain pending before changing instruments.",
     );
+    assert.equal(
+      await browser.evaluate(`window.__heatMapBrowserTest.detailRequestSignals.findLast((request) => request.url.endsWith("/OTHER_COMBINATION"))?.signal?.aborted`),
+      false,
+      "The pending statistics request should have an active signal before closing its detail card.",
+    );
     await clickTestID(browser, "heat-map-detail-close");
     await waitFor(
       (expression) => browser.evaluate(expression),
       `!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
       "The first instrument should close while its statistics request is pending.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.detailRequestSignals.findLast((request) => request.url.endsWith("/OTHER_COMBINATION"))?.signal?.aborted`,
+      "Closing the detail card should abort the previous instrument's statistics request.",
     );
     await clickTestID(browser, "heat-map-open-detail-OTHER_RISK");
     await waitFor(
@@ -479,11 +494,6 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-price"))})?.textContent`),
       "$345.67",
       "The newly selected instrument's quote should be visible before the old request fails.",
-    );
-    assert.equal(
-      await browser.evaluate(`window.__heatMapBrowserTest.rejectPendingDetailRequest("/api/stocks/info/OTHER_COMBINATION")`),
-      true,
-      "The test should reject the first instrument's delayed statistics request.",
     );
     await delay(120);
     assert.equal(

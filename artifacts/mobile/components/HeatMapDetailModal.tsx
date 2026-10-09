@@ -270,7 +270,10 @@ export function HeatMapDetailModal({
     }
 
     setLoading(true);
-    void apiFetch<unknown>(`/api/stocks/info/${encodeURIComponent(quote.symbol)}`)
+    const controller = new AbortController();
+    void apiFetch<unknown>(`/api/stocks/info/${encodeURIComponent(quote.symbol)}`, {
+      signal: controller.signal,
+    })
       .then((payload) => {
         const parsed = parseHeatMapDetailStats(payload);
         if (!parsed) throw new Error('Unexpected market detail response');
@@ -285,13 +288,16 @@ export function HeatMapDetailModal({
         }
       })
       .catch(() => {
-        if (isCurrent) setLoadError(true);
+        if (isCurrent && !controller.signal.aborted) setLoadError(true);
       })
       .finally(() => {
         if (isCurrent) setLoading(false);
       });
 
-    return () => { isCurrent = false; };
+    return () => {
+      isCurrent = false;
+      controller.abort();
+    };
   }, [apiFetch, quote?.symbol, retryCount, visible]);
 
   if (!quote) return null;

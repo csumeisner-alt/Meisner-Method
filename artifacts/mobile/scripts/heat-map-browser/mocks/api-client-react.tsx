@@ -36,9 +36,11 @@ interface HeatMapBrowserState {
   requests: Record<string, unknown>[];
   refetches: Record<string, unknown>[];
   detailRequests: string[];
+  detailRequestSignals: { url: string; signal: AbortSignal | null }[];
   detailResponses: ({ type: "reject" } | { type: "resolve"; payload: unknown } | { type: "defer" })[];
   pendingDetailRequests: {
     url: string;
+    signal: AbortSignal | null;
     resolve: (payload: unknown) => void;
     reject: (error: Error) => void;
   }[];
@@ -149,6 +151,7 @@ export function initializeHeatMapBrowserState(): HeatMapBrowserState {
     requests: [],
     refetches: [],
     detailRequests: [],
+    detailRequestSignals: [],
     detailResponses: [],
     pendingDetailRequests: [],
     refetchFailuresRemaining: 0,
