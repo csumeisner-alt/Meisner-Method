@@ -3,7 +3,10 @@
 import sys
 import json
 import math
+import re
 from datetime import datetime, timezone
+from urllib.parse import quote, urlencode
+from urllib.request import Request, urlopen
 import yfinance as yf
 
 SECTOR_LABELS = {
@@ -20,6 +23,8 @@ SECTOR_LABELS = {
     "healthcare": "Healthcare",
 }
 REGIME_NAMES = ("bull", "bear", "mixed")
+COINPAPRIKA_API_ROOT = "https://api.coinpaprika.com/v1"
+COINPAPRIKA_TIMEOUT_SECONDS = 2.0
 
 
 def clean_nan(obj):
@@ -67,6 +72,144 @@ def get_max_supply_status(info):
     if max_supply is None or max_supply < 0:
         return "unreported"
     return "uncapped" if max_supply == 0 else "capped"
+
+
+def normalize_crypto_name(value):
+    if not isinstance(value, str):
+        return ""
+    name = re.sub(r"\s+(?:USD|US DOLLAR)$", "", value.strip(), flags=re.IGNORECASE)
+    return re.sub(r"[^a-z0-9]", "", name.casefold())
+
+
+def choose_coinpaprika_coin_id(symbol, yahoo_name, search_result):
+    """Choose an exact, active CoinPaprika symbol match without guessing."""
+    base_symbol = str(symbol or "").upper().split("-", 1)[0].strip()
+    currencies = search_result.get("currencies") if isinstance(search_result, dict) else None
+    if not base_symbol or not isinstance(currencies, list):
+        return None
+
+    exact_matches = [
+        coin for coin in currencies
+        if isinstance(coin, dict)
+        and str(coin.get("symbol") or "").strip().upper() == base_symbol
+        and coin.get("is_active") is not False
+        and isinstance(coin.get("id"), str)
+        and coin["id"].strip()
+    ]
+    if len(exact_matches) == 1:
+        return exact_matches[0]["id"].strip()
+
+    normalized_name = normalize_crypto_name(yahoo_name)
+    name_matches = [
+        coin for coin in exact_matches
+        if normalized_name
+        and normalize_crypto_name(coin.get("name")) == normalized_name
+    ]
+    return name_matches[0]["id"].strip() if len(name_matches) == 1 else None
+
+
+def fetch_coinpaprika_json(url):
+    """Fetch a small CoinPaprika response; provider outages never fail the detail card."""
+    request = Request(
+        url,
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "MeisnerMethod/1.0",
+        },
+    )
+    try:
+        with urlopen(request, timeout=COINPAPRIKA_TIMEOUT_SECONDS) as response:
+            if getattr(response, "status", 200) != 200:
+                return None
+            body = response.read(256 * 1024)
+        return json.loads(body.decode("utf-8"))
+    except Exception:
+        return None
+
+
+def fetch_coinpaprika_max_supply(symbol, info):
+    """Look up a matching CoinPaprika asset and return only a positive reported cap."""
+    if str(info.get("quoteType") or "").strip().upper() != "CRYPTOCURRENCY":
+        return None
+
+    base_symbol = str(symbol or "").upper().split("-", 1)[0].strip()
+    if not base_symbol:
+        return None
+    search_query = urlencode({
+        "q": base_symbol,
+        "c": "currencies",
+        "modifier": "symbol_search",
+        "limit": 50,
+    })
+    search_result = fetch_coinpaprika_json(
+        f"{COINPAPRIKA_API_ROOT}/search?{search_query}",
+    )
+    coin_id = choose_coinpaprika_coin_id(
+        base_symbol,
+        info.get("longName") or info.get("shortName"),
+        search_result,
+    )
+    if not coin_id:
+        return None
+
+    ticker = fetch_coinpaprika_json(
+        f"{COINPAPRIKA_API_ROOT}/tickers/{quote(coin_id, safe='')}",
+    )
+    if (
+        not isinstance(ticker, dict)
+        or ticker.get("id") != coin_id
+        or str(ticker.get("symbol") or "").strip().upper() != base_symbol
+    ):
+        return None
+
+    raw_max_supply = ticker.get("max_supply")
+    if isinstance(raw_max_supply, bool):
+        return None
+    max_supply = finite_number(raw_max_supply)
+    # CoinPaprika documents unavailable values as empty. Do not infer "uncapped"
+    # from a zero or missing secondary-provider value.
+    return max_supply if max_supply is not None and max_supply > 0 else None
+
+
+def resolve_max_supply(info, secondary_max_supply=None):
+    """Prefer Yahoo's explicit report, fall back to a positive CoinPaprika cap.
+
+    A disagreement is surfaced separately so callers can preserve the primary
+    value while warning users not to treat the circulating-share calculation
+    as settled.
+    """
+    yahoo_status = get_max_supply_status(info)
+    yahoo_value = info.get("maxSupply")
+    if isinstance(yahoo_value, bool):
+        yahoo_value = None
+    yahoo_supply = finite_number(yahoo_value)
+    if yahoo_status == "capped" and (yahoo_supply is None or yahoo_supply <= 0):
+        yahoo_status = "unreported"
+    elif yahoo_status == "uncapped":
+        yahoo_supply = 0
+
+    if isinstance(secondary_max_supply, bool):
+        secondary_max_supply = None
+    secondary_supply = finite_number(secondary_max_supply)
+    if secondary_supply is None or secondary_supply <= 0:
+        secondary_supply = None
+
+    if yahoo_status in ("capped", "uncapped"):
+        conflict = secondary_supply is not None and (
+            yahoo_status == "uncapped"
+            or not math.isclose(
+                yahoo_supply,
+                secondary_supply,
+                rel_tol=1e-6,
+                abs_tol=1e-8,
+            )
+        )
+        return yahoo_supply, yahoo_status, "Yahoo Finance", conflict
+
+    if secondary_supply is not None:
+        return secondary_supply, "capped", "CoinPaprika", False
+
+    return None, "unreported", None, False
 
 
 def get_expense_ratio(info):
@@ -245,7 +388,12 @@ def build_etf_profile_payload(
     }
 
 
-def build_info_brief_payload(symbol, info, etf_profile=None):
+def build_info_brief_payload(
+    symbol,
+    info,
+    etf_profile=None,
+    secondary_max_supply=None,
+):
     """Project provider fields used by market detail cards and paper trading."""
     name = info.get("longName") or info.get("shortName") or ""
     price = (
@@ -264,6 +412,9 @@ def build_info_brief_payload(symbol, info, etf_profile=None):
         div_yield_raw = 0
     div_yield = div_yield_raw / 100 if div_yield_raw > 0.5 else div_yield_raw
 
+    max_supply, max_supply_status, max_supply_source, max_supply_conflict = (
+        resolve_max_supply(info, secondary_max_supply)
+    )
     payload = {
         "symbol": symbol,
         "companyName": name,
@@ -292,8 +443,10 @@ def build_info_brief_payload(symbol, info, etf_profile=None):
         "trailingEps": info.get("trailingEps"),
         "totalRevenue": info.get("totalRevenue"),
         "circulatingSupply": info.get("circulatingSupply"),
-        "maxSupply": info.get("maxSupply"),
-        "maxSupplyStatus": get_max_supply_status(info),
+        "maxSupply": max_supply,
+        "maxSupplyStatus": max_supply_status,
+        "maxSupplySource": max_supply_source,
+        "maxSupplyConflict": max_supply_conflict,
         "volume24Hr": info.get("volume24Hr"),
     }
     if etf_profile is not None:
@@ -376,8 +529,14 @@ def main():
                 market_regime,
             )
 
+        secondary_max_supply = fetch_coinpaprika_max_supply(symbol, info)
         print(json.dumps(clean_nan(
-            build_info_brief_payload(symbol, info, etf_profile),
+            build_info_brief_payload(
+                symbol,
+                info,
+                etf_profile,
+                secondary_max_supply,
+            ),
         ), allow_nan=False))
 
     except Exception as e:

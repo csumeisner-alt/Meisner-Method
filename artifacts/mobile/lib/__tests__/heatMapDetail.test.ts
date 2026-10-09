@@ -26,6 +26,8 @@ test('heat-map detail stats accept finite provider numbers and ignore invalid va
     circulatingSupply: 19_800_000,
     maxSupply: 21_000_000,
     maxSupplyStatus: 'capped',
+    maxSupplySource: null,
+    maxSupplyConflict: false,
     volume24Hr: 18_400_000_000,
     etfProfile: null,
   }), {
@@ -46,6 +48,8 @@ test('heat-map detail stats accept finite provider numbers and ignore invalid va
     circulatingSupply: 19_800_000,
     maxSupply: 21_000_000,
     maxSupplyStatus: 'capped',
+    maxSupplySource: null,
+    maxSupplyConflict: false,
     volume24Hr: 18_400_000_000,
     etfProfile: null,
   });
@@ -76,6 +80,8 @@ test('heat-map detail stats reject non-object payloads and non-finite provider v
     circulatingSupply: null,
     maxSupply: null,
     maxSupplyStatus: 'unreported',
+    maxSupplySource: null,
+    maxSupplyConflict: false,
     volume24Hr: null,
     etfProfile: null,
   });
@@ -156,6 +162,46 @@ test('crypto detail labels explicitly uncapped supply without a numerical maximu
       .find(({ label }) => label === 'Max Supply')?.value,
     'No fixed cap',
   );
+});
+
+test('crypto detail displays the confirmed maximum-supply source', () => {
+  const stats = parseHeatMapDetailStats({
+    circulatingSupply: 19_800_000,
+    maxSupply: 21_000_000,
+    maxSupplyStatus: 'capped',
+    maxSupplySource: 'CoinPaprika',
+  });
+  const rows = getHeatMapDetailStatRows('cryptocurrency', stats, null, false);
+
+  assert.deepEqual(
+    rows.find(({ label }) => label === 'Max Supply'),
+    {
+      label: 'Max Supply',
+      value: '21M',
+      detail: 'Source: CoinPaprika',
+    },
+  );
+});
+
+test('crypto detail flags conflicting reports and omits a disputed circulating share', () => {
+  const stats = parseHeatMapDetailStats({
+    circulatingSupply: 19_800_000,
+    maxSupply: 21_000_000,
+    maxSupplyStatus: 'capped',
+    maxSupplySource: 'Yahoo Finance',
+    maxSupplyConflict: true,
+  });
+  const rows = getHeatMapDetailStatRows('cryptocurrency', stats, null, false);
+
+  assert.deepEqual(
+    rows.find(({ label }) => label === 'Max Supply'),
+    {
+      label: 'Max Supply',
+      value: '21M',
+      detail: 'Sources disagree; showing Yahoo Finance.',
+    },
+  );
+  assert.equal(rows.some(({ label }) => label === 'Circulating share'), false);
 });
 
 test('crypto detail does not infer uncapped supply from a missing status or zero alone', () => {

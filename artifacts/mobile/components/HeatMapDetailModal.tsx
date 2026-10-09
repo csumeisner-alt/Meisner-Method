@@ -413,6 +413,15 @@ export function HeatMapDetailModal({
                     >
                       {item.value}
                     </Text>
+                    {item.detail && (
+                      <Text
+                        testID={`heat-map-detail-stat-detail-${item.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`}
+                        numberOfLines={2}
+                        style={[styles.statDetail, { color: colors.mutedForeground }]}
+                      >
+                        {item.detail}
+                      </Text>
+                    )}
                   </View>
                 ))}
               </View>
@@ -489,6 +498,7 @@ const styles = StyleSheet.create({
   statCell: { width: '48.5%', minHeight: 58, borderWidth: 1, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 9, justifyContent: 'space-between' },
   statLabel: { fontFamily: 'Inter_500Medium', fontSize: 9, lineHeight: 13 },
   statValue: { fontFamily: 'Inter_700Bold', fontSize: 14, marginTop: 5 },
+  statDetail: { fontFamily: 'Inter_400Regular', fontSize: 8, lineHeight: 10, marginTop: 4 },
   emptyStats: { fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15 },
   etfDetails: { gap: 18, marginTop: 21 },
   etfSubsectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 },

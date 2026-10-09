@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 import fetch_info_brief
 
@@ -20,6 +21,8 @@ class InfoBriefCryptoFieldTests(unittest.TestCase):
         self.assertEqual(payload["circulatingSupply"], 19_800_000)
         self.assertEqual(payload["maxSupply"], 21_000_000)
         self.assertEqual(payload["maxSupplyStatus"], "capped")
+        self.assertEqual(payload["maxSupplySource"], "Yahoo Finance")
+        self.assertFalse(payload["maxSupplyConflict"])
         self.assertEqual(payload["volume24Hr"], 18_400_000_000)
 
     def test_explicit_zero_max_supply_marks_crypto_as_uncapped(self):
@@ -34,6 +37,8 @@ class InfoBriefCryptoFieldTests(unittest.TestCase):
 
         self.assertEqual(payload["maxSupply"], 0)
         self.assertEqual(payload["maxSupplyStatus"], "uncapped")
+        self.assertEqual(payload["maxSupplySource"], "Yahoo Finance")
+        self.assertFalse(payload["maxSupplyConflict"])
 
     def test_unreported_crypto_supply_and_volume_remain_unavailable(self):
         payload = fetch_info_brief.build_info_brief_payload(
@@ -44,6 +49,8 @@ class InfoBriefCryptoFieldTests(unittest.TestCase):
         self.assertIsNone(payload["circulatingSupply"])
         self.assertIsNone(payload["maxSupply"])
         self.assertEqual(payload["maxSupplyStatus"], "unreported")
+        self.assertIsNone(payload["maxSupplySource"])
+        self.assertFalse(payload["maxSupplyConflict"])
         self.assertIsNone(payload["volume24Hr"])
 
     def test_invalid_max_supply_does_not_mark_crypto_as_uncapped(self):
@@ -53,6 +60,164 @@ class InfoBriefCryptoFieldTests(unittest.TestCase):
                     fetch_info_brief.get_max_supply_status(info),
                     "unreported",
                 )
+
+    def test_coinpaprika_fills_missing_max_supply_with_exact_coin_match(self):
+        search_result = {
+            "currencies": [
+                {
+                    "id": "xrp-ripple",
+                    "name": "Ripple",
+                    "symbol": "XRP",
+                    "is_active": True,
+                },
+                {
+                    "id": "xrp-other",
+                    "name": "Another XRP",
+                    "symbol": "XRP",
+                    "is_active": True,
+                },
+            ],
+        }
+        ticker_result = {
+            "id": "xrp-ripple",
+            "symbol": "XRP",
+            "max_supply": 100_000_000_000,
+        }
+        info = {
+            "quoteType": "CRYPTOCURRENCY",
+            "longName": "Ripple USD",
+        }
+        with patch.object(
+            fetch_info_brief,
+            "fetch_coinpaprika_json",
+            side_effect=[search_result, ticker_result],
+        ) as fetch_json:
+            secondary_max_supply = fetch_info_brief.fetch_coinpaprika_max_supply(
+                "XRP-USD",
+                info,
+            )
+
+        self.assertEqual(secondary_max_supply, 100_000_000_000)
+        self.assertIn("modifier=symbol_search", fetch_json.call_args_list[0].args[0])
+        self.assertIn("/tickers/xrp-ripple", fetch_json.call_args_list[1].args[0])
+
+    def test_coinpaprika_does_not_guess_between_ambiguous_symbol_matches(self):
+        with patch.object(
+            fetch_info_brief,
+            "fetch_coinpaprika_json",
+            return_value={
+                "currencies": [
+                    {"id": "abc-one", "name": "One", "symbol": "ABC", "is_active": True},
+                    {"id": "abc-two", "name": "Two", "symbol": "ABC", "is_active": True},
+                ],
+            },
+        ) as fetch_json:
+            result = fetch_info_brief.fetch_coinpaprika_max_supply(
+                "ABC-USD",
+                {"quoteType": "CRYPTOCURRENCY", "longName": "Unmatched USD"},
+            )
+
+        self.assertIsNone(result)
+        self.assertEqual(fetch_json.call_count, 1)
+
+    def test_coinpaprika_zero_or_missing_supply_is_not_treated_as_uncapped(self):
+        with patch.object(
+            fetch_info_brief,
+            "fetch_coinpaprika_json",
+            side_effect=[
+                {
+                    "currencies": [
+                        {
+                            "id": "eth-ethereum",
+                            "name": "Ethereum",
+                            "symbol": "ETH",
+                            "is_active": True,
+                        },
+                    ],
+                },
+                {
+                    "id": "eth-ethereum",
+                    "symbol": "ETH",
+                    "max_supply": 0,
+                },
+            ],
+        ):
+            result = fetch_info_brief.fetch_coinpaprika_max_supply(
+                "ETH-USD",
+                {"quoteType": "CRYPTOCURRENCY", "longName": "Ethereum USD"},
+            )
+
+        self.assertIsNone(result)
+
+    def test_non_crypto_symbols_do_not_query_coinpaprika(self):
+        with patch.object(fetch_info_brief, "fetch_coinpaprika_json") as fetch_json:
+            result = fetch_info_brief.fetch_coinpaprika_max_supply(
+                "AAPL",
+                {"quoteType": "EQUITY", "longName": "Apple Inc."},
+            )
+
+        self.assertIsNone(result)
+        fetch_json.assert_not_called()
+
+    def test_coinpaprika_fallback_is_labeled_when_yahoo_has_no_value(self):
+        payload = fetch_info_brief.build_info_brief_payload(
+            "BTC-USD",
+            {
+                "longName": "Bitcoin USD",
+                "currentPrice": 67_000,
+                "circulatingSupply": 19_800_000,
+                "maxSupply": None,
+            },
+            secondary_max_supply=21_000_000,
+        )
+
+        self.assertEqual(payload["maxSupply"], 21_000_000)
+        self.assertEqual(payload["maxSupplyStatus"], "capped")
+        self.assertEqual(payload["maxSupplySource"], "CoinPaprika")
+        self.assertFalse(payload["maxSupplyConflict"])
+
+    def test_conflicting_sources_keep_yahoo_and_flag_the_disagreement(self):
+        payload = fetch_info_brief.build_info_brief_payload(
+            "BTC-USD",
+            {
+                "longName": "Bitcoin USD",
+                "currentPrice": 67_000,
+                "maxSupply": 21_000_000,
+            },
+            secondary_max_supply=20_000_000,
+        )
+
+        self.assertEqual(payload["maxSupply"], 21_000_000)
+        self.assertEqual(payload["maxSupplyStatus"], "capped")
+        self.assertEqual(payload["maxSupplySource"], "Yahoo Finance")
+        self.assertTrue(payload["maxSupplyConflict"])
+
+    def test_conflicting_uncapped_report_is_not_overwritten_by_secondary_cap(self):
+        payload = fetch_info_brief.build_info_brief_payload(
+            "ETH-USD",
+            {
+                "longName": "Ethereum USD",
+                "maxSupply": 0,
+            },
+            secondary_max_supply=200_000_000,
+        )
+
+        self.assertEqual(payload["maxSupply"], 0)
+        self.assertEqual(payload["maxSupplyStatus"], "uncapped")
+        self.assertEqual(payload["maxSupplySource"], "Yahoo Finance")
+        self.assertTrue(payload["maxSupplyConflict"])
+
+    def test_secondary_absence_keeps_max_supply_unreported(self):
+        payload = fetch_info_brief.build_info_brief_payload(
+            "SOME-USD",
+            {"longName": "Some Coin USD"},
+            secondary_max_supply=0,
+        )
+
+        self.assertIsNone(payload["maxSupply"])
+        self.assertEqual(payload["maxSupplyStatus"], "unreported")
+        self.assertIsNone(payload["maxSupplySource"])
+        self.assertFalse(payload["maxSupplyConflict"])
 
 
 class InfoBriefEtfFieldTests(unittest.TestCase):

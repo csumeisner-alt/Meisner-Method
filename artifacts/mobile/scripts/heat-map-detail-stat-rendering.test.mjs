@@ -16,6 +16,7 @@ test('market detail modal builds and renders the selected asset-specific statist
   assert.match(modalSource, /displayedStats\.map\(\(item\) => \(/);
   assert.match(modalSource, /\{item\.label\}/);
   assert.match(modalSource, /\{item\.value\}/);
+  assert.match(modalSource, /\{item\.detail\}/);
   assert.match(modalSource, /<EtfAdditionalDetails/);
   assert.match(modalSource, /profile\.topHoldings\.map/);
   assert.match(modalSource, /regime\.periods\[/);

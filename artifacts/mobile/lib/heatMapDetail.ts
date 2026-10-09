@@ -16,6 +16,8 @@ export interface HeatMapDetailStats {
   circulatingSupply: number | null;
   maxSupply: number | null;
   maxSupplyStatus: 'capped' | 'uncapped' | 'unreported';
+  maxSupplySource: string | null;
+  maxSupplyConflict: boolean;
   volume24Hr: number | null;
   etfProfile: HeatMapEtfProfile | null;
 }
@@ -68,8 +70,17 @@ export type HeatMapDetailAssetType =
 
 interface StatDefinition {
   label: string;
-  key: Exclude<keyof HeatMapDetailStats, 'etfProfile' | 'maxSupplyStatus'>;
+  key: Exclude<
+    keyof HeatMapDetailStats,
+    'etfProfile' | 'maxSupplyStatus' | 'maxSupplySource' | 'maxSupplyConflict'
+  >;
   format: 'price' | 'compact' | 'currency' | 'number' | 'date';
+}
+
+export interface HeatMapDetailStatRow {
+  label: string;
+  value: string;
+  detail?: string;
 }
 
 function numericField(value: unknown, key: string): number | null {
@@ -182,6 +193,8 @@ export function parseHeatMapDetailStats(value: unknown): HeatMapDetailStats | nu
     circulatingSupply: numericField(value, 'circulatingSupply'),
     maxSupply: numericField(value, 'maxSupply'),
     maxSupplyStatus: maxSupplyStatusField(value),
+    maxSupplySource: stringField(value, 'maxSupplySource'),
+    maxSupplyConflict: record(value)?.maxSupplyConflict === true,
     volume24Hr: numericField(value, 'volume24Hr'),
     etfProfile: parseEtfProfile((value as Record<string, unknown>).etfProfile),
   };
@@ -331,7 +344,7 @@ export function getHeatMapDetailStatRows(
   stats: HeatMapDetailStats | null,
   marketCapFallback: number | null,
   loading: boolean,
-): { label: string; value: string }[] {
+): HeatMapDetailStatRow[] {
   if (assetType === 'etf') {
     return getEtfStatRows(stats?.etfProfile ?? null, loading);
   }
@@ -345,16 +358,33 @@ export function getHeatMapDetailStatRows(
   const rows = definitions.map(({ label, key, format }) => {
     if (key === 'maxSupply') {
       if (!stats) return { label, value: loading ? 'Loading…' : 'Unavailable' };
-      if (stats?.maxSupplyStatus === 'uncapped') return { label, value: 'No fixed cap' };
-
       const maxSupply = stats.maxSupply;
+      const hasConfirmedSupply = stats.maxSupplyStatus === 'uncapped'
+        || (
+          stats.maxSupplyStatus === 'capped'
+          && maxSupply !== null
+          && Number.isFinite(maxSupply)
+          && maxSupply > 0
+        );
+      const source = hasConfirmedSupply ? stats.maxSupplySource : null;
+      const detail = stats.maxSupplyConflict
+        && hasConfirmedSupply
+        ? `Sources disagree; showing ${source ?? 'the reported value'}.`
+        : source ? `Source: ${source}` : undefined;
+      const row = (value: string): HeatMapDetailStatRow => ({
+        label,
+        value,
+        ...(detail ? { detail } : {}),
+      });
+      if (stats.maxSupplyStatus === 'uncapped') return row('No fixed cap');
+
       if (
         stats.maxSupplyStatus === 'capped'
         && maxSupply !== null
         && Number.isFinite(maxSupply)
         && maxSupply > 0
       ) {
-        return { label, value: formatCompact(maxSupply) };
+        return row(formatCompact(maxSupply));
       }
       return { label, value: 'Not reported' };
     }
@@ -397,10 +427,12 @@ export function getHeatMapDetailStatRows(
 
   if (assetType !== 'cryptocurrency') return rows;
 
-  const circulatingShare = getCirculatingSupplySharePercent(
-    stats?.circulatingSupply ?? null,
-    stats?.maxSupply ?? null,
-  );
+  const circulatingShare = stats?.maxSupplyConflict
+    ? null
+    : getCirculatingSupplySharePercent(
+      stats?.circulatingSupply ?? null,
+      stats?.maxSupply ?? null,
+    );
   if (circulatingShare === null) return rows;
 
   const maxSupplyIndex = rows.findIndex(({ label }) => label === 'Max Supply');
