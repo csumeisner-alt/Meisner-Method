@@ -236,6 +236,25 @@ function formatPercent(decimal: number, signed = false) {
   return `${signed && percentage > 0 ? '+' : percentage < 0 ? '-' : ''}${formatted}%`;
 }
 
+function getCirculatingSupplySharePercent(
+  circulatingSupply: number | null,
+  maxSupply: number | null,
+): number | null {
+  if (
+    circulatingSupply === null
+    || maxSupply === null
+    || !Number.isFinite(circulatingSupply)
+    || !Number.isFinite(maxSupply)
+    || circulatingSupply <= 0
+    || maxSupply <= 0
+  ) {
+    return null;
+  }
+
+  const percentage = (circulatingSupply / maxSupply) * 100;
+  return Number.isFinite(percentage) ? percentage : null;
+}
+
 function formatDollars(value: number) {
   return `$${value.toLocaleString('en-US', {
     minimumFractionDigits: 2,
@@ -305,7 +324,7 @@ export function getHeatMapDetailStatRows(
     ? CRYPTO_STAT_DEFINITIONS
     : STOCK_STAT_DEFINITIONS;
 
-  return definitions.map(({ label, key, format }) => {
+  const rows = definitions.map(({ label, key, format }) => {
     const rawValue = key === 'marketCap'
       ? stats?.marketCap ?? marketCapFallback
       : stats?.[key] ?? null;
@@ -336,6 +355,21 @@ export function getHeatMapDetailStatRows(
         return { label, value: formatDate(rawValue) };
     }
   });
+
+  if (assetType !== 'cryptocurrency') return rows;
+
+  const circulatingShare = getCirculatingSupplySharePercent(
+    stats?.circulatingSupply ?? null,
+    stats?.maxSupply ?? null,
+  );
+  if (circulatingShare === null) return rows;
+
+  const maxSupplyIndex = rows.findIndex(({ label }) => label === 'Max Supply');
+  rows.splice(maxSupplyIndex + 1, 0, {
+    label: 'Circulating share',
+    value: formatPercent(circulatingShare / 100),
+  });
+  return rows;
 }
 
 export function formatHeatMapRegimeReturn(value: number | null): string {

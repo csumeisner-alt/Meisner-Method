@@ -92,9 +92,23 @@ test('crypto detail rows show supply and 24-hour volume instead of stock-only me
   assert.deepEqual(getHeatMapDetailStatRows('cryptocurrency', stats, null, false), [
     { label: 'Circulating Supply', value: '19.8M' },
     { label: 'Max Supply', value: '21M' },
+    { label: 'Circulating share', value: '94.29%' },
     { label: '24h Volume', value: '$18.4B' },
     { label: 'Market Cap', value: '$1.2T' },
   ]);
+});
+
+test('crypto detail shows 100% circulating when the full maximum supply is in circulation', () => {
+  const stats = parseHeatMapDetailStats({
+    circulatingSupply: 21_000_000,
+    maxSupply: 21_000_000,
+  });
+
+  assert.equal(
+    getHeatMapDetailStatRows('cryptocurrency', stats, null, false)
+      .find(({ label }) => label === 'Circulating share')?.value,
+    '100%',
+  );
 });
 
 test('crypto detail rows mark unsupported provider values unavailable and retain quote market cap', () => {
@@ -117,6 +131,24 @@ test('crypto detail rows mark unsupported provider values unavailable and retain
       { label: '24h Volume', value: 'Loading…' },
       { label: 'Market Cap', value: 'Loading…' },
     ],
+  );
+});
+
+test('crypto detail omits circulating share when the maximum supply is unavailable or unusable', () => {
+  for (const maxSupply of [null, 0, -1]) {
+    const stats = parseHeatMapDetailStats({ circulatingSupply: 1000, maxSupply });
+    assert.equal(
+      getHeatMapDetailStatRows('cryptocurrency', stats, null, false)
+        .some(({ label }) => label === 'Circulating share'),
+      false,
+    );
+  }
+
+  const noCirculatingSupply = parseHeatMapDetailStats({ maxSupply: 21_000_000 });
+  assert.equal(
+    getHeatMapDetailStatRows('cryptocurrency', noCirculatingSupply, null, false)
+      .some(({ label }) => label === 'Circulating share'),
+    false,
   );
 });
 
