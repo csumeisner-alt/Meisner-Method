@@ -25,6 +25,7 @@ test('heat-map detail stats accept finite provider numbers and ignore invalid va
     circulatingSupply: 19_800_000,
     maxSupply: 21_000_000,
     volume24Hr: 18_400_000_000,
+    etfProfile: null,
   }), {
     previousClose: 99,
     open: 100,
@@ -43,6 +44,7 @@ test('heat-map detail stats accept finite provider numbers and ignore invalid va
     circulatingSupply: 19_800_000,
     maxSupply: 21_000_000,
     volume24Hr: 18_400_000_000,
+    etfProfile: null,
   });
 });
 
@@ -71,6 +73,7 @@ test('heat-map detail stats reject non-object payloads and non-finite provider v
     circulatingSupply: null,
     maxSupply: null,
     volume24Hr: null,
+    etfProfile: null,
   });
 });
 
@@ -133,6 +136,78 @@ test('stock detail rows keep their stock-specific statistics', () => {
     'Revenue (TTM)',
   ]);
   assert.equal(rows.find(({ label }) => label === 'Beta')?.value, '1.23');
+});
+
+test('ETF detail rows show investor-relevant fund facts instead of stock fundamentals', () => {
+  const stats = parseHeatMapDetailStats({
+    beta: 1.2,
+    earningsTimestamp: 1_800_000_000,
+    trailingEps: 4.5,
+    etfProfile: {
+      fundCategory: 'Large Blend',
+      fundFamily: 'Example Funds',
+      expenseRatio: 0.000945,
+      totalAssets: 809_216_114_688,
+      dividendYield: 0.0099,
+      beta3Year: 1,
+      largestSector: 'Technology',
+      largestSectorWeight: 0.4045,
+      topHoldings: [{ symbol: 'NVDA', name: 'NVIDIA Corp', weight: 0.0836 }],
+      marketRegime: {
+        bestRegime: 'bull',
+        lookbackYears: 20,
+        firstYear: 2006,
+        lastYear: 2025,
+        benchmarkSymbol: 'SPY',
+        bullThreshold: 0.1,
+        bearThreshold: -0.1,
+        periods: {
+          bull: { averageAnnualReturn: 0.15, years: 10 },
+          bear: { averageAnnualReturn: -0.2, years: 2 },
+          mixed: { averageAnnualReturn: 0.04, years: 8 },
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(getHeatMapDetailStatRows('etf', stats, null, false), [
+    { label: 'Fund category', value: 'Large Blend' },
+    { label: 'Largest sector exposure', value: 'Technology · 40.45%' },
+    { label: 'Expense ratio', value: '0.0945%' },
+    { label: 'Annual cost per $10K', value: '$9.45' },
+    { label: 'Fund size (AUM)', value: '$809.22B' },
+    { label: 'Distribution yield', value: '0.99%' },
+    { label: '3-year beta', value: '1.00' },
+  ]);
+  assert.equal(stats?.etfProfile?.topHoldings[0]?.name, 'NVIDIA Corp');
+  assert.equal(stats?.etfProfile?.marketRegime?.bestRegime, 'bull');
+});
+
+test('ETF detail rows clearly distinguish loading from unavailable provider data', () => {
+  assert.deepEqual(
+    getHeatMapDetailStatRows('etf', null, null, true),
+    [
+      { label: 'Fund category', value: 'Loading…' },
+      { label: 'Largest sector exposure', value: 'Loading…' },
+      { label: 'Expense ratio', value: 'Loading…' },
+      { label: 'Annual cost per $10K', value: 'Loading…' },
+      { label: 'Fund size (AUM)', value: 'Loading…' },
+      { label: 'Distribution yield', value: 'Loading…' },
+      { label: '3-year beta', value: 'Loading…' },
+    ],
+  );
+
+  const stats = parseHeatMapDetailStats({ etfProfile: {} });
+  assert.deepEqual(
+    getHeatMapDetailStatRows('etf', stats, null, false).every(({ value }) => value === 'Not reported'),
+    true,
+  );
+});
+
+test('ETF market-regime returns have explicit signs and unavailable values stay blank', () => {
+  assert.equal(formatHeatMapRegimeReturn(0.125), '+12.5%');
+  assert.equal(formatHeatMapRegimeReturn(-0.1), '-10%');
+  assert.equal(formatHeatMapRegimeReturn(null), '—');
 });
 
 test('heat-map range marker is clamped and rejects unusable ranges', () => {

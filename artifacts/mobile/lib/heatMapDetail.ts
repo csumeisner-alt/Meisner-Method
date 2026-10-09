@@ -16,6 +16,46 @@ export interface HeatMapDetailStats {
   circulatingSupply: number | null;
   maxSupply: number | null;
   volume24Hr: number | null;
+  etfProfile: HeatMapEtfProfile | null;
+}
+
+export interface HeatMapEtfHolding {
+  symbol: string;
+  name: string;
+  weight: number;
+}
+
+export interface HeatMapEtfRegimePeriod {
+  averageAnnualReturn: number | null;
+  years: number;
+}
+
+export interface HeatMapEtfMarketRegime {
+  bestRegime: 'bull' | 'bear' | 'mixed' | null;
+  lookbackYears: number;
+  firstYear: number;
+  lastYear: number;
+  benchmarkSymbol: string;
+  bullThreshold: number;
+  bearThreshold: number;
+  periods: {
+    bull: HeatMapEtfRegimePeriod;
+    bear: HeatMapEtfRegimePeriod;
+    mixed: HeatMapEtfRegimePeriod;
+  };
+}
+
+export interface HeatMapEtfProfile {
+  fundCategory: string | null;
+  fundFamily: string | null;
+  expenseRatio: number | null;
+  totalAssets: number | null;
+  dividendYield: number | null;
+  beta3Year: number | null;
+  largestSector: string | null;
+  largestSectorWeight: number | null;
+  topHoldings: HeatMapEtfHolding[];
+  marketRegime: HeatMapEtfMarketRegime | null;
 }
 
 export type HeatMapDetailAssetType =
@@ -36,6 +76,81 @@ function numericField(value: unknown, key: string): number | null {
   return typeof candidate === 'number' && Number.isFinite(candidate)
     ? candidate
     : null;
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function stringField(value: unknown, key: string): string | null {
+  const candidate = record(value)?.[key];
+  return typeof candidate === 'string' && candidate.trim()
+    ? candidate.trim()
+    : null;
+}
+
+function parseRegimePeriod(value: unknown): HeatMapEtfRegimePeriod {
+  const input = record(value);
+  const years = input?.years;
+  return {
+    averageAnnualReturn: numericField(input, 'averageAnnualReturn'),
+    years: typeof years === 'number' && Number.isFinite(years) && years > 0
+      ? Math.floor(years)
+      : 0,
+  };
+}
+
+function parseEtfMarketRegime(value: unknown): HeatMapEtfMarketRegime | null {
+  const input = record(value);
+  const periods = record(input?.periods);
+  if (!input || !periods) return null;
+
+  const best = input.bestRegime;
+  return {
+    bestRegime: best === 'bull' || best === 'bear' || best === 'mixed' ? best : null,
+    lookbackYears: numericField(input, 'lookbackYears') ?? 0,
+    firstYear: numericField(input, 'firstYear') ?? 0,
+    lastYear: numericField(input, 'lastYear') ?? 0,
+    benchmarkSymbol: stringField(input, 'benchmarkSymbol') ?? 'SPY',
+    bullThreshold: numericField(input, 'bullThreshold') ?? 0.1,
+    bearThreshold: numericField(input, 'bearThreshold') ?? -0.1,
+    periods: {
+      bull: parseRegimePeriod(periods.bull),
+      bear: parseRegimePeriod(periods.bear),
+      mixed: parseRegimePeriod(periods.mixed),
+    },
+  };
+}
+
+function parseEtfProfile(value: unknown): HeatMapEtfProfile | null {
+  const input = record(value);
+  if (!input) return null;
+
+  const topHoldings = Array.isArray(input.topHoldings)
+    ? input.topHoldings.flatMap((holding): HeatMapEtfHolding[] => {
+      const symbol = stringField(holding, 'symbol');
+      const name = stringField(holding, 'name');
+      const weight = numericField(holding, 'weight');
+      return symbol && name && weight !== null && weight >= 0 && weight <= 1
+        ? [{ symbol, name, weight }]
+        : [];
+    })
+    : [];
+
+  return {
+    fundCategory: stringField(input, 'fundCategory'),
+    fundFamily: stringField(input, 'fundFamily'),
+    expenseRatio: numericField(input, 'expenseRatio'),
+    totalAssets: numericField(input, 'totalAssets'),
+    dividendYield: numericField(input, 'dividendYield'),
+    beta3Year: numericField(input, 'beta3Year'),
+    largestSector: stringField(input, 'largestSector'),
+    largestSectorWeight: numericField(input, 'largestSectorWeight'),
+    topHoldings,
+    marketRegime: parseEtfMarketRegime(input.marketRegime),
+  };
 }
 
 export function parseHeatMapDetailStats(value: unknown): HeatMapDetailStats | null {
@@ -59,6 +174,7 @@ export function parseHeatMapDetailStats(value: unknown): HeatMapDetailStats | nu
     circulatingSupply: numericField(value, 'circulatingSupply'),
     maxSupply: numericField(value, 'maxSupply'),
     volume24Hr: numericField(value, 'volume24Hr'),
+    etfProfile: parseEtfProfile((value as Record<string, unknown>).etfProfile),
   };
 }
 
@@ -109,12 +225,81 @@ const STOCK_STAT_DEFINITIONS: StatDefinition[] = [
   { label: 'Revenue (TTM)', key: 'totalRevenue', format: 'currency' },
 ];
 
+function formatPercent(decimal: number, signed = false) {
+  const percentage = decimal * 100;
+  const minimumFractionDigits = Math.abs(percentage) < 0.1 ? 2 : 0;
+  const maximumFractionDigits = Math.abs(percentage) < 0.1 ? 4 : 2;
+  const formatted = Math.abs(percentage).toLocaleString('en-US', {
+    minimumFractionDigits,
+    maximumFractionDigits,
+  });
+  return `${signed && percentage > 0 ? '+' : percentage < 0 ? '-' : ''}${formatted}%`;
+}
+
+function formatDollars(value: number) {
+  return `$${value.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function getEtfStatRows(
+  profile: HeatMapEtfProfile | null,
+  loading: boolean,
+): { label: string; value: string }[] {
+  const absentValue = loading && !profile ? 'Loading…' : 'Not reported';
+  const expenseRatio = profile?.expenseRatio;
+  return [
+    { label: 'Fund category', value: profile?.fundCategory ?? absentValue },
+    {
+      label: 'Largest sector exposure',
+      value: profile?.largestSector
+        ? `${profile.largestSector}${profile.largestSectorWeight === null ? '' : ` · ${formatPercent(profile.largestSectorWeight)}`}`
+        : absentValue,
+    },
+    {
+      label: 'Expense ratio',
+      value: expenseRatio === null || expenseRatio === undefined
+        ? absentValue
+        : formatPercent(expenseRatio),
+    },
+    {
+      label: 'Annual cost per $10K',
+      value: expenseRatio === null || expenseRatio === undefined
+        ? absentValue
+        : formatDollars(expenseRatio * 10_000),
+    },
+    {
+      label: 'Fund size (AUM)',
+      value: profile?.totalAssets === null || profile?.totalAssets === undefined
+        ? absentValue
+        : formatCompact(profile.totalAssets, true),
+    },
+    {
+      label: 'Distribution yield',
+      value: profile?.dividendYield === null || profile?.dividendYield === undefined
+        ? absentValue
+        : formatPercent(profile.dividendYield),
+    },
+    {
+      label: '3-year beta',
+      value: profile?.beta3Year === null || profile?.beta3Year === undefined
+        ? absentValue
+        : profile.beta3Year.toFixed(2),
+    },
+  ];
+}
+
 export function getHeatMapDetailStatRows(
   assetType: HeatMapDetailAssetType,
   stats: HeatMapDetailStats | null,
   marketCapFallback: number | null,
   loading: boolean,
 ): { label: string; value: string }[] {
+  if (assetType === 'etf') {
+    return getEtfStatRows(stats?.etfProfile ?? null, loading);
+  }
+
   const definitions = assetType === 'cryptocurrency'
     ? CRYPTO_STAT_DEFINITIONS
     : STOCK_STAT_DEFINITIONS;
@@ -150,6 +335,12 @@ export function getHeatMapDetailStatRows(
         return { label, value: formatDate(rawValue) };
     }
   });
+}
+
+export function formatHeatMapRegimeReturn(value: number | null): string {
+  return value === null || !Number.isFinite(value)
+    ? '—'
+    : formatPercent(value, true);
 }
 
 export function getHeatMapRangePosition(
