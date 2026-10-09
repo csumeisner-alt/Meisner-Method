@@ -95,7 +95,7 @@ test("heat-map loading reveals shuffled hexagons and respects reduced motion", (
 });
 
 test("loaded quote hexagons fade in with a randomized, reduced-motion-aware cascade", () => {
-  assert.match(screenSource, /getHeatMapRevealDelays\(tileSymbols\.length,\s*HEX_REVEAL_SPREAD_MS\)/);
+  assert.match(screenSource, /getHeatMapRevealDelays\(symbols\.length,\s*HEX_REVEAL_SPREAD_MS\)/);
   assert.match(screenSource, /revealDelayMs=\{revealDelayBySymbol\.get\(quote\.symbol\)\s*\?\?\s*0\}/);
   assert.match(screenSource, /withDelay\(\s*revealDelayMs,\s*withTiming\(1/);
   assert.match(screenSource, /duration:\s*HEX_REVEAL_DURATION_MS/);
