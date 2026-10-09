@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   formatHeatMapRegimeReturn,
   getHeatMapCryptoSupplyChartModel,
+  getHeatMapCryptoSupplyChangeSummary,
   getHeatMapDetailStatRows,
   getHeatMapRangePosition,
   parseHeatMapCryptoSupplyHistory,
@@ -67,6 +68,33 @@ test('crypto supply chart breaks its line across missing provider dates', () => 
   assert.match(model.segments[1]!, /^M/);
   assert.equal(getHeatMapCryptoSupplyChartModel([
     { date: '2026-10-06', supply: 200 },
+  ]), null);
+});
+
+test('crypto supply change compares the first and last actual observations', () => {
+  assert.deepEqual(getHeatMapCryptoSupplyChangeSummary([
+    { date: '2026-10-08', supply: 210 },
+    { date: '2026-10-01', supply: 200 },
+    { date: '2026-10-04', supply: 205 },
+  ]), {
+    startDate: '2026-10-01',
+    endDate: '2026-10-08',
+    startSupply: 200,
+    endSupply: 210,
+    absoluteChange: 10,
+    percentChange: 5,
+  });
+  assert.equal(getHeatMapCryptoSupplyChangeSummary([
+    { date: '2026-10-01', supply: 200 },
+  ]), null);
+});
+
+test('crypto supply change rejects invalid observations and does not treat duplicate dates as a period', () => {
+  assert.equal(getHeatMapCryptoSupplyChangeSummary([
+    { date: '2026-10-01', supply: 200 },
+    { date: '2026-10-01', supply: 201 },
+    { date: '2026-10-02', supply: Number.NaN },
+    { date: 'not-a-date', supply: 202 },
   ]), null);
 });
 

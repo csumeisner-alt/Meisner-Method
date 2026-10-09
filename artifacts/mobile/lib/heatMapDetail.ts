@@ -26,6 +26,15 @@ export interface HeatMapCryptoSupplyPoint {
   date: string;
   supply: number;
 }
+
+export interface HeatMapCryptoSupplyChangeSummary {
+  startDate: string;
+  endDate: string;
+  startSupply: number;
+  endSupply: number;
+  absoluteChange: number;
+  percentChange: number;
+}
 export interface HeatMapEtfHolding {
   symbol: string;
   name: string;
@@ -622,3 +631,37 @@ export interface HeatMapCryptoSupplyHistory {
 }
 
 const CRYPTO_SUPPLY_CHART_HEIGHT = 112;
+
+export function getHeatMapCryptoSupplyChangeSummary(
+  points: HeatMapCryptoSupplyPoint[],
+): HeatMapCryptoSupplyChangeSummary | null {
+  const pointsByDate = new Map<string, number>();
+  for (const point of points) {
+    if (
+      isIsoDate(point.date)
+      && Number.isFinite(point.supply)
+      && point.supply > 0
+    ) {
+      pointsByDate.set(point.date, point.supply);
+    }
+  }
+
+  const observations = [...pointsByDate.entries()]
+    .sort(([firstDate], [secondDate]) => firstDate.localeCompare(secondDate));
+  if (observations.length < 2) return null;
+
+  const [startDate, startSupply] = observations[0]!;
+  const [endDate, endSupply] = observations.at(-1)!;
+  const absoluteChange = endSupply - startSupply;
+  const percentChange = (absoluteChange / startSupply) * 100;
+  if (!Number.isFinite(percentChange)) return null;
+
+  return {
+    startDate,
+    endDate,
+    startSupply,
+    endSupply,
+    absoluteChange,
+    percentChange,
+  };
+}

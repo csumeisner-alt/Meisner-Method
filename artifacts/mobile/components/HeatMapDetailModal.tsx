@@ -23,6 +23,7 @@ import {
   formatHeatMapRegimeReturn,
   formatHeatMapCompact,
   getHeatMapCryptoSupplyChartModel,
+  getHeatMapCryptoSupplyChangeSummary,
   getHeatMapDetailStatRows,
   getHeatMapRangePosition,
   parseHeatMapCryptoSupplyHistory,
@@ -238,6 +239,15 @@ function formatSupplyDate(date: string) {
     })
     : date;
 }
+
+function formatSupplyChangeAmount(value: number) {
+  const magnitude = Math.abs(value);
+  const formatted = magnitude >= 1_000
+    ? formatHeatMapCompact(magnitude)
+    : magnitude.toLocaleString('en-US', { maximumSignificantDigits: 6 });
+  return value > 0 ? `+${formatted}` : value < 0 ? `-${formatted}` : formatted;
+}
+
 export function HeatMapDetailModal({
   quote,
   visible,
@@ -613,6 +623,10 @@ const styles = StyleSheet.create({
   supplyHistory: { marginTop: 18 },
   supplyHistoryCard: { borderWidth: 1, borderRadius: 13, padding: 12 },
   supplyHistoryCaption: { fontFamily: 'Inter_500Medium', fontSize: 9, marginBottom: 10 },
+  supplyHistoryChange: { borderWidth: 1, borderRadius: 10, padding: 10, marginBottom: 12 },
+  supplyHistoryChangeLabel: { fontFamily: 'Inter_500Medium', fontSize: 9, lineHeight: 13 },
+  supplyHistoryChangeValue: { fontFamily: 'Inter_700Bold', fontSize: 15, marginTop: 4 },
+  supplyHistoryChangeDates: { fontFamily: 'Inter_400Regular', fontSize: 9, lineHeight: 13, marginTop: 3 },
   supplyHistoryEmpty: { fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15 },
   supplyHistoryEmptyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   supplyHistoryChart: { flexDirection: 'row', alignItems: 'stretch', gap: 7 },
@@ -645,6 +659,9 @@ function CryptoSupplyHistory({
   });
   const history = parseHeatMapCryptoSupplyHistory(historyQuery.data);
   const chart = history ? getHeatMapCryptoSupplyChartModel(history.points) : null;
+  const changeSummary = history
+    ? getHeatMapCryptoSupplyChangeSummary(history.points)
+    : null;
   const hasHistory = !!history?.points.length;
 
   return (
@@ -688,8 +705,24 @@ function CryptoSupplyHistory({
           <Text style={[styles.supplyHistoryEmpty, { color: colors.mutedForeground }]}>
             One dated observation: {formatSupplyDate(history.points[0]!.date)} · {formatHeatMapCompact(history.points[0]!.supply)}. A trend needs more observations.
           </Text>
-        ) : chart ? (
+        ) : chart && changeSummary ? (
           <>
+            <View
+              testID="heat-map-crypto-supply-change"
+              style={[styles.supplyHistoryChange, { backgroundColor: colors.background, borderColor: colors.border }]}
+            >
+              <Text style={[styles.supplyHistoryChangeLabel, { color: colors.mutedForeground }]}>
+                Observed change in Coin Metrics on-chain supply
+              </Text>
+              <Text testID="heat-map-crypto-supply-change-value" style={[styles.supplyHistoryChangeValue, { color: colors.foreground }]}>
+                {formatSupplyChangeAmount(changeSummary.absoluteChange)}
+                {' · '}
+                {formatHeatMapRegimeReturn(changeSummary.percentChange / 100)}
+              </Text>
+              <Text testID="heat-map-crypto-supply-change-dates" style={[styles.supplyHistoryChangeDates, { color: colors.mutedForeground }]}>
+                {formatSupplyDate(changeSummary.startDate)} → {formatSupplyDate(changeSummary.endDate)}
+              </Text>
+            </View>
             <View style={styles.supplyHistoryChart}>
               <View style={styles.supplyHistoryAxisLabels}>
                 <Text style={[styles.supplyHistoryAxisText, { color: colors.mutedForeground }]}>
@@ -741,7 +774,7 @@ function CryptoSupplyHistory({
           </>
         ) : null}
         <Text style={[styles.supplyHistoryNote, { color: colors.mutedForeground }]}>
-          This daily on-chain metric can differ from the live circulating-supply figure above; it is not the maximum-supply share.
+          Change compares the first and last reported observations only; missing dates are not filled in. This daily on-chain metric can differ from the live circulating-supply figure above; it is not the maximum-supply share.
         </Text>
       </View>
     </View>
