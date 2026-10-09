@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -273,17 +273,28 @@ export function HeatMapDetailModal({
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const forceRefreshRef = useRef(false);
+
+  const refreshDetailStats = () => {
+    if (loading) return;
+    forceRefreshRef.current = true;
+    setRetryCount((current) => current + 1);
+  };
 
   useEffect(() => {
     if (!visible || !quote) return;
     let isCurrent = true;
+    const forceRefresh = forceRefreshRef.current;
+    forceRefreshRef.current = false;
     const cacheKey = quote.symbol.toUpperCase();
     const cached = detailCache.get(cacheKey);
     const hasFreshCache = cached !== undefined && cached.expiresAt > Date.now();
 
-    setStatsEntry(cached ? { symbol: cacheKey, stats: cached.stats } : null);
+    setStatsEntry((current) => current?.symbol === cacheKey
+      ? current
+      : cached ? { symbol: cacheKey, stats: cached.stats } : null);
     setLoadError(false);
-    if (hasFreshCache) {
+    if (hasFreshCache && !forceRefresh) {
       setLoading(false);
       return () => { isCurrent = false; };
     }
@@ -507,7 +518,29 @@ export function HeatMapDetailModal({
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
                 {isEtf ? 'ETF essentials' : isCommodity ? 'Commodity snapshot' : 'Key statistics'}
               </Text>
-              {loading && <Text style={[styles.loadingLabel, { color: colors.mutedForeground }]}>Updating</Text>}
+              <View style={styles.statsHeaderActions}>
+                {loading && (
+                  <Text testID="heat-map-detail-refresh-loading" style={[styles.loadingLabel, { color: colors.mutedForeground }]}>
+                    Refreshing…
+                  </Text>
+                )}
+                <Pressable
+                  testID="heat-map-detail-refresh"
+                  accessibilityRole="button"
+                  accessibilityLabel={loading ? 'Refreshing market statistics' : 'Refresh market statistics'}
+                  accessibilityState={{ disabled: loading }}
+                  disabled={loading}
+                  onPress={refreshDetailStats}
+                  style={[styles.refreshButton, { borderColor: colors.border }]}
+                >
+                  {loading
+                    ? <ActivityIndicator size="small" color={colors.primary} />
+                    : <MaterialCommunityIcons name="refresh" size={14} color={colors.primary} />}
+                  <Text style={[styles.retryText, { color: colors.primary }]}>
+                    {loading ? 'Refreshing' : 'Refresh'}
+                  </Text>
+                </Pressable>
+              </View>
             </View>
             {loadError && (
               <View testID="heat-map-detail-error" style={[styles.errorPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -517,7 +550,8 @@ export function HeatMapDetailModal({
                 <Pressable
                   testID="heat-map-detail-retry"
                   accessibilityRole="button"
-                  onPress={() => setRetryCount((current) => current + 1)}
+                  accessibilityLabel="Retry loading market statistics"
+                  onPress={refreshDetailStats}
                   style={[styles.retryButton, { borderColor: colors.border }]}
                 >
                   <MaterialCommunityIcons name="refresh" size={14} color={colors.primary} />
@@ -629,8 +663,10 @@ const styles = StyleSheet.create({
   contractNotionalNote: { fontFamily: 'Inter_400Regular', fontSize: 8, lineHeight: 11, marginTop: 3 },
   contractSource: { fontFamily: 'Inter_500Medium', fontSize: 8, marginTop: 7, textAlign: 'right' },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 },
+  statsHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sectionTitle: { fontFamily: 'Inter_700Bold', fontSize: 15, letterSpacing: -0.15 },
   loadingLabel: { fontFamily: 'Inter_500Medium', fontSize: 10 },
+  refreshButton: { minHeight: 30, borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 5 },
   rangeStack: { gap: 8, marginBottom: 20 },
   rangeCard: { borderWidth: 1, borderRadius: 13, paddingHorizontal: 12, paddingVertical: 10 },
   rangeTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 11, marginBottom: 10 },

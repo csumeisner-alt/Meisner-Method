@@ -373,6 +373,41 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       "$30B",
       "The detail card should show revenue with a compact value.",
     );
+    const matchDetailRequestsBeforeManualRefresh = await browser.evaluate(
+      'window.__heatMapBrowserTest.detailRequests.filter((url) => url.endsWith("/MATCH")).length',
+    );
+    await setDetailResponses(browser, [{ type: "defer" }]);
+    await clickTestID(browser, "heat-map-detail-refresh");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.detailRequests.filter((url) => url.endsWith("/MATCH")).length === ${matchDetailRequestsBeforeManualRefresh + 1}`,
+      "Refreshing an open detail card should request fresh statistics even when its cache is still valid.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-detail-refresh-loading"))})`,
+      "A manual statistics refresh should show clear loading feedback.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent`),
+      "MATCH",
+      "Refreshing should keep the selected instrument in the open detail card.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-stat-previous-close"))})?.textContent`),
+      "$122.00",
+      "Refreshing should keep the displayed statistics visible while fresh data loads.",
+    );
+    assert.equal(
+      await browser.evaluate('window.__heatMapBrowserTest.resolvePendingDetailRequest("/api/stocks/info/MATCH", { previousClose: 122, marketCap: 250000000000 })'),
+      true,
+      "The pending manual statistics refresh should be resolvable.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!document.querySelector(${JSON.stringify(selector("heat-map-detail-refresh-loading"))})`,
+      "The refresh loading feedback should clear after statistics load.",
+    );
     await clickTestID(browser, "heat-map-detail-close");
     await waitFor(
       (expression) => browser.evaluate(expression),
@@ -573,6 +608,48 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       (expression) => browser.evaluate(expression),
       `document.querySelector(${JSON.stringify(selector("heat-map-detail-stat-previous-close"))})?.textContent === "$121.00" && !document.querySelector(${JSON.stringify(selector("heat-map-detail-error"))})`,
       "A successful retry should replace the expired statistic and clear the stale-data warning.",
+    );
+    const matchRequestsBeforeFailedManualRefresh = await browser.evaluate(
+      'window.__heatMapBrowserTest.detailRequests.filter((url) => url.endsWith("/MATCH")).length',
+    );
+    await setDetailResponses(browser, [{ type: "defer" }]);
+    await clickTestID(browser, "heat-map-detail-refresh");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.detailRequests.filter((url) => url.endsWith("/MATCH")).length === ${matchRequestsBeforeFailedManualRefresh + 1}`,
+      "The open detail card should accept another manual refresh request.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-detail-refresh-loading"))})`,
+      "The failed refresh attempt should show loading feedback while in progress.",
+    );
+    assert.equal(
+      await browser.evaluate('window.__heatMapBrowserTest.rejectPendingDetailRequest("/api/stocks/info/MATCH")'),
+      true,
+      "The pending manual refresh should be rejectable for the failure test.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-detail-error"))}) && document.querySelector(${JSON.stringify(selector("heat-map-detail-stat-previous-close"))})?.textContent === "$121.00"`,
+      "A failed manual refresh should retain the already displayed statistics and show a warning.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelectorAll(${JSON.stringify(selector("heat-map-detail-retry"))}).length`),
+      1,
+      "A failed manual refresh should offer a retry path.",
+    );
+    await setDetailResponses(browser, [{ type: "resolve", payload: { previousClose: 122, marketCap: 250_000_000_000 } }]);
+    await clickTestID(browser, "heat-map-detail-retry");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.detailRequests.filter((url) => url.endsWith("/MATCH")).length === ${matchRequestsBeforeFailedManualRefresh + 2}`,
+      "The error retry should make a new statistics request.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-detail-stat-previous-close"))})?.textContent === "$122.00" && !document.querySelector(${JSON.stringify(selector("heat-map-detail-error"))})`,
+      "Retrying a failed manual refresh should replace the retained statistics and clear the warning.",
     );
     await browser.evaluate("Date.now = window.__heatMapDetailOriginalDateNow");
     await clickTestID(browser, "heat-map-detail-close");
