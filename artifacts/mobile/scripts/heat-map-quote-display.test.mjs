@@ -5,6 +5,7 @@ import {
   formatHeatMapNextOpen,
   getHeatMapMarketStatus,
 } from "../lib/heatMapQuoteDisplay.ts";
+import { hasUsableHeatMapPerformanceSnapshot } from "../lib/heatMapMetrics.ts";
 
 const screenSource = readFileSync(new URL("../app/heat-map.tsx", import.meta.url), "utf8");
 
@@ -64,6 +65,22 @@ test("heat-map queries and renders only the active category, period, and custom 
   assert.match(screenSource, /heat-map-drawer-period-/);
   assert.match(screenSource, /heat-map-selected-period/);
   assert.doesNotMatch(screenSource, /categoryRail|ScrollView horizontal/);
+});
+
+test("heat-map keeps the six-hex loader for an incomplete quick snapshot", () => {
+  assert.equal(hasUsableHeatMapPerformanceSnapshot([
+    { price: 12, returnPercent: 0.5 },
+    { price: 30, returnPercent: null },
+    { price: 42, returnPercent: null },
+  ]), false);
+  assert.match(screenSource, /const breadthSnapshotQuotes = \(marketBreadthQuery\.data\?\.quotes \?\? \[\]\)\s*\.filter\(\(quote\) => isDisplayableHeatMapQuote\(quote, nowSeconds\)\)/);
+  assert.match(screenSource, /showingBreadthSnapshot = !fullResponseMatches && canUseFastSnapshot\s*&& hasUsableHeatMapPerformanceSnapshot\(breadthSnapshotQuotes\)/);
+});
+
+test("heat-map loading visuals receive the active Patriot or Neon Gucci theme", () => {
+  assert.match(screenSource, /getHeatMapLoadingTheme\(\s*themeState\?\.isActive \?\? false,\s*themeState\?\.neonGucciActive \?\? false,/);
+  assert.match(screenSource, /theme=\{loadingTheme\}/);
+  assert.match(screenSource, /getHeatMapLoadingHexColors\(theme, index, colors\)/);
 });
 
 test("custom tickers stay device-local and are validated before being added", () => {

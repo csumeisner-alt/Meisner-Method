@@ -7,10 +7,31 @@ export type HeatMapRiskBand =
   | "Aggressive";
 export type HeatMapRiskFilter = HeatMapRiskBand | "Unknown" | null;
 export type HeatMapCapBucket = "Micro" | "Small" | "Mid" | "Large" | "Mega";
+export type HeatMapLoadingTheme = "standard" | "patriot" | "neonGucci";
 
 export interface HeatMapMovement {
   price: number;
   returnPercent: number | null;
+}
+
+export interface HeatMapLoadingColorTokens {
+  card: string;
+  border: string;
+  secondary: string;
+  gold: string;
+  goldMuted: string;
+  steelHighlight: string;
+  steelShadow: string;
+  holdBg: string;
+  buyBg: string;
+  buyColor: string;
+}
+
+export interface HeatMapLoadingHexColors {
+  fill: string;
+  stroke: string;
+  inset: string;
+  glint: string;
 }
 
 export interface HeatMapSummary {
@@ -57,6 +78,64 @@ export interface HoneycombLayout {
 
 const NEUTRAL_BAND_PERCENT = 0.25;
 const TONE_THRESHOLD = 0.55;
+const MIN_HEAT_MAP_SNAPSHOT_RETURN_COVERAGE = 0.7;
+
+export function getHeatMapLoadingTheme(
+  isPatriotMode: boolean,
+  isNeonGucciMode: boolean,
+): HeatMapLoadingTheme {
+  if (isNeonGucciMode) return "neonGucci";
+  if (isPatriotMode) return "patriot";
+  return "standard";
+}
+
+export function getHeatMapLoadingHexColors(
+  theme: HeatMapLoadingTheme,
+  index: number,
+  colors: HeatMapLoadingColorTokens,
+): HeatMapLoadingHexColors {
+  if (theme === "patriot") {
+    return {
+      fill: colors.steelShadow,
+      stroke: colors.gold,
+      inset: colors.steelHighlight,
+      glint: colors.goldMuted,
+    };
+  }
+
+  if (theme === "neonGucci") {
+    const mintHex = Math.abs(Math.floor(index)) % 2 === 1;
+    return {
+      fill: mintHex ? colors.buyBg : colors.holdBg,
+      stroke: mintHex ? colors.buyColor : colors.gold,
+      inset: mintHex ? colors.goldMuted : colors.buyColor,
+      glint: mintHex ? colors.gold : colors.buyColor,
+    };
+  }
+
+  return {
+    fill: colors.card,
+    stroke: colors.gold,
+    inset: colors.border,
+    glint: colors.secondary,
+  };
+}
+
+export function hasUsableHeatMapPerformanceSnapshot(
+  quotes: readonly HeatMapMovement[],
+): boolean {
+  const pricedQuotes = quotes.filter(
+    (quote) => Number.isFinite(quote.price) && quote.price > 0,
+  );
+  if (pricedQuotes.length === 0) return false;
+
+  const quotesWithReturns = pricedQuotes.filter(
+    (quote) =>
+      typeof quote.returnPercent === "number" &&
+      Number.isFinite(quote.returnPercent),
+  );
+  return quotesWithReturns.length / pricedQuotes.length >= MIN_HEAT_MAP_SNAPSHOT_RETURN_COVERAGE;
+}
 
 export function marketCapBucketForUsd(value: number | null): HeatMapCapBucket | null {
   if (value === null || !Number.isFinite(value) || value <= 0) return null;

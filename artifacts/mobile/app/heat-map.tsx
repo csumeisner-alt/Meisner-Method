@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Animated, AppState, Keyboard, Modal, Platform, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions,
@@ -30,16 +30,18 @@ import type {
 } from '@workspace/api-client-react';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { BottomTabBar } from '@/components/BottomTabBar';
+import { AmericanModeContext } from '@/contexts/AmericanModeContext';
 import { useColors } from '@/hooks/useColors';
 import { HeatMapCryptoLogo } from '@/components/HeatMapCryptoLogo';
 import { HeatMapDetailModal } from '@/components/HeatMapDetailModal';
 import { HeatMapInstrumentIcon } from '@/components/HeatMapInstrumentIcon';
 import {
   countActiveHeatMapFilters, filterHeatMapQuotes,
-  getHeatMapLoadingDelays, getHeatMapRevealDelays, getHeatMapTileWidth,
+  getHeatMapLoadingDelays, getHeatMapLoadingHexColors, getHeatMapLoadingTheme,
+  getHeatMapRevealDelays, getHeatMapTileWidth, hasUsableHeatMapPerformanceSnapshot,
   heatMapResponseMatchesSelection, layoutHoneycomb, summarizeHeatMap,
   uniqueHeatMapQuotesBySymbol,
-  type HeatMapFilters, type HeatMapCapBucket, type HeatMapRiskBand, type HeatMapRiskFilter,
+  type HeatMapFilters, type HeatMapCapBucket, type HeatMapLoadingTheme, type HeatMapRiskBand, type HeatMapRiskFilter,
 } from '@/lib/heatMapMetrics';
 import { getHeatMapInstrumentDisplay } from '@/lib/heatMapInstrumentDisplay';
 import { getHeatMapCryptoLogoCode } from '@/lib/heatMapCryptoLogo';
@@ -328,12 +330,13 @@ function HexTile({ quote, width, height, colors, period, category, editing, redu
   );
 }
 
-function LoadingHexagon({ index, width, height, delayMs, colors, reduceMotion }: {
+function LoadingHexagon({ index, width, height, delayMs, colors, theme, reduceMotion }: {
   index: number;
   width: number;
   height: number;
   delayMs: number;
   colors: ReturnType<typeof useColors>;
+  theme: HeatMapLoadingTheme;
   reduceMotion: boolean;
 }) {
   const progress = useSharedValue(reduceMotion ? 1 : 0);
@@ -384,6 +387,7 @@ function LoadingHexagon({ index, width, height, delayMs, colors, reduceMotion }:
     opacity: 0.12 + progress.value * 0.5 + pulse.value * 0.16,
     transform: [{ scale: 0.88 + progress.value * 0.12 + pulse.value * 0.028 }],
   }));
+  const hexColors = getHeatMapLoadingHexColors(theme, index, colors);
 
   return (
     <Reanimated.View
@@ -394,22 +398,37 @@ function LoadingHexagon({ index, width, height, delayMs, colors, reduceMotion }:
       <Svg width={width} height={height} viewBox="0 0 100 86.6" style={StyleSheet.absoluteFill}>
         <Polygon
           points="1,43.3 25,1 75,1 99,43.3 75,85.6 25,85.6"
-          fill={colors.card}
-          fillOpacity={0.7}
-          stroke={colors.gold}
-          strokeOpacity={0.74}
-          strokeWidth="1.5"
+          fill={hexColors.fill}
+          fillOpacity={0.88}
+          stroke={hexColors.stroke}
+          strokeOpacity={0.9}
+          strokeWidth={theme === 'standard' ? '1.5' : '1.8'}
+        />
+        <Polygon
+          points="7,43.3 28,7 72,7 93,43.3 72,79.6 28,79.6"
+          fill="none"
+          stroke={hexColors.inset}
+          strokeOpacity={theme === 'standard' ? '0.48' : '0.72'}
+          strokeWidth="0.9"
+        />
+        <Polygon
+          points="17,43.3 32,17.3 68,17.3 83,43.3 68,69.3 32,69.3"
+          fill="none"
+          stroke={hexColors.glint}
+          strokeOpacity="0.42"
+          strokeWidth="0.7"
         />
       </Svg>
     </Reanimated.View>
   );
 }
 
-function HeatMapLoadingState({ contentWidth, tileWidth, tileHeight, colors, reduceMotion }: {
+function HeatMapLoadingState({ contentWidth, tileWidth, tileHeight, colors, theme, reduceMotion }: {
   contentWidth: number;
   tileWidth: number;
   tileHeight: number;
   colors: ReturnType<typeof useColors>;
+  theme: HeatMapLoadingTheme;
   reduceMotion: boolean;
 }) {
   const layout = useMemo(
@@ -420,17 +439,35 @@ function HeatMapLoadingState({ contentWidth, tileWidth, tileHeight, colors, redu
     () => getHeatMapLoadingDelays(layout.positions.length),
     [layout.positions.length],
   );
+  const themeAccent = theme === 'neonGucci' ? colors.buyColor : colors.gold;
+  const panelBackground = theme === 'patriot'
+    ? colors.steelShadow
+    : theme === 'neonGucci'
+      ? colors.background
+      : colors.card;
+  const panelBorder = theme === 'standard' ? colors.border : colors.goldMuted;
+  const scanLabel = theme === 'patriot'
+    ? 'PATRIOT MODE · STEEL SCAN'
+    : theme === 'neonGucci'
+      ? 'NEON GUCCI · LIVE SCAN'
+      : 'LIVE MARKET SCAN';
 
   return (
     <View
       testID="heat-map-loading-state"
       style={[
         styles.loadingPanel,
-        { backgroundColor: colors.card, borderColor: colors.border },
+        {
+          backgroundColor: panelBackground,
+          borderColor: panelBorder,
+          borderWidth: theme === 'standard' ? 1 : 1.5,
+        },
       ]}
     >
+      <View style={[styles.loadingTrim, { backgroundColor: themeAccent }]} />
+      <Text style={[styles.loadingKicker, { color: themeAccent }]}>{scanLabel}</Text>
       <View style={styles.loadingHeader}>
-        <MaterialCommunityIcons name="chart-timeline-variant" size={19} color={colors.gold} accessible={false} />
+        <MaterialCommunityIcons name="chart-timeline-variant" size={19} color={themeAccent} accessible={false} />
         <Text accessibilityRole="header" style={[styles.loadingTitle, { color: colors.foreground }]}>
           Loading selected market
         </Text>
@@ -456,6 +493,7 @@ function HeatMapLoadingState({ contentWidth, tileWidth, tileHeight, colors, redu
               height={tileHeight}
               delayMs={delays[position.index] ?? 0}
               colors={colors}
+              theme={theme}
               reduceMotion={reduceMotion}
             />
           </View>
@@ -470,6 +508,11 @@ function HeatMapLoadingState({ contentWidth, tileWidth, tileHeight, colors, redu
 
 export default function HeatMapScreen() {
   const colors = useColors();
+  const themeState = useContext(AmericanModeContext);
+  const loadingTheme = getHeatMapLoadingTheme(
+    themeState?.isActive ?? false,
+    themeState?.neonGucciActive ?? false,
+  );
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { width: viewportWidth } = useWindowDimensions();
@@ -618,8 +661,10 @@ export default function HeatMapScreen() {
     category === 'custom' ? customSymbols : undefined,
     requestedSector,
   );
+  const breadthSnapshotQuotes = (marketBreadthQuery.data?.quotes ?? [])
+    .filter((quote) => isDisplayableHeatMapQuote(quote, nowSeconds));
   const showingBreadthSnapshot = !fullResponseMatches && canUseFastSnapshot
-    && Boolean(marketBreadthQuery.data);
+    && hasUsableHeatMapPerformanceSnapshot(breadthSnapshotQuotes);
   const response = fullResponseMatches
     ? mapQuery.data
     : showingBreadthSnapshot
@@ -1203,6 +1248,7 @@ export default function HeatMapScreen() {
                     tileWidth={tileWidth}
                     tileHeight={tileHeight}
                     colors={colors}
+                    theme={loadingTheme}
                     reduceMotion={reduceMotion}
                   />
                 : filterableQuotes.length === 0 && activeFilterCount > 0
@@ -1399,6 +1445,8 @@ const styles = StyleSheet.create({
   loadingPanel: { minHeight: 170, borderWidth: 1, borderRadius: 17, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12, paddingVertical: 14, gap: 5, marginTop: 3 },
   loadingHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   loadingTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 14, textAlign: 'center' },
+   loadingTrim: { width: '100%', height: 2, borderRadius: 1, marginBottom: 3 },
+   loadingKicker: { fontFamily: 'Inter_700Bold', fontSize: 8, letterSpacing: 1.4, marginBottom: 1 },
   loadingHoneycomb: { alignSelf: 'center', position: 'relative', marginVertical: 4 },
   retryButton: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 15, paddingVertical: 8, marginTop: 6 },
   retryText: { fontFamily: 'Inter_600SemiBold', fontSize: 11 },

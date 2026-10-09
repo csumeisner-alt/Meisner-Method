@@ -3,15 +3,78 @@ import test from "node:test";
 import {
   countActiveHeatMapFilters,
   filterHeatMapQuotes,
+  getHeatMapLoadingHexColors,
   getHeatMapLoadingDelays,
+  getHeatMapLoadingTheme,
   getHeatMapRevealDelays,
   getHeatMapTileWidth,
+  hasUsableHeatMapPerformanceSnapshot,
   heatMapResponseMatchesSelection,
   layoutHoneycomb,
   marketCapBucketForUsd,
   summarizeHeatMap,
   uniqueHeatMapQuotesBySymbol,
 } from "../heatMapMetrics.ts";
+
+test("heat-map waits for useful return coverage before showing the fast breadth snapshot", () => {
+  assert.equal(hasUsableHeatMapPerformanceSnapshot([]), false);
+  assert.equal(hasUsableHeatMapPerformanceSnapshot([
+    { price: 10, returnPercent: null },
+    { price: 12, returnPercent: null },
+    { price: 15, returnPercent: null },
+  ]), false);
+  assert.equal(hasUsableHeatMapPerformanceSnapshot([
+    { price: 10, returnPercent: 1 },
+    { price: 12, returnPercent: -1 },
+    { price: 15, returnPercent: null },
+    { price: 20, returnPercent: null },
+  ]), false);
+  assert.equal(hasUsableHeatMapPerformanceSnapshot([
+    { price: 10, returnPercent: 1 },
+    { price: 12, returnPercent: -1 },
+    { price: 15, returnPercent: 0 },
+    { price: 20, returnPercent: null },
+    { price: 0, returnPercent: null },
+  ]), true);
+});
+
+test("heat-map loading hexes use separate Patriot steel-and-gold and Neon Gucci palettes", () => {
+  const palette = {
+    card: "card",
+    border: "border",
+    secondary: "secondary",
+    gold: "gold",
+    goldMuted: "gold-muted",
+    steelHighlight: "steel-highlight",
+    steelShadow: "steel-shadow",
+    holdBg: "hold-bg",
+    buyBg: "buy-bg",
+    buyColor: "mint",
+  };
+
+  assert.equal(getHeatMapLoadingTheme(false, false), "standard");
+  assert.equal(getHeatMapLoadingTheme(true, false), "patriot");
+  assert.equal(getHeatMapLoadingTheme(false, true), "neonGucci");
+  assert.equal(getHeatMapLoadingTheme(true, true), "neonGucci");
+  assert.deepEqual(getHeatMapLoadingHexColors("patriot", 0, palette), {
+    fill: "steel-shadow",
+    stroke: "gold",
+    inset: "steel-highlight",
+    glint: "gold-muted",
+  });
+  assert.deepEqual(getHeatMapLoadingHexColors("neonGucci", 0, palette), {
+    fill: "hold-bg",
+    stroke: "gold",
+    inset: "mint",
+    glint: "mint",
+  });
+  assert.deepEqual(getHeatMapLoadingHexColors("neonGucci", 1, palette), {
+    fill: "buy-bg",
+    stroke: "mint",
+    inset: "gold-muted",
+    glint: "gold",
+  });
+});
 
 test("heat-map treats the full neutral band as neutral and keeps it in the denominator", () => {
   const summary = summarizeHeatMap([
