@@ -51,3 +51,4 @@
 - [React Native Web alerts](react-native-web-alerts.md) — `Alert.alert` is a no-op in the browser preview; critical confirmation flows need a web-specific path.
 - [Yahoo crypto max-supply semantics](yahoo-crypto-max-supply.md) — explicit `maxSupply: 0` means no fixed cap; missing or null max supply is unreported, not uncapped.
 - [Crypto supply history provenance](crypto-supply-history-provenance.md) — disclose provider-defined on-chain supply history and preserve observation gaps; keep it separate from max-supply share.
+- [Commodity quote units and notional](commodity-contract-specs.md) — preserve exchange quote units and convert cent quotes only when computing USD contract notional.

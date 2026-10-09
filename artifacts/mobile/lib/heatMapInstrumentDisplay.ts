@@ -30,6 +30,157 @@ export interface HeatMapInstrumentDisplay {
   icon: HeatMapInstrumentIconKind;
 }
 
+export type CommodityQuoteCurrency = "USD" | "USC";
+
+export interface CommodityContractSpec {
+  exchange: "CME Group" | "ICE Futures U.S.";
+  quoteUnit: string;
+  quoteCurrency: CommodityQuoteCurrency;
+  contractMultiplier: number;
+  contractUnit: string;
+  quoteToUsdFactor: number;
+  sourceUrl: string;
+}
+
+// Exchange contract specifications; quote units match the raw Yahoo Finance futures quotes.
+const COMMODITY_CONTRACT_SPECS: Record<string, CommodityContractSpec> = {
+  "GC=F": {
+    exchange: "CME Group",
+    quoteUnit: "U.S. dollars per troy ounce",
+    quoteCurrency: "USD",
+    contractMultiplier: 100,
+    contractUnit: "troy ounces",
+    quoteToUsdFactor: 1,
+    sourceUrl: "https://www.cmegroup.com/markets/metals/precious/gold.contractSpecs.html",
+  },
+  "SI=F": {
+    exchange: "CME Group",
+    quoteUnit: "U.S. dollars per troy ounce",
+    quoteCurrency: "USD",
+    contractMultiplier: 5_000,
+    contractUnit: "troy ounces",
+    quoteToUsdFactor: 1,
+    sourceUrl: "https://www.cmegroup.com/markets/metals/precious/silver.contractSpecs.html",
+  },
+  "CL=F": {
+    exchange: "CME Group",
+    quoteUnit: "U.S. dollars per barrel",
+    quoteCurrency: "USD",
+    contractMultiplier: 1_000,
+    contractUnit: "barrels",
+    quoteToUsdFactor: 1,
+    sourceUrl: "https://www.cmegroup.com/markets/energy/crude-oil/light-sweet-crude.contractSpecs.html",
+  },
+  "NG=F": {
+    exchange: "CME Group",
+    quoteUnit: "U.S. dollars per MMBtu",
+    quoteCurrency: "USD",
+    contractMultiplier: 10_000,
+    contractUnit: "MMBtu",
+    quoteToUsdFactor: 1,
+    sourceUrl: "https://www.cmegroup.com/markets/energy/natural-gas/natural-gas.html",
+  },
+  "HG=F": {
+    exchange: "CME Group",
+    quoteUnit: "U.S. dollars per pound",
+    quoteCurrency: "USD",
+    contractMultiplier: 25_000,
+    contractUnit: "pounds",
+    quoteToUsdFactor: 1,
+    sourceUrl: "https://www.cmegroup.com/markets/metals/base/copper.contractSpecs.html",
+  },
+  "ZC=F": {
+    exchange: "CME Group",
+    quoteUnit: "U.S. cents per bushel",
+    quoteCurrency: "USC",
+    contractMultiplier: 5_000,
+    contractUnit: "bushels",
+    quoteToUsdFactor: 0.01,
+    sourceUrl: "https://www.cmegroup.com/markets/agriculture/grains/corn.contractSpecs.html",
+  },
+  "ZW=F": {
+    exchange: "CME Group",
+    quoteUnit: "U.S. cents per bushel",
+    quoteCurrency: "USC",
+    contractMultiplier: 5_000,
+    contractUnit: "bushels",
+    quoteToUsdFactor: 0.01,
+    sourceUrl: "https://www.cmegroup.com/markets/agriculture/grains/wheat.contractSpecs.html",
+  },
+  "ZS=F": {
+    exchange: "CME Group",
+    quoteUnit: "U.S. cents per bushel",
+    quoteCurrency: "USC",
+    contractMultiplier: 5_000,
+    contractUnit: "bushels",
+    quoteToUsdFactor: 0.01,
+    sourceUrl: "https://www.cmegroup.com/markets/agriculture/oilseeds/soybean/specs",
+  },
+  "KC=F": {
+    exchange: "ICE Futures U.S.",
+    quoteUnit: "U.S. cents per pound",
+    quoteCurrency: "USC",
+    contractMultiplier: 37_500,
+    contractUnit: "pounds",
+    quoteToUsdFactor: 0.01,
+    sourceUrl: "https://www.ice.com/products/15/Coffee-C-Futures",
+  },
+  "CT=F": {
+    exchange: "ICE Futures U.S.",
+    quoteUnit: "U.S. cents per pound",
+    quoteCurrency: "USC",
+    contractMultiplier: 50_000,
+    contractUnit: "pounds",
+    quoteToUsdFactor: 0.01,
+    sourceUrl: "https://www.ice.com/products/254/cotton-no-2-futures",
+  },
+  "SB=F": {
+    exchange: "ICE Futures U.S.",
+    quoteUnit: "U.S. cents per pound",
+    quoteCurrency: "USC",
+    contractMultiplier: 112_000,
+    contractUnit: "pounds",
+    quoteToUsdFactor: 0.01,
+    sourceUrl: "https://www.ice.com/products/23/sugar-no-11-futures",
+  },
+  "PL=F": {
+    exchange: "CME Group",
+    quoteUnit: "U.S. dollars per troy ounce",
+    quoteCurrency: "USD",
+    contractMultiplier: 50,
+    contractUnit: "troy ounces",
+    quoteToUsdFactor: 1,
+    sourceUrl: "https://www.cmegroup.com/markets/metals/precious/platinum.contractSpecs.html",
+  },
+  "PA=F": {
+    exchange: "CME Group",
+    quoteUnit: "U.S. dollars per troy ounce",
+    quoteCurrency: "USD",
+    contractMultiplier: 100,
+    contractUnit: "troy ounces",
+    quoteToUsdFactor: 1,
+    sourceUrl: "https://www.cmegroup.com/markets/metals/precious/palladium.contractSpecs.html",
+  },
+  "LE=F": {
+    exchange: "CME Group",
+    quoteUnit: "U.S. cents per pound",
+    quoteCurrency: "USC",
+    contractMultiplier: 40_000,
+    contractUnit: "pounds",
+    quoteToUsdFactor: 0.01,
+    sourceUrl: "https://www.cmegroup.com/markets/agriculture/livestock/live-cattle.contractSpecs.html",
+  },
+  "HE=F": {
+    exchange: "CME Group",
+    quoteUnit: "U.S. cents per pound",
+    quoteCurrency: "USC",
+    contractMultiplier: 40_000,
+    contractUnit: "pounds",
+    quoteToUsdFactor: 0.01,
+    sourceUrl: "https://www.cmegroup.com/markets/agriculture/livestock/lean-hogs.contractSpecs.html",
+  },
+};
+
 const INSTRUMENT_DISPLAY_BY_SYMBOL: Record<string, HeatMapInstrumentDisplay> = {
   "GC=F": { name: "Gold", icon: "goldBar" },
   "SI=F": { name: "Silver", icon: "silverBar" },
@@ -75,4 +226,14 @@ export function getHeatMapInstrumentDisplay(
       : quote.symbol.replace(/=F$/i, ""),
     icon: quote.assetType === "commodity" ? "genericCommodity" : "equityIndex",
   };
+}
+
+export function getCommodityContractSpec(symbol: string): CommodityContractSpec | null {
+  return COMMODITY_CONTRACT_SPECS[symbol.trim().toUpperCase()] ?? null;
+}
+
+export function getCommodityContractNotional(symbol: string, quotePrice: number): number | null {
+  const spec = getCommodityContractSpec(symbol);
+  if (!spec || !Number.isFinite(quotePrice) || quotePrice <= 0) return null;
+  return quotePrice * spec.contractMultiplier * spec.quoteToUsdFactor;
 }

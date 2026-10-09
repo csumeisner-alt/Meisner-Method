@@ -25,6 +25,14 @@ test('market detail modal builds and renders the selected asset-specific statist
 
 test('commodity detail modal renders instrument-specific up and down price drivers', () => {
   assert.match(modalSource, /const isCommodity = quote\.assetType === 'commodity'/);
+  assert.match(modalSource, /getCommodityContractSpec\(quote\.symbol\)/);
+  assert.match(modalSource, /getCommodityContractNotional\(quote\.symbol,\s*quote\.price\)/);
+  assert.match(modalSource, /heat-map-commodity-contract-spec/);
+  assert.match(modalSource, /heat-map-commodity-quote-unit/);
+  assert.match(modalSource, /heat-map-commodity-contract-size/);
+  assert.match(modalSource, /heat-map-commodity-contract-notional/);
+  assert.match(modalSource, /EST\. FULL-CONTRACT NOTIONAL/);
+  assert.match(modalSource, /not the margin or cash required to trade/);
   assert.match(modalSource, /<CommodityPriceDrivers symbol=\{quote\.symbol\}/);
   assert.match(modalSource, /Commodity snapshot/);
   assert.match(commodityDriversSource, /Can push prices higher/);

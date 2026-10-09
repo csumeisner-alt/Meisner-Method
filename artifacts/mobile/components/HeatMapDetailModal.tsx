@@ -30,19 +30,24 @@ import {
   type HeatMapEtfProfile,
   type HeatMapDetailStats,
 } from '@/lib/heatMapDetail';
+import {
+  getCommodityContractNotional,
+  getCommodityContractSpec,
+} from '@/lib/heatMapInstrumentDisplay';
 import { formatHeatMapQuoteAge } from '@/lib/heatMapQuoteDisplay';
 
 const DETAIL_CACHE_TTL_MS = 5 * 60_000;
 const detailCache = new Map<string, { stats: HeatMapDetailStats; expiresAt: number }>();
 
-function formatPrice(value: number) {
+function formatPrice(value: number, quoteCurrency: 'USD' | 'USC' = 'USD') {
   const absolute = Math.abs(value);
   const fractionDigits = absolute >= 1 ? 2 : absolute >= 0.01 ? 4 : 6;
   const sign = value < 0 ? '-' : '';
-  return `${sign}$${absolute.toLocaleString('en-US', {
-    minimumFractionDigits: fractionDigits,
-    maximumFractionDigits: fractionDigits,
-  })}`;
+  const formatted = absolute.toLocaleString('en-US', {
+    minimumFractionDigits: quoteCurrency === 'USC' ? 2 : fractionDigits,
+    maximumFractionDigits: quoteCurrency === 'USC' ? 3 : fractionDigits,
+  });
+  return quoteCurrency === 'USC' ? `${sign}${formatted}¢` : `${sign}$${formatted}`;
 }
 
 function getAssetLabel(assetType: HeatMapQuote['assetType']) {
@@ -63,6 +68,7 @@ function RangeBar({
   loading,
   colors,
   testID,
+  formatValue = formatPrice,
 }: {
   title: string;
   low: number | null;
@@ -71,6 +77,7 @@ function RangeBar({
   loading: boolean;
   colors: ReturnType<typeof useColors>;
   testID: string;
+  formatValue?: (value: number) => string;
 }) {
   const position = getHeatMapRangePosition(price, low, high);
   const hasRange = position !== null;
@@ -85,8 +92,8 @@ function RangeBar({
             <View style={[styles.rangeMarker, { backgroundColor: colors.gold, borderColor: colors.card, left: `${position}%` }]} />
           </View>
           <View style={styles.rangeLabels}>
-            <Text style={[styles.rangeValue, { color: colors.mutedForeground }]}>{formatPrice(low!)}</Text>
-            <Text style={[styles.rangeValue, { color: colors.mutedForeground }]}>{formatPrice(high!)}</Text>
+            <Text style={[styles.rangeValue, { color: colors.mutedForeground }]}>{formatValue(low!)}</Text>
+            <Text style={[styles.rangeValue, { color: colors.mutedForeground }]}>{formatValue(high!)}</Text>
           </View>
         </>
       ) : (
@@ -296,6 +303,10 @@ export function HeatMapDetailModal({
   const isEtf = quote.assetType === 'etf';
   const isCommodity = quote.assetType === 'commodity';
   const isCrypto = quote.assetType === 'cryptocurrency';
+  const commodityContract = isCommodity ? getCommodityContractSpec(quote.symbol) : null;
+  const commodityNotional = commodityContract
+    ? getCommodityContractNotional(quote.symbol, quote.price)
+    : null;
   const displayedStats = getHeatMapDetailStatRows(
     quote.assetType,
     stats,
@@ -360,7 +371,9 @@ export function HeatMapDetailModal({
             </View>
 
             <View style={styles.priceRow}>
-              <Text testID="heat-map-detail-price" style={[styles.price, { color: colors.foreground }]}>{formatPrice(quote.price)}</Text>
+              <Text testID="heat-map-detail-price" style={[styles.price, { color: colors.foreground }]}>
+                {formatPrice(quote.price, commodityContract?.quoteCurrency)}
+              </Text>
               <View style={[styles.changeBadge, { backgroundColor: change >= 0 ? colors.buyBg : colors.sellBg }]}>
                 <MaterialCommunityIcons name={change >= 0 ? 'arrow-top-right' : 'arrow-bottom-right'} size={15} color={changeColor} />
                 <Text style={[styles.changeText, { color: changeColor }]}>
@@ -371,6 +384,40 @@ export function HeatMapDetailModal({
             <Text style={[styles.quoteAge, { color: colors.mutedForeground }]}>
               Quote {formatHeatMapQuoteAge(quote.priceTimestamp)}
             </Text>
+
+            {commodityContract && (
+              <View
+                testID="heat-map-commodity-contract-spec"
+                style={[styles.contractSummary, { backgroundColor: colors.card, borderColor: colors.border }]}
+              >
+                <View style={styles.contractFactsRow}>
+                  <View style={styles.contractFact}>
+                    <Text style={[styles.contractLabel, { color: colors.mutedForeground }]}>QUOTE UNIT</Text>
+                    <Text testID="heat-map-commodity-quote-unit" style={[styles.contractValue, { color: colors.foreground }]}>
+                      {commodityContract.quoteUnit}
+                    </Text>
+                  </View>
+                  <View style={styles.contractFact}>
+                    <Text style={[styles.contractLabel, { color: colors.mutedForeground }]}>STANDARD CONTRACT</Text>
+                    <Text testID="heat-map-commodity-contract-size" style={[styles.contractValue, { color: colors.foreground }]}>
+                      {`${commodityContract.contractMultiplier.toLocaleString('en-US')} ${commodityContract.contractUnit}`}
+                    </Text>
+                  </View>
+                </View>
+                <View style={[styles.contractNotionalBlock, { borderTopColor: colors.border }]}>
+                  <Text style={[styles.contractLabel, { color: colors.mutedForeground }]}>EST. FULL-CONTRACT NOTIONAL</Text>
+                  <Text testID="heat-map-commodity-contract-notional" style={[styles.contractNotional, { color: colors.foreground }]}>
+                    {commodityNotional === null ? '—' : formatPrice(commodityNotional)}
+                  </Text>
+                  <Text style={[styles.contractNotionalNote, { color: colors.mutedForeground }]}>
+                    One standard contract at the quoted price; this is not the margin or cash required to trade.
+                  </Text>
+                </View>
+                <Text style={[styles.contractSource, { color: colors.mutedForeground }]}>
+                  Contract specification: {commodityContract.exchange}
+                </Text>
+              </View>
+            )}
 
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Price ranges</Text>
@@ -385,6 +432,7 @@ export function HeatMapDetailModal({
                 price={quote.price}
                 loading={loading}
                 colors={colors}
+                formatValue={(value) => formatPrice(value, commodityContract?.quoteCurrency)}
               />
               <RangeBar
                 testID="heat-map-detail-range-year"
@@ -394,6 +442,7 @@ export function HeatMapDetailModal({
                 price={quote.price}
                 loading={loading}
                 colors={colors}
+                formatValue={(value) => formatPrice(value, commodityContract?.quoteCurrency)}
               />
             </View>
 
@@ -509,6 +558,15 @@ const styles = StyleSheet.create({
   changeBadge: { minHeight: 29, flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 9, borderRadius: 10 },
   changeText: { fontFamily: 'Inter_700Bold', fontSize: 11 },
   quoteAge: { fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3, marginBottom: 20 },
+  contractSummary: { borderWidth: 1, borderRadius: 13, padding: 12, marginTop: -8, marginBottom: 20 },
+  contractFactsRow: { flexDirection: 'row', gap: 12 },
+  contractFact: { flex: 1, minWidth: 0 },
+  contractLabel: { fontFamily: 'Inter_700Bold', fontSize: 8, letterSpacing: 0.65, lineHeight: 11 },
+  contractValue: { fontFamily: 'Inter_600SemiBold', fontSize: 11, lineHeight: 15, marginTop: 4 },
+  contractNotionalBlock: { borderTopWidth: 1, marginTop: 10, paddingTop: 9 },
+  contractNotional: { fontFamily: 'Inter_700Bold', fontSize: 17, marginTop: 3 },
+  contractNotionalNote: { fontFamily: 'Inter_400Regular', fontSize: 8, lineHeight: 11, marginTop: 3 },
+  contractSource: { fontFamily: 'Inter_500Medium', fontSize: 8, marginTop: 7, textAlign: 'right' },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 },
   sectionTitle: { fontFamily: 'Inter_700Bold', fontSize: 15, letterSpacing: -0.15 },
   loadingLabel: { fontFamily: 'Inter_500Medium', fontSize: 10 },
