@@ -257,6 +257,10 @@ function formatSupplyChangeAmount(value: number) {
   return value > 0 ? `+${formatted}` : value < 0 ? `-${formatted}` : formatted;
 }
 
+function formatExactSupply(value: number) {
+  return value.toLocaleString('en-US', { maximumFractionDigits: 20 });
+}
+
 export function HeatMapDetailModal({
   quote,
   visible,
@@ -711,6 +715,11 @@ const styles = StyleSheet.create({
   supplyHistoryEmpty: { fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15 },
   supplyHistoryEmptyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   supplyHistoryChart: { flexDirection: 'row', alignItems: 'stretch', gap: 7 },
+  supplyHistoryPlot: { flex: 1, height: 112, position: 'relative' },
+  supplyHistoryObservationList: { gap: 6, paddingTop: 10 },
+  supplyHistoryObservationButton: { minHeight: 36, minWidth: 64, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderRadius: 9, paddingHorizontal: 9 },
+  supplyHistoryObservationDate: { fontFamily: 'Inter_500Medium', fontSize: 9 },
+  supplyHistorySelection: { borderWidth: 1, borderRadius: 10, padding: 10, marginTop: 10 },
   supplyHistoryAxisLabels: { width: 35, justifyContent: 'space-between', paddingVertical: 3 },
   supplyHistoryAxisText: { fontFamily: 'Inter_400Regular', fontSize: 8 },
   supplyHistoryDateLabels: { flexDirection: 'row', justifyContent: 'space-between', marginLeft: 42, marginTop: 4 },
@@ -740,6 +749,11 @@ function CryptoSupplyHistory({
   });
   const history = parseHeatMapCryptoSupplyHistory(historyQuery.data);
   const chart = history ? getHeatMapCryptoSupplyChartModel(history.points) : null;
+  const [selectedObservation, setSelectedObservation] = useState<{ symbol: string; date: string } | null>(null);
+  const [plotWidth, setPlotWidth] = useState(0);
+  const selectedPoint = selectedObservation?.symbol === symbol
+    ? history?.points.find((point) => point.date === selectedObservation.date) ?? null
+    : null;
   const changeSummary = history
     ? getHeatMapCryptoSupplyChangeSummary(history.points)
     : null;
@@ -813,37 +827,100 @@ function CryptoSupplyHistory({
                   {formatHeatMapCompact(chart.minSupply)}
                 </Text>
               </View>
-              <Svg
-                testID="heat-map-crypto-supply-chart"
+              <Pressable
+                testID="heat-map-crypto-supply-plot"
                 accessible={false}
-                width="100%"
-                height={112}
-                viewBox="0 0 320 112"
-                preserveAspectRatio="none"
+                onLayout={({ nativeEvent }) => setPlotWidth(nativeEvent.layout.width)}
+                onPress={(event) => {
+                  if (plotWidth <= 0) return;
+                  const tappedX = (event.nativeEvent.locationX / plotWidth) * 320;
+                  const nearestPoint = chart.points.reduce((nearest, point) =>
+                    Math.abs(point.x - tappedX) < Math.abs(nearest.x - tappedX) ? point : nearest,
+                  );
+                  setSelectedObservation({ symbol, date: nearestPoint.date });
+                }}
+                style={styles.supplyHistoryPlot}
               >
-                <Path d="M12,8 H308 M12,56 H308 M12,104 H308" fill="none" stroke={colors.border} strokeWidth={1} />
-                {chart.segments.map((segment, index) => (
-                  <Path
-                    key={`supply-segment-${index}`}
-                    d={segment}
-                    fill="none"
-                    stroke={colors.gold}
-                    strokeWidth={2}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                ))}
-                {chart.points.map((point) => (
-                  <Circle
-                    key={point.date}
-                    cx={point.x}
-                    cy={point.y}
-                    r={1.7}
-                    fill={colors.gold}
-                  />
-                ))}
-              </Svg>
+                <Svg
+                  testID="heat-map-crypto-supply-chart"
+                  accessible={false}
+                  width="100%"
+                  height={112}
+                  viewBox="0 0 320 112"
+                  preserveAspectRatio="none"
+                >
+                  <Path d="M12,8 H308 M12,56 H308 M12,104 H308" fill="none" stroke={colors.border} strokeWidth={1} />
+                  {chart.segments.map((segment, index) => (
+                    <Path
+                      key={`supply-segment-${index}`}
+                      d={segment}
+                      fill="none"
+                      stroke={colors.gold}
+                      strokeWidth={2}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  ))}
+                  {chart.points.map((point) => (
+                    <Circle
+                      key={point.date}
+                      cx={point.x}
+                      cy={point.y}
+                      r={1.7}
+                      fill={colors.gold}
+                    />
+                  ))}
+                </Svg>
+              </Pressable>
             </View>
+            <ScrollView
+              horizontal
+              accessibilityLabel="Reported supply observations"
+              showsHorizontalScrollIndicator
+              contentContainerStyle={styles.supplyHistoryObservationList}
+            >
+              {chart.points.map((point) => (
+                <Pressable
+                  key={`supply-observation-${point.date}`}
+                  testID={`heat-map-crypto-supply-point-${point.date}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Select supply observation for ${formatSupplyDate(point.date)}: ${formatExactSupply(point.supply)}`}
+                  accessibilityState={{
+                    selected: selectedObservation?.symbol === symbol && selectedObservation.date === point.date,
+                  }}
+                  onPress={() => setSelectedObservation({ symbol, date: point.date })}
+                  style={[
+                    styles.supplyHistoryObservationButton,
+                    {
+                      backgroundColor: selectedObservation?.symbol === symbol && selectedObservation.date === point.date
+                        ? colors.secondary
+                        : colors.card,
+                      borderColor: selectedObservation?.symbol === symbol && selectedObservation.date === point.date
+                        ? colors.gold
+                        : colors.border,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.supplyHistoryObservationDate, { color: colors.foreground }]}>
+                    {point.date.slice(5)}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+            {selectedPoint && (
+              <View
+                testID="heat-map-crypto-supply-selected-point"
+                accessibilityLiveRegion="polite"
+                style={[styles.supplyHistorySelection, { backgroundColor: colors.background, borderColor: colors.border }]}
+              >
+                <Text style={[styles.supplyHistoryChangeLabel, { color: colors.mutedForeground }]}>
+                  Selected observation · {formatSupplyDate(selectedPoint.date)}
+                </Text>
+                <Text testID="heat-map-crypto-supply-selected-value" style={[styles.supplyHistoryChangeValue, { color: colors.foreground }]}>
+                  {formatExactSupply(selectedPoint.supply)}
+                </Text>
+              </View>
+            )}
             <View style={styles.supplyHistoryDateLabels}>
               <Text style={[styles.supplyHistoryAxisText, { color: colors.mutedForeground }]}>
                 {formatSupplyDate(history.startDate!)}

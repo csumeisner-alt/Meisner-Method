@@ -1900,6 +1900,27 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       `document.querySelector(${JSON.stringify(selector("heat-map-counted-quotes"))})?.textContent === "1"`,
       "the selected local crypto filters should leave only BTC visible.",
     );
+    await clickTestID(browser, "heat-map-open-detail-BTC-USD");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-point-2026-09-02"))})`,
+      "the supply chart should expose controls for its reported observations.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-point-2026-09-03"))}) === null`),
+      true,
+      "a date with no provider observation must not be selectable.",
+    );
+    const supplyPointButton = await browser.evaluate(
+      `document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-point-2026-09-02"))})?.getAttribute("aria-label")`,
+    );
+    assert.match(supplyPointButton, /Sep 2, 2026: 19,876,543\.123456/);
+    await clickTestID(browser, "heat-map-crypto-supply-point-2026-09-02");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-selected-value"))})?.textContent === "19,876,543.123456"`,
+      "selecting a plotted observation should reveal its exact provider-reported value.",
+    );
 
     const freshCryptoResponse = cryptoResponse(Date.now() / 1000);
 

@@ -7,4 +7,4 @@ Treat Coin Metrics `SplyCur` as an on-chain current-supply series, not as a hist
 
 **Why:** Providers use different supply definitions, and interpolating absent observations would imply data that was never reported.
 
-**How to apply:** When adding crypto supply-history providers, document the metric and source, preserve their actual dates and gaps, and do not derive a supply series from price or market capitalization.
+**How to apply:** When adding crypto supply-history providers or chart inspection, document the metric and source, preserve actual dates and gaps, and make point controls reference only reported observations. Dense daily charts need a separate accessible observation selector; overlapping touch targets make many dates unreachable.
