@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   getCommodityContractNotional,
   getCommodityContractSpec,
+  getCommodityContractTickValue,
   getHeatMapInstrumentDisplay,
 } from "../heatMapInstrumentDisplay.ts";
 
@@ -48,28 +49,28 @@ test("all supported commodity and futures symbols have plain-language names and 
 
 test("every supported commodity has an exchange-sourced quote unit and standard contract size", () => {
   const expectedContracts = [
-    ["GC=F", 100, "troy ounces", "U.S. dollars per troy ounce", "USD", "CME Group"],
-    ["SI=F", 5_000, "troy ounces", "U.S. dollars per troy ounce", "USD", "CME Group"],
-    ["CL=F", 1_000, "barrels", "U.S. dollars per barrel", "USD", "CME Group"],
-    ["NG=F", 10_000, "MMBtu", "U.S. dollars per MMBtu", "USD", "CME Group"],
-    ["HG=F", 25_000, "pounds", "U.S. dollars per pound", "USD", "CME Group"],
-    ["ZC=F", 5_000, "bushels", "U.S. cents per bushel", "USC", "CME Group"],
-    ["ZW=F", 5_000, "bushels", "U.S. cents per bushel", "USC", "CME Group"],
-    ["ZS=F", 5_000, "bushels", "U.S. cents per bushel", "USC", "CME Group"],
-    ["KC=F", 37_500, "pounds", "U.S. cents per pound", "USC", "ICE Futures U.S."],
-    ["CT=F", 50_000, "pounds", "U.S. cents per pound", "USC", "ICE Futures U.S."],
-    ["SB=F", 112_000, "pounds", "U.S. cents per pound", "USC", "ICE Futures U.S."],
-    ["PL=F", 50, "troy ounces", "U.S. dollars per troy ounce", "USD", "CME Group"],
-    ["PA=F", 100, "troy ounces", "U.S. dollars per troy ounce", "USD", "CME Group"],
-    ["LE=F", 40_000, "pounds", "U.S. cents per pound", "USC", "CME Group"],
-    ["HE=F", 40_000, "pounds", "U.S. cents per pound", "USC", "CME Group"],
+    ["GC=F", 100, "troy ounces", "U.S. dollars per troy ounce", "USD", "CME Group", 0.1, 10],
+    ["SI=F", 5_000, "troy ounces", "U.S. dollars per troy ounce", "USD", "CME Group", 0.005, 25],
+    ["CL=F", 1_000, "barrels", "U.S. dollars per barrel", "USD", "CME Group", 0.01, 10],
+    ["NG=F", 10_000, "MMBtu", "U.S. dollars per MMBtu", "USD", "CME Group", 0.001, 10],
+    ["HG=F", 25_000, "pounds", "U.S. dollars per pound", "USD", "CME Group", 0.0005, 12.5],
+    ["ZC=F", 5_000, "bushels", "U.S. cents per bushel", "USC", "CME Group", 0.25, 12.5],
+    ["ZW=F", 5_000, "bushels", "U.S. cents per bushel", "USC", "CME Group", 0.25, 12.5],
+    ["ZS=F", 5_000, "bushels", "U.S. cents per bushel", "USC", "CME Group", 0.25, 12.5],
+    ["KC=F", 37_500, "pounds", "U.S. cents per pound", "USC", "ICE Futures U.S.", 0.05, 18.75],
+    ["CT=F", 50_000, "pounds", "U.S. cents per pound", "USC", "ICE Futures U.S.", 0.01, 5],
+    ["SB=F", 112_000, "pounds", "U.S. cents per pound", "USC", "ICE Futures U.S.", 0.01, 11.2],
+    ["PL=F", 50, "troy ounces", "U.S. dollars per troy ounce", "USD", "CME Group", 0.1, 5],
+    ["PA=F", 100, "troy ounces", "U.S. dollars per troy ounce", "USD", "CME Group", 0.5, 50],
+    ["LE=F", 40_000, "pounds", "U.S. cents per pound", "USC", "CME Group", 0.025, 10],
+    ["HE=F", 40_000, "pounds", "U.S. cents per pound", "USC", "CME Group", 0.025, 10],
   ] as const;
   const supportedCommoditySymbols = SUPPORTED_INSTRUMENTS
     .filter(([, assetType]) => assetType === "commodity")
     .map(([symbol]) => symbol);
 
   assert.deepEqual(expectedContracts.map(([symbol]) => symbol), supportedCommoditySymbols);
-  for (const [symbol, multiplier, unit, quoteUnit, quoteCurrency, exchange] of expectedContracts) {
+  for (const [symbol, multiplier, unit, quoteUnit, quoteCurrency, exchange, minimumPriceIncrement, tickValue] of expectedContracts) {
     const spec = getCommodityContractSpec(symbol);
     assert.ok(spec, `${symbol} must have contract specifications`);
     assert.equal(spec.contractMultiplier, multiplier, `${symbol} contract multiplier`);
@@ -77,6 +78,8 @@ test("every supported commodity has an exchange-sourced quote unit and standard 
     assert.equal(spec.quoteUnit, quoteUnit, `${symbol} quote unit`);
     assert.equal(spec.quoteCurrency, quoteCurrency, `${symbol} quote currency`);
     assert.equal(spec.exchange, exchange, `${symbol} listing exchange`);
+    assert.equal(spec.minimumPriceIncrement, minimumPriceIncrement, `${symbol} minimum exchange price increment`);
+    assert.equal(getCommodityContractTickValue(symbol), tickValue, `${symbol} USD value per standard-contract tick`);
     assert.equal(spec.quoteToUsdFactor, quoteCurrency === "USC" ? 0.01 : 1);
     assert.match(spec.sourceUrl, /^https:\/\/www\.(cmegroup|ice)\.com\//);
   }
@@ -88,6 +91,10 @@ test("full-contract notional converts cent quotes to dollars and keeps dollar qu
   assert.equal(getCommodityContractNotional("UNKNOWN=F", 100), null);
   assert.equal(getCommodityContractNotional("ZC=F", Number.NaN), null);
   assert.equal(getCommodityContractNotional("ZC=F", 0), null);
+});
+
+test("tick-value calculation rejects unsupported commodity symbols", () => {
+  assert.equal(getCommodityContractTickValue("UNKNOWN=F"), null);
 });
 
 test("stock and ETF tiles continue to show their original symbols", () => {

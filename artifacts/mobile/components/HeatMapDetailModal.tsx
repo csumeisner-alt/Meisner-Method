@@ -34,6 +34,7 @@ import {
 import {
   getCommodityContractNotional,
   getCommodityContractSpec,
+  getCommodityContractTickValue,
 } from '@/lib/heatMapInstrumentDisplay';
 import { formatHeatMapQuoteAge } from '@/lib/heatMapQuoteDisplay';
 
@@ -52,6 +53,13 @@ function formatPrice(value: number, quoteCurrency: 'USD' | 'USC' = 'USD') {
   return quoteCurrency === 'USC' ? `${sign}${formatted}¢` : `${sign}$${formatted}`;
 }
 
+function formatCommodityPriceIncrement(value: number, quoteCurrency: 'USD' | 'USC') {
+  const formatted = value.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 6,
+  });
+  return quoteCurrency === 'USC' ? `${formatted}¢` : `$${formatted}`;
+}
 function getAssetLabel(assetType: HeatMapQuote['assetType']) {
   switch (assetType) {
     case 'stock': return 'STOCK';
@@ -334,6 +342,9 @@ export function HeatMapDetailModal({
   const commodityNotional = commodityContract
     ? getCommodityContractNotional(quote.symbol, quote.price)
     : null;
+  const commodityTickValue = commodityContract
+    ? getCommodityContractTickValue(quote.symbol)
+    : null;
   const displayedStats = getHeatMapDetailStatRows(
     quote.assetType,
     stats,
@@ -430,6 +441,25 @@ export function HeatMapDetailModal({
                       {`${commodityContract.contractMultiplier.toLocaleString('en-US')} ${commodityContract.contractUnit}`}
                     </Text>
                   </View>
+                </View>
+                <View style={[styles.contractTickBlock, { borderTopColor: colors.border }]}>
+                  <View style={styles.contractTickRow}>
+                    <View style={styles.contractTickFact}>
+                      <Text style={[styles.contractLabel, { color: colors.mutedForeground }]}>MINIMUM PRICE INCREMENT</Text>
+                      <Text testID="heat-map-commodity-minimum-increment" style={[styles.contractValue, { color: colors.foreground }]}>
+                        {formatCommodityPriceIncrement(commodityContract.minimumPriceIncrement, commodityContract.quoteCurrency)}
+                      </Text>
+                    </View>
+                    <View style={styles.contractTickFact}>
+                      <Text style={[styles.contractLabel, { color: colors.mutedForeground }]}>PER-CONTRACT TICK VALUE</Text>
+                      <Text testID="heat-map-commodity-tick-value" style={[styles.contractTickAmount, { color: colors.foreground }]}>
+                        {commodityTickValue === null ? '—' : formatPrice(commodityTickValue)}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.contractNotionalNote, { color: colors.mutedForeground }]}>
+                    USD value change for one minimum exchange-price move on one standard contract.
+                  </Text>
                 </View>
                 <View style={[styles.contractNotionalBlock, { borderTopColor: colors.border }]}>
                   <Text style={[styles.contractLabel, { color: colors.mutedForeground }]}>EST. FULL-CONTRACT NOTIONAL</Text>
@@ -590,6 +620,10 @@ const styles = StyleSheet.create({
   contractFact: { flex: 1, minWidth: 0 },
   contractLabel: { fontFamily: 'Inter_700Bold', fontSize: 8, letterSpacing: 0.65, lineHeight: 11 },
   contractValue: { fontFamily: 'Inter_600SemiBold', fontSize: 11, lineHeight: 15, marginTop: 4 },
+  contractTickBlock: { borderTopWidth: 1, marginTop: 10, paddingTop: 9 },
+  contractTickRow: { flexDirection: 'row', gap: 12 },
+  contractTickFact: { flex: 1, minWidth: 0 },
+  contractTickAmount: { fontFamily: 'Inter_700Bold', fontSize: 17, lineHeight: 21, marginTop: 3 },
   contractNotionalBlock: { borderTopWidth: 1, marginTop: 10, paddingTop: 9 },
   contractNotional: { fontFamily: 'Inter_700Bold', fontSize: 17, marginTop: 3 },
   contractNotionalNote: { fontFamily: 'Inter_400Regular', fontSize: 8, lineHeight: 11, marginTop: 3 },

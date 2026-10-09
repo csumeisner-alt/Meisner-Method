@@ -38,11 +38,12 @@ export interface CommodityContractSpec {
   quoteCurrency: CommodityQuoteCurrency;
   contractMultiplier: number;
   contractUnit: string;
+  minimumPriceIncrement: number;
   quoteToUsdFactor: number;
   sourceUrl: string;
 }
 
-// Exchange contract specifications; quote units match the raw Yahoo Finance futures quotes.
+// Exchange contract specifications; quote units and increments match the raw Yahoo Finance futures quotes.
 const COMMODITY_CONTRACT_SPECS: Record<string, CommodityContractSpec> = {
   "GC=F": {
     exchange: "CME Group",
@@ -50,6 +51,7 @@ const COMMODITY_CONTRACT_SPECS: Record<string, CommodityContractSpec> = {
     quoteCurrency: "USD",
     contractMultiplier: 100,
     contractUnit: "troy ounces",
+    minimumPriceIncrement: 0.1,
     quoteToUsdFactor: 1,
     sourceUrl: "https://www.cmegroup.com/markets/metals/precious/gold.contractSpecs.html",
   },
@@ -59,6 +61,7 @@ const COMMODITY_CONTRACT_SPECS: Record<string, CommodityContractSpec> = {
     quoteCurrency: "USD",
     contractMultiplier: 5_000,
     contractUnit: "troy ounces",
+    minimumPriceIncrement: 0.005,
     quoteToUsdFactor: 1,
     sourceUrl: "https://www.cmegroup.com/markets/metals/precious/silver.contractSpecs.html",
   },
@@ -68,6 +71,7 @@ const COMMODITY_CONTRACT_SPECS: Record<string, CommodityContractSpec> = {
     quoteCurrency: "USD",
     contractMultiplier: 1_000,
     contractUnit: "barrels",
+    minimumPriceIncrement: 0.01,
     quoteToUsdFactor: 1,
     sourceUrl: "https://www.cmegroup.com/markets/energy/crude-oil/light-sweet-crude.contractSpecs.html",
   },
@@ -77,8 +81,9 @@ const COMMODITY_CONTRACT_SPECS: Record<string, CommodityContractSpec> = {
     quoteCurrency: "USD",
     contractMultiplier: 10_000,
     contractUnit: "MMBtu",
+    minimumPriceIncrement: 0.001,
     quoteToUsdFactor: 1,
-    sourceUrl: "https://www.cmegroup.com/markets/energy/natural-gas/natural-gas.html",
+    sourceUrl: "https://www.cmegroup.com/markets/energy/natural-gas/natural-gas.contractSpecs.html",
   },
   "HG=F": {
     exchange: "CME Group",
@@ -86,6 +91,7 @@ const COMMODITY_CONTRACT_SPECS: Record<string, CommodityContractSpec> = {
     quoteCurrency: "USD",
     contractMultiplier: 25_000,
     contractUnit: "pounds",
+    minimumPriceIncrement: 0.0005,
     quoteToUsdFactor: 1,
     sourceUrl: "https://www.cmegroup.com/markets/metals/base/copper.contractSpecs.html",
   },
@@ -95,6 +101,7 @@ const COMMODITY_CONTRACT_SPECS: Record<string, CommodityContractSpec> = {
     quoteCurrency: "USC",
     contractMultiplier: 5_000,
     contractUnit: "bushels",
+    minimumPriceIncrement: 0.25,
     quoteToUsdFactor: 0.01,
     sourceUrl: "https://www.cmegroup.com/markets/agriculture/grains/corn.contractSpecs.html",
   },
@@ -104,6 +111,7 @@ const COMMODITY_CONTRACT_SPECS: Record<string, CommodityContractSpec> = {
     quoteCurrency: "USC",
     contractMultiplier: 5_000,
     contractUnit: "bushels",
+    minimumPriceIncrement: 0.25,
     quoteToUsdFactor: 0.01,
     sourceUrl: "https://www.cmegroup.com/markets/agriculture/grains/wheat.contractSpecs.html",
   },
@@ -113,6 +121,7 @@ const COMMODITY_CONTRACT_SPECS: Record<string, CommodityContractSpec> = {
     quoteCurrency: "USC",
     contractMultiplier: 5_000,
     contractUnit: "bushels",
+    minimumPriceIncrement: 0.25,
     quoteToUsdFactor: 0.01,
     sourceUrl: "https://www.cmegroup.com/markets/agriculture/oilseeds/soybean/specs",
   },
@@ -122,6 +131,7 @@ const COMMODITY_CONTRACT_SPECS: Record<string, CommodityContractSpec> = {
     quoteCurrency: "USC",
     contractMultiplier: 37_500,
     contractUnit: "pounds",
+    minimumPriceIncrement: 0.05,
     quoteToUsdFactor: 0.01,
     sourceUrl: "https://www.ice.com/products/15/Coffee-C-Futures",
   },
@@ -131,6 +141,7 @@ const COMMODITY_CONTRACT_SPECS: Record<string, CommodityContractSpec> = {
     quoteCurrency: "USC",
     contractMultiplier: 50_000,
     contractUnit: "pounds",
+    minimumPriceIncrement: 0.01,
     quoteToUsdFactor: 0.01,
     sourceUrl: "https://www.ice.com/products/254/cotton-no-2-futures",
   },
@@ -140,6 +151,7 @@ const COMMODITY_CONTRACT_SPECS: Record<string, CommodityContractSpec> = {
     quoteCurrency: "USC",
     contractMultiplier: 112_000,
     contractUnit: "pounds",
+    minimumPriceIncrement: 0.01,
     quoteToUsdFactor: 0.01,
     sourceUrl: "https://www.ice.com/products/23/sugar-no-11-futures",
   },
@@ -149,6 +161,7 @@ const COMMODITY_CONTRACT_SPECS: Record<string, CommodityContractSpec> = {
     quoteCurrency: "USD",
     contractMultiplier: 50,
     contractUnit: "troy ounces",
+    minimumPriceIncrement: 0.1,
     quoteToUsdFactor: 1,
     sourceUrl: "https://www.cmegroup.com/markets/metals/precious/platinum.contractSpecs.html",
   },
@@ -158,6 +171,7 @@ const COMMODITY_CONTRACT_SPECS: Record<string, CommodityContractSpec> = {
     quoteCurrency: "USD",
     contractMultiplier: 100,
     contractUnit: "troy ounces",
+    minimumPriceIncrement: 0.5,
     quoteToUsdFactor: 1,
     sourceUrl: "https://www.cmegroup.com/markets/metals/precious/palladium.contractSpecs.html",
   },
@@ -167,6 +181,7 @@ const COMMODITY_CONTRACT_SPECS: Record<string, CommodityContractSpec> = {
     quoteCurrency: "USC",
     contractMultiplier: 40_000,
     contractUnit: "pounds",
+    minimumPriceIncrement: 0.025,
     quoteToUsdFactor: 0.01,
     sourceUrl: "https://www.cmegroup.com/markets/agriculture/livestock/live-cattle.contractSpecs.html",
   },
@@ -176,6 +191,7 @@ const COMMODITY_CONTRACT_SPECS: Record<string, CommodityContractSpec> = {
     quoteCurrency: "USC",
     contractMultiplier: 40_000,
     contractUnit: "pounds",
+    minimumPriceIncrement: 0.025,
     quoteToUsdFactor: 0.01,
     sourceUrl: "https://www.cmegroup.com/markets/agriculture/livestock/lean-hogs.contractSpecs.html",
   },
@@ -236,4 +252,11 @@ export function getCommodityContractNotional(symbol: string, quotePrice: number)
   const spec = getCommodityContractSpec(symbol);
   if (!spec || !Number.isFinite(quotePrice) || quotePrice <= 0) return null;
   return quotePrice * spec.contractMultiplier * spec.quoteToUsdFactor;
+}
+
+export function getCommodityContractTickValue(symbol: string): number | null {
+  const spec = getCommodityContractSpec(symbol);
+  if (!spec) return null;
+  const value = spec.minimumPriceIncrement * spec.contractMultiplier * spec.quoteToUsdFactor;
+  return Number(value.toFixed(2));
 }
