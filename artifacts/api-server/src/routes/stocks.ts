@@ -39,6 +39,7 @@ const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const QUOTE_SCRIPT = join(__dirname, "fetch_quote.py");
 const INFO_SCRIPT = join(__dirname, "fetch_info_brief.py");
+const CRYPTO_SUPPLY_HISTORY_SCRIPT = join(__dirname, "fetch_crypto_supply_history.py");
 const TRENDING_SCRIPT = join(__dirname, "fetch_trending.py");
 const TOP_PICKS_SCRIPT = join(__dirname, "fetch_top_picks.py");
 const CHART_SCRIPT = join(__dirname, "fetch_chart.py");
@@ -50,12 +51,18 @@ const TOP_PICKS_TTL = 4 * 60 * 60 * 1000;
 const HEAT_MAP_TTL = 2 * 60 * 1000;
 const MARKET_BREADTH_TTL = 60 * 1000;
 const MARKET_PULSE_SESSION_TTL = 30 * 1000;
+const CRYPTO_SUPPLY_HISTORY_TTL = 6 * 60 * 60 * 1000;
 const heatMapCache = new Map<string, { data: HeatMapResponse; ts: number }>();
 const heatMapRequests = new Map<string, Promise<HeatMapResponse>>();
 let marketBreadthCache: { data: HeatMapResponse; ts: number } | null = null;
 let marketBreadthRequest: Promise<HeatMapResponse> | null = null;
 let marketPulseSessionCache: { marketOpen: boolean; ts: number } | null = null;
 let marketPulseSessionRequest: Promise<boolean> | null = null;
+const cryptoSupplyHistoryCache = new Map<
+  string,
+  { data: CryptoSupplyHistoryPayload; expiresAt: number }
+>();
+const cryptoSupplyHistoryRequests = new Map<string, Promise<CryptoSupplyHistoryPayload>>();
 const marketPulsePool = new Pool({
   connectionString: process.env["DATABASE_URL"],
   connectionTimeoutMillis: 3_000,
@@ -68,6 +75,83 @@ const marketPulseStore = createMarketPulseStore(
 );
 
 const router = Router();
+
+type CryptoSupplyHistoryPayload = {
+  symbol: string;
+  provider: "Coin Metrics";
+  metric: "SplyCur";
+  rangeDays: 365;
+  interval: "daily";
+  startDate: string | null;
+  endDate: string | null;
+  points: { date: string; supply: number }[];
+};
+
+function isCryptoSupplyHistoryPayload(value: unknown, symbol: string): value is CryptoSupplyHistoryPayload {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const payload = value as Record<string, unknown>;
+  const isDate = (date: unknown) => {
+    if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+    const timestamp = Date.parse(`${date}T00:00:00Z`);
+    return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === date;
+  };
+  return payload["symbol"] === symbol
+    && payload["provider"] === "Coin Metrics"
+    && payload["metric"] === "SplyCur"
+    && payload["rangeDays"] === 365
+    && payload["interval"] === "daily"
+    && (payload["startDate"] === null || isDate(payload["startDate"]))
+    && (payload["endDate"] === null || isDate(payload["endDate"]))
+    && Array.isArray(payload["points"])
+    && payload["points"].length <= 366
+    && payload["points"].every((point) => {
+      if (!point || typeof point !== "object" || Array.isArray(point)) return false;
+      const entry = point as Record<string, unknown>;
+      return isDate(entry["date"])
+        && typeof entry["supply"] === "number"
+        && Number.isFinite(entry["supply"])
+        && entry["supply"] > 0;
+    });
+}
+
+async function fetchCryptoSupplyHistory(symbol: string): Promise<CryptoSupplyHistoryPayload> {
+  const cached = cryptoSupplyHistoryCache.get(symbol);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+
+  const pending = cryptoSupplyHistoryRequests.get(symbol);
+  if (pending) return pending;
+
+  const request = (async () => {
+    const { stdout } = await execFileAsync(
+      "python3",
+      [CRYPTO_SUPPLY_HISTORY_SCRIPT, symbol],
+      { timeout: 20_000, maxBuffer: 2 * 1024 * 1024 },
+    );
+    const raw: unknown = JSON.parse(stdout.trim());
+    if (!isCryptoSupplyHistoryPayload(raw, symbol)) {
+      throw new Error("Market data provider returned an invalid crypto supply history");
+    }
+    cryptoSupplyHistoryCache.set(symbol, {
+      data: raw,
+      expiresAt: Date.now() + CRYPTO_SUPPLY_HISTORY_TTL,
+    });
+    if (cryptoSupplyHistoryCache.size > 64) {
+      const oldestKey = cryptoSupplyHistoryCache.keys().next().value;
+      if (oldestKey !== undefined) cryptoSupplyHistoryCache.delete(oldestKey);
+    }
+    return raw;
+  })();
+
+  cryptoSupplyHistoryRequests.set(symbol, request);
+  try {
+    return await request;
+  } finally {
+    if (cryptoSupplyHistoryRequests.get(symbol) === request) {
+      cryptoSupplyHistoryRequests.delete(symbol);
+    }
+  }
+}
+
 async function fetchMarketPulseSession(): Promise<boolean> {
   const now = Date.now();
   if (marketPulseSessionCache && now - marketPulseSessionCache.ts < MARKET_PULSE_SESSION_TTL) {
@@ -476,6 +560,21 @@ router.get("/stocks/trending", async (_req, res) => {
     res.json(raw);
   } catch (err: any) {
     res.status(422).json({ error: "TRENDING_FAILED", message: err.message });
+  }
+});
+
+// Historical on-chain supply, separate from current quote statistics and max-supply share.
+router.get("/stocks/crypto/:symbol/supply-history", async (req, res) => {
+  const symbol = (req.params["symbol"] ?? "").toUpperCase().trim();
+  if (!/^[A-Z0-9]+-USD$/.test(symbol)) {
+    res.status(400).json({ error: "INVALID_SYMBOL", message: "A crypto symbol ending in -USD is required" });
+    return;
+  }
+  try {
+    res.json(await fetchCryptoSupplyHistory(symbol));
+  } catch (err: any) {
+    logger.warn({ err, symbol }, "Crypto supply history provider request failed");
+    res.status(422).json({ error: "SUPPLY_HISTORY_FAILED", message: "Historical crypto supply is temporarily unavailable" });
   }
 });
 

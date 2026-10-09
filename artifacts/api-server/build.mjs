@@ -159,6 +159,10 @@ buildAll()
         path.resolve(artifactDir, "src/lib/fetch_info_brief.py"),
         path.resolve(artifactDir, "dist/fetch_info_brief.py")
       ),
+      copyFile(
+        path.resolve(artifactDir, "src/lib/fetch_crypto_supply_history.py"),
+        path.resolve(artifactDir, "dist/fetch_crypto_supply_history.py")
+      ),
     ])
   )
   .catch((err) => {

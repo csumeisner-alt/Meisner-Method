@@ -2,10 +2,73 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   formatHeatMapRegimeReturn,
+  getHeatMapCryptoSupplyChartModel,
   getHeatMapDetailStatRows,
   getHeatMapRangePosition,
+  parseHeatMapCryptoSupplyHistory,
   parseHeatMapDetailStats,
 } from '../heatMapDetail.ts';
+
+test('crypto supply history accepts only dated provider observations and leaves gaps empty', () => {
+  const history = parseHeatMapCryptoSupplyHistory({
+    symbol: 'BTC-USD',
+    provider: 'Coin Metrics',
+    metric: 'SplyCur',
+    rangeDays: 365,
+    interval: 'daily',
+    startDate: '2026-10-06',
+    endDate: '2026-10-08',
+    points: [
+      { date: '2026-10-08', supply: 200.5 },
+      { date: '2026-10-06', supply: 200 },
+      { date: '2026-10-07', supply: Number.NaN },
+      { date: '2026-10-08', supply: 201 },
+      { date: '2026-10-09', supply: -1 },
+      { date: 'not-a-date', supply: 202 },
+    ],
+  });
+
+  assert.deepEqual(history, {
+    symbol: 'BTC-USD',
+    provider: 'Coin Metrics',
+    metric: 'SplyCur',
+    rangeDays: 365,
+    interval: 'daily',
+    startDate: '2026-10-06',
+    endDate: '2026-10-08',
+    points: [
+      { date: '2026-10-06', supply: 200 },
+      { date: '2026-10-08', supply: 201 },
+    ],
+  });
+  assert.equal(parseHeatMapCryptoSupplyHistory({
+    provider: 'CoinGecko',
+    metric: 'SplyCur',
+    rangeDays: 365,
+    interval: 'daily',
+    symbol: 'BTC-USD',
+    points: [],
+  }), null);
+});
+
+test('crypto supply chart breaks its line across missing provider dates', () => {
+  const model = getHeatMapCryptoSupplyChartModel([
+    { date: '2026-10-06', supply: 200 },
+    { date: '2026-10-07', supply: 201 },
+    { date: '2026-10-10', supply: 204 },
+  ]);
+
+  assert.ok(model);
+  assert.equal(model.minSupply, 200);
+  assert.equal(model.maxSupply, 204);
+  assert.equal(model.points.length, 3);
+  assert.equal(model.segments.length, 2);
+  assert.match(model.segments[0]!, /^M.*L/);
+  assert.match(model.segments[1]!, /^M/);
+  assert.equal(getHeatMapCryptoSupplyChartModel([
+    { date: '2026-10-06', supply: 200 },
+  ]), null);
+});
 
 test('heat-map detail stats accept finite provider numbers and ignore invalid values', () => {
   assert.deepEqual(parseHeatMapDetailStats({

@@ -10,14 +10,22 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { HeatMapQuote } from '@workspace/api-client-react';
+import Svg, { Circle, Path } from 'react-native-svg';
+import {
+  getGetCryptoSupplyHistoryQueryKey,
+  useGetCryptoSupplyHistory,
+  type HeatMapQuote,
+} from '@workspace/api-client-react';
 import { CommodityPriceDrivers } from '@/components/CommodityPriceDrivers';
 import { useApi } from '@/hooks/useApi';
 import { useColors } from '@/hooks/useColors';
 import {
   formatHeatMapRegimeReturn,
+  formatHeatMapCompact,
+  getHeatMapCryptoSupplyChartModel,
   getHeatMapDetailStatRows,
   getHeatMapRangePosition,
+  parseHeatMapCryptoSupplyHistory,
   parseHeatMapDetailStats,
   type HeatMapEtfProfile,
   type HeatMapDetailStats,
@@ -212,6 +220,17 @@ function EtfAdditionalDetails({
   );
 }
 
+function formatSupplyDate(date: string) {
+  const timestamp = Date.parse(`${date}T00:00:00Z`);
+  return Number.isFinite(timestamp)
+    ? new Date(timestamp).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'UTC',
+    })
+    : date;
+}
 export function HeatMapDetailModal({
   quote,
   visible,
@@ -276,6 +295,7 @@ export function HeatMapDetailModal({
   const changeColor = change >= 0 ? colors.buyColor : colors.sellColor;
   const isEtf = quote.assetType === 'etf';
   const isCommodity = quote.assetType === 'commodity';
+  const isCrypto = quote.assetType === 'cryptocurrency';
   const displayedStats = getHeatMapDetailStatRows(
     quote.assetType,
     stats,
@@ -430,6 +450,13 @@ export function HeatMapDetailModal({
                 No additional trading statistics were reported for this commodity.
               </Text>
             ) : null}
+            {isCrypto && (
+              <CryptoSupplyHistory
+                symbol={quote.symbol}
+                visible={visible}
+                colors={colors}
+              />
+            )}
             {isEtf && (
               <EtfAdditionalDetails
                 profile={stats?.etfProfile ?? null}
@@ -519,9 +546,140 @@ const styles = StyleSheet.create({
   regimeReturn: { fontFamily: 'Inter_700Bold', fontSize: 15, marginTop: 5 },
   regimeSample: { fontFamily: 'Inter_400Regular', fontSize: 8, marginTop: 2 },
   methodology: { fontFamily: 'Inter_400Regular', fontSize: 9, lineHeight: 13, marginTop: 8 },
+  supplyHistory: { marginTop: 18 },
+  supplyHistoryCard: { borderWidth: 1, borderRadius: 13, padding: 12 },
+  supplyHistoryCaption: { fontFamily: 'Inter_500Medium', fontSize: 9, marginBottom: 10 },
+  supplyHistoryEmpty: { fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15 },
+  supplyHistoryEmptyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  supplyHistoryChart: { flexDirection: 'row', alignItems: 'stretch', gap: 7 },
+  supplyHistoryAxisLabels: { width: 35, justifyContent: 'space-between', paddingVertical: 3 },
+  supplyHistoryAxisText: { fontFamily: 'Inter_400Regular', fontSize: 8 },
+  supplyHistoryDateLabels: { flexDirection: 'row', justifyContent: 'space-between', marginLeft: 42, marginTop: 4 },
+  supplyHistoryNote: { fontFamily: 'Inter_400Regular', fontSize: 8, lineHeight: 12, marginTop: 8 },
   errorPanel: { borderWidth: 1, borderRadius: 11, padding: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 9 },
   errorText: { flex: 1, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 14 },
   retryButton: { minHeight: 28, borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 4 },
   retryText: { fontFamily: 'Inter_700Bold', fontSize: 10 },
   disclaimer: { fontFamily: 'Inter_400Regular', fontSize: 9, lineHeight: 13, marginTop: 11 },
 });
+
+function CryptoSupplyHistory({
+  symbol,
+  visible,
+  colors,
+}: {
+  symbol: string;
+  visible: boolean;
+  colors: ReturnType<typeof useColors>;
+}) {
+  const historyQuery = useGetCryptoSupplyHistory(symbol, {
+    query: {
+      queryKey: getGetCryptoSupplyHistoryQueryKey(symbol),
+      enabled: visible,
+      staleTime: 6 * 60 * 60 * 1000,
+    },
+  });
+  const history = parseHeatMapCryptoSupplyHistory(historyQuery.data);
+  const chart = history ? getHeatMapCryptoSupplyChartModel(history.points) : null;
+  const hasHistory = !!history?.points.length;
+
+  return (
+    <View testID="heat-map-crypto-supply-history" style={styles.supplyHistory}>
+      <View style={styles.sectionHeader}>
+        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+          Circulating supply history
+        </Text>
+        {historyQuery.isFetching && (
+          <ActivityIndicator testID="heat-map-crypto-supply-loading" size="small" color={colors.gold} />
+        )}
+      </View>
+      <View style={[styles.supplyHistoryCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <Text style={[styles.supplyHistoryCaption, { color: colors.mutedForeground }]}>
+          Coin Metrics on-chain supply · Daily · Past year
+        </Text>
+        {historyQuery.isLoading ? (
+          <Text style={[styles.supplyHistoryEmpty, { color: colors.mutedForeground }]}>
+            Loading provider history…
+          </Text>
+        ) : historyQuery.isError && !hasHistory ? (
+          <View style={styles.supplyHistoryEmptyRow}>
+            <Text testID="heat-map-crypto-supply-error" style={[styles.supplyHistoryEmpty, { color: colors.mutedForeground }]}>
+              Historical supply could not be loaded.
+            </Text>
+            <Pressable
+              testID="heat-map-crypto-supply-retry"
+              accessibilityRole="button"
+              accessibilityLabel="Retry supply history"
+              onPress={() => { void historyQuery.refetch(); }}
+              hitSlop={8}
+            >
+              <MaterialCommunityIcons name="refresh" size={17} color={colors.primary} />
+            </Pressable>
+          </View>
+        ) : !hasHistory ? (
+          <Text testID="heat-map-crypto-supply-unavailable" style={[styles.supplyHistoryEmpty, { color: colors.mutedForeground }]}>
+            Coin Metrics does not report daily on-chain supply for this asset.
+          </Text>
+        ) : history.points.length === 1 ? (
+          <Text style={[styles.supplyHistoryEmpty, { color: colors.mutedForeground }]}>
+            One dated observation: {formatSupplyDate(history.points[0]!.date)} · {formatHeatMapCompact(history.points[0]!.supply)}. A trend needs more observations.
+          </Text>
+        ) : chart ? (
+          <>
+            <View style={styles.supplyHistoryChart}>
+              <View style={styles.supplyHistoryAxisLabels}>
+                <Text style={[styles.supplyHistoryAxisText, { color: colors.mutedForeground }]}>
+                  {formatHeatMapCompact(chart.maxSupply)}
+                </Text>
+                <Text style={[styles.supplyHistoryAxisText, { color: colors.mutedForeground }]}>
+                  {formatHeatMapCompact(chart.minSupply)}
+                </Text>
+              </View>
+              <Svg
+                testID="heat-map-crypto-supply-chart"
+                accessible={false}
+                width="100%"
+                height={112}
+                viewBox="0 0 320 112"
+                preserveAspectRatio="none"
+              >
+                <Path d="M12,8 H308 M12,56 H308 M12,104 H308" fill="none" stroke={colors.border} strokeWidth={1} />
+                {chart.segments.map((segment, index) => (
+                  <Path
+                    key={`supply-segment-${index}`}
+                    d={segment}
+                    fill="none"
+                    stroke={colors.gold}
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                ))}
+                {chart.points.map((point) => (
+                  <Circle
+                    key={point.date}
+                    cx={point.x}
+                    cy={point.y}
+                    r={1.7}
+                    fill={colors.gold}
+                  />
+                ))}
+              </Svg>
+            </View>
+            <View style={styles.supplyHistoryDateLabels}>
+              <Text style={[styles.supplyHistoryAxisText, { color: colors.mutedForeground }]}>
+                {formatSupplyDate(history.startDate!)}
+              </Text>
+              <Text style={[styles.supplyHistoryAxisText, { color: colors.mutedForeground }]}>
+                {formatSupplyDate(history.endDate!)}
+              </Text>
+            </View>
+          </>
+        ) : null}
+        <Text style={[styles.supplyHistoryNote, { color: colors.mutedForeground }]}>
+          This daily on-chain metric can differ from the live circulating-supply figure above; it is not the maximum-supply share.
+        </Text>
+      </View>
+    </View>
+  );
+}

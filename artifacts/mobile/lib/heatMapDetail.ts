@@ -22,6 +22,10 @@ export interface HeatMapDetailStats {
   etfProfile: HeatMapEtfProfile | null;
 }
 
+export interface HeatMapCryptoSupplyPoint {
+  date: string;
+  supply: number;
+}
 export interface HeatMapEtfHolding {
   symbol: string;
   name: string;
@@ -103,6 +107,11 @@ function record(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function isIsoDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const timestamp = Date.parse(`${value}T00:00:00Z`);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === value;
+}
 function stringField(value: unknown, key: string): string | null {
   const candidate = record(value)?.[key];
   return typeof candidate === 'string' && candidate.trim()
@@ -200,6 +209,51 @@ export function parseHeatMapDetailStats(value: unknown): HeatMapDetailStats | nu
   };
 }
 
+export function parseHeatMapCryptoSupplyHistory(value: unknown): HeatMapCryptoSupplyHistory | null {
+  const input = record(value);
+  if (
+    !input
+    || input.provider !== 'Coin Metrics'
+    || input.metric !== 'SplyCur'
+    || input.rangeDays !== 365
+    || input.interval !== 'daily'
+    || typeof input.symbol !== 'string'
+    || !Array.isArray(input.points)
+    || input.points.length > 366
+  ) {
+    return null;
+  }
+
+  const pointsByDate = new Map<string, number>();
+  for (const item of input.points) {
+    const point = record(item);
+    if (
+      !point
+      || !isIsoDate(point.date)
+      || typeof point.supply !== 'number'
+      || !Number.isFinite(point.supply)
+      || point.supply <= 0
+    ) {
+      continue;
+    }
+    pointsByDate.set(point.date, point.supply);
+  }
+
+  const points = [...pointsByDate.entries()]
+    .sort(([firstDate], [secondDate]) => firstDate.localeCompare(secondDate))
+    .map(([date, supply]) => ({ date, supply }));
+
+  return {
+    symbol: input.symbol,
+    provider: 'Coin Metrics',
+    metric: 'SplyCur',
+    rangeDays: 365,
+    interval: 'daily',
+    startDate: points[0]?.date ?? null,
+    endDate: points.at(-1)?.date ?? null,
+    points,
+  };
+}
 function formatCompact(value: number, currency = false) {
   const absolute = Math.abs(value);
   const suffix = absolute >= 1e12 ? 'T'
@@ -219,6 +273,9 @@ function formatCompact(value: number, currency = false) {
   return `${currency ? '$' : ''}${formatted}${suffix}`;
 }
 
+export function formatHeatMapCompact(value: number): string {
+  return formatCompact(value);
+}
 function formatDate(timestamp: number) {
   if (timestamp <= 0) return '—';
   const date = new Date(timestamp * 1000);
@@ -467,3 +524,86 @@ export function getHeatMapRangePosition(
 
   return Math.max(0, Math.min(100, ((currentPrice - low) / (high - low)) * 100));
 }
+
+export interface HeatMapCryptoSupplyChartModel {
+  points: (HeatMapCryptoSupplyPoint & { x: number; y: number })[];
+  segments: string[];
+  minSupply: number;
+  maxSupply: number;
+}
+
+const CRYPTO_SUPPLY_CHART_GAP_MS = 36 * 60 * 60 * 1000;
+
+export function getHeatMapCryptoSupplyChartModel(
+  points: HeatMapCryptoSupplyPoint[],
+): HeatMapCryptoSupplyChartModel | null {
+  if (points.length < 2) return null;
+
+  const datedPoints = points.flatMap((point) => {
+    const timestamp = Date.parse(`${point.date}T00:00:00Z`);
+    return Number.isFinite(timestamp) ? [{ ...point, timestamp }] : [];
+  });
+  if (datedPoints.length < 2) return null;
+
+  const minSupply = Math.min(...datedPoints.map(({ supply }) => supply));
+  const maxSupply = Math.max(...datedPoints.map(({ supply }) => supply));
+  const actualSpan = maxSupply - minSupply;
+  const padding = actualSpan > 0
+    ? actualSpan * 0.08
+    : Math.max(Math.abs(maxSupply) * 0.002, 1e-9);
+  const domainMin = minSupply - padding;
+  const domainMax = maxSupply + padding;
+  const firstTimestamp = datedPoints[0]!.timestamp;
+  const lastTimestamp = datedPoints.at(-1)!.timestamp;
+  const timeSpan = Math.max(1, lastTimestamp - firstTimestamp);
+  const valueSpan = Math.max(Number.MIN_VALUE, domainMax - domainMin);
+  const left = 12;
+  const right = CRYPTO_SUPPLY_CHART_WIDTH - 12;
+  const top = 8;
+  const bottom = CRYPTO_SUPPLY_CHART_HEIGHT - 8;
+  const chartPoints = datedPoints.map(({ date, supply, timestamp }) => ({
+    date,
+    supply,
+    timestamp,
+    x: left + ((timestamp - firstTimestamp) / timeSpan) * (right - left),
+    y: bottom - ((supply - domainMin) / valueSpan) * (bottom - top),
+  }));
+
+  const segments: string[] = [];
+  let segment = '';
+  let previousTimestamp: number | null = null;
+  for (const point of chartPoints) {
+    const command = previousTimestamp === null || point.timestamp - previousTimestamp > CRYPTO_SUPPLY_CHART_GAP_MS
+      ? 'M'
+      : 'L';
+    if (command === 'M' && segment) {
+      segments.push(segment);
+      segment = '';
+    }
+    segment += `${command}${point.x.toFixed(1)},${point.y.toFixed(1)} `;
+    previousTimestamp = point.timestamp;
+  }
+  if (segment) segments.push(segment.trim());
+
+  return {
+    points: chartPoints.map(({ date, supply, x, y }) => ({ date, supply, x, y })),
+    segments,
+    minSupply,
+    maxSupply,
+  };
+}
+
+const CRYPTO_SUPPLY_CHART_WIDTH = 320;
+
+export interface HeatMapCryptoSupplyHistory {
+  symbol: string;
+  provider: 'Coin Metrics';
+  metric: 'SplyCur';
+  rangeDays: 365;
+  interval: 'daily';
+  startDate: string | null;
+  endDate: string | null;
+  points: HeatMapCryptoSupplyPoint[];
+}
+
+const CRYPTO_SUPPLY_CHART_HEIGHT = 112;

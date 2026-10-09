@@ -241,6 +241,32 @@ export function useGetMarketBreadth() {
   };
 }
 
+export function useGetCryptoSupplyHistory(
+  symbol: string,
+  options?: { query?: { enabled?: boolean } },
+) {
+  return {
+    data: options?.query?.enabled ? {
+      symbol,
+      provider: "Coin Metrics",
+      metric: "SplyCur",
+      rangeDays: 365,
+      interval: "daily",
+      startDate: null,
+      endDate: null,
+      points: [],
+    } : undefined,
+    isLoading: false,
+    isFetching: false,
+    isError: false,
+    refetch: async () => ({ isError: false }),
+  };
+}
+
+export function getGetCryptoSupplyHistoryQueryKey(symbol: string) {
+  return [`/api/stocks/crypto/${symbol}/supply-history`];
+}
+
 export function useSearchStockSymbols() {
   return {
     queryKey: getSearchStockSymbolsQueryKey({ q: "" }),

@@ -22,6 +22,7 @@ import type {
 import type {
   AnalysisError,
   AnalyzeStockRequest,
+  CryptoSupplyHistory,
   GetMarketHeatMapParams,
   HealthStatus,
   HeatMapQuote,
@@ -362,6 +363,84 @@ export function useGetStockInfo<TData = Awaited<ReturnType<typeof getStockInfo>>
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetStockInfoQueryOptions(symbol,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetCryptoSupplyHistoryUrl = (symbol: string,) => {
+
+
+
+
+  return `/api/stocks/crypto/${symbol}/supply-history`
+}
+
+/**
+ * Returns up to one year of daily Coin Metrics current-supply observations. Missing provider dates are omitted, never interpolated; this on-chain metric may differ from another provider's current circulating-supply figure.
+ * @summary Get historical on-chain supply for a cryptocurrency
+ */
+export const getCryptoSupplyHistory = async (symbol: string, options?: RequestInit): Promise<CryptoSupplyHistory> => {
+
+  return customFetch<CryptoSupplyHistory>(getGetCryptoSupplyHistoryUrl(symbol),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCryptoSupplyHistoryQueryKey = (symbol: string,) => {
+    return [
+    `/api/stocks/crypto/${symbol}/supply-history`
+    ] as const;
+    }
+
+
+export const getGetCryptoSupplyHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getCryptoSupplyHistory>>, TError = ErrorType<AnalysisError>>(symbol: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCryptoSupplyHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCryptoSupplyHistoryQueryKey(symbol);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCryptoSupplyHistory>>> = ({ signal }) => getCryptoSupplyHistory(symbol, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: symbol !== null && symbol !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCryptoSupplyHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCryptoSupplyHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getCryptoSupplyHistory>>>
+export type GetCryptoSupplyHistoryQueryError = ErrorType<AnalysisError>
+
+
+/**
+ * @summary Get historical on-chain supply for a cryptocurrency
+ */
+
+export function useGetCryptoSupplyHistory<TData = Awaited<ReturnType<typeof getCryptoSupplyHistory>>, TError = ErrorType<AnalysisError>>(
+ symbol: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCryptoSupplyHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCryptoSupplyHistoryQueryOptions(symbol,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

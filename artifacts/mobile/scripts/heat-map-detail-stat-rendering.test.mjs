@@ -31,3 +31,13 @@ test('commodity detail modal renders instrument-specific up and down price drive
   assert.match(commodityDriversSource, /Can push prices lower/);
   assert.match(commodityDriversSource, /not predictions/);
 });
+
+test('crypto detail keeps daily provider supply history distinct from its current supply share', () => {
+  assert.match(modalSource, /const isCrypto = quote\.assetType === 'cryptocurrency'/);
+  assert.match(modalSource, /\{isCrypto && \(\s*<CryptoSupplyHistory/s);
+  assert.match(modalSource, /useGetCryptoSupplyHistory\(symbol,\s*\{\s*query:\s*\{[^}]*enabled:\s*visible/s);
+  assert.match(modalSource, /Coin Metrics on-chain supply · Daily · Past year/);
+  assert.match(modalSource, /This daily on-chain metric can differ from the live circulating-supply figure above; it is not the maximum-supply share/);
+  assert.match(modalSource, /heat-map-crypto-supply-unavailable/);
+  assert.match(modalSource, /heat-map-crypto-supply-chart/);
+});

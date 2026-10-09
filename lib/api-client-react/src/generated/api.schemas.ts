@@ -141,6 +141,54 @@ export interface StockAnalysis {
   recommendation: Recommendation;
 }
 
+export type CryptoSupplyHistoryProvider = typeof CryptoSupplyHistoryProvider[keyof typeof CryptoSupplyHistoryProvider];
+
+
+export const CryptoSupplyHistoryProvider = {
+  Coin_Metrics: 'Coin Metrics',
+} as const;
+
+export type CryptoSupplyHistoryMetric = typeof CryptoSupplyHistoryMetric[keyof typeof CryptoSupplyHistoryMetric];
+
+
+export const CryptoSupplyHistoryMetric = {
+  SplyCur: 'SplyCur',
+} as const;
+
+export type CryptoSupplyHistoryRangeDays = typeof CryptoSupplyHistoryRangeDays[keyof typeof CryptoSupplyHistoryRangeDays];
+
+
+export const CryptoSupplyHistoryRangeDays = {
+  NUMBER_365: 365,
+} as const;
+
+export type CryptoSupplyHistoryInterval = typeof CryptoSupplyHistoryInterval[keyof typeof CryptoSupplyHistoryInterval];
+
+
+export const CryptoSupplyHistoryInterval = {
+  daily: 'daily',
+} as const;
+
+export interface CryptoSupplyHistoryPoint {
+  date: string;
+  /** @exclusiveMinimum 0 */
+  supply: number;
+}
+
+/**
+ * Provider-reported daily on-chain current-supply observations. This series is distinct from the live circulating-supply and maximum-supply-share statistics.
+ */
+export interface CryptoSupplyHistory {
+  symbol: string;
+  provider: CryptoSupplyHistoryProvider;
+  metric: CryptoSupplyHistoryMetric;
+  rangeDays: CryptoSupplyHistoryRangeDays;
+  interval: CryptoSupplyHistoryInterval;
+  startDate: string | null;
+  endDate: string | null;
+  points: CryptoSupplyHistoryPoint[];
+}
+
 export interface EtfHolding {
   symbol: string;
   name: string;

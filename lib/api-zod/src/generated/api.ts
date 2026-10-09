@@ -190,6 +190,40 @@ export const GetStockInfoResponse = zod.object({
 
 
 /**
+ * Returns up to one year of daily Coin Metrics current-supply observations. Missing provider dates are omitted, never interpolated; this on-chain metric may differ from another provider's current circulating-supply figure.
+ * @summary Get historical on-chain supply for a cryptocurrency
+ */
+export const getCryptoSupplyHistoryPathSymbolMin = 5;
+export const getCryptoSupplyHistoryPathSymbolMax = 15;
+
+
+export const getCryptoSupplyHistoryPathSymbolRegExp = new RegExp('^[A-Z0-9]+-USD$');
+
+
+export const GetCryptoSupplyHistoryParams = zod.object({
+  "symbol": zod.coerce.string().min(getCryptoSupplyHistoryPathSymbolMin).max(getCryptoSupplyHistoryPathSymbolMax).regex(getCryptoSupplyHistoryPathSymbolRegExp)
+})
+
+export const getCryptoSupplyHistoryResponsePointsItemSupplyExclusiveMin = 0;
+
+
+
+export const GetCryptoSupplyHistoryResponse = zod.object({
+  "symbol": zod.string(),
+  "provider": zod.enum(['Coin Metrics']),
+  "metric": zod.enum(['SplyCur']),
+  "rangeDays": zod.literal(365),
+  "interval": zod.enum(['daily']),
+  "startDate": zod.coerce.date().nullable(),
+  "endDate": zod.coerce.date().nullable(),
+  "points": zod.array(zod.object({
+  "date": zod.coerce.date(),
+  "supply": zod.number().gt(getCryptoSupplyHistoryResponsePointsItemSupplyExclusiveMin)
+}))
+}).describe('Provider-reported daily on-chain current-supply observations. This series is distinct from the live circulating-supply and maximum-supply-share statistics.')
+
+
+/**
  * Returns the regular-session daily price changes for the same active-stock sample as the heat map, without fetching historical series or volatility data.
  * @summary Get a fast stock-market breadth snapshot
  */

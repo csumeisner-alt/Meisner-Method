@@ -125,6 +125,40 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AnalysisError"
+  /stocks/crypto/{symbol}/supply-history:
+    get:
+      operationId: getCryptoSupplyHistory
+      tags: [stocks]
+      summary: Get historical on-chain supply for a cryptocurrency
+      description: Returns up to one year of daily Coin Metrics current-supply observations. Missing provider dates are omitted, never interpolated; this on-chain metric may differ from another provider's current circulating-supply figure.
+      parameters:
+        - in: path
+          name: symbol
+          required: true
+          schema:
+            type: string
+            minLength: 5
+            maxLength: 15
+            pattern: "^[A-Z0-9]+-USD$"
+      responses:
+        "200":
+          description: Daily provider history, or an empty point list when the provider has no history for this asset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CryptoSupplyHistory"
+        "400":
+          description: Symbol is missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "422":
+          description: Historical supply provider is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
   /stocks/market-breadth:
     get:
       operationId: getMarketBreadth
@@ -499,6 +533,59 @@ components:
         - fundamental
         - behavioral
         - recommendation
+
+    CryptoSupplyHistory:
+      type: object
+      description: Provider-reported daily on-chain current-supply observations. This series is distinct from the live circulating-supply and maximum-supply-share statistics.
+      properties:
+        symbol:
+          type: string
+        provider:
+          type: string
+          enum: ["Coin Metrics"]
+        metric:
+          type: string
+          enum: [SplyCur]
+        rangeDays:
+          type: integer
+          enum: [365]
+        interval:
+          type: string
+          enum: [daily]
+        startDate:
+          type: string
+          format: date
+          nullable: true
+        endDate:
+          type: string
+          format: date
+          nullable: true
+        points:
+          type: array
+          items:
+            $ref: "#/components/schemas/CryptoSupplyHistoryPoint"
+      required:
+        - symbol
+        - provider
+        - metric
+        - rangeDays
+        - interval
+        - startDate
+        - endDate
+        - points
+
+    CryptoSupplyHistoryPoint:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        supply:
+          type: number
+          exclusiveMinimum: 0
+      required:
+        - date
+        - supply
 
     MarketInstrumentInfo:
       type: object

@@ -8,3 +8,11 @@ export default function Svg({ children, ...props }: React.PropsWithChildren<Reco
 export function Polygon() {
   return null;
 }
+
+export function Circle() {
+  return null;
+}
+
+export function Path() {
+  return null;
+}
