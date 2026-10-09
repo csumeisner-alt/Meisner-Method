@@ -54,6 +54,21 @@ def finite_number(value):
     return number if math.isfinite(number) else None
 
 
+def get_max_supply_status(info):
+    """Classify Yahoo's explicit maxSupply value without guessing from absence.
+
+    Yahoo reports 0 for cryptocurrencies with no fixed supply cap. Missing,
+    null, non-finite, and invalid values remain unreported.
+    """
+    value = info.get("maxSupply")
+    if isinstance(value, bool):
+        return "unreported"
+    max_supply = finite_number(value)
+    if max_supply is None or max_supply < 0:
+        return "unreported"
+    return "uncapped" if max_supply == 0 else "capped"
+
+
 def get_expense_ratio(info):
     """Return annual fund costs as a decimal fraction."""
     annual_ratio = finite_number(info.get("annualReportExpenseRatio"))
@@ -278,6 +293,7 @@ def build_info_brief_payload(symbol, info, etf_profile=None):
         "totalRevenue": info.get("totalRevenue"),
         "circulatingSupply": info.get("circulatingSupply"),
         "maxSupply": info.get("maxSupply"),
+        "maxSupplyStatus": get_max_supply_status(info),
         "volume24Hr": info.get("volume24Hr"),
     }
     if etf_profile is not None:

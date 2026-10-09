@@ -15,6 +15,7 @@ export interface HeatMapDetailStats {
   totalRevenue: number | null;
   circulatingSupply: number | null;
   maxSupply: number | null;
+  maxSupplyStatus: 'capped' | 'uncapped' | 'unreported';
   volume24Hr: number | null;
   etfProfile: HeatMapEtfProfile | null;
 }
@@ -67,7 +68,7 @@ export type HeatMapDetailAssetType =
 
 interface StatDefinition {
   label: string;
-  key: Exclude<keyof HeatMapDetailStats, 'etfProfile'>;
+  key: Exclude<keyof HeatMapDetailStats, 'etfProfile' | 'maxSupplyStatus'>;
   format: 'price' | 'compact' | 'currency' | 'number' | 'date';
 }
 
@@ -76,6 +77,13 @@ function numericField(value: unknown, key: string): number | null {
   return typeof candidate === 'number' && Number.isFinite(candidate)
     ? candidate
     : null;
+}
+
+function maxSupplyStatusField(value: unknown): HeatMapDetailStats['maxSupplyStatus'] {
+  const candidate = record(value)?.maxSupplyStatus;
+  return candidate === 'capped' || candidate === 'uncapped'
+    ? candidate
+    : 'unreported';
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -173,6 +181,7 @@ export function parseHeatMapDetailStats(value: unknown): HeatMapDetailStats | nu
     totalRevenue: numericField(value, 'totalRevenue'),
     circulatingSupply: numericField(value, 'circulatingSupply'),
     maxSupply: numericField(value, 'maxSupply'),
+    maxSupplyStatus: maxSupplyStatusField(value),
     volume24Hr: numericField(value, 'volume24Hr'),
     etfProfile: parseEtfProfile((value as Record<string, unknown>).etfProfile),
   };
@@ -325,6 +334,22 @@ export function getHeatMapDetailStatRows(
     : STOCK_STAT_DEFINITIONS;
 
   const rows = definitions.map(({ label, key, format }) => {
+    if (key === 'maxSupply') {
+      if (!stats) return { label, value: loading ? 'Loading…' : 'Unavailable' };
+      if (stats?.maxSupplyStatus === 'uncapped') return { label, value: 'No fixed cap' };
+
+      const maxSupply = stats.maxSupply;
+      if (
+        stats.maxSupplyStatus === 'capped'
+        && maxSupply !== null
+        && Number.isFinite(maxSupply)
+        && maxSupply > 0
+      ) {
+        return { label, value: formatCompact(maxSupply) };
+      }
+      return { label, value: 'Not reported' };
+    }
+
     const rawValue = key === 'marketCap'
       ? stats?.marketCap ?? marketCapFallback
       : stats?.[key] ?? null;

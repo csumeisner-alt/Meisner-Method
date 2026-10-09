@@ -25,6 +25,7 @@ test('heat-map detail stats accept finite provider numbers and ignore invalid va
     totalRevenue: 2_000_000_000,
     circulatingSupply: 19_800_000,
     maxSupply: 21_000_000,
+    maxSupplyStatus: 'capped',
     volume24Hr: 18_400_000_000,
     etfProfile: null,
   }), {
@@ -44,6 +45,7 @@ test('heat-map detail stats accept finite provider numbers and ignore invalid va
     totalRevenue: 2_000_000_000,
     circulatingSupply: 19_800_000,
     maxSupply: 21_000_000,
+    maxSupplyStatus: 'capped',
     volume24Hr: 18_400_000_000,
     etfProfile: null,
   });
@@ -73,6 +75,7 @@ test('heat-map detail stats reject non-object payloads and non-finite provider v
     totalRevenue: null,
     circulatingSupply: null,
     maxSupply: null,
+    maxSupplyStatus: 'unreported',
     volume24Hr: null,
     etfProfile: null,
   });
@@ -82,6 +85,7 @@ test('crypto detail rows show supply and 24-hour volume instead of stock-only me
   const stats = parseHeatMapDetailStats({
     circulatingSupply: 19_800_000,
     maxSupply: 21_000_000,
+    maxSupplyStatus: 'capped',
     volume24Hr: 18_400_000_000,
     marketCap: 1_200_000_000_000,
     beta: 1.2,
@@ -102,6 +106,7 @@ test('crypto detail shows 100% circulating when the full maximum supply is in ci
   const stats = parseHeatMapDetailStats({
     circulatingSupply: 21_000_000,
     maxSupply: 21_000_000,
+    maxSupplyStatus: 'capped',
   });
 
   assert.equal(
@@ -111,7 +116,7 @@ test('crypto detail shows 100% circulating when the full maximum supply is in ci
   );
 });
 
-test('crypto detail rows mark unsupported provider values unavailable and retain quote market cap', () => {
+test('crypto detail rows distinguish unreported supply data and retain quote market cap', () => {
   const stats = parseHeatMapDetailStats({
     circulatingSupply: 1000,
     volume24Hr: 0,
@@ -119,7 +124,7 @@ test('crypto detail rows mark unsupported provider values unavailable and retain
 
   assert.deepEqual(getHeatMapDetailStatRows('cryptocurrency', stats, 2_500_000, false), [
     { label: 'Circulating Supply', value: '1K' },
-    { label: 'Max Supply', value: '—' },
+    { label: 'Max Supply', value: 'Not reported' },
     { label: '24h Volume', value: '$0' },
     { label: 'Market Cap', value: '$2.5M' },
   ]);
@@ -132,6 +137,40 @@ test('crypto detail rows mark unsupported provider values unavailable and retain
       { label: 'Market Cap', value: 'Loading…' },
     ],
   );
+  assert.equal(
+    getHeatMapDetailStatRows('cryptocurrency', null, null, false)
+      .find(({ label }) => label === 'Max Supply')?.value,
+    'Unavailable',
+  );
+});
+
+test('crypto detail labels explicitly uncapped supply without a numerical maximum', () => {
+  const stats = parseHeatMapDetailStats({
+    circulatingSupply: 122_000_000,
+    maxSupply: 0,
+    maxSupplyStatus: 'uncapped',
+  });
+
+  assert.equal(
+    getHeatMapDetailStatRows('cryptocurrency', stats, null, false)
+      .find(({ label }) => label === 'Max Supply')?.value,
+    'No fixed cap',
+  );
+});
+
+test('crypto detail does not infer uncapped supply from a missing status or zero alone', () => {
+  for (const payload of [
+    { maxSupply: 0 },
+    { maxSupply: null, maxSupplyStatus: 'unreported' },
+    { maxSupply: 21_000_000, maxSupplyStatus: 'unreported' },
+  ]) {
+    const stats = parseHeatMapDetailStats(payload);
+    assert.equal(
+      getHeatMapDetailStatRows('cryptocurrency', stats, null, false)
+        .find(({ label }) => label === 'Max Supply')?.value,
+      'Not reported',
+    );
+  }
 });
 
 test('crypto detail omits circulating share when the maximum supply is unavailable or unusable', () => {

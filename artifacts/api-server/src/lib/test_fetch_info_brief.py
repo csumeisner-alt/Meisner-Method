@@ -19,7 +19,21 @@ class InfoBriefCryptoFieldTests(unittest.TestCase):
         self.assertEqual(payload["symbol"], "BTC-USD")
         self.assertEqual(payload["circulatingSupply"], 19_800_000)
         self.assertEqual(payload["maxSupply"], 21_000_000)
+        self.assertEqual(payload["maxSupplyStatus"], "capped")
         self.assertEqual(payload["volume24Hr"], 18_400_000_000)
+
+    def test_explicit_zero_max_supply_marks_crypto_as_uncapped(self):
+        payload = fetch_info_brief.build_info_brief_payload(
+            "ETH-USD",
+            {
+                "longName": "Ethereum USD",
+                "circulatingSupply": 122_000_000,
+                "maxSupply": 0,
+            },
+        )
+
+        self.assertEqual(payload["maxSupply"], 0)
+        self.assertEqual(payload["maxSupplyStatus"], "uncapped")
 
     def test_unreported_crypto_supply_and_volume_remain_unavailable(self):
         payload = fetch_info_brief.build_info_brief_payload(
@@ -29,7 +43,16 @@ class InfoBriefCryptoFieldTests(unittest.TestCase):
 
         self.assertIsNone(payload["circulatingSupply"])
         self.assertIsNone(payload["maxSupply"])
+        self.assertEqual(payload["maxSupplyStatus"], "unreported")
         self.assertIsNone(payload["volume24Hr"])
+
+    def test_invalid_max_supply_does_not_mark_crypto_as_uncapped(self):
+        for info in ({"maxSupply": None}, {"maxSupply": -1}, {"maxSupply": float("nan")}):
+            with self.subTest(info=info):
+                self.assertEqual(
+                    fetch_info_brief.get_max_supply_status(info),
+                    "unreported",
+                )
 
 
 class InfoBriefEtfFieldTests(unittest.TestCase):

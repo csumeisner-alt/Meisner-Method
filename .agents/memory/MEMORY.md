@@ -49,3 +49,4 @@
 - [Market heat/cold index signal](market-breadth-cache.md) — use Yahoo ^DWCF daily % movement; stale only during the official session and keep the last session readable after close.
 - [Heat-map screener deduplication](heat-map-screener-deduplication.md) — breadth serialization bypasses the normal symbol-keyed map; dedupe screener rows by ticker, keeping the first-ranked quote.
 - [React Native Web alerts](react-native-web-alerts.md) — `Alert.alert` is a no-op in the browser preview; critical confirmation flows need a web-specific path.
+- [Yahoo crypto max-supply semantics](yahoo-crypto-max-supply.md) — explicit `maxSupply: 0` means no fixed cap; missing or null max supply is unreported, not uncapped.
