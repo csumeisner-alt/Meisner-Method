@@ -9,6 +9,7 @@ async function mockApiFetch<T>(url: string, options?: RequestInit): Promise<T> {
     const response = state.detailResponses.shift();
     if (response?.type === "reject") throw new Error("Mock market statistics request failed.");
     if (response?.type === "resolve") return response.payload as T;
+    if (response?.type === "stall") return new Promise<T>(() => {});
     if (response?.type === "defer") {
       return new Promise<T>((resolve, reject) => {
         let abort = () => {};

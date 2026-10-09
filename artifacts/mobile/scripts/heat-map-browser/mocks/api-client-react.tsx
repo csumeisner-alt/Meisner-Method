@@ -37,7 +37,7 @@ interface HeatMapBrowserState {
   refetches: Record<string, unknown>[];
   detailRequests: string[];
   detailRequestSignals: { url: string; signal: AbortSignal | null }[];
-  detailResponses: ({ type: "reject" } | { type: "resolve"; payload: unknown } | { type: "defer" })[];
+  detailResponses: ({ type: "reject" } | { type: "resolve"; payload: unknown } | { type: "defer" } | { type: "stall" })[];
   pendingDetailRequests: {
     url: string;
     signal: AbortSignal | null;
@@ -48,7 +48,7 @@ interface HeatMapBrowserState {
   nextRefetchResponse: HeatMapBrowserResponse | null;
   listeners: Set<() => void>;
   setResponse: (response: HeatMapBrowserResponse | null) => void;
-  setDetailResponses: (responses: ({ type: "reject" } | { type: "resolve"; payload: unknown } | { type: "defer" })[]) => void;
+  setDetailResponses: (responses: ({ type: "reject" } | { type: "resolve"; payload: unknown } | { type: "defer" } | { type: "stall" })[]) => void;
   resolvePendingDetailRequest: (url: string, payload: unknown) => boolean;
   rejectPendingDetailRequest: (url: string) => boolean;
   setRefetchFailures: (count: number) => void;

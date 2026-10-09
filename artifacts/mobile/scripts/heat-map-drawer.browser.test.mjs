@@ -664,6 +664,71 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     );
     await clickTestID(browser, "heat-map-detail-close");
 
+    await browser.evaluate(`(() => {
+      const state = window.__heatMapBrowserTest;
+      state.setResponse({
+        ...state.initialData,
+        quotes: state.initialData.quotes.map((item) => item.symbol === "OTHER_CAP"
+          ? { ...item, symbol: "OTHER_TIMEOUT", name: "Other Timeout Corp." }
+          : item),
+      });
+    })()`);
+    await setDetailResponses(browser, [
+      { type: "stall" },
+      { type: "resolve", payload: { previousClose: 118, marketCap: 76_000_000_000 } },
+    ]);
+    await clickTestID(browser, "heat-map-open-detail-OTHER_TIMEOUT");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.detailRequests.some((url) => url.endsWith("/OTHER_TIMEOUT"))`,
+      "Opening the new detail card should start its statistics request.",
+    );
+    assert.equal(
+      await browser.evaluate(`window.__heatMapBrowserTest.detailRequestSignals.findLast((request) => request.url.endsWith("/OTHER_TIMEOUT"))?.signal?.aborted`),
+      false,
+      "The stalled request should begin with an active abort signal.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-detail-error"))})`,
+      "A stalled request should time out and show the existing unavailable-data message.",
+      15_000,
+    );
+    assert.match(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-error"))})?.textContent`),
+      /Market statistics could not be loaded/,
+      "A timeout without cached statistics should use the unavailable-data message.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelectorAll(${JSON.stringify(selector("heat-map-detail-retry"))}).length`),
+      1,
+      "A timed-out request should offer retry.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelectorAll(${JSON.stringify(selector("heat-map-detail-loading"))}).length`),
+      0,
+      "A timed-out request should stop showing the loading indicator even if its promise never settles.",
+    );
+    assert.equal(
+      await browser.evaluate(`window.__heatMapBrowserTest.detailRequestSignals.findLast((request) => request.url.endsWith("/OTHER_TIMEOUT"))?.signal?.aborted`),
+      true,
+      "The timeout should abort the stalled request.",
+    );
+
+    await clickTestID(browser, "heat-map-detail-retry");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.detailRequests.filter((url) => url.endsWith("/OTHER_TIMEOUT")).length === 2`,
+      "Retry should start a new statistics request after a timeout.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-detail-stat-previous-close"))})?.textContent === "$118.00" && !document.querySelector(${JSON.stringify(selector("heat-map-detail-error"))})`,
+      "A successful retry should show fresh statistics and clear the timeout message.",
+    );
+    await clickTestID(browser, "heat-map-detail-close");
+    await browser.evaluate("window.__heatMapBrowserTest.setResponse(window.__heatMapBrowserTest.initialData)");
+
     await browser.evaluate("window.__heatMapBrowserTest.setResponse(null)");
     await waitFor(
       (expression) => browser.evaluate(expression),

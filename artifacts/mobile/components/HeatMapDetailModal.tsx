@@ -38,6 +38,7 @@ import {
 import { formatHeatMapQuoteAge } from '@/lib/heatMapQuoteDisplay';
 
 const DETAIL_CACHE_TTL_MS = 5 * 60_000;
+const DETAIL_STATS_REQUEST_TIMEOUT_MS = 10_000;
 const detailCache = new Map<string, { stats: HeatMapDetailStats; expiresAt: number }>();
 
 function formatPrice(value: number, quoteCurrency: 'USD' | 'USC' = 'USD') {
@@ -281,10 +282,20 @@ export function HeatMapDetailModal({
 
     setLoading(true);
     const controller = new AbortController();
+    let didTimeout = false;
+    const timeoutId = setTimeout(() => {
+      if (!isCurrent) return;
+      didTimeout = true;
+      controller.abort();
+      setLoadError(true);
+      setLoading(false);
+    }, DETAIL_STATS_REQUEST_TIMEOUT_MS);
+
     void apiFetch<unknown>(`/api/stocks/info/${encodeURIComponent(quote.symbol)}`, {
       signal: controller.signal,
     })
       .then((payload) => {
+        if (!isCurrent || didTimeout) return;
         const parsed = parseHeatMapDetailStats(payload);
         if (!parsed) throw new Error('Unexpected market detail response');
         detailCache.set(cacheKey, { stats: parsed, expiresAt: Date.now() + DETAIL_CACHE_TTL_MS });
@@ -292,20 +303,20 @@ export function HeatMapDetailModal({
           const oldestKey = detailCache.keys().next().value;
           if (oldestKey !== undefined) detailCache.delete(oldestKey);
         }
-        if (isCurrent) {
-          setStatsEntry({ symbol: cacheKey, stats: parsed });
-          setLoadError(false);
-        }
+        setStatsEntry({ symbol: cacheKey, stats: parsed });
+        setLoadError(false);
       })
       .catch(() => {
-        if (isCurrent && !controller.signal.aborted) setLoadError(true);
+        if (isCurrent && (didTimeout || !controller.signal.aborted)) setLoadError(true);
       })
       .finally(() => {
+        clearTimeout(timeoutId);
         if (isCurrent) setLoading(false);
       });
 
     return () => {
       isCurrent = false;
+      clearTimeout(timeoutId);
       controller.abort();
     };
   }, [apiFetch, quote?.symbol, retryCount, visible]);
