@@ -33,8 +33,8 @@ import { HeatMapCryptoLogo } from '@/components/HeatMapCryptoLogo';
 import { HeatMapInstrumentIcon } from '@/components/HeatMapInstrumentIcon';
 import {
   countActiveHeatMapFilters, filterHeatMapQuotes,
-  getHeatMapLoadingDelays, getHeatMapTileWidth, heatMapResponseMatchesSelection,
-  layoutHoneycomb, summarizeHeatMap,
+  getHeatMapLoadingDelays, getHeatMapRevealDelays, getHeatMapTileWidth,
+  heatMapResponseMatchesSelection, layoutHoneycomb, summarizeHeatMap,
   uniqueHeatMapQuotesBySymbol,
   type HeatMapFilters, type HeatMapCapBucket, type HeatMapRiskBand, type HeatMapRiskFilter,
 } from '@/lib/heatMapMetrics';
@@ -110,6 +110,8 @@ const RISK_BAND_LABELS: Record<HeatMapRiskBand, string> = {
 const EMPTY_FILTERS: HeatMapFilters = { sector: null, marketCap: null, exchange: null, risk: null };
 const SCHEDULED_OPEN_REFRESH_RETRY_DELAY_MS = 1_000;
 const LOADING_HEX_COUNT = 6;
+const HEX_REVEAL_SPREAD_MS = 1_100;
+const HEX_REVEAL_DURATION_MS = 680;
 
 function formatPrice(price: number) {
   return `$${price.toLocaleString('en-US', { minimumFractionDigits: price >= 1 ? 2 : 4, maximumFractionDigits: price >= 1 ? 2 : 4 })}`;
@@ -119,7 +121,7 @@ function formatUpdated(timestamp?: number) {
   return `Updated ${new Date(timestamp * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
 }
 
-function HexTile({ quote, width, height, colors, period, category, editing, reduceMotion, removing, onRemove }: {
+function HexTile({ quote, width, height, colors, period, category, editing, reduceMotion, revealDelayMs, removing, onRemove }: {
   quote: HeatMapQuote;
   width: number;
   height: number;
@@ -128,10 +130,39 @@ function HexTile({ quote, width, height, colors, period, category, editing, redu
   category: GetMarketHeatMapCategory;
   editing: boolean;
   reduceMotion: boolean;
+  revealDelayMs: number;
   removing: boolean;
   onRemove: () => void;
 }) {
   const wiggle = useRef(new Animated.Value(0)).current;
+  const revealProgress = useSharedValue(reduceMotion ? 1 : 0);
+
+  useEffect(() => {
+    cancelAnimation(revealProgress);
+    if (reduceMotion) {
+      revealProgress.value = 1;
+      return () => cancelAnimation(revealProgress);
+    }
+
+    revealProgress.value = 0;
+    revealProgress.value = withDelay(
+      revealDelayMs,
+      withTiming(1, {
+        duration: HEX_REVEAL_DURATION_MS,
+        easing: ReanimatedEasing.out(ReanimatedEasing.cubic),
+      }),
+    );
+    return () => cancelAnimation(revealProgress);
+  }, [reduceMotion, revealDelayMs, revealProgress]);
+
+  const revealStyle = useAnimatedStyle(() => ({
+    opacity: revealProgress.value,
+    transform: [
+      { translateY: (1 - revealProgress.value) * 8 },
+      { scale: 0.96 + revealProgress.value * 0.04 },
+    ],
+  }));
+
   useEffect(() => {
     if (!editing || reduceMotion) {
       wiggle.stopAnimation();
@@ -177,12 +208,16 @@ function HexTile({ quote, width, height, colors, period, category, editing, redu
   ].join(', ');
   const rotation = wiggle.interpolate({ inputRange: [-1, 1], outputRange: ['-2.4deg', '2.4deg'] });
   const tile = (
-    <Animated.View style={[{ width, height }, { transform: [{ rotate: rotation }] }]}>
-    <View style={[
-      styles.tile,
-      instrument ? styles.tileInstrument : cryptoLogoCode ? styles.tileCrypto : null,
-      { width, height },
-    ]} accessibilityLabel={tileAccessibilityLabel}>
+    <Reanimated.View
+      testID={`heat-map-hex-tile-${quote.symbol}`}
+      style={[{ width, height }, revealStyle]}
+    >
+      <Animated.View style={[{ width, height }, { transform: [{ rotate: rotation }] }]}>
+        <View style={[
+          styles.tile,
+          instrument ? styles.tileInstrument : cryptoLogoCode ? styles.tileCrypto : null,
+          { width, height },
+        ]} accessibilityLabel={tileAccessibilityLabel}>
       <Svg width={width} height={height} viewBox="0 0 100 86.6" style={StyleSheet.absoluteFill}>
         <Polygon points="1,43.3 25,1 75,1 99,43.3 75,85.6 25,85.6" fill={bg} stroke={tone} strokeWidth="1.5" />
       </Svg>
@@ -249,8 +284,9 @@ function HexTile({ quote, width, height, colors, period, category, editing, redu
       <Text testID={`heat-map-quote-age-${quote.symbol}`} numberOfLines={1} style={[styles.tileAge, { color: colors.mutedForeground }]}>{age}</Text>
       {quote.returnBasis === 'price_return_proxy' && <Text numberOfLines={1} style={[styles.tileBasis, { color: colors.mutedForeground }]}>Price-return proxy</Text>}
       {period === 'max' && <Text numberOfLines={1} style={[styles.tileBasis, { color: colors.mutedForeground }]}>Since {quote.historyStartDate ?? 'unknown'}</Text>}
-    </View>
-    </Animated.View>
+        </View>
+      </Animated.View>
+    </Reanimated.View>
   );
   if (!editing) return tile;
   return (
@@ -746,6 +782,16 @@ export default function HeatMapScreen() {
     });
     return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([name, items]) => ({ name, quotes: items }));
   }, [category, filterableQuotes]);
+  const tileSymbols = useMemo(
+    () => sectors.flatMap((group) => group.quotes.map((quote) => quote.symbol)),
+    [sectors],
+  );
+  const tileSymbolKey = tileSymbols.join('\u0000');
+  const revealDelayBySymbol = useMemo(() => {
+    const symbols = tileSymbolKey ? tileSymbolKey.split('\u0000') : [];
+    const delays = getHeatMapRevealDelays(symbols.length, HEX_REVEAL_SPREAD_MS);
+    return new Map(symbols.map((symbol, index) => [symbol, delays[index] ?? 0]));
+  }, [tileSymbolKey]);
   const editFallbackSymbols = category === 'custom' && isEditingCustomMap
     ? (sectors.length === 0
         ? customSymbols
@@ -1151,6 +1197,7 @@ export default function HeatMapScreen() {
                                   category={category}
                                   editing={category === 'custom' && isEditingCustomMap}
                                   reduceMotion={reduceMotion}
+                                  revealDelayMs={revealDelayBySymbol.get(quote.symbol) ?? 0}
                                   removing={removingSymbol !== null}
                                   onRemove={() => void removeSymbol(quote.symbol)}
                                 />

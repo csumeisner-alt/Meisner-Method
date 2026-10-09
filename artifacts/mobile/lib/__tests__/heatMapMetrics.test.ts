@@ -4,6 +4,7 @@ import {
   countActiveHeatMapFilters,
   filterHeatMapQuotes,
   getHeatMapLoadingDelays,
+  getHeatMapRevealDelays,
   getHeatMapTileWidth,
   heatMapResponseMatchesSelection,
   layoutHoneycomb,
@@ -179,4 +180,18 @@ test("loading hexagons receive a randomized one-by-one reveal order", () => {
   );
   assert.deepEqual(getHeatMapLoadingDelays(0), []);
   assert.deepEqual(getHeatMapLoadingDelays(Number.NaN), []);
+});
+
+test("loaded heat-map hexagons receive a randomized reveal within a capped window", () => {
+  assert.deepEqual(
+    getHeatMapRevealDelays(5, 400, () => 0),
+    [400, 0, 100, 200, 300],
+  );
+  assert.deepEqual(
+    getHeatMapRevealDelays(5, 400, () => 0.999),
+    [0, 100, 200, 300, 400],
+  );
+  assert.deepEqual(getHeatMapRevealDelays(1, 1_200), [0]);
+  assert.deepEqual(getHeatMapRevealDelays(0, 1_200), []);
+  assert.deepEqual(getHeatMapRevealDelays(3, 1_200, () => 0), [1_200, 0, 600]);
 });

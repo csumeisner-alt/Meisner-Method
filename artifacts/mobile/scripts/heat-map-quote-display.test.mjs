@@ -94,6 +94,14 @@ test("heat-map loading reveals shuffled hexagons and respects reduced motion", (
   assert.match(screenSource, /reduceMotion=\{reduceMotion\}/);
 });
 
+test("loaded quote hexagons fade in with a randomized, reduced-motion-aware cascade", () => {
+  assert.match(screenSource, /getHeatMapRevealDelays\(tileSymbols\.length,\s*HEX_REVEAL_SPREAD_MS\)/);
+  assert.match(screenSource, /revealDelayMs=\{revealDelayBySymbol\.get\(quote\.symbol\)\s*\?\?\s*0\}/);
+  assert.match(screenSource, /withDelay\(\s*revealDelayMs,\s*withTiming\(1/);
+  assert.match(screenSource, /duration:\s*HEX_REVEAL_DURATION_MS/);
+  assert.match(screenSource, /testID=\{`heat-map-hex-tile-\$\{quote\.symbol\}`\}/);
+});
+
 test("stock sector selection offers all supported sectors and requests matching expanded data", () => {
   assert.match(screenSource, /const STOCK_SECTORS: GetMarketHeatMapSector\[\] = \[/);
   assert.match(screenSource, /category === 'stocks'\s*&&\s*filters\.sector !== 'Unknown'/);

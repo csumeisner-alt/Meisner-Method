@@ -118,12 +118,14 @@ export function getHeatMapTileWidth(availableWidth: number): number {
   return Math.min(availableWidth, 136, Math.max(84, availableWidth / 2.65));
 }
 
-export function getHeatMapLoadingDelays(
+export function getHeatMapRevealDelays(
   itemCount: number,
+  maxSpreadMs: number,
   random: () => number = Math.random,
 ): number[] {
   const count = Math.floor(itemCount);
   if (!Number.isFinite(itemCount) || count <= 0) return [];
+  const spreadMs = Number.isFinite(maxSpreadMs) ? Math.max(0, maxSpreadMs) : 0;
 
   const revealOrder = Array.from({ length: count }, (_, index) => index);
   for (let index = count - 1; index > 0; index--) {
@@ -140,9 +142,19 @@ export function getHeatMapLoadingDelays(
 
   const delays = new Array<number>(count);
   revealOrder.forEach((tileIndex, step) => {
-    delays[tileIndex] = step * 80;
+    delays[tileIndex] = count === 1
+      ? 0
+      : Math.round((step * spreadMs) / (count - 1));
   });
   return delays;
+}
+
+export function getHeatMapLoadingDelays(
+  itemCount: number,
+  random: () => number = Math.random,
+): number[] {
+  const count = Math.floor(itemCount);
+  return getHeatMapRevealDelays(itemCount, Math.max(0, count - 1) * 80, random);
 }
 
 /**
