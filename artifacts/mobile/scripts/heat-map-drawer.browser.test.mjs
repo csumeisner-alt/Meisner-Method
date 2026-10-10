@@ -1932,6 +1932,110 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       `document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-selected-value"))})?.textContent === "19,876,543.123456"`,
       "selecting a plotted observation should reveal its exact provider-reported value.",
     );
+    await clickTestID(browser, "heat-map-detail-close");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
+      "The Bitcoin detail card should close before checking a different coin.",
+    );
+
+    const switchedCryptoResponse = cryptoResponse(Date.now() / 1000);
+    switchedCryptoResponse.quotes = switchedCryptoResponse.quotes.map((item) => item.symbol === "ETH-USD"
+      ? { ...item, exchange: "COINBASE", riskBand: "Aggressive" }
+      : item);
+    await browser.evaluate(`window.__heatMapBrowserTest.setCryptoSupplyHistoryOverride("ETH-USD", { type: "pending" })`);
+    await setResponse(browser, switchedCryptoResponse);
+    await setDetailResponses(browser, [{ type: "defer" }]);
+    await clickTestID(browser, "heat-map-open-detail-ETH-USD");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.pendingDetailRequests.some((request) => request.url.endsWith("/ETH-USD"))`,
+      "Ethereum's market statistics should remain pending while its history is also loading.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent`),
+      "ETH-USD",
+      "The detail card should switch to the newly selected coin immediately.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelectorAll(${JSON.stringify(selector("heat-map-crypto-supply-discrepancy"))}).length`),
+      0,
+      "The previous coin's warning must disappear while the new coin's current supply and history are pending.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.body.innerText.includes("19,876,600.5")`),
+      false,
+      "The previous coin's historical value must not appear in the newly selected coin's card.",
+    );
+
+    assert.equal(
+      await browser.evaluate(`window.__heatMapBrowserTest.resolvePendingDetailRequest("/api/stocks/info/ETH-USD", { circulatingSupply: 12_345_678, marketCap: 400_000_000_000 })`),
+      true,
+      "The new coin's pending current-supply response should be resolvable.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-detail-stat-circulating-supply"))})?.textContent === "12.35M"`,
+      "Ethereum's current supply should appear even while its history is still loading.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelectorAll(${JSON.stringify(selector("heat-map-crypto-supply-discrepancy"))}).length`),
+      0,
+      "A warning must wait for the selected coin's own history rather than reusing Bitcoin's observations.",
+    );
+
+    await browser.evaluate(`window.__heatMapBrowserTest.setCryptoSupplyHistoryOverride("ETH-USD", { type: "resolve", payload: {
+      symbol: "ETH-USD", provider: "Coin Metrics", metric: "SplyCur", rangeDays: 365, interval: "daily",
+      startDate: "2026-10-06", endDate: "2026-10-06",
+      points: [{ date: "2026-10-06", supply: 10_000_000 }],
+    } })`);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-discrepancy"))})`,
+      "A warning should appear once Ethereum's own current supply and history are both available.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-discrepancy"))})?.textContent.includes("12,345,678") && document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-discrepancy"))})?.textContent.includes("10,000,000") && !document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-discrepancy"))})?.textContent.includes("19,876,600.5")`),
+      true,
+      "The warning should compare only Ethereum's current and historical values.",
+    );
+    await browser.evaluate(`window.__heatMapBrowserTest.setCryptoSupplyHistoryOverride("ETH-USD", { type: "pending" })`);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-loading"))})`,
+      "A pending refresh of Ethereum's history should clear the old comparison until new history arrives.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelectorAll(${JSON.stringify(selector("heat-map-crypto-supply-discrepancy"))}).length`),
+      0,
+      "An old comparison must not remain visible while the selected coin's history is pending.",
+    );
+
+    await browser.evaluate(`window.__heatMapBrowserTest.setCryptoSupplyHistoryOverride("ETH-USD", { type: "resolve", payload: {
+      symbol: "ETH-USD", provider: "Coin Metrics", metric: "SplyCur", rangeDays: 365, interval: "daily",
+      startDate: null, endDate: null, points: [],
+    } })`);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-loading"))})`,
+      "An empty history response should finish loading for the selected coin.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-stat-circulating-supply"))})?.textContent`),
+      "12.35M",
+      "The new coin's current supply should remain visible when its own history has no observations.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelectorAll(${JSON.stringify(selector("heat-map-crypto-supply-discrepancy"))}).length`),
+      0,
+      "Missing history for the selected coin must not leave the previous coin's warning behind.",
+    );
+    await clickTestID(browser, "heat-map-detail-close");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
+      "The Ethereum detail card should close before continuing the crypto refresh checks.",
+    );
 
     const freshCryptoResponse = cryptoResponse(Date.now() / 1000);
 

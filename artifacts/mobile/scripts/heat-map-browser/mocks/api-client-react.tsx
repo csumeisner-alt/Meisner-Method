@@ -46,9 +46,11 @@ interface HeatMapBrowserState {
   }[];
   refetchFailuresRemaining: number;
   nextRefetchResponse: HeatMapBrowserResponse | null;
+  cryptoSupplyHistoryOverrides: Record<string, { type: "pending" } | { type: "resolve"; payload: unknown }>;
   listeners: Set<() => void>;
   setResponse: (response: HeatMapBrowserResponse | null) => void;
   setDetailResponses: (responses: ({ type: "reject" } | { type: "resolve"; payload: unknown } | { type: "defer" } | { type: "stall" })[]) => void;
+  setCryptoSupplyHistoryOverride: (symbol: string, response: { type: "pending" } | { type: "resolve"; payload: unknown }) => void;
   resolvePendingDetailRequest: (url: string, payload: unknown) => boolean;
   rejectPendingDetailRequest: (url: string) => boolean;
   setRefetchFailures: (count: number) => void;
@@ -156,6 +158,7 @@ export function initializeHeatMapBrowserState(): HeatMapBrowserState {
     pendingDetailRequests: [],
     refetchFailuresRemaining: 0,
     nextRefetchResponse: null,
+    cryptoSupplyHistoryOverrides: {},
     listeners: new Set(),
     setResponse(next) {
       state.data = next;
@@ -163,6 +166,10 @@ export function initializeHeatMapBrowserState(): HeatMapBrowserState {
     },
     setDetailResponses(responses) {
       state.detailResponses = [...responses];
+    },
+    setCryptoSupplyHistoryOverride(symbol, response) {
+      state.cryptoSupplyHistoryOverrides[symbol] = response;
+      state.listeners.forEach((listener) => listener());
     },
     resolvePendingDetailRequest(url, payload) {
       const pendingIndex = state.pendingDetailRequests.findIndex((request) => request.url === url);
@@ -261,8 +268,26 @@ export function useGetCryptoSupplyHistory(
   rangeDays: number,
   options?: { query?: { enabled?: boolean } },
 ) {
+  const state = initializeHeatMapBrowserState();
+  const [, forceRender] = React.useReducer((value: number) => value + 1, 0);
+  React.useEffect(() => {
+    state.listeners.add(forceRender);
+    return () => {
+      state.listeners.delete(forceRender);
+    };
+  }, [state]);
+  const override = state.cryptoSupplyHistoryOverrides[symbol];
+  if (override?.type === "pending") {
+    return {
+      data: undefined,
+      isLoading: true,
+      isFetching: true,
+      isError: false,
+      refetch: async () => ({ isError: false }),
+    };
+  }
   return {
-    data: options?.query?.enabled ? {
+    data: options?.query?.enabled ? override?.type === "resolve" ? override.payload : {
       symbol,
       provider: "Coin Metrics",
       metric: "SplyCur",
