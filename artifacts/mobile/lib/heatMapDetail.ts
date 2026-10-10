@@ -657,6 +657,10 @@ export interface HeatMapCryptoSupplyHistory {
 }
 
 const CRYPTO_SUPPLY_CHART_HEIGHT = 112;
+// This is a cross-provider materiality cue, not a protocol issuance threshold.
+// Yahoo's live circulatingSupply and Coin Metrics SplyCur do not promise
+// identical definitions across assets, so per-asset cutoffs would imply
+// undocumented source calibration rather than account for normal issuance.
 const CRYPTO_SUPPLY_DISCREPANCY_THRESHOLD_PERCENT = 5;
 const CRYPTO_SUPPLY_HISTORY_MAX_AGE_DAYS = 7;
 

@@ -890,10 +890,10 @@ function CryptoSupplyHistory({
             <MaterialCommunityIcons name="alert-circle-outline" size={15} color={colors.gold} />
             <View style={styles.supplyHistoryWarningCopy}>
               <Text style={[styles.supplyHistoryWarningTitle, { color: colors.foreground }]}>
-                Supply figures differ substantially
+                Provider supply figures differ
               </Text>
               <Text style={[styles.supplyHistoryWarningText, { color: colors.mutedForeground }]}>
-                Current reported supply {formatExactSupply(discrepancy.currentSupply)} differs by {discrepancy.differencePercent.toFixed(1)}% from Coin Metrics on {formatSupplyDate(discrepancy.historicalDate)} ({formatExactSupply(discrepancy.historicalSupply)}). Both values are preserved as reported.
+                Current reported supply {formatExactSupply(discrepancy.currentSupply)} differs by {discrepancy.differencePercent.toFixed(1)}% from Coin Metrics’ on-chain SplyCur on {formatSupplyDate(discrepancy.historicalDate)} ({formatExactSupply(discrepancy.historicalSupply)}). A shared 5% cutoff flags a material provider difference, not unexpected issuance: circulating-supply definitions can differ by asset. Both values are preserved as reported.
               </Text>
             </View>
           </View>

@@ -118,22 +118,40 @@ test('crypto supply change rejects invalid observations and does not treat dupli
   ]), null);
 });
 
-test('crypto supply discrepancy flags only unusually large differences from recent observations', () => {
-  const history = [
-    { date: '2026-10-03', supply: 20_000_000 },
-    { date: '2026-10-08', supply: 19_900_000 },
+test('crypto supply discrepancy uses one materiality cutoff across different issuance patterns', () => {
+  const assets = [
+    { symbol: 'BTC-USD', historical: 19_900_000, ordinaryMove: 19_910_000 },
+    { symbol: 'ETH-USD', historical: 120_000_000, ordinaryMove: 120_300_000 },
+    { symbol: 'SOL-USD', historical: 600_000_000, ordinaryMove: 603_000_000 },
   ];
 
-  assert.equal(getHeatMapCryptoSupplyDiscrepancy(19_950_000, history, '2026-10-09'), null);
-  assert.deepEqual(
-    getHeatMapCryptoSupplyDiscrepancy(21_000_000, history, '2026-10-09'),
-    {
-      currentSupply: 21_000_000,
-      historicalSupply: 19_900_000,
-      historicalDate: '2026-10-08',
-      differencePercent: (1_100_000 / 19_900_000) * 100,
-    },
-  );
+  for (const asset of assets) {
+    const history = [{ date: '2026-10-08', supply: asset.historical }];
+    assert.equal(
+      getHeatMapCryptoSupplyDiscrepancy(asset.ordinaryMove, history, '2026-10-09'),
+      null,
+      `${asset.symbol}: ordinary supply movement should not trigger a provider mismatch`,
+    );
+
+    // Exactly 5% remains below the strict "greater than" warning cutoff.
+    assert.equal(
+      getHeatMapCryptoSupplyDiscrepancy(asset.historical * 1.05, history, '2026-10-09'),
+      null,
+      `${asset.symbol}: a 5% difference should not trigger the warning`,
+    );
+
+    const reportedCurrent = asset.historical * 1.06;
+    assert.deepEqual(
+      getHeatMapCryptoSupplyDiscrepancy(reportedCurrent, history, '2026-10-09'),
+      {
+        currentSupply: reportedCurrent,
+        historicalSupply: asset.historical,
+        historicalDate: '2026-10-08',
+        differencePercent: (Math.abs(reportedCurrent - asset.historical) / asset.historical) * 100,
+      },
+      `${asset.symbol}: material provider differences should preserve both reported values`,
+    );
+  }
 });
 
 test('crypto supply discrepancy ignores stale or unavailable history without changing current supply', () => {
