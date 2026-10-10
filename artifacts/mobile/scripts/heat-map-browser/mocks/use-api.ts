@@ -55,6 +55,7 @@ async function mockApiFetch<T>(url: string, options?: RequestInit): Promise<T> {
     targetMeanPrice: 135,
     trailingEps: 6.21,
     totalRevenue: 30_000_000_000,
+    circulatingSupply: 21_000_000,
   } as T;
 }
 

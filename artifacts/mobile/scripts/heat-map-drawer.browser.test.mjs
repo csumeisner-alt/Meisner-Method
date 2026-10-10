@@ -1903,19 +1903,30 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     await clickTestID(browser, "heat-map-open-detail-BTC-USD");
     await waitFor(
       (expression) => browser.evaluate(expression),
-      `!!document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-point-2026-09-02"))})`,
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-discrepancy"))})`,
+      "a large discrepancy between current supply and recent on-chain history should be flagged.",
+    );
+    const discrepancyText = await browser.evaluate(
+      `document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-discrepancy"))})?.textContent`,
+    );
+    assert.match(discrepancyText, /21,000,000/);
+    assert.match(discrepancyText, /19,876,600\.5/);
+    assert.match(discrepancyText, /Both values are preserved as reported/);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-point-2026-10-04"))})`,
       "the supply chart should expose controls for its reported observations.",
     );
     assert.equal(
-      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-point-2026-09-03"))}) === null`),
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-point-2026-10-05"))}) === null`),
       true,
       "a date with no provider observation must not be selectable.",
     );
     const supplyPointButton = await browser.evaluate(
-      `document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-point-2026-09-02"))})?.getAttribute("aria-label")`,
+      `document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-point-2026-10-04"))})?.getAttribute("aria-label")`,
     );
-    assert.match(supplyPointButton, /Sep 2, 2026: 19,876,543\.123456/);
-    await clickTestID(browser, "heat-map-crypto-supply-point-2026-09-02");
+    assert.match(supplyPointButton, /Oct 4, 2026: 19,876,543\.123456/);
+    await clickTestID(browser, "heat-map-crypto-supply-point-2026-10-04");
     await waitFor(
       (expression) => browser.evaluate(expression),
       `document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-selected-value"))})?.textContent === "19,876,543.123456"`,

@@ -36,6 +36,13 @@ export interface HeatMapCryptoSupplyChangeSummary {
   percentChange: number;
 }
 
+export interface HeatMapCryptoSupplyDiscrepancy {
+  currentSupply: number;
+  historicalSupply: number;
+  historicalDate: string;
+  differencePercent: number;
+}
+
 export type HeatMapCryptoSupplyRangeDays = 30 | 90 | 365;
 
 export const HEAT_MAP_CRYPTO_SUPPLY_RANGES = [
@@ -646,6 +653,8 @@ export interface HeatMapCryptoSupplyHistory {
 }
 
 const CRYPTO_SUPPLY_CHART_HEIGHT = 112;
+const CRYPTO_SUPPLY_DISCREPANCY_THRESHOLD_PERCENT = 5;
+const CRYPTO_SUPPLY_HISTORY_MAX_AGE_DAYS = 7;
 
 export function getHeatMapCryptoSupplyChangeSummary(
   points: HeatMapCryptoSupplyPoint[],
@@ -678,5 +687,44 @@ export function getHeatMapCryptoSupplyChangeSummary(
     endSupply,
     absoluteChange,
     percentChange,
+  };
+}
+
+export function getHeatMapCryptoSupplyDiscrepancy(
+  currentSupply: number | null,
+  points: HeatMapCryptoSupplyPoint[],
+  asOfDate = new Date().toISOString().slice(0, 10),
+): HeatMapCryptoSupplyDiscrepancy | null {
+  if (
+    currentSupply === null
+    || !Number.isFinite(currentSupply)
+    || currentSupply <= 0
+    || !isIsoDate(asOfDate)
+  ) {
+    return null;
+  }
+
+  const asOfTimestamp = Date.parse(`${asOfDate}T00:00:00Z`);
+  const recentPoints = points.filter((point) => {
+    if (!isIsoDate(point.date) || !Number.isFinite(point.supply) || point.supply <= 0) return false;
+    const ageDays = (asOfTimestamp - Date.parse(`${point.date}T00:00:00Z`)) / 86_400_000;
+    return ageDays >= 0 && ageDays <= CRYPTO_SUPPLY_HISTORY_MAX_AGE_DAYS;
+  });
+  const historicalPoint = recentPoints.reduce<HeatMapCryptoSupplyPoint | null>(
+    (latest, point) => !latest || point.date > latest.date ? point : latest,
+    null,
+  );
+  if (!historicalPoint) return null;
+
+  const differencePercent = (Math.abs(currentSupply - historicalPoint.supply) / historicalPoint.supply) * 100;
+  if (!Number.isFinite(differencePercent) || differencePercent <= CRYPTO_SUPPLY_DISCREPANCY_THRESHOLD_PERCENT) {
+    return null;
+  }
+
+  return {
+    currentSupply,
+    historicalSupply: historicalPoint.supply,
+    historicalDate: historicalPoint.date,
+    differencePercent,
   };
 }

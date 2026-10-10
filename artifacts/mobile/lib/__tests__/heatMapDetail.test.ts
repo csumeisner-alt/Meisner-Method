@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   formatHeatMapRegimeReturn,
   getHeatMapCryptoSupplyChartModel,
+  getHeatMapCryptoSupplyDiscrepancy,
   getHeatMapCryptoSupplyChangeSummary,
   getHeatMapDetailStatRows,
   getHeatMapRangePosition,
@@ -115,6 +116,40 @@ test('crypto supply change rejects invalid observations and does not treat dupli
     { date: '2026-10-02', supply: Number.NaN },
     { date: 'not-a-date', supply: 202 },
   ]), null);
+});
+
+test('crypto supply discrepancy flags only unusually large differences from recent observations', () => {
+  const history = [
+    { date: '2026-10-03', supply: 20_000_000 },
+    { date: '2026-10-08', supply: 19_900_000 },
+  ];
+
+  assert.equal(getHeatMapCryptoSupplyDiscrepancy(19_950_000, history, '2026-10-09'), null);
+  assert.deepEqual(
+    getHeatMapCryptoSupplyDiscrepancy(21_000_000, history, '2026-10-09'),
+    {
+      currentSupply: 21_000_000,
+      historicalSupply: 19_900_000,
+      historicalDate: '2026-10-08',
+      differencePercent: (1_100_000 / 19_900_000) * 100,
+    },
+  );
+});
+
+test('crypto supply discrepancy ignores stale or unavailable history without changing current supply', () => {
+  assert.equal(getHeatMapCryptoSupplyDiscrepancy(21_000_000, [], '2026-10-09'), null);
+  assert.equal(
+    getHeatMapCryptoSupplyDiscrepancy(
+      21_000_000,
+      [{ date: '2026-10-01', supply: 19_900_000 }],
+      '2026-10-09',
+    ),
+    null,
+  );
+  assert.equal(
+    getHeatMapCryptoSupplyDiscrepancy(null, [{ date: '2026-10-08', supply: 19_900_000 }], '2026-10-09'),
+    null,
+  );
 });
 
 test('heat-map detail stats accept finite provider numbers and ignore invalid values', () => {

@@ -22,6 +22,7 @@ import { useColors } from '@/hooks/useColors';
 import {
   formatHeatMapRegimeReturn,
   formatHeatMapCompact,
+  getHeatMapCryptoSupplyDiscrepancy,
   getHeatMapCryptoSupplyChartModel,
   getHeatMapCryptoSupplyChangeSummary,
   getHeatMapDetailStatRows,
@@ -600,6 +601,7 @@ export function HeatMapDetailModal({
               <CryptoSupplyHistory
                 symbol={quote.symbol}
                 visible={visible}
+                currentSupply={stats?.circulatingSupply ?? null}
                 colors={colors}
               />
             )}
@@ -710,6 +712,10 @@ const styles = StyleSheet.create({
   supplyHistory: { marginTop: 18 },
   supplyHistoryCard: { borderWidth: 1, borderRadius: 13, padding: 12 },
   supplyHistoryCaption: { fontFamily: 'Inter_500Medium', fontSize: 9, marginBottom: 8 },
+  supplyHistoryWarning: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, borderWidth: 1, borderRadius: 10, padding: 10, marginBottom: 11 },
+  supplyHistoryWarningCopy: { flex: 1, gap: 3 },
+  supplyHistoryWarningTitle: { fontFamily: 'Inter_700Bold', fontSize: 10 },
+  supplyHistoryWarningText: { fontFamily: 'Inter_400Regular', fontSize: 9, lineHeight: 13 },
   supplyHistoryRangeHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 },
   supplyHistoryRangeLabel: { fontFamily: 'Inter_500Medium', fontSize: 9 },
   supplyHistoryRanges: { flexDirection: 'row', borderWidth: 1, borderRadius: 9, overflow: 'hidden', marginBottom: 11 },
@@ -741,10 +747,12 @@ const styles = StyleSheet.create({
 function CryptoSupplyHistory({
   symbol,
   visible,
+  currentSupply,
   colors,
 }: {
   symbol: string;
   visible: boolean;
+  currentSupply: number | null;
   colors: ReturnType<typeof useColors>;
 }) {
   const [rangeDays, setRangeDays] = useState<HeatMapCryptoSupplyRangeDays>(365);
@@ -766,6 +774,7 @@ function CryptoSupplyHistory({
   const changeSummary = history
     ? getHeatMapCryptoSupplyChangeSummary(history.points)
     : null;
+  const discrepancy = getHeatMapCryptoSupplyDiscrepancy(currentSupply, history?.points ?? []);
   const hasHistory = !!history?.points.length;
 
   return (
@@ -787,6 +796,23 @@ function CryptoSupplyHistory({
             Coin Metrics · Daily · {rangeDays === 30 ? 'Past month' : rangeDays === 90 ? 'Past 3 months' : 'Past year'}
           </Text>
         </View>
+        {discrepancy && (
+          <View
+            testID="heat-map-crypto-supply-discrepancy"
+            accessibilityRole="alert"
+            style={[styles.supplyHistoryWarning, { backgroundColor: colors.card, borderColor: colors.gold }]}
+          >
+            <MaterialCommunityIcons name="alert-circle-outline" size={15} color={colors.gold} />
+            <View style={styles.supplyHistoryWarningCopy}>
+              <Text style={[styles.supplyHistoryWarningTitle, { color: colors.foreground }]}>
+                Supply figures differ substantially
+              </Text>
+              <Text style={[styles.supplyHistoryWarningText, { color: colors.mutedForeground }]}>
+                Current reported supply {formatExactSupply(discrepancy.currentSupply)} differs by {discrepancy.differencePercent.toFixed(1)}% from Coin Metrics on {formatSupplyDate(discrepancy.historicalDate)} ({formatExactSupply(discrepancy.historicalSupply)}). Both values are preserved as reported.
+              </Text>
+            </View>
+          </View>
+        )}
         <View
           testID="heat-map-crypto-supply-ranges"
           style={[styles.supplyHistoryRanges, { borderColor: colors.border }]}
