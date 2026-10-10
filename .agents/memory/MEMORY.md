@@ -12,6 +12,7 @@
 - [Heat-map calendar test dependency](heatmap-calendar-test-dependency.md) — calendar-backed Python session tests need `exchange_calendars`; without it, sessions degrade to `unknown`.
 - [EAS Android mergeReleaseJavaResource failure](eas-android-packaging-conflict.md) — duplicate META-INF from transitive jars (okhttp/jspecify) fails the Gradle merge; fix with expo-build-properties packagingOptions.pickFirst.
 - [TS project references use dist .d.ts](ts-project-reference-stale-dist.md) — "no exported member" for a symbol src exports = stale lib dist; rebuild with `tsc -b --force`, don't rewrite the consumer.
+- [OpenAPI path/query parameter names](openapi-path-query-params.md) — avoid combining path and query parameters when their generated Zod exports collide in the shared API barrel.
 - [Replit mobile artifact deploy = QR/OTA landing page](replit-mobile-artifact-deploy.md) — the published .replit.app of an Expo mobile app is a QR launcher, not a browser app; real access is the APK or Expo Go.
 - [Paper-trading fee/cash consistency](paper-trading-fee-cashflow.md) — any per-trade cost (fee) shown in net P&L must ALSO be debited from account cash AND from buildValueHistory's reconstructed cash flow, or equity/returns silently overstate.
 - [Mobile pure-math testing](mobile-pure-math-testing.md) — pure fee/win-rate math lives in `artifacts/mobile/lib/*.ts` (no RN imports); tested via Node's built-in runner with type-stripping. Screens import from these libs.

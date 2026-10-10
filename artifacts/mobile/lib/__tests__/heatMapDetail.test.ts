@@ -50,6 +50,25 @@ test('crypto supply history accepts only dated provider observations and leaves 
     symbol: 'BTC-USD',
     points: [],
   }), null);
+  assert.equal(parseHeatMapCryptoSupplyHistory({
+    symbol: 'BTC-USD',
+    provider: 'Coin Metrics',
+    metric: 'SplyCur',
+    rangeDays: 30,
+    interval: 'daily',
+    points: [{ date: '2026-10-08', supply: 200 }],
+  })?.rangeDays, 30);
+  assert.equal(parseHeatMapCryptoSupplyHistory({
+    symbol: 'BTC-USD',
+    provider: 'Coin Metrics',
+    metric: 'SplyCur',
+    rangeDays: 90,
+    interval: 'daily',
+    points: Array.from({ length: 92 }, (_, index) => ({
+      date: `2026-07-${String((index % 31) + 1).padStart(2, '0')}`,
+      supply: index + 1,
+    })),
+  }), null);
 });
 
 test('crypto supply chart breaks its line across missing provider dates', () => {

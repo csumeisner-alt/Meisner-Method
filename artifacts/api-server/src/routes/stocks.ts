@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import OpenAI from "openai";
 import pg from "pg";
 import { execFile } from "node:child_process";
@@ -80,14 +80,18 @@ type CryptoSupplyHistoryPayload = {
   symbol: string;
   provider: "Coin Metrics";
   metric: "SplyCur";
-  rangeDays: 365;
+  rangeDays: 30 | 90 | 365;
   interval: "daily";
   startDate: string | null;
   endDate: string | null;
   points: { date: string; supply: number }[];
 };
 
-function isCryptoSupplyHistoryPayload(value: unknown, symbol: string): value is CryptoSupplyHistoryPayload {
+function isCryptoSupplyHistoryPayload(
+  value: unknown,
+  symbol: string,
+  rangeDays: CryptoSupplyHistoryPayload["rangeDays"],
+): value is CryptoSupplyHistoryPayload {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const payload = value as Record<string, unknown>;
   const isDate = (date: unknown) => {
@@ -98,12 +102,12 @@ function isCryptoSupplyHistoryPayload(value: unknown, symbol: string): value is 
   return payload["symbol"] === symbol
     && payload["provider"] === "Coin Metrics"
     && payload["metric"] === "SplyCur"
-    && payload["rangeDays"] === 365
+    && payload["rangeDays"] === rangeDays
     && payload["interval"] === "daily"
     && (payload["startDate"] === null || isDate(payload["startDate"]))
     && (payload["endDate"] === null || isDate(payload["endDate"]))
     && Array.isArray(payload["points"])
-    && payload["points"].length <= 366
+    && payload["points"].length <= rangeDays + 1
     && payload["points"].every((point) => {
       if (!point || typeof point !== "object" || Array.isArray(point)) return false;
       const entry = point as Record<string, unknown>;
@@ -114,24 +118,28 @@ function isCryptoSupplyHistoryPayload(value: unknown, symbol: string): value is 
     });
 }
 
-async function fetchCryptoSupplyHistory(symbol: string): Promise<CryptoSupplyHistoryPayload> {
-  const cached = cryptoSupplyHistoryCache.get(symbol);
+async function fetchCryptoSupplyHistory(
+  symbol: string,
+  rangeDays: CryptoSupplyHistoryPayload["rangeDays"],
+): Promise<CryptoSupplyHistoryPayload> {
+  const cacheKey = `${symbol}:${rangeDays}`;
+  const cached = cryptoSupplyHistoryCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.data;
 
-  const pending = cryptoSupplyHistoryRequests.get(symbol);
+  const pending = cryptoSupplyHistoryRequests.get(cacheKey);
   if (pending) return pending;
 
   const request = (async () => {
     const { stdout } = await execFileAsync(
       "python3",
-      [CRYPTO_SUPPLY_HISTORY_SCRIPT, symbol],
+      [CRYPTO_SUPPLY_HISTORY_SCRIPT, symbol, String(rangeDays)],
       { timeout: 20_000, maxBuffer: 2 * 1024 * 1024 },
     );
     const raw: unknown = JSON.parse(stdout.trim());
-    if (!isCryptoSupplyHistoryPayload(raw, symbol)) {
+    if (!isCryptoSupplyHistoryPayload(raw, symbol, rangeDays)) {
       throw new Error("Market data provider returned an invalid crypto supply history");
     }
-    cryptoSupplyHistoryCache.set(symbol, {
+    cryptoSupplyHistoryCache.set(cacheKey, {
       data: raw,
       expiresAt: Date.now() + CRYPTO_SUPPLY_HISTORY_TTL,
     });
@@ -142,12 +150,12 @@ async function fetchCryptoSupplyHistory(symbol: string): Promise<CryptoSupplyHis
     return raw;
   })();
 
-  cryptoSupplyHistoryRequests.set(symbol, request);
+  cryptoSupplyHistoryRequests.set(cacheKey, request);
   try {
     return await request;
   } finally {
-    if (cryptoSupplyHistoryRequests.get(symbol) === request) {
-      cryptoSupplyHistoryRequests.delete(symbol);
+    if (cryptoSupplyHistoryRequests.get(cacheKey) === request) {
+      cryptoSupplyHistoryRequests.delete(cacheKey);
     }
   }
 }
@@ -564,18 +572,41 @@ router.get("/stocks/trending", async (_req, res) => {
 });
 
 // Historical on-chain supply, separate from current quote statistics and max-supply share.
-router.get("/stocks/crypto/:symbol/supply-history", async (req, res) => {
+async function respondWithCryptoSupplyHistory(
+  req: Request<{ symbol: string; rangeDays?: string }>,
+  res: Response,
+  requestedRange: unknown,
+) {
   const symbol = (req.params["symbol"] ?? "").toUpperCase().trim();
+  const rangeDays = requestedRange === undefined
+    ? 365
+    : requestedRange === "30"
+      ? 30
+      : requestedRange === "90"
+        ? 90
+        : requestedRange === "365"
+          ? 365
+          : null;
   if (!/^[A-Z0-9]+-USD$/.test(symbol)) {
     res.status(400).json({ error: "INVALID_SYMBOL", message: "A crypto symbol ending in -USD is required" });
     return;
   }
+  if (rangeDays === null) {
+    res.status(400).json({ error: "INVALID_RANGE", message: "rangeDays must be 30, 90, or 365" });
+    return;
+  }
   try {
-    res.json(await fetchCryptoSupplyHistory(symbol));
+    res.json(await fetchCryptoSupplyHistory(symbol, rangeDays));
   } catch (err: any) {
     logger.warn({ err, symbol }, "Crypto supply history provider request failed");
     res.status(422).json({ error: "SUPPLY_HISTORY_FAILED", message: "Historical crypto supply is temporarily unavailable" });
   }
+}
+router.get("/stocks/crypto/:symbol/supply-history", async (req, res) => {
+  await respondWithCryptoSupplyHistory(req, res, undefined);
+});
+router.get("/stocks/crypto/:symbol/supply-history/:rangeDays", async (req, res) => {
+  await respondWithCryptoSupplyHistory(req, res, req.params["rangeDays"]);
 });
 
 // Brief stock info — company name, sector, dividend yield (for paper trading)

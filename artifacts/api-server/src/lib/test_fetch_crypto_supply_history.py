@@ -45,6 +45,43 @@ class CryptoSupplyHistoryTests(unittest.TestCase):
             {"date": "2026-10-08", "supply": 200.5},
         ])
 
+    def test_fetches_shorter_selected_windows_and_keeps_the_provider_date_gaps(self):
+        requests = []
+
+        def fetch_json(url):
+            requests.append(url)
+            return {"data": [
+                {"time": "2026-10-08T00:00:00.000000000Z", "SplyCur": "200.5"},
+                {"time": "2026-10-06T00:00:00.000000000Z", "SplyCur": "200"},
+            ]}
+
+        result = fetch_crypto_supply_history.fetch_crypto_supply_history(
+            "btc-usd",
+            today=date(2026, 10, 9),
+            fetch_json=fetch_json,
+            range_days=30,
+        )
+
+        query = parse_qs(urlparse(requests[0]).query)
+        self.assertEqual(query["start_time"], ["2026-09-09"])
+        self.assertEqual(query["end_time"], ["2026-10-08"])
+        self.assertEqual(query["page_size"], ["30"])
+        self.assertEqual(result["rangeDays"], 30)
+        self.assertEqual(result["points"], [
+            {"date": "2026-10-06", "supply": 200.0},
+            {"date": "2026-10-08", "supply": 200.5},
+        ])
+
+    def test_rejects_unsupported_history_windows(self):
+        for range_days in (0, 31, 180, 366, True):
+            with self.subTest(range_days=range_days):
+                with self.assertRaisesRegex(ValueError, "range_days"):
+                    fetch_crypto_supply_history.fetch_crypto_supply_history(
+                        "btc-usd",
+                        range_days=range_days,
+                        fetch_json=lambda _url: self.fail("unsupported range must not call provider"),
+                    )
+
     def test_does_not_invent_points_for_unsupported_symbols_or_missing_coverage(self):
         calls = []
         unsupported_symbol = fetch_crypto_supply_history.fetch_crypto_supply_history(

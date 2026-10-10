@@ -10,5 +10,7 @@ export type CryptoSupplyHistoryRangeDays = typeof CryptoSupplyHistoryRangeDays[k
 
 
 export const CryptoSupplyHistoryRangeDays = {
+  NUMBER_30: 30,
+  NUMBER_90: 90,
   NUMBER_365: 365,
 } as const;

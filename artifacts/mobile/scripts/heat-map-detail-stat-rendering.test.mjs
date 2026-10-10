@@ -43,8 +43,10 @@ test('commodity detail modal renders instrument-specific up and down price drive
 test('crypto detail keeps daily provider supply history distinct from its current supply share', () => {
   assert.match(modalSource, /const isCrypto = quote\.assetType === 'cryptocurrency'/);
   assert.match(modalSource, /\{isCrypto && \(\s*<CryptoSupplyHistory/s);
-  assert.match(modalSource, /useGetCryptoSupplyHistory\(symbol,\s*\{\s*query:\s*\{[^}]*enabled:\s*visible/s);
-  assert.match(modalSource, /Coin Metrics on-chain supply · Daily · Past year/);
+  assert.match(modalSource, /useGetCryptoSupplyHistory\(symbol,\s*rangeDays,\s*\{\s*query:\s*\{[^}]*enabled:\s*visible/s);
+  assert.match(modalSource, /HEAT_MAP_CRYPTO_SUPPLY_RANGES\.map/);
+  assert.match(modalSource, /heat-map-crypto-supply-range-\$\{days\}/);
+  assert.match(modalSource, /Past month.*Past 3 months.*Past year/s);
   assert.match(modalSource, /This daily on-chain metric can differ from the live circulating-supply figure above; it is not the maximum-supply share/);
   assert.match(modalSource, /heat-map-crypto-supply-unavailable/);
   assert.match(modalSource, /heat-map-crypto-supply-chart/);

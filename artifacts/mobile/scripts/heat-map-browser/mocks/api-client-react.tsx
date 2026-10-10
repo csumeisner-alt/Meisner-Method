@@ -258,6 +258,7 @@ export function useGetMarketBreadth() {
 
 export function useGetCryptoSupplyHistory(
   symbol: string,
+  rangeDays: number,
   options?: { query?: { enabled?: boolean } },
 ) {
   return {
@@ -265,7 +266,7 @@ export function useGetCryptoSupplyHistory(
       symbol,
       provider: "Coin Metrics",
       metric: "SplyCur",
-      rangeDays: 365,
+      rangeDays,
       interval: "daily",
       startDate: "2026-09-01",
       endDate: "2026-09-04",
@@ -282,8 +283,8 @@ export function useGetCryptoSupplyHistory(
   };
 }
 
-export function getGetCryptoSupplyHistoryQueryKey(symbol: string) {
-  return [`/api/stocks/crypto/${symbol}/supply-history`];
+export function getGetCryptoSupplyHistoryQueryKey(symbol: string, rangeDays: number) {
+  return [`/api/stocks/crypto/${symbol}/supply-history/${rangeDays}`];
 }
 
 export function useSearchStockSymbols() {

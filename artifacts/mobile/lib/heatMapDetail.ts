@@ -35,6 +35,15 @@ export interface HeatMapCryptoSupplyChangeSummary {
   absoluteChange: number;
   percentChange: number;
 }
+
+export type HeatMapCryptoSupplyRangeDays = 30 | 90 | 365;
+
+export const HEAT_MAP_CRYPTO_SUPPLY_RANGES = [
+  { label: '1M', days: 30 },
+  { label: '3M', days: 90 },
+  { label: '1Y', days: 365 },
+] as const satisfies readonly { label: string; days: HeatMapCryptoSupplyRangeDays }[];
+
 export interface HeatMapEtfHolding {
   symbol: string;
   name: string;
@@ -225,15 +234,16 @@ export function parseHeatMapDetailStats(value: unknown): HeatMapDetailStats | nu
 
 export function parseHeatMapCryptoSupplyHistory(value: unknown): HeatMapCryptoSupplyHistory | null {
   const input = record(value);
+  const rangeDays = input?.rangeDays;
   if (
     !input
     || input.provider !== 'Coin Metrics'
     || input.metric !== 'SplyCur'
-    || input.rangeDays !== 365
+    || (rangeDays !== 30 && rangeDays !== 90 && rangeDays !== 365)
     || input.interval !== 'daily'
     || typeof input.symbol !== 'string'
     || !Array.isArray(input.points)
-    || input.points.length > 366
+    || input.points.length > rangeDays + 1
   ) {
     return null;
   }
@@ -261,7 +271,7 @@ export function parseHeatMapCryptoSupplyHistory(value: unknown): HeatMapCryptoSu
     symbol: input.symbol,
     provider: 'Coin Metrics',
     metric: 'SplyCur',
-    rangeDays: 365,
+    rangeDays,
     interval: 'daily',
     startDate: points[0]?.date ?? null,
     endDate: points.at(-1)?.date ?? null,
@@ -628,7 +638,7 @@ export interface HeatMapCryptoSupplyHistory {
   symbol: string;
   provider: 'Coin Metrics';
   metric: 'SplyCur';
-  rangeDays: 365;
+  rangeDays: HeatMapCryptoSupplyRangeDays;
   interval: 'daily';
   startDate: string | null;
   endDate: string | null;

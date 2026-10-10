@@ -30,6 +30,7 @@ COIN_METRICS_ASSETS = {
 PROVIDER = "Coin Metrics"
 METRIC = "SplyCur"
 RANGE_DAYS = 365
+SUPPORTED_RANGE_DAYS = (30, 90, 365)
 COMMUNITY_API = "https://community-api.coinmetrics.io/v4/timeseries/asset-metrics"
 
 
@@ -55,12 +56,12 @@ def _unavailable_metric_error(error):
     )
 
 
-def _empty_history(symbol):
+def _empty_history(symbol, range_days=RANGE_DAYS):
     return {
         "symbol": symbol,
         "provider": PROVIDER,
         "metric": METRIC,
-        "rangeDays": RANGE_DAYS,
+        "rangeDays": range_days,
         "interval": "daily",
         "startDate": None,
         "endDate": None,
@@ -100,32 +101,35 @@ def _normalize_points(rows):
     ]
 
 
-def fetch_crypto_supply_history(symbol, today=None, fetch_json=_request_json):
-    """Return a year of actual daily provider values without filling missing dates."""
+def fetch_crypto_supply_history(symbol, today=None, fetch_json=_request_json, range_days=RANGE_DAYS):
+    """Return actual daily provider values for a supported window without filling gaps."""
+    if type(range_days) is not int or range_days not in SUPPORTED_RANGE_DAYS:
+        raise ValueError("range_days must be one of 30, 90, or 365")
+
     normalized_symbol = str(symbol or "").upper().strip()
     asset = COIN_METRICS_ASSETS.get(normalized_symbol)
     if asset is None:
-        return _empty_history(normalized_symbol)
+        return _empty_history(normalized_symbol, range_days)
 
     current_date = today or datetime.now(timezone.utc).date()
     if not isinstance(current_date, date):
         raise TypeError("today must be a date")
     end_date = current_date - timedelta(days=1)
-    start_date = end_date - timedelta(days=RANGE_DAYS - 1)
+    start_date = end_date - timedelta(days=range_days - 1)
     query = urlencode({
         "assets": asset,
         "metrics": METRIC,
         "frequency": "1d",
         "start_time": start_date.isoformat(),
         "end_time": end_date.isoformat(),
-        "page_size": RANGE_DAYS,
+        "page_size": range_days,
     })
 
     try:
         payload = fetch_json(f"{COMMUNITY_API}?{query}")
     except HTTPError as error:
         if _unavailable_metric_error(error):
-            return _empty_history(normalized_symbol)
+            return _empty_history(normalized_symbol, range_days)
         raise RuntimeError("Coin Metrics supply history request failed") from error
     except (URLError, TimeoutError) as error:
         raise RuntimeError("Coin Metrics supply history request failed") from error
@@ -135,7 +139,7 @@ def fetch_crypto_supply_history(symbol, today=None, fetch_json=_request_json):
 
     points = _normalize_points(payload["data"])
     return {
-        **_empty_history(normalized_symbol),
+        **_empty_history(normalized_symbol, range_days),
         "startDate": points[0]["date"] if points else None,
         "endDate": points[-1]["date"] if points else None,
         "points": points,
@@ -144,8 +148,9 @@ def fetch_crypto_supply_history(symbol, today=None, fetch_json=_request_json):
 
 def main():
     symbol = sys.argv[1] if len(sys.argv) > 1 else ""
+    range_days = int(sys.argv[2]) if len(sys.argv) > 2 else RANGE_DAYS
     try:
-        print(json.dumps(fetch_crypto_supply_history(symbol), allow_nan=False))
+        print(json.dumps(fetch_crypto_supply_history(symbol, range_days=range_days), allow_nan=False))
     except Exception as error:
         print(json.dumps({"error": str(error)}))
         sys.exit(1)

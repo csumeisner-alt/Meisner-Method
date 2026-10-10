@@ -375,21 +375,23 @@ export function useGetStockInfo<TData = Awaited<ReturnType<typeof getStockInfo>>
 
 
 
-export const getGetCryptoSupplyHistoryUrl = (symbol: string,) => {
+export const getGetCryptoSupplyHistoryUrl = (symbol: string,
+    rangeDays: 30 | 90 | 365,) => {
 
 
 
 
-  return `/api/stocks/crypto/${symbol}/supply-history`
+  return `/api/stocks/crypto/${symbol}/supply-history/${rangeDays}`
 }
 
 /**
- * Returns up to one year of daily Coin Metrics current-supply observations. Missing provider dates are omitted, never interpolated; this on-chain metric may differ from another provider's current circulating-supply figure.
+ * Returns daily Coin Metrics current-supply observations for a selected 30, 90, or 365 day window. Missing provider dates are omitted, never interpolated; this on-chain metric may differ from another provider's current circulating-supply figure.
  * @summary Get historical on-chain supply for a cryptocurrency
  */
-export const getCryptoSupplyHistory = async (symbol: string, options?: RequestInit): Promise<CryptoSupplyHistory> => {
+export const getCryptoSupplyHistory = async (symbol: string,
+    rangeDays: 30 | 90 | 365, options?: RequestInit): Promise<CryptoSupplyHistory> => {
 
-  return customFetch<CryptoSupplyHistory>(getGetCryptoSupplyHistoryUrl(symbol),
+  return customFetch<CryptoSupplyHistory>(getGetCryptoSupplyHistoryUrl(symbol,rangeDays),
   {
     ...options,
     method: 'GET'
@@ -402,29 +404,31 @@ export const getCryptoSupplyHistory = async (symbol: string, options?: RequestIn
 
 
 
-export const getGetCryptoSupplyHistoryQueryKey = (symbol: string,) => {
+export const getGetCryptoSupplyHistoryQueryKey = (symbol: string,
+    rangeDays: 30 | 90 | 365,) => {
     return [
-    `/api/stocks/crypto/${symbol}/supply-history`
+    `/api/stocks/crypto/${symbol}/supply-history/${rangeDays}`
     ] as const;
     }
 
 
-export const getGetCryptoSupplyHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getCryptoSupplyHistory>>, TError = ErrorType<AnalysisError>>(symbol: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCryptoSupplyHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetCryptoSupplyHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getCryptoSupplyHistory>>, TError = ErrorType<AnalysisError>>(symbol: string,
+    rangeDays: 30 | 90 | 365, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCryptoSupplyHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetCryptoSupplyHistoryQueryKey(symbol);
+  const queryKey =  queryOptions?.queryKey ?? getGetCryptoSupplyHistoryQueryKey(symbol,rangeDays);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCryptoSupplyHistory>>> = ({ signal }) => getCryptoSupplyHistory(symbol, { signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCryptoSupplyHistory>>> = ({ signal }) => getCryptoSupplyHistory(symbol,rangeDays, { signal, ...requestOptions });
 
 
 
 
 
-   return  { queryKey, queryFn, enabled: symbol !== null && symbol !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCryptoSupplyHistory>>, TError, TData> & { queryKey: QueryKey }
+   return  { queryKey, queryFn, enabled: symbol !== null && symbol !== undefined && rangeDays !== null && rangeDays !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCryptoSupplyHistory>>, TError, TData> & { queryKey: QueryKey }
 }
 
 export type GetCryptoSupplyHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getCryptoSupplyHistory>>>
@@ -436,11 +440,12 @@ export type GetCryptoSupplyHistoryQueryError = ErrorType<AnalysisError>
  */
 
 export function useGetCryptoSupplyHistory<TData = Awaited<ReturnType<typeof getCryptoSupplyHistory>>, TError = ErrorType<AnalysisError>>(
- symbol: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCryptoSupplyHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ symbol: string,
+    rangeDays: 30 | 90 | 365, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCryptoSupplyHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetCryptoSupplyHistoryQueryOptions(symbol,options)
+  const queryOptions = getGetCryptoSupplyHistoryQueryOptions(symbol,rangeDays,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

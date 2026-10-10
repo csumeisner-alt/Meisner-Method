@@ -125,12 +125,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AnalysisError"
-  /stocks/crypto/{symbol}/supply-history:
+  /stocks/crypto/{symbol}/supply-history/{rangeDays}:
     get:
       operationId: getCryptoSupplyHistory
       tags: [stocks]
       summary: Get historical on-chain supply for a cryptocurrency
-      description: Returns up to one year of daily Coin Metrics current-supply observations. Missing provider dates are omitted, never interpolated; this on-chain metric may differ from another provider's current circulating-supply figure.
+      description: Returns daily Coin Metrics current-supply observations for a selected 30, 90, or 365 day window. Missing provider dates are omitted, never interpolated; this on-chain metric may differ from another provider's current circulating-supply figure.
       parameters:
         - in: path
           name: symbol
@@ -140,6 +140,13 @@ paths:
             minLength: 5
             maxLength: 15
             pattern: "^[A-Z0-9]+-USD$"
+        - in: path
+          name: rangeDays
+          required: true
+          description: Number of daily history days to return.
+          schema:
+            type: integer
+            enum: [30, 90, 365]
       responses:
         "200":
           description: Daily provider history, or an empty point list when the provider has no history for this asset
@@ -148,7 +155,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/CryptoSupplyHistory"
         "400":
-          description: Symbol is missing or invalid
+          description: Symbol is invalid or the requested history window is unsupported
           content:
             application/json:
               schema:
@@ -548,7 +555,7 @@ components:
           enum: [SplyCur]
         rangeDays:
           type: integer
-          enum: [365]
+          enum: [30, 90, 365]
         interval:
           type: string
           enum: [daily]

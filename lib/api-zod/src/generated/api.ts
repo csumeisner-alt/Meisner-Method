@@ -190,7 +190,7 @@ export const GetStockInfoResponse = zod.object({
 
 
 /**
- * Returns up to one year of daily Coin Metrics current-supply observations. Missing provider dates are omitted, never interpolated; this on-chain metric may differ from another provider's current circulating-supply figure.
+ * Returns daily Coin Metrics current-supply observations for a selected 30, 90, or 365 day window. Missing provider dates are omitted, never interpolated; this on-chain metric may differ from another provider's current circulating-supply figure.
  * @summary Get historical on-chain supply for a cryptocurrency
  */
 export const getCryptoSupplyHistoryPathSymbolMin = 5;
@@ -201,7 +201,8 @@ export const getCryptoSupplyHistoryPathSymbolRegExp = new RegExp('^[A-Z0-9]+-USD
 
 
 export const GetCryptoSupplyHistoryParams = zod.object({
-  "symbol": zod.coerce.string().min(getCryptoSupplyHistoryPathSymbolMin).max(getCryptoSupplyHistoryPathSymbolMax).regex(getCryptoSupplyHistoryPathSymbolRegExp)
+  "symbol": zod.coerce.string().min(getCryptoSupplyHistoryPathSymbolMin).max(getCryptoSupplyHistoryPathSymbolMax).regex(getCryptoSupplyHistoryPathSymbolRegExp),
+  "rangeDays": zod.union([zod.literal(30),zod.literal(90),zod.literal(365)]).describe('Number of daily history days to return.')
 })
 
 export const getCryptoSupplyHistoryResponsePointsItemSupplyExclusiveMin = 0;
@@ -212,7 +213,7 @@ export const GetCryptoSupplyHistoryResponse = zod.object({
   "symbol": zod.string(),
   "provider": zod.enum(['Coin Metrics']),
   "metric": zod.enum(['SplyCur']),
-  "rangeDays": zod.literal(365),
+  "rangeDays": zod.union([zod.literal(30),zod.literal(90),zod.literal(365)]),
   "interval": zod.enum(['daily']),
   "startDate": zod.coerce.date().nullable(),
   "endDate": zod.coerce.date().nullable(),

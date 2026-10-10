@@ -28,7 +28,9 @@ import {
   getHeatMapRangePosition,
   parseHeatMapCryptoSupplyHistory,
   parseHeatMapDetailStats,
+  HEAT_MAP_CRYPTO_SUPPLY_RANGES,
   type HeatMapEtfProfile,
+  type HeatMapCryptoSupplyRangeDays,
   type HeatMapDetailStats,
 } from '@/lib/heatMapDetail';
 import {
@@ -707,7 +709,12 @@ const styles = StyleSheet.create({
   methodology: { fontFamily: 'Inter_400Regular', fontSize: 9, lineHeight: 13, marginTop: 8 },
   supplyHistory: { marginTop: 18 },
   supplyHistoryCard: { borderWidth: 1, borderRadius: 13, padding: 12 },
-  supplyHistoryCaption: { fontFamily: 'Inter_500Medium', fontSize: 9, marginBottom: 10 },
+  supplyHistoryCaption: { fontFamily: 'Inter_500Medium', fontSize: 9, marginBottom: 8 },
+  supplyHistoryRangeHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 },
+  supplyHistoryRangeLabel: { fontFamily: 'Inter_500Medium', fontSize: 9 },
+  supplyHistoryRanges: { flexDirection: 'row', borderWidth: 1, borderRadius: 9, overflow: 'hidden', marginBottom: 11 },
+  supplyHistoryRangeButton: { flex: 1, minHeight: 32, alignItems: 'center', justifyContent: 'center', borderRightWidth: StyleSheet.hairlineWidth },
+  supplyHistoryRangeText: { fontFamily: 'Inter_700Bold', fontSize: 10 },
   supplyHistoryChange: { borderWidth: 1, borderRadius: 10, padding: 10, marginBottom: 12 },
   supplyHistoryChangeLabel: { fontFamily: 'Inter_500Medium', fontSize: 9, lineHeight: 13 },
   supplyHistoryChangeValue: { fontFamily: 'Inter_700Bold', fontSize: 15, marginTop: 4 },
@@ -740,14 +747,16 @@ function CryptoSupplyHistory({
   visible: boolean;
   colors: ReturnType<typeof useColors>;
 }) {
-  const historyQuery = useGetCryptoSupplyHistory(symbol, {
+  const [rangeDays, setRangeDays] = useState<HeatMapCryptoSupplyRangeDays>(365);
+  const historyQuery = useGetCryptoSupplyHistory(symbol, rangeDays, {
     query: {
-      queryKey: getGetCryptoSupplyHistoryQueryKey(symbol),
+      queryKey: getGetCryptoSupplyHistoryQueryKey(symbol, rangeDays),
       enabled: visible,
       staleTime: 6 * 60 * 60 * 1000,
     },
   });
-  const history = parseHeatMapCryptoSupplyHistory(historyQuery.data);
+  const parsedHistory = parseHeatMapCryptoSupplyHistory(historyQuery.data);
+  const history = parsedHistory?.rangeDays === rangeDays ? parsedHistory : null;
   const chart = history ? getHeatMapCryptoSupplyChartModel(history.points) : null;
   const [selectedObservation, setSelectedObservation] = useState<{ symbol: string; date: string } | null>(null);
   const [plotWidth, setPlotWidth] = useState(0);
@@ -770,9 +779,46 @@ function CryptoSupplyHistory({
         )}
       </View>
       <View style={[styles.supplyHistoryCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <Text style={[styles.supplyHistoryCaption, { color: colors.mutedForeground }]}>
-          Coin Metrics on-chain supply · Daily · Past year
-        </Text>
+        <View style={styles.supplyHistoryRangeHeader}>
+          <Text style={[styles.supplyHistoryRangeLabel, { color: colors.mutedForeground }]}>
+            HISTORY WINDOW
+          </Text>
+          <Text style={[styles.supplyHistoryCaption, { color: colors.mutedForeground, marginBottom: 0 }]}>
+            Coin Metrics · Daily · {rangeDays === 30 ? 'Past month' : rangeDays === 90 ? 'Past 3 months' : 'Past year'}
+          </Text>
+        </View>
+        <View
+          testID="heat-map-crypto-supply-ranges"
+          style={[styles.supplyHistoryRanges, { borderColor: colors.border }]}
+          accessibilityRole="radiogroup"
+          accessibilityLabel="Supply history window"
+        >
+          {HEAT_MAP_CRYPTO_SUPPLY_RANGES.map(({ label, days }, index) => {
+            const selected = days === rangeDays;
+            return (
+              <Pressable
+                key={days}
+                testID={`heat-map-crypto-supply-range-${days}`}
+                accessibilityRole="radio"
+                accessibilityLabel={`${label} supply history`}
+                accessibilityState={{ selected }}
+                onPress={() => setRangeDays(days)}
+                style={[
+                  styles.supplyHistoryRangeButton,
+                  index < HEAT_MAP_CRYPTO_SUPPLY_RANGES.length - 1 && { borderRightColor: colors.border },
+                  selected && { backgroundColor: colors.primary },
+                ]}
+              >
+                <Text style={[
+                  styles.supplyHistoryRangeText,
+                  { color: selected ? colors.primaryForeground : colors.mutedForeground },
+                ]}>
+                  {label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
         {historyQuery.isLoading ? (
           <Text style={[styles.supplyHistoryEmpty, { color: colors.mutedForeground }]}>
             Loading provider history…
