@@ -268,10 +268,12 @@ export function HeatMapDetailModal({
   quote,
   visible,
   onClose,
+  onRefreshQuote,
 }: {
   quote: HeatMapQuote | null;
   visible: boolean;
   onClose: () => void;
+  onRefreshQuote: (symbol: string) => Promise<HeatMapQuote | null>;
 }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -281,6 +283,34 @@ export function HeatMapDetailModal({
   const [loadError, setLoadError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const forceRefreshRef = useRef(false);
+  const [quoteRefreshLoading, setQuoteRefreshLoading] = useState(false);
+  const [quoteRefreshError, setQuoteRefreshError] = useState(false);
+  const quoteRefreshAttemptRef = useRef(0);
+
+  useEffect(() => {
+    quoteRefreshAttemptRef.current += 1;
+    setQuoteRefreshLoading(false);
+    setQuoteRefreshError(false);
+  }, [quote?.symbol, visible]);
+
+  const refreshQuote = async () => {
+    if (!quote || quoteRefreshLoading) return;
+    const symbol = quote.symbol;
+    const attempt = ++quoteRefreshAttemptRef.current;
+    setQuoteRefreshLoading(true);
+    setQuoteRefreshError(false);
+    try {
+      const refreshedQuote = await onRefreshQuote(symbol);
+      if (attempt !== quoteRefreshAttemptRef.current) return;
+      setQuoteRefreshError(
+        !refreshedQuote || refreshedQuote.symbol.toUpperCase() !== symbol.toUpperCase(),
+      );
+    } catch {
+      if (attempt === quoteRefreshAttemptRef.current) setQuoteRefreshError(true);
+    } finally {
+      if (attempt === quoteRefreshAttemptRef.current) setQuoteRefreshLoading(false);
+    }
+  };
 
   const refreshDetailStats = () => {
     if (loading) return;
@@ -437,9 +467,43 @@ export function HeatMapDetailModal({
                 </Text>
               </View>
             </View>
-            <Text style={[styles.quoteAge, { color: colors.mutedForeground }]}>
-              Quote {formatHeatMapQuoteAge(quote.priceTimestamp)}
-            </Text>
+            <View style={styles.quoteAgeRow}>
+              <Text style={[styles.quoteAge, { color: colors.mutedForeground }]}>
+                Quote {formatHeatMapQuoteAge(quote.priceTimestamp)}
+              </Text>
+              <Pressable
+                testID="heat-map-detail-refresh-quote"
+                accessibilityRole="button"
+                accessibilityLabel={quoteRefreshLoading ? 'Refreshing selected market quote' : 'Refresh selected market quote'}
+                accessibilityState={{ disabled: quoteRefreshLoading }}
+                disabled={quoteRefreshLoading}
+                onPress={() => { void refreshQuote(); }}
+                style={[styles.quoteRefreshButton, { borderColor: colors.border }]}
+              >
+                {quoteRefreshLoading
+                  ? <ActivityIndicator size="small" color={colors.primary} />
+                  : <MaterialCommunityIcons name="refresh" size={14} color={colors.primary} />}
+                <Text style={[styles.retryText, { color: colors.primary }]}>
+                  {quoteRefreshLoading ? 'Refreshing' : 'Refresh quote'}
+                </Text>
+              </Pressable>
+            </View>
+            {quoteRefreshError && (
+              <View testID="heat-map-detail-quote-refresh-error" style={[styles.quoteRefreshError, { borderColor: colors.border }]}>
+                <Text style={[styles.errorText, { color: colors.mutedForeground }]}>
+                  Couldn't refresh this quote. Showing the last displayed price.
+                </Text>
+                <Pressable
+                  testID="heat-map-detail-quote-refresh-retry"
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry refreshing market quote"
+                  onPress={() => { void refreshQuote(); }}
+                  style={[styles.retryButton, { borderColor: colors.border }]}
+                >
+                  <Text style={[styles.retryText, { color: colors.primary }]}>Try again</Text>
+                </Pressable>
+              </View>
+            )}
 
             {commodityContract && (
               <View
@@ -656,7 +720,10 @@ const styles = StyleSheet.create({
   price: { fontFamily: 'Inter_700Bold', fontSize: 28, letterSpacing: -0.6 },
   changeBadge: { minHeight: 29, flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 9, borderRadius: 10 },
   changeText: { fontFamily: 'Inter_700Bold', fontSize: 11 },
-  quoteAge: { fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3, marginBottom: 20 },
+  quoteAge: { fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 },
+  quoteAgeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 20 },
+  quoteRefreshButton: { minHeight: 30, borderWidth: 1, borderRadius: 9, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  quoteRefreshError: { borderWidth: 1, borderRadius: 10, padding: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 9, marginBottom: 8 },
   contractSummary: { borderWidth: 1, borderRadius: 13, padding: 12, marginTop: -8, marginBottom: 20 },
   contractFactsRow: { flexDirection: 'row', gap: 12 },
   contractFact: { flex: 1, minWidth: 0 },

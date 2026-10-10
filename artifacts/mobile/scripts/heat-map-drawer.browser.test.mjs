@@ -456,6 +456,69 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       "$123.45",
       "The current heat-map quote should display immediately in the detail card.",
     );
+    await browser.evaluate(`(() => {
+      const state = window.__heatMapBrowserTest;
+      state.setDeferNextRefetch();
+      state.setNextRefetchResponse({
+        ...state.data,
+        quotes: state.data.quotes.map((item) => item.symbol === "MATCH" ? { ...item, price: 150.25, priceChangePercent: 4.5 } : item),
+      });
+    })()`);
+    await clickTestID(browser, "heat-map-detail-refresh-quote");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.pendingRefetchResolvers.length === 1 && !!document.querySelector(${JSON.stringify(selector("heat-map-detail-refresh-quote"))})`,
+      "Refreshing the selected quote should remain pending in the open detail card.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent === "MATCH" && document.querySelector(${JSON.stringify(selector("heat-map-detail-price"))})?.textContent === "$123.45"`),
+      true,
+      "The card should keep showing the same instrument and last known price while refreshing.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-refresh-quote"))})?.textContent.includes("Refreshing")`),
+      true,
+      "The quote refresh control should show progress while the request is pending.",
+    );
+    assert.equal(
+      await browser.evaluate("window.__heatMapBrowserTest.resolvePendingRefetch()"),
+      true,
+      "The pending quote refresh should be resolvable.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-detail-price"))})?.textContent === "$150.25"`,
+      "A successful quote refresh should update the open card to the newly reported price.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent`),
+      "MATCH",
+      "Refreshing the quote should not close or switch the selected detail card.",
+    );
+
+    await browser.evaluate("window.__heatMapBrowserTest.setRefetchFailures(1)");
+    await clickTestID(browser, "heat-map-detail-refresh-quote");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-detail-quote-refresh-error"))})`,
+      "A failed quote refresh should show a retry action in the open detail card.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-price"))})?.textContent === "$150.25" && document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent === "MATCH"`),
+      true,
+      "A failed refresh should preserve the last successful quote and selected instrument.",
+    );
+    await browser.evaluate(`window.__heatMapBrowserTest.setNextRefetchResponse({
+      ...window.__heatMapBrowserTest.data,
+      quotes: window.__heatMapBrowserTest.data.quotes.map((item) => item.symbol === "MATCH" ? { ...item, price: 151.99, priceChangePercent: 5.1 } : item),
+    })`);
+    await clickTestID(browser, "heat-map-detail-quote-refresh-retry");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-detail-price"))})?.textContent === "$151.99" && !document.querySelector(${JSON.stringify(selector("heat-map-detail-quote-refresh-error"))})`,
+      "Retrying the failed quote refresh should update the quote and clear its error state.",
+    );
+
     await waitFor(
       (expression) => browser.evaluate(expression),
       `document.querySelector(${JSON.stringify(selector("heat-map-detail-stat-previous-close"))})?.textContent === "$122.00"`,

@@ -1370,6 +1370,23 @@ export default function HeatMapScreen() {
           quote={selectedQuote}
           visible={selectedQuote !== null}
           onClose={() => setSelectedQuote(null)}
+          onRefreshQuote={async (symbol) => {
+            try {
+              const result = await mapQuery.refetch();
+              if (result.isError) return null;
+              const refreshedQuote = result.data?.quotes.find(
+                (item) => item.symbol.toUpperCase() === symbol.toUpperCase(),
+              ) ?? null;
+              if (refreshedQuote) {
+                setSelectedQuote((current) => current?.symbol.toUpperCase() === symbol.toUpperCase()
+                  ? refreshedQuote
+                  : current);
+              }
+              return refreshedQuote;
+            } catch {
+              return null;
+            }
+          }}
         />
       </View>
     </AmericanSteelBackground>

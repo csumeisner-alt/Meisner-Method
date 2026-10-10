@@ -46,6 +46,8 @@ interface HeatMapBrowserState {
   }[];
   refetchFailuresRemaining: number;
   nextRefetchResponse: HeatMapBrowserResponse | null;
+  deferNextRefetch: boolean;
+  pendingRefetchResolvers: ((result: { isError: boolean; data: HeatMapBrowserResponse | null }) => void)[];
   cryptoSupplyHistoryOverrides: Record<string, { type: "pending" } | { type: "resolve"; payload: unknown }>;
   listeners: Set<() => void>;
   setResponse: (response: HeatMapBrowserResponse | null) => void;
@@ -55,6 +57,8 @@ interface HeatMapBrowserState {
   rejectPendingDetailRequest: (url: string) => boolean;
   setRefetchFailures: (count: number) => void;
   setNextRefetchResponse: (response: HeatMapBrowserResponse) => void;
+  setDeferNextRefetch: () => void;
+  resolvePendingRefetch: () => boolean;
   commodityDriverRequests: { symbol: string }[];
   commodityDriverSignals: { symbol: string; signal: AbortSignal }[];
   commodityDriverResponses: ({ type: "reject" } | { type: "resolve"; payload: unknown } | { type: "defer" } | { type: "stall" })[];
@@ -171,6 +175,8 @@ export function initializeHeatMapBrowserState(): HeatMapBrowserState {
     pendingDetailRequests: [],
     refetchFailuresRemaining: 0,
     nextRefetchResponse: null,
+    deferNextRefetch: false,
+    pendingRefetchResolvers: [],
     cryptoSupplyHistoryOverrides: {},
     listeners: new Set(),
     setResponse(next) {
@@ -214,6 +220,20 @@ export function initializeHeatMapBrowserState(): HeatMapBrowserState {
     setNextRefetchResponse(next) {
       state.nextRefetchResponse = next;
     },
+    setDeferNextRefetch() {
+      state.deferNextRefetch = true;
+    },
+    resolvePendingRefetch() {
+      const resolve = state.pendingRefetchResolvers.shift();
+      if (!resolve) return false;
+      if (state.nextRefetchResponse) {
+        state.data = state.nextRefetchResponse;
+        state.nextRefetchResponse = null;
+        state.listeners.forEach((listener) => listener());
+      }
+      resolve({ isError: false, data: state.data });
+      return true;
+    },
   };
   window.__heatMapBrowserTest = state;
   return state;
@@ -256,14 +276,20 @@ export function useGetMarketHeatMap(params: Record<string, unknown>) {
       state.refetches.push(JSON.parse(requestKey) as Record<string, unknown>);
       if (state.refetchFailuresRemaining > 0) {
         state.refetchFailuresRemaining -= 1;
-        return { isError: true };
+        return { isError: true, data: state.data };
+      }
+      if (state.deferNextRefetch) {
+        state.deferNextRefetch = false;
+        return new Promise<{ isError: boolean; data: HeatMapBrowserResponse | null }>((resolve) => {
+          state.pendingRefetchResolvers.push(resolve);
+        });
       }
       if (state.nextRefetchResponse) {
         state.data = state.nextRefetchResponse;
         state.nextRefetchResponse = null;
         state.listeners.forEach((listener) => listener());
       }
-      return { isError: false };
+      return { isError: false, data: state.data };
     },
   };
 }
