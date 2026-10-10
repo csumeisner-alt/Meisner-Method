@@ -2137,6 +2137,14 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
         { date: "2026-10-06", supply: 19_876_600.5 },
       ],
     } })`);
+    await browser.evaluate(`window.__heatMapBrowserTest.setCryptoSupplyHistoryOverride("BTC-USD", { type: "pending" })`);
+    await browser.evaluate(`window.__heatMapBrowserTest.setDetailResponses([{ type: "late" }])`);
+    await clickTestID(browser, "heat-map-detail-refresh");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.pendingDetailRequests.some((request) => request.url.endsWith("/BTC-USD")) && !!document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-loading"))})`,
+      "Bitcoin's refreshed market statistics and supply history should both remain pending before switching coins.",
+    );
     await clickTestID(browser, "heat-map-detail-close");
     await waitFor(
       (expression) => browser.evaluate(expression),
@@ -2171,6 +2179,23 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       await browser.evaluate(`document.body.innerText.includes("19,876,600.5")`),
       false,
       "The previous coin's historical value must not appear in the newly selected coin's card.",
+    );
+
+    assert.equal(
+      await browser.evaluate(`window.__heatMapBrowserTest.resolvePendingDetailRequest("/api/stocks/info/BTC-USD", { circulatingSupply: 987_654_321, marketCap: 1_000_000_000_000 })`),
+      true,
+      "Bitcoin's old market-statistics response should be resolvable after Ethereum is selected.",
+    );
+    await browser.evaluate(`window.__heatMapBrowserTest.setCryptoSupplyHistoryOverride("BTC-USD", { type: "resolve", payload: {
+      symbol: "BTC-USD", provider: "Coin Metrics", metric: "SplyCur", rangeDays: 365, interval: "daily",
+      startDate: "2026-10-06", endDate: "2026-10-06",
+      points: [{ date: "2026-10-06", supply: 987_654_321.123 }],
+    } })`);
+    await delay(50);
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent === "ETH-USD" && document.querySelectorAll(${JSON.stringify(selector("heat-map-crypto-supply-discrepancy"))}).length === 0 && !document.body.innerText.includes("987,654,321")`),
+      true,
+      "Late Bitcoin statistics and history must not change Ethereum's pending supply or warning.",
     );
 
     assert.equal(

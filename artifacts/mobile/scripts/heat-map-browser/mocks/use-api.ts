@@ -10,7 +10,7 @@ async function mockApiFetch<T>(url: string, options?: RequestInit): Promise<T> {
     if (response?.type === "reject") throw new Error("Mock market statistics request failed.");
     if (response?.type === "resolve") return response.payload as T;
     if (response?.type === "stall") return new Promise<T>(() => {});
-    if (response?.type === "defer") {
+    if (response?.type === "defer" || response?.type === "late") {
       return new Promise<T>((resolve, reject) => {
         let abort = () => {};
         const pending = {
@@ -30,11 +30,13 @@ async function mockApiFetch<T>(url: string, options?: RequestInit): Promise<T> {
           if (pendingIndex !== -1) state.pendingDetailRequests.splice(pendingIndex, 1);
           pending.reject(new DOMException("The operation was aborted.", "AbortError"));
         };
-        if (signal?.aborted) {
-          abort();
-          return;
+        if (response.type === "defer") {
+          if (signal?.aborted) {
+            abort();
+            return;
+          }
+          signal?.addEventListener("abort", abort, { once: true });
         }
-        signal?.addEventListener("abort", abort, { once: true });
         state.pendingDetailRequests.push(pending);
       });
     }

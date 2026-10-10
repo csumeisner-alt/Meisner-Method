@@ -44,7 +44,7 @@ interface HeatMapBrowserState {
 
   detailRequestSignals: { url: string; signal: AbortSignal | null }[];
 
-  detailResponses: ({ type: "reject" } | { type: "resolve"; payload: unknown } | { type: "defer" } | { type: "stall" })[];
+  detailResponses: ({ type: "reject" } | { type: "resolve"; payload: unknown } | { type: "defer" } | { type: "late" } | { type: "stall" })[];
 
   pendingDetailRequests: {
     url: string;
@@ -68,7 +68,7 @@ interface HeatMapBrowserState {
 
   setResponse: (response: HeatMapBrowserResponse | null) => void;
 
-  setDetailResponses: (responses: ({ type: "reject" } | { type: "resolve"; payload: unknown } | { type: "defer" } | { type: "stall" })[]) => void;
+  setDetailResponses: (responses: ({ type: "reject" } | { type: "resolve"; payload: unknown } | { type: "defer" } | { type: "late" } | { type: "stall" })[]) => void;
 
   setCryptoSupplyHistoryOverride: (symbol: string, response: { type: "pending" } | { type: "resolve"; payload: unknown } | { type: "reject" }, rangeDays?: number) => void;
 
@@ -93,6 +93,7 @@ interface HeatMapBrowserState {
   pendingCommodityDriverRequests: {
     symbol: string;
     resolve: (payload: unknown) => void;
+  }[];
 
   setCommodityDriverResponses: (responses: ({ type: "reject" } | { type: "resolve"; payload: unknown } | { type: "defer" } | { type: "stall" })[]) => void;
 
