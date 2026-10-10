@@ -223,7 +223,7 @@ export function parseHeatMapDetailStats(value: unknown): HeatMapDetailStats | nu
     fiftyTwoWeekHigh: numericField(value, 'fiftyTwoWeekHigh'),
     volume: numericField(value, 'volume'),
     averageVolume: numericField(value, 'averageVolume3Month'),
-    marketCap: numericField(value, 'marketCap'),
+    marketCap: nonNegativeNumericField(value, 'marketCap'),
     beta: numericField(value, 'beta'),
     earningsTimestamp: numericField(value, 'earningsTimestamp'),
     targetMeanPrice: numericField(value, 'targetMeanPrice'),
@@ -234,7 +234,7 @@ export function parseHeatMapDetailStats(value: unknown): HeatMapDetailStats | nu
     maxSupplyStatus: maxSupplyStatusField(value),
     maxSupplySource: stringField(value, 'maxSupplySource'),
     maxSupplyConflict: record(value)?.maxSupplyConflict === true,
-    volume24Hr: numericField(value, 'volume24Hr'),
+    volume24Hr: nonNegativeNumericField(value, 'volume24Hr'),
     etfProfile: parseEtfProfile((value as Record<string, unknown>).etfProfile),
   };
 }
@@ -481,7 +481,11 @@ export function getHeatMapDetailStatRows(
     const rawValue = key === 'marketCap'
       ? stats?.marketCap ?? marketCapFallback
       : stats?.[key] ?? null;
-    if (rawValue === null || !Number.isFinite(rawValue)) {
+    if (
+      rawValue === null
+      || !Number.isFinite(rawValue)
+      || (key === 'marketCap' && rawValue < 0)
+    ) {
       return { label, value: !stats && loading ? 'Loading…' : '—' };
     }
 

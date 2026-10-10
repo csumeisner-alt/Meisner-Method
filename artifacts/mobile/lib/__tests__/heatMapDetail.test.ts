@@ -254,6 +254,40 @@ test('crypto circulating supply rejects negative and non-finite values but prese
   }
 });
 
+test('crypto market cap and 24-hour volume reject negative and non-finite values', () => {
+  for (const field of ['marketCap', 'volume24Hr'] as const) {
+    for (const value of [-1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      const stats = parseHeatMapDetailStats({ [field]: value });
+      assert.equal(stats?.[field], null);
+      assert.equal(
+        getHeatMapDetailStatRows('cryptocurrency', stats, null, false)
+          .find(({ label }) => label === (field === 'marketCap' ? 'Market Cap' : '24h Volume'))?.value,
+        '—',
+      );
+    }
+  }
+});
+
+test('crypto market cap and 24-hour volume preserve zero and positive values', () => {
+  for (const value of [0, 1_234_567]) {
+    const stats = parseHeatMapDetailStats({ marketCap: value, volume24Hr: value });
+    assert.equal(stats?.marketCap, value);
+    assert.equal(stats?.volume24Hr, value);
+    const rows = getHeatMapDetailStatRows('cryptocurrency', stats, null, false);
+    assert.notEqual(rows.find(({ label }) => label === 'Market Cap')?.value, '—');
+    assert.notEqual(rows.find(({ label }) => label === '24h Volume')?.value, '—');
+    if (value === 0) {
+      assert.equal(rows.find(({ label }) => label === 'Market Cap')?.value, '$0');
+      assert.equal(rows.find(({ label }) => label === '24h Volume')?.value, '$0');
+    }
+  }
+});
+
+test('crypto detail does not show a negative market-cap fallback', () => {
+  const rows = getHeatMapDetailStatRows('cryptocurrency', null, -1, false);
+  assert.equal(rows.find(({ label }) => label === 'Market Cap')?.value, '—');
+});
+
 test('crypto detail rows show supply and 24-hour volume instead of stock-only metrics', () => {
   const stats = parseHeatMapDetailStats({
     circulatingSupply: 19_800_000,

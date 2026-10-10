@@ -59,14 +59,26 @@ def finite_number(value):
     return number if math.isfinite(number) else None
 
 
-def get_circulating_supply(info):
-    """Return a reported circulating supply only when it is a valid non-negative number."""
-    value = info.get("circulatingSupply")
+def non_negative_provider_number(value):
+    """Return finite non-negative provider numbers without coercing other types."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     if isinstance(value, float) and not math.isfinite(value):
         return None
     return value if value >= 0 else None
+
+
+def get_non_negative_provider_number(info, key, default=None):
+    """Return a valid non-negative provider number, preserving configured defaults."""
+    value = info.get(key)
+    if value is None:
+        return default
+    return non_negative_provider_number(value)
+
+
+def get_circulating_supply(info):
+    """Return a reported circulating supply only when it is a valid non-negative number."""
+    return get_non_negative_provider_number(info, "circulatingSupply")
 
 
 def get_max_supply_status(info):
@@ -433,7 +445,7 @@ def build_info_brief_payload(
         "exchange": info.get("exchange", "") or info.get("fullExchangeName", "") or "",
         "dividendYield": div_yield,
         "dividendRate": info.get("dividendRate", 0) or 0,
-        "marketCap": info.get("marketCap", 0) or 0,
+        "marketCap": get_non_negative_provider_number(info, "marketCap", default=0),
         "currentPrice": float(price),
         "previousClose": first_present(info, "previousClose", "regularMarketPreviousClose"),
         "open": first_present(info, "open", "regularMarketOpen"),
@@ -457,7 +469,7 @@ def build_info_brief_payload(
         "maxSupplyStatus": max_supply_status,
         "maxSupplySource": max_supply_source,
         "maxSupplyConflict": max_supply_conflict,
-        "volume24Hr": info.get("volume24Hr"),
+        "volume24Hr": get_non_negative_provider_number(info, "volume24Hr"),
     }
     if etf_profile is not None:
         payload["etfProfile"] = etf_profile

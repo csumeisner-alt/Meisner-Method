@@ -11,6 +11,7 @@ class InfoBriefCryptoFieldTests(unittest.TestCase):
             {
                 "longName": "Bitcoin USD",
                 "currentPrice": 67_000,
+                "marketCap": 1_200_000_000_000,
                 "circulatingSupply": 19_800_000,
                 "maxSupply": 21_000_000,
                 "volume24Hr": 18_400_000_000,
@@ -23,7 +24,30 @@ class InfoBriefCryptoFieldTests(unittest.TestCase):
         self.assertEqual(payload["maxSupplyStatus"], "capped")
         self.assertEqual(payload["maxSupplySource"], "Yahoo Finance")
         self.assertFalse(payload["maxSupplyConflict"])
+        self.assertEqual(payload["marketCap"], 1_200_000_000_000)
         self.assertEqual(payload["volume24Hr"], 18_400_000_000)
+
+    def test_crypto_market_cap_and_24_hour_volume_reject_negative_and_non_finite_values(self):
+        for field in ("marketCap", "volume24Hr"):
+            for value in (-1, float("nan"), float("inf"), float("-inf")):
+                with self.subTest(field=field, value=value):
+                    payload = fetch_info_brief.build_info_brief_payload(
+                        "BTC-USD",
+                        {"longName": "Bitcoin USD", field: value},
+                    )
+
+                    self.assertIsNone(payload[field])
+
+    def test_crypto_market_cap_and_24_hour_volume_preserve_zero_and_positive_values(self):
+        for value in (0, 1_234_567):
+            with self.subTest(value=value):
+                payload = fetch_info_brief.build_info_brief_payload(
+                    "BTC-USD",
+                    {"longName": "Bitcoin USD", "marketCap": value, "volume24Hr": value},
+                )
+
+                self.assertEqual(payload["marketCap"], value)
+                self.assertEqual(payload["volume24Hr"], value)
 
     def test_valid_circulating_supply_boundaries_are_preserved(self):
         for supply in (0, 19_800_000):
