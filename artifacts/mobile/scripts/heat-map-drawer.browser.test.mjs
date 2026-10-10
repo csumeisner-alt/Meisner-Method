@@ -564,12 +564,67 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       `!document.querySelector(${JSON.stringify(selector("heat-map-detail-refresh-loading"))})`,
       "The refresh loading feedback should clear after statistics load.",
     );
+    await browser.evaluate(`(() => {
+      const state = window.__heatMapBrowserTest;
+      state.setResponse({
+        ...state.data,
+        quotes: [...state.data.quotes, ${JSON.stringify(quote("LATE_TARGET", { name: "Late Target Corp." }))}],
+      });
+      state.setDeferNextRefetch();
+      state.setNextRefetchResponse({
+        ...state.data,
+        quotes: state.data.quotes.map((item) => item.symbol === "MATCH"
+          ? { ...item, price: 999.99, priceChangePercent: 99 }
+          : item.symbol === "LATE_TARGET"
+            ? { ...item, price: 456.78, priceChangePercent: 12 }
+            : item),
+      });
+    })()`);
+    await clickTestID(browser, "heat-map-detail-refresh-quote");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.pendingRefetchResolvers.length === 1`,
+      "The first instrument's quote refresh should remain pending while it is selected.",
+    );
     await clickTestID(browser, "heat-map-detail-close");
     await waitFor(
       (expression) => browser.evaluate(expression),
       `!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
-      "The successful market detail card should close before testing a separate instrument.",
+      "The first detail card should close while its quote refresh is still pending.",
     );
+    await clickTestID(browser, "heat-map-open-detail-LATE_TARGET");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent === "Late Target Corp." && document.querySelector(${JSON.stringify(selector("heat-map-detail-price"))})?.textContent === "$123.45"`,
+      "The second instrument's own card and quote should load before the first refresh finishes.",
+    );
+    assert.equal(
+      await browser.evaluate("window.__heatMapBrowserTest.resolvePendingRefetch()"),
+      true,
+      "The first instrument's delayed quote response should be resolvable after switching cards.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.data.quotes.find((item) => item.symbol === "MATCH")?.price === 999.99 && document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent === "Late Target Corp."`,
+      "The delayed refresh should finish without changing the newly selected card.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-price"))})?.textContent`),
+      "$123.45",
+      "The newly selected instrument must keep its own quote instead of adopting the delayed quote.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelectorAll(${JSON.stringify(selector("heat-map-detail-quote-refresh-error"))}).length`),
+      0,
+      "A completed refresh from the previous instrument must not change the current card's error state.",
+    );
+    await clickTestID(browser, "heat-map-detail-close");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
+      "The second detail card should close before continuing the response-order checks.",
+    );
+    await browser.evaluate("window.__heatMapBrowserTest.setResponse(window.__heatMapBrowserTest.initialData)");
 
     await setDetailResponses(browser, [
       { type: "defer" },
