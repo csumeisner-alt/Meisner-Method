@@ -46,6 +46,7 @@ async function buildScreenBundle() {
     ["@/components/BottomTabBar", join(fixtureDir, "mocks/bottom-tab-bar.tsx")],
     ["@/hooks/useApi", join(fixtureDir, "mocks/use-api.ts")],
     ["@/hooks/useColors", join(fixtureDir, "mocks/use-colors.ts")],
+    ["@/lib/commodityPriceDrivers", join(fixtureDir, "mocks/commodity-price-drivers.ts")],
   ]);
 
   const result = await build({
@@ -346,6 +347,98 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       "document.documentElement.scrollWidth <= window.innerWidth && document.body.scrollWidth <= window.innerWidth",
     );
     assert.equal(pageFitsPhone, true, "The heat-map page must not overflow horizontally at 320px.");
+
+    await browser.evaluate(`(() => {
+      const state = window.__heatMapBrowserTest;
+      state.setCommodityDriverResponses([
+        { type: "stall" },
+        { type: "resolve", payload: { up: "Gold drivers after retry.", down: "Gold downside after retry." } },
+        { type: "defer" },
+        { type: "resolve", payload: { up: "Fresh gold drivers.", down: "Fresh gold downside." } },
+      ]);
+      state.setResponse({
+        ...state.initialData,
+        quotes: [
+          { ...state.initialData.quotes[0], symbol: "GC=F", name: "Gold", assetType: "commodity" },
+          { ...state.initialData.quotes[1], symbol: "SI=F", name: "Silver", assetType: "commodity" },
+        ],
+      });
+    })()`);
+    await clickTestID(browser, "heat-map-open-detail-GC=F");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.commodityDriverRequests.some((request) => request.symbol === "GC=F")`,
+      "Opening a commodity detail card should request its price drivers.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-commodity-driver-loading"))}) !== null`),
+      true,
+      "Commodity price drivers should show a loading state while their request is pending.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-commodity-driver-error"))})`,
+      "A stalled commodity-driver request should time out to an unavailable state.",
+      15_000,
+    );
+    assert.match(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-commodity-driver-error"))})?.textContent`),
+      /Could not load commodity price drivers/,
+      "A driver timeout should explain that the data could not be loaded.",
+    );
+    assert.equal(
+      await browser.evaluate(`window.__heatMapBrowserTest.commodityDriverSignals.findLast((request) => request.symbol === "GC=F")?.signal?.aborted`),
+      true,
+      "A timed-out commodity-driver request should be cancelled.",
+    );
+    await clickTestID(browser, "heat-map-commodity-driver-retry");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.commodityDriverRequests.filter((request) => request.symbol === "GC=F").length === 2`,
+      "Retry should issue a fresh commodity-driver request.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-commodity-driver-up"))})?.textContent.includes("Gold drivers after retry.")`,
+      "Retry should load and display the commodity price drivers.",
+    );
+    await clickTestID(browser, "heat-map-detail-close");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
+      "The retried commodity detail card should close before testing cancellation.",
+    );
+    await clickTestID(browser, "heat-map-open-detail-SI=F");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.commodityDriverRequests.filter((request) => request.symbol === "SI=F").length === 1`,
+      "Selecting a different commodity should start its own driver request.",
+    );
+    await clickTestID(browser, "heat-map-detail-close");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.commodityDriverSignals.findLast((request) => request.symbol === "SI=F")?.signal?.aborted`,
+      "Closing a commodity detail card should cancel its pending driver request.",
+    );
+    assert.equal(
+      await browser.evaluate(`window.__heatMapBrowserTest.resolvePendingCommodityDriverRequest("SI=F", { up: "Stale silver drivers.", down: "Stale silver downside." })`),
+      true,
+      "The test should be able to resolve a non-cooperative request after cancellation.",
+    );
+    await delay(80);
+    await clickTestID(browser, "heat-map-open-detail-GC=F");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-commodity-driver-up"))})?.textContent.includes("Fresh gold drivers.")`,
+      "A late result for a closed commodity must not replace the newly selected commodity's drivers.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-commodity-driver-up"))})?.textContent.includes("Stale")`),
+      false,
+      "Stale commodity drivers must not appear after changing the selected commodity.",
+    );
+    await clickTestID(browser, "heat-map-detail-close");
+    await browser.evaluate("window.__heatMapBrowserTest.setResponse(window.__heatMapBrowserTest.initialData)");
 
     await clickTestID(browser, "heat-map-open-detail-MATCH");
     await waitFor(

@@ -613,7 +613,7 @@ export function HeatMapDetailModal({
               />
             )}
             {isCommodity && (
-              <CommodityPriceDrivers symbol={quote.symbol} colors={colors} />
+              <CommodityPriceDrivers symbol={quote.symbol} visible={visible} colors={colors} />
             )}
             <Text style={[styles.disclaimer, { color: colors.mutedForeground }]}>
               {isEtf

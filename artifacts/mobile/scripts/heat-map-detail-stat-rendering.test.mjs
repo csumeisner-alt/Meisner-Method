@@ -38,6 +38,10 @@ test('commodity detail modal renders instrument-specific up and down price drive
   assert.match(commodityDriversSource, /Can push prices higher/);
   assert.match(commodityDriversSource, /Can push prices lower/);
   assert.match(commodityDriversSource, /not predictions/);
+  assert.match(commodityDriversSource, /loadCommodityPriceDrivers\(symbol,\s*controller\.signal\)/);
+  assert.match(commodityDriversSource, /DRIVER_REQUEST_TIMEOUT_MS/);
+  assert.match(commodityDriversSource, /heat-map-commodity-driver-retry/);
+  assert.match(modalSource, /<CommodityPriceDrivers symbol=\{quote\.symbol\} visible=\{visible\}/);
 });
 
 test('crypto detail keeps daily provider supply history distinct from its current supply share', () => {

@@ -55,6 +55,15 @@ interface HeatMapBrowserState {
   rejectPendingDetailRequest: (url: string) => boolean;
   setRefetchFailures: (count: number) => void;
   setNextRefetchResponse: (response: HeatMapBrowserResponse) => void;
+  commodityDriverRequests: { symbol: string }[];
+  commodityDriverSignals: { symbol: string; signal: AbortSignal }[];
+  commodityDriverResponses: ({ type: "reject" } | { type: "resolve"; payload: unknown } | { type: "defer" } | { type: "stall" })[];
+  pendingCommodityDriverRequests: {
+    symbol: string;
+    resolve: (payload: unknown) => void;
+  }[];
+  setCommodityDriverResponses: (responses: ({ type: "reject" } | { type: "resolve"; payload: unknown } | { type: "defer" } | { type: "stall" })[]) => void;
+  resolvePendingCommodityDriverRequest: (symbol: string, payload: unknown) => boolean;
 }
 
 declare global {
@@ -155,6 +164,10 @@ export function initializeHeatMapBrowserState(): HeatMapBrowserState {
     detailRequests: [],
     detailRequestSignals: [],
     detailResponses: [],
+    commodityDriverRequests: [],
+    commodityDriverSignals: [],
+    commodityDriverResponses: [],
+    pendingCommodityDriverRequests: [],
     pendingDetailRequests: [],
     refetchFailuresRemaining: 0,
     nextRefetchResponse: null,
@@ -166,6 +179,16 @@ export function initializeHeatMapBrowserState(): HeatMapBrowserState {
     },
     setDetailResponses(responses) {
       state.detailResponses = [...responses];
+    },
+    setCommodityDriverResponses(responses) {
+      state.commodityDriverResponses = [...responses];
+    },
+    resolvePendingCommodityDriverRequest(symbol, payload) {
+      const pendingIndex = state.pendingCommodityDriverRequests.findIndex((request) => request.symbol === symbol);
+      if (pendingIndex === -1) return false;
+      const [pending] = state.pendingCommodityDriverRequests.splice(pendingIndex, 1);
+      pending.resolve(payload);
+      return true;
     },
     setCryptoSupplyHistoryOverride(symbol, response) {
       state.cryptoSupplyHistoryOverrides[symbol] = response;

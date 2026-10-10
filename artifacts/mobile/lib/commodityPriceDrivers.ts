@@ -69,3 +69,18 @@ const COMMODITY_PRICE_DRIVERS: Record<string, CommodityPriceDrivers> = {
 export function getCommodityPriceDrivers(symbol: string): CommodityPriceDrivers | null {
   return COMMODITY_PRICE_DRIVERS[symbol.trim().toUpperCase()] ?? null;
 }
+
+export function loadCommodityPriceDrivers(
+  symbol: string,
+  signal: AbortSignal,
+): Promise<CommodityPriceDrivers | null> {
+  if (signal.aborted) {
+    return Promise.reject(new Error('Commodity price-driver request was cancelled.'));
+  }
+  return Promise.resolve(getCommodityPriceDrivers(symbol)).then((drivers) => {
+    if (signal.aborted) {
+      throw new Error('Commodity price-driver request was cancelled.');
+    }
+    return drivers;
+  });
+}

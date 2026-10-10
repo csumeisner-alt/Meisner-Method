@@ -53,3 +53,4 @@
 - [Yahoo crypto max-supply semantics](yahoo-crypto-max-supply.md) — explicit `maxSupply: 0` means no fixed cap; missing or null max supply is unreported, not uncapped.
 - [Crypto supply history provenance](crypto-supply-history-provenance.md) — disclose provider-defined on-chain supply history and preserve observation gaps; keep it separate from max-supply share.
 - [Commodity quote units and notional](commodity-contract-specs.md) — preserve exchange quote units and convert cent quotes only when computing USD contract notional.
+- [Commodity driver request contract](commodity-driver-request-contract.md) — keep curated explanations independent of market statistics; any future remote source must retain timeout, retry, and stale-result protection.

@@ -1,17 +1,67 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useColors } from '@/hooks/useColors';
-import { getCommodityPriceDrivers } from '@/lib/commodityPriceDrivers';
+import { loadCommodityPriceDrivers, type CommodityPriceDrivers as CommodityDriverData } from '@/lib/commodityPriceDrivers';
+
+const DRIVER_REQUEST_TIMEOUT_MS = 8_000;
+
+type DriverState =
+  | { symbol: string; status: 'ready'; drivers: CommodityDriverData }
+  | { symbol: string; status: 'unavailable'; drivers: null }
+  | { symbol: string; status: 'error'; drivers: null };
 
 export function CommodityPriceDrivers({
   symbol,
+  visible,
   colors,
 }: {
   symbol: string;
+  visible: boolean;
   colors: ReturnType<typeof useColors>;
 }) {
-  const drivers = getCommodityPriceDrivers(symbol);
+  const [driverState, setDriverState] = useState<DriverState | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const currentState = driverState?.symbol === symbol ? driverState : null;
+  const status = !visible ? 'hidden' : currentState?.status ?? 'loading';
+  const drivers = currentState?.status === 'ready' ? currentState.drivers : null;
+
+  useEffect(() => {
+    if (!visible) return;
+
+    let isCurrent = true;
+    let didTimeout = false;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      if (!isCurrent) return;
+      didTimeout = true;
+      setDriverState({ symbol, status: 'error', drivers: null });
+      controller.abort();
+    }, DRIVER_REQUEST_TIMEOUT_MS);
+
+    void loadCommodityPriceDrivers(symbol, controller.signal)
+      .then((result) => {
+        if (!isCurrent || didTimeout || controller.signal.aborted) return;
+        setDriverState(result
+          ? { symbol, status: 'ready', drivers: result }
+          : { symbol, status: 'unavailable', drivers: null });
+      })
+      .catch(() => {
+        if (isCurrent && !didTimeout && !controller.signal.aborted) {
+          setDriverState({ symbol, status: 'error', drivers: null });
+        }
+      })
+      .finally(() => clearTimeout(timeoutId));
+
+    return () => {
+      isCurrent = false;
+      clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [retryCount, symbol, visible]);
+
+  if (!visible) return null;
+
   const cards = drivers
     ? [
       {
@@ -39,7 +89,30 @@ export function CommodityPriceDrivers({
           Common influences on this market
         </Text>
       </View>
-      {cards.length ? (
+      {status === 'loading' ? (
+        <View testID="heat-map-commodity-driver-loading" style={styles.loading}>
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={[styles.unavailable, { color: colors.mutedForeground }]}>
+            Loading typical price drivers…
+          </Text>
+        </View>
+      ) : status === 'error' ? (
+        <View testID="heat-map-commodity-driver-error" style={styles.errorBlock}>
+          <Text style={[styles.unavailable, { color: colors.mutedForeground }]}>
+            Could not load commodity price drivers. Please try again.
+          </Text>
+          <Pressable
+            testID="heat-map-commodity-driver-retry"
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading commodity price drivers"
+            onPress={() => setRetryCount((count) => count + 1)}
+            style={[styles.retryButton, { borderColor: colors.border }]}
+          >
+            <MaterialCommunityIcons name="refresh" size={14} color={colors.primary} />
+            <Text style={[styles.retryText, { color: colors.primary }]}>Retry</Text>
+          </Pressable>
+        </View>
+      ) : cards.length ? (
         <View style={styles.cards}>
           {cards.map((card) => (
             <View
@@ -77,6 +150,10 @@ export function CommodityPriceDrivers({
 const styles = StyleSheet.create({
   section: { gap: 9, marginTop: 21 },
   header: { marginBottom: 1 },
+  loading: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  errorBlock: { alignItems: 'flex-start', gap: 8 },
+  retryButton: { minHeight: 32, borderWidth: 1, borderRadius: 9, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  retryText: { fontFamily: 'Inter_700Bold', fontSize: 10 },
   title: { fontFamily: 'Inter_700Bold', fontSize: 15, letterSpacing: -0.15 },
   caption: { fontFamily: 'Inter_400Regular', fontSize: 9, lineHeight: 13, marginTop: 2 },
   cards: { gap: 8 },
