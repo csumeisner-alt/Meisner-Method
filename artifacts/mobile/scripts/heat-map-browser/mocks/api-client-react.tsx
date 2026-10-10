@@ -31,43 +31,76 @@ export interface HeatMapBrowserResponse {
 
 interface HeatMapBrowserState {
   data: HeatMapBrowserResponse | null;
+
   initialData: HeatMapBrowserResponse;
+
   breadthData: HeatMapBrowserResponse;
+
   requests: Record<string, unknown>[];
+
   refetches: Record<string, unknown>[];
+
   detailRequests: string[];
+
   detailRequestSignals: { url: string; signal: AbortSignal | null }[];
+
   detailResponses: ({ type: "reject" } | { type: "resolve"; payload: unknown } | { type: "defer" } | { type: "stall" })[];
+
   pendingDetailRequests: {
     url: string;
     signal: AbortSignal | null;
     resolve: (payload: unknown) => void;
     reject: (error: Error) => void;
+
   }[];
+
   refetchFailuresRemaining: number;
+
   nextRefetchResponse: HeatMapBrowserResponse | null;
+
   deferNextRefetch: boolean;
+
   pendingRefetchResolvers: ((result: { isError: boolean; data: HeatMapBrowserResponse | null }) => void)[];
-  cryptoSupplyHistoryOverrides: Record<string, { type: "pending" } | { type: "resolve"; payload: unknown }>;
+
+  cryptoSupplyHistoryOverrides: Record<string, { type: "pending" } | { type: "resolve"; payload: unknown } | { type: "reject" }>;
+
   listeners: Set<() => void>;
+
   setResponse: (response: HeatMapBrowserResponse | null) => void;
+
   setDetailResponses: (responses: ({ type: "reject" } | { type: "resolve"; payload: unknown } | { type: "defer" } | { type: "stall" })[]) => void;
-  setCryptoSupplyHistoryOverride: (symbol: string, response: { type: "pending" } | { type: "resolve"; payload: unknown }) => void;
+
+  setCryptoSupplyHistoryOverride: (symbol: string, response: { type: "pending" } | { type: "resolve"; payload: unknown } | { type: "reject" }, rangeDays?: number) => void;
+
   resolvePendingDetailRequest: (url: string, payload: unknown) => boolean;
+
   rejectPendingDetailRequest: (url: string) => boolean;
+
   setRefetchFailures: (count: number) => void;
+
   setNextRefetchResponse: (response: HeatMapBrowserResponse) => void;
+
   setDeferNextRefetch: () => void;
+
   resolvePendingRefetch: () => boolean;
+
   commodityDriverRequests: { symbol: string }[];
+
   commodityDriverSignals: { symbol: string; signal: AbortSignal }[];
+
   commodityDriverResponses: ({ type: "reject" } | { type: "resolve"; payload: unknown } | { type: "defer" } | { type: "stall" })[];
+
   pendingCommodityDriverRequests: {
     symbol: string;
     resolve: (payload: unknown) => void;
-  }[];
+
   setCommodityDriverResponses: (responses: ({ type: "reject" } | { type: "resolve"; payload: unknown } | { type: "defer" } | { type: "stall" })[]) => void;
+
   resolvePendingCommodityDriverRequest: (symbol: string, payload: unknown) => boolean;
+
+  cryptoSupplyHistoryData: Record<string, unknown>;
+
+  cryptoSupplyHistoryRefetches: { symbol: string; rangeDays: number }[];
 }
 
 declare global {
@@ -178,6 +211,8 @@ export function initializeHeatMapBrowserState(): HeatMapBrowserState {
     deferNextRefetch: false,
     pendingRefetchResolvers: [],
     cryptoSupplyHistoryOverrides: {},
+    cryptoSupplyHistoryData: {},
+    cryptoSupplyHistoryRefetches: [],
     listeners: new Set(),
     setResponse(next) {
       state.data = next;
@@ -196,8 +231,11 @@ export function initializeHeatMapBrowserState(): HeatMapBrowserState {
       pending.resolve(payload);
       return true;
     },
-    setCryptoSupplyHistoryOverride(symbol, response) {
+    setCryptoSupplyHistoryOverride(symbol, response, rangeDays = 365) {
       state.cryptoSupplyHistoryOverrides[symbol] = response;
+      if (response.type === "resolve") {
+        state.cryptoSupplyHistoryData[`${symbol}:${rangeDays}`] = response.payload;
+      }
       state.listeners.forEach((listener) => listener());
     },
     resolvePendingDetailRequest(url, payload) {
@@ -326,34 +364,37 @@ export function useGetCryptoSupplyHistory(
     };
   }, [state]);
   const override = state.cryptoSupplyHistoryOverrides[symbol];
-  if (override?.type === "pending") {
-    return {
-      data: undefined,
-      isLoading: true,
-      isFetching: true,
-      isError: false,
-      refetch: async () => ({ isError: false }),
-    };
-  }
+  const queryKey = `${symbol}:${rangeDays}`;
+  const defaultData = {
+    symbol,
+    provider: "Coin Metrics",
+    metric: "SplyCur",
+    rangeDays,
+    interval: "daily",
+    startDate: "2026-10-03",
+    endDate: "2026-10-06",
+    points: [
+      { date: "2026-10-03", supply: 19_876_500 },
+      { date: "2026-10-04", supply: 19_876_543.123456 },
+      { date: "2026-10-06", supply: 19_876_600.5 },
+    ],
+  };
+  const enabled = !!options?.query?.enabled;
+  const data = enabled
+    ? override?.type === "resolve"
+      ? override.payload
+      : state.cryptoSupplyHistoryData[queryKey]
+        ?? (override?.type === "pending" || override?.type === "reject" ? undefined : defaultData)
+    : undefined;
   return {
-    data: options?.query?.enabled ? override?.type === "resolve" ? override.payload : {
-      symbol,
-      provider: "Coin Metrics",
-      metric: "SplyCur",
-      rangeDays,
-      interval: "daily",
-      startDate: "2026-10-03",
-      endDate: "2026-10-06",
-      points: [
-        { date: "2026-10-03", supply: 19_876_500 },
-        { date: "2026-10-04", supply: 19_876_543.123456 },
-        { date: "2026-10-06", supply: 19_876_600.5 },
-      ],
-    } : undefined,
-    isLoading: false,
-    isFetching: false,
-    isError: false,
-    refetch: async () => ({ isError: false }),
+    data,
+    isLoading: override?.type === "pending" && !data,
+    isFetching: override?.type === "pending",
+    isError: override?.type === "reject",
+    refetch: async () => {
+      state.cryptoSupplyHistoryRefetches.push({ symbol, rangeDays });
+      return { isError: override?.type === "reject" };
+    },
   };
 }
 

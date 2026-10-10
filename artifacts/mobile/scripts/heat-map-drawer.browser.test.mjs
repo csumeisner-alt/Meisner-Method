@@ -2088,6 +2088,55 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       `document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-selected-value"))})?.textContent === "19,876,543.123456"`,
       "selecting a plotted observation should reveal its exact provider-reported value.",
     );
+    const historyRefreshesBefore = await browser.evaluate("window.__heatMapBrowserTest.cryptoSupplyHistoryRefetches.length");
+    await clickTestID(browser, "heat-map-crypto-supply-refresh");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.cryptoSupplyHistoryRefetches.length === ${historyRefreshesBefore + 1}`,
+      "the supply-history refresh action should request the selected history again.",
+    );
+    assert.equal(
+      await browser.evaluate(`!!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))}) && !!document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-chart"))}) && document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-selected-value"))})?.textContent === "19,876,543.123456"`),
+      true,
+      "refreshing supply history should keep the detail card open and preserve its existing chart and selected observation.",
+    );
+    await browser.evaluate(`window.__heatMapBrowserTest.setCryptoSupplyHistoryOverride("BTC-USD", { type: "resolve", payload: {
+      symbol: "BTC-USD", provider: "Coin Metrics", metric: "SplyCur", rangeDays: 365, interval: "daily",
+      startDate: "2026-10-03", endDate: "2026-10-06",
+      points: [
+        { date: "2026-10-03", supply: 19_876_500 },
+        { date: "2026-10-04", supply: 19_876_543.123456 },
+        { date: "2026-10-06", supply: 19_876_600.5 },
+      ],
+    } })`);
+    await browser.evaluate(`window.__heatMapBrowserTest.setCryptoSupplyHistoryOverride("BTC-USD", { type: "pending" })`);
+    assert.equal(
+      await browser.evaluate(`!!document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-loading"))}) && !!document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-chart"))}) && document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-change-value"))})?.textContent.includes("100.5")`),
+      true,
+      "while refreshed history is loading, the previous chart and its summary should remain visible.",
+    );
+    await browser.evaluate(`window.__heatMapBrowserTest.setCryptoSupplyHistoryOverride("BTC-USD", { type: "reject" })`);
+    assert.equal(
+      await browser.evaluate(`!!document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-refresh-error"))}) && !!document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-chart"))}) && !!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`),
+      true,
+      "a failed refresh should explain that cached history remains visible without closing the detail card.",
+    );
+    const historyRefreshesBeforeRetry = await browser.evaluate("window.__heatMapBrowserTest.cryptoSupplyHistoryRefetches.length");
+    await clickTestID(browser, "heat-map-crypto-supply-retry");
+    assert.equal(
+      await browser.evaluate(`window.__heatMapBrowserTest.cryptoSupplyHistoryRefetches.length === ${historyRefreshesBeforeRetry + 1}`),
+      true,
+      "the supply-history error state should offer a working retry action.",
+    );
+    await browser.evaluate(`window.__heatMapBrowserTest.setCryptoSupplyHistoryOverride("BTC-USD", { type: "resolve", payload: {
+      symbol: "BTC-USD", provider: "Coin Metrics", metric: "SplyCur", rangeDays: 365, interval: "daily",
+      startDate: "2026-10-03", endDate: "2026-10-06",
+      points: [
+        { date: "2026-10-03", supply: 19_876_500 },
+        { date: "2026-10-04", supply: 19_876_543.123456 },
+        { date: "2026-10-06", supply: 19_876_600.5 },
+      ],
+    } })`);
     await clickTestID(browser, "heat-map-detail-close");
     await waitFor(
       (expression) => browser.evaluate(expression),
@@ -2159,12 +2208,12 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     await waitFor(
       (expression) => browser.evaluate(expression),
       `!!document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-loading"))})`,
-      "A pending refresh of Ethereum's history should clear the old comparison until new history arrives.",
+      "A pending refresh of Ethereum's history should show a loading indicator.",
     );
     assert.equal(
-      await browser.evaluate(`document.querySelectorAll(${JSON.stringify(selector("heat-map-crypto-supply-discrepancy"))}).length`),
-      0,
-      "An old comparison must not remain visible while the selected coin's history is pending.",
+      await browser.evaluate(`!!document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-discrepancy"))}) && document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-discrepancy"))})?.textContent.includes("10,000,000")`),
+      true,
+      "Ethereum's previous history comparison should remain visible during a refresh.",
     );
 
     await browser.evaluate(`window.__heatMapBrowserTest.setCryptoSupplyHistoryOverride("ETH-USD", { type: "resolve", payload: {

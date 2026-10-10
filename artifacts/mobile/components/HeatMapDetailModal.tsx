@@ -850,9 +850,27 @@ function CryptoSupplyHistory({
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
           Circulating supply history
         </Text>
-        {historyQuery.isFetching && (
-          <ActivityIndicator testID="heat-map-crypto-supply-loading" size="small" color={colors.gold} />
-        )}
+        <View style={styles.statsHeaderActions}>
+          {historyQuery.isFetching && (
+            <ActivityIndicator testID="heat-map-crypto-supply-loading" size="small" color={colors.gold} />
+          )}
+          <Pressable
+            testID="heat-map-crypto-supply-refresh"
+            accessibilityRole="button"
+            accessibilityLabel={historyQuery.isFetching ? 'Refreshing supply history' : 'Refresh supply history'}
+            accessibilityState={{ disabled: historyQuery.isFetching }}
+            disabled={historyQuery.isFetching}
+            onPress={() => { void historyQuery.refetch(); }}
+            style={[styles.refreshButton, { borderColor: colors.border }]}
+          >
+            {historyQuery.isFetching
+              ? <ActivityIndicator size="small" color={colors.primary} />
+              : <MaterialCommunityIcons name="refresh" size={14} color={colors.primary} />}
+            <Text style={[styles.retryText, { color: colors.primary }]}>
+              {historyQuery.isFetching ? 'Refreshing' : 'Refresh'}
+            </Text>
+          </Pressable>
+        </View>
       </View>
       <View style={[styles.supplyHistoryCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <View style={styles.supplyHistoryRangeHeader}>
@@ -912,6 +930,22 @@ function CryptoSupplyHistory({
             );
           })}
         </View>
+        {historyQuery.isError && hasHistory && (
+          <View testID="heat-map-crypto-supply-refresh-error" accessibilityRole="alert" style={[styles.supplyHistoryEmptyRow, { marginBottom: 10 }]}>
+            <Text style={[styles.supplyHistoryEmpty, { color: colors.mutedForeground }]}>
+              Couldn’t refresh supply history. Showing the last available data.
+            </Text>
+            <Pressable
+              testID="heat-map-crypto-supply-retry"
+              accessibilityRole="button"
+              accessibilityLabel="Retry supply history"
+              onPress={() => { void historyQuery.refetch(); }}
+              hitSlop={8}
+            >
+              <MaterialCommunityIcons name="refresh" size={17} color={colors.primary} />
+            </Pressable>
+          </View>
+        )}
         {historyQuery.isLoading ? (
           <Text style={[styles.supplyHistoryEmpty, { color: colors.mutedForeground }]}>
             Loading provider history…
