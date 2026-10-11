@@ -595,6 +595,50 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     const matchDetailRequestsBeforeManualRefresh = await browser.evaluate(
       'window.__heatMapBrowserTest.detailRequests.filter((url) => url.endsWith("/MATCH")).length',
     );
+    await browser.evaluate(`(() => {
+      const state = window.__heatMapBrowserTest;
+      state.setDeferNextRefetch();
+      state.setNextRefetchResponse({
+        ...state.data,
+        quotes: state.data.quotes.map((item) => item.symbol === "MATCH" ? { ...item, price: 155.5, priceChangePercent: 6.5 } : item),
+      });
+    })()`);
+    await clickTestID(browser, "heat-map-detail-refresh-quote");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapBrowserTest.pendingRefetchResolvers.length === 1`,
+      "Refreshing the quote after statistics load should remain pending for this check.",
+    );
+    assert.equal(
+      await browser.evaluate(`window.__heatMapBrowserTest.detailRequests.filter((url) => url.endsWith("/MATCH")).length === ${matchDetailRequestsBeforeManualRefresh}`),
+      true,
+      "A quote refresh must not start another market-statistics request.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-stat-previous-close"))})?.textContent === "$122.00" && document.querySelector(${JSON.stringify(selector("heat-map-detail-stat-revenue-ttm"))})?.textContent === "$30B"`),
+      true,
+      "Loaded statistics should remain visible and unchanged while the quote refresh is pending.",
+    );
+    assert.equal(
+      await browser.evaluate("window.__heatMapBrowserTest.resolvePendingRefetch()"),
+      true,
+      "The successful quote refresh should be resolvable.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-detail-price"))})?.textContent === "$155.50"`,
+      "The refreshed quote should update its price.",
+    );
+    assert.equal(
+      await browser.evaluate(`window.__heatMapBrowserTest.detailRequests.filter((url) => url.endsWith("/MATCH")).length === ${matchDetailRequestsBeforeManualRefresh}`),
+      true,
+      "Completing a quote refresh must not trigger another market-statistics request.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-stat-previous-close"))})?.textContent === "$122.00" && document.querySelector(${JSON.stringify(selector("heat-map-detail-stat-revenue-ttm"))})?.textContent === "$30B"`),
+      true,
+      "The same loaded statistics should remain visible after the quote updates.",
+    );
     await setDetailResponses(browser, [{ type: "defer" }]);
     await clickTestID(browser, "heat-map-detail-refresh");
     await waitFor(
