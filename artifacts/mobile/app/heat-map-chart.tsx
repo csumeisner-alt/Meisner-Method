@@ -10,16 +10,7 @@ import { useColors } from '@/hooks/useColors';
 import { useApi } from '@/hooks/useApi';
 import { StockChart, type Candle, type ChartTrendLine } from '@/components/StockChart';
 import { ComparisonChart } from '@/components/ComparisonChart';
-import { detectHeatMapPriceLevels } from '@/lib/heatMapChart';
-
-const RANGES = [
-  { label: '1W', period: '5d', interval: '1h' },
-  { label: '1M', period: '1mo', interval: '1d' },
-  { label: '3M', period: '3mo', interval: '1d' },
-  { label: '6M', period: '6mo', interval: '1d' },
-  { label: '1Y', period: '1y', interval: '1d' },
-  { label: '2Y', period: '2y', interval: '1wk' },
-] as const;
+import { buildChartHistoryUrl, CHART_HISTORY_RANGES, detectHeatMapPriceLevels } from '@/lib/heatMapChart';
 
 type History = { symbol: string; candles: Candle[] };
 type Comparison = { symbol: string; candles: Candle[]; loading: boolean; error: boolean };
@@ -75,7 +66,7 @@ export default function HeatMapChartScreen() {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState(0);
   const [retryToken, setRetryToken] = useState(0);
-  const range = RANGES[rangeIndex]!;
+  const range = CHART_HISTORY_RANGES[rangeIndex]!;
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
   const plotWidth = Math.max(280, width - 32);
 
@@ -90,7 +81,7 @@ export default function HeatMapChartScreen() {
     setLoading(true);
     setLoadError(false);
     setCandles([]);
-    void apiFetch<History>(`/api/stocks/chart/${encodeURIComponent(symbol)}?period=${range.period}&interval=${range.interval}`)
+    void apiFetch<History>(buildChartHistoryUrl(symbol, range))
       .then((result) => {
         if (cancelled) return;
         setCandles(cleanCandles(result.candles));
@@ -111,11 +102,9 @@ export default function HeatMapChartScreen() {
   const comparisonSymbols = comparisons.map((item) => item.symbol);
   useEffect(() => {
     let cancelled = false;
-    const period = range.period;
-    const interval = range.interval;
     void Promise.all(comparisonSymbols.map(async (ticker) => {
       try {
-        const result = await apiFetch<History>(`/api/stocks/chart/${encodeURIComponent(ticker)}?period=${period}&interval=${interval}`);
+        const result = await apiFetch<History>(buildChartHistoryUrl(ticker, range));
         return { symbol: ticker, candles: cleanCandles(result.candles), loading: false, error: false };
       } catch {
         return { symbol: ticker, candles: [], loading: false, error: true };
@@ -200,7 +189,7 @@ export default function HeatMapChartScreen() {
             {candles.length > 0 && <Text style={[styles.lastPrice, { color: colors.primary }]}>${candles[candles.length - 1]!.c.toLocaleString('en-US', { maximumFractionDigits: 4 })}</Text>}
           </View>
           <View style={styles.controlsRow}>
-            {RANGES.map((item, index) => <ChartButton key={item.label} testID={`heat-map-chart-range-${item.label}`}
+            {CHART_HISTORY_RANGES.map((item, index) => <ChartButton key={item.label} testID={`heat-map-chart-range-${item.label}`}
               label={item.label} active={rangeIndex === index} colors={colors} onPress={() => { setRangeIndex(index); setZoom(1); setPan(0); }} />)}
           </View>
           <View style={styles.controlsRow}>

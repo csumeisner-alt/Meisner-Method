@@ -14,6 +14,15 @@ def safe_float(val):
     except Exception:
         return None
 
+def safe_volume(val):
+    try:
+        volume = float(val)
+        if math.isnan(volume) or math.isinf(volume):
+            return 0
+        return max(0, int(volume))
+    except Exception:
+        return 0
+
 def moving_average(closes, period):
     result = [None] * len(closes)
     for i in range(period - 1, len(closes)):
@@ -39,8 +48,8 @@ def fetch_chart(symbol, period, interval):
         h = safe_float(row.get("High"))
         l = safe_float(row.get("Low"))
         c = safe_float(row.get("Close"))
-        v = int(row.get("Volume", 0) or 0)
-        if c is None:
+        v = safe_volume(row.get("Volume", 0))
+        if None in (o, h, l, c):
             continue
         closes_raw.append(c)
         candles.append({
