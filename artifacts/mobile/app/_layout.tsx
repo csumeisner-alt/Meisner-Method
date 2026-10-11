@@ -44,6 +44,7 @@ function RootLayoutNav() {
       <Stack.Screen name="paper" options={{ headerShown: false }} />
       <Stack.Screen name="picks" options={{ headerShown: false }} />
       <Stack.Screen name="heat-map" options={{ headerShown: false }} />
+      <Stack.Screen name="heat-map-chart" options={{ headerShown: false }} />
       <Stack.Screen name="picks/[symbol]" options={{ headerShown: false }} />
       <Stack.Screen name="analysis/[symbol]" options={{ headerShown: false }} />
     </Stack>

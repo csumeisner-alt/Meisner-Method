@@ -270,12 +270,14 @@ export function HeatMapDetailModal({
   visible,
   onClose,
   onRefreshQuote,
+  onOpenChart,
 }: {
   quote: HeatMapQuote | null;
   quoteUnavailable: boolean;
   visible: boolean;
   onClose: () => void;
   onRefreshQuote: (symbol: string) => Promise<HeatMapQuote | null>;
+  onOpenChart: () => void;
 }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -467,6 +469,17 @@ export function HeatMapDetailModal({
                 <MaterialCommunityIcons name="close" size={19} color={colors.foreground} />
               </Pressable>
             </View>
+            <Pressable
+              testID="heat-map-detail-open-chart"
+              accessibilityRole="button"
+              accessibilityLabel={`Open full chart for ${quote.symbol}`}
+              onPress={onOpenChart}
+              style={[styles.openChartButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <MaterialCommunityIcons name="chart-line" size={17} color={colors.primary} />
+              <Text style={[styles.openChartText, { color: colors.primary }]}>Open full chart</Text>
+              <MaterialCommunityIcons name="arrow-top-right" size={15} color={colors.primary} />
+            </Pressable>
 
             <View style={styles.priceRow}>
               <Text testID="heat-map-detail-price" style={[styles.price, { color: colors.foreground }]}>
@@ -725,6 +738,8 @@ const styles = StyleSheet.create({
   grabber: { alignSelf: 'center', width: 38, height: 4, borderRadius: 2, marginBottom: 15 },
   scrollContent: { paddingHorizontal: 20, paddingBottom: 16 },
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  openChartButton: { minHeight: 42, borderWidth: 1, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 14 },
+  openChartText: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
   titleBlock: { flex: 1, minWidth: 0 },
   kicker: { fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.15, marginBottom: 5 },
   title: { fontFamily: 'Inter_700Bold', fontSize: 24, lineHeight: 30, letterSpacing: -0.45 },

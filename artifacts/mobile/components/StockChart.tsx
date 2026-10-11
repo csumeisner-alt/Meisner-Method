@@ -18,6 +18,14 @@ export interface Candle {
   ma200?: number | null;
 }
 
+export interface ChartTrendLine {
+  id: string;
+  startT: number;
+  endT: number;
+  startPrice: number;
+  endPrice: number;
+}
+
 interface Props {
   candles: Candle[];
   showMA20?: boolean;
@@ -25,6 +33,10 @@ interface Props {
   showMA200?: boolean;
   width: number;
   height?: number;
+  supportLevels?: number[];
+  resistanceLevels?: number[];
+  trendLines?: ChartTrendLine[];
+  onChartPoint?: (point: { t: number; price: number }) => void;
 }
 
 const PAD = { top: 16, right: 52, bottom: 36, left: 4 };
@@ -43,6 +55,10 @@ export function StockChart({
   showMA200 = false,
   width,
   height = 280,
+  supportLevels = [],
+  resistanceLevels = [],
+  trendLines = [],
+  onChartPoint,
 }: Props) {
   const [touched, setTouched] = useState<number | null>(null);
 
@@ -62,8 +78,13 @@ export function StockChart({
     ...(showMA50 ? candles.map((c) => c.ma50).filter((v): v is number => v != null) : []),
     ...(showMA200 ? candles.map((c) => c.ma200).filter((v): v is number => v != null) : []),
   ];
-  const minP = Math.min(...prices, ...allMaVals) * 0.994;
-  const maxP = Math.max(...prices, ...allMaVals) * 1.006;
+  const overlayVals = [
+    ...supportLevels,
+    ...resistanceLevels,
+    ...trendLines.flatMap((line) => [line.startPrice, line.endPrice]),
+  ];
+  const minP = Math.min(...prices, ...allMaVals, ...overlayVals) * 0.994;
+  const maxP = Math.max(...prices, ...allMaVals, ...overlayVals) * 1.006;
   const range = maxP - minP || 1;
 
   const maxVol = Math.max(...candles.map((c) => c.v), 1);
@@ -108,9 +129,15 @@ export function StockChart({
     (e: GestureResponderEvent) => {
       const x = e.nativeEvent.locationX - PAD.left;
       const i = Math.round(x / xStep);
-      setTouched(Math.max(0, Math.min(n - 1, i)));
+      const index = Math.max(0, Math.min(n - 1, i));
+      setTouched(index);
+      const y = Math.max(PAD.top, Math.min(PAD.top + priceH, e.nativeEvent.locationY));
+      onChartPoint?.({
+        t: candles[index]!.t,
+        price: minP + ((PAD.top + priceH - y) / priceH) * range,
+      });
     },
-    [xStep, n]
+    [xStep, n, candles, onChartPoint, minP, range, priceH]
   );
 
   const touchCandle = touched !== null ? candles[touched] : null;
@@ -212,6 +239,35 @@ export function StockChart({
 
         {/* Price line */}
         <Path d={pricePath} stroke="#c0c0c0" strokeWidth={1.8} fill="none" />
+
+        {supportLevels.map((level) => (
+          <G key={`support-${level}`}>
+            <Line x1={PAD.left} y1={py(level)} x2={PAD.left + chartW} y2={py(level)}
+              stroke="#00e5a0" strokeWidth={1.3} strokeDasharray="5 4" />
+            <SvgText x={PAD.left + chartW - 2} y={py(level) - 3} fontSize={9}
+              fill="#00e5a0" textAnchor="end">SUPPORT {fmtPrice(level)}</SvgText>
+          </G>
+        ))}
+        {resistanceLevels.map((level) => (
+          <G key={`resistance-${level}`}>
+            <Line x1={PAD.left} y1={py(level)} x2={PAD.left + chartW} y2={py(level)}
+              stroke="#ff9f43" strokeWidth={1.3} strokeDasharray="5 4" />
+            <SvgText x={PAD.left + chartW - 2} y={py(level) - 3} fontSize={9}
+              fill="#ff9f43" textAnchor="end">RESISTANCE {fmtPrice(level)}</SvgText>
+          </G>
+        ))}
+        {trendLines.map((trend) => {
+          const firstT = candles[0]!.t;
+          const lastT = candles[n - 1]!.t;
+          const span = Math.max(lastT - firstT, 1);
+          const xForT = (t: number) => PAD.left + ((t - firstT) / span) * chartW;
+          return (
+            <Line key={trend.id}
+              x1={xForT(trend.startT)} y1={py(trend.startPrice)}
+              x2={xForT(trend.endT)} y2={py(trend.endPrice)}
+              stroke="#facc15" strokeWidth={2} />
+          );
+        })}
 
         {/* Crosshair */}
         {touchCandle != null && touched !== null && (

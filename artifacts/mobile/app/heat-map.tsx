@@ -1384,6 +1384,17 @@ export default function HeatMapScreen() {
           quoteUnavailable={selectedQuoteUnavailable}
           visible={selectedQuote !== null}
           onClose={() => setSelectedQuote(null)}
+          onOpenChart={() => {
+            if (!selectedQuote) return;
+            router.push({
+              pathname: '/heat-map-chart',
+              params: {
+                symbol: selectedQuote.symbol,
+                name: selectedQuote.name || selectedQuote.symbol,
+                assetType: selectedQuote.assetType,
+              },
+            });
+          }}
           onRefreshQuote={async (symbol) => {
             try {
               const result = await mapQuery.refetch();

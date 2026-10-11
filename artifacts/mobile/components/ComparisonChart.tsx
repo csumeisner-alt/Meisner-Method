@@ -25,6 +25,7 @@ import type { Candle } from './StockChart';
 
 export const PRIMARY_COLOR = '#00e5a0';
 export const COMP_COLOR    = '#60a5fa';
+const COMP2_COLOR = '#c084fc';
 const GRID_COLOR    = 'rgba(192,192,192,0.07)';
 const AXIS_COLOR    = 'rgba(192,192,192,0.40)';
 const BG_BUBBLE     = '#1c1c1c';
@@ -73,6 +74,8 @@ interface Props {
   primarySymbol:  string;
   compCandles?:   Candle[];
   compSymbol?:    string;
+  secondCompCandles?: Candle[];
+  secondCompSymbol?: string;
   width:          number;
   height?:        number;
 }
@@ -132,6 +135,8 @@ export function ComparisonChart({
   primarySymbol,
   compCandles,
   compSymbol,
+  secondCompCandles,
+  secondCompSymbol,
   width,
   height = 240,
 }: Props) {
@@ -148,12 +153,17 @@ export function ComparisonChart({
     ? mode === 'percent' ? normalize(compCandles) : compCandles.map((c) => c.c)
     : null;
   const hasComp = compValues !== null && compValues.length > 0;
+  const secondValues = secondCompCandles && secondCompCandles.length > 0
+    ? mode === 'percent' ? normalize(secondCompCandles) : secondCompCandles.map((c) => c.c)
+    : null;
+  const hasSecond = secondValues !== null && secondValues.length > 0;
 
   const nPrim = primValues.length;
   const nComp = compValues?.length ?? 0;
+  const nSecond = secondValues?.length ?? 0;
 
   // Combined Y domain
-  const allVals = [...primValues, ...(compValues ?? [])];
+  const allVals = [...primValues, ...(compValues ?? []), ...(secondValues ?? [])];
   const rawMin = allVals.length > 0 ? Math.min(...allVals) : mode === 'percent' ? -5 : 0;
   const rawMax = allVals.length > 0 ? Math.max(...allVals) : mode === 'percent' ? 5 : 1;
   const yPad  = Math.max((rawMax - rawMin) * 0.12, 2);
@@ -166,6 +176,8 @@ export function ComparisonChart({
     PAD.left + (nPrim <= 1 ? 0 : (i / (nPrim - 1)) * chartW);
   const pxComp = (i: number) =>
     PAD.left + (nComp <= 1 ? 0 : (i / (nComp - 1)) * chartW);
+  const pxSecond = (i: number) =>
+    PAD.left + (nSecond <= 1 ? 0 : (i / (nSecond - 1)) * chartW);
   const pyVal = (v: number) =>
     PAD.top + chartH - ((v - minY) / rangeY) * chartH;
   const py0 = pyVal(0); // zero-return baseline
@@ -210,10 +222,14 @@ export function ComparisonChart({
       : null;
   const touchCompValue =
     touchCompIdx !== null && compValues ? compValues[touchCompIdx] : null;
+  const touchSecondIdx = touched !== null && hasSecond && nPrim > 1
+    ? Math.round((touched / (nPrim - 1)) * (nSecond - 1)) : null;
+  const touchSecondValue = touchSecondIdx !== null && secondValues ? secondValues[touchSecondIdx] : null;
 
   // Period-end values for legend
   const primFinal = nPrim > 0 ? primValues[nPrim - 1] : null;
   const compFinal = hasComp && compValues ? compValues[nComp - 1] : null;
+  const secondFinal = hasSecond && secondValues ? secondValues[nSecond - 1] : null;
 
   if (nPrim === 0) {
     return (
@@ -270,6 +286,9 @@ export function ComparisonChart({
         {hasComp && compSymbol && (
           <LegendItem color={COMP_COLOR} ticker={compSymbol} value={compFinal} mode={mode} />
         )}
+        {hasSecond && secondCompSymbol && (
+          <LegendItem color={COMP2_COLOR} ticker={secondCompSymbol} value={secondFinal} mode={mode} />
+        )}
       </View>
 
       {/* ── SVG ────────────────────────────────────────────────────────── */}
@@ -318,6 +337,10 @@ export function ComparisonChart({
             stroke={COMP_COLOR} strokeWidth={1.8} fill="none" strokeOpacity={0.85}
           />
         )}
+        {hasSecond && secondValues && (
+          <Path d={buildPath(secondValues, pxSecond)}
+            stroke={COMP2_COLOR} strokeWidth={1.8} fill="none" strokeOpacity={0.9} />
+        )}
 
         {/* Primary line */}
         <Path
@@ -344,6 +367,15 @@ export function ComparisonChart({
             {compSymbol}
           </SvgText>
         )}
+        {hasSecond && secondValues && secondCompSymbol && (
+          <SvgText
+            x={PAD.left + chartW + 4}
+            y={clamp(pyVal(secondValues[nSecond - 1]!), PAD.top + 18, height - PAD.bottom - 4)}
+            fontSize={9} fill={COMP2_COLOR} textAnchor="start" fontWeight="bold"
+          >
+            {secondCompSymbol}
+          </SvgText>
+        )}
 
         {/* ── Crosshair ───────────────────────────────────────────────── */}
         {touched !== null && touchPrimValue !== null && (
@@ -358,6 +390,9 @@ export function ComparisonChart({
             <Circle cx={pxPrim(touched)} cy={pyVal(touchPrimValue)} r={4} fill={PRIMARY_COLOR} />
             {touchCompValue !== null && touchCompIdx !== null && (
               <Circle cx={pxComp(touchCompIdx)} cy={pyVal(touchCompValue)} r={4} fill={COMP_COLOR} />
+            )}
+            {touchSecondValue !== null && touchSecondIdx !== null && (
+              <Circle cx={pxSecond(touchSecondIdx)} cy={pyVal(touchSecondValue)} r={4} fill={COMP2_COLOR} />
             )}
 
             {/* Primary bubble */}
@@ -383,6 +418,17 @@ export function ComparisonChart({
                 offsetY={
                    Math.abs(pyVal(touchCompValue) - pyVal(touchPrimValue)) < 30 ? 22 : 0
                 }
+              />
+            )}
+            {touchSecondValue !== null && touchSecondIdx !== null && secondCompSymbol && (
+              <Bubble
+                x={pxPrim(touched)}
+                y={pyVal(touchSecondValue)}
+                label={`${secondCompSymbol}  ${mode === 'percent' ? fmtPct(touchSecondValue) : fmtPrice(touchSecondValue)}`}
+                color={COMP2_COLOR}
+                chartLeft={PAD.left}
+                chartRight={PAD.left + chartW}
+                offsetY={Math.abs(pyVal(touchSecondValue) - pyVal(touchPrimValue)) < 30 ? 42 : 0}
               />
             )}
 
