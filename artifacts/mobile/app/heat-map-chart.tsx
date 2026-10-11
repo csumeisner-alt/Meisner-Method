@@ -219,7 +219,9 @@ export default function HeatMapChartScreen() {
         <View style={[styles.chartCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.cardHeading}>
             <View>
-              <Text style={[styles.eyebrow, { color: colors.mutedForeground }]}>PRICE HISTORY</Text>
+              <Text style={[styles.eyebrow, { color: colors.mutedForeground }]}>
+                {comparisonSlices.length ? 'PRICE HISTORY + COMPARISONS' : 'PRICE HISTORY'}
+              </Text>
               <Text style={[styles.cardTitle, { color: colors.foreground }]}>{symbol}</Text>
             </View>
             {candles.length > 0 && <Text style={[styles.lastPrice, { color: colors.primary }]}>${candles[candles.length - 1]!.c.toLocaleString('en-US', { maximumFractionDigits: 4 })}</Text>}
@@ -236,31 +238,46 @@ export default function HeatMapChartScreen() {
           </View>
           {loading ? <View style={styles.state}><ActivityIndicator color={colors.primary} /><Text style={{ color: colors.mutedForeground }}>Loading price history…</Text></View>
             : loadError ? <View style={styles.state}><Text style={{ color: colors.sellColor }}>Price history is temporarily unavailable.</Text><ChartButton testID="heat-map-chart-retry" label="Retry" colors={colors} onPress={() => setRetryToken((token) => token + 1)} /></View>
-              : !candles.length ? <View style={styles.state}><Text style={{ color: colors.mutedForeground }}>No historical prices are available for {symbol}.</Text></View>
-                : <StockChart candles={visibleCandles} width={plotWidth - 8} height={300}
+                : !candles.length ? <View style={styles.state}><Text style={{ color: colors.mutedForeground }}>No historical prices are available for {symbol}.</Text></View>
+                : comparisonSlices.length > 0 ? (
+                  <ComparisonChart
+                    primaryCandles={visibleCandles}
+                    primarySymbol={symbol}
+                    compCandles={comparisonSlices[0]!.visibleCandles}
+                    compSymbol={comparisonSlices[0]!.symbol}
+                    secondCompCandles={comparisonSlices[1]?.visibleCandles}
+                    secondCompSymbol={comparisonSlices[1]?.symbol}
+                    width={plotWidth - 8}
+                    height={300}
+                  />
+                ) : <StockChart candles={visibleCandles} width={plotWidth - 8} height={300} showMA50={false}
                   supportLevels={showLevels ? levels.support : []} resistanceLevels={showLevels ? levels.resistance : []}
                   trendLines={trendLines} onChartPoint={onChartPoint} />}
           {!loading && !loadError && candles.length > 0 && (
             <>
-              <View style={styles.controlsRow}>
-                <ChartButton testID="heat-map-chart-levels" label={showLevels ? 'Hide support / resistance' : 'Find support / resistance'} active={showLevels} colors={colors} onPress={() => setShowLevels((value) => !value)} />
-                <ChartButton testID="heat-map-chart-draw-line"
-                  label={drawing ? 'Tap chart twice…' : trendLinesLoadError ? 'Drawings unavailable' : trendLinesLoadedFor !== symbol ? 'Loading drawings…' : 'Draw trend line'}
-                  active={drawing} disabled={trendLinesLoadedFor !== symbol || trendLinesLoadError} colors={colors}
-                  onPress={() => { setPendingPoint(null); setDrawing((value) => !value); }} />
-              </View>
-              {trendLinesLoadError && <Text style={[styles.disclaimer, { color: colors.sellColor }]}>
-                Saved drawings could not be loaded. Reopen the chart to try again.
-              </Text>}
-              {showLevels && <Text style={[styles.disclaimer, { color: colors.mutedForeground }]}>
-                {levels.support.length || levels.resistance.length
-                  ? 'Estimated from repeated swing highs and lows in this visible range. Historical levels can fail and are not predictions.'
-                  : 'No repeated swing levels were found in this visible range. Try a wider time range.'}
-              </Text>}
-              {drawing && <Text style={[styles.disclaimer, { color: colors.primary }]}>
-                Tap two points on the chart to place a trend line. {pendingPoint ? 'Choose the second point.' : 'Choose the first point.'}
-              </Text>}
-              {!!trendLines.length && <View style={styles.linesList}>
+              {comparisonSlices.length === 0 && (
+                <>
+                  <View style={styles.controlsRow}>
+                    <ChartButton testID="heat-map-chart-levels" label={showLevels ? 'Hide support / resistance' : 'Find support / resistance'} active={showLevels} colors={colors} onPress={() => setShowLevels((value) => !value)} />
+                    <ChartButton testID="heat-map-chart-draw-line"
+                      label={drawing ? 'Tap chart twice…' : trendLinesLoadError ? 'Drawings unavailable' : trendLinesLoadedFor !== symbol ? 'Loading drawings…' : 'Draw trend line'}
+                      active={drawing} disabled={trendLinesLoadedFor !== symbol || trendLinesLoadError} colors={colors}
+                      onPress={() => { setPendingPoint(null); setDrawing((value) => !value); }} />
+                  </View>
+                  {trendLinesLoadError && <Text style={[styles.disclaimer, { color: colors.sellColor }]}>
+                    Saved drawings could not be loaded. Reopen the chart to try again.
+                  </Text>}
+                  {showLevels && <Text style={[styles.disclaimer, { color: colors.mutedForeground }]}>
+                    {levels.support.length || levels.resistance.length
+                      ? 'Estimated from repeated swing highs and lows in this visible range. Historical levels can fail and are not predictions.'
+                      : 'No repeated swing levels were found in this visible range. Try a wider time range.'}
+                  </Text>}
+                  {drawing && <Text style={[styles.disclaimer, { color: colors.primary }]}>
+                    Tap two points on the chart to place a trend line. {pendingPoint ? 'Choose the second point.' : 'Choose the first point.'}
+                  </Text>}
+                </>
+              )}
+              {comparisonSlices.length === 0 && !!trendLines.length && <View style={styles.linesList}>
                 <Text style={[styles.linesTitle, { color: colors.foreground }]}>Your trend lines</Text>
                 {trendLines.map((line, index) => <View key={line.id} style={styles.lineRow}>
                   <Text style={[styles.disclaimer, { color: colors.mutedForeground }]}>Line {index + 1}</Text>
@@ -272,10 +289,9 @@ export default function HeatMapChartScreen() {
               </View>}
             </>
           )}
-        </View>
-        <View style={[styles.compareCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.compareSection}>
           <Text style={[styles.cardTitle, { color: colors.foreground }]}>Compare instruments</Text>
-          <Text style={[styles.disclaimer, { color: colors.mutedForeground }]}>Each comparison is normalized to its first available close so different price scales can be compared.</Text>
+          <Text style={[styles.disclaimer, { color: colors.mutedForeground }]}>Add up to two tickers. Relative performance will appear in the chart above.</Text>
           <View style={styles.inputRow}>
             <TextInput testID="heat-map-chart-ticker-input" value={tickerInput} onChangeText={setTickerInput}
               placeholder="Ticker (e.g. AAPL or GC=F)" placeholderTextColor={colors.mutedForeground}
@@ -300,18 +316,8 @@ export default function HeatMapChartScreen() {
                   : <Text style={[styles.disclaimer, { color: colors.mutedForeground }]}>Comparison data loaded.</Text>}
             </View>
           ))}
-          {comparisonSlices.length > 0 && candles.length > 0 && (
-            <ComparisonChart
-              primaryCandles={visibleCandles}
-              primarySymbol={symbol}
-              compCandles={comparisonSlices[0]!.visibleCandles}
-              compSymbol={comparisonSlices[0]!.symbol}
-              secondCompCandles={comparisonSlices[1]?.visibleCandles}
-              secondCompSymbol={comparisonSlices[1]?.symbol}
-              width={plotWidth - 8}
-            />
-          )}
           {comparisons.length >= 2 && <Text style={[styles.disclaimer, { color: colors.mutedForeground }]}>Maximum of two comparison tickers reached.</Text>}
+          </View>
         </View>
       </ScrollView>
     </View>
@@ -338,7 +344,7 @@ const styles = StyleSheet.create({
   linesList: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(128,128,128,.25)', paddingTop: 8, gap: 6 },
   linesTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   lineRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  compareCard: { borderWidth: 1, borderRadius: 14, padding: 14, marginBottom: 20 },
+  compareSection: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(128,128,128,.25)', paddingTop: 12, marginTop: 10 },
   inputRow: { flexDirection: 'row', gap: 8 },
   input: { flex: 1, borderWidth: 1, borderRadius: 9, paddingHorizontal: 12, minHeight: 42, fontSize: 13 },
   addButton: { width: 44, height: 42, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },

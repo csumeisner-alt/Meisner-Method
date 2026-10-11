@@ -1386,14 +1386,20 @@ export default function HeatMapScreen() {
           onClose={() => setSelectedQuote(null)}
           onOpenChart={() => {
             if (!selectedQuote) return;
-            router.push({
-              pathname: '/heat-map-chart',
-              params: {
-                symbol: selectedQuote.symbol,
-                name: selectedQuote.name || selectedQuote.symbol,
-                assetType: selectedQuote.assetType,
-              },
-            });
+            const chartQuote = selectedQuote;
+            setSelectedQuote(null);
+            // The detail card is a native Modal. Let its dismissal finish before
+            // pushing the chart route so the new screen is not rendered behind it.
+            setTimeout(() => {
+              router.push({
+                pathname: '/heat-map-chart',
+                params: {
+                  symbol: chartQuote.symbol,
+                  name: chartQuote.name || chartQuote.symbol,
+                  assetType: chartQuote.assetType,
+                },
+              });
+            }, 350);
           }}
           onRefreshQuote={async (symbol) => {
             try {

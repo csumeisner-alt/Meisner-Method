@@ -47,6 +47,9 @@ export const CHART_HISTORY_RANGES = [
   { label: '6M', period: '6mo', interval: '1d' },
   { label: '1Y', period: '1y', interval: '1d' },
   { label: '2Y', period: '2y', interval: '1wk' },
+  { label: '3Y', period: '3y', interval: '1wk' },
+  { label: '5Y', period: '5y', interval: '1wk' },
+  { label: 'MAX', period: 'max', interval: '1wk' },
 ] as const;
 
 export type ChartHistoryRange = typeof CHART_HISTORY_RANGES[number];

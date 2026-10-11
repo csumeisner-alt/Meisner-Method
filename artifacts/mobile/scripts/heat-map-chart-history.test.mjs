@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const chartScreen = readFileSync(new URL('../app/heat-map-chart.tsx', import.meta.url), 'utf8');
+const heatMapScreen = readFileSync(new URL('../app/heat-map.tsx', import.meta.url), 'utf8');
+const chartHistoryLib = readFileSync(new URL('../lib/heatMapChart.ts', import.meta.url), 'utf8');
 const stocksRoute = readFileSync(new URL('../../api-server/src/routes/stocks.ts', import.meta.url), 'utf8');
 
 test('primary and comparison history requests share the selected range URL builder', () => {
@@ -14,12 +16,28 @@ test('primary and comparison history requests share the selected range URL build
   const intervals = stocksRoute.match(/const VALID_INTERVALS = \[([^\]]+)\]/)?.[1];
   assert.ok(periods, 'the chart route should validate supported periods');
   assert.ok(intervals, 'the chart route should validate supported intervals');
-  for (const period of ['5d', '1mo', '3mo', '6mo', '1y', '2y']) {
+  for (const period of ['5d', '1mo', '3mo', '6mo', '1y', '2y', '3y', '5y', 'max']) {
     assert.ok(periods.includes(`"${period}"`), `the chart route should accept ${period}`);
   }
   for (const interval of ['1h', '1d', '1wk']) {
     assert.ok(intervals.includes(`"${interval}"`), `the chart route should accept ${interval}`);
   }
+});
+
+test('longer chart ranges are exposed and chart launch dismisses the instrument modal first', () => {
+  for (const label of ['3Y', '5Y', 'MAX']) {
+    assert.match(chartHistoryLib, new RegExp(`label: '${label}'`));
+  }
+  assert.match(chartScreen, /showMA50=\{false\}/);
+  assert.match(chartScreen, /: comparisonSlices\.length > 0 \?/);
+  assert.match(heatMapScreen, /setSelectedQuote\(null\);[\s\S]*?setTimeout\(\(\) => \{[\s\S]*?router\.push\(/);
+});
+
+test('comparison chart occupies the primary chart card instead of a second chart below', () => {
+  assert.match(chartScreen, /comparisonSlices\.length > 0 \? \([\s\S]*?<ComparisonChart/);
+  const compareForm = chartScreen.slice(chartScreen.indexOf('>Compare instruments'));
+  assert.ok(compareForm.length > 0, 'the comparison controls should remain available');
+  assert.doesNotMatch(compareForm, /<ComparisonChart/);
 });
 
 test('unsupported primary symbols and unavailable comparisons have isolated, clear states', () => {

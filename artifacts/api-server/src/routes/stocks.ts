@@ -536,7 +536,7 @@ router.get("/stocks/chart/:symbol", async (req, res) => {
   const symbol = (req.params["symbol"] ?? "").toUpperCase().trim();
   const period = (req.query["period"] as string) || "3mo";
   const interval = (req.query["interval"] as string) || "1d";
-  const VALID_PERIODS = ["5d", "1mo", "3mo", "6mo", "1y", "2y"];
+  const VALID_PERIODS = ["5d", "1mo", "3mo", "6mo", "1y", "2y", "3y", "5y", "max"];
   const VALID_INTERVALS = ["15m", "1h", "1d", "1wk"];
   if (!symbol || !VALID_PERIODS.includes(period) || !VALID_INTERVALS.includes(interval)) {
     res.status(400).json({ error: "INVALID_PARAMS" });

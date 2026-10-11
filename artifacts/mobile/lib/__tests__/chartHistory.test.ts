@@ -7,7 +7,7 @@ const symbols = ['AAPL', 'SPY', 'GC=F', 'BTC-USD'];
 test('stock, ETF, futures, and crypto symbols use every supported chart range', () => {
   assert.deepEqual(
     CHART_HISTORY_RANGES.map(({ label }) => label),
-    ['1W', '1M', '3M', '6M', '1Y', '2Y'],
+    ['1W', '1M', '3M', '6M', '1Y', '2Y', '3Y', '5Y', 'MAX'],
   );
 
   for (const range of CHART_HISTORY_RANGES) {
