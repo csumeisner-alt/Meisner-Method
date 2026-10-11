@@ -266,11 +266,13 @@ function formatExactSupply(value: number) {
 
 export function HeatMapDetailModal({
   quote,
+  quoteUnavailable,
   visible,
   onClose,
   onRefreshQuote,
 }: {
   quote: HeatMapQuote | null;
+  quoteUnavailable: boolean;
   visible: boolean;
   onClose: () => void;
   onRefreshQuote: (symbol: string) => Promise<HeatMapQuote | null>;
@@ -292,6 +294,10 @@ export function HeatMapDetailModal({
     setQuoteRefreshLoading(false);
     setQuoteRefreshError(false);
   }, [quote?.symbol, visible]);
+
+  useEffect(() => {
+    if (!quoteUnavailable) setQuoteRefreshError(false);
+  }, [quoteUnavailable]);
 
   const refreshQuote = async () => {
     if (!quote || quoteRefreshLoading) return;
@@ -488,10 +494,12 @@ export function HeatMapDetailModal({
                 </Text>
               </Pressable>
             </View>
-            {quoteRefreshError && (
+            {(quoteUnavailable || quoteRefreshError) && (
               <View testID="heat-map-detail-quote-refresh-error" style={[styles.quoteRefreshError, { borderColor: colors.border }]}>
                 <Text style={[styles.errorText, { color: colors.mutedForeground }]}>
-                  Couldn't refresh this quote. Showing the last displayed price.
+                  {quoteUnavailable
+                    ? "This quote isn't in the latest batch. Showing the last displayed price."
+                    : "Couldn't refresh this quote. Showing the last displayed price."}
                 </Text>
                 <Pressable
                   testID="heat-map-detail-quote-refresh-retry"

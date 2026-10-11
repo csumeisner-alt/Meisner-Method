@@ -496,6 +496,45 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       "Refreshing the quote should not close or switch the selected detail card.",
     );
 
+    await setResponse(browser, {
+      ...await browser.evaluate("window.__heatMapBrowserTest.data"),
+      quotes: await browser.evaluate("window.__heatMapBrowserTest.data.quotes.filter((item) => item.symbol !== 'MATCH')"),
+    });
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-detail-quote-refresh-error"))})`,
+      "A successful batch that omits the selected symbol should show a retry action in the open card.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent === "MATCH" && document.querySelector(${JSON.stringify(selector("heat-map-detail-price"))})?.textContent === "$150.25" && !!document.querySelector(${JSON.stringify(selector("heat-map-detail-quote-refresh-retry"))})`),
+      true,
+      "An omitted symbol should keep the selected instrument and last displayed price visible with a retry path.",
+    );
+    await clickTestID(browser, "heat-map-detail-quote-refresh-retry");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-detail-quote-refresh-error"))})?.textContent.includes("isn't in the latest batch")`,
+      "Retrying while the symbol remains unavailable should keep the last displayed quote and explain the omission.",
+    );
+    await browser.evaluate(`(() => {
+      const state = window.__heatMapBrowserTest;
+      const recoveredQuote = state.initialData.quotes.find((item) => item.symbol === "MATCH");
+      state.setResponse({
+        ...state.data,
+        quotes: [...state.data.quotes, { ...recoveredQuote, price: 152.75, priceChangePercent: 5.7 }],
+      });
+    })()`);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-detail-price"))})?.textContent === "$152.75" && !document.querySelector(${JSON.stringify(selector("heat-map-detail-quote-refresh-error"))})`,
+      "A later batch containing the symbol should update the quote and clear its unavailable state.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent`),
+      "MATCH",
+      "Recovering the quote should not close or switch the selected detail card.",
+    );
+
     await browser.evaluate("window.__heatMapBrowserTest.setRefetchFailures(1)");
     await clickTestID(browser, "heat-map-detail-refresh-quote");
     await waitFor(
@@ -504,18 +543,18 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       "A failed quote refresh should show a retry action in the open detail card.",
     );
     assert.equal(
-      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-price"))})?.textContent === "$150.25" && document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent === "MATCH"`),
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-price"))})?.textContent === "$152.75" && document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent === "MATCH"`),
       true,
       "A failed refresh should preserve the last successful quote and selected instrument.",
     );
     await browser.evaluate(`window.__heatMapBrowserTest.setNextRefetchResponse({
       ...window.__heatMapBrowserTest.data,
-      quotes: window.__heatMapBrowserTest.data.quotes.map((item) => item.symbol === "MATCH" ? { ...item, price: 151.99, priceChangePercent: 5.1 } : item),
+      quotes: window.__heatMapBrowserTest.data.quotes.map((item) => item.symbol === "MATCH" ? { ...item, price: 154.99, priceChangePercent: 6.2 } : item),
     })`);
     await clickTestID(browser, "heat-map-detail-quote-refresh-retry");
     await waitFor(
       (expression) => browser.evaluate(expression),
-      `document.querySelector(${JSON.stringify(selector("heat-map-detail-price"))})?.textContent === "$151.99" && !document.querySelector(${JSON.stringify(selector("heat-map-detail-quote-refresh-error"))})`,
+      `document.querySelector(${JSON.stringify(selector("heat-map-detail-price"))})?.textContent === "$154.99" && !document.querySelector(${JSON.stringify(selector("heat-map-detail-quote-refresh-error"))})`,
       "Retrying the failed quote refresh should update the quote and clear its error state.",
     );
 

@@ -808,6 +808,19 @@ export default function HeatMapScreen() {
   }, [scheduledRegularOpenTimestamp, scheduledOpenRefreshKey, refetchHeatMap]));
   const staleQuotes = sourceQuotes.filter((quote) => !isDisplayableHeatMapQuote(quote, nowSeconds));
   const validAgeQuotes = sourceQuotes.filter((quote) => isDisplayableHeatMapQuote(quote, nowSeconds));
+  const selectedQuoteFromBatch = selectedQuote && responseMatches && !mapQuery.isError
+    ? validAgeQuotes.find((quote) => quote.symbol.toUpperCase() === selectedQuote.symbol.toUpperCase()) ?? null
+    : null;
+  const selectedQuoteUnavailable = selectedQuote !== null
+    && responseMatches
+    && !mapQuery.isError
+    && selectedQuoteFromBatch === null;
+  useEffect(() => {
+    if (!selectedQuoteFromBatch) return;
+    setSelectedQuote((current) => current?.symbol.toUpperCase() === selectedQuoteFromBatch.symbol.toUpperCase()
+      ? selectedQuoteFromBatch
+      : current);
+  }, [selectedQuote?.symbol, selectedQuoteFromBatch]);
   const marketStatus = getHeatMapMarketStatus(validAgeQuotes);
   const marketStatusColor = marketStatus === 'closed'
     ? colors.sellColor
@@ -1368,6 +1381,7 @@ export default function HeatMapScreen() {
         </Modal>
         <HeatMapDetailModal
           quote={selectedQuote}
+          quoteUnavailable={selectedQuoteUnavailable}
           visible={selectedQuote !== null}
           onClose={() => setSelectedQuote(null)}
           onRefreshQuote={async (symbol) => {
