@@ -464,6 +464,7 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
         quotes: state.data.quotes.map((item) => item.symbol === "MATCH" ? { ...item, price: 150.25, priceChangePercent: 4.5 } : item),
       });
     })()`);
+    const refetchCountBeforeQuoteRefresh = await browser.evaluate("window.__heatMapBrowserTest.refetches.length");
     await clickTestID(browser, "heat-map-detail-refresh-quote");
     await waitFor(
       (expression) => browser.evaluate(expression),
@@ -480,6 +481,19 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       true,
       "The quote refresh control should show progress while the request is pending.",
     );
+    for (let tap = 0; tap < 3; tap += 1) {
+      await clickTestID(browser, "heat-map-detail-refresh-quote");
+    }
+    assert.equal(
+      await browser.evaluate(`window.__heatMapBrowserTest.pendingRefetchResolvers.length === 1 && window.__heatMapBrowserTest.refetches.length === ${refetchCountBeforeQuoteRefresh + 1}`),
+      true,
+      "Repeated taps during a pending quote refresh should not start overlapping heat-map refetches.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-refresh-quote"))})?.textContent.includes("Refreshing")`),
+      true,
+      "Repeated taps should not clear the progress state before the pending request completes.",
+    );
     assert.equal(
       await browser.evaluate("window.__heatMapBrowserTest.resolvePendingRefetch()"),
       true,
@@ -489,6 +503,11 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       (expression) => browser.evaluate(expression),
       `document.querySelector(${JSON.stringify(selector("heat-map-detail-price"))})?.textContent === "$150.25"`,
       "A successful quote refresh should update the open card to the newly reported price.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-detail-refresh-quote"))})?.getAttribute("aria-label") === "Refresh selected market quote"`,
+      "The quote refresh control should become available again after the request completes.",
     );
     assert.equal(
       await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent`),
@@ -541,6 +560,11 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       (expression) => browser.evaluate(expression),
       `!!document.querySelector(${JSON.stringify(selector("heat-map-detail-quote-refresh-error"))})`,
       "A failed quote refresh should show a retry action in the open detail card.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-refresh-quote"))})?.getAttribute("aria-label") === "Refresh selected market quote"`),
+      true,
+      "The quote refresh control should become available again after a request fails.",
     );
     assert.equal(
       await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-price"))})?.textContent === "$152.75" && document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent === "MATCH"`),
@@ -615,7 +639,7 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
         quotes: state.data.quotes.map((item) => item.symbol === "MATCH"
           ? { ...item, price: 999.99, priceChangePercent: 99 }
           : item.symbol === "LATE_TARGET"
-            ? { ...item, price: 456.78, priceChangePercent: 12 }
+            ? { ...item, price: 123.45, priceChangePercent: 12 }
             : item),
       });
     })()`);

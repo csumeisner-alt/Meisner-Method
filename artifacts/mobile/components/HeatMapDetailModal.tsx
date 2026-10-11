@@ -288,9 +288,11 @@ export function HeatMapDetailModal({
   const [quoteRefreshLoading, setQuoteRefreshLoading] = useState(false);
   const [quoteRefreshError, setQuoteRefreshError] = useState(false);
   const quoteRefreshAttemptRef = useRef(0);
+  const quoteRefreshInFlightRef = useRef(false);
 
   useEffect(() => {
     quoteRefreshAttemptRef.current += 1;
+    quoteRefreshInFlightRef.current = false;
     setQuoteRefreshLoading(false);
     setQuoteRefreshError(false);
   }, [quote?.symbol, visible]);
@@ -300,9 +302,10 @@ export function HeatMapDetailModal({
   }, [quoteUnavailable]);
 
   const refreshQuote = async () => {
-    if (!quote || quoteRefreshLoading) return;
+    if (!quote || quoteRefreshInFlightRef.current) return;
     const symbol = quote.symbol;
     const attempt = ++quoteRefreshAttemptRef.current;
+    quoteRefreshInFlightRef.current = true;
     setQuoteRefreshLoading(true);
     setQuoteRefreshError(false);
     try {
@@ -314,7 +317,10 @@ export function HeatMapDetailModal({
     } catch {
       if (attempt === quoteRefreshAttemptRef.current) setQuoteRefreshError(true);
     } finally {
-      if (attempt === quoteRefreshAttemptRef.current) setQuoteRefreshLoading(false);
+      if (attempt === quoteRefreshAttemptRef.current) {
+        quoteRefreshInFlightRef.current = false;
+        setQuoteRefreshLoading(false);
+      }
     }
   };
 
