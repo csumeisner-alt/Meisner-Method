@@ -1,16 +1,21 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Keyboard, Platform, Pressable, ScrollView, StyleSheet,
   Text, TextInput, View, useWindowDimensions,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useApi } from '@/hooks/useApi';
-import { StockChart, type Candle, type ChartTrendLine } from '@/components/StockChart';
+import { StockChart, type Candle } from '@/components/StockChart';
 import { ComparisonChart } from '@/components/ComparisonChart';
-import { buildChartHistoryUrl, CHART_HISTORY_RANGES, detectHeatMapPriceLevels } from '@/lib/heatMapChart';
+import {
+  buildChartHistoryUrl, CHART_HISTORY_RANGES, detectHeatMapPriceLevels,
+  getHeatMapChartDrawingsStorageKey, parseHeatMapChartTrendLines,
+  type HeatMapChartTrendLine,
+} from '@/lib/heatMapChart';
 
 type History = { symbol: string; candles: Candle[] };
 type Comparison = { symbol: string; candles: Candle[]; loading: boolean; error: boolean };
@@ -62,7 +67,10 @@ export default function HeatMapChartScreen() {
   const [showLevels, setShowLevels] = useState(false);
   const [drawing, setDrawing] = useState(false);
   const [pendingPoint, setPendingPoint] = useState<{ t: number; price: number } | null>(null);
-  const [trendLines, setTrendLines] = useState<ChartTrendLine[]>([]);
+  const [trendLines, setTrendLines] = useState<HeatMapChartTrendLine[]>([]);
+  const [trendLinesLoadedFor, setTrendLinesLoadedFor] = useState<string | null>(null);
+  const [trendLinesLoadError, setTrendLinesLoadError] = useState(false);
+  const trendLineWriteQueue = useRef(Promise.resolve());
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState(0);
   const [retryToken, setRetryToken] = useState(0);
@@ -94,10 +102,38 @@ export default function HeatMapChartScreen() {
   useEffect(() => {
     setComparisons([]);
     setTrendLines([]);
+    setTrendLinesLoadedFor(null);
+    setTrendLinesLoadError(false);
+    setDrawing(false);
     setPendingPoint(null);
     setZoom(1);
     setPan(0);
   }, [symbol]);
+
+  useEffect(() => {
+    if (!symbol) return;
+    let cancelled = false;
+    const storageKey = getHeatMapChartDrawingsStorageKey(symbol);
+    void AsyncStorage.getItem(storageKey).then((raw) => {
+      if (cancelled) return;
+      setTrendLines(parseHeatMapChartTrendLines(raw));
+      setTrendLinesLoadedFor(symbol);
+      setTrendLinesLoadError(false);
+    }).catch(() => {
+      if (!cancelled) setTrendLinesLoadError(true);
+      // Keep writes gated when storage cannot be read, so an empty state cannot erase saved drawings.
+    });
+    return () => { cancelled = true; };
+  }, [symbol]);
+
+  useEffect(() => {
+    if (trendLinesLoadedFor !== symbol || !symbol) return;
+    const storageKey = getHeatMapChartDrawingsStorageKey(symbol);
+    const serialized = JSON.stringify(trendLines);
+    trendLineWriteQueue.current = trendLineWriteQueue.current
+      .catch(() => {})
+      .then(() => AsyncStorage.setItem(storageKey, serialized));
+  }, [symbol, trendLines, trendLinesLoadedFor]);
 
   const comparisonSymbols = comparisons.map((item) => item.symbol);
   useEffect(() => {
@@ -208,8 +244,14 @@ export default function HeatMapChartScreen() {
             <>
               <View style={styles.controlsRow}>
                 <ChartButton testID="heat-map-chart-levels" label={showLevels ? 'Hide support / resistance' : 'Find support / resistance'} active={showLevels} colors={colors} onPress={() => setShowLevels((value) => !value)} />
-                <ChartButton testID="heat-map-chart-draw-line" label={drawing ? 'Tap chart twice…' : 'Draw trend line'} active={drawing} colors={colors} onPress={() => { setPendingPoint(null); setDrawing((value) => !value); }} />
+                <ChartButton testID="heat-map-chart-draw-line"
+                  label={drawing ? 'Tap chart twice…' : trendLinesLoadError ? 'Drawings unavailable' : trendLinesLoadedFor !== symbol ? 'Loading drawings…' : 'Draw trend line'}
+                  active={drawing} disabled={trendLinesLoadedFor !== symbol || trendLinesLoadError} colors={colors}
+                  onPress={() => { setPendingPoint(null); setDrawing((value) => !value); }} />
               </View>
+              {trendLinesLoadError && <Text style={[styles.disclaimer, { color: colors.sellColor }]}>
+                Saved drawings could not be loaded. Reopen the chart to try again.
+              </Text>}
               {showLevels && <Text style={[styles.disclaimer, { color: colors.mutedForeground }]}>
                 {levels.support.length || levels.resistance.length
                   ? 'Estimated from repeated swing highs and lows in this visible range. Historical levels can fail and are not predictions.'

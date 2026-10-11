@@ -9,6 +9,37 @@ export interface PriceLevels {
   resistance: number[];
 }
 
+export interface HeatMapChartTrendLine {
+  id: string;
+  startT: number;
+  endT: number;
+  startPrice: number;
+  endPrice: number;
+}
+
+const HEAT_MAP_CHART_DRAWINGS_KEY_PREFIX = '@meisnermethod/heat_map_chart_drawings_v1/';
+
+export function getHeatMapChartDrawingsStorageKey(symbol: string): string {
+  return `${HEAT_MAP_CHART_DRAWINGS_KEY_PREFIX}${encodeURIComponent(symbol.trim().toUpperCase())}`;
+}
+
+export function parseHeatMapChartTrendLines(raw: string | null): HeatMapChartTrendLine[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is HeatMapChartTrendLine => {
+      if (!item || typeof item !== 'object') return false;
+      const line = item as Partial<HeatMapChartTrendLine>;
+      return typeof line.id === 'string' && line.id.length > 0
+        && Number.isFinite(line.startT) && Number.isFinite(line.endT)
+        && Number.isFinite(line.startPrice) && Number.isFinite(line.endPrice);
+    });
+  } catch {
+    return [];
+  }
+}
+
 export const CHART_HISTORY_RANGES = [
   { label: '1W', period: '5d', interval: '1h' },
   { label: '1M', period: '1mo', interval: '1d' },

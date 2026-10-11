@@ -1,6 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { detectHeatMapPriceLevels } from '../heatMapChart.ts';
+import {
+  detectHeatMapPriceLevels,
+  getHeatMapChartDrawingsStorageKey,
+  parseHeatMapChartTrendLines,
+} from '../heatMapChart.ts';
+
+test('chart drawing storage keys normalize symbols while keeping different instruments isolated', () => {
+  assert.equal(getHeatMapChartDrawingsStorageKey(' aapl '), getHeatMapChartDrawingsStorageKey('AAPL'));
+  assert.notEqual(getHeatMapChartDrawingsStorageKey('AAPL'), getHeatMapChartDrawingsStorageKey('MSFT'));
+  assert.notEqual(getHeatMapChartDrawingsStorageKey('GC=F'), getHeatMapChartDrawingsStorageKey('GC'));
+});
+
+test('saved chart drawings parse valid lines and ignore malformed storage or entries', () => {
+  const line = { id: 'line-1', startT: 100, endT: 200, startPrice: 10.5, endPrice: 12 };
+  assert.deepEqual(parseHeatMapChartTrendLines(JSON.stringify([
+    line,
+    { ...line, endPrice: Number.NaN },
+    { ...line, id: '' },
+    null,
+  ])), [line]);
+  assert.deepEqual(parseHeatMapChartTrendLines(null), []);
+  assert.deepEqual(parseHeatMapChartTrendLines('not json'), []);
+  assert.deepEqual(parseHeatMapChartTrendLines(JSON.stringify({ lines: [line] })), []);
+});
 
 test('detects repeated nearby swing lows and highs as chart levels', () => {
   const bars = [
