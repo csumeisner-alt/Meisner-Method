@@ -43,7 +43,8 @@ test('comparison chart occupies the primary chart card instead of a second chart
 
 test('chart tap handling uses a React Native press target for drawing in web preview', () => {
   assert.match(stockChart, /testID="stock-chart-touch-target"[\s\S]*?onPress=\{handleTouch\}/);
-  assert.match(stockChart, /e\.nativeEvent\.locationX/);
+  assert.match(stockChart, /getLocalPointerCoordinate\(e, 'x'\)/);
+  assert.match(stockChart, /pageCoordinate.*-\s*origin/);
   assert.match(stockChart, /onChartPoint\?\.\(\{/);
   assert.doesNotMatch(stockChart, /<Svg[^>]*onPress=\{handleTouch\}/);
   assert.match(stockChart, /formatHeatMapChartWindow\(firstDate, lastDate\)/);

@@ -31,6 +31,21 @@ export interface ChartTrendLine {
   endPrice: number;
 }
 
+function getLocalPointerCoordinate(event: GestureResponderEvent, axis: 'x' | 'y'): number {
+  const nativeEvent = event.nativeEvent as typeof event.nativeEvent & { pageX?: number; pageY?: number };
+  const localCoordinate = axis === 'x' ? nativeEvent.locationX : nativeEvent.locationY;
+  if (Number.isFinite(localCoordinate)) return localCoordinate;
+
+  const pageCoordinate = axis === 'x' ? nativeEvent.pageX : nativeEvent.pageY;
+  const target = event.currentTarget as unknown as {
+    getBoundingClientRect?: () => { left: number; top: number };
+  };
+  const bounds = target.getBoundingClientRect?.();
+  const origin = axis === 'x' ? bounds?.left : bounds?.top;
+  if (Number.isFinite(pageCoordinate) && Number.isFinite(origin)) return pageCoordinate! - origin!;
+  return 0;
+}
+
 interface Props {
   candles: Candle[];
   showMA20?: boolean;
@@ -138,11 +153,11 @@ export function StockChart({
   // Touch handling
   const handleTouch = useCallback(
     (e: GestureResponderEvent) => {
-      const x = e.nativeEvent.locationX;
+      const x = getLocalPointerCoordinate(e, 'x');
       const i = Math.round(x / xStep);
       const index = Math.max(0, Math.min(n - 1, i));
       setTouched(index);
-      const y = Math.max(0, Math.min(priceH, e.nativeEvent.locationY));
+      const y = Math.max(0, Math.min(priceH, getLocalPointerCoordinate(e, 'y')));
       onChartPoint?.({
         t: candles[index]!.t,
         price: minP + ((priceH - y) / priceH) * range,
