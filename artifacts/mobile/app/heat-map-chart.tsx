@@ -34,15 +34,15 @@ function cleanCandles(rows: unknown): Candle[] {
   }));
 }
 
-function ChartButton({ label, onPress, active, disabled, colors, testID }: {
+function ChartButton({ label, onPress, active, disabled, colors, testID, compact }: {
   label: string; onPress: () => void; active?: boolean; disabled?: boolean;
-  colors: ReturnType<typeof useColors>; testID: string;
+  colors: ReturnType<typeof useColors>; testID: string; compact?: boolean;
 }) {
   return (
     <Pressable testID={testID} accessibilityRole="button" accessibilityState={{ selected: !!active, disabled: !!disabled }}
       disabled={disabled} onPress={onPress}
-      style={[styles.smallButton, { borderColor: active ? colors.primary : colors.border, backgroundColor: active ? colors.primary + '20' : colors.card, opacity: disabled ? 0.45 : 1 }]}>
-      <Text style={[styles.smallButtonText, { color: active ? colors.primary : colors.foreground }]}>{label}</Text>
+      style={[styles.smallButton, compact && styles.rangeButton, { borderColor: active ? colors.primary : colors.border, backgroundColor: active ? colors.primary + '20' : colors.card, opacity: disabled ? 0.45 : 1 }]}>
+      <Text style={[styles.smallButtonText, compact && styles.rangeButtonText, { color: active ? colors.primary : colors.foreground }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -65,6 +65,7 @@ export default function HeatMapChartScreen() {
   const [tickerInput, setTickerInput] = useState('');
   const [tickerError, setTickerError] = useState('');
   const [showLevels, setShowLevels] = useState(false);
+  const [chartMode, setChartMode] = useState<'line' | 'candles'>('line');
   const [drawing, setDrawing] = useState(false);
   const [pendingPoint, setPendingPoint] = useState<{ t: number; price: number } | null>(null);
   const [trendLines, setTrendLines] = useState<HeatMapChartTrendLine[]>([]);
@@ -186,6 +187,11 @@ export default function HeatMapChartScreen() {
     const matching = item.candles.filter((candle) => candle.t >= firstT && candle.t <= lastT);
     return { ...item, visibleCandles: matching };
   }).filter((item) => item.visibleCandles.length > 0);
+  const firstRangeClose = candles[0]?.c;
+  const lastRangeClose = candles[candles.length - 1]?.c;
+  const rangeChange = firstRangeClose && lastRangeClose
+    ? ((lastRangeClose - firstRangeClose) / firstRangeClose) * 100
+    : null;
   const onChartPoint = useCallback((point: { t: number; price: number }) => {
     if (!drawing) return;
     if (!pendingPoint) setPendingPoint(point);
@@ -224,12 +230,23 @@ export default function HeatMapChartScreen() {
               </Text>
               <Text style={[styles.cardTitle, { color: colors.foreground }]}>{symbol}</Text>
             </View>
-            {candles.length > 0 && <Text style={[styles.lastPrice, { color: colors.primary }]}>${candles[candles.length - 1]!.c.toLocaleString('en-US', { maximumFractionDigits: 4 })}</Text>}
+            {candles.length > 0 && <View style={styles.priceSummary}>
+              <Text style={[styles.lastPrice, { color: colors.primary }]}>${candles[candles.length - 1]!.c.toLocaleString('en-US', { maximumFractionDigits: 4 })}</Text>
+              {rangeChange !== null && <Text style={[styles.rangeReturn, { color: rangeChange >= 0 ? colors.buyColor : colors.sellColor }]}>
+                {range.label} {rangeChange >= 0 ? '+' : ''}{rangeChange.toFixed(2)}%
+              </Text>}
+            </View>}
           </View>
-          <View style={styles.controlsRow}>
+          <ScrollView testID="heat-map-chart-range-strip" horizontal showsHorizontalScrollIndicator={false}
+            accessibilityHint="Swipe horizontally to see all history ranges"
+            contentContainerStyle={styles.rangeRow}>
             {CHART_HISTORY_RANGES.map((item, index) => <ChartButton key={item.label} testID={`heat-map-chart-range-${item.label}`}
-              label={item.label} active={rangeIndex === index} colors={colors} onPress={() => { setRangeIndex(index); setZoom(1); setPan(0); }} />)}
-          </View>
+              label={item.label} active={rangeIndex === index} colors={colors} compact onPress={() => { setRangeIndex(index); setZoom(1); setPan(0); }} />)}
+          </ScrollView>
+          {comparisonSlices.length === 0 && <View style={styles.controlsRow}>
+            <ChartButton testID="heat-map-chart-mode-line" label="Line" active={chartMode === 'line'} colors={colors} onPress={() => setChartMode('line')} />
+            <ChartButton testID="heat-map-chart-mode-candles" label="Candles" active={chartMode === 'candles'} colors={colors} onPress={() => setChartMode('candles')} />
+          </View>}
           <View style={styles.controlsRow}>
             <ChartButton testID="heat-map-chart-zoom-in" label="Zoom +" colors={colors} disabled={zoom >= 8 || candles.length < 12} onPress={() => setZoom((value) => Math.min(8, value * 1.5))} />
             <ChartButton testID="heat-map-chart-zoom-out" label="Zoom −" colors={colors} disabled={zoom <= 1} onPress={() => { setZoom((value) => Math.max(1, value / 1.5)); setPan(0); }} />
@@ -250,7 +267,7 @@ export default function HeatMapChartScreen() {
                     width={plotWidth - 8}
                     height={300}
                   />
-                ) : <StockChart candles={visibleCandles} width={plotWidth - 8} height={300} showMA50={false}
+                ) : <StockChart candles={visibleCandles} chartMode={chartMode} width={plotWidth - 8} height={300} showMA50={false}
                   supportLevels={showLevels ? levels.support : []} resistanceLevels={showLevels ? levels.resistance : []}
                   trendLines={trendLines} onChartPoint={onChartPoint} />}
           {!loading && !loadError && candles.length > 0 && (
@@ -336,9 +353,14 @@ const styles = StyleSheet.create({
   eyebrow: { fontFamily: 'Inter_700Bold', letterSpacing: 1, fontSize: 9 },
   cardTitle: { fontFamily: 'Inter_700Bold', fontSize: 17, marginBottom: 6 },
   lastPrice: { fontFamily: 'Inter_700Bold', fontSize: 16 },
+  priceSummary: { alignItems: 'flex-end' },
+  rangeReturn: { fontFamily: 'Inter_600SemiBold', fontSize: 11, marginTop: 2 },
+  rangeRow: { flexDirection: 'row', gap: 7, paddingBottom: 9 },
   controlsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginBottom: 9 },
   smallButton: { minHeight: 34, paddingHorizontal: 10, borderWidth: 1, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   smallButtonText: { fontFamily: 'Inter_600SemiBold', fontSize: 11 },
+  rangeButton: { minHeight: 32, paddingHorizontal: 7 },
+  rangeButtonText: { fontSize: 10 },
   state: { minHeight: 96, gap: 9, alignItems: 'center', justifyContent: 'center', flexDirection: 'row' },
   disclaimer: { fontSize: 11, lineHeight: 16, marginTop: 4, marginBottom: 8 },
   linesList: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(128,128,128,.25)', paddingTop: 8, gap: 6 },

@@ -50,6 +50,17 @@ test('chart tap handling uses a React Native press target for drawing in web pre
   assert.match(stockChart, /formatHeatMapChartWindow\(firstDate, lastDate\)/);
 });
 
+test('range selector stays horizontal, shows selected-range return, and exposes both chart styles', () => {
+  assert.match(chartScreen, /testID="heat-map-chart-range-strip" horizontal/);
+  assert.match(chartScreen, /rangeChange\.toFixed\(2\)/);
+  assert.match(chartScreen, /testID="heat-map-chart-mode-line"/);
+  assert.match(chartScreen, /testID="heat-map-chart-mode-candles"/);
+  assert.match(chartScreen, /chartMode=\{chartMode\}/);
+  assert.match(stockChart, /chartMode === 'candles' \? candles\.map/);
+  assert.match(stockChart, /py\(candle\.h\)/);
+  assert.match(stockChart, /py\(candle\.l\)/);
+});
+
 test('unsupported primary symbols and unavailable comparisons have isolated, clear states', () => {
   assert.match(chartScreen, /No historical prices are available for \{symbol\}\./);
   assert.match(chartScreen, /No history available for \{item\.symbol\}\. Your main chart is unchanged\./);

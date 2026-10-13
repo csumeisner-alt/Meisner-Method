@@ -48,6 +48,7 @@ function getLocalPointerCoordinate(event: GestureResponderEvent, axis: 'x' | 'y'
 
 interface Props {
   candles: Candle[];
+  chartMode?: 'line' | 'candles';
   showMA20?: boolean;
   showMA50?: boolean;
   showMA200?: boolean;
@@ -70,6 +71,7 @@ function fmtPrice(p: number) {
 
 export function StockChart({
   candles,
+  chartMode = 'line',
   showMA20 = false,
   showMA50 = true,
   showMA200 = false,
@@ -92,7 +94,7 @@ export function StockChart({
   const xStep = chartW / Math.max(n - 1, 1);
 
   // Price domain
-  const prices = candles.map((c) => c.c);
+  const prices = candles.flatMap((c) => chartMode === 'candles' ? [c.l, c.h] : [c.c]);
   const allMaVals = [
     ...(showMA20 ? candles.map((c) => c.ma20).filter((v): v is number => v != null) : []),
     ...(showMA50 ? candles.map((c) => c.ma50).filter((v): v is number => v != null) : []),
@@ -270,8 +272,21 @@ export function StockChart({
           />
         )}
 
-        {/* Price line */}
-        <Path d={pricePath} stroke="#c0c0c0" strokeWidth={1.8} fill="none" />
+        {chartMode === 'candles' ? candles.map((candle, i) => {
+          const up = candle.c >= candle.o;
+          const color = up ? '#00e5a0' : '#ff3b3b';
+          const bodyWidth = Math.max(1.2, Math.min(xStep * 0.68, 8));
+          const bodyTop = Math.min(py(candle.o), py(candle.c));
+          const bodyHeight = Math.max(1, Math.abs(py(candle.o) - py(candle.c)));
+          return (
+            <G key={`candle-${i}`}>
+              <Line x1={px(i)} y1={py(candle.h)} x2={px(i)} y2={py(candle.l)}
+                stroke={color} strokeWidth={1} />
+              <Rect x={px(i) - bodyWidth / 2} y={bodyTop} width={bodyWidth} height={bodyHeight}
+                fill={color} stroke={color} strokeWidth={1} />
+            </G>
+          );
+        }) : <Path d={pricePath} stroke="#c0c0c0" strokeWidth={1.8} fill="none" />}
 
         {supportLevels.map((level) => (
           <G key={`support-${level}`}>
