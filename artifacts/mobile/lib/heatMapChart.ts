@@ -58,6 +58,47 @@ export function buildChartHistoryUrl(symbol: string, range: ChartHistoryRange): 
   return `/api/stocks/chart/${encodeURIComponent(symbol)}?period=${range.period}&interval=${range.interval}`;
 }
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function parseChartDate(date: string): { year: number; month: number; day: number; weekday: number } | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(date);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const timestamp = Date.UTC(year, month - 1, day);
+  const parsed = new Date(timestamp);
+  if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month - 1 || parsed.getUTCDate() !== day) return null;
+  return { year, month, day, weekday: parsed.getUTCDay() };
+}
+
+export function formatHeatMapChartAxisDate(date: string, spanDays: number): string {
+  const parsed = parseChartDate(date);
+  if (!parsed) return date;
+  const month = MONTHS[parsed.month - 1]!;
+  if (spanDays <= 10) return `${WEEKDAYS[parsed.weekday]} ${parsed.day}`;
+  if (spanDays <= 120) return `${month} ${parsed.day}`;
+  return `${month} '${String(parsed.year).slice(-2)}`;
+}
+
+export function formatHeatMapChartFullDate(date: string): string {
+  const parsed = parseChartDate(date);
+  if (!parsed) return date;
+  return `${MONTHS[parsed.month - 1]} ${parsed.day}, ${parsed.year}`;
+}
+
+export function formatHeatMapChartWindow(startDate: string, endDate: string): string {
+  const start = parseChartDate(startDate);
+  const end = parseChartDate(endDate);
+  if (!start || !end) return '';
+  const startLabel = `${MONTHS[start.month - 1]} ${start.day}`;
+  const endLabel = `${MONTHS[end.month - 1]} ${end.day}`;
+  return start.year === end.year
+    ? `${startLabel} – ${endLabel}, ${end.year}`
+    : `${startLabel}, ${start.year} – ${endLabel}, ${end.year}`;
+}
+
 export function detectHeatMapPriceLevels(bars: readonly PriceBar[]): PriceLevels {
   if (bars.length < 5) return { support: [], resistance: [] };
 

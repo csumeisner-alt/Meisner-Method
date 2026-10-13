@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 const chartScreen = readFileSync(new URL('../app/heat-map-chart.tsx', import.meta.url), 'utf8');
 const heatMapScreen = readFileSync(new URL('../app/heat-map.tsx', import.meta.url), 'utf8');
 const chartHistoryLib = readFileSync(new URL('../lib/heatMapChart.ts', import.meta.url), 'utf8');
+const stockChart = readFileSync(new URL('../components/StockChart.tsx', import.meta.url), 'utf8');
 const stocksRoute = readFileSync(new URL('../../api-server/src/routes/stocks.ts', import.meta.url), 'utf8');
 
 test('primary and comparison history requests share the selected range URL builder', () => {
@@ -38,6 +39,14 @@ test('comparison chart occupies the primary chart card instead of a second chart
   const compareForm = chartScreen.slice(chartScreen.indexOf('>Compare instruments'));
   assert.ok(compareForm.length > 0, 'the comparison controls should remain available');
   assert.doesNotMatch(compareForm, /<ComparisonChart/);
+});
+
+test('chart tap handling uses a React Native press target for drawing in web preview', () => {
+  assert.match(stockChart, /testID="stock-chart-touch-target"[\s\S]*?onPress=\{handleTouch\}/);
+  assert.match(stockChart, /e\.nativeEvent\.locationX/);
+  assert.match(stockChart, /onChartPoint\?\.\(\{/);
+  assert.doesNotMatch(stockChart, /<Svg[^>]*onPress=\{handleTouch\}/);
+  assert.match(stockChart, /formatHeatMapChartWindow\(firstDate, lastDate\)/);
 });
 
 test('unsupported primary symbols and unavailable comparisons have isolated, clear states', () => {

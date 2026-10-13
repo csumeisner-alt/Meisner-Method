@@ -1,9 +1,14 @@
 import React, { useState, useCallback } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import Svg, {
   Path, Line, Rect, Text as SvgText, Circle, G,
 } from 'react-native-svg';
 import type { GestureResponderEvent } from 'react-native';
+import {
+  formatHeatMapChartAxisDate,
+  formatHeatMapChartFullDate,
+  formatHeatMapChartWindow,
+} from '@/lib/heatMapChart';
 
 export interface Candle {
   t: number;
@@ -39,7 +44,7 @@ interface Props {
   onChartPoint?: (point: { t: number; price: number }) => void;
 }
 
-const PAD = { top: 16, right: 52, bottom: 36, left: 4 };
+const PAD = { top: 16, right: 52, bottom: 42, left: 4 };
 const VOL_RATIO = 0.18;
 
 function fmtPrice(p: number) {
@@ -116,25 +121,31 @@ export function StockChart({
     y: PAD.top + priceH * (1 - t),
   }));
 
-  // X-axis labels (4 evenly spaced)
+  // X-axis labels use readable calendar context rather than numeric month-day fragments.
   const xLabelCount = Math.min(5, n);
+  const firstDate = candles[0]?.date ?? '';
+  const lastDate = candles[n - 1]?.date ?? '';
+  const spanDays = firstDate && lastDate
+    ? (Date.parse(`${lastDate}T00:00:00Z`) - Date.parse(`${firstDate}T00:00:00Z`)) / 86_400_000
+    : 0;
   const xLabels = Array.from({ length: xLabelCount }, (_, i) => {
     const idx = Math.round((i / Math.max(xLabelCount - 1, 1)) * (n - 1));
     const d = candles[idx]?.date ?? '';
-    return { idx, label: d.slice(5) }; // MM-DD
+    return { idx, label: formatHeatMapChartAxisDate(d, spanDays) };
   });
+  const dateWindow = formatHeatMapChartWindow(firstDate, lastDate);
 
   // Touch handling
   const handleTouch = useCallback(
     (e: GestureResponderEvent) => {
-      const x = e.nativeEvent.locationX - PAD.left;
+      const x = e.nativeEvent.locationX;
       const i = Math.round(x / xStep);
       const index = Math.max(0, Math.min(n - 1, i));
       setTouched(index);
-      const y = Math.max(PAD.top, Math.min(PAD.top + priceH, e.nativeEvent.locationY));
+      const y = Math.max(0, Math.min(priceH, e.nativeEvent.locationY));
       onChartPoint?.({
         t: candles[index]!.t,
-        price: minP + ((PAD.top + priceH - y) / priceH) * range,
+        price: minP + ((priceH - y) / priceH) * range,
       });
     },
     [xStep, n, candles, onChartPoint, minP, range, priceH]
@@ -145,12 +156,10 @@ export function StockChart({
   if (n === 0) return null;
 
   return (
-    <View style={{ width, height }}>
+      <View style={{ width, height, position: 'relative' }}>
       <Svg
         width={width}
         height={height}
-        onPress={handleTouch}
-        onPressOut={() => setTouched(null)}
       >
         {/* Grid lines */}
         {yTicks.map(({ y }, i) => (
@@ -183,15 +192,24 @@ export function StockChart({
         {xLabels.map(({ idx, label }) => (
           <SvgText
             key={idx}
-            x={px(idx)}
-            y={height - 4}
+            x={idx === 0 ? PAD.left : idx === n - 1 ? PAD.left + chartW : px(idx)}
+            y={height - 18}
             fontSize={9}
             fill="rgba(192,192,192,0.45)"
-            textAnchor="middle"
+            textAnchor={idx === 0 ? 'start' : idx === n - 1 ? 'end' : 'middle'}
           >
             {label}
           </SvgText>
         ))}
+        <SvgText
+          x={PAD.left + chartW / 2}
+          y={height - 3}
+          fontSize={8}
+          fill="rgba(192,192,192,0.58)"
+          textAnchor="middle"
+        >
+          {dateWindow}
+        </SvgText>
 
         {/* Volume bars */}
         {candles.map((c, i) => {
@@ -304,11 +322,25 @@ export function StockChart({
               fill="#c0c0c0"
               textAnchor="middle"
             >
-              {touchCandle.date}
+              {formatHeatMapChartFullDate(touchCandle.date)}
             </SvgText>
           </G>
         )}
       </Svg>
+      <Pressable
+        testID="stock-chart-touch-target"
+        accessibilityRole="button"
+        accessibilityLabel="Inspect chart or place a trend-line point"
+        onPress={handleTouch}
+        style={{
+          position: 'absolute',
+          left: PAD.left,
+          top: PAD.top,
+          width: chartW,
+          height: priceH,
+          backgroundColor: 'transparent',
+        }}
+      />
     </View>
   );
 }

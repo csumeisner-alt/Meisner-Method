@@ -20,6 +20,11 @@ import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Svg, { Path, Line, Text as SvgText, Circle, G, Rect } from 'react-native-svg';
 import type { GestureResponderEvent } from 'react-native';
 import type { Candle } from './StockChart';
+import {
+  formatHeatMapChartAxisDate,
+  formatHeatMapChartFullDate,
+  formatHeatMapChartWindow,
+} from '@/lib/heatMapChart';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -29,7 +34,7 @@ const COMP2_COLOR = '#c084fc';
 const GRID_COLOR    = 'rgba(192,192,192,0.07)';
 const AXIS_COLOR    = 'rgba(192,192,192,0.40)';
 const BG_BUBBLE     = '#1c1c1c';
-const PAD = { top: 20, right: 60, bottom: 30, left: 6 };
+const PAD = { top: 20, right: 60, bottom: 42, left: 6 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -57,10 +62,6 @@ function fmtAxisValue(v: number, mode: ChartMode): string {
   return mode === 'percent'
     ? `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`
     : fmtPrice(v);
-}
-
-function fmtDate(d: string): string {
-  return d.length >= 7 ? d.slice(5) : d; // MM-DD
 }
 
 function clamp(v: number, lo: number, hi: number): number {
@@ -197,12 +198,18 @@ export function ComparisonChart({
 
   // X-axis labels (primary, up to 5)
   const xLabelCount = Math.min(5, nPrim);
+  const firstDate = primaryCandles[0]?.date ?? '';
+  const lastDate = primaryCandles[nPrim - 1]?.date ?? '';
+  const spanDays = firstDate && lastDate
+    ? (Date.parse(`${lastDate}T00:00:00Z`) - Date.parse(`${firstDate}T00:00:00Z`)) / 86_400_000
+    : 0;
   const xLabels = nPrim > 0
     ? Array.from({ length: xLabelCount }, (_, i) => {
         const idx = Math.round((i / Math.max(xLabelCount - 1, 1)) * (nPrim - 1));
-        return { x: pxPrim(idx), label: fmtDate(primaryCandles[idx]?.date ?? '') };
+        return { idx, x: pxPrim(idx), label: formatHeatMapChartAxisDate(primaryCandles[idx]?.date ?? '', spanDays) };
       })
     : [];
+  const dateWindow = formatHeatMapChartWindow(firstDate, lastDate);
 
   // Touch — snap to nearest primary candle
   const xStep = nPrim <= 1 ? chartW : chartW / (nPrim - 1);
@@ -323,9 +330,12 @@ export function ComparisonChart({
         ))}
 
         {/* X-axis labels */}
-        {xLabels.map(({ x, label }, i) => (
-          <SvgText key={i} x={x} y={height - 4}
-            fontSize={9} fill={AXIS_COLOR} textAnchor="middle">
+        {xLabels.map(({ idx, x, label }) => (
+          <SvgText key={idx}
+            x={idx === 0 ? PAD.left : idx === nPrim - 1 ? PAD.left + chartW : x}
+            y={height - 18}
+            fontSize={9} fill={AXIS_COLOR}
+            textAnchor={idx === 0 ? 'start' : idx === nPrim - 1 ? 'end' : 'middle'}>
             {label}
           </SvgText>
         ))}
@@ -435,13 +445,22 @@ export function ComparisonChart({
             {/* Date label at bottom */}
             <SvgText
               x={clamp(pxPrim(touched), PAD.left + 30, PAD.left + chartW - 30)}
-              y={PAD.top + chartH + 14}
+              y={height - 18}
               fontSize={9} fill={AXIS_COLOR} textAnchor="middle"
             >
-              {fmtDate(primaryCandles[touched]?.date ?? '')}
+              {formatHeatMapChartFullDate(primaryCandles[touched]?.date ?? '')}
             </SvgText>
           </G>
         )}
+        <SvgText
+          x={PAD.left + chartW / 2}
+          y={height - 3}
+          fontSize={8}
+          fill={AXIS_COLOR}
+          textAnchor="middle"
+        >
+          {dateWindow}
+        </SvgText>
       </Svg>
     </View>
   );
