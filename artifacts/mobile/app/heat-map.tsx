@@ -52,7 +52,11 @@ import {
   HEAT_MAP_REGULAR_SESSION_REFRESH_INTERVAL_MS, isDisplayableHeatMapQuote,
   shouldRefreshCryptoHeatMapOnResume, shouldRefreshHeatMapOnForegroundCadence,
 } from '@/lib/heatMapQuoteDisplay';
-import { MAX_CUSTOM_HEAT_MAP_SYMBOLS, normalizeCustomHeatMapSymbols } from '@/lib/heatMapSymbols';
+import {
+  CUSTOM_HEAT_MAP_ASSETS, CUSTOM_HEAT_MAP_ASSET_TYPES,
+  MAX_CUSTOM_HEAT_MAP_SYMBOLS, normalizeCustomHeatMapSymbols,
+  type CustomHeatMapAssetType,
+} from '@/lib/heatMapSymbols';
 import {
   getStockSearchFeedback, getStockSearchQueryFromKey, isStockSearchCurrent,
 } from '@/lib/stockSearch';
@@ -194,7 +198,7 @@ function HexTile({ quote, width, height, colors, period, category, editing, redu
   const largerTickerLabel = LARGE_TICKER_LABEL_CATEGORIES.has(category);
   const label = available ? `${value! > 0 ? '+' : ''}${value!.toFixed(2)}%` : 'Unavailable';
   const instrument = getHeatMapInstrumentDisplay(quote);
-  const cryptoLogoCode = category === 'cryptocurrency'
+  const cryptoLogoCode = quote.assetType === 'cryptocurrency'
     ? getHeatMapCryptoLogoCode(quote.symbol)
     : null;
   const session = getHeatMapSessionLabel(quote.marketSession);
@@ -527,6 +531,7 @@ export default function HeatMapScreen() {
   const [removingSymbol, setRemovingSymbol] = useState<string | null>(null);
   const [lastRemovedTicker, setLastRemovedTicker] = useState<{ symbol: string; index: number } | null>(null);
   const [symbolInput, setSymbolInput] = useState('');
+  const [customAssetType, setCustomAssetType] = useState<CustomHeatMapAssetType>('stocks');
   const [debouncedSymbolSearch, setDebouncedSymbolSearch] = useState('');
   const [formError, setFormError] = useState('');
   const [nowSeconds, setNowSeconds] = useState(() => Date.now() / 1000);
@@ -549,7 +554,7 @@ export default function HeatMapScreen() {
     {
       query: {
         queryKey: symbolSearchQueryKey,
-        enabled: category === 'custom' && debouncedSymbolSearch.length >= 2,
+        enabled: category === 'custom' && customAssetType === 'stocks' && debouncedSymbolSearch.length >= 2,
         staleTime: 45_000,
       },
     },
@@ -612,6 +617,7 @@ export default function HeatMapScreen() {
   });
   const searchText = symbolInput.trim();
   const isCustomSearchInput = category === 'custom'
+    && customAssetType === 'stocks'
     && searchText.length >= 2
     && !validateSymbol.isPending;
   const searchResultQuery = getStockSearchQueryFromKey(stockSearch.queryKey);
@@ -632,6 +638,14 @@ export default function HeatMapScreen() {
         suggestionCount: customSuggestions.length,
       })
     : null;
+  const customAssetChoices = customAssetType === 'stocks'
+    ? []
+    : CUSTOM_HEAT_MAP_ASSETS[customAssetType].filter((asset) => {
+        const query = searchText.toLocaleLowerCase();
+        return !query
+          || asset.symbol.toLocaleLowerCase().includes(query)
+          || asset.name.toLocaleLowerCase().includes(query);
+      });
   const params = useMemo(() => ({
     category,
     period,
@@ -964,7 +978,9 @@ export default function HeatMapScreen() {
         setLastRemovedTicker(null);
       }
       setSymbolInput('');
-    } catch { setFormError(`We couldn't validate ${symbol}. Check the ticker and try again.`); }
+    } catch {
+      setFormError(`No supported current quote was found for ${symbol}. Check the symbol or choose a supported pick and try again.`);
+    }
   }
   async function removeSymbol(symbol: string) {
     if (removeInProgress.current) return;
@@ -1150,7 +1166,7 @@ export default function HeatMapScreen() {
                 <Text style={[styles.editButtonText, { color: colors.primary }]}>{isEditingCustomMap ? 'Done' : 'Edit'}</Text>
               </TouchableOpacity>}
             </View>
-            <Text style={[styles.customHint, { color: colors.mutedForeground }]}>Compare validated tickers. {customSymbols.length}/{MAX_CUSTOM_HEAT_MAP_SYMBOLS}; saved on this device.</Text>
+            <Text style={[styles.customHint, { color: colors.mutedForeground }]}>Build a mixed map of stocks, ETFs, commodities, futures, and crypto. {customSymbols.length}/{MAX_CUSTOM_HEAT_MAP_SYMBOLS}; saved on this device.</Text>
             {lastRemovedTicker && <View testID="heat-map-custom-undo-banner" style={[styles.undoBanner, { backgroundColor: colors.background, borderColor: colors.border }]}>
               <Text style={[styles.undoMessage, { color: colors.foreground }]}>{lastRemovedTicker.symbol} removed</Text>
               <TouchableOpacity
@@ -1165,14 +1181,68 @@ export default function HeatMapScreen() {
                 <Text style={[styles.undoButtonText, { color: colors.primary }]}>Undo</Text>
               </TouchableOpacity>
             </View>}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.customAssetTypeRail} contentContainerStyle={styles.customAssetTypeOptions}>
+              {CUSTOM_HEAT_MAP_ASSET_TYPES.map((assetType) => {
+                const selected = customAssetType === assetType.id;
+                return <TouchableOpacity
+                  key={assetType.id}
+                  testID={`heat-map-custom-type-${assetType.id}`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  onPress={() => {
+                    setCustomAssetType(assetType.id);
+                    setSymbolInput('');
+                    setFormError('');
+                  }}
+                  style={[
+                    styles.customAssetTypeOption,
+                    { borderColor: selected ? colors.primary : colors.border, backgroundColor: selected ? colors.primary : colors.background },
+                  ]}
+                >
+                  <Text style={[styles.customAssetTypeText, { color: selected ? colors.primaryForeground : colors.foreground }]}>{assetType.label}</Text>
+                </TouchableOpacity>;
+              })}
+            </ScrollView>
+            <Text style={[styles.searchHint, styles.customAssetTypeHint, { color: colors.mutedForeground }]}>
+              {customAssetType === 'stocks'
+                ? 'Search companies or enter a stock ticker.'
+                : `Browse supported ${CUSTOM_HEAT_MAP_ASSET_TYPES.find((item) => item.id === customAssetType)?.label.toLowerCase()} or enter a ticker.`}
+            </Text>
             <View style={styles.addRow}><TextInput testID="heat-map-custom-input" value={symbolInput} editable={storageReady && !storageLoadError} onFocus={() => setIsEditingCustomMap(false)} onChangeText={(value) => { setSymbolInput(value); setFormError(''); }}
-              placeholder="Ticker or company name" placeholderTextColor={colors.mutedForeground} autoCapitalize="none" autoCorrect={false} maxLength={80}
+              placeholder={customAssetType === 'stocks' ? 'Company name or ticker' : 'Search name or enter ticker'} placeholderTextColor={colors.mutedForeground} autoCapitalize="none" autoCorrect={false} maxLength={80}
               returnKeyType="done" onSubmitEditing={() => void addSymbol()} style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.input }]} />
               <TouchableOpacity testID="heat-map-custom-add" accessibilityRole="button" accessibilityLabel="Validate and add ticker"
                 disabled={!canAddCustomSymbol} onPress={() => void addSymbol()}
                 style={[styles.addButton, { backgroundColor: colors.primary, opacity: canAddCustomSymbol ? 1 : 0.55 }]}>
                 {validateSymbol.isPending ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <MaterialCommunityIcons name="plus" size={20} color={colors.primaryForeground} />}
               </TouchableOpacity></View>
+            {customAssetType !== 'stocks' && <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={[styles.suggestionsPanel, { backgroundColor: colors.background, borderColor: colors.border }]}
+              contentContainerStyle={styles.customAssetChoices}
+              testID="heat-map-custom-asset-choices"
+            >
+              {customAssetChoices.map((asset) => {
+                const alreadyAdded = customSymbols.includes(asset.symbol);
+                return <TouchableOpacity
+                  key={asset.symbol}
+                  testID={`heat-map-custom-pick-${asset.symbol}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${alreadyAdded ? 'Already added' : 'Add'} ${asset.name}, ${asset.symbol}, ${CUSTOM_HEAT_MAP_ASSET_TYPES.find((item) => item.id === customAssetType)?.label}`}
+                  disabled={alreadyAdded || validateSymbol.isPending || customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS}
+                  onPress={() => void addSymbol(asset.symbol)}
+                  style={[
+                    styles.customAssetChoice,
+                    { borderColor: alreadyAdded ? colors.border : colors.primary, backgroundColor: alreadyAdded ? colors.secondary : colors.card, opacity: alreadyAdded ? 0.65 : 1 },
+                  ]}
+                >
+                  <Text numberOfLines={1} style={[styles.customAssetChoiceName, { color: colors.foreground }]}>{asset.name}</Text>
+                  <Text style={[styles.customAssetChoiceSymbol, { color: colors.primary }]}>{alreadyAdded ? 'Added' : asset.symbol}</Text>
+                </TouchableOpacity>;
+              })}
+              {customAssetChoices.length === 0 && <Text style={[styles.searchHint, { color: colors.mutedForeground }]}>No supported picks match. You can still try entering the ticker above.</Text>}
+            </ScrollView>}
             {isCustomSearchInput && <View testID="heat-map-custom-suggestions" style={[styles.suggestionsPanel, { backgroundColor: colors.background, borderColor: colors.border }]}>
               {customSuggestions.map((suggestion, index) => <TouchableOpacity
                 key={suggestion.symbol}
@@ -1486,6 +1556,15 @@ const styles = StyleSheet.create({
   customHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   sectionTitle: { fontFamily: 'Inter_700Bold', fontSize: 15 },
   customHint: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 4 },
+  customAssetTypeRail: { marginTop: 12, flexGrow: 0 },
+  customAssetTypeOptions: { gap: 7, paddingRight: 2 },
+  customAssetTypeOption: { minHeight: 31, borderWidth: 1, borderRadius: 16, paddingHorizontal: 11, alignItems: 'center', justifyContent: 'center' },
+  customAssetTypeText: { fontFamily: 'Inter_600SemiBold', fontSize: 10 },
+  customAssetTypeHint: { marginTop: 2, paddingHorizontal: 0, paddingVertical: 5 },
+  customAssetChoices: { gap: 7, padding: 8 },
+  customAssetChoice: { width: 136, minHeight: 54, borderWidth: 1, borderRadius: 9, paddingHorizontal: 9, paddingVertical: 7, justifyContent: 'center' },
+  customAssetChoiceName: { fontFamily: 'Inter_600SemiBold', fontSize: 10 },
+  customAssetChoiceSymbol: { fontFamily: 'Inter_700Bold', fontSize: 9, marginTop: 4 },
   storageReadError: { alignItems: 'flex-start', gap: 2 },
   undoBanner: { minHeight: 40, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, marginTop: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   undoMessage: { flex: 1, fontFamily: 'Inter_500Medium', fontSize: 11 },

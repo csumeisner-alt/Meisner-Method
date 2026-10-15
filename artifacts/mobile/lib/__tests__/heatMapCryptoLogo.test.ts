@@ -35,10 +35,10 @@ test("every supported cryptocurrency resolves to a locally bundled logo", () => 
   }
 });
 
-test("only the cryptocurrency category renders its mapped logo above the ticker", () => {
+test("cryptocurrency tiles in either category view or a custom map render mapped logos", () => {
   assert.match(
     screenSource,
-    /category === 'cryptocurrency'\s*\?\s*getHeatMapCryptoLogoCode\(quote\.symbol\)\s*:\s*null/,
+    /quote\.assetType === 'cryptocurrency'\s*\?\s*getHeatMapCryptoLogoCode\(quote\.symbol\)\s*:\s*null/,
   );
   assert.match(screenSource, /<HeatMapCryptoLogo[\s\S]*?code=\{cryptoLogoCode\}/);
   assert.match(screenSource, /testID=\{`heat-map-crypto-symbol-\$\{quote\.symbol\}`\}/);

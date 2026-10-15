@@ -64,7 +64,8 @@ test("heat-map queries and renders only the active category, period, and custom 
   assert.match(screenSource, /testID=\{`heat-map-period-\$\{item\.id\}`\}/);
   assert.match(screenSource, /heat-map-drawer-period-/);
   assert.match(screenSource, /heat-map-selected-period/);
-  assert.doesNotMatch(screenSource, /categoryRail|ScrollView horizontal/);
+  assert.match(screenSource, /testID=\{`heat-map-custom-type-\$\{assetType\.id\}`\}/);
+  assert.match(screenSource, /testID="heat-map-custom-asset-choices"/);
 });
 
 test("heat-map keeps the six-hex loader for an incomplete quick snapshot", () => {
@@ -133,14 +134,17 @@ test("stock sector selection offers all supported sectors and requests matching 
   assert.match(screenSource, /requestedSector,\s*\);/);
 });
 
-test("custom heat-map search offers company suggestions and adds a selected ticker through validation", () => {
+test("custom heat-map search offers company and category-aware asset suggestions before validation", () => {
   assert.match(screenSource, /useSearchStockSymbols/);
+  assert.match(screenSource, /CUSTOM_HEAT_MAP_ASSET_TYPES\.map/);
+  assert.match(screenSource, /CUSTOM_HEAT_MAP_ASSETS\[customAssetType\]/);
   assert.match(screenSource, /getSearchStockSymbolsQueryKey\(\{ q: debouncedSymbolSearch \}\)/);
   assert.match(screenSource, /getStockSearchQueryFromKey\(stockSearch\.queryKey\)/);
   assert.match(screenSource, /isStockSearchCurrent\(\{/);
-  assert.match(screenSource, /placeholder="Ticker or company name"/);
+  assert.match(screenSource, /placeholder=\{customAssetType === 'stocks' \? 'Company name or ticker' : 'Search name or enter ticker'\}/);
   assert.match(screenSource, /\{suggestion\.name\}/);
   assert.match(screenSource, /\{suggestion\.symbol\}/);
+  assert.match(screenSource, /onPress=\{\(\) => void addSymbol\(asset\.symbol\)\}/);
   assert.match(screenSource, /onPress=\{\(\) => void addSymbol\(suggestion\.symbol\)\}/);
   assert.match(screenSource, /validateSymbol\.mutateAsync\(\{ data: \{ symbol \} \}\)/);
   assert.match(screenSource, /keyboardShouldPersistTaps="handled"/);
