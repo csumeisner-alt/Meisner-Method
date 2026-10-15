@@ -366,18 +366,22 @@ export function useGetCryptoSupplyHistory(
   }, [state]);
   const override = state.cryptoSupplyHistoryOverrides[symbol];
   const queryKey = `${symbol}:${rangeDays}`;
+  const historyDate = (daysAgo: number) => new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10);
+  const oldestDate = historyDate(3);
+  const middleDate = historyDate(2);
+  const latestDate = historyDate(0);
   const defaultData = {
     symbol,
     provider: "Coin Metrics",
     metric: "SplyCur",
     rangeDays,
     interval: "daily",
-    startDate: "2026-10-03",
-    endDate: "2026-10-06",
+    startDate: oldestDate,
+    endDate: latestDate,
     points: [
-      { date: "2026-10-03", supply: 19_876_500 },
-      { date: "2026-10-04", supply: 19_876_543.123456 },
-      { date: "2026-10-06", supply: 19_876_600.5 },
+      { date: oldestDate, supply: 19_876_500 },
+      { date: middleDate, supply: 19_876_543.123456 },
+      { date: latestDate, supply: 19_876_600.5 },
     ],
   };
   const enabled = !!options?.query?.enabled;

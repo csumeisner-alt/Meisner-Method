@@ -264,6 +264,15 @@ async function setDetailResponses(browser, responses) {
 }
 
 test("heat-map drawer interaction, late responses, and narrow-phone layout render correctly", async () => {
+  const historyDate = (daysAgo) => new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10);
+  const historyDates = {
+    oldest: historyDate(3),
+    selected: historyDate(2),
+    gap: historyDate(1),
+    latest: historyDate(0),
+  };
+  const selectedHistoryDateLabel = new Date(`${historyDates.selected}T00:00:00Z`)
+    .toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
   const bundle = await buildScreenBundle();
   const server = createServer((request, response) => {
     if (request.url === "/bundle.js") {
@@ -2232,19 +2241,19 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     assert.match(discrepancyText, /Both values are preserved as reported/);
     await waitFor(
       (expression) => browser.evaluate(expression),
-      `!!document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-point-2026-10-04"))})`,
+      `!!document.querySelector(${JSON.stringify(selector(`heat-map-crypto-supply-point-${historyDates.selected}`))})`,
       "the supply chart should expose controls for its reported observations.",
     );
     assert.equal(
-      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-point-2026-10-05"))}) === null`),
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector(`heat-map-crypto-supply-point-${historyDates.gap}`))}) === null`),
       true,
       "a date with no provider observation must not be selectable.",
     );
     const supplyPointButton = await browser.evaluate(
-      `document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-point-2026-10-04"))})?.getAttribute("aria-label")`,
+      `document.querySelector(${JSON.stringify(selector(`heat-map-crypto-supply-point-${historyDates.selected}`))})?.getAttribute("aria-label")`,
     );
-    assert.match(supplyPointButton, /Oct 4, 2026: 19,876,543\.123456/);
-    await clickTestID(browser, "heat-map-crypto-supply-point-2026-10-04");
+    assert.ok(supplyPointButton.includes(`${selectedHistoryDateLabel}: 19,876,543.123456`));
+    await clickTestID(browser, `heat-map-crypto-supply-point-${historyDates.selected}`);
     await waitFor(
       (expression) => browser.evaluate(expression),
       `document.querySelector(${JSON.stringify(selector("heat-map-crypto-supply-selected-value"))})?.textContent === "19,876,543.123456"`,
@@ -2264,11 +2273,11 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     );
     await browser.evaluate(`window.__heatMapBrowserTest.setCryptoSupplyHistoryOverride("BTC-USD", { type: "resolve", payload: {
       symbol: "BTC-USD", provider: "Coin Metrics", metric: "SplyCur", rangeDays: 365, interval: "daily",
-      startDate: "2026-10-03", endDate: "2026-10-06",
+      startDate: ${JSON.stringify(historyDates.oldest)}, endDate: ${JSON.stringify(historyDates.latest)},
       points: [
-        { date: "2026-10-03", supply: 19_876_500 },
-        { date: "2026-10-04", supply: 19_876_543.123456 },
-        { date: "2026-10-06", supply: 19_876_600.5 },
+        { date: ${JSON.stringify(historyDates.oldest)}, supply: 19_876_500 },
+        { date: ${JSON.stringify(historyDates.selected)}, supply: 19_876_543.123456 },
+        { date: ${JSON.stringify(historyDates.latest)}, supply: 19_876_600.5 },
       ],
     } })`);
     await browser.evaluate(`window.__heatMapBrowserTest.setCryptoSupplyHistoryOverride("BTC-USD", { type: "pending" })`);
@@ -2292,11 +2301,11 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     );
     await browser.evaluate(`window.__heatMapBrowserTest.setCryptoSupplyHistoryOverride("BTC-USD", { type: "resolve", payload: {
       symbol: "BTC-USD", provider: "Coin Metrics", metric: "SplyCur", rangeDays: 365, interval: "daily",
-      startDate: "2026-10-03", endDate: "2026-10-06",
+      startDate: ${JSON.stringify(historyDates.oldest)}, endDate: ${JSON.stringify(historyDates.latest)},
       points: [
-        { date: "2026-10-03", supply: 19_876_500 },
-        { date: "2026-10-04", supply: 19_876_543.123456 },
-        { date: "2026-10-06", supply: 19_876_600.5 },
+        { date: ${JSON.stringify(historyDates.oldest)}, supply: 19_876_500 },
+        { date: ${JSON.stringify(historyDates.selected)}, supply: 19_876_543.123456 },
+        { date: ${JSON.stringify(historyDates.latest)}, supply: 19_876_600.5 },
       ],
     } })`);
     await browser.evaluate(`window.__heatMapBrowserTest.setCryptoSupplyHistoryOverride("BTC-USD", { type: "pending" })`);
@@ -2350,8 +2359,8 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     );
     await browser.evaluate(`window.__heatMapBrowserTest.setCryptoSupplyHistoryOverride("BTC-USD", { type: "resolve", payload: {
       symbol: "BTC-USD", provider: "Coin Metrics", metric: "SplyCur", rangeDays: 365, interval: "daily",
-      startDate: "2026-10-06", endDate: "2026-10-06",
-      points: [{ date: "2026-10-06", supply: 987_654_321.123 }],
+      startDate: ${JSON.stringify(historyDates.latest)}, endDate: ${JSON.stringify(historyDates.latest)},
+      points: [{ date: ${JSON.stringify(historyDates.latest)}, supply: 987_654_321.123 }],
     } })`);
     await delay(50);
     assert.equal(
@@ -2378,8 +2387,8 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
 
     await browser.evaluate(`window.__heatMapBrowserTest.setCryptoSupplyHistoryOverride("ETH-USD", { type: "resolve", payload: {
       symbol: "ETH-USD", provider: "Coin Metrics", metric: "SplyCur", rangeDays: 365, interval: "daily",
-      startDate: "2026-10-06", endDate: "2026-10-06",
-      points: [{ date: "2026-10-06", supply: 10_000_000 }],
+      startDate: ${JSON.stringify(historyDates.latest)}, endDate: ${JSON.stringify(historyDates.latest)},
+      points: [{ date: ${JSON.stringify(historyDates.latest)}, supply: 10_000_000 }],
     } })`);
     await waitFor(
       (expression) => browser.evaluate(expression),
