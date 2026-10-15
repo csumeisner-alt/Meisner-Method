@@ -5,6 +5,7 @@ import {
   CUSTOM_HEAT_MAP_ASSET_TYPES,
   MAX_CUSTOM_HEAT_MAP_SYMBOLS,
   normalizeCustomHeatMapSymbols,
+  searchCustomHeatMapAssets,
 } from "../heatMapSymbols.ts";
 
 test("saved custom symbols are uppercased, validated, and deduplicated", () => {
@@ -35,4 +36,17 @@ test("custom heat-map asset picker offers every supported non-stock universe", (
       assert.deepEqual(normalizeCustomHeatMapSymbols([asset.symbol]), [asset.symbol]);
     }
   }
+});
+
+test("custom instrument search matches names across supported asset types", () => {
+  const goldMatches = searchCustomHeatMapAssets("  gOlD ");
+  assert.deepEqual(
+    goldMatches.map(({ assetType, asset }) => [assetType, asset.name, asset.symbol]),
+    [
+      ["commodities", "Gold", "GC=F"],
+      ["etfs", "Gold ETF", "GLD"],
+    ],
+  );
+  assert.ok(searchCustomHeatMapAssets("S&P 500 ETF").some(({ asset }) => asset.symbol === "SPY"));
+  assert.deepEqual(searchCustomHeatMapAssets(""), []);
 });

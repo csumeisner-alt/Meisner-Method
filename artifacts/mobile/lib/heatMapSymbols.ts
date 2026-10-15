@@ -17,6 +17,11 @@ export interface CustomHeatMapAsset {
   name: string;
 }
 
+export interface CustomHeatMapAssetSearchResult {
+  assetType: Exclude<CustomHeatMapAssetType, "stocks">;
+  asset: CustomHeatMapAsset;
+}
+
 // Keep these curated choices aligned with the quote-source universes in fetch_heatmap.py.
 export const CUSTOM_HEAT_MAP_ASSETS: Record<Exclude<CustomHeatMapAssetType, "stocks">, CustomHeatMapAsset[]> = {
   etfs: [
@@ -65,6 +70,34 @@ export const CUSTOM_HEAT_MAP_ASSETS: Record<Exclude<CustomHeatMapAssetType, "sto
     { symbol: "SHIB-USD", name: "Shiba Inu" }, { symbol: "TON-USD", name: "Toncoin" },
   ],
 };
+
+export function searchCustomHeatMapAssets(query: string): CustomHeatMapAssetSearchResult[] {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  if (!normalizedQuery) return [];
+
+  const results = Object.entries(CUSTOM_HEAT_MAP_ASSETS).flatMap(([assetType, assets]) =>
+    assets
+      .filter((asset) =>
+        asset.name.toLocaleLowerCase().includes(normalizedQuery)
+        || asset.symbol.toLocaleLowerCase().includes(normalizedQuery))
+      .map((asset) => ({
+        assetType: assetType as Exclude<CustomHeatMapAssetType, "stocks">,
+        asset,
+      })),
+  );
+
+  return results.sort((left, right) => {
+    const rank = (result: CustomHeatMapAssetSearchResult) => {
+      const name = result.asset.name.toLocaleLowerCase();
+      const symbol = result.asset.symbol.toLocaleLowerCase();
+      if (symbol === normalizedQuery) return 0;
+      if (name === normalizedQuery) return 1;
+      if (symbol.startsWith(normalizedQuery) || name.startsWith(normalizedQuery)) return 2;
+      return 3;
+    };
+    return rank(left) - rank(right) || left.asset.name.localeCompare(right.asset.name);
+  });
+}
 
 export function normalizeCustomHeatMapSymbols(value: unknown): string[] {
   if (!Array.isArray(value)) return [];

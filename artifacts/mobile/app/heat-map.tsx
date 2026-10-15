@@ -55,6 +55,7 @@ import {
 import {
   CUSTOM_HEAT_MAP_ASSETS, CUSTOM_HEAT_MAP_ASSET_TYPES,
   MAX_CUSTOM_HEAT_MAP_SYMBOLS, normalizeCustomHeatMapSymbols,
+  searchCustomHeatMapAssets,
   type CustomHeatMapAssetType,
 } from '@/lib/heatMapSymbols';
 import {
@@ -554,7 +555,7 @@ export default function HeatMapScreen() {
     {
       query: {
         queryKey: symbolSearchQueryKey,
-        enabled: category === 'custom' && customAssetType === 'stocks' && debouncedSymbolSearch.length >= 2,
+        enabled: category === 'custom' && debouncedSymbolSearch.length >= 2,
         staleTime: 45_000,
       },
     },
@@ -617,7 +618,6 @@ export default function HeatMapScreen() {
   });
   const searchText = symbolInput.trim();
   const isCustomSearchInput = category === 'custom'
-    && customAssetType === 'stocks'
     && searchText.length >= 2
     && !validateSymbol.isPending;
   const searchResultQuery = getStockSearchQueryFromKey(stockSearch.queryKey);
@@ -638,14 +638,11 @@ export default function HeatMapScreen() {
         suggestionCount: customSuggestions.length,
       })
     : null;
-  const customAssetChoices = customAssetType === 'stocks'
-    ? []
-    : CUSTOM_HEAT_MAP_ASSETS[customAssetType].filter((asset) => {
-        const query = searchText.toLocaleLowerCase();
-        return !query
-          || asset.symbol.toLocaleLowerCase().includes(query)
-          || asset.name.toLocaleLowerCase().includes(query);
-      });
+  const customAssetChoices = searchText.length > 0
+    ? searchCustomHeatMapAssets(searchText)
+    : customAssetType === 'stocks'
+      ? []
+      : CUSTOM_HEAT_MAP_ASSETS[customAssetType].map((asset) => ({ asset, assetType: customAssetType }));
   const params = useMemo(() => ({
     category,
     period,
@@ -1204,19 +1201,19 @@ export default function HeatMapScreen() {
               })}
             </ScrollView>
             <Text style={[styles.searchHint, styles.customAssetTypeHint, { color: colors.mutedForeground }]}>
-              {customAssetType === 'stocks'
-                ? 'Search companies or enter a stock ticker.'
-                : `Browse supported ${CUSTOM_HEAT_MAP_ASSET_TYPES.find((item) => item.id === customAssetType)?.label.toLowerCase()} or enter a ticker.`}
+              {searchText
+                ? 'Matching instruments appear across all types. Choose a type above to browse.'
+                : `Search by name or ticker, or browse supported ${CUSTOM_HEAT_MAP_ASSET_TYPES.find((item) => item.id === customAssetType)?.label.toLowerCase()}.`}
             </Text>
             <View style={styles.addRow}><TextInput testID="heat-map-custom-input" value={symbolInput} editable={storageReady && !storageLoadError} onFocus={() => setIsEditingCustomMap(false)} onChangeText={(value) => { setSymbolInput(value); setFormError(''); }}
-              placeholder={customAssetType === 'stocks' ? 'Company name or ticker' : 'Search name or enter ticker'} placeholderTextColor={colors.mutedForeground} autoCapitalize="none" autoCorrect={false} maxLength={80}
+              placeholder="Search name or enter ticker" placeholderTextColor={colors.mutedForeground} autoCapitalize="none" autoCorrect={false} maxLength={80}
               returnKeyType="done" onSubmitEditing={() => void addSymbol()} style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.input }]} />
               <TouchableOpacity testID="heat-map-custom-add" accessibilityRole="button" accessibilityLabel="Validate and add ticker"
                 disabled={!canAddCustomSymbol} onPress={() => void addSymbol()}
                 style={[styles.addButton, { backgroundColor: colors.primary, opacity: canAddCustomSymbol ? 1 : 0.55 }]}>
                 {validateSymbol.isPending ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <MaterialCommunityIcons name="plus" size={20} color={colors.primaryForeground} />}
               </TouchableOpacity></View>
-            {customAssetType !== 'stocks' && <ScrollView
+            {(customAssetType !== 'stocks' || searchText.length > 0) && <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               style={[styles.suggestionsPanel, { backgroundColor: colors.background, borderColor: colors.border }]}
@@ -1224,26 +1221,29 @@ export default function HeatMapScreen() {
               testID="heat-map-custom-asset-choices"
             >
               {customAssetChoices.map((asset) => {
-                const alreadyAdded = customSymbols.includes(asset.symbol);
+                const alreadyAdded = customSymbols.includes(asset.asset.symbol);
+                const assetTypeLabel = CUSTOM_HEAT_MAP_ASSET_TYPES.find((item) => item.id === asset.assetType)?.label ?? 'Instrument';
                 return <TouchableOpacity
-                  key={asset.symbol}
-                  testID={`heat-map-custom-pick-${asset.symbol}`}
+                  key={`${asset.assetType}-${asset.asset.symbol}`}
+                  testID={`heat-map-custom-pick-${asset.asset.symbol}`}
                   accessibilityRole="button"
-                  accessibilityLabel={`${alreadyAdded ? 'Already added' : 'Add'} ${asset.name}, ${asset.symbol}, ${CUSTOM_HEAT_MAP_ASSET_TYPES.find((item) => item.id === customAssetType)?.label}`}
+                  accessibilityLabel={`${alreadyAdded ? 'Already added' : 'Add'} ${asset.asset.name}, ${asset.asset.symbol}, ${assetTypeLabel}`}
                   disabled={alreadyAdded || validateSymbol.isPending || customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS}
-                  onPress={() => void addSymbol(asset.symbol)}
+                  onPress={() => void addSymbol(asset.asset.symbol)}
                   style={[
                     styles.customAssetChoice,
                     { borderColor: alreadyAdded ? colors.border : colors.primary, backgroundColor: alreadyAdded ? colors.secondary : colors.card, opacity: alreadyAdded ? 0.65 : 1 },
                   ]}
                 >
-                  <Text numberOfLines={1} style={[styles.customAssetChoiceName, { color: colors.foreground }]}>{asset.name}</Text>
-                  <Text style={[styles.customAssetChoiceSymbol, { color: colors.primary }]}>{alreadyAdded ? 'Added' : asset.symbol}</Text>
+                  <Text numberOfLines={1} style={[styles.customAssetChoiceName, { color: colors.foreground }]}>{asset.asset.name}</Text>
+                  <Text style={[styles.customAssetChoiceType, { color: colors.mutedForeground }]}>{assetTypeLabel}</Text>
+                  <Text style={[styles.customAssetChoiceSymbol, { color: colors.primary }]}>{alreadyAdded ? 'Added' : asset.asset.symbol}</Text>
                 </TouchableOpacity>;
               })}
-              {customAssetChoices.length === 0 && <Text style={[styles.searchHint, { color: colors.mutedForeground }]}>No supported picks match. You can still try entering the ticker above.</Text>}
+              {customAssetChoices.length === 0 && <Text style={[styles.searchHint, { color: colors.mutedForeground }]}>No supported instruments match. You can still enter a ticker.</Text>}
             </ScrollView>}
             {isCustomSearchInput && <View testID="heat-map-custom-suggestions" style={[styles.suggestionsPanel, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <Text style={[styles.stockSearchHeading, { color: colors.mutedForeground }]}>Stocks</Text>
               {customSuggestions.map((suggestion, index) => <TouchableOpacity
                 key={suggestion.symbol}
                 testID={`heat-map-custom-suggestion-${suggestion.symbol}`}
@@ -1562,9 +1562,11 @@ const styles = StyleSheet.create({
   customAssetTypeText: { fontFamily: 'Inter_600SemiBold', fontSize: 10 },
   customAssetTypeHint: { marginTop: 2, paddingHorizontal: 0, paddingVertical: 5 },
   customAssetChoices: { gap: 7, padding: 8 },
-  customAssetChoice: { width: 136, minHeight: 54, borderWidth: 1, borderRadius: 9, paddingHorizontal: 9, paddingVertical: 7, justifyContent: 'center' },
+  customAssetChoice: { width: 150, minHeight: 68, borderWidth: 1, borderRadius: 9, paddingHorizontal: 9, paddingVertical: 7, justifyContent: 'center' },
   customAssetChoiceName: { fontFamily: 'Inter_600SemiBold', fontSize: 10 },
-  customAssetChoiceSymbol: { fontFamily: 'Inter_700Bold', fontSize: 9, marginTop: 4 },
+  customAssetChoiceType: { fontFamily: 'Inter_400Regular', fontSize: 8, marginTop: 3 },
+  customAssetChoiceSymbol: { fontFamily: 'Inter_700Bold', fontSize: 9, marginTop: 2 },
+  stockSearchHeading: { fontFamily: 'Inter_700Bold', fontSize: 9, paddingHorizontal: 11, paddingTop: 9, paddingBottom: 2, textTransform: 'uppercase', letterSpacing: 0.7 },
   storageReadError: { alignItems: 'flex-start', gap: 2 },
   undoBanner: { minHeight: 40, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, marginTop: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   undoMessage: { flex: 1, fontFamily: 'Inter_500Medium', fontSize: 11 },

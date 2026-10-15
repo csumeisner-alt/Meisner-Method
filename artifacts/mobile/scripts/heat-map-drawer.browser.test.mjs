@@ -2157,6 +2157,21 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       "Choosing reset should replace the malformed value with an empty custom map.",
     );
 
+    await clickTestID(browser, "heat-map-custom-type-futures");
+    await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-custom-input"))})?.focus()`);
+    await browser.send("Input.insertText", { text: "Gold" });
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-custom-pick-GC=F"))}) && !!document.querySelector(${JSON.stringify(selector("heat-map-custom-pick-GLD"))})`,
+      "Searching by name should find matching instruments across asset types, regardless of the selected browse type.",
+    );
+    const goldSearchResults = await browser.evaluate(
+      `document.querySelector(${JSON.stringify(selector("heat-map-custom-pick-GC=F"))})?.textContent + " " + document.querySelector(${JSON.stringify(selector("heat-map-custom-pick-GLD"))})?.textContent`,
+    );
+    assert.match(goldSearchResults, /Gold/);
+    assert.match(goldSearchResults, /Commodities/);
+    assert.match(goldSearchResults, /ETFs/);
+
     // A stale crypto batch refreshes when the focused screen resumes, while a fresh
     // batch does not. The user's selected period and local filters remain intact.
     await clickTestID(browser, "heat-map-category-picker");

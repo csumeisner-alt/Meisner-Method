@@ -137,14 +137,16 @@ test("stock sector selection offers all supported sectors and requests matching 
 test("custom heat-map search offers company and category-aware asset suggestions before validation", () => {
   assert.match(screenSource, /useSearchStockSymbols/);
   assert.match(screenSource, /CUSTOM_HEAT_MAP_ASSET_TYPES\.map/);
-  assert.match(screenSource, /CUSTOM_HEAT_MAP_ASSETS\[customAssetType\]/);
+  assert.match(screenSource, /searchCustomHeatMapAssets\(searchText\)/);
+  assert.match(screenSource, /enabled: category === 'custom' && debouncedSymbolSearch\.length >= 2/);
   assert.match(screenSource, /getSearchStockSymbolsQueryKey\(\{ q: debouncedSymbolSearch \}\)/);
   assert.match(screenSource, /getStockSearchQueryFromKey\(stockSearch\.queryKey\)/);
   assert.match(screenSource, /isStockSearchCurrent\(\{/);
-  assert.match(screenSource, /placeholder=\{customAssetType === 'stocks' \? 'Company name or ticker' : 'Search name or enter ticker'\}/);
+  assert.match(screenSource, /placeholder="Search name or enter ticker"/);
   assert.match(screenSource, /\{suggestion\.name\}/);
   assert.match(screenSource, /\{suggestion\.symbol\}/);
-  assert.match(screenSource, /onPress=\{\(\) => void addSymbol\(asset\.symbol\)\}/);
+  assert.match(screenSource, /onPress=\{\(\) => void addSymbol\(asset\.asset\.symbol\)\}/);
+  assert.match(screenSource, /\{assetTypeLabel\}/);
   assert.match(screenSource, /onPress=\{\(\) => void addSymbol\(suggestion\.symbol\)\}/);
   assert.match(screenSource, /validateSymbol\.mutateAsync\(\{ data: \{ symbol \} \}\)/);
   assert.match(screenSource, /keyboardShouldPersistTaps="handled"/);
