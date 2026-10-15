@@ -8,6 +8,7 @@ export type HeatMapRiskBand =
 export type HeatMapRiskFilter = HeatMapRiskBand | "Unknown" | null;
 export type HeatMapCapBucket = "Micro" | "Small" | "Mid" | "Large" | "Mega";
 export type HeatMapLoadingTheme = "standard" | "patriot" | "neonGucci";
+export type HeatMapReturnSort = "default" | "highest" | "lowest";
 
 export interface HeatMapMovement {
   price: number;
@@ -55,6 +56,20 @@ export function uniqueHeatMapQuotesBySymbol<T extends { symbol: string }>(quotes
     if (seen.has(quote.symbol)) return false;
     seen.add(quote.symbol);
     return true;
+  });
+}
+
+export function sortHeatMapQuotesByReturn<T extends { returnPercent: number | null }>(
+  quotes: readonly T[],
+  sort: HeatMapReturnSort,
+): T[] {
+  if (sort === "default") return [...quotes];
+  return [...quotes].sort((left, right) => {
+    if (left.returnPercent === null) return right.returnPercent === null ? 0 : 1;
+    if (right.returnPercent === null) return -1;
+    return sort === "highest"
+      ? right.returnPercent - left.returnPercent
+      : left.returnPercent - right.returnPercent;
   });
 }
 

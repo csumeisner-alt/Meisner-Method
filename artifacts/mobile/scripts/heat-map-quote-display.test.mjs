@@ -97,6 +97,11 @@ test("heat-map has a right-side filter drawer and reduced-motion-aware direction
   assert.match(screenSource, /drawerBackdrop/);
   assert.match(screenSource, /heat-map-filter-reset/);
   assert.match(screenSource, /heat-map-filter-apply/);
+  assert.match(screenSource, /testID="heat-map-sort-highest"/);
+  assert.match(screenSource, /testID="heat-map-sort-lowest"/);
+  assert.match(screenSource, /setReturnSort\(draftReturnSort\)/);
+  assert.match(screenSource, /sortHeatMapQuotesByReturn\(filterableQuotes, returnSort\)/);
+  assert.match(screenSource, /Unavailable means there is not enough price history for the selected period/);
   assert.match(screenSource, /useReducedMotion\(\)/);
   assert.match(screenSource, /Animated\.loop/);
   assert.match(screenSource, /accessibilityLabel=\{directionalLabel\}/);

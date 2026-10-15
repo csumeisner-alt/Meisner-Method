@@ -12,9 +12,22 @@ import {
   heatMapResponseMatchesSelection,
   layoutHoneycomb,
   marketCapBucketForUsd,
+  sortHeatMapQuotesByReturn,
   summarizeHeatMap,
   uniqueHeatMapQuotesBySymbol,
 } from "../heatMapMetrics.ts";
+
+test("heat-map return sorting is descending or ascending and leaves missing history at the end", () => {
+  const quotes = [
+    { symbol: "B", returnPercent: 2 },
+    { symbol: "A", returnPercent: null },
+    { symbol: "C", returnPercent: -4 },
+    { symbol: "D", returnPercent: 2 },
+  ];
+  assert.deepEqual(sortHeatMapQuotesByReturn(quotes, "highest").map((quote) => quote.symbol), ["B", "D", "C", "A"]);
+  assert.deepEqual(sortHeatMapQuotesByReturn(quotes, "lowest").map((quote) => quote.symbol), ["C", "B", "D", "A"]);
+  assert.deepEqual(sortHeatMapQuotesByReturn(quotes, "default"), quotes);
+});
 
 test("heat-map waits for useful return coverage before showing the fast breadth snapshot", () => {
   assert.equal(hasUsableHeatMapPerformanceSnapshot([]), false);

@@ -39,9 +39,9 @@ import {
   countActiveHeatMapFilters, filterHeatMapQuotes,
   getHeatMapLoadingDelays, getHeatMapLoadingHexColors, getHeatMapLoadingTheme,
   getHeatMapRevealDelays, getHeatMapTileWidth, hasUsableHeatMapPerformanceSnapshot,
-  heatMapResponseMatchesSelection, layoutHoneycomb, summarizeHeatMap,
+  heatMapResponseMatchesSelection, layoutHoneycomb, sortHeatMapQuotesByReturn, summarizeHeatMap,
   uniqueHeatMapQuotesBySymbol,
-  type HeatMapFilters, type HeatMapCapBucket, type HeatMapLoadingTheme, type HeatMapRiskBand, type HeatMapRiskFilter,
+  type HeatMapFilters, type HeatMapCapBucket, type HeatMapLoadingTheme, type HeatMapReturnSort, type HeatMapRiskBand, type HeatMapRiskFilter,
 } from '@/lib/heatMapMetrics';
 import { getHeatMapInstrumentDisplay } from '@/lib/heatMapInstrumentDisplay';
 import { getHeatMapCryptoLogoCode } from '@/lib/heatMapCryptoLogo';
@@ -532,6 +532,8 @@ export default function HeatMapScreen() {
   const [nowSeconds, setNowSeconds] = useState(() => Date.now() / 1000);
   const [filters, setFilters] = useState<HeatMapFilters>(EMPTY_FILTERS);
   const [draftFilters, setDraftFilters] = useState<HeatMapFilters>(EMPTY_FILTERS);
+  const [returnSort, setReturnSort] = useState<HeatMapReturnSort>('default');
+  const [draftReturnSort, setDraftReturnSort] = useState<HeatMapReturnSort>('default');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<HeatMapQuote | null>(null);
@@ -858,11 +860,16 @@ export default function HeatMapScreen() {
     || (category === 'custom' && validAgeQuotes.some((quote) => quote.assetType === 'stock' && quote.marketCapUsd !== null));
   const filterableQuotes = useMemo(() => filterHeatMapQuotes(validAgeQuotes, filters), [validAgeQuotes, filters]);
   const summary = summarizeHeatMap(filterableQuotes);
+  const sortedQuotes = useMemo(
+    () => sortHeatMapQuotesByReturn(filterableQuotes, returnSort),
+    [filterableQuotes, returnSort],
+  );
   const toneColor = summary.tone === 'HOT' ? colors.buyColor : summary.tone === 'COLD' ? colors.sellColor : colors.holdColor;
   const directionalLabel = summary.tone === 'HOT' ? 'Market direction rising' : summary.tone === 'COLD' ? 'Market direction falling' : 'Market direction sideways';
   const directionalWord = summary.tone === 'HOT' ? 'Rising' : summary.tone === 'COLD' ? 'Falling' : 'Sideways';
   const directionScale = directionPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
-  const activeFilterCount = countActiveHeatMapFilters(filters);
+  const activeFilterCount = countActiveHeatMapFilters(filters) + Number(returnSort !== 'default');
+  const draftSelectionCount = countActiveHeatMapFilters(draftFilters) + Number(draftReturnSort !== 'default');
 
   useEffect(() => {
     if (reduceMotion) {
@@ -878,6 +885,12 @@ export default function HeatMapScreen() {
   }, [directionPulse, reduceMotion, summary.tone]);
 
   const sectors = useMemo(() => {
+    if (returnSort !== 'default') {
+      return [{
+        name: returnSort === 'highest' ? 'Highest returns' : 'Lowest returns',
+        quotes: sortedQuotes,
+      }];
+    }
     if (category !== 'stocks' && category !== 'custom') return [{ name: '', quotes: filterableQuotes }];
     const grouped = new Map<string, HeatMapQuote[]>();
     filterableQuotes.forEach((quote) => {
@@ -885,7 +898,7 @@ export default function HeatMapScreen() {
       grouped.set(sector, [...(grouped.get(sector) ?? []), quote]);
     });
     return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([name, items]) => ({ name, quotes: items }));
-  }, [category, filterableQuotes]);
+  }, [category, filterableQuotes, returnSort, sortedQuotes]);
   const tileSymbols = useMemo(
     () => sectors.flatMap((group) => group.quotes.map((quote) => quote.symbol)),
     [sectors],
@@ -1059,7 +1072,7 @@ export default function HeatMapScreen() {
               <MaterialCommunityIcons name="chevron-down" size={18} color={colors.mutedForeground} />
             </TouchableOpacity>
             <TouchableOpacity testID="heat-map-filter-open" accessibilityRole="button" accessibilityLabel={`Filters${activeFilterCount ? `, ${activeFilterCount} active` : ''}`}
-              onPress={() => { setDraftFilters(filters); setDrawerOpen(true); }}
+              onPress={() => { setDraftFilters(filters); setDraftReturnSort(returnSort); setDrawerOpen(true); }}
               style={[styles.filterButton, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <MaterialCommunityIcons name="tune-variant" size={17} color={colors.foreground} />
               <Text style={[styles.filterButtonText, { color: colors.foreground }]}>Filter</Text>
@@ -1313,9 +1326,11 @@ export default function HeatMapScreen() {
                         </View>;
                       })}
                       {!!unavailableSymbols.length && <Text style={[styles.unavailable, { color: colors.mutedForeground }]}>No recent quote: {unavailableSymbols.join(' · ')}</Text>}
-                      {!!filterableQuotes.some((quote) => quote.returnPercent === null) && <View style={[styles.notice, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          {!!filterableQuotes.some((quote) => quote.returnPercent === null) && <View style={[styles.notice, { backgroundColor: colors.card, borderColor: colors.border }]}>
                         <MaterialCommunityIcons name="information-outline" size={15} color={colors.primary} />
-                        <Text style={[styles.noticeText, { color: colors.mutedForeground }]}>Unavailable returns have no performance color and are excluded from breadth.</Text>
+            <Text testID="heat-map-unavailable-return-note" style={[styles.noticeText, { color: colors.mutedForeground }]}>
+              Unavailable means there is not enough price history for the selected period; the map does not substitute a shorter return.
+            </Text>
                       </View>}
                     </View>}
 
@@ -1356,10 +1371,18 @@ export default function HeatMapScreen() {
                   <MaterialCommunityIcons name="close" size={20} color={colors.foreground} />
                 </TouchableOpacity>
               </View>
-              <Text testID="heat-map-filter-selection-count" style={[styles.drawerFeedback, { color: colors.mutedForeground }]}>{countActiveHeatMapFilters(draftFilters)} selected · filters combine together</Text>
+              <Text testID="heat-map-filter-selection-count" style={[styles.drawerFeedback, { color: colors.mutedForeground }]}>{draftSelectionCount} selected · filters and sorting apply to this map</Text>
               <ScrollView testID="heat-map-filter-scroll" style={styles.drawerScroll} contentContainerStyle={styles.drawerScrollContent} showsVerticalScrollIndicator>
                 <FilterSection title="Return period">{PERIODS.map((item) => <FilterChoice key={item.id} label={item.label} selected={period === item.id}
                   onPress={() => setPeriod(item.id)} testID={`heat-map-drawer-period-${item.id}`} />)}</FilterSection>
+                <FilterSection title="Historical return sort">
+                  <FilterChoice label="Default" selected={draftReturnSort === 'default'} onPress={() => setDraftReturnSort('default')} testID="heat-map-sort-default" />
+                  <FilterChoice label="Highest first" selected={draftReturnSort === 'highest'} onPress={() => setDraftReturnSort('highest')} testID="heat-map-sort-highest" />
+                  <FilterChoice label="Lowest first" selected={draftReturnSort === 'lowest'} onPress={() => setDraftReturnSort('lowest')} testID="heat-map-sort-lowest" />
+                </FilterSection>
+                <Text testID="heat-map-sort-explanation" style={[styles.riskExplanation, { color: colors.mutedForeground }]}>
+                  Sorts every hexagon by the selected return period. Hexagons without enough history stay at the end.
+                </Text>
                 {supportsSectorFilter && <FilterSection title="Sector">{choices.sectors.map((value) => <FilterChoice key={value} label={value} selected={draftFilters.sector === value} onPress={() => toggleFilter('sector', value)} testID={`heat-map-filter-sector-${value}`} />)}</FilterSection>}
                 {supportsMarketCapFilter && <FilterSection title="Market cap (USD)">{CAP_BUCKETS.map((value) => <FilterChoice key={value} label={CAP_BUCKET_LABELS[value]} selected={draftFilters.marketCap === value} onPress={() => toggleFilter('marketCap', value)} testID={`heat-map-filter-cap-${value}`} />)}</FilterSection>}
                 {choices.exchanges.length > 0 && <FilterSection title="Exchange">{choices.exchanges.map((value) => <FilterChoice key={value} label={value} selected={draftFilters.exchange === value} onPress={() => toggleFilter('exchange', value)} testID={`heat-map-filter-exchange-${value}`} />)}</FilterSection>}
@@ -1368,12 +1391,12 @@ export default function HeatMapScreen() {
                 <Text testID="heat-map-filter-risk-explanation" style={[styles.riskExplanation, { color: colors.mutedForeground }]}>Risk uses trailing-year daily returns, annualized with 252 trading days (stocks and funds) or 365 days (crypto); at least 60 observations are required. These labels describe historical volatility, not personal suitability. Unknown means history is insufficient.</Text>
               </ScrollView>
               <View testID="heat-map-filter-actions" style={[styles.drawerActions, { borderTopColor: colors.border }]}>
-                <TouchableOpacity testID="heat-map-filter-reset" accessibilityRole="button" onPress={() => { setDraftFilters(EMPTY_FILTERS); setFilters(EMPTY_FILTERS); }} style={[styles.resetButton, { borderColor: colors.border }]}>
+                <TouchableOpacity testID="heat-map-filter-reset" accessibilityRole="button" onPress={() => { setDraftFilters(EMPTY_FILTERS); setFilters(EMPTY_FILTERS); setDraftReturnSort('default'); setReturnSort('default'); }} style={[styles.resetButton, { borderColor: colors.border }]}>
                   <Text style={[styles.resetText, { color: colors.foreground }]}>Clear all</Text>
                 </TouchableOpacity>
-                <TouchableOpacity testID="heat-map-filter-apply" accessibilityRole="button" onPress={() => { setFilters(draftFilters); setDrawerOpen(false); }}
+                <TouchableOpacity testID="heat-map-filter-apply" accessibilityRole="button" onPress={() => { setFilters(draftFilters); setReturnSort(draftReturnSort); setDrawerOpen(false); }}
                   style={[styles.applyButton, { backgroundColor: colors.primary }]}>
-                  <Text style={[styles.applyText, { color: colors.primaryForeground }]}>Apply filters</Text><Text style={[styles.applyCount, { color: colors.primaryForeground }]}>{countActiveHeatMapFilters(draftFilters)}</Text>
+                  <Text style={[styles.applyText, { color: colors.primaryForeground }]}>Apply filters</Text><Text style={[styles.applyCount, { color: colors.primaryForeground }]}>{draftSelectionCount}</Text>
                 </TouchableOpacity>
               </View>
             </View>
