@@ -7,6 +7,7 @@ import {
   MAX_CUSTOM_HEAT_MAP_SYMBOLS,
   moveCustomHeatMapSymbol,
   normalizeCustomHeatMapSymbols,
+  planCustomHeatMapBatchAdd,
   searchCustomHeatMapAssets,
 } from "../heatMapSymbols.ts";
 
@@ -20,6 +21,25 @@ test("saved custom symbols are uppercased, validated, and deduplicated", () => {
 test("saved custom symbols are capped to the API's supported maximum", () => {
   const input = Array.from({ length: MAX_CUSTOM_HEAT_MAP_SYMBOLS + 3 }, (_, index) => `T${index}`);
   assert.equal(normalizeCustomHeatMapSymbols(input).length, MAX_CUSTOM_HEAT_MAP_SYMBOLS);
+});
+
+test("custom map batch add skips existing symbols and only adds up to the remaining capacity", () => {
+  const existing = [...Array.from({ length: MAX_CUSTOM_HEAT_MAP_SYMBOLS - 2 }, (_, index) => `T${index}`), "GLD"];
+  const plan = planCustomHeatMapBatchAdd(existing, [" gld ", "GC=F", "BTC-USD", "SPY"]);
+
+  assert.deepEqual(plan, {
+    symbolsToAdd: ["GC=F"],
+    alreadyAddedCount: 1,
+    overLimitCount: 2,
+  });
+});
+
+test("custom map batch add removes duplicate requests and handles a full map", () => {
+  const existing = Array.from({ length: MAX_CUSTOM_HEAT_MAP_SYMBOLS }, (_, index) => `T${index}`);
+  assert.deepEqual(
+    planCustomHeatMapBatchAdd(existing, ["AAPL", "AAPL", "T0"]),
+    { symbolsToAdd: [], alreadyAddedCount: 1, overLimitCount: 1 },
+  );
 });
 
 test("custom symbols can move up or down without changing other saved order", () => {

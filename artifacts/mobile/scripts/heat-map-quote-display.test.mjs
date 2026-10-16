@@ -160,7 +160,9 @@ test("custom heat-map search offers company and category-aware asset suggestions
   assert.match(screenSource, /placeholder="Search name or enter ticker"/);
   assert.match(screenSource, /\{suggestion\.name\}/);
   assert.match(screenSource, /\{suggestion\.symbol\}/);
-  assert.match(screenSource, /onPress=\{\(\) => void addSymbol\(asset\.asset\.symbol\)\}/);
+  assert.match(screenSource, /onPress=\{\(\) => toggleCustomAssetSelection\(asset\.asset\.symbol\)\}/);
+  assert.match(screenSource, /testID="heat-map-custom-batch-add"/);
+  assert.match(screenSource, /planCustomHeatMapBatchAdd\(customSymbols, selectedCustomAssetSymbols\)/);
   assert.match(screenSource, /\{assetTypeLabel\}/);
   assert.match(screenSource, /onPress=\{\(\) => void addSymbol\(suggestion\.symbol\)\}/);
   assert.match(screenSource, /validateSymbol\.mutateAsync\(\{ data: \{ symbol \} \}\)/);

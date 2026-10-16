@@ -57,6 +57,7 @@ import {
 import {
   CUSTOM_HEAT_MAP_ASSETS, CUSTOM_HEAT_MAP_ASSET_TYPES,
   MAX_CUSTOM_HEAT_MAP_SYMBOLS, moveCustomHeatMapSymbol, normalizeCustomHeatMapSymbols,
+  planCustomHeatMapBatchAdd,
   searchCustomHeatMapAssets,
   type CustomHeatMapAssetType,
 } from '@/lib/heatMapSymbols';
@@ -536,8 +537,14 @@ export default function HeatMapScreen() {
   const [lastRemovedTicker, setLastRemovedTicker] = useState<{ symbol: string; index: number } | null>(null);
   const [symbolInput, setSymbolInput] = useState('');
   const [customAssetType, setCustomAssetType] = useState<CustomHeatMapAssetType>('stocks');
+  const [selectedCustomAssetSymbols, setSelectedCustomAssetSymbols] = useState<string[]>([]);
+  const [isAddingSelectedAssets, setIsAddingSelectedAssets] = useState(false);
   const [debouncedSymbolSearch, setDebouncedSymbolSearch] = useState('');
   const [formError, setFormError] = useState('');
+  const [customBatchFeedback, setCustomBatchFeedback] = useState<{
+    message: string;
+    kind: 'success' | 'error';
+  } | null>(null);
   const [nowSeconds, setNowSeconds] = useState(() => Date.now() / 1000);
   const [filters, setFilters] = useState<HeatMapFilters>(EMPTY_FILTERS);
   const [draftFilters, setDraftFilters] = useState<HeatMapFilters>(EMPTY_FILTERS);
@@ -1034,7 +1041,8 @@ export default function HeatMapScreen() {
   async function addSymbol(rawSymbol = symbolInput) {
     const symbol = rawSymbol.trim().toUpperCase();
     if (!symbol) return;
-    if (validateSymbol.isPending) return;
+    if (validateSymbol.isPending || isAddingSelectedAssets) return;
+    setCustomBatchFeedback(null);
     if (customSymbols.includes(symbol)) { setFormError(`${symbol} is already in your map.`); return; }
     if (customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS) {
       setFormError(`A custom map can contain at most ${MAX_CUSTOM_HEAT_MAP_SYMBOLS} tickers.`); return;
@@ -1052,6 +1060,83 @@ export default function HeatMapScreen() {
       setSymbolInput('');
     } catch {
       setFormError(`${symbol} isn't a supported instrument or has no recent quote. It wasn't added. Check the ticker or choose a provider search result and try again.`);
+    }
+  }
+  function toggleCustomAssetSelection(symbol: string) {
+    setCustomBatchFeedback(null);
+    setFormError('');
+    if (selectedCustomAssetSymbols.includes(symbol)) {
+      setSelectedCustomAssetSymbols((current) => current.filter((item) => item !== symbol));
+      return;
+    }
+    if (customSymbols.length + selectedCustomAssetSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS) {
+      setFormError(`A custom map can contain at most ${MAX_CUSTOM_HEAT_MAP_SYMBOLS} tickers.`);
+      return;
+    }
+    setSelectedCustomAssetSymbols((current) => [...current, symbol]);
+  }
+  async function addSelectedCustomAssets() {
+    if (isAddingSelectedAssets || !storageReady || storageLoadError || selectedCustomAssetSymbols.length === 0) return;
+    setCustomBatchFeedback(null);
+    const plan = planCustomHeatMapBatchAdd(customSymbols, selectedCustomAssetSymbols);
+    if (plan.symbolsToAdd.length === 0) {
+      setSelectedCustomAssetSymbols([]);
+      setFormError(plan.alreadyAddedCount
+        ? 'Those instruments are already in your map.'
+        : `A custom map can contain at most ${MAX_CUSTOM_HEAT_MAP_SYMBOLS} tickers.`);
+      return;
+    }
+
+    setIsAddingSelectedAssets(true);
+    setFormError('');
+    Keyboard.dismiss();
+    let nextSymbols = [...customSymbols];
+    const addedSymbols: string[] = [];
+    const failedSymbols: string[] = [];
+    let alreadyAddedCount = plan.alreadyAddedCount;
+    let overLimitCount = plan.overLimitCount;
+    try {
+      for (const symbol of plan.symbolsToAdd) {
+        try {
+          const quote = await validateSymbol.mutateAsync({ data: { symbol } });
+          if (nextSymbols.includes(quote.symbol)) {
+            alreadyAddedCount += 1;
+          } else if (nextSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS) {
+            overLimitCount += 1;
+          } else {
+            nextSymbols.push(quote.symbol);
+            addedSymbols.push(quote.symbol);
+          }
+        } catch {
+          failedSymbols.push(symbol);
+        }
+      }
+
+      if (addedSymbols.length > 0) {
+        try {
+          await persistSymbols(nextSymbols);
+        } catch {
+          setFormError("Couldn't save the selected instruments on this device. Try again.");
+          return;
+        }
+        setLastRemovedTicker(null);
+      }
+
+      setSelectedCustomAssetSymbols(failedSymbols);
+      const feedback = [
+        addedSymbols.length > 0 ? `Added ${addedSymbols.length} instrument${addedSymbols.length === 1 ? '' : 's'}.` : '',
+        alreadyAddedCount > 0 ? `Skipped ${alreadyAddedCount} already in your map.` : '',
+        overLimitCount > 0 ? `Skipped ${overLimitCount}; the map limit is ${MAX_CUSTOM_HEAT_MAP_SYMBOLS}.` : '',
+        failedSymbols.length > 0 ? `Couldn't validate ${failedSymbols.join(', ')}.` : '',
+      ].filter(Boolean).join(' ');
+      if (feedback) {
+        setCustomBatchFeedback({
+          message: feedback,
+          kind: addedSymbols.length === 0 && (overLimitCount > 0 || failedSymbols.length > 0) ? 'error' : 'success',
+        });
+      }
+    } finally {
+      setIsAddingSelectedAssets(false);
     }
   }
   async function removeSymbol(symbol: string) {
@@ -1338,12 +1423,12 @@ export default function HeatMapScreen() {
                 ? 'Matching instruments appear across all types. Choose a type above to browse.'
                 : `Search by name or ticker, or browse supported ${CUSTOM_HEAT_MAP_ASSET_TYPES.find((item) => item.id === customAssetType)?.label.toLowerCase()}.`}
             </Text>
-            <View style={styles.addRow}><TextInput testID="heat-map-custom-input" value={symbolInput} editable={storageReady && !storageLoadError} onFocus={() => setIsEditingCustomMap(false)} onChangeText={(value) => { setSymbolInput(value); setFormError(''); }}
+            <View style={styles.addRow}><TextInput testID="heat-map-custom-input" value={symbolInput} editable={storageReady && !storageLoadError && !isAddingSelectedAssets} onFocus={() => setIsEditingCustomMap(false)} onChangeText={(value) => { setSymbolInput(value); setFormError(''); setCustomBatchFeedback(null); }}
               placeholder="Search name or enter ticker" placeholderTextColor={colors.mutedForeground} autoCapitalize="none" autoCorrect={false} maxLength={80}
               returnKeyType="done" onSubmitEditing={() => void addSymbol()} style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.input }]} />
               <TouchableOpacity testID="heat-map-custom-add" accessibilityRole="button" accessibilityLabel="Validate and add ticker"
-                disabled={!canAddCustomSymbol} onPress={() => void addSymbol()}
-                style={[styles.addButton, { backgroundColor: colors.primary, opacity: canAddCustomSymbol ? 1 : 0.55 }]}>
+                disabled={!canAddCustomSymbol || isAddingSelectedAssets} onPress={() => void addSymbol()}
+                style={[styles.addButton, { backgroundColor: colors.primary, opacity: canAddCustomSymbol && !isAddingSelectedAssets ? 1 : 0.55 }]}>
                 {validateSymbol.isPending ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <MaterialCommunityIcons name="plus" size={20} color={colors.primaryForeground} />}
               </TouchableOpacity></View>
             {(customAssetType !== 'stocks' || searchText.length > 0) && <ScrollView
@@ -1355,26 +1440,67 @@ export default function HeatMapScreen() {
             >
               {customAssetChoices.map((asset) => {
                 const alreadyAdded = customSymbols.includes(asset.asset.symbol);
+                const selected = selectedCustomAssetSymbols.includes(asset.asset.symbol);
                 const assetTypeLabel = CUSTOM_HEAT_MAP_ASSET_TYPES.find((item) => item.id === asset.assetType)?.label ?? 'Instrument';
+                const selectionAtLimit = !selected
+                  && customSymbols.length + selectedCustomAssetSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS;
                 return <TouchableOpacity
                   key={`${asset.assetType}-${asset.asset.symbol}`}
                   testID={`heat-map-custom-pick-${asset.asset.symbol}`}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${alreadyAdded ? 'Already added' : 'Add'} ${asset.asset.name}, ${asset.asset.symbol}, ${assetTypeLabel}`}
-                  disabled={alreadyAdded || validateSymbol.isPending || customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS}
-                  onPress={() => void addSymbol(asset.asset.symbol)}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: selected, disabled: alreadyAdded || selectionAtLimit || isAddingSelectedAssets }}
+                  accessibilityLabel={`${alreadyAdded ? 'Already added' : selected ? 'Deselect' : 'Select'} ${asset.asset.name}, ${asset.asset.symbol}, ${assetTypeLabel}`}
+                  disabled={alreadyAdded || selectionAtLimit || isAddingSelectedAssets}
+                  onPress={() => toggleCustomAssetSelection(asset.asset.symbol)}
                   style={[
                     styles.customAssetChoice,
-                    { borderColor: alreadyAdded ? colors.border : colors.primary, backgroundColor: alreadyAdded ? colors.secondary : colors.card, opacity: alreadyAdded ? 0.65 : 1 },
+                    {
+                      borderColor: alreadyAdded ? colors.border : selected ? colors.primary : colors.border,
+                      backgroundColor: alreadyAdded ? colors.secondary : selected ? colors.primary : colors.card,
+                      opacity: alreadyAdded || selectionAtLimit || isAddingSelectedAssets ? 0.65 : 1,
+                    },
                   ]}
                 >
-                  <Text numberOfLines={1} style={[styles.customAssetChoiceName, { color: colors.foreground }]}>{asset.asset.name}</Text>
-                  <Text style={[styles.customAssetChoiceType, { color: colors.mutedForeground }]}>{assetTypeLabel}</Text>
-                  <Text style={[styles.customAssetChoiceSymbol, { color: colors.primary }]}>{alreadyAdded ? 'Added' : asset.asset.symbol}</Text>
+                  <Text numberOfLines={1} style={[styles.customAssetChoiceName, { color: selected ? colors.primaryForeground : colors.foreground }]}>{asset.asset.name}</Text>
+                  <Text style={[styles.customAssetChoiceType, { color: selected ? colors.primaryForeground : colors.mutedForeground }]}>{assetTypeLabel}</Text>
+                  <View style={styles.customAssetChoiceFooter}>
+                    <Text style={[styles.customAssetChoiceSymbol, { color: selected ? colors.primaryForeground : colors.primary }]}>{alreadyAdded ? 'Added' : selected ? 'Selected' : asset.asset.symbol}</Text>
+                    {!alreadyAdded && <MaterialCommunityIcons
+                      name={selected ? 'checkbox-marked' : 'checkbox-blank-outline'}
+                      size={15}
+                      color={selected ? colors.primaryForeground : colors.primary}
+                    />}
+                  </View>
                 </TouchableOpacity>;
               })}
               {customAssetChoices.length === 0 && <Text style={[styles.searchHint, { color: colors.mutedForeground }]}>No supported instruments match. You can still enter a ticker.</Text>}
             </ScrollView>}
+            {selectedCustomAssetSymbols.length > 0 && <View style={styles.batchAddRow}>
+              <Text style={[styles.batchAddHint, { color: colors.mutedForeground }]}>
+                {selectedCustomAssetSymbols.length} selected · {Math.max(0, MAX_CUSTOM_HEAT_MAP_SYMBOLS - customSymbols.length)} spaces left
+              </Text>
+              <TouchableOpacity
+                testID="heat-map-custom-batch-add"
+                accessibilityRole="button"
+                accessibilityLabel={`Add ${selectedCustomAssetSymbols.length} selected instruments`}
+                disabled={!storageReady || !!storageLoadError || isAddingSelectedAssets || validateSymbol.isPending}
+                onPress={() => void addSelectedCustomAssets()}
+                style={[
+                  styles.batchAddButton,
+                  {
+                    backgroundColor: colors.primary,
+                    opacity: !storageReady || !!storageLoadError || isAddingSelectedAssets || validateSymbol.isPending ? 0.55 : 1,
+                  },
+                ]}
+              >
+                {isAddingSelectedAssets
+                  ? <ActivityIndicator size="small" color={colors.primaryForeground} />
+                  : <MaterialCommunityIcons name="plus" size={15} color={colors.primaryForeground} />}
+                <Text style={[styles.batchAddButtonText, { color: colors.primaryForeground }]}>
+                  {isAddingSelectedAssets ? 'Adding' : `Add ${selectedCustomAssetSymbols.length}`}
+                </Text>
+              </TouchableOpacity>
+            </View>}
             {isCustomSearchInput && <View testID="heat-map-custom-suggestions" style={[styles.suggestionsPanel, { backgroundColor: colors.background, borderColor: colors.border }]}>
               <Text style={[styles.stockSearchHeading, { color: colors.mutedForeground }]}>Stocks</Text>
               {customSuggestions.map((suggestion, index) => <TouchableOpacity
@@ -1382,7 +1508,7 @@ export default function HeatMapScreen() {
                 testID={`heat-map-custom-suggestion-${suggestion.symbol}`}
                 accessibilityRole="button"
                 accessibilityLabel={`Add ${suggestion.name}, ticker ${suggestion.symbol}, ${suggestion.exchange}`}
-                disabled={validateSymbol.isPending || customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS}
+                disabled={validateSymbol.isPending || isAddingSelectedAssets || customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS}
                 onPress={() => void addSymbol(suggestion.symbol)}
                 style={[styles.suggestionRow, index < customSuggestions.length - 1 && { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth }]}
               >
@@ -1417,7 +1543,7 @@ export default function HeatMapScreen() {
                   testID={`heat-map-custom-instrument-${suggestion.symbol}`}
                   accessibilityRole="button"
                   accessibilityLabel={`${alreadyAdded ? 'Already added' : 'Add'} ${suggestion.name}, ticker ${suggestion.symbol}, ${categoryLabel}, ${suggestion.exchange}`}
-                  disabled={alreadyAdded || validateSymbol.isPending || customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS}
+                  disabled={alreadyAdded || validateSymbol.isPending || isAddingSelectedAssets || customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS}
                   onPress={() => void addSymbol(suggestion.symbol)}
                   style={[styles.suggestionRow, index < visibleInstrumentSuggestions.length - 1 && { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth }, alreadyAdded && { opacity: 0.65 }]}
                 >
@@ -1480,6 +1606,12 @@ export default function HeatMapScreen() {
               </TouchableOpacity>}
             </View>}
             {!!formError && <Text testID="heat-map-custom-error" style={[styles.formError, { color: colors.sellColor }]}>{formError}</Text>}
+            {customBatchFeedback && <Text
+              testID="heat-map-custom-batch-feedback"
+              style={[styles.formError, { color: customBatchFeedback.kind === 'error' ? colors.sellColor : colors.primary }]}
+            >
+              {customBatchFeedback.message}
+            </Text>}
             {!!editFallbackSymbols.length && <View style={styles.editFallbackList}>
               <Text style={[styles.editFallbackHint, { color: colors.mutedForeground }]}>No visible hexagon for these tickers. Tap to remove:</Text>
               <View style={styles.editFallbackItems}>{editFallbackSymbols.map((symbol) => <TouchableOpacity
@@ -1743,6 +1875,11 @@ const styles = StyleSheet.create({
   customAssetChoiceName: { fontFamily: 'Inter_600SemiBold', fontSize: 10 },
   customAssetChoiceType: { fontFamily: 'Inter_400Regular', fontSize: 8, marginTop: 3 },
   customAssetChoiceSymbol: { fontFamily: 'Inter_700Bold', fontSize: 9, marginTop: 2 },
+  customAssetChoiceFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 5 },
+  batchAddRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 8 },
+  batchAddHint: { flex: 1, fontFamily: 'Inter_500Medium', fontSize: 10 },
+  batchAddButton: { minHeight: 36, borderRadius: 10, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
+  batchAddButtonText: { fontFamily: 'Inter_700Bold', fontSize: 10 },
   stockSearchHeading: { fontFamily: 'Inter_700Bold', fontSize: 9, paddingHorizontal: 11, paddingTop: 9, paddingBottom: 2, textTransform: 'uppercase', letterSpacing: 0.7 },
   storageReadError: { alignItems: 'flex-start', gap: 2 },
   undoBanner: { minHeight: 40, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, marginTop: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },

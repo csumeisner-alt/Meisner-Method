@@ -70,6 +70,42 @@ export function normalizeCustomHeatMapSymbols(value: unknown): string[] {
   return [...symbols];
 }
 
+export interface CustomHeatMapBatchAddPlan {
+  symbolsToAdd: string[];
+  alreadyAddedCount: number;
+  overLimitCount: number;
+}
+
+export function planCustomHeatMapBatchAdd(
+  existingSymbols: string[],
+  requestedSymbols: string[],
+  maxSymbols = MAX_CUSTOM_HEAT_MAP_SYMBOLS,
+): CustomHeatMapBatchAddPlan {
+  const existing = new Set(normalizeCustomHeatMapSymbols(existingSymbols));
+  const seenRequests = new Set<string>();
+  const symbolsToAdd: string[] = [];
+  let alreadyAddedCount = 0;
+  let overLimitCount = 0;
+  const capacity = Math.max(0, Math.floor(maxSymbols) - existing.size);
+
+  for (const rawSymbol of requestedSymbols) {
+    if (typeof rawSymbol !== "string") continue;
+    const symbol = rawSymbol.trim().toUpperCase();
+    if (!SYMBOL_PATTERN.test(symbol) || seenRequests.has(symbol)) continue;
+    seenRequests.add(symbol);
+
+    if (existing.has(symbol)) {
+      alreadyAddedCount += 1;
+    } else if (symbolsToAdd.length < capacity) {
+      symbolsToAdd.push(symbol);
+    } else {
+      overLimitCount += 1;
+    }
+  }
+
+  return { symbolsToAdd, alreadyAddedCount, overLimitCount };
+}
+
 export function moveCustomHeatMapSymbol(
   symbols: string[],
   symbol: string,
