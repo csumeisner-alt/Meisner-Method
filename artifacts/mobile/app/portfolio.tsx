@@ -1921,10 +1921,13 @@ function GradeHistoryModal({
             <View style={gradeModalStyles.headerCopy}>
               <Pressable
                 {...headerGestureResponder.panHandlers}
-                onPress={showHeaderHint}
+                onPress={Platform.OS === 'web' ? handleHeaderLongPress : showHeaderHint}
                 onLongPress={handleHeaderLongPress}
                 delayLongPress={800}
+                accessibilityRole="button"
                 accessibilityLabel="Trade grade history"
+                accessibilityHint={Platform.OS === 'web' ? 'Opens the training tape.' : 'Press and hold to open the training tape.'}
+                testID="grade-history-tape-trigger"
               >
                 <Text style={[gradeModalStyles.title, { color: colors.heading, fontFamily: 'Inter_700Bold' }]}>
                   TRADE GRADE HISTORY
@@ -1933,6 +1936,20 @@ function GradeHistoryModal({
               <Text style={[gradeModalStyles.subtitle, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                 Completed trades · tap a dot for details
               </Text>
+              {Platform.OS === 'web' && (
+                <Pressable
+                  testID="open-training-tape"
+                  onPress={handleHeaderLongPress}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open Training Tape"
+                  style={[gradeModalStyles.tapeShortcut, { borderColor: colors.goldMuted, backgroundColor: colors.steelShadow }]}
+                >
+                  <Feather name="radio" size={12} color={colors.gold} />
+                  <Text style={[gradeModalStyles.tapeShortcutText, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
+                    OPEN TRAINING TAPE
+                  </Text>
+                </Pressable>
+              )}
               {headerHintVisible && !brewBankUnlocked && (
                 <View
                   pointerEvents="none"
@@ -2070,6 +2087,8 @@ const gradeModalStyles = StyleSheet.create({
   headerCopy: { flex: 1 },
   title: { fontSize: 16, letterSpacing: 1.1 },
   subtitle: { fontSize: 11, marginTop: 3 },
+  tapeShortcut: { alignSelf: 'flex-start', minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 7, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, marginTop: 8 },
+  tapeShortcutText: { fontSize: 9, letterSpacing: 0.7 },
   headerHint: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 5, borderWidth: 1, borderRadius: 5, paddingHorizontal: 7, paddingVertical: 4, marginTop: 7 },
   headerHintText: { fontSize: 8, letterSpacing: 0.75 },
   scroll: { flex: 1 },
