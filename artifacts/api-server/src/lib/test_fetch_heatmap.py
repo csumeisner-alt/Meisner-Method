@@ -176,6 +176,17 @@ def adjusted_frame(rows):
 
 
 class HeatMapQuoteTests(unittest.TestCase):
+    def test_non_stock_quote_universes_match_shared_named_catalog(self):
+        expected_categories = {"etfs", "commodities", "futures", "cryptocurrency"}
+        self.assertEqual(set(fetch_heatmap.SUPPORTED_INSTRUMENTS), expected_categories)
+
+        for category, instruments in fetch_heatmap.SUPPORTED_INSTRUMENTS.items():
+            with self.subTest(category=category):
+                symbols = [instrument["symbol"] for instrument in instruments]
+                self.assertEqual(fetch_heatmap.UNIVERSES[category], symbols)
+                self.assertEqual(len(set(symbols)), len(symbols))
+                self.assertTrue(all(instrument["name"].strip() for instrument in instruments))
+
     def assert_quote_session(
         self,
         latest,

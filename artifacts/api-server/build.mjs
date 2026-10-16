@@ -148,6 +148,10 @@ buildAll()
         path.resolve(artifactDir, "dist/fetch_heatmap.py")
       ),
       copyFile(
+        path.resolve(artifactDir, "../mobile/lib/heatmap-instruments/catalog.json"),
+        path.resolve(artifactDir, "dist/heatmap_instruments.json")
+      ),
+      copyFile(
         path.resolve(artifactDir, "src/lib/fetch_top_picks.py"),
         path.resolve(artifactDir, "dist/fetch_top_picks.py")
       ),

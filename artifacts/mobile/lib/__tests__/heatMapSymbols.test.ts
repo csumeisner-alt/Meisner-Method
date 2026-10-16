@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import supportedInstrumentCatalog from "../heatmap-instruments/catalog.json" with { type: "json" };
 import {
   CUSTOM_HEAT_MAP_ASSETS,
   CUSTOM_HEAT_MAP_ASSET_TYPES,
@@ -28,6 +29,7 @@ test("custom heat-map asset picker offers every supported non-stock universe", (
   assert.equal(CUSTOM_HEAT_MAP_ASSETS.commodities.length, 15);
   assert.equal(CUSTOM_HEAT_MAP_ASSETS.futures.length, 12);
   assert.equal(CUSTOM_HEAT_MAP_ASSETS.cryptocurrency.length, 16);
+  assert.deepEqual(CUSTOM_HEAT_MAP_ASSETS, supportedInstrumentCatalog);
 
   for (const [type, assets] of Object.entries(CUSTOM_HEAT_MAP_ASSETS)) {
     assert.equal(new Set(assets.map(({ symbol }) => symbol)).size, assets.length, `${type} symbols are unique`);

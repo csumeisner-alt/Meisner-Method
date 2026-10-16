@@ -9,10 +9,10 @@ import {
 } from "../heatMapCryptoLogo.ts";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
-const backendSource = readFileSync(
-  resolve(testDir, "../../../api-server/src/lib/fetch_heatmap.py"),
+const supportedInstrumentCatalog = JSON.parse(readFileSync(
+  resolve(testDir, "../heatmap-instruments/catalog.json"),
   "utf8",
-);
+));
 const screenSource = readFileSync(resolve(testDir, "../../app/heat-map.tsx"), "utf8");
 const logoComponentSource = readFileSync(
   resolve(testDir, "../../components/HeatMapCryptoLogo.tsx"),
@@ -20,9 +20,9 @@ const logoComponentSource = readFileSync(
 );
 
 test("every supported cryptocurrency resolves to a locally bundled logo", () => {
-  const cryptoList = backendSource.match(/CRYPTO_SYMBOLS\s*=\s*\[([\s\S]*?)\]/)?.[1];
-  assert.ok(cryptoList, "the API should define the supported crypto symbol list");
-  const symbols = [...cryptoList.matchAll(/"([A-Z]+-USD)"/g)].map((match) => match[1]);
+  const symbols = supportedInstrumentCatalog.cryptocurrency.map(
+    (instrument: { symbol: string }) => instrument.symbol,
+  );
   assert.equal(symbols.length, HEAT_MAP_CRYPTO_LOGO_CODES.length);
 
   for (const symbol of symbols) {

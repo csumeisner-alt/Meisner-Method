@@ -9,6 +9,7 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import yfinance as yf
@@ -36,15 +37,20 @@ STOCK_SECTORS = {
     "NEE": "Utilities", "DUK": "Utilities",
 }
 
-ETF_SYMBOLS = [
-    "SPY", "QQQ", "IWM", "DIA", "VTI", "VOO", "XLK", "XLF", "XLE", "XLV",
-    "XLI", "XLY", "XLP", "XLU", "XLRE", "XLC", "SMH", "SOXX", "GLD", "SLV",
-    "TLT", "IEF", "HYG", "LQD", "ARKK", "XBI", "EEM", "EFA", "SCHD", "BND",
-]
-COMMODITY_SYMBOLS = [
-    "GC=F", "SI=F", "CL=F", "NG=F", "HG=F", "ZC=F", "ZW=F", "ZS=F",
-    "KC=F", "CT=F", "SB=F", "PL=F", "PA=F", "LE=F", "HE=F",
-]
+def load_supported_instrument_catalog():
+    catalog_path = Path(__file__).with_name("heatmap_instruments.json")
+    if not catalog_path.is_file():
+        catalog_path = (
+            Path(__file__).resolve().parents[4]
+            / "artifacts/mobile/lib/heatmap-instruments/catalog.json"
+        )
+    with catalog_path.open(encoding="utf-8") as catalog_file:
+        return json.load(catalog_file)
+
+
+SUPPORTED_INSTRUMENTS = load_supported_instrument_catalog()
+ETF_SYMBOLS = [instrument["symbol"] for instrument in SUPPORTED_INSTRUMENTS["etfs"]]
+COMMODITY_SYMBOLS = [instrument["symbol"] for instrument in SUPPORTED_INSTRUMENTS["commodities"]]
 COMMODITY_FUTURE_ROOTS = frozenset((
     "BZ", "CC", "CL", "CT", "GC", "GF", "HE", "HG", "HO", "KC", "LE", "LBS",
     "MCL", "MGC", "NG", "OJ", "PA", "PL", "RB", "SB", "SI", "ZC", "ZL",
@@ -69,10 +75,7 @@ ICE_COMMODITY_SCHEDULE_OVERRIDES = ()
 # then omits the estimate. Remove an entry after the authoritative calendar is
 # current again.
 US_EQUITY_TEMPORARY_CLOSURE_OVERRIDES = ()
-FUTURE_SYMBOLS = [
-    "ES=F", "NQ=F", "YM=F", "RTY=F", "ZN=F", "ZB=F", "ZF=F",
-    "6E=F", "6J=F", "6B=F", "6C=F", "DX=F",
-]
+FUTURE_SYMBOLS = [instrument["symbol"] for instrument in SUPPORTED_INSTRUMENTS["futures"]]
 CME_FUTURES_PRODUCT_GROUPS = {
     "equity_index": frozenset(("ES=F", "NQ=F", "YM=F", "RTY=F")),
     "interest_rates": frozenset(("ZN=F", "ZB=F", "ZF=F")),
@@ -101,11 +104,7 @@ CME_FUTURES_HOLIDAY_CLOSES_CT = {
         "fx": 13 * 60 + 45,
     },
 }
-CRYPTO_SYMBOLS = [
-    "BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "BNB-USD", "DOGE-USD",
-    "ADA-USD", "TRX-USD", "AVAX-USD", "LINK-USD", "LTC-USD", "BCH-USD",
-    "SUI-USD", "DOT-USD", "SHIB-USD", "TON-USD",
-]
+CRYPTO_SYMBOLS = [instrument["symbol"] for instrument in SUPPORTED_INSTRUMENTS["cryptocurrency"]]
 STOCK_SYMBOLS = list(STOCK_SECTORS)
 UNIVERSES = {
     "stocks": STOCK_SYMBOLS,
