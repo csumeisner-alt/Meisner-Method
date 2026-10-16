@@ -48,6 +48,7 @@ function getLocalPointerCoordinate(event: GestureResponderEvent, axis: 'x' | 'y'
 
 interface Props {
   candles: Candle[];
+  priceCurrency?: string;
   chartMode?: 'line' | 'candles';
   showMA20?: boolean;
   showMA50?: boolean;
@@ -63,14 +64,16 @@ interface Props {
 const PAD = { top: 16, right: 52, bottom: 42, left: 4 };
 const VOL_RATIO = 0.18;
 
-function fmtPrice(p: number) {
-  if (p >= 1000) return `$${(p / 1000).toFixed(1)}k`;
-  if (p >= 1) return `$${p.toFixed(2)}`;
-  return `$${p.toFixed(4)}`;
+function fmtPrice(p: number, currency = 'USD') {
+  const amount = p >= 1000 ? `${(p / 1000).toFixed(1)}k`
+    : p >= 1 ? p.toFixed(2)
+      : p.toFixed(4);
+  return currency === 'USD' ? `$${amount}` : `${amount} ${currency}`;
 }
 
 export function StockChart({
   candles,
+  priceCurrency = 'USD',
   chartMode = 'line',
   showMA20 = false,
   showMA50 = true,
@@ -293,7 +296,7 @@ export function StockChart({
             <Line x1={PAD.left} y1={py(level)} x2={PAD.left + chartW} y2={py(level)}
               stroke="#00e5a0" strokeWidth={1.3} strokeDasharray="5 4" />
             <SvgText x={PAD.left + chartW - 2} y={py(level) - 3} fontSize={9}
-              fill="#00e5a0" textAnchor="end">SUPPORT {fmtPrice(level)}</SvgText>
+              fill="#00e5a0" textAnchor="end">SUPPORT {fmtPrice(level, priceCurrency)}</SvgText>
           </G>
         ))}
         {resistanceLevels.map((level) => (
@@ -301,7 +304,7 @@ export function StockChart({
             <Line x1={PAD.left} y1={py(level)} x2={PAD.left + chartW} y2={py(level)}
               stroke="#ff9f43" strokeWidth={1.3} strokeDasharray="5 4" />
             <SvgText x={PAD.left + chartW - 2} y={py(level) - 3} fontSize={9}
-              fill="#ff9f43" textAnchor="end">RESISTANCE {fmtPrice(level)}</SvgText>
+              fill="#ff9f43" textAnchor="end">RESISTANCE {fmtPrice(level, priceCurrency)}</SvgText>
           </G>
         ))}
         {trendLines.map((trend) => {
@@ -339,7 +342,7 @@ export function StockChart({
                     fill="#1c1c1c" stroke="rgba(192,192,192,0.3)" strokeWidth={1} />
                   <SvgText x={bx + 30} y={py(touchCandle.c) - 11}
                     fontSize={10} fill="#c0c0c0" textAnchor="middle" fontWeight="bold">
-                    {fmtPrice(touchCandle.c)}
+                    {fmtPrice(touchCandle.c, priceCurrency)}
                   </SvgText>
                 </>
               );

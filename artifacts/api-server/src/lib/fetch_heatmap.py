@@ -16,6 +16,19 @@ import yfinance as yf
 from yfinance import EquityQuery
 
 
+CRYPTO_QUOTE_CURRENCIES = {
+    "USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "HKD", "INR",
+    "KRW", "BRL", "TRY", "BTC", "ETH", "USDT",
+}
+
+
+def crypto_quote_currency(symbol):
+    parts = str(symbol).upper().rsplit("-", 1)
+    if len(parts) != 2 or not parts[0] or parts[1] not in CRYPTO_QUOTE_CURRENCIES:
+        return None
+    return parts[1]
+
+
 STOCK_SECTORS = {
     "AAPL": "Technology", "MSFT": "Technology", "NVDA": "Technology", "AVGO": "Technology",
     "ORCL": "Technology", "CRM": "Technology", "AMD": "Technology", "MU": "Technology",
@@ -422,7 +435,7 @@ def asset_type_for(category, symbol):
         return "future"
     if category == "cryptocurrency":
         return "cryptocurrency"
-    if symbol.endswith("-USD"):
+    if crypto_quote_currency(symbol) is not None:
         return "cryptocurrency"
     if symbol.endswith("=F"):
         root = symbol[:-2]
@@ -1443,7 +1456,7 @@ def asset_type_from_provider_quote_type(quote_type, symbol):
     if normalized == "EQUITY":
         return "stock"
     if normalized == "CRYPTOCURRENCY":
-        return "cryptocurrency" if symbol.endswith("-USD") else None
+        return "cryptocurrency" if crypto_quote_currency(symbol) is not None else None
     if normalized == "FUTURE":
         return asset_type_for("custom", symbol) if symbol.endswith("=F") else None
     return None

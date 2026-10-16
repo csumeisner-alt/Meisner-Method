@@ -46,6 +46,7 @@ import {
 } from '@/lib/heatMapMetrics';
 import { getHeatMapInstrumentDisplay } from '@/lib/heatMapInstrumentDisplay';
 import { getHeatMapCryptoLogoCode } from '@/lib/heatMapCryptoLogo';
+import { formatHeatMapCryptoPrice } from '@/lib/heatMapCryptoPrice';
 import {
   formatHeatMapNextOpen, formatHeatMapQuoteAge, getHeatMapMarketStatus, getHeatMapSessionLabel,
   getHeatMapRegularOpenRefreshTimestamp, getNextHeatMapRegularOpenTimestamp,
@@ -126,7 +127,8 @@ const LOADING_HEX_PULSE_HALF_CYCLE_MS = 900;
 const HEX_REVEAL_SPREAD_MS = 1_100;
 const HEX_REVEAL_DURATION_MS = 680;
 
-function formatPrice(price: number) {
+function formatPrice(price: number, symbol?: string, isCrypto = false) {
+  if (isCrypto && symbol) return formatHeatMapCryptoPrice(price, symbol);
   return `$${price.toLocaleString('en-US', { minimumFractionDigits: price >= 1 ? 2 : 4, maximumFractionDigits: price >= 1 ? 2 : 4 })}`;
 }
 function formatUpdated(timestamp?: number) {
@@ -292,7 +294,7 @@ function HexTile({ quote, width, height, colors, period, category, editing, redu
         </Text>
       )}
       <Text testID={`heat-map-change-${quote.symbol}`} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={[styles.tileChange, { color: tone }]}>{label}</Text>
-      <Text testID={`heat-map-price-${quote.symbol}`} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82} style={[styles.tilePrice, { color: colors.foreground }]}>{formatPrice(quote.price)}</Text>
+      <Text testID={`heat-map-price-${quote.symbol}`} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82} style={[styles.tilePrice, { color: colors.foreground }]}>{formatPrice(quote.price, quote.symbol, quote.assetType === 'cryptocurrency')}</Text>
       <Text testID={`heat-map-session-${quote.symbol}`} numberOfLines={1} style={[styles.tileSession, { color: colors.foreground }]}>{session}</Text>
       {showNextOpen && nextOpen && <Text testID={`heat-map-next-open-${quote.symbol}`} numberOfLines={2} style={[styles.tileNextOpen, { color: colors.foreground }]}>{nextOpen}</Text>}
       <Text testID={`heat-map-quote-age-${quote.symbol}`} numberOfLines={1} style={[styles.tileAge, { color: colors.mutedForeground }]}>{age}</Text>
@@ -307,7 +309,7 @@ function HexTile({ quote, width, height, colors, period, category, editing, redu
       <TouchableOpacity
         testID={`heat-map-open-detail-${quote.symbol}`}
         accessibilityRole="button"
-        accessibilityLabel={`${identityLabel}, ${formatPrice(quote.price)}, ${label}. View market details.`}
+        accessibilityLabel={`${identityLabel}, ${formatPrice(quote.price, quote.symbol, quote.assetType === 'cryptocurrency')}, ${label}. View market details.`}
         accessibilityHint="Opens the market detail card."
         onPress={onSelect}
         activeOpacity={0.86}
@@ -1409,7 +1411,7 @@ export default function HeatMapScreen() {
                     ? 'Commodity'
                     : suggestion.category === 'future'
                       ? 'Future'
-                      : 'Crypto';
+                      : `Crypto · quote ${suggestion.symbol.slice(suggestion.symbol.lastIndexOf('-') + 1)}`;
                 return <TouchableOpacity
                   key={suggestion.symbol}
                   testID={`heat-map-custom-instrument-${suggestion.symbol}`}

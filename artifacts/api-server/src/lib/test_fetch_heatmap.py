@@ -1767,6 +1767,8 @@ class HeatMapScreenerTests(unittest.TestCase):
             "VUG": {"quoteType": "ETF", "fullExchangeName": "NYSE Arca"},
             "SHOP": {"quoteType": "EQUITY", "fullExchangeName": "NASDAQ"},
             "GOLD": {"quoteType": "INDEX"},
+            "BTC-EUR": {"quoteType": "CRYPTOCURRENCY"},
+            "BTC-XYZ": {"quoteType": "CRYPTOCURRENCY"},
         }
         with (
             patch.object(fetch_heatmap, "read_metadata_cache", return_value={}),
@@ -1778,7 +1780,7 @@ class HeatMapScreenerTests(unittest.TestCase):
             patch.object(fetch_heatmap, "write_metadata_cache") as write_cache,
         ):
             asset_types = fetch_heatmap.resolve_custom_asset_types(
-                ["VUG", "SHOP", "GOLD", "CL=F", "MGC=F", "ES=F", "BTC-USD"],
+                ["VUG", "SHOP", "GOLD", "CL=F", "MGC=F", "ES=F", "BTC-USD", "BTC-EUR", "BTC-XYZ"],
                 now=datetime(2026, 10, 15, tzinfo=timezone.utc),
             )
 
@@ -1792,11 +1794,31 @@ class HeatMapScreenerTests(unittest.TestCase):
                 "MGC=F": "commodity",
                 "ES=F": "future",
                 "BTC-USD": "cryptocurrency",
+                "BTC-EUR": "cryptocurrency",
+                "BTC-XYZ": None,
             },
         )
         saved_cache = write_cache.call_args.args[0]
         self.assertEqual(saved_cache["VUG"]["quoteType"], "ETF")
         self.assertEqual(saved_cache["SHOP"]["quoteType"], "EQUITY")
+        self.assertEqual(saved_cache["BTC-EUR"]["quoteType"], "CRYPTOCURRENCY")
+
+    def test_crypto_quote_currency_support_is_explicit(self):
+        supported = ("USD", "EUR", "GBP", "JPY", "BTC", "ETH", "USDT")
+        for currency in supported:
+            with self.subTest(currency=currency):
+                symbol = f"BTC-{currency}"
+                self.assertEqual(fetch_heatmap.crypto_quote_currency(symbol), currency)
+                self.assertEqual(
+                    fetch_heatmap.asset_type_from_provider_quote_type("CRYPTOCURRENCY", symbol),
+                    "cryptocurrency",
+                )
+        for symbol in ("BTC-XYZ", "BTC-", "-EUR", "BTCEUR"):
+            with self.subTest(symbol=symbol):
+                self.assertIsNone(fetch_heatmap.crypto_quote_currency(symbol))
+                self.assertIsNone(
+                    fetch_heatmap.asset_type_from_provider_quote_type("CRYPTOCURRENCY", symbol),
+                )
 
     def test_custom_asset_type_override_is_used_for_quotes(self):
         now = datetime(2026, 10, 15, 15, 0, tzinfo=timezone.utc)
@@ -1817,6 +1839,29 @@ class HeatMapScreenerTests(unittest.TestCase):
 
         self.assertEqual(quote["assetType"], "etf")
         self.assertEqual(quote["returnBasis"], "adjusted_total_return")
+
+    def test_non_usd_crypto_quote_keeps_pair_price_and_calculates_pair_return(self):
+        now = datetime(2026, 10, 16, 12, 0, tzinfo=timezone.utc)
+        frame = close_frame([
+            (datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc), 50_000),
+            (now, 52_000),
+        ])
+
+        quote = fetch_heatmap.quote_from_frame(
+            frame,
+            "BTC-EUR",
+            "custom",
+            require_prior_close=False,
+            now=now,
+            asset_type_override="cryptocurrency",
+        )
+        self.assertIsNotNone(quote)
+        self.assertEqual(quote["assetType"], "cryptocurrency")
+        self.assertEqual(quote["price"], 52_000)
+
+        result = fetch_heatmap.enrich_quote_with_history(quote, frame, "1d", now)
+        self.assertEqual(result["price"], 52_000)
+        self.assertAlmostEqual(result["returnPercent"], 4.0)
 
 
 if __name__ == "__main__":

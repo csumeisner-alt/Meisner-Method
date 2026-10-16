@@ -46,8 +46,9 @@ test("cryptocurrency tiles in either category view or a custom map render mapped
   assert.doesNotMatch(logoComponentSource, /SvgUri|fetch\(/);
 });
 
-test("unsupported or non-USD symbols use the safe no-logo fallback", () => {
+test("logos resolve from the crypto base asset for USD and other supported pairs", () => {
+  assert.equal(getHeatMapCryptoLogoCode("BTC-EUR"), "BTC");
+  assert.equal(getHeatMapCryptoLogoCode("ETH-BTC"), "ETH");
   assert.equal(getHeatMapCryptoLogoCode("NEW-USD"), null);
-  assert.equal(getHeatMapCryptoLogoCode("BTC-EUR"), null);
   assert.equal(getHeatMapCryptoLogoCode(""), null);
 });

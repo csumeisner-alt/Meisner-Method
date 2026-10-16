@@ -18,6 +18,15 @@ const COMMODITY_FUTURE_ROOTS = new Set([
   "MCL", "MGC", "NG", "OJ", "PA", "PL", "RB", "SB", "SI", "ZC", "ZL",
   "ZM", "ZO", "ZR", "ZS", "ZW",
 ]);
+const CRYPTO_QUOTE_CURRENCIES = new Set([
+  "USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "HKD", "INR",
+  "KRW", "BRL", "TRY", "BTC", "ETH", "USDT",
+]);
+
+function isSupportedCryptoSymbol(symbol: string): boolean {
+  const separator = symbol.lastIndexOf("-");
+  return separator > 0 && CRYPTO_QUOTE_CURRENCIES.has(symbol.slice(separator + 1).toUpperCase());
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -58,7 +67,7 @@ export function parseYahooHeatMapInstrumentSearchResponse(
       : "";
     let category: HeatMapInstrumentCategory | null = null;
     if (quoteType === "ETF") category = "etf";
-    else if (quoteType === "CRYPTOCURRENCY" && rawSymbol.toUpperCase().endsWith("-USD")) {
+    else if (quoteType === "CRYPTOCURRENCY" && isSupportedCryptoSymbol(rawSymbol)) {
       category = "cryptocurrency";
     } else if (quoteType === "FUTURE" && rawSymbol.toUpperCase().endsWith("=F")) {
       const root = rawSymbol.toUpperCase().slice(0, -2);

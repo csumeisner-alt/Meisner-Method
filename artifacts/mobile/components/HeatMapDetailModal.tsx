@@ -40,12 +40,13 @@ import {
   getCommodityContractTickValue,
 } from '@/lib/heatMapInstrumentDisplay';
 import { formatHeatMapQuoteAge } from '@/lib/heatMapQuoteDisplay';
+import { formatHeatMapCryptoPrice } from '@/lib/heatMapCryptoPrice';
 
 const DETAIL_CACHE_TTL_MS = 5 * 60_000;
 const DETAIL_STATS_REQUEST_TIMEOUT_MS = 10_000;
 const detailCache = new Map<string, { stats: HeatMapDetailStats; expiresAt: number }>();
 
-function formatPrice(value: number, quoteCurrency: 'USD' | 'USC' = 'USD') {
+function formatPrice(value: number, quoteCurrency: string = 'USD') {
   const absolute = Math.abs(value);
   const fractionDigits = absolute >= 1 ? 2 : absolute >= 0.01 ? 4 : 6;
   const sign = value < 0 ? '-' : '';
@@ -53,7 +54,9 @@ function formatPrice(value: number, quoteCurrency: 'USD' | 'USC' = 'USD') {
     minimumFractionDigits: quoteCurrency === 'USC' ? 2 : fractionDigits,
     maximumFractionDigits: quoteCurrency === 'USC' ? 3 : fractionDigits,
   });
-  return quoteCurrency === 'USC' ? `${sign}${formatted}¢` : `${sign}$${formatted}`;
+  if (quoteCurrency === 'USC') return `${sign}${formatted}¢`;
+  if (quoteCurrency !== 'USD') return `${sign}${formatted} ${quoteCurrency}`;
+  return `${sign}$${formatted}`;
 }
 
 function formatCommodityPriceIncrement(value: number, quoteCurrency: 'USD' | 'USC') {
@@ -413,6 +416,9 @@ export function HeatMapDetailModal({
     marketCap,
     loading,
   );
+  const formatQuotePrice = (value: number) => quote.assetType === 'cryptocurrency'
+    ? formatHeatMapCryptoPrice(value, quote.symbol, 6)
+    : formatPrice(value, commodityContract?.quoteCurrency);
 
   return (
     <Modal
@@ -483,7 +489,7 @@ export function HeatMapDetailModal({
 
             <View style={styles.priceRow}>
               <Text testID="heat-map-detail-price" style={[styles.price, { color: colors.foreground }]}>
-                {formatPrice(quote.price, commodityContract?.quoteCurrency)}
+                {formatQuotePrice(quote.price)}
               </Text>
               <View style={[styles.changeBadge, { backgroundColor: change >= 0 ? colors.buyBg : colors.sellBg }]}>
                 <MaterialCommunityIcons name={change >= 0 ? 'arrow-top-right' : 'arrow-bottom-right'} size={15} color={changeColor} />
@@ -598,7 +604,7 @@ export function HeatMapDetailModal({
                 price={quote.price}
                 loading={loading}
                 colors={colors}
-                formatValue={(value) => formatPrice(value, commodityContract?.quoteCurrency)}
+                formatValue={formatQuotePrice}
               />
               <RangeBar
                 testID="heat-map-detail-range-year"
@@ -608,7 +614,7 @@ export function HeatMapDetailModal({
                 price={quote.price}
                 loading={loading}
                 colors={colors}
-                formatValue={(value) => formatPrice(value, commodityContract?.quoteCurrency)}
+                formatValue={formatQuotePrice}
               />
             </View>
 

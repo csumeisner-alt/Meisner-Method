@@ -9,6 +9,7 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useApi } from '@/hooks/useApi';
+import { getHeatMapCryptoQuoteCurrency } from '@/lib/heatMapCryptoPrice';
 import { StockChart, type Candle } from '@/components/StockChart';
 import { ComparisonChart } from '@/components/ComparisonChart';
 import {
@@ -52,6 +53,9 @@ export default function HeatMapChartScreen() {
   const symbol = typeof params.symbol === 'string' ? params.symbol.toUpperCase() : '';
   const name = typeof params.name === 'string' ? params.name : symbol;
   const assetType = typeof params.assetType === 'string' ? params.assetType : 'Instrument';
+  const priceCurrency = assetType === 'cryptocurrency'
+    ? getHeatMapCryptoQuoteCurrency(symbol) ?? 'USD'
+    : 'USD';
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const colors = useColors();
@@ -267,7 +271,7 @@ export default function HeatMapChartScreen() {
                     width={plotWidth - 8}
                     height={300}
                   />
-                ) : <StockChart candles={visibleCandles} chartMode={chartMode} width={plotWidth - 8} height={300} showMA50={false}
+                ) : <StockChart candles={visibleCandles} priceCurrency={priceCurrency} chartMode={chartMode} width={plotWidth - 8} height={300} showMA50={false}
                   supportLevels={showLevels ? levels.support : []} resistanceLevels={showLevels ? levels.resistance : []}
                   trendLines={trendLines} onChartPoint={onChartPoint} />}
           {!loading && !loadError && candles.length > 0 && (

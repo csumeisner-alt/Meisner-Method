@@ -23,6 +23,7 @@ const supportedCryptoLogoCodes = new Set<string>(HEAT_MAP_CRYPTO_LOGO_CODES);
 
 export function getHeatMapCryptoLogoCode(symbol: string): HeatMapCryptoLogoCode | null {
   const normalized = symbol.trim().toUpperCase();
-  const code = normalized.endsWith("-USD") ? normalized.slice(0, -4) : normalized;
+  const separator = normalized.lastIndexOf("-");
+  const code = separator > 0 ? normalized.slice(0, separator) : normalized;
   return supportedCryptoLogoCodes.has(code) ? code as HeatMapCryptoLogoCode : null;
 }

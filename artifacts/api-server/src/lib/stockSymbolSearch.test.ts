@@ -13,8 +13,12 @@ test("Yahoo heat-map search maps supported ETFs, commodity futures, futures, and
       { quoteType: "FUTURE", symbol: "MGC=F", shortname: "Micro Gold", exchDisp: "Chicago" },
       { quoteType: "FUTURE", symbol: "ES=F", shortname: "E-mini S&P 500" },
       { quoteType: "CRYPTOCURRENCY", symbol: "PEPE-USD", shortname: "Pepe" },
+      { quoteType: "CRYPTOCURRENCY", symbol: "BTC-EUR", shortname: "Bitcoin EUR" },
+      { quoteType: "CRYPTOCURRENCY", symbol: "ETH-BTC", shortname: "Ethereum BTC" },
       { quoteType: "EQUITY", symbol: "AAPL", shortname: "Apple Inc." },
-      { quoteType: "CRYPTOCURRENCY", symbol: "PEPE-BTC", shortname: "Pepe BTC" },
+      { quoteType: "CRYPTOCURRENCY", symbol: "PEPE-XYZ", shortname: "Pepe unsupported quote" },
+      { quoteType: "CRYPTOCURRENCY", symbol: "BTC-XYZ", shortname: "Bitcoin unsupported quote" },
+      { quoteType: "CRYPTOCURRENCY", symbol: "BTC-EUR", shortname: "Duplicate Bitcoin EUR" },
       { quoteType: "FUTURE", symbol: "GC", shortname: "Gold" },
       { quoteType: "FUTURE", symbol: "ES=F", shortname: "Duplicate future" },
     ],
@@ -26,6 +30,8 @@ test("Yahoo heat-map search maps supported ETFs, commodity futures, futures, and
     { symbol: "MGC=F", name: "Micro Gold", exchange: "Chicago", category: "commodity" },
     { symbol: "ES=F", name: "E-mini S&P 500", exchange: "Exchange unavailable", category: "future" },
     { symbol: "PEPE-USD", name: "Pepe", exchange: "Exchange unavailable", category: "cryptocurrency" },
+    { symbol: "BTC-EUR", name: "Bitcoin EUR", exchange: "Exchange unavailable", category: "cryptocurrency" },
+    { symbol: "ETH-BTC", name: "Ethereum BTC", exchange: "Exchange unavailable", category: "cryptocurrency" },
   ]);
 });
 
