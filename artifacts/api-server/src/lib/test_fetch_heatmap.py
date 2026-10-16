@@ -1,5 +1,8 @@
+import importlib.util
+import sys
 import unittest
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
@@ -9,6 +12,11 @@ import fetch_heatmap
 
 
 EASTERN = ZoneInfo("America/New_York")
+API_SERVER_DIR = Path(__file__).resolve().parents[2]
+MOBILE_INSTRUMENT_CATALOG = (
+    API_SERVER_DIR.parent
+    / "mobile/lib/heatmap-instruments/catalog.json"
+)
 
 
 def eastern(year, month, day, hour, minute=0):
@@ -176,6 +184,40 @@ def adjusted_frame(rows):
 
 
 class HeatMapQuoteTests(unittest.TestCase):
+    def test_api_build_packages_catalog_beside_fetcher_and_loads_all_symbols(self):
+        packaged_fetcher = API_SERVER_DIR / "dist/fetch_heatmap.py"
+        packaged_catalog = API_SERVER_DIR / "dist/heatmap_instruments.json"
+        self.assertTrue(packaged_fetcher.is_file(), "API build must include fetch_heatmap.py")
+        self.assertTrue(
+            packaged_catalog.is_file(),
+            "API build must copy heatmap_instruments.json beside fetch_heatmap.py",
+        )
+
+        spec = importlib.util.spec_from_file_location(
+            "packaged_fetch_heatmap",
+            packaged_fetcher,
+        )
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        packaged_module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = packaged_module
+        try:
+            spec.loader.exec_module(packaged_module)
+        finally:
+            sys.modules.pop(spec.name, None)
+
+        self.assertEqual(
+            packaged_module.SUPPORTED_INSTRUMENTS,
+            fetch_heatmap.SUPPORTED_INSTRUMENTS,
+        )
+        for category, instruments in packaged_module.SUPPORTED_INSTRUMENTS.items():
+            with self.subTest(category=category):
+                self.assertTrue(instruments)
+                self.assertEqual(
+                    packaged_module.UNIVERSES[category],
+                    [instrument["symbol"] for instrument in instruments],
+                )
+
     def test_non_stock_quote_universes_match_shared_named_catalog(self):
         expected_categories = {"etfs", "commodities", "futures", "cryptocurrency"}
         self.assertEqual(set(fetch_heatmap.SUPPORTED_INSTRUMENTS), expected_categories)
