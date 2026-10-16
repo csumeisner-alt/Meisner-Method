@@ -181,3 +181,11 @@ test("custom map removal uses an edit toggle and animated, tappable hexagons ins
   assert.match(screenSource, /No visible hexagon for these tickers\. Tap to remove:/);
   assert.doesNotMatch(screenSource, /styles\.chipList|styles\.symbolChip|styles\.chipText/);
 });
+
+test("custom map edit mode exposes accessible controls to persist instrument order", () => {
+  assert.match(screenSource, /testID="heat-map-custom-reorder-list"/);
+  assert.match(screenSource, /accessibilityLabel=\{`Move \$\{symbol\} up`\}/);
+  assert.match(screenSource, /accessibilityLabel=\{`Move \$\{symbol\} down`\}/);
+  assert.match(screenSource, /await persistSymbols\(next\)/);
+  assert.match(screenSource, /if \(category === 'custom'\) \{\s+const order = new Map\(customSymbols\.map/);
+});

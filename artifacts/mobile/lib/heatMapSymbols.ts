@@ -69,3 +69,17 @@ export function normalizeCustomHeatMapSymbols(value: unknown): string[] {
 
   return [...symbols];
 }
+
+export function moveCustomHeatMapSymbol(
+  symbols: string[],
+  symbol: string,
+  direction: "up" | "down",
+): string[] {
+  const index = symbols.indexOf(symbol);
+  const targetIndex = direction === "up" ? index - 1 : index + 1;
+  if (index < 0 || targetIndex < 0 || targetIndex >= symbols.length) return symbols;
+
+  const reordered = [...symbols];
+  [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
+  return reordered;
+}

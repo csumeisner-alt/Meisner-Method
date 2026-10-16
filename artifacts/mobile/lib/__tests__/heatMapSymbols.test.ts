@@ -5,6 +5,7 @@ import {
   CUSTOM_HEAT_MAP_ASSETS,
   CUSTOM_HEAT_MAP_ASSET_TYPES,
   MAX_CUSTOM_HEAT_MAP_SYMBOLS,
+  moveCustomHeatMapSymbol,
   normalizeCustomHeatMapSymbols,
   searchCustomHeatMapAssets,
 } from "../heatMapSymbols.ts";
@@ -19,6 +20,21 @@ test("saved custom symbols are uppercased, validated, and deduplicated", () => {
 test("saved custom symbols are capped to the API's supported maximum", () => {
   const input = Array.from({ length: MAX_CUSTOM_HEAT_MAP_SYMBOLS + 3 }, (_, index) => `T${index}`);
   assert.equal(normalizeCustomHeatMapSymbols(input).length, MAX_CUSTOM_HEAT_MAP_SYMBOLS);
+});
+
+test("custom symbols can move up or down without changing other saved order", () => {
+  const symbols = ["AAPL", "MSFT", "GC=F"];
+  assert.deepEqual(moveCustomHeatMapSymbol(symbols, "MSFT", "up"), ["MSFT", "AAPL", "GC=F"]);
+  assert.deepEqual(moveCustomHeatMapSymbol(symbols, "MSFT", "down"), ["AAPL", "GC=F", "MSFT"]);
+  assert.deepEqual(moveCustomHeatMapSymbol(symbols, "AAPL", "up"), symbols);
+  assert.deepEqual(moveCustomHeatMapSymbol(symbols, "GC=F", "down"), symbols);
+  assert.deepEqual(moveCustomHeatMapSymbol(symbols, "MISSING", "up"), symbols);
+
+  const changed = moveCustomHeatMapSymbol(symbols, "GC=F", "up");
+  const afterAdd = normalizeCustomHeatMapSymbols([...changed, "BTC-USD"]);
+  const afterRemove = afterAdd.filter((symbol) => symbol !== "AAPL");
+  assert.deepEqual(afterAdd, ["AAPL", "GC=F", "MSFT", "BTC-USD"]);
+  assert.deepEqual(afterRemove, ["GC=F", "MSFT", "BTC-USD"]);
 });
 
 test("custom heat-map asset picker offers every supported non-stock universe", () => {

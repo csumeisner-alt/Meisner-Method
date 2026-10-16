@@ -55,7 +55,7 @@ import {
 } from '@/lib/heatMapQuoteDisplay';
 import {
   CUSTOM_HEAT_MAP_ASSETS, CUSTOM_HEAT_MAP_ASSET_TYPES,
-  MAX_CUSTOM_HEAT_MAP_SYMBOLS, normalizeCustomHeatMapSymbols,
+  MAX_CUSTOM_HEAT_MAP_SYMBOLS, moveCustomHeatMapSymbol, normalizeCustomHeatMapSymbols,
   searchCustomHeatMapAssets,
   type CustomHeatMapAssetType,
 } from '@/lib/heatMapSymbols';
@@ -965,14 +965,24 @@ export default function HeatMapScreen() {
         quotes: sortedQuotes,
       }];
     }
-    if (category !== 'stocks' && category !== 'custom') return [{ name: '', quotes: filterableQuotes }];
+    if (category === 'custom') {
+      const order = new Map(customSymbols.map((symbol, index) => [symbol, index]));
+      return [{
+        name: '',
+        quotes: [...filterableQuotes].sort(
+          (left, right) => (order.get(left.symbol) ?? Number.MAX_SAFE_INTEGER)
+            - (order.get(right.symbol) ?? Number.MAX_SAFE_INTEGER),
+        ),
+      }];
+    }
+    if (category !== 'stocks') return [{ name: '', quotes: filterableQuotes }];
     const grouped = new Map<string, HeatMapQuote[]>();
     filterableQuotes.forEach((quote) => {
       const sector = quote.sector?.trim() || 'Unknown';
       grouped.set(sector, [...(grouped.get(sector) ?? []), quote]);
     });
     return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([name, items]) => ({ name, quotes: items }));
-  }, [category, filterableQuotes, returnSort, sortedQuotes]);
+  }, [category, customSymbols, filterableQuotes, returnSort, sortedQuotes]);
   const tileSymbols = useMemo(
     () => sectors.flatMap((group) => group.quotes.map((quote) => quote.symbol)),
     [sectors],
@@ -1056,6 +1066,22 @@ export default function HeatMapScreen() {
     }
     catch { setFormError(`Couldn't remove ${symbol} from this device. Try again.`); }
     finally {
+      removeInProgress.current = false;
+      setRemovingSymbol(null);
+    }
+  }
+  async function moveSymbol(symbol: string, direction: 'up' | 'down') {
+    if (removeInProgress.current) return;
+    const next = moveCustomHeatMapSymbol(customSymbols, symbol, direction);
+    if (next === customSymbols) return;
+    removeInProgress.current = true;
+    setRemovingSymbol(symbol);
+    try {
+      await persistSymbols(next);
+      setLastRemovedTicker(null);
+    } catch {
+      setFormError(`Couldn't reorder ${symbol} on this device. Try again.`);
+    } finally {
       removeInProgress.current = false;
       setRemovingSymbol(null);
     }
@@ -1240,6 +1266,48 @@ export default function HeatMapScreen() {
                 <MaterialCommunityIcons name="undo-variant" size={14} color={colors.primary} />
                 <Text style={[styles.undoButtonText, { color: colors.primary }]}>Undo</Text>
               </TouchableOpacity>
+            </View>}
+            {isEditingCustomMap && customSymbols.length > 0 && <View
+              testID="heat-map-custom-reorder-list"
+              style={styles.reorderList}
+            >
+              <Text style={[styles.editFallbackHint, { color: colors.mutedForeground }]}>
+                Arrange your instruments. Changes save on this device.
+              </Text>
+              {customSymbols.map((symbol, index) => (
+                <View
+                  key={symbol}
+                  testID={`heat-map-reorder-row-${symbol}`}
+                  style={[styles.reorderRow, { borderColor: colors.border, backgroundColor: colors.background }]}
+                >
+                  <Text style={[styles.reorderPosition, { color: colors.mutedForeground }]}>{index + 1}.</Text>
+                  <Text style={[styles.reorderSymbol, { color: colors.foreground }]}>{symbol}</Text>
+                  <TouchableOpacity
+                    testID={`heat-map-move-up-${symbol}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Move ${symbol} up`}
+                    accessibilityHint="Moves this instrument earlier in your custom map."
+                    accessibilityState={{ disabled: index === 0 || removingSymbol !== null }}
+                    disabled={index === 0 || removingSymbol !== null}
+                    onPress={() => void moveSymbol(symbol, 'up')}
+                    style={[styles.reorderButton, { borderColor: colors.border, opacity: index === 0 || removingSymbol !== null ? 0.4 : 1 }]}
+                  >
+                    <MaterialCommunityIcons name="chevron-up" size={20} color={colors.primary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    testID={`heat-map-move-down-${symbol}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Move ${symbol} down`}
+                    accessibilityHint="Moves this instrument later in your custom map."
+                    accessibilityState={{ disabled: index === customSymbols.length - 1 || removingSymbol !== null }}
+                    disabled={index === customSymbols.length - 1 || removingSymbol !== null}
+                    onPress={() => void moveSymbol(symbol, 'down')}
+                    style={[styles.reorderButton, { borderColor: colors.border, opacity: index === customSymbols.length - 1 || removingSymbol !== null ? 0.4 : 1 }]}
+                  >
+                    <MaterialCommunityIcons name="chevron-down" size={20} color={colors.primary} />
+                  </TouchableOpacity>
+                </View>
+              ))}
             </View>}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.customAssetTypeRail} contentContainerStyle={styles.customAssetTypeOptions}>
               {CUSTOM_HEAT_MAP_ASSET_TYPES.map((assetType) => {
@@ -1698,6 +1766,11 @@ const styles = StyleSheet.create({
   editFallbackItems: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   editFallbackItem: { minHeight: 28, borderWidth: 1, borderRadius: 9, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', gap: 6 },
   editFallbackTicker: { fontFamily: 'Inter_600SemiBold', fontSize: 10 },
+  reorderList: { gap: 7, marginTop: 4 },
+  reorderRow: { minHeight: 48, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  reorderPosition: { width: 22, fontFamily: 'Inter_600SemiBold', fontSize: 11 },
+  reorderSymbol: { flex: 1, fontFamily: 'Inter_600SemiBold', fontSize: 12 },
+  reorderButton: { width: 44, height: 44, borderWidth: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   statePanel: { minHeight: 170, borderWidth: 1, borderStyle: 'dashed', borderRadius: 17, alignItems: 'center', justifyContent: 'center', padding: 22, gap: 8, marginTop: 3 },
   stateTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 14, textAlign: 'center', marginTop: 3 },
   stateCopy: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 17, textAlign: 'center', maxWidth: 280 },

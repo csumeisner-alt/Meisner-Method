@@ -2075,6 +2075,19 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     );
     await setResponse(browser, makeCustomResponse("1d", [quote("AAPL"), quote("MSFT")], ["MISSING"]));
 
+    await clickTestID(browser, "heat-map-move-down-AAPL");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}) === ${JSON.stringify(JSON.stringify(["MSFT","AAPL","MISSING"]))}`,
+      "Moving AAPL down should persist the new instrument order.",
+    );
+    await waitForRequest(
+      browser,
+      `(request) => request.category === "custom" && JSON.stringify(request.symbols) === '["MSFT","AAPL","MISSING"]'`,
+      "the reordered custom map",
+    );
+    await setResponse(browser, makeCustomResponse("1d", [quote("AAPL"), quote("MSFT")], ["MISSING"]));
+
     await browser.send("Page.reload", { ignoreCache: true });
     await waitFor(
       (expression) => browser.evaluate(expression),
@@ -2085,7 +2098,7 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     await clickTestID(browser, "heat-map-category-custom");
     await waitForRequest(
       browser,
-      `(request) => request.category === "custom" && JSON.stringify(request.symbols) === '["AAPL","MSFT","MISSING"]'`,
+      `(request) => request.category === "custom" && JSON.stringify(request.symbols) === '["MSFT","AAPL","MISSING"]'`,
       "the restored custom map after reopening",
     );
     await setResponse(browser, makeCustomResponse("1d", [quote("AAPL"), quote("MSFT")], ["MISSING"]));
@@ -2094,10 +2107,15 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       `!!document.querySelector(${JSON.stringify(selector("heat-map-session-AAPL"))}) && !!document.querySelector(${JSON.stringify(selector("heat-map-session-MSFT"))})`,
       "The restored ticker and the other saved ticker should render after reopening the map.",
     );
+    assert.deepEqual(
+      await browser.evaluate(`Array.from(document.querySelectorAll('[data-testid^="heat-map-hex-tile-"]')).map((node) => node.getAttribute("data-testid").replace("heat-map-hex-tile-", ""))`),
+      ["MSFT", "AAPL"],
+      "Reopening the custom map should render visible tiles in the saved order.",
+    );
     await clickTestID(browser, "heat-map-custom-edit");
     assert.equal(
       await browser.evaluate(`localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)})`),
-      JSON.stringify(["AAPL", "MSFT", "MISSING"]),
+      JSON.stringify(["MSFT", "AAPL", "MISSING"]),
       "The restored custom map should preserve its full saved ticker list after reopening.",
     );
     assert.equal(
