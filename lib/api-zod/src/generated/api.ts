@@ -9,6 +9,28 @@ import * as zod from 'zod';
 
 
 /**
+ * @summary Search supported non-stock heat-map instruments by name or ticker
+ */
+export const searchHeatMapInstrumentsQueryQMin = 2;
+export const searchHeatMapInstrumentsQueryQMax = 80;
+
+
+
+export const SearchHeatMapInstrumentsQueryParams = zod.object({
+  "q": zod.coerce.string().min(searchHeatMapInstrumentsQueryQMin).max(searchHeatMapInstrumentsQueryQMax),
+  "category": zod.enum(['etfs', 'commodities', 'futures', 'cryptocurrency'])
+})
+
+export const SearchHeatMapInstrumentsResponseItem = zod.object({
+  "symbol": zod.string(),
+  "name": zod.string(),
+  "exchange": zod.string(),
+  "category": zod.enum(['etf', 'commodity', 'future', 'cryptocurrency'])
+})
+export const SearchHeatMapInstrumentsResponse = zod.array(SearchHeatMapInstrumentsResponseItem)
+
+
+/**
  * Returns server health status
  * @summary Health check
  */

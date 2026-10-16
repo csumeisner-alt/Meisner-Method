@@ -290,6 +290,10 @@ export function getSearchStockSymbolsQueryKey(params: { q: string }) {
   return ["stock-symbol-search", params.q];
 }
 
+export function getSearchHeatMapInstrumentsQueryKey(params: { q: string; category: string }) {
+  return ["heat-map-instrument-search", params];
+}
+
 export function useGetMarketHeatMap(params: Record<string, unknown>) {
   const state = initializeHeatMapBrowserState();
   const [, forceRender] = React.useReducer((value: number) => value + 1, 0);
@@ -410,6 +414,17 @@ export function getGetCryptoSupplyHistoryQueryKey(symbol: string, rangeDays: num
 export function useSearchStockSymbols() {
   return {
     queryKey: getSearchStockSymbolsQueryKey({ q: "" }),
+    data: [],
+    isPlaceholderData: false,
+    isFetching: false,
+    isError: false,
+    isSuccess: true,
+  };
+}
+
+export function useSearchHeatMapInstruments(params: { q: string; category: string }) {
+  return {
+    queryKey: getSearchHeatMapInstrumentsQueryKey(params),
     data: [],
     isPlaceholderData: false,
     isFetching: false,

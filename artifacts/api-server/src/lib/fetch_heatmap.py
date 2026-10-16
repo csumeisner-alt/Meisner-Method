@@ -45,6 +45,11 @@ COMMODITY_SYMBOLS = [
     "GC=F", "SI=F", "CL=F", "NG=F", "HG=F", "ZC=F", "ZW=F", "ZS=F",
     "KC=F", "CT=F", "SB=F", "PL=F", "PA=F", "LE=F", "HE=F",
 ]
+COMMODITY_FUTURE_ROOTS = frozenset((
+    "BZ", "CC", "CL", "CT", "GC", "GF", "HE", "HG", "HO", "KC", "LE", "LBS",
+    "MCL", "MGC", "NG", "OJ", "PA", "PL", "RB", "SB", "SI", "ZC", "ZL",
+    "ZM", "ZO", "ZR", "ZS", "ZW",
+))
 COMMODITY_SESSION_FAMILIES = {
     "cme_nearly_24h": frozenset(("GC=F", "SI=F", "CL=F", "NG=F", "HG=F", "PL=F", "PA=F")),
     "cme_grains": frozenset(("ZC=F", "ZW=F", "ZS=F")),
@@ -421,7 +426,8 @@ def asset_type_for(category, symbol):
     if symbol.endswith("-USD"):
         return "cryptocurrency"
     if symbol.endswith("=F"):
-        return "commodity" if symbol in COMMODITY_SYMBOLS else "future"
+        root = symbol[:-2]
+        return "commodity" if root in COMMODITY_FUTURE_ROOTS else "future"
     if symbol in ETF_SYMBOLS:
         return "etf"
     return "stock"
@@ -1066,6 +1072,7 @@ def quote_from_frame(
     previous_close=None,
     now=None,
     exchange=None,
+    asset_type_override=None,
 ):
     if frame is None or "Close" not in frame:
         return None
@@ -1084,7 +1091,7 @@ def quote_from_frame(
         return None
 
     latest_index, latest_timestamp, latest_price = rows[-1]
-    asset_type = asset_type_for(category, symbol)
+    asset_type = asset_type_override or asset_type_for(category, symbol)
     max_age = 48 * 60 * 60 if asset_type == "cryptocurrency" else 120 * 60 * 60
     if asset_type == "future" or symbol.endswith("=F"):
         max_age = 24 * 60 * 60
@@ -1141,7 +1148,7 @@ def quote_from_frame(
     }
 
 
-def download_quotes(symbols, category, interval, now=None):
+def download_quotes(symbols, category, interval, now=None, asset_type_overrides=None):
     if not symbols:
         return {}
     try:
@@ -1177,6 +1184,13 @@ def download_quotes(symbols, category, interval, now=None):
             daily_data = None
     quotes = {}
     for symbol in symbols:
+        asset_type_override = (
+            asset_type_overrides.get(symbol)
+            if asset_type_overrides is not None
+            else None
+        )
+        if asset_type_overrides is not None and asset_type_override is None:
+            continue
         try:
             frame = frame_for_symbol(data, symbol)
             reference_close = None
@@ -1190,6 +1204,7 @@ def download_quotes(symbols, category, interval, now=None):
                 require_prior_close=interval != "5m",
                 previous_close=reference_close,
                 now=now,
+                asset_type_override=asset_type_override,
             )
             if quote:
                 quotes[symbol] = quote
@@ -1422,6 +1437,67 @@ def fetch_provider_info(symbol):
         return {}
 
 
+def asset_type_from_provider_quote_type(quote_type, symbol):
+    normalized = str(quote_type or "").upper()
+    if normalized == "ETF":
+        return "etf"
+    if normalized == "EQUITY":
+        return "stock"
+    if normalized == "CRYPTOCURRENCY":
+        return "cryptocurrency" if symbol.endswith("-USD") else None
+    if normalized == "FUTURE":
+        return asset_type_for("custom", symbol) if symbol.endswith("=F") else None
+    return None
+
+
+def resolve_custom_asset_types(symbols, now=None):
+    cached = read_metadata_cache(now)
+    resolved = {}
+    symbols_to_fetch = []
+
+    for symbol in symbols:
+        if (
+            symbol.endswith("-USD")
+            or symbol.endswith("=F")
+            or symbol in STOCK_SECTORS
+            or symbol in ETF_SYMBOLS
+        ):
+            resolved[symbol] = asset_type_for("custom", symbol)
+            continue
+
+        quote_type = cached.get(symbol, {}).get("quoteType")
+        if quote_type:
+            resolved[symbol] = asset_type_from_provider_quote_type(quote_type, symbol)
+        else:
+            symbols_to_fetch.append(symbol)
+
+    if symbols_to_fetch:
+        with ThreadPoolExecutor(max_workers=min(8, len(symbols_to_fetch))) as executor:
+            futures = {
+                executor.submit(fetch_provider_info, symbol): symbol
+                for symbol in symbols_to_fetch
+            }
+            for future in as_completed(futures):
+                symbol = futures[future]
+                try:
+                    info = future.result()
+                except Exception:
+                    info = {}
+                quote_type = str(info.get("quoteType") or "").upper()
+                asset_type = asset_type_from_provider_quote_type(quote_type, symbol)
+                if not quote_type:
+                    asset_type = asset_type_for("custom", symbol)
+                resolved[symbol] = asset_type
+                if quote_type:
+                    metadata = metadata_from_provider(info, symbol, asset_type or "stock")
+                    metadata["quoteType"] = quote_type
+                    cached[symbol] = {**cached.get(symbol, {}), **metadata}
+
+        write_metadata_cache(cached, now)
+
+    return resolved
+
+
 def enrich_quote_metadata(quotes_by_symbol, now=None):
     cached = read_metadata_cache(now)
     symbols_to_fetch = []
@@ -1468,7 +1544,10 @@ def enrich_quote_metadata(quotes_by_symbol, now=None):
                 quote["assetType"],
             )
             quote.update(merged)
-            cached[symbol] = merge_metadata(provider_metadata, cached.get(symbol), quote["assetType"])
+            cached[symbol] = {
+                **cached.get(symbol, {}),
+                **merge_metadata(provider_metadata, cached.get(symbol), quote["assetType"]),
+            }
     write_metadata_cache(cached, now)
     for quote in quotes_by_symbol.values():
         if quote["assetType"] in ("stock", "etf"):
@@ -1610,6 +1689,11 @@ def market_pulse_session_response(now=None):
 def fetch_heat_map(category, symbols, period="1d", sector=None, now=None):
     requested = get_requested_symbols(category, symbols)
     quotes_by_symbol = {}
+    asset_type_overrides = (
+        resolve_custom_asset_types(requested, now)
+        if category == "custom"
+        else None
+    )
     if category in ("stocks", "etfs"):
         screened = screener_quotes(category, sector)
         if screened:
@@ -1617,10 +1701,24 @@ def fetch_heat_map(category, symbols, period="1d", sector=None, now=None):
             requested = list(quotes_by_symbol)
 
     if not quotes_by_symbol:
-        intraday = download_quotes(requested, category, "5m", now=now)
+        intraday = download_quotes(
+            requested,
+            category,
+            "5m",
+            now=now,
+            asset_type_overrides=asset_type_overrides,
+        )
         missing = [symbol for symbol in requested if symbol not in intraday]
         if missing:
-            intraday.update(download_quotes(missing, category, "1d", now=now))
+            intraday.update(
+                download_quotes(
+                    missing,
+                    category,
+                    "1d",
+                    now=now,
+                    asset_type_overrides=asset_type_overrides,
+                )
+            )
         quotes_by_symbol = intraday
 
     enrich_quote_metadata(quotes_by_symbol, now)

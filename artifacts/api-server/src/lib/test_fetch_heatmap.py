@@ -1751,6 +1751,62 @@ class HeatMapScreenerTests(unittest.TestCase):
 
         screen.assert_called_once_with("most_actives", count=100)
 
+    def test_custom_tickers_use_provider_quote_types_and_cache_them(self):
+        provider_info = {
+            "VUG": {"quoteType": "ETF", "fullExchangeName": "NYSE Arca"},
+            "SHOP": {"quoteType": "EQUITY", "fullExchangeName": "NASDAQ"},
+            "GOLD": {"quoteType": "INDEX"},
+        }
+        with (
+            patch.object(fetch_heatmap, "read_metadata_cache", return_value={}),
+            patch.object(
+                fetch_heatmap,
+                "fetch_provider_info",
+                side_effect=lambda symbol: provider_info[symbol],
+            ),
+            patch.object(fetch_heatmap, "write_metadata_cache") as write_cache,
+        ):
+            asset_types = fetch_heatmap.resolve_custom_asset_types(
+                ["VUG", "SHOP", "GOLD", "CL=F", "MGC=F", "ES=F", "BTC-USD"],
+                now=datetime(2026, 10, 15, tzinfo=timezone.utc),
+            )
+
+        self.assertEqual(
+            asset_types,
+            {
+                "VUG": "etf",
+                "SHOP": "stock",
+                "GOLD": None,
+                "CL=F": "commodity",
+                "MGC=F": "commodity",
+                "ES=F": "future",
+                "BTC-USD": "cryptocurrency",
+            },
+        )
+        saved_cache = write_cache.call_args.args[0]
+        self.assertEqual(saved_cache["VUG"]["quoteType"], "ETF")
+        self.assertEqual(saved_cache["SHOP"]["quoteType"], "EQUITY")
+
+    def test_custom_asset_type_override_is_used_for_quotes(self):
+        now = datetime(2026, 10, 15, 15, 0, tzinfo=timezone.utc)
+        frame = close_frame([
+            (now - timedelta(days=1), 100),
+            (now - timedelta(minutes=5), 101),
+            (now, 102),
+        ])
+
+        quote = fetch_heatmap.quote_from_frame(
+            frame,
+            "VUG",
+            "custom",
+            require_prior_close=False,
+            now=now,
+            asset_type_override="etf",
+        )
+
+        self.assertEqual(quote["assetType"], "etf")
+        self.assertEqual(quote["returnBasis"], "adjusted_total_return")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -93,6 +93,21 @@ test("custom tickers stay device-local and are validated before being added", ()
   assert.match(screenSource, /normalizeCustomHeatMapSymbols/);
 });
 
+test("custom non-stock search shows provider categories and validates before saving", () => {
+  assert.match(screenSource, /useSearchHeatMapInstruments/);
+  assert.match(screenSource, /getSearchHeatMapInstrumentsQueryKey/);
+  assert.match(screenSource, /const instrumentSearchEnabled = category === 'custom' && debouncedSymbolSearch\.length >= 2/);
+  assert.match(screenSource, /category: 'etfs'/);
+  assert.match(screenSource, /category: 'commodities'/);
+  assert.match(screenSource, /category: 'futures'/);
+  assert.match(screenSource, /category: 'cryptocurrency'/);
+  assert.match(screenSource, /testID="heat-map-custom-instrument-suggestions"/);
+  assert.match(screenSource, /suggestion\.category === 'etf'/);
+  assert.match(screenSource, /suggestion\.category === 'commodity'/);
+  assert.match(screenSource, /onPress=\{\(\) => void addSymbol\(suggestion\.symbol\)\}/);
+  assert.match(screenSource, /isn't a supported instrument or has no recent quote/);
+});
+
 test("heat-map has a right-side filter drawer and reduced-motion-aware direction cue", () => {
   assert.match(screenSource, /Modal visible=\{drawerOpen\} transparent/);
   assert.match(screenSource, /drawerBackdrop/);

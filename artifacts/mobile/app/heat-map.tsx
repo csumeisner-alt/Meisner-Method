@@ -21,12 +21,13 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import {
   getGetMarketBreadthQueryKey, getGetMarketHeatMapQueryKey,
-  getSearchStockSymbolsQueryKey, useGetMarketBreadth, useGetMarketHeatMap,
+  getSearchHeatMapInstrumentsQueryKey, getSearchStockSymbolsQueryKey,
+  useGetMarketBreadth, useGetMarketHeatMap, useSearchHeatMapInstruments,
   useSearchStockSymbols, useValidateHeatMapSymbol,
 } from '@workspace/api-client-react';
 import type {
   GetMarketHeatMapCategory, GetMarketHeatMapPeriod, GetMarketHeatMapSector,
-  HeatMapQuote, StockSymbolSuggestion,
+  HeatMapInstrumentSuggestion, HeatMapQuote, StockSymbolSuggestion,
 } from '@workspace/api-client-react';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { BottomTabBar } from '@/components/BottomTabBar';
@@ -560,6 +561,39 @@ export default function HeatMapScreen() {
       },
     },
   );
+  const instrumentSearchEnabled = category === 'custom' && debouncedSymbolSearch.length >= 2;
+  const etfSearchParams = { q: debouncedSymbolSearch, category: 'etfs' as const };
+  const commoditySearchParams = { q: debouncedSymbolSearch, category: 'commodities' as const };
+  const futuresSearchParams = { q: debouncedSymbolSearch, category: 'futures' as const };
+  const cryptoSearchParams = { q: debouncedSymbolSearch, category: 'cryptocurrency' as const };
+  const etfSearch = useSearchHeatMapInstruments(etfSearchParams, {
+    query: {
+      queryKey: getSearchHeatMapInstrumentsQueryKey(etfSearchParams),
+      enabled: instrumentSearchEnabled,
+      staleTime: 45_000,
+    },
+  });
+  const commoditySearch = useSearchHeatMapInstruments(commoditySearchParams, {
+    query: {
+      queryKey: getSearchHeatMapInstrumentsQueryKey(commoditySearchParams),
+      enabled: instrumentSearchEnabled,
+      staleTime: 45_000,
+    },
+  });
+  const futuresSearch = useSearchHeatMapInstruments(futuresSearchParams, {
+    query: {
+      queryKey: getSearchHeatMapInstrumentsQueryKey(futuresSearchParams),
+      enabled: instrumentSearchEnabled,
+      staleTime: 45_000,
+    },
+  });
+  const cryptoSearch = useSearchHeatMapInstruments(cryptoSearchParams, {
+    query: {
+      queryKey: getSearchHeatMapInstrumentsQueryKey(cryptoSearchParams),
+      enabled: instrumentSearchEnabled,
+      staleTime: 45_000,
+    },
+  });
 
   useEffect(() => {
     const interval = setInterval(() => setNowSeconds(Date.now() / 1000), 60_000);
@@ -638,11 +672,40 @@ export default function HeatMapScreen() {
         suggestionCount: customSuggestions.length,
       })
     : null;
+  const instrumentSearchStates = [
+    { query: etfSearch, params: etfSearchParams },
+    { query: commoditySearch, params: commoditySearchParams },
+    { query: futuresSearch, params: futuresSearchParams },
+    { query: cryptoSearch, params: cryptoSearchParams },
+  ].map(({ query }) => ({
+    query,
+    isCurrent: isCustomSearchInput && isStockSearchCurrent({
+      input: searchText,
+      settledQuery: debouncedSymbolSearch,
+      resultQuery: getStockSearchQueryFromKey(query.queryKey),
+      isPlaceholderData: query.isPlaceholderData,
+    }),
+  }));
+  const isCurrentCustomInstrumentSearch = isCustomSearchInput
+    && instrumentSearchStates.every(({ isCurrent }) => isCurrent);
+  const customInstrumentSuggestions: HeatMapInstrumentSuggestion[] = instrumentSearchStates
+    .flatMap(({ query, isCurrent }) => isCurrent ? query.data ?? [] : []);
+  const instrumentSearchIsFetching = !isCurrentCustomInstrumentSearch
+    || instrumentSearchStates.some(({ query }) => query.isFetching);
+  const instrumentSearchHasError = isCurrentCustomInstrumentSearch
+    && instrumentSearchStates.some(({ query }) => query.isError);
+  const instrumentSearchHasNoSuccess = isCurrentCustomInstrumentSearch
+    && instrumentSearchStates.every(({ query }) => query.isError);
+  const instrumentSearchIsSettled = isCurrentCustomInstrumentSearch
+    && instrumentSearchStates.every(({ query }) => !query.isFetching);
   const customAssetChoices = searchText.length > 0
     ? searchCustomHeatMapAssets(searchText)
     : customAssetType === 'stocks'
       ? []
       : CUSTOM_HEAT_MAP_ASSETS[customAssetType].map((asset) => ({ asset, assetType: customAssetType }));
+  const visibleInstrumentSuggestions = customInstrumentSuggestions.filter(
+    (suggestion) => !customAssetChoices.some(({ asset }) => asset.symbol === suggestion.symbol),
+  );
   const params = useMemo(() => ({
     category,
     period,
@@ -976,7 +1039,7 @@ export default function HeatMapScreen() {
       }
       setSymbolInput('');
     } catch {
-      setFormError(`No supported current quote was found for ${symbol}. Check the symbol or choose a supported pick and try again.`);
+      setFormError(`${symbol} isn't a supported instrument or has no recent quote. It wasn't added. Check the ticker or choose a provider search result and try again.`);
     }
   }
   async function removeSymbol(symbol: string) {
@@ -1266,6 +1329,50 @@ export default function HeatMapScreen() {
               </View>}
               {customSearchFeedback && customSearchFeedback.kind !== 'loading' && <Text style={[styles.searchHint, { color: colors.mutedForeground }]}>
                 {customSearchFeedback.message}
+              </Text>}
+            </View>}
+            {isCustomSearchInput && <View testID="heat-map-custom-instrument-suggestions" style={[styles.suggestionsPanel, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <Text style={[styles.stockSearchHeading, { color: colors.mutedForeground }]}>ETFs, commodities, futures & crypto</Text>
+              {visibleInstrumentSuggestions.map((suggestion, index) => {
+                const alreadyAdded = customSymbols.includes(suggestion.symbol);
+                const categoryLabel = suggestion.category === 'etf'
+                  ? 'ETF'
+                  : suggestion.category === 'commodity'
+                    ? 'Commodity'
+                    : suggestion.category === 'future'
+                      ? 'Future'
+                      : 'Crypto';
+                return <TouchableOpacity
+                  key={suggestion.symbol}
+                  testID={`heat-map-custom-instrument-${suggestion.symbol}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${alreadyAdded ? 'Already added' : 'Add'} ${suggestion.name}, ticker ${suggestion.symbol}, ${categoryLabel}, ${suggestion.exchange}`}
+                  disabled={alreadyAdded || validateSymbol.isPending || customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS}
+                  onPress={() => void addSymbol(suggestion.symbol)}
+                  style={[styles.suggestionRow, index < visibleInstrumentSuggestions.length - 1 && { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth }, alreadyAdded && { opacity: 0.65 }]}
+                >
+                  <View style={styles.suggestionCopy}>
+                    <Text numberOfLines={1} style={[styles.suggestionName, { color: colors.foreground }]}>{suggestion.name}</Text>
+                    <Text numberOfLines={1} style={[styles.suggestionExchange, { color: colors.mutedForeground }]}>{categoryLabel} · {suggestion.exchange}</Text>
+                  </View>
+                  <Text style={[styles.suggestionSymbol, { color: colors.primary }]}>{alreadyAdded ? 'Added' : suggestion.symbol}</Text>
+                  {!alreadyAdded && <MaterialCommunityIcons name="plus" size={17} color={colors.primary} />}
+                </TouchableOpacity>;
+              })}
+              {visibleInstrumentSuggestions.length === 0 && instrumentSearchIsFetching && <View style={styles.searchStatus}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={[styles.searchHint, { color: colors.mutedForeground }]}>Searching supported instruments…</Text>
+              </View>}
+              {visibleInstrumentSuggestions.length === 0 && instrumentSearchIsSettled && instrumentSearchHasNoSuccess && <Text style={[styles.searchHint, { color: colors.mutedForeground }]}>
+                Instrument search is unavailable. You can enter a ticker and validate it directly.
+              </Text>}
+              {visibleInstrumentSuggestions.length === 0 && instrumentSearchIsSettled && !instrumentSearchHasNoSuccess && <Text style={[styles.searchHint, { color: colors.mutedForeground }]}>
+                {instrumentSearchHasError
+                  ? 'Some instrument categories could not be searched. Try another name or enter a ticker to validate it.'
+                  : 'No supported instrument matches. Try another name or enter a ticker to validate it.'}
+              </Text>}
+              {visibleInstrumentSuggestions.length > 0 && instrumentSearchIsSettled && instrumentSearchHasError && <Text style={[styles.searchHint, { color: colors.mutedForeground }]}>
+                Some instrument categories could not be searched.
               </Text>}
             </View>}
           {storageLoadError && <View style={styles.storageReadError}>

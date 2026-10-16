@@ -11,7 +11,7 @@ import {
   computeFundamentalScore,
   computeBehavioralScore,
 } from "../lib/yahoo.js";
-import { searchYahooStocks } from "../lib/stockSymbolSearch.js";
+import { searchYahooHeatMapInstruments, searchYahooStocks } from "../lib/stockSymbolSearch.js";
 import { normalizeDividendYield } from "../lib/dividendYield.js";
 import { buildStockRecommendation } from "../lib/stockRecommendation.js";
 import { fallbackAiAnalysis, parseAiAnalysis } from "../lib/analysisResponse.js";
@@ -655,6 +655,41 @@ router.get("/stocks/search", async (req, res) => {
     res.status(502).json({
       error: "STOCK_SEARCH_FAILED",
       message: "Company search is temporarily unavailable.",
+    });
+  }
+});
+
+router.get("/stocks/heat-map/search", async (req, res) => {
+  const rawQuery = req.query["q"];
+  const query = typeof rawQuery === "string" ? rawQuery.trim() : "";
+  const rawCategory = req.query["category"];
+  const category = typeof rawCategory === "string" ? rawCategory.toLowerCase() : "";
+  const searchCategory = category === "etfs"
+    ? "etf"
+    : category === "commodities"
+      ? "commodity"
+      : category === "futures"
+        ? "future"
+        : category === "cryptocurrency"
+          ? "cryptocurrency"
+          : null;
+
+  if (query.length < 2 || query.length > 80 || !searchCategory) {
+    res.status(400).json({
+      error: "INVALID_QUERY",
+      message: "Enter 2 to 80 characters and choose ETFs, commodities, futures, or cryptocurrency.",
+    });
+    return;
+  }
+
+  try {
+    const suggestions = await searchYahooHeatMapInstruments(query, searchCategory);
+    res.set("Cache-Control", "private, max-age=30").json(suggestions);
+  } catch (err: any) {
+    req.log.error({ err, category }, "Custom heat-map instrument search failed");
+    res.status(502).json({
+      error: "INSTRUMENT_SEARCH_FAILED",
+      message: "Instrument search is temporarily unavailable.",
     });
   }
 });

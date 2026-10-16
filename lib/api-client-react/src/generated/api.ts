@@ -25,10 +25,12 @@ import type {
   CryptoSupplyHistory,
   GetMarketHeatMapParams,
   HealthStatus,
+  HeatMapInstrumentSuggestion,
   HeatMapQuote,
   HeatMapResponse,
   MarketInstrumentInfo,
   MarketPulseResponse,
+  SearchHeatMapInstrumentsParams,
   SearchStockSymbolsParams,
   StockAnalysis,
   StockSymbolSuggestion,
@@ -61,6 +63,90 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getSearchHeatMapInstrumentsUrl = (params: SearchHeatMapInstrumentsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/stocks/heat-map/search?${stringifiedParams}` : `/api/stocks/heat-map/search`
+}
+
+/**
+ * @summary Search supported non-stock heat-map instruments by name or ticker
+ */
+export const searchHeatMapInstruments = async (params: SearchHeatMapInstrumentsParams, options?: RequestInit): Promise<HeatMapInstrumentSuggestion[]> => {
+
+  return customFetch<HeatMapInstrumentSuggestion[]>(getSearchHeatMapInstrumentsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getSearchHeatMapInstrumentsQueryKey = (params?: SearchHeatMapInstrumentsParams,) => {
+    return [
+    `/api/stocks/heat-map/search`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getSearchHeatMapInstrumentsQueryOptions = <TData = Awaited<ReturnType<typeof searchHeatMapInstruments>>, TError = ErrorType<AnalysisError>>(params: SearchHeatMapInstrumentsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchHeatMapInstruments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getSearchHeatMapInstrumentsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof searchHeatMapInstruments>>> = ({ signal }) => searchHeatMapInstruments(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof searchHeatMapInstruments>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type SearchHeatMapInstrumentsQueryResult = NonNullable<Awaited<ReturnType<typeof searchHeatMapInstruments>>>
+export type SearchHeatMapInstrumentsQueryError = ErrorType<AnalysisError>
+
+
+/**
+ * @summary Search supported non-stock heat-map instruments by name or ticker
+ */
+
+export function useSearchHeatMapInstruments<TData = Awaited<ReturnType<typeof searchHeatMapInstruments>>, TError = ErrorType<AnalysisError>>(
+ params: SearchHeatMapInstrumentsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchHeatMapInstruments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getSearchHeatMapInstrumentsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getHealthCheckUrl = () => {
 

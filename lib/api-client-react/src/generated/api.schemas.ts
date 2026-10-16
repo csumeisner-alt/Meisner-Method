@@ -20,6 +20,23 @@ export interface StockSymbolSuggestion {
   exchange: string;
 }
 
+export type HeatMapInstrumentSuggestionCategory = typeof HeatMapInstrumentSuggestionCategory[keyof typeof HeatMapInstrumentSuggestionCategory];
+
+
+export const HeatMapInstrumentSuggestionCategory = {
+  etf: 'etf',
+  commodity: 'commodity',
+  future: 'future',
+  cryptocurrency: 'cryptocurrency',
+} as const;
+
+export interface HeatMapInstrumentSuggestion {
+  symbol: string;
+  name: string;
+  exchange: string;
+  category: HeatMapInstrumentSuggestionCategory;
+}
+
 export type TechnicalAnalysisMacdSignal = typeof TechnicalAnalysisMacdSignal[keyof typeof TechnicalAnalysisMacdSignal];
 
 
@@ -452,6 +469,25 @@ export interface AnalysisError {
   error: string;
   message: string;
 }
+
+export type SearchHeatMapInstrumentsParams = {
+/**
+ * @minLength 2
+ * @maxLength 80
+ */
+q: string;
+category: SearchHeatMapInstrumentsCategory;
+};
+
+export type SearchHeatMapInstrumentsCategory = typeof SearchHeatMapInstrumentsCategory[keyof typeof SearchHeatMapInstrumentsCategory];
+
+
+export const SearchHeatMapInstrumentsCategory = {
+  etfs: 'etfs',
+  commodities: 'commodities',
+  futures: 'futures',
+  cryptocurrency: 'cryptocurrency',
+} as const;
 
 export type SearchStockSymbolsParams = {
 /**

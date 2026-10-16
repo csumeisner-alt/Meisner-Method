@@ -13,6 +13,46 @@ tags:
   - name: stocks
     description: Stock analysis operations
 paths:
+  /stocks/heat-map/search:
+    get:
+      operationId: searchHeatMapInstruments
+      tags: [stocks]
+      summary: Search supported non-stock heat-map instruments by name or ticker
+      parameters:
+        - in: query
+          name: q
+          required: true
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 80
+        - in: query
+          name: category
+          required: true
+          schema:
+            type: string
+            enum: [etfs, commodities, futures, cryptocurrency]
+      responses:
+        "200":
+          description: Matching provider-supported instruments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HeatMapInstrumentSuggestion"
+        "400":
+          description: Search text or category is missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "502":
+          description: The upstream instrument search is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
   /healthz:
     get:
       operationId: healthCheck
@@ -325,6 +365,24 @@ components:
         - symbol
         - name
         - exchange
+
+    HeatMapInstrumentSuggestion:
+      type: object
+      properties:
+        symbol:
+          type: string
+        name:
+          type: string
+        exchange:
+          type: string
+        category:
+          type: string
+          enum: [etf, commodity, future, cryptocurrency]
+      required:
+        - symbol
+        - name
+        - exchange
+        - category
 
     TechnicalAnalysis:
       type: object
