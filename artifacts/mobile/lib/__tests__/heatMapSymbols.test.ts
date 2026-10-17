@@ -5,9 +5,11 @@ import {
   CUSTOM_HEAT_MAP_ASSETS,
   CUSTOM_HEAT_MAP_ASSET_TYPES,
   MAX_CUSTOM_HEAT_MAP_SYMBOLS,
+  appendCustomHeatMapSymbolInSavedOrder,
   moveCustomHeatMapSymbol,
   normalizeCustomHeatMapSymbols,
   planCustomHeatMapBatchAdd,
+  removeCustomHeatMapSymbolFromSavedOrder,
   searchCustomHeatMapAssets,
 } from "../heatMapSymbols.ts";
 
@@ -55,6 +57,23 @@ test("custom symbols can move up or down without changing other saved order", ()
   const afterRemove = afterAdd.filter((symbol) => symbol !== "AAPL");
   assert.deepEqual(afterAdd, ["AAPL", "GC=F", "MSFT", "BTC-USD"]);
   assert.deepEqual(afterRemove, ["GC=F", "MSFT", "BTC-USD"]);
+});
+
+test("adding and removing during a temporary sort preserve the saved custom order", () => {
+  const savedOrder = ["MSFT", "AAPL", "MISSING"];
+  const displayedReturnOrder = ["AAPL", "MSFT"];
+
+  const afterAdd = appendCustomHeatMapSymbolInSavedOrder(savedOrder, "NVDA");
+  assert.deepEqual(afterAdd, ["MSFT", "AAPL", "MISSING", "NVDA"]);
+  assert.deepEqual(displayedReturnOrder, ["AAPL", "MSFT"], "Temporary display sorting must not mutate saved symbols.");
+
+  const { symbols: afterRemove, removedIndex } = removeCustomHeatMapSymbolFromSavedOrder(afterAdd, "AAPL");
+  assert.equal(removedIndex, 1, "Removal position must come from saved order, not the temporary display order.");
+  assert.deepEqual(afterRemove, ["MSFT", "MISSING", "NVDA"]);
+  assert.deepEqual(
+    removeCustomHeatMapSymbolFromSavedOrder(afterRemove, "NOT-SAVED"),
+    { symbols: afterRemove, removedIndex: -1 },
+  );
 });
 
 test("custom heat-map asset picker offers every supported non-stock universe", () => {

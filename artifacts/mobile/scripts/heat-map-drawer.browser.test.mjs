@@ -2239,10 +2239,91 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       "Clearing explicit return sorting must leave the original saved order intact.",
     );
 
+    await clickTestID(browser, "heat-map-filter-open");
+    await clickTestID(browser, "heat-map-sort-highest");
+    await clickTestID(browser, "heat-map-filter-apply");
+    assert.deepEqual(
+      await visibleCustomTileOrder(),
+      ["AAPL", "MSFT"],
+      "The browser regression should begin editing while the explicit return sort is active.",
+    );
+    await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-custom-input"))})?.focus()`);
+    await browser.send("Input.insertText", { text: "NVDA" });
+    await browser.evaluate(`window.__heatMapBrowserTest.setValidationResponses([{ type: "resolve", symbol: "NVDA" }])`);
+    await clickTestID(browser, "heat-map-custom-add");
+    const savedOrderAfterAdd = ["MSFT", "AAPL", "MISSING", "NVDA"];
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}) === ${JSON.stringify(JSON.stringify(savedOrderAfterAdd))}`,
+      "Adding a ticker during return sorting should append it to the saved order, not the sorted display order.",
+    );
+    await waitForRequest(
+      browser,
+      `(request) => request.category === "custom" && request.period === "1w" && JSON.stringify(request.symbols) === '["MSFT","AAPL","MISSING","NVDA"]'`,
+      "the custom map after adding NVDA during return sorting",
+    );
+    const addedCustomQuotes = [
+      quote("AAPL", { returnPercent: 8, sector: "Financials", exchange: "NASDAQ" }),
+      quote("MSFT", { returnPercent: -4, sector: "Technology", exchange: "NYSE" }),
+      quote("NVDA", { returnPercent: 12, sector: "Technology", exchange: "NASDAQ" }),
+    ];
+    await setResponse(browser, makeCustomResponse("1w", addedCustomQuotes, ["MISSING"]));
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `Array.from(document.querySelectorAll('[data-testid^="heat-map-hex-tile-"]')).map((node) => node.getAttribute("data-testid").replace("heat-map-hex-tile-", "")).join(",") === "NVDA,AAPL,MSFT"`,
+      "The active return sort should continue controlling only the displayed tile order after adding.",
+    );
+
+    await clickTestID(browser, "heat-map-custom-edit");
+    await clickTestID(browser, "heat-map-remove-tile-AAPL");
+    const savedOrderAfterRemove = ["MSFT", "MISSING", "NVDA"];
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}) === ${JSON.stringify(JSON.stringify(savedOrderAfterRemove))}`,
+      "Removing a ticker during return sorting should remove it from its canonical saved position.",
+    );
+    await waitForRequest(
+      browser,
+      `(request) => request.category === "custom" && request.period === "1w" && JSON.stringify(request.symbols) === '["MSFT","MISSING","NVDA"]'`,
+      "the custom map after removing AAPL during return sorting",
+    );
+    await setResponse(browser, makeCustomResponse("1w", [
+      addedCustomQuotes[1],
+      addedCustomQuotes[2],
+    ], ["MISSING"]));
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `Array.from(document.querySelectorAll('[data-testid^="heat-map-hex-tile-"]')).map((node) => node.getAttribute("data-testid").replace("heat-map-hex-tile-", "")).join(",") === "NVDA,MSFT"`,
+      "The remaining tiles should stay return-sorted until the temporary sort is cleared.",
+    );
+    await clickTestID(browser, "heat-map-custom-edit");
+    await clickTestID(browser, "heat-map-filter-open");
+    await clickTestID(browser, "heat-map-sort-default");
+    await clickTestID(browser, "heat-map-filter-apply");
+    await waitForRequest(
+      browser,
+      `(request) => request.category === "custom" && request.period === "1w" && JSON.stringify(request.symbols) === '["MSFT","MISSING","NVDA"]'`,
+      "the canonical custom order after clearing return sorting",
+    );
+    await setResponse(browser, makeCustomResponse("1w", [
+      addedCustomQuotes[2],
+      addedCustomQuotes[1],
+    ], ["MISSING"]));
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `Array.from(document.querySelectorAll('[data-testid^="heat-map-hex-tile-"]')).map((node) => node.getAttribute("data-testid").replace("heat-map-hex-tile-", "")).join(",") === "MSFT,NVDA"`,
+      "Clearing return sorting should restore the saved order with NVDA added and AAPL removed.",
+    );
+    assert.equal(
+      await browser.evaluate(`localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)})`),
+      JSON.stringify(savedOrderAfterRemove),
+      "Device storage should retain the canonical Custom order after sorting is cleared.",
+    );
+
     await clickTestID(browser, "heat-map-custom-edit");
     assert.equal(
       await browser.evaluate(`localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)})`),
-      JSON.stringify(["MSFT", "AAPL", "MISSING"]),
+      JSON.stringify(savedOrderAfterRemove),
       "The restored custom map should preserve its full saved ticker list after reopening.",
     );
     assert.equal(

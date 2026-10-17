@@ -70,6 +70,24 @@ export function normalizeCustomHeatMapSymbols(value: unknown): string[] {
   return [...symbols];
 }
 
+export function appendCustomHeatMapSymbolInSavedOrder(savedSymbols: string[], rawSymbol: string): string[] {
+  return normalizeCustomHeatMapSymbols([...savedSymbols, rawSymbol]);
+}
+
+export function removeCustomHeatMapSymbolFromSavedOrder(
+  savedSymbols: string[],
+  rawSymbol: string,
+): { symbols: string[]; removedIndex: number } {
+  const canonicalSymbols = normalizeCustomHeatMapSymbols(savedSymbols);
+  const symbol = rawSymbol.trim().toUpperCase();
+  const removedIndex = canonicalSymbols.indexOf(symbol);
+  if (removedIndex < 0) return { symbols: canonicalSymbols, removedIndex };
+  return {
+    symbols: canonicalSymbols.filter((savedSymbol) => savedSymbol !== symbol),
+    removedIndex,
+  };
+}
+
 export interface CustomHeatMapBatchAddPlan {
   symbolsToAdd: string[];
   alreadyAddedCount: number;

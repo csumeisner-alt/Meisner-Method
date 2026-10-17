@@ -56,8 +56,10 @@ import {
 } from '@/lib/heatMapQuoteDisplay';
 import {
   CUSTOM_HEAT_MAP_ASSETS, CUSTOM_HEAT_MAP_ASSET_TYPES,
-  MAX_CUSTOM_HEAT_MAP_SYMBOLS, moveCustomHeatMapSymbol, normalizeCustomHeatMapSymbols,
+  MAX_CUSTOM_HEAT_MAP_SYMBOLS, appendCustomHeatMapSymbolInSavedOrder,
+  moveCustomHeatMapSymbol, normalizeCustomHeatMapSymbols,
   planCustomHeatMapBatchAdd,
+  removeCustomHeatMapSymbolFromSavedOrder,
   searchCustomHeatMapAssets,
   type CustomHeatMapAssetType,
 } from '@/lib/heatMapSymbols';
@@ -1054,7 +1056,8 @@ export default function HeatMapScreen() {
     try {
       const quote = await validateSymbol.mutateAsync({ data: { symbol } });
       if (!customSymbols.includes(quote.symbol)) {
-        try { await persistSymbols([...customSymbols, quote.symbol]); }
+        const next = appendCustomHeatMapSymbolInSavedOrder(customSymbols, quote.symbol);
+        try { await persistSymbols(next); }
         catch { setFormError(`Couldn't save ${quote.symbol} on this device. Try again.`); return; }
         setLastRemovedTicker(null);
       }
@@ -1105,7 +1108,7 @@ export default function HeatMapScreen() {
           } else if (nextSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS) {
             overLimitCount += 1;
           } else {
-            nextSymbols.push(quote.symbol);
+            nextSymbols = appendCustomHeatMapSymbolInSavedOrder(nextSymbols, quote.symbol);
             addedSymbols.push(quote.symbol);
           }
         } catch {
@@ -1142,11 +1145,10 @@ export default function HeatMapScreen() {
   }
   async function removeSymbol(symbol: string) {
     if (removeInProgress.current) return;
-    const removedIndex = customSymbols.indexOf(symbol);
+    const { symbols: next, removedIndex } = removeCustomHeatMapSymbolFromSavedOrder(customSymbols, symbol);
     if (removedIndex === -1) return;
     removeInProgress.current = true;
     setRemovingSymbol(symbol);
-    const next = customSymbols.filter((item) => item !== symbol);
     try {
       await persistSymbols(next);
       setLastRemovedTicker({ symbol, index: removedIndex });
