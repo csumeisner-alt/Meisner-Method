@@ -1724,6 +1724,23 @@ export function BrewTokenBank({
             </Pressable>
           </View>
 
+          <View
+            style={[styles.quoteRewardBanner, { backgroundColor: bankSteel, borderColor: bankAccent }]}
+            testID="brew-token-quote-reminder"
+          >
+            <View style={[styles.quoteRewardIcon, { backgroundColor: bankAccentMuted }]}>
+              <Feather name="message-circle" size={16} color={bankAccent} />
+            </View>
+            <View style={styles.quoteRewardCopy}>
+              <Text style={[styles.quoteRewardTitle, { color: bankWhite, fontFamily: 'Inter_700Bold' }]}>
+                +1 BREW TOKEN PER QUOTE
+              </Text>
+              <Text style={[styles.quoteRewardText, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
+                After the Bank unlocks, each Biden quote you view earns 1 token—even on weekends.
+              </Text>
+            </View>
+          </View>
+
           {smartProSaleActive && smartProRemainingLabel && (
             <View style={[styles.smartProSaleBanner, { borderColor: bankAccent }]}>
               <View style={styles.smartProSaleBannerIcon}>
@@ -2599,7 +2616,7 @@ export function BrewTokenBank({
 
           {tokens === 0 && (
             <Text style={[styles.emptyMessage, { color: bankAccent, fontFamily: 'Inter_500Medium' }]}>
-              The reserve is empty. View another Biden quote during the week to earn a Brew Token.
+              The reserve is empty. View a Biden quote any day to earn +1 Brew Token.
             </Text>
           )}
 
@@ -2699,7 +2716,7 @@ export function BrewTokenBank({
           </View>
 
           <Text style={[styles.footnote, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-            Fictional tokens only · no cash value · earn 1 token per weekday quote · {quotesViewed} quotes logged
+            Fictional tokens only · no cash value · +1 per quote after unlock · {quotesViewed} quotes logged
           </Text>
           </View>
         </ScrollView>
@@ -2947,6 +2964,21 @@ const styles = StyleSheet.create({
   eyebrow: { fontSize: 9, letterSpacing: 1.2 },
   title: { fontSize: 19, letterSpacing: 1.1, marginTop: 2 },
   subtitle: { fontSize: 11, letterSpacing: 2.5 },
+  quoteRewardBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 11,
+    paddingVertical: 10,
+    marginTop: -6,
+    marginBottom: 12,
+  },
+  quoteRewardIcon: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  quoteRewardCopy: { flex: 1, gap: 3 },
+  quoteRewardTitle: { fontSize: 11, letterSpacing: 0.75 },
+  quoteRewardText: { fontSize: 10, lineHeight: 14 },
   smartProSaleBanner: {
     flexDirection: 'row',
     alignItems: 'center',
