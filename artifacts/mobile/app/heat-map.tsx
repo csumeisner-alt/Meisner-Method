@@ -31,6 +31,7 @@ import type {
 } from '@workspace/api-client-react';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { BottomTabBar } from '@/components/BottomTabBar';
+import { useAchievements } from '@/contexts/AchievementsContext';
 import { AmericanModeContext } from '@/contexts/AmericanModeContext';
 import { useColors } from '@/hooks/useColors';
 import { HeatMapCryptoLogo } from '@/components/HeatMapCryptoLogo';
@@ -519,6 +520,7 @@ function HeatMapLoadingState({ contentWidth, tileWidth, tileHeight, colors, them
 
 export default function HeatMapScreen() {
   const colors = useColors();
+  const { awardAchievement } = useAchievements();
   const themeState = useContext(AmericanModeContext);
   const loadingTheme = getHeatMapLoadingTheme(
     themeState?.isActive ?? false,
@@ -1059,6 +1061,7 @@ export default function HeatMapScreen() {
         const next = appendCustomHeatMapSymbolInSavedOrder(customSymbols, quote.symbol);
         try { await persistSymbols(next); }
         catch { setFormError(`Couldn't save ${quote.symbol} on this device. Try again.`); return; }
+        if (customSymbols.length === 0) void awardAchievement('first-custom-instrument');
         setLastRemovedTicker(null);
       }
       setSymbolInput('');
@@ -1123,6 +1126,7 @@ export default function HeatMapScreen() {
           setFormError("Couldn't save the selected instruments on this device. Try again.");
           return;
         }
+        if (customSymbols.length === 0) void awardAchievement('first-custom-instrument');
         setLastRemovedTicker(null);
       }
 

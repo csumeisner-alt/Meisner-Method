@@ -4,9 +4,12 @@ import { usePathname, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
+import { ACHIEVEMENTS } from '@/lib/achievements';
+import { useAchievements } from '@/contexts/AchievementsContext';
 
 export function BottomTabBar() {
   const colors = useColors();
+  const { earnedIds, openGallery } = useAchievements();
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
@@ -64,6 +67,26 @@ export function BottomTabBar() {
         <Text style={[styles.label, { color: isPortfolio ? colors.heading : colors.mutedForeground }]}>PORTFOLIO</Text>
         {isPortfolio && <View style={[styles.dot, { backgroundColor: colors.heading }]} />}
       </TouchableOpacity>
+
+      <View style={styles.divider} />
+
+      <TouchableOpacity
+        style={styles.tab}
+        onPress={openGallery}
+        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={`Achievements, ${earnedIds.length} of ${ACHIEVEMENTS.length} earned`}
+      >
+        <View>
+          <Feather name="award" size={24} color={colors.gold} />
+          {earnedIds.length > 0 && (
+            <View style={[styles.achievementBadge, { backgroundColor: colors.gold }]}>
+              <Text style={[styles.achievementBadgeText, { color: colors.background }]}>{earnedIds.length}</Text>
+            </View>
+          )}
+        </View>
+        <Text style={[styles.label, { color: colors.gold }]}>AWARDS</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -96,4 +119,16 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     marginTop: 1,
   },
+  achievementBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -7,
+    minWidth: 14,
+    height: 14,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  achievementBadgeText: { fontSize: 8, fontFamily: 'Inter_700Bold' },
 });

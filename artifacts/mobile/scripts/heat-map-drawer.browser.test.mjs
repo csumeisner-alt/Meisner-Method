@@ -52,6 +52,7 @@ async function buildScreenBundle() {
     ["react-native-reanimated", join(fixtureDir, "mocks/reanimated.ts")],
     ["@/components/AmericanSteelBackground", join(fixtureDir, "mocks/american-steel-background.tsx")],
     ["@/components/BottomTabBar", join(fixtureDir, "mocks/bottom-tab-bar.tsx")],
+    ["@/contexts/AchievementsContext", join(fixtureDir, "mocks/achievements-context.ts")],
     ["@/hooks/useApi", join(fixtureDir, "mocks/use-api.ts")],
     ["@/hooks/useColors", join(fixtureDir, "mocks/use-colors.ts")],
     ["@/lib/commodityPriceDrivers", join(fixtureDir, "mocks/commodity-price-drivers.ts")],

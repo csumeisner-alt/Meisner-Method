@@ -37,6 +37,7 @@ import { GRADE_ORDER, GradeHistoryChart, type GradeHistoryPoint } from '@/compon
 import { TrainingTapeModal } from '@/components/TrainingTapeModal';
 import { BrewTokenBank } from '@/components/BrewTokenBank';
 import { BrewTokenUnlockCelebration } from '@/components/BrewTokenUnlockCelebration';
+import { useAchievements } from '@/contexts/AchievementsContext';
 import {
   availableToSell,
   computeDividendTotal,
@@ -1760,6 +1761,7 @@ function GradeHistoryModal({
   const chartWidth = Math.max(width - 48, 280);
   const chartHeight = Math.max(Math.min(height * 0.58, 560), 360);
   const topPad = Platform.OS === 'web' ? 16 : insets.top;
+  const { awardAchievement } = useAchievements();
   const [trainingTapeVisible, setTrainingTapeVisible] = useState(false);
   const [brewBankVisible, setBrewBankVisible] = useState(false);
   const [bankEntryBusy, setBankEntryBusy] = useState(false);
@@ -1832,9 +1834,11 @@ function GradeHistoryModal({
     };
   }, [visible]);
 
-  const handleQuoteViewed = useCallback((quoteViewId: string) => {
-    return incrementQuoteViewed(quoteViewId);
-  }, [incrementQuoteViewed]);
+  const handleQuoteViewed = useCallback(async (quoteViewId: string) => {
+    const update = await incrementQuoteViewed(quoteViewId);
+    if (update.firstQuoteView) await awardAchievement('first-quote');
+    return update;
+  }, [awardAchievement, incrementQuoteViewed]);
 
   useEffect(() => {
     if (!justUnlocked) return;

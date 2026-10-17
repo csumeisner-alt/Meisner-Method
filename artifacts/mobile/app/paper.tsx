@@ -25,6 +25,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { MMLogo } from '@/components/MMLogo';
 import { BottomTabBar } from '@/components/BottomTabBar';
+import { useAchievements } from '@/contexts/AchievementsContext';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { useColors } from '@/hooks/useColors';
 import {
@@ -186,6 +187,7 @@ function defaultAccounts(): PaperAccount[] {
 // ── Main Screen ────────────────────────────────────────────────────────────
 export default function PaperScreen() {
   const colors = useColors();
+  const { awardAchievement } = useAchievements();
   const insets = useSafeAreaInsets();
   const watchlist = useWatchlist();
 
@@ -855,6 +857,7 @@ export default function PaperScreen() {
         : [...currentOrders, newOrder]);
     }
 
+    if (!args.orderId) void awardAchievement('first-paper-order');
     setShowOrderSheet(false);
     invalidateStockLookup();
     setShowTradeModal(false);
