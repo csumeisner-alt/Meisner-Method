@@ -34,7 +34,7 @@ import { BottomTabBar } from '@/components/BottomTabBar';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { PortfolioFilterBar } from '@/components/PortfolioFilterBar';
 import { GRADE_ORDER, GradeHistoryChart, type GradeHistoryPoint } from '@/components/GradeHistoryChart';
-import { TrainingTapeModal } from '@/components/TrainingTapeModal';
+import { prefetchTrainingTapeSnapshot, TrainingTapeModal } from '@/components/TrainingTapeModal';
 import { BrewTokenBank } from '@/components/BrewTokenBank';
 import { BrewTokenUnlockCelebration } from '@/components/BrewTokenUnlockCelebration';
 import { useAchievements } from '@/contexts/AchievementsContext';
@@ -1819,6 +1819,10 @@ function GradeHistoryModal({
   const isWeekend = [0, 6].includes(new Date().getDay());
   const hasActiveBankAccess = hasBrewBankAccess(bankAccessExpiresAt, countdownNow);
   const bankAccessRemaining = formatBrewBankAccessRemaining(bankAccessExpiresAt, countdownNow);
+
+  useEffect(() => {
+    if (visible) prefetchTrainingTapeSnapshot();
+  }, [visible]);
 
   useEffect(() => {
     if (!visible) return;

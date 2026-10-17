@@ -189,6 +189,40 @@ function buildMarketSnapshot(tickers: TrendingTicker[]): MarketSnapshot {
   };
 }
 
+const MARKET_SNAPSHOT_FRESH_MS = 60_000;
+let marketSnapshotCache: { snapshot: MarketSnapshot; fetchedAt: number } | null = null;
+let marketSnapshotRequest: Promise<MarketSnapshot> | null = null;
+
+function getMarketSnapshot(): Promise<MarketSnapshot> {
+  if (marketSnapshotRequest) return marketSnapshotRequest;
+
+  const request = (async () => {
+    const response = await fetch(`${BASE_URL}/api/stocks/trending`);
+    if (!response.ok) throw new Error(`Market tape request failed: ${response.status}`);
+    const data: unknown = await response.json();
+    const snapshot = buildMarketSnapshot(Array.isArray(data) ? data as TrendingTicker[] : []);
+    marketSnapshotCache = { snapshot, fetchedAt: Date.now() };
+    return snapshot;
+  })();
+  marketSnapshotRequest = request;
+  void request.then(
+    () => {
+      if (marketSnapshotRequest === request) marketSnapshotRequest = null;
+    },
+    () => {
+      if (marketSnapshotRequest === request) marketSnapshotRequest = null;
+    },
+  );
+  return request;
+}
+
+export function prefetchTrainingTapeSnapshot() {
+  const cacheIsFresh = marketSnapshotCache !== null
+    && Date.now() - marketSnapshotCache.fetchedAt < MARKET_SNAPSHOT_FRESH_MS;
+  if (cacheIsFresh) return;
+  void getMarketSnapshot().catch(() => {});
+}
+
 function formatCompactNumber(value: number | null | undefined) {
   if (!Number.isFinite(value)) return '—';
   if ((value ?? 0) >= 1e9) return `${((value ?? 0) / 1e9).toFixed(1)}B`;
@@ -408,10 +442,14 @@ export function TrainingTapeModal({
 
     let cancelled = false;
     const useQuote = Math.random() < 0.15;
+    const cachedSnapshot = marketSnapshotCache;
+    const cacheIsFresh = cachedSnapshot !== null
+      && Date.now() - cachedSnapshot.fetchedAt < MARKET_SNAPSHOT_FRESH_MS;
     setQuoteProgress(null);
     setQuoteMode(useQuote);
-    setMarketSnapshot(null);
+    setMarketSnapshot(cachedSnapshot?.snapshot ?? null);
     setMarketError(false);
+    setLoading(cachedSnapshot === null);
 
     if (useQuote) {
       const index = Math.floor(Math.random() * BIDEN_QUOTES.length);
@@ -446,22 +484,26 @@ export function TrainingTapeModal({
     }
 
     setMessage('');
-    setLoading(true);
-    fetch(`${BASE_URL}/api/stocks/trending`)
-      .then(async response => {
-        if (!response.ok) throw new Error(`Market tape request failed: ${response.status}`);
-        return await response.json() as TrendingTicker[];
-      })
-      .then(data => {
-        if (!cancelled) setMarketSnapshot(buildMarketSnapshot(Array.isArray(data) ? data : []));
+    if (cacheIsFresh) {
+      setLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void getMarketSnapshot()
+      .then(snapshot => {
+        if (!cancelled) {
+          setMarketSnapshot(snapshot);
+          setMarketError(false);
+          setLoading(false);
+        }
       })
       .catch(() => {
         if (!cancelled) {
-          setMarketError(true);
+          if (!marketSnapshotCache) setMarketError(true);
+          setLoading(false);
         }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
       });
 
     return () => {
