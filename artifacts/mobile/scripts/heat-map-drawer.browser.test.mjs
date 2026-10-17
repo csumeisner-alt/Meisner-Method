@@ -2112,6 +2112,90 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       ["MSFT", "AAPL"],
       "Reopening the custom map should render visible tiles in the saved order.",
     );
+    const savedCustomOrder = ["MSFT", "AAPL", "MISSING"];
+    const orderedCustomQuotes = [
+      quote("AAPL", { returnPercent: 8, sector: "Financials", exchange: "NASDAQ" }),
+      quote("MSFT", { returnPercent: -4, sector: "Technology", exchange: "NYSE" }),
+    ];
+    const visibleCustomTileOrder = () => browser.evaluate(
+      `Array.from(document.querySelectorAll('[data-testid^="heat-map-hex-tile-"]')).map((node) => node.getAttribute("data-testid").replace("heat-map-hex-tile-", ""))`,
+    );
+
+    await setResponse(browser, makeCustomResponse("1d", [orderedCustomQuotes[0]], ["MSFT", "MISSING"]));
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `Array.from(document.querySelectorAll('[data-testid^="heat-map-hex-tile-"]')).map((node) => node.getAttribute("data-testid").replace("heat-map-hex-tile-", "")).join(",") === "AAPL"`,
+      "A saved Custom instrument should disappear from the tiles when its quote is temporarily unavailable.",
+    );
+    await setResponse(browser, makeCustomResponse("1d", orderedCustomQuotes, ["MISSING"]));
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `Array.from(document.querySelectorAll('[data-testid^="heat-map-hex-tile-"]')).map((node) => node.getAttribute("data-testid").replace("heat-map-hex-tile-", "")).join(",") === "MSFT,AAPL"`,
+      "A recovered quote should return to its saved position, regardless of quote-batch order.",
+    );
+
+    await clickTestID(browser, "heat-map-period-1w");
+    await waitForRequest(
+      browser,
+      `(request) => request.category === "custom" && request.period === "1w" && JSON.stringify(request.symbols) === '["MSFT","AAPL","MISSING"]'`,
+      "the Custom map after changing its return period",
+    );
+    await setResponse(browser, makeCustomResponse("1w", orderedCustomQuotes, ["MISSING"]));
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-selected-period"))})?.textContent.includes("1W") && Array.from(document.querySelectorAll('[data-testid^="heat-map-hex-tile-"]')).map((node) => node.getAttribute("data-testid").replace("heat-map-hex-tile-", "")).join(",") === "MSFT,AAPL"`,
+      "Changing the selected period should keep Custom tiles in saved order after refreshed quotes arrive.",
+    );
+
+    await clickTestID(browser, "heat-map-filter-open");
+    await clickTestID(browser, "heat-map-filter-sector-Technology");
+    await clickTestID(browser, "heat-map-filter-apply");
+    assert.deepEqual(
+      await visibleCustomTileOrder(),
+      ["MSFT"],
+      "An active Custom map filter should hide non-matching saved instruments.",
+    );
+    assert.equal(
+      await browser.evaluate(`localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)})`),
+      JSON.stringify(savedCustomOrder),
+      "Applying a filter must not rewrite the saved Custom map order.",
+    );
+    await clickTestID(browser, "heat-map-filter-open");
+    await clickTestID(browser, "heat-map-filter-reset");
+    await clickTestID(browser, "heat-map-filter-apply");
+    assert.deepEqual(
+      await visibleCustomTileOrder(),
+      ["MSFT", "AAPL"],
+      "Clearing filters should restore every quoted instrument in saved order.",
+    );
+
+    await clickTestID(browser, "heat-map-filter-open");
+    await clickTestID(browser, "heat-map-sort-highest");
+    await clickTestID(browser, "heat-map-filter-apply");
+    assert.deepEqual(
+      await visibleCustomTileOrder(),
+      ["AAPL", "MSFT"],
+      "Explicit highest-return sorting should temporarily override the saved tile order.",
+    );
+    assert.equal(
+      await browser.evaluate(`localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)})`),
+      JSON.stringify(savedCustomOrder),
+      "Applying explicit return sorting must not replace the saved Custom map order.",
+    );
+    await clickTestID(browser, "heat-map-filter-open");
+    await clickTestID(browser, "heat-map-sort-default");
+    await clickTestID(browser, "heat-map-filter-apply");
+    assert.deepEqual(
+      await visibleCustomTileOrder(),
+      ["MSFT", "AAPL"],
+      "Clearing explicit return sorting should restore the saved Custom map order.",
+    );
+    assert.equal(
+      await browser.evaluate(`localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)})`),
+      JSON.stringify(savedCustomOrder),
+      "Clearing explicit return sorting must leave the original saved order intact.",
+    );
+
     await clickTestID(browser, "heat-map-custom-edit");
     assert.equal(
       await browser.evaluate(`localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)})`),
