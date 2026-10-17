@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   ScrollView,
   Animated,
   Dimensions,
+  useWindowDimensions,
   Linking,
   Platform,
   AppState,
@@ -19,6 +20,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { useColors } from '@/hooks/useColors';
 import { useAchievements } from '@/contexts/AchievementsContext';
 import { ACHIEVEMENTS } from '@/lib/achievements';
@@ -52,6 +54,84 @@ const CASHAPP_GREEN = '#00D632';
 interface Props {
   visible: boolean;
   onClose: () => void;
+}
+
+function NeonGucciUnlockCelebration({
+  animation,
+  onDismiss,
+  onActivate,
+}: {
+  animation: Animated.Value;
+  onDismiss: () => void;
+  onActivate: () => void;
+}) {
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const player = useVideoPlayer(
+    require('../assets/celebration/neon-gucci-unlock.mp4'),
+    (videoPlayer) => {
+      videoPlayer.loop = false;
+      videoPlayer.muted = false;
+      videoPlayer.audioMixingMode = 'doNotMix';
+      videoPlayer.showNowPlayingNotification = false;
+    },
+  );
+
+  useEffect(() => {
+    const subscription = player.addListener('playToEnd', onDismiss);
+    player.play();
+    return () => {
+      subscription.remove();
+      player.pause();
+    };
+  }, [onDismiss, player]);
+
+  return (
+    <Animated.View style={[styles.neonCelebrationOverlay, { opacity: animation }]}>
+      <VideoView
+        player={player}
+        style={StyleSheet.absoluteFillObject}
+        contentFit="cover"
+        nativeControls={false}
+        fullscreenOptions={{ enable: false }}
+        showsTimecodes={false}
+        surfaceType="textureView"
+      />
+      <LinearGradient
+        pointerEvents="none"
+        colors={['rgba(7,7,12,0.12)', 'rgba(7,7,12,0.02)', 'rgba(7,7,12,0.82)']}
+        locations={[0, 0.5, 1]}
+        style={StyleSheet.absoluteFillObject}
+      />
+      <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+        <Confetti width={width} height={height} />
+      </View>
+      <Pressable
+        onPress={onDismiss}
+        accessibilityRole="button"
+        accessibilityLabel="Close Neon Gucci celebration"
+        style={[styles.neonCelebrationClose, { top: insets.top + 12 }]}
+      >
+        <Feather name="x" size={20} color="#fff8de" />
+      </Pressable>
+      <View style={[styles.neonCelebrationContent, { paddingBottom: insets.bottom + 24 }]}>
+        <Text style={styles.neonCelebrationEyebrow}>THE DROP IS YOURS</Text>
+        <Text style={styles.neonCelebrationMark}>GG</Text>
+        <Text style={styles.neonCelebrationTitle}>HYBRID NEON GUCCI</Text>
+        <Text style={styles.neonCelebrationSubtitle}>Your new look is unlocked.</Text>
+        <Pressable
+          onPress={onActivate}
+          accessibilityRole="button"
+          accessibilityLabel="Activate Hybrid Neon Gucci"
+          style={styles.neonActivateButton}
+        >
+          <Text style={styles.neonActivateText}>ACTIVATE NEON GUCCI</Text>
+          <Feather name="arrow-up-right" size={16} color="#14231e" />
+        </Pressable>
+        <Text style={styles.neonDismissHint}>THE REVEAL CLOSES WHEN THE VIDEO ENDS</Text>
+      </View>
+    </Animated.View>
+  );
 }
 
 export function DonationSidebar({ visible, onClose }: Props) {
@@ -100,7 +180,12 @@ export function DonationSidebar({ visible, onClose }: Props) {
   const neonCelebAnim = useRef(new Animated.Value(0)).current;
   const tipAttemptedRef = useRef(false);
   const celebTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const neonCelebTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dismissNeonCelebration = useCallback(() => setNeonCelebrating(false), []);
+  const activateNeonGucci = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setNeonGucciActive(true);
+    setNeonCelebrating(false);
+  }, [setNeonGucciActive]);
 
   const effectiveAmount = isCustom ? parseFloat(customText) || 0 : selected;
   const isValid = effectiveAmount >= MIN_AMOUNT && effectiveAmount <= MAX_AMOUNT;
@@ -139,7 +224,6 @@ export function DonationSidebar({ visible, onClose }: Props) {
     return () => {
       sub.remove();
       if (celebTimer.current) clearTimeout(celebTimer.current);
-      if (neonCelebTimer.current) clearTimeout(neonCelebTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -155,7 +239,6 @@ export function DonationSidebar({ visible, onClose }: Props) {
       useNativeDriver: true,
     }).start();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    neonCelebTimer.current = setTimeout(() => setNeonCelebrating(false), 4_800);
     brew.clearNeonGucciJustUnlocked();
   }, [brew.clearNeonGucciJustUnlocked, brew.neonGucciJustUnlocked, neonCelebAnim]);
 
@@ -550,37 +633,11 @@ export function DonationSidebar({ visible, onClose }: Props) {
           </ScrollView>
 
           {neonCelebrating && (
-            <Animated.View
-              style={[
-                styles.celebOverlay,
-                {
-                  backgroundColor: 'rgba(20,14,15,0.62)',
-                  opacity: neonCelebAnim,
-                },
-              ]}
-            >
-              <Confetti width={PANEL_WIDTH} height={SCREEN_HEIGHT} />
-              <Animated.View
-                style={[
-                  styles.neonUnlockCard,
-                  {
-                    transform: [{
-                      scale: neonCelebAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [0.72, 1],
-                      }),
-                    }],
-                  },
-                ]}
-              >
-                <Text style={styles.neonUnlockMark}>GG</Text>
-                <Text style={styles.neonUnlockTitle}>THE REVEAL IS COMPLETE</Text>
-                <Text style={styles.neonUnlockBody}>
-                  Hybrid Neon Gucci is unlocked at {NEON_GUCCI_UNLOCK_COST.toLocaleString()} Dark Brew Tokens.
-                </Text>
-                <Text style={styles.neonUnlockHint}>TOGGLE IT ON FROM THIS CARD</Text>
-              </Animated.View>
-            </Animated.View>
+            <NeonGucciUnlockCelebration
+              animation={neonCelebAnim}
+              onDismiss={dismissNeonCelebration}
+              onActivate={activateNeonGucci}
+            />
           )}
 
           {/* Celebratory thank-you shown when the user returns from a tip */}
@@ -743,6 +800,103 @@ const styles = StyleSheet.create({
   neonUnlockTitle: { color: '#ffe1a0', fontSize: 16, fontWeight: '900', letterSpacing: 1.1, textAlign: 'center' },
   neonUnlockBody: { color: '#f5eadb', fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 9 },
   neonUnlockHint: { color: '#8cf3cf', fontSize: 9, fontWeight: '800', letterSpacing: 0.8, marginTop: 15, textAlign: 'center' },
+  neonCelebrationOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#08090c',
+    overflow: 'hidden',
+    zIndex: 20,
+  },
+  neonCelebrationClose: {
+    position: 'absolute',
+    right: 18,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(8,9,12,0.58)',
+    borderWidth: 1,
+    borderColor: 'rgba(140,243,207,0.65)',
+    zIndex: 2,
+  },
+  neonCelebrationContent: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 24,
+  },
+  neonCelebrationEyebrow: {
+    color: '#8cf3cf',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 3,
+    marginBottom: 13,
+    textShadowColor: '#00eaff',
+    textShadowRadius: 12,
+  },
+  neonCelebrationMark: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    overflow: 'hidden',
+    backgroundColor: '#8cf3cf',
+    color: '#14231e',
+    fontSize: 19,
+    fontWeight: '900',
+    letterSpacing: -2,
+    marginBottom: 12,
+    shadowColor: '#55ecff',
+    shadowOpacity: 0.9,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+  neonCelebrationTitle: {
+    color: '#ffe1a0',
+    fontSize: 24,
+    fontWeight: '900',
+    letterSpacing: 1.3,
+    textAlign: 'center',
+    textShadowColor: '#f39bff',
+    textShadowRadius: 14,
+  },
+  neonCelebrationSubtitle: {
+    color: '#fff8de',
+    fontSize: 14,
+    marginTop: 7,
+    marginBottom: 22,
+    textAlign: 'center',
+  },
+  neonActivateButton: {
+    minHeight: 50,
+    borderRadius: 25,
+    borderWidth: 1,
+    borderColor: '#fff3bd',
+    backgroundColor: '#8cf3cf',
+    paddingHorizontal: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 9,
+    shadowColor: '#55ecff',
+    shadowOpacity: 0.75,
+    shadowRadius: 18,
+    elevation: 8,
+  },
+  neonActivateText: {
+    color: '#14231e',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  neonDismissHint: {
+    color: 'rgba(255,248,222,0.68)',
+    fontSize: 8,
+    fontWeight: '800',
+    letterSpacing: 1,
+    marginTop: 16,
+  },
   celebOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',

@@ -66,6 +66,7 @@
     "expo-build-properties": "~1.0.10",
     "expo-network": "~8.0.8",
     "expo-notifications": "~0.32.17",
-    "expo-speech": "~14.0.8"
+    "expo-speech": "~14.0.8",
+    "expo-video": "~3.0.16"
   }
 }
