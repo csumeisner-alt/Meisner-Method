@@ -1,15 +1,15 @@
 import './_group.css';
 
-const confettiColors = ['#7C3AED', '#DB2777', '#F59E0B', '#00D632', '#3D95CE', '#22D3EE'];
+const confettiColors = ['#D7B66D', '#9AE9D1', '#63DCE6'];
 
-const confetti = Array.from({ length: 90 }, (_, index) => ({
+const confetti = Array.from({ length: 22 }, (_, index) => ({
   left: `${(index * 37) % 100}%`,
   color: confettiColors[index % confettiColors.length],
-  size: `${6 + ((index * 7) % 9)}px`,
+  size: `${6 + ((index * 5) % 6)}px`,
   delay: `${(index * 47) % 500}ms`,
-  duration: `${1820 + ((index * 61) % 1000)}ms`,
-  drift: `${((index * 19) % 140) - 70}px`,
-  spin: `${720 + ((index * 83) % 1440)}deg`,
+  duration: `${1400 + ((index * 23) % 500)}ms`,
+  drift: `${((index * 19) % 100) - 50}px`,
+  spin: `${720 + ((index * 83) % 720)}deg`,
 }));
 
 export function Current() {
@@ -48,7 +48,7 @@ export function Current() {
         ×
       </button>
       <section className="neon-gucci-preview__content">
-        <p className="neon-gucci-preview__eyebrow">THE DROP IS YOURS</p>
+        <p className="neon-gucci-preview__eyebrow">A REWARD, WELL EARNED</p>
         <div className="neon-gucci-preview__mark">GG</div>
         <h1 className="neon-gucci-preview__title">HYBRID NEON GUCCI</h1>
         <p className="neon-gucci-preview__subtitle">Your new look is unlocked.</p>
