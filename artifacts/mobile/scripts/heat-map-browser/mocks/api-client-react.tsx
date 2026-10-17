@@ -42,9 +42,15 @@ interface HeatMapBrowserState {
 
   validationRequests: string[];
 
-  validationResponses: ({ type: "resolve"; symbol?: string } | { type: "reject" })[];
+  validationResponses: (
+    | { type: "resolve"; symbol?: string }
+    | { type: "reject"; error?: string; message?: string }
+  )[];
 
-  setValidationResponses: (responses: ({ type: "resolve"; symbol?: string } | { type: "reject" })[]) => void;
+  setValidationResponses: (responses: (
+    | { type: "resolve"; symbol?: string }
+    | { type: "reject"; error?: string; message?: string }
+  )[]) => void;
 
   stockSearchSuggestionsByQuery: Record<string, { symbol: string; name: string; exchange: string }[]>;
 
@@ -468,7 +474,14 @@ export function useValidateHeatMapSymbol() {
     mutateAsync: async ({ data }: { data: { symbol: string } }) => {
       state.validationRequests.push(data.symbol);
       const response = state.validationResponses.shift();
-      if (!response || response.type === "reject") throw new Error("Mock instrument validation failed.");
+      if (!response || response.type === "reject") {
+        throw Object.assign(new Error("Mock instrument validation failed."), {
+          data: {
+            error: response?.type === "reject" ? response.error : undefined,
+            message: response?.type === "reject" ? response.message : undefined,
+          },
+        });
+      }
       return quote(response.symbol ?? data.symbol);
     },
   };

@@ -501,7 +501,7 @@ router.post("/stocks/heat-map/validate", async (req, res) => {
   } catch (err: any) {
     req.log.error({ err, symbol: normalized.symbols[0] }, "Custom heat-map ticker validation failed");
     res.status(422).json({
-      error: "QUOTE_UNAVAILABLE",
+      error: "MARKET_DATA_TEMPORARILY_UNAVAILABLE",
       message: "Market data is temporarily unavailable. Try again.",
     });
   }

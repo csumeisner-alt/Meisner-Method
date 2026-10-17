@@ -94,6 +94,28 @@ export interface CustomHeatMapBatchAddPlan {
   overLimitCount: number;
 }
 
+export function getCustomHeatMapValidationFailureReason(error: unknown): string {
+  if (typeof error !== "object" || error === null || !("data" in error)) {
+    return "Couldn't verify this instrument. Try again.";
+  }
+
+  const data = error.data;
+  if (typeof data !== "object" || data === null || !("error" in data)) {
+    return "Couldn't verify this instrument. Try again.";
+  }
+
+  switch (data.error) {
+    case "INVALID_SYMBOL":
+      return "Enter a valid ticker symbol.";
+    case "QUOTE_UNAVAILABLE":
+      return "This ticker isn't supported or has no current or recent quote.";
+    case "MARKET_DATA_TEMPORARILY_UNAVAILABLE":
+      return "Market data is temporarily unavailable. Try again.";
+    default:
+      return "Couldn't verify this instrument. Try again.";
+  }
+}
+
 export function planCustomHeatMapBatchAdd(
   existingSymbols: string[],
   requestedSymbols: string[],

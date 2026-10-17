@@ -58,6 +58,7 @@ import {
 import {
   CUSTOM_HEAT_MAP_ASSETS, CUSTOM_HEAT_MAP_ASSET_TYPES,
   MAX_CUSTOM_HEAT_MAP_SYMBOLS, appendCustomHeatMapSymbolInSavedOrder,
+  getCustomHeatMapValidationFailureReason,
   moveCustomHeatMapSymbol, normalizeCustomHeatMapSymbols,
   planCustomHeatMapBatchAdd,
   removeCustomHeatMapSymbolFromSavedOrder,
@@ -1065,8 +1066,8 @@ export default function HeatMapScreen() {
         setLastRemovedTicker(null);
       }
       setSymbolInput('');
-    } catch {
-      setFormError(`${symbol} isn't a supported instrument or has no recent quote. It wasn't added. Check the ticker or choose a provider search result and try again.`);
+    } catch (error) {
+      setFormError(`${symbol}: ${getCustomHeatMapValidationFailureReason(error)} It wasn't added.`);
     }
   }
   function toggleCustomAssetSelection(symbol: string) {
@@ -1099,7 +1100,7 @@ export default function HeatMapScreen() {
     Keyboard.dismiss();
     let nextSymbols = [...customSymbols];
     const addedSymbols: string[] = [];
-    const failedSymbols: string[] = [];
+    const failedInstruments: { symbol: string; reason: string }[] = [];
     let alreadyAddedCount = plan.alreadyAddedCount;
     let overLimitCount = plan.overLimitCount;
     try {
@@ -1114,8 +1115,11 @@ export default function HeatMapScreen() {
             nextSymbols = appendCustomHeatMapSymbolInSavedOrder(nextSymbols, quote.symbol);
             addedSymbols.push(quote.symbol);
           }
-        } catch {
-          failedSymbols.push(symbol);
+        } catch (error) {
+          failedInstruments.push({
+            symbol,
+            reason: getCustomHeatMapValidationFailureReason(error),
+          });
         }
       }
 
@@ -1130,17 +1134,19 @@ export default function HeatMapScreen() {
         setLastRemovedTicker(null);
       }
 
-      setSelectedCustomAssetSymbols(failedSymbols);
+      setSelectedCustomAssetSymbols(failedInstruments.map(({ symbol }) => symbol));
       const feedback = [
         addedSymbols.length > 0 ? `Added ${addedSymbols.length} instrument${addedSymbols.length === 1 ? '' : 's'}.` : '',
         alreadyAddedCount > 0 ? `Skipped ${alreadyAddedCount} already in your map.` : '',
         overLimitCount > 0 ? `Skipped ${overLimitCount}; the map limit is ${MAX_CUSTOM_HEAT_MAP_SYMBOLS}.` : '',
-        failedSymbols.length > 0 ? `Couldn't validate ${failedSymbols.join(', ')}.` : '',
-      ].filter(Boolean).join(' ');
+        failedInstruments.length > 0
+          ? `Couldn't add:\n${failedInstruments.map(({ symbol, reason }) => `${symbol}: ${reason}`).join('\n')}`
+          : '',
+      ].filter(Boolean).join('\n');
       if (feedback) {
         setCustomBatchFeedback({
           message: feedback,
-          kind: failedSymbols.length > 0 || (addedSymbols.length === 0 && overLimitCount > 0) ? 'error' : 'success',
+          kind: failedInstruments.length > 0 || (addedSymbols.length === 0 && overLimitCount > 0) ? 'error' : 'success',
         });
       }
     } finally {

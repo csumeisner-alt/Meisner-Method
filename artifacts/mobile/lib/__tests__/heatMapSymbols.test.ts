@@ -6,6 +6,7 @@ import {
   CUSTOM_HEAT_MAP_ASSET_TYPES,
   MAX_CUSTOM_HEAT_MAP_SYMBOLS,
   appendCustomHeatMapSymbolInSavedOrder,
+  getCustomHeatMapValidationFailureReason,
   moveCustomHeatMapSymbol,
   normalizeCustomHeatMapSymbols,
   planCustomHeatMapBatchAdd,
@@ -34,6 +35,29 @@ test("custom map batch add skips existing symbols and only adds up to the remain
     alreadyAddedCount: 1,
     overLimitCount: 2,
   });
+});
+
+test("custom heat-map validation errors map only known codes to safe guidance", () => {
+  assert.equal(
+    getCustomHeatMapValidationFailureReason({ data: { error: "INVALID_SYMBOL", message: "raw internal text" } }),
+    "Enter a valid ticker symbol.",
+  );
+  assert.equal(
+    getCustomHeatMapValidationFailureReason({ data: { error: "QUOTE_UNAVAILABLE" } }),
+    "This ticker isn't supported or has no current or recent quote.",
+  );
+  assert.equal(
+    getCustomHeatMapValidationFailureReason({ data: { error: "MARKET_DATA_TEMPORARILY_UNAVAILABLE" } }),
+    "Market data is temporarily unavailable. Try again.",
+  );
+  assert.equal(
+    getCustomHeatMapValidationFailureReason({ data: { error: "UNKNOWN", message: "raw internal text" } }),
+    "Couldn't verify this instrument. Try again.",
+  );
+  assert.equal(
+    getCustomHeatMapValidationFailureReason(new Error("network failure")),
+    "Couldn't verify this instrument. Try again.",
+  );
 });
 
 test("custom map batch add removes duplicate requests and handles a full map", () => {

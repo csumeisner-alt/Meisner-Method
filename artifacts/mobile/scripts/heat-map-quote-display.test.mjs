@@ -105,7 +105,7 @@ test("custom non-stock search shows provider categories and validates before sav
   assert.match(screenSource, /suggestion\.category === 'etf'/);
   assert.match(screenSource, /suggestion\.category === 'commodity'/);
   assert.match(screenSource, /onPress=\{\(\) => void addSymbol\(suggestion\.symbol\)\}/);
-  assert.match(screenSource, /isn't a supported instrument or has no recent quote/);
+  assert.match(screenSource, /getCustomHeatMapValidationFailureReason\(error\)/);
 });
 
 test("heat-map has a right-side filter drawer and reduced-motion-aware direction cue", () => {

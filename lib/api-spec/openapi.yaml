@@ -328,7 +328,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/AnalysisError"
         "422":
-          description: No current or recent quote was found for the ticker
+          description: No current or recent quote was found, or market data is temporarily unavailable
           content:
             application/json:
               schema:
