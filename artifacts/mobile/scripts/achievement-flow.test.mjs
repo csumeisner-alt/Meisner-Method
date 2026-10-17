@@ -14,6 +14,7 @@ const settingsSource = readSource("../components/DonationSidebar.tsx");
 const watchlistSource = readSource("../hooks/useWatchlist.ts");
 const analysisSource = readSource("../app/analysis/[symbol].tsx");
 const bottomTabSource = readSource("../components/BottomTabBar.tsx");
+const overlaySource = readSource("../components/AchievementsOverlay.tsx");
 
 test("first-time app milestones are wired to achievement rewards and a review screen", () => {
   assert.match(portfolioSource, /void awardAchievement\('first-quote'\)/);
@@ -29,4 +30,6 @@ test("first-time app milestones are wired to achievement rewards and a review sc
   assert.match(homeSource, /<DonationSidebar\s+visible=\{settingsOpen\}/);
   assert.doesNotMatch(homeSource, /useAchievements|onPress=\{openGallery\}/);
   assert.doesNotMatch(bottomTabSource, /AWARDS|openGallery|useAchievements/);
+  assert.match(overlaySource, /<ScrollView[\s\S]*?contentContainerStyle=\{styles\.achievementList\}/);
+  assert.match(overlaySource, /maxHeight: '88%'/);
 });

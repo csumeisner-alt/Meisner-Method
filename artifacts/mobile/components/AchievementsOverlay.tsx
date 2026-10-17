@@ -3,6 +3,7 @@ import {
   Animated,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -138,7 +139,13 @@ export function AchievementsOverlay() {
               </Pressable>
             </View>
 
-            <View style={styles.achievementList}>
+            <ScrollView
+              style={styles.achievementScroll}
+              contentContainerStyle={styles.achievementList}
+              showsVerticalScrollIndicator
+              nestedScrollEnabled
+              accessibilityLabel="Achievement list"
+            >
               {ACHIEVEMENTS.map((achievement) => {
                 const earned = earnedIds.includes(achievement.id);
                 return (
@@ -172,7 +179,7 @@ export function AchievementsOverlay() {
                   </View>
                 );
               })}
-            </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -213,12 +220,13 @@ const styles = StyleSheet.create({
   dismiss: { padding: 4 },
   modalRoot: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 18 },
   backdrop: { backgroundColor: 'rgba(0,0,0,0.72)' },
-  panel: { width: '100%', maxWidth: 460, borderWidth: 1, borderRadius: 16, padding: 18 },
+  panel: { width: '100%', maxWidth: 460, maxHeight: '88%', borderWidth: 1, borderRadius: 16, padding: 18 },
   panelHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
   panelTitleGroup: { flexDirection: 'row', alignItems: 'center', gap: 11 },
   panelTitle: { fontSize: 14, letterSpacing: 1 },
   panelSubtitle: { fontSize: 11, marginTop: 2 },
-  achievementList: { gap: 9 },
+  achievementScroll: { flexShrink: 1 },
+  achievementList: { gap: 9, paddingBottom: 2 },
   achievementRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 9 },
   achievementIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   achievementCopy: { flex: 1, gap: 2 },
