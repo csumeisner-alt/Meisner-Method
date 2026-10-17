@@ -1,6 +1,6 @@
 import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Animated, AppState, Keyboard, Modal, Platform, Pressable, RefreshControl,
+  AccessibilityInfo, ActivityIndicator, Animated, AppState, Keyboard, Modal, Platform, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -534,6 +534,7 @@ export default function HeatMapScreen() {
   const [isResettingSavedTickers, setIsResettingSavedTickers] = useState(false);
   const [isEditingCustomMap, setIsEditingCustomMap] = useState(false);
   const [removingSymbol, setRemovingSymbol] = useState<string | null>(null);
+  const [customReorderAnnouncement, setCustomReorderAnnouncement] = useState('');
   const [lastRemovedTicker, setLastRemovedTicker] = useState<{ symbol: string; index: number } | null>(null);
   const [symbolInput, setSymbolInput] = useState('');
   const [customAssetType, setCustomAssetType] = useState<CustomHeatMapAssetType>('stocks');
@@ -1166,6 +1167,9 @@ export default function HeatMapScreen() {
     try {
       await persistSymbols(next);
       setLastRemovedTicker(null);
+      const announcement = `${symbol} moved to position ${next.indexOf(symbol) + 1} of ${next.length}.`;
+      setCustomReorderAnnouncement(announcement);
+      if (Platform.OS === 'ios') AccessibilityInfo.announceForAccessibility(announcement);
     } catch {
       setFormError(`Couldn't reorder ${symbol} on this device. Try again.`);
     } finally {
@@ -1361,6 +1365,13 @@ export default function HeatMapScreen() {
               <Text style={[styles.editFallbackHint, { color: colors.mutedForeground }]}>
                 Arrange your instruments. Changes save on this device.
               </Text>
+              {customReorderAnnouncement !== '' && <Text
+                testID="heat-map-custom-reorder-announcement"
+                accessibilityLiveRegion="polite"
+                style={[styles.editFallbackHint, { color: colors.mutedForeground }]}
+              >
+                {customReorderAnnouncement}
+              </Text>}
               {customSymbols.map((symbol, index) => (
                 <View
                   key={symbol}

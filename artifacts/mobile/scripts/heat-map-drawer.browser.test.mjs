@@ -27,6 +27,14 @@ test("heat-map resume refresh imports React Native AppState before subscribing",
   assert.match(source, /import\s*\{[^}]*\bshouldRefreshCryptoHeatMapOnResume\b[^}]*\}\s*from\s*['"]@\/lib\/heatMapQuoteDisplay['"]/s);
 });
 
+test("custom heat-map reorder keeps boundary descriptions and native announcements", async () => {
+  const source = await readFile(join(mobileDir, "app/heat-map.tsx"), "utf8");
+  assert.match(source, /accessibilityHint="Moves this instrument earlier in your custom map\."/);
+  assert.match(source, /accessibilityHint="Moves this instrument later in your custom map\."/);
+  assert.match(source, /Platform\.OS === 'ios'\) AccessibilityInfo\.announceForAccessibility\(announcement\)/);
+  assert.match(source, /accessibilityLiveRegion="polite"/);
+});
+
 function browserExecutable() {
   if (process.env.CHROMIUM_PATH) return process.env.CHROMIUM_PATH;
   if (existsSync("/repl/tools/bin/chromium")) return "/repl/tools/bin/chromium";
@@ -2075,12 +2083,47 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     );
     await setResponse(browser, makeCustomResponse("1d", [quote("AAPL"), quote("MSFT")], ["MISSING"]));
 
+    const initialReorderBoundaries = await browser.evaluate(`(() => {
+      const firstUp = document.querySelector(${JSON.stringify(selector("heat-map-move-up-AAPL"))});
+      const lastDown = document.querySelector(${JSON.stringify(selector("heat-map-move-down-MISSING"))});
+      return {
+        firstUpDisabled: firstUp?.disabled,
+        firstUpLabel: firstUp?.getAttribute("aria-label"),
+        lastDownDisabled: lastDown?.disabled,
+        lastDownLabel: lastDown?.getAttribute("aria-label"),
+      };
+    })()`);
+    assert.deepEqual(initialReorderBoundaries, {
+      firstUpDisabled: true,
+      firstUpLabel: "Move AAPL up",
+      lastDownDisabled: true,
+      lastDownLabel: "Move MISSING down",
+    }, "The first and last instruments should keep their labeled boundary controls disabled.");
+
     await clickTestID(browser, "heat-map-move-down-AAPL");
     await waitFor(
       (expression) => browser.evaluate(expression),
-      `localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}) === ${JSON.stringify(JSON.stringify(["MSFT","AAPL","MISSING"]))}`,
-      "Moving AAPL down should persist the new instrument order.",
+      `localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}) === ${JSON.stringify(JSON.stringify(["MSFT","AAPL","MISSING"]))} && document.querySelector(${JSON.stringify(selector("heat-map-custom-reorder-announcement"))})?.textContent.trim() === "AAPL moved to position 2 of 3." && document.querySelector(${JSON.stringify(selector("heat-map-custom-reorder-announcement"))})?.getAttribute("aria-live") === "polite"`,
+      "Moving AAPL down should save the new order and politely announce its position and the total instrument count.",
     );
+    const movedReorderControls = await browser.evaluate(`(() => {
+      const firstUp = document.querySelector(${JSON.stringify(selector("heat-map-move-up-MSFT"))});
+      const movedUp = document.querySelector(${JSON.stringify(selector("heat-map-move-up-AAPL"))});
+      const movedDown = document.querySelector(${JSON.stringify(selector("heat-map-move-down-AAPL"))});
+      const lastDown = document.querySelector(${JSON.stringify(selector("heat-map-move-down-MISSING"))});
+      return {
+        firstUpDisabled: firstUp?.disabled,
+        movedUpDisabled: movedUp?.disabled,
+        movedDownDisabled: movedDown?.disabled,
+        lastDownDisabled: lastDown?.disabled,
+      };
+    })()`);
+    assert.deepEqual(movedReorderControls, {
+      firstUpDisabled: true,
+      movedUpDisabled: false,
+      movedDownDisabled: false,
+      lastDownDisabled: true,
+    }, "Reordering should update boundary disabled states without disabling the moved instrument's available actions.");
     await waitForRequest(
       browser,
       `(request) => request.category === "custom" && JSON.stringify(request.symbols) === '["MSFT","AAPL","MISSING"]'`,
