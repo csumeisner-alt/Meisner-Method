@@ -4,6 +4,32 @@ export interface StockSearchMatch {
   exchange: string;
 }
 
+export interface StockSearchSuggestionSelectionState {
+  alreadyAdded: boolean;
+  selected: boolean;
+  selectionAtLimit: boolean;
+}
+
+export function getStockSearchSuggestionSelectionState(
+  symbol: string,
+  existingSymbols: readonly string[],
+  selectedSymbols: readonly string[],
+  maxSymbols: number,
+): StockSearchSuggestionSelectionState {
+  const normalizedSymbol = symbol.trim().toUpperCase();
+  const existing = new Set(existingSymbols.map(item => item.trim().toUpperCase()));
+  const selected = new Set(selectedSymbols.map(item => item.trim().toUpperCase()));
+  const alreadyAdded = existing.has(normalizedSymbol);
+  const isSelected = selected.has(normalizedSymbol);
+  const pendingCount = [...selected].filter(item => !existing.has(item)).length;
+
+  return {
+    alreadyAdded,
+    selected: isSelected,
+    selectionAtLimit: !alreadyAdded && !isSelected && existing.size + pendingCount >= maxSymbols,
+  };
+}
+
 export interface BuyStockInfo {
   companyName: string;
   currentPrice: number;

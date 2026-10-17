@@ -2402,6 +2402,65 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     assert.match(goldSearchResults, /Commodities/);
     assert.match(goldSearchResults, /ETFs/);
 
+    await browser.evaluate(`window.__heatMapBrowserTest.setStockSearchSuggestions("Gold", [
+      { symbol: "AAPL", name: "Apple Inc.", exchange: "NASDAQ" },
+      { symbol: "MSFT", name: "Microsoft Corporation", exchange: "NASDAQ" },
+      { symbol: "NVDA", name: "NVIDIA Corporation", exchange: "NASDAQ" },
+    ])`);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-custom-suggestion-AAPL"))}) && !!document.querySelector(${JSON.stringify(selector("heat-map-custom-select-MSFT"))})`,
+      "Stock search should offer a separate batch-selection control without removing its direct add action.",
+    );
+    await browser.evaluate(`window.__heatMapBrowserTest.setValidationResponses([{ type: "resolve", symbol: "AAPL" }])`);
+    await clickTestID(browser, "heat-map-custom-suggestion-AAPL");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}) === ${JSON.stringify(JSON.stringify(["GC=F", "SI=F", "AAPL"]))}`,
+      "Tapping a stock search result should still add that single stock immediately.",
+    );
+    await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-custom-input"))})?.focus()`);
+    await browser.send("Input.insertText", { text: "Gold" });
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-custom-suggestion-AAPL"))})?.textContent.includes("Added") && !document.querySelector(${JSON.stringify(selector("heat-map-custom-select-AAPL"))})`,
+      "A stock already in the Custom map should be labeled as added and not be selectable again.",
+    );
+    await clickTestID(browser, "heat-map-custom-select-MSFT");
+    await clickTestID(browser, "heat-map-custom-select-NVDA");
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-custom-batch-add"))})?.getAttribute("aria-label")`),
+      "Add 2 selected instruments",
+      "Several stock suggestions should be selectable together before adding.",
+    );
+    await browser.evaluate(`window.__heatMapBrowserTest.setValidationResponses([
+      { type: "resolve", symbol: "MSFT" },
+      { type: "resolve", symbol: "NVDA" },
+    ])`);
+    await clickTestID(browser, "heat-map-custom-batch-add");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}) === ${JSON.stringify(JSON.stringify(["GC=F", "SI=F", "AAPL", "MSFT", "NVDA"]))} && !document.querySelector(${JSON.stringify(selector("heat-map-custom-batch-add"))})`,
+      "Adding selected stocks should validate and save the complete batch without duplicating the already-added stock.",
+    );
+
+    await browser.evaluate(`(() => {
+      const input = document.querySelector(${JSON.stringify(selector("heat-map-custom-input"))});
+      input?.focus();
+    })()`);
+    await browser.send("Input.dispatchKeyEvent", { type: "keyDown", key: "a", modifiers: 2 });
+    await browser.send("Input.dispatchKeyEvent", { type: "keyUp", key: "a", modifiers: 2 });
+    await browser.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Backspace" });
+    await browser.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Backspace" });
+    await browser.send("Input.insertText", { text: "TSLA" });
+    await browser.evaluate(`window.__heatMapBrowserTest.setValidationResponses([{ type: "resolve", symbol: "TSLA" }])`);
+    await clickTestID(browser, "heat-map-custom-add");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}) === ${JSON.stringify(JSON.stringify(["GC=F", "SI=F", "AAPL", "MSFT", "NVDA", "TSLA"]))}`,
+      "Direct ticker entry should still validate and add a stock.",
+    );
+
     // A stale crypto batch refreshes when the focused screen resumes, while a fresh
     // batch does not. The user's selected period and local filters remain intact.
     await clickTestID(browser, "heat-map-category-picker");

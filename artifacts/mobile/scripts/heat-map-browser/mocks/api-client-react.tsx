@@ -46,6 +46,10 @@ interface HeatMapBrowserState {
 
   setValidationResponses: (responses: ({ type: "resolve"; symbol?: string } | { type: "reject" })[]) => void;
 
+  stockSearchSuggestionsByQuery: Record<string, { symbol: string; name: string; exchange: string }[]>;
+
+  setStockSearchSuggestions: (query: string, suggestions: { symbol: string; name: string; exchange: string }[]) => void;
+
   detailRequests: string[];
 
   detailRequestSignals: { url: string; signal: AbortSignal | null }[];
@@ -207,6 +211,7 @@ export function initializeHeatMapBrowserState(): HeatMapBrowserState {
     refetches: [],
     validationRequests: [],
     validationResponses: [],
+    stockSearchSuggestionsByQuery: {},
     detailRequests: [],
     detailRequestSignals: [],
     detailResponses: [],
@@ -232,6 +237,10 @@ export function initializeHeatMapBrowserState(): HeatMapBrowserState {
     },
     setValidationResponses(responses) {
       state.validationResponses = [...responses];
+    },
+    setStockSearchSuggestions(query, suggestions) {
+      state.stockSearchSuggestionsByQuery[query] = [...suggestions];
+      state.listeners.forEach((listener) => listener());
     },
     setCommodityDriverResponses(responses) {
       state.commodityDriverResponses = [...responses];
@@ -298,7 +307,7 @@ export function getGetMarketBreadthQueryKey() {
 }
 
 export function getSearchStockSymbolsQueryKey(params: { q: string }) {
-  return ["stock-symbol-search", params.q];
+  return ["stock-symbol-search", params];
 }
 
 export function getSearchHeatMapInstrumentsQueryKey(params: { q: string; category: string }) {
@@ -422,10 +431,18 @@ export function getGetCryptoSupplyHistoryQueryKey(symbol: string, rangeDays: num
   return [`/api/stocks/crypto/${symbol}/supply-history/${rangeDays}`];
 }
 
-export function useSearchStockSymbols() {
+export function useSearchStockSymbols(params: { q: string }) {
+  const state = initializeHeatMapBrowserState();
+  const [, forceRender] = React.useReducer((value: number) => value + 1, 0);
+  React.useEffect(() => {
+    state.listeners.add(forceRender);
+    return () => {
+      state.listeners.delete(forceRender);
+    };
+  }, [state]);
   return {
-    queryKey: getSearchStockSymbolsQueryKey({ q: "" }),
-    data: [],
+    queryKey: getSearchStockSymbolsQueryKey(params),
+    data: state.stockSearchSuggestionsByQuery[params.q] ?? [],
     isPlaceholderData: false,
     isFetching: false,
     isError: false,

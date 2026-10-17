@@ -62,7 +62,7 @@ import {
   type CustomHeatMapAssetType,
 } from '@/lib/heatMapSymbols';
 import {
-  getStockSearchFeedback, getStockSearchQueryFromKey, isStockSearchCurrent,
+  getStockSearchFeedback, getStockSearchQueryFromKey, getStockSearchSuggestionSelectionState, isStockSearchCurrent,
 } from '@/lib/stockSearch';
 
 const STORAGE_KEY = 'meisner.heat-map.custom-symbols.v1';
@@ -1488,7 +1488,7 @@ export default function HeatMapScreen() {
             </ScrollView>}
             {selectedCustomAssetSymbols.length > 0 && <View style={styles.batchAddRow}>
               <Text style={[styles.batchAddHint, { color: colors.mutedForeground }]}>
-                {selectedCustomAssetSymbols.length} selected · {Math.max(0, MAX_CUSTOM_HEAT_MAP_SYMBOLS - customSymbols.length)} spaces left
+                {selectedCustomAssetSymbols.length} selected · {Math.max(0, MAX_CUSTOM_HEAT_MAP_SYMBOLS - customSymbols.length - selectedCustomAssetSymbols.length)} spaces left
               </Text>
               <TouchableOpacity
                 testID="heat-map-custom-batch-add"
@@ -1514,22 +1514,57 @@ export default function HeatMapScreen() {
             </View>}
             {isCustomSearchInput && <View testID="heat-map-custom-suggestions" style={[styles.suggestionsPanel, { backgroundColor: colors.background, borderColor: colors.border }]}>
               <Text style={[styles.stockSearchHeading, { color: colors.mutedForeground }]}>Stocks</Text>
-              {customSuggestions.map((suggestion, index) => <TouchableOpacity
-                key={suggestion.symbol}
-                testID={`heat-map-custom-suggestion-${suggestion.symbol}`}
-                accessibilityRole="button"
-                accessibilityLabel={`Add ${suggestion.name}, ticker ${suggestion.symbol}, ${suggestion.exchange}`}
-                disabled={validateSymbol.isPending || isAddingSelectedAssets || customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS}
-                onPress={() => void addSymbol(suggestion.symbol)}
-                style={[styles.suggestionRow, index < customSuggestions.length - 1 && { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth }]}
-              >
-                <View style={styles.suggestionCopy}>
-                  <Text numberOfLines={1} style={[styles.suggestionName, { color: colors.foreground }]}>{suggestion.name}</Text>
-                  <Text numberOfLines={1} style={[styles.suggestionExchange, { color: colors.mutedForeground }]}>{suggestion.exchange}</Text>
-                </View>
-                <Text style={[styles.suggestionSymbol, { color: colors.primary }]}>{suggestion.symbol}</Text>
-                <MaterialCommunityIcons name="plus" size={17} color={colors.primary} />
-              </TouchableOpacity>)}
+              {customSuggestions.map((suggestion, index) => {
+                const { alreadyAdded, selected, selectionAtLimit } = getStockSearchSuggestionSelectionState(
+                  suggestion.symbol,
+                  customSymbols,
+                  selectedCustomAssetSymbols,
+                  MAX_CUSTOM_HEAT_MAP_SYMBOLS,
+                );
+                return <View
+                  key={suggestion.symbol}
+                  style={[
+                    styles.suggestionRow,
+                    index < customSuggestions.length - 1 && { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth },
+                  ]}
+                >
+                  <TouchableOpacity
+                    testID={`heat-map-custom-suggestion-${suggestion.symbol}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Add ${suggestion.name}, ticker ${suggestion.symbol}, ${suggestion.exchange}`}
+                    disabled={alreadyAdded || validateSymbol.isPending || isAddingSelectedAssets || customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS}
+                    onPress={() => void addSymbol(suggestion.symbol)}
+                    style={styles.stockSuggestionAdd}
+                  >
+                    <View style={styles.suggestionCopy}>
+                      <Text numberOfLines={1} style={[styles.suggestionName, { color: colors.foreground }]}>{suggestion.name}</Text>
+                      <Text numberOfLines={1} style={[styles.suggestionExchange, { color: colors.mutedForeground }]}>{suggestion.exchange}</Text>
+                    </View>
+                    <Text style={[styles.suggestionSymbol, { color: alreadyAdded ? colors.mutedForeground : colors.primary }]}>
+                      {alreadyAdded ? 'Added' : suggestion.symbol}
+                    </Text>
+                    {!alreadyAdded && <MaterialCommunityIcons name="plus" size={17} color={colors.primary} />}
+                  </TouchableOpacity>
+                  {!alreadyAdded && <TouchableOpacity
+                    testID={`heat-map-custom-select-${suggestion.symbol}`}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: selected, disabled: selectionAtLimit || isAddingSelectedAssets }}
+                    accessibilityLabel={`${selected ? 'Deselect' : 'Select'} ${suggestion.name}, ticker ${suggestion.symbol}, for batch adding`}
+                    disabled={selectionAtLimit || isAddingSelectedAssets}
+                    onPress={() => toggleCustomAssetSelection(suggestion.symbol)}
+                    style={[
+                      styles.stockSuggestionSelect,
+                      { opacity: selectionAtLimit || isAddingSelectedAssets ? 0.55 : 1 },
+                    ]}
+                  >
+                    <MaterialCommunityIcons
+                      name={selected ? 'checkbox-marked' : 'checkbox-blank-outline'}
+                      size={19}
+                      color={selected ? colors.primary : colors.mutedForeground}
+                    />
+                  </TouchableOpacity>}
+                </View>;
+              })}
               {customSearchFeedback?.kind === 'loading' && <View style={styles.searchStatus}>
                 <ActivityIndicator size="small" color={colors.primary} />
                 <Text style={[styles.searchHint, { color: colors.mutedForeground }]}>{customSearchFeedback.message}</Text>
@@ -1902,6 +1937,8 @@ const styles = StyleSheet.create({
   addButton: { width: 43, height: 42, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   suggestionsPanel: { marginTop: 8, borderWidth: 1, borderRadius: 11, overflow: 'hidden' },
   suggestionRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 11, paddingVertical: 8 },
+  stockSuggestionAdd: { flex: 1, minWidth: 0, minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  stockSuggestionSelect: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   suggestionCopy: { flex: 1, minWidth: 0 },
   suggestionName: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   suggestionExchange: { fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 },

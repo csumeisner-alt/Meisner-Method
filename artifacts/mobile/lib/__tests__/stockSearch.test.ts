@@ -5,12 +5,34 @@ import {
   getBuyOrderDetails,
   getStockSearchQueryFromKey,
   getStockSearchFeedback,
+  getStockSearchSuggestionSelectionState,
   isStockSearchCurrent,
   isStockSearchSelectionCurrent,
   resolveStockSearchSymbol,
 } from '../stockSearch.ts';
 
 const apple = { symbol: 'AAPL', name: 'Apple Inc.', exchange: 'NASDAQ' };
+
+test('stock suggestion selection matches catalog duplicate and capacity rules', () => {
+  assert.deepEqual(
+    getStockSearchSuggestionSelectionState('aapl', ['AAPL'], [], 40),
+    { alreadyAdded: true, selected: false, selectionAtLimit: false },
+  );
+  assert.deepEqual(
+    getStockSearchSuggestionSelectionState('msft', [], ['MSFT'], 40),
+    { alreadyAdded: false, selected: true, selectionAtLimit: false },
+  );
+
+  const thirtyNineExisting = Array.from({ length: 39 }, (_, index) => `T${index}`);
+  assert.deepEqual(
+    getStockSearchSuggestionSelectionState('AAPL', thirtyNineExisting, [], 40),
+    { alreadyAdded: false, selected: false, selectionAtLimit: false },
+  );
+  assert.deepEqual(
+    getStockSearchSuggestionSelectionState('MSFT', thirtyNineExisting, ['AAPL'], 40),
+    { alreadyAdded: false, selected: false, selectionAtLimit: true },
+  );
+});
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
