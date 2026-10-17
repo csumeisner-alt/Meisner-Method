@@ -954,6 +954,16 @@ export default function HeatMapScreen() {
     [filterableQuotes, returnSort],
   );
   const toneColor = summary.tone === 'HOT' ? colors.buyColor : summary.tone === 'COLD' ? colors.sellColor : colors.holdColor;
+  const averageReturnColor = summary.averageReturn === null
+    ? colors.mutedForeground
+    : summary.averageReturn > 0.25
+      ? colors.buyColor
+      : summary.averageReturn < -0.25
+        ? colors.sellColor
+        : colors.holdColor;
+  const averageReturnLabel = summary.averageReturn === null
+    ? '—'
+    : `${summary.averageReturn > 0 ? '+' : ''}${summary.averageReturn.toFixed(2)}%`;
   const directionalLabel = summary.tone === 'HOT' ? 'Market direction rising' : summary.tone === 'COLD' ? 'Market direction falling' : 'Market direction sideways';
   const directionalWord = summary.tone === 'HOT' ? 'Rising' : summary.tone === 'COLD' ? 'Falling' : 'Sideways';
   const directionScale = directionPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
@@ -1335,6 +1345,20 @@ export default function HeatMapScreen() {
               <View><Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>MARKET TONE</Text>
                 <Text testID="heat-map-market-tone" style={[styles.summaryValue, { color: toneColor }]}>{summary.tone}</Text>
                 <Text style={[styles.directionWord, { color: toneColor }]}>{directionalWord}</Text></View>
+              <View style={styles.summaryAverage}>
+                <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>AVG RETURN</Text>
+                <Text
+                  testID="heat-map-average-return"
+                  accessibilityRole="text"
+                  accessibilityLabel={`Average return ${averageReturnLabel}, based on ${summary.quoted} hexagons with available returns`}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
+                  style={[styles.summaryValue, styles.averageReturnValue, { color: averageReturnColor }]}
+                >
+                  {averageReturnLabel}
+                </Text>
+              </View>
             </View>
             <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
             <View style={styles.summaryCount}><Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>COUNTED</Text>
@@ -1343,7 +1367,7 @@ export default function HeatMapScreen() {
             <View style={styles.summaryCount}><Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>UP / DOWN</Text>
               <Text style={[styles.countValue, { color: colors.foreground }]}>{summary.positive}<Text style={{ color: colors.mutedForeground }}> / </Text>{summary.negative}</Text></View>
           </View>
-          <Text style={[styles.summaryNote, { color: colors.mutedForeground }]}>Breadth uses {PERIODS.find((item) => item.id === period)?.label} return where available; missing history is excluded.</Text>
+          <Text style={[styles.summaryNote, { color: colors.mutedForeground }]}>Breadth and average use the {PERIODS.find((item) => item.id === period)?.label} return where available; missing history is excluded.</Text>
 
           {category === 'custom' && <View style={[styles.customPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.customHeader}>
@@ -1916,9 +1940,11 @@ const styles = StyleSheet.create({
   periodOption: { flex: 1, minWidth: 0, height: 32, borderWidth: 1, borderRadius: 9, justifyContent: 'center', alignItems: 'center' },
   periodOptionText: { fontFamily: 'Inter_600SemiBold', fontSize: 10 },
   summaryPanel: { minHeight: 72, borderWidth: 1, borderRadius: 15, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10 },
-  summaryTone: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  summaryTone: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  summaryAverage: { minWidth: 58, alignItems: 'center' },
   summaryLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.8 },
   summaryValue: { fontFamily: 'Inter_700Bold', fontSize: 13, marginTop: 3, letterSpacing: 0.5 },
+  averageReturnValue: { fontSize: 12, letterSpacing: 0 },
   directionWord: { fontFamily: 'Inter_600SemiBold', fontSize: 9, marginTop: 1 },
   summaryDivider: { width: 1, height: 32, marginHorizontal: 8 },
   summaryCount: { alignItems: 'center', minWidth: 52 },

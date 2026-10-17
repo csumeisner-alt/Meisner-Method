@@ -96,7 +96,33 @@ test("heat-map treats the full neutral band as neutral and keeps it in the denom
     { price: 10, returnPercent: 0.25 },
     { price: 10, returnPercent: -0.25 },
   ]);
-  assert.deepEqual(summary, { tone: "NEUTRAL", positive: 2, negative: 0, neutral: 2, quoted: 4 });
+  assert.deepEqual(summary, {
+    tone: "NEUTRAL",
+    averageReturn: 0.5,
+    positive: 2,
+    negative: 0,
+    neutral: 2,
+    quoted: 4,
+  });
+});
+
+test("average heat-map return follows the quotes displayed after filters", () => {
+  const quotes = [
+    { price: 10, returnPercent: 2, sector: "Technology", exchange: "NASDAQ", marketCapUsd: 20_000_000_000, riskBand: "Moderate" as const },
+    { price: 10, returnPercent: 4, sector: "Technology", exchange: "NASDAQ", marketCapUsd: 30_000_000_000, riskBand: "Moderate" as const },
+    { price: 10, returnPercent: -8, sector: "Energy", exchange: "NYSE", marketCapUsd: 5_000_000_000, riskBand: "Aggressive" as const },
+    { price: 10, returnPercent: null, sector: "Technology", exchange: "NASDAQ", marketCapUsd: 8_000_000_000, riskBand: "Moderate" as const },
+  ];
+  const displayed = filterHeatMapQuotes(quotes, {
+    sector: "Technology",
+    marketCap: null,
+    exchange: null,
+    risk: null,
+  });
+
+  assert.equal(displayed.length, 3);
+  assert.equal(summarizeHeatMap(displayed).averageReturn, 3);
+  assert.equal(summarizeHeatMap(displayed).quoted, 2);
 });
 
 test("heat-map calls a map HOT or COLD at exactly 55 percent of valid quotes", () => {
@@ -119,7 +145,15 @@ test("heat-map excludes invalid and unavailable returns instead of counting them
     { price: 0, returnPercent: -2 },
     { price: Number.NaN, returnPercent: 1 },
   ]);
-  assert.deepEqual(summary, { tone: "HOT", positive: 1, negative: 0, neutral: 0, quoted: 1 });
+  assert.deepEqual(summary, {
+    tone: "HOT",
+    averageReturn: 0.26,
+    positive: 1,
+    negative: 0,
+    neutral: 0,
+    quoted: 1,
+  });
+  assert.equal(summarizeHeatMap([]).averageReturn, null);
   assert.equal(summarizeHeatMap([]).tone, "NEUTRAL");
 });
 

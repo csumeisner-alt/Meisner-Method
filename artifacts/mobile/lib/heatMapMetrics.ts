@@ -37,6 +37,7 @@ export interface HeatMapLoadingHexColors {
 
 export interface HeatMapSummary {
   tone: HeatMapTone;
+  averageReturn: number | null;
   positive: number;
   negative: number;
   neutral: number;
@@ -321,6 +322,9 @@ export function summarizeHeatMap(quotes: HeatMapMovement[]): HeatMapSummary {
       : valid.length > 0 && negative / valid.length >= TONE_THRESHOLD
         ? "COLD"
         : "NEUTRAL",
+    averageReturn: valid.length > 0
+      ? valid.reduce((total, quote) => total + quote.returnPercent!, 0) / valid.length
+      : null,
     positive,
     negative,
     neutral,
