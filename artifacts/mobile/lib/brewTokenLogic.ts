@@ -19,11 +19,11 @@ export const DAIQUIRI_PAYOUT_MULTIPLIER = 2;
 export const DAIQUIRI_UNLOCK_PRICE = 100;
 export const DAIQUIRI_BOTTLE_PRICE = 8;
 export const STAMIN_UP_UNLOCK_PRICE = 500;
-export const STAMIN_UP_BOTTLE_PRICE = 16;
+export const STAMIN_UP_BOTTLE_PRICE = 6;
 export const SMART_PRO_UNLOCK_PRICE = 100;
 export const SMART_PRO_BOTTLE_PRICE = 3;
 export const SMART_PRO_SALE_DURATION_MS = 90_000;
-export const NEON_GUCCI_UNLOCK_COST = 10_000;
+export const NEON_GUCCI_UNLOCK_COST = 1_000;
 export const NEON_GUCCI_PHRASE_PACK_PRICE = 10;
 
 export type BrewBottlePreviewKind = 'quickRevive' | 'daiquiri' | 'staminUp' | 'smartPro';

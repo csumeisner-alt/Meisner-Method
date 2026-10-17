@@ -69,11 +69,7 @@ export function DonationSidebar({ visible, onClose }: Props) {
   const neonProgressPercent = Math.round(neonProgress * 100);
   const neonNextMilestone = neonGucciUnlocked
     ? 'UNLOCKED · READY TO ACTIVATE'
-    : brew.darkBrewTokens < 1000
-      ? 'NEXT MILESTONE · 1,000 TOKENS'
-      : brew.darkBrewTokens < NEON_GUCCI_UNLOCK_COST
-        ? 'NEXT MILESTONE · 10,000 TOKENS'
-        : 'UNLOCKED · READY TO ACTIVATE';
+    : `NEXT MILESTONE · ${NEON_GUCCI_UNLOCK_COST.toLocaleString()} TOKENS`;
 
   const toggleAmericanMode = (value: boolean) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -556,7 +552,7 @@ export function DonationSidebar({ visible, onClose }: Props) {
                 <Text style={styles.neonUnlockMark}>GG</Text>
                 <Text style={styles.neonUnlockTitle}>THE REVEAL IS COMPLETE</Text>
                 <Text style={styles.neonUnlockBody}>
-                  Hybrid Neon Gucci is unlocked at 10,000 Dark Brew Tokens.
+                  Hybrid Neon Gucci is unlocked at {NEON_GUCCI_UNLOCK_COST.toLocaleString()} Dark Brew Tokens.
                 </Text>
                 <Text style={styles.neonUnlockHint}>TOGGLE IT ON FROM THIS CARD</Text>
               </Animated.View>
