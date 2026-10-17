@@ -24,7 +24,6 @@ import { MMLogo } from '@/components/MMLogo';
 import { DonationSidebar } from '@/components/DonationSidebar';
 import { AmericanCelebration } from '@/components/AmericanCelebration';
 import { useAmericanMode } from '@/contexts/AmericanModeContext';
-import { useAchievements } from '@/contexts/AchievementsContext';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { DraggableWatchlist } from '@/components/DraggableWatchlist';
@@ -153,7 +152,6 @@ function formatPct(p: number) {
 
 export default function HomeScreen() {
   const colors = useColors();
-  const { earnedIds, openGallery } = useAchievements();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { apiFetch } = useApi();
@@ -537,25 +535,6 @@ export default function HomeScreen() {
             <Feather name="info" size={13} color={colors.mutedForeground} style={{ marginLeft: 'auto', marginRight: 8 }} />
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={openGallery}
-            style={{ padding: 8 }}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel={`Achievements, ${earnedIds.length} earned`}
-            hitSlop={6}
-          >
-            <View>
-              <Feather name="award" size={20} color={colors.gold} />
-              {earnedIds.length > 0 && (
-                <View style={[styles.achievementBadge, { backgroundColor: colors.gold }]}>
-                  <Text style={[styles.achievementBadgeText, { color: colors.background }]}>
-                    {earnedIds.length}
-                  </Text>
-                </View>
-              )}
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               setSettingsOpen(true);
@@ -933,8 +912,6 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 20, paddingBottom: 16 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  achievementBadge: { position: 'absolute', top: -5, right: -6, minWidth: 14, height: 14, borderRadius: 7, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
-  achievementBadgeText: { fontSize: 8, fontFamily: 'Inter_700Bold' },
   brandText: { flex: 1 },
   brandName: { fontSize: 21, lineHeight: 26 },
   tagline: { fontSize: 12, marginTop: 1 },

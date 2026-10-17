@@ -20,6 +20,8 @@ import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
+import { useAchievements } from '@/contexts/AchievementsContext';
+import { ACHIEVEMENTS } from '@/lib/achievements';
 import { Confetti } from '@/components/Confetti';
 import {
   useAmericanMode,
@@ -54,6 +56,7 @@ interface Props {
 
 export function DonationSidebar({ visible, onClose }: Props) {
   const colors = useColors();
+  const { earnedIds, openGallery } = useAchievements();
   const insets = useSafeAreaInsets();
   const {
     factsRead,
@@ -521,6 +524,27 @@ export function DonationSidebar({ visible, onClose }: Props) {
                 )}
               </View>
             )}
+            <TouchableOpacity
+              style={[styles.notifRow, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 12 }]}
+              onPress={() => {
+                onClose();
+                setTimeout(openGallery, 240);
+              }}
+              activeOpacity={0.75}
+              accessibilityRole="button"
+              accessibilityLabel={`Achievements, ${earnedIds.length} of ${ACHIEVEMENTS.length} earned`}
+            >
+              <Feather name="award" size={20} color={colors.gold} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.notifTitle, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
+                  Achievements
+                </Text>
+                <Text style={[styles.notifSub, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                  {earnedIds.length} of {ACHIEVEMENTS.length} earned · View collection
+                </Text>
+              </View>
+              <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+            </TouchableOpacity>
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
           </ScrollView>
