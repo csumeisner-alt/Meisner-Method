@@ -184,7 +184,8 @@ test('opening and closing every bottle inspection preserves balance, inventory, 
   }
 });
 
-test('Dave Ramsey Daiquiri unlock costs one hundred tokens exactly once', () => {
+test('Dave Ramsey Daiquiri unlock costs forty tokens exactly once', () => {
+  assert.equal(DAIQUIRI_UNLOCK_PRICE, 40);
   assert.deepEqual(buyDaiquiriUnlock(DAIQUIRI_UNLOCK_PRICE, false), {
     tokenBalance: 0,
     unlocked: true,
@@ -227,7 +228,9 @@ test('Dave Ramsey Daiquiri odds produce the expected payout with its double awar
   assert.equal(Math.round(expectedBalance * 100) / 100, 11.05);
 });
 
-test('Stamin Up unlocks at five hundred tokens and its bottles cost six tokens', () => {
+test('Stamin Up unlocks at fifty tokens and its bottles cost six tokens', () => {
+  assert.equal(STAMIN_UP_UNLOCK_PRICE, 50);
+  assert.equal(STAMIN_UP_BOTTLE_PRICE, 6);
   assert.deepEqual(buyStaminUpUnlock(STAMIN_UP_UNLOCK_PRICE, false), {
     tokenBalance: 0,
     unlocked: true,
@@ -253,7 +256,8 @@ test('Stamin Up consumes exactly one bottle and no two bottle effects can arm to
   assert.equal(canArmBrewBottle(false, false, true), false);
 });
 
-test('SmartPro unlocks for one hundred tokens and its own bottles always cost three', () => {
+test('SmartPro unlocks for forty tokens and its own bottles always cost three', () => {
+  assert.equal(SMART_PRO_UNLOCK_PRICE, 40);
   assert.deepEqual(buySmartProUnlock(SMART_PRO_UNLOCK_PRICE, false), {
     tokenBalance: 0,
     unlocked: true,
