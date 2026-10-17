@@ -40,6 +40,12 @@ interface HeatMapBrowserState {
 
   refetches: Record<string, unknown>[];
 
+  validationRequests: string[];
+
+  validationResponses: ({ type: "resolve"; symbol?: string } | { type: "reject" })[];
+
+  setValidationResponses: (responses: ({ type: "resolve"; symbol?: string } | { type: "reject" })[]) => void;
+
   detailRequests: string[];
 
   detailRequestSignals: { url: string; signal: AbortSignal | null }[];
@@ -199,6 +205,8 @@ export function initializeHeatMapBrowserState(): HeatMapBrowserState {
     breadthData,
     requests: [],
     refetches: [],
+    validationRequests: [],
+    validationResponses: [],
     detailRequests: [],
     detailRequestSignals: [],
     detailResponses: [],
@@ -221,6 +229,9 @@ export function initializeHeatMapBrowserState(): HeatMapBrowserState {
     },
     setDetailResponses(responses) {
       state.detailResponses = [...responses];
+    },
+    setValidationResponses(responses) {
+      state.validationResponses = [...responses];
     },
     setCommodityDriverResponses(responses) {
       state.commodityDriverResponses = [...responses];
@@ -434,5 +445,14 @@ export function useSearchHeatMapInstruments(params: { q: string; category: strin
 }
 
 export function useValidateHeatMapSymbol() {
-  return { isPending: false, mutateAsync: async () => { throw new Error("Unused in this test."); } };
+  const state = initializeHeatMapBrowserState();
+  return {
+    isPending: false,
+    mutateAsync: async ({ data }: { data: { symbol: string } }) => {
+      state.validationRequests.push(data.symbol);
+      const response = state.validationResponses.shift();
+      if (!response || response.type === "reject") throw new Error("Mock instrument validation failed.");
+      return quote(response.symbol ?? data.symbol);
+    },
+  };
 }

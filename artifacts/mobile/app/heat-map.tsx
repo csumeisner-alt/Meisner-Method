@@ -1133,7 +1133,7 @@ export default function HeatMapScreen() {
       if (feedback) {
         setCustomBatchFeedback({
           message: feedback,
-          kind: addedSymbols.length === 0 && (overLimitCount > 0 || failedSymbols.length > 0) ? 'error' : 'success',
+          kind: failedSymbols.length > 0 || (addedSymbols.length === 0 && overLimitCount > 0) ? 'error' : 'success',
         });
       }
     } finally {

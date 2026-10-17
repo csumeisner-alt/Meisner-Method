@@ -2302,6 +2302,91 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       "Choosing reset should replace the malformed value with an empty custom map.",
     );
 
+    await clickTestID(browser, "heat-map-custom-type-commodities");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-custom-pick-GC=F"))}) && !!document.querySelector(${JSON.stringify(selector("heat-map-custom-pick-SI=F"))})`,
+      "The commodity catalog should offer gold and silver for a batch-add test.",
+    );
+    await clickTestID(browser, "heat-map-custom-pick-GC=F");
+    await clickTestID(browser, "heat-map-custom-pick-SI=F");
+    await browser.evaluate(`window.__heatMapBrowserTest.setValidationResponses([
+      { type: "resolve", symbol: "GC=F" },
+      { type: "reject" },
+    ])`);
+    await browser.evaluate(`(() => {
+      const key = ${JSON.stringify(customSymbolsStorageKey)};
+      const originalSetItem = Storage.prototype.setItem;
+      window.__heatMapCustomWriteAttempts = 0;
+      window.__heatMapFailNextCustomWrite = false;
+      Storage.prototype.setItem = function(storageKey, value) {
+        if (storageKey === key) {
+          window.__heatMapCustomWriteAttempts += 1;
+          if (window.__heatMapFailNextCustomWrite) {
+            window.__heatMapFailNextCustomWrite = false;
+            throw new DOMException("Temporary device storage failure.", "QuotaExceededError");
+          }
+        }
+        return originalSetItem.call(this, storageKey, value);
+      };
+    })()`);
+    await clickTestID(browser, "heat-map-custom-batch-add");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-custom-batch-feedback"))})?.textContent === "Added 1 instrument. Couldn't validate SI=F."`,
+      "A mixed batch result should explain both the saved and failed instruments.",
+    );
+    assert.deepEqual(
+      await browser.evaluate(`JSON.parse(localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}))`),
+      ["GC=F"],
+      "The successfully validated instrument should be saved without the failed choice.",
+    );
+    assert.equal(
+      await browser.evaluate("window.__heatMapCustomWriteAttempts"),
+      1,
+      "A batch with a successful validation should save its supported instruments exactly once.",
+    );
+    assert.deepEqual(
+      await browser.evaluate("window.__heatMapBrowserTest.validationRequests"),
+      ["GC=F", "SI=F"],
+      "The batch should validate every selected instrument independently.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-custom-pick-GC=F"))})?.textContent.includes("Added") && document.querySelector(${JSON.stringify(selector("heat-map-custom-pick-SI=F"))})?.textContent.includes("Selected") && !!document.querySelector(${JSON.stringify(selector("heat-map-custom-batch-add"))})`),
+      true,
+      "The failed choice should remain selected and available to retry, while the successful choice appears added.",
+    );
+
+    await browser.evaluate(`window.__heatMapBrowserTest.setValidationResponses([{ type: "resolve", symbol: "SI=F" }]); window.__heatMapFailNextCustomWrite = true`);
+    await clickTestID(browser, "heat-map-custom-batch-add");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-custom-error"))})?.textContent === "Couldn't save the selected instruments on this device. Try again."`,
+      "A device-storage write failure should be clearly explained.",
+    );
+    assert.deepEqual(
+      await browser.evaluate(`JSON.parse(localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}))`),
+      ["GC=F"],
+      "A failed device-storage write must preserve the saved instrument list.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-custom-pick-GC=F"))})?.textContent.includes("Added") && document.querySelector(${JSON.stringify(selector("heat-map-custom-pick-SI=F"))})?.textContent.includes("Selected") && !!document.querySelector(${JSON.stringify(selector("heat-map-custom-batch-add"))})`),
+      true,
+      "A failed device-storage write must preserve the pending choice for retry.",
+    );
+    await browser.evaluate(`window.__heatMapBrowserTest.setValidationResponses([{ type: "resolve", symbol: "SI=F" }])`);
+    await clickTestID(browser, "heat-map-custom-batch-add");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}) === ${JSON.stringify(JSON.stringify(["GC=F", "SI=F"]))} && !document.querySelector(${JSON.stringify(selector("heat-map-custom-batch-add"))})`,
+      "Retrying after a storage failure should save the pending instrument and clear the selection.",
+    );
+    assert.equal(
+      await browser.evaluate("window.__heatMapCustomWriteAttempts"),
+      3,
+      "The successful mixed batch and the later retry should each make one save attempt.",
+    );
+
     await clickTestID(browser, "heat-map-custom-type-futures");
     await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-custom-input"))})?.focus()`);
     await browser.send("Input.insertText", { text: "Gold" });
