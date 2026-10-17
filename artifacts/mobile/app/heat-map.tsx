@@ -1028,6 +1028,11 @@ export default function HeatMapScreen() {
     setCustomSymbols(next);
     setFormError('');
   }
+  function awardCustomMapMilestones(count: number) {
+    if (count >= 1) void awardAchievement('first-custom-instrument');
+    if (count >= 5) void awardAchievement('custom-map-5');
+    if (count >= 10) void awardAchievement('custom-map-10');
+  }
   async function resetMalformedSavedTickers() {
     if (!storageReady || storageLoadError !== 'malformed' || isResettingSavedTickers) return;
     setIsResettingSavedTickers(true);
@@ -1062,7 +1067,7 @@ export default function HeatMapScreen() {
         const next = appendCustomHeatMapSymbolInSavedOrder(customSymbols, quote.symbol);
         try { await persistSymbols(next); }
         catch { setFormError(`Couldn't save ${quote.symbol} on this device. Try again.`); return; }
-        if (customSymbols.length === 0) void awardAchievement('first-custom-instrument');
+        awardCustomMapMilestones(next.length);
         setLastRemovedTicker(null);
       }
       setSymbolInput('');
@@ -1130,7 +1135,7 @@ export default function HeatMapScreen() {
           setFormError("Couldn't save the selected instruments on this device. Try again.");
           return;
         }
-        if (customSymbols.length === 0) void awardAchievement('first-custom-instrument');
+        awardCustomMapMilestones(nextSymbols.length);
         setLastRemovedTicker(null);
       }
 

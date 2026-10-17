@@ -1835,10 +1835,21 @@ function GradeHistoryModal({
   }, [visible]);
 
   const handleQuoteViewed = useCallback(async (quoteViewId: string) => {
-    const update = await incrementQuoteViewed(quoteViewId);
-    if (update.firstQuoteView) await awardAchievement('first-quote');
-    return update;
-  }, [awardAchievement, incrementQuoteViewed]);
+    // Award locally as soon as a quote is shown. Brew progress can fail in a
+    // signed-out preview, but that must not suppress a cosmetic achievement.
+    void awardAchievement('first-quote');
+    try {
+      const update = await incrementQuoteViewed(quoteViewId);
+      if (update.quotesViewed >= 10) void awardAchievement('quote-10');
+      if (update.quotesViewed >= 25) void awardAchievement('quote-25');
+      if (update.quotesViewed >= 50) void awardAchievement('quote-50');
+      if (update.quotesViewed >= 100) void awardAchievement('quote-100');
+      return update;
+    } catch (error) {
+      console.warn('[achievements] Could not record Training Tape progress:', error);
+      return { earnedToken: false, halfway: false, quotesViewed, firstQuoteView: false };
+    }
+  }, [awardAchievement, incrementQuoteViewed, quotesViewed]);
 
   useEffect(() => {
     if (!justUnlocked) return;

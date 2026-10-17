@@ -21,5 +21,5 @@ test('earned achievement storage parsing ignores unknown IDs and duplicates', ()
   );
   assert.deepEqual(parseEarnedAchievementIds('not-json'), []);
   assert.deepEqual(parseEarnedAchievementIds(JSON.stringify({ first: true })), []);
-  assert.equal(ACHIEVEMENTS.length, 3);
+  assert.equal(ACHIEVEMENTS.length, 15);
 });

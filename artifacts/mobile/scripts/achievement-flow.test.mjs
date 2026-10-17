@@ -11,12 +11,20 @@ const paperSource = readSource("../app/paper.tsx");
 const heatMapSource = readSource("../app/heat-map.tsx");
 const homeSource = readSource("../app/index.tsx");
 const settingsSource = readSource("../components/DonationSidebar.tsx");
+const watchlistSource = readSource("../hooks/useWatchlist.ts");
+const analysisSource = readSource("../app/analysis/[symbol].tsx");
 const bottomTabSource = readSource("../components/BottomTabBar.tsx");
 
 test("first-time app milestones are wired to achievement rewards and a review screen", () => {
-  assert.match(portfolioSource, /if \(update\.firstQuoteView\) await awardAchievement\('first-quote'\)/);
+  assert.match(portfolioSource, /void awardAchievement\('first-quote'\)/);
+  assert.match(portfolioSource, /awardAchievement\('quote-100'\)/);
   assert.match(paperSource, /awardAchievement\('first-paper-order'\)/);
+  assert.match(paperSource, /awardAchievement\('first-paper-limit'\)/);
   assert.match(heatMapSource, /awardAchievement\('first-custom-instrument'\)/);
+  assert.match(heatMapSource, /awardCustomMapMilestones\(nextSymbols\.length\)/);
+  assert.match(watchlistSource, /awardAchievement\('first-watchlist'\)/);
+  assert.match(watchlistSource, /awardAchievement\('first-price-alert'\)/);
+  assert.match(analysisSource, /awardAchievement\('first-analysis'\)/);
   assert.match(settingsSource, /onPress=\{\(\) => \{\s*onClose\(\);\s*setTimeout\(openGallery, 240\);/);
   assert.match(homeSource, /<DonationSidebar\s+visible=\{settingsOpen\}/);
   assert.doesNotMatch(homeSource, /useAchievements|onPress=\{openGallery\}/);

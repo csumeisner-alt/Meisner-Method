@@ -22,6 +22,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '@/hooks/useColors';
 import { useApi } from '@/hooks/useApi';
 import { useAmericanMode } from '@/contexts/AmericanModeContext';
+import { useAchievements } from '@/contexts/AchievementsContext';
 import { useAnalyzeStock } from '@workspace/api-client-react';
 import type { StockAnalysis } from '@workspace/api-client-react';
 import { ComparisonChart } from '@/components/ComparisonChart';
@@ -254,6 +255,7 @@ export default function AnalysisScreen() {
   const insets = useSafeAreaInsets();
   const colors = useColors();
   const { isActive, neonGucciActive, brew } = useAmericanMode();
+  const { awardAchievement } = useAchievements();
   const { width: screenWidth } = useWindowDimensions();
   const { apiFetch } = useApi();
   const { mutate, data, isPending, error } = useAnalyzeStock<Error>();
@@ -271,6 +273,10 @@ export default function AnalysisScreen() {
   const activeAlert = symbol ? watchlist.activeAlertFor(symbol) : null;
   const [alertVisible, setAlertVisible] = useState(false);
   const [helpTopic, setHelpTopic] = useState<HelpTopic | null>(null);
+
+  useEffect(() => {
+    if (symbol) void awardAchievement('first-analysis');
+  }, [awardAchievement, symbol]);
 
   const toggleWatchlist = useCallback(async () => {
     if (!symbol) return;

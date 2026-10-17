@@ -57,3 +57,4 @@
 - [Commodity quote units and notional](commodity-contract-specs.md) — preserve exchange quote units and convert cent quotes only when computing USD contract notional.
 - [Commodity driver request contract](commodity-driver-request-contract.md) — keep curated explanations independent of market statistics; any future remote source must retain timeout, retry, and stale-result protection.
 - [Expo Metro shared catalog paths](expo-metro-shared-catalog.md) — Metro may reject a JSON catalog outside the mobile artifact even when TypeScript resolves it; keep bundled shared data inside the Expo boundary.
+- [Achievement design and triggers](achievement-design.md) — keep unlocks cosmetic, brief, and independent of Brew reward update success.

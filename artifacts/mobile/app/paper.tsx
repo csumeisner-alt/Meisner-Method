@@ -857,7 +857,11 @@ export default function PaperScreen() {
         : [...currentOrders, newOrder]);
     }
 
-    if (!args.orderId) void awardAchievement('first-paper-order');
+    if (!args.orderId) {
+      void awardAchievement('first-paper-order');
+      if (args.orderType !== 'market') void awardAchievement('first-paper-limit');
+      if (args.side === 'sell') void awardAchievement('first-paper-sell');
+    }
     setShowOrderSheet(false);
     invalidateStockLookup();
     setShowTradeModal(false);
