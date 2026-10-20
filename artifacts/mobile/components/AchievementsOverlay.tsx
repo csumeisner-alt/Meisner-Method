@@ -1,12 +1,14 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
+  Easing,
   Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,6 +24,106 @@ import { PremiumFlagBadge } from '@/components/PremiumFlagBadge';
 import { useAchievements } from '@/contexts/AchievementsContext';
 import { useColors } from '@/hooks/useColors';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
+
+const RAINBOW_ARC_COLORS = ['#E54B4B', '#F28C38', '#F1C84B', '#47B879', '#3A9ED9', '#4E69C8', '#8556B3'];
+
+function RainbowCelebration({ onDismiss }: { onDismiss: () => void }) {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
+  const pulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 2_400,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 2_400,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [pulse]);
+
+  const arcSize = Math.max(width * 1.75, height * 1.15);
+  const baseline = height * 0.79;
+  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1.04] });
+  const glowOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.22, 0.52] });
+
+  return (
+    <View style={[styles.celebrationRoot, { backgroundColor: colors.background }]}>
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.rainbowArcField,
+          { opacity: glowOpacity, transform: [{ scale }] },
+        ]}
+      >
+        {RAINBOW_ARC_COLORS.map((color, index) => {
+          const size = arcSize - index * 32;
+          return (
+            <View
+              key={color}
+              style={[
+                styles.rainbowArc,
+                {
+                  width: size,
+                  height: size,
+                  left: (width - size) / 2,
+                  top: baseline - size / 2,
+                  borderColor: color,
+                },
+              ]}
+            />
+          );
+        })}
+      </Animated.View>
+
+      <Pressable
+        onPress={onDismiss}
+        hitSlop={10}
+        accessibilityRole="button"
+        accessibilityLabel="Dismiss rainbow celebration"
+        style={[styles.celebrationClose, { top: insets.top + 10 }]}
+      >
+        <Feather name="x" size={21} color={colors.foreground} />
+      </Pressable>
+
+      <View style={styles.celebrationCopy}>
+        <PremiumFlagBadge flagId={PRIDE_FLAG.id} size={112} />
+        <Text style={[styles.celebrationEyebrow, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
+          TITLE ICON UPDATED
+        </Text>
+        <Text style={[styles.celebrationTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+          Pride, selected.
+        </Text>
+        <Text style={[styles.celebrationDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+          Your new flag is ready beside Meisner Method.
+        </Text>
+        <Pressable
+          onPress={onDismiss}
+          accessibilityRole="button"
+          accessibilityLabel="Continue"
+          style={[styles.celebrationButton, { backgroundColor: colors.gold }]}
+        >
+          <Text style={[styles.celebrationButtonText, { color: colors.background, fontFamily: 'Inter_700Bold' }]}>
+            Continue
+          </Text>
+          <Feather name="arrow-right" size={16} color={colors.background} />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
 
 export function AchievementsOverlay() {
   const colors = useColors();
@@ -40,6 +142,37 @@ export function AchievementsOverlay() {
     dismissToast,
   } = useAchievements();
   const toastMotion = useRef(new Animated.Value(0)).current;
+  const [prideConfirmVisible, setPrideConfirmVisible] = useState(false);
+  const [rainbowCelebrationVisible, setRainbowCelebrationVisible] = useState(false);
+  const [iconUnchangedNotice, setIconUnchangedNotice] = useState(false);
+
+  const requestPrideSelection = () => {
+    if (!premiumFlagReady || !prideUnlocked) return;
+    setPrideConfirmVisible(true);
+  };
+
+  const confirmPrideSelection = () => {
+    if (!prideUnlocked) return;
+    selectPremiumFlag(PRIDE_FLAG.id);
+    setPrideConfirmVisible(false);
+    setRainbowCelebrationVisible(true);
+  };
+
+  const cancelPrideSelection = () => {
+    setPrideConfirmVisible(false);
+    setIconUnchangedNotice(true);
+  };
+
+  const dismissRainbowCelebration = () => {
+    setRainbowCelebrationVisible(false);
+    closeGallery();
+  };
+
+  useEffect(() => {
+    if (!iconUnchangedNotice) return;
+    const timeout = setTimeout(() => setIconUnchangedNotice(false), 2_500);
+    return () => clearTimeout(timeout);
+  }, [iconUnchangedNotice]);
 
   useEffect(() => {
     if (!toastAchievement) {
@@ -117,19 +250,26 @@ export function AchievementsOverlay() {
       )}
 
       <Modal
-        visible={galleryVisible}
+        visible={galleryVisible || rainbowCelebrationVisible}
         transparent
         animationType="fade"
-        onRequestClose={closeGallery}
+        onRequestClose={() => {
+          if (rainbowCelebrationVisible) dismissRainbowCelebration();
+          else if (prideConfirmVisible) setPrideConfirmVisible(false);
+          else closeGallery();
+        }}
       >
-        <View style={[styles.modalRoot, { paddingTop: Math.max(insets.top, 16), paddingBottom: Math.max(insets.bottom, 16) }]}>
-          <Pressable
-            onPress={closeGallery}
-            style={[StyleSheet.absoluteFill, styles.backdrop]}
-            accessibilityRole="button"
-            accessibilityLabel="Close achievements"
-          />
-          <View style={[styles.panel, { backgroundColor: colors.background, borderColor: colors.border }]}>
+        {rainbowCelebrationVisible ? (
+          <RainbowCelebration onDismiss={dismissRainbowCelebration} />
+        ) : (
+          <View style={[styles.modalRoot, { paddingTop: Math.max(insets.top, 16), paddingBottom: Math.max(insets.bottom, 16) }]}>
+            <Pressable
+              onPress={() => prideConfirmVisible ? cancelPrideSelection() : closeGallery()}
+              style={[StyleSheet.absoluteFill, styles.backdrop]}
+              accessibilityRole="button"
+              accessibilityLabel={prideConfirmVisible ? 'Keep current icon' : 'Close achievements'}
+            />
+            <View style={[styles.panel, { backgroundColor: colors.background, borderColor: colors.border }]}>
             <View style={styles.panelHeader}>
               <View style={styles.panelTitleGroup}>
                 <Feather name="award" size={20} color={colors.gold} />
@@ -151,6 +291,15 @@ export function AchievementsOverlay() {
                 <Feather name="x" size={20} color={colors.mutedForeground} />
               </Pressable>
             </View>
+
+            {iconUnchangedNotice && (
+              <View style={[styles.iconKeptNotice, { backgroundColor: colors.steelShadow, borderColor: colors.border }]}>
+                <Feather name="check-circle" size={15} color={colors.gold} />
+                <Text style={[styles.iconKeptText, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
+                  Your current icon stays selected.
+                </Text>
+              </View>
+            )}
 
             <ScrollView
               style={styles.achievementScroll}
@@ -192,14 +341,14 @@ export function AchievementsOverlay() {
                   </View>
                 );
               })}
-              <View style={[styles.flagRewardCard, { backgroundColor: colors.card, borderColor: colors.goldMuted }]}>
+              {hasCompletedAllAchievements(earnedIds) && (
+                <View style={[styles.flagRewardCard, { backgroundColor: colors.card, borderColor: colors.goldMuted }]}>
                 <View style={styles.flagRewardHeading}>
                   <Feather name="award" size={17} color={colors.gold} />
                   <Text style={[styles.flagRewardEyebrow, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
-                    PREMIUM FLAG BADGE
+                    TITLE FLAG
                   </Text>
                 </View>
-                {hasCompletedAllAchievements(earnedIds) ? (
                   <>
                     <Text style={[styles.flagRewardTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
                       Choose your title flag
@@ -259,7 +408,7 @@ export function AchievementsOverlay() {
                         );
                       })}
                       <Pressable
-                        onPress={() => selectPremiumFlag(PRIDE_FLAG.id)}
+                        onPress={requestPrideSelection}
                         disabled={!premiumFlagReady || !prideUnlocked}
                         accessibilityRole="button"
                         accessibilityState={{ selected: selectedPremiumFlagId === PRIDE_FLAG.id, disabled: !premiumFlagReady || !prideUnlocked }}
@@ -293,25 +442,54 @@ export function AchievementsOverlay() {
                       </Pressable>
                     </View>
                   </>
-                ) : (
-                  <View style={styles.flagLockedRow}>
-                    <View style={[styles.flagLockedIcon, { backgroundColor: colors.steelShadow }]}>
-                      <Feather name="lock" size={17} color={colors.mutedForeground} />
-                    </View>
-                    <View style={styles.flagRewardCopy}>
-                      <Text style={[styles.flagRewardTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
-                        Complete all 15 achievements
-                      </Text>
-                      <Text style={[styles.flagRewardDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                        Complete all 15 to choose the default U.S. flag and five designs. Pride unlocks after {BREW_TOKEN_QUOTE_THRESHOLD} Biden quote views.
-                      </Text>
-                    </View>
-                  </View>
-                )}
-              </View>
+                </View>
+              )}
             </ScrollView>
           </View>
-        </View>
+            {prideConfirmVisible && (
+              <View style={styles.confirmLayer}>
+                <Pressable
+                  onPress={cancelPrideSelection}
+                  style={StyleSheet.absoluteFill}
+                  accessibilityRole="button"
+                  accessibilityLabel="Keep current icon"
+                />
+                <View style={[styles.confirmCard, { backgroundColor: colors.card, borderColor: colors.goldMuted }]}>
+                  <View style={[styles.confirmIcon, { backgroundColor: colors.steelShadow }]}>
+                    <Feather name="flag" size={20} color={colors.gold} />
+                  </View>
+                  <Text style={[styles.confirmTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+                    Set the Pride flag as your icon?
+                  </Text>
+                  <Text style={[styles.confirmDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                    Your current title icon will be replaced. You can change it any time.
+                  </Text>
+                  <Pressable
+                    onPress={confirmPrideSelection}
+                    accessibilityRole="button"
+                    accessibilityLabel="Yes, set Pride as my icon"
+                    style={[styles.confirmPrimary, { backgroundColor: colors.gold }]}
+                  >
+                    <Text style={[styles.confirmPrimaryText, { color: colors.background, fontFamily: 'Inter_700Bold' }]}>
+                      Yes, set Pride
+                    </Text>
+                    <Feather name="check" size={17} color={colors.background} />
+                  </Pressable>
+                  <Pressable
+                    onPress={cancelPrideSelection}
+                    accessibilityRole="button"
+                    accessibilityLabel="No, keep my current icon"
+                    style={styles.confirmSecondary}
+                  >
+                    <Text style={[styles.confirmSecondaryText, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold' }]}>
+                      No, keep current icon
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            )}
+          </View>
+        )}
       </Modal>
     </>
   );
@@ -377,4 +555,25 @@ const styles = StyleSheet.create({
   pridePreview: { width: 86, height: 54, position: 'relative', alignItems: 'center', justifyContent: 'center' },
   lockOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', borderRadius: 6, backgroundColor: 'rgba(0,0,0,0.52)' },
   prideProgress: { fontSize: 9, lineHeight: 12, textAlign: 'center' },
+  iconKeptNotice: { minHeight: 36, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 10 },
+  iconKeptText: { fontSize: 10 },
+  confirmLayer: { ...StyleSheet.absoluteFillObject, zIndex: 5, alignItems: 'center', justifyContent: 'center', padding: 18, backgroundColor: 'rgba(0,0,0,0.74)' },
+  confirmCard: { width: '100%', maxWidth: 380, borderWidth: 1, borderRadius: 16, padding: 22, alignItems: 'center', gap: 12 },
+  confirmIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  confirmTitle: { fontSize: 17, textAlign: 'center', lineHeight: 23 },
+  confirmDescription: { fontSize: 13, lineHeight: 19, textAlign: 'center' },
+  confirmPrimary: { minHeight: 46, width: '100%', borderRadius: 10, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 4 },
+  confirmPrimaryText: { fontSize: 13 },
+  confirmSecondary: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 12 },
+  confirmSecondaryText: { fontSize: 12 },
+  celebrationRoot: { flex: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  rainbowArcField: { ...StyleSheet.absoluteFillObject, overflow: 'hidden' },
+  rainbowArc: { position: 'absolute', borderWidth: 18, borderBottomColor: 'transparent', borderRadius: 9999 },
+  celebrationClose: { position: 'absolute', right: 18, width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center', zIndex: 2 },
+  celebrationCopy: { alignItems: 'center', gap: 12, paddingHorizontal: 28, zIndex: 1 },
+  celebrationEyebrow: { fontSize: 10, letterSpacing: 1.8, marginTop: 12 },
+  celebrationTitle: { fontSize: 26, lineHeight: 32, textAlign: 'center' },
+  celebrationDescription: { fontSize: 14, lineHeight: 21, textAlign: 'center' },
+  celebrationButton: { minHeight: 48, minWidth: 180, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, marginTop: 12 },
+  celebrationButtonText: { fontSize: 14 },
 });

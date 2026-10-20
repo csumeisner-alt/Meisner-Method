@@ -35,7 +35,7 @@ test("first-time app milestones are wired to achievement rewards and a review sc
   assert.doesNotMatch(homeSource, /onPress=\{openGallery\}/);
   assert.doesNotMatch(bottomTabSource, /AWARDS|openGallery|useAchievements/);
   assert.match(overlaySource, /<ScrollView[\s\S]*?contentContainerStyle=\{styles\.achievementList\}/);
-  assert.match(overlaySource, /PREMIUM FLAG BADGE/);
+  assert.match(overlaySource, /TITLE FLAG/);
   assert.match(overlaySource, /selectPremiumFlag\(flag\.id\)/);
   assert.match(overlaySource, /DEFAULT_FLAG_ID/);
   assert.match(overlaySource, /ACHIEVEMENT_UNLOCKED_FLAGS\.map/);
@@ -43,5 +43,14 @@ test("first-time app milestones are wired to achievement rewards and a review sc
   assert.match(achievementsContextSource, /hasUnlockedPrideFlag\(brew\.quotesViewed\)/);
   assert.match(achievementsContextSource, /id === PRIDE_FLAG\.id && !prideUnlocked/);
   assert.match(overlaySource, /hasCompletedAllAchievements\(earnedIds\)/);
+  assert.match(overlaySource, /hasCompletedAllAchievements\(earnedIds\)\s*&&\s*\(/);
+  assert.doesNotMatch(overlaySource, /Complete all 15 to choose/);
+  assert.match(overlaySource, /onPress=\{requestPrideSelection\}/);
+  assert.match(overlaySource, /selectPremiumFlag\(PRIDE_FLAG\.id\)/);
+  assert.match(overlaySource, /confirmPrideSelection/);
+  assert.match(overlaySource, /RainbowCelebration onDismiss=\{dismissRainbowCelebration\}/);
+  assert.match(overlaySource, /Your current icon stays selected/);
+  assert.match(overlaySource, /borderBottomColor: 'transparent'/);
+  assert.doesNotMatch(overlaySource, /confetti/i);
   assert.match(overlaySource, /maxHeight: '88%'/);
 });
