@@ -13,7 +13,7 @@ import { PREMIUM_FLAGS, type PremiumFlagId } from '@/lib/achievements';
 import { useColors } from '@/hooks/useColors';
 
 const FLAG_ARTWORK: Record<(typeof PREMIUM_FLAGS)[number]['artwork'], ImageSourcePropType> = {
-  gadsden: require('@/assets/images/premium-flags/gadsden.jpg'),
+  gadsden: require('@/assets/images/premium-flags/gadsden.png'),
   'liberty-eagle': require('@/assets/images/premium-flags/liberty-eagle.jpg'),
   'betsy-ross': require('@/assets/images/premium-flags/betsy-ross.jpg'),
   'red-union': require('@/assets/images/premium-flags/red-union.jpg'),

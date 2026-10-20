@@ -2,7 +2,7 @@ import './_group.css';
 import { useState } from 'react';
 
 const FLAGS = [
-  { id: 'heritage', name: 'Gadsden', image: '/__mockup/images/premium-flags/gadsden.jpg' },
+  { id: 'heritage', name: 'Gadsden', image: '/__mockup/images/premium-flags/gadsden.png' },
   { id: 'liberty', name: 'Liberty & Eagle', image: '/__mockup/images/premium-flags/liberty-eagle.jpg' },
   { id: 'founders', name: 'Betsy Ross', image: '/__mockup/images/premium-flags/betsy-ross.jpg' },
   { id: 'midnight', name: 'Red Union', image: '/__mockup/images/premium-flags/red-union.jpg' },
