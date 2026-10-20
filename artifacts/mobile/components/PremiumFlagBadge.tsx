@@ -23,7 +23,7 @@ const FLAG_ARTWORK: Record<(typeof PREMIUM_FLAGS)[number]['artwork'], ImageSourc
   'southern-cross': require('@/assets/images/premium-flags/southern-cross.jpg'),
 };
 
-const SLICE_COUNT = 24;
+const SLICE_COUNT = 16;
 
 type WaveSliceProps = {
   index: number;
@@ -39,16 +39,17 @@ function WaveSlice({ index, width, height, progress, artwork }: WaveSliceProps) 
   const motionStyle = useAnimatedStyle(() => {
     const distance = index / (SLICE_COUNT - 1);
     const phase = progress.value * Math.PI * 2 - distance * Math.PI * 2;
-    const wave = Math.sin(phase);
-    const twist = Math.cos(phase);
+    const gust = 0.82 + 0.18 * Math.cos(progress.value * Math.PI * 2);
+    const wave = Math.sin(phase) + 0.16 * Math.sin(phase * 2 - 0.75);
+    const twist = Math.cos(phase) * gust;
 
     return {
       transform: [
-        { perspective: 420 },
-        { translateY: wave * height * 0.09 * distance },
-        { rotateY: `${twist * 13 * distance}deg` },
-        { rotateZ: `${twist * 2.2 * distance}deg` },
-        { scaleX: 1 - Math.abs(wave) * 0.035 * distance },
+        { perspective: 720 },
+        { translateY: wave * height * 0.075 * distance * gust },
+        { rotateY: `${twist * 2.6 * distance}deg` },
+        { rotateZ: `${Math.sin(phase) * 0.6 * distance}deg` },
+        { scaleX: 1 - Math.abs(wave) * 0.01 * distance },
       ],
     };
   });
@@ -56,7 +57,7 @@ function WaveSlice({ index, width, height, progress, artwork }: WaveSliceProps) 
   const foldStyle = useAnimatedStyle(() => {
     const distance = index / (SLICE_COUNT - 1);
     const phase = progress.value * Math.PI * 2 - distance * Math.PI * 2;
-    return { opacity: interpolate(Math.cos(phase), [-1, 1], [0.015, 0.2]) };
+    return { opacity: interpolate(Math.cos(phase), [-1, 1], [0.01, 0.065]) };
   });
 
   return (
@@ -64,7 +65,7 @@ function WaveSlice({ index, width, height, progress, artwork }: WaveSliceProps) 
       pointerEvents="none"
       style={[
         styles.waveSlice,
-        { left: index * sliceWidth, width: sliceWidth + 1, height },
+        { left: index * sliceWidth, width: sliceWidth + 2, height },
         motionStyle,
       ]}
     >
@@ -93,8 +94,8 @@ export function PremiumFlagBadge({ flagId, size = 48 }: PremiumFlagBadgeProps) {
   useEffect(() => {
     progress.value = withRepeat(
       withTiming(1, {
-        duration: 2_200,
-        easing: Easing.linear,
+        duration: 4_800,
+        easing: Easing.inOut(Easing.sin),
         reduceMotion: ReduceMotion.Never,
       }),
       -1,
@@ -126,8 +127,8 @@ export function PremiumFlagBadge({ flagId, size = 48 }: PremiumFlagBadgeProps) {
           <WaveSlice
             key={`${flag.artwork}-${index}`}
             index={index}
-            width={width - 4}
-            height={height - 4}
+            width={width - 2}
+            height={height - 2}
             progress={progress}
             artwork={FLAG_ARTWORK[flag.artwork]}
           />
@@ -139,7 +140,8 @@ export function PremiumFlagBadge({ flagId, size = 48 }: PremiumFlagBadgeProps) {
 
 const styles = StyleSheet.create({
   frame: {
-    padding: 1,
+    padding: 0,
+    overflow: 'hidden',
     borderRadius: 8,
     borderWidth: 1,
     shadowOpacity: 0.38,

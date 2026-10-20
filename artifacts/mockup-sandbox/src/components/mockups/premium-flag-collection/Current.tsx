@@ -10,7 +10,7 @@ const FLAGS = [
   { id: 'southern-cross', name: 'Southern Cross', image: '/__mockup/images/premium-flags/southern-cross.jpg' },
 ] as const;
 
-const SLICE_COUNT = 28;
+const SLICE_COUNT = 16;
 
 function FlagArt({ flag }: { flag: (typeof FLAGS)[number] }) {
   return (
@@ -18,16 +18,16 @@ function FlagArt({ flag }: { flag: (typeof FLAGS)[number] }) {
       {Array.from({ length: SLICE_COUNT }, (_, index) => {
         const edge = index / (SLICE_COUNT - 1);
         const style = {
-          '--rise': `${-edge * 7}px`,
-          '--fall': `${edge * 2.5}px`,
-          '--drop': `${edge * 7}px`,
-          '--tilt': `${-edge * 14}deg`,
-          '--unwind': `${edge * 9}deg`,
+          '--rise': `${-edge * 5}px`,
+          '--fall': `${edge * 2}px`,
+          '--drop': `${edge * 5}px`,
+          '--tilt': `${-edge * 2}deg`,
+          '--unwind': `${edge * 1.5}deg`,
           left: `${edge * 100}%`,
           backgroundImage: `url(${flag.image})`,
           backgroundSize: `${SLICE_COUNT * 100}% 100%`,
           backgroundPosition: `${edge * 100}% center`,
-          animationDelay: `${-index * 0.045}s`,
+          animationDelay: `${-index * 0.24}s`,
         } as CSSProperties;
         return <span key={`${flag.id}-${index}`} className="wave-slice" style={style} />;
       })}
@@ -60,7 +60,7 @@ export function Current() {
           <div>
             <p className="eyebrow">SIX FLAG DESIGNS · ONE SELECTED TITLE BADGE</p>
             <h1>Flags that move like cloth</h1>
-            <p className="intro">Pick a design. Each one carries its own image and a continuous wind-driven wave.</p>
+            <p className="intro">Pick a design. Each flag rolls through a slower, softer wave of cloth.</p>
           </div>
           <div className="selection-note">
             <span className="note-label">CURRENT SELECTION</span>
