@@ -10,7 +10,8 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ACHIEVEMENTS } from '@/lib/achievements';
+import { ACHIEVEMENTS, hasCompletedAllAchievements, PREMIUM_FLAGS } from '@/lib/achievements';
+import { PremiumFlagBadge } from '@/components/PremiumFlagBadge';
 import { useAchievements } from '@/contexts/AchievementsContext';
 import { useColors } from '@/hooks/useColors';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
@@ -21,6 +22,9 @@ export function AchievementsOverlay() {
   const reduceMotion = useReduceMotion();
   const {
     earnedIds,
+    selectedPremiumFlagId,
+    premiumFlagReady,
+    selectPremiumFlag,
     galleryVisible,
     closeGallery,
     toastAchievement,
@@ -179,6 +183,67 @@ export function AchievementsOverlay() {
                   </View>
                 );
               })}
+              <View style={[styles.flagRewardCard, { backgroundColor: colors.card, borderColor: colors.goldMuted }]}>
+                <View style={styles.flagRewardHeading}>
+                  <Feather name="award" size={17} color={colors.gold} />
+                  <Text style={[styles.flagRewardEyebrow, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
+                    PREMIUM FLAG BADGE
+                  </Text>
+                </View>
+                {hasCompletedAllAchievements(earnedIds) ? (
+                  <>
+                    <Text style={[styles.flagRewardTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+                      Choose your title flag
+                    </Text>
+                    <Text style={[styles.flagRewardDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                      Your selected flag waves beside Meisner Method on the home screen.
+                    </Text>
+                    <View style={styles.flagGrid}>
+                      {PREMIUM_FLAGS.map((flag) => {
+                        const selected = selectedPremiumFlagId === flag.id;
+                        return (
+                          <Pressable
+                            key={flag.id}
+                            onPress={() => selectPremiumFlag(flag.id)}
+                            disabled={!premiumFlagReady}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected, disabled: !premiumFlagReady }}
+                            accessibilityLabel={`${flag.name} premium flag${selected ? ', selected' : ''}`}
+                            style={[
+                              styles.flagChoice,
+                              {
+                                borderColor: selected ? colors.gold : colors.border,
+                                backgroundColor: selected ? colors.steelShadow : colors.background,
+                                opacity: premiumFlagReady ? 1 : 0.6,
+                              },
+                            ]}
+                          >
+                            <PremiumFlagBadge flagId={flag.id} size={86} animated={galleryVisible} />
+                            <Text style={[styles.flagChoiceName, { color: selected ? colors.gold : colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
+                              {flag.name}
+                            </Text>
+                            {selected && <Feather name="check-circle" size={14} color={colors.gold} />}
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </>
+                ) : (
+                  <View style={styles.flagLockedRow}>
+                    <View style={[styles.flagLockedIcon, { backgroundColor: colors.steelShadow }]}>
+                      <Feather name="lock" size={17} color={colors.mutedForeground} />
+                    </View>
+                    <View style={styles.flagRewardCopy}>
+                      <Text style={[styles.flagRewardTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+                        Complete all 15 achievements
+                      </Text>
+                      <Text style={[styles.flagRewardDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                        Unlock five premium waving American flags for your title badge.
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </View>
             </ScrollView>
           </View>
         </View>
@@ -232,4 +297,15 @@ const styles = StyleSheet.create({
   achievementCopy: { flex: 1, gap: 2 },
   achievementTitle: { fontSize: 12 },
   achievementDescription: { fontSize: 10, lineHeight: 14 },
+  flagRewardCard: { borderWidth: 1, borderRadius: 12, padding: 12, marginTop: 8, gap: 7 },
+  flagRewardHeading: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  flagRewardEyebrow: { fontSize: 10, letterSpacing: 0.8 },
+  flagRewardTitle: { fontSize: 13, lineHeight: 18 },
+  flagRewardDescription: { fontSize: 11, lineHeight: 16 },
+  flagRewardCopy: { flex: 1, gap: 3 },
+  flagLockedRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  flagLockedIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  flagGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 8, marginTop: 4 },
+  flagChoice: { width: '48%', minHeight: 102, borderWidth: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8 },
+  flagChoiceName: { fontSize: 11 },
 });

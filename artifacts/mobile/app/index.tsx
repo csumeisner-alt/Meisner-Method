@@ -24,6 +24,8 @@ import { MMLogo } from '@/components/MMLogo';
 import { DonationSidebar } from '@/components/DonationSidebar';
 import { AmericanCelebration } from '@/components/AmericanCelebration';
 import { useAmericanMode } from '@/contexts/AmericanModeContext';
+import { useAchievements } from '@/contexts/AchievementsContext';
+import { PremiumFlagBadge } from '@/components/PremiumFlagBadge';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { DraggableWatchlist } from '@/components/DraggableWatchlist';
@@ -33,6 +35,7 @@ import { MarketHeatMapInsightButton } from '@/components/MarketHeatMapInsightBut
 import { PriceAlertModal } from '@/components/PriceAlertModal';
 import { matchesFilter, mergeReorderedSubset } from '@/lib/watchlistFilter';
 import { getMarketPulseInsight } from '@/lib/marketPulse';
+import { hasCompletedAllAchievements } from '@/lib/achievements';
 import { getGetMarketPulseQueryKey, useGetMarketPulse } from '@workspace/api-client-react';
 import {
   getStockSearchQueryFromKey,
@@ -206,6 +209,7 @@ export default function HomeScreen() {
 
   // Patriot Mode — fact counter, unlock state, and celebration trigger
   const { isActive, neonGucciActive, justUnlocked, incrementFact, clearJustUnlocked } = useAmericanMode();
+  const { earnedIds, selectedPremiumFlagId } = useAchievements();
   const [showCelebration, setShowCelebration] = useState(false);
   const marketPulseQuery = useGetMarketPulse({
     query: {
@@ -519,9 +523,14 @@ export default function HomeScreen() {
           <TouchableOpacity style={[styles.brandRow, { flex: 1 }]} onPress={showTip} activeOpacity={0.75}>
             <MMLogo size={44} />
             <View style={styles.brandText}>
-              <Text style={[styles.brandName, { color: colors.heading, fontFamily: 'Inter_700Bold', letterSpacing: 0.8 }]}>
-                Meisner Method{isActive ? ' 🇺🇸' : ''}
-              </Text>
+              <View style={styles.brandTitleRow}>
+                <Text style={[styles.brandName, { color: colors.heading, fontFamily: 'Inter_700Bold', letterSpacing: 0.8 }]}>
+                  Meisner Method{!hasCompletedAllAchievements(earnedIds) && isActive ? ' 🇺🇸' : ''}
+                </Text>
+                {hasCompletedAllAchievements(earnedIds) && (
+                  <PremiumFlagBadge flagId={selectedPremiumFlagId} size={48} />
+                )}
+              </View>
               <Text style={[styles.tagline, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                 AI-powered market intelligence
               </Text>
@@ -913,6 +922,7 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 20, paddingBottom: 16 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   brandText: { flex: 1 },
+  brandTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   brandName: { fontSize: 21, lineHeight: 26 },
   tagline: { fontSize: 12, marginTop: 1 },
   neonThemeBadge: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, backgroundColor: 'rgba(85,236,255,0.12)', borderWidth: 1, borderColor: '#55ecff' },

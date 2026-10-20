@@ -28,8 +28,14 @@ test("first-time app milestones are wired to achievement rewards and a review sc
   assert.match(analysisSource, /awardAchievement\('first-analysis'\)/);
   assert.match(settingsSource, /onPress=\{\(\) => \{\s*onClose\(\);\s*setTimeout\(openGallery, 240\);/);
   assert.match(homeSource, /<DonationSidebar\s+visible=\{settingsOpen\}/);
-  assert.doesNotMatch(homeSource, /useAchievements|onPress=\{openGallery\}/);
+  assert.match(homeSource, /useAchievements/);
+  assert.match(homeSource, /hasCompletedAllAchievements\(earnedIds\)/);
+  assert.match(homeSource, /<PremiumFlagBadge flagId=\{selectedPremiumFlagId\}/);
+  assert.doesNotMatch(homeSource, /onPress=\{openGallery\}/);
   assert.doesNotMatch(bottomTabSource, /AWARDS|openGallery|useAchievements/);
   assert.match(overlaySource, /<ScrollView[\s\S]*?contentContainerStyle=\{styles\.achievementList\}/);
+  assert.match(overlaySource, /PREMIUM FLAG BADGE/);
+  assert.match(overlaySource, /selectPremiumFlag\(flag\.id\)/);
+  assert.match(overlaySource, /hasCompletedAllAchievements\(earnedIds\)/);
   assert.match(overlaySource, /maxHeight: '88%'/);
 });
