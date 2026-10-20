@@ -1,5 +1,5 @@
 import './_group.css';
-import { useState, type CSSProperties } from 'react';
+import { useState } from 'react';
 
 const FLAGS = [
   { id: 'heritage', name: 'Gadsden', image: '/__mockup/images/premium-flags/gadsden.jpg' },
@@ -10,27 +10,10 @@ const FLAGS = [
   { id: 'southern-cross', name: 'Southern Cross', image: '/__mockup/images/premium-flags/southern-cross.jpg' },
 ] as const;
 
-const SLICE_COUNT = 16;
-
 function FlagArt({ flag }: { flag: (typeof FLAGS)[number] }) {
   return (
     <div className="flag-frame" role="img" aria-label={`${flag.name} flag waving in the wind`}>
-      {Array.from({ length: SLICE_COUNT }, (_, index) => {
-        const edge = index / (SLICE_COUNT - 1);
-        const style = {
-          '--rise': `${-edge * 5}px`,
-          '--fall': `${edge * 2}px`,
-          '--drop': `${edge * 5}px`,
-          '--tilt': `${-edge * 2}deg`,
-          '--unwind': `${edge * 1.5}deg`,
-          left: `${edge * 100}%`,
-          backgroundImage: `url(${flag.image})`,
-          backgroundSize: `${SLICE_COUNT * 100}% 100%`,
-          backgroundPosition: `${edge * 100}% center`,
-          animationDelay: `${-index * 0.24}s`,
-        } as CSSProperties;
-        return <span key={`${flag.id}-${index}`} className="wave-slice" style={style} />;
-      })}
+      <img className="flag-artwork" src={flag.image} alt="" />
     </div>
   );
 }

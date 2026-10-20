@@ -3,13 +3,11 @@ import { Image, type ImageSourcePropType, StyleSheet, View } from 'react-native'
 import Animated, {
   cancelAnimation,
   Easing,
-  interpolate,
   ReduceMotion,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
   withTiming,
-  type SharedValue,
 } from 'react-native-reanimated';
 import { PREMIUM_FLAGS, type PremiumFlagId } from '@/lib/achievements';
 import { useColors } from '@/hooks/useColors';
@@ -23,62 +21,6 @@ const FLAG_ARTWORK: Record<(typeof PREMIUM_FLAGS)[number]['artwork'], ImageSourc
   'southern-cross': require('@/assets/images/premium-flags/southern-cross.jpg'),
 };
 
-const SLICE_COUNT = 16;
-
-type WaveSliceProps = {
-  index: number;
-  width: number;
-  height: number;
-  progress: SharedValue<number>;
-  artwork: ImageSourcePropType;
-};
-
-function WaveSlice({ index, width, height, progress, artwork }: WaveSliceProps) {
-  const sliceWidth = width / SLICE_COUNT;
-
-  const motionStyle = useAnimatedStyle(() => {
-    const distance = index / (SLICE_COUNT - 1);
-    const phase = progress.value * Math.PI * 2 - distance * Math.PI * 2;
-    const gust = 0.82 + 0.18 * Math.cos(progress.value * Math.PI * 2);
-    const wave = Math.sin(phase) + 0.16 * Math.sin(phase * 2 - 0.75);
-    const twist = Math.cos(phase) * gust;
-
-    return {
-      transform: [
-        { perspective: 720 },
-        { translateY: wave * height * 0.075 * distance * gust },
-        { rotateY: `${twist * 2.6 * distance}deg` },
-        { rotateZ: `${Math.sin(phase) * 0.6 * distance}deg` },
-        { scaleX: 1 - Math.abs(wave) * 0.01 * distance },
-      ],
-    };
-  });
-
-  const foldStyle = useAnimatedStyle(() => {
-    const distance = index / (SLICE_COUNT - 1);
-    const phase = progress.value * Math.PI * 2 - distance * Math.PI * 2;
-    return { opacity: interpolate(Math.cos(phase), [-1, 1], [0.01, 0.065]) };
-  });
-
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={[
-        styles.waveSlice,
-        { left: index * sliceWidth, width: sliceWidth + 2, height },
-        motionStyle,
-      ]}
-    >
-      <Image
-        source={artwork}
-        resizeMode="stretch"
-        style={[styles.artwork, { width, height, left: -index * sliceWidth }]}
-      />
-      <Animated.View style={[styles.foldShade, foldStyle]} />
-    </Animated.View>
-  );
-}
-
 type PremiumFlagBadgeProps = {
   flagId: PremiumFlagId;
   size?: number;
@@ -91,10 +33,23 @@ export function PremiumFlagBadge({ flagId, size = 48 }: PremiumFlagBadgeProps) {
   const width = size;
   const height = size * 0.625;
 
+  const motionStyle = useAnimatedStyle(() => {
+    const breeze = Math.sin(progress.value * Math.PI * 2);
+    return {
+      transform: [
+        { perspective: 900 },
+        { scale: 1.045 },
+        { rotateY: `${breeze * 2}deg` },
+        { rotateZ: `${breeze * 0.35}deg` },
+        { translateY: breeze * height * 0.012 },
+      ],
+    };
+  }, [height]);
+
   useEffect(() => {
     progress.value = withRepeat(
       withTiming(1, {
-        duration: 4_800,
+        duration: 5_600,
         easing: Easing.inOut(Easing.sin),
         reduceMotion: ReduceMotion.Never,
       }),
@@ -123,16 +78,11 @@ export function PremiumFlagBadge({ flagId, size = 48 }: PremiumFlagBadgeProps) {
       ]}
     >
       <View style={styles.flagSurface}>
-        {Array.from({ length: SLICE_COUNT }, (_, index) => (
-          <WaveSlice
-            key={`${flag.artwork}-${index}`}
-            index={index}
-            width={width - 2}
-            height={height - 2}
-            progress={progress}
-            artwork={FLAG_ARTWORK[flag.artwork]}
-          />
-        ))}
+        <Animated.Image
+          source={FLAG_ARTWORK[flag.artwork]}
+          resizeMode="stretch"
+          style={[StyleSheet.absoluteFillObject, motionStyle]}
+        />
       </View>
     </Animated.View>
   );
@@ -154,19 +104,5 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderRadius: 5,
     backgroundColor: '#10151D',
-  },
-  waveSlice: {
-    position: 'absolute',
-    top: 0,
-    overflow: 'hidden',
-    backfaceVisibility: 'hidden',
-  },
-  artwork: {
-    position: 'absolute',
-    top: 0,
-  },
-  foldShade: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#000000',
   },
 });
