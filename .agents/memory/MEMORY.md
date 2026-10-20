@@ -58,3 +58,4 @@
 - [Commodity driver request contract](commodity-driver-request-contract.md) — keep curated explanations independent of market statistics; any future remote source must retain timeout, retry, and stale-result protection.
 - [Expo Metro shared catalog paths](expo-metro-shared-catalog.md) — Metro may reject a JSON catalog outside the mobile artifact even when TypeScript resolves it; keep bundled shared data inside the Expo boundary.
 - [Achievement design and triggers](achievement-design.md) — keep unlocks cosmetic, brief, and independent of Brew reward update success.
+- [Premium flag badge motion](premium-flag-animation.md) — preserve all six supplied artworks and a continuous, visible cloth wave without reduced-motion suppression.

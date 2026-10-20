@@ -43,11 +43,12 @@ export function hasCompletedAllAchievements(earnedIds: readonly AchievementId[])
 }
 
 export const PREMIUM_FLAGS = [
-  { id: 'heritage', name: 'Heritage', canton: '#14284B', red: '#B8323D', white: '#F4F0E5', star: '#F1D28A' },
-  { id: 'liberty', name: 'Liberty', canton: '#0E3550', red: '#C43B42', white: '#F8F5EF', star: '#F7E6B5' },
-  { id: 'founders', name: 'Founders', canton: '#24364A', red: '#9F3A3F', white: '#E8DFC8', star: '#D8B568' },
-  { id: 'midnight', name: 'Midnight', canton: '#111D36', red: '#8D2E3D', white: '#D9DDE4', star: '#D8BE83' },
-  { id: 'eagle', name: 'Eagle', canton: '#172D4E', red: '#B5443F', white: '#FFF9EB', star: '#E8C66F' },
+  { id: 'heritage', name: 'Gadsden', artwork: 'gadsden' },
+  { id: 'liberty', name: 'Liberty & Eagle', artwork: 'liberty-eagle' },
+  { id: 'founders', name: 'Betsy Ross', artwork: 'betsy-ross' },
+  { id: 'midnight', name: 'Red Union', artwork: 'red-union' },
+  { id: 'eagle', name: 'Pride', artwork: 'pride' },
+  { id: 'southern-cross', name: 'Southern Cross', artwork: 'southern-cross' },
 ] as const;
 
 export type PremiumFlagId = (typeof PREMIUM_FLAGS)[number]['id'];

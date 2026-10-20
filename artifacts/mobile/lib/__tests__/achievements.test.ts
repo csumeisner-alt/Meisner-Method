@@ -34,9 +34,10 @@ test('premium flag badge unlock requires all 15 unique achievements', () => {
   assert.equal(hasCompletedAllAchievements([...ids, ids[0]]), true);
 });
 
-test('all five premium American flag choices and saved selections are validated', () => {
-  assert.equal(PREMIUM_FLAGS.length, 5);
+test('all six premium flag designs and saved selections are validated', () => {
+  assert.equal(PREMIUM_FLAGS.length, 6);
   assert.equal(parsePremiumFlagId('midnight'), 'midnight');
+  assert.equal(parsePremiumFlagId('southern-cross'), 'southern-cross');
   assert.equal(parsePremiumFlagId('unknown'), null);
   assert.equal(parsePremiumFlagId(null), null);
 });

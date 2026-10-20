@@ -196,7 +196,7 @@ export function AchievementsOverlay() {
                       Choose your title flag
                     </Text>
                     <Text style={[styles.flagRewardDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                      Your selected flag waves beside Meisner Method on the home screen.
+                      Choose one of six designs. Your selected flag waves beside Meisner Method.
                     </Text>
                     <View style={styles.flagGrid}>
                       {PREMIUM_FLAGS.map((flag) => {
@@ -218,7 +218,7 @@ export function AchievementsOverlay() {
                               },
                             ]}
                           >
-                            <PremiumFlagBadge flagId={flag.id} size={86} animated={galleryVisible} />
+                            <PremiumFlagBadge flagId={flag.id} size={86} />
                             <Text style={[styles.flagChoiceName, { color: selected ? colors.gold : colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
                               {flag.name}
                             </Text>
