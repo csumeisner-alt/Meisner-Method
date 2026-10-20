@@ -13,6 +13,7 @@ export const modules: ModuleMap = {
   "./components/mockups/daiquiri-redesign/DaiquiriGlowSurge.tsx": () => import("../components/mockups/daiquiri-redesign/DaiquiriGlowSurge.tsx"),
   "./components/mockups/hybrid-neon-gucci/ActiveTheme.tsx": () => import("../components/mockups/hybrid-neon-gucci/ActiveTheme.tsx"),
   "./components/mockups/neon-gucci-celebration/Current.tsx": () => import("../components/mockups/neon-gucci-celebration/Current.tsx"),
+  "./components/mockups/premium-flag-collection/Current.tsx": () => import("../components/mockups/premium-flag-collection/Current.tsx"),
   "./components/mockups/quick-revive-redesign/QuickReviveGlowSurge.tsx": () => import("../components/mockups/quick-revive-redesign/QuickReviveGlowSurge.tsx"),
   "./components/mockups/smart-pro-bottle/Current.tsx": () => import("../components/mockups/smart-pro-bottle/Current.tsx"),
   "./components/mockups/smart-pro-bottle/Interactive.tsx": () => import("../components/mockups/smart-pro-bottle/Interactive.tsx"),
