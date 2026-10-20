@@ -35,7 +35,7 @@ import { MarketHeatMapInsightButton } from '@/components/MarketHeatMapInsightBut
 import { PriceAlertModal } from '@/components/PriceAlertModal';
 import { matchesFilter, mergeReorderedSubset } from '@/lib/watchlistFilter';
 import { getMarketPulseInsight } from '@/lib/marketPulse';
-import { hasCompletedAllAchievements } from '@/lib/achievements';
+import { DEFAULT_FLAG_ID, hasCompletedAllAchievements } from '@/lib/achievements';
 import { getGetMarketPulseQueryKey, useGetMarketPulse } from '@workspace/api-client-react';
 import {
   getStockSearchQueryFromKey,
@@ -528,7 +528,9 @@ export default function HomeScreen() {
                   Meisner Method{!hasCompletedAllAchievements(earnedIds) && isActive ? ' 🇺🇸' : ''}
                 </Text>
                 {hasCompletedAllAchievements(earnedIds) && (
-                  <PremiumFlagBadge flagId={selectedPremiumFlagId} size={48} />
+                  selectedPremiumFlagId === DEFAULT_FLAG_ID
+                    ? <Text style={{ color: colors.heading, fontSize: 30, lineHeight: 40, marginLeft: 2 }}>🇺🇸</Text>
+                    : <PremiumFlagBadge flagId={selectedPremiumFlagId} size={48} />
                 )}
               </View>
               <Text style={[styles.tagline, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>

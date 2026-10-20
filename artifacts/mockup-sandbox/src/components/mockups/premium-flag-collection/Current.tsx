@@ -2,18 +2,22 @@ import './_group.css';
 import { useState } from 'react';
 
 const FLAGS = [
-  { id: 'heritage', name: 'Gadsden', image: '/__mockup/images/premium-flags/gadsden.png' },
-  { id: 'liberty', name: 'Liberty & Eagle', image: '/__mockup/images/premium-flags/liberty-eagle.jpg' },
-  { id: 'founders', name: 'Betsy Ross', image: '/__mockup/images/premium-flags/betsy-ross.jpg' },
-  { id: 'midnight', name: 'Red Union', image: '/__mockup/images/premium-flags/red-union.jpg' },
-  { id: 'eagle', name: 'Pride', image: '/__mockup/images/premium-flags/pride.jpg' },
-  { id: 'southern-cross', name: 'Southern Cross', image: '/__mockup/images/premium-flags/southern-cross.jpg' },
+  { id: 'default', name: 'Default U.S. flag', image: null, locked: false },
+  { id: 'heritage', name: 'Gadsden', image: '/__mockup/images/premium-flags/gadsden.png', locked: false },
+  { id: 'liberty', name: 'Liberty & Eagle', image: '/__mockup/images/premium-flags/liberty-eagle.jpg', locked: false },
+  { id: 'founders', name: 'Betsy Ross', image: '/__mockup/images/premium-flags/betsy-ross.jpg', locked: false },
+  { id: 'midnight', name: 'Red Union', image: '/__mockup/images/premium-flags/red-union.jpg', locked: false },
+  { id: 'southern-cross', name: 'Southern Cross', image: '/__mockup/images/premium-flags/southern-cross.jpg', locked: false },
+  { id: 'eagle', name: 'Pride', image: '/__mockup/images/premium-flags/pride.jpg', locked: true },
 ] as const;
 
 function FlagArt({ flag }: { flag: (typeof FLAGS)[number] }) {
   return (
     <div className="flag-frame" role="img" aria-label={`${flag.name} flag waving in the wind`}>
-      <img className="flag-artwork" src={flag.image} alt="" />
+      {flag.image
+        ? <img className="flag-artwork" src={flag.image} alt="" />
+        : <div className="default-flag-art">🇺🇸</div>}
+      {flag.locked && <div className="flag-lock"><span>🔒</span><small>0 / 22 Biden quotes</small></div>}
     </div>
   );
 }
@@ -41,9 +45,9 @@ export function Current() {
       <section className="collection">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">SIX FLAG DESIGNS · ONE SELECTED TITLE BADGE</p>
+            <p className="eyebrow">DEFAULT + SIX FLAG DESIGNS · ONE SELECTED TITLE BADGE</p>
             <h1>Flags that move like cloth</h1>
-            <p className="intro">Pick a design. Each flag rolls through a slower, softer wave of cloth.</p>
+            <p className="intro">15 achievements unlock the default and five flags. Pride unlocks after 22 Biden quotes.</p>
           </div>
           <div className="selection-note">
             <span className="note-label">CURRENT SELECTION</span>
@@ -58,9 +62,10 @@ export function Current() {
               <button
                 key={flag.id}
                 type="button"
-                className={`flag-card${active ? ' selected' : ''}`}
-                onClick={() => setSelected(flag.id)}
+                className={`flag-card${active ? ' selected' : ''}${flag.locked ? ' locked' : ''}`}
+                onClick={() => !flag.locked && setSelected(flag.id)}
                 aria-pressed={active}
+                aria-disabled={flag.locked}
                 aria-label={`Select the ${flag.name} flag`}
               >
                 <div className="card-topline">
@@ -79,9 +84,9 @@ export function Current() {
 
         <footer className="footnote">
           <span className="footnote-mark">✦</span>
-          <span>Six designs from your uploaded references</span>
+          <span>Default + five flags after 15 achievements</span>
           <span className="footnote-rule" />
-          <span>Continuous cloth wave · always animated</span>
+          <span>Pride unlocks at 22 Biden quotes</span>
         </footer>
       </section>
     </main>

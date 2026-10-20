@@ -15,6 +15,7 @@ const watchlistSource = readSource("../hooks/useWatchlist.ts");
 const analysisSource = readSource("../app/analysis/[symbol].tsx");
 const bottomTabSource = readSource("../components/BottomTabBar.tsx");
 const overlaySource = readSource("../components/AchievementsOverlay.tsx");
+const achievementsContextSource = readSource("../contexts/AchievementsContext.tsx");
 
 test("first-time app milestones are wired to achievement rewards and a review screen", () => {
   assert.match(portfolioSource, /void awardAchievement\('first-quote'\)/);
@@ -36,6 +37,11 @@ test("first-time app milestones are wired to achievement rewards and a review sc
   assert.match(overlaySource, /<ScrollView[\s\S]*?contentContainerStyle=\{styles\.achievementList\}/);
   assert.match(overlaySource, /PREMIUM FLAG BADGE/);
   assert.match(overlaySource, /selectPremiumFlag\(flag\.id\)/);
+  assert.match(overlaySource, /DEFAULT_FLAG_ID/);
+  assert.match(overlaySource, /ACHIEVEMENT_UNLOCKED_FLAGS\.map/);
+  assert.match(overlaySource, /disabled=\{!premiumFlagReady \|\| !prideUnlocked\}/);
+  assert.match(achievementsContextSource, /hasUnlockedPrideFlag\(brew\.quotesViewed\)/);
+  assert.match(achievementsContextSource, /id === PRIDE_FLAG\.id && !prideUnlocked/);
   assert.match(overlaySource, /hasCompletedAllAchievements\(earnedIds\)/);
   assert.match(overlaySource, /maxHeight: '88%'/);
 });

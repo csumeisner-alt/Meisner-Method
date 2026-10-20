@@ -9,10 +9,10 @@ import Animated, {
   withRepeat,
   withTiming,
 } from 'react-native-reanimated';
-import { PREMIUM_FLAGS, type PremiumFlagId } from '@/lib/achievements';
+import { ALL_PREMIUM_FLAGS, type PremiumFlagId } from '@/lib/achievements';
 import { useColors } from '@/hooks/useColors';
 
-const FLAG_ARTWORK: Record<(typeof PREMIUM_FLAGS)[number]['artwork'], ImageSourcePropType> = {
+const FLAG_ARTWORK: Record<(typeof ALL_PREMIUM_FLAGS)[number]['artwork'], ImageSourcePropType> = {
   gadsden: require('@/assets/images/premium-flags/gadsden.png'),
   'liberty-eagle': require('@/assets/images/premium-flags/liberty-eagle.jpg'),
   'betsy-ross': require('@/assets/images/premium-flags/betsy-ross.jpg'),
@@ -27,7 +27,7 @@ type PremiumFlagBadgeProps = {
 };
 
 export function PremiumFlagBadge({ flagId, size = 48 }: PremiumFlagBadgeProps) {
-  const flag = PREMIUM_FLAGS.find((item) => item.id === flagId) ?? PREMIUM_FLAGS[0];
+  const flag = ALL_PREMIUM_FLAGS.find((item) => item.id === flagId) ?? ALL_PREMIUM_FLAGS[0];
   const colors = useColors();
   const progress = useSharedValue(0);
   const width = size;

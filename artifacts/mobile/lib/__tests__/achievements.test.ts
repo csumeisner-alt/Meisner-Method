@@ -4,7 +4,9 @@ import {
   ACHIEVEMENTS,
   claimAchievement,
   hasCompletedAllAchievements,
-  PREMIUM_FLAGS,
+  ACHIEVEMENT_UNLOCKED_FLAGS,
+  ALL_PREMIUM_FLAGS,
+  hasUnlockedPrideFlag,
   parsePremiumFlagId,
   parseEarnedAchievementIds,
 } from '../achievements.ts';
@@ -34,10 +36,15 @@ test('premium flag badge unlock requires all 15 unique achievements', () => {
   assert.equal(hasCompletedAllAchievements([...ids, ids[0]]), true);
 });
 
-test('all six premium flag designs and saved selections are validated', () => {
-  assert.equal(PREMIUM_FLAGS.length, 6);
+test('five achievement flags, default flag, and quote-gated Pride are validated', () => {
+  assert.equal(ACHIEVEMENT_UNLOCKED_FLAGS.length, 5);
+  assert.equal(ALL_PREMIUM_FLAGS.length, 6);
+  assert.equal(hasUnlockedPrideFlag(21), false);
+  assert.equal(hasUnlockedPrideFlag(22), true);
   assert.equal(parsePremiumFlagId('midnight'), 'midnight');
   assert.equal(parsePremiumFlagId('southern-cross'), 'southern-cross');
+  assert.equal(parsePremiumFlagId('default'), 'default');
+  assert.equal(parsePremiumFlagId('eagle'), 'eagle');
   assert.equal(parsePremiumFlagId('unknown'), null);
   assert.equal(parsePremiumFlagId(null), null);
 });

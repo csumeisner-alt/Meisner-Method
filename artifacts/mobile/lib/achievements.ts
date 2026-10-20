@@ -1,5 +1,8 @@
+import { BREW_TOKEN_QUOTE_THRESHOLD } from './brewTokenLogic.ts';
+
 export const ACHIEVEMENT_STORAGE_KEY = '@meisnermethod/achievements_v1';
 export const PREMIUM_FLAG_STORAGE_KEY = '@meisnermethod/premium_flag_badge_v1';
+export const DEFAULT_FLAG_ID = 'default' as const;
 
 export const ACHIEVEMENTS = [
   {
@@ -42,22 +45,30 @@ export function hasCompletedAllAchievements(earnedIds: readonly AchievementId[])
   return ACHIEVEMENTS.every((achievement) => earned.has(achievement.id));
 }
 
-export const PREMIUM_FLAGS = [
+export const ACHIEVEMENT_UNLOCKED_FLAGS = [
   { id: 'heritage', name: 'Gadsden', artwork: 'gadsden' },
   { id: 'liberty', name: 'Liberty & Eagle', artwork: 'liberty-eagle' },
   { id: 'founders', name: 'Betsy Ross', artwork: 'betsy-ross' },
   { id: 'midnight', name: 'Red Union', artwork: 'red-union' },
-  { id: 'eagle', name: 'Pride', artwork: 'pride' },
   { id: 'southern-cross', name: 'Southern Cross', artwork: 'southern-cross' },
 ] as const;
 
-export type PremiumFlagId = (typeof PREMIUM_FLAGS)[number]['id'];
+export const PRIDE_FLAG = { id: 'eagle', name: 'Pride', artwork: 'pride' } as const;
+export const ALL_PREMIUM_FLAGS = [...ACHIEVEMENT_UNLOCKED_FLAGS, PRIDE_FLAG] as const;
 
-export function isPremiumFlagId(value: string | null): value is PremiumFlagId {
-  return PREMIUM_FLAGS.some((flag) => flag.id === value);
+export type PremiumFlagId = (typeof ALL_PREMIUM_FLAGS)[number]['id'];
+export type FlagSelectionId = typeof DEFAULT_FLAG_ID | PremiumFlagId;
+
+export function hasUnlockedPrideFlag(quotesViewed: number): boolean {
+  return quotesViewed >= BREW_TOKEN_QUOTE_THRESHOLD;
 }
 
-export function parsePremiumFlagId(raw: string | null): PremiumFlagId | null {
+export function isPremiumFlagId(value: string | null): value is PremiumFlagId {
+  return ALL_PREMIUM_FLAGS.some((flag) => flag.id === value);
+}
+
+export function parsePremiumFlagId(raw: string | null): FlagSelectionId | null {
+  if (raw === DEFAULT_FLAG_ID) return DEFAULT_FLAG_ID;
   return isPremiumFlagId(raw) ? raw : null;
 }
 

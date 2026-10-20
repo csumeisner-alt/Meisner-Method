@@ -2,22 +2,27 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ACHIEVEMENT_STORAGE_KEY,
+  PRIDE_FLAG,
   PREMIUM_FLAG_STORAGE_KEY,
   claimAchievement,
+  hasUnlockedPrideFlag,
   hasCompletedAllAchievements,
   parsePremiumFlagId,
   parseEarnedAchievementIds,
   type Achievement,
   type AchievementId,
-  type PremiumFlagId,
+  type FlagSelectionId,
 } from '@/lib/achievements';
+import { useAmericanMode } from '@/contexts/AmericanModeContext';
 
 type AchievementsState = {
   earnedIds: AchievementId[];
   awardAchievement: (id: AchievementId) => Promise<void>;
-  selectedPremiumFlagId: PremiumFlagId;
+  selectedPremiumFlagId: FlagSelectionId;
+  quotesViewed: number;
+  prideUnlocked: boolean;
   premiumFlagReady: boolean;
-  selectPremiumFlag: (id: PremiumFlagId) => void;
+  selectPremiumFlag: (id: FlagSelectionId) => void;
   galleryVisible: boolean;
   openGallery: () => void;
   closeGallery: () => void;
@@ -28,8 +33,9 @@ type AchievementsState = {
 const AchievementsContext = createContext<AchievementsState | null>(null);
 
 export function AchievementsProvider({ children }: { children: React.ReactNode }) {
+  const { brew } = useAmericanMode();
   const [earnedIds, setEarnedIds] = useState<AchievementId[]>([]);
-  const [selectedPremiumFlagId, setSelectedPremiumFlagId] = useState<PremiumFlagId>('heritage');
+  const [storedFlagSelection, setStoredFlagSelection] = useState<FlagSelectionId>('heritage');
   const [premiumFlagReady, setPremiumFlagReady] = useState(false);
   const [galleryVisible, setGalleryVisible] = useState(false);
   const [toastAchievement, setToastAchievement] = useState<Achievement | null>(null);
@@ -38,6 +44,10 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
   const premiumFlagHydratedRef = useRef(false);
   const pendingAwardsRef = useRef<AchievementId[]>([]);
   const writeQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const prideUnlocked = hasUnlockedPrideFlag(brew.quotesViewed);
+  const selectedPremiumFlagId = storedFlagSelection === PRIDE_FLAG.id && !prideUnlocked
+    ? 'heritage'
+    : storedFlagSelection;
 
   const awardAchievement = useCallback(async (id: AchievementId) => {
     if (!hydratedRef.current) {
@@ -59,17 +69,18 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
     await writeQueueRef.current;
   }, []);
 
-  const selectPremiumFlag = useCallback((id: PremiumFlagId) => {
+  const selectPremiumFlag = useCallback((id: FlagSelectionId) => {
     if (
       !hydratedRef.current ||
       !premiumFlagHydratedRef.current ||
-      !hasCompletedAllAchievements(idsRef.current)
+      !hasCompletedAllAchievements(idsRef.current) ||
+      (id === PRIDE_FLAG.id && !prideUnlocked)
     ) return;
-    setSelectedPremiumFlagId(id);
+    setStoredFlagSelection(id);
     void AsyncStorage.setItem(PREMIUM_FLAG_STORAGE_KEY, id).catch((error) => {
       console.warn('[achievements] Could not save premium flag selection:', error);
     });
-  }, []);
+  }, [prideUnlocked]);
 
   useEffect(() => {
     let mounted = true;
@@ -102,7 +113,7 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
       .then((raw) => {
         if (!mounted) return;
         const loadedId = parsePremiumFlagId(raw);
-        if (loadedId) setSelectedPremiumFlagId(loadedId);
+        if (loadedId) setStoredFlagSelection(loadedId);
       })
       .catch((error) => {
         if (mounted) console.warn('[achievements] Could not load premium flag selection:', error);
@@ -133,6 +144,8 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
         earnedIds,
         awardAchievement,
         selectedPremiumFlagId,
+        quotesViewed: brew.quotesViewed,
+        prideUnlocked,
         premiumFlagReady,
         selectPremiumFlag,
         galleryVisible,

@@ -135,6 +135,28 @@ h1 { margin: 0; color: #F4F0E5; font-size: 25px; line-height: 1.15; letter-spaci
   will-change: transform;
   animation: flagBreeze 5.6s ease-in-out infinite;
 }
+.default-flag-art {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background: #10151d;
+  font-size: 52px;
+}
+.flag-card.locked { cursor: not-allowed; }
+.flag-lock {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: white;
+  background: rgba(0, 0, 0, .48);
+}
+.flag-lock span { font-size: 19px; }
+.flag-lock small { font-size: 9px; font-weight: 700; }
 .header-flag .flag-frame { width: 100%; height: 100%; }
 .card-bottom { height: 41px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 2px 0; }
 .flag-name { overflow: hidden; color: #F0EBDD; font-size: 13px; font-weight: 700; letter-spacing: .15px; text-overflow: ellipsis; white-space: nowrap; }
