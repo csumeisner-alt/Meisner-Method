@@ -1136,7 +1136,7 @@ export function BrewTokenBank({
         }
       : quickReviveArmed
         ? {
-            title: 'QUICK REVIVE ARMED · 62% ODDS',
+            title: 'QUICK REVIVE ARMED · 70% ODDS',
             detail: 'NEXT TOSS ONLY · ONE BOTTLE CONSUMED',
             color: colors.buyColor,
             icon: 'zap' as const,
@@ -1249,7 +1249,7 @@ export function BrewTokenBank({
       return;
     }
 
-    setShopMessage('QUICK REVIVE ARMED · NEXT TOSS HAS 62% ODDS');
+    setShopMessage('QUICK REVIVE ARMED · NEXT TOSS HAS 70% ODDS');
     if (hapticsEnabled) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     }
@@ -1982,10 +1982,10 @@ export function BrewTokenBank({
                        QUICK REVIVE
                      </Text>
                      <Text style={[styles.shopDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                       Break one into the machine before a toss to raise your next win chance by 7 points, from 55% to 62%.
+                        Break one into the machine before a toss to raise your next win chance by 15 points, from 55% to 70%.
                      </Text>
                       <View style={styles.bottleSpecRow}>
-                        <Text style={[styles.bottleSpec, { color: colors.buyColor, fontFamily: 'Inter_700Bold' }]}>62% WIN · +7 POINTS</Text>
+                         <Text style={[styles.bottleSpec, { color: colors.buyColor, fontFamily: 'Inter_700Bold' }]}>70% WIN · +15 POINTS</Text>
                         <Text style={[styles.bottleSpec, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>NEXT TOSS</Text>
                       </View>
                    </View>
@@ -2475,7 +2475,7 @@ export function BrewTokenBank({
               accessibilityRole="button"
               accessibilityLabel={
                 quickReviveArmed
-                  ? 'Quick Revive armed. Your next toss has 62 percent odds.'
+                  ? 'Quick Revive armed. Your next toss has 70 percent win odds.'
                   : `Redeem a Quick Revive bottle. ${quickReviveBottles} bottles available.`
               }
               accessibilityState={{ disabled: quickReviveBottles < 1 || quickReviveArmed || daiquiriArmed || staminUpArmed || resolving || shopBusy }}
@@ -2483,7 +2483,7 @@ export function BrewTokenBank({
               <QuickReviveBottle size={26} muted={!quickReviveArmed && quickReviveBottles < 1} />
               <View style={styles.quickReviveArmCopy}>
                 <Text style={[styles.quickReviveArmTitle, { color: quickReviveArmed ? colors.buyColor : colors.foreground, fontFamily: 'Inter_700Bold' }]}>
-                  {quickReviveArmed ? 'QUICK REVIVE ARMED · 62% ODDS' : 'REDEEM QUICK REVIVE · +7% ODDS'}
+                  {quickReviveArmed ? 'QUICK REVIVE ARMED · 70% ODDS' : 'REDEEM QUICK REVIVE · +15 POINTS'}
                 </Text>
                 <Text style={[styles.quickReviveArmDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                   {quickReviveArmed
@@ -2647,7 +2647,7 @@ export function BrewTokenBank({
               </Text>
                {result.quickRevive && (
                 <Text style={[styles.resultHint, { color: colors.buyColor, fontFamily: 'Inter_600SemiBold' }]}>
-                  QUICK REVIVE APPLIED · 62% ODDS WERE ACTIVE
+                   QUICK REVIVE APPLIED · 70% ODDS WERE ACTIVE
                 </Text>
               )}
                {result.daiquiri && (

@@ -32,6 +32,7 @@
 - [Dave Ramsey Daiquiri odds](daiquiri-odds-and-payout.md) — show requested 45% win / 65% loss copy; use 45% win internally and double only a win.
 - [Dark Brew Token economy](dark-brew-token-economy.md) — Stamin Up converts one winning award only; Dark Brew stays isolated from regular wagering and portfolio value.
 - [Quick Revive visual direction](quick-revive-visual-direction.md) — use a luminous cyan soda bottle with fizz and a round Revive label, not a generic lightning potion.
+- [Quick Revive odds](quick-revive-odds.md) — one bottle raises the next toss from 55% to a 70% win chance; keep odds copy and tests aligned.
 - [Daiquiri visual direction](daiquiri-visual-direction.md) — use a cinematic navy-and-gold collectible bottle with carbonation, label flare, liquid surge, and controlled splash.
 - [SmartPro bottle direction](smartpro-bottle-direction.md) — use vivid lime liquid, dark green glass, and the approved rectangular black SP/SMARTPRO label; never revert to the circular S badge.
 - [Mockup sandbox React types](mockup-sandbox-react-types.md) — keep sandbox React type packages aligned with runtime React 19.1 to avoid nominal ref incompatibilities.

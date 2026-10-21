@@ -7,7 +7,7 @@
 export const BREW_TOKEN_QUOTE_THRESHOLD = 22;
 export const INITIAL_BREW_TOKENS = 5;
 export const BREW_TOKEN_WIN_PROBABILITY = 0.55;
-export const QUICK_REVIVE_WIN_PROBABILITY = 0.62;
+export const QUICK_REVIVE_WIN_PROBABILITY = 0.70;
 export const MAX_REMEMBERED_QUOTE_VIEWS = 32;
 export const BREW_BANK_KEY_PRICE = 5;
 export const BREW_BANK_ACCESS_DURATION_MS = 12 * 60 * 60 * 1000;
@@ -98,7 +98,7 @@ export function getBrewBottlePreview(kind: BrewBottlePreviewKind): BrewBottlePre
         bottlePrice: QUICK_REVIVE_BOTTLE_PRICE,
         winProbability: QUICK_REVIVE_WIN_PROBABILITY,
         lossProbability: 1 - QUICK_REVIVE_WIN_PROBABILITY,
-        description: 'Break one into the machine before a toss to raise your next win chance by 7 points, from 55% to 62%.',
+        description: 'Break one into the machine before a toss to raise your next win chance by 15 points, from 55% to 70%.',
         conversionCopy: null,
       };
     case 'daiquiri':

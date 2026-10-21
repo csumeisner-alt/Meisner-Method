@@ -638,7 +638,7 @@ export function useBrewTokens(): BrewTokenState {
             }), {
               kind: 'redeem',
               label: 'QUICK REVIVE ARMED',
-              detail: '62% odds on the next toss',
+              detail: '70% win odds on the next toss',
             }),
             result: true,
           }

@@ -135,7 +135,7 @@ test('bottle inspection metadata mirrors shop costs, odds, and Stamin Up convers
     bottlePrice: QUICK_REVIVE_BOTTLE_PRICE,
     winProbability: QUICK_REVIVE_WIN_PROBABILITY,
     lossProbability: 1 - QUICK_REVIVE_WIN_PROBABILITY,
-    description: 'Break one into the machine before a toss to raise your next win chance by 7 points, from 55% to 62%.',
+    description: 'Break one into the machine before a toss to raise your next win chance by 15 points, from 55% to 70%.',
     conversionCopy: null,
   });
   assert.equal(getBrewBottlePreview('daiquiri').lossProbability, DAIQUIRI_LOSS_PROBABILITY);
@@ -160,7 +160,7 @@ test('opening and closing every bottle inspection preserves balance, inventory, 
   };
 
   const expected = {
-    quickRevive: { bottlePrice: 2, odds: '62% WIN · 38% LOSS', bottles: 3, armed: false },
+    quickRevive: { bottlePrice: 2, odds: '70% WIN · 30% LOSS', bottles: 3, armed: false },
     daiquiri: { bottlePrice: 8, odds: '45% WIN · 55% LOSS', bottles: 2, armed: true },
     staminUp: { bottlePrice: 6, odds: '55% WIN · 45% LOSS', bottles: 4, armed: false },
     smartPro: { bottlePrice: 3, odds: '55% WIN · 45% LOSS', bottles: 5, armed: false },
