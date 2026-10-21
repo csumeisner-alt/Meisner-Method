@@ -49,7 +49,7 @@ test("first-time app milestones are wired to achievement rewards and a review sc
   assert.match(overlaySource, /selectPremiumFlag\(PRIDE_FLAG\.id\)/);
   assert.match(overlaySource, /confirmPrideSelection/);
   assert.match(overlaySource, /RainbowCelebration onDismiss=\{dismissRainbowCelebration\}/);
-  assert.match(overlaySource, /Your current icon stays selected/);
+  assert.match(overlaySource, /No problem\. Your current flag stays selected/);
   assert.match(overlaySource, /borderBottomColor: 'transparent'/);
   assert.doesNotMatch(overlaySource, /confetti/i);
   assert.match(overlaySource, /maxHeight: '88%'/);

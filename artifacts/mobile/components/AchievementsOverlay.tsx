@@ -296,7 +296,7 @@ export function AchievementsOverlay() {
               <View style={[styles.iconKeptNotice, { backgroundColor: colors.steelShadow, borderColor: colors.border }]}>
                 <Feather name="check-circle" size={15} color={colors.gold} />
                 <Text style={[styles.iconKeptText, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
-                  Your current icon stays selected.
+                  No problem. Your current flag stays selected.
                 </Text>
               </View>
             )}
