@@ -836,6 +836,11 @@ export function BrewTokenBank({
     );
   };
 
+  const openBottleInspection = (kind: BottleBurstKind, unlocked: boolean) => {
+    setBottlePreview(kind);
+    if (unlocked) triggerBottleBurst(kind, 'preview');
+  };
+
   const stopPreviewBottleBurst = () => {
     if (bottleBurstLocation !== 'preview') return;
     if (bottlePreview === 'quickRevive' && quickReviveBurstTimerRef.current) {
@@ -1990,7 +1995,7 @@ export function BrewTokenBank({
                       </View>
                    </View>
                     <Pressable
-                      onPress={() => setBottlePreview('quickRevive')}
+                       onPress={() => openBottleInspection('quickRevive', quickReviveUnlocked)}
                       style={styles.bottleInspectButton}
                       accessibilityRole="button"
                       accessibilityLabel="Inspect Quick Revive bottle"
@@ -2062,7 +2067,7 @@ export function BrewTokenBank({
                         </View>
                      </View>
                       <Pressable
-                        onPress={() => setBottlePreview('staminUp')}
+                         onPress={() => openBottleInspection('staminUp', staminUpUnlocked)}
                         style={styles.bottleInspectButton}
                         accessibilityRole="button"
                         accessibilityLabel="Inspect Stamin Up bottle"
@@ -2127,7 +2132,7 @@ export function BrewTokenBank({
                        </View>
                     </View>
                     <Pressable
-                      onPress={() => setBottlePreview('daiquiri')}
+                       onPress={() => openBottleInspection('daiquiri', daiquiriUnlocked)}
                       style={styles.bottleInspectButton}
                       accessibilityRole="button"
                       accessibilityLabel="Inspect Dave Ramsey Daiquiri bottle"
@@ -2294,7 +2299,7 @@ export function BrewTokenBank({
                        )}
                     </View>
                     <Pressable
-                      onPress={() => setBottlePreview('smartPro')}
+                       onPress={() => openBottleInspection('smartPro', smartProUnlocked)}
                       style={styles.bottleInspectButton}
                       accessibilityRole="button"
                       accessibilityLabel="Inspect SmartPro Soda bottle"
