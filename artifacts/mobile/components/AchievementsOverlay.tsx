@@ -125,6 +125,127 @@ function RainbowCelebration({ onDismiss }: { onDismiss: () => void }) {
   );
 }
 
+function AchievementSealCelebration({
+  reducedMotion,
+  onDismiss,
+  onChooseFlags,
+}: {
+  reducedMotion: boolean;
+  onDismiss: () => void;
+  onChooseFlags: () => void;
+}) {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const progress = useRef(new Animated.Value(0)).current;
+  const ringSize = Math.min(width * 0.76, 292);
+  const markerSize = 22;
+  const markerRadius = ringSize * 0.43;
+
+  useEffect(() => {
+    if (reducedMotion) {
+      progress.setValue(1);
+      return;
+    }
+    progress.setValue(0);
+    const animation = Animated.sequence([
+      Animated.delay(120),
+      Animated.timing(progress, {
+        toValue: 1,
+        duration: 1_250,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]);
+    animation.start();
+    return () => animation.stop();
+  }, [progress, reducedMotion]);
+
+  const ringScale = progress.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] });
+  const ringOpacity = progress.interpolate({ inputRange: [0, 0.35, 1], outputRange: [0.25, 1, 1] });
+  const medalScale = progress.interpolate({ inputRange: [0, 0.62, 0.78, 1], outputRange: [0.45, 0.45, 1.12, 1] });
+  const finalMarkerScale = progress.interpolate({ inputRange: [0, 0.56, 0.72, 1], outputRange: [0, 0, 1.45, 1] });
+  const sweepOpacity = progress.interpolate({ inputRange: [0, 0.55, 0.68, 0.9, 1], outputRange: [0, 0, 1, 0.35, 0] });
+  const sweepTranslateX = progress.interpolate({ inputRange: [0, 1], outputRange: [-58, 58] });
+
+  return (
+    <View style={[styles.sealRoot, { backgroundColor: colors.background, paddingTop: insets.top + 18, paddingBottom: insets.bottom + 18 }]}>
+      <Pressable
+        onPress={onDismiss}
+        hitSlop={10}
+        accessibilityRole="button"
+        accessibilityLabel="Dismiss achievement celebration"
+        style={[styles.sealDismiss, { top: insets.top + 10 }]}
+      >
+        <Feather name="x" size={20} color={colors.foreground} />
+      </Pressable>
+
+      <Animated.View style={[styles.sealRing, { width: ringSize, height: ringSize, opacity: ringOpacity, transform: [{ scale: ringScale }] }]}>
+        <View style={[styles.sealRingOutline, { borderColor: colors.goldMuted }]} />
+        {ACHIEVEMENTS.map((achievement, index) => {
+          const angle = (index / ACHIEVEMENTS.length) * Math.PI * 2 - Math.PI / 2;
+          const left = ringSize / 2 + Math.cos(angle) * markerRadius - markerSize / 2;
+          const top = ringSize / 2 + Math.sin(angle) * markerRadius - markerSize / 2;
+          const isFinalSeal = index === ACHIEVEMENTS.length - 1;
+          return (
+            <Animated.View
+              key={achievement.id}
+              style={[
+                styles.sealMarker,
+                {
+                  left,
+                  top,
+                  width: markerSize,
+                  height: markerSize,
+                  borderColor: isFinalSeal ? colors.gold : colors.goldMuted,
+                  backgroundColor: isFinalSeal ? colors.gold : colors.steelShadow,
+                  transform: isFinalSeal ? [{ scale: finalMarkerScale }] : undefined,
+                },
+              ]}
+            >
+              <Feather name={isFinalSeal ? 'award' : 'check'} size={isFinalSeal ? 13 : 11} color={isFinalSeal ? colors.background : colors.gold} />
+            </Animated.View>
+          );
+        })}
+        <Animated.View style={[styles.sealMedal, { backgroundColor: colors.steelShadow, borderColor: colors.gold, transform: [{ scale: medalScale }] }]}>
+          <Feather name="award" size={54} color={colors.gold} />
+        </Animated.View>
+      </Animated.View>
+
+      <Text accessibilityLiveRegion="polite" style={[styles.sealEyebrow, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
+        THE FINAL SEAL
+      </Text>
+      <Text style={[styles.sealTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+        15 of 15 complete
+      </Text>
+      <Text style={[styles.sealDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+        Your title flag collection is now open.
+      </Text>
+
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.sealColorSweep, { opacity: sweepOpacity, transform: [{ translateX: sweepTranslateX }] }]}
+      >
+        <View style={[styles.sealColorBar, { backgroundColor: '#B22234' }]} />
+        <View style={[styles.sealColorBar, { backgroundColor: '#FFFFFF' }]} />
+        <View style={[styles.sealColorBar, { backgroundColor: '#3C3B6E' }]} />
+      </Animated.View>
+
+      <Pressable
+        onPress={onChooseFlags}
+        accessibilityRole="button"
+        accessibilityLabel="Choose your title flag"
+        style={[styles.sealButton, { backgroundColor: colors.gold }]}
+      >
+        <Text style={[styles.sealButtonText, { color: colors.background, fontFamily: 'Inter_700Bold' }]}>
+          Choose your title flag
+        </Text>
+        <Feather name="arrow-right" size={17} color={colors.background} />
+      </Pressable>
+    </View>
+  );
+}
+
 export function AchievementsOverlay() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -136,14 +257,17 @@ export function AchievementsOverlay() {
     prideUnlocked,
     premiumFlagReady,
     selectPremiumFlag,
+    openGallery,
     galleryVisible,
     closeGallery,
     toastAchievement,
     dismissToast,
   } = useAchievements();
   const toastMotion = useRef(new Animated.Value(0)).current;
+  const sealShownRef = useRef(false);
   const [prideConfirmVisible, setPrideConfirmVisible] = useState(false);
   const [rainbowCelebrationVisible, setRainbowCelebrationVisible] = useState(false);
+  const [achievementSealVisible, setAchievementSealVisible] = useState(false);
   const [iconUnchangedNotice, setIconUnchangedNotice] = useState(false);
 
   const requestPrideSelection = () => {
@@ -167,6 +291,18 @@ export function AchievementsOverlay() {
     setRainbowCelebrationVisible(false);
     closeGallery();
   };
+
+  const chooseTitleFlagFromSeal = () => {
+    setAchievementSealVisible(false);
+    setTimeout(openGallery, 260);
+  };
+
+  useEffect(() => {
+    if (!toastAchievement || !hasCompletedAllAchievements(earnedIds) || sealShownRef.current) return;
+    sealShownRef.current = true;
+    dismissToast();
+    setAchievementSealVisible(true);
+  }, [dismissToast, earnedIds, toastAchievement]);
 
   useEffect(() => {
     if (!iconUnchangedNotice) return;
@@ -491,6 +627,18 @@ export function AchievementsOverlay() {
           </View>
         )}
       </Modal>
+      <Modal
+        visible={achievementSealVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAchievementSealVisible(false)}
+      >
+        <AchievementSealCelebration
+          reducedMotion={reduceMotion}
+          onDismiss={() => setAchievementSealVisible(false)}
+          onChooseFlags={chooseTitleFlagFromSeal}
+        />
+      </Modal>
     </>
   );
 }
@@ -576,4 +724,17 @@ const styles = StyleSheet.create({
   celebrationDescription: { fontSize: 14, lineHeight: 21, textAlign: 'center' },
   celebrationButton: { minHeight: 48, minWidth: 180, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, marginTop: 12 },
   celebrationButtonText: { fontSize: 14 },
+  sealRoot: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22 },
+  sealDismiss: { position: 'absolute', right: 18, width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center', zIndex: 2 },
+  sealRing: { alignItems: 'center', justifyContent: 'center', marginBottom: 30 },
+  sealRingOutline: { ...StyleSheet.absoluteFillObject, borderWidth: 1.5, borderRadius: 999 },
+  sealMarker: { position: 'absolute', borderWidth: 1, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  sealMedal: { width: 102, height: 102, borderWidth: 2, borderRadius: 51, alignItems: 'center', justifyContent: 'center', shadowColor: '#d1a34a', shadowOpacity: 0.52, shadowRadius: 18, shadowOffset: { width: 0, height: 0 }, elevation: 8 },
+  sealEyebrow: { fontSize: 10, letterSpacing: 2.4, marginBottom: 9 },
+  sealTitle: { fontSize: 28, lineHeight: 34, textAlign: 'center', textTransform: 'uppercase' },
+  sealDescription: { fontSize: 14, lineHeight: 21, textAlign: 'center', marginTop: 9 },
+  sealColorSweep: { flexDirection: 'row', width: 90, height: 3, gap: 3, marginTop: 22, marginBottom: 10 },
+  sealColorBar: { flex: 1, borderRadius: 2 },
+  sealButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, borderRadius: 11, paddingHorizontal: 18, marginTop: 16 },
+  sealButtonText: { fontSize: 13 },
 });

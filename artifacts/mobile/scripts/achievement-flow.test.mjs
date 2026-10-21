@@ -50,6 +50,11 @@ test("first-time app milestones are wired to achievement rewards and a review sc
   assert.match(overlaySource, /confirmPrideSelection/);
   assert.match(overlaySource, /RainbowCelebration onDismiss=\{dismissRainbowCelebration\}/);
   assert.match(overlaySource, /Smart choice\. Your current flag stays selected/);
+  assert.match(overlaySource, /toastAchievement \|\| !hasCompletedAllAchievements\(earnedIds\)/);
+  assert.match(overlaySource, /THE FINAL SEAL/);
+  assert.match(overlaySource, /15 of 15 complete/);
+  assert.match(overlaySource, /Choose your title flag/);
+  assert.match(overlaySource, /openGallery, 260/);
   assert.match(overlaySource, /borderBottomColor: 'transparent'/);
   assert.doesNotMatch(overlaySource, /confetti/i);
   assert.match(overlaySource, /maxHeight: '88%'/);

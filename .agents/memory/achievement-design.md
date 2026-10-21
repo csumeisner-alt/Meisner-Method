@@ -26,3 +26,9 @@ Do not preview or announce title-flag rewards before the achievement set is comp
 **Why:** the user asked that the 15-achievement reward remain undisclosed until completion.
 
 **How to apply:** hide the title-flag reward section until all 15 achievements are earned instead of showing a locked teaser.
+
+When the 15th achievement is earned, show a brief, dismissible “Final Seal” celebration and let its main action open the title-flag choices.
+
+**Why:** the user approved the Final Seal concept as the completion celebration.
+
+**How to apply:** trigger only on the newly earned final achievement, keep it cosmetic and reduced-motion aware, and do not reveal flag rewards before completion.
