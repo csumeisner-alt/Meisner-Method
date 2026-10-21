@@ -15,6 +15,12 @@ Title-flag rewards unlock after all 15 achievements: the default U.S. flag plus 
 
 **How to apply:** read the Brew Bank's persisted quote-view count and shared threshold; do not create a parallel Pride counter or award Pride at the 15-achievement milestone.
 
+When no flag selection is saved, use the default U.S. flag that matches the Patriot Mode unlock. Preserve any valid saved selection.
+
+**Why:** the user clarified that the default title flag should match the flag shown with Patriot Mode.
+
+**How to apply:** resolve missing or invalid stored selections to `DEFAULT_FLAG_ID`, while honoring valid saved choices.
+
 Do not preview or announce title-flag rewards before the achievement set is complete; keep the reveal a surprise.
 
 **Why:** the user asked that the 15-achievement reward remain undisclosed until completion.

@@ -72,6 +72,10 @@ export function parsePremiumFlagId(raw: string | null): FlagSelectionId | null {
   return isPremiumFlagId(raw) ? raw : null;
 }
 
+export function resolvePremiumFlagSelection(raw: string | null): FlagSelectionId {
+  return parsePremiumFlagId(raw) ?? DEFAULT_FLAG_ID;
+}
+
 const achievementIds = new Set<string>(ACHIEVEMENTS.map((achievement) => achievement.id));
 
 export function parseEarnedAchievementIds(raw: string | null): AchievementId[] {

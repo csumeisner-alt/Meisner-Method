@@ -2,12 +2,13 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ACHIEVEMENT_STORAGE_KEY,
+  DEFAULT_FLAG_ID,
   PRIDE_FLAG,
   PREMIUM_FLAG_STORAGE_KEY,
   claimAchievement,
   hasUnlockedPrideFlag,
   hasCompletedAllAchievements,
-  parsePremiumFlagId,
+  resolvePremiumFlagSelection,
   parseEarnedAchievementIds,
   type Achievement,
   type AchievementId,
@@ -35,7 +36,7 @@ const AchievementsContext = createContext<AchievementsState | null>(null);
 export function AchievementsProvider({ children }: { children: React.ReactNode }) {
   const { brew } = useAmericanMode();
   const [earnedIds, setEarnedIds] = useState<AchievementId[]>([]);
-  const [storedFlagSelection, setStoredFlagSelection] = useState<FlagSelectionId>('heritage');
+  const [storedFlagSelection, setStoredFlagSelection] = useState<FlagSelectionId>(DEFAULT_FLAG_ID);
   const [premiumFlagReady, setPremiumFlagReady] = useState(false);
   const [galleryVisible, setGalleryVisible] = useState(false);
   const [toastAchievement, setToastAchievement] = useState<Achievement | null>(null);
@@ -112,8 +113,7 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
     void AsyncStorage.getItem(PREMIUM_FLAG_STORAGE_KEY)
       .then((raw) => {
         if (!mounted) return;
-        const loadedId = parsePremiumFlagId(raw);
-        if (loadedId) setStoredFlagSelection(loadedId);
+        setStoredFlagSelection(resolvePremiumFlagSelection(raw));
       })
       .catch((error) => {
         if (mounted) console.warn('[achievements] Could not load premium flag selection:', error);

@@ -6,9 +6,11 @@ import {
   hasCompletedAllAchievements,
   ACHIEVEMENT_UNLOCKED_FLAGS,
   ALL_PREMIUM_FLAGS,
+  DEFAULT_FLAG_ID,
   hasUnlockedPrideFlag,
   parsePremiumFlagId,
   parseEarnedAchievementIds,
+  resolvePremiumFlagSelection,
 } from '../achievements.ts';
 
 test('claiming an achievement is one-time and returns its reward metadata', () => {
@@ -47,4 +49,8 @@ test('five achievement flags, default flag, and quote-gated Pride are validated'
   assert.equal(parsePremiumFlagId('eagle'), 'eagle');
   assert.equal(parsePremiumFlagId('unknown'), null);
   assert.equal(parsePremiumFlagId(null), null);
+  assert.equal(resolvePremiumFlagSelection(null), DEFAULT_FLAG_ID);
+  assert.equal(resolvePremiumFlagSelection('unknown'), DEFAULT_FLAG_ID);
+  assert.equal(resolvePremiumFlagSelection('heritage'), 'heritage');
+  assert.equal(resolvePremiumFlagSelection('default'), DEFAULT_FLAG_ID);
 });
