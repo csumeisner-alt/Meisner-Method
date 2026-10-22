@@ -635,7 +635,6 @@ export default function HeatMapScreen() {
   const customSymbolsRef = useRef(customSymbols);
   const dragVisibleSymbolsRef = useRef<string[]>([]);
   const draggedSymbolRef = useRef<string | null>(null);
-  const dropTargetIndexRef = useRef<number | null>(null);
   customSymbolsRef.current = customSymbols;
   const [lastRemovedTicker, setLastRemovedTicker] = useState<{ symbol: string; index: number } | null>(null);
   const [symbolInput, setSymbolInput] = useState('');
@@ -1148,13 +1147,11 @@ export default function HeatMapScreen() {
     if (removeInProgress.current || draggedSymbolRef.current) return;
     draggedSymbolRef.current = symbol;
     dragVisibleSymbolsRef.current = visibleSymbols;
-    dropTargetIndexRef.current = index;
     setDraggingSymbol(symbol);
     setDropTargetIndex(index);
   }, []);
   const updateCustomMapDragTarget = useCallback((symbol: string, index: number) => {
     if (draggedSymbolRef.current !== symbol) return;
-    dropTargetIndexRef.current = index;
     setDropTargetIndex(index);
   }, []);
   const finishCustomMapDrag = useCallback(async (symbol: string, index: number) => {
@@ -1163,7 +1160,6 @@ export default function HeatMapScreen() {
     const currentSymbols = customSymbolsRef.current;
     draggedSymbolRef.current = null;
     dragVisibleSymbolsRef.current = [];
-    dropTargetIndexRef.current = null;
     setDraggingSymbol(null);
     setDropTargetIndex(null);
 
@@ -1175,15 +1171,17 @@ export default function HeatMapScreen() {
     removeInProgress.current = true;
     setRemovingSymbol(symbol);
     setFormError('');
+    customSymbolsRef.current = nextSymbols;
+    setCustomSymbols(nextSymbols);
     try {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(nextSymbols));
-      customSymbolsRef.current = nextSymbols;
-      setCustomSymbols(nextSymbols);
       setLastRemovedTicker(null);
       const announcement = `${symbol} moved to position ${nextSymbols.indexOf(symbol) + 1} of ${nextSymbols.length}.`;
       setCustomReorderAnnouncement(announcement);
       if (Platform.OS === 'ios') AccessibilityInfo.announceForAccessibility(announcement);
     } catch {
+      customSymbolsRef.current = currentSymbols;
+      setCustomSymbols(currentSymbols);
       setFormError(`Couldn't reorder ${symbol} on this device. Try again.`);
     } finally {
       removeInProgress.current = false;

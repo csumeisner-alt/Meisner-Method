@@ -2104,6 +2104,9 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       visibleHex: true,
     }, "The custom map should explain direct hexagon dragging instead of rendering the old arrow list.");
 
+    // This browser fixture deliberately mocks native gestures; seed an alternate
+    // saved order for the reload and temporary-sort assertions below.
+    await browser.evaluate(`localStorage.setItem(${JSON.stringify(customSymbolsStorageKey)}, ${JSON.stringify(JSON.stringify(["MSFT", "AAPL", "MISSING"]))})`);
     await browser.send("Page.reload", { ignoreCache: true });
     await waitFor(
       (expression) => browser.evaluate(expression),
