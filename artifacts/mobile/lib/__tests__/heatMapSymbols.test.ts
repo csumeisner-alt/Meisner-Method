@@ -8,7 +8,7 @@ import {
   appendCustomHeatMapSymbolInSavedOrder,
   getCustomHeatMapValidationFailureReason,
   moveCustomHeatMapSymbol,
-  moveCustomHeatMapSymbolToIndex,
+  swapCustomHeatMapSymbolWithIndex,
   normalizeCustomHeatMapSymbols,
   planCustomHeatMapBatchAdd,
   removeCustomHeatMapSymbolFromSavedOrder,
@@ -84,13 +84,13 @@ test("custom symbols can move up or down without changing other saved order", ()
   assert.deepEqual(afterRemove, ["GC=F", "MSFT", "BTC-USD"]);
 });
 
-test("dragging a custom symbol moves it to the selected position", () => {
+test("dragging a custom symbol swaps only with the selected position", () => {
   const symbols = ["AAPL", "MSFT", "GC=F", "BTC-USD"];
-  assert.deepEqual(moveCustomHeatMapSymbolToIndex(symbols, "AAPL", 2), ["MSFT", "GC=F", "AAPL", "BTC-USD"]);
-  assert.deepEqual(moveCustomHeatMapSymbolToIndex(symbols, "BTC-USD", 0), ["BTC-USD", "AAPL", "MSFT", "GC=F"]);
-  assert.equal(moveCustomHeatMapSymbolToIndex(symbols, "GC=F", 2), symbols);
-  assert.equal(moveCustomHeatMapSymbolToIndex(symbols, "MISSING", 1), symbols);
-  assert.equal(moveCustomHeatMapSymbolToIndex(symbols, "MSFT", Number.NaN), symbols);
+  assert.deepEqual(swapCustomHeatMapSymbolWithIndex(symbols, "AAPL", 2), ["GC=F", "MSFT", "AAPL", "BTC-USD"]);
+  assert.deepEqual(swapCustomHeatMapSymbolWithIndex(symbols, "BTC-USD", 0), ["BTC-USD", "MSFT", "GC=F", "AAPL"]);
+  assert.equal(swapCustomHeatMapSymbolWithIndex(symbols, "GC=F", 2), symbols);
+  assert.equal(swapCustomHeatMapSymbolWithIndex(symbols, "MISSING", 1), symbols);
+  assert.equal(swapCustomHeatMapSymbolWithIndex(symbols, "MSFT", Number.NaN), symbols);
 });
 
 test("adding and removing during a temporary sort preserve the saved custom order", () => {

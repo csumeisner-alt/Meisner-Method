@@ -160,7 +160,7 @@ export function moveCustomHeatMapSymbol(
   return reordered;
 }
 
-export function moveCustomHeatMapSymbolToIndex(
+export function swapCustomHeatMapSymbolWithIndex(
   symbols: string[],
   symbol: string,
   targetIndex: number,
@@ -172,7 +172,9 @@ export function moveCustomHeatMapSymbolToIndex(
   if (sourceIndex === safeTargetIndex) return symbols;
 
   const reordered = [...symbols];
-  const [moved] = reordered.splice(sourceIndex, 1);
-  reordered.splice(safeTargetIndex, 0, moved);
+  [reordered[sourceIndex], reordered[safeTargetIndex]] = [
+    reordered[safeTargetIndex],
+    reordered[sourceIndex],
+  ];
   return reordered;
 }

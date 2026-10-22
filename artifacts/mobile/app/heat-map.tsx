@@ -3,7 +3,7 @@ import {
   AccessibilityInfo, ActivityIndicator, Animated, AppState, Keyboard, Modal, Platform, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions,
 } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, type GestureType } from 'react-native-gesture-handler';
 import { useFocusEffect, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -65,7 +65,7 @@ import {
   planCustomHeatMapBatchAdd,
   removeCustomHeatMapSymbolFromSavedOrder,
   searchCustomHeatMapAssets,
-  moveCustomHeatMapSymbolToIndex,
+  swapCustomHeatMapSymbolWithIndex,
   type CustomHeatMapAssetType,
 } from '@/lib/heatMapSymbols';
 import { mergeReorderedSubset } from '@/lib/watchlistFilter';
@@ -148,7 +148,7 @@ function formatUpdated(timestamp?: number) {
 type HexDragPosition = { index: number; left: number; top: number };
 
 function HexTile({
-  quote, width, height, colors, period, category, editing, reduceMotion, revealDelayMs, removing, onRemove, onSelect,
+  quote, width, height, colors, period, category, editing, reduceMotion, revealDelayMs, removing, onRemove, onSelect, scrollGesture,
   dragEnabled, dragging, positionIndex, positionLeft, positionTop, positions, visibleSymbols,
   onDragStart, onDragTarget, onDragEnd, onMoveAccessibility,
 }: {
@@ -164,6 +164,7 @@ function HexTile({
   removing: boolean;
   onRemove: () => void;
   onSelect: () => void;
+  scrollGesture: GestureType;
   dragEnabled: boolean;
   dragging: boolean;
   positionIndex: number;
@@ -264,6 +265,7 @@ function HexTile({
   const dragGesture = useMemo(() => Gesture.Pan()
     .enabled(dragEnabled)
     .activateAfterLongPress(420)
+    .simultaneousWithExternalGesture(scrollGesture)
     .onStart(() => {
       dragTargetIndex.value = positionIndex;
       dragProgress.value = 1;
@@ -298,7 +300,7 @@ function HexTile({
       dragY.value = 0;
       runOnJS(onDragEnd)(quote.symbol, targetIndex);
     }), [
-    dragEnabled, dragProgress, dragTargetIndex, dragX, dragY, height, onDragEnd, onDragStart,
+    dragEnabled, dragProgress, dragTargetIndex, dragX, dragY, height, onDragEnd, onDragStart, scrollGesture,
     onDragTarget, positionIndex, positionLeft, positionTop, positions, quote.symbol, visibleSymbols, width,
   ]);
 
@@ -621,6 +623,7 @@ export default function HeatMapScreen() {
   const router = useRouter();
   const { width: viewportWidth } = useWindowDimensions();
   const reduceMotion = useReducedMotion();
+  const scrollGesture = useMemo(() => Gesture.Native(), []);
   const [category, setCategory] = useState<GetMarketHeatMapCategory>('stocks');
   const [period, setPeriod] = useState<GetMarketHeatMapPeriod>('1d');
   const [customSymbols, setCustomSymbols] = useState<string[]>([]);
@@ -1180,7 +1183,7 @@ export default function HeatMapScreen() {
     setDraggingSymbol(null);
     setDropTargetIndex(null);
 
-    const reorderedVisible = moveCustomHeatMapSymbolToIndex(visibleSymbols, symbol, index);
+    const reorderedVisible = swapCustomHeatMapSymbolWithIndex(visibleSymbols, symbol, index);
     if (reorderedVisible === visibleSymbols) return;
     const nextSymbols = mergeReorderedSubset(currentSymbols, reorderedVisible);
     if (nextSymbols.every((item, itemIndex) => item === currentSymbols[itemIndex])) return;
@@ -1431,8 +1434,12 @@ export default function HeatMapScreen() {
   return (
     <AmericanSteelBackground>
       <View style={styles.screen}>
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.scrollContent, { paddingTop: topPad + 12, paddingBottom: bottomPad + 18 }]}
-          refreshControl={<RefreshControl refreshing={mapQuery.isRefetching} onRefresh={() => mapQuery.refetch()} tintColor={colors.primary} />}>
+        <GestureDetector gesture={scrollGesture}>
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            scrollEnabled={draggingSymbol === null}
+            contentContainerStyle={[styles.scrollContent, { paddingTop: topPad + 12, paddingBottom: bottomPad + 18 }]}
+            refreshControl={<RefreshControl refreshing={mapQuery.isRefetching} onRefresh={() => mapQuery.refetch()} tintColor={colors.primary} />}>
           <View style={styles.header}>
             <TouchableOpacity testID="heat-map-back" accessibilityRole="button" accessibilityLabel="Back to Analyze"
               onPress={() => router.canGoBack() ? router.back() : router.replace('/')} style={[styles.iconButton, { borderColor: colors.border }]}>
@@ -1938,6 +1945,7 @@ export default function HeatMapScreen() {
                                   width={tileWidth}
                                   height={tileHeight}
                                   colors={colors}
+                                  scrollGesture={scrollGesture}
                                   period={period}
                                   category={category}
                                   editing={category === 'custom' && isEditingCustomMap}
@@ -1983,7 +1991,8 @@ export default function HeatMapScreen() {
             <View style={[styles.legendDot, { backgroundColor: colors.holdColor }]} /><Text style={[styles.legendText, { color: colors.mutedForeground }]}>Within ±0.25%</Text>
             <View style={[styles.legendDot, { backgroundColor: colors.sellColor }]} /><Text style={[styles.legendText, { color: colors.mutedForeground }]}>Negative</Text>
           </View>
-        </ScrollView>
+          </ScrollView>
+        </GestureDetector>
         <BottomTabBar />
 
         <Modal visible={categoryMenuOpen} transparent animationType="fade" onRequestClose={() => setCategoryMenuOpen(false)}>

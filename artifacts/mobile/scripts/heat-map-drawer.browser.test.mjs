@@ -34,8 +34,11 @@ test("custom heat-map reorder supports long-press drag and accessible alternativ
   assert.match(source, /accessibilityActions=\{accessibilityActions\}/);
   assert.match(source, /Move earlier/);
   assert.match(source, /Move later/);
-  assert.match(source, /moveCustomHeatMapSymbolToIndex\(visibleSymbols, symbol, index\)/);
+  assert.match(source, /swapCustomHeatMapSymbolWithIndex\(visibleSymbols, symbol, index\)/);
   assert.match(source, /mergeReorderedSubset\(currentSymbols, reorderedVisible\)/);
+  assert.match(source, /simultaneousWithExternalGesture\(scrollGesture\)/);
+  assert.match(source, /<GestureDetector gesture=\{scrollGesture\}>[\s\S]*?<ScrollView/);
+  assert.match(source, /scrollEnabled=\{draggingSymbol === null\}/);
   assert.match(source, /symbols: \[\.\.\.customSymbols\]\.sort\(\)/);
   assert.match(source, /queryKey: getGetMarketHeatMapQueryKey\(queryKeyParams\)/);
   assert.match(source, /runOnJS\(onDragEnd\)\(quote\.symbol, targetIndex\)/);
