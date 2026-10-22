@@ -186,7 +186,7 @@ test("custom map removal uses an edit toggle and animated, tappable hexagons ins
 
 test("custom map reorders hexagons by dragging and exposes accessible move actions", () => {
   assert.match(screenSource, /testID="heat-map-drag-reorder-hint"/);
-  assert.match(screenSource, /\.activateAfterLongPress\(420\)/);
+  assert.match(screenSource, /\.activateAfterLongPress\(Platform\.OS === 'web' \? 320 : 420\)/);
   assert.match(screenSource, /accessibilityActions=\{accessibilityActions\}/);
   assert.match(screenSource, /Move earlier/);
   assert.match(screenSource, /Move later/);

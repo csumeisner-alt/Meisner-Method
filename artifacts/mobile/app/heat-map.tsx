@@ -264,7 +264,7 @@ function HexTile({
   }));
   const dragGesture = useMemo(() => Gesture.Pan()
     .enabled(dragEnabled)
-    .activateAfterLongPress(420)
+    .activateAfterLongPress(Platform.OS === 'web' ? 320 : 420)
     .simultaneousWithExternalGesture(scrollGesture)
     .onStart(() => {
       dragTargetIndex.value = positionIndex;

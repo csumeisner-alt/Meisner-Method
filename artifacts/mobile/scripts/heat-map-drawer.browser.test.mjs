@@ -29,7 +29,7 @@ test("heat-map resume refresh imports React Native AppState before subscribing",
 
 test("custom heat-map reorder supports long-press drag and accessible alternatives", async () => {
   const source = await readFile(join(mobileDir, "app/heat-map.tsx"), "utf8");
-  assert.match(source, /\.activateAfterLongPress\(420\)/);
+  assert.match(source, /\.activateAfterLongPress\(Platform\.OS === 'web' \? 320 : 420\)/);
   assert.match(source, /accessibilityHint=\{dragEnabled \? 'Tap for market details\. Long press and drag to change position\.'/);
   assert.match(source, /accessibilityActions=\{accessibilityActions\}/);
   assert.match(source, /Move earlier/);
