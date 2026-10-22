@@ -125,7 +125,7 @@ function RainbowCelebration({ onDismiss }: { onDismiss: () => void }) {
   );
 }
 
-function AchievementSealCelebration({
+export function AchievementSealCelebration({
   reducedMotion,
   onDismiss,
   onChooseFlags,

@@ -8,6 +8,7 @@ import {
   appendCustomHeatMapSymbolInSavedOrder,
   getCustomHeatMapValidationFailureReason,
   moveCustomHeatMapSymbol,
+  moveCustomHeatMapSymbolToIndex,
   normalizeCustomHeatMapSymbols,
   planCustomHeatMapBatchAdd,
   removeCustomHeatMapSymbolFromSavedOrder,
@@ -81,6 +82,15 @@ test("custom symbols can move up or down without changing other saved order", ()
   const afterRemove = afterAdd.filter((symbol) => symbol !== "AAPL");
   assert.deepEqual(afterAdd, ["AAPL", "GC=F", "MSFT", "BTC-USD"]);
   assert.deepEqual(afterRemove, ["GC=F", "MSFT", "BTC-USD"]);
+});
+
+test("dragging a custom symbol moves it to the selected position", () => {
+  const symbols = ["AAPL", "MSFT", "GC=F", "BTC-USD"];
+  assert.deepEqual(moveCustomHeatMapSymbolToIndex(symbols, "AAPL", 2), ["MSFT", "GC=F", "AAPL", "BTC-USD"]);
+  assert.deepEqual(moveCustomHeatMapSymbolToIndex(symbols, "BTC-USD", 0), ["BTC-USD", "AAPL", "MSFT", "GC=F"]);
+  assert.equal(moveCustomHeatMapSymbolToIndex(symbols, "GC=F", 2), symbols);
+  assert.equal(moveCustomHeatMapSymbolToIndex(symbols, "MISSING", 1), symbols);
+  assert.equal(moveCustomHeatMapSymbolToIndex(symbols, "MSFT", Number.NaN), symbols);
 });
 
 test("adding and removing during a temporary sort preserve the saved custom order", () => {

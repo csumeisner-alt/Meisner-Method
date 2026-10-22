@@ -136,13 +136,17 @@ h1 { margin: 0; color: #F4F0E5; font-size: 25px; line-height: 1.15; letter-spaci
   animation: flagBreeze 5.6s ease-in-out infinite;
 }
 .default-flag-art {
-  width: 100%;
-  height: 100%;
-  display: grid;
-  place-items: center;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: #10151d;
   font-size: 52px;
+  line-height: 1;
+  text-align: center;
 }
+.header-flag .default-flag-art { font-size: 28px; }
 .flag-card.locked { cursor: not-allowed; }
 .flag-lock {
   position: absolute;

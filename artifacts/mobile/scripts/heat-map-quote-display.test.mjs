@@ -184,10 +184,13 @@ test("custom map removal uses an edit toggle and animated, tappable hexagons ins
   assert.doesNotMatch(screenSource, /styles\.chipList|styles\.symbolChip|styles\.chipText/);
 });
 
-test("custom map edit mode exposes accessible controls to persist instrument order", () => {
-  assert.match(screenSource, /testID="heat-map-custom-reorder-list"/);
-  assert.match(screenSource, /accessibilityLabel=\{`Move \$\{symbol\} up`\}/);
-  assert.match(screenSource, /accessibilityLabel=\{`Move \$\{symbol\} down`\}/);
+test("custom map reorders hexagons by dragging and exposes accessible move actions", () => {
+  assert.match(screenSource, /testID="heat-map-drag-reorder-hint"/);
+  assert.match(screenSource, /\.activateAfterLongPress\(420\)/);
+  assert.match(screenSource, /accessibilityActions=\{accessibilityActions\}/);
+  assert.match(screenSource, /Move earlier/);
+  assert.match(screenSource, /Move later/);
+  assert.doesNotMatch(screenSource, /testID="heat-map-custom-reorder-list"/);
   assert.match(screenSource, /await persistSymbols\(next\)/);
   assert.match(screenSource, /if \(category === 'custom'\) \{\s+const order = new Map\(customSymbols\.map/);
 });

@@ -15,6 +15,10 @@ export function useAnimatedStyle(getStyle: () => object) {
   return getStyle();
 }
 
+export function runOnJS<T extends (...args: never[]) => unknown>(callback: T) {
+  return callback;
+}
+
 export function cancelAnimation() {}
 
 export function withDelay(_delayMs: number, animation: number) {

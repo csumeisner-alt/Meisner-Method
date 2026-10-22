@@ -27,10 +27,15 @@ test("heat-map resume refresh imports React Native AppState before subscribing",
   assert.match(source, /import\s*\{[^}]*\bshouldRefreshCryptoHeatMapOnResume\b[^}]*\}\s*from\s*['"]@\/lib\/heatMapQuoteDisplay['"]/s);
 });
 
-test("custom heat-map reorder keeps boundary descriptions and native announcements", async () => {
+test("custom heat-map reorder supports long-press drag and accessible alternatives", async () => {
   const source = await readFile(join(mobileDir, "app/heat-map.tsx"), "utf8");
-  assert.match(source, /accessibilityHint="Moves this instrument earlier in your custom map\."/);
-  assert.match(source, /accessibilityHint="Moves this instrument later in your custom map\."/);
+  assert.match(source, /\.activateAfterLongPress\(420\)/);
+  assert.match(source, /accessibilityHint=\{dragEnabled \? 'Tap for market details\. Long press and drag to change position\.'/);
+  assert.match(source, /accessibilityActions=\{accessibilityActions\}/);
+  assert.match(source, /Move earlier/);
+  assert.match(source, /Move later/);
+  assert.match(source, /moveCustomHeatMapSymbolToIndex\(visibleSymbols, symbol, index\)/);
+  assert.match(source, /mergeReorderedSubset\(currentSymbols, reorderedVisible\)/);
   assert.match(source, /Platform\.OS === 'ios'\) AccessibilityInfo\.announceForAccessibility\(announcement\)/);
   assert.match(source, /accessibilityLiveRegion="polite"/);
 });
@@ -50,6 +55,7 @@ async function buildScreenBundle() {
     ["react-native-svg", join(fixtureDir, "mocks/react-native-svg.tsx")],
     ["react-native-safe-area-context", join(fixtureDir, "mocks/safe-area-context.tsx")],
     ["react-native-reanimated", join(fixtureDir, "mocks/reanimated.ts")],
+    ["react-native-gesture-handler", join(fixtureDir, "mocks/gesture-handler.tsx")],
     ["@/components/AmericanSteelBackground", join(fixtureDir, "mocks/american-steel-background.tsx")],
     ["@/components/BottomTabBar", join(fixtureDir, "mocks/bottom-tab-bar.tsx")],
     ["@/contexts/AchievementsContext", join(fixtureDir, "mocks/achievements-context.ts")],
@@ -2084,53 +2090,19 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     );
     await setResponse(browser, makeCustomResponse("1d", [quote("AAPL"), quote("MSFT")], ["MISSING"]));
 
-    const initialReorderBoundaries = await browser.evaluate(`(() => {
-      const firstUp = document.querySelector(${JSON.stringify(selector("heat-map-move-up-AAPL"))});
-      const lastDown = document.querySelector(${JSON.stringify(selector("heat-map-move-down-MISSING"))});
-      return {
-        firstUpDisabled: firstUp?.disabled,
-        firstUpLabel: firstUp?.getAttribute("aria-label"),
-        lastDownDisabled: lastDown?.disabled,
-        lastDownLabel: lastDown?.getAttribute("aria-label"),
-      };
-    })()`);
-    assert.deepEqual(initialReorderBoundaries, {
-      firstUpDisabled: true,
-      firstUpLabel: "Move AAPL up",
-      lastDownDisabled: true,
-      lastDownLabel: "Move MISSING down",
-    }, "The first and last instruments should keep their labeled boundary controls disabled.");
-
-    await clickTestID(browser, "heat-map-move-down-AAPL");
-    await waitFor(
-      (expression) => browser.evaluate(expression),
-      `localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}) === ${JSON.stringify(JSON.stringify(["MSFT","AAPL","MISSING"]))} && document.querySelector(${JSON.stringify(selector("heat-map-custom-reorder-announcement"))})?.textContent.trim() === "AAPL moved to position 2 of 3." && document.querySelector(${JSON.stringify(selector("heat-map-custom-reorder-announcement"))})?.getAttribute("aria-live") === "polite"`,
-      "Moving AAPL down should save the new order and politely announce its position and the total instrument count.",
-    );
-    const movedReorderControls = await browser.evaluate(`(() => {
-      const firstUp = document.querySelector(${JSON.stringify(selector("heat-map-move-up-MSFT"))});
-      const movedUp = document.querySelector(${JSON.stringify(selector("heat-map-move-up-AAPL"))});
-      const movedDown = document.querySelector(${JSON.stringify(selector("heat-map-move-down-AAPL"))});
-      const lastDown = document.querySelector(${JSON.stringify(selector("heat-map-move-down-MISSING"))});
-      return {
-        firstUpDisabled: firstUp?.disabled,
-        movedUpDisabled: movedUp?.disabled,
-        movedDownDisabled: movedDown?.disabled,
-        lastDownDisabled: lastDown?.disabled,
-      };
-    })()`);
-    assert.deepEqual(movedReorderControls, {
-      firstUpDisabled: true,
-      movedUpDisabled: false,
-      movedDownDisabled: false,
-      lastDownDisabled: true,
-    }, "Reordering should update boundary disabled states without disabling the moved instrument's available actions.");
-    await waitForRequest(
-      browser,
-      `(request) => request.category === "custom" && JSON.stringify(request.symbols) === '["MSFT","AAPL","MISSING"]'`,
-      "the reordered custom map",
-    );
-    await setResponse(browser, makeCustomResponse("1d", [quote("AAPL"), quote("MSFT")], ["MISSING"]));
+    const dragReorderUi = await browser.evaluate(`(() => ({
+      hint: document.querySelector(${JSON.stringify(selector("heat-map-drag-reorder-hint"))})?.textContent.trim(),
+      legacyList: !!document.querySelector(${JSON.stringify(selector("heat-map-custom-reorder-list"))}),
+      legacyArrow: !!document.querySelector(${JSON.stringify(selector("heat-map-move-up-AAPL"))}),
+      visibleHex: !!document.querySelector(${JSON.stringify(selector("heat-map-open-detail-AAPL"))})
+        || !!document.querySelector(${JSON.stringify(selector("heat-map-remove-tile-AAPL"))}),
+    }))()`);
+    assert.deepEqual(dragReorderUi, {
+      hint: "Long-press a hexagon and drag it to change its position.",
+      legacyList: false,
+      legacyArrow: false,
+      visibleHex: true,
+    }, "The custom map should explain direct hexagon dragging instead of rendering the old arrow list.");
 
     await browser.send("Page.reload", { ignoreCache: true });
     await waitFor(

@@ -3,6 +3,7 @@ import {
   AccessibilityInfo, ActivityIndicator, Animated, AppState, Keyboard, Modal, Platform, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions,
 } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useFocusEffect, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -18,6 +19,7 @@ import Reanimated, {
   withRepeat,
   withSequence,
   withTiming,
+  runOnJS,
 } from 'react-native-reanimated';
 import {
   getGetMarketBreadthQueryKey, getGetMarketHeatMapQueryKey,
@@ -63,8 +65,10 @@ import {
   planCustomHeatMapBatchAdd,
   removeCustomHeatMapSymbolFromSavedOrder,
   searchCustomHeatMapAssets,
+  moveCustomHeatMapSymbolToIndex,
   type CustomHeatMapAssetType,
 } from '@/lib/heatMapSymbols';
+import { mergeReorderedSubset } from '@/lib/watchlistFilter';
 import {
   getStockSearchFeedback, getStockSearchQueryFromKey, getStockSearchSuggestionSelectionState, isStockSearchCurrent,
 } from '@/lib/stockSearch';
@@ -141,7 +145,13 @@ function formatUpdated(timestamp?: number) {
   return `Updated ${new Date(timestamp * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
 }
 
-function HexTile({ quote, width, height, colors, period, category, editing, reduceMotion, revealDelayMs, removing, onRemove, onSelect }: {
+type HexDragPosition = { index: number; left: number; top: number };
+
+function HexTile({
+  quote, width, height, colors, period, category, editing, reduceMotion, revealDelayMs, removing, onRemove, onSelect,
+  dragEnabled, dragging, positionIndex, positionLeft, positionTop, positions, visibleSymbols,
+  onDragStart, onDragTarget, onDragEnd, onMoveAccessibility,
+}: {
   quote: HeatMapQuote;
   width: number;
   height: number;
@@ -154,9 +164,24 @@ function HexTile({ quote, width, height, colors, period, category, editing, redu
   removing: boolean;
   onRemove: () => void;
   onSelect: () => void;
+  dragEnabled: boolean;
+  dragging: boolean;
+  positionIndex: number;
+  positionLeft: number;
+  positionTop: number;
+  positions: HexDragPosition[];
+  visibleSymbols: string[];
+  onDragStart: (symbol: string, visibleSymbols: string[], index: number) => void;
+  onDragTarget: (symbol: string, index: number) => void;
+  onDragEnd: (symbol: string, index: number) => void;
+  onMoveAccessibility: (direction: 'up' | 'down') => void;
 }) {
   const wiggle = useRef(new Animated.Value(0)).current;
   const revealProgress = useSharedValue(reduceMotion ? 1 : 0);
+  const dragProgress = useSharedValue(0);
+  const dragX = useSharedValue(0);
+  const dragY = useSharedValue(0);
+  const dragTargetIndex = useSharedValue(positionIndex);
 
   useEffect(() => {
     cancelAnimation(revealProgress);
@@ -228,12 +253,70 @@ function HexTile({ quote, width, height, colors, period, category, editing, redu
     age,
   ].join(', ');
   const rotation = wiggle.interpolate({ inputRange: [-1, 1], outputRange: ['-2.4deg', '2.4deg'] });
+  const dragStyle = useAnimatedStyle(() => ({
+    zIndex: dragProgress.value > 0 ? 50 : 0,
+    transform: [
+      { translateX: dragX.value },
+      { translateY: dragY.value },
+      { scale: 1 + dragProgress.value * 0.08 },
+    ],
+  }));
+  const dragGesture = useMemo(() => Gesture.Pan()
+    .enabled(dragEnabled)
+    .activateAfterLongPress(420)
+    .onStart(() => {
+      dragTargetIndex.value = positionIndex;
+      dragProgress.value = 1;
+      runOnJS(onDragStart)(quote.symbol, visibleSymbols, positionIndex);
+    })
+    .onUpdate((event) => {
+      dragX.value = event.translationX;
+      dragY.value = event.translationY;
+      const centerX = positionLeft + width / 2 + event.translationX;
+      const centerY = positionTop + height / 2 + event.translationY;
+      let nearestIndex = positionIndex;
+      let nearestDistance = Number.POSITIVE_INFINITY;
+      for (let index = 0; index < positions.length; index += 1) {
+        const target = positions[index];
+        const dx = centerX - (target.left + width / 2);
+        const dy = centerY - (target.top + height / 2);
+        const distance = dx * dx + dy * dy;
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearestIndex = target.index;
+        }
+      }
+      if (nearestIndex !== dragTargetIndex.value) {
+        dragTargetIndex.value = nearestIndex;
+        runOnJS(onDragTarget)(quote.symbol, nearestIndex);
+      }
+    })
+    .onFinalize(() => {
+      const targetIndex = dragTargetIndex.value;
+      dragProgress.value = 0;
+      dragX.value = 0;
+      dragY.value = 0;
+      runOnJS(onDragEnd)(quote.symbol, targetIndex);
+    }), [
+    dragEnabled, dragProgress, dragTargetIndex, dragX, dragY, height, onDragEnd, onDragStart,
+    onDragTarget, positionIndex, positionLeft, positionTop, positions, quote.symbol, visibleSymbols, width,
+  ]);
+
+  const accessibilityActions = dragEnabled
+    ? [{ name: 'increment' as const, label: 'Move earlier' }, { name: 'decrement' as const, label: 'Move later' }]
+    : undefined;
+  const onAccessibilityAction = (event: { nativeEvent: { actionName: string } }) => {
+    if (event.nativeEvent.actionName === 'increment') onMoveAccessibility('up');
+    if (event.nativeEvent.actionName === 'decrement') onMoveAccessibility('down');
+  };
+
   const tile = (
     <Reanimated.View
       testID={`heat-map-hex-tile-${quote.symbol}`}
       style={[{ width, height }, revealStyle]}
     >
-      <Animated.View style={[{ width, height }, { transform: [{ rotate: rotation }] }]}>
+      <Reanimated.View style={[{ width, height }, dragStyle, dragging && styles.hexDragging]}>
+        <Animated.View style={[{ width, height }, { transform: [{ rotate: rotation }] }]}>
         <View style={[
           styles.tile,
           instrument ? styles.tileInstrument : cryptoLogoCode ? styles.tileCrypto : null,
@@ -306,30 +389,18 @@ function HexTile({ quote, width, height, colors, period, category, editing, redu
       {quote.returnBasis === 'price_return_proxy' && <Text numberOfLines={1} style={[styles.tileBasis, { color: colors.mutedForeground }]}>Price-return proxy</Text>}
       {period === 'max' && <Text numberOfLines={1} style={[styles.tileBasis, { color: colors.mutedForeground }]}>Since {quote.historyStartDate ?? 'unknown'}</Text>}
         </View>
-      </Animated.View>
+        </Animated.View>
+      </Reanimated.View>
     </Reanimated.View>
   );
-  if (!editing) {
-    return (
-      <TouchableOpacity
-        testID={`heat-map-open-detail-${quote.symbol}`}
-        accessibilityRole="button"
-        accessibilityLabel={`${identityLabel}, ${formatPrice(quote.price, quote.symbol, quote.assetType === 'cryptocurrency')}, ${label}. View market details.`}
-        accessibilityHint="Opens the market detail card."
-        onPress={onSelect}
-        activeOpacity={0.86}
-        style={{ width, height }}
-      >
-        {tile}
-      </TouchableOpacity>
-    );
-  }
-  return (
+  const interaction = editing ? (
     <TouchableOpacity
       testID={`heat-map-remove-tile-${quote.symbol}`}
       accessibilityRole="button"
       accessibilityLabel={`Remove ${quote.symbol} from your custom heat map`}
-      accessibilityHint="Removes this ticker from the custom map."
+      accessibilityHint={dragEnabled ? 'Tap to remove. Long press and drag to change position.' : 'Removes this ticker from the custom map.'}
+      accessibilityActions={accessibilityActions}
+      onAccessibilityAction={onAccessibilityAction}
       disabled={removing}
       onPress={onRemove}
       activeOpacity={0.78}
@@ -340,7 +411,26 @@ function HexTile({ quote, width, height, colors, period, category, editing, redu
         <MaterialCommunityIcons name="close" size={11} color="#FFFFFF" />
       </View>
     </TouchableOpacity>
+  ) : (
+    <TouchableOpacity
+      testID={`heat-map-open-detail-${quote.symbol}`}
+      accessibilityRole="button"
+      accessibilityLabel={`${identityLabel}, ${formatPrice(quote.price, quote.symbol, quote.assetType === 'cryptocurrency')}, ${label}. View market details.`}
+      accessibilityHint={dragEnabled ? 'Tap for market details. Long press and drag to change position.' : 'Opens the market detail card.'}
+      accessibilityActions={accessibilityActions}
+      onAccessibilityAction={onAccessibilityAction}
+      onPress={onSelect}
+      activeOpacity={0.86}
+      style={{ width, height }}
+    >
+      {tile}
+    </TouchableOpacity>
   );
+  return dragEnabled ? (
+    <GestureDetector gesture={dragGesture}>
+      <View collapsable={false} style={{ width, height }}>{interaction}</View>
+    </GestureDetector>
+  ) : interaction;
 }
 
 function LoadingHexagon({ index, width, height, delayMs, colors, theme, reduceMotion }: {
@@ -540,6 +630,13 @@ export default function HeatMapScreen() {
   const [isEditingCustomMap, setIsEditingCustomMap] = useState(false);
   const [removingSymbol, setRemovingSymbol] = useState<string | null>(null);
   const [customReorderAnnouncement, setCustomReorderAnnouncement] = useState('');
+  const [draggingSymbol, setDraggingSymbol] = useState<string | null>(null);
+  const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
+  const customSymbolsRef = useRef(customSymbols);
+  const dragVisibleSymbolsRef = useRef<string[]>([]);
+  const draggedSymbolRef = useRef<string | null>(null);
+  const dropTargetIndexRef = useRef<number | null>(null);
+  customSymbolsRef.current = customSymbols;
   const [lastRemovedTicker, setLastRemovedTicker] = useState<{ symbol: string; index: number } | null>(null);
   const [symbolInput, setSymbolInput] = useState('');
   const [customAssetType, setCustomAssetType] = useState<CustomHeatMapAssetType>('stocks');
@@ -1027,6 +1124,14 @@ export default function HeatMapScreen() {
   const contentWidth = Math.max(0, viewportWidth - 36);
   const tileWidth = getHeatMapTileWidth(contentWidth);
   const tileHeight = tileWidth * Math.sqrt(3) / 2;
+  const honeycombLayouts = useMemo(
+    () => sectors.map((group) => layoutHoneycomb(group.quotes.length, contentWidth, tileWidth)),
+    [contentWidth, sectors, tileWidth],
+  );
+  const honeycombSymbolLists = useMemo(
+    () => sectors.map((group) => group.quotes.map((quote) => quote.symbol)),
+    [sectors],
+  );
   const canAddCustomSymbol = storageReady
     && !storageLoadError
     && Boolean(symbolInput.trim())
@@ -1035,9 +1140,56 @@ export default function HeatMapScreen() {
 
   async function persistSymbols(next: string[]) {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    customSymbolsRef.current = next;
     setCustomSymbols(next);
     setFormError('');
   }
+  const startCustomMapDrag = useCallback((symbol: string, visibleSymbols: string[], index: number) => {
+    if (removeInProgress.current || draggedSymbolRef.current) return;
+    draggedSymbolRef.current = symbol;
+    dragVisibleSymbolsRef.current = visibleSymbols;
+    dropTargetIndexRef.current = index;
+    setDraggingSymbol(symbol);
+    setDropTargetIndex(index);
+  }, []);
+  const updateCustomMapDragTarget = useCallback((symbol: string, index: number) => {
+    if (draggedSymbolRef.current !== symbol) return;
+    dropTargetIndexRef.current = index;
+    setDropTargetIndex(index);
+  }, []);
+  const finishCustomMapDrag = useCallback(async (symbol: string, index: number) => {
+    if (draggedSymbolRef.current !== symbol) return;
+    const visibleSymbols = dragVisibleSymbolsRef.current;
+    const currentSymbols = customSymbolsRef.current;
+    draggedSymbolRef.current = null;
+    dragVisibleSymbolsRef.current = [];
+    dropTargetIndexRef.current = null;
+    setDraggingSymbol(null);
+    setDropTargetIndex(null);
+
+    const reorderedVisible = moveCustomHeatMapSymbolToIndex(visibleSymbols, symbol, index);
+    if (reorderedVisible === visibleSymbols) return;
+    const nextSymbols = mergeReorderedSubset(currentSymbols, reorderedVisible);
+    if (nextSymbols.every((item, itemIndex) => item === currentSymbols[itemIndex])) return;
+
+    removeInProgress.current = true;
+    setRemovingSymbol(symbol);
+    setFormError('');
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(nextSymbols));
+      customSymbolsRef.current = nextSymbols;
+      setCustomSymbols(nextSymbols);
+      setLastRemovedTicker(null);
+      const announcement = `${symbol} moved to position ${nextSymbols.indexOf(symbol) + 1} of ${nextSymbols.length}.`;
+      setCustomReorderAnnouncement(announcement);
+      if (Platform.OS === 'ios') AccessibilityInfo.announceForAccessibility(announcement);
+    } catch {
+      setFormError(`Couldn't reorder ${symbol} on this device. Try again.`);
+    } finally {
+      removeInProgress.current = false;
+      setRemovingSymbol(null);
+    }
+  }, []);
   function awardCustomMapMilestones(count: number) {
     if (count >= 1) void awardAchievement('first-custom-instrument');
     if (count >= 5) void awardAchievement('custom-map-5');
@@ -1385,6 +1537,21 @@ export default function HeatMapScreen() {
               </TouchableOpacity>}
             </View>
             <Text style={[styles.customHint, { color: colors.mutedForeground }]}>Build a mixed map of stocks, ETFs, commodities, futures, and crypto. {customSymbols.length}/{MAX_CUSTOM_HEAT_MAP_SYMBOLS}; saved on this device.</Text>
+            {customSymbols.length > 1 && <Text
+              testID="heat-map-drag-reorder-hint"
+              style={[styles.editFallbackHint, { color: colors.mutedForeground }]}
+            >
+              {returnSort === 'default'
+                ? 'Long-press a hexagon and drag it to change its position.'
+                : 'Switch historical return sort to Default to arrange hexagons by dragging.'}
+            </Text>}
+            {customReorderAnnouncement !== '' && <Text
+              testID="heat-map-custom-reorder-announcement"
+              accessibilityLiveRegion="polite"
+              style={[styles.editFallbackHint, { color: colors.mutedForeground }]}
+            >
+              {customReorderAnnouncement}
+            </Text>}
             {lastRemovedTicker && <View testID="heat-map-custom-undo-banner" style={[styles.undoBanner, { backgroundColor: colors.background, borderColor: colors.border }]}>
               <Text style={[styles.undoMessage, { color: colors.foreground }]}>{lastRemovedTicker.symbol} removed</Text>
               <TouchableOpacity
@@ -1398,55 +1565,6 @@ export default function HeatMapScreen() {
                 <MaterialCommunityIcons name="undo-variant" size={14} color={colors.primary} />
                 <Text style={[styles.undoButtonText, { color: colors.primary }]}>Undo</Text>
               </TouchableOpacity>
-            </View>}
-            {isEditingCustomMap && customSymbols.length > 0 && <View
-              testID="heat-map-custom-reorder-list"
-              style={styles.reorderList}
-            >
-              <Text style={[styles.editFallbackHint, { color: colors.mutedForeground }]}>
-                Arrange your instruments. Changes save on this device.
-              </Text>
-              {customReorderAnnouncement !== '' && <Text
-                testID="heat-map-custom-reorder-announcement"
-                accessibilityLiveRegion="polite"
-                style={[styles.editFallbackHint, { color: colors.mutedForeground }]}
-              >
-                {customReorderAnnouncement}
-              </Text>}
-              {customSymbols.map((symbol, index) => (
-                <View
-                  key={symbol}
-                  testID={`heat-map-reorder-row-${symbol}`}
-                  style={[styles.reorderRow, { borderColor: colors.border, backgroundColor: colors.background }]}
-                >
-                  <Text style={[styles.reorderPosition, { color: colors.mutedForeground }]}>{index + 1}.</Text>
-                  <Text style={[styles.reorderSymbol, { color: colors.foreground }]}>{symbol}</Text>
-                  <TouchableOpacity
-                    testID={`heat-map-move-up-${symbol}`}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Move ${symbol} up`}
-                    accessibilityHint="Moves this instrument earlier in your custom map."
-                    accessibilityState={{ disabled: index === 0 || removingSymbol !== null }}
-                    disabled={index === 0 || removingSymbol !== null}
-                    onPress={() => void moveSymbol(symbol, 'up')}
-                    style={[styles.reorderButton, { borderColor: colors.border, opacity: index === 0 || removingSymbol !== null ? 0.4 : 1 }]}
-                  >
-                    <MaterialCommunityIcons name="chevron-up" size={20} color={colors.primary} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    testID={`heat-map-move-down-${symbol}`}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Move ${symbol} down`}
-                    accessibilityHint="Moves this instrument later in your custom map."
-                    accessibilityState={{ disabled: index === customSymbols.length - 1 || removingSymbol !== null }}
-                    disabled={index === customSymbols.length - 1 || removingSymbol !== null}
-                    onPress={() => void moveSymbol(symbol, 'down')}
-                    style={[styles.reorderButton, { borderColor: colors.border, opacity: index === customSymbols.length - 1 || removingSymbol !== null ? 0.4 : 1 }]}
-                  >
-                    <MaterialCommunityIcons name="chevron-down" size={20} color={colors.primary} />
-                  </TouchableOpacity>
-                </View>
-              ))}
             </View>}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.customAssetTypeRail} contentContainerStyle={styles.customAssetTypeOptions}>
               {CUSTOM_HEAT_MAP_ASSET_TYPES.map((assetType) => {
@@ -1749,8 +1867,17 @@ export default function HeatMapScreen() {
                     ? stateCard('chart-box-outline', 'No current quotes', unavailableSymbols.length ? `No recent valid quotes for ${unavailableSymbols.join(', ')}.` : 'There are no current quotes available in this market.')
                     : <View style={styles.mapWrap}>
                       {sectors.map((group, groupIndex) => {
-                        const layout = layoutHoneycomb(group.quotes.length, contentWidth, tileWidth);
-                        const tileHeight = tileWidth * Math.sqrt(3) / 2;
+                        const layout = honeycombLayouts[groupIndex];
+                        const visibleSymbols = honeycombSymbolLists[groupIndex] ?? [];
+                        const dragEnabled = category === 'custom'
+                          && returnSort === 'default'
+                          && visibleSymbols.length > 1
+                          && removingSymbol === null
+                          && storageReady
+                          && !storageLoadError;
+                        const dropPosition = groupIndex === 0 && dropTargetIndex !== null
+                          ? layout.positions[dropTargetIndex]
+                          : undefined;
                         return <View key={group.name || 'all'} style={styles.sectorGroup}>
                           {(category === 'stocks' || category === 'custom') && <View style={styles.sectorHeading}>
                             <Text style={[styles.sectorName, { color: colors.foreground }]}>{group.name}</Text>
@@ -1769,6 +1896,15 @@ export default function HeatMapScreen() {
                               : <Text style={[styles.sectorCount, { color: colors.mutedForeground }]}>{group.quotes.length} instruments</Text>}
                           </View>}
                           <View style={[styles.honeycomb, { width: contentWidth, height: layout.height }]}>
+                            {category === 'custom' && draggingSymbol && dropPosition && <View
+                              testID="heat-map-drag-drop-target"
+                              pointerEvents="none"
+                              style={[styles.dropTargetOutline, { left: dropPosition.left, top: dropPosition.top, width: tileWidth, height: tileHeight }]}
+                            >
+                              <Svg width={tileWidth} height={tileHeight} viewBox="0 0 100 86.6">
+                                <Polygon points="1,43.3 25,1 75,1 99,43.3 75,85.6 25,85.6" fill="transparent" stroke={colors.primary} strokeWidth="3" strokeDasharray="5,3" />
+                              </Svg>
+                            </View>}
                             {layout.positions.map((position) => {
                               const quote = group.quotes[position.index];
                               return <View key={quote.symbol} style={{ position: 'absolute', left: position.left, top: position.top }}>
@@ -1785,6 +1921,17 @@ export default function HeatMapScreen() {
                                   removing={removingSymbol !== null}
                                   onRemove={() => void removeSymbol(quote.symbol)}
                                   onSelect={() => setSelectedQuote(quote)}
+                                  dragEnabled={dragEnabled}
+                                  dragging={draggingSymbol === quote.symbol}
+                                  positionIndex={position.index}
+                                  positionLeft={position.left}
+                                  positionTop={position.top}
+                                  positions={layout.positions}
+                                  visibleSymbols={visibleSymbols}
+                                  onDragStart={startCustomMapDrag}
+                                  onDragTarget={updateCustomMapDragTarget}
+                                  onDragEnd={finishCustomMapDrag}
+                                  onMoveAccessibility={(direction) => void moveSymbol(quote.symbol, direction)}
                                 />
                               </View>;
                             })}
@@ -2018,7 +2165,9 @@ const styles = StyleSheet.create({
   sectorName: { flex: 1, marginRight: 8, fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   sectorCount: { fontFamily: 'Inter_400Regular', fontSize: 9 },
   honeycomb: { alignSelf: 'center', position: 'relative' },
+  dropTargetOutline: { position: 'absolute', zIndex: 1 },
   tile: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8, gap: 1 },
+  hexDragging: { zIndex: 30, elevation: 9 },
   tileInstrument: { gap: 0 },
   tileCrypto: { gap: 0 },
   tileInstrumentIdentity: { width: '100%', alignItems: 'center', justifyContent: 'center' },

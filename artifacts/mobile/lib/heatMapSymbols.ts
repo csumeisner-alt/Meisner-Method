@@ -159,3 +159,20 @@ export function moveCustomHeatMapSymbol(
   [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
   return reordered;
 }
+
+export function moveCustomHeatMapSymbolToIndex(
+  symbols: string[],
+  symbol: string,
+  targetIndex: number,
+): string[] {
+  const sourceIndex = symbols.indexOf(symbol);
+  if (sourceIndex < 0 || symbols.length < 2 || !Number.isFinite(targetIndex)) return symbols;
+
+  const safeTargetIndex = Math.max(0, Math.min(symbols.length - 1, Math.floor(targetIndex)));
+  if (sourceIndex === safeTargetIndex) return symbols;
+
+  const reordered = [...symbols];
+  const [moved] = reordered.splice(sourceIndex, 1);
+  reordered.splice(safeTargetIndex, 0, moved);
+  return reordered;
+}
