@@ -29,10 +29,6 @@ export function withTiming(value: number) {
   return value;
 }
 
-export function withSpring(value: number) {
-  return value;
-}
-
 export function withSequence(...animations: number[]) {
   return animations.length ? animations[animations.length - 1] : 0;
 }

@@ -36,6 +36,10 @@ test("custom heat-map reorder supports long-press drag and accessible alternativ
   assert.match(source, /Move later/);
   assert.match(source, /moveCustomHeatMapSymbolToIndex\(visibleSymbols, symbol, index\)/);
   assert.match(source, /mergeReorderedSubset\(currentSymbols, reorderedVisible\)/);
+  assert.match(source, /symbols: \[\.\.\.customSymbols\]\.sort\(\)/);
+  assert.match(source, /queryKey: getGetMarketHeatMapQueryKey\(queryKeyParams\)/);
+  assert.match(source, /runOnJS\(onDragEnd\)\(quote\.symbol, targetIndex\)/);
+  assert.match(source, /void enqueueSymbolsWrite\(nextSymbols\)\.catch/);
   assert.match(source, /Platform\.OS === 'ios'\) AccessibilityInfo\.announceForAccessibility\(announcement\)/);
   assert.match(source, /accessibilityLiveRegion="polite"/);
 });

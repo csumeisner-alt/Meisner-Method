@@ -320,14 +320,18 @@ export function getSearchHeatMapInstrumentsQueryKey(params: { q: string; categor
   return ["heat-map-instrument-search", params];
 }
 
-export function useGetMarketHeatMap(params: Record<string, unknown>) {
+export function useGetMarketHeatMap(
+  params: Record<string, unknown>,
+  options?: { query?: { queryKey?: unknown } },
+) {
   const state = initializeHeatMapBrowserState();
   const [, forceRender] = React.useReducer((value: number) => value + 1, 0);
   const requestKey = JSON.stringify(params);
+  const queryKey = JSON.stringify(options?.query?.queryKey ?? getGetMarketHeatMapQueryKey(params));
 
   React.useEffect(() => {
     state.requests.push(JSON.parse(requestKey) as Record<string, unknown>);
-  }, [requestKey, state]);
+  }, [queryKey, state]);
 
   React.useEffect(() => {
     state.listeners.add(forceRender);

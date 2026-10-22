@@ -1,4 +1,4 @@
-import React, { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo, ActivityIndicator, Animated, AppState, Keyboard, Modal, Platform, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions,
@@ -18,7 +18,6 @@ import Reanimated, {
   withDelay,
   withRepeat,
   withSequence,
-  withSpring,
   withTiming,
   runOnJS,
 } from 'react-native-reanimated';
@@ -262,12 +261,6 @@ function HexTile({
       { scale: 1 + dragProgress.value * 0.08 },
     ],
   }));
-  useLayoutEffect(() => {
-    if (dragging) return;
-    dragProgress.value = withTiming(0, { duration: 110 });
-    dragX.value = withSpring(0, { damping: 20, stiffness: 190 });
-    dragY.value = withSpring(0, { damping: 20, stiffness: 190 });
-  }, [dragging, dragProgress, dragX, dragY, positionIndex]);
   const dragGesture = useMemo(() => Gesture.Pan()
     .enabled(dragEnabled)
     .activateAfterLongPress(420)
@@ -300,27 +293,10 @@ function HexTile({
     })
     .onFinalize(() => {
       const targetIndex = dragTargetIndex.value;
-      if (dragProgress.value === 0) {
-        runOnJS(onDragEnd)(quote.symbol, targetIndex);
-        return;
-      }
-
-      let targetLeft = positionLeft;
-      let targetTop = positionTop;
-      for (let index = 0; index < positions.length; index += 1) {
-        if (positions[index].index === targetIndex) {
-          targetLeft = positions[index].left;
-          targetTop = positions[index].top;
-          break;
-        }
-      }
-      const spring = { damping: 20, stiffness: 190 };
-      dragX.value = withSpring(targetLeft - positionLeft, spring);
-      dragY.value = withSpring(targetTop - positionTop, spring, (finished) => {
-        if (!finished) return;
-        dragProgress.value = 0;
-        runOnJS(onDragEnd)(quote.symbol, targetIndex);
-      });
+      dragProgress.value = 0;
+      dragX.value = 0;
+      dragY.value = 0;
+      runOnJS(onDragEnd)(quote.symbol, targetIndex);
     }), [
     dragEnabled, dragProgress, dragTargetIndex, dragX, dragY, height, onDragEnd, onDragStart,
     onDragTarget, positionIndex, positionLeft, positionTop, positions, quote.symbol, visibleSymbols, width,
@@ -657,6 +633,8 @@ export default function HeatMapScreen() {
   const [draggingSymbol, setDraggingSymbol] = useState<string | null>(null);
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
   const customSymbolsRef = useRef(customSymbols);
+  const persistedCustomSymbolsRef = useRef<string[]>([]);
+  const customSymbolsWriteQueue = useRef<Promise<void>>(Promise.resolve());
   const dragVisibleSymbolsRef = useRef<string[]>([]);
   const draggedSymbolRef = useRef<string | null>(null);
   customSymbolsRef.current = customSymbols;
@@ -755,6 +733,8 @@ export default function HeatMapScreen() {
         }
       }
       if (readId !== customStorageReadId.current) return;
+      customSymbolsRef.current = malformed ? [] : symbols;
+      persistedCustomSymbolsRef.current = malformed ? [] : symbols;
       setCustomSymbols(malformed ? [] : symbols);
       setStorageLoadError(malformed ? 'malformed' : null);
       setFormError('');
@@ -847,10 +827,13 @@ export default function HeatMapScreen() {
     ...(category === 'custom' ? { symbols: customSymbols } : {}),
     ...(requestedSector ? { sector: requestedSector } : {}),
   }), [category, period, customSymbols, requestedSector]);
+  const queryKeyParams = useMemo(() => category === 'custom'
+    ? { ...params, symbols: [...customSymbols].sort() }
+    : params, [category, customSymbols, params]);
   const mapQuery = useGetMarketHeatMap(params, {
     query: {
       enabled: category !== 'custom' || (storageReady && customSymbols.length > 0),
-      queryKey: getGetMarketHeatMapQueryKey(params),
+      queryKey: getGetMarketHeatMapQueryKey(queryKeyParams),
     },
   });
   const mapQueryRefetch = useRef(mapQuery.refetch);
@@ -1161,8 +1144,18 @@ export default function HeatMapScreen() {
     && !validateSymbol.isPending
     && customSymbols.length < MAX_CUSTOM_HEAT_MAP_SYMBOLS;
 
+  function enqueueSymbolsWrite(next: string[]) {
+    const write = customSymbolsWriteQueue.current
+      .catch(() => undefined)
+      .then(async () => {
+        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        persistedCustomSymbolsRef.current = next;
+      });
+    customSymbolsWriteQueue.current = write;
+    return write;
+  }
   async function persistSymbols(next: string[]) {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    await enqueueSymbolsWrite(next);
     customSymbolsRef.current = next;
     setCustomSymbols(next);
     setFormError('');
@@ -1178,7 +1171,7 @@ export default function HeatMapScreen() {
     if (draggedSymbolRef.current !== symbol) return;
     setDropTargetIndex(index);
   }, []);
-  const finishCustomMapDrag = useCallback(async (symbol: string, index: number) => {
+  const finishCustomMapDrag = useCallback((symbol: string, index: number) => {
     if (draggedSymbolRef.current !== symbol) return;
     const visibleSymbols = dragVisibleSymbolsRef.current;
     const currentSymbols = customSymbolsRef.current;
@@ -1192,25 +1185,20 @@ export default function HeatMapScreen() {
     const nextSymbols = mergeReorderedSubset(currentSymbols, reorderedVisible);
     if (nextSymbols.every((item, itemIndex) => item === currentSymbols[itemIndex])) return;
 
-    removeInProgress.current = true;
-    setRemovingSymbol(symbol);
     setFormError('');
     customSymbolsRef.current = nextSymbols;
     setCustomSymbols(nextSymbols);
-    try {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(nextSymbols));
-      setLastRemovedTicker(null);
-      const announcement = `${symbol} moved to position ${nextSymbols.indexOf(symbol) + 1} of ${nextSymbols.length}.`;
-      setCustomReorderAnnouncement(announcement);
-      if (Platform.OS === 'ios') AccessibilityInfo.announceForAccessibility(announcement);
-    } catch {
-      customSymbolsRef.current = currentSymbols;
-      setCustomSymbols(currentSymbols);
+    setLastRemovedTicker(null);
+    const announcement = `${symbol} moved to position ${nextSymbols.indexOf(symbol) + 1} of ${nextSymbols.length}.`;
+    setCustomReorderAnnouncement(announcement);
+    if (Platform.OS === 'ios') AccessibilityInfo.announceForAccessibility(announcement);
+    void enqueueSymbolsWrite(nextSymbols).catch(() => {
+      if (customSymbolsRef.current !== nextSymbols) return;
+      const persistedSymbols = [...persistedCustomSymbolsRef.current];
+      customSymbolsRef.current = persistedSymbols;
+      setCustomSymbols(persistedSymbols);
       setFormError(`Couldn't reorder ${symbol} on this device. Try again.`);
-    } finally {
-      removeInProgress.current = false;
-      setRemovingSymbol(null);
-    }
+    });
   }, []);
   function awardCustomMapMilestones(count: number) {
     if (count >= 1) void awardAchievement('first-custom-instrument');
@@ -1222,6 +1210,8 @@ export default function HeatMapScreen() {
     setIsResettingSavedTickers(true);
     try {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([]));
+      customSymbolsRef.current = [];
+      persistedCustomSymbolsRef.current = [];
       setCustomSymbols([]);
       setStorageLoadError(null);
       setFormError('');
