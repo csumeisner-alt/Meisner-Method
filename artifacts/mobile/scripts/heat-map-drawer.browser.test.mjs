@@ -37,6 +37,7 @@ test("custom heat-map reorder supports long-press drag and accessible alternativ
   assert.match(source, /swapCustomHeatMapSymbolWithIndex\(visibleSymbols, symbol, index\)/);
   assert.match(source, /mergeReorderedSubset\(currentSymbols, reorderedVisible\)/);
   assert.match(source, /simultaneousWithExternalGesture\(scrollGesture\)/);
+  assert.match(source, /<GestureDetector gesture=\{dragGesture\} touchAction="pan-y">/);
   assert.match(source, /<GestureDetector gesture=\{scrollGesture\}>[\s\S]*?<ScrollView/);
   assert.match(source, /scrollEnabled=\{draggingSymbol === null\}/);
   assert.match(source, /symbols: \[\.\.\.customSymbols\]\.sort\(\)/);
@@ -2534,7 +2535,6 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       `localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}) === ${JSON.stringify(JSON.stringify(["GC=F", "SI=F", "HG=F", "AAPL", "MSFT", "NVDA", "TSLA"]))}`,
       "Direct ticker entry should still validate and add a stock.",
     );
-
     // A stale crypto batch refreshes when the focused screen resumes, while a fresh
     // batch does not. The user's selected period and local filters remain intact.
     await clickTestID(browser, "heat-map-category-picker");

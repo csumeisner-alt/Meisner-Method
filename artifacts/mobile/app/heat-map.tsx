@@ -429,7 +429,7 @@ function HexTile({
     </TouchableOpacity>
   );
   return dragEnabled ? (
-    <GestureDetector gesture={dragGesture}>
+    <GestureDetector gesture={dragGesture} touchAction="pan-y">
       <View collapsable={false} style={{ width, height }}>{interaction}</View>
     </GestureDetector>
   ) : interaction;

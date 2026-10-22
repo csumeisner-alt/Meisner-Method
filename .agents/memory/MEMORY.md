@@ -4,6 +4,7 @@
 - [minimumReleaseAge blocks same-day Expo bumps](pnpm-minimum-release-age-expo.md) — bumping expo to a just-released SDK patch fails install; allowlist Expo-org globs; expo-doctor reads package.json not the linked tree.
 - [Expo install-check can block validation](expo-install-check-prompt.md) — minor Expo patch drift makes `expo install --check` prompt interactively; CI mode reports outdated packages and exits nonzero.
 - [Expo package/SDK mismatch = APK-only launch crash](expo-sdk-package-mismatch.md) — wrong-SDK expo-* pkg works in Expo Go but crashes standalone at boot; `expo install --check` gates builds; diff APK zips to find native deltas.
+- [Expo Audio foreground services](expo-audio-foreground-services.md) — this app uses short foreground clips only; keep background playback/recording services out of Android builds unless product scope changes.
 - [Python JSON for Node](python-json-for-node.md) — Python `NaN`/`Infinity` breaks Node `JSON.parse`; sanitize + `json.dumps(allow_nan=False)`.
 - [RN-web TextInput in Playwright](rn-web-playwright-textinput.md) — `fill()` skips `onChangeText`; tester must type char-by-char or validation false-fails.
 - [Stable apiFetch vs Clerk getToken](useapi-stable-fetch.md) — Clerk `getToken` isn't stable; memoizing apiFetch on it → infinite fetch loop + Clerk rate-limit blank screen. Use a ref.

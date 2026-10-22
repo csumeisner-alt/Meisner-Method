@@ -69,7 +69,8 @@
           }
         }
       ],
-      "expo-video"
+      "expo-video",
+      "./plugins/withExpoAudioForegroundServicesDisabled"
     ],
     "experiments": {
       "typedRoutes": true
