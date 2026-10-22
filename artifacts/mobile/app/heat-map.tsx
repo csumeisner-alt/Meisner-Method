@@ -1,4 +1,4 @@
-import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo, ActivityIndicator, Animated, AppState, Keyboard, Modal, Platform, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions,
@@ -18,6 +18,7 @@ import Reanimated, {
   withDelay,
   withRepeat,
   withSequence,
+  withSpring,
   withTiming,
   runOnJS,
 } from 'react-native-reanimated';
@@ -261,6 +262,12 @@ function HexTile({
       { scale: 1 + dragProgress.value * 0.08 },
     ],
   }));
+  useLayoutEffect(() => {
+    if (dragging) return;
+    dragProgress.value = withTiming(0, { duration: 110 });
+    dragX.value = withSpring(0, { damping: 20, stiffness: 190 });
+    dragY.value = withSpring(0, { damping: 20, stiffness: 190 });
+  }, [dragging, dragProgress, dragX, dragY, positionIndex]);
   const dragGesture = useMemo(() => Gesture.Pan()
     .enabled(dragEnabled)
     .activateAfterLongPress(420)
@@ -293,10 +300,27 @@ function HexTile({
     })
     .onFinalize(() => {
       const targetIndex = dragTargetIndex.value;
-      dragProgress.value = 0;
-      dragX.value = 0;
-      dragY.value = 0;
-      runOnJS(onDragEnd)(quote.symbol, targetIndex);
+      if (dragProgress.value === 0) {
+        runOnJS(onDragEnd)(quote.symbol, targetIndex);
+        return;
+      }
+
+      let targetLeft = positionLeft;
+      let targetTop = positionTop;
+      for (let index = 0; index < positions.length; index += 1) {
+        if (positions[index].index === targetIndex) {
+          targetLeft = positions[index].left;
+          targetTop = positions[index].top;
+          break;
+        }
+      }
+      const spring = { damping: 20, stiffness: 190 };
+      dragX.value = withSpring(targetLeft - positionLeft, spring);
+      dragY.value = withSpring(targetTop - positionTop, spring, (finished) => {
+        if (!finished) return;
+        dragProgress.value = 0;
+        runOnJS(onDragEnd)(quote.symbol, targetIndex);
+      });
     }), [
     dragEnabled, dragProgress, dragTargetIndex, dragX, dragY, height, onDragEnd, onDragStart,
     onDragTarget, positionIndex, positionLeft, positionTop, positions, quote.symbol, visibleSymbols, width,
@@ -1905,7 +1929,20 @@ export default function HeatMapScreen() {
                             </View>}
                             {layout.positions.map((position) => {
                               const quote = group.quotes[position.index];
-                              return <View key={quote.symbol} style={{ position: 'absolute', left: position.left, top: position.top }}>
+                              return <Reanimated.View
+                                key={quote.symbol}
+                                style={[
+                                  styles.hexPosition,
+                                  {
+                                    left: position.left,
+                                    top: position.top,
+                                    width: tileWidth,
+                                    height: tileHeight,
+                                    zIndex: draggingSymbol === quote.symbol ? 20 : 0,
+                                    elevation: draggingSymbol === quote.symbol ? 8 : 0,
+                                  },
+                                ]}
+                              >
                                 <HexTile
                                   quote={quote}
                                   width={tileWidth}
@@ -1931,7 +1968,7 @@ export default function HeatMapScreen() {
                                   onDragEnd={finishCustomMapDrag}
                                   onMoveAccessibility={(direction) => void moveSymbol(quote.symbol, direction)}
                                 />
-                              </View>;
+                              </Reanimated.View>;
                             })}
                           </View>
                         </View>;
@@ -2163,6 +2200,7 @@ const styles = StyleSheet.create({
   sectorName: { flex: 1, marginRight: 8, fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   sectorCount: { fontFamily: 'Inter_400Regular', fontSize: 9 },
   honeycomb: { alignSelf: 'center', position: 'relative' },
+  hexPosition: { position: 'absolute' },
   dropTargetOutline: { position: 'absolute', zIndex: 1 },
   tile: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8, gap: 1 },
   hexDragging: { zIndex: 30, elevation: 9 },
