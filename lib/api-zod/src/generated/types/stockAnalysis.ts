@@ -8,9 +8,11 @@
 import type { BehavioralAnalysis } from './behavioralAnalysis';
 import type { FundamentalAnalysis } from './fundamentalAnalysis';
 import type { Recommendation } from './recommendation';
+import type { StockAnalysisAssetType } from './stockAnalysisAssetType';
 import type { TechnicalAnalysis } from './technicalAnalysis';
 
 export interface StockAnalysis {
+  assetType: StockAnalysisAssetType;
   symbol: string;
   companyName: string;
   exchange: string;

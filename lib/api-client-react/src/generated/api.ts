@@ -21,6 +21,7 @@ import type {
 
 import type {
   AnalysisError,
+  AnalysisResult,
   AnalyzeStockRequest,
   CryptoSupplyHistory,
   GetMarketHeatMapParams,
@@ -32,7 +33,6 @@ import type {
   MarketPulseResponse,
   SearchHeatMapInstrumentsParams,
   SearchStockSymbolsParams,
-  StockAnalysis,
   StockSymbolSuggestion,
   ValidateHeatMapSymbolRequest
 } from './api.schemas';
@@ -320,12 +320,12 @@ export const getAnalyzeStockUrl = () => {
 }
 
 /**
- * Fetches real market data and runs technical, fundamental, and behavioral analysis with AI-powered buy/sell recommendations
- * @summary Analyze a stock ticker
+ * Detects ETFs and returns fund-specific analysis; listed stocks retain technical, fundamental, behavioral, and rules-based recommendation analysis.
+ * @summary Analyze a stock or ETF ticker
  */
-export const analyzeStock = async (analyzeStockRequest: AnalyzeStockRequest, options?: RequestInit): Promise<StockAnalysis> => {
+export const analyzeStock = async (analyzeStockRequest: AnalyzeStockRequest, options?: RequestInit): Promise<AnalysisResult> => {
 
-  return customFetch<StockAnalysis>(getAnalyzeStockUrl(),
+  return customFetch<AnalysisResult>(getAnalyzeStockUrl(),
   {
     ...options,
     method: 'POST',
@@ -370,7 +370,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type AnalyzeStockMutationError = ErrorType<AnalysisError>
 
     /**
- * @summary Analyze a stock ticker
+ * @summary Analyze a stock or ETF ticker
  */
 export const useAnalyzeStock = <TError = ErrorType<AnalysisError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeStock>>, TError,{data: BodyType<AnalyzeStockRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}

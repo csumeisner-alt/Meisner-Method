@@ -140,7 +140,15 @@ export interface Recommendation {
   strengths: string[];
 }
 
+export type StockAnalysisAssetType = typeof StockAnalysisAssetType[keyof typeof StockAnalysisAssetType];
+
+
+export const StockAnalysisAssetType = {
+  stock: 'stock',
+} as const;
+
 export interface StockAnalysis {
+  assetType: StockAnalysisAssetType;
   symbol: string;
   companyName: string;
   exchange: string;
@@ -157,6 +165,120 @@ export interface StockAnalysis {
   behavioral: BehavioralAnalysis;
   recommendation: Recommendation;
 }
+
+export type EtfAnalysisResultAssetType = typeof EtfAnalysisResultAssetType[keyof typeof EtfAnalysisResultAssetType];
+
+
+export const EtfAnalysisResultAssetType = {
+  etf: 'etf',
+} as const;
+
+export interface EtfHolding {
+  symbol: string;
+  name: string;
+  /** Holding weight as a decimal fraction. */
+  weight: number;
+}
+
+export type EtfMarketRegimeBestRegime = typeof EtfMarketRegimeBestRegime[keyof typeof EtfMarketRegimeBestRegime] | null;
+
+
+export const EtfMarketRegimeBestRegime = {
+  bull: 'bull',
+  bear: 'bear',
+  mixed: 'mixed',
+} as const;
+
+export interface EtfRegimePeriod {
+  /** Arithmetic average of adjusted annual total returns. */
+  averageAnnualReturn: number | null;
+  /** Number of complete calendar years in this regime. */
+  years: number;
+}
+
+export type EtfMarketRegimePeriods = {
+  bull: EtfRegimePeriod;
+  bear: EtfRegimePeriod;
+  mixed: EtfRegimePeriod;
+};
+
+/**
+ * Historical comparison, not a forecast. Based on complete calendar-year adjusted total returns.
+ */
+export interface EtfMarketRegime {
+  bestRegime: EtfMarketRegimeBestRegime;
+  lookbackYears: number;
+  firstYear: number;
+  lastYear: number;
+  benchmarkSymbol: string;
+  /** Minimum annual benchmark return for a bull year, as a decimal fraction. */
+  bullThreshold: number;
+  /** Maximum annual benchmark return for a bear year, as a decimal fraction. */
+  bearThreshold: number;
+  periods: EtfMarketRegimePeriods;
+}
+
+export type EtfScenarioLabel = typeof EtfScenarioLabel[keyof typeof EtfScenarioLabel];
+
+
+export const EtfScenarioLabel = {
+  bear: 'bear',
+  base: 'base',
+  bull: 'bull',
+} as const;
+
+export interface EtfScenario {
+  label: EtfScenarioLabel;
+  /** Historical regime average used as an illustrative annual return assumption. */
+  annualReturnAssumption: number | null;
+  fiveYearValue: number | null;
+  tenYearValue: number | null;
+  assumption: string;
+}
+
+/**
+ * Fund-specific provider data, historical comparisons, and illustrative scenarios. Null means unavailable.
+ */
+export interface EtfAnalysis {
+  fundCategory?: string | null;
+  fundFamily?: string | null;
+  expenseRatio?: number | null;
+  totalAssets?: number | null;
+  dividendYield?: number | null;
+  beta3Year?: number | null;
+  averageVolume?: number | null;
+  topHoldingsCombinedWeight: number | null;
+  annualizedReturn: number | null;
+  annualizedVolatility: number | null;
+  maxDrawdown: number | null;
+  riskAdjustedReturn: number | null;
+  topHoldings: EtfHolding[];
+  marketRegime: EtfMarketRegime | null;
+  scenarios: EtfScenario[];
+  risks: string[];
+  strengths: string[];
+  analysis: string;
+  provider: string;
+  asOf: string;
+}
+
+export interface EtfAnalysisResult {
+  assetType: EtfAnalysisResultAssetType;
+  symbol: string;
+  companyName: string;
+  exchange: string;
+  currency: string;
+  currentPrice: number;
+  priceChange: number;
+  priceChangePercent: number;
+  volume: number;
+  marketCap?: number | null;
+  week52High: number;
+  week52Low: number;
+  etfAnalysis: EtfAnalysis;
+}
+
+export type AnalysisResult = StockAnalysis | EtfAnalysisResult;
 
 export type CryptoSupplyHistoryProvider = typeof CryptoSupplyHistoryProvider[keyof typeof CryptoSupplyHistoryProvider];
 
@@ -206,51 +328,6 @@ export interface CryptoSupplyHistory {
   startDate: string | null;
   endDate: string | null;
   points: CryptoSupplyHistoryPoint[];
-}
-
-export interface EtfHolding {
-  symbol: string;
-  name: string;
-  /** Holding weight as a decimal fraction. */
-  weight: number;
-}
-
-export type EtfMarketRegimeBestRegime = typeof EtfMarketRegimeBestRegime[keyof typeof EtfMarketRegimeBestRegime] | null;
-
-
-export const EtfMarketRegimeBestRegime = {
-  bull: 'bull',
-  bear: 'bear',
-  mixed: 'mixed',
-} as const;
-
-export interface EtfRegimePeriod {
-  /** Arithmetic average of adjusted annual total returns. */
-  averageAnnualReturn: number | null;
-  /** Number of complete calendar years in this regime. */
-  years: number;
-}
-
-export type EtfMarketRegimePeriods = {
-  bull: EtfRegimePeriod;
-  bear: EtfRegimePeriod;
-  mixed: EtfRegimePeriod;
-};
-
-/**
- * Historical comparison, not a forecast. Based on complete calendar-year adjusted total returns.
- */
-export interface EtfMarketRegime {
-  bestRegime: EtfMarketRegimeBestRegime;
-  lookbackYears: number;
-  firstYear: number;
-  lastYear: number;
-  benchmarkSymbol: string;
-  /** Minimum annual benchmark return for a bull year, as a decimal fraction. */
-  bullThreshold: number;
-  /** Maximum annual benchmark return for a bear year, as a decimal fraction. */
-  bearThreshold: number;
-  periods: EtfMarketRegimePeriods;
 }
 
 /**

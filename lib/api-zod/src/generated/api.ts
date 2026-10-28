@@ -61,14 +61,15 @@ export const SearchStockSymbolsResponse = zod.array(SearchStockSymbolsResponseIt
 
 
 /**
- * Fetches real market data and runs technical, fundamental, and behavioral analysis with AI-powered buy/sell recommendations
- * @summary Analyze a stock ticker
+ * Detects ETFs and returns fund-specific analysis; listed stocks retain technical, fundamental, behavioral, and rules-based recommendation analysis.
+ * @summary Analyze a stock or ETF ticker
  */
 export const AnalyzeStockBody = zod.object({
   "symbol": zod.string().describe('Stock ticker symbol (e.g. AAPL, TSLA, MSFT)')
 })
 
-export const AnalyzeStockResponse = zod.object({
+export const AnalyzeStockResponse = zod.union([zod.object({
+  "assetType": zod.enum(['stock']),
   "symbol": zod.string(),
   "companyName": zod.string(),
   "exchange": zod.string(),
@@ -129,7 +130,74 @@ export const AnalyzeStockResponse = zod.object({
   "risks": zod.array(zod.string()),
   "strengths": zod.array(zod.string())
 })
+}),zod.object({
+  "assetType": zod.enum(['etf']),
+  "symbol": zod.string(),
+  "companyName": zod.string(),
+  "exchange": zod.string(),
+  "currency": zod.string(),
+  "currentPrice": zod.number(),
+  "priceChange": zod.number(),
+  "priceChangePercent": zod.number(),
+  "volume": zod.number(),
+  "marketCap": zod.number().nullish(),
+  "week52High": zod.number(),
+  "week52Low": zod.number(),
+  "etfAnalysis": zod.object({
+  "fundCategory": zod.string().nullish(),
+  "fundFamily": zod.string().nullish(),
+  "expenseRatio": zod.number().nullish(),
+  "totalAssets": zod.number().nullish(),
+  "dividendYield": zod.number().nullish(),
+  "beta3Year": zod.number().nullish(),
+  "averageVolume": zod.number().nullish(),
+  "topHoldingsCombinedWeight": zod.number().nullable(),
+  "annualizedReturn": zod.number().nullable(),
+  "annualizedVolatility": zod.number().nullable(),
+  "maxDrawdown": zod.number().nullable(),
+  "riskAdjustedReturn": zod.number().nullable(),
+  "topHoldings": zod.array(zod.object({
+  "symbol": zod.string(),
+  "name": zod.string(),
+  "weight": zod.number().describe('Holding weight as a decimal fraction.')
+})),
+  "marketRegime": zod.object({
+  "bestRegime": zod.enum(['bull', 'bear', 'mixed']).nullable(),
+  "lookbackYears": zod.number(),
+  "firstYear": zod.number(),
+  "lastYear": zod.number(),
+  "benchmarkSymbol": zod.string(),
+  "bullThreshold": zod.number().describe('Minimum annual benchmark return for a bull year, as a decimal fraction.'),
+  "bearThreshold": zod.number().describe('Maximum annual benchmark return for a bear year, as a decimal fraction.'),
+  "periods": zod.object({
+  "bull": zod.object({
+  "averageAnnualReturn": zod.number().nullable().describe('Arithmetic average of adjusted annual total returns.'),
+  "years": zod.number().describe('Number of complete calendar years in this regime.')
+}),
+  "bear": zod.object({
+  "averageAnnualReturn": zod.number().nullable().describe('Arithmetic average of adjusted annual total returns.'),
+  "years": zod.number().describe('Number of complete calendar years in this regime.')
+}),
+  "mixed": zod.object({
+  "averageAnnualReturn": zod.number().nullable().describe('Arithmetic average of adjusted annual total returns.'),
+  "years": zod.number().describe('Number of complete calendar years in this regime.')
 })
+})
+}).describe('Historical comparison, not a forecast. Based on complete calendar-year adjusted total returns.').nullable(),
+  "scenarios": zod.array(zod.object({
+  "label": zod.enum(['bear', 'base', 'bull']),
+  "annualReturnAssumption": zod.number().nullable().describe('Historical regime average used as an illustrative annual return assumption.'),
+  "fiveYearValue": zod.number().nullable(),
+  "tenYearValue": zod.number().nullable(),
+  "assumption": zod.string()
+})),
+  "risks": zod.array(zod.string()),
+  "strengths": zod.array(zod.string()),
+  "analysis": zod.string(),
+  "provider": zod.string(),
+  "asOf": zod.coerce.date()
+}).describe('Fund-specific provider data, historical comparisons, and illustrative scenarios. Null means unavailable.')
+})])
 
 
 /**

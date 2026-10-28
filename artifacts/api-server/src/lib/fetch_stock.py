@@ -89,6 +89,7 @@ def main():
 
         result = {
             "symbol": symbol,
+            "quoteType": str(full_info.get("quoteType") or "").upper(),
             "companyName": full_info.get("longName") or full_info.get("shortName") or symbol,
             "exchange": full_info.get("exchange") or getattr(info, "exchange", "Unknown"),
             "currency": full_info.get("currency") or getattr(info, "currency", "USD"),

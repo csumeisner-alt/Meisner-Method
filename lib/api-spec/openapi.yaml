@@ -105,8 +105,8 @@ paths:
     post:
       operationId: analyzeStock
       tags: [stocks]
-      summary: Analyze a stock ticker
-      description: Fetches real market data and runs technical, fundamental, and behavioral analysis with AI-powered buy/sell recommendations
+      summary: Analyze a stock or ETF ticker
+      description: Detects ETFs and returns fund-specific analysis; listed stocks retain technical, fundamental, behavioral, and rules-based recommendation analysis.
       requestBody:
         required: true
         content:
@@ -115,11 +115,11 @@ paths:
               $ref: "#/components/schemas/AnalyzeStockRequest"
       responses:
         "200":
-          description: Full stock analysis result
+          description: Stock or fund-specific ETF analysis result
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StockAnalysis"
+                $ref: "#/components/schemas/AnalysisResult"
         "400":
           description: Invalid symbol or request
           content:
@@ -552,6 +552,9 @@ components:
     StockAnalysis:
       type: object
       properties:
+        assetType:
+          type: string
+          enum: [stock]
         symbol:
           type: string
         companyName:
@@ -584,6 +587,7 @@ components:
         recommendation:
           $ref: "#/components/schemas/Recommendation"
       required:
+        - assetType
         - symbol
         - companyName
         - exchange
@@ -598,6 +602,128 @@ components:
         - fundamental
         - behavioral
         - recommendation
+
+    AnalysisResult:
+      oneOf:
+        - $ref: "#/components/schemas/StockAnalysis"
+        - $ref: "#/components/schemas/EtfAnalysisResult"
+      discriminator:
+        propertyName: assetType
+        mapping:
+          stock: "#/components/schemas/StockAnalysis"
+          etf: "#/components/schemas/EtfAnalysisResult"
+
+    EtfAnalysisResult:
+      type: object
+      properties:
+        assetType:
+          type: string
+          enum: [etf]
+        symbol: { type: string }
+        companyName: { type: string }
+        exchange: { type: string }
+        currency: { type: string }
+        currentPrice: { type: number }
+        priceChange: { type: number }
+        priceChangePercent: { type: number }
+        volume: { type: number }
+        marketCap:
+          type: number
+          nullable: true
+        week52High: { type: number }
+        week52Low: { type: number }
+        etfAnalysis:
+          $ref: "#/components/schemas/EtfAnalysis"
+      required: [assetType, symbol, companyName, exchange, currency, currentPrice, priceChange, priceChangePercent, volume, week52High, week52Low, etfAnalysis]
+
+    EtfAnalysis:
+      type: object
+      description: Fund-specific provider data, historical comparisons, and illustrative scenarios. Null means unavailable.
+      properties:
+        fundCategory:
+          type: string
+          nullable: true
+        fundFamily:
+          type: string
+          nullable: true
+        expenseRatio:
+          type: number
+          nullable: true
+        totalAssets:
+          type: number
+          nullable: true
+        dividendYield:
+          type: number
+          nullable: true
+        beta3Year:
+          type: number
+          nullable: true
+        averageVolume:
+          type: number
+          nullable: true
+        topHoldingsCombinedWeight:
+          type: number
+          nullable: true
+        annualizedReturn:
+          type: number
+          nullable: true
+        annualizedVolatility:
+          type: number
+          nullable: true
+        maxDrawdown:
+          type: number
+          nullable: true
+        riskAdjustedReturn:
+          type: number
+          nullable: true
+        topHoldings:
+          type: array
+          items:
+            $ref: "#/components/schemas/EtfHolding"
+        marketRegime:
+          allOf:
+            - $ref: "#/components/schemas/EtfMarketRegime"
+          nullable: true
+        scenarios:
+          type: array
+          items:
+            $ref: "#/components/schemas/EtfScenario"
+        risks:
+          type: array
+          items:
+            type: string
+        strengths:
+          type: array
+          items:
+            type: string
+        analysis:
+          type: string
+        provider:
+          type: string
+        asOf:
+          type: string
+          format: date-time
+      required: [topHoldings, marketRegime, scenarios, risks, strengths, analysis, provider, asOf, annualizedReturn, annualizedVolatility, maxDrawdown, riskAdjustedReturn, topHoldingsCombinedWeight]
+
+    EtfScenario:
+      type: object
+      properties:
+        label:
+          type: string
+          enum: [bear, base, bull]
+        annualReturnAssumption:
+          type: number
+          nullable: true
+          description: Historical regime average used as an illustrative annual return assumption.
+        fiveYearValue:
+          type: number
+          nullable: true
+        tenYearValue:
+          type: number
+          nullable: true
+        assumption:
+          type: string
+      required: [label, annualReturnAssumption, fiveYearValue, tenYearValue, assumption]
 
     CryptoSupplyHistory:
       type: object

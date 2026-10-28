@@ -249,6 +249,121 @@ function shuffledLoadingPhrases(): string[] {
   return phrases;
 }
 
+type EtfAnalysisPayload = {
+  fundCategory: string | null;
+  fundFamily: string | null;
+  expenseRatio: number | null;
+  totalAssets: number | null;
+  dividendYield: number | null;
+  beta3Year: number | null;
+  averageVolume: number | null;
+  topHoldingsCombinedWeight: number | null;
+  annualizedReturn: number | null;
+  annualizedVolatility: number | null;
+  maxDrawdown: number | null;
+  riskAdjustedReturn: number | null;
+  topHoldings: { symbol: string; name: string; weight: number | null }[];
+  marketRegime: {
+    benchmarkSymbol: string;
+    firstYear: number;
+    lastYear: number;
+    periods: Record<string, { averageAnnualReturn: number | null; years: number }>;
+  } | null;
+  scenarios: {
+    label: string;
+    annualReturnAssumption: number | null;
+    fiveYearValue: number | null;
+    tenYearValue: number | null;
+    assumption: string;
+  }[];
+  analysis: string;
+  risks: string[];
+  strengths: string[];
+  provider: string;
+  asOf: string;
+};
+
+function EtfAnalysisSections({ fund, colors }: {
+  fund: EtfAnalysisPayload;
+  colors: ReturnType<typeof useColors>;
+}) {
+  const fmtAssets = (value: number | null) => value == null
+    ? 'Unavailable'
+    : value >= 1e12 ? `$${(value / 1e12).toFixed(2)}T`
+      : value >= 1e9 ? `$${(value / 1e9).toFixed(2)}B`
+        : `$${(value / 1e6).toFixed(1)}M`;
+  const pctValue = (value: number | null) => value == null ? 'Unavailable' : `${(value * 100).toFixed(2)}%`;
+  return (
+    <>
+      <SectionCard title="FUND PROFILE" icon={<Ionicons name="layers-outline" size={16} color={colors.primary} />}>
+        <View style={{ padding: 16 }}>
+          <MetricRow label="Category" value={fund.fundCategory ?? 'Unavailable'} />
+          <MetricRow label="Fund family" value={fund.fundFamily ?? 'Unavailable'} />
+          <MetricRow label="Expense ratio" value={pctValue(fund.expenseRatio)} />
+          <MetricRow label="Distribution yield" value={pctValue(fund.dividendYield)} />
+          <MetricRow label="Assets under management" value={fmtAssets(fund.totalAssets)} />
+          <MetricRow label="3-year beta" value={fmtNum(fund.beta3Year)} />
+          <MetricRow label="Average daily volume" value={fund.averageVolume == null ? 'Unavailable' : fmtVol(fund.averageVolume)} />
+          <MetricRow label="1-year annualized return" value={pctValue(fund.annualizedReturn)} />
+          <MetricRow label="1-year annualized volatility" value={pctValue(fund.annualizedVolatility)} />
+          <MetricRow label="1-year maximum drawdown" value={pctValue(fund.maxDrawdown)} />
+          <MetricRow label="Return / volatility ratio" value={fmtNum(fund.riskAdjustedReturn)} />
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 6 }}>Risk-adjusted ratio uses a 0% risk-free proxy and is not a Sharpe ratio.</Text>
+        </View>
+      </SectionCard>
+      <SectionCard title="REPORTED TOP HOLDINGS" icon={<MaterialCommunityIcons name="briefcase-outline" size={16} color={colors.primary} />}>
+        <View style={{ padding: 16 }}>
+          {fund.topHoldings.length ? fund.topHoldings.map((holding) => (
+            <MetricRow key={holding.symbol} label={`${holding.name} (${holding.symbol})`} value={pctValue(holding.weight)} />
+          )) : <Text style={{ color: colors.mutedForeground }}>Holdings data unavailable.</Text>}
+          {fund.topHoldingsCombinedWeight != null && (
+            <MetricRow label={`Combined weight of reported ${fund.topHoldings.length} holdings`} value={pctValue(fund.topHoldingsCombinedWeight)} />
+          )}
+        </View>
+      </SectionCard>
+      <SectionCard title="HISTORICAL MARKET REGIMES" icon={<Ionicons name="trending-up" size={16} color={colors.primary} />}>
+        <View style={{ padding: 16 }}>
+          {fund.marketRegime ? (
+            <>
+              {['bull', 'bear', 'mixed'].map((key) => {
+                const period = fund.marketRegime?.periods[key];
+                const label = key === 'mixed' ? 'Sideways / mixed' : `${key[0]?.toUpperCase()}${key.slice(1)}`;
+                return <MetricRow key={key} label={`${label} (${period?.years ?? 0} years)`} value={pctValue(period?.averageAnnualReturn ?? null)} />;
+              })}
+              <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 8 }}>
+                {fund.marketRegime.firstYear}–{fund.marketRegime.lastYear}, grouped by {fund.marketRegime.benchmarkSymbol} calendar-year returns. Historical comparison only.
+              </Text>
+            </>
+          ) : <Text style={{ color: colors.mutedForeground }}>Historical regime data unavailable.</Text>}
+        </View>
+      </SectionCard>
+      <SectionCard title="ILLUSTRATIVE 5–10 YEAR SCENARIOS" icon={<MaterialCommunityIcons name="chart-timeline-variant" size={16} color={colors.primary} />}>
+        <View style={{ padding: 16 }}>
+          {fund.scenarios.map((scenario) => (
+            <View key={scenario.label} style={{ marginBottom: 12 }}>
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', textTransform: 'uppercase' }}>{scenario.label}</Text>
+              <MetricRow label="Assumed annual return" value={pctValue(scenario.annualReturnAssumption)} />
+              <MetricRow label="One-share value in 5 years" value={scenario.fiveYearValue == null ? 'Unavailable' : fmtPrice(scenario.fiveYearValue)} />
+              <MetricRow label="One-share value in 10 years" value={scenario.tenYearValue == null ? 'Unavailable' : fmtPrice(scenario.tenYearValue)} />
+              <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{scenario.assumption}</Text>
+            </View>
+          ))}
+          <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>These are historical-regime illustrations, not forecasts or guarantees. They assume a single investment, constant compounding, and no added contributions.</Text>
+        </View>
+      </SectionCard>
+      <SectionCard title="FUND ANALYSIS" icon={<Ionicons name="document-text-outline" size={16} color={colors.primary} />}>
+        <View style={{ padding: 16 }}>
+          <Text style={{ color: colors.foreground, lineHeight: 22 }}>{fund.analysis}</Text>
+          {!!fund.strengths.length && <Text style={{ color: colors.buyColor, marginTop: 12 }}>Strengths: {fund.strengths.join(' · ')}</Text>}
+          {!!fund.risks.length && <Text style={{ color: colors.sellColor, marginTop: 8 }}>Risks: {fund.risks.join(' · ')}</Text>}
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 14 }}>Provider: {fund.provider} · retrieved {new Date(fund.asOf).toLocaleString()}</Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 6 }}>Peer expense comparisons, tracking error, turnover, and tax details are not shown unless provider data is available.</Text>
+        </View>
+      </SectionCard>
+    </>
+  );
+}
+
 export default function AnalysisScreen() {
   const { symbol } = useLocalSearchParams<{ symbol: string }>();
   const router = useRouter();
@@ -258,7 +373,7 @@ export default function AnalysisScreen() {
   const { awardAchievement } = useAchievements();
   const { width: screenWidth } = useWindowDimensions();
   const { apiFetch } = useApi();
-  const { mutate, data, isPending, error } = useAnalyzeStock<Error>();
+  const { mutate, data: response, isPending, error } = useAnalyzeStock<Error>();
   const watchlist = useWatchlist();
   const {
     pushToken,
@@ -499,7 +614,7 @@ export default function AnalysisScreen() {
   }
 
   // ─── Error ────────────────────────────────────────────────────────────────
-  if (error || !data) {
+  if (error || !response) {
     const errMsg = (error as any)?.response?.data?.message ?? error?.message ?? 'Could not load analysis.';
     return (
       <AmericanSteelBackground>
@@ -529,6 +644,29 @@ export default function AnalysisScreen() {
   }
 
   // ─── Results ──────────────────────────────────────────────────────────────
+  const result = response as unknown as {
+    assetType?: string;
+    etfAnalysis?: EtfAnalysisPayload;
+  } & Pick<StockAnalysis, 'symbol' | 'companyName' | 'exchange' | 'currency' | 'currentPrice' | 'priceChange' | 'priceChangePercent' | 'volume' | 'marketCap' | 'week52High' | 'week52Low'>;
+  if (result.assetType === 'etf' && result.etfAnalysis) {
+    return (
+      <AmericanSteelBackground>
+        <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
+          {renderHeader(response as StockAnalysis)}
+          <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: botPad + 24 }]} showsVerticalScrollIndicator={false}>
+            <View style={[recStyles.hero, { backgroundColor: colors.card, borderColor: colors.primary }]}>
+              <Text style={[recStyles.actionLabel, { color: colors.primary, fontFamily: 'Inter_700Bold' }]}>ETF FUND ANALYSIS</Text>
+              <Text style={{ color: colors.mutedForeground, marginTop: 8, lineHeight: 20 }}>
+                Evaluates the fund as a portfolio of reported holdings—not as an operating company.
+              </Text>
+            </View>
+            <EtfAnalysisSections fund={result.etfAnalysis} colors={colors} />
+          </ScrollView>
+        </View>
+      </AmericanSteelBackground>
+    );
+  }
+  const data = response as StockAnalysis;
   const { technical, fundamental, behavioral, recommendation } = data;
   const action = recommendation.action;
   const guide = helpTopic ? METRIC_GUIDES[helpTopic] : null;

@@ -7,6 +7,7 @@
  */
 
 export * from './analysisError';
+export * from './analysisResult';
 export * from './analyzeStockRequest';
 export * from './behavioralAnalysis';
 export * from './behavioralAnalysisInsiderSentiment';
@@ -16,12 +17,17 @@ export * from './cryptoSupplyHistoryMetric';
 export * from './cryptoSupplyHistoryPoint';
 export * from './cryptoSupplyHistoryProvider';
 export * from './cryptoSupplyHistoryRangeDays';
+export * from './etfAnalysis';
+export * from './etfAnalysisResult';
+export * from './etfAnalysisResultAssetType';
 export * from './etfHolding';
 export * from './etfMarketRegime';
 export * from './etfMarketRegimeBestRegime';
 export * from './etfMarketRegimePeriods';
 export * from './etfProfile';
 export * from './etfRegimePeriod';
+export * from './etfScenario';
+export * from './etfScenarioLabel';
 export * from './fundamentalAnalysis';
 export * from './getMarketHeatMapCategory';
 export * from './getMarketHeatMapParams';
@@ -47,6 +53,7 @@ export * from './searchHeatMapInstrumentsCategory';
 export * from './searchHeatMapInstrumentsParams';
 export * from './searchStockSymbolsParams';
 export * from './stockAnalysis';
+export * from './stockAnalysisAssetType';
 export * from './stockSymbolSuggestion';
 export * from './technicalAnalysis';
 export * from './technicalAnalysisMacdSignal';

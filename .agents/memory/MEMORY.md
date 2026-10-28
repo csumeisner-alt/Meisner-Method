@@ -41,6 +41,7 @@
 - [Third-theme unlock](third-theme-unlock.md) — reveal Hybrid Neon Gucci after first Dark Brew Token; unlock at 10,000; persist it with the economy and keep themes exclusive.
 - [Brew activity history](brew-activity-history.md) — token, bottle, bank, toss, and theme events travel with the economy snapshot; older snapshots read as an empty history.
 - [Stock recommendation stability](stock-recommendation-stability.md) — action and price levels are deterministic; AI explains them but cannot override or invert them.
+- [ETF analysis scenarios](etf-analysis-scenarios.md) — long-range ETF values are deterministic historical-regime illustrations, never AI-generated forecasts.
 - [GitHub release sync](github-release-sync.md) — if the HTTPS remote credential is stale, sync through the authorized GitHub API and throttle blob writes below the proxy limit.
 - [Biden quote progress tracker](biden-quote-progress-tracker.md) — keep this as a visual layer over the existing persisted view count and shared unlock threshold.
 - [Shared heat-map market status](heatmap-shared-market-status.md) — show one open/pre-market/extended/closed indicator for Stocks, ETFs, and Custom instead of repeating next-open times in hexes.

@@ -2054,9 +2054,16 @@ export default function HeatMapScreen() {
           quoteUnavailable={selectedQuoteUnavailable}
           visible={selectedQuote !== null}
           canAnalyzeStock={category === 'stocks' && selectedQuote?.assetType === 'stock'}
+          canAnalyzeEtf={category === 'etfs' && selectedQuote?.assetType === 'etf'}
           onClose={() => setSelectedQuote(null)}
           onAnalyzeStock={() => {
             if (category !== 'stocks' || selectedQuote?.assetType !== 'stock') return;
+            const analysisSymbol = selectedQuote.symbol;
+            setSelectedQuote(null);
+            setTimeout(() => router.push(`/analysis/${encodeURIComponent(analysisSymbol)}`), 350);
+          }}
+          onAnalyzeEtf={() => {
+            if (category !== 'etfs' || selectedQuote?.assetType !== 'etf') return;
             const analysisSymbol = selectedQuote.symbol;
             setSelectedQuote(null);
             setTimeout(() => router.push(`/analysis/${encodeURIComponent(analysisSymbol)}`), 350);

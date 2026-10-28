@@ -13,6 +13,7 @@ const SCRIPT_PATH = join(__dirname, "fetch_stock.py");
 
 export interface YahooStockData {
   symbol: string;
+  quoteType: string;
   companyName: string;
   exchange: string;
   currency: string;
@@ -166,6 +167,7 @@ export async function fetchStockData(symbol: string): Promise<YahooStockData> {
 
   return {
     symbol: upper,
+    quoteType: raw["quoteType"] ?? "",
     companyName: raw["companyName"] ?? upper,
     exchange: raw["exchange"] ?? "Unknown",
     currency: raw["currency"] ?? "USD",
