@@ -57,6 +57,11 @@ export interface HeatMapEtfHolding {
   weight: number;
 }
 
+export interface HeatMapEtfSectorWeight {
+  sector: string;
+  weight: number;
+}
+
 export interface HeatMapEtfRegimePeriod {
   averageAnnualReturn: number | null;
   years: number;
@@ -86,10 +91,42 @@ export interface HeatMapEtfProfile {
   beta3Year: number | null;
   largestSector: string | null;
   largestSectorWeight: number | null;
+  sectorWeights: HeatMapEtfSectorWeight[];
+  sectorWeightsRetrievedAt: string | null;
   topHoldings: HeatMapEtfHolding[];
   topHoldingsReportedCount: number;
   topHoldingsRetrievedAt: string | null;
   marketRegime: HeatMapEtfMarketRegime | null;
+}
+
+export function getReportedEtfSectorComparison(
+  funds: Array<{ symbol: string; sectorWeights: readonly HeatMapEtfSectorWeight[] }>,
+) {
+  const sectorNames = new Set<string>();
+  const byFund = funds.map((fund) => {
+    const weights = new Map<string, number>();
+    for (const entry of fund.sectorWeights) {
+      if (
+        entry.sector.trim()
+        && Number.isFinite(entry.weight)
+        && entry.weight >= 0
+        && entry.weight <= 1
+        && !weights.has(entry.sector)
+      ) {
+        weights.set(entry.sector, entry.weight);
+        sectorNames.add(entry.sector);
+      }
+    }
+    return { symbol: fund.symbol, weights };
+  });
+
+  return [...sectorNames].sort((a, b) => a.localeCompare(b)).map((sector) => ({
+    sector,
+    funds: byFund.map(({ symbol, weights }) => ({
+      symbol,
+      weight: weights.get(sector) ?? null,
+    })),
+  }));
 }
 
 export function findReportedEtfHoldingsOverlap(
@@ -230,6 +267,15 @@ function parseEtfProfile(value: unknown): HeatMapEtfProfile | null {
         : [];
     })
     : [];
+  const sectorWeights = Array.isArray(input.sectorWeights)
+    ? input.sectorWeights.flatMap((entry): HeatMapEtfSectorWeight[] => {
+      const sector = stringField(entry, 'sector');
+      const weight = numericField(entry, 'weight');
+      return sector && weight !== null && weight >= 0 && weight <= 1
+        ? [{ sector, weight }]
+        : [];
+    })
+    : [];
 
   return {
     fundCategory: stringField(input, 'fundCategory'),
@@ -240,6 +286,8 @@ function parseEtfProfile(value: unknown): HeatMapEtfProfile | null {
     beta3Year: numericField(input, 'beta3Year'),
     largestSector: stringField(input, 'largestSector'),
     largestSectorWeight: numericField(input, 'largestSectorWeight'),
+    sectorWeights,
+    sectorWeightsRetrievedAt: stringField(input, 'sectorWeightsRetrievedAt'),
     topHoldings,
     topHoldingsReportedCount: nonNegativeNumericField(input, 'topHoldingsReportedCount')
       ?? topHoldings.length,

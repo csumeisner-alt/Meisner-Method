@@ -391,8 +391,33 @@ class InfoBriefEtfFieldTests(unittest.TestCase):
         self.assertEqual(profile["beta3Year"], 1.04)
         self.assertEqual(profile["largestSector"], "Technology")
         self.assertEqual(profile["largestSectorWeight"], 0.40)
+        self.assertEqual(profile["sectorWeights"], [
+            {"sector": "Technology", "weight": 0.40},
+            {"sector": "Healthcare", "weight": 0.18},
+            {"sector": "Utilities", "weight": 0.0},
+        ])
+        self.assertRegex(profile["sectorWeightsRetrievedAt"], r"^\d{4}-\d{2}-\d{2}T")
         self.assertEqual(profile["topHoldings"][0]["symbol"], "ABC")
         self.assertIsNone(profile["marketRegime"])
+
+    def test_sector_weights_keep_reported_values_and_reject_invalid_values(self):
+        self.assertEqual(
+            fetch_info_brief.normalize_sector_weights({
+                "technology": 42,
+                "healthcare": 0.2,
+                "utilities": 0,
+                "energy": -0.1,
+                "industrials": float("nan"),
+                "financial_services": 101,
+                "unknown_sector": True,
+                "": 0.1,
+            }),
+            [
+                {"sector": "Technology", "weight": 0.42},
+                {"sector": "Healthcare", "weight": 0.2},
+                {"sector": "Utilities", "weight": 0.0},
+            ],
+        )
 
     def test_sector_and_holding_values_are_sanitized(self):
         self.assertEqual(

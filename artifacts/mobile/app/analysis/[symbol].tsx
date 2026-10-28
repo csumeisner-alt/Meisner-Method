@@ -34,6 +34,7 @@ import { useWatchlist } from '@/hooks/useWatchlist';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import {
   findReportedEtfHoldingsOverlap,
+  getReportedEtfSectorComparison,
   parseHeatMapDetailStats,
   parseSavedEtfComparisonSymbols,
 } from '@/lib/heatMapDetail';
@@ -266,6 +267,8 @@ type EtfAnalysisPayload = {
   topHoldingsCombinedWeight: number | null;
   topHoldingsReportedCount: number;
   topHoldingsRetrievedAt: string;
+  sectorWeights: { sector: string; weight: number }[];
+  sectorWeightsRetrievedAt: string;
   annualizedReturn: number | null;
   annualizedVolatility: number | null;
   maxDrawdown: number | null;
@@ -333,6 +336,8 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
     topHoldings: { symbol: string; name: string; weight: number }[];
     topHoldingsReportedCount: number;
     topHoldingsRetrievedAt: string | null;
+    sectorWeights: { sector: string; weight: number }[];
+    sectorWeightsRetrievedAt: string | null;
   }>>([]);
   const [compareError, setCompareError] = useState('');
   const [compareLoading, setCompareLoading] = useState(false);
@@ -375,6 +380,8 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           topHoldings: profile.topHoldings,
           topHoldingsReportedCount: profile.topHoldingsReportedCount,
           topHoldingsRetrievedAt: profile.topHoldingsRetrievedAt,
+          sectorWeights: profile.sectorWeights,
+          sectorWeightsRetrievedAt: profile.sectorWeightsRetrievedAt,
         }]);
     } catch {
       setCompareFailedSymbols((current) => current.includes(candidate) ? current : [...current, candidate]);
@@ -416,6 +423,8 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
               topHoldings: profile.topHoldings,
               topHoldingsReportedCount: profile.topHoldingsReportedCount,
               topHoldingsRetrievedAt: profile.topHoldingsRetrievedAt,
+              sectorWeights: profile.sectorWeights,
+              sectorWeightsRetrievedAt: profile.sectorWeightsRetrievedAt,
             }]);
         } else if (failed) {
           setCompareFailedSymbols((current) => current.includes(candidate) ? current : [...current, candidate]);
@@ -462,10 +471,13 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
         holding.weight == null ? [] : [{ ...holding, weight: holding.weight }]),
       topHoldingsReportedCount: fund.topHoldingsReportedCount,
       topHoldingsRetrievedAt: fund.topHoldingsRetrievedAt,
+      sectorWeights: fund.sectorWeights ?? [],
+      sectorWeightsRetrievedAt: fund.sectorWeightsRetrievedAt ?? null,
     },
     ...compareFunds,
   ];
   const overlaps = findReportedEtfHoldingsOverlap(selectedFunds);
+  const sectorComparison = getReportedEtfSectorComparison(selectedFunds);
   const fmtAssets = (value: number | null) => value == null
     ? 'Unavailable'
     : value >= 1e12 ? `$${(value / 1e12).toFixed(2)}T`
@@ -644,6 +656,29 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
               <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 8 }}>
                 Overlap compares only provider-reported positions, not complete portfolios.
               </Text>
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', marginTop: 18 }}>Provider-reported sector mix</Text>
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 5 }}>
+                Provider coverage only, not a complete portfolio reconstruction. Missing weights are not treated as zero.
+              </Text>
+              {sectorComparison.length ? sectorComparison.map(({ sector, funds: sectorFunds }) => (
+                <View key={sector} style={{ marginTop: 12 }}>
+                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold' }}>{sector}</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 4, marginTop: 4 }}>
+                    {sectorFunds.map(({ symbol: fundSymbol, weight }) => (
+                      <Text key={`${sector}-${fundSymbol}`} style={{ color: colors.mutedForeground, fontSize: 12 }}>
+                        {fundSymbol}: {weight == null ? 'Not reported' : pctValue(weight)}
+                      </Text>
+                    ))}
+                  </View>
+                </View>
+              )) : (
+                <Text style={{ color: colors.mutedForeground, marginTop: 8 }}>No sector weights were reported for these funds.</Text>
+              )}
+              {selectedFunds.map((fundEntry) => (
+                <Text key={`sector-coverage-${fundEntry.symbol}`} style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 8 }}>
+                  {fundEntry.symbol} sector data retrieved {fundEntry.sectorWeightsRetrievedAt ? new Date(fundEntry.sectorWeightsRetrievedAt).toLocaleString() : 'date unavailable'}
+                </Text>
+              ))}
             </>
           )}
         </View>

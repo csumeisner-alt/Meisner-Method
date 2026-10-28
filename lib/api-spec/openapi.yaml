@@ -680,6 +680,14 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EtfHolding"
+        sectorWeights:
+          type: array
+          description: Provider-reported sector weights only; omitted sectors are not inferred as zero.
+          items:
+            $ref: "#/components/schemas/EtfSectorWeight"
+        sectorWeightsRetrievedAt:
+          type: string
+          format: date-time
         topHoldingsReportedCount:
           type: integer
           minimum: 0
@@ -721,7 +729,7 @@ components:
         asOf:
           type: string
           format: date-time
-      required: [topHoldings, topHoldingsReportedCount, topHoldingsRetrievedAt, marketRegime, benchmark, trackingComparison, peerExpenseComparison, scenarios, risks, strengths, analysis, provider, asOf, annualizedReturn, annualizedVolatility, maxDrawdown, riskAdjustedReturn, topHoldingsCombinedWeight]
+      required: [topHoldings, sectorWeights, sectorWeightsRetrievedAt, topHoldingsReportedCount, topHoldingsRetrievedAt, marketRegime, benchmark, trackingComparison, peerExpenseComparison, scenarios, risks, strengths, analysis, provider, asOf, annualizedReturn, annualizedVolatility, maxDrawdown, riskAdjustedReturn, topHoldingsCombinedWeight]
 
     EtfScenario:
       type: object
@@ -928,6 +936,14 @@ components:
         largestSectorWeight:
           type: number
           nullable: true
+        sectorWeights:
+          type: array
+          description: Provider-reported sector weights only; omitted sectors are not inferred as zero.
+          items:
+            $ref: "#/components/schemas/EtfSectorWeight"
+        sectorWeightsRetrievedAt:
+          type: string
+          format: date-time
         topHoldings:
           type: array
           items:
@@ -963,6 +979,8 @@ components:
         - beta3Year
         - largestSector
         - largestSectorWeight
+        - sectorWeights
+        - sectorWeightsRetrievedAt
         - topHoldings
         - topHoldingsReportedCount
         - topHoldingsRetrievedAt
@@ -1038,6 +1056,18 @@ components:
         - symbol
         - name
         - weight
+
+    EtfSectorWeight:
+      type: object
+      properties:
+        sector:
+          type: string
+        weight:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Provider-reported sector weight as a decimal fraction.
+      required: [sector, weight]
 
     EtfMarketRegime:
       type: object

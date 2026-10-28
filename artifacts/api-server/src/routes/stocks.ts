@@ -833,6 +833,8 @@ Return JSON only: {"analysis":"2-4 concise paragraphs","risks":["..."],"strength
           maxDrawdown: riskMetrics.maxDrawdown,
           riskAdjustedReturn: riskMetrics.riskAdjustedReturn,
           topHoldings: holdings,
+          sectorWeights: Array.isArray(profile["sectorWeights"]) ? profile["sectorWeights"] : [],
+          sectorWeightsRetrievedAt: String(profile["sectorWeightsRetrievedAt"] ?? new Date().toISOString()),
           marketRegime: regime,
           benchmark,
           topHoldingsReportedCount: Number(profile["topHoldingsReportedCount"] ?? holdings.length),

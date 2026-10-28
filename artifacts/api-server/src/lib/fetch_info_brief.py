@@ -354,18 +354,38 @@ def get_fund_yield(info):
 
 
 def get_dominant_sector(sector_weightings):
-    if not isinstance(sector_weightings, dict):
-        return None, None
-
-    candidates = []
-    for key, value in sector_weightings.items():
-        weight = finite_number(value)
-        if weight is None or weight <= 0:
-            continue
-        label = SECTOR_LABELS.get(str(key), str(key).replace("_", " ").title())
-        candidates.append((label, weight))
-
+    candidates = [
+        (entry["sector"], entry["weight"])
+        for entry in normalize_sector_weights(sector_weightings)
+        if entry["weight"] > 0
+    ]
     return max(candidates, key=lambda item: item[1]) if candidates else (None, None)
+
+
+def normalize_sector_weights(sector_weightings):
+    """Preserve valid provider-reported sector weights as decimal fractions."""
+    if not isinstance(sector_weightings, dict):
+        return []
+
+    sectors = []
+    for key, value in sector_weightings.items():
+        if isinstance(value, bool):
+            continue
+        weight = finite_number(value)
+        if weight is None or weight < 0:
+            continue
+        # Provider values are normally fractions; tolerate percent-like inputs
+        # without rescaling the reported sectors to sum to 100%.
+        if 1 < weight <= 100:
+            weight /= 100
+        if weight > 1:
+            continue
+        raw_label = str(key).strip()
+        if not raw_label:
+            continue
+        label = SECTOR_LABELS.get(raw_label, raw_label.replace("_", " ").title())
+        sectors.append({"sector": label, "weight": weight})
+    return sectors
 
 
 def normalize_top_holdings(rows):
@@ -495,7 +515,9 @@ def build_etf_profile_payload(
     category_average_expense_ratio=None,
     tracking_comparison=None,
 ):
+    retrieved_at = datetime.now(timezone.utc).isoformat()
     largest_sector, largest_sector_weight = get_dominant_sector(sector_weightings)
+    normalized_sector_weights = normalize_sector_weights(sector_weightings)
     holdings = normalize_top_holdings(top_holdings or [])
     category = info.get("category") or None
     expense_ratio = get_expense_ratio(info)
@@ -524,9 +546,11 @@ def build_etf_profile_payload(
         "beta3Year": finite_number(first_present(info, "beta3Year", "beta")),
         "largestSector": largest_sector,
         "largestSectorWeight": largest_sector_weight,
+        "sectorWeights": normalized_sector_weights,
+        "sectorWeightsRetrievedAt": retrieved_at,
         "topHoldings": holdings,
         "topHoldingsReportedCount": len(holdings),
-        "topHoldingsRetrievedAt": datetime.now(timezone.utc).isoformat(),
+        "topHoldingsRetrievedAt": retrieved_at,
         "marketRegime": market_regime,
         "benchmark": get_benchmark_reference(info),
         "trackingComparison": tracking_comparison,

@@ -11,6 +11,7 @@ import {
   parseSavedEtfComparisonSymbols,
   parseHeatMapCryptoSupplyHistory,
   parseHeatMapDetailStats,
+  getReportedEtfSectorComparison,
 } from '../heatMapDetail.ts';
 
 test('crypto supply history accepts only dated provider observations and leaves gaps empty', () => {
@@ -572,6 +573,11 @@ test('ETF detail rows show investor-relevant fund facts instead of stock fundame
       beta3Year: 1,
       largestSector: 'Technology',
       largestSectorWeight: 0.4045,
+      sectorWeights: [
+        { sector: 'Technology', weight: 0.4045 },
+        { sector: 'Healthcare', weight: 0.12 },
+      ],
+      sectorWeightsRetrievedAt: '2026-10-27T12:00:00Z',
       topHoldings: [{ symbol: 'NVDA', name: 'NVIDIA Corp', weight: 0.0836 }],
       marketRegime: {
         bestRegime: 'bull',
@@ -603,9 +609,44 @@ test('ETF detail rows show investor-relevant fund facts instead of stock fundame
   assert.equal(stats?.etfProfile?.topHoldings[0]?.name, 'NVIDIA Corp');
   assert.equal(stats?.etfProfile?.topHoldingsReportedCount, 1);
   assert.equal(stats?.etfProfile?.topHoldingsRetrievedAt, null);
+  assert.deepEqual(stats?.etfProfile?.sectorWeights, [
+    { sector: 'Technology', weight: 0.4045 },
+    { sector: 'Healthcare', weight: 0.12 },
+  ]);
+  assert.equal(stats?.etfProfile?.sectorWeightsRetrievedAt, '2026-10-27T12:00:00Z');
   assert.equal(stats?.etfProfile?.marketRegime?.bestRegime, 'bull');
 });
 
+test('sector comparison leaves unreported sector weights unavailable instead of filling zero', () => {
+  assert.deepEqual(getReportedEtfSectorComparison([
+    {
+      symbol: 'SPY',
+      sectorWeights: [
+        { sector: 'Technology', weight: 0.3 },
+        { sector: 'Healthcare', weight: 0 },
+      ],
+    },
+    { symbol: 'QQQ', sectorWeights: [{ sector: 'Technology', weight: 0.5 }] },
+    { symbol: 'IWM', sectorWeights: [] },
+  ]), [
+    {
+      sector: 'Healthcare',
+      funds: [
+        { symbol: 'SPY', weight: 0 },
+        { symbol: 'QQQ', weight: null },
+        { symbol: 'IWM', weight: null },
+      ],
+    },
+    {
+      sector: 'Technology',
+      funds: [
+        { symbol: 'SPY', weight: 0.3 },
+        { symbol: 'QQQ', weight: 0.5 },
+        { symbol: 'IWM', weight: null },
+      ],
+    },
+  ]);
+});
 test('ETF holding overlap compares reported positions and preserves each disclosed weight', () => {
   assert.deepEqual(findReportedEtfHoldingsOverlap([
     { symbol: 'SPY', topHoldings: [{ symbol: 'NVDA', name: 'NVIDIA', weight: 0.08 }] },
