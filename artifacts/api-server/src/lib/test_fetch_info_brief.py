@@ -304,6 +304,64 @@ class InfoBriefEtfFieldTests(unittest.TestCase):
         )
         self.assertIsNone(fetch_info_brief.get_expense_ratio({}))
 
+    def test_benchmark_requires_an_explicit_provider_symbol(self):
+        self.assertEqual(
+            fetch_info_brief.get_benchmark_reference({
+                "benchmarkSymbol": "^GSPC",
+                "benchmarkName": "S&P 500 Index",
+                "underlyingSymbol": "SPY",
+            }),
+            {"symbol": "^GSPC", "name": "S&P 500 Index"},
+        )
+        self.assertIsNone(fetch_info_brief.get_benchmark_reference({
+            "underlyingSymbol": "SPY",
+            "category": "Large Blend",
+        }))
+        self.assertIsNone(fetch_info_brief.get_benchmark_reference({
+            "benchmarkSymbol": "not a ticker",
+        }))
+
+    def test_tracking_comparison_uses_only_shared_monthly_adjusted_prices(self):
+        result = fetch_info_brief.calculate_tracking_comparison(
+            {"2025-01": 100, "2025-02": 101, "2025-03": 99, "2025-04": 104},
+            {"2025-01": 100, "2025-02": 100, "2025-03": 100, "2025-04": 100, "2025-05": 110},
+        )
+        self.assertEqual(result["periodStart"], "2025-01")
+        self.assertEqual(result["periodEnd"], "2025-04")
+        self.assertEqual(result["monthlySamples"], 3)
+        self.assertGreater(result["fundAnnualizedReturn"], result["benchmarkAnnualizedReturn"])
+        self.assertGreaterEqual(result["trackingError"], 0)
+        self.assertIsNone(fetch_info_brief.calculate_tracking_comparison(
+            {"2025-01": 100, "2025-02": 101},
+            {"2025-01": 100, "2025-02": 100},
+        ))
+
+    def test_category_peer_comparison_preserves_unknown_sample_size(self):
+        class FundOperations:
+            loc = {
+                "Annual Report Expense Ratio": {
+                    "Category Average": 0.0006,
+                },
+            }
+
+        average = fetch_info_brief.get_category_average_expense_ratio(FundOperations())
+        profile = fetch_info_brief.build_etf_profile_payload(
+            {
+                "category": "Large Blend",
+                "fundFamily": "Example Funds",
+                "annualReportExpenseRatio": 0.0004,
+            },
+            category_average_expense_ratio=average,
+        )
+        comparison = profile["peerExpenseComparison"]
+        self.assertEqual(comparison["category"], "Large Blend")
+        self.assertEqual(comparison["sampleSize"], None)
+        self.assertIn("sample size not reported", comparison["sampleContext"])
+        self.assertAlmostEqual(comparison["difference"], -0.0002)
+        self.assertIsNone(fetch_info_brief.build_etf_profile_payload(
+            {"category": "Large Blend"},
+        )["peerExpenseComparison"])
+
     def test_etf_profile_projects_focus_cost_size_income_and_holdings(self):
         profile = fetch_info_brief.build_etf_profile_payload(
             {

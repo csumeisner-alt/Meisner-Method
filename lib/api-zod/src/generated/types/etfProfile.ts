@@ -5,8 +5,11 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { EtfBenchmarkReference } from './etfBenchmarkReference';
 import type { EtfHolding } from './etfHolding';
 import type { EtfMarketRegime } from './etfMarketRegime';
+import type { EtfPeerExpenseComparison } from './etfPeerExpenseComparison';
+import type { EtfTrackingComparison } from './etfTrackingComparison';
 
 /**
  * Provider-reported fund facts, present for ETFs. Ratios and weights are decimal fractions.
@@ -27,4 +30,7 @@ export interface EtfProfile {
   topHoldingsReportedCount: number;
   topHoldingsRetrievedAt: Date;
   marketRegime: EtfMarketRegime | null;
+  benchmark: EtfBenchmarkReference | null;
+  trackingComparison: EtfTrackingComparison | null;
+  peerExpenseComparison: EtfPeerExpenseComparison | null;
 }

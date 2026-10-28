@@ -5,9 +5,12 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { EtfBenchmarkReference } from './etfBenchmarkReference';
 import type { EtfHolding } from './etfHolding';
 import type { EtfMarketRegime } from './etfMarketRegime';
+import type { EtfPeerExpenseComparison } from './etfPeerExpenseComparison';
 import type { EtfScenario } from './etfScenario';
+import type { EtfTrackingComparison } from './etfTrackingComparison';
 
 /**
  * Fund-specific provider data, historical comparisons, and illustrative scenarios. Null means unavailable.
@@ -30,6 +33,9 @@ export interface EtfAnalysis {
   topHoldingsReportedCount: number;
   topHoldingsRetrievedAt: Date;
   marketRegime: EtfMarketRegime | null;
+  benchmark: EtfBenchmarkReference | null;
+  trackingComparison: EtfTrackingComparison | null;
+  peerExpenseComparison: EtfPeerExpenseComparison | null;
   scenarios: EtfScenario[];
   risks: string[];
   strengths: string[];

@@ -690,6 +690,18 @@ components:
           allOf:
             - $ref: "#/components/schemas/EtfMarketRegime"
           nullable: true
+        benchmark:
+          allOf:
+            - $ref: "#/components/schemas/EtfBenchmarkReference"
+          nullable: true
+        trackingComparison:
+          allOf:
+            - $ref: "#/components/schemas/EtfTrackingComparison"
+          nullable: true
+        peerExpenseComparison:
+          allOf:
+            - $ref: "#/components/schemas/EtfPeerExpenseComparison"
+          nullable: true
         scenarios:
           type: array
           items:
@@ -709,7 +721,7 @@ components:
         asOf:
           type: string
           format: date-time
-      required: [topHoldings, topHoldingsReportedCount, topHoldingsRetrievedAt, marketRegime, scenarios, risks, strengths, analysis, provider, asOf, annualizedReturn, annualizedVolatility, maxDrawdown, riskAdjustedReturn, topHoldingsCombinedWeight]
+      required: [topHoldings, topHoldingsReportedCount, topHoldingsRetrievedAt, marketRegime, benchmark, trackingComparison, peerExpenseComparison, scenarios, risks, strengths, analysis, provider, asOf, annualizedReturn, annualizedVolatility, maxDrawdown, riskAdjustedReturn, topHoldingsCombinedWeight]
 
     EtfScenario:
       type: object
@@ -930,6 +942,18 @@ components:
           allOf:
             - $ref: "#/components/schemas/EtfMarketRegime"
           nullable: true
+        benchmark:
+          allOf:
+            - $ref: "#/components/schemas/EtfBenchmarkReference"
+          nullable: true
+        trackingComparison:
+          allOf:
+            - $ref: "#/components/schemas/EtfTrackingComparison"
+          nullable: true
+        peerExpenseComparison:
+          allOf:
+            - $ref: "#/components/schemas/EtfPeerExpenseComparison"
+          nullable: true
       required:
         - fundCategory
         - fundFamily
@@ -943,6 +967,62 @@ components:
         - topHoldingsReportedCount
         - topHoldingsRetrievedAt
         - marketRegime
+        - benchmark
+        - trackingComparison
+        - peerExpenseComparison
+
+    EtfBenchmarkReference:
+      type: object
+      description: Benchmark explicitly identified by the provider; never inferred from the ETF category.
+      properties:
+        symbol: { type: string }
+        name: { type: string }
+        source: { type: string }
+        asOf: { type: string, format: date-time }
+      required: [symbol, name, source, asOf]
+
+    EtfTrackingComparison:
+      type: object
+      description: Comparison of adjusted monthly ETF and explicit benchmark returns over their shared history.
+      properties:
+        periodStart: { type: string }
+        periodEnd: { type: string }
+        monthlySamples: { type: integer, minimum: 2 }
+        fundAnnualizedReturn: { type: number }
+        benchmarkAnnualizedReturn: { type: number }
+        trackingDifference:
+          type: number
+          description: Fund annualized total return minus benchmark annualized total return.
+        trackingError:
+          type: number
+          description: Sample standard deviation of monthly active returns, annualized by the square root of 12.
+        source: { type: string }
+        asOf: { type: string, format: date-time }
+      required: [periodStart, periodEnd, monthlySamples, fundAnnualizedReturn, benchmarkAnnualizedReturn, trackingDifference, trackingError, source, asOf]
+
+    EtfPeerExpenseComparison:
+      type: object
+      description: Yahoo Finance provider-defined fund-category average; sample size is unavailable when not reported.
+      properties:
+        category: { type: string }
+        fundExpenseRatio:
+          type: number
+          nullable: true
+          description: Fund annual expense ratio as a decimal fraction.
+        categoryAverageExpenseRatio:
+          type: number
+          description: Category-average annual expense ratio as a decimal fraction.
+        difference:
+          type: number
+          nullable: true
+          description: Fund expense ratio minus the category average, as a decimal fraction.
+        sampleSize:
+          type: integer
+          nullable: true
+        sampleContext: { type: string }
+        source: { type: string }
+        asOf: { type: string, format: date-time }
+      required: [category, fundExpenseRatio, categoryAverageExpenseRatio, difference, sampleSize, sampleContext, source, asOf]
 
     EtfHolding:
       type: object

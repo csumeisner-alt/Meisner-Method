@@ -218,6 +218,51 @@ export interface EtfMarketRegime {
   periods: EtfMarketRegimePeriods;
 }
 
+/**
+ * Benchmark explicitly identified by the provider; never inferred from the ETF category.
+ */
+export interface EtfBenchmarkReference {
+  symbol: string;
+  name: string;
+  source: string;
+  asOf: string;
+}
+
+/**
+ * Comparison of adjusted monthly ETF and explicit benchmark returns over their shared history.
+ */
+export interface EtfTrackingComparison {
+  periodStart: string;
+  periodEnd: string;
+  /** @minimum 2 */
+  monthlySamples: number;
+  fundAnnualizedReturn: number;
+  benchmarkAnnualizedReturn: number;
+  /** Fund annualized total return minus benchmark annualized total return. */
+  trackingDifference: number;
+  /** Sample standard deviation of monthly active returns, annualized by the square root of 12. */
+  trackingError: number;
+  source: string;
+  asOf: string;
+}
+
+/**
+ * Yahoo Finance provider-defined fund-category average; sample size is unavailable when not reported.
+ */
+export interface EtfPeerExpenseComparison {
+  category: string;
+  /** Fund annual expense ratio as a decimal fraction. */
+  fundExpenseRatio: number | null;
+  /** Category-average annual expense ratio as a decimal fraction. */
+  categoryAverageExpenseRatio: number;
+  /** Fund expense ratio minus the category average, as a decimal fraction. */
+  difference: number | null;
+  sampleSize: number | null;
+  sampleContext: string;
+  source: string;
+  asOf: string;
+}
+
 export type EtfScenarioLabel = typeof EtfScenarioLabel[keyof typeof EtfScenarioLabel];
 
 
@@ -257,6 +302,9 @@ export interface EtfAnalysis {
   topHoldingsReportedCount: number;
   topHoldingsRetrievedAt: string;
   marketRegime: EtfMarketRegime | null;
+  benchmark: EtfBenchmarkReference | null;
+  trackingComparison: EtfTrackingComparison | null;
+  peerExpenseComparison: EtfPeerExpenseComparison | null;
   scenarios: EtfScenario[];
   risks: string[];
   strengths: string[];
@@ -352,6 +400,9 @@ export interface EtfProfile {
   topHoldingsReportedCount: number;
   topHoldingsRetrievedAt: string;
   marketRegime: EtfMarketRegime | null;
+  benchmark: EtfBenchmarkReference | null;
+  trackingComparison: EtfTrackingComparison | null;
+  peerExpenseComparison: EtfPeerExpenseComparison | null;
 }
 
 export interface MarketInstrumentInfo {

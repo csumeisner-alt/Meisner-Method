@@ -266,6 +266,33 @@ type EtfAnalysisPayload = {
   maxDrawdown: number | null;
   riskAdjustedReturn: number | null;
   topHoldings: { symbol: string; name: string; weight: number | null }[];
+  benchmark: {
+    symbol: string;
+    name: string;
+    source: string;
+    asOf: string;
+  } | null;
+  trackingComparison: {
+    periodStart: string;
+    periodEnd: string;
+    monthlySamples: number;
+    fundAnnualizedReturn: number;
+    benchmarkAnnualizedReturn: number;
+    trackingDifference: number;
+    trackingError: number;
+    source: string;
+    asOf: string;
+  } | null;
+  peerExpenseComparison: {
+    category: string;
+    fundExpenseRatio: number | null;
+    categoryAverageExpenseRatio: number;
+    difference: number | null;
+    sampleSize: number | null;
+    sampleContext: string;
+    source: string;
+    asOf: string;
+  } | null;
   marketRegime: {
     benchmarkSymbol: string;
     firstYear: number;
@@ -356,6 +383,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
       : value >= 1e9 ? `$${(value / 1e9).toFixed(2)}B`
         : `$${(value / 1e6).toFixed(1)}M`;
   const pctValue = (value: number | null) => value == null ? 'Unavailable' : `${(value * 100).toFixed(2)}%`;
+  const sourceDate = (asOf: string) => new Date(asOf).toLocaleDateString();
   return (
     <>
       <SectionCard title="FUND PROFILE" icon={<Ionicons name="layers-outline" size={16} color={colors.primary} />}>
@@ -372,6 +400,67 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           <MetricRow label="1-year maximum drawdown" value={pctValue(fund.maxDrawdown)} />
           <MetricRow label="Return / volatility ratio" value={fmtNum(fund.riskAdjustedReturn)} />
           <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 6 }}>Risk-adjusted ratio uses a 0% risk-free proxy and is not a Sharpe ratio.</Text>
+        </View>
+      </SectionCard>
+      <SectionCard title="BENCHMARK & TRACKING" icon={<Ionicons name="git-compare-outline" size={16} color={colors.primary} />}>
+        <View style={{ padding: 16 }}>
+          {fund.benchmark ? (
+            <>
+              <MetricRow label="Provider-identified benchmark" value={`${fund.benchmark.name} (${fund.benchmark.symbol})`} />
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 4 }}>
+                Source: {fund.benchmark.source} · retrieved {sourceDate(fund.benchmark.asOf)}
+              </Text>
+            </>
+          ) : (
+            <Text style={{ color: colors.mutedForeground }}>
+              Benchmark unavailable. The provider did not identify a benchmark for this fund.
+            </Text>
+          )}
+          {fund.trackingComparison ? (
+            <>
+              <MetricRow label="Fund annualized return" value={pctValue(fund.trackingComparison.fundAnnualizedReturn)} />
+              <MetricRow label="Benchmark annualized return" value={pctValue(fund.trackingComparison.benchmarkAnnualizedReturn)} />
+              <MetricRow label="Tracking difference" value={pctValue(fund.trackingComparison.trackingDifference)} />
+              <MetricRow label="Annualized tracking error" value={pctValue(fund.trackingComparison.trackingError)} />
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 6 }}>
+                Adjusted monthly returns, {fund.trackingComparison.periodStart}–{fund.trackingComparison.periodEnd} · {fund.trackingComparison.monthlySamples} monthly samples.
+                {'\n'}Source: {fund.trackingComparison.source} · retrieved {sourceDate(fund.trackingComparison.asOf)}
+              </Text>
+            </>
+          ) : (
+            <Text style={{ color: colors.mutedForeground, marginTop: fund.benchmark ? 8 : 4 }}>
+              Tracking difference and error unavailable without a verified benchmark and enough shared history.
+            </Text>
+          )}
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 8 }}>
+            SPY is used only to group the separate broad-market regime history; it is not assumed to be this fund’s benchmark.
+          </Text>
+        </View>
+      </SectionCard>
+      <SectionCard title="CATEGORY COST COMPARISON" icon={<MaterialCommunityIcons name="scale-balance" size={16} color={colors.primary} />}>
+        <View style={{ padding: 16 }}>
+          {fund.peerExpenseComparison ? (
+            <>
+              <MetricRow label="Provider category" value={fund.peerExpenseComparison.category} />
+              <MetricRow label="Fund expense ratio" value={pctValue(fund.peerExpenseComparison.fundExpenseRatio)} />
+              <MetricRow label="Category average" value={pctValue(fund.peerExpenseComparison.categoryAverageExpenseRatio)} />
+              <MetricRow
+                label="Fund minus category average"
+                value={fund.peerExpenseComparison.difference == null
+                  ? 'Unavailable'
+                  : `${fund.peerExpenseComparison.difference > 0 ? '+' : ''}${(fund.peerExpenseComparison.difference * 10000).toFixed(1)} bps`}
+              />
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 6 }}>
+                {fund.peerExpenseComparison.sampleContext}
+                {fund.peerExpenseComparison.sampleSize == null ? '' : ` · ${fund.peerExpenseComparison.sampleSize} funds`}
+                {'\n'}Source: {fund.peerExpenseComparison.source} · retrieved {sourceDate(fund.peerExpenseComparison.asOf)}
+              </Text>
+            </>
+          ) : (
+            <Text style={{ color: colors.mutedForeground }}>
+              Category expense comparison unavailable. The provider did not report a category average.
+            </Text>
+          )}
         </View>
       </SectionCard>
       <SectionCard title="REPORTED TOP HOLDINGS" icon={<MaterialCommunityIcons name="briefcase-outline" size={16} color={colors.primary} />}>
@@ -477,7 +566,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           {!!fund.strengths.length && <Text style={{ color: colors.buyColor, marginTop: 12 }}>Strengths: {fund.strengths.join(' · ')}</Text>}
           {!!fund.risks.length && <Text style={{ color: colors.sellColor, marginTop: 8 }}>Risks: {fund.risks.join(' · ')}</Text>}
           <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 14 }}>Provider: {fund.provider} · retrieved {new Date(fund.asOf).toLocaleString()}</Text>
-          <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 6 }}>Peer expense comparisons, tracking error, turnover, and tax details are not shown unless provider data is available.</Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 6 }}>Category averages are provider-defined and may not include a reported sample size. Benchmark tracking is shown only when the provider identifies the fund’s benchmark.</Text>
         </View>
       </SectionCard>
     </>

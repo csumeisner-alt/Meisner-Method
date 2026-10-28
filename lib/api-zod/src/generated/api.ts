@@ -70,6 +70,8 @@ export const AnalyzeStockBody = zod.object({
 
 export const analyzeStockResponseTwoEtfAnalysisTopHoldingsReportedCountMin = 0;
 
+export const analyzeStockResponseTwoEtfAnalysisTrackingComparisonOneMonthlySamplesMin = 2;
+
 
 
 export const AnalyzeStockResponse = zod.union([zod.object({
@@ -190,6 +192,33 @@ export const AnalyzeStockResponse = zod.union([zod.object({
 })
 })
 }).describe('Historical comparison, not a forecast. Based on complete calendar-year adjusted total returns.').nullable(),
+  "benchmark": zod.object({
+  "symbol": zod.string(),
+  "name": zod.string(),
+  "source": zod.string(),
+  "asOf": zod.coerce.date()
+}).describe('Benchmark explicitly identified by the provider; never inferred from the ETF category.').nullable(),
+  "trackingComparison": zod.object({
+  "periodStart": zod.string(),
+  "periodEnd": zod.string(),
+  "monthlySamples": zod.number().min(analyzeStockResponseTwoEtfAnalysisTrackingComparisonOneMonthlySamplesMin),
+  "fundAnnualizedReturn": zod.number(),
+  "benchmarkAnnualizedReturn": zod.number(),
+  "trackingDifference": zod.number().describe('Fund annualized total return minus benchmark annualized total return.'),
+  "trackingError": zod.number().describe('Sample standard deviation of monthly active returns, annualized by the square root of 12.'),
+  "source": zod.string(),
+  "asOf": zod.coerce.date()
+}).describe('Comparison of adjusted monthly ETF and explicit benchmark returns over their shared history.').nullable(),
+  "peerExpenseComparison": zod.object({
+  "category": zod.string(),
+  "fundExpenseRatio": zod.number().nullable().describe('Fund annual expense ratio as a decimal fraction.'),
+  "categoryAverageExpenseRatio": zod.number().describe('Category-average annual expense ratio as a decimal fraction.'),
+  "difference": zod.number().nullable().describe('Fund expense ratio minus the category average, as a decimal fraction.'),
+  "sampleSize": zod.number().nullable(),
+  "sampleContext": zod.string(),
+  "source": zod.string(),
+  "asOf": zod.coerce.date()
+}).describe('Yahoo Finance provider-defined fund-category average; sample size is unavailable when not reported.').nullable(),
   "scenarios": zod.array(zod.object({
   "label": zod.enum(['bear', 'base', 'bull']),
   "annualReturnAssumption": zod.number().nullable().describe('Historical regime average used as an illustrative annual return assumption.'),
@@ -219,6 +248,8 @@ export const GetStockInfoParams = zod.object({
 })
 
 export const getStockInfoResponseEtfProfileTopHoldingsReportedCountMin = 0;
+
+export const getStockInfoResponseEtfProfileTrackingComparisonOneMonthlySamplesMin = 2;
 
 
 
@@ -286,7 +317,34 @@ export const GetStockInfoResponse = zod.object({
   "years": zod.number().describe('Number of complete calendar years in this regime.')
 })
 })
-}).describe('Historical comparison, not a forecast. Based on complete calendar-year adjusted total returns.').nullable()
+}).describe('Historical comparison, not a forecast. Based on complete calendar-year adjusted total returns.').nullable(),
+  "benchmark": zod.object({
+  "symbol": zod.string(),
+  "name": zod.string(),
+  "source": zod.string(),
+  "asOf": zod.coerce.date()
+}).describe('Benchmark explicitly identified by the provider; never inferred from the ETF category.').nullable(),
+  "trackingComparison": zod.object({
+  "periodStart": zod.string(),
+  "periodEnd": zod.string(),
+  "monthlySamples": zod.number().min(getStockInfoResponseEtfProfileTrackingComparisonOneMonthlySamplesMin),
+  "fundAnnualizedReturn": zod.number(),
+  "benchmarkAnnualizedReturn": zod.number(),
+  "trackingDifference": zod.number().describe('Fund annualized total return minus benchmark annualized total return.'),
+  "trackingError": zod.number().describe('Sample standard deviation of monthly active returns, annualized by the square root of 12.'),
+  "source": zod.string(),
+  "asOf": zod.coerce.date()
+}).describe('Comparison of adjusted monthly ETF and explicit benchmark returns over their shared history.').nullable(),
+  "peerExpenseComparison": zod.object({
+  "category": zod.string(),
+  "fundExpenseRatio": zod.number().nullable().describe('Fund annual expense ratio as a decimal fraction.'),
+  "categoryAverageExpenseRatio": zod.number().describe('Category-average annual expense ratio as a decimal fraction.'),
+  "difference": zod.number().nullable().describe('Fund expense ratio minus the category average, as a decimal fraction.'),
+  "sampleSize": zod.number().nullable(),
+  "sampleContext": zod.string(),
+  "source": zod.string(),
+  "asOf": zod.coerce.date()
+}).describe('Yahoo Finance provider-defined fund-category average; sample size is unavailable when not reported.').nullable()
 }).optional().describe('Provider-reported fund facts, present for ETFs. Ratios and weights are decimal fractions.')
 })
 

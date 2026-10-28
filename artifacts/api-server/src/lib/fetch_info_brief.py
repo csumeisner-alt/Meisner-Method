@@ -247,6 +247,102 @@ def get_expense_ratio(info):
     return None
 
 
+def get_benchmark_reference(info):
+    """Accept only a benchmark symbol explicitly identified by Yahoo."""
+    raw_symbol = info.get("benchmarkSymbol")
+    if not isinstance(raw_symbol, str):
+        return None
+    symbol = raw_symbol.strip().upper()
+    if not symbol or not re.fullmatch(r"\^?[A-Z0-9][A-Z0-9.^=_-]{0,19}", symbol):
+        return None
+    raw_name = info.get("benchmarkName")
+    name = raw_name.strip() if isinstance(raw_name, str) and raw_name.strip() else symbol
+    return {"symbol": symbol, "name": name}
+
+
+def get_category_average_expense_ratio(fund_operations):
+    """Read Yahoo's category-average annual expense ratio, if reported."""
+    if fund_operations is None or not hasattr(fund_operations, "loc"):
+        return None
+    try:
+        row = fund_operations.loc["Annual Report Expense Ratio"]
+        value = row.get("Category Average")
+    except (KeyError, TypeError, AttributeError):
+        return None
+    ratio = finite_number(value)
+    return ratio if ratio is not None and ratio >= 0 else None
+
+
+def monthly_closes(history):
+    """Map adjusted monthly close prices to stable YYYY-MM keys."""
+    if history is None or getattr(history, "empty", True):
+        return {}
+    try:
+        close_series = history["Close"]
+    except (KeyError, TypeError):
+        return {}
+    closes = {}
+    for timestamp, raw_close in close_series.items():
+        year = getattr(timestamp, "year", None)
+        month = getattr(timestamp, "month", None)
+        close = finite_number(raw_close)
+        if year is not None and month is not None and close is not None and close > 0:
+            closes[f"{int(year):04d}-{int(month):02d}"] = close
+    return closes
+
+
+def calculate_tracking_comparison(etf_monthly_closes, benchmark_monthly_closes):
+    """Compare adjusted monthly returns over the exact shared history window."""
+    shared_months = sorted(set(etf_monthly_closes) & set(benchmark_monthly_closes))
+    if len(shared_months) < 3:
+        return None
+
+    etf_returns = []
+    benchmark_returns = []
+    for previous, current in zip(shared_months, shared_months[1:]):
+        etf_start = finite_number(etf_monthly_closes.get(previous))
+        etf_end = finite_number(etf_monthly_closes.get(current))
+        benchmark_start = finite_number(benchmark_monthly_closes.get(previous))
+        benchmark_end = finite_number(benchmark_monthly_closes.get(current))
+        if (
+            etf_start is None or etf_end is None
+            or benchmark_start is None or benchmark_end is None
+            or etf_start <= 0 or benchmark_start <= 0
+        ):
+            continue
+        etf_returns.append(etf_end / etf_start - 1)
+        benchmark_returns.append(benchmark_end / benchmark_start - 1)
+
+    sample_count = len(etf_returns)
+    if sample_count < 2:
+        return None
+
+    active_returns = [
+        etf_return - benchmark_return
+        for etf_return, benchmark_return in zip(etf_returns, benchmark_returns)
+    ]
+    periods_per_year = 12 / sample_count
+    etf_annualized = (etf_monthly_closes[shared_months[-1]] / etf_monthly_closes[shared_months[0]]) ** periods_per_year - 1
+    benchmark_annualized = (
+        benchmark_monthly_closes[shared_months[-1]]
+        / benchmark_monthly_closes[shared_months[0]]
+    ) ** periods_per_year - 1
+    mean_active = sum(active_returns) / sample_count
+    tracking_error = math.sqrt(
+        sum((value - mean_active) ** 2 for value in active_returns)
+        / (sample_count - 1)
+    ) * math.sqrt(12)
+    return {
+        "periodStart": shared_months[0],
+        "periodEnd": shared_months[-1],
+        "monthlySamples": sample_count,
+        "fundAnnualizedReturn": etf_annualized,
+        "benchmarkAnnualizedReturn": benchmark_annualized,
+        "trackingDifference": etf_annualized - benchmark_annualized,
+        "trackingError": tracking_error,
+    }
+
+
 def get_fund_yield(info):
     candidates = []
     for key in ("yield", "dividendYield"):
@@ -396,13 +492,33 @@ def build_etf_profile_payload(
     sector_weightings=None,
     top_holdings=None,
     market_regime=None,
+    category_average_expense_ratio=None,
+    tracking_comparison=None,
 ):
     largest_sector, largest_sector_weight = get_dominant_sector(sector_weightings)
     holdings = normalize_top_holdings(top_holdings or [])
+    category = info.get("category") or None
+    expense_ratio = get_expense_ratio(info)
+    peer_expense_comparison = None
+    if category and category_average_expense_ratio is not None:
+        peer_expense_comparison = {
+            "category": category,
+            "fundExpenseRatio": expense_ratio,
+            "categoryAverageExpenseRatio": category_average_expense_ratio,
+            "difference": (
+                expense_ratio - category_average_expense_ratio
+                if expense_ratio is not None else None
+            ),
+            "sampleSize": None,
+            "sampleContext": (
+                f"Yahoo Finance provider-defined {category} category average; "
+                "sample size not reported"
+            ),
+        }
     return {
-        "fundCategory": info.get("category") or None,
+        "fundCategory": category,
         "fundFamily": info.get("fundFamily") or None,
-        "expenseRatio": get_expense_ratio(info),
+        "expenseRatio": expense_ratio,
         "totalAssets": finite_number(info.get("totalAssets")),
         "dividendYield": get_fund_yield(info),
         "beta3Year": finite_number(first_present(info, "beta3Year", "beta")),
@@ -412,6 +528,9 @@ def build_etf_profile_payload(
         "topHoldingsReportedCount": len(holdings),
         "topHoldingsRetrievedAt": datetime.now(timezone.utc).isoformat(),
         "marketRegime": market_regime,
+        "benchmark": get_benchmark_reference(info),
+        "trackingComparison": tracking_comparison,
+        "peerExpenseComparison": peer_expense_comparison,
     }
 
 
@@ -482,16 +601,21 @@ def build_info_brief_payload(
 
 
 def get_fund_data_details(ticker):
-    """Read provider-reported ETF sector exposures and top holdings."""
+    """Read provider-reported ETF sector exposures, holdings, and peer costs."""
     try:
         fund_data = ticker.funds_data
     except Exception:
-        return None, []
+        return None, [], None
 
     try:
         sector_weightings = getattr(fund_data, "sector_weightings", None)
     except Exception:
         sector_weightings = None
+    try:
+        fund_operations = getattr(fund_data, "fund_operations", None)
+    except Exception:
+        fund_operations = None
+    category_average_expense_ratio = get_category_average_expense_ratio(fund_operations)
     try:
         top_holdings_frame = getattr(fund_data, "top_holdings", None)
     except Exception:
@@ -508,7 +632,7 @@ def get_fund_data_details(ticker):
                 })
         except Exception:
             top_holdings = []
-    return sector_weightings, normalize_top_holdings(top_holdings)
+    return sector_weightings, normalize_top_holdings(top_holdings), category_average_expense_ratio
 
 
 def get_market_regime_performance(ticker, symbol):
@@ -547,13 +671,29 @@ def main():
 
         etf_profile = None
         if is_etf_info(info):
-            sector_weightings, top_holdings = get_fund_data_details(ticker)
+            sector_weightings, top_holdings, category_average_expense_ratio = get_fund_data_details(ticker)
             market_regime = get_market_regime_performance(ticker, symbol)
+            benchmark = get_benchmark_reference(info)
+            tracking_comparison = None
+            if benchmark:
+                try:
+                    etf_history = ticker.history(period="5y", interval="1mo", auto_adjust=True)
+                    benchmark_history = yf.Ticker(benchmark["symbol"]).history(
+                        period="5y", interval="1mo", auto_adjust=True,
+                    )
+                    tracking_comparison = calculate_tracking_comparison(
+                        monthly_closes(etf_history),
+                        monthly_closes(benchmark_history),
+                    )
+                except Exception:
+                    tracking_comparison = None
             etf_profile = build_etf_profile_payload(
                 info,
                 sector_weightings,
                 top_holdings,
                 market_regime,
+                category_average_expense_ratio,
+                tracking_comparison,
             )
 
         secondary_max_supply = fetch_coinpaprika_max_supply(symbol, info)
