@@ -32,7 +32,11 @@ import { NeonAnalysisLoader } from '@/components/NeonAnalysisLoader';
 import { PriceAlertModal } from '@/components/PriceAlertModal';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
-import { findReportedEtfHoldingsOverlap, parseHeatMapDetailStats } from '@/lib/heatMapDetail';
+import {
+  findReportedEtfHoldingsOverlap,
+  parseHeatMapDetailStats,
+  parseSavedEtfComparisonSymbols,
+} from '@/lib/heatMapDetail';
 import {
   formatAnalysisLoadingStage,
   getAnalysisLoadingStageInterval,
@@ -42,6 +46,7 @@ import {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const PINNED_COMP_KEY = '@stocksense/pinned_comp_symbol';
+const ETF_COMPARISON_KEY = '@stocksense/etf_comparison_symbols_v1';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -320,6 +325,9 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
 }) {
   const { apiFetch } = useApi();
   const [compareTicker, setCompareTicker] = useState('');
+  const [savedCompareSymbols, setSavedCompareSymbols] = useState<string[]>([]);
+  const savedCompareSymbolsRef = useRef<string[]>([]);
+  const comparisonWriteQueue = useRef<Promise<void>>(Promise.resolve());
   const [compareFunds, setCompareFunds] = useState<Array<{
     symbol: string;
     topHoldings: { symbol: string; name: string; weight: number }[];
@@ -328,30 +336,39 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
   }>>([]);
   const [compareError, setCompareError] = useState('');
   const [compareLoading, setCompareLoading] = useState(false);
-  const addCompareFund = async () => {
-    const candidate = compareTicker.trim().toUpperCase();
-    if (!/^[A-Z0-9.^=-]{1,20}$/.test(candidate)) {
-      setCompareError('Enter a valid ETF ticker.');
-      return;
-    }
-    if (candidate === symbol.toUpperCase() || compareFunds.some((fundEntry) => fundEntry.symbol === candidate)) {
-      setCompareError('That ETF is already selected.');
-      return;
-    }
-    if (compareFunds.length >= 3) {
-      setCompareError('Compare up to four ETFs at once.');
-      return;
-    }
-    setCompareLoading(true);
-    setCompareError('');
+  const [compareRestoreLoading, setCompareRestoreLoading] = useState(true);
+  const [comparePendingSymbols, setComparePendingSymbols] = useState<string[]>([]);
+  const [compareFailedSymbols, setCompareFailedSymbols] = useState<string[]>([]);
+  const [compareStorageError, setCompareStorageError] = useState('');
+
+  const persistCompareSymbols = (symbols: string[]) => {
+    savedCompareSymbolsRef.current = symbols;
+    setSavedCompareSymbols(symbols);
+    comparisonWriteQueue.current = comparisonWriteQueue.current.catch(() => {}).then(() =>
+      AsyncStorage.setItem(ETF_COMPARISON_KEY, JSON.stringify(symbols)))
+      .then(() => setCompareStorageError(''))
+      .catch(() => setCompareStorageError('Could not save ETF comparisons on this device.'));
+  };
+
+  const removeCompareSymbol = (candidate: string) => {
+    persistCompareSymbols(savedCompareSymbolsRef.current.filter((item) => item !== candidate));
+    setCompareFunds((current) => current.filter((item) => item.symbol !== candidate));
+    setCompareFailedSymbols((current) => current.filter((item) => item !== candidate));
+  };
+
+  const loadCompareFund = async (candidate: string) => {
+    setComparePendingSymbols((current) => current.includes(candidate) ? current : [...current, candidate]);
+    setCompareFailedSymbols((current) => current.filter((item) => item !== candidate));
     try {
       const response = await apiFetch<unknown>(`/api/stocks/info/${encodeURIComponent(candidate)}`);
       const profile = parseHeatMapDetailStats(response)?.etfProfile;
       if (!profile) {
-        setCompareError(`${candidate} is not identified as an ETF by the provider.`);
+        removeCompareSymbol(candidate);
+        setCompareError(`${candidate} is no longer identified as an ETF by the provider.`);
         return;
       }
-      setCompareFunds((current) => current.some((fundEntry) => fundEntry.symbol === candidate)
+      if (!savedCompareSymbolsRef.current.includes(candidate)) return;
+      setCompareFunds((current) => current.some((item) => item.symbol === candidate)
         ? current
         : [...current, {
           symbol: candidate,
@@ -359,12 +376,84 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           topHoldingsReportedCount: profile.topHoldingsReportedCount,
           topHoldingsRetrievedAt: profile.topHoldingsRetrievedAt,
         }]);
-      setCompareTicker('');
     } catch {
-      setCompareError(`Could not load reported holdings for ${candidate}.`);
+      setCompareFailedSymbols((current) => current.includes(candidate) ? current : [...current, candidate]);
+      setCompareError(`Could not load reported holdings for ${candidate}. It remains saved for retry.`);
     } finally {
-      setCompareLoading(false);
+      setComparePendingSymbols((current) => current.filter((item) => item !== candidate));
     }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    setCompareFunds([]);
+    setCompareFailedSymbols([]);
+    setCompareRestoreLoading(true);
+    AsyncStorage.getItem(ETF_COMPARISON_KEY).then(async (stored) => {
+      const symbols = parseSavedEtfComparisonSymbols(stored);
+      if (cancelled) return;
+      savedCompareSymbolsRef.current = symbols;
+      setSavedCompareSymbols(symbols);
+      const toRestore = symbols.filter((item) => item !== symbol.toUpperCase());
+      setComparePendingSymbols(toRestore);
+      setCompareRestoreLoading(false);
+
+      const results = await Promise.all(toRestore.map(async (candidate) => {
+        try {
+          const response = await apiFetch<unknown>(`/api/stocks/info/${encodeURIComponent(candidate)}`);
+          return { candidate, profile: parseHeatMapDetailStats(response)?.etfProfile ?? null, failed: false };
+        } catch {
+          return { candidate, profile: null, failed: true };
+        }
+      }));
+      if (cancelled) return;
+      for (const { candidate, profile, failed } of results) {
+        if (profile) {
+          setCompareFunds((current) => current.some((item) => item.symbol === candidate)
+            ? current
+            : [...current, {
+              symbol: candidate,
+              topHoldings: profile.topHoldings,
+              topHoldingsReportedCount: profile.topHoldingsReportedCount,
+              topHoldingsRetrievedAt: profile.topHoldingsRetrievedAt,
+            }]);
+        } else if (failed) {
+          setCompareFailedSymbols((current) => current.includes(candidate) ? current : [...current, candidate]);
+        } else {
+          removeCompareSymbol(candidate);
+          setCompareError(`${candidate} is no longer identified as an ETF by the provider and was removed.`);
+        }
+      }
+      setComparePendingSymbols([]);
+    }).catch(() => {
+      if (!cancelled) {
+        setCompareStorageError('Could not restore saved ETF comparisons from this device.');
+        setCompareRestoreLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [symbol, apiFetch]);
+
+  const addCompareFund = async () => {
+    const candidate = compareTicker.trim().toUpperCase();
+    if (!/^[A-Z0-9.^=-]{1,20}$/.test(candidate)) {
+      setCompareError('Enter a valid ETF ticker.');
+      return;
+    }
+    if (candidate === symbol.toUpperCase() || savedCompareSymbolsRef.current.includes(candidate)) {
+      setCompareError('That ETF is already selected.');
+      return;
+    }
+    if (savedCompareSymbolsRef.current.length >= 3) {
+      setCompareError('Compare up to four ETFs at once.');
+      return;
+    }
+    setCompareLoading(true);
+    setCompareError('');
+    persistCompareSymbols([...savedCompareSymbolsRef.current, candidate]);
+    setCompareTicker('');
+    await loadCompareFund(candidate);
+    setCompareLoading(false);
   };
   const selectedFunds = [
     {
@@ -487,14 +576,43 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
             <TouchableOpacity
               accessibilityRole="button"
               accessibilityLabel="Add ETF to holdings comparison"
-              disabled={compareLoading}
+              disabled={compareLoading || compareRestoreLoading}
               onPress={() => void addCompareFund()}
-              style={{ justifyContent: 'center', paddingHorizontal: 12, borderRadius: 8, backgroundColor: colors.primary, opacity: compareLoading ? 0.6 : 1 }}
+              style={{ justifyContent: 'center', paddingHorizontal: 12, borderRadius: 8, backgroundColor: colors.primary, opacity: compareLoading || compareRestoreLoading ? 0.6 : 1 }}
             >
-              <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_600SemiBold' }}>{compareLoading ? 'Loading' : 'Add'}</Text>
+              <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_600SemiBold' }}>
+                {compareRestoreLoading ? 'Restoring' : compareLoading ? 'Loading' : 'Add'}
+              </Text>
             </TouchableOpacity>
           </View>
+          {compareRestoreLoading && <Text style={{ color: colors.mutedForeground, marginTop: 8 }}>Restoring saved ETF comparisons…</Text>}
           {!!compareError && <Text style={{ color: colors.sellColor, marginTop: 8 }}>{compareError}</Text>}
+          {!!compareStorageError && <Text style={{ color: colors.sellColor, marginTop: 8 }}>{compareStorageError}</Text>}
+          {savedCompareSymbols.filter((candidate) =>
+            candidate !== symbol.toUpperCase()
+            && !compareFunds.some((fundEntry) => fundEntry.symbol === candidate)
+            && !comparePendingSymbols.includes(candidate),
+          ).map((candidate) => (
+            <View key={`saved-${candidate}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 }}>
+              <Text style={{ flex: 1, color: colors.mutedForeground }}>
+                {candidate} is saved{compareFailedSymbols.includes(candidate) ? ' but could not be verified right now.' : ' and awaiting ETF verification.'}
+              </Text>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel={`Retry ${candidate} ETF verification`}
+                onPress={() => void loadCompareFund(candidate)}
+              >
+                <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold' }}>Retry</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel={`Remove saved ${candidate} comparison`}
+                onPress={() => removeCompareSymbol(candidate)}
+              >
+                <Text style={{ color: colors.sellColor }}>Remove</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
           {!!compareFunds.length && (
             <>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
@@ -503,7 +621,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
                     key={fundEntry.symbol}
                     accessibilityRole="button"
                     accessibilityLabel={`Remove ${fundEntry.symbol} from comparison`}
-                    onPress={() => setCompareFunds((current) => current.filter((item) => item.symbol !== fundEntry.symbol))}
+                    onPress={() => removeCompareSymbol(fundEntry.symbol)}
                     style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 16, paddingHorizontal: 10, paddingVertical: 5 }}
                   >
                     <Text style={{ color: colors.foreground }}>{fundEntry.symbol} ×</Text>

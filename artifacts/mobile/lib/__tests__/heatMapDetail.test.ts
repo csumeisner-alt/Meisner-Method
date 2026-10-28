@@ -8,6 +8,7 @@ import {
   getHeatMapCryptoSupplyChangeSummary,
   getHeatMapDetailStatRows,
   getHeatMapRangePosition,
+  parseSavedEtfComparisonSymbols,
   parseHeatMapCryptoSupplyHistory,
   parseHeatMapDetailStats,
 } from '../heatMapDetail.ts';
@@ -623,6 +624,16 @@ test('ETF holding overlap compares reported positions and preserves each disclos
       { fundSymbol: 'IWM', name: 'Apple', weight: 0.01 },
     ] },
   ]);
+});
+
+test('saved ETF comparisons normalize, deduplicate, cap, and reject malformed storage', () => {
+  assert.deepEqual(
+    parseSavedEtfComparisonSymbols('["qqq","SPY","qqq","bad ticker","IWM","DIA"]'),
+    ['QQQ', 'SPY', 'IWM'],
+  );
+  assert.deepEqual(parseSavedEtfComparisonSymbols('not json'), []);
+  assert.deepEqual(parseSavedEtfComparisonSymbols('{"symbol":"QQQ"}'), []);
+  assert.deepEqual(parseSavedEtfComparisonSymbols(null), []);
 });
 
 test('ETF detail rows clearly distinguish loading from unavailable provider data', () => {

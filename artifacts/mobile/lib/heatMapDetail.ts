@@ -108,6 +108,22 @@ export function findReportedEtfHoldingsOverlap(
     .map(([symbol, entries]) => ({ symbol, positions: entries }));
 }
 
+export function parseSavedEtfComparisonSymbols(value: string | null): string[] {
+  if (!value) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    const symbols = parsed.flatMap((item): string[] => {
+      if (typeof item !== 'string') return [];
+      const symbol = item.trim().toUpperCase();
+      return /^[A-Z0-9.^=-]{1,20}$/.test(symbol) ? [symbol] : [];
+    });
+    return [...new Set(symbols)].slice(0, 3);
+  } catch {
+    return [];
+  }
+}
+
 export type HeatMapDetailAssetType =
   | 'stock'
   | 'etf'

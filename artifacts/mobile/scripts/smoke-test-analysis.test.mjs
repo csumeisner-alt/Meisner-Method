@@ -1,9 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { runSmokeCheck, validateAnalysisResponse } from "./smoke-test-analysis.mjs";
 
 const fallbackReasoning =
   "The AI explanation was unavailable, so this analysis is based on the rules-based technical, fundamental, and behavioral scores shown above.";
+const etfAnalysisSource = readFileSync(
+  new URL("../app/analysis/[symbol].tsx", import.meta.url),
+  "utf8",
+);
 
 function validResponse(overrides = {}) {
   return {
@@ -92,4 +97,13 @@ test("fails clearly when a successful endpoint returns malformed JSON", async ()
     }),
     /HTTP 200 but not valid JSON/,
   );
+});
+
+test("ETF comparison tickers persist, revalidate, and remain saved on provider failure", () => {
+  assert.match(etfAnalysisSource, /AsyncStorage\.getItem\(ETF_COMPARISON_KEY\)/);
+  assert.match(etfAnalysisSource, /AsyncStorage\.setItem\(ETF_COMPARISON_KEY/);
+  assert.match(etfAnalysisSource, /parseHeatMapDetailStats\(response\)\?\.etfProfile/);
+  assert.match(etfAnalysisSource, /else if \(failed\)/);
+  assert.match(etfAnalysisSource, /It remains saved for retry/);
+  assert.match(etfAnalysisSource, /removeCompareSymbol\(fundEntry\.symbol\)/);
 });
