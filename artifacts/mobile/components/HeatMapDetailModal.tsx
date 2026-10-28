@@ -274,6 +274,8 @@ export function HeatMapDetailModal({
   onClose,
   onRefreshQuote,
   onOpenChart,
+  canAnalyzeStock,
+  onAnalyzeStock,
 }: {
   quote: HeatMapQuote | null;
   quoteUnavailable: boolean;
@@ -281,6 +283,8 @@ export function HeatMapDetailModal({
   onClose: () => void;
   onRefreshQuote: (symbol: string) => Promise<HeatMapQuote | null>;
   onOpenChart: () => void;
+  canAnalyzeStock: boolean;
+  onAnalyzeStock: () => void;
 }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -475,6 +479,19 @@ export function HeatMapDetailModal({
                 <MaterialCommunityIcons name="close" size={19} color={colors.foreground} />
               </Pressable>
             </View>
+            {canAnalyzeStock && quote.assetType === 'stock' && (
+              <Pressable
+                testID="heat-map-detail-analyze-stock"
+                accessibilityRole="button"
+                accessibilityLabel={`Run AI stock analysis for ${quote.symbol}`}
+                onPress={onAnalyzeStock}
+                style={[styles.analyzeStockButton, { backgroundColor: colors.primary }]}
+              >
+                <MaterialCommunityIcons name="chart-box-outline" size={18} color={colors.primaryForeground} />
+                <Text style={[styles.analyzeStockText, { color: colors.primaryForeground }]}>Run AI stock analysis</Text>
+                <MaterialCommunityIcons name="arrow-right" size={16} color={colors.primaryForeground} />
+              </Pressable>
+            )}
             <Pressable
               testID="heat-map-detail-open-chart"
               accessibilityRole="button"
@@ -744,6 +761,8 @@ const styles = StyleSheet.create({
   grabber: { alignSelf: 'center', width: 38, height: 4, borderRadius: 2, marginBottom: 15 },
   scrollContent: { paddingHorizontal: 20, paddingBottom: 16 },
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  analyzeStockButton: { minHeight: 46, borderRadius: 11, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 14 },
+  analyzeStockText: { fontSize: 13, fontFamily: 'Inter_700Bold', flex: 1 },
   openChartButton: { minHeight: 42, borderWidth: 1, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 14 },
   openChartText: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
   titleBlock: { flex: 1, minWidth: 0 },

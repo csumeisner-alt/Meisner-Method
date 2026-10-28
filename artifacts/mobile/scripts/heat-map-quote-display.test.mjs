@@ -8,6 +8,7 @@ import {
 import { hasUsableHeatMapPerformanceSnapshot } from "../lib/heatMapMetrics.ts";
 
 const screenSource = readFileSync(new URL("../app/heat-map.tsx", import.meta.url), "utf8");
+const detailSource = readFileSync(new URL("../components/HeatMapDetailModal.tsx", import.meta.url), "utf8");
 
 test("heat-map tiles render the session and age from each quote's own metadata", () => {
   assert.match(screenSource, /getHeatMapSessionLabel\(quote\.marketSession\)/);
@@ -147,6 +148,15 @@ test("stock sector selection offers all supported sectors and requests matching 
   assert.match(screenSource, /const STOCK_SECTORS: GetMarketHeatMapSector\[\] = \[/);
   assert.match(screenSource, /category === 'stocks'\s*&&\s*filters\.sector !== 'Unknown'/);
   assert.match(screenSource, /requestedSector,\s*\);/);
+});
+
+test("only selected stock heat-map details offer AI analysis", () => {
+  assert.match(screenSource, /canAnalyzeStock=\{category === 'stocks' && selectedQuote\?\.assetType === 'stock'\}/);
+  assert.match(screenSource, /if \(category !== 'stocks' \|\| selectedQuote\?\.assetType !== 'stock'\) return/);
+  assert.match(screenSource, /router\.push\(`\/analysis\/\$\{encodeURIComponent\(analysisSymbol\)\}`\)/);
+  assert.match(detailSource, /canAnalyzeStock && quote\.assetType === 'stock' && \(/);
+  assert.match(detailSource, /testID="heat-map-detail-analyze-stock"/);
+  assert.match(detailSource, /Run AI stock analysis/);
 });
 
 test("custom heat-map search offers company and category-aware asset suggestions before validation", () => {

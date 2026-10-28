@@ -2053,7 +2053,14 @@ export default function HeatMapScreen() {
           quote={selectedQuote}
           quoteUnavailable={selectedQuoteUnavailable}
           visible={selectedQuote !== null}
+          canAnalyzeStock={category === 'stocks' && selectedQuote?.assetType === 'stock'}
           onClose={() => setSelectedQuote(null)}
+          onAnalyzeStock={() => {
+            if (category !== 'stocks' || selectedQuote?.assetType !== 'stock') return;
+            const analysisSymbol = selectedQuote.symbol;
+            setSelectedQuote(null);
+            setTimeout(() => router.push(`/analysis/${encodeURIComponent(analysisSymbol)}`), 350);
+          }}
           onOpenChart={() => {
             if (!selectedQuote) return;
             const chartQuote = selectedQuote;
