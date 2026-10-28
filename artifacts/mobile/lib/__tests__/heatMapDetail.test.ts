@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  findReportedEtfHoldingsOverlap,
   formatHeatMapRegimeReturn,
   getHeatMapCryptoSupplyChartModel,
   getHeatMapCryptoSupplyDiscrepancy,
@@ -599,7 +600,29 @@ test('ETF detail rows show investor-relevant fund facts instead of stock fundame
     { label: '3-year beta', value: '1.00' },
   ]);
   assert.equal(stats?.etfProfile?.topHoldings[0]?.name, 'NVIDIA Corp');
+  assert.equal(stats?.etfProfile?.topHoldingsReportedCount, 1);
+  assert.equal(stats?.etfProfile?.topHoldingsRetrievedAt, null);
   assert.equal(stats?.etfProfile?.marketRegime?.bestRegime, 'bull');
+});
+
+test('ETF holding overlap compares reported positions and preserves each disclosed weight', () => {
+  assert.deepEqual(findReportedEtfHoldingsOverlap([
+    { symbol: 'SPY', topHoldings: [{ symbol: 'NVDA', name: 'NVIDIA', weight: 0.08 }] },
+    { symbol: 'QQQ', topHoldings: [
+      { symbol: 'NVDA', name: 'NVIDIA', weight: 0.07 },
+      { symbol: 'AAPL', name: 'Apple', weight: 0.06 },
+    ] },
+    { symbol: 'IWM', topHoldings: [{ symbol: 'AAPL', name: 'Apple', weight: 0.01 }] },
+  ]), [
+    { symbol: 'NVDA', positions: [
+      { fundSymbol: 'SPY', name: 'NVIDIA', weight: 0.08 },
+      { fundSymbol: 'QQQ', name: 'NVIDIA', weight: 0.07 },
+    ] },
+    { symbol: 'AAPL', positions: [
+      { fundSymbol: 'QQQ', name: 'Apple', weight: 0.06 },
+      { fundSymbol: 'IWM', name: 'Apple', weight: 0.01 },
+    ] },
+  ]);
 });
 
 test('ETF detail rows clearly distinguish loading from unavailable provider data', () => {

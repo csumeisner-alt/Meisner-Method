@@ -87,7 +87,25 @@ export interface HeatMapEtfProfile {
   largestSector: string | null;
   largestSectorWeight: number | null;
   topHoldings: HeatMapEtfHolding[];
+  topHoldingsReportedCount: number;
+  topHoldingsRetrievedAt: string | null;
   marketRegime: HeatMapEtfMarketRegime | null;
+}
+
+export function findReportedEtfHoldingsOverlap(
+  funds: Array<{ symbol: string; topHoldings: readonly HeatMapEtfHolding[] }>,
+) {
+  const positions = new Map<string, Array<{ fundSymbol: string; name: string; weight: number }>>();
+  for (const fund of funds) {
+    for (const holding of fund.topHoldings) {
+      const entries = positions.get(holding.symbol) ?? [];
+      entries.push({ fundSymbol: fund.symbol, name: holding.name, weight: holding.weight });
+      positions.set(holding.symbol, entries);
+    }
+  }
+  return [...positions.entries()]
+    .filter(([, entries]) => entries.length > 1)
+    .map(([symbol, entries]) => ({ symbol, positions: entries }));
 }
 
 export type HeatMapDetailAssetType =
@@ -207,6 +225,9 @@ function parseEtfProfile(value: unknown): HeatMapEtfProfile | null {
     largestSector: stringField(input, 'largestSector'),
     largestSectorWeight: numericField(input, 'largestSectorWeight'),
     topHoldings,
+    topHoldingsReportedCount: nonNegativeNumericField(input, 'topHoldingsReportedCount')
+      ?? topHoldings.length,
+    topHoldingsRetrievedAt: stringField(input, 'topHoldingsRetrievedAt'),
     marketRegime: parseEtfMarketRegime(input.marketRegime),
   };
 }

@@ -819,6 +819,8 @@ Return JSON only: {"analysis":"2-4 concise paragraphs","risks":["..."],"strength
           riskAdjustedReturn: riskMetrics.riskAdjustedReturn,
           topHoldings: holdings,
           marketRegime: regime,
+          topHoldingsReportedCount: Number(profile["topHoldingsReportedCount"] ?? holdings.length),
+          topHoldingsRetrievedAt: String(profile["topHoldingsRetrievedAt"] ?? new Date().toISOString()),
           scenarios,
           risks: Array.isArray(ai.risks) ? ai.risks.filter((item): item is string => typeof item === "string") : [],
           strengths: Array.isArray(ai.strengths) ? ai.strengths.filter((item): item is string => typeof item === "string") : [],

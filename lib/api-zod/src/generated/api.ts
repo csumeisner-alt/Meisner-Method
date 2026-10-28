@@ -68,6 +68,10 @@ export const AnalyzeStockBody = zod.object({
   "symbol": zod.string().describe('Stock ticker symbol (e.g. AAPL, TSLA, MSFT)')
 })
 
+export const analyzeStockResponseTwoEtfAnalysisTopHoldingsReportedCountMin = 0;
+
+
+
 export const AnalyzeStockResponse = zod.union([zod.object({
   "assetType": zod.enum(['stock']),
   "symbol": zod.string(),
@@ -161,6 +165,8 @@ export const AnalyzeStockResponse = zod.union([zod.object({
   "name": zod.string(),
   "weight": zod.number().describe('Holding weight as a decimal fraction.')
 })),
+  "topHoldingsReportedCount": zod.number().min(analyzeStockResponseTwoEtfAnalysisTopHoldingsReportedCountMin),
+  "topHoldingsRetrievedAt": zod.coerce.date(),
   "marketRegime": zod.object({
   "bestRegime": zod.enum(['bull', 'bear', 'mixed']).nullable(),
   "lookbackYears": zod.number(),
@@ -212,6 +218,10 @@ export const GetStockInfoParams = zod.object({
   "symbol": zod.coerce.string().min(1).max(getStockInfoPathSymbolMax)
 })
 
+export const getStockInfoResponseEtfProfileTopHoldingsReportedCountMin = 0;
+
+
+
 export const GetStockInfoResponse = zod.object({
   "symbol": zod.string(),
   "companyName": zod.string(),
@@ -252,6 +262,8 @@ export const GetStockInfoResponse = zod.object({
   "name": zod.string(),
   "weight": zod.number().describe('Holding weight as a decimal fraction.')
 })),
+  "topHoldingsReportedCount": zod.number().min(getStockInfoResponseEtfProfileTopHoldingsReportedCountMin),
+  "topHoldingsRetrievedAt": zod.coerce.date(),
   "marketRegime": zod.object({
   "bestRegime": zod.enum(['bull', 'bear', 'mixed']).nullable(),
   "lookbackYears": zod.number(),

@@ -26,6 +26,9 @@ export interface EtfAnalysis {
   maxDrawdown: number | null;
   riskAdjustedReturn: number | null;
   topHoldings: EtfHolding[];
+  /** @minimum 0 */
+  topHoldingsReportedCount: number;
+  topHoldingsRetrievedAt: Date;
   marketRegime: EtfMarketRegime | null;
   scenarios: EtfScenario[];
   risks: string[];

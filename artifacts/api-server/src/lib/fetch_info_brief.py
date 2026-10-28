@@ -274,13 +274,14 @@ def get_dominant_sector(sector_weightings):
 
 def normalize_top_holdings(rows):
     holdings = []
-    for row in rows[:5] if isinstance(rows, list) else []:
+    seen_symbols = set()
+    for row in rows[:50] if isinstance(rows, list) else []:
         if not isinstance(row, dict):
             continue
         symbol = str(row.get("symbol") or "").strip().upper()
         name = str(row.get("name") or symbol).strip()
         weight = finite_number(row.get("weight"))
-        if not symbol or not name or weight is None or weight < 0:
+        if not symbol or symbol in seen_symbols or not name or weight is None or weight < 0:
             continue
         # Yahoo's fund-data response normally uses fractions, but tolerate
         # percent-like values without ever emitting an impossible weight.
@@ -289,6 +290,7 @@ def normalize_top_holdings(rows):
         if weight > 1:
             continue
         holdings.append({"symbol": symbol, "name": name, "weight": weight})
+        seen_symbols.add(symbol)
     return holdings
 
 
@@ -396,6 +398,7 @@ def build_etf_profile_payload(
     market_regime=None,
 ):
     largest_sector, largest_sector_weight = get_dominant_sector(sector_weightings)
+    holdings = normalize_top_holdings(top_holdings or [])
     return {
         "fundCategory": info.get("category") or None,
         "fundFamily": info.get("fundFamily") or None,
@@ -405,7 +408,9 @@ def build_etf_profile_payload(
         "beta3Year": finite_number(first_present(info, "beta3Year", "beta")),
         "largestSector": largest_sector,
         "largestSectorWeight": largest_sector_weight,
-        "topHoldings": normalize_top_holdings(top_holdings or []),
+        "topHoldings": holdings,
+        "topHoldingsReportedCount": len(holdings),
+        "topHoldingsRetrievedAt": datetime.now(timezone.utc).isoformat(),
         "marketRegime": market_regime,
     }
 
@@ -494,7 +499,7 @@ def get_fund_data_details(ticker):
     top_holdings = []
     if top_holdings_frame is not None and hasattr(top_holdings_frame, "iterrows"):
         try:
-            for symbol, row in top_holdings_frame.head(5).iterrows():
+            for symbol, row in top_holdings_frame.head(50).iterrows():
                 raw_name = row.get("Name")
                 top_holdings.append({
                     "symbol": str(symbol),

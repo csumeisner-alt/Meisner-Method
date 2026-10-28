@@ -354,6 +354,25 @@ class InfoBriefEtfFieldTests(unittest.TestCase):
             [{"symbol": "ABC", "name": "Alpha Corp", "weight": 0.125}],
         )
 
+    def test_holdings_keep_all_provider_rows_and_deduplicate_tickers(self):
+        rows = [
+            {"symbol": f"ETF{i}", "name": f"Company {i}", "weight": 0.02}
+            for i in range(1, 13)
+        ]
+        rows.append({"symbol": "ETF1", "name": "Duplicate", "weight": 0.03})
+        holdings = fetch_info_brief.normalize_top_holdings(rows)
+        self.assertEqual(len(holdings), 12)
+        self.assertEqual(holdings[0]["symbol"], "ETF1")
+        self.assertEqual(holdings[0]["name"], "Company 1")
+
+    def test_etf_profile_discloses_reported_count_and_retrieval_timestamp(self):
+        profile = fetch_info_brief.build_etf_profile_payload(
+            {"category": "Large Blend", "fundFamily": "Example Funds"},
+            top_holdings=[{"symbol": "ABC", "name": "Alpha Corp", "weight": 0.12}],
+        )
+        self.assertEqual(profile["topHoldingsReportedCount"], 1)
+        self.assertRegex(profile["topHoldingsRetrievedAt"], r"^\d{4}-\d{2}-\d{2}T")
+
     def test_regime_performance_uses_complete_years_and_requires_multiple_samples(self):
         benchmark_closes = {
             2019: 100.0,

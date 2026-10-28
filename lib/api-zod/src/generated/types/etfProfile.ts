@@ -23,5 +23,8 @@ export interface EtfProfile {
   largestSector: string | null;
   largestSectorWeight: number | null;
   topHoldings: EtfHolding[];
+  /** @minimum 0 */
+  topHoldingsReportedCount: number;
+  topHoldingsRetrievedAt: Date;
   marketRegime: EtfMarketRegime | null;
 }

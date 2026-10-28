@@ -253,6 +253,9 @@ export interface EtfAnalysis {
   maxDrawdown: number | null;
   riskAdjustedReturn: number | null;
   topHoldings: EtfHolding[];
+  /** @minimum 0 */
+  topHoldingsReportedCount: number;
+  topHoldingsRetrievedAt: string;
   marketRegime: EtfMarketRegime | null;
   scenarios: EtfScenario[];
   risks: string[];
@@ -345,6 +348,9 @@ export interface EtfProfile {
   largestSector: string | null;
   largestSectorWeight: number | null;
   topHoldings: EtfHolding[];
+  /** @minimum 0 */
+  topHoldingsReportedCount: number;
+  topHoldingsRetrievedAt: string;
   marketRegime: EtfMarketRegime | null;
 }
 

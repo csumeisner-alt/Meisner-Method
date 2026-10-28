@@ -32,6 +32,7 @@ import { NeonAnalysisLoader } from '@/components/NeonAnalysisLoader';
 import { PriceAlertModal } from '@/components/PriceAlertModal';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { findReportedEtfHoldingsOverlap, parseHeatMapDetailStats } from '@/lib/heatMapDetail';
 import {
   formatAnalysisLoadingStage,
   getAnalysisLoadingStageInterval,
@@ -258,6 +259,8 @@ type EtfAnalysisPayload = {
   beta3Year: number | null;
   averageVolume: number | null;
   topHoldingsCombinedWeight: number | null;
+  topHoldingsReportedCount: number;
+  topHoldingsRetrievedAt: string;
   annualizedReturn: number | null;
   annualizedVolatility: number | null;
   maxDrawdown: number | null;
@@ -283,10 +286,70 @@ type EtfAnalysisPayload = {
   asOf: string;
 };
 
-function EtfAnalysisSections({ fund, colors }: {
+function EtfAnalysisSections({ fund, colors, symbol }: {
   fund: EtfAnalysisPayload;
   colors: ReturnType<typeof useColors>;
+  symbol: string;
 }) {
+  const { apiFetch } = useApi();
+  const [compareTicker, setCompareTicker] = useState('');
+  const [compareFunds, setCompareFunds] = useState<Array<{
+    symbol: string;
+    topHoldings: { symbol: string; name: string; weight: number }[];
+    topHoldingsReportedCount: number;
+    topHoldingsRetrievedAt: string | null;
+  }>>([]);
+  const [compareError, setCompareError] = useState('');
+  const [compareLoading, setCompareLoading] = useState(false);
+  const addCompareFund = async () => {
+    const candidate = compareTicker.trim().toUpperCase();
+    if (!/^[A-Z0-9.^=-]{1,20}$/.test(candidate)) {
+      setCompareError('Enter a valid ETF ticker.');
+      return;
+    }
+    if (candidate === symbol.toUpperCase() || compareFunds.some((fundEntry) => fundEntry.symbol === candidate)) {
+      setCompareError('That ETF is already selected.');
+      return;
+    }
+    if (compareFunds.length >= 3) {
+      setCompareError('Compare up to four ETFs at once.');
+      return;
+    }
+    setCompareLoading(true);
+    setCompareError('');
+    try {
+      const response = await apiFetch<unknown>(`/api/stocks/info/${encodeURIComponent(candidate)}`);
+      const profile = parseHeatMapDetailStats(response)?.etfProfile;
+      if (!profile) {
+        setCompareError(`${candidate} is not identified as an ETF by the provider.`);
+        return;
+      }
+      setCompareFunds((current) => current.some((fundEntry) => fundEntry.symbol === candidate)
+        ? current
+        : [...current, {
+          symbol: candidate,
+          topHoldings: profile.topHoldings,
+          topHoldingsReportedCount: profile.topHoldingsReportedCount,
+          topHoldingsRetrievedAt: profile.topHoldingsRetrievedAt,
+        }]);
+      setCompareTicker('');
+    } catch {
+      setCompareError(`Could not load reported holdings for ${candidate}.`);
+    } finally {
+      setCompareLoading(false);
+    }
+  };
+  const selectedFunds = [
+    {
+      symbol: symbol.toUpperCase(),
+      topHoldings: fund.topHoldings.flatMap((holding) =>
+        holding.weight == null ? [] : [{ ...holding, weight: holding.weight }]),
+      topHoldingsReportedCount: fund.topHoldingsReportedCount,
+      topHoldingsRetrievedAt: fund.topHoldingsRetrievedAt,
+    },
+    ...compareFunds,
+  ];
+  const overlaps = findReportedEtfHoldingsOverlap(selectedFunds);
   const fmtAssets = (value: number | null) => value == null
     ? 'Unavailable'
     : value >= 1e12 ? `$${(value / 1e12).toFixed(2)}T`
@@ -317,7 +380,64 @@ function EtfAnalysisSections({ fund, colors }: {
             <MetricRow key={holding.symbol} label={`${holding.name} (${holding.symbol})`} value={pctValue(holding.weight)} />
           )) : <Text style={{ color: colors.mutedForeground }}>Holdings data unavailable.</Text>}
           {fund.topHoldingsCombinedWeight != null && (
-            <MetricRow label={`Combined weight of reported ${fund.topHoldings.length} holdings`} value={pctValue(fund.topHoldingsCombinedWeight)} />
+            <MetricRow label={`Combined weight of ${fund.topHoldingsReportedCount} reported positions`} value={pctValue(fund.topHoldingsCombinedWeight)} />
+          )}
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 6 }}>
+            Provider snapshot retrieved {new Date(fund.topHoldingsRetrievedAt).toLocaleString()}; the provider does not supply a holdings report date here.
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 18 }}>
+            <TextInput
+              value={compareTicker}
+              onChangeText={setCompareTicker}
+              placeholder="Add ETF ticker"
+              placeholderTextColor={colors.mutedForeground}
+              autoCapitalize="characters"
+              accessibilityLabel="ETF ticker to compare holdings"
+              style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, color: colors.foreground }}
+            />
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Add ETF to holdings comparison"
+              disabled={compareLoading}
+              onPress={() => void addCompareFund()}
+              style={{ justifyContent: 'center', paddingHorizontal: 12, borderRadius: 8, backgroundColor: colors.primary, opacity: compareLoading ? 0.6 : 1 }}
+            >
+              <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_600SemiBold' }}>{compareLoading ? 'Loading' : 'Add'}</Text>
+            </TouchableOpacity>
+          </View>
+          {!!compareError && <Text style={{ color: colors.sellColor, marginTop: 8 }}>{compareError}</Text>}
+          {!!compareFunds.length && (
+            <>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                {compareFunds.map((fundEntry) => (
+                  <TouchableOpacity
+                    key={fundEntry.symbol}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${fundEntry.symbol} from comparison`}
+                    onPress={() => setCompareFunds((current) => current.filter((item) => item.symbol !== fundEntry.symbol))}
+                    style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 16, paddingHorizontal: 10, paddingVertical: 5 }}
+                  >
+                    <Text style={{ color: colors.foreground }}>{fundEntry.symbol} ×</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {selectedFunds.map((fundEntry) => (
+                <Text key={`coverage-${fundEntry.symbol}`} style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 8 }}>
+                  {fundEntry.symbol}: {fundEntry.topHoldingsReportedCount} reported positions · retrieved {fundEntry.topHoldingsRetrievedAt ? new Date(fundEntry.topHoldingsRetrievedAt).toLocaleString() : 'date unavailable'}
+                </Text>
+              ))}
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', marginTop: 16 }}>Shared reported positions</Text>
+              {overlaps.length ? overlaps.map(({ symbol: holdingSymbol, positions }) => (
+                <Text key={holdingSymbol} style={{ color: colors.mutedForeground, marginTop: 8, lineHeight: 20 }}>
+                  {holdingSymbol}: {positions.map((position) => `${position.fundSymbol} ${position.name} (${(position.weight * 100).toFixed(2)}%)`).join(' · ')}
+                </Text>
+              )) : (
+                <Text style={{ color: colors.mutedForeground, marginTop: 8 }}>No shared positions among the reported holdings.</Text>
+              )}
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 8 }}>
+                Overlap compares only provider-reported positions, not complete portfolios.
+              </Text>
+            </>
           )}
         </View>
       </SectionCard>
@@ -660,7 +780,7 @@ export default function AnalysisScreen() {
                 Evaluates the fund as a portfolio of reported holdings—not as an operating company.
               </Text>
             </View>
-            <EtfAnalysisSections fund={result.etfAnalysis} colors={colors} />
+            <EtfAnalysisSections fund={result.etfAnalysis} colors={colors} symbol={result.symbol} />
           </ScrollView>
         </View>
       </AmericanSteelBackground>

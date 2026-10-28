@@ -680,6 +680,12 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EtfHolding"
+        topHoldingsReportedCount:
+          type: integer
+          minimum: 0
+        topHoldingsRetrievedAt:
+          type: string
+          format: date-time
         marketRegime:
           allOf:
             - $ref: "#/components/schemas/EtfMarketRegime"
@@ -703,7 +709,7 @@ components:
         asOf:
           type: string
           format: date-time
-      required: [topHoldings, marketRegime, scenarios, risks, strengths, analysis, provider, asOf, annualizedReturn, annualizedVolatility, maxDrawdown, riskAdjustedReturn, topHoldingsCombinedWeight]
+      required: [topHoldings, topHoldingsReportedCount, topHoldingsRetrievedAt, marketRegime, scenarios, risks, strengths, analysis, provider, asOf, annualizedReturn, annualizedVolatility, maxDrawdown, riskAdjustedReturn, topHoldingsCombinedWeight]
 
     EtfScenario:
       type: object
@@ -914,6 +920,12 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EtfHolding"
+        topHoldingsReportedCount:
+          type: integer
+          minimum: 0
+        topHoldingsRetrievedAt:
+          type: string
+          format: date-time
         marketRegime:
           allOf:
             - $ref: "#/components/schemas/EtfMarketRegime"
@@ -928,6 +940,8 @@ components:
         - largestSector
         - largestSectorWeight
         - topHoldings
+        - topHoldingsReportedCount
+        - topHoldingsRetrievedAt
         - marketRegime
 
     EtfHolding:
