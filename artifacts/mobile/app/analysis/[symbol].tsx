@@ -714,7 +714,11 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
     return Number.isFinite(timestamp) ? new Date(timestamp).toLocaleString() : 'date unavailable';
   };
   const shareOverlapSummary = async () => {
-    const message = formatReportedEtfHoldingsOverlapShare(selectedFunds, overlaps);
+    const message = formatReportedEtfHoldingsOverlapShare(
+      selectedFunds,
+      overlaps,
+      comparisonMetricFunds,
+    );
     setShareStatus('');
     setManualCopySummary(null);
     const browserNavigator = Platform.OS === 'web' && typeof navigator !== 'undefined'

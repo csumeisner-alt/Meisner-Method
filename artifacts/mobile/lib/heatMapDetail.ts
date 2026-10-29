@@ -403,6 +403,63 @@ export function findReportedEtfHoldingsOverlap(
     .map(([symbol, entries]) => ({ symbol, positions: entries }));
 }
 
+export interface EtfComparisonShareAnalysis {
+  fundCategory?: string | null;
+  provider?: string | null;
+  asOf?: string | null;
+  totalAssets?: number | null;
+  beta3Year?: number | null;
+  annualizedVolatility?: number | null;
+  maxDrawdown?: number | null;
+  riskAdjustedReturn?: number | null;
+  annualizedReturn?: number | null;
+  benchmark?: {
+    symbol: string;
+    name: string;
+    source: string;
+    asOf: string;
+  } | null;
+  trackingComparison?: {
+    periodStart: string;
+    periodEnd: string;
+    monthlySamples: number;
+    fundAnnualizedReturn: number | null;
+    benchmarkAnnualizedReturn: number | null;
+    trackingDifference: number | null;
+    trackingError: number | null;
+    source: string;
+    asOf: string;
+  } | null;
+  peerExpenseComparison?: {
+    category: string;
+    sampleSize: number | null;
+    sampleContext: string;
+    source: string;
+    asOf: string;
+    categoryAverageExpenseRatio: number | null;
+    difference: number | null;
+  } | null;
+  peerAssetSizeComparison?: {
+    category: string;
+    sampleSize: number | null;
+    sampleContext: string;
+    source: string;
+    asOf: string;
+    categoryAverageTotalAssets: number | null;
+  } | null;
+  marketRegime?: {
+    benchmarkSymbol: string;
+    firstYear: number;
+    lastYear: number;
+    periods: Record<string, { averageAnnualReturn: number | null; years: number }>;
+  } | null;
+}
+
+export interface EtfComparisonShareMetricFund {
+  symbol: string;
+  analysis: EtfComparisonShareAnalysis;
+}
+
 export function formatReportedEtfHoldingsOverlapShare(
   funds: readonly {
     symbol: string;
@@ -415,6 +472,7 @@ export function formatReportedEtfHoldingsOverlapShare(
     symbol: string;
     positions: readonly { fundSymbol: string; name: string; weight: number }[];
   }[],
+  metricFunds: readonly EtfComparisonShareMetricFund[] = [],
 ): string {
   const lines = [
     'ETF comparison summary',
@@ -486,6 +544,71 @@ export function formatReportedEtfHoldingsOverlapShare(
     'Sector weights include only reported values; unavailable values are not zero.',
     'Expense ratios are provider-reported annual fund costs, not a guarantee of total investment cost.',
   );
+
+  if (metricFunds.length) {
+    const timestamp = (value: string | null | undefined) => {
+      const parsed = value ? Date.parse(value) : Number.NaN;
+      return Number.isFinite(parsed) ? new Date(parsed).toISOString() : 'unavailable';
+    };
+    const sampleNote = (sampleSize: number | null, sampleContext: string) => {
+      const count = typeof sampleSize === 'number' && Number.isFinite(sampleSize) && sampleSize >= 0
+        ? ` · ${sampleSize} funds`
+        : '';
+      return `${sampleContext || 'sample details unavailable'}${count}`;
+    };
+
+    lines.push(
+      '',
+      'Risk and performance (reported figures per selected fund):',
+    );
+    for (const { symbol, analysis } of metricFunds) {
+      const fundSymbol = symbol.toUpperCase();
+      lines.push(
+        `- ${fundSymbol}: assets under management ${formatEtfComparisonValue(analysis.totalAssets, 'assets')}; 3-year beta ${formatEtfComparisonValue(analysis.beta3Year, 'number')}; 1-year annualized volatility ${formatEtfComparisonValue(analysis.annualizedVolatility, 'percent')}; 1-year maximum drawdown ${formatEtfComparisonValue(analysis.maxDrawdown, 'percent')}; return / volatility ratio ${formatEtfComparisonValue(analysis.riskAdjustedReturn, 'number')}; 1-year annualized return ${formatEtfComparisonValue(analysis.annualizedReturn, 'percent')}.`,
+        `  Fund category: ${analysis.fundCategory || 'unavailable'} · provider: ${analysis.provider || 'unavailable'} · retrieved ${timestamp(analysis.asOf)}.`,
+        analysis.benchmark
+          ? `  Verified benchmark: ${analysis.benchmark.name} (${analysis.benchmark.symbol}) · ${analysis.benchmark.source} · retrieved ${timestamp(analysis.benchmark.asOf)}.`
+          : '  Verified benchmark: unavailable.',
+      );
+
+      const tracking = analysis.trackingComparison;
+      lines.push(tracking
+        ? `  Benchmark tracking (${tracking.periodStart}–${tracking.periodEnd}, ${tracking.monthlySamples} monthly samples): fund return ${formatEtfComparisonValue(tracking.fundAnnualizedReturn, 'percent')}; benchmark return ${formatEtfComparisonValue(tracking.benchmarkAnnualizedReturn, 'percent')}; tracking difference ${formatEtfComparisonValue(tracking.trackingDifference, 'percent')}; annualized tracking error ${formatEtfComparisonValue(tracking.trackingError, 'percent')}. Source: ${tracking.source} · retrieved ${timestamp(tracking.asOf)}.`
+        : '  Benchmark tracking: unavailable without a verified benchmark and sufficient shared history.');
+
+      const regime = analysis.marketRegime;
+      if (regime) {
+        const regimeReturns = ['bull', 'bear', 'mixed'].map((key) => {
+          const period = regime.periods[key];
+          return `${key}: ${period
+            && Number.isFinite(period.years)
+            && period.years > 0
+            && typeof period.averageAnnualReturn === 'number'
+            && Number.isFinite(period.averageAnnualReturn)
+            ? `${formatEtfComparisonValue(period.averageAnnualReturn, 'percent')} (${period.years} ${period.years === 1 ? 'year' : 'years'})`
+            : 'unavailable'}`;
+        }).join(' · ');
+        lines.push(
+          `  Historical regime returns (${regime.firstYear}–${regime.lastYear}, grouped by ${regime.benchmarkSymbol}): ${regimeReturns}. Historical comparison only.`,
+        );
+      } else {
+        lines.push('  Historical regime returns: unavailable.');
+      }
+
+      const feePeer = analysis.peerExpenseComparison;
+      lines.push(feePeer
+        ? `  Category fee baseline: ${feePeer.category} · average ${formatEtfComparisonValue(feePeer.categoryAverageExpenseRatio, 'percent')} · difference ${formatEtfComparisonValue(feePeer.difference, 'basis-points')} · ${sampleNote(feePeer.sampleSize, feePeer.sampleContext)} · ${feePeer.source} · retrieved ${timestamp(feePeer.asOf)}.`
+        : '  Category fee baseline: unavailable.');
+      const assetPeer = analysis.peerAssetSizeComparison;
+      lines.push(assetPeer
+        ? `  Category asset baseline: ${assetPeer.category} · average ${formatEtfComparisonValue(assetPeer.categoryAverageTotalAssets, 'assets')} · ${sampleNote(assetPeer.sampleSize, assetPeer.sampleContext)} · ${assetPeer.source} · retrieved ${timestamp(assetPeer.asOf)}.`
+        : '  Category asset baseline: unavailable.');
+    }
+    lines.push(
+      'Risk-adjusted return uses a 0% risk-free proxy and is not a Sharpe ratio. Historical risk and performance figures are limited to the periods shown; unavailable values are not zero.',
+    );
+  }
+
   return lines.join('\n');
 }
 

@@ -773,6 +773,138 @@ test('ETF comparison share labels missing and malformed sector or cost data unav
   assert.doesNotMatch(summary, /BAD: 0\.00%|SPY: 0\.00%/);
 });
 
+test('ETF comparison share includes selected risk and performance with source context', () => {
+  const summary = formatReportedEtfHoldingsOverlapShare(
+    [
+      { symbol: 'SPY', topHoldingsRetrievedAt: null },
+      { symbol: 'QQQ', topHoldingsRetrievedAt: null },
+    ],
+    [],
+    [
+      {
+        symbol: 'SPY',
+        analysis: {
+          fundCategory: 'Large Blend',
+          provider: 'Yahoo Finance',
+          asOf: '2026-10-27T16:00:00Z',
+          totalAssets: 700_000_000,
+          beta3Year: 1.02,
+          annualizedVolatility: 0.18,
+          maxDrawdown: -0.24,
+          riskAdjustedReturn: 0.62,
+          annualizedReturn: 0.11,
+          benchmark: {
+            symbol: 'SPY',
+            name: 'S&P 500',
+            source: 'Yahoo Finance',
+            asOf: '2026-10-27T15:00:00Z',
+          },
+          trackingComparison: {
+            periodStart: '2021-01',
+            periodEnd: '2025-12',
+            monthlySamples: 60,
+            fundAnnualizedReturn: 0.11,
+            benchmarkAnnualizedReturn: 0.1,
+            trackingDifference: 0.01,
+            trackingError: 0.02,
+            source: 'Yahoo Finance',
+            asOf: '2026-10-27T15:00:00Z',
+          },
+          peerExpenseComparison: {
+            category: 'Large Blend',
+            sampleSize: null,
+            sampleContext: 'Sample size not reported',
+            source: 'Yahoo Finance',
+            asOf: '2026-10-27T15:00:00Z',
+            categoryAverageExpenseRatio: 0.0008,
+            difference: -0.0005,
+          },
+          peerAssetSizeComparison: {
+            category: 'Large Blend',
+            sampleSize: null,
+            sampleContext: 'Sample size not reported',
+            source: 'Yahoo Finance',
+            asOf: '2026-10-27T15:00:00Z',
+            categoryAverageTotalAssets: 800_000_000,
+          },
+          marketRegime: {
+            benchmarkSymbol: 'SPY',
+            firstYear: 2006,
+            lastYear: 2025,
+            periods: {
+              bull: { averageAnnualReturn: 0.14, years: 10 },
+              bear: { averageAnnualReturn: -0.18, years: 3 },
+              mixed: { averageAnnualReturn: 0.04, years: 7 },
+            },
+          },
+        },
+      },
+      {
+        symbol: 'QQQ',
+        analysis: {
+          fundCategory: null,
+          provider: 'Yahoo Finance',
+          asOf: '2026-10-27T16:05:00Z',
+        },
+      },
+    ],
+  );
+
+  assert.match(summary, /SPY: assets under management \$700\.0M; 3-year beta 1\.02; 1-year annualized volatility 18\.00%; 1-year maximum drawdown -24\.00%; return \/ volatility ratio 0\.62; 1-year annualized return 11\.00%/);
+  assert.match(summary, /QQQ: assets under management Unavailable; 3-year beta Unavailable; 1-year annualized volatility Unavailable; 1-year maximum drawdown Unavailable; return \/ volatility ratio Unavailable; 1-year annualized return Unavailable/);
+  assert.match(summary, /Fund category: Large Blend · provider: Yahoo Finance · retrieved 2026-10-27T16:00:00\.000Z/);
+  assert.match(summary, /Verified benchmark: S&P 500 \(SPY\) · Yahoo Finance/);
+  assert.match(summary, /Benchmark tracking \(2021-01–2025-12, 60 monthly samples\)/);
+  assert.match(summary, /Historical regime returns \(2006–2025, grouped by SPY\): bull: 14\.00% \(10 years\) · bear: -18\.00% \(3 years\) · mixed: 4\.00% \(7 years\)/);
+  assert.match(summary, /Category fee baseline: Large Blend · average 0\.08% · difference -5\.0 bps · Sample size not reported/);
+  assert.match(summary, /Category asset baseline: Large Blend · average \$800\.0M · Sample size not reported/);
+  assert.match(summary, /risk-free proxy and is not a Sharpe ratio/);
+  assert.doesNotMatch(summary, /IWM|unselected/i);
+});
+
+test('ETF comparison share keeps malformed or missing risk and performance unavailable', () => {
+  const summary = formatReportedEtfHoldingsOverlapShare(
+    [{ symbol: 'BAD', topHoldingsRetrievedAt: null }],
+    [],
+    [{
+      symbol: 'BAD',
+      analysis: {
+        beta3Year: Number.NaN,
+        annualizedVolatility: null,
+        maxDrawdown: Number.POSITIVE_INFINITY,
+        riskAdjustedReturn: null,
+        annualizedReturn: null,
+        trackingComparison: {
+          periodStart: '2025-01',
+          periodEnd: '2025-12',
+          monthlySamples: 12,
+          fundAnnualizedReturn: Number.NaN,
+          benchmarkAnnualizedReturn: null,
+          trackingDifference: null,
+          trackingError: null,
+          source: 'Yahoo Finance',
+          asOf: 'invalid-date',
+        },
+        marketRegime: {
+          benchmarkSymbol: 'SPY',
+          firstYear: 2025,
+          lastYear: 2025,
+          periods: {
+            bull: { averageAnnualReturn: null, years: 1 },
+            bear: { averageAnnualReturn: Number.NaN, years: 1 },
+            mixed: { averageAnnualReturn: null, years: 0 },
+          },
+        },
+      },
+    }],
+  );
+
+  assert.match(summary, /BAD: assets under management Unavailable; 3-year beta Unavailable; 1-year annualized volatility Unavailable; 1-year maximum drawdown Unavailable; return \/ volatility ratio Unavailable; 1-year annualized return Unavailable/);
+  assert.match(summary, /fund return Unavailable; benchmark return Unavailable; tracking difference Unavailable; annualized tracking error Unavailable/);
+  assert.match(summary, /bull: unavailable · bear: unavailable · mixed: unavailable/);
+  assert.doesNotMatch(summary, /BAD: .*0\.00%|BAD: .*0\.00/);
+});
+
 test('ETF holding overlap share states when selected funds have no common reported positions', () => {
   const summary = formatReportedEtfHoldingsOverlapShare([
     { symbol: 'SPY', topHoldingsRetrievedAt: '2026-10-27T16:00:00.000Z' },
@@ -958,7 +1090,7 @@ test('ETF overlap native cancellation and errors never count as a successful sha
 test('ETF analysis screen wires selected overlap content and suppresses feedback for cancel or share success', () => {
   assert.match(
     analysisScreenSource,
-    /formatReportedEtfHoldingsOverlapShare\(selectedFunds,\s*overlaps\)/,
+    /formatReportedEtfHoldingsOverlapShare\(\s*selectedFunds,\s*overlaps,\s*comparisonMetricFunds,?\s*\)/,
   );
   assert.match(analysisScreenSource, /expenseRatio: fund\.expenseRatio/);
   assert.match(analysisScreenSource, /apiFetch<\{[\s\S]*?etfAnalysis\?: EtfAnalysisPayload[\s\S]*?\}>\('\/api\/stocks\/analyze',[\s\S]*?method: 'POST'/);
