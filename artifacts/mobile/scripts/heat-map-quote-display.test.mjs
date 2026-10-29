@@ -150,15 +150,15 @@ test("stock sector selection offers all supported sectors and requests matching 
   assert.match(screenSource, /requestedSector,\s*\);/);
 });
 
-test("selected stock and ETF heat-map details get category-specific AI analysis", () => {
-  assert.match(screenSource, /canAnalyzeStock=\{category === 'stocks' && selectedQuote\?\.assetType === 'stock'\}/);
-  assert.match(screenSource, /if \(category !== 'stocks' \|\| selectedQuote\?\.assetType !== 'stock'\) return/);
+test("stock and ETF details get AI analysis in their maps and the custom map", () => {
+  assert.match(screenSource, /canAnalyzeStock=\{\(category === 'stocks' \|\| category === 'custom'\) && selectedQuote\?\.assetType === 'stock'\}/);
+  assert.match(screenSource, /if \(\(category !== 'stocks' && category !== 'custom'\) \|\| selectedQuote\?\.assetType !== 'stock'\) return/);
   assert.match(screenSource, /router\.push\(`\/analysis\/\$\{encodeURIComponent\(analysisSymbol\)\}`\)/);
   assert.match(detailSource, /canAnalyzeStock && quote\.assetType === 'stock' && \(/);
   assert.match(detailSource, /testID="heat-map-detail-analyze-stock"/);
   assert.match(detailSource, /Run AI stock analysis/);
-  assert.match(screenSource, /canAnalyzeEtf=\{category === 'etfs' && selectedQuote\?\.assetType === 'etf'\}/);
-  assert.match(screenSource, /if \(category !== 'etfs' \|\| selectedQuote\?\.assetType !== 'etf'\) return/);
+  assert.match(screenSource, /canAnalyzeEtf=\{\(category === 'etfs' \|\| category === 'custom'\) && selectedQuote\?\.assetType === 'etf'\}/);
+  assert.match(screenSource, /if \(\(category !== 'etfs' && category !== 'custom'\) \|\| selectedQuote\?\.assetType !== 'etf'\) return/);
   assert.match(detailSource, /canAnalyzeEtf && quote\.assetType === 'etf' && \(/);
   assert.match(detailSource, /testID="heat-map-detail-analyze-etf"/);
   assert.match(detailSource, /Run AI ETF analysis/);
