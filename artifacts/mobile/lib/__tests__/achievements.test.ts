@@ -39,7 +39,7 @@ test('earned achievement storage parsing ignores unknown IDs and duplicates', ()
 
 test('Market Scholar and Oracle use the replacement milestones', () => {
   assert.equal(ANALYZE_SEARCH_ACHIEVEMENT_THRESHOLD, 30);
-  assert.equal(ACHIEVEMENTS.find(({ id }) => id === 'quote-50')?.description, 'Added 10 instruments to a Custom map.');
+  assert.equal(ACHIEVEMENTS.find(({ id }) => id === 'quote-50')?.description, 'Completed five sell trades in Portfolio.');
   assert.equal(ACHIEVEMENTS.find(({ id }) => id === 'quote-100')?.description, 'Completed 30 Analyze searches.');
   assert.equal(parseAnalyzeSearchCount(null), 0);
   assert.equal(parseAnalyzeSearchCount('29'), 29);

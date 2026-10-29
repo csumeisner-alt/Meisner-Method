@@ -2126,6 +2126,7 @@ const gradeModalStyles = StyleSheet.create({
 export default function PortfolioScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { awardAchievement } = useAchievements();
 
   const [trades, setTrades] = useState<Trade[]>([]);
   const [quotes, setQuotes] = useState<Record<string, Quote | null>>({});
@@ -2210,6 +2211,10 @@ export default function PortfolioScreen() {
   const allPositions = computePositions(trades, quotes);
   const openPositions = allPositions.filter(p => p.netShares !== 0);
   const { closedTrades, unmatchedSells } = computeTradeReconciliation(trades, quotes);
+  const sellTradeCount = trades.filter(trade => trade.type === 'sell').length;
+  useEffect(() => {
+    if (sellTradeCount >= 5) void awardAchievement('quote-50');
+  }, [awardAchievement, sellTradeCount]);
   const gradeHistoryPoints = useMemo<GradeHistoryPoint[]>(() => (
     trades
       .filter(trade => trade.type === 'sell')

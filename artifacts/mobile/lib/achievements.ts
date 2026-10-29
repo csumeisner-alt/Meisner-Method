@@ -13,7 +13,7 @@ export const ACHIEVEMENTS = [
   },
   { id: 'quote-10', title: 'Tape Collector', description: 'Viewed 10 Training Tape quotes.', icon: 'bookmark' },
   { id: 'quote-25', title: 'Signal Tracker', description: 'Viewed 25 Training Tape quotes.', icon: 'activity' },
-  { id: 'quote-50', title: 'Market Scholar', description: 'Added 10 instruments to a Custom map.', icon: 'book-open' },
+  { id: 'quote-50', title: 'Market Scholar', description: 'Completed five sell trades in Portfolio.', icon: 'book-open' },
   { id: 'quote-100', title: 'Oracle', description: 'Completed 30 Analyze searches.', icon: 'eye' },
   {
     id: 'first-paper-order',
