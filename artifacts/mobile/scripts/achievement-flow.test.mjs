@@ -50,7 +50,7 @@ test("first-time app milestones are wired to achievement rewards and a review sc
   assert.match(overlaySource, /confirmPrideSelection/);
   assert.match(overlaySource, /RainbowCelebration onDismiss=\{dismissRainbowCelebration\}/);
   assert.match(overlaySource, /Smart choice\. Your current flag stays selected/);
-  assert.match(overlaySource, /toastAchievement \|\| !hasCompletedAllAchievements\(earnedIds\)/);
+  assert.match(overlaySource, /!toastAchievement \|\|\s*!shouldPresentAchievementSeal\(achievementSeal, toastAchievement\.id, earnedIds\)/);
   assert.match(overlaySource, /THE FINAL SEAL/);
   assert.match(overlaySource, /15 of 15 complete/);
   assert.match(overlaySource, /Choose your title flag/);
@@ -64,6 +64,10 @@ test("first-time app milestones are wired to achievement rewards and a review sc
   assert.match(overlaySource, /if \(reducedMotion\) \{\s*progress\.setValue\(1\)/);
   assert.match(overlaySource, /accessibilityLabel="Dismiss achievement celebration"/);
   assert.match(overlaySource, /accessibilityLabel="Choose your title flag"/);
+  assert.match(overlaySource, /onRequestClose=\{\(\) => dispatchAchievementSeal\(\{ type: 'dismiss' \}\)\}/);
+  assert.match(overlaySource, /onDismiss=\{\(\) => dispatchAchievementSeal\(\{ type: 'dismiss' \}\)\}/);
+  assert.match(overlaySource, /dispatchAchievementSeal\(\{ type: 'choose-title-flag' \}\);\s*setTimeout\(openGallery, 260\)/);
+  assert.match(overlaySource, /shouldPresentAchievementSeal\(achievementSeal, toastAchievement\.id, earnedIds\)/);
   assert.match(overlaySource, /openGallery, 260/);
   assert.match(overlaySource, /borderBottomColor: 'transparent'/);
   assert.doesNotMatch(overlaySource, /confetti/i);

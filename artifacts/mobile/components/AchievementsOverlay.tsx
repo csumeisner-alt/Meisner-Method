@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useReducer, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
@@ -20,8 +20,11 @@ import {
   ACHIEVEMENTS,
   ACHIEVEMENT_UNLOCKED_FLAGS,
   DEFAULT_FLAG_ID,
+  INITIAL_ACHIEVEMENT_SEAL_STATE,
+  achievementSealReducer,
   hasCompletedAllAchievements,
   PRIDE_FLAG,
+  shouldPresentAchievementSeal,
 } from '@/lib/achievements';
 import { PremiumFlagBadge } from '@/components/PremiumFlagBadge';
 import { useAchievements } from '@/contexts/AchievementsContext';
@@ -402,10 +405,12 @@ export function AchievementsOverlay() {
     dismissToast,
   } = useAchievements();
   const toastMotion = useRef(new Animated.Value(0)).current;
-  const sealShownRef = useRef(false);
+  const [achievementSeal, dispatchAchievementSeal] = useReducer(
+    achievementSealReducer,
+    INITIAL_ACHIEVEMENT_SEAL_STATE,
+  );
   const [prideConfirmVisible, setPrideConfirmVisible] = useState(false);
   const [rainbowCelebrationVisible, setRainbowCelebrationVisible] = useState(false);
-  const [achievementSealVisible, setAchievementSealVisible] = useState(false);
   const [iconUnchangedNotice, setIconUnchangedNotice] = useState(false);
 
   const requestPrideSelection = () => {
@@ -431,16 +436,22 @@ export function AchievementsOverlay() {
   };
 
   const chooseTitleFlagFromSeal = () => {
-    setAchievementSealVisible(false);
+    dispatchAchievementSeal({ type: 'choose-title-flag' });
     setTimeout(openGallery, 260);
   };
 
   useEffect(() => {
-    if (!toastAchievement || !hasCompletedAllAchievements(earnedIds) || sealShownRef.current) return;
-    sealShownRef.current = true;
+    if (
+      !toastAchievement ||
+      !shouldPresentAchievementSeal(achievementSeal, toastAchievement.id, earnedIds)
+    ) return;
     dismissToast();
-    setAchievementSealVisible(true);
-  }, [dismissToast, earnedIds, toastAchievement]);
+    dispatchAchievementSeal({
+      type: 'achievement-toast',
+      achievementId: toastAchievement.id,
+      earnedIds,
+    });
+  }, [achievementSeal, dismissToast, earnedIds, toastAchievement]);
 
   useEffect(() => {
     if (!iconUnchangedNotice) return;
@@ -766,14 +777,14 @@ export function AchievementsOverlay() {
         )}
       </Modal>
       <Modal
-        visible={achievementSealVisible}
+        visible={achievementSeal.visible}
         transparent
         animationType="fade"
-        onRequestClose={() => setAchievementSealVisible(false)}
+        onRequestClose={() => dispatchAchievementSeal({ type: 'dismiss' })}
       >
         <AchievementSealCelebration
           reducedMotion={reduceMotion}
-          onDismiss={() => setAchievementSealVisible(false)}
+          onDismiss={() => dispatchAchievementSeal({ type: 'dismiss' })}
           onChooseFlags={chooseTitleFlagFromSeal}
         />
       </Modal>

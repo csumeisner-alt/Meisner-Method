@@ -45,6 +45,45 @@ export function hasCompletedAllAchievements(earnedIds: readonly AchievementId[])
   return ACHIEVEMENTS.every((achievement) => earned.has(achievement.id));
 }
 
+export type AchievementSealState = {
+  visible: boolean;
+  shown: boolean;
+};
+
+export const INITIAL_ACHIEVEMENT_SEAL_STATE: AchievementSealState = {
+  visible: false,
+  shown: false,
+};
+
+export type AchievementSealAction =
+  | { type: 'achievement-toast'; achievementId: AchievementId; earnedIds: readonly AchievementId[] }
+  | { type: 'dismiss' }
+  | { type: 'choose-title-flag' };
+
+export function shouldPresentAchievementSeal(
+  state: AchievementSealState,
+  achievementId: AchievementId,
+  earnedIds: readonly AchievementId[],
+): boolean {
+  const finalAchievement = ACHIEVEMENTS[ACHIEVEMENTS.length - 1];
+  return !state.shown
+    && achievementId === finalAchievement.id
+    && hasCompletedAllAchievements(earnedIds);
+}
+
+export function achievementSealReducer(
+  state: AchievementSealState,
+  action: AchievementSealAction,
+): AchievementSealState {
+  if (action.type === 'achievement-toast') {
+    return shouldPresentAchievementSeal(state, action.achievementId, action.earnedIds)
+      ? { visible: true, shown: true }
+      : state;
+  }
+  if (!state.visible) return state;
+  return { ...state, visible: false };
+}
+
 export const ACHIEVEMENT_UNLOCKED_FLAGS = [
   { id: 'heritage', name: 'Gadsden', artwork: 'gadsden' },
   { id: 'liberty', name: 'Liberty & Eagle', artwork: 'liberty-eagle' },
