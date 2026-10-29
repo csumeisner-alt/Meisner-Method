@@ -493,8 +493,13 @@ function connectDebugger(webSocketUrl) {
           return reply.result.result.value;
         });
       },
-      close() {
+      async close() {
+        if (socket.readyState === WebSocket.CLOSED) return;
+        const closed = new Promise((resolveClose) => {
+          socket.addEventListener("close", resolveClose, { once: true });
+        });
         socket.close();
+        await Promise.race([closed, delay(1000)]);
       },
     }));
     socket.addEventListener("error", rejectConnection, { once: true });
@@ -793,9 +798,20 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
       assert.doesNotMatch(fallbackText, /No-fee annual return/);
     }
   } finally {
-    browser?.close();
-    chrome.kill("SIGTERM");
+    await browser?.close();
+    if (chrome.exitCode === null && chrome.signalCode === null) {
+      const exited = new Promise((resolveExit) => chrome.once("exit", resolveExit));
+      chrome.kill("SIGTERM");
+      const didExit = await Promise.race([
+        exited.then(() => true),
+        delay(2000).then(() => false),
+      ]);
+      if (!didExit) {
+        chrome.kill("SIGKILL");
+        await exited;
+      }
+    }
     await new Promise((resolveClose) => server.close(resolveClose));
-    await rm(profileDir, { recursive: true, force: true });
+    await rm(profileDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });
