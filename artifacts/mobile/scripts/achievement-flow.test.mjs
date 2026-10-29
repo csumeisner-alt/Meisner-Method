@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { getAchievementSealLayout } from "../lib/achievementSealLayout.ts";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const readSource = (path) => readFileSync(resolve(scriptDir, path), "utf8");
@@ -72,4 +73,34 @@ test("first-time app milestones are wired to achievement rewards and a review sc
   assert.match(overlaySource, /borderBottomColor: 'transparent'/);
   assert.doesNotMatch(overlaySource, /confetti/i);
   assert.match(overlaySource, /maxHeight: '88%'/);
+});
+
+test("Final Seal fits compact Android layouts and keeps its controls tappable", () => {
+  for (const viewport of [
+    { width: 320, height: 568, topInset: 24, bottomInset: 24 },
+    { width: 360, height: 640, topInset: 24, bottomInset: 24 },
+  ]) {
+    const layout = getAchievementSealLayout(
+      viewport.width,
+      viewport.height,
+      viewport.topInset,
+      viewport.bottomInset,
+    );
+
+    assert.ok(layout.ringSize <= viewport.width - 44, "the full seal stays inside horizontal padding");
+    assert.ok(layout.contentHeight <= viewport.height - 24, "the seal, copy, action, and safe areas fit with clearance");
+    assert.ok(layout.buttonWidth <= viewport.width - 44, "the title-flag action stays inside horizontal padding");
+    assert.ok(layout.copyWidth <= viewport.width - 44, "the headline and description stay inside horizontal padding");
+  }
+
+  assert.match(overlaySource, /getAchievementSealLayout\(\s*width,\s*height,\s*insets\.top,\s*insets\.bottom/);
+  assert.match(overlaySource, /styles\.sealDismiss,\s*\{\s*top: insets\.top \+ 10\s*\}/);
+  assert.match(overlaySource, /width: 48, height: 48/);
+  assert.match(overlaySource, /accessibilityLabel="Dismiss achievement celebration"[\s\S]*?hitSlop=\{10\}/);
+  assert.match(overlaySource, /paddingTop: insets\.top \+ 18, paddingBottom: insets\.bottom \+ 18/);
+  assert.match(overlaySource, /width: copyWidth, opacity: sealCopyOpacity/);
+  assert.match(overlaySource, /minHeight: 52/);
+  assert.match(overlaySource, /if \(reducedMotion\) \{\s*progress\.setValue\(1\)/);
+  assert.match(overlaySource, /sealCopyOpacity[\s\S]*?outputRange: \[0, 0, 1, 1\]/);
+  assert.match(overlaySource, /buttonOpacity[\s\S]*?outputRange: \[0, 0, 1, 1\]/);
 });

@@ -26,6 +26,7 @@ import {
   PRIDE_FLAG,
   shouldPresentAchievementSeal,
 } from '@/lib/achievements';
+import { getAchievementSealLayout } from '@/lib/achievementSealLayout';
 import { PremiumFlagBadge } from '@/components/PremiumFlagBadge';
 import { useAchievements } from '@/contexts/AchievementsContext';
 import { useColors } from '@/hooks/useColors';
@@ -142,11 +143,16 @@ export function AchievementSealCelebration({
 }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const progress = useRef(new Animated.Value(0)).current;
   const soundPlayerRef = useRef<AudioPlayer | null>(null);
   const soundPlayedRef = useRef(false);
-  const ringSize = Math.min(width * 0.78, 304);
+  const { ringSize, buttonWidth, copyWidth } = getAchievementSealLayout(
+    width,
+    height,
+    insets.top,
+    insets.bottom,
+  );
   const markerSize = 20;
   const markerRadius = ringSize * 0.43;
   const markerCount = ACHIEVEMENTS.length;
@@ -355,7 +361,7 @@ export function AchievementSealCelebration({
       <Animated.View
         style={[
           styles.sealCopy,
-          { opacity: sealCopyOpacity, transform: [{ translateY: sealCopyY }] },
+          { width: copyWidth, opacity: sealCopyOpacity, transform: [{ translateY: sealCopyY }] },
         ]}
       >
         <Text accessibilityLiveRegion="polite" style={[styles.sealEyebrow, { color: colors.vaultBlue, fontFamily: 'Inter_700Bold' }]}>
@@ -374,7 +380,8 @@ export function AchievementSealCelebration({
           onPress={onChooseFlags}
           accessibilityRole="button"
           accessibilityLabel="Choose your title flag"
-          style={[styles.sealButton, { backgroundColor: colors.vaultBlue }]}
+          accessibilityHint="Opens your title flag choices"
+          style={[styles.sealButton, { width: buttonWidth, backgroundColor: colors.vaultBlue }]}
         >
           <Feather name="flag" size={16} color={colors.background} />
           <Text style={[styles.sealButtonText, { color: colors.background, fontFamily: 'Inter_700Bold' }]}>
@@ -874,7 +881,7 @@ const styles = StyleSheet.create({
   celebrationButton: { minHeight: 48, minWidth: 180, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, marginTop: 12 },
   celebrationButtonText: { fontSize: 14 },
   sealRoot: { flex: 1, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22 },
-  sealDismiss: { position: 'absolute', right: 18, width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center', zIndex: 2 },
+  sealDismiss: { position: 'absolute', right: 18, width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center', zIndex: 2 },
   sealAtmosphere: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   sealAtmosphereGlow: { position: 'absolute', width: 310, height: 310, borderRadius: 155, opacity: 0.08 },
   sealAtmosphereGlowWarm: { position: 'absolute', width: 220, height: 220, borderRadius: 110, opacity: 0.055, transform: [{ translateY: 90 }] },
@@ -893,6 +900,6 @@ const styles = StyleSheet.create({
   sealEyebrow: { fontSize: 10, letterSpacing: 2.4, marginBottom: 9 },
   sealTitle: { fontSize: 28, lineHeight: 34, textAlign: 'center', textTransform: 'uppercase' },
   sealDescription: { fontSize: 14, lineHeight: 21, textAlign: 'center', marginTop: 9 },
-  sealButton: { minHeight: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, borderRadius: 11, paddingHorizontal: 18, marginTop: 20 },
-  sealButtonText: { fontSize: 13 },
+  sealButton: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, borderRadius: 11, paddingHorizontal: 12, marginTop: 20 },
+  sealButtonText: { fontSize: 13, flexShrink: 1, textAlign: 'center' },
 });
