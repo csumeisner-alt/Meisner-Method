@@ -11,6 +11,7 @@ import {
   ALL_PREMIUM_FLAGS,
   DEFAULT_FLAG_ID,
   hasUnlockedPrideFlag,
+  PRIDE_FLAG_QUOTE_THRESHOLD,
   parsePremiumFlagId,
   parseEarnedAchievementIds,
   resolvePremiumFlagSelection,
@@ -118,8 +119,11 @@ test('Final Seal dismiss and choose actions close the celebration without resett
 test('five achievement flags, default flag, and quote-gated Pride are validated', () => {
   assert.equal(ACHIEVEMENT_UNLOCKED_FLAGS.length, 5);
   assert.equal(ALL_PREMIUM_FLAGS.length, 6);
+  assert.equal(PRIDE_FLAG_QUOTE_THRESHOLD, 30);
   assert.equal(hasUnlockedPrideFlag(21), false);
-  assert.equal(hasUnlockedPrideFlag(22), true);
+  assert.equal(hasUnlockedPrideFlag(22), false);
+  assert.equal(hasUnlockedPrideFlag(29), false);
+  assert.equal(hasUnlockedPrideFlag(30), true);
   assert.equal(parsePremiumFlagId('midnight'), 'midnight');
   assert.equal(parsePremiumFlagId('southern-cross'), 'southern-cross');
   assert.equal(parsePremiumFlagId('default'), 'default');

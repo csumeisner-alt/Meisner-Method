@@ -43,6 +43,7 @@ test("first-time app milestones are wired to achievement rewards and a review sc
   assert.match(overlaySource, /disabled=\{!premiumFlagReady \|\| !prideUnlocked\}/);
   assert.match(achievementsContextSource, /hasUnlockedPrideFlag\(brew\.quotesViewed\)/);
   assert.match(achievementsContextSource, /id === PRIDE_FLAG\.id && !prideUnlocked/);
+  assert.match(overlaySource, /Math\.min\(quotesViewed, PRIDE_FLAG_QUOTE_THRESHOLD\)/);
   assert.match(overlaySource, /hasCompletedAllAchievements\(earnedIds\)/);
   assert.match(overlaySource, /hasCompletedAllAchievements\(earnedIds\)\s*&&\s*\(/);
   assert.doesNotMatch(overlaySource, /Complete all 15 to choose/);

@@ -1,5 +1,3 @@
-import { BREW_TOKEN_QUOTE_THRESHOLD } from './brewTokenLogic.ts';
-
 export const ACHIEVEMENT_STORAGE_KEY = '@meisnermethod/achievements_v1';
 export const PREMIUM_FLAG_STORAGE_KEY = '@meisnermethod/premium_flag_badge_v1';
 export const DEFAULT_FLAG_ID = 'default' as const;
@@ -93,13 +91,14 @@ export const ACHIEVEMENT_UNLOCKED_FLAGS = [
 ] as const;
 
 export const PRIDE_FLAG = { id: 'eagle', name: 'Pride', artwork: 'pride' } as const;
+export const PRIDE_FLAG_QUOTE_THRESHOLD = 30;
 export const ALL_PREMIUM_FLAGS = [...ACHIEVEMENT_UNLOCKED_FLAGS, PRIDE_FLAG] as const;
 
 export type PremiumFlagId = (typeof ALL_PREMIUM_FLAGS)[number]['id'];
 export type FlagSelectionId = typeof DEFAULT_FLAG_ID | PremiumFlagId;
 
 export function hasUnlockedPrideFlag(quotesViewed: number): boolean {
-  return quotesViewed >= BREW_TOKEN_QUOTE_THRESHOLD;
+  return quotesViewed >= PRIDE_FLAG_QUOTE_THRESHOLD;
 }
 
 export function isPremiumFlagId(value: string | null): value is PremiumFlagId {

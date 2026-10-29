@@ -68,6 +68,7 @@ import {
 import { NEON_GUCCI_LOADING_PHRASES } from '../neonGucciPhrases.ts';
 
 test('Brew Bank unlocks exactly when the quote threshold is crossed', () => {
+  assert.equal(BREW_TOKEN_QUOTE_THRESHOLD, 22);
   assert.equal(isBrewBankUnlock(BREW_TOKEN_QUOTE_THRESHOLD - 1, BREW_TOKEN_QUOTE_THRESHOLD), true);
   assert.equal(isBrewBankUnlock(BREW_TOKEN_QUOTE_THRESHOLD, BREW_TOKEN_QUOTE_THRESHOLD + 1), false);
 });

@@ -15,7 +15,6 @@ import { Feather } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import type { AudioPlayer } from 'expo-audio';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BREW_TOKEN_QUOTE_THRESHOLD } from '@/lib/brewTokenLogic';
 import {
   ACHIEVEMENTS,
   ACHIEVEMENT_UNLOCKED_FLAGS,
@@ -24,6 +23,7 @@ import {
   achievementSealReducer,
   hasCompletedAllAchievements,
   PRIDE_FLAG,
+  PRIDE_FLAG_QUOTE_THRESHOLD,
   shouldPresentAchievementSeal,
 } from '@/lib/achievements';
 import { getAchievementSealLayout } from '@/lib/achievementSealLayout';
@@ -646,7 +646,7 @@ export function AchievementsOverlay() {
                       Choose your title flag
                     </Text>
                     <Text style={[styles.flagRewardDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                      Choose the default U.S. flag or one of five designs. Pride unlocks after {BREW_TOKEN_QUOTE_THRESHOLD} Biden quote views.
+                      Choose the default U.S. flag or one of five designs. Pride unlocks after {PRIDE_FLAG_QUOTE_THRESHOLD} Biden quote views.
                     </Text>
                     <View style={styles.flagGrid}>
                       <Pressable
@@ -704,7 +704,7 @@ export function AchievementsOverlay() {
                         disabled={!premiumFlagReady || !prideUnlocked}
                         accessibilityRole="button"
                         accessibilityState={{ selected: selectedPremiumFlagId === PRIDE_FLAG.id, disabled: !premiumFlagReady || !prideUnlocked }}
-                        accessibilityLabel={`Pride premium flag${prideUnlocked ? '' : `, locked until ${BREW_TOKEN_QUOTE_THRESHOLD} Biden quotes are viewed`}${selectedPremiumFlagId === PRIDE_FLAG.id ? ', selected' : ''}`}
+                        accessibilityLabel={`Pride premium flag${prideUnlocked ? '' : `, locked until ${PRIDE_FLAG_QUOTE_THRESHOLD} Biden quotes are viewed`}${selectedPremiumFlagId === PRIDE_FLAG.id ? ', selected' : ''}`}
                         style={[
                           styles.flagChoice,
                           {
@@ -727,7 +727,7 @@ export function AchievementsOverlay() {
                         </Text>
                         {!prideUnlocked && (
                           <Text style={[styles.prideProgress, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                            {Math.min(quotesViewed, BREW_TOKEN_QUOTE_THRESHOLD)} / {BREW_TOKEN_QUOTE_THRESHOLD} Biden quotes
+                            {Math.min(quotesViewed, PRIDE_FLAG_QUOTE_THRESHOLD)} / {PRIDE_FLAG_QUOTE_THRESHOLD} Biden quotes
                           </Text>
                         )}
                         {selectedPremiumFlagId === PRIDE_FLAG.id && <Feather name="check-circle" size={14} color={colors.gold} />}
