@@ -341,6 +341,22 @@ export interface HeatMapEtfProfile {
   marketRegime: HeatMapEtfMarketRegime | null;
 }
 
+export type EtfComparisonValueFormat = 'percent' | 'assets' | 'number' | 'basis-points';
+
+export function formatEtfComparisonValue(
+  value: number | null | undefined,
+  format: EtfComparisonValueFormat,
+): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 'Unavailable';
+  if (format === 'percent') return `${(value * 100).toFixed(2)}%`;
+  if (format === 'basis-points') return `${(value * 10_000).toFixed(1)} bps`;
+  if (format === 'number') return value.toFixed(2);
+  if (value >= 1e12) return `$${(value / 1e12).toFixed(2)}T`;
+  if (value >= 1e9) return `$${(value / 1e9).toFixed(2)}B`;
+  if (value >= 1e6) return `$${(value / 1e6).toFixed(1)}M`;
+  return `$${value.toLocaleString('en-US')}`;
+}
+
 export function getReportedEtfSectorComparison(
   funds: Array<{ symbol: string; sectorWeights: readonly HeatMapEtfSectorWeight[] }>,
 ) {

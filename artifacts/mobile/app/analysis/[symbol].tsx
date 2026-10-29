@@ -38,8 +38,8 @@ import {
   createEtfHoldingSnapshot,
   findReportedEtfHoldingsOverlap,
   formatReportedEtfHoldingsOverlapShare,
+  formatEtfComparisonValue,
   getReportedEtfSectorComparison,
-  parseHeatMapDetailStats,
   parseSavedEtfComparisonSymbols,
   parseSavedEtfHoldingSnapshots,
   shareEtfOverlapSummary,
@@ -373,6 +373,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
     expenseRatio: number | null;
     sectorWeights: { sector: string; weight: number }[];
     sectorWeightsRetrievedAt: string | null;
+    analysis: EtfAnalysisPayload;
   }>>([]);
   const [compareError, setCompareError] = useState('');
   const [shareStatus, setShareStatus] = useState('');
@@ -438,31 +439,40 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
     setComparePendingSymbols((current) => current.includes(candidate) ? current : [...current, candidate]);
     setCompareFailedSymbols((current) => current.filter((item) => item !== candidate));
     try {
-      const response = await apiFetch<unknown>(`/api/stocks/info/${encodeURIComponent(candidate)}`);
-      const profile = parseHeatMapDetailStats(response)?.etfProfile;
-      if (!profile) {
+      const response = await apiFetch<{
+        assetType?: string;
+        etfAnalysis?: EtfAnalysisPayload;
+      }>('/api/stocks/analyze', {
+        method: 'POST',
+        body: JSON.stringify({ symbol: candidate }),
+      });
+      const analysis = response.etfAnalysis;
+      if (response.assetType !== 'etf' || !analysis) {
         removeCompareSymbol(candidate);
         setCompareError(`${candidate} is no longer identified as an ETF by the provider.`);
         return;
       }
       if (!savedCompareSymbolsRef.current.includes(candidate)) return;
+      const reportedHoldings = analysis.topHoldings.flatMap((holding) =>
+        holding.weight == null ? [] : [{ ...holding, weight: holding.weight }]);
       const snapshot = createEtfHoldingSnapshot(
         candidate,
-        profile.topHoldingsReportedCount,
-        profile.topHoldingsRetrievedAt,
-        profile.topHoldings,
+        analysis.topHoldingsReportedCount,
+        analysis.topHoldingsRetrievedAt,
+        reportedHoldings,
       );
       if (snapshot) void persistHoldingSnapshot(snapshot);
       setCompareFunds((current) => current.some((item) => item.symbol === candidate)
         ? current
         : [...current, {
           symbol: candidate,
-          topHoldings: profile.topHoldings,
-          topHoldingsReportedCount: profile.topHoldingsReportedCount,
-          topHoldingsRetrievedAt: profile.topHoldingsRetrievedAt,
-          expenseRatio: profile.expenseRatio,
-          sectorWeights: profile.sectorWeights,
-          sectorWeightsRetrievedAt: profile.sectorWeightsRetrievedAt,
+          topHoldings: reportedHoldings,
+          topHoldingsReportedCount: analysis.topHoldingsReportedCount,
+          topHoldingsRetrievedAt: analysis.topHoldingsRetrievedAt,
+          expenseRatio: analysis.expenseRatio,
+          sectorWeights: analysis.sectorWeights,
+          sectorWeightsRetrievedAt: analysis.sectorWeightsRetrievedAt,
+          analysis,
         }]);
     } catch {
       setCompareFailedSymbols((current) => current.includes(candidate) ? current : [...current, candidate]);
@@ -488,32 +498,45 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
 
       const results = await Promise.all(toRestore.map(async (candidate) => {
         try {
-          const response = await apiFetch<unknown>(`/api/stocks/info/${encodeURIComponent(candidate)}`);
-          return { candidate, profile: parseHeatMapDetailStats(response)?.etfProfile ?? null, failed: false };
+          const response = await apiFetch<{
+            assetType?: string;
+            etfAnalysis?: EtfAnalysisPayload;
+          }>('/api/stocks/analyze', {
+            method: 'POST',
+            body: JSON.stringify({ symbol: candidate }),
+          });
+          return {
+            candidate,
+            analysis: response.assetType === 'etf' ? response.etfAnalysis ?? null : null,
+            failed: false,
+          };
         } catch {
-          return { candidate, profile: null, failed: true };
+          return { candidate, analysis: null, failed: true };
         }
       }));
       if (cancelled) return;
-      for (const { candidate, profile, failed } of results) {
-        if (profile) {
+      for (const { candidate, analysis, failed } of results) {
+        if (analysis) {
+          const reportedHoldings = analysis.topHoldings.flatMap((holding) =>
+            holding.weight == null ? [] : [{ ...holding, weight: holding.weight }]);
           const snapshot = createEtfHoldingSnapshot(
             candidate,
-            profile.topHoldingsReportedCount,
-            profile.topHoldingsRetrievedAt,
-            profile.topHoldings,
+            analysis.topHoldingsReportedCount,
+            analysis.topHoldingsRetrievedAt,
+            reportedHoldings,
           );
           if (snapshot) void persistHoldingSnapshot(snapshot);
           setCompareFunds((current) => current.some((item) => item.symbol === candidate)
             ? current
             : [...current, {
               symbol: candidate,
-              topHoldings: profile.topHoldings,
-              topHoldingsReportedCount: profile.topHoldingsReportedCount,
-              topHoldingsRetrievedAt: profile.topHoldingsRetrievedAt,
-              expenseRatio: profile.expenseRatio,
-              sectorWeights: profile.sectorWeights,
-              sectorWeightsRetrievedAt: profile.sectorWeightsRetrievedAt,
+              topHoldings: reportedHoldings,
+              topHoldingsReportedCount: analysis.topHoldingsReportedCount,
+              topHoldingsRetrievedAt: analysis.topHoldingsRetrievedAt,
+              expenseRatio: analysis.expenseRatio,
+              sectorWeights: analysis.sectorWeights,
+              sectorWeightsRetrievedAt: analysis.sectorWeightsRetrievedAt,
+              analysis,
             }]);
         } else if (failed) {
           setCompareFailedSymbols((current) => current.includes(candidate) ? current : [...current, candidate]);
@@ -586,6 +609,99 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
   const primaryHistoryComparison = compareEtfHoldingSnapshots(currentEtfSnapshot, holdingSnapshots);
   const overlaps = findReportedEtfHoldingsOverlap(selectedFunds);
   const sectorComparison = getReportedEtfSectorComparison(selectedFunds);
+  const comparisonMetricFunds: { symbol: string; analysis: EtfAnalysisPayload }[] = [
+    { symbol: symbol.toUpperCase(), analysis: fund },
+    ...compareFunds.map(({ symbol: candidate, analysis }) => ({ symbol: candidate, analysis })),
+  ];
+  const formatRegimeReturn = (
+    analysis: EtfAnalysisPayload,
+    regime: 'bull' | 'bear' | 'mixed',
+  ) => {
+    const period = analysis.marketRegime?.periods[regime];
+    if (!period || period.averageAnnualReturn == null || period.years <= 0) return 'Unavailable';
+    return `${formatEtfComparisonValue(period.averageAnnualReturn, 'percent')} · ${period.years} yr`;
+  };
+  const comparisonMetricRows: {
+    label: string;
+    value: (analysis: EtfAnalysisPayload) => string;
+  }[] = [
+    {
+      label: 'Expense ratio',
+      value: (analysis) => formatEtfComparisonValue(analysis.expenseRatio, 'percent'),
+    },
+    {
+      label: 'Category average fee',
+      value: (analysis) => {
+        const peer = analysis.peerExpenseComparison;
+        if (!peer) return 'Unavailable';
+        return `${formatEtfComparisonValue(peer.categoryAverageExpenseRatio, 'percent')} · ${peer.category}`;
+      },
+    },
+    {
+      label: 'Fee difference',
+      value: (analysis) => formatEtfComparisonValue(
+        analysis.peerExpenseComparison?.difference,
+        'basis-points',
+      ),
+    },
+    {
+      label: 'Assets under management',
+      value: (analysis) => formatEtfComparisonValue(analysis.totalAssets, 'assets'),
+    },
+    {
+      label: 'Category average assets',
+      value: (analysis) => {
+        const peer = analysis.peerAssetSizeComparison;
+        if (!peer) return 'Unavailable';
+        return `${formatEtfComparisonValue(peer.categoryAverageTotalAssets, 'assets')} · ${peer.category}`;
+      },
+    },
+    {
+      label: '3-year beta',
+      value: (analysis) => formatEtfComparisonValue(analysis.beta3Year, 'number'),
+    },
+    {
+      label: '1-year annualized volatility',
+      value: (analysis) => formatEtfComparisonValue(analysis.annualizedVolatility, 'percent'),
+    },
+    {
+      label: '1-year maximum drawdown',
+      value: (analysis) => formatEtfComparisonValue(analysis.maxDrawdown, 'percent'),
+    },
+    {
+      label: 'Return / volatility ratio',
+      value: (analysis) => formatEtfComparisonValue(analysis.riskAdjustedReturn, 'number'),
+    },
+    {
+      label: '1-year annualized return',
+      value: (analysis) => formatEtfComparisonValue(analysis.annualizedReturn, 'percent'),
+    },
+    {
+      label: 'Verified benchmark return',
+      value: (analysis) => {
+        const value = analysis.trackingComparison?.benchmarkAnnualizedReturn;
+        if (value == null || !analysis.benchmark) return 'Unavailable';
+        return `${formatEtfComparisonValue(value, 'percent')} · ${analysis.benchmark.symbol}`;
+      },
+    },
+    {
+      label: 'Tracking difference',
+      value: (analysis) => formatEtfComparisonValue(
+        analysis.trackingComparison?.trackingDifference,
+        'percent',
+      ),
+    },
+    {
+      label: 'Annualized tracking error',
+      value: (analysis) => formatEtfComparisonValue(
+        analysis.trackingComparison?.trackingError,
+        'percent',
+      ),
+    },
+    { label: 'Bull regime average', value: (analysis) => formatRegimeReturn(analysis, 'bull') },
+    { label: 'Bear regime average', value: (analysis) => formatRegimeReturn(analysis, 'bear') },
+    { label: 'Mixed regime average', value: (analysis) => formatRegimeReturn(analysis, 'mixed') },
+  ];
   const fmtAssets = (value: number | null) => value == null
     ? 'Unavailable'
     : value >= 1e12 ? `$${(value / 1e12).toFixed(2)}T`
@@ -1078,6 +1194,130 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           )}
         </View>
       </SectionCard>
+  {!!compareFunds.length && (
+    <SectionCard
+      collapsible
+      title="ETF COST, RISK & PERFORMANCE"
+      icon={<MaterialCommunityIcons name="scale-balance" size={16} color={colors.primary} />}
+    >
+      <View style={{ padding: 16 }}>
+        <Text style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 17, marginBottom: 12 }}>
+          Reported figures only. Unavailable data is not zero; compare funds with similar strategies.
+        </Text>
+        <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator>
+          <View style={{ minWidth: 150 + comparisonMetricFunds.length * 124 }}>
+            <View style={{
+              flexDirection: 'row',
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border,
+              paddingBottom: 8,
+            }}>
+              <Text style={{ width: 150, color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>
+                Metric
+              </Text>
+              {comparisonMetricFunds.map(({ symbol: fundSymbol }) => (
+                <Text
+                  key={`comparison-heading-${fundSymbol}`}
+                  style={{ width: 124, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 12 }}
+                  numberOfLines={1}
+                >
+                  {fundSymbol}
+                </Text>
+              ))}
+            </View>
+            {comparisonMetricRows.map((row) => (
+              <View
+                key={row.label}
+                style={{
+                  flexDirection: 'row',
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border,
+                  paddingVertical: 9,
+                }}
+              >
+                <Text style={{ width: 150, color: colors.mutedForeground, fontSize: 11, lineHeight: 15, paddingRight: 8 }}>
+                  {row.label}
+                </Text>
+                {comparisonMetricFunds.map(({ symbol: fundSymbol, analysis: comparison }) => (
+                  <Text
+                    key={`${row.label}-${fundSymbol}`}
+                    style={{ width: 124, color: colors.foreground, fontSize: 11, lineHeight: 15, paddingRight: 10 }}
+                  >
+                    {row.value(comparison)}
+                  </Text>
+                ))}
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+        {comparisonMetricFunds.map(({ symbol: fundSymbol, analysis: comparison }) => (
+          <View
+            key={`comparison-context-${fundSymbol}`}
+            style={{ borderTopWidth: 1, borderTopColor: colors.border, marginTop: 12, paddingTop: 10 }}
+          >
+            <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>
+              {fundSymbol} · {comparison.fundCategory ?? 'Category unavailable'}
+            </Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 4 }}>
+              Fund data: {comparison.provider} · retrieved {sourceDate(comparison.asOf)}.
+            </Text>
+            {comparison.peerExpenseComparison ? (
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
+                Fee baseline: {comparison.peerExpenseComparison.category} · {comparison.peerExpenseComparison.sampleContext}
+                {comparison.peerExpenseComparison.sampleSize == null ? '' : ` · ${comparison.peerExpenseComparison.sampleSize} funds`}
+                {'\n'}Source: {comparison.peerExpenseComparison.source} · retrieved {sourceDate(comparison.peerExpenseComparison.asOf)}
+              </Text>
+            ) : (
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
+                Fee category average unavailable.
+              </Text>
+            )}
+            {comparison.peerAssetSizeComparison ? (
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
+                Asset baseline: {comparison.peerAssetSizeComparison.category} · {comparison.peerAssetSizeComparison.sampleContext}
+                {comparison.peerAssetSizeComparison.sampleSize == null ? '' : ` · ${comparison.peerAssetSizeComparison.sampleSize} funds`}
+                {'\n'}Source: {comparison.peerAssetSizeComparison.source} · retrieved {sourceDate(comparison.peerAssetSizeComparison.asOf)}
+              </Text>
+            ) : (
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
+                Category average assets unavailable.
+              </Text>
+            )}
+            {comparison.benchmark ? (
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
+                Verified benchmark: {comparison.benchmark.name} ({comparison.benchmark.symbol}) · {comparison.benchmark.source} · retrieved {sourceDate(comparison.benchmark.asOf)}
+              </Text>
+            ) : (
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
+                Verified benchmark unavailable.
+              </Text>
+            )}
+            {comparison.trackingComparison ? (
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
+                Tracking history: {comparison.trackingComparison.periodStart}–{comparison.trackingComparison.periodEnd} · {comparison.trackingComparison.monthlySamples} monthly samples · {comparison.trackingComparison.source} · retrieved {sourceDate(comparison.trackingComparison.asOf)}
+              </Text>
+            ) : (
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
+                Tracking comparison unavailable without a verified benchmark and sufficient shared history.
+              </Text>
+            )}
+            {comparison.marketRegime ? (
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
+                Regime returns: {comparison.marketRegime.firstYear}–{comparison.marketRegime.lastYear}, grouped by {comparison.marketRegime.benchmarkSymbol}; each row shows its reported years. Historical comparison only.
+              </Text>
+            ) : (
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
+                Historical regime performance unavailable.
+              </Text>
+            )}
+          </View>
+        ))}
+        <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 12 }}>
+          Risk-adjusted return uses a 0% risk-free proxy and is not a Sharpe ratio. Reported categories, benchmarks, periods, and samples can differ; this comparison does not imply that fund strategies are interchangeable.
+        </Text>
+      </View>
+    </SectionCard>
+  )}
       <SectionCard collapsible title="HISTORICAL PERFORMANCE" icon={<Ionicons name="trending-up" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           {fund.marketRegime ? (

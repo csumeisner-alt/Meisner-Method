@@ -8,6 +8,7 @@ import {
   createEtfHoldingSnapshot,
   findReportedEtfHoldingsOverlap,
   formatReportedEtfHoldingsOverlapShare,
+  formatEtfComparisonValue,
   formatHeatMapRegimeReturn,
   getHeatMapCryptoSupplyChartModel,
   getHeatMapCryptoSupplyDiscrepancy,
@@ -959,8 +960,8 @@ test('ETF analysis screen wires selected overlap content and suppresses feedback
     analysisScreenSource,
     /formatReportedEtfHoldingsOverlapShare\(selectedFunds,\s*overlaps\)/,
   );
-  assert.match(analysisScreenSource, /expenseRatio: profile\.expenseRatio/);
   assert.match(analysisScreenSource, /expenseRatio: fund\.expenseRatio/);
+  assert.match(analysisScreenSource, /apiFetch<\{[\s\S]*?etfAnalysis\?: EtfAnalysisPayload[\s\S]*?\}>\('\/api\/stocks\/analyze',[\s\S]*?method: 'POST'/);
   assert.match(
     analysisScreenSource,
     /shareEtfOverlapSummary\(\{[\s\S]*?message,\s*[\s\S]*?nativeShare:[\s\S]*?Share\.share\(data\)/,
@@ -973,6 +974,22 @@ test('ETF analysis screen wires selected overlap content and suppresses feedback
     /result === 'shared'[\s\S]*?setShareStatus|result === 'cancelled'[\s\S]*?setShareStatus/,
   );
   assert.match(analysisScreenSource, /accessibilityLabel="Share ETF comparison summary"/);
+});
+
+test('ETF comparison metrics render unavailable values and retain source context', () => {
+  assert.equal(formatEtfComparisonValue(null, 'percent'), 'Unavailable');
+  assert.equal(formatEtfComparisonValue(Number.NaN, 'assets'), 'Unavailable');
+  assert.equal(formatEtfComparisonValue(Number.POSITIVE_INFINITY, 'number'), 'Unavailable');
+  assert.equal(formatEtfComparisonValue(0, 'percent'), '0.00%');
+  assert.equal(formatEtfComparisonValue(0.0012, 'percent'), '0.12%');
+  assert.equal(formatEtfComparisonValue(0.0025, 'basis-points'), '25.0 bps');
+  assert.equal(formatEtfComparisonValue(2_500_000_000, 'assets'), '$2.50B');
+  assert.match(analysisScreenSource, /title="ETF COST, RISK & PERFORMANCE"/);
+  assert.match(analysisScreenSource, /Verified benchmark:/);
+  assert.match(analysisScreenSource, /monthlySamples/);
+  assert.match(analysisScreenSource, /sampleContext/);
+  assert.match(analysisScreenSource, /each row shows its reported years/);
+  assert.match(analysisScreenSource, /compare funds with similar strategies/);
 });
 
 test('saved ETF comparisons normalize, deduplicate, cap, and reject malformed storage', () => {

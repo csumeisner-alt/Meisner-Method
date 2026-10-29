@@ -114,7 +114,7 @@ test("fails clearly when a successful endpoint returns malformed JSON", async ()
 test("ETF comparison tickers persist, revalidate, and remain saved on provider failure", () => {
   assert.match(etfAnalysisSource, /AsyncStorage\.getItem\(ETF_COMPARISON_KEY\)/);
   assert.match(etfAnalysisSource, /AsyncStorage\.setItem\(ETF_COMPARISON_KEY/);
-  assert.match(etfAnalysisSource, /parseHeatMapDetailStats\(response\)\?\.etfProfile/);
+  assert.match(etfAnalysisSource, /response\.assetType === 'etf' \? response\.etfAnalysis \?\? null : null/);
   assert.match(etfAnalysisSource, /else if \(failed\)/);
   assert.match(etfAnalysisSource, /It remains saved for retry/);
   assert.match(etfAnalysisSource, /removeCompareSymbol\(fundEntry\.symbol\)/);
