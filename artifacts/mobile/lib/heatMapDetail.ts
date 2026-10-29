@@ -447,9 +447,9 @@ export interface EtfComparisonShareAnalysis {
     asOf: string;
   } | null;
   trackingComparison?: {
-    periodStart: string;
-    periodEnd: string;
-    monthlySamples: number;
+    periodStart?: string;
+    periodEnd?: string;
+    monthlySamples?: number;
     fundAnnualizedReturn: number | null;
     benchmarkAnnualizedReturn: number | null;
     trackingDifference: number | null;
@@ -480,6 +480,28 @@ export interface EtfComparisonShareAnalysis {
     lastYear: number;
     periods: Record<string, { averageAnnualReturn: number | null; years: number }>;
   } | null;
+}
+
+function parseTrackingMonth(value: unknown): number | null {
+  if (typeof value !== 'string') return null;
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  if (year < 1 || year > 9999) return null;
+  return year * 12 + Number(match[2]) - 1;
+}
+
+function hasUsableTrackingPeriod(
+  tracking: NonNullable<EtfComparisonShareAnalysis['trackingComparison']>,
+): boolean {
+  const startMonth = parseTrackingMonth(tracking.periodStart);
+  const endMonth = parseTrackingMonth(tracking.periodEnd);
+  return startMonth !== null
+    && endMonth !== null
+    && endMonth >= startMonth
+    && Number.isInteger(tracking.monthlySamples)
+    && tracking.monthlySamples! > 0
+    && tracking.monthlySamples! <= endMonth - startMonth + 1;
 }
 
 export interface EtfComparisonShareMetricFund {
@@ -599,8 +621,10 @@ export function formatReportedEtfHoldingsOverlapShare(
       );
 
       const tracking = analysis.trackingComparison;
-      lines.push(tracking
+      lines.push(tracking && hasUsableTrackingPeriod(tracking)
         ? `  Benchmark tracking (${tracking.periodStart}–${tracking.periodEnd}, ${tracking.monthlySamples} monthly samples): fund return ${formatEtfComparisonValue(tracking.fundAnnualizedReturn, 'percent')}; benchmark return ${formatEtfComparisonValue(tracking.benchmarkAnnualizedReturn, 'percent')}; tracking difference ${formatEtfComparisonValue(tracking.trackingDifference, 'percent')}; annualized tracking error ${formatEtfComparisonValue(tracking.trackingError, 'percent')}. Source: ${tracking.source} · retrieved ${timestamp(tracking.asOf)}.`
+        : tracking
+          ? '  Benchmark tracking: unavailable because the tracking period or monthly sample count is invalid or incomplete.'
         : '  Benchmark tracking: unavailable without a verified benchmark and sufficient shared history.');
 
       const regime = analysis.marketRegime;

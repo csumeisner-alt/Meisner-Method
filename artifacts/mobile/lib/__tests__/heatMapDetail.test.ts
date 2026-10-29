@@ -971,6 +971,59 @@ test('ETF comparison share keeps malformed or missing risk and performance unava
   assert.doesNotMatch(summary, /BAD: .*0\.00%|BAD: .*0\.00/);
 });
 
+test('ETF comparison share labels invalid or missing tracking-period metadata unavailable', () => {
+  const makeSummary = (trackingComparison: NonNullable<
+    import('../heatMapDetail.ts').EtfComparisonShareAnalysis['trackingComparison']
+  >) => formatReportedEtfHoldingsOverlapShare(
+    [{ symbol: 'BAD', topHoldingsRetrievedAt: null }],
+    [],
+    [{ symbol: 'BAD', analysis: { trackingComparison } }],
+  );
+  const validFields = {
+    periodStart: '2025-01',
+    periodEnd: '2025-12',
+    monthlySamples: 12,
+    fundAnnualizedReturn: 0.1,
+    benchmarkAnnualizedReturn: 0.09,
+    trackingDifference: 0.01,
+    trackingError: 0.02,
+    source: 'Yahoo Finance',
+    asOf: '2026-10-27T15:00:00Z',
+  };
+  const invalidPeriods = [
+    { ...validFields, periodStart: '2025-13' },
+    { ...validFields, periodStart: '2026-01', periodEnd: '2025-12' },
+    { ...validFields, monthlySamples: 0 },
+    { ...validFields, monthlySamples: 1.5 },
+    { ...validFields, monthlySamples: 13 },
+  ];
+
+  for (const trackingComparison of invalidPeriods) {
+    const summary = makeSummary(trackingComparison);
+    assert.match(
+      summary,
+      /Benchmark tracking: unavailable because the tracking period or monthly sample count is invalid or incomplete\./,
+    );
+    assert.doesNotMatch(summary, /2025-01|2025-12|monthly samples|fund return 10\.00%/);
+  }
+
+  const missingStart = { ...validFields, periodStart: undefined };
+  const missingSampleCount = { ...validFields, monthlySamples: undefined };
+  for (const trackingComparison of [missingStart, missingSampleCount]) {
+    const summary = makeSummary(trackingComparison);
+    assert.match(
+      summary,
+      /Benchmark tracking: unavailable because the tracking period or monthly sample count is invalid or incomplete\./,
+    );
+    assert.doesNotMatch(summary, /2025-01|2025-12|monthly samples|fund return 10\.00%/);
+  }
+
+  assert.match(
+    makeSummary(validFields),
+    /Benchmark tracking \(2025-01–2025-12, 12 monthly samples\): fund return 10\.00%/,
+  );
+});
+
 test('ETF comparison share preserves valid zero risk and performance metrics', () => {
   const summary = formatReportedEtfHoldingsOverlapShare(
     [{ symbol: 'ZERO', topHoldingsRetrievedAt: null }],
