@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import {
   compareEtfHoldingSnapshots,
   createEtfHoldingSnapshot,
@@ -15,9 +18,16 @@ import {
   parseSavedEtfHoldingSnapshots,
   parseHeatMapCryptoSupplyHistory,
   parseHeatMapDetailStats,
+  shareEtfOverlapSummary,
   getReportedEtfSectorComparison,
   upsertSavedEtfHoldingSnapshot,
 } from '../heatMapDetail.ts';
+
+const testDir = dirname(fileURLToPath(import.meta.url));
+const analysisScreenSource = readFileSync(
+  resolve(testDir, '../../app/analysis/[symbol].tsx'),
+  'utf8',
+);
 
 test('crypto supply history accepts only dated provider observations and leaves gaps empty', () => {
   const history = parseHeatMapCryptoSupplyHistory({
@@ -707,6 +717,174 @@ test('ETF holding overlap share states when selected funds have no common report
 
   assert.match(summary, /No shared positions among the reported holdings\./);
   assert.match(summary, /only positions reported by the provider/);
+});
+
+test('ETF overlap browser sharing sends only the selected comparison to Web Share', async () => {
+  const selectedFunds = [
+    { symbol: 'SPY', topHoldingsRetrievedAt: '2026-10-27T16:00:00Z' },
+    { symbol: 'QQQ', topHoldingsRetrievedAt: '2026-10-27T16:05:00Z' },
+  ];
+  const message = formatReportedEtfHoldingsOverlapShare(selectedFunds, [
+    {
+      symbol: 'NVDA',
+      positions: [
+        { fundSymbol: 'SPY', name: 'NVIDIA', weight: 0.08 },
+        { fundSymbol: 'QQQ', name: 'NVIDIA', weight: 0.07 },
+      ],
+    },
+  ]);
+  let shareData: { title: string; text: string } | undefined;
+
+  const result = await shareEtfOverlapSummary({
+    platform: 'web',
+    message,
+    webShare: async (data) => {
+      shareData = data;
+    },
+  });
+
+  assert.equal(result, 'shared');
+  assert.deepEqual(shareData, { title: 'ETF overlap summary', text: message });
+  assert.match(message, /Funds: SPY, QQQ/);
+  assert.doesNotMatch(message, /IWM|unselected/i);
+});
+
+test('ETF overlap native sharing sends only the selected comparison to the share sheet', async () => {
+  const message = formatReportedEtfHoldingsOverlapShare([
+    { symbol: 'SPY', topHoldingsRetrievedAt: null },
+    { symbol: 'QQQ', topHoldingsRetrievedAt: null },
+  ], []);
+  let shareData: { title: string; message: string } | undefined;
+
+  const result = await shareEtfOverlapSummary({
+    platform: 'native',
+    message,
+    nativeShare: async (data) => {
+      shareData = data;
+      return 'shared';
+    },
+  });
+
+  assert.equal(result, 'shared');
+  assert.deepEqual(shareData, { title: 'ETF overlap summary', message });
+  assert.match(message, /Funds: SPY, QQQ/);
+  assert.doesNotMatch(message, /IWM|unselected/i);
+});
+
+test('ETF overlap browser sharing copies when Web Share is unavailable or fails', async (t) => {
+  const copied: string[] = [];
+  const message = 'Selected comparison: SPY, QQQ';
+  const clipboardWriteText = async (text: string) => {
+    copied.push(text);
+  };
+
+  await t.test('uses clipboard when Web Share is unavailable', async () => {
+    assert.equal(await shareEtfOverlapSummary({
+      platform: 'web',
+      message,
+      clipboardWriteText,
+    }), 'copied');
+    assert.equal(copied.pop(), message);
+  });
+
+  await t.test('uses clipboard after a non-cancellation Web Share failure', async () => {
+    assert.equal(await shareEtfOverlapSummary({
+      platform: 'web',
+      message,
+      webShare: async () => {
+        throw new Error('Web Share failed');
+      },
+      clipboardWriteText,
+    }), 'copied');
+    assert.equal(copied.pop(), message);
+  });
+});
+
+test('ETF overlap browser sharing reports unavailable, failure, and cancellation accurately', async (t) => {
+  await t.test('reports unavailable when neither browser option exists', async () => {
+    assert.equal(await shareEtfOverlapSummary({
+      platform: 'web',
+      message: 'Selected comparison',
+    }), 'unavailable');
+  });
+
+  await t.test('reports failure when sharing and clipboard both fail', async () => {
+    assert.equal(await shareEtfOverlapSummary({
+      platform: 'web',
+      message: 'Selected comparison',
+      webShare: async () => {
+        throw new Error('Web Share failed');
+      },
+      clipboardWriteText: async () => {
+        throw new Error('Clipboard failed');
+      },
+    }), 'failed');
+  });
+
+  await t.test('does not turn a user-cancelled share into a clipboard copy', async () => {
+    let copied = false;
+    const error = new Error('Share dismissed');
+    error.name = 'AbortError';
+    assert.equal(await shareEtfOverlapSummary({
+      platform: 'web',
+      message: 'Selected comparison',
+      webShare: async () => {
+        throw error;
+      },
+      clipboardWriteText: async () => {
+        copied = true;
+      },
+    }), 'cancelled');
+    assert.equal(copied, false);
+  });
+});
+
+test('ETF overlap native cancellation and errors never count as a successful share', async (t) => {
+  await t.test('recognizes a dismissed native share sheet', async () => {
+    assert.equal(await shareEtfOverlapSummary({
+      platform: 'native',
+      message: 'Selected comparison',
+      nativeShare: async () => 'dismissed',
+    }), 'cancelled');
+  });
+
+  await t.test('recognizes a native share cancellation error', async () => {
+    const error = new Error('Share dismissed');
+    error.name = 'AbortError';
+    assert.equal(await shareEtfOverlapSummary({
+      platform: 'native',
+      message: 'Selected comparison',
+      nativeShare: async () => {
+        throw error;
+      },
+    }), 'cancelled');
+  });
+
+  await t.test('reports a native share failure', async () => {
+    assert.equal(await shareEtfOverlapSummary({
+      platform: 'native',
+      message: 'Selected comparison',
+      nativeShare: async () => {
+        throw new Error('Native share failed');
+      },
+    }), 'failed');
+  });
+});
+
+test('ETF analysis screen wires selected overlap content and suppresses feedback for cancel or share success', () => {
+  assert.match(
+    analysisScreenSource,
+    /formatReportedEtfHoldingsOverlapShare\(selectedFunds,\s*overlaps\)/,
+  );
+  assert.match(
+    analysisScreenSource,
+    /shareEtfOverlapSummary\(\{[\s\S]*?message,\s*[\s\S]*?nativeShare:[\s\S]*?Share\.share\(data\)/,
+  );
+  assert.match(analysisScreenSource, /if \(result === 'copied'\)[\s\S]*?else if \(result === 'unavailable'\)[\s\S]*?else if \(result === 'failed'\)/);
+  assert.doesNotMatch(
+    analysisScreenSource,
+    /result === 'shared'[\s\S]*?setShareStatus|result === 'cancelled'[\s\S]*?setShareStatus/,
+  );
 });
 
 test('saved ETF comparisons normalize, deduplicate, cap, and reject malformed storage', () => {

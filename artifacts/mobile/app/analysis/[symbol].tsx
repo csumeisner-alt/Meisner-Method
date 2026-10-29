@@ -42,6 +42,7 @@ import {
   parseHeatMapDetailStats,
   parseSavedEtfComparisonSymbols,
   parseSavedEtfHoldingSnapshots,
+  shareEtfOverlapSummary,
   upsertSavedEtfHoldingSnapshot,
 } from '@/lib/heatMapDetail';
 import { calculateEtfResearchScore } from '@/lib/etfResearchScore';
@@ -580,21 +581,26 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
   const shareOverlapSummary = async () => {
     const message = formatReportedEtfHoldingsOverlapShare(selectedFunds, overlaps);
     setShareStatus('');
-    try {
-      if (Platform.OS === 'web' && typeof navigator !== 'undefined') {
-        if (typeof navigator.share === 'function') {
-          await navigator.share({ title: 'ETF overlap summary', text: message });
-        } else if (navigator.clipboard?.writeText) {
-          await navigator.clipboard.writeText(message);
-          setShareStatus('Summary copied to clipboard.');
-        } else {
-          setShareStatus('Sharing is not available in this browser.');
-        }
-        return;
-      }
-      await Share.share({ title: 'ETF overlap summary', message });
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') return;
+    const browserNavigator = Platform.OS === 'web' && typeof navigator !== 'undefined'
+      ? navigator
+      : undefined;
+    const result = await shareEtfOverlapSummary({
+      platform: Platform.OS === 'web' ? 'web' : 'native',
+      message,
+      webShare: typeof browserNavigator?.share === 'function'
+        ? (data) => browserNavigator.share(data)
+        : undefined,
+      clipboardWriteText: browserNavigator?.clipboard?.writeText
+        ? (text) => browserNavigator.clipboard.writeText(text)
+        : undefined,
+      nativeShare: async (data) => {
+        const shareResult = await Share.share(data);
+        return shareResult.action === Share.dismissedAction ? 'dismissed' : 'shared';
+      },
+    });
+    if (result === 'copied') setShareStatus('Summary copied to clipboard.');
+    else if (result === 'unavailable') setShareStatus('Sharing is not available in this browser.');
+    else if (result === 'failed') {
       setShareStatus('Could not share the ETF overlap summary. Please try again.');
     }
   };

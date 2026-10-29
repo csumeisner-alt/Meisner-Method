@@ -427,6 +427,52 @@ export function formatReportedEtfHoldingsOverlapShare(
   return lines.join('\n');
 }
 
+export type EtfOverlapShareResult =
+  | 'shared'
+  | 'copied'
+  | 'unavailable'
+  | 'cancelled'
+  | 'failed';
+
+export async function shareEtfOverlapSummary(options: {
+  platform: 'web' | 'native';
+  message: string;
+  webShare?: (data: { title: string; text: string }) => Promise<unknown>;
+  clipboardWriteText?: (text: string) => Promise<void>;
+  nativeShare?: (data: { title: string; message: string }) => Promise<'shared' | 'dismissed'>;
+}): Promise<EtfOverlapShareResult> {
+  const title = 'ETF overlap summary';
+
+  if (options.platform === 'native') {
+    if (!options.nativeShare) return 'unavailable';
+    try {
+      const result = await options.nativeShare({ title, message: options.message });
+      return result === 'dismissed' ? 'cancelled' : 'shared';
+    } catch (error) {
+      return error instanceof Error && error.name === 'AbortError' ? 'cancelled' : 'failed';
+    }
+  }
+
+  if (!options.webShare && !options.clipboardWriteText) return 'unavailable';
+  if (options.webShare) {
+    try {
+      await options.webShare({ title, text: options.message });
+      return 'shared';
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') return 'cancelled';
+      if (!options.clipboardWriteText) return 'failed';
+    }
+  }
+
+  if (!options.clipboardWriteText) return 'unavailable';
+  try {
+    await options.clipboardWriteText(options.message);
+    return 'copied';
+  } catch {
+    return 'failed';
+  }
+}
+
 export function parseSavedEtfComparisonSymbols(value: string | null): string[] {
   if (!value) return [];
   try {
