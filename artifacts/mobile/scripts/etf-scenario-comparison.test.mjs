@@ -66,7 +66,7 @@ test("ETF contribution projections reject invalid inputs without inventing a val
   }
 });
 
-test("ETF comparison converts non-finite assumptions and five- and ten-year values to unavailable", () => {
+test("ETF comparison converts non-finite assumptions and projection values to unavailable", () => {
   const numericFields = [
     "annualReturnAssumption",
     "noFeeAnnualReturnAssumption",
@@ -84,10 +84,11 @@ test("ETF comparison converts non-finite assumptions and five- and ten-year valu
     noFeeFiveYearValue: 127.63,
     noFeeTenYearValue: 162.89,
     assumption: `Historical ${label} regime`,
-    projections: [
-      { horizonYears: 5, noFeeValue: 127.63, afterFeeValue: 121.67 },
-      { horizonYears: 10, noFeeValue: 162.89, afterFeeValue: 148.02 },
-    ],
+    projections: ETF_SCENARIO_HORIZONS.map((horizonYears) => ({
+      horizonYears,
+      noFeeValue: 100 + horizonYears,
+      afterFeeValue: 90 + horizonYears,
+    })),
     ...overrides,
   });
 
@@ -110,12 +111,13 @@ test("ETF comparison converts non-finite assumptions and five- and ten-year valu
       assert.equal(parsed[2]?.annualReturnAssumption, 0.04);
     }
 
-    for (const horizonYears of [5, 10]) {
+    for (const horizonYears of ETF_SCENARIO_HORIZONS) {
       for (const projectionField of ["noFeeValue", "afterFeeValue"]) {
-        const projections = [
-          { horizonYears: 5, noFeeValue: 127.63, afterFeeValue: 121.67 },
-          { horizonYears: 10, noFeeValue: 162.89, afterFeeValue: 148.02 },
-        ].map((projection) =>
+        const projections = ETF_SCENARIO_HORIZONS.map((projectionHorizon) => ({
+          horizonYears: projectionHorizon,
+          noFeeValue: 100 + projectionHorizon,
+          afterFeeValue: 90 + projectionHorizon,
+        })).map((projection) =>
           projection.horizonYears === horizonYears
             ? { ...projection, [projectionField]: invalidValue }
             : projection,
@@ -132,7 +134,23 @@ test("ETF comparison converts non-finite assumptions and five- and ten-year valu
           `${projectionField} at ${horizonYears} years should be unavailable for ${invalidValue}`,
         );
         assert.deepEqual(parsed.map((scenario) => scenario.label), ["bear", "base", "bull"]);
-        assert.equal(parsed[1]?.projections.find((projection) => projection.horizonYears === horizonYears)?.[projectionField], projectionField === "noFeeValue" ? (horizonYears === 5 ? 127.63 : 162.89) : (horizonYears === 5 ? 121.67 : 148.02));
+        assert.equal(
+          parsed[0]?.projections.find((projection) => projection.horizonYears === horizonYears)?.[
+            projectionField === "noFeeValue" ? "afterFeeValue" : "noFeeValue"
+          ],
+          projectionField === "noFeeValue" ? 90 + horizonYears : 100 + horizonYears,
+          `the unaffected value at ${horizonYears} years should remain available`,
+        );
+        assert.equal(
+          parsed[1]?.projections.find((projection) => projection.horizonYears === horizonYears)?.[projectionField],
+          projectionField === "noFeeValue" ? 100 + horizonYears : 90 + horizonYears,
+          `the base regime at ${horizonYears} years should remain available`,
+        );
+        assert.equal(
+          parsed[2]?.projections.find((projection) => projection.horizonYears === horizonYears)?.[projectionField],
+          projectionField === "noFeeValue" ? 100 + horizonYears : 90 + horizonYears,
+          `the bull regime at ${horizonYears} years should remain available`,
+        );
       }
     }
   }
