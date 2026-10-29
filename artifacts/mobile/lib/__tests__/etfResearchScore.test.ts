@@ -155,6 +155,56 @@ test("ETF assets use fixed bands without peer context for invalid category avera
   }
 });
 
+test("invalid fund assets add no liquidity score or peer context", () => {
+  const invalidFundAssets = [
+    0,
+    -1,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+  ];
+  const peerAssetSizeComparison = {
+    category: "Large Blend",
+    categoryAverageTotalAssets: 100_000_000,
+    sampleSize: 20,
+    sampleContext: "Provider-reported category average",
+    source: "Yahoo Finance",
+    asOf: "2026-10-29T12:00:00Z",
+  };
+  const volumeOnlyLiquidity = calculateEtfResearchScore({
+    ...completeInput,
+    totalAssets: null,
+    peerAssetSizeComparison: null,
+  }).components.find((item) => item.id === "liquidity");
+
+  for (const totalAssets of invalidFundAssets) {
+    const withVolume = calculateEtfResearchScore({
+      ...completeInput,
+      totalAssets,
+      peerAssetSizeComparison,
+    }).components.find((item) => item.id === "liquidity");
+    assert.equal(
+      withVolume?.score,
+      volumeOnlyLiquidity?.score,
+      `expected invalid fund assets ${totalAssets} not to change the valid volume score`,
+    );
+    assert.equal(withVolume?.peerContext, undefined);
+
+    const withoutVolume = calculateEtfResearchScore({
+      ...completeInput,
+      averageVolume: null,
+      totalAssets,
+      peerAssetSizeComparison,
+    }).components.find((item) => item.id === "liquidity");
+    assert.equal(
+      withoutVolume?.score,
+      null,
+      `expected invalid fund assets ${totalAssets} not to create a liquidity score`,
+    );
+    assert.equal(withoutVolume?.peerContext, undefined);
+  }
+});
+
 test("missing peer data is excluded and incomplete sector coverage is not scored", () => {
   const result = calculateEtfResearchScore({
     ...completeInput,
