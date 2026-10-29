@@ -241,11 +241,11 @@ function browserExecutable() {
   return "chromium";
 }
 
-function etfScreenResponse() {
+function etfScreenResponse(expenseRatio = 0.0003) {
   const asOf = "2026-10-28T16:00:00.000Z";
   return {
     symbol: "VOO",
-    companyName: "Vanguard S&P 500 ETF",
+    companyName: expenseRatio == null ? "ETF with unavailable fee" : "Vanguard S&P 500 ETF",
     exchange: "NYSE Arca",
     currency: "USD",
     currentPrice: 600,
@@ -259,7 +259,7 @@ function etfScreenResponse() {
     etfAnalysis: {
       fundCategory: "Large Blend",
       fundFamily: "Vanguard",
-      expenseRatio: 0.0003,
+      expenseRatio,
       totalAssets: 500_000_000_000,
       dividendYield: 0.014,
       beta3Year: 1,
@@ -281,7 +281,7 @@ function etfScreenResponse() {
       marketRegime: null,
       scenarios: [{
         label: "Historical average",
-        annualReturnAssumption: 0.1,
+        annualReturnAssumption: expenseRatio == null ? 0.1 : 0.1 - expenseRatio,
         fiveYearValue: 965,
         tenYearValue: 1556,
         assumption: "Illustrative only.",
@@ -295,8 +295,8 @@ function etfScreenResponse() {
   };
 }
 
-async function buildAnalysisScreenBundle() {
-  const response = etfScreenResponse();
+async function buildAnalysisScreenBundle(expenseRatio) {
+  const response = etfScreenResponse(expenseRatio);
   const mockModules = new Map([
     ["@react-native-async-storage/async-storage", `
       export default {
@@ -512,17 +512,19 @@ async function waitForBrowserValue(browser, expression, message, timeout = 8000)
 
 test("ETF analysis sections render, expand, and collapse without 320px overflow", async () => {
   const bundle = await buildAnalysisScreenBundle();
+  const unavailableFeeBundle = await buildAnalysisScreenBundle(null);
   const server = createServer((request, response) => {
-    if (request.url === "/bundle.js") {
+    if (request.url === "/bundle.js" || request.url === "/bundle-unavailable-fee.js") {
       response.writeHead(200, { "content-type": "text/javascript; charset=utf-8" });
-      response.end(bundle);
+      response.end(request.url === "/bundle-unavailable-fee.js" ? unavailableFeeBundle : bundle);
       return;
     }
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    const scriptPath = request.url === "/unavailable-fee" ? "/bundle-unavailable-fee.js" : "/bundle.js";
     response.end(`<!doctype html><html><head>
       <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
       <style>html,body,#root{width:100%;height:100%;margin:0;padding:0}body{overflow-x:auto}</style>
-      </head><body><div id="root"></div><script src="/bundle.js"></script></body></html>`);
+      </head><body><div id="root"></div><script src="${scriptPath}"></script></body></html>`);
   });
   await new Promise((resolveListen, rejectListen) => {
     server.once("error", rejectListen);
@@ -628,6 +630,45 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
       false,
       "Collapsing a section should hide its evidence again.",
     );
+
+    const scenarioSectionSelector = '[data-testid="analysis-section-long-range-scenarios"]';
+    await browser.evaluate(`(() => {
+      const section = document.querySelector(${JSON.stringify(scenarioSectionSelector)});
+      section?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      section?.click();
+    })()`);
+    await waitForBrowserValue(
+      browser,
+      `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent.includes("Annual expense ratio used")`,
+      "Opening the scenarios section should reveal its applied annual fee.",
+    );
+    const scenarioCardText = await browser.evaluate(
+      `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent ?? ""`,
+    );
+    assert.match(scenarioCardText, /Annual expense ratio used\s*0\.03%/);
+    assert.match(scenarioCardText, /Assumed annual return\s*9\.97%/);
+
+    await browser.send("Page.navigate", { url: `http://127.0.0.1:${address.port}/unavailable-fee` });
+    await waitForBrowserValue(
+      browser,
+      "document.body.innerText.includes('ETF with unavailable fee')",
+      "The ETF analysis screen should render with an unavailable fee.",
+    );
+    await browser.evaluate(`(() => {
+      const section = document.querySelector(${JSON.stringify(scenarioSectionSelector)});
+      section?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      section?.click();
+    })()`);
+    await waitForBrowserValue(
+      browser,
+      `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent.includes("Annual expense ratio used")`,
+      "Opening the scenarios section should reveal unavailable fee data.",
+    );
+    const unavailableScenarioText = await browser.evaluate(
+      `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent ?? ""`,
+    );
+    assert.match(unavailableScenarioText, /Annual expense ratio used\s*Unavailable/);
+    assert.match(unavailableScenarioText, /Assumed annual return\s*10\.00%/);
   } finally {
     browser?.close();
     chrome.kill("SIGTERM");

@@ -1341,6 +1341,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
       </SectionCard>
       <SectionCard collapsible title="LONG-RANGE SCENARIOS" icon={<MaterialCommunityIcons name="chart-timeline-variant" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
+          <MetricRow label="Annual expense ratio used" value={pctValue(fund.expenseRatio)} />
           {fund.scenarios.map((scenario) => (
             <View key={scenario.label} style={{ marginBottom: 12 }}>
               <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', textTransform: 'uppercase' }}>{scenario.label}</Text>
