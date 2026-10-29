@@ -254,14 +254,23 @@ test("ETF analysis response treats invalid expense ratios as unavailable", async
       const body = await response.json() as {
         etfAnalysis: {
           expenseRatio: number | null;
-          scenarios: { annualReturnAssumption: number | null; assumption: string }[];
+          scenarios: {
+            annualReturnAssumption: number | null;
+            noFeeAnnualReturnAssumption: number | null;
+            fiveYearValue: number | null;
+            noFeeFiveYearValue: number | null;
+            assumption: string;
+          }[];
         };
       };
 
       assert.equal(response.status, 200);
       assert.equal(body.etfAnalysis.expenseRatio, null);
-      assert.equal(body.etfAnalysis.scenarios[2]?.annualReturnAssumption, 0.1);
-      assert.equal(body.etfAnalysis.scenarios.some((scenario) => /less the reported expense ratio/.test(scenario.assumption)), false);
+      assert.equal(body.etfAnalysis.scenarios[2]?.annualReturnAssumption, null);
+      assert.equal(body.etfAnalysis.scenarios[2]?.noFeeAnnualReturnAssumption, 0.1);
+      assert.equal(body.etfAnalysis.scenarios[2]?.fiveYearValue, null);
+      assert.equal(body.etfAnalysis.scenarios[2]?.noFeeFiveYearValue, 644.2);
+      assert.equal(body.etfAnalysis.scenarios.some((scenario) => /expense ratio was not reported/.test(scenario.assumption)), true);
       assert.match(completionPrompt, /Expense ratio: unavailable/);
     } finally {
       server.close();
@@ -284,14 +293,21 @@ test("ETF analysis response preserves valid expense ratio values", async () => {
     const body = result.body as {
       etfAnalysis: {
         expenseRatio: number | null;
-        scenarios: { annualReturnAssumption: number | null; assumption: string }[];
+        scenarios: {
+          annualReturnAssumption: number | null;
+          noFeeAnnualReturnAssumption: number | null;
+          noFeeFiveYearValue: number | null;
+          assumption: string;
+        }[];
       };
     };
 
     assert.equal(result.status, 200);
     assert.equal(body.etfAnalysis.expenseRatio, expenseRatio);
     assert.equal(body.etfAnalysis.scenarios[2]?.annualReturnAssumption, 0.1 - expenseRatio);
-    assert.match(body.etfAnalysis.scenarios[2]?.assumption ?? "", /less the reported expense ratio/);
+    assert.equal(body.etfAnalysis.scenarios[2]?.noFeeAnnualReturnAssumption, 0.1);
+    assert.equal(body.etfAnalysis.scenarios[2]?.noFeeFiveYearValue, 644.2);
+    assert.match(body.etfAnalysis.scenarios[2]?.assumption ?? "", /subtracts the reported expense ratio/);
   }
 });
 

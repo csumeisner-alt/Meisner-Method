@@ -6,8 +6,11 @@ export interface EtfRegimePerformance {
 export interface EtfScenario {
   label: "bear" | "base" | "bull";
   annualReturnAssumption: number | null;
+  noFeeAnnualReturnAssumption: number | null;
   fiveYearValue: number | null;
   tenYearValue: number | null;
+  noFeeFiveYearValue: number | null;
+  noFeeTenYearValue: number | null;
   assumption: string;
 }
 
@@ -84,19 +87,25 @@ export function buildEtfScenarios(
   return (["bear", "base", "bull"] as const).map((label) => {
     const observed = assumptions[label];
     const valid = typeof observed === "number" && Number.isFinite(observed) && observed > -1;
-    const net = valid && validExpenseRatio !== null
+    const feeAdjustedReturn = valid && validExpenseRatio !== null
       ? observed - validExpenseRatio
-      : observed;
-    const project = (years: number) => typeof net === "number" && Number.isFinite(net) && net > -1
-      ? Math.round(currentPrice * (1 + net) ** years * 100) / 100
+      : null;
+    const project = (annualReturn: number | null, years: number) =>
+      annualReturn !== null && Number.isFinite(annualReturn) && annualReturn > -1
+        ? Math.round(currentPrice * (1 + annualReturn) ** years * 100) / 100
       : null;
     return {
       label,
-      annualReturnAssumption: valid ? net : null,
-      fiveYearValue: project(5),
-      tenYearValue: project(10),
+      annualReturnAssumption: feeAdjustedReturn,
+      noFeeAnnualReturnAssumption: valid ? observed : null,
+      fiveYearValue: project(feeAdjustedReturn, 5),
+      tenYearValue: project(feeAdjustedReturn, 10),
+      noFeeFiveYearValue: project(valid ? observed : null, 5),
+      noFeeTenYearValue: project(valid ? observed : null, 10),
       assumption: valid
-        ? `Uses the historical ${label === "base" ? "sample-weighted" : label}-regime annual average${validExpenseRatio === null ? "" : ", less the reported expense ratio"}; assumes constant compounding and no additional contributions.`
+        ? validExpenseRatio === null
+          ? `Uses the historical ${label === "base" ? "sample-weighted" : label}-regime annual average for the no-fee illustration. Fee-adjusted values are unavailable because the expense ratio was not reported. Assumes constant compounding and no additional contributions.`
+          : `Uses the historical ${label === "base" ? "sample-weighted" : label}-regime annual average; the fee-adjusted illustration subtracts the reported expense ratio. Assumes constant compounding and no additional contributions.`
         : `Not shown: insufficient provider-reported ${label} regime history.`,
     };
   });

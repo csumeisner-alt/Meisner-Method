@@ -281,9 +281,12 @@ function etfScreenResponse(expenseRatio = 0.0003) {
       marketRegime: null,
       scenarios: [{
         label: "Historical average",
-        annualReturnAssumption: expenseRatio == null ? 0.1 : 0.1 - expenseRatio,
-        fiveYearValue: 965,
-        tenYearValue: 1556,
+        annualReturnAssumption: expenseRatio == null ? null : 0.1 - expenseRatio,
+        noFeeAnnualReturnAssumption: 0.1,
+        fiveYearValue: expenseRatio == null ? null : 965,
+        tenYearValue: expenseRatio == null ? null : 1556,
+        noFeeFiveYearValue: 965,
+        noFeeTenYearValue: 1556,
         assumption: "Illustrative only.",
       }],
       analysis: "A diversified fund that tracks large U.S. companies.",
@@ -663,7 +666,10 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
       `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent ?? ""`,
     );
     assert.match(scenarioCardText, /Annual expense ratio used\s*0\.03%/);
-    assert.match(scenarioCardText, /Assumed annual return\s*9\.97%/);
+    assert.match(scenarioCardText, /No-fee annual return\s*10\.00%/);
+    assert.match(scenarioCardText, /After-fee annual return\s*9\.97%/);
+    assert.match(scenarioCardText, /No-fee value in 5 years\s*\$965/);
+    assert.match(scenarioCardText, /After-fee value in 5 years\s*\$965/);
 
     await browser.send("Page.navigate", { url: `http://127.0.0.1:${address.port}/unavailable-fee` });
     await waitForBrowserValue(
@@ -685,7 +691,10 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
       `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent ?? ""`,
     );
     assert.match(unavailableScenarioText, /Annual expense ratio used\s*Unavailable/);
-    assert.match(unavailableScenarioText, /Assumed annual return\s*10\.00%/);
+    assert.match(unavailableScenarioText, /No-fee annual return\s*10\.00%/);
+    assert.match(unavailableScenarioText, /After-fee annual return\s*Unavailable/);
+    assert.match(unavailableScenarioText, /After-fee value in 5 years\s*Unavailable/);
+    assert.match(unavailableScenarioText, /No-fee value in 5 years\s*\$965/);
 
     for (const path of ["/missing-scenarios", "/malformed-scenarios"]) {
       await browser.send("Page.navigate", { url: `http://127.0.0.1:${address.port}${path}` });
@@ -708,7 +717,7 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
         `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent ?? ""`,
       );
       assert.match(fallbackText, /Long-range scenario data unavailable\./);
-      assert.doesNotMatch(fallbackText, /Assumed annual return/);
+      assert.doesNotMatch(fallbackText, /No-fee annual return/);
     }
   } finally {
     browser?.close();

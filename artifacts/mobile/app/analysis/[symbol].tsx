@@ -353,8 +353,11 @@ type EtfAnalysisPayload = {
 type EtfScenario = {
   label: string;
   annualReturnAssumption: number | null;
+  noFeeAnnualReturnAssumption: number | null;
   fiveYearValue: number | null;
   tenYearValue: number | null;
+  noFeeFiveYearValue: number | null;
+  noFeeTenYearValue: number | null;
   assumption: string;
 };
 
@@ -374,8 +377,11 @@ function parseEtfScenarios(scenarios: unknown): EtfScenario[] {
     return [{
       label: record.label,
       annualReturnAssumption: numberOrNull(record.annualReturnAssumption),
+      noFeeAnnualReturnAssumption: numberOrNull(record.noFeeAnnualReturnAssumption),
       fiveYearValue: numberOrNull(record.fiveYearValue),
       tenYearValue: numberOrNull(record.tenYearValue),
+      noFeeFiveYearValue: numberOrNull(record.noFeeFiveYearValue),
+      noFeeTenYearValue: numberOrNull(record.noFeeTenYearValue),
       assumption: record.assumption,
     }];
   });
@@ -1429,9 +1435,12 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           {scenarios.length ? scenarios.map((scenario) => (
             <View key={scenario.label} style={{ marginBottom: 12 }}>
               <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', textTransform: 'uppercase' }}>{scenario.label}</Text>
-              <MetricRow label="Assumed annual return" value={pctValue(scenario.annualReturnAssumption)} />
-              <MetricRow label="One-share value in 5 years" value={scenario.fiveYearValue == null ? 'Unavailable' : fmtPrice(scenario.fiveYearValue)} />
-              <MetricRow label="One-share value in 10 years" value={scenario.tenYearValue == null ? 'Unavailable' : fmtPrice(scenario.tenYearValue)} />
+              <MetricRow label="No-fee annual return" value={pctValue(scenario.noFeeAnnualReturnAssumption)} />
+              <MetricRow label="After-fee annual return" value={pctValue(scenario.annualReturnAssumption)} />
+              <MetricRow label="No-fee value in 5 years" value={scenario.noFeeFiveYearValue == null ? 'Unavailable' : fmtPrice(scenario.noFeeFiveYearValue)} />
+              <MetricRow label="After-fee value in 5 years" value={scenario.fiveYearValue == null ? 'Unavailable' : fmtPrice(scenario.fiveYearValue)} />
+              <MetricRow label="No-fee value in 10 years" value={scenario.noFeeTenYearValue == null ? 'Unavailable' : fmtPrice(scenario.noFeeTenYearValue)} />
+              <MetricRow label="After-fee value in 10 years" value={scenario.tenYearValue == null ? 'Unavailable' : fmtPrice(scenario.tenYearValue)} />
               <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{scenario.assumption}</Text>
             </View>
           )) : (

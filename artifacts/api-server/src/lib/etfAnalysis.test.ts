@@ -33,7 +33,9 @@ test("ETF scenarios treat negative and non-finite expense ratios as unavailable"
   for (const invalidFee of [-0.01, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
     const scenarios = buildEtfScenarios(100, invalidFee, periods);
     assert.deepEqual(scenarios, withoutFee);
-    assert.equal(scenarios.some((scenario) => /less the reported expense ratio/.test(scenario.assumption)), false);
+    assert.equal(scenarios[1]?.noFeeFiveYearValue, 127.63);
+    assert.equal(scenarios[1]?.fiveYearValue, null);
+    assert.equal(scenarios.some((scenario) => /expense ratio was not reported/.test(scenario.assumption)), true);
   }
 });
 
@@ -48,10 +50,11 @@ test("ETF scenarios preserve reported zero and positive expense ratio calculatio
   const withoutFee = buildEtfScenarios(100, null, periods);
 
   assert.equal(zeroFee[1]?.annualReturnAssumption, 0.05);
-  assert.match(zeroFee[1]?.assumption ?? "", /less the reported expense ratio/);
+  assert.match(zeroFee[1]?.assumption ?? "", /subtracts the reported expense ratio/);
   assert.equal(positiveFee[1]?.annualReturnAssumption, 0.04);
   assert.equal(positiveFee[1]?.fiveYearValue, 121.67);
-  assert.match(positiveFee[1]?.assumption ?? "", /less the reported expense ratio/);
+  assert.equal(positiveFee[1]?.noFeeFiveYearValue, 127.63);
+  assert.match(positiveFee[1]?.assumption ?? "", /subtracts the reported expense ratio/);
   assert.notDeepEqual(zeroFee, withoutFee);
 });
 
