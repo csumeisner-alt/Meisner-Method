@@ -444,7 +444,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
         etfAnalysis?: EtfAnalysisPayload;
       }>('/api/stocks/analyze', {
         method: 'POST',
-        body: JSON.stringify({ symbol: candidate }),
+        body: JSON.stringify({ symbol: candidate, includeCommentary: false }),
       });
       const analysis = response.etfAnalysis;
       if (response.assetType !== 'etf' || !analysis) {
@@ -503,7 +503,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
             etfAnalysis?: EtfAnalysisPayload;
           }>('/api/stocks/analyze', {
             method: 'POST',
-            body: JSON.stringify({ symbol: candidate }),
+            body: JSON.stringify({ symbol: candidate, includeCommentary: false }),
           });
           return {
             candidate,

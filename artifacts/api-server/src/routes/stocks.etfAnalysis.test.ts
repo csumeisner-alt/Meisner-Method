@@ -23,19 +23,26 @@ const quote: EtfAnalysisQuote = {
   closes: [100, 101, 102, 101, 103, 104, 105],
 };
 
-async function requestEtfAnalysis(etfProfile: Record<string, unknown>) {
+async function requestEtfAnalysis(
+  etfProfile: Record<string, unknown>,
+  includeCommentary = true,
+) {
+  let completionCalls = 0;
   const app = express();
   app.use(express.json());
-  app.post("/stocks/analyze", async (_req, res) => {
+  app.post("/stocks/analyze", async (req, res) => {
     await respondWithEtfAnalysis(res, quote, {
       fetchEtfInfo: async () => ({ averageVolume3Month: 900_000, etfProfile }),
-      createCompletion: async () => JSON.stringify({
-        analysis: "Provider-backed fund overview.",
-        risks: ["Market volatility"],
-        strengths: ["Broad exposure"],
-      }),
+      createCompletion: async () => {
+        completionCalls += 1;
+        return JSON.stringify({
+          analysis: "Provider-backed fund overview.",
+          risks: ["Market volatility"],
+          strengths: ["Broad exposure"],
+        });
+      },
       now: () => new Date(fixedAsOf),
-    });
+    }, { includeCommentary: req.body.includeCommentary !== false });
   });
 
   const server = app.listen(0, "127.0.0.1");
@@ -46,9 +53,13 @@ async function requestEtfAnalysis(etfProfile: Record<string, unknown>) {
     const response = await fetch(`http://127.0.0.1:${address.port}/stocks/analyze`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ symbol: "VUG" }),
+      body: JSON.stringify({ symbol: "VUG", includeCommentary }),
     });
-    return { status: response.status, body: await response.json() };
+    return {
+      status: response.status,
+      body: await response.json(),
+      completionCalls,
+    };
   } finally {
     server.close();
     await once(server, "close");
@@ -77,12 +88,15 @@ test("ETF analysis HTTP response preserves all provider peer metadata", async ()
   });
 
   assert.equal(result.status, 200);
+  assert.equal(result.completionCalls, 1);
   const body = result.body as {
     etfAnalysis: {
+      analysis: string;
       peerExpenseComparison: Record<string, unknown> | null;
       peerAssetSizeComparison: Record<string, unknown> | null;
     };
   };
+  assert.equal(body.etfAnalysis.analysis, "Provider-backed fund overview.");
   assert.deepEqual(body.etfAnalysis.peerExpenseComparison, {
     category: "Large Growth",
     fundExpenseRatio: 0.0004,
@@ -103,6 +117,82 @@ test("ETF analysis HTTP response preserves all provider peer metadata", async ()
     source: "Yahoo Finance",
     asOf: fixedAsOf,
   });
+});
+
+test("ETF comparison response skips AI commentary and retains sourced fund facts", async () => {
+  const result = await requestEtfAnalysis({
+    fundCategory: "Large Growth",
+    expenseRatio: 0.0004,
+    totalAssets: 120_000_000_000,
+    benchmark: { symbol: "VUG.BM", name: "Growth Index" },
+    trackingComparison: {
+      periodStart: "2020-01-01",
+      periodEnd: "2025-12-31",
+      monthlySamples: 72,
+      fundAnnualizedReturn: 0.12,
+      benchmarkAnnualizedReturn: 0.119,
+      trackingDifference: 0.001,
+      trackingError: 0.002,
+    },
+    peerExpenseComparison: {
+      category: "Large Growth",
+      fundExpenseRatio: 0.0004,
+      categoryAverageExpenseRatio: 0.006,
+      difference: -0.0056,
+      sampleSize: 42,
+      sampleContext: "Provider-reported category sample",
+    },
+    peerAssetSizeComparison: {
+      category: "Large Growth",
+      fundTotalAssets: 120_000_000_000,
+      categoryAverageTotalAssets: 32_000_000_000,
+      difference: 88_000_000_000,
+      sampleSize: null,
+      sampleContext: "Provider-defined average; sample size not reported",
+    },
+  }, false);
+
+  assert.equal(result.status, 200);
+  assert.equal(result.completionCalls, 0);
+  const body = result.body as {
+    etfAnalysis: {
+      fundCategory: string;
+      expenseRatio: number;
+      totalAssets: number;
+      annualizedReturn: number | null;
+      annualizedVolatility: number | null;
+      benchmark: { source: string; asOf: string } | null;
+      trackingComparison: {
+        trackingError: number;
+        source: string;
+        asOf: string;
+      } | null;
+      peerExpenseComparison: { sampleContext: string; source: string; asOf: string } | null;
+      peerAssetSizeComparison: { sampleContext: string; source: string; asOf: string } | null;
+      analysis: string;
+      risks: string[];
+      strengths: string[];
+    };
+  };
+  assert.equal(body.etfAnalysis.fundCategory, "Large Growth");
+  assert.equal(body.etfAnalysis.expenseRatio, 0.0004);
+  assert.equal(body.etfAnalysis.totalAssets, 120_000_000_000);
+  assert.ok(typeof body.etfAnalysis.annualizedReturn === "number");
+  assert.ok(typeof body.etfAnalysis.annualizedVolatility === "number");
+  assert.equal(body.etfAnalysis.benchmark?.source, "Yahoo Finance");
+  assert.equal(body.etfAnalysis.benchmark?.asOf, fixedAsOf);
+  assert.equal(body.etfAnalysis.trackingComparison?.trackingError, 0.002);
+  assert.equal(body.etfAnalysis.trackingComparison?.source, "Yahoo Finance");
+  assert.equal(body.etfAnalysis.trackingComparison?.asOf, fixedAsOf);
+  assert.equal(body.etfAnalysis.peerExpenseComparison?.sampleContext, "Provider-reported category sample");
+  assert.equal(body.etfAnalysis.peerExpenseComparison?.source, "Yahoo Finance");
+  assert.equal(body.etfAnalysis.peerExpenseComparison?.asOf, fixedAsOf);
+  assert.equal(body.etfAnalysis.peerAssetSizeComparison?.sampleContext, "Provider-defined average; sample size not reported");
+  assert.equal(body.etfAnalysis.peerAssetSizeComparison?.source, "Yahoo Finance");
+  assert.equal(body.etfAnalysis.peerAssetSizeComparison?.asOf, fixedAsOf);
+  assert.equal(body.etfAnalysis.analysis, "");
+  assert.deepEqual(body.etfAnalysis.risks, []);
+  assert.deepEqual(body.etfAnalysis.strengths, []);
 });
 
 test("ETF analysis HTTP response leaves unavailable peer data null", async () => {

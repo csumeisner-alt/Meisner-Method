@@ -126,6 +126,7 @@ test("ETF comparison tickers persist, revalidate, and remain saved on provider f
   assert.match(etfAnalysisSource, /else if \(failed\)/);
   assert.match(etfAnalysisSource, /It remains saved for retry/);
   assert.match(etfAnalysisSource, /removeCompareSymbol\(fundEntry\.symbol\)/);
+  assert.equal((etfAnalysisSource.match(/includeCommentary: false/g) ?? []).length, 2);
 });
 
 test("ETF analysis leads with a concise overview and preserves score limits", () => {

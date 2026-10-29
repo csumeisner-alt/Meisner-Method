@@ -719,7 +719,10 @@ router.get("/stocks/quote/:symbol", async (req, res) => {
 });
 
 router.post("/stocks/analyze", async (req, res) => {
-  const { symbol } = req.body as { symbol?: string };
+  const { symbol, includeCommentary } = req.body as {
+    symbol?: string;
+    includeCommentary?: boolean;
+  };
 
   if (!symbol || typeof symbol !== "string") {
     res.status(400).json({ error: "INVALID_SYMBOL", message: "Symbol is required" });
@@ -751,7 +754,7 @@ router.post("/stocks/analyze", async (req, res) => {
           return completion.choices[0]?.message?.content ?? "";
         },
         now: () => new Date(),
-      });
+      }, { includeCommentary: includeCommentary !== false });
       return;
     }
     // Keep the public analysis contract in decimal-fraction form even if a

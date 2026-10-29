@@ -31,6 +31,7 @@ export async function respondWithEtfAnalysis(
   res: Response,
   data: EtfAnalysisQuote,
   dependencies: EtfAnalysisEndpointDependencies,
+  options: { includeCommentary?: boolean } = {},
 ) {
   const info = await dependencies.fetchEtfInfo(data.symbol);
   const profile = info["etfProfile"] as Record<string, any> | undefined;
@@ -69,7 +70,9 @@ export async function respondWithEtfAnalysis(
   const concentration = holdings.length
     ? holdings.reduce((sum: number, holding: { weight: number | null }) => sum + (holding.weight ?? 0), 0)
     : null;
-  const prompt = `You are explaining an ETF using only the supplied facts. Do not invent data, peer comparisons, benchmark fit, tracking error, turnover, tax characteristics, or holdings beyond those listed. Do not claim the fund tracks a particular index or has a particular strategy unless that exact fact is supplied. State unavailable facts plainly. Explain what the reported holdings and weights imply, costs, diversification/concentration, historical market-regime observations, and risks. Distinguish historical observations from the illustrative scenarios. Do not give personalized advice or change scenario calculations.
+  let ai: { analysis?: string; risks?: string[]; strengths?: string[] } = {};
+  if (options.includeCommentary !== false) {
+    const prompt = `You are explaining an ETF using only the supplied facts. Do not invent data, peer comparisons, benchmark fit, tracking error, turnover, tax characteristics, or holdings beyond those listed. Do not claim the fund tracks a particular index or has a particular strategy unless that exact fact is supplied. State unavailable facts plainly. Explain what the reported holdings and weights imply, costs, diversification/concentration, historical market-regime observations, and risks. Distinguish historical observations from the illustrative scenarios. Do not give personalized advice or change scenario calculations.
 
 ETF: ${data.symbol} — ${data.companyName}
 Category: ${profile["fundCategory"] ?? "unavailable"}; family: ${profile["fundFamily"] ?? "unavailable"}
@@ -93,12 +96,12 @@ Market regime history: ${JSON.stringify(regime ?? "unavailable")}
 Illustrative scenarios: ${JSON.stringify(scenarios)}
 
 Return JSON only: {"analysis":"2-4 concise paragraphs","risks":["..."],"strengths":["..."]}`;
-  const completionContent = await dependencies.createCompletion(prompt, 1400);
-  let ai: { analysis?: string; risks?: string[]; strengths?: string[] } = {};
-  try {
-    ai = JSON.parse(completionContent);
-  } catch {
-    ai = {};
+    const completionContent = await dependencies.createCompletion(prompt, 1400);
+    try {
+      ai = JSON.parse(completionContent);
+    } catch {
+      ai = {};
+    }
   }
 
   res.json({
@@ -139,7 +142,11 @@ Return JSON only: {"analysis":"2-4 concise paragraphs","risks":["..."],"strength
       risks: Array.isArray(ai.risks) ? ai.risks.filter((item): item is string => typeof item === "string") : [],
       strengths: Array.isArray(ai.strengths) ? ai.strengths.filter((item): item is string => typeof item === "string") : [],
       topHoldingsCombinedWeight: concentration,
-      analysis: typeof ai.analysis === "string" ? ai.analysis : "AI commentary is temporarily unavailable.",
+      analysis: typeof ai.analysis === "string"
+        ? ai.analysis
+        : options.includeCommentary === false
+          ? ""
+          : "AI commentary is temporarily unavailable.",
       provider: "Yahoo Finance",
       asOf,
     },
