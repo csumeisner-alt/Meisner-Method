@@ -65,3 +65,4 @@
 - [Expo Metro shared catalog paths](expo-metro-shared-catalog.md) — Metro may reject a JSON catalog outside the mobile artifact even when TypeScript resolves it; keep bundled shared data inside the Expo boundary.
 - [Achievement design and triggers](achievement-design.md) — keep unlocks cosmetic, brief, and independent of Brew reward update success.
 - [Premium flag badge motion](premium-flag-animation.md) — preserve all six supplied artworks and a continuous, visible cloth wave without reduced-motion suppression.
+- [API route test seams](api-route-test-seams.md) — extract injectable response handlers when source-run tests cannot resolve route imports that exist only after bundling.

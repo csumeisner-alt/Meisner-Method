@@ -9,6 +9,18 @@ const etfAnalysisSource = readFileSync(
   new URL("../app/analysis/[symbol].tsx", import.meta.url),
   "utf8",
 );
+const apiSchemaSource = readFileSync(
+  new URL("../../../lib/api-spec/openapi.yaml", import.meta.url),
+  "utf8",
+);
+const analysisRouteSource = readFileSync(
+  new URL("../../api-server/src/routes/stocks.ts", import.meta.url),
+  "utf8",
+);
+const etfEndpointSource = readFileSync(
+  new URL("../../api-server/src/lib/etfAnalysisEndpoint.ts", import.meta.url),
+  "utf8",
+);
 
 function validResponse(overrides = {}) {
   return {
@@ -114,6 +126,24 @@ test("ETF analysis displays the deterministic profile score and its limits", () 
   assert.match(etfAnalysisSource, /ETF PROFILE SCORE/);
   assert.match(etfAnalysisSource, /Missing components are excluded and remaining weights are rescaled/);
   assert.match(etfAnalysisSource, /Rules-based, not AI-generated or personalized advice/);
+  assert.match(etfAnalysisSource, /component\.peerContext\.category/);
+  assert.match(etfAnalysisSource, /component\.peerContext\.sampleContext/);
+  assert.match(etfAnalysisSource, /component\.peerContext\.source/);
+  assert.match(etfAnalysisSource, /sourceDate\(component\.peerContext\.asOf\)/);
+});
+
+test("ETF peer metadata in the API schema matches the mobile labels", () => {
+  const peerAssetSchema = apiSchemaSource.match(
+    /EtfPeerAssetSizeComparison:\n([\s\S]*?)(?=\n    EtfHolding:)/,
+  )?.[1] ?? "";
+  assert.match(peerAssetSchema, /category: \{ type: string \}/);
+  assert.match(peerAssetSchema, /sampleContext: \{ type: string \}/);
+  assert.match(peerAssetSchema, /source: \{ type: string \}/);
+  assert.match(peerAssetSchema, /asOf: \{ type: string, format: date-time \}/);
+  assert.match(apiSchemaSource, /peerAssetSizeComparison:\n\s+allOf:\n\s+- \$ref: "#\/components\/schemas\/EtfPeerAssetSizeComparison"\n\s+nullable: true/);
+  assert.match(analysisRouteSource, /respondWithEtfAnalysis\(res, data/);
+  assert.match(etfEndpointSource, /buildEtfPeerComparisonFields\(profile, asOf\)/);
+  assert.match(etfEndpointSource, /\.\.\.peerComparisons/);
   assert.match(etfAnalysisSource, /component\.peerContext\.category/);
   assert.match(etfAnalysisSource, /component\.peerContext\.sampleContext/);
   assert.match(etfAnalysisSource, /component\.peerContext\.source/);

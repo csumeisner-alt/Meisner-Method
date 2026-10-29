@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildEtfScenarios, calculateEtfRiskMetrics } from "./etfAnalysis.ts";
+import {
+  buildEtfPeerComparisonFields,
+  buildEtfScenarios,
+  calculateEtfRiskMetrics,
+} from "./etfAnalysis.ts";
 
 test("ETF scenario values use reported regime averages and disclose missing samples", () => {
   const scenarios = buildEtfScenarios(100, 0.01, {
@@ -24,4 +28,57 @@ test("ETF risk metrics derive annualized volatility, drawdown, and risk-adjusted
   assert.ok(Math.abs(metrics.maxDrawdown! + 0.1) < 1e-12);
   assert.ok(typeof metrics.riskAdjustedReturn === "number");
   assert.equal(calculateEtfRiskMetrics([100]).annualizedVolatility, null);
+});
+
+test("ETF analysis response preserves peer metadata and adds source retrieval context", () => {
+  const asOf = "2026-10-29T12:34:56.000Z";
+  const fields = buildEtfPeerComparisonFields({
+    peerExpenseComparison: {
+      category: "Large Growth",
+      fundExpenseRatio: 0.0004,
+      categoryAverageExpenseRatio: 0.006,
+      difference: -0.0056,
+      sampleSize: null,
+      sampleContext: "Provider-defined category average; sample size not reported",
+    },
+    peerAssetSizeComparison: {
+      category: "Large Growth",
+      fundTotalAssets: 120_000_000_000,
+      categoryAverageTotalAssets: 32_000_000_000,
+      difference: 88_000_000_000,
+      sampleSize: null,
+      sampleContext: "Provider-defined average total net assets; sample size not reported",
+    },
+  }, asOf);
+
+  assert.deepEqual(fields.peerExpenseComparison, {
+    category: "Large Growth",
+    fundExpenseRatio: 0.0004,
+    categoryAverageExpenseRatio: 0.006,
+    difference: -0.0056,
+    sampleSize: null,
+    sampleContext: "Provider-defined category average; sample size not reported",
+    source: "Yahoo Finance",
+    asOf,
+  });
+  assert.deepEqual(fields.peerAssetSizeComparison, {
+    category: "Large Growth",
+    fundTotalAssets: 120_000_000_000,
+    categoryAverageTotalAssets: 32_000_000_000,
+    difference: 88_000_000_000,
+    sampleSize: null,
+    sampleContext: "Provider-defined average total net assets; sample size not reported",
+    source: "Yahoo Finance",
+    asOf,
+  });
+});
+
+test("ETF analysis response leaves unavailable peer comparisons null", () => {
+  const fields = buildEtfPeerComparisonFields({
+    peerExpenseComparison: null,
+    peerAssetSizeComparison: null,
+  }, "2026-10-29T12:34:56.000Z");
+
+  assert.equal(fields.peerExpenseComparison, null);
+  assert.equal(fields.peerAssetSizeComparison, null);
 });

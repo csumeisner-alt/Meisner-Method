@@ -36,6 +36,25 @@ export function calculateEtfRiskMetrics(closes: number[]) {
   };
 }
 
+export function buildEtfPeerComparisonFields(
+  profile: Record<string, unknown>,
+  asOf: string,
+) {
+  const withSourceContext = (value: unknown) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    return {
+      ...(value as Record<string, unknown>),
+      source: "Yahoo Finance",
+      asOf,
+    };
+  };
+
+  return {
+    peerExpenseComparison: withSourceContext(profile["peerExpenseComparison"]),
+    peerAssetSizeComparison: withSourceContext(profile["peerAssetSizeComparison"]),
+  };
+}
+
 export function buildEtfScenarios(
   currentPrice: number,
   expenseRatio: number | null,
