@@ -11,7 +11,7 @@ const homeScreen = readFileSync(
 
 test("home search input invalidates old suggestions before the debounce settles", () => {
   const inputBlock = homeScreen.match(
-    /placeholder="Company name or ticker \(Apple, AAPL\)"([\s\S]*?)returnKeyType="search"/,
+    /placeholder="Company or ETF name or ticker \(Apple, AAPL, VOO\)"([\s\S]*?)returnKeyType="search"/,
   )?.[1];
   assert.ok(inputBlock, "the home company-search input should remain identifiable");
 
@@ -21,7 +21,7 @@ test("home search input invalidates old suggestions before the debounce settles"
   assert.ok(inputHandler, "typing should have an explicit home search handler");
   assert.match(
     inputHandler,
-    /latestSearchInputRef\.current = value;\s*setSelectedStock\(null\);\s*setQuery\(value\);/,
+    /latestSearchInputRef\.current = value;\s*setSelectedStock\(null\);\s*setSelectedEtf\(null\);\s*setQuery\(value\);/,
     "the latest input ref must update synchronously before React state and debounce",
   );
 
@@ -76,23 +76,19 @@ test("rapid home search edits reject a delayed tap from an earlier query", () =>
 
 test("home search submits a raw ticker after lookup finishes without blocking company names", () => {
   const rawTickerGate = homeScreen.match(
-    /const allowRawTicker = ([\s\S]*?);\s*const resolvedSymbol = resolveStockSearchSymbol\(/,
+    /const allowRawTicker = ([\s\S]*?);/,
   )?.[1];
   assert.ok(rawTickerGate, "the home screen should gate raw ticker entry on current lookup state");
   assert.match(
     rawTickerGate,
-    /isCurrentStockSearch\s*&&\s*!stockSearch\.isFetching\s*&&\s*\(stockSearch\.isSuccess\s*\|\|\s*stockSearch\.isError\)/,
-    "raw ticker entry should work after either a no-match response or a lookup error",
+    /isCurrentStockSearch\s*&&\s*isCurrentEtfSearch\s*&&\s*!stockSearch\.isFetching\s*&&\s*!etfSearch\.isFetching\s*&&\s*\(stockSearch\.isSuccess\s*\|\|\s*stockSearch\.isError\)\s*&&\s*\(etfSearch\.isSuccess\s*\|\|\s*etfSearch\.isError\)/,
+    "raw ticker entry should wait for both current stock and ETF lookups",
   );
 
-  const resolverCall = homeScreen.match(
-    /const resolvedSymbol = resolveStockSearchSymbol\(([\s\S]*?)\);/,
-  )?.[1];
-  assert.ok(resolverCall, "the home search should resolve the query before submitting");
   assert.match(
-    resolverCall,
-    /query,\s*stockSuggestions,\s*selectedStock,\s*allowRawTicker/,
-    "the resolver should receive only current suggestions, the selection, and lookup availability",
+    homeScreen,
+    /resolveStockSearchSymbol\(query,\s*stockSuggestions,\s*selectedStock,\s*allowRawTicker\)/,
+    "the stock resolver should receive current suggestions, selection, and lookup availability",
   );
 
   const submitHandler = homeScreen.match(
@@ -129,4 +125,12 @@ test("home search submits a raw ticker after lookup finishes without blocking co
     /router\.push\(`\/analysis\/\$\{upper\}`\)/,
     "the normalized ticker should open its analysis screen",
   );
+});
+
+test("home Analyze search can find and select ETF names and tickers", () => {
+  assert.match(homeScreen, /useSearchHeatMapInstruments/);
+  assert.match(homeScreen, /category: 'etfs'/);
+  assert.match(homeScreen, /exactEtfSuggestion\?\.symbol/);
+  assert.match(homeScreen, /selectEtf\(etf, activeEtfSearchQuery\)/);
+  assert.match(homeScreen, /ETF · \{etf\.exchange\}/);
 });

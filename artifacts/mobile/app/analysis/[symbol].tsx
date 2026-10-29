@@ -364,6 +364,8 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
     annualizedVolatility: fund.annualizedVolatility,
     maxDrawdown: fund.maxDrawdown,
   });
+  const etfScoreColor = (score: number) =>
+    score >= 65 ? colors.buyColor : score <= 40 ? colors.sellColor : colors.holdColor;
   const [holdingSnapshots, setHoldingSnapshots] = useState<HeatMapEtfHoldingSnapshot[]>([]);
   const snapshotWriteQueue = useRef<Promise<void>>(Promise.resolve());
   const [snapshotStorageError, setSnapshotStorageError] = useState('');
@@ -563,6 +565,70 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
   };
   return (
     <>
+      <View style={[recStyles.hero, {
+        backgroundColor: colors.card,
+        borderColor: profileScore.score == null ? colors.primary : etfScoreColor(profileScore.score),
+      }]}>
+        <View style={recStyles.topRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={[recStyles.actionLabel, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold' }]}>
+              ETF RESEARCH PROFILE
+            </Text>
+            <Text style={[recStyles.action, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+              {profileScore.score == null ? '—' : profileScore.score}
+              <Text style={{ fontSize: 15, color: colors.mutedForeground }}> / 100</Text>
+            </Text>
+          </View>
+          <View style={[recStyles.confidenceBadge, { borderColor: colors.border, borderWidth: 1 }]}>
+            <Text style={[recStyles.confidenceNum, { color: colors.primary, fontFamily: 'Inter_700Bold' }]}>
+              {profileScore.availableComponents}/5
+            </Text>
+            <Text style={[recStyles.confidenceLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+              factors rated
+            </Text>
+          </View>
+        </View>
+        {profileScore.score != null && (
+          <ScoreBar score={profileScore.score} color={etfScoreColor(profileScore.score)} />
+        )}
+        <Text style={[recStyles.horizon, { color: colors.mutedForeground, marginTop: 12, marginBottom: 0 }]}>
+          {fund.fundCategory ?? 'ETF'} · Rules-based profile, not a buy or sell recommendation.
+        </Text>
+      </View>
+      <SectionCard title="AI FUND BRIEF" icon={<Ionicons name="sparkles-outline" size={16} color={colors.primary} />}>
+        <View style={{ padding: 16 }}>
+          <Text style={{ color: colors.foreground, fontSize: 14, lineHeight: 22 }}>
+            {fund.analysis || 'AI commentary is unavailable. Review the sourced fund data below.'}
+          </Text>
+          {!!fund.strengths.length && (
+            <View style={{ marginTop: 14 }}>
+              <Text style={{ color: colors.buyColor, fontFamily: 'Inter_600SemiBold', fontSize: 11, letterSpacing: 0.6, marginBottom: 7 }}>REPORTED STRENGTHS</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
+                {fund.strengths.map((item, index) => (
+                  <Text key={`${index}-${item}`} style={{ color: colors.buyColor, backgroundColor: colors.buyBg, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6, fontSize: 12 }}>
+                    {item}
+                  </Text>
+                ))}
+              </View>
+            </View>
+          )}
+          {!!fund.risks.length && (
+            <View style={{ marginTop: 12 }}>
+              <Text style={{ color: colors.sellColor, fontFamily: 'Inter_600SemiBold', fontSize: 11, letterSpacing: 0.6, marginBottom: 7 }}>RISKS TO REVIEW</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
+                {fund.risks.map((item, index) => (
+                  <Text key={`${index}-${item}`} style={{ color: colors.sellColor, backgroundColor: colors.sellBg, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6, fontSize: 12 }}>
+                    {item}
+                  </Text>
+                ))}
+              </View>
+            </View>
+          )}
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 14 }}>
+            AI commentary summarizes supplied fund data; it does not set the profile score or provide personalized advice.
+          </Text>
+        </View>
+      </SectionCard>
       <SectionCard title="ETF PROFILE SCORE" icon={<Ionicons name="speedometer-outline" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 28 }}>
@@ -845,15 +911,6 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
             </View>
           ))}
           <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>These are historical-regime illustrations, not forecasts or guarantees. They assume a single investment, constant compounding, and no added contributions.</Text>
-        </View>
-      </SectionCard>
-      <SectionCard title="FUND ANALYSIS" icon={<Ionicons name="document-text-outline" size={16} color={colors.primary} />}>
-        <View style={{ padding: 16 }}>
-          <Text style={{ color: colors.foreground, lineHeight: 22 }}>{fund.analysis}</Text>
-          {!!fund.strengths.length && <Text style={{ color: colors.buyColor, marginTop: 12 }}>Strengths: {fund.strengths.join(' · ')}</Text>}
-          {!!fund.risks.length && <Text style={{ color: colors.sellColor, marginTop: 8 }}>Risks: {fund.risks.join(' · ')}</Text>}
-          <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 14 }}>Provider: {fund.provider} · retrieved {new Date(fund.asOf).toLocaleString()}</Text>
-          <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 6 }}>Category averages are provider-defined and may not include a reported sample size. Benchmark tracking is shown only when the provider identifies the fund’s benchmark.</Text>
         </View>
       </SectionCard>
     </>

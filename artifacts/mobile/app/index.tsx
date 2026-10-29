@@ -36,7 +36,12 @@ import { PriceAlertModal } from '@/components/PriceAlertModal';
 import { matchesFilter, mergeReorderedSubset } from '@/lib/watchlistFilter';
 import { getMarketPulseInsight } from '@/lib/marketPulse';
 import { DEFAULT_FLAG_ID, hasCompletedAllAchievements } from '@/lib/achievements';
-import { getGetMarketPulseQueryKey, useGetMarketPulse } from '@workspace/api-client-react';
+import {
+  getGetMarketPulseQueryKey,
+  getSearchHeatMapInstrumentsQueryKey,
+  useGetMarketPulse,
+  useSearchHeatMapInstruments,
+} from '@workspace/api-client-react';
 import {
   getStockSearchQueryFromKey,
   isStockSearchCurrent,
@@ -46,6 +51,7 @@ import {
 import {
   getSearchStockSymbolsQueryKey,
   useSearchStockSymbols,
+  type HeatMapInstrumentSuggestion,
   type StockSymbolSuggestion,
 } from '@workspace/api-client-react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -161,6 +167,7 @@ export default function HomeScreen() {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [selectedStock, setSelectedStock] = useState<StockSymbolSuggestion | null>(null);
+  const [selectedEtf, setSelectedEtf] = useState<HeatMapInstrumentSuggestion | null>(null);
   const [recent, setRecent] = useState<string[]>([]);
   const [tipVisible, setTipVisible] = useState(false);
   const [currentTip, setCurrentTip] = useState('');
@@ -176,19 +183,33 @@ export default function HomeScreen() {
     {
       query: {
         queryKey: stockSearchQueryKey,
-        enabled: debouncedQuery.length >= 2 && !selectedStock,
+        enabled: debouncedQuery.length >= 2 && !selectedStock && !selectedEtf,
         staleTime: 45_000,
       },
     },
   );
+  const etfSearchParams = { q: debouncedQuery, category: 'etfs' as const };
+  const etfSearchQueryKey = getSearchHeatMapInstrumentsQueryKey(etfSearchParams);
+  const etfSearch = useSearchHeatMapInstruments(etfSearchParams, {
+    query: {
+      queryKey: etfSearchQueryKey,
+      enabled: debouncedQuery.length >= 2 && !selectedStock && !selectedEtf,
+      staleTime: 45_000,
+    },
+  });
   const latestSearchInputRef = useRef(query);
   const latestSettledQueryRef = useRef(debouncedQuery);
   const latestResultQueryRef = useRef<string | null>(null);
   const latestPlaceholderDataRef = useRef(false);
   const activeStockSearchQuery = getStockSearchQueryFromKey(stockSearchQueryKey);
+  const activeEtfSearchQuery = getStockSearchQueryFromKey(etfSearchQueryKey);
+  const latestEtfResultQueryRef = useRef<string | null>(null);
+  const latestEtfPlaceholderDataRef = useRef(false);
   latestSettledQueryRef.current = debouncedQuery;
   latestResultQueryRef.current = activeStockSearchQuery;
   latestPlaceholderDataRef.current = stockSearch.isPlaceholderData;
+  latestEtfResultQueryRef.current = activeEtfSearchQuery;
+  latestEtfPlaceholderDataRef.current = etfSearch.isPlaceholderData;
   const [watchlistCollapsed, setWatchlistCollapsed] = useState(false);
   const [trendingCollapsed, setTrendingCollapsed] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -360,11 +381,11 @@ export default function HomeScreen() {
   useEffect(() => {
     setDebouncedQuery('');
     const searchText = query.trim();
-    if (selectedStock || searchText.length < 2) return;
+    if (selectedStock || selectedEtf || searchText.length < 2) return;
 
     const timeout = setTimeout(() => setDebouncedQuery(searchText), 280);
     return () => clearTimeout(timeout);
-  }, [query, selectedStock]);
+  }, [query, selectedStock, selectedEtf]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -392,26 +413,35 @@ export default function HomeScreen() {
   }, [recent, router]);
 
   const searchText = query.trim();
-  const isCurrentStockSearch = !selectedStock
+  const isCurrentStockSearch = !selectedStock && !selectedEtf
     && isStockSearchCurrent({
       input: query,
       settledQuery: debouncedQuery,
       resultQuery: activeStockSearchQuery,
       isPlaceholderData: stockSearch.isPlaceholderData,
     });
+  const isCurrentEtfSearch = !selectedStock && !selectedEtf
+    && isStockSearchCurrent({
+      input: query,
+      settledQuery: debouncedQuery,
+      resultQuery: activeEtfSearchQuery,
+      isPlaceholderData: etfSearch.isPlaceholderData,
+    });
   const stockSuggestions = isCurrentStockSearch ? stockSearch.data ?? [] : [];
-  const allowRawTicker = searchText.length === 1
-    || (
-      isCurrentStockSearch
-      && !stockSearch.isFetching
-      && (stockSearch.isSuccess || stockSearch.isError)
-    );
-  const resolvedSymbol = resolveStockSearchSymbol(
-    query,
-    stockSuggestions,
-    selectedStock,
-    allowRawTicker,
+  const etfSuggestions = isCurrentEtfSearch ? etfSearch.data ?? [] : [];
+  const exactEtfSuggestion = etfSuggestions.find(
+    (suggestion) => suggestion.symbol.toUpperCase() === searchText.toUpperCase(),
   );
+  const allowRawTicker = searchText.length === 1
+    || (isCurrentStockSearch
+      && isCurrentEtfSearch
+      && !stockSearch.isFetching
+      && !etfSearch.isFetching
+      && (stockSearch.isSuccess || stockSearch.isError)
+      && (etfSearch.isSuccess || etfSearch.isError));
+  const resolvedSymbol = selectedEtf?.symbol
+    ?? exactEtfSuggestion?.symbol
+    ?? resolveStockSearchSymbol(query, stockSuggestions, selectedStock, allowRawTicker);
 
   const handleSubmit = () => {
     if (resolvedSymbol) navigateTo(resolvedSymbol);
@@ -430,6 +460,25 @@ export default function HomeScreen() {
     latestSearchInputRef.current = selectedQuery;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedStock(stock);
+    setSelectedEtf(null);
+    setQuery(selectedQuery);
+    Keyboard.dismiss();
+  };
+
+  const selectEtf = (etf: HeatMapInstrumentSuggestion, selectionQuery: string | null) => {
+    if (!isStockSearchSelectionCurrent({
+      input: latestSearchInputRef.current,
+      settledQuery: latestSettledQueryRef.current,
+      resultQuery: latestEtfResultQueryRef.current,
+      selectionQuery,
+      isPlaceholderData: latestEtfPlaceholderDataRef.current,
+    })) return;
+
+    const selectedQuery = `${etf.name} (${etf.symbol})`;
+    latestSearchInputRef.current = selectedQuery;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedStock(null);
+    setSelectedEtf(etf);
     setQuery(selectedQuery);
     Keyboard.dismiss();
   };
@@ -564,12 +613,13 @@ export default function HomeScreen() {
           <Feather name="search" size={20} color={colors.mutedForeground} style={styles.searchIcon} />
           <TextInput
             style={[styles.searchInput, { color: colors.foreground, fontFamily: 'Inter_500Medium' }]}
-            placeholder="Company name or ticker (Apple, AAPL)"
+          placeholder="Company or ETF name or ticker (Apple, AAPL, VOO)"
             placeholderTextColor={colors.mutedForeground}
             value={query}
             onChangeText={(value) => {
               latestSearchInputRef.current = value;
               setSelectedStock(null);
+              setSelectedEtf(null);
               setQuery(value);
             }}
             autoCapitalize="none"
@@ -582,32 +632,34 @@ export default function HomeScreen() {
               onPress={() => {
                 latestSearchInputRef.current = '';
                 setSelectedStock(null);
+                setSelectedEtf(null);
                 setQuery('');
               }}
               style={styles.clearBtn}
               accessibilityRole="button"
-              accessibilityLabel="Clear stock search"
+              accessibilityLabel="Clear instrument search"
             >
               <Feather name="x" size={18} color={colors.mutedForeground} />
             </TouchableOpacity>
           )}
         </View>
-        {isCurrentStockSearch && (
+        {(isCurrentStockSearch || isCurrentEtfSearch) && (
           <View style={[styles.suggestionPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            {stockSearch.isFetching ? (
+            {stockSearch.isFetching || etfSearch.isFetching ? (
               <View style={styles.searchStatusRow}>
                 <ActivityIndicator size="small" color={colors.primary} />
                 <Text style={[styles.searchStatus, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                  Finding companies…
+                  Finding stocks and ETFs…
                 </Text>
               </View>
-            ) : stockSearch.isError ? (
+            ) : stockSuggestions.length === 0 && etfSuggestions.length === 0
+              && stockSearch.isError && etfSearch.isError ? (
               <Text style={[styles.searchStatus, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                Company lookup is unavailable. Enter a ticker in uppercase to continue.
+                Instrument search is unavailable. Enter a ticker in uppercase to continue.
               </Text>
-            ) : stockSuggestions.length === 0 ? (
+            ) : stockSuggestions.length === 0 && etfSuggestions.length === 0 ? (
               <Text style={[styles.searchStatus, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                No matching companies. Try another name or enter a ticker.
+                No matching stocks or ETFs. Try another name or enter a ticker.
               </Text>
             ) : (
               <ScrollView
@@ -644,6 +696,37 @@ export default function HomeScreen() {
                     </View>
                     <Text style={[styles.suggestionSymbol, { color: colors.primary, fontFamily: 'Inter_700Bold' }]}>
                       {stock.symbol}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+                {etfSuggestions.map((etf, index) => (
+                  <TouchableOpacity
+                    key={`etf-${etf.symbol}`}
+                    style={[
+                      styles.suggestionRow,
+                      { borderBottomColor: index === etfSuggestions.length - 1 ? 'transparent' : colors.border },
+                    ]}
+                    onPress={() => selectEtf(etf, activeEtfSearchQuery)}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Select ETF ${etf.name}, ticker ${etf.symbol}, ${etf.exchange}`}
+                  >
+                    <View style={styles.suggestionCopy}>
+                      <Text
+                        numberOfLines={1}
+                        style={[styles.suggestionName, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}
+                      >
+                        {etf.name}
+                      </Text>
+                      <Text
+                        numberOfLines={1}
+                        style={[styles.suggestionExchange, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}
+                      >
+                        ETF · {etf.exchange}
+                      </Text>
+                    </View>
+                    <Text style={[styles.suggestionSymbol, { color: colors.primary, fontFamily: 'Inter_700Bold' }]}>
+                      {etf.symbol}
                     </Text>
                   </TouchableOpacity>
                 ))}
