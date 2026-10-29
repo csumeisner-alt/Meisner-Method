@@ -39,6 +39,7 @@ import {
   findReportedEtfHoldingsOverlap,
   formatReportedEtfHoldingsOverlapShare,
   formatEtfComparisonValue,
+  formatEtfProfileAssets,
   getReportedEtfSectorComparison,
   parseSavedEtfComparisonSymbols,
   parseSavedEtfHoldingSnapshots,
@@ -726,11 +727,6 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
     { label: 'Bear regime average', value: (analysis) => formatRegimeReturn(analysis, 'bear') },
     { label: 'Mixed regime average', value: (analysis) => formatRegimeReturn(analysis, 'mixed') },
   ];
-  const fmtAssets = (value: number | null) => value == null
-    ? 'Unavailable'
-    : value >= 1e12 ? `$${(value / 1e12).toFixed(2)}T`
-      : value >= 1e9 ? `$${(value / 1e9).toFixed(2)}B`
-        : `$${(value / 1e6).toFixed(1)}M`;
   const pctValue = (value: number | null) => value == null ? 'Unavailable' : `${(value * 100).toFixed(2)}%`;
   const sourceDate = (asOf: string) => new Date(asOf).toLocaleDateString();
   const snapshotDateTime = (asOf: string) => {
@@ -957,7 +953,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
               <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16 }}>{component.detail}</Text>
               {component.peerContext ? (
                 <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
-                  Category: {component.peerContext.category} · category-average assets: {fmtAssets(component.peerContext.categoryAverageTotalAssets)} · {component.peerContext.sampleContext}
+                  Category: {component.peerContext.category} · category-average assets: {formatEtfProfileAssets(component.peerContext.categoryAverageTotalAssets)} · {component.peerContext.sampleContext}
                   {component.peerContext.sampleSize == null ? '' : ` · ${component.peerContext.sampleSize} funds`}
                   {'\n'}Source: {component.peerContext.source} · retrieved {sourceDate(component.peerContext.asOf)}
                 </Text>
@@ -975,7 +971,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           <MetricRow label="Fund family" value={fund.fundFamily ?? 'Unavailable'} />
           <MetricRow label="Expense ratio" value={pctValue(fund.expenseRatio)} />
           <MetricRow label="Distribution yield" value={pctValue(fund.dividendYield)} />
-          <MetricRow label="Assets under management" value={fmtAssets(fund.totalAssets)} />
+          <MetricRow label="Assets under management" value={formatEtfProfileAssets(fund.totalAssets)} />
           <MetricRow label="3-year beta" value={fmtNum(fund.beta3Year)} />
           <MetricRow label="Average daily volume" value={fund.averageVolume == null ? 'Unavailable' : fmtVol(fund.averageVolume)} />
           <MetricRow label="1-year annualized return" value={pctValue(fund.annualizedReturn)} />

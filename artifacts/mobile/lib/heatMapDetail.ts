@@ -348,6 +348,7 @@ export function formatEtfComparisonValue(
   format: EtfComparisonValueFormat,
 ): string {
   if (typeof value !== 'number' || !Number.isFinite(value)) return 'Unavailable';
+  if (format === 'assets' && value <= 0) return 'Unavailable';
   if (format === 'percent') return `${(value * 100).toFixed(2)}%`;
   if (format === 'basis-points') return `${(value * 10_000).toFixed(1)} bps`;
   if (format === 'number') return value.toFixed(2);
@@ -355,6 +356,15 @@ export function formatEtfComparisonValue(
   if (value >= 1e9) return `$${(value / 1e9).toFixed(2)}B`;
   if (value >= 1e6) return `$${(value / 1e6).toFixed(1)}M`;
   return `$${value.toLocaleString('en-US')}`;
+}
+
+export function formatEtfProfileAssets(value: number | null | undefined): string {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    return 'Unavailable';
+  }
+  return value >= 1e12 ? `$${(value / 1e12).toFixed(2)}T`
+    : value >= 1e9 ? `$${(value / 1e9).toFixed(2)}B`
+      : `$${(value / 1e6).toFixed(1)}M`;
 }
 
 export function getReportedEtfSectorComparison(
@@ -709,6 +719,11 @@ function nonNegativeNumericField(value: unknown, key: string): number | null {
   return candidate !== null && candidate >= 0 ? candidate : null;
 }
 
+function positiveNumericField(value: unknown, key: string): number | null {
+  const candidate = numericField(value, key);
+  return candidate !== null && candidate > 0 ? candidate : null;
+}
+
 function maxSupplyStatusField(value: unknown): HeatMapDetailStats['maxSupplyStatus'] {
   const candidate = record(value)?.maxSupplyStatus;
   return candidate === 'capped' || candidate === 'uncapped'
@@ -795,7 +810,7 @@ function parseEtfProfile(value: unknown): HeatMapEtfProfile | null {
     fundCategory: stringField(input, 'fundCategory'),
     fundFamily: stringField(input, 'fundFamily'),
     expenseRatio: numericField(input, 'expenseRatio'),
-    totalAssets: numericField(input, 'totalAssets'),
+    totalAssets: positiveNumericField(input, 'totalAssets'),
     dividendYield: numericField(input, 'dividendYield'),
     beta3Year: numericField(input, 'beta3Year'),
     largestSector: stringField(input, 'largestSector'),

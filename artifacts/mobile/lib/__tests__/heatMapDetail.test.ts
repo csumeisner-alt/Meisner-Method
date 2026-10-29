@@ -9,6 +9,7 @@ import {
   findReportedEtfHoldingsOverlap,
   formatReportedEtfHoldingsOverlapShare,
   formatEtfComparisonValue,
+  formatEtfProfileAssets,
   formatHeatMapRegimeReturn,
   getHeatMapCryptoSupplyChartModel,
   getHeatMapCryptoSupplyDiscrepancy,
@@ -631,6 +632,33 @@ test('ETF detail rows show investor-relevant fund facts instead of stock fundame
   ]);
   assert.equal(stats?.etfProfile?.sectorWeightsRetrievedAt, '2026-10-27T12:00:00Z');
   assert.equal(stats?.etfProfile?.marketRegime?.bestRegime, 'bull');
+});
+
+test('ETF profile asset reports reject zero, negative, and non-finite values', () => {
+  for (const totalAssets of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    const stats = parseHeatMapDetailStats({ etfProfile: { totalAssets } });
+
+    assert.equal(stats?.etfProfile?.totalAssets, null);
+    assert.equal(
+      getHeatMapDetailStatRows('etf', stats, null, false)
+        .find(({ label }) => label === 'Fund size (AUM)')?.value,
+      'Not reported',
+    );
+    assert.equal(formatEtfProfileAssets(totalAssets), 'Unavailable');
+    assert.equal(formatEtfComparisonValue(totalAssets, 'assets'), 'Unavailable');
+  }
+
+  const validAssets = 809_216_114_688;
+  const stats = parseHeatMapDetailStats({ etfProfile: { totalAssets: validAssets } });
+  assert.equal(stats?.etfProfile?.totalAssets, validAssets);
+  assert.equal(
+    getHeatMapDetailStatRows('etf', stats, null, false)
+      .find(({ label }) => label === 'Fund size (AUM)')?.value,
+    '$809.22B',
+  );
+  assert.equal(formatEtfProfileAssets(validAssets), '$809.22B');
+  assert.equal(formatEtfComparisonValue(validAssets, 'assets'), '$809.22B');
+  assert.match(analysisScreenSource, /formatEtfProfileAssets\(fund\.totalAssets\)/);
 });
 
 test('sector comparison leaves unreported sector weights unavailable instead of filling zero', () => {
