@@ -354,6 +354,7 @@ type EtfScenario = {
   label: string;
   annualReturnAssumption: number | null;
   noFeeAnnualReturnAssumption: number | null;
+  projections: EtfScenarioProjection[];
   fiveYearValue: number | null;
   tenYearValue: number | null;
   noFeeFiveYearValue: number | null;
@@ -361,7 +362,14 @@ type EtfScenario = {
   assumption: string;
 };
 
+type EtfScenarioProjection = {
+  horizonYears: number;
+  noFeeValue: number | null;
+  afterFeeValue: number | null;
+};
+
 const ETF_SCENARIO_LABELS = ['bear', 'base', 'bull'] as const;
+const ETF_SCENARIO_HORIZONS = [1, 3, 5, 10, 20] as const;
 
 function parseEtfScenarios(scenarios: unknown): EtfScenario[] {
   if (!Array.isArray(scenarios)) return [];
@@ -374,10 +382,26 @@ function parseEtfScenarios(scenarios: unknown): EtfScenario[] {
     }
     const numberOrNull = (value: unknown) =>
       typeof value === 'number' && Number.isFinite(value) ? value : null;
+    const projections = Array.isArray(record.projections)
+      ? record.projections.flatMap((projection): EtfScenarioProjection[] => {
+        if (typeof projection !== 'object' || projection === null || Array.isArray(projection)) return [];
+        const projectionRecord = projection as Record<string, unknown>;
+        if (typeof projectionRecord.horizonYears !== 'number'
+          || !ETF_SCENARIO_HORIZONS.includes(projectionRecord.horizonYears as typeof ETF_SCENARIO_HORIZONS[number])) {
+          return [];
+        }
+        return [{
+          horizonYears: projectionRecord.horizonYears,
+          noFeeValue: numberOrNull(projectionRecord.noFeeValue),
+          afterFeeValue: numberOrNull(projectionRecord.afterFeeValue),
+        }];
+      })
+      : [];
     return [{
       label: record.label,
       annualReturnAssumption: numberOrNull(record.annualReturnAssumption),
       noFeeAnnualReturnAssumption: numberOrNull(record.noFeeAnnualReturnAssumption),
+      projections,
       fiveYearValue: numberOrNull(record.fiveYearValue),
       tenYearValue: numberOrNull(record.tenYearValue),
       noFeeFiveYearValue: numberOrNull(record.noFeeFiveYearValue),
@@ -394,6 +418,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
 }) {
   const { apiFetch } = useApi();
   const [compareTicker, setCompareTicker] = useState('');
+  const [selectedScenarioHorizon, setSelectedScenarioHorizon] = useState<number>(10);
   const [savedCompareSymbols, setSavedCompareSymbols] = useState<string[]>([]);
   const savedCompareSymbolsRef = useRef<string[]>([]);
   const comparisonWriteQueue = useRef<Promise<void>>(Promise.resolve());
@@ -434,6 +459,52 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
   const [holdingSnapshots, setHoldingSnapshots] = useState<HeatMapEtfHoldingSnapshot[]>([]);
   const snapshotWriteQueue = useRef<Promise<void>>(Promise.resolve());
   const [snapshotStorageError, setSnapshotStorageError] = useState('');
+  const selectedProjection = (scenario: EtfScenario | null, horizonYears: number) => {
+    if (!scenario) return null;
+    const projected = scenario.projections.find((projection) => projection.horizonYears === horizonYears);
+    if (projected) return projected;
+    if (horizonYears === 5) {
+      return { horizonYears, noFeeValue: scenario.noFeeFiveYearValue, afterFeeValue: scenario.fiveYearValue };
+    }
+    if (horizonYears === 10) {
+      return { horizonYears, noFeeValue: scenario.noFeeTenYearValue, afterFeeValue: scenario.tenYearValue };
+    }
+    return null;
+  };
+  const renderScenarioHorizonSelector = () => (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+      {ETF_SCENARIO_HORIZONS.map((horizonYears) => {
+        const selected = selectedScenarioHorizon === horizonYears;
+        return (
+          <Pressable
+            key={horizonYears}
+            accessibilityRole="button"
+            accessibilityState={{ selected }}
+            testID={`etf-scenario-horizon-${horizonYears}`}
+            onPress={() => setSelectedScenarioHorizon(horizonYears)}
+            style={{
+              minWidth: 54,
+              alignItems: 'center',
+              borderWidth: 1,
+              borderColor: selected ? colors.primary : colors.border,
+              borderRadius: 8,
+              paddingHorizontal: 10,
+              paddingVertical: 7,
+              backgroundColor: selected ? colors.primary : 'transparent',
+            }}
+          >
+            <Text style={{
+              color: selected ? colors.primaryForeground : colors.foreground,
+              fontFamily: 'Inter_600SemiBold',
+              fontSize: 12,
+            }}>
+              {horizonYears} yr
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
 
   const persistHoldingSnapshot = useCallback((snapshot: HeatMapEtfHoldingSnapshot) => {
     const nextWrite = snapshotWriteQueue.current.catch(() => {}).then(async () => {
@@ -1289,6 +1360,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
         <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 5 }}>
           One-share illustrations, not forecasts. Each fund shows its own expense ratio and historical return assumption.
         </Text>
+        {renderScenarioHorizonSelector()}
         <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator style={{ marginTop: 10 }}>
           <View style={{ flexDirection: 'row', gap: 10, paddingRight: 16 }}>
             {comparisonMetricFunds.map(({ symbol: fundSymbol, analysis: comparison }) => {
@@ -1325,12 +1397,10 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
                         value={pctValue(scenario?.annualReturnAssumption ?? null)}
                       />
                       <MetricRow
-                        label="One share in 5 years"
-                        value={scenario?.fiveYearValue == null ? 'Unavailable' : fmtPrice(scenario.fiveYearValue)}
-                      />
-                      <MetricRow
-                        label="One share in 10 years"
-                        value={scenario?.tenYearValue == null ? 'Unavailable' : fmtPrice(scenario.tenYearValue)}
+                        label={`One share in ${selectedScenarioHorizon} years`}
+                        value={selectedProjection(scenario, selectedScenarioHorizon)?.afterFeeValue == null
+                          ? 'Unavailable'
+                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.afterFeeValue!)}
                       />
                       <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 14, marginTop: 4 }}>
                         {scenario?.assumption ?? 'Unavailable: no reported historical scenario for this regime.'}
@@ -1432,15 +1502,24 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
       <SectionCard collapsible title="LONG-RANGE SCENARIOS" icon={<MaterialCommunityIcons name="chart-timeline-variant" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           <MetricRow label="Annual expense ratio used" value={pctValue(fund.expenseRatio)} />
+          {renderScenarioHorizonSelector()}
           {scenarios.length ? scenarios.map((scenario) => (
             <View key={scenario.label} style={{ marginBottom: 12 }}>
               <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', textTransform: 'uppercase' }}>{scenario.label}</Text>
               <MetricRow label="No-fee annual return" value={pctValue(scenario.noFeeAnnualReturnAssumption)} />
               <MetricRow label="After-fee annual return" value={pctValue(scenario.annualReturnAssumption)} />
-              <MetricRow label="No-fee value in 5 years" value={scenario.noFeeFiveYearValue == null ? 'Unavailable' : fmtPrice(scenario.noFeeFiveYearValue)} />
-              <MetricRow label="After-fee value in 5 years" value={scenario.fiveYearValue == null ? 'Unavailable' : fmtPrice(scenario.fiveYearValue)} />
-              <MetricRow label="No-fee value in 10 years" value={scenario.noFeeTenYearValue == null ? 'Unavailable' : fmtPrice(scenario.noFeeTenYearValue)} />
-              <MetricRow label="After-fee value in 10 years" value={scenario.tenYearValue == null ? 'Unavailable' : fmtPrice(scenario.tenYearValue)} />
+              <MetricRow
+                label={`No-fee value in ${selectedScenarioHorizon} years`}
+                value={selectedProjection(scenario, selectedScenarioHorizon)?.noFeeValue == null
+                  ? 'Unavailable'
+                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.noFeeValue!)}
+              />
+              <MetricRow
+                label={`After-fee value in ${selectedScenarioHorizon} years`}
+                value={selectedProjection(scenario, selectedScenarioHorizon)?.afterFeeValue == null
+                  ? 'Unavailable'
+                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.afterFeeValue!)}
+              />
               <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{scenario.assumption}</Text>
             </View>
           )) : (

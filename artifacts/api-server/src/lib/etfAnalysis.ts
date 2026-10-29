@@ -3,10 +3,19 @@ export interface EtfRegimePerformance {
   years: number;
 }
 
+export const ETF_SCENARIO_HORIZONS = [1, 3, 5, 10, 20] as const;
+
+export interface EtfScenarioProjection {
+  horizonYears: (typeof ETF_SCENARIO_HORIZONS)[number];
+  noFeeValue: number | null;
+  afterFeeValue: number | null;
+}
+
 export interface EtfScenario {
   label: "bear" | "base" | "bull";
   annualReturnAssumption: number | null;
   noFeeAnnualReturnAssumption: number | null;
+  projections: EtfScenarioProjection[];
   fiveYearValue: number | null;
   tenYearValue: number | null;
   noFeeFiveYearValue: number | null;
@@ -94,14 +103,22 @@ export function buildEtfScenarios(
       annualReturn !== null && Number.isFinite(annualReturn) && annualReturn > -1
         ? Math.round(currentPrice * (1 + annualReturn) ** years * 100) / 100
       : null;
+    const projections = ETF_SCENARIO_HORIZONS.map((horizonYears) => ({
+      horizonYears,
+      noFeeValue: project(valid ? observed : null, horizonYears),
+      afterFeeValue: project(feeAdjustedReturn, horizonYears),
+    }));
+    const projectionAt = (horizonYears: number) =>
+      projections.find((projection) => projection.horizonYears === horizonYears);
     return {
       label,
       annualReturnAssumption: feeAdjustedReturn,
       noFeeAnnualReturnAssumption: valid ? observed : null,
-      fiveYearValue: project(feeAdjustedReturn, 5),
-      tenYearValue: project(feeAdjustedReturn, 10),
-      noFeeFiveYearValue: project(valid ? observed : null, 5),
-      noFeeTenYearValue: project(valid ? observed : null, 10),
+      projections,
+      fiveYearValue: projectionAt(5)?.afterFeeValue ?? null,
+      tenYearValue: projectionAt(10)?.afterFeeValue ?? null,
+      noFeeFiveYearValue: projectionAt(5)?.noFeeValue ?? null,
+      noFeeTenYearValue: projectionAt(10)?.noFeeValue ?? null,
       assumption: valid
         ? validExpenseRatio === null
           ? `Uses the historical ${label === "base" ? "sample-weighted" : label}-regime annual average for the no-fee illustration. Fee-adjusted values are unavailable because the expense ratio was not reported. Assumes constant compounding and no additional contributions.`

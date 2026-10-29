@@ -4,6 +4,7 @@ import {
   buildEtfPeerComparisonFields,
   buildEtfScenarios,
   calculateEtfRiskMetrics,
+  ETF_SCENARIO_HORIZONS,
 } from "./etfAnalysis.ts";
 
 test("ETF scenario values use reported regime averages and disclose missing samples", () => {
@@ -16,9 +17,26 @@ test("ETF scenario values use reported regime averages and disclose missing samp
   assert.equal(scenarios[0]?.fiveYearValue, 55.84);
   assert.equal(scenarios[1]?.annualReturnAssumption, 0.04);
   assert.equal(scenarios[2]?.tenYearValue, 569.47);
+  assert.deepEqual(
+    scenarios[1]?.projections.map((projection) => projection.horizonYears),
+    ETF_SCENARIO_HORIZONS,
+  );
+  for (const projection of scenarios[1]?.projections ?? []) {
+    assert.equal(
+      projection.noFeeValue,
+      Math.round(100 * (1 + 0.05) ** projection.horizonYears * 100) / 100,
+    );
+    assert.equal(
+      projection.afterFeeValue,
+      Math.round(100 * (1 + 0.04) ** projection.horizonYears * 100) / 100,
+    );
+  }
   assert.match(scenarios[1]?.assumption ?? "", /sample-weighted/);
   const missing = buildEtfScenarios(100, null, null);
   assert.equal(missing.every((scenario) => scenario.fiveYearValue === null), true);
+  assert.equal(missing.every((scenario) => scenario.projections.every(
+    (projection) => projection.noFeeValue === null && projection.afterFeeValue === null,
+  )), true);
   assert.match(missing[0]?.assumption ?? "", /insufficient/);
 });
 

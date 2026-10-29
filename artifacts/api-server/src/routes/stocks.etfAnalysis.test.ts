@@ -257,6 +257,7 @@ test("ETF analysis response treats invalid expense ratios as unavailable", async
           scenarios: {
             annualReturnAssumption: number | null;
             noFeeAnnualReturnAssumption: number | null;
+            projections: { horizonYears: number; noFeeValue: number | null; afterFeeValue: number | null }[];
             fiveYearValue: number | null;
             noFeeFiveYearValue: number | null;
             assumption: string;
@@ -268,6 +269,9 @@ test("ETF analysis response treats invalid expense ratios as unavailable", async
       assert.equal(body.etfAnalysis.expenseRatio, null);
       assert.equal(body.etfAnalysis.scenarios[2]?.annualReturnAssumption, null);
       assert.equal(body.etfAnalysis.scenarios[2]?.noFeeAnnualReturnAssumption, 0.1);
+      assert.deepEqual(body.etfAnalysis.scenarios[2]?.projections.map((projection) => projection.horizonYears), [1, 3, 5, 10, 20]);
+      assert.equal(body.etfAnalysis.scenarios[2]?.projections.find((projection) => projection.horizonYears === 5)?.noFeeValue, 644.2);
+      assert.equal(body.etfAnalysis.scenarios[2]?.projections.find((projection) => projection.horizonYears === 5)?.afterFeeValue, null);
       assert.equal(body.etfAnalysis.scenarios[2]?.fiveYearValue, null);
       assert.equal(body.etfAnalysis.scenarios[2]?.noFeeFiveYearValue, 644.2);
       assert.equal(body.etfAnalysis.scenarios.some((scenario) => /expense ratio was not reported/.test(scenario.assumption)), true);
