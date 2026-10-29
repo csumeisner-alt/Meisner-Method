@@ -205,6 +205,64 @@ test("invalid fund assets add no liquidity score or peer context", () => {
   }
 });
 
+test("invalid average volume adds no liquidity score or changes asset scoring", () => {
+  const invalidAverageVolumes = [
+    0,
+    -1,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+  ];
+  const peerAssetSizeComparison = {
+    category: "Large Blend",
+    categoryAverageTotalAssets: 100_000_000,
+    sampleSize: 20,
+    sampleContext: "Provider-reported category average",
+    source: "Yahoo Finance",
+    asOf: "2026-10-29T12:00:00Z",
+  };
+  const validAssetInputs = [
+    { totalAssets: 200_000_000, peerAssetSizeComparison },
+    { totalAssets: 200_000_000, peerAssetSizeComparison: null },
+  ];
+
+  for (const assetInput of validAssetInputs) {
+    const assetOnlyLiquidity = calculateEtfResearchScore({
+      ...completeInput,
+      ...assetInput,
+      averageVolume: null,
+    }).components.find((item) => item.id === "liquidity");
+
+    for (const averageVolume of invalidAverageVolumes) {
+      const result = calculateEtfResearchScore({
+        ...completeInput,
+        ...assetInput,
+        averageVolume,
+      });
+      const liquidity = result.components.find((item) => item.id === "liquidity");
+      assert.equal(
+        liquidity?.score,
+        assetOnlyLiquidity?.score,
+        `expected invalid average volume ${averageVolume} not to change asset scoring`,
+      );
+      assert.deepEqual(liquidity?.peerContext, assetOnlyLiquidity?.peerContext);
+    }
+  }
+
+  for (const averageVolume of invalidAverageVolumes) {
+    const liquidity = calculateEtfResearchScore({
+      ...completeInput,
+      averageVolume,
+      totalAssets: null,
+    }).components.find((item) => item.id === "liquidity");
+    assert.equal(
+      liquidity?.score,
+      null,
+      `expected invalid average volume ${averageVolume} not to create a liquidity score`,
+    );
+  }
+});
+
 test("missing peer data is excluded and incomplete sector coverage is not scored", () => {
   const result = calculateEtfResearchScore({
     ...completeInput,
