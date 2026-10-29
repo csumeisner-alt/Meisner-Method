@@ -776,6 +776,44 @@ test('ETF comparison share includes selected sector weights, expense costs, and 
   assert.doesNotMatch(summary, /IWM|unselected/i);
 });
 
+test('ETF shared summary preserves zero peer fees and marks missing or malformed fees unavailable', () => {
+  const summaryForFees = (
+    categoryAverageExpenseRatio: number | null,
+    difference: number | null,
+  ) => formatReportedEtfHoldingsOverlapShare(
+    [{ symbol: 'ZERO', topHoldingsRetrievedAt: null }],
+    [],
+    [{
+      symbol: 'ZERO',
+      analysis: {
+        peerExpenseComparison: {
+          category: 'Zero Fee',
+          sampleSize: null,
+          sampleContext: 'Sample size not reported',
+          source: 'Provider',
+          asOf: '2026-10-27T16:00:00Z',
+          categoryAverageExpenseRatio,
+          difference,
+        },
+      },
+    }],
+  );
+
+  const zeroSummary = summaryForFees(0, 0);
+  assert.match(zeroSummary, /Category fee baseline: Zero Fee · average 0\.00% · difference 0\.0 bps/);
+  assert.doesNotMatch(zeroSummary, /Category fee baseline: Zero Fee · average Unavailable/);
+
+  for (const [categoryAverageExpenseRatio, difference] of [
+    [null, null],
+    [Number.NaN, Number.POSITIVE_INFINITY],
+    [-0.0001, 1.0001],
+    ['0.01' as unknown as number, '0.001' as unknown as number],
+  ]) {
+    const summary = summaryForFees(categoryAverageExpenseRatio, difference);
+    assert.match(summary, /Category fee baseline: Zero Fee · average Unavailable · difference Unavailable/);
+  }
+});
+
 test('ETF comparison share labels missing and malformed sector or cost data unavailable', () => {
   const summary = formatReportedEtfHoldingsOverlapShare([
     {

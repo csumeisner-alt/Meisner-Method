@@ -358,6 +358,23 @@ export function formatEtfComparisonValue(
   return `$${value.toLocaleString('en-US')}`;
 }
 
+function formatEtfPeerExpenseRatio(value: unknown): string {
+  return typeof value === 'number'
+    && Number.isFinite(value)
+    && value >= 0
+    && value <= 1
+    ? formatEtfComparisonValue(value, 'percent')
+    : 'Unavailable';
+}
+
+function formatEtfPeerExpenseDifference(value: unknown): string {
+  return typeof value === 'number'
+    && Number.isFinite(value)
+    && Math.abs(value) <= 1
+    ? formatEtfComparisonValue(value, 'basis-points')
+    : 'Unavailable';
+}
+
 export function formatEtfProfileAssets(value: number | null | undefined): string {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
     return 'Unavailable';
@@ -607,7 +624,7 @@ export function formatReportedEtfHoldingsOverlapShare(
 
       const feePeer = analysis.peerExpenseComparison;
       lines.push(feePeer
-        ? `  Category fee baseline: ${feePeer.category} · average ${formatEtfComparisonValue(feePeer.categoryAverageExpenseRatio, 'percent')} · difference ${formatEtfComparisonValue(feePeer.difference, 'basis-points')} · ${sampleNote(feePeer.sampleSize, feePeer.sampleContext)} · ${feePeer.source} · retrieved ${timestamp(feePeer.asOf)}.`
+        ? `  Category fee baseline: ${feePeer.category} · average ${formatEtfPeerExpenseRatio(feePeer.categoryAverageExpenseRatio)} · difference ${formatEtfPeerExpenseDifference(feePeer.difference)} · ${sampleNote(feePeer.sampleSize, feePeer.sampleContext)} · ${feePeer.source} · retrieved ${timestamp(feePeer.asOf)}.`
         : '  Category fee baseline: unavailable.');
       const assetPeer = analysis.peerAssetSizeComparison;
       lines.push(assetPeer
