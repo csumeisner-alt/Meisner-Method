@@ -301,6 +301,13 @@ function etfScreenResponse(expenseRatio = 0.0003) {
 
 async function buildAnalysisScreenBundle(expenseRatio, scenarioOverrides = {}) {
   const response = etfScreenResponse(expenseRatio);
+  const savedCompareSymbols = scenarioOverrides.savedCompareSymbols ?? [];
+  const initialStorage = savedCompareSymbols.length
+    ? { "@stocksense/etf_comparison_symbols_v1": JSON.stringify(savedCompareSymbols) }
+    : {};
+  const comparisonResponse = savedCompareSymbols.length
+    ? { ...etfScreenResponse(expenseRatio), symbol: savedCompareSymbols[0], companyName: `${savedCompareSymbols[0]} comparison ETF` }
+    : null;
   if (scenarioOverrides.omitScenarios) {
     delete response.etfAnalysis.scenarios;
   } else if (Object.hasOwn(scenarioOverrides, "scenarios")) {
@@ -308,9 +315,11 @@ async function buildAnalysisScreenBundle(expenseRatio, scenarioOverrides = {}) {
   }
   const mockModules = new Map([
     ["@react-native-async-storage/async-storage", `
+      const values = new Map(Object.entries(${JSON.stringify(initialStorage)}));
+      window.__analysisTestStorage = values;
       export default {
-        getItem: async () => null,
-        setItem: async () => {},
+        getItem: async (key) => values.get(key) ?? null,
+        setItem: async (key, value) => { values.set(key, value); },
         removeItem: async () => {},
       };
     `],
@@ -353,8 +362,16 @@ async function buildAnalysisScreenBundle(expenseRatio, scenarioOverrides = {}) {
       }
     `],
     ["@/hooks/useApi", `
+      const comparisonResponse = ${JSON.stringify(comparisonResponse)};
       export function useApi() {
-        return { apiFetch: async () => ({ candles: [] }) };
+        return {
+          apiFetch: async (_url, options) => {
+            const candidate = options?.body ? JSON.parse(options.body).symbol : null;
+            return candidate && candidate === comparisonResponse?.symbol
+              ? comparisonResponse
+              : { candles: [] };
+          },
+        };
       }
     `],
     ["@/contexts/AmericanModeContext", `
@@ -526,12 +543,16 @@ async function waitForBrowserValue(browser, expression, message, timeout = 8000)
 
 test("ETF analysis sections render, expand, and collapse without 320px overflow", async () => {
   const bundle = await buildAnalysisScreenBundle();
+  const comparisonBundle = await buildAnalysisScreenBundle(undefined, {
+    savedCompareSymbols: ["VTI"],
+  });
   const unavailableFeeBundle = await buildAnalysisScreenBundle(null);
   const missingScenariosBundle = await buildAnalysisScreenBundle(0.0003, { omitScenarios: true });
   const malformedScenariosBundle = await buildAnalysisScreenBundle(0.0003, { scenarios: { label: "Broken" } });
   const server = createServer((request, response) => {
     const bundles = {
       "/bundle.js": bundle,
+      "/bundle-comparison.js": comparisonBundle,
       "/bundle-unavailable-fee.js": unavailableFeeBundle,
       "/bundle-missing-scenarios.js": missingScenariosBundle,
       "/bundle-malformed-scenarios.js": malformedScenariosBundle,
@@ -543,6 +564,7 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
     }
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     const scriptPath = {
+      "/comparison": "/bundle-comparison.js",
       "/unavailable-fee": "/bundle-unavailable-fee.js",
       "/missing-scenarios": "/bundle-missing-scenarios.js",
       "/malformed-scenarios": "/bundle-malformed-scenarios.js",
@@ -816,6 +838,62 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
       assert.match(fallbackText, /Long-range scenario data unavailable\./);
       assert.doesNotMatch(fallbackText, /No-fee annual return/);
     }
+
+    await browser.send("Page.navigate", { url: `http://127.0.0.1:${address.port}/comparison` });
+    await waitForBrowserValue(
+      browser,
+      "document.body.innerText.includes('ETF COST, RISK & PERFORMANCE')",
+      "The saved comparison ETF should be restored before testing navigation.",
+    );
+    assert.deepEqual(
+      await browser.evaluate(`JSON.parse(window.__analysisTestStorage.get("@stocksense/etf_comparison_symbols_v1") ?? "[]")`),
+      ["VTI"],
+      "The comparison ticker should be saved before section navigation.",
+    );
+    await browser.evaluate(`document.querySelector('[data-testid="etf-section-nav-toggle"]')?.click()`);
+    await waitForBrowserValue(
+      browser,
+      `Boolean(document.querySelector('[data-testid="etf-section-jump-long-range-scenarios"]'))`,
+      "Opening the section navigator should expose section jump buttons.",
+    );
+    assert.equal(
+      await browser.evaluate(`Boolean(document.querySelector('[data-testid="etf-section-jump-comparison"]'))`),
+      true,
+      "The navigator should include the comparison section when saved comparisons are loaded.",
+    );
+    await browser.evaluate(`document.querySelector('[data-testid="etf-section-jump-long-range-scenarios"]')?.click()`);
+    await waitForBrowserValue(
+      browser,
+      `document.querySelector('[data-testid="etf-analysis-scroll-view"]')?.scrollTop > 0`,
+      "Selecting a section should scroll the ETF analysis page.",
+    );
+    const jumpPosition = await browser.evaluate(`(() => {
+      const scroll = document.querySelector('[data-testid="etf-analysis-scroll-view"]');
+      const target = document.querySelector('[data-testid="analysis-section-long-range-scenarios"]');
+      return {
+        scrollTop: scroll?.scrollTop ?? 0,
+        targetTop: target?.getBoundingClientRect().top ?? Infinity,
+        viewportTop: scroll?.getBoundingClientRect().top ?? 0,
+      };
+    })()`);
+    assert.ok(jumpPosition.scrollTop > 0, "Jumping to a lower section should advance the main scroll view.");
+    assert.ok(
+      jumpPosition.targetTop >= jumpPosition.viewportTop - 2
+        && jumpPosition.targetTop < jumpPosition.viewportTop + 80,
+      `The selected section title should land near the top of the viewport: ${JSON.stringify(jumpPosition)}`,
+    );
+    await browser.evaluate(`document.querySelector('[data-testid="etf-section-jump-comparison"]')?.click()`);
+    await browser.evaluate(`document.querySelector('[data-testid="analysis-section-etf-cost-risk-performance"]')?.click()`);
+    await waitForBrowserValue(
+      browser,
+      `document.querySelector('[data-testid="analysis-section-etf-cost-risk-performance"]')?.parentElement?.textContent.includes("VTI")`,
+      "The comparison data should remain available after navigating to its section.",
+    );
+    assert.deepEqual(
+      await browser.evaluate(`JSON.parse(window.__analysisTestStorage.get("@stocksense/etf_comparison_symbols_v1") ?? "[]")`),
+      ["VTI"],
+      "Navigating between ETF sections must not alter the saved comparison selection.",
+    );
   } finally {
     await browser?.close();
     if (chrome.exitCode === null && chrome.signalCode === null) {
