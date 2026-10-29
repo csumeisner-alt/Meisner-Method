@@ -11,6 +11,12 @@ export interface EtfScenario {
   assumption: string;
 }
 
+export function normalizeEtfExpenseRatio(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
 export function calculateEtfRiskMetrics(closes: number[]) {
   const validCloses = closes.filter((value) => Number.isFinite(value) && value > 0);
   const returns = validCloses.slice(1).map((close, index) => close / validCloses[index]! - 1);
@@ -60,6 +66,7 @@ export function buildEtfScenarios(
   expenseRatio: number | null,
   periods: Record<string, EtfRegimePerformance> | null | undefined,
 ): EtfScenario[] {
+  const validExpenseRatio = normalizeEtfExpenseRatio(expenseRatio);
   const samples = Object.values(periods ?? {}).filter((period) =>
     typeof period.averageAnnualReturn === "number"
     && Number.isFinite(period.averageAnnualReturn)
@@ -77,8 +84,8 @@ export function buildEtfScenarios(
   return (["bear", "base", "bull"] as const).map((label) => {
     const observed = assumptions[label];
     const valid = typeof observed === "number" && Number.isFinite(observed) && observed > -1;
-    const net = valid && expenseRatio !== null && Number.isFinite(expenseRatio)
-      ? observed - expenseRatio
+    const net = valid && validExpenseRatio !== null
+      ? observed - validExpenseRatio
       : observed;
     const project = (years: number) => typeof net === "number" && Number.isFinite(net) && net > -1
       ? Math.round(currentPrice * (1 + net) ** years * 100) / 100
@@ -89,7 +96,7 @@ export function buildEtfScenarios(
       fiveYearValue: project(5),
       tenYearValue: project(10),
       assumption: valid
-        ? `Uses the historical ${label === "base" ? "sample-weighted" : label}-regime annual average${expenseRatio === null ? "" : ", less the reported expense ratio"}; assumes constant compounding and no additional contributions.`
+        ? `Uses the historical ${label === "base" ? "sample-weighted" : label}-regime annual average${validExpenseRatio === null ? "" : ", less the reported expense ratio"}; assumes constant compounding and no additional contributions.`
         : `Not shown: insufficient provider-reported ${label} regime history.`,
     };
   });

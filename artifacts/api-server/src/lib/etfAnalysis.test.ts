@@ -22,6 +22,39 @@ test("ETF scenario values use reported regime averages and disclose missing samp
   assert.match(missing[0]?.assumption ?? "", /insufficient/);
 });
 
+test("ETF scenarios treat negative and non-finite expense ratios as unavailable", () => {
+  const periods = {
+    bear: { averageAnnualReturn: -0.1, years: 2 },
+    mixed: { averageAnnualReturn: 0.05, years: 4 },
+    bull: { averageAnnualReturn: 0.2, years: 2 },
+  };
+  const withoutFee = buildEtfScenarios(100, null, periods);
+
+  for (const invalidFee of [-0.01, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    const scenarios = buildEtfScenarios(100, invalidFee, periods);
+    assert.deepEqual(scenarios, withoutFee);
+    assert.equal(scenarios.some((scenario) => /less the reported expense ratio/.test(scenario.assumption)), false);
+  }
+});
+
+test("ETF scenarios preserve reported zero and positive expense ratio calculations", () => {
+  const periods = {
+    bear: { averageAnnualReturn: -0.1, years: 2 },
+    mixed: { averageAnnualReturn: 0.05, years: 4 },
+    bull: { averageAnnualReturn: 0.2, years: 2 },
+  };
+  const zeroFee = buildEtfScenarios(100, 0, periods);
+  const positiveFee = buildEtfScenarios(100, 0.01, periods);
+  const withoutFee = buildEtfScenarios(100, null, periods);
+
+  assert.equal(zeroFee[1]?.annualReturnAssumption, 0.05);
+  assert.match(zeroFee[1]?.assumption ?? "", /less the reported expense ratio/);
+  assert.equal(positiveFee[1]?.annualReturnAssumption, 0.04);
+  assert.equal(positiveFee[1]?.fiveYearValue, 121.67);
+  assert.match(positiveFee[1]?.assumption ?? "", /less the reported expense ratio/);
+  assert.notDeepEqual(zeroFee, withoutFee);
+});
+
 test("ETF risk metrics derive annualized volatility, drawdown, and risk-adjusted return", () => {
   const metrics = calculateEtfRiskMetrics([100, 110, 99, 108]);
   assert.ok(typeof metrics.annualizedVolatility === "number" && metrics.annualizedVolatility > 0);

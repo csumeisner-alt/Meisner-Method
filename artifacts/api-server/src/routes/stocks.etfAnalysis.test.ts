@@ -123,6 +123,88 @@ test("ETF analysis HTTP response leaves unavailable peer data null", async () =>
   assert.equal(body.etfAnalysis.peerAssetSizeComparison, null);
 });
 
+test("ETF analysis response treats invalid expense ratios as unavailable", async () => {
+  const invalidFees = [-0.01, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY];
+
+  for (const expenseRatio of invalidFees) {
+    let completionPrompt = "";
+    const app = express();
+    app.use(express.json());
+    app.post("/stocks/analyze", async (_req, res) => {
+      await respondWithEtfAnalysis(res, quote, {
+        fetchEtfInfo: async () => ({
+          etfProfile: {
+            expenseRatio,
+            marketRegime: {
+              periods: {
+                bear: { averageAnnualReturn: 0.02, years: 2 },
+                bull: { averageAnnualReturn: 0.1, years: 2 },
+              },
+            },
+          },
+        }),
+        createCompletion: async (prompt) => {
+          completionPrompt = prompt;
+          return JSON.stringify({ analysis: "Overview." });
+        },
+        now: () => new Date(fixedAsOf),
+      });
+    });
+
+    const server = app.listen(0, "127.0.0.1");
+    try {
+      await once(server, "listening");
+      const address = server.address();
+      assert.ok(address && typeof address !== "string");
+      const response = await fetch(`http://127.0.0.1:${address.port}/stocks/analyze`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ symbol: "VUG" }),
+      });
+      const body = await response.json() as {
+        etfAnalysis: {
+          expenseRatio: number | null;
+          scenarios: { annualReturnAssumption: number | null; assumption: string }[];
+        };
+      };
+
+      assert.equal(response.status, 200);
+      assert.equal(body.etfAnalysis.expenseRatio, null);
+      assert.equal(body.etfAnalysis.scenarios[2]?.annualReturnAssumption, 0.1);
+      assert.equal(body.etfAnalysis.scenarios.some((scenario) => /less the reported expense ratio/.test(scenario.assumption)), false);
+      assert.match(completionPrompt, /Expense ratio: unavailable/);
+    } finally {
+      server.close();
+      await once(server, "close");
+    }
+  }
+});
+
+test("ETF analysis response preserves valid expense ratio values", async () => {
+  for (const expenseRatio of [0, 0.01]) {
+    const result = await requestEtfAnalysis({
+      expenseRatio,
+      marketRegime: {
+        periods: {
+          bear: { averageAnnualReturn: 0.02, years: 2 },
+          bull: { averageAnnualReturn: 0.1, years: 2 },
+        },
+      },
+    });
+    const body = result.body as {
+      etfAnalysis: {
+        expenseRatio: number | null;
+        scenarios: { annualReturnAssumption: number | null; assumption: string }[];
+      };
+    };
+
+    assert.equal(result.status, 200);
+    assert.equal(body.etfAnalysis.expenseRatio, expenseRatio);
+    assert.equal(body.etfAnalysis.scenarios[2]?.annualReturnAssumption, 0.1 - expenseRatio);
+    assert.match(body.etfAnalysis.scenarios[2]?.assumption ?? "", /less the reported expense ratio/);
+  }
+});
+
 test("ETF analysis HTTP response preserves holdings and sector coverage context", async () => {
   const holdingsRetrievedAt = "2026-10-28T18:20:00.000Z";
   const sectorsRetrievedAt = "2026-10-28T18:21:00.000Z";

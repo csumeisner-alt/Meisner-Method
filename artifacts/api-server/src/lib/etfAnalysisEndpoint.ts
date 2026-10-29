@@ -3,6 +3,7 @@ import {
   buildEtfPeerComparisonFields,
   buildEtfScenarios,
   calculateEtfRiskMetrics,
+  normalizeEtfExpenseRatio,
 } from "./etfAnalysis.ts";
 
 export interface EtfAnalysisQuote {
@@ -38,9 +39,10 @@ export async function respondWithEtfAnalysis(
   }
   const regime = profile["marketRegime"] as Record<string, any> | null;
   const periods = regime?.["periods"] as Record<string, any> | undefined;
+  const expenseRatio = normalizeEtfExpenseRatio(profile["expenseRatio"]);
   const scenarios = buildEtfScenarios(
     data.currentPrice,
-    typeof profile["expenseRatio"] === "number" ? profile["expenseRatio"] : null,
+    expenseRatio,
     periods,
   );
   const riskMetrics = calculateEtfRiskMetrics(data.closes);
@@ -71,7 +73,7 @@ export async function respondWithEtfAnalysis(
 
 ETF: ${data.symbol} — ${data.companyName}
 Category: ${profile["fundCategory"] ?? "unavailable"}; family: ${profile["fundFamily"] ?? "unavailable"}
-Expense ratio: ${profile["expenseRatio"] ?? "unavailable"} (decimal)
+Expense ratio: ${expenseRatio ?? "unavailable"} (decimal)
 Assets under management: ${profile["totalAssets"] ?? "unavailable"}
 Distribution yield: ${profile["dividendYield"] ?? "unavailable"} (decimal)
 3-year beta: ${profile["beta3Year"] ?? "unavailable"}
@@ -115,7 +117,7 @@ Return JSON only: {"analysis":"2-4 concise paragraphs","risks":["..."],"strength
     etfAnalysis: {
       fundCategory: profile["fundCategory"] ?? null,
       fundFamily: profile["fundFamily"] ?? null,
-      expenseRatio: profile["expenseRatio"] ?? null,
+      expenseRatio,
       totalAssets: profile["totalAssets"] ?? null,
       dividendYield: profile["dividendYield"] ?? null,
       beta3Year: profile["beta3Year"] ?? null,
