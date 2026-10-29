@@ -122,3 +122,56 @@ test("ETF analysis HTTP response leaves unavailable peer data null", async () =>
   assert.equal(body.etfAnalysis.peerExpenseComparison, null);
   assert.equal(body.etfAnalysis.peerAssetSizeComparison, null);
 });
+
+test("ETF analysis HTTP response preserves holdings and sector coverage context", async () => {
+  const holdingsRetrievedAt = "2026-10-28T18:20:00.000Z";
+  const sectorsRetrievedAt = "2026-10-28T18:21:00.000Z";
+  const sectorWeights = [
+    { sector: "Technology", weight: 0.42 },
+    { sector: "Healthcare", weight: 0.16 },
+  ];
+  const result = await requestEtfAnalysis({
+    topHoldings: [
+      { symbol: "NVDA", name: "NVIDIA Corporation", weight: 0.08 },
+      { symbol: "MSFT", name: "Microsoft Corporation", weight: 0.07 },
+    ],
+    topHoldingsReportedCount: 12,
+    topHoldingsRetrievedAt: holdingsRetrievedAt,
+    sectorWeights,
+    sectorWeightsRetrievedAt: sectorsRetrievedAt,
+  });
+
+  assert.equal(result.status, 200);
+  const body = result.body as {
+    etfAnalysis: {
+      topHoldings: { symbol: string; name: string; weight: number | null }[];
+      topHoldingsReportedCount: number;
+      topHoldingsRetrievedAt: string;
+      sectorWeights: { sector: string; weight: number }[];
+      sectorWeightsRetrievedAt: string;
+    };
+  };
+  assert.deepEqual(body.etfAnalysis.topHoldings, [
+    { symbol: "NVDA", name: "NVIDIA Corporation", weight: 0.08 },
+    { symbol: "MSFT", name: "Microsoft Corporation", weight: 0.07 },
+  ]);
+  assert.equal(body.etfAnalysis.topHoldingsReportedCount, 12);
+  assert.equal(body.etfAnalysis.topHoldingsRetrievedAt, holdingsRetrievedAt);
+  assert.deepEqual(body.etfAnalysis.sectorWeights, sectorWeights);
+  assert.equal(body.etfAnalysis.sectorWeightsRetrievedAt, sectorsRetrievedAt);
+});
+
+test("ETF analysis HTTP response uses its snapshot time when provider retrieval times are absent", async () => {
+  const result = await requestEtfAnalysis({ topHoldings: [], sectorWeights: [] });
+
+  assert.equal(result.status, 200);
+  const body = result.body as {
+    etfAnalysis: {
+      topHoldingsRetrievedAt: string;
+      sectorWeightsRetrievedAt: string;
+      asOf: string;
+    };
+  };
+  assert.equal(body.etfAnalysis.topHoldingsRetrievedAt, fixedAsOf);
+  assert.equal(body.etfAnalysis.sectorWeightsRetrievedAt, fixedAsOf);
+});

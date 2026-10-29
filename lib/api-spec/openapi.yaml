@@ -688,12 +688,15 @@ components:
         sectorWeightsRetrievedAt:
           type: string
           format: date-time
+          description: Provider sector snapshot retrieval time, not a sector report date.
         topHoldingsReportedCount:
           type: integer
           minimum: 0
+          description: Number of positions reported by the provider for this holdings snapshot.
         topHoldingsRetrievedAt:
           type: string
           format: date-time
+          description: Provider holdings snapshot retrieval time, not a holdings report date.
         marketRegime:
           allOf:
             - $ref: "#/components/schemas/EtfMarketRegime"
@@ -948,6 +951,7 @@ components:
         sectorWeightsRetrievedAt:
           type: string
           format: date-time
+          description: Provider sector snapshot retrieval time, not a sector report date.
         topHoldings:
           type: array
           items:
@@ -955,9 +959,11 @@ components:
         topHoldingsReportedCount:
           type: integer
           minimum: 0
+          description: Number of positions reported by the provider for this holdings snapshot.
         topHoldingsRetrievedAt:
           type: string
           format: date-time
+          description: Provider holdings snapshot retrieval time, not a holdings report date.
         marketRegime:
           allOf:
             - $ref: "#/components/schemas/EtfMarketRegime"

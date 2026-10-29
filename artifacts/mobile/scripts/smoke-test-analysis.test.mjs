@@ -180,6 +180,36 @@ test("ETF peer metadata in the API schema matches the mobile labels", () => {
   assert.match(etfAnalysisSource, /sourceDate\(component\.peerContext\.asOf\)/);
 });
 
+test("ETF holdings and sector context in the API schema matches mobile disclosures", () => {
+  const responseSchema = apiSchemaSource.match(
+    /EtfAnalysis:\n([\s\S]*?)(?=\n    EtfScenario:)/,
+  )?.[1] ?? "";
+  const profileSchema = apiSchemaSource.match(
+    /EtfProfile:\n([\s\S]*?)(?=\n    EtfBenchmarkReference:)/,
+  )?.[1] ?? "";
+
+  for (const schema of [responseSchema, profileSchema]) {
+    assert.match(schema, /sectorWeights:\n\s+type: array/);
+    assert.match(schema, /sectorWeightsRetrievedAt:\n\s+type: string\n\s+format: date-time\n\s+description: Provider sector snapshot retrieval time/);
+    assert.match(schema, /topHoldingsReportedCount:\n\s+type: integer\n\s+minimum: 0\n\s+description: Number of positions reported by the provider/);
+    assert.match(schema, /topHoldingsRetrievedAt:\n\s+type: string\n\s+format: date-time\n\s+description: Provider holdings snapshot retrieval time/);
+    assert.match(schema, /sectorWeightsRetrievedAt/);
+    assert.match(schema, /topHoldingsReportedCount/);
+    assert.match(schema, /topHoldingsRetrievedAt/);
+  }
+
+  assert.match(etfAnalysisSource, /topHoldingsReportedCount: number;/);
+  assert.match(etfAnalysisSource, /topHoldingsRetrievedAt: string;/);
+  assert.match(etfAnalysisSource, /sectorWeights: \{ sector: string; weight: number \}\[\];/);
+  assert.match(etfAnalysisSource, /sectorWeightsRetrievedAt: string;/);
+  assert.match(etfAnalysisSource, /Provider-reported holdings positions/);
+  assert.match(etfAnalysisSource, /Combined weight of reported holdings/);
+  assert.match(etfAnalysisSource, /Provider snapshot retrieved \{new Date\(fund\.topHoldingsRetrievedAt\)\.toLocaleString\(\)\}/);
+  assert.match(etfAnalysisSource, /the provider does not supply a holdings report date here/);
+  assert.match(etfAnalysisSource, /\{fundEntry\.symbol\}: \{fundEntry\.topHoldingsReportedCount\} reported positions · retrieved/);
+  assert.match(etfAnalysisSource, /\{fundEntry\.symbol\} sector data retrieved/);
+});
+
 test("ETF holding history is stored separately and shown without another comparison ticker", () => {
   const historyHeadingIndex = etfAnalysisSource.indexOf("Changes between provider snapshots");
   const comparisonResultsIndex = etfAnalysisSource.indexOf("{!!compareFunds.length && (");

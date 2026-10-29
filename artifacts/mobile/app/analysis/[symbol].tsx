@@ -1034,8 +1034,9 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           {fund.topHoldings.length ? fund.topHoldings.map((holding) => (
             <MetricRow key={holding.symbol} label={`${holding.name} (${holding.symbol})`} value={pctValue(holding.weight)} />
           )) : <Text style={{ color: colors.mutedForeground }}>Holdings data unavailable.</Text>}
+          <MetricRow label="Provider-reported holdings positions" value={String(fund.topHoldingsReportedCount)} />
           {fund.topHoldingsCombinedWeight != null && (
-            <MetricRow label={`Combined weight of ${fund.topHoldingsReportedCount} reported positions`} value={pctValue(fund.topHoldingsCombinedWeight)} />
+            <MetricRow label="Combined weight of reported holdings" value={pctValue(fund.topHoldingsCombinedWeight)} />
           )}
           <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 6 }}>
             Provider snapshot retrieved {new Date(fund.topHoldingsRetrievedAt).toLocaleString()}; the provider does not supply a holdings report date here.
