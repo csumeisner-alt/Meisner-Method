@@ -109,6 +109,7 @@ test("ETF comparison tickers persist, revalidate, and remain saved on provider f
 });
 
 test("ETF analysis displays the deterministic profile score and its limits", () => {
+  assert.doesNotMatch(etfAnalysisSource, /Evaluates the fund as a portfolio of reported holdings/);
   assert.match(etfAnalysisSource, /calculateEtfResearchScore\(\{/);
   assert.match(etfAnalysisSource, /ETF PROFILE SCORE/);
   assert.match(etfAnalysisSource, /Missing components are excluded and remaining weights are rescaled/);

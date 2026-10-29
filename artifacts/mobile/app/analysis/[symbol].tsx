@@ -1264,12 +1264,6 @@ export default function AnalysisScreen() {
         <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
           {renderHeader(response as StockAnalysis)}
           <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: botPad + 24 }]} showsVerticalScrollIndicator={false}>
-            <View style={[recStyles.hero, { backgroundColor: colors.card, borderColor: colors.primary }]}>
-              <Text style={[recStyles.actionLabel, { color: colors.primary, fontFamily: 'Inter_700Bold' }]}>ETF FUND ANALYSIS</Text>
-              <Text style={{ color: colors.mutedForeground, marginTop: 8, lineHeight: 20 }}>
-                Evaluates the fund as a portfolio of reported holdings—not as an operating company.
-              </Text>
-            </View>
             <EtfAnalysisSections fund={result.etfAnalysis} colors={colors} symbol={result.symbol} />
           </ScrollView>
         </View>
