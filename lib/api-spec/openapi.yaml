@@ -710,6 +710,10 @@ components:
           allOf:
             - $ref: "#/components/schemas/EtfPeerExpenseComparison"
           nullable: true
+        peerAssetSizeComparison:
+          allOf:
+            - $ref: "#/components/schemas/EtfPeerAssetSizeComparison"
+          nullable: true
         scenarios:
           type: array
           items:
@@ -729,7 +733,7 @@ components:
         asOf:
           type: string
           format: date-time
-      required: [topHoldings, sectorWeights, sectorWeightsRetrievedAt, topHoldingsReportedCount, topHoldingsRetrievedAt, marketRegime, benchmark, trackingComparison, peerExpenseComparison, scenarios, risks, strengths, analysis, provider, asOf, annualizedReturn, annualizedVolatility, maxDrawdown, riskAdjustedReturn, topHoldingsCombinedWeight]
+      required: [topHoldings, sectorWeights, sectorWeightsRetrievedAt, topHoldingsReportedCount, topHoldingsRetrievedAt, marketRegime, benchmark, trackingComparison, peerExpenseComparison, peerAssetSizeComparison, scenarios, risks, strengths, analysis, provider, asOf, annualizedReturn, annualizedVolatility, maxDrawdown, riskAdjustedReturn, topHoldingsCombinedWeight]
 
     EtfScenario:
       type: object
@@ -970,6 +974,10 @@ components:
           allOf:
             - $ref: "#/components/schemas/EtfPeerExpenseComparison"
           nullable: true
+        peerAssetSizeComparison:
+          allOf:
+            - $ref: "#/components/schemas/EtfPeerAssetSizeComparison"
+          nullable: true
       required:
         - fundCategory
         - fundFamily
@@ -988,6 +996,7 @@ components:
         - benchmark
         - trackingComparison
         - peerExpenseComparison
+        - peerAssetSizeComparison
 
     EtfBenchmarkReference:
       type: object
@@ -1041,6 +1050,30 @@ components:
         source: { type: string }
         asOf: { type: string, format: date-time }
       required: [category, fundExpenseRatio, categoryAverageExpenseRatio, difference, sampleSize, sampleContext, source, asOf]
+
+    EtfPeerAssetSizeComparison:
+      type: object
+      description: Yahoo Finance provider-defined category average total net assets; sample size is unavailable when not reported.
+      properties:
+        category: { type: string }
+        fundTotalAssets:
+          type: number
+          nullable: true
+          description: Fund total net assets in USD.
+        categoryAverageTotalAssets:
+          type: number
+          description: Category-average total net assets in USD.
+        difference:
+          type: number
+          nullable: true
+          description: Fund total assets minus the category average, in USD.
+        sampleSize:
+          type: integer
+          nullable: true
+        sampleContext: { type: string }
+        source: { type: string }
+        asOf: { type: string, format: date-time }
+      required: [category, fundTotalAssets, categoryAverageTotalAssets, difference, sampleSize, sampleContext, source, asOf]
 
     EtfHolding:
       type: object

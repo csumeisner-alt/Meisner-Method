@@ -8,7 +8,9 @@
 import type { EtfBenchmarkReference } from './etfBenchmarkReference';
 import type { EtfHolding } from './etfHolding';
 import type { EtfMarketRegime } from './etfMarketRegime';
+import type { EtfPeerAssetSizeComparison } from './etfPeerAssetSizeComparison';
 import type { EtfPeerExpenseComparison } from './etfPeerExpenseComparison';
+import type { EtfSectorWeight } from './etfSectorWeight';
 import type { EtfTrackingComparison } from './etfTrackingComparison';
 
 /**
@@ -25,6 +27,9 @@ export interface EtfProfile {
   beta3Year: number | null;
   largestSector: string | null;
   largestSectorWeight: number | null;
+  /** Provider-reported sector weights only; omitted sectors are not inferred as zero. */
+  sectorWeights: EtfSectorWeight[];
+  sectorWeightsRetrievedAt: Date;
   topHoldings: EtfHolding[];
   /** @minimum 0 */
   topHoldingsReportedCount: number;
@@ -33,4 +38,5 @@ export interface EtfProfile {
   benchmark: EtfBenchmarkReference | null;
   trackingComparison: EtfTrackingComparison | null;
   peerExpenseComparison: EtfPeerExpenseComparison | null;
+  peerAssetSizeComparison: EtfPeerAssetSizeComparison | null;
 }

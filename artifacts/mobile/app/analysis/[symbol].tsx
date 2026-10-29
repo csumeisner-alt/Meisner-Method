@@ -310,6 +310,16 @@ type EtfAnalysisPayload = {
     source: string;
     asOf: string;
   } | null;
+  peerAssetSizeComparison: {
+    category: string;
+    fundTotalAssets: number | null;
+    categoryAverageTotalAssets: number;
+    difference: number | null;
+    sampleSize: number | null;
+    sampleContext: string;
+    source: string;
+    asOf: string;
+  } | null;
   marketRegime: {
     benchmarkSymbol: string;
     firstYear: number;
@@ -364,6 +374,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
     sectorWeights: fund.sectorWeights ?? [],
     averageVolume: fund.averageVolume,
     totalAssets: fund.totalAssets,
+    peerAssetSizeComparison: fund.peerAssetSizeComparison,
     annualizedVolatility: fund.annualizedVolatility,
     maxDrawdown: fund.maxDrawdown,
   });
@@ -673,10 +684,17 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
                 value={component.score == null ? 'Unavailable' : `${Math.round(component.score)}/100`}
               />
               <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16 }}>{component.detail}</Text>
+              {component.peerContext ? (
+                <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
+                  Category: {component.peerContext.category} · category-average assets: {fmtAssets(component.peerContext.categoryAverageTotalAssets)} · {component.peerContext.sampleContext}
+                  {component.peerContext.sampleSize == null ? '' : ` · ${component.peerContext.sampleSize} funds`}
+                  {'\n'}Source: {component.peerContext.source} · retrieved {sourceDate(component.peerContext.asOf)}
+                </Text>
+              ) : null}
             </View>
           ))}
           <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 12 }}>
-            Rules-based, not AI-generated or personalized advice. Only fees use the provider’s category average; tracking requires a verified benchmark, while other factors use fixed bands. Compare funds with similar strategies.
+            Rules-based, not AI-generated or personalized advice. Fees and net assets use provider category averages when reported; tracking requires a verified benchmark. Sector diversification uses reported sector weights, while volume and risk use fixed bands when peer data is unavailable. Compare funds with similar strategies.
           </Text>
         </View>
       </SectionCard>

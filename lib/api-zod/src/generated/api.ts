@@ -68,6 +68,9 @@ export const AnalyzeStockBody = zod.object({
   "symbol": zod.string().describe('Stock ticker symbol (e.g. AAPL, TSLA, MSFT)')
 })
 
+export const analyzeStockResponseTwoEtfAnalysisSectorWeightsItemWeightMin = 0;
+export const analyzeStockResponseTwoEtfAnalysisSectorWeightsItemWeightMax = 1;
+
 export const analyzeStockResponseTwoEtfAnalysisTopHoldingsReportedCountMin = 0;
 
 export const analyzeStockResponseTwoEtfAnalysisTrackingComparisonOneMonthlySamplesMin = 2;
@@ -167,6 +170,11 @@ export const AnalyzeStockResponse = zod.union([zod.object({
   "name": zod.string(),
   "weight": zod.number().describe('Holding weight as a decimal fraction.')
 })),
+  "sectorWeights": zod.array(zod.object({
+  "sector": zod.string(),
+  "weight": zod.number().min(analyzeStockResponseTwoEtfAnalysisSectorWeightsItemWeightMin).max(analyzeStockResponseTwoEtfAnalysisSectorWeightsItemWeightMax).describe('Provider-reported sector weight as a decimal fraction.')
+})).describe('Provider-reported sector weights only; omitted sectors are not inferred as zero.'),
+  "sectorWeightsRetrievedAt": zod.coerce.date(),
   "topHoldingsReportedCount": zod.number().min(analyzeStockResponseTwoEtfAnalysisTopHoldingsReportedCountMin),
   "topHoldingsRetrievedAt": zod.coerce.date(),
   "marketRegime": zod.object({
@@ -219,6 +227,16 @@ export const AnalyzeStockResponse = zod.union([zod.object({
   "source": zod.string(),
   "asOf": zod.coerce.date()
 }).describe('Yahoo Finance provider-defined fund-category average; sample size is unavailable when not reported.').nullable(),
+  "peerAssetSizeComparison": zod.object({
+  "category": zod.string(),
+  "fundTotalAssets": zod.number().nullable().describe('Fund total net assets in USD.'),
+  "categoryAverageTotalAssets": zod.number().describe('Category-average total net assets in USD.'),
+  "difference": zod.number().nullable().describe('Fund total assets minus the category average, in USD.'),
+  "sampleSize": zod.number().nullable(),
+  "sampleContext": zod.string(),
+  "source": zod.string(),
+  "asOf": zod.coerce.date()
+}).describe('Yahoo Finance provider-defined category average total net assets; sample size is unavailable when not reported.').nullable(),
   "scenarios": zod.array(zod.object({
   "label": zod.enum(['bear', 'base', 'bull']),
   "annualReturnAssumption": zod.number().nullable().describe('Historical regime average used as an illustrative annual return assumption.'),
@@ -246,6 +264,9 @@ export const getStockInfoPathSymbolMax = 15;
 export const GetStockInfoParams = zod.object({
   "symbol": zod.coerce.string().min(1).max(getStockInfoPathSymbolMax)
 })
+
+export const getStockInfoResponseEtfProfileSectorWeightsItemWeightMin = 0;
+export const getStockInfoResponseEtfProfileSectorWeightsItemWeightMax = 1;
 
 export const getStockInfoResponseEtfProfileTopHoldingsReportedCountMin = 0;
 
@@ -288,6 +309,11 @@ export const GetStockInfoResponse = zod.object({
   "beta3Year": zod.number().nullable(),
   "largestSector": zod.string().nullable(),
   "largestSectorWeight": zod.number().nullable(),
+  "sectorWeights": zod.array(zod.object({
+  "sector": zod.string(),
+  "weight": zod.number().min(getStockInfoResponseEtfProfileSectorWeightsItemWeightMin).max(getStockInfoResponseEtfProfileSectorWeightsItemWeightMax).describe('Provider-reported sector weight as a decimal fraction.')
+})).describe('Provider-reported sector weights only; omitted sectors are not inferred as zero.'),
+  "sectorWeightsRetrievedAt": zod.coerce.date(),
   "topHoldings": zod.array(zod.object({
   "symbol": zod.string(),
   "name": zod.string(),
@@ -344,7 +370,17 @@ export const GetStockInfoResponse = zod.object({
   "sampleContext": zod.string(),
   "source": zod.string(),
   "asOf": zod.coerce.date()
-}).describe('Yahoo Finance provider-defined fund-category average; sample size is unavailable when not reported.').nullable()
+}).describe('Yahoo Finance provider-defined fund-category average; sample size is unavailable when not reported.').nullable(),
+  "peerAssetSizeComparison": zod.object({
+  "category": zod.string(),
+  "fundTotalAssets": zod.number().nullable().describe('Fund total net assets in USD.'),
+  "categoryAverageTotalAssets": zod.number().describe('Category-average total net assets in USD.'),
+  "difference": zod.number().nullable().describe('Fund total assets minus the category average, in USD.'),
+  "sampleSize": zod.number().nullable(),
+  "sampleContext": zod.string(),
+  "source": zod.string(),
+  "asOf": zod.coerce.date()
+}).describe('Yahoo Finance provider-defined category average total net assets; sample size is unavailable when not reported.').nullable()
 }).optional().describe('Provider-reported fund facts, present for ETFs. Ratios and weights are decimal fractions.')
 })
 

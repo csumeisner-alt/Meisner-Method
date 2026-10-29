@@ -14,6 +14,7 @@ const completeInput = {
   ],
   averageVolume: 100_000,
   totalAssets: 100_000_000,
+  peerAssetSizeComparison: null,
   annualizedVolatility: 0.2,
   maxDrawdown: -0.2,
 };
@@ -43,6 +44,40 @@ test("ETF cost score improves when expense ratio is lower than its category aver
     expenseRatio: 0.0015,
   }).components[0]?.score;
   assert.ok(belowAverage !== null && aboveAverage !== null && belowAverage > aboveAverage);
+});
+
+test("ETF assets use the provider category average when available", () => {
+  const result = calculateEtfResearchScore({
+    ...completeInput,
+    averageVolume: null,
+    totalAssets: 200_000_000,
+    peerAssetSizeComparison: {
+      category: "Large Blend",
+      categoryAverageTotalAssets: 100_000_000,
+      sampleSize: null,
+      sampleContext: "Yahoo category average; sample size not reported",
+      source: "Yahoo Finance",
+      asOf: "2026-10-29T12:00:00Z",
+    },
+  });
+  const liquidity = result.components.find((item) => item.id === "liquidity");
+  assert.equal(liquidity?.score, 100);
+  assert.equal(liquidity?.peerContext?.category, "Large Blend");
+  assert.equal(liquidity?.peerContext?.sampleSize, null);
+  assert.equal(liquidity?.peerContext?.source, "Yahoo Finance");
+  assert.match(liquidity?.detail ?? "", /provider category average/);
+});
+
+test("ETF assets retain fixed bands when the provider category average is absent", () => {
+  const result = calculateEtfResearchScore({
+    ...completeInput,
+    averageVolume: null,
+    totalAssets: 200_000_000,
+  });
+  const liquidity = result.components.find((item) => item.id === "liquidity");
+  assert.ok(typeof liquidity?.score === "number" && liquidity.score < 100);
+  assert.equal(liquidity?.peerContext, undefined);
+  assert.match(liquidity?.detail ?? "", /fixed log-scale bands/);
 });
 
 test("missing peer data is excluded and incomplete sector coverage is not scored", () => {

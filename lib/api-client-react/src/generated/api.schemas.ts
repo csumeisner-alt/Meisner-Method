@@ -180,6 +180,16 @@ export interface EtfHolding {
   weight: number;
 }
 
+export interface EtfSectorWeight {
+  sector: string;
+  /**
+     * Provider-reported sector weight as a decimal fraction.
+     * @minimum 0
+     * @maximum 1
+     */
+  weight: number;
+}
+
 export type EtfMarketRegimeBestRegime = typeof EtfMarketRegimeBestRegime[keyof typeof EtfMarketRegimeBestRegime] | null;
 
 
@@ -263,6 +273,23 @@ export interface EtfPeerExpenseComparison {
   asOf: string;
 }
 
+/**
+ * Yahoo Finance provider-defined category average total net assets; sample size is unavailable when not reported.
+ */
+export interface EtfPeerAssetSizeComparison {
+  category: string;
+  /** Fund total net assets in USD. */
+  fundTotalAssets: number | null;
+  /** Category-average total net assets in USD. */
+  categoryAverageTotalAssets: number;
+  /** Fund total assets minus the category average, in USD. */
+  difference: number | null;
+  sampleSize: number | null;
+  sampleContext: string;
+  source: string;
+  asOf: string;
+}
+
 export type EtfScenarioLabel = typeof EtfScenarioLabel[keyof typeof EtfScenarioLabel];
 
 
@@ -298,6 +325,9 @@ export interface EtfAnalysis {
   maxDrawdown: number | null;
   riskAdjustedReturn: number | null;
   topHoldings: EtfHolding[];
+  /** Provider-reported sector weights only; omitted sectors are not inferred as zero. */
+  sectorWeights: EtfSectorWeight[];
+  sectorWeightsRetrievedAt: string;
   /** @minimum 0 */
   topHoldingsReportedCount: number;
   topHoldingsRetrievedAt: string;
@@ -305,6 +335,7 @@ export interface EtfAnalysis {
   benchmark: EtfBenchmarkReference | null;
   trackingComparison: EtfTrackingComparison | null;
   peerExpenseComparison: EtfPeerExpenseComparison | null;
+  peerAssetSizeComparison: EtfPeerAssetSizeComparison | null;
   scenarios: EtfScenario[];
   risks: string[];
   strengths: string[];
@@ -395,6 +426,9 @@ export interface EtfProfile {
   beta3Year: number | null;
   largestSector: string | null;
   largestSectorWeight: number | null;
+  /** Provider-reported sector weights only; omitted sectors are not inferred as zero. */
+  sectorWeights: EtfSectorWeight[];
+  sectorWeightsRetrievedAt: string;
   topHoldings: EtfHolding[];
   /** @minimum 0 */
   topHoldingsReportedCount: number;
@@ -403,6 +437,7 @@ export interface EtfProfile {
   benchmark: EtfBenchmarkReference | null;
   trackingComparison: EtfTrackingComparison | null;
   peerExpenseComparison: EtfPeerExpenseComparison | null;
+  peerAssetSizeComparison: EtfPeerAssetSizeComparison | null;
 }
 
 export interface MarketInstrumentInfo {

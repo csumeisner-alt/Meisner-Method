@@ -342,25 +342,63 @@ class InfoBriefEtfFieldTests(unittest.TestCase):
                 "Annual Report Expense Ratio": {
                     "Category Average": 0.0006,
                 },
+                "Total Net Assets": {
+                    "Category Average": 800_000_000,
+                },
             }
 
         average = fetch_info_brief.get_category_average_expense_ratio(FundOperations())
+        average_assets = fetch_info_brief.get_category_average_total_assets(FundOperations())
         profile = fetch_info_brief.build_etf_profile_payload(
             {
                 "category": "Large Blend",
                 "fundFamily": "Example Funds",
                 "annualReportExpenseRatio": 0.0004,
+                "totalAssets": 1_000_000_000,
             },
             category_average_expense_ratio=average,
+            category_average_total_assets=average_assets,
         )
         comparison = profile["peerExpenseComparison"]
         self.assertEqual(comparison["category"], "Large Blend")
         self.assertEqual(comparison["sampleSize"], None)
         self.assertIn("sample size not reported", comparison["sampleContext"])
         self.assertAlmostEqual(comparison["difference"], -0.0002)
+        asset_comparison = profile["peerAssetSizeComparison"]
+        self.assertEqual(asset_comparison["category"], "Large Blend")
+        self.assertEqual(asset_comparison["categoryAverageTotalAssets"], 800_000_000)
+        self.assertEqual(asset_comparison["fundTotalAssets"], 1_000_000_000)
+        self.assertIsNone(asset_comparison["sampleSize"])
+        self.assertIn("sample size not reported", asset_comparison["sampleContext"])
         self.assertIsNone(fetch_info_brief.build_etf_profile_payload(
             {"category": "Large Blend"},
         )["peerExpenseComparison"])
+        self.assertIsNone(fetch_info_brief.build_etf_profile_payload(
+            {"category": "Large Blend"},
+            category_average_total_assets=0,
+        )["peerAssetSizeComparison"])
+
+    def test_category_average_assets_requires_provider_category_value(self):
+        class FundOperations:
+            loc = {
+                "Total Net Assets": {
+                    "Category Average": float("nan"),
+                },
+            }
+
+        self.assertIsNone(fetch_info_brief.get_category_average_total_assets(None))
+        self.assertIsNone(fetch_info_brief.get_category_average_total_assets(FundOperations()))
+
+    def test_missing_fund_data_returns_all_peer_baseline_slots(self):
+        class BrokenTicker:
+            @property
+            def funds_data(self):
+                raise RuntimeError("provider unavailable")
+
+        self.assertEqual(
+            fetch_info_brief.get_fund_data_details(BrokenTicker()),
+            (None, [], None, None),
+        )
 
     def test_etf_profile_projects_focus_cost_size_income_and_holdings(self):
         profile = fetch_info_brief.build_etf_profile_payload(

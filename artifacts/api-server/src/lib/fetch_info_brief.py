@@ -273,6 +273,19 @@ def get_category_average_expense_ratio(fund_operations):
     return ratio if ratio is not None and ratio >= 0 else None
 
 
+def get_category_average_total_assets(fund_operations):
+    """Read Yahoo's category-average total net assets, if reported."""
+    if fund_operations is None or not hasattr(fund_operations, "loc"):
+        return None
+    try:
+        row = fund_operations.loc["Total Net Assets"]
+        value = row.get("Category Average")
+    except (KeyError, TypeError, AttributeError):
+        return None
+    assets = finite_number(value)
+    return assets if assets is not None and assets > 0 else None
+
+
 def monthly_closes(history):
     """Map adjusted monthly close prices to stable YYYY-MM keys."""
     if history is None or getattr(history, "empty", True):
@@ -514,6 +527,7 @@ def build_etf_profile_payload(
     market_regime=None,
     category_average_expense_ratio=None,
     tracking_comparison=None,
+    category_average_total_assets=None,
 ):
     retrieved_at = datetime.now(timezone.utc).isoformat()
     largest_sector, largest_sector_weight = get_dominant_sector(sector_weightings)
@@ -537,6 +551,27 @@ def build_etf_profile_payload(
                 "sample size not reported"
             ),
         }
+    peer_asset_size_comparison = None
+    category_average_total_assets = finite_number(category_average_total_assets)
+    if (
+        category
+        and category_average_total_assets is not None
+        and category_average_total_assets > 0
+    ):
+        peer_asset_size_comparison = {
+            "category": category,
+            "fundTotalAssets": finite_number(info.get("totalAssets")),
+            "categoryAverageTotalAssets": category_average_total_assets,
+            "difference": (
+                finite_number(info.get("totalAssets")) - category_average_total_assets
+                if finite_number(info.get("totalAssets")) is not None else None
+            ),
+            "sampleSize": None,
+            "sampleContext": (
+                f"Yahoo Finance provider-defined {category} average total net assets; "
+                "sample size not reported"
+            ),
+        }
     return {
         "fundCategory": category,
         "fundFamily": info.get("fundFamily") or None,
@@ -555,6 +590,7 @@ def build_etf_profile_payload(
         "benchmark": get_benchmark_reference(info),
         "trackingComparison": tracking_comparison,
         "peerExpenseComparison": peer_expense_comparison,
+        "peerAssetSizeComparison": peer_asset_size_comparison,
     }
 
 
@@ -625,11 +661,11 @@ def build_info_brief_payload(
 
 
 def get_fund_data_details(ticker):
-    """Read provider-reported ETF sector exposures, holdings, and peer costs."""
+    """Read provider-reported ETF sector exposures, holdings, and peer baselines."""
     try:
         fund_data = ticker.funds_data
     except Exception:
-        return None, [], None
+        return None, [], None, None
 
     try:
         sector_weightings = getattr(fund_data, "sector_weightings", None)
@@ -640,6 +676,7 @@ def get_fund_data_details(ticker):
     except Exception:
         fund_operations = None
     category_average_expense_ratio = get_category_average_expense_ratio(fund_operations)
+    category_average_total_assets = get_category_average_total_assets(fund_operations)
     try:
         top_holdings_frame = getattr(fund_data, "top_holdings", None)
     except Exception:
@@ -656,7 +693,12 @@ def get_fund_data_details(ticker):
                 })
         except Exception:
             top_holdings = []
-    return sector_weightings, normalize_top_holdings(top_holdings), category_average_expense_ratio
+    return (
+        sector_weightings,
+        normalize_top_holdings(top_holdings),
+        category_average_expense_ratio,
+        category_average_total_assets,
+    )
 
 
 def get_market_regime_performance(ticker, symbol):
@@ -695,7 +737,12 @@ def main():
 
         etf_profile = None
         if is_etf_info(info):
-            sector_weightings, top_holdings, category_average_expense_ratio = get_fund_data_details(ticker)
+            (
+                sector_weightings,
+                top_holdings,
+                category_average_expense_ratio,
+                category_average_total_assets,
+            ) = get_fund_data_details(ticker)
             market_regime = get_market_regime_performance(ticker, symbol)
             benchmark = get_benchmark_reference(info)
             tracking_comparison = None
@@ -718,6 +765,7 @@ def main():
                 market_regime,
                 category_average_expense_ratio,
                 tracking_comparison,
+                category_average_total_assets,
             )
 
         secondary_max_supply = fetch_coinpaprika_max_supply(symbol, info)

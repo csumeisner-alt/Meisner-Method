@@ -768,6 +768,7 @@ router.post("/stocks/analyze", async (req, res) => {
       const benchmark = withSourceContext(profile["benchmark"]);
       const trackingComparison = withSourceContext(profile["trackingComparison"]);
       const peerExpenseComparison = withSourceContext(profile["peerExpenseComparison"]);
+      const peerAssetSizeComparison = withSourceContext(profile["peerAssetSizeComparison"]);
       const concentration = holdings.length
         ? holdings.reduce((sum: number, holding: { weight: number | null }) => sum + (holding.weight ?? 0), 0)
         : null;
@@ -786,6 +787,7 @@ Combined weight of reported top holdings: ${concentration ?? "unavailable"}
 Explicitly reported benchmark: ${JSON.stringify(benchmark ?? "unavailable")}
 Benchmark tracking comparison: ${JSON.stringify(trackingComparison ?? "unavailable")}
 Provider category expense comparison: ${JSON.stringify(peerExpenseComparison ?? "unavailable")}
+Provider category total-net-assets comparison: ${JSON.stringify(peerAssetSizeComparison ?? "unavailable")}
 One-year annualized return: ${riskMetrics.annualizedReturn ?? "unavailable"}
 One-year annualized volatility: ${riskMetrics.annualizedVolatility ?? "unavailable"}
 One-year maximum drawdown: ${riskMetrics.maxDrawdown ?? "unavailable"}
@@ -841,6 +843,7 @@ Return JSON only: {"analysis":"2-4 concise paragraphs","risks":["..."],"strength
           topHoldingsRetrievedAt: String(profile["topHoldingsRetrievedAt"] ?? new Date().toISOString()),
           trackingComparison,
           peerExpenseComparison,
+          peerAssetSizeComparison,
           scenarios,
           risks: Array.isArray(ai.risks) ? ai.risks.filter((item): item is string => typeof item === "string") : [],
           strengths: Array.isArray(ai.strengths) ? ai.strengths.filter((item): item is string => typeof item === "string") : [],

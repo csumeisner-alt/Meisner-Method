@@ -5,6 +5,14 @@ export interface EtfScoreInput {
   sectorWeights: readonly { sector: string; weight: number }[];
   averageVolume: number | null;
   totalAssets: number | null;
+  peerAssetSizeComparison: {
+    category: string;
+    categoryAverageTotalAssets: number;
+    sampleSize: number | null;
+    sampleContext: string;
+    source: string;
+    asOf: string;
+  } | null;
   annualizedVolatility: number | null;
   maxDrawdown: number | null;
 }
@@ -15,6 +23,14 @@ export interface EtfScoreComponent {
   weight: number;
   score: number | null;
   detail: string;
+  peerContext?: {
+    category: string;
+    categoryAverageTotalAssets: number;
+    sampleSize: number | null;
+    sampleContext: string;
+    source: string;
+    asOf: string;
+  };
 }
 
 const clamp = (value: number) => Math.min(100, Math.max(0, value));
@@ -41,8 +57,15 @@ export function calculateEtfResearchScore(input: EtfScoreInput) {
   if (validNonNegative(input.averageVolume) && input.averageVolume > 0) {
     liquidityScores.push(logBandScore(input.averageVolume, 10_000, 1_000_000));
   }
+  const categoryAverageAssets = input.peerAssetSizeComparison?.categoryAverageTotalAssets;
+  const hasPeerAssetBaseline = validNonNegative(input.totalAssets)
+    && input.totalAssets > 0
+    && validNonNegative(categoryAverageAssets)
+    && categoryAverageAssets > 0;
   if (validNonNegative(input.totalAssets) && input.totalAssets > 0) {
-    liquidityScores.push(logBandScore(input.totalAssets, 10_000_000, 1_000_000_000));
+    liquidityScores.push(hasPeerAssetBaseline
+      ? clamp(50 * input.totalAssets / categoryAverageAssets)
+      : logBandScore(input.totalAssets, 10_000_000, 1_000_000_000));
   }
 
   const riskScores: number[] = [];
@@ -89,7 +112,21 @@ export function calculateEtfResearchScore(input: EtfScoreInput) {
       label: "Liquidity",
       weight: 15,
       score: liquidityScores.length ? liquidityScores.reduce((sum, score) => sum + score, 0) / liquidityScores.length : null,
-      detail: "Uses fixed log-scale bands: 10K–1M average daily shares and $10M–$1B assets; not peer-relative.",
+      detail: hasPeerAssetBaseline
+        ? "Average daily shares use fixed 10K–1M bands; assets score 50 at the provider category average and scale linearly to 100 at 2×."
+        : "Uses fixed log-scale bands: 10K–1M average daily shares and $10M–$1B assets; assets are not peer-relative.",
+      ...(hasPeerAssetBaseline && input.peerAssetSizeComparison
+        ? {
+          peerContext: {
+            category: input.peerAssetSizeComparison.category,
+            categoryAverageTotalAssets: input.peerAssetSizeComparison.categoryAverageTotalAssets,
+            sampleSize: input.peerAssetSizeComparison.sampleSize,
+            sampleContext: input.peerAssetSizeComparison.sampleContext,
+            source: input.peerAssetSizeComparison.source,
+            asOf: input.peerAssetSizeComparison.asOf,
+          },
+        }
+        : {}),
     },
     {
       id: "risk",

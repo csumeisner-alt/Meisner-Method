@@ -113,6 +113,10 @@ test("ETF analysis displays the deterministic profile score and its limits", () 
   assert.match(etfAnalysisSource, /ETF PROFILE SCORE/);
   assert.match(etfAnalysisSource, /Missing components are excluded and remaining weights are rescaled/);
   assert.match(etfAnalysisSource, /Rules-based, not AI-generated or personalized advice/);
+  assert.match(etfAnalysisSource, /component\.peerContext\.category/);
+  assert.match(etfAnalysisSource, /component\.peerContext\.sampleContext/);
+  assert.match(etfAnalysisSource, /component\.peerContext\.source/);
+  assert.match(etfAnalysisSource, /sourceDate\(component\.peerContext\.asOf\)/);
 });
 
 test("ETF holding history is stored separately and shown without another comparison ticker", () => {

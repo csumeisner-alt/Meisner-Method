@@ -8,8 +8,10 @@
 import type { EtfBenchmarkReference } from './etfBenchmarkReference';
 import type { EtfHolding } from './etfHolding';
 import type { EtfMarketRegime } from './etfMarketRegime';
+import type { EtfPeerAssetSizeComparison } from './etfPeerAssetSizeComparison';
 import type { EtfPeerExpenseComparison } from './etfPeerExpenseComparison';
 import type { EtfScenario } from './etfScenario';
+import type { EtfSectorWeight } from './etfSectorWeight';
 import type { EtfTrackingComparison } from './etfTrackingComparison';
 
 /**
@@ -29,6 +31,9 @@ export interface EtfAnalysis {
   maxDrawdown: number | null;
   riskAdjustedReturn: number | null;
   topHoldings: EtfHolding[];
+  /** Provider-reported sector weights only; omitted sectors are not inferred as zero. */
+  sectorWeights: EtfSectorWeight[];
+  sectorWeightsRetrievedAt: Date;
   /** @minimum 0 */
   topHoldingsReportedCount: number;
   topHoldingsRetrievedAt: Date;
@@ -36,6 +41,7 @@ export interface EtfAnalysis {
   benchmark: EtfBenchmarkReference | null;
   trackingComparison: EtfTrackingComparison | null;
   peerExpenseComparison: EtfPeerExpenseComparison | null;
+  peerAssetSizeComparison: EtfPeerAssetSizeComparison | null;
   scenarios: EtfScenario[];
   risks: string[];
   strengths: string[];
