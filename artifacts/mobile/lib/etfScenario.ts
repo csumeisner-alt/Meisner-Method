@@ -16,14 +16,18 @@ export type EtfScenarioProjection = {
   afterFeeValue: number | null;
 };
 
+export type EtfContributionCadence = 'weekly' | 'monthly' | 'quarterly';
+
 export const ETF_SCENARIO_LABELS = ['bear', 'base', 'bull'] as const;
 export const ETF_SCENARIO_HORIZONS = [1, 3, 5, 10, 20] as const;
+export const ETF_CONTRIBUTION_CADENCES = ['weekly', 'monthly', 'quarterly'] as const;
 
 export function calculateEtfScenarioValue(
   initialInvestment: number,
   annualReturn: number | null,
-  monthlyContribution: number,
+  contributionAmount: number,
   horizonYears: number,
+  cadence: EtfContributionCadence = 'monthly',
 ): number | null {
   if (
     !Number.isFinite(initialInvestment)
@@ -31,20 +35,27 @@ export function calculateEtfScenarioValue(
     || typeof annualReturn !== 'number'
     || !Number.isFinite(annualReturn)
     || annualReturn <= -1
-    || !Number.isFinite(monthlyContribution)
-    || monthlyContribution < 0
+    || !Number.isFinite(contributionAmount)
+    || contributionAmount < 0
     || !Number.isFinite(horizonYears)
     || horizonYears <= 0
+    || !ETF_CONTRIBUTION_CADENCES.includes(cadence)
   ) {
     return null;
   }
 
-  const months = Math.round(horizonYears * 12);
-  const monthlyRate = (1 + annualReturn) ** (1 / 12) - 1;
-  const growth = (1 + monthlyRate) ** months;
-  const contributionValue = monthlyRate === 0
-    ? monthlyContribution * months
-    : monthlyContribution * (growth - 1) / monthlyRate;
+  const periodsPerYear = {
+    weekly: 52,
+    monthly: 12,
+    quarterly: 4,
+  }[cadence];
+  const periods = Math.floor(horizonYears * periodsPerYear);
+  const periodicRate = (1 + annualReturn) ** (1 / periodsPerYear) - 1;
+  const growth = (1 + annualReturn) ** horizonYears;
+  const contributionGrowth = (1 + periodicRate) ** periods;
+  const contributionValue = periodicRate === 0
+    ? contributionAmount * periods
+    : contributionAmount * (contributionGrowth - 1) / periodicRate;
   const value = initialInvestment * growth + contributionValue;
   return Number.isFinite(value) ? Math.round(value * 100) / 100 : null;
 }

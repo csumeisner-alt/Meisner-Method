@@ -676,7 +676,25 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
     assert.match(scenarioCardText, /After-fee annual return\s*9\.97%/);
     assert.match(scenarioCardText, /No-fee value in 10 years\s*\$1,556\.25/);
     assert.match(scenarioCardText, /After-fee value in 10 years\s*\$1,552\.01/);
-    assert.match(scenarioCardText, /month-end/);
+    assert.match(scenarioCardText, /Deposited at the end of each month/);
+    for (const cadence of ["weekly", "monthly", "quarterly"]) {
+      assert.ok(
+        scenarioCardText.includes(cadence.charAt(0).toUpperCase() + cadence.slice(1)),
+        `The contribution schedule selector should offer ${cadence} deposits.`,
+      );
+    }
+    await browser.evaluate(`document.querySelector('[data-testid="etf-scenario-cadence-weekly"]')?.click()`);
+    await waitForBrowserValue(
+      browser,
+      `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent.includes("Deposited at the end of each week")`,
+      "Selecting weekly should update the displayed deposit timing.",
+    );
+    await browser.evaluate(`document.querySelector('[data-testid="etf-scenario-cadence-monthly"]')?.click()`);
+    await waitForBrowserValue(
+      browser,
+      `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent.includes("Deposited at the end of each month")`,
+      "Selecting monthly should update the displayed deposit timing.",
+    );
     assert.match(scenarioCardText, /1 yr.*3 yr.*5 yr.*10 yr.*20 yr/);
     await browser.evaluate(`document.querySelector('[data-testid="etf-scenario-horizon-5"]')?.click()`);
     await waitForBrowserValue(

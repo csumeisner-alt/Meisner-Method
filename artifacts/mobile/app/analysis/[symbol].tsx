@@ -55,11 +55,12 @@ import { calculateEtfResearchScore } from '@/lib/etfResearchScore';
 import type { HeatMapEtfHoldingSnapshot } from '@/lib/heatMapDetail';
 import {
   calculateEtfScenarioValue,
+  ETF_CONTRIBUTION_CADENCES,
   ETF_SCENARIO_LABELS,
   ETF_SCENARIO_HORIZONS,
   parseEtfScenarios,
 } from '@/lib/etfScenario';
-import type { EtfScenario } from '@/lib/etfScenario';
+import type { EtfContributionCadence, EtfScenario } from '@/lib/etfScenario';
 import {
   formatAnalysisLoadingStage,
   getAnalysisLoadingStageInterval,
@@ -381,10 +382,11 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
   const [selectedScenarioHorizon, setSelectedScenarioHorizon] = useState<number>(10);
   const [feeInvestmentInput, setFeeInvestmentInput] = useState('10000');
   const [feeHoldingYears, setFeeHoldingYears] = useState<number>(10);
-  const [monthlyContributionInput, setMonthlyContributionInput] = useState('0');
-  const monthlyContribution = monthlyContributionInput.trim() === '' || monthlyContributionInput === '.'
+  const [contributionInput, setContributionInput] = useState('0');
+  const [contributionCadence, setContributionCadence] = useState<EtfContributionCadence>('monthly');
+  const contributionAmount = contributionInput.trim() === '' || contributionInput === '.'
     ? 0
-    : Number(monthlyContributionInput);
+    : Number(contributionInput);
   const [savedCompareSymbols, setSavedCompareSymbols] = useState<string[]>([]);
   const savedCompareSymbolsRef = useRef<string[]>([]);
   const comparisonWriteQueue = useRef<Promise<void>>(Promise.resolve());
@@ -459,27 +461,29 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
       noFeeValue: calculateEtfScenarioValue(
         initialInvestment,
         scenario.noFeeAnnualReturnAssumption,
-        monthlyContribution,
+        contributionAmount,
         horizonYears,
+        contributionCadence,
       ),
       afterFeeValue: calculateEtfScenarioValue(
         initialInvestment,
         scenario.annualReturnAssumption,
-        monthlyContribution,
+        contributionAmount,
         horizonYears,
+        contributionCadence,
       ),
     };
   };
-  const renderMonthlyContributionInput = (testID: string) => (
+  const renderContributionControls = (testID: string) => (
     <View style={{ marginTop: 12 }}>
       <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>
-        Monthly contribution
+        Contribution per deposit
       </Text>
       <TextInput
         testID={testID}
-        accessibilityLabel="Monthly ETF contribution in dollars"
-        value={monthlyContributionInput}
-        onChangeText={(value) => setMonthlyContributionInput(value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'))}
+        accessibilityLabel="ETF contribution amount per deposit in dollars"
+        value={contributionInput}
+        onChangeText={(value) => setContributionInput(value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'))}
         keyboardType="decimal-pad"
         placeholder="0"
         placeholderTextColor={colors.mutedForeground}
@@ -495,8 +499,44 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
           fontFamily: 'Inter_600SemiBold',
         }}
       />
+      <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, marginTop: 12 }}>
+        Contribution schedule
+      </Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 7 }}>
+        {ETF_CONTRIBUTION_CADENCES.map((cadence) => {
+          const selected = contributionCadence === cadence;
+          const label = cadence.charAt(0).toUpperCase() + cadence.slice(1);
+          return (
+            <Pressable
+              key={cadence}
+              testID={`${testID.replace('-contribution-input', '')}-cadence-${cadence}`}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              accessibilityLabel={`Set contribution schedule to ${label.toLowerCase()}`}
+              onPress={() => setContributionCadence(cadence)}
+              style={{
+                minHeight: 34,
+                justifyContent: 'center',
+                borderWidth: 1,
+                borderColor: selected ? colors.primary : colors.border,
+                borderRadius: 8,
+                paddingHorizontal: 10,
+                backgroundColor: selected ? colors.primary : 'transparent',
+              }}
+            >
+              <Text style={{
+                color: selected ? colors.primaryForeground : colors.foreground,
+                fontFamily: 'Inter_600SemiBold',
+                fontSize: 11,
+              }}>{label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
       <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 15, marginTop: 5 }}>
-        Added at each month-end, alongside one share at today’s price.
+        Deposited at the end of each {contributionCadence === 'weekly'
+          ? 'week'
+          : contributionCadence === 'monthly' ? 'month' : 'quarter'}, alongside one share at today’s price.
       </Text>
     </View>
   );
@@ -1440,7 +1480,7 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
         <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 5 }}>
           Illustrations, not forecasts. Each fund uses its own expense ratio and historical return assumption.
         </Text>
-        {renderMonthlyContributionInput('etf-comparison-monthly-contribution-input')}
+        {renderContributionControls('etf-comparison-contribution-input')}
         {renderScenarioHorizonSelector()}
         <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator style={{ marginTop: 10 }}>
           <View style={{ flexDirection: 'row', gap: 10, paddingRight: 16 }}>
@@ -1500,7 +1540,9 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
           </View>
         </ScrollView>
         <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 8 }}>
-          Historical-regime illustrations only, not forecasts or guarantees. They assume constant monthly compounding and month-end contributions; actual results may differ.
+          Historical-regime illustrations only, not forecasts or guarantees. They assume a constant annual return applied across the selected schedule, with contributions deposited at the end of each {contributionCadence === 'weekly'
+            ? 'week'
+            : contributionCadence === 'monthly' ? 'month' : 'quarter'}; actual results may differ.
         </Text>
         {comparisonMetricFunds.map(({ symbol: fundSymbol, analysis: comparison }) => (
           <View
@@ -1690,7 +1732,7 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
       <SectionCard collapsible title="LONG-RANGE SCENARIOS" icon={<MaterialCommunityIcons name="chart-timeline-variant" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           <MetricRow label="Annual expense ratio used" value={pctValue(fund.expenseRatio)} />
-          {renderMonthlyContributionInput('etf-scenario-monthly-contribution-input')}
+          {renderContributionControls('etf-scenario-contribution-input')}
           {renderScenarioHorizonSelector()}
           {scenarios.length ? scenarios.map((scenario) => (
             <View key={scenario.label} style={{ marginBottom: 12 }}>
@@ -1716,7 +1758,9 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
               Long-range scenario data unavailable.
             </Text>
           )}
-          <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Historical-regime illustrations only, not forecasts or guarantees. Totals include one share at today’s price plus the monthly contribution entered above, compounded monthly with contributions at month-end. Actual results may differ.</Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Historical-regime illustrations only, not forecasts or guarantees. Totals include one share at today’s price plus the contribution per deposit entered above. The selected {contributionCadence} schedule is deposited at the end of each {contributionCadence === 'weekly'
+            ? 'week'
+            : contributionCadence === 'monthly' ? 'month' : 'quarter'}, using the historical annual return assumption; actual results may differ.</Text>
         </View>
       </SectionCard>
     </>

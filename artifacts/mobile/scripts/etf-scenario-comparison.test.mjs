@@ -5,6 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   calculateEtfScenarioValue,
+  ETF_CONTRIBUTION_CADENCES,
   ETF_SCENARIO_HORIZONS,
   ETF_SCENARIO_LABELS,
   parseEtfScenarios,
@@ -17,11 +18,12 @@ const analysisSource = readFileSync(
 );
 
 test("ETF comparison shows each historical scenario with its fee and assumptions", () => {
-  assert.match(analysisSource, /calculateEtfScenarioValue,[\s\S]*ETF_SCENARIO_LABELS,[\s\S]*ETF_SCENARIO_HORIZONS,[\s\S]*parseEtfScenarios/);
+  assert.match(analysisSource, /calculateEtfScenarioValue,[\s\S]*ETF_CONTRIBUTION_CADENCES,[\s\S]*ETF_SCENARIO_LABELS,[\s\S]*ETF_SCENARIO_HORIZONS,[\s\S]*parseEtfScenarios/);
   assert.match(analysisSource, /testID=\{`etf-scenario-horizon-\$\{horizonYears\}`\}/);
-  assert.match(analysisSource, /renderMonthlyContributionInput\('etf-scenario-monthly-contribution-input'\)/);
-  assert.match(analysisSource, /accessibilityLabel="Monthly ETF contribution in dollars"/);
-  assert.match(analysisSource, /calculateEtfScenarioValue\(/);
+  assert.match(analysisSource, /renderContributionControls\('etf-scenario-contribution-input'\)/);
+  assert.match(analysisSource, /accessibilityLabel="ETF contribution amount per deposit in dollars"/);
+  assert.match(analysisSource, /testID=\{\`\$\{testID\.replace\('-contribution-input', ''\)\}-cadence-\$\{cadence\}\`\}/);
+  assert.match(analysisSource, /calculateEtfScenarioValue\([\s\S]*?contributionCadence/);
   assert.match(
     analysisSource,
     /comparisonMetricFunds\.map\(\(\{ symbol: fundSymbol, currentPrice: comparisonPrice, analysis: comparison \}\) => \{[\s\S]*?scenarioRows = ETF_SCENARIO_LABELS\.map/,
@@ -33,26 +35,35 @@ test("ETF comparison shows each historical scenario with its fee and assumptions
   assert.match(analysisSource, /label=\{`After-fee total in \$\{selectedScenarioHorizon\} years`\}/);
   assert.match(analysisSource, /selectedProjection\(scenario, selectedScenarioHorizon, comparisonPrice\)\?\.afterFeeValue == null\s*\?\s*'Unavailable'/);
   assert.match(analysisSource, /scenario\?\.assumption \?\? 'Unavailable: no reported historical scenario for this regime\.'/);
-  assert.match(analysisSource, /Historical-regime illustrations only, not forecasts or guarantees/);
+  assert.match(analysisSource, /Historical-regime illustrations only, not forecasts or guarantees[\s\S]*?selected \{contributionCadence\} schedule/);
+  assert.match(analysisSource, /Historical-regime illustrations only, not forecasts or guarantees[\s\S]*?contributions deposited at the end of each/);
 });
 
-test("ETF recurring contribution values use deterministic monthly compounding", () => {
+test("ETF recurring contribution values use deterministic end-of-period deposits", () => {
   assert.equal(calculateEtfScenarioValue(100, 0, 25, 3), 1000);
   assert.equal(calculateEtfScenarioValue(100, 0.12, 0, 1), 112);
 
-  const monthlyRate = (1 + 0.08) ** (1 / 12) - 1;
-  let expected = 250;
-  for (let month = 0; month < 60; month += 1) {
-    expected = expected * (1 + monthlyRate) + 75;
+  assert.deepEqual(ETF_CONTRIBUTION_CADENCES, ["weekly", "monthly", "quarterly"]);
+  assert.equal(calculateEtfScenarioValue(100, 0, 10, 2, "weekly"), 1140);
+  assert.equal(calculateEtfScenarioValue(100, 0, 10, 2, "monthly"), 340);
+  assert.equal(calculateEtfScenarioValue(100, 0, 10, 2, "quarterly"), 180);
+
+  const periodsPerYear = { weekly: 52, monthly: 12, quarterly: 4 };
+  for (const cadence of ETF_CONTRIBUTION_CADENCES) {
+    const rate = (1 + 0.08) ** (1 / periodsPerYear[cadence]) - 1;
+    let expected = 250;
+    for (let period = 0; period < periodsPerYear[cadence] * 5; period += 1) {
+      expected = expected * (1 + rate) + 75;
+    }
+    const result = calculateEtfScenarioValue(250, 0.08, 75, 5, cadence);
+    assert.equal(result, Math.round(expected * 100) / 100, `${cadence} deposits should match period-by-period compounding`);
+    assert.equal(calculateEtfScenarioValue(250, 0.08, 75, 5, cadence), result);
   }
-  const result = calculateEtfScenarioValue(250, 0.08, 75, 5);
-  assert.equal(result, Math.round(expected * 100) / 100);
-  assert.equal(calculateEtfScenarioValue(250, 0.08, 75, 5), result);
-  assert.equal(calculateEtfScenarioValue(250, null, 75, 5), null);
+  assert.equal(calculateEtfScenarioValue(250, null, 75, 5, "weekly"), null);
 });
 
 test("ETF contribution projections reject invalid inputs without inventing a value", () => {
-  for (const [initialInvestment, annualReturn, monthlyContribution, horizonYears] of [
+  for (const [initialInvestment, annualReturn, contributionAmount, horizonYears] of [
     [0, 0.05, 25, 5],
     [100, -1, 25, 5],
     [100, 0.05, -1, 5],
@@ -60,7 +71,7 @@ test("ETF contribution projections reject invalid inputs without inventing a val
     [100, Number.NaN, 25, 5],
   ]) {
     assert.equal(
-      calculateEtfScenarioValue(initialInvestment, annualReturn, monthlyContribution, horizonYears),
+      calculateEtfScenarioValue(initialInvestment, annualReturn, contributionAmount, horizonYears),
       null,
     );
   }
