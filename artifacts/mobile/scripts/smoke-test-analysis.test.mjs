@@ -114,3 +114,13 @@ test("ETF analysis displays the deterministic profile score and its limits", () 
   assert.match(etfAnalysisSource, /Missing components are excluded and remaining weights are rescaled/);
   assert.match(etfAnalysisSource, /Rules-based, not AI-generated or personalized advice/);
 });
+
+test("ETF holding history is stored separately and shown without another comparison ticker", () => {
+  const historyHeadingIndex = etfAnalysisSource.indexOf("Changes between provider snapshots");
+  const comparisonResultsIndex = etfAnalysisSource.indexOf("{!!compareFunds.length && (");
+  assert.match(etfAnalysisSource, /ETF_HOLDING_SNAPSHOTS_KEY = '@stocksense\/etf_holding_snapshots_v1'/);
+  assert.match(etfAnalysisSource, /upsertSavedEtfHoldingSnapshot/);
+  assert.match(etfAnalysisSource, /createEtfHoldingSnapshot/);
+  assert.ok(historyHeadingIndex >= 0 && historyHeadingIndex < comparisonResultsIndex);
+  assert.match(etfAnalysisSource, /retrieval times, not holdings report dates/);
+});

@@ -33,12 +33,17 @@ import { PriceAlertModal } from '@/components/PriceAlertModal';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import {
+  compareEtfHoldingSnapshots,
+  createEtfHoldingSnapshot,
   findReportedEtfHoldingsOverlap,
   getReportedEtfSectorComparison,
   parseHeatMapDetailStats,
   parseSavedEtfComparisonSymbols,
+  parseSavedEtfHoldingSnapshots,
+  upsertSavedEtfHoldingSnapshot,
 } from '@/lib/heatMapDetail';
 import { calculateEtfResearchScore } from '@/lib/etfResearchScore';
+import type { HeatMapEtfHoldingSnapshot } from '@/lib/heatMapDetail';
 import {
   formatAnalysisLoadingStage,
   getAnalysisLoadingStageInterval,
@@ -49,6 +54,7 @@ import {
 
 const PINNED_COMP_KEY = '@stocksense/pinned_comp_symbol';
 const ETF_COMPARISON_KEY = '@stocksense/etf_comparison_symbols_v1';
+const ETF_HOLDING_SNAPSHOTS_KEY = '@stocksense/etf_holding_snapshots_v1';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -358,6 +364,27 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
     annualizedVolatility: fund.annualizedVolatility,
     maxDrawdown: fund.maxDrawdown,
   });
+  const [holdingSnapshots, setHoldingSnapshots] = useState<HeatMapEtfHoldingSnapshot[]>([]);
+  const snapshotWriteQueue = useRef<Promise<void>>(Promise.resolve());
+  const [snapshotStorageError, setSnapshotStorageError] = useState('');
+
+  const persistHoldingSnapshot = useCallback((snapshot: HeatMapEtfHoldingSnapshot) => {
+    const nextWrite = snapshotWriteQueue.current.catch(() => {}).then(async () => {
+      const stored = parseSavedEtfHoldingSnapshots(
+        await AsyncStorage.getItem(ETF_HOLDING_SNAPSHOTS_KEY),
+      );
+      const next = upsertSavedEtfHoldingSnapshot(stored, snapshot);
+      setHoldingSnapshots(next);
+      if (JSON.stringify(stored) !== JSON.stringify(next)) {
+        await AsyncStorage.setItem(ETF_HOLDING_SNAPSHOTS_KEY, JSON.stringify(next));
+      }
+      setSnapshotStorageError('');
+    }).catch(() => {
+      setSnapshotStorageError('Could not save ETF holding history on this device.');
+    });
+    snapshotWriteQueue.current = nextWrite;
+    return nextWrite;
+  }, []);
 
   const persistCompareSymbols = (symbols: string[]) => {
     savedCompareSymbolsRef.current = symbols;
@@ -386,6 +413,13 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
         return;
       }
       if (!savedCompareSymbolsRef.current.includes(candidate)) return;
+      const snapshot = createEtfHoldingSnapshot(
+        candidate,
+        profile.topHoldingsReportedCount,
+        profile.topHoldingsRetrievedAt,
+        profile.topHoldings,
+      );
+      if (snapshot) void persistHoldingSnapshot(snapshot);
       setCompareFunds((current) => current.some((item) => item.symbol === candidate)
         ? current
         : [...current, {
@@ -429,6 +463,13 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
       if (cancelled) return;
       for (const { candidate, profile, failed } of results) {
         if (profile) {
+          const snapshot = createEtfHoldingSnapshot(
+            candidate,
+            profile.topHoldingsReportedCount,
+            profile.topHoldingsRetrievedAt,
+            profile.topHoldings,
+          );
+          if (snapshot) void persistHoldingSnapshot(snapshot);
           setCompareFunds((current) => current.some((item) => item.symbol === candidate)
             ? current
             : [...current, {
@@ -454,7 +495,24 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
       }
     });
     return () => { cancelled = true; };
-  }, [symbol, apiFetch]);
+  }, [symbol, apiFetch, persistHoldingSnapshot]);
+
+  const currentEtfSnapshot = useMemo(() => createEtfHoldingSnapshot(
+    symbol,
+    fund.topHoldingsReportedCount,
+    fund.topHoldingsRetrievedAt,
+    fund.topHoldings.flatMap((holding) =>
+      holding.weight == null ? [] : [{ ...holding, weight: holding.weight }]),
+  ), [
+    symbol,
+    fund.topHoldings,
+    fund.topHoldingsReportedCount,
+    fund.topHoldingsRetrievedAt,
+  ]);
+
+  useEffect(() => {
+    if (currentEtfSnapshot) void persistHoldingSnapshot(currentEtfSnapshot);
+  }, [currentEtfSnapshot, persistHoldingSnapshot]);
 
   const addCompareFund = async () => {
     const candidate = compareTicker.trim().toUpperCase();
@@ -489,6 +547,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
     },
     ...compareFunds,
   ];
+  const primaryHistoryComparison = compareEtfHoldingSnapshots(currentEtfSnapshot, holdingSnapshots);
   const overlaps = findReportedEtfHoldingsOverlap(selectedFunds);
   const sectorComparison = getReportedEtfSectorComparison(selectedFunds);
   const fmtAssets = (value: number | null) => value == null
@@ -498,6 +557,10 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
         : `$${(value / 1e6).toFixed(1)}M`;
   const pctValue = (value: number | null) => value == null ? 'Unavailable' : `${(value * 100).toFixed(2)}%`;
   const sourceDate = (asOf: string) => new Date(asOf).toLocaleDateString();
+  const snapshotDateTime = (asOf: string) => {
+    const timestamp = Date.parse(asOf);
+    return Number.isFinite(timestamp) ? new Date(timestamp).toLocaleString() : 'date unavailable';
+  };
   return (
     <>
       <SectionCard title="ETF PROFILE SCORE" icon={<Ionicons name="speedometer-outline" size={16} color={colors.primary} />}>
@@ -640,6 +703,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           {compareRestoreLoading && <Text style={{ color: colors.mutedForeground, marginTop: 8 }}>Restoring saved ETF comparisons…</Text>}
           {!!compareError && <Text style={{ color: colors.sellColor, marginTop: 8 }}>{compareError}</Text>}
           {!!compareStorageError && <Text style={{ color: colors.sellColor, marginTop: 8 }}>{compareStorageError}</Text>}
+          {!!snapshotStorageError && <Text style={{ color: colors.sellColor, marginTop: 8 }}>{snapshotStorageError}</Text>}
           {savedCompareSymbols.filter((candidate) =>
             candidate !== symbol.toUpperCase()
             && !compareFunds.some((fundEntry) => fundEntry.symbol === candidate)
@@ -665,6 +729,36 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
               </TouchableOpacity>
             </View>
           ))}
+          <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', marginTop: 18 }}>Changes between provider snapshots</Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 5 }}>
+            These dates are retrieval times, not holdings report dates. Changes compare only snapshots with the same number of fully reported positions.
+          </Text>
+          {primaryHistoryComparison ? (
+            <>
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 8 }}>
+                Retrieved {snapshotDateTime(primaryHistoryComparison.previousRetrievedAt)} → {snapshotDateTime(primaryHistoryComparison.currentRetrievedAt)} · {primaryHistoryComparison.reportedPositionCount} reported positions in each snapshot
+              </Text>
+              {primaryHistoryComparison.changes.length ? primaryHistoryComparison.changes.map((change) => {
+                const detail = change.change === 'added'
+                  ? `Newly reported · ${pctValue(change.currentWeight)}`
+                  : change.change === 'removed'
+                    ? `No longer reported · ${pctValue(change.previousWeight)}`
+                    : `${pctValue(change.previousWeight)} → ${pctValue(change.currentWeight)} (${((change.currentWeight! - change.previousWeight!) * 100).toFixed(2)} percentage points)`;
+                return (
+                  <View key={`${symbol}-${change.symbol}`} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginTop: 8 }}>
+                    <Text style={{ flex: 1, color: colors.mutedForeground }}>{change.name} ({change.symbol})</Text>
+                    <Text style={{ color: colors.foreground, textAlign: 'right' }}>{detail}</Text>
+                  </View>
+                );
+              }) : (
+                <Text style={{ color: colors.mutedForeground, marginTop: 8 }}>No changes among the reported positions.</Text>
+              )}
+            </>
+          ) : (
+            <Text style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 17, marginTop: 4 }}>
+              A dated comparison will appear after another complete snapshot with the same reported-position count.
+            </Text>
+          )}
           {!!compareFunds.length && (
             <>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>

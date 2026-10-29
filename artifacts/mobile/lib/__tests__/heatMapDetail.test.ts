@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  compareEtfHoldingSnapshots,
+  createEtfHoldingSnapshot,
   findReportedEtfHoldingsOverlap,
   formatHeatMapRegimeReturn,
   getHeatMapCryptoSupplyChartModel,
@@ -9,9 +11,11 @@ import {
   getHeatMapDetailStatRows,
   getHeatMapRangePosition,
   parseSavedEtfComparisonSymbols,
+  parseSavedEtfHoldingSnapshots,
   parseHeatMapCryptoSupplyHistory,
   parseHeatMapDetailStats,
   getReportedEtfSectorComparison,
+  upsertSavedEtfHoldingSnapshot,
 } from '../heatMapDetail.ts';
 
 test('crypto supply history accepts only dated provider observations and leaves gaps empty', () => {
@@ -675,6 +679,88 @@ test('saved ETF comparisons normalize, deduplicate, cap, and reject malformed st
   assert.deepEqual(parseSavedEtfComparisonSymbols('not json'), []);
   assert.deepEqual(parseSavedEtfComparisonSymbols('{"symbol":"QQQ"}'), []);
   assert.deepEqual(parseSavedEtfComparisonSymbols(null), []);
+});
+
+test('ETF holding snapshots require dated retrievals and complete matching position coverage', () => {
+  const holdings = [
+    { symbol: 'NVDA', name: 'NVIDIA', weight: 0.08 },
+    { symbol: 'AAPL', name: 'Apple', weight: 0.06 },
+  ];
+  assert.equal(createEtfHoldingSnapshot('SPY', 2, '2026-10-27T12:00:00', holdings), null);
+  assert.equal(createEtfHoldingSnapshot('SPY', 3, '2026-10-27T12:00:00Z', holdings), null);
+  assert.equal(createEtfHoldingSnapshot('SPY', 2, '2026-10-27T12:00:00Z', [
+    ...holdings,
+    holdings[0]!,
+  ]), null);
+  assert.deepEqual(createEtfHoldingSnapshot('spy', 2, '2026-10-27T12:00:00-04:00', holdings), {
+    symbol: 'SPY',
+    retrievedAt: '2026-10-27T16:00:00.000Z',
+    reportedPositionCount: 2,
+    holdings,
+  });
+});
+
+test('saved ETF holding snapshots deduplicate retrievals and compare only matching coverage', () => {
+  const previous = createEtfHoldingSnapshot('SPY', 2, '2026-10-26T12:00:00Z', [
+    { symbol: 'NVDA', name: 'NVIDIA', weight: 0.08 },
+    { symbol: 'AAPL', name: 'Apple', weight: 0.06 },
+  ])!;
+  const current = createEtfHoldingSnapshot('SPY', 2, '2026-10-27T12:00:00Z', [
+    { symbol: 'NVDA', name: 'NVIDIA', weight: 0.09 },
+    { symbol: 'MSFT', name: 'Microsoft', weight: 0.05 },
+  ])!;
+  const otherCoverage = createEtfHoldingSnapshot('SPY', 1, '2026-10-27T18:00:00Z', [
+    { symbol: 'NVDA', name: 'NVIDIA', weight: 0.09 },
+  ])!;
+  const saved = upsertSavedEtfHoldingSnapshot([previous], current);
+  assert.equal(upsertSavedEtfHoldingSnapshot(saved, current).length, 2);
+  assert.equal(parseSavedEtfHoldingSnapshots(JSON.stringify([...saved, previous])).length, 2);
+  assert.deepEqual(compareEtfHoldingSnapshots(current, [...saved, otherCoverage]), {
+    previousRetrievedAt: previous.retrievedAt,
+    currentRetrievedAt: current.retrievedAt,
+    reportedPositionCount: 2,
+    changes: [
+      {
+        symbol: 'AAPL',
+        name: 'Apple',
+        previousWeight: 0.06,
+        currentWeight: null,
+        change: 'removed',
+      },
+      {
+        symbol: 'MSFT',
+        name: 'Microsoft',
+        previousWeight: null,
+        currentWeight: 0.05,
+        change: 'added',
+      },
+      {
+        symbol: 'NVDA',
+        name: 'NVIDIA',
+        previousWeight: 0.08,
+        currentWeight: 0.09,
+        change: 'weight_changed',
+      },
+    ],
+  });
+  assert.equal(compareEtfHoldingSnapshots(otherCoverage, saved), null);
+  assert.equal(parseSavedEtfHoldingSnapshots('not json').length, 0);
+});
+
+test('ETF holding snapshot retention keeps the newest records across tickers', () => {
+  const symbols = ['AAA', 'BBB', 'CCC', 'DDD', 'ZZZ'];
+  const snapshots = symbols.flatMap((symbol, symbolIndex) =>
+    Array.from({ length: 24 }, (_, index) => createEtfHoldingSnapshot(
+      symbol,
+      1,
+      new Date(Date.UTC(2026, 0, 1) + ((symbolIndex * 24 + index) * 86_400_000)).toISOString(),
+      [{ symbol: 'NVDA', name: 'NVIDIA', weight: 0.08 }],
+    )!));
+  const retained = parseSavedEtfHoldingSnapshots(JSON.stringify(snapshots));
+
+  assert.equal(retained.length, 96);
+  assert.equal(retained.some(({ symbol }) => symbol === 'ZZZ'), true);
+  assert.equal(retained.some(({ symbol }) => symbol === 'AAA'), false);
 });
 
 test('ETF detail rows clearly distinguish loading from unavailable provider data', () => {

@@ -57,6 +57,248 @@ export interface HeatMapEtfHolding {
   weight: number;
 }
 
+export interface HeatMapEtfHoldingSnapshot {
+  symbol: string;
+  retrievedAt: string;
+  reportedPositionCount: number;
+  holdings: HeatMapEtfHolding[];
+}
+
+export interface HeatMapEtfHoldingChange {
+  symbol: string;
+  name: string;
+  previousWeight: number | null;
+  currentWeight: number | null;
+  change: 'added' | 'removed' | 'weight_changed';
+}
+
+export interface HeatMapEtfHoldingSnapshotComparison {
+  previousRetrievedAt: string;
+  currentRetrievedAt: string;
+  reportedPositionCount: number;
+  changes: HeatMapEtfHoldingChange[];
+}
+
+const MAX_ETF_HOLDING_SNAPSHOTS_PER_SYMBOL = 24;
+const MAX_SAVED_ETF_HOLDING_SNAPSHOTS = 96;
+const ETF_SYMBOL_PATTERN = /^[A-Z0-9.^=-]{1,20}$/;
+
+function parseEtfSnapshotRetrievedAt(value: unknown): string | null {
+  if (
+    typeof value !== 'string'
+    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+  ) {
+    return null;
+  }
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null;
+}
+
+export function createEtfHoldingSnapshot(
+  symbol: string,
+  reportedPositionCount: number,
+  retrievedAt: string | null,
+  holdings: readonly HeatMapEtfHolding[],
+): HeatMapEtfHoldingSnapshot | null {
+  const normalizedSymbol = symbol.trim().toUpperCase();
+  const normalizedRetrievedAt = parseEtfSnapshotRetrievedAt(retrievedAt);
+  if (
+    !ETF_SYMBOL_PATTERN.test(normalizedSymbol)
+    || normalizedRetrievedAt === null
+    || !Number.isInteger(reportedPositionCount)
+    || reportedPositionCount < 1
+    || holdings.length !== reportedPositionCount
+  ) {
+    return null;
+  }
+
+  const seenSymbols = new Set<string>();
+  const normalizedHoldings: HeatMapEtfHolding[] = [];
+  for (const holding of holdings) {
+    const holdingSymbol = holding.symbol.trim().toUpperCase();
+    const name = holding.name.trim();
+    if (
+      !ETF_SYMBOL_PATTERN.test(holdingSymbol)
+      || !name
+      || !Number.isFinite(holding.weight)
+      || holding.weight < 0
+      || holding.weight > 1
+      || seenSymbols.has(holdingSymbol)
+    ) {
+      return null;
+    }
+    seenSymbols.add(holdingSymbol);
+    normalizedHoldings.push({ symbol: holdingSymbol, name, weight: holding.weight });
+  }
+
+  return {
+    symbol: normalizedSymbol,
+    retrievedAt: normalizedRetrievedAt,
+    reportedPositionCount,
+    holdings: normalizedHoldings,
+  };
+}
+
+export function parseSavedEtfHoldingSnapshots(value: string | null): HeatMapEtfHoldingSnapshot[] {
+  if (!value) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+
+    const snapshotsBySymbol = new Map<string, Map<string, HeatMapEtfHoldingSnapshot>>();
+    for (const item of parsed.slice(0, MAX_SAVED_ETF_HOLDING_SNAPSHOTS * 4)) {
+      const input = record(item);
+      if (!input || !Array.isArray(input.holdings)) continue;
+      const snapshot = createEtfHoldingSnapshot(
+        typeof input.symbol === 'string' ? input.symbol : '',
+        input.reportedPositionCount as number,
+        typeof input.retrievedAt === 'string' ? input.retrievedAt : null,
+        input.holdings.flatMap((holding): HeatMapEtfHolding[] => {
+          const symbol = stringField(holding, 'symbol');
+          const name = stringField(holding, 'name');
+          const weight = numericField(holding, 'weight');
+          return symbol && name && weight !== null
+            ? [{ symbol, name, weight }]
+            : [];
+        }),
+      );
+      if (!snapshot) continue;
+      const snapshots = snapshotsBySymbol.get(snapshot.symbol) ?? new Map();
+      snapshots.set(snapshot.retrievedAt, snapshot);
+      snapshotsBySymbol.set(snapshot.symbol, snapshots);
+    }
+
+    const result: HeatMapEtfHoldingSnapshot[] = [];
+    for (const [symbol, snapshots] of snapshotsBySymbol) {
+      const latest = [...snapshots.values()]
+        .sort((first, second) => Date.parse(second.retrievedAt) - Date.parse(first.retrievedAt))
+        .slice(0, MAX_ETF_HOLDING_SNAPSHOTS_PER_SYMBOL);
+      result.push(...latest);
+    }
+    return result
+      .sort((first, second) => Date.parse(second.retrievedAt) - Date.parse(first.retrievedAt))
+      .slice(0, MAX_SAVED_ETF_HOLDING_SNAPSHOTS)
+      .sort((first, second) =>
+        first.symbol.localeCompare(second.symbol)
+        || Date.parse(first.retrievedAt) - Date.parse(second.retrievedAt));
+  } catch {
+    return [];
+  }
+}
+
+export function upsertSavedEtfHoldingSnapshot(
+  snapshots: readonly HeatMapEtfHoldingSnapshot[],
+  candidate: HeatMapEtfHoldingSnapshot,
+): HeatMapEtfHoldingSnapshot[] {
+  const normalizedCandidate = createEtfHoldingSnapshot(
+    candidate.symbol,
+    candidate.reportedPositionCount,
+    candidate.retrievedAt,
+    candidate.holdings,
+  );
+  if (!normalizedCandidate) return [...snapshots];
+
+  const bySymbol = new Map<string, Map<string, HeatMapEtfHoldingSnapshot>>();
+  for (const snapshot of [...snapshots, normalizedCandidate]) {
+    const valid = createEtfHoldingSnapshot(
+      snapshot.symbol,
+      snapshot.reportedPositionCount,
+      snapshot.retrievedAt,
+      snapshot.holdings,
+    );
+    if (!valid) continue;
+    const entries = bySymbol.get(valid.symbol) ?? new Map();
+    entries.set(valid.retrievedAt, valid);
+    bySymbol.set(valid.symbol, entries);
+  }
+
+  const result: HeatMapEtfHoldingSnapshot[] = [];
+  for (const [symbol, entries] of bySymbol) {
+    result.push(...[...entries.values()]
+      .sort((first, second) => Date.parse(second.retrievedAt) - Date.parse(first.retrievedAt))
+      .slice(0, MAX_ETF_HOLDING_SNAPSHOTS_PER_SYMBOL));
+  }
+  return result
+    .sort((first, second) => Date.parse(second.retrievedAt) - Date.parse(first.retrievedAt))
+    .slice(0, MAX_SAVED_ETF_HOLDING_SNAPSHOTS)
+    .sort((first, second) =>
+      first.symbol.localeCompare(second.symbol)
+      || Date.parse(first.retrievedAt) - Date.parse(second.retrievedAt));
+}
+
+export function compareEtfHoldingSnapshots(
+  current: HeatMapEtfHoldingSnapshot | null,
+  savedSnapshots: readonly HeatMapEtfHoldingSnapshot[],
+): HeatMapEtfHoldingSnapshotComparison | null {
+  if (!current) return null;
+  const validCurrent = createEtfHoldingSnapshot(
+    current.symbol,
+    current.reportedPositionCount,
+    current.retrievedAt,
+    current.holdings,
+  );
+  if (!validCurrent) return null;
+
+  const previous = savedSnapshots
+    .flatMap((snapshot) => {
+      const valid = createEtfHoldingSnapshot(
+        snapshot.symbol,
+        snapshot.reportedPositionCount,
+        snapshot.retrievedAt,
+        snapshot.holdings,
+      );
+      return valid
+        && valid.symbol === validCurrent.symbol
+        && valid.reportedPositionCount === validCurrent.reportedPositionCount
+        && Date.parse(valid.retrievedAt) < Date.parse(validCurrent.retrievedAt)
+        ? [valid]
+        : [];
+    })
+    .sort((first, second) => Date.parse(second.retrievedAt) - Date.parse(first.retrievedAt))[0];
+  if (!previous) return null;
+
+  const previousHoldings = new Map(previous.holdings.map((holding) => [holding.symbol, holding]));
+  const currentHoldings = new Map(validCurrent.holdings.map((holding) => [holding.symbol, holding]));
+  const symbols = new Set([...previousHoldings.keys(), ...currentHoldings.keys()]);
+  const changes: HeatMapEtfHoldingChange[] = [];
+  for (const symbol of symbols) {
+    const before = previousHoldings.get(symbol);
+    const after = currentHoldings.get(symbol);
+    if (!before && after) {
+      changes.push({
+        symbol,
+        name: after.name,
+        previousWeight: null,
+        currentWeight: after.weight,
+        change: 'added',
+      });
+    } else if (before && !after) {
+      changes.push({
+        symbol,
+        name: before.name,
+        previousWeight: before.weight,
+        currentWeight: null,
+        change: 'removed',
+      });
+    } else if (before && after && before.weight !== after.weight) {
+      changes.push({
+        symbol,
+        name: after.name,
+        previousWeight: before.weight,
+        currentWeight: after.weight,
+        change: 'weight_changed',
+      });
+    }
+  }
+
+  return {
+    previousRetrievedAt: previous.retrievedAt,
+    currentRetrievedAt: validCurrent.retrievedAt,
+    reportedPositionCount: validCurrent.reportedPositionCount,
+    changes: changes.sort((first, second) => first.symbol.localeCompare(second.symbol)),
+  };
+}
+
 export interface HeatMapEtfSectorWeight {
   sector: string;
   weight: number;
