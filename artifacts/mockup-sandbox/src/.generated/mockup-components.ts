@@ -3,8 +3,8 @@ type ModuleMap = Record<string, () => Promise<Record<string, unknown>>>;
 export const modules: ModuleMap = {
   "./components/mockups/biden-vault-progress/Current.tsx": () => import("../components/mockups/biden-vault-progress/Current.tsx"),
   "./components/mockups/biden-vault-progress/VaultProgressStory.tsx": () => import("../components/mockups/biden-vault-progress/VaultProgressStory.tsx"),
-  "./components/mockups/central-bank-drink-states/DrinkStateLab.tsx": () => import("../components/mockups/central-bank-drink-states/DrinkStateLab.tsx"),
   "./components/mockups/bottle-gallery/BottleGallery.tsx": () => import("../components/mockups/bottle-gallery/BottleGallery.tsx"),
+  "./components/mockups/central-bank-drink-states/DrinkStateLab.tsx": () => import("../components/mockups/central-bank-drink-states/DrinkStateLab.tsx"),
   "./components/mockups/central-bank-shop/Current.tsx": () => import("../components/mockups/central-bank-shop/Current.tsx"),
   "./components/mockups/central-bank-shop/SodasUnlocked.tsx": () => import("../components/mockups/central-bank-shop/SodasUnlocked.tsx"),
   "./components/mockups/central-bank-shop/TokenInsert.tsx": () => import("../components/mockups/central-bank-shop/TokenInsert.tsx"),

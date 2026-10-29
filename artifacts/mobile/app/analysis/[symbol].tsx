@@ -844,13 +844,13 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
     },
     {
       label: 'Tracking difference',
-      value: (analysis) => hasValidTrackingHistory(analysis.trackingComparison)
+      value: (analysis) => analysis.benchmark && hasValidTrackingHistory(analysis.trackingComparison)
         ? formatEtfComparisonValue(analysis.trackingComparison.trackingDifference, 'percent')
         : 'Unavailable',
     },
     {
       label: 'Annualized tracking error',
-      value: (analysis) => hasValidTrackingHistory(analysis.trackingComparison)
+      value: (analysis) => analysis.benchmark && hasValidTrackingHistory(analysis.trackingComparison)
         ? formatEtfComparisonValue(analysis.trackingComparison.trackingError, 'percent')
         : 'Unavailable',
     },
@@ -1123,6 +1123,7 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
           </Text>
         </View>
       </SectionCard>
+      {fund.benchmark && hasValidTrackingHistory(fund.trackingComparison) && (
       <SectionCard collapsible title="BENCHMARK & TRACKING" icon={<Ionicons name="git-compare-outline" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           {fund.benchmark ? (
@@ -1160,6 +1161,7 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
           </Text>
         </View>
       </SectionCard>
+      )}
       <SectionCard collapsible title="COSTS & CATEGORY CONTEXT" icon={<MaterialCommunityIcons name="scale-balance" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           {fund.peerExpenseComparison ? (
@@ -1401,7 +1403,13 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
                 </Text>
               ))}
             </View>
-            {comparisonMetricRows.map((row) => (
+            {comparisonMetricRows.filter((row) => {
+              const isTrackingMetric = row.label === 'Verified benchmark return'
+                || row.label === 'Tracking difference'
+                || row.label === 'Annualized tracking error';
+              return !isTrackingMetric || comparisonMetricFunds.some(({ analysis }) =>
+                analysis.benchmark && hasValidTrackingHistory(analysis.trackingComparison));
+            }).map((row) => (
               <View
                 key={row.label}
                 style={{
@@ -1531,22 +1539,12 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
               <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
                 Verified benchmark: {comparison.benchmark.name} ({comparison.benchmark.symbol}) · {comparison.benchmark.source} · retrieved {sourceDate(comparison.benchmark.asOf)}
               </Text>
-            ) : (
-              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
-                Verified benchmark unavailable.
-              </Text>
-            )}
-            {hasValidTrackingHistory(comparison.trackingComparison) ? (
+            ) : null}
+            {comparison.benchmark && hasValidTrackingHistory(comparison.trackingComparison) ? (
               <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
                 Tracking history: {comparison.trackingComparison.periodStart}–{comparison.trackingComparison.periodEnd} · {comparison.trackingComparison.monthlySamples} monthly samples · {comparison.trackingComparison.source} · retrieved {sourceDate(comparison.trackingComparison.asOf)}
               </Text>
-            ) : (
-              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
-                {comparison.trackingComparison
-                  ? 'Tracking history unavailable because its dates or monthly sample count are invalid or incomplete.'
-                  : 'Tracking comparison unavailable without a verified benchmark and sufficient shared history.'}
-              </Text>
-            )}
+            ) : null}
             {comparison.marketRegime ? (
               <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
                 Regime returns: {comparison.marketRegime.firstYear}–{comparison.marketRegime.lastYear}, grouped by {comparison.marketRegime.benchmarkSymbol}; each row shows its reported years. Historical comparison only.
