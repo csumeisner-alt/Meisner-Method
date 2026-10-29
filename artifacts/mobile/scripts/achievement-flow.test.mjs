@@ -56,6 +56,11 @@ test("first-time app milestones are wired to achievement rewards and a review sc
   assert.match(overlaySource, /Choose your title flag/);
   assert.match(overlaySource, /duration: 1_850/);
   assert.match(overlaySource, /staggerStart = 0\.06/);
+  assert.match(overlaySource, /final_seal_unlock\.mp3/);
+  assert.match(overlaySource, /setTimeout\(play, 1_320\)/);
+  assert.match(overlaySource, /soundPlayedRef\.current = true/);
+  assert.match(overlaySource, /Platform\.OS === 'web' \|\| Constants\.appOwnership === 'expo' \|\| soundPlayedRef\.current/);
+  assert.match(overlaySource, /playsInSilentMode: false/);
   assert.match(overlaySource, /if \(reducedMotion\) \{\s*progress\.setValue\(1\)/);
   assert.match(overlaySource, /accessibilityLabel="Dismiss achievement celebration"/);
   assert.match(overlaySource, /accessibilityLabel="Choose your title flag"/);

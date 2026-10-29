@@ -4,6 +4,7 @@ import {
   Easing,
   Modal,
   Pressable,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,6 +12,8 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import Constants from 'expo-constants';
+import type { AudioPlayer } from 'expo-audio';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BREW_TOKEN_QUOTE_THRESHOLD } from '@/lib/brewTokenLogic';
 import {
@@ -138,6 +141,8 @@ export function AchievementSealCelebration({
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const progress = useRef(new Animated.Value(0)).current;
+  const soundPlayerRef = useRef<AudioPlayer | null>(null);
+  const soundPlayedRef = useRef(false);
   const ringSize = Math.min(width * 0.78, 304);
   const markerSize = 20;
   const markerRadius = ringSize * 0.43;
@@ -161,6 +166,52 @@ export function AchievementSealCelebration({
     animation.start();
     return () => animation.stop();
   }, [progress, reducedMotion]);
+
+  useEffect(() => {
+    if (Platform.OS === 'web' || Constants.appOwnership === 'expo' || soundPlayedRef.current) return;
+
+    let cancelled = false;
+    let playTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const prepareUnlockSound = async () => {
+      try {
+        const { createAudioPlayer, setAudioModeAsync } = await import('expo-audio');
+        await setAudioModeAsync({ playsInSilentMode: false, allowsRecording: false });
+        if (cancelled) return;
+
+        const player = createAudioPlayer(
+          require('../assets/sounds/final_seal_unlock.mp3'),
+          { downloadFirst: true },
+        );
+        soundPlayerRef.current = player;
+        const play = () => {
+          if (cancelled || soundPlayedRef.current) return;
+          soundPlayedRef.current = true;
+          player.play();
+        };
+
+        if (reducedMotion) {
+          play();
+        } else {
+          playTimer = setTimeout(play, 1_320);
+        }
+      } catch {
+        // The seal remains a complete celebration when native audio is unavailable.
+      }
+    };
+
+    void prepareUnlockSound();
+    return () => {
+      cancelled = true;
+      if (playTimer) clearTimeout(playTimer);
+      try {
+        soundPlayerRef.current?.remove();
+      } catch {
+        // Audio cleanup must not interrupt dismissing the celebration.
+      }
+      soundPlayerRef.current = null;
+    };
+  }, [reducedMotion]);
 
   const ringScale = progress.interpolate({ inputRange: [0, 0.5, 0.78, 1], outputRange: [0.76, 0.94, 1.04, 1] });
   const ringOpacity = progress.interpolate({ inputRange: [0, 0.16, 0.5, 1], outputRange: [0, 0.5, 1, 1] });
@@ -294,7 +345,7 @@ export function AchievementSealCelebration({
         pointerEvents="none"
         style={[
           styles.sealFlash,
-            { borderColor: colors.gradeWarning, opacity: sweepOpacity, transform: [{ scale: sweepScale }] },
+          { borderColor: colors.gradeWarning, opacity: sweepOpacity, transform: [{ scale: sweepScale }] },
         ]}
       />
 

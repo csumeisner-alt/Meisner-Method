@@ -6,66 +6,77 @@ id = "-4F8cTi22f-OOM-VyV--j"
 uri = "file://artifacts/mobile/assets/celebration/woman1.jpg"
 type = "image"
 title = "Patriotic celebration 1"
+logical_id = "89e1427b-08ea-46bf-a651-26793e7594b6"
 
 [[outputs]]
 id = "gWi6JALvxk7lP1A8NZAch"
 uri = "file://artifacts/mobile/assets/celebration/woman2.jpg"
 type = "image"
 title = "Patriotic celebration 2"
+logical_id = "f8e22982-0f2f-403b-8a49-c7ead27ead6e"
 
 [[outputs]]
 id = "OGPI0mZJ-1ir-CpDyrLkt"
 uri = "file://artifacts/mobile/assets/celebration/woman3.jpg"
 type = "image"
 title = "Patriotic celebration 3"
+logical_id = "2691fdb5-b2ae-4874-a058-d541f6cef49c"
 
 [[outputs]]
 id = "oJQzuMsfWhjjIxzOjuYhD"
 uri = "file://artifacts/mobile/assets/celebration/woman4.jpg"
 type = "image"
 title = "Updated celebration 4"
+logical_id = "8c138006-3d0c-4ef7-b7ea-25aa0432343c"
 
 [[outputs]]
 id = "l-0vuoEBs09yo_Yn4T01-"
 uri = "file://artifacts/mobile/assets/celebration/woman5.jpg"
 type = "image"
 title = "Updated celebration 5"
+logical_id = "59acd2c6-0927-4356-b8eb-f47077ebd2bf"
 
 [[outputs]]
 id = "Ylx6GOz8JnQXN_khpvz96"
 uri = "file://artifacts/mobile/assets/celebration/woman6.jpg"
 type = "image"
 title = "Updated celebration 6"
+logical_id = "ad199d32-0ab9-46ec-9cb2-84fd07ad677f"
 
 [[outputs]]
 id = "DIV7VU0R1uWmvdNKZb7sE"
 uri = "file://artifacts/mobile/assets/celebration/woman7.jpg"
 type = "image"
 title = "Patriotic celebration 7"
+logical_id = "4fb5669a-7982-4965-b1a1-ce6d78d2c5c3"
 
 [[outputs]]
 id = "Qtb9--7p50V1YrMPpUrrI"
 uri = "file://artifacts/mobile/assets/celebration/woman8.jpg"
 type = "image"
 title = "Updated celebration 8"
+logical_id = "12799977-6d0c-4e71-abde-ea22eeecb5fc"
 
 [[outputs]]
 id = "hS-KeeCWQd8lRyx-s56mJ"
 uri = "file://artifacts/mobile/assets/celebration/woman9.jpg"
 type = "image"
 title = "Updated celebration 9"
+logical_id = "09949e6f-d411-4169-99aa-444da842a7d9"
 
 [[outputs]]
 id = "cMBak46j2lRpMoN5MAMd-"
 uri = "file://artifacts/mobile/assets/celebration/woman10.jpg"
 type = "image"
 title = "Updated celebration 10"
+logical_id = "0bc43a1e-0b64-499d-b7c9-3c858c2c7050"
 
 [[outputs]]
 id = "HEzfkl1hr1tKwpL-2I2aZ"
 uri = "file://artifacts/mobile/assets/celebration/dave.jpg"
 type = "image"
 title = "Dave Ramsey lookalike"
+logical_id = "46c39379-8ba9-455f-9ac9-c46605d425dc"
 
 [[outputs]]
 id = "9muEzx5TbdZ7qm6WKZiS0"
@@ -73,3 +84,18 @@ uri = "file://artifacts/mobile/assets/images/icon.png"
 type = "image"
 title = "Meisner Method app logo"
 description = "Tightly cropped square logo with the centered visible gold frame, cleaned badge, and preserved gold glow."
+logical_id = "2e572e55-6268-4851-b3b6-3359d647fd22"
+
+[[outputs]]
+id = "C4TWkEmGsQLH6meQyfqW6"
+uri = "file://artifacts/mobile/assets/sounds/final_seal_unlock.mp3"
+type = "audio"
+title = "Final Seal Unlock Cue"
+description = "Original 1.23-second, locally bundled unlock sound for the Final Seal celebration."
+logical_id = "d95a85c2-fa62-440d-a026-38e99dc81445"
+content_hash = "sha256:20a75db1439928a0a481625c2260338fcbfa5f3269102a3d1dcd8f59fbd32df8"
+size = 20105
+mtime_ms = 1793297817819
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:58965f84-f5cd-468c-aef9-3a6e5e38a00c/d95a85c2-fa62-440d-a026-38e99dc81445/ea87c990-004a-4778-8800-69a514955aa2"
+storage_version_token = "1793298130984507"
+content_type = "audio/mpeg"
