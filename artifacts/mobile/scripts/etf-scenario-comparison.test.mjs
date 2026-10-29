@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  calculateEtfScenarioBreakdown,
   calculateEtfScenarioValue,
   ETF_CONTRIBUTION_CADENCES,
   ETF_SCENARIO_HORIZONS,
@@ -18,12 +19,12 @@ const analysisSource = readFileSync(
 );
 
 test("ETF comparison shows each historical scenario with its fee and assumptions", () => {
-  assert.match(analysisSource, /calculateEtfScenarioValue,[\s\S]*ETF_CONTRIBUTION_CADENCES,[\s\S]*ETF_SCENARIO_LABELS,[\s\S]*ETF_SCENARIO_HORIZONS,[\s\S]*parseEtfScenarios/);
+  assert.match(analysisSource, /calculateEtfScenarioBreakdown,[\s\S]*ETF_CONTRIBUTION_CADENCES,[\s\S]*ETF_SCENARIO_LABELS,[\s\S]*ETF_SCENARIO_HORIZONS,[\s\S]*parseEtfScenarios/);
   assert.match(analysisSource, /testID=\{`etf-scenario-horizon-\$\{horizonYears\}`\}/);
   assert.match(analysisSource, /renderContributionControls\('etf-scenario-contribution-input'\)/);
   assert.match(analysisSource, /accessibilityLabel="ETF contribution amount per deposit in dollars"/);
   assert.match(analysisSource, /testID=\{\`\$\{testID\.replace\('-contribution-input', ''\)\}-cadence-\$\{cadence\}\`\}/);
-  assert.match(analysisSource, /calculateEtfScenarioValue\([\s\S]*?contributionCadence/);
+  assert.match(analysisSource, /calculateEtfScenarioBreakdown\([\s\S]*?contributionCadence/);
   assert.match(
     analysisSource,
     /comparisonMetricFunds\.map\(\(\{ symbol: fundSymbol, currentPrice: comparisonPrice, analysis: comparison \}\) => \{[\s\S]*?scenarioRows = ETF_SCENARIO_LABELS\.map/,
@@ -33,6 +34,16 @@ test("ETF comparison shows each historical scenario with its fee and assumptions
   assert.match(analysisSource, /value=\{pctValue\(scenario\?\.annualReturnAssumption \?\? null\)\}/);
   assert.match(analysisSource, /label=\{`No-fee total in \$\{selectedScenarioHorizon\} years`\}/);
   assert.match(analysisSource, /label=\{`After-fee total in \$\{selectedScenarioHorizon\} years`\}/);
+  assert.match(analysisSource, /label="Total contributed principal"/);
+  assert.match(analysisSource, /label=\{`No-fee projected growth in \$\{selectedScenarioHorizon\} years`\}/);
+  assert.match(analysisSource, /label=\{`After-fee projected growth in \$\{selectedScenarioHorizon\} years`\}/);
+  for (const label of [
+    /label="Total contributed principal"/g,
+    /label=\{`No-fee projected growth in \$\{selectedScenarioHorizon\} years`\}/g,
+    /label=\{`After-fee projected growth in \$\{selectedScenarioHorizon\} years`\}/g,
+  ]) {
+    assert.equal([...analysisSource.matchAll(label)].length, 2, `${label} should appear in both ETF scenario views`);
+  }
   assert.match(analysisSource, /selectedProjection\(scenario, selectedScenarioHorizon, comparisonPrice\)\?\.afterFeeValue == null\s*\?\s*'Unavailable'/);
   assert.match(analysisSource, /scenario\?\.assumption \?\? 'Unavailable: no reported historical scenario for this regime\.'/);
   assert.match(analysisSource, /Historical-regime illustrations only, not forecasts or guarantees[\s\S]*?selected \{contributionCadence\} schedule/);
@@ -60,6 +71,48 @@ test("ETF recurring contribution values use deterministic end-of-period deposits
     assert.equal(calculateEtfScenarioValue(250, 0.08, 75, 5, cadence), result);
   }
   assert.equal(calculateEtfScenarioValue(250, null, 75, 5, "weekly"), null);
+});
+
+test("ETF scenario breakdown separates contributed principal from each return assumption", () => {
+  assert.deepEqual(calculateEtfScenarioBreakdown(100, 0, 25, 3), {
+    contributedPrincipal: 1000,
+    totalValue: 1000,
+    projectedGrowth: 0,
+  });
+  assert.deepEqual(calculateEtfScenarioBreakdown(100, 0.12, 0, 1), {
+    contributedPrincipal: 100,
+    totalValue: 112,
+    projectedGrowth: 12,
+  });
+  assert.deepEqual(calculateEtfScenarioBreakdown(100, null, 10, 1, "quarterly"), {
+    contributedPrincipal: 140,
+    totalValue: null,
+    projectedGrowth: null,
+  });
+
+  const noFee = calculateEtfScenarioBreakdown(100, 0.08, 10, 2, "quarterly");
+  const afterFee = calculateEtfScenarioBreakdown(100, 0.04, 10, 2, "quarterly");
+  assert.equal(noFee.contributedPrincipal, 180);
+  assert.equal(afterFee.contributedPrincipal, 180);
+  assert.ok(noFee.projectedGrowth > afterFee.projectedGrowth);
+  assert.equal(noFee.totalValue, noFee.contributedPrincipal + noFee.projectedGrowth);
+  assert.equal(afterFee.totalValue, afterFee.contributedPrincipal + afterFee.projectedGrowth);
+
+  const periodsPerYear = { weekly: 52, monthly: 12, quarterly: 4 };
+  for (const cadence of ETF_CONTRIBUTION_CADENCES) {
+    const breakdown = calculateEtfScenarioBreakdown(100, 0.05, 10, 2, cadence);
+    assert.equal(
+      breakdown.contributedPrincipal,
+      100 + 10 * periodsPerYear[cadence] * 2,
+      `${cadence} principal should count each end-of-period deposit`,
+    );
+    assert.equal(breakdown.totalValue, breakdown.contributedPrincipal + breakdown.projectedGrowth);
+  }
+
+  const loss = calculateEtfScenarioBreakdown(100, -0.1, 0, 2);
+  assert.equal(loss.contributedPrincipal, 100);
+  assert.ok(loss.projectedGrowth < 0);
+  assert.equal(loss.totalValue, loss.contributedPrincipal + loss.projectedGrowth);
 });
 
 test("ETF contribution projections reject invalid inputs without inventing a value", () => {

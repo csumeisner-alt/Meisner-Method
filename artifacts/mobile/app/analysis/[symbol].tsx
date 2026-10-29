@@ -55,7 +55,7 @@ import {
 import { calculateEtfResearchScore } from '@/lib/etfResearchScore';
 import type { HeatMapEtfHoldingSnapshot } from '@/lib/heatMapDetail';
 import {
-  calculateEtfScenarioValue,
+  calculateEtfScenarioBreakdown,
   ETF_CONTRIBUTION_CADENCES,
   ETF_SCENARIO_LABELS,
   ETF_SCENARIO_HORIZONS,
@@ -461,22 +461,27 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
     initialInvestment: number,
   ) => {
     if (!scenario) return null;
+    const noFee = calculateEtfScenarioBreakdown(
+      initialInvestment,
+      scenario.noFeeAnnualReturnAssumption,
+      contributionAmount,
+      horizonYears,
+      contributionCadence,
+    );
+    const afterFee = calculateEtfScenarioBreakdown(
+      initialInvestment,
+      scenario.annualReturnAssumption,
+      contributionAmount,
+      horizonYears,
+      contributionCadence,
+    );
     return {
       horizonYears,
-      noFeeValue: calculateEtfScenarioValue(
-        initialInvestment,
-        scenario.noFeeAnnualReturnAssumption,
-        contributionAmount,
-        horizonYears,
-        contributionCadence,
-      ),
-      afterFeeValue: calculateEtfScenarioValue(
-        initialInvestment,
-        scenario.annualReturnAssumption,
-        contributionAmount,
-        horizonYears,
-        contributionCadence,
-      ),
+      contributedPrincipal: noFee.contributedPrincipal,
+      noFeeValue: noFee.totalValue,
+      noFeeGrowth: noFee.projectedGrowth,
+      afterFeeValue: afterFee.totalValue,
+      afterFeeGrowth: afterFee.projectedGrowth,
     };
   };
   const renderContributionControls = (testID: string) => (
@@ -1626,6 +1631,24 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
                           ? 'Unavailable'
                           : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)!.afterFeeValue!)}
                       />
+                      <MetricRow
+                        label="Total contributed principal"
+                        value={selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)?.contributedPrincipal == null
+                          ? 'Unavailable'
+                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)!.contributedPrincipal!)}
+                      />
+                      <MetricRow
+                        label={`No-fee projected growth in ${selectedScenarioHorizon} years`}
+                        value={selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)?.noFeeGrowth == null
+                          ? 'Unavailable'
+                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)!.noFeeGrowth!)}
+                      />
+                      <MetricRow
+                        label={`After-fee projected growth in ${selectedScenarioHorizon} years`}
+                        value={selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)?.afterFeeGrowth == null
+                          ? 'Unavailable'
+                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)!.afterFeeGrowth!)}
+                      />
                       <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 14, marginTop: 4 }}>
                         {scenario?.assumption ?? 'Unavailable: no reported historical scenario for this regime.'}
                       </Text>
@@ -1847,6 +1870,24 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
                 value={selectedProjection(scenario, selectedScenarioHorizon, currentPrice)?.afterFeeValue == null
                   ? 'Unavailable'
                   : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, currentPrice)!.afterFeeValue!)}
+              />
+              <MetricRow
+                label="Total contributed principal"
+                value={selectedProjection(scenario, selectedScenarioHorizon, currentPrice)?.contributedPrincipal == null
+                  ? 'Unavailable'
+                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, currentPrice)!.contributedPrincipal!)}
+              />
+              <MetricRow
+                label={`No-fee projected growth in ${selectedScenarioHorizon} years`}
+                value={selectedProjection(scenario, selectedScenarioHorizon, currentPrice)?.noFeeGrowth == null
+                  ? 'Unavailable'
+                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, currentPrice)!.noFeeGrowth!)}
+              />
+              <MetricRow
+                label={`After-fee projected growth in ${selectedScenarioHorizon} years`}
+                value={selectedProjection(scenario, selectedScenarioHorizon, currentPrice)?.afterFeeGrowth == null
+                  ? 'Unavailable'
+                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, currentPrice)!.afterFeeGrowth!)}
               />
               <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{scenario.assumption}</Text>
             </View>
