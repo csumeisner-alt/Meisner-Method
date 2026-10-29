@@ -48,6 +48,27 @@ test("ETF cost score is exact at zero, category-average, and twice-average thres
   assert.equal(scoreAt(0.0021), 0);
 });
 
+test("ETF cost score is unavailable for malformed fund expense ratios", () => {
+  for (const expenseRatio of [
+    -0.0001,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+  ]) {
+    const result = calculateEtfResearchScore({
+      ...completeInput,
+      expenseRatio,
+      categoryAverageExpenseRatio: 0.001,
+    });
+    assert.equal(
+      result.components.find((item) => item.id === "cost")?.score,
+      null,
+      `expected unavailable cost score for expense ratio ${expenseRatio}`,
+    );
+    assert.equal(result.availableComponents, 4);
+  }
+});
+
 test("ETF cost score is unavailable without a valid category average", () => {
   for (const categoryAverageExpenseRatio of [null, 0, -0.001, Number.NaN, Number.POSITIVE_INFINITY]) {
     const result = calculateEtfResearchScore({
