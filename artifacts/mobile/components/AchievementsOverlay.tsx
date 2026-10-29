@@ -138,9 +138,10 @@ export function AchievementSealCelebration({
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const progress = useRef(new Animated.Value(0)).current;
-  const ringSize = Math.min(width * 0.76, 292);
-  const markerSize = 22;
+  const ringSize = Math.min(width * 0.78, 304);
+  const markerSize = 20;
   const markerRadius = ringSize * 0.43;
+  const markerCount = ACHIEVEMENTS.length;
 
   useEffect(() => {
     if (reducedMotion) {
@@ -149,10 +150,10 @@ export function AchievementSealCelebration({
     }
     progress.setValue(0);
     const animation = Animated.sequence([
-      Animated.delay(120),
+      Animated.delay(80),
       Animated.timing(progress, {
         toValue: 1,
-        duration: 1_250,
+        duration: 1_850,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
@@ -161,15 +162,27 @@ export function AchievementSealCelebration({
     return () => animation.stop();
   }, [progress, reducedMotion]);
 
-  const ringScale = progress.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] });
-  const ringOpacity = progress.interpolate({ inputRange: [0, 0.35, 1], outputRange: [0.25, 1, 1] });
-  const medalScale = progress.interpolate({ inputRange: [0, 0.62, 0.78, 1], outputRange: [0.45, 0.45, 1.12, 1] });
-  const finalMarkerScale = progress.interpolate({ inputRange: [0, 0.56, 0.72, 1], outputRange: [0, 0, 1.45, 1] });
-  const sweepOpacity = progress.interpolate({ inputRange: [0, 0.55, 0.68, 0.9, 1], outputRange: [0, 0, 1, 0.35, 0] });
-  const sweepTranslateX = progress.interpolate({ inputRange: [0, 1], outputRange: [-58, 58] });
+  const ringScale = progress.interpolate({ inputRange: [0, 0.5, 0.78, 1], outputRange: [0.76, 0.94, 1.04, 1] });
+  const ringOpacity = progress.interpolate({ inputRange: [0, 0.16, 0.5, 1], outputRange: [0, 0.5, 1, 1] });
+  const ringRotation = progress.interpolate({ inputRange: [0, 1], outputRange: ['-18deg', '0deg'] });
+  const innerRotation = progress.interpolate({ inputRange: [0, 1], outputRange: ['30deg', '0deg'] });
+  const medalScale = progress.interpolate({ inputRange: [0, 0.54, 0.72, 0.84, 1], outputRange: [0.28, 0.42, 1.14, 0.96, 1] });
+  const medalRotation = progress.interpolate({ inputRange: [0, 0.72, 1], outputRange: ['-28deg', '8deg', '0deg'] });
+  const haloOpacity = progress.interpolate({ inputRange: [0, 0.56, 0.73, 0.86, 1], outputRange: [0, 0, 0.78, 0.18, 0.26] });
+  const haloScale = progress.interpolate({ inputRange: [0, 0.7, 1], outputRange: [0.28, 1.12, 1.24] });
+  const sealCopyOpacity = progress.interpolate({ inputRange: [0, 0.68, 0.82, 1], outputRange: [0, 0, 1, 1] });
+  const sealCopyY = progress.interpolate({ inputRange: [0, 0.68, 1], outputRange: [16, 16, 0] });
+  const buttonOpacity = progress.interpolate({ inputRange: [0, 0.82, 0.96, 1], outputRange: [0, 0, 1, 1] });
+  const buttonY = progress.interpolate({ inputRange: [0, 0.82, 1], outputRange: [12, 12, 0] });
+  const sweepOpacity = progress.interpolate({ inputRange: [0, 0.62, 0.72, 0.86, 1], outputRange: [0, 0, 0.82, 0.28, 0] });
+  const sweepScale = progress.interpolate({ inputRange: [0, 0.72, 0.88, 1], outputRange: [0.1, 1, 1.2, 1.35] });
 
   return (
     <View style={[styles.sealRoot, { backgroundColor: colors.background, paddingTop: insets.top + 18, paddingBottom: insets.bottom + 18 }]}>
+      <View pointerEvents="none" style={styles.sealAtmosphere}>
+        <View style={[styles.sealAtmosphereGlow, { backgroundColor: colors.vaultBlue }]} />
+        <View style={[styles.sealAtmosphereGlowWarm, { backgroundColor: colors.gradeWarning }]} />
+      </View>
       <Pressable
         onPress={onDismiss}
         hitSlop={10}
@@ -180,13 +193,54 @@ export function AchievementSealCelebration({
         <Feather name="x" size={20} color={colors.foreground} />
       </Pressable>
 
-      <Animated.View style={[styles.sealRing, { width: ringSize, height: ringSize, opacity: ringOpacity, transform: [{ scale: ringScale }] }]}>
-        <View style={[styles.sealRingOutline, { borderColor: colors.goldMuted }]} />
+      <Animated.View
+        style={[
+          styles.sealRing,
+          {
+            width: ringSize,
+            height: ringSize,
+            opacity: ringOpacity,
+            transform: [{ scale: ringScale }, { rotate: ringRotation }],
+          },
+        ]}
+      >
+        <Animated.View style={[styles.sealRingOutline, { borderColor: colors.vaultBlueMuted }]} />
+        <Animated.View style={[styles.sealRingInner, { borderColor: colors.gradeWarning, transform: [{ rotate: innerRotation }] }]} />
+        <Animated.View style={[styles.sealRingDash, { borderColor: colors.goldMuted, transform: [{ rotate: ringRotation }] }]} />
+        <View style={[styles.sealCrosshair, { backgroundColor: colors.vaultBlueMuted }]} />
+        <View style={[styles.sealCrosshairHorizontal, { backgroundColor: colors.vaultBlueMuted }]} />
         {ACHIEVEMENTS.map((achievement, index) => {
-          const angle = (index / ACHIEVEMENTS.length) * Math.PI * 2 - Math.PI / 2;
-          const left = ringSize / 2 + Math.cos(angle) * markerRadius - markerSize / 2;
-          const top = ringSize / 2 + Math.sin(angle) * markerRadius - markerSize / 2;
-          const isFinalSeal = index === ACHIEVEMENTS.length - 1;
+          const angle = (index / markerCount) * Math.PI * 2 - Math.PI / 2;
+          const dx = Math.cos(angle) * markerRadius;
+          const dy = Math.sin(angle) * markerRadius;
+          const left = ringSize / 2 + dx - markerSize / 2;
+          const top = ringSize / 2 + dy - markerSize / 2;
+          const staggerStart = 0.06 + (index / markerCount) * 0.34;
+          const settleAt = staggerStart + 0.2;
+          const markerOpacity = progress.interpolate({
+            inputRange: [0, staggerStart, staggerStart + 0.12, settleAt],
+            outputRange: [0, 0, 1, 1],
+            extrapolate: 'clamp',
+          });
+          const markerScale = progress.interpolate({
+            inputRange: [0, staggerStart, staggerStart + 0.13, settleAt],
+            outputRange: [0, 0.18, 1.28, 1],
+            extrapolate: 'clamp',
+          });
+          const markerX = progress.interpolate({
+            inputRange: [staggerStart, settleAt],
+            outputRange: [-dx, 0],
+            extrapolate: 'clamp',
+          });
+          const markerY = progress.interpolate({
+            inputRange: [staggerStart, settleAt],
+            outputRange: [-dy, 0],
+            extrapolate: 'clamp',
+          });
+          const isFinalSeal = index === markerCount - 1;
+          const markerColor = isFinalSeal
+            ? colors.gradeWarning
+            : index % 3 === 0 ? colors.vaultBlue : index % 3 === 1 ? colors.gold : colors.buyColor;
           return (
             <Animated.View
               key={achievement.id}
@@ -197,51 +251,84 @@ export function AchievementSealCelebration({
                   top,
                   width: markerSize,
                   height: markerSize,
-                  borderColor: isFinalSeal ? colors.gold : colors.goldMuted,
-                  backgroundColor: isFinalSeal ? colors.gold : colors.steelShadow,
-                  transform: isFinalSeal ? [{ scale: finalMarkerScale }] : undefined,
+                  borderColor: markerColor,
+                  backgroundColor: isFinalSeal ? markerColor : colors.background,
+                  opacity: markerOpacity,
+                  transform: [{ translateX: markerX }, { translateY: markerY }, { scale: markerScale }],
+                  shadowColor: markerColor,
                 },
               ]}
             >
-              <Feather name={isFinalSeal ? 'award' : 'check'} size={isFinalSeal ? 13 : 11} color={isFinalSeal ? colors.background : colors.gold} />
+              <Feather name={isFinalSeal ? 'award' : 'check'} size={isFinalSeal ? 13 : 10} color={isFinalSeal ? colors.background : markerColor} />
             </Animated.View>
           );
         })}
-        <Animated.View style={[styles.sealMedal, { backgroundColor: colors.steelShadow, borderColor: colors.gold, transform: [{ scale: medalScale }] }]}>
-          <Feather name="award" size={54} color={colors.gold} />
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.sealHalo,
+            {
+              borderColor: colors.gradeWarning,
+              opacity: haloOpacity,
+              transform: [{ scale: haloScale }],
+            },
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.sealMedal,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.gradeWarning,
+              transform: [{ scale: medalScale }, { rotate: medalRotation }],
+            },
+          ]}
+        >
+          <View style={[styles.sealMedalInset, { borderColor: colors.vaultBlue, backgroundColor: colors.background }]}>
+            <Feather name="award" size={48} color={colors.gradeWarning} />
+          </View>
         </Animated.View>
       </Animated.View>
 
-      <Text accessibilityLiveRegion="polite" style={[styles.sealEyebrow, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
-        THE FINAL SEAL
-      </Text>
-      <Text style={[styles.sealTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
-        15 of 15 complete
-      </Text>
-      <Text style={[styles.sealDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-        Your title flag collection is now open.
-      </Text>
-
       <Animated.View
         pointerEvents="none"
-        style={[styles.sealColorSweep, { opacity: sweepOpacity, transform: [{ translateX: sweepTranslateX }] }]}
+        style={[
+          styles.sealFlash,
+            { borderColor: colors.gradeWarning, opacity: sweepOpacity, transform: [{ scale: sweepScale }] },
+        ]}
+      />
+
+      <Animated.View
+        style={[
+          styles.sealCopy,
+          { opacity: sealCopyOpacity, transform: [{ translateY: sealCopyY }] },
+        ]}
       >
-        <View style={[styles.sealColorBar, { backgroundColor: '#B22234' }]} />
-        <View style={[styles.sealColorBar, { backgroundColor: '#FFFFFF' }]} />
-        <View style={[styles.sealColorBar, { backgroundColor: '#3C3B6E' }]} />
+        <Text accessibilityLiveRegion="polite" style={[styles.sealEyebrow, { color: colors.vaultBlue, fontFamily: 'Inter_700Bold' }]}>
+          THE FINAL SEAL
+        </Text>
+        <Text style={[styles.sealTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+          15 of 15 complete
+        </Text>
+        <Text style={[styles.sealDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+          Your title flag collection is now open.
+        </Text>
       </Animated.View>
 
-      <Pressable
-        onPress={onChooseFlags}
-        accessibilityRole="button"
-        accessibilityLabel="Choose your title flag"
-        style={[styles.sealButton, { backgroundColor: colors.gold }]}
-      >
-        <Text style={[styles.sealButtonText, { color: colors.background, fontFamily: 'Inter_700Bold' }]}>
-          Choose your title flag
-        </Text>
-        <Feather name="arrow-right" size={17} color={colors.background} />
-      </Pressable>
+      <Animated.View style={{ opacity: buttonOpacity, transform: [{ translateY: buttonY }] }}>
+        <Pressable
+          onPress={onChooseFlags}
+          accessibilityRole="button"
+          accessibilityLabel="Choose your title flag"
+          style={[styles.sealButton, { backgroundColor: colors.vaultBlue }]}
+        >
+          <Feather name="flag" size={16} color={colors.background} />
+          <Text style={[styles.sealButtonText, { color: colors.background, fontFamily: 'Inter_700Bold' }]}>
+            Choose your title flag
+          </Text>
+          <Feather name="arrow-right" size={17} color={colors.background} />
+        </Pressable>
+      </Animated.View>
     </View>
   );
 }
@@ -724,17 +811,26 @@ const styles = StyleSheet.create({
   celebrationDescription: { fontSize: 14, lineHeight: 21, textAlign: 'center' },
   celebrationButton: { minHeight: 48, minWidth: 180, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, marginTop: 12 },
   celebrationButtonText: { fontSize: 14 },
-  sealRoot: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22 },
+  sealRoot: { flex: 1, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22 },
   sealDismiss: { position: 'absolute', right: 18, width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center', zIndex: 2 },
-  sealRing: { alignItems: 'center', justifyContent: 'center', marginBottom: 30 },
+  sealAtmosphere: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  sealAtmosphereGlow: { position: 'absolute', width: 310, height: 310, borderRadius: 155, opacity: 0.08 },
+  sealAtmosphereGlowWarm: { position: 'absolute', width: 220, height: 220, borderRadius: 110, opacity: 0.055, transform: [{ translateY: 90 }] },
+  sealRing: { alignItems: 'center', justifyContent: 'center', marginBottom: 22 },
   sealRingOutline: { ...StyleSheet.absoluteFillObject, borderWidth: 1.5, borderRadius: 999 },
-  sealMarker: { position: 'absolute', borderWidth: 1, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
-  sealMedal: { width: 102, height: 102, borderWidth: 2, borderRadius: 51, alignItems: 'center', justifyContent: 'center', shadowColor: '#d1a34a', shadowOpacity: 0.52, shadowRadius: 18, shadowOffset: { width: 0, height: 0 }, elevation: 8 },
+  sealRingInner: { position: 'absolute', width: '70%', height: '70%', borderWidth: 1, borderRadius: 12 },
+  sealRingDash: { position: 'absolute', width: '88%', height: '88%', borderWidth: 1, borderStyle: 'dashed', borderRadius: 999, opacity: 0.72 },
+  sealCrosshair: { position: 'absolute', width: 1, height: '82%', opacity: 0.2 },
+  sealCrosshairHorizontal: { position: 'absolute', width: '82%', height: 1, opacity: 0.2 },
+  sealMarker: { position: 'absolute', borderWidth: 1.5, borderRadius: 999, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0.62, shadowRadius: 12, shadowOffset: { width: 0, height: 0 }, elevation: 7 },
+  sealHalo: { position: 'absolute', width: '66%', height: '66%', borderWidth: 2, borderRadius: 999 },
+  sealMedal: { width: 112, height: 112, borderWidth: 2, borderRadius: 56, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0.48, shadowRadius: 24, shadowOffset: { width: 0, height: 0 }, elevation: 9 },
+  sealMedalInset: { width: 94, height: 94, borderWidth: 1, borderRadius: 47, alignItems: 'center', justifyContent: 'center' },
+  sealFlash: { position: 'absolute', width: 274, height: 274, borderWidth: 8, borderRadius: 137 },
+  sealCopy: { alignItems: 'center' },
   sealEyebrow: { fontSize: 10, letterSpacing: 2.4, marginBottom: 9 },
   sealTitle: { fontSize: 28, lineHeight: 34, textAlign: 'center', textTransform: 'uppercase' },
   sealDescription: { fontSize: 14, lineHeight: 21, textAlign: 'center', marginTop: 9 },
-  sealColorSweep: { flexDirection: 'row', width: 90, height: 3, gap: 3, marginTop: 22, marginBottom: 10 },
-  sealColorBar: { flex: 1, borderRadius: 2 },
-  sealButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, borderRadius: 11, paddingHorizontal: 18, marginTop: 16 },
+  sealButton: { minHeight: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, borderRadius: 11, paddingHorizontal: 18, marginTop: 20 },
   sealButtonText: { fontSize: 13 },
 });

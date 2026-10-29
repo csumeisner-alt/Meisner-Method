@@ -54,6 +54,11 @@ test("first-time app milestones are wired to achievement rewards and a review sc
   assert.match(overlaySource, /THE FINAL SEAL/);
   assert.match(overlaySource, /15 of 15 complete/);
   assert.match(overlaySource, /Choose your title flag/);
+  assert.match(overlaySource, /duration: 1_850/);
+  assert.match(overlaySource, /staggerStart = 0\.06/);
+  assert.match(overlaySource, /if \(reducedMotion\) \{\s*progress\.setValue\(1\)/);
+  assert.match(overlaySource, /accessibilityLabel="Dismiss achievement celebration"/);
+  assert.match(overlaySource, /accessibilityLabel="Choose your title flag"/);
   assert.match(overlaySource, /openGallery, 260/);
   assert.match(overlaySource, /borderBottomColor: 'transparent'/);
   assert.doesNotMatch(overlaySource, /confetti/i);
