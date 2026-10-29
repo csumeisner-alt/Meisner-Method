@@ -34,16 +34,32 @@ test("ETF profile score is deterministic and exposes every component", () => {
   assert.equal(result.components[1]?.score, 80);
 });
 
-test("ETF cost score improves when expense ratio is lower than its category average", () => {
-  const belowAverage = calculateEtfResearchScore({
-    ...completeInput,
-    expenseRatio: 0.0004,
-  }).components[0]?.score;
-  const aboveAverage = calculateEtfResearchScore({
-    ...completeInput,
-    expenseRatio: 0.0015,
-  }).components[0]?.score;
-  assert.ok(belowAverage !== null && aboveAverage !== null && belowAverage > aboveAverage);
+test("ETF cost score is exact at zero, category-average, and twice-average thresholds", () => {
+  const scoreAt = (expenseRatio: number) =>
+    calculateEtfResearchScore({
+      ...completeInput,
+      expenseRatio,
+      categoryAverageExpenseRatio: 0.001,
+    }).components.find((item) => item.id === "cost")?.score;
+
+  assert.equal(scoreAt(0), 100);
+  assert.equal(scoreAt(0.001), 50);
+  assert.equal(scoreAt(0.002), 0);
+  assert.equal(scoreAt(0.0021), 0);
+});
+
+test("ETF cost score is unavailable without a valid category average", () => {
+  for (const categoryAverageExpenseRatio of [null, 0, -0.001, Number.NaN, Number.POSITIVE_INFINITY]) {
+    const result = calculateEtfResearchScore({
+      ...completeInput,
+      categoryAverageExpenseRatio,
+    });
+    assert.equal(
+      result.components.find((item) => item.id === "cost")?.score,
+      null,
+      `expected unavailable score for category average ${categoryAverageExpenseRatio}`,
+    );
+  }
 });
 
 test("ETF assets use the provider category average when available", () => {
