@@ -37,7 +37,7 @@ def expense_ratio(full_info):
     if v is not None:
         try:
             f = float(v)
-            if math.isfinite(f):
+            if math.isfinite(f) and f >= 0:
                 return f
         except (TypeError, ValueError):
             pass
@@ -46,7 +46,7 @@ def expense_ratio(full_info):
         if v is not None:
             try:
                 f = float(v) / 100.0
-                if math.isfinite(f):
+                if math.isfinite(f) and f >= 0:
                     return f
             except (TypeError, ValueError):
                 pass

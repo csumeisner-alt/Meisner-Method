@@ -2,6 +2,8 @@ import unittest
 from unittest.mock import patch
 
 import fetch_info_brief
+import fetch_quote
+import fetch_stock
 
 
 class InfoBriefCryptoFieldTests(unittest.TestCase):
@@ -303,6 +305,36 @@ class InfoBriefEtfFieldTests(unittest.TestCase):
             0.0012,
         )
         self.assertIsNone(fetch_info_brief.get_expense_ratio({}))
+
+    def test_general_provider_expense_ratios_reject_negative_and_non_finite_values(self):
+        helpers = (fetch_stock.expense_ratio, fetch_quote.expense_ratio)
+        provider_fields = (
+            "annualReportExpenseRatio",
+            "netExpenseRatio",
+            "grossExpenseRatio",
+        )
+        invalid_values = (-0.01, float("nan"), float("inf"), float("-inf"))
+
+        for helper in helpers:
+            for field in provider_fields:
+                for value in invalid_values:
+                    with self.subTest(helper=helper.__module__, field=field, value=value):
+                        self.assertIsNone(helper({field: value}))
+
+    def test_general_provider_expense_ratios_preserve_zero_and_positive_conversions(self):
+        helpers = (fetch_stock.expense_ratio, fetch_quote.expense_ratio)
+
+        for helper in helpers:
+            for field, value, expected in (
+                ("annualReportExpenseRatio", 0, 0),
+                ("annualReportExpenseRatio", 0.0004, 0.0004),
+                ("netExpenseRatio", 0, 0),
+                ("netExpenseRatio", 0.08, 0.0008),
+                ("grossExpenseRatio", 0, 0),
+                ("grossExpenseRatio", 0.12, 0.0012),
+            ):
+                with self.subTest(helper=helper.__module__, field=field, value=value):
+                    self.assertEqual(helper({field: value}), expected)
 
     def test_benchmark_requires_an_explicit_provider_symbol(self):
         self.assertEqual(
