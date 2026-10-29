@@ -11,6 +11,9 @@ import {
   formatEtfComparisonValue,
   formatEtfProfileAssets,
   formatHeatMapRegimeReturn,
+  estimateEtfFeeDollars,
+  isValidEtfExpenseRatio,
+  parseEtfFeeInvestmentAmount,
   getHeatMapCryptoSupplyChartModel,
   getHeatMapCryptoSupplyDiscrepancy,
   getHeatMapCryptoSupplyChangeSummary,
@@ -30,6 +33,33 @@ const analysisScreenSource = readFileSync(
   resolve(testDir, '../../app/analysis/[symbol].tsx'),
   'utf8',
 );
+
+test('ETF fee-dollar illustration uses a constant balance and rejects missing or invalid fees', () => {
+  assert.equal(parseEtfFeeInvestmentAmount('10,000'), 10_000);
+  assert.equal(parseEtfFeeInvestmentAmount('$5,000.50'), 5_000.5);
+  assert.equal(parseEtfFeeInvestmentAmount('0'), null);
+  assert.equal(parseEtfFeeInvestmentAmount('not an amount'), null);
+  assert.equal(estimateEtfFeeDollars(10_000, 0.0003, 10), 30);
+  assert.equal(estimateEtfFeeDollars(5_000, 0.0003, 5), 7.5);
+  assert.equal(estimateEtfFeeDollars(10_000, 0, 10), 0);
+  assert.equal(estimateEtfFeeDollars(10_000, null, 10), null);
+  for (const invalidRatio of [-0.01, 1.01, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.equal(isValidEtfExpenseRatio(invalidRatio), false);
+    assert.equal(estimateEtfFeeDollars(10_000, invalidRatio, 10), null);
+  }
+  assert.equal(estimateEtfFeeDollars(10_000, 0.0003, 0), null);
+});
+
+test('ETF fee-dollar illustration has editable inputs, independent horizons, and clear assumptions', () => {
+  assert.match(analysisScreenSource, /title="ETF FEE DOLLAR IMPACT"/);
+  assert.match(analysisScreenSource, /testID="etf-fee-impact-amount"/);
+  assert.match(analysisScreenSource, /testID=\{`etf-fee-impact-amount-\$\{amount\}`\}/);
+  assert.match(analysisScreenSource, /testID=\{`etf-fee-impact-horizon-\$\{years\}`\}/);
+  assert.match(analysisScreenSource, /Estimated fees over \$\{feeHoldingYears\} years/);
+  assert.match(analysisScreenSource, /feeInvestmentAmount,\s*fund\.expenseRatio,\s*feeHoldingYears/);
+  assert.match(analysisScreenSource, /assumes the balance stays equal to your starting amount/);
+  assert.match(analysisScreenSource, /this estimate is separate from the return scenarios/);
+});
 
 test('crypto supply history accepts only dated provider observations and leaves gaps empty', () => {
   const history = parseHeatMapCryptoSupplyHistory({

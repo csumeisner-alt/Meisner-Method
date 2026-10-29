@@ -40,7 +40,10 @@ import {
   formatReportedEtfHoldingsOverlapShare,
   formatEtfComparisonValue,
   formatEtfProfileAssets,
+  estimateEtfFeeDollars,
   getReportedEtfSectorComparison,
+  isValidEtfExpenseRatio,
+  parseEtfFeeInvestmentAmount,
   parseSavedEtfComparisonSymbols,
   parseSavedEtfHoldingSnapshots,
   shareEtfOverlapSummary,
@@ -61,6 +64,12 @@ import {
 const PINNED_COMP_KEY = '@stocksense/pinned_comp_symbol';
 const ETF_COMPARISON_KEY = '@stocksense/etf_comparison_symbols_v1';
 const ETF_HOLDING_SNAPSHOTS_KEY = '@stocksense/etf_holding_snapshots_v1';
+const ETF_FEE_AMOUNT_PRESETS = [
+  { amount: 1_000, label: '$1,000' },
+  { amount: 5_000, label: '$5,000' },
+  { amount: 10_000, label: '$10,000' },
+  { amount: 25_000, label: '$25,000' },
+] as const;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -360,10 +369,19 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
   const { apiFetch } = useApi();
   const [compareTicker, setCompareTicker] = useState('');
   const [selectedScenarioHorizon, setSelectedScenarioHorizon] = useState<number>(10);
+  const [feeInvestmentInput, setFeeInvestmentInput] = useState('10000');
+  const [feeHoldingYears, setFeeHoldingYears] = useState<number>(10);
   const [savedCompareSymbols, setSavedCompareSymbols] = useState<string[]>([]);
   const savedCompareSymbolsRef = useRef<string[]>([]);
   const comparisonWriteQueue = useRef<Promise<void>>(Promise.resolve());
   const scenarios = parseEtfScenarios(fund.scenarios);
+  const feeInvestmentAmount = parseEtfFeeInvestmentAmount(feeInvestmentInput);
+  const feeEstimate = estimateEtfFeeDollars(
+    feeInvestmentAmount,
+    fund.expenseRatio,
+    feeHoldingYears,
+  );
+  const validExpenseRatio = isValidEtfExpenseRatio(fund.expenseRatio);
   const [compareFunds, setCompareFunds] = useState<Array<{
     symbol: string;
     topHoldings: { symbol: string; name: string; weight: number }[];
@@ -1438,6 +1456,115 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
               </Text>
             </>
           ) : <Text style={{ color: colors.mutedForeground }}>Historical regime data unavailable.</Text>}
+        </View>
+      </SectionCard>
+      <SectionCard collapsible title="ETF FEE DOLLAR IMPACT" icon={<MaterialCommunityIcons name="cash-minus" size={16} color={colors.primary} />}>
+        <View style={{ padding: 16 }}>
+          <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, marginBottom: 7 }}>
+            Investment amount (USD)
+          </Text>
+          <TextInput
+            testID="etf-fee-impact-amount"
+            accessibilityLabel="Investment amount in U.S. dollars"
+            keyboardType="decimal-pad"
+            value={feeInvestmentInput}
+            onChangeText={setFeeInvestmentInput}
+            placeholder="Enter an amount"
+            placeholderTextColor={colors.mutedForeground}
+            style={{
+              minHeight: 44,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 9,
+              paddingHorizontal: 12,
+              color: colors.foreground,
+              fontFamily: 'Inter_500Medium',
+              fontSize: 14,
+            }}
+          />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 9 }}>
+            {ETF_FEE_AMOUNT_PRESETS.map(({ amount, label }) => {
+              const selected = feeInvestmentAmount === amount;
+              return (
+                <Pressable
+                  key={amount}
+                  testID={`etf-fee-impact-amount-${amount}`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={`Set investment amount to ${label}`}
+                  onPress={() => setFeeInvestmentInput(String(amount))}
+                  style={{
+                    minHeight: 34,
+                    justifyContent: 'center',
+                    borderWidth: 1,
+                    borderColor: selected ? colors.primary : colors.border,
+                    borderRadius: 8,
+                    paddingHorizontal: 10,
+                    backgroundColor: selected ? colors.primary : 'transparent',
+                  }}
+                >
+                  <Text style={{
+                    color: selected ? colors.primaryForeground : colors.foreground,
+                    fontFamily: 'Inter_600SemiBold',
+                    fontSize: 11,
+                  }}>{label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, marginTop: 16 }}>
+            Holding period
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+            {ETF_SCENARIO_HORIZONS.map((years) => {
+              const selected = feeHoldingYears === years;
+              return (
+                <Pressable
+                  key={years}
+                  testID={`etf-fee-impact-horizon-${years}`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={`Set holding period to ${years} ${years === 1 ? 'year' : 'years'}`}
+                  onPress={() => setFeeHoldingYears(years)}
+                  style={{
+                    minWidth: 54,
+                    minHeight: 34,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderWidth: 1,
+                    borderColor: selected ? colors.primary : colors.border,
+                    borderRadius: 8,
+                    paddingHorizontal: 9,
+                    backgroundColor: selected ? colors.primary : 'transparent',
+                  }}
+                >
+                  <Text style={{
+                    color: selected ? colors.primaryForeground : colors.foreground,
+                    fontFamily: 'Inter_600SemiBold',
+                    fontSize: 11,
+                  }}>{years} yr</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <MetricRow
+            label="Provider-reported expense ratio"
+            value={validExpenseRatio ? pctValue(fund.expenseRatio) : 'Unavailable'}
+          />
+          <MetricRow
+            label={`Estimated fees over ${feeHoldingYears} years`}
+            value={feeEstimate === null ? 'Unavailable' : fmtPrice(feeEstimate)}
+          />
+          {feeEstimate === null && (
+            <Text testID="etf-fee-impact-unavailable" style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 17, marginTop: 5 }}>
+              {!validExpenseRatio
+                ? 'Fee estimate unavailable because this fund has no valid provider-reported expense ratio.'
+                : 'Enter an investment amount greater than $0 to estimate fees.'}
+            </Text>
+          )}
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 12 }}>
+            Fee-only illustration: assumes the balance stays equal to your starting amount for the full period, with no investment returns or added contributions. It multiplies that balance by the provider-reported annual expense ratio and holding period. Actual fees vary as fund assets change; this estimate is separate from the return scenarios and excludes trading costs and taxes.
+          </Text>
         </View>
       </SectionCard>
       <SectionCard collapsible title="LONG-RANGE SCENARIOS" icon={<MaterialCommunityIcons name="chart-timeline-variant" size={16} color={colors.primary} />}>

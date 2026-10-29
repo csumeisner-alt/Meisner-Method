@@ -165,6 +165,7 @@ test("ETF evidence is grouped in expandable, accessible sections", () => {
     "HOLDINGS & DIVERSIFICATION",
     "BENCHMARK & TRACKING",
     "HISTORICAL PERFORMANCE",
+    "ETF FEE DOLLAR IMPACT",
     "LONG-RANGE SCENARIOS",
   ]) {
     assert.match(etfAnalysisSource, new RegExp(`SectionCard collapsible title="${heading}"`));
@@ -683,12 +684,61 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
     assert.match(fiveYearScenarioText, /No-fee value in 5 years\s*\$965/);
     assert.match(fiveYearScenarioText, /After-fee value in 5 years\s*\$965/);
 
+    const feeImpactSelector = '[data-testid="analysis-section-etf-fee-dollar-impact"]';
+    await browser.evaluate(`(() => {
+      const section = document.querySelector(${JSON.stringify(feeImpactSelector)});
+      section?.scrollIntoView({ block: "nearest" });
+      section?.click();
+    })()`);
+    await waitForBrowserValue(
+      browser,
+      `document.querySelector(${JSON.stringify(feeImpactSelector)})?.parentElement?.textContent.includes("Estimated fees over 10 years")`,
+      "Opening the fee impact section should show the estimate.",
+    );
+    let feeImpactText = await browser.evaluate(
+      `document.querySelector(${JSON.stringify(feeImpactSelector)})?.parentElement?.textContent ?? ""`,
+    );
+    assert.match(feeImpactText, /Provider-reported expense ratio\s*0\.03%/);
+    assert.match(feeImpactText, /Estimated fees over 10 years\s*\$30\.00/);
+    await browser.evaluate(`document.querySelector('[data-testid="etf-fee-impact-amount-5000"]')?.click()`);
+    await waitForBrowserValue(
+      browser,
+      `document.querySelector(${JSON.stringify(feeImpactSelector)})?.parentElement?.textContent.includes("$15.00")`,
+      "Changing the investment amount should update estimated fees.",
+    );
+    await browser.evaluate(`document.querySelector('[data-testid="etf-fee-impact-horizon-5"]')?.click()`);
+    await waitForBrowserValue(
+      browser,
+      `document.querySelector(${JSON.stringify(feeImpactSelector)})?.parentElement?.textContent.includes("Estimated fees over 5 years")`,
+      "Changing the holding period should update the fee estimate.",
+    );
+    feeImpactText = await browser.evaluate(
+      `document.querySelector(${JSON.stringify(feeImpactSelector)})?.parentElement?.textContent ?? ""`,
+    );
+    assert.match(feeImpactText, /Estimated fees over 5 years\s*\$7\.50/);
+
     await browser.send("Page.navigate", { url: `http://127.0.0.1:${address.port}/unavailable-fee` });
     await waitForBrowserValue(
       browser,
       "document.body.innerText.includes('ETF with unavailable fee')",
       "The ETF analysis screen should render with an unavailable fee.",
     );
+    await browser.evaluate(`(() => {
+      const section = document.querySelector(${JSON.stringify(feeImpactSelector)});
+      section?.scrollIntoView({ block: "nearest" });
+      section?.click();
+    })()`);
+    await waitForBrowserValue(
+      browser,
+      `document.querySelector(${JSON.stringify(feeImpactSelector)})?.parentElement?.textContent.includes("Fee estimate unavailable")`,
+      "Missing expense-ratio data should show an unavailable fee estimate.",
+    );
+    const unavailableFeeImpactText = await browser.evaluate(
+      `document.querySelector(${JSON.stringify(feeImpactSelector)})?.parentElement?.textContent ?? ""`,
+    );
+    assert.match(unavailableFeeImpactText, /Provider-reported expense ratio\s*Unavailable/);
+    assert.match(unavailableFeeImpactText, /Estimated fees over 10 years\s*Unavailable/);
+    assert.doesNotMatch(unavailableFeeImpactText, /Estimated fees over 10 years\s*\$0\.00/);
     await browser.evaluate(`(() => {
       const section = document.querySelector(${JSON.stringify(scenarioSectionSelector)});
       section?.scrollIntoView({ block: "nearest", inline: "nearest" });

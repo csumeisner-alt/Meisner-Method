@@ -1035,6 +1035,41 @@ function formatDollars(value: number) {
   })}`;
 }
 
+export function parseEtfFeeInvestmentAmount(value: string): number | null {
+  const normalized = value.replace(/[$,\s]/g, '');
+  if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) return null;
+  const amount = Number(normalized);
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
+
+export function isValidEtfExpenseRatio(value: number | null): value is number {
+  return typeof value === 'number'
+    && Number.isFinite(value)
+    && value >= 0
+    && value <= 1;
+}
+
+export function estimateEtfFeeDollars(
+  investmentAmount: number | null,
+  expenseRatio: number | null,
+  holdingYears: number,
+): number | null {
+  if (
+    investmentAmount === null
+    || !Number.isFinite(investmentAmount)
+    || investmentAmount <= 0
+    || !isValidEtfExpenseRatio(expenseRatio)
+    || !Number.isSafeInteger(holdingYears)
+    || holdingYears <= 0
+  ) {
+    return null;
+  }
+  const feeDollars = investmentAmount * expenseRatio * holdingYears;
+  return Number.isFinite(feeDollars)
+    ? Math.round(feeDollars * 100) / 100
+    : null;
+}
+
 function getEtfStatRows(
   profile: HeatMapEtfProfile | null,
   loading: boolean,
