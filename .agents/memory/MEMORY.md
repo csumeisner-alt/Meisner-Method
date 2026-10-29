@@ -68,3 +68,4 @@
 - [Premium flag badge motion](premium-flag-animation.md) — preserve all six supplied artworks and a continuous, visible cloth wave without reduced-motion suppression.
 - [API route test seams](api-route-test-seams.md) — extract injectable response handlers when source-run tests cannot resolve route imports that exist only after bundling.
 - [React Native Web accordion tests](react-native-web-accordion-tests.md) — verify collapsed evidence by content visibility; this runtime may not reflect `accessibilityState.expanded` as `aria-expanded`.
+- [React Native Web section jumps](react-native-web-section-jumps.md) — constrain the smoke-test root with flex and derive browser jump offsets from scroll/target bounds, not `onLayout.y`.

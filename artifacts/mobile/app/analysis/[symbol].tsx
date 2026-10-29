@@ -795,24 +795,38 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
     ...compareFunds,
   ];
   const sectionNavigationItems = [
-    { id: 'ai-commentary', label: 'AI commentary' },
-    { id: 'score-details', label: 'Score details' },
-    { id: 'fund-profile', label: 'Fund profile' },
+    { id: 'ai-commentary', label: 'AI commentary', targetId: 'analysis-section-ai-commentary' },
+    { id: 'score-details', label: 'Score details', targetId: 'analysis-section-score-details-methodology' },
+    { id: 'fund-profile', label: 'Fund profile', targetId: 'analysis-section-fund-profile-risk' },
     ...(fund.benchmark && hasValidTrackingHistory(fund.trackingComparison)
-      ? [{ id: 'benchmark-tracking', label: 'Benchmark' }]
+      ? [{ id: 'benchmark-tracking', label: 'Benchmark', targetId: 'analysis-section-benchmark-tracking' }]
       : []),
-    { id: 'costs-category', label: 'Costs' },
-    { id: 'holdings', label: 'Holdings' },
-    ...(compareFunds.length ? [{ id: 'comparison', label: 'Comparison' }] : []),
-    { id: 'historical-performance', label: 'Performance' },
-    { id: 'fee-impact', label: 'Fee impact' },
-    { id: 'long-range-scenarios', label: 'Scenarios' },
+    { id: 'costs-category', label: 'Costs', targetId: 'analysis-section-costs-category-context' },
+    { id: 'holdings', label: 'Holdings', targetId: 'analysis-section-holdings-diversification' },
+    ...(compareFunds.length
+      ? [{ id: 'comparison', label: 'Comparison', targetId: 'analysis-section-etf-cost-risk-performance' }]
+      : []),
+    { id: 'historical-performance', label: 'Performance', targetId: 'analysis-section-historical-performance' },
+    { id: 'fee-impact', label: 'Fee impact', targetId: 'analysis-section-etf-fee-dollar-impact' },
+    { id: 'long-range-scenarios', label: 'Scenarios', targetId: 'analysis-section-long-range-scenarios' },
   ];
   const sectionLayoutHandler = (id: string) => (event: LayoutChangeEvent) => {
     sectionPositions.current[id] = event.nativeEvent.layout.y;
   };
   const jumpToSection = (id: string) => {
-    const y = sectionPositions.current[id];
+    let y = sectionPositions.current[id];
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const targetId = sectionNavigationItems.find((item) => item.id === id)?.targetId;
+      const scrollElement = document.querySelector<HTMLElement>('[data-testid="etf-analysis-scroll-view"]');
+      const targetElement = targetId
+        ? document.querySelector<HTMLElement>(`[data-testid="${targetId}"]`)
+        : null;
+      if (scrollElement && targetElement) {
+        y = scrollElement.scrollTop
+          + targetElement.getBoundingClientRect().top
+          - scrollElement.getBoundingClientRect().top;
+      }
+    }
     if (y != null) scrollToY(Math.max(0, y - 8));
   };
   const primaryHistoryComparison = compareEtfHoldingSnapshots(currentEtfSnapshot, holdingSnapshots);

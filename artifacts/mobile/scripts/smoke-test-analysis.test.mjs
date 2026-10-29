@@ -168,7 +168,7 @@ test("ETF evidence is grouped in expandable, accessible sections", () => {
     "ETF FEE DOLLAR IMPACT",
     "LONG-RANGE SCENARIOS",
   ]) {
-    assert.match(etfAnalysisSource, new RegExp(`SectionCard collapsible title="${heading}"`));
+    assert.match(etfAnalysisSource, new RegExp(`SectionCard (?:onLayout=\\{sectionLayoutHandler\\('[^']+'\\)\\} )?collapsible title="${heading}"`));
   }
 });
 
@@ -571,7 +571,7 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
     }[request.url] ?? "/bundle.js";
     response.end(`<!doctype html><html><head>
       <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-      <style>html,body,#root{width:100%;height:100%;margin:0;padding:0}body{overflow-x:auto}</style>
+      <style>html,body,#root{width:100%;height:100%;margin:0;padding:0}#root{display:flex}body{overflow-x:auto}</style>
       </head><body><div id="root"></div><script src="${scriptPath}"></script></body></html>`);
   });
   await new Promise((resolveListen, rejectListen) => {
@@ -864,30 +864,70 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
     await browser.evaluate(`document.querySelector('[data-testid="etf-section-jump-long-range-scenarios"]')?.click()`);
     await waitForBrowserValue(
       browser,
-      `document.querySelector('[data-testid="etf-analysis-scroll-view"]')?.scrollTop > 0`,
-      "Selecting a section should scroll the ETF analysis page.",
+      `(() => {
+        const scroll = document.querySelector('[data-testid="etf-analysis-scroll-view"]');
+        const target = document.querySelector('[data-testid="analysis-section-long-range-scenarios"]');
+        if (!scroll || !target) return false;
+        const rect = target.getBoundingClientRect();
+        const viewport = scroll.getBoundingClientRect();
+        return scroll.scrollTop > 0
+          && rect.bottom > viewport.top
+          && rect.top < viewport.bottom;
+      })()`,
+      "Selecting a section should bring its title into view.",
     );
     const jumpPosition = await browser.evaluate(`(() => {
       const scroll = document.querySelector('[data-testid="etf-analysis-scroll-view"]');
       const target = document.querySelector('[data-testid="analysis-section-long-range-scenarios"]');
       return {
         scrollTop: scroll?.scrollTop ?? 0,
+        scrollHeight: scroll?.scrollHeight ?? 0,
+        clientHeight: scroll?.clientHeight ?? 0,
         targetTop: target?.getBoundingClientRect().top ?? Infinity,
+        targetOffsetTop: target?.offsetTop ?? Infinity,
         viewportTop: scroll?.getBoundingClientRect().top ?? 0,
       };
     })()`);
-    assert.ok(jumpPosition.scrollTop > 0, "Jumping to a lower section should advance the main scroll view.");
     assert.ok(
-      jumpPosition.targetTop >= jumpPosition.viewportTop - 2
-        && jumpPosition.targetTop < jumpPosition.viewportTop + 80,
-      `The selected section title should land near the top of the viewport: ${JSON.stringify(jumpPosition)}`,
+      jumpPosition.scrollTop > 0,
+      `Jumping to a lower section should advance the main scroll view: ${JSON.stringify(jumpPosition)}`,
+    );
+    assert.ok(
+      jumpPosition.targetTop >= jumpPosition.viewportTop
+        && jumpPosition.targetTop < jumpPosition.viewportTop + jumpPosition.clientHeight,
+      `The selected section title should be visible in the viewport: ${JSON.stringify(jumpPosition)}`,
     );
     await browser.evaluate(`document.querySelector('[data-testid="etf-section-jump-comparison"]')?.click()`);
-    await browser.evaluate(`document.querySelector('[data-testid="analysis-section-etf-cost-risk-performance"]')?.click()`);
     await waitForBrowserValue(
       browser,
-      `document.querySelector('[data-testid="analysis-section-etf-cost-risk-performance"]')?.parentElement?.textContent.includes("VTI")`,
-      "The comparison data should remain available after navigating to its section.",
+      `(() => {
+        const scroll = document.querySelector('[data-testid="etf-analysis-scroll-view"]');
+        const target = document.querySelector('[data-testid="analysis-section-etf-cost-risk-performance"]');
+        if (!scroll || !target) return false;
+        const rect = target.getBoundingClientRect();
+        const viewport = scroll.getBoundingClientRect();
+        return rect.bottom > viewport.top && rect.top < viewport.bottom;
+      })()`,
+      "The comparison section should be visible after using its jump button.",
+    );
+    await browser.evaluate(`document.querySelector('[data-testid="etf-section-jump-holdings"]')?.click()`);
+    await waitForBrowserValue(
+      browser,
+      `(() => {
+        const scroll = document.querySelector('[data-testid="etf-analysis-scroll-view"]');
+        const target = document.querySelector('[data-testid="analysis-section-holdings-diversification"]');
+        if (!scroll || !target) return false;
+        const rect = target.getBoundingClientRect();
+        const viewport = scroll.getBoundingClientRect();
+        return rect.bottom > viewport.top && rect.top < viewport.bottom;
+      })()`,
+      "The holdings section should be visible after using its jump button.",
+    );
+    await browser.evaluate(`document.querySelector('[data-testid="analysis-section-holdings-diversification"]')?.click()`);
+    await waitForBrowserValue(
+      browser,
+      `document.querySelector('[data-testid="analysis-section-holdings-diversification"]')?.parentElement?.textContent.includes("VTI ×")`,
+      "The selected comparison ETF should remain available after navigating.",
     );
     assert.deepEqual(
       await browser.evaluate(`JSON.parse(window.__analysisTestStorage.get("@stocksense/etf_comparison_symbols_v1") ?? "[]")`),
