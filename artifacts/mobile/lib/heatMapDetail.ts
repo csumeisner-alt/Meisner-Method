@@ -387,6 +387,46 @@ export function findReportedEtfHoldingsOverlap(
     .map(([symbol, entries]) => ({ symbol, positions: entries }));
 }
 
+export function formatReportedEtfHoldingsOverlapShare(
+  funds: readonly { symbol: string; topHoldingsRetrievedAt: string | null }[],
+  overlaps: readonly {
+    symbol: string;
+    positions: readonly { fundSymbol: string; name: string; weight: number }[];
+  }[],
+): string {
+  const lines = [
+    'ETF overlap summary',
+    `Funds: ${funds.map((fund) => fund.symbol.toUpperCase()).join(', ')}`,
+    'Provider snapshot retrieval times (UTC):',
+    ...funds.map((fund) => {
+      const retrievedAt = fund.topHoldingsRetrievedAt;
+      const timestamp = retrievedAt ? Date.parse(retrievedAt) : Number.NaN;
+      const formattedTime = Number.isFinite(timestamp)
+        ? new Date(timestamp).toISOString()
+        : 'unavailable';
+      return `- ${fund.symbol.toUpperCase()}: ${formattedTime}`;
+    }),
+    'Common reported holdings:',
+  ];
+
+  if (overlaps.length) {
+    lines.push(...overlaps.map(({ symbol, positions }) => {
+      const name = positions[0]?.name ?? symbol;
+      const weights = positions
+        .map((position) => `${position.fundSymbol.toUpperCase()} ${(position.weight * 100).toFixed(2)}%`)
+        .join(' · ');
+      return `- ${name} (${symbol.toUpperCase()}): ${weights}`;
+    }));
+  } else {
+    lines.push('- No shared positions among the reported holdings.');
+  }
+
+  lines.push(
+    'Coverage note: Overlap includes only positions reported by the provider and does not represent complete ETF portfolios.',
+  );
+  return lines.join('\n');
+}
+
 export function parseSavedEtfComparisonSymbols(value: string | null): string[] {
   if (!value) return [];
   try {

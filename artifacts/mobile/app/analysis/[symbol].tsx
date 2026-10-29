@@ -12,6 +12,7 @@ import {
   Animated,
   TextInput,
   useWindowDimensions,
+  Share,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -36,6 +37,7 @@ import {
   compareEtfHoldingSnapshots,
   createEtfHoldingSnapshot,
   findReportedEtfHoldingsOverlap,
+  formatReportedEtfHoldingsOverlapShare,
   getReportedEtfSectorComparison,
   parseHeatMapDetailStats,
   parseSavedEtfComparisonSymbols,
@@ -347,6 +349,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
     sectorWeightsRetrievedAt: string | null;
   }>>([]);
   const [compareError, setCompareError] = useState('');
+  const [shareStatus, setShareStatus] = useState('');
   const [compareLoading, setCompareLoading] = useState(false);
   const [compareRestoreLoading, setCompareRestoreLoading] = useState(true);
   const [comparePendingSymbols, setComparePendingSymbols] = useState<string[]>([]);
@@ -562,6 +565,27 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
   const snapshotDateTime = (asOf: string) => {
     const timestamp = Date.parse(asOf);
     return Number.isFinite(timestamp) ? new Date(timestamp).toLocaleString() : 'date unavailable';
+  };
+  const shareOverlapSummary = async () => {
+    const message = formatReportedEtfHoldingsOverlapShare(selectedFunds, overlaps);
+    setShareStatus('');
+    try {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined') {
+        if (typeof navigator.share === 'function') {
+          await navigator.share({ title: 'ETF overlap summary', text: message });
+        } else if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(message);
+          setShareStatus('Summary copied to clipboard.');
+        } else {
+          setShareStatus('Sharing is not available in this browser.');
+        }
+        return;
+      }
+      await Share.share({ title: 'ETF overlap summary', message });
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') return;
+      setShareStatus('Could not share the ETF overlap summary. Please try again.');
+    }
   };
   return (
     <>
@@ -856,6 +880,21 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
               <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 8 }}>
                 Overlap compares only provider-reported positions, not complete portfolios.
               </Text>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Share ETF overlap summary"
+                testID="share-etf-overlap-summary"
+                onPress={() => void shareOverlapSummary()}
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 14, paddingVertical: 11, borderRadius: 8, backgroundColor: colors.primary }}
+              >
+                <Ionicons name="share-outline" size={16} color={colors.primaryForeground} />
+                <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_600SemiBold' }}>Share overlap summary</Text>
+              </TouchableOpacity>
+              {!!shareStatus && (
+                <Text accessibilityLiveRegion="polite" style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 7 }}>
+                  {shareStatus}
+                </Text>
+              )}
               <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', marginTop: 18 }}>Provider-reported sector mix</Text>
               <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 5 }}>
                 Provider coverage only, not a complete portfolio reconstruction. Missing weights are not treated as zero.

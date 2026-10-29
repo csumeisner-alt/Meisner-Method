@@ -4,6 +4,7 @@ import {
   compareEtfHoldingSnapshots,
   createEtfHoldingSnapshot,
   findReportedEtfHoldingsOverlap,
+  formatReportedEtfHoldingsOverlapShare,
   formatHeatMapRegimeReturn,
   getHeatMapCryptoSupplyChartModel,
   getHeatMapCryptoSupplyDiscrepancy,
@@ -669,6 +670,43 @@ test('ETF holding overlap compares reported positions and preserves each disclos
       { fundSymbol: 'IWM', name: 'Apple', weight: 0.01 },
     ] },
   ]);
+});
+
+test('ETF holding overlap share includes selected funds, reported weights, snapshot times, and coverage limits', () => {
+  const summary = formatReportedEtfHoldingsOverlapShare([
+    { symbol: 'spy', topHoldingsRetrievedAt: '2026-10-27T16:00:00.000Z' },
+    { symbol: 'QQQ', topHoldingsRetrievedAt: null },
+  ], [
+    {
+      symbol: 'NVDA',
+      positions: [
+        { fundSymbol: 'SPY', name: 'NVIDIA', weight: 0.08 },
+        { fundSymbol: 'QQQ', name: 'NVIDIA', weight: 0.07 },
+      ],
+    },
+  ]);
+
+  assert.equal(summary, [
+    'ETF overlap summary',
+    'Funds: SPY, QQQ',
+    'Provider snapshot retrieval times (UTC):',
+    '- SPY: 2026-10-27T16:00:00.000Z',
+    '- QQQ: unavailable',
+    'Common reported holdings:',
+    '- NVIDIA (NVDA): SPY 8.00% · QQQ 7.00%',
+    'Coverage note: Overlap includes only positions reported by the provider and does not represent complete ETF portfolios.',
+  ].join('\n'));
+  assert.doesNotMatch(summary, /account|portfolio value|balance/i);
+});
+
+test('ETF holding overlap share states when selected funds have no common reported positions', () => {
+  const summary = formatReportedEtfHoldingsOverlapShare([
+    { symbol: 'SPY', topHoldingsRetrievedAt: '2026-10-27T16:00:00.000Z' },
+    { symbol: 'QQQ', topHoldingsRetrievedAt: '2026-10-27T16:05:00.000Z' },
+  ], []);
+
+  assert.match(summary, /No shared positions among the reported holdings\./);
+  assert.match(summary, /only positions reported by the provider/);
 });
 
 test('saved ETF comparisons normalize, deduplicate, cap, and reject malformed storage', () => {
