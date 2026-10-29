@@ -38,6 +38,7 @@ import {
   parseHeatMapDetailStats,
   parseSavedEtfComparisonSymbols,
 } from '@/lib/heatMapDetail';
+import { calculateEtfResearchScore } from '@/lib/etfResearchScore';
 import {
   formatAnalysisLoadingStage,
   getAnalysisLoadingStageInterval,
@@ -345,6 +346,18 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
   const [comparePendingSymbols, setComparePendingSymbols] = useState<string[]>([]);
   const [compareFailedSymbols, setCompareFailedSymbols] = useState<string[]>([]);
   const [compareStorageError, setCompareStorageError] = useState('');
+  const profileScore = calculateEtfResearchScore({
+    expenseRatio: fund.expenseRatio,
+    categoryAverageExpenseRatio: fund.peerExpenseComparison?.categoryAverageExpenseRatio ?? null,
+    trackingError: fund.benchmark && fund.trackingComparison
+      ? fund.trackingComparison.trackingError
+      : null,
+    sectorWeights: fund.sectorWeights ?? [],
+    averageVolume: fund.averageVolume,
+    totalAssets: fund.totalAssets,
+    annualizedVolatility: fund.annualizedVolatility,
+    maxDrawdown: fund.maxDrawdown,
+  });
 
   const persistCompareSymbols = (symbols: string[]) => {
     savedCompareSymbolsRef.current = symbols;
@@ -487,6 +500,33 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
   const sourceDate = (asOf: string) => new Date(asOf).toLocaleDateString();
   return (
     <>
+      <SectionCard title="ETF PROFILE SCORE" icon={<Ionicons name="speedometer-outline" size={16} color={colors.primary} />}>
+        <View style={{ padding: 16 }}>
+          <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 28 }}>
+            {profileScore.score == null ? 'Not scored' : `${profileScore.score}/100`}
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 4 }}>
+            {profileScore.availableComponents} of 5 components available. Missing components are excluded and remaining weights are rescaled.
+          </Text>
+          {profileScore.score != null && (
+            <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden', marginTop: 12, marginBottom: 6 }}>
+              <View style={{ height: '100%', width: `${profileScore.score}%`, backgroundColor: colors.primary }} />
+            </View>
+          )}
+          {profileScore.components.map((component) => (
+            <View key={component.id} style={{ marginTop: 8 }}>
+              <MetricRow
+                label={`${component.label} · ${component.weight}%`}
+                value={component.score == null ? 'Unavailable' : `${Math.round(component.score)}/100`}
+              />
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16 }}>{component.detail}</Text>
+            </View>
+          ))}
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 12 }}>
+            Rules-based, not AI-generated or personalized advice. Only fees use the provider’s category average; tracking requires a verified benchmark, while other factors use fixed bands. Compare funds with similar strategies.
+          </Text>
+        </View>
+      </SectionCard>
       <SectionCard title="FUND PROFILE" icon={<Ionicons name="layers-outline" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           <MetricRow label="Category" value={fund.fundCategory ?? 'Unavailable'} />

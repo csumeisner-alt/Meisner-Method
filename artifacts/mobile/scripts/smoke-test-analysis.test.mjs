@@ -107,3 +107,10 @@ test("ETF comparison tickers persist, revalidate, and remain saved on provider f
   assert.match(etfAnalysisSource, /It remains saved for retry/);
   assert.match(etfAnalysisSource, /removeCompareSymbol\(fundEntry\.symbol\)/);
 });
+
+test("ETF analysis displays the deterministic profile score and its limits", () => {
+  assert.match(etfAnalysisSource, /calculateEtfResearchScore\(\{/);
+  assert.match(etfAnalysisSource, /ETF PROFILE SCORE/);
+  assert.match(etfAnalysisSource, /Missing components are excluded and remaining weights are rescaled/);
+  assert.match(etfAnalysisSource, /Rules-based, not AI-generated or personalized advice/);
+});
