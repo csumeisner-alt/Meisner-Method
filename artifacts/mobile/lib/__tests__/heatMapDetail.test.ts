@@ -697,16 +697,79 @@ test('ETF holding overlap share includes selected funds, reported weights, snaps
   ]);
 
   assert.equal(summary, [
-    'ETF overlap summary',
+    'ETF comparison summary',
     'Funds: SPY, QQQ',
     'Provider snapshot retrieval times (UTC):',
     '- SPY: 2026-10-27T16:00:00.000Z',
     '- QQQ: unavailable',
+    'Provider sector and expense data (Yahoo Finance; retrieval times in UTC):',
+    '- SPY: unavailable',
+    '- QQQ: unavailable',
     'Common reported holdings:',
     '- NVIDIA (NVDA): SPY 8.00% · QQQ 7.00%',
+    'Reported sector weights:',
+    '- Unavailable for all selected funds.',
+    'Expense ratios (annual operating cost):',
+    '- SPY: unavailable',
+    '- QQQ: unavailable',
     'Coverage note: Overlap includes only positions reported by the provider and does not represent complete ETF portfolios.',
+    'Sector weights include only reported values; unavailable values are not zero.',
+    'Expense ratios are provider-reported annual fund costs, not a guarantee of total investment cost.',
   ].join('\n'));
   assert.doesNotMatch(summary, /account|portfolio value|balance/i);
+});
+
+test('ETF comparison share includes selected sector weights, expense costs, and provider retrieval times', () => {
+  const summary = formatReportedEtfHoldingsOverlapShare([
+    {
+      symbol: 'SPY',
+      topHoldingsRetrievedAt: '2026-10-27T16:00:00Z',
+      sectorWeightsRetrievedAt: '2026-10-27T16:00:00Z',
+      sectorWeights: [
+        { sector: 'Technology', weight: 0.4 },
+        { sector: 'Healthcare', weight: 0 },
+      ],
+      expenseRatio: 0.0003,
+    },
+    {
+      symbol: 'QQQ',
+      topHoldingsRetrievedAt: '2026-10-27T16:05:00Z',
+      sectorWeightsRetrievedAt: '2026-10-27T16:05:00Z',
+      sectorWeights: [{ sector: 'Technology', weight: 0.5 }],
+      expenseRatio: null,
+    },
+  ], []);
+
+  assert.match(summary, /Provider sector and expense data \(Yahoo Finance; retrieval times in UTC\):\n- SPY: 2026-10-27T16:00:00\.000Z\n- QQQ: 2026-10-27T16:05:00\.000Z/);
+  assert.match(summary, /Reported sector weights:\n- Healthcare: SPY 0\.00% · QQQ unavailable\n- Technology: SPY 40\.00% · QQQ 50\.00%/);
+  assert.match(summary, /Expense ratios \(annual operating cost\):\n- SPY: 0\.03% \(\$3\.00\/year per \$10,000\)\n- QQQ: unavailable/);
+  assert.match(summary, /Funds: SPY, QQQ/);
+  assert.doesNotMatch(summary, /IWM|unselected/i);
+});
+
+test('ETF comparison share labels missing and malformed sector or cost data unavailable', () => {
+  const summary = formatReportedEtfHoldingsOverlapShare([
+    {
+      symbol: 'SPY',
+      topHoldingsRetrievedAt: null,
+      sectorWeightsRetrievedAt: null,
+      sectorWeights: [],
+      expenseRatio: null,
+    },
+    {
+      symbol: 'BAD',
+      topHoldingsRetrievedAt: null,
+      sectorWeightsRetrievedAt: 'not-a-date',
+      sectorWeights: [{ sector: 'Technology', weight: Number.NaN }],
+      expenseRatio: 1.5,
+    },
+  ], []);
+
+  assert.match(summary, /- SPY: unavailable\n- BAD: unavailable/);
+  assert.match(summary, /Reported sector weights:\n- Unavailable for all selected funds\./);
+  assert.match(summary, /Expense ratios \(annual operating cost\):\n- SPY: unavailable\n- BAD: unavailable/);
+  assert.match(summary, /Sector weights include only reported values; unavailable values are not zero\./);
+  assert.doesNotMatch(summary, /BAD: 0\.00%|SPY: 0\.00%/);
 });
 
 test('ETF holding overlap share states when selected funds have no common reported positions', () => {
@@ -744,7 +807,7 @@ test('ETF overlap browser sharing sends only the selected comparison to Web Shar
   });
 
   assert.equal(result, 'shared');
-  assert.deepEqual(shareData, { title: 'ETF overlap summary', text: message });
+  assert.deepEqual(shareData, { title: 'ETF comparison summary', text: message });
   assert.match(message, /Funds: SPY, QQQ/);
   assert.doesNotMatch(message, /IWM|unselected/i);
 });
@@ -766,7 +829,7 @@ test('ETF overlap native sharing sends only the selected comparison to the share
   });
 
   assert.equal(result, 'shared');
-  assert.deepEqual(shareData, { title: 'ETF overlap summary', message });
+  assert.deepEqual(shareData, { title: 'ETF comparison summary', message });
   assert.match(message, /Funds: SPY, QQQ/);
   assert.doesNotMatch(message, /IWM|unselected/i);
 });
@@ -896,6 +959,8 @@ test('ETF analysis screen wires selected overlap content and suppresses feedback
     analysisScreenSource,
     /formatReportedEtfHoldingsOverlapShare\(selectedFunds,\s*overlaps\)/,
   );
+  assert.match(analysisScreenSource, /expenseRatio: profile\.expenseRatio/);
+  assert.match(analysisScreenSource, /expenseRatio: fund\.expenseRatio/);
   assert.match(
     analysisScreenSource,
     /shareEtfOverlapSummary\(\{[\s\S]*?message,\s*[\s\S]*?nativeShare:[\s\S]*?Share\.share\(data\)/,
@@ -907,6 +972,7 @@ test('ETF analysis screen wires selected overlap content and suppresses feedback
     analysisScreenSource,
     /result === 'shared'[\s\S]*?setShareStatus|result === 'cancelled'[\s\S]*?setShareStatus/,
   );
+  assert.match(analysisScreenSource, /accessibilityLabel="Share ETF comparison summary"/);
 });
 
 test('saved ETF comparisons normalize, deduplicate, cap, and reject malformed storage', () => {

@@ -370,6 +370,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
     topHoldings: { symbol: string; name: string; weight: number }[];
     topHoldingsReportedCount: number;
     topHoldingsRetrievedAt: string | null;
+    expenseRatio: number | null;
     sectorWeights: { sector: string; weight: number }[];
     sectorWeightsRetrievedAt: string | null;
   }>>([]);
@@ -459,6 +460,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           topHoldings: profile.topHoldings,
           topHoldingsReportedCount: profile.topHoldingsReportedCount,
           topHoldingsRetrievedAt: profile.topHoldingsRetrievedAt,
+          expenseRatio: profile.expenseRatio,
           sectorWeights: profile.sectorWeights,
           sectorWeightsRetrievedAt: profile.sectorWeightsRetrievedAt,
         }]);
@@ -509,6 +511,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
               topHoldings: profile.topHoldings,
               topHoldingsReportedCount: profile.topHoldingsReportedCount,
               topHoldingsRetrievedAt: profile.topHoldingsRetrievedAt,
+              expenseRatio: profile.expenseRatio,
               sectorWeights: profile.sectorWeights,
               sectorWeightsRetrievedAt: profile.sectorWeightsRetrievedAt,
             }]);
@@ -574,6 +577,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
         holding.weight == null ? [] : [{ ...holding, weight: holding.weight }]),
       topHoldingsReportedCount: fund.topHoldingsReportedCount,
       topHoldingsRetrievedAt: fund.topHoldingsRetrievedAt,
+      expenseRatio: fund.expenseRatio,
       sectorWeights: fund.sectorWeights ?? [],
       sectorWeightsRetrievedAt: fund.sectorWeightsRetrievedAt ?? null,
     },
@@ -618,7 +622,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
     else if (result === 'manual-copy') setManualCopySummary(message);
     else if (result === 'unavailable') setShareStatus('Sharing is not available in this browser.');
     else if (result === 'failed') {
-      setShareStatus('Could not share the ETF overlap summary. Please try again.');
+      setShareStatus('Could not share the ETF comparison summary. Please try again.');
     }
   };
   return (
@@ -640,7 +644,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
               <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 18 }}>
-                Copy overlap summary
+                Copy comparison summary
               </Text>
               <TouchableOpacity
                 accessibilityRole="button"
@@ -657,7 +661,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
             <ScrollView style={{ maxHeight: 360, marginTop: 14 }} nestedScrollEnabled>
               <Text
                 selectable
-                testID="manual-copy-etf-overlap-summary"
+                testID="manual-copy-etf-comparison-summary"
                 style={{ color: colors.foreground, fontSize: 13, lineHeight: 19 }}
               >
                 {manualCopySummary}
@@ -1034,13 +1038,13 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
               </Text>
               <TouchableOpacity
                 accessibilityRole="button"
-                accessibilityLabel="Share ETF overlap summary"
-                testID="share-etf-overlap-summary"
+                accessibilityLabel="Share ETF comparison summary"
+                testID="share-etf-comparison-summary"
                 onPress={() => void shareOverlapSummary()}
                 style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 14, paddingVertical: 11, borderRadius: 8, backgroundColor: colors.primary }}
               >
                 <Ionicons name="share-outline" size={16} color={colors.primaryForeground} />
-                <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_600SemiBold' }}>Share overlap summary</Text>
+                <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_600SemiBold' }}>Share comparison summary</Text>
               </TouchableOpacity>
               {!!shareStatus && (
                 <Text accessibilityLiveRegion="polite" style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 7 }}>

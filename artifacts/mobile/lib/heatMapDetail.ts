@@ -388,18 +388,33 @@ export function findReportedEtfHoldingsOverlap(
 }
 
 export function formatReportedEtfHoldingsOverlapShare(
-  funds: readonly { symbol: string; topHoldingsRetrievedAt: string | null }[],
+  funds: readonly {
+    symbol: string;
+    topHoldingsRetrievedAt: string | null;
+    sectorWeightsRetrievedAt?: string | null;
+    sectorWeights?: readonly HeatMapEtfSectorWeight[];
+    expenseRatio?: number | null;
+  }[],
   overlaps: readonly {
     symbol: string;
     positions: readonly { fundSymbol: string; name: string; weight: number }[];
   }[],
 ): string {
   const lines = [
-    'ETF overlap summary',
+    'ETF comparison summary',
     `Funds: ${funds.map((fund) => fund.symbol.toUpperCase()).join(', ')}`,
     'Provider snapshot retrieval times (UTC):',
     ...funds.map((fund) => {
       const retrievedAt = fund.topHoldingsRetrievedAt;
+      const timestamp = retrievedAt ? Date.parse(retrievedAt) : Number.NaN;
+      const formattedTime = Number.isFinite(timestamp)
+        ? new Date(timestamp).toISOString()
+        : 'unavailable';
+      return `- ${fund.symbol.toUpperCase()}: ${formattedTime}`;
+    }),
+    'Provider sector and expense data (Yahoo Finance; retrieval times in UTC):',
+    ...funds.map((fund) => {
+      const retrievedAt = fund.sectorWeightsRetrievedAt;
       const timestamp = retrievedAt ? Date.parse(retrievedAt) : Number.NaN;
       const formattedTime = Number.isFinite(timestamp)
         ? new Date(timestamp).toISOString()
@@ -421,8 +436,39 @@ export function formatReportedEtfHoldingsOverlapShare(
     lines.push('- No shared positions among the reported holdings.');
   }
 
+  const sectorComparison = getReportedEtfSectorComparison(funds.map((fund) => ({
+    symbol: fund.symbol,
+    sectorWeights: fund.sectorWeights ?? [],
+  })));
+  lines.push('Reported sector weights:');
+  if (sectorComparison.length) {
+    lines.push(...sectorComparison.map(({ sector, funds: sectorFunds }) =>
+      `- ${sector}: ${sectorFunds.map(({ symbol, weight }) =>
+        `${symbol.toUpperCase()} ${weight === null ? 'unavailable' : `${(weight * 100).toFixed(2)}%`}`,
+      ).join(' · ')}`,
+    ));
+  } else {
+    lines.push('- Unavailable for all selected funds.');
+  }
+
+  lines.push('Expense ratios (annual operating cost):');
+  lines.push(...funds.map((fund) => {
+    const expenseRatio = fund.expenseRatio;
+    const verifiedRatio = typeof expenseRatio === 'number'
+      && Number.isFinite(expenseRatio)
+      && expenseRatio >= 0
+      && expenseRatio <= 1
+      ? expenseRatio
+      : null;
+    return `- ${fund.symbol.toUpperCase()}: ${verifiedRatio === null
+      ? 'unavailable'
+      : `${(verifiedRatio * 100).toFixed(2)}% ($${(verifiedRatio * 10_000).toFixed(2)}/year per $10,000)`}`;
+  }));
+
   lines.push(
     'Coverage note: Overlap includes only positions reported by the provider and does not represent complete ETF portfolios.',
+    'Sector weights include only reported values; unavailable values are not zero.',
+    'Expense ratios are provider-reported annual fund costs, not a guarantee of total investment cost.',
   );
   return lines.join('\n');
 }
@@ -442,7 +488,7 @@ export async function shareEtfOverlapSummary(options: {
   clipboardWriteText?: (text: string) => Promise<void>;
   nativeShare?: (data: { title: string; message: string }) => Promise<'shared' | 'dismissed'>;
 }): Promise<EtfOverlapShareResult> {
-  const title = 'ETF overlap summary';
+  const title = 'ETF comparison summary';
 
   if (options.platform === 'native') {
     if (!options.nativeShare) return 'unavailable';
