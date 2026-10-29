@@ -96,3 +96,121 @@ test("missing peer data is excluded and incomplete sector coverage is not scored
   assert.equal(result.score, null);
   assert.equal(result.availableComponents, 2);
 });
+
+test("tracking-error score is exact at both fixed-band limits", () => {
+  const scoreAt = (trackingError: number) =>
+    calculateEtfResearchScore({
+      ...completeInput,
+      trackingError,
+    }).components.find((item) => item.id === "tracking")?.score;
+
+  assert.equal(scoreAt(0), 100);
+  assert.equal(scoreAt(0.05), 0);
+  assert.equal(scoreAt(0.06), 0);
+});
+
+test("liquidity score is exact at the fixed volume and asset band limits", () => {
+  const volumeScoreAt = (averageVolume: number) =>
+    calculateEtfResearchScore({
+      ...completeInput,
+      averageVolume,
+      totalAssets: null,
+    }).components.find((item) => item.id === "liquidity")?.score;
+  const assetsScoreAt = (totalAssets: number) =>
+    calculateEtfResearchScore({
+      ...completeInput,
+      averageVolume: null,
+      totalAssets,
+    }).components.find((item) => item.id === "liquidity")?.score;
+
+  assert.equal(volumeScoreAt(10_000), 0);
+  assert.equal(volumeScoreAt(1_000_000), 100);
+  assert.equal(assetsScoreAt(10_000_000), 0);
+  assert.equal(assetsScoreAt(1_000_000_000), 100);
+});
+
+test("risk score is exact at the fixed volatility and drawdown band limits", () => {
+  const volatilityScoreAt = (annualizedVolatility: number) =>
+    calculateEtfResearchScore({
+      ...completeInput,
+      annualizedVolatility,
+      maxDrawdown: null,
+    }).components.find((item) => item.id === "risk")?.score;
+  const drawdownScoreAt = (maxDrawdown: number) =>
+    calculateEtfResearchScore({
+      ...completeInput,
+      annualizedVolatility: null,
+      maxDrawdown,
+    }).components.find((item) => item.id === "risk")?.score;
+
+  assert.equal(volatilityScoreAt(0), 100);
+  assert.equal(volatilityScoreAt(0.6), 0);
+  assert.equal(volatilityScoreAt(0.7), 0);
+  assert.equal(drawdownScoreAt(0), 100);
+  assert.equal(drawdownScoreAt(-0.75), 0);
+  assert.equal(drawdownScoreAt(-0.8), 0);
+});
+
+test("sector diversification accepts exactly 80% coverage and ignores invalid weights", () => {
+  const atThreshold = calculateEtfResearchScore({
+    ...completeInput,
+    sectorWeights: [
+      { sector: "Technology", weight: 0.4 },
+      { sector: "Healthcare", weight: 0.4 },
+    ],
+  });
+  assert.equal(atThreshold.components.find((item) => item.id === "diversification")?.score, 50);
+
+  const belowThreshold = calculateEtfResearchScore({
+    ...completeInput,
+    sectorWeights: [
+      { sector: "Technology", weight: 0.4 },
+      { sector: "Healthcare", weight: 0.399 },
+    ],
+  });
+  assert.equal(belowThreshold.components.find((item) => item.id === "diversification")?.score, null);
+
+  const withInvalidWeights = calculateEtfResearchScore({
+    ...completeInput,
+    sectorWeights: [
+      { sector: "Technology", weight: 0.4 },
+      { sector: "Healthcare", weight: 0.4 },
+      { sector: "Negative", weight: -0.1 },
+      { sector: "Zero", weight: 0 },
+      { sector: "Over 100%", weight: 1.01 },
+      { sector: "Infinite", weight: Number.POSITIVE_INFINITY },
+      { sector: "Not a number", weight: Number.NaN },
+      { sector: "   ", weight: 0.2 },
+    ],
+  });
+  const diversification = withInvalidWeights.components.find((item) => item.id === "diversification");
+  assert.equal(diversification?.score, 50);
+  assert.match(diversification?.detail ?? "", /2 provider-reported sectors/);
+});
+
+test("available components are reweighted and fewer than three keeps the score unavailable", () => {
+  const threeComponents = calculateEtfResearchScore({
+    ...completeInput,
+    sectorWeights: [
+      { sector: "Technology", weight: 0.4 },
+      { sector: "Healthcare", weight: 0.4 },
+    ],
+    averageVolume: null,
+    totalAssets: null,
+    annualizedVolatility: null,
+    maxDrawdown: null,
+  });
+  assert.equal(threeComponents.components.find((item) => item.id === "liquidity")?.score, null);
+  assert.equal(threeComponents.components.find((item) => item.id === "risk")?.score, null);
+  assert.equal(threeComponents.availableComponents, 3);
+  assert.equal(threeComponents.score, 70);
+
+  const twoComponents = calculateEtfResearchScore({
+    ...completeInput,
+    categoryAverageExpenseRatio: null,
+    trackingError: null,
+    sectorWeights: [],
+  });
+  assert.equal(twoComponents.availableComponents, 2);
+  assert.equal(twoComponents.score, null);
+});
