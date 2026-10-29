@@ -57,6 +57,30 @@ test("ETF scenarios treat negative and non-finite expense ratios as unavailable"
   }
 });
 
+test("ETF scenarios omit non-finite reported regimes without hiding valid regimes", () => {
+  for (const invalidReturn of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    const scenarios = buildEtfScenarios(100, 0.01, {
+      bear: { averageAnnualReturn: invalidReturn, years: 2 },
+      mixed: { averageAnnualReturn: 0.05, years: 4 },
+      bull: { averageAnnualReturn: 0.2, years: 2 },
+    });
+    const bear = scenarios.find((scenario) => scenario.label === "bear");
+    const base = scenarios.find((scenario) => scenario.label === "base");
+    const bull = scenarios.find((scenario) => scenario.label === "bull");
+
+    assert.equal(bear?.annualReturnAssumption, null);
+    assert.equal(bear?.fiveYearValue, null);
+    assert.equal(bear?.tenYearValue, null);
+    assert.match(bear?.assumption ?? "", /insufficient provider-reported bear regime history/);
+    assert.equal(base?.annualReturnAssumption, 0.09000000000000002);
+    assert.equal(base?.fiveYearValue, 153.86);
+    assert.equal(base?.tenYearValue, 236.74);
+    assert.equal(bull?.annualReturnAssumption, 0.19);
+    assert.equal(bull?.fiveYearValue, 238.64);
+    assert.equal(bull?.tenYearValue, 569.47);
+  }
+});
+
 test("ETF scenarios preserve reported zero and positive expense ratio calculations", () => {
   const periods = {
     bear: { averageAnnualReturn: -0.1, years: 2 },
