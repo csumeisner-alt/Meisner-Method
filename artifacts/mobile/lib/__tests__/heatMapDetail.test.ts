@@ -800,15 +800,35 @@ test('ETF overlap browser sharing copies when Web Share is unavailable or fails'
   });
 });
 
-test('ETF overlap browser sharing reports unavailable, failure, and cancellation accurately', async (t) => {
-  await t.test('reports unavailable when neither browser option exists', async () => {
+test('ETF overlap browser sharing provides manual copy when browser APIs are blocked', async (t) => {
+  await t.test('offers manual copy when neither browser option exists', async () => {
     assert.equal(await shareEtfOverlapSummary({
       platform: 'web',
       message: 'Selected comparison',
-    }), 'unavailable');
+    }), 'manual-copy');
   });
 
-  await t.test('reports failure when sharing and clipboard both fail', async () => {
+  await t.test('offers manual copy when Web Share is rejected and clipboard is unavailable', async () => {
+    assert.equal(await shareEtfOverlapSummary({
+      platform: 'web',
+      message: 'Selected comparison',
+      webShare: async () => {
+        throw new Error('Web Share blocked');
+      },
+    }), 'manual-copy');
+  });
+
+  await t.test('offers manual copy when clipboard rejects after Web Share is unavailable', async () => {
+    assert.equal(await shareEtfOverlapSummary({
+      platform: 'web',
+      message: 'Selected comparison',
+      clipboardWriteText: async () => {
+        throw new Error('Clipboard blocked');
+      },
+    }), 'manual-copy');
+  });
+
+  await t.test('offers manual copy when both sharing and clipboard fail', async () => {
     assert.equal(await shareEtfOverlapSummary({
       platform: 'web',
       message: 'Selected comparison',
@@ -818,7 +838,7 @@ test('ETF overlap browser sharing reports unavailable, failure, and cancellation
       clipboardWriteText: async () => {
         throw new Error('Clipboard failed');
       },
-    }), 'failed');
+    }), 'manual-copy');
   });
 
   await t.test('does not turn a user-cancelled share into a clipboard copy', async () => {
@@ -880,7 +900,9 @@ test('ETF analysis screen wires selected overlap content and suppresses feedback
     analysisScreenSource,
     /shareEtfOverlapSummary\(\{[\s\S]*?message,\s*[\s\S]*?nativeShare:[\s\S]*?Share\.share\(data\)/,
   );
-  assert.match(analysisScreenSource, /if \(result === 'copied'\)[\s\S]*?else if \(result === 'unavailable'\)[\s\S]*?else if \(result === 'failed'\)/);
+  assert.match(analysisScreenSource, /result === 'manual-copy'\) setManualCopySummary\(message\)/);
+  assert.match(analysisScreenSource, /visible=\{manualCopySummary !== null\}[\s\S]*?selectable[\s\S]*?\{manualCopySummary\}/);
+  assert.match(analysisScreenSource, /if \(result === 'copied'\)[\s\S]*?else if \(result === 'manual-copy'\)[\s\S]*?else if \(result === 'unavailable'\)[\s\S]*?else if \(result === 'failed'\)/);
   assert.doesNotMatch(
     analysisScreenSource,
     /result === 'shared'[\s\S]*?setShareStatus|result === 'cancelled'[\s\S]*?setShareStatus/,

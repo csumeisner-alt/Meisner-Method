@@ -430,6 +430,7 @@ export function formatReportedEtfHoldingsOverlapShare(
 export type EtfOverlapShareResult =
   | 'shared'
   | 'copied'
+  | 'manual-copy'
   | 'unavailable'
   | 'cancelled'
   | 'failed';
@@ -453,23 +454,23 @@ export async function shareEtfOverlapSummary(options: {
     }
   }
 
-  if (!options.webShare && !options.clipboardWriteText) return 'unavailable';
+  if (!options.webShare && !options.clipboardWriteText) return 'manual-copy';
   if (options.webShare) {
     try {
       await options.webShare({ title, text: options.message });
       return 'shared';
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') return 'cancelled';
-      if (!options.clipboardWriteText) return 'failed';
+      if (!options.clipboardWriteText) return 'manual-copy';
     }
   }
 
-  if (!options.clipboardWriteText) return 'unavailable';
+  if (!options.clipboardWriteText) return 'manual-copy';
   try {
     await options.clipboardWriteText(options.message);
     return 'copied';
   } catch {
-    return 'failed';
+    return 'manual-copy';
   }
 }
 

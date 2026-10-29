@@ -361,6 +361,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
   }>>([]);
   const [compareError, setCompareError] = useState('');
   const [shareStatus, setShareStatus] = useState('');
+  const [manualCopySummary, setManualCopySummary] = useState<string | null>(null);
   const [compareLoading, setCompareLoading] = useState(false);
   const [compareRestoreLoading, setCompareRestoreLoading] = useState(true);
   const [comparePendingSymbols, setComparePendingSymbols] = useState<string[]>([]);
@@ -581,6 +582,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
   const shareOverlapSummary = async () => {
     const message = formatReportedEtfHoldingsOverlapShare(selectedFunds, overlaps);
     setShareStatus('');
+    setManualCopySummary(null);
     const browserNavigator = Platform.OS === 'web' && typeof navigator !== 'undefined'
       ? navigator
       : undefined;
@@ -599,6 +601,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
       },
     });
     if (result === 'copied') setShareStatus('Summary copied to clipboard.');
+    else if (result === 'manual-copy') setManualCopySummary(message);
     else if (result === 'unavailable') setShareStatus('Sharing is not available in this browser.');
     else if (result === 'failed') {
       setShareStatus('Could not share the ETF overlap summary. Please try again.');
@@ -606,6 +609,56 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
   };
   return (
     <>
+      <Modal
+        transparent
+        animationType="fade"
+        visible={manualCopySummary !== null}
+        onRequestClose={() => setManualCopySummary(null)}
+      >
+        <View style={{ flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,0.72)' }}>
+          <View style={{
+            maxHeight: '82%',
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+            borderWidth: 1,
+            borderRadius: 16,
+            padding: 18,
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 18 }}>
+                Copy overlap summary
+              </Text>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Close manual copy summary"
+                onPress={() => setManualCopySummary(null)}
+                hitSlop={10}
+              >
+                <Ionicons name="close" size={22} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            </View>
+            <Text style={{ color: colors.mutedForeground, fontSize: 13, lineHeight: 19, marginTop: 8 }}>
+              Sharing and clipboard access are blocked. Select the summary below and copy it manually.
+            </Text>
+            <ScrollView style={{ maxHeight: 360, marginTop: 14 }} nestedScrollEnabled>
+              <Text
+                selectable
+                testID="manual-copy-etf-overlap-summary"
+                style={{ color: colors.foreground, fontSize: 13, lineHeight: 19 }}
+              >
+                {manualCopySummary}
+              </Text>
+            </ScrollView>
+            <TouchableOpacity
+              accessibilityRole="button"
+              onPress={() => setManualCopySummary(null)}
+              style={{ alignSelf: 'flex-end', paddingHorizontal: 12, paddingVertical: 10, marginTop: 10 }}
+            >
+              <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold' }}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
       <View style={[recStyles.hero, {
         backgroundColor: colors.card,
         borderColor: profileScore.score == null ? colors.primary : etfScoreColor(profileScore.score),
