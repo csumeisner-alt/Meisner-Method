@@ -741,6 +741,7 @@ export default function HeatMapScreen() {
       setCustomSymbols(malformed ? [] : symbols);
       setStorageLoadError(malformed ? 'malformed' : null);
       setFormError('');
+      if (!malformed) awardCustomMapMilestones(symbols.length);
     } catch {
       if (readId !== customStorageReadId.current) return;
       setStorageLoadError('read');
@@ -1206,7 +1207,10 @@ export default function HeatMapScreen() {
   function awardCustomMapMilestones(count: number) {
     if (count >= 1) void awardAchievement('first-custom-instrument');
     if (count >= 5) void awardAchievement('custom-map-5');
-    if (count >= 10) void awardAchievement('custom-map-10');
+    if (count >= 10) {
+      void awardAchievement('custom-map-10');
+      void awardAchievement('quote-50');
+    }
   }
   async function resetMalformedSavedTickers() {
     if (!storageReady || storageLoadError !== 'malformed' || isResettingSavedTickers) return;

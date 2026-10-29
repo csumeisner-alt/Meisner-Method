@@ -1,4 +1,6 @@
 export const ACHIEVEMENT_STORAGE_KEY = '@meisnermethod/achievements_v1';
+export const ANALYZE_SEARCH_COUNT_STORAGE_KEY = '@meisnermethod/analyze_search_count_v1';
+export const ANALYZE_SEARCH_ACHIEVEMENT_THRESHOLD = 30;
 export const PREMIUM_FLAG_STORAGE_KEY = '@meisnermethod/premium_flag_badge_v1';
 export const DEFAULT_FLAG_ID = 'default' as const;
 
@@ -11,8 +13,8 @@ export const ACHIEVEMENTS = [
   },
   { id: 'quote-10', title: 'Tape Collector', description: 'Viewed 10 Training Tape quotes.', icon: 'bookmark' },
   { id: 'quote-25', title: 'Signal Tracker', description: 'Viewed 25 Training Tape quotes.', icon: 'activity' },
-  { id: 'quote-50', title: 'Market Scholar', description: 'Viewed 50 Training Tape quotes.', icon: 'book-open' },
-  { id: 'quote-100', title: 'Oracle', description: 'Viewed 100 Training Tape quotes.', icon: 'eye' },
+  { id: 'quote-50', title: 'Market Scholar', description: 'Added 10 instruments to a Custom map.', icon: 'book-open' },
+  { id: 'quote-100', title: 'Oracle', description: 'Completed 30 Analyze searches.', icon: 'eye' },
   {
     id: 'first-paper-order',
     title: 'Paper Trader',
@@ -37,6 +39,12 @@ export const ACHIEVEMENTS = [
 
 export type AchievementId = (typeof ACHIEVEMENTS)[number]['id'];
 export type Achievement = (typeof ACHIEVEMENTS)[number];
+
+export function parseAnalyzeSearchCount(raw: string | null): number {
+  if (raw === null) return 0;
+  const count = Number(raw);
+  return Number.isSafeInteger(count) && count >= 0 ? count : 0;
+}
 
 export function hasCompletedAllAchievements(earnedIds: readonly AchievementId[]): boolean {
   const earned = new Set(earnedIds);

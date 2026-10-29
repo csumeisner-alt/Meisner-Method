@@ -2,6 +2,8 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ACHIEVEMENT_STORAGE_KEY,
+  ANALYZE_SEARCH_ACHIEVEMENT_THRESHOLD,
+  ANALYZE_SEARCH_COUNT_STORAGE_KEY,
   DEFAULT_FLAG_ID,
   PRIDE_FLAG,
   PREMIUM_FLAG_STORAGE_KEY,
@@ -10,6 +12,7 @@ import {
   hasCompletedAllAchievements,
   resolvePremiumFlagSelection,
   parseEarnedAchievementIds,
+  parseAnalyzeSearchCount,
   type Achievement,
   type AchievementId,
   type FlagSelectionId,
@@ -19,6 +22,7 @@ import { useAmericanMode } from '@/contexts/AmericanModeContext';
 type AchievementsState = {
   earnedIds: AchievementId[];
   awardAchievement: (id: AchievementId) => Promise<void>;
+  recordAnalyzeSearch: () => Promise<void>;
   selectedPremiumFlagId: FlagSelectionId;
   quotesViewed: number;
   prideUnlocked: boolean;
@@ -45,6 +49,8 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
   const premiumFlagHydratedRef = useRef(false);
   const pendingAwardsRef = useRef<AchievementId[]>([]);
   const writeQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const analyzeSearchCountRef = useRef<number | null>(null);
+  const analyzeSearchWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
   const prideUnlocked = hasUnlockedPrideFlag(brew.quotesViewed);
   const selectedPremiumFlagId = storedFlagSelection === PRIDE_FLAG.id && !prideUnlocked
     ? 'heritage'
@@ -69,6 +75,36 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
       });
     await writeQueueRef.current;
   }, []);
+
+  const recordAnalyzeSearch = useCallback(() => {
+    const nextWrite = analyzeSearchWriteQueueRef.current.catch(() => {}).then(async () => {
+      let previousCount = analyzeSearchCountRef.current;
+      if (previousCount === null) {
+        try {
+          previousCount = parseAnalyzeSearchCount(
+            await AsyncStorage.getItem(ANALYZE_SEARCH_COUNT_STORAGE_KEY),
+          );
+        } catch (error) {
+          previousCount = 0;
+          console.warn('[achievements] Could not load Analyze search progress:', error);
+        }
+      }
+
+      const nextCount = previousCount + 1;
+      analyzeSearchCountRef.current = nextCount;
+      if (nextCount >= ANALYZE_SEARCH_ACHIEVEMENT_THRESHOLD) {
+        void awardAchievement('quote-100');
+      }
+
+      try {
+        await AsyncStorage.setItem(ANALYZE_SEARCH_COUNT_STORAGE_KEY, String(nextCount));
+      } catch (error) {
+        console.warn('[achievements] Could not save Analyze search progress:', error);
+      }
+    });
+    analyzeSearchWriteQueueRef.current = nextWrite;
+    return nextWrite;
+  }, [awardAchievement]);
 
   const selectPremiumFlag = useCallback((id: FlagSelectionId) => {
     if (
@@ -143,6 +179,7 @@ export function AchievementsProvider({ children }: { children: React.ReactNode }
       value={{
         earnedIds,
         awardAchievement,
+        recordAnalyzeSearch,
         selectedPremiumFlagId,
         quotesViewed: brew.quotesViewed,
         prideUnlocked,

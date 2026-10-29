@@ -97,8 +97,8 @@ test("home search submits a raw ticker after lookup finishes without blocking co
   assert.ok(submitHandler, "the home search submit handler should remain identifiable");
   assert.match(
     submitHandler,
-    /if\s*\(resolvedSymbol\)\s*navigateTo\(resolvedSymbol\)/,
-    "the home search should submit a resolved ticker and keep unresolved company names blocked",
+    /if\s*\(!resolvedSymbol\)\s*return;[\s\S]*?recordAnalyzeSearch\(\);[\s\S]*?navigateTo\(resolvedSymbol\)/,
+    "the home search should count only a resolved ticker submission and block unresolved company names",
   );
   assert.match(
     homeScreen,

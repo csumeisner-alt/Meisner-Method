@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  ANALYZE_SEARCH_ACHIEVEMENT_THRESHOLD,
   ACHIEVEMENTS,
   INITIAL_ACHIEVEMENT_SEAL_STATE,
   achievementSealReducer,
@@ -14,6 +15,7 @@ import {
   PRIDE_FLAG_QUOTE_THRESHOLD,
   parsePremiumFlagId,
   parseEarnedAchievementIds,
+  parseAnalyzeSearchCount,
   resolvePremiumFlagSelection,
 } from '../achievements.ts';
 
@@ -33,6 +35,18 @@ test('earned achievement storage parsing ignores unknown IDs and duplicates', ()
   assert.deepEqual(parseEarnedAchievementIds('not-json'), []);
   assert.deepEqual(parseEarnedAchievementIds(JSON.stringify({ first: true })), []);
   assert.equal(ACHIEVEMENTS.length, 15);
+});
+
+test('Market Scholar and Oracle use the replacement milestones', () => {
+  assert.equal(ANALYZE_SEARCH_ACHIEVEMENT_THRESHOLD, 30);
+  assert.equal(ACHIEVEMENTS.find(({ id }) => id === 'quote-50')?.description, 'Added 10 instruments to a Custom map.');
+  assert.equal(ACHIEVEMENTS.find(({ id }) => id === 'quote-100')?.description, 'Completed 30 Analyze searches.');
+  assert.equal(parseAnalyzeSearchCount(null), 0);
+  assert.equal(parseAnalyzeSearchCount('29'), 29);
+  assert.equal(parseAnalyzeSearchCount('30'), 30);
+  assert.equal(parseAnalyzeSearchCount('-1'), 0);
+  assert.equal(parseAnalyzeSearchCount('1.5'), 0);
+  assert.equal(parseAnalyzeSearchCount('invalid'), 0);
 });
 
 test('premium flag badge unlock requires all 15 unique achievements', () => {

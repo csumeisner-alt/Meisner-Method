@@ -1846,8 +1846,6 @@ function GradeHistoryModal({
       const update = await incrementQuoteViewed(quoteViewId);
       if (update.quotesViewed >= 10) void awardAchievement('quote-10');
       if (update.quotesViewed >= 25) void awardAchievement('quote-25');
-      if (update.quotesViewed >= 50) void awardAchievement('quote-50');
-      if (update.quotesViewed >= 100) void awardAchievement('quote-100');
       return update;
     } catch (error) {
       console.warn('[achievements] Could not record Training Tape progress:', error);

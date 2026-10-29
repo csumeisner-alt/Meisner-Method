@@ -20,11 +20,16 @@ const achievementsContextSource = readSource("../contexts/AchievementsContext.ts
 
 test("first-time app milestones are wired to achievement rewards and a review screen", () => {
   assert.match(portfolioSource, /void awardAchievement\('first-quote'\)/);
-  assert.match(portfolioSource, /awardAchievement\('quote-100'\)/);
+  assert.doesNotMatch(portfolioSource, /awardAchievement\('quote-(50|100)'\)/);
   assert.match(paperSource, /awardAchievement\('first-paper-order'\)/);
   assert.match(paperSource, /awardAchievement\('first-paper-limit'\)/);
   assert.match(heatMapSource, /awardAchievement\('first-custom-instrument'\)/);
   assert.match(heatMapSource, /awardCustomMapMilestones\(nextSymbols\.length\)/);
+  assert.match(heatMapSource, /setCustomSymbols\(malformed \? \[\] : symbols\);[\s\S]*?if \(!malformed\) awardCustomMapMilestones\(symbols\.length\)/);
+  assert.match(heatMapSource, /if \(count >= 10\) \{\s*void awardAchievement\('custom-map-10'\);\s*void awardAchievement\('quote-50'\);/);
+  assert.match(homeSource, /if \(!resolvedSymbol\) return;\s*void recordAnalyzeSearch\(\);\s*navigateTo\(resolvedSymbol\);/);
+  assert.match(achievementsContextSource, /nextCount >= ANALYZE_SEARCH_ACHIEVEMENT_THRESHOLD[\s\S]*?void awardAchievement\('quote-100'\)/);
+  assert.match(achievementsContextSource, /AsyncStorage\.setItem\(ANALYZE_SEARCH_COUNT_STORAGE_KEY, String\(nextCount\)\)/);
   assert.match(watchlistSource, /awardAchievement\('first-watchlist'\)/);
   assert.match(watchlistSource, /awardAchievement\('first-price-alert'\)/);
   assert.match(analysisSource, /awardAchievement\('first-analysis'\)/);

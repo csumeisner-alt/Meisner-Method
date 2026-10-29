@@ -230,7 +230,7 @@ export default function HomeScreen() {
 
   // Patriot Mode — fact counter, unlock state, and celebration trigger
   const { isActive, neonGucciActive, justUnlocked, incrementFact, clearJustUnlocked } = useAmericanMode();
-  const { earnedIds, selectedPremiumFlagId } = useAchievements();
+  const { earnedIds, selectedPremiumFlagId, recordAnalyzeSearch } = useAchievements();
   const [showCelebration, setShowCelebration] = useState(false);
   const marketPulseQuery = useGetMarketPulse({
     query: {
@@ -444,7 +444,9 @@ export default function HomeScreen() {
     ?? resolveStockSearchSymbol(query, stockSuggestions, selectedStock, allowRawTicker);
 
   const handleSubmit = () => {
-    if (resolvedSymbol) navigateTo(resolvedSymbol);
+    if (!resolvedSymbol) return;
+    void recordAnalyzeSearch();
+    navigateTo(resolvedSymbol);
   };
 
   const selectStock = (stock: StockSymbolSuggestion, selectionQuery: string | null) => {
