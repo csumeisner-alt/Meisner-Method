@@ -306,25 +306,38 @@ def monthly_closes(history):
 
 def calculate_tracking_comparison(etf_monthly_closes, benchmark_monthly_closes):
     """Compare adjusted monthly returns over the exact shared history window."""
-    shared_months = sorted(set(etf_monthly_closes) & set(benchmark_monthly_closes))
+    def valid_monthly_closes(closes):
+        valid = {}
+        for month, raw_close in closes.items():
+            if not isinstance(month, str) or not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):
+                continue
+            year = int(month[:4])
+            if year < 1:
+                continue
+            close = finite_number(raw_close)
+            if close is not None and close > 0:
+                valid[month] = close
+        return valid
+
+    etf_closes = valid_monthly_closes(etf_monthly_closes)
+    benchmark_closes = valid_monthly_closes(benchmark_monthly_closes)
+    shared_months = sorted(set(etf_closes) & set(benchmark_closes))
     if len(shared_months) < 3:
         return None
 
     etf_returns = []
     benchmark_returns = []
+    sampled_periods = []
     for previous, current in zip(shared_months, shared_months[1:]):
-        etf_start = finite_number(etf_monthly_closes.get(previous))
-        etf_end = finite_number(etf_monthly_closes.get(current))
-        benchmark_start = finite_number(benchmark_monthly_closes.get(previous))
-        benchmark_end = finite_number(benchmark_monthly_closes.get(current))
-        if (
-            etf_start is None or etf_end is None
-            or benchmark_start is None or benchmark_end is None
-            or etf_start <= 0 or benchmark_start <= 0
-        ):
+        previous_year, previous_month = map(int, previous.split("-"))
+        current_year, current_month = map(int, current.split("-"))
+        if current_year * 12 + current_month != previous_year * 12 + previous_month + 1:
             continue
-        etf_returns.append(etf_end / etf_start - 1)
-        benchmark_returns.append(benchmark_end / benchmark_start - 1)
+        etf_returns.append(etf_closes[current] / etf_closes[previous] - 1)
+        benchmark_returns.append(
+            benchmark_closes[current] / benchmark_closes[previous] - 1
+        )
+        sampled_periods.append((previous, current))
 
     sample_count = len(etf_returns)
     if sample_count < 2:
@@ -335,19 +348,18 @@ def calculate_tracking_comparison(etf_monthly_closes, benchmark_monthly_closes):
         for etf_return, benchmark_return in zip(etf_returns, benchmark_returns)
     ]
     periods_per_year = 12 / sample_count
-    etf_annualized = (etf_monthly_closes[shared_months[-1]] / etf_monthly_closes[shared_months[0]]) ** periods_per_year - 1
-    benchmark_annualized = (
-        benchmark_monthly_closes[shared_months[-1]]
-        / benchmark_monthly_closes[shared_months[0]]
-    ) ** periods_per_year - 1
+    etf_growth = math.prod(1 + value for value in etf_returns)
+    benchmark_growth = math.prod(1 + value for value in benchmark_returns)
+    etf_annualized = etf_growth ** periods_per_year - 1
+    benchmark_annualized = benchmark_growth ** periods_per_year - 1
     mean_active = sum(active_returns) / sample_count
     tracking_error = math.sqrt(
         sum((value - mean_active) ** 2 for value in active_returns)
         / (sample_count - 1)
     ) * math.sqrt(12)
     return {
-        "periodStart": shared_months[0],
-        "periodEnd": shared_months[-1],
+        "periodStart": sampled_periods[0][0],
+        "periodEnd": sampled_periods[-1][1],
         "monthlySamples": sample_count,
         "fundAnnualizedReturn": etf_annualized,
         "benchmarkAnnualizedReturn": benchmark_annualized,

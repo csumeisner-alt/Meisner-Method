@@ -44,6 +44,7 @@
 - [ETF analysis scenarios](etf-analysis-scenarios.md) — long-range ETF values are deterministic historical-regime illustrations, never AI-generated forecasts.
 - [Yahoo ETF holdings coverage](yahoo-etf-holdings-coverage.md) — Yahoo fund data commonly returns ten top holdings and no report date; label retrieval time and disclose the reported-position coverage.
 - [ETF benchmarks and peer comparisons](etf-benchmark-peer-data.md) — use only explicit provider baselines; disclose category, source, retrieval time, and unknown sample size.
+- [ETF tracking monthly windows](etf-tracking-monthly-windows.md) — count only consecutive shared monthly prices; metadata and annualization must use those sampled intervals.
 - [GitHub release sync](github-release-sync.md) — if the HTTPS remote credential is stale, sync through the authorized GitHub API and throttle blob writes below the proxy limit.
 - [Biden quote progress tracker](biden-quote-progress-tracker.md) — keep this as a visual layer over the existing persisted view count and shared unlock threshold.
 - [Shared heat-map market status](heatmap-shared-market-status.md) — show one open/pre-market/extended/closed indicator for Stocks, ETFs, and Custom instead of repeating next-open times in hexes.

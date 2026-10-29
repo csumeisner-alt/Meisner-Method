@@ -368,6 +368,70 @@ class InfoBriefEtfFieldTests(unittest.TestCase):
             {"2025-01": 100, "2025-02": 100},
         ))
 
+    def test_tracking_comparison_uses_only_consecutive_shared_months(self):
+        result = fetch_info_brief.calculate_tracking_comparison(
+            {
+                "2025-01": 100,
+                "2025-02": 110,
+                "2025-04": 121,
+                "2025-05": 133.1,
+                "2025-06": 146.41,
+            },
+            {
+                "2025-01": 100,
+                "2025-02": 100,
+                "2025-04": 100,
+                "2025-05": 100,
+                "2025-06": 100,
+            },
+        )
+
+        self.assertEqual(result["periodStart"], "2025-01")
+        self.assertEqual(result["periodEnd"], "2025-06")
+        self.assertEqual(result["monthlySamples"], 3)
+        self.assertAlmostEqual(result["fundAnnualizedReturn"], 1.1 ** 12 - 1)
+        self.assertAlmostEqual(result["benchmarkAnnualizedReturn"], 0)
+
+    def test_tracking_comparison_ignores_malformed_month_keys(self):
+        etf_closes = {
+            "2025-00": 1,
+            "2025-1": 1,
+            "2025-01": 100,
+            "2025-02": 110,
+            "2025-02-extra": 2,
+            "2025-03": 121,
+            "2025-13": 3,
+            "2025-04 ": 4,
+            "2025-04": 133.1,
+        }
+        benchmark_closes = {
+            "2025-00": 1,
+            "2025-1": 1,
+            "2025-01": 100,
+            "2025-02": 100,
+            "2025-02-extra": 2,
+            "2025-03": 100,
+            "2025-13": 3,
+            "2025-04 ": 4,
+            "2025-04": 100,
+        }
+
+        result = fetch_info_brief.calculate_tracking_comparison(
+            etf_closes, benchmark_closes
+        )
+
+        self.assertEqual(result["periodStart"], "2025-01")
+        self.assertEqual(result["periodEnd"], "2025-04")
+        self.assertEqual(result["monthlySamples"], 3)
+
+    def test_tracking_comparison_is_unavailable_with_too_few_consecutive_months(self):
+        result = fetch_info_brief.calculate_tracking_comparison(
+            {"2025-01": 100, "2025-03": 110, "2025-04": 121},
+            {"2025-01": 100, "2025-03": 100, "2025-04": 100},
+        )
+
+        self.assertIsNone(result)
+
     def test_category_peer_comparison_preserves_unknown_sample_size(self):
         class FundOperations:
             loc = {
