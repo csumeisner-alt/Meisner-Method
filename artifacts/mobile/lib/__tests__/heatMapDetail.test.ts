@@ -933,6 +933,59 @@ test('ETF comparison share keeps malformed or missing risk and performance unava
   assert.doesNotMatch(summary, /BAD: .*0\.00%|BAD: .*0\.00/);
 });
 
+test('ETF comparison share preserves valid zero risk and performance metrics', () => {
+  const summary = formatReportedEtfHoldingsOverlapShare(
+    [{ symbol: 'ZERO', topHoldingsRetrievedAt: null }],
+    [],
+    [{
+      symbol: 'ZERO',
+      analysis: {
+        totalAssets: 1,
+        beta3Year: 0,
+        annualizedVolatility: 0,
+        maxDrawdown: 0,
+        riskAdjustedReturn: 0,
+        annualizedReturn: 0,
+        trackingComparison: {
+          periodStart: '2025-01',
+          periodEnd: '2025-12',
+          monthlySamples: 12,
+          fundAnnualizedReturn: 0,
+          benchmarkAnnualizedReturn: 0,
+          trackingDifference: 0,
+          trackingError: 0,
+          source: 'Yahoo Finance',
+          asOf: '2026-10-27T15:00:00Z',
+        },
+        marketRegime: {
+          benchmarkSymbol: 'SPY',
+          firstYear: 2023,
+          lastYear: 2025,
+          periods: {
+            bull: { averageAnnualReturn: 0, years: 1 },
+            bear: { averageAnnualReturn: 0, years: 1 },
+            mixed: { averageAnnualReturn: 0, years: 1 },
+          },
+        },
+      },
+    }],
+  );
+
+  assert.match(
+    summary,
+    /ZERO: assets under management \$1; 3-year beta 0\.00; 1-year annualized volatility 0\.00%; 1-year maximum drawdown 0\.00%; return \/ volatility ratio 0\.00; 1-year annualized return 0\.00%/,
+  );
+  assert.match(
+    summary,
+    /fund return 0\.00%; benchmark return 0\.00%; tracking difference 0\.00%; annualized tracking error 0\.00%/,
+  );
+  assert.match(
+    summary,
+    /Historical regime returns \(2023–2025, grouped by SPY\): bull: 0\.00% \(1 year\) · bear: 0\.00% \(1 year\) · mixed: 0\.00% \(1 year\)/,
+  );
+  assert.doesNotMatch(summary, /ZERO: .*Unavailable/);
+});
+
 test('ETF holding overlap share states when selected funds have no common reported positions', () => {
   const summary = formatReportedEtfHoldingsOverlapShare([
     { symbol: 'SPY', topHoldingsRetrievedAt: '2026-10-27T16:00:00.000Z' },
