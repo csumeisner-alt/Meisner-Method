@@ -943,6 +943,77 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
     { label: 'Bear regime average', value: (analysis) => formatRegimeReturn(analysis, 'bear') },
     { label: 'Mixed regime average', value: (analysis) => formatRegimeReturn(analysis, 'mixed') },
   ];
+  const comparisonHighlightMetrics: {
+    label: string;
+    value: (analysis: EtfAnalysisPayload) => number | null;
+    format: (value: number) => string;
+    hasMeaningfulGap: (minimum: number, maximum: number) => boolean;
+  }[] = [
+    {
+      label: 'Expense ratio',
+      value: (analysis) => isValidEtfExpenseRatio(analysis.expenseRatio) ? analysis.expenseRatio : null,
+      format: (value) => formatEtfComparisonValue(value, 'percent'),
+      hasMeaningfulGap: (minimum, maximum) => maximum - minimum >= 0.0001,
+    },
+    {
+      label: '1-year annualized return',
+      value: (analysis) => analysis.annualizedReturn,
+      format: (value) => formatEtfComparisonValue(value, 'percent'),
+      hasMeaningfulGap: (minimum, maximum) => maximum - minimum >= 0.01,
+    },
+    {
+      label: '1-year annualized volatility',
+      value: (analysis) => analysis.annualizedVolatility,
+      format: (value) => formatEtfComparisonValue(value, 'percent'),
+      hasMeaningfulGap: (minimum, maximum) => maximum - minimum >= 0.01,
+    },
+    {
+      label: '1-year maximum drawdown',
+      value: (analysis) => analysis.maxDrawdown,
+      format: (value) => formatEtfComparisonValue(value, 'percent'),
+      hasMeaningfulGap: (minimum, maximum) => maximum - minimum >= 0.01,
+    },
+    {
+      label: 'Distribution yield',
+      value: (analysis) => analysis.dividendYield,
+      format: (value) => formatEtfComparisonValue(value, 'percent'),
+      hasMeaningfulGap: (minimum, maximum) => maximum - minimum >= 0.01,
+    },
+    {
+      label: '3-year beta',
+      value: (analysis) => analysis.beta3Year,
+      format: (value) => formatEtfComparisonValue(value, 'number'),
+      hasMeaningfulGap: (minimum, maximum) => maximum - minimum >= 0.1,
+    },
+    {
+      label: 'Assets under management',
+      value: (analysis) => analysis.totalAssets,
+      format: (value) => formatEtfComparisonValue(value, 'assets'),
+      hasMeaningfulGap: (minimum, maximum) => minimum > 0 && maximum / minimum >= 1.25,
+    },
+  ];
+  const sharedHighlightMetricCount = comparisonHighlightMetrics.filter((metric) =>
+    comparisonMetricFunds.filter(({ analysis }) => {
+      const value = metric.value(analysis);
+      return value != null && Number.isFinite(value);
+    }).length >= 2,
+  ).length;
+  const comparisonHighlights = comparisonHighlightMetrics.flatMap((metric) => {
+    const values = comparisonMetricFunds.flatMap(({ symbol: fundSymbol, analysis }) => {
+      const value = metric.value(analysis);
+      return value != null && Number.isFinite(value) ? [{ symbol: fundSymbol, value }] : [];
+    });
+    if (values.length < 2) return [];
+    const minimum = values.reduce((current, candidate) => candidate.value < current.value ? candidate : current);
+    const maximum = values.reduce((current, candidate) => candidate.value > current.value ? candidate : current);
+    if (maximum.value === minimum.value || !metric.hasMeaningfulGap(minimum.value, maximum.value)) return [];
+    return [{
+      label: metric.label,
+      minimum,
+      maximum,
+      format: metric.format,
+    }];
+  }).slice(0, 3);
   const pctValue = (value: number | null) => value == null ? 'Unavailable' : `${(value * 100).toFixed(2)}%`;
   const sourceDate = (asOf: string) => new Date(asOf).toLocaleDateString();
   const snapshotDateTime = (asOf: string) => {
@@ -1113,6 +1184,40 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
           </Text>
         </View>
       </View>
+      {!!compareFunds.length && (
+        <View
+          testID="etf-comparison-highlights"
+          style={[cardStyles.card, { backgroundColor: colors.card, borderColor: colors.border, padding: 16 }]}
+        >
+          <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 14 }}>
+            Key differences across compared ETFs
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 5 }}>
+            Notable gaps in shared reported metrics—not an overall ranking. Full details remain below.
+          </Text>
+          {comparisonHighlights.length ? comparisonHighlights.map((highlight) => (
+            <View
+              key={highlight.label}
+              style={{ borderTopWidth: 1, borderTopColor: colors.border, marginTop: 10, paddingTop: 9 }}
+            >
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, fontFamily: 'Inter_600SemiBold' }}>
+                {highlight.label}
+              </Text>
+              <Text style={{ color: colors.foreground, fontSize: 13, lineHeight: 19, marginTop: 3 }}>
+                {highlight.minimum.symbol} {highlight.format(highlight.minimum.value)}
+                {'  →  '}
+                {highlight.maximum.symbol} {highlight.format(highlight.maximum.value)}
+              </Text>
+            </View>
+          )) : (
+            <Text style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 17, marginTop: 10 }}>
+              {sharedHighlightMetricCount
+                ? 'No notable gaps were found in the metrics reported for both funds.'
+                : 'Not enough shared reported data to summarize differences.'}
+            </Text>
+          )}
+        </View>
+      )}
       <View style={{ marginBottom: 12 }}>
         <Pressable
           testID="etf-section-nav-toggle"

@@ -172,6 +172,15 @@ test("ETF evidence is grouped in expandable, accessible sections", () => {
   }
 });
 
+test("ETF comparison highlights meaningful shared-data gaps above full details", () => {
+  const highlightsIndex = etfAnalysisSource.indexOf('testID="etf-comparison-highlights"');
+  const fullDetailsIndex = etfAnalysisSource.indexOf('title="ETF COST, RISK & PERFORMANCE"');
+  assert.ok(highlightsIndex >= 0 && fullDetailsIndex > highlightsIndex);
+  assert.match(etfAnalysisSource, /Notable gaps in shared reported metrics—not an overall ranking/);
+  assert.match(etfAnalysisSource, /comparisonHighlights\.length \? comparisonHighlights\.map/);
+  assert.match(etfAnalysisSource, /comparisonMetricRows\.filter/);
+});
+
 test("ETF peer metadata in the API schema matches the mobile labels", () => {
   const peerAssetSchema = apiSchemaSource.match(
     /EtfPeerAssetSizeComparison:\n([\s\S]*?)(?=\n    EtfHolding:)/,
@@ -222,7 +231,7 @@ test("ETF holdings and sector context in the API schema matches mobile disclosur
 
 test("ETF holding history is stored separately and shown without another comparison ticker", () => {
   const historyHeadingIndex = etfAnalysisSource.indexOf("Changes between provider snapshots");
-  const comparisonResultsIndex = etfAnalysisSource.indexOf("{!!compareFunds.length && (");
+  const comparisonResultsIndex = etfAnalysisSource.indexOf('title="ETF COST, RISK & PERFORMANCE"');
   assert.match(etfAnalysisSource, /ETF_HOLDING_SNAPSHOTS_KEY = '@stocksense\/etf_holding_snapshots_v1'/);
   assert.match(etfAnalysisSource, /upsertSavedEtfHoldingSnapshot/);
   assert.match(etfAnalysisSource, /createEtfHoldingSnapshot/);
@@ -308,6 +317,15 @@ async function buildAnalysisScreenBundle(expenseRatio, scenarioOverrides = {}) {
   const comparisonResponse = savedCompareSymbols.length
     ? { ...etfScreenResponse(expenseRatio), symbol: savedCompareSymbols[0], companyName: `${savedCompareSymbols[0]} comparison ETF` }
     : null;
+  if (comparisonResponse) {
+    comparisonResponse.etfAnalysis.expenseRatio = 0.002;
+    comparisonResponse.etfAnalysis.annualizedReturn = 0.18;
+    comparisonResponse.etfAnalysis.annualizedVolatility = 0.25;
+    comparisonResponse.etfAnalysis.maxDrawdown = -0.3;
+    comparisonResponse.etfAnalysis.dividendYield = 0.03;
+    comparisonResponse.etfAnalysis.beta3Year = 1.3;
+    comparisonResponse.etfAnalysis.totalAssets = 100_000_000_000;
+  }
   if (scenarioOverrides.omitScenarios) {
     delete response.etfAnalysis.scenarios;
   } else if (Object.hasOwn(scenarioOverrides, "scenarios")) {
@@ -844,6 +862,29 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
       browser,
       "document.body.innerText.includes('ETF COST, RISK & PERFORMANCE')",
       "The saved comparison ETF should be restored before testing navigation.",
+    );
+    await waitForBrowserValue(
+      browser,
+      "document.querySelector('[data-testid=\"etf-comparison-highlights\"]')?.textContent.includes('Key differences across compared ETFs')",
+      "The comparison highlights should appear near the top after restoring a comparison ETF.",
+    );
+    const highlightText = await browser.evaluate(
+      `document.querySelector('[data-testid="etf-comparison-highlights"]')?.textContent ?? ""`,
+    );
+    assert.match(highlightText, /VOO 0\.03%\s*→\s*VTI 0\.20%/);
+    assert.match(highlightText, /VOO 12\.00%\s*→\s*VTI 18\.00%/);
+    assert.match(highlightText, /VOO 18\.00%\s*→\s*VTI 25\.00%/);
+    assert.doesNotMatch(highlightText, /1-year maximum drawdown/);
+    assert.equal(
+      await browser.evaluate(`(() => {
+        const summary = document.querySelector('[data-testid="etf-comparison-highlights"]');
+        const fullDetails = document.querySelector('[data-testid="analysis-section-etf-cost-risk-performance"]');
+        return summary && fullDetails
+          ? summary.getBoundingClientRect().top < fullDetails.getBoundingClientRect().top
+          : false;
+      })()`),
+      true,
+      "The summary should appear above the full comparison details.",
     );
     assert.deepEqual(
       await browser.evaluate(`JSON.parse(window.__analysisTestStorage.get("@stocksense/etf_comparison_symbols_v1") ?? "[]")`),
