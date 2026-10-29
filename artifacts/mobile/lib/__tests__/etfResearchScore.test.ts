@@ -117,6 +117,44 @@ test("ETF assets retain fixed bands when the provider category average is absent
   assert.match(liquidity?.detail ?? "", /fixed log-scale bands/);
 });
 
+test("ETF assets use fixed bands without peer context for invalid category averages", () => {
+  const fallback = calculateEtfResearchScore({
+    ...completeInput,
+    averageVolume: null,
+    totalAssets: 200_000_000,
+  }).components.find((item) => item.id === "liquidity");
+
+  for (const categoryAverageTotalAssets of [
+    0,
+    -1,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+  ]) {
+    const result = calculateEtfResearchScore({
+      ...completeInput,
+      averageVolume: null,
+      totalAssets: 200_000_000,
+      peerAssetSizeComparison: {
+        category: "Large Blend",
+        categoryAverageTotalAssets,
+        sampleSize: 20,
+        sampleContext: "Provider-reported category average",
+        source: "Yahoo Finance",
+        asOf: "2026-10-29T12:00:00Z",
+      },
+    });
+    const liquidity = result.components.find((item) => item.id === "liquidity");
+    assert.equal(
+      liquidity?.score,
+      fallback?.score,
+      `expected fixed-band score for category asset average ${categoryAverageTotalAssets}`,
+    );
+    assert.equal(liquidity?.peerContext, undefined);
+    assert.match(liquidity?.detail ?? "", /fixed log-scale bands/);
+  }
+});
+
 test("missing peer data is excluded and incomplete sector coverage is not scored", () => {
   const result = calculateEtfResearchScore({
     ...completeInput,
