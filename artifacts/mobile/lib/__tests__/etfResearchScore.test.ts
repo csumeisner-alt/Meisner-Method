@@ -263,6 +263,34 @@ test("invalid average volume adds no liquidity score or changes asset scoring", 
   }
 });
 
+test("liquidity explanation identifies scored figures and marks invalid inputs unavailable", () => {
+  const detailFor = (averageVolume: number | null, totalAssets: number | null) =>
+    calculateEtfResearchScore({
+      ...completeInput,
+      averageVolume,
+      totalAssets,
+    }).components.find((item) => item.id === "liquidity")?.detail ?? "";
+
+  const bothInputs = detailFor(100_000, 200_000_000);
+  assert.match(bothInputs, /average daily shares: 100,000 shares; fund assets: \$200,000,000/);
+
+  const volumeOnly = detailFor(100_000, null);
+  assert.match(volumeOnly, /average daily shares: 100,000 shares; fund assets: Unavailable/);
+
+  const assetsOnly = detailFor(null, 200_000_000);
+  assert.match(assetsOnly, /average daily shares: Unavailable; fund assets: \$200,000,000/);
+
+  for (const averageVolume of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    assert.match(detailFor(averageVolume, 200_000_000), /average daily shares: Unavailable/);
+    assert.doesNotMatch(detailFor(averageVolume, 200_000_000), /average daily shares: 0 shares/);
+  }
+
+  for (const totalAssets of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    assert.match(detailFor(100_000, totalAssets), /fund assets: Unavailable/);
+    assert.doesNotMatch(detailFor(100_000, totalAssets), /fund assets: \$0/);
+  }
+});
+
 test("missing peer data is excluded and incomplete sector coverage is not scored", () => {
   const result = calculateEtfResearchScore({
     ...completeInput,

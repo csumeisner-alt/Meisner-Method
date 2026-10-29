@@ -53,20 +53,30 @@ export function calculateEtfResearchScore(input: EtfScoreInput) {
   const normalizedSectors = sectorEntries.map((entry) => entry.weight / sectorCoverage);
   const sectorHhi = normalizedSectors.reduce((sum, weight) => sum + weight ** 2, 0);
 
+  const scoredAverageVolume = validNonNegative(input.averageVolume) && input.averageVolume > 0
+    ? input.averageVolume
+    : null;
+  const scoredTotalAssets = validNonNegative(input.totalAssets) && input.totalAssets > 0
+    ? input.totalAssets
+    : null;
   const liquidityScores: number[] = [];
-  if (validNonNegative(input.averageVolume) && input.averageVolume > 0) {
-    liquidityScores.push(logBandScore(input.averageVolume, 10_000, 1_000_000));
+  if (scoredAverageVolume !== null) {
+    liquidityScores.push(logBandScore(scoredAverageVolume, 10_000, 1_000_000));
   }
   const categoryAverageAssets = input.peerAssetSizeComparison?.categoryAverageTotalAssets;
-  const hasPeerAssetBaseline = validNonNegative(input.totalAssets)
-    && input.totalAssets > 0
+  const hasPeerAssetBaseline = scoredTotalAssets !== null
     && validNonNegative(categoryAverageAssets)
     && categoryAverageAssets > 0;
-  if (validNonNegative(input.totalAssets) && input.totalAssets > 0) {
+  if (scoredTotalAssets !== null) {
     liquidityScores.push(hasPeerAssetBaseline
-      ? clamp(50 * input.totalAssets / categoryAverageAssets)
-      : logBandScore(input.totalAssets, 10_000_000, 1_000_000_000));
+      ? clamp(50 * scoredTotalAssets / categoryAverageAssets)
+      : logBandScore(scoredTotalAssets, 10_000_000, 1_000_000_000));
   }
+  const liquidityInputDetail = `Inputs scored — average daily shares: ${
+    scoredAverageVolume === null ? "Unavailable" : `${scoredAverageVolume.toLocaleString("en-US")} shares`
+  }; fund assets: ${
+    scoredTotalAssets === null ? "Unavailable" : `$${scoredTotalAssets.toLocaleString("en-US")}`
+  }.`;
 
   const riskScores: number[] = [];
   if (validNonNegative(input.annualizedVolatility)) {
@@ -112,9 +122,9 @@ export function calculateEtfResearchScore(input: EtfScoreInput) {
       label: "Liquidity",
       weight: 15,
       score: liquidityScores.length ? liquidityScores.reduce((sum, score) => sum + score, 0) / liquidityScores.length : null,
-      detail: hasPeerAssetBaseline
+      detail: `${liquidityInputDetail} ${hasPeerAssetBaseline
         ? "Average daily shares use fixed 10K–1M bands; assets score 50 at the provider category average and scale linearly to 100 at 2×."
-        : "Uses fixed log-scale bands: 10K–1M average daily shares and $10M–$1B assets; assets are not peer-relative.",
+        : "Uses fixed log-scale bands: 10K–1M average daily shares and $10M–$1B assets; assets are not peer-relative."}`,
       ...(hasPeerAssetBaseline && input.peerAssetSizeComparison
         ? {
           peerContext: {
