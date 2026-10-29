@@ -74,10 +74,12 @@ export function buildEtfPeerComparisonFields(
 }
 
 export function buildEtfScenarios(
-  currentPrice: number,
+  currentPrice: number | null | undefined,
   expenseRatio: number | null,
   periods: Record<string, EtfRegimePerformance> | null | undefined,
 ): EtfScenario[] {
+  const validCurrentPrice =
+    typeof currentPrice === "number" && Number.isFinite(currentPrice) && currentPrice > 0;
   const validExpenseRatio = normalizeEtfExpenseRatio(expenseRatio);
   const samples = Object.values(periods ?? {}).filter((period) =>
     typeof period.averageAnnualReturn === "number"
@@ -100,7 +102,10 @@ export function buildEtfScenarios(
       ? observed - validExpenseRatio
       : null;
     const project = (annualReturn: number | null, years: number) =>
-      annualReturn !== null && Number.isFinite(annualReturn) && annualReturn > -1
+      validCurrentPrice
+      && annualReturn !== null
+      && Number.isFinite(annualReturn)
+      && annualReturn > -1
         ? Math.round(currentPrice * (1 + annualReturn) ** years * 100) / 100
       : null;
     const projections = ETF_SCENARIO_HORIZONS.map((horizonYears) => ({
@@ -110,6 +115,11 @@ export function buildEtfScenarios(
     }));
     const projectionAt = (horizonYears: number) =>
       projections.find((projection) => projection.horizonYears === horizonYears);
+    const scenarioAssumption = valid
+      ? validExpenseRatio === null
+        ? `Uses the historical ${label === "base" ? "sample-weighted" : label}-regime annual average for the no-fee illustration. Fee-adjusted values are unavailable because the expense ratio was not reported. The supplied projection values assume one initial share and no added contributions; the app models monthly contributions separately.`
+        : `Uses the historical ${label === "base" ? "sample-weighted" : label}-regime annual average; the fee-adjusted illustration subtracts the reported expense ratio. The supplied projection values assume one initial share and no added contributions; the app models monthly contributions separately.`
+      : `Not shown: insufficient provider-reported ${label} regime history.`;
     return {
       label,
       annualReturnAssumption: feeAdjustedReturn,
@@ -119,11 +129,9 @@ export function buildEtfScenarios(
       tenYearValue: projectionAt(10)?.afterFeeValue ?? null,
       noFeeFiveYearValue: projectionAt(5)?.noFeeValue ?? null,
       noFeeTenYearValue: projectionAt(10)?.noFeeValue ?? null,
-      assumption: valid
-        ? validExpenseRatio === null
-          ? `Uses the historical ${label === "base" ? "sample-weighted" : label}-regime annual average for the no-fee illustration. Fee-adjusted values are unavailable because the expense ratio was not reported. The supplied projection values assume one initial share and no added contributions; the app models monthly contributions separately.`
-          : `Uses the historical ${label === "base" ? "sample-weighted" : label}-regime annual average; the fee-adjusted illustration subtracts the reported expense ratio. The supplied projection values assume one initial share and no added contributions; the app models monthly contributions separately.`
-        : `Not shown: insufficient provider-reported ${label} regime history.`,
+      assumption: validCurrentPrice
+        ? scenarioAssumption
+        : `${scenarioAssumption} Projection values are unavailable because the starting share price is missing or invalid.`,
     };
   });
 }

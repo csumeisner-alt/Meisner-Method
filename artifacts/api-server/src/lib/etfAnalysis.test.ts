@@ -57,6 +57,50 @@ test("ETF scenarios treat negative and non-finite expense ratios as unavailable"
   }
 });
 
+test("ETF scenarios preserve historical assumptions when the starting share price is invalid", () => {
+  const periods = {
+    bear: { averageAnnualReturn: -0.1, years: 2 },
+    mixed: { averageAnnualReturn: 0.05, years: 4 },
+    bull: { averageAnnualReturn: 0.2, years: 2 },
+  };
+  const validScenarios = buildEtfScenarios(100, 0.01, periods);
+
+  for (const invalidPrice of [
+    null,
+    undefined,
+    0,
+    -1,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+  ]) {
+    const scenarios = buildEtfScenarios(invalidPrice, 0.01, periods);
+
+    assert.deepEqual(
+      scenarios.map(({ label, annualReturnAssumption, noFeeAnnualReturnAssumption }) => ({
+        label,
+        annualReturnAssumption,
+        noFeeAnnualReturnAssumption,
+      })),
+      validScenarios.map(({ label, annualReturnAssumption, noFeeAnnualReturnAssumption }) => ({
+        label,
+        annualReturnAssumption,
+        noFeeAnnualReturnAssumption,
+      })),
+    );
+    for (const scenario of scenarios) {
+      assert.ok(scenario.projections.every(
+        (projection) => projection.noFeeValue === null && projection.afterFeeValue === null,
+      ));
+      assert.equal(scenario.fiveYearValue, null);
+      assert.equal(scenario.tenYearValue, null);
+      assert.equal(scenario.noFeeFiveYearValue, null);
+      assert.equal(scenario.noFeeTenYearValue, null);
+      assert.match(scenario.assumption, /starting share price is missing or invalid/);
+    }
+  }
+});
+
 test("ETF scenarios omit non-finite reported regimes without hiding valid regimes", () => {
   for (const invalidReturn of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
     const scenarios = buildEtfScenarios(100, 0.01, {
