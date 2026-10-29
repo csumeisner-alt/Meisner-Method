@@ -341,19 +341,42 @@ type EtfAnalysisPayload = {
     lastYear: number;
     periods: Record<string, { averageAnnualReturn: number | null; years: number }>;
   } | null;
-  scenarios: {
-    label: string;
-    annualReturnAssumption: number | null;
-    fiveYearValue: number | null;
-    tenYearValue: number | null;
-    assumption: string;
-  }[];
+  scenarios?: unknown;
   analysis: string;
   risks: string[];
   strengths: string[];
   provider: string;
   asOf: string;
 };
+
+type EtfScenario = {
+  label: string;
+  annualReturnAssumption: number | null;
+  fiveYearValue: number | null;
+  tenYearValue: number | null;
+  assumption: string;
+};
+
+function parseEtfScenarios(scenarios: unknown): EtfScenario[] {
+  if (!Array.isArray(scenarios)) return [];
+
+  return scenarios.flatMap((scenario): EtfScenario[] => {
+    if (typeof scenario !== 'object' || scenario === null || Array.isArray(scenario)) return [];
+    const record = scenario as Record<string, unknown>;
+    if (typeof record.label !== 'string' || !record.label.trim() || typeof record.assumption !== 'string') {
+      return [];
+    }
+    const numberOrNull = (value: unknown) =>
+      typeof value === 'number' && Number.isFinite(value) ? value : null;
+    return [{
+      label: record.label,
+      annualReturnAssumption: numberOrNull(record.annualReturnAssumption),
+      fiveYearValue: numberOrNull(record.fiveYearValue),
+      tenYearValue: numberOrNull(record.tenYearValue),
+      assumption: record.assumption,
+    }];
+  });
+}
 
 function EtfAnalysisSections({ fund, colors, symbol }: {
   fund: EtfAnalysisPayload;
@@ -365,6 +388,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
   const [savedCompareSymbols, setSavedCompareSymbols] = useState<string[]>([]);
   const savedCompareSymbolsRef = useRef<string[]>([]);
   const comparisonWriteQueue = useRef<Promise<void>>(Promise.resolve());
+  const scenarios = parseEtfScenarios(fund.scenarios);
   const [compareFunds, setCompareFunds] = useState<Array<{
     symbol: string;
     topHoldings: { symbol: string; name: string; weight: number }[];
@@ -1342,7 +1366,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
       <SectionCard collapsible title="LONG-RANGE SCENARIOS" icon={<MaterialCommunityIcons name="chart-timeline-variant" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           <MetricRow label="Annual expense ratio used" value={pctValue(fund.expenseRatio)} />
-          {fund.scenarios.map((scenario) => (
+          {scenarios.length ? scenarios.map((scenario) => (
             <View key={scenario.label} style={{ marginBottom: 12 }}>
               <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', textTransform: 'uppercase' }}>{scenario.label}</Text>
               <MetricRow label="Assumed annual return" value={pctValue(scenario.annualReturnAssumption)} />
@@ -1350,7 +1374,11 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
               <MetricRow label="One-share value in 10 years" value={scenario.tenYearValue == null ? 'Unavailable' : fmtPrice(scenario.tenYearValue)} />
               <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{scenario.assumption}</Text>
             </View>
-          ))}
+          )) : (
+            <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+              Long-range scenario data unavailable.
+            </Text>
+          )}
           <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>These are historical-regime illustrations, not forecasts or guarantees. They assume a single investment, constant compounding, and no added contributions.</Text>
         </View>
       </SectionCard>

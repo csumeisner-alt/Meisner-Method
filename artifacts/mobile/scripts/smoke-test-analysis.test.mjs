@@ -295,8 +295,13 @@ function etfScreenResponse(expenseRatio = 0.0003) {
   };
 }
 
-async function buildAnalysisScreenBundle(expenseRatio) {
+async function buildAnalysisScreenBundle(expenseRatio, scenarioOverrides = {}) {
   const response = etfScreenResponse(expenseRatio);
+  if (scenarioOverrides.omitScenarios) {
+    delete response.etfAnalysis.scenarios;
+  } else if (Object.hasOwn(scenarioOverrides, "scenarios")) {
+    response.etfAnalysis.scenarios = scenarioOverrides.scenarios;
+  }
   const mockModules = new Map([
     ["@react-native-async-storage/async-storage", `
       export default {
@@ -513,14 +518,26 @@ async function waitForBrowserValue(browser, expression, message, timeout = 8000)
 test("ETF analysis sections render, expand, and collapse without 320px overflow", async () => {
   const bundle = await buildAnalysisScreenBundle();
   const unavailableFeeBundle = await buildAnalysisScreenBundle(null);
+  const missingScenariosBundle = await buildAnalysisScreenBundle(0.0003, { omitScenarios: true });
+  const malformedScenariosBundle = await buildAnalysisScreenBundle(0.0003, { scenarios: { label: "Broken" } });
   const server = createServer((request, response) => {
-    if (request.url === "/bundle.js" || request.url === "/bundle-unavailable-fee.js") {
+    const bundles = {
+      "/bundle.js": bundle,
+      "/bundle-unavailable-fee.js": unavailableFeeBundle,
+      "/bundle-missing-scenarios.js": missingScenariosBundle,
+      "/bundle-malformed-scenarios.js": malformedScenariosBundle,
+    };
+    if (Object.hasOwn(bundles, request.url)) {
       response.writeHead(200, { "content-type": "text/javascript; charset=utf-8" });
-      response.end(request.url === "/bundle-unavailable-fee.js" ? unavailableFeeBundle : bundle);
+      response.end(bundles[request.url]);
       return;
     }
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-    const scriptPath = request.url === "/unavailable-fee" ? "/bundle-unavailable-fee.js" : "/bundle.js";
+    const scriptPath = {
+      "/unavailable-fee": "/bundle-unavailable-fee.js",
+      "/missing-scenarios": "/bundle-missing-scenarios.js",
+      "/malformed-scenarios": "/bundle-malformed-scenarios.js",
+    }[request.url] ?? "/bundle.js";
     response.end(`<!doctype html><html><head>
       <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
       <style>html,body,#root{width:100%;height:100%;margin:0;padding:0}body{overflow-x:auto}</style>
@@ -669,6 +686,30 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
     );
     assert.match(unavailableScenarioText, /Annual expense ratio used\s*Unavailable/);
     assert.match(unavailableScenarioText, /Assumed annual return\s*10\.00%/);
+
+    for (const path of ["/missing-scenarios", "/malformed-scenarios"]) {
+      await browser.send("Page.navigate", { url: `http://127.0.0.1:${address.port}${path}` });
+      await waitForBrowserValue(
+        browser,
+        "document.body.innerText.includes('At a glance')",
+        `The ETF analysis screen should render for ${path}.`,
+      );
+      await browser.evaluate(`(() => {
+        const section = document.querySelector(${JSON.stringify(scenarioSectionSelector)});
+        section?.scrollIntoView({ block: "nearest" });
+        section?.click();
+      })()`);
+      await waitForBrowserValue(
+        browser,
+        `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent.includes("Long-range scenario data unavailable.")`,
+        `The scenarios section should show its unavailable state for ${path}.`,
+      );
+      const fallbackText = await browser.evaluate(
+        `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent ?? ""`,
+      );
+      assert.match(fallbackText, /Long-range scenario data unavailable\./);
+      assert.doesNotMatch(fallbackText, /Assumed annual return/);
+    }
   } finally {
     browser?.close();
     chrome.kill("SIGTERM");
