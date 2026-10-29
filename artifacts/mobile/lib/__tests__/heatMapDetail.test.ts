@@ -27,6 +27,7 @@ import {
   shareEtfOverlapSummary,
   getReportedEtfSectorComparison,
   upsertSavedEtfHoldingSnapshot,
+  getEtfFeeComparisonStatus,
 } from '../heatMapDetail.ts';
 
 const testDir = dirname(fileURLToPath(import.meta.url));
@@ -49,6 +50,34 @@ test('ETF fee-dollar illustration uses a constant balance and rejects missing or
     assert.equal(estimateEtfFeeDollars(10_000, invalidRatio, 10), null);
   }
   assert.equal(estimateEtfFeeDollars(10_000, 0.0003, 0), null);
+});
+
+test('ETF fee comparison flags only valid positive differences', () => {
+  assert.equal(getEtfFeeComparisonStatus(0.001, 0.0008, 0.0002), 'above-average');
+  assert.equal(getEtfFeeComparisonStatus(0.0008, 0.0008, 0), 'not-above-average');
+  assert.equal(getEtfFeeComparisonStatus(0.0005, 0.0008, -0.0003), 'not-above-average');
+  for (const [fundExpenseRatio, categoryAverageExpenseRatio, difference] of [
+    [null, 0.0008, null],
+    [0.001, null, 0.0002],
+    [0.001, Number.NaN, 0.0002],
+    [0.001, -0.0001, 0.0002],
+    [0.001, 1.01, 0.0002],
+    ['0.001' as unknown as number, 0.0008, 0.0002],
+    [0.001, 0.0008, Number.POSITIVE_INFINITY],
+    [0.001, 0.0008, 0.0003],
+  ]) {
+    assert.equal(
+      getEtfFeeComparisonStatus(fundExpenseRatio, categoryAverageExpenseRatio, difference),
+      'unavailable',
+    );
+  }
+});
+
+test('ETF analysis labels valid above-average fees and suppresses unavailable comparisons', () => {
+  assert.match(analysisScreenSource, /getEtfFeeComparisonStatus\(/);
+  assert.match(analysisScreenSource, /This fund’s fee is above its category average\./);
+  assert.match(analysisScreenSource, /status === 'above-average'/);
+  assert.match(analysisScreenSource, /status === 'unavailable'[\s\S]*?return 'Unavailable'/);
 });
 
 test('ETF fee-dollar illustration has editable inputs, independent horizons, and clear assumptions', () => {

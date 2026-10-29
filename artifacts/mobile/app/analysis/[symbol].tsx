@@ -41,6 +41,7 @@ import {
   formatEtfComparisonValue,
   formatEtfProfileAssets,
   estimateEtfFeeDollars,
+  getEtfFeeComparisonStatus,
   getReportedEtfSectorComparison,
   isValidEtfExpenseRatio,
   isValidEtfTrackingHistory,
@@ -64,6 +65,8 @@ import {
   getAnalysisLoadingStageInterval,
   getAnalysisLoadingStages,
 } from '@/lib/analysisLoadingStages';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -402,6 +405,11 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
       tracking.periodEnd,
       tracking.monthlySamples,
     ),
+  );
+  const feeComparisonStatus = getEtfFeeComparisonStatus(
+    fund.peerExpenseComparison?.fundExpenseRatio,
+    fund.peerExpenseComparison?.categoryAverageExpenseRatio,
+    fund.peerExpenseComparison?.difference,
   );
   const [compareFunds, setCompareFunds] = useState<Array<{
     symbol: string;
@@ -761,22 +769,36 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
   }[] = [
     {
       label: 'Expense ratio',
-      value: (analysis) => formatEtfComparisonValue(analysis.expenseRatio, 'percent'),
+      value: (analysis) => isValidEtfExpenseRatio(analysis.expenseRatio)
+        ? formatEtfComparisonValue(analysis.expenseRatio, 'percent')
+        : 'Unavailable',
     },
     {
       label: 'Category average fee',
       value: (analysis) => {
         const peer = analysis.peerExpenseComparison;
         if (!peer) return 'Unavailable';
-        return `${formatEtfComparisonValue(peer.categoryAverageExpenseRatio, 'percent')} · ${peer.category}`;
+        const average = isValidEtfExpenseRatio(peer.categoryAverageExpenseRatio)
+          ? formatEtfComparisonValue(peer.categoryAverageExpenseRatio, 'percent')
+          : 'Unavailable';
+        return `${average} · ${peer.category}`;
       },
     },
     {
       label: 'Fee difference',
-      value: (analysis) => formatEtfComparisonValue(
-        analysis.peerExpenseComparison?.difference,
-        'basis-points',
-      ),
+      value: (analysis) => {
+        const peer = analysis.peerExpenseComparison;
+        const status = getEtfFeeComparisonStatus(
+          peer?.fundExpenseRatio,
+          peer?.categoryAverageExpenseRatio,
+          peer?.difference,
+        );
+        if (status === 'unavailable') return 'Unavailable';
+        const difference = formatEtfComparisonValue(peer?.difference, 'basis-points');
+        return status === 'above-average'
+          ? `${difference} · Above category average`
+          : difference;
+      },
     },
     {
       label: 'Assets under management',
@@ -1143,14 +1165,32 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
           {fund.peerExpenseComparison ? (
             <>
               <MetricRow label="Provider category" value={fund.peerExpenseComparison.category} />
-              <MetricRow label="Fund expense ratio" value={pctValue(fund.peerExpenseComparison.fundExpenseRatio)} />
-              <MetricRow label="Category average" value={pctValue(fund.peerExpenseComparison.categoryAverageExpenseRatio)} />
+              <MetricRow
+                label="Fund expense ratio"
+                value={isValidEtfExpenseRatio(fund.peerExpenseComparison.fundExpenseRatio)
+                  ? pctValue(fund.peerExpenseComparison.fundExpenseRatio)
+                  : 'Unavailable'}
+              />
+              <MetricRow
+                label="Category average"
+                value={isValidEtfExpenseRatio(fund.peerExpenseComparison.categoryAverageExpenseRatio)
+                  ? pctValue(fund.peerExpenseComparison.categoryAverageExpenseRatio)
+                  : 'Unavailable'}
+              />
               <MetricRow
                 label="Fund minus category average"
-                value={fund.peerExpenseComparison.difference == null
+                value={feeComparisonStatus === 'unavailable'
                   ? 'Unavailable'
-                  : `${fund.peerExpenseComparison.difference > 0 ? '+' : ''}${(fund.peerExpenseComparison.difference * 10000).toFixed(1)} bps`}
+                  : `${fund.peerExpenseComparison.difference! > 0 ? '+' : ''}${(fund.peerExpenseComparison.difference! * 10000).toFixed(1)} bps`}
               />
+              {feeComparisonStatus === 'above-average' && (
+                <Text
+                  testID="etf-fee-above-category-average"
+                  style={{ color: colors.holdColor, fontSize: 12, lineHeight: 17, marginTop: 2, marginBottom: 5 }}
+                >
+                  This fund’s fee is above its category average.
+                </Text>
+              )}
               <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 6 }}>
                 {fund.peerExpenseComparison.sampleContext}
                 {fund.peerExpenseComparison.sampleSize == null ? '' : ` · ${fund.peerExpenseComparison.sampleSize} funds`}

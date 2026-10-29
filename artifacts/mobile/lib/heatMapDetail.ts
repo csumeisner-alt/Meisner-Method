@@ -1062,6 +1062,28 @@ export function isValidEtfExpenseRatio(value: number | null): value is number {
     && value <= 1;
 }
 
+export type EtfFeeComparisonStatus = 'above-average' | 'not-above-average' | 'unavailable';
+
+export function getEtfFeeComparisonStatus(
+  fundExpenseRatio: unknown,
+  categoryAverageExpenseRatio: unknown,
+  difference: unknown,
+): EtfFeeComparisonStatus {
+  if (
+    typeof fundExpenseRatio !== 'number'
+    || !isValidEtfExpenseRatio(fundExpenseRatio)
+    || typeof categoryAverageExpenseRatio !== 'number'
+    || !isValidEtfExpenseRatio(categoryAverageExpenseRatio)
+    || typeof difference !== 'number'
+    || !Number.isFinite(difference)
+    || Math.abs(difference) > 1
+    || Math.abs(difference - (fundExpenseRatio - categoryAverageExpenseRatio)) > 1e-9
+  ) {
+    return 'unavailable';
+  }
+  return difference > 0 ? 'above-average' : 'not-above-average';
+}
+
 export function estimateEtfFeeDollars(
   investmentAmount: number | null,
   expenseRatio: number | null,
