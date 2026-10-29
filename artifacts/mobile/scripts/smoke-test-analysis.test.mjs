@@ -1,6 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { createServer } from "node:http";
+import { existsSync, readFileSync } from "node:fs";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { build } from "esbuild";
 import { runSmokeCheck, validateAnalysisResponse } from "./smoke-test-analysis.mjs";
 
 const fallbackReasoning =
@@ -218,4 +226,411 @@ test("ETF holding history is stored separately and shown without another compari
   assert.match(etfAnalysisSource, /createEtfHoldingSnapshot/);
   assert.ok(historyHeadingIndex >= 0 && historyHeadingIndex < comparisonResultsIndex);
   assert.match(etfAnalysisSource, /retrieval times, not holdings report dates/);
+});
+
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const mobileDir = resolve(scriptDir, "..");
+const require = createRequire(import.meta.url);
+const reactNativeWebEntry = require.resolve("react-native-web", { paths: [mobileDir] });
+const delay = (ms) => new Promise((resolveDelay) => setTimeout(resolveDelay, ms));
+
+function browserExecutable() {
+  if (process.env.CHROMIUM_PATH) return process.env.CHROMIUM_PATH;
+  if (existsSync("/repl/tools/bin/chromium")) return "/repl/tools/bin/chromium";
+  return "chromium";
+}
+
+function etfScreenResponse() {
+  const asOf = "2026-10-28T16:00:00.000Z";
+  return {
+    symbol: "VOO",
+    companyName: "Vanguard S&P 500 ETF",
+    exchange: "NYSE Arca",
+    currency: "USD",
+    currentPrice: 600,
+    priceChange: 2,
+    priceChangePercent: 0.0033,
+    volume: 1_000_000,
+    marketCap: 500_000_000_000,
+    week52High: 620,
+    week52Low: 450,
+    assetType: "etf",
+    etfAnalysis: {
+      fundCategory: "Large Blend",
+      fundFamily: "Vanguard",
+      expenseRatio: 0.0003,
+      totalAssets: 500_000_000_000,
+      dividendYield: 0.014,
+      beta3Year: 1,
+      averageVolume: 4_000_000,
+      topHoldingsCombinedWeight: 0.3,
+      topHoldingsReportedCount: 2,
+      topHoldingsRetrievedAt: asOf,
+      sectorWeights: [{ sector: "Technology", weight: 0.3 }],
+      sectorWeightsRetrievedAt: asOf,
+      annualizedReturn: 0.12,
+      annualizedVolatility: 0.18,
+      maxDrawdown: -0.2,
+      riskAdjustedReturn: 0.67,
+      topHoldings: [{ symbol: "AAPL", name: "Apple Inc.", weight: 0.08 }],
+      benchmark: null,
+      trackingComparison: null,
+      peerExpenseComparison: null,
+      peerAssetSizeComparison: null,
+      marketRegime: null,
+      scenarios: [{
+        label: "Historical average",
+        annualReturnAssumption: 0.1,
+        fiveYearValue: 965,
+        tenYearValue: 1556,
+        assumption: "Illustrative only.",
+      }],
+      analysis: "A diversified fund that tracks large U.S. companies.",
+      risks: ["Market concentration"],
+      strengths: ["Low annual fee"],
+      provider: "Test provider",
+      asOf,
+    },
+  };
+}
+
+async function buildAnalysisScreenBundle() {
+  const response = etfScreenResponse();
+  const mockModules = new Map([
+    ["@react-native-async-storage/async-storage", `
+      export default {
+        getItem: async () => null,
+        setItem: async () => {},
+        removeItem: async () => {},
+      };
+    `],
+    ["expo-router", `
+      export const useLocalSearchParams = () => ({ symbol: "VOO" });
+      export const useRouter = () => ({ back: () => {} });
+    `],
+    ["react-native-safe-area-context", `
+      export const useSafeAreaInsets = () => ({ top: 0, bottom: 0, left: 0, right: 0 });
+    `],
+    ["@expo/vector-icons", `
+      export const Feather = () => null;
+      export const Ionicons = () => null;
+      export const MaterialCommunityIcons = () => null;
+    `],
+    ["expo-haptics", `
+      export const ImpactFeedbackStyle = { Light: "light" };
+      export const impactAsync = async () => {};
+    `],
+    ["expo-linear-gradient", `
+      import React from "react";
+      export const LinearGradient = ({ children }) => <>{children}</>;
+    `],
+    ["@workspace/api-client-react", `
+      const response = ${JSON.stringify(response)};
+      export function useAnalyzeStock() {
+        return { mutate: () => {}, data: response, isPending: false, error: null };
+      }
+    `],
+    ["@/hooks/useColors", `
+      export function useColors() {
+        return {
+          background: "#10151C", card: "#1A222C", input: "#1A222C",
+          secondary: "#29333F", accent: "#253548", border: "#405061",
+          foreground: "#EAF0F6", heading: "#FFFFFF", mutedForeground: "#9AA9B8",
+          primary: "#D4A847", primaryForeground: "#10151C", muted: "#29333F",
+          buyColor: "#65C98B", buyBg: "#173D2C", sellColor: "#F07C79",
+          sellBg: "#482829", holdColor: "#B7C4D1", holdBg: "#29333F",
+        };
+      }
+    `],
+    ["@/hooks/useApi", `
+      export function useApi() {
+        return { apiFetch: async () => ({ candles: [] }) };
+      }
+    `],
+    ["@/contexts/AmericanModeContext", `
+      export function useAmericanMode() {
+        return {
+          isActive: false, neonGucciActive: false,
+          brew: { neonGucciPhrasesActive: false },
+        };
+      }
+    `],
+    ["@/contexts/AchievementsContext", `
+      export function useAchievements() {
+        return { awardAchievement: async () => {} };
+      }
+    `],
+    ["@/hooks/useWatchlist", `
+      export function useWatchlist() {
+        return {
+          isWatched: () => false, activeAlertFor: () => null,
+          add: async () => {}, remove: async () => {},
+          saveAlert: async () => {}, deleteAlert: async () => {},
+        };
+      }
+    `],
+    ["@/hooks/usePushNotifications", `
+      export function usePushNotifications() {
+        return {
+          pushToken: null, status: "unavailable", registrationError: null,
+          requestPermission: async () => {}, openNotificationSettings: async () => {},
+        };
+      }
+    `],
+    ["@/components/ComparisonChart", `
+      export const ComparisonChart = () => null;
+    `],
+    ["@/components/AmericanSteelBackground", `
+      import React from "react";
+      export function AmericanSteelBackground({ children }) {
+        return <>{children}</>;
+      }
+    `],
+    ["@/components/NeonAnalysisLoader", `
+      export const NeonAnalysisLoader = () => null;
+    `],
+    ["@/components/PriceAlertModal", `
+      export const PriceAlertModal = () => null;
+    `],
+  ]);
+
+  const result = await build({
+    stdin: {
+      contents: `
+        import React from "react";
+        import { createRoot } from "react-dom/client";
+        import AnalysisScreen from ${JSON.stringify(join(mobileDir, "app/analysis/[symbol].tsx"))};
+        const root = document.getElementById("root");
+        if (!root) throw new Error("Analysis browser test root was not found.");
+        createRoot(root).render(<AnalysisScreen />);
+      `,
+      resolveDir: mobileDir,
+      sourcefile: "analysis-browser-entry.tsx",
+      loader: "tsx",
+    },
+    bundle: true,
+    write: false,
+    format: "iife",
+    platform: "browser",
+    target: "es2022",
+    jsx: "automatic",
+    mainFields: ["browser", "module", "main"],
+    conditions: ["browser"],
+    plugins: [{
+      name: "analysis-browser-test-aliases",
+      setup(buildApi) {
+        buildApi.onResolve({ filter: /^react-native$/ }, () => ({ path: reactNativeWebEntry }));
+        buildApi.onResolve({ filter: /^@\// }, ({ path }) => {
+          if (mockModules.has(path)) return { path, namespace: "analysis-mock" };
+          const sourcePath = resolve(mobileDir, path.slice(2));
+          const extension = [".tsx", ".ts", ".jsx", ".js"]
+            .find((candidate) => existsSync(`${sourcePath}${candidate}`));
+          return extension
+            ? { path: `${sourcePath}${extension}` }
+            : { errors: [{ text: `Unable to resolve ${path}.` }] };
+        });
+        buildApi.onResolve({ filter: /.*/ }, ({ path }) => (
+          mockModules.has(path) ? { path, namespace: "analysis-mock" } : null
+        ));
+        buildApi.onLoad({ filter: /.*/, namespace: "analysis-mock" }, ({ path }) => ({
+          contents: mockModules.get(path),
+          loader: "tsx",
+          resolveDir: mobileDir,
+        }));
+      },
+    }],
+  });
+  return result.outputFiles[0].text;
+}
+
+async function waitForDebuggerPort(profileDir, chrome, stderr) {
+  const portFile = join(profileDir, "DevToolsActivePort");
+  for (let attempt = 0; attempt < 150; attempt += 1) {
+    try {
+      const [port] = (await readFile(portFile, "utf8")).trim().split("\n");
+      return Number(port);
+    } catch {
+      if (chrome.exitCode !== null) {
+        throw new Error(`Chromium exited before opening its debugging port.\n${stderr()}`);
+      }
+      await delay(40);
+    }
+  }
+  throw new Error(`Timed out waiting for Chromium's debugging port.\n${stderr()}`);
+}
+
+function connectDebugger(webSocketUrl) {
+  return new Promise((resolveConnection, rejectConnection) => {
+    const socket = new WebSocket(webSocketUrl);
+    const waiting = new Map();
+    let nextId = 0;
+    socket.addEventListener("open", () => resolveConnection({
+      socket,
+      send(method, params = {}) {
+        const id = ++nextId;
+        return new Promise((resolveMessage, rejectMessage) => {
+          waiting.set(id, { resolveMessage, rejectMessage });
+          socket.send(JSON.stringify({ id, method, params }));
+        });
+      },
+      evaluate(expression) {
+        return this.send("Runtime.evaluate", {
+          expression, awaitPromise: true, returnByValue: true,
+        }).then((reply) => {
+          if (reply.result.exceptionDetails) {
+            throw new Error(reply.result.exceptionDetails.text ?? "Browser evaluation failed.");
+          }
+          return reply.result.result.value;
+        });
+      },
+      close() {
+        socket.close();
+      },
+    }));
+    socket.addEventListener("error", rejectConnection, { once: true });
+    socket.addEventListener("message", (event) => {
+      const message = JSON.parse(event.data);
+      if (message.id === undefined) return;
+      const pending = waiting.get(message.id);
+      if (!pending) return;
+      waiting.delete(message.id);
+      if (message.error) pending.rejectMessage(new Error(message.error.message));
+      else pending.resolveMessage(message);
+    });
+  });
+}
+
+async function waitForBrowserValue(browser, expression, message, timeout = 8000) {
+  const started = Date.now();
+  while (Date.now() - started < timeout) {
+    if (await browser.evaluate(expression)) return;
+    await delay(40);
+  }
+  throw new Error(message);
+}
+
+test("ETF analysis sections render, expand, and collapse without 320px overflow", async () => {
+  const bundle = await buildAnalysisScreenBundle();
+  const server = createServer((request, response) => {
+    if (request.url === "/bundle.js") {
+      response.writeHead(200, { "content-type": "text/javascript; charset=utf-8" });
+      response.end(bundle);
+      return;
+    }
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(`<!doctype html><html><head>
+      <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+      <style>html,body,#root{width:100%;height:100%;margin:0;padding:0}body{overflow-x:auto}</style>
+      </head><body><div id="root"></div><script src="/bundle.js"></script></body></html>`);
+  });
+  await new Promise((resolveListen, rejectListen) => {
+    server.once("error", rejectListen);
+    server.listen(0, "127.0.0.1", resolveListen);
+  });
+
+  const profileDir = await mkdtemp(join(tmpdir(), "analysis-browser-"));
+  let chromeStderr = "";
+  const chrome = spawn(browserExecutable(), [
+    "--headless=new", "--no-sandbox", "--disable-dev-shm-usage",
+    "--no-first-run", "--no-default-browser-check", "--remote-debugging-port=0",
+    `--user-data-dir=${profileDir}`, "about:blank",
+  ], { stdio: ["ignore", "ignore", "pipe"] });
+  chrome.stderr.setEncoding("utf8");
+  chrome.stderr.on("data", (chunk) => { chromeStderr = (chromeStderr + chunk).slice(-5000); });
+
+  let browser;
+  try {
+    const debugPort = await waitForDebuggerPort(profileDir, chrome, () => chromeStderr);
+    const targets = await fetch(`http://127.0.0.1:${debugPort}/json`).then((result) => result.json());
+    const page = targets.find((target) => target.type === "page");
+    assert.ok(page?.webSocketDebuggerUrl, "Chromium must expose a page target.");
+    browser = await connectDebugger(page.webSocketDebuggerUrl);
+    await browser.send("Page.enable");
+    await browser.send("Runtime.enable");
+    await browser.send("Emulation.setDeviceMetricsOverride", {
+      width: 320, height: 720, deviceScaleFactor: 1, mobile: true,
+    });
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    await browser.send("Page.navigate", { url: `http://127.0.0.1:${address.port}/` });
+
+    await waitForBrowserValue(
+      browser,
+      "document.body.innerText.includes('At a glance')",
+      "The real ETF analysis screen did not render its overview.",
+    );
+    const sectionState = await browser.evaluate(`Array.from(
+      document.querySelectorAll('[data-testid^="analysis-section-"]'),
+      (section) => ({ id: section.dataset.testid, cardText: section.parentElement.textContent })
+    )`);
+    assert.ok(sectionState.length >= 7, "All ETF detail sections should render.");
+    const collapsedEvidence = [
+      "AI commentary summarizes supplied fund data",
+      "Missing components are excluded",
+      "Expense ratio",
+      "Benchmark unavailable.",
+      "Category expense comparison unavailable.",
+      "Apple Inc. (AAPL)",
+      "Historical regime data unavailable.",
+      "These are historical-regime illustrations",
+    ];
+    assert.ok(
+      collapsedEvidence.every((evidence) => !sectionState.some((section) => section.cardText.includes(evidence))),
+      `Every ETF evidence section should start collapsed: ${JSON.stringify(sectionState)}`,
+    );
+    assert.equal(
+      await browser.evaluate(
+        "document.documentElement.scrollWidth <= window.innerWidth && document.body.scrollWidth <= window.innerWidth",
+      ),
+      true,
+      "The ETF analysis screen must not overflow horizontally at 320px.",
+    );
+
+    const sectionId = "analysis-section-fund-profile-risk";
+    const sectionSelector = `[data-testid="${sectionId}"]`;
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(sectionSelector)})?.parentElement?.textContent.includes("Expense ratio")`),
+      false,
+      "Collapsed fund-profile evidence must not be visible.",
+    );
+    await browser.evaluate(`(() => {
+      const section = document.querySelector(${JSON.stringify(sectionSelector)});
+      section?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      section?.click();
+    })()`);
+    await waitForBrowserValue(
+      browser,
+      `document.querySelector(${JSON.stringify(sectionSelector)})?.parentElement?.textContent.includes("Expense ratio")`,
+      "Tapping the fund-profile section should expand it.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(sectionSelector)})?.parentElement?.textContent.includes("Expense ratio")`),
+      true,
+      "Opening a section should reveal its fund evidence.",
+    );
+    assert.equal(
+      await browser.evaluate(
+        "document.documentElement.scrollWidth <= window.innerWidth && document.body.scrollWidth <= window.innerWidth",
+      ),
+      true,
+      "Expanded ETF evidence must not overflow horizontally at 320px.",
+    );
+
+    await browser.evaluate(`document.querySelector(${JSON.stringify(sectionSelector)})?.click()`);
+    await waitForBrowserValue(
+      browser,
+      `!document.querySelector(${JSON.stringify(sectionSelector)})?.parentElement?.textContent.includes("Expense ratio")`,
+      "Tapping an expanded section again should collapse it.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(sectionSelector)})?.parentElement?.textContent.includes("Expense ratio")`),
+      false,
+      "Collapsing a section should hide its evidence again.",
+    );
+  } finally {
+    browser?.close();
+    chrome.kill("SIGTERM");
+    await new Promise((resolveClose) => server.close(resolveClose));
+    await rm(profileDir, { recursive: true, force: true });
+  }
 });
