@@ -491,17 +491,30 @@ function parseTrackingMonth(value: unknown): number | null {
   return year * 12 + Number(match[2]) - 1;
 }
 
-function hasUsableTrackingPeriod(
-  tracking: NonNullable<EtfComparisonShareAnalysis['trackingComparison']>,
+export function isValidEtfTrackingHistory(
+  periodStart: unknown,
+  periodEnd: unknown,
+  monthlySamples: unknown,
 ): boolean {
-  const startMonth = parseTrackingMonth(tracking.periodStart);
-  const endMonth = parseTrackingMonth(tracking.periodEnd);
+  const startMonth = parseTrackingMonth(periodStart);
+  const endMonth = parseTrackingMonth(periodEnd);
   return startMonth !== null
     && endMonth !== null
     && endMonth >= startMonth
-    && Number.isInteger(tracking.monthlySamples)
-    && tracking.monthlySamples! > 0
-    && tracking.monthlySamples! <= endMonth - startMonth + 1;
+    && typeof monthlySamples === 'number'
+    && Number.isInteger(monthlySamples)
+    && monthlySamples > 0
+    && monthlySamples <= endMonth - startMonth + 1;
+}
+
+function hasUsableTrackingPeriod(
+  tracking: NonNullable<EtfComparisonShareAnalysis['trackingComparison']>,
+): boolean {
+  return isValidEtfTrackingHistory(
+    tracking.periodStart,
+    tracking.periodEnd,
+    tracking.monthlySamples,
+  );
 }
 
 export interface EtfComparisonShareMetricFund {

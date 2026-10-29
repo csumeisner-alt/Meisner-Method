@@ -43,6 +43,7 @@ import {
   estimateEtfFeeDollars,
   getReportedEtfSectorComparison,
   isValidEtfExpenseRatio,
+  isValidEtfTrackingHistory,
   parseEtfFeeInvestmentAmount,
   parseSavedEtfComparisonSymbols,
   parseSavedEtfHoldingSnapshots,
@@ -392,6 +393,16 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
     feeHoldingYears,
   );
   const validExpenseRatio = isValidEtfExpenseRatio(fund.expenseRatio);
+  const hasValidTrackingHistory = (
+    tracking: EtfAnalysisPayload['trackingComparison'] | null | undefined,
+  ): tracking is NonNullable<EtfAnalysisPayload['trackingComparison']> => Boolean(
+    tracking
+    && isValidEtfTrackingHistory(
+      tracking.periodStart,
+      tracking.periodEnd,
+      tracking.monthlySamples,
+    ),
+  );
   const [compareFunds, setCompareFunds] = useState<Array<{
     symbol: string;
     topHoldings: { symbol: string; name: string; weight: number }[];
@@ -414,7 +425,7 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
   const profileScore = calculateEtfResearchScore({
     expenseRatio: fund.expenseRatio,
     categoryAverageExpenseRatio: fund.peerExpenseComparison?.categoryAverageExpenseRatio ?? null,
-    trackingError: fund.benchmark && fund.trackingComparison
+    trackingError: fund.benchmark && hasValidTrackingHistory(fund.trackingComparison)
       ? fund.trackingComparison.trackingError
       : null,
     sectorWeights: fund.sectorWeights ?? [],
@@ -802,24 +813,24 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
     {
       label: 'Verified benchmark return',
       value: (analysis) => {
-        const value = analysis.trackingComparison?.benchmarkAnnualizedReturn;
-        if (value == null || !analysis.benchmark) return 'Unavailable';
+        const tracking = analysis.trackingComparison;
+        if (!hasValidTrackingHistory(tracking) || !analysis.benchmark) return 'Unavailable';
+        const value = tracking.benchmarkAnnualizedReturn;
+        if (value == null) return 'Unavailable';
         return `${formatEtfComparisonValue(value, 'percent')} · ${analysis.benchmark.symbol}`;
       },
     },
     {
       label: 'Tracking difference',
-      value: (analysis) => formatEtfComparisonValue(
-        analysis.trackingComparison?.trackingDifference,
-        'percent',
-      ),
+      value: (analysis) => hasValidTrackingHistory(analysis.trackingComparison)
+        ? formatEtfComparisonValue(analysis.trackingComparison.trackingDifference, 'percent')
+        : 'Unavailable',
     },
     {
       label: 'Annualized tracking error',
-      value: (analysis) => formatEtfComparisonValue(
-        analysis.trackingComparison?.trackingError,
-        'percent',
-      ),
+      value: (analysis) => hasValidTrackingHistory(analysis.trackingComparison)
+        ? formatEtfComparisonValue(analysis.trackingComparison.trackingError, 'percent')
+        : 'Unavailable',
     },
     { label: 'Bull regime average', value: (analysis) => formatRegimeReturn(analysis, 'bull') },
     { label: 'Bear regime average', value: (analysis) => formatRegimeReturn(analysis, 'bear') },
@@ -1104,7 +1115,7 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
               Benchmark unavailable. The provider did not identify a benchmark for this fund.
             </Text>
           )}
-          {fund.trackingComparison ? (
+          {hasValidTrackingHistory(fund.trackingComparison) ? (
             <>
               <MetricRow label="Fund annualized return" value={pctValue(fund.trackingComparison.fundAnnualizedReturn)} />
               <MetricRow label="Benchmark annualized return" value={pctValue(fund.trackingComparison.benchmarkAnnualizedReturn)} />
@@ -1117,7 +1128,9 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
             </>
           ) : (
             <Text style={{ color: colors.mutedForeground, marginTop: fund.benchmark ? 8 : 4 }}>
-              Tracking difference and error unavailable without a verified benchmark and enough shared history.
+              {fund.trackingComparison
+                ? 'Tracking history unavailable because its dates or monthly sample count are invalid or incomplete.'
+                : 'Tracking difference and error unavailable without a verified benchmark and enough shared history.'}
             </Text>
           )}
           <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 8 }}>
@@ -1483,13 +1496,15 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
                 Verified benchmark unavailable.
               </Text>
             )}
-            {comparison.trackingComparison ? (
+            {hasValidTrackingHistory(comparison.trackingComparison) ? (
               <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
                 Tracking history: {comparison.trackingComparison.periodStart}–{comparison.trackingComparison.periodEnd} · {comparison.trackingComparison.monthlySamples} monthly samples · {comparison.trackingComparison.source} · retrieved {sourceDate(comparison.trackingComparison.asOf)}
               </Text>
             ) : (
               <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
-                Tracking comparison unavailable without a verified benchmark and sufficient shared history.
+                {comparison.trackingComparison
+                  ? 'Tracking history unavailable because its dates or monthly sample count are invalid or incomplete.'
+                  : 'Tracking comparison unavailable without a verified benchmark and sufficient shared history.'}
               </Text>
             )}
             {comparison.marketRegime ? (

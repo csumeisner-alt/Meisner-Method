@@ -12,6 +12,7 @@ import {
   formatEtfProfileAssets,
   formatHeatMapRegimeReturn,
   estimateEtfFeeDollars,
+  isValidEtfTrackingHistory,
   isValidEtfExpenseRatio,
   parseEtfFeeInvestmentAmount,
   getHeatMapCryptoSupplyChartModel,
@@ -1051,6 +1052,48 @@ test('ETF comparison share labels invalid or missing tracking-period metadata un
   assert.match(
     makeSummary(validFields),
     /Benchmark tracking \(2025-01–2025-12, 12 monthly samples\): fund return 10\.00%/,
+  );
+});
+
+test('ETF tracking history validation rejects missing, malformed, reversed, and impossible ranges', () => {
+  assert.equal(isValidEtfTrackingHistory('2021-01', '2025-12', 60), true);
+  assert.equal(isValidEtfTrackingHistory('2025-01', '2025-12', 1), true);
+  const invalidRanges: [unknown, unknown, unknown][] = [
+    [undefined, '2025-12', 12],
+    ['2025-01', null, 12],
+    ['2025-1', '2025-12', 12],
+    ['2025-00', '2025-12', 12],
+    ['2025-13', '2025-12', 12],
+    ['0000-01', '2025-12', 12],
+    ['2026-01', '2025-12', 12],
+    ['2025-01', '2025-12', undefined],
+    ['2025-01', '2025-12', 0],
+    ['2025-01', '2025-12', -1],
+    ['2025-01', '2025-12', 1.5],
+    ['2025-01', '2025-12', 13],
+    ['2025-01', '2025-12', Number.POSITIVE_INFINITY],
+  ];
+  for (const [start, end, samples] of invalidRanges) {
+    assert.equal(isValidEtfTrackingHistory(start, end, samples), false);
+  }
+});
+
+test('ETF fund detail and comparison views suppress invalid tracking history', () => {
+  assert.match(
+    analysisScreenSource,
+    /\{hasValidTrackingHistory\(fund\.trackingComparison\) \? \([\s\S]*?Adjusted monthly returns,[\s\S]*?\) : \(/,
+  );
+  assert.match(
+    analysisScreenSource,
+    /Tracking history unavailable because its dates or monthly sample count are invalid or incomplete\./,
+  );
+  assert.match(
+    analysisScreenSource,
+    /if \(!hasValidTrackingHistory\(tracking\) \|\| !analysis\.benchmark\) return 'Unavailable';/,
+  );
+  assert.match(
+    analysisScreenSource,
+    /\{hasValidTrackingHistory\(comparison\.trackingComparison\) \? \([\s\S]*?Tracking history:[\s\S]*?\) : \(/,
   );
 });
 
