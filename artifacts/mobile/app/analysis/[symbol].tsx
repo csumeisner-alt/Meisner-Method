@@ -173,7 +173,7 @@ const metricStyles = StyleSheet.create({
   value: { fontSize: 13 },
 });
 
-function SectionCard({ title, icon, score, scoreColor, children, helpTopic, onHelp }: {
+function SectionCard({ title, icon, score, scoreColor, children, helpTopic, onHelp, collapsible = false }: {
   title: string;
   icon: React.ReactNode;
   score?: number;
@@ -181,14 +181,25 @@ function SectionCard({ title, icon, score, scoreColor, children, helpTopic, onHe
   children: React.ReactNode;
   helpTopic?: HelpTopic;
   onHelp?: (topic: HelpTopic) => void;
+  collapsible?: boolean;
 }) {
   const colors = useColors();
+  const [expanded, setExpanded] = useState(false);
+  const Header = collapsible ? Pressable : View;
   return (
     <View style={[cardStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      <View style={cardStyles.header}>
+      <Header
+        style={cardStyles.header}
+        {...(collapsible ? {
+          onPress: () => setExpanded((current) => !current),
+          accessibilityRole: 'button' as const,
+          accessibilityState: { expanded },
+          testID: `analysis-section-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+        } : {})}
+      >
         <View style={cardStyles.titleRow}>
           {icon}
-          <Text style={[cardStyles.title, { color: colors.foreground, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5 }]}>{title}</Text>
+          <Text style={[cardStyles.title, { color: colors.foreground, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5, flex: 1 }]}>{title}</Text>
           {helpTopic && onHelp && (
             <TouchableOpacity
               onPress={() => {
@@ -204,6 +215,9 @@ function SectionCard({ title, icon, score, scoreColor, children, helpTopic, onHe
               <Feather name="help-circle" size={17} color={colors.primary} />
             </TouchableOpacity>
           )}
+          {collapsible && (
+            <Feather name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={colors.mutedForeground} />
+          )}
         </View>
         {score != null && scoreColor && (
           <View style={cardStyles.scoreRow}>
@@ -211,9 +225,9 @@ function SectionCard({ title, icon, score, scoreColor, children, helpTopic, onHe
             <ScoreBar score={score} color={scoreColor} />
           </View>
         )}
-      </View>
+      </Header>
       <View style={[cardStyles.divider, { backgroundColor: colors.border }]} />
-      {children}
+      {(!collapsible || expanded) && children}
     </View>
   );
 }
@@ -689,17 +703,67 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           {fund.fundCategory ?? 'ETF'} · Rules-based profile, not a buy or sell recommendation.
         </Text>
       </View>
-      <SectionCard title="AI FUND BRIEF" icon={<Ionicons name="sparkles-outline" size={16} color={colors.primary} />}>
+      <View style={[cardStyles.card, { backgroundColor: colors.card, borderColor: colors.border, padding: 16 }]}>
+        <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 14 }}>
+          At a glance
+        </Text>
+        <Text style={{ color: colors.mutedForeground, fontSize: 13, lineHeight: 19, marginTop: 6 }}>
+          {profileScore.score == null
+            ? 'A profile score is unavailable because none of the score components could be rated from current fund data.'
+            : profileScore.score >= 65
+              ? 'The available rules-based profile signals are broadly supportive.'
+              : profileScore.score <= 40
+                ? 'The available rules-based profile signals are limited; review the component coverage and evidence.'
+                : 'The available rules-based profile signals are mixed.'}
+          {' '}This is a summary of reported data, not a forecast or recommendation.
+        </Text>
+        <View style={{ borderTopWidth: 1, borderTopColor: colors.border, marginTop: 12, paddingTop: 12 }}>
+          <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 11, letterSpacing: 0.5, marginBottom: 8 }}>
+            AI-IDENTIFIED TAKEAWAYS
+          </Text>
+          {!!fund.strengths.length && (
+            <View style={{ marginBottom: fund.risks.length ? 10 : 0 }}>
+              <Text style={{ color: colors.buyColor, fontSize: 11, fontFamily: 'Inter_600SemiBold', marginBottom: 6 }}>STRENGTHS</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
+                {fund.strengths.slice(0, 2).map((item, index) => (
+                  <Text key={`overview-strength-${index}-${item}`} style={{ color: colors.buyColor, backgroundColor: colors.buyBg, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6, fontSize: 12 }}>
+                    {item}
+                  </Text>
+                ))}
+              </View>
+            </View>
+          )}
+          {!!fund.risks.length && (
+            <View>
+              <Text style={{ color: colors.sellColor, fontSize: 11, fontFamily: 'Inter_600SemiBold', marginBottom: 6 }}>RISKS TO REVIEW</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
+                {fund.risks.slice(0, 2).map((item, index) => (
+                  <Text key={`overview-risk-${index}-${item}`} style={{ color: colors.sellColor, backgroundColor: colors.sellBg, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6, fontSize: 12 }}>
+                    {item}
+                  </Text>
+                ))}
+              </View>
+            </View>
+          )}
+          {!fund.strengths.length && !fund.risks.length && (
+            <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>No AI takeaways are available.</Text>
+          )}
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 10 }}>
+            AI-generated observations are separate from the rules-based score and are not personalized advice.
+          </Text>
+        </View>
+      </View>
+      <SectionCard collapsible title="AI COMMENTARY" icon={<Ionicons name="sparkles-outline" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           <Text style={{ color: colors.foreground, fontSize: 14, lineHeight: 22 }}>
             {fund.analysis || 'AI commentary is unavailable. Review the sourced fund data below.'}
           </Text>
           {!!fund.strengths.length && (
             <View style={{ marginTop: 14 }}>
-              <Text style={{ color: colors.buyColor, fontFamily: 'Inter_600SemiBold', fontSize: 11, letterSpacing: 0.6, marginBottom: 7 }}>REPORTED STRENGTHS</Text>
+              <Text style={{ color: colors.buyColor, fontFamily: 'Inter_600SemiBold', fontSize: 11, letterSpacing: 0.6, marginBottom: 7 }}>AI-IDENTIFIED STRENGTHS</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
                 {fund.strengths.map((item, index) => (
-                  <Text key={`${index}-${item}`} style={{ color: colors.buyColor, backgroundColor: colors.buyBg, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6, fontSize: 12 }}>
+                  <Text key={`commentary-strength-${index}-${item}`} style={{ color: colors.buyColor, backgroundColor: colors.buyBg, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6, fontSize: 12 }}>
                     {item}
                   </Text>
                 ))}
@@ -708,10 +772,10 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           )}
           {!!fund.risks.length && (
             <View style={{ marginTop: 12 }}>
-              <Text style={{ color: colors.sellColor, fontFamily: 'Inter_600SemiBold', fontSize: 11, letterSpacing: 0.6, marginBottom: 7 }}>RISKS TO REVIEW</Text>
+              <Text style={{ color: colors.sellColor, fontFamily: 'Inter_600SemiBold', fontSize: 11, letterSpacing: 0.6, marginBottom: 7 }}>AI-IDENTIFIED RISKS TO REVIEW</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
                 {fund.risks.map((item, index) => (
-                  <Text key={`${index}-${item}`} style={{ color: colors.sellColor, backgroundColor: colors.sellBg, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6, fontSize: 12 }}>
+                  <Text key={`commentary-risk-${index}-${item}`} style={{ color: colors.sellColor, backgroundColor: colors.sellBg, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6, fontSize: 12 }}>
                     {item}
                   </Text>
                 ))}
@@ -719,11 +783,11 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
             </View>
           )}
           <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 14 }}>
-            AI commentary summarizes supplied fund data; it does not set the profile score or provide personalized advice.
+            AI commentary summarizes supplied fund data; it does not set the profile score or provide personalized advice or a buy/sell recommendation.
           </Text>
         </View>
       </SectionCard>
-      <SectionCard title="ETF PROFILE SCORE" icon={<Ionicons name="speedometer-outline" size={16} color={colors.primary} />}>
+      <SectionCard collapsible title="SCORE DETAILS & METHODOLOGY" icon={<Ionicons name="speedometer-outline" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 28 }}>
             {profileScore.score == null ? 'Not scored' : `${profileScore.score}/100`}
@@ -757,7 +821,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           </Text>
         </View>
       </SectionCard>
-      <SectionCard title="FUND PROFILE" icon={<Ionicons name="layers-outline" size={16} color={colors.primary} />}>
+      <SectionCard collapsible title="FUND PROFILE & RISK" icon={<Ionicons name="layers-outline" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           <MetricRow label="Category" value={fund.fundCategory ?? 'Unavailable'} />
           <MetricRow label="Fund family" value={fund.fundFamily ?? 'Unavailable'} />
@@ -770,10 +834,21 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           <MetricRow label="1-year annualized volatility" value={pctValue(fund.annualizedVolatility)} />
           <MetricRow label="1-year maximum drawdown" value={pctValue(fund.maxDrawdown)} />
           <MetricRow label="Return / volatility ratio" value={fmtNum(fund.riskAdjustedReturn)} />
-          <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 6 }}>Risk-adjusted ratio uses a 0% risk-free proxy and is not a Sharpe ratio.</Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 6 }}>
+            Expense ratio is the annual operating cost as a share of fund assets. Distribution yield can change and is not guaranteed.
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 6 }}>
+            Beta estimates sensitivity to broad-market moves; volatility describes price variation; maximum drawdown is the largest peak-to-trough decline in the period.
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 6 }}>
+            Risk-adjusted ratio uses a 0% risk-free proxy and is not a Sharpe ratio.
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 6 }}>
+            Fund data source: {fund.provider} · retrieved {sourceDate(fund.asOf)}
+          </Text>
         </View>
       </SectionCard>
-      <SectionCard title="BENCHMARK & TRACKING" icon={<Ionicons name="git-compare-outline" size={16} color={colors.primary} />}>
+      <SectionCard collapsible title="BENCHMARK & TRACKING" icon={<Ionicons name="git-compare-outline" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           {fund.benchmark ? (
             <>
@@ -808,7 +883,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           </Text>
         </View>
       </SectionCard>
-      <SectionCard title="CATEGORY COST COMPARISON" icon={<MaterialCommunityIcons name="scale-balance" size={16} color={colors.primary} />}>
+      <SectionCard collapsible title="COSTS & CATEGORY CONTEXT" icon={<MaterialCommunityIcons name="scale-balance" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           {fund.peerExpenseComparison ? (
             <>
@@ -834,7 +909,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           )}
         </View>
       </SectionCard>
-      <SectionCard title="REPORTED TOP HOLDINGS" icon={<MaterialCommunityIcons name="briefcase-outline" size={16} color={colors.primary} />}>
+      <SectionCard collapsible title="HOLDINGS & DIVERSIFICATION" icon={<MaterialCommunityIcons name="briefcase-outline" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           {fund.topHoldings.length ? fund.topHoldings.map((holding) => (
             <MetricRow key={holding.symbol} label={`${holding.name} (${holding.symbol})`} value={pctValue(holding.weight)} />
@@ -999,7 +1074,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           )}
         </View>
       </SectionCard>
-      <SectionCard title="HISTORICAL MARKET REGIMES" icon={<Ionicons name="trending-up" size={16} color={colors.primary} />}>
+      <SectionCard collapsible title="HISTORICAL PERFORMANCE" icon={<Ionicons name="trending-up" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           {fund.marketRegime ? (
             <>
@@ -1015,7 +1090,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           ) : <Text style={{ color: colors.mutedForeground }}>Historical regime data unavailable.</Text>}
         </View>
       </SectionCard>
-      <SectionCard title="ILLUSTRATIVE 5–10 YEAR SCENARIOS" icon={<MaterialCommunityIcons name="chart-timeline-variant" size={16} color={colors.primary} />}>
+      <SectionCard collapsible title="LONG-RANGE SCENARIOS" icon={<MaterialCommunityIcons name="chart-timeline-variant" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           {fund.scenarios.map((scenario) => (
             <View key={scenario.label} style={{ marginBottom: 12 }}>

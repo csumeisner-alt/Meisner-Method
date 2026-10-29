@@ -120,16 +120,46 @@ test("ETF comparison tickers persist, revalidate, and remain saved on provider f
   assert.match(etfAnalysisSource, /removeCompareSymbol\(fundEntry\.symbol\)/);
 });
 
-test("ETF analysis displays the deterministic profile score and its limits", () => {
+test("ETF analysis leads with a concise overview and preserves score limits", () => {
   assert.doesNotMatch(etfAnalysisSource, /Evaluates the fund as a portfolio of reported holdings/);
   assert.match(etfAnalysisSource, /calculateEtfResearchScore\(\{/);
-  assert.match(etfAnalysisSource, /ETF PROFILE SCORE/);
+  assert.match(etfAnalysisSource, /ETF RESEARCH PROFILE/);
+  assert.match(etfAnalysisSource, /At a glance/);
+  assert.match(etfAnalysisSource, /AI-IDENTIFIED TAKEAWAYS/);
+  assert.match(etfAnalysisSource, /fund\.strengths\.slice\(0, 2\)/);
+  assert.match(etfAnalysisSource, /fund\.risks\.slice\(0, 2\)/);
+  assert.match(etfAnalysisSource, /fund\.strengths\.map/);
+  assert.match(etfAnalysisSource, /fund\.risks\.map/);
+  assert.match(etfAnalysisSource, /SCORE DETAILS & METHODOLOGY/);
   assert.match(etfAnalysisSource, /Missing components are excluded and remaining weights are rescaled/);
   assert.match(etfAnalysisSource, /Rules-based, not AI-generated or personalized advice/);
+  assert.match(etfAnalysisSource, /AI commentary summarizes supplied fund data; it does not set the profile score/);
   assert.match(etfAnalysisSource, /component\.peerContext\.category/);
   assert.match(etfAnalysisSource, /component\.peerContext\.sampleContext/);
   assert.match(etfAnalysisSource, /component\.peerContext\.source/);
   assert.match(etfAnalysisSource, /sourceDate\(component\.peerContext\.asOf\)/);
+  assert.match(etfAnalysisSource, /Expense ratio is the annual operating cost as a share of fund assets/);
+  assert.match(etfAnalysisSource, /Beta estimates sensitivity to broad-market moves/);
+  assert.match(etfAnalysisSource, /Fund data source: \{fund\.provider\} · retrieved \{sourceDate\(fund\.asOf\)\}/);
+});
+
+test("ETF evidence is grouped in expandable, accessible sections", () => {
+  const overviewIndex = etfAnalysisSource.indexOf("At a glance");
+  const scoreDetailsIndex = etfAnalysisSource.indexOf("SCORE DETAILS & METHODOLOGY");
+  assert.ok(overviewIndex >= 0 && scoreDetailsIndex > overviewIndex);
+  assert.match(etfAnalysisSource, /useState\(false\)/);
+  assert.match(etfAnalysisSource, /accessibilityState: \{ expanded \}/);
+  assert.match(etfAnalysisSource, /\(!collapsible \|\| expanded\) && children/);
+  for (const heading of [
+    "FUND PROFILE & RISK",
+    "COSTS & CATEGORY CONTEXT",
+    "HOLDINGS & DIVERSIFICATION",
+    "BENCHMARK & TRACKING",
+    "HISTORICAL PERFORMANCE",
+    "LONG-RANGE SCENARIOS",
+  ]) {
+    assert.match(etfAnalysisSource, new RegExp(`SectionCard collapsible title="${heading}"`));
+  }
 });
 
 test("ETF peer metadata in the API schema matches the mobile labels", () => {
