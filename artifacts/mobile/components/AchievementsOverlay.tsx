@@ -1,7 +1,9 @@
 import React, { useEffect, useReducer, useRef, useState } from 'react';
 import {
+  AccessibilityInfo,
   Animated,
   Easing,
+  findNodeHandle,
   Modal,
   Pressable,
   Platform,
@@ -419,6 +421,7 @@ export function AchievementsOverlay() {
   const [prideConfirmVisible, setPrideConfirmVisible] = useState(false);
   const [rainbowCelebrationVisible, setRainbowCelebrationVisible] = useState(false);
   const [iconUnchangedNotice, setIconUnchangedNotice] = useState(false);
+  const titleFlagGalleryHeadingRef = useRef<Text>(null);
 
   const requestPrideSelection = () => {
     if (!premiumFlagReady || !prideUnlocked) return;
@@ -446,6 +449,15 @@ export function AchievementsOverlay() {
     dispatchAchievementSeal({ type: 'choose-title-flag' });
     setTimeout(openGallery, 260);
   };
+
+  useEffect(() => {
+    if (!galleryVisible || Platform.OS !== 'android') return;
+    const timeout = setTimeout(() => {
+      const headingTag = findNodeHandle(titleFlagGalleryHeadingRef.current);
+      if (headingTag != null) AccessibilityInfo.setAccessibilityFocus(headingTag);
+    }, 350);
+    return () => clearTimeout(timeout);
+  }, [galleryVisible]);
 
   useEffect(() => {
     if (
@@ -642,7 +654,12 @@ export function AchievementsOverlay() {
                   </Text>
                 </View>
                   <>
-                    <Text style={[styles.flagRewardTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+                    <Text
+                      ref={titleFlagGalleryHeadingRef}
+                      accessibilityRole="header"
+                      accessibilityLabel={`Title flag gallery. Choose the default U.S. flag, one of five designs, or Pride after ${PRIDE_FLAG_QUOTE_THRESHOLD} Biden quote views.`}
+                      style={[styles.flagRewardTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}
+                    >
                       Choose your title flag
                     </Text>
                     <Text style={[styles.flagRewardDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
@@ -655,6 +672,7 @@ export function AchievementsOverlay() {
                         accessibilityRole="button"
                         accessibilityState={{ selected: selectedPremiumFlagId === DEFAULT_FLAG_ID, disabled: !premiumFlagReady }}
                         accessibilityLabel={`Default U.S. flag${selectedPremiumFlagId === DEFAULT_FLAG_ID ? ', selected' : ''}`}
+                        accessibilityHint="Double tap to select this title flag."
                         style={[
                           styles.flagChoice,
                           {
@@ -682,6 +700,7 @@ export function AchievementsOverlay() {
                             accessibilityRole="button"
                             accessibilityState={{ selected, disabled: !premiumFlagReady }}
                             accessibilityLabel={`${flag.name} premium flag${selected ? ', selected' : ''}`}
+                            accessibilityHint="Double tap to select this title flag."
                             style={[
                               styles.flagChoice,
                               {
@@ -705,6 +724,7 @@ export function AchievementsOverlay() {
                         accessibilityRole="button"
                         accessibilityState={{ selected: selectedPremiumFlagId === PRIDE_FLAG.id, disabled: !premiumFlagReady || !prideUnlocked }}
                         accessibilityLabel={`Pride premium flag${prideUnlocked ? '' : `, locked until ${PRIDE_FLAG_QUOTE_THRESHOLD} Biden quotes are viewed`}${selectedPremiumFlagId === PRIDE_FLAG.id ? ', selected' : ''}`}
+                        accessibilityHint={prideUnlocked ? "Double tap to select this title flag." : undefined}
                         style={[
                           styles.flagChoice,
                           {

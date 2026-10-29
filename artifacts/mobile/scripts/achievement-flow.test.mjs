@@ -76,6 +76,21 @@ test("first-time app milestones are wired to achievement rewards and a review sc
   assert.match(overlaySource, /maxHeight: '88%'/);
 });
 
+test("Final Seal moves Android screen-reader focus to the title flag gallery", () => {
+  assert.match(
+    overlaySource,
+    /if \(!galleryVisible \|\| Platform\.OS !== 'android'\) return;[\s\S]*?findNodeHandle\(titleFlagGalleryHeadingRef\.current\)[\s\S]*?AccessibilityInfo\.setAccessibilityFocus\(headingTag\)[\s\S]*?\}, 350\);/,
+  );
+  assert.match(
+    overlaySource,
+    /ref=\{titleFlagGalleryHeadingRef\}[\s\S]*?accessibilityRole="header"[\s\S]*?accessibilityLabel=\{`Title flag gallery\./,
+  );
+  assert.match(overlaySource, /Default U\.S\. flag[\s\S]*?accessibilityHint="Double tap to select this title flag\."/);
+  assert.match(overlaySource, /\$\{flag\.name\} premium flag[\s\S]*?accessibilityHint="Double tap to select this title flag\."/);
+  assert.match(overlaySource, /Pride premium flag[\s\S]*?accessibilityHint=\{prideUnlocked \? "Double tap to select this title flag\."/);
+  assert.match(overlaySource, /dispatchAchievementSeal\(\{ type: 'choose-title-flag' \}\);\s*setTimeout\(openGallery, 260\)/);
+});
+
 test("Final Seal fits compact Android layouts and keeps its controls tappable", () => {
   for (const viewport of [
     { width: 320, height: 568, topInset: 24, bottomInset: 24 },
