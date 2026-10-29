@@ -145,15 +145,22 @@ export function AchievementSealCelebration({
 }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
+  const { width, height, fontScale } = useWindowDimensions();
   const progress = useRef(new Animated.Value(0)).current;
   const soundPlayerRef = useRef<AudioPlayer | null>(null);
   const soundPlayedRef = useRef(false);
-  const { ringSize, buttonWidth, copyWidth } = getAchievementSealLayout(
+  const {
+    ringSize,
+    buttonWidth,
+    copyWidth,
+    verticalPadding,
+    ringBottomGap,
+  } = getAchievementSealLayout(
     width,
     height,
     insets.top,
     insets.bottom,
+    fontScale,
   );
   const markerSize = 20;
   const markerRadius = ringSize * 0.43;
@@ -240,7 +247,7 @@ export function AchievementSealCelebration({
   const sweepScale = progress.interpolate({ inputRange: [0, 0.72, 0.88, 1], outputRange: [0.1, 1, 1.2, 1.35] });
 
   return (
-    <View style={[styles.sealRoot, { backgroundColor: colors.background, paddingTop: insets.top + 18, paddingBottom: insets.bottom + 18 }]}>
+    <View style={[styles.sealRoot, { backgroundColor: colors.background, paddingTop: insets.top + verticalPadding, paddingBottom: insets.bottom + verticalPadding }]}>
       <View pointerEvents="none" style={styles.sealAtmosphere}>
         <View style={[styles.sealAtmosphereGlow, { backgroundColor: colors.vaultBlue }]} />
         <View style={[styles.sealAtmosphereGlowWarm, { backgroundColor: colors.gradeWarning }]} />
@@ -261,6 +268,7 @@ export function AchievementSealCelebration({
           {
             width: ringSize,
             height: ringSize,
+            marginBottom: ringBottomGap,
             opacity: ringOpacity,
             transform: [{ scale: ringScale }, { rotate: ringRotation }],
           },
@@ -369,10 +377,10 @@ export function AchievementSealCelebration({
         <Text accessibilityLiveRegion="polite" style={[styles.sealEyebrow, { color: colors.vaultBlue, fontFamily: 'Inter_700Bold' }]}>
           THE FINAL SEAL
         </Text>
-        <Text style={[styles.sealTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+        <Text style={[styles.sealTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold', lineHeight: 34 * fontScale }]}>
           15 of 15 complete
         </Text>
-        <Text style={[styles.sealDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+        <Text style={[styles.sealDescription, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular', lineHeight: 21 * fontScale }]}>
           Your title flag collection is now open.
         </Text>
       </Animated.View>
@@ -905,7 +913,7 @@ const styles = StyleSheet.create({
   sealAtmosphere: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   sealAtmosphereGlow: { position: 'absolute', width: 310, height: 310, borderRadius: 155, opacity: 0.08 },
   sealAtmosphereGlowWarm: { position: 'absolute', width: 220, height: 220, borderRadius: 110, opacity: 0.055, transform: [{ translateY: 90 }] },
-  sealRing: { alignItems: 'center', justifyContent: 'center', marginBottom: 22 },
+  sealRing: { alignItems: 'center', justifyContent: 'center' },
   sealRingOutline: { ...StyleSheet.absoluteFillObject, borderWidth: 1.5, borderRadius: 999 },
   sealRingInner: { position: 'absolute', width: '70%', height: '70%', borderWidth: 1, borderRadius: 12 },
   sealRingDash: { position: 'absolute', width: '88%', height: '88%', borderWidth: 1, borderStyle: 'dashed', borderRadius: 999, opacity: 0.72 },

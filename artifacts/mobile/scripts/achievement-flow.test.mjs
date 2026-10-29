@@ -93,28 +93,35 @@ test("Final Seal moves Android screen-reader focus to the title flag gallery", (
 
 test("Final Seal fits compact Android layouts and keeps its controls tappable", () => {
   for (const viewport of [
-    { width: 320, height: 568, topInset: 24, bottomInset: 24 },
-    { width: 360, height: 640, topInset: 24, bottomInset: 24 },
+    { width: 320, height: 568, topInset: 24, bottomInset: 24, fontScale: 1 },
+    { width: 360, height: 640, topInset: 24, bottomInset: 24, fontScale: 1 },
+    { width: 320, height: 568, topInset: 24, bottomInset: 24, fontScale: 2 },
+    { width: 360, height: 640, topInset: 24, bottomInset: 24, fontScale: 2 },
   ]) {
     const layout = getAchievementSealLayout(
       viewport.width,
       viewport.height,
       viewport.topInset,
       viewport.bottomInset,
+      viewport.fontScale,
     );
 
     assert.ok(layout.ringSize <= viewport.width - 44, "the full seal stays inside horizontal padding");
-    assert.ok(layout.contentHeight <= viewport.height - 24, "the seal, copy, action, and safe areas fit with clearance");
+    assert.ok(layout.contentHeight <= viewport.height - layout.contentClearance, "the seal, copy, action, and safe areas fit with clearance");
     assert.ok(layout.buttonWidth <= viewport.width - 44, "the title-flag action stays inside horizontal padding");
     assert.ok(layout.copyWidth <= viewport.width - 44, "the headline and description stay inside horizontal padding");
+    assert.ok(layout.ringSize >= 96, "the seal remains visible at enlarged text scales");
+    assert.ok(layout.copyHeightBudget >= 140 * viewport.fontScale, "copy space accounts for Android text scaling");
   }
 
-  assert.match(overlaySource, /getAchievementSealLayout\(\s*width,\s*height,\s*insets\.top,\s*insets\.bottom/);
+  assert.match(overlaySource, /getAchievementSealLayout\(\s*width,\s*height,\s*insets\.top,\s*insets\.bottom,\s*fontScale/);
   assert.match(overlaySource, /styles\.sealDismiss,\s*\{\s*top: insets\.top \+ 10\s*\}/);
   assert.match(overlaySource, /width: 48, height: 48/);
   assert.match(overlaySource, /accessibilityLabel="Dismiss achievement celebration"[\s\S]*?hitSlop=\{10\}/);
-  assert.match(overlaySource, /paddingTop: insets\.top \+ 18, paddingBottom: insets\.bottom \+ 18/);
+  assert.match(overlaySource, /paddingTop: insets\.top \+ verticalPadding, paddingBottom: insets\.bottom \+ verticalPadding/);
   assert.match(overlaySource, /width: copyWidth, opacity: sealCopyOpacity/);
+  assert.match(overlaySource, /lineHeight: 34 \* fontScale/);
+  assert.match(overlaySource, /lineHeight: 21 \* fontScale/);
   assert.match(overlaySource, /minHeight: 52/);
   assert.match(overlaySource, /if \(reducedMotion\) \{\s*progress\.setValue\(1\)/);
   assert.match(overlaySource, /sealCopyOpacity[\s\S]*?outputRange: \[0, 0, 1, 1\]/);
