@@ -358,6 +358,8 @@ type EtfScenario = {
   assumption: string;
 };
 
+const ETF_SCENARIO_LABELS = ['bear', 'base', 'bull'] as const;
+
 function parseEtfScenarios(scenarios: unknown): EtfScenario[] {
   if (!Array.isArray(scenarios)) return [];
 
@@ -1275,6 +1277,68 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
             ))}
           </View>
         </ScrollView>
+        <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', marginTop: 20 }}>
+          Long-range historical scenarios
+        </Text>
+        <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 5 }}>
+          One-share illustrations, not forecasts. Each fund shows its own expense ratio and historical return assumption.
+        </Text>
+        <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator style={{ marginTop: 10 }}>
+          <View style={{ flexDirection: 'row', gap: 10, paddingRight: 16 }}>
+            {comparisonMetricFunds.map(({ symbol: fundSymbol, analysis: comparison }) => {
+              const scenarioRows = ETF_SCENARIO_LABELS.map((label) => ({
+                label,
+                scenario: parseEtfScenarios(comparison.scenarios)
+                  .find((item) => item.label.toLowerCase() === label) ?? null,
+              }));
+              return (
+                <View
+                  key={`scenario-comparison-${fundSymbol}`}
+                  style={{
+                    width: 246,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: 10,
+                    padding: 12,
+                  }}
+                >
+                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', marginBottom: 8 }}>
+                    {fundSymbol}
+                  </Text>
+                  <MetricRow label="Expense ratio used" value={pctValue(comparison.expenseRatio)} />
+                  {scenarioRows.map(({ label, scenario }) => (
+                    <View
+                      key={`${fundSymbol}-${label}`}
+                      style={{ borderTopWidth: 1, borderTopColor: colors.border, marginTop: 10, paddingTop: 8 }}
+                    >
+                      <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', textTransform: 'uppercase' }}>
+                        {label} scenario
+                      </Text>
+                      <MetricRow
+                        label="Historical annual assumption"
+                        value={pctValue(scenario?.annualReturnAssumption ?? null)}
+                      />
+                      <MetricRow
+                        label="One share in 5 years"
+                        value={scenario?.fiveYearValue == null ? 'Unavailable' : fmtPrice(scenario.fiveYearValue)}
+                      />
+                      <MetricRow
+                        label="One share in 10 years"
+                        value={scenario?.tenYearValue == null ? 'Unavailable' : fmtPrice(scenario.tenYearValue)}
+                      />
+                      <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 14, marginTop: 4 }}>
+                        {scenario?.assumption ?? 'Unavailable: no reported historical scenario for this regime.'}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              );
+            })}
+          </View>
+        </ScrollView>
+        <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 8 }}>
+          Historical-regime illustrations only, not forecasts or guarantees. They assume constant compounding and no additional contributions.
+        </Text>
         {comparisonMetricFunds.map(({ symbol: fundSymbol, analysis: comparison }) => (
           <View
             key={`comparison-context-${fundSymbol}`}
