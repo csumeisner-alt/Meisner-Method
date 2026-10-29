@@ -72,7 +72,7 @@ export async function respondWithEtfAnalysis(
     : null;
   let ai: { analysis?: string; risks?: string[]; strengths?: string[] } = {};
   if (options.includeCommentary !== false) {
-    const prompt = `You are explaining an ETF using only the supplied facts. Do not invent data, peer comparisons, benchmark fit, tracking error, turnover, tax characteristics, or holdings beyond those listed. Do not claim the fund tracks a particular index or has a particular strategy unless that exact fact is supplied. State unavailable facts plainly. Explain what the reported holdings and weights imply, costs, diversification/concentration, historical market-regime observations, and risks. Distinguish historical observations from the illustrative scenarios. Do not give personalized advice or change scenario calculations.
+    const prompt = `You are explaining an ETF using only the supplied facts. Do not invent data, peer comparisons, benchmark fit, tracking error, turnover, tax characteristics, or holdings beyond those listed. Do not claim the fund tracks a particular index or has a particular strategy unless that exact fact is supplied. State unavailable facts plainly. Explain what the reported holdings and weights imply, costs, diversification/concentration, historical market-regime observations, and risks. Distinguish historical observations from the illustrative scenarios. Supplied scenario values model one initial share only; do not imply that they include recurring contributions. Do not give personalized advice or change scenario calculations.
 
 ETF: ${data.symbol} — ${data.companyName}
 Category: ${profile["fundCategory"] ?? "unavailable"}; family: ${profile["fundFamily"] ?? "unavailable"}

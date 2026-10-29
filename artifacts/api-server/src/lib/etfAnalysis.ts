@@ -121,8 +121,8 @@ export function buildEtfScenarios(
       noFeeTenYearValue: projectionAt(10)?.noFeeValue ?? null,
       assumption: valid
         ? validExpenseRatio === null
-          ? `Uses the historical ${label === "base" ? "sample-weighted" : label}-regime annual average for the no-fee illustration. Fee-adjusted values are unavailable because the expense ratio was not reported. Assumes constant compounding and no additional contributions.`
-          : `Uses the historical ${label === "base" ? "sample-weighted" : label}-regime annual average; the fee-adjusted illustration subtracts the reported expense ratio. Assumes constant compounding and no additional contributions.`
+          ? `Uses the historical ${label === "base" ? "sample-weighted" : label}-regime annual average for the no-fee illustration. Fee-adjusted values are unavailable because the expense ratio was not reported. The supplied projection values assume one initial share and no added contributions; the app models monthly contributions separately.`
+          : `Uses the historical ${label === "base" ? "sample-weighted" : label}-regime annual average; the fee-adjusted illustration subtracts the reported expense ratio. The supplied projection values assume one initial share and no added contributions; the app models monthly contributions separately.`
         : `Not shown: insufficient provider-reported ${label} regime history.`,
     };
   });

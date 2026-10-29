@@ -51,7 +51,12 @@ import {
 } from '@/lib/heatMapDetail';
 import { calculateEtfResearchScore } from '@/lib/etfResearchScore';
 import type { HeatMapEtfHoldingSnapshot } from '@/lib/heatMapDetail';
-import { ETF_SCENARIO_LABELS, ETF_SCENARIO_HORIZONS, parseEtfScenarios } from '@/lib/etfScenario';
+import {
+  calculateEtfScenarioValue,
+  ETF_SCENARIO_LABELS,
+  ETF_SCENARIO_HORIZONS,
+  parseEtfScenarios,
+} from '@/lib/etfScenario';
 import type { EtfScenario } from '@/lib/etfScenario';
 import {
   formatAnalysisLoadingStage,
@@ -361,16 +366,21 @@ type EtfAnalysisPayload = {
   asOf: string;
 };
 
-function EtfAnalysisSections({ fund, colors, symbol }: {
+function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
   fund: EtfAnalysisPayload;
   colors: ReturnType<typeof useColors>;
   symbol: string;
+  currentPrice: number;
 }) {
   const { apiFetch } = useApi();
   const [compareTicker, setCompareTicker] = useState('');
   const [selectedScenarioHorizon, setSelectedScenarioHorizon] = useState<number>(10);
   const [feeInvestmentInput, setFeeInvestmentInput] = useState('10000');
   const [feeHoldingYears, setFeeHoldingYears] = useState<number>(10);
+  const [monthlyContributionInput, setMonthlyContributionInput] = useState('0');
+  const monthlyContribution = monthlyContributionInput.trim() === '' || monthlyContributionInput === '.'
+    ? 0
+    : Number(monthlyContributionInput);
   const [savedCompareSymbols, setSavedCompareSymbols] = useState<string[]>([]);
   const savedCompareSymbolsRef = useRef<string[]>([]);
   const comparisonWriteQueue = useRef<Promise<void>>(Promise.resolve());
@@ -387,6 +397,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
     topHoldings: { symbol: string; name: string; weight: number }[];
     topHoldingsReportedCount: number;
     topHoldingsRetrievedAt: string | null;
+    currentPrice: number;
     expenseRatio: number | null;
     sectorWeights: { sector: string; weight: number }[];
     sectorWeightsRetrievedAt: string | null;
@@ -418,18 +429,58 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
   const [holdingSnapshots, setHoldingSnapshots] = useState<HeatMapEtfHoldingSnapshot[]>([]);
   const snapshotWriteQueue = useRef<Promise<void>>(Promise.resolve());
   const [snapshotStorageError, setSnapshotStorageError] = useState('');
-  const selectedProjection = (scenario: EtfScenario | null, horizonYears: number) => {
+  const selectedProjection = (
+    scenario: EtfScenario | null,
+    horizonYears: number,
+    initialInvestment: number,
+  ) => {
     if (!scenario) return null;
-    const projected = scenario.projections.find((projection) => projection.horizonYears === horizonYears);
-    if (projected) return projected;
-    if (horizonYears === 5) {
-      return { horizonYears, noFeeValue: scenario.noFeeFiveYearValue, afterFeeValue: scenario.fiveYearValue };
-    }
-    if (horizonYears === 10) {
-      return { horizonYears, noFeeValue: scenario.noFeeTenYearValue, afterFeeValue: scenario.tenYearValue };
-    }
-    return null;
+    return {
+      horizonYears,
+      noFeeValue: calculateEtfScenarioValue(
+        initialInvestment,
+        scenario.noFeeAnnualReturnAssumption,
+        monthlyContribution,
+        horizonYears,
+      ),
+      afterFeeValue: calculateEtfScenarioValue(
+        initialInvestment,
+        scenario.annualReturnAssumption,
+        monthlyContribution,
+        horizonYears,
+      ),
+    };
   };
+  const renderMonthlyContributionInput = (testID: string) => (
+    <View style={{ marginTop: 12 }}>
+      <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>
+        Monthly contribution
+      </Text>
+      <TextInput
+        testID={testID}
+        accessibilityLabel="Monthly ETF contribution in dollars"
+        value={monthlyContributionInput}
+        onChangeText={(value) => setMonthlyContributionInput(value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'))}
+        keyboardType="decimal-pad"
+        placeholder="0"
+        placeholderTextColor={colors.mutedForeground}
+        style={{
+          color: colors.foreground,
+          backgroundColor: colors.input,
+          borderColor: colors.border,
+          borderWidth: 1,
+          borderRadius: 8,
+          paddingHorizontal: 12,
+          paddingVertical: 9,
+          marginTop: 6,
+          fontFamily: 'Inter_600SemiBold',
+        }}
+      />
+      <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 15, marginTop: 5 }}>
+        Added at each month-end, alongside one share at today’s price.
+      </Text>
+    </View>
+  );
   const renderScenarioHorizonSelector = () => (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
       {ETF_SCENARIO_HORIZONS.map((horizonYears) => {
@@ -504,6 +555,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
     try {
       const response = await apiFetch<{
         assetType?: string;
+        currentPrice?: number;
         etfAnalysis?: EtfAnalysisPayload;
       }>('/api/stocks/analyze', {
         method: 'POST',
@@ -532,6 +584,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           topHoldings: reportedHoldings,
           topHoldingsReportedCount: analysis.topHoldingsReportedCount,
           topHoldingsRetrievedAt: analysis.topHoldingsRetrievedAt,
+          currentPrice: response.currentPrice ?? 0,
           expenseRatio: analysis.expenseRatio,
           sectorWeights: analysis.sectorWeights,
           sectorWeightsRetrievedAt: analysis.sectorWeightsRetrievedAt,
@@ -563,6 +616,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
         try {
           const response = await apiFetch<{
             assetType?: string;
+            currentPrice?: number;
             etfAnalysis?: EtfAnalysisPayload;
           }>('/api/stocks/analyze', {
             method: 'POST',
@@ -571,6 +625,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           return {
             candidate,
             analysis: response.assetType === 'etf' ? response.etfAnalysis ?? null : null,
+            currentPrice: response.currentPrice ?? 0,
             failed: false,
           };
         } catch {
@@ -578,7 +633,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
         }
       }));
       if (cancelled) return;
-      for (const { candidate, analysis, failed } of results) {
+      for (const { candidate, analysis, currentPrice: comparisonPrice, failed } of results) {
         if (analysis) {
           const reportedHoldings = analysis.topHoldings.flatMap((holding) =>
             holding.weight == null ? [] : [{ ...holding, weight: holding.weight }]);
@@ -596,6 +651,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
               topHoldings: reportedHoldings,
               topHoldingsReportedCount: analysis.topHoldingsReportedCount,
               topHoldingsRetrievedAt: analysis.topHoldingsRetrievedAt,
+              currentPrice: comparisonPrice,
               expenseRatio: analysis.expenseRatio,
               sectorWeights: analysis.sectorWeights,
               sectorWeightsRetrievedAt: analysis.sectorWeightsRetrievedAt,
@@ -672,9 +728,13 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
   const primaryHistoryComparison = compareEtfHoldingSnapshots(currentEtfSnapshot, holdingSnapshots);
   const overlaps = findReportedEtfHoldingsOverlap(selectedFunds);
   const sectorComparison = getReportedEtfSectorComparison(selectedFunds);
-  const comparisonMetricFunds: { symbol: string; analysis: EtfAnalysisPayload }[] = [
-    { symbol: symbol.toUpperCase(), analysis: fund },
-    ...compareFunds.map(({ symbol: candidate, analysis }) => ({ symbol: candidate, analysis })),
+  const comparisonMetricFunds: { symbol: string; currentPrice: number; analysis: EtfAnalysisPayload }[] = [
+    { symbol: symbol.toUpperCase(), currentPrice, analysis: fund },
+    ...compareFunds.map(({ symbol: candidate, currentPrice: comparisonPrice, analysis }) => ({
+      symbol: candidate,
+      currentPrice: comparisonPrice,
+      analysis,
+    })),
   ];
   const formatRegimeReturn = (
     analysis: EtfAnalysisPayload,
@@ -1317,12 +1377,13 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           Long-range historical scenarios
         </Text>
         <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 5 }}>
-          One-share illustrations, not forecasts. Each fund shows its own expense ratio and historical return assumption.
+          Illustrations, not forecasts. Each fund uses its own expense ratio and historical return assumption.
         </Text>
+        {renderMonthlyContributionInput('etf-comparison-monthly-contribution-input')}
         {renderScenarioHorizonSelector()}
         <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator style={{ marginTop: 10 }}>
           <View style={{ flexDirection: 'row', gap: 10, paddingRight: 16 }}>
-            {comparisonMetricFunds.map(({ symbol: fundSymbol, analysis: comparison }) => {
+            {comparisonMetricFunds.map(({ symbol: fundSymbol, currentPrice: comparisonPrice, analysis: comparison }) => {
               const scenarioRows = ETF_SCENARIO_LABELS.map((label) => ({
                 label,
                 scenario: parseEtfScenarios(comparison.scenarios)
@@ -1356,10 +1417,16 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
                         value={pctValue(scenario?.annualReturnAssumption ?? null)}
                       />
                       <MetricRow
-                        label={`One share in ${selectedScenarioHorizon} years`}
-                        value={selectedProjection(scenario, selectedScenarioHorizon)?.afterFeeValue == null
+                        label={`No-fee total in ${selectedScenarioHorizon} years`}
+                        value={selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)?.noFeeValue == null
                           ? 'Unavailable'
-                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.afterFeeValue!)}
+                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)!.noFeeValue!)}
+                      />
+                      <MetricRow
+                        label={`After-fee total in ${selectedScenarioHorizon} years`}
+                        value={selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)?.afterFeeValue == null
+                          ? 'Unavailable'
+                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)!.afterFeeValue!)}
                       />
                       <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 14, marginTop: 4 }}>
                         {scenario?.assumption ?? 'Unavailable: no reported historical scenario for this regime.'}
@@ -1372,7 +1439,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           </View>
         </ScrollView>
         <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 8 }}>
-          Historical-regime illustrations only, not forecasts or guarantees. They assume constant compounding and no additional contributions.
+          Historical-regime illustrations only, not forecasts or guarantees. They assume constant monthly compounding and month-end contributions; actual results may differ.
         </Text>
         {comparisonMetricFunds.map(({ symbol: fundSymbol, analysis: comparison }) => (
           <View
@@ -1570,6 +1637,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
       <SectionCard collapsible title="LONG-RANGE SCENARIOS" icon={<MaterialCommunityIcons name="chart-timeline-variant" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           <MetricRow label="Annual expense ratio used" value={pctValue(fund.expenseRatio)} />
+          {renderMonthlyContributionInput('etf-scenario-monthly-contribution-input')}
           {renderScenarioHorizonSelector()}
           {scenarios.length ? scenarios.map((scenario) => (
             <View key={scenario.label} style={{ marginBottom: 12 }}>
@@ -1578,15 +1646,15 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
               <MetricRow label="After-fee annual return" value={pctValue(scenario.annualReturnAssumption)} />
               <MetricRow
                 label={`No-fee value in ${selectedScenarioHorizon} years`}
-                value={selectedProjection(scenario, selectedScenarioHorizon)?.noFeeValue == null
+                value={selectedProjection(scenario, selectedScenarioHorizon, currentPrice)?.noFeeValue == null
                   ? 'Unavailable'
-                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.noFeeValue!)}
+                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, currentPrice)!.noFeeValue!)}
               />
               <MetricRow
                 label={`After-fee value in ${selectedScenarioHorizon} years`}
-                value={selectedProjection(scenario, selectedScenarioHorizon)?.afterFeeValue == null
+                value={selectedProjection(scenario, selectedScenarioHorizon, currentPrice)?.afterFeeValue == null
                   ? 'Unavailable'
-                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.afterFeeValue!)}
+                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, currentPrice)!.afterFeeValue!)}
               />
               <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{scenario.assumption}</Text>
             </View>
@@ -1595,7 +1663,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
               Long-range scenario data unavailable.
             </Text>
           )}
-          <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>These are historical-regime illustrations, not forecasts or guarantees. They assume a single investment, constant compounding, and no added contributions.</Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Historical-regime illustrations only, not forecasts or guarantees. Totals include one share at today’s price plus the monthly contribution entered above, compounded monthly with contributions at month-end. Actual results may differ.</Text>
         </View>
       </SectionCard>
     </>
@@ -1892,7 +1960,12 @@ export default function AnalysisScreen() {
         <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
           {renderHeader(response as StockAnalysis)}
           <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: botPad + 24 }]} showsVerticalScrollIndicator={false}>
-            <EtfAnalysisSections fund={result.etfAnalysis} colors={colors} symbol={result.symbol} />
+          <EtfAnalysisSections
+            fund={result.etfAnalysis}
+            colors={colors}
+            symbol={result.symbol}
+            currentPrice={result.currentPrice}
+          />
           </ScrollView>
         </View>
       </AmericanSteelBackground>

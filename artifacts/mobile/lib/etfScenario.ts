@@ -19,6 +19,36 @@ export type EtfScenarioProjection = {
 export const ETF_SCENARIO_LABELS = ['bear', 'base', 'bull'] as const;
 export const ETF_SCENARIO_HORIZONS = [1, 3, 5, 10, 20] as const;
 
+export function calculateEtfScenarioValue(
+  initialInvestment: number,
+  annualReturn: number | null,
+  monthlyContribution: number,
+  horizonYears: number,
+): number | null {
+  if (
+    !Number.isFinite(initialInvestment)
+    || initialInvestment <= 0
+    || typeof annualReturn !== 'number'
+    || !Number.isFinite(annualReturn)
+    || annualReturn <= -1
+    || !Number.isFinite(monthlyContribution)
+    || monthlyContribution < 0
+    || !Number.isFinite(horizonYears)
+    || horizonYears <= 0
+  ) {
+    return null;
+  }
+
+  const months = Math.round(horizonYears * 12);
+  const monthlyRate = (1 + annualReturn) ** (1 / 12) - 1;
+  const growth = (1 + monthlyRate) ** months;
+  const contributionValue = monthlyRate === 0
+    ? monthlyContribution * months
+    : monthlyContribution * (growth - 1) / monthlyRate;
+  const value = initialInvestment * growth + contributionValue;
+  return Number.isFinite(value) ? Math.round(value * 100) / 100 : null;
+}
+
 export function parseEtfScenarios(scenarios: unknown): EtfScenario[] {
   if (!Array.isArray(scenarios)) return [];
 

@@ -3,7 +3,12 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { ETF_SCENARIO_HORIZONS, ETF_SCENARIO_LABELS, parseEtfScenarios } from "../lib/etfScenario.ts";
+import {
+  calculateEtfScenarioValue,
+  ETF_SCENARIO_HORIZONS,
+  ETF_SCENARIO_LABELS,
+  parseEtfScenarios,
+} from "../lib/etfScenario.ts";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const analysisSource = readFileSync(
@@ -12,21 +17,53 @@ const analysisSource = readFileSync(
 );
 
 test("ETF comparison shows each historical scenario with its fee and assumptions", () => {
-  assert.match(analysisSource, /ETF_SCENARIO_LABELS, ETF_SCENARIO_HORIZONS, parseEtfScenarios/);
+  assert.match(analysisSource, /calculateEtfScenarioValue,[\s\S]*ETF_SCENARIO_LABELS,[\s\S]*ETF_SCENARIO_HORIZONS,[\s\S]*parseEtfScenarios/);
   assert.match(analysisSource, /testID=\{`etf-scenario-horizon-\$\{horizonYears\}`\}/);
+  assert.match(analysisSource, /renderMonthlyContributionInput\('etf-scenario-monthly-contribution-input'\)/);
+  assert.match(analysisSource, /accessibilityLabel="Monthly ETF contribution in dollars"/);
+  assert.match(analysisSource, /calculateEtfScenarioValue\(/);
   assert.match(
     analysisSource,
-    /comparisonMetricFunds\.map\(\(\{ symbol: fundSymbol, analysis: comparison \}\) => \{[\s\S]*?scenarioRows = ETF_SCENARIO_LABELS\.map/,
+    /comparisonMetricFunds\.map\(\(\{ symbol: fundSymbol, currentPrice: comparisonPrice, analysis: comparison \}\) => \{[\s\S]*?scenarioRows = ETF_SCENARIO_LABELS\.map/,
   );
   assert.match(analysisSource, /label="Expense ratio used"[\s\S]*?pctValue\(comparison\.expenseRatio\)/);
   assert.match(analysisSource, /label="Historical annual assumption"[\s\S]*?scenario\?\.annualReturnAssumption/);
   assert.match(analysisSource, /value=\{pctValue\(scenario\?\.annualReturnAssumption \?\? null\)\}/);
-  assert.match(analysisSource, /label=\{`One share in \$\{selectedScenarioHorizon\} years`\}/);
-  assert.match(analysisSource, /selectedProjection\(scenario, selectedScenarioHorizon\)/);
-  assert.match(analysisSource, /label=\{`After-fee value in \$\{selectedScenarioHorizon\} years`\}/);
-  assert.match(analysisSource, /selectedProjection\(scenario, selectedScenarioHorizon\)\?\.afterFeeValue == null\s*\?\s*'Unavailable'/);
+  assert.match(analysisSource, /label=\{`No-fee total in \$\{selectedScenarioHorizon\} years`\}/);
+  assert.match(analysisSource, /label=\{`After-fee total in \$\{selectedScenarioHorizon\} years`\}/);
+  assert.match(analysisSource, /selectedProjection\(scenario, selectedScenarioHorizon, comparisonPrice\)\?\.afterFeeValue == null\s*\?\s*'Unavailable'/);
   assert.match(analysisSource, /scenario\?\.assumption \?\? 'Unavailable: no reported historical scenario for this regime\.'/);
   assert.match(analysisSource, /Historical-regime illustrations only, not forecasts or guarantees/);
+});
+
+test("ETF recurring contribution values use deterministic monthly compounding", () => {
+  assert.equal(calculateEtfScenarioValue(100, 0, 25, 3), 1000);
+  assert.equal(calculateEtfScenarioValue(100, 0.12, 0, 1), 112);
+
+  const monthlyRate = (1 + 0.08) ** (1 / 12) - 1;
+  let expected = 250;
+  for (let month = 0; month < 60; month += 1) {
+    expected = expected * (1 + monthlyRate) + 75;
+  }
+  const result = calculateEtfScenarioValue(250, 0.08, 75, 5);
+  assert.equal(result, Math.round(expected * 100) / 100);
+  assert.equal(calculateEtfScenarioValue(250, 0.08, 75, 5), result);
+  assert.equal(calculateEtfScenarioValue(250, null, 75, 5), null);
+});
+
+test("ETF contribution projections reject invalid inputs without inventing a value", () => {
+  for (const [initialInvestment, annualReturn, monthlyContribution, horizonYears] of [
+    [0, 0.05, 25, 5],
+    [100, -1, 25, 5],
+    [100, 0.05, -1, 5],
+    [100, 0.05, 25, 0],
+    [100, Number.NaN, 25, 5],
+  ]) {
+    assert.equal(
+      calculateEtfScenarioValue(initialInvestment, annualReturn, monthlyContribution, horizonYears),
+      null,
+    );
+  }
 });
 
 test("ETF comparison converts non-finite assumptions and five- and ten-year values to unavailable", () => {
