@@ -11,7 +11,7 @@ const homeScreen = readFileSync(
 
 test("home search input invalidates old suggestions before the debounce settles", () => {
   const inputBlock = homeScreen.match(
-    /placeholder="Company or ETF name or ticker \(Apple, AAPL, VOO\)"([\s\S]*?)returnKeyType="search"/,
+    /placeholder="Search by name or symbol"([\s\S]*?)returnKeyType="search"/,
   )?.[1];
   assert.ok(inputBlock, "the home company-search input should remain identifiable");
 

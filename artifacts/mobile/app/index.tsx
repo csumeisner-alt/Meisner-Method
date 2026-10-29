@@ -613,7 +613,7 @@ export default function HomeScreen() {
           <Feather name="search" size={20} color={colors.mutedForeground} style={styles.searchIcon} />
           <TextInput
             style={[styles.searchInput, { color: colors.foreground, fontFamily: 'Inter_500Medium' }]}
-          placeholder="Company or ETF name or ticker (Apple, AAPL, VOO)"
+            placeholder="Search by name or symbol"
             placeholderTextColor={colors.mutedForeground}
             value={query}
             onChangeText={(value) => {
