@@ -51,6 +51,7 @@ import {
   type Quote,
   type Trade,
 } from '@/lib/portfolioMath';
+import { fetchPortfolioQuotes, startPortfolioTradesLoad } from '@/lib/portfolioLoading';
 import { getTradeGradeFeedback } from '@/lib/tradeGradeFeedback';
 import { canEnterBrewBank, formatBrewBankAccessRemaining, hasBrewBankAccess } from '@/lib/brewTokenLogic';
 
@@ -2129,6 +2130,8 @@ export default function PortfolioScreen() {
   const { awardAchievement } = useAchievements();
 
   const [trades, setTrades] = useState<Trade[]>([]);
+  const [loadingTrades, setLoadingTrades] = useState(true);
+  const [tradesLoadError, setTradesLoadError] = useState(false);
   const [quotes, setQuotes] = useState<Record<string, Quote | null>>({});
   const [loadingQuotes, setLoadingQuotes] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -2150,31 +2153,46 @@ export default function PortfolioScreen() {
   const [gradeHistoryHintVisible, setGradeHistoryHintVisible] = useState(false);
   const { apiFetch } = useApi();
   const tradesRef = useRef<Trade[]>([]);
+  const tradeLoadCancelRef = useRef<(() => void) | null>(null);
+  const quoteRequestIdRef = useRef(0);
   const feedbackEventRef = useRef<string | null>(null);
   const gradeHistoryHintShownRef = useRef(false);
 
   const topPad = Platform.OS === 'web' ? 16 : insets.top;
 
-  // Seed from local cache immediately so trades are visible before the API responds,
-  // and survive offline/signed-out launches.
-  useEffect(() => {
-    let cancelled = false;
-    readTradesCache().then(cached => {
-      if (!cancelled && cached.length > 0) {
-        setTrades(cached);
-        tradesRef.current = cached;
-      }
-    });
-    apiFetch<Trade[]>('/api/user/trades')
-      .then(data => {
-        if (cancelled) return;
-        setTrades(data);
-        tradesRef.current = data;
-        void writeTradesCache(data);
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
+  const loadTrades = useCallback(() => {
+    tradeLoadCancelRef.current?.();
+    setLoadingTrades(true);
+    setTradesLoadError(false);
+    tradeLoadCancelRef.current = startPortfolioTradesLoad(
+      readTradesCache,
+      () => apiFetch<Trade[]>('/api/user/trades'),
+      (event) => {
+        if (event.source === 'server-error') {
+          setLoadingTrades(false);
+          setTradesLoadError(true);
+          return;
+        }
+        if (event.source === 'cache' && event.trades.length === 0) return;
+
+        setTrades(event.trades);
+        tradesRef.current = event.trades;
+        setLoadingTrades(false);
+        if (event.source === 'server') {
+          setTradesLoadError(false);
+          void writeTradesCache(event.trades);
+        }
+      },
+    );
   }, [apiFetch]);
+
+  useEffect(() => {
+    loadTrades();
+    return () => {
+      tradeLoadCancelRef.current?.();
+      quoteRequestIdRef.current += 1;
+    };
+  }, [loadTrades]);
 
   const saveTrades = useCallback(async (next: Trade[]) => {
     const prev = tradesRef.current;
@@ -2193,20 +2211,39 @@ export default function PortfolioScreen() {
     ]);
   }, [apiFetch]);
 
-  const fetchAllQuotes = useCallback(async (tradeList: Trade[]) => {
-    const symbols = [...new Set(tradeList.map(t => t.symbol))];
-    if (!symbols.length) return;
+  const fetchAllQuotes = useCallback(async (symbols: string[]) => {
+    const requestId = ++quoteRequestIdRef.current;
+    if (!symbols.length) {
+      setQuotes({});
+      setLoadingQuotes(false);
+      return;
+    }
     setLoadingQuotes(true);
-    const results = await Promise.all(symbols.map(sym => fetchQuote(sym).catch(() => null)));
-    const map: Record<string, Quote | null> = {};
-    symbols.forEach((sym, i) => { map[sym] = results[i] ?? null; });
-    setQuotes(map);
-    setLoadingQuotes(false);
+    await fetchPortfolioQuotes(symbols, fetchQuote, (symbol, quote) => {
+      if (requestId !== quoteRequestIdRef.current) return;
+      setQuotes(previous => ({ ...previous, [symbol]: quote }));
+    });
+    if (requestId === quoteRequestIdRef.current) setLoadingQuotes(false);
   }, []);
 
-  useEffect(() => { if (trades.length) fetchAllQuotes(trades); }, [trades.length]);
+  const quoteSymbols = useMemo(
+    () => [...new Set(trades.map(trade => trade.symbol))],
+    [trades],
+  );
+  const quoteSymbolsKey = quoteSymbols.slice().sort().join('\u0000');
+  useEffect(() => {
+    if (quoteSymbols.length) void fetchAllQuotes(quoteSymbols);
+    else {
+      setQuotes({});
+      setLoadingQuotes(false);
+    }
+  }, [fetchAllQuotes, quoteSymbolsKey]);
 
-  const onRefresh = async () => { setRefreshing(true); await fetchAllQuotes(trades); setRefreshing(false); };
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchAllQuotes(quoteSymbols);
+    setRefreshing(false);
+  };
 
   const allPositions = computePositions(trades, quotes);
   const openPositions = allPositions.filter(p => p.netShares !== 0);
@@ -2408,7 +2445,25 @@ export default function PortfolioScreen() {
       </View>
 
       {/* Content */}
-      {isEmpty ? (
+      {isEmpty && loadingTrades ? (
+        <View style={mainStyles.emptyWrap}>
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={[mainStyles.emptySub, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+            Loading your portfolio…
+          </Text>
+        </View>
+      ) : isEmpty && tradesLoadError ? (
+        <View style={mainStyles.emptyWrap}>
+          <Feather name="wifi-off" size={32} color={colors.mutedForeground} />
+          <Text style={[mainStyles.emptyTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>Portfolio unavailable</Text>
+          <Text style={[mainStyles.emptySub, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+            Check your connection and try loading your trades again.
+          </Text>
+          <TouchableOpacity style={[mainStyles.emptyBtn, { borderColor: colors.primary }]} onPress={loadTrades} activeOpacity={0.75}>
+            <Text style={[mainStyles.emptyBtnText, { color: colors.primary, fontFamily: 'Inter_600SemiBold' }]}>TRY AGAIN</Text>
+          </TouchableOpacity>
+        </View>
+      ) : isEmpty ? (
         <View style={mainStyles.emptyWrap}>
           <Feather name="briefcase" size={40} color="rgba(192,192,192,0.18)" />
           <Text style={[mainStyles.emptyTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>No trades yet</Text>
@@ -2425,6 +2480,11 @@ export default function PortfolioScreen() {
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
         >
+          {tradesLoadError && (
+            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, marginBottom: 10 }}>
+              Showing saved trades. Couldn’t refresh from your account.
+            </Text>
+          )}
           <SummaryCard positions={allPositions} trades={trades} closedTrades={closedTrades} unmatchedSells={unmatchedSells} onReset={handleReset} onAddDividend={() => openAdd('dividend')} colors={colors} />
 
           {portfolioTab === 'positions' ? (
