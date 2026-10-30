@@ -97,17 +97,24 @@ export async function fetchPortfolioQuotes(
   symbols: string[],
   fetchQuotes: (symbols: string[]) => Promise<PortfolioQuoteBatch>,
   onQuote: (symbol: string, quote: Quote) => void,
+  onUnavailable?: (symbols: string[]) => void,
 ): Promise<void> {
   const uniqueSymbols = [...new Set(symbols)];
   if (uniqueSymbols.length === 0) return;
   try {
     const result = await fetchQuotes(uniqueSymbols);
+    const successfulSymbols = new Set<string>();
     for (const quoteWithSymbol of result.quotes) {
       if (uniqueSymbols.includes(quoteWithSymbol.symbol)) {
         const { symbol, ...quote } = quoteWithSymbol;
         onQuote(symbol, quote);
+        successfulSymbols.add(symbol);
       }
     }
+    onUnavailable?.(
+      [...new Set(result.unavailableSymbols)]
+        .filter((symbol) => uniqueSymbols.includes(symbol) && !successfulSymbols.has(symbol)),
+    );
   } catch {
     // Keep previously displayed quotes when the whole request is unavailable.
   }

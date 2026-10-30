@@ -954,58 +954,92 @@ const gradeHintStyles = StyleSheet.create({
 // ─── Compact Position Row ─────────────────────────────────────────────────────
 
 function PositionRow({
-  position, onSell, onBuyMore, colors,
+  position, onSell, onBuyMore, quoteUnavailable, quoteRetrying, quoteRetryDisabled, onRetryQuote, colors,
 }: {
-  position: Position; onSell: () => void; onBuyMore: () => void; colors: any;
+  position: Position;
+  onSell: () => void;
+  onBuyMore: () => void;
+  quoteUnavailable: boolean;
+  quoteRetrying: boolean;
+  quoteRetryDisabled: boolean;
+  onRetryQuote: () => void;
+  colors: any;
 }) {
   const isLong = position.netShares > 0;
   const pnl = position.unrealizedPnL;
   const pnlColor = pnl > 0 ? colors.buyColor : pnl < 0 ? colors.sellColor : colors.mutedForeground;
 
   return (
-    <View style={[rowStyles.row, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      <View style={rowStyles.leftCol}>
-        <Text style={[rowStyles.sym, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>{position.symbol}</Text>
-        <View style={[rowStyles.badge, {
-          backgroundColor: isLong ? colors.buyBg : colors.sellBg,
-          borderColor: isLong ? colors.buyColor : colors.sellColor,
-        }]}>
-          <Text style={[rowStyles.badgeTxt, { color: isLong ? colors.buyColor : colors.sellColor, fontFamily: 'Inter_700Bold' }]}>
-            {isLong ? 'LONG' : 'SHORT'}
+    <View style={rowStyles.positionWrap}>
+      <View style={[rowStyles.row, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={rowStyles.leftCol}>
+          <Text style={[rowStyles.sym, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>{position.symbol}</Text>
+          <View style={[rowStyles.badge, {
+            backgroundColor: isLong ? colors.buyBg : colors.sellBg,
+            borderColor: isLong ? colors.buyColor : colors.sellColor,
+          }]}>
+            <Text style={[rowStyles.badgeTxt, { color: isLong ? colors.buyColor : colors.sellColor, fontFamily: 'Inter_700Bold' }]}>
+              {isLong ? 'LONG' : 'SHORT'}
+            </Text>
+          </View>
+        </View>
+        <View style={rowStyles.midCol}>
+          <Text style={[rowStyles.midTop, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
+            {fmtNum(Math.abs(position.netShares), 2)} sh
+          </Text>
+          <Text style={[rowStyles.midBot, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+            avg {fmtCurrency(position.avgCost)}
           </Text>
         </View>
+        <View style={rowStyles.pnlCol}>
+          <Text style={[rowStyles.pnlTop, { color: position.currentPrice != null ? pnlColor : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+            {position.currentPrice != null ? `${pnl >= 0 ? '+' : ''}${fmtCurrency(pnl)}` : '—'}
+          </Text>
+          <Text style={[rowStyles.pnlBot, { color: position.currentPrice != null ? pnlColor : colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+            {position.currentPrice != null && position.pctChange != null ? fmtPct(position.pctChange) : '—'}
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={[rowStyles.actionBtn, { borderColor: isLong ? colors.sellColor : colors.buyColor }]}
+          onPress={isLong ? onSell : onBuyMore}
+          activeOpacity={0.7}
+        >
+          <Text style={[rowStyles.actionTxt, { color: isLong ? colors.sellColor : colors.buyColor, fontFamily: 'Inter_700Bold' }]}>
+            {isLong ? 'SELL' : 'CLOSE'}
+          </Text>
+        </TouchableOpacity>
       </View>
-      <View style={rowStyles.midCol}>
-        <Text style={[rowStyles.midTop, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
-          {fmtNum(Math.abs(position.netShares), 2)} sh
-        </Text>
-        <Text style={[rowStyles.midBot, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-          avg {fmtCurrency(position.avgCost)}
-        </Text>
-      </View>
-      <View style={rowStyles.pnlCol}>
-        <Text style={[rowStyles.pnlTop, { color: position.currentPrice != null ? pnlColor : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
-          {position.currentPrice != null ? `${pnl >= 0 ? '+' : ''}${fmtCurrency(pnl)}` : '—'}
-        </Text>
-        <Text style={[rowStyles.pnlBot, { color: position.currentPrice != null ? pnlColor : colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-          {position.currentPrice != null && position.pctChange != null ? fmtPct(position.pctChange) : '—'}
-        </Text>
-      </View>
-      <TouchableOpacity
-        style={[rowStyles.actionBtn, { borderColor: isLong ? colors.sellColor : colors.buyColor }]}
-        onPress={isLong ? onSell : onBuyMore}
-        activeOpacity={0.7}
-      >
-        <Text style={[rowStyles.actionTxt, { color: isLong ? colors.sellColor : colors.buyColor, fontFamily: 'Inter_700Bold' }]}>
-          {isLong ? 'SELL' : 'CLOSE'}
-        </Text>
-      </TouchableOpacity>
+      {quoteUnavailable && (
+        <View style={[rowStyles.quoteNotice, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Feather name="alert-circle" size={12} color={colors.mutedForeground} />
+          <Text style={[rowStyles.quoteNoticeText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+            {position.currentPrice != null
+              ? 'Latest quote unavailable · showing last known price'
+              : 'Latest quote unavailable'}
+          </Text>
+          <TouchableOpacity
+            onPress={onRetryQuote}
+            disabled={quoteRetrying || quoteRetryDisabled}
+            accessibilityRole="button"
+            accessibilityLabel={`Retry price refresh for ${position.symbol}`}
+            accessibilityState={{ disabled: quoteRetrying || quoteRetryDisabled, busy: quoteRetrying }}
+            testID={`portfolio-quote-retry-${position.symbol}`}
+            activeOpacity={0.7}
+            style={[rowStyles.quoteRetry, (quoteRetrying || quoteRetryDisabled) && { opacity: 0.5 }]}
+          >
+            {quoteRetrying
+              ? <ActivityIndicator size="small" color={colors.primary} />
+              : <Text style={[rowStyles.quoteRetryText, { color: colors.primary, fontFamily: 'Inter_700Bold' }]}>RETRY</Text>}
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 }
 
 const rowStyles = StyleSheet.create({
-  row: { borderRadius: 10, borderWidth: 1, marginBottom: 6, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, gap: 6 },
+  positionWrap: { marginBottom: 6 },
+  row: { borderRadius: 10, borderWidth: 1, marginBottom: 0, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, gap: 6 },
   leftCol: { width: 68, gap: 2 },
   sym: { fontSize: 18 },
   badge: { borderWidth: 1, borderRadius: 3, paddingHorizontal: 5, paddingVertical: 1, alignSelf: 'flex-start' },
@@ -1018,6 +1052,10 @@ const rowStyles = StyleSheet.create({
   pnlBot: { fontSize: 13 },
   actionBtn: { borderWidth: 1, borderRadius: 5, paddingHorizontal: 10, paddingVertical: 6, minWidth: 52, alignItems: 'center' },
   actionTxt: { fontSize: 13, letterSpacing: 0.5 },
+  quoteNotice: { minHeight: 32, borderWidth: 1, borderTopWidth: 0, borderBottomLeftRadius: 8, borderBottomRightRadius: 8, paddingLeft: 10, paddingRight: 6, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  quoteNoticeText: { flex: 1, fontSize: 10, lineHeight: 14 },
+  quoteRetry: { minWidth: 48, minHeight: 32, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  quoteRetryText: { fontSize: 10, letterSpacing: 0.4 },
 });
 
 // ─── Trade History Card ────────────────────────────────────────────────────────
@@ -2164,6 +2202,8 @@ export default function PortfolioScreen() {
   const [tradesLoadError, setTradesLoadError] = useState(false);
   const [quotes, setQuotes] = useState<Record<string, Quote | null>>({});
   const [cachedQuoteTimes, setCachedQuoteTimes] = useState<Record<string, string>>({});
+  const [unavailableQuoteSymbols, setUnavailableQuoteSymbols] = useState<string[]>([]);
+  const [retryingQuoteSymbols, setRetryingQuoteSymbols] = useState<string[]>([]);
   const [loadingQuotes, setLoadingQuotes] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -2252,6 +2292,7 @@ export default function PortfolioScreen() {
       quotesRef.current = {};
       setCachedQuoteTimes({});
       setQuotes({});
+      setUnavailableQuoteSymbols([]);
       setLoadingQuotes(false);
       return;
     }
@@ -2303,10 +2344,27 @@ export default function PortfolioScreen() {
           () => writePortfolioQuoteCache(nextCache),
         );
       },
+      (unavailableSymbols) => {
+        if (requestId !== quoteRequestIdRef.current) return;
+        setUnavailableQuoteSymbols(previous => [
+          ...previous.filter(symbol => !symbols.includes(symbol)),
+          ...unavailableSymbols,
+        ]);
+      },
     );
     await quoteCacheWriteRef.current;
     if (requestId === quoteRequestIdRef.current) setLoadingQuotes(false);
   }, [apiFetch]);
+
+  const retryQuote = useCallback(async (symbol: string) => {
+    if (loadingQuotes) return;
+    setRetryingQuoteSymbols(previous => previous.includes(symbol) ? previous : [...previous, symbol]);
+    try {
+      await fetchAllQuotes([symbol]);
+    } finally {
+      setRetryingQuoteSymbols(previous => previous.filter(item => item !== symbol));
+    }
+  }, [fetchAllQuotes, loadingQuotes]);
 
   const quoteSymbols = useMemo(
     () => [...new Set(trades.map(trade => trade.symbol))],
@@ -2620,6 +2678,10 @@ export default function PortfolioScreen() {
                 <PositionRow key={pos.symbol} position={pos}
                   onSell={() => openAdd('sell', pos.symbol)}
                   onBuyMore={() => openAdd('buy', pos.symbol)}
+                  quoteUnavailable={unavailableQuoteSymbols.includes(pos.symbol)}
+                  quoteRetrying={retryingQuoteSymbols.includes(pos.symbol)}
+                  quoteRetryDisabled={loadingQuotes}
+                  onRetryQuote={() => void retryQuote(pos.symbol)}
                   colors={colors} />
               ))
             )

@@ -76,6 +76,7 @@ test('a late cache read cannot overwrite newer server trades', async () => {
 test('portfolio quotes use one deduplicated batch and apply successful symbols only', async () => {
   const requests: string[][] = [];
   const updates: Array<[string, Quote]> = [];
+  const unavailable: string[][] = [];
   await fetchPortfolioQuotes(
     ['VOO', 'AAPL', 'VOO'],
     async (symbols) => {
@@ -88,11 +89,55 @@ test('portfolio quotes use one deduplicated batch and apply successful symbols o
       };
     },
     (symbol, quote) => updates.push([symbol, quote]),
+    (symbols) => unavailable.push(symbols),
   );
 
   assert.deepEqual(requests, [['VOO', 'AAPL']]);
   const voo: Quote = { currentPrice: 500, priceChange: 1, priceChangePercent: 0.2 };
   assert.deepEqual(updates, [['VOO', voo]]);
+  assert.deepEqual(unavailable, [['AAPL']]);
+});
+
+test('a failed-symbol retry requests only that symbol and ignores unrelated failures', async () => {
+  const requests: string[][] = [];
+  const unavailable: string[][] = [];
+
+  await fetchPortfolioQuotes(
+    ['AAPL'],
+    async (symbols) => {
+      requests.push(symbols);
+      return {
+        quotes: [],
+        unavailableSymbols: ['AAPL', 'MSFT'],
+      };
+    },
+    () => assert.fail('No quote should be published for an unavailable symbol'),
+    (symbols) => unavailable.push(symbols),
+  );
+
+  assert.deepEqual(requests, [['AAPL']]);
+  assert.deepEqual(unavailable, [['AAPL']]);
+});
+
+test('retrying one symbol preserves the already-refreshed quotes for other holdings', async () => {
+  const requests: string[][] = [];
+  const quotes: Record<string, Quote> = {
+    AAPL: { currentPrice: 200, priceChange: 1, priceChangePercent: 0.5 },
+    MSFT: { currentPrice: 400, priceChange: 2, priceChangePercent: 0.5 },
+  };
+  const latestApple: Quote = { currentPrice: 205, priceChange: 5, priceChangePercent: 2.5 };
+
+  await fetchPortfolioQuotes(
+    ['AAPL'],
+    async (symbols) => {
+      requests.push(symbols);
+      return { quotes: [{ symbol: 'AAPL', ...latestApple }], unavailableSymbols: [] };
+    },
+    (symbol, quote) => { quotes[symbol] = quote; },
+  );
+
+  assert.deepEqual(requests, [['AAPL']]);
+  assert.deepEqual(quotes, { AAPL: latestApple, MSFT: { currentPrice: 400, priceChange: 2, priceChangePercent: 0.5 } });
 });
 
 test('saved portfolio quotes keep valid values and timestamps while ignoring corrupt entries', () => {
@@ -150,4 +195,7 @@ test('Portfolio screen wires cache-first trades and batched quote updates', () =
   assert.match(screen, /quoteCacheRef\.current = nextCache/);
   assert.match(screen, /Saved estimates \(not live\)/);
   assert.match(screen, /formatQuoteUpdatedAt\(cachedQuoteTimes\[symbol\]!\)/);
+  assert.match(screen, /Latest quote unavailable/);
+  assert.match(screen, /fetchAllQuotes\(\[symbol\]\)/);
+  assert.match(screen, /portfolio-quote-retry-\$\{position\.symbol\}/);
 });
