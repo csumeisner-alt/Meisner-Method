@@ -116,13 +116,48 @@ test("ETF scenarios omit non-finite reported regimes without hiding valid regime
     assert.equal(bear?.fiveYearValue, null);
     assert.equal(bear?.tenYearValue, null);
     assert.match(bear?.assumption ?? "", /insufficient provider-reported bear regime history/);
-    assert.equal(base?.annualReturnAssumption, 0.09000000000000002);
+    assert.ok(Math.abs((base?.annualReturnAssumption ?? 0) - 0.09) < 1e-12);
     assert.equal(base?.fiveYearValue, 153.86);
     assert.equal(base?.tenYearValue, 236.74);
     assert.equal(bull?.annualReturnAssumption, 0.19);
     assert.equal(bull?.fiveYearValue, 238.64);
     assert.equal(bull?.tenYearValue, 569.47);
   }
+});
+
+test("ETF scenario base ignores malformed durations and safely weights large finite durations", () => {
+  const invalidDurations: unknown[] = [
+    undefined,
+    null,
+    "1000",
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    0,
+    -1,
+  ];
+  const periods = Object.fromEntries([
+    ["firstValid", { averageAnnualReturn: 0.05, years: 2 }],
+    ["secondValid", { averageAnnualReturn: 0.2, years: 4 }],
+    ...invalidDurations.map((years, index) => [
+      `invalid${index}`,
+      { averageAnnualReturn: 0.99, years },
+    ]),
+  ]) as Parameters<typeof buildEtfScenarios>[2];
+  const scenarios = buildEtfScenarios(100, 0.01, periods);
+  const base = scenarios.find((scenario) => scenario.label === "base");
+
+  assert.equal(base?.noFeeAnnualReturnAssumption, 0.15);
+  assert.ok(Math.abs((base?.annualReturnAssumption ?? 0) - 0.14) < 1e-12);
+  assert.ok(Number.isFinite(base?.noFeeAnnualReturnAssumption));
+
+  const largeDurations = buildEtfScenarios(100, 0, {
+    firstValid: { averageAnnualReturn: 0.05, years: Number.MAX_VALUE },
+    secondValid: { averageAnnualReturn: 0.2, years: Number.MAX_VALUE },
+  });
+  const largeDurationBase = largeDurations.find((scenario) => scenario.label === "base");
+  assert.equal(largeDurationBase?.noFeeAnnualReturnAssumption, 0.125);
+  assert.ok(Number.isFinite(largeDurationBase?.noFeeAnnualReturnAssumption));
 });
 
 test("ETF scenarios preserve reported zero and positive expense ratio calculations", () => {

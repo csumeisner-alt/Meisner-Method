@@ -84,11 +84,20 @@ export function buildEtfScenarios(
   const samples = Object.values(periods ?? {}).filter((period) =>
     typeof period.averageAnnualReturn === "number"
     && Number.isFinite(period.averageAnnualReturn)
+    && typeof period.years === "number"
+    && Number.isFinite(period.years)
     && period.years > 0,
   );
-  const totalYears = samples.reduce((sum, period) => sum + period.years, 0);
-  const base = totalYears
-    ? samples.reduce((sum, period) => sum + period.averageAnnualReturn! * period.years, 0) / totalYears
+  const maxYears = samples.reduce((max, period) => Math.max(max, period.years), 0);
+  const totalNormalizedYears = maxYears
+    ? samples.reduce((sum, period) => sum + period.years / maxYears, 0)
+    : 0;
+  const base = totalNormalizedYears
+    ? samples.reduce(
+        (sum, period) =>
+          sum + period.averageAnnualReturn! * (period.years / maxYears / totalNormalizedYears),
+        0,
+      )
     : null;
   const assumptions = {
     bear: periods?.["bear"]?.averageAnnualReturn ?? null,
