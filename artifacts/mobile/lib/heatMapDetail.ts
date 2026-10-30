@@ -739,6 +739,20 @@ export function parseSavedEtfComparisonSymbols(value: string | null): string[] {
   }
 }
 
+export function rotateSavedEtfComparisonFocus(
+  currentSymbol: string,
+  focusedSymbol: string,
+  comparedSymbols: string[],
+): string[] {
+  const current = currentSymbol.trim().toUpperCase();
+  const focused = focusedSymbol.trim().toUpperCase();
+  const symbols = [...new Set(comparedSymbols.map((symbol) => symbol.trim().toUpperCase()))]
+    .filter((symbol) => symbol !== current);
+
+  if (focused === current || !symbols.includes(focused)) return symbols.slice(0, 3);
+  return [...symbols.filter((symbol) => symbol !== focused), current].slice(0, 3);
+}
+
 export type HeatMapDetailAssetType =
   | 'stock'
   | 'etf'

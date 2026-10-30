@@ -49,6 +49,7 @@ import {
   parseEtfFeeInvestmentAmount,
   parseSavedEtfComparisonSymbols,
   parseSavedEtfHoldingSnapshots,
+  rotateSavedEtfComparisonFocus,
   shareEtfOverlapSummary,
   upsertSavedEtfHoldingSnapshot,
 } from '@/lib/heatMapDetail';
@@ -383,7 +384,10 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
   scrollToY: (y: number) => void;
 }) {
   const { apiFetch } = useApi();
+  const router = useRouter();
   const [compareTicker, setCompareTicker] = useState('');
+  const [replaceTarget, setReplaceTarget] = useState<string | null>(null);
+  const [focusSwitching, setFocusSwitching] = useState(false);
   const [sectionNavigatorOpen, setSectionNavigatorOpen] = useState(false);
   const sectionPositions = useRef<Record<string, number>>({});
   const [selectedScenarioHorizon, setSelectedScenarioHorizon] = useState<number>(10);
@@ -635,19 +639,41 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
     return nextWrite;
   }, []);
 
-  const persistCompareSymbols = (symbols: string[]) => {
+  const persistCompareSymbols = (symbols: string[]): Promise<boolean> => {
     savedCompareSymbolsRef.current = symbols;
     setSavedCompareSymbols(symbols);
-    comparisonWriteQueue.current = comparisonWriteQueue.current.catch(() => {}).then(() =>
-      AsyncStorage.setItem(ETF_COMPARISON_KEY, JSON.stringify(symbols)))
-      .then(() => setCompareStorageError(''))
-      .catch(() => setCompareStorageError('Could not save ETF comparisons on this device.'));
+    const write = comparisonWriteQueue.current.catch(() => {}).then(async () => {
+      await AsyncStorage.setItem(ETF_COMPARISON_KEY, JSON.stringify(symbols));
+      return true;
+    }).catch(() => false);
+    comparisonWriteQueue.current = write.then((saved) => {
+      setCompareStorageError(saved ? '' : 'Could not save ETF comparisons on this device.');
+    });
+    return write;
   };
 
   const removeCompareSymbol = (candidate: string) => {
     persistCompareSymbols(savedCompareSymbolsRef.current.filter((item) => item !== candidate));
     setCompareFunds((current) => current.filter((item) => item.symbol !== candidate));
     setCompareFailedSymbols((current) => current.filter((item) => item !== candidate));
+    setReplaceTarget((current) => current === candidate ? null : current);
+  };
+
+  const switchComparisonFocus = async (candidate: string) => {
+    if (focusSwitching) return;
+    setFocusSwitching(true);
+    const currentSymbol = symbol.toUpperCase();
+    const nextSymbols = rotateSavedEtfComparisonFocus(
+      currentSymbol,
+      candidate,
+      savedCompareSymbolsRef.current,
+    );
+    try {
+      const saved = await persistCompareSymbols(nextSymbols);
+      if (saved) router.push({ pathname: '/analysis/[symbol]', params: { symbol: candidate } });
+    } finally {
+      setFocusSwitching(false);
+    }
   };
 
   const loadCompareFund = async (candidate: string) => {
@@ -798,18 +824,31 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
       setCompareError('Enter a valid ETF ticker.');
       return;
     }
-    if (candidate === symbol.toUpperCase() || savedCompareSymbolsRef.current.includes(candidate)) {
+    if (candidate === symbol.toUpperCase()
+      || (savedCompareSymbolsRef.current.includes(candidate) && candidate !== replaceTarget)) {
       setCompareError('That ETF is already selected.');
       return;
     }
-    if (savedCompareSymbolsRef.current.length >= 3) {
+    if (replaceTarget === candidate) {
+      setCompareError('Enter a different ETF ticker to replace this one.');
+      return;
+    }
+    if (!replaceTarget && savedCompareSymbolsRef.current.length >= 3) {
       setCompareError('Compare up to four ETFs at once.');
       return;
     }
     setCompareLoading(true);
     setCompareError('');
-    persistCompareSymbols([...savedCompareSymbolsRef.current, candidate]);
+    const nextSymbols = replaceTarget
+      ? savedCompareSymbolsRef.current.map((item) => item === replaceTarget ? candidate : item)
+      : [...savedCompareSymbolsRef.current, candidate];
+    persistCompareSymbols(nextSymbols);
+    if (replaceTarget) {
+      setCompareFunds((current) => current.filter((item) => item.symbol !== replaceTarget));
+      setCompareFailedSymbols((current) => current.filter((item) => item !== replaceTarget));
+    }
     setCompareTicker('');
+    setReplaceTarget(null);
     await loadCompareFund(candidate);
     setCompareLoading(false);
   };
@@ -1161,6 +1200,189 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
           {fund.fundCategory ?? 'ETF'} · Rules-based profile, not a buy or sell recommendation.
         </Text>
       </View>
+      <View
+        testID="etf-comparison-switcher"
+        style={[cardStyles.card, { backgroundColor: colors.card, borderColor: colors.border, padding: 14 }]}
+      >
+        <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 14 }}>
+          ETF comparison
+        </Text>
+        <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 4 }}>
+          Viewing {symbol.toUpperCase()}. Choose a compared ETF to open its details; your lineup stays saved.
+        </Text>
+        <ScrollView
+          horizontal
+          nestedScrollEnabled
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 8, paddingTop: 11, paddingRight: 4 }}
+          accessibilityLabel="Selected ETF comparison lineup"
+        >
+          <View
+            accessibilityRole="text"
+            accessibilityLabel={`Current ETF ${symbol.toUpperCase()}`}
+            style={{
+              minHeight: 42,
+              justifyContent: 'center',
+              borderWidth: 1,
+              borderColor: colors.primary,
+              borderRadius: 10,
+              paddingHorizontal: 12,
+              backgroundColor: colors.accent,
+            }}
+          >
+            <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 12 }}>
+              {symbol.toUpperCase()} · CURRENT
+            </Text>
+          </View>
+          {savedCompareSymbols.map((candidate) => (
+            <View
+              key={`comparison-switch-${candidate}`}
+              style={{
+                minHeight: 42,
+                flexDirection: 'row',
+                alignItems: 'center',
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 10,
+                backgroundColor: colors.input,
+              }}
+            >
+              <Pressable
+                testID={`etf-comparison-switch-${candidate}`}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${candidate} ETF details`}
+                accessibilityState={{ disabled: focusSwitching }}
+                disabled={focusSwitching}
+                onPress={() => void switchComparisonFocus(candidate)}
+                style={{ minHeight: 42, justifyContent: 'center', paddingLeft: 12, paddingRight: 8 }}
+              >
+                <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>
+                  {candidate}
+                </Text>
+                <Text style={{ color: colors.mutedForeground, fontSize: 9 }}>
+                  {comparePendingSymbols.includes(candidate)
+                    ? 'Loading'
+                    : compareFailedSymbols.includes(candidate)
+                      ? 'Saved · retry'
+                      : 'Open details'}
+                </Text>
+              </Pressable>
+              <Pressable
+                testID={`etf-comparison-remove-${candidate}`}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${candidate} from comparison`}
+                disabled={focusSwitching}
+                onPress={() => removeCompareSymbol(candidate)}
+                style={{ minHeight: 42, minWidth: 36, alignItems: 'center', justifyContent: 'center', paddingRight: 7 }}
+              >
+                <Text style={{ color: colors.sellColor, fontSize: 18 }}>×</Text>
+              </Pressable>
+            </View>
+          ))}
+        </ScrollView>
+        <Text style={{ color: colors.mutedForeground, fontSize: 10, marginTop: 6 }}>
+          {savedCompareSymbols.length + 1} of 4 ETFs selected
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 9 }}>
+          <TextInput
+            testID="etf-comparison-ticker"
+            value={compareTicker}
+            onChangeText={setCompareTicker}
+            placeholder={replaceTarget ? `Replace ${replaceTarget} with…` : 'Add ETF ticker'}
+            placeholderTextColor={colors.mutedForeground}
+            autoCapitalize="characters"
+            accessibilityLabel={replaceTarget
+              ? `New ETF ticker replacing ${replaceTarget}`
+              : 'ETF ticker to add to comparison'}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              minHeight: 44,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 8,
+              paddingHorizontal: 10,
+              color: colors.foreground,
+              fontSize: 13,
+            }}
+          />
+          <TouchableOpacity
+            testID="etf-comparison-submit"
+            accessibilityRole="button"
+            accessibilityLabel={replaceTarget ? `Replace ${replaceTarget} ETF` : 'Add ETF to comparison'}
+            disabled={compareLoading || compareRestoreLoading}
+            onPress={() => void addCompareFund()}
+            style={{
+              minHeight: 44,
+              justifyContent: 'center',
+              paddingHorizontal: 12,
+              borderRadius: 8,
+              backgroundColor: colors.primary,
+              opacity: compareLoading || compareRestoreLoading ? 0.6 : 1,
+            }}
+          >
+            <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>
+              {compareRestoreLoading ? 'Restoring' : compareLoading ? 'Loading' : replaceTarget ? 'Replace' : 'Add'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        {!!replaceTarget && (
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={`Cancel replacing ${replaceTarget}`}
+            onPress={() => {
+              setReplaceTarget(null);
+              setCompareTicker('');
+              setCompareError('');
+            }}
+            style={{ alignSelf: 'flex-start', minHeight: 40, justifyContent: 'center', paddingHorizontal: 4 }}
+          >
+            <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Cancel replacement</Text>
+          </TouchableOpacity>
+        )}
+        {!!savedCompareSymbols.length && (
+          <ScrollView
+            horizontal
+            nestedScrollEnabled
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 7, paddingTop: 4, paddingRight: 4 }}
+            accessibilityLabel="Replace a selected ETF"
+          >
+            {savedCompareSymbols.map((candidate) => (
+              <Pressable
+                key={`replace-${candidate}`}
+                testID={`etf-comparison-replace-${candidate}`}
+                accessibilityRole="button"
+                accessibilityLabel={`Replace ${candidate} in comparison`}
+                accessibilityState={{ selected: replaceTarget === candidate }}
+                onPress={() => {
+                  setReplaceTarget(candidate);
+                  setCompareTicker('');
+                  setCompareError('');
+                }}
+                style={{
+                  minHeight: 38,
+                  justifyContent: 'center',
+                  paddingHorizontal: 10,
+                  borderWidth: 1,
+                  borderColor: replaceTarget === candidate ? colors.primary : colors.border,
+                  borderRadius: 18,
+                }}
+              >
+                <Text style={{ color: replaceTarget === candidate ? colors.primary : colors.mutedForeground, fontSize: 11 }}>
+                  Replace {candidate}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        )}
+        {compareRestoreLoading && (
+          <Text style={{ color: colors.mutedForeground, marginTop: 8 }}>Restoring saved ETF comparisons…</Text>
+        )}
+        {!!compareError && <Text style={{ color: colors.sellColor, marginTop: 8 }}>{compareError}</Text>}
+        {!!compareStorageError && <Text style={{ color: colors.sellColor, marginTop: 8 }}>{compareStorageError}</Text>}
+        {!!snapshotStorageError && <Text style={{ color: colors.sellColor, marginTop: 8 }}>{snapshotStorageError}</Text>}
+      </View>
       <View style={[cardStyles.card, { backgroundColor: colors.card, borderColor: colors.border, padding: 16 }]}>
         <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 14 }}>
           At a glance
@@ -1183,7 +1405,7 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
             <View style={{ marginBottom: fund.risks.length ? 10 : 0 }}>
               <Text style={{ color: colors.buyColor, fontSize: 11, fontFamily: 'Inter_600SemiBold', marginBottom: 6 }}>STRENGTHS</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
-                {fund.strengths.slice(0, 2).map((item, index) => (
+                {fund.strengths.map((item, index) => (
                   <Text key={`overview-strength-${index}-${item}`} style={{ color: colors.buyColor, backgroundColor: colors.buyBg, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6, fontSize: 12 }}>
                     {item}
                   </Text>
@@ -1195,7 +1417,7 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
             <View>
               <Text style={{ color: colors.sellColor, fontSize: 11, fontFamily: 'Inter_600SemiBold', marginBottom: 6 }}>RISKS TO REVIEW</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
-                {fund.risks.slice(0, 2).map((item, index) => (
+                {fund.risks.map((item, index) => (
                   <Text key={`overview-risk-${index}-${item}`} style={{ color: colors.sellColor, backgroundColor: colors.sellBg, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6, fontSize: 12 }}>
                     {item}
                   </Text>
@@ -1320,30 +1542,6 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
           <Text style={{ color: colors.foreground, fontSize: 14, lineHeight: 22 }}>
             {fund.analysis || 'AI commentary is unavailable. Review the sourced fund data below.'}
           </Text>
-          {!!fund.strengths.length && (
-            <View style={{ marginTop: 14 }}>
-              <Text style={{ color: colors.buyColor, fontFamily: 'Inter_600SemiBold', fontSize: 11, letterSpacing: 0.6, marginBottom: 7 }}>AI-IDENTIFIED STRENGTHS</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
-                {fund.strengths.map((item, index) => (
-                  <Text key={`commentary-strength-${index}-${item}`} style={{ color: colors.buyColor, backgroundColor: colors.buyBg, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6, fontSize: 12 }}>
-                    {item}
-                  </Text>
-                ))}
-              </View>
-            </View>
-          )}
-          {!!fund.risks.length && (
-            <View style={{ marginTop: 12 }}>
-              <Text style={{ color: colors.sellColor, fontFamily: 'Inter_600SemiBold', fontSize: 11, letterSpacing: 0.6, marginBottom: 7 }}>AI-IDENTIFIED RISKS TO REVIEW</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
-                {fund.risks.map((item, index) => (
-                  <Text key={`commentary-risk-${index}-${item}`} style={{ color: colors.sellColor, backgroundColor: colors.sellBg, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6, fontSize: 12 }}>
-                    {item}
-                  </Text>
-                ))}
-              </View>
-            </View>
-          )}
           <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 14 }}>
             AI commentary summarizes supplied fund data; it does not set the profile score or provide personalized advice or a buy/sell recommendation.
           </Text>
@@ -1505,32 +1703,6 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
           <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 6 }}>
             Provider snapshot retrieved {new Date(fund.topHoldingsRetrievedAt).toLocaleString()}; the provider does not supply a holdings report date here.
           </Text>
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 18 }}>
-            <TextInput
-              value={compareTicker}
-              onChangeText={setCompareTicker}
-              placeholder="Add ETF ticker"
-              placeholderTextColor={colors.mutedForeground}
-              autoCapitalize="characters"
-              accessibilityLabel="ETF ticker to compare holdings"
-              style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, color: colors.foreground }}
-            />
-            <TouchableOpacity
-              accessibilityRole="button"
-              accessibilityLabel="Add ETF to holdings comparison"
-              disabled={compareLoading || compareRestoreLoading}
-              onPress={() => void addCompareFund()}
-              style={{ justifyContent: 'center', paddingHorizontal: 12, borderRadius: 8, backgroundColor: colors.primary, opacity: compareLoading || compareRestoreLoading ? 0.6 : 1 }}
-            >
-              <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_600SemiBold' }}>
-                {compareRestoreLoading ? 'Restoring' : compareLoading ? 'Loading' : 'Add'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          {compareRestoreLoading && <Text style={{ color: colors.mutedForeground, marginTop: 8 }}>Restoring saved ETF comparisons…</Text>}
-          {!!compareError && <Text style={{ color: colors.sellColor, marginTop: 8 }}>{compareError}</Text>}
-          {!!compareStorageError && <Text style={{ color: colors.sellColor, marginTop: 8 }}>{compareStorageError}</Text>}
-          {!!snapshotStorageError && <Text style={{ color: colors.sellColor, marginTop: 8 }}>{snapshotStorageError}</Text>}
           {savedCompareSymbols.filter((candidate) =>
             candidate !== symbol.toUpperCase()
             && !compareFunds.some((fundEntry) => fundEntry.symbol === candidate)
@@ -1588,19 +1760,6 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
           )}
           {!!compareFunds.length && (
             <>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-                {compareFunds.map((fundEntry) => (
-                  <TouchableOpacity
-                    key={fundEntry.symbol}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Remove ${fundEntry.symbol} from comparison`}
-                    onPress={() => removeCompareSymbol(fundEntry.symbol)}
-                    style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 16, paddingHorizontal: 10, paddingVertical: 5 }}
-                  >
-                    <Text style={{ color: colors.foreground }}>{fundEntry.symbol} ×</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
               {selectedFunds.map((fundEntry) => (
                 <Text key={`coverage-${fundEntry.symbol}`} style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 8 }}>
                   {fundEntry.symbol}: {fundEntry.topHoldingsReportedCount} reported positions · retrieved {fundEntry.topHoldingsRetrievedAt ? new Date(fundEntry.topHoldingsRetrievedAt).toLocaleString() : 'date unavailable'}

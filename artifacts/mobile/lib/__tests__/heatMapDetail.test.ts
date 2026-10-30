@@ -28,6 +28,7 @@ import {
   getReportedEtfSectorComparison,
   upsertSavedEtfHoldingSnapshot,
   getEtfFeeComparisonStatus,
+  rotateSavedEtfComparisonFocus,
 } from '../heatMapDetail.ts';
 
 const testDir = dirname(fileURLToPath(import.meta.url));
@@ -1414,6 +1415,23 @@ test('saved ETF comparisons normalize, deduplicate, cap, and reject malformed st
   assert.deepEqual(parseSavedEtfComparisonSymbols('not json'), []);
   assert.deepEqual(parseSavedEtfComparisonSymbols('{"symbol":"QQQ"}'), []);
   assert.deepEqual(parseSavedEtfComparisonSymbols(null), []);
+});
+
+test('switching ETF details rotates the current fund into the saved comparison lineup', () => {
+  const nextCurrent = rotateSavedEtfComparisonFocus('VOO', 'SPY', ['SPY', 'IWM', 'DIA']);
+  assert.deepEqual(nextCurrent, ['IWM', 'DIA', 'VOO']);
+  assert.deepEqual(
+    rotateSavedEtfComparisonFocus('SPY', 'VOO', nextCurrent),
+    ['IWM', 'DIA', 'SPY'],
+  );
+  assert.deepEqual(
+    rotateSavedEtfComparisonFocus('VOO', 'VOO', ['SPY', 'IWM']),
+    ['SPY', 'IWM'],
+  );
+  assert.deepEqual(
+    rotateSavedEtfComparisonFocus('VOO', 'QQQ', ['SPY', 'IWM']),
+    ['SPY', 'IWM'],
+  );
 });
 
 test('ETF holding snapshots require dated retrievals and complete matching position coverage', () => {

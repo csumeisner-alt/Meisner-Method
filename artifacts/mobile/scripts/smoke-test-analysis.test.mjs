@@ -125,8 +125,19 @@ test("ETF comparison tickers persist, revalidate, and remain saved on provider f
   assert.match(etfAnalysisSource, /response\.assetType === 'etf' \? response\.etfAnalysis \?\? null : null/);
   assert.match(etfAnalysisSource, /else if \(failed\)/);
   assert.match(etfAnalysisSource, /It remains saved for retry/);
-  assert.match(etfAnalysisSource, /removeCompareSymbol\(fundEntry\.symbol\)/);
+  assert.match(etfAnalysisSource, /removeCompareSymbol\(candidate\)/);
   assert.equal((etfAnalysisSource.match(/includeCommentary: false/g) ?? []).length, 2);
+});
+
+test("ETF comparison switcher supports focus changes, adding, replacing, and removal", () => {
+  assert.match(etfAnalysisSource, /testID="etf-comparison-switcher"/);
+  assert.match(etfAnalysisSource, /rotateSavedEtfComparisonFocus\(/);
+  assert.match(etfAnalysisSource, /router\.push\(\{ pathname: '\/analysis\/\[symbol\]'/);
+  assert.match(etfAnalysisSource, /accessibilityLabel=\{`Open \$\{candidate\} ETF details`\}/);
+  assert.match(etfAnalysisSource, /testID=\{`etf-comparison-remove-\$\{candidate\}`\}/);
+  assert.match(etfAnalysisSource, /testID=\{`etf-comparison-replace-\$\{candidate\}`\}/);
+  assert.match(etfAnalysisSource, /const nextSymbols = replaceTarget/);
+  assert.match(etfAnalysisSource, /savedCompareSymbols\.length \+ 1\} of 4 ETFs selected/);
 });
 
 test("ETF analysis leads with a concise overview and preserves score limits", () => {
@@ -135,10 +146,12 @@ test("ETF analysis leads with a concise overview and preserves score limits", ()
   assert.match(etfAnalysisSource, /ETF RESEARCH PROFILE/);
   assert.match(etfAnalysisSource, /At a glance/);
   assert.match(etfAnalysisSource, /AI-IDENTIFIED TAKEAWAYS/);
-  assert.match(etfAnalysisSource, /fund\.strengths\.slice\(0, 2\)/);
-  assert.match(etfAnalysisSource, /fund\.risks\.slice\(0, 2\)/);
   assert.match(etfAnalysisSource, /fund\.strengths\.map/);
   assert.match(etfAnalysisSource, /fund\.risks\.map/);
+  const commentarySection = etfAnalysisSource.match(
+    /title="AI COMMENTARY"([\s\S]*?)<\/SectionCard>/,
+  )?.[1] ?? "";
+  assert.doesNotMatch(commentarySection, /fund\.(strengths|risks)\.map/);
   assert.match(etfAnalysisSource, /SCORE DETAILS & METHODOLOGY/);
   assert.match(etfAnalysisSource, /Missing components are excluded and remaining weights are rescaled/);
   assert.match(etfAnalysisSource, /Rules-based, not AI-generated or personalized advice/);
@@ -409,8 +422,12 @@ async function buildAnalysisScreenBundle(expenseRatio, scenarioOverrides = {}) {
       };
     `],
     ["expo-router", `
+      window.__analysisNavigation = [];
       export const useLocalSearchParams = () => ({ symbol: "VOO" });
-      export const useRouter = () => ({ back: () => {} });
+      export const useRouter = () => ({
+        back: () => {},
+        push: (route) => window.__analysisNavigation.push(route),
+      });
     `],
     ["react-native-safe-area-context", `
       export const useSafeAreaInsets = () => ({ top: 0, bottom: 0, left: 0, right: 0 });
@@ -841,7 +858,7 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
 
     await waitForBrowserValue(
       browser,
-      "document.body.innerText.includes('At a glance')",
+      "document.body?.innerText.includes('At a glance')",
       "The real ETF analysis screen did not render its overview.",
     );
     const sectionState = await browser.evaluate(`Array.from(
@@ -1017,7 +1034,7 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
     await browser.send("Page.navigate", { url: `http://127.0.0.1:${address.port}/unavailable-fee` });
     await waitForBrowserValue(
       browser,
-      "document.body.innerText.includes('ETF with unavailable fee')",
+      "document.body?.innerText.includes('ETF with unavailable fee')",
       "The ETF analysis screen should render with an unavailable fee.",
     );
     await browser.evaluate(`(() => {
@@ -1070,7 +1087,7 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
       await browser.send("Page.navigate", { url: `http://127.0.0.1:${address.port}${path}` });
       await waitForBrowserValue(
         browser,
-        "document.body.innerText.includes('At a glance')",
+        "document.body?.innerText.includes('At a glance')",
         `The ETF analysis screen should render for ${path}.`,
       );
       await browser.evaluate(`(() => {
@@ -1093,7 +1110,7 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
     await browser.send("Page.navigate", { url: `http://127.0.0.1:${address.port}/comparison` });
     await waitForBrowserValue(
       browser,
-      "document.body.innerText.includes('ETF COST, RISK & PERFORMANCE')",
+      "document.body?.innerText.includes('ETF COST, RISK & PERFORMANCE')",
       "The saved comparison ETF should be restored before testing navigation.",
     );
     await waitForBrowserValue(
@@ -1171,6 +1188,51 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
       await browser.evaluate(`JSON.parse(window.__analysisTestStorage.get("@stocksense/etf_comparison_symbols_v1") ?? "[]")`),
       ["VTI"],
       "Showing comparison highlights must preserve the saved comparison selection.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.documentElement.scrollWidth <= window.innerWidth && document.body.scrollWidth <= window.innerWidth`),
+      true,
+      "The comparison switcher must remain within the 320px phone viewport.",
+    );
+    const commentarySelector = '[data-testid="analysis-section-ai-commentary"]';
+    await browser.evaluate(`(() => {
+      const section = document.querySelector(${JSON.stringify(commentarySelector)});
+      section?.scrollIntoView({ block: "nearest" });
+      section?.click();
+    })()`);
+    await waitForBrowserValue(
+      browser,
+      `document.querySelector(${JSON.stringify(commentarySelector)})?.parentElement?.textContent.includes("AI commentary summarizes supplied fund data")`,
+      "Expanded AI commentary should retain its narrative explanation.",
+    );
+    assert.deepEqual(
+      await browser.evaluate(`({
+        strengthCount: (document.body?.innerText ?? "").split("Low annual fee").length - 1,
+        riskCount: (document.body?.innerText ?? "").split("Market concentration").length - 1,
+      })`),
+      { strengthCount: 1, riskCount: 1 },
+      "AI strengths and risks should appear once, in the overview rather than again in commentary.",
+    );
+    await browser.evaluate(`(() => {
+      const switcher = document.querySelector('[data-testid="etf-comparison-switcher"]');
+      const control = document.querySelector('[data-testid="etf-comparison-switch-VTI"]');
+      switcher?.scrollIntoView({ block: "nearest" });
+      control?.click();
+    })()`);
+    await waitForBrowserValue(
+      browser,
+      "window.__analysisNavigation.length === 1",
+      "Selecting a compared ETF should navigate to that fund's details.",
+    );
+    assert.deepEqual(
+      await browser.evaluate(`window.__analysisNavigation[0]`),
+      { pathname: "/analysis/[symbol]", params: { symbol: "VTI" } },
+      "The selected comparison should open the requested ETF details.",
+    );
+    assert.deepEqual(
+      await browser.evaluate(`JSON.parse(window.__analysisTestStorage.get("@stocksense/etf_comparison_symbols_v1") ?? "[]")`),
+      ["VOO"],
+      "Switching focus should retain the previous current ETF in the comparison lineup.",
     );
   } finally {
     await browser?.close();
