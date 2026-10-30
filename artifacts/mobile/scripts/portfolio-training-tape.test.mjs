@@ -26,6 +26,20 @@ test("training tape opens by click in web preview and remains available by long 
   assert.match(portfolioSource, /<TrainingTapeModal\s+visible=\{trainingTapeVisible\}/);
 });
 
+test("web preview can open a Biden quote on demand without counting repeat taps", () => {
+  assert.match(
+    trainingTapeSource,
+    /Platform\.OS === 'web' && !quoteMode/,
+  );
+  assert.match(
+    trainingTapeSource,
+    /testID="training-tape-show-biden-quote"/,
+  );
+  assert.match(trainingTapeSource, /onPress=\{showBidenQuote\}/);
+  assert.match(trainingTapeSource, /quoteViewedInSessionRef\.current\) return/);
+  assert.match(trainingTapeSource, /onQuoteViewedRef\.current\?\.\(quoteViewId\)/);
+});
+
 test("training tape prefetches and reuses a recent market snapshot on open", () => {
   assert.match(portfolioSource, /if \(visible\) prefetchTrainingTapeSnapshot\(\)/);
   assert.match(trainingTapeSource, /const MARKET_SNAPSHOT_FRESH_MS = 60_000/);

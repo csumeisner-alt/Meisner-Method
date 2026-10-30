@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Modal,
   Pressable,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -406,13 +407,49 @@ export function TrainingTapeModal({
   const visibleSessionRef = useRef(false);
   const quoteSessionRef = useRef(0);
   const quoteViewIdRef = useRef('');
+  const quoteViewedInSessionRef = useRef(false);
   const soundEnabledRef = useRef(soundEnabled);
+  const onQuoteViewedRef = useRef(onQuoteViewed);
   const quoteSoundSessionRef = useRef(0);
   soundEnabledRef.current = soundEnabled;
+  onQuoteViewedRef.current = onQuoteViewed;
   const quotesRemaining = Math.max(
     0,
     BREW_TOKEN_QUOTE_THRESHOLD - (quoteProgress?.quotesViewed ?? 0),
   );
+
+  const showBidenQuote = React.useCallback(() => {
+    if (quoteViewedInSessionRef.current) return;
+    quoteViewedInSessionRef.current = true;
+    const index = Math.floor(Math.random() * BIDEN_QUOTES.length);
+    const quote = BIDEN_QUOTES[index] ?? BIDEN_QUOTES[0];
+    setQuoteMode(true);
+    setMessage(quote);
+    setLoading(false);
+    const soundSession = ++quoteSoundSessionRef.current;
+    void playQuoteViewCue(
+      soundEnabledRef.current,
+      () => quoteSoundSessionRef.current === soundSession,
+    );
+    const quoteViewId = quoteViewIdRef.current;
+    const rewardPromise = onQuoteViewedRef.current?.(quoteViewId);
+    if (rewardPromise) {
+      void rewardPromise.then(update => {
+        if (!visibleSessionRef.current || quoteViewIdRef.current !== quoteViewId) return;
+        setQuoteProgress(current => current?.quotesViewed === update.quotesViewed
+          ? current
+          : {
+              quotesViewed: update.quotesViewed,
+              firstQuoteView: update.firstQuoteView,
+            });
+        if (update.halfway) {
+          setMessage(`HALFWAY THERE · 50% COMPLETE\n\n${quote}`);
+        } else if (update.earnedToken) {
+          setMessage(`BREW TOKEN EARNED · +1 ADDED TO THE CENTRAL BANK\n\n${quote}`);
+        }
+      });
+    }
+  }, []);
 
   useEffect(() => {
     if (visible && soundEnabled) return;
@@ -423,10 +460,12 @@ export function TrainingTapeModal({
   useEffect(() => {
     if (!visible) {
       visibleSessionRef.current = false;
+      quoteViewedInSessionRef.current = false;
       return;
     }
     if (!visibleSessionRef.current) {
       visibleSessionRef.current = true;
+      quoteViewedInSessionRef.current = false;
       quoteSessionRef.current += 1;
       quoteViewIdRef.current = [
         'training-tape',
@@ -452,32 +491,7 @@ export function TrainingTapeModal({
     setLoading(cachedSnapshot === null);
 
     if (useQuote) {
-      const index = Math.floor(Math.random() * BIDEN_QUOTES.length);
-      const quote = BIDEN_QUOTES[index] ?? BIDEN_QUOTES[0];
-      setMessage(quote);
-      setLoading(false);
-      const soundSession = ++quoteSoundSessionRef.current;
-      void playQuoteViewCue(
-        soundEnabledRef.current,
-        () => quoteSoundSessionRef.current === soundSession,
-      );
-      const rewardPromise = onQuoteViewed?.(quoteViewIdRef.current);
-      if (rewardPromise) {
-        void rewardPromise.then(update => {
-          if (cancelled) return;
-          setQuoteProgress(current => current?.quotesViewed === update.quotesViewed
-            ? current
-            : {
-                quotesViewed: update.quotesViewed,
-                firstQuoteView: update.firstQuoteView,
-              });
-          if (update.halfway) {
-            setMessage(`HALFWAY THERE · 50% COMPLETE\n\n${quote}`);
-          } else if (update.earnedToken) {
-            setMessage(`BREW TOKEN EARNED · +1 ADDED TO THE CENTRAL BANK\n\n${quote}`);
-          }
-        });
-      }
+      showBidenQuote();
       return () => {
         cancelled = true;
       };
@@ -509,7 +523,7 @@ export function TrainingTapeModal({
     return () => {
       cancelled = true;
     };
-  }, [onQuoteViewed, visible]);
+  }, [showBidenQuote, visible]);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -578,6 +592,21 @@ export function TrainingTapeModal({
               <ActivityIndicator color={colors.gold} style={styles.loader} />
             )}
           </View>
+
+          {Platform.OS === 'web' && !quoteMode && (
+            <Pressable
+              onPress={showBidenQuote}
+              accessibilityRole="button"
+              accessibilityLabel="Show a Biden quote"
+              testID="training-tape-show-biden-quote"
+              style={[styles.quotePreviewButton, { borderColor: colors.goldMuted, backgroundColor: colors.steelShadow }]}
+            >
+              <Feather name="archive" size={13} color={colors.gold} />
+              <Text style={[styles.quotePreviewButtonText, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
+                VIEW BIDEN QUOTE
+              </Text>
+            </Pressable>
+          )}
 
           {quoteMode && !isBankUnlocked && quoteProgress && quoteProgress.quotesViewed < BREW_TOKEN_QUOTE_THRESHOLD && (
             <View
@@ -747,6 +776,21 @@ const styles = StyleSheet.create({
     padding: 18,
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+  quotePreviewButton: {
+    minHeight: 40,
+    marginTop: 10,
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  quotePreviewButtonText: {
+    fontSize: 10,
+    letterSpacing: 1,
   },
   progressCard: {
     marginTop: 10,
