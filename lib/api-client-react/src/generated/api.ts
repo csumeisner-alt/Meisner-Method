@@ -31,6 +31,8 @@ import type {
   HeatMapResponse,
   MarketInstrumentInfo,
   MarketPulseResponse,
+  PortfolioQuoteBatch,
+  PortfolioQuoteBatchRequest,
   SearchHeatMapInstrumentsParams,
   SearchStockSymbolsParams,
   StockSymbolSuggestion,
@@ -621,6 +623,78 @@ export function useGetMarketBreadth<TData = Awaited<ReturnType<typeof getMarketB
 
 
 
+
+export const getGetPortfolioQuotesUrl = () => {
+
+
+
+
+  return `/api/stocks/quotes`
+}
+
+/**
+ * Returns current quotes using the same provider and session-price selection as the single-symbol quote route. Symbols without an available quote are listed separately.
+ * @summary Get current quotes for portfolio holdings
+ */
+export const getPortfolioQuotes = async (portfolioQuoteBatchRequest: PortfolioQuoteBatchRequest, options?: RequestInit): Promise<PortfolioQuoteBatch> => {
+
+  return customFetch<PortfolioQuoteBatch>(getGetPortfolioQuotesUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(portfolioQuoteBatchRequest)
+  }
+);}
+
+
+
+
+
+export const getGetPortfolioQuotesMutationOptions = <TError = ErrorType<AnalysisError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getPortfolioQuotes>>, TError,{data: BodyType<PortfolioQuoteBatchRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof getPortfolioQuotes>>, TError,{data: BodyType<PortfolioQuoteBatchRequest>}, TContext> => {
+
+const mutationKey = ['getPortfolioQuotes'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof getPortfolioQuotes>>, {data: BodyType<PortfolioQuoteBatchRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  getPortfolioQuotes(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GetPortfolioQuotesMutationResult = NonNullable<Awaited<ReturnType<typeof getPortfolioQuotes>>>
+    export type GetPortfolioQuotesMutationBody = BodyType<PortfolioQuoteBatchRequest>
+    export type GetPortfolioQuotesMutationError = ErrorType<AnalysisError>
+
+    /**
+ * @summary Get current quotes for portfolio holdings
+ */
+export const useGetPortfolioQuotes = <TError = ErrorType<AnalysisError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getPortfolioQuotes>>, TError,{data: BodyType<PortfolioQuoteBatchRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof getPortfolioQuotes>>,
+        TError,
+        {data: BodyType<PortfolioQuoteBatchRequest>},
+        TContext
+      > => {
+      return useMutation(getGetPortfolioQuotesMutationOptions(options));
+    }
 
 export const getGetMarketPulseUrl = () => {
 

@@ -225,6 +225,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AnalysisError"
+  /stocks/quotes:
+    post:
+      operationId: getPortfolioQuotes
+      tags: [stocks]
+      summary: Get current quotes for portfolio holdings
+      description: Returns current quotes using the same provider and session-price selection as the single-symbol quote route. Symbols without an available quote are listed separately.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortfolioQuoteBatchRequest"
+      responses:
+        "200":
+          description: Available quotes and symbols without quote data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortfolioQuoteBatch"
+        "400":
+          description: Invalid symbol list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "422":
+          description: Quote provider is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
   /stocks/market-pulse:
     get:
       operationId: getMarketPulse
@@ -342,6 +373,68 @@ components:
           type: string
       required:
         - status
+
+    PortfolioQuote:
+      type: object
+      properties:
+        symbol:
+          type: string
+        currentPrice:
+          type: number
+          exclusiveMinimum: 0
+        priceChange:
+          type: number
+        priceChangePercent:
+          type: number
+        marketSession:
+          type: string
+        priceSource:
+          type: string
+        priceTimestamp:
+          type: integer
+          nullable: true
+        expenseRatio:
+          type: number
+          nullable: true
+      required:
+        - symbol
+        - currentPrice
+        - priceChange
+        - priceChangePercent
+        - marketSession
+        - priceSource
+        - priceTimestamp
+        - expenseRatio
+
+    PortfolioQuoteBatchRequest:
+      type: object
+      properties:
+        symbols:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            type: string
+            minLength: 1
+            maxLength: 15
+            pattern: "^[A-Za-z0-9.^=-]+$"
+      required:
+        - symbols
+
+    PortfolioQuoteBatch:
+      type: object
+      properties:
+        quotes:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortfolioQuote"
+        unavailableSymbols:
+          type: array
+          items:
+            type: string
+      required:
+        - quotes
+        - unavailableSymbols
 
     AnalyzeStockRequest:
       type: object

@@ -9,4 +9,6 @@
 export interface AnalyzeStockRequest {
   /** Stock ticker symbol (e.g. AAPL, TSLA, MSFT) */
   symbol: string;
+  /** Whether ETF analysis should include AI-generated commentary. Omit or set true for full analysis; set false for facts-only comparison data. */
+  includeCommentary?: boolean;
 }

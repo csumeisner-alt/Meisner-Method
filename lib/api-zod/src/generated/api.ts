@@ -64,8 +64,11 @@ export const SearchStockSymbolsResponse = zod.array(SearchStockSymbolsResponseIt
  * Detects ETFs and returns fund-specific analysis; listed stocks retain technical, fundamental, behavioral, and rules-based recommendation analysis.
  * @summary Analyze a stock or ETF ticker
  */
+export const analyzeStockBodyIncludeCommentaryDefault = true;
+
 export const AnalyzeStockBody = zod.object({
-  "symbol": zod.string().describe('Stock ticker symbol (e.g. AAPL, TSLA, MSFT)')
+  "symbol": zod.string().describe('Stock ticker symbol (e.g. AAPL, TSLA, MSFT)'),
+  "includeCommentary": zod.boolean().default(analyzeStockBodyIncludeCommentaryDefault).describe('Whether ETF analysis should include AI-generated commentary. Omit or set true for full analysis; set false for facts-only comparison data.')
 })
 
 export const analyzeStockResponseTwoEtfAnalysisSectorWeightsItemWeightMin = 0;
@@ -174,9 +177,9 @@ export const AnalyzeStockResponse = zod.union([zod.object({
   "sector": zod.string(),
   "weight": zod.number().min(analyzeStockResponseTwoEtfAnalysisSectorWeightsItemWeightMin).max(analyzeStockResponseTwoEtfAnalysisSectorWeightsItemWeightMax).describe('Provider-reported sector weight as a decimal fraction.')
 })).describe('Provider-reported sector weights only; omitted sectors are not inferred as zero.'),
-  "sectorWeightsRetrievedAt": zod.coerce.date(),
-  "topHoldingsReportedCount": zod.number().min(analyzeStockResponseTwoEtfAnalysisTopHoldingsReportedCountMin),
-  "topHoldingsRetrievedAt": zod.coerce.date(),
+  "sectorWeightsRetrievedAt": zod.coerce.date().describe('Provider sector snapshot retrieval time, not a sector report date.'),
+  "topHoldingsReportedCount": zod.number().min(analyzeStockResponseTwoEtfAnalysisTopHoldingsReportedCountMin).describe('Number of positions reported by the provider for this holdings snapshot.'),
+  "topHoldingsRetrievedAt": zod.coerce.date().describe('Provider holdings snapshot retrieval time, not a holdings report date.'),
   "marketRegime": zod.object({
   "bestRegime": zod.enum(['bull', 'bear', 'mixed']).nullable(),
   "lookbackYears": zod.number(),
@@ -313,14 +316,14 @@ export const GetStockInfoResponse = zod.object({
   "sector": zod.string(),
   "weight": zod.number().min(getStockInfoResponseEtfProfileSectorWeightsItemWeightMin).max(getStockInfoResponseEtfProfileSectorWeightsItemWeightMax).describe('Provider-reported sector weight as a decimal fraction.')
 })).describe('Provider-reported sector weights only; omitted sectors are not inferred as zero.'),
-  "sectorWeightsRetrievedAt": zod.coerce.date(),
+  "sectorWeightsRetrievedAt": zod.coerce.date().describe('Provider sector snapshot retrieval time, not a sector report date.'),
   "topHoldings": zod.array(zod.object({
   "symbol": zod.string(),
   "name": zod.string(),
   "weight": zod.number().describe('Holding weight as a decimal fraction.')
 })),
-  "topHoldingsReportedCount": zod.number().min(getStockInfoResponseEtfProfileTopHoldingsReportedCountMin),
-  "topHoldingsRetrievedAt": zod.coerce.date(),
+  "topHoldingsReportedCount": zod.number().min(getStockInfoResponseEtfProfileTopHoldingsReportedCountMin).describe('Number of positions reported by the provider for this holdings snapshot.'),
+  "topHoldingsRetrievedAt": zod.coerce.date().describe('Provider holdings snapshot retrieval time, not a holdings report date.'),
   "marketRegime": zod.object({
   "bestRegime": zod.enum(['bull', 'bear', 'mixed']).nullable(),
   "lookbackYears": zod.number(),
@@ -454,6 +457,41 @@ export const GetMarketBreadthResponse = zod.object({
 })),
   "unavailableSymbols": zod.array(zod.string()),
   "updatedAt": zod.number().describe('Unix timestamp in seconds when this batch was assembled.')
+})
+
+
+/**
+ * Returns current quotes using the same provider and session-price selection as the single-symbol quote route. Symbols without an available quote are listed separately.
+ * @summary Get current quotes for portfolio holdings
+ */
+export const getPortfolioQuotesBodySymbolsItemMax = 15;
+
+
+export const getPortfolioQuotesBodySymbolsItemRegExp = new RegExp('^[A-Za-z0-9.^=-]+$');
+export const getPortfolioQuotesBodySymbolsMax = 500;
+
+
+
+export const GetPortfolioQuotesBody = zod.object({
+  "symbols": zod.array(zod.string().min(1).max(getPortfolioQuotesBodySymbolsItemMax).regex(getPortfolioQuotesBodySymbolsItemRegExp)).min(1).max(getPortfolioQuotesBodySymbolsMax)
+})
+
+export const getPortfolioQuotesResponseQuotesItemCurrentPriceExclusiveMin = 0;
+
+
+
+export const GetPortfolioQuotesResponse = zod.object({
+  "quotes": zod.array(zod.object({
+  "symbol": zod.string(),
+  "currentPrice": zod.number().gt(getPortfolioQuotesResponseQuotesItemCurrentPriceExclusiveMin),
+  "priceChange": zod.number(),
+  "priceChangePercent": zod.number(),
+  "marketSession": zod.string(),
+  "priceSource": zod.string(),
+  "priceTimestamp": zod.number().nullable(),
+  "expenseRatio": zod.number().nullable()
+})),
+  "unavailableSymbols": zod.array(zod.string())
 })
 
 

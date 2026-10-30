@@ -39,23 +39,31 @@ export function startPortfolioTradesLoad(
   };
 }
 
+export interface PortfolioQuoteBatch {
+  quotes: Array<Quote & { symbol: string }>;
+  unavailableSymbols: string[];
+}
+
 /**
- * Fetch each distinct ticker once and publish successful quotes as soon as they
- * arrive. A failed ticker does not block other positions from updating.
+ * Fetch distinct tickers together and publish every available quote. Missing
+ * symbols remain unchanged without preventing the rest of the batch updating.
  */
 export async function fetchPortfolioQuotes(
   symbols: string[],
-  fetchQuote: (symbol: string) => Promise<Quote>,
+  fetchQuotes: (symbols: string[]) => Promise<PortfolioQuoteBatch>,
   onQuote: (symbol: string, quote: Quote) => void,
 ): Promise<void> {
   const uniqueSymbols = [...new Set(symbols)];
-  await Promise.all(
-    uniqueSymbols.map(async (symbol) => {
-      try {
-        onQuote(symbol, await fetchQuote(symbol));
-      } catch {
-        // Keep any previously displayed quote; unavailable values stay absent.
+  if (uniqueSymbols.length === 0) return;
+  try {
+    const result = await fetchQuotes(uniqueSymbols);
+    for (const quoteWithSymbol of result.quotes) {
+      if (uniqueSymbols.includes(quoteWithSymbol.symbol)) {
+        const { symbol, ...quote } = quoteWithSymbol;
+        onQuote(symbol, quote);
       }
-    }),
-  );
+    }
+  } catch {
+    // Keep previously displayed quotes when the whole request is unavailable.
+  }
 }

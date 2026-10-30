@@ -71,36 +71,33 @@ test('a late cache read cannot overwrite newer server trades', async () => {
   assert.equal(events.length, 1);
 });
 
-test('quotes update independently, deduplicate symbols, and ignore a failed ticker', async () => {
-  const first = deferred<Quote>();
-  const second = deferred<Quote>();
-  const requests: string[] = [];
+test('portfolio quotes use one deduplicated batch and apply successful symbols only', async () => {
+  const requests: string[][] = [];
   const updates: Array<[string, Quote]> = [];
-  const fetching = fetchPortfolioQuotes(
+  await fetchPortfolioQuotes(
     ['VOO', 'AAPL', 'VOO'],
-    (symbol) => {
-      requests.push(symbol);
-      return symbol === 'VOO' ? first.promise : second.promise;
+    async (symbols) => {
+      requests.push(symbols);
+      return {
+        quotes: [
+          { symbol: 'VOO', currentPrice: 500, priceChange: 1, priceChangePercent: 0.2 },
+        ],
+        unavailableSymbols: ['AAPL'],
+      };
     },
     (symbol, quote) => updates.push([symbol, quote]),
   );
 
-  assert.deepEqual(requests.sort(), ['AAPL', 'VOO']);
+  assert.deepEqual(requests, [['VOO', 'AAPL']]);
   const voo: Quote = { currentPrice: 500, priceChange: 1, priceChangePercent: 0.2 };
-  first.resolve(voo);
-  await Promise.resolve();
-  await Promise.resolve();
-  assert.deepEqual(updates, [['VOO', voo]]);
-
-  second.reject(new Error('unavailable'));
-  await fetching;
   assert.deepEqual(updates, [['VOO', voo]]);
 });
 
-test('Portfolio screen wires cache-first trades and incremental quote updates', () => {
+test('Portfolio screen wires cache-first trades and batched quote updates', () => {
   const screen = readFileSync('app/portfolio.tsx', 'utf8');
   assert.match(screen, /startPortfolioTradesLoad\(/);
   assert.match(screen, /event\.source === 'cache' && event\.trades\.length === 0/);
-  assert.match(screen, /fetchPortfolioQuotes\(symbols, fetchQuote/);
+  assert.match(screen, /fetchPortfolioQuotes\(/);
+  assert.match(screen, /apiFetch<PortfolioQuoteBatch>\('\/api\/stocks\/quotes'/);
   assert.match(screen, /setQuotes\(previous => \(\{ \.\.\.previous, \[symbol\]: quote \}\)\)/);
 });

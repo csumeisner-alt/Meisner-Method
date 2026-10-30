@@ -718,6 +718,48 @@ router.get("/stocks/quote/:symbol", async (req, res) => {
   }
 });
 
+router.post("/stocks/quotes", async (req, res) => {
+  const rawSymbols: unknown = req.body?.symbols;
+  const symbolPattern = /^[A-Z0-9.^=-]{1,15}$/;
+  if (
+    !Array.isArray(rawSymbols) ||
+    rawSymbols.length === 0 ||
+    rawSymbols.length > 500 ||
+    rawSymbols.some((symbol) => typeof symbol !== "string" || !symbolPattern.test(symbol.trim().toUpperCase()))
+  ) {
+    res.status(400).json({
+      error: "INVALID_SYMBOLS",
+      message: "Provide between 1 and 500 valid ticker symbols.",
+    });
+    return;
+  }
+
+  const symbols = [...new Set((rawSymbols as string[]).map((symbol) => symbol.trim().toUpperCase()))];
+  try {
+    const { stdout } = await execFileAsync(
+      "python3",
+      [QUOTE_SCRIPT, "--batch", JSON.stringify(symbols)],
+      { timeout: 60_000, maxBuffer: 2 * 1024 * 1024 },
+    );
+    const raw: unknown = JSON.parse(stdout.trim());
+    if (
+      !raw ||
+      typeof raw !== "object" ||
+      !Array.isArray((raw as Record<string, unknown>)["quotes"]) ||
+      !Array.isArray((raw as Record<string, unknown>)["unavailableSymbols"])
+    ) {
+      throw new Error("Market data provider returned an invalid quote batch");
+    }
+    res.set("Cache-Control", "private, max-age=0").json(raw);
+  } catch (err: any) {
+    req.log.error({ err }, "Portfolio quote batch failed");
+    res.status(422).json({
+      error: "QUOTE_BATCH_FAILED",
+      message: "Market data is temporarily unavailable. Try refreshing your portfolio.",
+    });
+  }
+});
+
 router.post("/stocks/analyze", async (req, res) => {
   const { symbol, includeCommentary } = req.body as {
     symbol?: string;

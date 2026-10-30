@@ -51,7 +51,11 @@ import {
   type Quote,
   type Trade,
 } from '@/lib/portfolioMath';
-import { fetchPortfolioQuotes, startPortfolioTradesLoad } from '@/lib/portfolioLoading';
+import {
+  fetchPortfolioQuotes,
+  startPortfolioTradesLoad,
+  type PortfolioQuoteBatch,
+} from '@/lib/portfolioLoading';
 import { getTradeGradeFeedback } from '@/lib/tradeGradeFeedback';
 import { canEnterBrewBank, formatBrewBankAccessRemaining, hasBrewBankAccess } from '@/lib/brewTokenLogic';
 
@@ -2219,12 +2223,19 @@ export default function PortfolioScreen() {
       return;
     }
     setLoadingQuotes(true);
-    await fetchPortfolioQuotes(symbols, fetchQuote, (symbol, quote) => {
-      if (requestId !== quoteRequestIdRef.current) return;
-      setQuotes(previous => ({ ...previous, [symbol]: quote }));
-    });
+    await fetchPortfolioQuotes(
+      symbols,
+      async (batchSymbols) => apiFetch<PortfolioQuoteBatch>('/api/stocks/quotes', {
+        method: 'POST',
+        body: JSON.stringify({ symbols: batchSymbols }),
+      }),
+      (symbol, quote) => {
+        if (requestId !== quoteRequestIdRef.current) return;
+        setQuotes(previous => ({ ...previous, [symbol]: quote }));
+      },
+    );
     if (requestId === quoteRequestIdRef.current) setLoadingQuotes(false);
-  }, []);
+  }, [apiFetch]);
 
   const quoteSymbols = useMemo(
     () => [...new Set(trades.map(trade => trade.symbol))],

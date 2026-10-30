@@ -9,9 +9,39 @@ export interface HealthStatus {
   status: string;
 }
 
+export interface PortfolioQuote {
+  symbol: string;
+  /** @exclusiveMinimum 0 */
+  currentPrice: number;
+  priceChange: number;
+  priceChangePercent: number;
+  marketSession: string;
+  priceSource: string;
+  priceTimestamp: number | null;
+  expenseRatio: number | null;
+}
+
+export interface PortfolioQuoteBatchRequest {
+  /**
+     * @minItems 1
+     * @maxItems 500
+     * @items.minLength 1
+     * @items.maxLength 15
+     * @items.pattern ^[A-Za-z0-9.^=-]+$
+     */
+  symbols: string[];
+}
+
+export interface PortfolioQuoteBatch {
+  quotes: PortfolioQuote[];
+  unavailableSymbols: string[];
+}
+
 export interface AnalyzeStockRequest {
   /** Stock ticker symbol (e.g. AAPL, TSLA, MSFT) */
   symbol: string;
+  /** Whether ETF analysis should include AI-generated commentary. Omit or set true for full analysis; set false for facts-only comparison data. */
+  includeCommentary?: boolean;
 }
 
 export interface StockSymbolSuggestion {
@@ -327,9 +357,14 @@ export interface EtfAnalysis {
   topHoldings: EtfHolding[];
   /** Provider-reported sector weights only; omitted sectors are not inferred as zero. */
   sectorWeights: EtfSectorWeight[];
+  /** Provider sector snapshot retrieval time, not a sector report date. */
   sectorWeightsRetrievedAt: string;
-  /** @minimum 0 */
+  /**
+     * Number of positions reported by the provider for this holdings snapshot.
+     * @minimum 0
+     */
   topHoldingsReportedCount: number;
+  /** Provider holdings snapshot retrieval time, not a holdings report date. */
   topHoldingsRetrievedAt: string;
   marketRegime: EtfMarketRegime | null;
   benchmark: EtfBenchmarkReference | null;
@@ -428,10 +463,15 @@ export interface EtfProfile {
   largestSectorWeight: number | null;
   /** Provider-reported sector weights only; omitted sectors are not inferred as zero. */
   sectorWeights: EtfSectorWeight[];
+  /** Provider sector snapshot retrieval time, not a sector report date. */
   sectorWeightsRetrievedAt: string;
   topHoldings: EtfHolding[];
-  /** @minimum 0 */
+  /**
+     * Number of positions reported by the provider for this holdings snapshot.
+     * @minimum 0
+     */
   topHoldingsReportedCount: number;
+  /** Provider holdings snapshot retrieval time, not a holdings report date. */
   topHoldingsRetrievedAt: string;
   marketRegime: EtfMarketRegime | null;
   benchmark: EtfBenchmarkReference | null;
