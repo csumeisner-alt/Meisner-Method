@@ -68,3 +68,4 @@
 - [Premium flag badge motion](premium-flag-animation.md) — preserve all six supplied artworks and a continuous, visible cloth wave without reduced-motion suppression.
 - [API route test seams](api-route-test-seams.md) — extract injectable response handlers when source-run tests cannot resolve route imports that exist only after bundling.
 - [React Native Web accordion tests](react-native-web-accordion-tests.md) — verify collapsed evidence by content visibility; this runtime may not reflect `accessibilityState.expanded` as `aria-expanded`.
+- [Post-merge Drizzle safety](post-merge-drizzle-safety.md) — inspect non-TTY push logs for data-loss prompts; never force an unreviewed schema diff.
