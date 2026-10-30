@@ -477,7 +477,8 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
     );
     return {
       horizonYears,
-      contributedPrincipal: noFee.contributedPrincipal,
+      startingInvestment: noFee.startingInvestment,
+      totalContributions: noFee.totalContributions,
       noFeeValue: noFee.totalValue,
       noFeeGrowth: noFee.projectedGrowth,
       afterFeeValue: afterFee.totalValue,
@@ -1746,10 +1747,16 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
                           : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)!.afterFeeValue!)}
                       />
                       <MetricRow
-                        label="Total contributed principal"
-                        value={selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)?.contributedPrincipal == null
+                        label="Starting investment"
+                        value={selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)?.startingInvestment == null
                           ? 'Unavailable'
-                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)!.contributedPrincipal!)}
+                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)!.startingInvestment!)}
+                      />
+                      <MetricRow
+                        label="Total contributions"
+                        value={selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)?.totalContributions == null
+                          ? 'Unavailable'
+                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)!.totalContributions!)}
                       />
                       <MetricRow
                         label={`No-fee projected growth in ${selectedScenarioHorizon} years`}
@@ -1986,10 +1993,16 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
                   : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, currentPrice)!.afterFeeValue!)}
               />
               <MetricRow
-                label="Total contributed principal"
-                value={selectedProjection(scenario, selectedScenarioHorizon, currentPrice)?.contributedPrincipal == null
+                label="Starting investment"
+                value={selectedProjection(scenario, selectedScenarioHorizon, currentPrice)?.startingInvestment == null
                   ? 'Unavailable'
-                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, currentPrice)!.contributedPrincipal!)}
+                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, currentPrice)!.startingInvestment!)}
+              />
+              <MetricRow
+                label="Total contributions"
+                value={selectedProjection(scenario, selectedScenarioHorizon, currentPrice)?.totalContributions == null
+                  ? 'Unavailable'
+                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, currentPrice)!.totalContributions!)}
               />
               <MetricRow
                 label={`No-fee projected growth in ${selectedScenarioHorizon} years`}

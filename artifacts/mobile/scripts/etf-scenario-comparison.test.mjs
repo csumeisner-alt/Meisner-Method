@@ -27,6 +27,10 @@ test("ETF comparison shows each historical scenario with its fee and assumptions
   assert.match(analysisSource, /calculateEtfScenarioBreakdown\([\s\S]*?contributionCadence/);
   assert.match(
     analysisSource,
+    /calculateEtfScenarioBreakdown\([\s\S]*?contributionAmount,\s*horizonYears,\s*contributionCadence/,
+  );
+  assert.match(
+    analysisSource,
     /comparisonMetricFunds\.map\(\(\{ symbol: fundSymbol, currentPrice: comparisonPrice, analysis: comparison \}\) => \{[\s\S]*?scenarioRows = ETF_SCENARIO_LABELS\.map/,
   );
   assert.match(analysisSource, /label="Expense ratio used"[\s\S]*?pctValue\(comparison\.expenseRatio\)/);
@@ -34,11 +38,13 @@ test("ETF comparison shows each historical scenario with its fee and assumptions
   assert.match(analysisSource, /value=\{pctValue\(scenario\?\.annualReturnAssumption \?\? null\)\}/);
   assert.match(analysisSource, /label=\{`No-fee total in \$\{selectedScenarioHorizon\} years`\}/);
   assert.match(analysisSource, /label=\{`After-fee total in \$\{selectedScenarioHorizon\} years`\}/);
-  assert.match(analysisSource, /label="Total contributed principal"/);
+  assert.match(analysisSource, /label="Starting investment"/);
+  assert.match(analysisSource, /label="Total contributions"/);
   assert.match(analysisSource, /label=\{`No-fee projected growth in \$\{selectedScenarioHorizon\} years`\}/);
   assert.match(analysisSource, /label=\{`After-fee projected growth in \$\{selectedScenarioHorizon\} years`\}/);
   for (const label of [
-    /label="Total contributed principal"/g,
+    /label="Starting investment"/g,
+    /label="Total contributions"/g,
     /label=\{`No-fee projected growth in \$\{selectedScenarioHorizon\} years`\}/g,
     /label=\{`After-fee projected growth in \$\{selectedScenarioHorizon\} years`\}/g,
   ]) {
@@ -73,18 +79,24 @@ test("ETF recurring contribution values use deterministic end-of-period deposits
   assert.equal(calculateEtfScenarioValue(250, null, 75, 5, "weekly"), null);
 });
 
-test("ETF scenario breakdown separates contributed principal from each return assumption", () => {
+test("ETF scenario breakdown separates starting investment, deposits, and growth", () => {
   assert.deepEqual(calculateEtfScenarioBreakdown(100, 0, 25, 3), {
+    startingInvestment: 100,
+    totalContributions: 900,
     contributedPrincipal: 1000,
     totalValue: 1000,
     projectedGrowth: 0,
   });
   assert.deepEqual(calculateEtfScenarioBreakdown(100, 0.12, 0, 1), {
+    startingInvestment: 100,
+    totalContributions: 0,
     contributedPrincipal: 100,
     totalValue: 112,
     projectedGrowth: 12,
   });
   assert.deepEqual(calculateEtfScenarioBreakdown(100, null, 10, 1, "quarterly"), {
+    startingInvestment: 100,
+    totalContributions: 40,
     contributedPrincipal: 140,
     totalValue: null,
     projectedGrowth: null,
@@ -92,6 +104,10 @@ test("ETF scenario breakdown separates contributed principal from each return as
 
   const noFee = calculateEtfScenarioBreakdown(100, 0.08, 10, 2, "quarterly");
   const afterFee = calculateEtfScenarioBreakdown(100, 0.04, 10, 2, "quarterly");
+  assert.equal(noFee.startingInvestment, 100);
+  assert.equal(afterFee.startingInvestment, 100);
+  assert.equal(noFee.totalContributions, 80);
+  assert.equal(afterFee.totalContributions, 80);
   assert.equal(noFee.contributedPrincipal, 180);
   assert.equal(afterFee.contributedPrincipal, 180);
   assert.ok(noFee.projectedGrowth > afterFee.projectedGrowth);
@@ -101,6 +117,12 @@ test("ETF scenario breakdown separates contributed principal from each return as
   const periodsPerYear = { weekly: 52, monthly: 12, quarterly: 4 };
   for (const cadence of ETF_CONTRIBUTION_CADENCES) {
     const breakdown = calculateEtfScenarioBreakdown(100, 0.05, 10, 2, cadence);
+    assert.equal(breakdown.startingInvestment, 100);
+    assert.equal(
+      breakdown.totalContributions,
+      10 * periodsPerYear[cadence] * 2,
+      `${cadence} contributions should update with the selected schedule and horizon`,
+    );
     assert.equal(
       breakdown.contributedPrincipal,
       100 + 10 * periodsPerYear[cadence] * 2,

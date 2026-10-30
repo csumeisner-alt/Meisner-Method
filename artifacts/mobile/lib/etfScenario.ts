@@ -17,6 +17,8 @@ export type EtfScenarioProjection = {
 };
 
 export type EtfScenarioBreakdown = {
+  startingInvestment: number | null;
+  totalContributions: number | null;
   contributedPrincipal: number | null;
   totalValue: number | null;
   projectedGrowth: number | null;
@@ -44,7 +46,13 @@ export function calculateEtfScenarioBreakdown(
     || horizonYears <= 0
     || !ETF_CONTRIBUTION_CADENCES.includes(cadence)
   ) {
-    return { contributedPrincipal: null, totalValue: null, projectedGrowth: null };
+    return {
+      startingInvestment: null,
+      totalContributions: null,
+      contributedPrincipal: null,
+      totalValue: null,
+      projectedGrowth: null,
+    };
   }
 
   const periodsPerYear = {
@@ -53,21 +61,40 @@ export function calculateEtfScenarioBreakdown(
     quarterly: 4,
   }[cadence];
   const periods = Math.floor(horizonYears * periodsPerYear);
-  const contributedPrincipal = initialInvestment + contributionAmount * periods;
-  if (!Number.isFinite(contributedPrincipal)) {
-    return { contributedPrincipal: null, totalValue: null, projectedGrowth: null };
+  const startingInvestment = Math.round(initialInvestment * 100) / 100;
+  const totalContributions = Math.round(contributionAmount * periods * 100) / 100;
+  if (!Number.isFinite(startingInvestment) || !Number.isFinite(totalContributions)) {
+    return {
+      startingInvestment: null,
+      totalContributions: null,
+      contributedPrincipal: null,
+      totalValue: null,
+      projectedGrowth: null,
+    };
   }
 
-  const roundedPrincipal = Math.round(contributedPrincipal * 100) / 100;
+  const roundedPrincipal = Math.round((startingInvestment + totalContributions) * 100) / 100;
   if (!Number.isFinite(roundedPrincipal)) {
-    return { contributedPrincipal: null, totalValue: null, projectedGrowth: null };
+    return {
+      startingInvestment: null,
+      totalContributions: null,
+      contributedPrincipal: null,
+      totalValue: null,
+      projectedGrowth: null,
+    };
   }
   if (
     typeof annualReturn !== 'number'
     || !Number.isFinite(annualReturn)
     || annualReturn <= -1
   ) {
-    return { contributedPrincipal: roundedPrincipal, totalValue: null, projectedGrowth: null };
+    return {
+      startingInvestment,
+      totalContributions,
+      contributedPrincipal: roundedPrincipal,
+      totalValue: null,
+      projectedGrowth: null,
+    };
   }
 
   const periodicRate = (1 + annualReturn) ** (1 / periodsPerYear) - 1;
@@ -78,14 +105,28 @@ export function calculateEtfScenarioBreakdown(
     : contributionAmount * (contributionGrowth - 1) / periodicRate;
   const value = initialInvestment * growth + contributionValue;
   if (!Number.isFinite(value)) {
-    return { contributedPrincipal: roundedPrincipal, totalValue: null, projectedGrowth: null };
+    return {
+      startingInvestment,
+      totalContributions,
+      contributedPrincipal: roundedPrincipal,
+      totalValue: null,
+      projectedGrowth: null,
+    };
   }
 
   const totalValue = Math.round(value * 100) / 100;
   if (!Number.isFinite(totalValue)) {
-    return { contributedPrincipal: roundedPrincipal, totalValue: null, projectedGrowth: null };
+    return {
+      startingInvestment,
+      totalContributions,
+      contributedPrincipal: roundedPrincipal,
+      totalValue: null,
+      projectedGrowth: null,
+    };
   }
   return {
+    startingInvestment,
+    totalContributions,
     contributedPrincipal: roundedPrincipal,
     totalValue,
     projectedGrowth: Math.round((totalValue - roundedPrincipal) * 100) / 100,

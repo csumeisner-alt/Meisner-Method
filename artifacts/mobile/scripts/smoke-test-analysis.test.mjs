@@ -932,6 +932,8 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
     assert.match(scenarioCardText, /After-fee annual return\s*9\.97%/);
     assert.match(scenarioCardText, /No-fee value in 10 years\s*\$1,556\.25/);
     assert.match(scenarioCardText, /After-fee value in 10 years\s*\$1,552\.01/);
+    assert.match(scenarioCardText, /Starting investment\s*\$600\.00/);
+    assert.match(scenarioCardText, /Total contributions\s*\$0\.00/);
     assert.match(scenarioCardText, /Deposited at the end of each month/);
     for (const cadence of ["weekly", "monthly", "quarterly"]) {
       assert.ok(
@@ -939,30 +941,45 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
         `The contribution schedule selector should offer ${cadence} deposits.`,
       );
     }
+    await browser.evaluate(`(() => {
+      const input = document.querySelector('[data-testid="etf-scenario-contribution-input"]');
+      input?.focus();
+      input?.setSelectionRange(0, input.value.length);
+    })()`);
+    await browser.send("Input.insertText", { text: "25" });
+    await waitForBrowserValue(
+      browser,
+      `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent.includes("Total contributions$3,000.00")`,
+      "Changing the contribution amount should update the displayed deposit total.",
+    );
     await browser.evaluate(`document.querySelector('[data-testid="etf-scenario-cadence-weekly"]')?.click()`);
     await waitForBrowserValue(
       browser,
-      `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent.includes("Deposited at the end of each week")`,
-      "Selecting weekly should update the displayed deposit timing.",
+      `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent.includes("Total contributions$13,000.00")`,
+      "Selecting weekly should update the displayed contribution total.",
     );
     await browser.evaluate(`document.querySelector('[data-testid="etf-scenario-cadence-monthly"]')?.click()`);
     await waitForBrowserValue(
       browser,
-      `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent.includes("Deposited at the end of each month")`,
-      "Selecting monthly should update the displayed deposit timing.",
+      `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent.includes("Total contributions$3,000.00")`,
+      "Selecting monthly should restore the monthly contribution total.",
     );
     assert.match(scenarioCardText, /1 yr.*3 yr.*5 yr.*10 yr.*20 yr/);
     await browser.evaluate(`document.querySelector('[data-testid="etf-scenario-horizon-5"]')?.click()`);
     await waitForBrowserValue(
       browser,
-      `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent.includes("No-fee value in 5 years")`,
+      `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent.includes("Total contributions$1,500.00")`,
       "Selecting a horizon should update the displayed contribution values.",
     );
     const fiveYearScenarioText = await browser.evaluate(
       `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent ?? ""`,
     );
-    assert.match(fiveYearScenarioText, /No-fee value in 5 years\s*\$966\.31/);
-    assert.match(fiveYearScenarioText, /After-fee value in 5 years\s*\$964\.99/);
+    assert.match(fiveYearScenarioText, /No-fee value in 5 years\s*\$2,880\.34/);
+    assert.match(fiveYearScenarioText, /After-fee value in 5 years\s*\$2,877\.63/);
+    assert.match(fiveYearScenarioText, /Starting investment\s*\$600\.00/);
+    assert.match(fiveYearScenarioText, /Total contributions\s*\$1,500\.00/);
+    assert.match(fiveYearScenarioText, /No-fee projected growth in 5 years\s*\$780\.34/);
+    assert.match(fiveYearScenarioText, /After-fee projected growth in 5 years\s*\$777\.63/);
 
     const feeImpactSelector = '[data-testid="analysis-section-etf-fee-dollar-impact"]';
     await browser.evaluate(`(() => {
