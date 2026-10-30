@@ -188,11 +188,8 @@ test("ETF evidence is grouped in expandable, accessible sections", () => {
   }
 });
 
-test("ETF analysis exposes section-jump navigation", () => {
-  assert.match(etfAnalysisSource, /testID="etf-section-nav-toggle"/);
-  assert.match(etfAnalysisSource, /sectionNavigationItems/);
-  assert.match(etfAnalysisSource, /jumpToSection/);
-  assert.match(etfAnalysisSource, /sectionLayoutHandler/);
+test("ETF analysis omits section-jump navigation", () => {
+  assert.doesNotMatch(etfAnalysisSource, /Jump to section|etf-section-nav-toggle|sectionNavigationItems|jumpToSection/);
 });
 
 test("ETF comparison highlights meaningful shared-data gaps above full details", () => {
@@ -1136,48 +1133,12 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
       true,
       "The summary should appear above the full comparison details.",
     );
-    await browser.evaluate(`document.querySelector('[data-testid="etf-section-nav-toggle"]')?.click()`);
-    await waitForBrowserValue(
-      browser,
-      `Boolean(document.querySelector('[data-testid="etf-section-jump-long-range-scenarios"]'))`,
-      "Opening the section navigator should expose section jump buttons.",
-    );
     assert.equal(
-      await browser.evaluate(`Boolean(document.querySelector('[data-testid="etf-section-jump-comparison"]'))`),
-      true,
-      "The navigator should include the comparison section when saved comparisons are loaded.",
+      await browser.evaluate(`Boolean(document.querySelector('[data-testid="etf-section-nav-toggle"]'))`),
+      false,
+      "ETF comparison analysis should not render the section navigator.",
     );
-    await browser.evaluate(`document.querySelector('[data-testid="etf-section-jump-long-range-scenarios"]')?.click()`);
-    await waitForBrowserValue(
-      browser,
-      `(() => {
-        const scroll = document.querySelector('[data-testid="etf-analysis-scroll-view"]');
-        const target = document.querySelector('[data-testid="analysis-section-long-range-scenarios"]');
-        if (!scroll || !target || scroll.scrollTop <= 0) return false;
-        const viewport = scroll.getBoundingClientRect();
-        const targetRect = target.getBoundingClientRect();
-        return targetRect.top >= viewport.top - 2 && targetRect.bottom <= viewport.bottom + 2;
-      })()`,
-      "Selecting a section should bring it into the ETF analysis viewport.",
-    );
-    const jumpPosition = await browser.evaluate(`(() => {
-      const scroll = document.querySelector('[data-testid="etf-analysis-scroll-view"]');
-      const target = document.querySelector('[data-testid="analysis-section-long-range-scenarios"]');
-      return {
-        scrollTop: scroll?.scrollTop ?? 0,
-        targetTop: target?.getBoundingClientRect().top ?? Infinity,
-        viewportTop: scroll?.getBoundingClientRect().top ?? 0,
-        targetBottom: target?.getBoundingClientRect().bottom ?? Infinity,
-        viewportBottom: scroll?.getBoundingClientRect().bottom ?? 0,
-      };
-    })()`);
-    assert.ok(jumpPosition.scrollTop > 0, "Jumping to a lower section should advance the main scroll view.");
-    assert.ok(
-      jumpPosition.targetTop >= jumpPosition.viewportTop - 2
-        && jumpPosition.targetBottom <= jumpPosition.viewportBottom + 2,
-      `The selected section title should be visible in the viewport: ${JSON.stringify(jumpPosition)}`,
-    );
-    await browser.evaluate(`document.querySelector('[data-testid="etf-section-jump-comparison"]')?.click()`);
+    await browser.evaluate(`document.querySelector('[data-testid="analysis-section-etf-cost-risk-performance"]')?.scrollIntoView({ block: "nearest" })`);
     await browser.evaluate(`document.querySelector('[data-testid="analysis-section-etf-cost-risk-performance"]')?.click()`);
     await waitForBrowserValue(
       browser,

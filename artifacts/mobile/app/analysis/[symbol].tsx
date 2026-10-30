@@ -13,7 +13,6 @@ import {
   TextInput,
   useWindowDimensions,
   Share,
-  type LayoutChangeEvent,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -199,7 +198,7 @@ const metricStyles = StyleSheet.create({
   value: { fontSize: 13 },
 });
 
-function SectionCard({ title, icon, score, scoreColor, children, helpTopic, onHelp, onLayout, collapsible = false }: {
+function SectionCard({ title, icon, score, scoreColor, children, helpTopic, onHelp, collapsible = false }: {
   title: string;
   icon: React.ReactNode;
   score?: number;
@@ -207,14 +206,13 @@ function SectionCard({ title, icon, score, scoreColor, children, helpTopic, onHe
   children: React.ReactNode;
   helpTopic?: HelpTopic;
   onHelp?: (topic: HelpTopic) => void;
-  onLayout?: (event: LayoutChangeEvent) => void;
   collapsible?: boolean;
 }) {
   const colors = useColors();
   const [expanded, setExpanded] = useState(false);
   const Header = collapsible ? Pressable : View;
   return (
-    <View onLayout={onLayout} style={[cardStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+    <View style={[cardStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
       <Header
         style={cardStyles.header}
         {...(collapsible ? {
@@ -376,20 +374,17 @@ type EtfAnalysisPayload = {
   asOf: string;
 };
 
-function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: {
+function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
   fund: EtfAnalysisPayload;
   colors: ReturnType<typeof useColors>;
   symbol: string;
   currentPrice: number;
-  scrollToY: (y: number) => void;
 }) {
   const { apiFetch } = useApi();
   const router = useRouter();
   const [compareTicker, setCompareTicker] = useState('');
   const [replaceTarget, setReplaceTarget] = useState<string | null>(null);
   const [focusSwitching, setFocusSwitching] = useState(false);
-  const [sectionNavigatorOpen, setSectionNavigatorOpen] = useState(false);
-  const sectionPositions = useRef<Record<string, number>>({});
   const [selectedScenarioHorizon, setSelectedScenarioHorizon] = useState<number>(10);
   const [feeInvestmentInput, setFeeInvestmentInput] = useState('10000');
   const [feeHoldingYears, setFeeHoldingYears] = useState<number>(10);
@@ -865,36 +860,6 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
     },
     ...compareFunds,
   ];
-  const sectionNavigationItems = [
-    { id: 'ai-commentary', label: 'AI commentary' },
-    { id: 'score-details', label: 'Score details' },
-    { id: 'fund-profile', label: 'Fund profile' },
-    ...(fund.benchmark && hasValidTrackingHistory(fund.trackingComparison)
-      ? [{ id: 'benchmark-tracking', label: 'Benchmark' }]
-      : []),
-    { id: 'costs-category', label: 'Costs' },
-    { id: 'holdings', label: 'Holdings' },
-    ...(compareFunds.length ? [{ id: 'comparison', label: 'Comparison' }] : []),
-    { id: 'historical-performance', label: 'Performance' },
-    { id: 'fee-impact', label: 'Fee impact' },
-    { id: 'long-range-scenarios', label: 'Scenarios' },
-  ];
-  const sectionLayoutHandler = (id: string) => (event: LayoutChangeEvent) => {
-    sectionPositions.current[id] = event.nativeEvent.layout.y;
-  };
-  const jumpToSection = (id: string) => {
-    if (typeof document !== 'undefined') {
-      const scrollView = document.querySelector<HTMLElement>('[data-testid="etf-analysis-scroll-view"]');
-      const target = document.querySelector<HTMLElement>(`[data-testid="analysis-section-${id}"]`);
-      if (scrollView && target) {
-        const offset = target.getBoundingClientRect().top - scrollView.getBoundingClientRect().top;
-        scrollView.scrollTop = Math.max(0, scrollView.scrollTop + offset - 8);
-        return;
-      }
-    }
-    const y = sectionPositions.current[id];
-    if (y != null) scrollToY(Math.max(0, y - 8));
-  };
   const primaryHistoryComparison = compareEtfHoldingSnapshots(currentEtfSnapshot, holdingSnapshots);
   const overlaps = findReportedEtfHoldingsOverlap(selectedFunds);
   const sectorComparison = getReportedEtfSectorComparison(selectedFunds);
@@ -1433,76 +1398,6 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
           </Text>
         </View>
       </View>
-      <View style={{ marginBottom: 12 }}>
-        <Pressable
-          testID="etf-section-nav-toggle"
-          accessibilityRole="button"
-          accessibilityLabel="Jump to an ETF analysis section"
-          accessibilityState={{ expanded: sectionNavigatorOpen }}
-          onPress={() => setSectionNavigatorOpen((open) => !open)}
-          style={{
-            minHeight: 44,
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 9,
-            paddingHorizontal: 14,
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: 10,
-            backgroundColor: colors.card,
-          }}
-        >
-          <Feather name="list" size={16} color={colors.primary} />
-          <Text style={{ flex: 1, color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 13 }}>
-            Jump to section
-          </Text>
-          <Feather name={sectionNavigatorOpen ? 'chevron-up' : 'chevron-down'} size={17} color={colors.mutedForeground} />
-        </Pressable>
-        {sectionNavigatorOpen && (
-          <View style={{
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: 10,
-            backgroundColor: colors.card,
-            marginTop: 7,
-            paddingVertical: 8,
-          }}>
-            <Text style={{ color: colors.mutedForeground, fontSize: 11, marginHorizontal: 12, marginBottom: 7 }}>
-              Choose a section
-            </Text>
-            <ScrollView
-              testID="etf-section-nav-options"
-              horizontal
-              nestedScrollEnabled
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ paddingHorizontal: 9, gap: 7 }}
-            >
-              {sectionNavigationItems.map(({ id, label }) => (
-                <Pressable
-                  key={id}
-                  testID={`etf-section-jump-${id}`}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Jump to ${label}`}
-                  onPress={() => jumpToSection(id)}
-                  style={{
-                    minHeight: 40,
-                    justifyContent: 'center',
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    borderRadius: 20,
-                    paddingHorizontal: 12,
-                    backgroundColor: colors.input,
-                  }}
-                >
-                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_500Medium', fontSize: 12 }}>
-                    {label}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-      </View>
       {!!compareFunds.length && (
         <View
           testID="etf-comparison-highlights"
@@ -1537,7 +1432,7 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
           )}
         </View>
       )}
-      <SectionCard onLayout={sectionLayoutHandler('ai-commentary')} collapsible title="AI COMMENTARY" icon={<Ionicons name="sparkles-outline" size={16} color={colors.primary} />}>
+      <SectionCard collapsible title="AI COMMENTARY" icon={<Ionicons name="sparkles-outline" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           <Text style={{ color: colors.foreground, fontSize: 14, lineHeight: 22 }}>
             {fund.analysis || 'AI commentary is unavailable. Review the sourced fund data below.'}
@@ -1547,7 +1442,7 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
           </Text>
         </View>
       </SectionCard>
-      <SectionCard onLayout={sectionLayoutHandler('score-details')} collapsible title="SCORE DETAILS & METHODOLOGY" icon={<Ionicons name="speedometer-outline" size={16} color={colors.primary} />}>
+      <SectionCard collapsible title="SCORE DETAILS & METHODOLOGY" icon={<Ionicons name="speedometer-outline" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 28 }}>
             {profileScore.score == null ? 'Not scored' : `${profileScore.score}/100`}
@@ -1581,7 +1476,7 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
           </Text>
         </View>
       </SectionCard>
-      <SectionCard onLayout={sectionLayoutHandler('fund-profile')} collapsible title="FUND PROFILE & RISK" icon={<Ionicons name="layers-outline" size={16} color={colors.primary} />}>
+      <SectionCard collapsible title="FUND PROFILE & RISK" icon={<Ionicons name="layers-outline" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           <MetricRow label="Category" value={fund.fundCategory ?? 'Unavailable'} />
           <MetricRow label="Fund family" value={fund.fundFamily ?? 'Unavailable'} />
@@ -1609,7 +1504,7 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
         </View>
       </SectionCard>
       {fund.benchmark && hasValidTrackingHistory(fund.trackingComparison) && (
-      <SectionCard onLayout={sectionLayoutHandler('benchmark-tracking')} collapsible title="BENCHMARK & TRACKING" icon={<Ionicons name="git-compare-outline" size={16} color={colors.primary} />}>
+      <SectionCard collapsible title="BENCHMARK & TRACKING" icon={<Ionicons name="git-compare-outline" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           {fund.benchmark ? (
             <>
@@ -1647,7 +1542,7 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
         </View>
       </SectionCard>
       )}
-      <SectionCard onLayout={sectionLayoutHandler('costs-category')} collapsible title="COSTS & CATEGORY CONTEXT" icon={<MaterialCommunityIcons name="scale-balance" size={16} color={colors.primary} />}>
+      <SectionCard collapsible title="COSTS & CATEGORY CONTEXT" icon={<MaterialCommunityIcons name="scale-balance" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           {fund.peerExpenseComparison ? (
             <>
@@ -1691,7 +1586,7 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
           )}
         </View>
       </SectionCard>
-      <SectionCard onLayout={sectionLayoutHandler('holdings')} collapsible title="HOLDINGS & DIVERSIFICATION" icon={<MaterialCommunityIcons name="briefcase-outline" size={16} color={colors.primary} />}>
+      <SectionCard collapsible title="HOLDINGS & DIVERSIFICATION" icon={<MaterialCommunityIcons name="briefcase-outline" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           {fund.topHoldings.length ? fund.topHoldings.map((holding) => (
             <MetricRow key={holding.symbol} label={`${holding.name} (${holding.symbol})`} value={pctValue(holding.weight)} />
@@ -1820,7 +1715,6 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
       </SectionCard>
   {!!compareFunds.length && (
     <SectionCard
-      onLayout={sectionLayoutHandler('comparison')}
       collapsible
       title="ETF COST, RISK & PERFORMANCE"
       icon={<MaterialCommunityIcons name="scale-balance" size={16} color={colors.primary} />}
@@ -2035,7 +1929,7 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
       </View>
     </SectionCard>
   )}
-      <SectionCard onLayout={sectionLayoutHandler('historical-performance')} collapsible title="HISTORICAL PERFORMANCE" icon={<Ionicons name="trending-up" size={16} color={colors.primary} />}>
+      <SectionCard collapsible title="HISTORICAL PERFORMANCE" icon={<Ionicons name="trending-up" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           {fund.marketRegime ? (
             <>
@@ -2051,7 +1945,7 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
           ) : <Text style={{ color: colors.mutedForeground }}>Historical regime data unavailable.</Text>}
         </View>
       </SectionCard>
-      <SectionCard onLayout={sectionLayoutHandler('fee-impact')} collapsible title="ETF FEE DOLLAR IMPACT" icon={<MaterialCommunityIcons name="cash-minus" size={16} color={colors.primary} />}>
+      <SectionCard collapsible title="ETF FEE DOLLAR IMPACT" icon={<MaterialCommunityIcons name="cash-minus" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, marginBottom: 7 }}>
             Investment amount (USD)
@@ -2160,7 +2054,7 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
           </Text>
         </View>
       </SectionCard>
-      <SectionCard onLayout={sectionLayoutHandler('long-range-scenarios')} collapsible title="LONG-RANGE SCENARIOS" icon={<MaterialCommunityIcons name="chart-timeline-variant" size={16} color={colors.primary} />}>
+      <SectionCard collapsible title="LONG-RANGE SCENARIOS" icon={<MaterialCommunityIcons name="chart-timeline-variant" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           <MetricRow label="Annual expense ratio used" value={pctValue(fund.expenseRatio)} />
           {renderContributionControls('etf-scenario-contribution-input')}
@@ -2232,7 +2126,6 @@ export default function AnalysisScreen() {
   const { width: screenWidth } = useWindowDimensions();
   const { apiFetch } = useApi();
   const { mutate, data: response, isPending, error } = useAnalyzeStock<Error>();
-  const etfAnalysisScrollRef = useRef<ScrollView>(null);
   const watchlist = useWatchlist();
   const {
     pushToken,
@@ -2513,8 +2406,6 @@ export default function AnalysisScreen() {
         <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
           {renderHeader(response as StockAnalysis)}
           <ScrollView
-            ref={etfAnalysisScrollRef}
-            testID="etf-analysis-scroll-view"
             style={{ flex: 1, minHeight: 0 }}
             contentContainerStyle={[styles.scroll, { paddingBottom: botPad + 24 }]}
             showsVerticalScrollIndicator={false}
@@ -2524,7 +2415,6 @@ export default function AnalysisScreen() {
             colors={colors}
             symbol={result.symbol}
             currentPrice={result.currentPrice}
-            scrollToY={(y) => etfAnalysisScrollRef.current?.scrollTo({ y, animated: true })}
           />
           </ScrollView>
         </View>
