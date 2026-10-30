@@ -1110,7 +1110,7 @@ test('ETF tracking history validation rejects missing, malformed, reversed, and 
 test('ETF fund detail and comparison views suppress invalid tracking history', () => {
   assert.match(
     analysisScreenSource,
-    /\{fund\.benchmark && hasValidTrackingHistory\(fund\.trackingComparison\) && \(\s*<SectionCard (?:onLayout=\{sectionLayoutHandler\('benchmark-tracking'\)\} )?collapsible title="BENCHMARK & TRACKING"/,
+    /\{fund\.benchmark && hasValidTrackingHistory\(fund\.trackingComparison\) && \(\s*<SectionCard\b[^>]*collapsible[^>]*title="BENCHMARK & TRACKING"/,
   );
   assert.match(
     analysisScreenSource,

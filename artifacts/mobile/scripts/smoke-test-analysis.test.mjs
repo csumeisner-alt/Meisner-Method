@@ -168,12 +168,18 @@ test("ETF evidence is grouped in expandable, accessible sections", () => {
     "ETF FEE DOLLAR IMPACT",
     "LONG-RANGE SCENARIOS",
   ]) {
-    assert.match(etfAnalysisSource, new RegExp(`SectionCard collapsible title="${heading}"`));
+    assert.match(
+      etfAnalysisSource,
+      new RegExp(`SectionCard(?=[^>]*collapsible)(?=[^>]*title="${heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}")`),
+    );
   }
 });
 
-test("ETF analysis has no section-jump navigator", () => {
-  assert.doesNotMatch(etfAnalysisSource, /Jump to section|sectionNavigationItems|jumpToSection|sectionLayoutHandler/);
+test("ETF analysis exposes section-jump navigation", () => {
+  assert.match(etfAnalysisSource, /testID="etf-section-nav-toggle"/);
+  assert.match(etfAnalysisSource, /sectionNavigationItems/);
+  assert.match(etfAnalysisSource, /jumpToSection/);
+  assert.match(etfAnalysisSource, /sectionLayoutHandler/);
 });
 
 test("ETF comparison highlights meaningful shared-data gaps above full details", () => {
@@ -312,6 +318,46 @@ function etfScreenResponse(expenseRatio = 0.0003) {
   };
 }
 
+const validTrackingComparison = {
+  periodStart: "2025-01",
+  periodEnd: "2025-12",
+  monthlySamples: 12,
+  fundAnnualizedReturn: 0.1,
+  benchmarkAnnualizedReturn: 0.09,
+  trackingDifference: 0.01,
+  trackingError: 0.02,
+  source: "Tracking fixture provider",
+  asOf: "2026-10-28T16:00:00.000Z",
+};
+const trackingHistoryFixtures = [
+  { name: "valid", trackingComparison: validTrackingComparison },
+  { name: "missing-history", trackingComparison: null },
+  {
+    name: "missing-start",
+    trackingComparison: { ...validTrackingComparison, periodStart: undefined },
+  },
+  {
+    name: "missing-sample-count",
+    trackingComparison: { ...validTrackingComparison, monthlySamples: undefined },
+  },
+  {
+    name: "malformed-period",
+    trackingComparison: { ...validTrackingComparison, periodStart: "2025-13" },
+  },
+  {
+    name: "reversed-period",
+    trackingComparison: {
+      ...validTrackingComparison,
+      periodStart: "2026-01",
+      periodEnd: "2025-12",
+    },
+  },
+  {
+    name: "impossible-sample-count",
+    trackingComparison: { ...validTrackingComparison, monthlySamples: 13 },
+  },
+];
+
 async function buildAnalysisScreenBundle(expenseRatio, scenarioOverrides = {}) {
   const response = etfScreenResponse(expenseRatio);
   const savedCompareSymbols = scenarioOverrides.savedCompareSymbols ?? [];
@@ -329,6 +375,23 @@ async function buildAnalysisScreenBundle(expenseRatio, scenarioOverrides = {}) {
     comparisonResponse.etfAnalysis.dividendYield = 0.03;
     comparisonResponse.etfAnalysis.beta3Year = 1.3;
     comparisonResponse.etfAnalysis.totalAssets = 100_000_000_000;
+  }
+  if (Object.hasOwn(scenarioOverrides, "trackingComparison")) {
+    const benchmark = {
+      symbol: "SPY",
+      name: "S&P 500",
+      source: "Tracking fixture provider",
+      asOf: "2026-10-28T16:00:00.000Z",
+    };
+    response.etfAnalysis.benchmark = benchmark;
+    response.etfAnalysis.trackingComparison = scenarioOverrides.trackingComparison;
+    if (comparisonResponse) {
+      comparisonResponse.etfAnalysis.benchmark = benchmark;
+      comparisonResponse.etfAnalysis.trackingComparison =
+        Object.hasOwn(scenarioOverrides, "comparisonTrackingComparison")
+          ? scenarioOverrides.comparisonTrackingComparison
+          : scenarioOverrides.trackingComparison;
+    }
   }
   if (scenarioOverrides.omitScenarios) {
     delete response.etfAnalysis.scenarios;
@@ -385,15 +448,14 @@ async function buildAnalysisScreenBundle(expenseRatio, scenarioOverrides = {}) {
     `],
     ["@/hooks/useApi", `
       const comparisonResponse = ${JSON.stringify(comparisonResponse)};
+      const apiFetch = async (_url, options) => {
+        const candidate = options?.body ? JSON.parse(options.body).symbol : null;
+        return candidate && candidate === comparisonResponse?.symbol
+          ? comparisonResponse
+          : { candles: [] };
+      };
       export function useApi() {
-        return {
-          apiFetch: async (_url, options) => {
-            const candidate = options?.body ? JSON.parse(options.body).symbol : null;
-            return candidate && candidate === comparisonResponse?.symbol
-              ? comparisonResponse
-              : { candles: [] };
-          },
-        };
+        return { apiFetch };
       }
     `],
     ["@/contexts/AmericanModeContext", `
@@ -527,7 +589,11 @@ function connectDebugger(webSocketUrl) {
           expression, awaitPromise: true, returnByValue: true,
         }).then((reply) => {
           if (reply.result.exceptionDetails) {
-            throw new Error(reply.result.exceptionDetails.text ?? "Browser evaluation failed.");
+          throw new Error(
+            reply.result.exceptionDetails.exception?.description
+              ?? reply.result.exceptionDetails.text
+              ?? "Browser evaluation failed.",
+          );
           }
           return reply.result.result.value;
         });
@@ -563,6 +629,152 @@ async function waitForBrowserValue(browser, expression, message, timeout = 8000)
   throw new Error(message);
 }
 
+test("rendered ETF detail and comparison hide invalid tracking history", async () => {
+  const trackingFixtureBundles = await Promise.all(
+    trackingHistoryFixtures.map(async (fixture) => [
+      `/bundle-tracking-${fixture.name}.js`,
+      await buildAnalysisScreenBundle(undefined, {
+        savedCompareSymbols: ["VTI"],
+        trackingComparison: fixture.trackingComparison,
+      }),
+    ]),
+  );
+  const bundlePaths = Object.fromEntries(
+    trackingHistoryFixtures.map((fixture) => [
+      `/tracking-${fixture.name}`,
+      `/bundle-tracking-${fixture.name}.js`,
+    ]),
+  );
+  const server = createServer((request, response) => {
+    const bundles = Object.fromEntries(trackingFixtureBundles);
+    if (Object.hasOwn(bundles, request.url)) {
+      response.writeHead(200, { "content-type": "text/javascript; charset=utf-8" });
+      response.end(bundles[request.url]);
+      return;
+    }
+    const scriptPath = bundlePaths[request.url] ?? bundlePaths["/tracking-valid"];
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(`<!doctype html><html><head>
+      <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+      <style>html,body,#root{width:100%;height:100%;margin:0;padding:0}#root{display:flex;flex-direction:column}</style>
+      </head><body><div id="root"></div><script src="${scriptPath}"></script></body></html>`);
+  });
+  await new Promise((resolveListen, rejectListen) => {
+    server.once("error", rejectListen);
+    server.listen(0, "127.0.0.1", resolveListen);
+  });
+
+  const profileDir = await mkdtemp(join(tmpdir(), "analysis-tracking-browser-"));
+  let chromeStderr = "";
+  const chrome = spawn(browserExecutable(), [
+    "--headless=new", "--no-sandbox", "--disable-dev-shm-usage",
+    "--no-first-run", "--no-default-browser-check", "--remote-debugging-port=0",
+    `--user-data-dir=${profileDir}`, "about:blank",
+  ], { stdio: ["ignore", "ignore", "pipe"] });
+  chrome.stderr.setEncoding("utf8");
+  chrome.stderr.on("data", (chunk) => { chromeStderr = (chromeStderr + chunk).slice(-5000); });
+
+  let browser;
+  try {
+    const debugPort = await waitForDebuggerPort(profileDir, chrome, () => chromeStderr);
+    const targets = await fetch(`http://127.0.0.1:${debugPort}/json`).then((result) => result.json());
+    const page = targets.find((target) => target.type === "page");
+    assert.ok(page?.webSocketDebuggerUrl, "Chromium must expose a page target.");
+    browser = await connectDebugger(page.webSocketDebuggerUrl);
+    await browser.send("Page.enable");
+    await browser.send("Runtime.enable");
+    await browser.send("Emulation.setDeviceMetricsOverride", {
+      width: 320, height: 720, deviceScaleFactor: 1, mobile: true,
+    });
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const detailTrackingSection = '[data-testid="analysis-section-benchmark-tracking"]';
+    const comparisonTrackingSection = '[data-testid="analysis-section-etf-cost-risk-performance"]';
+
+    for (const fixture of trackingHistoryFixtures) {
+      await browser.send("Page.navigate", {
+        url: `http://127.0.0.1:${address.port}/tracking-${fixture.name}`,
+      });
+      await waitForBrowserValue(
+        browser,
+        `document.body?.innerText?.includes("At a glance") ?? false`,
+        `The ${fixture.name} tracking fixture should render the ETF detail screen.`,
+      );
+      await waitForBrowserValue(
+        browser,
+        `document.body?.innerText?.includes("ETF COST, RISK & PERFORMANCE") ?? false`,
+        `The ${fixture.name} tracking fixture should render its comparison screen.`,
+      );
+      const isValid = fixture.name === "valid";
+      assert.equal(
+        await browser.evaluate(`Boolean(document.querySelector(${JSON.stringify(detailTrackingSection)}))`),
+        isValid,
+        `ETF detail should ${isValid ? "show" : "hide"} the ${fixture.name} tracking section.`,
+      );
+
+      await browser.evaluate(`document.querySelector(${JSON.stringify(detailTrackingSection)})?.click()`);
+      if (isValid) {
+        await waitForBrowserValue(
+          browser,
+          `document.querySelector(${JSON.stringify(detailTrackingSection)})?.parentElement?.textContent.includes("Adjusted monthly returns")`,
+          "Valid ETF detail history should remain visible when expanded.",
+        );
+        const detailTrackingText = await browser.evaluate(
+          `document.querySelector(${JSON.stringify(detailTrackingSection)})?.parentElement?.textContent ?? ""`,
+        );
+        assert.match(detailTrackingText, /2025-01–2025-12 · 12 monthly samples/);
+      }
+
+      await browser.evaluate(`document.querySelector(${JSON.stringify(comparisonTrackingSection)})?.click()`);
+      await waitForBrowserValue(
+        browser,
+        `document.querySelector(${JSON.stringify(comparisonTrackingSection)})?.parentElement?.textContent.includes("VTI")`,
+        `The ${fixture.name} ETF comparison should be available when expanded.`,
+      );
+      const comparisonTrackingText = await browser.evaluate(
+        `document.querySelector(${JSON.stringify(comparisonTrackingSection)})?.parentElement?.textContent ?? ""`,
+      );
+      if (isValid) {
+        assert.match(comparisonTrackingText, /Tracking history: 2025-01–2025-12 · 12 monthly samples/);
+        assert.match(comparisonTrackingText, /Tracking difference/);
+      } else {
+        assert.doesNotMatch(comparisonTrackingText, /Tracking history:/);
+        assert.doesNotMatch(comparisonTrackingText, /Tracking difference|Annualized tracking error/);
+        for (const rawValue of [
+          fixture.trackingComparison?.periodStart,
+          fixture.trackingComparison?.periodEnd,
+          fixture.trackingComparison?.monthlySamples == null
+            ? null
+            : `${fixture.trackingComparison.monthlySamples} monthly samples`,
+        ]) {
+          if (rawValue != null) {
+            assert.ok(
+              !comparisonTrackingText.includes(String(rawValue)),
+              `Invalid ${fixture.name} metadata must not render in verified comparison history: ${rawValue}`,
+            );
+          }
+        }
+      }
+    }
+  } finally {
+    await browser?.close();
+    if (chrome.exitCode === null && chrome.signalCode === null) {
+      const exited = new Promise((resolveExit) => chrome.once("exit", resolveExit));
+      chrome.kill("SIGTERM");
+      const didExit = await Promise.race([
+        exited.then(() => true),
+        delay(2000).then(() => false),
+      ]);
+      if (!didExit) {
+        chrome.kill("SIGKILL");
+        await exited;
+      }
+    }
+    await new Promise((resolveClose) => server.close(resolveClose));
+    await rm(profileDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+});
+
 test("ETF analysis sections render, expand, and collapse without 320px overflow", async () => {
   const bundle = await buildAnalysisScreenBundle();
   const comparisonBundle = await buildAnalysisScreenBundle(undefined, {
@@ -593,7 +805,7 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
     }[request.url] ?? "/bundle.js";
     response.end(`<!doctype html><html><head>
       <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-      <style>html,body,#root{width:100%;height:100%;margin:0;padding:0}#root{display:flex}body{overflow-x:auto}</style>
+      <style>html,body,#root{width:100%;height:100%;margin:0;padding:0}#root{display:flex;flex-direction:column}body{overflow-x:auto}</style>
       </head><body><div id="root"></div><script src="${scriptPath}"></script></body></html>`);
   });
   await new Promise((resolveListen, rejectListen) => {
@@ -890,10 +1102,53 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
       true,
       "The summary should appear above the full comparison details.",
     );
+    await browser.evaluate(`document.querySelector('[data-testid="etf-section-nav-toggle"]')?.click()`);
+    await waitForBrowserValue(
+      browser,
+      `Boolean(document.querySelector('[data-testid="etf-section-jump-long-range-scenarios"]'))`,
+      "Opening the section navigator should expose section jump buttons.",
+    );
     assert.equal(
-      await browser.evaluate(`Boolean(document.querySelector('[data-testid="etf-section-nav-toggle"]'))`),
-      false,
-      "The section-jump navigator should not be rendered.",
+      await browser.evaluate(`Boolean(document.querySelector('[data-testid="etf-section-jump-comparison"]'))`),
+      true,
+      "The navigator should include the comparison section when saved comparisons are loaded.",
+    );
+    await browser.evaluate(`document.querySelector('[data-testid="etf-section-jump-long-range-scenarios"]')?.click()`);
+    await waitForBrowserValue(
+      browser,
+      `(() => {
+        const scroll = document.querySelector('[data-testid="etf-analysis-scroll-view"]');
+        const target = document.querySelector('[data-testid="analysis-section-long-range-scenarios"]');
+        if (!scroll || !target || scroll.scrollTop <= 0) return false;
+        const viewport = scroll.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+        return targetRect.top >= viewport.top - 2 && targetRect.bottom <= viewport.bottom + 2;
+      })()`,
+      "Selecting a section should bring it into the ETF analysis viewport.",
+    );
+    const jumpPosition = await browser.evaluate(`(() => {
+      const scroll = document.querySelector('[data-testid="etf-analysis-scroll-view"]');
+      const target = document.querySelector('[data-testid="analysis-section-long-range-scenarios"]');
+      return {
+        scrollTop: scroll?.scrollTop ?? 0,
+        targetTop: target?.getBoundingClientRect().top ?? Infinity,
+        viewportTop: scroll?.getBoundingClientRect().top ?? 0,
+        targetBottom: target?.getBoundingClientRect().bottom ?? Infinity,
+        viewportBottom: scroll?.getBoundingClientRect().bottom ?? 0,
+      };
+    })()`);
+    assert.ok(jumpPosition.scrollTop > 0, "Jumping to a lower section should advance the main scroll view.");
+    assert.ok(
+      jumpPosition.targetTop >= jumpPosition.viewportTop - 2
+        && jumpPosition.targetBottom <= jumpPosition.viewportBottom + 2,
+      `The selected section title should be visible in the viewport: ${JSON.stringify(jumpPosition)}`,
+    );
+    await browser.evaluate(`document.querySelector('[data-testid="etf-section-jump-comparison"]')?.click()`);
+    await browser.evaluate(`document.querySelector('[data-testid="analysis-section-etf-cost-risk-performance"]')?.click()`);
+    await waitForBrowserValue(
+      browser,
+      `document.querySelector('[data-testid="analysis-section-etf-cost-risk-performance"]')?.parentElement?.textContent.includes("VTI")`,
+      "The comparison data should remain available after navigating to its section.",
     );
     assert.deepEqual(
       await browser.evaluate(`JSON.parse(window.__analysisTestStorage.get("@stocksense/etf_comparison_symbols_v1") ?? "[]")`),
