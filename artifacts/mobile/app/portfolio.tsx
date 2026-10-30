@@ -53,7 +53,10 @@ import {
 } from '@/lib/portfolioMath';
 import {
   fetchPortfolioQuotes,
+  parsePortfolioQuoteCache,
   startPortfolioTradesLoad,
+  updatePortfolioQuoteCache,
+  type PortfolioQuoteCache,
   type PortfolioQuoteBatch,
 } from '@/lib/portfolioLoading';
 import { getTradeGradeFeedback } from '@/lib/tradeGradeFeedback';
@@ -85,6 +88,7 @@ const BREW_BANK_ENABLED = true;
 // ─── Local cache ──────────────────────────────────────────────────────────────
 
 const TRADES_CACHE_KEY = '@stocksense/portfolio_trades_v1';
+const QUOTES_CACHE_KEY = '@stocksense/portfolio_quotes_v1';
 const GRADE_HISTORY_HINT_KEY = '@stocksense/grade_history_hint_shown_v2';
 
 async function readTradesCache(): Promise<Trade[]> {
@@ -97,6 +101,18 @@ async function readTradesCache(): Promise<Trade[]> {
 
 async function writeTradesCache(trades: Trade[]) {
   try { await AsyncStorage.setItem(TRADES_CACHE_KEY, JSON.stringify(trades)); } catch { /* non-fatal */ }
+}
+
+async function readPortfolioQuoteCache(): Promise<PortfolioQuoteCache> {
+  try {
+    return parsePortfolioQuoteCache(await AsyncStorage.getItem(QUOTES_CACHE_KEY));
+  } catch {
+    return {};
+  }
+}
+
+async function writePortfolioQuoteCache(cache: PortfolioQuoteCache) {
+  try { await AsyncStorage.setItem(QUOTES_CACHE_KEY, JSON.stringify(cache)); } catch { /* non-fatal */ }
 }
 
 async function clearTradesCache() {
@@ -261,6 +277,16 @@ function uid() {
 
 function formatDateShort(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+}
+
+function formatQuoteUpdatedAt(iso: string) {
+  return new Date(iso).toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 }
 
 async function fetchQuote(symbol: string): Promise<Quote> {
@@ -2137,6 +2163,7 @@ export default function PortfolioScreen() {
   const [loadingTrades, setLoadingTrades] = useState(true);
   const [tradesLoadError, setTradesLoadError] = useState(false);
   const [quotes, setQuotes] = useState<Record<string, Quote | null>>({});
+  const [cachedQuoteTimes, setCachedQuoteTimes] = useState<Record<string, string>>({});
   const [loadingQuotes, setLoadingQuotes] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -2159,6 +2186,10 @@ export default function PortfolioScreen() {
   const tradesRef = useRef<Trade[]>([]);
   const tradeLoadCancelRef = useRef<(() => void) | null>(null);
   const quoteRequestIdRef = useRef(0);
+  const quotesRef = useRef<Record<string, Quote | null>>({});
+  const quoteCacheRef = useRef<PortfolioQuoteCache>({});
+  const quoteCacheLoadedRef = useRef(false);
+  const quoteCacheWriteRef = useRef<Promise<void>>(Promise.resolve());
   const feedbackEventRef = useRef<string | null>(null);
   const gradeHistoryHintShownRef = useRef(false);
 
@@ -2218,11 +2249,36 @@ export default function PortfolioScreen() {
   const fetchAllQuotes = useCallback(async (symbols: string[]) => {
     const requestId = ++quoteRequestIdRef.current;
     if (!symbols.length) {
+      quotesRef.current = {};
+      setCachedQuoteTimes({});
       setQuotes({});
       setLoadingQuotes(false);
       return;
     }
     setLoadingQuotes(true);
+    if (!quoteCacheLoadedRef.current) {
+      const savedQuotes = await readPortfolioQuoteCache();
+      if (requestId !== quoteRequestIdRef.current) return;
+      quoteCacheRef.current = savedQuotes;
+      quoteCacheLoadedRef.current = true;
+    }
+
+    const cachedQuotes: Record<string, Quote> = {};
+    const cachedTimes: Record<string, string> = {};
+    for (const symbol of symbols) {
+      const saved = quoteCacheRef.current[symbol];
+      if (saved && !quotesRef.current[symbol]) {
+        cachedQuotes[symbol] = saved.quote;
+        cachedTimes[symbol] = saved.updatedAt;
+      }
+    }
+    if (Object.keys(cachedQuotes).length > 0) {
+      const nextQuotes = { ...quotesRef.current, ...cachedQuotes };
+      quotesRef.current = nextQuotes;
+      setQuotes(nextQuotes);
+      setCachedQuoteTimes(previous => ({ ...previous, ...cachedTimes }));
+    }
+
     await fetchPortfolioQuotes(
       symbols,
       async (batchSymbols) => apiFetch<PortfolioQuoteBatch>('/api/stocks/quotes', {
@@ -2231,9 +2287,24 @@ export default function PortfolioScreen() {
       }),
       (symbol, quote) => {
         if (requestId !== quoteRequestIdRef.current) return;
-        setQuotes(previous => ({ ...previous, [symbol]: quote }));
+        const updatedAt = new Date().toISOString();
+        const nextQuotes = { ...quotesRef.current, [symbol]: quote };
+        const nextCache = updatePortfolioQuoteCache(quoteCacheRef.current, symbol, quote, updatedAt);
+        quotesRef.current = nextQuotes;
+        quoteCacheRef.current = nextCache;
+        setQuotes(nextQuotes);
+        setCachedQuoteTimes(previous => {
+          if (!previous[symbol]) return previous;
+          const next = { ...previous };
+          delete next[symbol];
+          return next;
+        });
+        quoteCacheWriteRef.current = quoteCacheWriteRef.current.then(
+          () => writePortfolioQuoteCache(nextCache),
+        );
       },
     );
+    await quoteCacheWriteRef.current;
     if (requestId === quoteRequestIdRef.current) setLoadingQuotes(false);
   }, [apiFetch]);
 
@@ -2259,6 +2330,15 @@ export default function PortfolioScreen() {
   const allPositions = computePositions(trades, quotes);
   const openPositions = allPositions.filter(p => p.netShares !== 0);
   const { closedTrades, unmatchedSells } = computeTradeReconciliation(trades, quotes);
+  const cachedQuoteDescriptions = quoteSymbols
+    .filter(symbol => !!quotes[symbol] && !!cachedQuoteTimes[symbol])
+    .map(symbol => `${symbol} · ${formatQuoteUpdatedAt(cachedQuoteTimes[symbol]!)}`);
+  const hasLiveQuotes = quoteSymbols.some(symbol => !!quotes[symbol] && !cachedQuoteTimes[symbol]);
+  const quoteSourceNotice = cachedQuoteDescriptions.length
+    ? `Saved estimates (not live): ${cachedQuoteDescriptions.join(' · ')}${hasLiveQuotes ? ' · Other prices are live quotes.' : ''}`
+    : hasLiveQuotes
+      ? 'Live quotes'
+      : '';
   const sellTradeCount = trades.filter(trade => trade.type === 'sell').length;
   useEffect(() => {
     if (sellTradeCount >= 5) void awardAchievement('quote-50');
@@ -2495,6 +2575,36 @@ export default function PortfolioScreen() {
             <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, marginBottom: 10 }}>
               Showing saved trades. Couldn’t refresh from your account.
             </Text>
+          )}
+          {!!quoteSourceNotice && (
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'flex-start',
+              gap: 7,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.card,
+              borderRadius: 8,
+              paddingHorizontal: 10,
+              paddingVertical: 8,
+              marginBottom: 10,
+            }}>
+              <Feather
+                name={cachedQuoteDescriptions.length ? 'clock' : 'wifi'}
+                size={13}
+                color={cachedQuoteDescriptions.length ? colors.mutedForeground : colors.primary}
+                style={{ marginTop: 1 }}
+              />
+              <Text style={{
+                flex: 1,
+                color: colors.mutedForeground,
+                fontFamily: 'Inter_400Regular',
+                fontSize: 10,
+                lineHeight: 15,
+              }}>
+                {quoteSourceNotice}
+              </Text>
+            </View>
           )}
           <SummaryCard positions={allPositions} trades={trades} closedTrades={closedTrades} unmatchedSells={unmatchedSells} onReset={handleReset} onAddDividend={() => openAdd('dividend')} colors={colors} />
 

@@ -44,6 +44,51 @@ export interface PortfolioQuoteBatch {
   unavailableSymbols: string[];
 }
 
+export interface CachedPortfolioQuote {
+  quote: Quote;
+  updatedAt: string;
+}
+
+export type PortfolioQuoteCache = Record<string, CachedPortfolioQuote>;
+
+export function updatePortfolioQuoteCache(
+  cache: PortfolioQuoteCache,
+  symbol: string,
+  quote: Quote,
+  updatedAt: string,
+): PortfolioQuoteCache {
+  return { ...cache, [symbol]: { quote, updatedAt } };
+}
+
+/** Read only valid saved quotes so a corrupt cache never blocks live loading. */
+export function parsePortfolioQuoteCache(raw: string | null): PortfolioQuoteCache {
+  if (!raw) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+
+    const cache: PortfolioQuoteCache = {};
+    for (const [symbol, value] of Object.entries(parsed)) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+      const entry = value as Partial<CachedPortfolioQuote>;
+      const quote = entry.quote;
+      if (
+        typeof entry.updatedAt !== 'string'
+        || !Number.isFinite(Date.parse(entry.updatedAt))
+        || !quote
+        || !Number.isFinite(quote.currentPrice)
+        || !Number.isFinite(quote.priceChange)
+        || !Number.isFinite(quote.priceChangePercent)
+        || (quote.expenseRatio != null && !Number.isFinite(quote.expenseRatio))
+      ) continue;
+      cache[symbol] = { quote, updatedAt: entry.updatedAt };
+    }
+    return cache;
+  } catch {
+    return {};
+  }
+}
+
 /**
  * Fetch distinct tickers together and publish every available quote. Missing
  * symbols remain unchanged without preventing the rest of the batch updating.

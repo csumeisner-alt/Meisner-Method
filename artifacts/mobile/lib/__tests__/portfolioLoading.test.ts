@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   fetchPortfolioQuotes,
+  parsePortfolioQuoteCache,
   startPortfolioTradesLoad,
+  updatePortfolioQuoteCache,
   type PortfolioTradeLoadEvent,
 } from '../portfolioLoading.ts';
 import type { Quote, Trade } from '../portfolioMath.ts';
@@ -93,11 +95,59 @@ test('portfolio quotes use one deduplicated batch and apply successful symbols o
   assert.deepEqual(updates, [['VOO', voo]]);
 });
 
+test('saved portfolio quotes keep valid values and timestamps while ignoring corrupt entries', () => {
+  const cache = parsePortfolioQuoteCache(JSON.stringify({
+    VOO: {
+      quote: { currentPrice: 500, priceChange: 2, priceChangePercent: 0.4, expenseRatio: 0.0003 },
+      updatedAt: '2026-10-30T14:00:00.000Z',
+    },
+    BAD_TIME: {
+      quote: { currentPrice: 10, priceChange: 0, priceChangePercent: 0 },
+      updatedAt: 'not a date',
+    },
+    BAD_QUOTE: {
+      quote: { currentPrice: 'unknown', priceChange: 0, priceChangePercent: 0 },
+      updatedAt: '2026-10-30T14:00:00.000Z',
+    },
+  }));
+
+  assert.deepEqual(cache, {
+    VOO: {
+      quote: { currentPrice: 500, priceChange: 2, priceChangePercent: 0.4, expenseRatio: 0.0003 },
+      updatedAt: '2026-10-30T14:00:00.000Z',
+    },
+  });
+  assert.deepEqual(parsePortfolioQuoteCache('invalid JSON'), {});
+  assert.deepEqual(parsePortfolioQuoteCache(null), {});
+});
+
+test('a successful quote refresh replaces only that symbol in the saved cache', () => {
+  const priorQuote: Quote = { currentPrice: 500, priceChange: 1, priceChangePercent: 0.2 };
+  const nextQuote: Quote = { currentPrice: 510, priceChange: 10, priceChangePercent: 2 };
+  const prior = {
+    VOO: { quote: priorQuote, updatedAt: '2026-10-29T14:00:00.000Z' },
+    AAPL: { quote: { currentPrice: 200, priceChange: 1, priceChangePercent: 0.5 }, updatedAt: '2026-10-29T14:00:00.000Z' },
+  };
+
+  assert.deepEqual(
+    updatePortfolioQuoteCache(prior, 'VOO', nextQuote, '2026-10-30T14:00:00.000Z'),
+    {
+      VOO: { quote: nextQuote, updatedAt: '2026-10-30T14:00:00.000Z' },
+      AAPL: prior.AAPL,
+    },
+  );
+});
+
 test('Portfolio screen wires cache-first trades and batched quote updates', () => {
   const screen = readFileSync('app/portfolio.tsx', 'utf8');
   assert.match(screen, /startPortfolioTradesLoad\(/);
   assert.match(screen, /event\.source === 'cache' && event\.trades\.length === 0/);
   assert.match(screen, /fetchPortfolioQuotes\(/);
   assert.match(screen, /apiFetch<PortfolioQuoteBatch>\('\/api\/stocks\/quotes'/);
-  assert.match(screen, /setQuotes\(previous => \(\{ \.\.\.previous, \[symbol\]: quote \}\)\)/);
+  assert.match(screen, /QUOTES_CACHE_KEY = '@stocksense\/portfolio_quotes_v1'/);
+  assert.match(screen, /parsePortfolioQuoteCache\(/);
+  assert.match(screen, /updatePortfolioQuoteCache\(/);
+  assert.match(screen, /quoteCacheRef\.current = nextCache/);
+  assert.match(screen, /Saved estimates \(not live\)/);
+  assert.match(screen, /formatQuoteUpdatedAt\(cachedQuoteTimes\[symbol\]!\)/);
 });
