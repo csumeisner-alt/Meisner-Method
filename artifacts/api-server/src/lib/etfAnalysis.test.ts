@@ -144,6 +144,48 @@ test("ETF scenarios preserve reported zero and positive expense ratio calculatio
   assert.notDeepEqual(zeroFee, withoutFee);
 });
 
+test("ETF projections are unavailable when large finite prices overflow rounding", () => {
+  const scenarios = buildEtfScenarios(Number.MAX_VALUE, 0, {
+    bear: { averageAnnualReturn: 0, years: 1 },
+    bull: { averageAnnualReturn: 0, years: 1 },
+  });
+
+  for (const scenario of scenarios) {
+    assert.deepEqual(
+      scenario.projections.map((projection) => projection.horizonYears),
+      ETF_SCENARIO_HORIZONS,
+    );
+    assert.ok(scenario.projections.every(
+      (projection) => projection.noFeeValue === null && projection.afterFeeValue === null,
+    ));
+  }
+});
+
+test("ETF projections reject large finite returns when compounding or rounding overflows", () => {
+  const scenarios = buildEtfScenarios(1, 0, {
+    bear: { averageAnnualReturn: 1e100, years: 1 },
+    bull: { averageAnnualReturn: 1e100, years: 1 },
+  });
+
+  for (const scenario of scenarios) {
+    assert.deepEqual(
+      scenario.projections.map((projection) => projection.horizonYears),
+      ETF_SCENARIO_HORIZONS,
+    );
+    for (const projection of scenario.projections) {
+      const expected = projection.horizonYears <= 3
+        ? Math.round((1 + 1e100) ** projection.horizonYears * 100) / 100
+        : null;
+      assert.equal(projection.noFeeValue, expected);
+      assert.equal(projection.afterFeeValue, expected);
+    }
+    assert.equal(scenario.projections.some(
+      (projection) =>
+        projection.noFeeValue !== null && !Number.isFinite(projection.noFeeValue),
+    ), false);
+  }
+});
+
 test("ETF risk metrics derive annualized volatility, drawdown, and risk-adjusted return", () => {
   const metrics = calculateEtfRiskMetrics([100, 110, 99, 108]);
   assert.ok(typeof metrics.annualizedVolatility === "number" && metrics.annualizedVolatility > 0);

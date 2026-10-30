@@ -101,13 +101,22 @@ export function buildEtfScenarios(
     const feeAdjustedReturn = valid && validExpenseRatio !== null
       ? observed - validExpenseRatio
       : null;
-    const project = (annualReturn: number | null, years: number) =>
-      validCurrentPrice
-      && annualReturn !== null
-      && Number.isFinite(annualReturn)
-      && annualReturn > -1
-        ? Math.round(currentPrice * (1 + annualReturn) ** years * 100) / 100
-      : null;
+    const project = (annualReturn: number | null, years: number) => {
+      if (
+        !validCurrentPrice
+        || annualReturn === null
+        || !Number.isFinite(annualReturn)
+        || annualReturn <= -1
+      ) {
+        return null;
+      }
+
+      const compoundedValue = currentPrice * (1 + annualReturn) ** years;
+      if (!Number.isFinite(compoundedValue)) return null;
+
+      const roundedValue = Math.round(compoundedValue * 100) / 100;
+      return Number.isFinite(roundedValue) ? roundedValue : null;
+    };
     const projections = ETF_SCENARIO_HORIZONS.map((horizonYears) => ({
       horizonYears,
       noFeeValue: project(valid ? observed : null, horizonYears),
