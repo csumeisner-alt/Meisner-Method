@@ -1,9 +1,9 @@
 /**
  * Drag-to-reorder watchlist component.
  *
- * Long-press (400 ms) on a row's drag handle activates drag mode. Dragging
- * repositions the row in real time with a shadow "lift" effect. On release the
- * new order is committed and the parent is notified via `onReorder`.
+ * A platform-specific long-press on a row's drag handle activates drag mode.
+ * Dragging repositions the row in real time with a shadow "lift" effect. On
+ * release the new order is committed and the parent is notified via `onReorder`.
  *
  * Implementation notes:
  * - Per-row drag gestures are attached only to the drag handles, leaving row
@@ -23,6 +23,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -370,7 +371,7 @@ export function DraggableWatchlist({
 
   const rowDragGestures = useMemo(
     () => Array.from({ length: n }, (_, index) => Gesture.Pan()
-      .activateAfterLongPress(400)
+      .activateAfterLongPress(Platform.OS === 'web' ? 320 : 420)
       .onStart(() => {
         draggedIdx.value = index;
         hoverIdx.value = index;

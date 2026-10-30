@@ -23,11 +23,11 @@ test("watchlist reorder waits for a long press on the handle, not the whole row"
   );
   assert.match(
     watchlistSource,
-    /\.activateAfterLongPress\(400\)\s*\.onStart\(\(\) => \{/,
+    /\.activateAfterLongPress\(Platform\.OS === 'web' \? 320 : 420\)\s*\.onStart\(\(\) => \{/,
   );
   assert.doesNotMatch(
     watchlistSource,
-    /\.activateAfterLongPress\(400\)\s*\.onBegin\(/,
+    /\.activateAfterLongPress\([^)]*\)\s*\.onBegin\(/,
     "A touch-down callback must not disable scrolling before the hold activates.",
   );
   assert.match(watchlistSource, /dragGesture=\{rowDragGestures\[index\]\}/);
