@@ -30,6 +30,13 @@ export const ETF_SCENARIO_LABELS = ['bear', 'base', 'bull'] as const;
 export const ETF_SCENARIO_HORIZONS = [1, 3, 5, 10, 20] as const;
 export const ETF_CONTRIBUTION_CADENCES = ['weekly', 'monthly', 'quarterly'] as const;
 
+export function parseEtfContributionCadence(value: unknown): EtfContributionCadence {
+  return typeof value === 'string'
+    && ETF_CONTRIBUTION_CADENCES.includes(value as EtfContributionCadence)
+    ? value as EtfContributionCadence
+    : 'monthly';
+}
+
 export function calculateEtfScenarioBreakdown(
   initialInvestment: number,
   annualReturn: number | null,

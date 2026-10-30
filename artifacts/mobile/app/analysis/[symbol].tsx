@@ -59,6 +59,7 @@ import {
   ETF_CONTRIBUTION_CADENCES,
   ETF_SCENARIO_LABELS,
   ETF_SCENARIO_HORIZONS,
+  parseEtfContributionCadence,
   parseEtfScenarios,
 } from '@/lib/etfScenario';
 import type { EtfContributionCadence, EtfScenario } from '@/lib/etfScenario';
@@ -75,6 +76,7 @@ import {
 const PINNED_COMP_KEY = '@stocksense/pinned_comp_symbol';
 const ETF_COMPARISON_KEY = '@stocksense/etf_comparison_symbols_v1';
 const ETF_HOLDING_SNAPSHOTS_KEY = '@stocksense/etf_holding_snapshots_v1';
+const ETF_CONTRIBUTION_CADENCE_KEY = '@stocksense/etf_contribution_cadence_v1';
 const ETF_FEE_AMOUNT_PRESETS = [
   { amount: 1_000, label: '$1,000' },
   { amount: 5_000, label: '$5,000' },
@@ -389,6 +391,8 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
   const [feeHoldingYears, setFeeHoldingYears] = useState<number>(10);
   const [contributionInput, setContributionInput] = useState('0');
   const [contributionCadence, setContributionCadence] = useState<EtfContributionCadence>('monthly');
+  const [contributionCadenceLoaded, setContributionCadenceLoaded] = useState(false);
+  const contributionCadenceTouched = useRef(false);
   const contributionAmount = contributionInput.trim() === '' || contributionInput === '.'
     ? 0
     : Number(contributionInput);
@@ -455,6 +459,30 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
   const [holdingSnapshots, setHoldingSnapshots] = useState<HeatMapEtfHoldingSnapshot[]>([]);
   const snapshotWriteQueue = useRef<Promise<void>>(Promise.resolve());
   const [snapshotStorageError, setSnapshotStorageError] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.getItem(ETF_CONTRIBUTION_CADENCE_KEY)
+      .then((stored) => {
+        if (!cancelled && !contributionCadenceTouched.current && stored !== null) {
+          setContributionCadence(parseEtfContributionCadence(stored));
+        }
+      })
+      .catch(() => {
+        // Keep the safe monthly default when local preferences cannot be read.
+      })
+      .finally(() => {
+        if (!cancelled) setContributionCadenceLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useEffect(() => {
+    if (!contributionCadenceLoaded) return;
+    AsyncStorage.setItem(ETF_CONTRIBUTION_CADENCE_KEY, contributionCadence).catch(() => {
+      // A storage failure should not block editing or using the analysis.
+    });
+  }, [contributionCadence, contributionCadenceLoaded]);
   const selectedProjection = (
     scenario: EtfScenario | null,
     horizonYears: number,
@@ -524,7 +552,10 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice, scrollToY }: 
               accessibilityRole="button"
               accessibilityState={{ selected }}
               accessibilityLabel={`Set contribution schedule to ${label.toLowerCase()}`}
-              onPress={() => setContributionCadence(cadence)}
+              onPress={() => {
+                contributionCadenceTouched.current = true;
+                setContributionCadence(cadence);
+              }}
               style={{
                 minHeight: 34,
                 justifyContent: 'center',

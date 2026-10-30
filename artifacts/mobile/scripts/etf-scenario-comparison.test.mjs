@@ -9,6 +9,7 @@ import {
   ETF_CONTRIBUTION_CADENCES,
   ETF_SCENARIO_HORIZONS,
   ETF_SCENARIO_LABELS,
+  parseEtfContributionCadence,
   parseEtfScenarios,
 } from "../lib/etfScenario.ts";
 
@@ -77,6 +78,19 @@ test("ETF recurring contribution values use deterministic end-of-period deposits
     assert.equal(calculateEtfScenarioValue(250, 0.08, 75, 5, cadence), result);
   }
   assert.equal(calculateEtfScenarioValue(250, null, 75, 5, "weekly"), null);
+});
+
+test("ETF contribution cadence preferences restore valid choices and default safely", () => {
+  assert.equal(parseEtfContributionCadence("weekly"), "weekly");
+  assert.equal(parseEtfContributionCadence("monthly"), "monthly");
+  assert.equal(parseEtfContributionCadence("quarterly"), "quarterly");
+  for (const invalid of [null, undefined, "", "yearly", 12, {}, "Monthly"]) {
+    assert.equal(parseEtfContributionCadence(invalid), "monthly");
+  }
+  assert.match(analysisSource, /AsyncStorage\.getItem\(ETF_CONTRIBUTION_CADENCE_KEY\)/);
+  assert.match(analysisSource, /AsyncStorage\.setItem\(ETF_CONTRIBUTION_CADENCE_KEY,\s*contributionCadence\)/);
+  assert.match(analysisSource, /if \(!contributionCadenceLoaded\) return/);
+  assert.match(analysisSource, /contributionCadenceTouched\.current = true/);
 });
 
 test("ETF scenario breakdown separates starting investment, deposits, and growth", () => {
