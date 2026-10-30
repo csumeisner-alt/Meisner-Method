@@ -1,13 +1,13 @@
 /**
  * Drag-to-reorder watchlist component.
  *
- * Long-press (400 ms) on any row activates drag mode.  Dragging repositions
- * the row in real time with a shadow "lift" effect.  On release the new order
- * is committed and the parent is notified via `onReorder`.
+ * Long-press (400 ms) on a row's drag handle activates drag mode. Dragging
+ * repositions the row in real time with a shadow "lift" effect. On release the
+ * new order is committed and the parent is notified via `onReorder`.
  *
  * Implementation notes:
- * - A single GestureDetector with `Gesture.Pan().activateAfterLongPress()`
- *   wraps the whole list so we don't need per-row gesture handlers.
+ * - Per-row drag gestures are attached only to the drag handles, leaving row
+ *   content free to participate in the parent scroll gesture immediately.
  * - Shared values (draggedIdx, hoverIdx, dragTranslationY) run on the UI
  *   thread; React state (localOrder, ghostSymbol) is updated via runOnJS
  *   only at drag start/end to avoid JS-thread jank during the drag.
@@ -16,7 +16,7 @@
  * - The floating ghost clone is driven by the same shared values and rendered
  *   with pointerEvents="none" so it never intercepts touches.
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -85,6 +85,7 @@ interface Props {
 interface WatchRowProps {
   item: WatchlistItem;
   index: number;
+  dragGesture: ReturnType<typeof Gesture.Pan>;
   draggedIdx: SharedValue<number>;
   hoverIdx: SharedValue<number>;
   quote?: QuoteData;
@@ -98,7 +99,7 @@ interface WatchRowProps {
 }
 
 function WatchRow({
-  item, index, draggedIdx, hoverIdx,
+  item, index, dragGesture, draggedIdx, hoverIdx,
   quote, alert, onNavigate, onRemove, onOpenAlert,
   colors, formatPrice, formatPct,
 }: WatchRowProps) {
@@ -142,13 +143,18 @@ function WatchRow({
         animStyle,
       ]}
     >
-      {/* Drag handle — visual affordance for the gesture */}
-      <Feather
-        name="menu"
-        size={16}
-        color={colors.mutedForeground}
-        style={rowStyles.dragHandle}
-      />
+      {/* Drag is limited to this handle so swipes over row content scroll normally. */}
+      <GestureDetector gesture={dragGesture} touchAction="pan-y">
+        <View
+          style={rowStyles.dragHandle}
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel={`Reorder ${item.symbol}`}
+          accessibilityHint="Long press and drag to change its position."
+        >
+          <Feather name="menu" size={16} color={colors.mutedForeground} />
+        </View>
+      </GestureDetector>
 
       {/* Ticker + price (navigates on tap) */}
       <TouchableOpacity
@@ -323,6 +329,12 @@ export function DraggableWatchlist({
     .map((sym) => items.find((i) => i.symbol === sym))
     .filter((x): x is WatchlistItem => x != null);
   const n = orderedItems.length;
+  const orderedItemsRef = useRef(orderedItems);
+  const onDragActiveRef = useRef(onDragActive);
+  const onReorderRef = useRef(onReorder);
+  orderedItemsRef.current = orderedItems;
+  onDragActiveRef.current = onDragActive;
+  onReorderRef.current = onReorder;
 
   // UI-thread shared values
   const draggedIdx = useSharedValue(-1);
@@ -334,109 +346,96 @@ export function DraggableWatchlist({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   }, []);
 
-  const triggerLightHaptic = useCallback(() => {
+  const setDragActive = useCallback((active: boolean) => {
+    onDragActiveRef.current?.(active);
+  }, []);
+
+  const startGhost = useCallback((idx: number) => {
+    const sym = orderedItemsRef.current[idx]?.symbol ?? null;
+    setGhostSymbol(sym);
+  }, []);
+
+  const endDrag = useCallback((from: number, to: number) => {
+    setGhostSymbol(null);
+    onDragActiveRef.current?.(false);
+    const currentItems = orderedItemsRef.current;
+    if (from < 0 || from >= currentItems.length || to < 0 || to >= currentItems.length || from === to) return;
+    const newOrder = currentItems.map((item) => item.symbol);
+    const [moved] = newOrder.splice(from, 1);
+    newOrder.splice(to, 0, moved);
+    setLocalOrder(newOrder);
+    onReorderRef.current(newOrder);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, []);
 
-  const setDragActive = useCallback(
-    (active: boolean) => onDragActive?.(active),
-    [onDragActive],
-  );
-
-  const startGhost = useCallback(
-    (idx: number) => {
-      const sym = orderedItems[idx]?.symbol ?? null;
-      setGhostSymbol(sym);
-    },
-    [orderedItems],
-  );
-
-  const endDrag = useCallback(
-    (from: number, to: number) => {
-      setGhostSymbol(null);
-      onDragActive?.(false);
-      if (from < 0 || from >= n || to < 0 || to >= n || from === to) return;
-      const newOrder = orderedItems.map((i) => i.symbol);
-      const [moved] = newOrder.splice(from, 1);
-      newOrder.splice(to, 0, moved);
-      setLocalOrder(newOrder);
-      onReorder(newOrder);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    },
-    [orderedItems, onReorder, onDragActive, n],
-  );
-
-  // ── Gesture ──────────────────────────────────────────────────────────────
-  const dragGesture = Gesture.Pan()
-    .activateAfterLongPress(400)
-    .onBegin((e) => {
-      const idx = Math.max(0, Math.min(n - 1, Math.floor(e.y / ITEM_HEIGHT)));
-      draggedIdx.value = idx;
-      hoverIdx.value = idx;
-      dragTranslationY.value = 0;
-      runOnJS(triggerHaptic)();
-      runOnJS(setDragActive)(true);
-      runOnJS(startGhost)(idx);
-    })
-    .onUpdate((e) => {
-      if (draggedIdx.value === -1) return;
-      dragTranslationY.value = e.translationY;
-      const absoluteY = draggedIdx.value * ITEM_HEIGHT + e.translationY;
-      hoverIdx.value = Math.max(0, Math.min(n - 1, Math.round(absoluteY / ITEM_HEIGHT)));
-    })
-    .onFinalize(() => {
-      const from = draggedIdx.value;
-      const to = hoverIdx.value;
-      draggedIdx.value = -1;
-      hoverIdx.value = -1;
-      dragTranslationY.value = 0;
-      if (from !== -1) {
+  const rowDragGestures = useMemo(
+    () => Array.from({ length: n }, (_, index) => Gesture.Pan()
+      .activateAfterLongPress(400)
+      .onStart(() => {
+        draggedIdx.value = index;
+        hoverIdx.value = index;
+        dragTranslationY.value = 0;
+        runOnJS(triggerHaptic)();
+        runOnJS(setDragActive)(true);
+        runOnJS(startGhost)(index);
+      })
+      .onUpdate((event) => {
+        if (draggedIdx.value !== index) return;
+        dragTranslationY.value = event.translationY;
+        const absoluteY = index * ITEM_HEIGHT + event.translationY;
+        hoverIdx.value = Math.max(0, Math.min(n - 1, Math.round(absoluteY / ITEM_HEIGHT)));
+      })
+      .onFinalize(() => {
+        const from = draggedIdx.value;
+        const to = hoverIdx.value;
+        if (from !== index) return;
+        draggedIdx.value = -1;
+        hoverIdx.value = -1;
+        dragTranslationY.value = 0;
         runOnJS(endDrag)(from, to);
-      } else {
-        runOnJS(setDragActive)(false);
-      }
-    });
+      })),
+    [draggedIdx, dragTranslationY, endDrag, hoverIdx, n, setDragActive, startGhost, triggerHaptic],
+  );
 
   const ghostQuote = ghostSymbol ? quotes.get(ghostSymbol) : undefined;
   const ghostAlert = ghostSymbol ? activeAlertFor(ghostSymbol) : null;
 
   return (
-    <GestureDetector gesture={dragGesture}>
-      <View style={{ position: 'relative', minHeight: n * ITEM_HEIGHT }}>
-        {orderedItems.map((item, index) => (
-          <WatchRow
-            key={item.symbol}
-            item={item}
-            index={index}
-            draggedIdx={draggedIdx}
-            hoverIdx={hoverIdx}
-            quote={quotes.get(item.symbol)}
-            alert={activeAlertFor(item.symbol)}
-            onNavigate={onNavigate}
-            onRemove={onRemove}
-            onOpenAlert={onOpenAlert}
-            colors={colors}
-            formatPrice={formatPrice}
-            formatPct={formatPct}
-          />
-        ))}
+    <View style={{ position: 'relative', minHeight: n * ITEM_HEIGHT }}>
+      {orderedItems.map((item, index) => (
+        <WatchRow
+          key={item.symbol}
+          item={item}
+          index={index}
+          dragGesture={rowDragGestures[index]}
+          draggedIdx={draggedIdx}
+          hoverIdx={hoverIdx}
+          quote={quotes.get(item.symbol)}
+          alert={activeAlertFor(item.symbol)}
+          onNavigate={onNavigate}
+          onRemove={onRemove}
+          onOpenAlert={onOpenAlert}
+          colors={colors}
+          formatPrice={formatPrice}
+          formatPct={formatPct}
+        />
+      ))}
 
-        {/* Floating ghost — only mounted when a drag is active */}
-        {ghostSymbol != null && (
-          <FloatingGhost
-            symbol={ghostSymbol}
-            n={n}
-            draggedIdx={draggedIdx}
-            dragTranslationY={dragTranslationY}
-            quote={ghostQuote}
-            alert={ghostAlert}
-            colors={colors}
-            formatPrice={formatPrice}
-            formatPct={formatPct}
-          />
-        )}
-      </View>
-    </GestureDetector>
+      {/* Floating ghost — only mounted when a drag is active */}
+      {ghostSymbol != null && (
+        <FloatingGhost
+          symbol={ghostSymbol}
+          n={n}
+          draggedIdx={draggedIdx}
+          dragTranslationY={dragTranslationY}
+          quote={ghostQuote}
+          alert={ghostAlert}
+          colors={colors}
+          formatPrice={formatPrice}
+          formatPct={formatPct}
+        />
+      )}
+    </View>
   );
 }
 
@@ -456,8 +455,12 @@ const rowStyles = StyleSheet.create({
     borderWidth: 1.5,
   },
   dragHandle: {
-    marginRight: 8,
-    opacity: 0.5,
+    width: 40,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 4,
+    opacity: 0.65,
   },
   priceRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
   sym: { fontSize: 16 },
