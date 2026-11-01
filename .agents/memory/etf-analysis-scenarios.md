@@ -7,6 +7,6 @@ ETF outlook values are illustrative compounding scenarios derived from observed 
 
 Keep the selected contribution cadence across ETF analyses on the device; default to monthly when no valid saved cadence is available. The per-deposit amount remains editable per analysis.
 
-**Why:** Long-range figures can look like precise predictions; using explicit historical assumptions keeps the calculations reproducible and makes uncertainty visible. Treating an unknown fee as zero would misrepresent the result, and a stated deposit schedule is necessary for contribution scenarios to be reproducible.
+**Why:** A common $100 starting amount makes fund scenarios comparable across different share prices. Explicit historical assumptions keep long-range figures reproducible and make uncertainty visible; treating an unknown fee as zero misrepresents the result.
 
 **How to apply:** Preserve the deterministic scenario calculation and show its assumptions, history window, expense-ratio treatment, selected schedule and deposit timing, and non-forecast disclaimer whenever ETF outlooks are changed.
