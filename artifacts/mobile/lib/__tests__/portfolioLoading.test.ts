@@ -193,8 +193,9 @@ test('Portfolio screen wires cache-first trades and batched quote updates', () =
   assert.match(screen, /parsePortfolioQuoteCache\(/);
   assert.match(screen, /updatePortfolioQuoteCache\(/);
   assert.match(screen, /quoteCacheRef\.current = nextCache/);
-  assert.match(screen, /Saved estimates \(not live\)/);
-  assert.match(screen, /formatQuoteUpdatedAt\(cachedQuoteTimes\[symbol\]!\)/);
+  assert.doesNotMatch(screen, /quoteSourceNotice|Live quotes|Saved estimates \(not live\)/);
+  assert.doesNotMatch(screen, /Showing saved trades\. Couldn’t refresh from your account\./);
+  assert.match(screen, /refreshControl=\{<RefreshControl refreshing=\{refreshing\} onRefresh=\{onRefresh\}/);
   assert.match(screen, /Latest quote unavailable/);
   assert.match(screen, /fetchAllQuotes\(\[symbol\]\)/);
   assert.match(screen, /portfolio-quote-retry-\$\{position\.symbol\}/);

@@ -279,16 +279,6 @@ function formatDateShort(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
 }
 
-function formatQuoteUpdatedAt(iso: string) {
-  return new Date(iso).toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-}
-
 async function fetchQuote(symbol: string): Promise<Quote> {
   const res = await fetch(`${BASE_URL}/api/stocks/quote/${symbol}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -2201,7 +2191,6 @@ export default function PortfolioScreen() {
   const [loadingTrades, setLoadingTrades] = useState(true);
   const [tradesLoadError, setTradesLoadError] = useState(false);
   const [quotes, setQuotes] = useState<Record<string, Quote | null>>({});
-  const [cachedQuoteTimes, setCachedQuoteTimes] = useState<Record<string, string>>({});
   const [unavailableQuoteSymbols, setUnavailableQuoteSymbols] = useState<string[]>([]);
   const [retryingQuoteSymbols, setRetryingQuoteSymbols] = useState<string[]>([]);
   const [loadingQuotes, setLoadingQuotes] = useState(false);
@@ -2290,7 +2279,6 @@ export default function PortfolioScreen() {
     const requestId = ++quoteRequestIdRef.current;
     if (!symbols.length) {
       quotesRef.current = {};
-      setCachedQuoteTimes({});
       setQuotes({});
       setUnavailableQuoteSymbols([]);
       setLoadingQuotes(false);
@@ -2305,19 +2293,16 @@ export default function PortfolioScreen() {
     }
 
     const cachedQuotes: Record<string, Quote> = {};
-    const cachedTimes: Record<string, string> = {};
     for (const symbol of symbols) {
       const saved = quoteCacheRef.current[symbol];
       if (saved && !quotesRef.current[symbol]) {
         cachedQuotes[symbol] = saved.quote;
-        cachedTimes[symbol] = saved.updatedAt;
       }
     }
     if (Object.keys(cachedQuotes).length > 0) {
       const nextQuotes = { ...quotesRef.current, ...cachedQuotes };
       quotesRef.current = nextQuotes;
       setQuotes(nextQuotes);
-      setCachedQuoteTimes(previous => ({ ...previous, ...cachedTimes }));
     }
 
     await fetchPortfolioQuotes(
@@ -2334,12 +2319,6 @@ export default function PortfolioScreen() {
         quotesRef.current = nextQuotes;
         quoteCacheRef.current = nextCache;
         setQuotes(nextQuotes);
-        setCachedQuoteTimes(previous => {
-          if (!previous[symbol]) return previous;
-          const next = { ...previous };
-          delete next[symbol];
-          return next;
-        });
         quoteCacheWriteRef.current = quoteCacheWriteRef.current.then(
           () => writePortfolioQuoteCache(nextCache),
         );
@@ -2388,15 +2367,6 @@ export default function PortfolioScreen() {
   const allPositions = computePositions(trades, quotes);
   const openPositions = allPositions.filter(p => p.netShares !== 0);
   const { closedTrades, unmatchedSells } = computeTradeReconciliation(trades, quotes);
-  const cachedQuoteDescriptions = quoteSymbols
-    .filter(symbol => !!quotes[symbol] && !!cachedQuoteTimes[symbol])
-    .map(symbol => `${symbol} · ${formatQuoteUpdatedAt(cachedQuoteTimes[symbol]!)}`);
-  const hasLiveQuotes = quoteSymbols.some(symbol => !!quotes[symbol] && !cachedQuoteTimes[symbol]);
-  const quoteSourceNotice = cachedQuoteDescriptions.length
-    ? `Saved estimates (not live): ${cachedQuoteDescriptions.join(' · ')}${hasLiveQuotes ? ' · Other prices are live quotes.' : ''}`
-    : hasLiveQuotes
-      ? 'Live quotes'
-      : '';
   const sellTradeCount = trades.filter(trade => trade.type === 'sell').length;
   useEffect(() => {
     if (sellTradeCount >= 5) void awardAchievement('quote-50');
@@ -2629,41 +2599,6 @@ export default function PortfolioScreen() {
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
         >
-          {tradesLoadError && (
-            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, marginBottom: 10 }}>
-              Showing saved trades. Couldn’t refresh from your account.
-            </Text>
-          )}
-          {!!quoteSourceNotice && (
-            <View style={{
-              flexDirection: 'row',
-              alignItems: 'flex-start',
-              gap: 7,
-              borderWidth: 1,
-              borderColor: colors.border,
-              backgroundColor: colors.card,
-              borderRadius: 8,
-              paddingHorizontal: 10,
-              paddingVertical: 8,
-              marginBottom: 10,
-            }}>
-              <Feather
-                name={cachedQuoteDescriptions.length ? 'clock' : 'wifi'}
-                size={13}
-                color={cachedQuoteDescriptions.length ? colors.mutedForeground : colors.primary}
-                style={{ marginTop: 1 }}
-              />
-              <Text style={{
-                flex: 1,
-                color: colors.mutedForeground,
-                fontFamily: 'Inter_400Regular',
-                fontSize: 10,
-                lineHeight: 15,
-              }}>
-                {quoteSourceNotice}
-              </Text>
-            </View>
-          )}
           <SummaryCard positions={allPositions} trades={trades} closedTrades={closedTrades} unmatchedSells={unmatchedSells} onReset={handleReset} onAddDividend={() => openAdd('dividend')} colors={colors} />
 
           {portfolioTab === 'positions' ? (
