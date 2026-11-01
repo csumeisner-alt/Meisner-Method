@@ -88,7 +88,7 @@ interface Props {
 interface WatchRowProps {
   item: WatchlistItem;
   index: number;
-  dragGesture: ReturnType<typeof Gesture.Pan>;
+  dragGesture: ReturnType<typeof Gesture.Simultaneous>;
   draggedIdx: SharedValue<number>;
   hoverIdx: SharedValue<number>;
   quote?: QuoteData;
@@ -374,32 +374,40 @@ export function DraggableWatchlist({
   }, []);
 
   const rowDragGestures = useMemo(
-    () => Array.from({ length: n }, (_, index) => Gesture.Pan()
-      .activateAfterLongPress(Platform.OS === 'web' ? 320 : 420)
-      .simultaneousWithExternalGesture(scrollGesture)
-      .onStart(() => {
-        draggedIdx.value = index;
-        hoverIdx.value = index;
-        dragTranslationY.value = 0;
-        runOnJS(triggerHaptic)();
-        runOnJS(setDragActive)(true);
-        runOnJS(startGhost)(index);
-      })
-      .onUpdate((event) => {
-        if (draggedIdx.value !== index) return;
-        dragTranslationY.value = event.translationY;
-        const absoluteY = index * ITEM_HEIGHT + event.translationY;
-        hoverIdx.value = Math.max(0, Math.min(n - 1, Math.round(absoluteY / ITEM_HEIGHT)));
-      })
-      .onFinalize(() => {
-        const from = draggedIdx.value;
-        const to = hoverIdx.value;
-        if (from !== index) return;
-        draggedIdx.value = -1;
-        hoverIdx.value = -1;
-        dragTranslationY.value = 0;
-        runOnJS(endDrag)(from, to);
-      })),
+    () => Array.from({ length: n }, (_, index) => {
+      const longPress = Gesture.LongPress()
+        .minDuration(Platform.OS === 'web' ? 320 : 420)
+        .maxDistance(Platform.OS === 'web' ? 24 : 12)
+        .simultaneousWithExternalGesture(scrollGesture)
+        .onStart(() => {
+          draggedIdx.value = index;
+          hoverIdx.value = index;
+          dragTranslationY.value = 0;
+          runOnJS(triggerHaptic)();
+          runOnJS(setDragActive)(true);
+          runOnJS(startGhost)(index);
+        });
+
+      const pan = Gesture.Pan()
+        .simultaneousWithExternalGesture(scrollGesture)
+        .onUpdate((event) => {
+          if (draggedIdx.value !== index) return;
+          dragTranslationY.value = event.translationY;
+          const absoluteY = index * ITEM_HEIGHT + event.translationY;
+          hoverIdx.value = Math.max(0, Math.min(n - 1, Math.round(absoluteY / ITEM_HEIGHT)));
+        })
+        .onFinalize(() => {
+          const from = draggedIdx.value;
+          const to = hoverIdx.value;
+          if (from !== index) return;
+          draggedIdx.value = -1;
+          hoverIdx.value = -1;
+          dragTranslationY.value = 0;
+          runOnJS(endDrag)(from, to);
+        });
+
+      return Gesture.Simultaneous(longPress, pan);
+    }),
     [draggedIdx, dragTranslationY, endDrag, hoverIdx, n, scrollGesture, setDragActive, startGhost, triggerHaptic],
   );
 

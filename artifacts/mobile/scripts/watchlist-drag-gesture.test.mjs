@@ -27,12 +27,17 @@ test("watchlist reorder waits on the card while ordinary swipes scroll", () => {
   );
   assert.match(
     watchlistSource,
-    /\.activateAfterLongPress\(Platform\.OS === 'web' \? 320 : 420\)\s*\.simultaneousWithExternalGesture\(scrollGesture\)\s*\.onStart\(\(\) => \{/,
+    /Gesture\.LongPress\(\)\s*\.minDuration\(Platform\.OS === 'web' \? 320 : 420\)\s*\.maxDistance\(Platform\.OS === 'web' \? 24 : 12\)\s*\.simultaneousWithExternalGesture\(scrollGesture\)\s*\.onStart\(\(\) => \{/,
   );
+  assert.match(
+    watchlistSource,
+    /Gesture\.Pan\(\)\s*\.simultaneousWithExternalGesture\(scrollGesture\)\s*\.onUpdate\(\(event\) => \{/,
+  );
+  assert.match(watchlistSource, /Gesture\.Simultaneous\(longPress, pan\)/);
   assert.doesNotMatch(
     watchlistSource,
-    /\.activateAfterLongPress\([^)]*\)\s*\.onBegin\(/,
-    "A touch-down callback must not disable scrolling before the hold activates.",
+    /\.activateAfterLongPress\(/,
+    "The web pan must not cancel the hold on small pointer movement.",
   );
   assert.match(watchlistSource, /dragGesture=\{rowDragGestures\[index\]\}/);
   assert.match(homeSource, /const scrollGesture = useMemo\(\(\) => Gesture\.Native\(\), \[\]\);/);
