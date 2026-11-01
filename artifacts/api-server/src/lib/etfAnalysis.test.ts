@@ -57,13 +57,13 @@ test("ETF scenarios treat negative and non-finite expense ratios as unavailable"
   }
 });
 
-test("ETF scenarios preserve historical assumptions when the starting share price is invalid", () => {
+test("ETF scenarios use the same $100 starting investment regardless of share price", () => {
   const periods = {
     bear: { averageAnnualReturn: -0.1, years: 2 },
     mixed: { averageAnnualReturn: 0.05, years: 4 },
     bull: { averageAnnualReturn: 0.2, years: 2 },
   };
-  const validScenarios = buildEtfScenarios(100, 0.01, periods);
+  const baseline = buildEtfScenarios(100, 0.01, periods);
 
   for (const invalidPrice of [
     null,
@@ -73,32 +73,13 @@ test("ETF scenarios preserve historical assumptions when the starting share pric
     Number.NaN,
     Number.POSITIVE_INFINITY,
     Number.NEGATIVE_INFINITY,
+    400,
+    Number.MAX_VALUE,
   ]) {
-    const scenarios = buildEtfScenarios(invalidPrice, 0.01, periods);
-
-    assert.deepEqual(
-      scenarios.map(({ label, annualReturnAssumption, noFeeAnnualReturnAssumption }) => ({
-        label,
-        annualReturnAssumption,
-        noFeeAnnualReturnAssumption,
-      })),
-      validScenarios.map(({ label, annualReturnAssumption, noFeeAnnualReturnAssumption }) => ({
-        label,
-        annualReturnAssumption,
-        noFeeAnnualReturnAssumption,
-      })),
-    );
-    for (const scenario of scenarios) {
-      assert.ok(scenario.projections.every(
-        (projection) => projection.noFeeValue === null && projection.afterFeeValue === null,
-      ));
-      assert.equal(scenario.fiveYearValue, null);
-      assert.equal(scenario.tenYearValue, null);
-      assert.equal(scenario.noFeeFiveYearValue, null);
-      assert.equal(scenario.noFeeTenYearValue, null);
-      assert.match(scenario.assumption, /starting share price is missing or invalid/);
-    }
+    assert.deepEqual(buildEtfScenarios(invalidPrice, 0.01, periods), baseline);
   }
+  assert.equal(baseline[1]?.projections.find((projection) => projection.horizonYears === 5)?.noFeeValue, 127.63);
+  assert.match(baseline[1]?.assumption ?? "", /\$100 initial investment/);
 });
 
 test("ETF scenarios omit non-finite reported regimes without hiding valid regimes", () => {
@@ -179,19 +160,16 @@ test("ETF scenarios preserve reported zero and positive expense ratio calculatio
   assert.notDeepEqual(zeroFee, withoutFee);
 });
 
-test("ETF projections are unavailable when large finite prices overflow rounding", () => {
+test("ETF projection values do not overflow from a large current share price", () => {
   const scenarios = buildEtfScenarios(Number.MAX_VALUE, 0, {
     bear: { averageAnnualReturn: 0, years: 1 },
     bull: { averageAnnualReturn: 0, years: 1 },
   });
 
   for (const scenario of scenarios) {
-    assert.deepEqual(
-      scenario.projections.map((projection) => projection.horizonYears),
-      ETF_SCENARIO_HORIZONS,
-    );
+    assert.deepEqual(scenario.projections.map((projection) => projection.horizonYears), ETF_SCENARIO_HORIZONS);
     assert.ok(scenario.projections.every(
-      (projection) => projection.noFeeValue === null && projection.afterFeeValue === null,
+      (projection) => projection.noFeeValue === 100 && projection.afterFeeValue === 100,
     ));
   }
 });
@@ -209,7 +187,7 @@ test("ETF projections reject large finite returns when compounding or rounding o
     );
     for (const projection of scenario.projections) {
       const expected = projection.horizonYears <= 3
-        ? Math.round((1 + 1e100) ** projection.horizonYears * 100) / 100
+        ? Math.round(100 * (1 + 1e100) ** projection.horizonYears * 100) / 100
         : null;
       assert.equal(projection.noFeeValue, expected);
       assert.equal(projection.afterFeeValue, expected);

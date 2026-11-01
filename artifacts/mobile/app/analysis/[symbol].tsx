@@ -57,6 +57,7 @@ import type { HeatMapEtfHoldingSnapshot } from '@/lib/heatMapDetail';
 import {
   calculateEtfScenarioBreakdown,
   ETF_CONTRIBUTION_CADENCES,
+  ETF_SCENARIO_INITIAL_INVESTMENT,
   ETF_SCENARIO_LABELS,
   ETF_SCENARIO_HORIZONS,
   parseEtfContributionCadence,
@@ -374,11 +375,10 @@ type EtfAnalysisPayload = {
   asOf: string;
 };
 
-function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
+function EtfAnalysisSections({ fund, colors, symbol }: {
   fund: EtfAnalysisPayload;
   colors: ReturnType<typeof useColors>;
   symbol: string;
-  currentPrice: number;
 }) {
   const { apiFetch } = useApi();
   const router = useRouter();
@@ -485,18 +485,17 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
   const selectedProjection = (
     scenario: EtfScenario | null,
     horizonYears: number,
-    initialInvestment: number,
   ) => {
     if (!scenario) return null;
     const noFee = calculateEtfScenarioBreakdown(
-      initialInvestment,
+      ETF_SCENARIO_INITIAL_INVESTMENT,
       scenario.noFeeAnnualReturnAssumption,
       contributionAmount,
       horizonYears,
       contributionCadence,
     );
     const afterFee = calculateEtfScenarioBreakdown(
-      initialInvestment,
+      ETF_SCENARIO_INITIAL_INVESTMENT,
       scenario.annualReturnAssumption,
       contributionAmount,
       horizonYears,
@@ -577,7 +576,7 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
       <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 15, marginTop: 5 }}>
         Deposited at the end of each {contributionCadence === 'weekly'
           ? 'week'
-          : contributionCadence === 'monthly' ? 'month' : 'quarter'}, alongside one share at today’s price.
+          : contributionCadence === 'monthly' ? 'month' : 'quarter'}, alongside a $100 starting investment.
       </Text>
     </View>
   );
@@ -863,11 +862,10 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
   const primaryHistoryComparison = compareEtfHoldingSnapshots(currentEtfSnapshot, holdingSnapshots);
   const overlaps = findReportedEtfHoldingsOverlap(selectedFunds);
   const sectorComparison = getReportedEtfSectorComparison(selectedFunds);
-  const comparisonMetricFunds: { symbol: string; currentPrice: number; analysis: EtfAnalysisPayload }[] = [
-    { symbol: symbol.toUpperCase(), currentPrice, analysis: fund },
-    ...compareFunds.map(({ symbol: candidate, currentPrice: comparisonPrice, analysis }) => ({
+  const comparisonMetricFunds: { symbol: string; analysis: EtfAnalysisPayload }[] = [
+    { symbol: symbol.toUpperCase(), analysis: fund },
+    ...compareFunds.map(({ symbol: candidate, analysis }) => ({
       symbol: candidate,
-      currentPrice: comparisonPrice,
       analysis,
     })),
   ];
@@ -1785,7 +1783,7 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
         {renderScenarioHorizonSelector()}
         <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator style={{ marginTop: 10 }}>
           <View style={{ flexDirection: 'row', gap: 10, paddingRight: 16 }}>
-            {comparisonMetricFunds.map(({ symbol: fundSymbol, currentPrice: comparisonPrice, analysis: comparison }) => {
+            {comparisonMetricFunds.map(({ symbol: fundSymbol, analysis: comparison }) => {
               const scenarioRows = ETF_SCENARIO_LABELS.map((label) => ({
                 label,
                 scenario: parseEtfScenarios(comparison.scenarios)
@@ -1820,39 +1818,39 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
                       />
                       <MetricRow
                         label={`No-fee total in ${selectedScenarioHorizon} years`}
-                        value={selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)?.noFeeValue == null
+                        value={selectedProjection(scenario, selectedScenarioHorizon)?.noFeeValue == null
                           ? 'Unavailable'
-                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)!.noFeeValue!)}
+                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.noFeeValue!)}
                       />
                       <MetricRow
                         label={`After-fee total in ${selectedScenarioHorizon} years`}
-                        value={selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)?.afterFeeValue == null
+                        value={selectedProjection(scenario, selectedScenarioHorizon)?.afterFeeValue == null
                           ? 'Unavailable'
-                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)!.afterFeeValue!)}
+                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.afterFeeValue!)}
                       />
                       <MetricRow
                         label="Starting investment"
-                        value={selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)?.startingInvestment == null
+                        value={selectedProjection(scenario, selectedScenarioHorizon)?.startingInvestment == null
                           ? 'Unavailable'
-                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)!.startingInvestment!)}
+                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.startingInvestment!)}
                       />
                       <MetricRow
                         label="Total contributions"
-                        value={selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)?.totalContributions == null
+                        value={selectedProjection(scenario, selectedScenarioHorizon)?.totalContributions == null
                           ? 'Unavailable'
-                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)!.totalContributions!)}
+                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.totalContributions!)}
                       />
                       <MetricRow
                         label={`No-fee projected growth in ${selectedScenarioHorizon} years`}
-                        value={selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)?.noFeeGrowth == null
+                        value={selectedProjection(scenario, selectedScenarioHorizon)?.noFeeGrowth == null
                           ? 'Unavailable'
-                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)!.noFeeGrowth!)}
+                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.noFeeGrowth!)}
                       />
                       <MetricRow
                         label={`After-fee projected growth in ${selectedScenarioHorizon} years`}
-                        value={selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)?.afterFeeGrowth == null
+                        value={selectedProjection(scenario, selectedScenarioHorizon)?.afterFeeGrowth == null
                           ? 'Unavailable'
-                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, comparisonPrice)!.afterFeeGrowth!)}
+                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.afterFeeGrowth!)}
                       />
                       <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 14, marginTop: 4 }}>
                         {scenario?.assumption ?? 'Unavailable: no reported historical scenario for this regime.'}
@@ -2059,6 +2057,50 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
           <MetricRow label="Annual expense ratio used" value={pctValue(fund.expenseRatio)} />
           {renderContributionControls('etf-scenario-contribution-input')}
           {renderScenarioHorizonSelector()}
+          {comparisonMetricFunds.length > 1 && (
+            <View testID="etf-long-range-comparison" style={{ marginTop: 16 }}>
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold' }}>
+                Side-by-side · {selectedScenarioHorizon} years
+              </Text>
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 15, marginTop: 4 }}>
+                Each fund starts with $100. Values include the same contribution schedule and reported fees.
+              </Text>
+              <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator style={{ marginTop: 10 }}>
+                <View>
+                  <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 7 }}>
+                    <Text style={{ width: 76, color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>ETF</Text>
+                    {ETF_SCENARIO_LABELS.map((label) => (
+                      <Text key={`scenario-heading-${label}`} style={{ width: 88, color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 11, textTransform: 'capitalize' }}>
+                        {label}
+                      </Text>
+                    ))}
+                  </View>
+                  {comparisonMetricFunds.map(({ symbol: fundSymbol, analysis }) => {
+                    const fundScenarios = parseEtfScenarios(analysis.scenarios);
+                    return (
+                      <View key={`scenario-quick-compare-${fundSymbol}`} style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: 9 }}>
+                        <Text style={{ width: 76, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 11 }} numberOfLines={1}>
+                          {fundSymbol}
+                        </Text>
+                        {ETF_SCENARIO_LABELS.map((label) => {
+                          const scenario = fundScenarios.find((item) => item.label.toLowerCase() === label) ?? null;
+                          const projection = selectedProjection(scenario, selectedScenarioHorizon);
+                          return (
+                            <Text key={`${fundSymbol}-${label}`} style={{ width: 88, color: colors.foreground, fontSize: 11 }}>
+                              {projection?.afterFeeValue == null ? '—' : fmtPrice(projection.afterFeeValue)}
+                            </Text>
+                          );
+                        })}
+                      </View>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+              <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 14, marginTop: 5 }}>
+                After-fee ending values for bear, base, and bull historical scenarios. Add up to three ETFs in the comparison lineup above.
+              </Text>
+            </View>
+          )}
           {scenarios.length ? scenarios.map((scenario) => (
             <View key={scenario.label} style={{ marginBottom: 12 }}>
               <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', textTransform: 'uppercase' }}>{scenario.label}</Text>
@@ -2066,39 +2108,39 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
               <MetricRow label="After-fee annual return" value={pctValue(scenario.annualReturnAssumption)} />
               <MetricRow
                 label={`No-fee value in ${selectedScenarioHorizon} years`}
-                value={selectedProjection(scenario, selectedScenarioHorizon, currentPrice)?.noFeeValue == null
+                value={selectedProjection(scenario, selectedScenarioHorizon)?.noFeeValue == null
                   ? 'Unavailable'
-                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, currentPrice)!.noFeeValue!)}
+                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.noFeeValue!)}
               />
               <MetricRow
                 label={`After-fee value in ${selectedScenarioHorizon} years`}
-                value={selectedProjection(scenario, selectedScenarioHorizon, currentPrice)?.afterFeeValue == null
+                value={selectedProjection(scenario, selectedScenarioHorizon)?.afterFeeValue == null
                   ? 'Unavailable'
-                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, currentPrice)!.afterFeeValue!)}
+                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.afterFeeValue!)}
               />
               <MetricRow
                 label="Starting investment"
-                value={selectedProjection(scenario, selectedScenarioHorizon, currentPrice)?.startingInvestment == null
+                value={selectedProjection(scenario, selectedScenarioHorizon)?.startingInvestment == null
                   ? 'Unavailable'
-                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, currentPrice)!.startingInvestment!)}
+                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.startingInvestment!)}
               />
               <MetricRow
                 label="Total contributions"
-                value={selectedProjection(scenario, selectedScenarioHorizon, currentPrice)?.totalContributions == null
+                value={selectedProjection(scenario, selectedScenarioHorizon)?.totalContributions == null
                   ? 'Unavailable'
-                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, currentPrice)!.totalContributions!)}
+                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.totalContributions!)}
               />
               <MetricRow
                 label={`No-fee projected growth in ${selectedScenarioHorizon} years`}
-                value={selectedProjection(scenario, selectedScenarioHorizon, currentPrice)?.noFeeGrowth == null
+                value={selectedProjection(scenario, selectedScenarioHorizon)?.noFeeGrowth == null
                   ? 'Unavailable'
-                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, currentPrice)!.noFeeGrowth!)}
+                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.noFeeGrowth!)}
               />
               <MetricRow
                 label={`After-fee projected growth in ${selectedScenarioHorizon} years`}
-                value={selectedProjection(scenario, selectedScenarioHorizon, currentPrice)?.afterFeeGrowth == null
+                value={selectedProjection(scenario, selectedScenarioHorizon)?.afterFeeGrowth == null
                   ? 'Unavailable'
-                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon, currentPrice)!.afterFeeGrowth!)}
+                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.afterFeeGrowth!)}
               />
               <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{scenario.assumption}</Text>
             </View>
@@ -2107,7 +2149,7 @@ function EtfAnalysisSections({ fund, colors, symbol, currentPrice }: {
               Long-range scenario data unavailable.
             </Text>
           )}
-          <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Historical-regime illustrations only, not forecasts or guarantees. Totals include one share at today’s price plus the contribution per deposit entered above. The selected {contributionCadence} schedule is deposited at the end of each {contributionCadence === 'weekly'
+          <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Historical-regime illustrations only, not forecasts or guarantees. Totals start with a $100 investment plus the contribution per deposit entered above. The selected {contributionCadence} schedule is deposited at the end of each {contributionCadence === 'weekly'
             ? 'week'
             : contributionCadence === 'monthly' ? 'month' : 'quarter'}, using the historical annual return assumption; actual results may differ.</Text>
         </View>
@@ -2414,7 +2456,6 @@ export default function AnalysisScreen() {
             fund={result.etfAnalysis}
             colors={colors}
             symbol={result.symbol}
-            currentPrice={result.currentPrice}
           />
           </ScrollView>
         </View>

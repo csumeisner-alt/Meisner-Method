@@ -29,6 +29,7 @@ export type EtfContributionCadence = 'weekly' | 'monthly' | 'quarterly';
 export const ETF_SCENARIO_LABELS = ['bear', 'base', 'bull'] as const;
 export const ETF_SCENARIO_HORIZONS = [1, 3, 5, 10, 20] as const;
 export const ETF_CONTRIBUTION_CADENCES = ['weekly', 'monthly', 'quarterly'] as const;
+export const ETF_SCENARIO_INITIAL_INVESTMENT = 100;
 
 export function parseEtfContributionCadence(value: unknown): EtfContributionCadence {
   return typeof value === 'string'

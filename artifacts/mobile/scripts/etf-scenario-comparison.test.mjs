@@ -7,6 +7,7 @@ import {
   calculateEtfScenarioBreakdown,
   calculateEtfScenarioValue,
   ETF_CONTRIBUTION_CADENCES,
+  ETF_SCENARIO_INITIAL_INVESTMENT,
   ETF_SCENARIO_HORIZONS,
   ETF_SCENARIO_LABELS,
   parseEtfContributionCadence,
@@ -32,8 +33,11 @@ test("ETF comparison shows each historical scenario with its fee and assumptions
   );
   assert.match(
     analysisSource,
-    /comparisonMetricFunds\.map\(\(\{ symbol: fundSymbol, currentPrice: comparisonPrice, analysis: comparison \}\) => \{[\s\S]*?scenarioRows = ETF_SCENARIO_LABELS\.map/,
+    /comparisonMetricFunds\.map\(\(\{ symbol: fundSymbol, analysis: comparison \}\) => \{[\s\S]*?scenarioRows = ETF_SCENARIO_LABELS\.map/,
   );
+  assert.match(analysisSource, /comparisonMetricFunds\.length > 1[\s\S]*?testID="etf-long-range-comparison"/);
+  assert.match(analysisSource, /ETF_SCENARIO_INITIAL_INVESTMENT/);
+  assert.match(analysisSource, /Each fund starts with \$100/);
   assert.match(analysisSource, /label="Expense ratio used"[\s\S]*?pctValue\(comparison\.expenseRatio\)/);
   assert.match(analysisSource, /label="Historical annual assumption"[\s\S]*?scenario\?\.annualReturnAssumption/);
   assert.match(analysisSource, /value=\{pctValue\(scenario\?\.annualReturnAssumption \?\? null\)\}/);
@@ -51,13 +55,14 @@ test("ETF comparison shows each historical scenario with its fee and assumptions
   ]) {
     assert.equal([...analysisSource.matchAll(label)].length, 2, `${label} should appear in both ETF scenario views`);
   }
-  assert.match(analysisSource, /selectedProjection\(scenario, selectedScenarioHorizon, comparisonPrice\)\?\.afterFeeValue == null\s*\?\s*'Unavailable'/);
+  assert.match(analysisSource, /selectedProjection\(scenario, selectedScenarioHorizon\)\?\.afterFeeValue == null\s*\?\s*'Unavailable'/);
   assert.match(analysisSource, /scenario\?\.assumption \?\? 'Unavailable: no reported historical scenario for this regime\.'/);
   assert.match(analysisSource, /Historical-regime illustrations only, not forecasts or guarantees[\s\S]*?selected \{contributionCadence\} schedule/);
   assert.match(analysisSource, /Historical-regime illustrations only, not forecasts or guarantees[\s\S]*?contributions deposited at the end of each/);
 });
 
 test("ETF recurring contribution values use deterministic end-of-period deposits", () => {
+  assert.equal(ETF_SCENARIO_INITIAL_INVESTMENT, 100);
   assert.equal(calculateEtfScenarioValue(100, 0, 25, 3), 1000);
   assert.equal(calculateEtfScenarioValue(100, 0.12, 0, 1), 112);
 

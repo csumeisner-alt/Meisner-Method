@@ -944,9 +944,9 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
     assert.match(scenarioCardText, /Annual expense ratio used\s*0\.03%/);
     assert.match(scenarioCardText, /No-fee annual return\s*10\.00%/);
     assert.match(scenarioCardText, /After-fee annual return\s*9\.97%/);
-    assert.match(scenarioCardText, /No-fee value in 10 years\s*\$1,556\.25/);
-    assert.match(scenarioCardText, /After-fee value in 10 years\s*\$1,552\.01/);
-    assert.match(scenarioCardText, /Starting investment\s*\$600\.00/);
+    assert.match(scenarioCardText, /No-fee value in 10 years\s*\$259\.37/);
+    assert.match(scenarioCardText, /After-fee value in 10 years\s*\$258\.67/);
+    assert.match(scenarioCardText, /Starting investment\s*\$100\.00/);
     assert.match(scenarioCardText, /Total contributions\s*\$0\.00/);
     assert.match(scenarioCardText, /Deposited at the end of each month/);
     for (const cadence of ["weekly", "monthly", "quarterly"]) {
@@ -988,12 +988,12 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
     const fiveYearScenarioText = await browser.evaluate(
       `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent ?? ""`,
     );
-    assert.match(fiveYearScenarioText, /No-fee value in 5 years\s*\$2,880\.34/);
-    assert.match(fiveYearScenarioText, /After-fee value in 5 years\s*\$2,877\.63/);
-    assert.match(fiveYearScenarioText, /Starting investment\s*\$600\.00/);
+    assert.match(fiveYearScenarioText, /No-fee value in 5 years\s*\$2,075\.08/);
+    assert.match(fiveYearScenarioText, /After-fee value in 5 years\s*\$2,073\.48/);
+    assert.match(fiveYearScenarioText, /Starting investment\s*\$100\.00/);
     assert.match(fiveYearScenarioText, /Total contributions\s*\$1,500\.00/);
-    assert.match(fiveYearScenarioText, /No-fee projected growth in 5 years\s*\$780\.34/);
-    assert.match(fiveYearScenarioText, /After-fee projected growth in 5 years\s*\$777\.63/);
+    assert.match(fiveYearScenarioText, /No-fee projected growth in 5 years\s*\$475\.08/);
+    assert.match(fiveYearScenarioText, /After-fee projected growth in 5 years\s*\$473\.48/);
 
     const feeImpactSelector = '[data-testid="analysis-section-etf-fee-dollar-impact"]';
     await browser.evaluate(`(() => {
@@ -1067,7 +1067,7 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
     assert.match(unavailableScenarioText, /No-fee annual return\s*10\.00%/);
     assert.match(unavailableScenarioText, /After-fee annual return\s*Unavailable/);
     assert.match(unavailableScenarioText, /After-fee value in 10 years\s*Unavailable/);
-    assert.match(unavailableScenarioText, /No-fee value in 10 years\s*\$1,556\.25/);
+    assert.match(unavailableScenarioText, /No-fee value in 10 years\s*\$259\.37/);
     await browser.evaluate(`document.querySelector('[data-testid="etf-scenario-horizon-5"]')?.click()`);
     await waitForBrowserValue(
       browser,
@@ -1078,7 +1078,7 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
       `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent ?? ""`,
     );
     assert.match(unavailableFiveYearText, /After-fee value in 5 years\s*Unavailable/);
-    assert.match(unavailableFiveYearText, /No-fee value in 5 years\s*\$966\.31/);
+    assert.match(unavailableFiveYearText, /No-fee value in 5 years\s*\$161\.05/);
 
     for (const path of ["/missing-scenarios", "/malformed-scenarios"]) {
       await browser.send("Page.navigate", { url: `http://127.0.0.1:${address.port}${path}` });
