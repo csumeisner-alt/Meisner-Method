@@ -1,13 +1,13 @@
 /**
  * Drag-to-reorder watchlist component.
  *
- * A platform-specific long-press on a row's drag handle activates drag mode.
+ * A platform-specific long-press on a row's main card area activates drag mode.
  * Dragging repositions the row in real time with a shadow "lift" effect. On
  * release the new order is committed and the parent is notified via `onReorder`.
  *
  * Implementation notes:
- * - Per-row drag gestures are attached only to the drag handles, leaving row
- *   content free to participate in the parent scroll gesture immediately.
+ * - Per-row drag gestures cover the card's main area and recognize
+ *   simultaneously with the parent scroll gesture; action buttons stay separate.
  * - Shared values (draggedIdx, hoverIdx, dragTranslationY) run on the UI
  *   thread; React state (localOrder, ghostSymbol) is updated via runOnJS
  *   only at drag start/end to avoid JS-thread jank during the drag.
@@ -32,7 +32,7 @@ import Animated, {
   runOnJS,
   type SharedValue,
 } from 'react-native-reanimated';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, type GestureType } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { syncLocalOrder } from '@/lib/watchlistFilter';
@@ -74,6 +74,8 @@ interface Props {
   onRemove: (symbol: string) => void;
   onReorder: (symbols: string[]) => void;
   onOpenAlert: (symbol: string, price?: number) => void;
+  /** Native scroll gesture used to coordinate row dragging and list scrolling. */
+  scrollGesture: GestureType;
   /** Called when drag starts/ends so the parent can disable outer scroll. */
   onDragActive?: (active: boolean) => void;
   colors: ReturnType<typeof import('@/hooks/useColors').useColors>;
@@ -144,45 +146,47 @@ function WatchRow({
         animStyle,
       ]}
     >
-      {/* Drag is limited to this handle so swipes over row content scroll normally. */}
+      {/* Hold anywhere in the main card area to reorder; action buttons stay tappable. */}
       <GestureDetector gesture={dragGesture} touchAction="pan-y">
-        <View
-          style={rowStyles.dragHandle}
-          accessible
-          accessibilityRole="button"
-          accessibilityLabel={`Reorder ${item.symbol}`}
-          accessibilityHint="Long press and drag to change its position."
-        >
-          <Feather name="menu" size={16} color={colors.mutedForeground} />
+        <View style={rowStyles.dragRegion}>
+          <View
+            style={rowStyles.dragHandle}
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel={`Reorder ${item.symbol}`}
+            accessibilityHint="Long press anywhere on this ticker card and drag to change its position."
+          >
+            <Feather name="menu" size={16} color={colors.mutedForeground} />
+          </View>
+
+          {/* Ticker + price (navigates on tap) */}
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            onPress={() => onNavigate(item.symbol)}
+            activeOpacity={0.75}
+          >
+            <Text style={[rowStyles.sym, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+              {item.symbol}
+            </Text>
+            {quote ? (
+              <View style={rowStyles.priceRow}>
+                <Text style={[rowStyles.price, { color: colors.primary, fontFamily: 'Inter_600SemiBold' }]}>
+                  {formatPrice(quote.currentPrice)}
+                </Text>
+                <Text style={[rowStyles.pct, { color: pctColor, fontFamily: 'Inter_500Medium' }]}>
+                  {formatPct(quote.priceChangePercent)}
+                </Text>
+              </View>
+            ) : (
+              <ActivityIndicator
+                size="small"
+                color={colors.mutedForeground}
+                style={{ alignSelf: 'flex-start', marginTop: 4 }}
+              />
+            )}
+          </TouchableOpacity>
         </View>
       </GestureDetector>
-
-      {/* Ticker + price (navigates on tap) */}
-      <TouchableOpacity
-        style={{ flex: 1 }}
-        onPress={() => onNavigate(item.symbol)}
-        activeOpacity={0.75}
-      >
-        <Text style={[rowStyles.sym, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
-          {item.symbol}
-        </Text>
-        {quote ? (
-          <View style={rowStyles.priceRow}>
-            <Text style={[rowStyles.price, { color: colors.primary, fontFamily: 'Inter_600SemiBold' }]}>
-              {formatPrice(quote.currentPrice)}
-            </Text>
-            <Text style={[rowStyles.pct, { color: pctColor, fontFamily: 'Inter_500Medium' }]}>
-              {formatPct(quote.priceChangePercent)}
-            </Text>
-          </View>
-        ) : (
-          <ActivityIndicator
-            size="small"
-            color={colors.mutedForeground}
-            style={{ alignSelf: 'flex-start', marginTop: 4 }}
-          />
-        )}
-      </TouchableOpacity>
 
       {/* Bell + remove */}
       <View style={rowStyles.actions}>
@@ -307,7 +311,7 @@ function FloatingGhost({
 // ── DraggableWatchlist ────────────────────────────────────────────────────────
 
 export function DraggableWatchlist({
-  items, quotes, activeAlertFor,
+  items, quotes, activeAlertFor, scrollGesture,
   onNavigate, onRemove, onReorder, onOpenAlert,
   onDragActive, colors, formatPrice, formatPct,
 }: Props) {
@@ -372,6 +376,7 @@ export function DraggableWatchlist({
   const rowDragGestures = useMemo(
     () => Array.from({ length: n }, (_, index) => Gesture.Pan()
       .activateAfterLongPress(Platform.OS === 'web' ? 320 : 420)
+      .simultaneousWithExternalGesture(scrollGesture)
       .onStart(() => {
         draggedIdx.value = index;
         hoverIdx.value = index;
@@ -395,7 +400,7 @@ export function DraggableWatchlist({
         dragTranslationY.value = 0;
         runOnJS(endDrag)(from, to);
       })),
-    [draggedIdx, dragTranslationY, endDrag, hoverIdx, n, setDragActive, startGhost, triggerHaptic],
+    [draggedIdx, dragTranslationY, endDrag, hoverIdx, n, scrollGesture, setDragActive, startGhost, triggerHaptic],
   );
 
   const ghostQuote = ghostSymbol ? quotes.get(ghostSymbol) : undefined;
@@ -462,6 +467,12 @@ const rowStyles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 4,
     opacity: 0.65,
+  },
+  dragRegion: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   priceRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
   sym: { fontSize: 16 },

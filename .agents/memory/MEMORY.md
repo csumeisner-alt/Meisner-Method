@@ -55,6 +55,7 @@
 - [Preview capture request aborts](preview-capture-request-aborts.md) — screenshots may close slow API requests before they finish; verify with a direct request or a later capture.
 - [Heat-map selected quote retention](heat-map-selected-quote-retention.md) — keep the selected detail quote on omission; only update it from a successful matching batch, and offer retry while unavailable.
 - [Custom heat-map reordering](custom-heat-map-reordering.md) — saved order is local display state; reordering must not refetch quotes or block subsequent drags on persistence.
+- [Watchlist reorder interaction](watchlist-reorder-interaction.md) — long-press the main ticker card to reorder; ordinary swipes should scroll, and action buttons stay separate.
 - [Market heat/cold index signal](market-breadth-cache.md) — use Yahoo ^DWCF daily % movement; stale only during the official session and keep the last session readable after close.
 - [Heat-map screener deduplication](heat-map-screener-deduplication.md) — breadth serialization bypasses the normal symbol-keyed map; dedupe screener rows by ticker, keeping the first-ranked quote.
 - [React Native Web alerts](react-native-web-alerts.md) — `Alert.alert` is a no-op in the browser preview; critical confirmation flows need a web-specific path.

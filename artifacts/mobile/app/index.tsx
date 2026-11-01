@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useApi } from '@/hooks/useApi';
 import * as Haptics from 'expo-haptics';
@@ -177,6 +178,7 @@ export default function HomeScreen() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [scrollEnabled, setScrollEnabled] = useState(true);
+  const scrollGesture = useMemo(() => Gesture.Native(), []);
   const stockSearchQueryKey = getSearchStockSymbolsQueryKey({ q: debouncedQuery });
   const stockSearch = useSearchStockSymbols(
     { q: debouncedQuery },
@@ -779,21 +781,22 @@ export default function HomeScreen() {
         </View>
       )}
 
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: botPad + 24 }}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-        scrollEnabled={scrollEnabled}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.mutedForeground}
-            colors={[colors.primary]}
-          />
-        }
-      >
+      <GestureDetector gesture={scrollGesture}>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingBottom: botPad + 24 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          scrollEnabled={scrollEnabled}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.mutedForeground}
+              colors={[colors.primary]}
+            />
+          }
+        >
         {/* Recent searches */}
         {recent.length > 0 && (
           <View style={styles.section}>
@@ -886,6 +889,7 @@ export default function HomeScreen() {
                 items={filteredWatchItems}
                 quotes={watchlist.quotes}
                 activeAlertFor={watchlist.activeAlertFor}
+                scrollGesture={scrollGesture}
                 onNavigate={navigateTo}
                 onRemove={watchlist.remove}
                 onReorder={handleWatchReorder}
@@ -993,7 +997,8 @@ export default function HomeScreen() {
         <Text style={[styles.disclaimer, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
           For informational purposes only. Not financial advice.
         </Text>
-      </ScrollView>
+        </ScrollView>
+      </GestureDetector>
       <BottomTabBar />
 
       <DonationSidebar
