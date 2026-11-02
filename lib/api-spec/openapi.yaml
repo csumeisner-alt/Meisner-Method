@@ -1499,6 +1499,14 @@ components:
           type: string
         message:
           type: string
+        reason:
+          type: string
+          description: Why a supported commodity has no score because its dated price history is stale or unreliable.
+        lastUsableDate:
+          type: string
+          format: date
+          nullable: true
+          description: Latest valid daily observation date, when one was available.
       required:
         - error
         - message

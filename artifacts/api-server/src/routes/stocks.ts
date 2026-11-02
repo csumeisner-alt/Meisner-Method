@@ -15,6 +15,7 @@ import { searchYahooHeatMapInstruments, searchYahooStocks } from "../lib/stockSy
 import { normalizeDividendYield } from "../lib/dividendYield.js";
 import { buildStockRecommendation } from "../lib/stockRecommendation.js";
 import {
+  assessCommodityHistory,
   buildCommodityScore,
   parseCommodityNewsSources,
   SUPPORTED_COMMODITIES,
@@ -826,26 +827,41 @@ router.post("/stocks/analyze", async (req, res) => {
     return;
   }
 
+  const commodity = SUPPORTED_COMMODITIES[symbol.trim().toUpperCase()];
   try {
     req.log.info({ symbol }, "Analyzing stock");
 
-    const commodity = SUPPORTED_COMMODITIES[symbol.trim().toUpperCase()];
     const [data, marketEvidence] = await Promise.all([
       fetchStockData(symbol),
       commodity ? fetchCommodityMarketEvidence(symbol) : Promise.resolve(null),
     ]);
     if (commodity) {
-      const score = buildCommodityScore({
+      const scoreInput = {
         symbol,
         closes: data.closes,
+        historyDates: data.historyDates,
+        historySessions: data.historySessions,
         currentPrice: data.currentPrice,
         historyAsOf: data.historyAsOf,
         marketEvidence: marketEvidence ?? undefined,
-      });
+      };
+      const historyAssessment = assessCommodityHistory(scoreInput);
+      if (historyAssessment.status === "unavailable") {
+        res.status(422).json({
+          error: "COMMODITY_HISTORY_UNAVAILABLE",
+          message: historyAssessment.reason,
+          reason: historyAssessment.reason,
+          lastUsableDate: historyAssessment.lastUsableDate,
+        });
+        return;
+      }
+      const score = buildCommodityScore(scoreInput);
       if (!score) {
         res.status(422).json({
-          error: "INSUFFICIENT_COMMODITY_HISTORY",
-          message: "There is not enough valid daily price history to score this commodity.",
+          error: "COMMODITY_HISTORY_UNAVAILABLE",
+          message: "Commodity history is unavailable for scoring.",
+          reason: "Commodity history is unavailable for scoring.",
+          lastUsableDate: historyAssessment.lastUsableDate,
         });
         return;
       }
@@ -1102,6 +1118,17 @@ Respond ONLY with valid JSON (no markdown):
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     req.log.error({ err, symbol }, "Failed to analyze stock");
+
+    if (commodity) {
+      const reason = "Dated price history could not be retrieved and verified for this commodity.";
+      res.status(422).json({
+        error: "COMMODITY_HISTORY_UNAVAILABLE",
+        message: reason,
+        reason,
+        lastUsableDate: null,
+      });
+      return;
+    }
 
     if (msg.includes("No data found") || msg.includes("No quote data") || msg.includes("Insufficient")) {
       res.status(400).json({ error: "INVALID_SYMBOL", message: `Could not find data for: ${symbol.toUpperCase()}` });

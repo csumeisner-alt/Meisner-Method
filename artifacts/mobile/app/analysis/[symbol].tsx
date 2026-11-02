@@ -2544,7 +2544,17 @@ export default function AnalysisScreen() {
 
   // ─── Error ────────────────────────────────────────────────────────────────
   if (error || !response) {
-    const errMsg = (error as any)?.response?.data?.message ?? error?.message ?? 'Could not load analysis.';
+    const errorData = (error as any)?.response?.data as {
+      error?: string;
+      message?: string;
+      reason?: string;
+      lastUsableDate?: string | null;
+    } | undefined;
+    const commodityHistoryUnavailable = errorData?.error === 'COMMODITY_HISTORY_UNAVAILABLE';
+    const errMsg = (commodityHistoryUnavailable ? errorData?.reason : undefined)
+      ?? errorData?.message
+      ?? error?.message
+      ?? 'Could not load analysis.';
     return (
       <AmericanSteelBackground>
         <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
@@ -2552,11 +2562,17 @@ export default function AnalysisScreen() {
         <View style={styles.centered}>
           <Ionicons name="alert-circle-outline" size={48} color={colors.sellColor} />
           <Text style={[styles.errorTitle, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
-            Analysis Failed
+            {commodityHistoryUnavailable ? 'Score Unavailable' : 'Analysis Failed'}
           </Text>
           <Text style={[styles.errorMsg, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
             {errMsg}
           </Text>
+          {commodityHistoryUnavailable && (
+            <Text style={[styles.errorMsg, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+              Last usable data date: {errorData?.lastUsableDate ?? 'None available'}
+              {'\n'}No score is shown until the history is reliable.
+            </Text>
+          )}
           <TouchableOpacity
             style={[styles.retryBtn, { backgroundColor: colors.muted, borderColor: colors.border, borderWidth: 1 }]}
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); mutate({ data: { symbol: symbol! } }); }}

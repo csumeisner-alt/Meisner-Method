@@ -14,3 +14,6 @@ assert.match(screen, /newsContext\.sources\.map/);
 assert.match(screen, /source, instrument, unit, and freshness checks/);
 assert.match(screen, /factor\.sources\.map/);
 assert.match(screen, /accessibilityRole="link"/);
+assert.match(screen, /COMMODITY_HISTORY_UNAVAILABLE/);
+assert.match(screen, /errorData\?\.reason/);
+assert.match(screen, /Last usable data date:/);

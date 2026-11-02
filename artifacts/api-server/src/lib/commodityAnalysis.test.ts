@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  buildCommodityScore,
+  assessCommodityHistory,
+  buildCommodityScore as scoreCommodity,
+  type CommodityScoreInput,
   parseCommodityNewsSources,
 } from "./commodityAnalysis.ts";
 import {
@@ -16,6 +18,46 @@ const closesWithDailyChange = (changes: number[]) => {
   for (const change of changes) closes.push(closes.at(-1)! * Math.exp(change));
   return closes;
 };
+
+const DEFAULT_NOW = new Date("2026-11-02T12:00:00.000Z");
+
+function fixtureSessions(start: string, end: string, holidays: string[] = []): string[] {
+  const closed = new Set(holidays);
+  const sessions: string[] = [];
+  for (let timestamp = Date.parse(`${start}T00:00:00.000Z`);
+    timestamp <= Date.parse(`${end}T00:00:00.000Z`);
+    timestamp += 86_400_000) {
+    const date = new Date(timestamp).toISOString().slice(0, 10);
+    const weekday = new Date(timestamp).getUTCDay();
+    if (weekday !== 0 && weekday !== 6 && !closed.has(date)) sessions.push(date);
+  }
+  return sessions;
+}
+
+function fixtureHistoryDates(count: number, end: string, holidays: string[] = []): string[] {
+  const dates: string[] = [];
+  let timestamp = Date.parse(`${end}T00:00:00.000Z`);
+  const closed = new Set(holidays);
+  while (dates.length < count) {
+    const date = new Date(timestamp).toISOString().slice(0, 10);
+    const weekday = new Date(timestamp).getUTCDay();
+    if (weekday !== 0 && weekday !== 6 && !closed.has(date)) dates.push(date);
+    timestamp -= 86_400_000;
+  }
+  return dates.reverse();
+}
+
+type CommodityTestInput = Omit<CommodityScoreInput, "historyDates" | "historySessions">
+  & Partial<Pick<CommodityScoreInput, "historyDates" | "historySessions">>;
+
+function buildCommodityScore(input: CommodityTestInput) {
+  const now = input.now ?? DEFAULT_NOW;
+  const historyDates = input.historyDates
+    ?? fixtureHistoryDates(input.closes.length, input.historyAsOf ?? "2026-10-30");
+  const historySessions = input.historySessions
+    ?? fixtureSessions(historyDates[0] ?? "2026-10-30", now.toISOString().slice(0, 10));
+  return scoreCommodity({ ...input, now, historyDates, historySessions });
+}
 
 test("commodity scores are deterministic and expose missing market-structure inputs", () => {
   const input = {
@@ -204,15 +246,97 @@ test("realized volatility dampens the trend signal without changing its directio
   const steady = Array.from({ length: 252 }, () => 0.002);
   const noisy = Array.from({ length: 252 }, (_, index) => 0.002 + (index % 2 === 0 ? 0.06 : -0.06));
   const steadyScore = buildCommodityScore({
-    symbol: "CL=F", closes: closesWithDailyChange(steady), currentPrice: 100, historyAsOf: null,
+    symbol: "CL=F", closes: closesWithDailyChange(steady), currentPrice: 100, historyAsOf: "2026-10-30",
   });
   const noisyScore = buildCommodityScore({
-    symbol: "CL=F", closes: closesWithDailyChange(noisy), currentPrice: 100, historyAsOf: null,
+    symbol: "CL=F", closes: closesWithDailyChange(noisy), currentPrice: 100, historyAsOf: "2026-10-30",
   });
   assert.ok(steadyScore && noisyScore);
   assert.ok(steadyScore.score > 50);
   assert.ok(noisyScore.annualizedVolatilityPercent > steadyScore.annualizedVolatilityPercent);
   assert.ok(noisyScore.score < steadyScore.score);
+});
+
+test("weekends and exchange holidays do not make continuous futures history stale", () => {
+  const holidayDates = ["2026-11-26"];
+  const historyDates = fixtureHistoryDates(40, "2026-11-25", holidayDates);
+  const input = {
+    symbol: "GC=F",
+    closes: Array(40).fill(100),
+    currentPrice: 100,
+    historyAsOf: "2026-11-25",
+    historyDates,
+    historySessions: fixtureSessions(historyDates[0]!, "2026-11-26", holidayDates),
+    now: new Date("2026-11-26T12:00:00.000Z"),
+  };
+  const holidayResult = buildCommodityScore(input);
+  assert.ok(holidayResult);
+  assert.equal(holidayResult.historyAsOf, "2026-11-25");
+
+  const fridayDates = fixtureHistoryDates(40, "2026-11-27");
+  const weekendResult = buildCommodityScore({
+    symbol: "GC=F",
+    closes: Array(40).fill(100),
+    currentPrice: 100,
+    historyAsOf: "2026-11-27",
+    historyDates: fridayDates,
+    historySessions: fixtureSessions(fridayDates[0]!, "2026-11-28"),
+    now: new Date("2026-11-28T12:00:00.000Z"),
+  });
+  assert.ok(weekendResult);
+});
+
+test("stale commodity bars and substantial session gaps cannot produce scores", () => {
+  const staleDates = fixtureHistoryDates(40, "2026-11-23");
+  const staleInput = {
+    symbol: "CL=F",
+    closes: Array(40).fill(100),
+    currentPrice: 100,
+    historyAsOf: "2026-11-23",
+    historyDates: staleDates,
+    historySessions: fixtureSessions(staleDates[0]!, "2026-12-01", ["2026-11-26"]),
+    now: new Date("2026-12-01T12:00:00.000Z"),
+  };
+  const staleAssessment = assessCommodityHistory(staleInput);
+  assert.equal(staleAssessment.status, "unavailable");
+  if (staleAssessment.status === "unavailable") {
+    assert.equal(staleAssessment.lastUsableDate, "2026-11-23");
+    assert.match(staleAssessment.reason, /stale/i);
+  }
+  assert.equal(buildCommodityScore(staleInput), null);
+
+  const completeDates = fixtureHistoryDates(60, "2026-10-30");
+  const gapDates = completeDates.filter((_, index) => index < 25 || index > 31);
+  const gapInput = {
+    symbol: "CL=F",
+    closes: Array(gapDates.length).fill(100),
+    currentPrice: 100,
+    historyAsOf: gapDates.at(-1)!,
+    historyDates: gapDates,
+    historySessions: fixtureSessions(completeDates[0]!, "2026-10-30"),
+    now: new Date("2026-10-31T12:00:00.000Z"),
+  };
+  const gapAssessment = assessCommodityHistory(gapInput);
+  assert.equal(gapAssessment.status, "unavailable");
+  if (gapAssessment.status === "unavailable") {
+    assert.equal(gapAssessment.lastUsableDate, "2026-10-30");
+    assert.match(gapAssessment.reason, /gap of 7 expected trading sessions/i);
+  }
+  assert.equal(buildCommodityScore(gapInput), null);
+});
+
+test("valid continuous futures history still receives a score", () => {
+  const historyDates = fixtureHistoryDates(60, "2026-10-30");
+  const input = {
+    symbol: "GC=F",
+    closes: closesWithDailyChange(Array(59).fill(0.001)),
+    currentPrice: 106,
+    historyAsOf: "2026-10-30",
+    historyDates,
+    historySessions: fixtureSessions(historyDates[0]!, "2026-10-31"),
+    now: new Date("2026-10-31T12:00:00.000Z"),
+  };
+  assert.ok(buildCommodityScore(input));
 });
 
 test("unsupported symbols and insufficient history do not receive a commodity score", () => {

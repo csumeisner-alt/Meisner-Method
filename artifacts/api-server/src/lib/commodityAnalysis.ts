@@ -43,11 +43,17 @@ export interface CommodityNewsContext {
 export interface CommodityScoreInput {
   symbol: string;
   closes: number[];
+  historyDates: string[];
+  historySessions: string[] | null;
   currentPrice: number;
   historyAsOf: string | null;
   marketEvidence?: CommodityMarketEvidence;
   now?: Date;
 }
+
+export type CommodityHistoryAssessment =
+  | { status: "available"; lastUsableDate: string; closes: number[] }
+  | { status: "unavailable"; lastUsableDate: string | null; observationCount: number; reason: string };
 
 export interface CommodityEvidenceSource {
   title: string;
@@ -240,12 +246,111 @@ function returnScore(value: number): number {
   return clamp(Math.round(50 + 50 * Math.tanh(value / 30)));
 }
 
+const MAX_STALE_SESSIONS = 2;
+const MAX_MISSING_SESSIONS_BETWEEN_BARS = 5;
+
+export function assessCommodityHistory(input: CommodityScoreInput): CommodityHistoryAssessment {
+  const unusable = (reason: string, lastUsableDate: string | null, observationCount: number): CommodityHistoryAssessment => ({
+    status: "unavailable",
+    lastUsableDate,
+    observationCount,
+    reason,
+  });
+  const historyDates = input.historyDates;
+  const sessions = input.historySessions;
+  const closes = input.closes;
+  const pairedCount = Math.min(historyDates?.length ?? 0, closes?.length ?? 0);
+  let lastUsableDate: string | null = null;
+
+  if (!Array.isArray(historyDates) || !Array.isArray(closes) || historyDates.length !== closes.length) {
+    return unusable(
+      "The price history is missing aligned dates for its daily observations.",
+      null,
+      pairedCount,
+    );
+  }
+
+  for (let index = 0; index < historyDates.length; index += 1) {
+    if (!validDate(historyDates[index]!)) {
+      return unusable("The price history contains an invalid observation date.", lastUsableDate, index);
+    }
+    if (index > 0 && historyDates[index - 1]! >= historyDates[index]!) {
+      return unusable("The price history contains duplicate or out-of-order observation dates.", lastUsableDate, index);
+    }
+    if (finitePositive(closes[index])) lastUsableDate = historyDates[index]!;
+    else {
+      return unusable("The price history contains a missing or invalid daily price.", lastUsableDate, index);
+    }
+  }
+
+  if (historyDates.length < 20) {
+    return unusable(
+      "There are not enough valid daily observations to score this commodity.",
+      lastUsableDate,
+      historyDates.length,
+    );
+  }
+  if (!lastUsableDate || !validDate(input.historyAsOf ?? "") || input.historyAsOf !== lastUsableDate) {
+    return unusable(
+      "The reported history end date does not match the latest valid daily observation.",
+      lastUsableDate,
+      historyDates.length,
+    );
+  }
+  if (!Array.isArray(sessions) || sessions.length === 0
+    || sessions.some((session) => !validDate(session))
+    || sessions.some((session, index) => index > 0 && sessions[index - 1]! >= session)) {
+    return unusable(
+      "The exchange calendar could not verify the expected commodity trading sessions.",
+      lastUsableDate,
+      historyDates.length,
+    );
+  }
+
+  const sessionIndexes = new Map(sessions.map((session, index) => [session, index]));
+  const observationIndexes: number[] = [];
+  for (const date of historyDates) {
+    const sessionIndex = sessionIndexes.get(date);
+    if (sessionIndex === undefined) {
+      return unusable(
+        "The price history includes a date that is not a session on this commodity's exchange calendar.",
+        lastUsableDate,
+        historyDates.length,
+      );
+    }
+    observationIndexes.push(sessionIndex);
+  }
+  const lastObservedSession = observationIndexes.at(-1)!;
+  const latestExpectedSession = sessions.length - 1;
+  if (latestExpectedSession - lastObservedSession > MAX_STALE_SESSIONS) {
+    return unusable(
+      "The latest usable price history is stale relative to the exchange's recent trading sessions.",
+      lastUsableDate,
+      historyDates.length,
+    );
+  }
+
+  for (let index = 1; index < observationIndexes.length; index += 1) {
+    const missingSessions = observationIndexes[index]! - observationIndexes[index - 1]! - 1;
+    if (missingSessions > MAX_MISSING_SESSIONS_BETWEEN_BARS) {
+      return unusable(
+        `The price history has a gap of ${missingSessions} expected trading sessions, so its trend is unreliable.`,
+        lastUsableDate,
+        historyDates.length,
+      );
+    }
+  }
+
+  return { status: "available", lastUsableDate, closes: [...closes] };
+}
+
 export function buildCommodityScore(input: CommodityScoreInput): CommodityScore | null {
   const symbol = input.symbol.trim().toUpperCase();
   const profile = SUPPORTED_COMMODITIES[symbol];
   if (!profile || !finitePositive(input.currentPrice)) return null;
-  const closes = input.closes.filter(finitePositive).slice(-253);
-  if (closes.length < 20) return null;
+  const history = assessCommodityHistory(input);
+  if (history.status === "unavailable") return null;
+  const closes = history.closes.slice(-253);
   const now = input.now ?? new Date();
   const inventory = validateInventoryEvidence(input.marketEvidence?.inventory, symbol, now);
   const positioning = validatePositioningEvidence(input.marketEvidence?.positioning, symbol, now);
@@ -374,7 +479,7 @@ export function buildCommodityScore(input: CommodityScoreInput): CommodityScore 
     confidence,
     dataCoveragePercent,
     observationCount: closes.length,
-    historyAsOf: input.historyAsOf,
+    historyAsOf: history.lastUsableDate,
     family: profile.family,
     annualizedVolatilityPercent: Math.round(annualizedVolatilityPercent * 10) / 10,
     oneMonthReturnPercent: oneMonthReturnPercent === null ? null : Math.round(oneMonthReturnPercent * 10) / 10,

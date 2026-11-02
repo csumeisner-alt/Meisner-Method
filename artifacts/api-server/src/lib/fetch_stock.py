@@ -7,6 +7,37 @@ import sys
 import json
 import math
 import yfinance as yf
+from datetime import datetime, timezone
+
+
+COMMODITY_CALENDARS = {
+    "GC=F": "CMES", "SI=F": "CMES", "CL=F": "CMES", "NG=F": "CMES",
+    "HG=F": "CMES", "ZC=F": "CMES", "ZW=F": "CMES", "ZS=F": "CMES",
+    "PL=F": "CMES", "PA=F": "CMES", "LE=F": "CMES", "HE=F": "CMES",
+    "CT=F": "ICEUS", "KC=F": "ICEUS", "SB=F": "ICEUS",
+}
+
+
+def expected_commodity_sessions(symbol, start_date, now=None):
+    """Return venue-calendar session dates for the commodity history window."""
+    calendar_name = COMMODITY_CALENDARS.get(symbol)
+    if calendar_name is None:
+        return None
+
+    try:
+        import exchange_calendars
+
+        calendar = exchange_calendars.get_calendar(calendar_name)
+        current = now or datetime.now(timezone.utc)
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=timezone.utc)
+        end_date = current.astimezone(calendar.tz).date()
+        sessions = calendar.sessions_in_range(start_date, end_date)
+        return [session.date().isoformat() for session in sessions]
+    except Exception:
+        # The scorer treats a missing calendar as unavailable history; do not
+        # substitute weekdays or silently call a calendar-verified series fresh.
+        return None
 
 
 def clean_nan(obj):
@@ -65,12 +96,13 @@ def main():
 
         # 1-year daily history
         hist = ticker.history(period="1y", interval="1d", auto_adjust=True)
-        if hist.empty or len(hist) < 20:
+        if hist.empty or (len(hist) < 20 and symbol not in COMMODITY_CALENDARS):
             print(json.dumps({"error": f"No price history for {symbol}"}))
             sys.exit(1)
 
         closes = [float(x) for x in hist["Close"].tolist()]
         volumes = [int(x) for x in hist["Volume"].tolist()]
+        history_dates = [timestamp.date().isoformat() for timestamp in hist.index]
 
         # Basic info & fast_info
         info = ticker.fast_info
@@ -103,7 +135,16 @@ def main():
             "week52Low": float(info.year_low) if getattr(info, "year_low", None) else min(closes[-52:] if len(closes) >= 52 else closes),
             "closes": closes,
             "volumes": volumes,
-            "historyAsOf": hist.index[-1].date().isoformat() if len(hist.index) else None,
+            "historyDates": history_dates,
+            "historyAsOf": history_dates[-1] if history_dates else None,
+            "historySessions": (
+                expected_commodity_sessions(
+                    symbol,
+                    datetime.fromisoformat(history_dates[0]).date(),
+                )
+                if history_dates
+                else None
+            ),
             # Fundamentals from full_info
             "pe": float(full_info["trailingPE"]) if full_info.get("trailingPE") is not None else None,
             "pb": float(full_info["priceToBook"]) if full_info.get("priceToBook") is not None else None,
