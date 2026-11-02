@@ -285,6 +285,23 @@ export function canEnterBrewBank(
   return !isWeekday(day) || hasBrewBankAccess(expiresAt, now);
 }
 
+export type BrewBankEntryStatus =
+  | 'weekend-open'
+  | 'weekday-closed'
+  | 'key-available'
+  | 'access-active';
+
+export function getBrewBankEntryStatus(
+  day: number,
+  keyCount: number,
+  expiresAt: number | null | undefined,
+  now: number,
+): BrewBankEntryStatus {
+  if (!isWeekday(day)) return 'weekend-open';
+  if (hasBrewBankAccess(expiresAt, now)) return 'access-active';
+  return keyCount > 0 ? 'key-available' : 'weekday-closed';
+}
+
 export function formatBrewBankAccessRemaining(
   expiresAt: number | null | undefined,
   now: number,

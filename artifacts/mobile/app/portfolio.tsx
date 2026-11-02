@@ -60,7 +60,11 @@ import {
   type PortfolioQuoteBatch,
 } from '@/lib/portfolioLoading';
 import { getTradeGradeFeedback } from '@/lib/tradeGradeFeedback';
-import { canEnterBrewBank, formatBrewBankAccessRemaining, hasBrewBankAccess } from '@/lib/brewTokenLogic';
+import {
+  canEnterBrewBank,
+  formatBrewBankAccessRemaining,
+  getBrewBankEntryStatus,
+} from '@/lib/brewTokenLogic';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1823,6 +1827,7 @@ function GradeHistoryModal({
   const { awardAchievement } = useAchievements();
   const [trainingTapeVisible, setTrainingTapeVisible] = useState(false);
   const [brewBankVisible, setBrewBankVisible] = useState(false);
+  const [bankClosedInfoVisible, setBankClosedInfoVisible] = useState(false);
   const [bankEntryBusy, setBankEntryBusy] = useState(false);
   const [brewCelebrationVisible, setBrewCelebrationVisible] = useState(false);
   const [headerHintVisible, setHeaderHintVisible] = useState(false);
@@ -1875,8 +1880,12 @@ function GradeHistoryModal({
     setNeonGucciPhrasesActive,
     clearJustUnlocked,
   } = useAmericanMode().brew;
-  const isWeekend = [0, 6].includes(new Date().getDay());
-  const hasActiveBankAccess = hasBrewBankAccess(bankAccessExpiresAt, countdownNow);
+  const bankEntryStatus = getBrewBankEntryStatus(
+    new Date(countdownNow).getDay(),
+    bankKeys,
+    bankAccessExpiresAt,
+    countdownNow,
+  );
   const bankAccessRemaining = formatBrewBankAccessRemaining(bankAccessExpiresAt, countdownNow);
 
   useEffect(() => {
@@ -1928,12 +1937,13 @@ function GradeHistoryModal({
 
     const day = new Date(countdownNow).getDay();
     if (canEnterBrewBank(day, bankAccessExpiresAt, countdownNow)) {
+      setBankClosedInfoVisible(false);
       setBrewBankVisible(true);
       return;
     }
 
-    if (isWeekend || bankKeys <= 0) {
-      setTrainingTapeVisible(true);
+    if (bankKeys <= 0) {
+      setBankClosedInfoVisible(true);
       return;
     }
 
@@ -2045,13 +2055,20 @@ function GradeHistoryModal({
             contentContainerStyle={[gradeModalStyles.content, { paddingBottom: Math.max(insets.bottom, 18) + 20 }]}
             showsVerticalScrollIndicator={false}
           >
-            {BREW_BANK_ENABLED && brewBankUnlocked && (isWeekend || bankKeys > 0 || hasActiveBankAccess) && (
+            {BREW_BANK_ENABLED && brewBankUnlocked && (
               <Pressable
                 onPress={() => { void handleOpenBank(); }}
                 disabled={bankEntryBusy}
                 style={[gradeModalStyles.bankShortcut, { backgroundColor: colors.card, borderColor: colors.goldMuted }]}
                 accessibilityRole="button"
-                accessibilityLabel="Open Central Bank"
+                accessibilityLabel={
+                  bankEntryStatus === 'weekday-closed'
+                    ? 'Central Bank closed on weekdays. Tap for access information'
+                    : bankEntryStatus === 'key-available'
+                      ? 'Enter Central Bank using one key for twelve hours'
+                      : 'Open Central Bank'
+                }
+                accessibilityHint={bankEntryStatus === 'weekday-closed' ? 'Explains weekend hours and weekday key access' : undefined}
                 testID="central-bank-shortcut"
               >
                 <View style={[gradeModalStyles.bankShortcutIcon, { backgroundColor: colors.steelShadow }]}>
@@ -2061,18 +2078,45 @@ function GradeHistoryModal({
                   <Text style={[gradeModalStyles.bankShortcutTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
                     CENTRAL BANK
                   </Text>
-                  <Text style={[gradeModalStyles.bankShortcutStatus, { color: hasActiveBankAccess || isWeekend ? colors.gold : colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
-                    {hasActiveBankAccess && bankAccessExpiresAt && bankAccessRemaining
+                  <Text style={[gradeModalStyles.bankShortcutStatus, { color: bankEntryStatus !== 'weekday-closed' ? colors.gold : colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
+                    {bankEntryStatus === 'access-active' && bankAccessExpiresAt && bankAccessRemaining
                       ? `ACCESS ACTIVE · ${bankAccessRemaining.toUpperCase()} · OPEN UNTIL ${new Date(bankAccessExpiresAt).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' }).toUpperCase()}`
-                      : isWeekend
+                      : bankEntryStatus === 'weekend-open'
                         ? 'OPEN THIS WEEKEND · NO KEY NEEDED'
-                        : bankKeys > 0
-                          ? 'WEEKDAY ENTRY · REDEEM KEY TO ENTER'
-                          : 'WEEKDAY ACCESS · USE A BANK KEY'}
+                        : bankEntryStatus === 'key-available'
+                          ? 'KEY READY · TAP TO ENTER FOR 12 HOURS'
+                          : 'CLOSED WEEKDAYS · TAP FOR ACCESS INFO'}
                   </Text>
                 </View>
                 <Feather name="chevron-right" size={17} color={colors.mutedForeground} />
               </Pressable>
+            )}
+            {bankClosedInfoVisible && bankEntryStatus === 'weekday-closed' && (
+              <View
+                style={[gradeModalStyles.bankClosedInfo, { backgroundColor: colors.steelShadow, borderColor: colors.goldMuted }]}
+                testID="central-bank-closed-info"
+                accessibilityLiveRegion="polite"
+              >
+                <Feather name="info" size={17} color={colors.gold} />
+                <View style={gradeModalStyles.bankClosedInfoCopy}>
+                  <Text style={[gradeModalStyles.bankClosedInfoTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+                    CLOSED ON WEEKDAYS
+                  </Text>
+                  <Text style={[gradeModalStyles.bankClosedInfoText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                    The Bank is open free on weekends. For weekday access, buy a key in the Bank Shop for 5 Brew Tokens; each key grants 12 hours. You can shop on a weekend or during active access.
+                  </Text>
+                  <Pressable
+                    onPress={() => setBankClosedInfoVisible(false)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Dismiss Central Bank access information"
+                    style={gradeModalStyles.bankClosedInfoDismiss}
+                  >
+                    <Text style={[gradeModalStyles.bankClosedInfoDismissText, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
+                      GOT IT
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
             )}
             <View style={[gradeModalStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={gradeModalStyles.chartHeading}>
@@ -2178,6 +2222,12 @@ const gradeModalStyles = StyleSheet.create({
   bankShortcutCopy: { flex: 1, gap: 3 },
   bankShortcutTitle: { fontSize: 11, letterSpacing: 1 },
   bankShortcutStatus: { fontSize: 10, letterSpacing: 0.2 },
+  bankClosedInfo: { flexDirection: 'row', alignItems: 'flex-start', borderWidth: 1, borderRadius: 10, padding: 12, marginTop: -2, marginBottom: 12, gap: 10 },
+  bankClosedInfoCopy: { flex: 1, gap: 7 },
+  bankClosedInfoTitle: { fontSize: 11, letterSpacing: 0.7 },
+  bankClosedInfoText: { fontSize: 12, lineHeight: 18 },
+  bankClosedInfoDismiss: { alignSelf: 'flex-start', paddingVertical: 4, paddingRight: 4 },
+  bankClosedInfoDismissText: { fontSize: 10, letterSpacing: 0.6 },
 });
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────

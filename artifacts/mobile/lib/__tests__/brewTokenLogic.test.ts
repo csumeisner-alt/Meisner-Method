@@ -36,6 +36,7 @@ import {
   canArmBrewBottle,
   canActivateBrewBankKey,
   formatBrewBankAccessRemaining,
+  getBrewBankEntryStatus,
   formatSmartProRemaining,
   getSmartProBottleSalePrice,
   getBrewBottleInspection,
@@ -360,6 +361,15 @@ test('weekday bank entry requires redeemed active access', () => {
   assert.equal(canEnterBrewBank(1, null, mondayMorning), false);
   assert.equal(canEnterBrewBank(1, mondayMorning + 1_000, mondayMorning), true);
   assert.equal(canEnterBrewBank(0, null, mondayMorning), true);
+});
+
+test('Brew Bank entry status explains each weekend, weekday, key, and active-access state', () => {
+  const mondayMorning = new Date('2026-08-17T09:00:00').getTime();
+  assert.equal(getBrewBankEntryStatus(6, 0, null, mondayMorning), 'weekend-open');
+  assert.equal(getBrewBankEntryStatus(6, 0, mondayMorning + 1_000, mondayMorning), 'weekend-open');
+  assert.equal(getBrewBankEntryStatus(1, 0, null, mondayMorning), 'weekday-closed');
+  assert.equal(getBrewBankEntryStatus(1, 1, null, mondayMorning), 'key-available');
+  assert.equal(getBrewBankEntryStatus(1, 0, mondayMorning + 1_000, mondayMorning), 'access-active');
 });
 
 test('bank access countdown formats remaining hours and minutes and expires at zero', () => {

@@ -200,3 +200,13 @@ test('Portfolio screen wires cache-first trades and batched quote updates', () =
   assert.match(screen, /fetchAllQuotes\(\[symbol\]\)/);
   assert.match(screen, /portfolio-quote-retry-\$\{position\.symbol\}/);
 });
+
+test('Portfolio keeps the unlocked Bank visible and explains weekday closure on tap', () => {
+  const screen = readFileSync('app/portfolio.tsx', 'utf8');
+  assert.match(screen, /BREW_BANK_ENABLED && brewBankUnlocked && \(\s*<Pressable/);
+  assert.match(screen, /bankEntryStatus === 'weekday-closed'/);
+  assert.match(screen, /setBankClosedInfoVisible\(true\)/);
+  assert.match(screen, /testID="central-bank-closed-info"/);
+  assert.match(screen, /open free on weekends\. For weekday access, buy a key in the Bank Shop for 5 Brew Tokens; each key grants 12 hours\./);
+  assert.doesNotMatch(screen, /brewBankUnlocked && \(isWeekend \|\| bankKeys > 0 \|\| hasActiveBankAccess\)/);
+});
