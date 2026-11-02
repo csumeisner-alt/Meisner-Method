@@ -195,7 +195,7 @@ test("custom map removal uses an edit toggle and animated, tappable hexagons ins
   assert.match(screenSource, /removeCustomHeatMapSymbolFromSavedOrder\(customSymbols, symbol\)/);
   assert.match(screenSource, /await AsyncStorage\.setItem\(STORAGE_KEY, JSON\.stringify\(next\)\)/);
   assert.match(screenSource, /testID=\{`heat-map-remove-unavailable-\$\{symbol\}`\}/);
-  assert.match(screenSource, /No visible hexagon for these tickers\. Tap to remove:/);
+  assert.match(screenSource, /testID=\{`heat-map-unavailable-hex-\$\{symbol\}`\}/);
   assert.doesNotMatch(screenSource, /styles\.chipList|styles\.symbolChip|styles\.chipText/);
 });
 

@@ -436,6 +436,60 @@ function HexTile({
   ) : interaction;
 }
 
+function UnavailableHexTile({
+  name, symbol, width, height, colors, onAdd, alreadyAdded = false, addDisabled = false, onRemove, removing = false,
+}: {
+  name: string;
+  symbol: string;
+  width: number;
+  height: number;
+  colors: ReturnType<typeof useColors>;
+  onAdd?: () => void;
+  alreadyAdded?: boolean;
+  addDisabled?: boolean;
+  onRemove?: () => void;
+  removing?: boolean;
+}) {
+  const tile = (
+    <View style={[styles.unavailableHex, { width, height }]}>
+      <Svg width={width} height={height} viewBox="0 0 100 86.6" style={StyleSheet.absoluteFill}>
+        <Polygon points="1,43.3 25,1 75,1 99,43.3 75,85.6 25,85.6" fill={colors.card} stroke={colors.border} strokeWidth="1.5" />
+      </Svg>
+      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.58} style={[styles.unavailableHexName, { color: colors.foreground }]}>{name}</Text>
+      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.64} style={[styles.unavailableHexSymbol, { color: colors.mutedForeground }]}>{symbol}</Text>
+      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62} style={[styles.unavailableHexStatus, { color: colors.mutedForeground }]}>Quote unavailable</Text>
+      {onAdd && <View pointerEvents="none" style={[styles.unavailableHexBadge, { backgroundColor: addDisabled ? colors.secondary : colors.primary }]}>
+        <MaterialCommunityIcons name={alreadyAdded ? 'check' : 'plus'} size={12} color={addDisabled ? colors.mutedForeground : colors.primaryForeground} />
+      </View>}
+      {onRemove && <TouchableOpacity
+        testID={`heat-map-remove-unavailable-${symbol}`}
+        accessibilityRole="button"
+        accessibilityLabel={`Remove ${symbol} from your custom heat map`}
+        disabled={removing}
+        onPress={onRemove}
+        style={[styles.unavailableHexBadge, styles.unavailableHexRemoveBadge, { backgroundColor: colors.card, opacity: removing ? 0.55 : 1 }]}
+      >
+        <MaterialCommunityIcons name="close" size={12} color={colors.sellColor} />
+      </TouchableOpacity>}
+    </View>
+  );
+
+  if (!onAdd) return <View
+    testID={`heat-map-unavailable-hex-${symbol}`}
+    accessibilityRole="image"
+    accessibilityLabel={`${name}, ${symbol}, quote unavailable`}
+  >{tile}</View>;
+
+  return <TouchableOpacity
+    testID={`heat-map-unavailable-hex-${symbol}`}
+    accessibilityRole="button"
+    accessibilityLabel={alreadyAdded ? `${name} is already in the custom map; quote unavailable` : `Add ${name} to custom map while its quote is unavailable`}
+    accessibilityState={{ disabled: addDisabled }}
+    disabled={addDisabled}
+    onPress={onAdd}
+  >{tile}</TouchableOpacity>;
+}
+
 function LoadingHexagon({ index, width, height, delayMs, colors, theme, reduceMotion }: {
   index: number;
   width: number;
@@ -1040,9 +1094,17 @@ export default function HeatMapScreen() {
     ...(responseMatches ? response!.unavailableSymbols : []),
     ...staleQuotes.map((quote) => quote.symbol),
   ])];
-  const unavailableCommodityAssets = category === 'commodities' && responseMatches
-    ? CUSTOM_HEAT_MAP_ASSETS.commodities.filter((asset) => unavailableSymbols.includes(asset.symbol))
-    : [];
+  const freshQuoteSymbols = new Set(validAgeQuotes.map((quote) => quote.symbol));
+  const catalogAssetBySymbol = new Map(
+    Object.values(CUSTOM_HEAT_MAP_ASSETS).flat().map((asset) => [asset.symbol, asset]),
+  );
+  const unavailableMapAssets = responseMatches && category === 'commodities'
+    ? CUSTOM_HEAT_MAP_ASSETS.commodities.filter((asset) => !freshQuoteSymbols.has(asset.symbol))
+    : responseMatches && category === 'custom'
+      ? customSymbols
+        .filter((symbol) => !freshQuoteSymbols.has(symbol))
+        .map((symbol) => ({ symbol, name: catalogAssetBySymbol.get(symbol)?.name ?? symbol }))
+      : [];
 
   const choices = useMemo(() => {
     const unique = <T,>(items: T[]) => [...new Set(items)].filter(Boolean);
@@ -1129,15 +1191,14 @@ export default function HeatMapScreen() {
     const delays = getHeatMapRevealDelays(symbols.length, HEX_REVEAL_SPREAD_MS);
     return new Map(symbols.map((symbol, index) => [symbol, delays[index] ?? 0]));
   }, [tileSymbolKey]);
-  const editFallbackSymbols = category === 'custom' && isEditingCustomMap
-    ? (sectors.length === 0
-        ? customSymbols
-        : unavailableSymbols.filter((symbol) => customSymbols.includes(symbol)))
+  const editFallbackSymbols = category === 'custom' && isEditingCustomMap && !responseMatches
+    ? customSymbols
     : [];
 
   const contentWidth = Math.max(0, viewportWidth - 36);
   const tileWidth = getHeatMapTileWidth(contentWidth);
   const tileHeight = tileWidth * Math.sqrt(3) / 2;
+  const unavailableLayout = layoutHoneycomb(unavailableMapAssets.length, contentWidth, tileWidth);
   const honeycombLayouts = useMemo(
     () => sectors.map((group) => layoutHoneycomb(group.quotes.length, contentWidth, tileWidth)),
     [contentWidth, sectors, tileWidth],
@@ -1897,9 +1958,9 @@ export default function HeatMapScreen() {
                     theme={loadingTheme}
                     reduceMotion={reduceMotion}
                   />
-                : filterableQuotes.length === 0 && activeFilterCount > 0 && unavailableCommodityAssets.length === 0
+                : filterableQuotes.length === 0 && activeFilterCount > 0 && unavailableMapAssets.length === 0
                   ? stateCard('filter-off-outline', 'No matches for these filters', 'Clear or adjust a filter to see instruments in this map.')
-                  : filterableQuotes.length === 0 && unavailableCommodityAssets.length === 0
+                  : filterableQuotes.length === 0 && unavailableMapAssets.length === 0
                     ? stateCard('chart-box-outline', 'No current quotes', unavailableSymbols.length ? `No recent valid quotes for ${unavailableSymbols.join(', ')}.` : 'There are no current quotes available in this market.')
                     : <View style={styles.mapWrap}>
                       {filterableQuotes.length > 0 && sectors.map((group, groupIndex) => {
@@ -1988,51 +2049,43 @@ export default function HeatMapScreen() {
                           </View>
                         </View>;
                       })}
-                      {!!unavailableCommodityAssets.length && <View
-                        testID="heat-map-unavailable-commodities"
-                        style={{ marginTop: 12, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card }}
-                      >
-                        <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 13 }}>
-                          Waiting for fresh commodity quotes
-                        </Text>
-                        <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 4, marginBottom: 8 }}>
-                          These instruments remain part of the Commodities map. No stale price is shown; quotes will appear when fresh data arrives.
-                        </Text>
-                        <View style={{ gap: 8 }}>
-                          {unavailableCommodityAssets.map((asset) => {
-                            const alreadyAdded = customSymbols.includes(asset.symbol);
+                      {!!unavailableMapAssets.length && <View testID="heat-map-unavailable-map-assets" style={styles.unavailableMapSection}>
+                        <View testID="heat-map-unavailable-map-divider" style={[styles.unavailableDivider, { backgroundColor: colors.border }]} />
+                        <View style={[styles.honeycomb, { width: contentWidth, height: unavailableLayout.height }]}>
+                          {unavailableLayout.positions.map((position) => {
+                            const asset = unavailableMapAssets[position.index];
+                            const alreadyAdded = category === 'commodities' && customSymbols.includes(asset.symbol);
                             const addDisabled = alreadyAdded
                               || !storageReady
                               || storageLoadError !== null
                               || customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS;
+                            const onAdd = category === 'commodities'
+                              ? () => { void addSymbol(asset.symbol); }
+                              : undefined;
+                            const onRemove = category === 'custom' && isEditingCustomMap
+                              ? () => void removeSymbol(asset.symbol)
+                              : undefined;
                             return <View
                               key={asset.symbol}
-                              testID={`heat-map-unavailable-commodity-${asset.symbol}`}
-                              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.border }}
+                              style={[styles.hexPosition, { left: position.left, top: position.top, width: tileWidth, height: tileHeight }]}
                             >
-                              <View style={{ flex: 1 }}>
-                                <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>{asset.name}</Text>
-                                <Text style={{ color: colors.mutedForeground, fontSize: 10, marginTop: 2 }}>{asset.symbol} · Quote unavailable</Text>
-                              </View>
-                              <TouchableOpacity
-                                testID={`heat-map-add-unavailable-commodity-${asset.symbol}`}
-                                accessibilityRole="button"
-                                accessibilityLabel={alreadyAdded ? `${asset.name} is already in the custom map` : `Add ${asset.name} to custom map`}
-                                accessibilityState={{ disabled: addDisabled }}
-                                disabled={addDisabled}
-                                onPress={() => { void addSymbol(asset.symbol); }}
-                                style={{ minHeight: 34, justifyContent: 'center', paddingHorizontal: 11, borderRadius: 8, backgroundColor: addDisabled ? colors.secondary : colors.primary }}
-                              >
-                                <Text style={{ color: addDisabled ? colors.mutedForeground : colors.primaryForeground, fontSize: 11, fontFamily: 'Inter_600SemiBold' }}>
-                                  {alreadyAdded ? 'Added' : 'Add to custom'}
-                                </Text>
-                              </TouchableOpacity>
+                              <UnavailableHexTile
+                                name={asset.name}
+                                symbol={asset.symbol}
+                                width={tileWidth}
+                                height={tileHeight}
+                                colors={colors}
+                                onAdd={onAdd}
+                                alreadyAdded={alreadyAdded}
+                                addDisabled={addDisabled}
+                                onRemove={onRemove}
+                                removing={removingSymbol === asset.symbol}
+                              />
                             </View>;
                           })}
                         </View>
-                        {customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS && <Text style={{ color: colors.mutedForeground, fontSize: 10, marginTop: 8 }}>Your custom map is full. Remove an instrument to make room.</Text>}
                       </View>}
-                      {!!unavailableSymbols.length && category !== 'commodities' && <Text style={[styles.unavailable, { color: colors.mutedForeground }]}>No recent quote: {unavailableSymbols.join(' · ')}</Text>}
+                      {!!unavailableSymbols.length && category !== 'commodities' && category !== 'custom' && <Text style={[styles.unavailable, { color: colors.mutedForeground }]}>No recent quote: {unavailableSymbols.join(' · ')}</Text>}
           {!!filterableQuotes.some((quote) => quote.returnPercent === null) && <View style={[styles.notice, { backgroundColor: colors.card, borderColor: colors.border }]}>
                         <MaterialCommunityIcons name="information-outline" size={15} color={colors.primary} />
             <Text testID="heat-map-unavailable-return-note" style={[styles.noticeText, { color: colors.mutedForeground }]}>
@@ -2276,6 +2329,8 @@ const styles = StyleSheet.create({
   retryButton: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 15, paddingVertical: 8, marginTop: 6 },
   retryText: { fontFamily: 'Inter_600SemiBold', fontSize: 11 },
   mapWrap: { gap: 18 },
+  unavailableMapSection: { gap: 8, marginTop: 4 },
+  unavailableDivider: { width: '100%', height: 1 },
   sectorGroup: { gap: 7 },
   sectorHeading: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingHorizontal: 3 },
   sectorName: { flex: 1, marginRight: 8, fontFamily: 'Inter_600SemiBold', fontSize: 12 },
@@ -2300,6 +2355,12 @@ const styles = StyleSheet.create({
   tileSession: { maxWidth: '94%', fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.05 },
   tileNextOpen: { maxWidth: '94%', fontFamily: 'Inter_600SemiBold', fontSize: 7.2, lineHeight: 8.4, textAlign: 'center' },
   tileAge: { maxWidth: '94%', fontFamily: 'Inter_400Regular', fontSize: 8 },
+  unavailableHex: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 7, gap: 1 },
+  unavailableHexName: { maxWidth: '78%', fontFamily: 'Inter_700Bold', fontSize: 10, lineHeight: 12, textAlign: 'center' },
+  unavailableHexSymbol: { maxWidth: '82%', fontFamily: 'Inter_600SemiBold', fontSize: 8, textAlign: 'center' },
+  unavailableHexStatus: { maxWidth: '84%', fontFamily: 'Inter_400Regular', fontSize: 7, lineHeight: 9, textAlign: 'center' },
+  unavailableHexBadge: { position: 'absolute', top: 10, right: 13, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  unavailableHexRemoveBadge: { right: 13 },
   tileBasis: { maxWidth: '94%', fontFamily: 'Inter_400Regular', fontSize: 7, letterSpacing: -0.1 },
   unavailable: { fontFamily: 'Inter_400Regular', fontSize: 10, textAlign: 'center', marginTop: 2 },
   notice: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 11, padding: 10 },
