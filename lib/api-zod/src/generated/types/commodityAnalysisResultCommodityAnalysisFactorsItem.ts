@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { CommodityAnalysisResultCommodityAnalysisFactorsItemSourcesItem } from './commodityAnalysisResultCommodityAnalysisFactorsItemSourcesItem';
 import type { CommodityAnalysisResultCommodityAnalysisFactorsItemStatus } from './commodityAnalysisResultCommodityAnalysisFactorsItemStatus';
 
 export type CommodityAnalysisResultCommodityAnalysisFactorsItem = {
@@ -14,4 +15,5 @@ export type CommodityAnalysisResultCommodityAnalysisFactorsItem = {
   score: number | null;
   weight: number;
   detail: string;
+  sources: CommodityAnalysisResultCommodityAnalysisFactorsItemSourcesItem[];
 };

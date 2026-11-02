@@ -11,4 +11,6 @@ assert.match(heatMap, /onAnalyzeCommodity=\{\(\) =>/);
 assert.match(screen, /result\.assetType === 'commodity' && result\.commodityAnalysis/);
 assert.match(screen, /commodity-analysis-score/);
 assert.match(screen, /newsContext\.sources\.map/);
-assert.match(screen, /unavailable inventory, curve, positioning, and macro\/weather inputs are excluded/);
+assert.match(screen, /source, instrument, unit, and freshness checks/);
+assert.match(screen, /factor\.sources\.map/);
+assert.match(screen, /accessibilityRole="link"/);

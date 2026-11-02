@@ -61,8 +61,8 @@ export const SearchStockSymbolsResponse = zod.array(SearchStockSymbolsResponseIt
 
 
 /**
- * Detects ETFs and returns fund-specific analysis; listed stocks retain technical, fundamental, behavioral, and rules-based recommendation analysis.
- * @summary Analyze a stock or ETF ticker
+ * Returns deterministic score-and-factor market analysis for supported commodity futures, fund-specific analysis for ETFs, or stock analysis for listed equities.
+ * @summary Analyze a listed ticker or supported commodity
  */
 export const analyzeStockBodyIncludeCommentaryDefault = true;
 
@@ -294,7 +294,14 @@ export const AnalyzeStockResponse = zod.union([zod.object({
   "status": zod.enum(['available', 'unavailable']),
   "score": zod.number().nullable(),
   "weight": zod.number(),
-  "detail": zod.string()
+  "detail": zod.string(),
+  "sources": zod.array(zod.object({
+  "title": zod.string(),
+  "url": zod.string(),
+  "asOf": zod.coerce.date(),
+  "unit": zod.string(),
+  "observation": zod.string()
+}))
 })),
   "methodology": zod.string(),
   "reasoning": zod.string(),

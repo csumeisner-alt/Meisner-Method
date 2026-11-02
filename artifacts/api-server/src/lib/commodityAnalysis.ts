@@ -45,6 +45,45 @@ export interface CommodityScoreInput {
   closes: number[];
   currentPrice: number;
   historyAsOf: string | null;
+  marketEvidence?: CommodityMarketEvidence;
+  now?: Date;
+}
+
+export interface CommodityEvidenceSource {
+  title: string;
+  url: string;
+  asOf: string;
+  unit: string;
+  observation: string;
+}
+
+export interface CommodityInventoryEvidence {
+  provider: "EIA" | "USDA";
+  symbol: string;
+  instrument: string;
+  metric: "weekly-stock-change-percent" | "year-over-year-stocks-to-use-change-percent";
+  value: number;
+  asOf: string;
+  units: string;
+  source: CommodityEvidenceSource;
+}
+
+export interface CommodityPositioningEvidence {
+  provider: "CFTC";
+  symbol: string;
+  instrument: string;
+  contractCode: string;
+  units: string;
+  asOf: string;
+  openInterest: number;
+  nonCommercialLong: number;
+  nonCommercialShort: number;
+  source: CommodityEvidenceSource;
+}
+
+export interface CommodityMarketEvidence {
+  inventory: CommodityInventoryEvidence | null;
+  positioning: CommodityPositioningEvidence | null;
 }
 
 export interface CommodityScoreFactor {
@@ -54,6 +93,7 @@ export interface CommodityScoreFactor {
   score: number | null;
   weight: number;
   detail: string;
+  sources: CommodityEvidenceSource[];
 }
 
 export interface CommodityScore {
@@ -74,6 +114,119 @@ export interface CommodityScore {
 const clamp = (value: number, min = 0, max = 100) => Math.min(max, Math.max(min, value));
 const finitePositive = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value) && value > 0;
+const validDate = (value: string): boolean => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const timestamp = Date.parse(`${value}T00:00:00.000Z`);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === value;
+};
+
+export const CFTC_INSTRUMENTS: Record<string, { code: string; name: string; unit: string }> = {
+  "GC=F": { code: "088691", name: "GOLD", unit: "100 TROY OUNCES" },
+  "SI=F": { code: "084691", name: "SILVER", unit: "5,000 TROY OUNCES" },
+  "CL=F": { code: "06765A", name: "WTI FINANCIAL CRUDE OIL", unit: "1,000 BARRELS" },
+  "NG=F": { code: "023651", name: "NAT GAS NYME", unit: "10,000 MMBTU'S" },
+  "HG=F": { code: "085692", name: "COPPER- #1", unit: "25,000 POUNDS" },
+  "ZC=F": { code: "002602", name: "CORN", unit: "5,000 BUSHELS" },
+  "ZW=F": { code: "001602", name: "WHEAT-SRW", unit: "5,000 BUSHELS" },
+  "ZS=F": { code: "005602", name: "SOYBEANS", unit: "5,000 BUSHELS" },
+  "KC=F": { code: "083731", name: "COFFEE C", unit: "37,500 POUNDS" },
+  "CT=F": { code: "033661", name: "COTTON NO. 2", unit: "50,000 POUNDS" },
+  "SB=F": { code: "080732", name: "SUGAR NO. 11", unit: "112,000 POUNDS" },
+  "PL=F": { code: "076651", name: "PLATINUM", unit: "50 TROY OUNCES" },
+  "PA=F": { code: "075651", name: "PALLADIUM", unit: "100 TROY OUNCES" },
+  "LE=F": { code: "057642", name: "LIVE CATTLE", unit: "40,000 POUNDS" },
+  "HE=F": { code: "054642", name: "LEAN HOGS", unit: "40,000 POUNDS" },
+};
+
+const USDA_COMMODITIES: Record<string, string> = {
+  "ZC=F": "Corn",
+  "ZW=F": "Wheat",
+  "ZS=F": "Soybeans",
+  "CT=F": "Cotton",
+  "SB=F": "Sugar",
+};
+
+function validSource(source: CommodityEvidenceSource, provider: string, asOf: string): boolean {
+  return source.title.length > 0
+    && source.asOf === asOf
+    && validDate(source.asOf)
+    && /^https:\/\//i.test(source.url)
+    && (provider === "EIA"
+      ? source.url === "https://ir.eia.gov/wpsr/table4.csv"
+        || source.url === "https://ir.eia.gov/ngs/wngsr.csv"
+      : provider === "USDA"
+        ? /^https:\/\/www\.usda\.gov\/sites\/default\/files\/documents\/oce-wasde-report-data-\d{4}-\d{2}(?:-V\d+)?\.csv$/i.test(source.url)
+        : provider === "CFTC"
+          ? source.url === "https://publicreportinghub.cftc.gov/Commitments-of-Traders/Legacy-Futures-Only/6dca-aqww"
+          : false);
+}
+
+function freshDate(asOf: string, now: Date, maxAgeDays: number): boolean {
+  if (!validDate(asOf)) return false;
+  const ageDays = (now.getTime() - Date.parse(`${asOf}T00:00:00.000Z`)) / 86_400_000;
+  return ageDays >= 0 && ageDays <= maxAgeDays;
+}
+
+function validateInventoryEvidence(
+  evidence: CommodityInventoryEvidence | null | undefined,
+  symbol: string,
+  now: Date,
+): CommodityInventoryEvidence | null {
+  if (!evidence || evidence.symbol !== symbol || evidence.instrument !== SUPPORTED_COMMODITIES[symbol]?.name) return null;
+  if (!Number.isFinite(evidence.value) || !freshDate(evidence.asOf, now, evidence.provider === "USDA" ? 60 : 14)) return null;
+  if (!validSource(evidence.source, evidence.provider, evidence.asOf)) return null;
+
+  if (evidence.provider === "EIA") {
+    if (symbol === "CL=F") {
+      return evidence.metric === "weekly-stock-change-percent"
+        && evidence.units === "million barrels"
+        && evidence.source.url === "https://ir.eia.gov/wpsr/table4.csv"
+        && evidence.source.unit === "million barrels"
+        ? evidence
+        : null;
+    }
+    if (symbol === "NG=F") {
+      return evidence.metric === "weekly-stock-change-percent"
+        && evidence.units === "billion cubic feet"
+        && evidence.source.url === "https://ir.eia.gov/ngs/wngsr.csv"
+        && evidence.source.unit === "billion cubic feet"
+        ? evidence
+        : null;
+    }
+    return null;
+  }
+
+  const expectedCommodity = USDA_COMMODITIES[symbol];
+  return expectedCommodity
+    && evidence.provider === "USDA"
+    && evidence.metric === "year-over-year-stocks-to-use-change-percent"
+    && evidence.units === "percent of total use"
+    && evidence.source.unit.length > 0
+    ? evidence
+    : null;
+}
+
+function validatePositioningEvidence(
+  evidence: CommodityPositioningEvidence | null | undefined,
+  symbol: string,
+  now: Date,
+): CommodityPositioningEvidence | null {
+  const expected = CFTC_INSTRUMENTS[symbol];
+  if (!evidence || !expected || evidence.provider !== "CFTC"
+    || evidence.symbol !== symbol
+    || evidence.instrument !== expected.name
+    || evidence.contractCode !== expected.code
+    || !evidence.units.toUpperCase().includes(expected.unit)
+    || !freshDate(evidence.asOf, now, 14)
+    || !validSource(evidence.source, evidence.provider, evidence.asOf)
+    || evidence.source.unit !== "contracts"
+    || !finitePositive(evidence.openInterest)
+    || !Number.isFinite(evidence.nonCommercialLong)
+    || !Number.isFinite(evidence.nonCommercialShort)
+    || evidence.nonCommercialLong < 0
+    || evidence.nonCommercialShort < 0) return null;
+  return evidence;
+}
 
 function periodReturn(closes: number[], sessions: number): number | null {
   if (closes.length <= sessions) return null;
@@ -88,10 +241,14 @@ function returnScore(value: number): number {
 }
 
 export function buildCommodityScore(input: CommodityScoreInput): CommodityScore | null {
-  const profile = SUPPORTED_COMMODITIES[input.symbol.trim().toUpperCase()];
+  const symbol = input.symbol.trim().toUpperCase();
+  const profile = SUPPORTED_COMMODITIES[symbol];
   if (!profile || !finitePositive(input.currentPrice)) return null;
   const closes = input.closes.filter(finitePositive).slice(-253);
   if (closes.length < 20) return null;
+  const now = input.now ?? new Date();
+  const inventory = validateInventoryEvidence(input.marketEvidence?.inventory, symbol, now);
+  const positioning = validatePositioningEvidence(input.marketEvidence?.positioning, symbol, now);
 
   const returns = closes.slice(1).flatMap((close, index) => {
     const previous = closes[index];
@@ -117,13 +274,35 @@ export function buildCommodityScore(input: CommodityScoreInput): CommodityScore 
     ) / trendWeight)
     : 50;
 
+  const inventoryScore = inventory
+    ? Math.round(clamp(50 - 50 * Math.tanh(inventory.value
+      / (inventory.metric === "weekly-stock-change-percent" ? 5 : 35))))
+    : null;
+  const positioningScore = positioning
+    ? Math.round(clamp(50 + 50 * Math.tanh(
+      (positioning.nonCommercialLong - positioning.nonCommercialShort)
+      / positioning.openInterest / 0.25,
+    )))
+    : null;
+
+  const weightedSignals = [
+    { score: trendScore, weight: 0.7 },
+    ...(inventoryScore === null ? [] : [{ score: inventoryScore, weight: 0.2 }]),
+    ...(positioningScore === null ? [] : [{ score: positioningScore, weight: 0.1 }]),
+  ];
+  const availableWeight = weightedSignals.reduce((sum, signal) => sum + signal.weight, 0);
+  const combinedScore = Math.round(weightedSignals.reduce(
+    (sum, signal) => sum + signal.score * signal.weight,
+    0,
+  ) / availableWeight);
   // Volatility dampens the directional signal; it does not imply that a volatile
-  // market is automatically bearish. Inventory, curve, and positioning are not
-  // included unless a dated provider source is available.
+  // market is automatically bearish. External evidence is used only when its
+  // instrument, source, units, date, and freshness pass validation above.
   const volatilityDampener = clamp(annualizedVolatilityPercent / 200, 0, 0.35);
-  const score = Math.round(50 + (trendScore - 50) * (1 - volatilityDampener));
+  const score = Math.round(50 + (combinedScore - 50) * (1 - volatilityDampener));
   const historyCoverage = Math.min(1, closes.length / 253);
-  const dataCoveragePercent = Math.round(2 / 6 * 100);
+  const factorsAvailable = 2 + Number(inventory !== null) + Number(positioning !== null);
+  const dataCoveragePercent = Math.round(factorsAvailable / 6 * 100);
   const confidence = Math.round(clamp(
     30 + historyCoverage * 35 * dataCoveragePercent / 100,
     30,
@@ -135,8 +314,9 @@ export function buildCommodityScore(input: CommodityScoreInput): CommodityScore 
       label: "Multi-period price trend",
       status: "available",
       score: trendScore,
-      weight: 1,
+      weight: weightedSignals[0].weight / availableWeight,
       detail: "Risk-adjusted directional signal from 1-, 3-, and 6-month returns where enough daily observations exist.",
+      sources: [],
     },
     {
       key: "realized-volatility",
@@ -145,20 +325,48 @@ export function buildCommodityScore(input: CommodityScoreInput): CommodityScore 
       score: Math.round(clamp(100 - annualizedVolatilityPercent / 1.5)),
       weight: 0,
       detail: "Higher means lower realized volatility. Daily volatility dampens the trend signal and lowers confidence; it is not directional by itself.",
+      sources: [],
     },
-    ...([
-      ["futures-curve", "Futures curve and roll effects"],
-      ["physical-balance", "Inventories and supply/demand"],
-      ["positioning", "Trader positioning"],
-      ["macro-weather-seasonality", "Macro, weather, and seasonality"],
-    ] as const).map(([key, label]) => ({
-      key,
-      label,
-      status: "unavailable" as const,
+    {
+      key: "futures-curve",
+      label: "Futures curve and roll effects",
+      status: "unavailable",
       score: null,
       weight: 0,
-      detail: "Not provided by the current market-data feed; excluded from the score.",
-    })),
+      detail: "No verified, dated exchange-settlement curve for individual contract months is available in this feed. Continuous-futures prices do not identify roll yield; excluded, not estimated.",
+      sources: [],
+    },
+    {
+      key: "physical-balance",
+      label: "Inventories and supply/demand",
+      status: inventory ? "available" : "unavailable",
+      score: inventoryScore,
+      weight: inventory ? (0.2 / availableWeight) : 0,
+      detail: inventory
+        ? inventory.source.observation
+        : "No fresh, instrument-matched official inventory or supply/demand release is available; excluded, not estimated.",
+      sources: inventory ? [inventory.source] : [],
+    },
+    {
+      key: "positioning",
+      label: "Trader positioning",
+      status: positioning ? "available" : "unavailable",
+      score: positioningScore,
+      weight: positioning ? (0.1 / availableWeight) : 0,
+      detail: positioning
+        ? `CFTC non-commercial net ${positioning.nonCommercialLong - positioning.nonCommercialShort} contracts out of ${positioning.openInterest} open interest; positioning is context, not a forecast.`
+        : "No fresh, exact-contract CFTC futures-only report is available; excluded, not estimated.",
+      sources: positioning ? [positioning.source] : [],
+    },
+    {
+      key: "macro-weather-seasonality",
+      label: "Macro, weather, and seasonality",
+      status: "unavailable",
+      score: null,
+      weight: 0,
+      detail: "No validated, instrument-specific dated source is included for this factor; excluded, not estimated.",
+      sources: [],
+    },
   ];
 
   return {
@@ -173,7 +381,7 @@ export function buildCommodityScore(input: CommodityScoreInput): CommodityScore 
     threeMonthReturnPercent: threeMonthReturnPercent === null ? null : Math.round(threeMonthReturnPercent * 10) / 10,
     sixMonthReturnPercent: sixMonthReturnPercent === null ? null : Math.round(sixMonthReturnPercent * 10) / 10,
     factors,
-  methodology: "Price-trend score uses weighted 1-, 3-, and 6-month returns, transformed to a 0–100 scale. Realized volatility dampens the directional signal. Yahoo continuous-futures history is provider-defined; contract roll effects are not independently verified. The current feed does not provide inventory, curve, positioning, or weather data; those factors are excluded, not estimated.",
+    methodology: "The deterministic score combines price trend (70%), official inventory/supply-demand evidence (20%), and CFTC non-commercial positioning (10%), renormalizing only across available validated inputs. Inventory and positioning are omitted when the exact source, instrument, unit, observation date, or freshness check fails. Realized volatility dampens direction but is not a directional factor. Futures-curve, macro, and weather effects are not inferred from continuous-futures history or commentary.",
   };
 }
 

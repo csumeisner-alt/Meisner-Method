@@ -387,7 +387,15 @@ type CommodityAnalysisPayload = {
   oneMonthReturnPercent: number | null;
   threeMonthReturnPercent: number | null;
   sixMonthReturnPercent: number | null;
-  factors: { key: string; label: string; status: 'available' | 'unavailable'; score: number | null; weight: number; detail: string }[];
+  factors: {
+    key: string;
+    label: string;
+    status: 'available' | 'unavailable';
+    score: number | null;
+    weight: number;
+    detail: string;
+    sources: { title: string; url: string; asOf: string; unit: string; observation: string }[];
+  }[];
   methodology: string;
   reasoning: string;
   risks: string[];
@@ -431,7 +439,7 @@ function CommodityAnalysisSections({ analysis }: { analysis: CommodityAnalysisPa
             Annualized volatility: {analysis.annualizedVolatilityPercent.toFixed(1)}%
           </Text>
           <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16 }}>
-            {analysis.observationCount} daily observations from {analysis.provider} through {analysis.historyAsOf ?? 'an unreported date'}. Score uses price history only; unavailable inventory, curve, positioning, and macro/weather inputs are excluded.
+            {analysis.observationCount} daily observations from {analysis.provider} through {analysis.historyAsOf ?? 'an unreported date'}. The score uses only dated inputs that passed source, instrument, unit, and freshness checks; unavailable factors are excluded.
           </Text>
         </View>
       </SectionCard>
@@ -443,6 +451,19 @@ function CommodityAnalysisSections({ analysis }: { analysis: CommodityAnalysisPa
                 {factor.label}{factor.score === null ? ' · Not available' : ` · ${factor.score}/100`}
               </Text>
               <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 15, marginTop: 3 }}>{factor.detail}</Text>
+              {factor.sources.map((source) => (
+                <Pressable
+                  key={`${source.url}-${source.asOf}`}
+                  accessibilityRole="link"
+                  accessibilityLabel={`Open source: ${source.title}, dated ${source.asOf}`}
+                  onPress={() => { void Linking.openURL(source.url).catch(() => {}); }}
+                  style={{ marginTop: 5 }}
+                >
+                  <Text style={{ color: colors.primary, fontSize: 10, lineHeight: 14, textDecorationLine: 'underline' }}>
+                    {source.title} · {source.asOf} · {source.unit}
+                  </Text>
+                </Pressable>
+              ))}
             </View>
           ))}
           <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 14, marginTop: 10 }}>{analysis.methodology}</Text>

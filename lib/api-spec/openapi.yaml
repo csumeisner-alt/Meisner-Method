@@ -751,7 +751,18 @@ components:
                   score: { type: integer, nullable: true }
                   weight: { type: number }
                   detail: { type: string }
-                required: [key, label, status, score, weight, detail]
+                  sources:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        title: { type: string }
+                        url: { type: string }
+                        asOf: { type: string, format: date }
+                        unit: { type: string }
+                        observation: { type: string }
+                      required: [title, url, asOf, unit, observation]
+                required: [key, label, status, score, weight, detail, sources]
             methodology: { type: string }
             reasoning: { type: string }
             risks: { type: array, items: { type: string } }

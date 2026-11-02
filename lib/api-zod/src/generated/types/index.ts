@@ -15,6 +15,7 @@ export * from './commodityAnalysisResult';
 export * from './commodityAnalysisResultAssetType';
 export * from './commodityAnalysisResultCommodityAnalysis';
 export * from './commodityAnalysisResultCommodityAnalysisFactorsItem';
+export * from './commodityAnalysisResultCommodityAnalysisFactorsItemSourcesItem';
 export * from './commodityAnalysisResultCommodityAnalysisFactorsItemStatus';
 export * from './commodityAnalysisResultCommodityAnalysisFamily';
 export * from './commodityAnalysisResultCommodityAnalysisNewsContext';

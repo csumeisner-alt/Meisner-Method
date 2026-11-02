@@ -428,6 +428,14 @@ export const CommodityAnalysisResultCommodityAnalysisNewsContextStatus = {
   unavailable: 'unavailable',
 } as const;
 
+export type CommodityAnalysisResultCommodityAnalysisFactorsItemSourcesItem = {
+  title: string;
+  url: string;
+  asOf: string;
+  unit: string;
+  observation: string;
+};
+
 export type CommodityAnalysisResultCommodityAnalysisFactorsItem = {
   key: string;
   label: string;
@@ -435,6 +443,7 @@ export type CommodityAnalysisResultCommodityAnalysisFactorsItem = {
   score: number | null;
   weight: number;
   detail: string;
+  sources: CommodityAnalysisResultCommodityAnalysisFactorsItemSourcesItem[];
 };
 
 export type CommodityAnalysisResultCommodityAnalysisNewsContextSourcesItem = {

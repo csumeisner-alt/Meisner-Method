@@ -322,8 +322,8 @@ export const getAnalyzeStockUrl = () => {
 }
 
 /**
- * Detects ETFs and returns fund-specific analysis; listed stocks retain technical, fundamental, behavioral, and rules-based recommendation analysis.
- * @summary Analyze a stock or ETF ticker
+ * Returns deterministic score-and-factor market analysis for supported commodity futures, fund-specific analysis for ETFs, or stock analysis for listed equities.
+ * @summary Analyze a listed ticker or supported commodity
  */
 export const analyzeStock = async (analyzeStockRequest: AnalyzeStockRequest, options?: RequestInit): Promise<AnalysisResult> => {
 
@@ -372,7 +372,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type AnalyzeStockMutationError = ErrorType<AnalysisError>
 
     /**
- * @summary Analyze a stock or ETF ticker
+ * @summary Analyze a listed ticker or supported commodity
  */
 export const useAnalyzeStock = <TError = ErrorType<AnalysisError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeStock>>, TError,{data: BodyType<AnalyzeStockRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}

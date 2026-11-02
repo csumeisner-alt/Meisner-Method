@@ -20,6 +20,7 @@ import {
   SUPPORTED_COMMODITIES,
   unavailableCommodityNews,
 } from "../lib/commodityAnalysis.js";
+import { fetchCommodityMarketEvidence } from "../lib/commodityMarketData.js";
 import { respondWithEtfAnalysis } from "../lib/etfAnalysisEndpoint.js";
 import { fallbackAiAnalysis, parseAiAnalysis } from "../lib/analysisResponse.js";
 import { logger } from "../lib/logger.js";
@@ -828,14 +829,18 @@ router.post("/stocks/analyze", async (req, res) => {
   try {
     req.log.info({ symbol }, "Analyzing stock");
 
-    const data = await fetchStockData(symbol);
     const commodity = SUPPORTED_COMMODITIES[symbol.trim().toUpperCase()];
+    const [data, marketEvidence] = await Promise.all([
+      fetchStockData(symbol),
+      commodity ? fetchCommodityMarketEvidence(symbol) : Promise.resolve(null),
+    ]);
     if (commodity) {
       const score = buildCommodityScore({
         symbol,
         closes: data.closes,
         currentPrice: data.currentPrice,
         historyAsOf: data.historyAsOf,
+        marketEvidence: marketEvidence ?? undefined,
       });
       if (!score) {
         res.status(422).json({
@@ -859,9 +864,10 @@ Three-month return: ${score.threeMonthReturnPercent ?? "unavailable"}%
 Six-month return: ${score.sixMonthReturnPercent ?? "unavailable"}%
 Annualized volatility: ${score.annualizedVolatilityPercent}%
 Unavailable factors: ${score.factors.filter((factor) => factor.status === "unavailable").map((factor) => factor.label).join(", ")}
+Validated score inputs: ${score.factors.filter((factor) => factor.status === "available").map((factor) => `${factor.label}: ${factor.score}/100; ${factor.detail}`).join("\n")}
 Recent news context (may be absent): ${newsContext.status === "available" ? newsContext.summary : "Unavailable; do not infer current events."}
 
-Return JSON with reasoning (2-3 concise paragraphs), risks (up to 4 strings), and strengths (up to 4 strings). Clearly state that supply/demand and curve data are not included when unavailable.`;
+Return JSON with reasoning (2-3 concise paragraphs), risks (up to 4 strings), and strengths (up to 4 strings). This is commentary only: do not change, reweight, or supplement the deterministic score using commentary or news. Clearly state when supply/demand or curve data are unavailable.`;
       let explanation = fallbackAiAnalysis();
       try {
         const completion = await openai.chat.completions.create({
