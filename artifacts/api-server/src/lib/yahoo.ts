@@ -27,6 +27,7 @@ export interface YahooStockData {
   week52Low: number;
   closes: number[];
   volumes: number[];
+  historyAsOf: string | null;
   rsi: number;
   macd: { macd: number; signal: number; histogram: number };
   ma20: number;
@@ -181,6 +182,7 @@ export async function fetchStockData(symbol: string): Promise<YahooStockData> {
     week52Low: raw["week52Low"] ?? support,
     closes,
     volumes,
+    historyAsOf: typeof raw["historyAsOf"] === "string" ? raw["historyAsOf"] : null,
     rsi,
     macd,
     ma20,

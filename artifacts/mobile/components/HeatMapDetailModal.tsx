@@ -278,6 +278,8 @@ export function HeatMapDetailModal({
   onAnalyzeStock,
   canAnalyzeEtf,
   onAnalyzeEtf,
+  canAnalyzeCommodity,
+  onAnalyzeCommodity,
 }: {
   quote: HeatMapQuote | null;
   quoteUnavailable: boolean;
@@ -289,6 +291,8 @@ export function HeatMapDetailModal({
   onAnalyzeStock: () => void;
   canAnalyzeEtf: boolean;
   onAnalyzeEtf: () => void;
+  canAnalyzeCommodity: boolean;
+  onAnalyzeCommodity: () => void;
 }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -506,6 +510,19 @@ export function HeatMapDetailModal({
               >
                 <MaterialCommunityIcons name="chart-box-outline" size={18} color={colors.primaryForeground} />
                 <Text style={[styles.analyzeStockText, { color: colors.primaryForeground }]}>Run AI ETF analysis</Text>
+                <MaterialCommunityIcons name="arrow-right" size={16} color={colors.primaryForeground} />
+              </Pressable>
+            )}
+            {canAnalyzeCommodity && isCommodity && (
+              <Pressable
+                testID="heat-map-detail-analyze-commodity"
+                accessibilityRole="button"
+                accessibilityLabel={`Run AI commodity analysis for ${quote.symbol}`}
+                onPress={onAnalyzeCommodity}
+                style={[styles.analyzeStockButton, { backgroundColor: colors.primary }]}
+              >
+                <MaterialCommunityIcons name="chart-box-outline" size={18} color={colors.primaryForeground} />
+                <Text style={[styles.analyzeStockText, { color: colors.primaryForeground }]}>Run AI commodity analysis</Text>
                 <MaterialCommunityIcons name="arrow-right" size={16} color={colors.primaryForeground} />
               </Pressable>
             )}

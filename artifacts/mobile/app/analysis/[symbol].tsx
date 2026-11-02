@@ -5,6 +5,7 @@ import {
   ScrollView,
   Modal,
   Pressable,
+  Linking,
   TouchableOpacity,
   StyleSheet,
   Platform,
@@ -374,6 +375,119 @@ type EtfAnalysisPayload = {
   provider: string;
   asOf: string;
 };
+
+type CommodityAnalysisPayload = {
+  score: number;
+  confidence: number;
+  dataCoveragePercent: number;
+  observationCount: number;
+  historyAsOf: string | null;
+  family: 'metals' | 'energy' | 'agriculture' | 'livestock';
+  annualizedVolatilityPercent: number;
+  oneMonthReturnPercent: number | null;
+  threeMonthReturnPercent: number | null;
+  sixMonthReturnPercent: number | null;
+  factors: { key: string; label: string; status: 'available' | 'unavailable'; score: number | null; weight: number; detail: string }[];
+  methodology: string;
+  reasoning: string;
+  risks: string[];
+  strengths: string[];
+  newsContext: {
+    status: 'available' | 'unavailable';
+    summary: string | null;
+    retrievedAt: string | null;
+    sources: { title: string; url: string; publishedAt: string | null }[];
+  };
+  provider: string;
+};
+
+function CommodityAnalysisSections({ analysis }: { analysis: CommodityAnalysisPayload }) {
+  const colors = useColors();
+  const scoreColor = analysis.score >= 65 ? colors.buyColor : analysis.score <= 40 ? colors.sellColor : colors.holdColor;
+  const rows = [
+    ['1-month return', analysis.oneMonthReturnPercent],
+    ['3-month return', analysis.threeMonthReturnPercent],
+    ['6-month return', analysis.sixMonthReturnPercent],
+  ] as const;
+  return (
+    <View testID="commodity-analysis-result" style={{ gap: 12 }}>
+      <SectionCard title="COMMODITY MARKET SCORE" icon={<MaterialCommunityIcons name="chart-line" size={16} color={colors.primary} />}>
+        <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <Text testID="commodity-analysis-score" style={{ color: scoreColor, fontSize: 38, fontFamily: 'Inter_700Bold' }}>{analysis.score}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold' }}>Risk-adjusted price trend</Text>
+              <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Confidence {analysis.confidence}/100 · {analysis.dataCoveragePercent}% factor coverage</Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+            {rows.map(([label, value]) => (
+              <Text key={label} style={{ color: colors.mutedForeground, fontSize: 12 }}>
+                {label}: {value === null ? '—' : `${value > 0 ? '+' : ''}${value.toFixed(1)}%`}
+              </Text>
+            ))}
+          </View>
+          <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+            Annualized volatility: {analysis.annualizedVolatilityPercent.toFixed(1)}%
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16 }}>
+            {analysis.observationCount} daily observations from {analysis.provider} through {analysis.historyAsOf ?? 'an unreported date'}. Score uses price history only; unavailable inventory, curve, positioning, and macro/weather inputs are excluded.
+          </Text>
+        </View>
+      </SectionCard>
+      <SectionCard title="FACTOR COVERAGE" icon={<MaterialCommunityIcons name="database-check-outline" size={16} color={colors.primary} />}>
+        <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
+          {analysis.factors.map((factor) => (
+            <View key={factor.key} testID={`commodity-analysis-factor-${factor.key}`} style={{ paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              <Text style={{ color: factor.status === 'available' ? colors.foreground : colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>
+                {factor.label}{factor.score === null ? ' · Not available' : ` · ${factor.score}/100`}
+              </Text>
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 15, marginTop: 3 }}>{factor.detail}</Text>
+            </View>
+          ))}
+          <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 14, marginTop: 10 }}>{analysis.methodology}</Text>
+        </View>
+      </SectionCard>
+      <SectionCard title="AI MARKET CONTEXT" icon={<MaterialCommunityIcons name="brain" size={16} color={colors.primary} />}>
+        <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 12 }}>
+          <Text style={{ color: colors.foreground, fontSize: 13, lineHeight: 19 }}>{analysis.reasoning}</Text>
+          {!!analysis.strengths.length && <View>
+            <Text style={{ color: colors.buyColor, fontFamily: 'Inter_600SemiBold', fontSize: 12, marginBottom: 4 }}>SUPPORTIVE FACTORS</Text>
+            {analysis.strengths.map((item, index) => <Text key={`${index}-${item}`} style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 17 }}>• {item}</Text>)}
+          </View>}
+          {!!analysis.risks.length && <View>
+            <Text style={{ color: colors.sellColor, fontFamily: 'Inter_600SemiBold', fontSize: 12, marginBottom: 4 }}>RISKS</Text>
+            {analysis.risks.map((item, index) => <Text key={`${index}-${item}`} style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 17 }}>• {item}</Text>)}
+          </View>}
+        </View>
+      </SectionCard>
+      <SectionCard title="RECENT NEWS" icon={<MaterialCommunityIcons name="web" size={16} color={colors.primary} />}>
+        <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 8 }}>
+          {analysis.newsContext.status === 'available' ? (
+            <>
+              <Text style={{ color: colors.foreground, fontSize: 12, lineHeight: 18 }}>{analysis.newsContext.summary}</Text>
+              <Text style={{ color: colors.mutedForeground, fontSize: 10 }}>
+                Retrieved {analysis.newsContext.retrievedAt ? new Date(analysis.newsContext.retrievedAt).toLocaleString() : 'recently'} · News is context, not a score input.
+              </Text>
+              {analysis.newsContext.sources.map((source) => (
+                <Pressable key={source.url} accessibilityRole="link" accessibilityLabel={`Open news source: ${source.title}`} onPress={() => { void Linking.openURL(source.url).catch(() => {}); }}>
+                  <Text style={{ color: colors.primary, fontSize: 12, lineHeight: 17, textDecorationLine: 'underline' }}>
+                    {source.title}{source.publishedAt ? ` · ${source.publishedAt}` : ''}
+                  </Text>
+                </Pressable>
+              ))}
+            </>
+          ) : (
+            <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Recent news search is unavailable. The market score is based on price history and does not use news sentiment.</Text>
+          )}
+        </View>
+      </SectionCard>
+      <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 14 }}>
+        Educational market context only—not a forecast, personalized advice, or a buy/sell recommendation.
+      </Text>
+    </View>
+  );
+}
 
 function EtfAnalysisSections({ fund, colors, symbol }: {
   fund: EtfAnalysisPayload;
@@ -2317,7 +2431,7 @@ export default function AnalysisScreen() {
   };
 
   // ─── Header ──────────────────────────────────────────────────────────────
-  const renderHeader = (analysis?: StockAnalysis) => {
+  const renderHeader = (analysis?: Pick<StockAnalysis, 'companyName' | 'currentPrice' | 'priceChange' | 'priceChangePercent'>) => {
     const change = analysis?.priceChange ?? 0;
     const changePct = analysis?.priceChangePercent ?? 0;
     const positive = change >= 0;
@@ -2441,7 +2555,24 @@ export default function AnalysisScreen() {
   const result = response as unknown as {
     assetType?: string;
     etfAnalysis?: EtfAnalysisPayload;
+    commodityAnalysis?: CommodityAnalysisPayload;
   } & Pick<StockAnalysis, 'symbol' | 'companyName' | 'exchange' | 'currency' | 'currentPrice' | 'priceChange' | 'priceChangePercent' | 'volume' | 'marketCap' | 'week52High' | 'week52Low'>;
+  if (result.assetType === 'commodity' && result.commodityAnalysis) {
+    return (
+      <AmericanSteelBackground>
+        <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
+          {renderHeader(result)}
+          <ScrollView
+            style={{ flex: 1, minHeight: 0 }}
+            contentContainerStyle={[styles.scroll, { paddingBottom: botPad + 24 }]}
+            showsVerticalScrollIndicator={false}
+          >
+            <CommodityAnalysisSections analysis={result.commodityAnalysis} />
+          </ScrollView>
+        </View>
+      </AmericanSteelBackground>
+    );
+  }
   if (result.assetType === 'etf' && result.etfAnalysis) {
     return (
       <AmericanSteelBackground>

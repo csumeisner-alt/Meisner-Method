@@ -103,6 +103,7 @@ def main():
             "week52Low": float(info.year_low) if getattr(info, "year_low", None) else min(closes[-52:] if len(closes) >= 52 else closes),
             "closes": closes,
             "volumes": volumes,
+            "historyAsOf": hist.index[-1].date().isoformat() if len(hist.index) else None,
             # Fundamentals from full_info
             "pe": float(full_info["trailingPE"]) if full_info.get("trailingPE") is not None else None,
             "pb": float(full_info["priceToBook"]) if full_info.get("priceToBook") is not None else None,

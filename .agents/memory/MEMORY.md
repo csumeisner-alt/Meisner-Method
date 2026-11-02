@@ -70,3 +70,4 @@
 - [API route test seams](api-route-test-seams.md) — extract injectable response handlers when source-run tests cannot resolve route imports that exist only after bundling.
 - [React Native Web accordion tests](react-native-web-accordion-tests.md) — verify collapsed evidence by content visibility; this runtime may not reflect `accessibilityState.expanded` as `aria-expanded`.
 - [Post-merge Drizzle safety](post-merge-drizzle-safety.md) — inspect non-TTY push logs for data-loss prompts; never force an unreviewed schema diff.
+- [OpenAI Responses web search](openai-responses-web-search.md) — Replit's configured OpenAI proxy supports `web_search` and returns source citations from Responses.

@@ -78,6 +78,17 @@ export const analyzeStockResponseTwoEtfAnalysisTopHoldingsReportedCountMin = 0;
 
 export const analyzeStockResponseTwoEtfAnalysisTrackingComparisonOneMonthlySamplesMin = 2;
 
+export const analyzeStockResponseThreeCommodityAnalysisScoreMin = 0;
+export const analyzeStockResponseThreeCommodityAnalysisScoreMax = 100;
+
+export const analyzeStockResponseThreeCommodityAnalysisConfidenceMin = 0;
+export const analyzeStockResponseThreeCommodityAnalysisConfidenceMax = 100;
+
+export const analyzeStockResponseThreeCommodityAnalysisDataCoveragePercentMin = 0;
+export const analyzeStockResponseThreeCommodityAnalysisDataCoveragePercentMax = 100;
+
+export const analyzeStockResponseThreeCommodityAnalysisObservationCountMin = 0;
+
 
 
 export const AnalyzeStockResponse = zod.union([zod.object({
@@ -253,6 +264,54 @@ export const AnalyzeStockResponse = zod.union([zod.object({
   "provider": zod.string(),
   "asOf": zod.coerce.date()
 }).describe('Fund-specific provider data, historical comparisons, and illustrative scenarios. Null means unavailable.')
+}),zod.object({
+  "assetType": zod.enum(['commodity']),
+  "symbol": zod.string(),
+  "companyName": zod.string(),
+  "exchange": zod.string(),
+  "currency": zod.string(),
+  "currentPrice": zod.number(),
+  "priceChange": zod.number(),
+  "priceChangePercent": zod.number(),
+  "volume": zod.number(),
+  "marketCap": zod.number().nullable(),
+  "week52High": zod.number(),
+  "week52Low": zod.number(),
+  "commodityAnalysis": zod.object({
+  "score": zod.number().min(analyzeStockResponseThreeCommodityAnalysisScoreMin).max(analyzeStockResponseThreeCommodityAnalysisScoreMax),
+  "confidence": zod.number().min(analyzeStockResponseThreeCommodityAnalysisConfidenceMin).max(analyzeStockResponseThreeCommodityAnalysisConfidenceMax),
+  "dataCoveragePercent": zod.number().min(analyzeStockResponseThreeCommodityAnalysisDataCoveragePercentMin).max(analyzeStockResponseThreeCommodityAnalysisDataCoveragePercentMax),
+  "observationCount": zod.number().min(analyzeStockResponseThreeCommodityAnalysisObservationCountMin),
+  "historyAsOf": zod.string().nullable(),
+  "family": zod.enum(['metals', 'energy', 'agriculture', 'livestock']),
+  "annualizedVolatilityPercent": zod.number(),
+  "oneMonthReturnPercent": zod.number().nullable(),
+  "threeMonthReturnPercent": zod.number().nullable(),
+  "sixMonthReturnPercent": zod.number().nullable(),
+  "factors": zod.array(zod.object({
+  "key": zod.string(),
+  "label": zod.string(),
+  "status": zod.enum(['available', 'unavailable']),
+  "score": zod.number().nullable(),
+  "weight": zod.number(),
+  "detail": zod.string()
+})),
+  "methodology": zod.string(),
+  "reasoning": zod.string(),
+  "risks": zod.array(zod.string()),
+  "strengths": zod.array(zod.string()),
+  "newsContext": zod.object({
+  "status": zod.enum(['available', 'unavailable']),
+  "summary": zod.string().nullable(),
+  "retrievedAt": zod.string().nullable(),
+  "sources": zod.array(zod.object({
+  "title": zod.string(),
+  "url": zod.string(),
+  "publishedAt": zod.string().nullable()
+}))
+}),
+  "provider": zod.string()
+})
 })])
 
 

@@ -395,7 +395,111 @@ export interface EtfAnalysisResult {
   etfAnalysis: EtfAnalysis;
 }
 
-export type AnalysisResult = StockAnalysis | EtfAnalysisResult;
+export type CommodityAnalysisResultAssetType = typeof CommodityAnalysisResultAssetType[keyof typeof CommodityAnalysisResultAssetType];
+
+
+export const CommodityAnalysisResultAssetType = {
+  commodity: 'commodity',
+} as const;
+
+export type CommodityAnalysisResultCommodityAnalysisFamily = typeof CommodityAnalysisResultCommodityAnalysisFamily[keyof typeof CommodityAnalysisResultCommodityAnalysisFamily];
+
+
+export const CommodityAnalysisResultCommodityAnalysisFamily = {
+  metals: 'metals',
+  energy: 'energy',
+  agriculture: 'agriculture',
+  livestock: 'livestock',
+} as const;
+
+export type CommodityAnalysisResultCommodityAnalysisFactorsItemStatus = typeof CommodityAnalysisResultCommodityAnalysisFactorsItemStatus[keyof typeof CommodityAnalysisResultCommodityAnalysisFactorsItemStatus];
+
+
+export const CommodityAnalysisResultCommodityAnalysisFactorsItemStatus = {
+  available: 'available',
+  unavailable: 'unavailable',
+} as const;
+
+export type CommodityAnalysisResultCommodityAnalysisNewsContextStatus = typeof CommodityAnalysisResultCommodityAnalysisNewsContextStatus[keyof typeof CommodityAnalysisResultCommodityAnalysisNewsContextStatus];
+
+
+export const CommodityAnalysisResultCommodityAnalysisNewsContextStatus = {
+  available: 'available',
+  unavailable: 'unavailable',
+} as const;
+
+export type CommodityAnalysisResultCommodityAnalysisFactorsItem = {
+  key: string;
+  label: string;
+  status: CommodityAnalysisResultCommodityAnalysisFactorsItemStatus;
+  score: number | null;
+  weight: number;
+  detail: string;
+};
+
+export type CommodityAnalysisResultCommodityAnalysisNewsContextSourcesItem = {
+  title: string;
+  url: string;
+  publishedAt: string | null;
+};
+
+export type CommodityAnalysisResultCommodityAnalysisNewsContext = {
+  status: CommodityAnalysisResultCommodityAnalysisNewsContextStatus;
+  summary: string | null;
+  retrievedAt: string | null;
+  sources: CommodityAnalysisResultCommodityAnalysisNewsContextSourcesItem[];
+};
+
+export type CommodityAnalysisResultCommodityAnalysis = {
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  score: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  confidence: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  dataCoveragePercent: number;
+  /** @minimum 0 */
+  observationCount: number;
+  historyAsOf: string | null;
+  family: CommodityAnalysisResultCommodityAnalysisFamily;
+  annualizedVolatilityPercent: number;
+  oneMonthReturnPercent: number | null;
+  threeMonthReturnPercent: number | null;
+  sixMonthReturnPercent: number | null;
+  factors: CommodityAnalysisResultCommodityAnalysisFactorsItem[];
+  methodology: string;
+  reasoning: string;
+  risks: string[];
+  strengths: string[];
+  newsContext: CommodityAnalysisResultCommodityAnalysisNewsContext;
+  provider: string;
+};
+
+export interface CommodityAnalysisResult {
+  assetType: CommodityAnalysisResultAssetType;
+  symbol: string;
+  companyName: string;
+  exchange: string;
+  currency: string;
+  currentPrice: number;
+  priceChange: number;
+  priceChangePercent: number;
+  volume: number;
+  marketCap: number | null;
+  week52High: number;
+  week52Low: number;
+  commodityAnalysis: CommodityAnalysisResultCommodityAnalysis;
+}
+
+export type AnalysisResult = StockAnalysis | EtfAnalysisResult | CommodityAnalysisResult;
 
 export type CryptoSupplyHistoryProvider = typeof CryptoSupplyHistoryProvider[keyof typeof CryptoSupplyHistoryProvider];
 

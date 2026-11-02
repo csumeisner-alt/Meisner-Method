@@ -2056,6 +2056,7 @@ export default function HeatMapScreen() {
           visible={selectedQuote !== null}
           canAnalyzeStock={(category === 'stocks' || category === 'custom') && selectedQuote?.assetType === 'stock'}
           canAnalyzeEtf={(category === 'etfs' || category === 'custom') && selectedQuote?.assetType === 'etf'}
+          canAnalyzeCommodity={(category === 'commodities' || category === 'custom') && selectedQuote?.assetType === 'commodity'}
           onClose={() => setSelectedQuote(null)}
           onAnalyzeStock={() => {
             if ((category !== 'stocks' && category !== 'custom') || selectedQuote?.assetType !== 'stock') return;
@@ -2065,6 +2066,12 @@ export default function HeatMapScreen() {
           }}
           onAnalyzeEtf={() => {
             if ((category !== 'etfs' && category !== 'custom') || selectedQuote?.assetType !== 'etf') return;
+            const analysisSymbol = selectedQuote.symbol;
+            setSelectedQuote(null);
+            setTimeout(() => router.push(`/analysis/${encodeURIComponent(analysisSymbol)}`), 350);
+          }}
+          onAnalyzeCommodity={() => {
+            if ((category !== 'commodities' && category !== 'custom') || selectedQuote?.assetType !== 'commodity') return;
             const analysisSymbol = selectedQuote.symbol;
             setSelectedQuote(null);
             setTimeout(() => router.push(`/analysis/${encodeURIComponent(analysisSymbol)}`), 350);

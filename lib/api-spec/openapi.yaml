@@ -105,8 +105,8 @@ paths:
     post:
       operationId: analyzeStock
       tags: [stocks]
-      summary: Analyze a stock or ETF ticker
-      description: Detects ETFs and returns fund-specific analysis; listed stocks retain technical, fundamental, behavioral, and rules-based recommendation analysis.
+      summary: Analyze a listed ticker or supported commodity
+      description: Returns deterministic score-and-factor market analysis for supported commodity futures, fund-specific analysis for ETFs, or stock analysis for listed equities.
       requestBody:
         required: true
         content:
@@ -115,7 +115,7 @@ paths:
               $ref: "#/components/schemas/AnalyzeStockRequest"
       responses:
         "200":
-          description: Stock or fund-specific ETF analysis result
+          description: Stock, ETF, or supported commodity analysis result
           content:
             application/json:
               schema:
@@ -704,11 +704,77 @@ components:
       oneOf:
         - $ref: "#/components/schemas/StockAnalysis"
         - $ref: "#/components/schemas/EtfAnalysisResult"
+        - $ref: "#/components/schemas/CommodityAnalysisResult"
       discriminator:
         propertyName: assetType
         mapping:
           stock: "#/components/schemas/StockAnalysis"
           etf: "#/components/schemas/EtfAnalysisResult"
+          commodity: "#/components/schemas/CommodityAnalysisResult"
+
+    CommodityAnalysisResult:
+      type: object
+      properties:
+        assetType: { type: string, enum: [commodity] }
+        symbol: { type: string }
+        companyName: { type: string }
+        exchange: { type: string }
+        currency: { type: string }
+        currentPrice: { type: number }
+        priceChange: { type: number }
+        priceChangePercent: { type: number }
+        volume: { type: number }
+        marketCap: { type: number, nullable: true }
+        week52High: { type: number }
+        week52Low: { type: number }
+        commodityAnalysis:
+          type: object
+          properties:
+            score: { type: integer, minimum: 0, maximum: 100 }
+            confidence: { type: integer, minimum: 0, maximum: 100 }
+            dataCoveragePercent: { type: integer, minimum: 0, maximum: 100 }
+            observationCount: { type: integer, minimum: 0 }
+            historyAsOf: { type: string, nullable: true }
+            family: { type: string, enum: [metals, energy, agriculture, livestock] }
+            annualizedVolatilityPercent: { type: number }
+            oneMonthReturnPercent: { type: number, nullable: true }
+            threeMonthReturnPercent: { type: number, nullable: true }
+            sixMonthReturnPercent: { type: number, nullable: true }
+            factors:
+              type: array
+              items:
+                type: object
+                properties:
+                  key: { type: string }
+                  label: { type: string }
+                  status: { type: string, enum: [available, unavailable] }
+                  score: { type: integer, nullable: true }
+                  weight: { type: number }
+                  detail: { type: string }
+                required: [key, label, status, score, weight, detail]
+            methodology: { type: string }
+            reasoning: { type: string }
+            risks: { type: array, items: { type: string } }
+            strengths: { type: array, items: { type: string } }
+            newsContext:
+              type: object
+              properties:
+                status: { type: string, enum: [available, unavailable] }
+                summary: { type: string, nullable: true }
+                retrievedAt: { type: string, nullable: true }
+                sources:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      title: { type: string }
+                      url: { type: string }
+                      publishedAt: { type: string, nullable: true }
+                    required: [title, url, publishedAt]
+              required: [status, summary, retrievedAt, sources]
+            provider: { type: string }
+          required: [score, confidence, dataCoveragePercent, observationCount, historyAsOf, family, annualizedVolatilityPercent, oneMonthReturnPercent, threeMonthReturnPercent, sixMonthReturnPercent, factors, methodology, reasoning, risks, strengths, newsContext, provider]
+      required: [assetType, symbol, companyName, exchange, currency, currentPrice, priceChange, priceChangePercent, volume, marketCap, week52High, week52Low, commodityAnalysis]
 
     EtfAnalysisResult:
       type: object

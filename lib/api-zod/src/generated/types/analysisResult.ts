@@ -5,7 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { CommodityAnalysisResult } from './commodityAnalysisResult';
 import type { EtfAnalysisResult } from './etfAnalysisResult';
 import type { StockAnalysis } from './stockAnalysis';
 
-export type AnalysisResult = StockAnalysis | EtfAnalysisResult;
+export type AnalysisResult = StockAnalysis | EtfAnalysisResult | CommodityAnalysisResult;

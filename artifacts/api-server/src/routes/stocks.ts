@@ -14,6 +14,12 @@ import {
 import { searchYahooHeatMapInstruments, searchYahooStocks } from "../lib/stockSymbolSearch.js";
 import { normalizeDividendYield } from "../lib/dividendYield.js";
 import { buildStockRecommendation } from "../lib/stockRecommendation.js";
+import {
+  buildCommodityScore,
+  parseCommodityNewsSources,
+  SUPPORTED_COMMODITIES,
+  unavailableCommodityNews,
+} from "../lib/commodityAnalysis.js";
 import { respondWithEtfAnalysis } from "../lib/etfAnalysisEndpoint.js";
 import { fallbackAiAnalysis, parseAiAnalysis } from "../lib/analysisResponse.js";
 import { logger } from "../lib/logger.js";
@@ -53,6 +59,9 @@ const HEAT_MAP_TTL = 2 * 60 * 1000;
 const MARKET_BREADTH_TTL = 60 * 1000;
 const MARKET_PULSE_SESSION_TTL = 30 * 1000;
 const CRYPTO_SUPPLY_HISTORY_TTL = 6 * 60 * 60 * 1000;
+const COMMODITY_NEWS_TTL = 30 * 60 * 1000;
+const commodityNewsCache = new Map<string, { data: ReturnType<typeof unavailableCommodityNews>; expiresAt: number }>();
+const commodityNewsRequests = new Map<string, Promise<ReturnType<typeof unavailableCommodityNews>>>();
 const heatMapCache = new Map<string, { data: HeatMapResponse; ts: number }>();
 const heatMapRequests = new Map<string, Promise<HeatMapResponse>>();
 let marketBreadthCache: { data: HeatMapResponse; ts: number } | null = null;
@@ -230,6 +239,51 @@ router.get("/tts", async (req, res) => {
 
 const fmt = (n: number | null, d = 2) => (n != null ? n.toFixed(d) : "N/A");
 const pct = (n: number | null) => (n != null ? `${(n * 100).toFixed(1)}%` : "N/A");
+
+async function fetchCommodityNews(symbol: string, name: string) {
+  const cacheKey = symbol.toUpperCase();
+  const cached = commodityNewsCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+  const pending = commodityNewsRequests.get(cacheKey);
+  if (pending) return pending;
+
+  const request = (async () => {
+    const response = await openai.responses.create({
+      model: "gpt-4o-mini",
+      tools: [{ type: "web_search" }],
+      include: ["web_search_call.action.sources"],
+      input: `Search for credible news published in the last 7 days about the ${name} futures market (${symbol}). Summarize only specific, current events that could affect supply, demand, inventories, weather, policy, or market structure. Do not predict prices or infer direction from the number of mentions. If relevant current reporting is unavailable, say so.`,
+    }, { timeout: 18_000 });
+
+    const searchCalls = response.output.filter((item) => item.type === "web_search_call");
+    const rawSources = searchCalls.flatMap((item) => (
+      item.action.type === "search" ? item.action.sources ?? [] : []
+    ));
+    const sources = parseCommodityNewsSources(rawSources);
+    const summary = response.output_text.trim();
+    return summary && sources.length
+      ? { status: "available" as const, summary: summary.slice(0, 1200), retrievedAt: new Date().toISOString(), sources }
+      : unavailableCommodityNews();
+  })();
+
+  commodityNewsRequests.set(cacheKey, request);
+  try {
+    const data = await request;
+    commodityNewsCache.set(cacheKey, { data, expiresAt: Date.now() + COMMODITY_NEWS_TTL });
+    if (commodityNewsCache.size > 64) {
+      const oldest = commodityNewsCache.keys().next().value;
+      if (oldest !== undefined) commodityNewsCache.delete(oldest);
+    }
+    return data;
+  } catch (err) {
+    logger.warn({ err, symbol }, "Commodity news search unavailable");
+    const data = unavailableCommodityNews();
+    commodityNewsCache.set(cacheKey, { data, expiresAt: Date.now() + COMMODITY_NEWS_TTL });
+    return data;
+  } finally {
+    if (commodityNewsRequests.get(cacheKey) === request) commodityNewsRequests.delete(cacheKey);
+  }
+}
 
 function orderCustomHeatMapResponse(data: HeatMapResponse, symbols: string[]): HeatMapResponse {
   if (data.category !== "custom") return data;
@@ -775,6 +829,78 @@ router.post("/stocks/analyze", async (req, res) => {
     req.log.info({ symbol }, "Analyzing stock");
 
     const data = await fetchStockData(symbol);
+    const commodity = SUPPORTED_COMMODITIES[symbol.trim().toUpperCase()];
+    if (commodity) {
+      const score = buildCommodityScore({
+        symbol,
+        closes: data.closes,
+        currentPrice: data.currentPrice,
+        historyAsOf: data.historyAsOf,
+      });
+      if (!score) {
+        res.status(422).json({
+          error: "INSUFFICIENT_COMMODITY_HISTORY",
+          message: "There is not enough valid daily price history to score this commodity.",
+        });
+        return;
+      }
+
+      const newsContext = await fetchCommodityNews(symbol, commodity.name);
+      const explanationPrompt = `Explain this rules-based commodity market score. The numeric score and factors are locked; do not change them, invent price targets, or call this personalized advice.
+
+Commodity: ${commodity.name} (${symbol}), family: ${commodity.family}
+Price: ${data.currentPrice} ${data.currency}
+History through: ${score.historyAsOf ?? "date unavailable"}
+Score: ${score.score}/100
+Confidence: ${score.confidence}/100
+Coverage: ${score.dataCoveragePercent}% of defined factor groups currently have data
+One-month return: ${score.oneMonthReturnPercent ?? "unavailable"}%
+Three-month return: ${score.threeMonthReturnPercent ?? "unavailable"}%
+Six-month return: ${score.sixMonthReturnPercent ?? "unavailable"}%
+Annualized volatility: ${score.annualizedVolatilityPercent}%
+Unavailable factors: ${score.factors.filter((factor) => factor.status === "unavailable").map((factor) => factor.label).join(", ")}
+Recent news context (may be absent): ${newsContext.status === "available" ? newsContext.summary : "Unavailable; do not infer current events."}
+
+Return JSON with reasoning (2-3 concise paragraphs), risks (up to 4 strings), and strengths (up to 4 strings). Clearly state that supply/demand and curve data are not included when unavailable.`;
+      let explanation = fallbackAiAnalysis();
+      try {
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          max_tokens: 1200,
+          temperature: 0,
+          messages: [{ role: "user", content: explanationPrompt }],
+          response_format: { type: "json_object" },
+        });
+        explanation = parseAiAnalysis(completion.choices[0]?.message?.content ?? "")
+          ?? fallbackAiAnalysis();
+      } catch (err) {
+        req.log.warn({ err, symbol }, "Commodity AI explanation unavailable");
+      }
+
+      res.json({
+        assetType: "commodity",
+        symbol: data.symbol,
+        companyName: commodity.name,
+        exchange: data.exchange,
+        currency: data.currency,
+        currentPrice: data.currentPrice,
+        priceChange: data.priceChange,
+        priceChangePercent: data.priceChangePercent,
+        volume: data.volume,
+        marketCap: null,
+        week52High: data.week52High,
+        week52Low: data.week52Low,
+        commodityAnalysis: {
+          ...score,
+          reasoning: explanation.reasoning,
+          risks: explanation.risks,
+          strengths: explanation.strengths,
+          newsContext,
+          provider: "Yahoo Finance",
+        },
+      });
+      return;
+    }
     if (data.quoteType === "ETF") {
       await respondWithEtfAnalysis(res, data, {
         async fetchEtfInfo(etfSymbol) {
