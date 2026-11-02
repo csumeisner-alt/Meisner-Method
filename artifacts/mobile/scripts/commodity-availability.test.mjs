@@ -7,6 +7,11 @@ const detailModal = readFileSync(new URL("../components/HeatMapDetailModal.tsx",
 assert.match(heatMap, /const unavailableMapAssets = responseMatches && category === 'commodities'/);
 assert.match(heatMap, /testID="heat-map-unavailable-map-assets"/);
 assert.match(heatMap, /testID="heat-map-unavailable-map-divider"/);
+assert.match(heatMap, /testID="heat-map-unavailable-map-note"/);
+assert.match(heatMap, /These instruments will be displayed as usual when a quote is available\./);
+const availabilityNoteIndex = heatMap.indexOf('testID="heat-map-unavailable-map-note"');
+const unavailableTilesIndex = heatMap.indexOf('<View style={[styles.honeycomb', availabilityNoteIndex);
+assert.ok(availabilityNoteIndex >= 0 && unavailableTilesIndex > availabilityNoteIndex);
 assert.match(heatMap, /testID=\{`heat-map-unavailable-hex-\$\{symbol\}`\}/);
 assert.match(heatMap, /Quote unavailable/);
 assert.match(heatMap, /responseMatches && category === 'custom'/);
@@ -19,3 +24,7 @@ assert.match(heatMap, /isSupportedCustomMapCommoditySymbol\(symbol\)\s*\?\s*symb
 assert.match(detailModal, /No fresh quote is available\. Contract details and historical analysis are shown without a current price\./);
 assert.match(detailModal, /canAnalyzeCommodity && isCommodity/);
 assert.match(detailModal, /testID="heat-map-detail-analyze-commodity"/);
+assert.match(detailModal, /<Pressable\s+testID="heat-map-detail-open-chart"/);
+assert.doesNotMatch(detailModal, /\{quote && <Pressable\s+testID="heat-map-detail-open-chart"/);
+assert.match(heatMap, /const chartSymbol = selectedQuote\?\.symbol \?\? selectedUnavailableCommodity\?\.symbol/);
+assert.match(heatMap, /assetType: chartAssetType/);

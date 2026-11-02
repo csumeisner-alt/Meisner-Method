@@ -532,7 +532,7 @@ export function HeatMapDetailModal({
                 <MaterialCommunityIcons name="arrow-right" size={16} color={colors.primaryForeground} />
               </Pressable>
             )}
-            {quote && <Pressable
+            <Pressable
               testID="heat-map-detail-open-chart"
               accessibilityRole="button"
               accessibilityLabel={`Open full chart for ${symbol}`}
@@ -542,7 +542,7 @@ export function HeatMapDetailModal({
               <MaterialCommunityIcons name="chart-line" size={17} color={colors.primary} />
               <Text style={[styles.openChartText, { color: colors.primary }]}>Open full chart</Text>
               <MaterialCommunityIcons name="arrow-top-right" size={15} color={colors.primary} />
-            </Pressable>}
+            </Pressable>
 
             {quote ? <View style={styles.priceRow}>
               <Text testID="heat-map-detail-price" style={[styles.price, { color: colors.foreground }]}>

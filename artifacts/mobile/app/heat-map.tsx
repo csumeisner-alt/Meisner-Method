@@ -2050,6 +2050,12 @@ export default function HeatMapScreen() {
                       })}
                       {!!unavailableMapAssets.length && <View testID="heat-map-unavailable-map-assets" style={styles.unavailableMapSection}>
                         <View testID="heat-map-unavailable-map-divider" style={[styles.unavailableDivider, { backgroundColor: colors.border }]} />
+                        <View style={[styles.notice, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                          <MaterialCommunityIcons name="information-outline" size={15} color={colors.primary} />
+                          <Text testID="heat-map-unavailable-map-note" style={[styles.noticeText, { color: colors.mutedForeground }]}>
+                            These instruments will be displayed as usual when a quote is available.
+                          </Text>
+                        </View>
                         <View style={[styles.honeycomb, { width: contentWidth, height: unavailableLayout.height }]}>
                           {unavailableLayout.positions.map((position) => {
                             const asset = unavailableMapAssets[position.index];
@@ -2195,18 +2201,21 @@ export default function HeatMapScreen() {
             setTimeout(() => router.push(`/analysis/${encodeURIComponent(analysisSymbol)}`), 350);
           }}
           onOpenChart={() => {
-            if (!selectedQuote) return;
-            const chartQuote = selectedQuote;
+            const chartSymbol = selectedQuote?.symbol ?? selectedUnavailableCommodity?.symbol;
+            if (!chartSymbol) return;
+            const chartName = selectedQuote?.name || selectedUnavailableCommodity?.name || chartSymbol;
+            const chartAssetType = selectedQuote?.assetType ?? 'commodity';
             setSelectedQuote(null);
+            setSelectedUnavailableCommodity(null);
             // The detail card is a native Modal. Let its dismissal finish before
             // pushing the chart route so the new screen is not rendered behind it.
             setTimeout(() => {
               router.push({
                 pathname: '/heat-map-chart',
                 params: {
-                  symbol: chartQuote.symbol,
-                  name: chartQuote.name || chartQuote.symbol,
-                  assetType: chartQuote.assetType,
+                  symbol: chartSymbol,
+                  name: chartName,
+                  assetType: chartAssetType,
                 },
               });
             }, 350);
