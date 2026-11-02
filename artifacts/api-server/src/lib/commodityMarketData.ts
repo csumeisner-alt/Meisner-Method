@@ -37,8 +37,8 @@ type WasdeRow = {
 
 const valueCache = new Map<string, { value: unknown; expiresAt: number }>();
 const pendingRequests = new Map<string, Promise<unknown>>();
-let wasdeReportCache: { rows: WasdeRow[]; sourceUrl: string; expiresAt: number } | null = null;
-let wasdeReportRequest: Promise<{ rows: WasdeRow[]; sourceUrl: string } | null> | null = null;
+const wasdeReportCache = new Map<string, { rows: WasdeRow[]; sourceUrl: string; expiresAt: number }>();
+const wasdeReportRequests = new Map<string, Promise<{ rows: WasdeRow[]; sourceUrl: string } | null>>();
 let wasdeReportFailureExpiresAt = 0;
 
 function isDate(value: string): boolean {
@@ -222,11 +222,12 @@ export function parseEiaNaturalGasStorageCsv(
   };
 }
 
-export function parseUsdaWasdeInventoryCsv(
+function parseUsdaWasdeInventory(
   rows: WasdeRow[],
   sourceUrl: string,
   symbol: string,
   now = new Date(),
+  checkFreshness = true,
 ): CommodityInventoryEvidence | null {
   const commodityConfig = USDA_COMMODITIES[symbol];
   if (!commodityConfig) return null;
@@ -238,7 +239,7 @@ export function parseUsdaWasdeInventoryCsv(
     && isDate(row.releaseDate));
   if (!records.length) return null;
   const releaseDate = records.map((row) => row.releaseDate).sort().at(-1)!;
-  if (!isFresh(releaseDate, now, 60)) return null;
+  if (checkFreshness && !isFresh(releaseDate, now, 60)) return null;
 
   const years = [...new Set(records.map((row) => row.marketYear))]
     .sort((left, right) => Number(right.slice(0, 4)) - Number(left.slice(0, 4)));
@@ -280,6 +281,15 @@ export function parseUsdaWasdeInventoryCsv(
     };
   }
   return null;
+}
+
+export function parseUsdaWasdeInventoryCsv(
+  rows: WasdeRow[],
+  sourceUrl: string,
+  symbol: string,
+  now = new Date(),
+): CommodityInventoryEvidence | null {
+  return parseUsdaWasdeInventory(rows, sourceUrl, symbol, now);
 }
 
 export function parseCftcPositioningRows(
@@ -367,13 +377,18 @@ function wasdeReportCandidates(now: Date): string[] {
   return candidates;
 }
 
-async function loadLatestWasdeReport(now: Date): Promise<{ rows: WasdeRow[]; sourceUrl: string } | null> {
-  if (wasdeReportCache && wasdeReportCache.expiresAt > Date.now()) {
-    return { rows: wasdeReportCache.rows, sourceUrl: wasdeReportCache.sourceUrl };
+async function loadLatestWasdeReport(
+  now: Date,
+  symbol: string,
+): Promise<{ rows: WasdeRow[]; sourceUrl: string } | null> {
+  const cachedReport = wasdeReportCache.get(symbol);
+  if (cachedReport && cachedReport.expiresAt > Date.now()) {
+    return { rows: cachedReport.rows, sourceUrl: cachedReport.sourceUrl };
   }
   if (wasdeReportFailureExpiresAt > Date.now()) return null;
-  if (wasdeReportRequest) return wasdeReportRequest;
-  wasdeReportRequest = (async () => {
+  const existingRequest = wasdeReportRequests.get(symbol);
+  if (existingRequest) return existingRequest;
+  const request = (async () => {
     try {
       for (const url of wasdeReportCandidates(now)) {
         try {
@@ -381,8 +396,9 @@ async function loadLatestWasdeReport(now: Date): Promise<{ rows: WasdeRow[]; sou
           const rows = parseUsdaRows(csv);
           const validReleaseExists = rows.some((row) => isDate(row.releaseDate)
             && Date.parse(`${row.releaseDate}T00:00:00.000Z`) <= now.getTime());
-          if (!rows.length || !validReleaseExists) continue;
-          wasdeReportCache = { rows, sourceUrl: url, expiresAt: Date.now() + 6 * 60 * 60 * 1000 };
+          const validInventoryExists = parseUsdaWasdeInventory(rows, url, symbol, now, false) !== null;
+          if (!rows.length || !validReleaseExists || !validInventoryExists) continue;
+          wasdeReportCache.set(symbol, { rows, sourceUrl: url, expiresAt: Date.now() + 6 * 60 * 60 * 1000 });
           wasdeReportFailureExpiresAt = 0;
           return { rows, sourceUrl: url };
         } catch {
@@ -392,10 +408,11 @@ async function loadLatestWasdeReport(now: Date): Promise<{ rows: WasdeRow[]; sou
       wasdeReportFailureExpiresAt = Date.now() + FAILED_WASDE_REPORT_CACHE_TTL_MS;
       return null;
     } finally {
-      wasdeReportRequest = null;
+      wasdeReportRequests.delete(symbol);
     }
   })();
-  return wasdeReportRequest;
+  wasdeReportRequests.set(symbol, request);
+  return request;
 }
 
 async function fetchInventory(
@@ -426,7 +443,7 @@ async function fetchInventory(
   }
   if (USDA_COMMODITIES[symbol]) {
     return cached(`usda-inventory:${symbol}`, 6 * 60 * 60 * 1000, async () => {
-      const report = await loadLatestWasdeReport(now);
+      const report = await loadLatestWasdeReport(now, symbol);
       if (!report) {
         return { evidence: null, failure: { provider: "USDA", state: "unavailable" } };
       }

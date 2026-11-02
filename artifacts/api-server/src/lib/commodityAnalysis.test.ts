@@ -224,6 +224,74 @@ test("USDA report-search failures are shared across commodities and recover afte
   }
 });
 
+test("USDA inventory search falls through when the revised CSV is missing", async () => {
+  const csv = [
+    "ReportTitle,Attribute,Commodity,Region,MarketYear,Value,Unit,ReleaseDate",
+    '"U.S. Oilseed, Soybean Supply and Use","Ending Stocks","Oilseed, Soybean","United States",2026/27,200,"Million Bushels",2026-10-12',
+    '"U.S. Oilseed, Soybean Supply and Use","Total Use","Oilseed, Soybean","United States",2026/27,1000,"Million Bushels",2026-10-12',
+    '"U.S. Oilseed, Soybean Supply and Use","Ending Stocks","Oilseed, Soybean","United States",2025/26,250,"Million Bushels",2026-10-12',
+    '"U.S. Oilseed, Soybean Supply and Use","Total Use","Oilseed, Soybean","United States",2025/26,1000,"Million Bushels",2026-10-12',
+  ].join("\r\n");
+  const originalFetch = globalThis.fetch;
+  const requestedUrls: string[] = [];
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    requestedUrls.push(url);
+    return requestedUrls.length === 1
+      ? new Response("not found", { status: 404 })
+      : new Response(csv, { status: 200 });
+  };
+
+  try {
+    const result = await fetchCommodityInventoryEvidenceWithStatus(
+      "ZS=F",
+      new Date("2026-11-02T12:00:00.000Z"),
+    );
+    assert.ok(result.evidence, "a valid base report should restore inventory evidence");
+    assert.equal(requestedUrls.length, 2, "the base CSV should be tried after the revised CSV is missing");
+    assert.match(requestedUrls[0], /2026-11-V2\.csv$/);
+    assert.match(requestedUrls[1], /2026-11\.csv$/);
+    assert.equal(result.evidence.source.url, requestedUrls[1]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("USDA inventory search skips invalid revised contents and cites the valid base CSV", async () => {
+  const invalidCsv = [
+    "ReportTitle,Attribute,Commodity,Region,MarketYear,Value,Unit,ReleaseDate",
+    '"U.S. Cotton Supply and Use","Ending Stocks",Cotton,"United States",2026/27,not-a-number,"Million 480-Pound Bales",2026-10-12',
+  ].join("\r\n");
+  const validCsv = [
+    "ReportTitle,Attribute,Commodity,Region,MarketYear,Value,Unit,ReleaseDate",
+    '"U.S. Cotton Supply and Use","Ending Stocks",Cotton,"United States",2026/27,200,"Million 480-Pound Bales",2026-10-12',
+    '"U.S. Cotton Supply and Use","Total Use",Cotton,"United States",2026/27,1000,"Million 480-Pound Bales",2026-10-12',
+    '"U.S. Cotton Supply and Use","Ending Stocks",Cotton,"United States",2025/26,250,"Million 480-Pound Bales",2026-10-12',
+    '"U.S. Cotton Supply and Use","Total Use",Cotton,"United States",2025/26,1000,"Million 480-Pound Bales",2026-10-12',
+  ].join("\r\n");
+  const originalFetch = globalThis.fetch;
+  const requestedUrls: string[] = [];
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    requestedUrls.push(url);
+    return new Response(requestedUrls.length === 1 ? invalidCsv : validCsv, { status: 200 });
+  };
+
+  try {
+    const result = await fetchCommodityInventoryEvidenceWithStatus(
+      "CT=F",
+      new Date("2026-11-02T12:00:00.000Z"),
+    );
+    assert.ok(result.evidence, "invalid revised contents must not block a valid base report");
+    assert.equal(requestedUrls.length, 2, "the invalid revised CSV should be skipped");
+    assert.match(requestedUrls[0], /2026-11-V2\.csv$/);
+    assert.match(requestedUrls[1], /2026-11\.csv$/);
+    assert.equal(result.evidence.source.url, requestedUrls[1]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("official inventory fetch status identifies stale EIA reports without exposing a source citation", async () => {
   const csv = [
     "Energy Information Administration",
