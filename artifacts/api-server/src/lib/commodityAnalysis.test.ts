@@ -127,6 +127,58 @@ test("EIA inventory coverage recovers after a short outage cache expires", async
   }
 });
 
+test("USDA report-search failures are shared across commodities and recover after expiry", async () => {
+  const csv = [
+    "ReportTitle,Attribute,Commodity,Region,MarketYear,Value,Unit,ReleaseDate",
+    '"U.S. Corn Supply and Use","Ending Stocks",Corn,"United States",2026/27,1800,"million bushels",2026-10-12',
+    '"U.S. Corn Supply and Use","Use, Total",Corn,"United States",2026/27,15000,"million bushels",2026-10-12',
+    '"U.S. Corn Supply and Use","Ending Stocks",Corn,"United States",2025/26,1700,"million bushels",2026-10-12',
+    '"U.S. Corn Supply and Use","Use, Total",Corn,"United States",2025/26,14000,"million bushels",2026-10-12',
+  ].join("\r\n");
+  const originalFetch = globalThis.fetch;
+  const originalNow = Date.now;
+  let clock = originalNow();
+  let requestCount = 0;
+  Date.now = () => clock;
+  globalThis.fetch = async () => {
+    requestCount += 1;
+    return requestCount <= 8
+      ? new Response("temporarily unavailable", { status: 503 })
+      : new Response(csv, { status: 200 });
+  };
+
+  try {
+    const now = new Date("2026-11-02T12:00:00.000Z");
+    assert.deepEqual(
+      (await fetchCommodityInventoryEvidenceWithStatus("ZC=F", now)).failure,
+      { provider: "USDA", state: "unavailable" },
+    );
+    assert.deepEqual(
+      (await fetchCommodityInventoryEvidenceWithStatus("ZW=F", now)).failure,
+      { provider: "USDA", state: "unavailable" },
+    );
+    assert.deepEqual(
+      (await fetchCommodityInventoryEvidenceWithStatus("ZC=F", now)).failure,
+      { provider: "USDA", state: "unavailable" },
+    );
+    assert.equal(
+      requestCount,
+      8,
+      "the report candidate search should run once and be shared across USDA commodities",
+    );
+
+    clock += 15 * 60 * 1000 + 1;
+    const recovered = await fetchCommodityInventoryEvidence("ZC=F", now);
+    assert.ok(recovered, "a newly available USDA report should restore inventory coverage");
+    assert.equal(recovered.provider, "USDA");
+    assert.equal(recovered.symbol, "ZC=F");
+    assert.equal(requestCount, 9, "the first candidate should succeed after the shared negative cache expires");
+  } finally {
+    globalThis.fetch = originalFetch;
+    Date.now = originalNow;
+  }
+});
+
 test("official inventory fetch status identifies stale EIA reports without exposing a source citation", async () => {
   const csv = [
     "Energy Information Administration",
