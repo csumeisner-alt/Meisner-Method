@@ -7,7 +7,7 @@ import sys
 import json
 import math
 import yfinance as yf
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 
 COMMODITY_CALENDARS = {
@@ -31,13 +31,51 @@ def expected_commodity_sessions(symbol, start_date, now=None):
         current = now or datetime.now(timezone.utc)
         if current.tzinfo is None:
             current = current.replace(tzinfo=timezone.utc)
+        current_utc = current.astimezone(timezone.utc)
         end_date = current.astimezone(calendar.tz).date()
-        sessions = calendar.sessions_in_range(start_date, end_date)
-        return [session.date().isoformat() for session in sessions]
+        # CME and ICE futures sessions can open Sunday evening for Monday's
+        # trade date. Include the upcoming session only after its real open.
+        sessions = calendar.sessions_in_range(start_date, end_date + timedelta(days=7))
+        return [
+            session.date().isoformat()
+            for session in sessions
+            if calendar.session_open(session).to_pydatetime().astimezone(timezone.utc) <= current_utc
+        ]
     except Exception:
         # The scorer treats a missing calendar as unavailable history; do not
         # substitute weekdays or silently call a calendar-verified series fresh.
         return None
+
+
+def commodity_history_session_date(symbol, timestamp):
+    """Map Yahoo's Sunday futures bar label to its Monday exchange trade date."""
+    source_date = timestamp.date()
+    calendar_name = COMMODITY_CALENDARS.get(symbol)
+    if calendar_name is None or source_date.weekday() != 6:
+        return source_date.isoformat()
+
+    try:
+        import exchange_calendars
+
+        calendar = exchange_calendars.get_calendar(calendar_name)
+        next_date = source_date + timedelta(days=1)
+        if not calendar.is_session(next_date.isoformat()):
+            return source_date.isoformat()
+        next_session = calendar.date_to_session(next_date.isoformat(), direction="none")
+        session_open_date = (
+            calendar.session_open(next_session)
+            .to_pydatetime()
+            .astimezone(calendar.tz)
+            .date()
+        )
+        # Only map the Sunday label when that exact session actually opened
+        # Sunday evening. Holiday closures therefore remain unavailable.
+        if session_open_date == source_date:
+            return next_date.isoformat()
+    except Exception:
+        pass
+
+    return source_date.isoformat()
 
 
 def clean_nan(obj):
@@ -102,7 +140,19 @@ def main():
 
         closes = [float(x) for x in hist["Close"].tolist()]
         volumes = [int(x) for x in hist["Volume"].tolist()]
-        history_dates = [timestamp.date().isoformat() for timestamp in hist.index]
+        normalized_history = []
+        for timestamp, close, volume in zip(hist.index, closes, volumes):
+            session_date = commodity_history_session_date(symbol, timestamp)
+            observation = (session_date, close, volume)
+            # If Yahoo returns both a Sunday partial bar and Monday's daily
+            # bar for the same CME session, keep the later observation.
+            if normalized_history and normalized_history[-1][0] == session_date:
+                normalized_history[-1] = observation
+            else:
+                normalized_history.append(observation)
+        history_dates = [observation[0] for observation in normalized_history]
+        closes = [observation[1] for observation in normalized_history]
+        volumes = [observation[2] for observation in normalized_history]
 
         # Basic info & fast_info
         info = ticker.fast_info
