@@ -426,7 +426,7 @@ test("USDA WASDE parser computes same-unit stocks-to-use change for adjacent mar
   ), null);
 });
 
-test("USDA WASDE inventory fixtures cover every supported crop mapping", () => {
+test("USDA WASDE inventory accepts matching units and rejects mismatches for every supported crop", () => {
   const crops = [
     {
       symbol: "ZC=F",
@@ -514,6 +514,20 @@ test("USDA WASDE inventory fixtures cover every supported crop mapping", () => {
     assert.match(parsed.source.title, /2026\/27 supply and use/);
     assert.match(parsed.source.observation, new RegExp(`USDA WASDE ${crop.commodity.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
     assert.equal(parsed.value, -20);
+
+    const mismatchedRows = rows.map((row) => row.attribute.toLowerCase() === "ending stocks"
+      ? { ...row, unit: `${crop.unit} (mismatched)` }
+      : row);
+    assert.equal(
+      parseUsdaWasdeInventoryCsv(
+        mismatchedRows,
+        sourceUrl,
+        crop.symbol,
+        new Date("2026-10-31T00:00:00.000Z"),
+      ),
+      null,
+      `${crop.instrument} fixture with mismatched ending-stock and total-use units should not produce inventory evidence`,
+    );
   }
 });
 
