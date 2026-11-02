@@ -74,6 +74,19 @@ export interface CommodityInventoryEvidence {
   source: CommodityEvidenceSource;
 }
 
+export type CommodityOfficialProvider = "EIA" | "USDA" | "CFTC";
+export type CommodityEvidenceFailureState = "request-failed" | "stale" | "invalid" | "unavailable";
+
+export interface CommodityEvidenceFailure {
+  provider: CommodityOfficialProvider;
+  state: CommodityEvidenceFailureState;
+}
+
+export interface CommodityEvidenceFetchResult<T> {
+  evidence: T | null;
+  failure: CommodityEvidenceFailure | null;
+}
+
 export interface CommodityPositioningEvidence {
   provider: "CFTC";
   symbol: string;
@@ -90,6 +103,8 @@ export interface CommodityPositioningEvidence {
 export interface CommodityMarketEvidence {
   inventory: CommodityInventoryEvidence | null;
   positioning: CommodityPositioningEvidence | null;
+  inventoryFailure?: CommodityEvidenceFailure | null;
+  positioningFailure?: CommodityEvidenceFailure | null;
 }
 
 export interface CommodityScoreFactor {
@@ -142,6 +157,16 @@ export const CFTC_INSTRUMENTS: Record<string, { code: string; name: string; unit
   "PA=F": { code: "075651", name: "PALLADIUM", unit: "100 TROY OUNCES" },
   "LE=F": { code: "057642", name: "LIVE CATTLE", unit: "40,000 POUNDS" },
   "HE=F": { code: "054642", name: "LEAN HOGS", unit: "40,000 POUNDS" },
+};
+
+export const COMMODITY_INVENTORY_PROVIDERS: Record<string, "EIA" | "USDA"> = {
+  "CL=F": "EIA",
+  "NG=F": "EIA",
+  "ZC=F": "USDA",
+  "ZW=F": "USDA",
+  "ZS=F": "USDA",
+  "CT=F": "USDA",
+  "SB=F": "USDA",
 };
 
 const USDA_COMMODITIES: Record<string, string> = {
@@ -367,6 +392,26 @@ export function buildCommodityScore(input: CommodityScoreInput): CommodityScore 
   const now = input.now ?? new Date();
   const inventory = validateInventoryEvidence(input.marketEvidence?.inventory, symbol, now);
   const positioning = validatePositioningEvidence(input.marketEvidence?.positioning, symbol, now);
+  const inventoryFailure = inventory
+    ? null
+    : input.marketEvidence?.inventory
+      ? COMMODITY_INVENTORY_PROVIDERS[symbol]
+        ? { provider: COMMODITY_INVENTORY_PROVIDERS[symbol]!, state: "invalid" as const }
+        : null
+      : input.marketEvidence?.inventoryFailure
+        ?? (COMMODITY_INVENTORY_PROVIDERS[symbol]
+          ? { provider: COMMODITY_INVENTORY_PROVIDERS[symbol]!, state: "unavailable" as const }
+          : null);
+  const positioningFailure = positioning
+    ? null
+    : input.marketEvidence?.positioning
+      ? CFTC_INSTRUMENTS[symbol]
+        ? { provider: "CFTC" as const, state: "invalid" as const }
+        : null
+      : input.marketEvidence?.positioningFailure
+        ?? (CFTC_INSTRUMENTS[symbol]
+          ? { provider: "CFTC" as const, state: "unavailable" as const }
+          : null);
 
   const returns = closes.slice(1).flatMap((close, index) => {
     const previous = closes[index];
@@ -462,7 +507,9 @@ export function buildCommodityScore(input: CommodityScoreInput): CommodityScore 
       weight: inventory ? (0.2 / availableWeight) : 0,
       detail: inventory
         ? inventory.source.observation
-        : "No fresh, instrument-matched official inventory or supply/demand release is available; excluded, not estimated.",
+        : inventoryFailure
+          ? `${inventoryFailure.provider} inventory data is ${failureStateDescription(inventoryFailure.state)}; excluded, not estimated.`
+          : "No fresh, instrument-matched official inventory or supply/demand release is available; excluded, not estimated.",
       sources: inventory ? [inventory.source] : [],
     },
     {
@@ -473,7 +520,9 @@ export function buildCommodityScore(input: CommodityScoreInput): CommodityScore 
       weight: positioning ? (0.1 / availableWeight) : 0,
       detail: positioning
         ? `CFTC non-commercial net ${positioning.nonCommercialLong - positioning.nonCommercialShort} contracts out of ${positioning.openInterest} open interest; positioning is context, not a forecast.`
-        : "No fresh, exact-contract CFTC futures-only report is available; excluded, not estimated.",
+        : positioningFailure
+          ? `CFTC positioning data is ${failureStateDescription(positioningFailure.state)}; excluded, not estimated.`
+          : "No fresh, exact-contract CFTC futures-only report is available; excluded, not estimated.",
       sources: positioning ? [positioning.source] : [],
     },
     {
@@ -501,6 +550,19 @@ export function buildCommodityScore(input: CommodityScoreInput): CommodityScore 
     factors,
     methodology: "The deterministic score combines price trend (70%), official inventory/supply-demand evidence (20%), and CFTC non-commercial positioning (10%), renormalizing only across available validated inputs. Inventory and positioning are omitted when the exact source, instrument, unit, observation date, or freshness check fails. Realized volatility dampens direction but is not a directional factor. Futures-curve, macro, and weather effects are not inferred from continuous-futures history or commentary.",
   };
+}
+
+function failureStateDescription(state: CommodityEvidenceFailureState): string {
+  switch (state) {
+    case "request-failed":
+      return "unavailable because the official source could not be reached";
+    case "stale":
+      return "stale";
+    case "invalid":
+      return "unavailable because the official data did not pass validation";
+    case "unavailable":
+      return "unavailable";
+  }
 }
 
 export function unavailableCommodityNews(): CommodityNewsContext {

@@ -6,6 +6,7 @@ import {
   CFTC_INSTRUMENTS,
   unavailableCommodityNews,
   type CommodityInventoryEvidence,
+  type CommodityEvidenceFetchResult,
   type CommodityPositioningEvidence,
 } from "./commodityAnalysis.ts";
 import { respondWithCommodityAnalysis } from "./commodityAnalysisEndpoint.ts";
@@ -82,8 +83,8 @@ function malformed<T>(value: object): T {
 
 async function requestCommodityAnalysis(
   symbol: "CL=F" | "ZC=F",
-  fetchInventory: () => Promise<CommodityInventoryEvidence | null>,
-  fetchPositioning: () => Promise<CommodityPositioningEvidence | null>,
+  fetchInventory: () => Promise<CommodityEvidenceFetchResult<CommodityInventoryEvidence>>,
+  fetchPositioning: () => Promise<CommodityEvidenceFetchResult<CommodityPositioningEvidence>>,
 ) {
   const app = express();
   app.use(express.json());
@@ -176,11 +177,18 @@ test("commodity analysis HTTP endpoint keeps valid factors when official feeds f
         symbol,
         async () => {
           if (failedInventory && failure === "timeout") throw new Error(`${feed.provider} request timed out`);
-          return failedInventory ? badInventory : inventoryEvidence(symbol);
+          return failedInventory
+            ? { evidence: failure === "stale" ? null : badInventory, failure: { provider: feed.provider, state: failure === "stale" ? "stale" : "invalid" } }
+            : { evidence: inventoryEvidence(symbol), failure: null };
         },
         async () => {
           if (!failedInventory && failure === "timeout") throw new Error("CFTC request timed out");
-          return failedInventory ? positioningEvidence(symbol) : badPositioning;
+          return failedInventory
+            ? { evidence: positioningEvidence(symbol), failure: null }
+            : {
+              evidence: failure === "stale" ? null : badPositioning,
+              failure: { provider: "CFTC", state: failure === "stale" ? "stale" : "invalid" },
+            };
         },
       );
 
@@ -194,6 +202,7 @@ test("commodity analysis HTTP endpoint keeps valid factors when official feeds f
             key: string;
             status: string;
             score: number | null;
+            detail: string;
             sources: Array<{ url: string }>;
           }>;
         };
@@ -208,6 +217,11 @@ test("commodity analysis HTTP endpoint keeps valid factors when official feeds f
       assert.equal(failedFactor.status, "unavailable", `${feed.provider} ${failure} cannot be treated as evidence`);
       assert.equal(failedFactor.score, null);
       assert.deepEqual(failedFactor.sources, []);
+      assert.match(failedFactor.detail, new RegExp(feed.provider));
+      assert.match(
+        failedFactor.detail,
+        failure === "stale" ? /stale/ : /unavailable/,
+      );
       assert.ok(unaffectedFactor);
       assert.equal(unaffectedFactor.status, "available");
       assert.equal(unaffectedFactor.sources.length, 1);

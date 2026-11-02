@@ -20,8 +20,8 @@ import {
   unavailableCommodityNews,
 } from "../lib/commodityAnalysis.js";
 import {
-  fetchCommodityInventoryEvidence,
-  fetchCommodityPositioningEvidence,
+  fetchCommodityInventoryEvidenceWithStatus,
+  fetchCommodityPositioningEvidenceWithStatus,
 } from "../lib/commodityMarketData.js";
 import { respondWithCommodityAnalysis } from "../lib/commodityAnalysisEndpoint.js";
 import { respondWithEtfAnalysis } from "../lib/etfAnalysisEndpoint.js";
@@ -835,11 +835,11 @@ router.post("/stocks/analyze", async (req, res) => {
 
     const commodityDataAsOf = new Date();
     const inventoryRequest = commodity
-      ? fetchCommodityInventoryEvidence(symbol, commodityDataAsOf)
-      : Promise.resolve(null);
+      ? fetchCommodityInventoryEvidenceWithStatus(symbol, commodityDataAsOf)
+      : Promise.resolve({ evidence: null, failure: null });
     const positioningRequest = commodity
-      ? fetchCommodityPositioningEvidence(symbol, commodityDataAsOf)
-      : Promise.resolve(null);
+      ? fetchCommodityPositioningEvidenceWithStatus(symbol, commodityDataAsOf)
+      : Promise.resolve({ evidence: null, failure: null });
     const data = await fetchStockData(symbol);
     if (commodity) {
       await respondWithCommodityAnalysis(res, data, {

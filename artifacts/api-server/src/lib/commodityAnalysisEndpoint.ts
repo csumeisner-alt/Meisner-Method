@@ -2,8 +2,11 @@ import type { Response } from "express";
 import {
   assessCommodityHistory,
   buildCommodityScore,
+  COMMODITY_INVENTORY_PROVIDERS,
+  CFTC_INSTRUMENTS,
   SUPPORTED_COMMODITIES,
   unavailableCommodityNews,
+  type CommodityEvidenceFetchResult,
   type CommodityInventoryEvidence,
   type CommodityNewsContext,
   type CommodityPositioningEvidence,
@@ -27,8 +30,8 @@ export interface CommodityAnalysisQuote {
 }
 
 export interface CommodityAnalysisEndpointDependencies {
-  fetchInventory: (symbol: string, now: Date) => Promise<CommodityInventoryEvidence | null>;
-  fetchPositioning: (symbol: string, now: Date) => Promise<CommodityPositioningEvidence | null>;
+  fetchInventory: (symbol: string, now: Date) => Promise<CommodityEvidenceFetchResult<CommodityInventoryEvidence>>;
+  fetchPositioning: (symbol: string, now: Date) => Promise<CommodityEvidenceFetchResult<CommodityPositioningEvidence>>;
   fetchNews: (symbol: string, name: string) => Promise<CommodityNewsContext>;
   createCompletion: (prompt: string, maxTokens: number) => Promise<string>;
   now: () => Date;
@@ -49,10 +52,20 @@ export async function respondWithCommodityAnalysis(
   }
 
   const now = dependencies.now();
-  const [inventory, positioning] = await Promise.all([
-    Promise.resolve().then(() => dependencies.fetchInventory(symbol, now)).catch(() => null),
-    Promise.resolve().then(() => dependencies.fetchPositioning(symbol, now)).catch(() => null),
+  const [inventoryResult, positioningResult] = await Promise.all([
+    Promise.resolve().then(() => dependencies.fetchInventory(symbol, now)).catch(() => ({
+      evidence: null,
+      failure: COMMODITY_INVENTORY_PROVIDERS[symbol]
+        ? { provider: COMMODITY_INVENTORY_PROVIDERS[symbol]!, state: "request-failed" as const }
+        : null,
+    })),
+    Promise.resolve().then(() => dependencies.fetchPositioning(symbol, now)).catch(() => ({
+      evidence: null,
+      failure: { provider: "CFTC" as const, state: "request-failed" as const },
+    })),
   ]);
+  const inventory = inventoryResult.evidence;
+  const positioning = positioningResult.evidence;
   const scoreInput = {
     symbol,
     closes: data.closes,
@@ -60,7 +73,15 @@ export async function respondWithCommodityAnalysis(
     historySessions: data.historySessions,
     currentPrice: data.currentPrice,
     historyAsOf: data.historyAsOf,
-    marketEvidence: { inventory, positioning },
+    marketEvidence: {
+      inventory,
+      positioning,
+      inventoryFailure: inventoryResult.failure,
+      positioningFailure: positioningResult.failure
+        ?? (CFTC_INSTRUMENTS[symbol] && !positioning
+          ? { provider: "CFTC", state: "unavailable" as const }
+          : null),
+    },
     now,
   };
   const historyAssessment = assessCommodityHistory(scoreInput);

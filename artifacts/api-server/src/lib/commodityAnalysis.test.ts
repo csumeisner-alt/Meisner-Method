@@ -8,6 +8,7 @@ import {
 } from "./commodityAnalysis.ts";
 import {
   fetchCommodityInventoryEvidence,
+  fetchCommodityInventoryEvidenceWithStatus,
   parseCftcPositioningRows,
   parseEiaCrudeInventoryCsv,
   parseEiaNaturalGasStorageCsv,
@@ -123,6 +124,31 @@ test("EIA inventory coverage recovers after a short outage cache expires", async
   } finally {
     globalThis.fetch = originalFetch;
     Date.now = originalNow;
+  }
+});
+
+test("official inventory fetch status identifies stale EIA reports without exposing a source citation", async () => {
+  const csv = [
+    "Energy Information Administration",
+    '"Working Gas in Underground Storage, Lower 48"',
+    '"Released: October 1, 2026 for the Week Ending September 25, 2026"',
+    '"Next Release: October 8, 2026"',
+    "Region,Stocks in billion (Bcf),,,,,",
+    ",Year Ago,,,,",
+    ",25-Sep-26,,,18-Sep-26",
+    'Total,"3,500","","","3,600"',
+  ].join("\r\n");
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(csv, { status: 200 });
+  try {
+    const result = await fetchCommodityInventoryEvidenceWithStatus(
+      "NG=F",
+      new Date("2026-11-02T12:00:00.000Z"),
+    );
+    assert.equal(result.evidence, null);
+    assert.deepEqual(result.failure, { provider: "EIA", state: "stale" });
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });
 

@@ -1,6 +1,9 @@
 import {
   CFTC_INSTRUMENTS,
+  COMMODITY_INVENTORY_PROVIDERS,
   SUPPORTED_COMMODITIES,
+  type CommodityEvidenceFailure,
+  type CommodityEvidenceFetchResult,
   type CommodityInventoryEvidence,
   type CommodityMarketEvidence,
   type CommodityPositioningEvidence,
@@ -337,7 +340,9 @@ async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Pr
   const pending = pendingRequests.get(key);
   if (pending) return pending as Promise<T>;
   const request = load().then((value) => {
-    const cacheTtlMs = value == null ? FAILED_SOURCE_CACHE_TTL_MS : ttlMs;
+    const isFailedResult = value != null && typeof value === "object"
+      && "failure" in value && Boolean((value as { failure?: unknown }).failure);
+    const cacheTtlMs = value == null || isFailedResult ? FAILED_SOURCE_CACHE_TTL_MS : ttlMs;
     valueCache.set(key, { value, expiresAt: Date.now() + cacheTtlMs });
     return value;
   }).finally(() => {
@@ -396,71 +401,123 @@ async function loadLatestWasdeReport(now: Date): Promise<{ rows: WasdeRow[]; sou
 async function fetchInventory(
   symbol: string,
   now: Date,
-): Promise<CommodityInventoryEvidence | null> {
+): Promise<CommodityEvidenceFetchResult<CommodityInventoryEvidence>> {
   if (symbol === "CL=F" || symbol === "NG=F") {
     return cached(`eia-inventory:${symbol}`, 60 * 60 * 1000, async () => {
       try {
         const sourceUrl = symbol === "CL=F" ? EIA_TABLE_URL : EIA_NATURAL_GAS_URL;
         const csv = await fetchText(sourceUrl);
-        return symbol === "CL=F"
+        const evidence = symbol === "CL=F"
           ? parseEiaCrudeInventoryCsv(csv, now)
           : parseEiaNaturalGasStorageCsv(csv, now);
+        if (evidence) return { evidence, failure: null };
+        const asOf = symbol === "CL=F"
+          ? eiaDateOnly(parseCsv(csv)[0]?.[1])
+          : eiaStorageDateOnly(parseCsv(csv).find((row) => eiaStorageDateOnly(row[1]) && eiaStorageDateOnly(row[4]))?.[1]);
+        const failure: CommodityEvidenceFailure = {
+          provider: "EIA",
+          state: asOf && !isFresh(asOf, now, 14) ? "stale" : "invalid",
+        };
+        return { evidence: null, failure };
       } catch {
-        return null;
+        return { evidence: null, failure: { provider: "EIA", state: "request-failed" } };
       }
     });
   }
   if (USDA_COMMODITIES[symbol]) {
     return cached(`usda-inventory:${symbol}`, 6 * 60 * 60 * 1000, async () => {
       const report = await loadLatestWasdeReport(now);
-      return report
-        ? parseUsdaWasdeInventoryCsv(report.rows, report.sourceUrl, symbol, now)
-        : null;
+      if (!report) {
+        return { evidence: null, failure: { provider: "USDA", state: "unavailable" } };
+      }
+      const evidence = parseUsdaWasdeInventoryCsv(report.rows, report.sourceUrl, symbol, now);
+      if (evidence) return { evidence, failure: null };
+      const releaseDates = report.rows.map((row) => row.releaseDate).filter(isDate).sort();
+      const latestRelease = releaseDates.at(-1);
+      return {
+        evidence: null,
+        failure: {
+          provider: "USDA",
+          state: latestRelease && !isFresh(latestRelease, now, 60) ? "stale" : "invalid",
+        },
+      };
     });
   }
-  return null;
+  return { evidence: null, failure: null };
 }
 
 async function fetchPositioning(
   symbol: string,
   now: Date,
-): Promise<CommodityPositioningEvidence | null> {
+): Promise<CommodityEvidenceFetchResult<CommodityPositioningEvidence>> {
   const expected = CFTC_INSTRUMENTS[symbol];
-  if (!expected) return null;
+  if (!expected) return { evidence: null, failure: { provider: "CFTC", state: "unavailable" } };
   return cached(`cftc-positioning:${symbol}`, 60 * 60 * 1000, async () => {
     try {
       const url = new URL(CFTC_DATASET_URL);
       url.searchParams.set("$limit", "1");
       url.searchParams.set("$where", `cftc_contract_market_code='${expected.code}'`);
       url.searchParams.set("$order", "report_date_as_yyyy_mm_dd DESC");
-      const rows = await fetchText(url.toString()).then((body) => JSON.parse(body) as CftcRow[]);
-      return Array.isArray(rows) ? parseCftcPositioningRows(rows, symbol, now) : null;
+      const body = await fetchText(url.toString());
+      const raw: unknown = JSON.parse(body);
+      if (!Array.isArray(raw)) {
+        return { evidence: null, failure: { provider: "CFTC", state: "invalid" } };
+      }
+      const rows = raw as CftcRow[];
+      const evidence = parseCftcPositioningRows(rows, symbol, now);
+      if (evidence) return { evidence, failure: null };
+      const asOf = dateOnly(rows[0]?.["report_date_as_yyyy_mm_dd"]);
+      return {
+        evidence: null,
+        failure: {
+          provider: "CFTC",
+          state: asOf && !isFresh(asOf, now, 14) ? "stale" : rows.length === 0 ? "unavailable" : "invalid",
+        },
+      };
     } catch {
-      return null;
+      return { evidence: null, failure: { provider: "CFTC", state: "request-failed" } };
     }
   });
+}
+
+export async function fetchCommodityInventoryEvidenceWithStatus(
+  symbol: string,
+  now = new Date(),
+): Promise<CommodityEvidenceFetchResult<CommodityInventoryEvidence>> {
+  try {
+    return await fetchInventory(symbol.trim().toUpperCase(), now);
+  } catch {
+    const provider = COMMODITY_INVENTORY_PROVIDERS[symbol.trim().toUpperCase()];
+    return {
+      evidence: null,
+      failure: provider ? { provider, state: "request-failed" } : null,
+    };
+  }
+}
+
+export async function fetchCommodityPositioningEvidenceWithStatus(
+  symbol: string,
+  now = new Date(),
+): Promise<CommodityEvidenceFetchResult<CommodityPositioningEvidence>> {
+  try {
+    return await fetchPositioning(symbol.trim().toUpperCase(), now);
+  } catch {
+    return { evidence: null, failure: { provider: "CFTC", state: "request-failed" } };
+  }
 }
 
 export async function fetchCommodityInventoryEvidence(
   symbol: string,
   now = new Date(),
 ): Promise<CommodityInventoryEvidence | null> {
-  try {
-    return await fetchInventory(symbol.trim().toUpperCase(), now);
-  } catch {
-    return null;
-  }
+  return (await fetchCommodityInventoryEvidenceWithStatus(symbol, now)).evidence;
 }
 
 export async function fetchCommodityPositioningEvidence(
   symbol: string,
   now = new Date(),
 ): Promise<CommodityPositioningEvidence | null> {
-  try {
-    return await fetchPositioning(symbol.trim().toUpperCase(), now);
-  } catch {
-    return null;
-  }
+  return (await fetchCommodityPositioningEvidenceWithStatus(symbol, now)).evidence;
 }
 
 export async function fetchCommodityMarketEvidence(

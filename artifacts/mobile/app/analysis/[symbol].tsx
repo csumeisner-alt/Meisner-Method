@@ -450,7 +450,9 @@ function CommodityAnalysisSections({ analysis }: { analysis: CommodityAnalysisPa
               <Text style={{ color: factor.status === 'available' ? colors.foreground : colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>
                 {factor.label}{factor.score === null ? ' · Not available' : ` · ${factor.score}/100`}
               </Text>
-              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 15, marginTop: 3 }}>{factor.detail}</Text>
+              <Text testID={`commodity-analysis-factor-${factor.key}-detail`} style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 17, marginTop: 4 }}>
+                {factor.detail}
+              </Text>
               {factor.sources.map((source) => (
                 <Pressable
                   key={`${source.url}-${source.asOf}`}
