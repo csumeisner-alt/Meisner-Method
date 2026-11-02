@@ -15,13 +15,15 @@ import { searchYahooHeatMapInstruments, searchYahooStocks } from "../lib/stockSy
 import { normalizeDividendYield } from "../lib/dividendYield.js";
 import { buildStockRecommendation } from "../lib/stockRecommendation.js";
 import {
-  assessCommodityHistory,
-  buildCommodityScore,
   parseCommodityNewsSources,
   SUPPORTED_COMMODITIES,
   unavailableCommodityNews,
 } from "../lib/commodityAnalysis.js";
-import { fetchCommodityMarketEvidence } from "../lib/commodityMarketData.js";
+import {
+  fetchCommodityInventoryEvidence,
+  fetchCommodityPositioningEvidence,
+} from "../lib/commodityMarketData.js";
+import { respondWithCommodityAnalysis } from "../lib/commodityAnalysisEndpoint.js";
 import { respondWithEtfAnalysis } from "../lib/etfAnalysisEndpoint.js";
 import { fallbackAiAnalysis, parseAiAnalysis } from "../lib/analysisResponse.js";
 import { logger } from "../lib/logger.js";
@@ -831,96 +833,34 @@ router.post("/stocks/analyze", async (req, res) => {
   try {
     req.log.info({ symbol }, "Analyzing stock");
 
-    const [data, marketEvidence] = await Promise.all([
-      fetchStockData(symbol),
-      commodity ? fetchCommodityMarketEvidence(symbol) : Promise.resolve(null),
-    ]);
+    const commodityDataAsOf = new Date();
+    const inventoryRequest = commodity
+      ? fetchCommodityInventoryEvidence(symbol, commodityDataAsOf)
+      : Promise.resolve(null);
+    const positioningRequest = commodity
+      ? fetchCommodityPositioningEvidence(symbol, commodityDataAsOf)
+      : Promise.resolve(null);
+    const data = await fetchStockData(symbol);
     if (commodity) {
-      const scoreInput = {
-        symbol,
-        closes: data.closes,
-        historyDates: data.historyDates,
-        historySessions: data.historySessions,
-        currentPrice: data.currentPrice,
-        historyAsOf: data.historyAsOf,
-        marketEvidence: marketEvidence ?? undefined,
-      };
-      const historyAssessment = assessCommodityHistory(scoreInput);
-      if (historyAssessment.status === "unavailable") {
-        res.status(422).json({
-          error: "COMMODITY_HISTORY_UNAVAILABLE",
-          message: historyAssessment.reason,
-          reason: historyAssessment.reason,
-          lastUsableDate: historyAssessment.lastUsableDate,
-        });
-        return;
-      }
-      const score = buildCommodityScore(scoreInput);
-      if (!score) {
-        res.status(422).json({
-          error: "COMMODITY_HISTORY_UNAVAILABLE",
-          message: "Commodity history is unavailable for scoring.",
-          reason: "Commodity history is unavailable for scoring.",
-          lastUsableDate: historyAssessment.lastUsableDate,
-        });
-        return;
-      }
-
-      const newsContext = await fetchCommodityNews(symbol, commodity.name);
-      const explanationPrompt = `Explain this rules-based commodity market score. The numeric score and factors are locked; do not change them, invent price targets, or call this personalized advice.
-
-Commodity: ${commodity.name} (${symbol}), family: ${commodity.family}
-Price: ${data.currentPrice} ${data.currency}
-History through: ${score.historyAsOf ?? "date unavailable"}
-Score: ${score.score}/100
-Confidence: ${score.confidence}/100
-Coverage: ${score.dataCoveragePercent}% of defined factor groups currently have data
-One-month return: ${score.oneMonthReturnPercent ?? "unavailable"}%
-Three-month return: ${score.threeMonthReturnPercent ?? "unavailable"}%
-Six-month return: ${score.sixMonthReturnPercent ?? "unavailable"}%
-Annualized volatility: ${score.annualizedVolatilityPercent}%
-Unavailable factors: ${score.factors.filter((factor) => factor.status === "unavailable").map((factor) => factor.label).join(", ")}
-Validated score inputs: ${score.factors.filter((factor) => factor.status === "available").map((factor) => `${factor.label}: ${factor.score}/100; ${factor.detail}`).join("\n")}
-Recent news context (may be absent): ${newsContext.status === "available" ? newsContext.summary : "Unavailable; do not infer current events."}
-
-Return JSON with reasoning (2-3 concise paragraphs), risks (up to 4 strings), and strengths (up to 4 strings). This is commentary only: do not change, reweight, or supplement the deterministic score using commentary or news. Clearly state when supply/demand or curve data are unavailable.`;
-      let explanation = fallbackAiAnalysis();
-      try {
-        const completion = await openai.chat.completions.create({
-          model: "gpt-4o-mini",
-          max_tokens: 1200,
-          temperature: 0,
-          messages: [{ role: "user", content: explanationPrompt }],
-          response_format: { type: "json_object" },
-        });
-        explanation = parseAiAnalysis(completion.choices[0]?.message?.content ?? "")
-          ?? fallbackAiAnalysis();
-      } catch (err) {
-        req.log.warn({ err, symbol }, "Commodity AI explanation unavailable");
-      }
-
-      res.json({
-        assetType: "commodity",
-        symbol: data.symbol,
-        companyName: commodity.name,
-        exchange: data.exchange,
-        currency: data.currency,
-        currentPrice: data.currentPrice,
-        priceChange: data.priceChange,
-        priceChangePercent: data.priceChangePercent,
-        volume: data.volume,
-        marketCap: null,
-        week52High: data.week52High,
-        week52Low: data.week52Low,
-        commodityAnalysis: {
-          ...score,
-          reasoning: explanation.reasoning,
-          risks: explanation.risks,
-          strengths: explanation.strengths,
-          newsContext,
-          provider: "Yahoo Finance",
+      await respondWithCommodityAnalysis(res, data, {
+        fetchInventory: async () => inventoryRequest,
+        fetchPositioning: async () => positioningRequest,
+        fetchNews: fetchCommodityNews,
+        async createCompletion(prompt, maxTokens) {
+          const completion = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            max_tokens: maxTokens,
+            temperature: 0,
+            messages: [{ role: "user", content: prompt }],
+            response_format: { type: "json_object" },
+          });
+          return completion.choices[0]?.message?.content ?? "";
         },
-      });
+        now: () => commodityDataAsOf,
+        onCommentaryFailure(err, failedSymbol) {
+          req.log.warn({ err, symbol: failedSymbol }, "Commodity AI explanation unavailable");
+        },
+      }, { includeCommentary });
       return;
     }
     if (data.quoteType === "ETF") {

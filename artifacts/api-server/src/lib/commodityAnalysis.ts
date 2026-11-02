@@ -152,18 +152,26 @@ const USDA_COMMODITIES: Record<string, string> = {
   "SB=F": "Sugar",
 };
 
-function validSource(source: CommodityEvidenceSource, provider: string, asOf: string): boolean {
-  return source.title.length > 0
-    && source.asOf === asOf
-    && validDate(source.asOf)
-    && /^https:\/\//i.test(source.url)
+function validSource(source: unknown, provider: string, asOf: string): source is CommodityEvidenceSource {
+  if (!source || typeof source !== "object") return false;
+  const candidate = source as Partial<CommodityEvidenceSource>;
+  return typeof candidate.title === "string"
+    && candidate.title.length > 0
+    && typeof candidate.asOf === "string"
+    && candidate.asOf === asOf
+    && validDate(candidate.asOf)
+    && typeof candidate.url === "string"
+    && /^https:\/\//i.test(candidate.url)
+    && typeof candidate.unit === "string"
+    && candidate.unit.length > 0
+    && typeof candidate.observation === "string"
     && (provider === "EIA"
-      ? source.url === "https://ir.eia.gov/wpsr/table4.csv"
-        || source.url === "https://ir.eia.gov/ngs/wngsr.csv"
+      ? candidate.url === "https://ir.eia.gov/wpsr/table4.csv"
+        || candidate.url === "https://ir.eia.gov/ngs/wngsr.csv"
       : provider === "USDA"
-        ? /^https:\/\/www\.usda\.gov\/sites\/default\/files\/documents\/oce-wasde-report-data-\d{4}-\d{2}(?:-V\d+)?\.csv$/i.test(source.url)
+        ? /^https:\/\/www\.usda\.gov\/sites\/default\/files\/documents\/oce-wasde-report-data-\d{4}-\d{2}(?:-V\d+)?\.csv$/i.test(candidate.url)
         : provider === "CFTC"
-          ? source.url === "https://publicreportinghub.cftc.gov/Commitments-of-Traders/Legacy-Futures-Only/6dca-aqww"
+          ? candidate.url === "https://publicreportinghub.cftc.gov/Commitments-of-Traders/Legacy-Futures-Only/6dca-aqww"
           : false);
 }
 
@@ -178,7 +186,10 @@ function validateInventoryEvidence(
   symbol: string,
   now: Date,
 ): CommodityInventoryEvidence | null {
-  if (!evidence || evidence.symbol !== symbol || evidence.instrument !== SUPPORTED_COMMODITIES[symbol]?.name) return null;
+  if (!evidence || typeof evidence !== "object") return null;
+  if (evidence.symbol !== symbol || evidence.instrument !== SUPPORTED_COMMODITIES[symbol]?.name) return null;
+  if (evidence.provider !== "EIA" && evidence.provider !== "USDA") return null;
+  if (typeof evidence.asOf !== "string" || typeof evidence.units !== "string") return null;
   if (!Number.isFinite(evidence.value) || !freshDate(evidence.asOf, now, evidence.provider === "USDA" ? 60 : 14)) return null;
   if (!validSource(evidence.source, evidence.provider, evidence.asOf)) return null;
 
@@ -218,10 +229,12 @@ function validatePositioningEvidence(
   now: Date,
 ): CommodityPositioningEvidence | null {
   const expected = CFTC_INSTRUMENTS[symbol];
-  if (!evidence || !expected || evidence.provider !== "CFTC"
+  if (!evidence || typeof evidence !== "object" || !expected || evidence.provider !== "CFTC"
     || evidence.symbol !== symbol
     || evidence.instrument !== expected.name
     || evidence.contractCode !== expected.code
+    || typeof evidence.units !== "string"
+    || typeof evidence.asOf !== "string"
     || !evidence.units.toUpperCase().includes(expected.unit)
     || !freshDate(evidence.asOf, now, 14)
     || !validSource(evidence.source, evidence.provider, evidence.asOf)

@@ -434,6 +434,28 @@ async function fetchPositioning(
   });
 }
 
+export async function fetchCommodityInventoryEvidence(
+  symbol: string,
+  now = new Date(),
+): Promise<CommodityInventoryEvidence | null> {
+  try {
+    return await fetchInventory(symbol.trim().toUpperCase(), now);
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchCommodityPositioningEvidence(
+  symbol: string,
+  now = new Date(),
+): Promise<CommodityPositioningEvidence | null> {
+  try {
+    return await fetchPositioning(symbol.trim().toUpperCase(), now);
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchCommodityMarketEvidence(
   symbol: string,
   now = new Date(),
@@ -441,8 +463,8 @@ export async function fetchCommodityMarketEvidence(
   const normalized = symbol.trim().toUpperCase();
   if (!SUPPORTED_COMMODITIES[normalized]) return { inventory: null, positioning: null };
   const [inventory, positioning] = await Promise.all([
-    fetchInventory(normalized, now),
-    fetchPositioning(normalized, now),
+    fetchCommodityInventoryEvidence(normalized, now),
+    fetchCommodityPositioningEvidence(normalized, now),
   ]);
   return { inventory, positioning };
 }

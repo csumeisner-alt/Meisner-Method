@@ -1,0 +1,143 @@
+import type { Response } from "express";
+import {
+  assessCommodityHistory,
+  buildCommodityScore,
+  SUPPORTED_COMMODITIES,
+  unavailableCommodityNews,
+  type CommodityInventoryEvidence,
+  type CommodityNewsContext,
+  type CommodityPositioningEvidence,
+} from "./commodityAnalysis.ts";
+import { fallbackAiAnalysis, parseAiAnalysis } from "./analysisResponse.ts";
+
+export interface CommodityAnalysisQuote {
+  symbol: string;
+  exchange: string;
+  currency: string;
+  currentPrice: number;
+  priceChange: number;
+  priceChangePercent: number;
+  volume: number;
+  week52High: number;
+  week52Low: number;
+  closes: number[];
+  historyDates: string[];
+  historySessions: string[] | null;
+  historyAsOf: string | null;
+}
+
+export interface CommodityAnalysisEndpointDependencies {
+  fetchInventory: (symbol: string, now: Date) => Promise<CommodityInventoryEvidence | null>;
+  fetchPositioning: (symbol: string, now: Date) => Promise<CommodityPositioningEvidence | null>;
+  fetchNews: (symbol: string, name: string) => Promise<CommodityNewsContext>;
+  createCompletion: (prompt: string, maxTokens: number) => Promise<string>;
+  now: () => Date;
+  onCommentaryFailure?: (error: unknown, symbol: string) => void;
+}
+
+export async function respondWithCommodityAnalysis(
+  res: Response,
+  data: CommodityAnalysisQuote,
+  dependencies: CommodityAnalysisEndpointDependencies,
+  options: { includeCommentary?: boolean } = {},
+) {
+  const symbol = data.symbol.trim().toUpperCase();
+  const commodity = SUPPORTED_COMMODITIES[symbol];
+  if (!commodity) {
+    res.status(400).json({ error: "UNSUPPORTED_COMMODITY", message: "Unsupported commodity symbol." });
+    return;
+  }
+
+  const now = dependencies.now();
+  const [inventory, positioning] = await Promise.all([
+    Promise.resolve().then(() => dependencies.fetchInventory(symbol, now)).catch(() => null),
+    Promise.resolve().then(() => dependencies.fetchPositioning(symbol, now)).catch(() => null),
+  ]);
+  const scoreInput = {
+    symbol,
+    closes: data.closes,
+    historyDates: data.historyDates,
+    historySessions: data.historySessions,
+    currentPrice: data.currentPrice,
+    historyAsOf: data.historyAsOf,
+    marketEvidence: { inventory, positioning },
+    now,
+  };
+  const historyAssessment = assessCommodityHistory(scoreInput);
+  if (historyAssessment.status === "unavailable") {
+    res.status(422).json({
+      error: "COMMODITY_HISTORY_UNAVAILABLE",
+      message: historyAssessment.reason,
+      reason: historyAssessment.reason,
+      lastUsableDate: historyAssessment.lastUsableDate,
+    });
+    return;
+  }
+  const score = buildCommodityScore(scoreInput);
+  if (!score) {
+    res.status(422).json({
+      error: "COMMODITY_HISTORY_UNAVAILABLE",
+      message: "Commodity history is unavailable for scoring.",
+      reason: "Commodity history is unavailable for scoring.",
+      lastUsableDate: historyAssessment.lastUsableDate,
+    });
+    return;
+  }
+
+  let newsContext: CommodityNewsContext;
+  try {
+    newsContext = await dependencies.fetchNews(symbol, commodity.name);
+  } catch {
+    newsContext = unavailableCommodityNews();
+  }
+
+  let explanation = fallbackAiAnalysis();
+  if (options.includeCommentary !== false) {
+    const explanationPrompt = `Explain this rules-based commodity market score. The numeric score and factors are locked; do not change them, invent price targets, or call this personalized advice.
+
+Commodity: ${commodity.name} (${symbol}), family: ${commodity.family}
+Price: ${data.currentPrice} ${data.currency}
+History through: ${score.historyAsOf ?? "date unavailable"}
+Score: ${score.score}/100
+Confidence: ${score.confidence}/100
+Coverage: ${score.dataCoveragePercent}% of defined factor groups currently have data
+One-month return: ${score.oneMonthReturnPercent ?? "unavailable"}%
+Three-month return: ${score.threeMonthReturnPercent ?? "unavailable"}%
+Six-month return: ${score.sixMonthReturnPercent ?? "unavailable"}%
+Annualized volatility: ${score.annualizedVolatilityPercent}%
+Unavailable factors: ${score.factors.filter((factor) => factor.status === "unavailable").map((factor) => factor.label).join(", ")}
+Validated score inputs: ${score.factors.filter((factor) => factor.status === "available").map((factor) => `${factor.label}: ${factor.score}/100; ${factor.detail}`).join("\n")}
+Recent news context (may be absent): ${newsContext.status === "available" ? newsContext.summary : "Unavailable; do not infer current events."}
+
+Return JSON with reasoning (2-3 concise paragraphs), risks (up to 4 strings), and strengths (up to 4 strings). This is commentary only: do not change, reweight, or supplement the deterministic score using commentary or news. Clearly state when supply/demand or curve data are unavailable.`;
+    try {
+      explanation = parseAiAnalysis(await dependencies.createCompletion(explanationPrompt, 1200))
+        ?? fallbackAiAnalysis();
+    } catch (error) {
+      dependencies.onCommentaryFailure?.(error, symbol);
+    }
+  }
+
+  res.json({
+    assetType: "commodity",
+    symbol: data.symbol,
+    companyName: commodity.name,
+    exchange: data.exchange,
+    currency: data.currency,
+    currentPrice: data.currentPrice,
+    priceChange: data.priceChange,
+    priceChangePercent: data.priceChangePercent,
+    volume: data.volume,
+    marketCap: null,
+    week52High: data.week52High,
+    week52Low: data.week52Low,
+    commodityAnalysis: {
+      ...score,
+      reasoning: explanation.reasoning,
+      risks: explanation.risks,
+      strengths: explanation.strengths,
+      newsContext,
+      provider: "Yahoo Finance",
+    },
+  });
+}
