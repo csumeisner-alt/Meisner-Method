@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const heatMap = readFileSync(new URL("../app/heat-map.tsx", import.meta.url), "utf8");
+const detailModal = readFileSync(new URL("../components/HeatMapDetailModal.tsx", import.meta.url), "utf8");
 
 assert.match(heatMap, /const unavailableMapAssets = responseMatches && category === 'commodities'/);
 assert.match(heatMap, /testID="heat-map-unavailable-map-assets"/);
@@ -9,6 +10,12 @@ assert.match(heatMap, /testID="heat-map-unavailable-map-divider"/);
 assert.match(heatMap, /testID=\{`heat-map-unavailable-hex-\$\{symbol\}`\}/);
 assert.match(heatMap, /Quote unavailable/);
 assert.match(heatMap, /responseMatches && category === 'custom'/);
-assert.match(heatMap, /onPress=\{onAdd\}/);
+assert.match(heatMap, /onPress=\{onSelect\}/);
+assert.match(heatMap, /setSelectedUnavailableCommodity\(\{ symbol: asset\.symbol, name: asset\.name \}\)/);
+assert.match(heatMap, /unavailableCommodity=\{selectedUnavailableCommodity\}/);
+assert.match(heatMap, /selectedUnavailableCommodity !== null/);
 assert.match(heatMap, /isSupportedCustomMapCommoditySymbol\(symbol\)/);
 assert.match(heatMap, /isSupportedCustomMapCommoditySymbol\(symbol\)\s*\?\s*symbol\.trim\(\)\.toUpperCase\(\)/);
+assert.match(detailModal, /No fresh quote is available\. Contract details and historical analysis are shown without a current price\./);
+assert.match(detailModal, /canAnalyzeCommodity && isCommodity/);
+assert.match(detailModal, /testID="heat-map-detail-analyze-commodity"/);

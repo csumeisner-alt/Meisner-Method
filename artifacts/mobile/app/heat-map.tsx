@@ -437,16 +437,14 @@ function HexTile({
 }
 
 function UnavailableHexTile({
-  name, symbol, width, height, colors, onAdd, alreadyAdded = false, addDisabled = false, onRemove, removing = false,
+  name, symbol, width, height, colors, onSelect, onRemove, removing = false,
 }: {
   name: string;
   symbol: string;
   width: number;
   height: number;
   colors: ReturnType<typeof useColors>;
-  onAdd?: () => void;
-  alreadyAdded?: boolean;
-  addDisabled?: boolean;
+  onSelect?: () => void;
   onRemove?: () => void;
   removing?: boolean;
 }) {
@@ -458,36 +456,33 @@ function UnavailableHexTile({
       <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.58} style={[styles.unavailableHexName, { color: colors.foreground }]}>{name}</Text>
       <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.64} style={[styles.unavailableHexSymbol, { color: colors.mutedForeground }]}>{symbol}</Text>
       <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62} style={[styles.unavailableHexStatus, { color: colors.mutedForeground }]}>Quote unavailable</Text>
-      {onAdd && <View pointerEvents="none" style={[styles.unavailableHexBadge, { backgroundColor: addDisabled ? colors.secondary : colors.primary }]}>
-        <MaterialCommunityIcons name={alreadyAdded ? 'check' : 'plus'} size={12} color={addDisabled ? colors.mutedForeground : colors.primaryForeground} />
-      </View>}
-      {onRemove && <TouchableOpacity
-        testID={`heat-map-remove-unavailable-${symbol}`}
-        accessibilityRole="button"
-        accessibilityLabel={`Remove ${symbol} from your custom heat map`}
-        disabled={removing}
-        onPress={onRemove}
-        style={[styles.unavailableHexBadge, styles.unavailableHexRemoveBadge, { backgroundColor: colors.card, opacity: removing ? 0.55 : 1 }]}
-      >
-        <MaterialCommunityIcons name="close" size={12} color={colors.sellColor} />
-      </TouchableOpacity>}
     </View>
   );
 
-  if (!onAdd) return <View
-    testID={`heat-map-unavailable-hex-${symbol}`}
-    accessibilityRole="image"
-    accessibilityLabel={`${name}, ${symbol}, quote unavailable`}
-  >{tile}</View>;
-
-  return <TouchableOpacity
-    testID={`heat-map-unavailable-hex-${symbol}`}
-    accessibilityRole="button"
-    accessibilityLabel={alreadyAdded ? `${name} is already in the custom map; quote unavailable` : `Add ${name} to custom map while its quote is unavailable`}
-    accessibilityState={{ disabled: addDisabled }}
-    disabled={addDisabled}
-    onPress={onAdd}
-  >{tile}</TouchableOpacity>;
+  return <View style={{ width, height }}>
+    {onSelect
+      ? <TouchableOpacity
+          testID={`heat-map-unavailable-hex-${symbol}`}
+          accessibilityRole="button"
+          accessibilityLabel={`View ${name} data and run AI commodity analysis; quote unavailable`}
+          onPress={onSelect}
+        >{tile}</TouchableOpacity>
+      : <View
+          testID={`heat-map-unavailable-hex-${symbol}`}
+          accessibilityRole="image"
+          accessibilityLabel={`${name}, ${symbol}, quote unavailable`}
+        >{tile}</View>}
+    {onRemove && <TouchableOpacity
+      testID={`heat-map-remove-unavailable-${symbol}`}
+      accessibilityRole="button"
+      accessibilityLabel={`Remove ${symbol} from your custom heat map`}
+      disabled={removing}
+      onPress={onRemove}
+      style={[styles.unavailableHexBadge, { backgroundColor: colors.card, opacity: removing ? 0.55 : 1 }]}
+    >
+      <MaterialCommunityIcons name="close" size={12} color={colors.sellColor} />
+    </TouchableOpacity>}
+  </View>;
 }
 
 function LoadingHexagon({ index, width, height, delayMs, colors, theme, reduceMotion }: {
@@ -715,6 +710,7 @@ export default function HeatMapScreen() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<HeatMapQuote | null>(null);
+  const [selectedUnavailableCommodity, setSelectedUnavailableCommodity] = useState<{ symbol: string; name: string } | null>(null);
   const directionPulse = useRef(new Animated.Value(0)).current;
   const removeInProgress = useRef(false);
   const customStorageReadId = useRef(0);
@@ -2031,7 +2027,10 @@ export default function HeatMapScreen() {
                                   revealDelayMs={revealDelayBySymbol.get(quote.symbol) ?? 0}
                                   removing={removingSymbol !== null}
                                   onRemove={() => void removeSymbol(quote.symbol)}
-                                  onSelect={() => setSelectedQuote(quote)}
+                                   onSelect={() => {
+                                     setSelectedUnavailableCommodity(null);
+                                     setSelectedQuote(quote);
+                                   }}
                                   dragEnabled={dragEnabled}
                                   dragging={draggingSymbol === quote.symbol}
                                   positionIndex={position.index}
@@ -2054,13 +2053,13 @@ export default function HeatMapScreen() {
                         <View style={[styles.honeycomb, { width: contentWidth, height: unavailableLayout.height }]}>
                           {unavailableLayout.positions.map((position) => {
                             const asset = unavailableMapAssets[position.index];
-                            const alreadyAdded = category === 'commodities' && customSymbols.includes(asset.symbol);
-                            const addDisabled = alreadyAdded
-                              || !storageReady
-                              || storageLoadError !== null
-                              || customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS;
-                            const onAdd = category === 'commodities'
-                              ? () => { void addSymbol(asset.symbol); }
+                            const isCommodity = category === 'commodities'
+                              || isSupportedCustomMapCommoditySymbol(asset.symbol);
+                            const onSelect = isCommodity
+                              ? () => {
+                                  setSelectedQuote(null);
+                                  setSelectedUnavailableCommodity({ symbol: asset.symbol, name: asset.name });
+                                }
                               : undefined;
                             const onRemove = category === 'custom' && isEditingCustomMap
                               ? () => void removeSymbol(asset.symbol)
@@ -2075,9 +2074,7 @@ export default function HeatMapScreen() {
                                 width={tileWidth}
                                 height={tileHeight}
                                 colors={colors}
-                                onAdd={onAdd}
-                                alreadyAdded={alreadyAdded}
-                                addDisabled={addDisabled}
+                                onSelect={onSelect}
                                 onRemove={onRemove}
                                 removing={removingSymbol === asset.symbol}
                               />
@@ -2165,12 +2162,17 @@ export default function HeatMapScreen() {
         </Modal>
         <HeatMapDetailModal
           quote={selectedQuote}
+          unavailableCommodity={selectedUnavailableCommodity}
           quoteUnavailable={selectedQuoteUnavailable}
-          visible={selectedQuote !== null}
+          visible={selectedQuote !== null || selectedUnavailableCommodity !== null}
           canAnalyzeStock={(category === 'stocks' || category === 'custom') && selectedQuote?.assetType === 'stock'}
           canAnalyzeEtf={(category === 'etfs' || category === 'custom') && selectedQuote?.assetType === 'etf'}
-          canAnalyzeCommodity={(category === 'commodities' || category === 'custom') && selectedQuote?.assetType === 'commodity'}
-          onClose={() => setSelectedQuote(null)}
+          canAnalyzeCommodity={(category === 'commodities' || category === 'custom')
+            && (selectedQuote?.assetType === 'commodity' || selectedUnavailableCommodity !== null)}
+          onClose={() => {
+            setSelectedQuote(null);
+            setSelectedUnavailableCommodity(null);
+          }}
           onAnalyzeStock={() => {
             if ((category !== 'stocks' && category !== 'custom') || selectedQuote?.assetType !== 'stock') return;
             const analysisSymbol = selectedQuote.symbol;
@@ -2184,9 +2186,12 @@ export default function HeatMapScreen() {
             setTimeout(() => router.push(`/analysis/${encodeURIComponent(analysisSymbol)}`), 350);
           }}
           onAnalyzeCommodity={() => {
-            if ((category !== 'commodities' && category !== 'custom') || selectedQuote?.assetType !== 'commodity') return;
-            const analysisSymbol = selectedQuote.symbol;
+            if ((category !== 'commodities' && category !== 'custom')
+              || (selectedQuote?.assetType !== 'commodity' && selectedUnavailableCommodity === null)) return;
+            const analysisSymbol = selectedQuote?.symbol ?? selectedUnavailableCommodity?.symbol;
+            if (!analysisSymbol) return;
             setSelectedQuote(null);
+            setSelectedUnavailableCommodity(null);
             setTimeout(() => router.push(`/analysis/${encodeURIComponent(analysisSymbol)}`), 350);
           }}
           onOpenChart={() => {

@@ -11,7 +11,7 @@ const commodityDriversSource = readFileSync(commodityDriversPath, 'utf8');
 test('market detail modal builds and renders the selected asset-specific statistic rows', () => {
   assert.match(
     modalSource,
-    /getHeatMapDetailStatRows\(\s*quote\.assetType,\s*stats,/,
+    /getHeatMapDetailStatRows\(\s*quote\?\.assetType \?\? 'commodity',\s*stats,/,
   );
   assert.match(modalSource, /displayedStats\.map\(\(item\) => \(/);
   assert.match(modalSource, /\{item\.label\}/);
@@ -24,8 +24,8 @@ test('market detail modal builds and renders the selected asset-specific statist
 });
 
 test('commodity detail modal renders instrument-specific up and down price drivers', () => {
-  assert.match(modalSource, /const isCommodity = quote\.assetType === 'commodity'/);
-  assert.match(modalSource, /getCommodityContractSpec\(quote\.symbol\)/);
+  assert.match(modalSource, /const isCommodity = quote\?\.assetType === 'commodity' \|\| unavailableCommodity !== null/);
+  assert.match(modalSource, /getCommodityContractSpec\(symbol\)/);
   assert.match(modalSource, /getCommodityContractNotional\(quote\.symbol,\s*quote\.price\)/);
   assert.match(modalSource, /heat-map-commodity-contract-spec/);
   assert.match(modalSource, /heat-map-commodity-quote-unit/);
@@ -33,7 +33,7 @@ test('commodity detail modal renders instrument-specific up and down price drive
   assert.match(modalSource, /heat-map-commodity-contract-notional/);
   assert.match(modalSource, /EST\. FULL-CONTRACT NOTIONAL/);
   assert.match(modalSource, /not the margin or cash required to trade/);
-  assert.match(modalSource, /<CommodityPriceDrivers symbol=\{quote\.symbol\}/);
+  assert.match(modalSource, /<CommodityPriceDrivers symbol=\{symbol \?\? ''\}/);
   assert.match(modalSource, /Commodity snapshot/);
   assert.match(commodityDriversSource, /Can push prices higher/);
   assert.match(commodityDriversSource, /Can push prices lower/);
@@ -41,11 +41,11 @@ test('commodity detail modal renders instrument-specific up and down price drive
   assert.match(commodityDriversSource, /loadCommodityPriceDrivers\(symbol,\s*controller\.signal\)/);
   assert.match(commodityDriversSource, /DRIVER_REQUEST_TIMEOUT_MS/);
   assert.match(commodityDriversSource, /heat-map-commodity-driver-retry/);
-  assert.match(modalSource, /<CommodityPriceDrivers symbol=\{quote\.symbol\} visible=\{visible\}/);
+  assert.match(modalSource, /<CommodityPriceDrivers symbol=\{symbol \?\? ''\} visible=\{visible\}/);
 });
 
 test('crypto detail keeps daily provider supply history distinct from its current supply share', () => {
-  assert.match(modalSource, /const isCrypto = quote\.assetType === 'cryptocurrency'/);
+  assert.match(modalSource, /const isCrypto = quote\?\.assetType === 'cryptocurrency'/);
   assert.match(modalSource, /\{isCrypto && \(\s*<CryptoSupplyHistory/s);
   assert.match(modalSource, /useGetCryptoSupplyHistory\(symbol,\s*rangeDays,\s*\{\s*query:\s*\{[^}]*enabled:\s*visible/s);
   assert.match(modalSource, /HEAT_MAP_CRYPTO_SUPPLY_RANGES\.map/);

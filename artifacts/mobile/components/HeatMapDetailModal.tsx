@@ -269,6 +269,7 @@ function formatExactSupply(value: number) {
 
 export function HeatMapDetailModal({
   quote,
+  unavailableCommodity,
   quoteUnavailable,
   visible,
   onClose,
@@ -282,6 +283,7 @@ export function HeatMapDetailModal({
   onAnalyzeCommodity,
 }: {
   quote: HeatMapQuote | null;
+  unavailableCommodity?: { symbol: string; name: string } | null;
   quoteUnavailable: boolean;
   visible: boolean;
   onClose: () => void;
@@ -306,13 +308,16 @@ export function HeatMapDetailModal({
   const [quoteRefreshError, setQuoteRefreshError] = useState(false);
   const quoteRefreshAttemptRef = useRef(0);
   const quoteRefreshInFlightRef = useRef(false);
+  const symbol = quote?.symbol ?? unavailableCommodity?.symbol ?? null;
+  const name = quote?.name ?? unavailableCommodity?.name ?? symbol;
+  const isCommodity = quote?.assetType === 'commodity' || unavailableCommodity !== null && unavailableCommodity !== undefined;
 
   useEffect(() => {
     quoteRefreshAttemptRef.current += 1;
     quoteRefreshInFlightRef.current = false;
     setQuoteRefreshLoading(false);
     setQuoteRefreshError(false);
-  }, [quote?.symbol, visible]);
+  }, [quote?.symbol, unavailableCommodity?.symbol, visible]);
 
   useEffect(() => {
     if (!quoteUnavailable) setQuoteRefreshError(false);
@@ -348,11 +353,11 @@ export function HeatMapDetailModal({
   };
 
   useEffect(() => {
-    if (!visible || !quote) return;
+    if (!visible || !symbol) return;
     let isCurrent = true;
     const forceRefresh = forceRefreshRef.current;
     forceRefreshRef.current = false;
-    const cacheKey = quote.symbol.toUpperCase();
+    const cacheKey = symbol.toUpperCase();
     const cached = detailCache.get(cacheKey);
     const hasFreshCache = cached !== undefined && cached.expiresAt > Date.now();
 
@@ -376,7 +381,7 @@ export function HeatMapDetailModal({
       setLoading(false);
     }, DETAIL_STATS_REQUEST_TIMEOUT_MS);
 
-    void apiFetch<unknown>(`/api/stocks/info/${encodeURIComponent(quote.symbol)}`, {
+    void apiFetch<unknown>(`/api/stocks/info/${encodeURIComponent(symbol)}`, {
       signal: controller.signal,
     })
       .then((payload) => {
@@ -404,32 +409,33 @@ export function HeatMapDetailModal({
       clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [apiFetch, quote?.symbol, retryCount, visible]);
+  }, [apiFetch, retryCount, symbol, visible]);
 
-  if (!quote) return null;
+  if (!quote && !unavailableCommodity) return null;
 
-  const stats = statsEntry?.symbol === quote.symbol.toUpperCase() ? statsEntry.stats : null;
-  const marketCap = stats?.marketCap ?? quote.marketCapUsd;
-  const change = quote.priceChangePercent;
-  const changeColor = change >= 0 ? colors.buyColor : colors.sellColor;
-  const isEtf = quote.assetType === 'etf';
-  const isCommodity = quote.assetType === 'commodity';
-  const isCrypto = quote.assetType === 'cryptocurrency';
-  const commodityContract = isCommodity ? getCommodityContractSpec(quote.symbol) : null;
-  const commodityNotional = commodityContract
+  const stats = symbol !== null && statsEntry !== null && statsEntry.symbol === symbol.toUpperCase()
+    ? statsEntry.stats
+    : null;
+  const marketCap = stats?.marketCap ?? quote?.marketCapUsd ?? null;
+  const change = quote?.priceChangePercent ?? 0;
+  const changeColor = quote === null ? colors.mutedForeground : change >= 0 ? colors.buyColor : colors.sellColor;
+  const isEtf = quote?.assetType === 'etf';
+  const isCrypto = quote?.assetType === 'cryptocurrency';
+  const commodityContract = isCommodity && symbol ? getCommodityContractSpec(symbol) : null;
+  const commodityNotional = commodityContract && quote
     ? getCommodityContractNotional(quote.symbol, quote.price)
     : null;
   const commodityTickValue = commodityContract
-    ? getCommodityContractTickValue(quote.symbol)
+    ? getCommodityContractTickValue(symbol!)
     : null;
   const displayedStats = getHeatMapDetailStatRows(
-    quote.assetType,
+    quote?.assetType ?? 'commodity',
     stats,
     marketCap,
     loading,
   );
-  const formatQuotePrice = (value: number) => quote.assetType === 'cryptocurrency'
-    ? formatHeatMapCryptoPrice(value, quote.symbol, 6)
+  const formatQuotePrice = (value: number) => quote?.assetType === 'cryptocurrency'
+    ? formatHeatMapCryptoPrice(value, symbol ?? '', 6)
     : formatPrice(value, commodityContract?.quoteCurrency);
 
   return (
@@ -468,18 +474,18 @@ export function HeatMapDetailModal({
           >
             <View style={styles.header}>
               <View style={styles.titleBlock}>
-                <Text style={[styles.kicker, { color: colors.gold }]}>{getAssetLabel(quote.assetType)}  ·  MARKET STORY</Text>
+                <Text style={[styles.kicker, { color: colors.gold }]}>{getAssetLabel(quote?.assetType ?? 'commodity')}  ·  MARKET STORY</Text>
                 <Text testID="heat-map-detail-title" accessibilityRole="header" numberOfLines={2} style={[styles.title, { color: colors.heading }]}>
-                  {quote.name || quote.symbol}
+                  {name || symbol}
                 </Text>
                 <Text style={[styles.symbolLine, { color: colors.mutedForeground }]}>
-                  {quote.symbol}{quote.exchange ? `  ·  ${quote.exchange}` : ''}
+                  {symbol}{quote?.exchange ? `  ·  ${quote.exchange}` : ''}
                 </Text>
               </View>
               <Pressable
                 testID="heat-map-detail-close"
                 accessibilityRole="button"
-                accessibilityLabel={`Close ${quote.symbol} details`}
+                accessibilityLabel={`Close ${symbol} details`}
                 onPress={onClose}
                 hitSlop={8}
                 style={[styles.closeButton, { borderColor: colors.border, backgroundColor: colors.card }]}
@@ -487,11 +493,11 @@ export function HeatMapDetailModal({
                 <MaterialCommunityIcons name="close" size={19} color={colors.foreground} />
               </Pressable>
             </View>
-            {canAnalyzeStock && quote.assetType === 'stock' && (
+            {canAnalyzeStock && quote?.assetType === 'stock' && (
               <Pressable
                 testID="heat-map-detail-analyze-stock"
                 accessibilityRole="button"
-                accessibilityLabel={`Run AI stock analysis for ${quote.symbol}`}
+                accessibilityLabel={`Run AI stock analysis for ${symbol}`}
                 onPress={onAnalyzeStock}
                 style={[styles.analyzeStockButton, { backgroundColor: colors.primary }]}
               >
@@ -500,11 +506,11 @@ export function HeatMapDetailModal({
                 <MaterialCommunityIcons name="arrow-right" size={16} color={colors.primaryForeground} />
               </Pressable>
             )}
-            {canAnalyzeEtf && quote.assetType === 'etf' && (
+            {canAnalyzeEtf && quote?.assetType === 'etf' && (
               <Pressable
                 testID="heat-map-detail-analyze-etf"
                 accessibilityRole="button"
-                accessibilityLabel={`Run AI ETF analysis for ${quote.symbol}`}
+                accessibilityLabel={`Run AI ETF analysis for ${symbol}`}
                 onPress={onAnalyzeEtf}
                 style={[styles.analyzeStockButton, { backgroundColor: colors.primary }]}
               >
@@ -517,7 +523,7 @@ export function HeatMapDetailModal({
               <Pressable
                 testID="heat-map-detail-analyze-commodity"
                 accessibilityRole="button"
-                accessibilityLabel={`Run AI commodity analysis for ${quote.symbol}`}
+                accessibilityLabel={`Run AI commodity analysis for ${symbol}`}
                 onPress={onAnalyzeCommodity}
                 style={[styles.analyzeStockButton, { backgroundColor: colors.primary }]}
               >
@@ -526,19 +532,19 @@ export function HeatMapDetailModal({
                 <MaterialCommunityIcons name="arrow-right" size={16} color={colors.primaryForeground} />
               </Pressable>
             )}
-            <Pressable
+            {quote && <Pressable
               testID="heat-map-detail-open-chart"
               accessibilityRole="button"
-              accessibilityLabel={`Open full chart for ${quote.symbol}`}
+              accessibilityLabel={`Open full chart for ${symbol}`}
               onPress={onOpenChart}
               style={[styles.openChartButton, { backgroundColor: colors.card, borderColor: colors.border }]}
             >
               <MaterialCommunityIcons name="chart-line" size={17} color={colors.primary} />
               <Text style={[styles.openChartText, { color: colors.primary }]}>Open full chart</Text>
               <MaterialCommunityIcons name="arrow-top-right" size={15} color={colors.primary} />
-            </Pressable>
+            </Pressable>}
 
-            <View style={styles.priceRow}>
+            {quote ? <View style={styles.priceRow}>
               <Text testID="heat-map-detail-price" style={[styles.price, { color: colors.foreground }]}>
                 {formatQuotePrice(quote.price)}
               </Text>
@@ -548,8 +554,10 @@ export function HeatMapDetailModal({
                   {change > 0 ? '+' : ''}{change.toFixed(2)}% today
                 </Text>
               </View>
-            </View>
-            <View style={styles.quoteAgeRow}>
+            </View> : <Text testID="heat-map-detail-no-current-quote" style={[styles.emptyStats, { color: colors.mutedForeground }]}>
+              No fresh quote is available. Contract details and historical analysis are shown without a current price.
+            </Text>}
+            {quote && <View style={styles.quoteAgeRow}>
               <Text style={[styles.quoteAge, { color: colors.mutedForeground }]}>
                 Quote {formatHeatMapQuoteAge(quote.priceTimestamp)}
               </Text>
@@ -569,8 +577,8 @@ export function HeatMapDetailModal({
                   {quoteRefreshLoading ? 'Refreshing' : 'Refresh quote'}
                 </Text>
               </Pressable>
-            </View>
-            {(quoteUnavailable || quoteRefreshError) && (
+            </View>}
+            {quote && (quoteUnavailable || quoteRefreshError) && (
               <View testID="heat-map-detail-quote-refresh-error" style={[styles.quoteRefreshError, { borderColor: colors.border }]}>
                 <Text style={[styles.errorText, { color: colors.mutedForeground }]}>
                   {quoteUnavailable
@@ -642,6 +650,7 @@ export function HeatMapDetailModal({
               </View>
             )}
 
+            {quote && <>
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Price ranges</Text>
               {loading && <ActivityIndicator testID="heat-map-detail-loading" size="small" color={colors.gold} />}
@@ -668,6 +677,7 @@ export function HeatMapDetailModal({
                 formatValue={formatQuotePrice}
               />
             </View>
+            </>}
 
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
@@ -747,7 +757,7 @@ export function HeatMapDetailModal({
             ) : null}
             {isCrypto && (
               <CryptoSupplyHistory
-                symbol={quote.symbol}
+                symbol={symbol ?? ''}
                 visible={visible}
                 currentSupply={stats?.circulatingSupply ?? null}
                 colors={colors}
@@ -761,7 +771,7 @@ export function HeatMapDetailModal({
               />
             )}
             {isCommodity && (
-              <CommodityPriceDrivers symbol={quote.symbol} visible={visible} colors={colors} />
+              <CommodityPriceDrivers symbol={symbol ?? ''} visible={visible} colors={colors} />
             )}
             <Text style={[styles.disclaimer, { color: colors.mutedForeground }]}>
               {isEtf
