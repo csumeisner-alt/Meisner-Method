@@ -313,6 +313,26 @@ export function formatBrewBankAccessRemaining(
   return `${hours}h ${String(minutes).padStart(2, '0')}m remaining`;
 }
 
+export function getNextBrewBankFreeOpening(now: number): number {
+  const opening = new Date(now);
+  const daysUntilSaturday = (6 - opening.getDay() + 7) % 7 || 7;
+  opening.setDate(opening.getDate() + daysUntilSaturday);
+  opening.setHours(0, 0, 0, 0);
+  return opening.getTime();
+}
+
+export function formatBrewBankFreeOpeningCountdown(now: number): string {
+  const remainingMinutes = Math.max(0, Math.ceil((getNextBrewBankFreeOpening(now) - now) / 60_000));
+  const days = Math.floor(remainingMinutes / (24 * 60));
+  const hours = Math.floor((remainingMinutes % (24 * 60)) / 60);
+  const minutes = remainingMinutes % 60;
+  const parts = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0 || days > 0) parts.push(`${hours}h`);
+  if (minutes > 0 || parts.length === 0) parts.push(`${minutes}m`);
+  return parts.join(' ');
+}
+
 export function canActivateBrewBankKey(
   keyCount: number,
   day: number,

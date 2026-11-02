@@ -62,7 +62,9 @@ import {
 import { getTradeGradeFeedback } from '@/lib/tradeGradeFeedback';
 import {
   canEnterBrewBank,
+  formatBrewBankFreeOpeningCountdown,
   formatBrewBankAccessRemaining,
+  getNextBrewBankFreeOpening,
   getBrewBankEntryStatus,
 } from '@/lib/brewTokenLogic';
 
@@ -1887,6 +1889,15 @@ function GradeHistoryModal({
     countdownNow,
   );
   const bankAccessRemaining = formatBrewBankAccessRemaining(bankAccessExpiresAt, countdownNow);
+  const nextBankFreeOpening = new Date(getNextBrewBankFreeOpening(countdownNow));
+  const nextBankFreeOpeningLocal = nextBankFreeOpening.toLocaleString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  const bankFreeOpeningCountdown = formatBrewBankFreeOpeningCountdown(countdownNow);
 
   useEffect(() => {
     if (visible) prefetchTrainingTapeSnapshot();
@@ -2104,6 +2115,14 @@ function GradeHistoryModal({
                   </Text>
                   <Text style={[gradeModalStyles.bankClosedInfoText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                     The Bank is open free on weekends. For weekday access, buy a key in the Bank Shop for 5 Brew Tokens; each key grants 12 hours. You can shop on a weekend or during active access.
+                  </Text>
+                  <Text
+                    style={[gradeModalStyles.bankClosedInfoText, { color: colors.gold, fontFamily: 'Inter_600SemiBold' }]}
+                    accessibilityLiveRegion="polite"
+                    accessibilityLabel={`Free weekend entry returns in ${bankFreeOpeningCountdown}, at ${nextBankFreeOpeningLocal} local time`}
+                    testID="central-bank-next-free-opening"
+                  >
+                    Free entry returns in {bankFreeOpeningCountdown} · {nextBankFreeOpeningLocal} local time
                   </Text>
                   <Pressable
                     onPress={() => setBankClosedInfoVisible(false)}

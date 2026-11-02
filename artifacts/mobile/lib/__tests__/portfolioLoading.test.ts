@@ -208,5 +208,10 @@ test('Portfolio keeps the unlocked Bank visible and explains weekday closure on 
   assert.match(screen, /setBankClosedInfoVisible\(true\)/);
   assert.match(screen, /testID="central-bank-closed-info"/);
   assert.match(screen, /open free on weekends\. For weekday access, buy a key in the Bank Shop for 5 Brew Tokens; each key grants 12 hours\./);
+  assert.match(screen, /getNextBrewBankFreeOpening\(countdownNow\)/);
+  assert.match(screen, /formatBrewBankFreeOpeningCountdown\(countdownNow\)/);
+  assert.match(screen, /nextBankFreeOpening\.toLocaleString\(undefined/);
+  assert.match(screen, /testID="central-bank-next-free-opening"/);
+  assert.match(screen, /setInterval\(\(\) => setCountdownNow\(Date\.now\(\)\), 1000\)/);
   assert.doesNotMatch(screen, /brewBankUnlocked && \(isWeekend \|\| bankKeys > 0 \|\| hasActiveBankAccess\)/);
 });

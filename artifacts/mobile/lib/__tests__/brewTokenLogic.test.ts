@@ -36,7 +36,9 @@ import {
   canArmBrewBottle,
   canActivateBrewBankKey,
   formatBrewBankAccessRemaining,
+  formatBrewBankFreeOpeningCountdown,
   getBrewBankEntryStatus,
+  getNextBrewBankFreeOpening,
   formatSmartProRemaining,
   getSmartProBottleSalePrice,
   getBrewBottleInspection,
@@ -377,6 +379,22 @@ test('bank access countdown formats remaining hours and minutes and expires at z
   assert.equal(formatBrewBankAccessRemaining(now + 2 * 60 * 60 * 1000 + 31_000, now), '2h 01m remaining');
   assert.equal(formatBrewBankAccessRemaining(now + 59_000, now), '0h 01m remaining');
   assert.equal(formatBrewBankAccessRemaining(now, now), null);
+});
+
+test('free Bank opening targets the next local Saturday and counts down to it', () => {
+  const mondayMorning = new Date(2026, 7, 17, 9, 0, 0).getTime();
+  const saturdayOpening = new Date(2026, 7, 22, 0, 0, 0).getTime();
+  assert.equal(getNextBrewBankFreeOpening(mondayMorning), saturdayOpening);
+  assert.equal(formatBrewBankFreeOpeningCountdown(mondayMorning), '4d 15h');
+
+  const beforeOpening = new Date(2026, 7, 21, 23, 59, 30).getTime();
+  assert.equal(getNextBrewBankFreeOpening(beforeOpening), saturdayOpening);
+  assert.equal(formatBrewBankFreeOpeningCountdown(beforeOpening), '1m');
+  assert.equal(getBrewBankEntryStatus(5, 0, null, beforeOpening), 'weekday-closed');
+  assert.equal(
+    getBrewBankEntryStatus(6, 0, null, saturdayOpening),
+    'weekend-open',
+  );
 });
 
 test('winning a bet returns the stake as profit and losing removes only the stake', () => {
