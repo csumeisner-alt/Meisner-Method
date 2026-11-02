@@ -9,6 +9,7 @@ import {
 import {
   fetchCommodityInventoryEvidence,
   fetchCommodityInventoryEvidenceWithStatus,
+  fetchCommodityPositioningEvidenceWithStatus,
   parseCftcPositioningRows,
   parseEiaCrudeInventoryCsv,
   parseEiaNaturalGasStorageCsv,
@@ -120,6 +121,50 @@ test("EIA inventory coverage recovers after a short outage cache expires", async
     const recovered = await fetchCommodityInventoryEvidence("CL=F", new Date("2026-10-31T12:00:00.000Z"));
     assert.ok(recovered, "a recovered EIA source should restore commodity coverage");
     assert.equal(recovered.provider, "EIA");
+    assert.equal(requestCount, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+    Date.now = originalNow;
+  }
+});
+
+test("CFTC positioning coverage recovers after a short empty-report cache expires", async () => {
+  const row = {
+    cftc_contract_market_code: "088691",
+    contract_market_name: "GOLD",
+    market_and_exchange_names: "GOLD - COMMODITY EXCHANGE INC.",
+    contract_units: "(CONTRACTS OF 100 TROY OUNCES)",
+    report_date_as_yyyy_mm_dd: "2026-10-30T00:00:00.000",
+    open_interest_all: "100000",
+    noncomm_positions_long_all: "40000",
+    noncomm_positions_short_all: "20000",
+  };
+  const originalFetch = globalThis.fetch;
+  const originalNow = Date.now;
+  let clock = originalNow();
+  let requestCount = 0;
+  Date.now = () => clock;
+  globalThis.fetch = async () => {
+    requestCount += 1;
+    return new Response(requestCount === 1 ? "[]" : JSON.stringify([row]), { status: 200 });
+  };
+
+  try {
+    const now = new Date("2026-11-02T12:00:00.000Z");
+    const empty = await fetchCommodityPositioningEvidenceWithStatus("GC=F", now);
+    assert.equal(empty.evidence, null);
+    assert.deepEqual(empty.failure, { provider: "CFTC", state: "unavailable" });
+
+    const cachedEmpty = await fetchCommodityPositioningEvidenceWithStatus("GC=F", now);
+    assert.equal(cachedEmpty.evidence, null);
+    assert.deepEqual(cachedEmpty.failure, { provider: "CFTC", state: "unavailable" });
+    assert.equal(requestCount, 1, "an empty report should use the short negative cache");
+
+    clock += 5 * 60 * 1000 + 1;
+    const recovered = await fetchCommodityPositioningEvidenceWithStatus("GC=F", now);
+    assert.ok(recovered.evidence, "a later valid CFTC report should restore positioning coverage");
+    assert.equal(recovered.evidence.provider, "CFTC");
+    assert.equal(recovered.evidence.symbol, "GC=F");
     assert.equal(requestCount, 2);
   } finally {
     globalThis.fetch = originalFetch;
