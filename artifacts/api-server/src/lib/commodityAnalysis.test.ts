@@ -172,6 +172,50 @@ test("CFTC positioning coverage recovers after a short empty-report cache expire
   }
 });
 
+test("an empty CFTC report for one commodity does not suppress another commodity", async () => {
+  const copperRow = {
+    cftc_contract_market_code: "085692",
+    contract_market_name: "COPPER- #1",
+    market_and_exchange_names: "COPPER- #1 - COMMODITY EXCHANGE INC.",
+    contract_units: "(CONTRACTS OF 25,000 POUNDS)",
+    report_date_as_yyyy_mm_dd: "2026-10-30T00:00:00.000",
+    open_interest_all: "200000",
+    noncomm_positions_long_all: "80000",
+    noncomm_positions_short_all: "40000",
+  };
+  const originalFetch = globalThis.fetch;
+  const sourceQueries: string[] = [];
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    const where = url.searchParams.get("$where") ?? "";
+    sourceQueries.push(where);
+    return new Response(where.includes("085692") ? JSON.stringify([copperRow]) : "[]", { status: 200 });
+  };
+
+  try {
+    const now = new Date("2026-11-02T12:00:00.000Z");
+    const emptySilver = await fetchCommodityPositioningEvidenceWithStatus("SI=F", now);
+    assert.equal(emptySilver.evidence, null);
+    assert.deepEqual(emptySilver.failure, { provider: "CFTC", state: "unavailable" });
+
+    const copper = await fetchCommodityPositioningEvidenceWithStatus("HG=F", now);
+    assert.ok(copper.evidence, "a separate commodity should still receive its valid CFTC report");
+    assert.equal(copper.evidence.symbol, "HG=F");
+    assert.equal(copper.evidence.provider, "CFTC");
+    assert.deepEqual(sourceQueries, [
+      "cftc_contract_market_code='084691'",
+      "cftc_contract_market_code='085692'",
+    ], "each symbol should make its own contract-specific source request");
+
+    const cachedEmptySilver = await fetchCommodityPositioningEvidenceWithStatus("SI=F", now);
+    assert.equal(cachedEmptySilver.evidence, null);
+    assert.deepEqual(cachedEmptySilver.failure, { provider: "CFTC", state: "unavailable" });
+    assert.equal(sourceQueries.length, 2, "the empty result should remain cached only for silver");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("USDA report-search failures are shared across commodities and recover after expiry", async () => {
   const csv = [
     "ReportTitle,Attribute,Commodity,Region,MarketYear,Value,Unit,ReleaseDate",
