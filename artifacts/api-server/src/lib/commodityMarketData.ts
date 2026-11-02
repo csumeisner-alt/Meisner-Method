@@ -10,6 +10,8 @@ const CFTC_DATASET_URL = "https://publicreporting.cftc.gov/resource/6dca-aqww.js
 const CFTC_SOURCE_URL = "https://publicreportinghub.cftc.gov/Commitments-of-Traders/Legacy-Futures-Only/6dca-aqww";
 const EIA_TABLE_URL = "https://ir.eia.gov/wpsr/table4.csv";
 const EIA_NATURAL_GAS_URL = "https://ir.eia.gov/ngs/wngsr.csv";
+const FAILED_SOURCE_CACHE_TTL_MS = 5 * 60 * 1000;
+const FAILED_WASDE_REPORT_CACHE_TTL_MS = 15 * 60 * 1000;
 const USDA_COMMODITIES: Record<string, { commodity: string; useAttributes: string[] }> = {
   "ZC=F": { commodity: "Corn", useAttributes: ["Use, Total", "Total Use"] },
   "ZW=F": { commodity: "Wheat", useAttributes: ["Use, Total", "Total Use"] },
@@ -34,6 +36,7 @@ const valueCache = new Map<string, { value: unknown; expiresAt: number }>();
 const pendingRequests = new Map<string, Promise<unknown>>();
 let wasdeReportCache: { rows: WasdeRow[]; sourceUrl: string; expiresAt: number } | null = null;
 let wasdeReportRequest: Promise<{ rows: WasdeRow[]; sourceUrl: string } | null> | null = null;
+let wasdeReportFailureExpiresAt = 0;
 
 function isDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -334,7 +337,8 @@ async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Pr
   const pending = pendingRequests.get(key);
   if (pending) return pending as Promise<T>;
   const request = load().then((value) => {
-    valueCache.set(key, { value, expiresAt: Date.now() + ttlMs });
+    const cacheTtlMs = value == null ? FAILED_SOURCE_CACHE_TTL_MS : ttlMs;
+    valueCache.set(key, { value, expiresAt: Date.now() + cacheTtlMs });
     return value;
   }).finally(() => {
     if (pendingRequests.get(key) === request) pendingRequests.delete(key);
@@ -362,6 +366,7 @@ async function loadLatestWasdeReport(now: Date): Promise<{ rows: WasdeRow[]; sou
   if (wasdeReportCache && wasdeReportCache.expiresAt > Date.now()) {
     return { rows: wasdeReportCache.rows, sourceUrl: wasdeReportCache.sourceUrl };
   }
+  if (wasdeReportFailureExpiresAt > Date.now()) return null;
   if (wasdeReportRequest) return wasdeReportRequest;
   wasdeReportRequest = (async () => {
     try {
@@ -373,11 +378,13 @@ async function loadLatestWasdeReport(now: Date): Promise<{ rows: WasdeRow[]; sou
             && Date.parse(`${row.releaseDate}T00:00:00.000Z`) <= now.getTime());
           if (!rows.length || !validReleaseExists) continue;
           wasdeReportCache = { rows, sourceUrl: url, expiresAt: Date.now() + 6 * 60 * 60 * 1000 };
+          wasdeReportFailureExpiresAt = 0;
           return { rows, sourceUrl: url };
         } catch {
           // A report file may not exist yet or may be served under its revision suffix.
         }
       }
+      wasdeReportFailureExpiresAt = Date.now() + FAILED_WASDE_REPORT_CACHE_TTL_MS;
       return null;
     } finally {
       wasdeReportRequest = null;

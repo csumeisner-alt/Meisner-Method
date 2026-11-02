@@ -7,6 +7,7 @@ import {
   parseCommodityNewsSources,
 } from "./commodityAnalysis.ts";
 import {
+  fetchCommodityInventoryEvidence,
   parseCftcPositioningRows,
   parseEiaCrudeInventoryCsv,
   parseEiaNaturalGasStorageCsv,
@@ -91,6 +92,38 @@ test("EIA crude inventory parser validates dated million-barrel observations", (
   assert.ok(parsed.value < 0);
   assert.match(parsed.source.observation, /400\.000 million barrels/);
   assert.equal(parseEiaCrudeInventoryCsv(csv, new Date("2026-11-20T00:00:00.000Z")), null);
+});
+
+test("EIA inventory coverage recovers after a short outage cache expires", async () => {
+  const csv = [
+    '"STUB_1","10/30/26","10/23/26","Difference"',
+    '"Commercial (Excluding SPR)","400.000","410.000","-10.000"',
+  ].join("\r\n");
+  const originalFetch = globalThis.fetch;
+  const originalNow = Date.now;
+  let clock = originalNow();
+  let requestCount = 0;
+  Date.now = () => clock;
+  globalThis.fetch = async () => {
+    requestCount += 1;
+    if (requestCount === 1) return new Response("temporarily unavailable", { status: 503 });
+    return new Response(csv, { status: 200 });
+  };
+
+  try {
+    assert.equal(await fetchCommodityInventoryEvidence("CL=F", new Date("2026-10-31T12:00:00.000Z")), null);
+    assert.equal(await fetchCommodityInventoryEvidence("CL=F", new Date("2026-10-31T12:00:00.000Z")), null);
+    assert.equal(requestCount, 1, "repeated lookups during an outage should use the short negative cache");
+
+    clock += 5 * 60 * 1000 + 1;
+    const recovered = await fetchCommodityInventoryEvidence("CL=F", new Date("2026-10-31T12:00:00.000Z"));
+    assert.ok(recovered, "a recovered EIA source should restore commodity coverage");
+    assert.equal(recovered.provider, "EIA");
+    assert.equal(requestCount, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+    Date.now = originalNow;
+  }
 });
 
 test("EIA natural-gas storage parser validates the Lower 48 weekly report and units", () => {
