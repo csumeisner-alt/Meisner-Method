@@ -314,6 +314,97 @@ test("USDA WASDE parser computes same-unit stocks-to-use change for adjacent mar
   ), null);
 });
 
+test("USDA WASDE inventory fixtures cover every supported crop mapping", () => {
+  const crops = [
+    {
+      symbol: "ZC=F",
+      commodity: "Corn",
+      instrument: "Corn",
+      title: "U.S. Feed Grain and Corn Supply and Use",
+      totalUseAttribute: "Use, Total",
+      unit: "Million Bushels",
+    },
+    {
+      symbol: "ZW=F",
+      commodity: "Wheat",
+      instrument: "Wheat",
+      title: "U.S. Wheat Supply and Use",
+      totalUseAttribute: "Total Use",
+      unit: "Million Bushels",
+    },
+    {
+      symbol: "ZS=F",
+      commodity: "Oilseed, Soybean",
+      instrument: "Soybeans",
+      title: "U.S. Oilseed, Soybean Supply and Use",
+      totalUseAttribute: "Total Use",
+      unit: "Million Bushels",
+    },
+    {
+      symbol: "CT=F",
+      commodity: "Cotton",
+      instrument: "Cotton",
+      title: "U.S. Cotton Supply and Use",
+      totalUseAttribute: "Total Use",
+      unit: "Million 480-Pound Bales",
+    },
+    {
+      symbol: "SB=F",
+      commodity: "Sugar",
+      instrument: "Sugar",
+      title: "U.S. Sugar Supply and Use",
+      totalUseAttribute: "Total Use",
+      unit: "Thousand Short Tons, Raw Value",
+    },
+  ] as const;
+  const reportDate = "2026-10-12";
+  const sourceUrl = "https://www.usda.gov/sites/default/files/documents/oce-wasde-report-data-2026-10.csv";
+
+  for (const crop of crops) {
+    const rows = ["2026/27", "2025/26"].flatMap((marketYear, index) => [
+      {
+        reportTitle: crop.title,
+        attribute: "Ending Stocks",
+        commodity: crop.commodity,
+        region: "United States",
+        marketYear,
+        value: index === 0 ? "200" : "250",
+        unit: crop.unit,
+        releaseDate: reportDate,
+      },
+      {
+        reportTitle: crop.title,
+        attribute: crop.totalUseAttribute,
+        commodity: crop.commodity,
+        region: "United States",
+        marketYear,
+        value: "1000",
+        unit: crop.unit,
+        releaseDate: reportDate,
+      },
+    ]);
+    const parsed = parseUsdaWasdeInventoryCsv(
+      rows,
+      sourceUrl,
+      crop.symbol,
+      new Date("2026-10-31T00:00:00.000Z"),
+    );
+
+    assert.ok(parsed, `${crop.instrument} fixture should produce inventory evidence`);
+    assert.equal(parsed.provider, "USDA");
+    assert.equal(parsed.symbol, crop.symbol);
+    assert.equal(parsed.instrument, crop.instrument);
+    assert.equal(parsed.asOf, reportDate);
+    assert.equal(parsed.units, "percent of total use");
+    assert.equal(parsed.source.asOf, reportDate);
+    assert.equal(parsed.source.unit, crop.unit);
+    assert.equal(parsed.source.url, sourceUrl);
+    assert.match(parsed.source.title, /2026\/27 supply and use/);
+    assert.match(parsed.source.observation, new RegExp(`USDA WASDE ${crop.commodity.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+    assert.equal(parsed.value, -20);
+  }
+});
+
 test("CFTC parser requires the exact mapped contract, units, and a fresh report", () => {
   const row = {
     cftc_contract_market_code: "088691",
