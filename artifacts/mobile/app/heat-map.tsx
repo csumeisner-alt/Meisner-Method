@@ -61,6 +61,7 @@ import {
   CUSTOM_HEAT_MAP_ASSETS, CUSTOM_HEAT_MAP_ASSET_TYPES,
   MAX_CUSTOM_HEAT_MAP_SYMBOLS, appendCustomHeatMapSymbolInSavedOrder,
   getCustomHeatMapValidationFailureReason,
+  isSupportedCustomMapCommoditySymbol,
   moveCustomHeatMapSymbol, normalizeCustomHeatMapSymbols,
   planCustomHeatMapBatchAdd,
   removeCustomHeatMapSymbolFromSavedOrder,
@@ -1039,6 +1040,9 @@ export default function HeatMapScreen() {
     ...(responseMatches ? response!.unavailableSymbols : []),
     ...staleQuotes.map((quote) => quote.symbol),
   ])];
+  const unavailableCommodityAssets = category === 'commodities' && responseMatches
+    ? CUSTOM_HEAT_MAP_ASSETS.commodities.filter((asset) => unavailableSymbols.includes(asset.symbol))
+    : [];
 
   const choices = useMemo(() => {
     const unique = <T,>(items: T[]) => [...new Set(items)].filter(Boolean);
@@ -1239,6 +1243,16 @@ export default function HeatMapScreen() {
     setFormError('');
     setSymbolInput(symbol);
     Keyboard.dismiss();
+    if (isSupportedCustomMapCommoditySymbol(symbol)) {
+      const next = appendCustomHeatMapSymbolInSavedOrder(customSymbols, symbol);
+      try { await persistSymbols(next); }
+      catch { setFormError(`Couldn't save ${symbol} on this device. Try again.`); return; }
+      awardCustomMapMilestones(next.length);
+      setLastRemovedTicker(null);
+      setSymbolInput('');
+      setCustomBatchFeedback({ message: `Added ${symbol} to your custom map.`, kind: 'success' });
+      return;
+    }
     try {
       const quote = await validateSymbol.mutateAsync({ data: { symbol } });
       if (!customSymbols.includes(quote.symbol)) {
@@ -1289,14 +1303,16 @@ export default function HeatMapScreen() {
     try {
       for (const symbol of plan.symbolsToAdd) {
         try {
-          const quote = await validateSymbol.mutateAsync({ data: { symbol } });
-          if (nextSymbols.includes(quote.symbol)) {
+          const normalizedSymbol = isSupportedCustomMapCommoditySymbol(symbol)
+            ? symbol.trim().toUpperCase()
+            : (await validateSymbol.mutateAsync({ data: { symbol } })).symbol;
+          if (nextSymbols.includes(normalizedSymbol)) {
             alreadyAddedCount += 1;
           } else if (nextSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS) {
             overLimitCount += 1;
           } else {
-            nextSymbols = appendCustomHeatMapSymbolInSavedOrder(nextSymbols, quote.symbol);
-            addedSymbols.push(quote.symbol);
+            nextSymbols = appendCustomHeatMapSymbolInSavedOrder(nextSymbols, normalizedSymbol);
+            addedSymbols.push(normalizedSymbol);
           }
         } catch (error) {
           failedInstruments.push({
@@ -1616,7 +1632,7 @@ export default function HeatMapScreen() {
             <View style={styles.addRow}><TextInput testID="heat-map-custom-input" value={symbolInput} editable={storageReady && !storageLoadError && !isAddingSelectedAssets} onFocus={() => setIsEditingCustomMap(false)} onChangeText={(value) => { setSymbolInput(value); setFormError(''); setCustomBatchFeedback(null); }}
               placeholder="Search name or enter ticker" placeholderTextColor={colors.mutedForeground} autoCapitalize="none" autoCorrect={false} maxLength={80}
               returnKeyType="done" onSubmitEditing={() => void addSymbol()} style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.input }]} />
-              <TouchableOpacity testID="heat-map-custom-add" accessibilityRole="button" accessibilityLabel="Validate and add ticker"
+              <TouchableOpacity testID="heat-map-custom-add" accessibilityRole="button" accessibilityLabel="Add ticker to custom map"
                 disabled={!canAddCustomSymbol || isAddingSelectedAssets} onPress={() => void addSymbol()}
                 style={[styles.addButton, { backgroundColor: colors.primary, opacity: canAddCustomSymbol && !isAddingSelectedAssets ? 1 : 0.55 }]}>
                 {validateSymbol.isPending ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <MaterialCommunityIcons name="plus" size={20} color={colors.primaryForeground} />}
@@ -1868,7 +1884,7 @@ export default function HeatMapScreen() {
           </View>}
 
           {category === 'custom' && storageReady && !storageLoadError && customSymbols.length === 0
-            ? stateCard('hexagon-multiple-outline', 'Build a personal comparison', 'Add validated tickers above. Your symbols remain private and stored on this device.')
+            ? stateCard('hexagon-multiple-outline', 'Build a personal comparison', 'Add supported tickers above. Curated instruments can be saved while their fresh quote is pending; your symbols stay on this device.')
               : mapQuery.isError && !responseMatches
               ? stateCard('alert-circle-outline', 'Market data is unavailable', "This quote batch couldn't be refreshed.", <TouchableOpacity testID="heat-map-retry" onPress={() => mapQuery.refetch()} style={[styles.retryButton, { borderColor: colors.border }]}><Text style={[styles.retryText, { color: colors.primary }]}>Try again</Text></TouchableOpacity>)
               : busy
@@ -1881,12 +1897,12 @@ export default function HeatMapScreen() {
                     theme={loadingTheme}
                     reduceMotion={reduceMotion}
                   />
-                : filterableQuotes.length === 0 && activeFilterCount > 0
+                : filterableQuotes.length === 0 && activeFilterCount > 0 && unavailableCommodityAssets.length === 0
                   ? stateCard('filter-off-outline', 'No matches for these filters', 'Clear or adjust a filter to see instruments in this map.')
-                  : filterableQuotes.length === 0
+                  : filterableQuotes.length === 0 && unavailableCommodityAssets.length === 0
                     ? stateCard('chart-box-outline', 'No current quotes', unavailableSymbols.length ? `No recent valid quotes for ${unavailableSymbols.join(', ')}.` : 'There are no current quotes available in this market.')
                     : <View style={styles.mapWrap}>
-                      {sectors.map((group, groupIndex) => {
+                      {filterableQuotes.length > 0 && sectors.map((group, groupIndex) => {
                         const layout = honeycombLayouts[groupIndex];
                         const visibleSymbols = honeycombSymbolLists[groupIndex] ?? [];
                         const dragEnabled = category === 'custom'
@@ -1972,7 +1988,51 @@ export default function HeatMapScreen() {
                           </View>
                         </View>;
                       })}
-                      {!!unavailableSymbols.length && <Text style={[styles.unavailable, { color: colors.mutedForeground }]}>No recent quote: {unavailableSymbols.join(' · ')}</Text>}
+                      {!!unavailableCommodityAssets.length && <View
+                        testID="heat-map-unavailable-commodities"
+                        style={{ marginTop: 12, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card }}
+                      >
+                        <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 13 }}>
+                          Waiting for fresh commodity quotes
+                        </Text>
+                        <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 4, marginBottom: 8 }}>
+                          These instruments remain part of the Commodities map. No stale price is shown; quotes will appear when fresh data arrives.
+                        </Text>
+                        <View style={{ gap: 8 }}>
+                          {unavailableCommodityAssets.map((asset) => {
+                            const alreadyAdded = customSymbols.includes(asset.symbol);
+                            const addDisabled = alreadyAdded
+                              || !storageReady
+                              || storageLoadError !== null
+                              || customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS;
+                            return <View
+                              key={asset.symbol}
+                              testID={`heat-map-unavailable-commodity-${asset.symbol}`}
+                              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.border }}
+                            >
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>{asset.name}</Text>
+                                <Text style={{ color: colors.mutedForeground, fontSize: 10, marginTop: 2 }}>{asset.symbol} · Quote unavailable</Text>
+                              </View>
+                              <TouchableOpacity
+                                testID={`heat-map-add-unavailable-commodity-${asset.symbol}`}
+                                accessibilityRole="button"
+                                accessibilityLabel={alreadyAdded ? `${asset.name} is already in the custom map` : `Add ${asset.name} to custom map`}
+                                accessibilityState={{ disabled: addDisabled }}
+                                disabled={addDisabled}
+                                onPress={() => { void addSymbol(asset.symbol); }}
+                                style={{ minHeight: 34, justifyContent: 'center', paddingHorizontal: 11, borderRadius: 8, backgroundColor: addDisabled ? colors.secondary : colors.primary }}
+                              >
+                                <Text style={{ color: addDisabled ? colors.mutedForeground : colors.primaryForeground, fontSize: 11, fontFamily: 'Inter_600SemiBold' }}>
+                                  {alreadyAdded ? 'Added' : 'Add to custom'}
+                                </Text>
+                              </TouchableOpacity>
+                            </View>;
+                          })}
+                        </View>
+                        {customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS && <Text style={{ color: colors.mutedForeground, fontSize: 10, marginTop: 8 }}>Your custom map is full. Remove an instrument to make room.</Text>}
+                      </View>}
+                      {!!unavailableSymbols.length && category !== 'commodities' && <Text style={[styles.unavailable, { color: colors.mutedForeground }]}>No recent quote: {unavailableSymbols.join(' · ')}</Text>}
           {!!filterableQuotes.some((quote) => quote.returnPercent === null) && <View style={[styles.notice, { backgroundColor: colors.card, borderColor: colors.border }]}>
                         <MaterialCommunityIcons name="information-outline" size={15} color={colors.primary} />
             <Text testID="heat-map-unavailable-return-note" style={[styles.noticeText, { color: colors.mutedForeground }]}>

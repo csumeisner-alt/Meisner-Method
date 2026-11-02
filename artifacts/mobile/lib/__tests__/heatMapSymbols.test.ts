@@ -4,6 +4,7 @@ import supportedInstrumentCatalog from "../heatmap-instruments/catalog.json" wit
 import {
   CUSTOM_HEAT_MAP_ASSETS,
   CUSTOM_HEAT_MAP_ASSET_TYPES,
+  isSupportedCustomMapCommoditySymbol,
   MAX_CUSTOM_HEAT_MAP_SYMBOLS,
   appendCustomHeatMapSymbolInSavedOrder,
   getCustomHeatMapValidationFailureReason,
@@ -127,6 +128,14 @@ test("custom heat-map asset picker offers every supported non-stock universe", (
       assert.deepEqual(normalizeCustomHeatMapSymbols([asset.symbol]), [asset.symbol]);
     }
   }
+});
+
+test("curated commodity catalog symbols remain addable while quotes are unavailable", () => {
+  for (const symbol of ["ZC=F", "ZW=F", "ZS=F", "KC=F", "CT=F", "SB=F", "LE=F", "HE=F"]) {
+    assert.equal(isSupportedCustomMapCommoditySymbol(symbol), true, `${symbol} remains addable`);
+  }
+  assert.equal(isSupportedCustomMapCommoditySymbol(" unknown=F "), false);
+  assert.equal(isSupportedCustomMapCommoditySymbol("SPY"), false);
 });
 
 test("custom instrument search matches names across supported asset types", () => {

@@ -2367,17 +2367,17 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       "Choosing reset should replace the malformed value with an empty custom map.",
     );
 
-    await clickTestID(browser, "heat-map-custom-type-commodities");
+    await clickTestID(browser, "heat-map-custom-type-etfs");
     await waitFor(
       (expression) => browser.evaluate(expression),
-      `!!document.querySelector(${JSON.stringify(selector("heat-map-custom-pick-GC=F"))}) && !!document.querySelector(${JSON.stringify(selector("heat-map-custom-pick-SI=F"))})`,
-      "The commodity catalog should offer gold and silver for a batch-add test.",
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-custom-pick-SPY"))}) && !!document.querySelector(${JSON.stringify(selector("heat-map-custom-pick-QQQ"))})`,
+      "The ETF catalog should offer supported choices for a mixed batch-add test.",
     );
-    await clickTestID(browser, "heat-map-custom-pick-GC=F");
-    await clickTestID(browser, "heat-map-custom-pick-SI=F");
-    await clickTestID(browser, "heat-map-custom-pick-HG=F");
+    await clickTestID(browser, "heat-map-custom-pick-SPY");
+    await clickTestID(browser, "heat-map-custom-pick-QQQ");
+    await clickTestID(browser, "heat-map-custom-pick-GLD");
     await browser.evaluate(`window.__heatMapBrowserTest.setValidationResponses([
-      { type: "resolve", symbol: "GC=F" },
+      { type: "resolve", symbol: "SPY" },
       { type: "reject", error: "QUOTE_UNAVAILABLE", message: "Raw provider trace: internal detail" },
       { type: "reject", error: "MARKET_DATA_TEMPORARILY_UNAVAILABLE", message: "Raw provider trace: timeout detail" },
     ])`);
@@ -2400,7 +2400,7 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     await clickTestID(browser, "heat-map-custom-batch-add");
     await waitFor(
       (expression) => browser.evaluate(expression),
-      `document.querySelector(${JSON.stringify(selector("heat-map-custom-batch-feedback"))})?.textContent === "Added 1 instrument.\\nCouldn't add:\\nSI=F: This ticker isn't supported or has no current or recent quote.\\nHG=F: Market data is temporarily unavailable. Try again."`,
+      `document.querySelector(${JSON.stringify(selector("heat-map-custom-batch-feedback"))})?.textContent === "Added 1 instrument.\\nCouldn't add:\\nQQQ: This ticker isn't supported or has no current or recent quote.\\nGLD: Market data is temporarily unavailable. Try again."`,
       "A mixed batch should retain a successful choice and explain each unsupported or temporarily unavailable instrument.",
     );
     assert.equal(
@@ -2410,7 +2410,7 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     );
     assert.deepEqual(
       await browser.evaluate(`JSON.parse(localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}))`),
-      ["GC=F"],
+      ["SPY"],
       "The successfully validated instrument should be saved without the failed choice.",
     );
     assert.equal(
@@ -2420,16 +2420,16 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     );
     assert.deepEqual(
       await browser.evaluate("window.__heatMapBrowserTest.validationRequests"),
-      ["GC=F", "SI=F", "HG=F"],
+      ["SPY", "QQQ", "GLD"],
       "The batch should validate every selected instrument independently.",
     );
     assert.equal(
-      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-custom-pick-GC=F"))})?.textContent.includes("Added") && document.querySelector(${JSON.stringify(selector("heat-map-custom-pick-SI=F"))})?.textContent.includes("Selected") && document.querySelector(${JSON.stringify(selector("heat-map-custom-pick-HG=F"))})?.textContent.includes("Selected") && !!document.querySelector(${JSON.stringify(selector("heat-map-custom-batch-add"))})`),
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-custom-pick-SPY"))})?.textContent.includes("Added") && document.querySelector(${JSON.stringify(selector("heat-map-custom-pick-QQQ"))})?.textContent.includes("Selected") && document.querySelector(${JSON.stringify(selector("heat-map-custom-pick-GLD"))})?.textContent.includes("Selected") && !!document.querySelector(${JSON.stringify(selector("heat-map-custom-batch-add"))})`),
       true,
       "The failed choice should remain selected and available to retry, while the successful choice appears added.",
     );
 
-    await browser.evaluate(`window.__heatMapBrowserTest.setValidationResponses([{ type: "resolve", symbol: "SI=F" }]); window.__heatMapFailNextCustomWrite = true`);
+    await browser.evaluate(`window.__heatMapBrowserTest.setValidationResponses([{ type: "resolve", symbol: "QQQ" }]); window.__heatMapFailNextCustomWrite = true`);
     await clickTestID(browser, "heat-map-custom-batch-add");
     await waitFor(
       (expression) => browser.evaluate(expression),
@@ -2438,22 +2438,22 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     );
     assert.deepEqual(
       await browser.evaluate(`JSON.parse(localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}))`),
-      ["GC=F"],
+      ["SPY"],
       "A failed device-storage write must preserve the saved instrument list.",
     );
     assert.equal(
-      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-custom-pick-GC=F"))})?.textContent.includes("Added") && document.querySelector(${JSON.stringify(selector("heat-map-custom-pick-SI=F"))})?.textContent.includes("Selected") && !!document.querySelector(${JSON.stringify(selector("heat-map-custom-batch-add"))})`),
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-custom-pick-SPY"))})?.textContent.includes("Added") && document.querySelector(${JSON.stringify(selector("heat-map-custom-pick-QQQ"))})?.textContent.includes("Selected") && !!document.querySelector(${JSON.stringify(selector("heat-map-custom-batch-add"))})`),
       true,
       "A failed device-storage write must preserve the pending choice for retry.",
     );
     await browser.evaluate(`window.__heatMapBrowserTest.setValidationResponses([
-      { type: "resolve", symbol: "SI=F" },
-      { type: "resolve", symbol: "HG=F" },
+      { type: "resolve", symbol: "QQQ" },
+      { type: "resolve", symbol: "GLD" },
     ])`);
     await clickTestID(browser, "heat-map-custom-batch-add");
     await waitFor(
       (expression) => browser.evaluate(expression),
-      `localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}) === ${JSON.stringify(JSON.stringify(["GC=F", "SI=F", "HG=F"]))} && !document.querySelector(${JSON.stringify(selector("heat-map-custom-batch-add"))})`,
+      `localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}) === ${JSON.stringify(JSON.stringify(["SPY", "QQQ", "GLD"]))} && !document.querySelector(${JSON.stringify(selector("heat-map-custom-batch-add"))})`,
       "Retrying after a storage failure should save all pending choices and clear the selection.",
     );
     assert.equal(
@@ -2491,7 +2491,7 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     await clickTestID(browser, "heat-map-custom-suggestion-AAPL");
     await waitFor(
       (expression) => browser.evaluate(expression),
-      `localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}) === ${JSON.stringify(JSON.stringify(["GC=F", "SI=F", "HG=F", "AAPL"]))}`,
+      `localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}) === ${JSON.stringify(JSON.stringify(["SPY", "QQQ", "GLD", "AAPL"]))}`,
       "Tapping a stock search result should still add that single stock immediately.",
     );
     await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-custom-input"))})?.focus()`);
@@ -2515,7 +2515,7 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     await clickTestID(browser, "heat-map-custom-batch-add");
     await waitFor(
       (expression) => browser.evaluate(expression),
-      `localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}) === ${JSON.stringify(JSON.stringify(["GC=F", "SI=F", "HG=F", "AAPL", "MSFT", "NVDA"]))} && !document.querySelector(${JSON.stringify(selector("heat-map-custom-batch-add"))})`,
+      `localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}) === ${JSON.stringify(JSON.stringify(["SPY", "QQQ", "GLD", "AAPL", "MSFT", "NVDA"]))} && !document.querySelector(${JSON.stringify(selector("heat-map-custom-batch-add"))})`,
       "Adding selected stocks should validate and save the complete batch without duplicating the already-added stock.",
     );
 
@@ -2532,7 +2532,7 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     await clickTestID(browser, "heat-map-custom-add");
     await waitFor(
       (expression) => browser.evaluate(expression),
-      `localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}) === ${JSON.stringify(JSON.stringify(["GC=F", "SI=F", "HG=F", "AAPL", "MSFT", "NVDA", "TSLA"]))}`,
+      `localStorage.getItem(${JSON.stringify(customSymbolsStorageKey)}) === ${JSON.stringify(JSON.stringify(["SPY", "QQQ", "GLD", "AAPL", "MSFT", "NVDA", "TSLA"]))}`,
       "Direct ticker entry should still validate and add a stock.",
     );
     // A stale crypto batch refreshes when the focused screen resumes, while a fresh
