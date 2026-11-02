@@ -78,6 +78,25 @@ def commodity_history_session_date(symbol, timestamp):
     return source_date.isoformat()
 
 
+def normalize_commodity_history(symbol, timestamps, closes, volumes):
+    """Align daily observations to sessions and collapse duplicate session labels."""
+    observations = []
+    for timestamp, close, volume in zip(timestamps, closes, volumes):
+        session_date = commodity_history_session_date(symbol, timestamp)
+        observation = (session_date, close, volume)
+        # If Yahoo returns both a Sunday partial bar and Monday's daily bar for
+        # the same CME session, keep the later observation.
+        if observations and observations[-1][0] == session_date:
+            observations[-1] = observation
+        else:
+            observations.append(observation)
+    return (
+        [observation[0] for observation in observations],
+        [observation[1] for observation in observations],
+        [observation[2] for observation in observations],
+    )
+
+
 def clean_nan(obj):
     """Recursively replace NaN/inf floats with None so output is valid JSON.
 
@@ -140,19 +159,12 @@ def main():
 
         closes = [float(x) for x in hist["Close"].tolist()]
         volumes = [int(x) for x in hist["Volume"].tolist()]
-        normalized_history = []
-        for timestamp, close, volume in zip(hist.index, closes, volumes):
-            session_date = commodity_history_session_date(symbol, timestamp)
-            observation = (session_date, close, volume)
-            # If Yahoo returns both a Sunday partial bar and Monday's daily
-            # bar for the same CME session, keep the later observation.
-            if normalized_history and normalized_history[-1][0] == session_date:
-                normalized_history[-1] = observation
-            else:
-                normalized_history.append(observation)
-        history_dates = [observation[0] for observation in normalized_history]
-        closes = [observation[1] for observation in normalized_history]
-        volumes = [observation[2] for observation in normalized_history]
+        history_dates, closes, volumes = normalize_commodity_history(
+            symbol,
+            hist.index,
+            closes,
+            volumes,
+        )
 
         # Basic info & fast_info
         info = ticker.fast_info

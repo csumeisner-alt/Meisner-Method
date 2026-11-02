@@ -15,6 +15,21 @@ class CommodityHistoryCalendarTests(unittest.TestCase):
             "2026-11-02",
         )
 
+    def test_sunday_partial_and_monday_bars_collapse_to_one_trade_session(self):
+        history_dates, closes, volumes = fetch_stock.normalize_commodity_history(
+            "SI=F",
+            [
+                datetime(2026, 11, 1, 0, tzinfo=timezone.utc),
+                datetime(2026, 11, 2, 0, tzinfo=timezone.utc),
+            ],
+            [50.0, 51.0],
+            [10, 20],
+        )
+
+        self.assertEqual(history_dates, ["2026-11-02"])
+        self.assertEqual(closes, [51.0])
+        self.assertEqual(volumes, [20])
+
     def test_upcoming_monday_session_counts_only_after_its_sunday_open(self):
         sunday = date(2026, 11, 1)
         start = date(2026, 10, 30)
