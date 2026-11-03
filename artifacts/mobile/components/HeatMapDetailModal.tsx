@@ -270,6 +270,8 @@ function formatExactSupply(value: number) {
 export function HeatMapDetailModal({
   quote,
   unavailableCommodity,
+  isWatched,
+  onAddToWatchlist,
   quoteUnavailable,
   visible,
   onClose,
@@ -284,6 +286,8 @@ export function HeatMapDetailModal({
 }: {
   quote: HeatMapQuote | null;
   unavailableCommodity?: { symbol: string; name: string } | null;
+  isWatched: boolean;
+  onAddToWatchlist: () => void;
   quoteUnavailable: boolean;
   visible: boolean;
   onClose: () => void;
@@ -493,6 +497,20 @@ export function HeatMapDetailModal({
                 <MaterialCommunityIcons name="close" size={19} color={colors.foreground} />
               </Pressable>
             </View>
+            <Pressable
+              testID="heat-map-detail-add-watchlist"
+              accessibilityRole="button"
+              accessibilityLabel={isWatched ? `${symbol} is in your watchlist` : `Add ${symbol} to watchlist`}
+              accessibilityState={{ disabled: isWatched }}
+              disabled={isWatched}
+              onPress={onAddToWatchlist}
+              style={[styles.watchlistButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <MaterialCommunityIcons name={isWatched ? 'check' : 'star-plus-outline'} size={17} color={isWatched ? colors.mutedForeground : colors.primary} />
+              <Text style={[styles.watchlistButtonText, { color: isWatched ? colors.mutedForeground : colors.primary }]}>
+                {isWatched ? 'In watchlist' : 'Add to watchlist'}
+              </Text>
+            </Pressable>
             {canAnalyzeStock && quote?.assetType === 'stock' && (
               <Pressable
                 testID="heat-map-detail-analyze-stock"
@@ -805,6 +823,8 @@ const styles = StyleSheet.create({
   grabber: { alignSelf: 'center', width: 38, height: 4, borderRadius: 2, marginBottom: 15 },
   scrollContent: { paddingHorizontal: 20, paddingBottom: 16 },
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  watchlistButton: { minHeight: 42, borderWidth: 1, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 14 },
+  watchlistButtonText: { fontSize: 12, fontFamily: 'Inter_700Bold' },
   analyzeStockButton: { minHeight: 46, borderRadius: 11, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 14 },
   analyzeStockText: { fontSize: 13, fontFamily: 'Inter_700Bold', flex: 1 },
   openChartButton: { minHeight: 42, borderWidth: 1, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 14 },

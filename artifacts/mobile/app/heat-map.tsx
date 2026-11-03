@@ -36,6 +36,7 @@ import { BottomTabBar } from '@/components/BottomTabBar';
 import { useAchievements } from '@/contexts/AchievementsContext';
 import { AmericanModeContext } from '@/contexts/AmericanModeContext';
 import { useColors } from '@/hooks/useColors';
+import { useWatchlist } from '@/hooks/useWatchlist';
 import { HeatMapCryptoLogo } from '@/components/HeatMapCryptoLogo';
 import { HeatMapDetailModal } from '@/components/HeatMapDetailModal';
 import { HeatMapInstrumentIcon } from '@/components/HeatMapInstrumentIcon';
@@ -709,6 +710,7 @@ export default function HeatMapScreen() {
   const [draftReturnSort, setDraftReturnSort] = useState<HeatMapReturnSort>('default');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
+  const watchlist = useWatchlist();
   const [selectedQuote, setSelectedQuote] = useState<HeatMapQuote | null>(null);
   const [selectedUnavailableCommodity, setSelectedUnavailableCommodity] = useState<{ symbol: string; name: string } | null>(null);
   const directionPulse = useRef(new Animated.Value(0)).current;
@@ -2169,6 +2171,11 @@ export default function HeatMapScreen() {
         <HeatMapDetailModal
           quote={selectedQuote}
           unavailableCommodity={selectedUnavailableCommodity}
+          isWatched={watchlist.isWatched(selectedQuote?.symbol ?? selectedUnavailableCommodity?.symbol ?? '')}
+          onAddToWatchlist={() => {
+            const symbol = selectedQuote?.symbol ?? selectedUnavailableCommodity?.symbol;
+            if (symbol) void watchlist.add(symbol);
+          }}
           quoteUnavailable={selectedQuoteUnavailable}
           visible={selectedQuote !== null || selectedUnavailableCommodity !== null}
           canAnalyzeStock={(category === 'stocks' || category === 'custom') && selectedQuote?.assetType === 'stock'}

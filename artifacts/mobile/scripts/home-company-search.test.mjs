@@ -21,7 +21,7 @@ test("home search input invalidates old suggestions before the debounce settles"
   assert.ok(inputHandler, "typing should have an explicit home search handler");
   assert.match(
     inputHandler,
-    /latestSearchInputRef\.current = value;\s*setSelectedStock\(null\);\s*setSelectedEtf\(null\);\s*setQuery\(value\);/,
+    /latestSearchInputRef\.current = value;\s*setSelectedStock\(null\);\s*setSelectedEtf\(null\);\s*setSelectedCommodity\(null\);\s*setQuery\(value\);/,
     "the latest input ref must update synchronously before React state and debounce",
   );
 
@@ -81,8 +81,8 @@ test("home search submits a raw ticker after lookup finishes without blocking co
   assert.ok(rawTickerGate, "the home screen should gate raw ticker entry on current lookup state");
   assert.match(
     rawTickerGate,
-    /isCurrentStockSearch\s*&&\s*isCurrentEtfSearch\s*&&\s*!stockSearch\.isFetching\s*&&\s*!etfSearch\.isFetching\s*&&\s*\(stockSearch\.isSuccess\s*\|\|\s*stockSearch\.isError\)\s*&&\s*\(etfSearch\.isSuccess\s*\|\|\s*etfSearch\.isError\)/,
-    "raw ticker entry should wait for both current stock and ETF lookups",
+    /isCurrentStockSearch\s*&&\s*isCurrentEtfSearch\s*&&\s*isCurrentCommoditySearch\s*&&\s*!stockSearch\.isFetching\s*&&\s*!etfSearch\.isFetching\s*&&\s*!commoditySearch\.isFetching\s*&&\s*\(stockSearch\.isSuccess\s*\|\|\s*stockSearch\.isError\)\s*&&\s*\(etfSearch\.isSuccess\s*\|\|\s*etfSearch\.isError\)\s*&&\s*\(commoditySearch\.isSuccess\s*\|\|\s*commoditySearch\.isError\)/,
+    "raw ticker entry should wait for stock, ETF, and commodity lookups",
   );
 
   assert.match(
@@ -133,4 +133,11 @@ test("home Analyze search can find and select ETF names and tickers", () => {
   assert.match(homeScreen, /exactEtfSuggestion\?\.symbol/);
   assert.match(homeScreen, /selectEtf\(etf, activeEtfSearchQuery\)/);
   assert.match(homeScreen, /ETF · \{etf\.exchange\}/);
+});
+
+test("home Analyze search can find and select commodities", () => {
+  assert.match(homeScreen, /category: 'commodities'/);
+  assert.match(homeScreen, /exactCommoditySuggestion\?\.symbol/);
+  assert.match(homeScreen, /selectCommodity\(commodity, activeCommoditySearchQuery\)/);
+  assert.match(homeScreen, /Commodity · \{commodity\.exchange\}/);
 });

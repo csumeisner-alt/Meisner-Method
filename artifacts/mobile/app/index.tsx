@@ -159,6 +159,7 @@ export default function HomeScreen() {
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [selectedStock, setSelectedStock] = useState<StockSymbolSuggestion | null>(null);
   const [selectedEtf, setSelectedEtf] = useState<HeatMapInstrumentSuggestion | null>(null);
+  const [selectedCommodity, setSelectedCommodity] = useState<HeatMapInstrumentSuggestion | null>(null);
   const [recent, setRecent] = useState<string[]>([]);
   const [tipVisible, setTipVisible] = useState(false);
   const [currentTip, setCurrentTip] = useState('');
@@ -175,7 +176,7 @@ export default function HomeScreen() {
     {
       query: {
         queryKey: stockSearchQueryKey,
-        enabled: debouncedQuery.length >= 2 && !selectedStock && !selectedEtf,
+        enabled: debouncedQuery.length >= 2 && !selectedStock && !selectedEtf && !selectedCommodity,
         staleTime: 45_000,
       },
     },
@@ -185,7 +186,16 @@ export default function HomeScreen() {
   const etfSearch = useSearchHeatMapInstruments(etfSearchParams, {
     query: {
       queryKey: etfSearchQueryKey,
-      enabled: debouncedQuery.length >= 2 && !selectedStock && !selectedEtf,
+      enabled: debouncedQuery.length >= 2 && !selectedStock && !selectedEtf && !selectedCommodity,
+      staleTime: 45_000,
+    },
+  });
+  const commoditySearchParams = { q: debouncedQuery, category: 'commodities' as const };
+  const commoditySearchQueryKey = getSearchHeatMapInstrumentsQueryKey(commoditySearchParams);
+  const commoditySearch = useSearchHeatMapInstruments(commoditySearchParams, {
+    query: {
+      queryKey: commoditySearchQueryKey,
+      enabled: debouncedQuery.length >= 2 && !selectedStock && !selectedEtf && !selectedCommodity,
       staleTime: 45_000,
     },
   });
@@ -197,11 +207,16 @@ export default function HomeScreen() {
   const activeEtfSearchQuery = getStockSearchQueryFromKey(etfSearchQueryKey);
   const latestEtfResultQueryRef = useRef<string | null>(null);
   const latestEtfPlaceholderDataRef = useRef(false);
+  const latestCommodityResultQueryRef = useRef<string | null>(null);
+  const latestCommodityPlaceholderDataRef = useRef(false);
+  const activeCommoditySearchQuery = getStockSearchQueryFromKey(commoditySearchQueryKey);
   latestSettledQueryRef.current = debouncedQuery;
   latestResultQueryRef.current = activeStockSearchQuery;
   latestPlaceholderDataRef.current = stockSearch.isPlaceholderData;
   latestEtfResultQueryRef.current = activeEtfSearchQuery;
   latestEtfPlaceholderDataRef.current = etfSearch.isPlaceholderData;
+  latestCommodityResultQueryRef.current = activeCommoditySearchQuery;
+  latestCommodityPlaceholderDataRef.current = commoditySearch.isPlaceholderData;
   const [watchlistCollapsed, setWatchlistCollapsed] = useState(false);
   const [trendingCollapsed, setTrendingCollapsed] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -316,11 +331,11 @@ export default function HomeScreen() {
   useEffect(() => {
     setDebouncedQuery('');
     const searchText = query.trim();
-    if (selectedStock || selectedEtf || searchText.length < 2) return;
+    if (selectedStock || selectedEtf || selectedCommodity || searchText.length < 2) return;
 
     const timeout = setTimeout(() => setDebouncedQuery(searchText), 280);
     return () => clearTimeout(timeout);
-  }, [query, selectedStock, selectedEtf]);
+  }, [query, selectedStock, selectedEtf, selectedCommodity]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -348,33 +363,49 @@ export default function HomeScreen() {
   }, [recent, router]);
 
   const searchText = query.trim();
-  const isCurrentStockSearch = !selectedStock && !selectedEtf
+  const isCurrentStockSearch = !selectedStock && !selectedEtf && !selectedCommodity
     && isStockSearchCurrent({
       input: query,
       settledQuery: debouncedQuery,
       resultQuery: activeStockSearchQuery,
       isPlaceholderData: stockSearch.isPlaceholderData,
     });
-  const isCurrentEtfSearch = !selectedStock && !selectedEtf
+  const isCurrentEtfSearch = !selectedStock && !selectedEtf && !selectedCommodity
     && isStockSearchCurrent({
       input: query,
       settledQuery: debouncedQuery,
       resultQuery: activeEtfSearchQuery,
       isPlaceholderData: etfSearch.isPlaceholderData,
     });
+  const isCurrentCommoditySearch = !selectedStock && !selectedEtf && !selectedCommodity
+    && isStockSearchCurrent({
+      input: query,
+      settledQuery: debouncedQuery,
+      resultQuery: activeCommoditySearchQuery,
+      isPlaceholderData: commoditySearch.isPlaceholderData,
+    });
   const stockSuggestions = isCurrentStockSearch ? stockSearch.data ?? [] : [];
   const etfSuggestions = isCurrentEtfSearch ? etfSearch.data ?? [] : [];
+  const commoditySuggestions = isCurrentCommoditySearch ? commoditySearch.data ?? [] : [];
   const exactEtfSuggestion = etfSuggestions.find(
+    (suggestion) => suggestion.symbol.toUpperCase() === searchText.toUpperCase(),
+  );
+  const exactCommoditySuggestion = commoditySuggestions.find(
     (suggestion) => suggestion.symbol.toUpperCase() === searchText.toUpperCase(),
   );
   const allowRawTicker = searchText.length === 1
     || (isCurrentStockSearch
       && isCurrentEtfSearch
+      && isCurrentCommoditySearch
       && !stockSearch.isFetching
       && !etfSearch.isFetching
+      && !commoditySearch.isFetching
       && (stockSearch.isSuccess || stockSearch.isError)
-      && (etfSearch.isSuccess || etfSearch.isError));
-  const resolvedSymbol = selectedEtf?.symbol
+      && (etfSearch.isSuccess || etfSearch.isError)
+      && (commoditySearch.isSuccess || commoditySearch.isError));
+  const resolvedSymbol = selectedCommodity?.symbol
+    ?? selectedEtf?.symbol
+    ?? exactCommoditySuggestion?.symbol
     ?? exactEtfSuggestion?.symbol
     ?? resolveStockSearchSymbol(query, stockSuggestions, selectedStock, allowRawTicker);
 
@@ -398,6 +429,7 @@ export default function HomeScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedStock(stock);
     setSelectedEtf(null);
+    setSelectedCommodity(null);
     setQuery(selectedQuery);
     Keyboard.dismiss();
   };
@@ -416,6 +448,25 @@ export default function HomeScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedStock(null);
     setSelectedEtf(etf);
+    setSelectedCommodity(null);
+    setQuery(selectedQuery);
+    Keyboard.dismiss();
+  };
+
+  const selectCommodity = (commodity: HeatMapInstrumentSuggestion, selectionQuery: string | null) => {
+    if (!isStockSearchSelectionCurrent({
+      input: latestSearchInputRef.current,
+      settledQuery: latestSettledQueryRef.current,
+      resultQuery: latestCommodityResultQueryRef.current,
+      selectionQuery,
+      isPlaceholderData: latestCommodityPlaceholderDataRef.current,
+    })) return;
+    const selectedQuery = `${commodity.name} (${commodity.symbol})`;
+    latestSearchInputRef.current = selectedQuery;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedStock(null);
+    setSelectedEtf(null);
+    setSelectedCommodity(commodity);
     setQuery(selectedQuery);
     Keyboard.dismiss();
   };
@@ -557,6 +608,7 @@ export default function HomeScreen() {
               latestSearchInputRef.current = value;
               setSelectedStock(null);
               setSelectedEtf(null);
+              setSelectedCommodity(null);
               setQuery(value);
             }}
             autoCapitalize="none"
@@ -570,6 +622,7 @@ export default function HomeScreen() {
                 latestSearchInputRef.current = '';
                 setSelectedStock(null);
                 setSelectedEtf(null);
+                setSelectedCommodity(null);
                 setQuery('');
               }}
               style={styles.clearBtn}
@@ -580,23 +633,23 @@ export default function HomeScreen() {
             </TouchableOpacity>
           )}
         </View>
-        {(isCurrentStockSearch || isCurrentEtfSearch) && (
+        {(isCurrentStockSearch || isCurrentEtfSearch || isCurrentCommoditySearch) && (
           <View style={[styles.suggestionPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            {stockSearch.isFetching || etfSearch.isFetching ? (
+            {stockSearch.isFetching || etfSearch.isFetching || commoditySearch.isFetching ? (
               <View style={styles.searchStatusRow}>
                 <ActivityIndicator size="small" color={colors.primary} />
                 <Text style={[styles.searchStatus, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                  Finding stocks and ETFs…
+                  Finding stocks, ETFs, and commodities…
                 </Text>
               </View>
-            ) : stockSuggestions.length === 0 && etfSuggestions.length === 0
-              && stockSearch.isError && etfSearch.isError ? (
+            ) : stockSuggestions.length === 0 && etfSuggestions.length === 0 && commoditySuggestions.length === 0
+              && stockSearch.isError && etfSearch.isError && commoditySearch.isError ? (
               <Text style={[styles.searchStatus, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                 Instrument search is unavailable. Enter a ticker in uppercase to continue.
               </Text>
-            ) : stockSuggestions.length === 0 && etfSuggestions.length === 0 ? (
+            ) : stockSuggestions.length === 0 && etfSuggestions.length === 0 && commoditySuggestions.length === 0 ? (
               <Text style={[styles.searchStatus, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                No matching stocks or ETFs. Try another name or enter a ticker.
+                No matching stocks, ETFs, or commodities. Try another name or enter a ticker.
               </Text>
             ) : (
               <ScrollView
@@ -664,6 +717,31 @@ export default function HomeScreen() {
                     </View>
                     <Text style={[styles.suggestionSymbol, { color: colors.primary, fontFamily: 'Inter_700Bold' }]}>
                       {etf.symbol}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+                {commoditySuggestions.map((commodity, index) => (
+                  <TouchableOpacity
+                    key={`commodity-${commodity.symbol}`}
+                    style={[
+                      styles.suggestionRow,
+                      { borderBottomColor: index === commoditySuggestions.length - 1 ? 'transparent' : colors.border },
+                    ]}
+                    onPress={() => selectCommodity(commodity, activeCommoditySearchQuery)}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Select commodity ${commodity.name}, ticker ${commodity.symbol}`}
+                  >
+                    <View style={styles.suggestionCopy}>
+                      <Text numberOfLines={1} style={[styles.suggestionName, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
+                        {commodity.name}
+                      </Text>
+                      <Text numberOfLines={1} style={[styles.suggestionExchange, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                        Commodity · {commodity.exchange}
+                      </Text>
+                    </View>
+                    <Text style={[styles.suggestionSymbol, { color: colors.primary, fontFamily: 'Inter_700Bold' }]}>
+                      {commodity.symbol}
                     </Text>
                   </TouchableOpacity>
                 ))}

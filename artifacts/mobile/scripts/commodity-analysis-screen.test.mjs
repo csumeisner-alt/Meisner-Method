@@ -6,7 +6,10 @@ const modal = readFileSync(new URL("../components/HeatMapDetailModal.tsx", impor
 const heatMap = readFileSync(new URL("../app/heat-map.tsx", import.meta.url), "utf8");
 
 assert.match(modal, /testID="heat-map-detail-analyze-commodity"/);
+assert.match(modal, /testID="heat-map-detail-add-watchlist"/);
+assert.match(modal, /Add to watchlist/);
 assert.match(heatMap, /canAnalyzeCommodity=\{\(category === 'commodities' \|\| category === 'custom'\)/);
+assert.match(heatMap, /onAddToWatchlist=\{\(\) =>/);
 assert.match(heatMap, /selectedQuote\?\.assetType === 'commodity' \|\| selectedUnavailableCommodity !== null/);
 assert.match(heatMap, /onAnalyzeCommodity=\{\(\) =>/);
 assert.match(screen, /result\.assetType === 'commodity' && result\.commodityAnalysis/);

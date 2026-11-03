@@ -68,6 +68,7 @@ async function buildScreenBundle() {
     ["@/components/BottomTabBar", join(fixtureDir, "mocks/bottom-tab-bar.tsx")],
     ["@/contexts/AchievementsContext", join(fixtureDir, "mocks/achievements-context.ts")],
     ["@/hooks/useApi", join(fixtureDir, "mocks/use-api.ts")],
+    ["@/hooks/useWatchlist", join(fixtureDir, "mocks/use-watchlist.ts")],
     ["@/hooks/useColors", join(fixtureDir, "mocks/use-colors.ts")],
     ["@/lib/commodityPriceDrivers", join(fixtureDir, "mocks/commodity-price-drivers.ts")],
   ]);
@@ -487,6 +488,12 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       await browser.evaluate(`document.querySelector(${JSON.stringify(selector("heat-map-detail-price"))})?.textContent`),
       "$123.45",
       "The current heat-map quote should display immediately in the detail card.",
+    );
+    await clickTestID(browser, "heat-map-detail-add-watchlist");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-detail-add-watchlist"))})?.textContent.includes("In watchlist")`,
+      "Adding the selected heat-map item should update its watchlist state.",
     );
     await browser.evaluate(`(() => {
       const state = window.__heatMapBrowserTest;
