@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as StoreReview from 'expo-store-review';
+import { useFocusEffect } from 'expo-router';
 import {
   View,
   Text,
@@ -67,6 +69,11 @@ import {
   getNextBrewBankFreeOpening,
   getBrewBankEntryStatus,
 } from '@/lib/brewTokenLogic';
+import {
+  APP_REVIEW_STORAGE_KEY,
+  parseAppReviewState,
+  requestAppReviewIfEligible,
+} from '@/lib/appReview';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -2290,8 +2297,35 @@ export default function PortfolioScreen() {
   const quoteCacheWriteRef = useRef<Promise<void>>(Promise.resolve());
   const feedbackEventRef = useRef<string | null>(null);
   const gradeHistoryHintShownRef = useRef(false);
+  const reviewPromptCheckInFlightRef = useRef(false);
 
   const topPad = Platform.OS === 'web' ? 16 : insets.top;
+
+  useFocusEffect(useCallback(() => {
+    if (Platform.OS === 'web' || reviewPromptCheckInFlightRef.current) return;
+
+    let isFocused = true;
+    reviewPromptCheckInFlightRef.current = true;
+    void (async () => {
+      try {
+        const state = parseAppReviewState(await AsyncStorage.getItem(APP_REVIEW_STORAGE_KEY));
+        await requestAppReviewIfEligible(state, Date.now(), {
+          isAvailable: () => StoreReview.isAvailableAsync(),
+          canContinue: () => isFocused,
+          persistAttempt: (next) => AsyncStorage.setItem(APP_REVIEW_STORAGE_KEY, JSON.stringify(next)),
+          requestReview: () => StoreReview.requestReview(),
+        });
+      } catch {
+        // The store prompt is best-effort; it must never block the portfolio.
+      } finally {
+        reviewPromptCheckInFlightRef.current = false;
+      }
+    })();
+
+    return () => {
+      isFocused = false;
+    };
+  }, []));
 
   const loadTrades = useCallback(() => {
     tradeLoadCancelRef.current?.();

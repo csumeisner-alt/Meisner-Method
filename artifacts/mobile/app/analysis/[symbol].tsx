@@ -70,6 +70,11 @@ import {
   getAnalysisLoadingStageInterval,
   getAnalysisLoadingStages,
 } from '@/lib/analysisLoadingStages';
+import {
+  APP_REVIEW_STORAGE_KEY,
+  parseAppReviewState,
+  recordSuccessfulAnalysis,
+} from '@/lib/appReview';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -2431,6 +2436,17 @@ export default function AnalysisScreen() {
   useEffect(() => {
     if (symbol) mutate({ data: { symbol } });
   }, [symbol]);
+
+  useEffect(() => {
+    if (!response || !symbol || response.symbol.toUpperCase() !== symbol.toUpperCase()) return;
+
+    void AsyncStorage.getItem(APP_REVIEW_STORAGE_KEY)
+      .then((raw) => {
+        const next = recordSuccessfulAnalysis(parseAppReviewState(raw), Date.now());
+        return AsyncStorage.setItem(APP_REVIEW_STORAGE_KEY, JSON.stringify(next));
+      })
+      .catch(() => {});
+  }, [response, symbol]);
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
   const botPad = Platform.OS === 'web' ? 34 : insets.bottom;
