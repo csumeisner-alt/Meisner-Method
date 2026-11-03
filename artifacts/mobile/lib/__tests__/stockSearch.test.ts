@@ -214,7 +214,7 @@ test('company search gives clear loading, no-match, and service-error feedback',
       isSuccess: false,
       suggestionCount: 0,
     }),
-    { kind: 'loading', message: 'Searching companies…' },
+    { kind: 'loading', message: 'Searching stocks and ETFs…' },
   );
   assert.deepEqual(
     getStockSearchFeedback({
@@ -223,7 +223,7 @@ test('company search gives clear loading, no-match, and service-error feedback',
       isSuccess: true,
       suggestionCount: 0,
     }),
-    { kind: 'empty', message: 'No matching companies. Enter a ticker symbol if you know it.' },
+    { kind: 'empty', message: 'No matching stocks or ETFs. Enter a ticker symbol if you know it.' },
   );
   assert.deepEqual(
     getStockSearchFeedback({
@@ -234,7 +234,7 @@ test('company search gives clear loading, no-match, and service-error feedback',
     }),
     {
       kind: 'error',
-      message: 'Company search is unavailable. Enter a ticker symbol to look it up directly.',
+      message: 'Stock and ETF search is unavailable. Enter a ticker symbol to look it up directly.',
     },
   );
 });

@@ -73,13 +73,22 @@ import {
 } from '@/lib/stockSearch';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import {
+  getSearchHeatMapInstrumentsQueryKey,
   getSearchStockSymbolsQueryKey,
+  useSearchHeatMapInstruments,
   useSearchStockSymbols,
+  type HeatMapInstrumentSuggestion,
 } from '@workspace/api-client-react';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type TabId = 'positions' | 'orders' | 'analytics' | 'dividends' | 'growth';
 type StockInfo = BuyStockInfo;
+type PaperBuySuggestion = {
+  symbol: string;
+  name: string;
+  exchange: string;
+  instrumentType: 'stock' | 'etf';
+};
 
 // ── Local cache ─────────────────────────────────────────────────────────────
 // Bumped to v2: adds orders, lots, and extended account fields.
@@ -247,6 +256,14 @@ export default function PaperScreen() {
       },
     },
   );
+  const etfSearchParams = { q: debouncedBuyQuery, category: 'etfs' as const };
+  const etfSearch = useSearchHeatMapInstruments(etfSearchParams, {
+    query: {
+      queryKey: getSearchHeatMapInstrumentsQueryKey(etfSearchParams),
+      enabled: showTradeModal && !stockInfo && !infoLoading && !infoError && debouncedBuyQuery.length >= 2,
+      staleTime: 45_000,
+    },
+  });
 
   // ── Derived ──────────────────────────────────────────────────────────────
   const account = accounts.find(a => a.id === activeId);
@@ -268,24 +285,52 @@ export default function PaperScreen() {
     resultQuery: buySearchResultQuery,
     isPlaceholderData: stockSearch.isPlaceholderData,
   });
-  const buySuggestions = isCurrentBuySearch ? stockSearch.data ?? [] : [];
+  const buyEtfSearchResultQuery = getStockSearchQueryFromKey(etfSearch.queryKey);
+  const isCurrentEtfBuySearch = isCurrentBuySearchInput && isStockSearchCurrent({
+    input: buySearchText,
+    settledQuery: debouncedBuyQuery,
+    resultQuery: buyEtfSearchResultQuery,
+    isPlaceholderData: etfSearch.isPlaceholderData,
+  });
+  const stockSuggestions: PaperBuySuggestion[] = isCurrentBuySearch
+    ? (stockSearch.data ?? []).map((suggestion) => ({ ...suggestion, instrumentType: 'stock' }))
+    : [];
+  const etfSuggestions: PaperBuySuggestion[] = isCurrentEtfBuySearch
+    ? (etfSearch.data ?? []).map((suggestion: HeatMapInstrumentSuggestion) => ({
+        symbol: suggestion.symbol,
+        name: suggestion.name,
+        exchange: suggestion.exchange,
+        instrumentType: 'etf',
+      }))
+    : [];
+  const buySuggestions = [...stockSuggestions, ...etfSuggestions]
+    .filter((suggestion, index, all) => all.findIndex((item) => item.symbol === suggestion.symbol) === index);
+  const exactEtfSuggestion = etfSuggestions.find(
+    (suggestion) => suggestion.symbol.toUpperCase() === buySearchText.toUpperCase(),
+  );
   const allowRawBuyTicker = buySearchText.length === 1
     || (
       isCurrentBuySearch
+      && isCurrentEtfBuySearch
       && !stockSearch.isFetching
+      && !etfSearch.isFetching
       && (stockSearch.isSuccess || stockSearch.isError)
+      && (etfSearch.isSuccess || etfSearch.isError)
     );
-  const resolvedBuySymbol = resolveStockSearchSymbol(
-    buySymbol,
-    buySuggestions,
-    null,
-    allowRawBuyTicker,
+  const resolvedBuySymbol = exactEtfSuggestion?.symbol ?? resolveStockSearchSymbol(
+    buySymbol, buySuggestions, null, allowRawBuyTicker,
   );
+  const buySearchIsFetching = (isCurrentBuySearch && stockSearch.isFetching)
+    || (isCurrentEtfBuySearch && etfSearch.isFetching);
+  const buySearchIsError = isCurrentBuySearch && stockSearch.isError
+    && isCurrentEtfBuySearch && etfSearch.isError;
+  const buySearchIsSuccess = isCurrentBuySearch && (stockSearch.isSuccess || stockSearch.isError)
+    && isCurrentEtfBuySearch && (etfSearch.isSuccess || etfSearch.isError);
   const buySearchFeedback = isCurrentBuySearchInput
     ? getStockSearchFeedback({
-        isFetching: stockSearch.isFetching,
-        isError: isCurrentBuySearch && stockSearch.isError,
-        isSuccess: isCurrentBuySearch && stockSearch.isSuccess,
+        isFetching: buySearchIsFetching,
+        isError: buySearchIsError,
+        isSuccess: buySearchIsSuccess,
         suggestionCount: buySuggestions.length,
       })
     : null;
@@ -1621,7 +1666,7 @@ export default function PaperScreen() {
           >
             <View>
               <View style={styles.sheetHandle} />
-              <Text style={styles.sheetTitle}>BUY STOCK</Text>
+              <Text style={styles.sheetTitle}>BUY STOCK OR ETF</Text>
               <Text style={styles.sheetSub}>Buying power: {$fmt(account?.cash ?? 0)}</Text>
 
               {/* Company and ticker lookup */}
@@ -1640,13 +1685,13 @@ export default function PaperScreen() {
                     setStockInfo(null);
                     setInfoError('');
                   }}
-                  placeholder="Company name or ticker"
+                  placeholder="Stock or ETF name or ticker"
                   placeholderTextColor={DIM}
                   autoCapitalize="none"
                   autoCorrect={false}
                   returnKeyType="search"
                   editable={!infoLoading}
-                  accessibilityLabel="Search by company name or ticker"
+                  accessibilityLabel="Search by stock or ETF name or ticker"
                   onSubmitEditing={() => {
                     if (resolvedBuySymbol) void lookUpStock(resolvedBuySymbol);
                   }}
@@ -1672,7 +1717,7 @@ export default function PaperScreen() {
                   {buySuggestions.map((suggestion, index) => (
                     <TouchableOpacity
                       key={suggestion.symbol}
-                      testID={`paper-stock-result-${suggestion.symbol}`}
+                      testID={`paper-${suggestion.instrumentType}-result-${suggestion.symbol}`}
                       accessibilityRole="button"
                       accessibilityLabel={`Select ${suggestion.name}, ${suggestion.symbol}`}
                       style={[
@@ -1681,13 +1726,19 @@ export default function PaperScreen() {
                       ]}
                       onPress={() => {
                         const currentSearch = buySearchContextRef.current;
+                        const resultQuery = suggestion.instrumentType === 'etf'
+                          ? buyEtfSearchResultQuery
+                          : buySearchResultQuery;
+                        const isPlaceholderData = suggestion.instrumentType === 'etf'
+                          ? etfSearch.isPlaceholderData
+                          : stockSearch.isPlaceholderData;
                         if (
                           !currentSearch.enabled
                           || !isStockSearchCurrent({
                             input: currentSearch.input,
                             settledQuery: currentSearch.settledQuery,
-                            resultQuery: buySearchResultQuery,
-                            isPlaceholderData: stockSearch.isPlaceholderData,
+                            resultQuery,
+                            isPlaceholderData,
                           })
                         ) return;
 
@@ -1704,7 +1755,9 @@ export default function PaperScreen() {
                       <View style={{ flex: 1 }}>
                         <Text style={styles.searchResultName} numberOfLines={1}>{suggestion.name}</Text>
                         {suggestion.exchange ? (
-                          <Text style={styles.searchResultExchange} numberOfLines={1}>{suggestion.exchange}</Text>
+                          <Text style={styles.searchResultExchange} numberOfLines={1}>
+                            {suggestion.instrumentType === 'etf' ? `ETF · ${suggestion.exchange}` : suggestion.exchange}
+                          </Text>
                         ) : null}
                       </View>
                       <Text style={styles.searchResultSymbol}>{suggestion.symbol}</Text>
@@ -1724,7 +1777,7 @@ export default function PaperScreen() {
                 <Text style={styles.searchHint}>{buySearchFeedback.message}</Text>
               )}
               {showTradeModal && buySearchText.length === 1 && !infoLoading && (
-                <Text style={styles.searchHint}>Type at least 2 characters to search companies.</Text>
+                <Text style={styles.searchHint}>Type at least 2 characters to search stocks and ETFs.</Text>
               )}
 
               {infoError ? (

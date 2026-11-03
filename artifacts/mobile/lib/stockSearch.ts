@@ -115,18 +115,18 @@ export function getStockSearchFeedback({
   suggestionCount: number;
 }): StockSearchFeedback | null {
   if (isFetching && suggestionCount === 0) {
-    return { kind: 'loading', message: 'Searching companies…' };
+    return { kind: 'loading', message: 'Searching stocks and ETFs…' };
   }
   if (!isFetching && isError) {
     return {
       kind: 'error',
-      message: 'Company search is unavailable. Enter a ticker symbol to look it up directly.',
+      message: 'Stock and ETF search is unavailable. Enter a ticker symbol to look it up directly.',
     };
   }
   if (!isFetching && isSuccess && suggestionCount === 0) {
     return {
       kind: 'empty',
-      message: 'No matching companies. Enter a ticker symbol if you know it.',
+      message: 'No matching stocks or ETFs. Enter a ticker symbol if you know it.',
     };
   }
   return null;

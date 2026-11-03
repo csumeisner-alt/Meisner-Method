@@ -6,7 +6,7 @@ const paperScreen = readFileSync(new URL("../app/paper.tsx", import.meta.url), "
 
 test("company result selection looks up the selected symbol and does not submit an order", () => {
   const resultHandler = paperScreen.match(
-    /testID=\{`paper-stock-result-\$\{suggestion\.symbol\}`\}([\s\S]*?)activeOpacity=\{0\.7\}/,
+    /testID=\{`paper-\$\{suggestion\.instrumentType\}-result-\$\{suggestion\.symbol\}`\}([\s\S]*?)activeOpacity=\{0\.7\}/,
   )?.[1];
 
   assert.ok(resultHandler, "the company result button should remain identifiable");
@@ -83,7 +83,7 @@ test("company suggestions are tied to the current settled query before selection
   );
 
   const resultHandler = paperScreen.match(
-    /testID=\{`paper-stock-result-\$\{suggestion\.symbol\}`\}([\s\S]*?)activeOpacity=\{0\.7\}/,
+    /testID=\{`paper-\$\{suggestion\.instrumentType\}-result-\$\{suggestion\.symbol\}`\}([\s\S]*?)activeOpacity=\{0\.7\}/,
   )?.[1];
   assert.ok(resultHandler, "the company result button should remain identifiable");
   assert.match(resultHandler, /isStockSearchCurrent\(/);
@@ -101,4 +101,15 @@ test("direct ticker entry and search feedback remain connected to the Buy lookup
     paperScreen,
     /testID="paper-stock-lookup-button"[\s\S]*?onPress=\{\(\) => \{\s*if \(resolvedBuySymbol\) void lookUpStock\(resolvedBuySymbol\);/,
   );
+});
+
+test("Buy search includes ETFs and validates each result against its own query", () => {
+  assert.match(paperScreen, /category: 'etfs'/);
+  assert.match(paperScreen, /const exactEtfSuggestion = etfSuggestions\.find/);
+  assert.match(paperScreen, /exactEtfSuggestion\?\.symbol \?\? resolveStockSearchSymbol/);
+  assert.match(paperScreen, /instrumentType: 'etf'/);
+  assert.match(paperScreen, /suggestion\.instrumentType === 'etf'[\s\S]*?buyEtfSearchResultQuery/);
+  assert.match(paperScreen, /suggestion\.instrumentType === 'etf'[\s\S]*?etfSearch\.isPlaceholderData/);
+  assert.match(paperScreen, /ETF · \$\{suggestion\.exchange\}/);
+  assert.match(paperScreen, /BUY STOCK OR ETF/);
 });
