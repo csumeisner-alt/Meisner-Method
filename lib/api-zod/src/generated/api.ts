@@ -9,6 +9,28 @@ import * as zod from 'zod';
 
 
 /**
+ * @summary Search supported non-stock heat-map instruments by name or ticker
+ */
+export const searchHeatMapInstrumentsQueryQMin = 2;
+export const searchHeatMapInstrumentsQueryQMax = 80;
+
+
+
+export const SearchHeatMapInstrumentsQueryParams = zod.object({
+  "q": zod.coerce.string().min(searchHeatMapInstrumentsQueryQMin).max(searchHeatMapInstrumentsQueryQMax),
+  "category": zod.enum(['etfs', 'commodities', 'futures', 'cryptocurrency'])
+})
+
+export const SearchHeatMapInstrumentsResponseItem = zod.object({
+  "symbol": zod.string(),
+  "name": zod.string(),
+  "exchange": zod.string(),
+  "category": zod.enum(['etf', 'commodity', 'future', 'cryptocurrency'])
+})
+export const SearchHeatMapInstrumentsResponse = zod.array(SearchHeatMapInstrumentsResponseItem)
+
+
+/**
  * Returns server health status
  * @summary Health check
  */
@@ -18,14 +40,59 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
- * Fetches real market data and runs technical, fundamental, and behavioral analysis with AI-powered buy/sell recommendations
- * @summary Analyze a stock ticker
+ * Returns matching listed equities for company-name and ticker autocomplete
+ * @summary Search stocks by company name or ticker
  */
-export const AnalyzeStockBody = zod.object({
-  "symbol": zod.string().describe('Stock ticker symbol (e.g. AAPL, TSLA, MSFT)')
+export const searchStockSymbolsQueryQMin = 2;
+export const searchStockSymbolsQueryQMax = 80;
+
+
+
+export const SearchStockSymbolsQueryParams = zod.object({
+  "q": zod.coerce.string().min(searchStockSymbolsQueryQMin).max(searchStockSymbolsQueryQMax)
 })
 
-export const AnalyzeStockResponse = zod.object({
+export const SearchStockSymbolsResponseItem = zod.object({
+  "symbol": zod.string(),
+  "name": zod.string(),
+  "exchange": zod.string()
+})
+export const SearchStockSymbolsResponse = zod.array(SearchStockSymbolsResponseItem)
+
+
+/**
+ * Returns deterministic score-and-factor market analysis for supported commodity futures, fund-specific analysis for ETFs, or stock analysis for listed equities.
+ * @summary Analyze a listed ticker or supported commodity
+ */
+export const analyzeStockBodyIncludeCommentaryDefault = true;
+
+export const AnalyzeStockBody = zod.object({
+  "symbol": zod.string().describe('Stock ticker symbol (e.g. AAPL, TSLA, MSFT)'),
+  "includeCommentary": zod.boolean().default(analyzeStockBodyIncludeCommentaryDefault).describe('Whether ETF analysis should include AI-generated commentary. Omit or set true for full analysis; set false for facts-only comparison data.')
+})
+
+export const analyzeStockResponseTwoEtfAnalysisSectorWeightsItemWeightMin = 0;
+export const analyzeStockResponseTwoEtfAnalysisSectorWeightsItemWeightMax = 1;
+
+export const analyzeStockResponseTwoEtfAnalysisTopHoldingsReportedCountMin = 0;
+
+export const analyzeStockResponseTwoEtfAnalysisTrackingComparisonOneMonthlySamplesMin = 2;
+
+export const analyzeStockResponseThreeCommodityAnalysisScoreMin = 0;
+export const analyzeStockResponseThreeCommodityAnalysisScoreMax = 100;
+
+export const analyzeStockResponseThreeCommodityAnalysisConfidenceMin = 0;
+export const analyzeStockResponseThreeCommodityAnalysisConfidenceMax = 100;
+
+export const analyzeStockResponseThreeCommodityAnalysisDataCoveragePercentMin = 0;
+export const analyzeStockResponseThreeCommodityAnalysisDataCoveragePercentMax = 100;
+
+export const analyzeStockResponseThreeCommodityAnalysisObservationCountMin = 0;
+
+
+
+export const AnalyzeStockResponse = zod.union([zod.object({
+  "assetType": zod.enum(['stock']),
   "symbol": zod.string(),
   "companyName": zod.string(),
   "exchange": zod.string(),
@@ -86,6 +153,513 @@ export const AnalyzeStockResponse = zod.object({
   "risks": zod.array(zod.string()),
   "strengths": zod.array(zod.string())
 })
+}),zod.object({
+  "assetType": zod.enum(['etf']),
+  "symbol": zod.string(),
+  "companyName": zod.string(),
+  "exchange": zod.string(),
+  "currency": zod.string(),
+  "currentPrice": zod.number(),
+  "priceChange": zod.number(),
+  "priceChangePercent": zod.number(),
+  "volume": zod.number(),
+  "marketCap": zod.number().nullish(),
+  "week52High": zod.number(),
+  "week52Low": zod.number(),
+  "etfAnalysis": zod.object({
+  "fundCategory": zod.string().nullish(),
+  "fundFamily": zod.string().nullish(),
+  "expenseRatio": zod.number().nullish(),
+  "totalAssets": zod.number().nullish(),
+  "dividendYield": zod.number().nullish(),
+  "beta3Year": zod.number().nullish(),
+  "averageVolume": zod.number().nullish(),
+  "topHoldingsCombinedWeight": zod.number().nullable(),
+  "annualizedReturn": zod.number().nullable(),
+  "annualizedVolatility": zod.number().nullable(),
+  "maxDrawdown": zod.number().nullable(),
+  "riskAdjustedReturn": zod.number().nullable(),
+  "topHoldings": zod.array(zod.object({
+  "symbol": zod.string(),
+  "name": zod.string(),
+  "weight": zod.number().describe('Holding weight as a decimal fraction.')
+})),
+  "sectorWeights": zod.array(zod.object({
+  "sector": zod.string(),
+  "weight": zod.number().min(analyzeStockResponseTwoEtfAnalysisSectorWeightsItemWeightMin).max(analyzeStockResponseTwoEtfAnalysisSectorWeightsItemWeightMax).describe('Provider-reported sector weight as a decimal fraction.')
+})).describe('Provider-reported sector weights only; omitted sectors are not inferred as zero.'),
+  "sectorWeightsRetrievedAt": zod.coerce.date().describe('Provider sector snapshot retrieval time, not a sector report date.'),
+  "topHoldingsReportedCount": zod.number().min(analyzeStockResponseTwoEtfAnalysisTopHoldingsReportedCountMin).describe('Number of positions reported by the provider for this holdings snapshot.'),
+  "topHoldingsRetrievedAt": zod.coerce.date().describe('Provider holdings snapshot retrieval time, not a holdings report date.'),
+  "marketRegime": zod.object({
+  "bestRegime": zod.enum(['bull', 'bear', 'mixed']).nullable(),
+  "lookbackYears": zod.number(),
+  "firstYear": zod.number(),
+  "lastYear": zod.number(),
+  "benchmarkSymbol": zod.string(),
+  "bullThreshold": zod.number().describe('Minimum annual benchmark return for a bull year, as a decimal fraction.'),
+  "bearThreshold": zod.number().describe('Maximum annual benchmark return for a bear year, as a decimal fraction.'),
+  "periods": zod.object({
+  "bull": zod.object({
+  "averageAnnualReturn": zod.number().nullable().describe('Arithmetic average of adjusted annual total returns.'),
+  "years": zod.number().describe('Number of complete calendar years in this regime.')
+}),
+  "bear": zod.object({
+  "averageAnnualReturn": zod.number().nullable().describe('Arithmetic average of adjusted annual total returns.'),
+  "years": zod.number().describe('Number of complete calendar years in this regime.')
+}),
+  "mixed": zod.object({
+  "averageAnnualReturn": zod.number().nullable().describe('Arithmetic average of adjusted annual total returns.'),
+  "years": zod.number().describe('Number of complete calendar years in this regime.')
+})
+})
+}).describe('Historical comparison, not a forecast. Based on complete calendar-year adjusted total returns.').nullable(),
+  "benchmark": zod.object({
+  "symbol": zod.string(),
+  "name": zod.string(),
+  "source": zod.string(),
+  "asOf": zod.coerce.date()
+}).describe('Benchmark explicitly identified by the provider; never inferred from the ETF category.').nullable(),
+  "trackingComparison": zod.object({
+  "periodStart": zod.string(),
+  "periodEnd": zod.string(),
+  "monthlySamples": zod.number().min(analyzeStockResponseTwoEtfAnalysisTrackingComparisonOneMonthlySamplesMin),
+  "fundAnnualizedReturn": zod.number(),
+  "benchmarkAnnualizedReturn": zod.number(),
+  "trackingDifference": zod.number().describe('Fund annualized total return minus benchmark annualized total return.'),
+  "trackingError": zod.number().describe('Sample standard deviation of monthly active returns, annualized by the square root of 12.'),
+  "source": zod.string(),
+  "asOf": zod.coerce.date()
+}).describe('Comparison of adjusted monthly ETF and explicit benchmark returns over their shared history.').nullable(),
+  "peerExpenseComparison": zod.object({
+  "category": zod.string(),
+  "fundExpenseRatio": zod.number().nullable().describe('Fund annual expense ratio as a decimal fraction.'),
+  "categoryAverageExpenseRatio": zod.number().describe('Category-average annual expense ratio as a decimal fraction.'),
+  "difference": zod.number().nullable().describe('Fund expense ratio minus the category average, as a decimal fraction.'),
+  "sampleSize": zod.number().nullable(),
+  "sampleContext": zod.string(),
+  "source": zod.string(),
+  "asOf": zod.coerce.date()
+}).describe('Yahoo Finance provider-defined fund-category average; sample size is unavailable when not reported.').nullable(),
+  "peerAssetSizeComparison": zod.object({
+  "category": zod.string(),
+  "fundTotalAssets": zod.number().nullable().describe('Fund total net assets in USD.'),
+  "categoryAverageTotalAssets": zod.number().describe('Category-average total net assets in USD.'),
+  "difference": zod.number().nullable().describe('Fund total assets minus the category average, in USD.'),
+  "sampleSize": zod.number().nullable(),
+  "sampleContext": zod.string(),
+  "source": zod.string(),
+  "asOf": zod.coerce.date()
+}).describe('Yahoo Finance provider-defined category average total net assets; sample size is unavailable when not reported.').nullable(),
+  "scenarios": zod.array(zod.object({
+  "label": zod.enum(['bear', 'base', 'bull']),
+  "annualReturnAssumption": zod.number().nullable().describe('Historical regime average used as an illustrative annual return assumption.'),
+  "fiveYearValue": zod.number().nullable(),
+  "tenYearValue": zod.number().nullable(),
+  "assumption": zod.string()
+})),
+  "risks": zod.array(zod.string()),
+  "strengths": zod.array(zod.string()),
+  "analysis": zod.string(),
+  "provider": zod.string(),
+  "asOf": zod.coerce.date()
+}).describe('Fund-specific provider data, historical comparisons, and illustrative scenarios. Null means unavailable.')
+}),zod.object({
+  "assetType": zod.enum(['commodity']),
+  "symbol": zod.string(),
+  "companyName": zod.string(),
+  "exchange": zod.string(),
+  "currency": zod.string(),
+  "currentPrice": zod.number(),
+  "priceChange": zod.number(),
+  "priceChangePercent": zod.number(),
+  "volume": zod.number(),
+  "marketCap": zod.number().nullable(),
+  "week52High": zod.number(),
+  "week52Low": zod.number(),
+  "commodityAnalysis": zod.object({
+  "score": zod.number().min(analyzeStockResponseThreeCommodityAnalysisScoreMin).max(analyzeStockResponseThreeCommodityAnalysisScoreMax),
+  "confidence": zod.number().min(analyzeStockResponseThreeCommodityAnalysisConfidenceMin).max(analyzeStockResponseThreeCommodityAnalysisConfidenceMax),
+  "dataCoveragePercent": zod.number().min(analyzeStockResponseThreeCommodityAnalysisDataCoveragePercentMin).max(analyzeStockResponseThreeCommodityAnalysisDataCoveragePercentMax),
+  "observationCount": zod.number().min(analyzeStockResponseThreeCommodityAnalysisObservationCountMin),
+  "historyAsOf": zod.string().nullable(),
+  "family": zod.enum(['metals', 'energy', 'agriculture', 'livestock']),
+  "annualizedVolatilityPercent": zod.number(),
+  "oneMonthReturnPercent": zod.number().nullable(),
+  "threeMonthReturnPercent": zod.number().nullable(),
+  "sixMonthReturnPercent": zod.number().nullable(),
+  "factors": zod.array(zod.object({
+  "key": zod.string(),
+  "label": zod.string(),
+  "status": zod.enum(['available', 'unavailable']),
+  "score": zod.number().nullable(),
+  "weight": zod.number(),
+  "detail": zod.string(),
+  "sources": zod.array(zod.object({
+  "title": zod.string(),
+  "url": zod.string(),
+  "asOf": zod.coerce.date(),
+  "unit": zod.string(),
+  "observation": zod.string()
+}))
+})),
+  "methodology": zod.string(),
+  "reasoning": zod.string(),
+  "risks": zod.array(zod.string()),
+  "strengths": zod.array(zod.string()),
+  "newsContext": zod.object({
+  "status": zod.enum(['available', 'unavailable']),
+  "summary": zod.string().nullable(),
+  "retrievedAt": zod.string().nullable(),
+  "sources": zod.array(zod.object({
+  "title": zod.string(),
+  "url": zod.string(),
+  "publishedAt": zod.string().nullable()
+}))
+}),
+  "provider": zod.string()
+})
+})])
+
+
+/**
+ * Returns provider-backed quote statistics and, for ETFs, fund facts and historical market-regime comparisons.
+ * @summary Get market detail statistics for a symbol
+ */
+export const getStockInfoPathSymbolMax = 15;
+
+
+
+export const GetStockInfoParams = zod.object({
+  "symbol": zod.coerce.string().min(1).max(getStockInfoPathSymbolMax)
+})
+
+export const getStockInfoResponseEtfProfileSectorWeightsItemWeightMin = 0;
+export const getStockInfoResponseEtfProfileSectorWeightsItemWeightMax = 1;
+
+export const getStockInfoResponseEtfProfileTopHoldingsReportedCountMin = 0;
+
+export const getStockInfoResponseEtfProfileTrackingComparisonOneMonthlySamplesMin = 2;
+
+
+
+export const GetStockInfoResponse = zod.object({
+  "symbol": zod.string(),
+  "companyName": zod.string(),
+  "sector": zod.string(),
+  "industry": zod.string(),
+  "exchange": zod.string(),
+  "dividendYield": zod.number().nullable().describe('Distribution yield as a decimal fraction (0.01 = 1%).'),
+  "dividendRate": zod.number().nullable(),
+  "marketCap": zod.number().nullable(),
+  "currentPrice": zod.number(),
+  "previousClose": zod.number().nullable(),
+  "open": zod.number().nullable(),
+  "dayLow": zod.number().nullable(),
+  "dayHigh": zod.number().nullable(),
+  "fiftyTwoWeekLow": zod.number().nullable(),
+  "fiftyTwoWeekHigh": zod.number().nullable(),
+  "volume": zod.number().nullable(),
+  "averageVolume3Month": zod.number().nullable(),
+  "beta": zod.number().nullable(),
+  "earningsTimestamp": zod.number().nullable(),
+  "targetMeanPrice": zod.number().nullable(),
+  "trailingEps": zod.number().nullable(),
+  "totalRevenue": zod.number().nullable(),
+  "circulatingSupply": zod.number().nullable(),
+  "maxSupply": zod.number().nullable(),
+  "volume24Hr": zod.number().nullable(),
+  "etfProfile": zod.object({
+  "fundCategory": zod.string().nullable(),
+  "fundFamily": zod.string().nullable(),
+  "expenseRatio": zod.number().nullable().describe('Annual expense ratio as a decimal fraction (0.001 = 0.1%).'),
+  "totalAssets": zod.number().nullable().describe('Fund assets under management in USD.'),
+  "dividendYield": zod.number().nullable(),
+  "beta3Year": zod.number().nullable(),
+  "largestSector": zod.string().nullable(),
+  "largestSectorWeight": zod.number().nullable(),
+  "sectorWeights": zod.array(zod.object({
+  "sector": zod.string(),
+  "weight": zod.number().min(getStockInfoResponseEtfProfileSectorWeightsItemWeightMin).max(getStockInfoResponseEtfProfileSectorWeightsItemWeightMax).describe('Provider-reported sector weight as a decimal fraction.')
+})).describe('Provider-reported sector weights only; omitted sectors are not inferred as zero.'),
+  "sectorWeightsRetrievedAt": zod.coerce.date().describe('Provider sector snapshot retrieval time, not a sector report date.'),
+  "topHoldings": zod.array(zod.object({
+  "symbol": zod.string(),
+  "name": zod.string(),
+  "weight": zod.number().describe('Holding weight as a decimal fraction.')
+})),
+  "topHoldingsReportedCount": zod.number().min(getStockInfoResponseEtfProfileTopHoldingsReportedCountMin).describe('Number of positions reported by the provider for this holdings snapshot.'),
+  "topHoldingsRetrievedAt": zod.coerce.date().describe('Provider holdings snapshot retrieval time, not a holdings report date.'),
+  "marketRegime": zod.object({
+  "bestRegime": zod.enum(['bull', 'bear', 'mixed']).nullable(),
+  "lookbackYears": zod.number(),
+  "firstYear": zod.number(),
+  "lastYear": zod.number(),
+  "benchmarkSymbol": zod.string(),
+  "bullThreshold": zod.number().describe('Minimum annual benchmark return for a bull year, as a decimal fraction.'),
+  "bearThreshold": zod.number().describe('Maximum annual benchmark return for a bear year, as a decimal fraction.'),
+  "periods": zod.object({
+  "bull": zod.object({
+  "averageAnnualReturn": zod.number().nullable().describe('Arithmetic average of adjusted annual total returns.'),
+  "years": zod.number().describe('Number of complete calendar years in this regime.')
+}),
+  "bear": zod.object({
+  "averageAnnualReturn": zod.number().nullable().describe('Arithmetic average of adjusted annual total returns.'),
+  "years": zod.number().describe('Number of complete calendar years in this regime.')
+}),
+  "mixed": zod.object({
+  "averageAnnualReturn": zod.number().nullable().describe('Arithmetic average of adjusted annual total returns.'),
+  "years": zod.number().describe('Number of complete calendar years in this regime.')
+})
+})
+}).describe('Historical comparison, not a forecast. Based on complete calendar-year adjusted total returns.').nullable(),
+  "benchmark": zod.object({
+  "symbol": zod.string(),
+  "name": zod.string(),
+  "source": zod.string(),
+  "asOf": zod.coerce.date()
+}).describe('Benchmark explicitly identified by the provider; never inferred from the ETF category.').nullable(),
+  "trackingComparison": zod.object({
+  "periodStart": zod.string(),
+  "periodEnd": zod.string(),
+  "monthlySamples": zod.number().min(getStockInfoResponseEtfProfileTrackingComparisonOneMonthlySamplesMin),
+  "fundAnnualizedReturn": zod.number(),
+  "benchmarkAnnualizedReturn": zod.number(),
+  "trackingDifference": zod.number().describe('Fund annualized total return minus benchmark annualized total return.'),
+  "trackingError": zod.number().describe('Sample standard deviation of monthly active returns, annualized by the square root of 12.'),
+  "source": zod.string(),
+  "asOf": zod.coerce.date()
+}).describe('Comparison of adjusted monthly ETF and explicit benchmark returns over their shared history.').nullable(),
+  "peerExpenseComparison": zod.object({
+  "category": zod.string(),
+  "fundExpenseRatio": zod.number().nullable().describe('Fund annual expense ratio as a decimal fraction.'),
+  "categoryAverageExpenseRatio": zod.number().describe('Category-average annual expense ratio as a decimal fraction.'),
+  "difference": zod.number().nullable().describe('Fund expense ratio minus the category average, as a decimal fraction.'),
+  "sampleSize": zod.number().nullable(),
+  "sampleContext": zod.string(),
+  "source": zod.string(),
+  "asOf": zod.coerce.date()
+}).describe('Yahoo Finance provider-defined fund-category average; sample size is unavailable when not reported.').nullable(),
+  "peerAssetSizeComparison": zod.object({
+  "category": zod.string(),
+  "fundTotalAssets": zod.number().nullable().describe('Fund total net assets in USD.'),
+  "categoryAverageTotalAssets": zod.number().describe('Category-average total net assets in USD.'),
+  "difference": zod.number().nullable().describe('Fund total assets minus the category average, in USD.'),
+  "sampleSize": zod.number().nullable(),
+  "sampleContext": zod.string(),
+  "source": zod.string(),
+  "asOf": zod.coerce.date()
+}).describe('Yahoo Finance provider-defined category average total net assets; sample size is unavailable when not reported.').nullable()
+}).optional().describe('Provider-reported fund facts, present for ETFs. Ratios and weights are decimal fractions.')
+})
+
+
+/**
+ * Returns daily Coin Metrics current-supply observations for a selected 30, 90, or 365 day window. Missing provider dates are omitted, never interpolated; this on-chain metric may differ from another provider's current circulating-supply figure.
+ * @summary Get historical on-chain supply for a cryptocurrency
+ */
+export const getCryptoSupplyHistoryPathSymbolMin = 5;
+export const getCryptoSupplyHistoryPathSymbolMax = 15;
+
+
+export const getCryptoSupplyHistoryPathSymbolRegExp = new RegExp('^[A-Z0-9]+-USD$');
+
+
+export const GetCryptoSupplyHistoryParams = zod.object({
+  "symbol": zod.coerce.string().min(getCryptoSupplyHistoryPathSymbolMin).max(getCryptoSupplyHistoryPathSymbolMax).regex(getCryptoSupplyHistoryPathSymbolRegExp),
+  "rangeDays": zod.union([zod.literal(30),zod.literal(90),zod.literal(365)]).describe('Number of daily history days to return.')
+})
+
+export const getCryptoSupplyHistoryResponsePointsItemSupplyExclusiveMin = 0;
+
+
+
+export const GetCryptoSupplyHistoryResponse = zod.object({
+  "symbol": zod.string(),
+  "provider": zod.enum(['Coin Metrics']),
+  "metric": zod.enum(['SplyCur']),
+  "rangeDays": zod.union([zod.literal(30),zod.literal(90),zod.literal(365)]),
+  "interval": zod.enum(['daily']),
+  "startDate": zod.coerce.date().nullable(),
+  "endDate": zod.coerce.date().nullable(),
+  "points": zod.array(zod.object({
+  "date": zod.coerce.date(),
+  "supply": zod.number().gt(getCryptoSupplyHistoryResponsePointsItemSupplyExclusiveMin)
+}))
+}).describe('Provider-reported daily on-chain current-supply observations. This series is distinct from the live circulating-supply and maximum-supply-share statistics.')
+
+
+/**
+ * Returns the regular-session daily price changes for the same active-stock sample as the heat map, without fetching historical series or volatility data.
+ * @summary Get a fast stock-market breadth snapshot
+ */
+export const getMarketBreadthResponseQuotesItemPriceExclusiveMin = 0;
+
+
+
+export const GetMarketBreadthResponse = zod.object({
+  "category": zod.enum(['stocks', 'etfs', 'commodities', 'futures', 'cryptocurrency', 'custom']),
+  "period": zod.enum(['1d', '1w', '1m', '3m', '6m', '1y', '3y', '5y', 'max']),
+  "requestedSector": zod.enum(['Technology', 'Communication Services', 'Consumer Cyclical', 'Consumer Defensive', 'Financials', 'Healthcare', 'Industrials', 'Real Estate', 'Energy', 'Utilities', 'Basic Materials']).nullable().describe('Sector used for a Stocks expansion request, or null for the normal category list.'),
+  "quotes": zod.array(zod.object({
+  "symbol": zod.string(),
+  "name": zod.string(),
+  "price": zod.number().gt(getMarketBreadthResponseQuotesItemPriceExclusiveMin),
+  "priceChangePercent": zod.number().describe('Percentage change from the previous close, in percentage points (1.25 means 1.25%).'),
+  "returnPercent": zod.number().nullable().describe('Selected-period return in percentage points, or null when the requested history is unavailable.'),
+  "returnBasis": zod.enum(['adjusted_total_return', 'price_return_proxy']).describe('Adjusted total return for stocks\/ETFs where supported, otherwise a price-return proxy.'),
+  "returnUnavailableReason": zod.string().nullable().describe('Why the requested return could not be calculated.'),
+  "historyStartDate": zod.string().nullable().describe('Earliest available daily observation in YYYY-MM-DD; populated for Max.'),
+  "priceTimestamp": zod.number().nullable().describe('Unix timestamp in seconds for this quote or last available close. Quotes without a timestamp are not displayable.'),
+  "marketSession": zod.enum(['pre_market', 'regular', 'after_hours', 'closed', 'unknown']).describe('Session for this quote. closed identifies the latest available close; unknown means the provider could not identify the session.'),
+  "nextRegularOpenTimestamp": zod.number().nullable().describe('Unix timestamp in seconds for the next scheduled listed-exchange regular-session open, populated only when a stock or ETF is closed or in after-hours; null when unavailable or not applicable.'),
+  "assetType": zod.enum(['stock', 'etf', 'commodity', 'future', 'cryptocurrency']),
+  "sector": zod.string().nullable().describe('Normalized provider sector; stocks without metadata use Unknown.'),
+  "exchange": zod.string().nullable().describe('Normalized provider exchange when available.'),
+  "exchangeTimezone": zod.string().nullable().describe('IANA timezone for a supported listed-exchange calendar, used to display the next open; null when unavailable.'),
+  "marketCapUsd": zod.number().nullable().describe('Provider market capitalization in USD. ETF assets-under-management are not substituted.'),
+  "annualizedVolatilityPercent": zod.number().nullable().describe('Trailing-year annualized standard deviation of daily returns, requiring at least 60 observations.'),
+  "riskBand": zod.enum(['Conservative', 'Moderate Conservative', 'Moderate', 'Moderate Aggressive', 'Aggressive']).nullable().describe('Historical-volatility band; not personalized investment suitability.')
+})),
+  "unavailableSymbols": zod.array(zod.string()),
+  "updatedAt": zod.number().describe('Unix timestamp in seconds when this batch was assembled.')
+})
+
+
+/**
+ * Returns current quotes using the same provider and session-price selection as the single-symbol quote route. Symbols without an available quote are listed separately.
+ * @summary Get current quotes for portfolio holdings
+ */
+export const getPortfolioQuotesBodySymbolsItemMax = 15;
+
+
+export const getPortfolioQuotesBodySymbolsItemRegExp = new RegExp('^[A-Za-z0-9.^=-]+$');
+export const getPortfolioQuotesBodySymbolsMax = 500;
+
+
+
+export const GetPortfolioQuotesBody = zod.object({
+  "symbols": zod.array(zod.string().min(1).max(getPortfolioQuotesBodySymbolsItemMax).regex(getPortfolioQuotesBodySymbolsItemRegExp)).min(1).max(getPortfolioQuotesBodySymbolsMax)
+})
+
+export const getPortfolioQuotesResponseQuotesItemCurrentPriceExclusiveMin = 0;
+
+
+
+export const GetPortfolioQuotesResponse = zod.object({
+  "quotes": zod.array(zod.object({
+  "symbol": zod.string(),
+  "currentPrice": zod.number().gt(getPortfolioQuotesResponseQuotesItemCurrentPriceExclusiveMin),
+  "priceChange": zod.number(),
+  "priceChangePercent": zod.number(),
+  "marketSession": zod.string(),
+  "priceSource": zod.string(),
+  "priceTimestamp": zod.number().nullable(),
+  "expenseRatio": zod.number().nullable()
+})),
+  "unavailableSymbols": zod.array(zod.string())
+})
+
+
+/**
+ * Returns the daily percentage change and quote timestamp for Yahoo Finance's Dow Jones U.S. Total Stock Market Index (^DWCF), plus whether the official XNYS regular session is open. The index price is not returned.
+ * @summary Get the total-market daily move
+ */
+export const GetMarketPulseResponse = zod.object({
+  "marketOpen": zod.boolean().describe('Whether the XNYS regular trading session is currently open.'),
+  "changePercent": zod.number().describe('Daily percentage move from the previous close, in percentage points.'),
+  "priceTimestamp": zod.number().describe('Unix timestamp in seconds for the Yahoo Finance quote used to calculate the daily move.'),
+  "updatedAt": zod.number().describe('Unix timestamp in seconds when this response was assembled.')
+})
+
+
+/**
+ * Returns a cached batch of quotes, selected-period returns, and available provider metadata for one heat-map category. Custom maps pass symbols as a comma-separated query array.
+ * @summary Get batched quotes for a market heat map
+ */
+export const getMarketHeatMapQueryPeriodDefault = `1d`;
+export const getMarketHeatMapQuerySymbolsItemMax = 15;
+
+export const getMarketHeatMapQuerySymbolsMax = 40;
+
+
+
+export const GetMarketHeatMapQueryParams = zod.object({
+  "category": zod.enum(['stocks', 'etfs', 'commodities', 'futures', 'cryptocurrency', 'custom']),
+  "period": zod.enum(['1d', '1w', '1m', '3m', '6m', '1y', '3y', '5y', 'max']).default(getMarketHeatMapQueryPeriodDefault).describe('Return window. Risk levels always use trailing-year annualized daily volatility.'),
+  "sector": zod.enum(['Technology', 'Communication Services', 'Consumer Cyclical', 'Consumer Defensive', 'Financials', 'Healthcare', 'Industrials', 'Real Estate', 'Energy', 'Utilities', 'Basic Materials']).optional().describe('For Stocks, fetch an expanded, liquid US-listed quote set for the selected sector.'),
+  "symbols": zod.array(zod.coerce.string().min(1).max(getMarketHeatMapQuerySymbolsItemMax)).max(getMarketHeatMapQuerySymbolsMax).optional()
+})
+
+export const getMarketHeatMapResponseQuotesItemPriceExclusiveMin = 0;
+
+
+
+export const GetMarketHeatMapResponse = zod.object({
+  "category": zod.enum(['stocks', 'etfs', 'commodities', 'futures', 'cryptocurrency', 'custom']),
+  "period": zod.enum(['1d', '1w', '1m', '3m', '6m', '1y', '3y', '5y', 'max']),
+  "requestedSector": zod.enum(['Technology', 'Communication Services', 'Consumer Cyclical', 'Consumer Defensive', 'Financials', 'Healthcare', 'Industrials', 'Real Estate', 'Energy', 'Utilities', 'Basic Materials']).nullable().describe('Sector used for a Stocks expansion request, or null for the normal category list.'),
+  "quotes": zod.array(zod.object({
+  "symbol": zod.string(),
+  "name": zod.string(),
+  "price": zod.number().gt(getMarketHeatMapResponseQuotesItemPriceExclusiveMin),
+  "priceChangePercent": zod.number().describe('Percentage change from the previous close, in percentage points (1.25 means 1.25%).'),
+  "returnPercent": zod.number().nullable().describe('Selected-period return in percentage points, or null when the requested history is unavailable.'),
+  "returnBasis": zod.enum(['adjusted_total_return', 'price_return_proxy']).describe('Adjusted total return for stocks\/ETFs where supported, otherwise a price-return proxy.'),
+  "returnUnavailableReason": zod.string().nullable().describe('Why the requested return could not be calculated.'),
+  "historyStartDate": zod.string().nullable().describe('Earliest available daily observation in YYYY-MM-DD; populated for Max.'),
+  "priceTimestamp": zod.number().nullable().describe('Unix timestamp in seconds for this quote or last available close. Quotes without a timestamp are not displayable.'),
+  "marketSession": zod.enum(['pre_market', 'regular', 'after_hours', 'closed', 'unknown']).describe('Session for this quote. closed identifies the latest available close; unknown means the provider could not identify the session.'),
+  "nextRegularOpenTimestamp": zod.number().nullable().describe('Unix timestamp in seconds for the next scheduled listed-exchange regular-session open, populated only when a stock or ETF is closed or in after-hours; null when unavailable or not applicable.'),
+  "assetType": zod.enum(['stock', 'etf', 'commodity', 'future', 'cryptocurrency']),
+  "sector": zod.string().nullable().describe('Normalized provider sector; stocks without metadata use Unknown.'),
+  "exchange": zod.string().nullable().describe('Normalized provider exchange when available.'),
+  "exchangeTimezone": zod.string().nullable().describe('IANA timezone for a supported listed-exchange calendar, used to display the next open; null when unavailable.'),
+  "marketCapUsd": zod.number().nullable().describe('Provider market capitalization in USD. ETF assets-under-management are not substituted.'),
+  "annualizedVolatilityPercent": zod.number().nullable().describe('Trailing-year annualized standard deviation of daily returns, requiring at least 60 observations.'),
+  "riskBand": zod.enum(['Conservative', 'Moderate Conservative', 'Moderate', 'Moderate Aggressive', 'Aggressive']).nullable().describe('Historical-volatility band; not personalized investment suitability.')
+})),
+  "unavailableSymbols": zod.array(zod.string()),
+  "updatedAt": zod.number().describe('Unix timestamp in seconds when this batch was assembled.')
+})
+
+
+/**
+ * @summary Validate a custom heat-map ticker against live market data
+ */
+export const validateHeatMapSymbolBodySymbolMax = 15;
+
+
+export const validateHeatMapSymbolBodySymbolRegExp = new RegExp('^[A-Za-z0-9.^=-]+$');
+
+
+export const ValidateHeatMapSymbolBody = zod.object({
+  "symbol": zod.string().min(1).max(validateHeatMapSymbolBodySymbolMax).regex(validateHeatMapSymbolBodySymbolRegExp)
+})
+
+export const validateHeatMapSymbolResponsePriceExclusiveMin = 0;
+
+
+
+export const ValidateHeatMapSymbolResponse = zod.object({
+  "symbol": zod.string(),
+  "name": zod.string(),
+  "price": zod.number().gt(validateHeatMapSymbolResponsePriceExclusiveMin),
+  "priceChangePercent": zod.number().describe('Percentage change from the previous close, in percentage points (1.25 means 1.25%).'),
+  "returnPercent": zod.number().nullable().describe('Selected-period return in percentage points, or null when the requested history is unavailable.'),
+  "returnBasis": zod.enum(['adjusted_total_return', 'price_return_proxy']).describe('Adjusted total return for stocks\/ETFs where supported, otherwise a price-return proxy.'),
+  "returnUnavailableReason": zod.string().nullable().describe('Why the requested return could not be calculated.'),
+  "historyStartDate": zod.string().nullable().describe('Earliest available daily observation in YYYY-MM-DD; populated for Max.'),
+  "priceTimestamp": zod.number().nullable().describe('Unix timestamp in seconds for this quote or last available close. Quotes without a timestamp are not displayable.'),
+  "marketSession": zod.enum(['pre_market', 'regular', 'after_hours', 'closed', 'unknown']).describe('Session for this quote. closed identifies the latest available close; unknown means the provider could not identify the session.'),
+  "nextRegularOpenTimestamp": zod.number().nullable().describe('Unix timestamp in seconds for the next scheduled listed-exchange regular-session open, populated only when a stock or ETF is closed or in after-hours; null when unavailable or not applicable.'),
+  "assetType": zod.enum(['stock', 'etf', 'commodity', 'future', 'cryptocurrency']),
+  "sector": zod.string().nullable().describe('Normalized provider sector; stocks without metadata use Unknown.'),
+  "exchange": zod.string().nullable().describe('Normalized provider exchange when available.'),
+  "exchangeTimezone": zod.string().nullable().describe('IANA timezone for a supported listed-exchange calendar, used to display the next open; null when unavailable.'),
+  "marketCapUsd": zod.number().nullable().describe('Provider market capitalization in USD. ETF assets-under-management are not substituted.'),
+  "annualizedVolatilityPercent": zod.number().nullable().describe('Trailing-year annualized standard deviation of daily returns, requiring at least 60 observations.'),
+  "riskBand": zod.enum(['Conservative', 'Moderate Conservative', 'Moderate', 'Moderate Aggressive', 'Aggressive']).nullable().describe('Historical-volatility band; not personalized investment suitability.')
 })
 
 

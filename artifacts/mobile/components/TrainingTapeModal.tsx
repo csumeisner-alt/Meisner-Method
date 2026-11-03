@@ -1,17 +1,84 @@
 import React, { useEffect, useRef, useState } from 'react';
+import Constants from 'expo-constants';
 import {
   ActivityIndicator,
   Modal,
   Pressable,
+  Platform,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import Svg, { Circle, Line } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { AudioPlayer } from 'expo-audio';
 import type { ColorScheme } from '@/constants/colors';
+import { BREW_TOKEN_QUOTE_THRESHOLD } from '@/lib/brewTokenLogic';
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
+const IS_EXPO_GO = Constants.appOwnership === 'expo';
+
+let activeQuoteCue: AudioPlayer | null = null;
+let quoteCueTimeout: ReturnType<typeof setTimeout> | null = null;
+let quoteCueAudioMode: Promise<void> | null = null;
+
+function stopQuoteViewCue() {
+  if (quoteCueTimeout) clearTimeout(quoteCueTimeout);
+  quoteCueTimeout = null;
+  try {
+    activeQuoteCue?.remove();
+  } catch (_) {}
+  activeQuoteCue = null;
+}
+
+async function playQuoteViewCue(enabled: boolean, isCurrent: () => boolean) {
+  if (!enabled || IS_EXPO_GO || !isCurrent()) return;
+
+  let player: AudioPlayer | null = null;
+  try {
+    const { createAudioPlayer, setAudioModeAsync } = await import('expo-audio');
+    quoteCueAudioMode ??= setAudioModeAsync({
+      playsInSilentMode: true,
+      allowsRecording: false,
+    }).catch(error => {
+      quoteCueAudioMode = null;
+      throw error;
+    });
+    await quoteCueAudioMode;
+    if (!isCurrent()) return;
+
+    stopQuoteViewCue();
+    player = createAudioPlayer(require('../assets/sounds/quote_vault_tick.wav'), {
+      downloadFirst: true,
+    });
+    player.volume = 0.18;
+    activeQuoteCue = player;
+    let started = false;
+    let loadSubscription: { remove: () => void } | null = null;
+    const startWhenLoaded = () => {
+      if (started || !player?.isLoaded) return;
+      started = true;
+      loadSubscription?.remove();
+      if (isCurrent()) player.play();
+      else stopQuoteViewCue();
+    };
+    loadSubscription = player.addListener('playbackStatusUpdate', startWhenLoaded);
+    startWhenLoaded();
+    quoteCueTimeout = setTimeout(() => {
+      if (activeQuoteCue === player) {
+        loadSubscription?.remove();
+        stopQuoteViewCue();
+      }
+    }, 1_000);
+  } catch (_) {
+    try {
+      player?.remove();
+    } catch (_) {}
+    if (activeQuoteCue === player) activeQuoteCue = null;
+  }
+}
 
 type TrendingTicker = {
   symbol: string;
@@ -121,6 +188,40 @@ function buildMarketSnapshot(tickers: TrendingTicker[]): MarketSnapshot {
       .sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))
       .slice(0, 3),
   };
+}
+
+const MARKET_SNAPSHOT_FRESH_MS = 60_000;
+let marketSnapshotCache: { snapshot: MarketSnapshot; fetchedAt: number } | null = null;
+let marketSnapshotRequest: Promise<MarketSnapshot> | null = null;
+
+function getMarketSnapshot(): Promise<MarketSnapshot> {
+  if (marketSnapshotRequest) return marketSnapshotRequest;
+
+  const request = (async () => {
+    const response = await fetch(`${BASE_URL}/api/stocks/trending`);
+    if (!response.ok) throw new Error(`Market tape request failed: ${response.status}`);
+    const data: unknown = await response.json();
+    const snapshot = buildMarketSnapshot(Array.isArray(data) ? data as TrendingTicker[] : []);
+    marketSnapshotCache = { snapshot, fetchedAt: Date.now() };
+    return snapshot;
+  })();
+  marketSnapshotRequest = request;
+  void request.then(
+    () => {
+      if (marketSnapshotRequest === request) marketSnapshotRequest = null;
+    },
+    () => {
+      if (marketSnapshotRequest === request) marketSnapshotRequest = null;
+    },
+  );
+  return request;
+}
+
+export function prefetchTrainingTapeSnapshot() {
+  const cacheIsFresh = marketSnapshotCache !== null
+    && Date.now() - marketSnapshotCache.fetchedAt < MARKET_SNAPSHOT_FRESH_MS;
+  if (cacheIsFresh) return;
+  void getMarketSnapshot().catch(() => {});
 }
 
 function formatCompactNumber(value: number | null | undefined) {
@@ -276,13 +377,22 @@ function formatTapeDate() {
 export function TrainingTapeModal({
   visible,
   colors,
+  soundEnabled,
   onClose,
   onQuoteViewed,
+  isBankUnlocked,
 }: {
   visible: boolean;
   colors: ColorScheme;
+  soundEnabled: boolean;
   onClose: () => void;
-  onQuoteViewed?: (quoteViewId: string) => Promise<{ earnedToken: boolean; halfway: boolean }>;
+  onQuoteViewed?: (quoteViewId: string) => Promise<{
+    earnedToken: boolean;
+    halfway: boolean;
+    quotesViewed: number;
+    firstQuoteView: boolean;
+  }>;
+  isBankUnlocked: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const [quoteMode, setQuoteMode] = useState(false);
@@ -290,17 +400,79 @@ export function TrainingTapeModal({
   const [marketSnapshot, setMarketSnapshot] = useState<MarketSnapshot | null>(null);
   const [marketError, setMarketError] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [quoteProgress, setQuoteProgress] = useState<{
+    quotesViewed: number;
+    firstQuoteView: boolean;
+  } | null>(null);
   const visibleSessionRef = useRef(false);
   const quoteSessionRef = useRef(0);
+  const quoteViewIdRef = useRef('');
+  const quoteViewedInSessionRef = useRef(false);
+  const soundEnabledRef = useRef(soundEnabled);
+  const onQuoteViewedRef = useRef(onQuoteViewed);
+  const quoteSoundSessionRef = useRef(0);
+  soundEnabledRef.current = soundEnabled;
+  onQuoteViewedRef.current = onQuoteViewed;
+  const quotesRemaining = Math.max(
+    0,
+    BREW_TOKEN_QUOTE_THRESHOLD - (quoteProgress?.quotesViewed ?? 0),
+  );
+
+  const showBidenQuote = React.useCallback(() => {
+    if (quoteViewedInSessionRef.current) return;
+    quoteViewedInSessionRef.current = true;
+    const index = Math.floor(Math.random() * BIDEN_QUOTES.length);
+    const quote = BIDEN_QUOTES[index] ?? BIDEN_QUOTES[0];
+    setQuoteMode(true);
+    setMessage(quote);
+    setLoading(false);
+    const soundSession = ++quoteSoundSessionRef.current;
+    void playQuoteViewCue(
+      soundEnabledRef.current,
+      () => quoteSoundSessionRef.current === soundSession,
+    );
+    const quoteViewId = quoteViewIdRef.current;
+    const rewardPromise = onQuoteViewedRef.current?.(quoteViewId);
+    if (rewardPromise) {
+      void rewardPromise.then(update => {
+        if (!visibleSessionRef.current || quoteViewIdRef.current !== quoteViewId) return;
+        setQuoteProgress(current => current?.quotesViewed === update.quotesViewed
+          ? current
+          : {
+              quotesViewed: update.quotesViewed,
+              firstQuoteView: update.firstQuoteView,
+            });
+        if (update.halfway) {
+          setMessage(`HALFWAY THERE · 50% COMPLETE\n\n${quote}`);
+        } else if (update.earnedToken) {
+          setMessage(`BREW TOKEN EARNED · +1 ADDED TO THE CENTRAL BANK\n\n${quote}`);
+        }
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (visible && soundEnabled) return;
+    quoteSoundSessionRef.current += 1;
+    stopQuoteViewCue();
+  }, [soundEnabled, visible]);
 
   useEffect(() => {
     if (!visible) {
       visibleSessionRef.current = false;
+      quoteViewedInSessionRef.current = false;
       return;
     }
     if (!visibleSessionRef.current) {
       visibleSessionRef.current = true;
+      quoteViewedInSessionRef.current = false;
       quoteSessionRef.current += 1;
+      quoteViewIdRef.current = [
+        'training-tape',
+        Date.now(),
+        Math.random().toString(36).slice(2, 8),
+        quoteSessionRef.current,
+      ].join('-');
     }
   }, [visible]);
 
@@ -309,60 +481,56 @@ export function TrainingTapeModal({
 
     let cancelled = false;
     const useQuote = Math.random() < 0.15;
+    const cachedSnapshot = marketSnapshotCache;
+    const cacheIsFresh = cachedSnapshot !== null
+      && Date.now() - cachedSnapshot.fetchedAt < MARKET_SNAPSHOT_FRESH_MS;
+    setQuoteProgress(null);
     setQuoteMode(useQuote);
-    setMarketSnapshot(null);
+    setMarketSnapshot(cachedSnapshot?.snapshot ?? null);
     setMarketError(false);
+    setLoading(cachedSnapshot === null);
 
     if (useQuote) {
-      const index = Math.floor(Math.random() * BIDEN_QUOTES.length);
-      const quote = BIDEN_QUOTES[index] ?? BIDEN_QUOTES[0];
-      setMessage(quote);
-      setLoading(false);
-      const rewardPromise = onQuoteViewed?.(`training-tape-${quoteSessionRef.current}`);
-      if (rewardPromise) {
-        void rewardPromise.then(update => {
-          if (cancelled) return;
-          if (update.halfway) {
-            setMessage(`HALFWAY THERE · 50% COMPLETE\n\n${quote}`);
-          } else if (update.earnedToken) {
-            setMessage(`BREW TOKEN EARNED · +1 ADDED TO THE CENTRAL BANK\n\n${quote}`);
-          }
-        });
-      }
+      showBidenQuote();
       return () => {
         cancelled = true;
       };
     }
 
     setMessage('');
-    setLoading(true);
-    fetch(`${BASE_URL}/api/stocks/trending`)
-      .then(async response => {
-        if (!response.ok) throw new Error(`Market tape request failed: ${response.status}`);
-        return await response.json() as TrendingTicker[];
-      })
-      .then(data => {
-        if (!cancelled) setMarketSnapshot(buildMarketSnapshot(Array.isArray(data) ? data : []));
+    if (cacheIsFresh) {
+      setLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void getMarketSnapshot()
+      .then(snapshot => {
+        if (!cancelled) {
+          setMarketSnapshot(snapshot);
+          setMarketError(false);
+          setLoading(false);
+        }
       })
       .catch(() => {
         if (!cancelled) {
-          setMarketError(true);
+          if (!marketSnapshotCache) setMarketError(true);
+          setLoading(false);
         }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [onQuoteViewed, visible]);
+  }, [showBidenQuote, visible]);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View
-        style={[
-          styles.overlay,
+      <ScrollView
+        style={styles.overlay}
+        contentContainerStyle={[
+          styles.overlayContent,
           {
             paddingTop: insets.top + 18,
             paddingBottom: insets.bottom + 18,
@@ -425,6 +593,87 @@ export function TrainingTapeModal({
             )}
           </View>
 
+          {Platform.OS === 'web' && !quoteMode && (
+            <Pressable
+              onPress={showBidenQuote}
+              accessibilityRole="button"
+              accessibilityLabel="Show a Biden quote"
+              testID="training-tape-show-biden-quote"
+              style={[styles.quotePreviewButton, { borderColor: colors.goldMuted, backgroundColor: colors.steelShadow }]}
+            >
+              <Feather name="archive" size={13} color={colors.gold} />
+              <Text style={[styles.quotePreviewButtonText, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
+                VIEW BIDEN QUOTE
+              </Text>
+            </Pressable>
+          )}
+
+          {quoteMode && !isBankUnlocked && quoteProgress && quoteProgress.quotesViewed < BREW_TOKEN_QUOTE_THRESHOLD && (
+            <View
+              style={[
+                styles.progressCard,
+                { backgroundColor: colors.steelShadow, borderColor: colors.vaultBlueMuted },
+              ]}
+              testID="brew-bank-quote-progress"
+              accessibilityLabel={`Biden quote vault progress: ${quoteProgress.quotesViewed} of ${BREW_TOKEN_QUOTE_THRESHOLD} quote views; ${quotesRemaining} more to unlock`}
+            >
+              <View style={styles.progressHeading}>
+                <View style={styles.progressTitleGroup}>
+                  <Feather name="lock" size={12} color={colors.vaultBlue} />
+                  <Text style={[styles.progressTitle, { color: colors.vaultBlue, fontFamily: 'Inter_700Bold' }]}>
+                    VAULT PROGRESS
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.progressHero}>
+                <View style={styles.progressHeroCopy}>
+                  <Text style={[styles.progressEyebrow, { color: colors.vaultBlueMuted, fontFamily: 'Inter_600SemiBold' }]}>
+                    QUOTE VIEWS
+                  </Text>
+                  <Text style={[styles.progressHeroCount, { fontFamily: 'Inter_700Bold' }]}>
+                    <Text style={{ color: colors.vaultBlue }}>{quoteProgress.quotesViewed}</Text>
+                    <Text style={{ color: colors.foreground }}> / {BREW_TOKEN_QUOTE_THRESHOLD}</Text>
+                  </Text>
+                </View>
+                <VaultProgressEmblem colors={colors} />
+              </View>
+              <View
+                style={styles.progressSegments}
+                accessible
+                accessibilityRole="progressbar"
+                accessibilityValue={{
+                  min: 0,
+                  max: BREW_TOKEN_QUOTE_THRESHOLD,
+                  now: quoteProgress.quotesViewed,
+                }}
+              >
+                {Array.from({ length: BREW_TOKEN_QUOTE_THRESHOLD }, (_, index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.progressSegment,
+                      {
+                        backgroundColor: index < quoteProgress.quotesViewed
+                          ? colors.vaultBlue
+                          : colors.background,
+                        borderColor: index < quoteProgress.quotesViewed
+                          ? colors.vaultBlue
+                          : colors.vaultBlueMuted,
+                        marginRight: index === BREW_TOKEN_QUOTE_THRESHOLD - 1 ? 0 : 2,
+                      },
+                    ]}
+                  />
+                ))}
+              </View>
+              <View style={[styles.progressUnlockRow, { borderColor: colors.vaultBlueMuted }]}>
+                <Feather name="lock" size={14} color={colors.vaultBlue} />
+                <Text style={[styles.progressUnlockText, { color: colors.vaultBlue, fontFamily: 'Inter_700Bold' }]}>
+                  {quotesRemaining} MORE {quotesRemaining === 1 ? 'QUOTE VIEW' : 'QUOTE VIEWS'} TO UNLOCK
+                </Text>
+              </View>
+            </View>
+          )}
+
           <View style={styles.footer}>
             <Feather name="radio" size={13} color={colors.goldMuted} />
             <Text style={[styles.footerText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
@@ -432,18 +681,40 @@ export function TrainingTapeModal({
             </Text>
           </View>
         </View>
-      </View>
+      </ScrollView>
     </Modal>
+  );
+}
+
+function VaultProgressEmblem({ colors }: { colors: ColorScheme }) {
+  return (
+    <Svg width={56} height={56} viewBox="0 0 100 100" accessible={false}>
+      <Circle cx="50" cy="50" r="46" fill={colors.steelHighlight} stroke={colors.vaultBlue} strokeWidth="3" />
+      <Circle cx="50" cy="50" r="37" fill={colors.steelShadow} stroke={colors.border} strokeWidth="3" />
+      <Circle cx="50" cy="50" r="25" fill={colors.steelHighlight} stroke={colors.vaultBlueMuted} strokeWidth="3" />
+      <Circle cx="50" cy="50" r="8" fill={colors.vaultBlue} />
+      <Line x1="50" y1="25" x2="50" y2="9" stroke={colors.border} strokeWidth="4" strokeLinecap="round" />
+      <Line x1="50" y1="75" x2="50" y2="91" stroke={colors.border} strokeWidth="4" strokeLinecap="round" />
+      <Line x1="25" y1="50" x2="9" y2="50" stroke={colors.border} strokeWidth="4" strokeLinecap="round" />
+      <Line x1="75" y1="50" x2="91" y2="50" stroke={colors.border} strokeWidth="4" strokeLinecap="round" />
+      <Line x1="32" y1="32" x2="21" y2="21" stroke={colors.border} strokeWidth="4" strokeLinecap="round" />
+      <Line x1="68" y1="32" x2="79" y2="21" stroke={colors.border} strokeWidth="4" strokeLinecap="round" />
+      <Line x1="32" y1="68" x2="21" y2="79" stroke={colors.border} strokeWidth="4" strokeLinecap="round" />
+      <Line x1="68" y1="68" x2="79" y2="79" stroke={colors.border} strokeWidth="4" strokeLinecap="round" />
+    </Svg>
   );
 }
 
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.88)',
+  },
+  overlayContent: {
+    flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 18,
-    backgroundColor: 'rgba(0,0,0,0.88)',
   },
   shell: {
     width: '100%',
@@ -505,6 +776,91 @@ const styles = StyleSheet.create({
     padding: 18,
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+  quotePreviewButton: {
+    minHeight: 40,
+    marginTop: 10,
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  quotePreviewButtonText: {
+    fontSize: 10,
+    letterSpacing: 1,
+  },
+  progressCard: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderRadius: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  progressHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  progressTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  progressTitle: {
+    fontSize: 9,
+    letterSpacing: 1.25,
+  },
+  progressHero: {
+    minHeight: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+    paddingLeft: 2,
+  },
+  progressHeroCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 1,
+  },
+  progressEyebrow: {
+    fontSize: 8,
+    letterSpacing: 1.5,
+  },
+  progressHeroCount: {
+    fontSize: 30,
+    lineHeight: 36,
+    letterSpacing: 0.2,
+    flexShrink: 1,
+  },
+  progressSegments: {
+    flexDirection: 'row',
+    height: 12,
+    width: '100%',
+  },
+  progressSegment: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 2,
+  },
+  progressUnlockRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 30,
+    borderTopWidth: 1,
+    paddingTop: 7,
+    gap: 8,
+  },
+  progressUnlockText: {
+    flex: 1,
+    flexShrink: 1,
+    fontSize: 9,
+    letterSpacing: 0.7,
+    lineHeight: 14,
   },
   scanlineOne: {
     position: 'absolute',

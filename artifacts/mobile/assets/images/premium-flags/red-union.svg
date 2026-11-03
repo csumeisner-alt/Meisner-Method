@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600">
+  <defs>
+    <linearGradient id="cloth" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d61f2c"/>
+      <stop offset="0.52" stop-color="#bd1723"/>
+      <stop offset="1" stop-color="#d3242d"/>
+    </linearGradient>
+    <polygon id="star" points="0,-13 3.5,-4 13,-4 5.5,2 8.5,11 0,5.5 -8.5,11 -5.5,2 -13,-4 -3.5,-4"/>
+  </defs>
+  <rect width="960" height="600" fill="url(#cloth)"/>
+  <g fill="#f2eee4">
+    <rect y="145" width="960" height="48"/>
+    <rect y="241" width="960" height="48"/>
+    <rect y="337" width="960" height="48"/>
+    <rect y="433" width="960" height="48"/>
+    <rect y="529" width="960" height="48"/>
+  </g>
+  <path d="M0 0h450v313H0z" fill="#c51925"/>
+  <g fill="#edc64d">
+    <use href="#star" transform="translate(220 39)"/>
+    <use href="#star" transform="translate(272 55)"/>
+    <use href="#star" transform="translate(310 91)"/>
+    <use href="#star" transform="translate(326 143)"/>
+    <use href="#star" transform="translate(310 195)"/>
+    <use href="#star" transform="translate(272 231)"/>
+    <use href="#star" transform="translate(220 247)"/>
+    <use href="#star" transform="translate(168 231)"/>
+    <use href="#star" transform="translate(130 195)"/>
+    <use href="#star" transform="translate(114 143)"/>
+    <use href="#star" transform="translate(130 91)"/>
+    <use href="#star" transform="translate(168 55)"/>
+  </g>
+  <text x="220" y="215" text-anchor="middle" font-family="DejaVu Sans" font-size="172" fill="#edc64d">☭</text>
+  <path d="M0 0h960v600H0z" fill="none" stroke="#16151a" stroke-opacity=".13" stroke-width="4"/>
+</svg>

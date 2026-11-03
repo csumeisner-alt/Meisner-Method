@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { join, dirname } from "node:path";
 import { logger } from "./logger.js";
 import { normalizeDividendYield } from "./dividendYield.js";
+import { SUPPORTED_COMMODITIES } from "./commodityAnalysis.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -13,6 +14,7 @@ const SCRIPT_PATH = join(__dirname, "fetch_stock.py");
 
 export interface YahooStockData {
   symbol: string;
+  quoteType: string;
   companyName: string;
   exchange: string;
   currency: string;
@@ -26,6 +28,9 @@ export interface YahooStockData {
   week52Low: number;
   closes: number[];
   volumes: number[];
+  historyDates: string[];
+  historySessions: string[] | null;
+  historyAsOf: string | null;
   rsi: number;
   macd: { macd: number; signal: number; histogram: number };
   ma20: number;
@@ -147,7 +152,7 @@ export async function fetchStockData(symbol: string): Promise<YahooStockData> {
   const closes: number[] = raw["closes"] ?? [];
   const volumes: number[] = raw["volumes"] ?? [];
 
-  if (closes.length < 20) {
+  if (closes.length < 20 && !SUPPORTED_COMMODITIES[upper]) {
     throw new Error(`Insufficient price history for: ${upper}`);
   }
 
@@ -166,6 +171,7 @@ export async function fetchStockData(symbol: string): Promise<YahooStockData> {
 
   return {
     symbol: upper,
+    quoteType: raw["quoteType"] ?? "",
     companyName: raw["companyName"] ?? upper,
     exchange: raw["exchange"] ?? "Unknown",
     currency: raw["currency"] ?? "USD",
@@ -179,6 +185,9 @@ export async function fetchStockData(symbol: string): Promise<YahooStockData> {
     week52Low: raw["week52Low"] ?? support,
     closes,
     volumes,
+    historyDates: Array.isArray(raw["historyDates"]) ? raw["historyDates"] : [],
+    historySessions: Array.isArray(raw["historySessions"]) ? raw["historySessions"] : null,
+    historyAsOf: typeof raw["historyAsOf"] === "string" ? raw["historyAsOf"] : null,
     rsi,
     macd,
     ma20,

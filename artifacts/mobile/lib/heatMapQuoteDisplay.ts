@@ -1,0 +1,212 @@
+import type { GetMarketHeatMapCategory, HeatMapQuote } from "@workspace/api-client-react";
+
+export const HEAT_MAP_REGULAR_SESSION_REFRESH_INTERVAL_MS = 60_000;
+export const HEAT_MAP_CRYPTO_REFRESH_INTERVAL_MS = 60_000;
+export const HEAT_MAP_CRYPTO_RESUME_STALE_AFTER_SECONDS = 5 * 60;
+
+const MAX_QUOTE_AGE_SECONDS = {
+  cryptocurrency: 48 * 60 * 60,
+  other: 120 * 60 * 60,
+} as const;
+const MAX_FUTURE_TIMESTAMP_SECONDS = 60 * 60;
+
+export function isDisplayableHeatMapQuote(
+  quote: Pick<HeatMapQuote, "priceTimestamp" | "assetType">,
+  nowSeconds = Date.now() / 1000,
+): boolean {
+  const timestamp = quote.priceTimestamp;
+  if (timestamp === null || !Number.isFinite(timestamp) || timestamp <= 0) return false;
+  if (timestamp > nowSeconds + MAX_FUTURE_TIMESTAMP_SECONDS) return false;
+
+  const maxAge = quote.assetType === "cryptocurrency"
+    ? MAX_QUOTE_AGE_SECONDS.cryptocurrency
+    : MAX_QUOTE_AGE_SECONDS.other;
+  return nowSeconds - timestamp <= maxAge;
+}
+
+export function getHeatMapSessionLabel(session: HeatMapQuote["marketSession"]): string {
+  switch (session) {
+    case "regular":
+      return "Regular";
+    case "pre_market":
+      return "Pre-market";
+    case "after_hours":
+      return "After-hours";
+    case "closed":
+      return "Last close";
+    case "unknown":
+      return "Unknown";
+  }
+}
+
+export type HeatMapMarketStatus = "open" | "pre_market" | "extended" | "closed" | "mixed" | "unknown";
+
+export function getHeatMapMarketStatus(
+  quotes: readonly Pick<HeatMapQuote, "marketSession">[],
+): HeatMapMarketStatus {
+  const knownSessions = [...new Set(
+    quotes
+      .map((quote) => quote.marketSession)
+      .filter((session) => session !== "unknown"),
+  )];
+  if (knownSessions.length === 0) return "unknown";
+  if (knownSessions.length > 1) return "mixed";
+
+  switch (knownSessions[0]) {
+    case "regular":
+      return "open";
+    case "pre_market":
+      return "pre_market";
+    case "after_hours":
+      return "extended";
+    case "closed":
+      return "closed";
+    default:
+      return "unknown";
+  }
+}
+
+export function getNextHeatMapRegularOpenTimestamp(
+  quotes: readonly Pick<HeatMapQuote, "assetType" | "marketSession" | "nextRegularOpenTimestamp">[],
+  nowSeconds = Date.now() / 1000,
+): number | null {
+  let nextOpen: number | null = null;
+  for (const quote of quotes) {
+    if (
+      (quote.assetType !== "stock" && quote.assetType !== "etf") ||
+      (quote.marketSession !== "closed" && quote.marketSession !== "after_hours")
+    ) {
+      continue;
+    }
+    const timestamp = quote.nextRegularOpenTimestamp;
+    if (
+      timestamp !== null &&
+      Number.isFinite(timestamp) &&
+      timestamp > nowSeconds &&
+      (nextOpen === null || timestamp < nextOpen)
+    ) {
+      nextOpen = timestamp;
+    }
+  }
+  return nextOpen;
+}
+
+export function getHeatMapRegularOpenRefreshTimestamp(
+  quotes: readonly Pick<HeatMapQuote, "assetType" | "marketSession" | "nextRegularOpenTimestamp">[],
+): number | null {
+  let refreshTimestamp: number | null = null;
+  for (const quote of quotes) {
+    if (
+      (quote.assetType !== "stock" && quote.assetType !== "etf") ||
+      (quote.marketSession !== "closed" && quote.marketSession !== "after_hours")
+    ) {
+      continue;
+    }
+    const timestamp = quote.nextRegularOpenTimestamp;
+    if (
+      timestamp !== null &&
+      Number.isFinite(timestamp) &&
+      timestamp > 0 &&
+      (refreshTimestamp === null || timestamp < refreshTimestamp)
+    ) {
+      refreshTimestamp = timestamp;
+    }
+  }
+  return refreshTimestamp;
+}
+
+export function shouldRefreshHeatMapDuringRegularSession(
+  category: GetMarketHeatMapCategory,
+  quotes: readonly Pick<HeatMapQuote, "assetType" | "marketSession">[],
+): boolean {
+  if (category === "stocks") {
+    return quotes.some((quote) => quote.assetType === "stock" && quote.marketSession === "regular");
+  }
+  if (category === "etfs") {
+    return quotes.some((quote) => quote.assetType === "etf" && quote.marketSession === "regular");
+  }
+  if (category === "custom") {
+    return quotes.some(
+      (quote) => (quote.assetType === "stock" || quote.assetType === "etf") && quote.marketSession === "regular",
+    );
+  }
+  return false;
+}
+
+export function shouldRefreshHeatMapOnForegroundCadence(
+  category: GetMarketHeatMapCategory,
+  quotes: readonly Pick<HeatMapQuote, "assetType" | "marketSession">[],
+): boolean {
+  return category === "cryptocurrency" || shouldRefreshHeatMapDuringRegularSession(category, quotes);
+}
+
+export function shouldRefreshCryptoHeatMapOnResume(
+  category: GetMarketHeatMapCategory,
+  batchUpdatedAt: number | null | undefined,
+  nowSeconds = Date.now() / 1000,
+): boolean {
+  if (category !== "cryptocurrency") return false;
+  if (
+    typeof batchUpdatedAt !== "number" ||
+    !Number.isFinite(batchUpdatedAt) ||
+    batchUpdatedAt <= 0 ||
+    batchUpdatedAt > nowSeconds + MAX_FUTURE_TIMESTAMP_SECONDS
+  ) {
+    return true;
+  }
+  return nowSeconds - batchUpdatedAt >= HEAT_MAP_CRYPTO_RESUME_STALE_AFTER_SECONDS;
+}
+
+export function formatHeatMapNextOpen(
+  timestamp: number | null,
+  session: HeatMapQuote["marketSession"],
+  assetType: HeatMapQuote["assetType"],
+  exchangeTimezone: string | null,
+  nowSeconds = Date.now() / 1000,
+): string | null {
+  if (
+    (assetType !== "stock" && assetType !== "etf") ||
+    (session !== "closed" && session !== "after_hours") ||
+    timestamp === null ||
+    !Number.isFinite(timestamp) ||
+    timestamp <= nowSeconds ||
+    !exchangeTimezone
+  ) {
+    return null;
+  }
+
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: exchangeTimezone,
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZoneName: "short",
+    }).formatToParts(new Date(timestamp * 1000));
+    const getPart = (type: Intl.DateTimeFormatPartTypes) =>
+      parts.find((part) => part.type === type)?.value;
+    const month = getPart("month");
+    const day = getPart("day");
+    const hour = getPart("hour");
+    const minute = getPart("minute");
+    const dayPeriod = getPart("dayPeriod");
+    const timeZoneName = getPart("timeZoneName");
+    if (!month || !day || !hour || !minute || !timeZoneName) return null;
+    return `Next open: ${month} ${day}\n${hour}:${minute}${dayPeriod ? ` ${dayPeriod}` : ""} ${timeZoneName}`;
+  } catch {
+    return null;
+  }
+}
+
+export function formatHeatMapQuoteAge(timestamp: number | null, nowSeconds = Date.now() / 1000): string {
+  if (timestamp === null || !Number.isFinite(timestamp) || timestamp <= 0 || timestamp > nowSeconds + 60) {
+    return "Time unavailable";
+  }
+
+  const ageSeconds = Math.max(0, nowSeconds - timestamp);
+  if (ageSeconds < 60) return "Just now";
+  if (ageSeconds < 60 * 60) return `${Math.floor(ageSeconds / 60)}m ago`;
+  if (ageSeconds < 24 * 60 * 60) return `${Math.floor(ageSeconds / (60 * 60))}h ago`;
+  return `${Math.floor(ageSeconds / (24 * 60 * 60))}d ago`;
+}

@@ -21,9 +21,22 @@ import type {
 
 import type {
   AnalysisError,
+  AnalysisResult,
   AnalyzeStockRequest,
+  CryptoSupplyHistory,
+  GetMarketHeatMapParams,
   HealthStatus,
-  StockAnalysis
+  HeatMapInstrumentSuggestion,
+  HeatMapQuote,
+  HeatMapResponse,
+  MarketInstrumentInfo,
+  MarketPulseResponse,
+  PortfolioQuoteBatch,
+  PortfolioQuoteBatchRequest,
+  SearchHeatMapInstrumentsParams,
+  SearchStockSymbolsParams,
+  StockSymbolSuggestion,
+  ValidateHeatMapSymbolRequest
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -52,6 +65,90 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getSearchHeatMapInstrumentsUrl = (params: SearchHeatMapInstrumentsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/stocks/heat-map/search?${stringifiedParams}` : `/api/stocks/heat-map/search`
+}
+
+/**
+ * @summary Search supported non-stock heat-map instruments by name or ticker
+ */
+export const searchHeatMapInstruments = async (params: SearchHeatMapInstrumentsParams, options?: RequestInit): Promise<HeatMapInstrumentSuggestion[]> => {
+
+  return customFetch<HeatMapInstrumentSuggestion[]>(getSearchHeatMapInstrumentsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getSearchHeatMapInstrumentsQueryKey = (params?: SearchHeatMapInstrumentsParams,) => {
+    return [
+    `/api/stocks/heat-map/search`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getSearchHeatMapInstrumentsQueryOptions = <TData = Awaited<ReturnType<typeof searchHeatMapInstruments>>, TError = ErrorType<AnalysisError>>(params: SearchHeatMapInstrumentsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchHeatMapInstruments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getSearchHeatMapInstrumentsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof searchHeatMapInstruments>>> = ({ signal }) => searchHeatMapInstruments(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof searchHeatMapInstruments>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type SearchHeatMapInstrumentsQueryResult = NonNullable<Awaited<ReturnType<typeof searchHeatMapInstruments>>>
+export type SearchHeatMapInstrumentsQueryError = ErrorType<AnalysisError>
+
+
+/**
+ * @summary Search supported non-stock heat-map instruments by name or ticker
+ */
+
+export function useSearchHeatMapInstruments<TData = Awaited<ReturnType<typeof searchHeatMapInstruments>>, TError = ErrorType<AnalysisError>>(
+ params: SearchHeatMapInstrumentsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchHeatMapInstruments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getSearchHeatMapInstrumentsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getHealthCheckUrl = () => {
 
@@ -131,6 +228,91 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
 
 
+export const getSearchStockSymbolsUrl = (params: SearchStockSymbolsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/stocks/search?${stringifiedParams}` : `/api/stocks/search`
+}
+
+/**
+ * Returns matching listed equities for company-name and ticker autocomplete
+ * @summary Search stocks by company name or ticker
+ */
+export const searchStockSymbols = async (params: SearchStockSymbolsParams, options?: RequestInit): Promise<StockSymbolSuggestion[]> => {
+
+  return customFetch<StockSymbolSuggestion[]>(getSearchStockSymbolsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getSearchStockSymbolsQueryKey = (params?: SearchStockSymbolsParams,) => {
+    return [
+    `/api/stocks/search`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getSearchStockSymbolsQueryOptions = <TData = Awaited<ReturnType<typeof searchStockSymbols>>, TError = ErrorType<AnalysisError>>(params: SearchStockSymbolsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchStockSymbols>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getSearchStockSymbolsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof searchStockSymbols>>> = ({ signal }) => searchStockSymbols(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof searchStockSymbols>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type SearchStockSymbolsQueryResult = NonNullable<Awaited<ReturnType<typeof searchStockSymbols>>>
+export type SearchStockSymbolsQueryError = ErrorType<AnalysisError>
+
+
+/**
+ * @summary Search stocks by company name or ticker
+ */
+
+export function useSearchStockSymbols<TData = Awaited<ReturnType<typeof searchStockSymbols>>, TError = ErrorType<AnalysisError>>(
+ params: SearchStockSymbolsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchStockSymbols>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getSearchStockSymbolsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getAnalyzeStockUrl = () => {
 
 
@@ -140,12 +322,12 @@ export const getAnalyzeStockUrl = () => {
 }
 
 /**
- * Fetches real market data and runs technical, fundamental, and behavioral analysis with AI-powered buy/sell recommendations
- * @summary Analyze a stock ticker
+ * Returns deterministic score-and-factor market analysis for supported commodity futures, fund-specific analysis for ETFs, or stock analysis for listed equities.
+ * @summary Analyze a listed ticker or supported commodity
  */
-export const analyzeStock = async (analyzeStockRequest: AnalyzeStockRequest, options?: RequestInit): Promise<StockAnalysis> => {
+export const analyzeStock = async (analyzeStockRequest: AnalyzeStockRequest, options?: RequestInit): Promise<AnalysisResult> => {
 
-  return customFetch<StockAnalysis>(getAnalyzeStockUrl(),
+  return customFetch<AnalysisResult>(getAnalyzeStockUrl(),
   {
     ...options,
     method: 'POST',
@@ -190,7 +372,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type AnalyzeStockMutationError = ErrorType<AnalysisError>
 
     /**
- * @summary Analyze a stock ticker
+ * @summary Analyze a listed ticker or supported commodity
  */
 export const useAnalyzeStock = <TError = ErrorType<AnalysisError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeStock>>, TError,{data: BodyType<AnalyzeStockRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -201,5 +383,550 @@ export const useAnalyzeStock = <TError = ErrorType<AnalysisError>,
         TContext
       > => {
       return useMutation(getAnalyzeStockMutationOptions(options));
+    }
+
+export const getGetStockInfoUrl = (symbol: string,) => {
+
+
+
+
+  return `/api/stocks/info/${symbol}`
+}
+
+/**
+ * Returns provider-backed quote statistics and, for ETFs, fund facts and historical market-regime comparisons.
+ * @summary Get market detail statistics for a symbol
+ */
+export const getStockInfo = async (symbol: string, options?: RequestInit): Promise<MarketInstrumentInfo> => {
+
+  return customFetch<MarketInstrumentInfo>(getGetStockInfoUrl(symbol),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStockInfoQueryKey = (symbol: string,) => {
+    return [
+    `/api/stocks/info/${symbol}`
+    ] as const;
+    }
+
+
+export const getGetStockInfoQueryOptions = <TData = Awaited<ReturnType<typeof getStockInfo>>, TError = ErrorType<AnalysisError>>(symbol: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStockInfo>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStockInfoQueryKey(symbol);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStockInfo>>> = ({ signal }) => getStockInfo(symbol, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: symbol !== null && symbol !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStockInfo>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetStockInfoQueryResult = NonNullable<Awaited<ReturnType<typeof getStockInfo>>>
+export type GetStockInfoQueryError = ErrorType<AnalysisError>
+
+
+/**
+ * @summary Get market detail statistics for a symbol
+ */
+
+export function useGetStockInfo<TData = Awaited<ReturnType<typeof getStockInfo>>, TError = ErrorType<AnalysisError>>(
+ symbol: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStockInfo>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetStockInfoQueryOptions(symbol,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetCryptoSupplyHistoryUrl = (symbol: string,
+    rangeDays: 30 | 90 | 365,) => {
+
+
+
+
+  return `/api/stocks/crypto/${symbol}/supply-history/${rangeDays}`
+}
+
+/**
+ * Returns daily Coin Metrics current-supply observations for a selected 30, 90, or 365 day window. Missing provider dates are omitted, never interpolated; this on-chain metric may differ from another provider's current circulating-supply figure.
+ * @summary Get historical on-chain supply for a cryptocurrency
+ */
+export const getCryptoSupplyHistory = async (symbol: string,
+    rangeDays: 30 | 90 | 365, options?: RequestInit): Promise<CryptoSupplyHistory> => {
+
+  return customFetch<CryptoSupplyHistory>(getGetCryptoSupplyHistoryUrl(symbol,rangeDays),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCryptoSupplyHistoryQueryKey = (symbol: string,
+    rangeDays: 30 | 90 | 365,) => {
+    return [
+    `/api/stocks/crypto/${symbol}/supply-history/${rangeDays}`
+    ] as const;
+    }
+
+
+export const getGetCryptoSupplyHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getCryptoSupplyHistory>>, TError = ErrorType<AnalysisError>>(symbol: string,
+    rangeDays: 30 | 90 | 365, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCryptoSupplyHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCryptoSupplyHistoryQueryKey(symbol,rangeDays);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCryptoSupplyHistory>>> = ({ signal }) => getCryptoSupplyHistory(symbol,rangeDays, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: symbol !== null && symbol !== undefined && rangeDays !== null && rangeDays !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCryptoSupplyHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCryptoSupplyHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getCryptoSupplyHistory>>>
+export type GetCryptoSupplyHistoryQueryError = ErrorType<AnalysisError>
+
+
+/**
+ * @summary Get historical on-chain supply for a cryptocurrency
+ */
+
+export function useGetCryptoSupplyHistory<TData = Awaited<ReturnType<typeof getCryptoSupplyHistory>>, TError = ErrorType<AnalysisError>>(
+ symbol: string,
+    rangeDays: 30 | 90 | 365, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCryptoSupplyHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCryptoSupplyHistoryQueryOptions(symbol,rangeDays,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetMarketBreadthUrl = () => {
+
+
+
+
+  return `/api/stocks/market-breadth`
+}
+
+/**
+ * Returns the regular-session daily price changes for the same active-stock sample as the heat map, without fetching historical series or volatility data.
+ * @summary Get a fast stock-market breadth snapshot
+ */
+export const getMarketBreadth = async ( options?: RequestInit): Promise<HeatMapResponse> => {
+
+  return customFetch<HeatMapResponse>(getGetMarketBreadthUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMarketBreadthQueryKey = () => {
+    return [
+    `/api/stocks/market-breadth`
+    ] as const;
+    }
+
+
+export const getGetMarketBreadthQueryOptions = <TData = Awaited<ReturnType<typeof getMarketBreadth>>, TError = ErrorType<AnalysisError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMarketBreadth>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMarketBreadthQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMarketBreadth>>> = ({ signal }) => getMarketBreadth({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMarketBreadth>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMarketBreadthQueryResult = NonNullable<Awaited<ReturnType<typeof getMarketBreadth>>>
+export type GetMarketBreadthQueryError = ErrorType<AnalysisError>
+
+
+/**
+ * @summary Get a fast stock-market breadth snapshot
+ */
+
+export function useGetMarketBreadth<TData = Awaited<ReturnType<typeof getMarketBreadth>>, TError = ErrorType<AnalysisError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMarketBreadth>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMarketBreadthQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetPortfolioQuotesUrl = () => {
+
+
+
+
+  return `/api/stocks/quotes`
+}
+
+/**
+ * Returns current quotes using the same provider and session-price selection as the single-symbol quote route. Symbols without an available quote are listed separately.
+ * @summary Get current quotes for portfolio holdings
+ */
+export const getPortfolioQuotes = async (portfolioQuoteBatchRequest: PortfolioQuoteBatchRequest, options?: RequestInit): Promise<PortfolioQuoteBatch> => {
+
+  return customFetch<PortfolioQuoteBatch>(getGetPortfolioQuotesUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(portfolioQuoteBatchRequest)
+  }
+);}
+
+
+
+
+
+export const getGetPortfolioQuotesMutationOptions = <TError = ErrorType<AnalysisError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getPortfolioQuotes>>, TError,{data: BodyType<PortfolioQuoteBatchRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof getPortfolioQuotes>>, TError,{data: BodyType<PortfolioQuoteBatchRequest>}, TContext> => {
+
+const mutationKey = ['getPortfolioQuotes'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof getPortfolioQuotes>>, {data: BodyType<PortfolioQuoteBatchRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  getPortfolioQuotes(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GetPortfolioQuotesMutationResult = NonNullable<Awaited<ReturnType<typeof getPortfolioQuotes>>>
+    export type GetPortfolioQuotesMutationBody = BodyType<PortfolioQuoteBatchRequest>
+    export type GetPortfolioQuotesMutationError = ErrorType<AnalysisError>
+
+    /**
+ * @summary Get current quotes for portfolio holdings
+ */
+export const useGetPortfolioQuotes = <TError = ErrorType<AnalysisError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getPortfolioQuotes>>, TError,{data: BodyType<PortfolioQuoteBatchRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof getPortfolioQuotes>>,
+        TError,
+        {data: BodyType<PortfolioQuoteBatchRequest>},
+        TContext
+      > => {
+      return useMutation(getGetPortfolioQuotesMutationOptions(options));
+    }
+
+export const getGetMarketPulseUrl = () => {
+
+
+
+
+  return `/api/stocks/market-pulse`
+}
+
+/**
+ * Returns the daily percentage change and quote timestamp for Yahoo Finance's Dow Jones U.S. Total Stock Market Index (^DWCF), plus whether the official XNYS regular session is open. The index price is not returned.
+ * @summary Get the total-market daily move
+ */
+export const getMarketPulse = async ( options?: RequestInit): Promise<MarketPulseResponse> => {
+
+  return customFetch<MarketPulseResponse>(getGetMarketPulseUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMarketPulseQueryKey = () => {
+    return [
+    `/api/stocks/market-pulse`
+    ] as const;
+    }
+
+
+export const getGetMarketPulseQueryOptions = <TData = Awaited<ReturnType<typeof getMarketPulse>>, TError = ErrorType<AnalysisError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMarketPulse>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMarketPulseQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMarketPulse>>> = ({ signal }) => getMarketPulse({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMarketPulse>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMarketPulseQueryResult = NonNullable<Awaited<ReturnType<typeof getMarketPulse>>>
+export type GetMarketPulseQueryError = ErrorType<AnalysisError>
+
+
+/**
+ * @summary Get the total-market daily move
+ */
+
+export function useGetMarketPulse<TData = Awaited<ReturnType<typeof getMarketPulse>>, TError = ErrorType<AnalysisError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMarketPulse>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMarketPulseQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetMarketHeatMapUrl = (params: GetMarketHeatMapParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/stocks/heat-map?${stringifiedParams}` : `/api/stocks/heat-map`
+}
+
+/**
+ * Returns a cached batch of quotes, selected-period returns, and available provider metadata for one heat-map category. Custom maps pass symbols as a comma-separated query array.
+ * @summary Get batched quotes for a market heat map
+ */
+export const getMarketHeatMap = async (params: GetMarketHeatMapParams, options?: RequestInit): Promise<HeatMapResponse> => {
+
+  return customFetch<HeatMapResponse>(getGetMarketHeatMapUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMarketHeatMapQueryKey = (params?: GetMarketHeatMapParams,) => {
+    return [
+    `/api/stocks/heat-map`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetMarketHeatMapQueryOptions = <TData = Awaited<ReturnType<typeof getMarketHeatMap>>, TError = ErrorType<AnalysisError>>(params: GetMarketHeatMapParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMarketHeatMap>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMarketHeatMapQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMarketHeatMap>>> = ({ signal }) => getMarketHeatMap(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMarketHeatMap>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMarketHeatMapQueryResult = NonNullable<Awaited<ReturnType<typeof getMarketHeatMap>>>
+export type GetMarketHeatMapQueryError = ErrorType<AnalysisError>
+
+
+/**
+ * @summary Get batched quotes for a market heat map
+ */
+
+export function useGetMarketHeatMap<TData = Awaited<ReturnType<typeof getMarketHeatMap>>, TError = ErrorType<AnalysisError>>(
+ params: GetMarketHeatMapParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMarketHeatMap>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMarketHeatMapQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getValidateHeatMapSymbolUrl = () => {
+
+
+
+
+  return `/api/stocks/heat-map/validate`
+}
+
+/**
+ * @summary Validate a custom heat-map ticker against live market data
+ */
+export const validateHeatMapSymbol = async (validateHeatMapSymbolRequest: ValidateHeatMapSymbolRequest, options?: RequestInit): Promise<HeatMapQuote> => {
+
+  return customFetch<HeatMapQuote>(getValidateHeatMapSymbolUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(validateHeatMapSymbolRequest)
+  }
+);}
+
+
+
+
+
+export const getValidateHeatMapSymbolMutationOptions = <TError = ErrorType<AnalysisError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof validateHeatMapSymbol>>, TError,{data: BodyType<ValidateHeatMapSymbolRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof validateHeatMapSymbol>>, TError,{data: BodyType<ValidateHeatMapSymbolRequest>}, TContext> => {
+
+const mutationKey = ['validateHeatMapSymbol'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof validateHeatMapSymbol>>, {data: BodyType<ValidateHeatMapSymbolRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  validateHeatMapSymbol(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ValidateHeatMapSymbolMutationResult = NonNullable<Awaited<ReturnType<typeof validateHeatMapSymbol>>>
+    export type ValidateHeatMapSymbolMutationBody = BodyType<ValidateHeatMapSymbolRequest>
+    export type ValidateHeatMapSymbolMutationError = ErrorType<AnalysisError>
+
+    /**
+ * @summary Validate a custom heat-map ticker against live market data
+ */
+export const useValidateHeatMapSymbol = <TError = ErrorType<AnalysisError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof validateHeatMapSymbol>>, TError,{data: BodyType<ValidateHeatMapSymbolRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof validateHeatMapSymbol>>,
+        TError,
+        {data: BodyType<ValidateHeatMapSymbolRequest>},
+        TContext
+      > => {
+      return useMutation(getValidateHeatMapSymbolMutationOptions(options));
     }
 

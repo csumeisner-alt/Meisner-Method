@@ -8,6 +8,7 @@ and fall back to the regular price when extended-hours data is unavailable.
 import sys
 import json
 import math
+from concurrent.futures import ThreadPoolExecutor
 import yfinance as yf
 
 
@@ -127,7 +128,7 @@ def expense_ratio(metadata):
     if v is not None:
         try:
             f = float(v)
-            if math.isfinite(f):
+            if math.isfinite(f) and f >= 0:
                 return f
         except (TypeError, ValueError):
             pass
@@ -136,19 +137,15 @@ def expense_ratio(metadata):
         if v is not None:
             try:
                 f = float(v) / 100.0
-                if math.isfinite(f):
+                if math.isfinite(f) and f >= 0:
                     return f
             except (TypeError, ValueError):
                 pass
     return None
 
 
-def main():
-    if len(sys.argv) < 2:
-        print(json.dumps({"error": "No symbol provided"}))
-        sys.exit(1)
-
-    symbol = sys.argv[1].upper().strip()
+def fetch_quote(symbol):
+    """Fetch one Yahoo quote while keeping failures isolated to its symbol."""
     try:
         ticker = yf.Ticker(symbol)
         fast_info = ticker.fast_info
@@ -159,15 +156,54 @@ def main():
         metadata = ticker_metadata(ticker)
         quote = select_market_quote(metadata, fast_price, fast_previous_close)
         if quote is None:
-            print(json.dumps({"error": f"No price data available for {symbol}"}))
-            sys.exit(1)
+            return None
 
-        print(json.dumps(clean_nan({
+        return clean_nan({
             "symbol": symbol,
             **quote,
             "expenseRatio": expense_ratio(metadata),
-        }), allow_nan=False))
+        })
+    except Exception:
+        return None
 
+
+def fetch_quotes(symbols):
+    """Fetch symbols concurrently and report unavailable symbols independently."""
+    with ThreadPoolExecutor(max_workers=min(8, len(symbols))) as executor:
+        results = list(executor.map(fetch_quote, symbols))
+    return {
+        "quotes": [quote for quote in results if quote is not None],
+        "unavailableSymbols": [
+            symbol for symbol, quote in zip(symbols, results) if quote is None
+        ],
+    }
+
+
+def main():
+    if len(sys.argv) >= 3 and sys.argv[1] == "--batch":
+        try:
+            symbols = json.loads(sys.argv[2])
+            if not isinstance(symbols, list) or not symbols:
+                raise ValueError("A non-empty symbol list is required")
+            if not all(isinstance(symbol, str) for symbol in symbols):
+                raise ValueError("Symbols must be strings")
+            print(json.dumps(fetch_quotes(symbols), allow_nan=False))
+        except Exception as e:
+            print(json.dumps({"error": str(e)}))
+            sys.exit(1)
+        return
+
+    if len(sys.argv) < 2:
+        print(json.dumps({"error": "No symbol provided"}))
+        sys.exit(1)
+
+    symbol = sys.argv[1].upper().strip()
+    try:
+        quote = fetch_quote(symbol)
+        if quote is None:
+            print(json.dumps({"error": f"No price data available for {symbol}"}))
+            sys.exit(1)
+        print(json.dumps(quote, allow_nan=False))
     except Exception as e:
         print(json.dumps({"error": str(e)}))
         sys.exit(1)

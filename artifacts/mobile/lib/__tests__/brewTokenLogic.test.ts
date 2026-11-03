@@ -9,6 +9,7 @@ import {
   DAIQUIRI_PAYOUT_MULTIPLIER,
   DAIQUIRI_UNLOCK_PRICE,
   DAIQUIRI_WIN_PROBABILITY,
+  NEON_GUCCI_UNLOCK_COST,
   STAMIN_UP_BOTTLE_PRICE,
   STAMIN_UP_UNLOCK_PRICE,
   SMART_PRO_BOTTLE_PRICE,
@@ -35,6 +36,9 @@ import {
   canArmBrewBottle,
   canActivateBrewBankKey,
   formatBrewBankAccessRemaining,
+  formatBrewBankFreeOpeningCountdown,
+  getBrewBankEntryStatus,
+  getNextBrewBankFreeOpening,
   formatSmartProRemaining,
   getSmartProBottleSalePrice,
   getBrewBottleInspection,
@@ -67,6 +71,7 @@ import {
 import { NEON_GUCCI_LOADING_PHRASES } from '../neonGucciPhrases.ts';
 
 test('Brew Bank unlocks exactly when the quote threshold is crossed', () => {
+  assert.equal(BREW_TOKEN_QUOTE_THRESHOLD, 22);
   assert.equal(isBrewBankUnlock(BREW_TOKEN_QUOTE_THRESHOLD - 1, BREW_TOKEN_QUOTE_THRESHOLD), true);
   assert.equal(isBrewBankUnlock(BREW_TOKEN_QUOTE_THRESHOLD, BREW_TOKEN_QUOTE_THRESHOLD + 1), false);
 });
@@ -134,7 +139,7 @@ test('bottle inspection metadata mirrors shop costs, odds, and Stamin Up convers
     bottlePrice: QUICK_REVIVE_BOTTLE_PRICE,
     winProbability: QUICK_REVIVE_WIN_PROBABILITY,
     lossProbability: 1 - QUICK_REVIVE_WIN_PROBABILITY,
-    description: 'Break one into the machine before a toss to raise your next win chance by 7 points, from 55% to 62%.',
+    description: 'Break one into the machine before a toss to raise your next win chance by 15 points, from 55% to 70%.',
     conversionCopy: null,
   });
   assert.equal(getBrewBottlePreview('daiquiri').lossProbability, DAIQUIRI_LOSS_PROBABILITY);
@@ -159,9 +164,9 @@ test('opening and closing every bottle inspection preserves balance, inventory, 
   };
 
   const expected = {
-    quickRevive: { bottlePrice: 2, odds: '62% WIN · 38% LOSS', bottles: 3, armed: false },
+    quickRevive: { bottlePrice: 2, odds: '70% WIN · 30% LOSS', bottles: 3, armed: false },
     daiquiri: { bottlePrice: 8, odds: '45% WIN · 55% LOSS', bottles: 2, armed: true },
-    staminUp: { bottlePrice: 16, odds: '55% WIN · 45% LOSS', bottles: 4, armed: false },
+    staminUp: { bottlePrice: 6, odds: '55% WIN · 45% LOSS', bottles: 4, armed: false },
     smartPro: { bottlePrice: 3, odds: '55% WIN · 45% LOSS', bottles: 5, armed: false },
   } as const;
 
@@ -183,7 +188,8 @@ test('opening and closing every bottle inspection preserves balance, inventory, 
   }
 });
 
-test('Dave Ramsey Daiquiri unlock costs one hundred tokens exactly once', () => {
+test('Dave Ramsey Daiquiri unlock costs forty tokens exactly once', () => {
+  assert.equal(DAIQUIRI_UNLOCK_PRICE, 40);
   assert.deepEqual(buyDaiquiriUnlock(DAIQUIRI_UNLOCK_PRICE, false), {
     tokenBalance: 0,
     unlocked: true,
@@ -226,7 +232,9 @@ test('Dave Ramsey Daiquiri odds produce the expected payout with its double awar
   assert.equal(Math.round(expectedBalance * 100) / 100, 11.05);
 });
 
-test('Stamin Up unlocks at five hundred tokens and its bottles cost sixteen tokens', () => {
+test('Stamin Up unlocks at fifty tokens and its bottles cost six tokens', () => {
+  assert.equal(STAMIN_UP_UNLOCK_PRICE, 50);
+  assert.equal(STAMIN_UP_BOTTLE_PRICE, 6);
   assert.deepEqual(buyStaminUpUnlock(STAMIN_UP_UNLOCK_PRICE, false), {
     tokenBalance: 0,
     unlocked: true,
@@ -235,7 +243,11 @@ test('Stamin Up unlocks at five hundred tokens and its bottles cost sixteen toke
   assert.equal(buyStaminUpUnlock(900, true), null);
   assert.equal(buyStaminUpBottle(20, 0, false), null);
   assert.equal(buyStaminUpBottle(STAMIN_UP_BOTTLE_PRICE - 1, 0, true), null);
-  assert.deepEqual(buyStaminUpBottle(32, -2, true), { tokenBalance: 16, bottleCount: 1 });
+  assert.deepEqual(buyStaminUpBottle(12, -2, true), { tokenBalance: 6, bottleCount: 1 });
+});
+
+test('Hybrid Neon Gucci unlock target is one thousand Dark Brew Tokens', () => {
+  assert.equal(NEON_GUCCI_UNLOCK_COST, 1_000);
 });
 
 test('Stamin Up consumes exactly one bottle and no two bottle effects can arm together', () => {
@@ -248,7 +260,8 @@ test('Stamin Up consumes exactly one bottle and no two bottle effects can arm to
   assert.equal(canArmBrewBottle(false, false, true), false);
 });
 
-test('SmartPro unlocks for one hundred tokens and its own bottles always cost three', () => {
+test('SmartPro unlocks for forty tokens and its own bottles always cost three', () => {
+  assert.equal(SMART_PRO_UNLOCK_PRICE, 40);
   assert.deepEqual(buySmartProUnlock(SMART_PRO_UNLOCK_PRICE, false), {
     tokenBalance: 0,
     unlocked: true,
@@ -295,7 +308,7 @@ test('SmartPro redemption consumes one bottle and activates a restart-safe 90-se
 test('SmartPro halves other bottle prices while unlocks, key, and SmartPro stay full price', () => {
   assert.equal(getSmartProBottleSalePrice(QUICK_REVIVE_BOTTLE_PRICE, true), 1);
   assert.equal(getSmartProBottleSalePrice(DAIQUIRI_BOTTLE_PRICE, true), 4);
-  assert.equal(getSmartProBottleSalePrice(STAMIN_UP_BOTTLE_PRICE, true), 8);
+  assert.equal(getSmartProBottleSalePrice(STAMIN_UP_BOTTLE_PRICE, true), 3);
   assert.deepEqual(buyQuickReviveUnlock(QUICK_REVIVE_UNLOCK_PRICE, false, QUICK_REVIVE_UNLOCK_PRICE), { tokenBalance: 0, unlocked: true });
   assert.deepEqual(buyDaiquiriUnlock(DAIQUIRI_UNLOCK_PRICE, false, DAIQUIRI_UNLOCK_PRICE), { tokenBalance: 0, unlocked: true });
   assert.deepEqual(buyStaminUpUnlock(STAMIN_UP_UNLOCK_PRICE, false, STAMIN_UP_UNLOCK_PRICE), { tokenBalance: 0, unlocked: true });
@@ -328,7 +341,7 @@ test('SmartPro inspection is read-only and applies sale prices only to other bot
   assert.equal(getBrewBottleInspection('daiquiri', activeSnapshot).preview.unlockPrice, DAIQUIRI_UNLOCK_PRICE);
   assert.equal(getBrewBottleInspection('daiquiri', activeSnapshot).preview.bottlePrice, 4);
   assert.equal(getBrewBottleInspection('staminUp', activeSnapshot).preview.unlockPrice, STAMIN_UP_UNLOCK_PRICE);
-  assert.equal(getBrewBottleInspection('staminUp', activeSnapshot).preview.bottlePrice, 8);
+  assert.equal(getBrewBottleInspection('staminUp', activeSnapshot).preview.bottlePrice, 3);
   const smartProInspection = getBrewBottleInspection('smartPro', activeSnapshot);
   assert.equal(smartProInspection.preview.unlockPrice, SMART_PRO_UNLOCK_PRICE);
   assert.equal(smartProInspection.preview.bottlePrice, SMART_PRO_BOTTLE_PRICE);
@@ -352,11 +365,79 @@ test('weekday bank entry requires redeemed active access', () => {
   assert.equal(canEnterBrewBank(0, null, mondayMorning), true);
 });
 
+test('Brew Bank entry status explains each weekend, weekday, key, and active-access state', () => {
+  const mondayMorning = new Date('2026-08-17T09:00:00').getTime();
+  assert.equal(getBrewBankEntryStatus(6, 0, null, mondayMorning), 'weekend-open');
+  assert.equal(getBrewBankEntryStatus(6, 0, mondayMorning + 1_000, mondayMorning), 'weekend-open');
+  assert.equal(getBrewBankEntryStatus(1, 0, null, mondayMorning), 'weekday-closed');
+  assert.equal(getBrewBankEntryStatus(1, 1, null, mondayMorning), 'key-available');
+  assert.equal(getBrewBankEntryStatus(1, 0, mondayMorning + 1_000, mondayMorning), 'access-active');
+});
+
 test('bank access countdown formats remaining hours and minutes and expires at zero', () => {
   const now = new Date('2026-08-17T09:00:00').getTime();
   assert.equal(formatBrewBankAccessRemaining(now + 2 * 60 * 60 * 1000 + 31_000, now), '2h 01m remaining');
   assert.equal(formatBrewBankAccessRemaining(now + 59_000, now), '0h 01m remaining');
   assert.equal(formatBrewBankAccessRemaining(now, now), null);
+});
+
+test('free Bank opening targets the next local Saturday and counts down to it', () => {
+  const mondayMorning = new Date(2026, 7, 17, 9, 0, 0).getTime();
+  const saturdayOpening = new Date(2026, 7, 22, 0, 0, 0).getTime();
+  assert.equal(getNextBrewBankFreeOpening(mondayMorning), saturdayOpening);
+  assert.equal(formatBrewBankFreeOpeningCountdown(mondayMorning), '4d 15h');
+
+  const beforeOpening = new Date(2026, 7, 21, 23, 59, 30).getTime();
+  assert.equal(getNextBrewBankFreeOpening(beforeOpening), saturdayOpening);
+  assert.equal(formatBrewBankFreeOpeningCountdown(beforeOpening), '1m');
+  assert.equal(getBrewBankEntryStatus(5, 0, null, beforeOpening), 'weekday-closed');
+  assert.equal(
+    getBrewBankEntryStatus(6, 0, null, saturdayOpening),
+    'weekend-open',
+  );
+});
+
+test('free Bank opening stays at local Saturday midnight across daylight-saving changes', () => {
+  const previousTimezone = process.env.TZ;
+  process.env.TZ = 'America/New_York';
+
+  try {
+    const cases = [
+      {
+        name: 'spring forward',
+        now: new Date(2026, 2, 7, 0, 1, 0),
+        expectedOpening: new Date(2026, 2, 14, 0, 0, 0),
+        expectedCountdown: '6d 22h 59m',
+      },
+      {
+        name: 'fall back',
+        now: new Date(2026, 9, 31, 0, 1, 0),
+        expectedOpening: new Date(2026, 10, 7, 0, 0, 0),
+        expectedCountdown: '7d 0h 59m',
+      },
+    ];
+
+    for (const { name, now, expectedOpening, expectedCountdown } of cases) {
+      const openingTimestamp = getNextBrewBankFreeOpening(now.getTime());
+      const localOpening = new Date(openingTimestamp);
+
+      assert.equal(openingTimestamp, expectedOpening.getTime(), `${name}: next opening timestamp`);
+      assert.equal(localOpening.getDay(), 6, `${name}: opening day`);
+      assert.equal(localOpening.getHours(), 0, `${name}: opening hour`);
+      assert.equal(localOpening.getMinutes(), 0, `${name}: opening minute`);
+      assert.equal(
+        formatBrewBankFreeOpeningCountdown(now.getTime()),
+        expectedCountdown,
+        `${name}: elapsed-time countdown`,
+      );
+    }
+  } finally {
+    if (previousTimezone === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = previousTimezone;
+    }
+  }
 });
 
 test('winning a bet returns the stake as profit and losing removes only the stake', () => {
@@ -488,6 +569,33 @@ test('legacy economy fields migrate into one snapshot without losing item state'
   assert.equal(snapshot.neonGucciPhrasesActive, false);
   assert.deepEqual(snapshot.claimedQuoteViewIds, []);
   assert.deepEqual(snapshot.activityLog, []);
+});
+
+test('a saved five-quote count survives migration and snapshot hydration', () => {
+  const migrated = migrateLegacyBrewEconomy({
+    rawQuotes: '5',
+    rawUnlocked: null,
+    rawTokens: null,
+    rawKeys: null,
+    rawAccessExpires: null,
+    rawQuickReviveUnlocked: null,
+    rawQuickReviveBottles: null,
+    rawQuickReviveArmed: null,
+    rawDaiquiriUnlocked: null,
+    rawDaiquiriBottles: null,
+    rawDaiquiriArmed: null,
+    rawStaminUpUnlocked: null,
+    rawStaminUpBottles: null,
+    rawStaminUpArmed: null,
+    rawSmartProUnlocked: null,
+    rawSmartProBottles: null,
+    rawSmartProSaleExpires: null,
+    rawDarkBrewTokens: null,
+  });
+  const hydrated = parseBrewEconomySnapshot(serializeBrewEconomySnapshot(migrated));
+
+  assert.equal(migrated.quotesViewed, 5);
+  assert.equal(hydrated?.quotesViewed, 5);
 });
 
 test('invalid economy snapshots are rejected instead of replacing legacy data', () => {

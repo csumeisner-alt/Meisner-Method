@@ -13,6 +13,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useApi } from './useApi';
 import { getInstallationId } from '@/lib/installation';
+import { useAchievements } from '@/contexts/AchievementsContext';
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
@@ -110,6 +111,7 @@ export interface AlertData {
 
 export function useWatchlist() {
   const { apiFetch } = useApi();
+  const { awardAchievement } = useAchievements();
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [quotes, setQuotes] = useState<Map<string, QuoteData>>(new Map());
   const [alerts, setAlerts] = useState<AlertData[]>([]);
@@ -247,6 +249,7 @@ export function useWatchlist() {
   }, []);
 
   const add = useCallback(async (symbol: string) => {
+    if (items.some((item) => item.symbol === symbol)) return;
     // Optimistic update + cache write-through
     setItems((prev) => {
       if (prev.some((i) => i.symbol === symbol)) return prev;
@@ -254,7 +257,9 @@ export function useWatchlist() {
       void writeCache(GUEST_CACHE_KEY, next);
       return next;
     });
-  }, []);
+    void awardAchievement('first-watchlist');
+    if (items.length + 1 >= 5) void awardAchievement('watchlist-5');
+  }, [items, awardAchievement]);
 
   const remove = useCallback(async (symbol: string) => {
     // Optimistic update + cache write-through
@@ -288,6 +293,7 @@ export function useWatchlist() {
         method: 'POST',
         body: JSON.stringify({ installationId, symbol, direction, targetPrice, pushToken }),
       });
+      void awardAchievement('first-price-alert');
       // Remove any existing active alert for this symbol first
       const existing = alerts.find((a) => a.symbol === symbol && !a.firedAt);
       if (existing) {
@@ -299,7 +305,7 @@ export function useWatchlist() {
         return next;
       });
     },
-    [alerts, apiFetch],
+    [alerts, apiFetch, awardAchievement],
   );
 
   const deleteAlert = useCallback(

@@ -22,3 +22,8 @@
 ## win_chime.wav
 - **Source:** Original locally synthesized sound effect for Meisner Method.
 - **Processing:** Two bright ascending tones with short harmonic tails, rendered as stereo 22050 Hz WAV and kept under one second for a quick token-win confirmation.
+
+## final_seal_unlock.mp3
+- **Source:** Original AI-generated sound effect created for the Final Seal achievement celebration.
+- **Duration:** 1.23 seconds; stereo MP3 at 44.1 kHz.
+- **Use:** Bundled locally and played once as the Final Seal assembles; no network audio or per-play generation.

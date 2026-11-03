@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useApi } from '@/hooks/useApi';
 import * as Haptics from 'expo-haptics';
@@ -24,13 +25,36 @@ import { MMLogo } from '@/components/MMLogo';
 import { DonationSidebar } from '@/components/DonationSidebar';
 import { AmericanCelebration } from '@/components/AmericanCelebration';
 import { useAmericanMode } from '@/contexts/AmericanModeContext';
+import { useAchievements } from '@/contexts/AchievementsContext';
+import { PremiumFlagBadge } from '@/components/PremiumFlagBadge';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { DraggableWatchlist } from '@/components/DraggableWatchlist';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { AmericanAnalyzeButton } from '@/components/AmericanAnalyzeButton';
+import { MarketHeatMapInsightButton } from '@/components/MarketHeatMapInsightButton';
 import { PriceAlertModal } from '@/components/PriceAlertModal';
 import { matchesFilter, mergeReorderedSubset } from '@/lib/watchlistFilter';
+import { getMarketPulseInsight } from '@/lib/marketPulse';
+import { DEFAULT_FLAG_ID, hasCompletedAllAchievements } from '@/lib/achievements';
+import {
+  getGetMarketPulseQueryKey,
+  getSearchHeatMapInstrumentsQueryKey,
+  useGetMarketPulse,
+  useSearchHeatMapInstruments,
+} from '@workspace/api-client-react';
+import {
+  getStockSearchQueryFromKey,
+  isStockSearchCurrent,
+  isStockSearchSelectionCurrent,
+  resolveStockSearchSymbol,
+} from '@/lib/stockSearch';
+import {
+  getSearchStockSymbolsQueryKey,
+  useSearchStockSymbols,
+  type HeatMapInstrumentSuggestion,
+  type StockSymbolSuggestion,
+} from '@workspace/api-client-react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /** Show the watchlist filter input when tracking this many tickers or more. */
@@ -41,6 +65,9 @@ const WATCH_FILTER_KEY = '@stocksense/watchlist_filter';
 
 /** AsyncStorage key for the persisted watchlist open/collapsed state. */
 const WATCHLIST_COLLAPSED_KEY = '@stocksense/watchlist_collapsed';
+
+/** AsyncStorage key for the persisted trending tickers open/collapsed state. */
+const TRENDING_COLLAPSED_KEY = '@stocksense/trending_collapsed';
 
 /** Persists the watchlist filter across navigation within a session (resets on full app reload). */
 let _persistedWatchFilter = '';
@@ -139,6 +166,9 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { apiFetch } = useApi();
   const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [selectedStock, setSelectedStock] = useState<StockSymbolSuggestion | null>(null);
+  const [selectedEtf, setSelectedEtf] = useState<HeatMapInstrumentSuggestion | null>(null);
   const [recent, setRecent] = useState<string[]>([]);
   const [tipVisible, setTipVisible] = useState(false);
   const [currentTip, setCurrentTip] = useState('');
@@ -148,7 +178,42 @@ export default function HomeScreen() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [scrollEnabled, setScrollEnabled] = useState(true);
+  const scrollGesture = useMemo(() => Gesture.Native(), []);
+  const stockSearchQueryKey = getSearchStockSymbolsQueryKey({ q: debouncedQuery });
+  const stockSearch = useSearchStockSymbols(
+    { q: debouncedQuery },
+    {
+      query: {
+        queryKey: stockSearchQueryKey,
+        enabled: debouncedQuery.length >= 2 && !selectedStock && !selectedEtf,
+        staleTime: 45_000,
+      },
+    },
+  );
+  const etfSearchParams = { q: debouncedQuery, category: 'etfs' as const };
+  const etfSearchQueryKey = getSearchHeatMapInstrumentsQueryKey(etfSearchParams);
+  const etfSearch = useSearchHeatMapInstruments(etfSearchParams, {
+    query: {
+      queryKey: etfSearchQueryKey,
+      enabled: debouncedQuery.length >= 2 && !selectedStock && !selectedEtf,
+      staleTime: 45_000,
+    },
+  });
+  const latestSearchInputRef = useRef(query);
+  const latestSettledQueryRef = useRef(debouncedQuery);
+  const latestResultQueryRef = useRef<string | null>(null);
+  const latestPlaceholderDataRef = useRef(false);
+  const activeStockSearchQuery = getStockSearchQueryFromKey(stockSearchQueryKey);
+  const activeEtfSearchQuery = getStockSearchQueryFromKey(etfSearchQueryKey);
+  const latestEtfResultQueryRef = useRef<string | null>(null);
+  const latestEtfPlaceholderDataRef = useRef(false);
+  latestSettledQueryRef.current = debouncedQuery;
+  latestResultQueryRef.current = activeStockSearchQuery;
+  latestPlaceholderDataRef.current = stockSearch.isPlaceholderData;
+  latestEtfResultQueryRef.current = activeEtfSearchQuery;
+  latestEtfPlaceholderDataRef.current = etfSearch.isPlaceholderData;
   const [watchlistCollapsed, setWatchlistCollapsed] = useState(false);
+  const [trendingCollapsed, setTrendingCollapsed] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Watchlist + push notifications
@@ -167,7 +232,20 @@ export default function HomeScreen() {
 
   // Patriot Mode — fact counter, unlock state, and celebration trigger
   const { isActive, neonGucciActive, justUnlocked, incrementFact, clearJustUnlocked } = useAmericanMode();
+  const { earnedIds, selectedPremiumFlagId, recordAnalyzeSearch } = useAchievements();
   const [showCelebration, setShowCelebration] = useState(false);
+  const marketPulseQuery = useGetMarketPulse({
+    query: {
+      queryKey: getGetMarketPulseQueryKey(),
+      staleTime: 45_000,
+      refetchInterval: 60_000,
+      refetchIntervalInBackground: false,
+    },
+  });
+  const marketPulse = useMemo(
+    () => getMarketPulseInsight(marketPulseQuery.data),
+    [marketPulseQuery.data],
+  );
 
   useEffect(() => {
     if (justUnlocked) {
@@ -207,6 +285,23 @@ export default function HomeScreen() {
     setWatchlistCollapsed((current) => {
       const next = !current;
       AsyncStorage.setItem(WATCHLIST_COLLAPSED_KEY, next ? '1' : '0').catch(() => {});
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.getItem(TRENDING_COLLAPSED_KEY).then((saved) => {
+      if (!cancelled && saved === '1') setTrendingCollapsed(true);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const toggleTrendingTickers = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setTrendingCollapsed((current) => {
+      const next = !current;
+      AsyncStorage.setItem(TRENDING_COLLAPSED_KEY, next ? '1' : '0').catch(() => {});
       return next;
     });
   }, []);
@@ -285,6 +380,15 @@ export default function HomeScreen() {
     };
   }, [fetchTrending]);
 
+  useEffect(() => {
+    setDebouncedQuery('');
+    const searchText = query.trim();
+    if (selectedStock || selectedEtf || searchText.length < 2) return;
+
+    const timeout = setTimeout(() => setDebouncedQuery(searchText), 280);
+    return () => clearTimeout(timeout);
+  }, [query, selectedStock, selectedEtf]);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await Promise.all([watchlist.refresh(), fetchTrending(false)]);
@@ -310,8 +414,77 @@ export default function HomeScreen() {
     router.push(`/analysis/${upper}`);
   }, [recent, router]);
 
+  const searchText = query.trim();
+  const isCurrentStockSearch = !selectedStock && !selectedEtf
+    && isStockSearchCurrent({
+      input: query,
+      settledQuery: debouncedQuery,
+      resultQuery: activeStockSearchQuery,
+      isPlaceholderData: stockSearch.isPlaceholderData,
+    });
+  const isCurrentEtfSearch = !selectedStock && !selectedEtf
+    && isStockSearchCurrent({
+      input: query,
+      settledQuery: debouncedQuery,
+      resultQuery: activeEtfSearchQuery,
+      isPlaceholderData: etfSearch.isPlaceholderData,
+    });
+  const stockSuggestions = isCurrentStockSearch ? stockSearch.data ?? [] : [];
+  const etfSuggestions = isCurrentEtfSearch ? etfSearch.data ?? [] : [];
+  const exactEtfSuggestion = etfSuggestions.find(
+    (suggestion) => suggestion.symbol.toUpperCase() === searchText.toUpperCase(),
+  );
+  const allowRawTicker = searchText.length === 1
+    || (isCurrentStockSearch
+      && isCurrentEtfSearch
+      && !stockSearch.isFetching
+      && !etfSearch.isFetching
+      && (stockSearch.isSuccess || stockSearch.isError)
+      && (etfSearch.isSuccess || etfSearch.isError));
+  const resolvedSymbol = selectedEtf?.symbol
+    ?? exactEtfSuggestion?.symbol
+    ?? resolveStockSearchSymbol(query, stockSuggestions, selectedStock, allowRawTicker);
+
   const handleSubmit = () => {
-    if (query.trim()) navigateTo(query.trim());
+    if (!resolvedSymbol) return;
+    void recordAnalyzeSearch();
+    navigateTo(resolvedSymbol);
+  };
+
+  const selectStock = (stock: StockSymbolSuggestion, selectionQuery: string | null) => {
+    if (!isStockSearchSelectionCurrent({
+      input: latestSearchInputRef.current,
+      settledQuery: latestSettledQueryRef.current,
+      resultQuery: latestResultQueryRef.current,
+      selectionQuery,
+      isPlaceholderData: latestPlaceholderDataRef.current,
+    })) return;
+
+    const selectedQuery = `${stock.name} (${stock.symbol})`;
+    latestSearchInputRef.current = selectedQuery;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedStock(stock);
+    setSelectedEtf(null);
+    setQuery(selectedQuery);
+    Keyboard.dismiss();
+  };
+
+  const selectEtf = (etf: HeatMapInstrumentSuggestion, selectionQuery: string | null) => {
+    if (!isStockSearchSelectionCurrent({
+      input: latestSearchInputRef.current,
+      settledQuery: latestSettledQueryRef.current,
+      resultQuery: latestEtfResultQueryRef.current,
+      selectionQuery,
+      isPlaceholderData: latestEtfPlaceholderDataRef.current,
+    })) return;
+
+    const selectedQuery = `${etf.name} (${etf.symbol})`;
+    latestSearchInputRef.current = selectedQuery;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedStock(null);
+    setSelectedEtf(etf);
+    setQuery(selectedQuery);
+    Keyboard.dismiss();
   };
 
   const clearRecent = () => {
@@ -403,9 +576,16 @@ export default function HomeScreen() {
           <TouchableOpacity style={[styles.brandRow, { flex: 1 }]} onPress={showTip} activeOpacity={0.75}>
             <MMLogo size={44} />
             <View style={styles.brandText}>
-              <Text style={[styles.brandName, { color: colors.heading, fontFamily: 'Inter_700Bold', letterSpacing: 0.8 }]}>
-                Meisner Method{isActive ? ' 🇺🇸' : ''}
-              </Text>
+              <View style={styles.brandTitleRow}>
+                <Text style={[styles.brandName, { color: colors.heading, fontFamily: 'Inter_700Bold', letterSpacing: 0.8 }]}>
+                  Meisner Method{!hasCompletedAllAchievements(earnedIds) && isActive ? ' 🇺🇸' : ''}
+                </Text>
+                {hasCompletedAllAchievements(earnedIds) && (
+                  selectedPremiumFlagId === DEFAULT_FLAG_ID
+                    ? <Text style={{ color: colors.heading, fontSize: 30, lineHeight: 40, marginLeft: 2 }}>🇺🇸</Text>
+                    : <PremiumFlagBadge flagId={selectedPremiumFlagId} size={48} />
+                )}
+              </View>
               <Text style={[styles.tagline, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                 AI-powered market intelligence
               </Text>
@@ -437,28 +617,143 @@ export default function HomeScreen() {
           <Feather name="search" size={20} color={colors.mutedForeground} style={styles.searchIcon} />
           <TextInput
             style={[styles.searchInput, { color: colors.foreground, fontFamily: 'Inter_500Medium' }]}
-            placeholder="Enter ticker (AAPL, TSLA...)"
+            placeholder="Search by name or symbol"
             placeholderTextColor={colors.mutedForeground}
             value={query}
-            onChangeText={setQuery}
-            autoCapitalize="characters"
+            onChangeText={(value) => {
+              latestSearchInputRef.current = value;
+              setSelectedStock(null);
+              setSelectedEtf(null);
+              setQuery(value);
+            }}
+            autoCapitalize="none"
             autoCorrect={false}
             returnKeyType="search"
             onSubmitEditing={handleSubmit}
           />
           {query.length > 0 && (
-            <TouchableOpacity onPress={() => setQuery('')} style={styles.clearBtn}>
+            <TouchableOpacity
+              onPress={() => {
+                latestSearchInputRef.current = '';
+                setSelectedStock(null);
+                setSelectedEtf(null);
+                setQuery('');
+              }}
+              style={styles.clearBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Clear instrument search"
+            >
               <Feather name="x" size={18} color={colors.mutedForeground} />
             </TouchableOpacity>
           )}
         </View>
+        {(isCurrentStockSearch || isCurrentEtfSearch) && (
+          <View style={[styles.suggestionPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            {stockSearch.isFetching || etfSearch.isFetching ? (
+              <View style={styles.searchStatusRow}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={[styles.searchStatus, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                  Finding stocks and ETFs…
+                </Text>
+              </View>
+            ) : stockSuggestions.length === 0 && etfSuggestions.length === 0
+              && stockSearch.isError && etfSearch.isError ? (
+              <Text style={[styles.searchStatus, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                Instrument search is unavailable. Enter a ticker in uppercase to continue.
+              </Text>
+            ) : stockSuggestions.length === 0 && etfSuggestions.length === 0 ? (
+              <Text style={[styles.searchStatus, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                No matching stocks or ETFs. Try another name or enter a ticker.
+              </Text>
+            ) : (
+              <ScrollView
+                style={styles.suggestionsList}
+                keyboardShouldPersistTaps="handled"
+                nestedScrollEnabled
+                showsVerticalScrollIndicator={false}
+              >
+                {stockSuggestions.map((stock, index) => (
+                  <TouchableOpacity
+                    key={stock.symbol}
+                    style={[
+                      styles.suggestionRow,
+                      { borderBottomColor: index === stockSuggestions.length - 1 ? 'transparent' : colors.border },
+                    ]}
+                    onPress={() => selectStock(stock, activeStockSearchQuery)}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Select ${stock.name}, ticker ${stock.symbol}, ${stock.exchange}`}
+                  >
+                    <View style={styles.suggestionCopy}>
+                      <Text
+                        numberOfLines={1}
+                        style={[styles.suggestionName, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}
+                      >
+                        {stock.name}
+                      </Text>
+                      <Text
+                        numberOfLines={1}
+                        style={[styles.suggestionExchange, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}
+                      >
+                        {stock.exchange}
+                      </Text>
+                    </View>
+                    <Text style={[styles.suggestionSymbol, { color: colors.primary, fontFamily: 'Inter_700Bold' }]}>
+                      {stock.symbol}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+                {etfSuggestions.map((etf, index) => (
+                  <TouchableOpacity
+                    key={`etf-${etf.symbol}`}
+                    style={[
+                      styles.suggestionRow,
+                      { borderBottomColor: index === etfSuggestions.length - 1 ? 'transparent' : colors.border },
+                    ]}
+                    onPress={() => selectEtf(etf, activeEtfSearchQuery)}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Select ETF ${etf.name}, ticker ${etf.symbol}, ${etf.exchange}`}
+                  >
+                    <View style={styles.suggestionCopy}>
+                      <Text
+                        numberOfLines={1}
+                        style={[styles.suggestionName, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}
+                      >
+                        {etf.name}
+                      </Text>
+                      <Text
+                        numberOfLines={1}
+                        style={[styles.suggestionExchange, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}
+                      >
+                        ETF · {etf.exchange}
+                      </Text>
+                    </View>
+                    <Text style={[styles.suggestionSymbol, { color: colors.primary, fontFamily: 'Inter_700Bold' }]}>
+                      {etf.symbol}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        )}
         <AmericanAnalyzeButton
           active={isActive}
           neonActive={neonGucciActive}
-          disabled={!query.trim()}
+          disabled={!resolvedSymbol}
           hasQuery={Boolean(query.trim())}
           colors={colors}
           onPress={handleSubmit}
+        />
+        <MarketHeatMapInsightButton
+          active={isActive}
+          neonActive={neonGucciActive}
+          colors={colors}
+          pulse={marketPulse}
+          loading={marketPulseQuery.isLoading && !marketPulseQuery.data}
+          error={marketPulseQuery.isError && !marketPulseQuery.data}
+          onPress={() => router.push('/heat-map')}
         />
       </View>
 
@@ -486,21 +781,22 @@ export default function HomeScreen() {
         </View>
       )}
 
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: botPad + 24 }}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-        scrollEnabled={scrollEnabled}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.mutedForeground}
-            colors={[colors.primary]}
-          />
-        }
-      >
+      <GestureDetector gesture={scrollGesture}>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingBottom: botPad + 24 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          scrollEnabled={scrollEnabled}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.mutedForeground}
+              colors={[colors.primary]}
+            />
+          }
+        >
         {/* Recent searches */}
         {recent.length > 0 && (
           <View style={styles.section}>
@@ -593,6 +889,7 @@ export default function HomeScreen() {
                 items={filteredWatchItems}
                 quotes={watchlist.quotes}
                 activeAlertFor={watchlist.activeAlertFor}
+                scrollGesture={scrollGesture}
                 onNavigate={navigateTo}
                 onRemove={watchlist.remove}
                 onReorder={handleWatchReorder}
@@ -609,12 +906,28 @@ export default function HomeScreen() {
         {/* Trending tickers */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleRow}>
+            <TouchableOpacity
+              style={styles.sectionTitleRow}
+              onPress={toggleTrendingTickers}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`${trendingCollapsed ? 'Expand' : 'Collapse'} trending tickers`}
+              accessibilityState={{ expanded: !trendingCollapsed }}
+            >
               <Feather name="zap" size={11} color={colors.mutedForeground} />
               <Text style={[styles.sectionTitle, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', letterSpacing: 1, marginLeft: 4 }]}>
                 TRENDING
+                {trending.length > 0 && (
+                  <Text style={{ fontFamily: 'Inter_400Regular' }}> ({trending.length})</Text>
+                )}
               </Text>
-            </View>
+              <Feather
+                name={trendingCollapsed ? 'chevron-right' : 'chevron-down'}
+                size={15}
+                color={colors.mutedForeground}
+                style={{ marginLeft: 5 }}
+              />
+            </TouchableOpacity>
             <View style={styles.refreshRow}>
               {timeStr && (
                 <Text style={[styles.updatedText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
@@ -631,50 +944,52 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          {trendingLoading && trending.length === 0 ? (
-            <View style={styles.loadingBox}>
-              <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={[styles.loadingText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                Fetching live market data…
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.tickerGrid}>
-              {trending.map((t) => {
-                const up = t.priceChangePercent >= 0;
-                const pctColor = up ? colors.buyColor : colors.sellColor;
-                return (
-                  <TouchableOpacity
-                    key={t.symbol}
-                    style={[styles.tickerCard, {
-                      backgroundColor: colors.card,
-                      borderColor: isActive ? colors.gold : colors.border,
-                      shadowColor: isActive ? colors.gold : '#000',
-                      shadowOpacity: isActive ? 0.18 : 0,
-                      shadowRadius: isActive ? 8 : 0,
-                    }]}
-                    onPress={() => navigateTo(t.symbol)}
-                    activeOpacity={0.75}
-                  >
-                    <View style={[styles.pctBadge, { backgroundColor: up ? 'rgba(0,229,160,0.10)' : 'rgba(255,59,59,0.10)' }]}>
-                      <Feather name={up ? 'trending-up' : 'trending-down'} size={10} color={pctColor} />
-                      <Text style={[styles.pctText, { color: pctColor, fontFamily: 'Inter_700Bold' }]}>
-                        {formatPct(t.priceChangePercent)}
+          {!trendingCollapsed && (
+            trendingLoading && trending.length === 0 ? (
+              <View style={styles.loadingBox}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={[styles.loadingText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                  Fetching live market data…
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.tickerGrid}>
+                {trending.map((t) => {
+                  const up = t.priceChangePercent >= 0;
+                  const pctColor = up ? colors.buyColor : colors.sellColor;
+                  return (
+                    <TouchableOpacity
+                      key={t.symbol}
+                      style={[styles.tickerCard, {
+                        backgroundColor: colors.card,
+                        borderColor: isActive ? colors.gold : colors.border,
+                        shadowColor: isActive ? colors.gold : '#000',
+                        shadowOpacity: isActive ? 0.18 : 0,
+                        shadowRadius: isActive ? 8 : 0,
+                      }]}
+                      onPress={() => navigateTo(t.symbol)}
+                      activeOpacity={0.75}
+                    >
+                      <View style={[styles.pctBadge, { backgroundColor: up ? 'rgba(0,229,160,0.10)' : 'rgba(255,59,59,0.10)' }]}>
+                        <Feather name={up ? 'trending-up' : 'trending-down'} size={10} color={pctColor} />
+                        <Text style={[styles.pctText, { color: pctColor, fontFamily: 'Inter_700Bold' }]}>
+                          {formatPct(t.priceChangePercent)}
+                        </Text>
+                      </View>
+                      <Text style={[styles.tickerSymbol, { color: colors.heading, fontFamily: 'Inter_700Bold' }]}>
+                        {t.symbol}
                       </Text>
-                    </View>
-                    <Text style={[styles.tickerSymbol, { color: colors.heading, fontFamily: 'Inter_700Bold' }]}>
-                      {t.symbol}
-                    </Text>
-                    <Text style={[styles.tickerName, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]} numberOfLines={1}>
-                      {t.name}
-                    </Text>
-                    <Text style={[styles.tickerPrice, { color: colors.primary, fontFamily: 'Inter_600SemiBold' }]}>
-                      {formatPrice(t.currentPrice)}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+                      <Text style={[styles.tickerName, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]} numberOfLines={1}>
+                        {t.name}
+                      </Text>
+                      <Text style={[styles.tickerPrice, { color: colors.primary, fontFamily: 'Inter_600SemiBold' }]}>
+                        {formatPrice(t.currentPrice)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )
           )}
         </View>
 
@@ -682,7 +997,8 @@ export default function HomeScreen() {
         <Text style={[styles.disclaimer, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
           For informational purposes only. Not financial advice.
         </Text>
-      </ScrollView>
+        </ScrollView>
+      </GestureDetector>
       <BottomTabBar />
 
       <DonationSidebar
@@ -698,6 +1014,7 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 20, paddingBottom: 16 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   brandText: { flex: 1 },
+  brandTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   brandName: { fontSize: 21, lineHeight: 26 },
   tagline: { fontSize: 12, marginTop: 1 },
   neonThemeBadge: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, backgroundColor: 'rgba(85,236,255,0.12)', borderWidth: 1, borderColor: '#55ecff' },
@@ -715,6 +1032,28 @@ const styles = StyleSheet.create({
   searchIcon: { marginRight: 10 },
   searchInput: { flex: 1, fontSize: 16, height: '100%' },
   clearBtn: { padding: 4 },
+  suggestionPanel: {
+    maxHeight: 224,
+    borderWidth: 1,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  suggestionsList: { maxHeight: 224 },
+  suggestionRow: {
+    minHeight: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  suggestionCopy: { flex: 1, minWidth: 0, gap: 3 },
+  suggestionName: { fontSize: 14 },
+  suggestionExchange: { fontSize: 11 },
+  suggestionSymbol: { fontSize: 13, marginLeft: 12 },
+  searchStatusRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  searchStatus: { fontSize: 12, paddingHorizontal: 12, paddingVertical: 14, textAlign: 'center' },
   section: { paddingHorizontal: 20, marginBottom: 24 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   sectionTitleRow: { flexDirection: 'row', alignItems: 'center' },

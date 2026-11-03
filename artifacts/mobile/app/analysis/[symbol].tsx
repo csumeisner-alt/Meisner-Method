@@ -5,6 +5,7 @@ import {
   ScrollView,
   Modal,
   Pressable,
+  Linking,
   TouchableOpacity,
   StyleSheet,
   Platform,
@@ -12,6 +13,7 @@ import {
   Animated,
   TextInput,
   useWindowDimensions,
+  Share,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -22,6 +24,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '@/hooks/useColors';
 import { useApi } from '@/hooks/useApi';
 import { useAmericanMode } from '@/contexts/AmericanModeContext';
+import { useAchievements } from '@/contexts/AchievementsContext';
 import { useAnalyzeStock } from '@workspace/api-client-react';
 import type { StockAnalysis } from '@workspace/api-client-react';
 import { ComparisonChart } from '@/components/ComparisonChart';
@@ -32,14 +35,61 @@ import { PriceAlertModal } from '@/components/PriceAlertModal';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import {
+  compareEtfHoldingSnapshots,
+  createEtfHoldingSnapshot,
+  findReportedEtfHoldingsOverlap,
+  formatReportedEtfHoldingsOverlapShare,
+  formatEtfComparisonValue,
+  formatEtfProfileAssets,
+  estimateEtfFeeDollars,
+  getEtfFeeComparisonStatus,
+  getReportedEtfSectorComparison,
+  isValidEtfExpenseRatio,
+  isValidEtfTrackingHistory,
+  parseEtfFeeInvestmentAmount,
+  parseSavedEtfComparisonSymbols,
+  parseSavedEtfHoldingSnapshots,
+  rotateSavedEtfComparisonFocus,
+  shareEtfOverlapSummary,
+  upsertSavedEtfHoldingSnapshot,
+} from '@/lib/heatMapDetail';
+import { calculateEtfResearchScore } from '@/lib/etfResearchScore';
+import type { HeatMapEtfHoldingSnapshot } from '@/lib/heatMapDetail';
+import {
+  calculateEtfScenarioBreakdown,
+  ETF_CONTRIBUTION_CADENCES,
+  ETF_SCENARIO_INITIAL_INVESTMENT,
+  ETF_SCENARIO_LABELS,
+  ETF_SCENARIO_HORIZONS,
+  parseEtfContributionCadence,
+  parseEtfScenarios,
+} from '@/lib/etfScenario';
+import type { EtfContributionCadence, EtfScenario } from '@/lib/etfScenario';
+import {
   formatAnalysisLoadingStage,
   getAnalysisLoadingStageInterval,
   getAnalysisLoadingStages,
 } from '@/lib/analysisLoadingStages';
+import {
+  APP_REVIEW_STORAGE_KEY,
+  parseAppReviewState,
+  recordSuccessfulAnalysis,
+} from '@/lib/appReview';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const PINNED_COMP_KEY = '@stocksense/pinned_comp_symbol';
+const ETF_COMPARISON_KEY = '@stocksense/etf_comparison_symbols_v1';
+const ETF_HOLDING_SNAPSHOTS_KEY = '@stocksense/etf_holding_snapshots_v1';
+const ETF_CONTRIBUTION_CADENCE_KEY = '@stocksense/etf_contribution_cadence_v1';
+const ETF_FEE_AMOUNT_PRESETS = [
+  { amount: 1_000, label: '$1,000' },
+  { amount: 5_000, label: '$5,000' },
+  { amount: 10_000, label: '$10,000' },
+  { amount: 25_000, label: '$25,000' },
+] as const;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -155,7 +205,7 @@ const metricStyles = StyleSheet.create({
   value: { fontSize: 13 },
 });
 
-function SectionCard({ title, icon, score, scoreColor, children, helpTopic, onHelp }: {
+function SectionCard({ title, icon, score, scoreColor, children, helpTopic, onHelp, collapsible = false }: {
   title: string;
   icon: React.ReactNode;
   score?: number;
@@ -163,14 +213,25 @@ function SectionCard({ title, icon, score, scoreColor, children, helpTopic, onHe
   children: React.ReactNode;
   helpTopic?: HelpTopic;
   onHelp?: (topic: HelpTopic) => void;
+  collapsible?: boolean;
 }) {
   const colors = useColors();
+  const [expanded, setExpanded] = useState(false);
+  const Header = collapsible ? Pressable : View;
   return (
     <View style={[cardStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      <View style={cardStyles.header}>
+      <Header
+        style={cardStyles.header}
+        {...(collapsible ? {
+          onPress: () => setExpanded((current) => !current),
+          accessibilityRole: 'button' as const,
+          accessibilityState: { expanded },
+          testID: `analysis-section-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+        } : {})}
+      >
         <View style={cardStyles.titleRow}>
           {icon}
-          <Text style={[cardStyles.title, { color: colors.foreground, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5 }]}>{title}</Text>
+          <Text style={[cardStyles.title, { color: colors.foreground, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5, flex: 1 }]}>{title}</Text>
           {helpTopic && onHelp && (
             <TouchableOpacity
               onPress={() => {
@@ -186,6 +247,9 @@ function SectionCard({ title, icon, score, scoreColor, children, helpTopic, onHe
               <Feather name="help-circle" size={17} color={colors.primary} />
             </TouchableOpacity>
           )}
+          {collapsible && (
+            <Feather name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={colors.mutedForeground} />
+          )}
         </View>
         {score != null && scoreColor && (
           <View style={cardStyles.scoreRow}>
@@ -193,9 +257,9 @@ function SectionCard({ title, icon, score, scoreColor, children, helpTopic, onHe
             <ScoreBar score={score} color={scoreColor} />
           </View>
         )}
-      </View>
+      </Header>
       <View style={[cardStyles.divider, { backgroundColor: colors.border }]} />
-      {children}
+      {(!collapsible || expanded) && children}
     </View>
   );
 }
@@ -248,15 +312,2004 @@ function shuffledLoadingPhrases(): string[] {
   return phrases;
 }
 
+type EtfAnalysisPayload = {
+  fundCategory: string | null;
+  fundFamily: string | null;
+  expenseRatio: number | null;
+  totalAssets: number | null;
+  dividendYield: number | null;
+  beta3Year: number | null;
+  averageVolume: number | null;
+  topHoldingsCombinedWeight: number | null;
+  topHoldingsReportedCount: number;
+  topHoldingsRetrievedAt: string;
+  sectorWeights: { sector: string; weight: number }[];
+  sectorWeightsRetrievedAt: string;
+  annualizedReturn: number | null;
+  annualizedVolatility: number | null;
+  maxDrawdown: number | null;
+  riskAdjustedReturn: number | null;
+  topHoldings: { symbol: string; name: string; weight: number | null }[];
+  benchmark: {
+    symbol: string;
+    name: string;
+    source: string;
+    asOf: string;
+  } | null;
+  trackingComparison: {
+    periodStart: string;
+    periodEnd: string;
+    monthlySamples: number;
+    fundAnnualizedReturn: number;
+    benchmarkAnnualizedReturn: number;
+    trackingDifference: number;
+    trackingError: number;
+    source: string;
+    asOf: string;
+  } | null;
+  peerExpenseComparison: {
+    category: string;
+    fundExpenseRatio: number | null;
+    categoryAverageExpenseRatio: number;
+    difference: number | null;
+    sampleSize: number | null;
+    sampleContext: string;
+    source: string;
+    asOf: string;
+  } | null;
+  peerAssetSizeComparison: {
+    category: string;
+    fundTotalAssets: number | null;
+    categoryAverageTotalAssets: number;
+    difference: number | null;
+    sampleSize: number | null;
+    sampleContext: string;
+    source: string;
+    asOf: string;
+  } | null;
+  marketRegime: {
+    benchmarkSymbol: string;
+    firstYear: number;
+    lastYear: number;
+    periods: Record<string, { averageAnnualReturn: number | null; years: number }>;
+  } | null;
+  scenarios?: unknown;
+  analysis: string;
+  risks: string[];
+  strengths: string[];
+  provider: string;
+  asOf: string;
+};
+
+type CommodityAnalysisPayload = {
+  score: number;
+  confidence: number;
+  dataCoveragePercent: number;
+  observationCount: number;
+  historyAsOf: string | null;
+  family: 'metals' | 'energy' | 'agriculture' | 'livestock';
+  annualizedVolatilityPercent: number;
+  oneMonthReturnPercent: number | null;
+  threeMonthReturnPercent: number | null;
+  sixMonthReturnPercent: number | null;
+  factors: {
+    key: string;
+    label: string;
+    status: 'available' | 'unavailable';
+    score: number | null;
+    weight: number;
+    detail: string;
+    sources: { title: string; url: string; asOf: string; unit: string; observation: string }[];
+  }[];
+  methodology: string;
+  reasoning: string;
+  risks: string[];
+  strengths: string[];
+  newsContext: {
+    status: 'available' | 'unavailable';
+    summary: string | null;
+    retrievedAt: string | null;
+    sources: { title: string; url: string; publishedAt: string | null }[];
+  };
+  provider: string;
+};
+
+function CommodityAnalysisSections({ analysis }: { analysis: CommodityAnalysisPayload }) {
+  const colors = useColors();
+  const scoreColor = analysis.score >= 65 ? colors.buyColor : analysis.score <= 40 ? colors.sellColor : colors.holdColor;
+  const rows = [
+    ['1-month return', analysis.oneMonthReturnPercent],
+    ['3-month return', analysis.threeMonthReturnPercent],
+    ['6-month return', analysis.sixMonthReturnPercent],
+  ] as const;
+  return (
+    <View testID="commodity-analysis-result" style={{ gap: 12 }}>
+      <SectionCard title="COMMODITY MARKET SCORE" icon={<MaterialCommunityIcons name="chart-line" size={16} color={colors.primary} />}>
+        <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <Text testID="commodity-analysis-score" style={{ color: scoreColor, fontSize: 38, fontFamily: 'Inter_700Bold' }}>{analysis.score}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold' }}>Risk-adjusted price trend</Text>
+              <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Confidence {analysis.confidence}/100 · {analysis.dataCoveragePercent}% factor coverage</Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+            {rows.map(([label, value]) => (
+              <Text key={label} style={{ color: colors.mutedForeground, fontSize: 12 }}>
+                {label}: {value === null ? '—' : `${value > 0 ? '+' : ''}${value.toFixed(1)}%`}
+              </Text>
+            ))}
+          </View>
+          <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+            Annualized volatility: {analysis.annualizedVolatilityPercent.toFixed(1)}%
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16 }}>
+            {analysis.observationCount} daily observations from {analysis.provider} through {analysis.historyAsOf ?? 'an unreported date'}. The score uses only dated inputs that passed source, instrument, unit, and freshness checks; unavailable factors are excluded.
+          </Text>
+        </View>
+      </SectionCard>
+      <SectionCard title="FACTOR COVERAGE" icon={<MaterialCommunityIcons name="database-check-outline" size={16} color={colors.primary} />}>
+        <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
+          {analysis.factors.map((factor) => (
+            <View key={factor.key} testID={`commodity-analysis-factor-${factor.key}`} style={{ paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              <Text style={{ color: factor.status === 'available' ? colors.foreground : colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>
+                {factor.label}{factor.score === null ? ' · Not available' : ` · ${factor.score}/100`}
+              </Text>
+              <Text testID={`commodity-analysis-factor-${factor.key}-detail`} style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 17, marginTop: 4 }}>
+                {factor.detail}
+              </Text>
+              {factor.sources.map((source) => (
+                <Pressable
+                  key={`${source.url}-${source.asOf}`}
+                  accessibilityRole="link"
+                  accessibilityLabel={`Open source: ${source.title}, dated ${source.asOf}`}
+                  onPress={() => { void Linking.openURL(source.url).catch(() => {}); }}
+                  style={{ marginTop: 5 }}
+                >
+                  <Text style={{ color: colors.primary, fontSize: 10, lineHeight: 14, textDecorationLine: 'underline' }}>
+                    {source.title} · {source.asOf} · {source.unit}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ))}
+          <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 14, marginTop: 10 }}>{analysis.methodology}</Text>
+        </View>
+      </SectionCard>
+      <SectionCard title="AI MARKET CONTEXT" icon={<MaterialCommunityIcons name="brain" size={16} color={colors.primary} />}>
+        <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 12 }}>
+          <Text style={{ color: colors.foreground, fontSize: 13, lineHeight: 19 }}>{analysis.reasoning}</Text>
+          {!!analysis.strengths.length && <View>
+            <Text style={{ color: colors.buyColor, fontFamily: 'Inter_600SemiBold', fontSize: 12, marginBottom: 4 }}>SUPPORTIVE FACTORS</Text>
+            {analysis.strengths.map((item, index) => <Text key={`${index}-${item}`} style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 17 }}>• {item}</Text>)}
+          </View>}
+          {!!analysis.risks.length && <View>
+            <Text style={{ color: colors.sellColor, fontFamily: 'Inter_600SemiBold', fontSize: 12, marginBottom: 4 }}>RISKS</Text>
+            {analysis.risks.map((item, index) => <Text key={`${index}-${item}`} style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 17 }}>• {item}</Text>)}
+          </View>}
+        </View>
+      </SectionCard>
+      <SectionCard title="RECENT NEWS" icon={<MaterialCommunityIcons name="web" size={16} color={colors.primary} />}>
+        <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 8 }}>
+          {analysis.newsContext.status === 'available' ? (
+            <>
+              <Text style={{ color: colors.foreground, fontSize: 12, lineHeight: 18 }}>{analysis.newsContext.summary}</Text>
+              <Text style={{ color: colors.mutedForeground, fontSize: 10 }}>
+                Retrieved {analysis.newsContext.retrievedAt ? new Date(analysis.newsContext.retrievedAt).toLocaleString() : 'recently'} · News is context, not a score input.
+              </Text>
+              {analysis.newsContext.sources.map((source) => (
+                <Pressable key={source.url} accessibilityRole="link" accessibilityLabel={`Open news source: ${source.title}`} onPress={() => { void Linking.openURL(source.url).catch(() => {}); }}>
+                  <Text style={{ color: colors.primary, fontSize: 12, lineHeight: 17, textDecorationLine: 'underline' }}>
+                    {source.title}{source.publishedAt ? ` · ${source.publishedAt}` : ''}
+                  </Text>
+                </Pressable>
+              ))}
+            </>
+          ) : (
+            <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Recent news search is unavailable. The market score is based on price history and does not use news sentiment.</Text>
+          )}
+        </View>
+      </SectionCard>
+      <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 14 }}>
+        Educational market context only—not a forecast, personalized advice, or a buy/sell recommendation.
+      </Text>
+    </View>
+  );
+}
+
+function EtfAnalysisSections({ fund, colors, symbol }: {
+  fund: EtfAnalysisPayload;
+  colors: ReturnType<typeof useColors>;
+  symbol: string;
+}) {
+  const { apiFetch } = useApi();
+  const router = useRouter();
+  const [compareTicker, setCompareTicker] = useState('');
+  const [replaceTarget, setReplaceTarget] = useState<string | null>(null);
+  const [focusSwitching, setFocusSwitching] = useState(false);
+  const [selectedScenarioHorizon, setSelectedScenarioHorizon] = useState<number>(10);
+  const [feeInvestmentInput, setFeeInvestmentInput] = useState('10000');
+  const [feeHoldingYears, setFeeHoldingYears] = useState<number>(10);
+  const [contributionInput, setContributionInput] = useState('0');
+  const [contributionCadence, setContributionCadence] = useState<EtfContributionCadence>('monthly');
+  const [contributionCadenceLoaded, setContributionCadenceLoaded] = useState(false);
+  const contributionCadenceTouched = useRef(false);
+  const contributionAmount = contributionInput.trim() === '' || contributionInput === '.'
+    ? 0
+    : Number(contributionInput);
+  const [savedCompareSymbols, setSavedCompareSymbols] = useState<string[]>([]);
+  const savedCompareSymbolsRef = useRef<string[]>([]);
+  const comparisonWriteQueue = useRef<Promise<void>>(Promise.resolve());
+  const scenarios = parseEtfScenarios(fund.scenarios);
+  const feeInvestmentAmount = parseEtfFeeInvestmentAmount(feeInvestmentInput);
+  const feeEstimate = estimateEtfFeeDollars(
+    feeInvestmentAmount,
+    fund.expenseRatio,
+    feeHoldingYears,
+  );
+  const validExpenseRatio = isValidEtfExpenseRatio(fund.expenseRatio);
+  const hasValidTrackingHistory = (
+    tracking: EtfAnalysisPayload['trackingComparison'] | null | undefined,
+  ): tracking is NonNullable<EtfAnalysisPayload['trackingComparison']> => Boolean(
+    tracking
+    && isValidEtfTrackingHistory(
+      tracking.periodStart,
+      tracking.periodEnd,
+      tracking.monthlySamples,
+    ),
+  );
+  const feeComparisonStatus = getEtfFeeComparisonStatus(
+    fund.peerExpenseComparison?.fundExpenseRatio,
+    fund.peerExpenseComparison?.categoryAverageExpenseRatio,
+    fund.peerExpenseComparison?.difference,
+  );
+  const [compareFunds, setCompareFunds] = useState<Array<{
+    symbol: string;
+    topHoldings: { symbol: string; name: string; weight: number }[];
+    topHoldingsReportedCount: number;
+    topHoldingsRetrievedAt: string | null;
+    currentPrice: number;
+    expenseRatio: number | null;
+    sectorWeights: { sector: string; weight: number }[];
+    sectorWeightsRetrievedAt: string | null;
+    analysis: EtfAnalysisPayload;
+  }>>([]);
+  const [compareError, setCompareError] = useState('');
+  const [shareStatus, setShareStatus] = useState('');
+  const [manualCopySummary, setManualCopySummary] = useState<string | null>(null);
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [compareRestoreLoading, setCompareRestoreLoading] = useState(true);
+  const [comparePendingSymbols, setComparePendingSymbols] = useState<string[]>([]);
+  const [compareFailedSymbols, setCompareFailedSymbols] = useState<string[]>([]);
+  const [compareStorageError, setCompareStorageError] = useState('');
+  const profileScore = calculateEtfResearchScore({
+    expenseRatio: fund.expenseRatio,
+    categoryAverageExpenseRatio: fund.peerExpenseComparison?.categoryAverageExpenseRatio ?? null,
+    trackingError: fund.benchmark && hasValidTrackingHistory(fund.trackingComparison)
+      ? fund.trackingComparison.trackingError
+      : null,
+    sectorWeights: fund.sectorWeights ?? [],
+    averageVolume: fund.averageVolume,
+    totalAssets: fund.totalAssets,
+    peerAssetSizeComparison: fund.peerAssetSizeComparison,
+    annualizedVolatility: fund.annualizedVolatility,
+    maxDrawdown: fund.maxDrawdown,
+  });
+  const etfScoreColor = (score: number) =>
+    score >= 65 ? colors.buyColor : score <= 40 ? colors.sellColor : colors.holdColor;
+  const [holdingSnapshots, setHoldingSnapshots] = useState<HeatMapEtfHoldingSnapshot[]>([]);
+  const snapshotWriteQueue = useRef<Promise<void>>(Promise.resolve());
+  const [snapshotStorageError, setSnapshotStorageError] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.getItem(ETF_CONTRIBUTION_CADENCE_KEY)
+      .then((stored) => {
+        if (!cancelled && !contributionCadenceTouched.current && stored !== null) {
+          setContributionCadence(parseEtfContributionCadence(stored));
+        }
+      })
+      .catch(() => {
+        // Keep the safe monthly default when local preferences cannot be read.
+      })
+      .finally(() => {
+        if (!cancelled) setContributionCadenceLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useEffect(() => {
+    if (!contributionCadenceLoaded) return;
+    AsyncStorage.setItem(ETF_CONTRIBUTION_CADENCE_KEY, contributionCadence).catch(() => {
+      // A storage failure should not block editing or using the analysis.
+    });
+  }, [contributionCadence, contributionCadenceLoaded]);
+  const selectedProjection = (
+    scenario: EtfScenario | null,
+    horizonYears: number,
+  ) => {
+    if (!scenario) return null;
+    const noFee = calculateEtfScenarioBreakdown(
+      ETF_SCENARIO_INITIAL_INVESTMENT,
+      scenario.noFeeAnnualReturnAssumption,
+      contributionAmount,
+      horizonYears,
+      contributionCadence,
+    );
+    const afterFee = calculateEtfScenarioBreakdown(
+      ETF_SCENARIO_INITIAL_INVESTMENT,
+      scenario.annualReturnAssumption,
+      contributionAmount,
+      horizonYears,
+      contributionCadence,
+    );
+    return {
+      horizonYears,
+      startingInvestment: noFee.startingInvestment,
+      totalContributions: noFee.totalContributions,
+      noFeeValue: noFee.totalValue,
+      noFeeGrowth: noFee.projectedGrowth,
+      afterFeeValue: afterFee.totalValue,
+      afterFeeGrowth: afterFee.projectedGrowth,
+    };
+  };
+  const renderContributionControls = (testID: string) => (
+    <View style={{ marginTop: 12 }}>
+      <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>
+        Contribution per deposit
+      </Text>
+      <TextInput
+        testID={testID}
+        accessibilityLabel="ETF contribution amount per deposit in dollars"
+        value={contributionInput}
+        onChangeText={(value) => setContributionInput(value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'))}
+        keyboardType="decimal-pad"
+        placeholder="0"
+        placeholderTextColor={colors.mutedForeground}
+        style={{
+          color: colors.foreground,
+          backgroundColor: colors.input,
+          borderColor: colors.border,
+          borderWidth: 1,
+          borderRadius: 8,
+          paddingHorizontal: 12,
+          paddingVertical: 9,
+          marginTop: 6,
+          fontFamily: 'Inter_600SemiBold',
+        }}
+      />
+      <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, marginTop: 12 }}>
+        Contribution schedule
+      </Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 7 }}>
+        {ETF_CONTRIBUTION_CADENCES.map((cadence) => {
+          const selected = contributionCadence === cadence;
+          const label = cadence.charAt(0).toUpperCase() + cadence.slice(1);
+          return (
+            <Pressable
+              key={cadence}
+              testID={`${testID.replace('-contribution-input', '')}-cadence-${cadence}`}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              accessibilityLabel={`Set contribution schedule to ${label.toLowerCase()}`}
+              onPress={() => {
+                contributionCadenceTouched.current = true;
+                setContributionCadence(cadence);
+              }}
+              style={{
+                minHeight: 34,
+                justifyContent: 'center',
+                borderWidth: 1,
+                borderColor: selected ? colors.primary : colors.border,
+                borderRadius: 8,
+                paddingHorizontal: 10,
+                backgroundColor: selected ? colors.primary : 'transparent',
+              }}
+            >
+              <Text style={{
+                color: selected ? colors.primaryForeground : colors.foreground,
+                fontFamily: 'Inter_600SemiBold',
+                fontSize: 11,
+              }}>{label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 15, marginTop: 5 }}>
+        Deposited at the end of each {contributionCadence === 'weekly'
+          ? 'week'
+          : contributionCadence === 'monthly' ? 'month' : 'quarter'}, alongside a $100 starting investment.
+      </Text>
+    </View>
+  );
+  const renderScenarioHorizonSelector = () => (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+      {ETF_SCENARIO_HORIZONS.map((horizonYears) => {
+        const selected = selectedScenarioHorizon === horizonYears;
+        return (
+          <Pressable
+            key={horizonYears}
+            accessibilityRole="button"
+            accessibilityState={{ selected }}
+            testID={`etf-scenario-horizon-${horizonYears}`}
+            onPress={() => setSelectedScenarioHorizon(horizonYears)}
+            style={{
+              minWidth: 54,
+              alignItems: 'center',
+              borderWidth: 1,
+              borderColor: selected ? colors.primary : colors.border,
+              borderRadius: 8,
+              paddingHorizontal: 10,
+              paddingVertical: 7,
+              backgroundColor: selected ? colors.primary : 'transparent',
+            }}
+          >
+            <Text style={{
+              color: selected ? colors.primaryForeground : colors.foreground,
+              fontFamily: 'Inter_600SemiBold',
+              fontSize: 12,
+            }}>
+              {horizonYears} yr
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+
+  const persistHoldingSnapshot = useCallback((snapshot: HeatMapEtfHoldingSnapshot) => {
+    const nextWrite = snapshotWriteQueue.current.catch(() => {}).then(async () => {
+      const stored = parseSavedEtfHoldingSnapshots(
+        await AsyncStorage.getItem(ETF_HOLDING_SNAPSHOTS_KEY),
+      );
+      const next = upsertSavedEtfHoldingSnapshot(stored, snapshot);
+      setHoldingSnapshots(next);
+      if (JSON.stringify(stored) !== JSON.stringify(next)) {
+        await AsyncStorage.setItem(ETF_HOLDING_SNAPSHOTS_KEY, JSON.stringify(next));
+      }
+      setSnapshotStorageError('');
+    }).catch(() => {
+      setSnapshotStorageError('Could not save ETF holding history on this device.');
+    });
+    snapshotWriteQueue.current = nextWrite;
+    return nextWrite;
+  }, []);
+
+  const persistCompareSymbols = (symbols: string[]): Promise<boolean> => {
+    savedCompareSymbolsRef.current = symbols;
+    setSavedCompareSymbols(symbols);
+    const write = comparisonWriteQueue.current.catch(() => {}).then(async () => {
+      await AsyncStorage.setItem(ETF_COMPARISON_KEY, JSON.stringify(symbols));
+      return true;
+    }).catch(() => false);
+    comparisonWriteQueue.current = write.then((saved) => {
+      setCompareStorageError(saved ? '' : 'Could not save ETF comparisons on this device.');
+    });
+    return write;
+  };
+
+  const removeCompareSymbol = (candidate: string) => {
+    persistCompareSymbols(savedCompareSymbolsRef.current.filter((item) => item !== candidate));
+    setCompareFunds((current) => current.filter((item) => item.symbol !== candidate));
+    setCompareFailedSymbols((current) => current.filter((item) => item !== candidate));
+    setReplaceTarget((current) => current === candidate ? null : current);
+  };
+
+  const switchComparisonFocus = async (candidate: string) => {
+    if (focusSwitching) return;
+    setFocusSwitching(true);
+    const currentSymbol = symbol.toUpperCase();
+    const nextSymbols = rotateSavedEtfComparisonFocus(
+      currentSymbol,
+      candidate,
+      savedCompareSymbolsRef.current,
+    );
+    try {
+      const saved = await persistCompareSymbols(nextSymbols);
+      if (saved) router.push({ pathname: '/analysis/[symbol]', params: { symbol: candidate } });
+    } finally {
+      setFocusSwitching(false);
+    }
+  };
+
+  const loadCompareFund = async (candidate: string) => {
+    setComparePendingSymbols((current) => current.includes(candidate) ? current : [...current, candidate]);
+    setCompareFailedSymbols((current) => current.filter((item) => item !== candidate));
+    try {
+      const response = await apiFetch<{
+        assetType?: string;
+        currentPrice?: number;
+        etfAnalysis?: EtfAnalysisPayload;
+      }>('/api/stocks/analyze', {
+        method: 'POST',
+        body: JSON.stringify({ symbol: candidate, includeCommentary: false }),
+      });
+      const analysis = response.etfAnalysis;
+      if (response.assetType !== 'etf' || !analysis) {
+        removeCompareSymbol(candidate);
+        setCompareError(`${candidate} is no longer identified as an ETF by the provider.`);
+        return;
+      }
+      if (!savedCompareSymbolsRef.current.includes(candidate)) return;
+      const reportedHoldings = analysis.topHoldings.flatMap((holding) =>
+        holding.weight == null ? [] : [{ ...holding, weight: holding.weight }]);
+      const snapshot = createEtfHoldingSnapshot(
+        candidate,
+        analysis.topHoldingsReportedCount,
+        analysis.topHoldingsRetrievedAt,
+        reportedHoldings,
+      );
+      if (snapshot) void persistHoldingSnapshot(snapshot);
+      setCompareFunds((current) => current.some((item) => item.symbol === candidate)
+        ? current
+        : [...current, {
+          symbol: candidate,
+          topHoldings: reportedHoldings,
+          topHoldingsReportedCount: analysis.topHoldingsReportedCount,
+          topHoldingsRetrievedAt: analysis.topHoldingsRetrievedAt,
+          currentPrice: response.currentPrice ?? 0,
+          expenseRatio: analysis.expenseRatio,
+          sectorWeights: analysis.sectorWeights,
+          sectorWeightsRetrievedAt: analysis.sectorWeightsRetrievedAt,
+          analysis,
+        }]);
+    } catch {
+      setCompareFailedSymbols((current) => current.includes(candidate) ? current : [...current, candidate]);
+      setCompareError(`Could not load reported holdings for ${candidate}. It remains saved for retry.`);
+    } finally {
+      setComparePendingSymbols((current) => current.filter((item) => item !== candidate));
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    setCompareFunds([]);
+    setCompareFailedSymbols([]);
+    setCompareRestoreLoading(true);
+    AsyncStorage.getItem(ETF_COMPARISON_KEY).then(async (stored) => {
+      const symbols = parseSavedEtfComparisonSymbols(stored);
+      if (cancelled) return;
+      savedCompareSymbolsRef.current = symbols;
+      setSavedCompareSymbols(symbols);
+      const toRestore = symbols.filter((item) => item !== symbol.toUpperCase());
+      setComparePendingSymbols(toRestore);
+      setCompareRestoreLoading(false);
+
+      const results = await Promise.all(toRestore.map(async (candidate) => {
+        try {
+          const response = await apiFetch<{
+            assetType?: string;
+            currentPrice?: number;
+            etfAnalysis?: EtfAnalysisPayload;
+          }>('/api/stocks/analyze', {
+            method: 'POST',
+            body: JSON.stringify({ symbol: candidate, includeCommentary: false }),
+          });
+          return {
+            candidate,
+            analysis: response.assetType === 'etf' ? response.etfAnalysis ?? null : null,
+            currentPrice: response.currentPrice ?? 0,
+            failed: false,
+          };
+        } catch {
+          return { candidate, analysis: null, failed: true };
+        }
+      }));
+      if (cancelled) return;
+      for (const { candidate, analysis, currentPrice: comparisonPrice, failed } of results) {
+        if (analysis) {
+          const reportedHoldings = analysis.topHoldings.flatMap((holding) =>
+            holding.weight == null ? [] : [{ ...holding, weight: holding.weight }]);
+          const snapshot = createEtfHoldingSnapshot(
+            candidate,
+            analysis.topHoldingsReportedCount,
+            analysis.topHoldingsRetrievedAt,
+            reportedHoldings,
+          );
+          if (snapshot) void persistHoldingSnapshot(snapshot);
+          setCompareFunds((current) => current.some((item) => item.symbol === candidate)
+            ? current
+            : [...current, {
+              symbol: candidate,
+              topHoldings: reportedHoldings,
+              topHoldingsReportedCount: analysis.topHoldingsReportedCount,
+              topHoldingsRetrievedAt: analysis.topHoldingsRetrievedAt,
+              currentPrice: comparisonPrice,
+              expenseRatio: analysis.expenseRatio,
+              sectorWeights: analysis.sectorWeights,
+              sectorWeightsRetrievedAt: analysis.sectorWeightsRetrievedAt,
+              analysis,
+            }]);
+        } else if (failed) {
+          setCompareFailedSymbols((current) => current.includes(candidate) ? current : [...current, candidate]);
+        } else {
+          removeCompareSymbol(candidate);
+          setCompareError(`${candidate} is no longer identified as an ETF by the provider and was removed.`);
+        }
+      }
+      setComparePendingSymbols([]);
+    }).catch(() => {
+      if (!cancelled) {
+        setCompareStorageError('Could not restore saved ETF comparisons from this device.');
+        setCompareRestoreLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [symbol, apiFetch, persistHoldingSnapshot]);
+
+  const currentEtfSnapshot = useMemo(() => createEtfHoldingSnapshot(
+    symbol,
+    fund.topHoldingsReportedCount,
+    fund.topHoldingsRetrievedAt,
+    fund.topHoldings.flatMap((holding) =>
+      holding.weight == null ? [] : [{ ...holding, weight: holding.weight }]),
+  ), [
+    symbol,
+    fund.topHoldings,
+    fund.topHoldingsReportedCount,
+    fund.topHoldingsRetrievedAt,
+  ]);
+
+  useEffect(() => {
+    if (currentEtfSnapshot) void persistHoldingSnapshot(currentEtfSnapshot);
+  }, [currentEtfSnapshot, persistHoldingSnapshot]);
+
+  const addCompareFund = async () => {
+    const candidate = compareTicker.trim().toUpperCase();
+    if (!/^[A-Z0-9.^=-]{1,20}$/.test(candidate)) {
+      setCompareError('Enter a valid ETF ticker.');
+      return;
+    }
+    if (candidate === symbol.toUpperCase()
+      || (savedCompareSymbolsRef.current.includes(candidate) && candidate !== replaceTarget)) {
+      setCompareError('That ETF is already selected.');
+      return;
+    }
+    if (replaceTarget === candidate) {
+      setCompareError('Enter a different ETF ticker to replace this one.');
+      return;
+    }
+    if (!replaceTarget && savedCompareSymbolsRef.current.length >= 3) {
+      setCompareError('Compare up to four ETFs at once.');
+      return;
+    }
+    setCompareLoading(true);
+    setCompareError('');
+    const nextSymbols = replaceTarget
+      ? savedCompareSymbolsRef.current.map((item) => item === replaceTarget ? candidate : item)
+      : [...savedCompareSymbolsRef.current, candidate];
+    persistCompareSymbols(nextSymbols);
+    if (replaceTarget) {
+      setCompareFunds((current) => current.filter((item) => item.symbol !== replaceTarget));
+      setCompareFailedSymbols((current) => current.filter((item) => item !== replaceTarget));
+    }
+    setCompareTicker('');
+    setReplaceTarget(null);
+    await loadCompareFund(candidate);
+    setCompareLoading(false);
+  };
+  const selectedFunds = [
+    {
+      symbol: symbol.toUpperCase(),
+      topHoldings: fund.topHoldings.flatMap((holding) =>
+        holding.weight == null ? [] : [{ ...holding, weight: holding.weight }]),
+      topHoldingsReportedCount: fund.topHoldingsReportedCount,
+      topHoldingsRetrievedAt: fund.topHoldingsRetrievedAt,
+      expenseRatio: fund.expenseRatio,
+      sectorWeights: fund.sectorWeights ?? [],
+      sectorWeightsRetrievedAt: fund.sectorWeightsRetrievedAt ?? null,
+    },
+    ...compareFunds,
+  ];
+  const primaryHistoryComparison = compareEtfHoldingSnapshots(currentEtfSnapshot, holdingSnapshots);
+  const overlaps = findReportedEtfHoldingsOverlap(selectedFunds);
+  const sectorComparison = getReportedEtfSectorComparison(selectedFunds);
+  const comparisonMetricFunds: { symbol: string; analysis: EtfAnalysisPayload }[] = [
+    { symbol: symbol.toUpperCase(), analysis: fund },
+    ...compareFunds.map(({ symbol: candidate, analysis }) => ({
+      symbol: candidate,
+      analysis,
+    })),
+  ];
+  const formatRegimeReturn = (
+    analysis: EtfAnalysisPayload,
+    regime: 'bull' | 'bear' | 'mixed',
+  ) => {
+    const period = analysis.marketRegime?.periods[regime];
+    if (!period || period.averageAnnualReturn == null || period.years <= 0) return 'Unavailable';
+    return `${formatEtfComparisonValue(period.averageAnnualReturn, 'percent')} · ${period.years} yr`;
+  };
+  const comparisonMetricRows: {
+    label: string;
+    value: (analysis: EtfAnalysisPayload) => string;
+  }[] = [
+    {
+      label: 'Expense ratio',
+      value: (analysis) => isValidEtfExpenseRatio(analysis.expenseRatio)
+        ? formatEtfComparisonValue(analysis.expenseRatio, 'percent')
+        : 'Unavailable',
+    },
+    {
+      label: 'Category average fee',
+      value: (analysis) => {
+        const peer = analysis.peerExpenseComparison;
+        if (!peer) return 'Unavailable';
+        const average = isValidEtfExpenseRatio(peer.categoryAverageExpenseRatio)
+          ? formatEtfComparisonValue(peer.categoryAverageExpenseRatio, 'percent')
+          : 'Unavailable';
+        return `${average} · ${peer.category}`;
+      },
+    },
+    {
+      label: 'Fee difference',
+      value: (analysis) => {
+        const peer = analysis.peerExpenseComparison;
+        const status = getEtfFeeComparisonStatus(
+          peer?.fundExpenseRatio,
+          peer?.categoryAverageExpenseRatio,
+          peer?.difference,
+        );
+        if (status === 'unavailable') return 'Unavailable';
+        const difference = formatEtfComparisonValue(peer?.difference, 'basis-points');
+        return status === 'above-average'
+          ? `${difference} · Above category average`
+          : difference;
+      },
+    },
+    {
+      label: 'Assets under management',
+      value: (analysis) => formatEtfComparisonValue(analysis.totalAssets, 'assets'),
+    },
+    {
+      label: 'Category average assets',
+      value: (analysis) => {
+        const peer = analysis.peerAssetSizeComparison;
+        if (!peer) return 'Unavailable';
+        return `${formatEtfComparisonValue(peer.categoryAverageTotalAssets, 'assets')} · ${peer.category}`;
+      },
+    },
+    {
+      label: '3-year beta',
+      value: (analysis) => formatEtfComparisonValue(analysis.beta3Year, 'number'),
+    },
+    {
+      label: '1-year annualized volatility',
+      value: (analysis) => formatEtfComparisonValue(analysis.annualizedVolatility, 'percent'),
+    },
+    {
+      label: '1-year maximum drawdown',
+      value: (analysis) => formatEtfComparisonValue(analysis.maxDrawdown, 'percent'),
+    },
+    {
+      label: 'Return / volatility ratio',
+      value: (analysis) => formatEtfComparisonValue(analysis.riskAdjustedReturn, 'number'),
+    },
+    {
+      label: '1-year annualized return',
+      value: (analysis) => formatEtfComparisonValue(analysis.annualizedReturn, 'percent'),
+    },
+    {
+      label: 'Verified benchmark return',
+      value: (analysis) => {
+        const tracking = analysis.trackingComparison;
+        if (!hasValidTrackingHistory(tracking) || !analysis.benchmark) return 'Unavailable';
+        const value = tracking.benchmarkAnnualizedReturn;
+        if (value == null) return 'Unavailable';
+        return `${formatEtfComparisonValue(value, 'percent')} · ${analysis.benchmark.symbol}`;
+      },
+    },
+    {
+      label: 'Tracking difference',
+      value: (analysis) => analysis.benchmark && hasValidTrackingHistory(analysis.trackingComparison)
+        ? formatEtfComparisonValue(analysis.trackingComparison.trackingDifference, 'percent')
+        : 'Unavailable',
+    },
+    {
+      label: 'Annualized tracking error',
+      value: (analysis) => analysis.benchmark && hasValidTrackingHistory(analysis.trackingComparison)
+        ? formatEtfComparisonValue(analysis.trackingComparison.trackingError, 'percent')
+        : 'Unavailable',
+    },
+    { label: 'Bull regime average', value: (analysis) => formatRegimeReturn(analysis, 'bull') },
+    { label: 'Bear regime average', value: (analysis) => formatRegimeReturn(analysis, 'bear') },
+    { label: 'Mixed regime average', value: (analysis) => formatRegimeReturn(analysis, 'mixed') },
+  ];
+  const comparisonHighlightMetrics: {
+    label: string;
+    value: (analysis: EtfAnalysisPayload) => number | null;
+    format: (value: number) => string;
+    hasMeaningfulGap: (minimum: number, maximum: number) => boolean;
+  }[] = [
+    {
+      label: 'Expense ratio',
+      value: (analysis) => isValidEtfExpenseRatio(analysis.expenseRatio) ? analysis.expenseRatio : null,
+      format: (value) => formatEtfComparisonValue(value, 'percent'),
+      hasMeaningfulGap: (minimum, maximum) => maximum - minimum >= 0.0001,
+    },
+    {
+      label: '1-year annualized return',
+      value: (analysis) => analysis.annualizedReturn,
+      format: (value) => formatEtfComparisonValue(value, 'percent'),
+      hasMeaningfulGap: (minimum, maximum) => maximum - minimum >= 0.01,
+    },
+    {
+      label: '1-year annualized volatility',
+      value: (analysis) => analysis.annualizedVolatility,
+      format: (value) => formatEtfComparisonValue(value, 'percent'),
+      hasMeaningfulGap: (minimum, maximum) => maximum - minimum >= 0.01,
+    },
+    {
+      label: '1-year maximum drawdown',
+      value: (analysis) => analysis.maxDrawdown,
+      format: (value) => formatEtfComparisonValue(value, 'percent'),
+      hasMeaningfulGap: (minimum, maximum) => maximum - minimum >= 0.01,
+    },
+    {
+      label: 'Distribution yield',
+      value: (analysis) => analysis.dividendYield,
+      format: (value) => formatEtfComparisonValue(value, 'percent'),
+      hasMeaningfulGap: (minimum, maximum) => maximum - minimum >= 0.01,
+    },
+    {
+      label: '3-year beta',
+      value: (analysis) => analysis.beta3Year,
+      format: (value) => formatEtfComparisonValue(value, 'number'),
+      hasMeaningfulGap: (minimum, maximum) => maximum - minimum >= 0.1,
+    },
+    {
+      label: 'Assets under management',
+      value: (analysis) => analysis.totalAssets,
+      format: (value) => formatEtfComparisonValue(value, 'assets'),
+      hasMeaningfulGap: (minimum, maximum) => minimum > 0 && maximum / minimum >= 1.25,
+    },
+  ];
+  const sharedHighlightMetricCount = comparisonHighlightMetrics.filter((metric) =>
+    comparisonMetricFunds.filter(({ analysis }) => {
+      const value = metric.value(analysis);
+      return value != null && Number.isFinite(value);
+    }).length >= 2,
+  ).length;
+  const comparisonHighlights = comparisonHighlightMetrics.flatMap((metric) => {
+    const values = comparisonMetricFunds.flatMap(({ symbol: fundSymbol, analysis }) => {
+      const value = metric.value(analysis);
+      return value != null && Number.isFinite(value) ? [{ symbol: fundSymbol, value }] : [];
+    });
+    if (values.length < 2) return [];
+    const minimum = values.reduce((current, candidate) => candidate.value < current.value ? candidate : current);
+    const maximum = values.reduce((current, candidate) => candidate.value > current.value ? candidate : current);
+    if (maximum.value === minimum.value || !metric.hasMeaningfulGap(minimum.value, maximum.value)) return [];
+    return [{
+      label: metric.label,
+      minimum,
+      maximum,
+      format: metric.format,
+    }];
+  }).slice(0, 3);
+  const pctValue = (value: number | null) => value == null ? 'Unavailable' : `${(value * 100).toFixed(2)}%`;
+  const sourceDate = (asOf: string) => new Date(asOf).toLocaleDateString();
+  const snapshotDateTime = (asOf: string) => {
+    const timestamp = Date.parse(asOf);
+    return Number.isFinite(timestamp) ? new Date(timestamp).toLocaleString() : 'date unavailable';
+  };
+  const shareOverlapSummary = async () => {
+    const message = formatReportedEtfHoldingsOverlapShare(
+      selectedFunds,
+      overlaps,
+      comparisonMetricFunds,
+    );
+    setShareStatus('');
+    setManualCopySummary(null);
+    const browserNavigator = Platform.OS === 'web' && typeof navigator !== 'undefined'
+      ? navigator
+      : undefined;
+    const result = await shareEtfOverlapSummary({
+      platform: Platform.OS === 'web' ? 'web' : 'native',
+      message,
+      webShare: typeof browserNavigator?.share === 'function'
+        ? (data) => browserNavigator.share(data)
+        : undefined,
+      clipboardWriteText: browserNavigator?.clipboard?.writeText
+        ? (text) => browserNavigator.clipboard.writeText(text)
+        : undefined,
+      nativeShare: async (data) => {
+        const shareResult = await Share.share(data);
+        return shareResult.action === Share.dismissedAction ? 'dismissed' : 'shared';
+      },
+    });
+    if (result === 'copied') setShareStatus('Summary copied to clipboard.');
+    else if (result === 'manual-copy') setManualCopySummary(message);
+    else if (result === 'unavailable') setShareStatus('Sharing is not available in this browser.');
+    else if (result === 'failed') {
+      setShareStatus('Could not share the ETF comparison summary. Please try again.');
+    }
+  };
+  return (
+    <>
+      <Modal
+        transparent
+        animationType="fade"
+        visible={manualCopySummary !== null}
+        onRequestClose={() => setManualCopySummary(null)}
+      >
+        <View style={{ flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,0.72)' }}>
+          <View style={{
+            maxHeight: '82%',
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+            borderWidth: 1,
+            borderRadius: 16,
+            padding: 18,
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 18 }}>
+                Copy comparison summary
+              </Text>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Close manual copy summary"
+                onPress={() => setManualCopySummary(null)}
+                hitSlop={10}
+              >
+                <Ionicons name="close" size={22} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            </View>
+            <Text style={{ color: colors.mutedForeground, fontSize: 13, lineHeight: 19, marginTop: 8 }}>
+              Sharing and clipboard access are blocked. Select the summary below and copy it manually.
+            </Text>
+            <ScrollView style={{ maxHeight: 360, marginTop: 14 }} nestedScrollEnabled>
+              <Text
+                selectable
+                testID="manual-copy-etf-comparison-summary"
+                style={{ color: colors.foreground, fontSize: 13, lineHeight: 19 }}
+              >
+                {manualCopySummary}
+              </Text>
+            </ScrollView>
+            <TouchableOpacity
+              accessibilityRole="button"
+              onPress={() => setManualCopySummary(null)}
+              style={{ alignSelf: 'flex-end', paddingHorizontal: 12, paddingVertical: 10, marginTop: 10 }}
+            >
+              <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold' }}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+      <View style={[recStyles.hero, {
+        backgroundColor: colors.card,
+        borderColor: profileScore.score == null ? colors.primary : etfScoreColor(profileScore.score),
+      }]}>
+        <View style={recStyles.topRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={[recStyles.actionLabel, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold' }]}>
+              ETF RESEARCH PROFILE
+            </Text>
+            <Text style={[recStyles.action, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+              {profileScore.score == null ? '—' : profileScore.score}
+              <Text style={{ fontSize: 15, color: colors.mutedForeground }}> / 100</Text>
+            </Text>
+          </View>
+          <View style={[recStyles.confidenceBadge, { borderColor: colors.border, borderWidth: 1 }]}>
+            <Text style={[recStyles.confidenceNum, { color: colors.primary, fontFamily: 'Inter_700Bold' }]}>
+              {profileScore.availableComponents}/5
+            </Text>
+            <Text style={[recStyles.confidenceLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+              factors rated
+            </Text>
+          </View>
+        </View>
+        {profileScore.score != null && (
+          <ScoreBar score={profileScore.score} color={etfScoreColor(profileScore.score)} />
+        )}
+        <Text style={[recStyles.horizon, { color: colors.mutedForeground, marginTop: 12, marginBottom: 0 }]}>
+          {fund.fundCategory ?? 'ETF'} · Rules-based profile, not a buy or sell recommendation.
+        </Text>
+      </View>
+      <View
+        testID="etf-comparison-switcher"
+        style={[cardStyles.card, { backgroundColor: colors.card, borderColor: colors.border, padding: 14 }]}
+      >
+        <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 14 }}>
+          ETF comparison
+        </Text>
+        <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 4 }}>
+          Viewing {symbol.toUpperCase()}. Choose a compared ETF to open its details; your lineup stays saved.
+        </Text>
+        <ScrollView
+          horizontal
+          nestedScrollEnabled
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 8, paddingTop: 11, paddingRight: 4 }}
+          accessibilityLabel="Selected ETF comparison lineup"
+        >
+          <View
+            accessibilityRole="text"
+            accessibilityLabel={`Current ETF ${symbol.toUpperCase()}`}
+            style={{
+              minHeight: 42,
+              justifyContent: 'center',
+              borderWidth: 1,
+              borderColor: colors.primary,
+              borderRadius: 10,
+              paddingHorizontal: 12,
+              backgroundColor: colors.accent,
+            }}
+          >
+            <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 12 }}>
+              {symbol.toUpperCase()} · CURRENT
+            </Text>
+          </View>
+          {savedCompareSymbols.map((candidate) => (
+            <View
+              key={`comparison-switch-${candidate}`}
+              style={{
+                minHeight: 42,
+                flexDirection: 'row',
+                alignItems: 'center',
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 10,
+                backgroundColor: colors.input,
+              }}
+            >
+              <Pressable
+                testID={`etf-comparison-switch-${candidate}`}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${candidate} ETF details`}
+                accessibilityState={{ disabled: focusSwitching }}
+                disabled={focusSwitching}
+                onPress={() => void switchComparisonFocus(candidate)}
+                style={{ minHeight: 42, justifyContent: 'center', paddingLeft: 12, paddingRight: 8 }}
+              >
+                <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>
+                  {candidate}
+                </Text>
+                <Text style={{ color: colors.mutedForeground, fontSize: 9 }}>
+                  {comparePendingSymbols.includes(candidate)
+                    ? 'Loading'
+                    : compareFailedSymbols.includes(candidate)
+                      ? 'Saved · retry'
+                      : 'Open details'}
+                </Text>
+              </Pressable>
+              <Pressable
+                testID={`etf-comparison-remove-${candidate}`}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${candidate} from comparison`}
+                disabled={focusSwitching}
+                onPress={() => removeCompareSymbol(candidate)}
+                style={{ minHeight: 42, minWidth: 36, alignItems: 'center', justifyContent: 'center', paddingRight: 7 }}
+              >
+                <Text style={{ color: colors.sellColor, fontSize: 18 }}>×</Text>
+              </Pressable>
+            </View>
+          ))}
+        </ScrollView>
+        <Text style={{ color: colors.mutedForeground, fontSize: 10, marginTop: 6 }}>
+          {savedCompareSymbols.length + 1} of 4 ETFs selected
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 9 }}>
+          <TextInput
+            testID="etf-comparison-ticker"
+            value={compareTicker}
+            onChangeText={setCompareTicker}
+            placeholder={replaceTarget ? `Replace ${replaceTarget} with…` : 'Add ETF ticker'}
+            placeholderTextColor={colors.mutedForeground}
+            autoCapitalize="characters"
+            accessibilityLabel={replaceTarget
+              ? `New ETF ticker replacing ${replaceTarget}`
+              : 'ETF ticker to add to comparison'}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              minHeight: 44,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 8,
+              paddingHorizontal: 10,
+              color: colors.foreground,
+              fontSize: 13,
+            }}
+          />
+          <TouchableOpacity
+            testID="etf-comparison-submit"
+            accessibilityRole="button"
+            accessibilityLabel={replaceTarget ? `Replace ${replaceTarget} ETF` : 'Add ETF to comparison'}
+            disabled={compareLoading || compareRestoreLoading}
+            onPress={() => void addCompareFund()}
+            style={{
+              minHeight: 44,
+              justifyContent: 'center',
+              paddingHorizontal: 12,
+              borderRadius: 8,
+              backgroundColor: colors.primary,
+              opacity: compareLoading || compareRestoreLoading ? 0.6 : 1,
+            }}
+          >
+            <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>
+              {compareRestoreLoading ? 'Restoring' : compareLoading ? 'Loading' : replaceTarget ? 'Replace' : 'Add'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        {!!replaceTarget && (
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={`Cancel replacing ${replaceTarget}`}
+            onPress={() => {
+              setReplaceTarget(null);
+              setCompareTicker('');
+              setCompareError('');
+            }}
+            style={{ alignSelf: 'flex-start', minHeight: 40, justifyContent: 'center', paddingHorizontal: 4 }}
+          >
+            <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Cancel replacement</Text>
+          </TouchableOpacity>
+        )}
+        {!!savedCompareSymbols.length && (
+          <ScrollView
+            horizontal
+            nestedScrollEnabled
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 7, paddingTop: 4, paddingRight: 4 }}
+            accessibilityLabel="Replace a selected ETF"
+          >
+            {savedCompareSymbols.map((candidate) => (
+              <Pressable
+                key={`replace-${candidate}`}
+                testID={`etf-comparison-replace-${candidate}`}
+                accessibilityRole="button"
+                accessibilityLabel={`Replace ${candidate} in comparison`}
+                accessibilityState={{ selected: replaceTarget === candidate }}
+                onPress={() => {
+                  setReplaceTarget(candidate);
+                  setCompareTicker('');
+                  setCompareError('');
+                }}
+                style={{
+                  minHeight: 38,
+                  justifyContent: 'center',
+                  paddingHorizontal: 10,
+                  borderWidth: 1,
+                  borderColor: replaceTarget === candidate ? colors.primary : colors.border,
+                  borderRadius: 18,
+                }}
+              >
+                <Text style={{ color: replaceTarget === candidate ? colors.primary : colors.mutedForeground, fontSize: 11 }}>
+                  Replace {candidate}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        )}
+        {compareRestoreLoading && (
+          <Text style={{ color: colors.mutedForeground, marginTop: 8 }}>Restoring saved ETF comparisons…</Text>
+        )}
+        {!!compareError && <Text style={{ color: colors.sellColor, marginTop: 8 }}>{compareError}</Text>}
+        {!!compareStorageError && <Text style={{ color: colors.sellColor, marginTop: 8 }}>{compareStorageError}</Text>}
+        {!!snapshotStorageError && <Text style={{ color: colors.sellColor, marginTop: 8 }}>{snapshotStorageError}</Text>}
+      </View>
+      <View style={[cardStyles.card, { backgroundColor: colors.card, borderColor: colors.border, padding: 16 }]}>
+        <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 14 }}>
+          At a glance
+        </Text>
+        <Text style={{ color: colors.mutedForeground, fontSize: 13, lineHeight: 19, marginTop: 6 }}>
+          {profileScore.score == null
+            ? 'A profile score is unavailable because none of the score components could be rated from current fund data.'
+            : profileScore.score >= 65
+              ? 'The available rules-based profile signals are broadly supportive.'
+              : profileScore.score <= 40
+                ? 'The available rules-based profile signals are limited; review the component coverage and evidence.'
+                : 'The available rules-based profile signals are mixed.'}
+          {' '}This is a summary of reported data, not a forecast or recommendation.
+        </Text>
+        <View style={{ borderTopWidth: 1, borderTopColor: colors.border, marginTop: 12, paddingTop: 12 }}>
+          <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 11, letterSpacing: 0.5, marginBottom: 8 }}>
+            AI-IDENTIFIED TAKEAWAYS
+          </Text>
+          {!!fund.strengths.length && (
+            <View style={{ marginBottom: fund.risks.length ? 10 : 0 }}>
+              <Text style={{ color: colors.buyColor, fontSize: 11, fontFamily: 'Inter_600SemiBold', marginBottom: 6 }}>STRENGTHS</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
+                {fund.strengths.map((item, index) => (
+                  <Text key={`overview-strength-${index}-${item}`} style={{ color: colors.buyColor, backgroundColor: colors.buyBg, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6, fontSize: 12 }}>
+                    {item}
+                  </Text>
+                ))}
+              </View>
+            </View>
+          )}
+          {!!fund.risks.length && (
+            <View>
+              <Text style={{ color: colors.sellColor, fontSize: 11, fontFamily: 'Inter_600SemiBold', marginBottom: 6 }}>RISKS TO REVIEW</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
+                {fund.risks.map((item, index) => (
+                  <Text key={`overview-risk-${index}-${item}`} style={{ color: colors.sellColor, backgroundColor: colors.sellBg, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6, fontSize: 12 }}>
+                    {item}
+                  </Text>
+                ))}
+              </View>
+            </View>
+          )}
+          {!fund.strengths.length && !fund.risks.length && (
+            <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>No AI takeaways are available.</Text>
+          )}
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 10 }}>
+            AI-generated observations are separate from the rules-based score and are not personalized advice.
+          </Text>
+        </View>
+      </View>
+      {!!compareFunds.length && (
+        <View
+          testID="etf-comparison-highlights"
+          style={[cardStyles.card, { backgroundColor: colors.card, borderColor: colors.border, padding: 16 }]}
+        >
+          <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 14 }}>
+            Key differences across compared ETFs
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 5 }}>
+            Notable gaps in shared reported metrics—not an overall ranking. Full details remain below.
+          </Text>
+          {comparisonHighlights.length ? comparisonHighlights.map((highlight) => (
+            <View
+              key={highlight.label}
+              style={{ borderTopWidth: 1, borderTopColor: colors.border, marginTop: 10, paddingTop: 9 }}
+            >
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, fontFamily: 'Inter_600SemiBold' }}>
+                {highlight.label}
+              </Text>
+              <Text style={{ color: colors.foreground, fontSize: 13, lineHeight: 19, marginTop: 3 }}>
+                {highlight.minimum.symbol} {highlight.format(highlight.minimum.value)}
+                {'  →  '}
+                {highlight.maximum.symbol} {highlight.format(highlight.maximum.value)}
+              </Text>
+            </View>
+          )) : (
+            <Text style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 17, marginTop: 10 }}>
+              {sharedHighlightMetricCount
+                ? 'No notable gaps were found in the metrics reported for both funds.'
+                : 'Not enough shared reported data to summarize differences.'}
+            </Text>
+          )}
+        </View>
+      )}
+      <SectionCard collapsible title="AI COMMENTARY" icon={<Ionicons name="sparkles-outline" size={16} color={colors.primary} />}>
+        <View style={{ padding: 16 }}>
+          <Text style={{ color: colors.foreground, fontSize: 14, lineHeight: 22 }}>
+            {fund.analysis || 'AI commentary is unavailable. Review the sourced fund data below.'}
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 14 }}>
+            AI commentary summarizes supplied fund data; it does not set the profile score or provide personalized advice or a buy/sell recommendation.
+          </Text>
+        </View>
+      </SectionCard>
+      <SectionCard collapsible title="SCORE DETAILS & METHODOLOGY" icon={<Ionicons name="speedometer-outline" size={16} color={colors.primary} />}>
+        <View style={{ padding: 16 }}>
+          <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 28 }}>
+            {profileScore.score == null ? 'Not scored' : `${profileScore.score}/100`}
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 4 }}>
+            {profileScore.availableComponents} of 5 components available. Missing components are excluded and remaining weights are rescaled.
+          </Text>
+          {profileScore.score != null && (
+            <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden', marginTop: 12, marginBottom: 6 }}>
+              <View style={{ height: '100%', width: `${profileScore.score}%`, backgroundColor: colors.primary }} />
+            </View>
+          )}
+          {profileScore.components.map((component) => (
+            <View key={component.id} style={{ marginTop: 8 }}>
+              <MetricRow
+                label={`${component.label} · ${component.weight}%`}
+                value={component.score == null ? 'Unavailable' : `${Math.round(component.score)}/100`}
+              />
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16 }}>{component.detail}</Text>
+              {component.peerContext ? (
+                <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
+                  Category: {component.peerContext.category} · category-average assets: {formatEtfProfileAssets(component.peerContext.categoryAverageTotalAssets)} · {component.peerContext.sampleContext}
+                  {component.peerContext.sampleSize == null ? '' : ` · ${component.peerContext.sampleSize} funds`}
+                  {'\n'}Source: {component.peerContext.source} · retrieved {sourceDate(component.peerContext.asOf)}
+                </Text>
+              ) : null}
+            </View>
+          ))}
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 12 }}>
+            Rules-based, not AI-generated or personalized advice. Fees and net assets use provider category averages when reported; tracking requires a verified benchmark. Sector diversification uses reported sector weights, while volume and risk use fixed bands when peer data is unavailable. Compare funds with similar strategies.
+          </Text>
+        </View>
+      </SectionCard>
+      <SectionCard collapsible title="FUND PROFILE & RISK" icon={<Ionicons name="layers-outline" size={16} color={colors.primary} />}>
+        <View style={{ padding: 16 }}>
+          <MetricRow label="Category" value={fund.fundCategory ?? 'Unavailable'} />
+          <MetricRow label="Fund family" value={fund.fundFamily ?? 'Unavailable'} />
+          <MetricRow label="Expense ratio" value={pctValue(fund.expenseRatio)} />
+          <MetricRow label="Distribution yield" value={pctValue(fund.dividendYield)} />
+          <MetricRow label="Assets under management" value={formatEtfProfileAssets(fund.totalAssets)} />
+          <MetricRow label="3-year beta" value={fmtNum(fund.beta3Year)} />
+          <MetricRow label="Average daily volume" value={fund.averageVolume == null ? 'Unavailable' : fmtVol(fund.averageVolume)} />
+          <MetricRow label="1-year annualized return" value={pctValue(fund.annualizedReturn)} />
+          <MetricRow label="1-year annualized volatility" value={pctValue(fund.annualizedVolatility)} />
+          <MetricRow label="1-year maximum drawdown" value={pctValue(fund.maxDrawdown)} />
+          <MetricRow label="Return / volatility ratio" value={fmtNum(fund.riskAdjustedReturn)} />
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 6 }}>
+            Expense ratio is the annual operating cost as a share of fund assets. Distribution yield can change and is not guaranteed.
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 6 }}>
+            Beta estimates sensitivity to broad-market moves; volatility describes price variation; maximum drawdown is the largest peak-to-trough decline in the period.
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 6 }}>
+            Risk-adjusted ratio uses a 0% risk-free proxy and is not a Sharpe ratio.
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 6 }}>
+            Fund data source: {fund.provider} · retrieved {sourceDate(fund.asOf)}
+          </Text>
+        </View>
+      </SectionCard>
+      {fund.benchmark && hasValidTrackingHistory(fund.trackingComparison) && (
+      <SectionCard collapsible title="BENCHMARK & TRACKING" icon={<Ionicons name="git-compare-outline" size={16} color={colors.primary} />}>
+        <View style={{ padding: 16 }}>
+          {fund.benchmark ? (
+            <>
+              <MetricRow label="Provider-identified benchmark" value={`${fund.benchmark.name} (${fund.benchmark.symbol})`} />
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 4 }}>
+                Source: {fund.benchmark.source} · retrieved {sourceDate(fund.benchmark.asOf)}
+              </Text>
+            </>
+          ) : (
+            <Text style={{ color: colors.mutedForeground }}>
+              Benchmark unavailable. The provider did not identify a benchmark for this fund.
+            </Text>
+          )}
+          {hasValidTrackingHistory(fund.trackingComparison) ? (
+            <>
+              <MetricRow label="Fund annualized return" value={pctValue(fund.trackingComparison.fundAnnualizedReturn)} />
+              <MetricRow label="Benchmark annualized return" value={pctValue(fund.trackingComparison.benchmarkAnnualizedReturn)} />
+              <MetricRow label="Tracking difference" value={pctValue(fund.trackingComparison.trackingDifference)} />
+              <MetricRow label="Annualized tracking error" value={pctValue(fund.trackingComparison.trackingError)} />
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 6 }}>
+                Adjusted monthly returns, {fund.trackingComparison.periodStart}–{fund.trackingComparison.periodEnd} · {fund.trackingComparison.monthlySamples} monthly samples.
+                {'\n'}Source: {fund.trackingComparison.source} · retrieved {sourceDate(fund.trackingComparison.asOf)}
+              </Text>
+            </>
+          ) : (
+            <Text style={{ color: colors.mutedForeground, marginTop: fund.benchmark ? 8 : 4 }}>
+              {fund.trackingComparison
+                ? 'Tracking history unavailable because its dates or monthly sample count are invalid or incomplete.'
+                : 'Tracking difference and error unavailable without a verified benchmark and enough shared history.'}
+            </Text>
+          )}
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 8 }}>
+            SPY is used only to group the separate broad-market regime history; it is not assumed to be this fund’s benchmark.
+          </Text>
+        </View>
+      </SectionCard>
+      )}
+      <SectionCard collapsible title="COSTS & CATEGORY CONTEXT" icon={<MaterialCommunityIcons name="scale-balance" size={16} color={colors.primary} />}>
+        <View style={{ padding: 16 }}>
+          {fund.peerExpenseComparison ? (
+            <>
+              <MetricRow label="Provider category" value={fund.peerExpenseComparison.category} />
+              <MetricRow
+                label="Fund expense ratio"
+                value={isValidEtfExpenseRatio(fund.peerExpenseComparison.fundExpenseRatio)
+                  ? pctValue(fund.peerExpenseComparison.fundExpenseRatio)
+                  : 'Unavailable'}
+              />
+              <MetricRow
+                label="Category average"
+                value={isValidEtfExpenseRatio(fund.peerExpenseComparison.categoryAverageExpenseRatio)
+                  ? pctValue(fund.peerExpenseComparison.categoryAverageExpenseRatio)
+                  : 'Unavailable'}
+              />
+              <MetricRow
+                label="Fund minus category average"
+                value={feeComparisonStatus === 'unavailable'
+                  ? 'Unavailable'
+                  : `${fund.peerExpenseComparison.difference! > 0 ? '+' : ''}${(fund.peerExpenseComparison.difference! * 10000).toFixed(1)} bps`}
+              />
+              {feeComparisonStatus === 'above-average' && (
+                <Text
+                  testID="etf-fee-above-category-average"
+                  style={{ color: colors.holdColor, fontSize: 12, lineHeight: 17, marginTop: 2, marginBottom: 5 }}
+                >
+                  This fund’s fee is above its category average.
+                </Text>
+              )}
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 6 }}>
+                {fund.peerExpenseComparison.sampleContext}
+                {fund.peerExpenseComparison.sampleSize == null ? '' : ` · ${fund.peerExpenseComparison.sampleSize} funds`}
+                {'\n'}Source: {fund.peerExpenseComparison.source} · retrieved {sourceDate(fund.peerExpenseComparison.asOf)}
+              </Text>
+            </>
+          ) : (
+            <Text style={{ color: colors.mutedForeground }}>
+              Category expense comparison unavailable. The provider did not report a category average.
+            </Text>
+          )}
+        </View>
+      </SectionCard>
+      <SectionCard collapsible title="HOLDINGS & DIVERSIFICATION" icon={<MaterialCommunityIcons name="briefcase-outline" size={16} color={colors.primary} />}>
+        <View style={{ padding: 16 }}>
+          {fund.topHoldings.length ? fund.topHoldings.map((holding) => (
+            <MetricRow key={holding.symbol} label={`${holding.name} (${holding.symbol})`} value={pctValue(holding.weight)} />
+          )) : <Text style={{ color: colors.mutedForeground }}>Holdings data unavailable.</Text>}
+          <MetricRow label="Provider-reported holdings positions" value={String(fund.topHoldingsReportedCount)} />
+          {fund.topHoldingsCombinedWeight != null && (
+            <MetricRow label="Combined weight of reported holdings" value={pctValue(fund.topHoldingsCombinedWeight)} />
+          )}
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 6 }}>
+            Provider snapshot retrieved {new Date(fund.topHoldingsRetrievedAt).toLocaleString()}; the provider does not supply a holdings report date here.
+          </Text>
+          {savedCompareSymbols.filter((candidate) =>
+            candidate !== symbol.toUpperCase()
+            && !compareFunds.some((fundEntry) => fundEntry.symbol === candidate)
+            && !comparePendingSymbols.includes(candidate),
+          ).map((candidate) => (
+            <View key={`saved-${candidate}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 }}>
+              <Text style={{ flex: 1, color: colors.mutedForeground }}>
+                {candidate} is saved{compareFailedSymbols.includes(candidate) ? ' but could not be verified right now.' : ' and awaiting ETF verification.'}
+              </Text>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel={`Retry ${candidate} ETF verification`}
+                onPress={() => void loadCompareFund(candidate)}
+              >
+                <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold' }}>Retry</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel={`Remove saved ${candidate} comparison`}
+                onPress={() => removeCompareSymbol(candidate)}
+              >
+                <Text style={{ color: colors.sellColor }}>Remove</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+          <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', marginTop: 18 }}>Changes between provider snapshots</Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 5 }}>
+            These dates are retrieval times, not holdings report dates. Changes compare only snapshots with the same number of fully reported positions.
+          </Text>
+          {primaryHistoryComparison ? (
+            <>
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 8 }}>
+                Retrieved {snapshotDateTime(primaryHistoryComparison.previousRetrievedAt)} → {snapshotDateTime(primaryHistoryComparison.currentRetrievedAt)} · {primaryHistoryComparison.reportedPositionCount} reported positions in each snapshot
+              </Text>
+              {primaryHistoryComparison.changes.length ? primaryHistoryComparison.changes.map((change) => {
+                const detail = change.change === 'added'
+                  ? `Newly reported · ${pctValue(change.currentWeight)}`
+                  : change.change === 'removed'
+                    ? `No longer reported · ${pctValue(change.previousWeight)}`
+                    : `${pctValue(change.previousWeight)} → ${pctValue(change.currentWeight)} (${((change.currentWeight! - change.previousWeight!) * 100).toFixed(2)} percentage points)`;
+                return (
+                  <View key={`${symbol}-${change.symbol}`} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginTop: 8 }}>
+                    <Text style={{ flex: 1, color: colors.mutedForeground }}>{change.name} ({change.symbol})</Text>
+                    <Text style={{ color: colors.foreground, textAlign: 'right' }}>{detail}</Text>
+                  </View>
+                );
+              }) : (
+                <Text style={{ color: colors.mutedForeground, marginTop: 8 }}>No changes among the reported positions.</Text>
+              )}
+            </>
+          ) : (
+            <Text style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 17, marginTop: 4 }}>
+              A dated comparison will appear after another complete snapshot with the same reported-position count.
+            </Text>
+          )}
+          {!!compareFunds.length && (
+            <>
+              {selectedFunds.map((fundEntry) => (
+                <Text key={`coverage-${fundEntry.symbol}`} style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 8 }}>
+                  {fundEntry.symbol}: {fundEntry.topHoldingsReportedCount} reported positions · retrieved {fundEntry.topHoldingsRetrievedAt ? new Date(fundEntry.topHoldingsRetrievedAt).toLocaleString() : 'date unavailable'}
+                </Text>
+              ))}
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', marginTop: 16 }}>Shared reported positions</Text>
+              {overlaps.length ? overlaps.map(({ symbol: holdingSymbol, positions }) => (
+                <Text key={holdingSymbol} style={{ color: colors.mutedForeground, marginTop: 8, lineHeight: 20 }}>
+                  {holdingSymbol}: {positions.map((position) => `${position.fundSymbol} ${position.name} (${(position.weight * 100).toFixed(2)}%)`).join(' · ')}
+                </Text>
+              )) : (
+                <Text style={{ color: colors.mutedForeground, marginTop: 8 }}>No shared positions among the reported holdings.</Text>
+              )}
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 8 }}>
+                Overlap compares only provider-reported positions, not complete portfolios.
+              </Text>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Share ETF comparison summary"
+                testID="share-etf-comparison-summary"
+                onPress={() => void shareOverlapSummary()}
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 14, paddingVertical: 11, borderRadius: 8, backgroundColor: colors.primary }}
+              >
+                <Ionicons name="share-outline" size={16} color={colors.primaryForeground} />
+                <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_600SemiBold' }}>Share comparison summary</Text>
+              </TouchableOpacity>
+              {!!shareStatus && (
+                <Text accessibilityLiveRegion="polite" style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 7 }}>
+                  {shareStatus}
+                </Text>
+              )}
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', marginTop: 18 }}>Provider-reported sector mix</Text>
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 5 }}>
+                Provider coverage only, not a complete portfolio reconstruction. Missing weights are not treated as zero.
+              </Text>
+              {sectorComparison.length ? sectorComparison.map(({ sector, funds: sectorFunds }) => (
+                <View key={sector} style={{ marginTop: 12 }}>
+                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold' }}>{sector}</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 4, marginTop: 4 }}>
+                    {sectorFunds.map(({ symbol: fundSymbol, weight }) => (
+                      <Text key={`${sector}-${fundSymbol}`} style={{ color: colors.mutedForeground, fontSize: 12 }}>
+                        {fundSymbol}: {weight == null ? 'Not reported' : pctValue(weight)}
+                      </Text>
+                    ))}
+                  </View>
+                </View>
+              )) : (
+                <Text style={{ color: colors.mutedForeground, marginTop: 8 }}>No sector weights were reported for these funds.</Text>
+              )}
+              {selectedFunds.map((fundEntry) => (
+                <Text key={`sector-coverage-${fundEntry.symbol}`} style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 8 }}>
+                  {fundEntry.symbol} sector data retrieved {fundEntry.sectorWeightsRetrievedAt ? new Date(fundEntry.sectorWeightsRetrievedAt).toLocaleString() : 'date unavailable'}
+                </Text>
+              ))}
+            </>
+          )}
+        </View>
+      </SectionCard>
+  {!!compareFunds.length && (
+    <SectionCard
+      collapsible
+      title="ETF COST, RISK & PERFORMANCE"
+      icon={<MaterialCommunityIcons name="scale-balance" size={16} color={colors.primary} />}
+    >
+      <View style={{ padding: 16 }}>
+        <Text style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 17, marginBottom: 12 }}>
+          Reported figures only. Unavailable data is not zero; compare funds with similar strategies.
+        </Text>
+        <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator>
+          <View style={{ minWidth: 150 + comparisonMetricFunds.length * 124 }}>
+            <View style={{
+              flexDirection: 'row',
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border,
+              paddingBottom: 8,
+            }}>
+              <Text style={{ width: 150, color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>
+                Metric
+              </Text>
+              {comparisonMetricFunds.map(({ symbol: fundSymbol }) => (
+                <Text
+                  key={`comparison-heading-${fundSymbol}`}
+                  style={{ width: 124, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 12 }}
+                  numberOfLines={1}
+                >
+                  {fundSymbol}
+                </Text>
+              ))}
+            </View>
+            {comparisonMetricRows.filter((row) => {
+              const isTrackingMetric = row.label === 'Verified benchmark return'
+                || row.label === 'Tracking difference'
+                || row.label === 'Annualized tracking error';
+              return !isTrackingMetric || comparisonMetricFunds.some(({ analysis }) =>
+                analysis.benchmark && hasValidTrackingHistory(analysis.trackingComparison));
+            }).map((row) => (
+              <View
+                key={row.label}
+                style={{
+                  flexDirection: 'row',
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border,
+                  paddingVertical: 9,
+                }}
+              >
+                <Text style={{ width: 150, color: colors.mutedForeground, fontSize: 11, lineHeight: 15, paddingRight: 8 }}>
+                  {row.label}
+                </Text>
+                {comparisonMetricFunds.map(({ symbol: fundSymbol, analysis: comparison }) => (
+                  <Text
+                    key={`${row.label}-${fundSymbol}`}
+                    style={{ width: 124, color: colors.foreground, fontSize: 11, lineHeight: 15, paddingRight: 10 }}
+                  >
+                    {row.value(comparison)}
+                  </Text>
+                ))}
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+        <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', marginTop: 20 }}>
+          Long-range historical scenarios
+        </Text>
+        <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 5 }}>
+          Illustrations, not forecasts. Each fund uses its own expense ratio and historical return assumption.
+        </Text>
+        {renderContributionControls('etf-comparison-contribution-input')}
+        {renderScenarioHorizonSelector()}
+        <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator style={{ marginTop: 10 }}>
+          <View style={{ flexDirection: 'row', gap: 10, paddingRight: 16 }}>
+            {comparisonMetricFunds.map(({ symbol: fundSymbol, analysis: comparison }) => {
+              const scenarioRows = ETF_SCENARIO_LABELS.map((label) => ({
+                label,
+                scenario: parseEtfScenarios(comparison.scenarios)
+                  .find((item) => item.label.toLowerCase() === label) ?? null,
+              }));
+              return (
+                <View
+                  key={`scenario-comparison-${fundSymbol}`}
+                  style={{
+                    width: 246,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: 10,
+                    padding: 12,
+                  }}
+                >
+                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', marginBottom: 8 }}>
+                    {fundSymbol}
+                  </Text>
+                  <MetricRow label="Expense ratio used" value={pctValue(comparison.expenseRatio)} />
+                  {scenarioRows.map(({ label, scenario }) => (
+                    <View
+                      key={`${fundSymbol}-${label}`}
+                      style={{ borderTopWidth: 1, borderTopColor: colors.border, marginTop: 10, paddingTop: 8 }}
+                    >
+                      <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', textTransform: 'uppercase' }}>
+                        {label} scenario
+                      </Text>
+                      <MetricRow
+                        label="Historical annual assumption"
+                        value={pctValue(scenario?.annualReturnAssumption ?? null)}
+                      />
+                      <MetricRow
+                        label={`No-fee total in ${selectedScenarioHorizon} years`}
+                        value={selectedProjection(scenario, selectedScenarioHorizon)?.noFeeValue == null
+                          ? 'Unavailable'
+                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.noFeeValue!)}
+                      />
+                      <MetricRow
+                        label={`After-fee total in ${selectedScenarioHorizon} years`}
+                        value={selectedProjection(scenario, selectedScenarioHorizon)?.afterFeeValue == null
+                          ? 'Unavailable'
+                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.afterFeeValue!)}
+                      />
+                      <MetricRow
+                        label="Starting investment"
+                        value={selectedProjection(scenario, selectedScenarioHorizon)?.startingInvestment == null
+                          ? 'Unavailable'
+                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.startingInvestment!)}
+                      />
+                      <MetricRow
+                        label="Total contributions"
+                        value={selectedProjection(scenario, selectedScenarioHorizon)?.totalContributions == null
+                          ? 'Unavailable'
+                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.totalContributions!)}
+                      />
+                      <MetricRow
+                        label={`No-fee projected growth in ${selectedScenarioHorizon} years`}
+                        value={selectedProjection(scenario, selectedScenarioHorizon)?.noFeeGrowth == null
+                          ? 'Unavailable'
+                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.noFeeGrowth!)}
+                      />
+                      <MetricRow
+                        label={`After-fee projected growth in ${selectedScenarioHorizon} years`}
+                        value={selectedProjection(scenario, selectedScenarioHorizon)?.afterFeeGrowth == null
+                          ? 'Unavailable'
+                          : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.afterFeeGrowth!)}
+                      />
+                      <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 14, marginTop: 4 }}>
+                        {scenario?.assumption ?? 'Unavailable: no reported historical scenario for this regime.'}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              );
+            })}
+          </View>
+        </ScrollView>
+        <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 8 }}>
+          Historical-regime illustrations only, not forecasts or guarantees. They assume a constant annual return applied across the selected schedule, with contributions deposited at the end of each {contributionCadence === 'weekly'
+            ? 'week'
+            : contributionCadence === 'monthly' ? 'month' : 'quarter'}; actual results may differ.
+        </Text>
+        {comparisonMetricFunds.map(({ symbol: fundSymbol, analysis: comparison }) => (
+          <View
+            key={`comparison-context-${fundSymbol}`}
+            style={{ borderTopWidth: 1, borderTopColor: colors.border, marginTop: 12, paddingTop: 10 }}
+          >
+            <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>
+              {fundSymbol} · {comparison.fundCategory ?? 'Category unavailable'}
+            </Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 4 }}>
+              Fund data: {comparison.provider} · retrieved {sourceDate(comparison.asOf)}.
+            </Text>
+            {comparison.peerExpenseComparison ? (
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
+                Fee baseline: {comparison.peerExpenseComparison.category} · {comparison.peerExpenseComparison.sampleContext}
+                {comparison.peerExpenseComparison.sampleSize == null ? '' : ` · ${comparison.peerExpenseComparison.sampleSize} funds`}
+                {'\n'}Source: {comparison.peerExpenseComparison.source} · retrieved {sourceDate(comparison.peerExpenseComparison.asOf)}
+              </Text>
+            ) : (
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
+                Fee category average unavailable.
+              </Text>
+            )}
+            {comparison.peerAssetSizeComparison ? (
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
+                Asset baseline: {comparison.peerAssetSizeComparison.category} · {comparison.peerAssetSizeComparison.sampleContext}
+                {comparison.peerAssetSizeComparison.sampleSize == null ? '' : ` · ${comparison.peerAssetSizeComparison.sampleSize} funds`}
+                {'\n'}Source: {comparison.peerAssetSizeComparison.source} · retrieved {sourceDate(comparison.peerAssetSizeComparison.asOf)}
+              </Text>
+            ) : (
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
+                Category average assets unavailable.
+              </Text>
+            )}
+            {comparison.benchmark ? (
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
+                Verified benchmark: {comparison.benchmark.name} ({comparison.benchmark.symbol}) · {comparison.benchmark.source} · retrieved {sourceDate(comparison.benchmark.asOf)}
+              </Text>
+            ) : null}
+            {comparison.benchmark && hasValidTrackingHistory(comparison.trackingComparison) ? (
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
+                Tracking history: {comparison.trackingComparison.periodStart}–{comparison.trackingComparison.periodEnd} · {comparison.trackingComparison.monthlySamples} monthly samples · {comparison.trackingComparison.source} · retrieved {sourceDate(comparison.trackingComparison.asOf)}
+              </Text>
+            ) : null}
+            {comparison.marketRegime ? (
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
+                Regime returns: {comparison.marketRegime.firstYear}–{comparison.marketRegime.lastYear}, grouped by {comparison.marketRegime.benchmarkSymbol}; each row shows its reported years. Historical comparison only.
+              </Text>
+            ) : (
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
+                Historical regime performance unavailable.
+              </Text>
+            )}
+          </View>
+        ))}
+        <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 12 }}>
+          Risk-adjusted return uses a 0% risk-free proxy and is not a Sharpe ratio. Reported categories, benchmarks, periods, and samples can differ; this comparison does not imply that fund strategies are interchangeable.
+        </Text>
+      </View>
+    </SectionCard>
+  )}
+      <SectionCard collapsible title="HISTORICAL PERFORMANCE" icon={<Ionicons name="trending-up" size={16} color={colors.primary} />}>
+        <View style={{ padding: 16 }}>
+          {fund.marketRegime ? (
+            <>
+              {['bull', 'bear', 'mixed'].map((key) => {
+                const period = fund.marketRegime?.periods[key];
+                const label = key === 'mixed' ? 'Sideways / mixed' : `${key[0]?.toUpperCase()}${key.slice(1)}`;
+                return <MetricRow key={key} label={`${label} (${period?.years ?? 0} years)`} value={pctValue(period?.averageAnnualReturn ?? null)} />;
+              })}
+              <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 8 }}>
+                {fund.marketRegime.firstYear}–{fund.marketRegime.lastYear}, grouped by {fund.marketRegime.benchmarkSymbol} calendar-year returns. Historical comparison only.
+              </Text>
+            </>
+          ) : <Text style={{ color: colors.mutedForeground }}>Historical regime data unavailable.</Text>}
+        </View>
+      </SectionCard>
+      <SectionCard collapsible title="ETF FEE DOLLAR IMPACT" icon={<MaterialCommunityIcons name="cash-minus" size={16} color={colors.primary} />}>
+        <View style={{ padding: 16 }}>
+          <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, marginBottom: 7 }}>
+            Investment amount (USD)
+          </Text>
+          <TextInput
+            testID="etf-fee-impact-amount"
+            accessibilityLabel="Investment amount in U.S. dollars"
+            keyboardType="decimal-pad"
+            value={feeInvestmentInput}
+            onChangeText={setFeeInvestmentInput}
+            placeholder="Enter an amount"
+            placeholderTextColor={colors.mutedForeground}
+            style={{
+              minHeight: 44,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 9,
+              paddingHorizontal: 12,
+              color: colors.foreground,
+              fontFamily: 'Inter_500Medium',
+              fontSize: 14,
+            }}
+          />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 9 }}>
+            {ETF_FEE_AMOUNT_PRESETS.map(({ amount, label }) => {
+              const selected = feeInvestmentAmount === amount;
+              return (
+                <Pressable
+                  key={amount}
+                  testID={`etf-fee-impact-amount-${amount}`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={`Set investment amount to ${label}`}
+                  onPress={() => setFeeInvestmentInput(String(amount))}
+                  style={{
+                    minHeight: 34,
+                    justifyContent: 'center',
+                    borderWidth: 1,
+                    borderColor: selected ? colors.primary : colors.border,
+                    borderRadius: 8,
+                    paddingHorizontal: 10,
+                    backgroundColor: selected ? colors.primary : 'transparent',
+                  }}
+                >
+                  <Text style={{
+                    color: selected ? colors.primaryForeground : colors.foreground,
+                    fontFamily: 'Inter_600SemiBold',
+                    fontSize: 11,
+                  }}>{label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, marginTop: 16 }}>
+            Holding period
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+            {ETF_SCENARIO_HORIZONS.map((years) => {
+              const selected = feeHoldingYears === years;
+              return (
+                <Pressable
+                  key={years}
+                  testID={`etf-fee-impact-horizon-${years}`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={`Set holding period to ${years} ${years === 1 ? 'year' : 'years'}`}
+                  onPress={() => setFeeHoldingYears(years)}
+                  style={{
+                    minWidth: 54,
+                    minHeight: 34,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderWidth: 1,
+                    borderColor: selected ? colors.primary : colors.border,
+                    borderRadius: 8,
+                    paddingHorizontal: 9,
+                    backgroundColor: selected ? colors.primary : 'transparent',
+                  }}
+                >
+                  <Text style={{
+                    color: selected ? colors.primaryForeground : colors.foreground,
+                    fontFamily: 'Inter_600SemiBold',
+                    fontSize: 11,
+                  }}>{years} yr</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <MetricRow
+            label="Provider-reported expense ratio"
+            value={validExpenseRatio ? pctValue(fund.expenseRatio) : 'Unavailable'}
+          />
+          <MetricRow
+            label={`Estimated fees over ${feeHoldingYears} years`}
+            value={feeEstimate === null ? 'Unavailable' : fmtPrice(feeEstimate)}
+          />
+          {feeEstimate === null && (
+            <Text testID="etf-fee-impact-unavailable" style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 17, marginTop: 5 }}>
+              {!validExpenseRatio
+                ? 'Fee estimate unavailable because this fund has no valid provider-reported expense ratio.'
+                : 'Enter an investment amount greater than $0 to estimate fees.'}
+            </Text>
+          )}
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 12 }}>
+            Fee-only illustration: assumes the balance stays equal to your starting amount for the full period, with no investment returns or added contributions. It multiplies that balance by the provider-reported annual expense ratio and holding period. Actual fees vary as fund assets change; this estimate is separate from the return scenarios and excludes trading costs and taxes.
+          </Text>
+        </View>
+      </SectionCard>
+      <SectionCard collapsible title="LONG-RANGE SCENARIOS" icon={<MaterialCommunityIcons name="chart-timeline-variant" size={16} color={colors.primary} />}>
+        <View style={{ padding: 16 }}>
+          <MetricRow label="Annual expense ratio used" value={pctValue(fund.expenseRatio)} />
+          {renderContributionControls('etf-scenario-contribution-input')}
+          {renderScenarioHorizonSelector()}
+          {comparisonMetricFunds.length > 1 && (
+            <View testID="etf-long-range-comparison" style={{ marginTop: 16 }}>
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold' }}>
+                Side-by-side · {selectedScenarioHorizon} years
+              </Text>
+              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 15, marginTop: 4 }}>
+                Each fund starts with $100. Values include the same contribution schedule and reported fees.
+              </Text>
+              <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator style={{ marginTop: 10 }}>
+                <View>
+                  <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 7 }}>
+                    <Text style={{ width: 76, color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>ETF</Text>
+                    {ETF_SCENARIO_LABELS.map((label) => (
+                      <Text key={`scenario-heading-${label}`} style={{ width: 88, color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 11, textTransform: 'capitalize' }}>
+                        {label}
+                      </Text>
+                    ))}
+                  </View>
+                  {comparisonMetricFunds.map(({ symbol: fundSymbol, analysis }) => {
+                    const fundScenarios = parseEtfScenarios(analysis.scenarios);
+                    return (
+                      <View key={`scenario-quick-compare-${fundSymbol}`} style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: 9 }}>
+                        <Text style={{ width: 76, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 11 }} numberOfLines={1}>
+                          {fundSymbol}
+                        </Text>
+                        {ETF_SCENARIO_LABELS.map((label) => {
+                          const scenario = fundScenarios.find((item) => item.label.toLowerCase() === label) ?? null;
+                          const projection = selectedProjection(scenario, selectedScenarioHorizon);
+                          return (
+                            <Text key={`${fundSymbol}-${label}`} style={{ width: 88, color: colors.foreground, fontSize: 11 }}>
+                              {projection?.afterFeeValue == null ? '—' : fmtPrice(projection.afterFeeValue)}
+                            </Text>
+                          );
+                        })}
+                      </View>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+              <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 14, marginTop: 5 }}>
+                After-fee ending values for bear, base, and bull historical scenarios. Add up to three ETFs in the comparison lineup above.
+              </Text>
+            </View>
+          )}
+          {scenarios.length ? scenarios.map((scenario) => (
+            <View key={scenario.label} style={{ marginBottom: 12 }}>
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', textTransform: 'uppercase' }}>{scenario.label}</Text>
+              <MetricRow label="No-fee annual return" value={pctValue(scenario.noFeeAnnualReturnAssumption)} />
+              <MetricRow label="After-fee annual return" value={pctValue(scenario.annualReturnAssumption)} />
+              <MetricRow
+                label={`No-fee value in ${selectedScenarioHorizon} years`}
+                value={selectedProjection(scenario, selectedScenarioHorizon)?.noFeeValue == null
+                  ? 'Unavailable'
+                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.noFeeValue!)}
+              />
+              <MetricRow
+                label={`After-fee value in ${selectedScenarioHorizon} years`}
+                value={selectedProjection(scenario, selectedScenarioHorizon)?.afterFeeValue == null
+                  ? 'Unavailable'
+                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.afterFeeValue!)}
+              />
+              <MetricRow
+                label="Starting investment"
+                value={selectedProjection(scenario, selectedScenarioHorizon)?.startingInvestment == null
+                  ? 'Unavailable'
+                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.startingInvestment!)}
+              />
+              <MetricRow
+                label="Total contributions"
+                value={selectedProjection(scenario, selectedScenarioHorizon)?.totalContributions == null
+                  ? 'Unavailable'
+                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.totalContributions!)}
+              />
+              <MetricRow
+                label={`No-fee projected growth in ${selectedScenarioHorizon} years`}
+                value={selectedProjection(scenario, selectedScenarioHorizon)?.noFeeGrowth == null
+                  ? 'Unavailable'
+                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.noFeeGrowth!)}
+              />
+              <MetricRow
+                label={`After-fee projected growth in ${selectedScenarioHorizon} years`}
+                value={selectedProjection(scenario, selectedScenarioHorizon)?.afterFeeGrowth == null
+                  ? 'Unavailable'
+                  : fmtPrice(selectedProjection(scenario, selectedScenarioHorizon)!.afterFeeGrowth!)}
+              />
+              <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{scenario.assumption}</Text>
+            </View>
+          )) : (
+            <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+              Long-range scenario data unavailable.
+            </Text>
+          )}
+          <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Historical-regime illustrations only, not forecasts or guarantees. Totals start with a $100 investment plus the contribution per deposit entered above. The selected {contributionCadence} schedule is deposited at the end of each {contributionCadence === 'weekly'
+            ? 'week'
+            : contributionCadence === 'monthly' ? 'month' : 'quarter'}, using the historical annual return assumption; actual results may differ.</Text>
+        </View>
+      </SectionCard>
+    </>
+  );
+}
+
 export default function AnalysisScreen() {
   const { symbol } = useLocalSearchParams<{ symbol: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const colors = useColors();
   const { isActive, neonGucciActive, brew } = useAmericanMode();
+  const { awardAchievement } = useAchievements();
   const { width: screenWidth } = useWindowDimensions();
   const { apiFetch } = useApi();
-  const { mutate, data, isPending, error } = useAnalyzeStock<Error>();
+  const { mutate, data: response, isPending, error } = useAnalyzeStock<Error>();
   const watchlist = useWatchlist();
   const {
     pushToken,
@@ -271,6 +2324,10 @@ export default function AnalysisScreen() {
   const activeAlert = symbol ? watchlist.activeAlertFor(symbol) : null;
   const [alertVisible, setAlertVisible] = useState(false);
   const [helpTopic, setHelpTopic] = useState<HelpTopic | null>(null);
+
+  useEffect(() => {
+    if (symbol) void awardAchievement('first-analysis');
+  }, [awardAchievement, symbol]);
 
   const toggleWatchlist = useCallback(async () => {
     if (!symbol) return;
@@ -380,6 +2437,17 @@ export default function AnalysisScreen() {
     if (symbol) mutate({ data: { symbol } });
   }, [symbol]);
 
+  useEffect(() => {
+    if (!response || !symbol || response.symbol.toUpperCase() !== symbol.toUpperCase()) return;
+
+    void AsyncStorage.getItem(APP_REVIEW_STORAGE_KEY)
+      .then((raw) => {
+        const next = recordSuccessfulAnalysis(parseAppReviewState(raw), Date.now());
+        return AsyncStorage.setItem(APP_REVIEW_STORAGE_KEY, JSON.stringify(next));
+      })
+      .catch(() => {});
+  }, [response, symbol]);
+
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
   const botPad = Platform.OS === 'web' ? 34 : insets.bottom;
 
@@ -402,7 +2470,7 @@ export default function AnalysisScreen() {
   };
 
   // ─── Header ──────────────────────────────────────────────────────────────
-  const renderHeader = (analysis?: StockAnalysis) => {
+  const renderHeader = (analysis?: Pick<StockAnalysis, 'companyName' | 'currentPrice' | 'priceChange' | 'priceChangePercent'>) => {
     const change = analysis?.priceChange ?? 0;
     const changePct = analysis?.priceChangePercent ?? 0;
     const positive = change >= 0;
@@ -493,8 +2561,18 @@ export default function AnalysisScreen() {
   }
 
   // ─── Error ────────────────────────────────────────────────────────────────
-  if (error || !data) {
-    const errMsg = (error as any)?.response?.data?.message ?? error?.message ?? 'Could not load analysis.';
+  if (error || !response) {
+    const errorData = (error as any)?.response?.data as {
+      error?: string;
+      message?: string;
+      reason?: string;
+      lastUsableDate?: string | null;
+    } | undefined;
+    const commodityHistoryUnavailable = errorData?.error === 'COMMODITY_HISTORY_UNAVAILABLE';
+    const errMsg = (commodityHistoryUnavailable ? errorData?.reason : undefined)
+      ?? errorData?.message
+      ?? error?.message
+      ?? 'Could not load analysis.';
     return (
       <AmericanSteelBackground>
         <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
@@ -502,11 +2580,17 @@ export default function AnalysisScreen() {
         <View style={styles.centered}>
           <Ionicons name="alert-circle-outline" size={48} color={colors.sellColor} />
           <Text style={[styles.errorTitle, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
-            Analysis Failed
+            {commodityHistoryUnavailable ? 'Score Unavailable' : 'Analysis Failed'}
           </Text>
           <Text style={[styles.errorMsg, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
             {errMsg}
           </Text>
+          {commodityHistoryUnavailable && (
+            <Text style={[styles.errorMsg, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+              Last usable data date: {errorData?.lastUsableDate ?? 'None available'}
+              {'\n'}No score is shown until the history is reliable.
+            </Text>
+          )}
           <TouchableOpacity
             style={[styles.retryBtn, { backgroundColor: colors.muted, borderColor: colors.border, borderWidth: 1 }]}
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); mutate({ data: { symbol: symbol! } }); }}
@@ -523,6 +2607,48 @@ export default function AnalysisScreen() {
   }
 
   // ─── Results ──────────────────────────────────────────────────────────────
+  const result = response as unknown as {
+    assetType?: string;
+    etfAnalysis?: EtfAnalysisPayload;
+    commodityAnalysis?: CommodityAnalysisPayload;
+  } & Pick<StockAnalysis, 'symbol' | 'companyName' | 'exchange' | 'currency' | 'currentPrice' | 'priceChange' | 'priceChangePercent' | 'volume' | 'marketCap' | 'week52High' | 'week52Low'>;
+  if (result.assetType === 'commodity' && result.commodityAnalysis) {
+    return (
+      <AmericanSteelBackground>
+        <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
+          {renderHeader(result)}
+          <ScrollView
+            style={{ flex: 1, minHeight: 0 }}
+            contentContainerStyle={[styles.scroll, { paddingBottom: botPad + 24 }]}
+            showsVerticalScrollIndicator={false}
+          >
+            <CommodityAnalysisSections analysis={result.commodityAnalysis} />
+          </ScrollView>
+        </View>
+      </AmericanSteelBackground>
+    );
+  }
+  if (result.assetType === 'etf' && result.etfAnalysis) {
+    return (
+      <AmericanSteelBackground>
+        <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
+          {renderHeader(response as StockAnalysis)}
+          <ScrollView
+            style={{ flex: 1, minHeight: 0 }}
+            contentContainerStyle={[styles.scroll, { paddingBottom: botPad + 24 }]}
+            showsVerticalScrollIndicator={false}
+          >
+          <EtfAnalysisSections
+            fund={result.etfAnalysis}
+            colors={colors}
+            symbol={result.symbol}
+          />
+          </ScrollView>
+        </View>
+      </AmericanSteelBackground>
+    );
+  }
+  const data = response as StockAnalysis;
   const { technical, fundamental, behavioral, recommendation } = data;
   const action = recommendation.action;
   const guide = helpTopic ? METRIC_GUIDES[helpTopic] : null;
@@ -951,7 +3077,7 @@ const divStyle = { height: 1, marginVertical: 4 };
 const discStyle = { textAlign: 'center' as const, fontSize: 11, paddingHorizontal: 20, marginTop: 8 };
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
+  screen: { flex: 1, minHeight: 0 },
   scroll: { padding: 14 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 },
   alertAction: {

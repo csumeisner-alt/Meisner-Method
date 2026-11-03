@@ -9,4 +9,8 @@
 export interface AnalysisError {
   error: string;
   message: string;
+  /** Why a supported commodity has no score because its dated price history is stale or unreliable. */
+  reason?: string;
+  /** Latest valid daily observation date, when one was available. */
+  lastUsableDate?: Date | null;
 }

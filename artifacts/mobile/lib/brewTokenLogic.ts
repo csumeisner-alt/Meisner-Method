@@ -7,7 +7,7 @@
 export const BREW_TOKEN_QUOTE_THRESHOLD = 22;
 export const INITIAL_BREW_TOKENS = 5;
 export const BREW_TOKEN_WIN_PROBABILITY = 0.55;
-export const QUICK_REVIVE_WIN_PROBABILITY = 0.62;
+export const QUICK_REVIVE_WIN_PROBABILITY = 0.70;
 export const MAX_REMEMBERED_QUOTE_VIEWS = 32;
 export const BREW_BANK_KEY_PRICE = 5;
 export const BREW_BANK_ACCESS_DURATION_MS = 12 * 60 * 60 * 1000;
@@ -16,14 +16,14 @@ export const QUICK_REVIVE_BOTTLE_PRICE = 2;
 export const DAIQUIRI_WIN_PROBABILITY = 0.45;
 export const DAIQUIRI_LOSS_PROBABILITY = 1 - DAIQUIRI_WIN_PROBABILITY;
 export const DAIQUIRI_PAYOUT_MULTIPLIER = 2;
-export const DAIQUIRI_UNLOCK_PRICE = 100;
+export const DAIQUIRI_UNLOCK_PRICE = 40;
 export const DAIQUIRI_BOTTLE_PRICE = 8;
-export const STAMIN_UP_UNLOCK_PRICE = 500;
-export const STAMIN_UP_BOTTLE_PRICE = 16;
-export const SMART_PRO_UNLOCK_PRICE = 100;
+export const STAMIN_UP_UNLOCK_PRICE = 50;
+export const STAMIN_UP_BOTTLE_PRICE = 6;
+export const SMART_PRO_UNLOCK_PRICE = 40;
 export const SMART_PRO_BOTTLE_PRICE = 3;
 export const SMART_PRO_SALE_DURATION_MS = 90_000;
-export const NEON_GUCCI_UNLOCK_COST = 10_000;
+export const NEON_GUCCI_UNLOCK_COST = 1_000;
 export const NEON_GUCCI_PHRASE_PACK_PRICE = 10;
 
 export type BrewBottlePreviewKind = 'quickRevive' | 'daiquiri' | 'staminUp' | 'smartPro';
@@ -98,7 +98,7 @@ export function getBrewBottlePreview(kind: BrewBottlePreviewKind): BrewBottlePre
         bottlePrice: QUICK_REVIVE_BOTTLE_PRICE,
         winProbability: QUICK_REVIVE_WIN_PROBABILITY,
         lossProbability: 1 - QUICK_REVIVE_WIN_PROBABILITY,
-        description: 'Break one into the machine before a toss to raise your next win chance by 7 points, from 55% to 62%.',
+        description: 'Break one into the machine before a toss to raise your next win chance by 15 points, from 55% to 70%.',
         conversionCopy: null,
       };
     case 'daiquiri':
@@ -285,6 +285,23 @@ export function canEnterBrewBank(
   return !isWeekday(day) || hasBrewBankAccess(expiresAt, now);
 }
 
+export type BrewBankEntryStatus =
+  | 'weekend-open'
+  | 'weekday-closed'
+  | 'key-available'
+  | 'access-active';
+
+export function getBrewBankEntryStatus(
+  day: number,
+  keyCount: number,
+  expiresAt: number | null | undefined,
+  now: number,
+): BrewBankEntryStatus {
+  if (!isWeekday(day)) return 'weekend-open';
+  if (hasBrewBankAccess(expiresAt, now)) return 'access-active';
+  return keyCount > 0 ? 'key-available' : 'weekday-closed';
+}
+
 export function formatBrewBankAccessRemaining(
   expiresAt: number | null | undefined,
   now: number,
@@ -294,6 +311,26 @@ export function formatBrewBankAccessRemaining(
   const hours = Math.floor(remainingMinutes / 60);
   const minutes = remainingMinutes % 60;
   return `${hours}h ${String(minutes).padStart(2, '0')}m remaining`;
+}
+
+export function getNextBrewBankFreeOpening(now: number): number {
+  const opening = new Date(now);
+  const daysUntilSaturday = (6 - opening.getDay() + 7) % 7 || 7;
+  opening.setDate(opening.getDate() + daysUntilSaturday);
+  opening.setHours(0, 0, 0, 0);
+  return opening.getTime();
+}
+
+export function formatBrewBankFreeOpeningCountdown(now: number): string {
+  const remainingMinutes = Math.max(0, Math.ceil((getNextBrewBankFreeOpening(now) - now) / 60_000));
+  const days = Math.floor(remainingMinutes / (24 * 60));
+  const hours = Math.floor((remainingMinutes % (24 * 60)) / 60);
+  const minutes = remainingMinutes % 60;
+  const parts = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0 || days > 0) parts.push(`${hours}h`);
+  if (minutes > 0 || parts.length === 0) parts.push(`${minutes}m`);
+  return parts.join(' ');
 }
 
 export function canActivateBrewBankKey(

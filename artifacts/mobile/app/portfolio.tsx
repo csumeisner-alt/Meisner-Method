@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as StoreReview from 'expo-store-review';
+import { useFocusEffect } from 'expo-router';
 import {
   View,
   Text,
@@ -34,9 +36,10 @@ import { BottomTabBar } from '@/components/BottomTabBar';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { PortfolioFilterBar } from '@/components/PortfolioFilterBar';
 import { GRADE_ORDER, GradeHistoryChart, type GradeHistoryPoint } from '@/components/GradeHistoryChart';
-import { TrainingTapeModal } from '@/components/TrainingTapeModal';
+import { prefetchTrainingTapeSnapshot, TrainingTapeModal } from '@/components/TrainingTapeModal';
 import { BrewTokenBank } from '@/components/BrewTokenBank';
 import { BrewTokenUnlockCelebration } from '@/components/BrewTokenUnlockCelebration';
+import { useAchievements } from '@/contexts/AchievementsContext';
 import {
   availableToSell,
   computeDividendTotal,
@@ -50,8 +53,27 @@ import {
   type Quote,
   type Trade,
 } from '@/lib/portfolioMath';
+import {
+  fetchPortfolioQuotes,
+  parsePortfolioQuoteCache,
+  startPortfolioTradesLoad,
+  updatePortfolioQuoteCache,
+  type PortfolioQuoteCache,
+  type PortfolioQuoteBatch,
+} from '@/lib/portfolioLoading';
 import { getTradeGradeFeedback } from '@/lib/tradeGradeFeedback';
-import { canEnterBrewBank, formatBrewBankAccessRemaining, hasBrewBankAccess } from '@/lib/brewTokenLogic';
+import {
+  canEnterBrewBank,
+  formatBrewBankFreeOpeningCountdown,
+  formatBrewBankAccessRemaining,
+  getNextBrewBankFreeOpening,
+  getBrewBankEntryStatus,
+} from '@/lib/brewTokenLogic';
+import {
+  APP_REVIEW_STORAGE_KEY,
+  parseAppReviewState,
+  requestAppReviewIfEligible,
+} from '@/lib/appReview';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -79,6 +101,7 @@ const BREW_BANK_ENABLED = true;
 // ─── Local cache ──────────────────────────────────────────────────────────────
 
 const TRADES_CACHE_KEY = '@stocksense/portfolio_trades_v1';
+const QUOTES_CACHE_KEY = '@stocksense/portfolio_quotes_v1';
 const GRADE_HISTORY_HINT_KEY = '@stocksense/grade_history_hint_shown_v2';
 
 async function readTradesCache(): Promise<Trade[]> {
@@ -91,6 +114,18 @@ async function readTradesCache(): Promise<Trade[]> {
 
 async function writeTradesCache(trades: Trade[]) {
   try { await AsyncStorage.setItem(TRADES_CACHE_KEY, JSON.stringify(trades)); } catch { /* non-fatal */ }
+}
+
+async function readPortfolioQuoteCache(): Promise<PortfolioQuoteCache> {
+  try {
+    return parsePortfolioQuoteCache(await AsyncStorage.getItem(QUOTES_CACHE_KEY));
+  } catch {
+    return {};
+  }
+}
+
+async function writePortfolioQuoteCache(cache: PortfolioQuoteCache) {
+  try { await AsyncStorage.setItem(QUOTES_CACHE_KEY, JSON.stringify(cache)); } catch { /* non-fatal */ }
 }
 
 async function clearTradesCache() {
@@ -922,58 +957,92 @@ const gradeHintStyles = StyleSheet.create({
 // ─── Compact Position Row ─────────────────────────────────────────────────────
 
 function PositionRow({
-  position, onSell, onBuyMore, colors,
+  position, onSell, onBuyMore, quoteUnavailable, quoteRetrying, quoteRetryDisabled, onRetryQuote, colors,
 }: {
-  position: Position; onSell: () => void; onBuyMore: () => void; colors: any;
+  position: Position;
+  onSell: () => void;
+  onBuyMore: () => void;
+  quoteUnavailable: boolean;
+  quoteRetrying: boolean;
+  quoteRetryDisabled: boolean;
+  onRetryQuote: () => void;
+  colors: any;
 }) {
   const isLong = position.netShares > 0;
   const pnl = position.unrealizedPnL;
   const pnlColor = pnl > 0 ? colors.buyColor : pnl < 0 ? colors.sellColor : colors.mutedForeground;
 
   return (
-    <View style={[rowStyles.row, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      <View style={rowStyles.leftCol}>
-        <Text style={[rowStyles.sym, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>{position.symbol}</Text>
-        <View style={[rowStyles.badge, {
-          backgroundColor: isLong ? colors.buyBg : colors.sellBg,
-          borderColor: isLong ? colors.buyColor : colors.sellColor,
-        }]}>
-          <Text style={[rowStyles.badgeTxt, { color: isLong ? colors.buyColor : colors.sellColor, fontFamily: 'Inter_700Bold' }]}>
-            {isLong ? 'LONG' : 'SHORT'}
+    <View style={rowStyles.positionWrap}>
+      <View style={[rowStyles.row, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={rowStyles.leftCol}>
+          <Text style={[rowStyles.sym, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>{position.symbol}</Text>
+          <View style={[rowStyles.badge, {
+            backgroundColor: isLong ? colors.buyBg : colors.sellBg,
+            borderColor: isLong ? colors.buyColor : colors.sellColor,
+          }]}>
+            <Text style={[rowStyles.badgeTxt, { color: isLong ? colors.buyColor : colors.sellColor, fontFamily: 'Inter_700Bold' }]}>
+              {isLong ? 'LONG' : 'SHORT'}
+            </Text>
+          </View>
+        </View>
+        <View style={rowStyles.midCol}>
+          <Text style={[rowStyles.midTop, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
+            {fmtNum(Math.abs(position.netShares), 2)} sh
+          </Text>
+          <Text style={[rowStyles.midBot, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+            avg {fmtCurrency(position.avgCost)}
           </Text>
         </View>
+        <View style={rowStyles.pnlCol}>
+          <Text style={[rowStyles.pnlTop, { color: position.currentPrice != null ? pnlColor : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+            {position.currentPrice != null ? `${pnl >= 0 ? '+' : ''}${fmtCurrency(pnl)}` : '—'}
+          </Text>
+          <Text style={[rowStyles.pnlBot, { color: position.currentPrice != null ? pnlColor : colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+            {position.currentPrice != null && position.pctChange != null ? fmtPct(position.pctChange) : '—'}
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={[rowStyles.actionBtn, { borderColor: isLong ? colors.sellColor : colors.buyColor }]}
+          onPress={isLong ? onSell : onBuyMore}
+          activeOpacity={0.7}
+        >
+          <Text style={[rowStyles.actionTxt, { color: isLong ? colors.sellColor : colors.buyColor, fontFamily: 'Inter_700Bold' }]}>
+            {isLong ? 'SELL' : 'CLOSE'}
+          </Text>
+        </TouchableOpacity>
       </View>
-      <View style={rowStyles.midCol}>
-        <Text style={[rowStyles.midTop, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
-          {fmtNum(Math.abs(position.netShares), 2)} sh
-        </Text>
-        <Text style={[rowStyles.midBot, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-          avg {fmtCurrency(position.avgCost)}
-        </Text>
-      </View>
-      <View style={rowStyles.pnlCol}>
-        <Text style={[rowStyles.pnlTop, { color: position.currentPrice != null ? pnlColor : colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
-          {position.currentPrice != null ? `${pnl >= 0 ? '+' : ''}${fmtCurrency(pnl)}` : '—'}
-        </Text>
-        <Text style={[rowStyles.pnlBot, { color: position.currentPrice != null ? pnlColor : colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-          {position.currentPrice != null && position.pctChange != null ? fmtPct(position.pctChange) : '—'}
-        </Text>
-      </View>
-      <TouchableOpacity
-        style={[rowStyles.actionBtn, { borderColor: isLong ? colors.sellColor : colors.buyColor }]}
-        onPress={isLong ? onSell : onBuyMore}
-        activeOpacity={0.7}
-      >
-        <Text style={[rowStyles.actionTxt, { color: isLong ? colors.sellColor : colors.buyColor, fontFamily: 'Inter_700Bold' }]}>
-          {isLong ? 'SELL' : 'CLOSE'}
-        </Text>
-      </TouchableOpacity>
+      {quoteUnavailable && (
+        <View style={[rowStyles.quoteNotice, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Feather name="alert-circle" size={12} color={colors.mutedForeground} />
+          <Text style={[rowStyles.quoteNoticeText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+            {position.currentPrice != null
+              ? 'Latest quote unavailable · showing last known price'
+              : 'Latest quote unavailable'}
+          </Text>
+          <TouchableOpacity
+            onPress={onRetryQuote}
+            disabled={quoteRetrying || quoteRetryDisabled}
+            accessibilityRole="button"
+            accessibilityLabel={`Retry price refresh for ${position.symbol}`}
+            accessibilityState={{ disabled: quoteRetrying || quoteRetryDisabled, busy: quoteRetrying }}
+            testID={`portfolio-quote-retry-${position.symbol}`}
+            activeOpacity={0.7}
+            style={[rowStyles.quoteRetry, (quoteRetrying || quoteRetryDisabled) && { opacity: 0.5 }]}
+          >
+            {quoteRetrying
+              ? <ActivityIndicator size="small" color={colors.primary} />
+              : <Text style={[rowStyles.quoteRetryText, { color: colors.primary, fontFamily: 'Inter_700Bold' }]}>RETRY</Text>}
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 }
 
 const rowStyles = StyleSheet.create({
-  row: { borderRadius: 10, borderWidth: 1, marginBottom: 6, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, gap: 6 },
+  positionWrap: { marginBottom: 6 },
+  row: { borderRadius: 10, borderWidth: 1, marginBottom: 0, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, gap: 6 },
   leftCol: { width: 68, gap: 2 },
   sym: { fontSize: 18 },
   badge: { borderWidth: 1, borderRadius: 3, paddingHorizontal: 5, paddingVertical: 1, alignSelf: 'flex-start' },
@@ -986,6 +1055,10 @@ const rowStyles = StyleSheet.create({
   pnlBot: { fontSize: 13 },
   actionBtn: { borderWidth: 1, borderRadius: 5, paddingHorizontal: 10, paddingVertical: 6, minWidth: 52, alignItems: 'center' },
   actionTxt: { fontSize: 13, letterSpacing: 0.5 },
+  quoteNotice: { minHeight: 32, borderWidth: 1, borderTopWidth: 0, borderBottomLeftRadius: 8, borderBottomRightRadius: 8, paddingLeft: 10, paddingRight: 6, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  quoteNoticeText: { flex: 1, fontSize: 10, lineHeight: 14 },
+  quoteRetry: { minWidth: 48, minHeight: 32, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  quoteRetryText: { fontSize: 10, letterSpacing: 0.4 },
 });
 
 // ─── Trade History Card ────────────────────────────────────────────────────────
@@ -1036,13 +1109,23 @@ function TradeCard({
         </View>
 
         <View style={tcStyles.topRight}>
-          <TouchableOpacity onPress={onEdit} style={tcStyles.iconBtn} activeOpacity={0.7}>
-            <Feather name="edit-2" size={13} color={colors.mutedForeground} />
+          <TouchableOpacity
+            onPress={onEdit}
+            style={tcStyles.iconBtn}
+            hitSlop={{ top: 11, bottom: 11, left: 4, right: 4 }}
+            activeOpacity={0.7}
+          >
+            <Feather name="edit-2" size={18} color={colors.mutedForeground} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={onDelete} style={tcStyles.iconBtn} activeOpacity={0.7}>
-            <Feather name="trash-2" size={13} color={colors.sellColor} />
+          <TouchableOpacity
+            onPress={onDelete}
+            style={tcStyles.iconBtn}
+            hitSlop={{ top: 11, bottom: 11, left: 4, right: 4 }}
+            activeOpacity={0.7}
+          >
+            <Feather name="trash-2" size={18} color={colors.sellColor} />
           </TouchableOpacity>
-          <Feather name={expanded ? 'chevron-up' : 'chevron-down'} size={13} color={colors.mutedForeground} />
+          <Feather name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={colors.mutedForeground} />
         </View>
       </TouchableOpacity>
 
@@ -1256,7 +1339,7 @@ const tcStyles = StyleSheet.create({
   card: { borderRadius: 12, borderWidth: 1, marginBottom: 10, overflow: 'hidden' },
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, paddingBottom: 10 },
   topLeft: { flexDirection: 'row', alignItems: 'center', gap: 7, flex: 1, flexWrap: 'wrap' },
-  topRight: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  topRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   symbol: { fontSize: 18 },
   typeBadge: { borderWidth: 1, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
   typeBadgeTxt: { fontSize: 11, letterSpacing: 0.5 },
@@ -1275,7 +1358,7 @@ const tcStyles = StyleSheet.create({
     gap: 5, paddingVertical: 5, borderTopWidth: 1,
   },
   tapHintTxt: { fontSize: 10, letterSpacing: 1, fontFamily: 'Inter_500Medium' },
-  iconBtn: { padding: 4 },
+  iconBtn: { width: 21, height: 21, alignItems: 'center', justifyContent: 'center' },
   divider: { height: 1, marginHorizontal: 12 },
   metrics: { flexDirection: 'row', padding: 12, gap: 10, alignItems: 'center' },
   metricCol: { flex: 1, gap: 10 },
@@ -1750,8 +1833,10 @@ function GradeHistoryModal({
   const chartWidth = Math.max(width - 48, 280);
   const chartHeight = Math.max(Math.min(height * 0.58, 560), 360);
   const topPad = Platform.OS === 'web' ? 16 : insets.top;
+  const { awardAchievement } = useAchievements();
   const [trainingTapeVisible, setTrainingTapeVisible] = useState(false);
   const [brewBankVisible, setBrewBankVisible] = useState(false);
+  const [bankClosedInfoVisible, setBankClosedInfoVisible] = useState(false);
   const [bankEntryBusy, setBankEntryBusy] = useState(false);
   const [brewCelebrationVisible, setBrewCelebrationVisible] = useState(false);
   const [headerHintVisible, setHeaderHintVisible] = useState(false);
@@ -1804,9 +1889,26 @@ function GradeHistoryModal({
     setNeonGucciPhrasesActive,
     clearJustUnlocked,
   } = useAmericanMode().brew;
-  const isWeekend = [0, 6].includes(new Date().getDay());
-  const hasActiveBankAccess = hasBrewBankAccess(bankAccessExpiresAt, countdownNow);
+  const bankEntryStatus = getBrewBankEntryStatus(
+    new Date(countdownNow).getDay(),
+    bankKeys,
+    bankAccessExpiresAt,
+    countdownNow,
+  );
   const bankAccessRemaining = formatBrewBankAccessRemaining(bankAccessExpiresAt, countdownNow);
+  const nextBankFreeOpening = new Date(getNextBrewBankFreeOpening(countdownNow));
+  const nextBankFreeOpeningLocal = nextBankFreeOpening.toLocaleString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  const bankFreeOpeningCountdown = formatBrewBankFreeOpeningCountdown(countdownNow);
+
+  useEffect(() => {
+    if (visible) prefetchTrainingTapeSnapshot();
+  }, [visible]);
 
   useEffect(() => {
     if (!visible) return;
@@ -1822,9 +1924,20 @@ function GradeHistoryModal({
     };
   }, [visible]);
 
-  const handleQuoteViewed = useCallback((quoteViewId: string) => {
-    return incrementQuoteViewed(quoteViewId);
-  }, [incrementQuoteViewed]);
+  const handleQuoteViewed = useCallback(async (quoteViewId: string) => {
+    // Award locally as soon as a quote is shown. Brew progress can fail in a
+    // signed-out preview, but that must not suppress a cosmetic achievement.
+    void awardAchievement('first-quote');
+    try {
+      const update = await incrementQuoteViewed(quoteViewId);
+      if (update.quotesViewed >= 10) void awardAchievement('quote-10');
+      if (update.quotesViewed >= 25) void awardAchievement('quote-25');
+      return update;
+    } catch (error) {
+      console.warn('[achievements] Could not record Training Tape progress:', error);
+      return { earnedToken: false, halfway: false, quotesViewed, firstQuoteView: false };
+    }
+  }, [awardAchievement, incrementQuoteViewed, quotesViewed]);
 
   useEffect(() => {
     if (!justUnlocked) return;
@@ -1842,12 +1955,13 @@ function GradeHistoryModal({
 
     const day = new Date(countdownNow).getDay();
     if (canEnterBrewBank(day, bankAccessExpiresAt, countdownNow)) {
+      setBankClosedInfoVisible(false);
       setBrewBankVisible(true);
       return;
     }
 
-    if (isWeekend || bankKeys <= 0) {
-      setTrainingTapeVisible(true);
+    if (bankKeys <= 0) {
+      setBankClosedInfoVisible(true);
       return;
     }
 
@@ -1911,10 +2025,13 @@ function GradeHistoryModal({
             <View style={gradeModalStyles.headerCopy}>
               <Pressable
                 {...headerGestureResponder.panHandlers}
-                onPress={showHeaderHint}
+                onPress={Platform.OS === 'web' ? handleHeaderLongPress : showHeaderHint}
                 onLongPress={handleHeaderLongPress}
                 delayLongPress={800}
+                accessibilityRole="button"
                 accessibilityLabel="Trade grade history"
+                accessibilityHint={Platform.OS === 'web' ? 'Opens the training tape.' : 'Press and hold to open the training tape.'}
+                testID="grade-history-tape-trigger"
               >
                 <Text style={[gradeModalStyles.title, { color: colors.heading, fontFamily: 'Inter_700Bold' }]}>
                   TRADE GRADE HISTORY
@@ -1923,6 +2040,20 @@ function GradeHistoryModal({
               <Text style={[gradeModalStyles.subtitle, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
                 Completed trades · tap a dot for details
               </Text>
+              {Platform.OS === 'web' && (
+                <Pressable
+                  testID="open-training-tape"
+                  onPress={handleHeaderLongPress}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open Training Tape"
+                  style={[gradeModalStyles.tapeShortcut, { borderColor: colors.goldMuted, backgroundColor: colors.steelShadow }]}
+                >
+                  <Feather name="radio" size={12} color={colors.gold} />
+                  <Text style={[gradeModalStyles.tapeShortcutText, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
+                    OPEN TRAINING TAPE
+                  </Text>
+                </Pressable>
+              )}
               {headerHintVisible && !brewBankUnlocked && (
                 <View
                   pointerEvents="none"
@@ -1942,13 +2073,20 @@ function GradeHistoryModal({
             contentContainerStyle={[gradeModalStyles.content, { paddingBottom: Math.max(insets.bottom, 18) + 20 }]}
             showsVerticalScrollIndicator={false}
           >
-            {BREW_BANK_ENABLED && brewBankUnlocked && (isWeekend || bankKeys > 0 || hasActiveBankAccess) && (
+            {BREW_BANK_ENABLED && brewBankUnlocked && (
               <Pressable
                 onPress={() => { void handleOpenBank(); }}
                 disabled={bankEntryBusy}
                 style={[gradeModalStyles.bankShortcut, { backgroundColor: colors.card, borderColor: colors.goldMuted }]}
                 accessibilityRole="button"
-                accessibilityLabel="Open Central Bank"
+                accessibilityLabel={
+                  bankEntryStatus === 'weekday-closed'
+                    ? 'Central Bank closed on weekdays. Tap for access information'
+                    : bankEntryStatus === 'key-available'
+                      ? 'Enter Central Bank using one key for twelve hours'
+                      : 'Open Central Bank'
+                }
+                accessibilityHint={bankEntryStatus === 'weekday-closed' ? 'Explains weekend hours and weekday key access' : undefined}
                 testID="central-bank-shortcut"
               >
                 <View style={[gradeModalStyles.bankShortcutIcon, { backgroundColor: colors.steelShadow }]}>
@@ -1958,18 +2096,53 @@ function GradeHistoryModal({
                   <Text style={[gradeModalStyles.bankShortcutTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
                     CENTRAL BANK
                   </Text>
-                  <Text style={[gradeModalStyles.bankShortcutStatus, { color: hasActiveBankAccess || isWeekend ? colors.gold : colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
-                    {hasActiveBankAccess && bankAccessExpiresAt && bankAccessRemaining
+                  <Text style={[gradeModalStyles.bankShortcutStatus, { color: bankEntryStatus !== 'weekday-closed' ? colors.gold : colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
+                    {bankEntryStatus === 'access-active' && bankAccessExpiresAt && bankAccessRemaining
                       ? `ACCESS ACTIVE · ${bankAccessRemaining.toUpperCase()} · OPEN UNTIL ${new Date(bankAccessExpiresAt).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' }).toUpperCase()}`
-                      : isWeekend
+                      : bankEntryStatus === 'weekend-open'
                         ? 'OPEN THIS WEEKEND · NO KEY NEEDED'
-                        : bankKeys > 0
-                          ? 'WEEKDAY ENTRY · REDEEM KEY TO ENTER'
-                          : 'WEEKDAY ACCESS · USE A BANK KEY'}
+                        : bankEntryStatus === 'key-available'
+                          ? 'KEY READY · TAP TO ENTER FOR 12 HOURS'
+                          : 'CLOSED WEEKDAYS · TAP FOR ACCESS INFO'}
                   </Text>
                 </View>
                 <Feather name="chevron-right" size={17} color={colors.mutedForeground} />
               </Pressable>
+            )}
+            {bankClosedInfoVisible && bankEntryStatus === 'weekday-closed' && (
+              <View
+                style={[gradeModalStyles.bankClosedInfo, { backgroundColor: colors.steelShadow, borderColor: colors.goldMuted }]}
+                testID="central-bank-closed-info"
+                accessibilityLiveRegion="polite"
+              >
+                <Feather name="info" size={17} color={colors.gold} />
+                <View style={gradeModalStyles.bankClosedInfoCopy}>
+                  <Text style={[gradeModalStyles.bankClosedInfoTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
+                    CLOSED ON WEEKDAYS
+                  </Text>
+                  <Text style={[gradeModalStyles.bankClosedInfoText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                    The Bank is open free on weekends. For weekday access, buy a key in the Bank Shop for 5 Brew Tokens; each key grants 12 hours. You can shop on a weekend or during active access.
+                  </Text>
+                  <Text
+                    style={[gradeModalStyles.bankClosedInfoText, { color: colors.gold, fontFamily: 'Inter_600SemiBold' }]}
+                    accessibilityLiveRegion="polite"
+                    accessibilityLabel={`Free weekend entry returns in ${bankFreeOpeningCountdown}, at ${nextBankFreeOpeningLocal} local time`}
+                    testID="central-bank-next-free-opening"
+                  >
+                    Free entry returns in {bankFreeOpeningCountdown} · {nextBankFreeOpeningLocal} local time
+                  </Text>
+                  <Pressable
+                    onPress={() => setBankClosedInfoVisible(false)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Dismiss Central Bank access information"
+                    style={gradeModalStyles.bankClosedInfoDismiss}
+                  >
+                    <Text style={[gradeModalStyles.bankClosedInfoDismissText, { color: colors.gold, fontFamily: 'Inter_700Bold' }]}>
+                      GOT IT
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
             )}
             <View style={[gradeModalStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={gradeModalStyles.chartHeading}>
@@ -1983,8 +2156,10 @@ function GradeHistoryModal({
           <TrainingTapeModal
             visible={trainingTapeVisible}
             colors={colors}
+            soundEnabled={soundEnabled}
             onClose={() => setTrainingTapeVisible(false)}
             onQuoteViewed={BREW_BANK_ENABLED ? handleQuoteViewed : undefined}
+            isBankUnlocked={brewBankUnlocked}
           />
           {BREW_BANK_ENABLED && (
             <>
@@ -2058,6 +2233,8 @@ const gradeModalStyles = StyleSheet.create({
   headerCopy: { flex: 1 },
   title: { fontSize: 16, letterSpacing: 1.1 },
   subtitle: { fontSize: 11, marginTop: 3 },
+  tapeShortcut: { alignSelf: 'flex-start', minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 7, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, marginTop: 8 },
+  tapeShortcutText: { fontSize: 9, letterSpacing: 0.7 },
   headerHint: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 5, borderWidth: 1, borderRadius: 5, paddingHorizontal: 7, paddingVertical: 4, marginTop: 7 },
   headerHintText: { fontSize: 8, letterSpacing: 0.75 },
   scroll: { flex: 1 },
@@ -2071,6 +2248,12 @@ const gradeModalStyles = StyleSheet.create({
   bankShortcutCopy: { flex: 1, gap: 3 },
   bankShortcutTitle: { fontSize: 11, letterSpacing: 1 },
   bankShortcutStatus: { fontSize: 10, letterSpacing: 0.2 },
+  bankClosedInfo: { flexDirection: 'row', alignItems: 'flex-start', borderWidth: 1, borderRadius: 10, padding: 12, marginTop: -2, marginBottom: 12, gap: 10 },
+  bankClosedInfoCopy: { flex: 1, gap: 7 },
+  bankClosedInfoTitle: { fontSize: 11, letterSpacing: 0.7 },
+  bankClosedInfoText: { fontSize: 12, lineHeight: 18 },
+  bankClosedInfoDismiss: { alignSelf: 'flex-start', paddingVertical: 4, paddingRight: 4 },
+  bankClosedInfoDismissText: { fontSize: 10, letterSpacing: 0.6 },
 });
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
@@ -2078,9 +2261,14 @@ const gradeModalStyles = StyleSheet.create({
 export default function PortfolioScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { awardAchievement } = useAchievements();
 
   const [trades, setTrades] = useState<Trade[]>([]);
+  const [loadingTrades, setLoadingTrades] = useState(true);
+  const [tradesLoadError, setTradesLoadError] = useState(false);
   const [quotes, setQuotes] = useState<Record<string, Quote | null>>({});
+  const [unavailableQuoteSymbols, setUnavailableQuoteSymbols] = useState<string[]>([]);
+  const [retryingQuoteSymbols, setRetryingQuoteSymbols] = useState<string[]>([]);
   const [loadingQuotes, setLoadingQuotes] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -2101,31 +2289,77 @@ export default function PortfolioScreen() {
   const [gradeHistoryHintVisible, setGradeHistoryHintVisible] = useState(false);
   const { apiFetch } = useApi();
   const tradesRef = useRef<Trade[]>([]);
+  const tradeLoadCancelRef = useRef<(() => void) | null>(null);
+  const quoteRequestIdRef = useRef(0);
+  const quotesRef = useRef<Record<string, Quote | null>>({});
+  const quoteCacheRef = useRef<PortfolioQuoteCache>({});
+  const quoteCacheLoadedRef = useRef(false);
+  const quoteCacheWriteRef = useRef<Promise<void>>(Promise.resolve());
   const feedbackEventRef = useRef<string | null>(null);
   const gradeHistoryHintShownRef = useRef(false);
+  const reviewPromptCheckInFlightRef = useRef(false);
 
   const topPad = Platform.OS === 'web' ? 16 : insets.top;
 
-  // Seed from local cache immediately so trades are visible before the API responds,
-  // and survive offline/signed-out launches.
-  useEffect(() => {
-    let cancelled = false;
-    readTradesCache().then(cached => {
-      if (!cancelled && cached.length > 0) {
-        setTrades(cached);
-        tradesRef.current = cached;
+  useFocusEffect(useCallback(() => {
+    if (Platform.OS === 'web' || reviewPromptCheckInFlightRef.current) return;
+
+    let isFocused = true;
+    reviewPromptCheckInFlightRef.current = true;
+    void (async () => {
+      try {
+        const state = parseAppReviewState(await AsyncStorage.getItem(APP_REVIEW_STORAGE_KEY));
+        await requestAppReviewIfEligible(state, Date.now(), {
+          isAvailable: () => StoreReview.isAvailableAsync(),
+          canContinue: () => isFocused,
+          persistAttempt: (next) => AsyncStorage.setItem(APP_REVIEW_STORAGE_KEY, JSON.stringify(next)),
+          requestReview: () => StoreReview.requestReview(),
+        });
+      } catch {
+        // The store prompt is best-effort; it must never block the portfolio.
+      } finally {
+        reviewPromptCheckInFlightRef.current = false;
       }
-    });
-    apiFetch<Trade[]>('/api/user/trades')
-      .then(data => {
-        if (cancelled) return;
-        setTrades(data);
-        tradesRef.current = data;
-        void writeTradesCache(data);
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
+    })();
+
+    return () => {
+      isFocused = false;
+    };
+  }, []));
+
+  const loadTrades = useCallback(() => {
+    tradeLoadCancelRef.current?.();
+    setLoadingTrades(true);
+    setTradesLoadError(false);
+    tradeLoadCancelRef.current = startPortfolioTradesLoad(
+      readTradesCache,
+      () => apiFetch<Trade[]>('/api/user/trades'),
+      (event) => {
+        if (event.source === 'server-error') {
+          setLoadingTrades(false);
+          setTradesLoadError(true);
+          return;
+        }
+        if (event.source === 'cache' && event.trades.length === 0) return;
+
+        setTrades(event.trades);
+        tradesRef.current = event.trades;
+        setLoadingTrades(false);
+        if (event.source === 'server') {
+          setTradesLoadError(false);
+          void writeTradesCache(event.trades);
+        }
+      },
+    );
   }, [apiFetch]);
+
+  useEffect(() => {
+    loadTrades();
+    return () => {
+      tradeLoadCancelRef.current?.();
+      quoteRequestIdRef.current += 1;
+    };
+  }, [loadTrades]);
 
   const saveTrades = useCallback(async (next: Trade[]) => {
     const prev = tradesRef.current;
@@ -2144,24 +2378,102 @@ export default function PortfolioScreen() {
     ]);
   }, [apiFetch]);
 
-  const fetchAllQuotes = useCallback(async (tradeList: Trade[]) => {
-    const symbols = [...new Set(tradeList.map(t => t.symbol))];
-    if (!symbols.length) return;
+  const fetchAllQuotes = useCallback(async (symbols: string[]) => {
+    const requestId = ++quoteRequestIdRef.current;
+    if (!symbols.length) {
+      quotesRef.current = {};
+      setQuotes({});
+      setUnavailableQuoteSymbols([]);
+      setLoadingQuotes(false);
+      return;
+    }
     setLoadingQuotes(true);
-    const results = await Promise.all(symbols.map(sym => fetchQuote(sym).catch(() => null)));
-    const map: Record<string, Quote | null> = {};
-    symbols.forEach((sym, i) => { map[sym] = results[i] ?? null; });
-    setQuotes(map);
-    setLoadingQuotes(false);
-  }, []);
+    if (!quoteCacheLoadedRef.current) {
+      const savedQuotes = await readPortfolioQuoteCache();
+      if (requestId !== quoteRequestIdRef.current) return;
+      quoteCacheRef.current = savedQuotes;
+      quoteCacheLoadedRef.current = true;
+    }
 
-  useEffect(() => { if (trades.length) fetchAllQuotes(trades); }, [trades.length]);
+    const cachedQuotes: Record<string, Quote> = {};
+    for (const symbol of symbols) {
+      const saved = quoteCacheRef.current[symbol];
+      if (saved && !quotesRef.current[symbol]) {
+        cachedQuotes[symbol] = saved.quote;
+      }
+    }
+    if (Object.keys(cachedQuotes).length > 0) {
+      const nextQuotes = { ...quotesRef.current, ...cachedQuotes };
+      quotesRef.current = nextQuotes;
+      setQuotes(nextQuotes);
+    }
 
-  const onRefresh = async () => { setRefreshing(true); await fetchAllQuotes(trades); setRefreshing(false); };
+    await fetchPortfolioQuotes(
+      symbols,
+      async (batchSymbols) => apiFetch<PortfolioQuoteBatch>('/api/stocks/quotes', {
+        method: 'POST',
+        body: JSON.stringify({ symbols: batchSymbols }),
+      }),
+      (symbol, quote) => {
+        if (requestId !== quoteRequestIdRef.current) return;
+        const updatedAt = new Date().toISOString();
+        const nextQuotes = { ...quotesRef.current, [symbol]: quote };
+        const nextCache = updatePortfolioQuoteCache(quoteCacheRef.current, symbol, quote, updatedAt);
+        quotesRef.current = nextQuotes;
+        quoteCacheRef.current = nextCache;
+        setQuotes(nextQuotes);
+        quoteCacheWriteRef.current = quoteCacheWriteRef.current.then(
+          () => writePortfolioQuoteCache(nextCache),
+        );
+      },
+      (unavailableSymbols) => {
+        if (requestId !== quoteRequestIdRef.current) return;
+        setUnavailableQuoteSymbols(previous => [
+          ...previous.filter(symbol => !symbols.includes(symbol)),
+          ...unavailableSymbols,
+        ]);
+      },
+    );
+    await quoteCacheWriteRef.current;
+    if (requestId === quoteRequestIdRef.current) setLoadingQuotes(false);
+  }, [apiFetch]);
+
+  const retryQuote = useCallback(async (symbol: string) => {
+    if (loadingQuotes) return;
+    setRetryingQuoteSymbols(previous => previous.includes(symbol) ? previous : [...previous, symbol]);
+    try {
+      await fetchAllQuotes([symbol]);
+    } finally {
+      setRetryingQuoteSymbols(previous => previous.filter(item => item !== symbol));
+    }
+  }, [fetchAllQuotes, loadingQuotes]);
+
+  const quoteSymbols = useMemo(
+    () => [...new Set(trades.map(trade => trade.symbol))],
+    [trades],
+  );
+  const quoteSymbolsKey = quoteSymbols.slice().sort().join('\u0000');
+  useEffect(() => {
+    if (quoteSymbols.length) void fetchAllQuotes(quoteSymbols);
+    else {
+      setQuotes({});
+      setLoadingQuotes(false);
+    }
+  }, [fetchAllQuotes, quoteSymbolsKey]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchAllQuotes(quoteSymbols);
+    setRefreshing(false);
+  };
 
   const allPositions = computePositions(trades, quotes);
   const openPositions = allPositions.filter(p => p.netShares !== 0);
   const { closedTrades, unmatchedSells } = computeTradeReconciliation(trades, quotes);
+  const sellTradeCount = trades.filter(trade => trade.type === 'sell').length;
+  useEffect(() => {
+    if (sellTradeCount >= 5) void awardAchievement('quote-50');
+  }, [awardAchievement, sellTradeCount]);
   const gradeHistoryPoints = useMemo<GradeHistoryPoint[]>(() => (
     trades
       .filter(trade => trade.type === 'sell')
@@ -2290,9 +2602,16 @@ export default function PortfolioScreen() {
   }
 
   function handleDelete(id: string) {
+    const removeTrade = () => saveTrades(trades.filter(t => t.id !== id));
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Remove this trade?')) removeTrade();
+      return;
+    }
+
     Alert.alert('Remove Trade', 'Remove this trade?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => saveTrades(trades.filter(t => t.id !== id)) },
+      { text: 'Remove', style: 'destructive', onPress: removeTrade },
     ]);
   }
 
@@ -2348,7 +2667,25 @@ export default function PortfolioScreen() {
       </View>
 
       {/* Content */}
-      {isEmpty ? (
+      {isEmpty && loadingTrades ? (
+        <View style={mainStyles.emptyWrap}>
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={[mainStyles.emptySub, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+            Loading your portfolio…
+          </Text>
+        </View>
+      ) : isEmpty && tradesLoadError ? (
+        <View style={mainStyles.emptyWrap}>
+          <Feather name="wifi-off" size={32} color={colors.mutedForeground} />
+          <Text style={[mainStyles.emptyTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>Portfolio unavailable</Text>
+          <Text style={[mainStyles.emptySub, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+            Check your connection and try loading your trades again.
+          </Text>
+          <TouchableOpacity style={[mainStyles.emptyBtn, { borderColor: colors.primary }]} onPress={loadTrades} activeOpacity={0.75}>
+            <Text style={[mainStyles.emptyBtnText, { color: colors.primary, fontFamily: 'Inter_600SemiBold' }]}>TRY AGAIN</Text>
+          </TouchableOpacity>
+        </View>
+      ) : isEmpty ? (
         <View style={mainStyles.emptyWrap}>
           <Feather name="briefcase" size={40} color="rgba(192,192,192,0.18)" />
           <Text style={[mainStyles.emptyTitle, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>No trades yet</Text>
@@ -2379,6 +2716,10 @@ export default function PortfolioScreen() {
                 <PositionRow key={pos.symbol} position={pos}
                   onSell={() => openAdd('sell', pos.symbol)}
                   onBuyMore={() => openAdd('buy', pos.symbol)}
+                  quoteUnavailable={unavailableQuoteSymbols.includes(pos.symbol)}
+                  quoteRetrying={retryingQuoteSymbols.includes(pos.symbol)}
+                  quoteRetryDisabled={loadingQuotes}
+                  onRetryQuote={() => void retryQuote(pos.symbol)}
                   colors={colors} />
               ))
             )

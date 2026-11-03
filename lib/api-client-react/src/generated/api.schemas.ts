@@ -9,9 +9,62 @@ export interface HealthStatus {
   status: string;
 }
 
+export interface PortfolioQuote {
+  symbol: string;
+  /** @exclusiveMinimum 0 */
+  currentPrice: number;
+  priceChange: number;
+  priceChangePercent: number;
+  marketSession: string;
+  priceSource: string;
+  priceTimestamp: number | null;
+  expenseRatio: number | null;
+}
+
+export interface PortfolioQuoteBatchRequest {
+  /**
+     * @minItems 1
+     * @maxItems 500
+     * @items.minLength 1
+     * @items.maxLength 15
+     * @items.pattern ^[A-Za-z0-9.^=-]+$
+     */
+  symbols: string[];
+}
+
+export interface PortfolioQuoteBatch {
+  quotes: PortfolioQuote[];
+  unavailableSymbols: string[];
+}
+
 export interface AnalyzeStockRequest {
   /** Stock ticker symbol (e.g. AAPL, TSLA, MSFT) */
   symbol: string;
+  /** Whether ETF analysis should include AI-generated commentary. Omit or set true for full analysis; set false for facts-only comparison data. */
+  includeCommentary?: boolean;
+}
+
+export interface StockSymbolSuggestion {
+  symbol: string;
+  name: string;
+  exchange: string;
+}
+
+export type HeatMapInstrumentSuggestionCategory = typeof HeatMapInstrumentSuggestionCategory[keyof typeof HeatMapInstrumentSuggestionCategory];
+
+
+export const HeatMapInstrumentSuggestionCategory = {
+  etf: 'etf',
+  commodity: 'commodity',
+  future: 'future',
+  cryptocurrency: 'cryptocurrency',
+} as const;
+
+export interface HeatMapInstrumentSuggestion {
+  symbol: string;
+  name: string;
+  exchange: string;
+  category: HeatMapInstrumentSuggestionCategory;
 }
 
 export type TechnicalAnalysisMacdSignal = typeof TechnicalAnalysisMacdSignal[keyof typeof TechnicalAnalysisMacdSignal];
@@ -117,7 +170,15 @@ export interface Recommendation {
   strengths: string[];
 }
 
+export type StockAnalysisAssetType = typeof StockAnalysisAssetType[keyof typeof StockAnalysisAssetType];
+
+
+export const StockAnalysisAssetType = {
+  stock: 'stock',
+} as const;
+
 export interface StockAnalysis {
+  assetType: StockAnalysisAssetType;
   symbol: string;
   companyName: string;
   exchange: string;
@@ -135,8 +196,692 @@ export interface StockAnalysis {
   recommendation: Recommendation;
 }
 
+export type EtfAnalysisResultAssetType = typeof EtfAnalysisResultAssetType[keyof typeof EtfAnalysisResultAssetType];
+
+
+export const EtfAnalysisResultAssetType = {
+  etf: 'etf',
+} as const;
+
+export interface EtfHolding {
+  symbol: string;
+  name: string;
+  /** Holding weight as a decimal fraction. */
+  weight: number;
+}
+
+export interface EtfSectorWeight {
+  sector: string;
+  /**
+     * Provider-reported sector weight as a decimal fraction.
+     * @minimum 0
+     * @maximum 1
+     */
+  weight: number;
+}
+
+export type EtfMarketRegimeBestRegime = typeof EtfMarketRegimeBestRegime[keyof typeof EtfMarketRegimeBestRegime] | null;
+
+
+export const EtfMarketRegimeBestRegime = {
+  bull: 'bull',
+  bear: 'bear',
+  mixed: 'mixed',
+} as const;
+
+export interface EtfRegimePeriod {
+  /** Arithmetic average of adjusted annual total returns. */
+  averageAnnualReturn: number | null;
+  /** Number of complete calendar years in this regime. */
+  years: number;
+}
+
+export type EtfMarketRegimePeriods = {
+  bull: EtfRegimePeriod;
+  bear: EtfRegimePeriod;
+  mixed: EtfRegimePeriod;
+};
+
+/**
+ * Historical comparison, not a forecast. Based on complete calendar-year adjusted total returns.
+ */
+export interface EtfMarketRegime {
+  bestRegime: EtfMarketRegimeBestRegime;
+  lookbackYears: number;
+  firstYear: number;
+  lastYear: number;
+  benchmarkSymbol: string;
+  /** Minimum annual benchmark return for a bull year, as a decimal fraction. */
+  bullThreshold: number;
+  /** Maximum annual benchmark return for a bear year, as a decimal fraction. */
+  bearThreshold: number;
+  periods: EtfMarketRegimePeriods;
+}
+
+/**
+ * Benchmark explicitly identified by the provider; never inferred from the ETF category.
+ */
+export interface EtfBenchmarkReference {
+  symbol: string;
+  name: string;
+  source: string;
+  asOf: string;
+}
+
+/**
+ * Comparison of adjusted monthly ETF and explicit benchmark returns over their shared history.
+ */
+export interface EtfTrackingComparison {
+  periodStart: string;
+  periodEnd: string;
+  /** @minimum 2 */
+  monthlySamples: number;
+  fundAnnualizedReturn: number;
+  benchmarkAnnualizedReturn: number;
+  /** Fund annualized total return minus benchmark annualized total return. */
+  trackingDifference: number;
+  /** Sample standard deviation of monthly active returns, annualized by the square root of 12. */
+  trackingError: number;
+  source: string;
+  asOf: string;
+}
+
+/**
+ * Yahoo Finance provider-defined fund-category average; sample size is unavailable when not reported.
+ */
+export interface EtfPeerExpenseComparison {
+  category: string;
+  /** Fund annual expense ratio as a decimal fraction. */
+  fundExpenseRatio: number | null;
+  /** Category-average annual expense ratio as a decimal fraction. */
+  categoryAverageExpenseRatio: number;
+  /** Fund expense ratio minus the category average, as a decimal fraction. */
+  difference: number | null;
+  sampleSize: number | null;
+  sampleContext: string;
+  source: string;
+  asOf: string;
+}
+
+/**
+ * Yahoo Finance provider-defined category average total net assets; sample size is unavailable when not reported.
+ */
+export interface EtfPeerAssetSizeComparison {
+  category: string;
+  /** Fund total net assets in USD. */
+  fundTotalAssets: number | null;
+  /** Category-average total net assets in USD. */
+  categoryAverageTotalAssets: number;
+  /** Fund total assets minus the category average, in USD. */
+  difference: number | null;
+  sampleSize: number | null;
+  sampleContext: string;
+  source: string;
+  asOf: string;
+}
+
+export type EtfScenarioLabel = typeof EtfScenarioLabel[keyof typeof EtfScenarioLabel];
+
+
+export const EtfScenarioLabel = {
+  bear: 'bear',
+  base: 'base',
+  bull: 'bull',
+} as const;
+
+export interface EtfScenario {
+  label: EtfScenarioLabel;
+  /** Historical regime average used as an illustrative annual return assumption. */
+  annualReturnAssumption: number | null;
+  fiveYearValue: number | null;
+  tenYearValue: number | null;
+  assumption: string;
+}
+
+/**
+ * Fund-specific provider data, historical comparisons, and illustrative scenarios. Null means unavailable.
+ */
+export interface EtfAnalysis {
+  fundCategory?: string | null;
+  fundFamily?: string | null;
+  expenseRatio?: number | null;
+  totalAssets?: number | null;
+  dividendYield?: number | null;
+  beta3Year?: number | null;
+  averageVolume?: number | null;
+  topHoldingsCombinedWeight: number | null;
+  annualizedReturn: number | null;
+  annualizedVolatility: number | null;
+  maxDrawdown: number | null;
+  riskAdjustedReturn: number | null;
+  topHoldings: EtfHolding[];
+  /** Provider-reported sector weights only; omitted sectors are not inferred as zero. */
+  sectorWeights: EtfSectorWeight[];
+  /** Provider sector snapshot retrieval time, not a sector report date. */
+  sectorWeightsRetrievedAt: string;
+  /**
+     * Number of positions reported by the provider for this holdings snapshot.
+     * @minimum 0
+     */
+  topHoldingsReportedCount: number;
+  /** Provider holdings snapshot retrieval time, not a holdings report date. */
+  topHoldingsRetrievedAt: string;
+  marketRegime: EtfMarketRegime | null;
+  benchmark: EtfBenchmarkReference | null;
+  trackingComparison: EtfTrackingComparison | null;
+  peerExpenseComparison: EtfPeerExpenseComparison | null;
+  peerAssetSizeComparison: EtfPeerAssetSizeComparison | null;
+  scenarios: EtfScenario[];
+  risks: string[];
+  strengths: string[];
+  analysis: string;
+  provider: string;
+  asOf: string;
+}
+
+export interface EtfAnalysisResult {
+  assetType: EtfAnalysisResultAssetType;
+  symbol: string;
+  companyName: string;
+  exchange: string;
+  currency: string;
+  currentPrice: number;
+  priceChange: number;
+  priceChangePercent: number;
+  volume: number;
+  marketCap?: number | null;
+  week52High: number;
+  week52Low: number;
+  etfAnalysis: EtfAnalysis;
+}
+
+export type CommodityAnalysisResultAssetType = typeof CommodityAnalysisResultAssetType[keyof typeof CommodityAnalysisResultAssetType];
+
+
+export const CommodityAnalysisResultAssetType = {
+  commodity: 'commodity',
+} as const;
+
+export type CommodityAnalysisResultCommodityAnalysisFamily = typeof CommodityAnalysisResultCommodityAnalysisFamily[keyof typeof CommodityAnalysisResultCommodityAnalysisFamily];
+
+
+export const CommodityAnalysisResultCommodityAnalysisFamily = {
+  metals: 'metals',
+  energy: 'energy',
+  agriculture: 'agriculture',
+  livestock: 'livestock',
+} as const;
+
+export type CommodityAnalysisResultCommodityAnalysisFactorsItemStatus = typeof CommodityAnalysisResultCommodityAnalysisFactorsItemStatus[keyof typeof CommodityAnalysisResultCommodityAnalysisFactorsItemStatus];
+
+
+export const CommodityAnalysisResultCommodityAnalysisFactorsItemStatus = {
+  available: 'available',
+  unavailable: 'unavailable',
+} as const;
+
+export type CommodityAnalysisResultCommodityAnalysisNewsContextStatus = typeof CommodityAnalysisResultCommodityAnalysisNewsContextStatus[keyof typeof CommodityAnalysisResultCommodityAnalysisNewsContextStatus];
+
+
+export const CommodityAnalysisResultCommodityAnalysisNewsContextStatus = {
+  available: 'available',
+  unavailable: 'unavailable',
+} as const;
+
+export type CommodityAnalysisResultCommodityAnalysisFactorsItemSourcesItem = {
+  title: string;
+  url: string;
+  asOf: string;
+  unit: string;
+  observation: string;
+};
+
+export type CommodityAnalysisResultCommodityAnalysisFactorsItem = {
+  key: string;
+  label: string;
+  status: CommodityAnalysisResultCommodityAnalysisFactorsItemStatus;
+  score: number | null;
+  weight: number;
+  detail: string;
+  sources: CommodityAnalysisResultCommodityAnalysisFactorsItemSourcesItem[];
+};
+
+export type CommodityAnalysisResultCommodityAnalysisNewsContextSourcesItem = {
+  title: string;
+  url: string;
+  publishedAt: string | null;
+};
+
+export type CommodityAnalysisResultCommodityAnalysisNewsContext = {
+  status: CommodityAnalysisResultCommodityAnalysisNewsContextStatus;
+  summary: string | null;
+  retrievedAt: string | null;
+  sources: CommodityAnalysisResultCommodityAnalysisNewsContextSourcesItem[];
+};
+
+export type CommodityAnalysisResultCommodityAnalysis = {
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  score: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  confidence: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  dataCoveragePercent: number;
+  /** @minimum 0 */
+  observationCount: number;
+  historyAsOf: string | null;
+  family: CommodityAnalysisResultCommodityAnalysisFamily;
+  annualizedVolatilityPercent: number;
+  oneMonthReturnPercent: number | null;
+  threeMonthReturnPercent: number | null;
+  sixMonthReturnPercent: number | null;
+  factors: CommodityAnalysisResultCommodityAnalysisFactorsItem[];
+  methodology: string;
+  reasoning: string;
+  risks: string[];
+  strengths: string[];
+  newsContext: CommodityAnalysisResultCommodityAnalysisNewsContext;
+  provider: string;
+};
+
+export interface CommodityAnalysisResult {
+  assetType: CommodityAnalysisResultAssetType;
+  symbol: string;
+  companyName: string;
+  exchange: string;
+  currency: string;
+  currentPrice: number;
+  priceChange: number;
+  priceChangePercent: number;
+  volume: number;
+  marketCap: number | null;
+  week52High: number;
+  week52Low: number;
+  commodityAnalysis: CommodityAnalysisResultCommodityAnalysis;
+}
+
+export type AnalysisResult = StockAnalysis | EtfAnalysisResult | CommodityAnalysisResult;
+
+export type CryptoSupplyHistoryProvider = typeof CryptoSupplyHistoryProvider[keyof typeof CryptoSupplyHistoryProvider];
+
+
+export const CryptoSupplyHistoryProvider = {
+  Coin_Metrics: 'Coin Metrics',
+} as const;
+
+export type CryptoSupplyHistoryMetric = typeof CryptoSupplyHistoryMetric[keyof typeof CryptoSupplyHistoryMetric];
+
+
+export const CryptoSupplyHistoryMetric = {
+  SplyCur: 'SplyCur',
+} as const;
+
+export type CryptoSupplyHistoryRangeDays = typeof CryptoSupplyHistoryRangeDays[keyof typeof CryptoSupplyHistoryRangeDays];
+
+
+export const CryptoSupplyHistoryRangeDays = {
+  NUMBER_30: 30,
+  NUMBER_90: 90,
+  NUMBER_365: 365,
+} as const;
+
+export type CryptoSupplyHistoryInterval = typeof CryptoSupplyHistoryInterval[keyof typeof CryptoSupplyHistoryInterval];
+
+
+export const CryptoSupplyHistoryInterval = {
+  daily: 'daily',
+} as const;
+
+export interface CryptoSupplyHistoryPoint {
+  date: string;
+  /** @exclusiveMinimum 0 */
+  supply: number;
+}
+
+/**
+ * Provider-reported daily on-chain current-supply observations. This series is distinct from the live circulating-supply and maximum-supply-share statistics.
+ */
+export interface CryptoSupplyHistory {
+  symbol: string;
+  provider: CryptoSupplyHistoryProvider;
+  metric: CryptoSupplyHistoryMetric;
+  rangeDays: CryptoSupplyHistoryRangeDays;
+  interval: CryptoSupplyHistoryInterval;
+  startDate: string | null;
+  endDate: string | null;
+  points: CryptoSupplyHistoryPoint[];
+}
+
+/**
+ * Provider-reported fund facts, present for ETFs. Ratios and weights are decimal fractions.
+ */
+export interface EtfProfile {
+  fundCategory: string | null;
+  fundFamily: string | null;
+  /** Annual expense ratio as a decimal fraction (0.001 = 0.1%). */
+  expenseRatio: number | null;
+  /** Fund assets under management in USD. */
+  totalAssets: number | null;
+  dividendYield: number | null;
+  beta3Year: number | null;
+  largestSector: string | null;
+  largestSectorWeight: number | null;
+  /** Provider-reported sector weights only; omitted sectors are not inferred as zero. */
+  sectorWeights: EtfSectorWeight[];
+  /** Provider sector snapshot retrieval time, not a sector report date. */
+  sectorWeightsRetrievedAt: string;
+  topHoldings: EtfHolding[];
+  /**
+     * Number of positions reported by the provider for this holdings snapshot.
+     * @minimum 0
+     */
+  topHoldingsReportedCount: number;
+  /** Provider holdings snapshot retrieval time, not a holdings report date. */
+  topHoldingsRetrievedAt: string;
+  marketRegime: EtfMarketRegime | null;
+  benchmark: EtfBenchmarkReference | null;
+  trackingComparison: EtfTrackingComparison | null;
+  peerExpenseComparison: EtfPeerExpenseComparison | null;
+  peerAssetSizeComparison: EtfPeerAssetSizeComparison | null;
+}
+
+export interface MarketInstrumentInfo {
+  symbol: string;
+  companyName: string;
+  sector: string;
+  industry: string;
+  exchange: string;
+  /** Distribution yield as a decimal fraction (0.01 = 1%). */
+  dividendYield: number | null;
+  dividendRate: number | null;
+  marketCap: number | null;
+  currentPrice: number;
+  previousClose: number | null;
+  open: number | null;
+  dayLow: number | null;
+  dayHigh: number | null;
+  fiftyTwoWeekLow: number | null;
+  fiftyTwoWeekHigh: number | null;
+  volume: number | null;
+  averageVolume3Month: number | null;
+  beta: number | null;
+  earningsTimestamp: number | null;
+  targetMeanPrice: number | null;
+  trailingEps: number | null;
+  totalRevenue: number | null;
+  circulatingSupply: number | null;
+  maxSupply: number | null;
+  volume24Hr: number | null;
+  etfProfile?: EtfProfile;
+}
+
+/**
+ * Adjusted total return for stocks/ETFs where supported, otherwise a price-return proxy.
+ */
+export type HeatMapQuoteReturnBasis = typeof HeatMapQuoteReturnBasis[keyof typeof HeatMapQuoteReturnBasis];
+
+
+export const HeatMapQuoteReturnBasis = {
+  adjusted_total_return: 'adjusted_total_return',
+  price_return_proxy: 'price_return_proxy',
+} as const;
+
+/**
+ * Session for this quote. closed identifies the latest available close; unknown means the provider could not identify the session.
+ */
+export type HeatMapQuoteMarketSession = typeof HeatMapQuoteMarketSession[keyof typeof HeatMapQuoteMarketSession];
+
+
+export const HeatMapQuoteMarketSession = {
+  pre_market: 'pre_market',
+  regular: 'regular',
+  after_hours: 'after_hours',
+  closed: 'closed',
+  unknown: 'unknown',
+} as const;
+
+export type HeatMapQuoteAssetType = typeof HeatMapQuoteAssetType[keyof typeof HeatMapQuoteAssetType];
+
+
+export const HeatMapQuoteAssetType = {
+  stock: 'stock',
+  etf: 'etf',
+  commodity: 'commodity',
+  future: 'future',
+  cryptocurrency: 'cryptocurrency',
+} as const;
+
+/**
+ * Historical-volatility band; not personalized investment suitability.
+ */
+export type HeatMapQuoteRiskBand = typeof HeatMapQuoteRiskBand[keyof typeof HeatMapQuoteRiskBand] | null;
+
+
+export const HeatMapQuoteRiskBand = {
+  Conservative: 'Conservative',
+  Moderate_Conservative: 'Moderate Conservative',
+  Moderate: 'Moderate',
+  Moderate_Aggressive: 'Moderate Aggressive',
+  Aggressive: 'Aggressive',
+} as const;
+
+export interface HeatMapQuote {
+  symbol: string;
+  name: string;
+  /** @exclusiveMinimum 0 */
+  price: number;
+  /** Percentage change from the previous close, in percentage points (1.25 means 1.25%). */
+  priceChangePercent: number;
+  /** Selected-period return in percentage points, or null when the requested history is unavailable. */
+  returnPercent: number | null;
+  /** Adjusted total return for stocks/ETFs where supported, otherwise a price-return proxy. */
+  returnBasis: HeatMapQuoteReturnBasis;
+  /** Why the requested return could not be calculated. */
+  returnUnavailableReason: string | null;
+  /** Earliest available daily observation in YYYY-MM-DD; populated for Max. */
+  historyStartDate: string | null;
+  /** Unix timestamp in seconds for this quote or last available close. Quotes without a timestamp are not displayable. */
+  priceTimestamp: number | null;
+  /** Session for this quote. closed identifies the latest available close; unknown means the provider could not identify the session. */
+  marketSession: HeatMapQuoteMarketSession;
+  /** Unix timestamp in seconds for the next scheduled listed-exchange regular-session open, populated only when a stock or ETF is closed or in after-hours; null when unavailable or not applicable. */
+  nextRegularOpenTimestamp: number | null;
+  assetType: HeatMapQuoteAssetType;
+  /** Normalized provider sector; stocks without metadata use Unknown. */
+  sector: string | null;
+  /** Normalized provider exchange when available. */
+  exchange: string | null;
+  /** IANA timezone for a supported listed-exchange calendar, used to display the next open; null when unavailable. */
+  exchangeTimezone: string | null;
+  /** Provider market capitalization in USD. ETF assets-under-management are not substituted. */
+  marketCapUsd: number | null;
+  /** Trailing-year annualized standard deviation of daily returns, requiring at least 60 observations. */
+  annualizedVolatilityPercent: number | null;
+  /** Historical-volatility band; not personalized investment suitability. */
+  riskBand: HeatMapQuoteRiskBand;
+}
+
+export type HeatMapResponseCategory = typeof HeatMapResponseCategory[keyof typeof HeatMapResponseCategory];
+
+
+export const HeatMapResponseCategory = {
+  stocks: 'stocks',
+  etfs: 'etfs',
+  commodities: 'commodities',
+  futures: 'futures',
+  cryptocurrency: 'cryptocurrency',
+  custom: 'custom',
+} as const;
+
+export type HeatMapResponsePeriod = typeof HeatMapResponsePeriod[keyof typeof HeatMapResponsePeriod];
+
+
+export const HeatMapResponsePeriod = {
+  '1d': '1d',
+  '1w': '1w',
+  '1m': '1m',
+  '3m': '3m',
+  '6m': '6m',
+  '1y': '1y',
+  '3y': '3y',
+  '5y': '5y',
+  max: 'max',
+} as const;
+
+/**
+ * Sector used for a Stocks expansion request, or null for the normal category list.
+ */
+export type HeatMapResponseRequestedSector = typeof HeatMapResponseRequestedSector[keyof typeof HeatMapResponseRequestedSector] | null;
+
+
+export const HeatMapResponseRequestedSector = {
+  Technology: 'Technology',
+  Communication_Services: 'Communication Services',
+  Consumer_Cyclical: 'Consumer Cyclical',
+  Consumer_Defensive: 'Consumer Defensive',
+  Financials: 'Financials',
+  Healthcare: 'Healthcare',
+  Industrials: 'Industrials',
+  Real_Estate: 'Real Estate',
+  Energy: 'Energy',
+  Utilities: 'Utilities',
+  Basic_Materials: 'Basic Materials',
+} as const;
+
+export interface HeatMapResponse {
+  category: HeatMapResponseCategory;
+  period: HeatMapResponsePeriod;
+  /** Sector used for a Stocks expansion request, or null for the normal category list. */
+  requestedSector: HeatMapResponseRequestedSector;
+  quotes: HeatMapQuote[];
+  unavailableSymbols: string[];
+  /** Unix timestamp in seconds when this batch was assembled. */
+  updatedAt: number;
+}
+
+export interface MarketPulseResponse {
+  /** Whether the XNYS regular trading session is currently open. */
+  marketOpen: boolean;
+  /** Daily percentage move from the previous close, in percentage points. */
+  changePercent: number;
+  /** Unix timestamp in seconds for the Yahoo Finance quote used to calculate the daily move. */
+  priceTimestamp: number;
+  /** Unix timestamp in seconds when this response was assembled. */
+  updatedAt: number;
+}
+
+export interface ValidateHeatMapSymbolRequest {
+  /**
+     * @minLength 1
+     * @maxLength 15
+     * @pattern ^[A-Za-z0-9.^=-]+$
+     */
+  symbol: string;
+}
+
 export interface AnalysisError {
   error: string;
   message: string;
+  /** Why a supported commodity has no score because its dated price history is stale or unreliable. */
+  reason?: string;
+  /** Latest valid daily observation date, when one was available. */
+  lastUsableDate?: string | null;
 }
+
+export type SearchHeatMapInstrumentsParams = {
+/**
+ * @minLength 2
+ * @maxLength 80
+ */
+q: string;
+category: SearchHeatMapInstrumentsCategory;
+};
+
+export type SearchHeatMapInstrumentsCategory = typeof SearchHeatMapInstrumentsCategory[keyof typeof SearchHeatMapInstrumentsCategory];
+
+
+export const SearchHeatMapInstrumentsCategory = {
+  etfs: 'etfs',
+  commodities: 'commodities',
+  futures: 'futures',
+  cryptocurrency: 'cryptocurrency',
+} as const;
+
+export type SearchStockSymbolsParams = {
+/**
+ * @minLength 2
+ * @maxLength 80
+ */
+q: string;
+};
+
+export type GetMarketHeatMapParams = {
+category: GetMarketHeatMapCategory;
+/**
+ * Return window. Risk levels always use trailing-year annualized daily volatility.
+ */
+period?: GetMarketHeatMapPeriod;
+/**
+ * For Stocks, fetch an expanded, liquid US-listed quote set for the selected sector.
+ */
+sector?: GetMarketHeatMapSector;
+/**
+ * @maxItems 40
+ * @items.minLength 1
+ * @items.maxLength 15
+ */
+symbols?: string[];
+};
+
+export type GetMarketHeatMapCategory = typeof GetMarketHeatMapCategory[keyof typeof GetMarketHeatMapCategory];
+
+
+export const GetMarketHeatMapCategory = {
+  stocks: 'stocks',
+  etfs: 'etfs',
+  commodities: 'commodities',
+  futures: 'futures',
+  cryptocurrency: 'cryptocurrency',
+  custom: 'custom',
+} as const;
+
+export type GetMarketHeatMapPeriod = typeof GetMarketHeatMapPeriod[keyof typeof GetMarketHeatMapPeriod];
+
+
+export const GetMarketHeatMapPeriod = {
+  '1d': '1d',
+  '1w': '1w',
+  '1m': '1m',
+  '3m': '3m',
+  '6m': '6m',
+  '1y': '1y',
+  '3y': '3y',
+  '5y': '5y',
+  max: 'max',
+} as const;
+
+export type GetMarketHeatMapSector = typeof GetMarketHeatMapSector[keyof typeof GetMarketHeatMapSector];
+
+
+export const GetMarketHeatMapSector = {
+  Technology: 'Technology',
+  Communication_Services: 'Communication Services',
+  Consumer_Cyclical: 'Consumer Cyclical',
+  Consumer_Defensive: 'Consumer Defensive',
+  Financials: 'Financials',
+  Healthcare: 'Healthcare',
+  Industrials: 'Industrials',
+  Real_Estate: 'Real Estate',
+  Energy: 'Energy',
+  Utilities: 'Utilities',
+  Basic_Materials: 'Basic Materials',
+} as const;
 

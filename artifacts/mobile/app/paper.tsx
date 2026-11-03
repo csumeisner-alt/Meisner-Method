@@ -25,6 +25,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { MMLogo } from '@/components/MMLogo';
 import { BottomTabBar } from '@/components/BottomTabBar';
+import { useAchievements } from '@/contexts/AchievementsContext';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { useColors } from '@/hooks/useColors';
 import {
@@ -61,17 +62,24 @@ import {
   creditDividends,
   fifoSell,
 } from '@/lib/paperEngine';
+import {
+  createLatestRequestGuard,
+  getBuyOrderDetails,
+  getStockSearchQueryFromKey,
+  getStockSearchFeedback,
+  isStockSearchCurrent,
+  resolveStockSearchSymbol,
+  type BuyStockInfo,
+} from '@/lib/stockSearch';
+import { useWatchlist } from '@/hooks/useWatchlist';
+import {
+  getSearchStockSymbolsQueryKey,
+  useSearchStockSymbols,
+} from '@workspace/api-client-react';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type TabId = 'positions' | 'orders' | 'analytics' | 'dividends' | 'growth';
-type StockInfo = {
-  companyName: string;
-  currentPrice: number;
-  dividendYield: number;
-  dividendRate: number;
-  expenseRatio: number;
-  sector: string;
-};
+type StockInfo = BuyStockInfo;
 
 // ── Local cache ─────────────────────────────────────────────────────────────
 // Bumped to v2: adds orders, lots, and extended account fields.
@@ -179,7 +187,9 @@ function defaultAccounts(): PaperAccount[] {
 // ── Main Screen ────────────────────────────────────────────────────────────
 export default function PaperScreen() {
   const colors = useColors();
+  const { awardAchievement } = useAchievements();
   const insets = useSafeAreaInsets();
+  const watchlist = useWatchlist();
 
   // Persisted state
   const [accounts, setAccounts] = useState<PaperAccount[]>([]);
@@ -212,6 +222,13 @@ export default function PaperScreen() {
   const [stockInfo, setStockInfo] = useState<StockInfo | null>(null);
   const [infoLoading, setInfoLoading] = useState(false);
   const [infoError, setInfoError] = useState('');
+  const [debouncedBuyQuery, setDebouncedBuyQuery] = useState('');
+  const stockLookupRequestRef = useRef(createLatestRequestGuard());
+  const buySearchContextRef = useRef({
+    input: '',
+    settledQuery: '',
+    enabled: false,
+  });
 
   // Rename state
   const [renameId, setRenameId] = useState('');
@@ -220,10 +237,80 @@ export default function PaperScreen() {
   // Expanded position (cost-basis lots)
   const [expandedPosId, setExpandedPosId] = useState<string | null>(null);
 
+  const stockSearch = useSearchStockSymbols(
+    { q: debouncedBuyQuery },
+    {
+      query: {
+        queryKey: getSearchStockSymbolsQueryKey({ q: debouncedBuyQuery }),
+        enabled: showTradeModal && !stockInfo && !infoLoading && !infoError && debouncedBuyQuery.length >= 2,
+        staleTime: 45_000,
+      },
+    },
+  );
+
   // ── Derived ──────────────────────────────────────────────────────────────
   const account = accounts.find(a => a.id === activeId);
   const myPositions = positions.filter(p => p.accountId === activeId);
   const myTxns = transactions.filter(t => t.accountId === activeId);
+  const buySearchText = buySymbol.trim();
+  const buyTicker = buySymbol.trim().toUpperCase();
+  const buyTickerIsWatched = stockInfo ? watchlist.isWatched(buyTicker) : false;
+  const isCurrentBuySearchInput = showTradeModal
+    && !stockInfo
+    && !infoLoading
+    && !infoError
+    && buySearchText.length >= 2
+    && debouncedBuyQuery === buySearchText;
+  const buySearchResultQuery = getStockSearchQueryFromKey(stockSearch.queryKey);
+  const isCurrentBuySearch = isCurrentBuySearchInput && isStockSearchCurrent({
+    input: buySearchText,
+    settledQuery: debouncedBuyQuery,
+    resultQuery: buySearchResultQuery,
+    isPlaceholderData: stockSearch.isPlaceholderData,
+  });
+  const buySuggestions = isCurrentBuySearch ? stockSearch.data ?? [] : [];
+  const allowRawBuyTicker = buySearchText.length === 1
+    || (
+      isCurrentBuySearch
+      && !stockSearch.isFetching
+      && (stockSearch.isSuccess || stockSearch.isError)
+    );
+  const resolvedBuySymbol = resolveStockSearchSymbol(
+    buySymbol,
+    buySuggestions,
+    null,
+    allowRawBuyTicker,
+  );
+  const buySearchFeedback = isCurrentBuySearchInput
+    ? getStockSearchFeedback({
+        isFetching: stockSearch.isFetching,
+        isError: isCurrentBuySearch && stockSearch.isError,
+        isSuccess: isCurrentBuySearch && stockSearch.isSuccess,
+        suggestionCount: buySuggestions.length,
+      })
+    : null;
+  const buyOrderDetails = getBuyOrderDetails(buySymbol, stockInfo);
+
+  buySearchContextRef.current = {
+    input: buySearchText,
+    settledQuery: debouncedBuyQuery,
+    enabled: showTradeModal && !stockInfo && !infoLoading && !infoError,
+  };
+
+  useEffect(() => () => {
+    stockLookupRequestRef.current.invalidate();
+  }, []);
+
+  useEffect(() => {
+    const query = buySymbol.trim();
+    if (!showTradeModal || stockInfo || infoLoading || infoError || query.length < 2) {
+      setDebouncedBuyQuery('');
+      return;
+    }
+
+    const timer = setTimeout(() => setDebouncedBuyQuery(query), 250);
+    return () => clearTimeout(timer);
+  }, [buySymbol, infoError, infoLoading, showTradeModal, stockInfo]);
 
   // Total equity includes settled cash + unsettled T+2 proceeds + market value of positions.
   // Buying power is restricted to settled cash only (enforced in fillOrder / OrderSheet risk check).
@@ -555,9 +642,17 @@ export default function PaperScreen() {
   };
 
   // ── Buy ───────────────────────────────────────────────────────────────────
-  const lookUpStock = async () => {
-    const sym = buySymbol.trim().toUpperCase();
+  const invalidateStockLookup = () => {
+    stockLookupRequestRef.current.invalidate();
+    setInfoLoading(false);
+  };
+
+  const lookUpStock = async (symbolOverride?: string) => {
+    const sym = (symbolOverride ?? resolvedBuySymbol ?? '').trim().toUpperCase();
     if (!sym) return;
+    const requestId = stockLookupRequestRef.current.begin();
+    setBuySymbol(sym);
+    setDebouncedBuyQuery('');
     setInfoLoading(true);
     setInfoError('');
     setStockInfo(null);
@@ -566,8 +661,10 @@ export default function PaperScreen() {
         fetch(`${BASE_URL}/api/stocks/info/${sym}`),
         fetch(`${BASE_URL}/api/stocks/quote/${sym}`),
       ]);
+      if (!stockLookupRequestRef.current.isCurrent(requestId)) return;
       const info = await infoRes.json();
       const quote = await quoteRes.json();
+      if (!stockLookupRequestRef.current.isCurrent(requestId)) return;
       if (info.error) throw new Error(info.error);
       if (quote.error) throw new Error(quote.error);
       setStockInfo({
@@ -583,10 +680,20 @@ export default function PaperScreen() {
         [sym]: { price: quote.currentPrice, change: quote.priceChange, pct: quote.priceChangePercent },
       }));
     } catch (e: any) {
-      setInfoError(e.message ?? 'Could not fetch stock info');
+      if (stockLookupRequestRef.current.isCurrent(requestId)) {
+        setInfoError(e.message ?? 'Could not fetch stock info');
+      }
     } finally {
-      setInfoLoading(false);
+      if (stockLookupRequestRef.current.isCurrent(requestId)) {
+        setInfoLoading(false);
+      }
     }
+  };
+
+  const addBuyTickerToWatchlist = async () => {
+    if (!stockInfo || !buyTicker || buyTickerIsWatched) return;
+    await watchlist.add(buyTicker);
+    Alert.alert('Added to watchlist', `${buyTicker} was added to your watchlist.`);
   };
 
   /**
@@ -686,6 +793,7 @@ export default function PaperScreen() {
         // Execution-time constraint violation — surface as an alert (rare: e.g. price gap)
         Alert.alert('Order rejected', fillResult.reason);
         setShowOrderSheet(false);
+        invalidateStockLookup();
         setShowTradeModal(false);
         return;
       }
@@ -749,7 +857,13 @@ export default function PaperScreen() {
         : [...currentOrders, newOrder]);
     }
 
+    if (!args.orderId) {
+      void awardAchievement('first-paper-order');
+      if (args.orderType !== 'market') void awardAchievement('first-paper-limit');
+      if (args.side === 'sell') void awardAchievement('first-paper-sell');
+    }
     setShowOrderSheet(false);
+    invalidateStockLookup();
     setShowTradeModal(false);
     setSelectedPos(null);
     setEditingOrder(null);
@@ -795,15 +909,18 @@ export default function PaperScreen() {
 
   // ── Open modals ───────────────────────────────────────────────────────────
   const openBuyModal = () => {
+    invalidateStockLookup();
     setEditingOrder(null);
     setTradeMode('buy');
     setBuySymbol('');
+    setDebouncedBuyQuery('');
     setStockInfo(null);
     setInfoError('');
     setShowTradeModal(true);
   };
 
   const openSellModal = (pos: PaperPosition) => {
+    invalidateStockLookup();
     setEditingOrder(null);
     setTradeMode('sell');
     setSelectedPos(pos);
@@ -1472,18 +1589,29 @@ export default function PaperScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* ── Buy Lookup Modal (ticker search only) ────────────────── */}
+      {/* ── Buy Lookup Modal (company name or ticker) ─────────────── */}
       <Modal
         visible={showTradeModal}
         transparent
         animationType="slide"
-        onRequestClose={() => { setShowTradeModal(false); setStockInfo(null); }}
+        onRequestClose={() => {
+          invalidateStockLookup();
+          setShowTradeModal(false);
+          setStockInfo(null);
+        }}
       >
         <KeyboardAvoidingView
           style={{ flex: 1, justifyContent: 'flex-end' }}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          <Pressable style={StyleSheet.absoluteFillObject} onPress={() => { setShowTradeModal(false); setStockInfo(null); }} />
+          <Pressable
+            style={StyleSheet.absoluteFillObject}
+            onPress={() => {
+              invalidateStockLookup();
+              setShowTradeModal(false);
+              setStockInfo(null);
+            }}
+          />
           <ScrollView
             style={styles.bottomSheet}
             contentContainerStyle={{ paddingBottom: 8 }}
@@ -1496,23 +1624,42 @@ export default function PaperScreen() {
               <Text style={styles.sheetTitle}>BUY STOCK</Text>
               <Text style={styles.sheetSub}>Buying power: {$fmt(account?.cash ?? 0)}</Text>
 
-              {/* Symbol lookup */}
+              {/* Company and ticker lookup */}
               <View style={styles.lookupRow}>
                 <TextInput
+                  testID="paper-stock-search-input"
                   style={styles.symbolInput}
                   value={buySymbol}
-                  onChangeText={t => { setBuySymbol(t.toUpperCase()); setStockInfo(null); setInfoError(''); }}
-                  placeholder="Ticker (e.g. AAPL)"
+                  onChangeText={text => {
+                    invalidateStockLookup();
+                    buySearchContextRef.current = {
+                      ...buySearchContextRef.current,
+                      input: text.trim(),
+                    };
+                    setBuySymbol(text);
+                    setStockInfo(null);
+                    setInfoError('');
+                  }}
+                  placeholder="Company name or ticker"
                   placeholderTextColor={DIM}
-                  autoCapitalize="characters"
+                  autoCapitalize="none"
                   autoCorrect={false}
                   returnKeyType="search"
-                  onSubmitEditing={lookUpStock}
+                  editable={!infoLoading}
+                  accessibilityLabel="Search by company name or ticker"
+                  onSubmitEditing={() => {
+                    if (resolvedBuySymbol) void lookUpStock(resolvedBuySymbol);
+                  }}
                 />
                 <TouchableOpacity
-                  style={[styles.lookupBtn, infoLoading && { opacity: 0.5 }]}
-                  onPress={lookUpStock}
-                  disabled={infoLoading || !buySymbol.trim()}
+                  testID="paper-stock-lookup-button"
+                  accessibilityRole="button"
+                  accessibilityLabel="Look up selected ticker"
+                  style={[styles.lookupBtn, (infoLoading || !resolvedBuySymbol) && { opacity: 0.5 }]}
+                  onPress={() => {
+                    if (resolvedBuySymbol) void lookUpStock(resolvedBuySymbol);
+                  }}
+                  disabled={infoLoading || !resolvedBuySymbol}
                 >
                   {infoLoading
                     ? <ActivityIndicator size="small" color="#000" />
@@ -1520,11 +1667,71 @@ export default function PaperScreen() {
                 </TouchableOpacity>
               </View>
 
+              {buySuggestions.length > 0 && (
+                <View style={styles.searchResults}>
+                  {buySuggestions.map((suggestion, index) => (
+                    <TouchableOpacity
+                      key={suggestion.symbol}
+                      testID={`paper-stock-result-${suggestion.symbol}`}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Select ${suggestion.name}, ${suggestion.symbol}`}
+                      style={[
+                        styles.searchResultRow,
+                        index < buySuggestions.length - 1 && styles.searchResultDivider,
+                      ]}
+                      onPress={() => {
+                        const currentSearch = buySearchContextRef.current;
+                        if (
+                          !currentSearch.enabled
+                          || !isStockSearchCurrent({
+                            input: currentSearch.input,
+                            settledQuery: currentSearch.settledQuery,
+                            resultQuery: buySearchResultQuery,
+                            isPlaceholderData: stockSearch.isPlaceholderData,
+                          })
+                        ) return;
+
+                        const selectedSymbol = resolveStockSearchSymbol(
+                          buySymbol,
+                          buySuggestions,
+                          suggestion,
+                          false,
+                        );
+                        if (selectedSymbol) void lookUpStock(selectedSymbol);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.searchResultName} numberOfLines={1}>{suggestion.name}</Text>
+                        {suggestion.exchange ? (
+                          <Text style={styles.searchResultExchange} numberOfLines={1}>{suggestion.exchange}</Text>
+                        ) : null}
+                      </View>
+                      <Text style={styles.searchResultSymbol}>{suggestion.symbol}</Text>
+                      <Feather name="chevron-right" size={15} color={DIM} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {buySearchFeedback?.kind === 'loading' && (
+                <View style={styles.searchStatus}>
+                  <ActivityIndicator size="small" color={SILVER} />
+                  <Text style={styles.searchHint}>{buySearchFeedback.message}</Text>
+                </View>
+              )}
+              {buySearchFeedback && buySearchFeedback.kind !== 'loading' && (
+                <Text style={styles.searchHint}>{buySearchFeedback.message}</Text>
+              )}
+              {showTradeModal && buySearchText.length === 1 && !infoLoading && (
+                <Text style={styles.searchHint}>Type at least 2 characters to search companies.</Text>
+              )}
+
               {infoError ? (
                 <Text style={styles.errorText}>{infoError}</Text>
               ) : stockInfo ? (
                 <>
-                  <View style={styles.stockInfoCard}>
+                  <View testID="paper-stock-info-card" style={styles.stockInfoCard}>
                     <Text style={styles.stockInfoName}>{stockInfo.companyName}</Text>
                     {stockInfo.sector ? <Text style={styles.stockInfoSector}>{stockInfo.sector}</Text> : null}
                     <Text style={styles.stockInfoPrice}>${stockInfo.currentPrice.toFixed(2)}</Text>
@@ -1533,19 +1740,63 @@ export default function PaperScreen() {
                          Dividend yield: {(normalizeDividendYield(stockInfo.dividendYield, stockInfo.dividendRate, stockInfo.currentPrice) * 100).toFixed(2)}%
                       </Text>
                     )}
+                    <TouchableOpacity
+                      testID="paper-add-to-watchlist-button"
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        buyTickerIsWatched
+                          ? `${buyTicker} is already on your watchlist`
+                          : `Add ${buyTicker} to your watchlist`
+                      }
+                      accessibilityState={{ disabled: buyTickerIsWatched }}
+                      style={[
+                        styles.watchlistAction,
+                        buyTickerIsWatched && styles.watchlistActionAdded,
+                      ]}
+                      onPress={() => { void addBuyTickerToWatchlist(); }}
+                      disabled={buyTickerIsWatched}
+                      activeOpacity={0.75}
+                    >
+                      <Feather
+                        name={buyTickerIsWatched ? 'check' : 'plus'}
+                        size={15}
+                        color={buyTickerIsWatched ? BUY_COLOR : SILVER}
+                      />
+                      <Text
+                        style={[
+                          styles.watchlistActionText,
+                          buyTickerIsWatched && styles.watchlistActionTextAdded,
+                        ]}
+                      >
+                        {buyTickerIsWatched ? 'ALREADY ON WATCHLIST' : 'ADD TO WATCHLIST'}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
 
                   {/* PLACE ORDER opens the full OrderSheet with order-type picker */}
                   <TouchableOpacity
+                    testID="paper-stock-place-order-button"
+                    accessibilityRole="button"
                     style={[styles.confirmBtn, styles.buyBtn]}
-                    onPress={() => { setShowOrderSheet(true); setShowTradeModal(false); }}
+                    onPress={() => {
+                      invalidateStockLookup();
+                      setShowOrderSheet(true);
+                      setShowTradeModal(false);
+                    }}
                   >
                     <Text style={styles.confirmBtnText}>PLACE ORDER →</Text>
                   </TouchableOpacity>
                 </>
               ) : null}
 
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => { setShowTradeModal(false); setStockInfo(null); }}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => {
+                  invalidateStockLookup();
+                  setShowTradeModal(false);
+                  setStockInfo(null);
+                }}
+              >
                 <Text style={styles.cancelBtnText}>CANCEL</Text>
               </TouchableOpacity>
             </View>
@@ -1558,13 +1809,13 @@ export default function PaperScreen() {
         <OrderSheet
           visible={showOrderSheet}
           side={tradeMode}
-          symbol={tradeMode === 'buy' ? buySymbol.trim().toUpperCase() : (selectedPos?.symbol ?? '')}
-          companyName={tradeMode === 'buy' ? (stockInfo?.companyName ?? '') : (selectedPos?.companyName ?? '')}
-          currentPrice={tradeMode === 'buy' ? (stockInfo?.currentPrice ?? 0) : (quotes[selectedPos?.symbol ?? '']?.price ?? selectedPos?.avgCost ?? 0)}
+          symbol={tradeMode === 'buy' ? buyOrderDetails.symbol : (selectedPos?.symbol ?? '')}
+          companyName={tradeMode === 'buy' ? buyOrderDetails.companyName : (selectedPos?.companyName ?? '')}
+          currentPrice={tradeMode === 'buy' ? buyOrderDetails.currentPrice : (quotes[selectedPos?.symbol ?? '']?.price ?? selectedPos?.avgCost ?? 0)}
           account={account}
           accountPositions={myPositions}
           quotes={quotes}
-          stockInfo={tradeMode === 'buy' ? stockInfo ?? undefined : undefined}
+          stockInfo={tradeMode === 'buy' ? buyOrderDetails.stockInfo : undefined}
           selectedPos={tradeMode === 'sell' ? selectedPos : null}
           existingOrder={editingOrder}
           pendingOrders={orders.filter(o => o.accountId === activeId)}
@@ -1775,7 +2026,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     fontSize: 8,
     color: 'rgba(192,192,192,0.35)',
-    letterSpacing: 1,
+    letterSpacing: 0.25,
   },
   lotRow: {
     flexDirection: 'row',
@@ -1928,6 +2179,28 @@ const styles = StyleSheet.create({
     minWidth: 88,
   },
   lookupBtnText: { fontFamily: 'Inter_700Bold', fontSize: 12, color: '#000', letterSpacing: 0.5 },
+  searchResults: {
+    backgroundColor: 'rgba(192,192,192,0.04)',
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 10,
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  searchResultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    minHeight: 56,
+  },
+  searchResultDivider: { borderBottomWidth: 1, borderBottomColor: BORDER },
+  searchResultName: { fontFamily: 'Inter_600SemiBold', fontSize: 13, color: '#fff' },
+  searchResultExchange: { fontFamily: 'Inter_400Regular', fontSize: 10, color: DIM, marginTop: 3 },
+  searchResultSymbol: { fontFamily: 'Inter_700Bold', fontSize: 12, color: BUY_COLOR, letterSpacing: 0.5 },
+  searchStatus: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, paddingHorizontal: 2 },
+  searchHint: { fontFamily: 'Inter_400Regular', fontSize: 11, color: DIM, marginBottom: 10 },
   errorText: { fontFamily: 'Inter_400Regular', fontSize: 12, color: SELL_COLOR, marginBottom: 8 },
   stockInfoCard: {
     backgroundColor: CARD_BG,
@@ -1941,6 +2214,25 @@ const styles = StyleSheet.create({
   stockInfoSector: { fontFamily: 'Inter_400Regular', fontSize: 11, color: DIM, marginBottom: 8 },
   stockInfoPrice: { fontFamily: 'Inter_700Bold', fontSize: 24, color: SILVER, marginBottom: 4 },
   stockInfoDiv: { fontFamily: 'Inter_400Regular', fontSize: 11, color: BUY_COLOR },
+  watchlistAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    minHeight: 42,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 9,
+  },
+  watchlistActionAdded: { borderColor: BUY_COLOR },
+  watchlistActionText: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 11,
+    color: SILVER,
+    letterSpacing: 0.6,
+  },
+  watchlistActionTextAdded: { color: BUY_COLOR },
   inputLabel: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 10,

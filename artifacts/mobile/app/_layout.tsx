@@ -1,5 +1,7 @@
 import React, { useEffect } from 'react';
 import { AmericanModeProvider } from '@/contexts/AmericanModeContext';
+import { AchievementsProvider } from '@/contexts/AchievementsContext';
+import { AchievementsOverlay } from '@/components/AchievementsOverlay';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProviderCompat } from '@/components/KeyboardProviderCompat';
@@ -43,6 +45,8 @@ function RootLayoutNav() {
       <Stack.Screen name="portfolio" options={{ headerShown: false }} />
       <Stack.Screen name="paper" options={{ headerShown: false }} />
       <Stack.Screen name="picks" options={{ headerShown: false }} />
+      <Stack.Screen name="heat-map" options={{ headerShown: false }} />
+      <Stack.Screen name="heat-map-chart" options={{ headerShown: false }} />
       <Stack.Screen name="picks/[symbol]" options={{ headerShown: false }} />
       <Stack.Screen name="analysis/[symbol]" options={{ headerShown: false }} />
     </Stack>
@@ -72,7 +76,10 @@ export default function RootLayout() {
           <QueryClientProvider client={queryClient}>
             <GestureHandlerRootView style={{ flex: 1 }}>
               <KeyboardProviderCompat>
-                <RootLayoutNav />
+                <AchievementsProvider>
+                  <RootLayoutNav />
+                  <AchievementsOverlay />
+                </AchievementsProvider>
               </KeyboardProviderCompat>
             </GestureHandlerRootView>
           </QueryClientProvider>

@@ -13,6 +13,46 @@ tags:
   - name: stocks
     description: Stock analysis operations
 paths:
+  /stocks/heat-map/search:
+    get:
+      operationId: searchHeatMapInstruments
+      tags: [stocks]
+      summary: Search supported non-stock heat-map instruments by name or ticker
+      parameters:
+        - in: query
+          name: q
+          required: true
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 80
+        - in: query
+          name: category
+          required: true
+          schema:
+            type: string
+            enum: [etfs, commodities, futures, cryptocurrency]
+      responses:
+        "200":
+          description: Matching provider-supported instruments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HeatMapInstrumentSuggestion"
+        "400":
+          description: Search text or category is missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "502":
+          description: The upstream instrument search is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
   /healthz:
     get:
       operationId: healthCheck
@@ -26,12 +66,47 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /stocks/search:
+    get:
+      operationId: searchStockSymbols
+      tags: [stocks]
+      summary: Search stocks by company name or ticker
+      description: Returns matching listed equities for company-name and ticker autocomplete
+      parameters:
+        - in: query
+          name: q
+          required: true
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 80
+      responses:
+        "200":
+          description: Matching stock symbols
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StockSymbolSuggestion"
+        "400":
+          description: Search text is missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "502":
+          description: The upstream company search is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
   /stocks/analyze:
     post:
       operationId: analyzeStock
       tags: [stocks]
-      summary: Analyze a stock ticker
-      description: Fetches real market data and runs technical, fundamental, and behavioral analysis with AI-powered buy/sell recommendations
+      summary: Analyze a listed ticker or supported commodity
+      description: Returns deterministic score-and-factor market analysis for supported commodity futures, fund-specific analysis for ETFs, or stock analysis for listed equities.
       requestBody:
         required: true
         content:
@@ -40,11 +115,11 @@ paths:
               $ref: "#/components/schemas/AnalyzeStockRequest"
       responses:
         "200":
-          description: Full stock analysis result
+          description: Stock, ETF, or supported commodity analysis result
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StockAnalysis"
+                $ref: "#/components/schemas/AnalysisResult"
         "400":
           description: Invalid symbol or request
           content:
@@ -53,6 +128,238 @@ paths:
                 $ref: "#/components/schemas/AnalysisError"
         "422":
           description: Could not analyze stock
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+  /stocks/info/{symbol}:
+    get:
+      operationId: getStockInfo
+      tags: [stocks]
+      summary: Get market detail statistics for a symbol
+      description: Returns provider-backed quote statistics and, for ETFs, fund facts and historical market-regime comparisons.
+      parameters:
+        - in: path
+          name: symbol
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 15
+      responses:
+        "200":
+          description: Market detail statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketInstrumentInfo"
+        "400":
+          description: Symbol is missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "422":
+          description: Provider data is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+  /stocks/crypto/{symbol}/supply-history/{rangeDays}:
+    get:
+      operationId: getCryptoSupplyHistory
+      tags: [stocks]
+      summary: Get historical on-chain supply for a cryptocurrency
+      description: Returns daily Coin Metrics current-supply observations for a selected 30, 90, or 365 day window. Missing provider dates are omitted, never interpolated; this on-chain metric may differ from another provider's current circulating-supply figure.
+      parameters:
+        - in: path
+          name: symbol
+          required: true
+          schema:
+            type: string
+            minLength: 5
+            maxLength: 15
+            pattern: "^[A-Z0-9]+-USD$"
+        - in: path
+          name: rangeDays
+          required: true
+          description: Number of daily history days to return.
+          schema:
+            type: integer
+            enum: [30, 90, 365]
+      responses:
+        "200":
+          description: Daily provider history, or an empty point list when the provider has no history for this asset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CryptoSupplyHistory"
+        "400":
+          description: Symbol is invalid or the requested history window is unsupported
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "422":
+          description: Historical supply provider is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+  /stocks/market-breadth:
+    get:
+      operationId: getMarketBreadth
+      tags: [stocks]
+      summary: Get a fast stock-market breadth snapshot
+      description: Returns the regular-session daily price changes for the same active-stock sample as the heat map, without fetching historical series or volatility data.
+      responses:
+        "200":
+          description: Current market breadth quotes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HeatMapResponse"
+        "422":
+          description: Market breadth is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+  /stocks/quotes:
+    post:
+      operationId: getPortfolioQuotes
+      tags: [stocks]
+      summary: Get current quotes for portfolio holdings
+      description: Returns current quotes using the same provider and session-price selection as the single-symbol quote route. Symbols without an available quote are listed separately.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortfolioQuoteBatchRequest"
+      responses:
+        "200":
+          description: Available quotes and symbols without quote data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortfolioQuoteBatch"
+        "400":
+          description: Invalid symbol list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "422":
+          description: Quote provider is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+  /stocks/market-pulse:
+    get:
+      operationId: getMarketPulse
+      tags: [stocks]
+      summary: Get the total-market daily move
+      description: Returns the daily percentage change and quote timestamp for Yahoo Finance's Dow Jones U.S. Total Stock Market Index (^DWCF), plus whether the official XNYS regular session is open. The index price is not returned.
+      responses:
+        "200":
+          description: Total-market daily percentage move
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketPulseResponse"
+        "422":
+          description: Market pulse is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+  /stocks/heat-map:
+    get:
+      operationId: getMarketHeatMap
+      tags: [stocks]
+      summary: Get batched quotes for a market heat map
+      description: Returns a cached batch of quotes, selected-period returns, and available provider metadata for one heat-map category. Custom maps pass symbols as a comma-separated query array.
+      parameters:
+        - in: query
+          name: category
+          required: true
+          schema:
+            type: string
+            enum: [stocks, etfs, commodities, futures, cryptocurrency, custom]
+        - in: query
+          name: period
+          required: false
+          schema:
+            type: string
+            enum: [1d, 1w, 1m, 3m, 6m, 1y, 3y, 5y, max]
+            default: 1d
+          description: Return window. Risk levels always use trailing-year annualized daily volatility.
+        - in: query
+          name: sector
+          required: false
+          schema:
+            type: string
+            enum: [Technology, Communication Services, Consumer Cyclical, Consumer Defensive, Financials, Healthcare, Industrials, Real Estate, Energy, Utilities, Basic Materials]
+          description: For Stocks, fetch an expanded, liquid US-listed quote set for the selected sector.
+        - in: query
+          name: symbols
+          required: false
+          style: form
+          explode: false
+          schema:
+            type: array
+            maxItems: 40
+            items:
+              type: string
+              minLength: 1
+              maxLength: 15
+      responses:
+        "200":
+          description: Market quotes for the selected heat map
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HeatMapResponse"
+        "400":
+          description: Invalid category or custom ticker list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "422":
+          description: Market data is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+  /stocks/heat-map/validate:
+    post:
+      operationId: validateHeatMapSymbol
+      tags: [stocks]
+      summary: Validate a custom heat-map ticker against live market data
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidateHeatMapSymbolRequest"
+      responses:
+        "200":
+          description: Valid ticker with an available quote
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HeatMapQuote"
+        "400":
+          description: Invalid ticker syntax
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisError"
+        "422":
+          description: No current or recent quote was found, or market data is temporarily unavailable
           content:
             application/json:
               schema:
@@ -67,14 +374,112 @@ components:
       required:
         - status
 
+    PortfolioQuote:
+      type: object
+      properties:
+        symbol:
+          type: string
+        currentPrice:
+          type: number
+          exclusiveMinimum: 0
+        priceChange:
+          type: number
+        priceChangePercent:
+          type: number
+        marketSession:
+          type: string
+        priceSource:
+          type: string
+        priceTimestamp:
+          type: integer
+          nullable: true
+        expenseRatio:
+          type: number
+          nullable: true
+      required:
+        - symbol
+        - currentPrice
+        - priceChange
+        - priceChangePercent
+        - marketSession
+        - priceSource
+        - priceTimestamp
+        - expenseRatio
+
+    PortfolioQuoteBatchRequest:
+      type: object
+      properties:
+        symbols:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            type: string
+            minLength: 1
+            maxLength: 15
+            pattern: "^[A-Za-z0-9.^=-]+$"
+      required:
+        - symbols
+
+    PortfolioQuoteBatch:
+      type: object
+      properties:
+        quotes:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortfolioQuote"
+        unavailableSymbols:
+          type: array
+          items:
+            type: string
+      required:
+        - quotes
+        - unavailableSymbols
+
     AnalyzeStockRequest:
       type: object
       properties:
         symbol:
           type: string
           description: Stock ticker symbol (e.g. AAPL, TSLA, MSFT)
+        includeCommentary:
+          type: boolean
+          default: true
+          description: Whether ETF analysis should include AI-generated commentary. Omit or set true for full analysis; set false for facts-only comparison data.
       required:
         - symbol
+
+    StockSymbolSuggestion:
+      type: object
+      properties:
+        symbol:
+          type: string
+        name:
+          type: string
+        exchange:
+          type: string
+      required:
+        - symbol
+        - name
+        - exchange
+
+    HeatMapInstrumentSuggestion:
+      type: object
+      properties:
+        symbol:
+          type: string
+        name:
+          type: string
+        exchange:
+          type: string
+        category:
+          type: string
+          enum: [etf, commodity, future, cryptocurrency]
+      required:
+        - symbol
+        - name
+        - exchange
+        - category
 
     TechnicalAnalysis:
       type: object
@@ -244,6 +649,9 @@ components:
     StockAnalysis:
       type: object
       properties:
+        assetType:
+          type: string
+          enum: [stock]
         symbol:
           type: string
         companyName:
@@ -276,6 +684,7 @@ components:
         recommendation:
           $ref: "#/components/schemas/Recommendation"
       required:
+        - assetType
         - symbol
         - companyName
         - exchange
@@ -291,6 +700,798 @@ components:
         - behavioral
         - recommendation
 
+    AnalysisResult:
+      oneOf:
+        - $ref: "#/components/schemas/StockAnalysis"
+        - $ref: "#/components/schemas/EtfAnalysisResult"
+        - $ref: "#/components/schemas/CommodityAnalysisResult"
+      discriminator:
+        propertyName: assetType
+        mapping:
+          stock: "#/components/schemas/StockAnalysis"
+          etf: "#/components/schemas/EtfAnalysisResult"
+          commodity: "#/components/schemas/CommodityAnalysisResult"
+
+    CommodityAnalysisResult:
+      type: object
+      properties:
+        assetType: { type: string, enum: [commodity] }
+        symbol: { type: string }
+        companyName: { type: string }
+        exchange: { type: string }
+        currency: { type: string }
+        currentPrice: { type: number }
+        priceChange: { type: number }
+        priceChangePercent: { type: number }
+        volume: { type: number }
+        marketCap: { type: number, nullable: true }
+        week52High: { type: number }
+        week52Low: { type: number }
+        commodityAnalysis:
+          type: object
+          properties:
+            score: { type: integer, minimum: 0, maximum: 100 }
+            confidence: { type: integer, minimum: 0, maximum: 100 }
+            dataCoveragePercent: { type: integer, minimum: 0, maximum: 100 }
+            observationCount: { type: integer, minimum: 0 }
+            historyAsOf: { type: string, nullable: true }
+            family: { type: string, enum: [metals, energy, agriculture, livestock] }
+            annualizedVolatilityPercent: { type: number }
+            oneMonthReturnPercent: { type: number, nullable: true }
+            threeMonthReturnPercent: { type: number, nullable: true }
+            sixMonthReturnPercent: { type: number, nullable: true }
+            factors:
+              type: array
+              items:
+                type: object
+                properties:
+                  key: { type: string }
+                  label: { type: string }
+                  status: { type: string, enum: [available, unavailable] }
+                  score: { type: integer, nullable: true }
+                  weight: { type: number }
+                  detail: { type: string }
+                  sources:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        title: { type: string }
+                        url: { type: string }
+                        asOf: { type: string, format: date }
+                        unit: { type: string }
+                        observation: { type: string }
+                      required: [title, url, asOf, unit, observation]
+                required: [key, label, status, score, weight, detail, sources]
+            methodology: { type: string }
+            reasoning: { type: string }
+            risks: { type: array, items: { type: string } }
+            strengths: { type: array, items: { type: string } }
+            newsContext:
+              type: object
+              properties:
+                status: { type: string, enum: [available, unavailable] }
+                summary: { type: string, nullable: true }
+                retrievedAt: { type: string, nullable: true }
+                sources:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      title: { type: string }
+                      url: { type: string }
+                      publishedAt: { type: string, nullable: true }
+                    required: [title, url, publishedAt]
+              required: [status, summary, retrievedAt, sources]
+            provider: { type: string }
+          required: [score, confidence, dataCoveragePercent, observationCount, historyAsOf, family, annualizedVolatilityPercent, oneMonthReturnPercent, threeMonthReturnPercent, sixMonthReturnPercent, factors, methodology, reasoning, risks, strengths, newsContext, provider]
+      required: [assetType, symbol, companyName, exchange, currency, currentPrice, priceChange, priceChangePercent, volume, marketCap, week52High, week52Low, commodityAnalysis]
+
+    EtfAnalysisResult:
+      type: object
+      properties:
+        assetType:
+          type: string
+          enum: [etf]
+        symbol: { type: string }
+        companyName: { type: string }
+        exchange: { type: string }
+        currency: { type: string }
+        currentPrice: { type: number }
+        priceChange: { type: number }
+        priceChangePercent: { type: number }
+        volume: { type: number }
+        marketCap:
+          type: number
+          nullable: true
+        week52High: { type: number }
+        week52Low: { type: number }
+        etfAnalysis:
+          $ref: "#/components/schemas/EtfAnalysis"
+      required: [assetType, symbol, companyName, exchange, currency, currentPrice, priceChange, priceChangePercent, volume, week52High, week52Low, etfAnalysis]
+
+    EtfAnalysis:
+      type: object
+      description: Fund-specific provider data, historical comparisons, and illustrative scenarios. Null means unavailable.
+      properties:
+        fundCategory:
+          type: string
+          nullable: true
+        fundFamily:
+          type: string
+          nullable: true
+        expenseRatio:
+          type: number
+          nullable: true
+        totalAssets:
+          type: number
+          nullable: true
+        dividendYield:
+          type: number
+          nullable: true
+        beta3Year:
+          type: number
+          nullable: true
+        averageVolume:
+          type: number
+          nullable: true
+        topHoldingsCombinedWeight:
+          type: number
+          nullable: true
+        annualizedReturn:
+          type: number
+          nullable: true
+        annualizedVolatility:
+          type: number
+          nullable: true
+        maxDrawdown:
+          type: number
+          nullable: true
+        riskAdjustedReturn:
+          type: number
+          nullable: true
+        topHoldings:
+          type: array
+          items:
+            $ref: "#/components/schemas/EtfHolding"
+        sectorWeights:
+          type: array
+          description: Provider-reported sector weights only; omitted sectors are not inferred as zero.
+          items:
+            $ref: "#/components/schemas/EtfSectorWeight"
+        sectorWeightsRetrievedAt:
+          type: string
+          format: date-time
+          description: Provider sector snapshot retrieval time, not a sector report date.
+        topHoldingsReportedCount:
+          type: integer
+          minimum: 0
+          description: Number of positions reported by the provider for this holdings snapshot.
+        topHoldingsRetrievedAt:
+          type: string
+          format: date-time
+          description: Provider holdings snapshot retrieval time, not a holdings report date.
+        marketRegime:
+          allOf:
+            - $ref: "#/components/schemas/EtfMarketRegime"
+          nullable: true
+        benchmark:
+          allOf:
+            - $ref: "#/components/schemas/EtfBenchmarkReference"
+          nullable: true
+        trackingComparison:
+          allOf:
+            - $ref: "#/components/schemas/EtfTrackingComparison"
+          nullable: true
+        peerExpenseComparison:
+          allOf:
+            - $ref: "#/components/schemas/EtfPeerExpenseComparison"
+          nullable: true
+        peerAssetSizeComparison:
+          allOf:
+            - $ref: "#/components/schemas/EtfPeerAssetSizeComparison"
+          nullable: true
+        scenarios:
+          type: array
+          items:
+            $ref: "#/components/schemas/EtfScenario"
+        risks:
+          type: array
+          items:
+            type: string
+        strengths:
+          type: array
+          items:
+            type: string
+        analysis:
+          type: string
+        provider:
+          type: string
+        asOf:
+          type: string
+          format: date-time
+      required: [topHoldings, sectorWeights, sectorWeightsRetrievedAt, topHoldingsReportedCount, topHoldingsRetrievedAt, marketRegime, benchmark, trackingComparison, peerExpenseComparison, peerAssetSizeComparison, scenarios, risks, strengths, analysis, provider, asOf, annualizedReturn, annualizedVolatility, maxDrawdown, riskAdjustedReturn, topHoldingsCombinedWeight]
+
+    EtfScenario:
+      type: object
+      properties:
+        label:
+          type: string
+          enum: [bear, base, bull]
+        annualReturnAssumption:
+          type: number
+          nullable: true
+          description: Historical regime average used as an illustrative annual return assumption.
+        fiveYearValue:
+          type: number
+          nullable: true
+        tenYearValue:
+          type: number
+          nullable: true
+        assumption:
+          type: string
+      required: [label, annualReturnAssumption, fiveYearValue, tenYearValue, assumption]
+
+    CryptoSupplyHistory:
+      type: object
+      description: Provider-reported daily on-chain current-supply observations. This series is distinct from the live circulating-supply and maximum-supply-share statistics.
+      properties:
+        symbol:
+          type: string
+        provider:
+          type: string
+          enum: ["Coin Metrics"]
+        metric:
+          type: string
+          enum: [SplyCur]
+        rangeDays:
+          type: integer
+          enum: [30, 90, 365]
+        interval:
+          type: string
+          enum: [daily]
+        startDate:
+          type: string
+          format: date
+          nullable: true
+        endDate:
+          type: string
+          format: date
+          nullable: true
+        points:
+          type: array
+          items:
+            $ref: "#/components/schemas/CryptoSupplyHistoryPoint"
+      required:
+        - symbol
+        - provider
+        - metric
+        - rangeDays
+        - interval
+        - startDate
+        - endDate
+        - points
+
+    CryptoSupplyHistoryPoint:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        supply:
+          type: number
+          exclusiveMinimum: 0
+      required:
+        - date
+        - supply
+
+    MarketInstrumentInfo:
+      type: object
+      properties:
+        symbol:
+          type: string
+        companyName:
+          type: string
+        sector:
+          type: string
+        industry:
+          type: string
+        exchange:
+          type: string
+        dividendYield:
+          type: number
+          nullable: true
+          description: Distribution yield as a decimal fraction (0.01 = 1%).
+        dividendRate:
+          type: number
+          nullable: true
+        marketCap:
+          type: number
+          nullable: true
+        currentPrice:
+          type: number
+        previousClose:
+          type: number
+          nullable: true
+        open:
+          type: number
+          nullable: true
+        dayLow:
+          type: number
+          nullable: true
+        dayHigh:
+          type: number
+          nullable: true
+        fiftyTwoWeekLow:
+          type: number
+          nullable: true
+        fiftyTwoWeekHigh:
+          type: number
+          nullable: true
+        volume:
+          type: number
+          nullable: true
+        averageVolume3Month:
+          type: number
+          nullable: true
+        beta:
+          type: number
+          nullable: true
+        earningsTimestamp:
+          type: number
+          nullable: true
+        targetMeanPrice:
+          type: number
+          nullable: true
+        trailingEps:
+          type: number
+          nullable: true
+        totalRevenue:
+          type: number
+          nullable: true
+        circulatingSupply:
+          type: number
+          nullable: true
+        maxSupply:
+          type: number
+          nullable: true
+        volume24Hr:
+          type: number
+          nullable: true
+        etfProfile:
+          $ref: "#/components/schemas/EtfProfile"
+      required:
+        - symbol
+        - companyName
+        - sector
+        - industry
+        - exchange
+        - dividendYield
+        - dividendRate
+        - marketCap
+        - currentPrice
+        - previousClose
+        - open
+        - dayLow
+        - dayHigh
+        - fiftyTwoWeekLow
+        - fiftyTwoWeekHigh
+        - volume
+        - averageVolume3Month
+        - beta
+        - earningsTimestamp
+        - targetMeanPrice
+        - trailingEps
+        - totalRevenue
+        - circulatingSupply
+        - maxSupply
+        - volume24Hr
+
+    EtfProfile:
+      type: object
+      description: Provider-reported fund facts, present for ETFs. Ratios and weights are decimal fractions.
+      properties:
+        fundCategory:
+          type: string
+          nullable: true
+        fundFamily:
+          type: string
+          nullable: true
+        expenseRatio:
+          type: number
+          nullable: true
+          description: Annual expense ratio as a decimal fraction (0.001 = 0.1%).
+        totalAssets:
+          type: number
+          nullable: true
+          description: Fund assets under management in USD.
+        dividendYield:
+          type: number
+          nullable: true
+        beta3Year:
+          type: number
+          nullable: true
+        largestSector:
+          type: string
+          nullable: true
+        largestSectorWeight:
+          type: number
+          nullable: true
+        sectorWeights:
+          type: array
+          description: Provider-reported sector weights only; omitted sectors are not inferred as zero.
+          items:
+            $ref: "#/components/schemas/EtfSectorWeight"
+        sectorWeightsRetrievedAt:
+          type: string
+          format: date-time
+          description: Provider sector snapshot retrieval time, not a sector report date.
+        topHoldings:
+          type: array
+          items:
+            $ref: "#/components/schemas/EtfHolding"
+        topHoldingsReportedCount:
+          type: integer
+          minimum: 0
+          description: Number of positions reported by the provider for this holdings snapshot.
+        topHoldingsRetrievedAt:
+          type: string
+          format: date-time
+          description: Provider holdings snapshot retrieval time, not a holdings report date.
+        marketRegime:
+          allOf:
+            - $ref: "#/components/schemas/EtfMarketRegime"
+          nullable: true
+        benchmark:
+          allOf:
+            - $ref: "#/components/schemas/EtfBenchmarkReference"
+          nullable: true
+        trackingComparison:
+          allOf:
+            - $ref: "#/components/schemas/EtfTrackingComparison"
+          nullable: true
+        peerExpenseComparison:
+          allOf:
+            - $ref: "#/components/schemas/EtfPeerExpenseComparison"
+          nullable: true
+        peerAssetSizeComparison:
+          allOf:
+            - $ref: "#/components/schemas/EtfPeerAssetSizeComparison"
+          nullable: true
+      required:
+        - fundCategory
+        - fundFamily
+        - expenseRatio
+        - totalAssets
+        - dividendYield
+        - beta3Year
+        - largestSector
+        - largestSectorWeight
+        - sectorWeights
+        - sectorWeightsRetrievedAt
+        - topHoldings
+        - topHoldingsReportedCount
+        - topHoldingsRetrievedAt
+        - marketRegime
+        - benchmark
+        - trackingComparison
+        - peerExpenseComparison
+        - peerAssetSizeComparison
+
+    EtfBenchmarkReference:
+      type: object
+      description: Benchmark explicitly identified by the provider; never inferred from the ETF category.
+      properties:
+        symbol: { type: string }
+        name: { type: string }
+        source: { type: string }
+        asOf: { type: string, format: date-time }
+      required: [symbol, name, source, asOf]
+
+    EtfTrackingComparison:
+      type: object
+      description: Comparison of adjusted monthly ETF and explicit benchmark returns over their shared history.
+      properties:
+        periodStart: { type: string }
+        periodEnd: { type: string }
+        monthlySamples: { type: integer, minimum: 2 }
+        fundAnnualizedReturn: { type: number }
+        benchmarkAnnualizedReturn: { type: number }
+        trackingDifference:
+          type: number
+          description: Fund annualized total return minus benchmark annualized total return.
+        trackingError:
+          type: number
+          description: Sample standard deviation of monthly active returns, annualized by the square root of 12.
+        source: { type: string }
+        asOf: { type: string, format: date-time }
+      required: [periodStart, periodEnd, monthlySamples, fundAnnualizedReturn, benchmarkAnnualizedReturn, trackingDifference, trackingError, source, asOf]
+
+    EtfPeerExpenseComparison:
+      type: object
+      description: Yahoo Finance provider-defined fund-category average; sample size is unavailable when not reported.
+      properties:
+        category: { type: string }
+        fundExpenseRatio:
+          type: number
+          nullable: true
+          description: Fund annual expense ratio as a decimal fraction.
+        categoryAverageExpenseRatio:
+          type: number
+          description: Category-average annual expense ratio as a decimal fraction.
+        difference:
+          type: number
+          nullable: true
+          description: Fund expense ratio minus the category average, as a decimal fraction.
+        sampleSize:
+          type: integer
+          nullable: true
+        sampleContext: { type: string }
+        source: { type: string }
+        asOf: { type: string, format: date-time }
+      required: [category, fundExpenseRatio, categoryAverageExpenseRatio, difference, sampleSize, sampleContext, source, asOf]
+
+    EtfPeerAssetSizeComparison:
+      type: object
+      description: Yahoo Finance provider-defined category average total net assets; sample size is unavailable when not reported.
+      properties:
+        category: { type: string }
+        fundTotalAssets:
+          type: number
+          nullable: true
+          description: Fund total net assets in USD.
+        categoryAverageTotalAssets:
+          type: number
+          description: Category-average total net assets in USD.
+        difference:
+          type: number
+          nullable: true
+          description: Fund total assets minus the category average, in USD.
+        sampleSize:
+          type: integer
+          nullable: true
+        sampleContext: { type: string }
+        source: { type: string }
+        asOf: { type: string, format: date-time }
+      required: [category, fundTotalAssets, categoryAverageTotalAssets, difference, sampleSize, sampleContext, source, asOf]
+
+    EtfHolding:
+      type: object
+      properties:
+        symbol:
+          type: string
+        name:
+          type: string
+        weight:
+          type: number
+          description: Holding weight as a decimal fraction.
+      required:
+        - symbol
+        - name
+        - weight
+
+    EtfSectorWeight:
+      type: object
+      properties:
+        sector:
+          type: string
+        weight:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Provider-reported sector weight as a decimal fraction.
+      required: [sector, weight]
+
+    EtfMarketRegime:
+      type: object
+      description: Historical comparison, not a forecast. Based on complete calendar-year adjusted total returns.
+      properties:
+        bestRegime:
+          type: string
+          enum: [bull, bear, mixed]
+          nullable: true
+        lookbackYears:
+          type: integer
+        firstYear:
+          type: integer
+        lastYear:
+          type: integer
+        benchmarkSymbol:
+          type: string
+        bullThreshold:
+          type: number
+          description: Minimum annual benchmark return for a bull year, as a decimal fraction.
+        bearThreshold:
+          type: number
+          description: Maximum annual benchmark return for a bear year, as a decimal fraction.
+        periods:
+          type: object
+          properties:
+            bull:
+              $ref: "#/components/schemas/EtfRegimePeriod"
+            bear:
+              $ref: "#/components/schemas/EtfRegimePeriod"
+            mixed:
+              $ref: "#/components/schemas/EtfRegimePeriod"
+          required: [bull, bear, mixed]
+      required:
+        - bestRegime
+        - lookbackYears
+        - firstYear
+        - lastYear
+        - benchmarkSymbol
+        - bullThreshold
+        - bearThreshold
+        - periods
+
+    EtfRegimePeriod:
+      type: object
+      properties:
+        averageAnnualReturn:
+          type: number
+          nullable: true
+          description: Arithmetic average of adjusted annual total returns.
+        years:
+          type: integer
+          description: Number of complete calendar years in this regime.
+      required:
+        - averageAnnualReturn
+        - years
+
+    HeatMapQuote:
+      type: object
+      properties:
+        symbol:
+          type: string
+        name:
+          type: string
+        price:
+          type: number
+          exclusiveMinimum: 0
+        priceChangePercent:
+          type: number
+          description: Percentage change from the previous close, in percentage points (1.25 means 1.25%).
+        returnPercent:
+          type: number
+          nullable: true
+          description: Selected-period return in percentage points, or null when the requested history is unavailable.
+        returnBasis:
+          type: string
+          enum: [adjusted_total_return, price_return_proxy]
+          description: Adjusted total return for stocks/ETFs where supported, otherwise a price-return proxy.
+        returnUnavailableReason:
+          type: string
+          nullable: true
+          description: Why the requested return could not be calculated.
+        historyStartDate:
+          type: string
+          nullable: true
+          description: Earliest available daily observation in YYYY-MM-DD; populated for Max.
+        priceTimestamp:
+          type: integer
+          nullable: true
+          description: Unix timestamp in seconds for this quote or last available close. Quotes without a timestamp are not displayable.
+        marketSession:
+          type: string
+          enum: [pre_market, regular, after_hours, closed, unknown]
+          description: Session for this quote. closed identifies the latest available close; unknown means the provider could not identify the session.
+        nextRegularOpenTimestamp:
+          type: integer
+          nullable: true
+          description: Unix timestamp in seconds for the next scheduled listed-exchange regular-session open, populated only when a stock or ETF is closed or in after-hours; null when unavailable or not applicable.
+        assetType:
+          type: string
+          enum: [stock, etf, commodity, future, cryptocurrency]
+        sector:
+          type: string
+          nullable: true
+          description: Normalized provider sector; stocks without metadata use Unknown.
+        exchange:
+          type: string
+          nullable: true
+          description: Normalized provider exchange when available.
+        exchangeTimezone:
+          type: string
+          nullable: true
+          description: IANA timezone for a supported listed-exchange calendar, used to display the next open; null when unavailable.
+        marketCapUsd:
+          type: number
+          nullable: true
+          description: Provider market capitalization in USD. ETF assets-under-management are not substituted.
+        annualizedVolatilityPercent:
+          type: number
+          nullable: true
+          description: Trailing-year annualized standard deviation of daily returns, requiring at least 60 observations.
+        riskBand:
+          type: string
+          enum: [Conservative, Moderate Conservative, Moderate, Moderate Aggressive, Aggressive]
+          nullable: true
+          description: Historical-volatility band; not personalized investment suitability.
+      required:
+        - symbol
+        - name
+        - price
+        - priceChangePercent
+        - returnPercent
+        - returnBasis
+        - returnUnavailableReason
+        - historyStartDate
+        - priceTimestamp
+        - marketSession
+        - nextRegularOpenTimestamp
+        - assetType
+        - sector
+        - exchange
+        - exchangeTimezone
+        - marketCapUsd
+        - annualizedVolatilityPercent
+        - riskBand
+
+    HeatMapResponse:
+      type: object
+      properties:
+        category:
+          type: string
+          enum: [stocks, etfs, commodities, futures, cryptocurrency, custom]
+        period:
+          type: string
+          enum: [1d, 1w, 1m, 3m, 6m, 1y, 3y, 5y, max]
+        requestedSector:
+          type: string
+          enum: [Technology, Communication Services, Consumer Cyclical, Consumer Defensive, Financials, Healthcare, Industrials, Real Estate, Energy, Utilities, Basic Materials]
+          nullable: true
+          description: Sector used for a Stocks expansion request, or null for the normal category list.
+        quotes:
+          type: array
+          items:
+            $ref: "#/components/schemas/HeatMapQuote"
+        unavailableSymbols:
+          type: array
+          items:
+            type: string
+        updatedAt:
+          type: integer
+          description: Unix timestamp in seconds when this batch was assembled.
+      required:
+        - category
+        - period
+        - requestedSector
+        - quotes
+        - unavailableSymbols
+        - updatedAt
+
+    MarketPulseResponse:
+      type: object
+      properties:
+        marketOpen:
+          type: boolean
+          description: Whether the XNYS regular trading session is currently open.
+        changePercent:
+          type: number
+          description: Daily percentage move from the previous close, in percentage points.
+        priceTimestamp:
+          type: integer
+          description: Unix timestamp in seconds for the Yahoo Finance quote used to calculate the daily move.
+        updatedAt:
+          type: integer
+          description: Unix timestamp in seconds when this response was assembled.
+      required:
+        - marketOpen
+        - changePercent
+        - priceTimestamp
+        - updatedAt
+
+    ValidateHeatMapSymbolRequest:
+      type: object
+      properties:
+        symbol:
+          type: string
+          minLength: 1
+          maxLength: 15
+          pattern: "^[A-Za-z0-9.^=-]+$"
+      required:
+        - symbol
+
     AnalysisError:
       type: object
       properties:
@@ -298,6 +1499,14 @@ components:
           type: string
         message:
           type: string
+        reason:
+          type: string
+          description: Why a supported commodity has no score because its dated price history is stale or unreliable.
+        lastUsableDate:
+          type: string
+          format: date
+          nullable: true
+          description: Latest valid daily observation date, when one was available.
       required:
         - error
         - message

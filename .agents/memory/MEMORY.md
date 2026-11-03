@@ -1,23 +1,31 @@
 - [React Native / Expo gotchas](react-native-gotchas.md) — `Easing.sin` not `Easing.sine` (mount crash); gate expo-audio behind Expo Go check.
+- [USDA WASDE report downloads](usda-wasde-direct-download.md) — the historical page can block server fetches; fetch dated official CSVs and validate release metadata.
 - [Expo Router auth gate](expo-router-auth-gate.md) — root layout must always render the navigator; returning `<Redirect>` instead = blank screen. Redirect imperatively via useSegments.
 - [Clerk provider must always be mounted](clerk-provider-dev-bypass.md) — Clerk hooks throw without a provider; a dev "preview without login" bypass must keep ClerkProvider mounted and only skip the redirect.
 - [minimumReleaseAge blocks same-day Expo bumps](pnpm-minimum-release-age-expo.md) — bumping expo to a just-released SDK patch fails install; allowlist Expo-org globs; expo-doctor reads package.json not the linked tree.
+- [Expo install-check can block validation](expo-install-check-prompt.md) — minor Expo patch drift makes `expo install --check` prompt interactively; CI mode reports outdated packages and exits nonzero.
 - [Expo package/SDK mismatch = APK-only launch crash](expo-sdk-package-mismatch.md) — wrong-SDK expo-* pkg works in Expo Go but crashes standalone at boot; `expo install --check` gates builds; diff APK zips to find native deltas.
+- [Expo Audio foreground services](expo-audio-foreground-services.md) — this app uses short foreground clips only; keep background playback/recording services out of Android builds unless product scope changes.
 - [Python JSON for Node](python-json-for-node.md) — Python `NaN`/`Infinity` breaks Node `JSON.parse`; sanitize + `json.dumps(allow_nan=False)`.
 - [RN-web TextInput in Playwright](rn-web-playwright-textinput.md) — `fill()` skips `onChangeText`; tester must type char-by-char or validation false-fails.
 - [Stable apiFetch vs Clerk getToken](useapi-stable-fetch.md) — Clerk `getToken` isn't stable; memoizing apiFetch on it → infinite fetch loop + Clerk rate-limit blank screen. Use a ref.
 - [EAS build environment](eas-build-clerk-config.md) — current account-free mobile builds need the deployment domain; the old Clerk requirement is no longer active.
 - [Published API freshness](published-api-freshness.md) — verify the published API and treat AI commentary as untrusted so valid analysis never fails on a model response.
+- [Heat-map calendar test dependency](heatmap-calendar-test-dependency.md) — calendar-backed Python session tests need `exchange_calendars`; without it, sessions degrade to `unknown`.
 - [EAS Android mergeReleaseJavaResource failure](eas-android-packaging-conflict.md) — duplicate META-INF from transitive jars (okhttp/jspecify) fails the Gradle merge; fix with expo-build-properties packagingOptions.pickFirst.
 - [TS project references use dist .d.ts](ts-project-reference-stale-dist.md) — "no exported member" for a symbol src exports = stale lib dist; rebuild with `tsc -b --force`, don't rewrite the consumer.
+- [OpenAPI path/query parameter names](openapi-path-query-params.md) — avoid combining path and query parameters when their generated Zod exports collide in the shared API barrel.
 - [Replit mobile artifact deploy = QR/OTA landing page](replit-mobile-artifact-deploy.md) — the published .replit.app of an Expo mobile app is a QR launcher, not a browser app; real access is the APK or Expo Go.
 - [Paper-trading fee/cash consistency](paper-trading-fee-cashflow.md) — any per-trade cost (fee) shown in net P&L must ALSO be debited from account cash AND from buildValueHistory's reconstructed cash flow, or equity/returns silently overstate.
 - [Mobile pure-math testing](mobile-pure-math-testing.md) — pure fee/win-rate math lives in `artifacts/mobile/lib/*.ts` (no RN imports); tested via Node's built-in runner with type-stripping. Screens import from these libs.
+- [Mobile UI smoke tests](mobile-ui-smoke-tests.md) — when no component renderer exists, test extracted flow logic plus focused source wiring rather than adding a test stack for one screen.
 - [Clerk Google SSO transfer flow](clerk-sso-transfer-flow.md) — must handle 'transferable' verifications via create({transfer:true})+finalize(); dev e2e blocked by captcha/allowlist; workspace secret key is prod-instance.
 - [Schema migration gate](schema-migration-gate.md) — after-the-fact columns are migrated once at boot behind a cached promise; any endpoint referencing them must sit behind `requireSchema` (awaits migration, 503 while failing).
 - [Paper table migration](paper-table-migration.md) — paper-trading migrations must create the base tables, not just add columns; missing `paper_positions` or `sector` column caused production 500s.
 - [Paper trading engine v2](paper-trading-v2.md) — orders/lots/T+2/FIFO/slippage/dividends; trailing stop uses trailRef not currentPrice; `.ts` extension needed for Node ESM; syncToServer takes 6 args now.
 - [Patriot Mode premium theme](patriot-mode-premium-theme.md) — use brushed steel and gold as the persistent premium language; reserve flag colors for brief entry motion.
+- [Market heat-map flame motion](market-heat-map-flame-motion.md) — keep the breadth badge calm and campfire-like, with staggered flame tongues that rise and fade.
+- [Yahoo stock-screener paging](yahoo-stock-screener-paging.md) — Yahoo’s most-active screen may return 25 rows per call; use offsets to collect a larger sample.
 - [Guest device notifications](guest-device-notifications.md) — route alerts by anonymous installation ID and latest Expo token, not account auth.
 - [Meisner Method branding](meisner-method-branding.md) — public product branding is Meisner Method; legacy storage namespaces remain for local-data compatibility.
 - [Celebration audio cost model](celebration-audio-cost.md) — bundle approved celebration recordings locally; do not reintroduce per-play network TTS.
@@ -26,6 +34,7 @@
 - [Dave Ramsey Daiquiri odds](daiquiri-odds-and-payout.md) — show requested 45% win / 65% loss copy; use 45% win internally and double only a win.
 - [Dark Brew Token economy](dark-brew-token-economy.md) — Stamin Up converts one winning award only; Dark Brew stays isolated from regular wagering and portfolio value.
 - [Quick Revive visual direction](quick-revive-visual-direction.md) — use a luminous cyan soda bottle with fizz and a round Revive label, not a generic lightning potion.
+- [Quick Revive odds](quick-revive-odds.md) — one bottle raises the next toss from 55% to a 70% win chance; keep odds copy and tests aligned.
 - [Daiquiri visual direction](daiquiri-visual-direction.md) — use a cinematic navy-and-gold collectible bottle with carbonation, label flare, liquid surge, and controlled splash.
 - [SmartPro bottle direction](smartpro-bottle-direction.md) — use vivid lime liquid, dark green glass, and the approved rectangular black SP/SMARTPRO label; never revert to the circular S badge.
 - [Mockup sandbox React types](mockup-sandbox-react-types.md) — keep sandbox React type packages aligned with runtime React 19.1 to avoid nominal ref incompatibilities.
@@ -33,4 +42,35 @@
 - [Third-theme unlock](third-theme-unlock.md) — reveal Hybrid Neon Gucci after first Dark Brew Token; unlock at 10,000; persist it with the economy and keep themes exclusive.
 - [Brew activity history](brew-activity-history.md) — token, bottle, bank, toss, and theme events travel with the economy snapshot; older snapshots read as an empty history.
 - [Stock recommendation stability](stock-recommendation-stability.md) — action and price levels are deterministic; AI explains them but cannot override or invert them.
+- [ETF analysis scenarios](etf-analysis-scenarios.md) — long-range ETF values are deterministic historical-regime illustrations, never AI-generated forecasts.
+- [Yahoo ETF holdings coverage](yahoo-etf-holdings-coverage.md) — Yahoo fund data commonly returns ten top holdings and no report date; label retrieval time and disclose the reported-position coverage.
+- [ETF benchmarks and peer comparisons](etf-benchmark-peer-data.md) — use only explicit provider baselines; disclose category, source, retrieval time, and unknown sample size.
+- [ETF tracking monthly windows](etf-tracking-monthly-windows.md) — count only consecutive shared monthly prices; metadata and annualization must use those sampled intervals.
 - [GitHub release sync](github-release-sync.md) — if the HTTPS remote credential is stale, sync through the authorized GitHub API and throttle blob writes below the proxy limit.
+- [Biden quote progress tracker](biden-quote-progress-tracker.md) — keep this as a visual layer over the existing persisted view count and shared unlock threshold.
+- [Shared heat-map market status](heatmap-shared-market-status.md) — show one open/pre-market/extended/closed indicator for Stocks, ETFs, and Custom instead of repeating next-open times in hexes.
+- [Heat-map extended-hours schedules](heatmap-extended-hours-schedules.md) — only label international extensions from official venue-specific schedules; a regular-hours calendar is not enough.
+- [Heat-map scheduled refresh failures](heatmap-scheduled-refresh-failures.md) — React Query refetch usually resolves with `isError`; retry logic must inspect the result and also handle rejection.
+- [ICE Dollar Index sessions](ice-dollar-index-sessions.md) — DX=F has its own ICE evening schedule and holiday baseline; do not route it through CME calendars or product groups.
+- [Artifact workflow listener conflicts](artifact-workflow-listener-conflicts.md) — a failed service workflow can leave an older healthy child holding the same port.
+- [Preview capture request aborts](preview-capture-request-aborts.md) — screenshots may close slow API requests before they finish; verify with a direct request or a later capture.
+- [Heat-map selected quote retention](heat-map-selected-quote-retention.md) — keep the selected detail quote on omission; only update it from a successful matching batch, and offer retry while unavailable.
+- [Custom heat-map reordering](custom-heat-map-reordering.md) — saved order is local display state; reordering must not refetch quotes or block subsequent drags on persistence.
+- [Watchlist reorder interaction](watchlist-reorder-interaction.md) — long-press the main ticker card to reorder; ordinary swipes should scroll, and action buttons stay separate.
+- [Market heat/cold index signal](market-breadth-cache.md) — use Yahoo ^DWCF daily % movement; stale only during the official session and keep the last session readable after close.
+- [Heat-map screener deduplication](heat-map-screener-deduplication.md) — breadth serialization bypasses the normal symbol-keyed map; dedupe screener rows by ticker, keeping the first-ranked quote.
+- [React Native Web alerts](react-native-web-alerts.md) — `Alert.alert` is a no-op in the browser preview; critical confirmation flows need a web-specific path.
+- [React Native Web chart hit-testing](react-native-web-chart-hit-testing.md) — `Pressable` may omit local touch coordinates; derive them from page coordinates and the target bounds.
+- [Yahoo crypto max-supply semantics](yahoo-crypto-max-supply.md) — explicit `maxSupply: 0` means no fixed cap; missing or null max supply is unreported, not uncapped.
+- [Crypto supply history provenance](crypto-supply-history-provenance.md) — disclose provider-defined on-chain supply history and preserve observation gaps; keep it separate from max-supply share.
+- [Commodity quote units and notional](commodity-contract-specs.md) — preserve exchange quote units and convert cent quotes only when computing USD contract notional.
+- [CME futures Sunday history labels](cme-futures-sunday-history.md) — Yahoo can label Sunday-evening CME bars Sunday; map to Monday only after the exchange calendar confirms that session opened.
+- [Unavailable commodity quote policy](commodity-unavailable-quote-policy.md) — keep missing commodity quotes visible; add to custom maps only by explicit user action, even before a fresh quote.
+- [Commodity driver request contract](commodity-driver-request-contract.md) — keep curated explanations independent of market statistics; any future remote source must retain timeout, retry, and stale-result protection.
+- [Expo Metro shared catalog paths](expo-metro-shared-catalog.md) — Metro may reject a JSON catalog outside the mobile artifact even when TypeScript resolves it; keep bundled shared data inside the Expo boundary.
+- [Achievement design and triggers](achievement-design.md) — keep unlocks cosmetic, brief, and independent of Brew reward update success.
+- [Premium flag badge motion](premium-flag-animation.md) — preserve all six supplied artworks and a continuous, visible cloth wave without reduced-motion suppression.
+- [API route test seams](api-route-test-seams.md) — extract injectable response handlers when source-run tests cannot resolve route imports that exist only after bundling.
+- [React Native Web accordion tests](react-native-web-accordion-tests.md) — verify collapsed evidence by content visibility; this runtime may not reflect `accessibilityState.expanded` as `aria-expanded`.
+- [Post-merge Drizzle safety](post-merge-drizzle-safety.md) — inspect non-TTY push logs for data-loss prompts; never force an unreviewed schema diff.
+- [OpenAI Responses web search](openai-responses-web-search.md) — Replit's configured OpenAI proxy supports `web_search` and returns source citations from Responses.
