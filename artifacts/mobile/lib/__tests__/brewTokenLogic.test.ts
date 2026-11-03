@@ -397,6 +397,49 @@ test('free Bank opening targets the next local Saturday and counts down to it', 
   );
 });
 
+test('free Bank opening stays at local Saturday midnight across daylight-saving changes', () => {
+  const previousTimezone = process.env.TZ;
+  process.env.TZ = 'America/New_York';
+
+  try {
+    const cases = [
+      {
+        name: 'spring forward',
+        now: new Date(2026, 2, 7, 0, 1, 0),
+        expectedOpening: new Date(2026, 2, 14, 0, 0, 0),
+        expectedCountdown: '6d 22h 59m',
+      },
+      {
+        name: 'fall back',
+        now: new Date(2026, 9, 31, 0, 1, 0),
+        expectedOpening: new Date(2026, 10, 7, 0, 0, 0),
+        expectedCountdown: '7d 0h 59m',
+      },
+    ];
+
+    for (const { name, now, expectedOpening, expectedCountdown } of cases) {
+      const openingTimestamp = getNextBrewBankFreeOpening(now.getTime());
+      const localOpening = new Date(openingTimestamp);
+
+      assert.equal(openingTimestamp, expectedOpening.getTime(), `${name}: next opening timestamp`);
+      assert.equal(localOpening.getDay(), 6, `${name}: opening day`);
+      assert.equal(localOpening.getHours(), 0, `${name}: opening hour`);
+      assert.equal(localOpening.getMinutes(), 0, `${name}: opening minute`);
+      assert.equal(
+        formatBrewBankFreeOpeningCountdown(now.getTime()),
+        expectedCountdown,
+        `${name}: elapsed-time countdown`,
+      );
+    }
+  } finally {
+    if (previousTimezone === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = previousTimezone;
+    }
+  }
+});
+
 test('winning a bet returns the stake as profit and losing removes only the stake', () => {
   assert.equal(resolveBrewBet(INITIAL_BREW_TOKENS, 2, true), 7);
   assert.equal(resolveBrewBet(INITIAL_BREW_TOKENS, 2, false), 3);
