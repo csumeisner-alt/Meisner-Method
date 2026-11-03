@@ -271,6 +271,31 @@ async function clickTestID(browser, testID) {
   assert.equal(clicked, true, `Expected ${testID} to be rendered and clickable.`);
 }
 
+async function assertWatchlistAddIsUnique(browser, symbol) {
+  await clickTestID(browser, "heat-map-detail-add-watchlist");
+  await waitFor(
+    (expression) => browser.evaluate(expression),
+    `document.querySelector(${JSON.stringify(selector("heat-map-detail-add-watchlist"))})?.textContent.includes("In watchlist") && document.querySelector(${JSON.stringify(selector("heat-map-detail-add-watchlist"))})?.disabled`,
+    `Adding ${symbol} should update its detail card to the already-added state.`,
+  );
+  const assertOnlyOneEntry = async () => {
+    const symbols = await browser.evaluate("window.__heatMapWatchlistSymbols");
+    assert.equal(
+      symbols.filter((item) => item === symbol).length,
+      1,
+      `${symbol} should appear only once in the watchlist.`,
+    );
+    assert.equal(
+      new Set(symbols).size,
+      symbols.length,
+      "The watchlist should not contain duplicate symbols.",
+    );
+  };
+  await assertOnlyOneEntry();
+  await browser.evaluate(`window.__heatMapAddToWatchlist(${JSON.stringify(symbol)})`);
+  await assertOnlyOneEntry();
+}
+
 async function waitForRequest(browser, predicateExpression, description) {
   await waitFor(
     (expression) => browser.evaluate(expression),
@@ -2141,6 +2166,19 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       `!!document.querySelector(${JSON.stringify(selector("heat-map-session-AAPL"))}) && !!document.querySelector(${JSON.stringify(selector("heat-map-session-MSFT"))})`,
       "The restored ticker and the other saved ticker should render after reopening the map.",
     );
+    await clickTestID(browser, "heat-map-open-detail-AAPL");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent === "AAPL"`,
+      "Tapping a custom-map tile should open its detail card.",
+    );
+    await assertWatchlistAddIsUnique(browser, "AAPL");
+    await clickTestID(browser, "heat-map-detail-close");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
+      "The custom-map detail card should close before continuing.",
+    );
     assert.deepEqual(
       await browser.evaluate(`Array.from(document.querySelectorAll('[data-testid^="heat-map-hex-tile-"]')).map((node) => node.getAttribute("data-testid").replace("heat-map-hex-tile-", ""))`),
       ["MSFT", "AAPL"],
@@ -3110,6 +3148,47 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       refetchCountBeforeCryptoMapChange + 1,
       "changing the selected map should cancel the pending crypto resume retry.",
     );
+
+    await setResponse(browser, makeResponse("etfs", "1w", "IVV"));
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-open-detail-IVV"))})`,
+      "The ETF map should render a tile before opening its detail card.",
+    );
+    await clickTestID(browser, "heat-map-open-detail-IVV");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent === "IVV"`,
+      "Tapping an ETF tile should open its detail card.",
+    );
+    await assertWatchlistAddIsUnique(browser, "IVV");
+    await clickTestID(browser, "heat-map-detail-close");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
+      "The ETF detail card should close before testing commodities.",
+    );
+
+    await clickTestID(browser, "heat-map-category-picker");
+    await clickTestID(browser, "heat-map-category-commodities");
+    await waitForRequest(
+      browser,
+      `(request) => request.category === "commodities" && request.period === "1w"`,
+      "the commodity map",
+    );
+    await setResponse(browser, makeResponse("commodities", "1w", "GC=F"));
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-open-detail-GC=F"))})`,
+      "The commodity map should render a tile before opening its detail card.",
+    );
+    await clickTestID(browser, "heat-map-open-detail-GC=F");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent === "GC=F"`,
+      "Tapping a commodity tile should open its detail card.",
+    );
+    await assertWatchlistAddIsUnique(browser, "GC=F");
   } finally {
     browser?.close();
     chrome.kill("SIGTERM");
