@@ -34,7 +34,6 @@ import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { AmericanAnalyzeButton } from '@/components/AmericanAnalyzeButton';
 import { MarketHeatMapInsightButton } from '@/components/MarketHeatMapInsightButton';
 import { PriceAlertModal } from '@/components/PriceAlertModal';
-import { matchesFilter, mergeReorderedSubset } from '@/lib/watchlistFilter';
 import { getMarketPulseInsight } from '@/lib/marketPulse';
 import { DEFAULT_FLAG_ID, hasCompletedAllAchievements } from '@/lib/achievements';
 import {
@@ -57,20 +56,11 @@ import {
 } from '@workspace/api-client-react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-/** Show the watchlist filter input when tracking this many tickers or more. */
-const WATCHLIST_FILTER_THRESHOLD = 6;
-
-/** AsyncStorage key for the persisted watchlist filter. */
-const WATCH_FILTER_KEY = '@stocksense/watchlist_filter';
-
 /** AsyncStorage key for the persisted watchlist open/collapsed state. */
 const WATCHLIST_COLLAPSED_KEY = '@stocksense/watchlist_collapsed';
 
 /** AsyncStorage key for the persisted trending tickers open/collapsed state. */
 const TRENDING_COLLAPSED_KEY = '@stocksense/trending_collapsed';
-
-/** Persists the watchlist filter across navigation within a session (resets on full app reload). */
-let _persistedWatchFilter = '';
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
@@ -254,24 +244,6 @@ export default function HomeScreen() {
     }
   }, [justUnlocked, clearJustUnlocked]);
 
-  // Watchlist filter — only shown when the list gets long.
-  // Initialised from the module-level variable so the value survives navigation.
-  const [watchFilter, setWatchFilterState] = useState(_persistedWatchFilter);
-  // Holds the filter value loaded from AsyncStorage before the watchlist is ready.
-  const pendingSavedFilterRef = useRef<string | null>(null);
-
-  const setWatchFilter = useCallback((v: string) => {
-    _persistedWatchFilter = v;
-    setWatchFilterState(v);
-    if (v) {
-      AsyncStorage.setItem(WATCH_FILTER_KEY, v).catch(() => {});
-    } else {
-      AsyncStorage.removeItem(WATCH_FILTER_KEY).catch(() => {});
-    }
-  }, []);
-
-  const showWatchFilter = watchlist.items.length >= WATCHLIST_FILTER_THRESHOLD;
-
   useEffect(() => {
     let cancelled = false;
     AsyncStorage.getItem(WATCHLIST_COLLAPSED_KEY).then((saved) => {
@@ -306,50 +278,11 @@ export default function HomeScreen() {
     });
   }, []);
 
-  // On cold start, load the persisted filter from AsyncStorage.
-  useEffect(() => {
-    AsyncStorage.getItem(WATCH_FILTER_KEY).then((saved) => {
-      if (saved) {
-        pendingSavedFilterRef.current = saved;
-        // If the watchlist is already above threshold, apply immediately.
-        if (watchlist.items.length >= WATCHLIST_FILTER_THRESHOLD) {
-          setWatchFilter(saved);
-          pendingSavedFilterRef.current = null;
-        }
-      }
-    }).catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // When the watchlist crosses the threshold for the first time, apply any
-  // pending saved filter that was loaded before the list was ready.
-  useEffect(() => {
-    if (showWatchFilter && pendingSavedFilterRef.current) {
-      setWatchFilter(pendingSavedFilterRef.current);
-      pendingSavedFilterRef.current = null;
-    }
-  }, [showWatchFilter, setWatchFilter]);
-
-  // Clear the filter (and its persisted value) when the list drops below the threshold.
-  useEffect(() => {
-    if (!showWatchFilter && watchFilter) setWatchFilter('');
-  }, [showWatchFilter, watchFilter, setWatchFilter]);
-
-  const filteredWatchItems = showWatchFilter && watchFilter.trim()
-    ? watchlist.items.filter((i) => matchesFilter(i.symbol, watchFilter))
-    : watchlist.items;
-
-  // When a filtered subset is reordered, map it back onto the full list
   const handleWatchReorder = useCallback(
     (symbols: string[]) => {
-      const fullOrder = watchlist.items.map((i) => i.symbol);
-      if (symbols.length === fullOrder.length) {
-        watchlist.reorder(symbols);
-      } else {
-        watchlist.reorder(mergeReorderedSubset(fullOrder, symbols));
-      }
+      watchlist.reorder(symbols);
     },
-    [watchlist.items, watchlist.reorder],
+    [watchlist.reorder],
   );
 
   useEffect(() => {
@@ -757,30 +690,6 @@ export default function HomeScreen() {
         />
       </View>
 
-      {/* Watchlist filter — sticky bar between search and scroll so it's always reachable */}
-      {showWatchFilter && !watchlistCollapsed && (
-        <View style={[styles.watchFilterBar, { borderBottomColor: colors.border }]}>
-          <View style={[styles.watchFilterRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Feather name="filter" size={14} color={colors.mutedForeground} style={{ marginRight: 8 }} />
-            <TextInput
-              style={[styles.watchFilterInput, { color: colors.foreground, fontFamily: 'Inter_500Medium' }]}
-              placeholder="Filter watchlist…"
-              placeholderTextColor={colors.mutedForeground}
-              value={watchFilter}
-              onChangeText={setWatchFilter}
-              autoCapitalize="characters"
-              autoCorrect={false}
-              returnKeyType="done"
-            />
-            {watchFilter.length > 0 && (
-              <TouchableOpacity onPress={() => setWatchFilter('')} style={{ padding: 4 }}>
-                <Feather name="x" size={14} color={colors.mutedForeground} />
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-      )}
-
       <GestureDetector gesture={scrollGesture}>
         <ScrollView
           style={{ flex: 1 }}
@@ -877,16 +786,9 @@ export default function HomeScreen() {
                   Search for a stock and tap ★ to add it here
                 </Text>
               </View>
-            ) : !watchlistCollapsed && filteredWatchItems.length === 0 ? (
-              <View style={[styles.watchlistEmpty, { borderColor: colors.border }]}>
-                <Feather name="search" size={20} color={colors.mutedForeground} />
-                <Text style={[styles.watchlistEmptyText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-                  No tickers match “{watchFilter.trim().toUpperCase()}”
-                </Text>
-              </View>
             ) : !watchlistCollapsed ? (
               <DraggableWatchlist
-                items={filteredWatchItems}
+                items={watchlist.items}
                 quotes={watchlist.quotes}
                 activeAlertFor={watchlist.activeAlertFor}
                 scrollGesture={scrollGesture}
@@ -1145,20 +1047,6 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   // Watchlist
-  watchFilterBar: {
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  watchFilterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 8,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    height: 40,
-  },
-  watchFilterInput: { flex: 1, fontSize: 14, height: '100%' },
   watchlistEmpty: {
     flexDirection: 'row',
     alignItems: 'center',

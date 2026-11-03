@@ -1,14 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { matchesFilter, mergeReorderedSubset, syncLocalOrder } from '../watchlistFilter.ts';
+import { mergeReorderedSubset, syncLocalOrder } from '../watchlistFilter.ts';
 
-test('syncLocalOrder: full → filtered subset → clear filter restores canonical order', () => {
+test('syncLocalOrder: subset change followed by full list restores canonical order', () => {
   const full = ['A', 'B', 'C', 'D', 'E', 'F'];
-  // Apply filter: subset arrives — adopt subset order
-  const filtered = syncLocalOrder(full, ['B', 'D']);
-  assert.deepEqual(filtered, ['B', 'D']);
-  // Clear filter: full list arrives — must match canonical order, not keep+append
-  const restored = syncLocalOrder(filtered, full);
+  const subset = syncLocalOrder(full, ['B', 'D']);
+  assert.deepEqual(subset, ['B', 'D']);
+  const restored = syncLocalOrder(subset, full);
   assert.deepEqual(restored, full);
 });
 
@@ -21,17 +19,6 @@ test('syncLocalOrder: add/remove adopts incoming order exactly', () => {
   assert.deepEqual(syncLocalOrder(['A', 'B', 'C'], ['C', 'A']), ['C', 'A']);
 });
 
-test('matchesFilter: empty query matches all', () => {
-  assert.equal(matchesFilter('AAPL', ''), true);
-  assert.equal(matchesFilter('AAPL', '   '), true);
-});
-
-test('matchesFilter: case-insensitive substring', () => {
-  assert.equal(matchesFilter('AAPL', 'aap'), true);
-  assert.equal(matchesFilter('AAPL', 'PL'), true);
-  assert.equal(matchesFilter('AAPL', 'TSLA'), false);
-});
-
 test('mergeReorderedSubset: identity when subset unchanged', () => {
   const full = ['A', 'B', 'C', 'D'];
   assert.deepEqual(mergeReorderedSubset(full, ['B', 'D']), full);
@@ -39,7 +26,7 @@ test('mergeReorderedSubset: identity when subset unchanged', () => {
 
 test('mergeReorderedSubset: swaps subset members within their slots', () => {
   const full = ['A', 'B', 'C', 'D', 'E'];
-  // Filtered subset was [B, D]; user dragged D above B.
+  // Subset was [B, D]; user dragged D above B.
   assert.deepEqual(mergeReorderedSubset(full, ['D', 'B']), ['A', 'D', 'C', 'B', 'E']);
 });
 
