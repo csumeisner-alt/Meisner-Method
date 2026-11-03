@@ -39,6 +39,7 @@ import {
   formatBrewBankFreeOpeningCountdown,
   getBrewBankEntryStatus,
   getNextBrewBankFreeOpening,
+  isBrewBankReminderPending,
   formatSmartProRemaining,
   getSmartProBottleSalePrice,
   getBrewBottleInspection,
@@ -395,6 +396,15 @@ test('free Bank opening targets the next local Saturday and counts down to it', 
     getBrewBankEntryStatus(6, 0, null, saturdayOpening),
     'weekend-open',
   );
+});
+
+test('Bank opening reminder is pending only until its scheduled local opening', () => {
+  const now = new Date(2026, 7, 17, 9, 0, 0).getTime();
+  const openingAt = getNextBrewBankFreeOpening(now);
+  assert.equal(isBrewBankReminderPending(openingAt, now), true);
+  assert.equal(isBrewBankReminderPending(openingAt, openingAt - 1), true);
+  assert.equal(isBrewBankReminderPending(openingAt, openingAt), false);
+  assert.equal(isBrewBankReminderPending(Number.NaN, now), false);
 });
 
 test('free Bank opening stays at local Saturday midnight across daylight-saving changes', () => {

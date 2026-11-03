@@ -22,6 +22,7 @@ import {
   Easing,
   PanResponder,
   useWindowDimensions,
+  Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -68,6 +69,7 @@ import {
   formatBrewBankAccessRemaining,
   getNextBrewBankFreeOpening,
   getBrewBankEntryStatus,
+  isBrewBankReminderPending,
 } from '@/lib/brewTokenLogic';
 import {
   APP_REVIEW_STORAGE_KEY,
@@ -103,6 +105,72 @@ const BREW_BANK_ENABLED = true;
 const TRADES_CACHE_KEY = '@stocksense/portfolio_trades_v1';
 const QUOTES_CACHE_KEY = '@stocksense/portfolio_quotes_v1';
 const GRADE_HISTORY_HINT_KEY = '@stocksense/grade_history_hint_shown_v2';
+const BREW_BANK_REMINDER_STORAGE_KEY = '@stocksense/bank_weekend_reminder_v1';
+
+type BrewBankReminder = {
+  openingAt: number;
+  notificationId: string;
+};
+
+function parseBrewBankReminder(raw: string | null): BrewBankReminder | null {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as Partial<BrewBankReminder>;
+    if (
+      typeof value.openingAt === 'number'
+      && Number.isFinite(value.openingAt)
+      && typeof value.notificationId === 'string'
+      && value.notificationId.length > 0
+    ) {
+      return { openingAt: value.openingAt, notificationId: value.notificationId };
+    }
+  } catch {
+    // Invalid local state is treated as no reminder.
+  }
+  return null;
+}
+
+async function scheduleBrewBankReminder(openingAt: number): Promise<BrewBankReminder> {
+  if (Platform.OS === 'web') throw new Error('Bank reminders are only available in the mobile app.');
+  const Notifications = await import('expo-notifications');
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('bank-reminders', {
+      name: 'Bank reminders',
+      description: 'A reminder when free weekend access to the Central Bank opens.',
+      importance: Notifications.AndroidImportance.DEFAULT,
+      sound: 'default',
+    });
+  }
+  const notificationId = await Notifications.scheduleNotificationAsync({
+    content: {
+      title: 'The Central Bank is open',
+      body: 'Free weekend access is available now.',
+      data: { type: 'brew-bank-weekend-opening' },
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: new Date(openingAt),
+      ...(Platform.OS === 'android' ? { channelId: 'bank-reminders' } : {}),
+    },
+  });
+  const reminder = { openingAt, notificationId };
+  try {
+    await AsyncStorage.setItem(BREW_BANK_REMINDER_STORAGE_KEY, JSON.stringify(reminder));
+  } catch (error) {
+    await Notifications.cancelScheduledNotificationAsync(notificationId).catch(() => {});
+    throw error;
+  }
+  return reminder;
+}
 
 async function readTradesCache(): Promise<Trade[]> {
   try {
@@ -1838,6 +1906,9 @@ function GradeHistoryModal({
   const [brewBankVisible, setBrewBankVisible] = useState(false);
   const [bankClosedInfoVisible, setBankClosedInfoVisible] = useState(false);
   const [bankEntryBusy, setBankEntryBusy] = useState(false);
+  const [bankReminder, setBankReminder] = useState<BrewBankReminder | null>(null);
+  const [bankReminderReady, setBankReminderReady] = useState(Platform.OS === 'web');
+  const [bankReminderBusy, setBankReminderBusy] = useState(false);
   const [brewCelebrationVisible, setBrewCelebrationVisible] = useState(false);
   const [headerHintVisible, setHeaderHintVisible] = useState(false);
   const [countdownNow, setCountdownNow] = useState(() => Date.now());
@@ -1907,6 +1978,66 @@ function GradeHistoryModal({
   const bankFreeOpeningCountdown = formatBrewBankFreeOpeningCountdown(countdownNow);
 
   useEffect(() => {
+    if (Platform.OS === 'web') return;
+    let mounted = true;
+
+    const refreshBankReminder = async () => {
+      try {
+        const saved = parseBrewBankReminder(
+          await AsyncStorage.getItem(BREW_BANK_REMINDER_STORAGE_KEY),
+        );
+        if (!saved) {
+          await AsyncStorage.removeItem(BREW_BANK_REMINDER_STORAGE_KEY);
+          if (mounted) setBankReminder(null);
+          return;
+        }
+
+        const Notifications = await import('expo-notifications');
+        Notifications.setNotificationHandler({
+          handleNotification: async () => ({
+            shouldShowAlert: true,
+            shouldPlaySound: true,
+            shouldSetBadge: false,
+            shouldShowBanner: true,
+            shouldShowList: true,
+          }),
+        });
+        const now = Date.now();
+        if (!isBrewBankReminderPending(saved.openingAt, now)) {
+          await Notifications.cancelScheduledNotificationAsync(saved.notificationId).catch(() => {});
+          await AsyncStorage.removeItem(BREW_BANK_REMINDER_STORAGE_KEY);
+          if (mounted) setBankReminder(null);
+          return;
+        }
+
+        const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+        const stillScheduled = scheduled.some(item => item.identifier === saved.notificationId);
+        const nextOpening = getNextBrewBankFreeOpening(now);
+        if (saved.openingAt !== nextOpening || !stillScheduled) {
+          await Notifications.cancelScheduledNotificationAsync(saved.notificationId).catch(() => {});
+          const updated = await scheduleBrewBankReminder(nextOpening);
+          if (mounted) setBankReminder(updated);
+        } else if (mounted) {
+          setBankReminder(saved);
+        }
+      } catch (error) {
+        console.warn('[bank-reminder] Could not refresh the weekend reminder:', error);
+      } finally {
+        if (mounted) setBankReminderReady(true);
+      }
+    };
+
+    void refreshBankReminder();
+    const subscription = AppState.addEventListener('change', nextState => {
+      if (nextState === 'active') void refreshBankReminder();
+    });
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, []);
+
+  useEffect(() => {
     if (visible) prefetchTrainingTapeSnapshot();
   }, [visible]);
 
@@ -1969,6 +2100,51 @@ function GradeHistoryModal({
     const redeemed = await activateBankKey(countdownNow);
     setBankEntryBusy(false);
     if (redeemed) setBrewBankVisible(true);
+  };
+
+  const handleToggleBankReminder = async () => {
+    if (bankReminderBusy || !bankReminderReady || Platform.OS === 'web') return;
+    setBankReminderBusy(true);
+    try {
+      if (bankReminder) {
+        const Notifications = await import('expo-notifications');
+        await Notifications.cancelScheduledNotificationAsync(bankReminder.notificationId);
+        await AsyncStorage.removeItem(BREW_BANK_REMINDER_STORAGE_KEY);
+        setBankReminder(null);
+        return;
+      }
+
+      const Notifications = await import('expo-notifications');
+      let permission = await Notifications.getPermissionsAsync();
+      let granted = permission.granted ?? permission.status === 'granted';
+      if (!granted && permission.canAskAgain !== false) {
+        permission = await Notifications.requestPermissionsAsync();
+        granted = permission.granted ?? permission.status === 'granted';
+      }
+      if (!granted) {
+        if (permission.canAskAgain === false) {
+          Alert.alert(
+            'Notifications are off',
+            'Allow notifications in your device settings to get the Bank opening reminder.',
+            [
+              { text: 'Not now', style: 'cancel' },
+              { text: 'Open Settings', onPress: () => { void Linking.openSettings().catch(() => {}); } },
+            ],
+          );
+        } else {
+          Alert.alert('Reminder not enabled', 'Allow notifications to receive a reminder when free weekend access opens.');
+        }
+        return;
+      }
+
+      const reminder = await scheduleBrewBankReminder(getNextBrewBankFreeOpening(Date.now()));
+      setBankReminder(reminder);
+    } catch (error) {
+      console.warn('[bank-reminder] Could not update the weekend reminder:', error);
+      Alert.alert('Reminder unavailable', 'The Bank opening reminder could not be updated. Please try again.');
+    } finally {
+      setBankReminderBusy(false);
+    }
   };
 
   const hideHeaderHint = useCallback(() => {
@@ -2131,6 +2307,35 @@ function GradeHistoryModal({
                   >
                     Free entry returns in {bankFreeOpeningCountdown} · {nextBankFreeOpeningLocal} local time
                   </Text>
+                  {Platform.OS === 'web' ? (
+                    <Text style={[gradeModalStyles.bankClosedInfoText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                      Set an opening reminder in the mobile app.
+                    </Text>
+                  ) : (
+                    <Pressable
+                      onPress={() => { void handleToggleBankReminder(); }}
+                      disabled={!bankReminderReady || bankReminderBusy}
+                      accessibilityRole="button"
+                      accessibilityLabel={bankReminder ? 'Turn off free Bank opening reminder' : 'Remind me when free Bank access opens'}
+                      testID="central-bank-reminder-toggle"
+                      style={[gradeModalStyles.bankReminderToggle, { borderColor: colors.goldMuted }]}
+                    >
+                      <Feather
+                        name={bankReminder ? 'bell-off' : 'bell'}
+                        size={14}
+                        color={bankReminder ? colors.gold : colors.mutedForeground}
+                      />
+                      <Text style={[gradeModalStyles.bankReminderToggleText, { color: bankReminder ? colors.gold : colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
+                        {bankReminderBusy
+                          ? 'UPDATING REMINDER…'
+                          : !bankReminderReady
+                            ? 'CHECKING REMINDER…'
+                            : bankReminder
+                              ? 'REMINDER SET · TURN OFF'
+                              : 'REMIND ME AT OPENING'}
+                      </Text>
+                    </Pressable>
+                  )}
                   <Pressable
                     onPress={() => setBankClosedInfoVisible(false)}
                     accessibilityRole="button"
@@ -2252,6 +2457,8 @@ const gradeModalStyles = StyleSheet.create({
   bankClosedInfoCopy: { flex: 1, gap: 7 },
   bankClosedInfoTitle: { fontSize: 11, letterSpacing: 0.7 },
   bankClosedInfoText: { fontSize: 12, lineHeight: 18 },
+  bankReminderToggle: { alignSelf: 'flex-start', minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, marginTop: 2 },
+  bankReminderToggleText: { fontSize: 10, letterSpacing: 0.3 },
   bankClosedInfoDismiss: { alignSelf: 'flex-start', paddingVertical: 4, paddingRight: 4 },
   bankClosedInfoDismissText: { fontSize: 10, letterSpacing: 0.6 },
 });

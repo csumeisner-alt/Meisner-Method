@@ -212,6 +212,10 @@ test('Portfolio keeps the unlocked Bank visible and explains weekday closure on 
   assert.match(screen, /formatBrewBankFreeOpeningCountdown\(countdownNow\)/);
   assert.match(screen, /nextBankFreeOpening\.toLocaleString\(undefined/);
   assert.match(screen, /testID="central-bank-next-free-opening"/);
+  assert.match(screen, /testID="central-bank-reminder-toggle"/);
+  assert.match(screen, /scheduleBrewBankReminder\(getNextBrewBankFreeOpening\(Date\.now\(\)\)\)/);
+  assert.match(screen, /cancelScheduledNotificationAsync\(bankReminder\.notificationId\)/);
+  assert.match(screen, /isBrewBankReminderPending\(saved\.openingAt, now\)/);
   assert.match(screen, /setInterval\(\(\) => setCountdownNow\(Date\.now\(\)\), 1000\)/);
   assert.doesNotMatch(screen, /brewBankUnlocked && \(isWeekend \|\| bankKeys > 0 \|\| hasActiveBankAccess\)/);
 });

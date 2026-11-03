@@ -321,6 +321,10 @@ export function getNextBrewBankFreeOpening(now: number): number {
   return opening.getTime();
 }
 
+export function isBrewBankReminderPending(openingAt: number, now: number): boolean {
+  return Number.isFinite(openingAt) && openingAt > now;
+}
+
 export function formatBrewBankFreeOpeningCountdown(now: number): string {
   const remainingMinutes = Math.max(0, Math.ceil((getNextBrewBankFreeOpening(now) - now) / 60_000));
   const days = Math.floor(remainingMinutes / (24 * 60));
