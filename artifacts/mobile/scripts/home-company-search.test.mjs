@@ -8,6 +8,10 @@ const homeScreen = readFileSync(
   fileURLToPath(new URL("../app/index.tsx", import.meta.url)),
   "utf8",
 );
+const analysisScreen = readFileSync(
+  fileURLToPath(new URL("../app/analysis/[symbol].tsx", import.meta.url)),
+  "utf8",
+);
 
 test("home search input invalidates old suggestions before the debounce settles", () => {
   const inputBlock = homeScreen.match(
@@ -135,9 +139,98 @@ test("home Analyze search can find and select ETF names and tickers", () => {
   assert.match(homeScreen, /ETF · \{etf\.exchange\}/);
 });
 
-test("home Analyze search can find and select commodities", () => {
+test("commodity search selection submits the canonical symbol to commodity analysis", () => {
   assert.match(homeScreen, /category: 'commodities'/);
   assert.match(homeScreen, /exactCommoditySuggestion\?\.symbol/);
   assert.match(homeScreen, /selectCommodity\(commodity, activeCommoditySearchQuery\)/);
   assert.match(homeScreen, /Commodity · \{commodity\.exchange\}/);
+
+  const commodityRow = homeScreen.match(
+    /\{commoditySuggestions\.map\(\(commodity, index\) => \(([\s\S]*?)\)\)\}/,
+  )?.[1];
+  assert.ok(commodityRow, "commodity search results should render selectable rows");
+  assert.match(
+    commodityRow,
+    /onPress=\{\(\) => selectCommodity\(commodity, activeCommoditySearchQuery\)\}/,
+    "tapping a result should select the commodity from the active query",
+  );
+
+  const selectionHandler = homeScreen.match(
+    /const selectCommodity = \(commodity: HeatMapInstrumentSuggestion, selectionQuery: string \| null\) => \{([\s\S]*?)\n  \};/,
+  )?.[1];
+  assert.ok(selectionHandler, "the commodity selection handler should remain identifiable");
+  assert.match(
+    selectionHandler,
+    /setSelectedCommodity\(commodity\);\s*setQuery\(selectedQuery\);/,
+    "selecting a result should retain its instrument and display its name and ticker",
+  );
+
+  const resolvedSymbol = homeScreen.match(
+    /const resolvedSymbol =([\s\S]*?);/,
+  )?.[1];
+  assert.ok(resolvedSymbol, "the home screen should resolve a selected commodity for submission");
+  assert.match(
+    resolvedSymbol,
+    /^\s*selectedCommodity\?\.symbol\s*\?\?/,
+    "the selected commodity's canonical symbol should take priority over typed text",
+  );
+
+  const submitHandler = homeScreen.match(
+    /const handleSubmit = \(\) => \{([\s\S]*?)\n  \};/,
+  )?.[1];
+  assert.ok(submitHandler, "the shared search submit handler should remain identifiable");
+  assert.match(
+    submitHandler,
+    /if\s*\(!resolvedSymbol\)\s*return;[\s\S]*?navigateTo\(resolvedSymbol\)/,
+    "submitting a selected commodity should navigate with its resolved symbol",
+  );
+
+  const navigationHandler = homeScreen.match(
+    /const navigateTo = useCallback\(async \(symbol: string\) => \{([\s\S]*?)\n  \}, \[recent, router\]\);/,
+  )?.[1];
+  assert.ok(navigationHandler, "the shared analysis navigation handler should remain identifiable");
+  assert.match(
+    navigationHandler,
+    /const upper = symbol\.toUpperCase\(\)\.trim\(\);[\s\S]*?router\.push\(`\/analysis\/\$\{upper\}`\)/,
+    "the canonical commodity ticker should be normalized and passed to the analysis route",
+  );
+
+  assert.match(
+    analysisScreen,
+    /const \{ symbol \} = useLocalSearchParams<\{ symbol: string \}>\(\);/,
+    "the analysis route should receive the submitted ticker as its symbol parameter",
+  );
+  assert.match(
+    analysisScreen,
+    /if \(symbol\) mutate\(\{ data: \{ symbol \} \}\);/,
+    "the analysis request should use the route's commodity symbol",
+  );
+  assert.match(
+    analysisScreen,
+    /result\.assetType === 'commodity' && result\.commodityAnalysis/,
+    "commodity responses should take the dedicated commodity rendering branch",
+  );
+  assert.match(
+    analysisScreen,
+    /<CommodityAnalysisSections analysis=\{result\.commodityAnalysis\} \/>/,
+    "the commodity branch should render the returned commodity analysis",
+  );
+  assert.match(
+    analysisScreen,
+    /<View testID="commodity-analysis-result"/,
+    "rendered commodity analysis should expose its result test marker",
+  );
+
+  const searchCases = [
+    { query: "Gold", expectedSymbol: "GC=F" },
+    { query: "GC=F", expectedSymbol: "GC=F" },
+  ];
+  const result = { name: "Gold", symbol: "GC=F", exchange: "COMEX" };
+  for (const { query, expectedSymbol } of searchCases) {
+    const selectedResult = [result].find(
+      (suggestion) => suggestion.name.toLowerCase().includes(query.toLowerCase())
+        || suggestion.symbol.toLowerCase() === query.toLowerCase(),
+    );
+    assert.equal(selectedResult?.symbol, expectedSymbol, `search ${query} should select Gold's canonical ticker`);
+  }
 });
