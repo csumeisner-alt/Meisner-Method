@@ -2,6 +2,7 @@ import type { Response } from "express";
 import {
   assessCommodityHistory,
   buildCommodityScore,
+  COMMODITY_ANALYSIS_GUIDES,
   COMMODITY_INVENTORY_PROVIDERS,
   CFTC_INSTRUMENTS,
   SUPPORTED_COMMODITIES,
@@ -11,7 +12,14 @@ import {
   type CommodityNewsContext,
   type CommodityPositioningEvidence,
 } from "./commodityAnalysis.ts";
-import { fallbackAiAnalysis, parseAiAnalysis } from "./analysisResponse.ts";
+import { fallbackAiAnalysis } from "./analysisResponse.ts";
+import {
+  buildCommodityCommentaryPrompt,
+  buildCommodityVerifiedEvidence,
+  parseCommodityAiCommentary,
+  unavailableCommodityCommentary,
+  validateCommodityNewsContext,
+} from "./commodityCommentary.ts";
 
 export interface CommodityAnalysisQuote {
   symbol: string;
@@ -111,29 +119,36 @@ export async function respondWithCommodityAnalysis(
   } catch {
     newsContext = unavailableCommodityNews();
   }
+  newsContext = validateCommodityNewsContext(newsContext, now);
 
   let explanation = fallbackAiAnalysis();
+  let commentary = unavailableCommodityCommentary();
+  const verifiedEvidence = buildCommodityVerifiedEvidence(symbol, score, newsContext);
+  const guide = COMMODITY_ANALYSIS_GUIDES[symbol];
   if (options.includeCommentary !== false) {
-    const explanationPrompt = `Explain this rules-based commodity market score. The numeric score and factors are locked; do not change them, invent price targets, or call this personalized advice.
-
-Commodity: ${commodity.name} (${symbol}), family: ${commodity.family}
-Price: ${data.currentPrice} ${data.currency}
-History through: ${score.historyAsOf ?? "date unavailable"}
-Score: ${score.score}/100
-Confidence: ${score.confidence}/100
-Coverage: ${score.dataCoveragePercent}% of defined factor groups currently have data
-One-month return: ${score.oneMonthReturnPercent ?? "unavailable"}%
-Three-month return: ${score.threeMonthReturnPercent ?? "unavailable"}%
-Six-month return: ${score.sixMonthReturnPercent ?? "unavailable"}%
-Annualized volatility: ${score.annualizedVolatilityPercent}%
-Unavailable factors: ${score.factors.filter((factor) => factor.status === "unavailable").map((factor) => factor.label).join(", ")}
-Validated score inputs: ${score.factors.filter((factor) => factor.status === "available").map((factor) => `${factor.label}: ${factor.score}/100; ${factor.detail}`).join("\n")}
-Recent news context (may be absent): ${newsContext.status === "available" ? newsContext.summary : "Unavailable; do not infer current events."}
-
-Return JSON with reasoning (2-3 concise paragraphs), risks (up to 4 strings), and strengths (up to 4 strings). This is commentary only: do not change, reweight, or supplement the deterministic score using commentary or news. Clearly state when supply/demand or curve data are unavailable.`;
     try {
-      explanation = parseAiAnalysis(await dependencies.createCompletion(explanationPrompt, 1200))
-        ?? fallbackAiAnalysis();
+      const prompt = buildCommodityCommentaryPrompt(
+        symbol,
+        commodity.name,
+        commodity.family,
+        score,
+        verifiedEvidence,
+      );
+      const parsed = parseCommodityAiCommentary(
+        await dependencies.createCompletion(prompt, 1600),
+        verifiedEvidence,
+        guide?.monitorNext ?? [],
+        now,
+      );
+      if (parsed) {
+        commentary = parsed;
+        const alignment = parsed.technicalAlignment?.text;
+        explanation = {
+          reasoning: alignment ?? fallbackAiAnalysis().reasoning,
+          strengths: parsed.strongestBullishFactors.map((item) => item.text),
+          risks: parsed.risks.map((item) => item.text),
+        };
+      }
     } catch (error) {
       dependencies.onCommentaryFailure?.(error, symbol);
     }
@@ -157,6 +172,9 @@ Return JSON with reasoning (2-3 concise paragraphs), risks (up to 4 strings), an
       reasoning: explanation.reasoning,
       risks: explanation.risks,
       strengths: explanation.strengths,
+      analysisGuide: guide ?? { focus: [], unavailable: [], monitorNext: [] },
+      verifiedEvidence,
+      commentary,
       newsContext,
       provider: "Yahoo Finance",
     },

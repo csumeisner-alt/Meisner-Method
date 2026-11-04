@@ -619,6 +619,31 @@ type CommodityAnalysisPayload = {
   reasoning: string;
   risks: string[];
   strengths: string[];
+  analysisGuide: {
+    focus: string[];
+    unavailable: string[];
+    monitorNext: string[];
+  };
+  verifiedEvidence: {
+    id: string;
+    title: string;
+    url: string;
+    asOf: string;
+    unit: string;
+    observation: string;
+    kind: 'market-data' | 'news';
+    eventDate: string | null;
+  }[];
+  commentary: {
+    status: 'available' | 'unavailable';
+    currentDrivers: { text: string; evidenceIds: string[] }[];
+    strongestBullishFactors: { text: string; evidenceIds: string[] }[];
+    strongestBearishFactors: { text: string; evidenceIds: string[] }[];
+    technicalAlignment: { text: string; evidenceIds: string[] } | null;
+    upcomingCatalysts: { text: string; evidenceIds: string[] }[];
+    risks: { text: string; evidenceIds: string[] }[];
+    monitorNext: string[];
+  };
   newsContext: {
     status: 'available' | 'unavailable';
     summary: string | null;
@@ -627,6 +652,50 @@ type CommodityAnalysisPayload = {
   };
   provider: string;
 };
+
+function CommodityEvidenceLink({ evidence }: { evidence: CommodityAnalysisPayload['verifiedEvidence'][number] }) {
+  const colors = useColors();
+  return (
+    <Pressable
+      accessibilityRole="link"
+      accessibilityLabel={`Open source: ${evidence.title}, dated ${evidence.asOf}`}
+      onPress={() => { void Linking.openURL(evidence.url).catch(() => {}); }}
+      testID={`commodity-evidence-${evidence.id}`}
+    >
+      <Text style={{ color: colors.primary, fontSize: 10, lineHeight: 15, textDecorationLine: 'underline' }}>
+        {evidence.title} · {evidence.asOf} · {evidence.unit}
+      </Text>
+    </Pressable>
+  );
+}
+
+function CommodityCommentaryItems({
+  items,
+  evidenceById,
+}: {
+  items: { text: string; evidenceIds: string[] }[];
+  evidenceById: Map<string, CommodityAnalysisPayload['verifiedEvidence'][number]>;
+}) {
+  const colors = useColors();
+  if (!items.length) {
+    return <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>No evidence-supported commentary is available.</Text>;
+  }
+  return (
+    <View style={{ gap: 7 }}>
+      {items.map((item, index) => (
+        <View key={`${index}-${item.text}`} style={{ gap: 3 }}>
+          <Text style={{ color: colors.foreground, fontSize: 12, lineHeight: 18 }}>• {item.text}</Text>
+          <View style={{ paddingLeft: 11, gap: 3 }}>
+            {item.evidenceIds.map((id) => {
+              const evidence = evidenceById.get(id);
+              return evidence ? <CommodityEvidenceLink key={id} evidence={evidence} /> : null;
+            })}
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
 
 function CommodityAnalysisSections({ analysis }: { analysis: CommodityAnalysisPayload }) {
   const colors = useColors();
@@ -690,17 +759,71 @@ function CommodityAnalysisSections({ analysis }: { analysis: CommodityAnalysisPa
           <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 14, marginTop: 10 }}>{analysis.methodology}</Text>
         </View>
       </SectionCard>
+      <SectionCard title="VERIFIED EVIDENCE" icon={<MaterialCommunityIcons name="check-decagram-outline" size={16} color={colors.primary} />}>
+        <View style={{ paddingHorizontal: 16, paddingBottom: 14, gap: 10 }}>
+          {analysis.verifiedEvidence.length ? analysis.verifiedEvidence.map((item) => (
+            <View key={item.id} testID={`commodity-verified-${item.id}`} style={{ gap: 4 }}>
+              <Text style={{ color: colors.foreground, fontSize: 12, lineHeight: 18 }}>{item.observation}</Text>
+              <CommodityEvidenceLink evidence={item} />
+            </View>
+          )) : (
+            <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>No validated, dated evidence is available beyond the score inputs.</Text>
+          )}
+        </View>
+      </SectionCard>
+      <SectionCard title="COMMODITY-SPECIFIC DRIVERS" icon={<MaterialCommunityIcons name="compass-outline" size={16} color={colors.primary} />}>
+        <View style={{ paddingHorizontal: 16, paddingBottom: 14, gap: 10 }}>
+          <View>
+            <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 11, marginBottom: 4 }}>ANALYSIS LENSES · NOT VERIFIED FACTS</Text>
+            {analysis.analysisGuide.focus.map((item) => <Text key={item} style={{ color: colors.foreground, fontSize: 12, lineHeight: 18 }}>• {item}</Text>)}
+          </View>
+          <View>
+            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 11, marginBottom: 4 }}>UNAVAILABLE FACTORS</Text>
+            {analysis.analysisGuide.unavailable.map((item) => <Text key={item} style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 18 }}>• {item}</Text>)}
+          </View>
+          <View>
+            <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 11, marginBottom: 4 }}>WHAT TO MONITOR NEXT</Text>
+            {analysis.analysisGuide.monitorNext.map((item) => <Text key={item} style={{ color: colors.foreground, fontSize: 12, lineHeight: 18 }}>• {item}</Text>)}
+          </View>
+        </View>
+      </SectionCard>
       <SectionCard title="AI MARKET CONTEXT" icon={<MaterialCommunityIcons name="brain" size={16} color={colors.primary} />}>
         <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 12 }}>
-          <Text style={{ color: colors.foreground, fontSize: 13, lineHeight: 19 }}>{analysis.reasoning}</Text>
-          {!!analysis.strengths.length && <View>
-            <Text style={{ color: colors.buyColor, fontFamily: 'Inter_600SemiBold', fontSize: 12, marginBottom: 4 }}>SUPPORTIVE FACTORS</Text>
-            {analysis.strengths.map((item, index) => <Text key={`${index}-${item}`} style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 17 }}>• {item}</Text>)}
-          </View>}
-          {!!analysis.risks.length && <View>
-            <Text style={{ color: colors.sellColor, fontFamily: 'Inter_600SemiBold', fontSize: 12, marginBottom: 4 }}>RISKS</Text>
-            {analysis.risks.map((item, index) => <Text key={`${index}-${item}`} style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 17 }}>• {item}</Text>)}
-          </View>}
+          {analysis.commentary.status === 'available' ? (
+            <>
+              <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 15 }}>AI interpretation · factual claims link to dated evidence above. The deterministic score is unchanged.</Text>
+              {analysis.commentary.currentDrivers.length > 0 && <View style={{ gap: 5 }}>
+                <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>CURRENT DRIVERS</Text>
+                <CommodityCommentaryItems items={analysis.commentary.currentDrivers} evidenceById={new Map(analysis.verifiedEvidence.map((item) => [item.id, item]))} />
+              </View>}
+              <View style={{ gap: 5 }}>
+                <Text style={{ color: colors.buyColor, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>STRONGEST BULLISH FACTORS</Text>
+                <CommodityCommentaryItems items={analysis.commentary.strongestBullishFactors} evidenceById={new Map(analysis.verifiedEvidence.map((item) => [item.id, item]))} />
+              </View>
+              <View style={{ gap: 5 }}>
+                <Text style={{ color: colors.sellColor, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>STRONGEST BEARISH FACTORS</Text>
+                <CommodityCommentaryItems items={analysis.commentary.strongestBearishFactors} evidenceById={new Map(analysis.verifiedEvidence.map((item) => [item.id, item]))} />
+              </View>
+              <View style={{ gap: 5 }}>
+                <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>TECHNICAL ALIGNMENT</Text>
+                <CommodityCommentaryItems items={analysis.commentary.technicalAlignment ? [analysis.commentary.technicalAlignment] : []} evidenceById={new Map(analysis.verifiedEvidence.map((item) => [item.id, item]))} />
+              </View>
+              <View style={{ gap: 5 }}>
+                <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>UPCOMING CATALYSTS</Text>
+                {analysis.commentary.upcomingCatalysts.length ? (
+                  <CommodityCommentaryItems items={analysis.commentary.upcomingCatalysts} evidenceById={new Map(analysis.verifiedEvidence.map((item) => [item.id, item]))} />
+                ) : <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>No dated upcoming catalysts were verified in the supplied sources.</Text>}
+              </View>
+              <View style={{ gap: 5 }}>
+                <Text style={{ color: colors.sellColor, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>RISKS</Text>
+                <CommodityCommentaryItems items={analysis.commentary.risks} evidenceById={new Map(analysis.verifiedEvidence.map((item) => [item.id, item]))} />
+              </View>
+            </>
+          ) : (
+            <Text style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 18 }}>
+              AI commentary is unavailable. The deterministic score, technical history, verified evidence, and unavailable-factor disclosures remain available above.
+            </Text>
+          )}
         </View>
       </SectionCard>
       <SectionCard title="RECENT NEWS" icon={<MaterialCommunityIcons name="web" size={16} color={colors.primary} />}>

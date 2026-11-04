@@ -9,6 +9,12 @@ export interface CommodityProfile {
   family: CommodityFamily;
 }
 
+export interface CommodityAnalysisGuide {
+  focus: string[];
+  unavailable: string[];
+  monitorNext: string[];
+}
+
 export const SUPPORTED_COMMODITIES: Record<string, CommodityProfile> = {
   "GC=F": { name: "Gold", family: "metals" },
   "SI=F": { name: "Silver", family: "metals" },
@@ -25,6 +31,84 @@ export const SUPPORTED_COMMODITIES: Record<string, CommodityProfile> = {
   "PA=F": { name: "Palladium", family: "metals" },
   "LE=F": { name: "Live Cattle", family: "livestock" },
   "HE=F": { name: "Lean Hogs", family: "livestock" },
+};
+
+export const COMMODITY_ANALYSIS_GUIDES: Record<string, CommodityAnalysisGuide> = {
+  "GC=F": {
+    focus: ["Gold futures price trend", "CFTC gold futures positioning"],
+    unavailable: ["Real yields and U.S. dollar", "Central-bank and ETF flows", "Physical demand and futures curve"],
+    monitorNext: ["Check the next dated CFTC gold positioning report.", "Look for verified real-yield, currency, and gold-flow data before assessing macro drivers."],
+  },
+  "SI=F": {
+    focus: ["Silver futures price trend", "CFTC silver futures positioning"],
+    unavailable: ["Industrial and solar demand", "Mine and recycling supply", "Physical inventories, real yields, and U.S. dollar"],
+    monitorNext: ["Check the next dated CFTC silver positioning report.", "Look for dated industrial-demand, mine-supply, and physical-inventory data."],
+  },
+  "CL=F": {
+    focus: ["WTI futures price trend", "EIA U.S. commercial crude inventories", "CFTC WTI futures positioning"],
+    unavailable: ["OPEC+ production and compliance", "Global demand and refinery disruptions", "Verified futures curve and roll yield"],
+    monitorNext: ["Check the next EIA Weekly Petroleum Status Report.", "Check the next dated CFTC WTI positioning report."],
+  },
+  "NG=F": {
+    focus: ["Henry Hub futures price trend", "EIA Lower 48 working-gas storage", "CFTC natural-gas futures positioning"],
+    unavailable: ["Weather-driven demand", "Production and LNG feedgas", "Verified futures curve and regional pipeline constraints"],
+    monitorNext: ["Check the next EIA Weekly Natural Gas Storage Report.", "Look for dated weather, production, and LNG-flow data."],
+  },
+  "HG=F": {
+    focus: ["COMEX copper futures price trend", "CFTC copper futures positioning"],
+    unavailable: ["Exchange warehouse inventories", "Mine disruptions and smelter conditions", "China demand and verified futures curve"],
+    monitorNext: ["Check the next dated CFTC copper positioning report.", "Look for dated exchange-inventory, mine-supply, and industrial-demand data."],
+  },
+  "ZC=F": {
+    focus: ["Corn futures price trend", "USDA WASDE corn stocks-to-use", "CFTC corn futures positioning"],
+    unavailable: ["Crop-weather and progress reports", "Export sales and global supply", "Verified futures curve and local basis"],
+    monitorNext: ["Check the next USDA WASDE corn supply-and-use release.", "Look for dated crop-progress, weather, and export-sales data."],
+  },
+  "ZW=F": {
+    focus: ["Wheat futures price trend", "USDA WASDE wheat stocks-to-use", "CFTC wheat futures positioning"],
+    unavailable: ["Crop-weather and progress reports", "Export flows and global supply", "Verified futures curve and regional basis"],
+    monitorNext: ["Check the next USDA WASDE wheat supply-and-use release.", "Look for dated crop-weather, export-flow, and global-supply data."],
+  },
+  "ZS=F": {
+    focus: ["Soybean futures price trend", "USDA WASDE soybean stocks-to-use", "CFTC soybean futures positioning"],
+    unavailable: ["Crop-weather and progress reports", "Crush margins and export flows", "Verified futures curve and local basis"],
+    monitorNext: ["Check the next USDA WASDE soybean supply-and-use release.", "Look for dated crop-progress, crush, and export-sales data."],
+  },
+  "KC=F": {
+    focus: ["Coffee futures price trend", "CFTC coffee futures positioning"],
+    unavailable: ["Origin-country weather and crop estimates", "Certified exchange stocks", "Verified global production and demand"],
+    monitorNext: ["Check the next dated CFTC coffee positioning report.", "Look for dated origin-country crop, weather, and exchange-stock data."],
+  },
+  "CT=F": {
+    focus: ["Cotton futures price trend", "USDA WASDE cotton stocks-to-use", "CFTC cotton futures positioning"],
+    unavailable: ["Crop-weather and progress reports", "Textile demand and export sales", "Verified futures curve and local basis"],
+    monitorNext: ["Check the next USDA WASDE cotton supply-and-use release.", "Look for dated crop-progress, textile-demand, and export-sales data."],
+  },
+  "SB=F": {
+    focus: ["Sugar futures price trend", "USDA WASDE sugar stocks-to-use", "CFTC sugar futures positioning"],
+    unavailable: ["Brazil and India crop/weather data", "Ethanol demand and trade flows", "Verified futures curve and local basis"],
+    monitorNext: ["Check the next USDA WASDE sugar supply-and-use release.", "Look for dated major-origin crop, ethanol-demand, and trade-flow data."],
+  },
+  "PL=F": {
+    focus: ["Platinum futures price trend", "CFTC platinum futures positioning"],
+    unavailable: ["Mine supply and recycling", "Automotive and industrial demand", "Physical inventories and futures curve"],
+    monitorNext: ["Check the next dated CFTC platinum positioning report.", "Look for dated mine-supply, recycling, and industrial-demand data."],
+  },
+  "PA=F": {
+    focus: ["Palladium futures price trend", "CFTC palladium futures positioning"],
+    unavailable: ["Mine supply and recycling", "Automotive demand and substitution", "Physical inventories and futures curve"],
+    monitorNext: ["Check the next dated CFTC palladium positioning report.", "Look for dated mine-supply, recycling, and automotive-demand data."],
+  },
+  "LE=F": {
+    focus: ["Live-cattle futures price trend", "CFTC live-cattle futures positioning"],
+    unavailable: ["USDA cattle-on-feed and slaughter data", "Feed costs and dated weather effects", "Verified futures curve and cash basis"],
+    monitorNext: ["Check the next dated CFTC live-cattle positioning report.", "Look for current USDA cattle-on-feed and slaughter data."],
+  },
+  "HE=F": {
+    focus: ["Lean-hog futures price trend", "CFTC lean-hog futures positioning"],
+    unavailable: ["USDA hog inventories and slaughter data", "Feed costs and dated disease reports", "Verified futures curve and cash basis"],
+    monitorNext: ["Check the next dated CFTC lean-hog positioning report.", "Look for current USDA hog-inventory, slaughter, and feed-cost data."],
+  },
 };
 
 export interface CommodityNewsSource {

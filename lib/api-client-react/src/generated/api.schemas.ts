@@ -420,6 +420,28 @@ export const CommodityAnalysisResultCommodityAnalysisFactorsItemStatus = {
   unavailable: 'unavailable',
 } as const;
 
+export type CommodityAnalysisResultCommodityAnalysisVerifiedEvidenceItemKind = typeof CommodityAnalysisResultCommodityAnalysisVerifiedEvidenceItemKind[keyof typeof CommodityAnalysisResultCommodityAnalysisVerifiedEvidenceItemKind];
+
+
+export const CommodityAnalysisResultCommodityAnalysisVerifiedEvidenceItemKind = {
+  'market-data': 'market-data',
+  news: 'news',
+} as const;
+
+export type CommodityAnalysisResultCommodityAnalysisCommentaryStatus = typeof CommodityAnalysisResultCommodityAnalysisCommentaryStatus[keyof typeof CommodityAnalysisResultCommodityAnalysisCommentaryStatus];
+
+
+export const CommodityAnalysisResultCommodityAnalysisCommentaryStatus = {
+  available: 'available',
+  unavailable: 'unavailable',
+} as const;
+
+export interface CommodityCommentaryItem {
+  text: string;
+  /** @minItems 1 */
+  evidenceIds: string[];
+}
+
 export type CommodityAnalysisResultCommodityAnalysisNewsContextStatus = typeof CommodityAnalysisResultCommodityAnalysisNewsContextStatus[keyof typeof CommodityAnalysisResultCommodityAnalysisNewsContextStatus];
 
 
@@ -444,6 +466,37 @@ export type CommodityAnalysisResultCommodityAnalysisFactorsItem = {
   weight: number;
   detail: string;
   sources: CommodityAnalysisResultCommodityAnalysisFactorsItemSourcesItem[];
+};
+
+export type CommodityAnalysisResultCommodityAnalysisAnalysisGuide = {
+  focus: string[];
+  unavailable: string[];
+  monitorNext: string[];
+};
+
+export type CommodityAnalysisResultCommodityAnalysisVerifiedEvidenceItem = {
+  id: string;
+  title: string;
+  url: string;
+  asOf: string;
+  unit: string;
+  observation: string;
+  kind: CommodityAnalysisResultCommodityAnalysisVerifiedEvidenceItemKind;
+  eventDate: string | null;
+};
+
+/**
+ * Optional AI interpretation; every item references verified evidence IDs.
+ */
+export type CommodityAnalysisResultCommodityAnalysisCommentary = {
+  status: CommodityAnalysisResultCommodityAnalysisCommentaryStatus;
+  currentDrivers: CommodityCommentaryItem[];
+  strongestBullishFactors: CommodityCommentaryItem[];
+  strongestBearishFactors: CommodityCommentaryItem[];
+  technicalAlignment: CommodityCommentaryItem | null;
+  upcomingCatalysts: CommodityCommentaryItem[];
+  risks: CommodityCommentaryItem[];
+  monitorNext: string[];
 };
 
 export type CommodityAnalysisResultCommodityAnalysisNewsContextSourcesItem = {
@@ -488,6 +541,11 @@ export type CommodityAnalysisResultCommodityAnalysis = {
   reasoning: string;
   risks: string[];
   strengths: string[];
+  analysisGuide: CommodityAnalysisResultCommodityAnalysisAnalysisGuide;
+  /** Validated source observations available to ground commentary. */
+  verifiedEvidence: CommodityAnalysisResultCommodityAnalysisVerifiedEvidenceItem[];
+  /** Optional AI interpretation; every item references verified evidence IDs. */
+  commentary: CommodityAnalysisResultCommodityAnalysisCommentary;
   newsContext: CommodityAnalysisResultCommodityAnalysisNewsContext;
   provider: string;
 };

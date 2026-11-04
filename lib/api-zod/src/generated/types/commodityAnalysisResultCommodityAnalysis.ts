@@ -5,9 +5,12 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { CommodityAnalysisResultCommodityAnalysisAnalysisGuide } from './commodityAnalysisResultCommodityAnalysisAnalysisGuide';
+import type { CommodityAnalysisResultCommodityAnalysisCommentary } from './commodityAnalysisResultCommodityAnalysisCommentary';
 import type { CommodityAnalysisResultCommodityAnalysisFactorsItem } from './commodityAnalysisResultCommodityAnalysisFactorsItem';
 import type { CommodityAnalysisResultCommodityAnalysisFamily } from './commodityAnalysisResultCommodityAnalysisFamily';
 import type { CommodityAnalysisResultCommodityAnalysisNewsContext } from './commodityAnalysisResultCommodityAnalysisNewsContext';
+import type { CommodityAnalysisResultCommodityAnalysisVerifiedEvidenceItem } from './commodityAnalysisResultCommodityAnalysisVerifiedEvidenceItem';
 
 export type CommodityAnalysisResultCommodityAnalysis = {
   /**
@@ -38,6 +41,11 @@ export type CommodityAnalysisResultCommodityAnalysis = {
   reasoning: string;
   risks: string[];
   strengths: string[];
+  analysisGuide: CommodityAnalysisResultCommodityAnalysisAnalysisGuide;
+  /** Validated source observations available to ground commentary. */
+  verifiedEvidence: CommodityAnalysisResultCommodityAnalysisVerifiedEvidenceItem[];
+  /** Optional AI interpretation; every item references verified evidence IDs. */
+  commentary: CommodityAnalysisResultCommodityAnalysisCommentary;
   newsContext: CommodityAnalysisResultCommodityAnalysisNewsContext;
   provider: string;
 };

@@ -3,6 +3,8 @@ import { once } from "node:events";
 import express from "express";
 import test from "node:test";
 import {
+  buildCommodityScore,
+  COMMODITY_ANALYSIS_GUIDES,
   CFTC_INSTRUMENTS,
   unavailableCommodityNews,
   type CommodityInventoryEvidence,
@@ -137,6 +139,68 @@ const failedFeedCases = [
   { provider: "CFTC", symbol: "CL=F", failedFactor: "positioning", unaffectedFactor: "physical-balance" },
 ] as const;
 
+async function requestFullCommodityAnalysis(
+  symbol: string,
+  createCompletion: (prompt: string) => Promise<string>,
+  fetchNews: () => Promise<ReturnType<typeof unavailableCommodityNews>>,
+) {
+  const app = express();
+  app.use(express.json());
+  app.post("/stocks/analyze", async (_req, res) => {
+    await respondWithCommodityAnalysis(res, {
+      symbol,
+      exchange: "COMEX",
+      currency: "USD",
+      currentPrice: closes.at(-1)!,
+      priceChange: 0.1,
+      priceChangePercent: 0.1,
+      volume: 1_000,
+      week52High: closes.at(-1)!,
+      week52Low: closes[0]!,
+      closes,
+      historyDates,
+      historySessions,
+      historyAsOf: HISTORY_END,
+    }, {
+      fetchInventory: async () => ({ evidence: null, failure: null }),
+      fetchPositioning: async () => ({ evidence: null, failure: null }),
+      fetchNews,
+      createCompletion,
+      now: () => NOW,
+    });
+  });
+  const server = app.listen(0, "127.0.0.1");
+  try {
+    await once(server, "listening");
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const response = await fetch(`http://127.0.0.1:${address.port}/stocks/analyze`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ symbol }),
+    });
+    return { status: response.status, body: await response.json() as Record<string, any> };
+  } finally {
+    server.close();
+    await once(server, "close");
+  }
+}
+
+function commentaryJson(monitorNext: string[], includeNews = false) {
+  const evidenceIds = includeNews ? ["price-history", "news-1"] : ["price-history"];
+  return JSON.stringify({
+    currentDrivers: [{ text: "The dated price trend is positive.", evidenceIds }],
+    strongestBullishFactors: [{ text: "The supplied trend supports the bullish side.", evidenceIds: ["price-history"] }],
+    strongestBearishFactors: [],
+    technicalAlignment: { text: "The technical trend is positive over the measured window.", evidenceIds: ["price-history"] },
+    upcomingCatalysts: includeNews
+      ? [{ text: "A recent dated report describes a current supply development.", evidenceIds: ["news-1"] }]
+      : [],
+    risks: [],
+    monitorNext,
+  });
+}
+
 test("commodity analysis HTTP endpoint keeps valid factors when official feeds fail or return invalid data", async () => {
   for (const feed of failedFeedCases) {
     for (const failure of ["timeout", "malformed", "stale"] as const) {
@@ -236,4 +300,84 @@ test("commodity analysis HTTP endpoint keeps valid factors when official feeds f
       );
     }
   }
+});
+
+test("commodity analysis returns distinct family context, dated evidence, and unchanged score inputs", async () => {
+  const symbols = ["GC=F", "SI=F", "CL=F", "NG=F", "HG=F", "ZC=F"];
+  const guideSignatures = new Set<string>();
+  for (const symbol of symbols) {
+    const guide = COMMODITY_ANALYSIS_GUIDES[symbol]!;
+    const result = await requestFullCommodityAnalysis(
+      symbol,
+      async (prompt) => {
+        assert.ok(prompt.includes(guide.unavailable[0]!));
+        assert.ok(prompt.includes(HISTORY_END));
+        return commentaryJson(guide.monitorNext);
+      },
+      async () => unavailableCommodityNews(),
+    );
+    assert.equal(result.status, 200);
+    const analysis = result.body.commodityAnalysis;
+    guideSignatures.add(guide.focus.join("|"));
+    assert.deepEqual(analysis.analysisGuide, guide);
+    assert.equal(analysis.commentary.status, "available");
+    assert.ok(analysis.commentary.technicalAlignment.evidenceIds.includes("price-history"));
+    assert.equal(analysis.verifiedEvidence.find((item: { id: string }) => item.id === "price-history")?.asOf, HISTORY_END);
+    assert.ok(analysis.verifiedEvidence.every((item: { asOf: string; url: string }) => item.asOf && item.url.startsWith("https://")));
+
+    const expected = buildCommodityScore({
+      symbol,
+      closes,
+      historyDates,
+      historySessions,
+      currentPrice: closes.at(-1)!,
+      historyAsOf: HISTORY_END,
+      now: NOW,
+      marketEvidence: { inventory: null, positioning: null },
+    });
+    assert.ok(expected);
+    assert.equal(analysis.score, expected.score);
+    assert.equal(analysis.annualizedVolatilityPercent, expected.annualizedVolatilityPercent);
+    assert.equal(analysis.oneMonthReturnPercent, expected.oneMonthReturnPercent);
+    assert.equal(analysis.threeMonthReturnPercent, expected.threeMonthReturnPercent);
+    assert.equal(analysis.sixMonthReturnPercent, expected.sixMonthReturnPercent);
+    assert.deepEqual(analysis.factors, expected.factors);
+  }
+  assert.equal(guideSignatures.size, symbols.length);
+});
+
+test("current news is not treated as an upcoming catalyst without a dated event, and AI failure preserves the score", async () => {
+  const news = async () => ({
+    status: "available" as const,
+    summary: "A recent source reports a current supply development.",
+    retrievedAt: "2026-11-02T11:45:00.000Z",
+    sources: [{
+      title: "Current oil market report",
+      url: "https://example.com/oil-report",
+      publishedAt: "2026-11-01T08:00:00.000Z",
+    }],
+  });
+  const currentCatalyst = await requestFullCommodityAnalysis(
+    "CL=F",
+    async () => commentaryJson(COMMODITY_ANALYSIS_GUIDES["CL=F"]!.monitorNext, true),
+    news,
+  );
+  assert.equal(currentCatalyst.status, 200);
+  assert.equal(currentCatalyst.body.commodityAnalysis.newsContext.status, "available");
+  assert.equal(currentCatalyst.body.commodityAnalysis.commentary.upcomingCatalysts.length, 0);
+  assert.equal(currentCatalyst.body.commodityAnalysis.verifiedEvidence.find((item: { id: string }) => item.id === "news-1")?.asOf, "2026-11-01T08:00:00.000Z");
+  assert.equal(currentCatalyst.body.commodityAnalysis.verifiedEvidence.find((item: { id: string }) => item.id === "news-1")?.eventDate, null);
+
+  const failedAi = await requestFullCommodityAnalysis(
+    "CL=F",
+    async () => { throw new Error("AI unavailable"); },
+    async () => unavailableCommodityNews(),
+  );
+  assert.equal(failedAi.status, 200);
+  assert.equal(failedAi.body.commodityAnalysis.commentary.status, "unavailable");
+  assert.ok(Number.isFinite(failedAi.body.commodityAnalysis.score));
+  assert.equal(
+    failedAi.body.commodityAnalysis.factors.find((factor: { key: string }) => factor.key === "price-trend")?.status,
+    "available",
+  );
 });

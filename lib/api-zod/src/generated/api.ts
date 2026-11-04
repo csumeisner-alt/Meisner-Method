@@ -130,6 +130,12 @@ export const analyzeStockResponseThreeCommodityAnalysisObservationCountMin = 0;
 
 
 
+
+
+
+
+
+
 export const AnalyzeStockResponse = zod.union([zod.object({
   "assetType": zod.enum(['stock']),
   "symbol": zod.string(),
@@ -346,6 +352,49 @@ export const AnalyzeStockResponse = zod.union([zod.object({
   "reasoning": zod.string(),
   "risks": zod.array(zod.string()),
   "strengths": zod.array(zod.string()),
+  "analysisGuide": zod.object({
+  "focus": zod.array(zod.string()),
+  "unavailable": zod.array(zod.string()),
+  "monitorNext": zod.array(zod.string())
+}),
+  "verifiedEvidence": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "url": zod.string(),
+  "asOf": zod.coerce.date(),
+  "unit": zod.string(),
+  "observation": zod.string(),
+  "kind": zod.enum(['market-data', 'news']),
+  "eventDate": zod.coerce.date().nullable()
+})).describe('Validated source observations available to ground commentary.'),
+  "commentary": zod.object({
+  "status": zod.enum(['available', 'unavailable']),
+  "currentDrivers": zod.array(zod.object({
+  "text": zod.string(),
+  "evidenceIds": zod.array(zod.string()).min(1)
+})),
+  "strongestBullishFactors": zod.array(zod.object({
+  "text": zod.string(),
+  "evidenceIds": zod.array(zod.string()).min(1)
+})),
+  "strongestBearishFactors": zod.array(zod.object({
+  "text": zod.string(),
+  "evidenceIds": zod.array(zod.string()).min(1)
+})),
+  "technicalAlignment": zod.union([zod.object({
+  "text": zod.string(),
+  "evidenceIds": zod.array(zod.string()).min(1)
+}),zod.null()]),
+  "upcomingCatalysts": zod.array(zod.object({
+  "text": zod.string(),
+  "evidenceIds": zod.array(zod.string()).min(1)
+})),
+  "risks": zod.array(zod.object({
+  "text": zod.string(),
+  "evidenceIds": zod.array(zod.string()).min(1)
+})),
+  "monitorNext": zod.array(zod.string())
+}).describe('Optional AI interpretation; every item references verified evidence IDs.'),
   "newsContext": zod.object({
   "status": zod.enum(['available', 'unavailable']),
   "summary": zod.string().nullable(),

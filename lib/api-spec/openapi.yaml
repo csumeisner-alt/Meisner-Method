@@ -875,6 +875,41 @@ components:
             reasoning: { type: string }
             risks: { type: array, items: { type: string } }
             strengths: { type: array, items: { type: string } }
+            analysisGuide:
+              type: object
+              properties:
+                focus: { type: array, items: { type: string } }
+                unavailable: { type: array, items: { type: string } }
+                monitorNext: { type: array, items: { type: string } }
+              required: [focus, unavailable, monitorNext]
+            verifiedEvidence:
+              type: array
+              description: Validated source observations available to ground commentary.
+              items:
+                type: object
+                properties:
+                  id: { type: string }
+                  title: { type: string }
+                  url: { type: string }
+                  asOf: { type: string, format: date }
+                  unit: { type: string }
+                  observation: { type: string }
+                  kind: { type: string, enum: [market-data, news] }
+                  eventDate: { type: string, format: date, nullable: true }
+                required: [id, title, url, asOf, unit, observation, kind, eventDate]
+            commentary:
+              type: object
+              description: Optional AI interpretation; every item references verified evidence IDs.
+              properties:
+                status: { type: string, enum: [available, unavailable] }
+                currentDrivers: { type: array, items: { $ref: "#/components/schemas/CommodityCommentaryItem" } }
+                strongestBullishFactors: { type: array, items: { $ref: "#/components/schemas/CommodityCommentaryItem" } }
+                strongestBearishFactors: { type: array, items: { $ref: "#/components/schemas/CommodityCommentaryItem" } }
+                technicalAlignment: { oneOf: [{ $ref: "#/components/schemas/CommodityCommentaryItem" }, { type: "null" }] }
+                upcomingCatalysts: { type: array, items: { $ref: "#/components/schemas/CommodityCommentaryItem" } }
+                risks: { type: array, items: { $ref: "#/components/schemas/CommodityCommentaryItem" } }
+                monitorNext: { type: array, items: { type: string } }
+              required: [status, currentDrivers, strongestBullishFactors, strongestBearishFactors, technicalAlignment, upcomingCatalysts, risks, monitorNext]
             newsContext:
               type: object
               properties:
@@ -892,8 +927,15 @@ components:
                     required: [title, url, publishedAt]
               required: [status, summary, retrievedAt, sources]
             provider: { type: string }
-          required: [score, confidence, dataCoveragePercent, observationCount, historyAsOf, family, annualizedVolatilityPercent, oneMonthReturnPercent, threeMonthReturnPercent, sixMonthReturnPercent, factors, methodology, reasoning, risks, strengths, newsContext, provider]
+          required: [score, confidence, dataCoveragePercent, observationCount, historyAsOf, family, annualizedVolatilityPercent, oneMonthReturnPercent, threeMonthReturnPercent, sixMonthReturnPercent, factors, methodology, reasoning, risks, strengths, analysisGuide, verifiedEvidence, commentary, newsContext, provider]
       required: [assetType, symbol, companyName, exchange, currency, currentPrice, priceChange, priceChangePercent, volume, marketCap, week52High, week52Low, commodityAnalysis]
+
+    CommodityCommentaryItem:
+      type: object
+      properties:
+        text: { type: string }
+        evidenceIds: { type: array, minItems: 1, items: { type: string } }
+      required: [text, evidenceIds]
 
     EtfAnalysisResult:
       type: object
