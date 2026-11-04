@@ -34,6 +34,7 @@ import {
 } from '@workspace/api-client-react';
 import type { StockAnalysis } from '@workspace/api-client-react';
 import { ComparisonChart } from '@/components/ComparisonChart';
+import { CommodityRelationshipPanel } from '@/components/CommodityRelationshipPanel';
 import type { HeatMapQuote } from '@workspace/api-client-react';
 import { getGetMarketBreadthQueryKey, useGetMarketBreadth } from '@workspace/api-client-react';
 import type { Candle } from '@/components/StockChart';
@@ -975,6 +976,7 @@ function CommodityAnalysisSections({ analysis, symbol }: { analysis: CommodityAn
   return (
     <View testID="commodity-analysis-result" style={{ gap: 12 }}>
       <CommodityIntelligenceScorecard symbol={symbol} scorecard={analysis.intelligenceScorecard} />
+      <CommodityRelationshipPanel />
       <SectionCard title="COMMODITY MARKET SCORE" icon={<MaterialCommunityIcons name="chart-line" size={16} color={colors.primary} />}>
         <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 10 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>

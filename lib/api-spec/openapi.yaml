@@ -174,6 +174,36 @@ paths:
           description: Invalid symbol, period, or interval
         "422":
           description: Provider history could not be retrieved
+  /stocks/commodity-relationships/{relationshipId}/{period}:
+    get:
+      operationId: getCommodityRelationship
+      tags: [stocks]
+      summary: Compare dated commodity market relationships
+      description: Returns strictly date-aligned commodity price comparisons, relative performance, return correlations, reproducible divergence checks, and optional AI interpretation. Correlation is descriptive and does not establish causation.
+      parameters:
+        - in: path
+          name: relationshipId
+          required: true
+          schema:
+            type: string
+            enum: [gold-silver, gold-dollar, copper-gold, oil-gold, gold-silver-ratio]
+        - in: path
+          name: period
+          required: true
+          schema:
+            type: string
+            enum: [1mo, 3mo, 6mo, 1y, 5y, max]
+      responses:
+        "200":
+          description: Calculated relationship statistics from matched provider trading dates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommodityRelationshipResponse"
+        "400":
+          description: Unsupported relationship or history range
+        "422":
+          description: Relationship history could not be retrieved
   /stocks/search:
     get:
       operationId: searchStockSymbols
@@ -474,6 +504,105 @@ paths:
                 $ref: "#/components/schemas/AnalysisError"
 components:
   schemas:
+    CommodityRelationshipInstrument:
+      type: object
+      required: [symbol, name, unit, venue]
+      properties:
+        symbol: { type: string }
+        name: { type: string }
+        unit: { type: string }
+        venue: { type: string }
+        proxy: { type: boolean }
+
+    CommodityRelationshipResponse:
+      type: object
+      required: [relationship, period, status, reason, method, coverage, metrics, divergence, points, sources, aiInterpretation]
+      properties:
+        relationship:
+          type: object
+          required: [id, label, mode, first, second, relativeValueLabel]
+          properties:
+            id: { type: string }
+            label: { type: string }
+            mode: { type: string, enum: [pair, ratio] }
+            first: { $ref: "#/components/schemas/CommodityRelationshipInstrument" }
+            second: { $ref: "#/components/schemas/CommodityRelationshipInstrument" }
+            relativeValueLabel: { type: string }
+        period: { type: string, enum: [1mo, 3mo, 6mo, 1y, 5y, max] }
+        status: { type: string, enum: [available, unavailable] }
+        reason: { type: string, nullable: true }
+        method:
+          type: object
+          required: [alignment, correlation, correlationChange, divergence]
+          properties:
+            alignment: { type: string }
+            correlation: { type: string }
+            correlationChange: { type: string }
+            divergence: { type: string }
+        coverage:
+          type: object
+          required: [firstStartDate, firstEndDate, secondStartDate, secondEndDate, matchedStartDate, matchedEndDate, matchedObservations, returnObservations]
+          properties:
+            firstStartDate: { type: string, format: date, nullable: true }
+            firstEndDate: { type: string, format: date, nullable: true }
+            secondStartDate: { type: string, format: date, nullable: true }
+            secondEndDate: { type: string, format: date, nullable: true }
+            matchedStartDate: { type: string, format: date, nullable: true }
+            matchedEndDate: { type: string, format: date, nullable: true }
+            matchedObservations: { type: integer }
+            returnObservations: { type: integer }
+        metrics:
+          type: object
+          required: [currentRelativeValue, firstPeriodReturnPercent, secondPeriodReturnPercent, relativeStrengthPercentagePoints, correlation, previousCorrelation, correlationChange]
+          properties:
+            currentRelativeValue: { type: number, nullable: true }
+            firstPeriodReturnPercent: { type: number, nullable: true }
+            secondPeriodReturnPercent: { type: number, nullable: true }
+            relativeStrengthPercentagePoints: { type: number, nullable: true }
+            correlation: { type: number, nullable: true }
+            previousCorrelation: { type: number, nullable: true }
+            correlationChange: { type: number, nullable: true }
+        divergence:
+          type: object
+          required: [status, firstWindowReturnPercent, secondWindowReturnPercent, reason]
+          properties:
+            status: { type: string, enum: [detected, not_detected, unavailable] }
+            firstWindowReturnPercent: { type: number, nullable: true }
+            secondWindowReturnPercent: { type: number, nullable: true }
+            reason: { type: string }
+        points:
+          type: array
+          items:
+            type: object
+            required: [date, timestamp, firstClose, secondClose, firstReturnPercent, secondReturnPercent, relativeValue, firstNormalizedPercent, secondNormalizedPercent, rollingCorrelation]
+            properties:
+              date: { type: string, format: date }
+              timestamp: { type: integer }
+              firstClose: { type: number }
+              secondClose: { type: number }
+              firstReturnPercent: { type: number }
+              secondReturnPercent: { type: number }
+              relativeValue: { type: number }
+              firstNormalizedPercent: { type: number }
+              secondNormalizedPercent: { type: number }
+              rollingCorrelation: { type: number, nullable: true }
+        sources:
+          type: object
+          required: [provider, retrievedAt, firstLatestTimestamp, secondLatestTimestamp, latestObservationTimestamp, alignmentNote]
+          properties:
+            provider: { type: string, enum: [Yahoo Finance] }
+            retrievedAt: { type: string, format: date-time }
+            firstLatestTimestamp: { type: integer, nullable: true }
+            secondLatestTimestamp: { type: integer, nullable: true }
+            latestObservationTimestamp: { type: integer, nullable: true }
+            alignmentNote: { type: string }
+        aiInterpretation:
+          type: object
+          required: [status, text]
+          properties:
+            status: { type: string, enum: [available, unavailable] }
+            text: { type: string, nullable: true }
+
     HealthStatus:
       type: object
       properties:

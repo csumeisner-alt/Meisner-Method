@@ -79,6 +79,97 @@ export const GetStockChartResponse = zod.object({
 
 
 /**
+ * Returns strictly date-aligned commodity price comparisons, relative performance, return correlations, reproducible divergence checks, and optional AI interpretation. Correlation is descriptive and does not establish causation.
+ * @summary Compare dated commodity market relationships
+ */
+export const GetCommodityRelationshipParams = zod.object({
+  "relationshipId": zod.enum(['gold-silver', 'gold-dollar', 'copper-gold', 'oil-gold', 'gold-silver-ratio']),
+  "period": zod.enum(['1mo', '3mo', '6mo', '1y', '5y', 'max'])
+})
+
+export const GetCommodityRelationshipResponse = zod.object({
+  "relationship": zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "mode": zod.enum(['pair', 'ratio']),
+  "first": zod.object({
+  "symbol": zod.string(),
+  "name": zod.string(),
+  "unit": zod.string(),
+  "venue": zod.string(),
+  "proxy": zod.boolean().optional()
+}),
+  "second": zod.object({
+  "symbol": zod.string(),
+  "name": zod.string(),
+  "unit": zod.string(),
+  "venue": zod.string(),
+  "proxy": zod.boolean().optional()
+}),
+  "relativeValueLabel": zod.string()
+}),
+  "period": zod.enum(['1mo', '3mo', '6mo', '1y', '5y', 'max']),
+  "status": zod.enum(['available', 'unavailable']),
+  "reason": zod.string().nullable(),
+  "method": zod.object({
+  "alignment": zod.string(),
+  "correlation": zod.string(),
+  "correlationChange": zod.string(),
+  "divergence": zod.string()
+}),
+  "coverage": zod.object({
+  "firstStartDate": zod.coerce.date().nullable(),
+  "firstEndDate": zod.coerce.date().nullable(),
+  "secondStartDate": zod.coerce.date().nullable(),
+  "secondEndDate": zod.coerce.date().nullable(),
+  "matchedStartDate": zod.coerce.date().nullable(),
+  "matchedEndDate": zod.coerce.date().nullable(),
+  "matchedObservations": zod.number(),
+  "returnObservations": zod.number()
+}),
+  "metrics": zod.object({
+  "currentRelativeValue": zod.number().nullable(),
+  "firstPeriodReturnPercent": zod.number().nullable(),
+  "secondPeriodReturnPercent": zod.number().nullable(),
+  "relativeStrengthPercentagePoints": zod.number().nullable(),
+  "correlation": zod.number().nullable(),
+  "previousCorrelation": zod.number().nullable(),
+  "correlationChange": zod.number().nullable()
+}),
+  "divergence": zod.object({
+  "status": zod.enum(['detected', 'not_detected', 'unavailable']),
+  "firstWindowReturnPercent": zod.number().nullable(),
+  "secondWindowReturnPercent": zod.number().nullable(),
+  "reason": zod.string()
+}),
+  "points": zod.array(zod.object({
+  "date": zod.coerce.date(),
+  "timestamp": zod.number(),
+  "firstClose": zod.number(),
+  "secondClose": zod.number(),
+  "firstReturnPercent": zod.number(),
+  "secondReturnPercent": zod.number(),
+  "relativeValue": zod.number(),
+  "firstNormalizedPercent": zod.number(),
+  "secondNormalizedPercent": zod.number(),
+  "rollingCorrelation": zod.number().nullable()
+})),
+  "sources": zod.object({
+  "provider": zod.enum(['Yahoo Finance']),
+  "retrievedAt": zod.coerce.date(),
+  "firstLatestTimestamp": zod.number().nullable(),
+  "secondLatestTimestamp": zod.number().nullable(),
+  "latestObservationTimestamp": zod.number().nullable(),
+  "alignmentNote": zod.string()
+}),
+  "aiInterpretation": zod.object({
+  "status": zod.enum(['available', 'unavailable']),
+  "text": zod.string().nullable()
+})
+})
+
+
+/**
  * Returns matching listed equities for company-name and ticker autocomplete
  * @summary Search stocks by company name or ticker
  */

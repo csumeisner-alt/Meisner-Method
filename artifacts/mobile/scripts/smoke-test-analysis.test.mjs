@@ -693,6 +693,9 @@ async function buildAnalysisScreenBundle(expenseRatio, scenarioOverrides = {}) {
         </View>
       );
     `],
+    ["@/components/CommodityRelationshipPanel", `
+      export const CommodityRelationshipPanel = () => null;
+    `],
     ["@/components/AmericanSteelBackground", `
       import React from "react";
       export function AmericanSteelBackground({ children }) {

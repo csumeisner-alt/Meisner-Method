@@ -23,6 +23,7 @@ import type {
   AnalysisError,
   AnalysisResult,
   AnalyzeStockRequest,
+  CommodityRelationshipResponse,
   CryptoSupplyHistory,
   GetMarketHeatMapParams,
   GetStockChart200,
@@ -304,6 +305,89 @@ export function useGetStockChart<TData = Awaited<ReturnType<typeof getStockChart
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetStockChartQueryOptions(symbol,period,interval,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetCommodityRelationshipUrl = (relationshipId: 'gold-silver' | 'gold-dollar' | 'copper-gold' | 'oil-gold' | 'gold-silver-ratio',
+    period: '1mo' | '3mo' | '6mo' | '1y' | '5y' | 'max',) => {
+
+
+
+
+  return `/api/stocks/commodity-relationships/${relationshipId}/${period}`
+}
+
+/**
+ * Returns strictly date-aligned commodity price comparisons, relative performance, return correlations, reproducible divergence checks, and optional AI interpretation. Correlation is descriptive and does not establish causation.
+ * @summary Compare dated commodity market relationships
+ */
+export const getCommodityRelationship = async (relationshipId: 'gold-silver' | 'gold-dollar' | 'copper-gold' | 'oil-gold' | 'gold-silver-ratio',
+    period: '1mo' | '3mo' | '6mo' | '1y' | '5y' | 'max', options?: RequestInit): Promise<CommodityRelationshipResponse> => {
+
+  return customFetch<CommodityRelationshipResponse>(getGetCommodityRelationshipUrl(relationshipId,period),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCommodityRelationshipQueryKey = (relationshipId: 'gold-silver' | 'gold-dollar' | 'copper-gold' | 'oil-gold' | 'gold-silver-ratio',
+    period: '1mo' | '3mo' | '6mo' | '1y' | '5y' | 'max',) => {
+    return [
+    `/api/stocks/commodity-relationships/${relationshipId}/${period}`
+    ] as const;
+    }
+
+
+export const getGetCommodityRelationshipQueryOptions = <TData = Awaited<ReturnType<typeof getCommodityRelationship>>, TError = ErrorType<void>>(relationshipId: 'gold-silver' | 'gold-dollar' | 'copper-gold' | 'oil-gold' | 'gold-silver-ratio',
+    period: '1mo' | '3mo' | '6mo' | '1y' | '5y' | 'max', options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCommodityRelationship>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCommodityRelationshipQueryKey(relationshipId,period);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCommodityRelationship>>> = ({ signal }) => getCommodityRelationship(relationshipId,period, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: relationshipId !== null && relationshipId !== undefined && period !== null && period !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCommodityRelationship>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCommodityRelationshipQueryResult = NonNullable<Awaited<ReturnType<typeof getCommodityRelationship>>>
+export type GetCommodityRelationshipQueryError = ErrorType<void>
+
+
+/**
+ * @summary Compare dated commodity market relationships
+ */
+
+export function useGetCommodityRelationship<TData = Awaited<ReturnType<typeof getCommodityRelationship>>, TError = ErrorType<void>>(
+ relationshipId: 'gold-silver' | 'gold-dollar' | 'copper-gold' | 'oil-gold' | 'gold-silver-ratio',
+    period: '1mo' | '3mo' | '6mo' | '1y' | '5y' | 'max', options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCommodityRelationship>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCommodityRelationshipQueryOptions(relationshipId,period,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

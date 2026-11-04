@@ -24,6 +24,17 @@ import {
   fetchCommodityPositioningEvidenceWithStatus,
 } from "../lib/commodityMarketData.js";
 import { respondWithCommodityAnalysis } from "../lib/commodityAnalysisEndpoint.js";
+import {
+  buildCommodityRelationshipInterpretationPrompt,
+  respondWithCommodityRelationship,
+  type CommodityRelationshipHistory,
+} from "../lib/commodityRelationshipEndpoint.js";
+import type {
+  CommodityRelationshipPeriod,
+  CommodityRelationshipResult,
+  DatedCommodityClose,
+} from "../lib/commodityRelationships.js";
+import { isValidCommodityRelationshipTradingDate } from "../lib/commodityRelationships.js";
 import { respondWithEtfAnalysis } from "../lib/etfAnalysisEndpoint.js";
 import { fallbackAiAnalysis, parseAiAnalysis } from "../lib/analysisResponse.js";
 import { logger } from "../lib/logger.js";
@@ -64,8 +75,11 @@ const MARKET_BREADTH_TTL = 60 * 1000;
 const MARKET_PULSE_SESSION_TTL = 30 * 1000;
 const CRYPTO_SUPPLY_HISTORY_TTL = 6 * 60 * 60 * 1000;
 const COMMODITY_NEWS_TTL = 30 * 60 * 1000;
+const COMMODITY_RELATIONSHIP_HISTORY_TTL = 10 * 60 * 1000;
 const commodityNewsCache = new Map<string, { data: ReturnType<typeof unavailableCommodityNews>; expiresAt: number }>();
 const commodityNewsRequests = new Map<string, Promise<ReturnType<typeof unavailableCommodityNews>>>();
+const commodityRelationshipHistoryCache = new Map<string, { data: CommodityRelationshipHistory; expiresAt: number }>();
+const commodityRelationshipHistoryRequests = new Map<string, Promise<CommodityRelationshipHistory>>();
 const heatMapCache = new Map<string, { data: HeatMapResponse; ts: number }>();
 const heatMapRequests = new Map<string, Promise<HeatMapResponse>>();
 let marketBreadthCache: { data: HeatMapResponse; ts: number } | null = null;
@@ -89,6 +103,102 @@ const marketPulseStore = createMarketPulseStore(
 );
 
 const router = Router();
+
+function isProviderDate(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const timestamp = Date.parse(`${value}T00:00:00.000Z`);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === value;
+}
+
+async function fetchCommodityRelationshipHistory(
+  symbol: string,
+  period: CommodityRelationshipPeriod,
+): Promise<CommodityRelationshipHistory> {
+  const key = `${symbol}:${period}`;
+  const cached = commodityRelationshipHistoryCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+  const pending = commodityRelationshipHistoryRequests.get(key);
+  if (pending) return pending;
+
+  const request = (async () => {
+    const { stdout } = await execFileAsync(
+      "python3",
+      [CHART_SCRIPT, symbol, period, "1d"],
+      { timeout: 35_000, maxBuffer: 5 * 1024 * 1024 },
+    );
+    const raw: unknown = JSON.parse(stdout.trim());
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      throw new Error("Market data provider returned an invalid chart response");
+    }
+    const payload = raw as Record<string, unknown>;
+    if (payload["symbol"] !== symbol
+      || payload["period"] !== period
+      || payload["interval"] !== "1d"
+      || !Array.isArray(payload["candles"])) {
+      throw new Error("Market data provider returned mismatched chart history");
+    }
+    const now = Date.now();
+    const today = new Date(now).toISOString().slice(0, 10);
+    const points: DatedCommodityClose[] = [];
+    const seen = new Set<string>();
+    for (const rawCandle of payload["candles"]) {
+      if (!rawCandle || typeof rawCandle !== "object" || Array.isArray(rawCandle)) continue;
+      const candle = rawCandle as Record<string, unknown>;
+      const { date, t, c } = candle;
+      if (!isProviderDate(date)
+        || !isValidCommodityRelationshipTradingDate({
+          symbol,
+          name: symbol,
+          unit: "provider quote units",
+          venue: symbol === "DX-Y.NYB" ? "ICE Futures U.S." : "Provider venue",
+        }, date)
+        || date > today
+        || !Number.isSafeInteger(t)
+        || (t as number) <= 0
+        || (t as number) > Math.floor(now / 1000) + 86_400
+        || typeof c !== "number"
+        || !Number.isFinite(c)
+        || c <= 0
+        || seen.has(date)) {
+        continue;
+      }
+      const timestampDate = new Date((t as number) * 1000).toISOString().slice(0, 10);
+      if (Math.abs(Date.parse(`${date}T00:00:00.000Z`) - Date.parse(`${timestampDate}T00:00:00.000Z`)) > 86_400_000) {
+        continue;
+      }
+      seen.add(date);
+      points.push({ date, timestamp: t as number, close: c });
+    }
+    points.sort((left, right) => left.date.localeCompare(right.date));
+    const last = points.at(-1);
+    if (!last || now - Date.parse(`${last.date}T23:59:59.999Z`) > 7 * 86_400_000) {
+      throw new Error("Market data provider returned stale chart history");
+    }
+    const data: CommodityRelationshipHistory = {
+      points,
+      source: "Yahoo Finance",
+      latestSourceTimestamp: last.timestamp,
+    };
+    commodityRelationshipHistoryCache.set(key, {
+      data,
+      expiresAt: now + COMMODITY_RELATIONSHIP_HISTORY_TTL,
+    });
+    if (commodityRelationshipHistoryCache.size > 80) {
+      const oldest = commodityRelationshipHistoryCache.keys().next().value;
+      if (oldest !== undefined) commodityRelationshipHistoryCache.delete(oldest);
+    }
+    return data;
+  })();
+
+  commodityRelationshipHistoryRequests.set(key, request);
+  try {
+    return await request;
+  } finally {
+    if (commodityRelationshipHistoryRequests.get(key) === request) {
+      commodityRelationshipHistoryRequests.delete(key);
+    }
+  }
+}
 
 type CryptoSupplyHistoryPayload = {
   symbol: string;
@@ -632,6 +742,30 @@ router.get("/stocks/chart/:symbol", async (req, res) => {
     (req.query["period"] as string) || "3mo",
     (req.query["interval"] as string) || "1d",
     res,
+  );
+});
+
+router.get("/stocks/commodity-relationships/:relationshipId/:period", async (req, res) => {
+  await respondWithCommodityRelationship(
+    res,
+    req.params["relationshipId"],
+    req.params["period"],
+    {
+      fetchHistory: fetchCommodityRelationshipHistory,
+      interpret: async (result: CommodityRelationshipResult) => {
+        const response = await openai.responses.create({
+          model: "gpt-4o-mini",
+          input: buildCommodityRelationshipInterpretationPrompt(result),
+        }, { timeout: 15_000 });
+        const text = response.output_text.trim();
+        if (!text) throw new Error("The interpretation model returned no text");
+        return text;
+      },
+      now: () => new Date(),
+      onInterpretationFailure: (err, relationshipId) => {
+        logger.warn({ err, relationshipId }, "Commodity relationship interpretation unavailable");
+      },
+    },
   );
 });
 

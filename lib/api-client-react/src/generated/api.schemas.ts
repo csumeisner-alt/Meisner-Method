@@ -5,6 +5,151 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export interface CommodityRelationshipInstrument {
+  symbol: string;
+  name: string;
+  unit: string;
+  venue: string;
+  proxy?: boolean;
+}
+
+export type CommodityRelationshipResponseRelationshipMode = typeof CommodityRelationshipResponseRelationshipMode[keyof typeof CommodityRelationshipResponseRelationshipMode];
+
+
+export const CommodityRelationshipResponseRelationshipMode = {
+  pair: 'pair',
+  ratio: 'ratio',
+} as const;
+
+export type CommodityRelationshipResponseRelationship = {
+  id: string;
+  label: string;
+  mode: CommodityRelationshipResponseRelationshipMode;
+  first: CommodityRelationshipInstrument;
+  second: CommodityRelationshipInstrument;
+  relativeValueLabel: string;
+};
+
+export type CommodityRelationshipResponsePeriod = typeof CommodityRelationshipResponsePeriod[keyof typeof CommodityRelationshipResponsePeriod];
+
+
+export const CommodityRelationshipResponsePeriod = {
+  '1mo': '1mo',
+  '3mo': '3mo',
+  '6mo': '6mo',
+  '1y': '1y',
+  '5y': '5y',
+  max: 'max',
+} as const;
+
+export type CommodityRelationshipResponseStatus = typeof CommodityRelationshipResponseStatus[keyof typeof CommodityRelationshipResponseStatus];
+
+
+export const CommodityRelationshipResponseStatus = {
+  available: 'available',
+  unavailable: 'unavailable',
+} as const;
+
+export type CommodityRelationshipResponseMethod = {
+  alignment: string;
+  correlation: string;
+  correlationChange: string;
+  divergence: string;
+};
+
+export type CommodityRelationshipResponseCoverage = {
+  firstStartDate: string | null;
+  firstEndDate: string | null;
+  secondStartDate: string | null;
+  secondEndDate: string | null;
+  matchedStartDate: string | null;
+  matchedEndDate: string | null;
+  matchedObservations: number;
+  returnObservations: number;
+};
+
+export type CommodityRelationshipResponseMetrics = {
+  currentRelativeValue: number | null;
+  firstPeriodReturnPercent: number | null;
+  secondPeriodReturnPercent: number | null;
+  relativeStrengthPercentagePoints: number | null;
+  correlation: number | null;
+  previousCorrelation: number | null;
+  correlationChange: number | null;
+};
+
+export type CommodityRelationshipResponseDivergenceStatus = typeof CommodityRelationshipResponseDivergenceStatus[keyof typeof CommodityRelationshipResponseDivergenceStatus];
+
+
+export const CommodityRelationshipResponseDivergenceStatus = {
+  detected: 'detected',
+  not_detected: 'not_detected',
+  unavailable: 'unavailable',
+} as const;
+
+export type CommodityRelationshipResponseDivergence = {
+  status: CommodityRelationshipResponseDivergenceStatus;
+  firstWindowReturnPercent: number | null;
+  secondWindowReturnPercent: number | null;
+  reason: string;
+};
+
+export type CommodityRelationshipResponsePointsItem = {
+  date: string;
+  timestamp: number;
+  firstClose: number;
+  secondClose: number;
+  firstReturnPercent: number;
+  secondReturnPercent: number;
+  relativeValue: number;
+  firstNormalizedPercent: number;
+  secondNormalizedPercent: number;
+  rollingCorrelation: number | null;
+};
+
+export type CommodityRelationshipResponseSourcesProvider = typeof CommodityRelationshipResponseSourcesProvider[keyof typeof CommodityRelationshipResponseSourcesProvider];
+
+
+export const CommodityRelationshipResponseSourcesProvider = {
+  Yahoo_Finance: 'Yahoo Finance',
+} as const;
+
+export type CommodityRelationshipResponseSources = {
+  provider: CommodityRelationshipResponseSourcesProvider;
+  retrievedAt: string;
+  firstLatestTimestamp: number | null;
+  secondLatestTimestamp: number | null;
+  latestObservationTimestamp: number | null;
+  alignmentNote: string;
+};
+
+export type CommodityRelationshipResponseAiInterpretationStatus = typeof CommodityRelationshipResponseAiInterpretationStatus[keyof typeof CommodityRelationshipResponseAiInterpretationStatus];
+
+
+export const CommodityRelationshipResponseAiInterpretationStatus = {
+  available: 'available',
+  unavailable: 'unavailable',
+} as const;
+
+export type CommodityRelationshipResponseAiInterpretation = {
+  status: CommodityRelationshipResponseAiInterpretationStatus;
+  text: string | null;
+};
+
+export interface CommodityRelationshipResponse {
+  relationship: CommodityRelationshipResponseRelationship;
+  period: CommodityRelationshipResponsePeriod;
+  status: CommodityRelationshipResponseStatus;
+  reason: string | null;
+  method: CommodityRelationshipResponseMethod;
+  coverage: CommodityRelationshipResponseCoverage;
+  metrics: CommodityRelationshipResponseMetrics;
+  divergence: CommodityRelationshipResponseDivergence;
+  points: CommodityRelationshipResponsePointsItem[];
+  sources: CommodityRelationshipResponseSources;
+  aiInterpretation: CommodityRelationshipResponseAiInterpretation;
+}
+
 export interface HealthStatus {
   status: string;
 }
