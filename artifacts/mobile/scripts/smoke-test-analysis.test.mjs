@@ -522,15 +522,6 @@ async function buildAnalysisScreenBundle(expenseRatio, scenarioOverrides = {}) {
       import React from "react";
       export const LinearGradient = ({ children }) => <>{children}</>;
     `],
-    ["react-native-svg", `
-      import React from "react";
-      export const Circle = React.forwardRef((props, ref) => <circle ref={ref} {...props} />);
-      export const Defs = ({ children }) => <defs>{children}</defs>;
-      export const Stop = (props) => <stop {...props} />;
-      export const LinearGradient = (props) => <linearGradient {...props} />;
-      const Svg = ({ children, ...props }) => <svg {...props}>{children}</svg>;
-      export default Svg;
-    `],
     ["@workspace/api-client-react", `
       const response = ${JSON.stringify(response)};
       export function useAnalyzeStock() {
@@ -1095,6 +1086,22 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
     assert.match(scenarioCardText, /Starting investment\s*\$100\.00/);
     assert.match(scenarioCardText, /Total contributions\s*\$0\.00/);
     assert.match(scenarioCardText, /Deposited at the end of each month/);
+    await browser.evaluate(`(() => {
+      const input = document.querySelector('[data-testid="etf-scenario-initial-investment"]');
+      input?.focus();
+      input?.setSelectionRange(0, input.value.length);
+    })()`);
+    await browser.send("Input.insertText", { text: "500" });
+    await waitForBrowserValue(
+      browser,
+      `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent.includes("Starting investment$500.00")`,
+      "Editing the starting investment should update the displayed input and projections.",
+    );
+    await waitForBrowserValue(
+      browser,
+      `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent.includes("No-fee value in 10 years$1,296.87")`,
+      "Changing the starting amount should recalculate the selected scenario.",
+    );
     for (const cadence of ["weekly", "monthly", "quarterly"]) {
       assert.ok(
         scenarioCardText.includes(cadence.charAt(0).toUpperCase() + cadence.slice(1)),
@@ -1134,12 +1141,12 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
     const fiveYearScenarioText = await browser.evaluate(
       `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent ?? ""`,
     );
-    assert.match(fiveYearScenarioText, /No-fee value in 5 years\s*\$2,075\.08/);
-    assert.match(fiveYearScenarioText, /After-fee value in 5 years\s*\$2,073\.48/);
-    assert.match(fiveYearScenarioText, /Starting investment\s*\$100\.00/);
+    assert.match(fiveYearScenarioText, /No-fee value in 5 years\s*\$2,719\.29/);
+    assert.match(fiveYearScenarioText, /After-fee value in 5 years\s*\$2,716\.80/);
+    assert.match(fiveYearScenarioText, /Starting investment\s*\$500\.00/);
     assert.match(fiveYearScenarioText, /Total contributions\s*\$1,500\.00/);
-    assert.match(fiveYearScenarioText, /No-fee projected growth in 5 years\s*\$475\.08/);
-    assert.match(fiveYearScenarioText, /After-fee projected growth in 5 years\s*\$473\.48/);
+    assert.match(fiveYearScenarioText, /No-fee projected growth in 5 years\s*\$719\.29/);
+    assert.match(fiveYearScenarioText, /After-fee projected growth in 5 years\s*\$716\.80/);
 
     const feeImpactSelector = '[data-testid="analysis-section-etf-fee-dollar-impact"]';
     await browser.evaluate(`(() => {
@@ -1210,7 +1217,7 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
       `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent ?? ""`,
     );
     assert.match(unavailableScenarioText, /Annual expense ratio used\s*Unavailable/);
-    assert.match(unavailableScenarioText, /No-fee assumption \(derived\)\s*Unavailable/);
+    assert.match(unavailableScenarioText, /No-fee assumption \(derived\)\s*10\.00%/);
     assert.match(unavailableScenarioText, /Annualized after-fee assumption\s*Unavailable/);
     assert.match(unavailableScenarioText, /After-fee value in 10 years\s*Unavailable/);
     assert.match(unavailableScenarioText, /No-fee value in 10 years\s*\$259\.37/);

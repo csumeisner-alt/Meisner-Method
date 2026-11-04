@@ -28,7 +28,6 @@ import { useAchievements } from '@/contexts/AchievementsContext';
 import { useAnalyzeStock } from '@workspace/api-client-react';
 import type { StockAnalysis } from '@workspace/api-client-react';
 import { ComparisonChart } from '@/components/ComparisonChart';
-import Svg, { Circle, Defs, Stop, LinearGradient as SvgLinearGradient } from 'react-native-svg';
 import type { HeatMapQuote } from '@workspace/api-client-react';
 import { getGetMarketBreadthQueryKey, useGetMarketBreadth } from '@workspace/api-client-react';
 import type { Candle } from '@/components/StockChart';
@@ -198,41 +197,67 @@ function ScoreBar({ score, color }: { score: number; color: string }) {
   );
 }
 
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-
 function EtfScoreGauge({ score }: { score: number }) {
   const colors = useColors();
   const progress = useRef(new Animated.Value(0)).current;
   const size = 152;
-  const stroke = 10;
-  const radius = (size - stroke) / 2;
-  const circumference = 2 * Math.PI * radius;
   useEffect(() => {
     progress.setValue(0);
     const animation = Animated.timing(progress, {
-      toValue: Math.max(0, Math.min(score, 100)) / 100,
-      duration: 950,
-      useNativeDriver: false,
+      toValue: 1,
+      duration: 700,
+      useNativeDriver: true,
     });
     animation.start();
     return () => animation.stop();
   }, [progress, score]);
-  const dashOffset = progress.interpolate({ inputRange: [0, 1], outputRange: [circumference, 0] });
+  const scale = progress.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] });
   return (
-    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }} accessibilityLabel={`Research score ${score} out of 100`}>
-      <Svg width={size} height={size} style={{ position: 'absolute', transform: [{ rotate: '-90deg' }] }}>
-        <Defs>
-          <SvgLinearGradient id="etf-score-gold" x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0" stopColor={colors.primary} stopOpacity="0.58" />
-            <Stop offset="1" stopColor={colors.primary} stopOpacity="1" />
-          </SvgLinearGradient>
-        </Defs>
-        <Circle cx={size / 2} cy={size / 2} r={radius} stroke={colors.border} strokeWidth={stroke} fill="none" opacity={0.8} />
-        <AnimatedCircle cx={size / 2} cy={size / 2} r={radius} stroke="url(#etf-score-gold)" strokeWidth={stroke} fill="none" strokeLinecap="round" strokeDasharray={`${circumference} ${circumference}`} strokeDashoffset={dashOffset} />
-      </Svg>
+    <Animated.View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center', transform: [{ scale }] }} accessibilityLabel={`Research score ${score} out of 100`}>
+      <View style={{ position: 'absolute', width: size - 8, height: size - 8, borderRadius: size, borderWidth: 8, borderColor: colors.border, backgroundColor: colors.background, shadowColor: colors.primary, shadowOpacity: 0.22, shadowRadius: 12, elevation: 3 }} />
+      {Array.from({ length: 40 }, (_, index) => {
+        const angle = (index / 40) * Math.PI * 2;
+        const radius = size / 2 - 7;
+        const active = index < Math.round(score / 100 * 40);
+        return (
+          <View key={`score-tick-${index}`} style={{
+            position: 'absolute',
+            left: size / 2 + Math.sin(angle) * radius - 1.5,
+            top: size / 2 - Math.cos(angle) * radius - 4,
+            width: 3,
+            height: 8,
+            borderRadius: 2,
+            backgroundColor: active ? colors.primary : colors.border,
+            opacity: active ? 1 : 0.42,
+            transform: [{ rotate: `${index * 9}deg` }],
+          }} />
+        );
+      })}
+      <LinearGradient colors={[`${colors.primary}20`, 'transparent']} style={{ position: 'absolute', width: 104, height: 104, borderRadius: 52 }} />
       <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 42, textShadowColor: `${colors.primary}55`, textShadowRadius: 10 }}>{score}</Text>
       <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 12, marginTop: -2 }}>OUT OF 100</Text>
-    </View>
+    </Animated.View>
+  );
+}
+
+function EtfCardEntrance({ children }: { children: React.ReactNode }) {
+  const entrance = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const animation = Animated.timing(entrance, {
+      toValue: 1,
+      duration: 320,
+      useNativeDriver: false,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [entrance]);
+  return (
+    <Animated.View style={{
+      opacity: entrance,
+      transform: [{ translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }],
+    }}>
+      {children}
+    </Animated.View>
   );
 }
 
@@ -261,6 +286,7 @@ function EtfMarketIntelligence({ quotes, updatedAt }: { quotes: HeatMapQuote[]; 
   const meterColor = strength != null && strength >= 60 ? colors.buyColor
     : strength != null && strength <= 40 ? colors.sellColor : colors.primary;
   return (
+    <EtfCardEntrance>
     <View testID="etf-market-intelligence" style={{ marginBottom: 14, borderRadius: 16, borderWidth: 1, borderColor: `${colors.primary}88`, backgroundColor: colors.card, overflow: 'hidden' }}>
       <LinearGradient colors={[`${colors.primary}22`, 'transparent', `${colors.primary}08`]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ padding: 16 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
@@ -305,6 +331,7 @@ function EtfMarketIntelligence({ quotes, updatedAt }: { quotes: HeatMapQuote[]; 
         </Text>
       </LinearGradient>
     </View>
+    </EtfCardEntrance>
   );
 }
 const scoreStyles = StyleSheet.create({
@@ -324,9 +351,9 @@ function MetricRow({ label, value, highlight }: { label: string; value: string; 
   );
 }
 const metricStyles = StyleSheet.create({
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 },
-  label: { fontSize: 13 },
-  value: { fontSize: 13 },
+  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, gap: 10 },
+  label: { fontSize: 14, lineHeight: 20, flexShrink: 1 },
+  value: { fontSize: 14, lineHeight: 20, textAlign: 'right', flexShrink: 0 },
 });
 
 function EtfSectionAnchor({
@@ -421,10 +448,10 @@ function SectionCard({ title, icon, score, scoreColor, children, helpTopic, onHe
   );
 }
 const cardStyles = StyleSheet.create({
-  card: { borderRadius: 12, borderWidth: 1, marginBottom: 12, overflow: 'hidden' },
+  card: { borderRadius: 12, borderWidth: 1, marginBottom: 14, overflow: 'hidden' },
   header: { padding: 16, paddingBottom: 12 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
-  title: { fontSize: 14 },
+  title: { fontSize: 15 },
   helpButton: { marginLeft: 1 },
   scoreRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   scoreLabel: { fontSize: 11 },
@@ -743,6 +770,9 @@ function EtfAnalysisSections({
   const [replaceTarget, setReplaceTarget] = useState<string | null>(null);
   const [focusSwitching, setFocusSwitching] = useState(false);
   const [selectedScenarioHorizon, setSelectedScenarioHorizon] = useState<number>(10);
+  const [scenarioInitialInvestmentInput, setScenarioInitialInvestmentInput] = useState(
+    String(ETF_SCENARIO_INITIAL_INVESTMENT),
+  );
   const [scenarioReturnInputs, setScenarioReturnInputs] = useState<Record<string, string>>({});
   const [feeInvestmentInput, setFeeInvestmentInput] = useState('10000');
   const [feeHoldingYears, setFeeHoldingYears] = useState<number>(10);
@@ -769,6 +799,7 @@ function EtfAnalysisSections({
     return feeAdjusted ? annualRate : validExpenseRatio ? annualRate + (fund.expenseRatio ?? 0) : null;
   };
   const feeInvestmentAmount = parseEtfFeeInvestmentAmount(feeInvestmentInput);
+  const scenarioInitialInvestment = parseEtfFeeInvestmentAmount(scenarioInitialInvestmentInput);
   const feeEstimate = estimateEtfFeeDollars(
     feeInvestmentAmount,
     fund.expenseRatio,
@@ -866,14 +897,14 @@ function EtfAnalysisSections({
     const afterFeeRate = scenarioReturn(scenario, true);
     const noFeeRate = scenarioReturn(scenario, false);
     const noFee = calculateEtfScenarioBreakdown(
-      ETF_SCENARIO_INITIAL_INVESTMENT,
+      scenarioInitialInvestment ?? 0,
       noFeeRate,
       contributionAmount,
       horizonYears,
       contributionCadence,
     );
     const afterFee = calculateEtfScenarioBreakdown(
-      ETF_SCENARIO_INITIAL_INVESTMENT,
+      scenarioInitialInvestment ?? 0,
       afterFeeRate,
       contributionAmount,
       horizonYears,
@@ -935,7 +966,7 @@ function EtfAnalysisSections({
                 setContributionCadence(cadence);
               }}
               style={{
-          minHeight: 44,
+                minHeight: 44,
                 justifyContent: 'center',
                 borderWidth: 1,
                 borderColor: selected ? colors.primary : colors.border,
@@ -956,8 +987,30 @@ function EtfAnalysisSections({
       <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 15, marginTop: 5 }}>
         Deposited at the end of each {contributionCadence === 'weekly'
           ? 'week'
-          : contributionCadence === 'monthly' ? 'month' : 'quarter'}, alongside a $100 starting investment.
+          : contributionCadence === 'monthly' ? 'month' : 'quarter'}, alongside a {scenarioInitialInvestment == null ? 'valid starting investment' : fmtPrice(scenarioInitialInvestment)} starting investment.
       </Text>
+    </View>
+  );
+  const renderScenarioInitialInvestmentControl = () => (
+    <View style={{ marginTop: 12 }}>
+      <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 14 }}>
+        Starting investment
+      </Text>
+      <TextInput
+        testID="etf-scenario-initial-investment"
+        accessibilityLabel="Starting investment amount in dollars"
+        value={scenarioInitialInvestmentInput}
+        onChangeText={(value) => setScenarioInitialInvestmentInput(value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'))}
+        keyboardType="decimal-pad"
+        placeholder="100"
+        placeholderTextColor={colors.mutedForeground}
+        style={{ minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, color: colors.foreground, fontSize: 16, fontFamily: 'Inter_600SemiBold', marginTop: 6 }}
+      />
+      {scenarioInitialInvestment == null && (
+        <Text style={{ color: colors.sellColor, fontSize: 12, lineHeight: 17, marginTop: 4 }}>
+          Enter an amount greater than $0 to calculate projections.
+        </Text>
+      )}
     </View>
   );
   const renderScenarioHorizonSelector = () => (
@@ -973,6 +1026,7 @@ function EtfAnalysisSections({
             onPress={() => setSelectedScenarioHorizon(horizonYears)}
             style={{
               minWidth: 54,
+            minHeight: 44,
               alignItems: 'center',
               borderWidth: 1,
               borderColor: selected ? colors.primary : colors.border,
@@ -1515,6 +1569,7 @@ function EtfAnalysisSections({
       </Modal>
       <EtfSectionAnchor sectionId="overview" title="Overview" onLayout={onSectionLayout} onRef={onSectionRef} />
       <EtfMarketIntelligence quotes={marketQuotes} updatedAt={marketUpdatedAt} />
+      <EtfCardEntrance>
       <View style={[recStyles.hero, {
         backgroundColor: colors.card,
         borderColor: profileScore.score == null ? colors.primary : etfScoreColor(profileScore.score),
@@ -1560,12 +1615,13 @@ function EtfAnalysisSections({
           })}
         </View>
         <Text style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 18, marginTop: 10 }}>
-          Missing factors are excluded; the remaining published weights are normalized to 100%. Historical score change is unavailable because prior score snapshots are not stored.
+            Missing factors are excluded; the remaining published weights are normalized to 100%. Descriptive bands: strong 75+, constructive 60–74, mixed 41–59, limited 0–40. Historical score change is unavailable because prior score snapshots are not stored.
         </Text>
         <Text style={[recStyles.horizon, { color: colors.mutedForeground, marginTop: 12, marginBottom: 0 }]}>
           {fund.fundCategory ?? 'ETF'} · Rules-based profile, not a forecast or recommendation.
         </Text>
       </View>
+      </EtfCardEntrance>
       <View
         testID="etf-comparison-switcher"
         style={[cardStyles.card, { backgroundColor: colors.card, borderColor: colors.border, padding: 14 }]}
@@ -2182,6 +2238,7 @@ function EtfAnalysisSections({
           Illustrations, not forecasts. Each fund uses its own expense ratio and historical return assumption.
         </Text>
         {renderContributionControls('etf-comparison-contribution-input')}
+        {renderScenarioInitialInvestmentControl()}
         {renderScenarioHorizonSelector()}
         <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator style={{ marginTop: 10 }}>
           <View style={{ flexDirection: 'row', gap: 10, paddingRight: 16 }}>
@@ -2421,7 +2478,7 @@ function EtfAnalysisSections({
             {hasSharedComparisonHistory && comparisonPeriodReturn != null && primaryPeriodReturn != null
               ? `${symbol.toUpperCase()} return ${primaryPeriodReturn >= 0 ? '+' : ''}${primaryPeriodReturn.toFixed(2)}% vs ${compSymbol} ${comparisonPeriodReturn >= 0 ? '+' : ''}${comparisonPeriodReturn.toFixed(2)}% · relative difference ${(primaryPeriodReturn - comparisonPeriodReturn) >= 0 ? '+' : ''}${(primaryPeriodReturn - comparisonPeriodReturn).toFixed(2)} percentage points.`
               : `Selected range: ${primaryCandles[0]?.date ?? 'date unavailable'} to ${primaryCandles[primaryCandles.length - 1]?.date ?? 'date unavailable'}.`}
-            {' '}Chart uses provider Close prices and shows price return, not dividend-adjusted total return; adjusted dividend history is unavailable from this endpoint.
+            {' '}Chart uses provider Close values. Dividend-adjustment treatment is not identified by this endpoint, so these are not labeled as dividend-adjusted total returns.
           </Text>
         )}
         {symbol.toUpperCase() === 'VOO' && (
@@ -2592,7 +2649,7 @@ function EtfAnalysisSections({
                   onPress={() => setFeeHoldingYears(years)}
                   style={{
                     minWidth: 54,
-                    minHeight: 34,
+                    minHeight: 44,
                     alignItems: 'center',
                     justifyContent: 'center',
                     borderWidth: 1,
@@ -2653,6 +2710,7 @@ function EtfAnalysisSections({
           </Text>
           <MetricRow label="Annual expense ratio used" value={pctValue(fund.expenseRatio)} />
           {renderContributionControls('etf-scenario-contribution-input')}
+          {renderScenarioInitialInvestmentControl()}
           {renderScenarioHorizonSelector()}
           {scenarios.length > 0 && (() => {
             const rows = scenarios.map((scenario) => ({
@@ -2666,7 +2724,7 @@ function EtfAnalysisSections({
                   Ending value · {selectedScenarioHorizon} years
                 </Text>
                 <Text style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 17, marginTop: 3 }}>
-                  After-fee illustration; $100 initial investment plus your selected deposits.
+                  After-fee illustration; {scenarioInitialInvestment == null ? 'starting amount unavailable' : fmtPrice(scenarioInitialInvestment)} initial investment plus your selected deposits.
                 </Text>
                 {rows.map(({ scenario, projection }) => {
                   const label = scenario.label.toLowerCase();
@@ -3043,7 +3101,7 @@ export default function AnalysisScreen() {
       sectionView.measureInWindow((_sectionX, sectionY) => {
         scrollFrame.measureInWindow((_frameX, frameY) => {
           const y = etfScrollOffset.current + sectionY - frameY;
-          scrollView.scrollTo({ y: Math.max(0, y - 8), animated: false });
+          scrollView.scrollTo({ y: Math.max(0, y - 8), animated: Platform.OS !== 'web' });
         });
       });
       return;
@@ -3208,7 +3266,7 @@ export default function AnalysisScreen() {
             {formatAnalysisLoadingStage(loadingStage, symbol, brew.neonGucciPhrasesActive)}
           </Text>
           <Text style={[styles.loadingSubtitle, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-            Fetching market data, validating the quote, and shaping a focused lesson
+            Checking the latest quote and price history. Missing provider data is marked unavailable.
           </Text>
         </View>
         </View>
