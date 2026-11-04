@@ -3197,6 +3197,24 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       "Tapping a commodity tile should open its detail card.",
     );
     await assertWatchlistAddIsUnique(browser, "GC=F");
+    await clickTestID(browser, "heat-map-detail-close");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
+      "The priced commodity detail card should close before testing an unavailable commodity.",
+    );
+    await clickTestID(browser, "heat-map-unavailable-hex-CL=F");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent === "Crude Oil"`,
+      "Tapping an unavailable commodity should open its detail card.",
+    );
+    assert.equal(
+      await browser.evaluate(`!document.querySelector(${JSON.stringify(selector("heat-map-detail-price"))})`),
+      true,
+      "An unavailable commodity should not show a stale current price.",
+    );
+    await assertWatchlistAddIsUnique(browser, "CL=F");
 
     const watchlistBeforeReorder = await browser.evaluate("window.__heatMapWatchlistSymbols");
     assert.ok(watchlistBeforeReorder.length >= 2, "The restart check needs multiple watchlist entries.");
@@ -3219,7 +3237,7 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     await waitFor(
       (expression) => browser.evaluate(expression),
       `JSON.stringify(window.__heatMapWatchlistSymbols) === ${JSON.stringify(JSON.stringify(expectedWatchlistOrder))}`,
-      "Reopening the app should restore the reordered watchlist from local storage.",
+      "Reopening the app should restore all watchlist entries in their saved order.",
     );
     const restoredWatchlist = await browser.evaluate("window.__heatMapWatchlistSymbols");
     assert.deepEqual(
@@ -3236,6 +3254,11 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       restoredWatchlist.filter((symbol) => symbol === "GC=F").length,
       1,
       "The commodity should remain in the watchlist exactly once after reopening the app.",
+    );
+    assert.equal(
+      restoredWatchlist.filter((symbol) => symbol === "CL=F").length,
+      1,
+      "The unavailable commodity should remain in the watchlist exactly once after reopening the app.",
     );
     assert.equal(
       new Set(restoredWatchlist).size,
