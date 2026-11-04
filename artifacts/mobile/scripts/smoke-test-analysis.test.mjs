@@ -251,14 +251,18 @@ test("ETF performance history uses real candles, supported ranges, and honest re
 });
 
 test("ETF comparison chart plots shared reported dates and explains insufficient overlap", () => {
-  assert.match(etfAnalysisSource, /alignCandleSeriesOnSharedDates\(primaryCandles, compCandles\)/);
-  assert.match(etfAnalysisSource, /alignProviderAdjustedReturns\(/);
+  assert.match(etfAnalysisSource, /alignCandleSeriesOnSharedDatesAcrossSeries\(chartInputCandles\)/);
+  assert.match(etfAnalysisSource, /alignProviderAdjustedReturnsAcrossSeries\(/);
   assert.match(etfAnalysisSource, /primaryCandles=\{chartPrimaryCandles\}/);
-  assert.match(etfAnalysisSource, /compCandles=\{chartComparisonCandles\}/);
+  assert.match(etfAnalysisSource, /additionalSeries=\{chartComparisonSeries\}/);
   assert.match(etfAnalysisSource, /adjustedReturnMode=\{chartUsesAdjustedReturns\}/);
-  assert.match(etfAnalysisSource, /Price comparison unavailable: only \$\{sharedComparisonCandles\.dates\.length\} shared reported date/);
-  assert.match(etfAnalysisSource, /Missing dates are not filled or interpolated/);
-  assert.match(etfAnalysisSource, /provider Adj Close series with complete reported distribution history/);
+  assert.match(etfAnalysisSource, /returnBasis=\{chartReturnBasis\}/);
+  assert.match(etfAnalysisSource, /totalReturnAvailable=\{totalReturnAvailable\}/);
+  assert.match(etfAnalysisSource, /onReturnBasisChange=\{setReturnBasis\}/);
+  assert.match(etfAnalysisSource, /Provider-adjusted history does not cover every shared reported date/);
+  assert.match(etfAnalysisSource, /Price comparison unavailable: only \$\{sharedChartCandles\.dates\.length\} dates are reported by every selected ETF/);
+  assert.match(etfAnalysisSource, /No missing dates are filled or interpolated/);
+  assert.match(etfAnalysisSource, /Every plotted ETF uses its provider Adj Close series on the shared dates/);
   assert.match(etfAnalysisSource, /no total-return estimate is shown/);
 });
 
@@ -528,6 +532,26 @@ async function buildAnalysisScreenBundle(expenseRatio, scenarioOverrides = {}) {
       import React from "react";
       export const LinearGradient = ({ children }) => <>{children}</>;
     `],
+    ["@tanstack/react-query", `
+      export function useQueries({ queries }) {
+        return queries.map(() => ({
+          data: {
+            candles: [
+              { t: 1792972800, date: "2026-10-26", o: 100, h: 102, l: 99, c: 101, v: 1000 },
+              { t: 1793059200, date: "2026-10-27", o: 101, h: 104, l: 100, c: 103, v: 1200 },
+              { t: 1793318400, date: "2026-10-30", o: 103, h: 105, l: 102, c: 104, v: 900 },
+            ],
+            adjustedReturnSeries: {
+              status: "unavailable", method: "provider_adjusted_close", values: [],
+              reason: "Provider did not supply a verified adjusted-return series.",
+            },
+          },
+          isLoading: false,
+          isError: false,
+          refetch: async () => ({}),
+        }));
+      }
+    `],
     ["@workspace/api-client-react", `
       import React from "react";
       const response = ${JSON.stringify(response)};
@@ -543,6 +567,14 @@ async function buildAnalysisScreenBundle(expenseRatio, scenarioOverrides = {}) {
       }
       export function getGetStockChartQueryKey(symbol, period, interval) {
         return ["/api/stocks/chart/" + symbol + "/" + period + "/" + interval];
+      }
+      export function getGetStockChartQueryOptions(symbol, period, interval, options) {
+        return {
+          queryKey: options?.query?.queryKey
+            ?? ["/api/stocks/chart/" + symbol + "/" + period + "/" + interval],
+          queryFn: async () => ({ candles: chartCandles }),
+          ...options?.query,
+        };
       }
       export function useGetStockChart(symbol, period, interval, options) {
         const [retry, setRetry] = React.useState(0);

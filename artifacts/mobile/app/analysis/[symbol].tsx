@@ -16,6 +16,7 @@ import {
   Share,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useQueries } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -26,6 +27,7 @@ import { useApi } from '@/hooks/useApi';
 import { useAmericanMode } from '@/contexts/AmericanModeContext';
 import { useAchievements } from '@/contexts/AchievementsContext';
 import {
+  getGetStockChartQueryOptions,
   getGetStockChartQueryKey,
   useAnalyzeStock,
   useGetStockChart,
@@ -35,10 +37,10 @@ import { ComparisonChart } from '@/components/ComparisonChart';
 import type { HeatMapQuote } from '@workspace/api-client-react';
 import { getGetMarketBreadthQueryKey, useGetMarketBreadth } from '@workspace/api-client-react';
 import type { Candle } from '@/components/StockChart';
-import { alignCandleSeriesOnSharedDates } from '@/lib/alignCandleSeries';
+import { alignCandleSeriesOnSharedDatesAcrossSeries } from '@/lib/alignCandleSeries';
 import {
   addProviderAdjustedReturns,
-  alignProviderAdjustedReturns,
+  alignProviderAdjustedReturnsAcrossSeries,
   calculateRelativeReturnPercent,
 } from '@/lib/etfAdjustedReturns';
 import type { ProviderAdjustedReturnSeries } from '@/lib/etfAdjustedReturns';
@@ -738,22 +740,11 @@ function EtfAnalysisSections({
   primaryLoading,
   primaryError,
   retryPrimaryChart,
-  compInput,
-  compSymbol,
-  compCandles,
-  compAdjustedReturnSeries,
-  compLoading,
-  compError,
-  retryComparisonChart,
-  setCompInput,
-  commitCompSymbol,
-  clearComp,
   period,
   setPeriod,
   chartWidth,
   marketQuotes,
   marketUpdatedAt,
-  selectBenchmark,
 }: {
   fund: EtfAnalysisPayload;
   colors: ReturnType<typeof useColors>;
@@ -765,44 +756,134 @@ function EtfAnalysisSections({
   primaryLoading: boolean;
   primaryError: boolean;
   retryPrimaryChart: () => void;
-  compInput: string;
-  compSymbol: string;
-  compCandles: Candle[];
-  compAdjustedReturnSeries: ProviderAdjustedReturnSeries;
-  compLoading: boolean;
-  compError: boolean;
-  retryComparisonChart: () => void;
-  setCompInput: (value: string) => void;
-  commitCompSymbol: () => void;
-  clearComp: () => void;
   period: Period;
   setPeriod: (period: Period) => void;
   chartWidth: number;
   marketQuotes: HeatMapQuote[];
   marketUpdatedAt: number;
-  selectBenchmark: (ticker: string) => void;
 }) {
   const { apiFetch } = useApi();
   const router = useRouter();
-  const sharedComparisonCandles = alignCandleSeriesOnSharedDates(primaryCandles, compCandles);
-  const hasSharedComparisonHistory = sharedComparisonCandles.dates.length >= 2;
-  const sharedAdjustedReturns = alignProviderAdjustedReturns(
+  const [returnBasis, setReturnBasis] = useState<'price' | 'total' | null>(null);
+  const [savedCompareSymbols, setSavedCompareSymbols] = useState<string[]>([]);
+  const [compareFunds, setCompareFunds] = useState<Array<{
+    symbol: string;
+    topHoldings: { symbol: string; name: string; weight: number }[];
+    topHoldingsReportedCount: number;
+    topHoldingsRetrievedAt: string | null;
+    currentPrice: number;
+    expenseRatio: number | null;
+    sectorWeights: { sector: string; weight: number }[];
+    sectorWeightsRetrievedAt: string | null;
+    analysis: EtfAnalysisPayload;
+  }>>([]);
+  const [comparePendingSymbols, setComparePendingSymbols] = useState<string[]>([]);
+  const [compareFailedSymbols, setCompareFailedSymbols] = useState<string[]>([]);
+  const comparisonChartSymbols = compareFunds.map(({ symbol: candidate }) => candidate);
+  const selectedComparisonSymbols = savedCompareSymbols;
+  const comparisonChartPendingSymbols = comparePendingSymbols.filter((candidate) =>
+    savedCompareSymbols.includes(candidate));
+  const comparisonChartUnavailableSymbols = compareFailedSymbols.filter((candidate) =>
+    savedCompareSymbols.includes(candidate));
+  const comparisonChartQueries = useQueries({
+    queries: comparisonChartSymbols.map((candidate) =>
+      getGetStockChartQueryOptions(encodeURIComponent(candidate), period, '1d', {
+        query: {
+          queryKey: getGetStockChartQueryKey(encodeURIComponent(candidate), period, '1d'),
+          retry: false,
+          staleTime: 15_000,
+        },
+      })),
+  });
+  const comparisonChartResults = comparisonChartSymbols.map((ticker, index) => ({
+    ticker,
+    query: comparisonChartQueries[index]!,
+    candles: comparisonChartQueries[index]?.data?.candles ?? [],
+    adjustedReturnSeries:
+      comparisonChartQueries[index]?.data?.adjustedReturnSeries ?? UNAVAILABLE_ADJUSTED_RETURN_SERIES,
+  }));
+  const comparisonChartErrors = comparisonChartResults
+    .filter(({ query }) => query.isError)
+    .map(({ ticker }) => ticker);
+  const comparisonChartHistoryMissing = comparisonChartResults
+    .filter(({ query, candles }) => !query.isLoading && !query.isError && candles.length < 2)
+    .map(({ ticker }) => ticker);
+  const comparisonChartLoadingSymbols = comparisonChartResults
+    .filter(({ query }) => query.isLoading)
+    .map(({ ticker }) => ticker);
+  const comparisonChartComplete = selectedComparisonSymbols.length > 0
+    && comparisonChartPendingSymbols.length === 0
+    && comparisonChartUnavailableSymbols.length === 0
+    && comparisonChartSymbols.length === selectedComparisonSymbols.length
+    && comparisonChartErrors.length === 0
+    && comparisonChartHistoryMissing.length === 0
+    && comparisonChartLoadingSymbols.length === 0;
+  const chartInputCandles = [
     primaryCandles,
-    compCandles,
-    primaryAdjustedReturnSeries,
-    compAdjustedReturnSeries,
-  );
+    ...comparisonChartResults.map(({ candles }) => candles),
+  ];
+  const sharedChartCandles = comparisonChartComplete
+    ? alignCandleSeriesOnSharedDatesAcrossSeries(chartInputCandles)
+    : { dates: [], series: [] as Candle[][] };
+  const hasSharedComparisonHistory = comparisonChartComplete && sharedChartCandles.dates.length >= 2;
+  const sharedAdjustedReturns = comparisonChartComplete
+    ? alignProviderAdjustedReturnsAcrossSeries(
+      chartInputCandles,
+      [
+        primaryAdjustedReturnSeries,
+        ...comparisonChartResults.map(({ adjustedReturnSeries }) => adjustedReturnSeries),
+      ],
+    )
+    : { dates: [], series: [] as (Candle & { adjustedReturnPercent: number })[][], available: false };
   const hasSharedAdjustedReturns = hasSharedComparisonHistory && sharedAdjustedReturns.available;
   const primaryStandaloneAdjustedCandles = addProviderAdjustedReturns(primaryCandles, primaryAdjustedReturnSeries);
-  const chartUsesAdjustedReturns = hasSharedComparisonHistory
+  const totalReturnAvailable = selectedComparisonSymbols.length > 0
     ? hasSharedAdjustedReturns
-    : !compSymbol && primaryStandaloneAdjustedCandles != null;
+    : primaryStandaloneAdjustedCandles != null;
+  const chartUsesAdjustedReturns = (returnBasis ?? (totalReturnAvailable ? 'total' : 'price')) === 'total'
+    && totalReturnAvailable;
+  const chartReturnBasis = chartUsesAdjustedReturns ? 'total' : 'price';
+  const unavailableAdjustedFunds = [
+    {
+      ticker: symbol.toUpperCase(),
+      series: primaryAdjustedReturnSeries,
+    },
+    ...comparisonChartResults.map(({ ticker, adjustedReturnSeries }) => ({
+      ticker,
+      series: adjustedReturnSeries,
+    })),
+  ].filter(({ series }) => series.status !== 'available');
+  const totalReturnUnavailableReason = selectedComparisonSymbols.length === 0
+    ? primaryAdjustedReturnSeries.reason ?? 'The provider-adjusted series does not cover every reported date.'
+    : comparisonChartPendingSymbols.length > 0
+      ? `ETF verification is still pending for ${comparisonChartPendingSymbols.join(', ')}.`
+      : comparisonChartUnavailableSymbols.length > 0
+        ? `ETF history is unavailable for ${comparisonChartUnavailableSymbols.join(', ')}.`
+        : comparisonChartErrors.length > 0
+          ? `Price history could not be loaded for ${comparisonChartErrors.join(', ')}.`
+          : comparisonChartHistoryMissing.length > 0
+            ? `Fewer than two reported price dates are available for ${comparisonChartHistoryMissing.join(', ')}.`
+            : !hasSharedComparisonHistory
+              ? `Only ${sharedChartCandles.dates.length} dates are reported by every selected ETF; at least two are required.`
+              : unavailableAdjustedFunds.length > 0
+                ? `Provider-adjusted history is incomplete for ${unavailableAdjustedFunds
+                    .map(({ ticker, series }) => `${ticker}${series.reason ? ` (${series.reason})` : ''}`)
+                    .join(' and ')}.`
+                : 'Provider-adjusted history does not cover every shared reported date.';
   const chartPrimaryCandles = hasSharedComparisonHistory
-    ? chartUsesAdjustedReturns ? sharedAdjustedReturns.primary : sharedComparisonCandles.primary
-    : chartUsesAdjustedReturns ? primaryStandaloneAdjustedCandles! : primaryCandles;
-  const chartComparisonCandles = hasSharedComparisonHistory
-    ? chartUsesAdjustedReturns ? sharedAdjustedReturns.comparison : sharedComparisonCandles.comparison
-    : undefined;
+    ? chartUsesAdjustedReturns ? sharedAdjustedReturns.series[0]! : sharedChartCandles.series[0]!
+    : chartUsesAdjustedReturns ? primaryStandaloneAdjustedCandles ?? primaryCandles : primaryCandles;
+  const chartComparisonSeries = hasSharedComparisonHistory
+    ? chartUsesAdjustedReturns
+      ? sharedAdjustedReturns.series.slice(1).map((candles, index) => ({
+        symbol: comparisonChartSymbols[index]!,
+        candles,
+      }))
+      : sharedChartCandles.series.slice(1).map((candles, index) => ({
+        symbol: comparisonChartSymbols[index]!,
+        candles,
+      }))
+    : [];
   const chartReturnPercent = (candles: Candle[]) => candles.length > 1 && candles[0]!.c > 0
     ? (candles[candles.length - 1]!.c / candles[0]!.c - 1) * 100
     : null;
@@ -812,14 +893,18 @@ function EtfAnalysisSections({
   const primaryPeriodReturn = chartUsesAdjustedReturns
     ? seriesReturnPercent(chartPrimaryCandles)
     : chartReturnPercent(chartPrimaryCandles);
-  const comparisonPeriodReturn = hasSharedComparisonHistory
-    ? chartUsesAdjustedReturns
-      ? seriesReturnPercent(chartComparisonCandles ?? [])
-      : chartReturnPercent(chartComparisonCandles ?? [])
-    : null;
-  const relativeTotalReturn = primaryPeriodReturn != null && comparisonPeriodReturn != null
-    ? calculateRelativeReturnPercent(primaryPeriodReturn, comparisonPeriodReturn)
-    : null;
+  const chartComparisonReturns = chartComparisonSeries.map(({ symbol: ticker, candles }) => {
+    const periodReturn = chartUsesAdjustedReturns
+      ? seriesReturnPercent(candles)
+      : chartReturnPercent(candles);
+    return {
+      ticker,
+      periodReturn,
+      relativeReturn: primaryPeriodReturn != null && periodReturn != null
+        ? calculateRelativeReturnPercent(primaryPeriodReturn, periodReturn)
+        : null,
+    };
+  });
   const [compareTicker, setCompareTicker] = useState('');
   const [replaceTarget, setReplaceTarget] = useState<string | null>(null);
   const [focusSwitching, setFocusSwitching] = useState(false);
@@ -837,7 +922,6 @@ function EtfAnalysisSections({
   const contributionAmount = contributionInput.trim() === '' || contributionInput === '.'
     ? 0
     : Number(contributionInput);
-  const [savedCompareSymbols, setSavedCompareSymbols] = useState<string[]>([]);
   const savedCompareSymbolsRef = useRef<string[]>([]);
   const comparisonWriteQueue = useRef<Promise<void>>(Promise.resolve());
   const scenarios = parseEtfScenarios(fund.scenarios);
@@ -875,24 +959,11 @@ function EtfAnalysisSections({
     fund.peerExpenseComparison?.categoryAverageExpenseRatio,
     fund.peerExpenseComparison?.difference,
   );
-  const [compareFunds, setCompareFunds] = useState<Array<{
-    symbol: string;
-    topHoldings: { symbol: string; name: string; weight: number }[];
-    topHoldingsReportedCount: number;
-    topHoldingsRetrievedAt: string | null;
-    currentPrice: number;
-    expenseRatio: number | null;
-    sectorWeights: { sector: string; weight: number }[];
-    sectorWeightsRetrievedAt: string | null;
-    analysis: EtfAnalysisPayload;
-  }>>([]);
   const [compareError, setCompareError] = useState('');
   const [shareStatus, setShareStatus] = useState('');
   const [manualCopySummary, setManualCopySummary] = useState<string | null>(null);
   const [compareLoading, setCompareLoading] = useState(false);
   const [compareRestoreLoading, setCompareRestoreLoading] = useState(true);
-  const [comparePendingSymbols, setComparePendingSymbols] = useState<string[]>([]);
-  const [compareFailedSymbols, setCompareFailedSymbols] = useState<string[]>([]);
   const [compareStorageError, setCompareStorageError] = useState('');
   const profileScore = calculateEtfResearchScore({
     expenseRatio: fund.expenseRatio,
@@ -1399,8 +1470,8 @@ function EtfAnalysisSections({
     if (currentEtfSnapshot) void persistHoldingSnapshot(currentEtfSnapshot);
   }, [currentEtfSnapshot, persistHoldingSnapshot]);
 
-  const addCompareFund = async () => {
-    const candidate = compareTicker.trim().toUpperCase();
+  const addCompareFund = async (candidateOverride?: string) => {
+    const candidate = (candidateOverride ?? compareTicker).trim().toUpperCase();
     if (!/^[A-Z0-9.^=-]{1,20}$/.test(candidate)) {
       setCompareError('Enter a valid ETF ticker.');
       return;
@@ -1814,7 +1885,7 @@ function EtfAnalysisSections({
           ETF comparison
         </Text>
         <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 4 }}>
-          Viewing {symbol.toUpperCase()}. Choose a compared ETF to open its details; your lineup stays saved.
+          Viewing {symbol.toUpperCase()}. All verified ETFs in this saved lineup appear together on the performance chart, using only dates reported for every fund.
         </Text>
         <ScrollView
           horizontal
@@ -2643,9 +2714,12 @@ function EtfAnalysisSections({
             <ComparisonChart
               primaryCandles={chartPrimaryCandles}
               primarySymbol={symbol ?? ''}
-              compCandles={chartComparisonCandles}
-              compSymbol={compSymbol || undefined}
+              additionalSeries={chartComparisonSeries}
               adjustedReturnMode={chartUsesAdjustedReturns}
+              returnBasis={chartReturnBasis}
+              totalReturnAvailable={totalReturnAvailable}
+              totalReturnUnavailableReason={totalReturnUnavailableReason}
+              onReturnBasisChange={setReturnBasis}
               width={chartWidth}
               height={240}
             />
@@ -2654,22 +2728,28 @@ function EtfAnalysisSections({
         {!primaryLoading && !primaryError && primaryCandles.length > 1 && (
           <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 15, paddingHorizontal: 16, paddingBottom: 10 }}>
             {hasSharedComparisonHistory
-              ? `Comparison chart uses ${sharedComparisonCandles.dates.length} dates reported by both funds: ${sharedComparisonCandles.dates[0]} to ${sharedComparisonCandles.dates[sharedComparisonCandles.dates.length - 1]}. Missing dates are not filled or interpolated.`
-              : `Dated provider observations: ${primaryCandles[0]?.date ?? 'date unavailable'} to ${primaryCandles[primaryCandles.length - 1]?.date ?? 'date unavailable'}. Calendar gaps are not filled or interpolated.`}
+              ? `All ${comparisonChartSymbols.length + 1} charted ETFs use the same ${sharedChartCandles.dates.length} reported dates: ${sharedChartCandles.dates[0]} to ${sharedChartCandles.dates[sharedChartCandles.dates.length - 1]}. No missing dates are filled or interpolated.`
+              : selectedComparisonSymbols.length > 0
+                ? `Comparison lines are unavailable: ${totalReturnUnavailableReason} Only ${symbol.toUpperCase()} is shown. No dates or returns are estimated.`
+                : `Dated provider observations: ${primaryCandles[0]?.date ?? 'date unavailable'} to ${primaryCandles[primaryCandles.length - 1]?.date ?? 'date unavailable'}. Calendar gaps are not filled or interpolated.`}
           </Text>
         )}
         {!primaryLoading && !primaryError && primaryCandles.length > 1 && (
           <Text testID="etf-performance-methodology" style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 18, paddingHorizontal: 16, paddingBottom: 10 }}>
-            {hasSharedComparisonHistory && comparisonPeriodReturn != null && primaryPeriodReturn != null
-              ? chartUsesAdjustedReturns
-                ? `${symbol.toUpperCase()} dividend-adjusted total return ${primaryPeriodReturn >= 0 ? '+' : ''}${primaryPeriodReturn.toFixed(2)}% vs ${compSymbol} ${comparisonPeriodReturn >= 0 ? '+' : ''}${comparisonPeriodReturn.toFixed(2)}% · relative total return ${relativeTotalReturn == null ? 'unavailable' : `${relativeTotalReturn >= 0 ? '+' : ''}${relativeTotalReturn.toFixed(2)}%`}.`
-                : `${symbol.toUpperCase()} Close price return ${primaryPeriodReturn >= 0 ? '+' : ''}${primaryPeriodReturn.toFixed(2)}% vs ${compSymbol} ${comparisonPeriodReturn >= 0 ? '+' : ''}${comparisonPeriodReturn.toFixed(2)}% · price-return spread ${(primaryPeriodReturn - comparisonPeriodReturn) >= 0 ? '+' : ''}${(primaryPeriodReturn - comparisonPeriodReturn).toFixed(2)} percentage points.`
-              : !compSymbol && chartUsesAdjustedReturns && primaryPeriodReturn != null
+            {hasSharedComparisonHistory && primaryPeriodReturn != null
+              ? `${symbol.toUpperCase()} ${chartUsesAdjustedReturns ? 'dividend-adjusted total' : 'Close price'} return ${primaryPeriodReturn >= 0 ? '+' : ''}${primaryPeriodReturn.toFixed(2)}%${chartComparisonReturns.map(({ ticker, periodReturn, relativeReturn }) => chartUsesAdjustedReturns
+                ? ` · ${ticker} ${periodReturn == null ? 'unavailable' : `${periodReturn >= 0 ? '+' : ''}${periodReturn.toFixed(2)}%`} (relative ${relativeReturn == null ? 'unavailable' : `${relativeReturn >= 0 ? '+' : ''}${relativeReturn.toFixed(2)}%`})`
+                : ` · ${ticker} ${periodReturn == null ? 'unavailable' : `${periodReturn >= 0 ? '+' : ''}${periodReturn.toFixed(2)}%`} (spread ${periodReturn == null ? 'unavailable' : `${primaryPeriodReturn - periodReturn >= 0 ? '+' : ''}${(primaryPeriodReturn - periodReturn).toFixed(2)} pp`})`).join('')}.`
+              : chartUsesAdjustedReturns && primaryPeriodReturn != null
                 ? `${symbol.toUpperCase()} dividend-adjusted total return ${primaryPeriodReturn >= 0 ? '+' : ''}${primaryPeriodReturn.toFixed(2)}% for the selected range.`
-                : `Selected range: ${primaryCandles[0]?.date ?? 'date unavailable'} to ${primaryCandles[primaryCandles.length - 1]?.date ?? 'date unavailable'}.`}
+                : primaryPeriodReturn != null
+                  ? `${symbol.toUpperCase()} Close price return ${primaryPeriodReturn >= 0 ? '+' : ''}${primaryPeriodReturn.toFixed(2)}% for the selected range.`
+                  : `Selected range: ${primaryCandles[0]?.date ?? 'date unavailable'} to ${primaryCandles[primaryCandles.length - 1]?.date ?? 'date unavailable'}.`}
             {' '}{chartUsesAdjustedReturns
-              ? 'Uses the provider Adj Close series with complete reported distribution history; the provider calculation is not independently audited.'
-              : `Dividend-adjusted total return is unavailable${compSymbol ? ` for ${symbol.toUpperCase()} or ${compSymbol}` : ''}${primaryAdjustedReturnSeries.reason ? `: ${primaryAdjustedReturnSeries.reason}` : ''}. The chart uses provider Close changes; no total-return estimate is shown.`}
+              ? 'Every plotted ETF uses its provider Adj Close series on the shared dates; the provider calculation is not independently audited.'
+              : totalReturnAvailable
+                ? 'The chart uses provider Close changes. Verified provider-adjusted total return is also available; choose Total return to view it.'
+                : `Dividend-adjusted total return is unavailable: ${totalReturnUnavailableReason} The chart uses provider Close changes; no total-return estimate is shown.`}
           </Text>
         )}
         {symbol.toUpperCase() === 'VOO' && (
@@ -2682,72 +2762,51 @@ function EtfAnalysisSections({
                   testID={`etf-benchmark-${ticker}`}
                   accessibilityRole="button"
                   accessibilityLabel={`Compare VOO with ${ticker}`}
-                  accessibilityState={{ selected: compSymbol === ticker }}
-                  onPress={() => selectBenchmark(ticker)}
+                  accessibilityState={{ selected: savedCompareSymbols.includes(ticker) }}
+                  onPress={() => void addCompareFund(ticker)}
                   style={{
                     minHeight: 44,
                     minWidth: 58,
                     alignItems: 'center',
                     justifyContent: 'center',
                     borderWidth: 1,
-                    borderColor: compSymbol === ticker ? colors.primary : colors.border,
+                    borderColor: savedCompareSymbols.includes(ticker) ? colors.primary : colors.border,
                     borderRadius: 10,
                     paddingHorizontal: 12,
-                    backgroundColor: compSymbol === ticker ? colors.accent : 'transparent',
+                    backgroundColor: savedCompareSymbols.includes(ticker) ? colors.accent : 'transparent',
                   }}
                 >
-                  <Text style={{ color: compSymbol === ticker ? colors.primary : colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 13 }}>{ticker}</Text>
+                  <Text style={{ color: savedCompareSymbols.includes(ticker) ? colors.primary : colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 13 }}>{ticker}</Text>
                 </Pressable>
               ))}
             </View>
           </View>
         )}
-        <View style={[chartCardStyles.compRow, { borderTopColor: colors.border }]}>
-          <Feather name="plus-circle" size={14} color={colors.mutedForeground} style={{ marginRight: 6 }} />
-          <TextInput
-            testID="etf-chart-compare-input"
-            style={[chartCardStyles.compInput, { color: colors.foreground, fontFamily: 'Inter_400Regular' }]}
-            placeholder="Compare price history (e.g. SPY)"
-            placeholderTextColor={colors.mutedForeground}
-            value={compInput}
-            onChangeText={(value) => setCompInput(value.toUpperCase())}
-            onSubmitEditing={commitCompSymbol}
-            onBlur={commitCompSymbol}
-            autoCapitalize="characters"
-            autoCorrect={false}
-            returnKeyType="search"
-            maxLength={10}
-          />
-          {compLoading && <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 6 }} />}
-          {(compSymbol !== '' || compInput !== '') && !compLoading && (
-            <TouchableOpacity
-              testID="etf-chart-compare-clear"
-              accessibilityRole="button"
-              accessibilityLabel="Clear price history comparison"
-              onPress={clearComp}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Feather name="x" size={14} color={colors.mutedForeground} />
-            </TouchableOpacity>
-          )}
-        </View>
-        {!!compSymbol && (
+        {selectedComparisonSymbols.length > 0 && (
           <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, paddingHorizontal: 16, paddingVertical: 9 }}>
-            {compError
-              ? `${compSymbol} price history is unavailable. The ETF chart remains limited to ${symbol.toUpperCase()}.`
-              : compLoading
-                ? `Loading ${compSymbol} price history…`
-                : sharedComparisonCandles.dates.length < 2
-                  ? `Price comparison unavailable: only ${sharedComparisonCandles.dates.length} shared reported date${sharedComparisonCandles.dates.length === 1 ? '' : 's'}; at least two are needed.`
-                  : `Comparison uses ${sharedComparisonCandles.dates.length} dates reported by both funds; gaps are not filled with estimates.`}
+            {comparisonChartLoadingSymbols.length > 0
+              ? `Loading chart history for ${comparisonChartLoadingSymbols.join(', ')}.`
+              : comparisonChartErrors.length > 0
+                ? `Chart history is unavailable for ${comparisonChartErrors.join(', ')}. These funds are not plotted until history loads.`
+                : comparisonChartPendingSymbols.length > 0
+                  ? `ETF verification is pending for ${comparisonChartPendingSymbols.join(', ')}; unverified funds are not plotted.`
+                  : comparisonChartUnavailableSymbols.length > 0
+                    ? `ETF verification or chart history is unavailable for ${comparisonChartUnavailableSymbols.join(', ')}; these funds are not plotted.`
+                    : comparisonChartHistoryMissing.length > 0
+                      ? `Fewer than two dated price observations are available for ${comparisonChartHistoryMissing.join(', ')}; no incomplete comparison is drawn.`
+                      : hasSharedComparisonHistory
+                        ? `All ${comparisonChartSymbols.length + 1} selected ETFs share ${sharedChartCandles.dates.length} reported dates; no missing prices or returns are estimated.`
+                        : `Price comparison unavailable: only ${sharedChartCandles.dates.length} dates are reported by every selected ETF; at least two are required.`}
           </Text>
         )}
-        {!!compSymbol && compError && (
+        {comparisonChartErrors.length > 0 && (
           <Pressable
             testID="etf-chart-compare-retry"
             accessibilityRole="button"
-            accessibilityLabel={`Retry ${compSymbol} price history`}
-            onPress={retryComparisonChart}
+            accessibilityLabel="Retry ETF comparison chart history"
+            onPress={() => {
+              void Promise.all(comparisonChartQueries.map((query) => query.refetch()));
+            }}
             style={{ minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start', paddingHorizontal: 16 }}
           >
             <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold' }}>Retry comparison history</Text>
@@ -3157,8 +3216,6 @@ export default function AnalysisScreen() {
   const primaryLoading = Boolean(symbol) && primaryChartQuery.isLoading;
   const primaryChartError = primaryChartQuery.isError;
   const compCandles: Candle[] = compChartQuery.data?.candles ?? [];
-  const compAdjustedReturnSeries =
-    compChartQuery.data?.adjustedReturnSeries ?? UNAVAILABLE_ADJUSTED_RETURN_SERIES;
   const compLoading = Boolean(compSymbol) && compChartQuery.isLoading;
   const compChartError = Boolean(compSymbol) && compChartQuery.isError;
   const [activeEtfSection, setActiveEtfSection] = useState<EtfAnalysisSectionId>('overview');
@@ -3215,12 +3272,6 @@ export default function AnalysisScreen() {
       AsyncStorage.removeItem(PINNED_COMP_KEY).catch(() => { /* ignore */ });
     }
   }, [compInput, compSymbol]);
-
-  const selectBenchmark = useCallback((ticker: string) => {
-    setCompInput(ticker);
-    setCompSymbol(ticker);
-    AsyncStorage.setItem(PINNED_COMP_KEY, ticker).catch(() => {});
-  }, []);
 
   const clearComp = useCallback(() => {
     setCompInput('');
@@ -3543,22 +3594,11 @@ export default function AnalysisScreen() {
                 primaryLoading={primaryLoading}
                 primaryError={primaryChartError}
                 retryPrimaryChart={retryPrimaryChart}
-                compInput={compInput}
-                compSymbol={compSymbol}
-                compCandles={compCandles}
-                compAdjustedReturnSeries={compAdjustedReturnSeries}
-                compLoading={compLoading}
-                compError={compChartError}
-                retryComparisonChart={retryComparisonChart}
-                setCompInput={setCompInput}
-                commitCompSymbol={commitCompSymbol}
-                clearComp={clearComp}
                 period={period}
                 setPeriod={setPeriod}
                 chartWidth={chartWidth}
                 marketQuotes={marketBreadthQuery.data?.quotes ?? []}
                 marketUpdatedAt={marketBreadthQuery.data?.updatedAt ?? 0}
-                selectBenchmark={selectBenchmark}
               />
             </ScrollView>
           </View>

@@ -30,7 +30,7 @@ import {
 
 export const PRIMARY_COLOR = '#00e5a0';
 export const COMP_COLOR    = '#60a5fa';
-const COMP2_COLOR = '#c084fc';
+const SERIES_COLORS = [PRIMARY_COLOR, COMP_COLOR, '#c084fc', '#f59e0b', '#22d3ee'];
 const GRID_COLOR    = 'rgba(192,192,192,0.07)';
 const AXIS_COLOR    = 'rgba(192,192,192,0.40)';
 const BG_BUBBLE     = '#1c1c1c';
@@ -77,7 +77,12 @@ interface Props {
   compSymbol?:    string;
   secondCompCandles?: Candle[];
   secondCompSymbol?: string;
+  additionalSeries?: { symbol: string; candles: Candle[] }[];
   adjustedReturnMode?: boolean;
+  returnBasis?: 'price' | 'total';
+  totalReturnAvailable?: boolean;
+  totalReturnUnavailableReason?: string;
+  onReturnBasisChange?: (basis: 'price' | 'total') => void;
   width:          number;
   height?:        number;
 }
@@ -139,41 +144,48 @@ export function ComparisonChart({
   compSymbol,
   secondCompCandles,
   secondCompSymbol,
+  additionalSeries = [],
   adjustedReturnMode = false,
+  returnBasis,
+  totalReturnAvailable = true,
+  totalReturnUnavailableReason,
+  onReturnBasisChange,
   width,
   height = 240,
 }: Props) {
   const [touched, setTouched] = useState<number | null>(null);
   const [mode, setMode] = useState<ChartMode>('percent');
-  const displayMode: ChartMode = adjustedReturnMode ? 'percent' : mode;
+  const usesAdjustedReturns = returnBasis === undefined
+    ? adjustedReturnMode
+    : returnBasis === 'total' && totalReturnAvailable;
+  const displayMode: ChartMode = usesAdjustedReturns ? 'percent' : mode;
 
   const chartW = width - PAD.left - PAD.right;
   const chartH = height - PAD.top - PAD.bottom;
 
-  const primValues = displayMode === 'percent'
-    ? adjustedReturnMode
-      ? primaryCandles.map((c) => c.adjustedReturnPercent ?? 0)
-      : normalize(primaryCandles)
-    : primaryCandles.map((c) => c.c);
-  const compValues = compCandles && compCandles.length > 0
-    ? displayMode === 'percent'
-      ? adjustedReturnMode
-        ? compCandles.map((c) => c.adjustedReturnPercent ?? 0)
-        : normalize(compCandles)
-      : compCandles.map((c) => c.c)
-    : null;
-  const hasComp = compValues !== null && compValues.length > 0;
-  const secondValues = secondCompCandles && secondCompCandles.length > 0
-    ? displayMode === 'percent' ? normalize(secondCompCandles) : secondCompCandles.map((c) => c.c)
-    : null;
-  const hasSecond = secondValues !== null && secondValues.length > 0;
-
+  const comparisons = [
+    ...additionalSeries,
+    ...(compCandles?.length && compSymbol ? [{ symbol: compSymbol, candles: compCandles }] : []),
+    ...(secondCompCandles?.length && secondCompSymbol
+      ? [{ symbol: secondCompSymbol, candles: secondCompCandles }]
+      : []),
+  ].filter(({ candles }) => candles.length > 0);
+  const chartSeries = [
+    { symbol: primarySymbol, candles: primaryCandles },
+    ...comparisons,
+  ];
+  const seriesValues = chartSeries.map(({ candles }) => {
+    if (displayMode === 'price') return candles.map((candle) => candle.c);
+    return usesAdjustedReturns
+      ? candles.map((candle) => candle.adjustedReturnPercent ?? 0)
+      : normalize(candles);
+  });
+  const primValues = seriesValues[0] ?? [];
   const nPrim = primValues.length;
-  const nComp = compValues?.length ?? 0;
-  const nSecond = secondValues?.length ?? 0;
+  const seriesLengths = seriesValues.map((values) => values.length);
 
   // Combined Y domain
-  const allVals = [...primValues, ...(compValues ?? []), ...(secondValues ?? [])];
+  const allVals = seriesValues.flat();
   const rawMin = allVals.length > 0 ? Math.min(...allVals) : displayMode === 'percent' ? -5 : 0;
   const rawMax = allVals.length > 0 ? Math.max(...allVals) : displayMode === 'percent' ? 5 : 1;
   const yPad  = Math.max((rawMax - rawMin) * 0.12, 2);
@@ -181,13 +193,12 @@ export function ComparisonChart({
   const maxY  = rawMax + yPad;
   const rangeY = maxY - minY || 1;
 
-  // X helpers — each series fills full width independently
-  const pxPrim = (i: number) =>
-    PAD.left + (nPrim <= 1 ? 0 : (i / (nPrim - 1)) * chartW);
-  const pxComp = (i: number) =>
-    PAD.left + (nComp <= 1 ? 0 : (i / (nComp - 1)) * chartW);
-  const pxSecond = (i: number) =>
-    PAD.left + (nSecond <= 1 ? 0 : (i / (nSecond - 1)) * chartW);
+  // Each series uses its reported observations; ETF comparisons are pre-aligned by date.
+  const pxForSeries = (seriesIndex: number, pointIndex: number) => {
+    const count = seriesLengths[seriesIndex] ?? 0;
+    return PAD.left + (count <= 1 ? 0 : (pointIndex / (count - 1)) * chartW);
+  };
+  const pxPrim = (i: number) => pxForSeries(0, i);
   const pyVal = (v: number) =>
     PAD.top + chartH - ((v - minY) / rangeY) * chartH;
   const py0 = pyVal(0); // zero-return baseline
@@ -232,20 +243,15 @@ export function ComparisonChart({
 
   // Crosshair values
   const touchPrimValue = touched !== null ? primValues[touched] : null;
-  const touchCompIdx =
-    touched !== null && hasComp && nPrim > 1
-      ? Math.round((touched / (nPrim - 1)) * (nComp - 1))
-      : null;
-  const touchCompValue =
-    touchCompIdx !== null && compValues ? compValues[touchCompIdx] : null;
-  const touchSecondIdx = touched !== null && hasSecond && nPrim > 1
-    ? Math.round((touched / (nPrim - 1)) * (nSecond - 1)) : null;
-  const touchSecondValue = touchSecondIdx !== null && secondValues ? secondValues[touchSecondIdx] : null;
-
-  // Period-end values for legend
-  const primFinal = nPrim > 0 ? primValues[nPrim - 1] : null;
-  const compFinal = hasComp && compValues ? compValues[nComp - 1] : null;
-  const secondFinal = hasSecond && secondValues ? secondValues[nSecond - 1] : null;
+  const touchValues = touched === null
+    ? []
+    : seriesValues.map((values, seriesIndex) => {
+        const count = values.length;
+        const index = count <= 1 || nPrim <= 1
+          ? 0
+          : Math.round((touched / (nPrim - 1)) * (count - 1));
+        return { index, value: values[index] ?? null, seriesIndex };
+      });
 
   if (nPrim === 0) {
     return (
@@ -255,21 +261,68 @@ export function ComparisonChart({
     );
   }
 
-  // End-of-line label positions
-  const primEndY = pyVal(primValues[nPrim - 1]);
-  const compEndY = hasComp && compValues ? pyVal(compValues[nComp - 1]) : null;
-  // Nudge comparison label if too close to primary label
-  const compLabelY = compEndY !== null
-    ? (Math.abs(compEndY - primEndY) < 12 ? compEndY + 13 : compEndY)
-    : null;
+  const seriesColors = chartSeries.map((_, index) =>
+    SERIES_COLORS[index % SERIES_COLORS.length]);
+  const endLabels = chartSeries.map(({ symbol }, seriesIndex) => {
+    const values = seriesValues[seriesIndex] ?? [];
+    const y = values.length ? pyVal(values[values.length - 1]!) : PAD.top;
+    return { symbol, seriesIndex, color: seriesColors[seriesIndex]!, y };
+  }).map((label, index, labels) => ({
+    ...label,
+    y: labels.slice(0, index).some((previous) => Math.abs(previous.y - label.y) < 12)
+      ? label.y + 13
+      : label.y,
+  }));
 
   return (
     <View style={{ width }}>
+      {returnBasis !== undefined && onReturnBasisChange && (
+        <>
+          <View style={s.modeRow}>
+            <Text style={s.modeLabel}>RETURN</Text>
+            <View style={s.modeToggle}>
+              {([
+                { key: 'price' as const, label: 'PRICE RETURN' },
+                { key: 'total' as const, label: 'TOTAL RETURN' },
+              ]).map((option) => {
+                const disabled = option.key === 'total' && !totalReturnAvailable;
+                const selected = returnBasis === option.key;
+                return (
+                  <Pressable
+                    key={option.key}
+                    testID={`etf-return-basis-${option.key}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected, disabled }}
+                    accessibilityLabel={`Show ${option.key === 'price' ? 'price return' : 'provider-adjusted total return'}`}
+                    accessibilityHint={disabled ? totalReturnUnavailableReason : undefined}
+                    disabled={disabled}
+                    onPress={() => {
+                      if (disabled) return;
+                      setTouched(null);
+                      onReturnBasisChange(option.key);
+                    }}
+                    style={[s.modeButton, selected && s.modeButtonActive, disabled && s.modeButtonDisabled]}
+                  >
+                    <Text style={[s.modeButtonText, selected && s.modeButtonTextActive, disabled && s.modeButtonTextDisabled]}>
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+          {!totalReturnAvailable && (
+            <Text testID="etf-total-return-unavailable" style={s.returnBasisNote}>
+              Total return unavailable: {totalReturnUnavailableReason ?? 'complete provider-adjusted history is not available for this range.'}
+            </Text>
+          )}
+        </>
+      )}
       {/* ── Display mode ───────────────────────────────────────────────── */}
       <View style={s.modeRow}>
         <Text style={s.modeLabel}>VIEW</Text>
         <View style={s.modeToggle}>
-          {(adjustedReturnMode
+          {(usesAdjustedReturns
             ? [{ key: 'percent' as const, label: '%' }]
             : [
                 { key: 'percent' as const, label: '%' },
@@ -296,19 +349,21 @@ export function ComparisonChart({
           })}
         </View>
         <Text style={s.modeValueLabel}>
-          {adjustedReturnMode ? 'TOTAL RETURN' : displayMode === 'percent' ? 'PERCENT' : 'PRICE'}
+          {usesAdjustedReturns ? 'TOTAL RETURN' : displayMode === 'percent' ? 'PERCENT' : 'PRICE'}
         </Text>
       </View>
 
       {/* ── Legend ─────────────────────────────────────────────────────── */}
       <View style={s.legend}>
-        <LegendItem color={PRIMARY_COLOR} ticker={primarySymbol} value={primFinal} mode={displayMode} />
-        {hasComp && compSymbol && (
-          <LegendItem color={COMP_COLOR} ticker={compSymbol} value={compFinal} mode={displayMode} />
-        )}
-        {hasSecond && secondCompSymbol && (
-          <LegendItem color={COMP2_COLOR} ticker={secondCompSymbol} value={secondFinal} mode={displayMode} />
-        )}
+        {chartSeries.map(({ symbol }, index) => (
+          <LegendItem
+            key={`${symbol}-${index}`}
+            color={seriesColors[index]!}
+            ticker={symbol}
+            value={seriesValues[index]?.at(-1) ?? null}
+            mode={displayMode}
+          />
+        ))}
       </View>
 
       {/* ── SVG ────────────────────────────────────────────────────────── */}
@@ -353,17 +408,19 @@ export function ComparisonChart({
           </SvgText>
         ))}
 
-        {/* Comparison line (drawn first, behind primary) */}
-        {hasComp && compValues && (
-          <Path
-            d={buildPath(compValues ?? [], pxComp)}
-            stroke={COMP_COLOR} strokeWidth={1.8} fill="none" strokeOpacity={0.85}
-          />
-        )}
-        {hasSecond && secondValues && (
-          <Path d={buildPath(secondValues, pxSecond)}
-            stroke={COMP2_COLOR} strokeWidth={1.8} fill="none" strokeOpacity={0.9} />
-        )}
+        {chartSeries.slice(1).map(({ symbol }, offset) => {
+          const seriesIndex = offset + 1;
+          return (
+            <Path
+              key={`${symbol}-${seriesIndex}`}
+              d={buildPath(seriesValues[seriesIndex] ?? [], (pointIndex) => pxForSeries(seriesIndex, pointIndex))}
+              stroke={seriesColors[seriesIndex]}
+              strokeWidth={1.8}
+              fill="none"
+              strokeOpacity={0.88}
+            />
+          );
+        })}
 
         {/* Primary line */}
         <Path
@@ -371,34 +428,19 @@ export function ComparisonChart({
           stroke={PRIMARY_COLOR} strokeWidth={2} fill="none"
         />
 
-        {/* End-of-line label — primary */}
-        <SvgText
-          x={PAD.left + chartW + 4}
-          y={clamp(primEndY, PAD.top + 8, height - PAD.bottom - 4)}
-          fontSize={9} fill={PRIMARY_COLOR} textAnchor="start" fontWeight="bold"
-        >
-          {primarySymbol}
-        </SvgText>
-
-        {/* End-of-line label — comparison */}
-        {hasComp && compLabelY !== null && compSymbol && (
+        {endLabels.map(({ symbol, seriesIndex, color, y }) => (
           <SvgText
+            key={`${symbol}-end-label-${seriesIndex}`}
             x={PAD.left + chartW + 4}
-            y={clamp(compLabelY, PAD.top + 18, height - PAD.bottom - 4)}
-            fontSize={9} fill={COMP_COLOR} textAnchor="start" fontWeight="bold"
+            y={clamp(y, PAD.top + 8, height - PAD.bottom - 4)}
+            fontSize={9}
+            fill={color}
+            textAnchor="start"
+            fontWeight="bold"
           >
-            {compSymbol}
+            {symbol}
           </SvgText>
-        )}
-        {hasSecond && secondValues && secondCompSymbol && (
-          <SvgText
-            x={PAD.left + chartW + 4}
-            y={clamp(pyVal(secondValues[nSecond - 1]!), PAD.top + 18, height - PAD.bottom - 4)}
-            fontSize={9} fill={COMP2_COLOR} textAnchor="start" fontWeight="bold"
-          >
-            {secondCompSymbol}
-          </SvgText>
-        )}
+        ))}
 
         {/* ── Crosshair ───────────────────────────────────────────────── */}
         {touched !== null && touchPrimValue !== null && (
@@ -409,51 +451,34 @@ export function ComparisonChart({
               stroke="rgba(192,192,192,0.40)" strokeWidth={1} strokeDasharray="3 3"
             />
 
-            {/* Dots */}
-            <Circle cx={pxPrim(touched)} cy={pyVal(touchPrimValue)} r={4} fill={PRIMARY_COLOR} />
-            {touchCompValue !== null && touchCompIdx !== null && (
-              <Circle cx={pxComp(touchCompIdx)} cy={pyVal(touchCompValue)} r={4} fill={COMP_COLOR} />
-            )}
-            {touchSecondValue !== null && touchSecondIdx !== null && (
-              <Circle cx={pxSecond(touchSecondIdx)} cy={pyVal(touchSecondValue)} r={4} fill={COMP2_COLOR} />
-            )}
-
-            {/* Primary bubble */}
-            <Bubble
-              x={pxPrim(touched)}
-              y={pyVal(touchPrimValue)}
-              label={`${primarySymbol}  ${displayMode === 'percent' ? fmtPct(touchPrimValue) : fmtPrice(touchPrimValue)}`}
-              color={PRIMARY_COLOR}
-              chartLeft={PAD.left}
-              chartRight={PAD.left + chartW}
-              offsetY={0}
-            />
-
-            {/* Comparison bubble — offset if overlapping */}
-            {touchCompValue !== null && touchCompIdx !== null && (
-              <Bubble
-                x={pxPrim(touched)}
-                y={pyVal(touchCompValue)}
-                label={`${compSymbol}  ${displayMode === 'percent' ? fmtPct(touchCompValue) : fmtPrice(touchCompValue)}`}
-                color={COMP_COLOR}
-                chartLeft={PAD.left}
-                chartRight={PAD.left + chartW}
-                offsetY={
-                   Math.abs(pyVal(touchCompValue) - pyVal(touchPrimValue)) < 30 ? 22 : 0
-                }
-              />
-            )}
-            {touchSecondValue !== null && touchSecondIdx !== null && secondCompSymbol && (
-              <Bubble
-                x={pxPrim(touched)}
-                y={pyVal(touchSecondValue)}
-                label={`${secondCompSymbol}  ${displayMode === 'percent' ? fmtPct(touchSecondValue) : fmtPrice(touchSecondValue)}`}
-                color={COMP2_COLOR}
-                chartLeft={PAD.left}
-                chartRight={PAD.left + chartW}
-                offsetY={Math.abs(pyVal(touchSecondValue) - pyVal(touchPrimValue)) < 30 ? 42 : 0}
-              />
-            )}
+            {touchValues.map(({ index, value, seriesIndex }) => {
+              if (value === null) return null;
+              const symbol = chartSeries[seriesIndex]!.symbol;
+              const color = seriesColors[seriesIndex]!;
+              const offsetY = seriesIndex > 0
+                && Math.abs(pyVal(value) - pyVal(touchPrimValue)) < 30
+                ? seriesIndex * 18
+                : 0;
+              return (
+                <G key={`touch-${symbol}-${seriesIndex}`}>
+                  <Circle
+                    cx={pxForSeries(seriesIndex, index)}
+                    cy={pyVal(value)}
+                    r={4}
+                    fill={color}
+                  />
+                  <Bubble
+                    x={pxPrim(touched)}
+                    y={pyVal(value)}
+                    label={`${symbol}  ${displayMode === 'percent' ? fmtPct(value) : fmtPrice(value)}`}
+                    color={color}
+                    chartLeft={PAD.left}
+                    chartRight={PAD.left + chartW}
+                    offsetY={offsetY}
+                  />
+                </G>
+              );
+            })}
 
             {/* Date label at bottom */}
             <SvgText
@@ -488,9 +513,12 @@ const s = StyleSheet.create({
   modeToggle:   { flexDirection: 'row', borderRadius: 5, borderWidth: 1, borderColor: 'rgba(192,192,192,0.22)', overflow: 'hidden' },
   modeButton:   { minWidth: 28, height: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(192,192,192,0.06)' },
   modeButtonActive: { backgroundColor: 'rgba(0,229,160,0.18)' },
+  modeButtonDisabled: { opacity: 0.45 },
   modeButtonText: { color: 'rgba(192,192,192,0.58)', fontSize: 12, fontFamily: 'Inter_700Bold' },
   modeButtonTextActive: { color: PRIMARY_COLOR },
-  legend:       { flexDirection: 'row', gap: 16, paddingHorizontal: 6, paddingBottom: 6 },
+  modeButtonTextDisabled: { color: 'rgba(192,192,192,0.42)' },
+  returnBasisNote: { color: 'rgba(192,192,192,0.58)', fontSize: 11, lineHeight: 16, paddingHorizontal: 6, paddingBottom: 7 },
+  legend:       { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingHorizontal: 6, paddingBottom: 6 },
   legendItem:   { flexDirection: 'row', alignItems: 'center', gap: 5 },
   swatch:       { width: 10, height: 10, borderRadius: 2 },
   legendTicker: { fontSize: 12, fontFamily: 'Inter_700Bold', letterSpacing: 0.5 },

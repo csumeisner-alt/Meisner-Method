@@ -1,4 +1,7 @@
-import { alignCandleSeriesOnSharedDates } from './alignCandleSeries.ts';
+import {
+  alignCandleSeriesOnSharedDates,
+  alignCandleSeriesOnSharedDatesAcrossSeries,
+} from './alignCandleSeries.ts';
 
 export interface AdjustedReturnPoint {
   date: string;
@@ -19,6 +22,53 @@ export interface AdjustedCandle {
 
 export type ProviderAdjustedCandle<Candle extends AdjustedCandle> =
   Candle & { adjustedReturnPercent: number };
+
+export function alignProviderAdjustedReturnsAcrossSeries<Candle extends AdjustedCandle>(
+  candleSeries: Candle[][],
+  adjustedSeries: ProviderAdjustedReturnSeries[],
+): {
+  dates: string[];
+  series: ProviderAdjustedCandle<Candle>[][];
+  available: boolean;
+} {
+  const shared = alignCandleSeriesOnSharedDatesAcrossSeries(candleSeries);
+  const unavailable = {
+    dates: shared.dates,
+    series: [] as ProviderAdjustedCandle<Candle>[][],
+    available: false,
+  };
+  if (
+    candleSeries.length < 2
+    || adjustedSeries.length !== candleSeries.length
+    || shared.dates.length < 2
+  ) {
+    return unavailable;
+  }
+
+  const valuesBySeries = adjustedSeries.map(indexedValues);
+  if (valuesBySeries.some((values) => values === null)) return unavailable;
+  const validValues = valuesBySeries as Map<string, number>[];
+  if (shared.dates.some((date) => validValues.some((values) => !values.has(date)))) {
+    return unavailable;
+  }
+
+  const results = shared.series.map((candles, seriesIndex) => {
+    const values = validValues[seriesIndex]!;
+    const base = values.get(shared.dates[0]!)!;
+    return candles.map((candle) => {
+      const adjustedReturnPercent = rebaseReturn(values.get(candle.date)!, base);
+      return adjustedReturnPercent == null
+        ? null
+        : { ...candle, adjustedReturnPercent };
+    });
+  });
+  if (results.some((result) => result.some((candle) => candle === null))) return unavailable;
+  return {
+    dates: shared.dates,
+    series: results as ProviderAdjustedCandle<Candle>[][],
+    available: true,
+  };
+}
 
 function indexedValues(series: ProviderAdjustedReturnSeries): Map<string, number> | null {
   if (series.status !== 'available' || series.method !== 'provider_adjusted_close') return null;
@@ -62,38 +112,23 @@ export function alignProviderAdjustedReturns<Candle extends AdjustedCandle>(
   comparison: ProviderAdjustedCandle<Candle>[];
   available: boolean;
 } {
-  const shared = alignCandleSeriesOnSharedDates(primaryCandles, comparisonCandles);
+  const aligned = alignProviderAdjustedReturnsAcrossSeries(
+    [primaryCandles, comparisonCandles],
+    [primarySeries, comparisonSeries],
+  );
   const unavailable = {
-    dates: shared.dates,
+    dates: aligned.dates,
     primary: [] as ProviderAdjustedCandle<Candle>[],
     comparison: [] as ProviderAdjustedCandle<Candle>[],
     available: false,
   };
-  const primaryValues = indexedValues(primarySeries);
-  const comparisonValues = indexedValues(comparisonSeries);
-  if (!primaryValues || !comparisonValues || shared.dates.length < 2) return unavailable;
-  if (shared.dates.some((date) => !primaryValues.has(date) || !comparisonValues.has(date))) {
-    return unavailable;
-  }
-
-  const primaryBase = primaryValues.get(shared.dates[0]!)!;
-  const comparisonBase = comparisonValues.get(shared.dates[0]!)!;
-  const primaryReturns = shared.primary.map((candle) =>
-    rebaseReturn(primaryValues.get(candle.date)!, primaryBase));
-  const comparisonReturns = shared.comparison.map((candle) =>
-    rebaseReturn(comparisonValues.get(candle.date)!, comparisonBase));
-  if (primaryReturns.some((value) => value == null) || comparisonReturns.some((value) => value == null)) {
-    return unavailable;
-  }
-  const primary = shared.primary.map((candle, index) => ({
-    ...candle,
-    adjustedReturnPercent: primaryReturns[index]!,
-  }));
-  const comparison = shared.comparison.map((candle, index) => ({
-    ...candle,
-    adjustedReturnPercent: comparisonReturns[index]!,
-  }));
-  return { dates: shared.dates, primary, comparison, available: true };
+  if (!aligned.available) return unavailable;
+  return {
+    dates: aligned.dates,
+    primary: aligned.series[0]!,
+    comparison: aligned.series[1]!,
+    available: true,
+  };
 }
 
 export function calculateRelativeReturnPercent(primaryReturnPercent: number, comparisonReturnPercent: number): number | null {

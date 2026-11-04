@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   addProviderAdjustedReturns,
   alignProviderAdjustedReturns,
+  alignProviderAdjustedReturnsAcrossSeries,
   calculateRelativeReturnPercent,
 } from '../etfAdjustedReturns.ts';
 import type { ProviderAdjustedReturnSeries } from '../etfAdjustedReturns.ts';
@@ -76,6 +77,65 @@ test('does not estimate a series when adjustment or distribution coverage is una
   assert.equal(result.available, false);
   assert.deepEqual(result.primary, []);
   assert.deepEqual(result.comparison, []);
+});
+
+test('rebases three ETFs with provider-adjusted values on the same shared dates', () => {
+  const result = alignProviderAdjustedReturnsAcrossSeries(
+    [
+      [{ date: '2026-01-01', c: 100 }, { date: '2026-01-02', c: 101 }, { date: '2026-01-03', c: 102 }],
+      [{ date: '2026-01-02', c: 200 }, { date: '2026-01-03', c: 210 }],
+      [{ date: '2026-01-02', c: 50 }, { date: '2026-01-03', c: 55 }],
+    ],
+    [
+      available([
+        { date: '2026-01-01', returnPercent: 0 },
+        { date: '2026-01-02', returnPercent: 5 },
+        { date: '2026-01-03', returnPercent: 10 },
+      ]),
+      available([
+        { date: '2026-01-02', returnPercent: 24 },
+        { date: '2026-01-03', returnPercent: 32 },
+      ]),
+      available([
+        { date: '2026-01-02', returnPercent: 4 },
+        { date: '2026-01-03', returnPercent: 10 },
+      ]),
+    ],
+  );
+
+  assert.equal(result.available, true);
+  assert.deepEqual(result.dates, ['2026-01-02', '2026-01-03']);
+  const expectedReturns = [4.7619047619, 6.4516129032, 5.7692307692];
+  result.series.forEach((series, index) => {
+    assert.deepEqual(series.map(({ date }) => date), result.dates);
+    assert.ok(Math.abs(series[0]!.adjustedReturnPercent) < 1e-12);
+    assert.ok(Math.abs(series[1]!.adjustedReturnPercent - expectedReturns[index]!) < 1e-9);
+  });
+});
+
+test('marks multi-ETF adjusted returns unavailable instead of filling missing dates', () => {
+  const result = alignProviderAdjustedReturnsAcrossSeries(
+    [
+      [{ date: '2026-01-01', c: 100 }, { date: '2026-01-02', c: 101 }],
+      [{ date: '2026-01-01', c: 200 }, { date: '2026-01-02', c: 210 }],
+      [{ date: '2026-01-01', c: 50 }, { date: '2026-01-02', c: 55 }],
+    ],
+    [
+      available([
+        { date: '2026-01-01', returnPercent: 0 },
+        { date: '2026-01-02', returnPercent: 1 },
+      ]),
+      available([
+        { date: '2026-01-01', returnPercent: 0 },
+        { date: '2026-01-02', returnPercent: 5 },
+      ]),
+      available([{ date: '2026-01-01', returnPercent: 0 }]),
+    ],
+  );
+
+  assert.equal(result.available, false);
+  assert.deepEqual(result.dates, ['2026-01-01', '2026-01-02']);
+  assert.deepEqual(result.series, []);
 });
 
 test('calculates compounded relative return rather than subtracting percentage points', () => {
