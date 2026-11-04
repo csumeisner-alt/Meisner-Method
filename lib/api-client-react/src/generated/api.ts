@@ -25,6 +25,7 @@ import type {
   AnalyzeStockRequest,
   CryptoSupplyHistory,
   GetMarketHeatMapParams,
+  GetStockChart200,
   HealthStatus,
   HeatMapInstrumentSuggestion,
   HeatMapQuote,
@@ -216,6 +217,93 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getHealthCheckQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetStockChartUrl = (symbol: string,
+    period: '5d' | '1mo' | '3mo' | '6mo' | '1y' | '2y' | '3y' | '5y' | 'max',
+    interval: '15m' | '1h' | '1d' | '1wk',) => {
+
+
+
+
+  return `/api/stocks/chart/${symbol}/${period}/${interval}`
+}
+
+/**
+ * @summary Retrieve provider chart history and adjusted-return data
+ */
+export const getStockChart = async (symbol: string,
+    period: '5d' | '1mo' | '3mo' | '6mo' | '1y' | '2y' | '3y' | '5y' | 'max',
+    interval: '15m' | '1h' | '1d' | '1wk', options?: RequestInit): Promise<GetStockChart200> => {
+
+  return customFetch<GetStockChart200>(getGetStockChartUrl(symbol,period,interval),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStockChartQueryKey = (symbol: string,
+    period: '5d' | '1mo' | '3mo' | '6mo' | '1y' | '2y' | '3y' | '5y' | 'max',
+    interval: '15m' | '1h' | '1d' | '1wk',) => {
+    return [
+    `/api/stocks/chart/${symbol}/${period}/${interval}`
+    ] as const;
+    }
+
+
+export const getGetStockChartQueryOptions = <TData = Awaited<ReturnType<typeof getStockChart>>, TError = ErrorType<void>>(symbol: string,
+    period: '5d' | '1mo' | '3mo' | '6mo' | '1y' | '2y' | '3y' | '5y' | 'max',
+    interval: '15m' | '1h' | '1d' | '1wk', options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStockChart>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStockChartQueryKey(symbol,period,interval);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStockChart>>> = ({ signal }) => getStockChart(symbol,period,interval, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: symbol !== null && symbol !== undefined && period !== null && period !== undefined && interval !== null && interval !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStockChart>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetStockChartQueryResult = NonNullable<Awaited<ReturnType<typeof getStockChart>>>
+export type GetStockChartQueryError = ErrorType<void>
+
+
+/**
+ * @summary Retrieve provider chart history and adjusted-return data
+ */
+
+export function useGetStockChart<TData = Awaited<ReturnType<typeof getStockChart>>, TError = ErrorType<void>>(
+ symbol: string,
+    period: '5d' | '1mo' | '3mo' | '6mo' | '1y' | '2y' | '3y' | '5y' | 'max',
+    interval: '15m' | '1h' | '1d' | '1wk', options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStockChart>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetStockChartQueryOptions(symbol,period,interval,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

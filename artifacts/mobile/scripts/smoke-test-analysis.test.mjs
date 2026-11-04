@@ -235,7 +235,8 @@ test("ETF overview combines quote, deterministic research score, takeaways, and 
 });
 
 test("ETF performance history uses real candles, supported ranges, and honest retry states", () => {
-  assert.match(etfAnalysisSource, /\/api\/stocks\/chart\/\$\{encodeURIComponent\(symbol\)\}\?period=\$\{period\}&interval=1d/);
+  assert.match(etfAnalysisSource, /useGetStockChart\(/);
+  assert.match(etfAnalysisSource, /encodeURIComponent\(symbol \?\? ''\),\s*period,\s*'1d'/);
   for (const period of ["1mo", "3mo", "6mo", "1y", "2y"]) {
     assert.match(etfAnalysisSource, new RegExp(`value: '${period}'`));
     assert.match(etfAnalysisSource, /etf-chart-period-\$\{value\}/);
@@ -244,16 +245,20 @@ test("ETF performance history uses real candles, supported ranges, and honest re
   assert.match(etfAnalysisSource, /Price history could not be loaded\. No chart is shown\./);
   assert.match(etfAnalysisSource, /Only one dated price observation is available/);
   assert.match(etfAnalysisSource, /Calendar gaps are not filled or interpolated/);
-  assert.match(etfAnalysisSource, /primaryChartRetry\]/);
-  assert.match(etfAnalysisSource, /compChartRetry\]/);
+  assert.match(etfAnalysisSource, /primaryChartQuery\.refetch\(\)/);
+  assert.match(etfAnalysisSource, /compChartQuery\.refetch\(\)/);
 });
 
 test("ETF comparison chart plots shared reported dates and explains insufficient overlap", () => {
   assert.match(etfAnalysisSource, /alignCandleSeriesOnSharedDates\(primaryCandles, compCandles\)/);
+  assert.match(etfAnalysisSource, /alignProviderAdjustedReturns\(/);
   assert.match(etfAnalysisSource, /primaryCandles=\{chartPrimaryCandles\}/);
-  assert.match(etfAnalysisSource, /compCandles=\{hasSharedComparisonHistory \? sharedComparisonCandles\.comparison : undefined\}/);
+  assert.match(etfAnalysisSource, /compCandles=\{chartComparisonCandles\}/);
+  assert.match(etfAnalysisSource, /adjustedReturnMode=\{chartUsesAdjustedReturns\}/);
   assert.match(etfAnalysisSource, /Price comparison unavailable: only \$\{sharedComparisonCandles\.dates\.length\} shared reported date/);
   assert.match(etfAnalysisSource, /Missing dates are not filled or interpolated/);
+  assert.match(etfAnalysisSource, /provider Adj Close series with complete reported distribution history/);
+  assert.match(etfAnalysisSource, /no total-return estimate is shown/);
 });
 
 test("ETF AI commentary stays separate from the research score and grounded in supplied facts", () => {
@@ -523,9 +528,56 @@ async function buildAnalysisScreenBundle(expenseRatio, scenarioOverrides = {}) {
       export const LinearGradient = ({ children }) => <>{children}</>;
     `],
     ["@workspace/api-client-react", `
+      import React from "react";
       const response = ${JSON.stringify(response)};
+      const chartCandles = [
+        { t: 1792972800, date: "2026-10-26", o: 100, h: 102, l: 99, c: 101, adjClose: null, dividend: null, v: 1000 },
+        { t: 1793059200, date: "2026-10-27", o: 101, h: 104, l: 100, c: 103, adjClose: null, dividend: null, v: 1200 },
+        { t: 1793318400, date: "2026-10-30", o: 103, h: 105, l: 102, c: 104, adjClose: null, dividend: null, v: 900 },
+      ];
+      window.__analysisChartRequests = [];
+      let chartFailureCount = 0;
       export function useAnalyzeStock() {
         return { mutate: () => {}, data: response, isPending: false, error: null };
+      }
+      export function getGetStockChartQueryKey(symbol, period, interval) {
+        return ["/api/stocks/chart/" + symbol + "/" + period + "/" + interval];
+      }
+      export function useGetStockChart(symbol, period, interval, options) {
+        const [retry, setRetry] = React.useState(0);
+        const [state, setState] = React.useState({
+          data: undefined, isLoading: Boolean(options?.query?.enabled), isError: false,
+        });
+        React.useEffect(() => {
+          if (!options?.query?.enabled) {
+            setState({ data: undefined, isLoading: false, isError: false });
+            return;
+          }
+          const url = "/api/stocks/chart/" + symbol + "/" + period + "/" + interval;
+          window.__analysisChartRequests.push(url);
+          if (${JSON.stringify(Boolean(scenarioOverrides.chartFailureOnce))} && chartFailureCount === 0) {
+            chartFailureCount += 1;
+            setState({ data: undefined, isLoading: false, isError: true });
+            return;
+          }
+          setState({
+            data: {
+              candles: chartCandles,
+              adjustedReturnSeries: {
+                status: "unavailable", method: "provider_adjusted_close", values: [],
+                reason: "Provider did not supply a verified adjusted-return series.",
+              },
+            },
+            isLoading: false, isError: false,
+          });
+        }, [symbol, period, interval, retry, options?.query?.enabled]);
+        return {
+          ...state,
+          refetch: () => new Promise((resolve) => {
+            setRetry((current) => current + 1);
+            resolve({});
+          }),
+        };
       }
       export function getGetMarketBreadthQueryKey() { return ["/api/stocks/market-breadth"]; }
       export function useGetMarketBreadth() {
@@ -546,21 +598,7 @@ async function buildAnalysisScreenBundle(expenseRatio, scenarioOverrides = {}) {
     `],
     ["@/hooks/useApi", `
       const comparisonResponse = ${JSON.stringify(comparisonResponse)};
-      window.__analysisChartRequests = [];
-      let chartFailureCount = 0;
       const apiFetch = async (_url, options) => {
-        if (_url.startsWith("/api/stocks/chart/")) {
-          window.__analysisChartRequests.push(_url);
-          if (${JSON.stringify(Boolean(scenarioOverrides.chartFailureOnce))} && chartFailureCount === 0) {
-            chartFailureCount += 1;
-            throw new Error("Fixture chart request failed.");
-          }
-          return { candles: [
-            { t: 1792972800000, date: "2026-10-26", o: 100, h: 102, l: 99, c: 101, v: 1000 },
-            { t: 1793059200000, date: "2026-10-27", o: 101, h: 104, l: 100, c: 103, v: 1200 },
-            { t: 1793318400000, date: "2026-10-30", o: 103, h: 105, l: 102, c: 104, v: 900 },
-          ] };
-        }
         const candidate = options?.body ? JSON.parse(options.body).symbol : null;
         return candidate && candidate === comparisonResponse?.symbol
           ? comparisonResponse
@@ -987,11 +1025,11 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
     await browser.evaluate(`document.querySelector('[data-testid="etf-chart-period-1y"]')?.click()`);
     await waitForBrowserValue(
       browser,
-      `window.__analysisChartRequests?.some((url) => url.includes("period=1y"))`,
+      `window.__analysisChartRequests?.some((url) => url.endsWith("/1y/1d"))`,
       "Selecting a chart range should request that supported period.",
     );
     assert.equal(
-      await browser.evaluate(`window.__analysisChartRequests?.filter((url) => url.includes("period=1y")).length`),
+      await browser.evaluate(`window.__analysisChartRequests?.filter((url) => url.endsWith("/1y/1d")).length`),
       1,
       "A range selection should issue one chart request, not duplicates.",
     );

@@ -14,6 +14,42 @@ def safe_float(val):
     except Exception:
         return None
 
+
+def build_adjusted_return_series(candles, adjustment_column_present, dividend_column_present):
+    """Build a provider-backed total-return series only from complete source data."""
+    if not adjustment_column_present:
+        reason = "Provider did not supply Adj Close values."
+    elif not dividend_column_present:
+        reason = "Provider distribution history is missing."
+    elif len(candles) < 2:
+        reason = "At least two complete adjusted observations are required."
+    elif any(candle["adjClose"] is None or candle["adjClose"] <= 0 for candle in candles):
+        reason = "Provider adjusted-close history is incomplete or invalid."
+    elif any(candle["dividend"] is None or candle["dividend"] < 0 for candle in candles):
+        reason = "Provider distribution history is incomplete or invalid."
+    else:
+        base = candles[0]["adjClose"]
+        return {
+            "status": "available",
+            "method": "provider_adjusted_close",
+            "values": [
+                {
+                    "date": candle["date"],
+                    "returnPercent": round((candle["adjClose"] / base - 1) * 100, 6),
+                }
+                for candle in candles
+            ],
+            "reason": None,
+        }
+
+    return {
+        "status": "unavailable",
+        "method": "provider_adjusted_close",
+        "values": [],
+        "reason": reason,
+    }
+
+
 def safe_volume(val):
     try:
         volume = float(val)
@@ -34,7 +70,8 @@ def fetch_chart(symbol, period, interval):
     import yfinance as yf
 
     ticker = yf.Ticker(symbol)
-    hist = ticker.history(period=period, interval=interval)
+    # Keep raw OHLC values distinct from the provider's dividend/split-adjusted close.
+    hist = ticker.history(period=period, interval=interval, auto_adjust=False, actions=True)
 
     if hist.empty:
         print(json.dumps({"error": f"No data for {symbol}"}))
@@ -42,12 +79,16 @@ def fetch_chart(symbol, period, interval):
 
     candles = []
     closes_raw = []
+    adjustment_column_present = "Adj Close" in hist.columns
+    dividend_column_present = "Dividends" in hist.columns
 
     for ts, row in hist.iterrows():
         o = safe_float(row.get("Open"))
         h = safe_float(row.get("High"))
         l = safe_float(row.get("Low"))
         c = safe_float(row.get("Close"))
+        adj_close = safe_float(row.get("Adj Close")) if adjustment_column_present else None
+        dividend = safe_float(row.get("Dividends")) if dividend_column_present else None
         v = safe_volume(row.get("Volume", 0))
         if None in (o, h, l, c):
             continue
@@ -59,6 +100,8 @@ def fetch_chart(symbol, period, interval):
             "h": h,
             "l": l,
             "c": c,
+            "adjClose": adj_close,
+            "dividend": dividend,
             "v": v,
         })
 
@@ -78,6 +121,11 @@ def fetch_chart(symbol, period, interval):
         "period": period,
         "interval": interval,
         "candles": candles,
+        "adjustedReturnSeries": build_adjusted_return_series(
+            candles,
+            adjustment_column_present,
+            dividend_column_present,
+        ),
     }))
 
 if __name__ == "__main__":

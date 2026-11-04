@@ -25,13 +25,23 @@ import { useColors } from '@/hooks/useColors';
 import { useApi } from '@/hooks/useApi';
 import { useAmericanMode } from '@/contexts/AmericanModeContext';
 import { useAchievements } from '@/contexts/AchievementsContext';
-import { useAnalyzeStock } from '@workspace/api-client-react';
+import {
+  getGetStockChartQueryKey,
+  useAnalyzeStock,
+  useGetStockChart,
+} from '@workspace/api-client-react';
 import type { StockAnalysis } from '@workspace/api-client-react';
 import { ComparisonChart } from '@/components/ComparisonChart';
 import type { HeatMapQuote } from '@workspace/api-client-react';
 import { getGetMarketBreadthQueryKey, useGetMarketBreadth } from '@workspace/api-client-react';
 import type { Candle } from '@/components/StockChart';
 import { alignCandleSeriesOnSharedDates } from '@/lib/alignCandleSeries';
+import {
+  addProviderAdjustedReturns,
+  alignProviderAdjustedReturns,
+  calculateRelativeReturnPercent,
+} from '@/lib/etfAdjustedReturns';
+import type { ProviderAdjustedReturnSeries } from '@/lib/etfAdjustedReturns';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { NeonAnalysisLoader } from '@/components/NeonAnalysisLoader';
 import { PriceAlertModal } from '@/components/PriceAlertModal';
@@ -93,6 +103,12 @@ const ETF_FEE_AMOUNT_PRESETS = [
   { amount: 10_000, label: '$10,000' },
   { amount: 25_000, label: '$25,000' },
 ] as const;
+const UNAVAILABLE_ADJUSTED_RETURN_SERIES: ProviderAdjustedReturnSeries = {
+  status: 'unavailable',
+  method: 'provider_adjusted_close',
+  values: [],
+  reason: 'Provider did not supply a verified adjusted-return series.',
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -707,12 +723,14 @@ function EtfAnalysisSections({
   onSectionLayout,
   onSectionRef,
   primaryCandles,
+  primaryAdjustedReturnSeries,
   primaryLoading,
   primaryError,
   retryPrimaryChart,
   compInput,
   compSymbol,
   compCandles,
+  compAdjustedReturnSeries,
   compLoading,
   compError,
   retryComparisonChart,
@@ -732,12 +750,14 @@ function EtfAnalysisSections({
   onSectionLayout: (sectionId: EtfAnalysisSectionId, y: number) => void;
   onSectionRef: (sectionId: EtfAnalysisSectionId, view: View | null) => void;
   primaryCandles: Candle[];
+  primaryAdjustedReturnSeries: ProviderAdjustedReturnSeries;
   primaryLoading: boolean;
   primaryError: boolean;
   retryPrimaryChart: () => void;
   compInput: string;
   compSymbol: string;
   compCandles: Candle[];
+  compAdjustedReturnSeries: ProviderAdjustedReturnSeries;
   compLoading: boolean;
   compError: boolean;
   retryComparisonChart: () => void;
@@ -755,15 +775,39 @@ function EtfAnalysisSections({
   const router = useRouter();
   const sharedComparisonCandles = alignCandleSeriesOnSharedDates(primaryCandles, compCandles);
   const hasSharedComparisonHistory = sharedComparisonCandles.dates.length >= 2;
+  const sharedAdjustedReturns = alignProviderAdjustedReturns(
+    primaryCandles,
+    compCandles,
+    primaryAdjustedReturnSeries,
+    compAdjustedReturnSeries,
+  );
+  const hasSharedAdjustedReturns = hasSharedComparisonHistory && sharedAdjustedReturns.available;
+  const primaryStandaloneAdjustedCandles = addProviderAdjustedReturns(primaryCandles, primaryAdjustedReturnSeries);
+  const chartUsesAdjustedReturns = hasSharedComparisonHistory
+    ? hasSharedAdjustedReturns
+    : !compSymbol && primaryStandaloneAdjustedCandles != null;
   const chartPrimaryCandles = hasSharedComparisonHistory
-    ? sharedComparisonCandles.primary
-    : primaryCandles;
+    ? chartUsesAdjustedReturns ? sharedAdjustedReturns.primary : sharedComparisonCandles.primary
+    : chartUsesAdjustedReturns ? primaryStandaloneAdjustedCandles! : primaryCandles;
+  const chartComparisonCandles = hasSharedComparisonHistory
+    ? chartUsesAdjustedReturns ? sharedAdjustedReturns.comparison : sharedComparisonCandles.comparison
+    : undefined;
   const chartReturnPercent = (candles: Candle[]) => candles.length > 1 && candles[0]!.c > 0
     ? (candles[candles.length - 1]!.c / candles[0]!.c - 1) * 100
     : null;
-  const primaryPeriodReturn = chartReturnPercent(chartPrimaryCandles);
+  const seriesReturnPercent = (candles: Candle[]) => candles.length > 1
+    ? candles[candles.length - 1]!.adjustedReturnPercent ?? null
+    : null;
+  const primaryPeriodReturn = chartUsesAdjustedReturns
+    ? seriesReturnPercent(chartPrimaryCandles)
+    : chartReturnPercent(chartPrimaryCandles);
   const comparisonPeriodReturn = hasSharedComparisonHistory
-    ? chartReturnPercent(sharedComparisonCandles.comparison)
+    ? chartUsesAdjustedReturns
+      ? seriesReturnPercent(chartComparisonCandles ?? [])
+      : chartReturnPercent(chartComparisonCandles ?? [])
+    : null;
+  const relativeTotalReturn = primaryPeriodReturn != null && comparisonPeriodReturn != null
+    ? calculateRelativeReturnPercent(primaryPeriodReturn, comparisonPeriodReturn)
     : null;
   const [compareTicker, setCompareTicker] = useState('');
   const [replaceTarget, setReplaceTarget] = useState<string | null>(null);
@@ -2458,8 +2502,9 @@ function EtfAnalysisSections({
             <ComparisonChart
               primaryCandles={chartPrimaryCandles}
               primarySymbol={symbol ?? ''}
-              compCandles={hasSharedComparisonHistory ? sharedComparisonCandles.comparison : undefined}
+              compCandles={chartComparisonCandles}
               compSymbol={compSymbol || undefined}
+              adjustedReturnMode={chartUsesAdjustedReturns}
               width={chartWidth}
               height={240}
             />
@@ -2475,9 +2520,15 @@ function EtfAnalysisSections({
         {!primaryLoading && !primaryError && primaryCandles.length > 1 && (
           <Text testID="etf-performance-methodology" style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 18, paddingHorizontal: 16, paddingBottom: 10 }}>
             {hasSharedComparisonHistory && comparisonPeriodReturn != null && primaryPeriodReturn != null
-              ? `${symbol.toUpperCase()} return ${primaryPeriodReturn >= 0 ? '+' : ''}${primaryPeriodReturn.toFixed(2)}% vs ${compSymbol} ${comparisonPeriodReturn >= 0 ? '+' : ''}${comparisonPeriodReturn.toFixed(2)}% · relative difference ${(primaryPeriodReturn - comparisonPeriodReturn) >= 0 ? '+' : ''}${(primaryPeriodReturn - comparisonPeriodReturn).toFixed(2)} percentage points.`
-              : `Selected range: ${primaryCandles[0]?.date ?? 'date unavailable'} to ${primaryCandles[primaryCandles.length - 1]?.date ?? 'date unavailable'}.`}
-            {' '}Chart uses provider Close values. Dividend-adjustment treatment is not identified by this endpoint, so these are not labeled as dividend-adjusted total returns.
+              ? chartUsesAdjustedReturns
+                ? `${symbol.toUpperCase()} dividend-adjusted total return ${primaryPeriodReturn >= 0 ? '+' : ''}${primaryPeriodReturn.toFixed(2)}% vs ${compSymbol} ${comparisonPeriodReturn >= 0 ? '+' : ''}${comparisonPeriodReturn.toFixed(2)}% · relative total return ${relativeTotalReturn == null ? 'unavailable' : `${relativeTotalReturn >= 0 ? '+' : ''}${relativeTotalReturn.toFixed(2)}%`}.`
+                : `${symbol.toUpperCase()} Close price return ${primaryPeriodReturn >= 0 ? '+' : ''}${primaryPeriodReturn.toFixed(2)}% vs ${compSymbol} ${comparisonPeriodReturn >= 0 ? '+' : ''}${comparisonPeriodReturn.toFixed(2)}% · price-return spread ${(primaryPeriodReturn - comparisonPeriodReturn) >= 0 ? '+' : ''}${(primaryPeriodReturn - comparisonPeriodReturn).toFixed(2)} percentage points.`
+              : !compSymbol && chartUsesAdjustedReturns && primaryPeriodReturn != null
+                ? `${symbol.toUpperCase()} dividend-adjusted total return ${primaryPeriodReturn >= 0 ? '+' : ''}${primaryPeriodReturn.toFixed(2)}% for the selected range.`
+                : `Selected range: ${primaryCandles[0]?.date ?? 'date unavailable'} to ${primaryCandles[primaryCandles.length - 1]?.date ?? 'date unavailable'}.`}
+            {' '}{chartUsesAdjustedReturns
+              ? 'Uses the provider Adj Close series with complete reported distribution history; the provider calculation is not independently audited.'
+              : `Dividend-adjusted total return is unavailable${compSymbol ? ` for ${symbol.toUpperCase()} or ${compSymbol}` : ''}${primaryAdjustedReturnSeries.reason ? `: ${primaryAdjustedReturnSeries.reason}` : ''}. The chart uses provider Close changes; no total-return estimate is shown.`}
           </Text>
         )}
         {symbol.toUpperCase() === 'VOO' && (
@@ -2890,7 +2941,6 @@ export default function AnalysisScreen() {
   const { isActive, neonGucciActive, brew } = useAmericanMode();
   const { awardAchievement } = useAchievements();
   const { width: screenWidth } = useWindowDimensions();
-  const { apiFetch } = useApi();
   const { mutate, data: response, isPending, error } = useAnalyzeStock<Error>();
   const marketBreadthQuery = useGetMarketBreadth({
     query: {
@@ -2932,16 +2982,44 @@ export default function AnalysisScreen() {
 
   // ── Chart state ──────────────────────────────────────────────────────────
   const [period, setPeriod] = useState<Period>('3mo');
-  const [primaryCandles, setPrimaryCandles]   = useState<Candle[]>([]);
-  const [primaryLoading, setPrimaryLoading]   = useState(false);
-  const [primaryChartError, setPrimaryChartError] = useState(false);
-  const [primaryChartRetry, setPrimaryChartRetry] = useState(0);
   const [compInput, setCompInput]             = useState('');       // text field
   const [compSymbol, setCompSymbol]           = useState('');       // committed symbol
-  const [compCandles, setCompCandles]         = useState<Candle[]>([]);
-  const [compLoading, setCompLoading]         = useState(false);
-  const [compChartError, setCompChartError]   = useState(false);
-  const [compChartRetry, setCompChartRetry]   = useState(0);
+  const primaryChartQuery = useGetStockChart(
+    encodeURIComponent(symbol ?? ''),
+    period,
+    '1d',
+    {
+      query: {
+        queryKey: getGetStockChartQueryKey(encodeURIComponent(symbol ?? ''), period, '1d'),
+        enabled: Boolean(symbol),
+        retry: false,
+        staleTime: 15_000,
+      },
+    },
+  );
+  const compChartQuery = useGetStockChart(
+    encodeURIComponent(compSymbol),
+    period,
+    '1d',
+    {
+      query: {
+        queryKey: getGetStockChartQueryKey(encodeURIComponent(compSymbol), period, '1d'),
+        enabled: Boolean(compSymbol),
+        retry: false,
+        staleTime: 15_000,
+      },
+    },
+  );
+  const primaryCandles: Candle[] = primaryChartQuery.data?.candles ?? [];
+  const primaryAdjustedReturnSeries =
+    primaryChartQuery.data?.adjustedReturnSeries ?? UNAVAILABLE_ADJUSTED_RETURN_SERIES;
+  const primaryLoading = Boolean(symbol) && primaryChartQuery.isLoading;
+  const primaryChartError = primaryChartQuery.isError;
+  const compCandles: Candle[] = compChartQuery.data?.candles ?? [];
+  const compAdjustedReturnSeries =
+    compChartQuery.data?.adjustedReturnSeries ?? UNAVAILABLE_ADJUSTED_RETURN_SERIES;
+  const compLoading = Boolean(compSymbol) && compChartQuery.isLoading;
+  const compChartError = Boolean(compSymbol) && compChartQuery.isError;
   const [activeEtfSection, setActiveEtfSection] = useState<EtfAnalysisSectionId>('overview');
   const etfScrollRef = useRef<ScrollView>(null);
   const etfScrollFrameRef = useRef<View>(null);
@@ -2986,48 +3064,6 @@ export default function AnalysisScreen() {
     }).catch(() => { /* ignore storage errors */ });
   }, []);
 
-  // Fetch primary chart data whenever symbol or period changes
-  useEffect(() => {
-    if (!symbol) return;
-    let cancelled = false;
-    setPrimaryLoading(true);
-    setPrimaryChartError(false);
-    setPrimaryCandles([]);
-    apiFetch<{ candles: Candle[] }>(`/api/stocks/chart/${encodeURIComponent(symbol)}?period=${period}&interval=1d`)
-      .then((res) => { if (!cancelled) setPrimaryCandles(res.candles ?? []); })
-      .catch(() => {
-        if (!cancelled) {
-          setPrimaryCandles([]);
-          setPrimaryChartError(true);
-        }
-      })
-      .finally(() => { if (!cancelled) setPrimaryLoading(false); });
-    return () => { cancelled = true; };
-  }, [symbol, period, primaryChartRetry]);
-
-  // Fetch comparison chart data whenever compSymbol or period changes
-  useEffect(() => {
-    if (!compSymbol) {
-      setCompCandles([]);
-      setCompChartError(false);
-      return;
-    }
-    let cancelled = false;
-    setCompLoading(true);
-    setCompChartError(false);
-    setCompCandles([]);
-    apiFetch<{ candles: Candle[] }>(`/api/stocks/chart/${encodeURIComponent(compSymbol)}?period=${period}&interval=1d`)
-      .then((res) => { if (!cancelled) setCompCandles(res.candles ?? []); })
-      .catch(() => {
-        if (!cancelled) {
-          setCompCandles([]);
-          setCompChartError(true);
-        }
-      })
-      .finally(() => { if (!cancelled) setCompLoading(false); });
-    return () => { cancelled = true; };
-  }, [compSymbol, period, compChartRetry]);
-
   const commitCompSymbol = useCallback(() => {
     const s = compInput.trim().toUpperCase();
     if (s && s !== compSymbol) {
@@ -3035,7 +3071,6 @@ export default function AnalysisScreen() {
       AsyncStorage.setItem(PINNED_COMP_KEY, s).catch(() => { /* ignore */ });
     } else if (!s) {
       setCompSymbol('');
-      setCompCandles([]);
       AsyncStorage.removeItem(PINNED_COMP_KEY).catch(() => { /* ignore */ });
     }
   }, [compInput, compSymbol]);
@@ -3043,25 +3078,22 @@ export default function AnalysisScreen() {
   const selectBenchmark = useCallback((ticker: string) => {
     setCompInput(ticker);
     setCompSymbol(ticker);
-    setCompChartError(false);
-    setCompCandles([]);
     AsyncStorage.setItem(PINNED_COMP_KEY, ticker).catch(() => {});
   }, []);
 
   const clearComp = useCallback(() => {
     setCompInput('');
     setCompSymbol('');
-    setCompCandles([]);
     AsyncStorage.removeItem(PINNED_COMP_KEY).catch(() => { /* ignore */ });
   }, []);
 
   const retryPrimaryChart = useCallback(() => {
-    setPrimaryChartRetry((current) => current + 1);
-  }, []);
+    void primaryChartQuery.refetch();
+  }, [primaryChartQuery.refetch]);
 
   const retryComparisonChart = useCallback(() => {
-    setCompChartRetry((current) => current + 1);
-  }, []);
+    void compChartQuery.refetch();
+  }, [compChartQuery.refetch]);
 
   // Chart card width = screen width minus scroll padding (14 each side) minus card padding (16 each side)
   const chartWidth = screenWidth - 28 - 32;
@@ -3366,12 +3398,14 @@ export default function AnalysisScreen() {
                 onSectionLayout={recordEtfSectionOffset}
                 onSectionRef={recordEtfSectionRef}
                 primaryCandles={primaryCandles}
+                primaryAdjustedReturnSeries={primaryAdjustedReturnSeries}
                 primaryLoading={primaryLoading}
                 primaryError={primaryChartError}
                 retryPrimaryChart={retryPrimaryChart}
                 compInput={compInput}
                 compSymbol={compSymbol}
                 compCandles={compCandles}
+                compAdjustedReturnSeries={compAdjustedReturnSeries}
                 compLoading={compLoading}
                 compError={compChartError}
                 retryComparisonChart={retryComparisonChart}

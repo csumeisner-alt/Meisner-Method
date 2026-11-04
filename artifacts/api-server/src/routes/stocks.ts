@@ -590,11 +590,14 @@ router.get("/stocks/top-picks", async (_req, res) => {
   }
 });
 
-// Chart OHLCV + moving averages
-router.get("/stocks/chart/:symbol", async (req, res) => {
-  const symbol = (req.params["symbol"] ?? "").toUpperCase().trim();
-  const period = (req.query["period"] as string) || "3mo";
-  const interval = (req.query["interval"] as string) || "1d";
+// Chart OHLCV + moving averages, including provider-backed adjusted-return metadata.
+async function respondWithStockChart(
+  symbolValue: string,
+  period: string,
+  interval: string,
+  res: Response,
+) {
+  const symbol = symbolValue.toUpperCase().trim();
   const VALID_PERIODS = ["5d", "1mo", "3mo", "6mo", "1y", "2y", "3y", "5y", "max"];
   const VALID_INTERVALS = ["15m", "1h", "1d", "1wk"];
   if (!symbol || !VALID_PERIODS.includes(period) || !VALID_INTERVALS.includes(interval)) {
@@ -610,6 +613,26 @@ router.get("/stocks/chart/:symbol", async (req, res) => {
   } catch (err: any) {
     res.status(422).json({ error: "CHART_FAILED", message: err.message });
   }
+}
+
+// Typed path-based endpoint for the generated mobile API client.
+router.get("/stocks/chart/:symbol/:period/:interval", async (req, res) => {
+  await respondWithStockChart(
+    req.params["symbol"] ?? "",
+    req.params["period"] ?? "",
+    req.params["interval"] ?? "",
+    res,
+  );
+});
+
+// Backwards-compatible query-string endpoint used by existing chart-history callers.
+router.get("/stocks/chart/:symbol", async (req, res) => {
+  await respondWithStockChart(
+    req.params["symbol"] ?? "",
+    (req.query["period"] as string) || "3mo",
+    (req.query["interval"] as string) || "1d",
+    res,
+  );
 });
 
 // Trending / most-active stocks with live price data

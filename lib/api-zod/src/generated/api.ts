@@ -40,6 +40,45 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
+ * @summary Retrieve provider chart history and adjusted-return data
+ */
+export const GetStockChartParams = zod.object({
+  "symbol": zod.coerce.string(),
+  "period": zod.enum(['5d', '1mo', '3mo', '6mo', '1y', '2y', '3y', '5y', 'max']),
+  "interval": zod.enum(['15m', '1h', '1d', '1wk'])
+})
+
+export const GetStockChartResponse = zod.object({
+  "symbol": zod.string(),
+  "period": zod.string(),
+  "interval": zod.string(),
+  "candles": zod.array(zod.object({
+  "t": zod.number(),
+  "date": zod.coerce.date(),
+  "o": zod.number(),
+  "h": zod.number(),
+  "l": zod.number(),
+  "c": zod.number().describe('Raw provider Close; not automatically adjusted by this endpoint.'),
+  "adjClose": zod.number().nullable().describe('Provider Adj Close when explicitly supplied.'),
+  "dividend": zod.number().nullable().describe('Provider cash distribution for this date, or null when unavailable.'),
+  "v": zod.number(),
+  "ma20": zod.number().nullish(),
+  "ma50": zod.number().nullish(),
+  "ma200": zod.number().nullish()
+})),
+  "adjustedReturnSeries": zod.object({
+  "status": zod.enum(['available', 'unavailable']),
+  "method": zod.enum(['provider_adjusted_close']).describe('Cumulative return from the first observation, calculated from provider Adj Close.'),
+  "values": zod.array(zod.object({
+  "date": zod.coerce.date(),
+  "returnPercent": zod.number().describe('Cumulative adjusted return in percentage points from the first observation.')
+})).describe('Empty unless every candle has a valid adjusted close and reported distribution value.'),
+  "reason": zod.string().nullable()
+})
+})
+
+
+/**
  * Returns matching listed equities for company-name and ticker autocomplete
  * @summary Search stocks by company name or ticker
  */

@@ -815,6 +815,65 @@ export const SearchHeatMapInstrumentsCategory = {
   cryptocurrency: 'cryptocurrency',
 } as const;
 
+export type GetStockChart200CandlesItem = {
+  t: number;
+  date: string;
+  o: number;
+  h: number;
+  l: number;
+  /** Raw provider Close; not automatically adjusted by this endpoint. */
+  c: number;
+  /** Provider Adj Close when explicitly supplied. */
+  adjClose: number | null;
+  /** Provider cash distribution for this date, or null when unavailable. */
+  dividend: number | null;
+  v: number;
+  ma20?: number | null;
+  ma50?: number | null;
+  ma200?: number | null;
+};
+
+export type GetStockChart200AdjustedReturnSeriesStatus = typeof GetStockChart200AdjustedReturnSeriesStatus[keyof typeof GetStockChart200AdjustedReturnSeriesStatus];
+
+
+export const GetStockChart200AdjustedReturnSeriesStatus = {
+  available: 'available',
+  unavailable: 'unavailable',
+} as const;
+
+/**
+ * Cumulative return from the first observation, calculated from provider Adj Close.
+ */
+export type GetStockChart200AdjustedReturnSeriesMethod = typeof GetStockChart200AdjustedReturnSeriesMethod[keyof typeof GetStockChart200AdjustedReturnSeriesMethod];
+
+
+export const GetStockChart200AdjustedReturnSeriesMethod = {
+  provider_adjusted_close: 'provider_adjusted_close',
+} as const;
+
+export type GetStockChart200AdjustedReturnSeriesValuesItem = {
+  date: string;
+  /** Cumulative adjusted return in percentage points from the first observation. */
+  returnPercent: number;
+};
+
+export type GetStockChart200AdjustedReturnSeries = {
+  status: GetStockChart200AdjustedReturnSeriesStatus;
+  /** Cumulative return from the first observation, calculated from provider Adj Close. */
+  method: GetStockChart200AdjustedReturnSeriesMethod;
+  /** Empty unless every candle has a valid adjusted close and reported distribution value. */
+  values: GetStockChart200AdjustedReturnSeriesValuesItem[];
+  reason: string | null;
+};
+
+export type GetStockChart200 = {
+  symbol: string;
+  period: string;
+  interval: string;
+  candles: GetStockChart200CandlesItem[];
+  adjustedReturnSeries: GetStockChart200AdjustedReturnSeries;
+};
+
 export type SearchStockSymbolsParams = {
 /**
  * @minLength 2

@@ -77,6 +77,7 @@ interface Props {
   compSymbol?:    string;
   secondCompCandles?: Candle[];
   secondCompSymbol?: string;
+  adjustedReturnMode?: boolean;
   width:          number;
   height?:        number;
 }
@@ -138,24 +139,32 @@ export function ComparisonChart({
   compSymbol,
   secondCompCandles,
   secondCompSymbol,
+  adjustedReturnMode = false,
   width,
   height = 240,
 }: Props) {
   const [touched, setTouched] = useState<number | null>(null);
   const [mode, setMode] = useState<ChartMode>('percent');
+  const displayMode: ChartMode = adjustedReturnMode ? 'percent' : mode;
 
   const chartW = width - PAD.left - PAD.right;
   const chartH = height - PAD.top - PAD.bottom;
 
-  const primValues = mode === 'percent'
-    ? normalize(primaryCandles)
+  const primValues = displayMode === 'percent'
+    ? adjustedReturnMode
+      ? primaryCandles.map((c) => c.adjustedReturnPercent ?? 0)
+      : normalize(primaryCandles)
     : primaryCandles.map((c) => c.c);
   const compValues = compCandles && compCandles.length > 0
-    ? mode === 'percent' ? normalize(compCandles) : compCandles.map((c) => c.c)
+    ? displayMode === 'percent'
+      ? adjustedReturnMode
+        ? compCandles.map((c) => c.adjustedReturnPercent ?? 0)
+        : normalize(compCandles)
+      : compCandles.map((c) => c.c)
     : null;
   const hasComp = compValues !== null && compValues.length > 0;
   const secondValues = secondCompCandles && secondCompCandles.length > 0
-    ? mode === 'percent' ? normalize(secondCompCandles) : secondCompCandles.map((c) => c.c)
+    ? displayMode === 'percent' ? normalize(secondCompCandles) : secondCompCandles.map((c) => c.c)
     : null;
   const hasSecond = secondValues !== null && secondValues.length > 0;
 
@@ -165,8 +174,8 @@ export function ComparisonChart({
 
   // Combined Y domain
   const allVals = [...primValues, ...(compValues ?? []), ...(secondValues ?? [])];
-  const rawMin = allVals.length > 0 ? Math.min(...allVals) : mode === 'percent' ? -5 : 0;
-  const rawMax = allVals.length > 0 ? Math.max(...allVals) : mode === 'percent' ? 5 : 1;
+  const rawMin = allVals.length > 0 ? Math.min(...allVals) : displayMode === 'percent' ? -5 : 0;
+  const rawMax = allVals.length > 0 ? Math.max(...allVals) : displayMode === 'percent' ? 5 : 1;
   const yPad  = Math.max((rawMax - rawMin) * 0.12, 2);
   const minY  = rawMin - yPad;
   const maxY  = rawMax + yPad;
@@ -260,11 +269,13 @@ export function ComparisonChart({
       <View style={s.modeRow}>
         <Text style={s.modeLabel}>VIEW</Text>
         <View style={s.modeToggle}>
-          {([
-            { key: 'percent' as const, label: '%' },
-            { key: 'price' as const, label: '$' },
-          ]).map((option) => {
-            const selected = mode === option.key;
+          {(adjustedReturnMode
+            ? [{ key: 'percent' as const, label: '%' }]
+            : [
+                { key: 'percent' as const, label: '%' },
+                { key: 'price' as const, label: '$' },
+              ]).map((option) => {
+            const selected = displayMode === option.key;
             return (
               <Pressable
                 key={option.key}
@@ -284,17 +295,19 @@ export function ComparisonChart({
             );
           })}
         </View>
-        <Text style={s.modeValueLabel}>{mode === 'percent' ? 'PERCENT' : 'PRICE'}</Text>
+        <Text style={s.modeValueLabel}>
+          {adjustedReturnMode ? 'TOTAL RETURN' : displayMode === 'percent' ? 'PERCENT' : 'PRICE'}
+        </Text>
       </View>
 
       {/* ── Legend ─────────────────────────────────────────────────────── */}
       <View style={s.legend}>
-        <LegendItem color={PRIMARY_COLOR} ticker={primarySymbol} value={primFinal} mode={mode} />
+        <LegendItem color={PRIMARY_COLOR} ticker={primarySymbol} value={primFinal} mode={displayMode} />
         {hasComp && compSymbol && (
-          <LegendItem color={COMP_COLOR} ticker={compSymbol} value={compFinal} mode={mode} />
+          <LegendItem color={COMP_COLOR} ticker={compSymbol} value={compFinal} mode={displayMode} />
         )}
         {hasSecond && secondCompSymbol && (
-          <LegendItem color={COMP2_COLOR} ticker={secondCompSymbol} value={secondFinal} mode={mode} />
+          <LegendItem color={COMP2_COLOR} ticker={secondCompSymbol} value={secondFinal} mode={displayMode} />
         )}
       </View>
 
@@ -314,7 +327,7 @@ export function ComparisonChart({
         ))}
 
         {/* Zero-return baseline only applies to percentage mode. */}
-        {mode === 'percent' && (
+        {displayMode === 'percent' && (
           <Line
             x1={PAD.left} y1={py0} x2={PAD.left + chartW} y2={py0}
             stroke="rgba(192,192,192,0.22)" strokeWidth={1} strokeDasharray="4 3"
@@ -325,7 +338,7 @@ export function ComparisonChart({
         {yTicks.map(({ val, y }, i) => (
           <SvgText key={i} x={PAD.left + chartW + 4} y={y + 4}
             fontSize={9} fill={AXIS_COLOR} textAnchor="start">
-             {fmtAxisValue(val, mode)}
+             {fmtAxisValue(val, displayMode)}
           </SvgText>
         ))}
 
@@ -409,7 +422,7 @@ export function ComparisonChart({
             <Bubble
               x={pxPrim(touched)}
               y={pyVal(touchPrimValue)}
-              label={`${primarySymbol}  ${mode === 'percent' ? fmtPct(touchPrimValue) : fmtPrice(touchPrimValue)}`}
+              label={`${primarySymbol}  ${displayMode === 'percent' ? fmtPct(touchPrimValue) : fmtPrice(touchPrimValue)}`}
               color={PRIMARY_COLOR}
               chartLeft={PAD.left}
               chartRight={PAD.left + chartW}
@@ -421,7 +434,7 @@ export function ComparisonChart({
               <Bubble
                 x={pxPrim(touched)}
                 y={pyVal(touchCompValue)}
-                label={`${compSymbol}  ${mode === 'percent' ? fmtPct(touchCompValue) : fmtPrice(touchCompValue)}`}
+                label={`${compSymbol}  ${displayMode === 'percent' ? fmtPct(touchCompValue) : fmtPrice(touchCompValue)}`}
                 color={COMP_COLOR}
                 chartLeft={PAD.left}
                 chartRight={PAD.left + chartW}
@@ -434,7 +447,7 @@ export function ComparisonChart({
               <Bubble
                 x={pxPrim(touched)}
                 y={pyVal(touchSecondValue)}
-                label={`${secondCompSymbol}  ${mode === 'percent' ? fmtPct(touchSecondValue) : fmtPrice(touchSecondValue)}`}
+                label={`${secondCompSymbol}  ${displayMode === 'percent' ? fmtPct(touchSecondValue) : fmtPrice(touchSecondValue)}`}
                 color={COMP2_COLOR}
                 chartLeft={PAD.left}
                 chartRight={PAD.left + chartW}

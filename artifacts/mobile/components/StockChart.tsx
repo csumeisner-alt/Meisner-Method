@@ -17,6 +17,9 @@ export interface Candle {
   h: number;
   l: number;
   c: number;
+  adjClose?: number | null;
+  dividend?: number | null;
+  adjustedReturnPercent?: number;
   v: number;
   ma20?: number | null;
   ma50?: number | null;

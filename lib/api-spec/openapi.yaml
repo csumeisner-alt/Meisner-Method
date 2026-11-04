@@ -66,6 +66,114 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /stocks/chart/{symbol}/{period}/{interval}:
+    get:
+      operationId: getStockChart
+      tags: [stocks]
+      summary: Retrieve provider chart history and adjusted-return data
+      parameters:
+        - in: path
+          name: symbol
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: period
+          required: true
+          schema:
+            type: string
+            enum: [5d, 1mo, 3mo, 6mo, 1y, 2y, 3y, 5y, max]
+        - in: path
+          name: interval
+          required: true
+          schema:
+            type: string
+            enum: [15m, 1h, 1d, 1wk]
+      responses:
+        "200":
+          description: Provider chart candles and a strictly provider-backed adjusted-return series
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [symbol, period, interval, candles, adjustedReturnSeries]
+                properties:
+                  symbol:
+                    type: string
+                  period:
+                    type: string
+                  interval:
+                    type: string
+                  candles:
+                    type: array
+                    items:
+                      type: object
+                      required: [t, date, o, h, l, c, adjClose, dividend, v]
+                      properties:
+                        t:
+                          type: integer
+                        date:
+                          type: string
+                          format: date
+                        o:
+                          type: number
+                        h:
+                          type: number
+                        l:
+                          type: number
+                        c:
+                          type: number
+                          description: Raw provider Close; not automatically adjusted by this endpoint.
+                        adjClose:
+                          type: number
+                          nullable: true
+                          description: Provider Adj Close when explicitly supplied.
+                        dividend:
+                          type: number
+                          nullable: true
+                          description: Provider cash distribution for this date, or null when unavailable.
+                        v:
+                          type: integer
+                        ma20:
+                          type: number
+                          nullable: true
+                        ma50:
+                          type: number
+                          nullable: true
+                        ma200:
+                          type: number
+                          nullable: true
+                  adjustedReturnSeries:
+                    type: object
+                    required: [status, method, values, reason]
+                    properties:
+                      status:
+                        type: string
+                        enum: [available, unavailable]
+                      method:
+                        type: string
+                        enum: [provider_adjusted_close]
+                        description: Cumulative return from the first observation, calculated from provider Adj Close.
+                      values:
+                        type: array
+                        description: Empty unless every candle has a valid adjusted close and reported distribution value.
+                        items:
+                          type: object
+                          required: [date, returnPercent]
+                          properties:
+                            date:
+                              type: string
+                              format: date
+                            returnPercent:
+                              type: number
+                              description: Cumulative adjusted return in percentage points from the first observation.
+                      reason:
+                        type: string
+                        nullable: true
+        "400":
+          description: Invalid symbol, period, or interval
+        "422":
+          description: Provider history could not be retrieved
   /stocks/search:
     get:
       operationId: searchStockSymbols
