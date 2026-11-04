@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildEtfScoreHistory,
   calculateEtfResearchScore,
   createEtfScoreSnapshot,
   findComparableEtfScoreChange,
@@ -573,4 +574,73 @@ test("ETF score history does not compare a stale historical snapshot", () => {
   const current = snapshotFor("2026-10-30T12:00:00Z", "2026-10-29T12:00:00Z");
 
   assert.equal(findComparableEtfScoreChange(current, previous ? [previous] : []).status, "stale-history");
+});
+
+test("dated ETF score history reports changes only between adjacent comparable analyses", () => {
+  const result = calculateEtfResearchScore(completeInput);
+  const snapshotFor = (
+    recordedAt: string,
+    asOf: string,
+    options: { missingRisk?: boolean; source?: string; score?: number } = {},
+  ) => {
+    const components = options.missingRisk
+      ? result.components.map((component) => component.id === "risk" ? { ...component, score: null } : component)
+      : result.components;
+    return createEtfScoreSnapshot({
+      symbol: "SPY",
+      score: options.score ?? result.score,
+      components,
+      sourceContexts: Object.fromEntries(
+        components.filter((component) => component.score !== null)
+          .map((component) => [component.id, `${options.source ?? "provider"}:${component.id}`]),
+      ),
+      inputAsOf: Object.fromEntries(
+        components.filter((component) => component.score !== null).map((component) => [component.id, [asOf]]),
+      ),
+      recordedAt,
+    });
+  };
+  const first = snapshotFor("2026-10-10T12:00:00Z", "2026-10-09T12:00:00Z", { score: 70 });
+  const changedSource = snapshotFor("2026-10-20T12:00:00Z", "2026-10-19T12:00:00Z", { source: "provider-b" });
+  const third = snapshotFor("2026-10-30T12:00:00Z", "2026-10-29T12:00:00Z", { source: "provider-b", score: 82 });
+  const history = buildEtfScoreHistory("SPY", third, [first, changedSource].filter(
+    (snapshot): snapshot is NonNullable<typeof snapshot> => snapshot !== null,
+  ));
+
+  assert.deepEqual(history.map((entry) => entry.status), ["baseline", "not-comparable", "available"]);
+  assert.equal(history[2]?.change, (third?.score ?? 0) - (changedSource?.score ?? 0));
+  assert.equal(history[2]?.previousRecordedAt, "2026-10-20T12:00:00.000Z");
+});
+
+test("dated ETF score history marks factor, freshness, and time-window gaps", () => {
+  const result = calculateEtfResearchScore(completeInput);
+  const snapshotFor = (
+    recordedAt: string,
+    asOf: string,
+    options: { missingRisk?: boolean; score?: number } = {},
+  ) => {
+    const components = options.missingRisk
+      ? result.components.map((component) => component.id === "risk" ? { ...component, score: null } : component)
+      : result.components;
+    return createEtfScoreSnapshot({
+      symbol: "SPY",
+      score: options.score ?? result.score,
+      components,
+      sourceContexts: Object.fromEntries(
+        components.filter((component) => component.score !== null).map((component) => [component.id, `provider:${component.id}`]),
+      ),
+      inputAsOf: Object.fromEntries(
+        components.filter((component) => component.score !== null).map((component) => [component.id, [asOf]]),
+      ),
+      recordedAt,
+    });
+  };
+  const first = snapshotFor("2024-10-10T12:00:00Z", "2024-10-09T12:00:00Z");
+  const second = snapshotFor("2026-10-20T12:00:00Z", "2026-10-19T12:00:00Z", { score: 75 });
+  const third = snapshotFor("2026-10-30T12:00:00Z", "2026-10-29T12:00:00Z", { missingRisk: true });
+  const history = buildEtfScoreHistory("SPY", third, [first, second].filter(
+    (snapshot): snapshot is NonNullable<typeof snapshot> => snapshot !== null,
+  ));
+
+  assert.deepEqual(history.map((entry) => entry.status), ["baseline", "stale-history", "not-comparable"]);
 });

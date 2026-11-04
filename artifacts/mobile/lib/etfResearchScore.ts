@@ -63,6 +63,13 @@ export type EtfScoreChangeResult =
   | { status: "not-comparable" }
   | { status: "unavailable" };
 
+export interface EtfScoreHistoryEntry {
+  snapshot: EtfScoreSnapshot;
+  status: "baseline" | "available" | "stale-inputs" | "stale-history" | "not-comparable";
+  change?: number;
+  previousRecordedAt?: string;
+}
+
 export const ETF_SCORE_INPUT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const ETF_SCORE_HISTORY_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
 
@@ -194,6 +201,52 @@ export function upsertEtfScoreSnapshot(
   return next
     .sort((a, b) => Date.parse(b.recordedAt) - Date.parse(a.recordedAt))
     .slice(0, Math.max(1, limit));
+}
+
+export function buildEtfScoreHistory(
+  symbol: string,
+  current: EtfScoreSnapshot | null,
+  history: readonly EtfScoreSnapshot[],
+): EtfScoreHistoryEntry[] {
+  const snapshots = (current ? upsertEtfScoreSnapshot(history, current) : [...history])
+    .filter((snapshot) => snapshot.symbol.toUpperCase() === symbol.toUpperCase())
+    .sort((a, b) => Date.parse(a.recordedAt) - Date.parse(b.recordedAt));
+
+  return snapshots.map((snapshot, index) => {
+    const previous = snapshots[index - 1];
+    if (!previous) return { snapshot, status: "baseline" };
+
+    const snapshotTime = Date.parse(snapshot.recordedAt);
+    const previousTime = Date.parse(previous.recordedAt);
+    if (!snapshotHasFreshInputs(snapshot, snapshotTime)) {
+      return { snapshot, status: "stale-inputs" };
+    }
+    if (
+      !Number.isFinite(snapshotTime)
+      || !Number.isFinite(previousTime)
+      || snapshotTime <= previousTime
+      || snapshotTime - previousTime > ETF_SCORE_HISTORY_MAX_AGE_MS
+      || !snapshotHasFreshInputs(previous, previousTime)
+    ) {
+      return { snapshot, status: "stale-history" };
+    }
+
+    const sameCoverage = JSON.stringify([...snapshot.componentIds].sort())
+      === JSON.stringify([...previous.componentIds].sort());
+    const sameSources = snapshot.componentIds.every((id) =>
+      snapshot.sourceContexts[id] === previous.sourceContexts[id],
+    );
+    if (!sameCoverage || !sameSources) {
+      return { snapshot, status: "not-comparable" };
+    }
+
+    return {
+      snapshot,
+      status: "available",
+      change: snapshot.score - previous.score,
+      previousRecordedAt: previous.recordedAt,
+    };
+  });
 }
 
 export function findComparableEtfScoreChange(

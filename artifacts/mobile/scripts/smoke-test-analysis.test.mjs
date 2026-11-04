@@ -224,6 +224,10 @@ test("ETF analysis provides six accessible section-navigation targets", () => {
 
 test("ETF overview combines quote, deterministic research score, takeaways, and freshness", () => {
   assert.match(etfAnalysisSource, /MEISNER ETF RESEARCH SCORE/);
+  assert.match(etfAnalysisSource, /testID="etf-score-history-list"/);
+  assert.match(etfAnalysisSource, /Dated score history/);
+  assert.match(etfAnalysisSource, /factor coverage or source context changed/);
+  assert.match(etfAnalysisSource, /Point changes compare adjacent entries only when inputs are fresh/);
   assert.match(etfAnalysisSource, /Research score/);
   assert.match(etfAnalysisSource, /fund\.provider\} data retrieved \{sourceDate\(fund\.asOf\)\}/);
   assert.match(etfAnalysisSource, /fund\.strengths\.map/);

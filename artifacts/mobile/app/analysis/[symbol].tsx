@@ -69,6 +69,7 @@ import {
   upsertSavedEtfHoldingSnapshot,
 } from '@/lib/heatMapDetail';
 import {
+  buildEtfScoreHistory,
   calculateEtfResearchScore,
   createEtfScoreSnapshot,
   findComparableEtfScoreChange,
@@ -77,6 +78,7 @@ import {
 } from '@/lib/etfResearchScore';
 import type {
   EtfScoreChangeResult,
+  EtfScoreHistoryEntry,
   EtfScoreComponentId,
 } from '@/lib/etfResearchScore';
 import type { HeatMapEtfHoldingSnapshot } from '@/lib/heatMapDetail';
@@ -1026,11 +1028,13 @@ function EtfAnalysisSections({
     inputAsOf: scoreInputAsOf,
   });
   const [scoreChangeResult, setScoreChangeResult] = useState<EtfScoreChangeResult | null>(null);
+  const [scoreHistoryEntries, setScoreHistoryEntries] = useState<EtfScoreHistoryEntry[]>([]);
   const [scoreHistoryReady, setScoreHistoryReady] = useState(false);
   const scoreSnapshotWriteQueue = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
     let cancelled = false;
     setScoreHistoryReady(false);
+    setScoreHistoryEntries([]);
     const saveAndCompareScoreHistory = async () => {
       try {
         const history = parseEtfScoreSnapshots(await AsyncStorage.getItem(ETF_SCORE_SNAPSHOTS_KEY));
@@ -1047,8 +1051,8 @@ function EtfAnalysisSections({
         const change = profileScore.score == null
           ? { status: 'unavailable' as const }
           : findComparableEtfScoreChange(snapshot, history);
+        const nextHistory = snapshot ? upsertEtfScoreSnapshot(history, snapshot) : history;
         if (snapshot) {
-          const nextHistory = upsertEtfScoreSnapshot(history, snapshot);
           if (nextHistory.length !== history.length || !history.some((item) =>
             item.symbol.toUpperCase() === snapshot.symbol
             && item.score === snapshot.score
@@ -1061,6 +1065,7 @@ function EtfAnalysisSections({
         }
         if (!cancelled) {
           setScoreChangeResult(change);
+          setScoreHistoryEntries(buildEtfScoreHistory(symbol, snapshot, nextHistory));
           setScoreHistoryReady(true);
         }
       } catch {
@@ -1845,6 +1850,64 @@ function EtfAnalysisSections({
                           ? 'A score change is unavailable until at least three factors can be rated.'
                           : 'Score history could not be loaded or saved on this device.'}
           </Text>
+          <View
+            testID="etf-score-history-list"
+            style={{ width: '100%', marginTop: 14, borderTopWidth: 1, borderColor: colors.border, paddingTop: 10 }}
+          >
+            <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 13, marginBottom: 6 }}>
+              Dated score history
+            </Text>
+            {!scoreHistoryReady ? (
+              <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Loading saved analyses…</Text>
+            ) : scoreHistoryEntries.length === 0 ? (
+              <Text style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 17 }}>
+                {scoreChangeResult?.status === 'unavailable'
+                  ? 'Saved score history could not be loaded or saved on this device.'
+                  : 'No saved score analyses yet. A dated score appears when at least three factors are available and fresh.'}
+              </Text>
+            ) : (
+              <>
+                {scoreHistoryEntries.slice(-10).reverse().map((entry) => {
+                  const changeColor = entry.status === 'available' && (entry.change ?? 0) > 0
+                    ? colors.buyColor
+                    : entry.status === 'available' && (entry.change ?? 0) < 0
+                      ? colors.sellColor
+                      : colors.mutedForeground;
+                  const comparisonLabel = entry.status === 'available'
+                    ? `${(entry.change ?? 0) > 0 ? '+' : ''}${entry.change} pts vs. ${new Date(entry.previousRecordedAt!).toLocaleDateString()}`
+                    : entry.status === 'baseline'
+                      ? 'Starting point · no earlier saved analysis'
+                      : entry.status === 'not-comparable'
+                        ? 'Gap · factor coverage or source context changed'
+                        : entry.status === 'stale-inputs'
+                          ? 'Gap · this analysis had stale or undated inputs'
+                          : 'Gap · earlier inputs were stale or more than one year apart';
+                  return (
+                    <View
+                      key={`${entry.snapshot.recordedAt}-${entry.snapshot.score}`}
+                      accessibilityLabel={`${new Date(entry.snapshot.recordedAt).toLocaleDateString()}, score ${entry.snapshot.score} out of 100. ${comparisonLabel}.`}
+                      style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, paddingVertical: 6, borderBottomWidth: 1, borderColor: colors.border }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>
+                          {new Date(entry.snapshot.recordedAt).toLocaleDateString()}
+                        </Text>
+                        <Text style={{ color: changeColor, fontSize: 11, lineHeight: 15, marginTop: 2 }}>
+                          {comparisonLabel}
+                        </Text>
+                      </View>
+                      <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>
+                        {entry.snapshot.score}/100
+                      </Text>
+                    </View>
+                  );
+                })}
+                <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 7 }}>
+                  Showing up to 10 recent saved analyses. Point changes compare adjacent entries only when inputs are fresh and factor coverage and source context match; gaps are not interpolated.
+                </Text>
+              </>
+            )}
+          </View>
         </View>
         <View style={{ marginTop: 16, borderTopWidth: 1, borderColor: colors.border, paddingTop: 10 }}>
           {profileScore.components.map((component) => {
