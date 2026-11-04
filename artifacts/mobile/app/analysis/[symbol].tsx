@@ -29,6 +29,7 @@ import { useAnalyzeStock } from '@workspace/api-client-react';
 import type { StockAnalysis } from '@workspace/api-client-react';
 import { ComparisonChart } from '@/components/ComparisonChart';
 import type { Candle } from '@/components/StockChart';
+import { alignCandleSeriesOnSharedDates } from '@/lib/alignCandleSeries';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { NeonAnalysisLoader } from '@/components/NeonAnalysisLoader';
 import { PriceAlertModal } from '@/components/PriceAlertModal';
@@ -607,6 +608,11 @@ function EtfAnalysisSections({
 }) {
   const { apiFetch } = useApi();
   const router = useRouter();
+  const sharedComparisonCandles = alignCandleSeriesOnSharedDates(primaryCandles, compCandles);
+  const hasSharedComparisonHistory = sharedComparisonCandles.dates.length >= 2;
+  const chartPrimaryCandles = hasSharedComparisonHistory
+    ? sharedComparisonCandles.primary
+    : primaryCandles;
   const [compareTicker, setCompareTicker] = useState('');
   const [replaceTarget, setReplaceTarget] = useState<string | null>(null);
   const [focusSwitching, setFocusSwitching] = useState(false);
@@ -2223,9 +2229,9 @@ function EtfAnalysisSections({
             </View>
           ) : (
             <ComparisonChart
-              primaryCandles={primaryCandles}
+              primaryCandles={chartPrimaryCandles}
               primarySymbol={symbol ?? ''}
-              compCandles={compCandles.length > 0 ? compCandles : undefined}
+              compCandles={hasSharedComparisonHistory ? sharedComparisonCandles.comparison : undefined}
               compSymbol={compSymbol || undefined}
               width={chartWidth}
               height={240}
@@ -2234,7 +2240,9 @@ function EtfAnalysisSections({
         </View>
         {!primaryLoading && !primaryError && primaryCandles.length > 1 && (
           <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 15, paddingHorizontal: 16, paddingBottom: 10 }}>
-            Dated provider observations: {primaryCandles[0]?.date ?? 'date unavailable'} to {primaryCandles[primaryCandles.length - 1]?.date ?? 'date unavailable'}. Calendar gaps are not filled or interpolated.
+            {hasSharedComparisonHistory
+              ? `Comparison chart uses ${sharedComparisonCandles.dates.length} dates reported by both funds: ${sharedComparisonCandles.dates[0]} to ${sharedComparisonCandles.dates[sharedComparisonCandles.dates.length - 1]}. Missing dates are not filled or interpolated.`
+              : `Dated provider observations: ${primaryCandles[0]?.date ?? 'date unavailable'} to ${primaryCandles[primaryCandles.length - 1]?.date ?? 'date unavailable'}. Calendar gaps are not filled or interpolated.`}
           </Text>
         )}
         <View style={[chartCardStyles.compRow, { borderTopColor: colors.border }]}>
@@ -2270,9 +2278,11 @@ function EtfAnalysisSections({
           <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, paddingHorizontal: 16, paddingVertical: 9 }}>
             {compError
               ? `${compSymbol} price history is unavailable. The ETF chart remains limited to ${symbol.toUpperCase()}.`
-              : compCandles.length < 2 && !compLoading
-                ? `${compSymbol} does not have enough dated observations for this period.`
-                : `Comparison uses provider-reported daily prices for ${compSymbol}; gaps are not filled with estimates.`}
+              : compLoading
+                ? `Loading ${compSymbol} price history…`
+                : sharedComparisonCandles.dates.length < 2
+                  ? `Price comparison unavailable: only ${sharedComparisonCandles.dates.length} shared reported date${sharedComparisonCandles.dates.length === 1 ? '' : 's'}; at least two are needed.`
+                  : `Comparison uses ${sharedComparisonCandles.dates.length} dates reported by both funds; gaps are not filled with estimates.`}
           </Text>
         )}
         {!!compSymbol && compError && (

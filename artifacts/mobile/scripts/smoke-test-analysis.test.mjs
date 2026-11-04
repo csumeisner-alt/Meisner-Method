@@ -237,6 +237,14 @@ test("ETF performance history uses real candles, supported ranges, and honest re
   assert.match(etfAnalysisSource, /compChartRetry\]/);
 });
 
+test("ETF comparison chart plots shared reported dates and explains insufficient overlap", () => {
+  assert.match(etfAnalysisSource, /alignCandleSeriesOnSharedDates\(primaryCandles, compCandles\)/);
+  assert.match(etfAnalysisSource, /primaryCandles=\{chartPrimaryCandles\}/);
+  assert.match(etfAnalysisSource, /compCandles=\{hasSharedComparisonHistory \? sharedComparisonCandles\.comparison : undefined\}/);
+  assert.match(etfAnalysisSource, /Price comparison unavailable: only \$\{sharedComparisonCandles\.dates\.length\} shared reported date/);
+  assert.match(etfAnalysisSource, /Missing dates are not filled or interpolated/);
+});
+
 test("ETF AI commentary stays separate from the research score and grounded in supplied facts", () => {
   assert.match(etfAnalysisSource, /SectionCard collapsible title="AI COMMENTARY"/);
   assert.match(
