@@ -239,7 +239,6 @@ function EtfScoreGauge({ score }: { score: number }) {
     </Animated.View>
   );
 }
-
 function EtfCardEntrance({ children }: { children: React.ReactNode }) {
   const entrance = useRef(new Animated.Value(0)).current;
   useEffect(() => {

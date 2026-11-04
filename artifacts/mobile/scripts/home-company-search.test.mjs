@@ -78,6 +78,66 @@ test("rapid home search edits reject a delayed tap from an earlier query", () =>
   );
 });
 
+test("commodity search rejects stale results and accepts the settled query", () => {
+  const selectionHandler = homeScreen.match(
+    /const selectCommodity = \(commodity: HeatMapInstrumentSuggestion, selectionQuery: string \| null\) => \{([\s\S]*?)\n  \};/,
+  )?.[1];
+  assert.ok(selectionHandler, "the commodity selection handler should remain identifiable");
+  assert.match(
+    selectionHandler,
+    /isStockSearchSelectionCurrent\(\{\s*input: latestSearchInputRef\.current,\s*settledQuery: latestSettledQueryRef\.current,\s*resultQuery: latestCommodityResultQueryRef\.current,\s*selectionQuery,\s*isPlaceholderData: latestCommodityPlaceholderDataRef\.current/,
+    "commodity selection must validate against the latest commodity query and placeholder state",
+  );
+
+  const searchState = {
+    input: "Gold",
+    settledQuery: "Gold",
+    resultQuery: "Gold",
+    isPlaceholderData: false,
+  };
+  const delayedCommodityResult = {
+    name: "Gold",
+    symbol: "GC=F",
+    query: "Gold",
+  };
+
+  // Typing a new commodity query immediately invalidates the old row,
+  // before the debounce or the new network response has settled.
+  searchState.input = "Copper";
+  assert.equal(
+    isStockSearchSelectionCurrent({
+      ...searchState,
+      selectionQuery: delayedCommodityResult.query,
+    }),
+    false,
+    "a delayed result from the earlier commodity query must not be selectable",
+  );
+
+  searchState.settledQuery = "Copper";
+  searchState.resultQuery = "Copper";
+  const currentCommodityResult = {
+    name: "Copper",
+    symbol: "HG=F",
+    query: "Copper",
+  };
+  assert.equal(
+    isStockSearchSelectionCurrent({
+      ...searchState,
+      selectionQuery: delayedCommodityResult.query,
+    }),
+    false,
+    "the earlier commodity row must stay invalid after the new query settles",
+  );
+  assert.equal(
+    isStockSearchSelectionCurrent({
+      ...searchState,
+      selectionQuery: currentCommodityResult.query,
+    }),
+    true,
+    "a current commodity result should remain selectable once its matching query settles",
+  );
+});
+
 test("home search submits a raw ticker after lookup finishes without blocking company names", () => {
   const rawTickerGate = homeScreen.match(
     /const allowRawTicker = ([\s\S]*?);/,
