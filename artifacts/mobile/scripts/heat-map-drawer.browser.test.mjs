@@ -3189,6 +3189,29 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       "Tapping a commodity tile should open its detail card.",
     );
     await assertWatchlistAddIsUnique(browser, "GC=F");
+
+    await browser.send("Page.reload", { ignoreCache: true });
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapWatchlistSymbols?.includes("IVV") && window.__heatMapWatchlistSymbols?.includes("GC=F")`,
+      "Reopening the app should restore the ETF and commodity from local storage.",
+    );
+    const restoredWatchlist = await browser.evaluate("window.__heatMapWatchlistSymbols");
+    assert.equal(
+      restoredWatchlist.filter((symbol) => symbol === "IVV").length,
+      1,
+      "The ETF should remain in the watchlist exactly once after reopening the app.",
+    );
+    assert.equal(
+      restoredWatchlist.filter((symbol) => symbol === "GC=F").length,
+      1,
+      "The commodity should remain in the watchlist exactly once after reopening the app.",
+    );
+    assert.equal(
+      new Set(restoredWatchlist).size,
+      restoredWatchlist.length,
+      "Reopening the app should not restore duplicate watchlist symbols.",
+    );
   } finally {
     browser?.close();
     chrome.kill("SIGTERM");
