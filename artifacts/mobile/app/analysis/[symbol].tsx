@@ -784,7 +784,6 @@ function EtfAnalysisSections({
 }) {
   const { apiFetch } = useApi();
   const router = useRouter();
-  const [returnBasis, setReturnBasis] = useState<'price' | 'total' | null>(null);
   const sharedComparisonCandles = alignCandleSeriesOnSharedDates(primaryCandles, compCandles);
   const hasSharedComparisonHistory = sharedComparisonCandles.dates.length >= 2;
   const sharedAdjustedReturns = alignProviderAdjustedReturns(
@@ -795,31 +794,9 @@ function EtfAnalysisSections({
   );
   const hasSharedAdjustedReturns = hasSharedComparisonHistory && sharedAdjustedReturns.available;
   const primaryStandaloneAdjustedCandles = addProviderAdjustedReturns(primaryCandles, primaryAdjustedReturnSeries);
-  const totalReturnAvailable = hasSharedComparisonHistory
+  const chartUsesAdjustedReturns = hasSharedComparisonHistory
     ? hasSharedAdjustedReturns
     : !compSymbol && primaryStandaloneAdjustedCandles != null;
-  const chartUsesAdjustedReturns = (returnBasis ?? (totalReturnAvailable ? 'total' : 'price')) === 'total'
-    && totalReturnAvailable;
-  const chartReturnBasis = chartUsesAdjustedReturns ? 'total' : 'price';
-  const unavailableAdjustedFunds = [
-    {
-      ticker: symbol.toUpperCase(),
-      series: primaryAdjustedReturnSeries,
-    },
-    ...(compSymbol ? [{
-      ticker: compSymbol,
-      series: compAdjustedReturnSeries,
-    }] : []),
-  ].filter(({ series }) => series.status !== 'available');
-  const totalReturnUnavailableReason = !compSymbol
-    ? primaryAdjustedReturnSeries.reason ?? 'The provider-adjusted series does not cover every reported date.'
-    : sharedComparisonCandles.dates.length < 2
-      ? 'At least two dates must be reported by both funds before returns can be compared.'
-      : unavailableAdjustedFunds.length > 0
-        ? `Provider-adjusted history is incomplete for ${unavailableAdjustedFunds
-            .map(({ ticker, series }) => `${ticker}${series.reason ? ` (${series.reason})` : ''}`)
-            .join(' and ')}.`
-        : 'Provider-adjusted history does not cover every shared reported date.';
   const chartPrimaryCandles = hasSharedComparisonHistory
     ? chartUsesAdjustedReturns ? sharedAdjustedReturns.primary : sharedComparisonCandles.primary
     : chartUsesAdjustedReturns ? primaryStandaloneAdjustedCandles! : primaryCandles;
@@ -2669,10 +2646,6 @@ function EtfAnalysisSections({
               compCandles={chartComparisonCandles}
               compSymbol={compSymbol || undefined}
               adjustedReturnMode={chartUsesAdjustedReturns}
-              returnBasis={chartReturnBasis}
-              totalReturnAvailable={totalReturnAvailable}
-              totalReturnUnavailableReason={totalReturnUnavailableReason}
-              onReturnBasisChange={setReturnBasis}
               width={chartWidth}
               height={240}
             />
@@ -2693,14 +2666,10 @@ function EtfAnalysisSections({
                 : `${symbol.toUpperCase()} Close price return ${primaryPeriodReturn >= 0 ? '+' : ''}${primaryPeriodReturn.toFixed(2)}% vs ${compSymbol} ${comparisonPeriodReturn >= 0 ? '+' : ''}${comparisonPeriodReturn.toFixed(2)}% · price-return spread ${(primaryPeriodReturn - comparisonPeriodReturn) >= 0 ? '+' : ''}${(primaryPeriodReturn - comparisonPeriodReturn).toFixed(2)} percentage points.`
               : !compSymbol && chartUsesAdjustedReturns && primaryPeriodReturn != null
                 ? `${symbol.toUpperCase()} dividend-adjusted total return ${primaryPeriodReturn >= 0 ? '+' : ''}${primaryPeriodReturn.toFixed(2)}% for the selected range.`
-                : !compSymbol && primaryPeriodReturn != null
-                  ? `${symbol.toUpperCase()} Close price return ${primaryPeriodReturn >= 0 ? '+' : ''}${primaryPeriodReturn.toFixed(2)}% for the selected range.`
                 : `Selected range: ${primaryCandles[0]?.date ?? 'date unavailable'} to ${primaryCandles[primaryCandles.length - 1]?.date ?? 'date unavailable'}.`}
             {' '}{chartUsesAdjustedReturns
               ? 'Uses the provider Adj Close series with complete reported distribution history; the provider calculation is not independently audited.'
-              : totalReturnAvailable
-                ? 'The chart uses provider Close changes. Provider-adjusted total return is also available; choose Total return to view it.'
-                : `Dividend-adjusted total return is unavailable${compSymbol ? ` for ${symbol.toUpperCase()} and ${compSymbol}` : ''}: ${totalReturnUnavailableReason} The chart uses provider Close changes; no total-return estimate is shown.`}
+              : `Dividend-adjusted total return is unavailable${compSymbol ? ` for ${symbol.toUpperCase()} or ${compSymbol}` : ''}${primaryAdjustedReturnSeries.reason ? `: ${primaryAdjustedReturnSeries.reason}` : ''}. The chart uses provider Close changes; no total-return estimate is shown.`}
           </Text>
         )}
         {symbol.toUpperCase() === 'VOO' && (
