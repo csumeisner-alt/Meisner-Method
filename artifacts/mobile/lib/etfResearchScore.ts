@@ -33,6 +33,220 @@ export interface EtfScoreComponent {
   };
 }
 
+export type EtfScoreComponentId = EtfScoreComponent["id"];
+
+export interface EtfScoreSnapshot {
+  version: 1;
+  symbol: string;
+  recordedAt: string;
+  score: number;
+  componentIds: EtfScoreComponentId[];
+  componentScores: Partial<Record<EtfScoreComponentId, number>>;
+  sourceContexts: Partial<Record<EtfScoreComponentId, string>>;
+  inputAsOf: Partial<Record<EtfScoreComponentId, string[]>>;
+}
+
+export interface EtfScoreSnapshotInput {
+  symbol: string;
+  score: number | null;
+  components: readonly EtfScoreComponent[];
+  sourceContexts: Partial<Record<EtfScoreComponentId, string>>;
+  inputAsOf: Partial<Record<EtfScoreComponentId, string[]>>;
+  recordedAt: string;
+}
+
+export type EtfScoreChangeResult =
+  | { status: "available"; previousScore: number; change: number; previousRecordedAt: string }
+  | { status: "first-analysis" }
+  | { status: "stale-inputs" }
+  | { status: "stale-history" }
+  | { status: "not-comparable" }
+  | { status: "unavailable" };
+
+export const ETF_SCORE_INPUT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+const ETF_SCORE_HISTORY_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
+
+const scoreComponentIds: readonly EtfScoreComponentId[] = [
+  "cost",
+  "tracking",
+  "diversification",
+  "liquidity",
+  "risk",
+];
+
+function isFreshTimestamp(value: string | undefined, referenceTime: number): boolean {
+  if (typeof value !== "string" || !value.trim()) return false;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp)
+    && timestamp <= referenceTime
+    && referenceTime - timestamp <= ETF_SCORE_INPUT_MAX_AGE_MS;
+}
+
+function snapshotHasFreshInputs(snapshot: EtfScoreSnapshot, referenceTime: number): boolean {
+  return snapshot.componentIds.every((id) => {
+    const dates = snapshot.inputAsOf[id];
+    return Array.isArray(dates) && dates.length > 0
+      && dates.every((date) => isFreshTimestamp(date, referenceTime));
+  });
+}
+
+function sameSnapshotAnalysis(a: EtfScoreSnapshot, b: EtfScoreSnapshot): boolean {
+  return a.symbol.toUpperCase() === b.symbol.toUpperCase()
+    && a.score === b.score
+    && JSON.stringify([...a.componentIds].sort()) === JSON.stringify([...b.componentIds].sort())
+    && JSON.stringify(a.componentScores) === JSON.stringify(b.componentScores)
+    && JSON.stringify(a.sourceContexts) === JSON.stringify(b.sourceContexts)
+    && JSON.stringify(a.inputAsOf) === JSON.stringify(b.inputAsOf);
+}
+
+function hasValidSnapshotShape(value: unknown): value is EtfScoreSnapshot {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<EtfScoreSnapshot>;
+  return candidate.version === 1
+    && typeof candidate.symbol === "string"
+    && candidate.symbol.length > 0
+    && typeof candidate.recordedAt === "string"
+    && Number.isFinite(Date.parse(candidate.recordedAt))
+    && typeof candidate.score === "number"
+    && Number.isFinite(candidate.score)
+    && candidate.score >= 0
+    && candidate.score <= 100
+    && Array.isArray(candidate.componentIds)
+    && candidate.componentIds.length >= 3
+    && candidate.componentIds.every((id) => scoreComponentIds.includes(id))
+    && new Set(candidate.componentIds).size === candidate.componentIds.length
+    && candidate.componentScores != null
+    && candidate.componentIds.every((id) =>
+      typeof candidate.componentScores?.[id] === "number"
+      && Number.isFinite(candidate.componentScores[id])
+      && candidate.componentScores[id]! >= 0
+      && candidate.componentScores[id]! <= 100,
+    )
+    && candidate.sourceContexts != null
+    && candidate.componentIds.every((id) =>
+      typeof candidate.sourceContexts?.[id] === "string" && Boolean(candidate.sourceContexts[id]?.trim()),
+    )
+    && candidate.inputAsOf != null;
+}
+
+export function createEtfScoreSnapshot(input: EtfScoreSnapshotInput): EtfScoreSnapshot | null {
+  const available = input.components.filter((component) => component.score !== null);
+  const componentIds = available.map((component) => component.id);
+  const recordedAt = Date.parse(input.recordedAt);
+  if (
+    input.score === null
+    || !Number.isFinite(input.score)
+    || input.score < 0
+    || input.score > 100
+    || !input.symbol.trim()
+    || componentIds.length < 3
+    || !Number.isFinite(recordedAt)
+  ) {
+    return null;
+  }
+
+  const sourceContexts: Partial<Record<EtfScoreComponentId, string>> = {};
+  const componentScores: Partial<Record<EtfScoreComponentId, number>> = {};
+  const inputAsOf: Partial<Record<EtfScoreComponentId, string[]>> = {};
+  for (const id of componentIds) {
+    const context = input.sourceContexts[id]?.trim();
+    const dates = input.inputAsOf[id];
+    if (!context || !dates?.length || !dates.every((date) => isFreshTimestamp(date, recordedAt))) {
+      return null;
+    }
+    sourceContexts[id] = context;
+    componentScores[id] = available.find((component) => component.id === id)!.score!;
+    inputAsOf[id] = [...dates];
+  }
+
+  return {
+    version: 1,
+    symbol: input.symbol.trim().toUpperCase(),
+    recordedAt: new Date(recordedAt).toISOString(),
+    score: Math.round(input.score),
+    componentIds,
+    componentScores,
+    sourceContexts,
+    inputAsOf,
+  };
+}
+
+export function parseEtfScoreSnapshots(value: string | null): EtfScoreSnapshot[] {
+  if (!value) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(hasValidSnapshotShape);
+  } catch {
+    return [];
+  }
+}
+
+export function upsertEtfScoreSnapshot(
+  history: readonly EtfScoreSnapshot[],
+  snapshot: EtfScoreSnapshot,
+  limit = 200,
+): EtfScoreSnapshot[] {
+  const next = [...history];
+  if (!next.some((existing) => sameSnapshotAnalysis(existing, snapshot))) {
+    next.push(snapshot);
+  }
+  return next
+    .sort((a, b) => Date.parse(b.recordedAt) - Date.parse(a.recordedAt))
+    .slice(0, Math.max(1, limit));
+}
+
+export function findComparableEtfScoreChange(
+  current: EtfScoreSnapshot | null,
+  history: readonly EtfScoreSnapshot[],
+): EtfScoreChangeResult {
+  if (!current) return { status: "stale-inputs" };
+  const currentTime = Date.parse(current.recordedAt);
+  if (!Number.isFinite(currentTime) || !snapshotHasFreshInputs(current, currentTime)) {
+    return { status: "stale-inputs" };
+  }
+
+  const sameSymbol = history.filter((snapshot) =>
+    snapshot.symbol.toUpperCase() === current.symbol.toUpperCase()
+    && snapshot.recordedAt !== current.recordedAt,
+  );
+  if (!sameSymbol.some((snapshot) => !sameSnapshotAnalysis(snapshot, current))) {
+    return { status: "first-analysis" };
+  }
+
+  const priorSnapshots = sameSymbol
+    .filter((snapshot) => {
+      const time = Date.parse(snapshot.recordedAt);
+      return Number.isFinite(time)
+        && time < currentTime
+        && currentTime - time <= ETF_SCORE_HISTORY_MAX_AGE_MS
+        && !sameSnapshotAnalysis(snapshot, current)
+        && snapshotHasFreshInputs(snapshot, time);
+    })
+    .sort((a, b) => Date.parse(b.recordedAt) - Date.parse(a.recordedAt));
+
+  const currentIds = [...current.componentIds].sort();
+  const comparable = priorSnapshots.find((snapshot) =>
+    JSON.stringify([...snapshot.componentIds].sort()) === JSON.stringify(currentIds)
+    && currentIds.every((id) => snapshot.sourceContexts[id] === current.sourceContexts[id]),
+  );
+  if (comparable) {
+    return {
+      status: "available",
+      previousScore: comparable.score,
+      change: current.score - comparable.score,
+      previousRecordedAt: comparable.recordedAt,
+    };
+  }
+
+  if (priorSnapshots.length) return { status: "not-comparable" };
+  return sameSymbol.some((snapshot) =>
+    Date.parse(snapshot.recordedAt) < currentTime && !sameSnapshotAnalysis(snapshot, current),
+  )
+    ? { status: "stale-history" }
+    : { status: "not-comparable" };
+}
+
 const clamp = (value: number) => Math.min(100, Math.max(0, value));
 const validNonNegative = (value: number | null | undefined): value is number =>
   typeof value === "number" && Number.isFinite(value) && value >= 0;

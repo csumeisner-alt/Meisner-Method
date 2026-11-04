@@ -145,7 +145,8 @@ test("ETF analysis leads with a concise overview and preserves score limits", ()
   assert.match(etfAnalysisSource, /calculateEtfResearchScore\(\{/);
   assert.match(etfAnalysisSource, /MEISNER ETF RESEARCH SCORE/);
   assert.match(etfAnalysisSource, /ETF SCORE CLASSIFICATION/);
-  assert.match(etfAnalysisSource, /Historical score change is unavailable because prior score snapshots are not stored/);
+  assert.match(etfAnalysisSource, /testID="etf-score-history"/);
+  assert.match(etfAnalysisSource, /same factors and data sources/);
   assert.match(etfAnalysisSource, /normalizedWeight/);
   assert.match(etfAnalysisSource, /EtfScoreGauge/);
   assert.match(etfAnalysisSource, /At a glance/);

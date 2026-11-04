@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calculateEtfResearchScore } from "../etfResearchScore.ts";
+import {
+  calculateEtfResearchScore,
+  createEtfScoreSnapshot,
+  findComparableEtfScoreChange,
+} from "../etfResearchScore.ts";
 
 const completeInput = {
   expenseRatio: 0.0005,
@@ -424,4 +428,149 @@ test("available components are reweighted and fewer than three keeps the score u
   });
   assert.equal(twoComponents.availableComponents, 2);
   assert.equal(twoComponents.score, null);
+});
+
+test("ETF score history starts without showing a previous score", () => {
+  const result = calculateEtfResearchScore(completeInput);
+  const current = createEtfScoreSnapshot({
+    symbol: "SPY",
+    score: result.score,
+    components: result.components,
+    sourceContexts: Object.fromEntries(
+      result.components.filter((component) => component.score !== null).map((component) => [component.id, `provider:${component.id}`]),
+    ),
+    inputAsOf: Object.fromEntries(
+      result.components.filter((component) => component.score !== null).map((component) => [component.id, ["2026-10-29T12:00:00Z"]]),
+    ),
+    recordedAt: "2026-10-30T12:00:00Z",
+  });
+
+  assert.equal(findComparableEtfScoreChange(current, []).status, "first-analysis");
+  assert.equal(
+    findComparableEtfScoreChange(current, current ? [current] : []).status,
+    "first-analysis",
+    "repeated rendering of the exact same analysis must not create a false zero-point delta",
+  );
+});
+
+test("ETF score history rejects stale source inputs", () => {
+  const result = calculateEtfResearchScore(completeInput);
+  const stale = createEtfScoreSnapshot({
+    symbol: "SPY",
+    score: result.score,
+    components: result.components,
+    sourceContexts: Object.fromEntries(
+      result.components.filter((component) => component.score !== null).map((component) => [component.id, `provider:${component.id}`]),
+    ),
+    inputAsOf: Object.fromEntries(
+      result.components.filter((component) => component.score !== null).map((component) => [component.id, ["2026-09-01T12:00:00Z"]]),
+    ),
+    recordedAt: "2026-10-30T12:00:00Z",
+  });
+
+  assert.equal(stale, null);
+  assert.equal(findComparableEtfScoreChange(stale, []).status, "stale-inputs");
+});
+
+test("ETF score history does not compare changed component coverage", () => {
+  const previousResult = calculateEtfResearchScore(completeInput);
+  const currentResult = calculateEtfResearchScore({
+    ...completeInput,
+    annualizedVolatility: null,
+    maxDrawdown: null,
+  });
+  const snapshotFor = (
+    result: ReturnType<typeof calculateEtfResearchScore>,
+    recordedAt: string,
+    asOf: string,
+  ) => createEtfScoreSnapshot({
+    symbol: "SPY",
+    score: result.score,
+    components: result.components,
+    sourceContexts: Object.fromEntries(
+      result.components.filter((component) => component.score !== null).map((component) => [component.id, `provider:${component.id}`]),
+    ),
+    inputAsOf: Object.fromEntries(
+      result.components.filter((component) => component.score !== null).map((component) => [component.id, [asOf]]),
+    ),
+    recordedAt,
+  });
+  const previous = snapshotFor(previousResult, "2026-10-20T12:00:00Z", "2026-10-19T12:00:00Z");
+  const current = snapshotFor(currentResult, "2026-10-30T12:00:00Z", "2026-10-29T12:00:00Z");
+
+  assert.equal(findComparableEtfScoreChange(current, previous ? [previous] : []).status, "not-comparable");
+});
+
+test("ETF score history shows a delta for fresh matching coverage and sources", () => {
+  const previousResult = calculateEtfResearchScore(completeInput);
+  const currentResult = calculateEtfResearchScore({
+    ...completeInput,
+    expenseRatio: 0.0008,
+  });
+  const snapshotFor = (
+    result: ReturnType<typeof calculateEtfResearchScore>,
+    recordedAt: string,
+    asOf: string,
+  ) => createEtfScoreSnapshot({
+    symbol: "SPY",
+    score: result.score,
+    components: result.components,
+    sourceContexts: Object.fromEntries(
+      result.components.filter((component) => component.score !== null).map((component) => [component.id, `provider:${component.id}`]),
+    ),
+    inputAsOf: Object.fromEntries(
+      result.components.filter((component) => component.score !== null).map((component) => [component.id, [asOf]]),
+    ),
+    recordedAt,
+  });
+  const previous = snapshotFor(previousResult, "2026-10-20T12:00:00Z", "2026-10-19T12:00:00Z");
+  const current = snapshotFor(currentResult, "2026-10-30T12:00:00Z", "2026-10-29T12:00:00Z");
+  const change = findComparableEtfScoreChange(current, previous ? [previous] : []);
+
+  assert.equal(change.status, "available");
+  if (change.status === "available") {
+    assert.equal(change.previousScore, previousResult.score);
+    assert.equal(change.change, (currentResult.score ?? 0) - (previousResult.score ?? 0));
+    assert.equal(change.previousRecordedAt, "2026-10-20T12:00:00.000Z");
+  }
+});
+
+test("ETF score history keeps different data sources from appearing comparable", () => {
+  const result = calculateEtfResearchScore(completeInput);
+  const snapshotFor = (recordedAt: string, asOf: string, source: string) => createEtfScoreSnapshot({
+    symbol: "SPY",
+    score: result.score,
+    components: result.components,
+    sourceContexts: Object.fromEntries(
+      result.components.filter((component) => component.score !== null).map((component) => [component.id, `${source}:${component.id}`]),
+    ),
+    inputAsOf: Object.fromEntries(
+      result.components.filter((component) => component.score !== null).map((component) => [component.id, [asOf]]),
+    ),
+    recordedAt,
+  });
+  const previous = snapshotFor("2026-10-20T12:00:00Z", "2026-10-19T12:00:00Z", "provider-a");
+  const current = snapshotFor("2026-10-30T12:00:00Z", "2026-10-29T12:00:00Z", "provider-b");
+
+  assert.equal(findComparableEtfScoreChange(current, previous ? [previous] : []).status, "not-comparable");
+});
+
+test("ETF score history does not compare a stale historical snapshot", () => {
+  const result = calculateEtfResearchScore(completeInput);
+  const snapshotFor = (recordedAt: string, asOf: string) => createEtfScoreSnapshot({
+    symbol: "SPY",
+    score: result.score,
+    components: result.components,
+    sourceContexts: Object.fromEntries(
+      result.components.filter((component) => component.score !== null).map((component) => [component.id, `provider:${component.id}`]),
+    ),
+    inputAsOf: Object.fromEntries(
+      result.components.filter((component) => component.score !== null).map((component) => [component.id, [asOf]]),
+    ),
+    recordedAt,
+  });
+  const previous = snapshotFor("2024-10-20T12:00:00Z", "2024-10-19T12:00:00Z");
+  const current = snapshotFor("2026-10-30T12:00:00Z", "2026-10-29T12:00:00Z");
+
+  assert.equal(findComparableEtfScoreChange(current, previous ? [previous] : []).status, "stale-history");
 });

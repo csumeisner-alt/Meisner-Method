@@ -66,7 +66,17 @@ import {
   shareEtfOverlapSummary,
   upsertSavedEtfHoldingSnapshot,
 } from '@/lib/heatMapDetail';
-import { calculateEtfResearchScore } from '@/lib/etfResearchScore';
+import {
+  calculateEtfResearchScore,
+  createEtfScoreSnapshot,
+  findComparableEtfScoreChange,
+  parseEtfScoreSnapshots,
+  upsertEtfScoreSnapshot,
+} from '@/lib/etfResearchScore';
+import type {
+  EtfScoreChangeResult,
+  EtfScoreComponentId,
+} from '@/lib/etfResearchScore';
 import type { HeatMapEtfHoldingSnapshot } from '@/lib/heatMapDetail';
 import {
   calculateEtfScenarioBreakdown,
@@ -96,6 +106,7 @@ import {
 const PINNED_COMP_KEY = '@stocksense/pinned_comp_symbol';
 const ETF_COMPARISON_KEY = '@stocksense/etf_comparison_symbols_v1';
 const ETF_HOLDING_SNAPSHOTS_KEY = '@stocksense/etf_holding_snapshots_v1';
+const ETF_SCORE_SNAPSHOTS_KEY = '@stocksense/etf_score_snapshots_v1';
 const ETF_CONTRIBUTION_CADENCE_KEY = '@stocksense/etf_contribution_cadence_v1';
 const ETF_FEE_AMOUNT_PRESETS = [
   { amount: 1_000, label: '$1,000' },
@@ -896,6 +907,105 @@ function EtfAnalysisSections({
     annualizedVolatility: fund.annualizedVolatility,
     maxDrawdown: fund.maxDrawdown,
   });
+  const scoreSourceContexts: Partial<Record<EtfScoreComponentId, string>> = {};
+  const scoreInputAsOf: Partial<Record<EtfScoreComponentId, string[]>> = {};
+  const scoredComponentIds = new Set(
+    profileScore.components.filter((component) => component.score !== null).map((component) => component.id),
+  );
+  if (scoredComponentIds.has('cost')) {
+    scoreSourceContexts.cost = `${fund.provider}|${fund.peerExpenseComparison?.source ?? 'unknown'}|${fund.peerExpenseComparison?.category ?? fund.fundCategory ?? 'unknown'}`;
+    if (fund.peerExpenseComparison) scoreInputAsOf.cost = [fund.peerExpenseComparison.asOf];
+  }
+  if (scoredComponentIds.has('tracking')) {
+    scoreSourceContexts.tracking = `${fund.benchmark?.symbol ?? 'unknown'}|${fund.benchmark?.source ?? 'unknown'}|${fund.trackingComparison?.source ?? 'unknown'}`;
+    if (fund.trackingComparison && fund.benchmark) {
+      scoreInputAsOf.tracking = [fund.trackingComparison.asOf, fund.benchmark.asOf];
+    }
+  }
+  if (scoredComponentIds.has('diversification')) {
+    scoreSourceContexts.diversification = `${fund.provider}|reported-sector-weights-v1`;
+    scoreInputAsOf.diversification = [fund.sectorWeightsRetrievedAt];
+  }
+  if (scoredComponentIds.has('liquidity')) {
+    const hasFundAssets = typeof fund.totalAssets === 'number' && Number.isFinite(fund.totalAssets) && fund.totalAssets > 0;
+    const usesPeerAssets = hasFundAssets
+      && typeof fund.peerAssetSizeComparison?.categoryAverageTotalAssets === 'number'
+      && Number.isFinite(fund.peerAssetSizeComparison.categoryAverageTotalAssets)
+      && fund.peerAssetSizeComparison.categoryAverageTotalAssets > 0;
+    scoreSourceContexts.liquidity = [
+      fund.provider,
+      `volume:${typeof fund.averageVolume === 'number' && fund.averageVolume > 0 ? 'available' : 'unavailable'}`,
+      `assets:${hasFundAssets ? 'available' : 'unavailable'}`,
+      `asset-basis:${usesPeerAssets ? `${fund.peerAssetSizeComparison?.source}|${fund.peerAssetSizeComparison?.category}` : 'fixed-bands'}`,
+    ].join('|');
+    scoreInputAsOf.liquidity = [
+      fund.asOf,
+      ...(usesPeerAssets && fund.peerAssetSizeComparison ? [fund.peerAssetSizeComparison.asOf] : []),
+    ];
+  }
+  if (scoredComponentIds.has('risk')) {
+    scoreSourceContexts.risk = `fixed-risk-bands-v1|volatility:${fund.annualizedVolatility == null ? 'unavailable' : 'available'}|drawdown:${fund.maxDrawdown == null ? 'unavailable' : 'available'}`;
+    scoreInputAsOf.risk = [fund.asOf];
+  }
+  const scoreSnapshotSignature = JSON.stringify({
+    symbol: symbol.toUpperCase(),
+    score: profileScore.score,
+    componentScores: profileScore.components.map(({ id, score }) => [id, score]),
+    sourceContexts: scoreSourceContexts,
+    inputAsOf: scoreInputAsOf,
+  });
+  const [scoreChangeResult, setScoreChangeResult] = useState<EtfScoreChangeResult | null>(null);
+  const [scoreHistoryReady, setScoreHistoryReady] = useState(false);
+  const scoreSnapshotWriteQueue = useRef<Promise<void>>(Promise.resolve());
+  useEffect(() => {
+    let cancelled = false;
+    setScoreHistoryReady(false);
+    const saveAndCompareScoreHistory = async () => {
+      try {
+        const history = parseEtfScoreSnapshots(await AsyncStorage.getItem(ETF_SCORE_SNAPSHOTS_KEY));
+        if (cancelled) return;
+        const now = new Date().toISOString();
+        const snapshot = createEtfScoreSnapshot({
+          symbol,
+          score: profileScore.score,
+          components: profileScore.components,
+          sourceContexts: scoreSourceContexts,
+          inputAsOf: scoreInputAsOf,
+          recordedAt: now,
+        });
+        const change = profileScore.score == null
+          ? { status: 'unavailable' as const }
+          : findComparableEtfScoreChange(snapshot, history);
+        if (snapshot) {
+          const nextHistory = upsertEtfScoreSnapshot(history, snapshot);
+          if (nextHistory.length !== history.length || !history.some((item) =>
+            item.symbol.toUpperCase() === snapshot.symbol
+            && item.score === snapshot.score
+            && JSON.stringify(item.componentScores) === JSON.stringify(snapshot.componentScores)
+            && JSON.stringify(item.sourceContexts) === JSON.stringify(snapshot.sourceContexts)
+            && JSON.stringify(item.inputAsOf) === JSON.stringify(snapshot.inputAsOf),
+          )) {
+            await AsyncStorage.setItem(ETF_SCORE_SNAPSHOTS_KEY, JSON.stringify(nextHistory));
+          }
+        }
+        if (!cancelled) {
+          setScoreChangeResult(change);
+          setScoreHistoryReady(true);
+        }
+      } catch {
+        if (!cancelled) {
+          setScoreChangeResult({ status: 'unavailable' });
+          setScoreHistoryReady(true);
+        }
+      }
+    };
+    const queuedWrite = scoreSnapshotWriteQueue.current.then(saveAndCompareScoreHistory);
+    scoreSnapshotWriteQueue.current = queuedWrite.then(() => undefined, () => undefined);
+    return () => {
+      cancelled = true;
+    };
+  // The serialized score inputs intentionally prevent storage writes on unrelated renders.
+  }, [symbol, scoreSnapshotSignature]);
   const etfScoreColor = (score: number) =>
     score >= 65 ? colors.buyColor : score <= 40 ? colors.sellColor : colors.holdColor;
   const availableScoreWeight = profileScore.components
@@ -1633,6 +1743,37 @@ function EtfAnalysisSections({
           <Text style={{ color: colors.mutedForeground, fontSize: 13, marginTop: 4 }}>
             {profileScore.availableComponents} of 5 factors rated
           </Text>
+          <Text
+            testID="etf-score-history"
+            style={{
+              color: scoreChangeResult?.status === 'available' && scoreChangeResult.change > 0
+                ? colors.buyColor
+                : scoreChangeResult?.status === 'available' && scoreChangeResult.change < 0
+                  ? colors.sellColor
+                  : colors.mutedForeground,
+              fontSize: 12,
+              lineHeight: 17,
+              textAlign: 'center',
+              marginTop: 6,
+              paddingHorizontal: 12,
+            }}
+          >
+            {!scoreHistoryReady
+              ? 'Checking score history…'
+              : scoreChangeResult?.status === 'available'
+                ? `Previous score ${scoreChangeResult.previousScore}/100 on ${new Date(scoreChangeResult.previousRecordedAt).toLocaleDateString()} · Change ${scoreChangeResult.change > 0 ? '+' : ''}${scoreChangeResult.change} points`
+                : scoreChangeResult?.status === 'first-analysis'
+                  ? 'History starts with this analysis. A change will appear after another analysis with the same factors and data sources.'
+                  : scoreChangeResult?.status === 'stale-inputs'
+                    ? 'Score history is unavailable because one or more current inputs are older than 30 days or missing a source date.'
+                    : scoreChangeResult?.status === 'stale-history'
+                      ? 'No prior score shown because saved history is too old or its inputs were stale.'
+                      : scoreChangeResult?.status === 'not-comparable'
+                        ? 'No prior score shown because the available factors or their source context changed.'
+                        : profileScore.score == null
+                          ? 'A score change is unavailable until at least three factors can be rated.'
+                          : 'Score history could not be loaded or saved on this device.'}
+          </Text>
         </View>
         <View style={{ marginTop: 16, borderTopWidth: 1, borderColor: colors.border, paddingTop: 10 }}>
           {profileScore.components.map((component) => {
@@ -1658,7 +1799,7 @@ function EtfAnalysisSections({
           })}
         </View>
         <Text style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 18, marginTop: 10 }}>
-            Missing factors are excluded; the remaining published weights are normalized to 100%. Descriptive bands: strong 75+, constructive 60–74, mixed 41–59, limited 0–40. Historical score change is unavailable because prior score snapshots are not stored.
+            Missing factors are excluded; the remaining published weights are normalized to 100%. Descriptive bands: strong 75+, constructive 60–74, mixed 41–59, limited 0–40. Score changes are shown only for fresh analyses with matching factors and source context.
         </Text>
         <Text style={[recStyles.horizon, { color: colors.mutedForeground, marginTop: 12, marginBottom: 0 }]}>
           {fund.fundCategory ?? 'ETF'} · Rules-based profile, not a forecast or recommendation.
