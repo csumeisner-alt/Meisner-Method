@@ -28,6 +28,9 @@ import { useAchievements } from '@/contexts/AchievementsContext';
 import { useAnalyzeStock } from '@workspace/api-client-react';
 import type { StockAnalysis } from '@workspace/api-client-react';
 import { ComparisonChart } from '@/components/ComparisonChart';
+import Svg, { Circle, Defs, Stop, LinearGradient as SvgLinearGradient } from 'react-native-svg';
+import type { HeatMapQuote } from '@workspace/api-client-react';
+import { getGetMarketBreadthQueryKey, useGetMarketBreadth } from '@workspace/api-client-react';
 import type { Candle } from '@/components/StockChart';
 import { alignCandleSeriesOnSharedDates } from '@/lib/alignCandleSeries';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
@@ -191,6 +194,116 @@ function ScoreBar({ score, color }: { score: number; color: string }) {
         />
       </View>
       <Text style={[scoreStyles.label, { color }]}>{score}</Text>
+    </View>
+  );
+}
+
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+function EtfScoreGauge({ score }: { score: number }) {
+  const colors = useColors();
+  const progress = useRef(new Animated.Value(0)).current;
+  const size = 152;
+  const stroke = 10;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  useEffect(() => {
+    progress.setValue(0);
+    const animation = Animated.timing(progress, {
+      toValue: Math.max(0, Math.min(score, 100)) / 100,
+      duration: 950,
+      useNativeDriver: false,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [progress, score]);
+  const dashOffset = progress.interpolate({ inputRange: [0, 1], outputRange: [circumference, 0] });
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }} accessibilityLabel={`Research score ${score} out of 100`}>
+      <Svg width={size} height={size} style={{ position: 'absolute', transform: [{ rotate: '-90deg' }] }}>
+        <Defs>
+          <SvgLinearGradient id="etf-score-gold" x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0" stopColor={colors.primary} stopOpacity="0.58" />
+            <Stop offset="1" stopColor={colors.primary} stopOpacity="1" />
+          </SvgLinearGradient>
+        </Defs>
+        <Circle cx={size / 2} cy={size / 2} r={radius} stroke={colors.border} strokeWidth={stroke} fill="none" opacity={0.8} />
+        <AnimatedCircle cx={size / 2} cy={size / 2} r={radius} stroke="url(#etf-score-gold)" strokeWidth={stroke} fill="none" strokeLinecap="round" strokeDasharray={`${circumference} ${circumference}`} strokeDashoffset={dashOffset} />
+      </Svg>
+      <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 42, textShadowColor: `${colors.primary}55`, textShadowRadius: 10 }}>{score}</Text>
+      <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 12, marginTop: -2 }}>OUT OF 100</Text>
+    </View>
+  );
+}
+
+function EtfMarketIntelligence({ quotes, updatedAt }: { quotes: HeatMapQuote[]; updatedAt: number }) {
+  const colors = useColors();
+  const valid = quotes.filter((quote) => Number.isFinite(quote.price) && quote.price > 0
+    && Number.isFinite(quote.priceChangePercent));
+  const advancing = valid.filter((quote) => quote.priceChangePercent > 0).length;
+  const declining = valid.filter((quote) => quote.priceChangePercent < 0).length;
+  const breadthPct = valid.length ? advancing / valid.length * 100 : null;
+  const meanMove = valid.length
+    ? valid.reduce((sum, quote) => sum + quote.priceChangePercent, 0) / valid.length
+    : null;
+  const volatility = valid.flatMap((quote) => quote.annualizedVolatilityPercent == null
+    ? [] : [quote.annualizedVolatilityPercent]).sort((a, b) => a - b);
+  const medianVolatility = volatility.length
+    ? volatility[Math.floor(volatility.length / 2)] : null;
+  const strength = breadthPct == null ? null : Math.round(breadthPct);
+  const trend = meanMove == null ? 'Unavailable'
+    : meanMove > 0.15 ? 'Broadly rising' : meanMove < -0.15 ? 'Broadly falling' : 'Mixed / flat';
+  const risks = [
+    declining > advancing ? 'More tracked stocks are down than up.' : null,
+    medianVolatility != null && medianVolatility >= 30 ? 'Median realized volatility is elevated.' : null,
+    valid.length < 10 ? 'Limited valid quote coverage; interpret breadth cautiously.' : null,
+  ].filter((item): item is string => item !== null);
+  const meterColor = strength != null && strength >= 60 ? colors.buyColor
+    : strength != null && strength <= 40 ? colors.sellColor : colors.primary;
+  return (
+    <View testID="etf-market-intelligence" style={{ marginBottom: 14, borderRadius: 16, borderWidth: 1, borderColor: `${colors.primary}88`, backgroundColor: colors.card, overflow: 'hidden' }}>
+      <LinearGradient colors={[`${colors.primary}22`, 'transparent', `${colors.primary}08`]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ padding: 16 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+          <MaterialCommunityIcons name="pulse" size={21} color={colors.primary} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 12, letterSpacing: 1 }}>MEISNER MARKET INTELLIGENCE</Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 3 }}>U.S. equity breadth · {valid.length} valid quotes</Text>
+          </View>
+          <Text style={{ color: meterColor, fontFamily: 'Inter_700Bold', fontSize: 13 }}>{trend}</Text>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+          <View style={{ flex: 1, borderRadius: 12, padding: 12, backgroundColor: `${colors.background}99` }}>
+            <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Market strength</Text>
+            <Text style={{ color: meterColor, fontFamily: 'Inter_700Bold', fontSize: 26, marginTop: 3 }}>{strength == null ? '—' : `${strength}`}</Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>advancing share</Text>
+            <View style={{ height: 5, backgroundColor: colors.border, borderRadius: 5, overflow: 'hidden', marginTop: 8 }}>
+              <View style={{ height: '100%', width: `${strength ?? 0}%`, backgroundColor: meterColor }} />
+            </View>
+          </View>
+          <View style={{ flex: 1, borderRadius: 12, padding: 12, backgroundColor: `${colors.background}99`, justifyContent: 'center' }}>
+            <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Breadth · up / down</Text>
+            <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20, marginTop: 7 }}>{valid.length ? `${advancing} / ${declining}` : '—'}</Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 5 }}>Daily average {meanMove == null ? '—' : `${meanMove > 0 ? '+' : ''}${meanMove.toFixed(2)}%`}</Text>
+          </View>
+        </View>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 11 }}>
+          <Text style={{ color: colors.foreground, fontSize: 12, paddingVertical: 5, paddingHorizontal: 9, borderRadius: 20, backgroundColor: colors.background }}>
+            Momentum · {meanMove == null ? 'Unavailable' : meanMove > 0.15 ? 'Positive' : meanMove < -0.15 ? 'Negative' : 'Neutral'}
+          </Text>
+          <Text style={{ color: colors.foreground, fontSize: 12, paddingVertical: 5, paddingHorizontal: 9, borderRadius: 20, backgroundColor: colors.background }}>
+            Volatility · {medianVolatility == null ? 'Unavailable' : `${medianVolatility.toFixed(1)}% median annualized`}
+          </Text>
+        </View>
+        {risks.length > 0 && (
+          <View style={{ marginTop: 12 }}>
+            <Text style={{ color: colors.holdColor, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>RISKS TO WATCH</Text>
+            {risks.map((risk) => <Text key={risk} style={{ color: colors.mutedForeground, fontSize: 13, lineHeight: 19, marginTop: 4 }}>• {risk}</Text>)}
+          </View>
+        )}
+        <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 12 }}>
+          Market snapshot updated {Number.isFinite(updatedAt) ? new Date(updatedAt).toLocaleString() : 'at an unreported time'}. Daily breadth summarizes tracked U.S. stocks; it is context, not an ETF forecast.
+        </Text>
+      </LinearGradient>
     </View>
   );
 }
@@ -583,6 +696,9 @@ function EtfAnalysisSections({
   period,
   setPeriod,
   chartWidth,
+  marketQuotes,
+  marketUpdatedAt,
+  selectBenchmark,
 }: {
   fund: EtfAnalysisPayload;
   colors: ReturnType<typeof useColors>;
@@ -605,6 +721,9 @@ function EtfAnalysisSections({
   period: Period;
   setPeriod: (period: Period) => void;
   chartWidth: number;
+  marketQuotes: HeatMapQuote[];
+  marketUpdatedAt: number;
+  selectBenchmark: (ticker: string) => void;
 }) {
   const { apiFetch } = useApi();
   const router = useRouter();
@@ -613,10 +732,18 @@ function EtfAnalysisSections({
   const chartPrimaryCandles = hasSharedComparisonHistory
     ? sharedComparisonCandles.primary
     : primaryCandles;
+  const chartReturnPercent = (candles: Candle[]) => candles.length > 1 && candles[0]!.c > 0
+    ? (candles[candles.length - 1]!.c / candles[0]!.c - 1) * 100
+    : null;
+  const primaryPeriodReturn = chartReturnPercent(chartPrimaryCandles);
+  const comparisonPeriodReturn = hasSharedComparisonHistory
+    ? chartReturnPercent(sharedComparisonCandles.comparison)
+    : null;
   const [compareTicker, setCompareTicker] = useState('');
   const [replaceTarget, setReplaceTarget] = useState<string | null>(null);
   const [focusSwitching, setFocusSwitching] = useState(false);
   const [selectedScenarioHorizon, setSelectedScenarioHorizon] = useState<number>(10);
+  const [scenarioReturnInputs, setScenarioReturnInputs] = useState<Record<string, string>>({});
   const [feeInvestmentInput, setFeeInvestmentInput] = useState('10000');
   const [feeHoldingYears, setFeeHoldingYears] = useState<number>(10);
   const [contributionInput, setContributionInput] = useState('0');
@@ -630,6 +757,17 @@ function EtfAnalysisSections({
   const savedCompareSymbolsRef = useRef<string[]>([]);
   const comparisonWriteQueue = useRef<Promise<void>>(Promise.resolve());
   const scenarios = parseEtfScenarios(fund.scenarios);
+  const scenarioReturn = (scenario: EtfScenario, feeAdjusted: boolean) => {
+    const key = scenario.label.toLowerCase();
+    const edited = scenarioReturnInputs[key];
+    if (edited === undefined) {
+      return feeAdjusted ? scenario.annualReturnAssumption : scenario.noFeeAnnualReturnAssumption;
+    }
+    const parsed = Number(edited);
+    if (edited.trim() === '' || !Number.isFinite(parsed) || parsed <= -100) return null;
+    const annualRate = parsed / 100;
+    return feeAdjusted ? annualRate : validExpenseRatio ? annualRate + (fund.expenseRatio ?? 0) : null;
+  };
   const feeInvestmentAmount = parseEtfFeeInvestmentAmount(feeInvestmentInput);
   const feeEstimate = estimateEtfFeeDollars(
     feeInvestmentAmount,
@@ -686,6 +824,13 @@ function EtfAnalysisSections({
   });
   const etfScoreColor = (score: number) =>
     score >= 65 ? colors.buyColor : score <= 40 ? colors.sellColor : colors.holdColor;
+  const availableScoreWeight = profileScore.components
+    .filter((component) => component.score != null)
+    .reduce((sum, component) => sum + component.weight, 0);
+  const scoreClassification = profileScore.score == null ? 'Not scored'
+    : profileScore.score >= 75 ? 'Strong profile'
+      : profileScore.score >= 60 ? 'Constructive profile'
+        : profileScore.score >= 41 ? 'Mixed profile' : 'Limited profile';
   const [holdingSnapshots, setHoldingSnapshots] = useState<HeatMapEtfHoldingSnapshot[]>([]);
   const snapshotWriteQueue = useRef<Promise<void>>(Promise.resolve());
   const [snapshotStorageError, setSnapshotStorageError] = useState('');
@@ -718,16 +863,18 @@ function EtfAnalysisSections({
     horizonYears: number,
   ) => {
     if (!scenario) return null;
+    const afterFeeRate = scenarioReturn(scenario, true);
+    const noFeeRate = scenarioReturn(scenario, false);
     const noFee = calculateEtfScenarioBreakdown(
       ETF_SCENARIO_INITIAL_INVESTMENT,
-      scenario.noFeeAnnualReturnAssumption,
+      noFeeRate,
       contributionAmount,
       horizonYears,
       contributionCadence,
     );
     const afterFee = calculateEtfScenarioBreakdown(
       ETF_SCENARIO_INITIAL_INVESTMENT,
-      scenario.annualReturnAssumption,
+      afterFeeRate,
       contributionAmount,
       horizonYears,
       contributionCadence,
@@ -740,11 +887,13 @@ function EtfAnalysisSections({
       noFeeGrowth: noFee.projectedGrowth,
       afterFeeValue: afterFee.totalValue,
       afterFeeGrowth: afterFee.projectedGrowth,
+      afterFeeAnnualReturn: afterFeeRate,
+      noFeeAnnualReturn: noFeeRate,
     };
   };
   const renderContributionControls = (testID: string) => (
     <View style={{ marginTop: 12 }}>
-      <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>
+        <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 14 }}>
         Contribution per deposit
       </Text>
       <TextInput
@@ -786,7 +935,7 @@ function EtfAnalysisSections({
                 setContributionCadence(cadence);
               }}
               style={{
-                minHeight: 34,
+          minHeight: 44,
                 justifyContent: 'center',
                 borderWidth: 1,
                 borderColor: selected ? colors.primary : colors.border,
@@ -1365,34 +1514,56 @@ function EtfAnalysisSections({
         </View>
       </Modal>
       <EtfSectionAnchor sectionId="overview" title="Overview" onLayout={onSectionLayout} onRef={onSectionRef} />
+      <EtfMarketIntelligence quotes={marketQuotes} updatedAt={marketUpdatedAt} />
       <View style={[recStyles.hero, {
         backgroundColor: colors.card,
         borderColor: profileScore.score == null ? colors.primary : etfScoreColor(profileScore.score),
       }]}>
-        <View style={recStyles.topRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={[recStyles.actionLabel, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold' }]}>
-              ETF RESEARCH PROFILE
-            </Text>
-            <Text style={[recStyles.action, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
-              {profileScore.score == null ? '—' : profileScore.score}
-              <Text style={{ fontSize: 15, color: colors.mutedForeground }}> / 100</Text>
-            </Text>
-          </View>
-          <View style={[recStyles.confidenceBadge, { borderColor: colors.border, borderWidth: 1 }]}>
-            <Text style={[recStyles.confidenceNum, { color: colors.primary, fontFamily: 'Inter_700Bold' }]}>
-              {profileScore.availableComponents}/5
-            </Text>
-            <Text style={[recStyles.confidenceLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-              factors rated
-            </Text>
-          </View>
+        <Text style={[recStyles.actionLabel, { color: colors.primary, fontFamily: 'Inter_600SemiBold', textAlign: 'center' }]}>
+          MEISNER ETF RESEARCH SCORE
+        </Text>
+        <View style={{ alignItems: 'center', marginTop: 10 }}>
+          {profileScore.score == null ? (
+            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 18 }}>Not scored</Text>
+          ) : <EtfScoreGauge score={profileScore.score} />}
+          <Text testID="etf-score-classification" style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 17, marginTop: 8 }}>
+            {scoreClassification}
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 1, marginTop: 3 }}>
+            ETF SCORE CLASSIFICATION
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 13, marginTop: 4 }}>
+            {profileScore.availableComponents} of 5 factors rated
+          </Text>
         </View>
-        {profileScore.score != null && (
-          <ScoreBar score={profileScore.score} color={etfScoreColor(profileScore.score)} />
-        )}
+        <View style={{ marginTop: 16, borderTopWidth: 1, borderColor: colors.border, paddingTop: 10 }}>
+          {profileScore.components.map((component) => {
+            const normalizedWeight = component.score == null || availableScoreWeight === 0
+              ? null : component.weight / availableScoreWeight;
+            const impact = component.score == null || availableScoreWeight === 0
+              ? null : component.score * component.weight / availableScoreWeight;
+            return (
+              <View key={component.id} style={{ paddingVertical: 5 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 13, flex: 1 }}>{component.label}</Text>
+                  <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+                    {component.score == null
+                      ? 'Unavailable'
+                      : `${Math.round(component.score)}/100 · ${Math.round((normalizedWeight ?? 0) * 100)}% weight · +${impact?.toFixed(1)} pts`}
+                  </Text>
+                </View>
+                <View style={{ height: 5, borderRadius: 5, backgroundColor: colors.border, overflow: 'hidden', marginTop: 6 }}>
+                  <View style={{ height: '100%', width: `${component.score ?? 0}%`, backgroundColor: colors.primary, opacity: component.score == null ? 0.2 : 0.9 }} />
+                </View>
+              </View>
+            );
+          })}
+        </View>
+        <Text style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 18, marginTop: 10 }}>
+          Missing factors are excluded; the remaining published weights are normalized to 100%. Historical score change is unavailable because prior score snapshots are not stored.
+        </Text>
         <Text style={[recStyles.horizon, { color: colors.mutedForeground, marginTop: 12, marginBottom: 0 }]}>
-          {fund.fundCategory ?? 'ETF'} · Rules-based profile, not a buy or sell recommendation.
+          {fund.fundCategory ?? 'ETF'} · Rules-based profile, not a forecast or recommendation.
         </Text>
       </View>
       <View
@@ -2245,6 +2416,44 @@ function EtfAnalysisSections({
               : `Dated provider observations: ${primaryCandles[0]?.date ?? 'date unavailable'} to ${primaryCandles[primaryCandles.length - 1]?.date ?? 'date unavailable'}. Calendar gaps are not filled or interpolated.`}
           </Text>
         )}
+        {!primaryLoading && !primaryError && primaryCandles.length > 1 && (
+          <Text testID="etf-performance-methodology" style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 18, paddingHorizontal: 16, paddingBottom: 10 }}>
+            {hasSharedComparisonHistory && comparisonPeriodReturn != null && primaryPeriodReturn != null
+              ? `${symbol.toUpperCase()} return ${primaryPeriodReturn >= 0 ? '+' : ''}${primaryPeriodReturn.toFixed(2)}% vs ${compSymbol} ${comparisonPeriodReturn >= 0 ? '+' : ''}${comparisonPeriodReturn.toFixed(2)}% · relative difference ${(primaryPeriodReturn - comparisonPeriodReturn) >= 0 ? '+' : ''}${(primaryPeriodReturn - comparisonPeriodReturn).toFixed(2)} percentage points.`
+              : `Selected range: ${primaryCandles[0]?.date ?? 'date unavailable'} to ${primaryCandles[primaryCandles.length - 1]?.date ?? 'date unavailable'}.`}
+            {' '}Chart uses provider Close prices and shows price return, not dividend-adjusted total return; adjusted dividend history is unavailable from this endpoint.
+          </Text>
+        )}
+        {symbol.toUpperCase() === 'VOO' && (
+          <View style={{ paddingHorizontal: 16, paddingTop: 10 }}>
+            <Text style={{ color: colors.mutedForeground, fontSize: 13, marginBottom: 7 }}>Compare broad-market alternatives</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {['SPY', 'IVV', 'VTI', 'QQQ'].map((ticker) => (
+                <Pressable
+                  key={ticker}
+                  testID={`etf-benchmark-${ticker}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Compare VOO with ${ticker}`}
+                  accessibilityState={{ selected: compSymbol === ticker }}
+                  onPress={() => selectBenchmark(ticker)}
+                  style={{
+                    minHeight: 44,
+                    minWidth: 58,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderWidth: 1,
+                    borderColor: compSymbol === ticker ? colors.primary : colors.border,
+                    borderRadius: 10,
+                    paddingHorizontal: 12,
+                    backgroundColor: compSymbol === ticker ? colors.accent : 'transparent',
+                  }}
+                >
+                  <Text style={{ color: compSymbol === ticker ? colors.primary : colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 13 }}>{ticker}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        )}
         <View style={[chartCardStyles.compRow, { borderTopColor: colors.border }]}>
           <Feather name="plus-circle" size={14} color={colors.mutedForeground} style={{ marginRight: 6 }} />
           <TextInput
@@ -2349,7 +2558,7 @@ function EtfAnalysisSections({
                   accessibilityLabel={`Set investment amount to ${label}`}
                   onPress={() => setFeeInvestmentInput(String(amount))}
                   style={{
-                    minHeight: 34,
+              minHeight: 44,
                     justifyContent: 'center',
                     borderWidth: 1,
                     borderColor: selected ? colors.primary : colors.border,
@@ -2445,6 +2654,60 @@ function EtfAnalysisSections({
           <MetricRow label="Annual expense ratio used" value={pctValue(fund.expenseRatio)} />
           {renderContributionControls('etf-scenario-contribution-input')}
           {renderScenarioHorizonSelector()}
+          {scenarios.length > 0 && (() => {
+            const rows = scenarios.map((scenario) => ({
+              scenario,
+              projection: selectedProjection(scenario, selectedScenarioHorizon),
+            }));
+            const largestValue = Math.max(1, ...rows.map(({ projection }) => projection?.afterFeeValue ?? 0));
+            return (
+              <View testID="etf-scenario-chart" style={{ marginTop: 16, padding: 13, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input }}>
+                <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 14 }}>
+                  Ending value · {selectedScenarioHorizon} years
+                </Text>
+                <Text style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 17, marginTop: 3 }}>
+                  After-fee illustration; $100 initial investment plus your selected deposits.
+                </Text>
+                {rows.map(({ scenario, projection }) => {
+                  const label = scenario.label.toLowerCase();
+                  const color = label === 'bull' ? colors.buyColor : label === 'bear' ? colors.sellColor : colors.primary;
+                  const amount = projection?.afterFeeValue;
+                  return (
+                    <View key={`scenario-chart-${label}`} style={{ marginTop: 13 }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                        <Text style={{ color, fontFamily: 'Inter_600SemiBold', fontSize: 13, textTransform: 'capitalize' }}>{label}</Text>
+                        <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>
+                          {amount == null ? 'Unavailable' : fmtPrice(amount)}
+                        </Text>
+                      </View>
+                      <View style={{ height: 9, borderRadius: 8, backgroundColor: colors.border, overflow: 'hidden' }}>
+                        <View style={{ height: '100%', width: `${amount == null ? 0 : Math.min(100, amount / largestValue * 100)}%`, backgroundColor: color, borderRadius: 8 }} />
+                      </View>
+                    </View>
+                  );
+                })}
+                <Text style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 17, marginTop: 12 }}>
+                  Contributions: {rows[0]?.projection?.totalContributions == null ? 'Unavailable' : fmtPrice(rows[0].projection.totalContributions)} · Estimated growth ranges from {rows.flatMap(({ projection }) => projection?.afterFeeGrowth == null ? [] : [projection.afterFeeGrowth]).length
+                    ? fmtPrice(Math.min(...rows.flatMap(({ projection }) => projection?.afterFeeGrowth == null ? [] : [projection.afterFeeGrowth])))
+                    : 'Unavailable'} to {rows.flatMap(({ projection }) => projection?.afterFeeGrowth == null ? [] : [projection.afterFeeGrowth]).length
+                    ? fmtPrice(Math.max(...rows.flatMap(({ projection }) => projection?.afterFeeGrowth == null ? [] : [projection.afterFeeGrowth])))
+                    : 'Unavailable'}.
+                </Text>
+                {(() => {
+                  const bearProjection = rows.find(({ scenario }) => scenario.label.toLowerCase() === 'bear')?.projection;
+                  const principal = bearProjection?.startingInvestment != null && bearProjection.totalContributions != null
+                    ? bearProjection.startingInvestment + bearProjection.totalContributions : null;
+                  const downside = principal != null && bearProjection?.afterFeeValue != null
+                    ? Math.max(0, principal - bearProjection.afterFeeValue) : null;
+                  return (
+                    <Text style={{ color: colors.sellColor, fontFamily: 'Inter_600SemiBold', fontSize: 12, lineHeight: 17, marginTop: 5 }}>
+                      Potential downside vs contributions in bear case: {downside == null ? 'Unavailable' : fmtPrice(downside)}.
+                    </Text>
+                  );
+                })()}
+              </View>
+            );
+          })()}
           {comparisonMetricFunds.length > 1 && (
             <View testID="etf-long-range-comparison" style={{ marginTop: 16 }}>
               <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold' }}>
@@ -2492,8 +2755,24 @@ function EtfAnalysisSections({
           {scenarios.length ? scenarios.map((scenario) => (
             <View key={scenario.label} style={{ marginBottom: 12 }}>
               <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', textTransform: 'uppercase' }}>{scenario.label}</Text>
-              <MetricRow label="No-fee annual return" value={pctValue(scenario.noFeeAnnualReturnAssumption)} />
-              <MetricRow label="After-fee annual return" value={pctValue(scenario.annualReturnAssumption)} />
+              <Text style={{ color: colors.mutedForeground, fontSize: 13, marginTop: 8 }}>Edit annualized after-fee assumption (%)</Text>
+              <TextInput
+                testID={`etf-scenario-return-${scenario.label.toLowerCase()}`}
+                accessibilityLabel={`Annualized ${scenario.label} scenario return percentage`}
+                value={scenarioReturnInputs[scenario.label.toLowerCase()] ?? (
+                  scenario.annualReturnAssumption == null ? '' : (scenario.annualReturnAssumption * 100).toFixed(2)
+                )}
+                onChangeText={(value) => setScenarioReturnInputs((current) => ({
+                  ...current,
+                  [scenario.label.toLowerCase()]: value.replace(/[^0-9.-]/g, '').replace(/(?!^)-/g, '').replace(/(\..*)\./g, '$1'),
+                }))}
+                keyboardType="numbers-and-punctuation"
+                placeholder="Unavailable"
+                placeholderTextColor={colors.mutedForeground}
+                style={{ minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, color: colors.foreground, fontSize: 16, fontFamily: 'Inter_600SemiBold', marginTop: 6, marginBottom: 8 }}
+              />
+              <MetricRow label="Annualized after-fee assumption" value={pctValue(selectedProjection(scenario, selectedScenarioHorizon)?.afterFeeAnnualReturn ?? null)} />
+              <MetricRow label="No-fee assumption (derived)" value={pctValue(selectedProjection(scenario, selectedScenarioHorizon)?.noFeeAnnualReturn ?? null)} />
               <MetricRow
                 label={`No-fee value in ${selectedScenarioHorizon} years`}
                 value={selectedProjection(scenario, selectedScenarioHorizon)?.noFeeValue == null
@@ -2556,6 +2835,15 @@ export default function AnalysisScreen() {
   const { width: screenWidth } = useWindowDimensions();
   const { apiFetch } = useApi();
   const { mutate, data: response, isPending, error } = useAnalyzeStock<Error>();
+  const marketBreadthQuery = useGetMarketBreadth({
+    query: {
+      queryKey: getGetMarketBreadthQueryKey(),
+      enabled: (response as unknown as { assetType?: string } | undefined)?.assetType === 'etf',
+      staleTime: 45_000,
+      refetchInterval: 60_000,
+      refetchIntervalInBackground: false,
+    },
+  });
   const watchlist = useWatchlist();
   const {
     pushToken,
@@ -2694,6 +2982,14 @@ export default function AnalysisScreen() {
       AsyncStorage.removeItem(PINNED_COMP_KEY).catch(() => { /* ignore */ });
     }
   }, [compInput, compSymbol]);
+
+  const selectBenchmark = useCallback((ticker: string) => {
+    setCompInput(ticker);
+    setCompSymbol(ticker);
+    setCompChartError(false);
+    setCompCandles([]);
+    AsyncStorage.setItem(PINNED_COMP_KEY, ticker).catch(() => {});
+  }, []);
 
   const clearComp = useCallback(() => {
     setCompInput('');
@@ -3028,6 +3324,9 @@ export default function AnalysisScreen() {
                 period={period}
                 setPeriod={setPeriod}
                 chartWidth={chartWidth}
+                marketQuotes={marketBreadthQuery.data?.quotes ?? []}
+                marketUpdatedAt={marketBreadthQuery.data?.updatedAt ?? 0}
+                selectBenchmark={selectBenchmark}
               />
             </ScrollView>
           </View>

@@ -143,7 +143,11 @@ test("ETF comparison switcher supports focus changes, adding, replacing, and rem
 test("ETF analysis leads with a concise overview and preserves score limits", () => {
   assert.doesNotMatch(etfAnalysisSource, /Evaluates the fund as a portfolio of reported holdings/);
   assert.match(etfAnalysisSource, /calculateEtfResearchScore\(\{/);
-  assert.match(etfAnalysisSource, /ETF RESEARCH PROFILE/);
+  assert.match(etfAnalysisSource, /MEISNER ETF RESEARCH SCORE/);
+  assert.match(etfAnalysisSource, /ETF SCORE CLASSIFICATION/);
+  assert.match(etfAnalysisSource, /Historical score change is unavailable because prior score snapshots are not stored/);
+  assert.match(etfAnalysisSource, /normalizedWeight/);
+  assert.match(etfAnalysisSource, /EtfScoreGauge/);
   assert.match(etfAnalysisSource, /At a glance/);
   assert.match(etfAnalysisSource, /AI-IDENTIFIED TAKEAWAYS/);
   assert.match(etfAnalysisSource, /fund\.strengths\.map/);
@@ -218,7 +222,7 @@ test("ETF analysis provides six accessible section-navigation targets", () => {
 });
 
 test("ETF overview combines quote, deterministic research score, takeaways, and freshness", () => {
-  assert.match(etfAnalysisSource, /ETF RESEARCH PROFILE/);
+  assert.match(etfAnalysisSource, /MEISNER ETF RESEARCH SCORE/);
   assert.match(etfAnalysisSource, /Research score/);
   assert.match(etfAnalysisSource, /fund\.provider\} data retrieved \{sourceDate\(fund\.asOf\)\}/);
   assert.match(etfAnalysisSource, /fund\.strengths\.map/);
@@ -518,10 +522,23 @@ async function buildAnalysisScreenBundle(expenseRatio, scenarioOverrides = {}) {
       import React from "react";
       export const LinearGradient = ({ children }) => <>{children}</>;
     `],
+    ["react-native-svg", `
+      import React from "react";
+      export const Circle = React.forwardRef((props, ref) => <circle ref={ref} {...props} />);
+      export const Defs = ({ children }) => <defs>{children}</defs>;
+      export const Stop = (props) => <stop {...props} />;
+      export const LinearGradient = (props) => <linearGradient {...props} />;
+      const Svg = ({ children, ...props }) => <svg {...props}>{children}</svg>;
+      export default Svg;
+    `],
     ["@workspace/api-client-react", `
       const response = ${JSON.stringify(response)};
       export function useAnalyzeStock() {
         return { mutate: () => {}, data: response, isPending: false, error: null };
+      }
+      export function getGetMarketBreadthQueryKey() { return ["/api/stocks/market-breadth"]; }
+      export function useGetMarketBreadth() {
+        return { data: { quotes: [], updatedAt: 0 }, isLoading: false, isError: false };
       }
     `],
     ["@/hooks/useColors", `
@@ -1071,8 +1088,8 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
       `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent ?? ""`,
     );
     assert.match(scenarioCardText, /Annual expense ratio used\s*0\.03%/);
-    assert.match(scenarioCardText, /No-fee annual return\s*10\.00%/);
-    assert.match(scenarioCardText, /After-fee annual return\s*9\.97%/);
+    assert.match(scenarioCardText, /No-fee assumption \(derived\)\s*10\.00%/);
+    assert.match(scenarioCardText, /Annualized after-fee assumption\s*9\.97%/);
     assert.match(scenarioCardText, /No-fee value in 10 years\s*\$259\.37/);
     assert.match(scenarioCardText, /After-fee value in 10 years\s*\$258\.67/);
     assert.match(scenarioCardText, /Starting investment\s*\$100\.00/);
@@ -1193,8 +1210,8 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
       `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent ?? ""`,
     );
     assert.match(unavailableScenarioText, /Annual expense ratio used\s*Unavailable/);
-    assert.match(unavailableScenarioText, /No-fee annual return\s*10\.00%/);
-    assert.match(unavailableScenarioText, /After-fee annual return\s*Unavailable/);
+    assert.match(unavailableScenarioText, /No-fee assumption \(derived\)\s*Unavailable/);
+    assert.match(unavailableScenarioText, /Annualized after-fee assumption\s*Unavailable/);
     assert.match(unavailableScenarioText, /After-fee value in 10 years\s*Unavailable/);
     assert.match(unavailableScenarioText, /No-fee value in 10 years\s*\$259\.37/);
     await browser.evaluate(`document.querySelector('[data-testid="etf-scenario-horizon-5"]')?.click()`);
@@ -1230,7 +1247,7 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
         `document.querySelector(${JSON.stringify(scenarioSectionSelector)})?.parentElement?.textContent ?? ""`,
       );
       assert.match(fallbackText, /Long-range scenario data unavailable\./);
-      assert.doesNotMatch(fallbackText, /No-fee annual return/);
+      assert.doesNotMatch(fallbackText, /No-fee assumption \(derived\)/);
     }
 
     await browser.send("Page.navigate", { url: `http://127.0.0.1:${address.port}/comparison` });
