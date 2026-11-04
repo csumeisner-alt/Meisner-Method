@@ -48,6 +48,14 @@ test("custom heat-map reorder supports long-press drag and accessible alternativ
   assert.match(source, /accessibilityLiveRegion="polite"/);
 });
 
+test("watchlist reorder writes the ordered entries to its local cache", async () => {
+  const source = await readFile(join(mobileDir, "hooks/useWatchlist.ts"), "utf8");
+  const reorder = source.match(/const reorder = useCallback\(async \(symbols: string\[\]\) => \{([\s\S]*?)\n  \}, \[\]\);/);
+  assert.ok(reorder, "The watchlist hook should expose its reorder callback.");
+  assert.match(reorder[1], /symbols\s*\.map/);
+  assert.match(reorder[1], /writeCache\(GUEST_CACHE_KEY, next\)/);
+});
+
 function browserExecutable() {
   if (process.env.CHROMIUM_PATH) return process.env.CHROMIUM_PATH;
   if (existsSync("/repl/tools/bin/chromium")) return "/repl/tools/bin/chromium";
@@ -3190,13 +3198,35 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     );
     await assertWatchlistAddIsUnique(browser, "GC=F");
 
+    const watchlistBeforeReorder = await browser.evaluate("window.__heatMapWatchlistSymbols");
+    assert.ok(watchlistBeforeReorder.length >= 2, "The restart check needs multiple watchlist entries.");
+    const expectedWatchlistOrder = [...watchlistBeforeReorder].reverse();
+    assert.notDeepEqual(
+      expectedWatchlistOrder,
+      watchlistBeforeReorder,
+      "The test should change the order before reopening the app.",
+    );
+    await browser.evaluate(
+      `window.__heatMapReorderWatchlist(${JSON.stringify(expectedWatchlistOrder)})`,
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `JSON.stringify(window.__heatMapWatchlistSymbols) === ${JSON.stringify(JSON.stringify(expectedWatchlistOrder))}`,
+      "the reordered watchlist before reopening the app",
+    );
+
     await browser.send("Page.reload", { ignoreCache: true });
     await waitFor(
       (expression) => browser.evaluate(expression),
-      `window.__heatMapWatchlistSymbols?.includes("IVV") && window.__heatMapWatchlistSymbols?.includes("GC=F")`,
-      "Reopening the app should restore the ETF and commodity from local storage.",
+      `JSON.stringify(window.__heatMapWatchlistSymbols) === ${JSON.stringify(JSON.stringify(expectedWatchlistOrder))}`,
+      "Reopening the app should restore the reordered watchlist from local storage.",
     );
     const restoredWatchlist = await browser.evaluate("window.__heatMapWatchlistSymbols");
+    assert.deepEqual(
+      restoredWatchlist,
+      expectedWatchlistOrder,
+      "Reopening the app should preserve the exact order of multiple watchlist entries.",
+    );
     assert.equal(
       restoredWatchlist.filter((symbol) => symbol === "IVV").length,
       1,

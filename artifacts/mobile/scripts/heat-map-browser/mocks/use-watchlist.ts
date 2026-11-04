@@ -7,6 +7,7 @@ declare global {
   interface Window {
     __heatMapWatchlistSymbols?: string[];
     __heatMapAddToWatchlist?: (symbol: string) => Promise<void>;
+    __heatMapReorderWatchlist?: (symbols: string[]) => Promise<void>;
   }
 }
 
@@ -45,8 +46,39 @@ export function useWatchlist() {
     await AsyncStorage.setItem(GUEST_CACHE_KEY, JSON.stringify(next));
   }, []);
 
+  const reorder = useCallback(async (orderedSymbols: string[]) => {
+    const currentSymbols = symbolsRef.current;
+    const uniqueOrder = orderedSymbols.filter(
+      (symbol, index) => currentSymbols.includes(symbol) && orderedSymbols.indexOf(symbol) === index,
+    );
+    const nextSymbols = [
+      ...uniqueOrder,
+      ...currentSymbols.filter((symbol) => !uniqueOrder.includes(symbol)),
+    ];
+    const raw = await AsyncStorage.getItem(GUEST_CACHE_KEY);
+    let cachedItems: Array<{ symbol?: unknown; createdAt?: unknown }> = [];
+    try {
+      cachedItems = raw ? JSON.parse(raw) as Array<{ symbol?: unknown; createdAt?: unknown }> : [];
+    } catch {
+      // A malformed cache should not prevent the in-memory order from updating.
+    }
+    const cachedBySymbol = new Map(
+      cachedItems
+        .filter((item): item is { symbol: string; createdAt?: unknown } => typeof item?.symbol === "string")
+        .map((item) => [item.symbol, item]),
+    );
+    const nextItems = nextSymbols.map((symbol) => cachedBySymbol.get(symbol) ?? {
+      symbol,
+      createdAt: new Date().toISOString(),
+    });
+    symbolsRef.current = nextSymbols;
+    setSymbols(nextSymbols);
+    await AsyncStorage.setItem(GUEST_CACHE_KEY, JSON.stringify(nextItems));
+  }, []);
+
   window.__heatMapWatchlistSymbols = symbols;
   window.__heatMapAddToWatchlist = add;
+  window.__heatMapReorderWatchlist = reorder;
   const isWatched = useCallback((symbol: string) => symbols.includes(symbol), [symbols]);
   return { add, isWatched };
 }
