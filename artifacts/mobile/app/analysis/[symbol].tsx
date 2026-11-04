@@ -123,9 +123,9 @@ const PERIODS: { label: string; value: Period }[] = [
 
 const ETF_ANALYSIS_SECTIONS = [
   { id: 'overview', label: 'Overview' },
-  { id: 'performance', label: 'Performance' },
-  { id: 'holdings', label: 'Holdings & Diversification' },
   { id: 'risk-costs', label: 'Risk & Costs' },
+  { id: 'holdings', label: 'Holdings & Diversification' },
+  { id: 'performance', label: 'Performance' },
   { id: 'ai-analysis', label: 'AI Analysis' },
   { id: 'projections', label: 'Future Projections' },
 ] as const;

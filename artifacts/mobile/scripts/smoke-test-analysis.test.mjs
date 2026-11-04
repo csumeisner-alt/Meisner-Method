@@ -191,9 +191,9 @@ test("ETF evidence is grouped in expandable, accessible sections", () => {
 test("ETF analysis provides six accessible section-navigation targets", () => {
   const navigationLabels = [
     "Overview",
-    "Performance",
-    "Holdings & Diversification",
     "Risk & Costs",
+    "Holdings & Diversification",
+    "Performance",
     "AI Analysis",
     "Future Projections",
   ];
@@ -204,6 +204,13 @@ test("ETF analysis provides six accessible section-navigation targets", () => {
     previousIndex = index;
     assert.match(etfAnalysisSource, new RegExp(`sectionId="${label === "Holdings & Diversification" ? "holdings" : label === "Risk & Costs" ? "risk-costs" : label === "AI Analysis" ? "ai-analysis" : label === "Future Projections" ? "projections" : label.toLowerCase()}"`));
     assert.match(etfAnalysisSource, new RegExp(`testID=\{\\\`etf-section-nav-`));
+  }
+  const sectionIds = ["overview", "risk-costs", "holdings", "performance", "ai-analysis", "projections"];
+  let previousAnchorIndex = -1;
+  for (const sectionId of sectionIds) {
+    const anchorIndex = etfAnalysisSource.indexOf(`sectionId="${sectionId}"`);
+    assert.ok(anchorIndex > previousAnchorIndex, `${sectionId} should appear in the same order as the section tabs.`);
+    previousAnchorIndex = anchorIndex;
   }
   assert.match(etfAnalysisSource, /sectionView\.measureInWindow/);
   assert.match(etfAnalysisSource, /scrollView\.scrollTo\(\{ y:/);
@@ -1259,6 +1266,20 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
       await browser.evaluate(`Array.from(document.querySelectorAll('[data-testid^="etf-section-nav-"]')).length`),
       6,
       "ETF analysis should render all six section navigation controls.",
+    );
+    const navAndAnchorOrder = await browser.evaluate(`(() => {
+      const navOrder = Array.from(document.querySelectorAll('[data-testid^="etf-section-nav-"]'))
+        .map((node) => node.getAttribute("data-testid").replace("etf-section-nav-", ""));
+      const anchorOrder = Array.from(document.querySelectorAll('[data-testid^="etf-section-"]'))
+        .map((node) => node.getAttribute("data-testid"))
+        .filter((testID) => !testID.startsWith("etf-section-nav-"))
+        .map((testID) => testID.replace("etf-section-", ""));
+      return { navOrder, anchorOrder };
+    })()`);
+    assert.deepEqual(
+      navAndAnchorOrder.navOrder,
+      navAndAnchorOrder.anchorOrder,
+      "The section tabs should follow the same order as their content while scrolling.",
     );
     await browser.evaluate(`document.querySelector('[data-testid="etf-section-nav-projections"]')?.click()`);
     await waitForBrowserValue(
