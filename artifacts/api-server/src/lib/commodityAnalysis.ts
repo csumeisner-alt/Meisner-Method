@@ -216,6 +216,70 @@ export interface CommodityScore {
   methodology: string;
 }
 
+export type CommodityIntelligenceCategoryId =
+  | "technical-momentum"
+  | "fundamentals"
+  | "supply-demand"
+  | "market-environment"
+  | "risk-volatility";
+
+export interface CommodityIntelligenceCategory {
+  id: CommodityIntelligenceCategoryId;
+  label: string;
+  score: number | null;
+  weight: number;
+  classification: "bullish" | "bearish" | "neutral" | "unavailable";
+  detail: string;
+  methodology: string;
+  sources: CommodityEvidenceSource[];
+}
+
+export interface CommodityIntelligenceScorecard {
+  version: 1;
+  score: number;
+  coveragePercent: number;
+  coverageStatus: "complete" | "partial" | "insufficient";
+  missingCategories: string[];
+  categories: CommodityIntelligenceCategory[];
+  positiveContributors: string[];
+  negativeContributors: string[];
+  methodology: string;
+}
+
+export const COMMODITY_INTELLIGENCE_WEIGHTS: Record<
+  CommodityFamily,
+  Record<CommodityIntelligenceCategoryId, number>
+> = {
+  metals: {
+    "technical-momentum": 35,
+    fundamentals: 20,
+    "supply-demand": 20,
+    "market-environment": 10,
+    "risk-volatility": 15,
+  },
+  energy: {
+    "technical-momentum": 30,
+    fundamentals: 15,
+    "supply-demand": 25,
+    "market-environment": 15,
+    "risk-volatility": 15,
+  },
+  agriculture: {
+    "technical-momentum": 30,
+    fundamentals: 20,
+    "supply-demand": 25,
+    "market-environment": 10,
+    "risk-volatility": 15,
+  },
+  livestock: {
+    "technical-momentum": 30,
+    fundamentals: 20,
+    "supply-demand": 20,
+    "market-environment": 15,
+    "risk-volatility": 15,
+  },
+};
+
 const clamp = (value: number, min = 0, max = 100) => Math.min(max, Math.max(min, value));
 const finitePositive = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value) && value > 0;
@@ -633,6 +697,122 @@ export function buildCommodityScore(input: CommodityScoreInput): CommodityScore 
     sixMonthReturnPercent: sixMonthReturnPercent === null ? null : Math.round(sixMonthReturnPercent * 10) / 10,
     factors,
     methodology: "The deterministic score combines price trend (70%), official inventory/supply-demand evidence (20%), and CFTC non-commercial positioning (10%), renormalizing only across available validated inputs. Inventory and positioning are omitted when the exact source, instrument, unit, observation date, or freshness check fails. Realized volatility dampens direction but is not a directional factor. Futures-curve, macro, and weather effects are not inferred from continuous-futures history or commentary.",
+  };
+}
+
+function intelligenceClassification(
+  score: number | null,
+  category: CommodityIntelligenceCategoryId,
+): CommodityIntelligenceCategory["classification"] {
+  if (score === null) return "unavailable";
+  if (category === "risk-volatility") return score < 40 ? "bearish" : "neutral";
+  return score >= 60 ? "bullish" : score <= 40 ? "bearish" : "neutral";
+}
+
+export function buildCommodityIntelligenceScorecard(
+  symbolInput: string,
+  score: CommodityScore,
+): CommodityIntelligenceScorecard | null {
+  const symbol = symbolInput.trim().toUpperCase();
+  const profile = SUPPORTED_COMMODITIES[symbol];
+  if (!profile) return null;
+  const weights = COMMODITY_INTELLIGENCE_WEIGHTS[profile.family];
+  const priceTrend = score.factors.find((factor) => factor.key === "price-trend");
+  const inventory = score.factors.find((factor) => factor.key === "physical-balance");
+  const positioning = score.factors.find((factor) => factor.key === "positioning");
+  const historySource: CommodityEvidenceSource[] = score.historyAsOf
+    ? [{
+      title: "Yahoo Finance daily futures history",
+      url: `https://finance.yahoo.com/quote/${encodeURIComponent(symbol)}/history/`,
+      asOf: score.historyAsOf,
+      unit: "percent return",
+      observation: `${score.observationCount} validated daily observations; 1-, 3-, and 6-month returns: ${
+        [score.oneMonthReturnPercent, score.threeMonthReturnPercent, score.sixMonthReturnPercent]
+          .map((value) => value === null ? "unavailable" : `${value}%`).join(", ")
+      }.`,
+    }]
+    : [];
+  const definitions: Omit<CommodityIntelligenceCategory, "weight" | "classification">[] = [
+    {
+      id: "technical-momentum",
+      label: "Technical momentum",
+      score: priceTrend?.score ?? null,
+      detail: priceTrend?.detail ?? "Validated multi-period price history is unavailable.",
+      methodology: "Uses the existing deterministic blend of available 1-, 3-, and 6-month price returns. This category does not change the existing commodity market score.",
+      sources: historySource,
+    },
+    {
+      id: "fundamentals",
+      label: "Fundamental conditions",
+      score: null,
+      detail: "No verified commodity-specific production costs, demand fundamentals, or macroeconomic baseline is available for this analysis; this category is excluded, not estimated.",
+      methodology: "Requires dated, instrument-matched source data. Price movement, news commentary, and unrelated commodity measures are not substitutes for fundamental evidence.",
+      sources: [],
+    },
+    {
+      id: "supply-demand",
+      label: "Supply and demand",
+      score: inventory?.status === "available" ? inventory.score : null,
+      detail: inventory?.status === "available"
+        ? inventory.detail
+        : inventory?.detail ?? "No fresh, validated official inventory or supply-and-demand observation is available; this category is excluded, not estimated.",
+      methodology: "Uses only the validated EIA weekly stock change or USDA year-over-year stocks-to-use change for the matching commodity. Lower reported stocks are treated as supportive; higher stocks as a headwind.",
+      sources: inventory?.status === "available" ? inventory.sources : [],
+    },
+    {
+      id: "market-environment",
+      label: "Market environment",
+      score: positioning?.status === "available" ? positioning.score : null,
+      detail: positioning?.status === "available"
+        ? `${positioning.detail} CFTC positioning is a limited market-environment measure, not a broad macro, weather, or futures-curve assessment.`
+        : positioning?.detail ?? "No fresh, exact-contract CFTC positioning observation is available; broader macro, weather, and futures-curve conditions are not assessed.",
+      methodology: "Uses the validated CFTC non-commercial net position as a share of open interest. This is a positioning context indicator only; it does not stand in for unobserved macro, weather, or curve data.",
+      sources: positioning?.status === "available" ? positioning.sources : [],
+    },
+    {
+      id: "risk-volatility",
+      label: "Risk and volatility",
+      score: Math.round(clamp(100 - score.annualizedVolatilityPercent / 1.5)),
+      detail: `Annualized realized volatility is ${score.annualizedVolatilityPercent.toFixed(1)}%. Higher volatility lowers this stability score; low volatility is not counted as a bullish contributor.`,
+      methodology: "Stability score is max(0, 100 − annualized realized volatility ÷ 1.5). In the overall formula, only a stability score below 50 can subtract points; risk can never add points.",
+      sources: historySource,
+    },
+  ];
+  const categories: CommodityIntelligenceCategory[] = definitions.map((category) => ({
+    ...category,
+    weight: weights[category.id],
+    classification: intelligenceClassification(category.score, category.id),
+  }));
+  const availableWeight = categories
+    .filter((category) => category.score !== null)
+    .reduce((sum, category) => sum + category.weight, 0);
+  const scoreDelta = categories.reduce((sum, category) => {
+    if (category.score === null) return sum;
+    const deviation = category.score - 50;
+    return sum + (category.id === "risk-volatility" ? Math.min(0, deviation) : deviation)
+      * category.weight / 100;
+  }, 0);
+  const missingCategories = categories
+    .filter((category) => category.score === null)
+    .map((category) => category.label);
+  const coveragePercent = Math.round(availableWeight);
+  return {
+    version: 1,
+    score: Math.round(clamp(50 + scoreDelta)),
+    coveragePercent,
+    coverageStatus: coveragePercent === 100 ? "complete" : coveragePercent >= 60 ? "partial" : "insufficient",
+    missingCategories,
+    categories,
+    positiveContributors: categories
+      .filter((category) => category.score !== null
+        && category.id !== "risk-volatility"
+        && category.score > 50)
+      .map((category) => category.label),
+    negativeContributors: categories
+      .filter((category) => category.score !== null
+        && (category.id === "risk-volatility" ? category.score < 50 : category.score < 50))
+      .map((category) => category.label),
+    methodology: "The overall intelligence score starts at neutral 50 and adds each available category's deviation from 50 multiplied by its commodity-family weight. Missing categories are not reweighted or fabricated, so their weight stays neutral and limits how far the total can move. Risk and volatility can subtract from 50 but can never add to it. This is a present-evidence assessment, not a prediction of future returns.",
   };
 }
 

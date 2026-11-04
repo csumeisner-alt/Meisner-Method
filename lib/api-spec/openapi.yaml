@@ -848,6 +848,43 @@ components:
             oneMonthReturnPercent: { type: number, nullable: true }
             threeMonthReturnPercent: { type: number, nullable: true }
             sixMonthReturnPercent: { type: number, nullable: true }
+            intelligenceScorecard:
+              type: object
+              description: Evidence-based present assessment, distinct from a forecast of future returns.
+              properties:
+                version: { type: integer, enum: [1] }
+                score: { type: integer, minimum: 0, maximum: 100 }
+                coveragePercent: { type: integer, minimum: 0, maximum: 100 }
+                coverageStatus: { type: string, enum: [complete, partial, insufficient] }
+                missingCategories: { type: array, items: { type: string } }
+                categories:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id: { type: string, enum: [technical-momentum, fundamentals, supply-demand, market-environment, risk-volatility] }
+                      label: { type: string }
+                      score: { type: integer, minimum: 0, maximum: 100, nullable: true }
+                      weight: { type: integer, minimum: 0, maximum: 100 }
+                      classification: { type: string, enum: [bullish, bearish, neutral, unavailable] }
+                      detail: { type: string }
+                      methodology: { type: string }
+                      sources:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            title: { type: string }
+                            url: { type: string }
+                            asOf: { type: string, format: date }
+                            unit: { type: string }
+                            observation: { type: string }
+                          required: [title, url, asOf, unit, observation]
+                    required: [id, label, score, weight, classification, detail, methodology, sources]
+                positiveContributors: { type: array, items: { type: string } }
+                negativeContributors: { type: array, items: { type: string } }
+                methodology: { type: string }
+              required: [version, score, coveragePercent, coverageStatus, missingCategories, categories, positiveContributors, negativeContributors, methodology]
             factors:
               type: array
               items:
@@ -927,7 +964,7 @@ components:
                     required: [title, url, publishedAt]
               required: [status, summary, retrievedAt, sources]
             provider: { type: string }
-          required: [score, confidence, dataCoveragePercent, observationCount, historyAsOf, family, annualizedVolatilityPercent, oneMonthReturnPercent, threeMonthReturnPercent, sixMonthReturnPercent, factors, methodology, reasoning, risks, strengths, analysisGuide, verifiedEvidence, commentary, newsContext, provider]
+          required: [score, confidence, dataCoveragePercent, observationCount, historyAsOf, family, annualizedVolatilityPercent, oneMonthReturnPercent, threeMonthReturnPercent, sixMonthReturnPercent, intelligenceScorecard, factors, methodology, reasoning, risks, strengths, analysisGuide, verifiedEvidence, commentary, newsContext, provider]
       required: [assetType, symbol, companyName, exchange, currency, currentPrice, priceChange, priceChangePercent, volume, marketCap, week52High, week52Low, commodityAnalysis]
 
     CommodityCommentaryItem:

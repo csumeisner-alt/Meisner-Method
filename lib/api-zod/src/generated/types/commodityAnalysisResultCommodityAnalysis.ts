@@ -9,6 +9,7 @@ import type { CommodityAnalysisResultCommodityAnalysisAnalysisGuide } from './co
 import type { CommodityAnalysisResultCommodityAnalysisCommentary } from './commodityAnalysisResultCommodityAnalysisCommentary';
 import type { CommodityAnalysisResultCommodityAnalysisFactorsItem } from './commodityAnalysisResultCommodityAnalysisFactorsItem';
 import type { CommodityAnalysisResultCommodityAnalysisFamily } from './commodityAnalysisResultCommodityAnalysisFamily';
+import type { CommodityAnalysisResultCommodityAnalysisIntelligenceScorecard } from './commodityAnalysisResultCommodityAnalysisIntelligenceScorecard';
 import type { CommodityAnalysisResultCommodityAnalysisNewsContext } from './commodityAnalysisResultCommodityAnalysisNewsContext';
 import type { CommodityAnalysisResultCommodityAnalysisVerifiedEvidenceItem } from './commodityAnalysisResultCommodityAnalysisVerifiedEvidenceItem';
 
@@ -36,6 +37,8 @@ export type CommodityAnalysisResultCommodityAnalysis = {
   oneMonthReturnPercent: number | null;
   threeMonthReturnPercent: number | null;
   sixMonthReturnPercent: number | null;
+  /** Evidence-based present assessment, distinct from a forecast of future returns. */
+  intelligenceScorecard: CommodityAnalysisResultCommodityAnalysisIntelligenceScorecard;
   factors: CommodityAnalysisResultCommodityAnalysisFactorsItem[];
   methodology: string;
   reasoning: string;

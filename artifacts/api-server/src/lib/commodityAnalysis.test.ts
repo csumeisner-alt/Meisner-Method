@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   assessCommodityHistory,
+  buildCommodityIntelligenceScorecard,
   buildCommodityScore as scoreCommodity,
+  COMMODITY_INTELLIGENCE_WEIGHTS,
   type CommodityScoreInput,
   parseCommodityNewsSources,
 } from "./commodityAnalysis.ts";
@@ -628,6 +630,113 @@ test("realized volatility dampens the trend signal without changing its directio
   assert.ok(steadyScore.score > 50);
   assert.ok(noisyScore.annualizedVolatilityPercent > steadyScore.annualizedVolatilityPercent);
   assert.ok(noisyScore.score < steadyScore.score);
+});
+
+test("commodity intelligence scores five evidence categories with family-specific weights", () => {
+  const symbols = ["GC=F", "SI=F", "CL=F", "NG=F", "HG=F", "ZC=F"];
+  const closes = closesWithDailyChange(Array.from({ length: 252 }, () => 0.001));
+  for (const symbol of symbols) {
+    const score = buildCommodityScore({
+      symbol,
+      closes,
+      currentPrice: closes.at(-1)!,
+      historyAsOf: "2026-10-30",
+      now: DEFAULT_NOW,
+    });
+    assert.ok(score, `${symbol} should have a validated price-history score`);
+    const card = buildCommodityIntelligenceScorecard(symbol, score);
+    assert.ok(card);
+    assert.deepEqual(card.categories.map((category) => category.id), [
+      "technical-momentum",
+      "fundamentals",
+      "supply-demand",
+      "market-environment",
+      "risk-volatility",
+    ]);
+    assert.equal(card.categories.reduce((sum, category) => sum + category.weight, 0), 100);
+    assert.equal(card.categories.find((category) => category.id === "fundamentals")?.score, null);
+    assert.equal(card.categories.find((category) => category.id === "technical-momentum")?.score,
+      score.factors.find((factor) => factor.key === "price-trend")?.score);
+    assert.equal(card.categories.find((category) => category.id === "supply-demand")?.score, null);
+    assert.equal(card.categories.find((category) => category.id === "market-environment")?.score, null);
+    assert.equal(card.categories.find((category) => category.id === "risk-volatility")?.score,
+      Math.round(Math.max(0, 100 - score.annualizedVolatilityPercent / 1.5)));
+    assert.equal(card.coverageStatus, "insufficient");
+    assert.ok(card.missingCategories.includes("Fundamental conditions"));
+    assert.ok(card.score >= 0 && card.score <= 100);
+    const technical = card.categories.find((category) => category.id === "technical-momentum")!;
+    const risk = card.categories.find((category) => category.id === "risk-volatility")!;
+    const missingAdjustedExpected = Math.round(50
+      + ((technical.score! - 50) * technical.weight
+        + Math.min(0, risk.score! - 50) * risk.weight) / 100);
+    assert.equal(card.score, missingAdjustedExpected,
+      "unavailable category weights stay neutral instead of being redistributed");
+  }
+  assert.notEqual(
+    COMMODITY_INTELLIGENCE_WEIGHTS.metals["technical-momentum"],
+    COMMODITY_INTELLIGENCE_WEIGHTS.energy["technical-momentum"],
+  );
+  assert.equal(buildCommodityIntelligenceScorecard("UNKNOWN", {} as never), null);
+});
+
+test("official commodity evidence fills only its matching scorecard category", () => {
+  const score = buildCommodityScore({
+    symbol: "CL=F",
+    closes: closesWithDailyChange(Array.from({ length: 252 }, () => 0.001)),
+    currentPrice: 150,
+    historyAsOf: "2026-10-30",
+    now: DEFAULT_NOW,
+    marketEvidence: {
+      inventory: {
+        provider: "EIA",
+        symbol: "CL=F",
+        instrument: "Crude Oil",
+        metric: "weekly-stock-change-percent",
+        value: -1,
+        asOf: "2026-10-30",
+        units: "million barrels",
+        source: {
+          title: "EIA Weekly Petroleum Status Report",
+          url: "https://ir.eia.gov/wpsr/table4.csv",
+          asOf: "2026-10-30",
+          unit: "million barrels",
+          observation: "Commercial crude stocks fell week over week.",
+        },
+      },
+      positioning: null,
+    },
+  });
+  assert.ok(score);
+  const card = buildCommodityIntelligenceScorecard("CL=F", score);
+  assert.ok(card);
+  const supply = card.categories.find((category) => category.id === "supply-demand");
+  assert.equal(supply?.classification, "bullish");
+  assert.equal(supply?.sources[0]?.title, "EIA Weekly Petroleum Status Report");
+  assert.equal(supply?.score, score.factors.find((factor) => factor.key === "physical-balance")?.score);
+  assert.equal(card.coverageStatus, "partial");
+});
+
+test("commodity volatility can lower but never raise the intelligence score", () => {
+  const score = buildCommodityScore({
+    symbol: "GC=F",
+    closes: closesWithDailyChange(Array.from({ length: 252 }, () => 0.001)),
+    currentPrice: 150,
+    historyAsOf: "2026-10-30",
+    now: DEFAULT_NOW,
+  });
+  assert.ok(score);
+  const lowRisk = buildCommodityIntelligenceScorecard("GC=F", {
+    ...score,
+    annualizedVolatilityPercent: 5,
+  });
+  const highRisk = buildCommodityIntelligenceScorecard("GC=F", {
+    ...score,
+    annualizedVolatilityPercent: 120,
+  });
+  assert.ok(lowRisk && highRisk);
+  assert.ok(highRisk.score <= lowRisk.score);
+  assert.equal(lowRisk.positiveContributors.includes("Risk and volatility"), false);
+  assert.ok(highRisk.negativeContributors.includes("Risk and volatility"));
 });
 
 test("weekends and exchange holidays do not make continuous futures history stale", () => {

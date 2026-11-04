@@ -272,7 +272,7 @@ test("commodity search selection submits the canonical symbol to commodity analy
   );
   assert.match(
     analysisScreen,
-    /<CommodityAnalysisSections analysis=\{result\.commodityAnalysis\} \/>/,
+    /<CommodityAnalysisSections analysis=\{result\.commodityAnalysis\} symbol=\{result\.symbol\} \/>/,
     "the commodity branch should render the returned commodity analysis",
   );
   assert.match(

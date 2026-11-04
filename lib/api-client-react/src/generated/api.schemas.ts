@@ -412,6 +412,43 @@ export const CommodityAnalysisResultCommodityAnalysisFamily = {
   livestock: 'livestock',
 } as const;
 
+export type CommodityAnalysisResultCommodityAnalysisIntelligenceScorecardVersion = typeof CommodityAnalysisResultCommodityAnalysisIntelligenceScorecardVersion[keyof typeof CommodityAnalysisResultCommodityAnalysisIntelligenceScorecardVersion];
+
+
+export const CommodityAnalysisResultCommodityAnalysisIntelligenceScorecardVersion = {
+  NUMBER_1: 1,
+} as const;
+
+export type CommodityAnalysisResultCommodityAnalysisIntelligenceScorecardCoverageStatus = typeof CommodityAnalysisResultCommodityAnalysisIntelligenceScorecardCoverageStatus[keyof typeof CommodityAnalysisResultCommodityAnalysisIntelligenceScorecardCoverageStatus];
+
+
+export const CommodityAnalysisResultCommodityAnalysisIntelligenceScorecardCoverageStatus = {
+  complete: 'complete',
+  partial: 'partial',
+  insufficient: 'insufficient',
+} as const;
+
+export type CommodityAnalysisResultCommodityAnalysisIntelligenceScorecardCategoriesItemId = typeof CommodityAnalysisResultCommodityAnalysisIntelligenceScorecardCategoriesItemId[keyof typeof CommodityAnalysisResultCommodityAnalysisIntelligenceScorecardCategoriesItemId];
+
+
+export const CommodityAnalysisResultCommodityAnalysisIntelligenceScorecardCategoriesItemId = {
+  'technical-momentum': 'technical-momentum',
+  fundamentals: 'fundamentals',
+  'supply-demand': 'supply-demand',
+  'market-environment': 'market-environment',
+  'risk-volatility': 'risk-volatility',
+} as const;
+
+export type CommodityAnalysisResultCommodityAnalysisIntelligenceScorecardCategoriesItemClassification = typeof CommodityAnalysisResultCommodityAnalysisIntelligenceScorecardCategoriesItemClassification[keyof typeof CommodityAnalysisResultCommodityAnalysisIntelligenceScorecardCategoriesItemClassification];
+
+
+export const CommodityAnalysisResultCommodityAnalysisIntelligenceScorecardCategoriesItemClassification = {
+  bullish: 'bullish',
+  bearish: 'bearish',
+  neutral: 'neutral',
+  unavailable: 'unavailable',
+} as const;
+
 export type CommodityAnalysisResultCommodityAnalysisFactorsItemStatus = typeof CommodityAnalysisResultCommodityAnalysisFactorsItemStatus[keyof typeof CommodityAnalysisResultCommodityAnalysisFactorsItemStatus];
 
 
@@ -449,6 +486,56 @@ export const CommodityAnalysisResultCommodityAnalysisNewsContextStatus = {
   available: 'available',
   unavailable: 'unavailable',
 } as const;
+
+export type CommodityAnalysisResultCommodityAnalysisIntelligenceScorecardCategoriesItemSourcesItem = {
+  title: string;
+  url: string;
+  asOf: string;
+  unit: string;
+  observation: string;
+};
+
+export type CommodityAnalysisResultCommodityAnalysisIntelligenceScorecardCategoriesItem = {
+  id: CommodityAnalysisResultCommodityAnalysisIntelligenceScorecardCategoriesItemId;
+  label: string;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  score: number | null;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  weight: number;
+  classification: CommodityAnalysisResultCommodityAnalysisIntelligenceScorecardCategoriesItemClassification;
+  detail: string;
+  methodology: string;
+  sources: CommodityAnalysisResultCommodityAnalysisIntelligenceScorecardCategoriesItemSourcesItem[];
+};
+
+/**
+ * Evidence-based present assessment, distinct from a forecast of future returns.
+ */
+export type CommodityAnalysisResultCommodityAnalysisIntelligenceScorecard = {
+  version: CommodityAnalysisResultCommodityAnalysisIntelligenceScorecardVersion;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  score: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  coveragePercent: number;
+  coverageStatus: CommodityAnalysisResultCommodityAnalysisIntelligenceScorecardCoverageStatus;
+  missingCategories: string[];
+  categories: CommodityAnalysisResultCommodityAnalysisIntelligenceScorecardCategoriesItem[];
+  positiveContributors: string[];
+  negativeContributors: string[];
+  methodology: string;
+};
 
 export type CommodityAnalysisResultCommodityAnalysisFactorsItemSourcesItem = {
   title: string;
@@ -536,6 +623,8 @@ export type CommodityAnalysisResultCommodityAnalysis = {
   oneMonthReturnPercent: number | null;
   threeMonthReturnPercent: number | null;
   sixMonthReturnPercent: number | null;
+  /** Evidence-based present assessment, distinct from a forecast of future returns. */
+  intelligenceScorecard: CommodityAnalysisResultCommodityAnalysisIntelligenceScorecard;
   factors: CommodityAnalysisResultCommodityAnalysisFactorsItem[];
   methodology: string;
   reasoning: string;

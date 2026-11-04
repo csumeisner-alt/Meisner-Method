@@ -83,6 +83,16 @@ import type {
 } from '@/lib/etfResearchScore';
 import type { HeatMapEtfHoldingSnapshot } from '@/lib/heatMapDetail';
 import {
+  createCommodityScoreSnapshot,
+  findComparableCommodityScoreChange,
+  parseCommodityScoreSnapshots,
+  upsertCommodityScoreSnapshot,
+} from '@/lib/commodityIntelligenceScore';
+import type {
+  CommodityScoreCategoryInput,
+  CommodityScoreComparison,
+} from '@/lib/commodityIntelligenceScore';
+import {
   calculateEtfScenarioBreakdown,
   ETF_CONTRIBUTION_CADENCES,
   ETF_SCENARIO_INITIAL_INVESTMENT,
@@ -111,6 +121,8 @@ const PINNED_COMP_KEY = '@stocksense/pinned_comp_symbol';
 const ETF_COMPARISON_KEY = '@stocksense/etf_comparison_symbols_v1';
 const ETF_HOLDING_SNAPSHOTS_KEY = '@stocksense/etf_holding_snapshots_v1';
 const ETF_SCORE_SNAPSHOTS_KEY = '@stocksense/etf_score_snapshots_v1';
+const COMMODITY_SCORE_SNAPSHOTS_KEY = '@stocksense/commodity_intelligence_snapshots_v1';
+let commodityScoreSnapshotWriteQueue: Promise<void> = Promise.resolve();
 const ETF_CONTRIBUTION_CADENCE_KEY = '@stocksense/etf_contribution_cadence_v1';
 const ETF_FEE_AMOUNT_PRESETS = [
   { amount: 1_000, label: '$1,000' },
@@ -606,6 +618,26 @@ type CommodityAnalysisPayload = {
   oneMonthReturnPercent: number | null;
   threeMonthReturnPercent: number | null;
   sixMonthReturnPercent: number | null;
+  intelligenceScorecard: {
+    version: 1;
+    score: number;
+    coveragePercent: number;
+    coverageStatus: 'complete' | 'partial' | 'insufficient';
+    missingCategories: string[];
+    categories: {
+      id: 'technical-momentum' | 'fundamentals' | 'supply-demand' | 'market-environment' | 'risk-volatility';
+      label: string;
+      score: number | null;
+      weight: number;
+      classification: 'bullish' | 'bearish' | 'neutral' | 'unavailable';
+      detail: string;
+      methodology: string;
+      sources: { title: string; url: string; asOf: string; unit: string; observation: string }[];
+    }[];
+    positiveContributors: string[];
+    negativeContributors: string[];
+    methodology: string;
+  };
   factors: {
     key: string;
     label: string;
@@ -653,6 +685,241 @@ type CommodityAnalysisPayload = {
   provider: string;
 };
 
+function CommodityIntelligenceGauge({ score }: { score: number }) {
+  const colors = useColors();
+  const progress = useRef(new Animated.Value(0)).current;
+  const size = 132;
+  useEffect(() => {
+    progress.setValue(0);
+    const animation = Animated.timing(progress, {
+      toValue: 1,
+      duration: 750,
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [progress, score]);
+  const scale = progress.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] });
+  const scoreColor = score >= 60 ? colors.buyColor : score <= 40 ? colors.sellColor : colors.holdColor;
+  return (
+    <Animated.View
+      accessibilityLabel={`Commodity intelligence score ${score} out of 100`}
+      style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center', transform: [{ scale }] }}
+    >
+      <View style={{ position: 'absolute', width: size - 8, height: size - 8, borderRadius: size, borderWidth: 8, borderColor: colors.border, backgroundColor: colors.background, shadowColor: colors.primary, shadowOpacity: 0.2, shadowRadius: 12, elevation: 3 }} />
+      {Array.from({ length: 36 }, (_, index) => {
+        const angle = index / 36 * Math.PI * 2;
+        const active = index < Math.round(score / 100 * 36);
+        const radius = size / 2 - 7;
+        return (
+          <View
+            key={`commodity-score-tick-${index}`}
+            style={{
+              position: 'absolute',
+              left: size / 2 + Math.sin(angle) * radius - 1.5,
+              top: size / 2 - Math.cos(angle) * radius - 3.5,
+              width: 3,
+              height: 7,
+              borderRadius: 2,
+              backgroundColor: active ? scoreColor : colors.border,
+              opacity: active ? 1 : 0.42,
+              transform: [{ rotate: `${index * 10}deg` }],
+            }}
+          />
+        );
+      })}
+      <LinearGradient colors={[`${scoreColor}22`, 'transparent']} style={{ position: 'absolute', width: 86, height: 86, borderRadius: 43 }} />
+      <Text style={{ color: scoreColor, fontFamily: 'Inter_700Bold', fontSize: 36 }}>{score}</Text>
+      <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 10, marginTop: -2 }}>OUT OF 100</Text>
+    </Animated.View>
+  );
+}
+
+function CommodityIntelligenceScorecard({
+  symbol,
+  scorecard,
+}: {
+  symbol: string;
+  scorecard: CommodityAnalysisPayload['intelligenceScorecard'];
+}) {
+  const colors = useColors();
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [historyChange, setHistoryChange] = useState<CommodityScoreComparison | null>(null);
+  const [historyReady, setHistoryReady] = useState(false);
+  const historySignature = JSON.stringify([symbol, scorecard]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setHistoryReady(false);
+    setHistoryChange(null);
+    const saveSnapshot = async () => {
+      try {
+        const history = parseCommodityScoreSnapshots(
+          await AsyncStorage.getItem(COMMODITY_SCORE_SNAPSHOTS_KEY),
+        );
+        if (cancelled) return;
+        const snapshot = createCommodityScoreSnapshot({
+          symbol,
+          score: scorecard.score,
+          scorecardVersion: scorecard.version,
+          categories: scorecard.categories as CommodityScoreCategoryInput[],
+          recordedAt: new Date().toISOString(),
+        });
+        const comparison = findComparableCommodityScoreChange(snapshot, history);
+        const next = snapshot ? upsertCommodityScoreSnapshot(history, snapshot) : history;
+        if (snapshot && !history.some((item) =>
+          item.symbol === snapshot.symbol
+          && item.score === snapshot.score
+          && JSON.stringify(item.categoryScores) === JSON.stringify(snapshot.categoryScores)
+          && JSON.stringify(item.sourceContexts) === JSON.stringify(snapshot.sourceContexts)
+          && JSON.stringify(item.inputAsOf) === JSON.stringify(snapshot.inputAsOf),
+        )) {
+          await AsyncStorage.setItem(COMMODITY_SCORE_SNAPSHOTS_KEY, JSON.stringify(next));
+        }
+        if (!cancelled) {
+          setHistoryChange(comparison);
+          setHistoryReady(true);
+        }
+      } catch {
+        if (!cancelled) {
+          setHistoryChange({ status: 'unavailable' });
+          setHistoryReady(true);
+        }
+      }
+    };
+    const queued = commodityScoreSnapshotWriteQueue.then(saveSnapshot);
+    commodityScoreSnapshotWriteQueue = queued.then(() => undefined, () => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [historySignature, scorecard, symbol]);
+
+  const classColor = (classification: CommodityAnalysisPayload['intelligenceScorecard']['categories'][number]['classification']) =>
+    classification === 'bullish' ? colors.buyColor
+      : classification === 'bearish' ? colors.sellColor
+        : classification === 'neutral' ? colors.holdColor : colors.mutedForeground;
+  const statusLabel = scorecard.coverageStatus === 'complete'
+    ? 'Complete coverage'
+    : scorecard.coverageStatus === 'partial'
+      ? 'Partial coverage'
+      : 'Insufficient coverage';
+  return (
+    <View testID="commodity-intelligence-scorecard" style={{ marginBottom: 14, borderRadius: 16, borderWidth: 1, borderColor: `${colors.primary}88`, backgroundColor: colors.card, overflow: 'hidden' }}>
+      <LinearGradient colors={[`${colors.primary}24`, 'transparent', `${colors.primary}08`]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ padding: 16 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+          <CommodityIntelligenceGauge score={scorecard.score} />
+          <View style={{ flex: 1, gap: 6 }}>
+            <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 1 }}>COMMODITY INTELLIGENCE</Text>
+            <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 14 }}>{statusLabel}</Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{scorecard.coveragePercent}% weighted category coverage</Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 15 }}>Current evidence assessment only — not a prediction of future returns.</Text>
+          </View>
+        </View>
+        <View style={{ marginTop: 14, borderRadius: 10, backgroundColor: `${colors.background}aa`, padding: 10, gap: 4 }}>
+          <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>WEIGHTED METHOD</Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16 }}>{scorecard.methodology}</Text>
+        </View>
+        {scorecard.missingCategories.length > 0 && (
+          <View testID="commodity-intelligence-missing" style={{ marginTop: 10, borderRadius: 10, backgroundColor: `${colors.holdColor}12`, padding: 10, gap: 4 }}>
+            <Text style={{ color: colors.holdColor, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>MISSING CATEGORIES · WEIGHT HELD NEUTRAL</Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16 }}>
+              {scorecard.missingCategories.join(', ')}. Missing category weights are not reassigned, so the total stays closer to neutral.
+            </Text>
+          </View>
+        )}
+        <View style={{ marginTop: 13, gap: 5 }}>
+          {scorecard.categories.map((category) => {
+            const isExpanded = Boolean(expanded[category.id]);
+            const color = classColor(category.classification);
+            return (
+              <View key={category.id} testID={`commodity-intelligence-category-${category.id}`} style={{ borderTopWidth: 1, borderTopColor: `${colors.border}99` }}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: isExpanded }}
+                  accessibilityLabel={`${category.label}, ${category.score === null ? 'unavailable' : `${category.score} out of 100, ${category.classification}`}`}
+                  onPress={() => setExpanded((current) => ({ ...current, [category.id]: !current[category.id] }))}
+                  style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 8 }}
+                  testID={`commodity-intelligence-category-toggle-${category.id}`}
+                >
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />
+                  <View style={{ flex: 1, gap: 4 }}>
+                    <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>{category.label} · {category.weight}%</Text>
+                    <View style={{ height: 4, borderRadius: 4, overflow: 'hidden', backgroundColor: colors.border }}>
+                      <View style={{ width: `${category.score ?? 0}%`, height: '100%', backgroundColor: color }} />
+                    </View>
+                  </View>
+                  <Text style={{ minWidth: 76, textAlign: 'right', color, fontFamily: 'Inter_700Bold', fontSize: 11 }}>
+                    {category.score === null ? 'Unavailable' : `${category.score} · ${category.classification}`}
+                  </Text>
+                  <Feather name={isExpanded ? 'chevron-up' : 'chevron-down'} size={15} color={colors.mutedForeground} />
+                </Pressable>
+                {isExpanded && (
+                  <View testID={`commodity-intelligence-category-detail-${category.id}`} style={{ paddingBottom: 10, gap: 6 }}>
+                    <Text style={{ color: colors.foreground, fontSize: 11, lineHeight: 16 }}>{category.detail}</Text>
+                    <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 15 }}>Method: {category.methodology}</Text>
+                    {category.sources.map((source) => (
+                      <Pressable
+                        key={`${source.url}-${source.asOf}`}
+                        accessibilityRole="link"
+                        accessibilityLabel={`Open source: ${source.title}, dated ${source.asOf}`}
+                        onPress={() => { void Linking.openURL(source.url).catch(() => {}); }}
+                      >
+                        <Text style={{ color: colors.primary, fontSize: 10, lineHeight: 15, textDecorationLine: 'underline' }}>
+                          {source.title} · {source.asOf} · {source.unit}
+                        </Text>
+                      </Pressable>
+                    ))}
+                    {category.sources.length === 0 && (
+                      <Text style={{ color: colors.mutedForeground, fontSize: 10 }}>No validated supporting evidence is available.</Text>
+                    )}
+                  </View>
+                )}
+              </View>
+            );
+          })}
+        </View>
+        <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
+          <View style={{ flex: 1, borderRadius: 10, padding: 10, backgroundColor: `${colors.buyColor}12` }}>
+            <Text style={{ color: colors.buyColor, fontFamily: 'Inter_700Bold', fontSize: 10 }}>POSITIVE CONTRIBUTORS</Text>
+            <Text style={{ color: colors.foreground, fontSize: 11, lineHeight: 16, marginTop: 4 }}>
+              {scorecard.positiveContributors.length ? scorecard.positiveContributors.join(', ') : 'None available'}
+            </Text>
+          </View>
+          <View style={{ flex: 1, borderRadius: 10, padding: 10, backgroundColor: `${colors.sellColor}12` }}>
+            <Text style={{ color: colors.sellColor, fontFamily: 'Inter_700Bold', fontSize: 10 }}>NEGATIVE CONTRIBUTORS</Text>
+            <Text style={{ color: colors.foreground, fontSize: 11, lineHeight: 16, marginTop: 4 }}>
+              {scorecard.negativeContributors.length ? scorecard.negativeContributors.join(', ') : 'None available'}
+            </Text>
+          </View>
+        </View>
+        {historyReady && historyChange?.status === 'available' && (
+          <View testID="commodity-intelligence-score-history" style={{ marginTop: 11, borderRadius: 10, padding: 10, backgroundColor: `${colors.background}aa`, gap: 4 }}>
+            <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>
+              SCORE HISTORY · {historyChange.previousScore} → {scorecard.score} ({historyChange.change > 0 ? '+' : ''}{historyChange.change})
+            </Text>
+            <Text style={{ color: colors.buyColor, fontSize: 10, lineHeight: 15 }}>
+              Improved: {historyChange.improvedCategories.length ? historyChange.improvedCategories.join(', ') : 'None'}
+            </Text>
+            <Text style={{ color: colors.sellColor, fontSize: 10, lineHeight: 15 }}>
+              Deteriorated: {historyChange.deterioratedCategories.length ? historyChange.deterioratedCategories.join(', ') : 'None'}
+            </Text>
+          </View>
+        )}
+        {historyReady && historyChange?.status === 'not-comparable' && (
+          <Text testID="commodity-intelligence-history-not-comparable" style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 15, marginTop: 10 }}>
+            Prior scores use different evidence coverage or sources, so no score change is shown.
+          </Text>
+        )}
+        {historyReady && historyChange?.status === 'first-analysis' && (
+          <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 15, marginTop: 10 }}>
+            This is the first saved score for {symbol}. A comparison appears after a later comparable analysis.
+          </Text>
+        )}
+      </LinearGradient>
+    </View>
+  );
+}
+
 function CommodityEvidenceLink({ evidence }: { evidence: CommodityAnalysisPayload['verifiedEvidence'][number] }) {
   const colors = useColors();
   return (
@@ -697,7 +964,7 @@ function CommodityCommentaryItems({
   );
 }
 
-function CommodityAnalysisSections({ analysis }: { analysis: CommodityAnalysisPayload }) {
+function CommodityAnalysisSections({ analysis, symbol }: { analysis: CommodityAnalysisPayload; symbol: string }) {
   const colors = useColors();
   const scoreColor = analysis.score >= 65 ? colors.buyColor : analysis.score <= 40 ? colors.sellColor : colors.holdColor;
   const rows = [
@@ -707,6 +974,7 @@ function CommodityAnalysisSections({ analysis }: { analysis: CommodityAnalysisPa
   ] as const;
   return (
     <View testID="commodity-analysis-result" style={{ gap: 12 }}>
+      <CommodityIntelligenceScorecard symbol={symbol} scorecard={analysis.intelligenceScorecard} />
       <SectionCard title="COMMODITY MARKET SCORE" icon={<MaterialCommunityIcons name="chart-line" size={16} color={colors.primary} />}>
         <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 10 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -3745,7 +4013,7 @@ export default function AnalysisScreen() {
             contentContainerStyle={[styles.scroll, { paddingBottom: botPad + 24 }]}
             showsVerticalScrollIndicator={false}
           >
-            <CommodityAnalysisSections analysis={result.commodityAnalysis} />
+            <CommodityAnalysisSections analysis={result.commodityAnalysis} symbol={result.symbol} />
           </ScrollView>
         </View>
       </AmericanSteelBackground>

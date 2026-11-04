@@ -337,6 +337,12 @@ test("commodity analysis returns distinct family context, dated evidence, and un
     });
     assert.ok(expected);
     assert.equal(analysis.score, expected.score);
+      assert.equal(analysis.intelligenceScorecard.version, 1);
+      assert.equal(analysis.intelligenceScorecard.categories.length, 5);
+      assert.ok(["complete", "partial", "insufficient"].includes(
+        analysis.intelligenceScorecard.coverageStatus,
+      ));
+      assert.ok(analysis.intelligenceScorecard.methodology.includes("not a prediction"));
     assert.equal(analysis.annualizedVolatilityPercent, expected.annualizedVolatilityPercent);
     assert.equal(analysis.oneMonthReturnPercent, expected.oneMonthReturnPercent);
     assert.equal(analysis.threeMonthReturnPercent, expected.threeMonthReturnPercent);

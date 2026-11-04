@@ -128,6 +128,18 @@ export const analyzeStockResponseThreeCommodityAnalysisDataCoveragePercentMax = 
 
 export const analyzeStockResponseThreeCommodityAnalysisObservationCountMin = 0;
 
+export const analyzeStockResponseThreeCommodityAnalysisIntelligenceScorecardScoreMin = 0;
+export const analyzeStockResponseThreeCommodityAnalysisIntelligenceScorecardScoreMax = 100;
+
+export const analyzeStockResponseThreeCommodityAnalysisIntelligenceScorecardCoveragePercentMin = 0;
+export const analyzeStockResponseThreeCommodityAnalysisIntelligenceScorecardCoveragePercentMax = 100;
+
+export const analyzeStockResponseThreeCommodityAnalysisIntelligenceScorecardCategoriesItemScoreMin = 0;
+export const analyzeStockResponseThreeCommodityAnalysisIntelligenceScorecardCategoriesItemScoreMax = 100;
+
+export const analyzeStockResponseThreeCommodityAnalysisIntelligenceScorecardCategoriesItemWeightMin = 0;
+export const analyzeStockResponseThreeCommodityAnalysisIntelligenceScorecardCategoriesItemWeightMax = 100;
+
 
 
 
@@ -333,6 +345,32 @@ export const AnalyzeStockResponse = zod.union([zod.object({
   "oneMonthReturnPercent": zod.number().nullable(),
   "threeMonthReturnPercent": zod.number().nullable(),
   "sixMonthReturnPercent": zod.number().nullable(),
+  "intelligenceScorecard": zod.object({
+  "version": zod.literal(1),
+  "score": zod.number().min(analyzeStockResponseThreeCommodityAnalysisIntelligenceScorecardScoreMin).max(analyzeStockResponseThreeCommodityAnalysisIntelligenceScorecardScoreMax),
+  "coveragePercent": zod.number().min(analyzeStockResponseThreeCommodityAnalysisIntelligenceScorecardCoveragePercentMin).max(analyzeStockResponseThreeCommodityAnalysisIntelligenceScorecardCoveragePercentMax),
+  "coverageStatus": zod.enum(['complete', 'partial', 'insufficient']),
+  "missingCategories": zod.array(zod.string()),
+  "categories": zod.array(zod.object({
+  "id": zod.enum(['technical-momentum', 'fundamentals', 'supply-demand', 'market-environment', 'risk-volatility']),
+  "label": zod.string(),
+  "score": zod.number().min(analyzeStockResponseThreeCommodityAnalysisIntelligenceScorecardCategoriesItemScoreMin).max(analyzeStockResponseThreeCommodityAnalysisIntelligenceScorecardCategoriesItemScoreMax).nullable(),
+  "weight": zod.number().min(analyzeStockResponseThreeCommodityAnalysisIntelligenceScorecardCategoriesItemWeightMin).max(analyzeStockResponseThreeCommodityAnalysisIntelligenceScorecardCategoriesItemWeightMax),
+  "classification": zod.enum(['bullish', 'bearish', 'neutral', 'unavailable']),
+  "detail": zod.string(),
+  "methodology": zod.string(),
+  "sources": zod.array(zod.object({
+  "title": zod.string(),
+  "url": zod.string(),
+  "asOf": zod.coerce.date(),
+  "unit": zod.string(),
+  "observation": zod.string()
+}))
+})),
+  "positiveContributors": zod.array(zod.string()),
+  "negativeContributors": zod.array(zod.string()),
+  "methodology": zod.string()
+}).describe('Evidence-based present assessment, distinct from a forecast of future returns.'),
   "factors": zod.array(zod.object({
   "key": zod.string(),
   "label": zod.string(),

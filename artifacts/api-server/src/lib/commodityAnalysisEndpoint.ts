@@ -1,6 +1,7 @@
 import type { Response } from "express";
 import {
   assessCommodityHistory,
+  buildCommodityIntelligenceScorecard,
   buildCommodityScore,
   COMMODITY_ANALYSIS_GUIDES,
   COMMODITY_INVENTORY_PROVIDERS,
@@ -169,6 +170,7 @@ export async function respondWithCommodityAnalysis(
     week52Low: data.week52Low,
     commodityAnalysis: {
       ...score,
+      intelligenceScorecard: buildCommodityIntelligenceScorecard(symbol, score),
       reasoning: explanation.reasoning,
       risks: explanation.risks,
       strengths: explanation.strengths,
