@@ -120,6 +120,16 @@ const PERIODS: { label: string; value: Period }[] = [
   { label: '2Y', value: '2y'  },
 ];
 
+const ETF_ANALYSIS_SECTIONS = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'performance', label: 'Performance' },
+  { id: 'holdings', label: 'Holdings & Diversification' },
+  { id: 'risk-costs', label: 'Risk & Costs' },
+  { id: 'ai-analysis', label: 'AI Analysis' },
+  { id: 'projections', label: 'Future Projections' },
+] as const;
+type EtfAnalysisSectionId = typeof ETF_ANALYSIS_SECTIONS[number]['id'];
+
 type HelpTopic = 'technical' | 'fundamental';
 
 const METRIC_GUIDES: Record<HelpTopic, {
@@ -204,6 +214,39 @@ const metricStyles = StyleSheet.create({
   label: { fontSize: 13 },
   value: { fontSize: 13 },
 });
+
+function EtfSectionAnchor({
+  sectionId,
+  title,
+  onLayout,
+  onRef,
+}: {
+  sectionId: EtfAnalysisSectionId;
+  title: string;
+  onLayout: (sectionId: EtfAnalysisSectionId, y: number) => void;
+  onRef: (sectionId: EtfAnalysisSectionId, view: View | null) => void;
+}) {
+  const colors = useColors();
+  return (
+    <View
+      testID={`etf-section-${sectionId}`}
+      ref={(view) => onRef(sectionId, view)}
+      onLayout={(event) => onLayout(sectionId, event.nativeEvent.layout.y)}
+      style={{ paddingTop: 8, paddingBottom: 10 }}
+      accessibilityLabel={`${title} section`}
+    >
+      <Text style={{
+        color: colors.primary,
+        fontFamily: 'Inter_700Bold',
+        fontSize: 11,
+        letterSpacing: 1,
+        textTransform: 'uppercase',
+      }}>
+        {title}
+      </Text>
+    </View>
+  );
+}
 
 function SectionCard({ title, icon, score, scoreColor, children, helpTopic, onHelp, collapsible = false }: {
   title: string;
@@ -517,10 +560,50 @@ function CommodityAnalysisSections({ analysis }: { analysis: CommodityAnalysisPa
   );
 }
 
-function EtfAnalysisSections({ fund, colors, symbol }: {
+function EtfAnalysisSections({
+  fund,
+  colors,
+  symbol,
+  onSectionLayout,
+  onSectionRef,
+  primaryCandles,
+  primaryLoading,
+  primaryError,
+  retryPrimaryChart,
+  compInput,
+  compSymbol,
+  compCandles,
+  compLoading,
+  compError,
+  retryComparisonChart,
+  setCompInput,
+  commitCompSymbol,
+  clearComp,
+  period,
+  setPeriod,
+  chartWidth,
+}: {
   fund: EtfAnalysisPayload;
   colors: ReturnType<typeof useColors>;
   symbol: string;
+  onSectionLayout: (sectionId: EtfAnalysisSectionId, y: number) => void;
+  onSectionRef: (sectionId: EtfAnalysisSectionId, view: View | null) => void;
+  primaryCandles: Candle[];
+  primaryLoading: boolean;
+  primaryError: boolean;
+  retryPrimaryChart: () => void;
+  compInput: string;
+  compSymbol: string;
+  compCandles: Candle[];
+  compLoading: boolean;
+  compError: boolean;
+  retryComparisonChart: () => void;
+  setCompInput: (value: string) => void;
+  commitCompSymbol: () => void;
+  clearComp: () => void;
+  period: Period;
+  setPeriod: (period: Period) => void;
+  chartWidth: number;
 }) {
   const { apiFetch } = useApi();
   const router = useRouter();
@@ -1275,6 +1358,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           </View>
         </View>
       </Modal>
+      <EtfSectionAnchor sectionId="overview" title="Overview" onLayout={onSectionLayout} onRef={onSectionRef} />
       <View style={[recStyles.hero, {
         backgroundColor: colors.card,
         borderColor: profileScore.score == null ? colors.primary : etfScoreColor(profileScore.score),
@@ -1502,6 +1586,13 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
                 : 'The available rules-based profile signals are mixed.'}
           {' '}This is a summary of reported data, not a forecast or recommendation.
         </Text>
+        <View style={{ borderTopWidth: 1, borderTopColor: colors.border, marginTop: 12, paddingTop: 8 }}>
+          <MetricRow label="Fund" value={fund.fundFamily ?? fund.fundCategory ?? 'ETF'} />
+          <MetricRow label="Research score" value={profileScore.score == null ? 'Unavailable' : `${profileScore.score}/100`} />
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 4 }}>
+            Research score uses {profileScore.availableComponents} of 5 available components. {fund.provider} data retrieved {sourceDate(fund.asOf)}.
+          </Text>
+        </View>
         <View style={{ borderTopWidth: 1, borderTopColor: colors.border, marginTop: 12, paddingTop: 12 }}>
           <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 11, letterSpacing: 0.5, marginBottom: 8 }}>
             AI-IDENTIFIED TAKEAWAYS
@@ -1572,16 +1663,6 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           )}
         </View>
       )}
-      <SectionCard collapsible title="AI COMMENTARY" icon={<Ionicons name="sparkles-outline" size={16} color={colors.primary} />}>
-        <View style={{ padding: 16 }}>
-          <Text style={{ color: colors.foreground, fontSize: 14, lineHeight: 22 }}>
-            {fund.analysis || 'AI commentary is unavailable. Review the sourced fund data below.'}
-          </Text>
-          <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 14 }}>
-            AI commentary summarizes supplied fund data; it does not set the profile score or provide personalized advice or a buy/sell recommendation.
-          </Text>
-        </View>
-      </SectionCard>
       <SectionCard collapsible title="SCORE DETAILS & METHODOLOGY" icon={<Ionicons name="speedometer-outline" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 28 }}>
@@ -1616,6 +1697,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           </Text>
         </View>
       </SectionCard>
+      <EtfSectionAnchor sectionId="risk-costs" title="Risk & Costs" onLayout={onSectionLayout} onRef={onSectionRef} />
       <SectionCard collapsible title="FUND PROFILE & RISK" icon={<Ionicons name="layers-outline" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           <MetricRow label="Category" value={fund.fundCategory ?? 'Unavailable'} />
@@ -1726,6 +1808,7 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           )}
         </View>
       </SectionCard>
+      <EtfSectionAnchor sectionId="holdings" title="Holdings & Diversification" onLayout={onSectionLayout} onRef={onSectionRef} />
       <SectionCard collapsible title="HOLDINGS & DIVERSIFICATION" icon={<MaterialCommunityIcons name="briefcase-outline" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           {fund.topHoldings.length ? fund.topHoldings.map((holding) => (
@@ -2069,6 +2152,141 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
       </View>
     </SectionCard>
   )}
+      <EtfSectionAnchor sectionId="performance" title="Performance" onLayout={onSectionLayout} onRef={onSectionRef} />
+      <View style={[cardStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={chartCardStyles.header}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Feather name="trending-up" size={14} color={colors.primary} />
+            <Text style={[cardStyles.title, { color: colors.foreground, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5 }]}>
+              PRICE HISTORY · {symbol.toUpperCase()}
+            </Text>
+          </View>
+          <View style={chartCardStyles.periodRow}>
+            {PERIODS.map(({ label, value }) => (
+              <TouchableOpacity
+                key={value}
+                testID={`etf-chart-period-${value}`}
+                accessibilityRole="button"
+                accessibilityState={{ selected: period === value }}
+                accessibilityLabel={`Show ${label} ETF price history`}
+                style={[
+                  chartCardStyles.pill,
+                  { borderColor: colors.border },
+                  period === value && { backgroundColor: colors.primary, borderColor: colors.primary },
+                ]}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                  setPeriod(value);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={[
+                  chartCardStyles.pillText,
+                  { color: period === value ? colors.primaryForeground : colors.mutedForeground, fontFamily: 'Inter_600SemiBold' },
+                ]}>
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+        <View style={[cardStyles.divider, { backgroundColor: colors.border }]} />
+        <View style={chartCardStyles.chartArea}>
+          {primaryLoading ? (
+            <View style={[chartCardStyles.loader, { height: 240 }]}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={[chartCardStyles.loaderText, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                Loading price history…
+              </Text>
+            </View>
+          ) : primaryError ? (
+            <View style={{ minHeight: 160, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <Text style={{ color: colors.mutedForeground, textAlign: 'center' }}>
+                Price history could not be loaded. No chart is shown.
+              </Text>
+              <Pressable
+                testID="etf-chart-retry"
+                accessibilityRole="button"
+                onPress={retryPrimaryChart}
+                style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 16 }}
+              >
+                <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold' }}>Retry price history</Text>
+              </Pressable>
+            </View>
+          ) : primaryCandles.length < 2 ? (
+            <View style={{ minHeight: 160, justifyContent: 'center', paddingHorizontal: 8 }}>
+              <Text style={{ color: colors.mutedForeground, textAlign: 'center', lineHeight: 18 }}>
+                {primaryCandles.length === 1
+                  ? 'Only one dated price observation is available; a trend line needs at least two.'
+                  : 'Price history is unavailable for this period.'}
+              </Text>
+            </View>
+          ) : (
+            <ComparisonChart
+              primaryCandles={primaryCandles}
+              primarySymbol={symbol ?? ''}
+              compCandles={compCandles.length > 0 ? compCandles : undefined}
+              compSymbol={compSymbol || undefined}
+              width={chartWidth}
+              height={240}
+            />
+          )}
+        </View>
+        {!primaryLoading && !primaryError && primaryCandles.length > 1 && (
+          <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 15, paddingHorizontal: 16, paddingBottom: 10 }}>
+            Dated provider observations: {primaryCandles[0]?.date ?? 'date unavailable'} to {primaryCandles[primaryCandles.length - 1]?.date ?? 'date unavailable'}. Calendar gaps are not filled or interpolated.
+          </Text>
+        )}
+        <View style={[chartCardStyles.compRow, { borderTopColor: colors.border }]}>
+          <Feather name="plus-circle" size={14} color={colors.mutedForeground} style={{ marginRight: 6 }} />
+          <TextInput
+            testID="etf-chart-compare-input"
+            style={[chartCardStyles.compInput, { color: colors.foreground, fontFamily: 'Inter_400Regular' }]}
+            placeholder="Compare price history (e.g. SPY)"
+            placeholderTextColor={colors.mutedForeground}
+            value={compInput}
+            onChangeText={(value) => setCompInput(value.toUpperCase())}
+            onSubmitEditing={commitCompSymbol}
+            onBlur={commitCompSymbol}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            returnKeyType="search"
+            maxLength={10}
+          />
+          {compLoading && <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 6 }} />}
+          {(compSymbol !== '' || compInput !== '') && !compLoading && (
+            <TouchableOpacity
+              testID="etf-chart-compare-clear"
+              accessibilityRole="button"
+              accessibilityLabel="Clear price history comparison"
+              onPress={clearComp}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Feather name="x" size={14} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          )}
+        </View>
+        {!!compSymbol && (
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, paddingHorizontal: 16, paddingVertical: 9 }}>
+            {compError
+              ? `${compSymbol} price history is unavailable. The ETF chart remains limited to ${symbol.toUpperCase()}.`
+              : compCandles.length < 2 && !compLoading
+                ? `${compSymbol} does not have enough dated observations for this period.`
+                : `Comparison uses provider-reported daily prices for ${compSymbol}; gaps are not filled with estimates.`}
+          </Text>
+        )}
+        {!!compSymbol && compError && (
+          <Pressable
+            testID="etf-chart-compare-retry"
+            accessibilityRole="button"
+            accessibilityLabel={`Retry ${compSymbol} price history`}
+            onPress={retryComparisonChart}
+            style={{ minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start', paddingHorizontal: 16 }}
+          >
+            <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold' }}>Retry comparison history</Text>
+          </Pressable>
+        )}
+      </View>
       <SectionCard collapsible title="HISTORICAL PERFORMANCE" icon={<Ionicons name="trending-up" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
           {fund.marketRegime ? (
@@ -2194,8 +2412,26 @@ function EtfAnalysisSections({ fund, colors, symbol }: {
           </Text>
         </View>
       </SectionCard>
+      <EtfSectionAnchor sectionId="ai-analysis" title="AI Analysis" onLayout={onSectionLayout} onRef={onSectionRef} />
+      <SectionCard collapsible title="AI COMMENTARY" icon={<Ionicons name="sparkles-outline" size={16} color={colors.primary} />}>
+        <View style={{ padding: 16 }}>
+          <Text style={{ color: colors.foreground, fontSize: 14, lineHeight: 22 }}>
+            {fund.analysis || 'AI commentary is unavailable. Review the sourced fund data below.'}
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 14 }}>
+            AI commentary summarizes supplied fund data; it does not set the deterministic profile score or provide personalized advice or a buy/sell recommendation.
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 10 }}>
+            Reported strengths and risks reflect the supplied fund analysis. Missing benchmark, holdings, or tracking evidence is identified in the sourced sections; absence of evidence is not treated as a positive or negative finding.
+          </Text>
+        </View>
+      </SectionCard>
+      <EtfSectionAnchor sectionId="projections" title="Future Projections" onLayout={onSectionLayout} onRef={onSectionRef} />
       <SectionCard collapsible title="LONG-RANGE SCENARIOS" icon={<MaterialCommunityIcons name="chart-timeline-variant" size={16} color={colors.primary} />}>
         <View style={{ padding: 16 }}>
+          <Text style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 18, marginBottom: 10 }}>
+            Deterministic illustrations based on historical market-regime returns and reported fees. They repeat a historical assumption as if it continued; they are hypothetical examples, not forecasts or guarantees.
+          </Text>
           <MetricRow label="Annual expense ratio used" value={pctValue(fund.expenseRatio)} />
           {renderContributionControls('etf-scenario-contribution-input')}
           {renderScenarioHorizonSelector()}
@@ -2343,10 +2579,20 @@ export default function AnalysisScreen() {
   const [period, setPeriod] = useState<Period>('3mo');
   const [primaryCandles, setPrimaryCandles]   = useState<Candle[]>([]);
   const [primaryLoading, setPrimaryLoading]   = useState(false);
+  const [primaryChartError, setPrimaryChartError] = useState(false);
+  const [primaryChartRetry, setPrimaryChartRetry] = useState(0);
   const [compInput, setCompInput]             = useState('');       // text field
   const [compSymbol, setCompSymbol]           = useState('');       // committed symbol
   const [compCandles, setCompCandles]         = useState<Candle[]>([]);
   const [compLoading, setCompLoading]         = useState(false);
+  const [compChartError, setCompChartError]   = useState(false);
+  const [compChartRetry, setCompChartRetry]   = useState(0);
+  const [activeEtfSection, setActiveEtfSection] = useState<EtfAnalysisSectionId>('overview');
+  const etfScrollRef = useRef<ScrollView>(null);
+  const etfScrollFrameRef = useRef<View>(null);
+  const etfSectionOffsets = useRef<Partial<Record<EtfAnalysisSectionId, number>>>({});
+  const etfSectionRefs = useRef<Partial<Record<EtfAnalysisSectionId, View>>>({});
+  const etfScrollOffset = useRef(0);
   const [loadingStageIndex, setLoadingStageIndex] = useState(0);
   const tickerGlow = useRef(new Animated.Value(0)).current;
   const loadingStages = useMemo<readonly string[]>(
@@ -2390,26 +2636,42 @@ export default function AnalysisScreen() {
     if (!symbol) return;
     let cancelled = false;
     setPrimaryLoading(true);
+    setPrimaryChartError(false);
     setPrimaryCandles([]);
     apiFetch<{ candles: Candle[] }>(`/api/stocks/chart/${encodeURIComponent(symbol)}?period=${period}&interval=1d`)
       .then((res) => { if (!cancelled) setPrimaryCandles(res.candles ?? []); })
-      .catch(() => { if (!cancelled) setPrimaryCandles([]); })
+      .catch(() => {
+        if (!cancelled) {
+          setPrimaryCandles([]);
+          setPrimaryChartError(true);
+        }
+      })
       .finally(() => { if (!cancelled) setPrimaryLoading(false); });
     return () => { cancelled = true; };
-  }, [symbol, period]);
+  }, [symbol, period, primaryChartRetry]);
 
   // Fetch comparison chart data whenever compSymbol or period changes
   useEffect(() => {
-    if (!compSymbol) { setCompCandles([]); return; }
+    if (!compSymbol) {
+      setCompCandles([]);
+      setCompChartError(false);
+      return;
+    }
     let cancelled = false;
     setCompLoading(true);
+    setCompChartError(false);
     setCompCandles([]);
     apiFetch<{ candles: Candle[] }>(`/api/stocks/chart/${encodeURIComponent(compSymbol)}?period=${period}&interval=1d`)
       .then((res) => { if (!cancelled) setCompCandles(res.candles ?? []); })
-      .catch(() => { if (!cancelled) setCompCandles([]); })
+      .catch(() => {
+        if (!cancelled) {
+          setCompCandles([]);
+          setCompChartError(true);
+        }
+      })
       .finally(() => { if (!cancelled) setCompLoading(false); });
     return () => { cancelled = true; };
-  }, [compSymbol, period]);
+  }, [compSymbol, period, compChartRetry]);
 
   const commitCompSymbol = useCallback(() => {
     const s = compInput.trim().toUpperCase();
@@ -2428,6 +2690,14 @@ export default function AnalysisScreen() {
     setCompSymbol('');
     setCompCandles([]);
     AsyncStorage.removeItem(PINNED_COMP_KEY).catch(() => { /* ignore */ });
+  }, []);
+
+  const retryPrimaryChart = useCallback(() => {
+    setPrimaryChartRetry((current) => current + 1);
+  }, []);
+
+  const retryComparisonChart = useCallback(() => {
+    setCompChartRetry((current) => current + 1);
   }, []);
 
   // Chart card width = screen width minus scroll padding (14 each side) minus card padding (16 each side)
@@ -2450,6 +2720,86 @@ export default function AnalysisScreen() {
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
   const botPad = Platform.OS === 'web' ? 34 : insets.bottom;
+
+  const recordEtfSectionOffset = (sectionId: EtfAnalysisSectionId, y: number) => {
+    etfSectionOffsets.current[sectionId] = y;
+  };
+  const recordEtfSectionRef = (sectionId: EtfAnalysisSectionId, view: View | null) => {
+    if (view) etfSectionRefs.current[sectionId] = view;
+    else delete etfSectionRefs.current[sectionId];
+  };
+  const navigateToEtfSection = (sectionId: EtfAnalysisSectionId) => {
+    setActiveEtfSection(sectionId);
+    const scrollView = etfScrollRef.current;
+    const scrollFrame = etfScrollFrameRef.current;
+    const sectionView = etfSectionRefs.current[sectionId];
+    if (scrollView && scrollFrame && sectionView) {
+      sectionView.measureInWindow((_sectionX, sectionY) => {
+        scrollFrame.measureInWindow((_frameX, frameY) => {
+          const y = etfScrollOffset.current + sectionY - frameY;
+          scrollView.scrollTo({ y: Math.max(0, y - 8), animated: false });
+        });
+      });
+      return;
+    }
+    const y = etfSectionOffsets.current[sectionId];
+    if (y != null) scrollView?.scrollTo({ y: Math.max(0, y - 8), animated: true });
+  };
+  const renderEtfSectionNavigation = () => (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      accessibilityLabel="ETF analysis sections"
+      contentContainerStyle={{
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 14,
+        paddingVertical: 9,
+      }}
+      style={{ flexGrow: 0, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.background }}
+    >
+      {ETF_ANALYSIS_SECTIONS.map(({ id, label }) => {
+        const selected = activeEtfSection === id;
+        return (
+          <Pressable
+            key={id}
+            testID={`etf-section-nav-${id}`}
+            accessibilityRole="button"
+            accessibilityState={{ selected }}
+            accessibilityLabel={selected ? `Selected section: ${label}` : `Go to ${label}`}
+            onPress={() => navigateToEtfSection(id)}
+            style={{
+              minHeight: 42,
+              justifyContent: 'center',
+              borderBottomWidth: 2,
+              borderBottomColor: selected ? colors.primary : 'transparent',
+              paddingHorizontal: 8,
+            }}
+          >
+            <Text
+              numberOfLines={1}
+              style={{
+                color: selected ? colors.primary : colors.mutedForeground,
+                fontFamily: selected ? 'Inter_700Bold' : 'Inter_500Medium',
+                fontSize: 12,
+              }}
+            >
+              {label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+  const handleEtfScroll = (offsetY: number) => {
+    const reached = Object.entries(etfSectionOffsets.current)
+      .flatMap(([id, y]) => y != null && y <= offsetY + 100
+        ? [{ id: id as EtfAnalysisSectionId, y }]
+        : [])
+      .sort((first, second) => first.y - second.y)
+      .at(-1);
+    if (reached) setActiveEtfSection(reached.id);
+  };
 
   const actionColor = (a?: string) => {
     if (a === 'buy') return colors.buyColor;
@@ -2633,17 +2983,44 @@ export default function AnalysisScreen() {
       <AmericanSteelBackground>
         <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
           {renderHeader(response as StockAnalysis)}
-          <ScrollView
-            style={{ flex: 1, minHeight: 0 }}
-            contentContainerStyle={[styles.scroll, { paddingBottom: botPad + 24 }]}
-            showsVerticalScrollIndicator={false}
-          >
-          <EtfAnalysisSections
-            fund={result.etfAnalysis}
-            colors={colors}
-            symbol={result.symbol}
-          />
-          </ScrollView>
+          {renderEtfSectionNavigation()}
+          <View ref={etfScrollFrameRef} style={{ flex: 1, minHeight: 0 }}>
+            <ScrollView
+              ref={etfScrollRef}
+              style={{ flex: 1, minHeight: 0 }}
+              contentContainerStyle={[styles.scroll, { paddingBottom: botPad + 24 }]}
+              showsVerticalScrollIndicator={false}
+              onScroll={(event) => {
+                etfScrollOffset.current = event.nativeEvent.contentOffset.y;
+                handleEtfScroll(event.nativeEvent.contentOffset.y);
+              }}
+              scrollEventThrottle={100}
+            >
+              <EtfAnalysisSections
+                fund={result.etfAnalysis}
+                colors={colors}
+                symbol={result.symbol}
+                onSectionLayout={recordEtfSectionOffset}
+                onSectionRef={recordEtfSectionRef}
+                primaryCandles={primaryCandles}
+                primaryLoading={primaryLoading}
+                primaryError={primaryChartError}
+                retryPrimaryChart={retryPrimaryChart}
+                compInput={compInput}
+                compSymbol={compSymbol}
+                compCandles={compCandles}
+                compLoading={compLoading}
+                compError={compChartError}
+                retryComparisonChart={retryComparisonChart}
+                setCompInput={setCompInput}
+                commitCompSymbol={commitCompSymbol}
+                clearComp={clearComp}
+                period={period}
+                setPeriod={setPeriod}
+                chartWidth={chartWidth}
+              />
+            </ScrollView>
+          </View>
         </View>
       </AmericanSteelBackground>
     );

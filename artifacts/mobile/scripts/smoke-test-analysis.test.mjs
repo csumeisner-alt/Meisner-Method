@@ -155,7 +155,7 @@ test("ETF analysis leads with a concise overview and preserves score limits", ()
   assert.match(etfAnalysisSource, /SCORE DETAILS & METHODOLOGY/);
   assert.match(etfAnalysisSource, /Missing components are excluded and remaining weights are rescaled/);
   assert.match(etfAnalysisSource, /Rules-based, not AI-generated or personalized advice/);
-  assert.match(etfAnalysisSource, /AI commentary summarizes supplied fund data; it does not set the profile score/);
+  assert.match(etfAnalysisSource, /AI commentary summarizes supplied fund data; it does not set the deterministic profile score/);
   assert.match(etfAnalysisSource, /component\.peerContext\.category/);
   assert.match(etfAnalysisSource, /component\.peerContext\.sampleContext/);
   assert.match(etfAnalysisSource, /component\.peerContext\.source/);
@@ -188,8 +188,69 @@ test("ETF evidence is grouped in expandable, accessible sections", () => {
   }
 });
 
-test("ETF analysis omits section-jump navigation", () => {
-  assert.doesNotMatch(etfAnalysisSource, /Jump to section|etf-section-nav-toggle|sectionNavigationItems|jumpToSection/);
+test("ETF analysis provides six accessible section-navigation targets", () => {
+  const navigationLabels = [
+    "Overview",
+    "Performance",
+    "Holdings & Diversification",
+    "Risk & Costs",
+    "AI Analysis",
+    "Future Projections",
+  ];
+  let previousIndex = -1;
+  for (const label of navigationLabels) {
+    const index = etfAnalysisSource.indexOf(`label: '${label}'`);
+    assert.ok(index > previousIndex, `${label} should appear in the requested navigation order.`);
+    previousIndex = index;
+    assert.match(etfAnalysisSource, new RegExp(`sectionId="${label === "Holdings & Diversification" ? "holdings" : label === "Risk & Costs" ? "risk-costs" : label === "AI Analysis" ? "ai-analysis" : label === "Future Projections" ? "projections" : label.toLowerCase()}"`));
+    assert.match(etfAnalysisSource, new RegExp(`testID=\{\\\`etf-section-nav-`));
+  }
+  assert.match(etfAnalysisSource, /sectionView\.measureInWindow/);
+  assert.match(etfAnalysisSource, /scrollView\.scrollTo\(\{ y:/);
+  assert.match(etfAnalysisSource, /accessibilityState=\{\{ selected \}\}/);
+});
+
+test("ETF overview combines quote, deterministic research score, takeaways, and freshness", () => {
+  assert.match(etfAnalysisSource, /ETF RESEARCH PROFILE/);
+  assert.match(etfAnalysisSource, /Research score/);
+  assert.match(etfAnalysisSource, /fund\.provider\} data retrieved \{sourceDate\(fund\.asOf\)\}/);
+  assert.match(etfAnalysisSource, /fund\.strengths\.map/);
+  assert.match(etfAnalysisSource, /fund\.risks\.map/);
+  assert.match(etfAnalysisSource, /formatAnalysisLoadingStage/);
+  assert.match(etfAnalysisSource, /fmtPrice\(analysis\.currentPrice\)/);
+  assert.match(etfAnalysisSource, /changePct\.toFixed\(2\)/);
+  assert.match(etfAnalysisSource, /calculateEtfResearchScore\(\{/);
+  assert.match(etfAnalysisSource, /Missing components are excluded and remaining weights are rescaled/);
+});
+
+test("ETF performance history uses real candles, supported ranges, and honest retry states", () => {
+  assert.match(etfAnalysisSource, /\/api\/stocks\/chart\/\$\{encodeURIComponent\(symbol\)\}\?period=\$\{period\}&interval=1d/);
+  for (const period of ["1mo", "3mo", "6mo", "1y", "2y"]) {
+    assert.match(etfAnalysisSource, new RegExp(`value: '${period}'`));
+    assert.match(etfAnalysisSource, /etf-chart-period-\$\{value\}/);
+  }
+  assert.match(etfAnalysisSource, /testID="etf-chart-retry"/);
+  assert.match(etfAnalysisSource, /Price history could not be loaded\. No chart is shown\./);
+  assert.match(etfAnalysisSource, /Only one dated price observation is available/);
+  assert.match(etfAnalysisSource, /Calendar gaps are not filled or interpolated/);
+  assert.match(etfAnalysisSource, /primaryChartRetry\]/);
+  assert.match(etfAnalysisSource, /compChartRetry\]/);
+});
+
+test("ETF AI commentary stays separate from the research score and grounded in supplied facts", () => {
+  assert.match(etfAnalysisSource, /SectionCard collapsible title="AI COMMENTARY"/);
+  assert.match(
+    etfAnalysisSource,
+    /AI commentary summarizes supplied fund data; it does not set the deterministic profile score/,
+  );
+  assert.match(
+    etfAnalysisSource,
+    /Missing benchmark, holdings, or tracking evidence is identified in the sourced sections; absence of evidence is not treated as a positive or negative finding/,
+  );
+  assert.match(etfAnalysisSource, /AI commentary is unavailable\. Review the sourced fund data below\./);
+  assert.match(etfEndpointSource, /using only the supplied facts/);
+  assert.match(etfEndpointSource, /Do not invent data/);
+  assert.match(etfEndpointSource, /Do not give personalized advice or change scenario calculations/);
 });
 
 test("ETF comparison highlights meaningful shared-data gaps above full details", () => {
@@ -462,7 +523,21 @@ async function buildAnalysisScreenBundle(expenseRatio, scenarioOverrides = {}) {
     `],
     ["@/hooks/useApi", `
       const comparisonResponse = ${JSON.stringify(comparisonResponse)};
+      window.__analysisChartRequests = [];
+      let chartFailureCount = 0;
       const apiFetch = async (_url, options) => {
+        if (_url.startsWith("/api/stocks/chart/")) {
+          window.__analysisChartRequests.push(_url);
+          if (${JSON.stringify(Boolean(scenarioOverrides.chartFailureOnce))} && chartFailureCount === 0) {
+            chartFailureCount += 1;
+            throw new Error("Fixture chart request failed.");
+          }
+          return { candles: [
+            { t: 1792972800000, date: "2026-10-26", o: 100, h: 102, l: 99, c: 101, v: 1000 },
+            { t: 1793059200000, date: "2026-10-27", o: 101, h: 104, l: 100, c: 103, v: 1200 },
+            { t: 1793318400000, date: "2026-10-30", o: 103, h: 105, l: 102, c: 104, v: 900 },
+          ] };
+        }
         const candidate = options?.body ? JSON.parse(options.body).symbol : null;
         return candidate && candidate === comparisonResponse?.symbol
           ? comparisonResponse
@@ -503,7 +578,15 @@ async function buildAnalysisScreenBundle(expenseRatio, scenarioOverrides = {}) {
       }
     `],
     ["@/components/ComparisonChart", `
-      export const ComparisonChart = () => null;
+      import React from "react";
+      import { View, Text } from "react-native";
+      export const ComparisonChart = ({ primaryCandles, primarySymbol, compSymbol }) => (
+        <View testID="etf-chart-test-render">
+          <Text testID="etf-chart-test-series">
+            {primarySymbol + ":" + primaryCandles.map((candle) => candle.date + ":" + candle.c).join("|") + (compSymbol ? " vs " + compSymbol : "")}
+          </Text>
+        </View>
+      );
     `],
     ["@/components/AmericanSteelBackground", `
       import React from "react";
@@ -604,12 +687,14 @@ function connectDebugger(webSocketUrl) {
         }).then((reply) => {
           if (reply.result.exceptionDetails) {
           throw new Error(
-            reply.result.exceptionDetails.exception?.description
+            `${reply.result.exceptionDetails.exception?.description
               ?? reply.result.exceptionDetails.text
-              ?? "Browser evaluation failed.",
+              ?? "Browser evaluation failed."} (expression: ${expression})`,
           );
           }
           return reply.result.result.value;
+        }).catch((error) => {
+          throw new Error(`${error instanceof Error ? error.message : String(error)} (expression: ${expression})`);
         });
       },
       async close() {
@@ -791,6 +876,7 @@ test("rendered ETF detail and comparison hide invalid tracking history", async (
 
 test("ETF analysis sections render, expand, and collapse without 320px overflow", async () => {
   const bundle = await buildAnalysisScreenBundle();
+  const chartRetryBundle = await buildAnalysisScreenBundle(0.0003, { chartFailureOnce: true });
   const comparisonBundle = await buildAnalysisScreenBundle(undefined, {
     savedCompareSymbols: ["VTI"],
   });
@@ -800,6 +886,7 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
   const server = createServer((request, response) => {
     const bundles = {
       "/bundle.js": bundle,
+      "/bundle-chart-retry.js": chartRetryBundle,
       "/bundle-comparison.js": comparisonBundle,
       "/bundle-unavailable-fee.js": unavailableFeeBundle,
       "/bundle-missing-scenarios.js": missingScenariosBundle,
@@ -813,6 +900,7 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     const scriptPath = {
       "/comparison": "/bundle-comparison.js",
+      "/chart-retry": "/bundle-chart-retry.js",
       "/unavailable-fee": "/bundle-unavailable-fee.js",
       "/missing-scenarios": "/bundle-missing-scenarios.js",
       "/malformed-scenarios": "/bundle-malformed-scenarios.js",
@@ -857,6 +945,32 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
       browser,
       "document.body?.innerText.includes('At a glance')",
       "The real ETF analysis screen did not render its overview.",
+    );
+    await waitForBrowserValue(
+      browser,
+      `Boolean(document.querySelector('[data-testid="etf-chart-test-render"]'))`,
+      "ETF price history should render from dated provider candles.",
+    );
+    assert.match(
+      await browser.evaluate(`document.querySelector('[data-testid="etf-chart-test-series"]')?.textContent ?? ""`),
+      /VOO:2026-10-26:101\|2026-10-27:103\|2026-10-30:104/,
+      "The chart should receive real dated candle values without filling calendar gaps.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.body?.innerText.includes("Calendar gaps are not filled or interpolated.")`),
+      true,
+      "The chart should disclose that missing dates are not interpolated.",
+    );
+    await browser.evaluate(`document.querySelector('[data-testid="etf-chart-period-1y"]')?.click()`);
+    await waitForBrowserValue(
+      browser,
+      `window.__analysisChartRequests?.some((url) => url.includes("period=1y"))`,
+      "Selecting a chart range should request that supported period.",
+    );
+    assert.equal(
+      await browser.evaluate(`window.__analysisChartRequests?.filter((url) => url.includes("period=1y")).length`),
+      1,
+      "A range selection should issue one chart request, not duplicates.",
     );
     const sectionState = await browser.evaluate(`Array.from(
       document.querySelectorAll('[data-testid^="analysis-section-"]'),
@@ -1134,10 +1248,22 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
       "The summary should appear above the full comparison details.",
     );
     assert.equal(
-      await browser.evaluate(`Boolean(document.querySelector('[data-testid="etf-section-nav-toggle"]'))`),
-      false,
-      "ETF comparison analysis should not render the section navigator.",
+      await browser.evaluate(`Array.from(document.querySelectorAll('[data-testid^="etf-section-nav-"]')).length`),
+      6,
+      "ETF analysis should render all six section navigation controls.",
     );
+    await browser.evaluate(`document.querySelector('[data-testid="etf-section-nav-projections"]')?.click()`);
+    await waitForBrowserValue(
+      browser,
+      `document.querySelector('[data-testid="etf-section-nav-projections"]')?.getAttribute('aria-label') === 'Selected section: Future Projections'`,
+      "Choosing a section should update its selected accessible label.",
+    );
+    await waitForBrowserValue(
+      browser,
+      `document.querySelector('[data-testid="etf-section-projections"]')?.getBoundingClientRect().top < 700`,
+      "Choosing a section should scroll the report to its content.",
+    );
+
     await browser.evaluate(`document.querySelector('[data-testid="analysis-section-etf-cost-risk-performance"]')?.scrollIntoView({ block: "nearest" })`);
     await browser.evaluate(`document.querySelector('[data-testid="analysis-section-etf-cost-risk-performance"]')?.click()`);
     await waitForBrowserValue(
@@ -1194,6 +1320,23 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
       await browser.evaluate(`JSON.parse(window.__analysisTestStorage.get("@stocksense/etf_comparison_symbols_v1") ?? "[]")`),
       ["VOO"],
       "Switching focus should retain the previous current ETF in the comparison lineup.",
+    );
+    await browser.send("Page.navigate", { url: `http://127.0.0.1:${address.port}/chart-retry` });
+    await waitForBrowserValue(
+      browser,
+      `Boolean(document.querySelector('[data-testid="etf-chart-retry"]'))`,
+      "A failed price-history request should show a retry action.",
+    );
+    await browser.evaluate(`document.querySelector('[data-testid="etf-chart-retry"]')?.click()`);
+    await waitForBrowserValue(
+      browser,
+      `Boolean(document.querySelector('[data-testid="etf-chart-test-render"]'))`,
+      "Retry should load and display the available chart data.",
+    );
+    assert.equal(
+      await browser.evaluate(`window.__analysisChartRequests?.length`),
+      2,
+      "A user retry should create exactly one additional chart request.",
     );
   } finally {
     await browser?.close();
