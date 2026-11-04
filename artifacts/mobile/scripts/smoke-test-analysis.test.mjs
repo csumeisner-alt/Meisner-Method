@@ -239,6 +239,13 @@ test("ETF overview combines quote, deterministic research score, takeaways, and 
   assert.match(etfAnalysisSource, /Missing components are excluded and remaining weights are rescaled/);
 });
 
+test("ETF score history is scoped to the selected analysis symbol", () => {
+  assert.match(etfAnalysisSource, /const \{ symbol \} = useLocalSearchParams<\{ symbol: string \}>\(\)/);
+  assert.match(etfAnalysisSource, /const snapshot = createEtfScoreSnapshot\(\{\s*symbol,\s*score: profileScore\.score/);
+  assert.match(etfAnalysisSource, /findComparableEtfScoreChange\(snapshot, history\)/);
+  assert.match(etfAnalysisSource, /buildEtfScoreHistory\(symbol, snapshot, nextHistory\)/);
+});
+
 test("ETF performance history uses real candles, supported ranges, and honest retry states", () => {
   assert.match(etfAnalysisSource, /useGetStockChart\(/);
   assert.match(etfAnalysisSource, /encodeURIComponent\(symbol \?\? ''\),\s*period,\s*'1d'/);

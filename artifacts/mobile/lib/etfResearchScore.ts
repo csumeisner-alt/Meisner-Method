@@ -81,6 +81,10 @@ const scoreComponentIds: readonly EtfScoreComponentId[] = [
   "risk",
 ];
 
+function sameEtfScoreSymbol(a: string, b: string): boolean {
+  return a.trim().toUpperCase() === b.trim().toUpperCase();
+}
+
 function isFreshTimestamp(value: string | undefined, referenceTime: number): boolean {
   if (typeof value !== "string" || !value.trim()) return false;
   const timestamp = Date.parse(value);
@@ -98,7 +102,7 @@ function snapshotHasFreshInputs(snapshot: EtfScoreSnapshot, referenceTime: numbe
 }
 
 function sameSnapshotAnalysis(a: EtfScoreSnapshot, b: EtfScoreSnapshot): boolean {
-  return a.symbol.toUpperCase() === b.symbol.toUpperCase()
+  return sameEtfScoreSymbol(a.symbol, b.symbol)
     && a.score === b.score
     && JSON.stringify([...a.componentIds].sort()) === JSON.stringify([...b.componentIds].sort())
     && JSON.stringify(a.componentScores) === JSON.stringify(b.componentScores)
@@ -209,7 +213,7 @@ export function buildEtfScoreHistory(
   history: readonly EtfScoreSnapshot[],
 ): EtfScoreHistoryEntry[] {
   const snapshots = (current ? upsertEtfScoreSnapshot(history, current) : [...history])
-    .filter((snapshot) => snapshot.symbol.toUpperCase() === symbol.toUpperCase())
+    .filter((snapshot) => sameEtfScoreSymbol(snapshot.symbol, symbol))
     .sort((a, b) => Date.parse(a.recordedAt) - Date.parse(b.recordedAt));
 
   return snapshots.map((snapshot, index) => {
@@ -260,7 +264,7 @@ export function findComparableEtfScoreChange(
   }
 
   const sameSymbol = history.filter((snapshot) =>
-    snapshot.symbol.toUpperCase() === current.symbol.toUpperCase()
+    sameEtfScoreSymbol(snapshot.symbol, current.symbol)
     && snapshot.recordedAt !== current.recordedAt,
   );
   if (!sameSymbol.some((snapshot) => !sameSnapshotAnalysis(snapshot, current))) {

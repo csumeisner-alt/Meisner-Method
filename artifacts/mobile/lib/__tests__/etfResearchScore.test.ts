@@ -644,3 +644,47 @@ test("dated ETF score history marks factor, freshness, and time-window gaps", ()
 
   assert.deepEqual(history.map((entry) => entry.status), ["baseline", "stale-history", "not-comparable"]);
 });
+
+test("ETF score histories and changes never mix symbols", () => {
+  const result = calculateEtfResearchScore(completeInput);
+  const snapshotFor = (symbol: string, recordedAt: string, score: number) => createEtfScoreSnapshot({
+    symbol,
+    score,
+    components: result.components,
+    sourceContexts: Object.fromEntries(
+      result.components.filter((component) => component.score !== null)
+        .map((component) => [component.id, `provider:${component.id}`]),
+    ),
+    inputAsOf: Object.fromEntries(
+      result.components.filter((component) => component.score !== null)
+        .map((component) => [component.id, ["2026-10-19T12:00:00Z"]]),
+    ),
+    recordedAt,
+  });
+  const spyPrior = snapshotFor("SPY", "2026-10-20T12:00:00Z", 60);
+  const vooPrior = snapshotFor("VOO", "2026-10-25T12:00:00Z", 20);
+  const vooLatest = snapshotFor("VOO", "2026-10-29T12:00:00Z", 95);
+  const spyCurrent = snapshotFor("SPY", "2026-10-30T12:00:00Z", 75);
+  const mixedHistory = [spyPrior, vooPrior, vooLatest].filter(
+    (snapshot): snapshot is NonNullable<typeof snapshot> => snapshot !== null,
+  );
+
+  assert.ok(spyCurrent);
+  assert.ok(spyPrior);
+  assert.ok(vooPrior);
+  assert.ok(vooLatest);
+
+  const spyHistory = buildEtfScoreHistory("SPY", spyCurrent, mixedHistory);
+  assert.deepEqual(spyHistory.map((entry) => entry.snapshot.symbol), ["SPY", "SPY"]);
+  assert.deepEqual(spyHistory.map((entry) => entry.status), ["baseline", "available"]);
+  assert.equal(spyHistory[1]?.change, 15);
+  assert.equal(spyHistory[1]?.previousRecordedAt, spyPrior.recordedAt);
+
+  const spyChange = findComparableEtfScoreChange(spyCurrent, mixedHistory);
+  assert.equal(spyChange.status, "available");
+  if (spyChange.status === "available") {
+    assert.equal(spyChange.previousScore, spyPrior.score);
+    assert.equal(spyChange.change, 15);
+  }
+  assert.deepEqual(findComparableEtfScoreChange(spyCurrent, [vooPrior, vooLatest]), { status: "first-analysis" });
+});
