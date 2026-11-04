@@ -17,6 +17,10 @@ const etfAnalysisSource = readFileSync(
   new URL("../app/analysis/[symbol].tsx", import.meta.url),
   "utf8",
 );
+const comparisonChartSource = readFileSync(
+  new URL("../components/ComparisonChart.tsx", import.meta.url),
+  "utf8",
+);
 const apiSchemaSource = readFileSync(
   new URL("../../../lib/api-spec/openapi.yaml", import.meta.url),
   "utf8",
@@ -256,10 +260,20 @@ test("ETF comparison chart plots shared reported dates and explains insufficient
   assert.match(etfAnalysisSource, /primaryCandles=\{chartPrimaryCandles\}/);
   assert.match(etfAnalysisSource, /compCandles=\{chartComparisonCandles\}/);
   assert.match(etfAnalysisSource, /adjustedReturnMode=\{chartUsesAdjustedReturns\}/);
+  assert.match(etfAnalysisSource, /returnBasis=\{chartReturnBasis\}/);
+  assert.match(etfAnalysisSource, /totalReturnAvailable=\{totalReturnAvailable\}/);
+  assert.match(etfAnalysisSource, /onReturnBasisChange=\{setReturnBasis\}/);
+  assert.match(etfAnalysisSource, /Provider-adjusted history does not cover every shared reported date/);
   assert.match(etfAnalysisSource, /Price comparison unavailable: only \$\{sharedComparisonCandles\.dates\.length\} shared reported date/);
   assert.match(etfAnalysisSource, /Missing dates are not filled or interpolated/);
   assert.match(etfAnalysisSource, /provider Adj Close series with complete reported distribution history/);
   assert.match(etfAnalysisSource, /no total-return estimate is shown/);
+  assert.match(comparisonChartSource, /label: 'PRICE RETURN'/);
+  assert.match(comparisonChartSource, /label: 'TOTAL RETURN'/);
+  assert.match(comparisonChartSource, /accessibilityState=\{\{ selected, disabled \}\}/);
+  assert.match(comparisonChartSource, /disabled=\{disabled\}/);
+  assert.match(comparisonChartSource, /accessibilityHint=\{disabled \? totalReturnUnavailableReason : undefined\}/);
+  assert.match(comparisonChartSource, /Total return unavailable:/);
 });
 
 test("ETF AI commentary stays separate from the research score and grounded in supplied facts", () => {

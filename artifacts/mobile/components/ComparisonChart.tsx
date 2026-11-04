@@ -78,6 +78,10 @@ interface Props {
   secondCompCandles?: Candle[];
   secondCompSymbol?: string;
   adjustedReturnMode?: boolean;
+  returnBasis?: 'price' | 'total';
+  totalReturnAvailable?: boolean;
+  totalReturnUnavailableReason?: string;
+  onReturnBasisChange?: (basis: 'price' | 'total') => void;
   width:          number;
   height?:        number;
 }
@@ -140,24 +144,31 @@ export function ComparisonChart({
   secondCompCandles,
   secondCompSymbol,
   adjustedReturnMode = false,
+  returnBasis,
+  totalReturnAvailable = true,
+  totalReturnUnavailableReason,
+  onReturnBasisChange,
   width,
   height = 240,
 }: Props) {
   const [touched, setTouched] = useState<number | null>(null);
   const [mode, setMode] = useState<ChartMode>('percent');
-  const displayMode: ChartMode = adjustedReturnMode ? 'percent' : mode;
+  const usesAdjustedReturns = returnBasis === undefined
+    ? adjustedReturnMode
+    : returnBasis === 'total' && totalReturnAvailable;
+  const displayMode: ChartMode = usesAdjustedReturns ? 'percent' : mode;
 
   const chartW = width - PAD.left - PAD.right;
   const chartH = height - PAD.top - PAD.bottom;
 
   const primValues = displayMode === 'percent'
-    ? adjustedReturnMode
+    ? usesAdjustedReturns
       ? primaryCandles.map((c) => c.adjustedReturnPercent ?? 0)
       : normalize(primaryCandles)
     : primaryCandles.map((c) => c.c);
   const compValues = compCandles && compCandles.length > 0
     ? displayMode === 'percent'
-      ? adjustedReturnMode
+      ? usesAdjustedReturns
         ? compCandles.map((c) => c.adjustedReturnPercent ?? 0)
         : normalize(compCandles)
       : compCandles.map((c) => c.c)
@@ -265,11 +276,53 @@ export function ComparisonChart({
 
   return (
     <View style={{ width }}>
+      {returnBasis !== undefined && onReturnBasisChange && (
+        <>
+          <View style={s.modeRow}>
+            <Text style={s.modeLabel}>RETURN</Text>
+            <View style={s.modeToggle}>
+              {([
+                { key: 'price' as const, label: 'PRICE RETURN' },
+                { key: 'total' as const, label: 'TOTAL RETURN' },
+              ]).map((option) => {
+                const disabled = option.key === 'total' && !totalReturnAvailable;
+                const selected = returnBasis === option.key;
+                return (
+                  <Pressable
+                    key={option.key}
+                    testID={`etf-return-basis-${option.key}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected, disabled }}
+                    accessibilityLabel={`Show ${option.key === 'price' ? 'price return' : 'provider-adjusted total return'}`}
+                    accessibilityHint={disabled ? totalReturnUnavailableReason : undefined}
+                    disabled={disabled}
+                    onPress={() => {
+                      if (disabled) return;
+                      setTouched(null);
+                      onReturnBasisChange(option.key);
+                    }}
+                    style={[s.modeButton, selected && s.modeButtonActive, disabled && s.modeButtonDisabled]}
+                  >
+                    <Text style={[s.modeButtonText, selected && s.modeButtonTextActive, disabled && s.modeButtonTextDisabled]}>
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+          {!totalReturnAvailable && (
+            <Text testID="etf-total-return-unavailable" style={s.returnBasisNote}>
+              Total return unavailable: {totalReturnUnavailableReason ?? 'complete provider-adjusted history is not available for this range.'}
+            </Text>
+          )}
+        </>
+      )}
       {/* ── Display mode ───────────────────────────────────────────────── */}
       <View style={s.modeRow}>
         <Text style={s.modeLabel}>VIEW</Text>
         <View style={s.modeToggle}>
-          {(adjustedReturnMode
+          {(usesAdjustedReturns
             ? [{ key: 'percent' as const, label: '%' }]
             : [
                 { key: 'percent' as const, label: '%' },
@@ -296,7 +349,7 @@ export function ComparisonChart({
           })}
         </View>
         <Text style={s.modeValueLabel}>
-          {adjustedReturnMode ? 'TOTAL RETURN' : displayMode === 'percent' ? 'PERCENT' : 'PRICE'}
+          {usesAdjustedReturns ? 'TOTAL RETURN' : displayMode === 'percent' ? 'PERCENT' : 'PRICE'}
         </Text>
       </View>
 
@@ -488,8 +541,11 @@ const s = StyleSheet.create({
   modeToggle:   { flexDirection: 'row', borderRadius: 5, borderWidth: 1, borderColor: 'rgba(192,192,192,0.22)', overflow: 'hidden' },
   modeButton:   { minWidth: 28, height: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(192,192,192,0.06)' },
   modeButtonActive: { backgroundColor: 'rgba(0,229,160,0.18)' },
+  modeButtonDisabled: { opacity: 0.42 },
   modeButtonText: { color: 'rgba(192,192,192,0.58)', fontSize: 12, fontFamily: 'Inter_700Bold' },
   modeButtonTextActive: { color: PRIMARY_COLOR },
+  modeButtonTextDisabled: { color: 'rgba(192,192,192,0.48)' },
+  returnBasisNote: { color: 'rgba(192,192,192,0.58)', fontSize: 10, lineHeight: 14, paddingHorizontal: 6, paddingBottom: 7 },
   legend:       { flexDirection: 'row', gap: 16, paddingHorizontal: 6, paddingBottom: 6 },
   legendItem:   { flexDirection: 'row', alignItems: 'center', gap: 5 },
   swatch:       { width: 10, height: 10, borderRadius: 2 },
