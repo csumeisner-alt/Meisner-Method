@@ -10,3 +10,9 @@ Use dated BLS CPI archive pages for both actual and previous values; validate th
 **Why:** Official schedules can change, reports can be revised or delayed, and mixing reporting periods or estimates can make commodity context look more certain than its sources support.
 
 **How to apply:** When adding event sources or supply-and-demand series, validate source identity, affected commodity, event/release date, reporting period, units, and freshness before rendering. Keep unknown dates and unsupported values explicitly unavailable.
+
+For USDA NASS livestock text reports, derive each observation from the report's dated table headings, not its filename alone. Cattle January 1 and July 1 counts are separate seasonal periods; compare averages only within the same reference month. In quarterly Hogs and Pigs reports, December table dates depend on the release vintage: a December release reports December dates in its two year columns, while other quarterly releases carry the previous December's data. Keep blank or `(NA)` cells aligned to their year instead of shifting a later value into the missing period.
+
+**Why:** NASS reports can include multiple tables and changing reference-year windows; loose row matching can mistake reliability tables for inventory or assign a valid count to the wrong date.
+
+**How to apply:** When parsing a new NASS livestock report, isolate the data table using its title and units, validate each cell against its year/quarter column, and use release dates to select the latest vintage for each reporting period.

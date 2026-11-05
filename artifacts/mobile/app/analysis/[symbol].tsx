@@ -782,7 +782,7 @@ type CommodityAnalysisPayload = {
     status: 'available' | 'partial' | 'unavailable';
     commodity: string;
     series: {
-      id: 'inventory' | 'production' | 'consumption' | 'imports' | 'exports';
+      id: 'inventory' | 'production' | 'consumption' | 'imports' | 'exports' | 'animal-inventory';
       label: string;
       status: 'available' | 'unavailable';
       units: string | null;
@@ -799,6 +799,24 @@ type CommodityAnalysisPayload = {
       historicalAveragePeriod: string | null;
       reason: string | null;
     }[];
+    animalInventory?: {
+      id: 'animal-inventory';
+      label: string;
+      status: 'available' | 'unavailable';
+      units: string | null;
+      points: {
+        commodity: string;
+        value: number;
+        units: string;
+        reportingPeriod: string;
+        publicationDate: string;
+        revisionDate?: string;
+        source: { title: string; url: string };
+      }[];
+      historicalAverage: number | null;
+      historicalAveragePeriod: string | null;
+      reason: string | null;
+    } | null;
   };
   provider: string;
 };
@@ -1157,7 +1175,7 @@ function CommoditySupplyChart({ title, series }: {
   const available = series.filter((item) => item.status === 'available');
   const maxValue = Math.max(0, ...available.flatMap((item) => item.points.map((point) => point.value)));
   const seriesColor = (id: CommodityAnalysisPayload['supplyDemand']['series'][number]['id']) => (
-    id === 'inventory' ? colors.primary
+    id === 'inventory' || id === 'animal-inventory' ? colors.primary
       : id === 'production' ? colors.buyColor
         : id === 'consumption' ? colors.holdColor
           : id === 'imports' ? colors.mutedForeground : colors.sellColor
@@ -1232,13 +1250,28 @@ function CommoditySupplyDemand({ context }: { context: CommodityAnalysisPayload[
         </Text>
         {(context.commodity === 'Live Cattle' || context.commodity === 'Lean Hogs') && (
           <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 15 }}>
-            USDA beef and pork balances describe meat supply and use, not counts of live animals.
+            Live-animal counts come from separate USDA NASS livestock reports. Beef and pork balances describe meat supply and use, not animal counts.
           </Text>
         )}
         {['Gold', 'Silver', 'Copper', 'Platinum', 'Palladium'].includes(context.commodity) && (
           <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 15 }}>
             USGS figures are annual U.S. mineral statistics, not global exchange inventories.
           </Text>
+        )}
+        {(context.commodity === 'Live Cattle' || context.commodity === 'Lean Hogs') && (
+          <CommoditySupplyChart
+            title="Live-animal counts"
+            series={[context.animalInventory ?? {
+              id: 'animal-inventory',
+              label: context.commodity === 'Live Cattle' ? 'Cattle and calves inventory' : 'All hogs and pigs inventory',
+              status: 'unavailable',
+              units: null,
+              points: [],
+              historicalAverage: null,
+              historicalAveragePeriod: null,
+              reason: 'No fresh, verified USDA NASS inventory report is available.',
+            }]}
+          />
         )}
         <CommoditySupplyChart title="Inventory history" series={[find('inventory')]} />
         <CommoditySupplyChart title="Production vs. consumption" series={[find('production'), find('consumption')]} />

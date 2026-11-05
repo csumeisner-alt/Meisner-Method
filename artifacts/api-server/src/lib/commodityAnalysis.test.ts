@@ -17,6 +17,7 @@ import {
   parseEiaCrudeInventoryCsv,
   parseEiaNaturalGasStorageCsv,
   parseUsgsMineralSupplyDemandCsv,
+  parseUsdaAnimalInventoryReports,
   parseUsdaSupplyDemandSeries,
   parseUsdaWasdeInventoryCsv,
   validateCommoditySupplyDemandContext,
@@ -496,6 +497,109 @@ test("USDA meat supply histories use dated annual beef and pork reports, includi
   assert.equal(porkProduction?.points[0]?.commodity, "Pork");
   assert.equal(validateCommoditySupplyDemandContext(beef, "LE=F", DEFAULT_NOW)
     .series.find((item) => item.id === "production")?.status, "available");
+});
+
+test("NASS cattle inventory stays separate from USDA beef balances and uses the latest vintage", () => {
+  const januaryReport = {
+    sourceUrl: "https://esmis.nal.usda.gov/sites/default/release-files/795748/catl0126.txt",
+    text: "Cattle\nReleased January 30, 2026, by USDA NASS.\nCattle Inventory by Class and Calf Crop - United States: January 1, 2025 and 2026\n----- 1,000 head -----\nAll cattle and calves ...................: 86,472.2 86,155.3\nCattle Inventory by Class and Calf Crop - United States: July 1, 2024 and 2025\n----- 1,000 head -----\nAll cattle and calves ..................: (NA) 93,900.0 (X)",
+  };
+  const reports = [
+    januaryReport,
+    {
+      sourceUrl: "https://esmis.nal.usda.gov/sites/default/release-files/795988/catl0726.txt",
+      text: "Cattle\nReleased July 24, 2026, by USDA NASS.\nCattle Inventory by Class and Calf Crop - United States: July 1, 2025 and 2026\n----- 1,000 head -----\nCattle and calves ...................: 94,000.0 94,200.0",
+    },
+    {
+      sourceUrl: "https://esmis.nal.usda.gov/sites/default/release-files/cat/2025/catl0725.txt",
+      text: "Cattle\nReleased July 25, 2025, by USDA NASS.\nCattle Inventory by Class and Calf Crop - United States: July 1, 2024 and 2025\n----- 1,000 head -----\nCattle and calves ...................: 94,500.0 94,100.0",
+    },
+    {
+      sourceUrl: "https://esmis.nal.usda.gov/sites/default/release-files/cat/2024/catl0724.txt",
+      text: "Cattle\nReleased July 19, 2024, by USDA NASS.\nCattle Inventory by Class and Calf Crop - United States: July 1, 2023 and 2024\n----- 1,000 head -----\nCattle and calves ...................: 95,200.0 94,500.0",
+    },
+    {
+      sourceUrl: "https://esmis.nal.usda.gov/sites/default/release-files/cat/2023/catl0723.txt",
+      text: "Cattle\nReleased July 21, 2023, by USDA NASS.\nCattle Inventory by Class and Calf Crop - United States: July 1, 2022 and 2023\n----- 1,000 head -----\nCattle and calves ...................: 95,100.0 95,200.0",
+    },
+  ];
+  const liveAnimals = parseUsdaAnimalInventoryReports(reports, "LE=F", DEFAULT_NOW);
+  assert.equal(liveAnimals.status, "available");
+  assert.equal(liveAnimals.label, "Cattle and calves inventory");
+  assert.equal(liveAnimals.units, "1,000 head");
+  assert.equal(liveAnimals.points.find((point) => point.reportingPeriod === "2025-07-01")?.value, 94_000);
+  assert.equal(liveAnimals.points.find((point) => point.reportingPeriod === "2025-07-01")?.publicationDate, "2026-07-24");
+  assert.equal(liveAnimals.points.find((point) => point.reportingPeriod === "2026-01-01")?.value, 86_155.3);
+  assert.deepEqual(liveAnimals.historicalAverage, (95_100 + 95_200 + 94_500 + 94_000) / 4);
+  const januaryOnly = parseUsdaAnimalInventoryReports(
+    [januaryReport],
+    "LE=F",
+    new Date("2026-02-01T12:00:00.000Z"),
+  );
+  assert.equal(januaryOnly.points.some((point) => point.reportingPeriod === "2024-07-01"), false);
+  assert.equal(januaryOnly.points.find((point) => point.reportingPeriod === "2025-07-01")?.value, 93_900);
+
+  const beef = parseUsdaSupplyDemandSeries([
+    ...["2024", "2025", "2026"].flatMap((marketYear, index) => [
+      { reportTitle: "U.S. Meats Supply and Use", attribute: "Ending Stocks", commodity: "Beef", region: "United States", marketYear, value: String(100 + index), unit: "Million Pounds", releaseDate: "2026-10-09" },
+      { reportTitle: "U.S. Meats Supply and Use", attribute: "Production", commodity: "Beef", region: "United States", marketYear, value: String(1000 + index), unit: "Million Pounds", releaseDate: "2026-10-09" },
+      { reportTitle: "U.S. Meats Supply and Use", attribute: "Total Use", commodity: "Beef", region: "United States", marketYear, value: String(900 + index), unit: "Million Pounds", releaseDate: "2026-10-09" },
+    ]),
+  ], "https://www.usda.gov/sites/default/files/documents/oce-wasde-report-data-2026-10.csv", "LE=F", DEFAULT_NOW);
+  const combined = validateCommoditySupplyDemandContext({ ...beef, animalInventory: liveAnimals }, "LE=F", DEFAULT_NOW);
+  assert.equal(combined.series.find((item) => item.id === "inventory")?.units, "Million Pounds");
+  assert.equal(combined.animalInventory?.units, "1,000 head");
+  assert.equal(combined.animalInventory?.points.at(-1)?.commodity, "Live Cattle");
+
+  assert.equal(parseUsdaAnimalInventoryReports([
+    { ...reports[0]!, sourceUrl: "https://example.com/catl0726.txt" },
+  ], "LE=F", DEFAULT_NOW).status, "unavailable");
+});
+
+test("NASS hog inventory keeps quarterly periods and explicit report revisions", () => {
+  const report = (
+    release: string,
+    code: string,
+    firstYear: number,
+    secondYear: number,
+    firstValue: number,
+    secondValue: number,
+    revisions = "",
+  ) => {
+    const decemberValues = release.startsWith("December")
+      ? `${firstValue.toLocaleString()} ${secondValue.toLocaleString()}`
+      : firstValue.toLocaleString();
+    return {
+      sourceUrl: `https://esmis.nal.usda.gov/sites/default/release-files/hogs/${code}.txt`,
+      text: `Quarterly Hogs and Pigs\nReleased ${release}, by USDA NASS.\n${revisions}\nHogs and Pigs Inventory by Class, Weight Group, and Quarter - United States: ${firstYear} and ${secondYear}\n----- 1,000 head -----\nMarch 1 inventory\nAll hogs and pigs.....................: ${firstValue.toLocaleString()} ${secondValue.toLocaleString()} 99\nJune 1 inventory\nAll hogs and pigs.....................: ${firstValue.toLocaleString()} ${secondValue.toLocaleString()} 99\nSeptember 1 inventory\nAll hogs and pigs.....................: ${firstValue.toLocaleString()} ${secondValue.toLocaleString()} 99\nDecember 1 inventory\nAll hogs and pigs.....................: ${decemberValues}`,
+    };
+  };
+  const liveAnimals = parseUsdaAnimalInventoryReports([
+    report("March 28, 2024", "hgpg0324", 2023, 2024, 70_000, 71_000),
+    report("March 27, 2025", "hgpg0325", 2024, 2025, 71_000, 72_000),
+    report("September 24, 2026", "hgpg0926", 2025, 2026, 72_000, 73_000,
+      "Revisions\nA net revision of 1.0 percent was made to the March 2025 all hogs and pigs inventory.\nRecords"),
+  ], "HE=F", DEFAULT_NOW);
+  assert.equal(liveAnimals.status, "available");
+  assert.equal(liveAnimals.label, "All hogs and pigs inventory");
+  assert.equal(liveAnimals.units, "1,000 head");
+  assert.deepEqual(
+    liveAnimals.points.filter((point) => point.reportingPeriod.endsWith("-03-01")).map((point) => point.reportingPeriod),
+    ["2024-03-01", "2025-03-01", "2026-03-01"],
+  );
+  assert.equal(liveAnimals.points.find((point) => point.reportingPeriod === "2025-03-01")?.revisionDate, "2026-09-24");
+  assert.equal(liveAnimals.points.find((point) => point.reportingPeriod === "2026-03-01")?.commodity, "Live Hogs");
+  assert.equal(liveAnimals.historicalAverage, null, "inventory averages must not mix seasonal quarters");
+  assert.equal(liveAnimals.historicalAveragePeriod, null);
+
+  const decemberVintage = parseUsdaAnimalInventoryReports([
+    report("December 23, 2025", "hgpg1225", 2024, 2025, 75_075, 75_545),
+  ], "HE=F", new Date("2025-12-24T12:00:00.000Z"));
+  assert.deepEqual(
+    decemberVintage.points.filter((point) => point.reportingPeriod.endsWith("-12-01")).map((point) => point.reportingPeriod),
+    ["2024-12-01", "2025-12-01"],
+    "a December release includes both actual December reference dates rather than shifting them back a year",
+  );
 });
 
 const USGS_TEST_SOURCE = "https://www.sciencebase.gov/catalog/file/get/0123456789abcdef01234567?f=__disk__test";

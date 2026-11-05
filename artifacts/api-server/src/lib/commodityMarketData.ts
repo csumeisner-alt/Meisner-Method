@@ -17,7 +17,11 @@ const CFTC_DATASET_URL = "https://publicreporting.cftc.gov/resource/6dca-aqww.js
 const CFTC_SOURCE_URL = "https://publicreportinghub.cftc.gov/Commitments-of-Traders/Legacy-Futures-Only/6dca-aqww";
 const EIA_TABLE_URL = "https://ir.eia.gov/wpsr/table4.csv";
 const EIA_NATURAL_GAS_URL = "https://ir.eia.gov/ngs/wngsr.csv";
+const USDA_CATTLE_REPORTS_URL = "https://esmis.nal.usda.gov/publication/cattle";
+const USDA_HOG_REPORTS_URL = "https://esmis.nal.usda.gov/publication/hogs-and-pigs";
 const USGS_MCS_MAX_AGE_DAYS = 450;
+const USDA_CATTLE_INVENTORY_MAX_AGE_DAYS = 200;
+const USDA_HOG_INVENTORY_MAX_AGE_DAYS = 120;
 const FAILED_SOURCE_CACHE_TTL_MS = 5 * 60 * 1000;
 const FAILED_WASDE_REPORT_CACHE_TTL_MS = 15 * 60 * 1000;
 type SupplySeriesId = CommoditySupplyDemandSeries["id"];
@@ -135,6 +139,10 @@ export type WasdeRow = {
   value: string;
   unit: string;
   releaseDate: string;
+};
+export type UsdaAnimalInventoryReport = {
+  text: string;
+  sourceUrl: string;
 };
 type UsgsMcsReport = {
   csv: string;
@@ -716,6 +724,246 @@ function unavailableSupplySeries(
   };
 }
 
+function unavailableAnimalInventorySeries(reason: string): CommoditySupplyDemandSeries {
+  return unavailableSupplySeries("animal-inventory", "Live-animal inventory", reason);
+}
+
+function reportPublicationDate(text: string): string | null {
+  const match = text.match(/\bReleased\s+([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})\b/i);
+  if (!match) return null;
+  const month = {
+    january: "01", february: "02", march: "03", april: "04", may: "05", june: "06",
+    july: "07", august: "08", september: "09", october: "10", november: "11", december: "12",
+  }[match[1]!.toLowerCase()];
+  if (!month) return null;
+  const date = `${match[3]}-${month}-${match[2]!.padStart(2, "0")}`;
+  return isDate(date) ? date : null;
+}
+
+function validUsdaAnimalReportSource(url: string, symbol: string): boolean {
+  const filename = symbol === "LE=F" ? "catl\\d{4}" : "hgpg\\d{4}";
+  return new RegExp(
+    `^https://esmis\\.nal\\.usda\\.gov/sites/default/release-files/(?:[a-z0-9]{1,12}/){1,3}${filename}\\.txt$`,
+    "i",
+  ).test(url);
+}
+
+function reportCodeMatchesPublicationDate(url: string, publicationDate: string, symbol: string): boolean {
+  const match = url.match(/(?:catl|hgpg)(\d{2})(\d{2})\.txt$/i);
+  return Boolean(match && match[1] === publicationDate.slice(5, 7)
+    && match[2] === publicationDate.slice(2, 4)
+    && ((symbol === "LE=F" && match[0]?.toLowerCase().startsWith("catl"))
+      || (symbol === "HE=F" && match[0]?.toLowerCase().startsWith("hgpg"))));
+}
+
+function parseReportNumber(value: string): number | null {
+  return parseNumber(value.replaceAll(",", "").trim());
+}
+
+function animalInventoryAverage(
+  points: CommoditySupplyDemandPoint[],
+): { value: number | null; period: string | null } {
+  const unitGroups = new Map<string, CommoditySupplyDemandPoint[]>();
+  for (const point of points) {
+    const month = point.reportingPeriod.slice(5, 7);
+    const group = `${point.units}|${month}`;
+    unitGroups.set(group, [...(unitGroups.get(group) ?? []), point]);
+  }
+  const comparable = [...unitGroups.values()]
+    .map((group) => group.sort((left, right) => left.reportingPeriod.localeCompare(right.reportingPeriod)))
+    .filter((group) => group.length >= 4)
+    .sort((left, right) => right.at(-1)!.reportingPeriod.localeCompare(left.at(-1)!.reportingPeriod))[0];
+  if (!comparable) return { value: null, period: null };
+  const historical = comparable.slice(0, -1);
+  return {
+    value: historical.reduce((sum, point) => sum + point.value, 0) / historical.length,
+    period: `${historical[0]!.reportingPeriod}–${historical.at(-1)!.reportingPeriod} (${historical.length} prior matching periods)`,
+  };
+}
+
+function parseCattleInventoryRows(
+  text: string,
+  publicationDate: string,
+  sourceUrl: string,
+): CommoditySupplyDemandPoint[] {
+  const headings = [...text.matchAll(/Cattle Inventory by Class and Calf Crop\s*-\s*United States:\s*(January|July)\s+1,\s*(\d{4})\s+and\s+(\d{4})/gim)];
+  return headings.flatMap((heading, index) => {
+    const start = heading.index ?? 0;
+    const end = headings[index + 1]?.index ?? text.length;
+    const table = text.slice(start, end);
+    if (!/1,000 head/i.test(table)) return [];
+    const row = table.match(/^[ \t]*(?:All )?Cattle and calves[ \t]*\.{2,}:[ \t]*([^\r\n]*)/im);
+    if (!row) return [];
+    const month = heading[1]!.toLowerCase() === "january" ? "01" : "07";
+    const years = [heading[2]!, heading[3]!];
+    const values = row[1]!.trim().split(/[ \t]+/).slice(0, 2);
+    return values.flatMap((rawValue, valueIndex) => {
+      const value = parseReportNumber(rawValue);
+      return value !== null && value >= 0
+        ? [{
+          commodity: "Live Cattle",
+          value,
+          units: "1,000 head",
+          reportingPeriod: `${years[valueIndex]}-${month}-01`,
+          publicationDate,
+          source: { title: "USDA NASS Cattle Inventory", url: sourceUrl },
+        }]
+        : [];
+    });
+  });
+}
+
+function parseHogInventoryRows(
+  text: string,
+  publicationDate: string,
+  sourceUrl: string,
+): CommoditySupplyDemandPoint[] {
+  const title = [...text.matchAll(/Hogs and Pigs Inventory by Class,\s*Weight Group,\s*and Quarter\s*-\s*United States:\s*(\d{4})\s+and\s+(\d{4})/gim)]
+    .find((match) => /1,000 head/i.test(text.slice(match.index, match.index + 4000)));
+  if (!title) return [];
+  const years = [Number(title[1]), Number(title[2])];
+  const revisionsSection = text.match(/\bRevisions\b([\s\S]*?)(?:\bRecords\b|This report was approved)/i)?.[1] ?? "";
+  const inventorySections = [...text.matchAll(/^[ \t]*(March|June|September|December)[ \t]+1 inventory[ \t]*:?[^\r\n]*$/gim)];
+  const points: CommoditySupplyDemandPoint[] = [];
+  for (const [index, section] of inventorySections.entries()) {
+    const monthName = section[1]!.toLowerCase();
+    const month = { march: "03", june: "06", september: "09", december: "12" }[monthName]!;
+    const start = (section.index ?? 0) + section[0].length;
+    const end = inventorySections[index + 1]?.index ?? text.length;
+    const block = text.slice(start, end);
+    const row = block.match(/^\s*All hogs and pigs\s*\.{2,}:\s*([^\r\n]*)/im);
+    if (!row) continue;
+    const values = [...row[1]!.matchAll(/[0-9][0-9,]*(?:\.\d+)?/g)]
+      .map((match) => parseReportNumber(match[0]!))
+      .filter((value): value is number => value !== null && value >= 0)
+      .slice(0, 2);
+    const periodYears = month === "12" && publicationDate.slice(5, 7) !== "12"
+      ? [years[0]! - 1, years[1]! - 1]
+      : years;
+    const assigned = values.length === 1
+      ? [{ year: month === "12" ? periodYears[1]! : years[1]!, value: values[0]! }]
+      : values.map((value, valueIndex) => ({ year: periodYears[valueIndex]!, value }));
+    for (const item of assigned) {
+      const reportingPeriod = `${item.year}-${month}-01`;
+      if (reportingPeriod > publicationDate) continue;
+      const revisionDate = new RegExp(`\\b${section[1]}\\s+${item.year}\\s+all hogs and pigs inventory\\b`, "i")
+        .test(revisionsSection) ? publicationDate : undefined;
+      points.push({
+        commodity: "Live Hogs",
+        value: item.value,
+        units: "1,000 head",
+        reportingPeriod,
+        publicationDate,
+        ...(revisionDate ? { revisionDate } : {}),
+        source: { title: "USDA NASS Quarterly Hogs and Pigs", url: sourceUrl },
+      });
+    }
+  }
+  return points;
+}
+
+export function parseUsdaAnimalInventoryReports(
+  reports: UsdaAnimalInventoryReport[],
+  symbol: string,
+  now = new Date(),
+): CommoditySupplyDemandSeries {
+  const cattle = symbol === "LE=F";
+  const hogs = symbol === "HE=F";
+  if (!cattle && !hogs) return unavailableAnimalInventorySeries("Live-animal inventory is not applicable to this contract.");
+  const maxAgeDays = cattle ? USDA_CATTLE_INVENTORY_MAX_AGE_DAYS : USDA_HOG_INVENTORY_MAX_AGE_DAYS;
+  const latestPublicationDate = reports
+    .filter((report) => validUsdaAnimalReportSource(report.sourceUrl, symbol))
+    .map((report) => reportPublicationDate(report.text))
+    .filter((date): date is string => Boolean(date && isFresh(date, now, maxAgeDays)))
+    .sort()
+    .at(-1);
+  if (!latestPublicationDate) {
+    return unavailableAnimalInventorySeries("No fresh, dated USDA NASS live-animal inventory report is available.");
+  }
+  const newestReports = reports.filter((report) => {
+    const publicationDate = reportPublicationDate(report.text);
+    return validUsdaAnimalReportSource(report.sourceUrl, symbol)
+      && publicationDate !== null
+      && Date.parse(`${publicationDate}T00:00:00.000Z`) <= now.getTime()
+      && reportCodeMatchesPublicationDate(report.sourceUrl, publicationDate, symbol);
+  });
+  const vintagePoints = newestReports.flatMap((report) => {
+    const publicationDate = reportPublicationDate(report.text)!;
+    if (cattle && !/Cattle Inventory/i.test(report.text.slice(0, 600))) return [];
+    if (hogs && !/Quarterly Hogs and Pigs/i.test(report.text.slice(0, 600))) return [];
+    return cattle
+      ? parseCattleInventoryRows(report.text, publicationDate, report.sourceUrl)
+      : parseHogInventoryRows(report.text, publicationDate, report.sourceUrl);
+  });
+  const latestByPeriod = new Map<string, CommoditySupplyDemandPoint>();
+  for (const point of vintagePoints) {
+    const previous = latestByPeriod.get(point.reportingPeriod);
+    if (!previous || point.publicationDate > previous.publicationDate) latestByPeriod.set(point.reportingPeriod, point);
+  }
+  const points = [...latestByPeriod.values()]
+    .sort((left, right) => left.reportingPeriod.localeCompare(right.reportingPeriod))
+    .slice(-12);
+  if (!points.length || !points.some((point) => point.publicationDate === latestPublicationDate)) {
+    return unavailableAnimalInventorySeries("The current USDA NASS report does not contain a verified comparable inventory value.");
+  }
+  const units = new Set(points.map((point) => point.units));
+  if (units.size !== 1) {
+    return unavailableAnimalInventorySeries("USDA NASS inventory values do not share a consistent unit.");
+  }
+  const average = animalInventoryAverage(points);
+  return {
+    id: "animal-inventory",
+    label: cattle ? "Cattle and calves inventory" : "All hogs and pigs inventory",
+    status: "available",
+    units: points[0]!.units,
+    points,
+    historicalAverage: average.value,
+    historicalAveragePeriod: average.period,
+    reason: null,
+  };
+}
+
+async function loadUsdaAnimalInventory(
+  symbol: string,
+  now: Date,
+): Promise<CommoditySupplyDemandSeries> {
+  const cachedResult = await cached<{ series: CommoditySupplyDemandSeries; failure: boolean }>(
+    `usda-animal-inventory:${symbol}`,
+    6 * 60 * 60 * 1000,
+    async () => {
+      try {
+        const cattle = symbol === "LE=F";
+        const listingUrl = cattle ? USDA_CATTLE_REPORTS_URL : USDA_HOG_REPORTS_URL;
+        const listing = await fetchText(listingUrl);
+        const reportPattern = cattle ? /\/catl\d{4}\.txt$/i : /\/hgpg\d{4}\.txt$/i;
+        const reportUrls = [...listing.matchAll(/href=["']([^"']+\.txt)["']/gi)]
+          .map((match) => {
+            try {
+              return new URL(match[1]!.replaceAll("&amp;", "&"), listingUrl).toString();
+            } catch {
+              return null;
+            }
+          })
+          .filter((url): url is string => Boolean(url && reportPattern.test(new URL(url).pathname)))
+          .filter((url, index, urls) => urls.indexOf(url) === index)
+          .slice(0, cattle ? 10 : 8);
+        const reports = await Promise.all(reportUrls.map(async (sourceUrl) => ({
+          sourceUrl,
+          text: await fetchText(sourceUrl),
+        })));
+        const series = parseUsdaAnimalInventoryReports(reports, symbol, now);
+        return { series, failure: series.status !== "available" };
+      } catch {
+        return {
+          series: unavailableAnimalInventorySeries("The latest USDA NASS livestock report could not be retrieved or verified."),
+          failure: true,
+        };
+      }
+    },
+  );
+  return cachedResult.series;
+}
+
 function createWasdeSeries(
   symbol: string,
   rows: WasdeRow[],
@@ -798,6 +1046,9 @@ export function parseUsdaSupplyDemandSeries(
     status: "unavailable",
     commodity: commodity?.name ?? "Unknown commodity",
     series: supplySeriesLabels(symbol).map(({ id, label }) => unavailableSupplySeries(id, label, reason)),
+    ...(["LE=F", "HE=F"].includes(symbol)
+      ? { animalInventory: unavailableAnimalInventorySeries(reason) }
+      : {}),
   });
   if (!commodity || !config || !USDA_SERIES_COMMODITIES.has(symbol) || !validWasdeReportSource(sourceUrl)) {
     return unavailable("No matching validated USDA series is available for this commodity.");
@@ -1005,10 +1256,27 @@ export async function fetchCommoditySupplyDemandContext(
   };
 
   let series: CommoditySupplyDemandSeries[] = [];
+  let animalInventory: CommoditySupplyDemandSeries | null = null;
   if (USDA_SERIES_COMMODITIES.has(normalized)) {
+    if (normalized === "LE=F" || normalized === "HE=F") {
+      animalInventory = await loadUsdaAnimalInventory(normalized, now);
+    }
     try {
       const report = await loadLatestWasdeReport(now, normalized);
-      if (report) return parseUsdaSupplyDemandSeries(report.rows, report.sourceUrl, normalized, now);
+      if (report) {
+        const context = parseUsdaSupplyDemandSeries(report.rows, report.sourceUrl, normalized, now);
+        if (animalInventory) {
+          const availableCount = context.series.filter((item) => item.status === "available").length
+            + Number(animalInventory.status === "available");
+          return {
+            ...context,
+            status: availableCount === 0 ? "unavailable"
+              : availableCount === context.series.length + 1 ? "available" : "partial",
+            animalInventory,
+          };
+        }
+        return context;
+      }
     } catch {
       // Unavailable series are returned below; no values are inferred.
     }
@@ -1073,11 +1341,14 @@ export async function fetchCommoditySupplyDemandContext(
     series = supplySeriesLabels(normalized).map(({ id, label }) =>
       unavailableSupplySeries(id, label, "No fresh, validated historical supply-and-demand series is available."));
   }
-  const availableCount = series.filter((item) => item.status === "available").length;
+  const availableCount = series.filter((item) => item.status === "available").length
+    + Number(animalInventory?.status === "available");
+  const totalCount = series.length + Number(animalInventory !== null);
   return {
-    status: availableCount === 0 ? "unavailable" : availableCount === series.length ? "available" : "partial",
+    status: availableCount === 0 ? "unavailable" : availableCount === totalCount ? "available" : "partial",
     commodity: commodity.name,
     series,
+    ...(animalInventory ? { animalInventory } : {}),
   };
 }
 
@@ -1092,6 +1363,9 @@ export function validateCommoditySupplyDemandContext(
     status: "unavailable",
     commodity: commodity?.name ?? "Unknown commodity",
     series: supplySeriesLabels(normalized).map(({ id, label }) => unavailableSupplySeries(id, label, reason)),
+    ...(["LE=F", "HE=F"].includes(normalized)
+      ? { animalInventory: unavailableAnimalInventorySeries(reason) }
+      : {}),
   });
   if (!commodity || context?.commodity !== commodity.name || !Array.isArray(context.series)) {
     return empty("The supply-and-demand response did not match the selected commodity.");
@@ -1149,10 +1423,75 @@ export function validateCommoditySupplyDemandContext(
     };
   });
   const availableCount = series.filter((item) => item.status === "available").length;
+  const animalInventory = normalized === "LE=F" || normalized === "HE=F"
+    ? validateAnimalInventorySeries(context.animalInventory, normalized, now)
+    : null;
+  const totalAvailableCount = availableCount + Number(animalInventory?.status === "available");
+  const totalCount = series.length + Number(animalInventory !== null);
   return {
-    status: availableCount === 0 ? "unavailable" : availableCount === series.length ? "available" : "partial",
+    status: totalAvailableCount === 0 ? "unavailable"
+      : totalAvailableCount === totalCount ? "available" : "partial",
     commodity: commodity.name,
     series,
+    ...(animalInventory ? { animalInventory } : {}),
+  };
+}
+
+function validateAnimalInventorySeries(
+  candidate: CommoditySupplyDemandSeries | null | undefined,
+  symbol: string,
+  now: Date,
+): CommoditySupplyDemandSeries {
+  const fallback = unavailableAnimalInventorySeries("No fresh, comparable USDA NASS live-animal inventory is available.");
+  if (!candidate || candidate.id !== "animal-inventory" || candidate.status !== "available"
+    || !Array.isArray(candidate.points)) {
+    return candidate?.reason
+      ? unavailableAnimalInventorySeries(candidate.reason)
+      : fallback;
+  }
+  const maxAgeDays = symbol === "LE=F" ? USDA_CATTLE_INVENTORY_MAX_AGE_DAYS : USDA_HOG_INVENTORY_MAX_AGE_DAYS;
+  const expectedCommodity = symbol === "LE=F" ? "Live Cattle" : "Live Hogs";
+  const validPeriod = symbol === "LE=F"
+    ? (period: string) => /^\d{4}-(01|07)-01$/.test(period)
+    : (period: string) => /^\d{4}-(03|06|09|12)-01$/.test(period);
+  const points = candidate.points.filter((point) => point
+    && point.commodity === expectedCommodity
+    && Number.isFinite(point.value) && point.value >= 0
+    && point.units === "1,000 head"
+    && validPeriod(point.reportingPeriod)
+    && isDate(point.publicationDate)
+    && Date.parse(`${point.publicationDate}T00:00:00.000Z`) <= now.getTime()
+    && point.reportingPeriod <= point.publicationDate
+    && point.source?.title === (symbol === "LE=F" ? "USDA NASS Cattle Inventory" : "USDA NASS Quarterly Hogs and Pigs")
+    && validUsdaAnimalReportSource(point.source.url, symbol)
+    && reportCodeMatchesPublicationDate(point.source.url, point.publicationDate, symbol)
+    && (!point.revisionDate || (isDate(point.revisionDate)
+      && point.revisionDate === point.publicationDate
+      && isFresh(point.revisionDate, now, maxAgeDays))));
+  const latestByPeriod = new Map<string, CommoditySupplyDemandPoint>();
+  for (const point of points) {
+    const previous = latestByPeriod.get(point.reportingPeriod);
+    if (!previous || point.publicationDate > previous.publicationDate) latestByPeriod.set(point.reportingPeriod, point);
+  }
+  const comparablePoints = [...latestByPeriod.values()]
+    .sort((left, right) => left.reportingPeriod.localeCompare(right.reportingPeriod))
+    .slice(-12);
+  const units = new Set(comparablePoints.map((point) => point.units));
+  const latestPublicationDate = comparablePoints.map((point) => point.publicationDate).sort().at(-1);
+  if (!comparablePoints.length || units.size !== 1
+    || !latestPublicationDate || !isFresh(latestPublicationDate, now, maxAgeDays)) {
+    return unavailableAnimalInventorySeries(candidate.reason ?? fallback.reason!);
+  }
+  const average = animalInventoryAverage(comparablePoints);
+  return {
+    id: "animal-inventory",
+    label: symbol === "LE=F" ? "Cattle and calves inventory" : "All hogs and pigs inventory",
+    status: "available",
+    units: comparablePoints[0]!.units,
+    points: comparablePoints,
+    historicalAverage: average.value,
+    historicalAveragePeriod: average.period,
+    reason: null,
   };
 }
 

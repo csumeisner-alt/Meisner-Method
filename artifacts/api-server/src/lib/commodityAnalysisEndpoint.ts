@@ -216,6 +216,16 @@ export async function respondWithCommodityAnalysis(
       kind: "market-data" as const,
       eventDate: null,
     }))),
+    ...(supplyDemand.animalInventory?.points.slice(-4).map((point, index) => ({
+      id: `animal-inventory-${point.reportingPeriod}-${index}`,
+      title: point.source.title,
+      url: point.source.url,
+      asOf: point.publicationDate,
+      unit: point.units,
+      observation: `${point.commodity} live-animal inventory: ${point.value} ${point.units} for ${point.reportingPeriod}, published ${point.publicationDate}${point.revisionDate ? ` and revised ${point.revisionDate}` : ""}.`,
+      kind: "market-data" as const,
+      eventDate: null,
+    })) ?? []),
     ...eventCalendar.events.filter((item) => item.status === "upcoming").map((item) => ({
       id: `event-${item.id}`,
       title: item.source.title,

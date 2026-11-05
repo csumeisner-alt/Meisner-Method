@@ -170,7 +170,7 @@ export interface CommoditySupplyDemandPoint {
 }
 
 export interface CommoditySupplyDemandSeries {
-  id: "inventory" | "production" | "consumption" | "imports" | "exports";
+  id: "inventory" | "production" | "consumption" | "imports" | "exports" | "animal-inventory";
   label: string;
   status: "available" | "unavailable";
   units: string | null;
@@ -184,6 +184,7 @@ export interface CommoditySupplyDemandContext {
   status: "available" | "partial" | "unavailable";
   commodity: string;
   series: CommoditySupplyDemandSeries[];
+  animalInventory?: CommoditySupplyDemandSeries | null;
 }
 
 export interface CommodityEvent {
