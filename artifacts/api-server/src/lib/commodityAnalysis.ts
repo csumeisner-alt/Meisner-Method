@@ -156,6 +156,56 @@ export interface CommodityInventoryEvidence {
   asOf: string;
   units: string;
   source: CommodityEvidenceSource;
+  publishedObservations?: { reportingPeriod: string; value: number; units: string }[];
+}
+
+export interface CommoditySupplyDemandPoint {
+  commodity: string;
+  value: number;
+  units: string;
+  reportingPeriod: string;
+  publicationDate: string;
+  source: { title: string; url: string };
+}
+
+export interface CommoditySupplyDemandSeries {
+  id: "inventory" | "production" | "consumption" | "imports" | "exports";
+  label: string;
+  status: "available" | "unavailable";
+  units: string | null;
+  points: CommoditySupplyDemandPoint[];
+  historicalAverage: number | null;
+  historicalAveragePeriod: string | null;
+  reason: string | null;
+}
+
+export interface CommoditySupplyDemandContext {
+  status: "available" | "partial" | "unavailable";
+  commodity: string;
+  series: CommoditySupplyDemandSeries[];
+}
+
+export interface CommodityEvent {
+  id: string;
+  name: string;
+  eventDate: string;
+  time: string | null;
+  timezone: string | null;
+  status: "upcoming" | "completed";
+  affectedCommodities: string[];
+  source: { title: string; url: string; publicationDate: string | null };
+  values: {
+    previous: { value: number; units: string } | null;
+    consensus: { value: number; units: string } | null;
+    actual: { value: number; units: string } | null;
+  };
+}
+
+export interface CommodityEventCalendar {
+  status: "available" | "partial" | "unavailable";
+  checkedAt: string;
+  events: CommodityEvent[];
+  unavailable: string[];
 }
 
 export type CommodityOfficialProvider = "EIA" | "USDA" | "CFTC";

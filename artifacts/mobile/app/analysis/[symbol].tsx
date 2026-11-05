@@ -683,6 +683,47 @@ type CommodityAnalysisPayload = {
     retrievedAt: string | null;
     sources: { title: string; url: string; publishedAt: string | null }[];
   };
+  eventCalendar: {
+    status: 'available' | 'partial' | 'unavailable';
+    checkedAt: string;
+    events: {
+      id: string;
+      name: string;
+      eventDate: string;
+      time: string | null;
+      timezone: string | null;
+      status: 'upcoming' | 'completed';
+      affectedCommodities: string[];
+      source: { title: string; url: string; publicationDate: string | null };
+      values: {
+        previous: { value: number; units: string } | null;
+        consensus: { value: number; units: string } | null;
+        actual: { value: number; units: string } | null;
+      };
+    }[];
+    unavailable: string[];
+  };
+  supplyDemand: {
+    status: 'available' | 'partial' | 'unavailable';
+    commodity: string;
+    series: {
+      id: 'inventory' | 'production' | 'consumption' | 'imports' | 'exports';
+      label: string;
+      status: 'available' | 'unavailable';
+      units: string | null;
+      points: {
+        commodity: string;
+        value: number;
+        units: string;
+        reportingPeriod: string;
+        publicationDate: string;
+        source: { title: string; url: string };
+      }[];
+      historicalAverage: number | null;
+      historicalAveragePeriod: string | null;
+      reason: string | null;
+    }[];
+  };
   provider: string;
 };
 
@@ -937,6 +978,158 @@ function CommodityEvidenceLink({ evidence }: { evidence: CommodityAnalysisPayloa
   );
 }
 
+function CommodityEventCalendar({ calendar, symbol }: {
+  calendar: CommodityAnalysisPayload['eventCalendar'];
+  symbol: string;
+}) {
+  const colors = useColors();
+  const events = calendar.events.filter((item) => item.affectedCommodities.length > 0);
+  return (
+    <SectionCard title="COMMODITY EVENTS" icon={<MaterialCommunityIcons name="calendar-clock" size={16} color={colors.primary} />}>
+      <View testID="commodity-event-calendar" style={{ paddingHorizontal: 16, paddingBottom: 14, gap: 10 }}>
+        <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 15 }}>
+          Official schedules checked {new Date(calendar.checkedAt).toLocaleString()}. Published previous, consensus, and actual values are shown only when verified.
+        </Text>
+        {events.length ? events.map((item) => {
+          const completed = item.status === 'completed';
+          const statusColor = completed ? colors.mutedForeground : colors.primary;
+          const publishedValue = (label: string, value: { value: number; units: string } | null) => (
+            <Text style={{ color: colors.mutedForeground, fontSize: 10 }}>
+              {label}: {value ? `${value.value.toLocaleString()} ${value.units}` : 'Unavailable'}
+            </Text>
+          );
+          return (
+            <View key={item.id} testID={`commodity-event-${item.id}`} style={{ borderRadius: 11, borderWidth: 1, borderColor: completed ? colors.border : `${colors.primary}66`, backgroundColor: completed ? `${colors.background}99` : `${colors.primary}0c`, padding: 11, gap: 5 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                <Text style={{ flex: 1, color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>{item.name}</Text>
+                <Text style={{ color: statusColor, fontFamily: 'Inter_700Bold', fontSize: 9, textTransform: 'uppercase' }}>
+                  {completed ? 'Released' : 'Upcoming'}
+                </Text>
+              </View>
+              <Text style={{ color: colors.foreground, fontSize: 11 }}>
+                {item.eventDate}{item.time ? ` · ${item.time} ${item.timezone ?? ''}` : ''}
+              </Text>
+              <Text style={{ color: colors.mutedForeground, fontSize: 10 }}>
+                Affects {item.affectedCommodities.join(', ')} · {item.source.publicationDate ? `Source updated ${item.source.publicationDate}` : 'Source publication date unavailable'}
+              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 4 }}>
+                {publishedValue('Previous', item.values.previous)}
+                {publishedValue('Consensus', item.values.consensus)}
+                {publishedValue('Actual', item.values.actual)}
+              </View>
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel={`Open event source: ${item.source.title}`}
+                onPress={() => { void Linking.openURL(item.source.url).catch(() => {}); }}
+              >
+                <Text style={{ color: colors.primary, fontSize: 10, textDecorationLine: 'underline' }}>{item.source.title}</Text>
+              </Pressable>
+            </View>
+          );
+        }) : (
+          <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>No supported dated events are available for {symbol}.</Text>
+        )}
+        {calendar.unavailable.map((item) => (
+          <Text key={item} style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 15 }}>Unavailable: {item}</Text>
+        ))}
+      </View>
+    </SectionCard>
+  );
+}
+
+function CommoditySupplyChart({ title, series }: {
+  title: string;
+  series: CommodityAnalysisPayload['supplyDemand']['series'];
+}) {
+  const colors = useColors();
+  const available = series.filter((item) => item.status === 'available');
+  const maxValue = Math.max(0, ...available.flatMap((item) => item.points.map((point) => point.value)));
+  const seriesColor = (id: CommodityAnalysisPayload['supplyDemand']['series'][number]['id']) => (
+    id === 'inventory' ? colors.primary
+      : id === 'production' ? colors.buyColor
+        : id === 'consumption' ? colors.holdColor
+          : id === 'imports' ? colors.mutedForeground : colors.sellColor
+  );
+  return (
+    <View testID={`commodity-supply-chart-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`} style={{ borderRadius: 11, backgroundColor: `${colors.background}99`, padding: 11, gap: 8 }}>
+      <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>{title}</Text>
+      {series.map((item) => (
+        <View key={item.id} style={{ gap: 5 }}>
+          <Text style={{ color: item.status === 'available' ? seriesColor(item.id) : colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>
+            {item.label}{item.units ? ` · ${item.units}` : ' · Unavailable'}
+          </Text>
+          {item.status === 'available' ? (
+            <>
+              {item.points.slice(-6).map((point) => (
+                <View key={`${item.id}-${point.reportingPeriod}`} style={{ gap: 2 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                    <Text style={{ color: colors.mutedForeground, fontSize: 9, width: 57 }}>{point.reportingPeriod}</Text>
+                    <View style={{ height: 6, flex: 1, borderRadius: 4, backgroundColor: colors.border, overflow: 'hidden' }}>
+                      <View style={{ height: '100%', width: `${maxValue > 0 ? Math.max(2, point.value / maxValue * 100) : 0}%`, backgroundColor: seriesColor(item.id) }} />
+                    </View>
+                    <Text style={{ color: colors.foreground, fontSize: 9, minWidth: 55, textAlign: 'right' }}>{point.value.toLocaleString()}</Text>
+                  </View>
+                  <Text style={{ color: colors.mutedForeground, fontSize: 9, marginLeft: 64 }}>
+                    Reported {point.publicationDate} · {point.commodity}
+                  </Text>
+                </View>
+              ))}
+              <Text style={{ color: colors.mutedForeground, fontSize: 9 }}>
+                Historical average {item.historicalAveragePeriod ? `(${item.historicalAveragePeriod})` : '(period unavailable)'}: {item.historicalAverage === null ? 'Unavailable' : `${item.historicalAverage.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${item.units}`}
+              </Text>
+              {item.points[0]?.source && (
+                <Pressable
+                  accessibilityRole="link"
+                  accessibilityLabel={`Open supply source: ${item.points[0].source.title}`}
+                  onPress={() => { void Linking.openURL(item.points[0]!.source.url).catch(() => {}); }}
+                >
+                  <Text style={{ color: colors.primary, fontSize: 9, textDecorationLine: 'underline' }}>{item.points[0].source.title}</Text>
+                </Pressable>
+              )}
+            </>
+          ) : (
+            <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 15 }}>{item.reason ?? 'No comparable validated series is available.'}</Text>
+          )}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function CommoditySupplyDemand({ context }: { context: CommodityAnalysisPayload['supplyDemand'] }) {
+  const colors = useColors();
+  const find = (id: CommodityAnalysisPayload['supplyDemand']['series'][number]['id']) => {
+    const found = context.series.find((item) => item.id === id);
+    return found ?? {
+      id,
+      label: id,
+      status: 'unavailable' as const,
+      units: null,
+      points: [],
+      historicalAverage: null,
+      historicalAveragePeriod: null,
+      reason: 'No validated series is available.',
+    };
+  };
+  return (
+    <SectionCard title="SUPPLY & DEMAND" icon={<MaterialCommunityIcons name="chart-box-outline" size={16} color={colors.primary} />}>
+      <View testID="commodity-supply-demand" style={{ paddingHorizontal: 16, paddingBottom: 14, gap: 9 }}>
+        <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 15 }}>
+          {context.commodity} reporting periods and publication dates are shown separately. Estimates remain estimates; missing series are not interpolated.
+        </Text>
+        <CommoditySupplyChart title="Inventory history" series={[find('inventory')]} />
+        <CommoditySupplyChart title="Production vs. consumption" series={[find('production'), find('consumption')]} />
+        <CommoditySupplyChart title="Trade and supply balance context" series={[find('imports'), find('exports')]} />
+        {context.status === 'unavailable' && (
+          <Text style={{ color: colors.mutedForeground, fontSize: 10 }}>
+            No validated supply-and-demand observations are currently available.
+          </Text>
+        )}
+      </View>
+    </SectionCard>
+  );
+}
+
 function CommodityCommentaryItems({
   items,
   evidenceById,
@@ -977,6 +1170,8 @@ function CommodityAnalysisSections({ analysis, symbol }: { analysis: CommodityAn
     <View testID="commodity-analysis-result" style={{ gap: 12 }}>
       <CommodityIntelligenceScorecard symbol={symbol} scorecard={analysis.intelligenceScorecard} />
       <CommodityRelationshipPanel />
+      <CommodityEventCalendar calendar={analysis.eventCalendar} symbol={symbol} />
+      <CommoditySupplyDemand context={analysis.supplyDemand} />
       <SectionCard title="COMMODITY MARKET SCORE" icon={<MaterialCommunityIcons name="chart-line" size={16} color={colors.primary} />}>
         <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 10 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>

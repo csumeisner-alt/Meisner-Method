@@ -1092,9 +1092,90 @@ components:
                       publishedAt: { type: string, nullable: true }
                     required: [title, url, publishedAt]
               required: [status, summary, retrievedAt, sources]
+            eventCalendar:
+              type: object
+              description: Dated events from verified official schedules. Null values are not estimated or inferred.
+              properties:
+                status: { type: string, enum: [available, partial, unavailable] }
+                checkedAt: { type: string, format: date-time }
+                events:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      name: { type: string }
+                      eventDate: { type: string, format: date }
+                      time: { type: string, nullable: true }
+                      timezone: { type: string, nullable: true }
+                      status: { type: string, enum: [upcoming, completed] }
+                      affectedCommodities: { type: array, items: { type: string } }
+                      source:
+                        type: object
+                        properties:
+                          title: { type: string }
+                          url: { type: string, pattern: "^https://" }
+                          publicationDate: { type: string, format: date, nullable: true }
+                        required: [title, url, publicationDate]
+                      values:
+                        type: object
+                        properties:
+                          previous: { $ref: "#/components/schemas/CommodityPublishedValue" }
+                          consensus: { $ref: "#/components/schemas/CommodityPublishedValue" }
+                          actual: { $ref: "#/components/schemas/CommodityPublishedValue" }
+                        required: [previous, consensus, actual]
+                    required: [id, name, eventDate, time, timezone, status, affectedCommodities, source, values]
+                unavailable: { type: array, items: { type: string } }
+              required: [status, checkedAt, events, unavailable]
+            supplyDemand:
+              type: object
+              description: Validated official supply and demand observations; unsupported series remain unavailable.
+              properties:
+                status: { type: string, enum: [available, partial, unavailable] }
+                commodity: { type: string }
+                series:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id: { type: string, enum: [inventory, production, consumption, imports, exports] }
+                      label: { type: string }
+                      status: { type: string, enum: [available, unavailable] }
+                      units: { type: string, nullable: true }
+                      points:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            commodity: { type: string }
+                            value: { type: number }
+                            units: { type: string }
+                            reportingPeriod: { type: string }
+                            publicationDate: { type: string, format: date }
+                            source:
+                              type: object
+                              properties:
+                                title: { type: string }
+                                url: { type: string, pattern: "^https://" }
+                              required: [title, url]
+                          required: [commodity, value, units, reportingPeriod, publicationDate, source]
+                      historicalAverage: { type: number, nullable: true }
+                      historicalAveragePeriod: { type: string, nullable: true }
+                      reason: { type: string, nullable: true }
+                    required: [id, label, status, units, points, historicalAverage, historicalAveragePeriod, reason]
+              required: [status, commodity, series]
             provider: { type: string }
-          required: [score, confidence, dataCoveragePercent, observationCount, historyAsOf, family, annualizedVolatilityPercent, oneMonthReturnPercent, threeMonthReturnPercent, sixMonthReturnPercent, intelligenceScorecard, factors, methodology, reasoning, risks, strengths, analysisGuide, verifiedEvidence, commentary, newsContext, provider]
+          required: [score, confidence, dataCoveragePercent, observationCount, historyAsOf, family, annualizedVolatilityPercent, oneMonthReturnPercent, threeMonthReturnPercent, sixMonthReturnPercent, intelligenceScorecard, factors, methodology, reasoning, risks, strengths, analysisGuide, verifiedEvidence, commentary, newsContext, eventCalendar, supplyDemand, provider]
       required: [assetType, symbol, companyName, exchange, currency, currentPrice, priceChange, priceChangePercent, volume, marketCap, week52High, week52Low, commodityAnalysis]
+
+    CommodityPublishedValue:
+      oneOf:
+        - type: object
+          properties:
+            value: { type: number }
+            units: { type: string }
+          required: [value, units]
+        - type: "null"
 
     CommodityCommentaryItem:
       type: object

@@ -237,6 +237,8 @@ export const analyzeStockResponseThreeCommodityAnalysisIntelligenceScorecardCate
 
 
 
+export const analyzeStockResponseThreeCommodityAnalysisEventCalendarEventsItemSourceUrlRegExp = new RegExp('^https:/');
+export const analyzeStockResponseThreeCommodityAnalysisSupplyDemandSeriesItemPointsItemSourceUrlRegExp = new RegExp('^https:/');
 
 
 export const AnalyzeStockResponse = zod.union([zod.object({
@@ -534,6 +536,63 @@ export const AnalyzeStockResponse = zod.union([zod.object({
   "publishedAt": zod.string().nullable()
 }))
 }),
+  "eventCalendar": zod.object({
+  "status": zod.enum(['available', 'partial', 'unavailable']),
+  "checkedAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "eventDate": zod.coerce.date(),
+  "time": zod.string().nullable(),
+  "timezone": zod.string().nullable(),
+  "status": zod.enum(['upcoming', 'completed']),
+  "affectedCommodities": zod.array(zod.string()),
+  "source": zod.object({
+  "title": zod.string(),
+  "url": zod.string().regex(analyzeStockResponseThreeCommodityAnalysisEventCalendarEventsItemSourceUrlRegExp),
+  "publicationDate": zod.coerce.date().nullable()
+}),
+  "values": zod.object({
+  "previous": zod.union([zod.object({
+  "value": zod.number(),
+  "units": zod.string()
+}),zod.null()]),
+  "consensus": zod.union([zod.object({
+  "value": zod.number(),
+  "units": zod.string()
+}),zod.null()]),
+  "actual": zod.union([zod.object({
+  "value": zod.number(),
+  "units": zod.string()
+}),zod.null()])
+})
+})),
+  "unavailable": zod.array(zod.string())
+}).describe('Dated events from verified official schedules. Null values are not estimated or inferred.'),
+  "supplyDemand": zod.object({
+  "status": zod.enum(['available', 'partial', 'unavailable']),
+  "commodity": zod.string(),
+  "series": zod.array(zod.object({
+  "id": zod.enum(['inventory', 'production', 'consumption', 'imports', 'exports']),
+  "label": zod.string(),
+  "status": zod.enum(['available', 'unavailable']),
+  "units": zod.string().nullable(),
+  "points": zod.array(zod.object({
+  "commodity": zod.string(),
+  "value": zod.number(),
+  "units": zod.string(),
+  "reportingPeriod": zod.string(),
+  "publicationDate": zod.coerce.date(),
+  "source": zod.object({
+  "title": zod.string(),
+  "url": zod.string().regex(analyzeStockResponseThreeCommodityAnalysisSupplyDemandSeriesItemPointsItemSourceUrlRegExp)
+})
+})),
+  "historicalAverage": zod.number().nullable(),
+  "historicalAveragePeriod": zod.string().nullable(),
+  "reason": zod.string().nullable()
+}))
+}).describe('Validated official supply and demand observations; unsupported series remain unavailable.'),
   "provider": zod.string()
 })
 })])

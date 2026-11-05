@@ -159,6 +159,7 @@ ${JSON.stringify(suppliedEvidence)}
 Unavailable factors (do not fill these gaps with assumptions):
 ${JSON.stringify(unavailableFactors)}
 ${guideLines}
+When comparable dated supply, consumption, or inventory observations are supplied, describe their direction (rising, falling, or mixed) and cite those observations. If the series is incomplete or units/periods do not match, say the trend is unavailable. Discuss possible price pressure only as conditional context; never state a definite price forecast.
 
 Return only JSON with this exact shape:
 {"currentDrivers":[{"text":"...","evidenceIds":["price-history"]}],"strongestBullishFactors":[{"text":"...","evidenceIds":["..."]}],"strongestBearishFactors":[{"text":"...","evidenceIds":["..."]}],"technicalAlignment":{"text":"...","evidenceIds":["price-history"]},"upcomingCatalysts":[{"text":"...","evidenceIds":["news-1"]}],"risks":[{"text":"...","evidenceIds":["..."]}],"monitorNext":["exact permitted suggestion"]}

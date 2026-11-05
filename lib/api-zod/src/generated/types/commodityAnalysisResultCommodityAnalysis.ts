@@ -7,10 +7,12 @@
  */
 import type { CommodityAnalysisResultCommodityAnalysisAnalysisGuide } from './commodityAnalysisResultCommodityAnalysisAnalysisGuide';
 import type { CommodityAnalysisResultCommodityAnalysisCommentary } from './commodityAnalysisResultCommodityAnalysisCommentary';
+import type { CommodityAnalysisResultCommodityAnalysisEventCalendar } from './commodityAnalysisResultCommodityAnalysisEventCalendar';
 import type { CommodityAnalysisResultCommodityAnalysisFactorsItem } from './commodityAnalysisResultCommodityAnalysisFactorsItem';
 import type { CommodityAnalysisResultCommodityAnalysisFamily } from './commodityAnalysisResultCommodityAnalysisFamily';
 import type { CommodityAnalysisResultCommodityAnalysisIntelligenceScorecard } from './commodityAnalysisResultCommodityAnalysisIntelligenceScorecard';
 import type { CommodityAnalysisResultCommodityAnalysisNewsContext } from './commodityAnalysisResultCommodityAnalysisNewsContext';
+import type { CommodityAnalysisResultCommodityAnalysisSupplyDemand } from './commodityAnalysisResultCommodityAnalysisSupplyDemand';
 import type { CommodityAnalysisResultCommodityAnalysisVerifiedEvidenceItem } from './commodityAnalysisResultCommodityAnalysisVerifiedEvidenceItem';
 
 export type CommodityAnalysisResultCommodityAnalysis = {
@@ -50,5 +52,9 @@ export type CommodityAnalysisResultCommodityAnalysis = {
   /** Optional AI interpretation; every item references verified evidence IDs. */
   commentary: CommodityAnalysisResultCommodityAnalysisCommentary;
   newsContext: CommodityAnalysisResultCommodityAnalysisNewsContext;
+  /** Dated events from verified official schedules. Null values are not estimated or inferred. */
+  eventCalendar: CommodityAnalysisResultCommodityAnalysisEventCalendar;
+  /** Validated official supply and demand observations; unsupported series remain unavailable. */
+  supplyDemand: CommodityAnalysisResultCommodityAnalysisSupplyDemand;
   provider: string;
 };

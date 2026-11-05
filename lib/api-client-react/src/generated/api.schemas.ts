@@ -632,6 +632,56 @@ export const CommodityAnalysisResultCommodityAnalysisNewsContextStatus = {
   unavailable: 'unavailable',
 } as const;
 
+export type CommodityAnalysisResultCommodityAnalysisEventCalendarStatus = typeof CommodityAnalysisResultCommodityAnalysisEventCalendarStatus[keyof typeof CommodityAnalysisResultCommodityAnalysisEventCalendarStatus];
+
+
+export const CommodityAnalysisResultCommodityAnalysisEventCalendarStatus = {
+  available: 'available',
+  partial: 'partial',
+  unavailable: 'unavailable',
+} as const;
+
+export type CommodityAnalysisResultCommodityAnalysisEventCalendarEventsItemStatus = typeof CommodityAnalysisResultCommodityAnalysisEventCalendarEventsItemStatus[keyof typeof CommodityAnalysisResultCommodityAnalysisEventCalendarEventsItemStatus];
+
+
+export const CommodityAnalysisResultCommodityAnalysisEventCalendarEventsItemStatus = {
+  upcoming: 'upcoming',
+  completed: 'completed',
+} as const;
+
+export type CommodityPublishedValue = {
+  value: number;
+  units: string;
+} | null;
+
+export type CommodityAnalysisResultCommodityAnalysisSupplyDemandStatus = typeof CommodityAnalysisResultCommodityAnalysisSupplyDemandStatus[keyof typeof CommodityAnalysisResultCommodityAnalysisSupplyDemandStatus];
+
+
+export const CommodityAnalysisResultCommodityAnalysisSupplyDemandStatus = {
+  available: 'available',
+  partial: 'partial',
+  unavailable: 'unavailable',
+} as const;
+
+export type CommodityAnalysisResultCommodityAnalysisSupplyDemandSeriesItemId = typeof CommodityAnalysisResultCommodityAnalysisSupplyDemandSeriesItemId[keyof typeof CommodityAnalysisResultCommodityAnalysisSupplyDemandSeriesItemId];
+
+
+export const CommodityAnalysisResultCommodityAnalysisSupplyDemandSeriesItemId = {
+  inventory: 'inventory',
+  production: 'production',
+  consumption: 'consumption',
+  imports: 'imports',
+  exports: 'exports',
+} as const;
+
+export type CommodityAnalysisResultCommodityAnalysisSupplyDemandSeriesItemStatus = typeof CommodityAnalysisResultCommodityAnalysisSupplyDemandSeriesItemStatus[keyof typeof CommodityAnalysisResultCommodityAnalysisSupplyDemandSeriesItemStatus];
+
+
+export const CommodityAnalysisResultCommodityAnalysisSupplyDemandSeriesItemStatus = {
+  available: 'available',
+  unavailable: 'unavailable',
+} as const;
+
 export type CommodityAnalysisResultCommodityAnalysisIntelligenceScorecardCategoriesItemSourcesItem = {
   title: string;
   url: string;
@@ -744,6 +794,76 @@ export type CommodityAnalysisResultCommodityAnalysisNewsContext = {
   sources: CommodityAnalysisResultCommodityAnalysisNewsContextSourcesItem[];
 };
 
+export type CommodityAnalysisResultCommodityAnalysisEventCalendarEventsItemSource = {
+  title: string;
+  /** @pattern ^https:// */
+  url: string;
+  publicationDate: string | null;
+};
+
+export type CommodityAnalysisResultCommodityAnalysisEventCalendarEventsItemValues = {
+  previous: CommodityPublishedValue;
+  consensus: CommodityPublishedValue;
+  actual: CommodityPublishedValue;
+};
+
+export type CommodityAnalysisResultCommodityAnalysisEventCalendarEventsItem = {
+  id: string;
+  name: string;
+  eventDate: string;
+  time: string | null;
+  timezone: string | null;
+  status: CommodityAnalysisResultCommodityAnalysisEventCalendarEventsItemStatus;
+  affectedCommodities: string[];
+  source: CommodityAnalysisResultCommodityAnalysisEventCalendarEventsItemSource;
+  values: CommodityAnalysisResultCommodityAnalysisEventCalendarEventsItemValues;
+};
+
+/**
+ * Dated events from verified official schedules. Null values are not estimated or inferred.
+ */
+export type CommodityAnalysisResultCommodityAnalysisEventCalendar = {
+  status: CommodityAnalysisResultCommodityAnalysisEventCalendarStatus;
+  checkedAt: string;
+  events: CommodityAnalysisResultCommodityAnalysisEventCalendarEventsItem[];
+  unavailable: string[];
+};
+
+export type CommodityAnalysisResultCommodityAnalysisSupplyDemandSeriesItemPointsItemSource = {
+  title: string;
+  /** @pattern ^https:// */
+  url: string;
+};
+
+export type CommodityAnalysisResultCommodityAnalysisSupplyDemandSeriesItemPointsItem = {
+  commodity: string;
+  value: number;
+  units: string;
+  reportingPeriod: string;
+  publicationDate: string;
+  source: CommodityAnalysisResultCommodityAnalysisSupplyDemandSeriesItemPointsItemSource;
+};
+
+export type CommodityAnalysisResultCommodityAnalysisSupplyDemandSeriesItem = {
+  id: CommodityAnalysisResultCommodityAnalysisSupplyDemandSeriesItemId;
+  label: string;
+  status: CommodityAnalysisResultCommodityAnalysisSupplyDemandSeriesItemStatus;
+  units: string | null;
+  points: CommodityAnalysisResultCommodityAnalysisSupplyDemandSeriesItemPointsItem[];
+  historicalAverage: number | null;
+  historicalAveragePeriod: string | null;
+  reason: string | null;
+};
+
+/**
+ * Validated official supply and demand observations; unsupported series remain unavailable.
+ */
+export type CommodityAnalysisResultCommodityAnalysisSupplyDemand = {
+  status: CommodityAnalysisResultCommodityAnalysisSupplyDemandStatus;
+  commodity: string;
+  series: CommodityAnalysisResultCommodityAnalysisSupplyDemandSeriesItem[];
+};
+
 export type CommodityAnalysisResultCommodityAnalysis = {
   /**
      * @minimum 0
@@ -781,6 +901,10 @@ export type CommodityAnalysisResultCommodityAnalysis = {
   /** Optional AI interpretation; every item references verified evidence IDs. */
   commentary: CommodityAnalysisResultCommodityAnalysisCommentary;
   newsContext: CommodityAnalysisResultCommodityAnalysisNewsContext;
+  /** Dated events from verified official schedules. Null values are not estimated or inferred. */
+  eventCalendar: CommodityAnalysisResultCommodityAnalysisEventCalendar;
+  /** Validated official supply and demand observations; unsupported series remain unavailable. */
+  supplyDemand: CommodityAnalysisResultCommodityAnalysisSupplyDemand;
   provider: string;
 };
 

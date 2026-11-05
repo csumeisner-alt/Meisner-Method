@@ -15,6 +15,7 @@ import {
   parseCftcPositioningRows,
   parseEiaCrudeInventoryCsv,
   parseEiaNaturalGasStorageCsv,
+  parseUsdaSupplyDemandSeries,
   parseUsdaWasdeInventoryCsv,
 } from "./commodityMarketData.ts";
 
@@ -93,6 +94,10 @@ test("EIA crude inventory parser validates dated million-barrel observations", (
   assert.ok(parsed);
   assert.equal(parsed.asOf, "2026-10-30");
   assert.equal(parsed.units, "million barrels");
+  assert.deepEqual(parsed.publishedObservations?.map((item) => [item.reportingPeriod, item.value]), [
+    ["2026-10-30", 400],
+    ["2026-10-23", 410],
+  ]);
   assert.ok(parsed.value < 0);
   assert.match(parsed.source.observation, /400\.000 million barrels/);
   assert.equal(parseEiaCrudeInventoryCsv(csv, new Date("2026-11-20T00:00:00.000Z")), null);
@@ -426,6 +431,48 @@ test("USDA WASDE parser computes same-unit stocks-to-use change for adjacent mar
     "ZC=F",
     new Date("2026-12-20T00:00:00.000Z"),
   ), null);
+});
+
+test("USDA supply-demand series compare only same-unit, dated reports and leave missing trade data unavailable", () => {
+  const releaseDate = "2026-10-12";
+  const sourceUrl = "https://www.usda.gov/sites/default/files/documents/oce-wasde-report-data-2026-10.csv";
+  const rows = ["2024/25", "2025/26", "2026/27"].flatMap((marketYear, index) => [
+    { reportTitle: "U.S. Corn Supply and Use", attribute: "Ending Stocks", commodity: "Corn", region: "United States", marketYear, value: String(100 + index * 10), unit: "Million Bushels", releaseDate },
+    { reportTitle: "U.S. Corn Supply and Use", attribute: "Production", commodity: "Corn", region: "United States", marketYear, value: String(1000 + index * 100), unit: "Million Bushels", releaseDate },
+    { reportTitle: "U.S. Corn Supply and Use", attribute: "Use, Total", commodity: "Corn", region: "United States", marketYear, value: String(900 + index * 100), unit: "Million Bushels", releaseDate },
+  ]);
+  const result = parseUsdaSupplyDemandSeries(
+    rows,
+    sourceUrl,
+    "ZC=F",
+    new Date("2026-11-02T12:00:00.000Z"),
+  );
+  assert.equal(result.status, "partial");
+  assert.equal(result.series.find((item) => item.id === "inventory")?.points.length, 3);
+  assert.equal(result.series.find((item) => item.id === "inventory")?.historicalAverage, 105);
+  assert.equal(result.series.find((item) => item.id === "inventory")?.historicalAveragePeriod, "2024/25–2025/26 (2 prior periods)");
+  assert.equal(result.series.find((item) => item.id === "production")?.points[0]?.publicationDate, releaseDate);
+  assert.equal(result.series.find((item) => item.id === "production")?.points[0]?.commodity, "Corn");
+  assert.equal(result.series.find((item) => item.id === "exports")?.status, "unavailable");
+  assert.equal(result.series.find((item) => item.id === "imports")?.reason?.includes("does not publish"), true);
+  assert.equal(parseUsdaSupplyDemandSeries(
+    rows,
+    "https://example.com/wasde.csv",
+    "ZC=F",
+    new Date("2026-11-02T12:00:00.000Z"),
+  ).status, "unavailable");
+});
+
+test("revised and stale WASDE rows do not become supply-demand series", () => {
+  const rows = [
+    { reportTitle: "U.S. Corn Supply and Use", attribute: "Ending Stocks", commodity: "Corn", region: "United States", marketYear: "2026/27", value: "200", unit: "Million Bushels", releaseDate: "2026-10-12" },
+    { reportTitle: "U.S. Corn Supply and Use", attribute: "Ending Stocks", commodity: "Corn", region: "United States", marketYear: "2026/27", value: "205", unit: "Million Bushels", releaseDate: "2026-10-12" },
+    { reportTitle: "U.S. Corn Supply and Use", attribute: "Production", commodity: "Corn", region: "United States", marketYear: "2026/27", value: "1000", unit: "Million Bushels", releaseDate: "2026-01-01" },
+  ];
+  const url = "https://www.usda.gov/sites/default/files/documents/oce-wasde-report-data-2026-10-V2.csv";
+  const result = parseUsdaSupplyDemandSeries(rows, url, "ZC=F", DEFAULT_NOW);
+  assert.equal(result.status, "unavailable");
+  assert.ok(result.series.every((item) => item.points.length === 0));
 });
 
 test("USDA WASDE inventory accepts matching units and rejects mismatches for every supported crop", () => {

@@ -12,6 +12,8 @@ import {
   type CommodityInventoryEvidence,
   type CommodityNewsContext,
   type CommodityPositioningEvidence,
+  type CommodityEventCalendar,
+  type CommoditySupplyDemandContext,
 } from "./commodityAnalysis.ts";
 import { fallbackAiAnalysis } from "./analysisResponse.ts";
 import {
@@ -21,6 +23,8 @@ import {
   unavailableCommodityCommentary,
   validateCommodityNewsContext,
 } from "./commodityCommentary.ts";
+import { validateCommodityEventCalendar } from "./commodityEvents.ts";
+import { validateCommoditySupplyDemandContext } from "./commodityMarketData.ts";
 
 export interface CommodityAnalysisQuote {
   symbol: string;
@@ -42,6 +46,13 @@ export interface CommodityAnalysisEndpointDependencies {
   fetchInventory: (symbol: string, now: Date) => Promise<CommodityEvidenceFetchResult<CommodityInventoryEvidence>>;
   fetchPositioning: (symbol: string, now: Date) => Promise<CommodityEvidenceFetchResult<CommodityPositioningEvidence>>;
   fetchNews: (symbol: string, name: string) => Promise<CommodityNewsContext>;
+  fetchEvents?: (symbol: string, now: Date) => Promise<CommodityEventCalendar>;
+  fetchSupplyDemand?: (
+    symbol: string,
+    inventory: CommodityInventoryEvidence | null,
+    eventCalendar: CommodityEventCalendar,
+    now: Date,
+  ) => Promise<CommoditySupplyDemandContext>;
   createCompletion: (prompt: string, maxTokens: number) => Promise<string>;
   now: () => Date;
   onCommentaryFailure?: (error: unknown, symbol: string) => void;
@@ -75,6 +86,75 @@ export async function respondWithCommodityAnalysis(
   ]);
   const inventory = inventoryResult.evidence;
   const positioning = positioningResult.evidence;
+  let eventCalendar: CommodityEventCalendar;
+  try {
+    eventCalendar = validateCommodityEventCalendar(
+      await dependencies.fetchEvents?.(symbol, now) ?? {
+        status: "unavailable",
+        checkedAt: now.toISOString(),
+        events: [],
+        unavailable: ["Official event schedules are not configured."],
+      },
+      symbol,
+      now,
+    );
+  } catch {
+    eventCalendar = {
+      status: "unavailable",
+      checkedAt: now.toISOString(),
+      events: [],
+      unavailable: ["Official event schedules are temporarily unavailable."],
+    };
+  }
+  if (inventory?.provider === "EIA") {
+    const reportDate = eventCalendar.events
+      .filter((item) => item.status === "completed"
+        && (item.name.includes("Petroleum Status") || item.name.includes("Natural Gas Storage")))
+      .map((item) => item.eventDate)
+      .sort()
+      .at(-1);
+    const observations = [...(inventory.publishedObservations ?? [])]
+      .filter((item) => item.units === inventory.units
+        && Number.isFinite(item.value) && item.value >= 0)
+      .sort((left, right) => right.reportingPeriod.localeCompare(left.reportingPeriod));
+    const current = observations.find((item) => item.reportingPeriod === inventory.asOf);
+    const previous = observations.find((item) => item.reportingPeriod < inventory.asOf);
+    if (reportDate && current) {
+      eventCalendar = {
+        ...eventCalendar,
+        events: eventCalendar.events.map((item) => item.eventDate === reportDate
+          && (item.name.includes("Petroleum Status") || item.name.includes("Natural Gas Storage"))
+          ? {
+            ...item,
+            source: { ...item.source, publicationDate: reportDate },
+            values: {
+              previous: previous ? { value: previous.value, units: previous.units } : null,
+              consensus: null,
+              actual: { value: current.value, units: current.units },
+            },
+          }
+          : item),
+      };
+    }
+  }
+  let supplyDemand: CommoditySupplyDemandContext;
+  try {
+    supplyDemand = validateCommoditySupplyDemandContext(
+      await dependencies.fetchSupplyDemand?.(symbol, inventory, eventCalendar, now) ?? {
+        status: "unavailable",
+        commodity: commodity.name,
+        series: [],
+      },
+      symbol,
+      now,
+    );
+  } catch {
+    supplyDemand = validateCommoditySupplyDemandContext({
+      status: "unavailable",
+      commodity: commodity.name,
+      series: [],
+    }, symbol, now);
+  }
   const scoreInput = {
     symbol,
     closes: data.closes,
@@ -124,7 +204,29 @@ export async function respondWithCommodityAnalysis(
 
   let explanation = fallbackAiAnalysis();
   let commentary = unavailableCommodityCommentary();
-  const verifiedEvidence = buildCommodityVerifiedEvidence(symbol, score, newsContext);
+  const researchEvidence = [
+    ...supplyDemand.series.flatMap((series) => series.points.slice(-4).map((point, index) => ({
+      id: `supply-${series.id}-${point.reportingPeriod}-${index}`,
+      title: point.source.title,
+      url: point.source.url,
+      asOf: point.publicationDate,
+      unit: point.units,
+      observation: `${point.commodity} ${series.label}: ${point.value} ${point.units} for ${point.reportingPeriod}, published ${point.publicationDate}.`,
+      kind: "market-data" as const,
+      eventDate: null,
+    }))),
+    ...eventCalendar.events.filter((item) => item.status === "upcoming").map((item) => ({
+      id: `event-${item.id}`,
+      title: item.source.title,
+      url: item.source.url,
+      asOf: eventCalendar.checkedAt.slice(0, 10),
+      unit: "scheduled event",
+      observation: `${item.name} is scheduled for ${item.eventDate}${item.time ? ` at ${item.time} ${item.timezone ?? ""}` : ""}; affected commodities: ${item.affectedCommodities.join(", ")}.`,
+      kind: "market-data" as const,
+      eventDate: item.eventDate,
+    })),
+  ];
+  const verifiedEvidence = [...buildCommodityVerifiedEvidence(symbol, score, newsContext), ...researchEvidence];
   const guide = COMMODITY_ANALYSIS_GUIDES[symbol];
   if (options.includeCommentary !== false) {
     try {
@@ -178,6 +280,8 @@ export async function respondWithCommodityAnalysis(
       verifiedEvidence,
       commentary,
       newsContext,
+      eventCalendar,
+      supplyDemand,
       provider: "Yahoo Finance",
     },
   });

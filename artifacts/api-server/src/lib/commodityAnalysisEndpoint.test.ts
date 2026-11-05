@@ -7,9 +7,11 @@ import {
   COMMODITY_ANALYSIS_GUIDES,
   CFTC_INSTRUMENTS,
   unavailableCommodityNews,
+  type CommodityEventCalendar,
   type CommodityInventoryEvidence,
   type CommodityEvidenceFetchResult,
   type CommodityPositioningEvidence,
+  type CommoditySupplyDemandContext,
 } from "./commodityAnalysis.ts";
 import { respondWithCommodityAnalysis } from "./commodityAnalysisEndpoint.ts";
 
@@ -54,6 +56,10 @@ function inventoryEvidence(symbol: "CL=F" | "ZC=F", asOf = HISTORY_END): Commodi
       unit: isEia ? "million barrels" : "million bushels",
       observation: "Official dated inventory observation.",
     },
+    publishedObservations: isEia ? [
+      { reportingPeriod: asOf, value: 400, units: "million barrels" },
+      { reportingPeriod: "2026-10-23", value: 410, units: "million barrels" },
+    ] : undefined,
   };
 }
 
@@ -143,6 +149,11 @@ async function requestFullCommodityAnalysis(
   symbol: string,
   createCompletion: (prompt: string) => Promise<string>,
   fetchNews: () => Promise<ReturnType<typeof unavailableCommodityNews>>,
+  research: {
+    fetchInventory?: CommodityInventoryEvidence;
+    fetchEvents?: () => Promise<CommodityEventCalendar>;
+    fetchSupplyDemand?: () => Promise<CommoditySupplyDemandContext>;
+  } = {},
 ) {
   const app = express();
   app.use(express.json());
@@ -162,9 +173,13 @@ async function requestFullCommodityAnalysis(
       historySessions,
       historyAsOf: HISTORY_END,
     }, {
-      fetchInventory: async () => ({ evidence: null, failure: null }),
+      fetchInventory: async () => ({ evidence: research.fetchInventory ?? null, failure: null }),
       fetchPositioning: async () => ({ evidence: null, failure: null }),
       fetchNews,
+      fetchEvents: research.fetchEvents ? async () => research.fetchEvents!() : undefined,
+      fetchSupplyDemand: research.fetchSupplyDemand
+        ? async () => research.fetchSupplyDemand!()
+        : undefined,
       createCompletion,
       now: () => NOW,
     });
@@ -185,6 +200,106 @@ async function requestFullCommodityAnalysis(
     await once(server, "close");
   }
 }
+
+test("commodity endpoint returns only matching verified calendar and supply evidence to the UI and AI", async () => {
+  let prompt = "";
+  const result = await requestFullCommodityAnalysis(
+    "CL=F",
+    async (input) => {
+      prompt = input;
+      return commentaryJson(COMMODITY_ANALYSIS_GUIDES["CL=F"]!.monitorNext);
+    },
+    async () => unavailableCommodityNews(),
+    {
+      fetchEvents: async () => ({
+        status: "partial",
+        checkedAt: NOW.toISOString(),
+        events: [{
+          id: "bls-cpi-2026-11-12",
+          name: "U.S. Consumer Price Index release",
+          eventDate: "2026-11-12",
+          time: "08:30 AM",
+          timezone: "ET",
+          status: "upcoming",
+          affectedCommodities: ["Crude Oil"],
+          source: {
+            title: "U.S. Bureau of Labor Statistics CPI release schedule",
+            url: "https://www.bls.gov/schedule/news_release/cpi.htm",
+            publicationDate: null,
+          },
+          values: { previous: null, consensus: null, actual: null },
+        }],
+        unavailable: ["OPEC+ meeting dates unavailable unless officially confirmed."],
+      }),
+      fetchSupplyDemand: async () => ({
+        status: "partial",
+        commodity: "Crude Oil",
+        series: [{
+          id: "inventory",
+          label: "U.S. commercial crude inventory",
+          status: "available",
+          units: "million barrels",
+          points: [{
+            commodity: "Crude Oil",
+            value: 400,
+            units: "million barrels",
+            reportingPeriod: "2026-10-30",
+            publicationDate: "2026-11-02",
+            source: { title: "EIA Weekly Petroleum Status Report", url: EIA_URL },
+          }],
+          historicalAverage: null,
+          historicalAveragePeriod: null,
+          reason: null,
+        }],
+      }),
+    },
+  );
+  assert.equal(result.status, 200);
+  const analysis = result.body.commodityAnalysis;
+  assert.equal(analysis.eventCalendar.events[0].status, "upcoming");
+  assert.equal(analysis.eventCalendar.events[0].values.consensus, null);
+  assert.equal(analysis.supplyDemand.series.find((item: { id: string }) => item.id === "inventory").points[0].publicationDate, "2026-11-02");
+  assert.equal(analysis.supplyDemand.series.find((item: { id: string }) => item.id === "production").status, "unavailable");
+  assert.ok(prompt.includes("U.S. Consumer Price Index release"));
+  assert.ok(prompt.includes("400 million barrels for 2026-10-30"));
+});
+
+test("completed EIA events show previous and actual values only from matching published observations", async () => {
+  const result = await requestFullCommodityAnalysis(
+    "CL=F",
+    async () => commentaryJson(COMMODITY_ANALYSIS_GUIDES["CL=F"]!.monitorNext),
+    async () => unavailableCommodityNews(),
+    {
+      fetchInventory: inventoryEvidence("CL=F"),
+      fetchEvents: async () => ({
+        status: "available",
+        checkedAt: NOW.toISOString(),
+        events: [{
+          id: "eia-wpsr-2026-11-01",
+          name: "EIA Weekly Petroleum Status Report",
+          eventDate: "2026-11-01",
+          time: null,
+          timezone: null,
+          status: "completed",
+          affectedCommodities: ["Crude Oil"],
+          source: {
+            title: "EIA Weekly Petroleum Status Report",
+            url: "https://www.eia.gov/petroleum/supply/weekly/",
+            publicationDate: null,
+          },
+          values: { previous: null, consensus: null, actual: null },
+        }],
+        unavailable: [],
+      }),
+    },
+  );
+  assert.equal(result.status, 200);
+  const event = result.body.commodityAnalysis.eventCalendar.events[0];
+  assert.deepEqual(event.values.previous, { value: 410, units: "million barrels" });
+  assert.deepEqual(event.values.consensus, null);
+  assert.deepEqual(event.values.actual, { value: 400, units: "million barrels" });
+  assert.equal(event.source.publicationDate, "2026-11-01");
+});
 
 function commentaryJson(monitorNext: string[], includeNews = false) {
   const evidenceIds = includeNews ? ["price-history", "news-1"] : ["price-history"];

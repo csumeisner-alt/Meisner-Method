@@ -22,7 +22,9 @@ import {
 import {
   fetchCommodityInventoryEvidenceWithStatus,
   fetchCommodityPositioningEvidenceWithStatus,
+  fetchCommoditySupplyDemandContext,
 } from "../lib/commodityMarketData.js";
+import { fetchCommodityEventCalendar } from "../lib/commodityEvents.js";
 import { respondWithCommodityAnalysis } from "../lib/commodityAnalysisEndpoint.js";
 import {
   buildCommodityRelationshipInterpretationPrompt,
@@ -1003,6 +1005,8 @@ router.post("/stocks/analyze", async (req, res) => {
         fetchInventory: async () => inventoryRequest,
         fetchPositioning: async () => positioningRequest,
         fetchNews: fetchCommodityNews,
+        fetchEvents: fetchCommodityEventCalendar,
+        fetchSupplyDemand: fetchCommoditySupplyDemandContext,
         async createCompletion(prompt, maxTokens) {
           const completion = await openai.chat.completions.create({
             model: "gpt-4o-mini",

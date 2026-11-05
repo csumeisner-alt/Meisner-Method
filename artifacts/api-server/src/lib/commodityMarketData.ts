@@ -7,6 +7,10 @@ import {
   type CommodityInventoryEvidence,
   type CommodityMarketEvidence,
   type CommodityPositioningEvidence,
+  type CommodityEventCalendar,
+  type CommoditySupplyDemandContext,
+  type CommoditySupplyDemandPoint,
+  type CommoditySupplyDemandSeries,
 } from "./commodityAnalysis.ts";
 
 const CFTC_DATASET_URL = "https://publicreporting.cftc.gov/resource/6dca-aqww.json";
@@ -22,9 +26,10 @@ const USDA_COMMODITIES: Record<string, { commodity: string; useAttributes: strin
   "CT=F": { commodity: "Cotton", useAttributes: ["Use, Total", "Total Use"] },
   "SB=F": { commodity: "Sugar", useAttributes: ["Total Use", "Use, Total"] },
 };
+const USDA_SERIES_COMMODITIES = new Set(["ZC=F", "ZW=F", "ZS=F", "CT=F", "SB=F"]);
 
 type CftcRow = Record<string, unknown>;
-type WasdeRow = {
+export type WasdeRow = {
   reportTitle: string;
   attribute: string;
   commodity: string;
@@ -171,6 +176,15 @@ export function parseEiaCrudeInventoryCsv(
   const roundedCurrent = currentInventory.toFixed(3);
   const roundedPrior = priorInventory.toFixed(3);
   const observation = `U.S. commercial crude stocks excluding the Strategic Petroleum Reserve: ${roundedCurrent} million barrels, ${changePercent >= 0 ? "up" : "down"} ${Math.abs(changePercent).toFixed(2)}% week over week from ${roundedPrior} million barrels.`;
+  const publishedObservations = header.flatMap((dateLabel, index) => {
+    const reportingPeriod = eiaDateOnly(dateLabel);
+    const value = parseNumber(row[index]);
+    return reportingPeriod && value !== null && value >= 0
+      ? [{ reportingPeriod, value, units: "million barrels" }]
+      : [];
+  }).filter((item) => item.reportingPeriod <= asOf && isFresh(item.reportingPeriod, now, 120))
+    .sort((left, right) => right.reportingPeriod.localeCompare(left.reportingPeriod))
+    .slice(0, 12);
   return {
     provider: "EIA",
     symbol: "CL=F",
@@ -179,6 +193,7 @@ export function parseEiaCrudeInventoryCsv(
     value: changePercent,
     asOf,
     units: "million barrels",
+    publishedObservations,
     source: {
       title: "EIA Weekly Petroleum Status Report, Table 4",
       url: EIA_TABLE_URL,
@@ -204,6 +219,15 @@ export function parseEiaNaturalGasStorageCsv(
     || priorStorage === null || priorStorage <= 0) return null;
   const changePercent = (currentStorage - priorStorage) / priorStorage * 100;
   const observation = `EIA Lower 48 working gas in underground storage: ${currentStorage.toLocaleString("en-US")} billion cubic feet, ${changePercent >= 0 ? "up" : "down"} ${Math.abs(changePercent).toFixed(2)}% week over week from ${priorStorage.toLocaleString("en-US")} billion cubic feet.`;
+  const publishedObservations = dateHeader.flatMap((dateLabel, index) => {
+    const reportingPeriod = eiaStorageDateOnly(dateLabel);
+    const value = parseNumber(total[index]);
+    return reportingPeriod && value !== null && value >= 0
+      ? [{ reportingPeriod, value, units: "billion cubic feet" }]
+      : [];
+  }).filter((item) => item.reportingPeriod <= asOf && isFresh(item.reportingPeriod, now, 120))
+    .sort((left, right) => right.reportingPeriod.localeCompare(left.reportingPeriod))
+    .slice(0, 12);
   return {
     provider: "EIA",
     symbol: "NG=F",
@@ -212,6 +236,7 @@ export function parseEiaNaturalGasStorageCsv(
     value: changePercent,
     asOf,
     units: "billion cubic feet",
+    publishedObservations,
     source: {
       title: "EIA Weekly Natural Gas Storage Report",
       url: EIA_NATURAL_GAS_URL,
@@ -548,4 +573,285 @@ export async function fetchCommodityMarketEvidence(
     fetchCommodityPositioningEvidence(normalized, now),
   ]);
   return { inventory, positioning };
+}
+
+const SUPPLY_SERIES: Pick<CommoditySupplyDemandSeries, "id" | "label">[] = [
+  { id: "inventory", label: "Ending stocks / inventory" },
+  { id: "production", label: "Production" },
+  { id: "consumption", label: "Consumption / total use" },
+  { id: "imports", label: "Imports" },
+  { id: "exports", label: "Exports" },
+];
+
+function unavailableSupplySeries(
+  id: CommoditySupplyDemandSeries["id"],
+  label: string,
+  reason: string,
+): CommoditySupplyDemandSeries {
+  return {
+    id,
+    label,
+    status: "unavailable",
+    units: null,
+    points: [],
+    historicalAverage: null,
+    historicalAveragePeriod: null,
+    reason,
+  };
+}
+
+function createWasdeSeries(
+  symbol: string,
+  rows: WasdeRow[],
+  sourceUrl: string,
+  releaseDate: string,
+  id: CommoditySupplyDemandSeries["id"],
+  label: string,
+): CommoditySupplyDemandSeries {
+  const config = USDA_COMMODITIES[symbol];
+  const attrMatches = (attribute: string) => {
+    const normalized = attribute.toLowerCase().trim();
+    if (id === "inventory") return normalized === "ending stocks";
+    if (id === "production") return normalized === "production";
+    if (id === "consumption") return config?.useAttributes.some((item) => item.toLowerCase() === normalized) ?? false;
+    if (id === "imports") return normalized === "imports";
+    return normalized === "exports";
+  };
+  const selected = rows.filter((row) => row.region === "United States"
+    && row.commodity === config?.commodity
+    && /^U\.S\..*Supply and Use/i.test(row.reportTitle)
+    && row.releaseDate === releaseDate
+    && /^\d{4}\/\d{2}$/.test(row.marketYear)
+    && attrMatches(row.attribute));
+  const yearGroups = new Map<string, WasdeRow[]>();
+  for (const row of selected) yearGroups.set(row.marketYear, [...(yearGroups.get(row.marketYear) ?? []), row]);
+  const sortedYears = [...yearGroups.keys()].sort((left, right) => left.localeCompare(right)).slice(-12);
+  const candidates: CommoditySupplyDemandPoint[] = [];
+  let expectedUnits: string | null = null;
+  for (const period of sortedYears) {
+    const matches = yearGroups.get(period)!;
+    const unique = [...new Map(matches.map((row) => [
+      `${row.value.trim()}|${row.unit.trim()}`,
+      row,
+    ])).values()];
+    if (unique.length !== 1) continue;
+    const row = unique[0]!;
+    const value = parseNumber(row.value);
+    const units = row.unit.trim();
+    if (value === null || value < 0 || !units) continue;
+    if (expectedUnits && expectedUnits !== units) continue;
+    expectedUnits = units;
+    candidates.push({
+      commodity: SUPPORTED_COMMODITIES[symbol]!.name,
+      value,
+      units,
+      reportingPeriod: period,
+      publicationDate: releaseDate,
+      source: {
+        title: `USDA WASDE ${period} supply and use`,
+        url: sourceUrl,
+      },
+    });
+  }
+  if (!candidates.length || !expectedUnits) {
+    return unavailableSupplySeries(id, label, "The latest validated WASDE report does not publish a comparable series.");
+  }
+  const historical = candidates.slice(0, -1);
+  const historicalAverage = historical.length >= 2
+    ? historical.reduce((sum, point) => sum + point.value, 0) / historical.length
+    : null;
+  const historicalAveragePeriod = historical.length >= 2
+    ? `${historical[0]!.reportingPeriod}–${historical.at(-1)!.reportingPeriod} (${historical.length} prior periods)`
+    : null;
+  return {
+    id,
+    label,
+    status: "available",
+    units: expectedUnits,
+    points: candidates,
+    historicalAverage,
+    historicalAveragePeriod,
+    reason: null,
+  };
+}
+
+export function parseUsdaSupplyDemandSeries(
+  rows: WasdeRow[],
+  sourceUrl: string,
+  symbol: string,
+  now = new Date(),
+): CommoditySupplyDemandContext {
+  const commodity = SUPPORTED_COMMODITIES[symbol];
+  const config = USDA_COMMODITIES[symbol];
+  const unavailable = (reason: string): CommoditySupplyDemandContext => ({
+    status: "unavailable",
+    commodity: commodity?.name ?? "Unknown commodity",
+    series: SUPPLY_SERIES.map(({ id, label }) => unavailableSupplySeries(id, label, reason)),
+  });
+  if (!commodity || !config || !USDA_SERIES_COMMODITIES.has(symbol) || !validWasdeReportSource(sourceUrl)) {
+    return unavailable("No matching validated USDA series is available for this commodity.");
+  }
+  const matched = rows.filter((row) => row.commodity === config.commodity
+    && row.region === "United States"
+    && /^U\.S\..*Supply and Use/i.test(row.reportTitle)
+    && /^\d{4}\/\d{2}$/.test(row.marketYear)
+    && isDate(row.releaseDate)
+    && Date.parse(`${row.releaseDate}T00:00:00.000Z`) <= now.getTime());
+  const releaseDate = matched.map((row) => row.releaseDate).sort().at(-1);
+  if (!releaseDate || !isFresh(releaseDate, now, 60)) {
+    return unavailable("The latest validated USDA supply-and-use report is stale or unavailable.");
+  }
+  const series = SUPPLY_SERIES.map(({ id, label }) =>
+    createWasdeSeries(symbol, matched, sourceUrl, releaseDate, id, label));
+  const availableCount = series.filter((item) => item.status === "available").length;
+  return {
+    status: availableCount === 0 ? "unavailable" : availableCount === series.length ? "available" : "partial",
+    commodity: commodity.name,
+    series,
+  };
+}
+
+export async function fetchCommoditySupplyDemandContext(
+  symbol: string,
+  inventory: CommodityInventoryEvidence | null,
+  eventCalendar: CommodityEventCalendar,
+  now = new Date(),
+): Promise<CommoditySupplyDemandContext> {
+  const normalized = symbol.trim().toUpperCase();
+  const commodity = SUPPORTED_COMMODITIES[normalized];
+  if (!commodity) return {
+    status: "unavailable",
+    commodity: "Unknown commodity",
+    series: SUPPLY_SERIES.map(({ id, label }) => unavailableSupplySeries(id, label, "Unsupported commodity.")),
+  };
+
+  let series: CommoditySupplyDemandSeries[] = [];
+  if (USDA_SERIES_COMMODITIES.has(normalized)) {
+    try {
+      const report = await loadLatestWasdeReport(now, normalized);
+      if (report) return parseUsdaSupplyDemandSeries(report.rows, report.sourceUrl, normalized, now);
+    } catch {
+      // Unavailable series are returned below; no values are inferred.
+    }
+  } else if ((normalized === "CL=F" || normalized === "NG=F")
+    && inventory?.symbol === normalized
+    && inventory.publishedObservations?.length) {
+    const eventName = normalized === "CL=F" ? "Petroleum Status" : "Natural Gas Storage";
+    const publicationDate = eventCalendar.events
+      .filter((item) => item.status === "completed" && item.name.includes(eventName))
+      .sort((left, right) => right.eventDate.localeCompare(left.eventDate))[0]?.eventDate;
+    if (publicationDate && isDate(publicationDate) && isFresh(publicationDate, now, 14)) {
+      const points = [...inventory.publishedObservations]
+        .filter((point) => isDate(point.reportingPeriod) && point.reportingPeriod <= inventory.asOf
+          && Number.isFinite(point.value) && point.value >= 0 && point.units === inventory.units)
+        .sort((left, right) => left.reportingPeriod.localeCompare(right.reportingPeriod))
+        .map((point) => ({
+          commodity: commodity.name,
+          value: point.value,
+          units: point.units,
+          reportingPeriod: point.reportingPeriod,
+          publicationDate,
+          source: { title: inventory.source.title, url: inventory.source.url },
+        }));
+      series = [
+        {
+          id: "inventory",
+          label: normalized === "NG=F" ? "Lower 48 working-gas storage" : "U.S. commercial crude inventory",
+          status: points.length ? "available" : "unavailable",
+          units: points[0]?.units ?? null,
+          points,
+          historicalAverage: null,
+          historicalAveragePeriod: null,
+          reason: points.length ? null : "The current EIA report has no comparable dated inventory observations.",
+        },
+        ...SUPPLY_SERIES.slice(1).map(({ id, label }) =>
+          unavailableSupplySeries(id, label, "No validated comparable production, consumption, import, or export series is available in this report.")),
+      ];
+    }
+  }
+
+  if (!series.length) {
+    series = SUPPLY_SERIES.map(({ id, label }) =>
+      unavailableSupplySeries(id, label, "No fresh, validated historical supply-and-demand series is available."));
+  }
+  const availableCount = series.filter((item) => item.status === "available").length;
+  return {
+    status: availableCount === 0 ? "unavailable" : availableCount === series.length ? "available" : "partial",
+    commodity: commodity.name,
+    series,
+  };
+}
+
+export function validateCommoditySupplyDemandContext(
+  context: CommoditySupplyDemandContext,
+  symbol: string,
+  now: Date,
+): CommoditySupplyDemandContext {
+  const normalized = symbol.trim().toUpperCase();
+  const commodity = SUPPORTED_COMMODITIES[normalized];
+  const empty = (reason: string): CommoditySupplyDemandContext => ({
+    status: "unavailable",
+    commodity: commodity?.name ?? "Unknown commodity",
+    series: SUPPLY_SERIES.map(({ id, label }) => unavailableSupplySeries(id, label, reason)),
+  });
+  if (!commodity || context?.commodity !== commodity.name || !Array.isArray(context.series)) {
+    return empty("The supply-and-demand response did not match the selected commodity.");
+  }
+  const series = SUPPLY_SERIES.map(({ id, label }) => {
+    const candidate = context.series.find((item) => item?.id === id);
+    if (!candidate || !Array.isArray(candidate.points)) {
+      return unavailableSupplySeries(id, label, "No validated comparable series is available.");
+    }
+    const points = candidate.points.filter((point) => {
+      if (!point || point.commodity !== commodity.name || !Number.isFinite(point.value)
+        || point.value < 0 || typeof point.units !== "string" || !point.units.trim()
+        || typeof point.reportingPeriod !== "string"
+        || typeof point.publicationDate !== "string"
+        || !point.source?.title?.trim()
+        || !/^https:\/\//i.test(point.source.url)) return false;
+      const isUsda = validWasdeReportSource(point.source.url);
+      const isEia = point.source.url === EIA_TABLE_URL || point.source.url === EIA_NATURAL_GAS_URL;
+      if ((normalized === "CL=F" && point.source.url !== EIA_TABLE_URL)
+        || (normalized === "NG=F" && point.source.url !== EIA_NATURAL_GAS_URL)
+        || (USDA_SERIES_COMMODITIES.has(normalized) && !isUsda)
+        || (!USDA_SERIES_COMMODITIES.has(normalized) && normalized !== "CL=F" && normalized !== "NG=F")) return false;
+      if (isUsda && (!/^\d{4}\/\d{2}$/.test(point.reportingPeriod)
+        || !isFresh(point.publicationDate, now, 60))) return false;
+      if (isEia && (!isDate(point.reportingPeriod) || !isFresh(point.reportingPeriod, now, 120)
+        || !isFresh(point.publicationDate, now, 14))) return false;
+      return true;
+    });
+    const units = points[0]?.units ?? null;
+    const comparablePoints = units ? points.filter((point) => point.units === units) : [];
+    const valid = candidate.status === "available" && comparablePoints.length > 0;
+    const historicalAverage = candidate.historicalAverage !== null
+      && Number.isFinite(candidate.historicalAverage) && candidate.historicalAverage >= 0
+      ? candidate.historicalAverage
+      : null;
+    const historicalAveragePeriod = historicalAverage !== null
+      && typeof candidate.historicalAveragePeriod === "string"
+      && candidate.historicalAveragePeriod.length > 0
+      ? candidate.historicalAveragePeriod
+      : null;
+    return {
+      id,
+      label,
+      status: valid ? "available" as const : "unavailable" as const,
+      units: valid ? units : null,
+      points: valid ? comparablePoints.slice(-12) : [],
+      historicalAverage: valid ? historicalAverage : null,
+      historicalAveragePeriod: valid ? historicalAveragePeriod : null,
+      reason: valid ? null : candidate.reason ?? "No fresh, comparable observations passed validation.",
+    };
+  });
+  const availableCount = series.filter((item) => item.status === "available").length;
+  return {
+    status: availableCount === 0 ? "unavailable" : availableCount === series.length ? "available" : "partial",
+    commodity: commodity.name,
+    series,
+  };
+}
+
+function validWasdeReportSource(url: string): boolean {
+  return /^https:\/\/www\.usda\.gov\/sites\/default\/files\/documents\/oce-wasde-report-data-\d{4}-\d{2}(?:-V\d+)?\.csv$/i.test(url);
 }
