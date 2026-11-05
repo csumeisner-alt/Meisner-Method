@@ -44,6 +44,7 @@ export const PENDING_ALERTS_QUERY = `
   LEFT JOIN user_prefs p ON p.user_id = a.user_id
   LEFT JOIN push_devices d ON d.installation_id = a.installation_id
   WHERE a.fired_at IS NULL
+    AND a.paused=FALSE
     AND COALESCE(p.notifications_enabled, TRUE)
     AND COALESCE(d.enabled, TRUE)
     AND COALESCE(d.expo_push_token, a.push_token) IS NOT NULL

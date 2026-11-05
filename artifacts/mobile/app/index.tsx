@@ -1010,6 +1010,7 @@ export default function HomeScreen() {
         watchlistSymbols={watchlist.items.map((item) => item.symbol)}
         onAddAlert={openNewAlertModal}
         onEditAlert={openManagedAlertModal}
+        onSetAlertPaused={(id, paused) => watchlist.setAlertPaused(id, paused)}
         onDeleteAlert={(id) => watchlist.deleteAlert(id)}
       />
     </AmericanSteelBackground>

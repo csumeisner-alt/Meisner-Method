@@ -41,21 +41,22 @@ async function insertAlert(opts: {
   direction: "above" | "below";
   targetPrice: number;
   useInstallation?: boolean;
+  paused?: boolean;
 }): Promise<string> {
   const id = randomUUID();
   if (opts.useInstallation) {
     await pool.query(
       `INSERT INTO price_alerts
-         (id, user_id, installation_id, symbol, direction, target_price, push_token)
-       VALUES ($1, NULL, $2, $3, $4, $5, NULL)`,
-      [id, installationId, opts.symbol, opts.direction, opts.targetPrice],
+         (id, user_id, installation_id, symbol, direction, target_price, push_token, paused)
+       VALUES ($1, NULL, $2, $3, $4, $5, NULL, $6)`,
+      [id, installationId, opts.symbol, opts.direction, opts.targetPrice, opts.paused ?? false],
     );
   } else {
     await pool.query(
       `INSERT INTO price_alerts
-         (id, user_id, installation_id, symbol, direction, target_price, push_token)
-       VALUES ($1, $2, NULL, $3, $4, $5, $6)`,
-      [id, userId, opts.symbol, opts.direction, opts.targetPrice, pushToken],
+         (id, user_id, installation_id, symbol, direction, target_price, push_token, paused)
+       VALUES ($1, $2, NULL, $3, $4, $5, $6, $7)`,
+      [id, userId, opts.symbol, opts.direction, opts.targetPrice, pushToken, opts.paused ?? false],
     );
   }
   return id;
@@ -84,9 +85,11 @@ before(async () => {
       target_price NUMERIC NOT NULL,
       push_token TEXT,
       fired_at TIMESTAMPTZ,
+      paused BOOLEAN NOT NULL DEFAULT FALSE,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  await pool.query("ALTER TABLE price_alerts ADD COLUMN IF NOT EXISTS paused BOOLEAN NOT NULL DEFAULT FALSE");
   await pool.query(
     "ALTER TABLE price_alerts ADD COLUMN IF NOT EXISTS installation_id TEXT",
   );
@@ -292,6 +295,48 @@ test("worker query respects fired_at IS NULL — already-fired alert is not re-p
 
   assert.equal(stats.checked, 0, "already-fired alert must be excluded by WHERE fired_at IS NULL");
   assert.equal(pushCount, 0, "push must not fire for an already-fired alert");
+});
+
+test("paused alert is skipped, then resumes and fires without changing its target", async () => {
+  const alertId = await insertAlert({
+    symbol: "AAPL",
+    direction: "above",
+    targetPrice: 100,
+    paused: true,
+  });
+  const independentAlertId = await insertAlert({
+    symbol: "AAPL",
+    direction: "above",
+    targetPrice: 200,
+  });
+  const pushes: string[] = [];
+  const deps = {
+    fetchPrice: async () => 150,
+    sendPush: async (alert: { id: string }) => {
+      pushes.push(alert.id);
+      return { accepted: true, permanentFailure: false };
+    },
+  };
+
+  const pausedCycle = await runAlertCheckCycle(pool, deps, {
+    scopeToIds: [alertId, independentAlertId],
+  });
+  assert.equal(pausedCycle.checked, 1);
+  assert.equal(pausedCycle.triggered, 0);
+  assert.deepEqual(pushes, []);
+  assert.equal(await getFiredAt(alertId), null);
+  assert.equal(await getFiredAt(independentAlertId), null);
+
+  await pool.query("UPDATE price_alerts SET paused=FALSE WHERE id=$1", [alertId]);
+  const resumedCycle = await runAlertCheckCycle(pool, deps, { scopeToIds: [alertId] });
+  assert.equal(resumedCycle.delivered, 1);
+  assert.deepEqual(pushes, [alertId]);
+  assert.notEqual(await getFiredAt(alertId), null);
+  const { rows } = await pool.query(
+    "SELECT target_price FROM price_alerts WHERE id=$1",
+    [alertId],
+  );
+  assert.equal(Number(rows[0].target_price), 100);
 });
 
 test("multiple alerts for different symbols each resolved and fired independently", async () => {

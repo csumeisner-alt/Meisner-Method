@@ -66,6 +66,7 @@ interface Props {
   watchlistSymbols: string[];
   onAddAlert: (symbol: string) => void;
   onEditAlert: (alert: AlertData) => void;
+  onSetAlertPaused: (id: string, paused: boolean) => Promise<void>;
   onDeleteAlert: (id: string) => Promise<void>;
 }
 
@@ -79,11 +80,12 @@ function AlertManagementSection({
   watchlistSymbols,
   onAddAlert,
   onEditAlert,
+  onSetAlertPaused,
   onDeleteAlert,
-}: Pick<Props, 'alerts' | 'watchlistSymbols' | 'onAddAlert' | 'onEditAlert' | 'onDeleteAlert'>) {
+}: Pick<Props, 'alerts' | 'watchlistSymbols' | 'onAddAlert' | 'onEditAlert' | 'onSetAlertPaused' | 'onDeleteAlert'>) {
   const colors = useColors();
   const [collapsed, setCollapsed] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -166,9 +168,22 @@ function AlertManagementSection({
               >
                 <View style={{ flex: 1 }}>
                   <Text style={{ color: alert.firedAt ? colors.mutedForeground : colors.foreground, fontFamily: 'Inter_500Medium', fontSize: 13 }}>
-                    {alert.direction === 'above' ? 'Above' : 'Below'} {formatManagedAlertPrice(symbol, alert.targetPrice)} · {alert.firedAt ? 'Fired' : 'Active'}
+                    {alert.direction === 'above' ? 'Above' : 'Below'} {formatManagedAlertPrice(symbol, alert.targetPrice)} · {alert.paused ? (alert.firedAt ? 'Paused · Fired' : 'Paused') : alert.firedAt ? 'Fired' : 'Active'}
                   </Text>
                 </View>
+                <TouchableOpacity
+                  testID={`toggle-alert-paused-${alert.id}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${alert.paused ? 'Resume' : 'Pause'} ${symbol} alert ${alert.direction} ${alert.targetPrice}`}
+                  onPress={() => {
+                    setActionError(null);
+                    void onSetAlertPaused(alert.id, !alert.paused)
+                      .catch(() => setActionError('Could not update this alert. Please try again.'));
+                  }}
+                  style={{ padding: 7 }}
+                >
+                  <Feather name={alert.paused ? 'play' : 'pause'} size={15} color={alert.paused ? colors.primary : colors.mutedForeground} />
+                </TouchableOpacity>
                 <TouchableOpacity
                   accessibilityRole="button"
                   accessibilityLabel={`Edit ${symbol} alert ${alert.direction} ${alert.targetPrice}`}
@@ -181,8 +196,8 @@ function AlertManagementSection({
                   accessibilityRole="button"
                   accessibilityLabel={`Remove ${symbol} alert ${alert.direction} ${alert.targetPrice}`}
                   onPress={() => {
-                    setDeleteError(null);
-                    void onDeleteAlert(alert.id).catch(() => setDeleteError('Could not remove this alert. Please try again.'));
+                    setActionError(null);
+                    void onDeleteAlert(alert.id).catch(() => setActionError('Could not remove this alert. Please try again.'));
                   }}
                   style={{ padding: 7 }}
                 >
@@ -193,9 +208,9 @@ function AlertManagementSection({
           </View>
         ))
       )}
-      {deleteError && (
+      {actionError && (
         <Text accessibilityRole="alert" style={{ color: colors.sellColor, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 8 }}>
-          {deleteError}
+          {actionError}
         </Text>
       )}
     </View>
@@ -376,6 +391,7 @@ export function DonationSidebar({
   watchlistSymbols,
   onAddAlert,
   onEditAlert,
+  onSetAlertPaused,
   onDeleteAlert,
 }: Props) {
   const colors = useColors();
@@ -617,6 +633,7 @@ export function DonationSidebar({
               watchlistSymbols={watchlistSymbols}
               onAddAlert={onAddAlert}
               onEditAlert={onEditAlert}
+              onSetAlertPaused={onSetAlertPaused}
               onDeleteAlert={onDeleteAlert}
             />
             {DONATION_FEATURE_ENABLED && (

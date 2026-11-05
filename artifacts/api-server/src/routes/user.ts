@@ -210,6 +210,7 @@ async function runSchemaMigrations(): Promise<void> {
       push_token TEXT NOT NULL,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       fired_at TIMESTAMPTZ,
+      paused BOOLEAN NOT NULL DEFAULT FALSE,
       PRIMARY KEY (id)
     )
   `);
@@ -228,6 +229,7 @@ async function runSchemaMigrations(): Promise<void> {
     )
   `);
   await pool.query("ALTER TABLE price_alerts ADD COLUMN IF NOT EXISTS installation_id TEXT");
+  await pool.query("ALTER TABLE price_alerts ADD COLUMN IF NOT EXISTS paused BOOLEAN NOT NULL DEFAULT FALSE");
   await pool.query("ALTER TABLE price_alerts ALTER COLUMN user_id DROP NOT NULL");
   await pool.query("ALTER TABLE price_alerts ALTER COLUMN push_token DROP NOT NULL");
   await pool.query("CREATE INDEX IF NOT EXISTS price_alerts_installation_idx ON price_alerts (installation_id, fired_at)");
@@ -886,7 +888,7 @@ router.delete("/user/watchlist/:symbol", requireAuth, requireSchema, async (req:
 router.get("/user/alerts", requireAuth, requireSchema, async (req: any, res) => {
   try {
     const { rows } = await pool.query(
-      "SELECT id, symbol, direction, target_price, created_at, fired_at FROM price_alerts WHERE user_id=$1 ORDER BY created_at DESC",
+      "SELECT id, symbol, direction, target_price, created_at, fired_at, paused FROM price_alerts WHERE user_id=$1 ORDER BY created_at DESC",
       [req.userId],
     );
     res.json(rows.map((r: any) => ({
@@ -896,6 +898,7 @@ router.get("/user/alerts", requireAuth, requireSchema, async (req: any, res) => 
       targetPrice: Number(r.target_price),
       createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
       firedAt: r.fired_at instanceof Date ? r.fired_at.toISOString() : r.fired_at ?? null,
+      paused: Boolean(r.paused),
     })));
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -960,6 +963,7 @@ function normalizeAlertRow(row: any) {
     targetPrice: Number(row.target_price),
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
     firedAt: row.fired_at instanceof Date ? row.fired_at.toISOString() : row.fired_at ?? null,
+    paused: Boolean(row.paused),
   };
 }
 
@@ -996,7 +1000,7 @@ router.get("/notifications/alerts", requireSchema, async (req: any, res) => {
   }
   try {
     const { rows } = await pool.query(
-      `SELECT id, symbol, direction, target_price, created_at, fired_at
+      `SELECT id, symbol, direction, target_price, created_at, fired_at, paused
        FROM price_alerts
        WHERE installation_id=$1
        ORDER BY created_at DESC`,
@@ -1039,7 +1043,7 @@ router.post("/notifications/alerts", requireSchema, async (req: any, res) => {
     const inserted = await pool.query(
       `INSERT INTO price_alerts (id, user_id, installation_id, symbol, direction, target_price, push_token)
        VALUES ($1,NULL,$2,$3,$4,$5,$6)
-       RETURNING id, symbol, direction, target_price, created_at, fired_at`,
+       RETURNING id, symbol, direction, target_price, created_at, fired_at, paused`,
       [id, installationId, normalizedSymbol, direction, numericTarget, pushToken],
     );
     res.json(normalizeAlertRow(inserted.rows[0]));
@@ -1076,8 +1080,32 @@ router.put("/notifications/alerts/:id", requireSchema, async (req: any, res) => 
       `UPDATE price_alerts
        SET direction=$3, target_price=$4, push_token=$5, fired_at=NULL, created_at=NOW()
        WHERE id=$1 AND installation_id=$2
-       RETURNING id, symbol, direction, target_price, created_at, fired_at`,
+       RETURNING id, symbol, direction, target_price, created_at, fired_at, paused`,
       [req.params.id, installationId, direction, numericTarget, pushToken],
+    );
+    if (!rows[0]) {
+      res.status(404).json({ error: "Alert not found" });
+      return;
+    }
+    res.json(normalizeAlertRow(rows[0]));
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.patch("/notifications/alerts/:id", requireSchema, async (req: any, res) => {
+  const { installationId, paused } = req.body ?? {};
+  if (!validInstallationId(installationId) || typeof paused !== "boolean") {
+    res.status(400).json({ error: "valid installationId and paused boolean required" });
+    return;
+  }
+  try {
+    const { rows } = await pool.query(
+      `UPDATE price_alerts
+       SET paused=$3
+       WHERE id=$1 AND installation_id=$2
+       RETURNING id, symbol, direction, target_price, created_at, fired_at, paused`,
+      [req.params.id, installationId, paused],
     );
     if (!rows[0]) {
       res.status(404).json({ error: "Alert not found" });
@@ -1228,6 +1256,7 @@ async function runAlertCheck() {
        LEFT JOIN user_prefs p ON p.user_id = a.user_id
        LEFT JOIN push_devices d ON d.installation_id = a.installation_id
        WHERE a.fired_at IS NULL
+         AND a.paused=FALSE
          AND COALESCE(p.notifications_enabled, TRUE)
          AND COALESCE(d.enabled, TRUE)
          AND COALESCE(d.expo_push_token, a.push_token) IS NOT NULL`,

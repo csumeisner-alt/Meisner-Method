@@ -107,6 +107,7 @@ export interface AlertData {
   targetPrice: number;
   createdAt: string;
   firedAt: string | null;
+  paused: boolean;
 }
 
 export function useWatchlist() {
@@ -277,7 +278,7 @@ export function useWatchlist() {
 
   const activeAlertFor = useCallback(
     (symbol: string): AlertData | null =>
-      alerts.find((a) => a.symbol === symbol && !a.firedAt) ?? null,
+      alerts.find((a) => a.symbol === symbol && !a.firedAt && !a.paused) ?? null,
     [alerts],
   );
 
@@ -324,6 +325,22 @@ export function useWatchlist() {
     [apiFetch],
   );
 
+  const setAlertPaused = useCallback(
+    async (id: string, paused: boolean) => {
+      const installationId = await getInstallationId();
+      const updated = await apiFetch<AlertData>(`/api/notifications/alerts/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ installationId, paused }),
+      });
+      setAlerts((prev) => {
+        const next = prev.map((alert) => alert.id === id ? updated : alert);
+        void writeAlertCache(next);
+        return next;
+      });
+    },
+    [apiFetch],
+  );
+
   const deleteAlert = useCallback(
     async (id: string) => {
       const installationId = await getInstallationId();
@@ -353,6 +370,7 @@ export function useWatchlist() {
     activeAlertFor,
     saveAlert,
     updateAlert,
+    setAlertPaused,
     deleteAlert,
   };
 }
