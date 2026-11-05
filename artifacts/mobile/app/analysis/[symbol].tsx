@@ -741,6 +741,12 @@ type CommodityAnalysisPayload = {
       status: 'upcoming' | 'completed';
       affectedCommodities: string[];
       source: { title: string; url: string; publicationDate: string | null };
+      annualRateHistory?: {
+        referenceMonth: string;
+        rate: number;
+        units: string;
+        source: { title: string; url: string; publicationDate: string };
+      }[];
       values: {
         previous: {
           value: number;
@@ -1147,23 +1153,54 @@ function CommodityEventCalendar({ calendar, symbol }: {
                 Affects {item.affectedCommodities.join(', ')} · {item.source.publicationDate ? `Source updated ${item.source.publicationDate}` : 'Source publication date unavailable'}
               </Text>
               {item.name.startsWith('U.S. Consumer Price Index release') && completed ? (
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 4 }}>
-                  {publishedValue('Previous CPI-U index level', item.values.previous)}
-                  {publishedValue('Previous annual CPI rate', item.values.previous?.annualRate ?? null)}
-                  {publishedValue('Actual CPI-U index level', item.values.actual)}
-                  {publishedValue('Actual annual CPI rate', item.values.actual?.annualRate ?? null)}
-                  {cpiRateChange && (
-                    <Text
-                      testID={`commodity-event-${item.id}-cpi-rate-change`}
-                      accessibilityLabel={cpiRateChange.direction === 'unchanged'
-                        ? 'Annual CPI inflation unchanged, 0.0 percentage points'
-                        : `Annual CPI inflation ${cpiRateChange.direction} by ${cpiRateChange.percentagePoints.toFixed(1)} percentage points`}
-                      style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 11, lineHeight: 16 }}
+                <View style={{ gap: 8 }}>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 4 }}>
+                    {publishedValue('Previous CPI-U index level', item.values.previous)}
+                    {publishedValue('Previous annual CPI rate', item.values.previous?.annualRate ?? null)}
+                    {publishedValue('Actual CPI-U index level', item.values.actual)}
+                    {publishedValue('Actual annual CPI rate', item.values.actual?.annualRate ?? null)}
+                    {cpiRateChange && (
+                      <Text
+                        testID={`commodity-event-${item.id}-cpi-rate-change`}
+                        accessibilityLabel={cpiRateChange.direction === 'unchanged'
+                          ? 'Annual CPI inflation unchanged, 0.0 percentage points'
+                          : `Annual CPI inflation ${cpiRateChange.direction} by ${cpiRateChange.percentagePoints.toFixed(1)} percentage points`}
+                        style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 11, lineHeight: 16 }}
+                      >
+                        {cpiRateChange.direction === 'unchanged'
+                          ? 'Annual CPI inflation unchanged (0.0 percentage points)'
+                          : `Annual CPI inflation ${cpiRateChange.direction} by ${cpiRateChange.percentagePoints.toFixed(1)} percentage points`}
+                      </Text>
+                    )}
+                  </View>
+                  {!!item.annualRateHistory?.length && (
+                    <View
+                      testID={`commodity-event-${item.id}-cpi-history`}
+                      accessibilityLabel="Verified monthly annual CPI inflation history"
+                      style={{ gap: 5 }}
                     >
-                      {cpiRateChange.direction === 'unchanged'
-                        ? 'Annual CPI inflation unchanged (0.0 percentage points)'
-                        : `Annual CPI inflation ${cpiRateChange.direction} by ${cpiRateChange.percentagePoints.toFixed(1)} percentage points`}
-                    </Text>
+                      <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 11 }}>
+                        Annual CPI inflation history
+                      </Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
+                        {item.annualRateHistory.map((point) => (
+                          <Pressable
+                            key={point.referenceMonth}
+                            accessibilityRole="link"
+                            accessibilityLabel={`Open BLS annual CPI rate for ${point.referenceMonth}, published ${point.source.publicationDate}`}
+                            onPress={() => { void Linking.openURL(point.source.url).catch(() => {}); }}
+                            style={{ flexGrow: 1, flexBasis: '30%', borderRadius: 7, borderWidth: 1, borderColor: colors.border, backgroundColor: `${colors.background}99`, paddingHorizontal: 7, paddingVertical: 5 }}
+                          >
+                            <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 11 }}>
+                              {point.referenceMonth} · {point.rate > 0 ? '+' : ''}{point.rate.toFixed(1)}%
+                            </Text>
+                            <Text style={{ color: colors.primary, fontSize: 9, textDecorationLine: 'underline' }}>
+                              BLS · {point.source.publicationDate}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    </View>
                   )}
                 </View>
               ) : !item.name.startsWith('U.S. Consumer Price Index release') ? (

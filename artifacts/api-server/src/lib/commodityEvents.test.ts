@@ -131,6 +131,48 @@ test("CPI archive value requires the matching reference month, release date, and
     "a release marked revised is unavailable");
 });
 
+test("CPI events expose a dated history of only verified monthly annual rates", async () => {
+  const originalFetch = globalThis.fetch;
+  const archiveReleases = [
+    { month: "June 2026", archiveMonth: "May 2026", date: "2026-07-14", index: "334.500", rate: "3.4" },
+    { month: "July 2026", date: "2026-08-12", index: "335.100", rate: "3.5" },
+    { month: "August 2026", date: "2026-09-11", index: "334.980", rate: "3.6" },
+    { month: "September 2026", date: "2026-10-14", index: "336.940", rate: "3.7" },
+  ];
+  const schedule = archiveReleases.map((release) => {
+    const [year, month, day] = release.date.split("-");
+    const releaseMonth = RELEASE_MONTHS[Number(month) - 1]!;
+    const previousMonth = RELEASE_MONTHS[(Number(month) + 10) % 12]!;
+    const referenceYear = Number(month) === 1 ? Number(year) - 1 : Number(year);
+    return `${previousMonth} ${referenceYear} | ${releaseMonth} ${Number(day)}, ${year} | 08:30 AM`;
+  }).join(" | ") + " | October 2026 | Nov. 12, 2026 | 08:30 AM";
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url === "https://www.bls.gov/schedule/news_release/cpi.htm") return new Response(schedule);
+    if (url === "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm") return new Response("");
+    const release = archiveReleases.find(({ date }) => url === `https://www.bls.gov/news.release/archives/cpi_${date.slice(5, 7)}${date.slice(8, 10)}${date.slice(0, 4)}.htm`);
+    if (release) return new Response(cpiArchive(release.archiveMonth ?? release.month, release.date, release.index, "", release.rate));
+    throw new Error(`Unexpected source request: ${url}`);
+  };
+  try {
+    const historyNow = new Date("2026-11-07T12:00:00.000Z");
+    const result = await fetchCommodityEventCalendar("SI=F", historyNow);
+    const cpi = result.events.find((item) => item.eventDate === "2026-10-14");
+    assert.deepEqual(cpi?.annualRateHistory?.map(({ referenceMonth, rate, source }) => [
+      referenceMonth, rate, source.publicationDate, source.url,
+    ]), [
+      ["2026-07", 3.5, "2026-08-12", "https://www.bls.gov/news.release/archives/cpi_08122026.htm"],
+      ["2026-08", 3.6, "2026-09-11", "https://www.bls.gov/news.release/archives/cpi_09112026.htm"],
+      ["2026-09", 3.7, "2026-10-14", "https://www.bls.gov/news.release/archives/cpi_10142026.htm"],
+    ]);
+    assert.equal(validateCommodityEventCalendar(result, "SI=F", historyNow)
+      .events.find((item) => item.eventDate === "2026-10-14")?.annualRateHistory?.length, 3);
+    assert.ok(result.unavailable.some((item) => item.includes("Some additional CPI history releases could not be verified")));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("FOMC target range parses supported wording and numeric formats from the dated statement", () => {
   const url = "https://www.federalreserve.gov/newsevents/pressreleases/monetary20261028a.htm";
   const statements = [

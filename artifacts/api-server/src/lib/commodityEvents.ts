@@ -2,6 +2,7 @@ import {
   SUPPORTED_COMMODITIES,
   type CommodityEvent,
   type CommodityEventCalendar,
+  type CommodityCpiAnnualRateObservation,
   type CommodityPublishedValue,
 } from "./commodityAnalysis.ts";
 
@@ -23,6 +24,7 @@ const MONTHS: Record<string, number> = {
   aug: 7, august: 7, sep: 8, sept: 8, september: 8, oct: 9,
   october: 9, nov: 10, november: 10, dec: 11, december: 11,
 };
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 function validDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -245,6 +247,18 @@ export function parseBlsCpiArchiveValue(
   };
 }
 
+function cpiReferenceMonthKey(item: CommodityEvent): string | null {
+  const period = item.name.match(/release\s*[·-]\s*([A-Za-z]+)\s+(20\d{2})$/i);
+  if (!period) return null;
+  const month = MONTHS[period[1]!.toLowerCase()];
+  return month === undefined ? null : `${period[2]}-${String(month + 1).padStart(2, "0")}`;
+}
+
+function cpiArchiveUrl(releaseDate: string): string {
+  const archiveDate = releaseDate.slice(5, 7) + releaseDate.slice(8, 10) + releaseDate.slice(0, 4);
+  return `${BLS_CPI_ARCHIVE_URL}/cpi_${archiveDate}.htm`;
+}
+
 function parseFederalRate(value: string): number | null {
   const normalized = value.trim().replace(/[−–—]/g, "-");
   if (/^\d+(?:\.\d+)?$/.test(normalized)) {
@@ -418,6 +432,40 @@ function knownPublishedValueSource(
   return false;
 }
 
+function validCpiAnnualRateHistory(item: CommodityEvent): boolean {
+  const history = item.annualRateHistory;
+  if (history === undefined) return true;
+  if (!item.name.startsWith("U.S. Consumer Price Index release")
+    || !Array.isArray(history) || history.length > 13) return false;
+  let previousMonth = "";
+  let previousDate = "";
+  for (const observation of history) {
+    if (!observation || !/^\d{4}-(0[1-9]|1[0-2])$/.test(observation.referenceMonth)
+      || observation.referenceMonth <= previousMonth
+      || !Number.isFinite(observation.rate)
+      || observation.units !== "% year over year, not seasonally adjusted"
+      || !validDate(observation.source?.publicationDate)
+      || observation.source.publicationDate > item.eventDate
+      || observation.source.publicationDate <= previousDate
+      || observation.source.url !== cpiArchiveUrl(observation.source.publicationDate)
+      || observation.source.title !== `BLS CPI-U ${MONTH_NAMES[Number(observation.referenceMonth.slice(5)) - 1]} ${observation.referenceMonth.slice(0, 4)} annual inflation rate`) {
+      return false;
+    }
+    if (observation.source.publicationDate === item.eventDate
+      && observation.referenceMonth !== cpiReferenceMonthKey(item)) return false;
+    previousMonth = observation.referenceMonth;
+    previousDate = observation.source.publicationDate;
+  }
+  const actualRate = item.values?.actual?.annualRate;
+  if (actualRate) {
+    const latest = history.at(-1);
+    if (!latest || latest.source.publicationDate !== item.eventDate
+      || latest.rate !== actualRate.value
+      || latest.source.url !== actualRate.source.url) return false;
+  }
+  return true;
+}
+
 export function validateCommodityEventCalendar(
   calendar: CommodityEventCalendar,
   symbol: string,
@@ -447,6 +495,7 @@ export function validateCommodityEventCalendar(
     && (item.time === null || typeof item.time === "string")
     && (item.timezone === null || typeof item.timezone === "string")
     && item.values
+    && validCpiAnnualRateHistory(item)
     && ["previous", "consensus", "actual"].every((key) => {
       const value = item.values[key as keyof CommodityEvent["values"]];
       if (value === null) return true;
@@ -509,12 +558,13 @@ export async function fetchCommodityEventCalendar(
     const unavailable = ["Geopolitical and unscheduled production events do not have a verified calendar."];
     let fomcHtml: string | null = null;
     let cpiReleaseHistory: CommodityEvent[] = [];
+    const cpiArchiveCache = new Map<string, Promise<CommodityPublishedValue | null>>();
     const sources: Array<{ url: string; name: string; parse: (body: string) => CommodityEvent[] }> = [
       {
         url: BLS_CPI_URL,
         name: "BLS CPI schedule",
         parse: (body) => {
-          cpiReleaseHistory = parseBlsCpiEvents(body, commodity.name, now, 90);
+          cpiReleaseHistory = parseBlsCpiEvents(body, commodity.name, now, 420);
           return cpiReleaseHistory.filter((item) => inWindow(item.eventDate, now));
         },
       },
@@ -546,6 +596,16 @@ export async function fetchCommodityEventCalendar(
         unavailable.push(`${source.name} unavailable; no dates were inferred.`);
       }
     }));
+    const fetchCpiArchive = (release: CommodityEvent): Promise<CommodityPublishedValue | null> => {
+      const archiveUrl = cpiArchiveUrl(release.eventDate);
+      const cachedArchive = cpiArchiveCache.get(archiveUrl);
+      if (cachedArchive) return cachedArchive;
+      const archive = fetchPage(archiveUrl)
+        .then((html) => parseBlsCpiArchiveValue(html, release))
+        .catch(() => null);
+      cpiArchiveCache.set(archiveUrl, archive);
+      return archive;
+    };
     const statementLinks = fomcHtml ? parseFomcStatementLinks(fomcHtml) : new Map<string, string>();
     await Promise.all(events.map(async (item) => {
       if (item.status !== "completed") return;
@@ -554,30 +614,52 @@ export async function fetchCommodityEventCalendar(
           .filter((candidate) => candidate.eventDate < item.eventDate)
           .sort((a, b) => b.eventDate.localeCompare(a.eventDate))[0];
         try {
-          const archiveDate = item.eventDate.slice(5, 7) + item.eventDate.slice(8, 10) + item.eventDate.slice(0, 4);
-          const actual = parseBlsCpiArchiveValue(await fetchPage(`${BLS_CPI_ARCHIVE_URL}/cpi_${archiveDate}.htm`), item);
+          const actual = await fetchCpiArchive(item);
           if (!actual) {
             unavailable.push(`BLS CPI result for ${item.eventDate} is unavailable or could not be verified in its dated release.`);
-            return;
           }
           let previous: CommodityPublishedValue | null = null;
-          if (previousRelease) {
-            const previousArchiveDate = previousRelease.eventDate.slice(5, 7)
-              + previousRelease.eventDate.slice(8, 10) + previousRelease.eventDate.slice(0, 4);
-            try {
-              previous = parseBlsCpiArchiveValue(
-                await fetchPage(`${BLS_CPI_ARCHIVE_URL}/cpi_${previousArchiveDate}.htm`),
-                previousRelease,
-              );
-            } catch {
-              previous = null;
+          if (actual && previousRelease) {
+            previous = await fetchCpiArchive(previousRelease);
+          }
+          if (actual) {
+            item.values.actual = actual;
+            item.values.previous = previous;
+            item.source = { title: actual.source!.title, url: actual.source!.url, publicationDate: actual.source!.publicationDate };
+            if (!previous) {
+              unavailable.push(`Prior CPI release value for ${item.eventDate} is unavailable or could not be verified in its dated release.`);
             }
           }
-          item.values.actual = actual;
-          item.values.previous = previous;
-          item.source = { title: actual.source!.title, url: actual.source!.url, publicationDate: actual.source!.publicationDate };
-          if (!previous) {
-            unavailable.push(`Prior CPI release value for ${item.eventDate} is unavailable or could not be verified in its dated release.`);
+          const latestCompletedRelease = cpiReleaseHistory
+            .filter((candidate) => candidate.status === "completed")
+            .sort((a, b) => a.eventDate.localeCompare(b.eventDate))
+            .at(-1);
+          if (latestCompletedRelease?.id === item.id) {
+            const historyReleases = cpiReleaseHistory
+              .filter((candidate) => candidate.status === "completed" && candidate.eventDate <= item.eventDate)
+              .sort((a, b) => a.eventDate.localeCompare(b.eventDate))
+              .slice(-13);
+            const historyResults = await Promise.all(historyReleases.map(async (release) => ({
+              release,
+              value: await fetchCpiArchive(release),
+            })));
+            const history: CommodityCpiAnnualRateObservation[] = [];
+            for (const result of historyResults) {
+              const referenceMonth = cpiReferenceMonthKey(result.release);
+              const rate = result.value?.annualRate;
+              if (referenceMonth && rate) {
+                history.push({
+                  referenceMonth,
+                  rate: rate.value,
+                  units: rate.units,
+                  source: rate.source,
+                });
+              }
+            }
+            item.annualRateHistory = history;
+            if (historyResults.some((result) => !result.value?.annualRate)) {
+              unavailable.push("Some additional CPI history releases could not be verified; only verified monthly rates are shown.");
+            }
           }
         } catch {
           unavailable.push(`BLS CPI release for ${item.eventDate} is unavailable; no value was inferred.`);

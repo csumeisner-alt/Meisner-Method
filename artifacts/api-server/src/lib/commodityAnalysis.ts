@@ -196,11 +196,19 @@ export interface CommodityEvent {
   status: "upcoming" | "completed";
   affectedCommodities: string[];
   source: { title: string; url: string; publicationDate: string | null };
+  annualRateHistory?: CommodityCpiAnnualRateObservation[];
   values: {
     previous: CommodityPublishedValue | null;
     consensus: CommodityPublishedValue | null;
     actual: CommodityPublishedValue | null;
   };
+}
+
+export interface CommodityCpiAnnualRateObservation {
+  referenceMonth: string;
+  rate: number;
+  units: string;
+  source: { title: string; url: string; publicationDate: string };
 }
 
 export interface CommodityPublishedValue {
