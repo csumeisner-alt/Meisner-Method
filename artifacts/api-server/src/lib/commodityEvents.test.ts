@@ -177,8 +177,43 @@ test("completed CPI and FOMC events include only official dated results", async 
     assert.equal(fomc?.values.actual?.upperBound, 4);
     assert.equal(fomc?.values.previous?.value, 3.5);
     assert.equal(fomc?.values.previous?.upperBound, 3.75);
+    assert.equal(fomc?.values.actual?.source?.url, currentStatementUrl);
     assert.equal(fomc?.values.previous?.source?.url, priorStatementUrl);
+    assert.equal(fomc?.values.actual?.source?.publicationDate, "2026-10-28");
+    assert.equal(fomc?.values.previous?.source?.publicationDate, "2026-09-16");
     assert.equal(fomc?.source.publicationDate, "2026-10-28");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("FOMC event keeps its current range but leaves the prior range unavailable if its statement date mismatches", async () => {
+  const originalFetch = globalThis.fetch;
+  const currentStatementUrl = "https://www.federalreserve.gov/newsevents/pressreleases/monetary20261028a.htm";
+  const priorStatementUrl = "https://www.federalreserve.gov/newsevents/pressreleases/monetary20260916a.htm";
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url === "https://www.bls.gov/schedule/news_release/cpi.htm") return new Response("");
+    if (url === "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm") {
+      return new Response([
+        "2026 FOMC Meetings September | 15-16 October | 27-28 December | 8-9",
+        `<a href="${priorStatementUrl}">HTML</a><a href="${currentStatementUrl}">HTML</a>`,
+      ].join(" "));
+    }
+    if (url === currentStatementUrl) {
+      return new Response("October 28, 2026. The Committee decided to maintain the target range for the federal funds rate at 3-3/4 to 4 percent.");
+    }
+    if (url === priorStatementUrl) {
+      return new Response("September 15, 2026. The Committee decided to maintain the target range for the federal funds rate at 3-1/2 to 3-3/4 percent.");
+    }
+    throw new Error(`Unexpected source request: ${url}`);
+  };
+  try {
+    const result = await fetchCommodityEventCalendar("GC=F", NOW);
+    const fomc = result.events.find((item) => item.name === "Federal Reserve FOMC meeting");
+    assert.equal(fomc?.values.actual?.source?.publicationDate, "2026-10-28");
+    assert.equal(fomc?.values.previous, null);
+    assert.ok(result.unavailable.some((item) => item.includes("Prior Federal Reserve policy value")));
   } finally {
     globalThis.fetch = originalFetch;
   }

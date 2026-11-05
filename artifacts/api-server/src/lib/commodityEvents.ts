@@ -561,8 +561,8 @@ export async function fetchCommodityEventCalendar(
         item.values.actual = actual;
         item.values.previous = previous;
         item.source = { title: actual.source!.title, url: actual.source!.url, publicationDate: actual.source!.publicationDate };
-        if (!previous && priorDate) {
-          unavailable.push(`Prior Federal Reserve policy value for ${item.eventDate} is unavailable.`);
+        if (!previous) {
+          unavailable.push(`Prior Federal Reserve policy value for ${item.eventDate} is unavailable or could not be verified in its dated statement.`);
         }
       } catch {
         unavailable.push(`Federal Reserve policy result for ${item.eventDate} is unavailable; no value was inferred.`);

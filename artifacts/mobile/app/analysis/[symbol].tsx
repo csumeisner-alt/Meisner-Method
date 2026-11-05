@@ -24,6 +24,7 @@ import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '@/hooks/useColors';
+import { getFomcRateMovement } from '@/lib/fomcRateMovement';
 import { useApi } from '@/hooks/useApi';
 import { useAmericanMode } from '@/contexts/AmericanModeContext';
 import { useAchievements } from '@/contexts/AchievementsContext';
@@ -1051,6 +1052,8 @@ function CommodityEventCalendar({ calendar, symbol }: {
         </Text>
         {events.length ? events.map((item) => {
           const completed = item.status === 'completed';
+          const isFomc = item.name === 'Federal Reserve FOMC meeting';
+          const fomcRateMovement = isFomc ? getFomcRateMovement(item) : null;
           const statusColor = completed ? colors.mutedForeground : colors.primary;
           const publishedValue = (
             label: string,
@@ -1085,6 +1088,15 @@ function CommodityEventCalendar({ calendar, symbol }: {
               <Text style={{ color: colors.foreground, fontSize: 11 }}>
                 {item.eventDate}{item.time ? ` · ${item.time} ${item.timezone ?? ''}` : ''}
               </Text>
+              {isFomc && completed && (
+                <Text
+                  testID={`commodity-event-${item.id}-rate-movement`}
+                  accessibilityLabel={`Federal Reserve rate movement: ${fomcRateMovement ?? 'unavailable'}`}
+                  style={{ color: fomcRateMovement ? colors.primary : colors.mutedForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}
+                >
+                  {fomcRateMovement ? `Fed rate ${fomcRateMovement}` : 'Fed rate movement unavailable'}
+                </Text>
+              )}
               <Text style={{ color: colors.mutedForeground, fontSize: 10 }}>
                 Affects {item.affectedCommodities.join(', ')} · {item.source.publicationDate ? `Source updated ${item.source.publicationDate}` : 'Source publication date unavailable'}
               </Text>
