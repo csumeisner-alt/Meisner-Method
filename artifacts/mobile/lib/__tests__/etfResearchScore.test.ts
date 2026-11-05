@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   buildEtfScoreHistory,
   calculateEtfResearchScore,
+  clearEtfScoreSnapshots,
   createEtfScoreSnapshot,
   findComparableEtfScoreChange,
   parseEtfScoreSnapshots,
@@ -733,4 +734,42 @@ test("overlapping ETF score saves preserve snapshots for both symbols", async ()
   assert.deepEqual(savedHistory.map((snapshot) => snapshot.symbol).sort(), ["SPY", "VOO"]);
   assert.deepEqual(spyHistory.map((snapshot) => snapshot.symbol).sort(), ["SPY"]);
   assert.deepEqual(vooHistory.map((snapshot) => snapshot.symbol).sort(), ["SPY", "VOO"]);
+});
+
+test("clearing ETF score snapshots waits for queued saves before removing history", async () => {
+  const result = calculateEtfResearchScore(completeInput);
+  const snapshot = createEtfScoreSnapshot({
+    symbol: "SPY",
+    score: result.score,
+    components: result.components,
+    sourceContexts: Object.fromEntries(
+      result.components.filter((component) => component.score !== null)
+        .map((component) => [component.id, `provider:${component.id}`]),
+    ),
+    inputAsOf: Object.fromEntries(
+      result.components.filter((component) => component.score !== null)
+        .map((component) => [component.id, ["2026-10-29T12:00:00Z"]]),
+    ),
+    recordedAt: "2026-10-30T12:00:00Z",
+  });
+  assert.ok(snapshot);
+
+  let storedValue: string | null = null;
+  const save = persistEtfScoreSnapshot(
+    snapshot,
+    async () => storedValue,
+    async (value) => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      storedValue = value;
+    },
+  );
+  let removeStarted = false;
+  const clear = clearEtfScoreSnapshots(async () => {
+    removeStarted = true;
+    storedValue = null;
+  });
+
+  await Promise.all([save, clear]);
+  assert.equal(removeStarted, true);
+  assert.equal(storedValue, null);
 });

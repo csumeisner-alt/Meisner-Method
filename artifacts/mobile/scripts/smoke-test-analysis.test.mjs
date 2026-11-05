@@ -247,6 +247,17 @@ test("ETF score history is scoped to the selected analysis symbol", () => {
   assert.match(etfAnalysisSource, /buildEtfScoreHistory\(symbol, snapshot, history\)/);
 });
 
+test("ETF score history can be cleared after confirmation without removing saved comparisons", () => {
+  assert.match(etfAnalysisSource, /testID="etf-score-history-clear"/);
+  assert.match(etfAnalysisSource, /Alert\.alert\(title, message/);
+  assert.match(etfAnalysisSource, /window\.confirm\(message\)/);
+  assert.match(etfAnalysisSource, /clearEtfScoreSnapshots\(\(\) => AsyncStorage\.removeItem\(ETF_SCORE_SNAPSHOTS_KEY\)\)/);
+  assert.match(etfAnalysisSource, /setScoreHistoryEntries\(\[\]\)/);
+  assert.match(etfAnalysisSource, /scoreHistoryCleared\s*\?\s*'Saved score history was cleared from this device\.'/);
+  assert.match(etfAnalysisSource, /No saved score analyses yet\./);
+  assert.doesNotMatch(etfAnalysisSource, /removeItem\(ETF_COMPARISON_KEY\)/);
+});
+
 test("ETF performance history uses real candles, supported ranges, and honest retry states", () => {
   assert.match(etfAnalysisSource, /useGetStockChart\(/);
   assert.match(etfAnalysisSource, /encodeURIComponent\(symbol \?\? ''\),\s*period,\s*'1d'/);

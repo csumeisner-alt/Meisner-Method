@@ -227,6 +227,14 @@ export function persistEtfScoreSnapshot(
   return queuedWrite;
 }
 
+export function clearEtfScoreSnapshots(
+  removeStoredHistory: () => Promise<void>,
+): Promise<void> {
+  const queuedClear = etfScoreSnapshotWriteQueue.then(removeStoredHistory);
+  etfScoreSnapshotWriteQueue = queuedClear.then(() => undefined, () => undefined);
+  return queuedClear;
+}
+
 export function buildEtfScoreHistory(
   symbol: string,
   current: EtfScoreSnapshot | null,

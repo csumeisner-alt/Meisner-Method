@@ -5,6 +5,7 @@ import {
   ScrollView,
   Modal,
   Pressable,
+  Alert,
   Linking,
   TouchableOpacity,
   StyleSheet,
@@ -72,6 +73,7 @@ import {
 import {
   buildEtfScoreHistory,
   calculateEtfResearchScore,
+  clearEtfScoreSnapshots,
   createEtfScoreSnapshot,
   findComparableEtfScoreChange,
   parseEtfScoreSnapshots,
@@ -1722,10 +1724,15 @@ function EtfAnalysisSections({
   const [scoreChangeResult, setScoreChangeResult] = useState<EtfScoreChangeResult | null>(null);
   const [scoreHistoryEntries, setScoreHistoryEntries] = useState<EtfScoreHistoryEntry[]>([]);
   const [scoreHistoryReady, setScoreHistoryReady] = useState(false);
+  const [scoreHistoryClearing, setScoreHistoryClearing] = useState(false);
+  const [scoreHistoryCleared, setScoreHistoryCleared] = useState(false);
+  const [scoreHistoryClearError, setScoreHistoryClearError] = useState('');
   useEffect(() => {
     let cancelled = false;
     setScoreHistoryReady(false);
     setScoreHistoryEntries([]);
+    setScoreHistoryCleared(false);
+    setScoreHistoryClearError('');
     const saveAndCompareScoreHistory = async () => {
       try {
         const now = new Date().toISOString();
@@ -1766,6 +1773,35 @@ function EtfAnalysisSections({
     };
   // The serialized score inputs intentionally prevent storage writes on unrelated renders.
   }, [symbol, scoreSnapshotSignature]);
+  const clearScoreHistory = useCallback(async () => {
+    if (scoreHistoryClearing) return;
+    setScoreHistoryClearing(true);
+    setScoreHistoryClearError('');
+    try {
+      await clearEtfScoreSnapshots(() => AsyncStorage.removeItem(ETF_SCORE_SNAPSHOTS_KEY));
+      setScoreHistoryEntries([]);
+      setScoreChangeResult({ status: 'first-analysis' });
+      setScoreHistoryCleared(true);
+    } catch {
+      setScoreHistoryClearError('Saved score history could not be cleared. Please try again.');
+    } finally {
+      setScoreHistoryClearing(false);
+    }
+  }, [scoreHistoryClearing]);
+  const confirmClearScoreHistory = useCallback(() => {
+    const title = 'Clear saved score history?';
+    const message = 'This permanently removes saved ETF score snapshots from this device. Comparison tickers and other ETF data will stay saved.';
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm(message)) {
+        void clearScoreHistory();
+      }
+      return;
+    }
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Clear history', style: 'destructive', onPress: () => void clearScoreHistory() },
+    ]);
+  }, [clearScoreHistory]);
   const etfScoreColor = (score: number) =>
     score >= 65 ? colors.buyColor : score <= 40 ? colors.sellColor : colors.holdColor;
   const availableScoreWeight = profileScore.components
@@ -2520,6 +2556,8 @@ function EtfAnalysisSections({
           >
             {!scoreHistoryReady
               ? 'Checking score history…'
+              : scoreHistoryCleared
+                ? 'Saved score history was cleared from this device.'
               : scoreChangeResult?.status === 'available'
                 ? `Previous score ${scoreChangeResult.previousScore}/100 on ${new Date(scoreChangeResult.previousRecordedAt).toLocaleDateString()} · Change ${scoreChangeResult.change > 0 ? '+' : ''}${scoreChangeResult.change} points`
                 : scoreChangeResult?.status === 'first-analysis'
@@ -2589,7 +2627,25 @@ function EtfAnalysisSections({
                 <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 7 }}>
                   Showing up to 10 recent saved analyses. Point changes compare adjacent entries only when inputs are fresh and factor coverage and source context match; gaps are not interpolated.
                 </Text>
+                <Pressable
+                  testID="etf-score-history-clear"
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear saved ETF score history"
+                  disabled={scoreHistoryClearing}
+                  onPress={confirmClearScoreHistory}
+                  style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 8, opacity: scoreHistoryClearing ? 0.55 : 1 }}
+                >
+                  <Feather name="trash-2" size={14} color={colors.sellColor} />
+                  <Text style={{ color: colors.sellColor, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>
+                    {scoreHistoryClearing ? 'Clearing history…' : 'Clear score history'}
+                  </Text>
+                </Pressable>
               </>
+            )}
+            {!!scoreHistoryClearError && (
+              <Text accessibilityRole="alert" style={{ color: colors.sellColor, fontSize: 12, lineHeight: 17, marginTop: 8 }}>
+                {scoreHistoryClearError}
+              </Text>
             )}
           </View>
         </View>
