@@ -19,7 +19,10 @@ type FomcEvent = {
   };
 };
 
-export type FomcRateMovement = "raised" | "lowered" | "held";
+export type FomcRateMovement = {
+  direction: "raised" | "lowered" | "held";
+  basisPoints: number;
+};
 
 function statementDate(value: PublishedRateRange): string | null {
   if (value.units !== "percent, federal funds target range"
@@ -47,10 +50,16 @@ export function getFomcRateMovement(event: FomcEvent): FomcRateMovement | null {
     || actualDate !== event.eventDate
     || previous.source?.url === actual.source?.url) return null;
 
-  const lowerChange = actual.value - previous.value;
-  const upperChange = actual.upperBound! - previous.upperBound!;
-  if (lowerChange === 0 && upperChange === 0) return "held";
-  if (lowerChange > 0 && upperChange > 0) return "raised";
-  if (lowerChange < 0 && upperChange < 0) return "lowered";
-  return null;
+  const lowerChangeBasisPoints = (actual.value - previous.value) * 100;
+  const upperChangeBasisPoints = (actual.upperBound! - previous.upperBound!) * 100;
+  const lowerChange = Math.round(lowerChangeBasisPoints);
+  const upperChange = Math.round(upperChangeBasisPoints);
+  if (Math.abs(lowerChangeBasisPoints - lowerChange) > 1e-8
+    || Math.abs(upperChangeBasisPoints - upperChange) > 1e-8
+    || lowerChange !== upperChange) return null;
+  if (lowerChange === 0) return { direction: "held", basisPoints: 0 };
+  return {
+    direction: lowerChange > 0 ? "raised" : "lowered",
+    basisPoints: Math.abs(lowerChange),
+  };
 }

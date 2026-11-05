@@ -28,19 +28,23 @@ function event(previous: ReturnType<typeof range> | null, actual: ReturnType<typ
   };
 }
 
-test("FOMC rate movement follows both sourced target-range bounds", () => {
-  assert.equal(getFomcRateMovement(event(
+test("FOMC rate movement reports direction and verified basis-point size", () => {
+  assert.deepEqual(getFomcRateMovement(event(
     range(3.5, 3.75, "2026-09-16", PRIOR_URL),
     range(3.75, 4, EVENT_DATE, CURRENT_URL),
-  )), "raised");
-  assert.equal(getFomcRateMovement(event(
+  )), { direction: "raised", basisPoints: 25 });
+  assert.deepEqual(getFomcRateMovement(event(
+    range(3.5, 3.75, "2026-09-16", PRIOR_URL),
+    range(4, 4.25, EVENT_DATE, CURRENT_URL),
+  )), { direction: "raised", basisPoints: 50 });
+  assert.deepEqual(getFomcRateMovement(event(
     range(3.75, 4, "2026-09-16", PRIOR_URL),
     range(3.75, 4, EVENT_DATE, CURRENT_URL),
-  )), "held");
-  assert.equal(getFomcRateMovement(event(
+  )), { direction: "held", basisPoints: 0 });
+  assert.deepEqual(getFomcRateMovement(event(
     range(4, 4.25, "2026-09-16", PRIOR_URL),
     range(3.75, 4, EVENT_DATE, CURRENT_URL),
-  )), "lowered");
+  )), { direction: "lowered", basisPoints: 25 });
 });
 
 test("FOMC rate movement is unavailable when either dated official range is invalid", () => {
@@ -67,6 +71,14 @@ test("FOMC rate movement is unavailable for inconsistent target-range changes", 
     range(3.5, 3.75, "2026-09-16", PRIOR_URL),
     range(3.75, 3.75, EVENT_DATE, CURRENT_URL),
   )), null);
+  assert.equal(getFomcRateMovement(event(
+    range(3.5, 3.75, "2026-09-16", PRIOR_URL),
+    range(3.75, 4.25, EVENT_DATE, CURRENT_URL),
+  )), null, "the lower and upper bounds must change by the same amount");
+  assert.equal(getFomcRateMovement(event(
+    range(3.5, 3.75, "2026-09-16", PRIOR_URL),
+    range(3.755, 4.005, EVENT_DATE, CURRENT_URL),
+  )), null, "the verified change must be a whole number of basis points");
   assert.equal(getFomcRateMovement({
     ...event(
       range(3.5, 3.75, "2026-09-16", PRIOR_URL),

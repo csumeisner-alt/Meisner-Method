@@ -1087,6 +1087,11 @@ function CommodityEventCalendar({ calendar, symbol }: {
           const completed = item.status === 'completed';
           const isFomc = item.name === 'Federal Reserve FOMC meeting';
           const fomcRateMovement = isFomc ? getFomcRateMovement(item) : null;
+          const fomcRateMovementLabel = fomcRateMovement
+            ? fomcRateMovement.direction === 'held'
+              ? 'held, 0 basis points'
+              : `${fomcRateMovement.direction} by ${fomcRateMovement.basisPoints} basis points`
+            : 'unavailable';
           const statusColor = completed ? colors.mutedForeground : colors.primary;
           const publishedValue = (
             label: string,
@@ -1124,10 +1129,14 @@ function CommodityEventCalendar({ calendar, symbol }: {
               {isFomc && completed && (
                 <Text
                   testID={`commodity-event-${item.id}-rate-movement`}
-                  accessibilityLabel={`Federal Reserve rate movement: ${fomcRateMovement ?? 'unavailable'}`}
+                  accessibilityLabel={`Federal Reserve rate movement: ${fomcRateMovementLabel}`}
                   style={{ color: fomcRateMovement ? colors.primary : colors.mutedForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}
                 >
-                  {fomcRateMovement ? `Fed rate ${fomcRateMovement}` : 'Fed rate movement unavailable'}
+                  {fomcRateMovement
+                    ? fomcRateMovement.direction === 'held'
+                      ? 'Fed rate held (0 bps)'
+                      : `Fed rate ${fomcRateMovement.direction} ${fomcRateMovement.basisPoints} bps`
+                    : 'Fed rate movement unavailable'}
                 </Text>
               )}
               <Text style={{ color: colors.mutedForeground, fontSize: 10 }}>
