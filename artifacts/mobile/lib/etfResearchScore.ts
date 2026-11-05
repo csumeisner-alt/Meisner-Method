@@ -207,6 +207,26 @@ export function upsertEtfScoreSnapshot(
     .slice(0, Math.max(1, limit));
 }
 
+let etfScoreSnapshotWriteQueue: Promise<void> = Promise.resolve();
+
+export function persistEtfScoreSnapshot(
+  snapshot: EtfScoreSnapshot,
+  readStoredHistory: () => Promise<string | null>,
+  writeStoredHistory: (value: string) => Promise<void>,
+): Promise<EtfScoreSnapshot[]> {
+  const queuedWrite = etfScoreSnapshotWriteQueue.then(async () => {
+    const history = parseEtfScoreSnapshots(await readStoredHistory());
+    const alreadySaved = history.some((item) => sameSnapshotAnalysis(item, snapshot));
+    const nextHistory = upsertEtfScoreSnapshot(history, snapshot);
+    if (!alreadySaved) {
+      await writeStoredHistory(JSON.stringify(nextHistory));
+    }
+    return nextHistory;
+  });
+  etfScoreSnapshotWriteQueue = queuedWrite.then(() => undefined, () => undefined);
+  return queuedWrite;
+}
+
 export function buildEtfScoreHistory(
   symbol: string,
   current: EtfScoreSnapshot | null,

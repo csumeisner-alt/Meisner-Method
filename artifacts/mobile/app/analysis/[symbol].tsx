@@ -75,7 +75,7 @@ import {
   createEtfScoreSnapshot,
   findComparableEtfScoreChange,
   parseEtfScoreSnapshots,
-  upsertEtfScoreSnapshot,
+  persistEtfScoreSnapshot,
 } from '@/lib/etfResearchScore';
 import type {
   EtfScoreChangeResult,
@@ -1722,15 +1722,12 @@ function EtfAnalysisSections({
   const [scoreChangeResult, setScoreChangeResult] = useState<EtfScoreChangeResult | null>(null);
   const [scoreHistoryEntries, setScoreHistoryEntries] = useState<EtfScoreHistoryEntry[]>([]);
   const [scoreHistoryReady, setScoreHistoryReady] = useState(false);
-  const scoreSnapshotWriteQueue = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
     let cancelled = false;
     setScoreHistoryReady(false);
     setScoreHistoryEntries([]);
     const saveAndCompareScoreHistory = async () => {
       try {
-        const history = parseEtfScoreSnapshots(await AsyncStorage.getItem(ETF_SCORE_SNAPSHOTS_KEY));
-        if (cancelled) return;
         const now = new Date().toISOString();
         const snapshot = createEtfScoreSnapshot({
           symbol,
@@ -1740,24 +1737,20 @@ function EtfAnalysisSections({
           inputAsOf: scoreInputAsOf,
           recordedAt: now,
         });
+        const history = snapshot
+          ? await persistEtfScoreSnapshot(
+            snapshot,
+            () => AsyncStorage.getItem(ETF_SCORE_SNAPSHOTS_KEY),
+            (value) => AsyncStorage.setItem(ETF_SCORE_SNAPSHOTS_KEY, value),
+          )
+          : parseEtfScoreSnapshots(await AsyncStorage.getItem(ETF_SCORE_SNAPSHOTS_KEY));
+        if (cancelled) return;
         const change = profileScore.score == null
           ? { status: 'unavailable' as const }
           : findComparableEtfScoreChange(snapshot, history);
-        const nextHistory = snapshot ? upsertEtfScoreSnapshot(history, snapshot) : history;
-        if (snapshot) {
-          if (nextHistory.length !== history.length || !history.some((item) =>
-            item.symbol.toUpperCase() === snapshot.symbol
-            && item.score === snapshot.score
-            && JSON.stringify(item.componentScores) === JSON.stringify(snapshot.componentScores)
-            && JSON.stringify(item.sourceContexts) === JSON.stringify(snapshot.sourceContexts)
-            && JSON.stringify(item.inputAsOf) === JSON.stringify(snapshot.inputAsOf),
-          )) {
-            await AsyncStorage.setItem(ETF_SCORE_SNAPSHOTS_KEY, JSON.stringify(nextHistory));
-          }
-        }
         if (!cancelled) {
           setScoreChangeResult(change);
-          setScoreHistoryEntries(buildEtfScoreHistory(symbol, snapshot, nextHistory));
+          setScoreHistoryEntries(buildEtfScoreHistory(symbol, snapshot, history));
           setScoreHistoryReady(true);
         }
       } catch {
@@ -1767,8 +1760,7 @@ function EtfAnalysisSections({
         }
       }
     };
-    const queuedWrite = scoreSnapshotWriteQueue.current.then(saveAndCompareScoreHistory);
-    scoreSnapshotWriteQueue.current = queuedWrite.then(() => undefined, () => undefined);
+    void saveAndCompareScoreHistory();
     return () => {
       cancelled = true;
     };

@@ -242,8 +242,9 @@ test("ETF overview combines quote, deterministic research score, takeaways, and 
 test("ETF score history is scoped to the selected analysis symbol", () => {
   assert.match(etfAnalysisSource, /const \{ symbol \} = useLocalSearchParams<\{ symbol: string \}>\(\)/);
   assert.match(etfAnalysisSource, /const snapshot = createEtfScoreSnapshot\(\{\s*symbol,\s*score: profileScore\.score/);
+  assert.match(etfAnalysisSource, /persistEtfScoreSnapshot\(/);
   assert.match(etfAnalysisSource, /findComparableEtfScoreChange\(snapshot, history\)/);
-  assert.match(etfAnalysisSource, /buildEtfScoreHistory\(symbol, snapshot, nextHistory\)/);
+  assert.match(etfAnalysisSource, /buildEtfScoreHistory\(symbol, snapshot, history\)/);
 });
 
 test("ETF performance history uses real candles, supported ranges, and honest retry states", () => {

@@ -5,6 +5,8 @@ import {
   calculateEtfResearchScore,
   createEtfScoreSnapshot,
   findComparableEtfScoreChange,
+  parseEtfScoreSnapshots,
+  persistEtfScoreSnapshot,
 } from "../etfResearchScore.ts";
 
 const completeInput = {
@@ -687,4 +689,48 @@ test("ETF score histories and changes never mix symbols", () => {
     assert.equal(spyChange.change, 15);
   }
   assert.deepEqual(findComparableEtfScoreChange(spyCurrent, [vooPrior, vooLatest]), { status: "first-analysis" });
+});
+
+test("overlapping ETF score saves preserve snapshots for both symbols", async () => {
+  const result = calculateEtfResearchScore(completeInput);
+  const createSnapshot = (symbol: string, recordedAt: string, score: number) =>
+    createEtfScoreSnapshot({
+      symbol,
+      score,
+      components: result.components,
+      sourceContexts: Object.fromEntries(
+        result.components.filter((component) => component.score !== null)
+          .map((component) => [component.id, `provider:${component.id}`]),
+      ),
+      inputAsOf: Object.fromEntries(
+        result.components.filter((component) => component.score !== null)
+          .map((component) => [component.id, ["2026-10-29T12:00:00Z"]]),
+      ),
+      recordedAt,
+    });
+  const spy = createSnapshot("SPY", "2026-10-30T12:00:00Z", 70);
+  const voo = createSnapshot("VOO", "2026-10-30T12:00:01Z", 75);
+  assert.ok(spy);
+  assert.ok(voo);
+
+  let storedValue: string | null = null;
+  const readStoredHistory = async () => {
+    const valueAtReadStart = storedValue;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    return valueAtReadStart;
+  };
+  const writeStoredHistory = async (value: string) => {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    storedValue = value;
+  };
+
+  const [spyHistory, vooHistory] = await Promise.all([
+    persistEtfScoreSnapshot(spy, readStoredHistory, writeStoredHistory),
+    persistEtfScoreSnapshot(voo, readStoredHistory, writeStoredHistory),
+  ]);
+  const savedHistory = parseEtfScoreSnapshots(storedValue);
+
+  assert.deepEqual(savedHistory.map((snapshot) => snapshot.symbol).sort(), ["SPY", "VOO"]);
+  assert.deepEqual(spyHistory.map((snapshot) => snapshot.symbol).sort(), ["SPY"]);
+  assert.deepEqual(vooHistory.map((snapshot) => snapshot.symbol).sort(), ["SPY", "VOO"]);
 });
