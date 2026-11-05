@@ -13,6 +13,7 @@ import type { CommodityRelationshipResponseMethod } from './commodityRelationshi
 import type { CommodityRelationshipResponseMetrics } from './commodityRelationshipResponseMetrics';
 import type { CommodityRelationshipResponsePeriod } from './commodityRelationshipResponsePeriod';
 import type { CommodityRelationshipResponsePointsItem } from './commodityRelationshipResponsePointsItem';
+import type { CommodityRelationshipResponseRankTrend } from './commodityRelationshipResponseRankTrend';
 import type { CommodityRelationshipResponseRelationship } from './commodityRelationshipResponseRelationship';
 import type { CommodityRelationshipResponseSources } from './commodityRelationshipResponseSources';
 import type { CommodityRelationshipResponseStatus } from './commodityRelationshipResponseStatus';
@@ -27,6 +28,8 @@ export interface CommodityRelationshipResponse {
   metrics: CommodityRelationshipResponseMetrics;
   /** Historical relative-value ranks for supported windows, populated for the gold/silver ratio. */
   historyRanks: CommodityRelationshipResponseHistoryRanksItem[];
+  /** Dated one-year rolling historical percentile ranks from exact matched, same-unit prices; populated for the gold/silver ratio. */
+  rankTrend: CommodityRelationshipResponseRankTrend;
   divergence: CommodityRelationshipResponseDivergence;
   points: CommodityRelationshipResponsePointsItem[];
   sources: CommodityRelationshipResponseSources;

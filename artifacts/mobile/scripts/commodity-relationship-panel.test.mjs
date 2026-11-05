@@ -30,6 +30,11 @@ assert.match(panel, /commodity-relationship-coverage/);
 assert.match(panel, /AI INTERPRETATION · SEPARATE FROM OBSERVED DATA/);
 assert.match(panel, /does not establish causation/);
 assert.match(panel, /data\.historyRanks\.map/);
+assert.match(panel, /data\.rankTrend/);
+assert.match(panel, /commodity-gold-silver-rank-trend/);
+assert.match(panel, /commodity-gold-silver-rank-trend-line/);
+assert.match(panel, /commodity-gold-silver-rank-trend-touch-target/);
+assert.match(panel, /trailing year using/);
 assert.match(panel, /exact matched dates/);
 assert.match(panel, /Historical ranks are descriptive/);
 for (const period of ["1mo", "3mo", "6mo", "1y", "5y", "max"]) {

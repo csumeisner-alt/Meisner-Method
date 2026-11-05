@@ -95,6 +95,19 @@ export const getCommodityRelationshipResponseHistoryRanksItemPercentileMax = 100
 
 export const getCommodityRelationshipResponseHistoryRanksItemMatchedObservationsMin = 0;
 
+export const getCommodityRelationshipResponseRankTrendMatchedObservationsMin = 0;
+
+export const getCommodityRelationshipResponseRankTrendRankObservationsMin = 0;
+
+export const getCommodityRelationshipResponseRankTrendMinWindowObservationsMin = 0;
+
+export const getCommodityRelationshipResponseRankTrendMaxWindowObservationsMin = 0;
+
+export const getCommodityRelationshipResponseRankTrendPointsItemPercentileMin = 0;
+export const getCommodityRelationshipResponseRankTrendPointsItemPercentileMax = 100;
+
+export const getCommodityRelationshipResponseRankTrendPointsItemMatchedObservationsMin = 0;
+
 
 
 export const GetCommodityRelationshipResponse = zod.object({
@@ -155,6 +168,22 @@ export const GetCommodityRelationshipResponse = zod.object({
   "matchedStartDate": zod.coerce.date().nullable(),
   "matchedEndDate": zod.coerce.date().nullable()
 })).describe('Historical relative-value ranks for supported windows, populated for the gold\/silver ratio.'),
+  "rankTrend": zod.object({
+  "window": zod.enum(['1y']).nullable(),
+  "matchedObservations": zod.number().min(getCommodityRelationshipResponseRankTrendMatchedObservationsMin),
+  "matchedStartDate": zod.coerce.date().nullable(),
+  "matchedEndDate": zod.coerce.date().nullable(),
+  "rankObservations": zod.number().min(getCommodityRelationshipResponseRankTrendRankObservationsMin),
+  "rankStartDate": zod.coerce.date().nullable(),
+  "rankEndDate": zod.coerce.date().nullable(),
+  "minWindowObservations": zod.number().min(getCommodityRelationshipResponseRankTrendMinWindowObservationsMin),
+  "maxWindowObservations": zod.number().min(getCommodityRelationshipResponseRankTrendMaxWindowObservationsMin),
+  "points": zod.array(zod.object({
+  "date": zod.coerce.date(),
+  "percentile": zod.number().min(getCommodityRelationshipResponseRankTrendPointsItemPercentileMin).max(getCommodityRelationshipResponseRankTrendPointsItemPercentileMax).nullable(),
+  "matchedObservations": zod.number().min(getCommodityRelationshipResponseRankTrendPointsItemMatchedObservationsMin)
+}))
+}).describe('Dated one-year rolling historical percentile ranks from exact matched, same-unit prices; populated for the gold\/silver ratio.'),
   "divergence": zod.object({
   "status": zod.enum(['detected', 'not_detected', 'unavailable']),
   "firstWindowReturnPercent": zod.number().nullable(),

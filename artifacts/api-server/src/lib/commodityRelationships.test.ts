@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   calculateCommodityRelationship,
   calculateCommodityRelationshipHistoryRanks,
+  calculateCommodityRelationshipRankTrend,
   COMMODITY_RELATIONSHIPS,
   COMMODITY_RELATIONSHIP_PERIODS,
   isCommodityRelationshipPeriod,
@@ -191,6 +192,61 @@ test("gold/silver ranks compare every supported window using exact matched dates
   assert.equal(monthBoundaryRank.matchedEndDate, "2025-03-31");
 });
 
+test("gold/silver rank trend uses dated trailing one-year ranks from exact matched same-unit prices", () => {
+  const relationship = COMMODITY_RELATIONSHIPS.find(({ id }) => id === "gold-silver-ratio")!;
+  const first = makeSeries(320, () => 0, "2024-01-02")
+    .map((point, index) => ({ ...point, close: 2000 + index }));
+  const completeSecond = makeSeries(320, () => 0, "2024-01-02")
+    .map((point) => ({ ...point, close: 25 }));
+  const second = completeSecond.filter((point) => point.date !== "2024-02-05");
+  const trend = calculateCommodityRelationshipRankTrend(relationship, first, second);
+  const matched = first.filter((point) => second.some(({ date }) => date === point.date));
+  const firstValidRank = trend.points.find(({ percentile }) => percentile !== null)!;
+  const firstValidIndex = trend.points.indexOf(firstValidRank);
+  const expectedFirstWindow = matched.slice(0, 20);
+
+  assert.equal(trend.window, "1y");
+  assert.equal(trend.matchedObservations, matched.length);
+  assert.equal(trend.matchedStartDate, matched[0]!.date);
+  assert.equal(trend.matchedEndDate, matched.at(-1)!.date);
+  assert.equal(trend.rankObservations, matched.length - 19);
+  assert.equal(firstValidRank.date, matched[19]!.date);
+  assert.equal(firstValidRank.matchedObservations, 20);
+  assert.equal(firstValidRank.percentile, 97.5);
+  assert.equal(trend.points[10]!.percentile, null);
+  assert.equal(trend.points[10]!.matchedObservations, 11);
+  assert.equal(trend.minWindowObservations, 20);
+  assert.ok(trend.maxWindowObservations < matched.length);
+  assert.equal(trend.rankStartDate, firstValidRank.date);
+  assert.equal(trend.rankEndDate, matched.at(-1)!.date);
+  assert.equal(trend.points[firstValidIndex]!.date, expectedFirstWindow.at(-1)!.date);
+
+  const last = matched.at(-1)!;
+  const oneYearAgo = new Date(Date.UTC(
+    Number(last.date.slice(0, 4)),
+    Number(last.date.slice(5, 7)) - 1 - 12,
+    Number(last.date.slice(8, 10)),
+  )).toISOString().slice(0, 10);
+  const lastWindow = matched.filter(({ date }) => date >= oneYearAgo && date <= last.date);
+  const lastTrendPoint = trend.points.at(-1)!;
+  assert.equal(lastTrendPoint.matchedObservations, lastWindow.length);
+  assert.equal(lastTrendPoint.percentile, 100 - 50 / lastWindow.length);
+
+  const differentUnits = {
+    ...relationship,
+    second: { ...relationship.second, unit: "USD per kilogram" },
+  };
+  const unsupported = calculateCommodityRelationshipRankTrend(differentUnits, first, completeSecond);
+  assert.equal(unsupported.window, null);
+  assert.deepEqual(unsupported.points, []);
+
+  const empty = calculateCommodityRelationshipRankTrend(relationship, [], []);
+  assert.equal(empty.window, "1y");
+  assert.equal(empty.matchedObservations, 0);
+  assert.equal(empty.rankObservations, 0);
+  assert.deepEqual(empty.points, []);
+});
+
 test("the ICE dollar-index proxy follows ICE dates instead of CME holiday closures", () => {
   const dollarIndex = COMMODITY_RELATIONSHIPS[1]!.second;
   assert.equal(isValidCommodityRelationshipTradingDate(dollarIndex, "2024-03-29"), true); // Good Friday
@@ -300,6 +356,14 @@ test("gold/silver ratio endpoint supplies rank coverage for all windows", async 
       matchedStartDate: string | null;
       matchedEndDate: string | null;
     }>;
+    rankTrend: {
+      window: "1y" | null;
+      matchedObservations: number;
+      rankObservations: number;
+      rankStartDate: string | null;
+      rankEndDate: string | null;
+      points: Array<{ date: string; percentile: number | null; matchedObservations: number }>;
+    };
   };
   assert.deepEqual(requested.sort(), [
     "GC=F:1y", "GC=F:max", "SI=F:1y", "SI=F:max",
@@ -309,6 +373,12 @@ test("gold/silver ratio endpoint supplies rank coverage for all windows", async 
   assert.ok(body.historyRanks.find(({ period }) => period === "1y")!.matchedObservations >= 20);
   assert.ok(body.historyRanks.every(({ matchedObservations, matchedStartDate, matchedEndDate }) =>
     matchedObservations === 0 || Boolean(matchedStartDate && matchedEndDate)));
+  assert.equal(body.rankTrend.window, "1y");
+  assert.equal(body.rankTrend.matchedObservations, 1450);
+  assert.ok(body.rankTrend.rankObservations > 0);
+  assert.ok(body.rankTrend.rankStartDate);
+  assert.ok(body.rankTrend.rankEndDate);
+  assert.equal(body.rankTrend.points.length, body.rankTrend.matchedObservations);
 });
 
 test("unavailable source history does not invoke AI or synthesize a comparison", async () => {

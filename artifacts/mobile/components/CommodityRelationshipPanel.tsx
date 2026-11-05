@@ -18,6 +18,7 @@ import type {
   CommodityRelationshipResponse,
   CommodityRelationshipResponsePeriod,
   CommodityRelationshipResponsePointsItem,
+  CommodityRelationshipResponseRankTrend,
 } from '@workspace/api-client-react';
 import { ComparisonChart } from '@/components/ComparisonChart';
 import { useColors } from '@/hooks/useColors';
@@ -247,7 +248,128 @@ function Metric({
   );
 }
 
-function GoldSilverHistoryRank({ data }: { data: CommodityRelationshipResponse }) {
+function GoldSilverRankTrendChart({
+  trend,
+  width,
+}: {
+  trend: CommodityRelationshipResponseRankTrend;
+  width: number;
+}) {
+  const colors = useColors();
+  const [touched, setTouched] = useState<number | null>(null);
+  const height = 138;
+  const pad = { left: 30, right: 10, top: 10, bottom: 23 };
+  const chartWidth = Math.max(1, width - pad.left - pad.right);
+  const chartHeight = height - pad.top - pad.bottom;
+  const valid = useMemo(() => trend.points.flatMap((point, index) => point.percentile == null
+    ? []
+    : [{ index, point }]), [trend.points]);
+  const xFor = (index: number) => pad.left + (index / Math.max(trend.points.length - 1, 1)) * chartWidth;
+  const yFor = (percentile: number) => pad.top + (1 - percentile / 100) * chartHeight;
+  const path = valid.map(({ index, point }, sequence) =>
+    `${sequence === 0 ? 'M' : 'L'}${xFor(index).toFixed(1)},${yFor(point.percentile!).toFixed(1)}`,
+  ).join(' ');
+  const selectedPoint = touched == null ? null : trend.points[touched] ?? null;
+  const selectPoint = (event: GestureResponderEvent) => {
+    const nativeEvent = event.nativeEvent as typeof event.nativeEvent & { pageX?: number };
+    const target = event.currentTarget as unknown as {
+      getBoundingClientRect?: () => { left: number };
+    };
+    const left = target.getBoundingClientRect?.().left;
+    const localX = Number.isFinite(nativeEvent.locationX)
+      ? nativeEvent.locationX
+      : Number.isFinite(nativeEvent.pageX) && Number.isFinite(left)
+        ? nativeEvent.pageX! - left!
+        : 0;
+    const position = Math.max(0, Math.min(chartWidth, localX - pad.left));
+    setTouched(Math.round((position / chartWidth) * Math.max(trend.points.length - 1, 0)));
+  };
+
+  return (
+    <View testID="commodity-gold-silver-rank-trend">
+      <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 0.4 }}>
+        ROLLING RANK · {trend.window?.toUpperCase() ?? 'UNAVAILABLE'} WINDOW
+      </Text>
+      {trend.rankObservations > 0 ? (
+        <>
+          <View style={{ width, height, position: 'relative', marginTop: 3 }}>
+            <Svg
+              width={width}
+              height={height}
+              pointerEvents="none"
+              accessibilityRole="image"
+              accessibilityLabel="Gold to silver ratio trailing one-year historical percentile rank, from 0 to 100."
+            >
+              {[0, 50, 100].map((tick) => (
+                <React.Fragment key={tick}>
+                  <Line
+                    x1={pad.left}
+                    y1={yFor(tick)}
+                    x2={width - pad.right}
+                    y2={yFor(tick)}
+                    stroke={colors.border}
+                    strokeDasharray={tick === 50 ? '3 3' : undefined}
+                  />
+                  <SvgText x={pad.left - 5} y={yFor(tick) + 3} fontSize={8} fill={colors.mutedForeground} textAnchor="end">
+                    {tick}
+                  </SvgText>
+                </React.Fragment>
+              ))}
+              <Path
+                testID="commodity-gold-silver-rank-trend-line"
+                d={path}
+                stroke={colors.primary}
+                strokeWidth={2.5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+              />
+              {selectedPoint?.percentile != null && touched != null && (
+                <>
+                  <Line
+                    x1={xFor(touched)}
+                    y1={pad.top}
+                    x2={xFor(touched)}
+                    y2={height - pad.bottom}
+                    stroke={colors.mutedForeground}
+                    strokeDasharray="3 3"
+                  />
+                  <Circle cx={xFor(touched)} cy={yFor(selectedPoint.percentile)} r={4} fill={colors.primary} />
+                </>
+              )}
+              <SvgText x={pad.left} y={height - 5} fontSize={8} fill={colors.mutedForeground}>Earlier</SvgText>
+              <SvgText x={width - pad.right} y={height - 5} fontSize={8} fill={colors.mutedForeground} textAnchor="end">Latest</SvgText>
+            </Svg>
+            <Pressable
+              testID="commodity-gold-silver-rank-trend-touch-target"
+              accessibilityRole="button"
+              accessibilityLabel={selectedPoint
+                ? `${selectedPoint.date}, ${selectedPoint.percentile == null ? 'rank unavailable' : `${selectedPoint.percentile.toFixed(1)}th percentile`}, ${selectedPoint.matchedObservations} exact matched dates`
+                : 'One-year rolling gold to silver historical rank chart'}
+              accessibilityHint="Tap across the chart to inspect the dated percentile rank and sample count."
+              onPress={selectPoint}
+              style={StyleSheet.absoluteFill}
+            />
+          </View>
+          <Text accessibilityLiveRegion="polite" style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 14 }}>
+            {selectedPoint
+              ? `${selectedPoint.date} · ${selectedPoint.percentile == null ? 'Rank unavailable' : `${selectedPoint.percentile.toFixed(1)}th percentile`} · ${selectedPoint.matchedObservations} exact matched dates`
+              : `${trend.rankObservations} dated ranks · ${trend.rankStartDate} to ${trend.rankEndDate}`}
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 9, lineHeight: 13 }}>
+            Each point ranks that date against the trailing year using {trend.minWindowObservations}–{trend.maxWindowObservations} exact matched dates.
+          </Text>
+        </>
+      ) : (
+        <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 14, marginTop: 3 }}>
+          Rolling rank is unavailable: at least 20 exact matched dates in the one-year window are required.
+        </Text>
+      )}
+    </View>
+  );
+}
+
+function GoldSilverHistoryRank({ data, width }: { data: CommodityRelationshipResponse; width: number }) {
   const colors = useColors();
   return (
     <View
@@ -291,6 +413,7 @@ function GoldSilverHistoryRank({ data }: { data: CommodityRelationshipResponse }
           );
         })}
       </View>
+      <GoldSilverRankTrendChart trend={data.rankTrend} width={width} />
       <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 15 }}>
         Ranks use exact matched gold and silver prices in the same quote units; missing values are not estimated. At least 20 matched dates are required. Historical ranks are descriptive, not predictions or causal explanations.
       </Text>
@@ -328,7 +451,7 @@ function RelationshipSummary({ data, width }: { data: CommodityRelationshipRespo
             <Metric label="Matched-date return correlation" value={corr(metric.correlation)} />
             <Metric label="Correlation change" value={correlationChange} />
           </View>
-          {data.relationship.id === 'gold-silver-ratio' && <GoldSilverHistoryRank data={data} />}
+          {data.relationship.id === 'gold-silver-ratio' && <GoldSilverHistoryRank data={data} width={width} />}
           <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 15 }}>
             {data.relationship.first.unit === data.relationship.second.unit
               ? `Relative value uses matching quote units (${data.relationship.first.unit}).`
@@ -399,7 +522,7 @@ function RelationshipSummary({ data, width }: { data: CommodityRelationshipRespo
               {data.reason ?? 'There are not enough valid, shared trading dates for this comparison.'}
             </Text>
           </View>
-          {data.relationship.id === 'gold-silver-ratio' && <GoldSilverHistoryRank data={data} />}
+          {data.relationship.id === 'gold-silver-ratio' && <GoldSilverHistoryRank data={data} width={width} />}
         </>
       )}
     </View>

@@ -516,7 +516,7 @@ components:
 
     CommodityRelationshipResponse:
       type: object
-      required: [relationship, period, status, reason, method, coverage, metrics, historyRanks, divergence, points, sources, aiInterpretation]
+      required: [relationship, period, status, reason, method, coverage, metrics, historyRanks, rankTrend, divergence, points, sources, aiInterpretation]
       properties:
         relationship:
           type: object
@@ -576,6 +576,29 @@ components:
               matchedObservations: { type: integer, minimum: 0 }
               matchedStartDate: { type: string, format: date, nullable: true }
               matchedEndDate: { type: string, format: date, nullable: true }
+        rankTrend:
+          type: object
+          description: Dated one-year rolling historical percentile ranks from exact matched, same-unit prices; populated for the gold/silver ratio.
+          required: [window, matchedObservations, matchedStartDate, matchedEndDate, rankObservations, rankStartDate, rankEndDate, minWindowObservations, maxWindowObservations, points]
+          properties:
+            window: { type: string, enum: [1y], nullable: true }
+            matchedObservations: { type: integer, minimum: 0 }
+            matchedStartDate: { type: string, format: date, nullable: true }
+            matchedEndDate: { type: string, format: date, nullable: true }
+            rankObservations: { type: integer, minimum: 0 }
+            rankStartDate: { type: string, format: date, nullable: true }
+            rankEndDate: { type: string, format: date, nullable: true }
+            minWindowObservations: { type: integer, minimum: 0 }
+            maxWindowObservations: { type: integer, minimum: 0 }
+            points:
+              type: array
+              items:
+                type: object
+                required: [date, percentile, matchedObservations]
+                properties:
+                  date: { type: string, format: date }
+                  percentile: { type: number, nullable: true, minimum: 0, maximum: 100 }
+                  matchedObservations: { type: integer, minimum: 0 }
         divergence:
           type: object
           required: [status, firstWindowReturnPercent, secondWindowReturnPercent, reason]

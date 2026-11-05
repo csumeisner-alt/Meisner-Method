@@ -163,11 +163,31 @@ export interface CommodityRelationshipHistoryRank {
   matchedEndDate: string | null;
 }
 
+export interface CommodityRelationshipRankTrendPoint {
+  date: string;
+  percentile: number | null;
+  matchedObservations: number;
+}
+
+export interface CommodityRelationshipRankTrend {
+  window: "1y" | null;
+  matchedObservations: number;
+  matchedStartDate: string | null;
+  matchedEndDate: string | null;
+  rankObservations: number;
+  rankStartDate: string | null;
+  rankEndDate: string | null;
+  minWindowObservations: number;
+  maxWindowObservations: number;
+  points: CommodityRelationshipRankTrendPoint[];
+}
+
 const CORRELATION_MIN_RETURNS = 10;
 const CORRELATION_WINDOW = 20;
 const DIVERGENCE_THRESHOLD_PERCENTAGE_POINTS = 5;
 const DIVERGENCE_MAX_CORRELATION = 0.25;
 const RELATIVE_VALUE_PERCENTILE_MIN_OBSERVATIONS = 20;
+const RANK_TREND_WINDOW_MONTHS = 12;
 
 function isValidDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -466,6 +486,67 @@ function subtractCalendarMonths(date: string, months: number): string {
   )).getUTCDate();
   targetMonth.setUTCDate(Math.min(day!, lastDay));
   return targetMonth.toISOString().slice(0, 10);
+}
+
+export function calculateCommodityRelationshipRankTrend(
+  relationship: CommodityRelationshipDefinition,
+  firstInput: DatedCommodityClose[],
+  secondInput: DatedCommodityClose[],
+): CommodityRelationshipRankTrend {
+  const supportsRankTrend = relationship.id === "gold-silver-ratio"
+    && relationship.first.unit === relationship.second.unit;
+  if (!supportsRankTrend) {
+    return {
+      window: null,
+      matchedObservations: 0,
+      matchedStartDate: null,
+      matchedEndDate: null,
+      rankObservations: 0,
+      rankStartDate: null,
+      rankEndDate: null,
+      minWindowObservations: 0,
+      maxWindowObservations: 0,
+      points: [],
+    };
+  }
+
+  const first = cleanSeries(relationship.first, firstInput);
+  const secondByDate = new Map(cleanSeries(relationship.second, secondInput)
+    .map((point) => [point.date, point]));
+  const matched = first.flatMap((point) => {
+    const other = secondByDate.get(point.date);
+    return other ? [{
+      date: point.date,
+      ratio: point.close / other.close,
+    }] : [];
+  });
+
+  let windowStart = 0;
+  const points = matched.map((point, index) => {
+    const firstWindowDate = subtractCalendarMonths(point.date, RANK_TREND_WINDOW_MONTHS);
+    while (matched[windowStart]!.date < firstWindowDate) windowStart += 1;
+    const observations = matched.slice(windowStart, index + 1);
+    return {
+      date: point.date,
+      percentile: empiricalPercentileRank(point.ratio, observations.map(({ ratio }) => ratio)),
+      matchedObservations: observations.length,
+    };
+  });
+  const rankPoints = points.filter((point) => point.percentile !== null);
+  const rankWindowSizes = rankPoints.map(({ matchedObservations }) => matchedObservations);
+
+  return {
+    window: "1y",
+    matchedObservations: matched.length,
+    matchedStartDate: matched[0]?.date ?? null,
+    matchedEndDate: matched.at(-1)?.date ?? null,
+    rankObservations: rankPoints.length,
+    rankStartDate: rankPoints[0]?.date ?? null,
+    rankEndDate: rankPoints.at(-1)?.date ?? null,
+    minWindowObservations: rankWindowSizes.length ? Math.min(...rankWindowSizes) : 0,
+    maxWindowObservations: rankWindowSizes.length ? Math.max(...rankWindowSizes) : 0,
+    points,
+  };
 }
 
 export function calculateCommodityRelationshipHistoryRanks(

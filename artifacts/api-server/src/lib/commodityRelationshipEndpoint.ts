@@ -2,6 +2,7 @@ import type { Response } from "express";
 import {
   calculateCommodityRelationship,
   calculateCommodityRelationshipHistoryRanks,
+  calculateCommodityRelationshipRankTrend,
   COMMODITY_RELATIONSHIPS,
   isCommodityRelationshipId,
   isCommodityRelationshipPeriod,
@@ -106,6 +107,11 @@ export async function respondWithCommodityRelationship(
       secondRankHistory?.points ?? [],
     )
     : [];
+  const rankTrend = calculateCommodityRelationshipRankTrend(
+    relationship,
+    firstRankHistory?.points ?? [],
+    secondRankHistory?.points ?? [],
+  );
   if (result.status === "unavailable") {
     const failures = [
       firstResult.status === "rejected" ? `${relationship.first.name} history is unavailable.` : null,
@@ -139,6 +145,7 @@ export async function respondWithCommodityRelationship(
   res.json({
     ...result,
     historyRanks,
+    rankTrend,
     sources: {
       provider: "Yahoo Finance",
       retrievedAt: dependencies.now().toISOString(),

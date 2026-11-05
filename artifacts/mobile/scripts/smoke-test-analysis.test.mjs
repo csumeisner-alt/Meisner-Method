@@ -852,6 +852,35 @@ async function buildCommodityRelationshipPanelBundle() {
               matchedEndDate: dates.at(-1),
             }))
             : [],
+          rankTrend: relationshipId === "gold-silver-ratio"
+            ? {
+              window: "1y",
+              matchedObservations: dates.length,
+              matchedStartDate: dates[0],
+              matchedEndDate: dates.at(-1),
+              rankObservations: Math.max(0, dates.length - 19),
+              rankStartDate: dates[19] ?? null,
+              rankEndDate: dates.length >= 20 ? dates.at(-1) : null,
+              minWindowObservations: dates.length >= 20 ? 20 : 0,
+              maxWindowObservations: dates.length >= 20 ? dates.length : 0,
+              points: dates.map((date, index) => ({
+                date,
+                percentile: index < 19 ? null : 50 + index,
+                matchedObservations: index + 1,
+              })),
+            }
+            : {
+              window: null,
+              matchedObservations: 0,
+              matchedStartDate: null,
+              matchedEndDate: null,
+              rankObservations: 0,
+              rankStartDate: null,
+              rankEndDate: null,
+              minWindowObservations: 0,
+              maxWindowObservations: 0,
+              points: [],
+            },
           coverage: {
             matchedObservations: dates.length, returnObservations: dates.length - 1,
             matchedStartDate: dates[0], matchedEndDate: dates.at(-1),
@@ -900,6 +929,15 @@ async function buildCommodityRelationshipPanelBundle() {
                 matchedStartDate: null,
                 matchedEndDate: null,
               })),
+              rankTrend: {
+                ...data.rankTrend,
+                rankObservations: 0,
+                rankStartDate: null,
+                rankEndDate: null,
+                minWindowObservations: 0,
+                maxWindowObservations: 0,
+                points: data.rankTrend.points.map((point) => ({ ...point, percentile: null })),
+              },
             },
             isLoading: false, isError: false, refetch,
           };
@@ -1266,6 +1304,19 @@ test("rendered commodity relationship panel supports selection, chart touch, and
       assert.match(rankText, /22 exact matched dates/);
       assert.match(rankText, /2026-10-01 to 2026-11-03/);
       assert.match(rankText, /Historical ranks are descriptive/);
+      assert.match(rankText, /ROLLING RANK · 1Y WINDOW/);
+      assert.match(rankText, /5 dated ranks/);
+      assert.match(rankText, /20–24 exact matched dates/);
+      assert.equal(
+        await browser.evaluate(`Boolean(document.querySelector('[data-testid="commodity-gold-silver-rank-trend"] svg path[d]:not([d=""])'))`),
+        true,
+        "The dated rolling rank trend should render a chart line.",
+      );
+      assert.equal(
+        await browser.evaluate(`Boolean(document.querySelector('[data-testid="commodity-gold-silver-rank-trend-touch-target"]'))`),
+        true,
+        "The rank trend should expose an accessible touch target.",
+      );
       await browser.evaluate(`document.querySelector('[data-testid="commodity-relationship-select-oil-gold"]')?.click()`);
       await waitForBrowserValue(
         browser,
