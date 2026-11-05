@@ -131,21 +131,86 @@ test("CPI archive value requires the matching reference month, release date, and
     "a release marked revised is unavailable");
 });
 
-test("FOMC target range must match the dated official statement", () => {
+test("FOMC target range parses supported wording and numeric formats from the dated statement", () => {
+  const url = "https://www.federalreserve.gov/newsevents/pressreleases/monetary20261028a.htm";
+  const statements = [
+    {
+      text: "October 28, 2026. The Committee decided to maintain the target range for the federal funds rate at 3-3/4 to 4 percent.",
+      value: 3.75,
+      upperBound: 4,
+    },
+    {
+      text: "October 28, 2026. The Committee decided to raise the target range for the federal funds rate to 1/4 to 1/2 percent.",
+      value: 0.25,
+      upperBound: 0.5,
+    },
+    {
+      text: "October 28, 2026. The Committee decided to lower the target range for the federal funds rate to 4.25 to 4.5 percent.",
+      value: 4.25,
+      upperBound: 4.5,
+    },
+    {
+      text: "October 28, 2026. The Committee decided to maintain the target range for the federal funds rate at 3–3/4 to 4 percent.",
+      value: 3.75,
+      upperBound: 4,
+    },
+  ];
+  for (const statement of statements) {
+    const result = parseFomcPolicyValue(statement.text, "2026-10-28", url);
+    assert.equal(result?.value, statement.value, statement.text);
+    assert.equal(result?.upperBound, statement.upperBound, statement.text);
+    assert.equal(result?.source?.publicationDate, "2026-10-28", statement.text);
+    assert.equal(result?.source?.url, url, statement.text);
+  }
+});
+
+test("FOMC target range leaves unsupported, malformed, or ambiguous wording unavailable", () => {
+  const url = "https://www.federalreserve.gov/newsevents/pressreleases/monetary20261028a.htm";
+  const unsupported = "October 28, 2026. The Committee decided to set the federal funds rate between 3.5 and 4 percent.";
+  const malformed = "October 28, 2026. The Committee decided to maintain the target range for the federal funds rate at 3-5/4 to 4 percent.";
+  const equalBounds = "October 28, 2026. The Committee decided to maintain the target range for the federal funds rate at 4 to 4 percent.";
+  const ambiguous = "October 28, 2026. The Committee decided to maintain the target range for the federal funds rate at 3 to 3.25 percent; target range for the federal funds rate at 3.25 to 3.5 percent.";
+  for (const statement of [unsupported, malformed, equalBounds, ambiguous]) {
+    assert.equal(parseFomcPolicyValue(statement, "2026-10-28", url), null, statement);
+  }
+});
+
+test("FOMC target range requires matching dates in the event, URL, and statement", () => {
   const url = "https://www.federalreserve.gov/newsevents/pressreleases/monetary20261028a.htm";
   const statement = "October 28, 2026. The Committee decided to maintain the target range for the federal funds rate at 3-3/4 to 4 percent.";
-  assert.deepEqual(parseFomcPolicyValue(statement, "2026-10-28", url), {
-    value: 3.75,
-    upperBound: 4,
-    units: "percent, federal funds target range",
-    source: {
-      title: "Federal Reserve FOMC statement",
-      url,
-      publicationDate: "2026-10-28",
-    },
-  });
   assert.equal(parseFomcPolicyValue(statement, "2026-09-16", url), null);
   assert.equal(parseFomcPolicyValue(statement, "2026-10-28", "https://example.com/monetary20261028a.htm"), null);
+  assert.equal(
+    parseFomcPolicyValue(statement.replace("October 28, 2026", "October 27, 2026"), "2026-10-28", url),
+    null,
+  );
+});
+
+test("unsupported FOMC statement wording is reported as unavailable, not guessed", async () => {
+  const originalFetch = globalThis.fetch;
+  const statementUrl = "https://www.federalreserve.gov/newsevents/pressreleases/monetary20261028a.htm";
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url === "https://www.bls.gov/schedule/news_release/cpi.htm") return new Response("");
+    if (url === "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm") {
+      return new Response([
+        "2026 FOMC Meetings September | 15-16 October | 27-28 December | 8-9",
+        `<a href="${statementUrl}">HTML</a>`,
+      ].join(" "));
+    }
+    if (url === statementUrl) {
+      return new Response("October 28, 2026. The Committee decided to set the federal funds rate between 3.5 and 4 percent.");
+    }
+    throw new Error(`Unexpected source request: ${url}`);
+  };
+  try {
+    const result = await fetchCommodityEventCalendar("SI=F", new Date("2026-11-06T12:00:00.000Z"));
+    const fomc = result.events.find((item) => item.name === "Federal Reserve FOMC meeting");
+    assert.equal(fomc?.values.actual, null);
+    assert.ok(result.unavailable.some((item) => item.includes("Federal Reserve policy result for 2026-10-28 could not be verified")));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("completed CPI and FOMC events include only official dated results", async () => {

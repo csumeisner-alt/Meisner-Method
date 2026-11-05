@@ -246,15 +246,19 @@ export function parseBlsCpiArchiveValue(
 }
 
 function parseFederalRate(value: string): number | null {
-  const parts = value.trim().split("-");
-  const whole = Number(parts[0]);
-  if (!Number.isFinite(whole)) return null;
-  if (parts.length === 1) return whole;
-  const fraction = parts[1]!.split("/");
-  if (fraction.length !== 2) return null;
-  const numerator = Number(fraction[0]);
-  const denominator = Number(fraction[1]);
-  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) return null;
+  const normalized = value.trim().replace(/[−–—]/g, "-");
+  if (/^\d+(?:\.\d+)?$/.test(normalized)) {
+    const decimal = Number(normalized);
+    return Number.isFinite(decimal) ? decimal : null;
+  }
+
+  const mixed = normalized.match(/^(\d+)-(\d+)\/(\d+)$/);
+  const fraction = normalized.match(/^(\d+)\/(\d+)$/);
+  const whole = mixed ? Number(mixed[1]) : 0;
+  const numerator = Number(mixed?.[2] ?? fraction?.[1]);
+  const denominator = Number(mixed?.[3] ?? fraction?.[2]);
+  if ((!mixed && !fraction) || !Number.isFinite(whole) || !Number.isFinite(numerator)
+    || !Number.isFinite(denominator) || denominator <= 0 || numerator >= denominator) return null;
   return whole + numerator / denominator;
 }
 
@@ -264,12 +268,28 @@ export function parseFomcPolicyValue(html: string, eventDate: string, sourceUrl:
   const text = normalizedText(html);
   const dateMatch = text.match(/\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s+(20\d{2})\b/);
   if (!dateMatch || toIsoDate(dateMatch[1]!, dateMatch[2]!, dateMatch[3]!) !== eventDate) return null;
-  const decision = text.match(/The Committee decided to [^.]*\./i)?.[0];
-  const rate = decision?.match(/target range for the federal funds rate at ((?:\d+-)?\d+(?:\/\d+)?) to ((?:\d+-)?\d+(?:\/\d+)?) percent/i);
-  if (!rate) return null;
-  const lower = parseFederalRate(rate[1]!);
-  const upper = parseFederalRate(rate[2]!);
-  if (lower === null || upper === null || upper < lower) return null;
+  const rateToken = String.raw`(?:\d+(?:\.\d+)?|\d+[-−–—]\d+\/\d+|\d+\/\d+)`;
+  const rangePattern = new RegExp(
+    String.raw`\btarget range for the federal funds rate\s+(?:at|to)\s+(${rateToken})\s+to\s+(${rateToken})\s+percent\b`,
+    "gi",
+  );
+  const decisionStarts = [...text.matchAll(/\bThe Committee decided to\b/gi)];
+  const parsedRanges: Array<{ lower: number; upper: number }> = [];
+  for (const decisionStart of decisionStarts) {
+    const start = decisionStart.index!;
+    const paragraphEnd = text.indexOf("|", start);
+    const paragraph = text.slice(start, paragraphEnd < 0 ? undefined : paragraphEnd);
+    const sentenceEnd = paragraph.match(/[.!?](?=\s+[A-Z]|$)/)?.index;
+    const sentence = paragraph.slice(0, sentenceEnd === undefined ? undefined : sentenceEnd + 1);
+    for (const range of sentence.matchAll(rangePattern)) {
+      const lower = parseFederalRate(range[1]!);
+      const upper = parseFederalRate(range[2]!);
+      if (lower === null || upper === null || upper <= lower) return null;
+      parsedRanges.push({ lower, upper });
+    }
+  }
+  if (parsedRanges.length !== 1) return null;
+  const { lower, upper } = parsedRanges[0]!;
   return {
     value: lower,
     upperBound: upper,
