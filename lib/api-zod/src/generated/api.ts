@@ -245,8 +245,11 @@ export const analyzeStockResponseThreeCommodityAnalysisIntelligenceScorecardCate
 
 
 export const analyzeStockResponseThreeCommodityAnalysisEventCalendarEventsItemSourceUrlRegExp = new RegExp('^https:/');
+export const analyzeStockResponseThreeCommodityAnalysisEventCalendarEventsItemValuesPreviousOneAnnualRateSourceUrlRegExp = new RegExp('^https:/');
 export const analyzeStockResponseThreeCommodityAnalysisEventCalendarEventsItemValuesPreviousOneSourceUrlRegExp = new RegExp('^https:/');
+export const analyzeStockResponseThreeCommodityAnalysisEventCalendarEventsItemValuesConsensusOneAnnualRateSourceUrlRegExp = new RegExp('^https:/');
 export const analyzeStockResponseThreeCommodityAnalysisEventCalendarEventsItemValuesConsensusOneSourceUrlRegExp = new RegExp('^https:/');
+export const analyzeStockResponseThreeCommodityAnalysisEventCalendarEventsItemValuesActualOneAnnualRateSourceUrlRegExp = new RegExp('^https:/');
 export const analyzeStockResponseThreeCommodityAnalysisEventCalendarEventsItemValuesActualOneSourceUrlRegExp = new RegExp('^https:/');
 export const analyzeStockResponseThreeCommodityAnalysisSupplyDemandSeriesItemPointsItemSourceUrlRegExp = new RegExp('^https:/');
 
@@ -567,6 +570,15 @@ export const AnalyzeStockResponse = zod.union([zod.object({
   "value": zod.number(),
   "upperBound": zod.number().optional(),
   "units": zod.string(),
+  "annualRate": zod.object({
+  "value": zod.number(),
+  "units": zod.string(),
+  "source": zod.object({
+  "title": zod.string(),
+  "url": zod.string().regex(analyzeStockResponseThreeCommodityAnalysisEventCalendarEventsItemValuesPreviousOneAnnualRateSourceUrlRegExp),
+  "publicationDate": zod.coerce.date()
+})
+}).nullish(),
   "source": zod.object({
   "title": zod.string(),
   "url": zod.string().regex(analyzeStockResponseThreeCommodityAnalysisEventCalendarEventsItemValuesPreviousOneSourceUrlRegExp),
@@ -577,6 +589,15 @@ export const AnalyzeStockResponse = zod.union([zod.object({
   "value": zod.number(),
   "upperBound": zod.number().optional(),
   "units": zod.string(),
+  "annualRate": zod.object({
+  "value": zod.number(),
+  "units": zod.string(),
+  "source": zod.object({
+  "title": zod.string(),
+  "url": zod.string().regex(analyzeStockResponseThreeCommodityAnalysisEventCalendarEventsItemValuesConsensusOneAnnualRateSourceUrlRegExp),
+  "publicationDate": zod.coerce.date()
+})
+}).nullish(),
   "source": zod.object({
   "title": zod.string(),
   "url": zod.string().regex(analyzeStockResponseThreeCommodityAnalysisEventCalendarEventsItemValuesConsensusOneSourceUrlRegExp),
@@ -587,6 +608,15 @@ export const AnalyzeStockResponse = zod.union([zod.object({
   "value": zod.number(),
   "upperBound": zod.number().optional(),
   "units": zod.string(),
+  "annualRate": zod.object({
+  "value": zod.number(),
+  "units": zod.string(),
+  "source": zod.object({
+  "title": zod.string(),
+  "url": zod.string().regex(analyzeStockResponseThreeCommodityAnalysisEventCalendarEventsItemValuesActualOneAnnualRateSourceUrlRegExp),
+  "publicationDate": zod.coerce.date()
+})
+}).nullish(),
   "source": zod.object({
   "title": zod.string(),
   "url": zod.string().regex(analyzeStockResponseThreeCommodityAnalysisEventCalendarEventsItemValuesActualOneSourceUrlRegExp),

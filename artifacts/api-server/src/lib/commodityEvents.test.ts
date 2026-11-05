@@ -17,12 +17,12 @@ import type { CommodityEventCalendar } from "./commodityAnalysis.ts";
 const NOW = new Date("2026-11-05T12:00:00.000Z");
 const RELEASE_MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
-function cpiArchive(referenceMonth: string, releaseDate: string, index: string, note = ""): string {
+function cpiArchive(referenceMonth: string, releaseDate: string, index: string, note = "", annualRate: string | null = "3.7"): string {
   const [year, month, day] = releaseDate.split("-");
   return `Transmission of material in this release is embargoed until 8:30 a.m. (ET) Wednesday, ${RELEASE_MONTHS[Number(month) - 1]} ${Number(day)}, ${year}
     CONSUMER PRICE INDEX - ${referenceMonth}
     Not seasonally adjusted CPI measures
-    The Consumer Price Index for All Urban Consumers (CPI-U) increased 3.7 percent over the last 12 months to an index level of ${index} (1982-84=100).
+    The Consumer Price Index for All Urban Consumers (CPI-U) ${annualRate === null ? "" : `increased ${annualRate} percent over the last 12 months to an `}index level of ${index} (1982-84=100).
     ${note}`;
 }
 
@@ -99,12 +99,29 @@ test("CPI archive value requires the matching reference month, release date, and
   assert.deepEqual(parseBlsCpiArchiveValue(archive, item), {
     value: 336.94,
     units: "CPI-U index (1982–84=100), not seasonally adjusted",
+    annualRate: {
+      value: 3.7,
+      units: "% year over year, not seasonally adjusted",
+      source: {
+        title: "BLS CPI-U September 2026 annual inflation rate",
+        url: "https://www.bls.gov/news.release/archives/cpi_10142026.htm",
+        publicationDate: "2026-10-14",
+      },
+    },
     source: {
       title: "BLS CPI-U September 2026 archived release",
       url: "https://www.bls.gov/news.release/archives/cpi_10142026.htm",
       publicationDate: "2026-10-14",
     },
   });
+  const missingRate = parseBlsCpiArchiveValue(cpiArchive("September 2026", "2026-10-14", "336.940", "", null), item);
+  assert.equal(missingRate?.value, 336.94, "the index remains available when the dated release has no matching annual rate");
+  assert.equal(missingRate?.annualRate, null, "an absent annual rate remains unavailable");
+  const decreasingRate = parseBlsCpiArchiveValue(
+    cpiArchive("September 2026", "2026-10-14", "336.940").replace("increased 3.7 percent", "decreased 0.2 percent"),
+    item,
+  );
+  assert.equal(decreasingRate?.annualRate?.value, -0.2, "a published decrease retains its negative sign");
   assert.equal(parseBlsCpiArchiveValue("", item), null, "missing archive page is unavailable");
   assert.equal(parseBlsCpiArchiveValue(cpiArchive("August 2026", "2026-10-14", "336.940"), item), null,
     "an archive for a different reference month is rejected");
@@ -166,13 +183,19 @@ test("completed CPI and FOMC events include only official dated results", async 
     const fomc = result.events.find((item) => item.name === "Federal Reserve FOMC meeting");
     assert.equal(cpi?.values.consensus, null);
     assert.equal(cpi?.values.actual?.value, 336.94);
+    assert.equal(cpi?.values.actual?.annualRate?.value, 3.7);
     assert.equal(cpi?.values.actual?.source?.publicationDate, "2026-10-14");
     assert.equal(cpi?.values.previous?.value, 334.98);
+    assert.equal(cpi?.values.previous?.annualRate?.value, 3.7);
     assert.equal(cpi?.values.previous?.source?.publicationDate, "2026-09-11");
     assert.notEqual(cpi?.values.actual?.source?.url, cpi?.values.previous?.source?.url);
+    assert.notEqual(cpi?.values.actual?.annualRate?.source?.url, cpi?.values.previous?.annualRate?.source?.url);
+    assert.equal(cpi?.values.actual?.annualRate?.source?.publicationDate, "2026-10-14");
+    assert.equal(cpi?.values.previous?.annualRate?.source?.publicationDate, "2026-09-11");
     assert.equal(cpi?.source.url, cpi?.values.actual?.source?.url);
     const validated = validateCommodityEventCalendar(result, "SI=F", NOW);
     assert.equal(validated.events.find((item) => item.eventDate === "2026-10-14")?.values.previous?.value, 334.98);
+    assert.equal(validated.events.find((item) => item.eventDate === "2026-10-14")?.values.actual?.annualRate?.value, 3.7);
     assert.equal(fomc?.values.actual?.value, 3.75);
     assert.equal(fomc?.values.actual?.upperBound, 4);
     assert.equal(fomc?.values.previous?.value, 3.5);

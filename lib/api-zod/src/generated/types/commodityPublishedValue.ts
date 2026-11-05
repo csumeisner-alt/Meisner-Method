@@ -5,11 +5,13 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { CommodityPublishedValueAnnualRate } from './commodityPublishedValueAnnualRate';
 import type { CommodityPublishedValueSource } from './commodityPublishedValueSource';
 
 export type CommodityPublishedValue = {
   value: number;
   upperBound?: number;
   units: string;
+  annualRate?: CommodityPublishedValueAnnualRate;
   source?: CommodityPublishedValueSource;
 } | null;

@@ -213,16 +213,33 @@ export function parseBlsCpiArchiveValue(
   if (!released || toIsoDate(released[1]!, released[2]!, released[3]!) !== item.eventDate) return null;
   if (/\b(?:corrected|reissued|erratum|revision to this release|(?:release|data|table|index)\s+(?:(?:has been|was)\s+)?revised|revised\s+(?:release|data|table|index))\b/i.test(text)) return null;
   const measures = text.match(/Not seasonally adjusted CPI measures([\s\S]{0,1400})(?:_{5,}|Technical Note|$)/i)?.[1];
-  const index = measures?.match(/Consumer Price Index for All Urban Consumers\s*\(CPI-U\)\s*increased\s+[\d.]+\s+percent\s+over\s+the\s+last\s+12\s+months\s+to\s+an\s+index\s+level\s+of\s+([\d.]+)\s*\(1982[-–]84\s*=\s*100\)/i);
-  const value = index ? Number(index[1]) : Number.NaN;
-  if (!Number.isFinite(value) || value <= 0) return null;
+  const index = measures?.match(/Consumer Price Index for All Urban Consumers\s*\(CPI-U\)[\s\S]{0,300}?\bindex level of\s+([\d.]+)\s*\(1982[-–]84\s*=\s*100\)/i);
+  const indexValue = index ? Number(index[1]) : Number.NaN;
+  if (!Number.isFinite(indexValue) || indexValue <= 0) return null;
+  const annualChange = measures?.match(
+    /Consumer Price Index for All Urban Consumers\s*\(CPI-U\)\s*(increased|decreased)\s+([\d.]+)\s+percent\s+over\s+the\s+last\s+12\s+months\s+to\s+an\s+index\s+level\s+of\s+([\d.]+)\s*\(1982[-–]84\s*=\s*100\)/i,
+  );
+  const parsedAnnualRate = annualChange && Number(annualChange[3]) === indexValue
+    ? Number(annualChange[2]) * (annualChange[1]!.toLowerCase() === "decreased" ? -1 : 1)
+    : null;
+  const annualRateValue = parsedAnnualRate !== null && Number.isFinite(parsedAnnualRate) ? parsedAnnualRate : null;
   const archiveDate = item.eventDate.slice(5, 7) + item.eventDate.slice(8, 10) + item.eventDate.slice(0, 4);
+  const archiveUrl = `${BLS_CPI_ARCHIVE_URL}/cpi_${archiveDate}.htm`;
   return {
-    value,
+    value: indexValue,
     units: "CPI-U index (1982–84=100), not seasonally adjusted",
+    annualRate: annualRateValue === null ? null : {
+      value: annualRateValue,
+      units: "% year over year, not seasonally adjusted",
+      source: {
+        title: `BLS CPI-U ${refMonth} annual inflation rate`,
+        url: archiveUrl,
+        publicationDate: item.eventDate,
+      },
+    },
     source: {
       title: `BLS CPI-U ${refMonth} archived release`,
-      url: `${BLS_CPI_ARCHIVE_URL}/cpi_${archiveDate}.htm`,
+      url: archiveUrl,
       publicationDate: item.eventDate,
     },
   };
@@ -417,7 +434,19 @@ export function validateCommodityEventCalendar(
       if (value.upperBound !== undefined && (!Number.isFinite(value.upperBound) || value.upperBound < value.value)) return false;
       if (value.source && (!validDate(value.source.publicationDate) || typeof value.source.title !== "string"
         || !value.source.title || !/^https:\/\//.test(value.source.url))) return false;
-      return knownPublishedValueSource(item, value, key as keyof CommodityEvent["values"]);
+      if (!knownPublishedValueSource(item, value, key as keyof CommodityEvent["values"])) return false;
+      if (value.annualRate !== undefined && value.annualRate !== null) {
+        const rate = value.annualRate;
+        if (!item.name.startsWith("U.S. Consumer Price Index release")
+          || !Number.isFinite(rate.value)
+          || typeof rate.units !== "string" || !rate.units
+          || !rate.source
+          || !validDate(rate.source.publicationDate)
+          || typeof rate.source.title !== "string" || !rate.source.title
+          || !/^https:\/\//.test(rate.source.url)
+          || !knownPublishedValueSource(item, { ...rate, source: rate.source }, key as keyof CommodityEvent["values"])) return false;
+      }
+      return true;
     }));
   const unavailable = calendar.unavailable.filter((item) => typeof item === "string" && item.trim().length > 0);
   return {

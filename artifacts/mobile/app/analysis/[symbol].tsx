@@ -745,18 +745,33 @@ type CommodityAnalysisPayload = {
           value: number;
           upperBound?: number;
           units: string;
+          annualRate?: {
+            value: number;
+            units: string;
+            source: { title: string; url: string; publicationDate: string };
+          } | null;
           source?: { title: string; url: string; publicationDate: string };
         } | null;
         consensus: {
           value: number;
           upperBound?: number;
           units: string;
+          annualRate?: {
+            value: number;
+            units: string;
+            source: { title: string; url: string; publicationDate: string };
+          } | null;
           source?: { title: string; url: string; publicationDate: string };
         } | null;
         actual: {
           value: number;
           upperBound?: number;
           units: string;
+          annualRate?: {
+            value: number;
+            units: string;
+            source: { title: string; url: string; publicationDate: string };
+          } | null;
           source?: { title: string; url: string; publicationDate: string };
         } | null;
       };
@@ -1100,11 +1115,20 @@ function CommodityEventCalendar({ calendar, symbol }: {
               <Text style={{ color: colors.mutedForeground, fontSize: 10 }}>
                 Affects {item.affectedCommodities.join(', ')} · {item.source.publicationDate ? `Source updated ${item.source.publicationDate}` : 'Source publication date unavailable'}
               </Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 4 }}>
-                {publishedValue('Previous', item.values.previous)}
-                {publishedValue('Consensus', item.values.consensus)}
-                {publishedValue('Actual', item.values.actual)}
-              </View>
+              {item.name.startsWith('U.S. Consumer Price Index release') && completed ? (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 4 }}>
+                  {publishedValue('Previous CPI-U index level', item.values.previous)}
+                  {publishedValue('Previous annual CPI rate', item.values.previous?.annualRate ?? null)}
+                  {publishedValue('Actual CPI-U index level', item.values.actual)}
+                  {publishedValue('Actual annual CPI rate', item.values.actual?.annualRate ?? null)}
+                </View>
+              ) : !item.name.startsWith('U.S. Consumer Price Index release') ? (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 4 }}>
+                  {publishedValue('Previous', item.values.previous)}
+                  {publishedValue('Consensus', item.values.consensus)}
+                  {publishedValue('Actual', item.values.actual)}
+                </View>
+              ) : null}
               <Pressable
                 accessibilityRole="link"
                 accessibilityLabel={`Open event source: ${item.source.title}`}

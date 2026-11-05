@@ -48,6 +48,8 @@ export * from './commodityAnalysisResultCommodityAnalysisVerifiedEvidenceItem';
 export * from './commodityAnalysisResultCommodityAnalysisVerifiedEvidenceItemKind';
 export * from './commodityCommentaryItem';
 export * from './commodityPublishedValue';
+export * from './commodityPublishedValueAnnualRate';
+export * from './commodityPublishedValueAnnualRateSource';
 export * from './commodityPublishedValueSource';
 export * from './commodityRelationshipInstrument';
 export * from './commodityRelationshipResponse';

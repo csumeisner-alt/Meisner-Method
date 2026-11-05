@@ -206,6 +206,11 @@ export interface CommodityPublishedValue {
   value: number;
   units: string;
   upperBound?: number;
+  annualRate?: {
+    value: number;
+    units: string;
+    source: { title: string; url: string; publicationDate: string };
+  } | null;
   source?: { title: string; url: string; publicationDate: string };
 }
 

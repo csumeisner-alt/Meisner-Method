@@ -1178,6 +1178,20 @@ components:
             value: { type: number }
             upperBound: { type: number }
             units: { type: string }
+            annualRate:
+              type: object
+              nullable: true
+              properties:
+                value: { type: number }
+                units: { type: string }
+                source:
+                  type: object
+                  properties:
+                    title: { type: string }
+                    url: { type: string, pattern: "^https://" }
+                    publicationDate: { type: string, format: date }
+                  required: [title, url, publicationDate]
+              required: [value, units, source]
             source:
               type: object
               properties:

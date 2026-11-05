@@ -655,6 +655,19 @@ export const CommodityAnalysisResultCommodityAnalysisEventCalendarEventsItemStat
   completed: 'completed',
 } as const;
 
+export type CommodityPublishedValueAnnualRateSource = {
+  title: string;
+  /** @pattern ^https:// */
+  url: string;
+  publicationDate: string;
+};
+
+export type CommodityPublishedValueAnnualRate = {
+  value: number;
+  units: string;
+  source: CommodityPublishedValueAnnualRateSource;
+} | null;
+
 export type CommodityPublishedValueSource = {
   title: string;
   /** @pattern ^https:// */
@@ -666,6 +679,7 @@ export type CommodityPublishedValue = {
   value: number;
   upperBound?: number;
   units: string;
+  annualRate?: CommodityPublishedValueAnnualRate;
   source?: CommodityPublishedValueSource;
 } | null;
 
