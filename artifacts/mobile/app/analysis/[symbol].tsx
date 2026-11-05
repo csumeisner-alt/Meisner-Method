@@ -25,6 +25,7 @@ import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '@/hooks/useColors';
 import { getFomcRateMovement } from '@/lib/fomcRateMovement';
+import { getCpiAnnualRateChange } from '@/lib/cpiAnnualRateChange';
 import { useApi } from '@/hooks/useApi';
 import { useAmericanMode } from '@/contexts/AmericanModeContext';
 import { useAchievements } from '@/contexts/AchievementsContext';
@@ -1092,6 +1093,9 @@ function CommodityEventCalendar({ calendar, symbol }: {
               ? 'held, 0 basis points'
               : `${fomcRateMovement.direction} by ${fomcRateMovement.basisPoints} basis points`
             : 'unavailable';
+          const cpiRateChange = item.name.startsWith('U.S. Consumer Price Index release') && completed
+            ? getCpiAnnualRateChange(item.values.previous, item.values.actual, item.eventDate)
+            : null;
           const statusColor = completed ? colors.mutedForeground : colors.primary;
           const publishedValue = (
             label: string,
@@ -1148,6 +1152,19 @@ function CommodityEventCalendar({ calendar, symbol }: {
                   {publishedValue('Previous annual CPI rate', item.values.previous?.annualRate ?? null)}
                   {publishedValue('Actual CPI-U index level', item.values.actual)}
                   {publishedValue('Actual annual CPI rate', item.values.actual?.annualRate ?? null)}
+                  {cpiRateChange && (
+                    <Text
+                      testID={`commodity-event-${item.id}-cpi-rate-change`}
+                      accessibilityLabel={cpiRateChange.direction === 'unchanged'
+                        ? 'Annual CPI inflation unchanged, 0.0 percentage points'
+                        : `Annual CPI inflation ${cpiRateChange.direction} by ${cpiRateChange.percentagePoints.toFixed(1)} percentage points`}
+                      style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 11, lineHeight: 16 }}
+                    >
+                      {cpiRateChange.direction === 'unchanged'
+                        ? 'Annual CPI inflation unchanged (0.0 percentage points)'
+                        : `Annual CPI inflation ${cpiRateChange.direction} by ${cpiRateChange.percentagePoints.toFixed(1)} percentage points`}
+                    </Text>
+                  )}
                 </View>
               ) : !item.name.startsWith('U.S. Consumer Price Index release') ? (
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 4 }}>
