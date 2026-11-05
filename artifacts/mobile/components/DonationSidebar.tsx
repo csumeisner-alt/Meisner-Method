@@ -38,6 +38,10 @@ const VENMO_HANDLE = 'SpinCycle1';
 const CASHAPP_CASHTAG = 'Spincycle01';
 const DONATION_NOTE = 'Keeping Meisner Method ad-free! 🎉 Thank you!';
 
+// Archived for a possible future paid-app launch. Keep the donation UI and
+// handlers in this component, but do not expose them in the current app.
+const DONATION_FEATURE_ENABLED = false;
+
 const PRESETS = [2.4, 5, 10];
 const MIN_AMOUNT = 1;
 const MAX_AMOUNT = 10000;
@@ -459,119 +463,124 @@ export function DonationSidebar({ visible, onClose }: Props) {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {/* Donation hero */}
-            <LinearGradient
-              colors={['#7C3AED', '#DB2777', '#F59E0B']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.hero}
-            >
-              <Text style={styles.heroEmoji}>🎉</Text>
-              <Text style={[styles.heroTitle, { fontFamily: 'Inter_700Bold' }]}>
-                Keep it 100% ad-free!
-              </Text>
-              <Text style={[styles.heroBody, { fontFamily: 'Inter_500Medium' }]}>
-                No banners. No pop-ups. No selling your data. Just clean market
-                intelligence. A tiny tip helps The Creator keep it that way —
-                and keeps the ads out for good. 🙌
-              </Text>
-            </LinearGradient>
+            {DONATION_FEATURE_ENABLED && (
+              <>
+                {/* Archived donation flow — re-enable only if donations return. */}
+                {/* Donation hero */}
+                <LinearGradient
+                  colors={['#7C3AED', '#DB2777', '#F59E0B']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.hero}
+                >
+                  <Text style={styles.heroEmoji}>🎉</Text>
+                  <Text style={[styles.heroTitle, { fontFamily: 'Inter_700Bold' }]}>
+                    Keep it 100% ad-free!
+                  </Text>
+                  <Text style={[styles.heroBody, { fontFamily: 'Inter_500Medium' }]}>
+                    No banners. No pop-ups. No selling your data. Just clean market
+                    intelligence. A tiny tip helps The Creator keep it that way —
+                    and keeps the ads out for good. 🙌
+                  </Text>
+                </LinearGradient>
 
-            {/* Amount selector */}
-            <Text style={[styles.label, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold' }]}>
-              PICK YOUR TIP
-            </Text>
-            <View style={styles.presetRow}>
-              {PRESETS.map((value) => {
-                const active = !isCustom && selected === value;
-                return (
-                  <TouchableOpacity
-                    key={value}
-                    style={[
-                      styles.presetChip,
-                      {
-                        backgroundColor: active ? colors.primary : colors.card,
-                        borderColor: active ? colors.primary : colors.border,
-                      },
-                    ]}
-                    onPress={() => pickPreset(value)}
-                    activeOpacity={0.8}
-                  >
-                    <Text
-                      style={[
-                        styles.presetText,
-                        {
-                          color: active ? colors.primaryForeground : colors.foreground,
-                          fontFamily: 'Inter_700Bold',
-                        },
-                      ]}
-                    >
-                      ${value.toFixed(2)}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+                {/* Amount selector */}
+                <Text style={[styles.label, { color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold' }]}>
+                  PICK YOUR TIP
+                </Text>
+                <View style={styles.presetRow}>
+                  {PRESETS.map((value) => {
+                    const active = !isCustom && selected === value;
+                    return (
+                      <TouchableOpacity
+                        key={value}
+                        style={[
+                          styles.presetChip,
+                          {
+                            backgroundColor: active ? colors.primary : colors.card,
+                            borderColor: active ? colors.primary : colors.border,
+                          },
+                        ]}
+                        onPress={() => pickPreset(value)}
+                        activeOpacity={0.8}
+                      >
+                        <Text
+                          style={[
+                            styles.presetText,
+                            {
+                              color: active ? colors.primaryForeground : colors.foreground,
+                              fontFamily: 'Inter_700Bold',
+                            },
+                          ]}
+                        >
+                          ${value.toFixed(2)}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
 
-            {/* Custom amount */}
-            <View
-              style={[
-                styles.customRow,
-                {
-                  backgroundColor: colors.card,
-                  borderColor: isCustom ? colors.primary : colors.border,
-                },
-              ]}
-            >
-              <Text style={[styles.dollar, { color: colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
-                $
-              </Text>
-              <TextInput
-                style={[styles.customInput, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}
-                placeholder="Custom amount"
-                placeholderTextColor={colors.mutedForeground}
-                keyboardType="decimal-pad"
-                value={customText}
-                onChangeText={onCustomChange}
-                onFocus={() => setIsCustom(true)}
-                returnKeyType="done"
-              />
-            </View>
-            {isCustom && customText.length > 0 && !isValid && (
-              <Text style={[styles.hint, { color: colors.destructive, fontFamily: 'Inter_400Regular' }]}>
-                Enter an amount between ${MIN_AMOUNT.toFixed(2)} and ${MAX_AMOUNT.toLocaleString()}.
-              </Text>
+                {/* Custom amount */}
+                <View
+                  style={[
+                    styles.customRow,
+                    {
+                      backgroundColor: colors.card,
+                      borderColor: isCustom ? colors.primary : colors.border,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.dollar, { color: colors.mutedForeground, fontFamily: 'Inter_700Bold' }]}>
+                    $
+                  </Text>
+                  <TextInput
+                    style={[styles.customInput, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}
+                    placeholder="Custom amount"
+                    placeholderTextColor={colors.mutedForeground}
+                    keyboardType="decimal-pad"
+                    value={customText}
+                    onChangeText={onCustomChange}
+                    onFocus={() => setIsCustom(true)}
+                    returnKeyType="done"
+                  />
+                </View>
+                {isCustom && customText.length > 0 && !isValid && (
+                  <Text style={[styles.hint, { color: colors.destructive, fontFamily: 'Inter_400Regular' }]}>
+                    Enter an amount between ${MIN_AMOUNT.toFixed(2)} and ${MAX_AMOUNT.toLocaleString()}.
+                  </Text>
+                )}
+
+                {/* Donate buttons */}
+                <TouchableOpacity
+                  style={[styles.payBtn, { backgroundColor: VENMO_BLUE, opacity: isValid ? 1 : 0.45 }]}
+                  onPress={donateVenmo}
+                  disabled={!isValid}
+                  activeOpacity={0.85}
+                >
+                  <Feather name="send" size={18} color="#fff" />
+                  <Text style={[styles.payText, { fontFamily: 'Inter_700Bold' }]}>
+                    Tip ${isValid ? amountStr : '—'} on Venmo
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.payBtn, { backgroundColor: CASHAPP_GREEN, opacity: isValid ? 1 : 0.45 }]}
+                  onPress={donateCashApp}
+                  disabled={!isValid}
+                  activeOpacity={0.85}
+                >
+                  <Feather name="dollar-sign" size={18} color="#fff" />
+                  <Text style={[styles.payText, { fontFamily: 'Inter_700Bold' }]}>
+                    Tip ${isValid ? amountStr : '—'} on Cash App
+                  </Text>
+                </TouchableOpacity>
+
+                <Text style={[styles.thanks, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
+                  💜 Every tip goes straight to The Creator and keeps this app ad-free.
+                  You're the best.
+                </Text>
+              </>
             )}
-
-            {/* Donate buttons */}
-            <TouchableOpacity
-              style={[styles.payBtn, { backgroundColor: VENMO_BLUE, opacity: isValid ? 1 : 0.45 }]}
-              onPress={donateVenmo}
-              disabled={!isValid}
-              activeOpacity={0.85}
-            >
-              <Feather name="send" size={18} color="#fff" />
-              <Text style={[styles.payText, { fontFamily: 'Inter_700Bold' }]}>
-                Tip ${isValid ? amountStr : '—'} on Venmo
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.payBtn, { backgroundColor: CASHAPP_GREEN, opacity: isValid ? 1 : 0.45 }]}
-              onPress={donateCashApp}
-              disabled={!isValid}
-              activeOpacity={0.85}
-            >
-              <Feather name="dollar-sign" size={18} color="#fff" />
-              <Text style={[styles.payText, { fontFamily: 'Inter_700Bold' }]}>
-                Tip ${isValid ? amountStr : '—'} on Cash App
-              </Text>
-            </TouchableOpacity>
-
-            <Text style={[styles.thanks, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-              💜 Every tip goes straight to The Creator and keeps this app ad-free.
-              You're the best.
-            </Text>
 
             {/* Divider */}
             <View style={[styles.divider, { backgroundColor: colors.border }]} />

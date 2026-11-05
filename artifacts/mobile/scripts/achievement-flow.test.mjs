@@ -37,6 +37,11 @@ test("first-time app milestones are wired to achievement rewards and a review sc
   assert.match(watchlistSource, /awardAchievement\('first-price-alert'\)/);
   assert.match(analysisSource, /awardAchievement\('first-analysis'\)/);
   assert.match(settingsSource, /onPress=\{\(\) => \{\s*onClose\(\);\s*setTimeout\(openGallery, 240\);/);
+  assert.match(settingsSource, /const DONATION_FEATURE_ENABLED = false/);
+  assert.match(
+    settingsSource,
+    /\{DONATION_FEATURE_ENABLED && \(\s*<>[\s\S]*?Keep it 100% ad-free![\s\S]*?onPress=\{donateVenmo\}[\s\S]*?onPress=\{donateCashApp\}[\s\S]*?Every tip goes straight[\s\S]*?<\/>\s*\)\}/,
+  );
   assert.match(homeSource, /<DonationSidebar\s+visible=\{settingsOpen\}/);
   assert.match(homeSource, /useAchievements/);
   assert.match(homeSource, /hasCompletedAllAchievements\(earnedIds\)/);
