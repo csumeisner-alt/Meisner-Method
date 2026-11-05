@@ -533,12 +533,13 @@ components:
         reason: { type: string, nullable: true }
         method:
           type: object
-          required: [alignment, correlation, correlationChange, divergence]
+          required: [alignment, correlation, correlationChange, divergence, relativeValuePercentile]
           properties:
             alignment: { type: string }
             correlation: { type: string }
             correlationChange: { type: string }
             divergence: { type: string }
+            relativeValuePercentile: { type: string }
         coverage:
           type: object
           required: [firstStartDate, firstEndDate, secondStartDate, secondEndDate, matchedStartDate, matchedEndDate, matchedObservations, returnObservations]
@@ -553,7 +554,7 @@ components:
             returnObservations: { type: integer }
         metrics:
           type: object
-          required: [currentRelativeValue, firstPeriodReturnPercent, secondPeriodReturnPercent, relativeStrengthPercentagePoints, correlation, previousCorrelation, correlationChange]
+          required: [currentRelativeValue, firstPeriodReturnPercent, secondPeriodReturnPercent, relativeStrengthPercentagePoints, correlation, previousCorrelation, correlationChange, currentRelativeValuePercentile]
           properties:
             currentRelativeValue: { type: number, nullable: true }
             firstPeriodReturnPercent: { type: number, nullable: true }
@@ -562,6 +563,7 @@ components:
             correlation: { type: number, nullable: true }
             previousCorrelation: { type: number, nullable: true }
             correlationChange: { type: number, nullable: true }
+            currentRelativeValuePercentile: { type: number, nullable: true, minimum: 0, maximum: 100 }
         divergence:
           type: object
           required: [status, firstWindowReturnPercent, secondWindowReturnPercent, reason]

@@ -40,6 +40,9 @@ const PERIODS: { value: CommodityRelationshipResponsePeriod; label: string }[] =
   { value: 'max', label: 'MAX' },
 ];
 
+const periodLabel = (period: CommodityRelationshipResponsePeriod) =>
+  PERIODS.find((item) => item.value === period)?.label ?? period.toUpperCase();
+
 const pct = (value: number | null) => value == null
   ? 'Unavailable'
   : `${value > 0 ? '+' : ''}${value.toFixed(2)}%`;
@@ -189,6 +192,44 @@ function Metric({
   );
 }
 
+function GoldSilverHistoryRank({ data }: { data: CommodityRelationshipResponse }) {
+  const colors = useColors();
+  const percentile = data.metrics.currentRelativeValuePercentile;
+  const rankLabel = percentile == null
+    ? 'Historical rank unavailable'
+    : percentile >= 75
+      ? 'High in selected history'
+      : percentile <= 25
+        ? 'Low in selected history'
+        : 'Middle of selected history';
+  const percentileLabel = percentile == null ? 'Unavailable' : `${percentile.toFixed(1)}th percentile`;
+  const dateCoverage = data.coverage.matchedStartDate && data.coverage.matchedEndDate
+    ? `${data.coverage.matchedStartDate} to ${data.coverage.matchedEndDate}`
+    : 'matched date range unavailable';
+
+  return (
+    <View
+      testID="commodity-gold-silver-history-rank"
+      style={{ borderRadius: 10, borderWidth: 1, borderColor: `${colors.primary}55`, padding: 11, backgroundColor: `${colors.primary}0d`, gap: 5 }}
+    >
+      <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>
+        GOLD / SILVER RATIO · {rankLabel.toUpperCase()}
+      </Text>
+      <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 16 }}>
+        {percentileLabel}
+      </Text>
+      <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 15 }}>
+        Selected period: {periodLabel(data.period)} · {data.coverage.matchedObservations} exact matched dates · {dateCoverage}.
+      </Text>
+      <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 15 }}>
+        {percentile == null
+          ? 'A rank requires at least 20 valid, same-unit gold and silver prices on matching dates. Missing values are not estimated.'
+          : `Rank is based on the latest matched ratio dated ${data.coverage.matchedEndDate ?? '—'}. Historical rank is descriptive, not a prediction or causal explanation.`}
+      </Text>
+    </View>
+  );
+}
+
 function RelationshipSummary({ data, width }: { data: CommodityRelationshipResponse; width: number }) {
   const colors = useColors();
   const chartCandles = useMemo(() => toComparisonCandles(data), [data]);
@@ -219,6 +260,7 @@ function RelationshipSummary({ data, width }: { data: CommodityRelationshipRespo
             <Metric label="Matched-date return correlation" value={corr(metric.correlation)} />
             <Metric label="Correlation change" value={correlationChange} />
           </View>
+          {data.relationship.id === 'gold-silver-ratio' && <GoldSilverHistoryRank data={data} />}
           <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 15 }}>
             {data.relationship.first.unit === data.relationship.second.unit
               ? `Relative value uses matching quote units (${data.relationship.first.unit}).`
@@ -282,12 +324,15 @@ function RelationshipSummary({ data, width }: { data: CommodityRelationshipRespo
           ) : null}
         </>
       ) : (
-        <View testID="commodity-relationship-unavailable" style={{ borderRadius: 10, padding: 12, backgroundColor: `${colors.holdColor}12` }}>
-          <Text style={{ color: colors.holdColor, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>Relationship unavailable</Text>
-          <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 4 }}>
-            {data.reason ?? 'There are not enough valid, shared trading dates for this comparison.'}
-          </Text>
-        </View>
+        <>
+          <View testID="commodity-relationship-unavailable" style={{ borderRadius: 10, padding: 12, backgroundColor: `${colors.holdColor}12` }}>
+            <Text style={{ color: colors.holdColor, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>Relationship unavailable</Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 4 }}>
+              {data.reason ?? 'There are not enough valid, shared trading dates for this comparison.'}
+            </Text>
+          </View>
+          {data.relationship.id === 'gold-silver-ratio' && <GoldSilverHistoryRank data={data} />}
+        </>
       )}
     </View>
   );

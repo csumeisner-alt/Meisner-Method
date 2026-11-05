@@ -124,6 +124,7 @@ export interface CommodityRelationshipResult {
     correlation: string;
     correlationChange: string;
     divergence: string;
+    relativeValuePercentile: string;
   };
   coverage: {
     firstStartDate: string | null;
@@ -143,6 +144,7 @@ export interface CommodityRelationshipResult {
     correlation: number | null;
     previousCorrelation: number | null;
     correlationChange: number | null;
+    currentRelativeValuePercentile: number | null;
   };
   divergence: {
     status: "detected" | "not_detected" | "unavailable";
@@ -157,6 +159,7 @@ const CORRELATION_MIN_RETURNS = 10;
 const CORRELATION_WINDOW = 20;
 const DIVERGENCE_THRESHOLD_PERCENTAGE_POINTS = 5;
 const DIVERGENCE_MAX_CORRELATION = 0.25;
+const RELATIVE_VALUE_PERCENTILE_MIN_OBSERVATIONS = 20;
 
 function isValidDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -239,6 +242,17 @@ function returnPercent(previous: number, current: number): number {
   return (current / previous - 1) * 100;
 }
 
+function empiricalPercentileRank(current: number, observations: number[]): number | null {
+  if (observations.length < RELATIVE_VALUE_PERCENTILE_MIN_OBSERVATIONS
+    || !Number.isFinite(current)
+    || observations.some((value) => !Number.isFinite(value))) {
+    return null;
+  }
+  const below = observations.filter((value) => value < current).length;
+  const equal = observations.filter((value) => value === current).length;
+  return ((below + equal / 2) / observations.length) * 100;
+}
+
 function emptyResult(
   relationship: CommodityRelationshipDefinition,
   period: CommodityRelationshipPeriod,
@@ -246,6 +260,8 @@ function emptyResult(
   firstDates: DatedCommodityClose[],
   secondDates: DatedCommodityClose[],
   matchedObservations: number,
+  matchedStartDate: string | null,
+  matchedEndDate: string | null,
 ): CommodityRelationshipResult {
   return {
     relationship,
@@ -257,14 +273,15 @@ function emptyResult(
       correlation: "Pearson correlation of close-to-close simple daily returns; minimum 10 matched returns.",
       correlationChange: "Last 20 return observations minus the preceding 20 return observations.",
       divergence: "Detected when the latest 20-session return spread is at least 5 percentage points and its 20-return correlation is at most 0.25.",
+      relativeValuePercentile: "Empirical midrank of the latest relative value among exact-date, same-unit observations; minimum 20 observations. No missing values are filled.",
     },
     coverage: {
       firstStartDate: firstDates[0]?.date ?? null,
       firstEndDate: firstDates.at(-1)?.date ?? null,
       secondStartDate: secondDates[0]?.date ?? null,
       secondEndDate: secondDates.at(-1)?.date ?? null,
-      matchedStartDate: null,
-      matchedEndDate: null,
+      matchedStartDate,
+      matchedEndDate,
       matchedObservations,
       returnObservations: Math.max(0, matchedObservations - 1),
     },
@@ -276,6 +293,7 @@ function emptyResult(
       correlation: null,
       previousCorrelation: null,
       correlationChange: null,
+      currentRelativeValuePercentile: null,
     },
     divergence: { status: "unavailable", firstWindowReturnPercent: null, secondWindowReturnPercent: null, reason },
     points: [],
@@ -307,11 +325,15 @@ export function calculateCommodityRelationship(
       first,
       second,
       matched.length,
+      matched[0]?.date ?? null,
+      matched.at(-1)?.date ?? null,
     );
   }
 
   const firstBase = matched[0]!.first.close;
   const secondBase = matched[0]!.second.close;
+  const relativeValues = matched.map(({ first: firstPoint, second: secondPoint }) =>
+    firstPoint.close / secondPoint.close);
   const firstReturns = matched.slice(1).map(({ first }, index) =>
     returnPercent(matched[index]!.first.close, first.close));
   const secondReturns = matched.slice(1).map(({ second }, index) =>
@@ -389,6 +411,7 @@ export function calculateCommodityRelationship(
       correlation: "Pearson correlation of close-to-close simple daily returns; minimum 10 matched returns.",
       correlationChange: "Last 20 return observations minus the preceding 20 return observations.",
       divergence: "Detected when the latest 20-session return spread is at least 5 percentage points and its 20-return correlation is at most 0.25.",
+      relativeValuePercentile: "Empirical midrank of the latest relative value among exact-date, same-unit observations; minimum 20 observations. No missing values are filled.",
     },
     coverage: {
       firstStartDate: first[0]?.date ?? null,
@@ -409,6 +432,10 @@ export function calculateCommodityRelationship(
       previousCorrelation,
       correlationChange: currentWindowCorrelation != null && previousCorrelation != null
         ? currentWindowCorrelation - previousCorrelation
+        : null,
+      currentRelativeValuePercentile: relationship.id === "gold-silver-ratio"
+        && relationship.first.unit === relationship.second.unit
+        ? empiricalPercentileRank(relativeValues.at(-1)!, relativeValues)
         : null,
     },
     divergence: {

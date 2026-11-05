@@ -87,6 +87,11 @@ export const GetCommodityRelationshipParams = zod.object({
   "period": zod.enum(['1mo', '3mo', '6mo', '1y', '5y', 'max'])
 })
 
+export const getCommodityRelationshipResponseMetricsCurrentRelativeValuePercentileMin = 0;
+export const getCommodityRelationshipResponseMetricsCurrentRelativeValuePercentileMax = 100;
+
+
+
 export const GetCommodityRelationshipResponse = zod.object({
   "relationship": zod.object({
   "id": zod.string(),
@@ -115,7 +120,8 @@ export const GetCommodityRelationshipResponse = zod.object({
   "alignment": zod.string(),
   "correlation": zod.string(),
   "correlationChange": zod.string(),
-  "divergence": zod.string()
+  "divergence": zod.string(),
+  "relativeValuePercentile": zod.string()
 }),
   "coverage": zod.object({
   "firstStartDate": zod.coerce.date().nullable(),
@@ -134,7 +140,8 @@ export const GetCommodityRelationshipResponse = zod.object({
   "relativeStrengthPercentagePoints": zod.number().nullable(),
   "correlation": zod.number().nullable(),
   "previousCorrelation": zod.number().nullable(),
-  "correlationChange": zod.number().nullable()
+  "correlationChange": zod.number().nullable(),
+  "currentRelativeValuePercentile": zod.number().min(getCommodityRelationshipResponseMetricsCurrentRelativeValuePercentileMin).max(getCommodityRelationshipResponseMetricsCurrentRelativeValuePercentileMax).nullable()
 }),
   "divergence": zod.object({
   "status": zod.enum(['detected', 'not_detected', 'unavailable']),

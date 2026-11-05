@@ -88,12 +88,62 @@ test("the direct gold/silver ratio uses same-unit dated futures prices", () => {
   const relationship = COMMODITY_RELATIONSHIPS.find(({ id }) => id === "gold-silver-ratio")!;
   assert.equal(relationship.first.unit, "USD per troy ounce");
   assert.equal(relationship.second.unit, "USD per troy ounce");
-  const first = makeSeries(12, () => 0, "2026-03-02").map((point) => ({ ...point, close: 2000 }));
-  const second = makeSeries(12, () => 0, "2026-03-02").map((point) => ({ ...point, close: 25 }));
+  const first = makeSeries(24, () => 0, "2026-03-02").map((point, index) => ({ ...point, close: 2000 + index }));
+  const second = makeSeries(24, () => 0, "2026-03-02").map((point) => ({ ...point, close: 25 }));
   const result = calculateCommodityRelationship(relationship, "1mo", first, second);
   assert.equal(result.status, "available");
-  assert.equal(result.metrics.currentRelativeValue, 80);
-  assert.equal(result.points.at(-1)!.relativeValue, 80);
+  assert.equal(result.metrics.currentRelativeValue, 2023 / 25);
+  assert.equal(result.points.at(-1)!.relativeValue, 2023 / 25);
+  assert.equal(result.metrics.currentRelativeValuePercentile, 97.91666666666666);
+  assert.match(result.method.relativeValuePercentile, /minimum 20 observations/i);
+});
+
+test("gold/silver history rank uses only exact matched same-unit observations", () => {
+  const relationship = COMMODITY_RELATIONSHIPS.find(({ id }) => id === "gold-silver-ratio")!;
+  const first = makeSeries(24, (_index) => 0, "2026-03-02").map((point, index) => ({
+    ...point,
+    close: 2000 + index,
+  }));
+  const completeSecond = makeSeries(24, () => 0, "2026-03-02").map((point) => ({
+    ...point,
+    close: 25,
+  }));
+  const second = completeSecond.filter((_, index) => index !== 10);
+  const result = calculateCommodityRelationship(relationship, "3mo", first, second);
+  assert.equal(result.coverage.matchedObservations, 23);
+  assert.equal(result.metrics.currentRelativeValuePercentile, 97.82608695652173);
+
+  const tooFew = calculateCommodityRelationship(
+    relationship,
+    "1mo",
+    first.slice(0, 19),
+    second.slice(0, 19),
+  );
+  assert.equal(tooFew.status, "available");
+  assert.equal(tooFew.metrics.currentRelativeValuePercentile, null);
+
+  const minimumSample = calculateCommodityRelationship(
+    relationship,
+    "1mo",
+    first.slice(0, 20),
+    completeSecond.slice(0, 20),
+  );
+  assert.equal(minimumSample.metrics.currentRelativeValuePercentile, 97.5);
+
+  const tiedRatios = calculateCommodityRelationship(
+    relationship,
+    "1mo",
+    first.slice(0, 20).map((point) => ({ ...point, close: 2000 })),
+    completeSecond.slice(0, 20).map((point) => ({ ...point, close: 25 })),
+  );
+  assert.equal(tiedRatios.metrics.currentRelativeValuePercentile, 50);
+
+  const differentUnits = {
+    ...relationship,
+    second: { ...relationship.second, unit: "USD per kilogram" },
+  };
+  const mismatchedUnits = calculateCommodityRelationship(differentUnits, "3mo", first, first);
+  assert.equal(mismatchedUnits.metrics.currentRelativeValuePercentile, null);
 });
 
 test("the ICE dollar-index proxy follows ICE dates instead of CME holiday closures", () => {

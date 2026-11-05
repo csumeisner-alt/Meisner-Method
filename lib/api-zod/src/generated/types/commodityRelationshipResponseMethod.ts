@@ -11,4 +11,5 @@ export type CommodityRelationshipResponseMethod = {
   correlation: string;
   correlationChange: string;
   divergence: string;
+  relativeValuePercentile: string;
 };

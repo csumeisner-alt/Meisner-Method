@@ -55,6 +55,7 @@ export type CommodityRelationshipResponseMethod = {
   correlation: string;
   correlationChange: string;
   divergence: string;
+  relativeValuePercentile: string;
 };
 
 export type CommodityRelationshipResponseCoverage = {
@@ -76,6 +77,11 @@ export type CommodityRelationshipResponseMetrics = {
   correlation: number | null;
   previousCorrelation: number | null;
   correlationChange: number | null;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  currentRelativeValuePercentile: number | null;
 };
 
 export type CommodityRelationshipResponseDivergenceStatus = typeof CommodityRelationshipResponseDivergenceStatus[keyof typeof CommodityRelationshipResponseDivergenceStatus];

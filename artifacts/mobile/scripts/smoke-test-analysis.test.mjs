@@ -817,28 +817,34 @@ async function buildCommodityRelationshipPanelBundle() {
       }
       function availableResponse(relationshipId, period) {
         const [first, second] = pairs[relationshipId];
-        const dates = period === "1y"
-          ? ["2026-01-05", "2026-04-01", "2026-08-01", "2026-11-05"]
-          : ["2026-09-01", "2026-10-01", "2026-11-01", "2026-11-05"];
+        const dates = relationshipId === "gold-silver-ratio"
+          ? Array.from({ length: 40 }, (_, index) => new Date(Date.UTC(2026, 9, 1 + index)).toISOString().slice(0, 10))
+            .filter((date) => ![0, 6].includes(new Date(date + "T00:00:00Z").getUTCDay()))
+            .slice(0, 24)
+          : period === "1y"
+            ? ["2026-01-05", "2026-04-01", "2026-08-01", "2026-11-05"]
+            : ["2026-09-01", "2026-10-01", "2026-11-01", "2026-11-05"];
         return {
           status: "available",
           relationship: { id: relationshipId, first, second, relativeValueLabel: "Relative value" },
           period,
           points: dates.map((date, index) => ({
             date, timestamp: Date.parse(date + "T00:00:00Z") / 1000,
-            firstClose: 100 + index * 4, secondClose: 50 + index * 2,
+            firstClose: 100 + index * (relationshipId === "gold-silver-ratio" ? 1 : 4),
+            secondClose: relationshipId === "gold-silver-ratio" ? 50 : 50 + index * 2,
             rollingCorrelation: [0.1, 0.3, 0.6, 0.8][index],
           })),
           metrics: {
             firstPeriodReturnPercent: 4, secondPeriodReturnPercent: 2,
             relativeStrengthPercentagePoints: 2, correlation: 0.6,
             correlationChange: 0.1, currentRelativeValue: 2,
+            currentRelativeValuePercentile: relationshipId === "gold-silver-ratio" ? 97.91666666666666 : null,
           },
           coverage: {
-            matchedObservations: 4, returnObservations: 3,
-            matchedStartDate: dates[0], matchedEndDate: dates[3],
-            firstStartDate: dates[0], firstEndDate: dates[3],
-            secondStartDate: dates[0], secondEndDate: dates[3],
+            matchedObservations: dates.length, returnObservations: dates.length - 1,
+            matchedStartDate: dates[0], matchedEndDate: dates.at(-1),
+            firstStartDate: dates[0], firstEndDate: dates.at(-1),
+            secondStartDate: dates[0], secondEndDate: dates.at(-1),
           },
           sources: {
             provider: "Browser fixture", firstLatestTimestamp: 1793836800,
@@ -850,6 +856,7 @@ async function buildCommodityRelationshipPanelBundle() {
             alignment: "Only exact shared dates are compared.",
             correlation: "Correlation uses matched daily returns.",
             correlationChange: "Change compares prior observations.",
+            relativeValuePercentile: "Matched same-unit dates only.",
           },
           aiInterpretation: { status: "unavailable", text: null },
         };
@@ -867,11 +874,13 @@ async function buildCommodityRelationshipPanelBundle() {
           return { data: undefined, isLoading: true, isError: false, refetch };
         }
         if (scenario === "unavailable") {
+          const data = availableResponse(relationshipId, period);
           return {
             data: {
-              ...availableResponse(relationshipId, period),
+              ...data,
               status: "unavailable",
               reason: "Only two exact shared dates are available.",
+              metrics: { ...data.metrics, currentRelativeValuePercentile: null },
             },
             isLoading: false, isError: false, refetch,
           };
@@ -1218,6 +1227,25 @@ test("rendered commodity relationship panel supports selection, chart touch, and
         "The selected relationship and period should reach the query hook.",
       );
 
+      await browser.evaluate(`document.querySelector('[data-testid="commodity-relationship-select-gold-silver-ratio"]')?.click()`);
+      await waitForBrowserValue(
+        browser,
+        `document.querySelector('[data-testid="commodity-gold-silver-history-rank"]')?.textContent.includes("97.9th percentile")`,
+        "The gold/silver ratio should show its percentile in the selected history.",
+      );
+      const rankText = await browser.evaluate(
+        `document.querySelector('[data-testid="commodity-gold-silver-history-rank"]')?.textContent ?? ""`,
+      );
+      assert.match(rankText, /HIGH IN SELECTED HISTORY/);
+      assert.match(rankText, /Selected period: 1Y · 24 exact matched dates · 2026-10-01 to 2026-11-03/);
+      assert.match(rankText, /not a prediction or causal explanation/);
+      await browser.evaluate(`document.querySelector('[data-testid="commodity-relationship-select-oil-gold"]')?.click()`);
+      await waitForBrowserValue(
+        browser,
+        `document.querySelector('[data-testid="commodity-relationship-comparison-series"]')?.textContent.includes("Crude Oil vs Gold")`,
+        "The panel should switch back to a pair after inspecting the ratio rank.",
+      );
+
       await browser.evaluate(`document.querySelector('[data-testid="commodity-relationship-correlation-touch-target"]')?.scrollIntoView({ block: "center" })`);
       const point = await browser.evaluate(`(() => {
         const rect = document.querySelector('[data-testid="commodity-relationship-correlation-touch-target"]').getBoundingClientRect();
@@ -1262,6 +1290,19 @@ test("rendered commodity relationship panel supports selection, chart touch, and
           `document.body?.innerText.includes(${JSON.stringify(expectedText)})`,
           `The ${state} state should be readable at ${width}px.`,
         );
+        if (state === "unavailable") {
+          await browser.evaluate(`document.querySelector('[data-testid="commodity-relationship-select-gold-silver-ratio"]')?.click()`);
+          await waitForBrowserValue(
+            browser,
+            `document.querySelector('[data-testid="commodity-gold-silver-history-rank"]')?.textContent.includes("HISTORICAL RANK UNAVAILABLE")`,
+            "The gold/silver rank should be unavailable when its history is unavailable.",
+          );
+          const unavailableRankText = await browser.evaluate(
+            `document.querySelector('[data-testid="commodity-gold-silver-history-rank"]')?.textContent ?? ""`,
+          );
+          assert.match(unavailableRankText, /at least 20 valid, same-unit gold and silver prices/);
+          assert.match(unavailableRankText, /Missing values are not estimated/);
+        }
         dimensions = await layout();
         assert.ok(dimensions.documentWidth <= width && dimensions.bodyWidth <= width && dimensions.panelRight <= width + 1,
           `The ${state} state must fit ${width}px: ${JSON.stringify(dimensions)}`);
