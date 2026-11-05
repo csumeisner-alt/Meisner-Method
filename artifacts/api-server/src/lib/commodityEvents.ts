@@ -10,7 +10,7 @@ const USDA_URL = "https://www.usda.gov/about-usda/general-information/staff-offi
 const WPSR_URL = "https://www.eia.gov/petroleum/supply/weekly/";
 const GAS_URL = "https://www.eia.gov/naturalgas/storage/";
 const BLS_CPI_URL = "https://www.bls.gov/schedule/news_release/cpi.htm";
-const BLS_CPI_API_URL = "https://api.bls.gov/publicAPI/v2/timeseries/data/CUUR0000SA0";
+const BLS_CPI_ARCHIVE_URL = "https://www.bls.gov/news.release/archives";
 const FOMC_URL = "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm";
 const OPEC_RELEASES_URL = "https://www.opec.org/press-releases.html";
 const CACHE_MS = 6 * 60 * 60 * 1000;
@@ -151,14 +151,14 @@ export function parseWasdeReleaseEvents(
   return output;
 }
 
-export function parseBlsCpiEvents(html: string, commodity: string, now: Date): CommodityEvent[] {
+export function parseBlsCpiEvents(html: string, commodity: string, now: Date, pastDays = 30): CommodityEvent[] {
   const text = normalizedText(html);
   const output: CommodityEvent[] = [];
   const rowPattern = /\b([A-Za-z]+\s+20\d{2})\s*\|\s*([A-Za-z]{3,9}\.?\s+\d{1,2},\s+20\d{2})\s*\|\s*(\d{1,2}:\d{2}\s*[AP]M)\b/g;
   for (const match of text.matchAll(rowPattern)) {
     const dateMatch = match[2]!.match(/^([A-Za-z]{3,9})\.?\s+(\d{1,2}),\s+(20\d{2})$/);
     const eventDate = dateMatch ? toIsoDate(dateMatch[1]!, dateMatch[2]!, dateMatch[3]!) : null;
-    if (!eventDate || !inWindow(eventDate, now)) continue;
+    if (!eventDate || !inWindow(eventDate, now, pastDays, 120)) continue;
     output.push(event(`bls-cpi-${eventDate}`, `U.S. Consumer Price Index release · ${match[1]}`, eventDate,
       match[3]!.replace(/\s+/g, " ").toUpperCase(), "ET", [commodity], "U.S. Bureau of Labor Statistics CPI release schedule",
       BLS_CPI_URL, now));
@@ -199,42 +199,30 @@ export function parseFomcEvents(html: string, commodity: string, now: Date): Com
   return output;
 }
 
-function monthNumber(name: string): number | null {
-  const month = MONTHS[name.toLowerCase()];
-  return month === undefined ? null : month + 1;
-}
-
-export function parseBlsCpiIndex(
-  response: unknown,
+export function parseBlsCpiArchiveValue(
+  html: string,
   item: CommodityEvent,
 ): CommodityPublishedValue | null {
   const period = item.name.match(/release\s*[·-]\s*([A-Za-z]+)\s+(20\d{2})$/i);
   if (!period) return null;
-  const month = monthNumber(period[1]!);
-  const year = Number(period[2]);
-  if (!month || !Number.isInteger(year)) return null;
-  const series = (response as { status?: unknown; Results?: { series?: unknown } } | null)?.Results?.series;
-  if ((response as { status?: unknown } | null)?.status !== "REQUEST_SUCCEEDED" || !Array.isArray(series)) return null;
-  const exactSeries = series.find((entry) => (entry as { seriesID?: unknown })?.seriesID === "CUUR0000SA0") as
-    { data?: unknown } | undefined;
-  if (!Array.isArray(exactSeries?.data)) return null;
-  const record = exactSeries.data.find((entry) => {
-    const row = entry as { year?: unknown; period?: unknown; latest?: unknown; footnotes?: unknown };
-    return row.year === String(year) && row.period === `M${String(month).padStart(2, "0")}` && row.latest === "true";
-  }) as { value?: unknown; footnotes?: unknown } | undefined;
-  if (!record || (Array.isArray(record.footnotes) && record.footnotes.some((note) => {
-    const entry = note as { code?: unknown; text?: unknown };
-    return (typeof entry.code === "string" && entry.code.length > 0)
-      || (typeof entry.text === "string" && entry.text.length > 0);
-  }))) return null;
-  const value = typeof record.value === "string" ? Number(record.value) : record.value;
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
+  const refMonth = `${period[1]} ${period[2]}`;
+  const text = normalizedText(html);
+  const release = text.match(/CONSUMER PRICE INDEX\s*[-–—]\s*([A-Za-z]+)\s+(20\d{2})/i);
+  if (!release || `${release[1]} ${release[2]}`.toLowerCase() !== refMonth.toLowerCase()) return null;
+  const released = text.match(/Transmission of material in this release is embargoed until[\s\S]{0,100}?\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s+(20\d{2})\b/i);
+  if (!released || toIsoDate(released[1]!, released[2]!, released[3]!) !== item.eventDate) return null;
+  if (/\b(?:corrected|reissued|erratum|revision to this release|(?:release|data|table|index)\s+(?:(?:has been|was)\s+)?revised|revised\s+(?:release|data|table|index))\b/i.test(text)) return null;
+  const measures = text.match(/Not seasonally adjusted CPI measures([\s\S]{0,1400})(?:_{5,}|Technical Note|$)/i)?.[1];
+  const index = measures?.match(/Consumer Price Index for All Urban Consumers\s*\(CPI-U\)\s*increased\s+[\d.]+\s+percent\s+over\s+the\s+last\s+12\s+months\s+to\s+an\s+index\s+level\s+of\s+([\d.]+)\s*\(1982[-–]84\s*=\s*100\)/i);
+  const value = index ? Number(index[1]) : Number.NaN;
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const archiveDate = item.eventDate.slice(5, 7) + item.eventDate.slice(8, 10) + item.eventDate.slice(0, 4);
   return {
     value,
     units: "CPI-U index (1982–84=100), not seasonally adjusted",
     source: {
-      title: "BLS CPI-U all-items series",
-      url: `${BLS_CPI_API_URL}?startyear=${year}&endyear=${year}`,
+      title: `BLS CPI-U ${refMonth} archived release`,
+      url: `${BLS_CPI_ARCHIVE_URL}/cpi_${archiveDate}.htm`,
       publicationDate: item.eventDate,
     },
   };
@@ -346,7 +334,12 @@ function knownEventSource(item: CommodityEvent): boolean {
   if (item.name === "USDA WASDE supply and demand report") return item.source.url === USDA_URL;
   if (item.name === "EIA Weekly Petroleum Status Report") return item.source.url === WPSR_URL;
   if (item.name === "EIA Weekly Natural Gas Storage Report") return item.source.url === GAS_URL;
-  if (item.name.startsWith("U.S. Consumer Price Index release")) return item.source.url === BLS_CPI_URL;
+  if (item.name.startsWith("U.S. Consumer Price Index release")) {
+    if (item.source.url === BLS_CPI_URL) return true;
+    return item.status === "completed"
+      && item.source.url === item.values?.actual?.source?.url
+      && item.source.publicationDate === item.eventDate;
+  }
   if (item.name === "Federal Reserve FOMC meeting") {
     return item.source.url === FOMC_URL
       || /^https:\/\/www\.federalreserve\.gov\/newsevents\/pressreleases\/monetary20\d{6}a\.htm$/.test(item.source.url);
@@ -363,13 +356,20 @@ function knownEventSource(item: CommodityEvent): boolean {
   return false;
 }
 
-function knownPublishedValueSource(item: CommodityEvent, value: CommodityPublishedValue): boolean {
+function knownPublishedValueSource(
+  item: CommodityEvent,
+  value: CommodityPublishedValue,
+  field: keyof CommodityEvent["values"],
+): boolean {
   if (!value.source) return true;
   try {
     const url = new URL(value.source.url);
     if (item.name.startsWith("U.S. Consumer Price Index release")) {
-      return url.protocol === "https:" && url.hostname === "api.bls.gov"
-        && url.pathname === "/publicAPI/v2/timeseries/data/CUUR0000SA0";
+      const archive = url.pathname.match(/^\/news\.release\/archives\/cpi_(\d{2})(\d{2})(\d{4})\.htm$/);
+      if (url.protocol !== "https:" || url.hostname !== "www.bls.gov" || !archive) return false;
+      const releaseDate = `${archive[3]}-${archive[1]}-${archive[2]}`;
+      return releaseDate === value.source.publicationDate
+        && (field === "actual" ? releaseDate === item.eventDate : field === "previous" && releaseDate < item.eventDate);
     }
     if (item.name === "Federal Reserve FOMC meeting") {
       return url.protocol === "https:" && url.hostname === "www.federalreserve.gov"
@@ -417,7 +417,7 @@ export function validateCommodityEventCalendar(
       if (value.upperBound !== undefined && (!Number.isFinite(value.upperBound) || value.upperBound < value.value)) return false;
       if (value.source && (!validDate(value.source.publicationDate) || typeof value.source.title !== "string"
         || !value.source.title || !/^https:\/\//.test(value.source.url))) return false;
-      return knownPublishedValueSource(item, value);
+      return knownPublishedValueSource(item, value, key as keyof CommodityEvent["values"]);
     }));
   const unavailable = calendar.unavailable.filter((item) => typeof item === "string" && item.trim().length > 0);
   return {
@@ -459,8 +459,16 @@ export async function fetchCommodityEventCalendar(
     const events: CommodityEvent[] = [];
     const unavailable = ["Geopolitical and unscheduled production events do not have a verified calendar."];
     let fomcHtml: string | null = null;
+    let cpiReleaseHistory: CommodityEvent[] = [];
     const sources: Array<{ url: string; name: string; parse: (body: string) => CommodityEvent[] }> = [
-      { url: BLS_CPI_URL, name: "BLS CPI schedule", parse: (body) => parseBlsCpiEvents(body, commodity.name, now) },
+      {
+        url: BLS_CPI_URL,
+        name: "BLS CPI schedule",
+        parse: (body) => {
+          cpiReleaseHistory = parseBlsCpiEvents(body, commodity.name, now, 90);
+          return cpiReleaseHistory.filter((item) => inWindow(item.eventDate, now));
+        },
+      },
       {
         url: FOMC_URL,
         name: "Federal Reserve schedule",
@@ -493,26 +501,37 @@ export async function fetchCommodityEventCalendar(
     await Promise.all(events.map(async (item) => {
       if (item.status !== "completed") return;
       if (item.name.startsWith("U.S. Consumer Price Index release")) {
-        const year = item.name.match(/(20\d{2})$/)?.[1];
-        if (!year) return;
+        const previousRelease = cpiReleaseHistory
+          .filter((candidate) => candidate.eventDate < item.eventDate)
+          .sort((a, b) => b.eventDate.localeCompare(a.eventDate))[0];
         try {
-          const url = `${BLS_CPI_API_URL}?startyear=${year}&endyear=${year}`;
-          const response = await fetch(url, {
-            headers: { "User-Agent": "MeisnerMethod/1.0 (verified BLS CPI data)" },
-            signal: AbortSignal.timeout(8_000),
-          });
-          if (!response.ok) throw new Error(`BLS CPI series returned HTTP ${response.status}`);
-          const actual = parseBlsCpiIndex(await response.json(), item);
+          const archiveDate = item.eventDate.slice(5, 7) + item.eventDate.slice(8, 10) + item.eventDate.slice(0, 4);
+          const actual = parseBlsCpiArchiveValue(await fetchPage(`${BLS_CPI_ARCHIVE_URL}/cpi_${archiveDate}.htm`), item);
           if (!actual) {
-            unavailable.push(`BLS CPI result for ${item.eventDate} is not current or could not be verified.`);
+            unavailable.push(`BLS CPI result for ${item.eventDate} is unavailable or could not be verified in its dated release.`);
             return;
           }
+          let previous: CommodityPublishedValue | null = null;
+          if (previousRelease) {
+            const previousArchiveDate = previousRelease.eventDate.slice(5, 7)
+              + previousRelease.eventDate.slice(8, 10) + previousRelease.eventDate.slice(0, 4);
+            try {
+              previous = parseBlsCpiArchiveValue(
+                await fetchPage(`${BLS_CPI_ARCHIVE_URL}/cpi_${previousArchiveDate}.htm`),
+                previousRelease,
+              );
+            } catch {
+              previous = null;
+            }
+          }
           item.values.actual = actual;
-          item.source.publicationDate = actual.source?.publicationDate ?? null;
-          item.source.url = BLS_CPI_URL;
-          unavailable.push(`Prior CPI release value for ${item.eventDate} is unavailable without a verified release-specific snapshot.`);
+          item.values.previous = previous;
+          item.source = { title: actual.source!.title, url: actual.source!.url, publicationDate: actual.source!.publicationDate };
+          if (!previous) {
+            unavailable.push(`Prior CPI release value for ${item.eventDate} is unavailable or could not be verified in its dated release.`);
+          }
         } catch {
-          unavailable.push(`BLS CPI result for ${item.eventDate} is unavailable; no value was inferred.`);
+          unavailable.push(`BLS CPI release for ${item.eventDate} is unavailable; no value was inferred.`);
         }
         return;
       }

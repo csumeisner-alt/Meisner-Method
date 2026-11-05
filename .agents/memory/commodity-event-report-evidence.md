@@ -5,7 +5,7 @@ description: Validation rules for commodity event schedules, published report va
 
 Only use dated official event announcements for confirmed commodity-calendar dates. A date passing on a schedule is not, by itself, proof that a report was published. Attach previous or actual values only when they come from a matching dated observation; never infer consensus. Historical averages require multiple prior observations with matching units and reporting periods.
 
-The BLS public CPI series returns current-vintage observations, not release-time snapshots. Use it only for the latest matching period, reject revision footnotes, and leave a prior CPI result unavailable unless a dated release-specific source is verified.
+Use dated BLS CPI archive pages for both actual and previous values; validate the archived release date, reference month, units, and index, and leave values unavailable when a release is missing or explicitly revised. The current BLS series endpoint is current-vintage, not a historical release snapshot.
 
 **Why:** Official schedules can change, reports can be revised or delayed, and mixing reporting periods or estimates can make commodity context look more certain than its sources support.
 

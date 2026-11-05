@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   parseBlsCpiEvents,
-  parseBlsCpiIndex,
+  parseBlsCpiArchiveValue,
   parseEiaReleaseEvents,
   parseFomcEvents,
   parseFomcPolicyValue,
@@ -15,6 +15,16 @@ import {
 import type { CommodityEventCalendar } from "./commodityAnalysis.ts";
 
 const NOW = new Date("2026-11-05T12:00:00.000Z");
+const RELEASE_MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+function cpiArchive(referenceMonth: string, releaseDate: string, index: string, note = ""): string {
+  const [year, month, day] = releaseDate.split("-");
+  return `Transmission of material in this release is embargoed until 8:30 a.m. (ET) Wednesday, ${RELEASE_MONTHS[Number(month) - 1]} ${Number(day)}, ${year}
+    CONSUMER PRICE INDEX - ${referenceMonth}
+    Not seasonally adjusted CPI measures
+    The Consumer Price Index for All Urban Consumers (CPI-U) increased 3.7 percent over the last 12 months to an index level of ${index} (1982-84=100).
+    ${note}`;
+}
 
 test("EIA release parser separates the recent release from a confirmed next report", () => {
   const html = "Weekly Petroleum Status Report | Data for week ending Nov. 1, 2026 | Release Date: Nov. 4, 2026 | Next Release Date: Nov. 12, 2026";
@@ -79,37 +89,29 @@ test("BLS CPI and Federal Reserve meeting calendars include only source dates in
   ]);
 });
 
-test("CPI result is accepted only for the latest matching BLS period without revision notes", () => {
+test("CPI archive value requires the matching reference month, release date, and unrevised index", () => {
   const item = parseBlsCpiEvents(
-    "Reference Month | Release Date | Release Time | September 2026 | Oct. 13, 2026 | 08:30 AM",
+    "Reference Month | Release Date | Release Time | September 2026 | Oct. 14, 2026 | 08:30 AM",
     "Gold",
     NOW,
   )[0]!;
-  const response = {
-    status: "REQUEST_SUCCEEDED",
-    Results: { series: [{
-      seriesID: "CUUR0000SA0",
-      data: [
-        { year: "2026", period: "M09", latest: "true", value: "336.940", footnotes: [{}] },
-        { year: "2026", period: "M08", value: "334.980", footnotes: [{}] },
-      ],
-    }] },
-  };
-  assert.deepEqual(parseBlsCpiIndex(response, item), {
+  const archive = cpiArchive("September 2026", "2026-10-14", "336.940");
+  assert.deepEqual(parseBlsCpiArchiveValue(archive, item), {
     value: 336.94,
     units: "CPI-U index (1982–84=100), not seasonally adjusted",
     source: {
-      title: "BLS CPI-U all-items series",
-      url: "https://api.bls.gov/publicAPI/v2/timeseries/data/CUUR0000SA0?startyear=2026&endyear=2026",
-      publicationDate: "2026-10-13",
+      title: "BLS CPI-U September 2026 archived release",
+      url: "https://www.bls.gov/news.release/archives/cpi_10142026.htm",
+      publicationDate: "2026-10-14",
     },
   });
-  const stale = structuredClone(response);
-  stale.Results.series[0]!.data[0]!.latest = "false";
-  assert.equal(parseBlsCpiIndex(stale, item), null);
-  const revised = structuredClone(response);
-  revised.Results.series[0]!.data[0]!.footnotes = [{ code: "R", text: "Revised" }];
-  assert.equal(parseBlsCpiIndex(revised, item), null);
+  assert.equal(parseBlsCpiArchiveValue("", item), null, "missing archive page is unavailable");
+  assert.equal(parseBlsCpiArchiveValue(cpiArchive("August 2026", "2026-10-14", "336.940"), item), null,
+    "an archive for a different reference month is rejected");
+  assert.equal(parseBlsCpiArchiveValue(cpiArchive("September 2026", "2026-10-13", "336.940"), item), null,
+    "a page with a mismatched release date is rejected");
+  assert.equal(parseBlsCpiArchiveValue(cpiArchive("September 2026", "2026-10-14", "336.940", "The CPI-U table was revised."), item), null,
+    "a release marked revised is unavailable");
 });
 
 test("FOMC target range must match the dated official statement", () => {
@@ -136,7 +138,7 @@ test("completed CPI and FOMC events include only official dated results", async 
   globalThis.fetch = async (input) => {
     const url = String(input);
     if (url === "https://www.bls.gov/schedule/news_release/cpi.htm") {
-      return new Response("Reference Month | Release Date | Release Time | September 2026 | Oct. 13, 2026 | 08:30 AM");
+      return new Response("Reference Month | Release Date | Release Time | August 2026 | Sep. 11, 2026 | 08:30 AM | September 2026 | Oct. 14, 2026 | 08:30 AM | October 2026 | Nov. 12, 2026 | 08:30 AM");
     }
     if (url === "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm") {
       return new Response([
@@ -144,13 +146,11 @@ test("completed CPI and FOMC events include only official dated results", async 
         `<a href="${priorStatementUrl}">HTML</a><a href="${currentStatementUrl}">HTML</a>`,
       ].join(" "));
     }
-    if (url.startsWith("https://api.bls.gov/publicAPI/v2/timeseries/data/CUUR0000SA0")) {
-      return Response.json({
-        status: "REQUEST_SUCCEEDED",
-        Results: { series: [{ seriesID: "CUUR0000SA0", data: [
-          { year: "2026", period: "M09", latest: "true", value: "336.940", footnotes: [{}] },
-        ] }] },
-      });
+    if (url === "https://www.bls.gov/news.release/archives/cpi_10142026.htm") {
+      return new Response(cpiArchive("September 2026", "2026-10-14", "336.940"));
+    }
+    if (url === "https://www.bls.gov/news.release/archives/cpi_09112026.htm") {
+      return new Response(cpiArchive("August 2026", "2026-09-11", "334.980"));
     }
     if (url === currentStatementUrl) {
       return new Response("October 28, 2026. The Committee decided to maintain the target range for the federal funds rate at 3-3/4 to 4 percent.");
@@ -162,12 +162,17 @@ test("completed CPI and FOMC events include only official dated results", async 
   };
   try {
     const result = await fetchCommodityEventCalendar("SI=F", NOW);
-    const cpi = result.events.find((item) => item.name.startsWith("U.S. Consumer Price Index"));
+    const cpi = result.events.find((item) => item.eventDate === "2026-10-14");
     const fomc = result.events.find((item) => item.name === "Federal Reserve FOMC meeting");
-    assert.deepEqual(cpi?.values.previous, null);
     assert.equal(cpi?.values.consensus, null);
     assert.equal(cpi?.values.actual?.value, 336.94);
-    assert.equal(cpi?.values.actual?.source?.publicationDate, "2026-10-13");
+    assert.equal(cpi?.values.actual?.source?.publicationDate, "2026-10-14");
+    assert.equal(cpi?.values.previous?.value, 334.98);
+    assert.equal(cpi?.values.previous?.source?.publicationDate, "2026-09-11");
+    assert.notEqual(cpi?.values.actual?.source?.url, cpi?.values.previous?.source?.url);
+    assert.equal(cpi?.source.url, cpi?.values.actual?.source?.url);
+    const validated = validateCommodityEventCalendar(result, "SI=F", NOW);
+    assert.equal(validated.events.find((item) => item.eventDate === "2026-10-14")?.values.previous?.value, 334.98);
     assert.equal(fomc?.values.actual?.value, 3.75);
     assert.equal(fomc?.values.actual?.upperBound, 4);
     assert.equal(fomc?.values.previous?.value, 3.5);
