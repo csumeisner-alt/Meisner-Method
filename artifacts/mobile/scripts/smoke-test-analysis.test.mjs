@@ -993,7 +993,7 @@ async function waitForBrowserValue(browser, expression, message, timeout = 8000)
     if (await browser.evaluate(expression)) return;
     await delay(40);
   }
-  throw new Error(`${message}\nRendered page: ${await browser.evaluate("document.body?.innerText ?? ''")}`);
+  throw new Error(message);
 }
 
 test("rendered ETF detail and comparison hide invalid tracking history", async () => {
