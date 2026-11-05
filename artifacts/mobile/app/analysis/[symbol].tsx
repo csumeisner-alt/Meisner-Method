@@ -1550,7 +1550,6 @@ function EtfAnalysisSections({
 }) {
   const { apiFetch } = useApi();
   const router = useRouter();
-  const [returnBasis, setReturnBasis] = useState<'price' | 'total' | null>(null);
   const [savedCompareSymbols, setSavedCompareSymbols] = useState<string[]>([]);
   const [compareFunds, setCompareFunds] = useState<Array<{
     symbol: string;
@@ -1626,9 +1625,7 @@ function EtfAnalysisSections({
   const totalReturnAvailable = selectedComparisonSymbols.length > 0
     ? hasSharedAdjustedReturns
     : primaryStandaloneAdjustedCandles != null;
-  const chartUsesAdjustedReturns = (returnBasis ?? (totalReturnAvailable ? 'total' : 'price')) === 'total'
-    && totalReturnAvailable;
-  const chartReturnBasis = chartUsesAdjustedReturns ? 'total' : 'price';
+  const chartUsesAdjustedReturns = false;
   const unavailableAdjustedFunds = [
     {
       ticker: symbol.toUpperCase(),
@@ -3608,11 +3605,6 @@ function EtfAnalysisSections({
               primaryCandles={chartPrimaryCandles}
               primarySymbol={symbol ?? ''}
               additionalSeries={chartComparisonSeries}
-              adjustedReturnMode={chartUsesAdjustedReturns}
-              returnBasis={chartReturnBasis}
-              totalReturnAvailable={totalReturnAvailable}
-              totalReturnUnavailableReason={totalReturnUnavailableReason}
-              onReturnBasisChange={setReturnBasis}
               width={chartWidth}
               height={240}
             />
@@ -3640,9 +3632,7 @@ function EtfAnalysisSections({
                   : `Selected range: ${primaryCandles[0]?.date ?? 'date unavailable'} to ${primaryCandles[primaryCandles.length - 1]?.date ?? 'date unavailable'}.`}
             {' '}{chartUsesAdjustedReturns
               ? 'Every plotted ETF uses its provider Adj Close series on the shared dates; the provider calculation is not independently audited.'
-              : totalReturnAvailable
-                ? 'The chart uses provider Close changes. Verified provider-adjusted total return is also available; choose Total return to view it.'
-                : `Dividend-adjusted total return is unavailable: ${totalReturnUnavailableReason} The chart uses provider Close changes; no total-return estimate is shown.`}
+              : 'The chart uses provider Close changes to show price return.'}
           </Text>
         )}
         {symbol.toUpperCase() === 'VOO' && (

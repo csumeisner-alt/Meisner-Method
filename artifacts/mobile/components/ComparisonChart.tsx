@@ -375,7 +375,7 @@ export function ComparisonChart({
           })}
         </View>
         <Text style={s.modeValueLabel}>
-          {usesAdjustedReturns ? 'TOTAL RETURN' : displayMode === 'percent' ? 'PERCENT' : 'PRICE'}
+          {usesAdjustedReturns ? 'TOTAL RETURN' : displayMode === 'percent' ? 'PRICE RETURN' : 'PRICE'}
         </Text>
       </View>
 

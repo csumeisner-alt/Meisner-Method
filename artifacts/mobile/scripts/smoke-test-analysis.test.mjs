@@ -17,6 +17,10 @@ const etfAnalysisSource = readFileSync(
   new URL("../app/analysis/[symbol].tsx", import.meta.url),
   "utf8",
 );
+const comparisonChartSource = readFileSync(
+  new URL("../components/ComparisonChart.tsx", import.meta.url),
+  "utf8",
+);
 const apiSchemaSource = readFileSync(
   new URL("../../../lib/api-spec/openapi.yaml", import.meta.url),
   "utf8",
@@ -278,15 +282,13 @@ test("ETF comparison chart plots shared reported dates and explains insufficient
   assert.match(etfAnalysisSource, /alignProviderAdjustedReturnsAcrossSeries\(/);
   assert.match(etfAnalysisSource, /primaryCandles=\{chartPrimaryCandles\}/);
   assert.match(etfAnalysisSource, /additionalSeries=\{chartComparisonSeries\}/);
-  assert.match(etfAnalysisSource, /adjustedReturnMode=\{chartUsesAdjustedReturns\}/);
-  assert.match(etfAnalysisSource, /returnBasis=\{chartReturnBasis\}/);
-  assert.match(etfAnalysisSource, /totalReturnAvailable=\{totalReturnAvailable\}/);
-  assert.match(etfAnalysisSource, /onReturnBasisChange=\{setReturnBasis\}/);
+  assert.match(etfAnalysisSource, /const chartUsesAdjustedReturns = false/);
+  assert.doesNotMatch(etfAnalysisSource, /returnBasis=\{|onReturnBasisChange=\{/);
+  assert.match(comparisonChartSource, /displayMode === 'percent' \? 'PRICE RETURN' : 'PRICE'/);
   assert.match(etfAnalysisSource, /Provider-adjusted history does not cover every shared reported date/);
   assert.match(etfAnalysisSource, /Price comparison unavailable: only \$\{sharedChartCandles\.dates\.length\} dates are reported by every selected ETF/);
   assert.match(etfAnalysisSource, /No missing dates are filled or interpolated/);
-  assert.match(etfAnalysisSource, /Every plotted ETF uses its provider Adj Close series on the shared dates/);
-  assert.match(etfAnalysisSource, /no total-return estimate is shown/);
+  assert.match(etfAnalysisSource, /The chart uses provider Close changes to show price return/);
 });
 
 test("ETF AI commentary stays separate from the research score and grounded in supplied facts", () => {
