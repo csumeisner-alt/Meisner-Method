@@ -1688,7 +1688,7 @@ export default function HeatMapScreen() {
                 ? 'Matching instruments appear across all types. Choose a type above to browse.'
                 : `Search by name or ticker, or browse supported ${CUSTOM_HEAT_MAP_ASSET_TYPES.find((item) => item.id === customAssetType)?.label.toLowerCase()}.`}
             </Text>
-            <View style={styles.addRow}><TextInput testID="heat-map-custom-input" value={symbolInput} editable={storageReady && !storageLoadError && !isAddingSelectedAssets} onFocus={() => setIsEditingCustomMap(false)} onChangeText={(value) => { setSymbolInput(value); setFormError(''); setCustomBatchFeedback(null); }}
+            <View style={styles.addRow}><TextInput testID="heat-map-custom-input" accessibilityLabel="Search supported instruments or enter a ticker" value={symbolInput} editable={storageReady && !storageLoadError && !isAddingSelectedAssets} onFocus={() => setIsEditingCustomMap(false)} onChangeText={(value) => { setSymbolInput(value); setFormError(''); setCustomBatchFeedback(null); }}
               placeholder="Search name or enter ticker" placeholderTextColor={colors.mutedForeground} autoCapitalize="none" autoCorrect={false} maxLength={80}
               returnKeyType="done" onSubmitEditing={() => void addSymbol()} style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.input }]} />
               <TouchableOpacity testID="heat-map-custom-add" accessibilityRole="button" accessibilityLabel="Add ticker to custom map"
@@ -2313,8 +2313,8 @@ const styles = StyleSheet.create({
   undoButton: { minHeight: 28, borderWidth: 1, borderRadius: 8, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
   undoButtonText: { fontFamily: 'Inter_700Bold', fontSize: 10 },
   addRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  input: { flex: 1, height: 42, borderRadius: 11, borderWidth: 1, paddingHorizontal: 12, fontFamily: 'Inter_500Medium', fontSize: 13 },
-  addButton: { width: 43, height: 42, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  input: { flex: 1, height: 48, borderRadius: 11, borderWidth: 1, paddingHorizontal: 12, fontFamily: 'Inter_500Medium', fontSize: 14 },
+  addButton: { width: 48, height: 48, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   suggestionsPanel: { marginTop: 8, borderWidth: 1, borderRadius: 11, overflow: 'hidden' },
   suggestionRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 11, paddingVertical: 8 },
   stockSuggestionAdd: { flex: 1, minWidth: 0, minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10 },

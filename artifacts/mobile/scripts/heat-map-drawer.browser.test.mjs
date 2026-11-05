@@ -433,6 +433,24 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
     await clickTestID(browser, "heat-map-open-detail-GC=F");
     await waitFor(
       (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
+      "The commodity detail card should open at the narrow-phone viewport.",
+    );
+    const commodityDetailFitsPhone = await browser.evaluate(`(() => {
+      const modal = document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))});
+      const content = document.querySelector(${JSON.stringify(selector("heat-map-detail-scroll"))});
+      return !!modal && !!content
+        && modal.getBoundingClientRect().width <= window.innerWidth
+        && content.scrollWidth <= content.clientWidth + 1
+        && document.documentElement.scrollWidth <= window.innerWidth;
+    })()`);
+    assert.equal(
+      commodityDetailFitsPhone,
+      true,
+      "The commodity detail card and its content must fit the 320px phone viewport without horizontal overflow.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
       `window.__heatMapBrowserTest.commodityDriverRequests.some((request) => request.symbol === "GC=F")`,
       "Opening a commodity detail card should request its price drivers.",
     );
@@ -504,6 +522,11 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       "Stale commodity drivers must not appear after changing the selected commodity.",
     );
     await clickTestID(browser, "heat-map-detail-close");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
+      "The commodity detail should close before restoring the initial market map.",
+    );
     await browser.evaluate("window.__heatMapBrowserTest.setResponse(window.__heatMapBrowserTest.initialData)");
 
     await clickTestID(browser, "heat-map-open-detail-MATCH");
@@ -3197,11 +3220,11 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       "Tapping a commodity tile should open its detail card.",
     );
     await assertWatchlistAddIsUnique(browser, "GC=F");
-    await clickTestID(browser, "heat-map-detail-close");
+    await clickTestID(browser, "heat-map-detail-analyze-commodity");
     await waitFor(
       (expression) => browser.evaluate(expression),
-      `!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
-      "The priced commodity detail card should close before testing an unavailable commodity.",
+      `window.__heatMapRoutePushes?.includes("/analysis/GC%3DF") && !document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
+      "The commodity detail action should close the modal and navigate to Gold analysis.",
     );
     await clickTestID(browser, "heat-map-unavailable-hex-CL=F");
     await waitFor(

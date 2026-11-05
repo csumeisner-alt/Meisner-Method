@@ -15,7 +15,7 @@
  *  - Legend row with color swatches and current period return
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Svg, { Path, Line, Text as SvgText, Circle, G, Rect } from 'react-native-svg';
 import type { GestureResponderEvent } from 'react-native';
@@ -35,6 +35,7 @@ const GRID_COLOR    = 'rgba(192,192,192,0.07)';
 const AXIS_COLOR    = 'rgba(192,192,192,0.40)';
 const BG_BUBBLE     = '#1c1c1c';
 const PAD = { top: 20, right: 60, bottom: 42, left: 6 };
+const EMPTY_ADDITIONAL_SERIES: { symbol: string; candles: Candle[] }[] = [];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -83,6 +84,7 @@ interface Props {
   totalReturnAvailable?: boolean;
   totalReturnUnavailableReason?: string;
   onReturnBasisChange?: (basis: 'price' | 'total') => void;
+  largeTouchTargets?: boolean;
   width:          number;
   height?:        number;
 }
@@ -144,12 +146,13 @@ export function ComparisonChart({
   compSymbol,
   secondCompCandles,
   secondCompSymbol,
-  additionalSeries = [],
+  additionalSeries = EMPTY_ADDITIONAL_SERIES,
   adjustedReturnMode = false,
   returnBasis,
   totalReturnAvailable = true,
   totalReturnUnavailableReason,
   onReturnBasisChange,
+  largeTouchTargets = false,
   width,
   height = 240,
 }: Props) {
@@ -163,31 +166,44 @@ export function ComparisonChart({
   const chartW = width - PAD.left - PAD.right;
   const chartH = height - PAD.top - PAD.bottom;
 
-  const comparisons = [
+  const comparisons = useMemo(() => [
     ...additionalSeries,
     ...(compCandles?.length && compSymbol ? [{ symbol: compSymbol, candles: compCandles }] : []),
     ...(secondCompCandles?.length && secondCompSymbol
       ? [{ symbol: secondCompSymbol, candles: secondCompCandles }]
       : []),
-  ].filter(({ candles }) => candles.length > 0);
-  const chartSeries = [
+  ].filter(({ candles }) => candles.length > 0), [
+    additionalSeries, compCandles, compSymbol, secondCompCandles, secondCompSymbol,
+  ]);
+  const chartSeries = useMemo(() => [
     { symbol: primarySymbol, candles: primaryCandles },
     ...comparisons,
-  ];
-  const seriesValues = chartSeries.map(({ candles }) => {
+  ], [comparisons, primaryCandles, primarySymbol]);
+  const seriesValues = useMemo(() => chartSeries.map(({ candles }) => {
     if (displayMode === 'price') return candles.map((candle) => candle.c);
     return usesAdjustedReturns
       ? candles.map((candle) => candle.adjustedReturnPercent ?? 0)
       : normalize(candles);
-  });
+  }), [chartSeries, displayMode, usesAdjustedReturns]);
   const primValues = seriesValues[0] ?? [];
   const nPrim = primValues.length;
   const seriesLengths = seriesValues.map((values) => values.length);
 
   // Combined Y domain
-  const allVals = seriesValues.flat();
-  const rawMin = allVals.length > 0 ? Math.min(...allVals) : displayMode === 'percent' ? -5 : 0;
-  const rawMax = allVals.length > 0 ? Math.max(...allVals) : displayMode === 'percent' ? 5 : 1;
+  const { rawMin, rawMax } = useMemo(() => {
+    let min = Number.POSITIVE_INFINITY;
+    let max = Number.NEGATIVE_INFINITY;
+    for (const values of seriesValues) {
+      for (const value of values) {
+        if (value < min) min = value;
+        if (value > max) max = value;
+      }
+    }
+    return {
+      rawMin: Number.isFinite(min) ? min : displayMode === 'percent' ? -5 : 0,
+      rawMax: Number.isFinite(max) ? max : displayMode === 'percent' ? 5 : 1,
+    };
+  }, [displayMode, seriesValues]);
   const yPad  = Math.max((rawMax - rawMin) * 0.12, 2);
   const minY  = rawMin - yPad;
   const maxY  = rawMax + yPad;
@@ -203,18 +219,11 @@ export function ComparisonChart({
     PAD.top + chartH - ((v - minY) / rangeY) * chartH;
   const py0 = pyVal(0); // zero-return baseline
 
-  // SVG paths
-  function buildPath(rets: number[], xFn: (i: number) => number): string {
-    return rets
-      .map((v, i) => `${i === 0 ? 'M' : 'L'}${xFn(i).toFixed(1)},${pyVal(v).toFixed(1)}`)
-      .join(' ');
-  }
-
   // Y-axis ticks
-  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((t) => ({
+  const yTicks = useMemo(() => [0, 0.25, 0.5, 0.75, 1].map((t) => ({
     val: minY + t * rangeY,
     y:   PAD.top + chartH * (1 - t),
-  }));
+  })), [chartH, minY, rangeY]);
 
   // X-axis labels (primary, up to 5)
   const xLabelCount = Math.min(5, nPrim);
@@ -235,11 +244,28 @@ export function ComparisonChart({
   const xStep = nPrim <= 1 ? chartW : chartW / (nPrim - 1);
   const handleTouch = useCallback(
     (e: GestureResponderEvent) => {
-      const lx = e.nativeEvent.locationX - PAD.left;
+      const event = e.nativeEvent as typeof e.nativeEvent & { pageX?: number };
+      let localX = event.locationX;
+      if (!Number.isFinite(localX) && Number.isFinite(event.pageX)) {
+        const target = e.currentTarget as unknown as {
+          getBoundingClientRect?: () => { left: number };
+        };
+        const left = target.getBoundingClientRect?.().left;
+        if (Number.isFinite(left)) localX = event.pageX! - left!;
+      }
+      const lx = (Number.isFinite(localX) ? localX : 0) - PAD.left;
       setTouched(Math.max(0, Math.min(nPrim - 1, Math.round(lx / xStep))));
     },
     [xStep, nPrim],
   );
+
+  const paths = useMemo(() => seriesValues.map((values) => values
+    .map((value, index) => {
+      const x = PAD.left + ((values.length <= 1 ? 0 : index / (values.length - 1)) * chartW);
+      const y = PAD.top + chartH - ((value - minY) / rangeY) * chartH;
+      return `${index === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(' ')), [chartH, chartW, minY, rangeY, seriesValues]);
 
   // Crosshair values
   const touchPrimValue = touched !== null ? primValues[touched] : null;
@@ -301,7 +327,7 @@ export function ComparisonChart({
                       setTouched(null);
                       onReturnBasisChange(option.key);
                     }}
-                    style={[s.modeButton, selected && s.modeButtonActive, disabled && s.modeButtonDisabled]}
+                    style={[s.modeButton, largeTouchTargets && s.modeButtonLarge, selected && s.modeButtonActive, disabled && s.modeButtonDisabled]}
                   >
                     <Text style={[s.modeButtonText, selected && s.modeButtonTextActive, disabled && s.modeButtonTextDisabled]}>
                       {option.label}
@@ -339,7 +365,7 @@ export function ComparisonChart({
                   setTouched(null);
                   setMode(option.key);
                 }}
-                style={[s.modeButton, selected && s.modeButtonActive]}
+                style={[s.modeButton, largeTouchTargets && s.modeButtonLarge, selected && s.modeButtonActive]}
               >
                 <Text style={[s.modeButtonText, selected && s.modeButtonTextActive]}>
                   {option.label}
@@ -367,11 +393,13 @@ export function ComparisonChart({
       </View>
 
       {/* ── SVG ────────────────────────────────────────────────────────── */}
+      <View style={{ width, height, position: 'relative' }}>
       <Svg
         width={width}
         height={height}
-        onPress={handleTouch}
-        onPressOut={() => setTouched(null)}
+        pointerEvents={largeTouchTargets ? 'none' : 'auto'}
+        onPress={largeTouchTargets ? undefined : handleTouch}
+        onPressOut={largeTouchTargets ? undefined : () => setTouched(null)}
       >
         {/* Grid lines */}
         {yTicks.map(({ y }, i) => (
@@ -413,7 +441,7 @@ export function ComparisonChart({
           return (
             <Path
               key={`${symbol}-${seriesIndex}`}
-              d={buildPath(seriesValues[seriesIndex] ?? [], (pointIndex) => pxForSeries(seriesIndex, pointIndex))}
+              d={paths[seriesIndex] ?? ''}
               stroke={seriesColors[seriesIndex]}
               strokeWidth={1.8}
               fill="none"
@@ -424,7 +452,7 @@ export function ComparisonChart({
 
         {/* Primary line */}
         <Path
-          d={buildPath(primValues, pxPrim)}
+          d={paths[0] ?? ''}
           stroke={PRIMARY_COLOR} strokeWidth={2} fill="none"
         />
 
@@ -500,6 +528,17 @@ export function ComparisonChart({
           {dateWindow}
         </SvgText>
       </Svg>
+      {largeTouchTargets && <Pressable
+        testID="comparison-chart-touch-target"
+        accessibilityRole="button"
+        accessibilityLabel={touched === null
+          ? `${primarySymbol} chart, tap to inspect historical values`
+          : `${primarySymbol} chart, ${primaryCandles[touched]?.date ?? 'selected date'}, ${fmtAxisValue(touchPrimValue ?? 0, displayMode)}`}
+        accessibilityHint="Tap across the chart to inspect values for different dates."
+        onPress={handleTouch}
+        style={StyleSheet.absoluteFill}
+      />}
+      </View>
     </View>
   );
 }
@@ -512,6 +551,7 @@ const s = StyleSheet.create({
   modeValueLabel: { color: 'rgba(192,192,192,0.42)', fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5 },
   modeToggle:   { flexDirection: 'row', borderRadius: 5, borderWidth: 1, borderColor: 'rgba(192,192,192,0.22)', overflow: 'hidden' },
   modeButton:   { minWidth: 28, height: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(192,192,192,0.06)' },
+  modeButtonLarge: { minWidth: 44, height: 44, paddingHorizontal: 8 },
   modeButtonActive: { backgroundColor: 'rgba(0,229,160,0.18)' },
   modeButtonDisabled: { opacity: 0.45 },
   modeButtonText: { color: 'rgba(192,192,192,0.58)', fontSize: 12, fontFamily: 'Inter_700Bold' },

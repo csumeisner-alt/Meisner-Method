@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   ActivityIndicator,
   Pressable,
+  StyleSheet,
   Text,
   View,
   useWindowDimensions,
@@ -57,13 +59,13 @@ function RelationshipCorrelationChart({
   const chartWidth = Math.max(1, width - pad.left - pad.right);
   const chartHeight = height - pad.top - pad.bottom;
   const y = (value: number) => pad.top + ((1 - value) / 2) * chartHeight;
-  const valid = points.flatMap((point, index) => point.rollingCorrelation == null
+  const valid = useMemo(() => points.flatMap((point, index) => point.rollingCorrelation == null
     ? []
-    : [{ index, value: point.rollingCorrelation }]);
-  const path = valid.map(({ index, value }, pointIndex) => {
+    : [{ index, value: point.rollingCorrelation }]), [points]);
+  const path = useMemo(() => valid.map(({ index, value }, pointIndex) => {
     const x = pad.left + (index / Math.max(points.length - 1, 1)) * chartWidth;
     return `${pointIndex === 0 ? 'M' : 'L'}${x.toFixed(1)},${y(value).toFixed(1)}`;
-  }).join(' ');
+  }).join(' '), [chartWidth, points.length, valid]);
   const getTouchX = (event: GestureResponderEvent) => {
     const nativeEvent = event.nativeEvent as typeof event.nativeEvent & { pageX?: number };
     if (Number.isFinite(nativeEvent.locationX)) return nativeEvent.locationX;
@@ -83,12 +85,12 @@ function RelationshipCorrelationChart({
   const selectedValue = selectedPoint?.rollingCorrelation ?? null;
 
   return (
-    <View testID="commodity-relationship-correlation-chart" accessible accessibilityLabel="Touch-enabled rolling correlation chart">
+    <View testID="commodity-relationship-correlation-chart">
+      <View style={{ width, height, position: 'relative' }}>
       <Svg
         width={width}
         height={height}
-        onPress={selectPoint}
-        onPressOut={() => setTouched(null)}
+        pointerEvents="none"
         accessibilityRole="image"
         accessibilityLabel="Rolling correlation from minus one to plus one"
       >
@@ -125,6 +127,17 @@ function RelationshipCorrelationChart({
           </>
         )}
       </Svg>
+      <Pressable
+        testID="commodity-relationship-correlation-touch-target"
+        accessibilityRole="button"
+        accessibilityLabel={selectedPoint && selectedValue != null
+          ? `Rolling correlation chart, ${selectedPoint.date}, ${selectedValue.toFixed(2)}`
+          : 'Rolling correlation chart, tap to inspect a date'}
+        accessibilityHint="Tap across the chart to inspect rolling correlation by date."
+        onPress={selectPoint}
+        style={StyleSheet.absoluteFill}
+      />
+      </View>
       <Text
         accessibilityLiveRegion="polite"
         style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 2 }}
@@ -178,7 +191,7 @@ function Metric({
 
 function RelationshipSummary({ data, width }: { data: CommodityRelationshipResponse; width: number }) {
   const colors = useColors();
-  const chartCandles = toComparisonCandles(data);
+  const chartCandles = useMemo(() => toComparisonCandles(data), [data]);
   const metric = data.metrics;
   const firstReturn = pct(metric.firstPeriodReturnPercent);
   const secondReturn = pct(metric.secondPeriodReturnPercent);
@@ -223,6 +236,7 @@ function RelationshipSummary({ data, width }: { data: CommodityRelationshipRespo
               compSymbol={data.relationship.second.name}
               width={width}
               height={220}
+              largeTouchTargets
             />
           )}
           <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 11, letterSpacing: 0.5 }}>
@@ -284,14 +298,16 @@ export function CommodityRelationshipPanel() {
   const { width: screenWidth } = useWindowDimensions();
   const [relationshipId, setRelationshipId] = useState<RelationshipId>('gold-silver');
   const [period, setPeriod] = useState<CommodityRelationshipResponsePeriod>('3mo');
+  const [expanded, setExpanded] = useState(true);
   const query = useGetCommodityRelationship(relationshipId, period, {
     query: {
       queryKey: getGetCommodityRelationshipQueryKey(relationshipId, period),
       retry: false,
       staleTime: 5 * 60 * 1000,
+      enabled: expanded,
     },
   });
-  const chartWidth = Math.max(280, screenWidth - 64);
+  const chartWidth = Math.max(1, Math.min(620, screenWidth - 60));
 
   return (
     <View
@@ -299,12 +315,23 @@ export function CommodityRelationshipPanel() {
       style={{ borderRadius: 16, borderWidth: 1, borderColor: `${colors.primary}88`, backgroundColor: colors.card, overflow: 'hidden', marginBottom: 14 }}
     >
       <View style={{ padding: 15, gap: 12 }}>
-        <View>
-          <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 12, letterSpacing: 1 }}>COMMODITY RELATIONSHIPS</Text>
-          <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 4 }}>
-            Compare dated market history. Relationships describe co-movement, not cause.
-          </Text>
-        </View>
+        <Pressable
+          testID="commodity-relationship-toggle"
+          accessibilityRole="button"
+          accessibilityState={{ expanded }}
+          accessibilityLabel={`${expanded ? 'Collapse' : 'Expand'} commodity relationships`}
+          onPress={() => setExpanded((current) => !current)}
+          style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10 }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 12, letterSpacing: 1 }}>COMMODITY RELATIONSHIPS</Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 4 }}>
+              Compare dated market history. Relationships describe co-movement, not cause.
+            </Text>
+          </View>
+          <MaterialCommunityIcons name={expanded ? 'chevron-up' : 'chevron-down'} size={20} color={colors.mutedForeground} />
+        </Pressable>
+        {expanded && <>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
           {RELATIONSHIPS.map((item) => {
             const selected = item.id === relationshipId;
@@ -321,7 +348,9 @@ export function CommodityRelationshipPanel() {
                   borderWidth: 1,
                   borderColor: selected ? colors.primary : colors.border,
                   backgroundColor: selected ? `${colors.primary}22` : colors.background,
-                  paddingVertical: 7,
+                  minHeight: 44,
+                  justifyContent: 'center',
+                  paddingVertical: 8,
                   paddingHorizontal: 10,
                 }}
               >
@@ -345,7 +374,7 @@ export function CommodityRelationshipPanel() {
                 onPress={() => setPeriod(item.value)}
                 style={{
                   flex: 1,
-                  minHeight: 34,
+                  minHeight: 44,
                   alignItems: 'center',
                   justifyContent: 'center',
                   borderRadius: 8,
@@ -377,14 +406,16 @@ export function CommodityRelationshipPanel() {
               <Pressable
                 testID="commodity-relationship-retry"
                 accessibilityRole="button"
+                accessibilityLabel="Retry loading commodity relationship history"
                 onPress={() => { void query.refetch(); }}
-                style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, borderWidth: 1, borderColor: colors.border }}
+                style={{ minHeight: 44, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
               >
                 <Text style={{ color: colors.primary, fontSize: 11 }}>Retry</Text>
               </Pressable>
             )}
           </View>
         )}
+        </>}
       </View>
     </View>
   );

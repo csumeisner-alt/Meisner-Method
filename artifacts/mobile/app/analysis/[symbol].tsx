@@ -179,6 +179,19 @@ const ETF_ANALYSIS_SECTIONS = [
 ] as const;
 type EtfAnalysisSectionId = typeof ETF_ANALYSIS_SECTIONS[number]['id'];
 
+const COMMODITY_ANALYSIS_SECTIONS = [
+  { id: 'scorecard', label: 'Scorecard' },
+  { id: 'relationships', label: 'Relationships' },
+  { id: 'events', label: 'Events' },
+  { id: 'supply-demand', label: 'Supply & demand' },
+  { id: 'market-score', label: 'Market score' },
+  { id: 'evidence', label: 'Evidence' },
+  { id: 'drivers', label: 'Drivers' },
+  { id: 'ai-context', label: 'AI context' },
+  { id: 'news', label: 'News' },
+] as const;
+type CommodityAnalysisSectionId = typeof COMMODITY_ANALYSIS_SECTIONS[number]['id'];
+
 type HelpTopic = 'technical' | 'fundamental';
 
 const METRIC_GUIDES: Record<HelpTopic, {
@@ -434,7 +447,7 @@ function EtfSectionAnchor({
   );
 }
 
-function SectionCard({ title, icon, score, scoreColor, children, helpTopic, onHelp, collapsible = false }: {
+function SectionCard({ title, icon, score, scoreColor, children, helpTopic, onHelp, collapsible = false, defaultExpanded = false }: {
   title: string;
   icon: React.ReactNode;
   score?: number;
@@ -443,9 +456,10 @@ function SectionCard({ title, icon, score, scoreColor, children, helpTopic, onHe
   helpTopic?: HelpTopic;
   onHelp?: (topic: HelpTopic) => void;
   collapsible?: boolean;
+  defaultExpanded?: boolean;
 }) {
   const colors = useColors();
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const Header = collapsible ? Pressable : View;
   return (
     <View style={[cardStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -455,6 +469,7 @@ function SectionCard({ title, icon, score, scoreColor, children, helpTopic, onHe
           onPress: () => setExpanded((current) => !current),
           accessibilityRole: 'button' as const,
           accessibilityState: { expanded },
+          accessibilityLabel: `Toggle ${title.toLowerCase()} section`,
           testID: `analysis-section-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
         } : {})}
       >
@@ -502,6 +517,31 @@ const cardStyles = StyleSheet.create({
   scoreLabel: { fontSize: 11 },
   divider: { height: 1 },
 });
+
+function CommoditySectionAnchor({
+  sectionId,
+  title,
+  onLayout,
+  onRef,
+  children,
+}: {
+  sectionId: CommodityAnalysisSectionId;
+  title: string;
+  onLayout: (sectionId: CommodityAnalysisSectionId, y: number) => void;
+  onRef: (sectionId: CommodityAnalysisSectionId, view: View | null) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <View
+      testID={`commodity-section-${sectionId}`}
+      ref={(view) => onRef(sectionId, view)}
+      onLayout={(event) => onLayout(sectionId, event.nativeEvent.layout.y)}
+      accessibilityLabel={`${title} section`}
+    >
+      {children}
+    </View>
+  );
+}
 
 function AnalystBar({ buy, hold, sell, total }: { buy: number; hold: number; sell: number; total: number }) {
   const colors = useColors();
@@ -805,7 +845,6 @@ function CommodityIntelligenceScorecard({
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [historyChange, setHistoryChange] = useState<CommodityScoreComparison | null>(null);
   const [historyReady, setHistoryReady] = useState(false);
-  const historySignature = JSON.stringify([symbol, scorecard]);
 
   useEffect(() => {
     let cancelled = false;
@@ -851,7 +890,7 @@ function CommodityIntelligenceScorecard({
     return () => {
       cancelled = true;
     };
-  }, [historySignature, scorecard, symbol]);
+  }, [scorecard, symbol]);
 
   const classColor = (classification: CommodityAnalysisPayload['intelligenceScorecard']['categories'][number]['classification']) =>
     classification === 'bullish' ? colors.buyColor
@@ -1002,9 +1041,9 @@ function CommodityEventCalendar({ calendar, symbol }: {
   const colors = useColors();
   const events = calendar.events.filter((item) => item.affectedCommodities.length > 0);
   return (
-    <SectionCard title="COMMODITY EVENTS" icon={<MaterialCommunityIcons name="calendar-clock" size={16} color={colors.primary} />}>
+    <SectionCard title="COMMODITY EVENTS" icon={<MaterialCommunityIcons name="calendar-clock" size={16} color={colors.primary} />} collapsible defaultExpanded>
       <View testID="commodity-event-calendar" style={{ paddingHorizontal: 16, paddingBottom: 14, gap: 10 }}>
-        <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 15 }}>
+        <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16 }}>
           Official schedules checked {new Date(calendar.checkedAt).toLocaleString()}. Published previous, consensus, and actual values are shown only when verified.
         </Text>
         {events.length ? events.map((item) => {
@@ -1026,11 +1065,11 @@ function CommodityEventCalendar({ calendar, symbol }: {
                   accessibilityLabel={`Open ${label.toLowerCase()} value source: ${value.source.title}`}
                   onPress={() => { void Linking.openURL(value.source!.url).catch(() => {}); }}
                 >
-                  <Text style={{ color: colors.primary, fontSize: 10, textDecorationLine: 'underline' }}>{text}</Text>
+                  <Text style={{ color: colors.primary, fontSize: 11, lineHeight: 16, textDecorationLine: 'underline' }}>{text}</Text>
                 </Pressable>
               );
             }
-            return <Text key={label} style={{ color: colors.mutedForeground, fontSize: 10 }}>{text}</Text>;
+            return <Text key={label} style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16 }}>{text}</Text>;
           };
           return (
             <View key={item.id} testID={`commodity-event-${item.id}`} style={{ borderRadius: 11, borderWidth: 1, borderColor: completed ? colors.border : `${colors.primary}66`, backgroundColor: completed ? `${colors.background}99` : `${colors.primary}0c`, padding: 11, gap: 5 }}>
@@ -1097,11 +1136,11 @@ function CommoditySupplyChart({ title, series }: {
               {item.points.slice(-6).map((point) => (
                 <View key={`${item.id}-${point.reportingPeriod}`} style={{ gap: 2 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                    <Text style={{ color: colors.mutedForeground, fontSize: 9, width: 57 }}>{point.reportingPeriod}</Text>
+                    <Text style={{ color: colors.mutedForeground, fontSize: 10, width: 68 }}>{point.reportingPeriod}</Text>
                     <View style={{ height: 6, flex: 1, borderRadius: 4, backgroundColor: colors.border, overflow: 'hidden' }}>
                       <View style={{ height: '100%', width: `${maxValue > 0 ? Math.max(2, point.value / maxValue * 100) : 0}%`, backgroundColor: seriesColor(item.id) }} />
                     </View>
-                    <Text style={{ color: colors.foreground, fontSize: 9, minWidth: 55, textAlign: 'right' }}>{point.value.toLocaleString()}</Text>
+                    <Text style={{ color: colors.foreground, fontSize: 11, minWidth: 65, textAlign: 'right' }}>{point.value.toLocaleString()}</Text>
                   </View>
                   <Text style={{ color: colors.mutedForeground, fontSize: 9, marginLeft: 64 }}>
                     Reported {point.publicationDate} · {point.commodity}
@@ -1146,9 +1185,9 @@ function CommoditySupplyDemand({ context }: { context: CommodityAnalysisPayload[
     };
   };
   return (
-    <SectionCard title="SUPPLY & DEMAND" icon={<MaterialCommunityIcons name="chart-box-outline" size={16} color={colors.primary} />}>
+    <SectionCard title="SUPPLY & DEMAND" icon={<MaterialCommunityIcons name="chart-box-outline" size={16} color={colors.primary} />} collapsible defaultExpanded>
       <View testID="commodity-supply-demand" style={{ paddingHorizontal: 16, paddingBottom: 14, gap: 9 }}>
-        <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 15 }}>
+        <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16 }}>
           {context.commodity} reporting periods and publication dates are shown separately. Estimates remain estimates; missing series are not interpolated.
         </Text>
         <CommoditySupplyChart title="Inventory history" series={[find('inventory')]} />
@@ -1192,9 +1231,23 @@ function CommodityCommentaryItems({
   );
 }
 
-function CommodityAnalysisSections({ analysis, symbol }: { analysis: CommodityAnalysisPayload; symbol: string }) {
+function CommodityAnalysisSections({
+  analysis,
+  symbol,
+  onSectionLayout,
+  onSectionRef,
+}: {
+  analysis: CommodityAnalysisPayload;
+  symbol: string;
+  onSectionLayout: (sectionId: CommodityAnalysisSectionId, y: number) => void;
+  onSectionRef: (sectionId: CommodityAnalysisSectionId, view: View | null) => void;
+}) {
   const colors = useColors();
   const scoreColor = analysis.score >= 65 ? colors.buyColor : analysis.score <= 40 ? colors.sellColor : colors.holdColor;
+  const evidenceById = useMemo(
+    () => new Map(analysis.verifiedEvidence.map((item) => [item.id, item])),
+    [analysis.verifiedEvidence],
+  );
   const rows = [
     ['1-month return', analysis.oneMonthReturnPercent],
     ['3-month return', analysis.threeMonthReturnPercent],
@@ -1202,11 +1255,20 @@ function CommodityAnalysisSections({ analysis, symbol }: { analysis: CommodityAn
   ] as const;
   return (
     <View testID="commodity-analysis-result" style={{ gap: 12 }}>
-      <CommodityIntelligenceScorecard symbol={symbol} scorecard={analysis.intelligenceScorecard} />
-      <CommodityRelationshipPanel />
-      <CommodityEventCalendar calendar={analysis.eventCalendar} symbol={symbol} />
-      <CommoditySupplyDemand context={analysis.supplyDemand} />
-      <SectionCard title="COMMODITY MARKET SCORE" icon={<MaterialCommunityIcons name="chart-line" size={16} color={colors.primary} />}>
+      <CommoditySectionAnchor sectionId="scorecard" title="Scorecard" onLayout={onSectionLayout} onRef={onSectionRef}>
+        <CommodityIntelligenceScorecard symbol={symbol} scorecard={analysis.intelligenceScorecard} />
+      </CommoditySectionAnchor>
+      <CommoditySectionAnchor sectionId="relationships" title="Relationships" onLayout={onSectionLayout} onRef={onSectionRef}>
+        <CommodityRelationshipPanel />
+      </CommoditySectionAnchor>
+      <CommoditySectionAnchor sectionId="events" title="Events" onLayout={onSectionLayout} onRef={onSectionRef}>
+        <CommodityEventCalendar calendar={analysis.eventCalendar} symbol={symbol} />
+      </CommoditySectionAnchor>
+      <CommoditySectionAnchor sectionId="supply-demand" title="Supply and demand" onLayout={onSectionLayout} onRef={onSectionRef}>
+        <CommoditySupplyDemand context={analysis.supplyDemand} />
+      </CommoditySectionAnchor>
+      <CommoditySectionAnchor sectionId="market-score" title="Market score" onLayout={onSectionLayout} onRef={onSectionRef}>
+      <SectionCard title="COMMODITY MARKET SCORE" icon={<MaterialCommunityIcons name="chart-line" size={16} color={colors.primary} />} collapsible defaultExpanded>
         <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 10 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             <Text testID="commodity-analysis-score" style={{ color: scoreColor, fontSize: 38, fontFamily: 'Inter_700Bold' }}>{analysis.score}</Text>
@@ -1230,7 +1292,7 @@ function CommodityAnalysisSections({ analysis, symbol }: { analysis: CommodityAn
           </Text>
         </View>
       </SectionCard>
-      <SectionCard title="FACTOR COVERAGE" icon={<MaterialCommunityIcons name="database-check-outline" size={16} color={colors.primary} />}>
+      <SectionCard title="FACTOR COVERAGE" icon={<MaterialCommunityIcons name="database-check-outline" size={16} color={colors.primary} />} collapsible defaultExpanded>
         <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
           {analysis.factors.map((factor) => (
             <View key={factor.key} testID={`commodity-analysis-factor-${factor.key}`} style={{ paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border }}>
@@ -1258,7 +1320,9 @@ function CommodityAnalysisSections({ analysis, symbol }: { analysis: CommodityAn
           <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 14, marginTop: 10 }}>{analysis.methodology}</Text>
         </View>
       </SectionCard>
-      <SectionCard title="VERIFIED EVIDENCE" icon={<MaterialCommunityIcons name="check-decagram-outline" size={16} color={colors.primary} />}>
+      </CommoditySectionAnchor>
+      <CommoditySectionAnchor sectionId="evidence" title="Evidence" onLayout={onSectionLayout} onRef={onSectionRef}>
+      <SectionCard title="VERIFIED EVIDENCE" icon={<MaterialCommunityIcons name="check-decagram-outline" size={16} color={colors.primary} />} collapsible defaultExpanded>
         <View style={{ paddingHorizontal: 16, paddingBottom: 14, gap: 10 }}>
           {analysis.verifiedEvidence.length ? analysis.verifiedEvidence.map((item) => (
             <View key={item.id} testID={`commodity-verified-${item.id}`} style={{ gap: 4 }}>
@@ -1270,7 +1334,9 @@ function CommodityAnalysisSections({ analysis, symbol }: { analysis: CommodityAn
           )}
         </View>
       </SectionCard>
-      <SectionCard title="COMMODITY-SPECIFIC DRIVERS" icon={<MaterialCommunityIcons name="compass-outline" size={16} color={colors.primary} />}>
+      </CommoditySectionAnchor>
+      <CommoditySectionAnchor sectionId="drivers" title="Drivers" onLayout={onSectionLayout} onRef={onSectionRef}>
+      <SectionCard title="COMMODITY-SPECIFIC DRIVERS" icon={<MaterialCommunityIcons name="compass-outline" size={16} color={colors.primary} />} collapsible defaultExpanded>
         <View style={{ paddingHorizontal: 16, paddingBottom: 14, gap: 10 }}>
           <View>
             <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 11, marginBottom: 4 }}>ANALYSIS LENSES · NOT VERIFIED FACTS</Text>
@@ -1286,36 +1352,38 @@ function CommodityAnalysisSections({ analysis, symbol }: { analysis: CommodityAn
           </View>
         </View>
       </SectionCard>
-      <SectionCard title="AI MARKET CONTEXT" icon={<MaterialCommunityIcons name="brain" size={16} color={colors.primary} />}>
+      </CommoditySectionAnchor>
+      <CommoditySectionAnchor sectionId="ai-context" title="AI context" onLayout={onSectionLayout} onRef={onSectionRef}>
+      <SectionCard title="AI MARKET CONTEXT" icon={<MaterialCommunityIcons name="brain" size={16} color={colors.primary} />} collapsible defaultExpanded>
         <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 12 }}>
           {analysis.commentary.status === 'available' ? (
             <>
               <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 15 }}>AI interpretation · factual claims link to dated evidence above. The deterministic score is unchanged.</Text>
               {analysis.commentary.currentDrivers.length > 0 && <View style={{ gap: 5 }}>
                 <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>CURRENT DRIVERS</Text>
-                <CommodityCommentaryItems items={analysis.commentary.currentDrivers} evidenceById={new Map(analysis.verifiedEvidence.map((item) => [item.id, item]))} />
+                <CommodityCommentaryItems items={analysis.commentary.currentDrivers} evidenceById={evidenceById} />
               </View>}
               <View style={{ gap: 5 }}>
                 <Text style={{ color: colors.buyColor, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>STRONGEST BULLISH FACTORS</Text>
-                <CommodityCommentaryItems items={analysis.commentary.strongestBullishFactors} evidenceById={new Map(analysis.verifiedEvidence.map((item) => [item.id, item]))} />
+                <CommodityCommentaryItems items={analysis.commentary.strongestBullishFactors} evidenceById={evidenceById} />
               </View>
               <View style={{ gap: 5 }}>
                 <Text style={{ color: colors.sellColor, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>STRONGEST BEARISH FACTORS</Text>
-                <CommodityCommentaryItems items={analysis.commentary.strongestBearishFactors} evidenceById={new Map(analysis.verifiedEvidence.map((item) => [item.id, item]))} />
+                <CommodityCommentaryItems items={analysis.commentary.strongestBearishFactors} evidenceById={evidenceById} />
               </View>
               <View style={{ gap: 5 }}>
                 <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>TECHNICAL ALIGNMENT</Text>
-                <CommodityCommentaryItems items={analysis.commentary.technicalAlignment ? [analysis.commentary.technicalAlignment] : []} evidenceById={new Map(analysis.verifiedEvidence.map((item) => [item.id, item]))} />
+                <CommodityCommentaryItems items={analysis.commentary.technicalAlignment ? [analysis.commentary.technicalAlignment] : []} evidenceById={evidenceById} />
               </View>
               <View style={{ gap: 5 }}>
                 <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>UPCOMING CATALYSTS</Text>
                 {analysis.commentary.upcomingCatalysts.length ? (
-                  <CommodityCommentaryItems items={analysis.commentary.upcomingCatalysts} evidenceById={new Map(analysis.verifiedEvidence.map((item) => [item.id, item]))} />
+                  <CommodityCommentaryItems items={analysis.commentary.upcomingCatalysts} evidenceById={evidenceById} />
                 ) : <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>No dated upcoming catalysts were verified in the supplied sources.</Text>}
               </View>
               <View style={{ gap: 5 }}>
                 <Text style={{ color: colors.sellColor, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>RISKS</Text>
-                <CommodityCommentaryItems items={analysis.commentary.risks} evidenceById={new Map(analysis.verifiedEvidence.map((item) => [item.id, item]))} />
+                <CommodityCommentaryItems items={analysis.commentary.risks} evidenceById={evidenceById} />
               </View>
             </>
           ) : (
@@ -1325,7 +1393,9 @@ function CommodityAnalysisSections({ analysis, symbol }: { analysis: CommodityAn
           )}
         </View>
       </SectionCard>
-      <SectionCard title="RECENT NEWS" icon={<MaterialCommunityIcons name="web" size={16} color={colors.primary} />}>
+      </CommoditySectionAnchor>
+      <CommoditySectionAnchor sectionId="news" title="News" onLayout={onSectionLayout} onRef={onSectionRef}>
+      <SectionCard title="RECENT NEWS" icon={<MaterialCommunityIcons name="web" size={16} color={colors.primary} />} collapsible defaultExpanded>
         <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 8 }}>
           {analysis.newsContext.status === 'available' ? (
             <>
@@ -1345,6 +1415,7 @@ function CommodityAnalysisSections({ analysis, symbol }: { analysis: CommodityAn
           )}
         </View>
       </SectionCard>
+      </CommoditySectionAnchor>
       <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 14 }}>
         Educational market context only—not a forecast, personalized advice, or a buy/sell recommendation.
       </Text>
@@ -3908,6 +3979,12 @@ export default function AnalysisScreen() {
   const etfSectionOffsets = useRef<Partial<Record<EtfAnalysisSectionId, number>>>({});
   const etfSectionRefs = useRef<Partial<Record<EtfAnalysisSectionId, View>>>({});
   const etfScrollOffset = useRef(0);
+  const [activeCommoditySection, setActiveCommoditySection] = useState<CommodityAnalysisSectionId>('scorecard');
+  const commodityScrollRef = useRef<ScrollView>(null);
+  const commodityScrollFrameRef = useRef<View>(null);
+  const commoditySectionOffsets = useRef<Partial<Record<CommodityAnalysisSectionId, number>>>({});
+  const commoditySectionRefs = useRef<Partial<Record<CommodityAnalysisSectionId, View>>>({});
+  const commodityScrollOffset = useRef(0);
   const [loadingStageIndex, setLoadingStageIndex] = useState(0);
   const tickerGlow = useRef(new Animated.Value(0)).current;
   const loadingStages = useMemo<readonly string[]>(
@@ -4062,6 +4139,82 @@ export default function AnalysisScreen() {
       })}
     </ScrollView>
   );
+  const recordCommoditySectionOffset = (sectionId: CommodityAnalysisSectionId, y: number) => {
+    commoditySectionOffsets.current[sectionId] = y;
+  };
+  const recordCommoditySectionRef = (sectionId: CommodityAnalysisSectionId, view: View | null) => {
+    if (view) commoditySectionRefs.current[sectionId] = view;
+    else delete commoditySectionRefs.current[sectionId];
+  };
+  const navigateToCommoditySection = (sectionId: CommodityAnalysisSectionId) => {
+    setActiveCommoditySection(sectionId);
+    const scrollView = commodityScrollRef.current;
+    const scrollFrame = commodityScrollFrameRef.current;
+    const sectionView = commoditySectionRefs.current[sectionId];
+    if (scrollView && scrollFrame && sectionView) {
+      sectionView.measureInWindow((_sectionX, sectionY) => {
+        scrollFrame.measureInWindow((_frameX, frameY) => {
+          const y = commodityScrollOffset.current + sectionY - frameY;
+          scrollView.scrollTo({ y: Math.max(0, y - 8), animated: Platform.OS !== 'web' });
+        });
+      });
+      return;
+    }
+    const y = commoditySectionOffsets.current[sectionId];
+    if (y != null) scrollView?.scrollTo({ y: Math.max(0, y - 8), animated: Platform.OS !== 'web' });
+  };
+  const handleCommodityScroll = (offsetY: number) => {
+    commodityScrollOffset.current = offsetY;
+    const reached = Object.entries(commoditySectionOffsets.current)
+      .flatMap(([id, y]) => y != null && y <= offsetY + 100
+        ? [{ id: id as CommodityAnalysisSectionId, y }]
+        : [])
+      .sort((first, second) => first.y - second.y);
+    const current = reached.at(-1)?.id;
+    if (current && current !== activeCommoditySection) setActiveCommoditySection(current);
+  };
+  const renderCommoditySectionNavigation = () => (
+    <ScrollView
+      horizontal
+      testID="commodity-section-navigation"
+      showsHorizontalScrollIndicator={false}
+      accessibilityLabel="Commodity analysis sections"
+      contentContainerStyle={{ alignItems: 'center', gap: 7, paddingHorizontal: 12, paddingVertical: 5 }}
+      style={{ flexGrow: 0, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.background }}
+    >
+      {COMMODITY_ANALYSIS_SECTIONS.map(({ id, label }) => {
+        const selected = activeCommoditySection === id;
+        return (
+          <Pressable
+            key={id}
+            testID={`commodity-section-nav-${id}`}
+            accessibilityRole="button"
+            accessibilityState={{ selected }}
+            accessibilityLabel={selected ? `Selected section: ${label}` : `Go to ${label}`}
+            onPress={() => navigateToCommoditySection(id)}
+            style={{
+              minHeight: 44,
+              justifyContent: 'center',
+              borderBottomWidth: 2,
+              borderBottomColor: selected ? colors.primary : 'transparent',
+              paddingHorizontal: 8,
+            }}
+          >
+            <Text
+              numberOfLines={1}
+              style={{
+                color: selected ? colors.primary : colors.mutedForeground,
+                fontFamily: selected ? 'Inter_700Bold' : 'Inter_500Medium',
+                fontSize: 12,
+              }}
+            >
+              {label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
   const handleEtfScroll = (offsetY: number) => {
     const reached = Object.entries(etfSectionOffsets.current)
       .flatMap(([id, y]) => y != null && y <= offsetY + 100
@@ -4103,7 +4256,13 @@ export default function AnalysisScreen() {
     return (
       <View style={[headerStyles.container, { paddingTop: topPad + 8, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <View style={headerStyles.row}>
-          <TouchableOpacity onPress={() => router.back()} style={headerStyles.back} activeOpacity={0.7}>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={isCommodity ? 'Back to commodity heat map' : 'Back to previous screen'}
+            onPress={() => router.back()}
+            style={[headerStyles.back, isCommodity && { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }]}
+            activeOpacity={0.7}
+          >
             <Feather name="chevron-left" size={26} color={colors.foreground} />
           </TouchableOpacity>
           <View style={headerStyles.center}>
@@ -4262,13 +4421,25 @@ export default function AnalysisScreen() {
       <AmericanSteelBackground>
         <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
           {renderHeader(result)}
-          <ScrollView
-            style={{ flex: 1, minHeight: 0 }}
-            contentContainerStyle={[styles.scroll, { paddingBottom: botPad + 24 }]}
-            showsVerticalScrollIndicator={false}
-          >
-            <CommodityAnalysisSections analysis={result.commodityAnalysis} symbol={result.symbol} />
-          </ScrollView>
+          {renderCommoditySectionNavigation()}
+          <View ref={commodityScrollFrameRef} style={{ flex: 1, minHeight: 0 }}>
+            <ScrollView
+              ref={commodityScrollRef}
+              testID="commodity-analysis-scroll"
+              style={{ flex: 1, minHeight: 0 }}
+              contentContainerStyle={[styles.scroll, { paddingBottom: botPad + 24 }]}
+              showsVerticalScrollIndicator={false}
+              onScroll={(event) => handleCommodityScroll(event.nativeEvent.contentOffset.y)}
+              scrollEventThrottle={100}
+            >
+              <CommodityAnalysisSections
+                analysis={result.commodityAnalysis}
+                symbol={result.symbol}
+                onSectionLayout={recordCommoditySectionOffset}
+                onSectionRef={recordCommoditySectionRef}
+              />
+            </ScrollView>
+          </View>
         </View>
       </AmericanSteelBackground>
     );

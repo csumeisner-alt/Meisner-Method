@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const screen = readFileSync(new URL("../app/analysis/[symbol].tsx", import.meta.url), "utf8");
-const modal = readFileSync(new URL("../components/HeatMapDetailModal.tsx", import.meta.url), "utf8");
 const heatMap = readFileSync(new URL("../app/heat-map.tsx", import.meta.url), "utf8");
+const modal = readFileSync(new URL("../components/HeatMapDetailModal.tsx", import.meta.url), "utf8");
 
 assert.match(modal, /testID="heat-map-detail-analyze-commodity"/);
 assert.match(modal, /testID="heat-map-detail-add-watchlist"/);
@@ -44,3 +44,15 @@ assert.match(screen, /Production vs\. consumption/);
 assert.match(screen, /Historical average \{item\.historicalAveragePeriod/);
 assert.match(screen, /Reported \{point\.publicationDate\}/);
 assert.match(screen, /No validated supply-and-demand observations are currently available/);
+assert.match(screen, /testID="commodity-section-navigation"/);
+assert.match(screen, /testID=\{`commodity-section-nav-\$\{id\}`\}/);
+assert.match(screen, /accessibilityState=\{\{ selected \}\}/);
+assert.match(screen, /navigateToCommoditySection\(id\)/);
+assert.match(screen, /measureInWindow\(\(_sectionX, sectionY\)/);
+assert.match(screen, /commodity-analysis-scroll/);
+assert.match(screen, /collapsible defaultExpanded/);
+assert.match(screen, /accessibilityLabel=\{isCommodity \? 'Back to commodity heat map' : 'Back to previous screen'\}/);
+assert.match(screen, /isCommodity && \{ minWidth: 44, minHeight: 44/);
+assert.match(heatMap, /accessibilityLabel="Search supported instruments or enter a ticker"/);
+assert.match(heatMap, /keyboardShouldPersistTaps="handled"/);
+assert.match(heatMap, /input: \{ flex: 1, height: 48/);

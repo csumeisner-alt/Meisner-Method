@@ -6,10 +6,12 @@ const focusListeners = new Set<() => void>();
 declare global {
   interface Window {
     __heatMapSetFocused?: (nextFocused: boolean) => void;
+    __heatMapRoutePushes?: string[];
   }
 }
 
 if (typeof window !== "undefined") {
+  window.__heatMapRoutePushes ??= [];
   window.__heatMapSetFocused = (nextFocused) => {
     if (focused === nextFocused) return;
     focused = nextFocused;
@@ -22,6 +24,7 @@ export function useRouter() {
     canGoBack: () => false,
     back: () => undefined,
     replace: () => undefined,
+    push: (path: string) => window.__heatMapRoutePushes?.push(path),
   };
 }
 
