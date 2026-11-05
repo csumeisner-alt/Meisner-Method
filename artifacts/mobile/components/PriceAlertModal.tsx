@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { formatCommodityQuotePrice, getCommodityContractSpec } from '@/lib/heatMapInstrumentDisplay';
 
 interface PriceAlertModalProps {
   visible: boolean;
@@ -29,7 +30,9 @@ interface PriceAlertModalProps {
   colors: any;
 }
 
-const formatPrice = (p: number) => `$${p.toFixed(2)}`;
+const formatPrice = (p: number, symbol: string) => getCommodityContractSpec(symbol)
+  ? formatCommodityQuotePrice(symbol, p)
+  : `$${p.toFixed(2)}`;
 
 export function PriceAlertModal({
   visible,
@@ -48,15 +51,22 @@ export function PriceAlertModal({
   registrationError,
 }: PriceAlertModalProps) {
   const [direction, setDirection] = useState<'above' | 'below'>(existingDirection ?? 'above');
-  const [targetInput, setTargetInput] = useState(existingTarget?.toFixed(2) ?? '');
+  const priceStep = getCommodityContractSpec(symbol)?.minimumPriceIncrement;
+  const pricePrecision = Math.max(2, priceStep ? String(priceStep).split('.')[1]?.length ?? 0 : 2);
+  const [targetInput, setTargetInput] = useState(existingTarget != null ? existingTarget.toFixed(pricePrecision) : '');
   const [requesting, setRequesting] = useState(false);
 
   useEffect(() => {
     if (visible) {
+      const formatInputPrice = (price: number) => price.toFixed(pricePrecision);
       setDirection(existingDirection ?? 'above');
-      setTargetInput(existingTarget?.toFixed(2) ?? (currentPrice ? currentPrice.toFixed(2) : ''));
+      setTargetInput(existingTarget != null
+        ? formatInputPrice(existingTarget)
+        : currentPrice
+          ? formatInputPrice(currentPrice)
+          : '');
     }
-  }, [visible, existingDirection, existingTarget, currentPrice]);
+  }, [visible, existingDirection, existingTarget, currentPrice, pricePrecision]);
 
   const handleSave = async () => {
     const value = parseFloat(targetInput);
@@ -94,7 +104,7 @@ export function PriceAlertModal({
           </Text>
           {currentPrice != null && (
             <Text style={[alertStyles.subtitle, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-              Current: {formatPrice(currentPrice)}
+              Current: {formatPrice(currentPrice, symbol)}
             </Text>
           )}
 

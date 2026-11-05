@@ -10,6 +10,13 @@ const MAX_QUOTE_AGE_SECONDS = {
 } as const;
 const MAX_FUTURE_TIMESTAMP_SECONDS = 60 * 60;
 
+export function shouldShowHeatMapQuotePrice(
+  assetType: HeatMapQuote["assetType"],
+  quoteUnavailable: boolean,
+): boolean {
+  return assetType !== "commodity" || !quoteUnavailable;
+}
+
 export function isDisplayableHeatMapQuote(
   quote: Pick<HeatMapQuote, "priceTimestamp" | "assetType">,
   nowSeconds = Date.now() / 1000,

@@ -70,17 +70,16 @@ test("commodity analysis guides distinguish precious metals, copper, energy, and
   assert.equal(Object.keys(COMMODITY_ANALYSIS_GUIDES).length, Object.keys(SUPPORTED_COMMODITIES).length);
 });
 
-test("commentary evidence has dated source links and prompts only use validated observations", () => {
+test("commentary evidence uses validated dated observations, not unverified search summaries", () => {
   for (const symbol of ["GC=F", "SI=F", "CL=F", "NG=F", "HG=F", "ZC=F"]) {
     const commodity = SUPPORTED_COMMODITIES[symbol]!;
     const score = makeScore(symbol);
     const news = validateCommodityNewsContext(availableNews("2026-11-01T08:00:00.000Z"), NOW);
-    const evidence = buildCommodityVerifiedEvidence(symbol, score, news);
+    const evidence = buildCommodityVerifiedEvidence(symbol, score);
     const priceHistory = evidence.find((item) => item.id === "price-history");
-    const newsSource = evidence.find((item) => item.kind === "news");
     assert.equal(priceHistory?.asOf, score.historyAsOf);
     assert.match(priceHistory?.url ?? "", /^https:\/\/finance\.yahoo\.com/);
-    assert.equal(newsSource?.asOf, "2026-11-01T08:00:00.000Z");
+    assert.equal(evidence.some((item) => item.kind === "news"), false);
     assert.ok(evidence.every((item) => item.asOf && item.url.startsWith("https://")));
 
     const prompt = buildCommodityCommentaryPrompt(
@@ -95,6 +94,7 @@ test("commentary evidence has dated source links and prompts only use validated 
     assert.ok(prompt.includes(COMMODITY_ANALYSIS_GUIDES[symbol]!.unavailable[0]!));
     assert.match(prompt, /Never invent IDs, sources, publication dates, catalysts, or values/);
     assert.ok(!prompt.includes("currentPrice"));
+    assert.ok(!prompt.includes(news.summary!));
   }
 });
 

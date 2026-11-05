@@ -83,6 +83,8 @@ import type {
   EtfScoreComponentId,
 } from '@/lib/etfResearchScore';
 import type { HeatMapEtfHoldingSnapshot } from '@/lib/heatMapDetail';
+import { formatHeatMapQuoteAge, isDisplayableHeatMapQuote } from '@/lib/heatMapQuoteDisplay';
+import { formatCommodityQuotePrice, getCommodityContractSpec } from '@/lib/heatMapInstrumentDisplay';
 import {
   createCommodityScoreSnapshot,
   findComparableCommodityScoreChange,
@@ -1327,9 +1329,8 @@ function CommodityAnalysisSections({ analysis, symbol }: { analysis: CommodityAn
         <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 8 }}>
           {analysis.newsContext.status === 'available' ? (
             <>
-              <Text style={{ color: colors.foreground, fontSize: 12, lineHeight: 18 }}>{analysis.newsContext.summary}</Text>
-              <Text style={{ color: colors.mutedForeground, fontSize: 10 }}>
-                Retrieved {analysis.newsContext.retrievedAt ? new Date(analysis.newsContext.retrievedAt).toLocaleString() : 'recently'} · News is context, not a score input.
+              <Text style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 18 }}>
+                Search results were retrieved {analysis.newsContext.retrievedAt ? new Date(analysis.newsContext.retrievedAt).toLocaleString() : 'recently'}. Article contents are not independently verified and are not used by the commodity score or AI commentary.
               </Text>
               {analysis.newsContext.sources.map((source) => (
                 <Pressable key={source.url} accessibilityRole="link" accessibilityLabel={`Open news source: ${source.title}`} onPress={() => { void Linking.openURL(source.url).catch(() => {}); }}>
@@ -4090,10 +4091,15 @@ export default function AnalysisScreen() {
   };
 
   // ─── Header ──────────────────────────────────────────────────────────────
-  const renderHeader = (analysis?: Pick<StockAnalysis, 'companyName' | 'currentPrice' | 'priceChange' | 'priceChangePercent'>) => {
+  const renderHeader = (analysis?: Pick<StockAnalysis, 'companyName' | 'currentPrice' | 'priceChange' | 'priceChangePercent'> & { priceTimestamp?: number | null }) => {
     const change = analysis?.priceChange ?? 0;
     const changePct = analysis?.priceChangePercent ?? 0;
     const positive = change >= 0;
+    const isCommodity = Boolean(getCommodityContractSpec(symbol));
+    const showCurrentQuote = !isCommodity || isDisplayableHeatMapQuote({
+      assetType: 'commodity',
+      priceTimestamp: analysis?.priceTimestamp ?? null,
+    });
     return (
       <View style={[headerStyles.container, { paddingTop: topPad + 8, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <View style={headerStyles.row}>
@@ -4139,16 +4145,35 @@ export default function AnalysisScreen() {
               />
             </TouchableOpacity>
           }
-          {analysis && (
+          {analysis && showCurrentQuote && (
             <View style={headerStyles.priceArea}>
               <Text style={[headerStyles.price, { color: colors.foreground, fontFamily: 'Inter_700Bold' }]}>
-                {fmtPrice(analysis.currentPrice)}
+                {getCommodityContractSpec(symbol)
+                  ? formatCommodityQuotePrice(symbol, analysis.currentPrice)
+                  : fmtPrice(analysis.currentPrice)}
               </Text>
               <Text style={[headerStyles.change, {
                 color: positive ? colors.buyColor : colors.sellColor,
                 fontFamily: 'Inter_500Medium',
               }]}>
-                {positive ? '+' : ''}{change.toFixed(2)} ({positive ? '+' : ''}{changePct.toFixed(2)}%)
+                {getCommodityContractSpec(symbol)
+                  ? `${positive ? '+' : ''}${formatCommodityQuotePrice(symbol, change)}`
+                  : `${positive ? '+' : ''}${change.toFixed(2)}`} ({positive ? '+' : ''}{changePct.toFixed(2)}%)
+              </Text>
+              {analysis && 'priceTimestamp' in analysis && (
+                <Text style={{ color: colors.mutedForeground, fontSize: 9, marginTop: 2 }}>
+                  Yahoo quote · {formatHeatMapQuoteAge(analysis.priceTimestamp ?? null)}
+                </Text>
+              )}
+            </View>
+          )}
+          {analysis && isCommodity && !showCurrentQuote && (
+            <View style={headerStyles.priceArea}>
+              <Text style={[headerStyles.change, { color: colors.mutedForeground, fontFamily: 'Inter_500Medium' }]}>
+                Quote unavailable or stale
+              </Text>
+              <Text style={{ color: colors.mutedForeground, fontSize: 9, marginTop: 2 }}>
+                Yahoo quote · {formatHeatMapQuoteAge(analysis.priceTimestamp ?? null)}
               </Text>
             </View>
           )}
@@ -4231,7 +4256,7 @@ export default function AnalysisScreen() {
     assetType?: string;
     etfAnalysis?: EtfAnalysisPayload;
     commodityAnalysis?: CommodityAnalysisPayload;
-  } & Pick<StockAnalysis, 'symbol' | 'companyName' | 'exchange' | 'currency' | 'currentPrice' | 'priceChange' | 'priceChangePercent' | 'volume' | 'marketCap' | 'week52High' | 'week52Low'>;
+  } & Pick<StockAnalysis, 'symbol' | 'companyName' | 'exchange' | 'currency' | 'currentPrice' | 'priceChange' | 'priceChangePercent' | 'volume' | 'marketCap' | 'week52High' | 'week52Low'> & { priceTimestamp?: number | null };
   if (result.assetType === 'commodity' && result.commodityAnalysis) {
     return (
       <AmericanSteelBackground>
@@ -4291,6 +4316,14 @@ export default function AnalysisScreen() {
   }
   const data = response as StockAnalysis;
   const { technical, fundamental, behavioral, recommendation } = data;
+  const commoditySpec = getCommodityContractSpec(symbol);
+  const commodityQuoteIsFresh = !commoditySpec || isDisplayableHeatMapQuote({
+    assetType: 'commodity',
+    priceTimestamp: (data as StockAnalysis & { priceTimestamp?: number | null }).priceTimestamp ?? null,
+  });
+  const formatAnalysisPrice = (value: number) => commoditySpec
+    ? formatCommodityQuotePrice(symbol, value)
+    : fmtPrice(value);
   const action = recommendation.action;
   const guide = helpTopic ? METRIC_GUIDES[helpTopic] : null;
 
@@ -4298,7 +4331,7 @@ export default function AnalysisScreen() {
     <AmericanSteelBackground>
       <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
       <PriceAlertModal
-        visible={alertVisible}
+        visible={alertVisible && commodityQuoteIsFresh}
         symbol={symbol ?? ''}
         currentPrice={data.currentPrice}
         existingDirection={activeAlert?.direction}
@@ -4417,14 +4450,14 @@ export default function AnalysisScreen() {
               <View key={label} style={recStyles.targetItem}>
                 <Text style={[recStyles.targetLabel, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>{label}</Text>
                 <Text style={[recStyles.targetValue, { color: actionColor(action), fontFamily: 'Inter_700Bold' }]}>
-                  {value != null ? fmtPrice(value) : '—'}
+                  {value != null ? formatAnalysisPrice(value) : '—'}
                 </Text>
               </View>
             ))}
           </View>
         </View>
 
-        <TouchableOpacity
+        {commodityQuoteIsFresh && <TouchableOpacity
           style={[styles.alertAction, { backgroundColor: colors.card, borderColor: colors.primary }]}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -4439,33 +4472,33 @@ export default function AnalysisScreen() {
             </Text>
             <Text style={[styles.alertActionSubtitle, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
               {activeAlert
-                ? `Alert ${activeAlert.direction === 'above' ? 'above' : 'below'} ${fmtPrice(activeAlert.targetPrice)}`
+                ? `Alert ${activeAlert.direction === 'above' ? 'above' : 'below'} ${formatAnalysisPrice(activeAlert.targetPrice)}`
                 : isWatched ? 'Get notified when this stock reaches your target' : 'Adds this stock to your watchlist automatically'}
             </Text>
           </View>
           <Feather name="chevron-right" size={17} color={colors.mutedForeground} />
-        </TouchableOpacity>
+        </TouchableOpacity>}
 
         {/* 52W Range */}
         <View style={[rangeStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={rangeStyles.labels}>
             <Text style={[rangeStyles.text, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-              52W Low: {fmtPrice(data.week52Low)}
+              52W Low: {formatAnalysisPrice(data.week52Low)}
             </Text>
             <Text style={[rangeStyles.text, { color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }]}>
-              {fmtPrice(data.week52High)} :52W High
+              {formatAnalysisPrice(data.week52High)} :52W High
             </Text>
           </View>
           <View style={[rangeStyles.track, { backgroundColor: colors.muted }]}>
             {(() => {
               const range = data.week52High - data.week52Low;
               const pos = range > 0 ? ((data.currentPrice - data.week52Low) / range) * 100 : 50;
-              return (
+              return commodityQuoteIsFresh ? (
                 <View style={[rangeStyles.thumb, {
                   left: `${Math.min(95, Math.max(5, pos))}%` as any,
                   backgroundColor: colors.primary,
                 }]} />
-              );
+              ) : null;
             })()}
           </View>
           <View style={rangeStyles.labels}>
@@ -4516,14 +4549,14 @@ export default function AnalysisScreen() {
               highlight={technical.volumeRatio > 1.5 ? colors.buyColor : undefined}
             />
             <View style={[divStyle, { backgroundColor: colors.border }]} />
-            <MetricRow label="MA 20" value={fmtPrice(technical.ma20)} />
-            <MetricRow label="MA 50" value={fmtPrice(technical.ma50)} />
-            <MetricRow label="MA 200" value={fmtPrice(technical.ma200)} />
+            <MetricRow label="MA 20" value={formatAnalysisPrice(technical.ma20)} />
+            <MetricRow label="MA 50" value={formatAnalysisPrice(technical.ma50)} />
+            <MetricRow label="MA 200" value={formatAnalysisPrice(technical.ma200)} />
             <View style={[divStyle, { backgroundColor: colors.border }]} />
-            <MetricRow label="Support" value={fmtPrice(technical.support)} />
-            <MetricRow label="Resistance" value={fmtPrice(technical.resistance)} />
-            <MetricRow label="Bollinger Upper" value={fmtPrice(technical.bollingerUpper)} />
-            <MetricRow label="Bollinger Lower" value={fmtPrice(technical.bollingerLower)} />
+            <MetricRow label="Support" value={formatAnalysisPrice(technical.support)} />
+            <MetricRow label="Resistance" value={formatAnalysisPrice(technical.resistance)} />
+            <MetricRow label="Bollinger Upper" value={formatAnalysisPrice(technical.bollingerUpper)} />
+            <MetricRow label="Bollinger Lower" value={formatAnalysisPrice(technical.bollingerLower)} />
           </View>
         </SectionCard>
 
@@ -4574,7 +4607,7 @@ export default function AnalysisScreen() {
             {behavioral.priceTarget != null && (
               <MetricRow
                 label="Analyst Price Target"
-                value={`${fmtPrice(behavioral.priceTarget)} (${((behavioral.priceTarget - data.currentPrice) / data.currentPrice * 100) > 0 ? '+' : ''}${((behavioral.priceTarget - data.currentPrice) / data.currentPrice * 100).toFixed(1)}%)`}
+                value={`${formatAnalysisPrice(behavioral.priceTarget)} (${((behavioral.priceTarget - data.currentPrice) / data.currentPrice * 100) > 0 ? '+' : ''}${((behavioral.priceTarget - data.currentPrice) / data.currentPrice * 100).toFixed(1)}%)`}
                 highlight={behavioral.priceTarget > data.currentPrice ? colors.buyColor : colors.sellColor}
               />
             )}

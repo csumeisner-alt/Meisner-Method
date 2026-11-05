@@ -248,6 +248,21 @@ export function getCommodityContractSpec(symbol: string): CommodityContractSpec 
   return COMMODITY_CONTRACT_SPECS[symbol.trim().toUpperCase()] ?? null;
 }
 
+export function formatCommodityQuotePrice(symbol: string, value: number): string {
+  const spec = getCommodityContractSpec(symbol);
+  if (!spec || !Number.isFinite(value)) return "—";
+  const absolute = Math.abs(value);
+  const fractionDigits = absolute >= 1 ? 2 : absolute >= 0.01 ? 4 : 6;
+  const formatted = absolute.toLocaleString("en-US", {
+    minimumFractionDigits: spec.quoteCurrency === "USC" ? 2 : fractionDigits,
+    maximumFractionDigits: spec.quoteCurrency === "USC" ? 3 : fractionDigits,
+  });
+  const sign = value < 0 ? "-" : "";
+  return spec.quoteCurrency === "USC"
+    ? `${sign}${formatted}¢`
+    : `${sign}$${formatted}`;
+}
+
 export function getCommodityContractNotional(symbol: string, quotePrice: number): number | null {
   const spec = getCommodityContractSpec(symbol);
   if (!spec || !Number.isFinite(quotePrice) || quotePrice <= 0) return null;

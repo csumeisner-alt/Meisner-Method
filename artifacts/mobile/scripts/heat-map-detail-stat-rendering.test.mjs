@@ -7,6 +7,10 @@ const modalPath = fileURLToPath(new URL('../components/HeatMapDetailModal.tsx', 
 const modalSource = readFileSync(modalPath, 'utf8');
 const commodityDriversPath = fileURLToPath(new URL('../components/CommodityPriceDrivers.tsx', import.meta.url));
 const commodityDriversSource = readFileSync(commodityDriversPath, 'utf8');
+const analysisPath = fileURLToPath(new URL('../app/analysis/[symbol].tsx', import.meta.url));
+const analysisSource = readFileSync(analysisPath, 'utf8');
+const chartPath = fileURLToPath(new URL('../app/heat-map-chart.tsx', import.meta.url));
+const chartSource = readFileSync(chartPath, 'utf8');
 
 test('market detail modal builds and renders the selected asset-specific statistic rows', () => {
   assert.match(
@@ -42,6 +46,18 @@ test('commodity detail modal renders instrument-specific up and down price drive
   assert.match(commodityDriversSource, /DRIVER_REQUEST_TIMEOUT_MS/);
   assert.match(commodityDriversSource, /heat-map-commodity-driver-retry/);
   assert.match(modalSource, /<CommodityPriceDrivers symbol=\{symbol \?\? ''\} visible=\{visible\}/);
+});
+
+test('commodity quote views hide unavailable or stale prices and label continuous history and quote units', () => {
+  assert.match(modalSource, /shouldShowHeatMapQuotePrice\(quote\.assetType,\s*quoteUnavailable\)/);
+  assert.match(modalSource, /No fresh commodity quote is available/);
+  assert.match(analysisSource, /isDisplayableHeatMapQuote\(\{[\s\S]*assetType: 'commodity'/);
+  assert.match(analysisSource, /Quote unavailable or stale/);
+  assert.match(analysisSource, /formatCommodityQuotePrice\(symbol,\s*analysis\.currentPrice\)/);
+  assert.match(chartSource, /Continuous-futures history, not one tradable contract/);
+  assert.match(chartSource, /formatCommodityQuotePrice\(symbol,\s*candles\[/);
+  assert.match(chartSource, /Last bar .*formatHeatMapQuoteAge/);
+  assert.match(analysisSource, /Article contents are not independently verified and are not used by the commodity score or AI commentary/);
 });
 
 test('crypto detail keeps daily provider supply history distinct from its current supply share', () => {

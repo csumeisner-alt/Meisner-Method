@@ -5,10 +5,15 @@ import { join, dirname } from "node:path";
 import { logger } from "./logger.js";
 import { normalizeDividendYield } from "./dividendYield.js";
 import { SUPPORTED_COMMODITIES } from "./commodityAnalysis.js";
+import {
+  normalizeYahooQuoteCurrency,
+  validateCommodityQuoteSnapshot,
+} from "./commodityQuoteData.js";
 
 const execFileAsync = promisify(execFile);
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
 // In production the script is bundled via build.mjs — we ship the .py file alongside the binary
 const SCRIPT_PATH = join(__dirname, "fetch_stock.py");
 
@@ -21,6 +26,7 @@ export interface YahooStockData {
   currentPrice: number;
   priceChange: number;
   priceChangePercent: number;
+  priceTimestamp: number | null;
   volume: number;
   avgVolume: number;
   marketCap: number | null;
@@ -151,6 +157,11 @@ export async function fetchStockData(symbol: string): Promise<YahooStockData> {
 
   const closes: number[] = raw["closes"] ?? [];
   const volumes: number[] = raw["volumes"] ?? [];
+  const isCommodity = Boolean(SUPPORTED_COMMODITIES[upper]);
+
+  if (isCommodity) {
+    validateCommodityQuoteSnapshot(raw, upper);
+  }
 
   if (closes.length < 20 && !SUPPORTED_COMMODITIES[upper]) {
     throw new Error(`Insufficient price history for: ${upper}`);
@@ -174,10 +185,15 @@ export async function fetchStockData(symbol: string): Promise<YahooStockData> {
     quoteType: raw["quoteType"] ?? "",
     companyName: raw["companyName"] ?? upper,
     exchange: raw["exchange"] ?? "Unknown",
-    currency: raw["currency"] ?? "USD",
-    currentPrice: raw["currentPrice"] ?? closes.at(-1) ?? 0,
-    priceChange: raw["priceChange"] ?? 0,
-    priceChangePercent: raw["priceChangePercent"] ?? 0,
+    currency: normalizeYahooQuoteCurrency(upper, raw["currency"]),
+    currentPrice: raw["currentPrice"] ?? (isCommodity ? NaN : closes.at(-1) ?? 0),
+    priceChange: raw["priceChange"] ?? (isCommodity ? NaN : 0),
+    priceChangePercent: raw["priceChangePercent"] ?? (isCommodity ? NaN : 0),
+    priceTimestamp: typeof raw["priceTimestamp"] === "number"
+      && Number.isSafeInteger(raw["priceTimestamp"])
+      && raw["priceTimestamp"] > 0
+      ? raw["priceTimestamp"]
+      : null,
     volume,
     avgVolume,
     marketCap: raw["marketCap"] ?? null,

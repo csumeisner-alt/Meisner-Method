@@ -10,6 +10,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useApi } from '@/hooks/useApi';
 import { getHeatMapCryptoQuoteCurrency } from '@/lib/heatMapCryptoPrice';
+import { formatCommodityQuotePrice, getCommodityContractSpec } from '@/lib/heatMapInstrumentDisplay';
+import { formatHeatMapQuoteAge } from '@/lib/heatMapQuoteDisplay';
 import { StockChart, type Candle } from '@/components/StockChart';
 import { ComparisonChart } from '@/components/ComparisonChart';
 import {
@@ -53,9 +55,10 @@ export default function HeatMapChartScreen() {
   const symbol = typeof params.symbol === 'string' ? params.symbol.toUpperCase() : '';
   const name = typeof params.name === 'string' ? params.name : symbol;
   const assetType = typeof params.assetType === 'string' ? params.assetType : 'Instrument';
-  const priceCurrency = assetType === 'cryptocurrency'
+  const commoditySpec = assetType === 'commodity' ? getCommodityContractSpec(symbol) : null;
+  const priceCurrency = commoditySpec?.quoteCurrency ?? (assetType === 'cryptocurrency'
     ? getHeatMapCryptoQuoteCurrency(symbol) ?? 'USD'
-    : 'USD';
+    : 'USD');
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const colors = useColors();
@@ -235,12 +238,25 @@ export default function HeatMapChartScreen() {
               <Text style={[styles.cardTitle, { color: colors.foreground }]}>{symbol}</Text>
             </View>
             {candles.length > 0 && <View style={styles.priceSummary}>
-              <Text style={[styles.lastPrice, { color: colors.primary }]}>${candles[candles.length - 1]!.c.toLocaleString('en-US', { maximumFractionDigits: 4 })}</Text>
+              <Text style={[styles.lastPrice, { color: colors.primary }]}>
+                {commoditySpec
+                  ? formatCommodityQuotePrice(symbol, candles[candles.length - 1]!.c)
+                  : `$${candles[candles.length - 1]!.c.toLocaleString('en-US', { maximumFractionDigits: 4 })}`}
+              </Text>
               {rangeChange !== null && <Text style={[styles.rangeReturn, { color: rangeChange >= 0 ? colors.buyColor : colors.sellColor }]}>
                 {range.label} {rangeChange >= 0 ? '+' : ''}{rangeChange.toFixed(2)}%
               </Text>}
             </View>}
           </View>
+          {assetType === 'commodity' && (
+            <Text
+              testID="heat-map-chart-continuous-futures-note"
+              style={[styles.disclaimer, { color: colors.mutedForeground }]}
+            >
+              Continuous-futures history, not one tradable contract. Contract month, expiry, settlement, and roll adjustments are not verified here.
+              {candles.length > 0 ? ` Last bar ${candles[candles.length - 1]!.date} · ${formatHeatMapQuoteAge(candles[candles.length - 1]!.t)}.` : ''}
+            </Text>
+          )}
           <ScrollView testID="heat-map-chart-range-strip" horizontal showsHorizontalScrollIndicator={false}
             accessibilityHint="Swipe horizontally to see all history ranges"
             contentContainerStyle={styles.rangeRow}>

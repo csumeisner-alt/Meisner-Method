@@ -104,6 +104,7 @@ async function requestCommodityAnalysis(
       currentPrice: closes.at(-1)!,
       priceChange: 0.1,
       priceChangePercent: 0.1,
+      priceTimestamp: Date.parse("2026-11-02T11:58:00.000Z") / 1_000,
       volume: 1_000,
       week52High: closes.at(-1)!,
       week52Low: closes[0]!,
@@ -165,6 +166,7 @@ async function requestFullCommodityAnalysis(
       currentPrice: closes.at(-1)!,
       priceChange: 0.1,
       priceChangePercent: 0.1,
+      priceTimestamp: Date.parse("2026-11-02T11:58:00.000Z") / 1_000,
       volume: 1_000,
       week52High: closes.at(-1)!,
       week52Low: closes[0]!,
@@ -255,6 +257,10 @@ test("commodity endpoint returns only matching verified calendar and supply evid
     },
   );
   assert.equal(result.status, 200);
+  assert.equal(
+    result.body.priceTimestamp,
+    Date.parse("2026-11-02T11:58:00.000Z") / 1_000,
+  );
   const analysis = result.body.commodityAnalysis;
   assert.equal(analysis.eventCalendar.events[0].status, "upcoming");
   assert.equal(analysis.eventCalendar.events[0].values.consensus, null);
@@ -485,9 +491,11 @@ test("current news is not treated as an upcoming catalyst without a dated event,
   );
   assert.equal(currentCatalyst.status, 200);
   assert.equal(currentCatalyst.body.commodityAnalysis.newsContext.status, "available");
-  assert.equal(currentCatalyst.body.commodityAnalysis.commentary.upcomingCatalysts.length, 0);
-  assert.equal(currentCatalyst.body.commodityAnalysis.verifiedEvidence.find((item: { id: string }) => item.id === "news-1")?.asOf, "2026-11-01T08:00:00.000Z");
-  assert.equal(currentCatalyst.body.commodityAnalysis.verifiedEvidence.find((item: { id: string }) => item.id === "news-1")?.eventDate, null);
+  assert.equal(currentCatalyst.body.commodityAnalysis.commentary.status, "unavailable");
+  assert.equal(
+    currentCatalyst.body.commodityAnalysis.verifiedEvidence.some((item: { id: string }) => item.id.startsWith("news-")),
+    false,
+  );
 
   const failedAi = await requestFullCommodityAnalysis(
     "CL=F",

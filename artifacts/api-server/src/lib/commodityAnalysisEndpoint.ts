@@ -33,6 +33,7 @@ export interface CommodityAnalysisQuote {
   currentPrice: number;
   priceChange: number;
   priceChangePercent: number;
+  priceTimestamp?: number | null;
   volume: number;
   week52High: number;
   week52Low: number;
@@ -226,7 +227,7 @@ export async function respondWithCommodityAnalysis(
       eventDate: item.eventDate,
     })),
   ];
-  const verifiedEvidence = [...buildCommodityVerifiedEvidence(symbol, score, newsContext), ...researchEvidence];
+  const verifiedEvidence = [...buildCommodityVerifiedEvidence(symbol, score), ...researchEvidence];
   const guide = COMMODITY_ANALYSIS_GUIDES[symbol];
   if (options.includeCommentary !== false) {
     try {
@@ -266,6 +267,7 @@ export async function respondWithCommodityAnalysis(
     currentPrice: data.currentPrice,
     priceChange: data.priceChange,
     priceChangePercent: data.priceChangePercent,
+    priceTimestamp: data.priceTimestamp ?? null,
     volume: data.volume,
     marketCap: null,
     week52High: data.week52High,

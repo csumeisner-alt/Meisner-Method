@@ -45,6 +45,10 @@ class ChartHistoryTests(unittest.TestCase):
                     self.assertEqual(payload["symbol"], symbol)
                     self.assertEqual(payload["period"], period)
                     self.assertEqual(payload["interval"], interval)
+                    self.assertEqual(
+                        payload["seriesType"],
+                        "continuous_futures" if symbol == "GC=F" else "market_history",
+                    )
                     self.assertEqual(len(payload["candles"]), 2)
                     self.assertEqual(payload["candles"][0]["v"], 0)
                     self.assertTrue(all(candle["o"] is not None for candle in payload["candles"]))
@@ -59,6 +63,28 @@ class ChartHistoryTests(unittest.TestCase):
                 call(period=period, interval=interval, auto_adjust=False, actions=True)
                 for _ in symbols for period, interval in ranges
             ],
+        )
+
+    def test_commodity_daily_chart_is_sorted_and_collapses_sunday_monday_trade_date_bars(self):
+        history = pd.DataFrame(
+            [
+                {"Open": 50.0, "High": 52.0, "Low": 49.0, "Close": 51.0, "Volume": 20},
+                {"Open": 49.0, "High": 50.0, "Low": 48.0, "Close": 50.0, "Volume": 10},
+            ],
+            index=pd.to_datetime(["2026-11-02", "2026-11-01"], utc=True),
+        )
+        ticker = Mock()
+        ticker.history.return_value = history
+        output = io.StringIO()
+
+        with patch.dict(sys.modules, {"yfinance": Mock(Ticker=Mock(return_value=ticker))}), contextlib.redirect_stdout(output):
+            fetch_chart.fetch_chart("SI=F", "1mo", "1d")
+
+        payload = json.loads(output.getvalue())
+        self.assertEqual(payload["seriesType"], "continuous_futures")
+        self.assertEqual(
+            [(candle["date"], candle["c"], candle["v"]) for candle in payload["candles"]],
+            [("2026-11-02", 51.0, 20)],
         )
 
     def test_adjusted_return_series_uses_provider_adjusted_close_and_complete_distributions(self):

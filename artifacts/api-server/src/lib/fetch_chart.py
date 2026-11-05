@@ -7,6 +7,8 @@ import sys
 import json
 import math
 
+from fetch_stock import COMMODITY_CALENDARS, commodity_history_session_date
+
 def safe_float(val):
     try:
         f = float(val)
@@ -82,7 +84,11 @@ def fetch_chart(symbol, period, interval):
     adjustment_column_present = "Adj Close" in hist.columns
     dividend_column_present = "Dividends" in hist.columns
 
-    for ts, row in hist.iterrows():
+    history_rows = list(hist.iterrows())
+    if symbol in COMMODITY_CALENDARS:
+        history_rows.sort(key=lambda item: item[0])
+
+    for ts, row in history_rows:
         o = safe_float(row.get("Open"))
         h = safe_float(row.get("High"))
         l = safe_float(row.get("Low"))
@@ -93,9 +99,12 @@ def fetch_chart(symbol, period, interval):
         if None in (o, h, l, c):
             continue
         closes_raw.append(c)
+        date_label = ts.strftime("%Y-%m-%d")
+        if symbol in COMMODITY_CALENDARS and interval == "1d":
+            date_label = commodity_history_session_date(symbol, ts)
         candles.append({
             "t": int(ts.timestamp()),
-            "date": ts.strftime("%Y-%m-%d"),
+            "date": date_label,
             "o": o,
             "h": h,
             "l": l,
@@ -104,6 +113,17 @@ def fetch_chart(symbol, period, interval):
             "dividend": dividend,
             "v": v,
         })
+
+    if symbol in COMMODITY_CALENDARS and interval == "1d":
+        # Yahoo can emit both a Sunday partial bar and Monday's completed
+        # futures trade-date bar. Keep the later provider observation.
+        candles_by_session = {}
+        for candle in candles:
+            existing = candles_by_session.get(candle["date"])
+            if existing is None or candle["t"] >= existing["t"]:
+                candles_by_session[candle["date"]] = candle
+        candles = sorted(candles_by_session.values(), key=lambda candle: candle["t"])
+        closes_raw = [candle["c"] for candle in candles]
 
     # Compute MAs over the full close series
     ma20 = moving_average(closes_raw, 20)
@@ -120,6 +140,7 @@ def fetch_chart(symbol, period, interval):
         "symbol": symbol.upper(),
         "period": period,
         "interval": interval,
+        "seriesType": "continuous_futures" if symbol in COMMODITY_CALENDARS else "market_history",
         "candles": candles,
         "adjustedReturnSeries": build_adjusted_return_series(
             candles,

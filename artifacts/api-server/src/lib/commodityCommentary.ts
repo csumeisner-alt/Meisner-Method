@@ -86,7 +86,6 @@ function sourceEvidence(
 export function buildCommodityVerifiedEvidence(
   symbol: string,
   score: CommodityScore,
-  news: CommodityNewsContext,
 ): CommodityVerifiedEvidence[] {
   const evidence: CommodityVerifiedEvidence[] = [{
     id: "price-history",
@@ -107,20 +106,6 @@ export function buildCommodityVerifiedEvidence(
     for (const source of factor.sources) {
       evidence.push(sourceEvidence(factor.key, source));
     }
-  }
-  if (news.status === "available" && news.retrievedAt) {
-    news.sources.forEach((source, index) => {
-      evidence.push({
-        id: `news-${index + 1}`,
-        title: source.title,
-        url: source.url,
-        asOf: source.publishedAt ?? "",
-        unit: "publication date",
-        observation: `Current news context retrieved ${news.retrievedAt}: ${news.summary}`,
-        kind: "news",
-        eventDate: null,
-      });
-    });
   }
   return evidence.filter((item) => item.asOf);
 }

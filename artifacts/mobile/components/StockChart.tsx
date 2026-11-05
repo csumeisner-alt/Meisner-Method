@@ -71,6 +71,7 @@ function fmtPrice(p: number, currency = 'USD') {
   const amount = p >= 1000 ? `${(p / 1000).toFixed(1)}k`
     : p >= 1 ? p.toFixed(2)
       : p.toFixed(4);
+  if (currency === 'USC') return `${amount}¢`;
   return currency === 'USD' ? `$${amount}` : `${amount} ${currency}`;
 }
 

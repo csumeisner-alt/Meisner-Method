@@ -80,21 +80,85 @@ def commodity_history_session_date(symbol, timestamp):
 
 def normalize_commodity_history(symbol, timestamps, closes, volumes):
     """Align daily observations to sessions and collapse duplicate session labels."""
+    is_commodity = symbol in COMMODITY_CALENDARS
     observations = []
-    for timestamp, close, volume in zip(timestamps, closes, volumes):
+    rows = zip(timestamps, closes, volumes)
+    ordered_rows = sorted(rows, key=lambda item: item[0]) if is_commodity else rows
+    for timestamp, close, volume in ordered_rows:
         session_date = commodity_history_session_date(symbol, timestamp)
         observation = (session_date, close, volume)
         # If Yahoo returns both a Sunday partial bar and Monday's daily bar for
-        # the same CME session, keep the later observation.
-        if observations and observations[-1][0] == session_date:
-            observations[-1] = observation
-        else:
+        # the same session, keep the chronologically latest observation.
+        if not is_commodity:
+            if observations and observations[-1][0] == session_date:
+                observations[-1] = observation
+            else:
+                observations.append(observation)
+            continue
+        existing_index = next((index for index, existing in enumerate(observations) if existing[0] == session_date), None)
+        if existing_index is None:
             observations.append(observation)
+        else:
+            observations[existing_index] = observation
+    if is_commodity:
+        observations.sort(key=lambda item: item[0])
     return (
         [observation[0] for observation in observations],
         [observation[1] for observation in observations],
         [observation[2] for observation in observations],
     )
+
+
+def finite_number(value):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def commodity_quote_snapshot(current_price, previous_close):
+    """Validate a current commodity quote and derive internally consistent changes."""
+    current = finite_number(current_price)
+    previous = finite_number(previous_close)
+    if current is None or current <= 0 or previous is None or previous <= 0:
+        return None
+    change = current - previous
+    return {
+        "currentPrice": current,
+        "priceChange": change,
+        "priceChangePercent": change / previous * 100,
+    }
+
+
+def commodity_quote_fields(info, full_info, volumes):
+    metadata_price = finite_number(full_info.get("regularMarketPrice"))
+    current_price = metadata_price or finite_number(getattr(info, "last_price", None))
+    previous_close = (
+        finite_number(full_info.get("regularMarketPreviousClose"))
+        or finite_number(full_info.get("previousClose"))
+        or finite_number(getattr(info, "previous_close", None))
+    )
+    quote = commodity_quote_snapshot(current_price, previous_close)
+    if quote is None:
+        raise ValueError("No current, internally consistent commodity quote is available")
+
+    # Attach a timestamp only when the price came from the same metadata record.
+    price_timestamp = (
+        finite_number(full_info.get("regularMarketTime"))
+        if metadata_price is not None
+        else None
+    )
+    observed_volume = (
+        finite_number(full_info.get("regularMarketVolume"))
+        or finite_number(getattr(info, "last_volume", None))
+        or (finite_number(volumes[-1]) if volumes else None)
+    )
+    return {
+        **quote,
+        "priceTimestamp": int(price_timestamp) if price_timestamp is not None and price_timestamp > 0 else None,
+        "volume": int(observed_volume) if observed_volume is not None and observed_volume >= 0 else None,
+    }
 
 
 def clean_nan(obj):
@@ -169,17 +233,27 @@ def main():
         # Basic info & fast_info
         info = ticker.fast_info
 
-        current_price = float(info.last_price or closes[-1])
-        prev_close = float(info.previous_close or (closes[-2] if len(closes) > 1 else current_price))
-        price_change = current_price - prev_close
-        price_change_pct = (price_change / prev_close * 100) if prev_close else 0
-
         # More detailed info (may be slow but needed for fundamentals)
         full_info = {}
         try:
             full_info = ticker.info or {}
         except Exception:
             pass
+
+        if symbol in COMMODITY_CALENDARS:
+            quote = commodity_quote_fields(info, full_info, volumes)
+            current_price = quote["currentPrice"]
+            price_change = quote["priceChange"]
+            price_change_pct = quote["priceChangePercent"]
+            price_timestamp = quote["priceTimestamp"]
+            volume = quote["volume"]
+        else:
+            current_price = float(info.last_price or closes[-1])
+            prev_close = float(info.previous_close or (closes[-2] if len(closes) > 1 else current_price))
+            price_change = current_price - prev_close
+            price_change_pct = (price_change / prev_close * 100) if prev_close else 0
+            price_timestamp = None
+            volume = int(info.three_month_average_volume or volumes[-1] if volumes else 0)
 
         result = {
             "symbol": symbol,
@@ -190,7 +264,8 @@ def main():
             "currentPrice": current_price,
             "priceChange": price_change,
             "priceChangePercent": price_change_pct,
-            "volume": int(info.three_month_average_volume or volumes[-1] if volumes else 0),
+            "priceTimestamp": int(price_timestamp) if price_timestamp is not None and price_timestamp > 0 else None,
+            "volume": volume,
             "avgVolume": int(info.three_month_average_volume or (volumes[-1] if volumes else 0)),
             "marketCap": float(info.market_cap) if getattr(info, "market_cap", None) else None,
             "week52High": float(info.year_high) if getattr(info, "year_high", None) else max(closes[-52:] if len(closes) >= 52 else closes),

@@ -39,7 +39,7 @@ import {
   getCommodityContractSpec,
   getCommodityContractTickValue,
 } from '@/lib/heatMapInstrumentDisplay';
-import { formatHeatMapQuoteAge } from '@/lib/heatMapQuoteDisplay';
+import { formatHeatMapQuoteAge, shouldShowHeatMapQuotePrice } from '@/lib/heatMapQuoteDisplay';
 import { formatHeatMapCryptoPrice } from '@/lib/heatMapCryptoPrice';
 
 const DETAIL_CACHE_TTL_MS = 5 * 60_000;
@@ -315,6 +315,8 @@ export function HeatMapDetailModal({
   const symbol = quote?.symbol ?? unavailableCommodity?.symbol ?? null;
   const name = quote?.name ?? unavailableCommodity?.name ?? symbol;
   const isCommodity = quote?.assetType === 'commodity' || unavailableCommodity !== null && unavailableCommodity !== undefined;
+  const showCurrentQuote = quote !== null
+    && shouldShowHeatMapQuotePrice(quote.assetType, quoteUnavailable);
 
   useEffect(() => {
     quoteRefreshAttemptRef.current += 1;
@@ -562,9 +564,9 @@ export function HeatMapDetailModal({
               <MaterialCommunityIcons name="arrow-top-right" size={15} color={colors.primary} />
             </Pressable>
 
-            {quote ? <View style={styles.priceRow}>
+            {showCurrentQuote ? <View style={styles.priceRow}>
               <Text testID="heat-map-detail-price" style={[styles.price, { color: colors.foreground }]}>
-                {formatQuotePrice(quote.price)}
+                {formatQuotePrice(quote!.price)}
               </Text>
               <View style={[styles.changeBadge, { backgroundColor: change >= 0 ? colors.buyBg : colors.sellBg }]}>
                 <MaterialCommunityIcons name={change >= 0 ? 'arrow-top-right' : 'arrow-bottom-right'} size={15} color={changeColor} />
@@ -573,11 +575,13 @@ export function HeatMapDetailModal({
                 </Text>
               </View>
             </View> : <Text testID="heat-map-detail-no-current-quote" style={[styles.emptyStats, { color: colors.mutedForeground }]}>
-              No fresh quote is available. Contract details and historical analysis are shown without a current price.
+              {quote && isCommodity && quoteUnavailable
+                ? 'No fresh commodity quote is available. Contract details and historical analysis are shown without a current price.'
+                : 'No fresh quote is available. Contract details and historical analysis are shown without a current price.'}
             </Text>}
-            {quote && <View style={styles.quoteAgeRow}>
+            {showCurrentQuote && <View style={styles.quoteAgeRow}>
               <Text style={[styles.quoteAge, { color: colors.mutedForeground }]}>
-                Quote {formatHeatMapQuoteAge(quote.priceTimestamp)}
+                Quote {formatHeatMapQuoteAge(quote!.priceTimestamp)}
               </Text>
               <Pressable
                 testID="heat-map-detail-refresh-quote"
@@ -599,7 +603,9 @@ export function HeatMapDetailModal({
             {quote && (quoteUnavailable || quoteRefreshError) && (
               <View testID="heat-map-detail-quote-refresh-error" style={[styles.quoteRefreshError, { borderColor: colors.border }]}>
                 <Text style={[styles.errorText, { color: colors.mutedForeground }]}>
-                  {quoteUnavailable
+                  {isCommodity && quoteUnavailable
+                    ? 'No fresh commodity quote was returned in the latest batch.'
+                    : quoteUnavailable
                     ? "This quote isn't in the latest batch. Showing the last displayed price."
                     : "Couldn't refresh this quote. Showing the last displayed price."}
                 </Text>
@@ -668,7 +674,7 @@ export function HeatMapDetailModal({
               </View>
             )}
 
-            {quote && <>
+            {quote && showCurrentQuote && <>
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Price ranges</Text>
               {loading && <ActivityIndicator testID="heat-map-detail-loading" size="small" color={colors.gold} />}

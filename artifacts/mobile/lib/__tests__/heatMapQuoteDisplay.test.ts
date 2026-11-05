@@ -10,6 +10,7 @@ import {
   HEAT_MAP_CRYPTO_RESUME_STALE_AFTER_SECONDS,
   HEAT_MAP_REGULAR_SESSION_REFRESH_INTERVAL_MS,
   isDisplayableHeatMapQuote,
+  shouldShowHeatMapQuotePrice,
   shouldRefreshCryptoHeatMapOnResume,
   shouldRefreshHeatMapDuringRegularSession,
   shouldRefreshHeatMapOnForegroundCadence,
@@ -142,7 +143,18 @@ test("heat-map excludes missing and stale quotes, with a shorter crypto freshnes
   const now = 1_800_000_000;
   assert.equal(isDisplayableHeatMapQuote({ priceTimestamp: null, assetType: "stock" }, now), false);
   assert.equal(isDisplayableHeatMapQuote({ priceTimestamp: now - 121 * 60 * 60, assetType: "stock" }, now), false);
+  assert.equal(isDisplayableHeatMapQuote({ priceTimestamp: now - 100 * 60 * 60, assetType: "commodity" }, now), true);
+  assert.equal(isDisplayableHeatMapQuote({ priceTimestamp: now - 121 * 60 * 60, assetType: "commodity" }, now), false);
+  assert.equal(isDisplayableHeatMapQuote({ priceTimestamp: null, assetType: "commodity" }, now), false);
   assert.equal(isDisplayableHeatMapQuote({ priceTimestamp: now - 49 * 60 * 60, assetType: "cryptocurrency" }, now), false);
   assert.equal(isDisplayableHeatMapQuote({ priceTimestamp: now - 47 * 60 * 60, assetType: "cryptocurrency" }, now), true);
   assert.equal(isDisplayableHeatMapQuote({ priceTimestamp: now, assetType: "stock" }, now), true);
+});
+
+test("an omitted commodity quote is not shown as a current price while other asset behavior is unchanged", () => {
+  assert.equal(shouldShowHeatMapQuotePrice("commodity", true), false);
+  assert.equal(shouldShowHeatMapQuotePrice("commodity", false), true);
+  assert.equal(shouldShowHeatMapQuotePrice("stock", true), true);
+  assert.equal(shouldShowHeatMapQuotePrice("etf", true), true);
+  assert.equal(shouldShowHeatMapQuotePrice("cryptocurrency", true), true);
 });

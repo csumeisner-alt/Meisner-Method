@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  formatCommodityQuotePrice,
   getCommodityContractNotional,
   getCommodityContractSpec,
   getCommodityContractTickValue,
@@ -91,6 +92,13 @@ test("full-contract notional converts cent quotes to dollars and keeps dollar qu
   assert.equal(getCommodityContractNotional("UNKNOWN=F", 100), null);
   assert.equal(getCommodityContractNotional("ZC=F", Number.NaN), null);
   assert.equal(getCommodityContractNotional("ZC=F", 0), null);
+});
+
+test("commodity display preserves exchange dollars and cents quote units", () => {
+  assert.equal(formatCommodityQuotePrice("ZC=F", 464.5), "464.50¢");
+  assert.equal(formatCommodityQuotePrice("KC=F", 245.25), "245.25¢");
+  assert.equal(formatCommodityQuotePrice("GC=F", 4_200), "$4,200.00");
+  assert.equal(formatCommodityQuotePrice("UNKNOWN=F", 100), "—");
 });
 
 test("tick-value calculation rejects unsupported commodity symbols", () => {
