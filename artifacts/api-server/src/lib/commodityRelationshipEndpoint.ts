@@ -1,6 +1,7 @@
 import type { Response } from "express";
 import {
   calculateCommodityRelationship,
+  calculateCommodityRelationshipHistoryRanks,
   COMMODITY_RELATIONSHIPS,
   isCommodityRelationshipId,
   isCommodityRelationshipPeriod,
@@ -70,18 +71,41 @@ export async function respondWithCommodityRelationship(
   }
   const relationship = COMMODITY_RELATIONSHIPS.find(({ id }) => id === relationshipId)!;
   const period = periodValue;
-  const [firstResult, secondResult] = await Promise.allSettled([
-    dependencies.fetchHistory(relationship.first.symbol, period),
-    dependencies.fetchHistory(relationship.second.symbol, period),
+  const needsHistoryRanks = relationship.id === "gold-silver-ratio";
+  const [periodResults, rankResults] = await Promise.all([
+    Promise.allSettled([
+      dependencies.fetchHistory(relationship.first.symbol, period),
+      dependencies.fetchHistory(relationship.second.symbol, period),
+    ]),
+    needsHistoryRanks && period !== "max"
+      ? Promise.allSettled([
+        dependencies.fetchHistory(relationship.first.symbol, "max"),
+        dependencies.fetchHistory(relationship.second.symbol, "max"),
+      ])
+      : Promise.resolve(null),
   ]);
+  const [firstResult, secondResult] = periodResults;
   const firstHistory = firstResult.status === "fulfilled" ? firstResult.value : null;
   const secondHistory = secondResult.status === "fulfilled" ? secondResult.value : null;
+  const firstRankHistory = period === "max"
+    ? firstHistory
+    : rankResults?.[0]?.status === "fulfilled" ? rankResults[0].value : null;
+  const secondRankHistory = period === "max"
+    ? secondHistory
+    : rankResults?.[1]?.status === "fulfilled" ? rankResults[1].value : null;
   const result = calculateCommodityRelationship(
     relationship,
     period,
     firstHistory?.points ?? [],
     secondHistory?.points ?? [],
   );
+  const historyRanks = needsHistoryRanks
+    ? calculateCommodityRelationshipHistoryRanks(
+      relationship,
+      firstRankHistory?.points ?? [],
+      secondRankHistory?.points ?? [],
+    )
+    : [];
   if (result.status === "unavailable") {
     const failures = [
       firstResult.status === "rejected" ? `${relationship.first.name} history is unavailable.` : null,
@@ -114,6 +138,7 @@ export async function respondWithCommodityRelationship(
   ].filter((timestamp): timestamp is number => timestamp !== null);
   res.json({
     ...result,
+    historyRanks,
     sources: {
       provider: "Yahoo Finance",
       retrievedAt: dependencies.now().toISOString(),

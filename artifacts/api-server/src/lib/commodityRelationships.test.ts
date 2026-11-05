@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   calculateCommodityRelationship,
+  calculateCommodityRelationshipHistoryRanks,
   COMMODITY_RELATIONSHIPS,
   COMMODITY_RELATIONSHIP_PERIODS,
   isCommodityRelationshipPeriod,
@@ -146,6 +147,50 @@ test("gold/silver history rank uses only exact matched same-unit observations", 
   assert.equal(mismatchedUnits.metrics.currentRelativeValuePercentile, null);
 });
 
+test("gold/silver ranks compare every supported window using exact matched dates", () => {
+  const relationship = COMMODITY_RELATIONSHIPS.find(({ id }) => id === "gold-silver-ratio")!;
+  const first = makeSeries(1450, (index) => 0.0002 + Math.sin(index) * 0.0001, "2021-05-03")
+    .map((point, index) => ({ ...point, close: 1800 + index }));
+  const completeSecond = makeSeries(1450, () => 0, "2021-05-03")
+    .map((point) => ({ ...point, close: 25 }));
+  const missingOneDate = completeSecond.filter((point) => point.date !== "2024-01-03");
+  const ranks = calculateCommodityRelationshipHistoryRanks(relationship, first, missingOneDate);
+  const baseline = calculateCommodityRelationship(relationship, "max", first, completeSecond);
+  const latestMatchedDate = first
+    .map(({ date }) => date)
+    .filter((date) => missingOneDate.some((point) => point.date === date))
+    .at(-1);
+
+  assert.deepEqual(ranks.map(({ period }) => period), COMMODITY_RELATIONSHIP_PERIODS);
+  assert.equal(ranks.at(-1)!.matchedObservations, baseline.coverage.matchedObservations - 1);
+  for (const rank of ranks) {
+    assert.ok(rank.matchedObservations > 0, `${rank.period} should report its matched sample.`);
+    assert.equal(rank.matchedEndDate, latestMatchedDate);
+    assert.ok(rank.matchedStartDate);
+    if (rank.matchedObservations >= 20) {
+      assert.ok(rank.percentile !== null && rank.percentile >= 0 && rank.percentile <= 100);
+    } else {
+      assert.equal(rank.percentile, null);
+    }
+  }
+
+  const emptyRanks = calculateCommodityRelationshipHistoryRanks(relationship, [], []);
+  assert.equal(emptyRanks.length, COMMODITY_RELATIONSHIP_PERIODS.length);
+  assert.ok(emptyRanks.every((rank) => rank.percentile === null
+    && rank.matchedObservations === 0
+    && rank.matchedStartDate === null
+    && rank.matchedEndDate === null));
+
+  const monthBoundarySeries = makeSeries(23, () => 0, "2025-02-27");
+  const monthBoundaryRank = calculateCommodityRelationshipHistoryRanks(
+    relationship,
+    monthBoundarySeries,
+    monthBoundarySeries,
+  ).find(({ period }) => period === "1mo")!;
+  assert.equal(monthBoundaryRank.matchedStartDate, "2025-02-28");
+  assert.equal(monthBoundaryRank.matchedEndDate, "2025-03-31");
+});
+
 test("the ICE dollar-index proxy follows ICE dates instead of CME holiday closures", () => {
   const dollarIndex = COMMODITY_RELATIONSHIPS[1]!.second;
   assert.equal(isValidCommodityRelationshipTradingDate(dollarIndex, "2024-03-29"), true); // Good Friday
@@ -231,6 +276,39 @@ test("all selected periods are forwarded, and AI failure never removes calculate
     assert.deepEqual(requested.sort(), ["GC=F", "SI=F"]);
     assert.deepEqual(reportedFailure, ["gold-silver"]);
   }
+});
+
+test("gold/silver ratio endpoint supplies rank coverage for all windows", async () => {
+  const response = responseHarness();
+  const requested: string[] = [];
+  await respondWithCommodityRelationship(response as never, "gold-silver-ratio", "1y", {
+    fetchHistory: async (symbol: string, period: CommodityRelationshipPeriod) => {
+      requested.push(`${symbol}:${period}`);
+      const points = period === "max"
+        ? makeSeries(1450, () => 0.001, "2021-05-03")
+        : makeSeries(260, () => 0.001, "2025-11-03");
+      return { points, source: "Yahoo Finance", latestSourceTimestamp: points.at(-1)!.timestamp };
+    },
+    interpret: async () => "Historical comparison only.",
+    now: () => new Date("2026-11-03T12:00:00.000Z"),
+  });
+  const body = response.body as {
+    historyRanks: Array<{
+      period: CommodityRelationshipPeriod;
+      percentile: number | null;
+      matchedObservations: number;
+      matchedStartDate: string | null;
+      matchedEndDate: string | null;
+    }>;
+  };
+  assert.deepEqual(requested.sort(), [
+    "GC=F:1y", "GC=F:max", "SI=F:1y", "SI=F:max",
+  ]);
+  assert.deepEqual(body.historyRanks.map(({ period }) => period), COMMODITY_RELATIONSHIP_PERIODS);
+  assert.ok(body.historyRanks.find(({ period }) => period === "1y")!.percentile !== null);
+  assert.ok(body.historyRanks.find(({ period }) => period === "1y")!.matchedObservations >= 20);
+  assert.ok(body.historyRanks.every(({ matchedObservations, matchedStartDate, matchedEndDate }) =>
+    matchedObservations === 0 || Boolean(matchedStartDate && matchedEndDate)));
 });
 
 test("unavailable source history does not invoke AI or synthesize a comparison", async () => {

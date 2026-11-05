@@ -90,6 +90,11 @@ export const GetCommodityRelationshipParams = zod.object({
 export const getCommodityRelationshipResponseMetricsCurrentRelativeValuePercentileMin = 0;
 export const getCommodityRelationshipResponseMetricsCurrentRelativeValuePercentileMax = 100;
 
+export const getCommodityRelationshipResponseHistoryRanksItemPercentileMin = 0;
+export const getCommodityRelationshipResponseHistoryRanksItemPercentileMax = 100;
+
+export const getCommodityRelationshipResponseHistoryRanksItemMatchedObservationsMin = 0;
+
 
 
 export const GetCommodityRelationshipResponse = zod.object({
@@ -143,6 +148,13 @@ export const GetCommodityRelationshipResponse = zod.object({
   "correlationChange": zod.number().nullable(),
   "currentRelativeValuePercentile": zod.number().min(getCommodityRelationshipResponseMetricsCurrentRelativeValuePercentileMin).max(getCommodityRelationshipResponseMetricsCurrentRelativeValuePercentileMax).nullable()
 }),
+  "historyRanks": zod.array(zod.object({
+  "period": zod.enum(['1mo', '3mo', '6mo', '1y', '5y', 'max']),
+  "percentile": zod.number().min(getCommodityRelationshipResponseHistoryRanksItemPercentileMin).max(getCommodityRelationshipResponseHistoryRanksItemPercentileMax).nullable(),
+  "matchedObservations": zod.number().min(getCommodityRelationshipResponseHistoryRanksItemMatchedObservationsMin),
+  "matchedStartDate": zod.coerce.date().nullable(),
+  "matchedEndDate": zod.coerce.date().nullable()
+})).describe('Historical relative-value ranks for supported windows, populated for the gold\/silver ratio.'),
   "divergence": zod.object({
   "status": zod.enum(['detected', 'not_detected', 'unavailable']),
   "firstWindowReturnPercent": zod.number().nullable(),

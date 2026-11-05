@@ -84,6 +84,31 @@ export type CommodityRelationshipResponseMetrics = {
   currentRelativeValuePercentile: number | null;
 };
 
+export type CommodityRelationshipResponseHistoryRanksItemPeriod = typeof CommodityRelationshipResponseHistoryRanksItemPeriod[keyof typeof CommodityRelationshipResponseHistoryRanksItemPeriod];
+
+
+export const CommodityRelationshipResponseHistoryRanksItemPeriod = {
+  '1mo': '1mo',
+  '3mo': '3mo',
+  '6mo': '6mo',
+  '1y': '1y',
+  '5y': '5y',
+  max: 'max',
+} as const;
+
+export type CommodityRelationshipResponseHistoryRanksItem = {
+  period: CommodityRelationshipResponseHistoryRanksItemPeriod;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  percentile: number | null;
+  /** @minimum 0 */
+  matchedObservations: number;
+  matchedStartDate: string | null;
+  matchedEndDate: string | null;
+};
+
 export type CommodityRelationshipResponseDivergenceStatus = typeof CommodityRelationshipResponseDivergenceStatus[keyof typeof CommodityRelationshipResponseDivergenceStatus];
 
 
@@ -150,6 +175,8 @@ export interface CommodityRelationshipResponse {
   method: CommodityRelationshipResponseMethod;
   coverage: CommodityRelationshipResponseCoverage;
   metrics: CommodityRelationshipResponseMetrics;
+  /** Historical relative-value ranks for supported windows, populated for the gold/silver ratio. */
+  historyRanks: CommodityRelationshipResponseHistoryRanksItem[];
   divergence: CommodityRelationshipResponseDivergence;
   points: CommodityRelationshipResponsePointsItem[];
   sources: CommodityRelationshipResponseSources;

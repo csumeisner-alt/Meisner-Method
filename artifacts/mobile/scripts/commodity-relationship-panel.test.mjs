@@ -22,6 +22,12 @@ assert.match(panel, /onPress=\{selectPoint\}/);
 assert.match(panel, /commodity-relationship-coverage/);
 assert.match(panel, /AI INTERPRETATION · SEPARATE FROM OBSERVED DATA/);
 assert.match(panel, /does not establish causation/);
+assert.match(panel, /data\.historyRanks\.map/);
+assert.match(panel, /exact matched dates/);
+assert.match(panel, /Historical ranks are descriptive/);
+for (const period of ["1mo", "3mo", "6mo", "1y", "5y", "max"]) {
+  assert.match(panel, new RegExp(`commodity-gold-silver-rank-\\$\\{rank\\.period\\}`));
+}
 assert.match(panel, /Relationship history could not be loaded/);
 assert.match(panel, /commodity-relationship-retry/);
 assert.match(panel, /Math\.min\(620, screenWidth - 60\)/);

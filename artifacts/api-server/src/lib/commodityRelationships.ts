@@ -155,6 +155,14 @@ export interface CommodityRelationshipResult {
   points: CommodityRelationshipPoint[];
 }
 
+export interface CommodityRelationshipHistoryRank {
+  period: CommodityRelationshipPeriod;
+  percentile: number | null;
+  matchedObservations: number;
+  matchedStartDate: string | null;
+  matchedEndDate: string | null;
+}
+
 const CORRELATION_MIN_RETURNS = 10;
 const CORRELATION_WINDOW = 20;
 const DIVERGENCE_THRESHOLD_PERCENTAGE_POINTS = 5;
@@ -446,6 +454,77 @@ export function calculateCommodityRelationship(
     },
     points,
   };
+}
+
+function subtractCalendarMonths(date: string, months: number): string {
+  const [year, month, day] = date.split("-").map(Number);
+  const targetMonth = new Date(Date.UTC(year!, month! - 1 - months, 1));
+  const lastDay = new Date(Date.UTC(
+    targetMonth.getUTCFullYear(),
+    targetMonth.getUTCMonth() + 1,
+    0,
+  )).getUTCDate();
+  targetMonth.setUTCDate(Math.min(day!, lastDay));
+  return targetMonth.toISOString().slice(0, 10);
+}
+
+export function calculateCommodityRelationshipHistoryRanks(
+  relationship: CommodityRelationshipDefinition,
+  firstInput: DatedCommodityClose[],
+  secondInput: DatedCommodityClose[],
+): CommodityRelationshipHistoryRank[] {
+  if (relationship.id !== "gold-silver-ratio"
+    || relationship.first.unit !== relationship.second.unit) {
+    return [];
+  }
+
+  const first = cleanSeries(relationship.first, firstInput);
+  const second = cleanSeries(relationship.second, secondInput);
+  const secondDates = new Set(second.map(({ date }) => date));
+  const matchedDates = first
+    .filter(({ date }) => secondDates.has(date))
+    .map(({ date }) => date);
+  const latestMatchedDate = matchedDates.at(-1) ?? null;
+
+  return COMMODITY_RELATIONSHIP_PERIODS.map((period) => {
+    if (!latestMatchedDate) {
+      return {
+        period,
+        percentile: null,
+        matchedObservations: 0,
+        matchedStartDate: null,
+        matchedEndDate: null,
+      };
+    }
+
+    const months = period === "1mo" ? 1
+      : period === "3mo" ? 3
+        : period === "6mo" ? 6
+          : period === "1y" ? 12
+            : period === "5y" ? 60
+              : null;
+    const startDate = months === null
+      ? null
+      : subtractCalendarMonths(latestMatchedDate, months);
+    const firstWindow = first.filter(({ date }) =>
+      date <= latestMatchedDate && (startDate === null || date >= startDate));
+    const secondWindow = second.filter(({ date }) =>
+      date <= latestMatchedDate && (startDate === null || date >= startDate));
+    const result = calculateCommodityRelationship(
+      relationship,
+      period,
+      firstWindow,
+      secondWindow,
+    );
+
+    return {
+      period,
+      percentile: result.metrics.currentRelativeValuePercentile,
+      matchedObservations: result.coverage.matchedObservations,
+      matchedStartDate: result.coverage.matchedStartDate,
+      matchedEndDate: result.coverage.matchedEndDate,
+    };
+  });
 }
 
 export function isCommodityRelationshipPeriod(value: unknown): value is CommodityRelationshipPeriod {

@@ -58,6 +58,8 @@ export * from './commodityRelationshipResponseAiInterpretationStatus';
 export * from './commodityRelationshipResponseCoverage';
 export * from './commodityRelationshipResponseDivergence';
 export * from './commodityRelationshipResponseDivergenceStatus';
+export * from './commodityRelationshipResponseHistoryRanksItem';
+export * from './commodityRelationshipResponseHistoryRanksItemPeriod';
 export * from './commodityRelationshipResponseMethod';
 export * from './commodityRelationshipResponseMetrics';
 export * from './commodityRelationshipResponsePeriod';

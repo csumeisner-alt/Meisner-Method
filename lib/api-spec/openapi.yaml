@@ -516,7 +516,7 @@ components:
 
     CommodityRelationshipResponse:
       type: object
-      required: [relationship, period, status, reason, method, coverage, metrics, divergence, points, sources, aiInterpretation]
+      required: [relationship, period, status, reason, method, coverage, metrics, historyRanks, divergence, points, sources, aiInterpretation]
       properties:
         relationship:
           type: object
@@ -564,6 +564,18 @@ components:
             previousCorrelation: { type: number, nullable: true }
             correlationChange: { type: number, nullable: true }
             currentRelativeValuePercentile: { type: number, nullable: true, minimum: 0, maximum: 100 }
+        historyRanks:
+          type: array
+          description: Historical relative-value ranks for supported windows, populated for the gold/silver ratio.
+          items:
+            type: object
+            required: [period, percentile, matchedObservations, matchedStartDate, matchedEndDate]
+            properties:
+              period: { type: string, enum: [1mo, 3mo, 6mo, 1y, 5y, max] }
+              percentile: { type: number, nullable: true, minimum: 0, maximum: 100 }
+              matchedObservations: { type: integer, minimum: 0 }
+              matchedStartDate: { type: string, format: date, nullable: true }
+              matchedEndDate: { type: string, format: date, nullable: true }
         divergence:
           type: object
           required: [status, firstWindowReturnPercent, secondWindowReturnPercent, reason]

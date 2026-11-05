@@ -840,6 +840,15 @@ async function buildCommodityRelationshipPanelBundle() {
             correlationChange: 0.1, currentRelativeValue: 2,
             currentRelativeValuePercentile: relationshipId === "gold-silver-ratio" ? 97.91666666666666 : null,
           },
+          historyRanks: relationshipId === "gold-silver-ratio"
+            ? ["1mo", "3mo", "6mo", "1y", "5y", "max"].map((rankPeriod, index) => ({
+              period: rankPeriod,
+              percentile: 97.9 - index * 10,
+              matchedObservations: 22 * (index + 1),
+              matchedStartDate: index ? "2026-08-01" : "2026-10-01",
+              matchedEndDate: dates.at(-1),
+            }))
+            : [],
           coverage: {
             matchedObservations: dates.length, returnObservations: dates.length - 1,
             matchedStartDate: dates[0], matchedEndDate: dates.at(-1),
@@ -881,6 +890,13 @@ async function buildCommodityRelationshipPanelBundle() {
               status: "unavailable",
               reason: "Only two exact shared dates are available.",
               metrics: { ...data.metrics, currentRelativeValuePercentile: null },
+              historyRanks: data.historyRanks.map((rank) => ({
+                ...rank,
+                percentile: null,
+                matchedObservations: 0,
+                matchedStartDate: null,
+                matchedEndDate: null,
+              })),
             },
             isLoading: false, isError: false, refetch,
           };
@@ -1236,9 +1252,17 @@ test("rendered commodity relationship panel supports selection, chart touch, and
       const rankText = await browser.evaluate(
         `document.querySelector('[data-testid="commodity-gold-silver-history-rank"]')?.textContent ?? ""`,
       );
-      assert.match(rankText, /HIGH IN SELECTED HISTORY/);
-      assert.match(rankText, /Selected period: 1Y · 24 exact matched dates · 2026-10-01 to 2026-11-03/);
-      assert.match(rankText, /not a prediction or causal explanation/);
+      assert.match(rankText, /HIGH IN HISTORY/);
+      for (const period of ["1mo", "3mo", "6mo", "1y", "5y", "max"]) {
+        assert.equal(
+          await browser.evaluate(`Boolean(document.querySelector('[data-testid="commodity-gold-silver-rank-${period}"]'))`),
+          true,
+          `${period} should have a rank and coverage row.`,
+        );
+      }
+      assert.match(rankText, /22 exact matched dates/);
+      assert.match(rankText, /2026-10-01 to 2026-11-03/);
+      assert.match(rankText, /Historical ranks are descriptive/);
       await browser.evaluate(`document.querySelector('[data-testid="commodity-relationship-select-oil-gold"]')?.click()`);
       await waitForBrowserValue(
         browser,
@@ -1300,8 +1324,9 @@ test("rendered commodity relationship panel supports selection, chart touch, and
           const unavailableRankText = await browser.evaluate(
             `document.querySelector('[data-testid="commodity-gold-silver-history-rank"]')?.textContent ?? ""`,
           );
-          assert.match(unavailableRankText, /at least 20 valid, same-unit gold and silver prices/);
-          assert.match(unavailableRankText, /Missing values are not estimated/);
+          assert.match(unavailableRankText, /same quote units/);
+          assert.match(unavailableRankText, /At least 20 matched dates are required/);
+          assert.match(unavailableRankText, /missing values are not estimated/);
         }
         dimensions = await layout();
         assert.ok(dimensions.documentWidth <= width && dimensions.bodyWidth <= width && dimensions.panelRight <= width + 1,

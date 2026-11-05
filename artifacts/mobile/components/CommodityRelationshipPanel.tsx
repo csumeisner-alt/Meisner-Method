@@ -194,37 +194,50 @@ function Metric({
 
 function GoldSilverHistoryRank({ data }: { data: CommodityRelationshipResponse }) {
   const colors = useColors();
-  const percentile = data.metrics.currentRelativeValuePercentile;
-  const rankLabel = percentile == null
-    ? 'Historical rank unavailable'
-    : percentile >= 75
-      ? 'High in selected history'
-      : percentile <= 25
-        ? 'Low in selected history'
-        : 'Middle of selected history';
-  const percentileLabel = percentile == null ? 'Unavailable' : `${percentile.toFixed(1)}th percentile`;
-  const dateCoverage = data.coverage.matchedStartDate && data.coverage.matchedEndDate
-    ? `${data.coverage.matchedStartDate} to ${data.coverage.matchedEndDate}`
-    : 'matched date range unavailable';
-
   return (
     <View
       testID="commodity-gold-silver-history-rank"
       style={{ borderRadius: 10, borderWidth: 1, borderColor: `${colors.primary}55`, padding: 11, backgroundColor: `${colors.primary}0d`, gap: 5 }}
     >
       <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>
-        GOLD / SILVER RATIO · {rankLabel.toUpperCase()}
+        GOLD / SILVER RATIO · HISTORICAL RANKS
       </Text>
-      <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 16 }}>
-        {percentileLabel}
-      </Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        {data.historyRanks.map((rank) => {
+          const label = rank.percentile == null
+            ? 'Unavailable'
+            : `${rank.percentile.toFixed(1)}th percentile`;
+          const range = rank.matchedStartDate && rank.matchedEndDate
+            ? `${rank.matchedStartDate} to ${rank.matchedEndDate}`
+            : 'Coverage unavailable';
+          const rankLabel = rank.percentile == null
+            ? 'HISTORICAL RANK UNAVAILABLE'
+            : rank.percentile >= 75
+              ? 'HIGH IN HISTORY'
+              : rank.percentile <= 25
+                ? 'LOW IN HISTORY'
+                : 'MIDDLE OF HISTORY';
+          return (
+            <View
+              key={rank.period}
+              testID={`commodity-gold-silver-rank-${rank.period}`}
+              style={{ flexBasis: '47%', flexGrow: 1, minWidth: 105, borderRadius: 8, padding: 8, backgroundColor: `${colors.background}bb`, gap: 3 }}
+            >
+              <Text style={{ color: colors.mutedForeground, fontSize: 10 }}>{periodLabel(rank.period)}</Text>
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 13 }}>{label}</Text>
+              <Text style={{ color: colors.primary, fontSize: 9 }}>{rankLabel}</Text>
+              <Text style={{ color: colors.mutedForeground, fontSize: 9, lineHeight: 13 }}>
+                {rank.matchedObservations} exact matched dates
+              </Text>
+              <Text style={{ color: colors.mutedForeground, fontSize: 8, lineHeight: 12 }}>
+                {range}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
       <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 15 }}>
-        Selected period: {periodLabel(data.period)} · {data.coverage.matchedObservations} exact matched dates · {dateCoverage}.
-      </Text>
-      <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 15 }}>
-        {percentile == null
-          ? 'A rank requires at least 20 valid, same-unit gold and silver prices on matching dates. Missing values are not estimated.'
-          : `Rank is based on the latest matched ratio dated ${data.coverage.matchedEndDate ?? '—'}. Historical rank is descriptive, not a prediction or causal explanation.`}
+        Ranks use exact matched gold and silver prices in the same quote units; missing values are not estimated. At least 20 matched dates are required. Historical ranks are descriptive, not predictions or causal explanations.
       </Text>
     </View>
   );
