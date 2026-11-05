@@ -789,6 +789,7 @@ async function buildCommodityRelationshipPanelBundle() {
           background: "#10151C", card: "#1A222C", border: "#405061",
           foreground: "#EAF0F6", mutedForeground: "#9AA9B8",
           primary: "#D4A847", holdColor: "#B7C4D1",
+          buyColor: "#00E5A0", sellColor: "#FF3B3B",
         };
       }
     `],
@@ -832,7 +833,7 @@ async function buildCommodityRelationshipPanelBundle() {
             date, timestamp: Date.parse(date + "T00:00:00Z") / 1000,
             firstClose: 100 + index * (relationshipId === "gold-silver-ratio" ? 1 : 4),
             secondClose: relationshipId === "gold-silver-ratio" ? 50 : 50 + index * 2,
-            rollingCorrelation: [0.1, 0.3, 0.6, 0.8][index],
+            rollingCorrelation: [0.1, -0.3, 0.6, 0.8][index],
           })),
           metrics: {
             firstPeriodReturnPercent: 4, secondPeriodReturnPercent: 2,
@@ -1283,9 +1284,30 @@ test("rendered commodity relationship panel supports selection, chart touch, and
         `document.querySelector('[data-testid="commodity-relationship-correlation-touch-target"]')?.getAttribute("aria-label")?.includes("2026-08-01")`,
         "Touching the correlation chart should select and announce a dated value.",
       );
+      const correlationStyles = await browser.evaluate(`(() => {
+        const positive = document.querySelector('path[testID="commodity-relationship-correlation-positive-line"]');
+        const negative = document.querySelector('path[testID="commodity-relationship-correlation-negative-line"]');
+        return {
+          positiveStroke: positive?.getAttribute("stroke"),
+          positivePath: positive?.getAttribute("d"),
+          negativeStroke: negative?.getAttribute("stroke"),
+          negativePath: negative?.getAttribute("d"),
+          negativeDash: negative?.getAttribute("stroke-dasharray"),
+          legend: document.body.textContent.includes("＋ Positive · solid") && document.body.textContent.includes("− Negative · dashed"),
+        };
+      })()`);
+      assert.ok(
+        correlationStyles.positiveStroke && correlationStyles.negativeStroke
+          && correlationStyles.positiveStroke !== correlationStyles.negativeStroke
+          && correlationStyles.positivePath?.includes("M")
+          && correlationStyles.negativePath?.includes("M")
+          && correlationStyles.negativeDash === "5 3"
+          && correlationStyles.legend,
+        `Positive and negative values should render with distinct line styles and a visible key: ${JSON.stringify(correlationStyles)}`,
+      );
       assert.match(
         await browser.evaluate(`document.querySelector('[data-testid="commodity-relationship-correlation-touch-target"]')?.getAttribute("aria-label") ?? ""`),
-        /2026-08-01, 0\.60/,
+        /2026-08-01, 0\.60, positive correlation/,
       );
       assert.equal(
         await browser.evaluate(`document.querySelector('[aria-live="polite"]')?.textContent.includes("2026-08-01") && document.querySelector('[aria-live="polite"]')?.textContent.includes("0.60")`),

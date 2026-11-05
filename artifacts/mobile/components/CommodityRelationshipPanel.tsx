@@ -47,6 +47,7 @@ const pct = (value: number | null) => value == null
   ? 'Unavailable'
   : `${value > 0 ? '+' : ''}${value.toFixed(2)}%`;
 const corr = (value: number | null) => value == null ? 'Unavailable' : value.toFixed(2);
+const correlationSign = (value: number) => value > 0 ? 'positive' : value < 0 ? 'negative' : 'zero';
 
 function RelationshipCorrelationChart({
   points,
@@ -65,10 +66,41 @@ function RelationshipCorrelationChart({
   const valid = useMemo(() => points.flatMap((point, index) => point.rollingCorrelation == null
     ? []
     : [{ index, value: point.rollingCorrelation }]), [points]);
-  const path = useMemo(() => valid.map(({ index, value }, pointIndex) => {
-    const x = pad.left + (index / Math.max(points.length - 1, 1)) * chartWidth;
-    return `${pointIndex === 0 ? 'M' : 'L'}${x.toFixed(1)},${y(value).toFixed(1)}`;
-  }).join(' '), [chartWidth, points.length, valid]);
+  const correlationPaths = useMemo(() => {
+    const positive: string[] = [];
+    const negative: string[] = [];
+    const xFor = (index: number) => pad.left + (index / Math.max(points.length - 1, 1)) * chartWidth;
+    const line = (startX: number, startY: number, endX: number, endY: number) =>
+      `M${startX.toFixed(1)},${startY.toFixed(1)} L${endX.toFixed(1)},${endY.toFixed(1)}`;
+
+    for (let index = 1; index < valid.length; index += 1) {
+      const previous = valid[index - 1]!;
+      const current = valid[index]!;
+      const startX = xFor(previous.index);
+      const endX = xFor(current.index);
+      const startY = y(previous.value);
+      const endY = y(current.value);
+
+      if (previous.value >= 0 && current.value >= 0) {
+        positive.push(line(startX, startY, endX, endY));
+      } else if (previous.value <= 0 && current.value <= 0) {
+        negative.push(line(startX, startY, endX, endY));
+      } else {
+        const zeroRatio = -previous.value / (current.value - previous.value);
+        const zeroX = startX + zeroRatio * (endX - startX);
+        const zeroY = y(0);
+        if (previous.value > 0) {
+          positive.push(line(startX, startY, zeroX, zeroY));
+          negative.push(line(zeroX, zeroY, endX, endY));
+        } else {
+          negative.push(line(startX, startY, zeroX, zeroY));
+          positive.push(line(zeroX, zeroY, endX, endY));
+        }
+      }
+    }
+
+    return { positive: positive.join(' '), negative: negative.join(' ') };
+  }, [chartWidth, points.length, valid]);
   const getTouchX = (event: GestureResponderEvent) => {
     const nativeEvent = event.nativeEvent as typeof event.nativeEvent & { pageX?: number };
     if (Number.isFinite(nativeEvent.locationX)) return nativeEvent.locationX;
@@ -95,7 +127,7 @@ function RelationshipCorrelationChart({
         height={height}
         pointerEvents="none"
         accessibilityRole="image"
-        accessibilityLabel="Rolling correlation from minus one to plus one"
+        accessibilityLabel="Rolling correlation from minus one to plus one. Positive values are above zero with solid lines; negative values are below zero with dashed lines."
       >
         {[-1, 0, 1].map((value) => (
           <Line
@@ -108,7 +140,23 @@ function RelationshipCorrelationChart({
             strokeDasharray={value === 0 ? '4 4' : undefined}
           />
         ))}
-        <Path d={path} stroke={colors.primary} strokeWidth={2.5} fill="none" />
+        <Path
+          testID="commodity-relationship-correlation-positive-line"
+          d={correlationPaths.positive}
+          stroke={colors.buyColor}
+          strokeWidth={2.5}
+          strokeLinecap="round"
+          fill="none"
+        />
+        <Path
+          testID="commodity-relationship-correlation-negative-line"
+          d={correlationPaths.negative}
+          stroke={colors.sellColor}
+          strokeWidth={2.5}
+          strokeDasharray="5 3"
+          strokeLinecap="round"
+          fill="none"
+        />
         <SvgText x={pad.left} y={height - 5} fontSize={9} fill={colors.mutedForeground}>Earlier</SvgText>
         <SvgText x={width - pad.right} y={height - 5} fontSize={9} fill={colors.mutedForeground} textAnchor="end">Latest</SvgText>
         {selectedPoint && selectedValue != null && (
@@ -134,19 +182,26 @@ function RelationshipCorrelationChart({
         testID="commodity-relationship-correlation-touch-target"
         accessibilityRole="button"
         accessibilityLabel={selectedPoint && selectedValue != null
-          ? `Rolling correlation chart, ${selectedPoint.date}, ${selectedValue.toFixed(2)}`
+          ? `Rolling correlation chart, ${selectedPoint.date}, ${selectedValue.toFixed(2)}, ${correlationSign(selectedValue)} correlation`
           : 'Rolling correlation chart, tap to inspect a date'}
         accessibilityHint="Tap across the chart to inspect rolling correlation by date."
         onPress={selectPoint}
         style={StyleSheet.absoluteFill}
       />
       </View>
+      <View
+        accessibilityLabel="Correlation key: positive values are solid and above zero; negative values are dashed and below zero."
+        style={{ flexDirection: 'row', gap: 14, marginTop: 2 }}
+      >
+        <Text style={{ color: colors.buyColor, fontSize: 10 }}>＋ Positive · solid</Text>
+        <Text style={{ color: colors.sellColor, fontSize: 10 }}>− Negative · dashed</Text>
+      </View>
       <Text
         accessibilityLiveRegion="polite"
         style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 2 }}
       >
         {selectedPoint
-          ? `${selectedPoint.date} · ${selectedValue == null ? 'Correlation unavailable' : `correlation ${selectedValue.toFixed(2)}`}`
+          ? `${selectedPoint.date} · ${selectedValue == null ? 'Correlation unavailable' : `correlation ${selectedValue.toFixed(2)} (${correlationSign(selectedValue)})`}`
           : valid.length
             ? `Rolling return correlation · ${valid[0]!.index + 1}+ matched return observations`
             : 'Correlation history unavailable for this range.'}
