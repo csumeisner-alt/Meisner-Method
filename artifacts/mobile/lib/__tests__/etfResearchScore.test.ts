@@ -736,6 +736,64 @@ test("overlapping ETF score saves preserve snapshots for both symbols", async ()
   assert.deepEqual(vooHistory.map((snapshot) => snapshot.symbol).sort(), ["SPY", "VOO"]);
 });
 
+test("concurrent ETF score saves deduplicate the same analysis and retain later changes", async () => {
+  const result = calculateEtfResearchScore(completeInput);
+  const createSnapshot = (
+    recordedAt: string,
+    options: { reverseComponents?: boolean; score?: number; source?: string; inputAsOf?: string } = {},
+  ) => {
+    const components = options.reverseComponents ? [...result.components].reverse() : result.components;
+    return createEtfScoreSnapshot({
+      symbol: "SPY",
+      score: options.score ?? 70,
+      components,
+      sourceContexts: Object.fromEntries(
+        components.filter((component) => component.score !== null)
+          .map((component) => [component.id, `${options.source ?? "provider"}:${component.id}`]),
+      ),
+      inputAsOf: Object.fromEntries(
+        components.filter((component) => component.score !== null)
+          .map((component) => [component.id, [options.inputAsOf ?? "2026-10-29T12:00:00Z"]]),
+      ),
+      recordedAt,
+    });
+  };
+  const firstSave = createSnapshot("2026-10-30T12:00:00Z");
+  const overlappingSave = createSnapshot("2026-10-30T12:00:01Z", { reverseComponents: true });
+  const laterAnalysis = createSnapshot("2026-10-31T12:00:00Z", {
+    score: 75,
+    source: "provider-refresh",
+    inputAsOf: "2026-10-30T12:00:00Z",
+  });
+  assert.ok(firstSave);
+  assert.ok(overlappingSave);
+  assert.ok(laterAnalysis);
+
+  let storedValue: string | null = null;
+  const readStoredHistory = async () => {
+    const valueAtReadStart = storedValue;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    return valueAtReadStart;
+  };
+  const writeStoredHistory = async (value: string) => {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    storedValue = value;
+  };
+
+  await Promise.all([
+    persistEtfScoreSnapshot(firstSave, readStoredHistory, writeStoredHistory),
+    persistEtfScoreSnapshot(overlappingSave, readStoredHistory, writeStoredHistory),
+  ]);
+  const afterConcurrentSaves = parseEtfScoreSnapshots(storedValue);
+  assert.equal(afterConcurrentSaves.length, 1);
+  assert.equal(afterConcurrentSaves[0]?.score, 70);
+
+  await persistEtfScoreSnapshot(laterAnalysis, readStoredHistory, writeStoredHistory);
+  const savedHistory = parseEtfScoreSnapshots(storedValue);
+  assert.equal(savedHistory.length, 2);
+  assert.deepEqual(savedHistory.map((snapshot) => snapshot.score).sort(), [70, 75]);
+});
+
 test("clearing ETF score snapshots waits for queued saves before removing history", async () => {
   const result = calculateEtfResearchScore(completeInput);
   const snapshot = createEtfScoreSnapshot({

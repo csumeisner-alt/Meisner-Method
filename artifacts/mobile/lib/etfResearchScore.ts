@@ -102,12 +102,15 @@ function snapshotHasFreshInputs(snapshot: EtfScoreSnapshot, referenceTime: numbe
 }
 
 function sameSnapshotAnalysis(a: EtfScoreSnapshot, b: EtfScoreSnapshot): boolean {
+  const componentIds = [...a.componentIds].sort();
   return sameEtfScoreSymbol(a.symbol, b.symbol)
     && a.score === b.score
-    && JSON.stringify([...a.componentIds].sort()) === JSON.stringify([...b.componentIds].sort())
-    && JSON.stringify(a.componentScores) === JSON.stringify(b.componentScores)
-    && JSON.stringify(a.sourceContexts) === JSON.stringify(b.sourceContexts)
-    && JSON.stringify(a.inputAsOf) === JSON.stringify(b.inputAsOf);
+    && JSON.stringify(componentIds) === JSON.stringify([...b.componentIds].sort())
+    && componentIds.every((id) =>
+      a.componentScores[id] === b.componentScores[id]
+      && a.sourceContexts[id] === b.sourceContexts[id]
+      && JSON.stringify(a.inputAsOf[id]) === JSON.stringify(b.inputAsOf[id]),
+    );
 }
 
 function hasValidSnapshotShape(value: unknown): value is EtfScoreSnapshot {
