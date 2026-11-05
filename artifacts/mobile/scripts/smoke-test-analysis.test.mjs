@@ -760,6 +760,165 @@ async function buildAnalysisScreenBundle(expenseRatio, scenarioOverrides = {}) {
   return result.outputFiles[0].text;
 }
 
+async function buildCommodityRelationshipPanelBundle() {
+  const mockModules = new Map([
+    ["@expo/vector-icons", `export const MaterialCommunityIcons = () => null;`],
+    ["react-native-svg", `
+      import React from "react";
+      export const Svg = ({ children, ...props }) => <svg {...props}>{children}</svg>;
+      export default Svg;
+      export const Circle = (props) => <circle {...props} />;
+      export const Line = (props) => <line {...props} />;
+      export const Path = (props) => <path {...props} />;
+      export const Text = ({ children, ...props }) => <text {...props}>{children}</text>;
+    `],
+    ["@/hooks/useColors", `
+      export function useColors() {
+        return {
+          background: "#10151C", card: "#1A222C", border: "#405061",
+          foreground: "#EAF0F6", mutedForeground: "#9AA9B8",
+          primary: "#D4A847", holdColor: "#B7C4D1",
+        };
+      }
+    `],
+    ["@/components/ComparisonChart", `
+      import React from "react";
+      import { View, Text } from "react-native";
+      export function ComparisonChart({ primaryCandles, primarySymbol, compCandles, compSymbol, width }) {
+        return <View testID="commodity-relationship-comparison-series" style={{ width }}>
+          <Text>{primarySymbol} vs {compSymbol} · {primaryCandles.map((candle) => candle.date).join("|")} · {compCandles.map((candle) => candle.c).join("|")}</Text>
+        </View>;
+      }
+    `],
+    ["@workspace/api-client-react", `
+      import React from "react";
+      window.__relationshipRequests = [];
+      window.__relationshipRetryCount = 0;
+      const pairs = {
+        "gold-silver": [{ name: "Gold", symbol: "GC=F", unit: "USD/oz" }, { name: "Silver", symbol: "SI=F", unit: "USD/oz" }],
+        "gold-dollar": [{ name: "Gold", symbol: "GC=F", unit: "USD/oz" }, { name: "U.S. Dollar Index", symbol: "DX=F", unit: "index points" }],
+        "copper-gold": [{ name: "Copper", symbol: "HG=F", unit: "USD/lb" }, { name: "Gold", symbol: "GC=F", unit: "USD/oz" }],
+        "oil-gold": [{ name: "Crude Oil", symbol: "CL=F", unit: "USD/barrel" }, { name: "Gold", symbol: "GC=F", unit: "USD/oz" }],
+        "gold-silver-ratio": [{ name: "Gold", symbol: "GC=F", unit: "USD/oz" }, { name: "Silver", symbol: "SI=F", unit: "USD/oz" }],
+      };
+      export function getGetCommodityRelationshipQueryKey(relationshipId, period) {
+        return ["/api/commodities/relationships", relationshipId, period];
+      }
+      function availableResponse(relationshipId, period) {
+        const [first, second] = pairs[relationshipId];
+        const dates = period === "1y"
+          ? ["2026-01-05", "2026-04-01", "2026-08-01", "2026-11-05"]
+          : ["2026-09-01", "2026-10-01", "2026-11-01", "2026-11-05"];
+        return {
+          status: "available",
+          relationship: { id: relationshipId, first, second, relativeValueLabel: "Relative value" },
+          period,
+          points: dates.map((date, index) => ({
+            date, timestamp: Date.parse(date + "T00:00:00Z") / 1000,
+            firstClose: 100 + index * 4, secondClose: 50 + index * 2,
+            rollingCorrelation: [0.1, 0.3, 0.6, 0.8][index],
+          })),
+          metrics: {
+            firstPeriodReturnPercent: 4, secondPeriodReturnPercent: 2,
+            relativeStrengthPercentagePoints: 2, correlation: 0.6,
+            correlationChange: 0.1, currentRelativeValue: 2,
+          },
+          coverage: {
+            matchedObservations: 4, returnObservations: 3,
+            matchedStartDate: dates[0], matchedEndDate: dates[3],
+            firstStartDate: dates[0], firstEndDate: dates[3],
+            secondStartDate: dates[0], secondEndDate: dates[3],
+          },
+          sources: {
+            provider: "Browser fixture", firstLatestTimestamp: 1793836800,
+            secondLatestTimestamp: 1793836800, alignmentNote: "Fixture alignment note.",
+          },
+          divergence: { status: "not_detected", reason: "No divergence was flagged." },
+          method: {
+            divergence: "Divergence compares observed returns.",
+            alignment: "Only exact shared dates are compared.",
+            correlation: "Correlation uses matched daily returns.",
+            correlationChange: "Change compares prior observations.",
+          },
+          aiInterpretation: { status: "unavailable", text: null },
+        };
+      }
+      export function useGetCommodityRelationship(relationshipId, period) {
+        const [attempt, setAttempt] = React.useState(0);
+        const refetch = React.useCallback(async () => {
+          window.__relationshipRetryCount += 1;
+          setAttempt((current) => current + 1);
+          return {};
+        }, []);
+        window.__relationshipRequests.push(relationshipId + ":" + period);
+        const scenario = window.__relationshipScenario;
+        if (scenario === "loading") {
+          return { data: undefined, isLoading: true, isError: false, refetch };
+        }
+        if (scenario === "unavailable") {
+          return {
+            data: {
+              ...availableResponse(relationshipId, period),
+              status: "unavailable",
+              reason: "Only two exact shared dates are available.",
+            },
+            isLoading: false, isError: false, refetch,
+          };
+        }
+        if (scenario === "retry" && attempt === 0) {
+          return { data: undefined, isLoading: false, isError: true, refetch };
+        }
+        return { data: availableResponse(relationshipId, period), isLoading: false, isError: false, refetch };
+      }
+    `],
+  ]);
+  const result = await build({
+    stdin: {
+      contents: `
+        import React from "react";
+        import { createRoot } from "react-dom/client";
+        import { CommodityRelationshipPanel } from ${JSON.stringify(join(mobileDir, "components/CommodityRelationshipPanel.tsx"))};
+        createRoot(document.getElementById("root")).render(<CommodityRelationshipPanel />);
+      `,
+      resolveDir: mobileDir,
+      sourcefile: "commodity-relationship-browser-entry.tsx",
+      loader: "tsx",
+    },
+    bundle: true,
+    write: false,
+    format: "iife",
+    platform: "browser",
+    target: "es2022",
+    jsx: "automatic",
+    mainFields: ["browser", "module", "main"],
+    conditions: ["browser"],
+    plugins: [{
+      name: "commodity-relationship-browser-aliases",
+      setup(buildApi) {
+        buildApi.onResolve({ filter: /^react-native$/ }, () => ({ path: reactNativeWebEntry }));
+        buildApi.onResolve({ filter: /^@\// }, ({ path }) => {
+          if (mockModules.has(path)) return { path, namespace: "relationship-mock" };
+          const sourcePath = resolve(mobileDir, path.slice(2));
+          const extension = [".tsx", ".ts", ".jsx", ".js"]
+            .find((candidate) => existsSync(`${sourcePath}${candidate}`));
+          return extension
+            ? { path: `${sourcePath}${extension}` }
+            : { errors: [{ text: `Unable to resolve ${path}.` }] };
+        });
+        buildApi.onResolve({ filter: /.*/ }, ({ path }) => (
+          mockModules.has(path) ? { path, namespace: "relationship-mock" } : null
+        ));
+        buildApi.onLoad({ filter: /.*/, namespace: "relationship-mock" }, ({ path }) => ({
+          contents: mockModules.get(path),
+          loader: "tsx",
+          resolveDir: mobileDir,
+        }));
+      },
+    }],
+  });
+  return result.outputFiles[0].text;
+}
+
 async function waitForDebuggerPort(profileDir, chrome, stderr) {
   const portFile = join(profileDir, "DevToolsActivePort");
   for (let attempt = 0; attempt < 150; attempt += 1) {
@@ -834,7 +993,7 @@ async function waitForBrowserValue(browser, expression, message, timeout = 8000)
     if (await browser.evaluate(expression)) return;
     await delay(40);
   }
-  throw new Error(message);
+  throw new Error(`${message}\nRendered page: ${await browser.evaluate("document.body?.innerText ?? ''")}`);
 }
 
 test("rendered ETF detail and comparison hide invalid tracking history", async () => {
@@ -973,6 +1132,150 @@ test("rendered ETF detail and comparison hide invalid tracking history", async (
         exited.then(() => true),
         delay(2000).then(() => false),
       ]);
+      if (!didExit) {
+        chrome.kill("SIGKILL");
+        await exited;
+      }
+    }
+    await new Promise((resolveClose) => server.close(resolveClose));
+    await rm(profileDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+});
+
+test("rendered commodity relationship panel supports selection, chart touch, and mobile states", async () => {
+  const bundle = await buildCommodityRelationshipPanelBundle();
+  const server = createServer((request, response) => {
+    if (request.url === "/bundle.js") {
+      response.writeHead(200, { "content-type": "text/javascript; charset=utf-8" });
+      response.end(bundle);
+      return;
+    }
+    const state = new URL(request.url ?? "/", "http://localhost").searchParams.get("state") ?? "available";
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(`<!doctype html><html><head>
+      <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+      <style>html,body,#root{width:100%;min-height:100%;margin:0;padding:0}#root{display:flex;flex-direction:column}</style>
+      </head><body><div id="root"></div><script>window.__relationshipScenario=${JSON.stringify(state)}</script><script src="/bundle.js"></script></body></html>`);
+  });
+  await new Promise((resolveListen, rejectListen) => {
+    server.once("error", rejectListen);
+    server.listen(0, "127.0.0.1", resolveListen);
+  });
+
+  const profileDir = await mkdtemp(join(tmpdir(), "commodity-relationship-browser-"));
+  let chromeStderr = "";
+  const chrome = spawn(browserExecutable(), [
+    "--headless=new", "--no-sandbox", "--disable-dev-shm-usage",
+    "--no-first-run", "--no-default-browser-check", "--remote-debugging-port=0",
+    `--user-data-dir=${profileDir}`, "about:blank",
+  ], { stdio: ["ignore", "ignore", "pipe"] });
+  chrome.stderr.setEncoding("utf8");
+  chrome.stderr.on("data", (chunk) => { chromeStderr = (chromeStderr + chunk).slice(-5000); });
+  let browser;
+  try {
+    const debugPort = await waitForDebuggerPort(profileDir, chrome, () => chromeStderr);
+    const targets = await fetch(`http://127.0.0.1:${debugPort}/json`).then((result) => result.json());
+    const page = targets.find((target) => target.type === "page");
+    assert.ok(page?.webSocketDebuggerUrl, "Chromium must expose a page target.");
+    browser = await connectDebugger(page.webSocketDebuggerUrl);
+    await browser.send("Page.enable");
+    await browser.send("Runtime.enable");
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+
+    for (const width of [320, 402]) {
+      await browser.send("Emulation.setDeviceMetricsOverride", {
+        width, height: 1100, deviceScaleFactor: 1, mobile: true,
+      });
+      await browser.send("Page.navigate", { url: `http://127.0.0.1:${address.port}/?state=available` });
+      await waitForBrowserValue(
+        browser,
+        `Boolean(document.querySelector('[data-testid="commodity-relationship-comparison-series"]'))`,
+        `The relationship series should render at ${width}px.`,
+      );
+
+      await browser.evaluate(`document.querySelector('[data-testid="commodity-relationship-select-oil-gold"]')?.click()`);
+      await browser.evaluate(`document.querySelector('[data-testid="commodity-relationship-period-1y"]')?.click()`);
+      await waitForBrowserValue(
+        browser,
+        `document.querySelector('[data-testid="commodity-relationship-comparison-series"]')?.textContent.includes("Crude Oil vs Gold") && document.querySelector('[data-testid="commodity-relationship-comparison-series"]')?.textContent.includes("2026-01-05")`,
+        "Relationship and period selection should update the displayed series.",
+      );
+      assert.equal(
+        await browser.evaluate(`window.__relationshipRequests?.includes("oil-gold:1y")`),
+        true,
+        "The selected relationship and period should reach the query hook.",
+      );
+
+      await browser.evaluate(`document.querySelector('[data-testid="commodity-relationship-correlation-touch-target"]')?.scrollIntoView({ block: "center" })`);
+      const point = await browser.evaluate(`(() => {
+        const rect = document.querySelector('[data-testid="commodity-relationship-correlation-touch-target"]').getBoundingClientRect();
+        return { x: rect.left + rect.width * 0.75, y: rect.top + rect.height / 2 };
+      })()`);
+      await browser.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: point.x, y: point.y });
+      await browser.send("Input.dispatchMouseEvent", { type: "mousePressed", x: point.x, y: point.y, button: "left", clickCount: 1 });
+      await browser.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: point.x, y: point.y, button: "left", clickCount: 1 });
+      await waitForBrowserValue(
+        browser,
+        `document.querySelector('[data-testid="commodity-relationship-correlation-touch-target"]')?.getAttribute("aria-label")?.includes("2026-08-01")`,
+        "Touching the correlation chart should select and announce a dated value.",
+      );
+      assert.match(
+        await browser.evaluate(`document.querySelector('[data-testid="commodity-relationship-correlation-touch-target"]')?.getAttribute("aria-label") ?? ""`),
+        /2026-08-01, 0\.60/,
+      );
+      assert.equal(
+        await browser.evaluate(`document.querySelector('[aria-live="polite"]')?.textContent.includes("2026-08-01") && document.querySelector('[aria-live="polite"]')?.textContent.includes("0.60")`),
+        true,
+        "The selected date and correlation should be announced in the live region.",
+      );
+
+      const layout = async () => browser.evaluate(`({
+        viewport: window.innerWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        bodyWidth: document.body.scrollWidth,
+        panelRight: document.querySelector('[data-testid="commodity-relationship-panel"]')?.getBoundingClientRect().right,
+      })`);
+      let dimensions = await layout();
+      assert.ok(dimensions.documentWidth <= width && dimensions.bodyWidth <= width && dimensions.panelRight <= width + 1,
+        `The relationship panel must fit ${width}px without horizontal overflow: ${JSON.stringify(dimensions)}`);
+
+      for (const [state, expectedText] of [
+        ["loading", "Loading matched price history"],
+        ["unavailable", "Relationship unavailable"],
+        ["retry", "Relationship history could not be loaded"],
+      ]) {
+        await browser.send("Page.navigate", { url: `http://127.0.0.1:${address.port}/?state=${state}` });
+        await waitForBrowserValue(
+          browser,
+          `document.body?.innerText.includes(${JSON.stringify(expectedText)})`,
+          `The ${state} state should be readable at ${width}px.`,
+        );
+        dimensions = await layout();
+        assert.ok(dimensions.documentWidth <= width && dimensions.bodyWidth <= width && dimensions.panelRight <= width + 1,
+          `The ${state} state must fit ${width}px: ${JSON.stringify(dimensions)}`);
+        if (state === "retry") {
+          assert.equal(
+            await browser.evaluate(`Boolean(document.querySelector('[data-testid="commodity-relationship-retry"]')?.getBoundingClientRect().width)`),
+            true,
+            "The retry control should remain visible and tappable.",
+          );
+          await browser.evaluate(`document.querySelector('[data-testid="commodity-relationship-retry"]')?.click()`);
+          await waitForBrowserValue(
+            browser,
+            `Boolean(document.querySelector('[data-testid="commodity-relationship-result"]'))`,
+            "Retry should render the recovered relationship history.",
+          );
+          assert.equal(await browser.evaluate(`window.__relationshipRetryCount`), 1);
+        }
+      }
+    }
+  } finally {
+    await browser?.close();
+    if (chrome.exitCode === null && chrome.signalCode === null) {
+      const exited = new Promise((resolveExit) => chrome.once("exit", resolveExit));
+      chrome.kill("SIGTERM");
+      const didExit = await Promise.race([exited.then(() => true), delay(2000).then(() => false)]);
       if (!didExit) {
         chrome.kill("SIGKILL");
         await exited;
