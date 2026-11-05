@@ -13,5 +13,6 @@ export type CommodityAnalysisResultCommodityAnalysisSupplyDemandSeriesItemPoints
   units: string;
   reportingPeriod: string;
   publicationDate: Date;
+  revisionDate?: Date;
   source: CommodityAnalysisResultCommodityAnalysisSupplyDemandSeriesItemPointsItemSource;
 };

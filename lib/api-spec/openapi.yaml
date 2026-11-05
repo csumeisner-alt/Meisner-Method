@@ -1154,6 +1154,7 @@ components:
                             units: { type: string }
                             reportingPeriod: { type: string }
                             publicationDate: { type: string, format: date }
+                            revisionDate: { type: string, format: date }
                             source:
                               type: object
                               properties:

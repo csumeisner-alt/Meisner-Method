@@ -17,16 +17,113 @@ const CFTC_DATASET_URL = "https://publicreporting.cftc.gov/resource/6dca-aqww.js
 const CFTC_SOURCE_URL = "https://publicreportinghub.cftc.gov/Commitments-of-Traders/Legacy-Futures-Only/6dca-aqww";
 const EIA_TABLE_URL = "https://ir.eia.gov/wpsr/table4.csv";
 const EIA_NATURAL_GAS_URL = "https://ir.eia.gov/ngs/wngsr.csv";
+const USGS_MCS_MAX_AGE_DAYS = 450;
 const FAILED_SOURCE_CACHE_TTL_MS = 5 * 60 * 1000;
 const FAILED_WASDE_REPORT_CACHE_TTL_MS = 15 * 60 * 1000;
-const USDA_COMMODITIES: Record<string, { commodity: string; useAttributes: string[] }> = {
-  "ZC=F": { commodity: "Corn", useAttributes: ["Use, Total", "Total Use"] },
-  "ZW=F": { commodity: "Wheat", useAttributes: ["Use, Total", "Total Use"] },
-  "ZS=F": { commodity: "Oilseed, Soybean", useAttributes: ["Use, Total", "Total Use"] },
-  "CT=F": { commodity: "Cotton", useAttributes: ["Use, Total", "Total Use"] },
-  "SB=F": { commodity: "Sugar", useAttributes: ["Total Use", "Use, Total"] },
+type SupplySeriesId = CommoditySupplyDemandSeries["id"];
+type UsdaCommodityConfig = {
+  commodity: string;
+  useAttributes: string[];
+  period: "marketing-year" | "calendar-year";
+  reportTitlePattern: RegExp;
+  pointCommodity?: string;
+  labels?: Partial<Record<SupplySeriesId, string>>;
 };
-const USDA_SERIES_COMMODITIES = new Set(["ZC=F", "ZW=F", "ZS=F", "CT=F", "SB=F"]);
+const WASDE_GENERAL_SUPPLY_TITLE = /^U\.S\..*Supply and Use/i;
+const USDA_COMMODITIES: Record<string, UsdaCommodityConfig> = {
+  "ZC=F": { commodity: "Corn", useAttributes: ["Use, Total", "Total Use"], period: "marketing-year", reportTitlePattern: WASDE_GENERAL_SUPPLY_TITLE },
+  "ZW=F": { commodity: "Wheat", useAttributes: ["Use, Total", "Total Use"], period: "marketing-year", reportTitlePattern: WASDE_GENERAL_SUPPLY_TITLE },
+  "ZS=F": { commodity: "Oilseed, Soybean", useAttributes: ["Use, Total", "Total Use"], period: "marketing-year", reportTitlePattern: WASDE_GENERAL_SUPPLY_TITLE },
+  "CT=F": { commodity: "Cotton", useAttributes: ["Use, Total", "Total Use"], period: "marketing-year", reportTitlePattern: WASDE_GENERAL_SUPPLY_TITLE },
+  "SB=F": { commodity: "Sugar", useAttributes: ["Total Use", "Use, Total"], period: "marketing-year", reportTitlePattern: WASDE_GENERAL_SUPPLY_TITLE },
+  "LE=F": {
+    commodity: "Beef",
+    pointCommodity: "Beef",
+    useAttributes: ["Total Use"],
+    period: "calendar-year",
+    reportTitlePattern: /^U\.S\. Meats Supply and Use$/i,
+    labels: {
+      inventory: "Beef ending stocks",
+      production: "Beef production",
+      consumption: "Beef total use",
+      imports: "Beef imports",
+      exports: "Beef exports",
+    },
+  },
+  "HE=F": {
+    commodity: "Pork",
+    pointCommodity: "Pork",
+    useAttributes: ["Total Use"],
+    period: "calendar-year",
+    reportTitlePattern: /^U\.S\. Meats Supply and Use$/i,
+    labels: {
+      inventory: "Pork ending stocks",
+      production: "Pork production",
+      consumption: "Pork total use",
+      imports: "Pork imports",
+      exports: "Pork exports",
+    },
+  },
+};
+const USDA_INVENTORY_COMMODITIES = new Set(["ZC=F", "ZW=F", "ZS=F", "CT=F", "SB=F"]);
+const USDA_SERIES_COMMODITIES = new Set(Object.keys(USDA_COMMODITIES));
+const USGS_MCS_COMMODITIES: Record<string, {
+  commodity: string;
+  rowDetails: Partial<Record<SupplySeriesId, { statistic: string; detail: RegExp }>>;
+  labels: Partial<Record<SupplySeriesId, string>>;
+}> = {
+  "GC=F": {
+    commodity: "Gold",
+    rowDetails: {
+      production: { statistic: "Production", detail: /^Production: Mine$/i },
+      consumption: { statistic: "Consumption", detail: /^Consumption, reported$/i },
+      imports: { statistic: "Import", detail: /^Imports for consumption$/i },
+      exports: { statistic: "Export", detail: /^Exports$/i },
+    },
+    labels: { production: "U.S. mine production", consumption: "U.S. reported consumption", imports: "U.S. imports", exports: "U.S. exports" },
+  },
+  "SI=F": {
+    commodity: "Silver",
+    rowDetails: {
+      production: { statistic: "Production", detail: /^Production: Mine$/i },
+      consumption: { statistic: "Consumption", detail: /^Consumption, apparent$/i },
+      imports: { statistic: "Import", detail: /^Imports for consumption$/i },
+      exports: { statistic: "Export", detail: /^Exports$/i },
+    },
+    labels: { production: "U.S. mine production", consumption: "U.S. apparent consumption", imports: "U.S. imports", exports: "U.S. exports" },
+  },
+  "HG=F": {
+    commodity: "Copper",
+    rowDetails: {
+      production: { statistic: "Production", detail: /^Production: Mine, recoverable$/i },
+      consumption: { statistic: "Consumption", detail: /^Consumption: Reported, refined copper$/i },
+      imports: { statistic: "Import", detail: /^Imports for consumption: Refined$/i },
+      exports: { statistic: "Export", detail: /^Exports: Refined$/i },
+    },
+    labels: { production: "U.S. recoverable mine production", consumption: "U.S. reported refined-copper consumption", imports: "U.S. refined-copper imports", exports: "U.S. refined-copper exports" },
+  },
+  "PL=F": {
+    commodity: "Platinum",
+    rowDetails: {
+      production: { statistic: "Production", detail: /^Mine production: Platinum$/i },
+      consumption: { statistic: "Consumption", detail: /^Consumption, apparent: Platinum$/i },
+      imports: { statistic: "Import", detail: /^Imports for consumption: Platinum$/i },
+      exports: { statistic: "Export", detail: /^Exports: Platinum$/i },
+    },
+    labels: { production: "U.S. platinum mine production", consumption: "U.S. apparent platinum consumption", imports: "U.S. platinum imports", exports: "U.S. platinum exports" },
+  },
+  "PA=F": {
+    commodity: "Palladium",
+    rowDetails: {
+      production: { statistic: "Production", detail: /^Mine production: Palladium$/i },
+      consumption: { statistic: "Consumption", detail: /^Consumption, apparent: Palladium$/i },
+      imports: { statistic: "Import", detail: /^Imports for consumption: Palladium$/i },
+      exports: { statistic: "Export", detail: /^Exports: Palladium$/i },
+    },
+    labels: { production: "U.S. palladium mine production", consumption: "U.S. apparent palladium consumption", imports: "U.S. palladium imports", exports: "U.S. palladium exports" },
+  },
+};
+const USGS_MCS_SOURCE_YEAR_RANGE = 2;
 
 type CftcRow = Record<string, unknown>;
 export type WasdeRow = {
@@ -38,6 +135,12 @@ export type WasdeRow = {
   value: string;
   unit: string;
   releaseDate: string;
+};
+type UsgsMcsReport = {
+  csv: string;
+  sourceUrl: string;
+  publicationDate: string;
+  revisionDate: string;
 };
 
 const valueCache = new Map<string, { value: unknown; expiresAt: number }>();
@@ -395,7 +498,7 @@ function wasdeReportCandidates(now: Date): string[] {
     const month = String(monthDate.getUTCMonth() + 1).padStart(2, "0");
     for (const revision of ["-V2", ""]) {
       candidates.push(
-        `https://www.usda.gov/sites/default/files/documents/oce-wasde-report-data-${year}-${month}${revision}.csv`,
+        `https://usda.azureedge.us/sites/default/files/documents/oce-wasde-report-data-${year}-${month}${revision}.csv`,
       );
     }
   }
@@ -421,8 +524,8 @@ async function loadLatestWasdeReport(
           const rows = parseUsdaRows(csv);
           const validReleaseExists = rows.some((row) => isDate(row.releaseDate)
             && Date.parse(`${row.releaseDate}T00:00:00.000Z`) <= now.getTime());
-          const validInventoryExists = parseUsdaWasdeInventory(rows, url, symbol, now, false) !== null;
-          if (!rows.length || !validReleaseExists || !validInventoryExists) continue;
+          const hasUsableSeries = parseUsdaSupplyDemandSeries(rows, url, symbol, now).status !== "unavailable";
+          if (!rows.length || !validReleaseExists || !hasUsableSeries) continue;
           wasdeReportCache.set(symbol, { rows, sourceUrl: url, expiresAt: Date.now() + 6 * 60 * 60 * 1000 });
           wasdeReportFailureExpiresAt = 0;
           return { rows, sourceUrl: url };
@@ -466,7 +569,7 @@ async function fetchInventory(
       }
     });
   }
-  if (USDA_COMMODITIES[symbol]) {
+  if (USDA_INVENTORY_COMMODITIES.has(symbol)) {
     return cached(`usda-inventory:${symbol}`, 6 * 60 * 60 * 1000, async () => {
       const report = await loadLatestWasdeReport(now, symbol);
       if (!report) {
@@ -583,6 +686,19 @@ const SUPPLY_SERIES: Pick<CommoditySupplyDemandSeries, "id" | "label">[] = [
   { id: "exports", label: "Exports" },
 ];
 
+function supplySeriesLabels(symbol: string): Pick<CommoditySupplyDemandSeries, "id" | "label">[] {
+  const usdaLabels = USDA_COMMODITIES[symbol]?.labels;
+  const usgsLabels = USGS_MCS_COMMODITIES[symbol]?.labels;
+  return SUPPLY_SERIES.map(({ id, label }) => ({
+    id,
+    label: usdaLabels?.[id] ?? usgsLabels?.[id] ?? label,
+  }));
+}
+
+function periodMatches(period: string, kind: UsdaCommodityConfig["period"]): boolean {
+  return kind === "marketing-year" ? /^\d{4}\/\d{2}$/.test(period) : /^\d{4}$/.test(period);
+}
+
 function unavailableSupplySeries(
   id: CommoditySupplyDemandSeries["id"],
   label: string,
@@ -619,9 +735,10 @@ function createWasdeSeries(
   };
   const selected = rows.filter((row) => row.region === "United States"
     && row.commodity === config?.commodity
-    && /^U\.S\..*Supply and Use/i.test(row.reportTitle)
+    && (config?.reportTitlePattern.test(row.reportTitle) ?? false)
     && row.releaseDate === releaseDate
-    && /^\d{4}\/\d{2}$/.test(row.marketYear)
+    && config !== undefined
+    && periodMatches(row.marketYear, config.period)
     && attrMatches(row.attribute));
   const yearGroups = new Map<string, WasdeRow[]>();
   for (const row of selected) yearGroups.set(row.marketYear, [...(yearGroups.get(row.marketYear) ?? []), row]);
@@ -642,7 +759,7 @@ function createWasdeSeries(
     if (expectedUnits && expectedUnits !== units) continue;
     expectedUnits = units;
     candidates.push({
-      commodity: SUPPORTED_COMMODITIES[symbol]!.name,
+      commodity: config?.pointCommodity ?? SUPPORTED_COMMODITIES[symbol]!.name,
       value,
       units,
       reportingPeriod: period,
@@ -656,21 +773,15 @@ function createWasdeSeries(
   if (!candidates.length || !expectedUnits) {
     return unavailableSupplySeries(id, label, "The latest validated WASDE report does not publish a comparable series.");
   }
-  const historical = candidates.slice(0, -1);
-  const historicalAverage = historical.length >= 2
-    ? historical.reduce((sum, point) => sum + point.value, 0) / historical.length
-    : null;
-  const historicalAveragePeriod = historical.length >= 2
-    ? `${historical[0]!.reportingPeriod}–${historical.at(-1)!.reportingPeriod} (${historical.length} prior periods)`
-    : null;
+  const average = calculateHistoricalAverage(candidates);
   return {
     id,
     label,
     status: "available",
     units: expectedUnits,
     points: candidates,
-    historicalAverage,
-    historicalAveragePeriod,
+    historicalAverage: average.value,
+    historicalAveragePeriod: average.period,
     reason: null,
   };
 }
@@ -686,22 +797,22 @@ export function parseUsdaSupplyDemandSeries(
   const unavailable = (reason: string): CommoditySupplyDemandContext => ({
     status: "unavailable",
     commodity: commodity?.name ?? "Unknown commodity",
-    series: SUPPLY_SERIES.map(({ id, label }) => unavailableSupplySeries(id, label, reason)),
+    series: supplySeriesLabels(symbol).map(({ id, label }) => unavailableSupplySeries(id, label, reason)),
   });
   if (!commodity || !config || !USDA_SERIES_COMMODITIES.has(symbol) || !validWasdeReportSource(sourceUrl)) {
     return unavailable("No matching validated USDA series is available for this commodity.");
   }
   const matched = rows.filter((row) => row.commodity === config.commodity
     && row.region === "United States"
-    && /^U\.S\..*Supply and Use/i.test(row.reportTitle)
-    && /^\d{4}\/\d{2}$/.test(row.marketYear)
+    && config.reportTitlePattern.test(row.reportTitle)
+    && periodMatches(row.marketYear, config.period)
     && isDate(row.releaseDate)
     && Date.parse(`${row.releaseDate}T00:00:00.000Z`) <= now.getTime());
   const releaseDate = matched.map((row) => row.releaseDate).sort().at(-1);
   if (!releaseDate || !isFresh(releaseDate, now, 60)) {
     return unavailable("The latest validated USDA supply-and-use report is stale or unavailable.");
   }
-  const series = SUPPLY_SERIES.map(({ id, label }) =>
+  const series = supplySeriesLabels(symbol).map(({ id, label }) =>
     createWasdeSeries(symbol, matched, sourceUrl, releaseDate, id, label));
   const availableCount = series.filter((item) => item.status === "available").length;
   return {
@@ -709,6 +820,174 @@ export function parseUsdaSupplyDemandSeries(
     commodity: commodity.name,
     series,
   };
+}
+
+function calculateHistoricalAverage(
+  points: CommoditySupplyDemandPoint[],
+): { value: number | null; period: string | null } {
+  const ordered = [...points].sort((left, right) => left.reportingPeriod.localeCompare(right.reportingPeriod));
+  if (ordered.length < 3) return { value: null, period: null };
+  const periods = ordered.map((point) => point.reportingPeriod);
+  const periodKind = periods.every((period) => /^\d{4}$/.test(period))
+    ? "annual"
+    : periods.every((period) => /^\d{4}\/\d{2}$/.test(period))
+      ? "marketing-year"
+      : periods.every((period) => isDate(period))
+        ? "dated"
+        : null;
+  const units = new Set(ordered.map((point) => point.units));
+  if (!periodKind || units.size !== 1) return { value: null, period: null };
+  const historical = ordered.slice(0, -1);
+  return {
+    value: historical.reduce((sum, point) => sum + point.value, 0) / historical.length,
+    period: `${historical[0]!.reportingPeriod}–${historical.at(-1)!.reportingPeriod} (${historical.length} prior periods)`,
+  };
+}
+
+type UsgsMcsDataRow = Record<string, string>;
+
+export function parseUsgsMineralSupplyDemandCsv(
+  csv: string,
+  sourceUrl: string,
+  symbol: string,
+  publicationDate: string,
+  revisionDate: string,
+  now = new Date(),
+): CommoditySupplyDemandContext {
+  const commodity = SUPPORTED_COMMODITIES[symbol];
+  const config = USGS_MCS_COMMODITIES[symbol];
+  const unavailable = (reason: string): CommoditySupplyDemandContext => ({
+    status: "unavailable",
+    commodity: commodity?.name ?? "Unknown commodity",
+    series: supplySeriesLabels(symbol).map(({ id, label }) => unavailableSupplySeries(id, label, reason)),
+  });
+  if (!commodity || !config || !validUsgsMcsSource(sourceUrl)) {
+    return unavailable("No matching validated USGS mineral-statistics series is available.");
+  }
+  if (!isDate(publicationDate) || !isDate(revisionDate)
+    || Date.parse(`${publicationDate}T00:00:00.000Z`) > now.getTime()
+    || Date.parse(`${revisionDate}T00:00:00.000Z`) > now.getTime()
+    || !isFresh(publicationDate, now, USGS_MCS_MAX_AGE_DAYS)
+    || !isFresh(revisionDate, now, USGS_MCS_MAX_AGE_DAYS)) {
+    return unavailable("The latest validated USGS mineral-statistics release is stale or unavailable.");
+  }
+  const rows = csvObjects(csv);
+  const sourceRows = rows.filter((row) => row["Commodity"] === config.commodity
+    && row["Country"] === "United States"
+    && /^Salient Statistics.*United States$/i.test(row["Section"] ?? ""));
+  const series = supplySeriesLabels(symbol).map(({ id, label }) => {
+    const metric = config.rowDetails[id];
+    if (!metric) {
+      return unavailableSupplySeries(id, label, "USGS does not publish a matching annual series for this metric.");
+    }
+    const selected = sourceRows.filter((row) => row["Statistics"] === metric.statistic
+      && metric.detail.test(row["Statistics_detail"] ?? "")
+      && /^\d{4}$/.test(row["Year"] ?? "")
+      && Number(row["Year"]) <= now.getUTCFullYear());
+    const yearGroups = new Map<string, UsgsMcsDataRow[]>();
+    for (const row of selected) {
+      const year = row["Year"]!;
+      yearGroups.set(year, [...(yearGroups.get(year) ?? []), row]);
+    }
+    const candidates: CommoditySupplyDemandPoint[] = [];
+    let expectedUnits: string | null = null;
+    for (const year of [...yearGroups.keys()].sort().slice(-12)) {
+      const unique = [...new Map(yearGroups.get(year)!.map((row) => [
+        `${row["Value"]?.trim()}|${row["Unit"]?.trim()}`,
+        row,
+      ])).values()];
+      if (unique.length !== 1) continue;
+      const row = unique[0]!;
+      const value = parseNumber(row["Value"]);
+      const units = row["Unit"]?.trim() ?? "";
+      if (value === null || value < 0 || !units || (expectedUnits && units !== expectedUnits)) continue;
+      expectedUnits = units;
+      candidates.push({
+        commodity: config.commodity,
+        value,
+        units,
+        reportingPeriod: year,
+        publicationDate,
+        revisionDate,
+        source: {
+          title: `USGS Mineral Commodity Summaries ${new Date(`${publicationDate}T00:00:00.000Z`).getUTCFullYear()} (updated ${revisionDate})`,
+          url: sourceUrl,
+        },
+      });
+    }
+    if (!candidates.length || !expectedUnits) {
+      return unavailableSupplySeries(id, label, "The latest validated USGS release does not publish a comparable annual series.");
+    }
+    const average = calculateHistoricalAverage(candidates);
+    return {
+      id,
+      label,
+      status: "available" as const,
+      units: expectedUnits,
+      points: candidates,
+      historicalAverage: average.value,
+      historicalAveragePeriod: average.period,
+      reason: null,
+    };
+  });
+  const availableCount = series.filter((item) => item.status === "available").length;
+  return {
+    status: availableCount === 0 ? "unavailable" : availableCount === series.length ? "available" : "partial",
+    commodity: commodity.name,
+    series,
+  };
+}
+
+async function loadLatestUsgsMcsReport(now: Date): Promise<UsgsMcsReport | null> {
+  for (let offset = 0; offset <= USGS_MCS_SOURCE_YEAR_RANGE; offset += 1) {
+    const reportYear = now.getUTCFullYear() - offset;
+    try {
+      const searchUrl = new URL("https://www.sciencebase.gov/catalog/items");
+      searchUrl.searchParams.set("format", "json");
+      searchUrl.searchParams.set("q", `Mineral Commodity Summaries ${reportYear} Data Release`);
+      searchUrl.searchParams.set("max", "10");
+      const search: unknown = JSON.parse(await fetchText(searchUrl.toString()));
+      if (!search || typeof search !== "object" || !Array.isArray((search as { items?: unknown }).items)) continue;
+      const item = (search as { items: Record<string, unknown>[] }).items.find(
+        (candidate) => candidate.title === `Mineral Commodity Summaries ${reportYear} Data Release`
+          && typeof candidate.id === "string",
+      );
+      if (!item || typeof item.id !== "string") continue;
+      const metadata: unknown = JSON.parse(await fetchText(
+        `https://www.sciencebase.gov/catalog/item/${item.id}?format=json`,
+      ));
+      if (!metadata || typeof metadata !== "object") continue;
+      const data = metadata as {
+        dates?: { type?: string; label?: string; dateString?: string }[];
+        provenance?: { lastUpdated?: string };
+        files?: { name?: string; downloadUri?: string; url?: string }[];
+      };
+      const publicationDate = data.dates?.find((date) =>
+        date.type?.toLowerCase() === "publication" || date.label?.toLowerCase() === "publication date")?.dateString;
+      const revisionDate = dateOnly(data.provenance?.lastUpdated) ?? publicationDate;
+      const file = data.files?.find((candidate) => candidate.name === `MCS${reportYear}_Commodities_Data.csv`);
+      const sourceUrl = file?.downloadUri ?? file?.url;
+      if (!publicationDate || !revisionDate || !sourceUrl
+        || !isDate(publicationDate) || !isDate(revisionDate)
+        || Date.parse(`${publicationDate}T00:00:00.000Z`) > now.getTime()
+        || Date.parse(`${revisionDate}T00:00:00.000Z`) > now.getTime()
+        || !isFresh(publicationDate, now, USGS_MCS_MAX_AGE_DAYS)
+        || !isFresh(revisionDate, now, USGS_MCS_MAX_AGE_DAYS)
+        || !validUsgsMcsSource(sourceUrl)) continue;
+      const csv = await fetchText(sourceUrl);
+      const rows = csvObjects(csv);
+      if (!rows.some((row) => row["Year"] && row["Commodity"] && row["Statistics"])) continue;
+      return {
+        csv,
+        sourceUrl,
+        publicationDate,
+        revisionDate,
+      };
+    } catch {
+      // A release may not yet exist or may be temporarily inaccessible.
+    }
+  }
+  return null;
 }
 
 export async function fetchCommoditySupplyDemandContext(
@@ -722,7 +1001,7 @@ export async function fetchCommoditySupplyDemandContext(
   if (!commodity) return {
     status: "unavailable",
     commodity: "Unknown commodity",
-    series: SUPPLY_SERIES.map(({ id, label }) => unavailableSupplySeries(id, label, "Unsupported commodity.")),
+    series: supplySeriesLabels(normalized).map(({ id, label }) => unavailableSupplySeries(id, label, "Unsupported commodity.")),
   };
 
   let series: CommoditySupplyDemandSeries[] = [];
@@ -732,6 +1011,26 @@ export async function fetchCommoditySupplyDemandContext(
       if (report) return parseUsdaSupplyDemandSeries(report.rows, report.sourceUrl, normalized, now);
     } catch {
       // Unavailable series are returned below; no values are inferred.
+    }
+  } else if (USGS_MCS_COMMODITIES[normalized]) {
+    try {
+      const report = await cached<UsgsMcsReport | null>(
+        `usgs-mcs-report:${now.getUTCFullYear()}`,
+        24 * 60 * 60 * 1000,
+        () => loadLatestUsgsMcsReport(now),
+      );
+      if (report) {
+        return parseUsgsMineralSupplyDemandCsv(
+          report.csv,
+          report.sourceUrl,
+          normalized,
+          report.publicationDate,
+          report.revisionDate,
+          now,
+        );
+      }
+    } catch {
+      // Missing, stale, or invalid USGS files stay unavailable.
     }
   } else if ((normalized === "CL=F" || normalized === "NG=F")
     && inventory?.symbol === normalized
@@ -771,7 +1070,7 @@ export async function fetchCommoditySupplyDemandContext(
   }
 
   if (!series.length) {
-    series = SUPPLY_SERIES.map(({ id, label }) =>
+    series = supplySeriesLabels(normalized).map(({ id, label }) =>
       unavailableSupplySeries(id, label, "No fresh, validated historical supply-and-demand series is available."));
   }
   const availableCount = series.filter((item) => item.status === "available").length;
@@ -792,18 +1091,22 @@ export function validateCommoditySupplyDemandContext(
   const empty = (reason: string): CommoditySupplyDemandContext => ({
     status: "unavailable",
     commodity: commodity?.name ?? "Unknown commodity",
-    series: SUPPLY_SERIES.map(({ id, label }) => unavailableSupplySeries(id, label, reason)),
+    series: supplySeriesLabels(normalized).map(({ id, label }) => unavailableSupplySeries(id, label, reason)),
   });
   if (!commodity || context?.commodity !== commodity.name || !Array.isArray(context.series)) {
     return empty("The supply-and-demand response did not match the selected commodity.");
   }
   const series = SUPPLY_SERIES.map(({ id, label }) => {
+    const displayLabel = supplySeriesLabels(normalized).find((item) => item.id === id)?.label ?? label;
     const candidate = context.series.find((item) => item?.id === id);
     if (!candidate || !Array.isArray(candidate.points)) {
-      return unavailableSupplySeries(id, label, "No validated comparable series is available.");
+      return unavailableSupplySeries(id, displayLabel, "No validated comparable series is available.");
     }
     const points = candidate.points.filter((point) => {
-      if (!point || point.commodity !== commodity.name || !Number.isFinite(point.value)
+      const expectedPointCommodity = USDA_COMMODITIES[normalized]?.pointCommodity
+        ?? USGS_MCS_COMMODITIES[normalized]?.commodity
+        ?? commodity.name;
+      if (!point || point.commodity !== expectedPointCommodity || !Number.isFinite(point.value)
         || point.value < 0 || typeof point.units !== "string" || !point.units.trim()
         || typeof point.reportingPeriod !== "string"
         || typeof point.publicationDate !== "string"
@@ -811,36 +1114,37 @@ export function validateCommoditySupplyDemandContext(
         || !/^https:\/\//i.test(point.source.url)) return false;
       const isUsda = validWasdeReportSource(point.source.url);
       const isEia = point.source.url === EIA_TABLE_URL || point.source.url === EIA_NATURAL_GAS_URL;
+      const isUsgs = validUsgsMcsSource(point.source.url);
       if ((normalized === "CL=F" && point.source.url !== EIA_TABLE_URL)
         || (normalized === "NG=F" && point.source.url !== EIA_NATURAL_GAS_URL)
         || (USDA_SERIES_COMMODITIES.has(normalized) && !isUsda)
-        || (!USDA_SERIES_COMMODITIES.has(normalized) && normalized !== "CL=F" && normalized !== "NG=F")) return false;
-      if (isUsda && (!/^\d{4}\/\d{2}$/.test(point.reportingPeriod)
+        || (USGS_MCS_COMMODITIES[normalized] && !isUsgs)
+        || (!USDA_SERIES_COMMODITIES.has(normalized) && !USGS_MCS_COMMODITIES[normalized]
+          && normalized !== "CL=F" && normalized !== "NG=F")) return false;
+      if (isUsda && (!periodMatches(point.reportingPeriod, USDA_COMMODITIES[normalized]!.period)
         || !isFresh(point.publicationDate, now, 60))) return false;
       if (isEia && (!isDate(point.reportingPeriod) || !isFresh(point.reportingPeriod, now, 120)
         || !isFresh(point.publicationDate, now, 14))) return false;
+      if (isUsgs && (!/^\d{4}$/.test(point.reportingPeriod)
+        || !isFresh(point.publicationDate, now, USGS_MCS_MAX_AGE_DAYS)
+        || !point.revisionDate || !isFresh(point.revisionDate, now, USGS_MCS_MAX_AGE_DAYS))) return false;
       return true;
     });
     const units = points[0]?.units ?? null;
     const comparablePoints = units ? points.filter((point) => point.units === units) : [];
     const valid = candidate.status === "available" && comparablePoints.length > 0;
-    const historicalAverage = candidate.historicalAverage !== null
+    const calculatedAverage = candidate.historicalAverage !== null
       && Number.isFinite(candidate.historicalAverage) && candidate.historicalAverage >= 0
-      ? candidate.historicalAverage
-      : null;
-    const historicalAveragePeriod = historicalAverage !== null
-      && typeof candidate.historicalAveragePeriod === "string"
-      && candidate.historicalAveragePeriod.length > 0
-      ? candidate.historicalAveragePeriod
-      : null;
+      ? calculateHistoricalAverage(comparablePoints)
+      : { value: null, period: null };
     return {
       id,
-      label,
+      label: displayLabel,
       status: valid ? "available" as const : "unavailable" as const,
       units: valid ? units : null,
       points: valid ? comparablePoints.slice(-12) : [],
-      historicalAverage: valid ? historicalAverage : null,
-      historicalAveragePeriod: valid ? historicalAveragePeriod : null,
+      historicalAverage: valid ? calculatedAverage.value : null,
+      historicalAveragePeriod: valid ? calculatedAverage.period : null,
       reason: valid ? null : candidate.reason ?? "No fresh, comparable observations passed validation.",
     };
   });
@@ -853,5 +1157,9 @@ export function validateCommoditySupplyDemandContext(
 }
 
 function validWasdeReportSource(url: string): boolean {
-  return /^https:\/\/www\.usda\.gov\/sites\/default\/files\/documents\/oce-wasde-report-data-\d{4}-\d{2}(?:-V\d+)?\.csv$/i.test(url);
+  return /^https:\/\/(?:www\.usda\.gov|usda\.azureedge\.us)\/sites\/default\/files\/documents\/oce-wasde-report-data-\d{4}-\d{2}(?:-V\d+)?\.csv$/i.test(url);
+}
+
+function validUsgsMcsSource(url: string): boolean {
+  return /^https:\/\/www\.sciencebase\.gov\/catalog\/file\/get\/[a-f0-9]{24}\?f=__disk__/i.test(url);
 }

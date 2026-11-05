@@ -856,6 +856,7 @@ export type CommodityAnalysisResultCommodityAnalysisSupplyDemandSeriesItemPoints
   units: string;
   reportingPeriod: string;
   publicationDate: string;
+  revisionDate?: string;
   source: CommodityAnalysisResultCommodityAnalysisSupplyDemandSeriesItemPointsItemSource;
 };
 

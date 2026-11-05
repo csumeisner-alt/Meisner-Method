@@ -776,6 +776,7 @@ type CommodityAnalysisPayload = {
         units: string;
         reportingPeriod: string;
         publicationDate: string;
+        revisionDate?: string;
         source: { title: string; url: string };
       }[];
       historicalAverage: number | null;
@@ -1146,6 +1147,7 @@ function CommoditySupplyChart({ title, series }: {
                   </View>
                   <Text style={{ color: colors.mutedForeground, fontSize: 9, marginLeft: 64 }}>
                     Reported {point.publicationDate} · {point.commodity}
+                    {point.revisionDate ? ` · Revised ${point.revisionDate}` : ''}
                   </Text>
                 </View>
               ))}
@@ -1192,6 +1194,16 @@ function CommoditySupplyDemand({ context }: { context: CommodityAnalysisPayload[
         <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16 }}>
           {context.commodity} reporting periods and publication dates are shown separately. Estimates remain estimates; missing series are not interpolated.
         </Text>
+        {(context.commodity === 'Live Cattle' || context.commodity === 'Lean Hogs') && (
+          <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 15 }}>
+            USDA beef and pork balances describe meat supply and use, not counts of live animals.
+          </Text>
+        )}
+        {['Gold', 'Silver', 'Copper', 'Platinum', 'Palladium'].includes(context.commodity) && (
+          <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 15 }}>
+            USGS figures are annual U.S. mineral statistics, not global exchange inventories.
+          </Text>
+        )}
         <CommoditySupplyChart title="Inventory history" series={[find('inventory')]} />
         <CommoditySupplyChart title="Production vs. consumption" series={[find('production'), find('consumption')]} />
         <CommoditySupplyChart title="Trade and supply balance context" series={[find('imports'), find('exports')]} />

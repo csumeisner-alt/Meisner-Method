@@ -165,6 +165,7 @@ export interface CommoditySupplyDemandPoint {
   units: string;
   reportingPeriod: string;
   publicationDate: string;
+  revisionDate?: string;
   source: { title: string; url: string };
 }
 

@@ -611,6 +611,7 @@ export const AnalyzeStockResponse = zod.union([zod.object({
   "units": zod.string(),
   "reportingPeriod": zod.string(),
   "publicationDate": zod.coerce.date(),
+  "revisionDate": zod.coerce.date().optional(),
   "source": zod.object({
   "title": zod.string(),
   "url": zod.string().regex(analyzeStockResponseThreeCommodityAnalysisSupplyDemandSeriesItemPointsItemSourceUrlRegExp)

@@ -12,11 +12,14 @@ import {
   fetchCommodityInventoryEvidence,
   fetchCommodityInventoryEvidenceWithStatus,
   fetchCommodityPositioningEvidenceWithStatus,
+  fetchCommoditySupplyDemandContext,
   parseCftcPositioningRows,
   parseEiaCrudeInventoryCsv,
   parseEiaNaturalGasStorageCsv,
+  parseUsgsMineralSupplyDemandCsv,
   parseUsdaSupplyDemandSeries,
   parseUsdaWasdeInventoryCsv,
+  validateCommoditySupplyDemandContext,
 } from "./commodityMarketData.ts";
 
 const closesWithDailyChange = (changes: number[]) => {
@@ -461,6 +464,203 @@ test("USDA supply-demand series compare only same-unit, dated reports and leave 
     "ZC=F",
     new Date("2026-11-02T12:00:00.000Z"),
   ).status, "unavailable");
+});
+
+test("USDA meat supply histories use dated annual beef and pork reports, including the latest revision", () => {
+  const sourceUrl = "https://www.usda.gov/sites/default/files/documents/oce-wasde-report-data-2026-10.csv";
+  const rows = (commodity: "Beef" | "Pork") => [
+    ...["2024", "2025", "2026"].flatMap((marketYear, index) => [
+      { reportTitle: "U.S. Meats Supply and Use", attribute: "Ending Stocks", commodity, region: "United States", marketYear, value: String(100 + index * 10), unit: "Million Pounds", releaseDate: "2026-10-09" },
+      { reportTitle: "U.S. Meats Supply and Use", attribute: "Production", commodity, region: "United States", marketYear, value: String(1000 + index * 100), unit: "Million Pounds", releaseDate: "2026-10-09" },
+      { reportTitle: "U.S. Meats Supply and Use", attribute: "Total Use", commodity, region: "United States", marketYear, value: String(900 + index * 100), unit: "Million Pounds", releaseDate: "2026-10-09" },
+      { reportTitle: "U.S. Meats Supply and Use", attribute: "Imports", commodity, region: "United States", marketYear, value: String(10 + index), unit: "Million Pounds", releaseDate: "2026-10-09" },
+      { reportTitle: "U.S. Meats Supply and Use", attribute: "Exports", commodity, region: "United States", marketYear, value: String(20 + index), unit: "Million Pounds", releaseDate: "2026-10-09" },
+    ]),
+    { reportTitle: "U.S. Meats Supply and Use", attribute: "Production", commodity, region: "United States", marketYear: "2025", value: "9999", unit: "Million Pounds", releaseDate: "2026-09-11" },
+  ];
+
+  const beef = parseUsdaSupplyDemandSeries(rows("Beef"), sourceUrl, "LE=F", DEFAULT_NOW);
+  const pork = parseUsdaSupplyDemandSeries(rows("Pork"), sourceUrl, "HE=F", DEFAULT_NOW);
+  const beefProduction = beef.series.find((item) => item.id === "production");
+  const porkProduction = pork.series.find((item) => item.id === "production");
+  assert.equal(beef.status, "available");
+  assert.equal(beef.commodity, "Live Cattle");
+  assert.equal(beefProduction?.label, "Beef production");
+  assert.equal(beefProduction?.points[0]?.commodity, "Beef");
+  assert.equal(beefProduction?.points[1]?.value, 1100, "the September value must not replace the October report vintage");
+  assert.equal(beefProduction?.points[0]?.publicationDate, "2026-10-09");
+  assert.equal(beefProduction?.historicalAverage, 1050);
+  assert.equal(pork.status, "available");
+  assert.equal(pork.commodity, "Lean Hogs");
+  assert.equal(porkProduction?.label, "Pork production");
+  assert.equal(porkProduction?.points[0]?.commodity, "Pork");
+  assert.equal(validateCommoditySupplyDemandContext(beef, "LE=F", DEFAULT_NOW)
+    .series.find((item) => item.id === "production")?.status, "available");
+});
+
+const USGS_TEST_SOURCE = "https://www.sciencebase.gov/catalog/file/get/0123456789abcdef01234567?f=__disk__test";
+const USGS_COPPER_FIXTURE = [
+  "MCS chapter,Section,Commodity,Country,Statistics,Statistics_detail,Unit,Year,Value,Notes",
+  ...[
+    ["2021", "100"],
+    ["2022", "200"],
+    ["2023", "300"],
+    ["2023", "301"],
+    ["2024", "400"],
+    ["2025", "500"],
+  ].map(([year, value]) => [
+    "COPPER",
+    "Salient Statistics—United States",
+    "Copper",
+    "United States",
+    "Production",
+    "Production: Mine, recoverable",
+    "thousand metric tons",
+    year,
+    value,
+    year === "2025" ? "Estimated." : "",
+  ].map((field) => `"${field}"`).join(",")),
+  '"COPPER","World Mine and Refinery Production and Reserves","Copper","United States","Production","Mine production","thousand metric tons","2025","9999",""',
+].join("\n");
+
+test("USGS metal histories match exact annual rows and retain release and revision dates", () => {
+  const result = parseUsgsMineralSupplyDemandCsv(
+    USGS_COPPER_FIXTURE,
+    USGS_TEST_SOURCE,
+    "HG=F",
+    "2026-02-06",
+    "2026-05-27",
+    DEFAULT_NOW,
+  );
+  const production = result.series.find((item) => item.id === "production");
+  assert.equal(result.status, "partial");
+  assert.equal(production?.status, "available");
+  assert.equal(production?.label, "U.S. recoverable mine production");
+  assert.deepEqual(production?.points.map((point) => point.reportingPeriod), ["2021", "2022", "2024", "2025"]);
+  assert.equal(production?.historicalAverage, (100 + 200 + 400) / 3);
+  assert.equal(production?.historicalAveragePeriod, "2021–2024 (3 prior periods)");
+  assert.equal(production?.points.at(-1)?.publicationDate, "2026-02-06");
+  assert.equal(production?.points.at(-1)?.revisionDate, "2026-05-27");
+  assert.equal(production?.points.at(-1)?.value, 500, "ambiguous duplicate rows are not selected as either vintage");
+  const validated = validateCommoditySupplyDemandContext(result, "HG=F", DEFAULT_NOW);
+  assert.equal(validated.series.find((item) => item.id === "production")?.historicalAverage, (100 + 200 + 400) / 3);
+  assert.equal(validated.series.find((item) => item.id === "inventory")?.status, "unavailable");
+});
+
+test("USGS production mappings match the distinct metal row and unit for every supported contract", () => {
+  const metals = [
+    { symbol: "GC=F", commodity: "Gold", detail: "Production: Mine", units: "metric tons" },
+    { symbol: "SI=F", commodity: "Silver", detail: "Production: Mine", units: "metric tons" },
+    { symbol: "HG=F", commodity: "Copper", detail: "Production: Mine, recoverable", units: "thousand metric tons" },
+    { symbol: "PL=F", commodity: "Platinum", detail: "Mine production: Platinum", units: "kilograms" },
+    { symbol: "PA=F", commodity: "Palladium", detail: "Mine production: Palladium", units: "kilograms" },
+  ] as const;
+  for (const metal of metals) {
+    const csv = [
+      "MCS chapter,Section,Commodity,Country,Statistics,Statistics_detail,Unit,Year,Value,Notes",
+      ...["2022", "2023", "2024"].map((year, index) => [
+        "METAL",
+        "Salient Statistics—United States",
+        metal.commodity,
+        "United States",
+        "Production",
+        metal.detail,
+        metal.units,
+        year,
+        String(100 + index * 10),
+        "",
+      ].map((field) => `"${field}"`).join(",")),
+    ].join("\n");
+    const result = parseUsgsMineralSupplyDemandCsv(
+      csv,
+      USGS_TEST_SOURCE,
+      metal.symbol,
+      "2026-02-06",
+      "2026-05-27",
+      DEFAULT_NOW,
+    );
+    const production = result.series.find((item) => item.id === "production");
+    assert.equal(production?.status, "available", `${metal.commodity} should have its own supported USGS row`);
+    assert.equal(production?.units, metal.units);
+    assert.equal(production?.points.length, 3);
+    assert.equal(production?.points[0]?.commodity, metal.commodity);
+  }
+});
+
+test("stale USGS releases and unsupported metal rows remain unavailable", () => {
+  const stale = parseUsgsMineralSupplyDemandCsv(
+    USGS_COPPER_FIXTURE,
+    USGS_TEST_SOURCE,
+    "HG=F",
+    "2024-02-06",
+    "2024-05-27",
+    DEFAULT_NOW,
+  );
+  assert.equal(stale.status, "unavailable");
+  assert.ok(stale.series.every((item) => item.points.length === 0));
+  const unsupportedMetal = parseUsgsMineralSupplyDemandCsv(
+    USGS_COPPER_FIXTURE,
+    USGS_TEST_SOURCE,
+    "KC=F",
+    "2026-02-06",
+    "2026-05-27",
+    DEFAULT_NOW,
+  );
+  assert.equal(unsupportedMetal.status, "unavailable");
+});
+
+test("USGS report fetch validates the release metadata and recovers after source failures", async () => {
+  const originalFetch = globalThis.fetch;
+  const csv = [
+    "MCS chapter,Section,Commodity,Country,Statistics,Statistics_detail,Unit,Year,Value,Notes",
+    '"GOLD","Salient Statistics—United States","Gold","United States","Production","Production: Mine","metric tons","2022","170",""',
+    '"GOLD","Salient Statistics—United States","Gold","United States","Production","Production: Mine","metric tons","2023","165",""',
+    '"GOLD","Salient Statistics—United States","Gold","United States","Production","Production: Mine","metric tons","2024","163",""',
+    '"GOLD","Salient Statistics—United States","Gold","United States","Production","Production: Mine","metric tons","2025","160","Estimated."',
+  ].join("\n");
+  let sourceFailure = false;
+  let requestCount = 0;
+  globalThis.fetch = async (input) => {
+    requestCount += 1;
+    const url = String(input);
+    if (sourceFailure) return new Response("temporarily unavailable", { status: 503 });
+    if (url.includes("/catalog/items?")) {
+      return new Response(JSON.stringify({
+        items: [{ id: "0123456789abcdef01234567", title: "Mineral Commodity Summaries 2026 Data Release" }],
+      }), { status: 200 });
+    }
+    if (url.includes("/catalog/item/0123456789abcdef01234567?format=json")) {
+      return new Response(JSON.stringify({
+        dates: [{ type: "Publication", dateString: "2026-02-06" }],
+        provenance: { lastUpdated: "2026-05-27T15:15:21Z" },
+        files: [{ name: "MCS2026_Commodities_Data.csv", downloadUri: USGS_TEST_SOURCE }],
+      }), { status: 200 });
+    }
+    if (url === USGS_TEST_SOURCE) return new Response(csv, { status: 200 });
+    return new Response("not found", { status: 404 });
+  };
+
+  try {
+    const eventCalendar = { status: "unavailable" as const, checkedAt: "2026-11-02T00:00:00Z", events: [], unavailable: [] };
+    const context = await fetchCommoditySupplyDemandContext("GC=F", null, eventCalendar, DEFAULT_NOW);
+    const validated = validateCommoditySupplyDemandContext(context, "GC=F", DEFAULT_NOW);
+    const production = validated.series.find((item) => item.id === "production");
+    assert.equal(production?.status, "available");
+    assert.equal(production?.points.at(-1)?.publicationDate, "2026-02-06");
+    assert.equal(production?.points.at(-1)?.revisionDate, "2026-05-27");
+    assert.equal(requestCount, 3, "search, metadata, and the dated USGS CSV should all be checked");
+
+    sourceFailure = true;
+    const failedYear = new Date("2028-11-02T12:00:00.000Z");
+    const failed = await fetchCommoditySupplyDemandContext("PA=F", null, eventCalendar, failedYear);
+    assert.equal(failed.status, "unavailable");
+    const requestsAfterFailure = requestCount;
+    const cachedFailure = await fetchCommoditySupplyDemandContext("PL=F", null, eventCalendar, failedYear);
+    assert.equal(cachedFailure.status, "unavailable");
+    assert.equal(requestCount, requestsAfterFailure, "a temporary source failure should use the short negative cache");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("revised and stale WASDE rows do not become supply-demand series", () => {
