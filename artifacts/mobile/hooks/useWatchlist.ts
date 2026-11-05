@@ -294,18 +294,34 @@ export function useWatchlist() {
         body: JSON.stringify({ installationId, symbol, direction, targetPrice, pushToken }),
       });
       void awardAchievement('first-price-alert');
-      // Remove any existing active alert for this symbol first
-      const existing = alerts.find((a) => a.symbol === symbol && !a.firedAt);
-      if (existing) {
-        setAlerts((prev) => prev.filter((a) => a.id !== existing.id));
-      }
       setAlerts((prev) => {
-        const next = [...prev.filter((a) => a.id !== existing?.id), saved];
+        const next = [saved, ...prev];
         void writeAlertCache(next);
         return next;
       });
     },
-    [alerts, apiFetch, awardAchievement],
+    [apiFetch, awardAchievement],
+  );
+
+  const updateAlert = useCallback(
+    async (
+      id: string,
+      direction: 'above' | 'below',
+      targetPrice: number,
+      pushToken: string,
+    ) => {
+      const installationId = await getInstallationId();
+      const updated = await apiFetch<AlertData>(`/api/notifications/alerts/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ installationId, direction, targetPrice, pushToken }),
+      });
+      setAlerts((prev) => {
+        const next = prev.map((alert) => alert.id === id ? updated : alert);
+        void writeAlertCache(next);
+        return next;
+      });
+    },
+    [apiFetch],
   );
 
   const deleteAlert = useCallback(
@@ -336,6 +352,7 @@ export function useWatchlist() {
     isWatched,
     activeAlertFor,
     saveAlert,
+    updateAlert,
     deleteAlert,
   };
 }

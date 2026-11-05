@@ -234,6 +234,7 @@ export default function HomeScreen() {
   // Alert modal state
   const [alertModalSymbol, setAlertModalSymbol] = useState<string | null>(null);
   const [alertModalPrice, setAlertModalPrice] = useState<number | undefined>(undefined);
+  const [alertModalAlertId, setAlertModalAlertId] = useState<string | null>(null);
 
   // Patriot Mode — fact counter, unlock state, and celebration trigger
   const { isActive, neonGucciActive, justUnlocked, incrementFact, clearJustUnlocked } = useAmericanMode();
@@ -483,13 +484,26 @@ export default function HomeScreen() {
     ? lastUpdated.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
     : null;
 
-  const openAlertModal = (symbol: string, price?: number) => {
+  const openAlertModal = (symbol: string, price?: number, alertId?: string | null) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setAlertModalSymbol(symbol);
     setAlertModalPrice(price);
+    setAlertModalAlertId(alertId === undefined ? watchlist.activeAlertFor(symbol)?.id ?? null : alertId);
   };
 
-  const activeAlert = alertModalSymbol ? watchlist.activeAlertFor(alertModalSymbol) : null;
+  const openNewAlertModal = (symbol: string) => {
+    setSettingsOpen(false);
+    setTimeout(() => openAlertModal(symbol, watchlist.quotes.get(symbol)?.currentPrice, null), 240);
+  };
+
+  const openManagedAlertModal = (alert: import('@/hooks/useWatchlist').AlertData) => {
+    setSettingsOpen(false);
+    setTimeout(() => openAlertModal(alert.symbol, watchlist.quotes.get(alert.symbol)?.currentPrice, alert.id), 240);
+  };
+
+  const selectedAlert = alertModalAlertId
+    ? watchlist.alerts.find((alert) => alert.id === alertModalAlertId) ?? null
+    : null;
 
   return (
     <AmericanSteelBackground>
@@ -535,8 +549,9 @@ export default function HomeScreen() {
           visible={!!alertModalSymbol}
           symbol={alertModalSymbol}
           currentPrice={alertModalPrice ?? watchlist.quotes.get(alertModalSymbol)?.currentPrice}
-          existingDirection={activeAlert?.direction}
-          existingTarget={activeAlert?.targetPrice}
+          existingDirection={selectedAlert?.direction}
+          existingTarget={selectedAlert?.targetPrice}
+          existingAlertId={selectedAlert?.id}
           pushToken={pushToken}
           registrationError={registrationError}
           permissionStatus={pushStatus}
@@ -544,12 +559,19 @@ export default function HomeScreen() {
           onOpenSettings={openNotificationSettings}
           onSave={async (direction, targetPrice) => {
             if (!pushToken) return;
-            await watchlist.saveAlert(alertModalSymbol, direction, targetPrice, pushToken);
+            if (selectedAlert) {
+              await watchlist.updateAlert(selectedAlert.id, direction, targetPrice, pushToken);
+            } else {
+              await watchlist.saveAlert(alertModalSymbol, direction, targetPrice, pushToken);
+            }
           }}
           onDelete={async () => {
-            if (activeAlert) await watchlist.deleteAlert(activeAlert.id).catch(() => {});
+            if (selectedAlert) await watchlist.deleteAlert(selectedAlert.id).catch(() => {});
           }}
-          onClose={() => setAlertModalSymbol(null)}
+          onClose={() => {
+            setAlertModalSymbol(null);
+            setAlertModalAlertId(null);
+          }}
           colors={colors}
         />
       )}
@@ -984,6 +1006,11 @@ export default function HomeScreen() {
       <DonationSidebar
         visible={settingsOpen}
         onClose={() => setSettingsOpen(false)}
+        alerts={watchlist.alerts}
+        watchlistSymbols={watchlist.items.map((item) => item.symbol)}
+        onAddAlert={openNewAlertModal}
+        onEditAlert={openManagedAlertModal}
+        onDeleteAlert={(id) => watchlist.deleteAlert(id)}
       />
     </AmericanSteelBackground>
   );

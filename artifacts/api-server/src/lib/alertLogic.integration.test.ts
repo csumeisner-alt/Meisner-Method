@@ -331,3 +331,27 @@ test("multiple alerts for different symbols each resolved and fired independentl
   assert.notEqual(await getFiredAt(tslaId), null, "TSLA fired_at must be set");
   assert.equal(await getFiredAt(googId), null, "GOOG fired_at must remain null");
 });
+
+test("multiple alerts for the same symbol fire independently by target", async () => {
+  const lowAlertId = await insertAlert({ symbol: "AAPL", direction: "above", targetPrice: 100 });
+  const highAlertId = await insertAlert({ symbol: "AAPL", direction: "above", targetPrice: 200 });
+  const firedIds: string[] = [];
+
+  const stats = await runAlertCheckCycle(
+    pool,
+    {
+      fetchPrice: async () => 150,
+      sendPush: async (alert) => {
+        firedIds.push(alert.id);
+        return { accepted: true, permanentFailure: false };
+      },
+    },
+    { scopeToIds: [lowAlertId, highAlertId] },
+  );
+
+  assert.equal(stats.checked, 2);
+  assert.equal(stats.triggered, 1);
+  assert.deepEqual(firedIds, [lowAlertId]);
+  assert.notEqual(await getFiredAt(lowAlertId), null);
+  assert.equal(await getFiredAt(highAlertId), null);
+});

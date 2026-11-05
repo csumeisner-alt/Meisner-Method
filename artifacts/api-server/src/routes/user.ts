@@ -1035,17 +1035,6 @@ router.post("/notifications/alerts", requireSchema, async (req: any, res) => {
          updated_at = NOW()`,
       [installationId, pushToken],
     );
-    const existing = await pool.query(
-      `UPDATE price_alerts
-       SET direction=$3, target_price=$4, push_token=$5, fired_at=NULL, created_at=NOW()
-       WHERE installation_id=$1 AND symbol=$2 AND fired_at IS NULL
-       RETURNING id, symbol, direction, target_price, created_at, fired_at`,
-      [installationId, normalizedSymbol, direction, numericTarget, pushToken],
-    );
-    if (existing.rows[0]) {
-      res.json(normalizeAlertRow(existing.rows[0]));
-      return;
-    }
     const id = randomUUID();
     const inserted = await pool.query(
       `INSERT INTO price_alerts (id, user_id, installation_id, symbol, direction, target_price, push_token)
@@ -1054,6 +1043,47 @@ router.post("/notifications/alerts", requireSchema, async (req: any, res) => {
       [id, installationId, normalizedSymbol, direction, numericTarget, pushToken],
     );
     res.json(normalizeAlertRow(inserted.rows[0]));
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.put("/notifications/alerts/:id", requireSchema, async (req: any, res) => {
+  const { installationId, direction, targetPrice, pushToken } = req.body ?? {};
+  const numericTarget = Number(targetPrice);
+  if (
+    !validInstallationId(installationId)
+    || !validExpoPushToken(pushToken)
+    || !Number.isFinite(numericTarget)
+    || numericTarget <= 0
+    || (direction !== "above" && direction !== "below")
+  ) {
+    res.status(400).json({ error: "installationId, direction, targetPrice, and pushToken are required" });
+    return;
+  }
+  try {
+    await pool.query(
+      `INSERT INTO push_devices (installation_id, expo_push_token, platform, enabled, last_seen_at, updated_at)
+       VALUES ($1,$2,'android',TRUE,NOW(),NOW())
+       ON CONFLICT (installation_id) DO UPDATE SET
+         expo_push_token = EXCLUDED.expo_push_token,
+         enabled = TRUE,
+         last_seen_at = NOW(),
+         updated_at = NOW()`,
+      [installationId, pushToken],
+    );
+    const { rows } = await pool.query(
+      `UPDATE price_alerts
+       SET direction=$3, target_price=$4, push_token=$5, fired_at=NULL, created_at=NOW()
+       WHERE id=$1 AND installation_id=$2
+       RETURNING id, symbol, direction, target_price, created_at, fired_at`,
+      [req.params.id, installationId, direction, numericTarget, pushToken],
+    );
+    if (!rows[0]) {
+      res.status(404).json({ error: "Alert not found" });
+      return;
+    }
+    res.json(normalizeAlertRow(rows[0]));
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }

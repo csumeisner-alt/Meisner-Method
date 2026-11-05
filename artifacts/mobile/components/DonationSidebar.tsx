@@ -19,9 +19,12 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useColors } from '@/hooks/useColors';
+import type { AlertData } from '@/hooks/useWatchlist';
+import { formatCommodityQuotePrice, getCommodityContractSpec } from '@/lib/heatMapInstrumentDisplay';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { useAchievements } from '@/contexts/AchievementsContext';
 import { ACHIEVEMENTS } from '@/lib/achievements';
@@ -59,6 +62,144 @@ const CASHAPP_GREEN = '#00D632';
 interface Props {
   visible: boolean;
   onClose: () => void;
+  alerts: AlertData[];
+  watchlistSymbols: string[];
+  onAddAlert: (symbol: string) => void;
+  onEditAlert: (alert: AlertData) => void;
+  onDeleteAlert: (id: string) => Promise<void>;
+}
+
+const ALERTS_COLLAPSED_KEY = '@stocksense/alerts_collapsed';
+const formatManagedAlertPrice = (symbol: string, price: number) => getCommodityContractSpec(symbol)
+  ? formatCommodityQuotePrice(symbol, price)
+  : `$${price.toFixed(2)}`;
+
+function AlertManagementSection({
+  alerts,
+  watchlistSymbols,
+  onAddAlert,
+  onEditAlert,
+  onDeleteAlert,
+}: Pick<Props, 'alerts' | 'watchlistSymbols' | 'onAddAlert' | 'onEditAlert' | 'onDeleteAlert'>) {
+  const colors = useColors();
+  const [collapsed, setCollapsed] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.getItem(ALERTS_COLLAPSED_KEY).then((value) => {
+      if (!cancelled && value === '1') setCollapsed(true);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const toggleCollapsed = () => {
+    setCollapsed((current) => {
+      const next = !current;
+      AsyncStorage.setItem(ALERTS_COLLAPSED_KEY, next ? '1' : '0').catch(() => {});
+      return next;
+    });
+  };
+
+  const grouped = alerts.reduce<Record<string, AlertData[]>>((result, alert) => {
+    (result[alert.symbol] ??= []).push(alert);
+    return result;
+  }, {});
+  const symbols = [...new Set([...watchlistSymbols, ...Object.keys(grouped)])];
+
+  return (
+    <View testID="settings-price-alerts" style={{ marginBottom: 20 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 16 }}>
+            Price alerts
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 3 }}>
+            {alerts.length} saved · manage targets by ticker
+          </Text>
+        </View>
+        <TouchableOpacity
+          testID="toggle-alerts-collapsed"
+          accessibilityRole="button"
+          accessibilityLabel={collapsed ? 'Expand all price alerts' : 'Collapse all price alerts'}
+          accessibilityState={{ expanded: !collapsed }}
+          onPress={toggleCollapsed}
+          style={{ paddingVertical: 8, paddingHorizontal: 10 }}
+        >
+          <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>
+            {collapsed ? 'Expand all' : 'Collapse all'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+      {!collapsed && (
+        symbols.length === 0 ? (
+          <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, paddingVertical: 8 }}>
+            Add a ticker to your watchlist to set its first alert.
+          </Text>
+        ) : symbols.map((symbol) => (
+          <View key={symbol} style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10, paddingBottom: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14, flex: 1 }}>
+                {symbol}
+              </Text>
+              <TouchableOpacity
+                testID={`add-alert-${symbol}`}
+                accessibilityRole="button"
+                accessibilityLabel={`Add price alert for ${symbol}`}
+                onPress={() => onAddAlert(symbol)}
+                style={{ paddingVertical: 6, paddingHorizontal: 8 }}
+              >
+                <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>
+                  + Add alert
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {(grouped[symbol] ?? []).length === 0 ? (
+              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, paddingBottom: 5 }}>
+                No alerts set
+              </Text>
+            ) : (grouped[symbol] ?? []).map((alert) => (
+              <View
+                key={alert.id}
+                testID={`managed-alert-${alert.id}`}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 5 }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: alert.firedAt ? colors.mutedForeground : colors.foreground, fontFamily: 'Inter_500Medium', fontSize: 13 }}>
+                    {alert.direction === 'above' ? 'Above' : 'Below'} {formatManagedAlertPrice(symbol, alert.targetPrice)} · {alert.firedAt ? 'Fired' : 'Active'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel={`Edit ${symbol} alert ${alert.direction} ${alert.targetPrice}`}
+                  onPress={() => onEditAlert(alert)}
+                  style={{ padding: 7 }}
+                >
+                  <Feather name="edit-2" size={15} color={colors.primary} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${symbol} alert ${alert.direction} ${alert.targetPrice}`}
+                  onPress={() => {
+                    setDeleteError(null);
+                    void onDeleteAlert(alert.id).catch(() => setDeleteError('Could not remove this alert. Please try again.'));
+                  }}
+                  style={{ padding: 7 }}
+                >
+                  <Feather name="trash-2" size={15} color={colors.sellColor} />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        ))
+      )}
+      {deleteError && (
+        <Text accessibilityRole="alert" style={{ color: colors.sellColor, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 8 }}>
+          {deleteError}
+        </Text>
+      )}
+    </View>
+  );
 }
 
 function NeonGucciUnlockCelebration({
@@ -228,7 +369,15 @@ function NeonGucciUnlockCelebration({
   );
 }
 
-export function DonationSidebar({ visible, onClose }: Props) {
+export function DonationSidebar({
+  visible,
+  onClose,
+  alerts,
+  watchlistSymbols,
+  onAddAlert,
+  onEditAlert,
+  onDeleteAlert,
+}: Props) {
   const colors = useColors();
   const { earnedIds, openGallery } = useAchievements();
   const insets = useSafeAreaInsets();
@@ -463,6 +612,13 @@ export function DonationSidebar({ visible, onClose }: Props) {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
+            <AlertManagementSection
+              alerts={alerts}
+              watchlistSymbols={watchlistSymbols}
+              onAddAlert={onAddAlert}
+              onEditAlert={onEditAlert}
+              onDeleteAlert={onDeleteAlert}
+            />
             {DONATION_FEATURE_ENABLED && (
               <>
                 {/* Archived donation flow — re-enable only if donations return. */}

@@ -682,7 +682,7 @@ async function buildAnalysisScreenBundle(expenseRatio, scenarioOverrides = {}) {
         return {
           isWatched: () => false, activeAlertFor: () => null,
           add: async () => {}, remove: async () => {},
-          saveAlert: async () => {}, deleteAlert: async () => {},
+          saveAlert: async () => {}, updateAlert: async () => {}, deleteAlert: async () => {},
         };
       }
     `],

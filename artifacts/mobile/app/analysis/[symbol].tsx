@@ -4603,6 +4603,7 @@ export default function AnalysisScreen() {
         currentPrice={data.currentPrice}
         existingDirection={activeAlert?.direction}
         existingTarget={activeAlert?.targetPrice}
+        existingAlertId={activeAlert?.id}
         pushToken={pushToken}
         registrationError={registrationError}
         permissionStatus={pushStatus}
@@ -4610,7 +4611,11 @@ export default function AnalysisScreen() {
         onOpenSettings={openNotificationSettings}
         onSave={async (direction, targetPrice) => {
           if (!symbol || !pushToken) return;
-          await watchlist.saveAlert(symbol, direction, targetPrice, pushToken);
+          if (activeAlert) {
+            await watchlist.updateAlert(activeAlert.id, direction, targetPrice, pushToken);
+          } else {
+            await watchlist.saveAlert(symbol, direction, targetPrice, pushToken);
+          }
           if (!watchlist.isWatched(symbol)) {
             await watchlist.add(symbol);
           }

@@ -19,6 +19,7 @@ interface PriceAlertModalProps {
   currentPrice?: number;
   existingDirection?: 'above' | 'below';
   existingTarget?: number;
+  existingAlertId?: string;
   pushToken: string | null;
   registrationError?: string | null;
   permissionStatus: 'unknown' | 'granted' | 'denied' | 'unavailable';
@@ -40,6 +41,7 @@ export function PriceAlertModal({
   currentPrice,
   existingDirection,
   existingTarget,
+  existingAlertId,
   pushToken,
   permissionStatus,
   onRequestPermission,
@@ -227,7 +229,7 @@ export function PriceAlertModal({
             </>
           )}
 
-          {existingTarget != null && (
+          {existingAlertId != null && (
             <TouchableOpacity
               style={alertStyles.deleteBtn}
               onPress={async () => { await onDelete(); onClose(); }}
