@@ -649,9 +649,18 @@ export const CommodityAnalysisResultCommodityAnalysisEventCalendarEventsItemStat
   completed: 'completed',
 } as const;
 
+export type CommodityPublishedValueSource = {
+  title: string;
+  /** @pattern ^https:// */
+  url: string;
+  publicationDate: string;
+};
+
 export type CommodityPublishedValue = {
   value: number;
+  upperBound?: number;
   units: string;
+  source?: CommodityPublishedValueSource;
 } | null;
 
 export type CommodityAnalysisResultCommodityAnalysisSupplyDemandStatus = typeof CommodityAnalysisResultCommodityAnalysisSupplyDemandStatus[keyof typeof CommodityAnalysisResultCommodityAnalysisSupplyDemandStatus];

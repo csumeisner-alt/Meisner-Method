@@ -1173,7 +1173,15 @@ components:
         - type: object
           properties:
             value: { type: number }
+            upperBound: { type: number }
             units: { type: string }
+            source:
+              type: object
+              properties:
+                title: { type: string }
+                url: { type: string, pattern: "^https://" }
+                publicationDate: { type: string, format: date }
+              required: [title, url, publicationDate]
           required: [value, units]
         - type: "null"
 

@@ -195,10 +195,17 @@ export interface CommodityEvent {
   affectedCommodities: string[];
   source: { title: string; url: string; publicationDate: string | null };
   values: {
-    previous: { value: number; units: string } | null;
-    consensus: { value: number; units: string } | null;
-    actual: { value: number; units: string } | null;
+    previous: CommodityPublishedValue | null;
+    consensus: CommodityPublishedValue | null;
+    actual: CommodityPublishedValue | null;
   };
+}
+
+export interface CommodityPublishedValue {
+  value: number;
+  units: string;
+  upperBound?: number;
+  source?: { title: string; url: string; publicationDate: string };
 }
 
 export interface CommodityEventCalendar {

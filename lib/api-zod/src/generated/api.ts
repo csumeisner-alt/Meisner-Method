@@ -238,6 +238,9 @@ export const analyzeStockResponseThreeCommodityAnalysisIntelligenceScorecardCate
 
 
 export const analyzeStockResponseThreeCommodityAnalysisEventCalendarEventsItemSourceUrlRegExp = new RegExp('^https:/');
+export const analyzeStockResponseThreeCommodityAnalysisEventCalendarEventsItemValuesPreviousOneSourceUrlRegExp = new RegExp('^https:/');
+export const analyzeStockResponseThreeCommodityAnalysisEventCalendarEventsItemValuesConsensusOneSourceUrlRegExp = new RegExp('^https:/');
+export const analyzeStockResponseThreeCommodityAnalysisEventCalendarEventsItemValuesActualOneSourceUrlRegExp = new RegExp('^https:/');
 export const analyzeStockResponseThreeCommodityAnalysisSupplyDemandSeriesItemPointsItemSourceUrlRegExp = new RegExp('^https:/');
 
 
@@ -555,15 +558,33 @@ export const AnalyzeStockResponse = zod.union([zod.object({
   "values": zod.object({
   "previous": zod.union([zod.object({
   "value": zod.number(),
-  "units": zod.string()
+  "upperBound": zod.number().optional(),
+  "units": zod.string(),
+  "source": zod.object({
+  "title": zod.string(),
+  "url": zod.string().regex(analyzeStockResponseThreeCommodityAnalysisEventCalendarEventsItemValuesPreviousOneSourceUrlRegExp),
+  "publicationDate": zod.coerce.date()
+}).optional()
 }),zod.null()]),
   "consensus": zod.union([zod.object({
   "value": zod.number(),
-  "units": zod.string()
+  "upperBound": zod.number().optional(),
+  "units": zod.string(),
+  "source": zod.object({
+  "title": zod.string(),
+  "url": zod.string().regex(analyzeStockResponseThreeCommodityAnalysisEventCalendarEventsItemValuesConsensusOneSourceUrlRegExp),
+  "publicationDate": zod.coerce.date()
+}).optional()
 }),zod.null()]),
   "actual": zod.union([zod.object({
   "value": zod.number(),
-  "units": zod.string()
+  "upperBound": zod.number().optional(),
+  "units": zod.string(),
+  "source": zod.object({
+  "title": zod.string(),
+  "url": zod.string().regex(analyzeStockResponseThreeCommodityAnalysisEventCalendarEventsItemValuesActualOneSourceUrlRegExp),
+  "publicationDate": zod.coerce.date()
+}).optional()
 }),zod.null()])
 })
 })),

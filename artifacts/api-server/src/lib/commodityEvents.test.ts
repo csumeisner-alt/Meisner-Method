@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   parseBlsCpiEvents,
+  parseBlsCpiIndex,
   parseEiaReleaseEvents,
   parseFomcEvents,
+  parseFomcPolicyValue,
   parseOpecMeetingEvents,
   parseOpecPressReleaseLinks,
   parseWasdeReleaseEvents,
@@ -64,6 +66,7 @@ test("BLS CPI and Federal Reserve meeting calendars include only source dates in
   );
   assert.equal(cpi[0]?.eventDate, "2026-11-12");
   assert.equal(cpi[0]?.time, "08:30 AM");
+  assert.match(cpi[0]!.name, /October 2026/);
 
   const fomc = parseFomcEvents(
     "2026 FOMC Meetings January | 27-28 March | 17-18 October | 27-28 December | 8-9 2027 FOMC Meetings",
@@ -74,6 +77,106 @@ test("BLS CPI and Federal Reserve meeting calendars include only source dates in
     ["2026-10-28", "completed"],
     ["2026-12-09", "upcoming"],
   ]);
+});
+
+test("CPI result is accepted only for the latest matching BLS period without revision notes", () => {
+  const item = parseBlsCpiEvents(
+    "Reference Month | Release Date | Release Time | September 2026 | Oct. 13, 2026 | 08:30 AM",
+    "Gold",
+    NOW,
+  )[0]!;
+  const response = {
+    status: "REQUEST_SUCCEEDED",
+    Results: { series: [{
+      seriesID: "CUUR0000SA0",
+      data: [
+        { year: "2026", period: "M09", latest: "true", value: "336.940", footnotes: [{}] },
+        { year: "2026", period: "M08", value: "334.980", footnotes: [{}] },
+      ],
+    }] },
+  };
+  assert.deepEqual(parseBlsCpiIndex(response, item), {
+    value: 336.94,
+    units: "CPI-U index (1982–84=100), not seasonally adjusted",
+    source: {
+      title: "BLS CPI-U all-items series",
+      url: "https://api.bls.gov/publicAPI/v2/timeseries/data/CUUR0000SA0?startyear=2026&endyear=2026",
+      publicationDate: "2026-10-13",
+    },
+  });
+  const stale = structuredClone(response);
+  stale.Results.series[0]!.data[0]!.latest = "false";
+  assert.equal(parseBlsCpiIndex(stale, item), null);
+  const revised = structuredClone(response);
+  revised.Results.series[0]!.data[0]!.footnotes = [{ code: "R", text: "Revised" }];
+  assert.equal(parseBlsCpiIndex(revised, item), null);
+});
+
+test("FOMC target range must match the dated official statement", () => {
+  const url = "https://www.federalreserve.gov/newsevents/pressreleases/monetary20261028a.htm";
+  const statement = "October 28, 2026. The Committee decided to maintain the target range for the federal funds rate at 3-3/4 to 4 percent.";
+  assert.deepEqual(parseFomcPolicyValue(statement, "2026-10-28", url), {
+    value: 3.75,
+    upperBound: 4,
+    units: "percent, federal funds target range",
+    source: {
+      title: "Federal Reserve FOMC statement",
+      url,
+      publicationDate: "2026-10-28",
+    },
+  });
+  assert.equal(parseFomcPolicyValue(statement, "2026-09-16", url), null);
+  assert.equal(parseFomcPolicyValue(statement, "2026-10-28", "https://example.com/monetary20261028a.htm"), null);
+});
+
+test("completed CPI and FOMC events include only official dated results", async () => {
+  const originalFetch = globalThis.fetch;
+  const currentStatementUrl = "https://www.federalreserve.gov/newsevents/pressreleases/monetary20261028a.htm";
+  const priorStatementUrl = "https://www.federalreserve.gov/newsevents/pressreleases/monetary20260916a.htm";
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url === "https://www.bls.gov/schedule/news_release/cpi.htm") {
+      return new Response("Reference Month | Release Date | Release Time | September 2026 | Oct. 13, 2026 | 08:30 AM");
+    }
+    if (url === "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm") {
+      return new Response([
+        "2026 FOMC Meetings September | 15-16 October | 27-28 December | 8-9",
+        `<a href="${priorStatementUrl}">HTML</a><a href="${currentStatementUrl}">HTML</a>`,
+      ].join(" "));
+    }
+    if (url.startsWith("https://api.bls.gov/publicAPI/v2/timeseries/data/CUUR0000SA0")) {
+      return Response.json({
+        status: "REQUEST_SUCCEEDED",
+        Results: { series: [{ seriesID: "CUUR0000SA0", data: [
+          { year: "2026", period: "M09", latest: "true", value: "336.940", footnotes: [{}] },
+        ] }] },
+      });
+    }
+    if (url === currentStatementUrl) {
+      return new Response("October 28, 2026. The Committee decided to maintain the target range for the federal funds rate at 3-3/4 to 4 percent.");
+    }
+    if (url === priorStatementUrl) {
+      return new Response("September 16, 2026. The Committee decided to maintain the target range for the federal funds rate at 3-1/2 to 3-3/4 percent.");
+    }
+    throw new Error(`Unexpected source request: ${url}`);
+  };
+  try {
+    const result = await fetchCommodityEventCalendar("SI=F", NOW);
+    const cpi = result.events.find((item) => item.name.startsWith("U.S. Consumer Price Index"));
+    const fomc = result.events.find((item) => item.name === "Federal Reserve FOMC meeting");
+    assert.deepEqual(cpi?.values.previous, null);
+    assert.equal(cpi?.values.consensus, null);
+    assert.equal(cpi?.values.actual?.value, 336.94);
+    assert.equal(cpi?.values.actual?.source?.publicationDate, "2026-10-13");
+    assert.equal(fomc?.values.actual?.value, 3.75);
+    assert.equal(fomc?.values.actual?.upperBound, 4);
+    assert.equal(fomc?.values.previous?.value, 3.5);
+    assert.equal(fomc?.values.previous?.upperBound, 3.75);
+    assert.equal(fomc?.values.previous?.source?.url, priorStatementUrl);
+    assert.equal(fomc?.source.publicationDate, "2026-10-28");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("OPEC+ dates are accepted only from a recent official press release", () => {

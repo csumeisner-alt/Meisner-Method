@@ -696,9 +696,24 @@ type CommodityAnalysisPayload = {
       affectedCommodities: string[];
       source: { title: string; url: string; publicationDate: string | null };
       values: {
-        previous: { value: number; units: string } | null;
-        consensus: { value: number; units: string } | null;
-        actual: { value: number; units: string } | null;
+        previous: {
+          value: number;
+          upperBound?: number;
+          units: string;
+          source?: { title: string; url: string; publicationDate: string };
+        } | null;
+        consensus: {
+          value: number;
+          upperBound?: number;
+          units: string;
+          source?: { title: string; url: string; publicationDate: string };
+        } | null;
+        actual: {
+          value: number;
+          upperBound?: number;
+          units: string;
+          source?: { title: string; url: string; publicationDate: string };
+        } | null;
       };
     }[];
     unavailable: string[];
@@ -993,11 +1008,28 @@ function CommodityEventCalendar({ calendar, symbol }: {
         {events.length ? events.map((item) => {
           const completed = item.status === 'completed';
           const statusColor = completed ? colors.mutedForeground : colors.primary;
-          const publishedValue = (label: string, value: { value: number; units: string } | null) => (
-            <Text style={{ color: colors.mutedForeground, fontSize: 10 }}>
-              {label}: {value ? `${value.value.toLocaleString()} ${value.units}` : 'Unavailable'}
-            </Text>
-          );
+          const publishedValue = (
+            label: string,
+            value: { value: number; upperBound?: number; units: string; source?: { title: string; url: string; publicationDate: string } } | null,
+          ) => {
+            const amount = value
+              ? `${value.value.toLocaleString()}${value.upperBound !== undefined ? `–${value.upperBound.toLocaleString()}` : ''} ${value.units}`
+              : 'Unavailable';
+            const text = `${label}: ${amount}${value?.source ? ` · ${value.source.publicationDate}` : ''}`;
+            if (value?.source) {
+              return (
+                <Pressable
+                  key={label}
+                  accessibilityRole="link"
+                  accessibilityLabel={`Open ${label.toLowerCase()} value source: ${value.source.title}`}
+                  onPress={() => { void Linking.openURL(value.source!.url).catch(() => {}); }}
+                >
+                  <Text style={{ color: colors.primary, fontSize: 10, textDecorationLine: 'underline' }}>{text}</Text>
+                </Pressable>
+              );
+            }
+            return <Text key={label} style={{ color: colors.mutedForeground, fontSize: 10 }}>{text}</Text>;
+          };
           return (
             <View key={item.id} testID={`commodity-event-${item.id}`} style={{ borderRadius: 11, borderWidth: 1, borderColor: completed ? colors.border : `${colors.primary}66`, backgroundColor: completed ? `${colors.background}99` : `${colors.primary}0c`, padding: 11, gap: 5 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>

@@ -2,6 +2,7 @@ import {
   SUPPORTED_COMMODITIES,
   type CommodityEvent,
   type CommodityEventCalendar,
+  type CommodityPublishedValue,
 } from "./commodityAnalysis.ts";
 
 const DAY_MS = 86_400_000;
@@ -9,6 +10,7 @@ const USDA_URL = "https://www.usda.gov/about-usda/general-information/staff-offi
 const WPSR_URL = "https://www.eia.gov/petroleum/supply/weekly/";
 const GAS_URL = "https://www.eia.gov/naturalgas/storage/";
 const BLS_CPI_URL = "https://www.bls.gov/schedule/news_release/cpi.htm";
+const BLS_CPI_API_URL = "https://api.bls.gov/publicAPI/v2/timeseries/data/CUUR0000SA0";
 const FOMC_URL = "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm";
 const OPEC_RELEASES_URL = "https://www.opec.org/press-releases.html";
 const CACHE_MS = 6 * 60 * 60 * 1000;
@@ -157,11 +159,21 @@ export function parseBlsCpiEvents(html: string, commodity: string, now: Date): C
     const dateMatch = match[2]!.match(/^([A-Za-z]{3,9})\.?\s+(\d{1,2}),\s+(20\d{2})$/);
     const eventDate = dateMatch ? toIsoDate(dateMatch[1]!, dateMatch[2]!, dateMatch[3]!) : null;
     if (!eventDate || !inWindow(eventDate, now)) continue;
-    output.push(event(`bls-cpi-${eventDate}`, "U.S. Consumer Price Index release", eventDate,
+    output.push(event(`bls-cpi-${eventDate}`, `U.S. Consumer Price Index release · ${match[1]}`, eventDate,
       match[3]!.replace(/\s+/g, " ").toUpperCase(), "ET", [commodity], "U.S. Bureau of Labor Statistics CPI release schedule",
       BLS_CPI_URL, now));
   }
   return output;
+}
+
+function parseFomcStatementLinks(html: string): Map<string, string> {
+  const links = new Map<string, string>();
+  for (const match of html.matchAll(/href=["'](https:\/\/www\.federalreserve\.gov)?\/newsevents\/pressreleases\/monetary(20\d{6})a\.htm["']/gi)) {
+    const url = `https://www.federalreserve.gov/newsevents/pressreleases/monetary${match[2]}a.htm`;
+    const date = `${match[2]!.slice(0, 4)}-${match[2]!.slice(4, 6)}-${match[2]!.slice(6, 8)}`;
+    if (validDate(date)) links.set(date, url);
+  }
+  return links;
 }
 
 export function parseFomcEvents(html: string, commodity: string, now: Date): CommodityEvent[] {
@@ -172,15 +184,97 @@ export function parseFomcEvents(html: string, commodity: string, now: Date): Com
   const section = text.slice(heading.index + heading[0].length);
   const nextYearHeading = new RegExp(`\\b${year + 1}\\s+FOMC Meetings\\b`, "i").exec(section);
   const currentYear = nextYearHeading ? section.slice(0, nextYearHeading.index) : section;
+  const statementLinks = parseFomcStatementLinks(html);
   const output: CommodityEvent[] = [];
   const meetingPattern = /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s*(?:\|\s*)?(\d{1,2})\s*[-–]\s*(\d{1,2})\b/g;
   for (const match of currentYear.matchAll(meetingPattern)) {
     const eventDate = toIsoDate(match[1]!, match[3]!, String(year));
     if (!eventDate || !inWindow(eventDate, now)) continue;
-    output.push(event(`fomc-${eventDate}`, "Federal Reserve FOMC meeting", eventDate, null, null,
-      [commodity], "Federal Reserve FOMC meeting calendar", FOMC_URL, now));
+    const statementUrl = statementLinks.get(eventDate);
+    const item = event(`fomc-${eventDate}`, "Federal Reserve FOMC meeting", eventDate, null, null,
+      [commodity], statementUrl ? "Federal Reserve FOMC statement" : "Federal Reserve FOMC meeting calendar",
+      statementUrl ?? FOMC_URL, now);
+    output.push(item);
   }
   return output;
+}
+
+function monthNumber(name: string): number | null {
+  const month = MONTHS[name.toLowerCase()];
+  return month === undefined ? null : month + 1;
+}
+
+export function parseBlsCpiIndex(
+  response: unknown,
+  item: CommodityEvent,
+): CommodityPublishedValue | null {
+  const period = item.name.match(/release\s*[·-]\s*([A-Za-z]+)\s+(20\d{2})$/i);
+  if (!period) return null;
+  const month = monthNumber(period[1]!);
+  const year = Number(period[2]);
+  if (!month || !Number.isInteger(year)) return null;
+  const series = (response as { status?: unknown; Results?: { series?: unknown } } | null)?.Results?.series;
+  if ((response as { status?: unknown } | null)?.status !== "REQUEST_SUCCEEDED" || !Array.isArray(series)) return null;
+  const exactSeries = series.find((entry) => (entry as { seriesID?: unknown })?.seriesID === "CUUR0000SA0") as
+    { data?: unknown } | undefined;
+  if (!Array.isArray(exactSeries?.data)) return null;
+  const record = exactSeries.data.find((entry) => {
+    const row = entry as { year?: unknown; period?: unknown; latest?: unknown; footnotes?: unknown };
+    return row.year === String(year) && row.period === `M${String(month).padStart(2, "0")}` && row.latest === "true";
+  }) as { value?: unknown; footnotes?: unknown } | undefined;
+  if (!record || (Array.isArray(record.footnotes) && record.footnotes.some((note) => {
+    const entry = note as { code?: unknown; text?: unknown };
+    return (typeof entry.code === "string" && entry.code.length > 0)
+      || (typeof entry.text === "string" && entry.text.length > 0);
+  }))) return null;
+  const value = typeof record.value === "string" ? Number(record.value) : record.value;
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
+  return {
+    value,
+    units: "CPI-U index (1982–84=100), not seasonally adjusted",
+    source: {
+      title: "BLS CPI-U all-items series",
+      url: `${BLS_CPI_API_URL}?startyear=${year}&endyear=${year}`,
+      publicationDate: item.eventDate,
+    },
+  };
+}
+
+function parseFederalRate(value: string): number | null {
+  const parts = value.trim().split("-");
+  const whole = Number(parts[0]);
+  if (!Number.isFinite(whole)) return null;
+  if (parts.length === 1) return whole;
+  const fraction = parts[1]!.split("/");
+  if (fraction.length !== 2) return null;
+  const numerator = Number(fraction[0]);
+  const denominator = Number(fraction[1]);
+  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) return null;
+  return whole + numerator / denominator;
+}
+
+export function parseFomcPolicyValue(html: string, eventDate: string, sourceUrl: string): CommodityPublishedValue | null {
+  const sourceDate = sourceUrl.match(/^https:\/\/www\.federalreserve\.gov\/newsevents\/pressreleases\/monetary(20\d{2})(\d{2})(\d{2})a\.htm$/);
+  if (!sourceDate || `${sourceDate[1]}-${sourceDate[2]}-${sourceDate[3]}` !== eventDate) return null;
+  const text = normalizedText(html);
+  const dateMatch = text.match(/\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s+(20\d{2})\b/);
+  if (!dateMatch || toIsoDate(dateMatch[1]!, dateMatch[2]!, dateMatch[3]!) !== eventDate) return null;
+  const decision = text.match(/The Committee decided to [^.]*\./i)?.[0];
+  const rate = decision?.match(/target range for the federal funds rate at ((?:\d+-)?\d+(?:\/\d+)?) to ((?:\d+-)?\d+(?:\/\d+)?) percent/i);
+  if (!rate) return null;
+  const lower = parseFederalRate(rate[1]!);
+  const upper = parseFederalRate(rate[2]!);
+  if (lower === null || upper === null || upper < lower) return null;
+  return {
+    value: lower,
+    upperBound: upper,
+    units: "percent, federal funds target range",
+    source: {
+      title: "Federal Reserve FOMC statement",
+      url: sourceUrl,
+      publicationDate: eventDate,
+    },
+  };
 }
 
 export function parseOpecMeetingEvents(
@@ -252,8 +346,11 @@ function knownEventSource(item: CommodityEvent): boolean {
   if (item.name === "USDA WASDE supply and demand report") return item.source.url === USDA_URL;
   if (item.name === "EIA Weekly Petroleum Status Report") return item.source.url === WPSR_URL;
   if (item.name === "EIA Weekly Natural Gas Storage Report") return item.source.url === GAS_URL;
-  if (item.name === "U.S. Consumer Price Index release") return item.source.url === BLS_CPI_URL;
-  if (item.name === "Federal Reserve FOMC meeting") return item.source.url === FOMC_URL;
+  if (item.name.startsWith("U.S. Consumer Price Index release")) return item.source.url === BLS_CPI_URL;
+  if (item.name === "Federal Reserve FOMC meeting") {
+    return item.source.url === FOMC_URL
+      || /^https:\/\/www\.federalreserve\.gov\/newsevents\/pressreleases\/monetary20\d{6}a\.htm$/.test(item.source.url);
+  }
   if (item.name === "OPEC+ meeting") {
     try {
       const url = new URL(item.source.url);
@@ -262,6 +359,24 @@ function knownEventSource(item: CommodityEvent): boolean {
     } catch {
       return false;
     }
+  }
+  return false;
+}
+
+function knownPublishedValueSource(item: CommodityEvent, value: CommodityPublishedValue): boolean {
+  if (!value.source) return true;
+  try {
+    const url = new URL(value.source.url);
+    if (item.name.startsWith("U.S. Consumer Price Index release")) {
+      return url.protocol === "https:" && url.hostname === "api.bls.gov"
+        && url.pathname === "/publicAPI/v2/timeseries/data/CUUR0000SA0";
+    }
+    if (item.name === "Federal Reserve FOMC meeting") {
+      return url.protocol === "https:" && url.hostname === "www.federalreserve.gov"
+        && /^\/newsevents\/pressreleases\/monetary20\d{6}a\.htm$/.test(url.pathname);
+    }
+  } catch {
+    return false;
   }
   return false;
 }
@@ -297,7 +412,12 @@ export function validateCommodityEventCalendar(
     && item.values
     && ["previous", "consensus", "actual"].every((key) => {
       const value = item.values[key as keyof CommodityEvent["values"]];
-      return value === null || (Number.isFinite(value.value) && typeof value.units === "string" && value.units.length > 0);
+      if (value === null) return true;
+      if (!Number.isFinite(value.value) || typeof value.units !== "string" || value.units.length === 0) return false;
+      if (value.upperBound !== undefined && (!Number.isFinite(value.upperBound) || value.upperBound < value.value)) return false;
+      if (value.source && (!validDate(value.source.publicationDate) || typeof value.source.title !== "string"
+        || !value.source.title || !/^https:\/\//.test(value.source.url))) return false;
+      return knownPublishedValueSource(item, value);
     }));
   const unavailable = calendar.unavailable.filter((item) => typeof item === "string" && item.trim().length > 0);
   return {
@@ -338,9 +458,17 @@ export async function fetchCommodityEventCalendar(
   const request = (async () => {
     const events: CommodityEvent[] = [];
     const unavailable = ["Geopolitical and unscheduled production events do not have a verified calendar."];
+    let fomcHtml: string | null = null;
     const sources: Array<{ url: string; name: string; parse: (body: string) => CommodityEvent[] }> = [
       { url: BLS_CPI_URL, name: "BLS CPI schedule", parse: (body) => parseBlsCpiEvents(body, commodity.name, now) },
-      { url: FOMC_URL, name: "Federal Reserve schedule", parse: (body) => parseFomcEvents(body, commodity.name, now) },
+      {
+        url: FOMC_URL,
+        name: "Federal Reserve schedule",
+        parse: (body) => {
+          fomcHtml = body;
+          return parseFomcEvents(body, commodity.name, now);
+        },
+      },
     ];
     if (normalized === "CL=F") {
       sources.push({ url: WPSR_URL, name: "EIA petroleum schedule", parse: (body) => parseEiaReleaseEvents(body, "wpsr", commodity.name, normalized, now) });
@@ -359,6 +487,66 @@ export async function fetchCommodityEventCalendar(
         events.push(...source.parse(await fetchPage(source.url)));
       } catch {
         unavailable.push(`${source.name} unavailable; no dates were inferred.`);
+      }
+    }));
+    const statementLinks = fomcHtml ? parseFomcStatementLinks(fomcHtml) : new Map<string, string>();
+    await Promise.all(events.map(async (item) => {
+      if (item.status !== "completed") return;
+      if (item.name.startsWith("U.S. Consumer Price Index release")) {
+        const year = item.name.match(/(20\d{2})$/)?.[1];
+        if (!year) return;
+        try {
+          const url = `${BLS_CPI_API_URL}?startyear=${year}&endyear=${year}`;
+          const response = await fetch(url, {
+            headers: { "User-Agent": "MeisnerMethod/1.0 (verified BLS CPI data)" },
+            signal: AbortSignal.timeout(8_000),
+          });
+          if (!response.ok) throw new Error(`BLS CPI series returned HTTP ${response.status}`);
+          const actual = parseBlsCpiIndex(await response.json(), item);
+          if (!actual) {
+            unavailable.push(`BLS CPI result for ${item.eventDate} is not current or could not be verified.`);
+            return;
+          }
+          item.values.actual = actual;
+          item.source.publicationDate = actual.source?.publicationDate ?? null;
+          item.source.url = BLS_CPI_URL;
+          unavailable.push(`Prior CPI release value for ${item.eventDate} is unavailable without a verified release-specific snapshot.`);
+        } catch {
+          unavailable.push(`BLS CPI result for ${item.eventDate} is unavailable; no value was inferred.`);
+        }
+        return;
+      }
+      if (item.name !== "Federal Reserve FOMC meeting") return;
+      const statementUrl = statementLinks.get(item.eventDate);
+      if (!statementUrl) {
+        unavailable.push(`Federal Reserve policy result for ${item.eventDate} is unavailable without a matching statement.`);
+        return;
+      }
+      try {
+        const currentHtml = await fetchPage(statementUrl);
+        const actual = parseFomcPolicyValue(currentHtml, item.eventDate, statementUrl);
+        if (!actual) {
+          unavailable.push(`Federal Reserve policy result for ${item.eventDate} could not be verified in its statement.`);
+          return;
+        }
+        const priorDate = [...statementLinks.keys()].filter((date) => date < item.eventDate).sort().at(-1);
+        let previous: CommodityPublishedValue | null = null;
+        if (priorDate) {
+          const priorUrl = statementLinks.get(priorDate)!;
+          try {
+            previous = parseFomcPolicyValue(await fetchPage(priorUrl), priorDate, priorUrl);
+          } catch {
+            previous = null;
+          }
+        }
+        item.values.actual = actual;
+        item.values.previous = previous;
+        item.source = { title: actual.source!.title, url: actual.source!.url, publicationDate: actual.source!.publicationDate };
+        if (!previous && priorDate) {
+          unavailable.push(`Prior Federal Reserve policy value for ${item.eventDate} is unavailable.`);
+        }
+      } catch {
+        unavailable.push(`Federal Reserve policy result for ${item.eventDate} is unavailable; no value was inferred.`);
       }
     }));
     if (normalized === "CL=F") {
