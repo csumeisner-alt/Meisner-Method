@@ -794,6 +794,67 @@ test("concurrent ETF score saves deduplicate the same analysis and retain later 
   assert.deepEqual(savedHistory.map((snapshot) => snapshot.score).sort(), [70, 75]);
 });
 
+test("ETF score save queue recovers after storage read or write failures", async () => {
+  const result = calculateEtfResearchScore(completeInput);
+  const createSnapshot = (recordedAt: string, score: number) =>
+    createEtfScoreSnapshot({
+      symbol: "SPY",
+      score,
+      components: result.components,
+      sourceContexts: Object.fromEntries(
+        result.components.filter((component) => component.score !== null)
+          .map((component) => [component.id, `provider:${component.id}`]),
+      ),
+      inputAsOf: Object.fromEntries(
+        result.components.filter((component) => component.score !== null)
+          .map((component) => [component.id, ["2026-10-29T12:00:00Z"]]),
+      ),
+      recordedAt,
+    });
+
+  for (const failurePoint of ["read", "write"] as const) {
+    const failedSnapshot = createSnapshot("2026-10-30T12:00:00Z", 70);
+    const laterSnapshot = createSnapshot("2026-10-31T12:00:00Z", 75);
+    assert.ok(failedSnapshot);
+    assert.ok(laterSnapshot);
+
+    let storedValue: string | null = null;
+    let failurePending = true;
+    const readStoredHistory = async () => {
+      if (failurePoint === "read" && failurePending) {
+        failurePending = false;
+        throw new Error("device storage read failed");
+      }
+      return storedValue;
+    };
+    const writeStoredHistory = async (value: string) => {
+      if (failurePoint === "write" && failurePending) {
+        failurePending = false;
+        throw new Error("device storage write failed");
+      }
+      storedValue = value;
+    };
+
+    await assert.rejects(
+      persistEtfScoreSnapshot(failedSnapshot, readStoredHistory, writeStoredHistory),
+      new RegExp(`device storage ${failurePoint} failed`),
+    );
+
+    const laterHistory = await persistEtfScoreSnapshot(
+      laterSnapshot,
+      readStoredHistory,
+      writeStoredHistory,
+    );
+
+    assert.deepEqual(
+      parseEtfScoreSnapshots(storedValue).map((snapshot) => snapshot.recordedAt),
+      [laterSnapshot.recordedAt],
+      `later save should be stored after a ${failurePoint} failure`,
+    );
+    assert.deepEqual(laterHistory.map((snapshot) => snapshot.recordedAt), [laterSnapshot.recordedAt]);
+  }
+});
+
 test("clearing ETF score snapshots waits for queued saves before removing history", async () => {
   const result = calculateEtfResearchScore(completeInput);
   const snapshot = createEtfScoreSnapshot({
