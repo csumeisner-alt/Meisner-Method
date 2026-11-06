@@ -41,7 +41,7 @@ test("settings lists alerts by ticker with independent edit and remove actions",
 test("paused alerts are excluded from both worker queries and can resume", () => {
   const workerCycle = source("../../api-server/src/lib/alertWorkerCycle.ts");
   assert.match(workerCycle, /AND a\.paused=FALSE/);
-  assert.match(apiRoutes, /AND a\.paused=FALSE/);
+  assert.match(apiRoutes, /runAlertCheckCycle\(pool/);
   assert.match(apiRoutes, /ALTER TABLE price_alerts ADD COLUMN IF NOT EXISTS paused BOOLEAN NOT NULL DEFAULT FALSE/);
   assert.match(watchlistHook, /const setAlertPaused = useCallback/);
   assert.match(watchlistHook, /method: 'PATCH'/);

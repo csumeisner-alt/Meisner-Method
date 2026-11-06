@@ -43,12 +43,23 @@ export interface AlertCheckDeps {
   /** Rechecks that the selected alert settings are still current before delivery. */
   isAlertActive?: (alertId: string, selectedAlert: PendingAlert) => Promise<boolean>;
   /**
+   * Atomically claims an alert for delivery across all worker processes.
+   * Returns an ownership token, or null when another worker owns the claim.
+   */
+  claimAlert?: (
+    alertId: string,
+    selectedAlert: PendingAlert,
+  ) => Promise<string | null>;
+  /** Releases a claim after a transient failure or a stale selection. */
+  releaseAlertClaim?: (alertId: string, claimToken: string) => Promise<void>;
+  /**
    * Marks the alert as fired only if its selected settings are still current.
    * Return false when the alert changed while delivery was in flight.
    */
   markFired: (
     alertId: string,
     selectedAlert: PendingAlert,
+    claimToken?: string,
   ) => Promise<boolean | void>;
 }
 
@@ -60,6 +71,7 @@ export interface AlertCheckStats {
   retriedTransient: number;
   skippedNoPrice: number;
   skippedPaused: number;
+  skippedClaimed: number;
 }
 
 /** True when the current price crosses the alert threshold. */
@@ -115,6 +127,7 @@ export async function processPendingAlerts(
     retriedTransient: 0,
     skippedNoPrice: 0,
     skippedPaused: 0,
+    skippedClaimed: 0,
   };
   if (!alerts.length) return stats;
 
@@ -141,6 +154,7 @@ export async function processPendingAlerts(
   }
 
   let requestsToProcess = triggered;
+  const claimTokens = new Map<string, string | undefined>();
   let batchResults: Map<string, PushSendResult> | null = null;
   if (deps.sendPushBatch && triggered.length > 0) {
     requestsToProcess = [];
@@ -152,6 +166,14 @@ export async function processPendingAlerts(
         stats.skippedPaused++;
         continue;
       }
+      const claimToken = deps.claimAlert
+        ? await deps.claimAlert(request.alert.id, request.alert)
+        : undefined;
+      if (deps.claimAlert && !claimToken) {
+        stats.skippedClaimed++;
+        continue;
+      }
+      claimTokens.set(request.alert.id, claimToken ?? undefined);
       requestsToProcess.push(request);
     }
     try {
@@ -179,6 +201,14 @@ export async function processPendingAlerts(
         stats.skippedPaused++;
         continue;
       }
+      const claimToken = deps.claimAlert
+        ? await deps.claimAlert(alert.id, alert)
+        : undefined;
+      if (deps.claimAlert && !claimToken) {
+        stats.skippedClaimed++;
+        continue;
+      }
+      claimTokens.set(alert.id, claimToken ?? undefined);
       try {
         result = await deps.sendPush(alert, currentPrice);
       } catch {
@@ -187,21 +217,41 @@ export async function processPendingAlerts(
     }
 
     if (result.accepted) {
-      const marked = await deps.markFired(alert.id, alert);
+      const marked = await deps.markFired(
+        alert.id,
+        alert,
+        claimTokens.get(alert.id),
+      );
       if (marked === false) {
+        const claimToken = claimTokens.get(alert.id);
+        if (claimToken) {
+          await deps.releaseAlertClaim?.(alert.id, claimToken);
+        }
         stats.skippedPaused++;
         continue;
       }
       stats.delivered++;
     } else if (result.permanentFailure) {
       // Dead token — mark fired so we don't retry forever.
-      const marked = await deps.markFired(alert.id, alert);
+      const marked = await deps.markFired(
+        alert.id,
+        alert,
+        claimTokens.get(alert.id),
+      );
       if (marked === false) {
+        const claimToken = claimTokens.get(alert.id);
+        if (claimToken) {
+          await deps.releaseAlertClaim?.(alert.id, claimToken);
+        }
         stats.skippedPaused++;
         continue;
       }
       stats.firedPermanentFailure++;
     } else {
+      const claimToken = claimTokens.get(alert.id);
+      if (claimToken) {
+        await deps.releaseAlertClaim?.(alert.id, claimToken);
+      }
       stats.retriedTransient++;
     }
   }

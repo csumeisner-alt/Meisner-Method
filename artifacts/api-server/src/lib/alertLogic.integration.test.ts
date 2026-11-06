@@ -26,6 +26,8 @@ import { createNotificationAlertRouter } from "../routes/notificationAlertRoutes
 
 const { Pool } = pg;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+// Separate connections model independent API/worker processes racing on rows.
+const competingPool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 // Throwaway IDs — parallel CI runs never collide.
 const userId = `test-alerts-${randomUUID()}`;
@@ -93,6 +95,8 @@ before(async () => {
     )
   `);
   await pool.query("ALTER TABLE price_alerts ADD COLUMN IF NOT EXISTS paused BOOLEAN NOT NULL DEFAULT FALSE");
+  await pool.query("ALTER TABLE price_alerts ADD COLUMN IF NOT EXISTS delivery_claim_token TEXT");
+  await pool.query("ALTER TABLE price_alerts ADD COLUMN IF NOT EXISTS delivery_claimed_at TIMESTAMPTZ");
   await pool.query(
     "ALTER TABLE price_alerts ADD COLUMN IF NOT EXISTS installation_id TEXT",
   );
@@ -133,6 +137,7 @@ after(async () => {
   await pool.query("DELETE FROM push_devices WHERE installation_id=$1", [
     installationId,
   ]);
+  await competingPool.end();
   await pool.end();
 });
 
@@ -225,6 +230,87 @@ test("transient push failure leaves fired_at null so the alert retries next cycl
 
   assert.equal(stats.retriedTransient, 1);
   assert.equal(await getFiredAt(alertId), null, "fired_at must remain null — will retry");
+  const { rows } = await pool.query(
+    "SELECT delivery_claim_token FROM price_alerts WHERE id=$1",
+    [alertId],
+  );
+  assert.equal(rows[0].delivery_claim_token, null, "transient failure releases its claim");
+
+  const retried = await runAlertCheckCycle(
+    pool,
+    {
+      fetchPrice: async () => 200,
+      sendPush: async () => ({ accepted: true, permanentFailure: false }),
+    },
+    { scopeToIds: [alertId] },
+  );
+  assert.equal(retried.delivered, 1, "a later cycle can safely claim and deliver again");
+  assert.notEqual(await getFiredAt(alertId), null);
+});
+
+test("two independent workers racing on one alert send only once", async () => {
+  const alertId = await insertAlert({
+    symbol: "RACE",
+    direction: "above",
+    targetPrice: 100,
+  });
+  let fetchCount = 0;
+  let releaseFetches!: () => void;
+  const bothWorkersFetching = new Promise<void>((resolve) => {
+    releaseFetches = resolve;
+  });
+  const fetchPrice = async () => {
+    fetchCount++;
+    if (fetchCount === 2) releaseFetches();
+    await bothWorkersFetching;
+    return 150;
+  };
+  const pushed: string[] = [];
+  const deps = {
+    fetchPrice,
+    sendPush: async (alert: { id: string }) => {
+      pushed.push(alert.id);
+      return { accepted: true, permanentFailure: false };
+    },
+  };
+
+  const [first, second] = await Promise.all([
+    runAlertCheckCycle(pool, deps, { scopeToIds: [alertId] }),
+    runAlertCheckCycle(competingPool, deps, { scopeToIds: [alertId] }),
+  ]);
+
+  assert.equal(first.checked + second.checked, 2, "both workers selected the pending row");
+  assert.equal(first.delivered + second.delivered, 1, "only the claim owner delivers");
+  assert.equal(first.skippedClaimed + second.skippedClaimed, 1);
+  assert.deepEqual(pushed, [alertId]);
+  assert.notEqual(await getFiredAt(alertId), null);
+});
+
+test("an abandoned expired claim can be reclaimed", async () => {
+  const alertId = await insertAlert({
+    symbol: "CLAIM",
+    direction: "above",
+    targetPrice: 100,
+  });
+  await pool.query(
+    `UPDATE price_alerts
+     SET delivery_claim_token='abandoned-worker',
+         delivery_claimed_at=NOW() - INTERVAL '11 minutes'
+     WHERE id=$1`,
+    [alertId],
+  );
+
+  const stats = await runAlertCheckCycle(
+    competingPool,
+    {
+      fetchPrice: async () => 150,
+      sendPush: async () => ({ accepted: true, permanentFailure: false }),
+    },
+    { scopeToIds: [alertId] },
+  );
+
+  assert.equal(stats.delivered, 1);
+  assert.notEqual(await getFiredAt(alertId), null);
 });
 
 test("permanent push failure (dead token) stamps fired_at to prevent infinite retry", async () => {

@@ -13,10 +13,10 @@ import { fileURLToPath } from "node:url";
 import { join, dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import {
-  processPendingAlerts,
   classifyExpoPushResponse,
   type PendingAlert,
 } from "../lib/alertLogic.js";
+import { runAlertCheckCycle } from "../lib/alertWorkerCycle.js";
 import {
   getWatchlist,
   addToWatchlist,
@@ -231,6 +231,8 @@ async function runSchemaMigrations(): Promise<void> {
   `);
   await pool.query("ALTER TABLE price_alerts ADD COLUMN IF NOT EXISTS installation_id TEXT");
   await pool.query("ALTER TABLE price_alerts ADD COLUMN IF NOT EXISTS paused BOOLEAN NOT NULL DEFAULT FALSE");
+  await pool.query("ALTER TABLE price_alerts ADD COLUMN IF NOT EXISTS delivery_claim_token TEXT");
+  await pool.query("ALTER TABLE price_alerts ADD COLUMN IF NOT EXISTS delivery_claimed_at TIMESTAMPTZ");
   await pool.query("ALTER TABLE price_alerts ALTER COLUMN user_id DROP NOT NULL");
   await pool.query("ALTER TABLE price_alerts ALTER COLUMN push_token DROP NOT NULL");
   await pool.query("CREATE INDEX IF NOT EXISTS price_alerts_installation_idx ON price_alerts (installation_id, fired_at)");
@@ -1064,70 +1066,9 @@ async function runAlertCheck() {
   }
   alertCheckRunning = true;
   try {
-    // Skip alerts for users who turned notifications off in Settings.
-    // Their alerts stay pending and resume when the toggle is re-enabled.
-    const { rows } = await pool.query(
-      `SELECT a.id, a.user_id, a.installation_id, a.symbol, a.direction, a.target_price,
-              COALESCE(d.expo_push_token, a.push_token) AS push_token
-       FROM price_alerts a
-       LEFT JOIN user_prefs p ON p.user_id = a.user_id
-       LEFT JOIN push_devices d ON d.installation_id = a.installation_id
-       WHERE a.fired_at IS NULL
-         AND a.paused=FALSE
-         AND COALESCE(p.notifications_enabled, TRUE)
-         AND COALESCE(d.enabled, TRUE)
-         AND COALESCE(d.expo_push_token, a.push_token) IS NOT NULL`,
-    );
-    const pending: PendingAlert[] = rows.map((r: any) => ({
-      id: r.id,
-      userId: r.user_id,
-      symbol: r.symbol,
-      direction: r.direction,
-      targetPrice: Number(r.target_price),
-      pushToken: r.push_token,
-    }));
-
-    const stats = await processPendingAlerts(pending, {
+    const stats = await runAlertCheckCycle(pool, {
       fetchPrice: fetchCurrentPrice,
       sendPush: sendExpoPush,
-      isAlertActive: async (id, selectedAlert) => {
-        const { rows } = await pool.query(
-          `SELECT 1
-           FROM price_alerts
-           WHERE id=$1
-             AND fired_at IS NULL
-             AND paused=FALSE
-             AND symbol=$2
-             AND direction=$3
-             AND target_price=$4`,
-          [
-            id,
-            selectedAlert.symbol,
-            selectedAlert.direction,
-            selectedAlert.targetPrice,
-          ],
-        );
-        return rows.length > 0;
-      },
-      markFired: async (id, selectedAlert) => {
-        const { rowCount } = await pool.query(
-          `UPDATE price_alerts
-           SET fired_at=NOW()
-           WHERE id=$1
-             AND fired_at IS NULL
-             AND paused=FALSE
-             AND symbol=$2
-             AND direction=$3
-             AND target_price=$4`,
-          [
-            id,
-            selectedAlert.symbol,
-            selectedAlert.direction,
-            selectedAlert.targetPrice,
-          ],
-        );
-        return rowCount === 1;
-      },
     });
     if (stats.checked > 0) logger.info({ ...stats }, "[alert-worker] check cycle complete");
     return stats;

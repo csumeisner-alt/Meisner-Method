@@ -9,6 +9,7 @@
  */
 
 import pg from "pg";
+import { randomUUID } from "node:crypto";
 import {
   processPendingAlerts,
   type PendingAlert,
@@ -127,21 +128,59 @@ export async function runAlertCheckCycle(
       );
       return rows.length > 0;
     },
-    markFired: async (id, selectedAlert) => {
+    claimAlert: async (id, selectedAlert) => {
+      const claimToken = randomUUID();
       const { rowCount } = await dbPool.query(
         `UPDATE price_alerts
-         SET fired_at=NOW()
+         SET delivery_claim_token=$5,
+             delivery_claimed_at=NOW()
          WHERE id=$1
            AND fired_at IS NULL
            AND paused=FALSE
            AND symbol=$2
            AND direction=$3
-           AND target_price=$4`,
+           AND target_price=$4
+           AND (
+             delivery_claim_token IS NULL
+             OR delivery_claimed_at < NOW() - INTERVAL '10 minutes'
+           )`,
         [
           id,
           selectedAlert.symbol,
           selectedAlert.direction,
           selectedAlert.targetPrice,
+          claimToken,
+        ],
+      );
+      return rowCount === 1 ? claimToken : null;
+    },
+    releaseAlertClaim: async (id, claimToken) => {
+      await dbPool.query(
+        `UPDATE price_alerts
+         SET delivery_claim_token=NULL, delivery_claimed_at=NULL
+         WHERE id=$1 AND delivery_claim_token=$2 AND fired_at IS NULL`,
+        [id, claimToken],
+      );
+    },
+    markFired: async (id, selectedAlert, claimToken) => {
+      const { rowCount } = await dbPool.query(
+        `UPDATE price_alerts
+         SET fired_at=NOW(),
+             delivery_claim_token=NULL,
+             delivery_claimed_at=NULL
+         WHERE id=$1
+           AND fired_at IS NULL
+           AND paused=FALSE
+           AND symbol=$2
+           AND direction=$3
+           AND target_price=$4
+           AND delivery_claim_token=$5`,
+        [
+          id,
+          selectedAlert.symbol,
+          selectedAlert.direction,
+          selectedAlert.targetPrice,
+          claimToken,
         ],
       );
       return rowCount === 1;
