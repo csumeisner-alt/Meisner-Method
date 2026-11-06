@@ -456,6 +456,101 @@ test("multiple alerts for the same symbol fire independently by target", async (
   assert.equal(await getFiredAt(highAlertId), null);
 });
 
+test("editing a fired alert over HTTP resets it and the worker uses its updated target", async () => {
+  const alertId = await insertAlert({
+    symbol: "AAPL",
+    direction: "above",
+    targetPrice: 100,
+    useInstallation: true,
+  });
+  const app = express();
+  app.use(express.json());
+  app.use(createNotificationAlertRouter(
+    { query: (sql, values) => pool.query(sql, values) },
+    (_req, _res, next) => next(),
+    randomUUID,
+  ));
+  const server = app.listen(0, "127.0.0.1");
+  let pushCount = 0;
+
+  try {
+    await once(server, "listening");
+    const initialCycle = await runAlertCheckCycle(
+      pool,
+      {
+        fetchPrice: async () => 150,
+        sendPush: async () => {
+          pushCount++;
+          return { accepted: true, permanentFailure: false };
+        },
+      },
+      { scopeToIds: [alertId] },
+    );
+    assert.equal(initialCycle.delivered, 1);
+    assert.notEqual(await getFiredAt(alertId), null, "the original alert must be fired before editing");
+
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/notifications/alerts/${alertId}`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          installationId,
+          direction: "above",
+          targetPrice: 200,
+          pushToken,
+        }),
+      },
+    );
+    const editedAlert = await response.json() as {
+      id: string;
+      targetPrice: number;
+      firedAt: string | null;
+    };
+    assert.equal(response.status, 200, "the owning installation can edit its fired alert");
+    assert.equal(editedAlert.id, alertId);
+    assert.equal(editedAlert.targetPrice, 200);
+    assert.equal(editedAlert.firedAt, null, "the edit response must show the alert as pending");
+    assert.equal(await getFiredAt(alertId), null, "editing must clear fired_at in the database");
+
+    const belowUpdatedTarget = await runAlertCheckCycle(
+      pool,
+      {
+        fetchPrice: async () => 150,
+        sendPush: async () => {
+          pushCount++;
+          return { accepted: true, permanentFailure: false };
+        },
+      },
+      { scopeToIds: [alertId] },
+    );
+    assert.equal(belowUpdatedTarget.checked, 1, "the edited alert must be pending again");
+    assert.equal(belowUpdatedTarget.triggered, 0, "the old target must not be used after editing");
+    assert.equal(await getFiredAt(alertId), null, "a price below the new target must leave it pending");
+
+    const atUpdatedTarget = await runAlertCheckCycle(
+      pool,
+      {
+        fetchPrice: async () => 250,
+        sendPush: async () => {
+          pushCount++;
+          return { accepted: true, permanentFailure: false };
+        },
+      },
+      { scopeToIds: [alertId] },
+    );
+    assert.equal(atUpdatedTarget.delivered, 1, "the worker must fire the alert at its updated target");
+    assert.equal(pushCount, 2, "the alert must deliver once before editing and once after the new target");
+    assert.notEqual(await getFiredAt(alertId), null, "the edited alert must be marked fired again");
+  } finally {
+    server.close();
+    await once(server, "close");
+    await pool.query("DELETE FROM price_alerts WHERE id=$1", [alertId]);
+  }
+});
+
 test("notification alert routes create independent same-ticker alerts and enforce installation ownership on edits", async () => {
   const ownerInstallationId = `test-owner-${randomUUID()}`;
   const otherInstallationId = `test-other-${randomUUID()}`;
