@@ -193,10 +193,14 @@ export function createNotificationAlertRouter(
       return;
     }
     try {
-      await db.query(
-        "DELETE FROM price_alerts WHERE id=$1 AND installation_id=$2",
+      const { rows } = await db.query(
+        "DELETE FROM price_alerts WHERE id=$1 AND installation_id=$2 RETURNING id",
         [req.params.id, installationId],
       );
+      if (!rows[0]) {
+        res.status(404).json({ error: "Alert not found" });
+        return;
+      }
       res.json({ ok: true });
     } catch (e: any) {
       res.status(500).json({ error: e.message });

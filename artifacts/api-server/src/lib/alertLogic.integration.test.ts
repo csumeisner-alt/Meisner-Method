@@ -508,6 +508,11 @@ test("notification alert routes create independent same-ticker alerts and enforc
     };
     const setAlertPaused = (id: string, installationId: string, paused: boolean) =>
       request(`${baseUrl}/${id}`, "PATCH", { installationId, paused });
+    const deleteAlert = (id: string, installationId: string) =>
+      request(
+        `${baseUrl}/${id}?installationId=${encodeURIComponent(installationId)}`,
+        "DELETE",
+      );
 
     const first = await createAlert(ownerInstallationId, ownerPushToken, 100);
     const second = await createAlert(ownerInstallationId, ownerPushToken, 200);
@@ -541,6 +546,24 @@ test("notification alert routes create independent same-ticker alerts and enforc
     assert.equal(ownEdit.body.id, first.body.id);
     assert.equal(ownEdit.body.direction, "below");
     assert.equal(ownEdit.body.targetPrice, 125);
+
+    const foreignPause = await setAlertPaused(first.body.id, otherInstallationId, true);
+    assert.equal(foreignPause.status, 404, "another installation cannot pause the alert");
+    const afterForeignPause = await listAlerts(ownerInstallationId);
+    const unchangedAfterForeignPause = afterForeignPause.find((alert) => alert.id === first.body.id);
+    assert.ok(unchangedAfterForeignPause, "the owner's alert must remain after a rejected pause");
+    assert.equal(unchangedAfterForeignPause.direction, "below");
+    assert.equal(unchangedAfterForeignPause.targetPrice, 125);
+    assert.equal(unchangedAfterForeignPause.paused, false);
+
+    const foreignDelete = await deleteAlert(second.body.id, otherInstallationId);
+    assert.equal(foreignDelete.status, 404, "another installation cannot delete the alert");
+    const afterForeignDelete = await listAlerts(ownerInstallationId);
+    const unchangedAfterForeignDelete = afterForeignDelete.find((alert) => alert.id === second.body.id);
+    assert.ok(unchangedAfterForeignDelete, "the owner's alert must remain after a rejected delete");
+    assert.equal(unchangedAfterForeignDelete.direction, "above");
+    assert.equal(unchangedAfterForeignDelete.targetPrice, 200);
+    assert.equal(unchangedAfterForeignDelete.paused, false);
 
     const pauseFirst = await setAlertPaused(first.body.id, ownerInstallationId, true);
     const pauseSecond = await setAlertPaused(second.body.id, ownerInstallationId, true);
@@ -588,6 +611,14 @@ test("notification alert routes create independent same-ticker alerts and enforc
         .map(({ id, symbol, direction, targetPrice }) => ({ id, symbol, direction, targetPrice })),
       [{ id: other.body.id, symbol: "AAPL", direction: "above", targetPrice: 300 }],
       "a foreign edit attempt must leave the other installation's alert unchanged",
+    );
+
+    const ownerDelete = await deleteAlert(second.body.id, ownerInstallationId);
+    assert.equal(ownerDelete.status, 200, "the owning installation can delete its alert");
+    assert.deepEqual(
+      (await listAlerts(ownerInstallationId)).map(({ id }) => id),
+      [first.body.id],
+      "owner deletion removes only the selected alert",
     );
   } finally {
     server.close();
