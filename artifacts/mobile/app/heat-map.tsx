@@ -713,11 +713,30 @@ export default function HeatMapScreen() {
   const watchlist = useWatchlist();
   const [selectedQuote, setSelectedQuote] = useState<HeatMapQuote | null>(null);
   const [selectedUnavailableCommodity, setSelectedUnavailableCommodity] = useState<{ symbol: string; name: string } | null>(null);
+  const detailReturnRef = useRef<{
+    quote: HeatMapQuote | null;
+    unavailableCommodity: { symbol: string; name: string } | null;
+  } | null>(null);
   const directionPulse = useRef(new Animated.Value(0)).current;
   const removeInProgress = useRef(false);
   const customStorageReadId = useRef(0);
   const lastScheduledOpenRefresh = useRef<string | null>(null);
   const heatMapRefreshInFlight = useRef(false);
+  const dismissDetailForNavigation = useCallback(() => {
+    detailReturnRef.current = {
+      quote: selectedQuote,
+      unavailableCommodity: selectedUnavailableCommodity,
+    };
+    setSelectedQuote(null);
+    setSelectedUnavailableCommodity(null);
+  }, [selectedQuote, selectedUnavailableCommodity]);
+  useFocusEffect(useCallback(() => {
+    const returnDetail = detailReturnRef.current;
+    if (!returnDetail) return;
+    detailReturnRef.current = null;
+    setSelectedQuote(returnDetail.quote);
+    setSelectedUnavailableCommodity(returnDetail.unavailableCommodity);
+  }, []));
   const validateSymbol = useValidateHeatMapSymbol();
   const symbolSearchQueryKey = getSearchStockSymbolsQueryKey({ q: debouncedSymbolSearch });
   const stockSearch = useSearchStockSymbols(
@@ -2189,13 +2208,13 @@ export default function HeatMapScreen() {
           onAnalyzeStock={() => {
             if ((category !== 'stocks' && category !== 'custom') || selectedQuote?.assetType !== 'stock') return;
             const analysisSymbol = selectedQuote.symbol;
-            setSelectedQuote(null);
+            dismissDetailForNavigation();
             setTimeout(() => router.push(`/analysis/${encodeURIComponent(analysisSymbol)}`), 350);
           }}
           onAnalyzeEtf={() => {
             if ((category !== 'etfs' && category !== 'custom') || selectedQuote?.assetType !== 'etf') return;
             const analysisSymbol = selectedQuote.symbol;
-            setSelectedQuote(null);
+            dismissDetailForNavigation();
             setTimeout(() => router.push(`/analysis/${encodeURIComponent(analysisSymbol)}`), 350);
           }}
           onAnalyzeCommodity={() => {
@@ -2203,8 +2222,7 @@ export default function HeatMapScreen() {
               || (selectedQuote?.assetType !== 'commodity' && selectedUnavailableCommodity === null)) return;
             const analysisSymbol = selectedQuote?.symbol ?? selectedUnavailableCommodity?.symbol;
             if (!analysisSymbol) return;
-            setSelectedQuote(null);
-            setSelectedUnavailableCommodity(null);
+            dismissDetailForNavigation();
             setTimeout(() => router.push(`/analysis/${encodeURIComponent(analysisSymbol)}`), 350);
           }}
           onOpenChart={() => {
@@ -2212,8 +2230,7 @@ export default function HeatMapScreen() {
             if (!chartSymbol) return;
             const chartName = selectedQuote?.name || selectedUnavailableCommodity?.name || chartSymbol;
             const chartAssetType = selectedQuote?.assetType ?? 'commodity';
-            setSelectedQuote(null);
-            setSelectedUnavailableCommodity(null);
+            dismissDetailForNavigation();
             // The detail card is a native Modal. Let its dismissal finish before
             // pushing the chart route so the new screen is not rendered behind it.
             setTimeout(() => {

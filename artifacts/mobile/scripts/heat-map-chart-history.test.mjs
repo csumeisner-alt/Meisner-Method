@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const chartScreen = readFileSync(new URL('../app/heat-map-chart.tsx', import.meta.url), 'utf8');
 const heatMapScreen = readFileSync(new URL('../app/heat-map.tsx', import.meta.url), 'utf8');
+const analysisScreen = readFileSync(new URL('../app/analysis/[symbol].tsx', import.meta.url), 'utf8');
 const chartHistoryLib = readFileSync(new URL('../lib/heatMapChart.ts', import.meta.url), 'utf8');
 const stockChart = readFileSync(new URL('../components/StockChart.tsx', import.meta.url), 'utf8');
 const stocksRoute = readFileSync(new URL('../../api-server/src/routes/stocks.ts', import.meta.url), 'utf8');
@@ -32,6 +33,21 @@ test('longer chart ranges are exposed and chart launch dismisses the instrument 
   assert.match(chartScreen, /showMA50=\{false\}/);
   assert.match(chartScreen, /: comparisonSlices\.length > 0 \?/);
   assert.match(heatMapScreen, /setSelectedQuote\(null\);[\s\S]*?setTimeout\(\(\) => \{[\s\S]*?router\.push\(/);
+});
+
+test('chart and AI analysis back navigation restores the originating heat-map detail card', () => {
+  assert.match(heatMapScreen, /detailReturnRef = useRef</);
+  assert.match(heatMapScreen, /detailReturnRef\.current = \{\s*quote: selectedQuote,\s*unavailableCommodity: selectedUnavailableCommodity,/);
+  assert.match(heatMapScreen, /const returnDetail = detailReturnRef\.current;[\s\S]*?detailReturnRef\.current = null;[\s\S]*?setSelectedQuote\(returnDetail\.quote\);[\s\S]*?setSelectedUnavailableCommodity\(returnDetail\.unavailableCommodity\);/);
+  assert.match(chartScreen, /testID="heat-map-chart-back" onPress=\{\(\) => router\.back\(\)\}/);
+  assert.match(analysisScreen, /onPress=\{\(\) => router\.back\(\)\}/);
+
+  const detailModal = heatMapScreen.slice(heatMapScreen.indexOf('<HeatMapDetailModal'));
+  assert.equal(
+    (detailModal.match(/dismissDetailForNavigation\(\)/g) ?? []).length,
+    4,
+    'stock, ETF, commodity analysis and chart actions should preserve the selected detail card',
+  );
 });
 
 test('comparison chart occupies the primary chart card instead of a second chart below', () => {

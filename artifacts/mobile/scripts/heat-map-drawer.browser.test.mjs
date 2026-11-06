@@ -3226,6 +3226,32 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
       `window.__heatMapRoutePushes?.includes("/analysis/GC%3DF") && !document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
       "The commodity detail action should close the modal and navigate to Gold analysis.",
     );
+    await browser.evaluate("window.__heatMapSetFocused(false)");
+    await browser.evaluate("window.__heatMapSetFocused(true)");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent === "GC=F"`,
+      "Returning from AI analysis should restore the Gold detail card.",
+    );
+    await clickTestID(browser, "heat-map-detail-open-chart");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__heatMapRoutePushes?.some((route) => typeof route === "object" && route.pathname === "/heat-map-chart" && route.params?.symbol === "GC=F") && !document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
+      "The chart action should dismiss the Gold detail card and navigate to its chart.",
+    );
+    await browser.evaluate("window.__heatMapSetFocused(false)");
+    await browser.evaluate("window.__heatMapSetFocused(true)");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `document.querySelector(${JSON.stringify(selector("heat-map-detail-title"))})?.textContent === "GC=F"`,
+      "Returning from the full chart should restore the Gold detail card.",
+    );
+    await clickTestID(browser, "heat-map-detail-close");
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!document.querySelector(${JSON.stringify(selector("heat-map-detail-modal"))})`,
+      "The restored Gold detail card should close normally.",
+    );
     await clickTestID(browser, "heat-map-unavailable-hex-CL=F");
     await waitFor(
       (expression) => browser.evaluate(expression),
