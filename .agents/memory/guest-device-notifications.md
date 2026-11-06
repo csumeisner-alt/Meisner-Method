@@ -44,3 +44,9 @@ Expo push tickets with `status: ok` confirm that Expo accepted a payload, not th
 **Why:** Two alerts for one Android installation were both accepted by the worker, but only one appeared on the device. The provider recommends batching messages, and the current acceptance metric cannot prove device delivery.
 
 **How to apply:** Keep alert identity in each payload, batch up to Expo's per-request limit, retry only the ticket that is transient or malformed, and treat push receipts as the authoritative downstream delivery signal.
+
+Price-alert delivery uses an at-most-once policy after the worker records its send boundary. A definite Expo ticket error clears that marker and may retry; timeouts, missing tickets, and worker interruption remain ambiguous and are finalized after the 10-minute claim lease without resending. The persistent alert ID is sent as both payload data and Android `collapseId`.
+
+**Why:** Expo acceptance and database finalization cannot be made atomic. Replaying an ambiguous send can duplicate a phone alert, while suppressing a send that never reached Expo can miss one.
+
+**How to apply:** Preserve the marker before provider I/O, never reclaim an attempted alert for resend, and keep the Android collapse ID stable across retries. Treat alert edits as a new configuration and clear its old claim/attempt state.

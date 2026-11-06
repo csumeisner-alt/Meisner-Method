@@ -37,9 +37,9 @@ test("below triggers at or beyond target", () => {
 
 // ── classifyExpoPushResponse ─────────────────────────────────────────────────
 
-test("HTTP failure is transient", () => {
+test("HTTP failure leaves provider acceptance uncertain", () => {
   const r = classifyExpoPushResponse(false, null);
-  assert.deepEqual(r, { accepted: false, permanentFailure: false });
+  assert.deepEqual(r, { accepted: false, permanentFailure: false, uncertain: true });
 });
 
 test("ticket ok is accepted", () => {
@@ -62,11 +62,15 @@ test("ticket array classification uses the requested alert index", () => {
   assert.equal(r.accepted, true);
 });
 
-test("missing or malformed ticket body is transient, never accepted", () => {
-  assert.deepEqual(classifyExpoPushResponse(true, null), { accepted: false, permanentFailure: false });
-  assert.deepEqual(classifyExpoPushResponse(true, {}), { accepted: false, permanentFailure: false });
-  assert.deepEqual(classifyExpoPushResponse(true, { data: "weird" }), { accepted: false, permanentFailure: false });
-  assert.deepEqual(classifyExpoPushResponse(true, { data: [] }), { accepted: false, permanentFailure: false });
+test("missing or malformed ticket leaves provider acceptance uncertain", () => {
+  assert.deepEqual(classifyExpoPushResponse(true, null), { accepted: false, permanentFailure: false, uncertain: true });
+  assert.deepEqual(classifyExpoPushResponse(true, {}), { accepted: false, permanentFailure: false, uncertain: true });
+  assert.deepEqual(classifyExpoPushResponse(true, { data: "weird" }), { accepted: false, permanentFailure: false, uncertain: true });
+  assert.deepEqual(classifyExpoPushResponse(true, { data: [] }), { accepted: false, permanentFailure: false, uncertain: true });
+  assert.deepEqual(
+    classifyExpoPushResponse(true, { data: { status: "unknown" } }),
+    { accepted: false, permanentFailure: false, uncertain: true },
+  );
 });
 
 test("DeviceNotRegistered is a permanent failure", () => {
@@ -209,13 +213,13 @@ test("quote fetches run sequentially to avoid provider bursts", async () => {
   ]);
 });
 
-test("sendPush throwing is treated as transient", async () => {
+test("sendPush throwing is treated as uncertain to prevent duplicate retries", async () => {
   const fired: string[] = [];
   const stats = await processPendingAlerts([alert()], {
     fetchPrice: async () => 150,
     sendPush: async () => { throw new Error("network down"); },
     markFired: async (id) => { fired.push(id); },
   });
-  assert.equal(stats.retriedTransient, 1);
+  assert.equal(stats.deliveryUncertain, 1);
   assert.deepEqual(fired, []);
 });

@@ -45,10 +45,26 @@ export const PENDING_ALERTS_QUERY = `
   LEFT JOIN user_prefs p ON p.user_id = a.user_id
   LEFT JOIN push_devices d ON d.installation_id = a.installation_id
   WHERE a.fired_at IS NULL
+    AND a.delivery_started_at IS NULL
     AND a.paused=FALSE
     AND COALESCE(p.notifications_enabled, TRUE)
     AND COALESCE(d.enabled, TRUE)
     AND COALESCE(d.expo_push_token, a.push_token) IS NOT NULL
+`;
+
+/**
+ * If a worker stopped after persisting the send boundary, Expo may already
+ * have accepted the push. Once the 10-minute claim lease expires, finalize the
+ * alert without resending it. This deliberately favors at-most-once delivery.
+ */
+export const FINALIZE_UNCERTAIN_DELIVERIES_QUERY = `
+  UPDATE price_alerts
+  SET fired_at=COALESCE(fired_at, delivery_started_at),
+      delivery_claim_token=NULL,
+      delivery_claimed_at=NULL
+  WHERE fired_at IS NULL
+    AND delivery_started_at IS NOT NULL
+    AND delivery_started_at < NOW() - INTERVAL '10 minutes'
 `;
 
 export interface AlertCycleOptions {
@@ -91,6 +107,13 @@ export async function runAlertCheckCycle(
     ? [opts.scopeToIds]
     : [];
 
+  const recoveryScope = opts.scopeToIds && opts.scopeToIds.length > 0
+    ? " AND id = ANY($1)"
+    : "";
+  const finalized = await dbPool.query(
+    FINALIZE_UNCERTAIN_DELIVERIES_QUERY + recoveryScope,
+    queryParams,
+  );
   const { rows } = await dbPool.query(
     PENDING_ALERTS_QUERY + scopeClause,
     queryParams,
@@ -105,7 +128,7 @@ export async function runAlertCheckCycle(
     pushToken: r.push_token,
   }));
 
-  return processPendingAlerts(pending, {
+  const stats = await processPendingAlerts(pending, {
     fetchPrice: deps.fetchPrice,
     sendPush: deps.sendPush,
     sendPushBatch: deps.sendPushBatch,
@@ -143,7 +166,8 @@ export async function runAlertCheckCycle(
            AND (
              delivery_claim_token IS NULL
              OR delivery_claimed_at < NOW() - INTERVAL '10 minutes'
-           )`,
+            )
+            AND delivery_started_at IS NULL`,
         [
           id,
           selectedAlert.symbol,
@@ -154,10 +178,24 @@ export async function runAlertCheckCycle(
       );
       return rowCount === 1 ? claimToken : null;
     },
+    beginDeliveryAttempt: async (id, claimToken) => {
+      const { rowCount } = await dbPool.query(
+        `UPDATE price_alerts
+         SET delivery_started_at=NOW()
+         WHERE id=$1
+           AND delivery_claim_token=$2
+           AND fired_at IS NULL
+           AND delivery_started_at IS NULL`,
+        [id, claimToken],
+      );
+      return rowCount === 1;
+    },
     releaseAlertClaim: async (id, claimToken) => {
       await dbPool.query(
         `UPDATE price_alerts
-         SET delivery_claim_token=NULL, delivery_claimed_at=NULL
+         SET delivery_claim_token=NULL,
+             delivery_claimed_at=NULL,
+             delivery_started_at=NULL
          WHERE id=$1 AND delivery_claim_token=$2 AND fired_at IS NULL`,
         [id, claimToken],
       );
@@ -186,4 +224,6 @@ export async function runAlertCheckCycle(
       return rowCount === 1;
     },
   });
+  stats.finalizedUncertain = finalized.rowCount ?? 0;
+  return stats;
 }

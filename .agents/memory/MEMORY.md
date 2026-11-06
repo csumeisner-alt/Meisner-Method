@@ -26,7 +26,7 @@
 - [Patriot Mode premium theme](patriot-mode-premium-theme.md) — use brushed steel and gold as the persistent premium language; reserve flag colors for brief entry motion.
 - [Market heat-map flame motion](market-heat-map-flame-motion.md) — keep the breadth badge calm and campfire-like, with staggered flame tongues that rise and fade.
 - [Yahoo stock-screener paging](yahoo-stock-screener-paging.md) — Yahoo’s most-active screen may return 25 rows per call; use offsets to collect a larger sample.
-- [Guest device notifications](guest-device-notifications.md) — route alerts by anonymous installation ID and latest Expo token, not account auth.
+- [Guest device notifications](guest-device-notifications.md) — route alerts by anonymous installation ID; ambiguous Expo sends are finalized without replay to favor no duplicates.
 - [Meisner Method branding](meisner-method-branding.md) — public product branding is Meisner Method; legacy storage namespaces remain for local-data compatibility.
 - [Celebration audio cost model](celebration-audio-cost.md) — bundle approved celebration recordings locally; do not reintroduce per-play network TTS.
 - [Donation feature pause](donation-feature-pause.md) — donations had no uptake; the creator plans to make the app paid in the future, so retain the donation flow for possible reuse.

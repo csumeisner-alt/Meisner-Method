@@ -42,9 +42,7 @@ pool.on("error", (err) => {
 async function waitForSchema(maxAttempts = 20): Promise<void> {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      await pool.query(
-        `SELECT 1 FROM price_alerts LIMIT 1`,
-      );
+      await pool.query(`SELECT delivery_started_at FROM price_alerts LIMIT 0`);
       logger.info("[alert-worker] schema ready");
       return;
     } catch {
@@ -107,6 +105,9 @@ async function sendExpoPushBatch(
         sound: "default",
         priority: "high",
         channelId: "price-alerts",
+        // Stable across worker retries for this alert; Android replaces any
+        // still-visible notification with the same collapse ID.
+        collapseId: alert.id,
         data: { alertId: alert.id, symbol: alert.symbol },
       })),
     );
@@ -156,7 +157,7 @@ async function runAlertCheck(): Promise<void> {
       sendPushBatch: sendExpoPushBatch,
     });
 
-    if (stats.checked > 0) {
+    if (stats.checked > 0 || stats.finalizedUncertain > 0) {
       logger.info({ ...stats }, "[alert-worker] check cycle complete");
     } else {
       logger.debug("[alert-worker] no pending alerts");

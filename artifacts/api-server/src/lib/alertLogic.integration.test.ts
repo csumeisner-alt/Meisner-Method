@@ -98,6 +98,7 @@ before(async () => {
   await pool.query("ALTER TABLE price_alerts ADD COLUMN IF NOT EXISTS paused BOOLEAN NOT NULL DEFAULT FALSE");
   await pool.query("ALTER TABLE price_alerts ADD COLUMN IF NOT EXISTS delivery_claim_token TEXT");
   await pool.query("ALTER TABLE price_alerts ADD COLUMN IF NOT EXISTS delivery_claimed_at TIMESTAMPTZ");
+  await pool.query("ALTER TABLE price_alerts ADD COLUMN IF NOT EXISTS delivery_started_at TIMESTAMPTZ");
   await pool.query(
     "ALTER TABLE price_alerts ADD COLUMN IF NOT EXISTS installation_id TEXT",
   );
@@ -232,10 +233,11 @@ test("transient push failure leaves fired_at null so the alert retries next cycl
   assert.equal(stats.retriedTransient, 1);
   assert.equal(await getFiredAt(alertId), null, "fired_at must remain null — will retry");
   const { rows } = await pool.query(
-    "SELECT delivery_claim_token FROM price_alerts WHERE id=$1",
+    "SELECT delivery_claim_token, delivery_started_at FROM price_alerts WHERE id=$1",
     [alertId],
   );
   assert.equal(rows[0].delivery_claim_token, null, "transient failure releases its claim");
+  assert.equal(rows[0].delivery_started_at, null, "definite rejection clears the send marker");
 
   const retried = await runAlertCheckCycle(
     pool,
@@ -249,7 +251,7 @@ test("transient push failure leaves fired_at null so the alert retries next cycl
   assert.notEqual(await getFiredAt(alertId), null);
 });
 
-test("timed-out Expo request releases its active alert claim immediately", async () => {
+test("timed-out Expo request keeps its claim because acceptance is uncertain", async () => {
   const alertId = await insertAlert({
     symbol: "TIMEOUT",
     direction: "above",
@@ -285,13 +287,14 @@ test("timed-out Expo request releases its active alert claim immediately", async
     { scopeToIds: [alertId] },
   );
 
-  assert.equal(stats.retriedTransient, 1);
-  assert.equal(await getFiredAt(alertId), null, "timed-out alert remains eligible for retry");
+  assert.equal(stats.deliveryUncertain, 1);
+  assert.equal(await getFiredAt(alertId), null, "uncertain alert waits for stale-claim recovery");
   const { rows } = await pool.query(
-    "SELECT delivery_claim_token FROM price_alerts WHERE id=$1",
+    "SELECT delivery_claim_token, delivery_started_at FROM price_alerts WHERE id=$1",
     [alertId],
   );
-  assert.equal(rows[0].delivery_claim_token, null, "timed-out request releases its claim");
+  assert.notEqual(rows[0].delivery_claim_token, null, "uncertain send retains its claim");
+  assert.notEqual(rows[0].delivery_started_at, null, "send boundary remains durable");
 });
 
 test("two independent workers racing on one alert send only once", async () => {
@@ -357,6 +360,71 @@ test("an abandoned expired claim can be reclaimed", async () => {
 
   assert.equal(stats.delivered, 1);
   assert.notEqual(await getFiredAt(alertId), null);
+});
+
+test("provider acceptance followed by worker interruption is finalized without a duplicate send", async () => {
+  const alertId = await insertAlert({
+    symbol: "ONCE",
+    direction: "above",
+    targetPrice: 100,
+  });
+  const sentAlertIds: string[] = [];
+  const finalizationFailurePool = {
+    query(queryText: string, values?: unknown[]) {
+      if (queryText.includes("SET fired_at=NOW()")) {
+        throw new Error("simulated worker interruption before database finalization");
+      }
+      return pool.query(queryText, values);
+    },
+  } as unknown as InstanceType<typeof Pool>;
+
+  await assert.rejects(
+    runAlertCheckCycle(
+      finalizationFailurePool,
+      {
+        fetchPrice: async () => 150,
+        sendPush: async (alert) => {
+          // The provider has accepted this stable alert identity; simulate the
+          // worker stopping when it tries to persist the acknowledgment.
+          sentAlertIds.push(alert.id);
+          return { accepted: true, permanentFailure: false };
+        },
+      },
+      { scopeToIds: [alertId] },
+    ),
+    /simulated worker interruption/,
+  );
+  assert.deepEqual(sentAlertIds, [alertId], "the stable database alert ID is available to the sender");
+  assert.equal(await getFiredAt(alertId), null, "the interrupted cycle did not finalize");
+  const { rows: afterInterruption } = await pool.query(
+    "SELECT delivery_claim_token, delivery_started_at FROM price_alerts WHERE id=$1",
+    [alertId],
+  );
+  assert.notEqual(afterInterruption[0].delivery_claim_token, null);
+  assert.notEqual(afterInterruption[0].delivery_started_at, null);
+
+  await pool.query(
+    `UPDATE price_alerts
+     SET delivery_started_at=NOW() - INTERVAL '11 minutes'
+     WHERE id=$1`,
+    [alertId],
+  );
+  const recovered = await runAlertCheckCycle(
+    competingPool,
+    {
+      fetchPrice: async () => 150,
+      sendPush: async (alert) => {
+        sentAlertIds.push(alert.id);
+        return { accepted: true, permanentFailure: false };
+      },
+    },
+    { scopeToIds: [alertId] },
+  );
+
+  assert.equal(recovered.finalizedUncertain, 1);
+  assert.equal(recovered.delivered, 0);
+  assert.deepEqual(sentAlertIds, [alertId], "recovery must not resend an uncertain notification");
+  assert.notEqual(await getFiredAt(alertId), null, "recovery consumes the alert without replay");
 });
 
 test("permanent push failure (dead token) stamps fired_at to prevent infinite retry", async () => {

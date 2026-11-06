@@ -147,7 +147,12 @@ export function createNotificationAlertRouter(
       );
       const { rows } = await db.query(
         `UPDATE price_alerts
-         SET direction=$3, target_price=$4, push_token=$5, fired_at=NULL, created_at=NOW()
+         SET direction=$3, target_price=$4, push_token=$5,
+             fired_at=NULL,
+             delivery_claim_token=NULL,
+             delivery_claimed_at=NULL,
+             delivery_started_at=NULL,
+             created_at=NOW()
          WHERE id=$1 AND installation_id=$2
          RETURNING id, symbol, direction, target_price, created_at, fired_at, paused`,
         [req.params.id, installationId, direction, numericTarget, pushToken],

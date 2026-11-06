@@ -20,6 +20,11 @@ export interface PushSendResult {
   accepted: boolean;
   /** Failure that will never succeed on retry (e.g. DeviceNotRegistered). */
   permanentFailure: boolean;
+  /**
+   * The request may have reached Expo, but no definitive ticket was received.
+   * Do not retry automatically: a retry could create a duplicate notification.
+   */
+  uncertain?: boolean;
 }
 
 export interface AlertPushRequest {
@@ -50,6 +55,8 @@ export interface AlertCheckDeps {
     alertId: string,
     selectedAlert: PendingAlert,
   ) => Promise<string | null>;
+  /** Persists the send boundary before a request can reach the provider. */
+  beginDeliveryAttempt?: (alertId: string, claimToken: string) => Promise<boolean>;
   /** Releases a claim after a transient failure or a stale selection. */
   releaseAlertClaim?: (alertId: string, claimToken: string) => Promise<void>;
   /**
@@ -72,6 +79,8 @@ export interface AlertCheckStats {
   skippedNoPrice: number;
   skippedPaused: number;
   skippedClaimed: number;
+  deliveryUncertain: number;
+  finalizedUncertain: number;
 }
 
 /** True when the current price crosses the alert threshold. */
@@ -94,15 +103,20 @@ export function classifyExpoPushResponse(
   body: unknown,
   ticketIndex = 0,
 ): PushSendResult {
-  if (!httpOk) return { accepted: false, permanentFailure: false };
+  // An HTTP failure can happen after Expo has already accepted the request.
+  if (!httpOk) return { accepted: false, permanentFailure: false, uncertain: true };
   const ticket = (body as any)?.data;
   // Expo may return a single ticket object or an array of tickets. For a
   // batch, use the ticket at the same index as the submitted message.
   const t = Array.isArray(ticket) ? ticket[ticketIndex] : ticket;
-  // A missing/malformed ticket is NOT proof of acceptance — treat as transient
-  // so the alert retries rather than being silently dropped.
-  if (!t || typeof t !== "object") return { accepted: false, permanentFailure: false };
+  // Without a per-message ticket, acceptance is unknown rather than rejected.
+  if (!t || typeof t !== "object") {
+    return { accepted: false, permanentFailure: false, uncertain: true };
+  }
   if (t.status === "ok") return { accepted: true, permanentFailure: false };
+  if (t.status !== "error") {
+    return { accepted: false, permanentFailure: false, uncertain: true };
+  }
   const errCode = t.details?.error;
   if (errCode === "DeviceNotRegistered") return { accepted: false, permanentFailure: true };
   // Other ticket errors (MessageRateExceeded, etc.) are worth retrying.
@@ -112,8 +126,8 @@ export function classifyExpoPushResponse(
 /**
  * Process all pending alerts for one check cycle.
  * - Prices fetched once per unique symbol.
- * - An alert is marked fired only when Expo confirmed acceptance, OR the
- *   failure is permanent (dead token) — transient failures retry next cycle.
+ * - Explicit ticket rejections retry; ambiguous provider outcomes are held and
+ *   finalized without resending after the delivery lease expires.
  */
 export async function processPendingAlerts(
   alerts: PendingAlert[],
@@ -128,6 +142,8 @@ export async function processPendingAlerts(
     skippedNoPrice: 0,
     skippedPaused: 0,
     skippedClaimed: 0,
+    deliveryUncertain: 0,
+    finalizedUncertain: 0,
   };
   if (!alerts.length) return stats;
 
@@ -173,6 +189,15 @@ export async function processPendingAlerts(
         stats.skippedClaimed++;
         continue;
       }
+      if (
+        claimToken
+        && deps.beginDeliveryAttempt
+        && !(await deps.beginDeliveryAttempt(request.alert.id, claimToken))
+      ) {
+        await deps.releaseAlertClaim?.(request.alert.id, claimToken);
+        stats.skippedClaimed++;
+        continue;
+      }
       claimTokens.set(request.alert.id, claimToken ?? undefined);
       requestsToProcess.push(request);
     }
@@ -195,6 +220,7 @@ export async function processPendingAlerts(
       result = batchResults.get(alert.id) ?? {
         accepted: false,
         permanentFailure: false,
+        uncertain: true,
       };
     } else {
       if (deps.isAlertActive && !(await deps.isAlertActive(alert.id, alert))) {
@@ -208,11 +234,20 @@ export async function processPendingAlerts(
         stats.skippedClaimed++;
         continue;
       }
+      if (
+        claimToken
+        && deps.beginDeliveryAttempt
+        && !(await deps.beginDeliveryAttempt(alert.id, claimToken))
+      ) {
+        await deps.releaseAlertClaim?.(alert.id, claimToken);
+        stats.skippedClaimed++;
+        continue;
+      }
       claimTokens.set(alert.id, claimToken ?? undefined);
       try {
         result = await deps.sendPush(alert, currentPrice);
       } catch {
-        result = { accepted: false, permanentFailure: false };
+        result = { accepted: false, permanentFailure: false, uncertain: true };
       }
     }
 
@@ -223,10 +258,8 @@ export async function processPendingAlerts(
         claimTokens.get(alert.id),
       );
       if (marked === false) {
-        const claimToken = claimTokens.get(alert.id);
-        if (claimToken) {
-          await deps.releaseAlertClaim?.(alert.id, claimToken);
-        }
+        // The provider accepted the notification. Keep its durable attempt
+        // marker so a changed/deleted DB state cannot make this send replay.
         stats.skippedPaused++;
         continue;
       }
@@ -247,6 +280,10 @@ export async function processPendingAlerts(
         continue;
       }
       stats.firedPermanentFailure++;
+    } else if (result.uncertain) {
+      // Keep the claim and durable attempt marker. Once the claim expires, the
+      // cycle finalizes it without sending again (at-most-once over at-least-once).
+      stats.deliveryUncertain++;
     } else {
       const claimToken = claimTokens.get(alert.id);
       if (claimToken) {

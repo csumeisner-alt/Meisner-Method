@@ -234,6 +234,7 @@ async function runSchemaMigrations(): Promise<void> {
   await pool.query("ALTER TABLE price_alerts ADD COLUMN IF NOT EXISTS paused BOOLEAN NOT NULL DEFAULT FALSE");
   await pool.query("ALTER TABLE price_alerts ADD COLUMN IF NOT EXISTS delivery_claim_token TEXT");
   await pool.query("ALTER TABLE price_alerts ADD COLUMN IF NOT EXISTS delivery_claimed_at TIMESTAMPTZ");
+  await pool.query("ALTER TABLE price_alerts ADD COLUMN IF NOT EXISTS delivery_started_at TIMESTAMPTZ");
   await pool.query("ALTER TABLE price_alerts ALTER COLUMN user_id DROP NOT NULL");
   await pool.query("ALTER TABLE price_alerts ALTER COLUMN push_token DROP NOT NULL");
   await pool.query("CREATE INDEX IF NOT EXISTS price_alerts_installation_idx ON price_alerts (installation_id, fired_at)");
