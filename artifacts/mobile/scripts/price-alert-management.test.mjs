@@ -47,6 +47,17 @@ test("paused alerts are excluded from both worker queries and can resume", () =>
   assert.match(watchlistHook, /method: 'PATCH'/);
 });
 
+test("a refresh keeps the server pause state instead of applying an older cache read afterward", () => {
+  assert.match(
+    watchlistHook,
+    /apiFetch<AlertData\[\]>\([\s\S]*?\.then\(\(alertList\) => \{\s*void writeAlertCache\(alertList\);\s*return alertList;/,
+  );
+  assert.match(watchlistHook, /setAlerts\(alertList\)/);
+  assert.doesNotMatch(watchlistHook, /readAlertCache\(\)\.then\(\(cached\) =>/);
+  assert.match(settings, /alert\.paused \? \(alert\.firedAt \? 'Paused · Fired' : 'Paused'\)/);
+  assert.match(settings, /accessibilityLabel=\{\`\$\{alert\.paused \? 'Resume' : 'Pause'\}/);
+});
+
 test("alert collapse state persists and modal edits target one alert ID", () => {
   assert.match(settings, /AsyncStorage\.getItem\(ALERTS_COLLAPSED_KEY\)/);
   assert.match(settings, /AsyncStorage\.setItem\(ALERTS_COLLAPSED_KEY/);

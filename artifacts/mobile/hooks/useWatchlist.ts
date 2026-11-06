@@ -147,14 +147,6 @@ export function useWatchlist() {
     return () => { cancelled = true; };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    readAlertCache().then((cached) => {
-      if (!cancelled && cached.length > 0) setAlerts(cached);
-    });
-    return () => { cancelled = true; };
-  }, []);
-
   const refresh = useCallback(async () => {
     try {
       setLoading(true);

@@ -498,8 +498,16 @@ test("notification alert routes create independent same-ticker alerts and enforc
         "GET",
       );
       assert.equal(result.status, 200);
-      return result.body as Array<{ id: string; symbol: string; direction: string; targetPrice: number }>;
+      return result.body as Array<{
+        id: string;
+        symbol: string;
+        direction: string;
+        targetPrice: number;
+        paused: boolean;
+      }>;
     };
+    const setAlertPaused = (id: string, installationId: string, paused: boolean) =>
+      request(`${baseUrl}/${id}`, "PATCH", { installationId, paused });
 
     const first = await createAlert(ownerInstallationId, ownerPushToken, 100);
     const second = await createAlert(ownerInstallationId, ownerPushToken, 200);
@@ -534,8 +542,39 @@ test("notification alert routes create independent same-ticker alerts and enforc
     assert.equal(ownEdit.body.direction, "below");
     assert.equal(ownEdit.body.targetPrice, 125);
 
+    const pauseFirst = await setAlertPaused(first.body.id, ownerInstallationId, true);
+    const pauseSecond = await setAlertPaused(second.body.id, ownerInstallationId, true);
+    assert.equal(pauseFirst.status, 200);
+    assert.equal(pauseFirst.body.paused, true);
+    assert.equal(pauseSecond.status, 200);
+    assert.equal(pauseSecond.body.paused, true);
+
+    const reloadedPausedAlerts = await listAlerts(ownerInstallationId);
+    assert.equal(
+      reloadedPausedAlerts.find((alert) => alert.id === first.body.id)?.paused,
+      true,
+      "the alert API must return the saved pause state after a fresh list request",
+    );
+    assert.equal(
+      reloadedPausedAlerts.find((alert) => alert.id === second.body.id)?.paused,
+      true,
+      "the settings reload must retain every alert's individual pause state",
+    );
+
+    const resumeFirst = await setAlertPaused(first.body.id, ownerInstallationId, false);
+    assert.equal(resumeFirst.status, 200);
+    assert.equal(resumeFirst.body.id, first.body.id);
+    assert.equal(resumeFirst.body.paused, false);
+    const reloadedAfterResume = await listAlerts(ownerInstallationId);
+    assert.equal(reloadedAfterResume.find((alert) => alert.id === first.body.id)?.paused, false);
+    assert.equal(
+      reloadedAfterResume.find((alert) => alert.id === second.body.id)?.paused,
+      true,
+      "resuming one alert must not change another alert for the same ticker",
+    );
+
     assert.deepEqual(
-      (await listAlerts(ownerInstallationId))
+      reloadedAfterResume
         .map(({ id, symbol, direction, targetPrice }) => ({ id, symbol, direction, targetPrice }))
         .sort((a, b) => a.id.localeCompare(b.id)),
       [
