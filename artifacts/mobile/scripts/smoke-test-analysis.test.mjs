@@ -241,11 +241,14 @@ test("ETF overview combines quote, deterministic research score, takeaways, and 
   assert.match(etfAnalysisSource, /changePct\.toFixed\(2\)/);
   assert.match(etfAnalysisSource, /calculateEtfResearchScore\(\{/);
   assert.match(etfAnalysisSource, /Missing components are excluded and remaining weights are rescaled/);
+  assert.match(etfAnalysisSource, /testID="etf-score-methodology"/);
+  assert.match(etfAnalysisSource, /annualized return ÷ annualized volatility using a 0% risk-free proxy/);
+  assert.match(etfAnalysisSource, /not Sharpe or a peer ranking/);
 });
 
 test("ETF score history is scoped to the selected analysis symbol", () => {
   assert.match(etfAnalysisSource, /const \{ symbol \} = useLocalSearchParams<\{ symbol: string \}>\(\)/);
-  assert.match(etfAnalysisSource, /const snapshot = createEtfScoreSnapshot\(\{\s*symbol,\s*score: profileScore\.score/);
+  assert.match(etfAnalysisSource, /const snapshot = createEtfScoreSnapshot\(\{\s*methodology: CURRENT_ETF_SCORE_METHODOLOGY,\s*symbol,\s*score: profileScore\.score/);
   assert.match(etfAnalysisSource, /persistEtfScoreSnapshot\(/);
   assert.match(etfAnalysisSource, /findComparableEtfScoreChange\(snapshot, history\)/);
   assert.match(etfAnalysisSource, /buildEtfScoreHistory\(symbol, snapshot, history\)/);

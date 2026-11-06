@@ -13,7 +13,7 @@ import {
 const completeInput = {
   expenseRatio: 0.0005,
   categoryAverageExpenseRatio: 0.001,
-  trackingError: 0.01,
+  riskAdjustedReturn: 0.5,
   sectorWeights: [
     { sector: "Technology", weight: 0.4 },
     { sector: "Healthcare", weight: 0.3 },
@@ -33,13 +33,15 @@ test("ETF profile score is deterministic and exposes every component", () => {
   assert.ok(result.score !== null && result.score >= 0 && result.score <= 100);
   assert.deepEqual(result.components.map((item) => item.id), [
     "cost",
-    "tracking",
+    "performance",
     "diversification",
     "liquidity",
     "risk",
   ]);
   assert.equal(result.components[0]?.score, 75);
-  assert.equal(result.components[1]?.score, 80);
+  assert.equal(result.components[1]?.score, 75);
+  assert.deepEqual(result.components.map((item) => item.weight), [25, 20, 20, 15, 10]);
+  assert.equal(result.components.reduce((sum, item) => sum + item.weight, 0), 90);
 });
 
 test("ETF cost score is exact at zero, category-average, and twice-average thresholds", () => {
@@ -303,7 +305,7 @@ test("missing peer data is excluded and incomplete sector coverage is not scored
   const result = calculateEtfResearchScore({
     ...completeInput,
     categoryAverageExpenseRatio: null,
-    trackingError: null,
+    riskAdjustedReturn: null,
     sectorWeights: [
       { sector: "Technology", weight: 0.3 },
       { sector: "Healthcare", weight: 0.2 },
@@ -316,16 +318,44 @@ test("missing peer data is excluded and incomplete sector coverage is not scored
   assert.equal(result.availableComponents, 2);
 });
 
-test("tracking-error score is exact at both fixed-band limits", () => {
-  const scoreAt = (trackingError: number) =>
+test("risk-adjusted performance is available without a benchmark and uses bounded fixed bands", () => {
+  const scoreAt = (riskAdjustedReturn: number) =>
     calculateEtfResearchScore({
       ...completeInput,
-      trackingError,
-    }).components.find((item) => item.id === "tracking")?.score;
+      riskAdjustedReturn,
+    }).components.find((item) => item.id === "performance")?.score;
 
-  assert.equal(scoreAt(0), 100);
-  assert.equal(scoreAt(0.05), 0);
-  assert.equal(scoreAt(0.06), 0);
+  assert.equal(scoreAt(-1), 0);
+  assert.equal(scoreAt(0), 50);
+  assert.equal(scoreAt(1), 100);
+  assert.equal(scoreAt(2), 100);
+
+  const performance = calculateEtfResearchScore(completeInput).components.find((item) => item.id === "performance");
+  assert.equal(performance?.score, 75);
+  assert.match(performance?.detail ?? "", /annualized return divided by annualized volatility/i);
+  assert.match(performance?.detail ?? "", /0% risk-free proxy/);
+  assert.doesNotMatch(performance?.detail ?? "", /Sharpe ratio/i);
+  assert.match(performance?.detail ?? "", /not peer-relative/i);
+});
+
+test("missing and invalid risk-adjusted returns are excluded and remaining weights normalize", () => {
+  for (const riskAdjustedReturn of [null, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    const result = calculateEtfResearchScore({
+      ...completeInput,
+      riskAdjustedReturn,
+    });
+    assert.equal(result.components.find((item) => item.id === "performance")?.score, null);
+    assert.equal(result.availableComponents, 4);
+    assert.ok(result.score !== null);
+    const availableWeight = result.components
+      .filter((component) => component.score !== null)
+      .reduce((sum, component) => sum + component.weight, 0);
+    assert.equal(availableWeight, 70);
+    const normalizedWeights = result.components
+      .filter((component) => component.score !== null)
+      .map((component) => component.weight / availableWeight * 100);
+    assert.ok(Math.abs(normalizedWeights.reduce((sum, weight) => sum + weight, 0) - 100) < 1e-10);
+  }
 });
 
 test("liquidity score is exact at the fixed volume and asset band limits", () => {
@@ -422,12 +452,12 @@ test("available components are reweighted and fewer than three keeps the score u
   assert.equal(threeComponents.components.find((item) => item.id === "liquidity")?.score, null);
   assert.equal(threeComponents.components.find((item) => item.id === "risk")?.score, null);
   assert.equal(threeComponents.availableComponents, 3);
-  assert.equal(threeComponents.score, 70);
+  assert.equal(threeComponents.score, 67);
 
   const twoComponents = calculateEtfResearchScore({
     ...completeInput,
     categoryAverageExpenseRatio: null,
-    trackingError: null,
+    riskAdjustedReturn: null,
     sectorWeights: [],
   });
   assert.equal(twoComponents.availableComponents, 2);
@@ -474,6 +504,43 @@ test("ETF score history rejects stale source inputs", () => {
 
   assert.equal(stale, null);
   assert.equal(findComparableEtfScoreChange(stale, []).status, "stale-inputs");
+});
+
+test("saved benchmark-method snapshots remain visible but are not comparable to new scores", () => {
+  const result = calculateEtfResearchScore(completeInput);
+  const snapshotFor = (recordedAt: string) => createEtfScoreSnapshot({
+    symbol: "SPY",
+    score: result.score,
+    components: result.components,
+    sourceContexts: Object.fromEntries(
+      result.components.filter((component) => component.score !== null).map((component) => [component.id, `provider:${component.id}`]),
+    ),
+    inputAsOf: Object.fromEntries(
+      result.components.filter((component) => component.score !== null).map((component) => [component.id, ["2026-10-29T12:00:00Z"]]),
+    ),
+    recordedAt,
+  });
+  const priorRiskAdjustedSnapshot = snapshotFor("2026-10-30T12:00:00Z");
+  const current = snapshotFor("2026-11-05T12:00:00Z");
+  assert.ok(priorRiskAdjustedSnapshot);
+  assert.ok(current);
+
+  const legacyData = JSON.parse(JSON.stringify(priorRiskAdjustedSnapshot)) as Record<string, unknown>;
+  delete legacyData.methodology;
+  const ids = legacyData.componentIds as string[];
+  legacyData.componentIds = ids.map((id) => id === "performance" ? "tracking" : id);
+  for (const field of ["componentScores", "sourceContexts", "inputAsOf"]) {
+    const values = legacyData[field] as Record<string, unknown>;
+    values.tracking = values.performance;
+    delete values.performance;
+  }
+  const parsedLegacy = parseEtfScoreSnapshots(JSON.stringify([legacyData]));
+  assert.equal(parsedLegacy.length, 1, "legacy history remains stored and readable");
+  assert.equal(parsedLegacy[0]?.methodology, undefined, "old snapshots remain unmodified");
+  assert.equal(findComparableEtfScoreChange(current, [parsedLegacy[0]!]).status, "methodology-changed");
+
+  const datedHistory = buildEtfScoreHistory("SPY", current, [parsedLegacy[0]!]);
+  assert.deepEqual(datedHistory.map((entry) => entry.status), ["baseline", "methodology-changed"]);
 });
 
 test("ETF score history does not compare changed component coverage", () => {

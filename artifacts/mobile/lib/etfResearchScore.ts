@@ -1,7 +1,7 @@
 export interface EtfScoreInput {
   expenseRatio: number | null;
   categoryAverageExpenseRatio: number | null;
-  trackingError: number | null;
+  riskAdjustedReturn: number | null;
   sectorWeights: readonly { sector: string; weight: number }[];
   averageVolume: number | null;
   totalAssets: number | null;
@@ -18,7 +18,7 @@ export interface EtfScoreInput {
 }
 
 export interface EtfScoreComponent {
-  id: "cost" | "tracking" | "diversification" | "liquidity" | "risk";
+  id: "cost" | "tracking" | "performance" | "diversification" | "liquidity" | "risk";
   label: string;
   weight: number;
   score: number | null;
@@ -37,6 +37,7 @@ export type EtfScoreComponentId = EtfScoreComponent["id"];
 
 export interface EtfScoreSnapshot {
   version: 1;
+  methodology?: EtfScoreMethodology;
   symbol: string;
   recordedAt: string;
   score: number;
@@ -47,6 +48,7 @@ export interface EtfScoreSnapshot {
 }
 
 export interface EtfScoreSnapshotInput {
+  methodology?: EtfScoreMethodology;
   symbol: string;
   score: number | null;
   components: readonly EtfScoreComponent[];
@@ -60,26 +62,35 @@ export type EtfScoreChangeResult =
   | { status: "first-analysis" }
   | { status: "stale-inputs" }
   | { status: "stale-history" }
+  | { status: "methodology-changed" }
   | { status: "not-comparable" }
   | { status: "unavailable" };
 
 export interface EtfScoreHistoryEntry {
   snapshot: EtfScoreSnapshot;
-  status: "baseline" | "available" | "stale-inputs" | "stale-history" | "not-comparable";
+  status: "baseline" | "available" | "stale-inputs" | "stale-history" | "methodology-changed" | "not-comparable";
   change?: number;
   previousRecordedAt?: string;
 }
 
 export const ETF_SCORE_INPUT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const ETF_SCORE_HISTORY_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
+export type EtfScoreMethodology = "benchmark-tracking-v1" | "risk-adjusted-performance-v2";
+export const CURRENT_ETF_SCORE_METHODOLOGY: EtfScoreMethodology = "risk-adjusted-performance-v2";
 
 const scoreComponentIds: readonly EtfScoreComponentId[] = [
   "cost",
   "tracking",
+  "performance",
   "diversification",
   "liquidity",
   "risk",
 ];
+
+function getSnapshotMethodology(snapshot: EtfScoreSnapshot): EtfScoreMethodology {
+  // Snapshots written before methodology tags used benchmark tracking.
+  return snapshot.methodology ?? "benchmark-tracking-v1";
+}
 
 function sameEtfScoreSymbol(a: string, b: string): boolean {
   return a.trim().toUpperCase() === b.trim().toUpperCase();
@@ -104,6 +115,7 @@ function snapshotHasFreshInputs(snapshot: EtfScoreSnapshot, referenceTime: numbe
 function sameSnapshotAnalysis(a: EtfScoreSnapshot, b: EtfScoreSnapshot): boolean {
   const componentIds = [...a.componentIds].sort();
   return sameEtfScoreSymbol(a.symbol, b.symbol)
+    && getSnapshotMethodology(a) === getSnapshotMethodology(b)
     && a.score === b.score
     && JSON.stringify(componentIds) === JSON.stringify([...b.componentIds].sort())
     && componentIds.every((id) =>
@@ -117,6 +129,9 @@ function hasValidSnapshotShape(value: unknown): value is EtfScoreSnapshot {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<EtfScoreSnapshot>;
   return candidate.version === 1
+    && (candidate.methodology === undefined
+      || candidate.methodology === "benchmark-tracking-v1"
+      || candidate.methodology === "risk-adjusted-performance-v2")
     && typeof candidate.symbol === "string"
     && candidate.symbol.length > 0
     && typeof candidate.recordedAt === "string"
@@ -175,6 +190,7 @@ export function createEtfScoreSnapshot(input: EtfScoreSnapshotInput): EtfScoreSn
 
   return {
     version: 1,
+    methodology: input.methodology ?? CURRENT_ETF_SCORE_METHODOLOGY,
     symbol: input.symbol.trim().toUpperCase(),
     recordedAt: new Date(recordedAt).toISOString(),
     score: Math.round(input.score),
@@ -266,6 +282,10 @@ export function buildEtfScoreHistory(
       return { snapshot, status: "stale-history" };
     }
 
+    if (getSnapshotMethodology(snapshot) !== getSnapshotMethodology(previous)) {
+      return { snapshot, status: "methodology-changed" };
+    }
+
     const sameCoverage = JSON.stringify([...snapshot.componentIds].sort())
       === JSON.stringify([...previous.componentIds].sort());
     const sameSources = snapshot.componentIds.every((id) =>
@@ -315,7 +335,8 @@ export function findComparableEtfScoreChange(
 
   const currentIds = [...current.componentIds].sort();
   const comparable = priorSnapshots.find((snapshot) =>
-    JSON.stringify([...snapshot.componentIds].sort()) === JSON.stringify(currentIds)
+    getSnapshotMethodology(snapshot) === getSnapshotMethodology(current)
+    && JSON.stringify([...snapshot.componentIds].sort()) === JSON.stringify(currentIds)
     && currentIds.every((id) => snapshot.sourceContexts[id] === current.sourceContexts[id]),
   );
   if (comparable) {
@@ -327,6 +348,12 @@ export function findComparableEtfScoreChange(
     };
   }
 
+  if (
+    priorSnapshots[0]
+    && getSnapshotMethodology(priorSnapshots[0]) !== getSnapshotMethodology(current)
+  ) {
+    return { status: "methodology-changed" };
+  }
   if (priorSnapshots.length) return { status: "not-comparable" };
   return sameSymbol.some((snapshot) =>
     Date.parse(snapshot.recordedAt) < currentTime && !sameSnapshotAnalysis(snapshot, current),
@@ -402,13 +429,13 @@ export function calculateEtfResearchScore(input: EtfScoreInput) {
       detail: "At the provider category average scores 50; twice the average or more scores 0.",
     },
     {
-      id: "tracking",
-      label: "Benchmark tracking",
-      weight: 25,
-      score: validNonNegative(input.trackingError)
-        ? clamp((1 - input.trackingError / 0.05) * 100)
+      id: "performance",
+      label: "Risk-adjusted performance",
+      weight: 20,
+      score: typeof input.riskAdjustedReturn === "number" && Number.isFinite(input.riskAdjustedReturn)
+        ? clamp(((input.riskAdjustedReturn + 1) / 2) * 100)
         : null,
-      detail: "Uses annualized tracking error only when a provider-identified benchmark is available; 5% or more scores 0.",
+      detail: "Annualized return divided by annualized volatility, using a 0% risk-free proxy. Linear scoring maps −1 to 0, 0 to 50, and +1 to 100; values outside that range are capped. This is not Sharpe and is not peer-relative.",
     },
     {
       id: "diversification",
@@ -443,7 +470,7 @@ export function calculateEtfResearchScore(input: EtfScoreInput) {
     {
       id: "risk",
       label: "One-year risk",
-      weight: 15,
+      weight: 10,
       score: riskScores.length ? riskScores.reduce((sum, score) => sum + score, 0) / riskScores.length : null,
       detail: "Uses fixed bands: 60% annualized volatility and 75% maximum drawdown each score 0; not peer-relative.",
     },

@@ -77,6 +77,7 @@ import {
   calculateEtfResearchScore,
   clearEtfScoreSnapshots,
   createEtfScoreSnapshot,
+  CURRENT_ETF_SCORE_METHODOLOGY,
   findComparableEtfScoreChange,
   parseEtfScoreSnapshots,
   persistEtfScoreSnapshot,
@@ -1808,9 +1809,7 @@ function EtfAnalysisSections({
   const profileScore = calculateEtfResearchScore({
     expenseRatio: fund.expenseRatio,
     categoryAverageExpenseRatio: fund.peerExpenseComparison?.categoryAverageExpenseRatio ?? null,
-    trackingError: fund.benchmark && hasValidTrackingHistory(fund.trackingComparison)
-      ? fund.trackingComparison.trackingError
-      : null,
+    riskAdjustedReturn: fund.riskAdjustedReturn,
     sectorWeights: fund.sectorWeights ?? [],
     averageVolume: fund.averageVolume,
     totalAssets: fund.totalAssets,
@@ -1827,11 +1826,9 @@ function EtfAnalysisSections({
     scoreSourceContexts.cost = `${fund.provider}|${fund.peerExpenseComparison?.source ?? 'unknown'}|${fund.peerExpenseComparison?.category ?? fund.fundCategory ?? 'unknown'}`;
     if (fund.peerExpenseComparison) scoreInputAsOf.cost = [fund.peerExpenseComparison.asOf];
   }
-  if (scoredComponentIds.has('tracking')) {
-    scoreSourceContexts.tracking = `${fund.benchmark?.symbol ?? 'unknown'}|${fund.benchmark?.source ?? 'unknown'}|${fund.trackingComparison?.source ?? 'unknown'}`;
-    if (fund.trackingComparison && fund.benchmark) {
-      scoreInputAsOf.tracking = [fund.trackingComparison.asOf, fund.benchmark.asOf];
-    }
+  if (scoredComponentIds.has('performance')) {
+    scoreSourceContexts.performance = `${fund.provider}|annualized-return-divided-by-volatility|risk-free-proxy:0%`;
+    scoreInputAsOf.performance = [fund.asOf];
   }
   if (scoredComponentIds.has('diversification')) {
     scoreSourceContexts.diversification = `${fund.provider}|reported-sector-weights-v1`;
@@ -1881,6 +1878,7 @@ function EtfAnalysisSections({
       try {
         const now = new Date().toISOString();
         const snapshot = createEtfScoreSnapshot({
+          methodology: CURRENT_ETF_SCORE_METHODOLOGY,
           symbol,
           score: profileScore.score,
           components: profileScore.components,
@@ -2740,6 +2738,8 @@ function EtfAnalysisSections({
                       ? 'No prior score shown because saved history is too old or its inputs were stale.'
                       : scoreChangeResult?.status === 'not-comparable'
                         ? 'No prior score shown because the available factors or their source context changed.'
+                        : scoreChangeResult?.status === 'methodology-changed'
+                          ? 'Previous scores use benchmark tracking and are not directly comparable with this methodology.'
                         : profileScore.score == null
                           ? 'A score change is unavailable until at least three factors can be rated.'
                           : 'Score history could not be loaded or saved on this device.'}
@@ -2773,6 +2773,8 @@ function EtfAnalysisSections({
                       ? 'Starting point · no earlier saved analysis'
                       : entry.status === 'not-comparable'
                         ? 'Gap · factor coverage or source context changed'
+                        : entry.status === 'methodology-changed'
+                          ? 'Gap · scoring methodology changed; scores are not comparable'
                         : entry.status === 'stale-inputs'
                           ? 'Gap · this analysis had stale or undated inputs'
                           : 'Gap · earlier inputs were stale or more than one year apart';
@@ -2844,8 +2846,8 @@ function EtfAnalysisSections({
             );
           })}
         </View>
-        <Text style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 18, marginTop: 10 }}>
-            Missing factors are excluded; the remaining published weights are normalized to 100%. Descriptive bands: strong 75+, constructive 60–74, mixed 41–59, limited 0–40. Score changes are shown only for fresh analyses with matching factors and source context.
+        <Text testID="etf-score-methodology" style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 18, marginTop: 10 }}>
+            Base weights: cost 25%, risk-adjusted performance 20%, diversification 20%, liquidity 15%, and one-year risk 10%. These stated weights are normalized to 100%; missing factors are excluded and the remaining weights are rescaled. Performance is annualized return ÷ annualized volatility using a 0% risk-free proxy, not Sharpe or a peer ranking. Fixed bands: −1 or lower = 0, 0 = 50, +1 or higher = 100. Descriptive score bands: strong 75+, constructive 60–74, mixed 41–59, limited 0–40. Score changes are shown only for fresh analyses with matching factors, methodology, and source context.
         </Text>
         <Text style={[recStyles.horizon, { color: colors.mutedForeground, marginTop: 12, marginBottom: 0 }]}>
           {fund.fundCategory ?? 'ETF'} · Rules-based profile, not a forecast or recommendation.
@@ -3139,22 +3141,26 @@ function EtfAnalysisSections({
               <View style={{ height: '100%', width: `${profileScore.score}%`, backgroundColor: colors.primary }} />
             </View>
           )}
-          {profileScore.components.map((component) => (
-            <View key={component.id} style={{ marginTop: 8 }}>
-              <MetricRow
-                label={`${component.label} · ${component.weight}%`}
-                value={component.score == null ? 'Unavailable' : `${Math.round(component.score)}/100`}
-              />
-              <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16 }}>{component.detail}</Text>
-              {component.peerContext ? (
-                <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
-                  Category: {component.peerContext.category} · category-average assets: {formatEtfProfileAssets(component.peerContext.categoryAverageTotalAssets)} · {component.peerContext.sampleContext}
-                  {component.peerContext.sampleSize == null ? '' : ` · ${component.peerContext.sampleSize} funds`}
-                  {'\n'}Source: {component.peerContext.source} · retrieved {sourceDate(component.peerContext.asOf)}
-                </Text>
-              ) : null}
-            </View>
-          ))}
+          {profileScore.components.map((component) => {
+            const normalizedWeight = component.score == null || availableScoreWeight === 0
+              ? null : component.weight / availableScoreWeight * 100;
+            return (
+              <View key={component.id} style={{ marginTop: 8 }}>
+                <MetricRow
+                  label={`${component.label} · ${normalizedWeight == null ? `${component.weight}% base weight` : `${normalizedWeight.toFixed(1)}% weight`}`}
+                  value={component.score == null ? 'Unavailable' : `${Math.round(component.score)}/100`}
+                />
+                <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16 }}>{component.detail}</Text>
+                {component.peerContext ? (
+                  <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 3 }}>
+                    Category: {component.peerContext.category} · category-average assets: {formatEtfProfileAssets(component.peerContext.categoryAverageTotalAssets)} · {component.peerContext.sampleContext}
+                    {component.peerContext.sampleSize == null ? '' : ` · ${component.peerContext.sampleSize} funds`}
+                    {'\n'}Source: {component.peerContext.source} · retrieved {sourceDate(component.peerContext.asOf)}
+                  </Text>
+                ) : null}
+              </View>
+            );
+          })}
           <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 12 }}>
             Rules-based, not AI-generated or personalized advice. Fees and net assets use provider category averages when reported; tracking requires a verified benchmark. Sector diversification uses reported sector weights, while volume and risk use fixed bands when peer data is unavailable. Compare funds with similar strategies.
           </Text>
