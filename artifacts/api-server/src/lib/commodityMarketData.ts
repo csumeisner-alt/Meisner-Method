@@ -748,6 +748,25 @@ function validUsdaAnimalReportSource(url: string, symbol: string): boolean {
   ).test(url);
 }
 
+export function parseUsdaAnimalInventoryArchiveLinks(
+  listing: string,
+  listingUrl: string,
+  symbol: string,
+): string[] {
+  if (symbol !== "LE=F" && symbol !== "HE=F") return [];
+  return [...listing.matchAll(/href=["']([^"']+\.txt)["']/gi)]
+    .map((match) => {
+      try {
+        return new URL(match[1]!.replaceAll("&amp;", "&"), listingUrl).toString();
+      } catch {
+        return null;
+      }
+    })
+    .filter((url): url is string => Boolean(url && validUsdaAnimalReportSource(url, symbol)))
+    .filter((url, index, urls) => urls.indexOf(url) === index)
+    .slice(0, symbol === "LE=F" ? 10 : 8);
+}
+
 function reportCodeMatchesPublicationDate(url: string, publicationDate: string, symbol: string): boolean {
   const match = url.match(/(?:catl|hgpg)(\d{2})(\d{2})\.txt$/i);
   return Boolean(match && match[1] === publicationDate.slice(5, 7)
@@ -792,7 +811,7 @@ function parseCattleInventoryRows(
     const end = headings[index + 1]?.index ?? text.length;
     const table = text.slice(start, end);
     if (!/1,000 head/i.test(table)) return [];
-    const row = table.match(/^[ \t]*(?:All )?Cattle and calves[ \t]*\.{2,}:[ \t]*([^\r\n]*)/im);
+    const row = table.match(/^[ \t]*(?:All )?Cattle and calves[ \t]*\.{2,}:?[ \t]*([^\r\n]*)/im);
     if (!row) return [];
     const month = heading[1]!.toLowerCase() === "january" ? "01" : "07";
     const years = [heading[2]!, heading[3]!];
@@ -831,18 +850,19 @@ function parseHogInventoryRows(
     const start = (section.index ?? 0) + section[0].length;
     const end = inventorySections[index + 1]?.index ?? text.length;
     const block = text.slice(start, end);
-    const row = block.match(/^\s*All hogs and pigs\s*\.{2,}:\s*([^\r\n]*)/im);
+    const row = block.match(/^\s*All hogs and pigs\s*\.{2,}:?\s*([^\r\n]*)/im);
     if (!row) continue;
-    const values = [...row[1]!.matchAll(/[0-9][0-9,]*(?:\.\d+)?/g)]
-      .map((match) => parseReportNumber(match[0]!))
-      .filter((value): value is number => value !== null && value >= 0)
-      .slice(0, 2);
+    const values = row[1]!.trim().split(/[ \t]+/).slice(0, 2)
+      .map((cell) => parseReportNumber(cell))
+      .map((value) => value !== null && value >= 0 ? value : null);
     const periodYears = month === "12" && publicationDate.slice(5, 7) !== "12"
       ? [years[0]! - 1, years[1]! - 1]
       : years;
     const assigned = values.length === 1
       ? [{ year: month === "12" ? periodYears[1]! : years[1]!, value: values[0]! }]
-      : values.map((value, valueIndex) => ({ year: periodYears[valueIndex]!, value }));
+      : values.flatMap((value, valueIndex) => value === null
+        ? []
+        : [{ year: periodYears[valueIndex]!, value }]);
     for (const item of assigned) {
       const reportingPeriod = `${item.year}-${month}-01`;
       if (reportingPeriod > publicationDate) continue;
@@ -923,7 +943,7 @@ export function parseUsdaAnimalInventoryReports(
   };
 }
 
-async function loadUsdaAnimalInventory(
+export async function fetchUsdaAnimalInventorySeries(
   symbol: string,
   now: Date,
 ): Promise<CommoditySupplyDemandSeries> {
@@ -935,18 +955,7 @@ async function loadUsdaAnimalInventory(
         const cattle = symbol === "LE=F";
         const listingUrl = cattle ? USDA_CATTLE_REPORTS_URL : USDA_HOG_REPORTS_URL;
         const listing = await fetchText(listingUrl);
-        const reportPattern = cattle ? /\/catl\d{4}\.txt$/i : /\/hgpg\d{4}\.txt$/i;
-        const reportUrls = [...listing.matchAll(/href=["']([^"']+\.txt)["']/gi)]
-          .map((match) => {
-            try {
-              return new URL(match[1]!.replaceAll("&amp;", "&"), listingUrl).toString();
-            } catch {
-              return null;
-            }
-          })
-          .filter((url): url is string => Boolean(url && reportPattern.test(new URL(url).pathname)))
-          .filter((url, index, urls) => urls.indexOf(url) === index)
-          .slice(0, cattle ? 10 : 8);
+        const reportUrls = parseUsdaAnimalInventoryArchiveLinks(listing, listingUrl, symbol);
         const reports = await Promise.all(reportUrls.map(async (sourceUrl) => ({
           sourceUrl,
           text: await fetchText(sourceUrl),
@@ -1259,7 +1268,7 @@ export async function fetchCommoditySupplyDemandContext(
   let animalInventory: CommoditySupplyDemandSeries | null = null;
   if (USDA_SERIES_COMMODITIES.has(normalized)) {
     if (normalized === "LE=F" || normalized === "HE=F") {
-      animalInventory = await loadUsdaAnimalInventory(normalized, now);
+      animalInventory = await fetchUsdaAnimalInventorySeries(normalized, now);
     }
     try {
       const report = await loadLatestWasdeReport(now, normalized);

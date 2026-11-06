@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   assessCommodityHistory,
@@ -13,11 +14,13 @@ import {
   fetchCommodityInventoryEvidenceWithStatus,
   fetchCommodityPositioningEvidenceWithStatus,
   fetchCommoditySupplyDemandContext,
+  fetchUsdaAnimalInventorySeries,
   parseCftcPositioningRows,
   parseEiaCrudeInventoryCsv,
   parseEiaNaturalGasStorageCsv,
   parseUsgsMineralSupplyDemandCsv,
   parseUsdaAnimalInventoryReports,
+  parseUsdaAnimalInventoryArchiveLinks,
   parseUsdaSupplyDemandSeries,
   parseUsdaWasdeInventoryCsv,
   validateCommoditySupplyDemandContext,
@@ -554,6 +557,139 @@ test("NASS cattle inventory stays separate from USDA beef balances and uses the 
   assert.equal(parseUsdaAnimalInventoryReports([
     { ...reports[0]!, sourceUrl: "https://example.com/catl0726.txt" },
   ], "LE=F", DEFAULT_NOW).status, "unavailable");
+});
+
+test("USDA NASS archive links accept official TXT reports and reject missing or malformed links", () => {
+  const listingUrl = "https://esmis.nal.usda.gov/publication/cattle";
+  const listing = [
+    '<a href="/sites/default/release-files/cattle/catl0726.txt">July 2026</a>',
+    '<a href="https://[::1/catl0826.txt">Malformed URL</a>',
+    '<a href="https://example.com/sites/default/release-files/cattle/catl0626.txt">Untrusted host</a>',
+    '<a href="/sites/default/release-files/hogs/hgpg0926.txt">Wrong report type</a>',
+  ].join("\n");
+
+  assert.deepEqual(
+    parseUsdaAnimalInventoryArchiveLinks(listing, listingUrl, "LE=F"),
+    ["https://esmis.nal.usda.gov/sites/default/release-files/cattle/catl0726.txt"],
+  );
+  assert.deepEqual(parseUsdaAnimalInventoryArchiveLinks("<html>No TXT reports</html>", listingUrl, "LE=F"), []);
+  assert.deepEqual(
+    parseUsdaAnimalInventoryArchiveLinks('<a href="https://[::1/catl0726.txt">Broken</a>', listingUrl, "LE=F"),
+    [],
+  );
+  assert.deepEqual(
+    parseUsdaAnimalInventoryArchiveLinks(
+      '<a href="/sites/default/release-files/hogs/hgpg0926.txt">September</a>',
+      "https://esmis.nal.usda.gov/publication/hogs-and-pigs",
+      "HE=F",
+    ),
+    ["https://esmis.nal.usda.gov/sites/default/release-files/hogs/hgpg0926.txt"],
+  );
+});
+
+test("USDA NASS report retrieval reads the archive-selected cattle TXT report", async () => {
+  const reportUrl = "https://esmis.nal.usda.gov/sites/default/release-files/cattle/catl0726.txt";
+  const listingUrl = "https://esmis.nal.usda.gov/publication/cattle";
+  const fixture = readFileSync(new URL("./fixtures/usda-cattle-inventory-2026-07.txt", import.meta.url), "utf8");
+  const originalFetch = globalThis.fetch;
+  const requestedUrls: string[] = [];
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    requestedUrls.push(url);
+    if (url === listingUrl) {
+      return new Response(
+        '<a href="https://[::1/catl0826.txt">Bad</a><a href="/sites/default/release-files/cattle/catl0726.txt">Report</a>',
+        { status: 200 },
+      );
+    }
+    if (url === reportUrl) return new Response(fixture, { status: 200 });
+    return new Response("not found", { status: 404 });
+  };
+
+  try {
+    const result = await fetchUsdaAnimalInventorySeries("LE=F", DEFAULT_NOW);
+    assert.equal(result.status, "available");
+    assert.equal(result.points.at(-1)?.reportingPeriod, "2026-07-01");
+    assert.equal(result.points.at(-1)?.value, 94_200);
+    assert.deepEqual(requestedUrls, [listingUrl, reportUrl]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("USDA NASS report retrieval leaves unavailable when an archive report download fails", async () => {
+  const listingUrl = "https://esmis.nal.usda.gov/publication/hogs-and-pigs";
+  const reportUrl = "https://esmis.nal.usda.gov/sites/default/release-files/hogs/hgpg0926.txt";
+  const originalFetch = globalThis.fetch;
+  const requestedUrls: string[] = [];
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    requestedUrls.push(url);
+    if (url === listingUrl) {
+      return new Response('<a href="/sites/default/release-files/hogs/hgpg0926.txt">September report</a>', {
+        status: 200,
+      });
+    }
+    if (url === reportUrl) return new Response("temporarily unavailable", { status: 503 });
+    return new Response("not found", { status: 404 });
+  };
+
+  try {
+    const result = await fetchUsdaAnimalInventorySeries("HE=F", DEFAULT_NOW);
+    assert.equal(result.status, "unavailable");
+    assert.match(result.reason ?? "", /could not be retrieved or verified/);
+    assert.deepEqual(requestedUrls, [listingUrl, reportUrl]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("USDA NASS dated cattle and hog fixtures preserve table columns and reporting dates", () => {
+  const cattleText = readFileSync(new URL("./fixtures/usda-cattle-inventory-2026-07.txt", import.meta.url), "utf8");
+  const hogText = readFileSync(new URL("./fixtures/usda-hogs-and-pigs-2026-09.txt", import.meta.url), "utf8");
+  const cattle = parseUsdaAnimalInventoryReports([{
+    sourceUrl: "https://esmis.nal.usda.gov/sites/default/release-files/cattle/catl0726.txt",
+    text: cattleText,
+  }], "LE=F", DEFAULT_NOW);
+  const hogs = parseUsdaAnimalInventoryReports([{
+    sourceUrl: "https://esmis.nal.usda.gov/sites/default/release-files/hogs/hgpg0926.txt",
+    text: hogText,
+  }], "HE=F", DEFAULT_NOW);
+
+  assert.equal(cattle.status, "available");
+  assert.deepEqual(cattle.points.map(({ reportingPeriod, value }) => [reportingPeriod, value]), [
+    ["2025-07-01", 94_000],
+    ["2026-07-01", 94_200],
+  ]);
+  assert.equal(cattle.points[0]?.publicationDate, "2026-07-24");
+
+  assert.equal(hogs.status, "available");
+  assert.deepEqual(hogs.points.map(({ reportingPeriod, value }) => [reportingPeriod, value]), [
+    ["2025-03-01", 73_000],
+    ["2025-06-01", 72_600],
+    ["2025-09-01", 72_000],
+    ["2025-12-01", 75_500],
+    ["2026-03-01", 72_800],
+    ["2026-06-01", 72_400],
+    ["2026-09-01", 71_800],
+  ]);
+  assert.equal(hogs.points.find((point) => point.reportingPeriod === "2025-12-01")?.publicationDate, "2026-09-24");
+});
+
+test("USDA NASS stale or malformed reports remain explicitly unavailable", () => {
+  const stale = parseUsdaAnimalInventoryReports([{
+    sourceUrl: "https://esmis.nal.usda.gov/sites/default/release-files/cattle/catl0124.txt",
+    text: "Cattle\nReleased January 30, 2024, by USDA NASS.\nCattle Inventory by Class and Calf Crop - United States: January 1, 2023 and 2024\n1,000 head\nAll cattle and calves ................... 90,000 89,000",
+  }], "LE=F", DEFAULT_NOW);
+  const malformed = parseUsdaAnimalInventoryReports([{
+    sourceUrl: "https://esmis.nal.usda.gov/sites/default/release-files/cattle/catl0726.txt",
+    text: "Cattle\nReleased July 24, 2026, by USDA NASS.\nTable layout changed; no verified inventory row.",
+  }], "LE=F", DEFAULT_NOW);
+
+  assert.equal(stale.status, "unavailable");
+  assert.match(stale.reason ?? "", /No fresh, dated/);
+  assert.equal(malformed.status, "unavailable");
+  assert.match(malformed.reason ?? "", /does not contain a verified comparable inventory value/);
 });
 
 test("NASS hog inventory keeps quarterly periods and explicit report revisions", () => {
