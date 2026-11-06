@@ -17,6 +17,7 @@ import {
   type PendingAlert,
 } from "../lib/alertLogic.js";
 import { runAlertCheckCycle } from "../lib/alertWorkerCycle.js";
+import { sendExpoPushRequest } from "../lib/expoPushRequest.js";
 import {
   getWatchlist,
   addToWatchlist,
@@ -1032,17 +1033,13 @@ async function fetchCurrentPrice(symbol: string): Promise<number | null> {
 }
 
 async function sendExpoPush(alert: PendingAlert, price: number) {
-  const pushRes = await fetch("https://exp.host/--/api/v2/push/send", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Accept": "application/json" },
-    body: JSON.stringify({
-      to: alert.pushToken,
-      title: `${alert.symbol} Price Alert`,
-      body: `${alert.symbol} hit ${price.toFixed(2)} — your target was ${alert.targetPrice.toFixed(2)}`,
-      sound: "default",
-      channelId: "price-alerts",
-      data: { symbol: alert.symbol },
-    }),
+  const pushRes = await sendExpoPushRequest({
+    to: alert.pushToken,
+    title: `${alert.symbol} Price Alert`,
+    body: `${alert.symbol} hit ${price.toFixed(2)} — your target was ${alert.targetPrice.toFixed(2)}`,
+    sound: "default",
+    channelId: "price-alerts",
+    data: { symbol: alert.symbol },
   });
   const body = await pushRes.json().catch(() => null);
   const result = classifyExpoPushResponse(pushRes.ok, body);

@@ -22,6 +22,7 @@ import { randomUUID } from "node:crypto";
 import express from "express";
 import pg from "pg";
 import { runAlertCheckCycle } from "./alertWorkerCycle.ts";
+import { sendExpoPushRequest } from "./expoPushRequest.ts";
 import { createNotificationAlertRouter } from "../routes/notificationAlertRoutes.ts";
 
 const { Pool } = pg;
@@ -246,6 +247,51 @@ test("transient push failure leaves fired_at null so the alert retries next cycl
   );
   assert.equal(retried.delivered, 1, "a later cycle can safely claim and deliver again");
   assert.notEqual(await getFiredAt(alertId), null);
+});
+
+test("timed-out Expo request releases its active alert claim immediately", async () => {
+  const alertId = await insertAlert({
+    symbol: "TIMEOUT",
+    direction: "above",
+    targetPrice: 100,
+  });
+
+  const stats = await runAlertCheckCycle(
+    pool,
+    {
+      fetchPrice: async () => 200,
+      sendPush: async (pendingAlert, price) => {
+        await sendExpoPushRequest(
+          {
+            to: pendingAlert.pushToken,
+            title: `${pendingAlert.symbol} Price Alert`,
+            body: `${pendingAlert.symbol} hit ${price.toFixed(2)}`,
+          },
+          {
+            timeoutMs: 10,
+            fetchImpl: async (_input, init) => new Promise<Response>((_resolve, reject) => {
+              const signal = init?.signal as AbortSignal | undefined;
+              if (!signal) {
+                reject(new Error("request signal was not provided"));
+                return;
+              }
+              signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+            }),
+          },
+        );
+        return { accepted: true, permanentFailure: false };
+      },
+    },
+    { scopeToIds: [alertId] },
+  );
+
+  assert.equal(stats.retriedTransient, 1);
+  assert.equal(await getFiredAt(alertId), null, "timed-out alert remains eligible for retry");
+  const { rows } = await pool.query(
+    "SELECT delivery_claim_token FROM price_alerts WHERE id=$1",
+    [alertId],
+  );
+  assert.equal(rows[0].delivery_claim_token, null, "timed-out request releases its claim");
 });
 
 test("two independent workers racing on one alert send only once", async () => {

@@ -21,6 +21,7 @@ import {
 import { runAlertCheckCycle } from "./lib/alertWorkerCycle.js";
 import { computeHealthStatus } from "./lib/alertWorkerHealth.js";
 import { fetchYahooChartPrice } from "./lib/marketPrice.js";
+import { sendExpoPushRequest } from "./lib/expoPushRequest.js";
 
 const { Pool } = pg;
 
@@ -98,21 +99,17 @@ async function sendExpoPushBatch(
   // while preserving one result per alert ticket.
   for (let offset = 0; offset < requests.length; offset += 100) {
     const chunk = requests.slice(offset, offset + 100);
-    const pushRes = await fetch("https://exp.host/--/api/v2/push/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json" },
-      body: JSON.stringify(
-        chunk.map(({ alert, currentPrice }) => ({
-          to: alert.pushToken,
-          title: `${alert.symbol} Price Alert`,
-          body: `${alert.symbol} hit ${currentPrice.toFixed(2)} — your target was ${alert.targetPrice.toFixed(2)}`,
-          sound: "default",
-          priority: "high",
-          channelId: "price-alerts",
-          data: { alertId: alert.id, symbol: alert.symbol },
-        })),
-      ),
-    });
+    const pushRes = await sendExpoPushRequest(
+      chunk.map(({ alert, currentPrice }) => ({
+        to: alert.pushToken,
+        title: `${alert.symbol} Price Alert`,
+        body: `${alert.symbol} hit ${currentPrice.toFixed(2)} — your target was ${alert.targetPrice.toFixed(2)}`,
+        sound: "default",
+        priority: "high",
+        channelId: "price-alerts",
+        data: { alertId: alert.id, symbol: alert.symbol },
+      })),
+    );
     const body = await pushRes.json().catch(() => null);
     const ticketData = Array.isArray((body as any)?.data) ? body : { data: [] };
 
