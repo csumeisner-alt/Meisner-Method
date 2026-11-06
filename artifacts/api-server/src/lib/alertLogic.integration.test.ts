@@ -342,6 +342,58 @@ test("paused alert is skipped, then resumes and fires without changing its targe
   assert.equal(Number(rows[0].target_price), 100);
 });
 
+test("alert paused after worker selection is not delivered or marked fired", async () => {
+  const pausedAlertId = await insertAlert({
+    symbol: "AAPL",
+    direction: "above",
+    targetPrice: 100,
+  });
+  const independentAlertId = await insertAlert({
+    symbol: "AAPL",
+    direction: "above",
+    targetPrice: 120,
+  });
+  const pushes: string[] = [];
+
+  const stats = await runAlertCheckCycle(
+    pool,
+    {
+      fetchPrice: async () => {
+        // The worker's selection query has already returned both alerts.
+        await pool.query("UPDATE price_alerts SET paused=TRUE WHERE id=$1", [
+          pausedAlertId,
+        ]);
+        return 150;
+      },
+      sendPush: async () => {
+        throw new Error("the worker should send this cycle as a batch");
+      },
+      sendPushBatch: async (requests) => {
+        pushes.push(...requests.map(({ alert }) => alert.id));
+        return new Map(
+          requests.map(({ alert }) => [
+            alert.id,
+            { accepted: true, permanentFailure: false },
+          ]),
+        );
+      },
+    },
+    { scopeToIds: [pausedAlertId, independentAlertId] },
+  );
+
+  assert.equal(stats.checked, 2, "both alerts were selected before the pause");
+  assert.equal(stats.triggered, 2, "both prices crossed their targets");
+  assert.equal(stats.skippedPaused, 1, "the newly paused alert must be skipped");
+  assert.equal(stats.delivered, 1, "the unrelated active alert must still deliver");
+  assert.deepEqual(pushes, [independentAlertId]);
+  assert.equal(await getFiredAt(pausedAlertId), null, "paused alert must remain unfired");
+  assert.notEqual(
+    await getFiredAt(independentAlertId),
+    null,
+    "unrelated active alert must be marked fired",
+  );
+});
+
 test("multiple alerts for different symbols each resolved and fired independently", async () => {
   const aaplId = await insertAlert({ symbol: "AAPL", direction: "above", targetPrice: 100 });
   const tslaId = await insertAlert({ symbol: "TSLA", direction: "below", targetPrice: 300 });

@@ -108,6 +108,15 @@ export async function runAlertCheckCycle(
     fetchPrice: deps.fetchPrice,
     sendPush: deps.sendPush,
     sendPushBatch: deps.sendPushBatch,
+    isAlertActive: async (id) => {
+      const { rows } = await dbPool.query(
+        `SELECT 1
+         FROM price_alerts
+         WHERE id=$1 AND fired_at IS NULL AND paused=FALSE`,
+        [id],
+      );
+      return rows.length > 0;
+    },
     markFired: async (id) => {
       await dbPool.query("UPDATE price_alerts SET fired_at=NOW() WHERE id=$1", [id]);
     },

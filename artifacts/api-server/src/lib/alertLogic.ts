@@ -40,6 +40,8 @@ export interface AlertCheckDeps {
   sendPushBatch?: (
     requests: AlertPushRequest[],
   ) => Promise<Map<string, PushSendResult>>;
+  /** Rechecks mutable alert state immediately before push delivery. */
+  isAlertActive?: (alertId: string) => Promise<boolean>;
   /** Marks the alert as fired (sets fired_at) — must be idempotent. */
   markFired: (alertId: string) => Promise<void>;
 }
@@ -51,6 +53,7 @@ export interface AlertCheckStats {
   firedPermanentFailure: number;
   retriedTransient: number;
   skippedNoPrice: number;
+  skippedPaused: number;
 }
 
 /** True when the current price crosses the alert threshold. */
@@ -105,6 +108,7 @@ export async function processPendingAlerts(
     firedPermanentFailure: 0,
     retriedTransient: 0,
     skippedNoPrice: 0,
+    skippedPaused: 0,
   };
   if (!alerts.length) return stats;
 
@@ -130,10 +134,21 @@ export async function processPendingAlerts(
     triggered.push({ alert, currentPrice: price });
   }
 
+  let requestsToProcess = triggered;
   let batchResults: Map<string, PushSendResult> | null = null;
   if (deps.sendPushBatch && triggered.length > 0) {
+    requestsToProcess = [];
+    for (const request of triggered) {
+      if (deps.isAlertActive && !(await deps.isAlertActive(request.alert.id))) {
+        stats.skippedPaused++;
+        continue;
+      }
+      requestsToProcess.push(request);
+    }
     try {
-      batchResults = await deps.sendPushBatch(triggered);
+      if (requestsToProcess.length > 0) {
+        batchResults = await deps.sendPushBatch(requestsToProcess);
+      }
     } catch {
       batchResults = new Map();
     }
@@ -142,7 +157,7 @@ export async function processPendingAlerts(
   // Handle each ticket independently. A batch can contain one successful
   // message and one retryable failure; never let the first result determine
   // what happens to the rest of the alerts.
-  for (const request of triggered) {
+  for (const request of requestsToProcess) {
     const { alert, currentPrice } = request;
     let result: PushSendResult;
     if (batchResults) {
@@ -151,6 +166,10 @@ export async function processPendingAlerts(
         permanentFailure: false,
       };
     } else {
+      if (deps.isAlertActive && !(await deps.isAlertActive(alert.id))) {
+        stats.skippedPaused++;
+        continue;
+      }
       try {
         result = await deps.sendPush(alert, currentPrice);
       } catch {
