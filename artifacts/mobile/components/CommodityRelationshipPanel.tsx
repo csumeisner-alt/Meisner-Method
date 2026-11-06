@@ -18,7 +18,7 @@ import type {
   CommodityRelationshipResponse,
   CommodityRelationshipResponsePeriod,
   CommodityRelationshipResponsePointsItem,
-  CommodityRelationshipResponseRankTrend,
+  CommodityRelationshipRankTrend,
 } from '@workspace/api-client-react';
 import { ComparisonChart } from '@/components/ComparisonChart';
 import { useColors } from '@/hooks/useColors';
@@ -40,6 +40,13 @@ const PERIODS: { value: CommodityRelationshipResponsePeriod; label: string }[] =
   { value: '5y', label: '5Y' },
   { value: 'max', label: 'MAX' },
 ];
+
+const RANK_TREND_WINDOWS = [
+  { value: '3mo', label: '3M' },
+  { value: '6mo', label: '6M' },
+  { value: '1y', label: '1Y' },
+  { value: '5y', label: '5Y' },
+] as const;
 
 const periodLabel = (period: CommodityRelationshipResponsePeriod) =>
   PERIODS.find((item) => item.value === period)?.label ?? period.toUpperCase();
@@ -252,7 +259,7 @@ function GoldSilverRankTrendChart({
   trend,
   width,
 }: {
-  trend: CommodityRelationshipResponseRankTrend;
+  trend: CommodityRelationshipRankTrend;
   width: number;
 }) {
   const colors = useColors();
@@ -298,7 +305,7 @@ function GoldSilverRankTrendChart({
               height={height}
               pointerEvents="none"
               accessibilityRole="image"
-              accessibilityLabel="Gold to silver ratio trailing one-year historical percentile rank, from 0 to 100."
+              accessibilityLabel={`Gold to silver ratio trailing ${trend.window ?? 'rolling'} historical percentile rank, from 0 to 100.`}
             >
               {[0, 50, 100].map((tick) => (
                 <React.Fragment key={tick}>
@@ -345,7 +352,7 @@ function GoldSilverRankTrendChart({
               accessibilityRole="button"
               accessibilityLabel={selectedPoint
                 ? `${selectedPoint.date}, ${selectedPoint.percentile == null ? 'rank unavailable' : `${selectedPoint.percentile.toFixed(1)}th percentile`}, ${selectedPoint.matchedObservations} exact matched dates`
-                : 'One-year rolling gold to silver historical rank chart'}
+                : `${trend.window ?? 'Rolling'} gold to silver historical rank chart`}
               accessibilityHint="Tap across the chart to inspect the dated percentile rank and sample count."
               onPress={selectPoint}
               style={StyleSheet.absoluteFill}
@@ -357,12 +364,12 @@ function GoldSilverRankTrendChart({
               : `${trend.rankObservations} dated ranks · ${trend.rankStartDate} to ${trend.rankEndDate}`}
           </Text>
           <Text style={{ color: colors.mutedForeground, fontSize: 9, lineHeight: 13 }}>
-            Each point ranks that date against the trailing year using {trend.minWindowObservations}–{trend.maxWindowObservations} exact matched dates.
+            Each point ranks that date against the trailing {trend.window ?? 'selected'} window using {trend.minWindowObservations}–{trend.maxWindowObservations} exact matched dates.
           </Text>
         </>
       ) : (
         <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 14, marginTop: 3 }}>
-          Rolling rank is unavailable: at least 20 exact matched dates in the one-year window are required.
+          Rolling rank is unavailable: at least 20 exact matched dates in the {trend.window ?? 'selected'} window are required.
         </Text>
       )}
     </View>
@@ -371,6 +378,10 @@ function GoldSilverRankTrendChart({
 
 function GoldSilverHistoryRank({ data, width }: { data: CommodityRelationshipResponse; width: number }) {
   const colors = useColors();
+  const [selectedWindow, setSelectedWindow] =
+    useState<(typeof RANK_TREND_WINDOWS)[number]['value']>('1y');
+  const trend = data.rankTrends.find(({ window }) => window === selectedWindow) ?? data.rankTrend;
+  const latestPoint = trend.points.at(-1);
   return (
     <View
       testID="commodity-gold-silver-history-rank"
@@ -413,9 +424,47 @@ function GoldSilverHistoryRank({ data, width }: { data: CommodityRelationshipRes
           );
         })}
       </View>
-      <GoldSilverRankTrendChart trend={data.rankTrend} width={width} />
+      <View testID="commodity-gold-silver-rank-window-selector" style={{ gap: 6 }}>
+        <Text style={{ color: colors.mutedForeground, fontSize: 9 }}>Rolling comparison window</Text>
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          {RANK_TREND_WINDOWS.map(({ value, label }) => {
+            const selected = selectedWindow === value;
+            return (
+              <Pressable
+                key={value}
+                testID={`commodity-gold-silver-rank-window-${value}`}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                accessibilityLabel={`Show ${label} rolling rank`}
+                onPress={() => setSelectedWindow(value)}
+                style={{
+                  flex: 1,
+                  minHeight: 40,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: selected ? colors.primary : colors.border,
+                  backgroundColor: selected ? `${colors.primary}22` : colors.background,
+                }}
+              >
+                <Text style={{ color: selected ? colors.primary : colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>
+                  {label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+      <GoldSilverRankTrendChart trend={trend} width={width} />
+      {latestPoint && (
+        <Text testID="commodity-gold-silver-rank-window-coverage" style={{ color: colors.mutedForeground, fontSize: 9, lineHeight: 13 }}>
+          Latest {trend.window ?? selectedWindow} window: {latestPoint.matchedObservations} exact matched dates
+          {latestPoint.matchedStartDate ? ` · ${latestPoint.matchedStartDate} to ${latestPoint.matchedEndDate}` : ''}
+        </Text>
+      )}
       <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 15 }}>
-        Ranks use exact matched gold and silver prices in the same quote units; missing values are not estimated. At least 20 matched dates are required. Historical ranks are descriptive, not predictions or causal explanations.
+        Ranks use exact matched gold and silver prices in the same quote units; missing values are not estimated. At least 20 matched dates are required. Historical ranks are descriptive only, not predictions or causal explanations.
       </Text>
     </View>
   );

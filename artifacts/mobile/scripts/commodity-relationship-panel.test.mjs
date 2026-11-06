@@ -34,9 +34,15 @@ assert.match(panel, /data\.rankTrend/);
 assert.match(panel, /commodity-gold-silver-rank-trend/);
 assert.match(panel, /commodity-gold-silver-rank-trend-line/);
 assert.match(panel, /commodity-gold-silver-rank-trend-touch-target/);
-assert.match(panel, /trailing year using/);
+assert.match(panel, /trailing \{trend\.window \?\? 'selected'\} window using/);
 assert.match(panel, /exact matched dates/);
 assert.match(panel, /Historical ranks are descriptive/);
+assert.match(panel, /data\.rankTrends\.find/);
+assert.match(panel, /commodity-gold-silver-rank-window-\$\{value\}/);
+assert.match(panel, /commodity-gold-silver-rank-window-coverage/);
+for (const window of ["3mo", "6mo", "1y", "5y"]) {
+  assert.match(panel, new RegExp(`value: '${window}'`));
+}
 for (const period of ["1mo", "3mo", "6mo", "1y", "5y", "max"]) {
   assert.match(panel, new RegExp(`commodity-gold-silver-rank-\\$\\{rank\\.period\\}`));
 }

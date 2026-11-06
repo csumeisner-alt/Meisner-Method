@@ -108,6 +108,19 @@ export const getCommodityRelationshipResponseRankTrendPointsItemPercentileMax = 
 
 export const getCommodityRelationshipResponseRankTrendPointsItemMatchedObservationsMin = 0;
 
+export const getCommodityRelationshipResponseRankTrendsItemMatchedObservationsMin = 0;
+
+export const getCommodityRelationshipResponseRankTrendsItemRankObservationsMin = 0;
+
+export const getCommodityRelationshipResponseRankTrendsItemMinWindowObservationsMin = 0;
+
+export const getCommodityRelationshipResponseRankTrendsItemMaxWindowObservationsMin = 0;
+
+export const getCommodityRelationshipResponseRankTrendsItemPointsItemPercentileMin = 0;
+export const getCommodityRelationshipResponseRankTrendsItemPointsItemPercentileMax = 100;
+
+export const getCommodityRelationshipResponseRankTrendsItemPointsItemMatchedObservationsMin = 0;
+
 
 
 export const GetCommodityRelationshipResponse = zod.object({
@@ -169,7 +182,7 @@ export const GetCommodityRelationshipResponse = zod.object({
   "matchedEndDate": zod.coerce.date().nullable()
 })).describe('Historical relative-value ranks for supported windows, populated for the gold\/silver ratio.'),
   "rankTrend": zod.object({
-  "window": zod.enum(['1y']).nullable(),
+  "window": zod.enum(['3mo', '6mo', '1y', '5y']).nullable(),
   "matchedObservations": zod.number().min(getCommodityRelationshipResponseRankTrendMatchedObservationsMin),
   "matchedStartDate": zod.coerce.date().nullable(),
   "matchedEndDate": zod.coerce.date().nullable(),
@@ -181,9 +194,29 @@ export const GetCommodityRelationshipResponse = zod.object({
   "points": zod.array(zod.object({
   "date": zod.coerce.date(),
   "percentile": zod.number().min(getCommodityRelationshipResponseRankTrendPointsItemPercentileMin).max(getCommodityRelationshipResponseRankTrendPointsItemPercentileMax).nullable(),
-  "matchedObservations": zod.number().min(getCommodityRelationshipResponseRankTrendPointsItemMatchedObservationsMin)
+  "matchedObservations": zod.number().min(getCommodityRelationshipResponseRankTrendPointsItemMatchedObservationsMin),
+  "matchedStartDate": zod.coerce.date().nullable(),
+  "matchedEndDate": zod.coerce.date().nullable()
 }))
-}).describe('Dated one-year rolling historical percentile ranks from exact matched, same-unit prices; populated for the gold\/silver ratio.'),
+}).describe('Dated rolling historical percentile ranks from exact matched, same-unit prices; populated for the gold\/silver ratio.'),
+  "rankTrends": zod.array(zod.object({
+  "window": zod.enum(['3mo', '6mo', '1y', '5y']).nullable(),
+  "matchedObservations": zod.number().min(getCommodityRelationshipResponseRankTrendsItemMatchedObservationsMin),
+  "matchedStartDate": zod.coerce.date().nullable(),
+  "matchedEndDate": zod.coerce.date().nullable(),
+  "rankObservations": zod.number().min(getCommodityRelationshipResponseRankTrendsItemRankObservationsMin),
+  "rankStartDate": zod.coerce.date().nullable(),
+  "rankEndDate": zod.coerce.date().nullable(),
+  "minWindowObservations": zod.number().min(getCommodityRelationshipResponseRankTrendsItemMinWindowObservationsMin),
+  "maxWindowObservations": zod.number().min(getCommodityRelationshipResponseRankTrendsItemMaxWindowObservationsMin),
+  "points": zod.array(zod.object({
+  "date": zod.coerce.date(),
+  "percentile": zod.number().min(getCommodityRelationshipResponseRankTrendsItemPointsItemPercentileMin).max(getCommodityRelationshipResponseRankTrendsItemPointsItemPercentileMax).nullable(),
+  "matchedObservations": zod.number().min(getCommodityRelationshipResponseRankTrendsItemPointsItemMatchedObservationsMin),
+  "matchedStartDate": zod.coerce.date().nullable(),
+  "matchedEndDate": zod.coerce.date().nullable()
+}))
+}).describe('Dated rolling historical percentile ranks from exact matched, same-unit prices; populated for the gold\/silver ratio.')).describe('Rolling historical percentile ranks for supported windows, populated for the gold\/silver ratio.'),
   "divergence": zod.object({
   "status": zod.enum(['detected', 'not_detected', 'unavailable']),
   "firstWindowReturnPercent": zod.number().nullable(),

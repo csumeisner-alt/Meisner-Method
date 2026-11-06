@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { CommodityRelationshipRankTrend } from './commodityRelationshipRankTrend';
 import type { CommodityRelationshipResponseAiInterpretation } from './commodityRelationshipResponseAiInterpretation';
 import type { CommodityRelationshipResponseCoverage } from './commodityRelationshipResponseCoverage';
 import type { CommodityRelationshipResponseDivergence } from './commodityRelationshipResponseDivergence';
@@ -13,7 +14,6 @@ import type { CommodityRelationshipResponseMethod } from './commodityRelationshi
 import type { CommodityRelationshipResponseMetrics } from './commodityRelationshipResponseMetrics';
 import type { CommodityRelationshipResponsePeriod } from './commodityRelationshipResponsePeriod';
 import type { CommodityRelationshipResponsePointsItem } from './commodityRelationshipResponsePointsItem';
-import type { CommodityRelationshipResponseRankTrend } from './commodityRelationshipResponseRankTrend';
 import type { CommodityRelationshipResponseRelationship } from './commodityRelationshipResponseRelationship';
 import type { CommodityRelationshipResponseSources } from './commodityRelationshipResponseSources';
 import type { CommodityRelationshipResponseStatus } from './commodityRelationshipResponseStatus';
@@ -28,8 +28,9 @@ export interface CommodityRelationshipResponse {
   metrics: CommodityRelationshipResponseMetrics;
   /** Historical relative-value ranks for supported windows, populated for the gold/silver ratio. */
   historyRanks: CommodityRelationshipResponseHistoryRanksItem[];
-  /** Dated one-year rolling historical percentile ranks from exact matched, same-unit prices; populated for the gold/silver ratio. */
-  rankTrend: CommodityRelationshipResponseRankTrend;
+  rankTrend: CommodityRelationshipRankTrend;
+  /** Rolling historical percentile ranks for supported windows, populated for the gold/silver ratio. */
+  rankTrends: CommodityRelationshipRankTrend[];
   divergence: CommodityRelationshipResponseDivergence;
   points: CommodityRelationshipResponsePointsItem[];
   sources: CommodityRelationshipResponseSources;

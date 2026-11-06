@@ -6,7 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type CommodityRelationshipResponseRankTrendPointsItem = {
+export interface CommodityRelationshipRankTrendPoint {
   date: Date;
   /**
      * @minimum 0
@@ -15,4 +15,6 @@ export type CommodityRelationshipResponseRankTrendPointsItem = {
   percentile: number | null;
   /** @minimum 0 */
   matchedObservations: number;
-};
+  matchedStartDate: Date | null;
+  matchedEndDate: Date | null;
+}

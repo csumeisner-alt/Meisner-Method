@@ -4,6 +4,7 @@ import {
   calculateCommodityRelationshipHistoryRanks,
   calculateCommodityRelationshipRankTrend,
   COMMODITY_RELATIONSHIPS,
+  COMMODITY_RELATIONSHIP_RANK_TREND_WINDOWS,
   isCommodityRelationshipId,
   isCommodityRelationshipPeriod,
   type CommodityRelationshipPeriod,
@@ -107,11 +108,21 @@ export async function respondWithCommodityRelationship(
       secondRankHistory?.points ?? [],
     )
     : [];
-  const rankTrend = calculateCommodityRelationshipRankTrend(
-    relationship,
-    firstRankHistory?.points ?? [],
-    secondRankHistory?.points ?? [],
-  );
+  const rankTrends = needsHistoryRanks
+    ? COMMODITY_RELATIONSHIP_RANK_TREND_WINDOWS.map((window) =>
+      calculateCommodityRelationshipRankTrend(
+        relationship,
+        firstRankHistory?.points ?? [],
+        secondRankHistory?.points ?? [],
+        window,
+      ))
+    : [];
+  const rankTrend = rankTrends.find(({ window }) => window === "1y")
+    ?? calculateCommodityRelationshipRankTrend(
+      relationship,
+      firstRankHistory?.points ?? [],
+      secondRankHistory?.points ?? [],
+    );
   if (result.status === "unavailable") {
     const failures = [
       firstResult.status === "rejected" ? `${relationship.first.name} history is unavailable.` : null,
@@ -146,6 +157,7 @@ export async function respondWithCommodityRelationship(
     ...result,
     historyRanks,
     rankTrend,
+    rankTrends,
     sources: {
       provider: "Yahoo Finance",
       retrievedAt: dependencies.now().toISOString(),

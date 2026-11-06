@@ -881,6 +881,30 @@ async function buildCommodityRelationshipPanelBundle() {
               maxWindowObservations: 0,
               points: [],
             },
+          rankTrends: relationshipId === "gold-silver-ratio"
+            ? ["3mo", "6mo", "1y", "5y"].map((window, windowIndex) => ({
+              window,
+              matchedObservations: dates.length,
+              matchedStartDate: dates[0],
+              matchedEndDate: dates.at(-1),
+              rankObservations: Math.max(0, dates.length - 19),
+              rankStartDate: dates[19] ?? null,
+              rankEndDate: dates.length >= 20 ? dates.at(-1) : null,
+              minWindowObservations: dates.length >= 20 ? 20 : 0,
+              maxWindowObservations: dates.length >= 20 ? [20, 22, 24, 24][windowIndex] : 0,
+              points: dates.map((date, index) => {
+                const matchedObservations = Math.min(index + 1, [20, 22, 24, 24][windowIndex]);
+                const startIndex = Math.max(0, index - matchedObservations + 1);
+                return {
+                  date,
+                  percentile: index < 19 ? null : 50 + index,
+                  matchedObservations,
+                  matchedStartDate: dates[startIndex],
+                  matchedEndDate: date,
+                };
+              }),
+            }))
+            : [],
           coverage: {
             matchedObservations: dates.length, returnObservations: dates.length - 1,
             matchedStartDate: dates[0], matchedEndDate: dates.at(-1),
@@ -938,6 +962,15 @@ async function buildCommodityRelationshipPanelBundle() {
                 maxWindowObservations: 0,
                 points: data.rankTrend.points.map((point) => ({ ...point, percentile: null })),
               },
+              rankTrends: data.rankTrends.map((trend) => ({
+                ...trend,
+                rankObservations: 0,
+                rankStartDate: null,
+                rankEndDate: null,
+                minWindowObservations: 0,
+                maxWindowObservations: 0,
+                points: trend.points.map((point) => ({ ...point, percentile: null })),
+              })),
             },
             isLoading: false, isError: false, refetch,
           };
@@ -1316,6 +1349,18 @@ test("rendered commodity relationship panel supports selection, chart touch, and
         await browser.evaluate(`Boolean(document.querySelector('[data-testid="commodity-gold-silver-rank-trend-touch-target"]'))`),
         true,
         "The rank trend should expose an accessible touch target.",
+      );
+      await browser.evaluate(`document.querySelector('[data-testid="commodity-gold-silver-rank-window-3mo"]')?.click()`);
+      await waitForBrowserValue(
+        browser,
+        `document.querySelector('[data-testid="commodity-gold-silver-rank-trend"]')?.textContent.includes("ROLLING RANK · 3MO WINDOW") && document.querySelector('[data-testid="commodity-gold-silver-rank-window-coverage"]')?.textContent.includes("20 exact matched dates")`,
+        "Selecting a shorter rank window should update the chart and its matched sample coverage.",
+      );
+      await browser.evaluate(`document.querySelector('[data-testid="commodity-gold-silver-rank-window-5y"]')?.click()`);
+      await waitForBrowserValue(
+        browser,
+        `document.querySelector('[data-testid="commodity-gold-silver-rank-trend"]')?.textContent.includes("ROLLING RANK · 5Y WINDOW") && document.querySelector('[data-testid="commodity-gold-silver-rank-window-coverage"]')?.textContent.includes("24 exact matched dates")`,
+        "Selecting a longer rank window should update its exact matched sample coverage.",
       );
       await browser.evaluate(`document.querySelector('[data-testid="commodity-relationship-select-oil-gold"]')?.click()`);
       await waitForBrowserValue(

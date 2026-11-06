@@ -1,6 +1,10 @@
 export const COMMODITY_RELATIONSHIP_PERIODS = ["1mo", "3mo", "6mo", "1y", "5y", "max"] as const;
 export type CommodityRelationshipPeriod = (typeof COMMODITY_RELATIONSHIP_PERIODS)[number];
 
+export const COMMODITY_RELATIONSHIP_RANK_TREND_WINDOWS = ["3mo", "6mo", "1y", "5y"] as const;
+export type CommodityRelationshipRankTrendWindow =
+  (typeof COMMODITY_RELATIONSHIP_RANK_TREND_WINDOWS)[number];
+
 export interface CommodityRelationshipInstrument {
   symbol: string;
   name: string;
@@ -167,10 +171,12 @@ export interface CommodityRelationshipRankTrendPoint {
   date: string;
   percentile: number | null;
   matchedObservations: number;
+  matchedStartDate: string | null;
+  matchedEndDate: string | null;
 }
 
 export interface CommodityRelationshipRankTrend {
-  window: "1y" | null;
+  window: CommodityRelationshipRankTrendWindow | null;
   matchedObservations: number;
   matchedStartDate: string | null;
   matchedEndDate: string | null;
@@ -187,7 +193,12 @@ const CORRELATION_WINDOW = 20;
 const DIVERGENCE_THRESHOLD_PERCENTAGE_POINTS = 5;
 const DIVERGENCE_MAX_CORRELATION = 0.25;
 const RELATIVE_VALUE_PERCENTILE_MIN_OBSERVATIONS = 20;
-const RANK_TREND_WINDOW_MONTHS = 12;
+const RANK_TREND_WINDOW_MONTHS: Record<CommodityRelationshipRankTrendWindow, number> = {
+  "3mo": 3,
+  "6mo": 6,
+  "1y": 12,
+  "5y": 60,
+};
 
 function isValidDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -492,6 +503,7 @@ export function calculateCommodityRelationshipRankTrend(
   relationship: CommodityRelationshipDefinition,
   firstInput: DatedCommodityClose[],
   secondInput: DatedCommodityClose[],
+  window: CommodityRelationshipRankTrendWindow = "1y",
 ): CommodityRelationshipRankTrend {
   const supportsRankTrend = relationship.id === "gold-silver-ratio"
     && relationship.first.unit === relationship.second.unit;
@@ -523,20 +535,22 @@ export function calculateCommodityRelationshipRankTrend(
 
   let windowStart = 0;
   const points = matched.map((point, index) => {
-    const firstWindowDate = subtractCalendarMonths(point.date, RANK_TREND_WINDOW_MONTHS);
+    const firstWindowDate = subtractCalendarMonths(point.date, RANK_TREND_WINDOW_MONTHS[window]);
     while (matched[windowStart]!.date < firstWindowDate) windowStart += 1;
     const observations = matched.slice(windowStart, index + 1);
     return {
       date: point.date,
       percentile: empiricalPercentileRank(point.ratio, observations.map(({ ratio }) => ratio)),
       matchedObservations: observations.length,
+      matchedStartDate: observations[0]?.date ?? null,
+      matchedEndDate: point.date,
     };
   });
   const rankPoints = points.filter((point) => point.percentile !== null);
   const rankWindowSizes = rankPoints.map(({ matchedObservations }) => matchedObservations);
 
   return {
-    window: "1y",
+    window,
     matchedObservations: matched.length,
     matchedStartDate: matched[0]?.date ?? null,
     matchedEndDate: matched.at(-1)?.date ?? null,

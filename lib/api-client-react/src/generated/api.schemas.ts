@@ -109,44 +109,6 @@ export type CommodityRelationshipResponseHistoryRanksItem = {
   matchedEndDate: string | null;
 };
 
-export type CommodityRelationshipResponseRankTrendWindow = typeof CommodityRelationshipResponseRankTrendWindow[keyof typeof CommodityRelationshipResponseRankTrendWindow] | null;
-
-
-export const CommodityRelationshipResponseRankTrendWindow = {
-  '1y': '1y',
-} as const;
-
-export type CommodityRelationshipResponseRankTrendPointsItem = {
-  date: string;
-  /**
-     * @minimum 0
-     * @maximum 100
-     */
-  percentile: number | null;
-  /** @minimum 0 */
-  matchedObservations: number;
-};
-
-/**
- * Dated one-year rolling historical percentile ranks from exact matched, same-unit prices; populated for the gold/silver ratio.
- */
-export type CommodityRelationshipResponseRankTrend = {
-  window: CommodityRelationshipResponseRankTrendWindow;
-  /** @minimum 0 */
-  matchedObservations: number;
-  matchedStartDate: string | null;
-  matchedEndDate: string | null;
-  /** @minimum 0 */
-  rankObservations: number;
-  rankStartDate: string | null;
-  rankEndDate: string | null;
-  /** @minimum 0 */
-  minWindowObservations: number;
-  /** @minimum 0 */
-  maxWindowObservations: number;
-  points: CommodityRelationshipResponseRankTrendPointsItem[];
-};
-
 export type CommodityRelationshipResponseDivergenceStatus = typeof CommodityRelationshipResponseDivergenceStatus[keyof typeof CommodityRelationshipResponseDivergenceStatus];
 
 
@@ -205,6 +167,49 @@ export type CommodityRelationshipResponseAiInterpretation = {
   text: string | null;
 };
 
+export type CommodityRelationshipRankTrendWindow = typeof CommodityRelationshipRankTrendWindow[keyof typeof CommodityRelationshipRankTrendWindow] | null;
+
+
+export const CommodityRelationshipRankTrendWindow = {
+  '3mo': '3mo',
+  '6mo': '6mo',
+  '1y': '1y',
+  '5y': '5y',
+} as const;
+
+export interface CommodityRelationshipRankTrendPoint {
+  date: string;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  percentile: number | null;
+  /** @minimum 0 */
+  matchedObservations: number;
+  matchedStartDate: string | null;
+  matchedEndDate: string | null;
+}
+
+/**
+ * Dated rolling historical percentile ranks from exact matched, same-unit prices; populated for the gold/silver ratio.
+ */
+export interface CommodityRelationshipRankTrend {
+  window: CommodityRelationshipRankTrendWindow;
+  /** @minimum 0 */
+  matchedObservations: number;
+  matchedStartDate: string | null;
+  matchedEndDate: string | null;
+  /** @minimum 0 */
+  rankObservations: number;
+  rankStartDate: string | null;
+  rankEndDate: string | null;
+  /** @minimum 0 */
+  minWindowObservations: number;
+  /** @minimum 0 */
+  maxWindowObservations: number;
+  points: CommodityRelationshipRankTrendPoint[];
+}
+
 export interface CommodityRelationshipResponse {
   relationship: CommodityRelationshipResponseRelationship;
   period: CommodityRelationshipResponsePeriod;
@@ -215,8 +220,9 @@ export interface CommodityRelationshipResponse {
   metrics: CommodityRelationshipResponseMetrics;
   /** Historical relative-value ranks for supported windows, populated for the gold/silver ratio. */
   historyRanks: CommodityRelationshipResponseHistoryRanksItem[];
-  /** Dated one-year rolling historical percentile ranks from exact matched, same-unit prices; populated for the gold/silver ratio. */
-  rankTrend: CommodityRelationshipResponseRankTrend;
+  rankTrend: CommodityRelationshipRankTrend;
+  /** Rolling historical percentile ranks for supported windows, populated for the gold/silver ratio. */
+  rankTrends: CommodityRelationshipRankTrend[];
   divergence: CommodityRelationshipResponseDivergence;
   points: CommodityRelationshipResponsePointsItem[];
   sources: CommodityRelationshipResponseSources;
