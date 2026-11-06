@@ -17,9 +17,12 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { once } from "node:events";
 import { randomUUID } from "node:crypto";
+import express from "express";
 import pg from "pg";
 import { runAlertCheckCycle } from "./alertWorkerCycle.ts";
+import { createNotificationAlertRouter } from "../routes/notificationAlertRoutes.ts";
 
 const { Pool } = pg;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -399,4 +402,110 @@ test("multiple alerts for the same symbol fire independently by target", async (
   assert.deepEqual(firedIds, [lowAlertId]);
   assert.notEqual(await getFiredAt(lowAlertId), null);
   assert.equal(await getFiredAt(highAlertId), null);
+});
+
+test("notification alert routes create independent same-ticker alerts and enforce installation ownership on edits", async () => {
+  const ownerInstallationId = `test-owner-${randomUUID()}`;
+  const otherInstallationId = `test-other-${randomUUID()}`;
+  const ownerPushToken = `ExponentPushToken[owner-${randomUUID()}]`;
+  const otherPushToken = `ExponentPushToken[other-${randomUUID()}]`;
+  const app = express();
+  app.use(express.json());
+  app.use(createNotificationAlertRouter(
+    { query: (sql, values) => pool.query(sql, values) },
+    (_req, _res, next) => next(),
+    randomUUID,
+  ));
+  const server = app.listen(0, "127.0.0.1");
+
+  try {
+    await once(server, "listening");
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const baseUrl = `http://127.0.0.1:${address.port}/notifications/alerts`;
+
+    const request = async (url: string, method: string, body?: Record<string, unknown>) => {
+      const response = await fetch(url, {
+        method,
+        headers: { "content-type": "application/json" },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+      return { status: response.status, body: await response.json() as any };
+    };
+    const createAlert = (installationId: string, pushToken: string, targetPrice: number) =>
+      request(baseUrl, "POST", {
+        installationId,
+        symbol: " aapl ",
+        direction: "above",
+        targetPrice,
+        pushToken,
+      });
+    const listAlerts = async (installationId: string) => {
+      const result = await request(
+        `${baseUrl}?installationId=${encodeURIComponent(installationId)}`,
+        "GET",
+      );
+      assert.equal(result.status, 200);
+      return result.body as Array<{ id: string; symbol: string; direction: string; targetPrice: number }>;
+    };
+
+    const first = await createAlert(ownerInstallationId, ownerPushToken, 100);
+    const second = await createAlert(ownerInstallationId, ownerPushToken, 200);
+    const other = await createAlert(otherInstallationId, otherPushToken, 300);
+    assert.equal(first.status, 200);
+    assert.equal(second.status, 200);
+    assert.equal(other.status, 200);
+    assert.notEqual(first.body.id, second.body.id, "same-ticker alerts must have distinct IDs");
+    assert.equal(first.body.symbol, "AAPL");
+    assert.equal(second.body.symbol, "AAPL");
+
+    const crossInstallationEdit = await request(
+      `${baseUrl}/${first.body.id}`,
+      "PUT",
+      {
+        installationId: otherInstallationId,
+        direction: "below",
+        targetPrice: 50,
+        pushToken: otherPushToken,
+      },
+    );
+    assert.equal(crossInstallationEdit.status, 404, "another installation cannot edit the alert");
+
+    const ownEdit = await request(`${baseUrl}/${first.body.id}`, "PUT", {
+      installationId: ownerInstallationId,
+      direction: "below",
+      targetPrice: 125,
+      pushToken: ownerPushToken,
+    });
+    assert.equal(ownEdit.status, 200, "the owning installation can edit its alert");
+    assert.equal(ownEdit.body.id, first.body.id);
+    assert.equal(ownEdit.body.direction, "below");
+    assert.equal(ownEdit.body.targetPrice, 125);
+
+    assert.deepEqual(
+      (await listAlerts(ownerInstallationId))
+        .map(({ id, symbol, direction, targetPrice }) => ({ id, symbol, direction, targetPrice }))
+        .sort((a, b) => a.id.localeCompare(b.id)),
+      [
+        { id: first.body.id, symbol: "AAPL", direction: "below", targetPrice: 125 },
+        { id: second.body.id, symbol: "AAPL", direction: "above", targetPrice: 200 },
+      ].sort((a, b) => a.id.localeCompare(b.id)),
+      "editing one same-ticker alert must leave the owner's other alert unchanged",
+    );
+    assert.deepEqual(
+      (await listAlerts(otherInstallationId))
+        .map(({ id, symbol, direction, targetPrice }) => ({ id, symbol, direction, targetPrice })),
+      [{ id: other.body.id, symbol: "AAPL", direction: "above", targetPrice: 300 }],
+      "a foreign edit attempt must leave the other installation's alert unchanged",
+    );
+  } finally {
+    server.close();
+    await once(server, "close");
+    await pool.query("DELETE FROM price_alerts WHERE installation_id = ANY($1::text[])", [
+      [ownerInstallationId, otherInstallationId],
+    ]);
+    await pool.query("DELETE FROM push_devices WHERE installation_id = ANY($1::text[])", [
+      [ownerInstallationId, otherInstallationId],
+    ]);
+  }
 });
