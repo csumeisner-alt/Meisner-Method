@@ -8,6 +8,7 @@ import {
   findComparableEtfScoreChange,
   parseEtfScoreSnapshots,
   persistEtfScoreSnapshot,
+  removeEtfScoreSnapshot,
 } from "../etfResearchScore.ts";
 
 const completeInput = {
@@ -958,4 +959,40 @@ test("clearing ETF score snapshots waits for queued saves before removing histor
   await Promise.all([save, clear]);
   assert.equal(removeStarted, true);
   assert.equal(storedValue, null);
+});
+
+test("removing one ETF score snapshot preserves the rest of the saved history", async () => {
+  const result = calculateEtfResearchScore(completeInput);
+  const createSnapshot = (symbol: string, recordedAt: string) =>
+    createEtfScoreSnapshot({
+      symbol,
+      score: result.score,
+      components: result.components,
+      sourceContexts: Object.fromEntries(
+        result.components.filter((component) => component.score !== null)
+          .map((component) => [component.id, `provider:${component.id}`]),
+      ),
+      inputAsOf: Object.fromEntries(
+        result.components.filter((component) => component.score !== null)
+          .map((component) => [component.id, ["2026-10-29T12:00:00Z"]]),
+      ),
+      recordedAt,
+    });
+  const firstSpy = createSnapshot("SPY", "2026-10-30T12:00:00Z");
+  const voo = createSnapshot("VOO", "2026-10-30T12:00:00Z");
+  const secondSpy = createSnapshot("SPY", "2026-10-31T12:00:00Z");
+  assert.ok(firstSpy && voo && secondSpy);
+
+  let storedValue: string | null = JSON.stringify([firstSpy, voo, secondSpy]);
+  const remaining = await removeEtfScoreSnapshot(
+    firstSpy,
+    async () => storedValue,
+    async (value) => { storedValue = value; },
+  );
+
+  assert.deepEqual(
+    remaining.map(({ symbol, recordedAt }) => `${symbol}:${recordedAt}`),
+    [`VOO:${voo.recordedAt}`, `SPY:${secondSpy.recordedAt}`],
+  );
+  assert.deepEqual(parseEtfScoreSnapshots(storedValue), remaining);
 });

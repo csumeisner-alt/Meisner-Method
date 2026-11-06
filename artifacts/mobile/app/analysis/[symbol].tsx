@@ -81,10 +81,12 @@ import {
   findComparableEtfScoreChange,
   parseEtfScoreSnapshots,
   persistEtfScoreSnapshot,
+  removeEtfScoreSnapshot,
 } from '@/lib/etfResearchScore';
 import type {
   EtfScoreChangeResult,
   EtfScoreHistoryEntry,
+  EtfScoreSnapshot,
   EtfScoreComponentId,
 } from '@/lib/etfResearchScore';
 import type { HeatMapEtfHoldingSnapshot } from '@/lib/heatMapDetail';
@@ -1865,15 +1867,21 @@ function EtfAnalysisSections({
   const [scoreChangeResult, setScoreChangeResult] = useState<EtfScoreChangeResult | null>(null);
   const [scoreHistoryEntries, setScoreHistoryEntries] = useState<EtfScoreHistoryEntry[]>([]);
   const [scoreHistoryReady, setScoreHistoryReady] = useState(false);
+  const [currentScoreSnapshot, setCurrentScoreSnapshot] = useState<EtfScoreSnapshot | null>(null);
   const [scoreHistoryClearing, setScoreHistoryClearing] = useState(false);
   const [scoreHistoryCleared, setScoreHistoryCleared] = useState(false);
   const [scoreHistoryClearError, setScoreHistoryClearError] = useState('');
+  const [scoreHistoryRemoving, setScoreHistoryRemoving] = useState<string | null>(null);
+  const [scoreHistoryRemoveError, setScoreHistoryRemoveError] = useState('');
+  const [scoreCardHidden, setScoreCardHidden] = useState(false);
   useEffect(() => {
     let cancelled = false;
     setScoreHistoryReady(false);
     setScoreHistoryEntries([]);
+    setCurrentScoreSnapshot(null);
     setScoreHistoryCleared(false);
     setScoreHistoryClearError('');
+    setScoreHistoryRemoveError('');
     const saveAndCompareScoreHistory = async () => {
       try {
         const now = new Date().toISOString();
@@ -1886,6 +1894,7 @@ function EtfAnalysisSections({
           inputAsOf: scoreInputAsOf,
           recordedAt: now,
         });
+        if (!cancelled) setCurrentScoreSnapshot(snapshot);
         const history = snapshot
           ? await persistEtfScoreSnapshot(
             snapshot,
@@ -1930,6 +1939,42 @@ function EtfAnalysisSections({
       setScoreHistoryClearing(false);
     }
   }, [scoreHistoryClearing]);
+  const confirmRemoveScoreHistoryEntry = useCallback((snapshot: EtfScoreSnapshot) => {
+    const date = new Date(snapshot.recordedAt).toLocaleDateString();
+    const removeEntry = async () => {
+      if (scoreHistoryRemoving !== null) return;
+      setScoreHistoryRemoving(snapshot.recordedAt);
+      setScoreHistoryRemoveError('');
+      try {
+        const history = await removeEtfScoreSnapshot(
+          snapshot,
+          () => AsyncStorage.getItem(ETF_SCORE_SNAPSHOTS_KEY),
+          (value) => AsyncStorage.setItem(ETF_SCORE_SNAPSHOTS_KEY, value),
+        );
+        setScoreHistoryEntries(buildEtfScoreHistory(symbol, null, history));
+        setScoreChangeResult(currentScoreSnapshot
+          ? findComparableEtfScoreChange(currentScoreSnapshot, history)
+          : { status: 'unavailable' });
+        setScoreHistoryCleared(false);
+      } catch {
+        setScoreHistoryRemoveError('This saved score could not be removed. Please try again.');
+      } finally {
+        setScoreHistoryRemoving(null);
+      }
+    };
+    const title = 'Remove this saved score?';
+    const message = `This permanently removes the ${date} score from this device. Other ETF score history stays saved.`;
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm(message)) {
+        void removeEntry();
+      }
+      return;
+    }
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove score', style: 'destructive', onPress: () => void removeEntry() },
+    ]);
+  }, [currentScoreSnapshot, scoreHistoryRemoving, symbol]);
   const confirmClearScoreHistory = useCallback(() => {
     const title = 'Clear saved score history?';
     const message = 'This permanently removes saved ETF score snapshots from this device. Comparison tickers and other ETF data will stay saved.';
@@ -2689,13 +2734,46 @@ function EtfAnalysisSections({
       <EtfSectionAnchor sectionId="overview" title="Overview" onLayout={onSectionLayout} onRef={onSectionRef} />
       <EtfMarketIntelligence quotes={marketQuotes} updatedAt={marketUpdatedAt} />
       <EtfCardEntrance>
+      {scoreCardHidden ? (
+        <View testID="etf-score-card-hidden" style={[recStyles.hero, {
+          backgroundColor: colors.card,
+          borderColor: colors.border,
+          paddingVertical: 12,
+        }]}>
+          <Pressable
+            testID="etf-score-card-show"
+            accessibilityRole="button"
+            accessibilityLabel="Show ETF research score card"
+            onPress={() => setScoreCardHidden(false)}
+            style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+          >
+            <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 13 }}>
+              Show ETF research score
+            </Text>
+          </Pressable>
+        </View>
+      ) : (
       <View style={[recStyles.hero, {
         backgroundColor: colors.card,
         borderColor: profileScore.score == null ? colors.primary : etfScoreColor(profileScore.score),
       }]}>
-        <Text style={[recStyles.actionLabel, { color: colors.primary, fontFamily: 'Inter_600SemiBold', textAlign: 'center' }]}>
-          MEISNER ETF RESEARCH SCORE
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={[recStyles.actionLabel, { color: colors.primary, fontFamily: 'Inter_600SemiBold', textAlign: 'center', flex: 1 }]}>
+            MEISNER ETF RESEARCH SCORE
+          </Text>
+          <Pressable
+            testID="etf-score-card-hide"
+            accessibilityRole="button"
+            accessibilityLabel="Hide ETF research score card"
+            onPress={() => setScoreCardHidden(true)}
+            hitSlop={8}
+            style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>
+              Hide
+            </Text>
+          </Pressable>
+        </View>
         <View style={{ alignItems: 'center', marginTop: 10 }}>
           {profileScore.score == null ? (
             <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 18 }}>Not scored</Text>
@@ -2792,9 +2870,21 @@ function EtfAnalysisSections({
                           {comparisonLabel}
                         </Text>
                       </View>
-                      <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>
-                        {entry.snapshot.score}/100
-                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>
+                          {entry.snapshot.score}/100
+                        </Text>
+                        <Pressable
+                          testID={`etf-score-history-remove-${entry.snapshot.recordedAt}`}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Remove score history from ${new Date(entry.snapshot.recordedAt).toLocaleDateString()}`}
+                          disabled={scoreHistoryRemoving !== null}
+                          onPress={() => confirmRemoveScoreHistoryEntry(entry.snapshot)}
+                          style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', opacity: scoreHistoryRemoving === entry.snapshot.recordedAt ? 0.5 : 1 }}
+                        >
+                          <Feather name="trash-2" size={14} color={colors.sellColor} />
+                        </Pressable>
+                      </View>
                     </View>
                   );
                 })}
@@ -2819,6 +2909,11 @@ function EtfAnalysisSections({
             {!!scoreHistoryClearError && (
               <Text accessibilityRole="alert" style={{ color: colors.sellColor, fontSize: 12, lineHeight: 17, marginTop: 8 }}>
                 {scoreHistoryClearError}
+              </Text>
+            )}
+            {!!scoreHistoryRemoveError && (
+              <Text accessibilityRole="alert" style={{ color: colors.sellColor, fontSize: 12, lineHeight: 17, marginTop: 8 }}>
+                {scoreHistoryRemoveError}
               </Text>
             )}
           </View>
@@ -2853,6 +2948,7 @@ function EtfAnalysisSections({
           {fund.fundCategory ?? 'ETF'} · Rules-based profile, not a forecast or recommendation.
         </Text>
       </View>
+      )}
       </EtfCardEntrance>
       <View
         testID="etf-comparison-switcher"
