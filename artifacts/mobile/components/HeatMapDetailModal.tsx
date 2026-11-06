@@ -283,6 +283,7 @@ export function HeatMapDetailModal({
   onAnalyzeEtf,
   canAnalyzeCommodity,
   onAnalyzeCommodity,
+  animationType = 'slide',
 }: {
   quote: HeatMapQuote | null;
   unavailableCommodity?: { symbol: string; name: string } | null;
@@ -299,6 +300,7 @@ export function HeatMapDetailModal({
   onAnalyzeEtf: () => void;
   canAnalyzeCommodity: boolean;
   onAnalyzeCommodity: () => void;
+  animationType?: 'none' | 'slide' | 'fade';
 }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -448,7 +450,7 @@ export function HeatMapDetailModal({
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType={animationType}
       statusBarTranslucent
       onRequestClose={onClose}
     >

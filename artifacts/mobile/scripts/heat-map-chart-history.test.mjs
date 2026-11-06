@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const chartScreen = readFileSync(new URL('../app/heat-map-chart.tsx', import.meta.url), 'utf8');
 const heatMapScreen = readFileSync(new URL('../app/heat-map.tsx', import.meta.url), 'utf8');
+const heatMapDetailModal = readFileSync(new URL('../components/HeatMapDetailModal.tsx', import.meta.url), 'utf8');
 const analysisScreen = readFileSync(new URL('../app/analysis/[symbol].tsx', import.meta.url), 'utf8');
 const chartHistoryLib = readFileSync(new URL('../lib/heatMapChart.ts', import.meta.url), 'utf8');
 const stockChart = readFileSync(new URL('../components/StockChart.tsx', import.meta.url), 'utf8');
@@ -39,6 +40,11 @@ test('chart and AI analysis back navigation restores the originating heat-map de
   assert.match(heatMapScreen, /detailReturnRef = useRef</);
   assert.match(heatMapScreen, /detailReturnRef\.current = \{\s*quote: selectedQuote,\s*unavailableCommodity: selectedUnavailableCommodity,/);
   assert.match(heatMapScreen, /const returnDetail = detailReturnRef\.current;[\s\S]*?detailReturnRef\.current = null;[\s\S]*?setSelectedQuote\(returnDetail\.quote\);[\s\S]*?setSelectedUnavailableCommodity\(returnDetail\.unavailableCommodity\);/);
+  assert.match(heatMapScreen, /setRestoreDetailWithoutAnimation\(true\)/);
+  assert.match(heatMapScreen, /animationType=\{restoreDetailWithoutAnimation \? 'none' : 'slide'\}/);
+  assert.match(heatMapScreen, /onClose=\{\(\) => \{\s*setRestoreDetailWithoutAnimation\(false\)/);
+  assert.match(heatMapDetailModal, /animationType = 'slide'/);
+  assert.match(heatMapDetailModal, /animationType=\{animationType\}/);
   assert.match(chartScreen, /testID="heat-map-chart-back" onPress=\{\(\) => router\.back\(\)\}/);
   assert.match(analysisScreen, /onPress=\{\(\) => router\.back\(\)\}/);
 

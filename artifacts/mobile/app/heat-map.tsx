@@ -713,6 +713,7 @@ export default function HeatMapScreen() {
   const watchlist = useWatchlist();
   const [selectedQuote, setSelectedQuote] = useState<HeatMapQuote | null>(null);
   const [selectedUnavailableCommodity, setSelectedUnavailableCommodity] = useState<{ symbol: string; name: string } | null>(null);
+  const [restoreDetailWithoutAnimation, setRestoreDetailWithoutAnimation] = useState(false);
   const detailReturnRef = useRef<{
     quote: HeatMapQuote | null;
     unavailableCommodity: { symbol: string; name: string } | null;
@@ -727,6 +728,7 @@ export default function HeatMapScreen() {
       quote: selectedQuote,
       unavailableCommodity: selectedUnavailableCommodity,
     };
+    setRestoreDetailWithoutAnimation(false);
     setSelectedQuote(null);
     setSelectedUnavailableCommodity(null);
   }, [selectedQuote, selectedUnavailableCommodity]);
@@ -734,6 +736,7 @@ export default function HeatMapScreen() {
     const returnDetail = detailReturnRef.current;
     if (!returnDetail) return;
     detailReturnRef.current = null;
+    setRestoreDetailWithoutAnimation(true);
     setSelectedQuote(returnDetail.quote);
     setSelectedUnavailableCommodity(returnDetail.unavailableCommodity);
   }, []));
@@ -2188,6 +2191,7 @@ export default function HeatMapScreen() {
           </View>
         </Modal>
         <HeatMapDetailModal
+          animationType={restoreDetailWithoutAnimation ? 'none' : 'slide'}
           quote={selectedQuote}
           unavailableCommodity={selectedUnavailableCommodity}
           isWatched={watchlist.isWatched(selectedQuote?.symbol ?? selectedUnavailableCommodity?.symbol ?? '')}
@@ -2202,6 +2206,7 @@ export default function HeatMapScreen() {
           canAnalyzeCommodity={(category === 'commodities' || category === 'custom')
             && (selectedQuote?.assetType === 'commodity' || selectedUnavailableCommodity !== null)}
           onClose={() => {
+            setRestoreDetailWithoutAnimation(false);
             setSelectedQuote(null);
             setSelectedUnavailableCommodity(null);
           }}
