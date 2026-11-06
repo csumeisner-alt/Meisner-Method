@@ -551,6 +551,112 @@ test("editing a fired alert over HTTP resets it and the worker uses its updated 
   }
 });
 
+test("editing a fired paused alert keeps it paused until explicitly resumed", async () => {
+  const alertId = await insertAlert({
+    symbol: "AAPL",
+    direction: "above",
+    targetPrice: 100,
+    useInstallation: true,
+  });
+  const app = express();
+  app.use(express.json());
+  app.use(createNotificationAlertRouter(
+    { query: (sql, values) => pool.query(sql, values) },
+    (_req, _res, next) => next(),
+    randomUUID,
+  ));
+  const server = app.listen(0, "127.0.0.1");
+  let pushCount = 0;
+
+  try {
+    await once(server, "listening");
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const alertUrl = `http://127.0.0.1:${address.port}/notifications/alerts/${alertId}`;
+    const request = async (method: string, body: Record<string, unknown>) => {
+      const response = await fetch(alertUrl, {
+        method,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      return { status: response.status, body: await response.json() as any };
+    };
+    const alertBody = (extra: Record<string, unknown>) => ({
+      installationId,
+      ...extra,
+    });
+    const workerDeps = {
+      fetchPrice: async () => 250,
+      sendPush: async () => {
+        pushCount++;
+        return { accepted: true, permanentFailure: false };
+      },
+    };
+
+    const initialCycle = await runAlertCheckCycle(
+      pool,
+      workerDeps,
+      { scopeToIds: [alertId] },
+    );
+    assert.equal(initialCycle.delivered, 1);
+    assert.notEqual(await getFiredAt(alertId), null, "the alert must fire before it is paused");
+
+    const pauseResponse = await request(
+      "PATCH",
+      alertBody({ paused: true }),
+    );
+    assert.equal(pauseResponse.status, 200);
+    assert.equal(pauseResponse.body.paused, true);
+    assert.notEqual(await getFiredAt(alertId), null, "pausing must retain the fired state");
+
+    const editResponse = await request(
+      "PUT",
+      alertBody({
+        direction: "above",
+        targetPrice: 200,
+        pushToken,
+      }),
+    );
+    assert.equal(editResponse.status, 200);
+    assert.equal(editResponse.body.targetPrice, 200);
+    assert.equal(editResponse.body.paused, true, "editing must preserve the paused state");
+    assert.equal(editResponse.body.firedAt, null, "editing must reset the fired state");
+    assert.equal(await getFiredAt(alertId), null, "the edited alert must be pending in the database");
+
+    for (let cycleNumber = 0; cycleNumber < 2; cycleNumber++) {
+      const pausedCycle = await runAlertCheckCycle(
+        pool,
+        workerDeps,
+        { scopeToIds: [alertId] },
+      );
+      assert.equal(pausedCycle.checked, 0, "paused alerts must stay out of worker processing");
+      assert.equal(pausedCycle.delivered, 0);
+      assert.equal(await getFiredAt(alertId), null, "worker cycles must leave the paused alert pending");
+      assert.equal(pushCount, 1, "no additional push may be sent while paused");
+    }
+
+    const resumeResponse = await request(
+      "PATCH",
+      alertBody({ paused: false }),
+    );
+    assert.equal(resumeResponse.status, 200);
+    assert.equal(resumeResponse.body.paused, false);
+
+    const resumedCycle = await runAlertCheckCycle(
+      pool,
+      workerDeps,
+      { scopeToIds: [alertId] },
+    );
+    assert.equal(resumedCycle.delivered, 1, "the alert may deliver after explicit resume");
+    assert.equal(pushCount, 2, "delivery occurs only after the alert is resumed");
+    assert.notEqual(await getFiredAt(alertId), null, "the resumed alert must be marked fired");
+  } finally {
+    server.close();
+    await once(server, "close");
+    await pool.query("DELETE FROM price_alerts WHERE id=$1", [alertId]);
+  }
+});
+
 test("notification alert routes create independent same-ticker alerts and enforce installation ownership on edits", async () => {
   const ownerInstallationId = `test-owner-${randomUUID()}`;
   const otherInstallationId = `test-other-${randomUUID()}`;
