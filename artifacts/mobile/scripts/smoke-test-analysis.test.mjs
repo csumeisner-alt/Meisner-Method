@@ -1587,32 +1587,16 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
       true,
       "The chart should disclose that missing dates are not interpolated.",
     );
-    await browser.evaluate(`(() => {
-      window.__scoreCardErrors = [];
-      window.addEventListener("error", (event) => window.__scoreCardErrors.push(event.message));
-      window.addEventListener("unhandledrejection", (event) => window.__scoreCardErrors.push(String(event.reason)));
-    })()`);
     await browser.evaluate(`document.querySelector('[data-testid="etf-score-card-hide"]')?.click()`);
-    try {
-      await waitForBrowserValue(
-        browser,
-        `!!document.querySelector('[data-testid="etf-score-card-hidden"]')`,
-        "Hiding the ETF score should replace the card with a restore control.",
-      );
-    } catch (error) {
-      console.error("ETF score hide state:", await browser.evaluate(`JSON.stringify({
-        button: !!document.querySelector('[data-testid="etf-score-card-hide"]'),
-        hidden: !!document.querySelector('[data-testid="etf-score-card-hidden"]'),
-        errors: window.__scoreCardErrors,
-        text: document.body.innerText.slice(0, 500),
-        url: location.href
-      })`));
-      throw error;
-    }
+    await waitForBrowserValue(
+      browser,
+      `getComputedStyle(document.querySelector('[data-testid="etf-score-card-hidden"]')).display !== "none"`,
+      "Hiding the ETF score should reveal the restore control.",
+    );
     await browser.evaluate(`document.querySelector('[data-testid="etf-score-card-show"]')?.click()`);
     await waitForBrowserValue(
       browser,
-      `!!document.querySelector('[data-testid="etf-score-card-hide"]')`,
+      `getComputedStyle(document.querySelector('[data-testid="etf-score-card-hidden"]')).display === "none"`,
       "The ETF score card should return when requested.",
     );
     await browser.evaluate(`document.querySelector('[data-testid="etf-chart-period-1y"]')?.click()`);

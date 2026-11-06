@@ -2734,11 +2734,11 @@ function EtfAnalysisSections({
       <EtfSectionAnchor sectionId="overview" title="Overview" onLayout={onSectionLayout} onRef={onSectionRef} />
       <EtfMarketIntelligence quotes={marketQuotes} updatedAt={marketUpdatedAt} />
       <EtfCardEntrance>
-      {scoreCardHidden ? (
-        <View testID="etf-score-card-hidden" style={[recStyles.hero, {
+      <View testID="etf-score-card-hidden" style={[recStyles.hero, {
           backgroundColor: colors.card,
           borderColor: colors.border,
           paddingVertical: 12,
+          display: scoreCardHidden ? 'flex' : 'none',
         }]}>
           <Pressable
             testID="etf-score-card-show"
@@ -2752,10 +2752,10 @@ function EtfAnalysisSections({
             </Text>
           </Pressable>
         </View>
-      ) : (
       <View style={[recStyles.hero, {
         backgroundColor: colors.card,
         borderColor: profileScore.score == null ? colors.primary : etfScoreColor(profileScore.score),
+        display: scoreCardHidden ? 'none' : 'flex',
       }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Text style={[recStyles.actionLabel, { color: colors.primary, fontFamily: 'Inter_600SemiBold', textAlign: 'center', flex: 1 }]}>
@@ -2948,7 +2948,6 @@ function EtfAnalysisSections({
           {fund.fundCategory ?? 'ETF'} · Rules-based profile, not a forecast or recommendation.
         </Text>
       </View>
-      )}
       </EtfCardEntrance>
       <View
         testID="etf-comparison-switcher"
