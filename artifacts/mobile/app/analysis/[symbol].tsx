@@ -1605,6 +1605,9 @@ function EtfAnalysisSections({
   const { apiFetch } = useApi();
   const router = useRouter();
   const [savedCompareSymbols, setSavedCompareSymbols] = useState<string[]>([]);
+  const [chartTickerSymbols, setChartTickerSymbols] = useState<string[]>([]);
+  const [chartTickerInput, setChartTickerInput] = useState('');
+  const [chartTickerError, setChartTickerError] = useState('');
   const [compareFunds, setCompareFunds] = useState<Array<{
     symbol: string;
     topHoldings: { symbol: string; name: string; weight: number }[];
@@ -1618,8 +1621,8 @@ function EtfAnalysisSections({
   }>>([]);
   const [comparePendingSymbols, setComparePendingSymbols] = useState<string[]>([]);
   const [compareFailedSymbols, setCompareFailedSymbols] = useState<string[]>([]);
-  const comparisonChartSymbols = compareFunds.map(({ symbol: candidate }) => candidate);
-  const selectedComparisonSymbols = savedCompareSymbols;
+  const selectedComparisonSymbols = [...savedCompareSymbols, ...chartTickerSymbols];
+  const comparisonChartSymbols = [...new Set(selectedComparisonSymbols)];
   const comparisonChartPendingSymbols = comparePendingSymbols.filter((candidate) =>
     savedCompareSymbols.includes(candidate));
   const comparisonChartUnavailableSymbols = compareFailedSymbols.filter((candidate) =>
@@ -1701,7 +1704,7 @@ function EtfAnalysisSections({
           : comparisonChartHistoryMissing.length > 0
             ? `Fewer than two reported price dates are available for ${comparisonChartHistoryMissing.join(', ')}.`
             : !hasSharedComparisonHistory
-              ? `Only ${sharedChartCandles.dates.length} dates are reported by every selected ETF; at least two are required.`
+              ? `Only ${sharedChartCandles.dates.length} dates are reported by every selected ticker; at least two are required.`
               : unavailableAdjustedFunds.length > 0
                 ? `Provider-adjusted history is incomplete for ${unavailableAdjustedFunds
                     .map(({ ticker, series }) => `${ticker}${series.reason ? ` (${series.reason})` : ''}`)
@@ -2351,8 +2354,11 @@ function EtfAnalysisSections({
       setCompareError('Enter a different ETF ticker to replace this one.');
       return;
     }
-    if (!replaceTarget && savedCompareSymbolsRef.current.length >= 3) {
-      setCompareError('Compare up to four ETFs at once.');
+    if (
+      !replaceTarget
+      && savedCompareSymbolsRef.current.length + chartTickerSymbols.length >= 4
+    ) {
+      setCompareError('Compare up to four additional tickers in the chart.');
       return;
     }
     setCompareLoading(true);
@@ -2369,6 +2375,31 @@ function EtfAnalysisSections({
     setReplaceTarget(null);
     await loadCompareFund(candidate);
     setCompareLoading(false);
+  };
+  const addChartTicker = () => {
+    const candidate = chartTickerInput.trim().toUpperCase();
+    if (!/^[A-Z0-9.^=-]{1,20}$/.test(candidate)) {
+      setChartTickerError('Enter a valid stock or ETF ticker.');
+      return;
+    }
+    if (
+      candidate === symbol.toUpperCase()
+      || selectedComparisonSymbols.includes(candidate)
+    ) {
+      setChartTickerError('That ticker is already on the chart.');
+      return;
+    }
+    if (selectedComparisonSymbols.length >= 4) {
+      setChartTickerError('Compare up to four additional tickers at once.');
+      return;
+    }
+    setChartTickerSymbols((current) => [...current, candidate]);
+    setChartTickerInput('');
+    setChartTickerError('');
+  };
+  const removeChartTicker = (candidate: string) => {
+    setChartTickerSymbols((current) => current.filter((ticker) => ticker !== candidate));
+    setChartTickerError('');
   };
   const selectedFunds = [
     {
@@ -3667,7 +3698,7 @@ function EtfAnalysisSections({
         {!primaryLoading && !primaryError && primaryCandles.length > 1 && (
           <Text style={{ color: colors.mutedForeground, fontSize: 10, lineHeight: 15, paddingHorizontal: 16, paddingBottom: 10 }}>
             {hasSharedComparisonHistory
-              ? `All ${comparisonChartSymbols.length + 1} charted ETFs use the same ${sharedChartCandles.dates.length} reported dates: ${sharedChartCandles.dates[0]} to ${sharedChartCandles.dates[sharedChartCandles.dates.length - 1]}. No missing dates are filled or interpolated.`
+              ? `All ${comparisonChartSymbols.length + 1} charted tickers use the same ${sharedChartCandles.dates.length} reported dates: ${sharedChartCandles.dates[0]} to ${sharedChartCandles.dates[sharedChartCandles.dates.length - 1]}. No missing dates are filled or interpolated.`
               : selectedComparisonSymbols.length > 0
                 ? `Comparison lines are unavailable: ${totalReturnUnavailableReason} Only ${symbol.toUpperCase()} is shown. No dates or returns are estimated.`
                 : `Dated provider observations: ${primaryCandles[0]?.date ?? 'date unavailable'} to ${primaryCandles[primaryCandles.length - 1]?.date ?? 'date unavailable'}. Calendar gaps are not filled or interpolated.`}
@@ -3685,7 +3716,7 @@ function EtfAnalysisSections({
                   ? `${symbol.toUpperCase()} Close price return ${primaryPeriodReturn >= 0 ? '+' : ''}${primaryPeriodReturn.toFixed(2)}% for the selected range.`
                   : `Selected range: ${primaryCandles[0]?.date ?? 'date unavailable'} to ${primaryCandles[primaryCandles.length - 1]?.date ?? 'date unavailable'}.`}
             {' '}{chartUsesAdjustedReturns
-              ? 'Every plotted ETF uses its provider Adj Close series on the shared dates; the provider calculation is not independently audited.'
+              ? 'Every plotted ticker uses its provider Adj Close series on the shared dates; the provider calculation is not independently audited.'
               : 'The chart uses provider Close changes to show price return.'}
           </Text>
         )}
@@ -3719,28 +3750,116 @@ function EtfAnalysisSections({
             </View>
           </View>
         )}
+        <View testID="etf-chart-add-ticker" style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+          <Text style={{ color: colors.mutedForeground, fontSize: 12, marginBottom: 6 }}>
+            Compare stocks or ETFs · up to four additional tickers
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TextInput
+              testID="etf-chart-ticker-input"
+              value={chartTickerInput}
+              onChangeText={(value) => {
+                setChartTickerInput(value.toUpperCase());
+                setChartTickerError('');
+              }}
+              onSubmitEditing={addChartTicker}
+              placeholder="Add ticker (e.g. AAPL)"
+              placeholderTextColor={colors.mutedForeground}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              accessibilityLabel="Stock or ETF ticker to compare on this chart"
+              style={{
+                flex: 1,
+                minWidth: 0,
+                minHeight: 44,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 8,
+                paddingHorizontal: 10,
+                color: colors.foreground,
+                fontSize: 13,
+              }}
+            />
+            <Pressable
+              testID="etf-chart-add-ticker-button"
+              accessibilityRole="button"
+              accessibilityLabel="Add ticker to ETF chart"
+              disabled={!chartTickerInput.trim()}
+              onPress={addChartTicker}
+              style={{
+                minHeight: 44,
+                minWidth: 58,
+                justifyContent: 'center',
+                alignItems: 'center',
+                paddingHorizontal: 12,
+                borderRadius: 8,
+                backgroundColor: colors.primary,
+                opacity: chartTickerInput.trim() ? 1 : 0.55,
+              }}
+            >
+              <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>Add</Text>
+            </Pressable>
+          </View>
+          {chartTickerError ? (
+            <Text testID="etf-chart-ticker-error" style={{ color: colors.sellColor, fontSize: 11, marginTop: 6 }}>
+              {chartTickerError}
+            </Text>
+          ) : null}
+          {chartTickerSymbols.length > 0 ? (
+            <View testID="etf-chart-ticker-list" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7, paddingTop: 8 }}>
+              {chartTickerSymbols.map((ticker) => (
+                <View
+                  key={ticker}
+                  style={{
+                    minHeight: 34,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: 17,
+                    paddingLeft: 10,
+                    backgroundColor: colors.input,
+                  }}
+                >
+                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>
+                    {ticker}
+                  </Text>
+                  <Pressable
+                    testID={`etf-chart-remove-ticker-${ticker}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${ticker} from chart`}
+                    onPress={() => removeChartTicker(ticker)}
+                    style={{ minWidth: 36, minHeight: 34, alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Text style={{ color: colors.sellColor, fontSize: 18 }}>×</Text>
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </View>
         {selectedComparisonSymbols.length > 0 && (
           <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, paddingHorizontal: 16, paddingVertical: 9 }}>
             {comparisonChartLoadingSymbols.length > 0
               ? `Loading chart history for ${comparisonChartLoadingSymbols.join(', ')}.`
               : comparisonChartErrors.length > 0
-                ? `Chart history is unavailable for ${comparisonChartErrors.join(', ')}. These funds are not plotted until history loads.`
+                ? `Chart history is unavailable for ${comparisonChartErrors.join(', ')}. These tickers are not plotted until history loads.`
                 : comparisonChartPendingSymbols.length > 0
                   ? `ETF verification is pending for ${comparisonChartPendingSymbols.join(', ')}; unverified funds are not plotted.`
                   : comparisonChartUnavailableSymbols.length > 0
-                    ? `ETF verification or chart history is unavailable for ${comparisonChartUnavailableSymbols.join(', ')}; these funds are not plotted.`
+                        ? `ETF verification is unavailable for ${comparisonChartUnavailableSymbols.join(', ')}; these ETFs are not plotted.`
                     : comparisonChartHistoryMissing.length > 0
                       ? `Fewer than two dated price observations are available for ${comparisonChartHistoryMissing.join(', ')}; no incomplete comparison is drawn.`
                       : hasSharedComparisonHistory
-                        ? `All ${comparisonChartSymbols.length + 1} selected ETFs share ${sharedChartCandles.dates.length} reported dates; no missing prices or returns are estimated.`
-                        : `Price comparison unavailable: only ${sharedChartCandles.dates.length} dates are reported by every selected ETF; at least two are required.`}
+                        ? `All ${comparisonChartSymbols.length + 1} selected tickers share ${sharedChartCandles.dates.length} reported dates; no missing prices or returns are estimated.`
+                        : `Price comparison unavailable: only ${sharedChartCandles.dates.length} dates are reported by every selected ticker; at least two are required.`}
           </Text>
         )}
         {comparisonChartErrors.length > 0 && (
           <Pressable
             testID="etf-chart-compare-retry"
             accessibilityRole="button"
-            accessibilityLabel="Retry ETF comparison chart history"
+            accessibilityLabel="Retry comparison chart history"
             onPress={() => {
               void Promise.all(comparisonChartQueries.map((query) => query.refetch()));
             }}

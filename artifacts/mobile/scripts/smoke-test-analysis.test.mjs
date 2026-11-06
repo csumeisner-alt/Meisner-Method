@@ -282,11 +282,15 @@ test("ETF comparison chart plots shared reported dates and explains insufficient
   assert.match(etfAnalysisSource, /alignProviderAdjustedReturnsAcrossSeries\(/);
   assert.match(etfAnalysisSource, /primaryCandles=\{chartPrimaryCandles\}/);
   assert.match(etfAnalysisSource, /additionalSeries=\{chartComparisonSeries\}/);
+  assert.match(etfAnalysisSource, /testID="etf-chart-ticker-input"/);
+  assert.match(etfAnalysisSource, /testID="etf-chart-add-ticker-button"/);
+  assert.match(etfAnalysisSource, /testID=\{`etf-chart-remove-ticker-\$\{ticker\}`\}/);
+  assert.match(etfAnalysisSource, /const selectedComparisonSymbols = \[\.\.\.savedCompareSymbols, \.\.\.chartTickerSymbols\]/);
   assert.match(etfAnalysisSource, /const chartUsesAdjustedReturns = false/);
   assert.doesNotMatch(etfAnalysisSource, /returnBasis=\{|onReturnBasisChange=\{/);
   assert.match(comparisonChartSource, /displayMode === 'percent' \? 'PRICE RETURN' : 'PRICE'/);
   assert.match(etfAnalysisSource, /Provider-adjusted history does not cover every shared reported date/);
-  assert.match(etfAnalysisSource, /Price comparison unavailable: only \$\{sharedChartCandles\.dates\.length\} dates are reported by every selected ETF/);
+  assert.match(etfAnalysisSource, /Price comparison unavailable: only \$\{sharedChartCandles\.dates\.length\} dates are reported by every selected ticker/);
   assert.match(etfAnalysisSource, /No missing dates are filled or interpolated/);
   assert.match(etfAnalysisSource, /The chart uses provider Close changes to show price return/);
 });
@@ -559,6 +563,7 @@ async function buildAnalysisScreenBundle(expenseRatio, scenarioOverrides = {}) {
     `],
     ["@tanstack/react-query", `
       export function useQueries({ queries }) {
+        window.__analysisComparisonChartRequests = queries.map(({ queryKey }) => queryKey[0]);
         return queries.map(() => ({
           data: {
             candles: [
@@ -699,10 +704,10 @@ async function buildAnalysisScreenBundle(expenseRatio, scenarioOverrides = {}) {
     ["@/components/ComparisonChart", `
       import React from "react";
       import { View, Text } from "react-native";
-      export const ComparisonChart = ({ primaryCandles, primarySymbol, compSymbol }) => (
+      export const ComparisonChart = ({ primaryCandles, primarySymbol, additionalSeries = [] }) => (
         <View testID="etf-chart-test-render">
           <Text testID="etf-chart-test-series">
-            {primarySymbol + ":" + primaryCandles.map((candle) => candle.date + ":" + candle.c).join("|") + (compSymbol ? " vs " + compSymbol : "")}
+            {primarySymbol + ":" + primaryCandles.map((candle) => candle.date + ":" + candle.c).join("|") + (additionalSeries.length ? " vs " + additionalSeries.map((series) => series.symbol).join(",") : "")}
           </Text>
         </View>
       );
@@ -1580,6 +1585,36 @@ test("ETF analysis sections render, expand, and collapse without 320px overflow"
       await browser.evaluate(`window.__analysisChartRequests?.filter((url) => url.endsWith("/1y/1d")).length`),
       1,
       "A range selection should issue one chart request, not duplicates.",
+    );
+    const chartTickerInput = '[data-testid="etf-chart-ticker-input"]';
+    await browser.evaluate(`(() => {
+      const input = document.querySelector(${JSON.stringify(chartTickerInput)});
+      input?.scrollIntoView({ block: "center" });
+      input?.focus();
+    })()`);
+    await browser.send("Input.insertText", { text: "AAPL" });
+    await browser.evaluate(`document.querySelector('[data-testid="etf-chart-add-ticker-button"]')?.click()`);
+    await waitForBrowserValue(
+      browser,
+      `document.querySelector('[data-testid="etf-chart-ticker-list"]')?.textContent.includes("AAPL") && document.querySelector('[data-testid="etf-chart-test-series"]')?.textContent.includes("AAPL")`,
+      "Adding a stock ticker should request history and draw it beside the analyzed ETF.",
+    );
+    await browser.evaluate(`(() => {
+      const input = document.querySelector(${JSON.stringify(chartTickerInput)});
+      input?.focus();
+    })()`);
+    await browser.send("Input.insertText", { text: "SPY" });
+    await browser.evaluate(`document.querySelector('[data-testid="etf-chart-add-ticker-button"]')?.click()`);
+    await waitForBrowserValue(
+      browser,
+      `document.querySelector('[data-testid="etf-chart-ticker-list"]')?.textContent.includes("SPY") && document.querySelector('[data-testid="etf-chart-test-series"]')?.textContent.includes("AAPL,SPY")`,
+      "Adding an ETF ticker should add a second comparison series.",
+    );
+    await browser.evaluate(`document.querySelector('[data-testid="etf-chart-remove-ticker-AAPL"]')?.click()`);
+    await waitForBrowserValue(
+      browser,
+      `!document.querySelector('[data-testid="etf-chart-ticker-list"]')?.textContent.includes("AAPL") && document.querySelector('[data-testid="etf-chart-test-series"]')?.textContent.includes("SPY")`,
+      "Removing a comparison ticker should remove its chart series.",
     );
     const sectionState = await browser.evaluate(`Array.from(
       document.querySelectorAll('[data-testid^="analysis-section-"]'),
