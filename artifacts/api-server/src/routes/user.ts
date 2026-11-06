@@ -1090,17 +1090,43 @@ async function runAlertCheck() {
     const stats = await processPendingAlerts(pending, {
       fetchPrice: fetchCurrentPrice,
       sendPush: sendExpoPush,
-      isAlertActive: async (id) => {
+      isAlertActive: async (id, selectedAlert) => {
         const { rows } = await pool.query(
           `SELECT 1
            FROM price_alerts
-           WHERE id=$1 AND fired_at IS NULL AND paused=FALSE`,
-          [id],
+           WHERE id=$1
+             AND fired_at IS NULL
+             AND paused=FALSE
+             AND symbol=$2
+             AND direction=$3
+             AND target_price=$4`,
+          [
+            id,
+            selectedAlert.symbol,
+            selectedAlert.direction,
+            selectedAlert.targetPrice,
+          ],
         );
         return rows.length > 0;
       },
-      markFired: async (id) => {
-        await pool.query("UPDATE price_alerts SET fired_at=NOW() WHERE id=$1", [id]);
+      markFired: async (id, selectedAlert) => {
+        const { rowCount } = await pool.query(
+          `UPDATE price_alerts
+           SET fired_at=NOW()
+           WHERE id=$1
+             AND fired_at IS NULL
+             AND paused=FALSE
+             AND symbol=$2
+             AND direction=$3
+             AND target_price=$4`,
+          [
+            id,
+            selectedAlert.symbol,
+            selectedAlert.direction,
+            selectedAlert.targetPrice,
+          ],
+        );
+        return rowCount === 1;
       },
     });
     if (stats.checked > 0) logger.info({ ...stats }, "[alert-worker] check cycle complete");

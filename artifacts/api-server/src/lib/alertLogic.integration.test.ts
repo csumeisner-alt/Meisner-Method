@@ -394,6 +394,98 @@ test("alert paused after worker selection is not delivered or marked fired", asy
   );
 });
 
+test("alert edited after worker selection is re-evaluated before delivery", async () => {
+  const alertId = await insertAlert({
+    symbol: "AAPL",
+    direction: "above",
+    targetPrice: 100,
+    useInstallation: true,
+  });
+  const app = express();
+  app.use(express.json());
+  app.use(createNotificationAlertRouter(
+    { query: (sql, values) => pool.query(sql, values) },
+    (_req, _res, next) => next(),
+    randomUUID,
+  ));
+  const server = app.listen(0, "127.0.0.1");
+  let pushCount = 0;
+
+  try {
+    await once(server, "listening");
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const editUrl = `http://127.0.0.1:${address.port}/notifications/alerts/${alertId}`;
+
+    const staleCycle = await runAlertCheckCycle(
+      pool,
+      {
+        fetchPrice: async () => {
+          // The cycle has selected the 100 target. Edit it before delivery.
+          const response = await fetch(editUrl, {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              installationId,
+              direction: "above",
+              targetPrice: 200,
+              pushToken,
+            }),
+          });
+          assert.equal(response.status, 200, "the alert edit must succeed");
+          return 150;
+        },
+        sendPush: async () => {
+          pushCount++;
+          return { accepted: true, permanentFailure: false };
+        },
+      },
+      { scopeToIds: [alertId] },
+    );
+
+    assert.equal(staleCycle.checked, 1, "the old alert settings were selected");
+    assert.equal(staleCycle.triggered, 1, "150 crosses the old target of 100");
+    assert.equal(staleCycle.skippedPaused, 1, "the changed alert must fail revalidation");
+    assert.equal(pushCount, 0, "the old target must not cause a push");
+    assert.equal(await getFiredAt(alertId), null, "the edited alert must remain pending");
+
+    const belowNewTarget = await runAlertCheckCycle(
+      pool,
+      {
+        fetchPrice: async () => 150,
+        sendPush: async () => {
+          pushCount++;
+          return { accepted: true, permanentFailure: false };
+        },
+      },
+      { scopeToIds: [alertId] },
+    );
+    assert.equal(belowNewTarget.checked, 1);
+    assert.equal(belowNewTarget.triggered, 0, "the next cycle must use the new target of 200");
+    assert.equal(pushCount, 0);
+    assert.equal(await getFiredAt(alertId), null);
+
+    const atNewTarget = await runAlertCheckCycle(
+      pool,
+      {
+        fetchPrice: async () => 250,
+        sendPush: async () => {
+          pushCount++;
+          return { accepted: true, permanentFailure: false };
+        },
+      },
+      { scopeToIds: [alertId] },
+    );
+    assert.equal(atNewTarget.delivered, 1, "the edited target must fire in a later cycle");
+    assert.equal(pushCount, 1, "only the later cycle may send the notification");
+    assert.notEqual(await getFiredAt(alertId), null);
+  } finally {
+    server.close();
+    await once(server, "close");
+    await pool.query("DELETE FROM price_alerts WHERE id=$1", [alertId]);
+  }
+});
+
 test("multiple alerts for different symbols each resolved and fired independently", async () => {
   const aaplId = await insertAlert({ symbol: "AAPL", direction: "above", targetPrice: 100 });
   const tslaId = await insertAlert({ symbol: "TSLA", direction: "below", targetPrice: 300 });

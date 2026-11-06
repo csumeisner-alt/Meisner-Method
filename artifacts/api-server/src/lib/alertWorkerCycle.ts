@@ -108,17 +108,43 @@ export async function runAlertCheckCycle(
     fetchPrice: deps.fetchPrice,
     sendPush: deps.sendPush,
     sendPushBatch: deps.sendPushBatch,
-    isAlertActive: async (id) => {
+    isAlertActive: async (id, selectedAlert) => {
       const { rows } = await dbPool.query(
         `SELECT 1
          FROM price_alerts
-         WHERE id=$1 AND fired_at IS NULL AND paused=FALSE`,
-        [id],
+         WHERE id=$1
+           AND fired_at IS NULL
+           AND paused=FALSE
+           AND symbol=$2
+           AND direction=$3
+           AND target_price=$4`,
+        [
+          id,
+          selectedAlert.symbol,
+          selectedAlert.direction,
+          selectedAlert.targetPrice,
+        ],
       );
       return rows.length > 0;
     },
-    markFired: async (id) => {
-      await dbPool.query("UPDATE price_alerts SET fired_at=NOW() WHERE id=$1", [id]);
+    markFired: async (id, selectedAlert) => {
+      const { rowCount } = await dbPool.query(
+        `UPDATE price_alerts
+         SET fired_at=NOW()
+         WHERE id=$1
+           AND fired_at IS NULL
+           AND paused=FALSE
+           AND symbol=$2
+           AND direction=$3
+           AND target_price=$4`,
+        [
+          id,
+          selectedAlert.symbol,
+          selectedAlert.direction,
+          selectedAlert.targetPrice,
+        ],
+      );
+      return rowCount === 1;
     },
   });
 }

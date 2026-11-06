@@ -40,10 +40,16 @@ export interface AlertCheckDeps {
   sendPushBatch?: (
     requests: AlertPushRequest[],
   ) => Promise<Map<string, PushSendResult>>;
-  /** Rechecks mutable alert state immediately before push delivery. */
-  isAlertActive?: (alertId: string) => Promise<boolean>;
-  /** Marks the alert as fired (sets fired_at) — must be idempotent. */
-  markFired: (alertId: string) => Promise<void>;
+  /** Rechecks that the selected alert settings are still current before delivery. */
+  isAlertActive?: (alertId: string, selectedAlert: PendingAlert) => Promise<boolean>;
+  /**
+   * Marks the alert as fired only if its selected settings are still current.
+   * Return false when the alert changed while delivery was in flight.
+   */
+  markFired: (
+    alertId: string,
+    selectedAlert: PendingAlert,
+  ) => Promise<boolean | void>;
 }
 
 export interface AlertCheckStats {
@@ -139,7 +145,10 @@ export async function processPendingAlerts(
   if (deps.sendPushBatch && triggered.length > 0) {
     requestsToProcess = [];
     for (const request of triggered) {
-      if (deps.isAlertActive && !(await deps.isAlertActive(request.alert.id))) {
+      if (
+        deps.isAlertActive
+        && !(await deps.isAlertActive(request.alert.id, request.alert))
+      ) {
         stats.skippedPaused++;
         continue;
       }
@@ -166,7 +175,7 @@ export async function processPendingAlerts(
         permanentFailure: false,
       };
     } else {
-      if (deps.isAlertActive && !(await deps.isAlertActive(alert.id))) {
+      if (deps.isAlertActive && !(await deps.isAlertActive(alert.id, alert))) {
         stats.skippedPaused++;
         continue;
       }
@@ -178,11 +187,19 @@ export async function processPendingAlerts(
     }
 
     if (result.accepted) {
-      await deps.markFired(alert.id);
+      const marked = await deps.markFired(alert.id, alert);
+      if (marked === false) {
+        stats.skippedPaused++;
+        continue;
+      }
       stats.delivered++;
     } else if (result.permanentFailure) {
       // Dead token — mark fired so we don't retry forever.
-      await deps.markFired(alert.id);
+      const marked = await deps.markFired(alert.id, alert);
+      if (marked === false) {
+        stats.skippedPaused++;
+        continue;
+      }
       stats.firedPermanentFailure++;
     } else {
       stats.retriedTransient++;
