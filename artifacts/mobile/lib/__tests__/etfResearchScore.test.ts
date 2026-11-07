@@ -9,6 +9,7 @@ import {
   parseEtfScoreSnapshots,
   persistEtfScoreSnapshot,
   removeEtfScoreSnapshot,
+  restoreEtfScoreSnapshot,
 } from "../etfResearchScore.ts";
 
 const completeInput = {
@@ -995,4 +996,46 @@ test("removing one ETF score snapshot preserves the rest of the saved history", 
     [`VOO:${voo.recordedAt}`, `SPY:${secondSpy.recordedAt}`],
   );
   assert.deepEqual(parseEtfScoreSnapshots(storedValue), remaining);
+});
+
+test("restoring one ETF score snapshot preserves its date and recalculates adjacent changes", async () => {
+  const result = calculateEtfResearchScore(completeInput);
+  const snapshotFor = (recordedAt: string, asOf: string, score: number) =>
+    createEtfScoreSnapshot({
+      symbol: "SPY",
+      score,
+      components: result.components,
+      sourceContexts: Object.fromEntries(
+        result.components.filter((component) => component.score !== null)
+          .map((component) => [component.id, `provider:${component.id}`]),
+      ),
+      inputAsOf: Object.fromEntries(
+        result.components.filter((component) => component.score !== null)
+          .map((component) => [component.id, [asOf]]),
+      ),
+      recordedAt,
+    });
+  const first = snapshotFor("2026-10-10T12:00:00Z", "2026-10-09T12:00:00Z", 50);
+  const removed = snapshotFor("2026-10-20T12:00:00Z", "2026-10-19T12:00:00Z", 60);
+  const third = snapshotFor("2026-10-30T12:00:00Z", "2026-10-29T12:00:00Z", 80);
+  assert.ok(first && removed && third);
+
+  let storedValue: string | null = JSON.stringify([first, third]);
+  const restored = await restoreEtfScoreSnapshot(
+    removed,
+    async () => storedValue,
+    async (value) => { storedValue = value; },
+  );
+  const entries = buildEtfScoreHistory("SPY", null, restored);
+
+  assert.deepEqual(restored.map((snapshot) => snapshot.recordedAt), [
+    third.recordedAt,
+    removed.recordedAt,
+    first.recordedAt,
+  ]);
+  assert.deepEqual(entries.map(({ status }) => status), ["baseline", "available", "available"]);
+  assert.equal(entries[1]?.change, 10);
+  assert.equal(entries[2]?.change, 20);
+  assert.equal(entries[2]?.previousRecordedAt, removed.recordedAt);
+  assert.deepEqual(parseEtfScoreSnapshots(storedValue), restored);
 });

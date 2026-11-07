@@ -82,6 +82,7 @@ import {
   parseEtfScoreSnapshots,
   persistEtfScoreSnapshot,
   removeEtfScoreSnapshot,
+  restoreEtfScoreSnapshot,
 } from '@/lib/etfResearchScore';
 import type {
   EtfScoreChangeResult,
@@ -1873,6 +1874,13 @@ function EtfAnalysisSections({
   const [scoreHistoryClearError, setScoreHistoryClearError] = useState('');
   const [scoreHistoryRemoving, setScoreHistoryRemoving] = useState<string | null>(null);
   const [scoreHistoryRemoveError, setScoreHistoryRemoveError] = useState('');
+  const [scoreHistoryUndoSnapshot, setScoreHistoryUndoSnapshot] = useState<EtfScoreSnapshot | null>(null);
+  const [scoreHistoryRestoring, setScoreHistoryRestoring] = useState(false);
+  useEffect(() => {
+    if (!scoreHistoryUndoSnapshot) return;
+    const timeout = setTimeout(() => setScoreHistoryUndoSnapshot(null), 8000);
+    return () => clearTimeout(timeout);
+  }, [scoreHistoryUndoSnapshot]);
   const [scoreCardHidden, setScoreCardHidden] = useState(false);
   useEffect(() => {
     let cancelled = false;
@@ -1925,7 +1933,7 @@ function EtfAnalysisSections({
   // The serialized score inputs intentionally prevent storage writes on unrelated renders.
   }, [symbol, scoreSnapshotSignature]);
   const clearScoreHistory = useCallback(async () => {
-    if (scoreHistoryClearing) return;
+    if (scoreHistoryClearing || scoreHistoryRestoring || scoreHistoryRemoving !== null) return;
     setScoreHistoryClearing(true);
     setScoreHistoryClearError('');
     try {
@@ -1933,16 +1941,17 @@ function EtfAnalysisSections({
       setScoreHistoryEntries([]);
       setScoreChangeResult({ status: 'first-analysis' });
       setScoreHistoryCleared(true);
+      setScoreHistoryUndoSnapshot(null);
     } catch {
       setScoreHistoryClearError('Saved score history could not be cleared. Please try again.');
     } finally {
       setScoreHistoryClearing(false);
     }
-  }, [scoreHistoryClearing]);
+  }, [scoreHistoryClearing, scoreHistoryRestoring, scoreHistoryRemoving]);
   const confirmRemoveScoreHistoryEntry = useCallback((snapshot: EtfScoreSnapshot) => {
     const date = new Date(snapshot.recordedAt).toLocaleDateString();
     const removeEntry = async () => {
-      if (scoreHistoryRemoving !== null) return;
+      if (scoreHistoryRemoving !== null || scoreHistoryRestoring || scoreHistoryClearing) return;
       setScoreHistoryRemoving(snapshot.recordedAt);
       setScoreHistoryRemoveError('');
       try {
@@ -1956,6 +1965,7 @@ function EtfAnalysisSections({
           ? findComparableEtfScoreChange(currentScoreSnapshot, history)
           : { status: 'unavailable' });
         setScoreHistoryCleared(false);
+        setScoreHistoryUndoSnapshot(snapshot);
       } catch {
         setScoreHistoryRemoveError('This saved score could not be removed. Please try again.');
       } finally {
@@ -1963,7 +1973,7 @@ function EtfAnalysisSections({
       }
     };
     const title = 'Remove this saved score?';
-    const message = `This permanently removes the ${date} score from this device. Other ETF score history stays saved.`;
+    const message = `This removes the ${date} score from this device. You can undo for a few seconds. Other ETF score history stays saved.`;
     if (Platform.OS === 'web') {
       if (typeof window !== 'undefined' && window.confirm(message)) {
         void removeEntry();
@@ -1974,7 +1984,30 @@ function EtfAnalysisSections({
       { text: 'Cancel', style: 'cancel' },
       { text: 'Remove score', style: 'destructive', onPress: () => void removeEntry() },
     ]);
-  }, [currentScoreSnapshot, scoreHistoryRemoving, symbol]);
+  }, [currentScoreSnapshot, scoreHistoryClearing, scoreHistoryRemoving, scoreHistoryRestoring, symbol]);
+  const undoRemoveScoreHistoryEntry = useCallback(async () => {
+    const snapshot = scoreHistoryUndoSnapshot;
+    if (!snapshot || scoreHistoryRestoring || scoreHistoryClearing || scoreHistoryRemoving !== null) return;
+    setScoreHistoryRestoring(true);
+    setScoreHistoryRemoveError('');
+    try {
+      const history = await restoreEtfScoreSnapshot(
+        snapshot,
+        () => AsyncStorage.getItem(ETF_SCORE_SNAPSHOTS_KEY),
+        (value) => AsyncStorage.setItem(ETF_SCORE_SNAPSHOTS_KEY, value),
+      );
+      setScoreHistoryEntries(buildEtfScoreHistory(symbol, null, history));
+      setScoreChangeResult(currentScoreSnapshot
+        ? findComparableEtfScoreChange(currentScoreSnapshot, history)
+        : { status: 'unavailable' });
+      setScoreHistoryCleared(false);
+      setScoreHistoryUndoSnapshot(null);
+    } catch {
+      setScoreHistoryRemoveError('This saved score could not be restored. Please try again.');
+    } finally {
+      setScoreHistoryRestoring(false);
+    }
+  }, [currentScoreSnapshot, scoreHistoryClearing, scoreHistoryRemoving, scoreHistoryRestoring, scoreHistoryUndoSnapshot, symbol]);
   const confirmClearScoreHistory = useCallback(() => {
     const title = 'Clear saved score history?';
     const message = 'This permanently removes saved ETF score snapshots from this device. Comparison tickers and other ETF data will stay saved.';
@@ -2878,7 +2911,7 @@ function EtfAnalysisSections({
                           testID={`etf-score-history-remove-${entry.snapshot.recordedAt}`}
                           accessibilityRole="button"
                           accessibilityLabel={`Remove score history from ${new Date(entry.snapshot.recordedAt).toLocaleDateString()}`}
-                          disabled={scoreHistoryRemoving !== null}
+                          disabled={scoreHistoryRemoving !== null || scoreHistoryRestoring || scoreHistoryClearing}
                           onPress={() => confirmRemoveScoreHistoryEntry(entry.snapshot)}
                           style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', opacity: scoreHistoryRemoving === entry.snapshot.recordedAt ? 0.5 : 1 }}
                         >
@@ -2895,7 +2928,7 @@ function EtfAnalysisSections({
                   testID="etf-score-history-clear"
                   accessibilityRole="button"
                   accessibilityLabel="Clear saved ETF score history"
-                  disabled={scoreHistoryClearing}
+                  disabled={scoreHistoryClearing || scoreHistoryRestoring || scoreHistoryRemoving !== null}
                   onPress={confirmClearScoreHistory}
                   style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 8, opacity: scoreHistoryClearing ? 0.55 : 1 }}
                 >
@@ -2905,6 +2938,27 @@ function EtfAnalysisSections({
                   </Text>
                 </Pressable>
               </>
+            )}
+            {scoreHistoryUndoSnapshot
+              && scoreHistoryUndoSnapshot.symbol.trim().toUpperCase() === symbol.trim().toUpperCase()
+              && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 8 }}>
+                <Text style={{ flex: 1, color: colors.mutedForeground, fontSize: 12 }}>
+                  Score removed. Undo is available briefly.
+                </Text>
+                <Pressable
+                  testID="etf-score-history-undo"
+                  accessibilityRole="button"
+                  accessibilityLabel={`Undo removal of the ${new Date(scoreHistoryUndoSnapshot.recordedAt).toLocaleDateString()} score`}
+                  disabled={scoreHistoryRestoring || scoreHistoryClearing || scoreHistoryRemoving !== null}
+                  onPress={() => void undoRemoveScoreHistoryEntry()}
+                  style={{ minWidth: 64, minHeight: 44, alignItems: 'center', justifyContent: 'center', opacity: scoreHistoryRestoring ? 0.55 : 1 }}
+                >
+                  <Text style={{ color: colors.buyColor, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>
+                    {scoreHistoryRestoring ? 'Restoring…' : 'Undo'}
+                  </Text>
+                </Pressable>
+              </View>
             )}
             {!!scoreHistoryClearError && (
               <Text accessibilityRole="alert" style={{ color: colors.sellColor, fontSize: 12, lineHeight: 17, marginTop: 8 }}>

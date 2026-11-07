@@ -274,6 +274,29 @@ export function removeEtfScoreSnapshot(
   return queuedRemove;
 }
 
+export function restoreEtfScoreSnapshot(
+  snapshot: EtfScoreSnapshot,
+  readStoredHistory: () => Promise<string | null>,
+  writeStoredHistory: (value: string) => Promise<void>,
+): Promise<EtfScoreSnapshot[]> {
+  const queuedRestore = etfScoreSnapshotWriteQueue.then(async () => {
+    const history = parseEtfScoreSnapshots(await readStoredHistory());
+    const alreadyRestored = history.some((item) =>
+      sameEtfScoreSymbol(item.symbol, snapshot.symbol)
+      && item.recordedAt === snapshot.recordedAt,
+    );
+    if (alreadyRestored) return history;
+
+    const nextHistory = [...history, snapshot]
+      .sort((a, b) => Date.parse(b.recordedAt) - Date.parse(a.recordedAt))
+      .slice(0, 200);
+    await writeStoredHistory(JSON.stringify(nextHistory));
+    return nextHistory;
+  });
+  etfScoreSnapshotWriteQueue = queuedRestore.then(() => undefined, () => undefined);
+  return queuedRestore;
+}
+
 export function buildEtfScoreHistory(
   symbol: string,
   current: EtfScoreSnapshot | null,

@@ -269,8 +269,10 @@ test("ETF research score card can be hidden and individual history can be remove
   assert.match(etfAnalysisSource, /testID="etf-score-card-hide"/);
   assert.match(etfAnalysisSource, /testID="etf-score-card-show"/);
   assert.match(etfAnalysisSource, /testID={`etf-score-history-remove-\$\{entry\.snapshot\.recordedAt\}`}/);
+  assert.match(etfAnalysisSource, /testID="etf-score-history-undo"/);
+  assert.match(etfAnalysisSource, /restoreEtfScoreSnapshot\(/);
+  assert.match(etfAnalysisSource, /You can undo for a few seconds/);
   assert.match(etfAnalysisSource, /removeEtfScoreSnapshot\(/);
-  assert.match(etfAnalysisSource, /permanently removes the \$\{date\} score/);
   assert.match(etfAnalysisSource, /setScoreHistoryEntries\(buildEtfScoreHistory\(symbol, null, history\)\)/);
 });
 
