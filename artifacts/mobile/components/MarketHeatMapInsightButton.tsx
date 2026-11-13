@@ -254,6 +254,9 @@ export function MarketHeatMapInsightButton({
   const sessionDetail = sessionLabel
     ? `${sessionLabel}${extendedSession && proxyQuoteFresh ? ` · SPY ${sessionProxy.priceChangePercent >= 0 ? '+' : ''}${sessionProxy.priceChangePercent.toFixed(2)}% from prior close · ${sessionTime}` : ''}`
     : '';
+  const sessionBenchmarkDetail = extendedSession && proxyQuoteFresh
+    ? `SPY ${sessionProxy.priceChangePercent >= 0 ? '+' : ''}${sessionProxy.priceChangePercent.toFixed(2)}% from prior close · ${sessionTime}`
+    : '';
   const accessibilityLabel = hasPulse
     ? `Open market heat map. ${headline.toLowerCase()}. Total U.S. market ${moveDescription}${quoteTime ? ` as of ${quoteTime}` : ''}.${sessionDetail ? ` ${sessionDetail}.` : ''}`
     : `Open market heat map. ${headline.toLowerCase()}. ${detail}.${sessionDetail ? ` ${sessionDetail}.` : ''}`;
@@ -446,9 +449,12 @@ export function MarketHeatMapInsightButton({
             <Text style={[styles.eyebrow, { color: colors.mutedForeground }]}>MARKET HEAT MAP</Text>
             <Text numberOfLines={1} style={[styles.headline, { color: signalColor }]}>{headline}</Text>
             <Text numberOfLines={1} style={[styles.detail, { color: detailColor }]}>{detail}</Text>
-            {!!sessionDetail && <Text numberOfLines={1} style={styles.sessionDetail}>{sessionDetail}</Text>}
+            {!!sessionBenchmarkDetail && <Text numberOfLines={1} style={styles.sessionDetail}>{sessionBenchmarkDetail}</Text>}
           </View>
-          <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+          <View style={styles.sessionStatus}>
+            {!!sessionLabel && <Text style={styles.sessionStatusText}>{sessionLabel}</Text>}
+            <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+          </View>
         </View>
       </View>
     </TouchableOpacity>
@@ -472,7 +478,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     justifyContent: 'center',
   },
-  contentRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  contentRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   flameStage: { width: 48, height: 50, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   flameAura: {
     position: 'absolute',
@@ -487,6 +493,14 @@ const styles = StyleSheet.create({
   insightCopy: { flex: 1, minWidth: 0, gap: 2 },
   eyebrow: { fontFamily: 'Inter_700Bold', fontSize: 7, letterSpacing: 1.2 },
   headline: { fontFamily: 'Inter_700Bold', fontSize: 15, letterSpacing: 0.25 },
-  detail: { fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 0.25 },
+  detail: { fontFamily: 'Inter_600SemiBold', fontSize: 12, letterSpacing: 0.2 },
   sessionDetail: { color: '#B8C3D0', fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.15 },
+  sessionStatus: { width: 82, alignItems: 'flex-end', justifyContent: 'center', gap: 8 },
+  sessionStatusText: {
+    color: '#B8C3D0',
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 7,
+    letterSpacing: 0.2,
+    textAlign: 'right',
+  },
 });

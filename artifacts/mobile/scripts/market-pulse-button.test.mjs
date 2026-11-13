@@ -58,3 +58,8 @@ test('cold-market flame and signal use icy blue and white', () => {
   assert.match(glowColor ?? '', /isCold[\s\S]*COLD_FLAME_GLOW/);
   assert.match(buttonSource, /const detailColor = isCold \? COLD_SIGNAL_WHITE : colors\.foreground/);
 });
+
+test('market session status sits at the right and the daily move is emphasized', () => {
+  assert.match(buttonSource, /<View style=\{styles\.sessionStatus\}>[\s\S]*\{sessionLabel\}[\s\S]*<Feather name="chevron-right"/);
+  assert.match(buttonSource, /detail: \{ fontFamily: 'Inter_600SemiBold', fontSize: 12/);
+});
