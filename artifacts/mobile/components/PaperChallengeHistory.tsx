@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Modal,
@@ -12,8 +12,10 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Feather } from '@expo/vector-icons';
+import ViewShot from 'react-native-view-shot';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
+import { PaperEventShareCard } from '@/components/PaperEventShareCard';
 import {
   getPaperChallengeReminders,
   getPaperChallengeWindow,
@@ -87,6 +89,9 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
   const [eventsOpen, setEventsOpen] = useState(false);
   const [store, setStore] = useState<PaperChallengeStore>({ enrollment: null, history: [] });
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [imageShareEvent, setImageShareEvent] = useState<PaperChallengeSummary | null>(null);
+  const [sharingImage, setSharingImage] = useState(false);
+  const imageRef = useRef<ViewShot | null>(null);
   const [now, setNow] = useState(Date.now());
   const [saving, setSaving] = useState(false);
   const [confirmWithdraw, setConfirmWithdraw] = useState(false);
@@ -208,6 +213,30 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
       await Share.share({ title: 'Paper Event Results', message: text });
     } catch {
       Alert.alert('Could not share', 'The device share sheet is unavailable right now.');
+    }
+  };
+
+  const shareSummaryImage = async () => {
+    const viewShot = imageRef.current;
+    if (!viewShot || sharingImage) return;
+    setSharingImage(true);
+    try {
+      const uri = await viewShot.capture?.();
+      if (!uri) throw new Error('The result card could not be rendered.');
+      const Sharing = await import('expo-sharing');
+      if (!(await Sharing.isAvailableAsync())) {
+        Alert.alert('Sharing unavailable', 'Your device cannot share an image right now.');
+        return;
+      }
+      await Sharing.shareAsync(uri, {
+        mimeType: 'image/png',
+        UTI: 'public.png',
+        dialogTitle: 'Meisner Method Event Results',
+      });
+    } catch {
+      Alert.alert('Could not share image', 'Please try again or share the text summary instead.');
+    } finally {
+      setSharingImage(false);
     }
   };
 
@@ -516,6 +545,18 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                     >
                       <Feather name="share" size={17} color={colors.primary} />
                     </TouchableOpacity>
+                    {Platform.OS !== 'web' && (
+                      <TouchableOpacity
+                        testID={`share-paper-event-image-${event.eventId}`}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Preview ${dateRange(event.eventStartAtMs, event.eventEndAtMs)} event result image`}
+                        onPress={() => setImageShareEvent(event)}
+                        hitSlop={8}
+                        style={{ padding: 6 }}
+                      >
+                        <Feather name="image" size={17} color={colors.primary} />
+                      </TouchableOpacity>
+                    )}
                   </View>
                   <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 5 }}>
                     End {money(event.endEquity)} · {event.returnPercent >= 0 ? '+' : ''}{event.returnPercent.toFixed(2)}% · realized {money(event.realizedPnL)}
@@ -532,6 +573,52 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
               ))}
             </ScrollView>
           </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={imageShareEvent !== null}
+        animationType="slide"
+        onRequestClose={() => setImageShareEvent(null)}
+      >
+        <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: Platform.OS === 'web' ? 24 : insets.top + 8 }}>
+          <View style={{ paddingHorizontal: 18, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={{ flex: 1, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20 }}>Share result image</Text>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Close image preview"
+              onPress={() => setImageShareEvent(null)}
+              hitSlop={10}
+            >
+              <Feather name="x" size={22} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          </View>
+          {imageShareEvent && (
+            <>
+              <ScrollView contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 18 }}>
+                <ViewShot
+                  ref={imageRef}
+                  options={{ format: 'png', quality: 1 }}
+                  style={{ width: '100%', maxWidth: 360 }}
+                >
+                  <PaperEventShareCard event={imageShareEvent} />
+                </ViewShot>
+              </ScrollView>
+              <View style={{ paddingHorizontal: 18, paddingTop: 10, paddingBottom: Platform.OS === 'web' ? 24 : insets.bottom + 18 }}>
+                <TouchableOpacity
+                  testID="share-paper-event-image-confirm"
+                  accessibilityRole="button"
+                  disabled={sharingImage}
+                  onPress={() => { void shareSummaryImage(); }}
+                  style={{ minHeight: 50, paddingHorizontal: 16, borderRadius: 12, backgroundColor: sharingImage ? colors.muted : colors.primary, alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>
+                    {sharingImage ? 'Preparing image…' : 'Share image'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
         </View>
       </Modal>
     </View>

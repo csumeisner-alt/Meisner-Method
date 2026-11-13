@@ -95,12 +95,17 @@ test('event history sorts newest by date or strongest by return', () => {
 
 test('Event Arena wires its label, history sorting, midweek refresh, sharing, and notification toggle', async () => {
   const testDirectory = dirname(fileURLToPath(import.meta.url));
-  const source = await readFile(resolve(testDirectory, '../../components/PaperChallengeHistory.tsx'), 'utf8');
-  assert.match(source, /accessibilityLabel="Event Arena"/);
-  assert.match(source, /sortPaperChallengeHistory\(store\.history, sortMode\)/);
-  assert.match(source, /refreshEventPosition/);
-  assert.match(source, /Share\.share/);
-  assert.match(source, /setEventNotifications\(value\)/);
+  const componentSource = await readFile(resolve(testDirectory, '../../components/PaperChallengeHistory.tsx'), 'utf8');
+  const cardSource = await readFile(resolve(testDirectory, '../../components/PaperEventShareCard.tsx'), 'utf8');
+  assert.match(componentSource, /accessibilityLabel="Event Arena"/);
+  assert.match(componentSource, /sortPaperChallengeHistory\(store\.history, sortMode\)/);
+  assert.match(componentSource, /refreshEventPosition/);
+  assert.match(componentSource, /Share\.share/);
+  assert.match(componentSource, /setEventNotifications\(value\)/);
+  assert.match(componentSource, /Sharing\.shareAsync\(uri/);
+  assert.match(componentSource, /share-paper-event-image-/);
+  assert.match(cardSource, /MEISNER METHOD/);
+  assert.match(cardSource, /EVENT RETURN/);
 });
 
 test('paper event summary uses account equity change and event-only trades', () => {

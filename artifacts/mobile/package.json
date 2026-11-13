@@ -66,8 +66,10 @@
     "expo-build-properties": "~1.0.10",
     "expo-network": "~8.0.8",
     "expo-notifications": "~0.32.17",
+    "expo-sharing": "~14.0.8",
     "expo-speech": "~14.0.8",
     "expo-store-review": "~9.0.9",
-    "expo-video": "~3.0.16"
+    "expo-video": "~3.0.16",
+    "react-native-view-shot": "4.0.3"
   }
 }
