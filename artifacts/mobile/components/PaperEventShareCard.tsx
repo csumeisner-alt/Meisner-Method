@@ -1,14 +1,15 @@
 import React from 'react';
 import { Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { PaperChallengeMilestoneBadges } from '@/components/PaperChallengeMilestoneBadges';
 import { useColors } from '@/hooks/useColors';
-import type { PaperChallengeSummary } from '@/lib/paperChallenge';
+import type { PaperChallengeMilestoneId, PaperChallengeSummary } from '@/lib/paperChallenge';
 
-type Props = { event: PaperChallengeSummary };
+type Props = { event: PaperChallengeSummary; milestones?: PaperChallengeMilestoneId[] };
 
 const money = (value: number) => `${value < 0 ? '−' : ''}$${Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-export function PaperEventShareCard({ event }: Props) {
+export function PaperEventShareCard({ event, milestones = [] }: Props) {
   const colors = useColors();
   const start = new Date(event.eventStartAtMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const end = new Date(event.eventEndAtMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -49,6 +50,7 @@ export function PaperEventShareCard({ event }: Props) {
           <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 15, marginTop: 2 }}>
             {money(event.netProfit)} net
           </Text>
+          <PaperChallengeMilestoneBadges milestones={milestones} />
         </View>
 
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 22 }}>

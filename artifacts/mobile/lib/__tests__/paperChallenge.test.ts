@@ -7,6 +7,7 @@ import {
   buildPaperChallengeSummary,
   capturePaperChallengeBaseline,
   ensurePaperChallengeAccount,
+  getPaperChallengeMilestones,
   getPaperChallengeReminders,
   getPaperChallengeWindow,
   sortPaperChallengeHistory,
@@ -96,10 +97,50 @@ test('event history sorts newest by date or strongest by return', () => {
   assert.deepEqual(sortPaperChallengeHistory(history, 'top').map((event) => event.eventId), ['older-best', 'newer', 'older-low']);
 });
 
+test('event milestones reward first participation, positive finishes, and strict personal bests', () => {
+  const makeSummary = (eventId: string, eventStartAtMs: number, returnPercent: number): PaperChallengeSummary => ({
+    eventId,
+    eventStartAtMs,
+    eventEndAtMs: eventStartAtMs + 5,
+    joinedAtMs: eventStartAtMs,
+    accountId: `paper-event:${eventId}`,
+    accountName: 'Event Portfolio',
+    startEquity: 100_000,
+    endEquity: 100_000 * (1 + returnPercent / 100),
+    netProfit: returnPercent * 1_000,
+    returnPercent,
+    tradeCount: 0,
+    buyCount: 0,
+    sellCount: 0,
+    symbolsTraded: [],
+    realizedPnL: 0,
+    completedAtMs: eventStartAtMs + 6,
+  });
+  const firstEvent = makeSummary('first', 100, 1.5);
+  const previousEvent = makeSummary('previous', 200, 1.5);
+  const personalBest = makeSummary('best', 300, 2);
+  const tiedReturn = makeSummary('tie', 400, 2);
+  const improvedLoss = makeSummary('less-negative', 500, -1);
+  const laterEvent = makeSummary('later', 600, 5);
+
+  assert.deepEqual(getPaperChallengeMilestones(firstEvent, [firstEvent, previousEvent]), [
+    'first-event',
+    'positive-finish',
+  ]);
+  assert.deepEqual(getPaperChallengeMilestones(personalBest, [laterEvent, firstEvent, previousEvent]), [
+    'positive-finish',
+    'personal-best',
+  ]);
+  assert.deepEqual(getPaperChallengeMilestones(tiedReturn, [firstEvent, previousEvent, personalBest]), ['positive-finish']);
+  assert.deepEqual(getPaperChallengeMilestones(improvedLoss, [previousEvent]), []);
+});
+
 test('Event Arena wires its label, history sorting, midweek refresh, sharing, and notification toggle', async () => {
   const testDirectory = dirname(fileURLToPath(import.meta.url));
   const componentSource = await readFile(resolve(testDirectory, '../../components/PaperChallengeHistory.tsx'), 'utf8');
   const cardSource = await readFile(resolve(testDirectory, '../../components/PaperEventShareCard.tsx'), 'utf8');
+  const paperScreenSource = await readFile(resolve(testDirectory, '../../app/paper.tsx'), 'utf8');
+  const badgeSource = await readFile(resolve(testDirectory, '../../components/PaperChallengeMilestoneBadges.tsx'), 'utf8');
   assert.match(componentSource, /accessibilityLabel="Event Arena"/);
   assert.match(componentSource, /sortPaperChallengeHistory\(store\.history, sortMode\)/);
   assert.match(componentSource, /refreshEventPosition/);
@@ -109,6 +150,11 @@ test('Event Arena wires its label, history sorting, midweek refresh, sharing, an
   assert.match(componentSource, /share-paper-event-image-/);
   assert.match(cardSource, /MEISNER METHOD/);
   assert.match(cardSource, /EVENT RETURN/);
+  assert.match(componentSource, /getPaperChallengeMilestones\(event, store\.history\)/);
+  assert.match(componentSource, /PaperChallengeMilestoneBadges milestones=\{getPaperChallengeMilestones\(event, store\.history\)\} compact/);
+  assert.match(paperScreenSource, /milestones=\{getPaperChallengeMilestones\(completedEventSummary, paperChallenge\.history\)\}/);
+  assert.match(cardSource, /PaperChallengeMilestoneBadges milestones=\{milestones\}/);
+  assert.match(badgeSource, /paper-event-milestone-badges/);
 });
 
 test('paper event summary uses account equity change and event-only trades', () => {

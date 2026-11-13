@@ -78,6 +78,7 @@ import {
   buildPaperChallengeSummary,
   ensurePaperChallengeAccount,
   finalizePaperChallengeStore,
+  getPaperChallengeMilestones,
   getMissingPaperChallengeQuoteSymbols,
   getPaperChallengeWindow,
   PAPER_CHALLENGE_STORAGE_KEY,
@@ -2015,7 +2016,12 @@ export default function PaperScreen() {
             </TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 16 }}>
-            {completedEventSummary && <PaperEventShareCard event={completedEventSummary} />}
+            {completedEventSummary && (
+              <PaperEventShareCard
+                event={completedEventSummary}
+                milestones={getPaperChallengeMilestones(completedEventSummary, paperChallenge.history)}
+              />
+            )}
           </ScrollView>
           <TouchableOpacity
             testID="dismiss-paper-event-recap"

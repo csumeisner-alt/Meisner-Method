@@ -43,10 +43,40 @@ export type PaperChallengeSummary = Omit<PaperChallengeEnrollment, 'startEquity'
   completedAtMs: number;
 };
 
+export type PaperChallengeMilestoneId = 'first-event' | 'positive-finish' | 'personal-best';
+
+export const PAPER_CHALLENGE_MILESTONE_LABELS: Record<PaperChallengeMilestoneId, string> = {
+  'first-event': 'FIRST EVENT',
+  'positive-finish': 'IN THE GREEN',
+  'personal-best': 'PERSONAL BEST',
+};
+
 export type PaperChallengeStore = {
   enrollment: PaperChallengeEnrollment | null;
   history: PaperChallengeSummary[];
 };
+
+export function getPaperChallengeMilestones(
+  event: PaperChallengeSummary,
+  history: PaperChallengeSummary[],
+): PaperChallengeMilestoneId[] {
+  const previousEvents = history.filter((item) =>
+    item.eventId !== event.eventId && item.eventStartAtMs < event.eventStartAtMs,
+  );
+  const milestones: PaperChallengeMilestoneId[] = [];
+
+  if (previousEvents.length === 0) milestones.push('first-event');
+  if (event.returnPercent > 0) milestones.push('positive-finish');
+  if (
+    previousEvents.length > 0
+    && event.returnPercent > 0
+    && previousEvents.every((item) => event.returnPercent > item.returnPercent)
+  ) {
+    milestones.push('personal-best');
+  }
+
+  return milestones;
+}
 
 export type PaperChallengeAccountState = {
   accounts: PaperAccount[];

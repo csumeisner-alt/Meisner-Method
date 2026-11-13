@@ -16,12 +16,15 @@ import ViewShot from 'react-native-view-shot';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { PaperEventShareCard } from '@/components/PaperEventShareCard';
+import { PaperChallengeMilestoneBadges } from '@/components/PaperChallengeMilestoneBadges';
 import {
+  getPaperChallengeMilestones,
   getPaperChallengeReminders,
   getPaperChallengeWindow,
   PAPER_CHALLENGE_STORAGE_KEY,
   PAPER_CHALLENGE_STARTING_BALANCE,
   sortPaperChallengeHistory,
+  PAPER_CHALLENGE_MILESTONE_LABELS,
   type PaperChallengeStore,
   type PaperChallengeSummary,
   withdrawUpcomingPaperChallenge,
@@ -199,6 +202,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
 
   const shareSummary = async (event: PaperChallengeSummary) => {
     const symbols = event.symbolsTraded?.length ? event.symbolsTraded.join(', ') : 'No trades';
+    const milestones = getPaperChallengeMilestones(event, store.history);
     const text = [
       'Meisner Method · Paper Event Results',
       dateRange(event.eventStartAtMs, event.eventEndAtMs),
@@ -208,6 +212,9 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
       `Trades: ${event.buyCount ?? 0} buys, ${event.sellCount ?? 0} sells`,
       `Realized P&L: ${money(event.realizedPnL)}`,
       `Symbols: ${symbols}`,
+      ...(milestones.length > 0
+        ? [`Milestones: ${milestones.map((milestone) => PAPER_CHALLENGE_MILESTONE_LABELS[milestone]).join(', ')}`]
+        : []),
     ].join('\n');
     try {
       await Share.share({ title: 'Paper Event Results', message: text });
@@ -563,6 +570,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                   <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 5 }}>
                     End {money(event.endEquity)} · {event.returnPercent >= 0 ? '+' : ''}{event.returnPercent.toFixed(2)}% · realized {money(event.realizedPnL)}
                   </Text>
+                  <PaperChallengeMilestoneBadges milestones={getPaperChallengeMilestones(event, store.history)} compact />
                   {(event.symbolsTraded ?? []).length > 0 && (
                     <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 3 }}>
                       Traded: {(event.symbolsTraded ?? []).join(', ')}
@@ -603,7 +611,10 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                   options={{ format: 'png', quality: 1 }}
                   style={{ width: '100%', maxWidth: 360 }}
                 >
-                  <PaperEventShareCard event={imageShareEvent} />
+                  <PaperEventShareCard
+                    event={imageShareEvent}
+                    milestones={getPaperChallengeMilestones(imageShareEvent, store.history)}
+                  />
                 </ViewShot>
               </ScrollView>
               <View style={{ paddingHorizontal: 18, paddingTop: 10, paddingBottom: Platform.OS === 'web' ? 24 : insets.bottom + 18 }}>
