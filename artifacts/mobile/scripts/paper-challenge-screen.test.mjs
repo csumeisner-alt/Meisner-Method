@@ -82,11 +82,14 @@ test("account dashboard selects, scopes, and persists the active paper account",
   assert.match(screen, /transactions\.filter\(t => t\.accountId === activeId\)/);
   assert.match(screen, /orders\.filter\(o => o\.accountId === activeId\)/);
   assert.match(screen, /await flushCache\([\s\S]*lotsRef\.current, id\)/);
-  assert.match(screen, /valueHistory\.filter\(\(point\) => new Date\(point\.date\)\.getTime\(\) >= Date\.now\(\) - range\.ms\)/);
+  assert.match(screen, /getCoveredAccountValueHistory\(\s*currentAccountSnapshots,\s*account\.id,\s*range\.ms/);
+  assert.match(screen, /mergeAccountValueHistory\(tradeHistory, currentAccountSnapshots, account\.id\)/);
+  assert.match(screen, /PAPER_VALUE_SNAPSHOT_INTERVAL_MS = 60 \* 60_000/);
+  assert.match(screen, /PAPER_VALUE_SNAPSHOT_KEY/);
   assert.match(screen, /testID=\{isEventAcct \? 'active-paper-event-account'/);
   assert.match(screen, /\{ id: 'history',\s+label: 'TRADE HISTORY'/);
   assert.match(screen, /testID=\{`paper-tab-\$\{tab\.id\}`\}/);
-  assert.match(screen, /historyAgeMs >= range\.ms/);
+  assert.doesNotMatch(screen, /historyAgeMs >= range\.ms/);
   assert.match(orderSheet, /testID="order-sheet-active-account"/);
   assert.match(orderSheet, /Buying power \{\$fmt\(account\.cash\)\}/);
 });

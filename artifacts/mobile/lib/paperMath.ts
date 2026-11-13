@@ -62,6 +62,12 @@ export type PaperTransaction = {
 
 export type LiveQuote = { price: number; change: number; pct: number };
 
+export type PaperAccountValueSnapshot = {
+  accountId: string;
+  date: string;
+  value: number;
+};
+
 /**
  * Return dividend yield as a decimal fraction (0.0043 = 0.43%).
  *
@@ -243,6 +249,120 @@ export function computeRealizedPnL(txns: PaperTransaction[]): number {
   return txns
     .filter(t => t.action === 'SELL')
     .reduce((s, t) => s + sellNetPnL(t), 0);
+}
+
+// ── Saved account value snapshots ─────────────────────────────────────────────
+export function parseAccountValueSnapshots(value: unknown): PaperAccountValueSnapshot[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is PaperAccountValueSnapshot =>
+    !!item
+    && typeof item === 'object'
+    && typeof item.accountId === 'string'
+    && item.accountId.length > 0
+    && typeof item.date === 'string'
+    && Number.isFinite(new Date(item.date).getTime())
+    && typeof item.value === 'number'
+    && Number.isFinite(item.value),
+  ).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+}
+
+/** Return null instead of estimating equity when any held position lacks a live quote. */
+export function createAccountValueSnapshot(
+  accountId: string,
+  accounts: PaperAccount[],
+  positions: PaperPosition[],
+  quotes: Record<string, LiveQuote>,
+  date: string = new Date().toISOString(),
+): PaperAccountValueSnapshot | null {
+  const account = accounts.find((item) => item.id === accountId);
+  const timestamp = new Date(date).getTime();
+  if (!account || !Number.isFinite(timestamp) || !Number.isFinite(account.cash)) return null;
+
+  const accountPositions = positions.filter((position) =>
+    position.accountId === accountId && position.shares > 0,
+  );
+  let positionValue = 0;
+  for (const position of accountPositions) {
+    const price = quotes[position.symbol]?.price;
+    if (!Number.isFinite(price) || price <= 0) return null;
+    positionValue += position.shares * price;
+  }
+
+  const value = account.cash + (account.unsettledCash ?? 0) + positionValue;
+  if (!Number.isFinite(value)) return null;
+  return { accountId, date: new Date(timestamp).toISOString(), value };
+}
+
+/** Append or refresh one account's latest sample, retaining enough for a full year. */
+export function upsertAccountValueSnapshot(
+  snapshots: PaperAccountValueSnapshot[],
+  snapshot: PaperAccountValueSnapshot,
+  minimumIntervalMs: number,
+  nowMs: number = new Date(snapshot.date).getTime(),
+): PaperAccountValueSnapshot[] {
+  const timestamp = new Date(snapshot.date).getTime();
+  if (!snapshot.accountId || !Number.isFinite(timestamp) || !Number.isFinite(snapshot.value)) return snapshots;
+  const sameAccount = snapshots
+    .filter((item) => item.accountId === snapshot.accountId)
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const latest = sameAccount[sameAccount.length - 1];
+  if (latest && timestamp - new Date(latest.date).getTime() < minimumIntervalMs) return snapshots;
+  const next = [...snapshots, snapshot];
+  const retentionCutoff = nowMs - 400 * 86_400_000;
+  return next
+    .filter((item) => new Date(item.date).getTime() >= retentionCutoff)
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+}
+
+export function removeAccountValueSnapshots(
+  snapshots: PaperAccountValueSnapshot[],
+  accountId: string,
+): PaperAccountValueSnapshot[] {
+  return snapshots.filter((item) => item.accountId !== accountId);
+}
+
+/** Return snapshot-only chart points when saved observations cover the window. */
+export function getCoveredAccountValueHistory(
+  snapshots: PaperAccountValueSnapshot[],
+  accountId: string,
+  rangeMs: number,
+  nowMs: number = Date.now(),
+  maximumSampleAgeMs: number = 30 * 60_000,
+): { date: string; value: number }[] {
+  const cutoff = nowMs - rangeMs;
+  const points = snapshots
+    .filter((item) => item.accountId === accountId)
+    .filter((item) => {
+      const timestamp = new Date(item.date).getTime();
+      return Number.isFinite(timestamp) && timestamp <= nowMs && Number.isFinite(item.value);
+    })
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  if (points.length < 2) return [];
+
+  const latest = points[points.length - 1];
+  if (new Date(latest.date).getTime() < nowMs - maximumSampleAgeMs) return [];
+  if (new Date(points[0].date).getTime() > cutoff) return [];
+
+  const inRange = points.filter((item) => new Date(item.date).getTime() >= cutoff);
+  if (inRange.length < 2) return [];
+  const beforeRange = points.filter((item) => new Date(item.date).getTime() < cutoff);
+  const anchor = beforeRange[beforeRange.length - 1];
+  return [...(anchor ? [anchor] : []), ...inRange].map(({ date, value }) => ({ date, value }));
+}
+
+/** Combine persisted samples with legacy transaction-derived values for ALL. */
+export function mergeAccountValueHistory(
+  tradeHistory: { date: string; value: number }[],
+  snapshots: PaperAccountValueSnapshot[],
+  accountId: string,
+): { date: string; value: number }[] {
+  const byDate = new Map(tradeHistory.map((point) => [point.date, point]));
+  for (const snapshot of snapshots) {
+    if (snapshot.accountId === accountId && Number.isFinite(snapshot.value)) {
+      byDate.set(snapshot.date, { date: snapshot.date, value: snapshot.value });
+    }
+  }
+  return [...byDate.values()].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 }
 
 // ── Value history ────────────────────────────────────────────────────────────

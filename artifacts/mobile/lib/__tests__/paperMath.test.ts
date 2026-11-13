@@ -7,12 +7,17 @@ import assert from 'node:assert/strict';
 import {
   INITIAL_BALANCE,
   buildValueHistory,
+  createAccountValueSnapshot,
   computeRealizedPnL,
   computeSellResult,
   computeSellWinRate,
   fundFee,
+  getCoveredAccountValueHistory,
   isWinningSell,
+  mergeAccountValueHistory,
   normalizeDividendYield,
+  parseAccountValueSnapshots,
+  upsertAccountValueSnapshot,
   sellNetPnL,
   type PaperAccount,
   type PaperPosition,
@@ -175,6 +180,96 @@ test('buildValueHistory: ignoring the fee would overstate equity', () => {
   const withFeeSell = withFee[withFee.length - 2].value;
   const noFeeSell = noFee[noFee.length - 2].value;
   approx(noFeeSell - withFeeSell, 2);
+});
+
+test('account value snapshots use live quotes and never estimate missing position prices', () => {
+  const account: PaperAccount = {
+    id: 'a1',
+    name: 'Strategy',
+    cash: 500,
+    unsettledCash: 25,
+    createdAt: DAY0,
+  };
+  const positions = [pos({ accountId: 'a1', shares: 2 }), pos({ id: 'p2', accountId: 'a2' })];
+  const snapshot = createAccountValueSnapshot(
+    'a1',
+    [account],
+    positions,
+    { VOO: { price: 120, change: 0, pct: 0 } },
+    DAY365,
+  );
+  assert.deepEqual(snapshot, { accountId: 'a1', date: DAY365, value: 765 });
+  assert.equal(createAccountValueSnapshot('a1', [account], positions, {}, DAY365), null);
+  assert.equal(createAccountValueSnapshot('a2', [account], positions, {}, DAY365), null);
+});
+
+test('snapshot parsing and hourly upserts keep account histories separate', () => {
+  const initial = parseAccountValueSnapshots([
+    { accountId: 'a1', date: DAY0, value: 100 },
+    { accountId: 'a2', date: DAY0, value: 200 },
+    { accountId: 'a1', date: 'invalid', value: 300 },
+    { accountId: 'a1', date: DAY0, value: Number.NaN },
+  ]);
+  assert.equal(initial.length, 2);
+
+  const tooSoon = upsertAccountValueSnapshot(
+    initial,
+    { accountId: 'a1', date: '2025-01-01T00:05:00.000Z', value: 110 },
+    60 * 60_000,
+  );
+  assert.equal(tooSoon, initial, 'frequent polling does not move the saved sample time');
+  const nextHourly = upsertAccountValueSnapshot(
+    initial,
+    { accountId: 'a1', date: '2025-01-01T01:00:00.000Z', value: 120 },
+    60 * 60_000,
+  );
+  assert.equal(nextHourly.length, 3);
+  assert.deepEqual(nextHourly.find((point) => point.accountId === 'a1' && point.date !== DAY0), {
+    accountId: 'a1',
+    date: '2025-01-01T01:00:00.000Z',
+    value: 120,
+  });
+  assert.equal(nextHourly.find((point) => point.accountId === 'a2')?.value, 200);
+});
+
+test('dated account ranges require snapshot coverage and retain a pre-window chart anchor', () => {
+  const nowMs = new Date(DAY365).getTime();
+  const day = 86_400_000;
+  const snapshots = [
+    { accountId: 'other', date: new Date(nowMs - day).toISOString(), value: 10 },
+    { accountId: 'a1', date: new Date(nowMs - day - 1_000).toISOString(), value: 100 },
+    { accountId: 'a1', date: new Date(nowMs - 12 * 60 * 60_000).toISOString(), value: 110 },
+    { accountId: 'a1', date: new Date(nowMs - 60 * 60_000).toISOString(), value: 120 },
+  ];
+  const covered = getCoveredAccountValueHistory(snapshots, 'a1', day, nowMs, 2 * 60 * 60_000);
+  assert.deepEqual(covered.map((point) => point.value), [100, 110, 120]);
+  assert.deepEqual(
+    getCoveredAccountValueHistory(snapshots, 'a2', day, nowMs, 2 * 60 * 60_000),
+    [],
+  );
+  assert.deepEqual(
+    getCoveredAccountValueHistory(snapshots.slice(2), 'a1', day, nowMs, 2 * 60 * 60_000),
+    [],
+    'a newer account without a snapshot at the requested start must not show the range',
+  );
+  assert.deepEqual(
+    getCoveredAccountValueHistory(snapshots, 'a1', day, nowMs + 3 * 60 * 60_000, 2 * 60 * 60_000),
+    [],
+    'stale samples do not qualify as current range coverage',
+  );
+});
+
+test('ALL account history keeps legacy transaction points alongside saved snapshots', () => {
+  const legacy = [{ date: DAY0, value: INITIAL_BALANCE }];
+  const merged = mergeAccountValueHistory(
+    legacy,
+    [
+      { accountId: 'a1', date: '2025-06-01T00:00:00.000Z', value: 101_000 },
+      { accountId: 'a2', date: '2025-07-01T00:00:00.000Z', value: 99_000 },
+    ],
+    'a1',
+  );
+  assert.deepEqual(merged.map((point) => point.value), [INITIAL_BALANCE, 101_000]);
 });
 
 // ── Win rate ───────────────────────────────────────────────────────────────────

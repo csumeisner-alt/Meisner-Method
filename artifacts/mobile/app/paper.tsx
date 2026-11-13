@@ -44,10 +44,17 @@ import {
   computeRealizedPnL,
   computeSellResult,
   computeSellWinRate,
+  createAccountValueSnapshot,
   fundFee,
+  getCoveredAccountValueHistory,
+  mergeAccountValueHistory,
   normalizeDividendYield,
+  parseAccountValueSnapshots,
+  removeAccountValueSnapshots,
+  upsertAccountValueSnapshot,
   type LiveQuote,
   type PaperAccount,
+  type PaperAccountValueSnapshot,
   type PaperLot,
   type PaperOrder,
   type PaperPosition,
@@ -114,6 +121,9 @@ type PaperBuySuggestion = {
 // ── Local cache ─────────────────────────────────────────────────────────────
 // Bumped to v2: adds orders, lots, and extended account fields.
 const PAPER_CACHE_KEY = '@stocksense/paper_v2';
+const PAPER_VALUE_SNAPSHOT_KEY = '@stocksense/paper_equity_snapshots_v1';
+const PAPER_VALUE_SNAPSHOT_INTERVAL_MS = 60 * 60_000;
+const PAPER_VALUE_SNAPSHOT_MAX_AGE_MS = 2 * 60 * 60_000;
 
 interface PaperCache {
   accounts: PaperAccount[];
@@ -194,6 +204,8 @@ const HISTORY_RANGES = [
   { id: 'ALL', ms: null },
 ] as const;
 
+let paperValueSnapshotWriteQueue: Promise<void> = Promise.resolve();
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 
@@ -239,6 +251,8 @@ export default function PaperScreen() {
   const [transactions, setTransactions] = useState<PaperTransaction[]>([]);
   const [orders, setOrders] = useState<PaperOrder[]>([]);
   const [lots, setLots] = useState<PaperLot[]>([]);
+  const [accountValueSnapshots, setAccountValueSnapshots] = useState<PaperAccountValueSnapshot[]>([]);
+  const [snapshotStorageError, setSnapshotStorageError] = useState('');
 
   // Load state
   const [loaded, setLoaded] = useState(false);
@@ -447,6 +461,7 @@ export default function PaperScreen() {
   const ordersRef = useRef<PaperOrder[]>([]);
   const lotsRef = useRef<PaperLot[]>([]);
   const activeIdRef = useRef<string>('');
+  const accountValueSnapshotsRef = useRef<PaperAccountValueSnapshot[]>([]);
 
   useFocusEffect(useCallback(() => {
     let cancelled = false;
@@ -554,6 +569,50 @@ export default function PaperScreen() {
     await flushCache(accountsRef.current, positionsRef.current, transactionsRef.current, data, lotsRef.current, activeIdRef.current);
   }, [flushCache]);
 
+  const persistAccountValueSnapshots = useCallback(async (
+    next: PaperAccountValueSnapshot[],
+  ) => {
+    accountValueSnapshotsRef.current = next;
+    setAccountValueSnapshots(next);
+    const write = paperValueSnapshotWriteQueue
+      .catch(() => {})
+      .then(() => AsyncStorage.setItem(PAPER_VALUE_SNAPSHOT_KEY, JSON.stringify(next)));
+    paperValueSnapshotWriteQueue = write;
+    try {
+      await write;
+      setSnapshotStorageError('');
+    } catch {
+      setSnapshotStorageError('Saved account values could not be written to this device.');
+    }
+  }, []);
+
+  const recordAccountValueSnapshot = useCallback(async (
+    accountId: string,
+    liveQuotes: Record<string, LiveQuote>,
+  ) => {
+    const snapshot = createAccountValueSnapshot(
+      accountId,
+      accountsRef.current,
+      positionsRef.current,
+      liveQuotes,
+    );
+    if (!snapshot) return;
+    const next = upsertAccountValueSnapshot(
+      accountValueSnapshotsRef.current,
+      snapshot,
+      PAPER_VALUE_SNAPSHOT_INTERVAL_MS,
+    );
+    if (next === accountValueSnapshotsRef.current) return;
+    await persistAccountValueSnapshots(next);
+  }, [persistAccountValueSnapshots]);
+
+  const clearAccountValueSnapshots = useCallback(async (accountId: string) => {
+    const next = removeAccountValueSnapshots(accountValueSnapshotsRef.current, accountId);
+    if (next.length !== accountValueSnapshotsRef.current.length) {
+      await persistAccountValueSnapshots(next);
+    }
+  }, [persistAccountValueSnapshots]);
+
   useEffect(() => {
     const enrollment = paperChallenge.enrollment;
     if (!loaded || !paperChallengeReady || !enrollment) return;
@@ -601,7 +660,18 @@ export default function PaperScreen() {
 
     // Paper trading is guest-local: load the exact state used by order
     // execution and never replace it with an unauthenticated server response.
-    const cached = await readPaperCache();
+    const [cached, rawSnapshots] = await Promise.all([
+      readPaperCache(),
+      AsyncStorage.getItem(PAPER_VALUE_SNAPSHOT_KEY).catch(() => null),
+    ]);
+    let savedSnapshots: PaperAccountValueSnapshot[] = [];
+    try {
+      savedSnapshots = parseAccountValueSnapshots(rawSnapshots ? JSON.parse(rawSnapshots) : null);
+    } catch {
+      // A damaged chart-history record must not block account and trade recovery.
+    }
+    accountValueSnapshotsRef.current = savedSnapshots;
+    setAccountValueSnapshots(savedSnapshots);
     if (cached && cached.accounts.length > 0) {
       accountsRef.current = cached.accounts;
       positionsRef.current = cached.positions;
@@ -789,7 +859,10 @@ export default function PaperScreen() {
       .filter(o => o.accountId === accountId && o.status === 'pending')
       .map(o => o.symbol);
     const symbols = [...new Set([...posSymbols, ...orderSymbols])];
-    if (symbols.length === 0) return {};
+    if (symbols.length === 0) {
+      await recordAccountValueSnapshot(accountId, {});
+      return {};
+    }
     setLoadingQuotes(true);
     try {
       const results = await Promise.allSettled(
@@ -812,19 +885,28 @@ export default function PaperScreen() {
       });
       // Evaluate pending orders with the freshly-fetched quotes
       if (evaluateOrders) evaluatePendingOrders({ ...quotes, ...next });
+      await recordAccountValueSnapshot(accountId, next);
       return next;
     } finally {
       setLoadingQuotes(false);
     }
-  }, [evaluatePendingOrders]);
+  }, [evaluatePendingOrders, recordAccountValueSnapshot]);
 
   // Keep the selector's equity cards current without evaluating orders from
   // accounts that are not active in the trading workspace.
   const fetchInactiveAccountCardQuotes = useCallback(async () => {
+    const inactiveAccounts = accounts.filter((item) => item.id !== activeId);
     const symbols = [...new Set(
-      positions.filter((position) => position.accountId !== activeId).map((position) => position.symbol),
+      positions
+        .filter((position) => position.accountId !== activeId)
+        .map((position) => position.symbol),
     )];
-    if (symbols.length === 0) return;
+    if (symbols.length === 0) {
+      for (const inactiveAccount of inactiveAccounts) {
+        void recordAccountValueSnapshot(inactiveAccount.id, {});
+      }
+      return;
+    }
     const results = await Promise.allSettled(symbols.map(async (symbol) => {
       const response = await fetch(`${BASE_URL}/api/stocks/quote/${symbol}`);
       if (!response.ok) throw new Error(`Quote request failed for ${symbol}`);
@@ -842,8 +924,11 @@ export default function PaperScreen() {
     for (const result of results) {
       if (result.status === 'fulfilled') next[result.value[0]] = result.value[1];
     }
+    for (const inactiveAccount of inactiveAccounts) {
+      void recordAccountValueSnapshot(inactiveAccount.id, next);
+    }
     if (Object.keys(next).length > 0) setQuotes((current) => ({ ...current, ...next }));
-  }, [activeId, positions]);
+  }, [accounts, activeId, positions, recordAccountValueSnapshot]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -1031,12 +1116,16 @@ export default function PaperScreen() {
   ]);
 
   useEffect(() => {
-    const hasPendingOrders = orders.some(o => o.accountId === activeId && o.status === 'pending');
-    // Fire even when there are no positions — pending limit/stop orders need quote polling too.
-    if ((positions.length > 0 || hasPendingOrders) && activeId) {
-      fetchQuotes(positions, activeId);
-    }
+    if (activeId) fetchQuotes(positions, activeId);
   }, [activeId, positions.length, orders.length]);
+
+  useEffect(() => {
+    if (!loaded || !activeId) return;
+    const timer = setInterval(() => {
+      void fetchQuotes(positionsRef.current, activeIdRef.current, false);
+    }, PAPER_VALUE_SNAPSHOT_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [activeId, fetchQuotes, loaded]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -1073,6 +1162,7 @@ export default function PaperScreen() {
     const updatedOrders = orders.filter(o => o.accountId !== id);
     const updatedLots = lots.filter(l => l.accountId !== id);
     await saveAll(updatedAccounts, updatedPositions, updatedTxns, updatedOrders, updatedLots, activeIdRef.current);
+    await clearAccountValueSnapshots(id);
     setQuotes(prev => {
       const remaining = new Set(updatedPositions.map(p => p.symbol));
       const next: Record<string, LiveQuote> = {};
@@ -1532,15 +1622,28 @@ export default function PaperScreen() {
   };
 
   const renderOverview = () => {
-    const valueHistory = account
+    const tradeHistory = account
       ? buildValueHistory(account, myTxns, (account.cash + (account.unsettledCash ?? 0)), myPositions, quotes)
       : [];
-    const historyAgeMs = account ? Date.now() - new Date(account.createdAt).getTime() : 0;
+    const currentAccountSnapshots = account
+      ? accountValueSnapshots.filter((snapshot) =>
+          snapshot.accountId === account.id
+          && new Date(snapshot.date).getTime() >= new Date(account.createdAt).getTime(),
+        )
+      : [];
+    const valueHistory = account
+      ? mergeAccountValueHistory(tradeHistory, currentAccountSnapshots, account.id)
+      : tradeHistory;
+    const nowMs = Date.now();
     const supportedRanges = HISTORY_RANGES.filter((range) => {
-      const points = range.ms == null
-        ? valueHistory
-        : valueHistory.filter((point) => new Date(point.date).getTime() >= Date.now() - range.ms);
-      return points.length >= 2 && (range.ms == null || historyAgeMs >= range.ms);
+      if (range.ms == null) return valueHistory.length >= 2;
+      return !!account && getCoveredAccountValueHistory(
+        currentAccountSnapshots,
+        account.id,
+        range.ms,
+        nowMs,
+        PAPER_VALUE_SNAPSHOT_MAX_AGE_MS,
+      ).length >= 2;
     });
     const activeRange = supportedRanges.some((range) => range.id === chartRange)
       ? chartRange
@@ -1548,7 +1651,15 @@ export default function PaperScreen() {
     const rangeMs = HISTORY_RANGES.find((range) => range.id === activeRange)?.ms;
     const chartPoints = rangeMs == null
       ? valueHistory
-      : valueHistory.filter((point) => new Date(point.date).getTime() >= Date.now() - rangeMs);
+      : account
+        ? getCoveredAccountValueHistory(
+            currentAccountSnapshots,
+            account.id,
+            rangeMs,
+            nowMs,
+            PAPER_VALUE_SNAPSHOT_MAX_AGE_MS,
+          )
+        : [];
 
     return (
       <View style={{ gap: 12, paddingHorizontal: 16 }}>
@@ -1556,7 +1667,7 @@ export default function PaperScreen() {
           <View style={styles.chartHeading}>
             <View>
               <Text style={styles.sectionTitle}>ACCOUNT PERFORMANCE</Text>
-              <Text style={styles.chartNote}>Reconstructed from this account’s saved trades</Text>
+              <Text style={styles.chartNote}>Dated ranges use saved account values; ALL also includes trade history</Text>
             </View>
             <Text style={[styles.chartCurrentValue, { color: pnlColor(totalPnLFromEquity) }]}>
               {totalPnLFromEquity >= 0 ? '+' : ''}{$short(totalPnLFromEquity)}
@@ -1579,6 +1690,11 @@ export default function PaperScreen() {
             ))}
           </ScrollView>
           <PortfolioLineChart points={chartPoints} width={screenWidth - 64} height={180} />
+          {!!snapshotStorageError && (
+            <Text style={[styles.chartNote, { color: colors.sellColor, marginTop: 2, marginBottom: 0 }]}>
+              {snapshotStorageError}
+            </Text>
+          )}
         </View>
       </View>
     );
