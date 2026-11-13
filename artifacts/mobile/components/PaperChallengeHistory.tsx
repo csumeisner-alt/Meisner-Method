@@ -21,8 +21,7 @@ import {
   getPaperChallengeMilestones,
   getPaperChallengeReminders,
   getPaperChallengeWindow,
-  normalizePaperChallengeStore,
-  PAPER_CHALLENGE_STORAGE_KEY,
+  loadPaperChallengeStore,
   PAPER_CHALLENGE_STARTING_BALANCE,
   sortPaperChallengeHistory,
   PAPER_CHALLENGE_MILESTONE_LABELS,
@@ -93,6 +92,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
   const insets = useSafeAreaInsets();
   const [eventsOpen, setEventsOpen] = useState(false);
   const [store, setStore] = useState<PaperChallengeStore>({ enrollment: null, history: [] });
+  const [storeLoadState, setStoreLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [imageShareEvent, setImageShareEvent] = useState<PaperChallengeSummary | null>(null);
   const [sharingImage, setSharingImage] = useState(false);
@@ -108,32 +108,32 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
   const sortedHistory = sortPaperChallengeHistory(store.history, sortMode);
   const midweekAt = currentWindow.startAtMs + 2 * DAY_MS + 2.5 * 60 * 60 * 1000;
 
+  const readStore = useCallback(async (isCurrent: () => boolean = () => true) => {
+    setStoreLoadState('loading');
+    try {
+      const latest = await loadPaperChallengeStore({
+        getItem: (key) => AsyncStorage.getItem(key),
+      });
+      if (isCurrent()) {
+        setStore(latest);
+        setStoreLoadState('ready');
+      }
+    } catch {
+      if (isCurrent()) setStoreLoadState('error');
+    }
+  }, []);
+
   useEffect(() => {
     if (!visible) return;
     let cancelled = false;
-    Promise.all([
-      AsyncStorage.getItem(PAPER_CHALLENGE_STORAGE_KEY),
-      AsyncStorage.getItem(NOTIFICATIONS_KEY),
-    ]).then(([raw, notificationValue]) => {
-      if (cancelled) return;
-      if (raw) {
-        const parsed = JSON.parse(raw) as PaperChallengeStore;
-        setStore(normalizePaperChallengeStore({
-          enrollment: parsed.enrollment ?? null,
-          history: Array.isArray(parsed.history) ? parsed.history : [],
-        }));
-      } else {
-        setStore({ enrollment: null, history: [] });
-      }
-      setNotificationsEnabled(notificationValue === 'true');
-    }).catch(() => {
-      if (!cancelled) {
-        setStore({ enrollment: null, history: [] });
-        setNotificationsEnabled(false);
-      }
-    });
+    void readStore(() => !cancelled);
+    void AsyncStorage.getItem(NOTIFICATIONS_KEY)
+      .then((notificationValue) => {
+        if (!cancelled) setNotificationsEnabled(notificationValue === 'true');
+      })
+      .catch(() => {});
     return () => { cancelled = true; };
-  }, [visible, eventsOpen]);
+  }, [visible, eventsOpen, readStore]);
 
   useEffect(() => {
     if (!visible || !notificationsEnabled || Platform.OS === 'web') return;
@@ -155,7 +155,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
 
   const optIn = async () => {
     const eventWindow = getPaperChallengeWindow(Date.now());
-    if (saving || eventWindow.phase === 'ended' || store.enrollment) return;
+    if (saving || storeLoadState !== 'ready' || eventWindow.phase === 'ended' || store.enrollment) return;
     setSaving(true);
     const enrollment = {
       eventId: eventWindow.id,
@@ -187,7 +187,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
   };
 
   const withdrawUpcomingSignup = async () => {
-    if (saving) return;
+    if (saving || storeLoadState !== 'ready') return;
     const nowMs = Date.now();
     const next = withdrawUpcomingPaperChallenge(store, currentWindow.id, nowMs);
     if (next === store) {
@@ -380,6 +380,27 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
           </View>
           <View style={{ flex: 1, padding: 18, paddingBottom: Platform.OS === 'web' ? 24 : insets.bottom + 18 }}>
             <View style={{ padding: 16, borderRadius: 14, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+              {storeLoadState === 'error' && (
+                <View style={{ marginBottom: 14, padding: 12, borderRadius: 10, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.destructive }}>
+                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, lineHeight: 18 }}>
+                    Could not load your saved event history. Joining and withdrawing are paused to protect your past results.
+                  </Text>
+                  <TouchableOpacity
+                    testID="retry-paper-challenge-history"
+                    accessibilityRole="button"
+                    accessibilityLabel="Retry loading saved event history"
+                    onPress={() => { void readStore(); }}
+                    style={{ alignSelf: 'flex-start', marginTop: 10, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 8, backgroundColor: colors.primary }}
+                  >
+                    <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 11 }}>RETRY</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+              {storeLoadState === 'loading' && (
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, marginBottom: 12 }}>
+                  Loading your saved event history…
+                </Text>
+              )}
               <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 0.7 }}>
                 {hasCurrentEnrollment ? 'YOUR EVENT PORTFOLIO' : currentWindow.phase === 'active' ? 'LIVE THIS WEEK' : 'NEXT PAPER EVENT'}
               </Text>
@@ -408,9 +429,9 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                 <TouchableOpacity
                   testID="join-paper-challenge"
                   accessibilityRole="button"
-                  disabled={saving || !!store.enrollment}
+                  disabled={saving || storeLoadState !== 'ready' || !!store.enrollment}
                   onPress={() => { void optIn(); }}
-                  style={{ marginTop: 14, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, backgroundColor: store.enrollment ? colors.muted : colors.primary, alignItems: 'center' }}
+                  style={{ marginTop: 14, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, backgroundColor: saving || storeLoadState !== 'ready' || store.enrollment ? colors.muted : colors.primary, alignItems: 'center' }}
                 >
                   <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>
                     {saving ? 'JOINING…' : currentWindow.phase === 'upcoming' ? 'OPT IN FOR NEXT EVENT' : 'JOIN THIS EVENT'}
@@ -431,18 +452,18 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                     <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
                       <TouchableOpacity
                         accessibilityRole="button"
-                        disabled={saving}
+                        disabled={saving || storeLoadState !== 'ready'}
                         onPress={() => setConfirmWithdraw(false)}
-                        style={{ flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: colors.card, alignItems: 'center', opacity: saving ? 0.6 : 1 }}
+                        style={{ flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: colors.card, alignItems: 'center', opacity: saving || storeLoadState !== 'ready' ? 0.6 : 1 }}
                       >
                         <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>KEEP SIGNUP</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         testID="confirm-withdraw-paper-challenge"
                         accessibilityRole="button"
-                        disabled={saving}
+                        disabled={saving || storeLoadState !== 'ready'}
                         onPress={() => { void withdrawUpcomingSignup(); }}
-                        style={{ flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: colors.destructive, alignItems: 'center', opacity: saving ? 0.6 : 1 }}
+                        style={{ flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: colors.destructive, alignItems: 'center', opacity: saving || storeLoadState !== 'ready' ? 0.6 : 1 }}
                       >
                         <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 11 }}>
                           {saving ? 'WITHDRAWING…' : 'WITHDRAW'}
@@ -455,9 +476,9 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                     testID="withdraw-paper-challenge"
                     accessibilityRole="button"
                     accessibilityLabel="Withdraw from the upcoming paper event"
-                    disabled={saving}
+                    disabled={saving || storeLoadState !== 'ready'}
                     onPress={() => setConfirmWithdraw(true)}
-                    style={{ marginTop: 12, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 9, borderWidth: 1, borderColor: colors.destructive, alignItems: 'center', opacity: saving ? 0.6 : 1 }}
+                    style={{ marginTop: 12, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 9, borderWidth: 1, borderColor: colors.destructive, alignItems: 'center', opacity: saving || storeLoadState !== 'ready' ? 0.6 : 1 }}
                   >
                     <Text style={{ color: colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 11 }}>
                       {saving ? 'SAVING…' : 'WITHDRAW FROM EVENT'}
@@ -542,7 +563,11 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
             <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
               {sortedHistory.length === 0 ? (
                 <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, paddingVertical: 12 }}>
-                  Events you join and their summaries will appear here.
+                  {storeLoadState === 'ready'
+                    ? 'Events you join and their summaries will appear here.'
+                    : storeLoadState === 'loading'
+                      ? 'Loading saved event history…'
+                      : 'Saved event history is unavailable until it can be loaded.'}
                 </Text>
               ) : sortedHistory.map((event, index) => (
                 <View key={event.eventId} style={{ paddingVertical: 12, borderTopWidth: 1, borderTopColor: colors.border }}>

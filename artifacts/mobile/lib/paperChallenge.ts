@@ -88,6 +88,12 @@ function parsePaperChallengeStore(raw: string | null): PaperChallengeStore {
   } as PaperChallengeStore);
 }
 
+export async function loadPaperChallengeStore(
+  storage: Pick<PaperChallengeStorage, 'getItem'>,
+): Promise<PaperChallengeStore> {
+  return parsePaperChallengeStore(await storage.getItem(PAPER_CHALLENGE_STORAGE_KEY));
+}
+
 /**
  * Serialize event-store read/modify/write operations so independent screens
  * cannot overwrite one another with stale snapshots.
@@ -97,7 +103,7 @@ export function updatePaperChallengeStore(
   storage: PaperChallengeStorage,
 ): Promise<PaperChallengeStore> {
   const operation = paperChallengeWriteQueue.then(async () => {
-    const current = parsePaperChallengeStore(await storage.getItem(PAPER_CHALLENGE_STORAGE_KEY));
+    const current = await loadPaperChallengeStore(storage);
     const updated = update(current);
     if (updated === current) return current;
 

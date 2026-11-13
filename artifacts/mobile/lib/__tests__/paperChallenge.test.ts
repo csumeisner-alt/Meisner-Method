@@ -10,6 +10,7 @@ import {
   getPaperChallengeMilestones,
   getPaperChallengeReminders,
   getPaperChallengeWindow,
+  loadPaperChallengeStore,
   sortPaperChallengeHistory,
   type PaperChallengeSummary,
   type PaperChallengeAccountState,
@@ -145,6 +146,9 @@ test('Event Arena wires its label, history sorting, midweek refresh, sharing, an
   const badgeSource = await readFile(resolve(testDirectory, '../../components/PaperChallengeMilestoneBadges.tsx'), 'utf8');
   assert.match(componentSource, /accessibilityLabel="Event Arena"/);
   assert.match(componentSource, /sortPaperChallengeHistory\(store\.history, sortMode\)/);
+  assert.match(componentSource, /disabled=\{saving \|\| storeLoadState !== 'ready' \|\| \!\!store\.enrollment\}/);
+  assert.match(componentSource, /testID="retry-paper-challenge-history"/);
+  assert.match(componentSource, /Could not load your saved event history/);
   assert.match(componentSource, /refreshEventPosition/);
   assert.match(componentSource, /Share\.share/);
   assert.match(componentSource, /setEventNotifications\(value\)/);
@@ -316,6 +320,61 @@ test('event summary retries after storage failure without losing enrollment or d
   );
   assert.deepEqual(repeatedRetry, afterRetry);
   assert.deepEqual(repeatedRetry.history, [summary]);
+});
+
+test('a failed event-store read does not write over history and retry restores it', async () => {
+  const enrollment = {
+    eventId: '2026-11-16',
+    eventStartAtMs: Date.parse('2026-11-16T14:30:00.000Z'),
+    eventEndAtMs: Date.parse('2026-11-20T21:00:00.000Z'),
+    joinedAtMs: Date.parse('2026-11-16T14:30:00.000Z'),
+    accountId: 'paper-event:2026-11-16',
+    accountName: 'Event Portfolio',
+    startEquity: 100_000,
+  };
+  const previousSummary = buildPaperChallengeSummary(
+    { ...enrollment, eventId: '2026-11-09', eventStartAtMs: enrollment.eventStartAtMs - 7 * 24 * 60 * 60 * 1000 },
+    102_000,
+    [],
+    enrollment.eventEndAtMs - 7 * 24 * 60 * 60 * 1000,
+  );
+  const savedStore: PaperChallengeStore = { enrollment: null, history: [previousSummary] };
+  let storedValue = JSON.stringify(savedStore);
+  let failNextRead = true;
+  let writes = 0;
+  const storage = {
+    getItem: async (key: string) => {
+      assert.equal(key, PAPER_CHALLENGE_STORAGE_KEY);
+      if (failNextRead) {
+        failNextRead = false;
+        throw new Error('Simulated AsyncStorage read failure');
+      }
+      return storedValue;
+    },
+    setItem: async (key: string, value: string) => {
+      assert.equal(key, PAPER_CHALLENGE_STORAGE_KEY);
+      writes += 1;
+      storedValue = value;
+    },
+  };
+
+  await assert.rejects(
+    updatePaperChallengeStore((current) => ({ ...current, enrollment }), storage),
+    /Simulated AsyncStorage read failure/,
+  );
+  assert.equal(writes, 0);
+  assert.deepEqual(JSON.parse(storedValue), savedStore);
+
+  const restored = await loadPaperChallengeStore(storage);
+  assert.deepEqual(restored, savedStore);
+
+  const joined = await updatePaperChallengeStore(
+    (current) => ({ ...current, enrollment }),
+    storage,
+  );
+  assert.deepEqual(joined.enrollment, enrollment);
+  assert.deepEqual(joined.history, [previousSummary]);
+  assert.deepEqual(JSON.parse(storedValue), joined);
 });
 
 test('concurrent enrollment and completion preserve unique newest-first event history', async () => {
