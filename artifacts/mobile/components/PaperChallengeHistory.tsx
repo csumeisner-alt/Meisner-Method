@@ -378,7 +378,9 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
               </Text>
               {store.enrollment && !hasCurrentEnrollment && (
                 <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 10 }}>
-                  Finish your previous event summary in Paper Trading before joining another.
+                  {now >= store.enrollment.eventEndAtMs
+                    ? 'Your event results are waiting to finish. Open Paper Trading and tap Retry; your enrollment stays saved until the summary is written.'
+                    : 'Finish your previous event summary in Paper Trading before joining another.'}
                 </Text>
               )}
               {!hasCurrentEnrollment && (currentWindow.phase === 'active' || currentWindow.phase === 'upcoming') && (

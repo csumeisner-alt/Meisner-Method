@@ -76,6 +76,7 @@ import { useWatchlist } from '@/hooks/useWatchlist';
 import {
   buildPaperChallengeSummary,
   finalizePaperChallengeStore,
+  getMissingPaperChallengeQuoteSymbols,
   getPaperChallengeWindow,
   PAPER_CHALLENGE_STORAGE_KEY,
   PAPER_CHALLENGE_STARTING_BALANCE,
@@ -228,8 +229,12 @@ export default function PaperScreen() {
   const [paperChallenge, setPaperChallenge] = useState<PaperChallengeStore>({ enrollment: null, history: [] });
   const [paperChallengeReady, setPaperChallengeReady] = useState(false);
   const [challengeNow, setChallengeNow] = useState(Date.now());
+  const [challengeRetryVersion, setChallengeRetryVersion] = useState(0);
+  const [challengeFinalizationBusy, setChallengeFinalizationBusy] = useState(false);
+  const [challengeFinalizationError, setChallengeFinalizationError] = useState(false);
   const paperChallengeRef = useRef<PaperChallengeStore>({ enrollment: null, history: [] });
   const challengeFinalizingRef = useRef<string | null>(null);
+  const challengeFinalizationFailureRef = useRef<string | null>(null);
   const challengeBaselineCapturingRef = useRef<string | null>(null);
 
   // Live quotes
@@ -385,6 +390,8 @@ export default function PaperScreen() {
       + myPositions.reduce((s, p) => s + p.shares * (quotes[p.symbol]?.price ?? p.avgCost), 0)
     : 0;
   const paperChallengeWindow = getPaperChallengeWindow(challengeNow);
+  const isPaperChallengeWaiting = !!paperChallenge.enrollment
+    && challengeNow >= paperChallenge.enrollment.eventEndAtMs;
   const isEventAccountActive = paperChallengeWindow.phase === 'active'
     && !!account
     && account.id.startsWith('paper-event:')
@@ -445,6 +452,13 @@ export default function PaperScreen() {
     paperChallengeRef.current = next;
     setPaperChallenge(next);
   }, []);
+
+  const retryPaperChallengeFinalization = useCallback(() => {
+    if (!isPaperChallengeWaiting || challengeFinalizationBusy) return;
+    challengeFinalizationFailureRef.current = null;
+    setChallengeFinalizationError(false);
+    setChallengeRetryVersion((version) => version + 1);
+  }, [challengeFinalizationBusy, isPaperChallengeWaiting]);
 
   // ── Storage helpers ───────────────────────────────────────────────────────
   const flushCache = useCallback((
@@ -766,9 +780,19 @@ export default function PaperScreen() {
       || challengeNow < enrollment.eventEndAtMs
     ) return;
     if (challengeFinalizingRef.current === enrollment.eventId) return;
+    if (challengeFinalizationFailureRef.current === enrollment.eventId) return;
     challengeFinalizingRef.current = enrollment.eventId;
+    setChallengeFinalizationBusy(true);
 
     void (async () => {
+      const eventAccount = accountsRef.current.find((item) => item.id === enrollment.accountId);
+      if (!eventAccount) throw new Error('The event account is unavailable.');
+      const eventPositions = positionsRef.current.filter((position) => position.accountId === enrollment.accountId);
+      const freshQuotes = await fetchQuotes(eventPositions, enrollment.accountId, false);
+      if (getMissingPaperChallengeQuoteSymbols(eventPositions, freshQuotes).length > 0) {
+        throw new Error('Current event quotes are unavailable.');
+      }
+
       const pendingEventOrders = ordersRef.current.filter(
         (order) => order.accountId === enrollment.accountId && order.status === 'pending',
       );
@@ -778,17 +802,13 @@ export default function PaperScreen() {
           pendingIds.has(order.id) ? { ...order, status: 'cancelled' as const } : order,
         ));
       }
-      const eventAccount = accountsRef.current.find((item) => item.id === enrollment.accountId);
-      if (!eventAccount) throw new Error('The event account is unavailable.');
-      const eventPositions = positionsRef.current.filter((position) => position.accountId === enrollment.accountId);
-      const freshQuotes = await fetchQuotes(eventPositions, enrollment.accountId, false);
-      const latestQuotes = { ...quotes, ...freshQuotes };
       const endEquity = eventAccount.cash
         + (eventAccount.unsettledCash ?? 0)
         + eventPositions.reduce(
-          (sum, position) => sum + position.shares * (latestQuotes[position.symbol]?.price ?? position.avgCost),
+          (sum, position) => sum + position.shares * (freshQuotes[position.symbol]?.price ?? position.avgCost),
           0,
         );
+      if (!Number.isFinite(endEquity)) throw new Error('Event account data is incomplete.');
       const startEquity = enrollment.startEquity;
       if (startEquity === null) return;
       const summary = buildPaperChallengeSummary({ ...enrollment, startEquity }, endEquity, transactionsRef.current);
@@ -806,12 +826,19 @@ export default function PaperScreen() {
         );
       }
       await savePaperChallenge(finalizePaperChallengeStore(latestStore, summary, challengeNow));
+      challengeFinalizationFailureRef.current = null;
+      setChallengeFinalizationError(false);
     })().catch(() => {
+      challengeFinalizationFailureRef.current = enrollment.eventId;
+      setChallengeFinalizationError(true);
+    }).finally(() => {
       challengeFinalizingRef.current = null;
+      setChallengeFinalizationBusy(false);
     });
   }, [
     accounts,
     challengeNow,
+    challengeRetryVersion,
     fetchQuotes,
     loaded,
     paperChallenge.enrollment,
@@ -828,15 +855,29 @@ export default function PaperScreen() {
     if (!paperChallengeReady || !loaded || !enrollment || enrollment.startEquity !== null) return;
 
     if (challengeNow >= enrollment.eventEndAtMs) {
-      if (challengeFinalizingRef.current === enrollment.eventId) return;
-      challengeFinalizingRef.current = enrollment.eventId;
+      if (challengeFinalizationFailureRef.current === enrollment.eventId) return;
+      if (challengeBaselineCapturingRef.current === enrollment.eventId) return;
+      challengeBaselineCapturingRef.current = enrollment.eventId;
+      setChallengeFinalizationBusy(true);
       const latestStore = paperChallengeRef.current;
-      if (latestStore.enrollment?.eventId === enrollment.eventId && latestStore.enrollment.startEquity === null) {
-        void savePaperChallenge({ enrollment: null, history: latestStore.history })
-          .catch(() => { challengeFinalizingRef.current = null; });
-      } else {
-        challengeFinalizingRef.current = null;
+      const eventAccount = accountsRef.current.find((item) => item.id === enrollment.accountId);
+      if (!eventAccount || latestStore.enrollment?.eventId !== enrollment.eventId) {
+        challengeFinalizationFailureRef.current = enrollment.eventId;
+        setChallengeFinalizationError(true);
+        challengeBaselineCapturingRef.current = null;
+        setChallengeFinalizationBusy(false);
+        return;
       }
+      void savePaperChallenge({
+        enrollment: capturePaperChallengeBaseline(latestStore.enrollment, PAPER_CHALLENGE_STARTING_BALANCE),
+        history: latestStore.history,
+      }).catch(() => {
+        challengeFinalizationFailureRef.current = enrollment.eventId;
+        setChallengeFinalizationError(true);
+      }).finally(() => {
+        challengeBaselineCapturingRef.current = null;
+        setChallengeFinalizationBusy(false);
+      });
       return;
     }
 
@@ -876,6 +917,7 @@ export default function PaperScreen() {
   }, [
     accounts,
     challengeNow,
+    challengeRetryVersion,
     fetchQuotes,
     loaded,
     paperChallenge.enrollment,
@@ -1766,6 +1808,56 @@ export default function PaperScreen() {
         <Text style={styles.accountVal}>{$fmt(portfolioValue)}</Text>
         <Feather name="chevron-down" size={16} color={SILVER} style={{ marginLeft: 6 }} />
       </TouchableOpacity>
+
+      {isPaperChallengeWaiting && (
+        <View
+          testID="paper-event-results-pending"
+          accessibilityLiveRegion="polite"
+          style={{
+            marginHorizontal: 16,
+            marginTop: 10,
+            padding: 12,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: challengeFinalizationError ? BUY_COLOR : BORDER,
+            backgroundColor: CARD_BG,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+          }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: BUY_COLOR, fontFamily: 'Inter_700Bold', fontSize: 12 }}>
+              {challengeFinalizationBusy ? 'FINISHING EVENT RESULTS' : 'EVENT RESULTS WAITING'}
+            </Text>
+            <Text style={{ color: SILVER, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 4 }}>
+              {challengeFinalizationBusy
+                ? 'Checking your event account and current quotes…'
+                : challengeFinalizationError
+                  ? 'Account data or a current quote could not be loaded. Your enrollment is saved; retry when data is available.'
+                  : 'Your event enrollment is saved while the final summary is prepared.'}
+            </Text>
+          </View>
+          <TouchableOpacity
+            testID="retry-paper-event-results"
+            accessibilityRole="button"
+            accessibilityLabel="Retry event results"
+            disabled={challengeFinalizationBusy}
+            onPress={retryPaperChallengeFinalization}
+            style={{
+              paddingVertical: 9,
+              paddingHorizontal: 11,
+              borderRadius: 8,
+              backgroundColor: challengeFinalizationBusy ? BORDER : BUY_COLOR,
+              opacity: challengeFinalizationBusy ? 0.65 : 1,
+            }}
+          >
+            <Text style={{ color: '#000', fontFamily: 'Inter_700Bold', fontSize: 10 }}>
+              {challengeFinalizationBusy ? 'WAIT…' : 'RETRY'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Summary Strip */}
       <View style={styles.summaryStrip}>

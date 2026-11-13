@@ -11,6 +11,7 @@ import {
   sortPaperChallengeHistory,
   type PaperChallengeSummary,
   finalizePaperChallengeStore,
+  getMissingPaperChallengeQuoteSymbols,
   PAPER_CHALLENGE_STORAGE_KEY,
   type PaperChallengeStore,
   withdrawUpcomingPaperChallenge,
@@ -131,6 +132,23 @@ test('paper event summary uses account equity change and event-only trades', () 
   assert.equal(summary.realizedPnL, 295);
 });
 
+test('event finalization waits for every held position to have a fresh quote', () => {
+  const positions = [
+    { symbol: 'AAPL', shares: 2 },
+    { symbol: 'MSFT', shares: 1 },
+    { symbol: 'MSFT', shares: 3 },
+  ];
+  assert.deepEqual(getMissingPaperChallengeQuoteSymbols(positions, {
+    AAPL: { price: 190 },
+    MSFT: { price: 0 },
+  }), ['MSFT']);
+  assert.deepEqual(getMissingPaperChallengeQuoteSymbols(positions, {
+    AAPL: { price: 190 },
+    MSFT: { price: 420 },
+  }), []);
+  assert.deepEqual(getMissingPaperChallengeQuoteSymbols([], {}), []);
+});
+
 test('event enrollment and one summary survive reloads without changing other paper accounts', () => {
   const eventId = '2026-11-16';
   const enrollment = {
@@ -180,6 +198,21 @@ test('event enrollment and one summary survive reloads without changing other pa
   assert.equal(afterReopeningPaperTrading.history.length, 1);
   assert.deepEqual(afterReopeningPaperTrading.history[0], summary);
   assert.deepEqual(JSON.parse(savedData.get('@stocksense/paper_v2')!), otherPaperData);
+
+  const retryWithExistingHistory = finalizePaperChallengeStore({
+    enrollment,
+    history: [summary, ...afterReopeningPaperTrading.history],
+  }, { ...summary, netProfit: 999_999 }, enrollment.eventEndAtMs);
+  assert.equal(retryWithExistingHistory.history.length, 1);
+  assert.deepEqual(retryWithExistingHistory.history[0], summary);
+});
+
+test('expired enrollment remains saved until its event summary is finalized', async () => {
+  const testDirectory = dirname(fileURLToPath(import.meta.url));
+  const source = await readFile(resolve(testDirectory, '../../app/paper.tsx'), 'utf8');
+  assert.doesNotMatch(source, /savePaperChallenge\(\{ enrollment: null, history: latestStore\.history \}\)/);
+  assert.match(source, /paper-event-results-pending/);
+  assert.match(source, /retry-paper-event-results/);
 });
 
 test('upcoming signup withdrawal removes only enrollment and is locked at event start', () => {

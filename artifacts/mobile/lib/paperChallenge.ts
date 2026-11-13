@@ -40,6 +40,19 @@ export type PaperChallengeStore = {
   history: PaperChallengeSummary[];
 };
 
+export function getMissingPaperChallengeQuoteSymbols(
+  positions: Array<{ symbol: string; shares: number }>,
+  quotes: Record<string, { price: number }>,
+): string[] {
+  return [...new Set(positions
+    .filter((position) => {
+      const quote = quotes[position.symbol];
+      return position.shares > 0
+        && (!quote || !Number.isFinite(quote.price) || quote.price <= 0);
+    })
+    .map((position) => position.symbol))];
+}
+
 export function finalizePaperChallengeStore(
   store: PaperChallengeStore,
   summary: PaperChallengeSummary,
