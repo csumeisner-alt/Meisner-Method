@@ -16,7 +16,7 @@ export function PaperEventShareCard({ event, milestones = [] }: Props) {
   const symbols = event.symbolsTraded?.length ? event.symbolsTraded.join(' · ') : 'No trades this week';
 
   return (
-    <View style={{ width: '100%', maxWidth: 360, borderRadius: 24, overflow: 'hidden' }}>
+    <View style={{ width: '100%', maxWidth: 360, minWidth: 0, borderRadius: 24, overflow: 'hidden' }}>
       <LinearGradient
         colors={[colors.card, colors.background]}
         start={{ x: 0, y: 0 }}

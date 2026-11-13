@@ -19,13 +19,23 @@ export function PaperChallengeMilestoneBadges({ milestones, compact = false }: P
   return (
     <View
       testID="paper-event-milestone-badges"
-      style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: compact ? 7 : 16 }}
+      style={{
+        alignSelf: 'stretch',
+        minWidth: 0,
+        width: '100%',
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 6,
+        marginTop: compact ? 7 : 16,
+      }}
     >
       {milestones.map((milestone) => (
         <View
           key={milestone}
           testID={`paper-event-milestone-${milestone}`}
           style={{
+            maxWidth: '100%',
+            flexShrink: 1,
             minHeight: compact ? 22 : 26,
             flexDirection: 'row',
             alignItems: 'center',
@@ -38,13 +48,18 @@ export function PaperChallengeMilestoneBadges({ milestones, compact = false }: P
             backgroundColor: colors.card,
           }}
         >
-          <Feather name="award" size={compact ? 10 : 12} color={colors.primary} />
-          <Text style={{
-            color: colors.primary,
-            fontFamily: 'Inter_700Bold',
-            fontSize: compact ? 8 : 9,
-            letterSpacing: 0.35,
-          }}>
+          <Feather name="award" size={compact ? 11 : 12} color={colors.primary} />
+          <Text
+            style={{
+              flexShrink: 1,
+              flexWrap: 'wrap',
+              color: colors.primary,
+              fontFamily: 'Inter_700Bold',
+              fontSize: compact ? 10 : 11,
+              lineHeight: compact ? 12 : 14,
+              letterSpacing: 0.25,
+            }}
+          >
             {PAPER_CHALLENGE_MILESTONE_LABELS[milestone]}
           </Text>
         </View>

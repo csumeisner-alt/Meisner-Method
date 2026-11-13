@@ -1,9 +1,12 @@
+import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const screen = readFileSync(new URL("../app/paper.tsx", import.meta.url), "utf8");
 const events = readFileSync(new URL("../components/PaperChallengeHistory.tsx", import.meta.url), "utf8");
 const challenge = readFileSync(new URL("../lib/paperChallenge.ts", import.meta.url), "utf8");
+const badges = readFileSync(new URL("../components/PaperChallengeMilestoneBadges.tsx", import.meta.url), "utf8");
+const shareCard = readFileSync(new URL("../components/PaperEventShareCard.tsx", import.meta.url), "utf8");
 
 assert.match(events, /eventWindow\.phase === 'upcoming' \? eventWindow\.startAtMs : Date\.now\(\)/);
 assert.match(events, /eventWindow\.phase === 'upcoming' \? null : PAPER_CHALLENGE_STARTING_BALANCE/);
@@ -26,3 +29,26 @@ assert.match(screen, /testID="paper-event-live-banner"/);
 assert.match(screen, /LIVE EVENT · JOIN ANY TIME/);
 assert.match(screen, /testID="dismiss-paper-event-recap"/);
 assert.match(screen, /previousEnrollmentIdRef/);
+
+test("milestone badges wrap within compact recap, history, and share-card widths", () => {
+  assert.match(challenge, /'first-event': 'FIRST EVENT'/);
+  assert.match(challenge, /'positive-finish': 'IN THE GREEN'/);
+  assert.match(challenge, /'personal-best': 'PERSONAL BEST'/);
+  assert.match(badges, /width: '100%'/);
+  assert.match(badges, /flexWrap: 'wrap'/);
+  assert.match(badges, /maxWidth: '100%'/);
+  assert.match(badges, /flexShrink: 1/);
+  assert.match(badges, /fontSize: compact \? 10 : 11/);
+  assert.match(shareCard, /width: '100%', maxWidth: 360, minWidth: 0/);
+
+  const recapCardIndex = screen.indexOf("<PaperEventShareCard");
+  const recapScrollIndex = screen.lastIndexOf("<ScrollView contentContainerStyle={{ flexGrow: 1, alignItems: 'center'");
+  const recapDoneIndex = screen.indexOf('testID="dismiss-paper-event-recap"');
+  assert.ok(recapScrollIndex >= 0 && recapScrollIndex < recapCardIndex);
+  assert.ok(recapCardIndex < recapDoneIndex, "the recap action remains outside the scrollable result card");
+
+  const historyBadgeIndex = events.indexOf('<PaperChallengeMilestoneBadges milestones={getPaperChallengeMilestones(event, store.history)} compact />');
+  const historyShareActionIndex = events.indexOf('testID={`share-paper-event-${event.eventId}`}');
+  assert.ok(historyShareActionIndex >= 0 && historyShareActionIndex < historyBadgeIndex);
+  assert.match(events, /<PaperEventShareCard/);
+});
