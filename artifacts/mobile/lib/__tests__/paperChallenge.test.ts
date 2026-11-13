@@ -207,6 +207,72 @@ test('event enrollment and one summary survive reloads without changing other pa
   assert.deepEqual(retryWithExistingHistory.history[0], summary);
 });
 
+test('a later event keeps earlier summaries and remains unique after reload', () => {
+  const earlierEnrollment = {
+    eventId: '2026-11-16',
+    eventStartAtMs: Date.parse('2026-11-16T14:30:00.000Z'),
+    eventEndAtMs: Date.parse('2026-11-20T21:00:00.000Z'),
+    joinedAtMs: Date.parse('2026-11-16T14:30:00.000Z'),
+    accountId: 'paper-event:2026-11-16',
+    accountName: 'Event Portfolio',
+    startEquity: 100_000,
+  };
+  const laterEnrollment = {
+    eventId: '2026-11-30',
+    eventStartAtMs: Date.parse('2026-11-30T14:30:00.000Z'),
+    eventEndAtMs: Date.parse('2026-12-04T21:00:00.000Z'),
+    joinedAtMs: Date.parse('2026-11-30T14:30:00.000Z'),
+    accountId: 'paper-event:2026-11-30',
+    accountName: 'Event Portfolio',
+    startEquity: 100_000,
+  };
+  const earlierSummary = buildPaperChallengeSummary(
+    earlierEnrollment,
+    101_000,
+    [],
+    earlierEnrollment.eventEndAtMs,
+  );
+  const laterSummary = buildPaperChallengeSummary(
+    laterEnrollment,
+    99_000,
+    [],
+    laterEnrollment.eventEndAtMs,
+  );
+  const savedData = new Map<string, string>([
+    [PAPER_CHALLENGE_STORAGE_KEY, JSON.stringify({
+      enrollment: laterEnrollment,
+      history: [earlierSummary],
+    } satisfies PaperChallengeStore)],
+  ]);
+  const reloadStore = () => JSON.parse(savedData.get(PAPER_CHALLENGE_STORAGE_KEY)!) as PaperChallengeStore;
+
+  const completedLaterEvent = finalizePaperChallengeStore(
+    reloadStore(),
+    laterSummary,
+    laterEnrollment.eventEndAtMs,
+  );
+  savedData.set(PAPER_CHALLENGE_STORAGE_KEY, JSON.stringify(completedLaterEvent));
+
+  const reopenedStore = reloadStore();
+  assert.equal(reopenedStore.enrollment, null);
+  assert.deepEqual(reopenedStore.history.map((summary) => summary.eventId), ['2026-11-30', '2026-11-16']);
+  assert.deepEqual(
+    sortPaperChallengeHistory(reopenedStore.history, 'date').map((summary) => summary.eventId),
+    ['2026-11-30', '2026-11-16'],
+  );
+  for (const eventId of ['2026-11-30', '2026-11-16']) {
+    assert.equal(reopenedStore.history.filter((summary) => summary.eventId === eventId).length, 1);
+  }
+
+  const retriedCompletion = finalizePaperChallengeStore({
+    enrollment: laterEnrollment,
+    history: reopenedStore.history,
+  }, { ...laterSummary, netProfit: 999_999 }, laterEnrollment.eventEndAtMs);
+  savedData.set(PAPER_CHALLENGE_STORAGE_KEY, JSON.stringify(retriedCompletion));
+  const afterRetryReload = reloadStore();
+  assert.deepEqual(afterRetryReload.history, [laterSummary, earlierSummary]);
+});
+
 test('expired enrollment remains saved until its event summary is finalized', async () => {
   const testDirectory = dirname(fileURLToPath(import.meta.url));
   const source = await readFile(resolve(testDirectory, '../../app/paper.tsx'), 'utf8');
