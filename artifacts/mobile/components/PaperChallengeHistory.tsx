@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Modal,
@@ -15,16 +15,20 @@ import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import {
+  getPaperChallengeReminders,
   getPaperChallengeWindow,
   PAPER_CHALLENGE_STORAGE_KEY,
   PAPER_CHALLENGE_STARTING_BALANCE,
+  sortPaperChallengeHistory,
   type PaperChallengeStore,
   type PaperChallengeSummary,
 } from '@/lib/paperChallenge';
 
 const NOTIFICATIONS_KEY = '@stocksense/paper_events_notifications_v1';
 const NOTIFICATION_ID_KEY = '@stocksense/paper_events_notification_id_v1';
-const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+const PAPER_CACHE_KEY = '@stocksense/paper_v2';
+const DAY_MS = 24 * 60 * 60 * 1000;
+const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 type Props = { visible: boolean; onCloseSettings: () => void };
 
 const money = (value: number) => `${value < 0 ? '−' : ''}$${Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -57,24 +61,21 @@ async function scheduleUpcomingEventReminders() {
       importance: Notifications.AndroidImportance.DEFAULT,
     });
   }
-  let nextEvent = getPaperChallengeWindow();
-    if (nextEvent.phase !== 'upcoming') nextEvent = getPaperChallengeWindow(nextEvent.endAtMs + THREE_DAYS_MS + 1);
   const ids: string[] = [];
-  for (let index = 0; index < 12; index += 1) {
+  for (const reminder of getPaperChallengeReminders()) {
     const id = await Notifications.scheduleNotificationAsync({
       content: {
-        title: 'A new paper event starts today',
-        body: 'Fresh $100,000 event portfolio. Join any time before Friday’s close.',
-        data: { type: 'paper-event-start', eventId: nextEvent.id },
+        title: reminder.title,
+        body: reminder.body,
+        data: { type: reminder.kind, eventId: reminder.eventId },
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: new Date(nextEvent.startAtMs),
+        date: new Date(reminder.scheduledAtMs),
         ...(Platform.OS === 'android' ? { channelId: 'paper-event-reminders' } : {}),
       },
     });
     ids.push(id);
-    nextEvent = getPaperChallengeWindow(nextEvent.endAtMs + THREE_DAYS_MS + 1);
   }
   await AsyncStorage.setItem(NOTIFICATION_ID_KEY, JSON.stringify(ids));
 }
@@ -87,8 +88,13 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [saving, setSaving] = useState(false);
+  const [sortMode, setSortMode] = useState<'date' | 'top'>('date');
+  const [positionValue, setPositionValue] = useState<{ equity: number; profit: number; returnPercent: number; usedFallbackPrice: boolean } | null>(null);
+  const [positionLoading, setPositionLoading] = useState(false);
   const currentWindow = getPaperChallengeWindow(now);
   const hasCurrentEnrollment = store.enrollment?.eventId === currentWindow.id;
+  const sortedHistory = sortPaperChallengeHistory(store.history, sortMode);
+  const midweekAt = currentWindow.startAtMs + 2 * DAY_MS + 2.5 * 60 * 60 * 1000;
 
   useEffect(() => {
     if (!visible) return;
@@ -116,6 +122,19 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
     });
     return () => { cancelled = true; };
   }, [visible, eventsOpen]);
+
+  useEffect(() => {
+    if (!visible || !notificationsEnabled || Platform.OS === 'web') return;
+    let cancelled = false;
+    void (async () => {
+      const Notifications = await import('expo-notifications');
+      const permission = await Notifications.getPermissionsAsync();
+      if (permission.granted && !cancelled) await scheduleUpcomingEventReminders();
+    })().catch(() => {
+      if (!cancelled) Alert.alert('Could not refresh event reminders', 'You can try again from Event Arena settings.');
+    });
+    return () => { cancelled = true; };
+  }, [visible, notificationsEnabled]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30_000);
@@ -168,6 +187,62 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
     }
   };
 
+  const refreshEventPosition = useCallback(async () => {
+    const enrollment = store.enrollment;
+    if (!enrollment || enrollment.eventId !== currentWindow.id) return;
+    setPositionLoading(true);
+    try {
+      const raw = await AsyncStorage.getItem(PAPER_CACHE_KEY);
+      if (!raw) {
+        setPositionValue(null);
+        return;
+      }
+      const cache = JSON.parse(raw) as {
+        accounts?: Array<{ id: string; cash: number; unsettledCash?: number }>;
+        positions?: Array<{ accountId: string; symbol: string; shares: number; avgCost: number }>;
+      };
+      const account = cache.accounts?.find((item) => item.id === enrollment.accountId);
+      if (!account) {
+        setPositionValue(null);
+        return;
+      }
+      const positions = (cache.positions ?? []).filter((item) => item.accountId === enrollment.accountId);
+      const symbols = [...new Set(positions.map((item) => item.symbol))];
+      const quoteResults = await Promise.allSettled(symbols.map(async (symbol) => {
+        const response = await fetch(`${BASE_URL}/api/stocks/quote/${encodeURIComponent(symbol)}`);
+        if (!response.ok) throw new Error(`Quote unavailable for ${symbol}`);
+        const data = await response.json();
+        return [symbol, Number(data.currentPrice)] as const;
+      }));
+      const quotes = new Map<string, number>();
+      for (const result of quoteResults) {
+        if (result.status === 'fulfilled' && Number.isFinite(result.value[1]) && result.value[1] > 0) {
+          quotes.set(result.value[0], result.value[1]);
+        }
+      }
+      const equity = account.cash
+        + (account.unsettledCash ?? 0)
+        + positions.reduce((sum, position) => sum + position.shares * (quotes.get(position.symbol) ?? position.avgCost), 0);
+      const startingBalance = enrollment.startEquity ?? PAPER_CHALLENGE_STARTING_BALANCE;
+      const profit = equity - startingBalance;
+      setPositionValue({
+        equity,
+        profit,
+        returnPercent: startingBalance > 0 ? profit / startingBalance * 100 : 0,
+        usedFallbackPrice: quotes.size < symbols.length,
+      });
+    } catch {
+      setPositionValue(null);
+    } finally {
+      setPositionLoading(false);
+    }
+  }, [currentWindow.id, store.enrollment]);
+
+  useEffect(() => {
+    if (!eventsOpen || !hasCurrentEnrollment || currentWindow.phase !== 'active') return;
+    void refreshEventPosition();
+  }, [currentWindow.phase, eventsOpen, hasCurrentEnrollment, refreshEventPosition]);
+
   const setEventNotifications = async (enabled: boolean) => {
     if (Platform.OS === 'web') {
       Alert.alert('Mobile notifications only', 'Enable event notifications from the mobile app.');
@@ -188,11 +263,10 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
         Alert.alert('Notifications are off', 'Allow notifications in your device settings to receive event reminders.');
         return;
       }
-      await scheduleUpcomingEventReminders();
       await AsyncStorage.setItem(NOTIFICATIONS_KEY, 'true');
       setNotificationsEnabled(true);
     } catch {
-      Alert.alert('Could not update notifications', 'Please try again from the Events settings.');
+      Alert.alert('Could not update notifications', 'Please try again from Event Arena settings.');
     }
   };
 
@@ -201,7 +275,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
       <TouchableOpacity
         testID="settings-events-button"
         accessibilityRole="button"
-        accessibilityLabel="Events"
+        accessibilityLabel="Event Arena"
         onPress={() => setEventsOpen(true)}
         style={{
           minHeight: 50,
@@ -217,7 +291,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
       >
         <Feather name="award" size={18} color={colors.primary} />
         <Text style={{ flex: 1, color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 14 }}>
-          Events
+          Event Arena
         </Text>
         <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
       </TouchableOpacity>
@@ -225,7 +299,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
       <Modal visible={eventsOpen} animationType="slide" onRequestClose={() => setEventsOpen(false)}>
         <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: Platform.OS === 'web' ? 24 : insets.top + 8 }}>
           <View style={{ paddingHorizontal: 18, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center' }}>
-            <Text style={{ flex: 1, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20 }}>Events</Text>
+            <Text style={{ flex: 1, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20 }}>Event Arena</Text>
             <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close events" onPress={() => setEventsOpen(false)} hitSlop={10}>
               <Feather name="x" size={22} color={colors.mutedForeground} />
             </TouchableOpacity>
@@ -279,10 +353,44 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
               )}
             </View>
 
+            {hasCurrentEnrollment && currentWindow.phase === 'active' && now >= midweekAt && (
+              <View style={{ marginTop: 12, padding: 14, borderRadius: 12, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={{ flex: 1, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>Midweek position</Text>
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel="Refresh midweek position"
+                    onPress={() => { void refreshEventPosition(); }}
+                    hitSlop={8}
+                  >
+                    <Feather name="refresh-cw" size={16} color={colors.primary} />
+                  </TouchableOpacity>
+                </View>
+                {positionLoading ? (
+                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 7 }}>Updating from latest quotes…</Text>
+                ) : positionValue ? (
+                  <View>
+                    <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 7 }}>
+                      Overall {money(positionValue.equity)} · {positionValue.profit >= 0 ? '+' : ''}{money(positionValue.profit)} ({positionValue.returnPercent >= 0 ? '+' : ''}{positionValue.returnPercent.toFixed(2)}%)
+                    </Text>
+                    {positionValue.usedFallbackPrice && (
+                      <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>
+                        Some holdings use average cost because a current quote was unavailable.
+                      </Text>
+                    )}
+                  </View>
+                ) : (
+                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 7 }}>
+                    Open Paper Trading to place a trade, then refresh this position.
+                  </Text>
+                )}
+              </View>
+            )}
+
             <View style={{ marginTop: 18, paddingVertical: 12, borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 14 }}>Event notifications</Text>
-                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 3 }}>A local reminder when the next event opens</Text>
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 3 }}>Up to three gentle reminders per event</Text>
               </View>
               <Switch
                 testID="paper-event-notifications-toggle"
@@ -293,20 +401,36 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
               />
             </View>
 
-            <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 16, marginTop: 18, marginBottom: 8 }}>
-              Your past events
-            </Text>
+            <View style={{ marginTop: 18, marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={{ flex: 1, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 16 }}>Your past events</Text>
+              {([
+                { key: 'date' as const, label: 'Date' },
+                { key: 'top' as const, label: 'Top weeks' },
+              ]).map((option) => (
+                <TouchableOpacity
+                  key={option.key}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: sortMode === option.key }}
+                  onPress={() => setSortMode(option.key)}
+                  style={{ paddingVertical: 6, paddingHorizontal: 9, borderRadius: 8, backgroundColor: sortMode === option.key ? colors.primary : colors.card }}
+                >
+                  <Text style={{ color: sortMode === option.key ? colors.primaryForeground : colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
             <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-              {store.history.length === 0 ? (
+              {sortedHistory.length === 0 ? (
                 <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, paddingVertical: 12 }}>
                   Events you join and their summaries will appear here.
                 </Text>
-              ) : store.history.map((event) => (
+              ) : sortedHistory.map((event, index) => (
                 <View key={event.eventId} style={{ paddingVertical: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <View style={{ flex: 1 }}>
                       <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 13 }}>
-                        {dateRange(event.eventStartAtMs, event.eventEndAtMs)}
+                        {sortMode === 'top' ? `#${index + 1} · ` : ''}{dateRange(event.eventStartAtMs, event.eventEndAtMs)}
                       </Text>
                       <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 3 }}>
                         $100,000 start · {event.buyCount ?? 0} buys · {event.sellCount ?? 0} sells

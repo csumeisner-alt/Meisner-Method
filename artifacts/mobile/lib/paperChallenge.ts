@@ -40,6 +40,14 @@ export type PaperChallengeStore = {
   history: PaperChallengeSummary[];
 };
 
+export type PaperChallengeReminder = {
+  eventId: string;
+  scheduledAtMs: number;
+  title: string;
+  body: string;
+  kind: 'event-start' | 'event-midweek' | 'event-trade-reminder';
+};
+
 function easternParts(timestamp: number): { year: number; month: number; day: number; hour: number; minute: number } {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: MARKET_TIME_ZONE,
@@ -100,6 +108,49 @@ export function getPaperChallengeWindow(nowMs = Date.now()): PaperChallengeWindo
     endAtMs,
     phase: nowMs < startAtMs ? 'upcoming' : nowMs <= endAtMs ? 'active' : 'ended',
   };
+}
+
+export function getPaperChallengeReminders(nowMs = Date.now()): PaperChallengeReminder[] {
+  let event = getPaperChallengeWindow(nowMs);
+  if (event.phase === 'ended') event = getPaperChallengeWindow(event.endAtMs + 3 * DAY_MS + 1);
+  const reminders: PaperChallengeReminder[] = [];
+  for (let cycle = 0; cycle < 2; cycle += 1) {
+    const eventReminders: PaperChallengeReminder[] = [
+      {
+        eventId: event.id,
+        scheduledAtMs: event.startAtMs,
+        title: 'Event Arena is open',
+        body: 'Your fresh $100,000 event portfolio is ready. Join or place your first trade.',
+        kind: 'event-start',
+      },
+      {
+        eventId: event.id,
+        scheduledAtMs: event.startAtMs + 2 * DAY_MS + 2.5 * 60 * 60 * 1000,
+        title: 'Midweek Event Arena update',
+        body: 'Check your current overall position and return in Event Arena.',
+        kind: 'event-midweek',
+      },
+      {
+        eventId: event.id,
+        scheduledAtMs: event.startAtMs + 3 * DAY_MS + 2.5 * 60 * 60 * 1000,
+        title: 'One more day to trade',
+        body: 'There is still time to place a paper trade before Friday’s 4 p.m. ET close.',
+        kind: 'event-trade-reminder',
+      },
+    ];
+    reminders.push(...eventReminders.filter((reminder) => reminder.scheduledAtMs > nowMs));
+    event = getPaperChallengeWindow(event.endAtMs + 3 * DAY_MS + 1);
+  }
+  return reminders;
+}
+
+export function sortPaperChallengeHistory(
+  history: PaperChallengeSummary[],
+  mode: 'date' | 'top',
+): PaperChallengeSummary[] {
+  return [...history].sort((a, b) => mode === 'top'
+    ? b.returnPercent - a.returnPercent || b.eventStartAtMs - a.eventStartAtMs
+    : b.eventStartAtMs - a.eventStartAtMs);
 }
 
 export function capturePaperChallengeBaseline(

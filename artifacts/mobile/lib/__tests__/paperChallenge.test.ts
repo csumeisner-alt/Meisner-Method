@@ -1,9 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   buildPaperChallengeSummary,
   capturePaperChallengeBaseline,
+  getPaperChallengeReminders,
   getPaperChallengeWindow,
+  sortPaperChallengeHistory,
+  type PaperChallengeSummary,
 } from '../paperChallenge.ts';
 
 test('paper event runs Monday open through Friday close, then skips a week', () => {
@@ -39,6 +45,58 @@ test('paper event market hours follow Eastern daylight-saving time', () => {
   const event = getPaperChallengeWindow(Date.parse('2027-03-24T16:00:00.000Z'));
   assert.equal(new Date(event.startAtMs).toISOString(), '2027-03-22T13:30:00.000Z');
   assert.equal(new Date(event.endAtMs).toISOString(), '2027-03-26T20:00:00.000Z');
+});
+
+test('event reminders stay limited to three per week and skip times that passed', () => {
+  const now = Date.parse('2026-11-12T18:00:00.000Z');
+  const upcoming = getPaperChallengeReminders(now);
+  assert.equal(upcoming.length, 6);
+  assert.deepEqual([...new Set(upcoming.map((reminder) => reminder.eventId))], ['2026-11-16', '2026-11-30']);
+  assert.equal(upcoming.filter((reminder) => reminder.eventId === '2026-11-16').length, 3);
+
+  const midweekNow = Date.parse('2026-11-18T19:00:00.000Z');
+  const midweek = getPaperChallengeReminders(midweekNow);
+  assert.equal(midweek.filter((reminder) => reminder.eventId === '2026-11-16').length, 1);
+  assert.equal(midweek.filter((reminder) => reminder.eventId === '2026-11-30').length, 3);
+  assert.ok(midweek.every((reminder) => reminder.scheduledAtMs > midweekNow));
+});
+
+test('event history sorts newest by date or strongest by return', () => {
+  const makeSummary = (eventId: string, eventStartAtMs: number, returnPercent: number): PaperChallengeSummary => ({
+    eventId,
+    eventStartAtMs,
+    eventEndAtMs: eventStartAtMs + 5,
+    joinedAtMs: eventStartAtMs,
+    accountId: `paper-event:${eventId}`,
+    accountName: 'Event Portfolio',
+    startEquity: 100_000,
+    endEquity: 100_000 * (1 + returnPercent / 100),
+    netProfit: returnPercent * 1_000,
+    returnPercent,
+    tradeCount: 0,
+    buyCount: 0,
+    sellCount: 0,
+    symbolsTraded: [],
+    realizedPnL: 0,
+    completedAtMs: eventStartAtMs + 6,
+  });
+  const history = [
+    makeSummary('older-best', 100, 4),
+    makeSummary('newer', 200, 1),
+    makeSummary('older-low', 50, -2),
+  ];
+  assert.deepEqual(sortPaperChallengeHistory(history, 'date').map((event) => event.eventId), ['newer', 'older-best', 'older-low']);
+  assert.deepEqual(sortPaperChallengeHistory(history, 'top').map((event) => event.eventId), ['older-best', 'newer', 'older-low']);
+});
+
+test('Event Arena wires its label, history sorting, midweek refresh, sharing, and notification toggle', async () => {
+  const testDirectory = dirname(fileURLToPath(import.meta.url));
+  const source = await readFile(resolve(testDirectory, '../../components/PaperChallengeHistory.tsx'), 'utf8');
+  assert.match(source, /accessibilityLabel="Event Arena"/);
+  assert.match(source, /sortPaperChallengeHistory\(store\.history, sortMode\)/);
+  assert.match(source, /refreshEventPosition/);
+  assert.match(source, /Share\.share/);
+  assert.match(source, /setEventNotifications\(value\)/);
 });
 
 test('paper event summary uses account equity change and event-only trades', () => {

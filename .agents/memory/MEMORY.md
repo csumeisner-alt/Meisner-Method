@@ -81,4 +81,4 @@
 - [OpenAPI URI format and Zod codegen](openapi-zod-uri-format.md) — `format: uri` currently generates a `z.url()` call unsupported by the installed Zod version.
 - [Commodity intelligence scoring](commodity-intelligence-scoring.md) — missing categories stay neutral under family weights; volatility can only subtract, and the score is not a return forecast.
 - [Commodity event and report evidence](commodity-event-report-evidence.md) — scheduled dates, completed releases, published values, and comparable historical periods require separate validation.
-- [Local-only community features](local-only-community-features.md) — use separate $100,000 event portfolios; keep participation/history on-device and preserve regular accounts.
+- [Local-only community features](local-only-community-features.md) — use separate $100,000 event portfolios; keep data local, preserve regular accounts, and limit reminders.
