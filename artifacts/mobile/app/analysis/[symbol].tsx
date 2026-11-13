@@ -132,6 +132,7 @@ const PINNED_COMP_KEY = '@stocksense/pinned_comp_symbol';
 const ETF_COMPARISON_KEY = '@stocksense/etf_comparison_symbols_v1';
 const ETF_HOLDING_SNAPSHOTS_KEY = '@stocksense/etf_holding_snapshots_v1';
 const ETF_SCORE_SNAPSHOTS_KEY = '@stocksense/etf_score_snapshots_v1';
+const ETF_SCORE_CARD_HIDDEN_KEY = '@stocksense/etf_score_card_hidden_v1';
 const COMMODITY_SCORE_SNAPSHOTS_KEY = '@stocksense/commodity_intelligence_snapshots_v1';
 let commodityScoreSnapshotWriteQueue: Promise<void> = Promise.resolve();
 const ETF_CONTRIBUTION_CADENCE_KEY = '@stocksense/etf_contribution_cadence_v1';
@@ -1882,6 +1883,31 @@ function EtfAnalysisSections({
     return () => clearTimeout(timeout);
   }, [scoreHistoryUndoSnapshot]);
   const [scoreCardHidden, setScoreCardHidden] = useState(false);
+  const [scoreCardPreferenceReady, setScoreCardPreferenceReady] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.getItem(ETF_SCORE_CARD_HIDDEN_KEY)
+      .then((stored) => {
+        if (!cancelled) setScoreCardHidden(stored === 'true');
+      })
+      .catch((error) => {
+        console.warn('Could not load ETF score card visibility preference:', error);
+      })
+      .finally(() => {
+        if (!cancelled) setScoreCardPreferenceReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const updateScoreCardHidden = useCallback(async (hidden: boolean) => {
+    setScoreCardHidden(hidden);
+    try {
+      await AsyncStorage.setItem(ETF_SCORE_CARD_HIDDEN_KEY, String(hidden));
+    } catch (error) {
+      console.warn('Could not save ETF score card visibility preference:', error);
+    }
+  }, []);
   useEffect(() => {
     let cancelled = false;
     setScoreHistoryReady(false);
@@ -2771,13 +2797,13 @@ function EtfAnalysisSections({
           backgroundColor: colors.card,
           borderColor: colors.border,
           paddingVertical: 12,
-          display: scoreCardHidden ? 'flex' : 'none',
+          display: scoreCardPreferenceReady && scoreCardHidden ? 'flex' : 'none',
         }]}>
           <Pressable
             testID="etf-score-card-show"
             accessibilityRole="button"
             accessibilityLabel="Show ETF research score card"
-            onPress={() => setScoreCardHidden(false)}
+            onPress={() => { void updateScoreCardHidden(false); }}
             style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
           >
             <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 13 }}>
@@ -2788,7 +2814,7 @@ function EtfAnalysisSections({
       <View style={[recStyles.hero, {
         backgroundColor: colors.card,
         borderColor: profileScore.score == null ? colors.primary : etfScoreColor(profileScore.score),
-        display: scoreCardHidden ? 'none' : 'flex',
+        display: scoreCardPreferenceReady && !scoreCardHidden ? 'flex' : 'none',
       }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Text style={[recStyles.actionLabel, { color: colors.primary, fontFamily: 'Inter_600SemiBold', textAlign: 'center', flex: 1 }]}>
@@ -2798,7 +2824,7 @@ function EtfAnalysisSections({
             testID="etf-score-card-hide"
             accessibilityRole="button"
             accessibilityLabel="Hide ETF research score card"
-            onPress={() => setScoreCardHidden(true)}
+            onPress={() => { void updateScoreCardHidden(true); }}
             hitSlop={8}
             style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}
           >

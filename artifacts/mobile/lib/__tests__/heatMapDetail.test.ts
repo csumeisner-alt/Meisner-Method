@@ -81,6 +81,28 @@ test('ETF analysis labels valid above-average fees and suppresses unavailable co
   assert.match(analysisScreenSource, /status === 'unavailable'[\s\S]*?return 'Unavailable'/);
 });
 
+test('ETF score card visibility persists across analysis screens and can be restored', () => {
+  assert.match(analysisScreenSource, /const ETF_SCORE_CARD_HIDDEN_KEY = '@stocksense\/etf_score_card_hidden_v1'/);
+  assert.match(
+    analysisScreenSource,
+    /AsyncStorage\.getItem\(ETF_SCORE_CARD_HIDDEN_KEY\)[\s\S]*?stored === 'true'/,
+  );
+  assert.match(
+    analysisScreenSource,
+    /AsyncStorage\.setItem\(ETF_SCORE_CARD_HIDDEN_KEY, String\(hidden\)\)/,
+  );
+  assert.match(
+    analysisScreenSource,
+    /testID="etf-score-card-hide"[\s\S]*?updateScoreCardHidden\(true\)/,
+  );
+  assert.match(
+    analysisScreenSource,
+    /testID="etf-score-card-show"[\s\S]*?updateScoreCardHidden\(false\)/,
+  );
+  assert.match(analysisScreenSource, /scoreCardPreferenceReady && scoreCardHidden/);
+  assert.match(analysisScreenSource, /scoreCardPreferenceReady && !scoreCardHidden/);
+});
+
 test('ETF fee-dollar illustration has editable inputs, independent horizons, and clear assumptions', () => {
   assert.match(analysisScreenSource, /title="ETF FEE DOLLAR IMPACT"/);
   assert.match(analysisScreenSource, /testID="etf-fee-impact-amount"/);
