@@ -247,8 +247,8 @@ test('Stamin Up unlocks at fifty tokens and its bottles cost six tokens', () => 
   assert.deepEqual(buyStaminUpBottle(12, -2, true), { tokenBalance: 6, bottleCount: 1 });
 });
 
-test('Hybrid Neon Gucci unlock target is one thousand Dark Brew Tokens', () => {
-  assert.equal(NEON_GUCCI_UNLOCK_COST, 1_000);
+test('Hybrid Neon Gucci unlock target is five hundred Dark Brew Tokens', () => {
+  assert.equal(NEON_GUCCI_UNLOCK_COST, 500);
 });
 
 test('Stamin Up consumes exactly one bottle and no two bottle effects can arm together', () => {
