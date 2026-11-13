@@ -42,6 +42,7 @@
 - [Brew token snapshot persistence](brew-token-snapshot-persistence.md) — persist the complete economy and quote claims together; verify uncertain writes by reading back the snapshot.
 - [Third-theme unlock](third-theme-unlock.md) — reveal Hybrid Neon Gucci after first Dark Brew Token; unlock at 10,000; persist it with the economy and keep themes exclusive.
 - [Brew activity history](brew-activity-history.md) — token, bottle, bank, toss, and theme events travel with the economy snapshot; older snapshots read as an empty history.
+- [Paper event history writes](paper-event-history-writes.md) — enrollment, withdrawal, baselines, and completion must use the shared serialized read-modify-write path.
 - [Stock recommendation stability](stock-recommendation-stability.md) — action and price levels are deterministic; AI explains them but cannot override or invert them.
 - [ETF analysis scenarios](etf-analysis-scenarios.md) — long-range ETF values are deterministic historical-regime illustrations, never AI-generated forecasts.
 - [Yahoo ETF holdings coverage](yahoo-etf-holdings-coverage.md) — Yahoo fund data commonly returns ten top holdings and no report date; label retrieval time and disclose the reported-position coverage.

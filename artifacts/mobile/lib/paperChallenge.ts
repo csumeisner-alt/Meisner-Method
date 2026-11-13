@@ -56,6 +56,59 @@ export type PaperChallengeStore = {
   history: PaperChallengeSummary[];
 };
 
+type PaperChallengeStorage = {
+  getItem: (key: string) => Promise<string | null>;
+  setItem: (key: string, value: string) => Promise<void>;
+};
+
+let paperChallengeWriteQueue: Promise<void> = Promise.resolve();
+
+export function normalizePaperChallengeStore(store: PaperChallengeStore): PaperChallengeStore {
+  const seenEventIds = new Set<string>();
+  const history = store.history.filter((event) => {
+    if (!event || typeof event.eventId !== 'string' || seenEventIds.has(event.eventId)) return false;
+    seenEventIds.add(event.eventId);
+    return true;
+  });
+  return {
+    enrollment: store.enrollment ?? null,
+    history: sortPaperChallengeHistory(history, 'date'),
+  };
+}
+
+function parsePaperChallengeStore(raw: string | null): PaperChallengeStore {
+  if (!raw) return { enrollment: null, history: [] };
+  const parsed = JSON.parse(raw) as Partial<PaperChallengeStore>;
+  if (parsed.history !== undefined && !Array.isArray(parsed.history)) {
+    throw new Error('Saved event history is invalid.');
+  }
+  return normalizePaperChallengeStore({
+    enrollment: parsed.enrollment ?? null,
+    history: parsed.history ?? [],
+  } as PaperChallengeStore);
+}
+
+/**
+ * Serialize event-store read/modify/write operations so independent screens
+ * cannot overwrite one another with stale snapshots.
+ */
+export function updatePaperChallengeStore(
+  update: (store: PaperChallengeStore) => PaperChallengeStore,
+  storage: PaperChallengeStorage,
+): Promise<PaperChallengeStore> {
+  const operation = paperChallengeWriteQueue.then(async () => {
+    const current = parsePaperChallengeStore(await storage.getItem(PAPER_CHALLENGE_STORAGE_KEY));
+    const updated = update(current);
+    if (updated === current) return current;
+
+    const normalized = normalizePaperChallengeStore(updated);
+    await storage.setItem(PAPER_CHALLENGE_STORAGE_KEY, JSON.stringify(normalized));
+    return normalized;
+  });
+  paperChallengeWriteQueue = operation.then(() => undefined, () => undefined);
+  return operation;
+}
+
 export function getPaperChallengeMilestones(
   event: PaperChallengeSummary,
   history: PaperChallengeSummary[],
@@ -148,16 +201,14 @@ export function finalizePaperChallengeStore(
 }
 
 export async function persistPaperChallengeFinalization(
-  store: PaperChallengeStore,
   summary: PaperChallengeSummary,
   nowMs: number,
-  setItem: (key: string, value: string) => Promise<void>,
+  storage: PaperChallengeStorage,
 ): Promise<PaperChallengeStore> {
-  const finalizedStore = finalizePaperChallengeStore(store, summary, nowMs);
-  if (finalizedStore === store) return store;
-
-  await setItem(PAPER_CHALLENGE_STORAGE_KEY, JSON.stringify(finalizedStore));
-  return finalizedStore;
+  return updatePaperChallengeStore(
+    (store) => finalizePaperChallengeStore(store, summary, nowMs),
+    storage,
+  );
 }
 
 export function withdrawUpcomingPaperChallenge(

@@ -80,9 +80,11 @@ import {
   getPaperChallengeMilestones,
   getMissingPaperChallengeQuoteSymbols,
   getPaperChallengeWindow,
+  normalizePaperChallengeStore,
   PAPER_CHALLENGE_STORAGE_KEY,
   PAPER_CHALLENGE_STARTING_BALANCE,
   persistPaperChallengeFinalization,
+  updatePaperChallengeStore,
   type PaperChallengeStore,
   type PaperChallengeSummary,
   capturePaperChallengeBaseline,
@@ -432,10 +434,10 @@ export default function PaperScreen() {
       if (raw) {
         try {
           const saved = JSON.parse(raw) as PaperChallengeStore;
-          const normalized = {
+          const normalized = normalizePaperChallengeStore({
             enrollment: saved.enrollment ?? null,
             history: Array.isArray(saved.history) ? saved.history : [],
-          };
+          });
           paperChallengeRef.current = normalized;
           setPaperChallenge(normalized);
         } catch {
@@ -464,10 +466,16 @@ export default function PaperScreen() {
     previousEnrollmentIdRef.current = currentEnrollmentId;
   }, [paperChallenge.enrollment?.eventId, paperChallenge.history]);
 
-  const savePaperChallenge = useCallback(async (next: PaperChallengeStore) => {
-    await AsyncStorage.setItem(PAPER_CHALLENGE_STORAGE_KEY, JSON.stringify(next));
+  const savePaperChallenge = useCallback(async (
+    update: (current: PaperChallengeStore) => PaperChallengeStore,
+  ) => {
+    const next = await updatePaperChallengeStore(update, {
+      getItem: (key) => AsyncStorage.getItem(key),
+      setItem: (key, value) => AsyncStorage.setItem(key, value),
+    });
     paperChallengeRef.current = next;
     setPaperChallenge(next);
+    return next;
   }, []);
 
   const retryPaperChallengeFinalization = useCallback(() => {
@@ -845,10 +853,12 @@ export default function PaperScreen() {
         );
       }
       const finalizedStore = await persistPaperChallengeFinalization(
-        latestStore,
         summary,
         challengeNow,
-        (key, value) => AsyncStorage.setItem(key, value),
+        {
+          getItem: (key) => AsyncStorage.getItem(key),
+          setItem: (key, value) => AsyncStorage.setItem(key, value),
+        },
       );
       paperChallengeRef.current = finalizedStore;
       setPaperChallenge(finalizedStore);
@@ -894,9 +904,15 @@ export default function PaperScreen() {
         setChallengeFinalizationBusy(false);
         return;
       }
-      void savePaperChallenge({
-        enrollment: capturePaperChallengeBaseline(latestStore.enrollment, PAPER_CHALLENGE_STARTING_BALANCE),
-        history: latestStore.history,
+      void savePaperChallenge((current) => {
+        const currentEnrollment = current.enrollment;
+        if (!currentEnrollment || currentEnrollment.eventId !== enrollment.eventId || currentEnrollment.startEquity !== null) {
+          return current;
+        }
+        return {
+          ...current,
+          enrollment: capturePaperChallengeBaseline(currentEnrollment, PAPER_CHALLENGE_STARTING_BALANCE),
+        };
       }).catch(() => {
         challengeFinalizationFailureRef.current = enrollment.eventId;
         setChallengeFinalizationError(true);
@@ -929,9 +945,15 @@ export default function PaperScreen() {
         );
       const latestStore = paperChallengeRef.current;
       if (latestStore.enrollment?.eventId !== enrollment.eventId || latestStore.enrollment.startEquity !== null) return;
-      await savePaperChallenge({
-        enrollment: capturePaperChallengeBaseline(latestStore.enrollment, startEquity),
-        history: latestStore.history,
+      await savePaperChallenge((current) => {
+        const currentEnrollment = current.enrollment;
+        if (!currentEnrollment || currentEnrollment.eventId !== enrollment.eventId || currentEnrollment.startEquity !== null) {
+          return current;
+        }
+        return {
+          ...current,
+          enrollment: capturePaperChallengeBaseline(currentEnrollment, startEquity),
+        };
       });
     })().catch(() => {
       // Keep the opt-in so the next clock tick can retry a local baseline capture.

@@ -21,12 +21,14 @@ import {
   getPaperChallengeMilestones,
   getPaperChallengeReminders,
   getPaperChallengeWindow,
+  normalizePaperChallengeStore,
   PAPER_CHALLENGE_STORAGE_KEY,
   PAPER_CHALLENGE_STARTING_BALANCE,
   sortPaperChallengeHistory,
   PAPER_CHALLENGE_MILESTONE_LABELS,
   type PaperChallengeStore,
   type PaperChallengeSummary,
+  updatePaperChallengeStore,
   withdrawUpcomingPaperChallenge,
 } from '@/lib/paperChallenge';
 
@@ -116,10 +118,10 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
       if (cancelled) return;
       if (raw) {
         const parsed = JSON.parse(raw) as PaperChallengeStore;
-        setStore({
+        setStore(normalizePaperChallengeStore({
           enrollment: parsed.enrollment ?? null,
           history: Array.isArray(parsed.history) ? parsed.history : [],
-        });
+        }));
       } else {
         setStore({ enrollment: null, history: [] });
       }
@@ -165,9 +167,15 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
       startEquity: eventWindow.phase === 'upcoming' ? null : PAPER_CHALLENGE_STARTING_BALANCE,
     };
     try {
-      const next = { ...store, enrollment };
-      await AsyncStorage.setItem(PAPER_CHALLENGE_STORAGE_KEY, JSON.stringify(next));
+      const next = await updatePaperChallengeStore((current) => {
+        if (eventWindow.phase === 'ended' || current.enrollment) return current;
+        return { ...current, enrollment };
+      }, {
+        getItem: (key) => AsyncStorage.getItem(key),
+        setItem: (key, value) => AsyncStorage.setItem(key, value),
+      });
       setStore(next);
+      if (next.enrollment?.eventId !== enrollment.eventId) return;
       setEventsOpen(false);
       onCloseSettings();
       Alert.alert('You’re in', 'Your separate event portfolio starts at $100,000. Open Paper Trading to place event trades.');
@@ -190,8 +198,14 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
 
     setSaving(true);
     try {
-      await AsyncStorage.setItem(PAPER_CHALLENGE_STORAGE_KEY, JSON.stringify(next));
-      setStore(next);
+      const updated = await updatePaperChallengeStore(
+        (current) => withdrawUpcomingPaperChallenge(current, currentWindow.id, nowMs),
+        {
+          getItem: (key) => AsyncStorage.getItem(key),
+          setItem: (key, value) => AsyncStorage.setItem(key, value),
+        },
+      );
+      setStore(updated);
       setConfirmWithdraw(false);
     } catch {
       Alert.alert('Could not withdraw', 'Your event signup is unchanged. Please try again.');

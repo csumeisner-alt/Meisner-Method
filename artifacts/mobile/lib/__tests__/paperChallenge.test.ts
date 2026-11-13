@@ -19,6 +19,7 @@ import {
   type PaperChallengeStore,
   withdrawUpcomingPaperChallenge,
   persistPaperChallengeFinalization,
+  updatePaperChallengeStore,
 } from '../paperChallenge.ts';
 
 test('paper event runs Monday open through Friday close, then skips a week', () => {
@@ -275,17 +276,23 @@ test('event summary retries after storage failure without losing enrollment or d
   const enrollmentStore: PaperChallengeStore = { enrollment, history: [] };
   let storedValue = JSON.stringify(enrollmentStore);
   let failNextWrite = true;
-  const setItem = async (key: string, value: string) => {
-    assert.equal(key, PAPER_CHALLENGE_STORAGE_KEY);
-    if (failNextWrite) {
-      failNextWrite = false;
-      throw new Error('Simulated AsyncStorage write failure');
-    }
-    storedValue = value;
+  const storage = {
+    getItem: async (key: string) => {
+      assert.equal(key, PAPER_CHALLENGE_STORAGE_KEY);
+      return storedValue;
+    },
+    setItem: async (key: string, value: string) => {
+      assert.equal(key, PAPER_CHALLENGE_STORAGE_KEY);
+      if (failNextWrite) {
+        failNextWrite = false;
+        throw new Error('Simulated AsyncStorage write failure');
+      }
+      storedValue = value;
+    },
   };
 
   await assert.rejects(
-    persistPaperChallengeFinalization(enrollmentStore, summary, enrollment.eventEndAtMs, setItem),
+    persistPaperChallengeFinalization(summary, enrollment.eventEndAtMs, storage),
     /Simulated AsyncStorage write failure/,
   );
   const afterFailedWrite = JSON.parse(storedValue) as PaperChallengeStore;
@@ -293,10 +300,9 @@ test('event summary retries after storage failure without losing enrollment or d
   assert.deepEqual(afterFailedWrite.history, []);
 
   const retriedStore = await persistPaperChallengeFinalization(
-    afterFailedWrite,
     summary,
     enrollment.eventEndAtMs,
-    setItem,
+    storage,
   );
   const afterRetry = JSON.parse(storedValue) as PaperChallengeStore;
   assert.deepEqual(retriedStore, afterRetry);
@@ -304,13 +310,68 @@ test('event summary retries after storage failure without losing enrollment or d
   assert.deepEqual(afterRetry.history, [summary]);
 
   const repeatedRetry = await persistPaperChallengeFinalization(
-    afterRetry,
     summary,
     enrollment.eventEndAtMs,
-    setItem,
+    storage,
   );
-  assert.strictEqual(repeatedRetry, afterRetry);
+  assert.deepEqual(repeatedRetry, afterRetry);
   assert.deepEqual(repeatedRetry.history, [summary]);
+});
+
+test('concurrent enrollment and completion preserve unique newest-first event history', async () => {
+  const firstEnrollment = {
+    eventId: '2026-11-16',
+    eventStartAtMs: Date.parse('2026-11-16T14:30:00.000Z'),
+    eventEndAtMs: Date.parse('2026-11-20T21:00:00.000Z'),
+    joinedAtMs: Date.parse('2026-11-16T14:30:00.000Z'),
+    accountId: 'paper-event:2026-11-16',
+    accountName: 'Event Portfolio',
+    startEquity: 100_000,
+  };
+  const nextEnrollment = {
+    eventId: '2026-11-30',
+    eventStartAtMs: Date.parse('2026-11-30T14:30:00.000Z'),
+    eventEndAtMs: Date.parse('2026-12-04T21:00:00.000Z'),
+    joinedAtMs: Date.parse('2026-11-30T14:30:00.000Z'),
+    accountId: 'paper-event:2026-11-30',
+    accountName: 'Event Portfolio',
+    startEquity: null,
+  };
+  const olderSummary = buildPaperChallengeSummary(firstEnrollment, 101_000, [], firstEnrollment.eventEndAtMs);
+  let storedValue = JSON.stringify({ enrollment: firstEnrollment, history: [] } satisfies PaperChallengeStore);
+  const storage = {
+    getItem: async (key: string) => {
+      assert.equal(key, PAPER_CHALLENGE_STORAGE_KEY);
+      return storedValue;
+    },
+    setItem: async (key: string, value: string) => {
+      assert.equal(key, PAPER_CHALLENGE_STORAGE_KEY);
+      // Yield between writes to exercise overlapping screen actions.
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      storedValue = value;
+    },
+  };
+
+  await Promise.all([
+    persistPaperChallengeFinalization(olderSummary, firstEnrollment.eventEndAtMs, storage),
+    updatePaperChallengeStore((current) => current.enrollment
+      ? current
+      : { ...current, enrollment: nextEnrollment }, storage),
+  ]);
+
+  const reopened = JSON.parse(storedValue) as PaperChallengeStore;
+  assert.deepEqual(reopened.history.map((event) => event.eventId), ['2026-11-16']);
+  assert.equal(reopened.enrollment?.eventId, '2026-11-30');
+
+  // A stale withdrawal attempt must not erase a completed summary.
+  await updatePaperChallengeStore(
+    (current) => withdrawUpcomingPaperChallenge(current, firstEnrollment.eventId, firstEnrollment.eventStartAtMs - 1),
+    storage,
+  );
+  const afterWithdrawal = JSON.parse(storedValue) as PaperChallengeStore;
+  assert.deepEqual(afterWithdrawal.history.map((event) => event.eventId), ['2026-11-16']);
+  assert.equal(afterWithdrawal.history.filter((event) => event.eventId === '2026-11-16').length, 1);
+  assert.deepEqual(sortPaperChallengeHistory(afterWithdrawal.history, 'date'), [olderSummary]);
 });
 
 test('a later event keeps earlier summaries and remains unique after reload', () => {
