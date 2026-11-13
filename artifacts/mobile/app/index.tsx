@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useQuery } from '@tanstack/react-query';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { useApi } from '@/hooks/useApi';
@@ -55,6 +56,14 @@ import {
   type StockSymbolSuggestion,
 } from '@workspace/api-client-react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+type MarketSessionProxyQuote = {
+  marketSession: string;
+  priceChangePercent: number;
+  priceSource: string;
+  priceTimestamp: number | null;
+  fetchedAtMs: number;
+};
 
 /** AsyncStorage key for the persisted watchlist open/collapsed state. */
 const WATCHLIST_COLLAPSED_KEY = '@stocksense/watchlist_collapsed';
@@ -252,6 +261,16 @@ export default function HomeScreen() {
     () => getMarketPulseInsight(marketPulseQuery.data),
     [marketPulseQuery.data],
   );
+  const marketSessionProxyQuery = useQuery({
+    queryKey: ['market-session-proxy', 'SPY'],
+    queryFn: async () => ({
+      ...(await apiFetch<Omit<MarketSessionProxyQuote, 'fetchedAtMs'>>('/api/stocks/quote/SPY')),
+      fetchedAtMs: Date.now(),
+    }),
+    staleTime: 45_000,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+  });
 
   useEffect(() => {
     if (justUnlocked) {
@@ -784,6 +803,7 @@ export default function HomeScreen() {
           neonActive={neonGucciActive}
           colors={colors}
           pulse={marketPulse}
+          sessionProxy={marketSessionProxyQuery.data ?? null}
           loading={marketPulseQuery.isLoading && !marketPulseQuery.data}
           error={marketPulseQuery.isError && !marketPulseQuery.data}
           onPress={() => router.push('/heat-map')}

@@ -4,6 +4,7 @@ import {
   formatMarketPulseDetail,
   getMarketPulseInsight,
   isMarketPulseStale,
+  isUsEquityMaintenancePause,
   MARKET_PULSE_FRESHNESS_LIMIT_SECONDS,
 } from '../marketPulse.ts';
 
@@ -115,4 +116,10 @@ test('market pulse detail shows only the signed percentage and quote time, never
     ...insight,
     marketOpen: false,
   }, quoteTime.getTime()) ?? '', /^\+1\.25% LAST SESSION · /);
+});
+
+test('23/5 maintenance label applies only during the published New York pause', () => {
+  assert.equal(isUsEquityMaintenancePause(Date.parse('2026-12-07T01:30:00.000Z')), false);
+  assert.equal(isUsEquityMaintenancePause(Date.parse('2026-12-08T01:30:00.000Z')), true);
+  assert.equal(isUsEquityMaintenancePause(Date.parse('2026-12-12T01:30:00.000Z')), false);
 });

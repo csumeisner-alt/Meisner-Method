@@ -9,6 +9,20 @@ export interface MarketPulseInsight {
 }
 
 export const MARKET_PULSE_FRESHNESS_LIMIT_SECONDS = 5 * 60;
+const US_EQUITY_235_START_MS = Date.parse('2026-12-07T02:00:00.000Z');
+
+export function isUsEquityMaintenancePause(nowMs = Date.now()): boolean {
+  if (!Number.isFinite(nowMs) || nowMs < US_EQUITY_235_START_MS) return false;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(nowMs));
+  const weekday = parts.find((part) => part.type === 'weekday')?.value;
+  const hour = parts.find((part) => part.type === 'hour')?.value;
+  return ['Mon', 'Tue', 'Wed', 'Thu'].includes(weekday ?? '') && hour === '20';
+}
 
 export function getMarketPulseInsight(
   pulse: Partial<Pick<MarketPulseResponse, 'changePercent' | 'priceTimestamp' | 'marketOpen'>> | null | undefined,

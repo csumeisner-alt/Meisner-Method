@@ -52,9 +52,10 @@ def ticker_metadata(ticker):
 def select_market_quote(metadata, fast_price, fast_previous_close):
     """Select the newest usable price and matching change fields.
 
-    Yahoo exposes ``marketState`` as PRE, REGULAR, POST, or CLOSED.  During
-    CLOSED, the prior post-market price is still the latest price available,
-    so it is preferred over the regular close when present.
+    Yahoo exposes ``marketState`` as PRE, REGULAR, POST, CLOSED, and may add
+    overnight states as 23/5 trading becomes available. During CLOSED, the
+    prior post-market price is still the latest price available, so it is
+    preferred over the regular close when present.
     """
     regular_price = (
         positive_number(metadata.get("regularMarketPrice"))
@@ -71,8 +72,12 @@ def select_market_quote(metadata, fast_price, fast_previous_close):
     session_fields = {
         "PRE": ("preMarketPrice", "preMarketChange", "preMarketChangePercent", "preMarketTime", "premarket"),
         "PREPRE": ("preMarketPrice", "preMarketChange", "preMarketChangePercent", "preMarketTime", "premarket"),
+        "EARLY": ("preMarketPrice", "preMarketChange", "preMarketChangePercent", "preMarketTime", "premarket"),
         "POST": ("postMarketPrice", "postMarketChange", "postMarketChangePercent", "postMarketTime", "after_hours"),
         "POSTPOST": ("postMarketPrice", "postMarketChange", "postMarketChangePercent", "postMarketTime", "after_hours"),
+        "LATE": ("postMarketPrice", "postMarketChange", "postMarketChangePercent", "postMarketTime", "after_hours"),
+        "OVERNIGHT": ("overnightMarketPrice", "overnightMarketChange", "overnightMarketChangePercent", "overnightMarketTime", "overnight"),
+        "OVN": ("overnightMarketPrice", "overnightMarketChange", "overnightMarketChangePercent", "overnightMarketTime", "overnight"),
         "CLOSED": ("postMarketPrice", "postMarketChange", "postMarketChangePercent", "postMarketTime", "after_hours"),
     }
 

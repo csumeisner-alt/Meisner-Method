@@ -13,13 +13,20 @@ import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, Stop } from 'react-native-svg';
 import { NEON_GUCCI_DECOR, type ColorScheme } from '@/constants/colors';
-import { formatMarketPulseDetail, isMarketPulseStale, type MarketPulseInsight } from '@/lib/marketPulse';
+import { formatMarketPulseDetail, isMarketPulseStale, isUsEquityMaintenancePause, type MarketPulseInsight } from '@/lib/marketPulse';
 
 interface MarketHeatMapInsightButtonProps {
   active: boolean;
   neonActive: boolean;
   colors: ColorScheme;
   pulse: MarketPulseInsight;
+  sessionProxy: {
+    marketSession: string;
+    priceChangePercent: number;
+    priceSource: string;
+    priceTimestamp: number | null;
+    fetchedAtMs: number;
+  } | null;
   loading: boolean;
   error: boolean;
   onPress: () => void;
@@ -151,6 +158,7 @@ export function MarketHeatMapInsightButton({
   neonActive,
   colors,
   pulse,
+  sessionProxy,
   loading,
   error,
   onPress,
@@ -218,15 +226,43 @@ export function MarketHeatMapInsightButton({
   const quoteTime = pulse.priceTimestamp === null
     ? ''
     : new Date(pulse.priceTimestamp * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const proxyAvailable = sessionProxy !== null && Date.now() - sessionProxy.fetchedAtMs <= 90_000;
+  const sessionState = proxyAvailable ? sessionProxy.marketSession.toUpperCase() : '';
+  const extendedSession = ['PRE', 'PREPRE', 'EARLY', 'POST', 'POSTPOST', 'LATE', 'OVERNIGHT'].includes(sessionState);
+  const proxyQuoteFresh = proxyAvailable
+    && sessionProxy.priceTimestamp !== null
+    && Date.now() / 1000 - sessionProxy.priceTimestamp >= 0
+    && Date.now() / 1000 - sessionProxy.priceTimestamp <= 5 * 60
+    && Number.isFinite(sessionProxy.priceChangePercent)
+    && ['premarket', 'after_hours', 'overnight'].includes(sessionProxy.priceSource);
+  const sessionLabel = sessionState === 'PRE' || sessionState === 'PREPRE' || sessionState === 'EARLY'
+    ? 'PRE-MARKET'
+    : sessionState === 'POST' || sessionState === 'POSTPOST' || sessionState === 'LATE'
+      ? 'AFTER-HOURS'
+      : sessionState === 'OVERNIGHT'
+        ? 'OVERNIGHT'
+        : sessionState === 'PAUSE' || sessionState === 'MAINTENANCE'
+          ? 'MAINTENANCE PAUSE'
+          : sessionState === 'REGULAR' || sessionState === 'CORE'
+            ? 'REGULAR SESSION'
+            : sessionState === 'CLOSED'
+              ? isUsEquityMaintenancePause(nowMs) ? 'MAINTENANCE PAUSE' : 'MARKET CLOSED'
+              : '';
+  const sessionTime = proxyQuoteFresh && sessionProxy.priceTimestamp !== null
+    ? new Date(sessionProxy.priceTimestamp * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    : '';
+  const sessionDetail = sessionLabel
+    ? `${sessionLabel}${extendedSession && proxyQuoteFresh ? ` · SPY ${sessionProxy.priceChangePercent >= 0 ? '+' : ''}${sessionProxy.priceChangePercent.toFixed(2)}% from prior close · ${sessionTime}` : ''}`
+    : '';
   const accessibilityLabel = hasPulse
-    ? `Open market heat map. ${headline.toLowerCase()}. Total U.S. market ${moveDescription}${quoteTime ? ` as of ${quoteTime}` : ''}.`
-    : `Open market heat map. ${headline.toLowerCase()}. ${detail}.`;
+    ? `Open market heat map. ${headline.toLowerCase()}. Total U.S. market ${moveDescription}${quoteTime ? ` as of ${quoteTime}` : ''}.${sessionDetail ? ` ${sessionDetail}.` : ''}`
+    : `Open market heat map. ${headline.toLowerCase()}. ${detail}.${sessionDetail ? ` ${sessionDetail}.` : ''}`;
 
   useEffect(() => {
-    if (pulse.marketOpen !== true || pulse.priceTimestamp === null) return;
+    if (pulse.marketOpen !== true && sessionProxy === null) return;
     const timer = setInterval(() => setNowMs(Date.now()), 15_000);
     return () => clearInterval(timer);
-  }, [pulse.marketOpen, pulse.priceTimestamp]);
+  }, [pulse.marketOpen, pulse.priceTimestamp, sessionProxy]);
 
   useEffect(() => {
     let mounted = true;
@@ -410,6 +446,7 @@ export function MarketHeatMapInsightButton({
             <Text style={[styles.eyebrow, { color: colors.mutedForeground }]}>MARKET HEAT MAP</Text>
             <Text numberOfLines={1} style={[styles.headline, { color: signalColor }]}>{headline}</Text>
             <Text numberOfLines={1} style={[styles.detail, { color: detailColor }]}>{detail}</Text>
+            {!!sessionDetail && <Text numberOfLines={1} style={styles.sessionDetail}>{sessionDetail}</Text>}
           </View>
           <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
         </View>
@@ -451,4 +488,5 @@ const styles = StyleSheet.create({
   eyebrow: { fontFamily: 'Inter_700Bold', fontSize: 7, letterSpacing: 1.2 },
   headline: { fontFamily: 'Inter_700Bold', fontSize: 15, letterSpacing: 0.25 },
   detail: { fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 0.25 },
+  sessionDetail: { color: '#B8C3D0', fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.15 },
 });
