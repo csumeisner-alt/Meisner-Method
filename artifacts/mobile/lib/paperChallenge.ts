@@ -41,6 +41,19 @@ export type PaperChallengeSummary = Omit<PaperChallengeEnrollment, 'startEquity'
   symbolsTraded: string[];
   realizedPnL: number;
   completedAtMs: number;
+  transactions?: PaperChallengeArchivedTransaction[];
+};
+
+export type PaperChallengeArchivedTransaction = {
+  id?: string;
+  symbol: string;
+  action: 'BUY' | 'SELL' | 'DIVIDEND';
+  shares?: number;
+  price?: number;
+  total?: number;
+  date: string;
+  realizedPnL?: number;
+  fee?: number;
 };
 
 export type PaperChallengeMilestoneId = 'first-event' | 'positive-finish' | 'personal-best';
@@ -69,7 +82,10 @@ export function normalizePaperChallengeStore(store: PaperChallengeStore): PaperC
     if (!event || typeof event.eventId !== 'string' || seenEventIds.has(event.eventId)) return false;
     seenEventIds.add(event.eventId);
     return true;
-  });
+  }).map((event) => ({
+    ...event,
+    transactions: Array.isArray(event.transactions) ? event.transactions : [],
+  }));
   return {
     enrollment: store.enrollment ?? null,
     history: sortPaperChallengeHistory(history, 'date'),
@@ -386,10 +402,14 @@ export function buildPaperChallengeSummary(
   enrollment: PaperChallengeEnrollment & { startEquity: number },
   endEquity: number,
   transactions: Array<{
+    id?: string;
     accountId: string;
     symbol: string;
     action: 'BUY' | 'SELL' | 'DIVIDEND';
     date: string;
+    shares?: number;
+    price?: number;
+    total?: number;
     realizedPnL?: number;
     fee?: number;
   }>,
@@ -422,5 +442,16 @@ export function buildPaperChallengeSummary(
     symbolsTraded: [...new Set(trades.map((transaction) => transaction.symbol).filter(Boolean))].sort(),
     realizedPnL,
     completedAtMs,
+    transactions: eventTransactions.map((transaction) => ({
+      id: transaction.id,
+      symbol: transaction.symbol,
+      action: transaction.action,
+      shares: transaction.shares,
+      price: transaction.price,
+      total: transaction.total,
+      date: transaction.date,
+      realizedPnL: transaction.realizedPnL,
+      fee: transaction.fee,
+    })),
   };
 }

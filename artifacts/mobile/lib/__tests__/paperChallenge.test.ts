@@ -217,7 +217,7 @@ test('paper event summary uses account equity change and event-only trades', () 
     accountName: 'Event',
     startEquity: 100_000,
   }, 101_250, [
-    { accountId: 'event-account', symbol: 'AAPL', action: 'SELL', date: '2026-11-17T15:00:00.000Z', realizedPnL: 300, fee: 5 },
+    { id: 'sell-aapl', accountId: 'event-account', symbol: 'AAPL', action: 'SELL', date: '2026-11-17T15:00:00.000Z', shares: 2, price: 150, total: 300, realizedPnL: 300, fee: 5 },
     { accountId: 'other-account', symbol: 'GOOG', action: 'SELL', date: '2026-11-17T15:00:00.000Z', realizedPnL: 9_000 },
     { accountId: 'event-account', symbol: 'MSFT', action: 'BUY', date: '2026-11-21T15:00:00.000Z' },
   ], Date.parse('2026-11-21T12:00:00.000Z'));
@@ -228,6 +228,17 @@ test('paper event summary uses account equity change and event-only trades', () 
   assert.equal(summary.sellCount, 1);
   assert.deepEqual(summary.symbolsTraded, ['AAPL']);
   assert.equal(summary.realizedPnL, 295);
+  assert.deepEqual(summary.transactions, [{
+    id: 'sell-aapl',
+    symbol: 'AAPL',
+    action: 'SELL',
+    shares: 2,
+    price: 150,
+    total: 300,
+    date: '2026-11-17T15:00:00.000Z',
+    realizedPnL: 300,
+    fee: 5,
+  }]);
 });
 
 test('event finalization waits for every held position to have a fresh quote', () => {

@@ -102,6 +102,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
   const [saving, setSaving] = useState(false);
   const [confirmWithdraw, setConfirmWithdraw] = useState(false);
   const [sortMode, setSortMode] = useState<'date' | 'top'>('date');
+  const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
   const [positionValue, setPositionValue] = useState<{ equity: number; profit: number; returnPercent: number; usedFallbackPrice: boolean } | null>(null);
   const [positionLoading, setPositionLoading] = useState(false);
   const currentWindow = getPaperChallengeWindow(now);
@@ -642,6 +643,61 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                   <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>
                     Finalized {new Date(event.completedAtMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} using latest available quotes
                   </Text>
+                  <TouchableOpacity
+                    testID={`toggle-paper-event-trades-${event.eventId}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: expandedEventId === event.eventId }}
+                    accessibilityLabel={`${expandedEventId === event.eventId ? 'Hide' : 'View'} archived trades for ${dateRange(event.eventStartAtMs, event.eventEndAtMs)}`}
+                    onPress={() => setExpandedEventId((current) => current === event.eventId ? null : event.eventId)}
+                    style={{ alignSelf: 'flex-start', paddingVertical: 9, paddingHorizontal: 4, marginTop: 3 }}
+                  >
+                    <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11 }}>
+                      {expandedEventId === event.eventId ? 'HIDE' : 'VIEW'} ARCHIVED TRADES ({event.transactions?.length ?? 0})
+                    </Text>
+                  </TouchableOpacity>
+                  {expandedEventId === event.eventId && (
+                    <View testID={`paper-event-trades-${event.eventId}`} style={{ marginTop: 2, padding: 10, borderRadius: 10, backgroundColor: colors.background, gap: 8 }}>
+                      {(event.transactions ?? []).length === 0 ? (
+                        <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11 }}>
+                          No transactions were recorded for this event.
+                        </Text>
+                      ) : [...(event.transactions ?? [])]
+                        .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
+                        .map((transaction, transactionIndex) => {
+                          const net = (transaction.realizedPnL ?? 0) - (transaction.fee ?? 0);
+                          const actionColor = transaction.action === 'BUY'
+                            ? colors.primary
+                            : transaction.action === 'SELL'
+                              ? colors.destructive
+                              : colors.mutedForeground;
+                          return (
+                            <View key={transaction.id ?? `${transaction.date}-${transaction.symbol}-${transactionIndex}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                              <Text style={{ minWidth: 48, color: actionColor, fontFamily: 'Inter_700Bold', fontSize: 9 }}>
+                                {transaction.action}
+                              </Text>
+                              <View style={{ flex: 1, minWidth: 0 }}>
+                                <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>
+                                  {transaction.symbol} · {transaction.shares ?? 0} shares
+                                </Text>
+                                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 9, marginTop: 2 }}>
+                                  {new Date(transaction.date).toLocaleString()} · {money(transaction.price ?? 0)}
+                                </Text>
+                              </View>
+                              <View style={{ alignItems: 'flex-end' }}>
+                                <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>
+                                  {money(transaction.total ?? 0)}
+                                </Text>
+                                {transaction.action === 'SELL' && (
+                                  <Text style={{ color: net >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 9, marginTop: 2 }}>
+                                    {net >= 0 ? '+' : ''}{money(net)}
+                                  </Text>
+                                )}
+                              </View>
+                            </View>
+                          );
+                        })}
+                    </View>
+                  )}
                 </View>
               ))}
             </View>

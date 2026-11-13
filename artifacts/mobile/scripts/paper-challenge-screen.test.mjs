@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const screen = readFileSync(new URL("../app/paper.tsx", import.meta.url), "utf8");
+const orderSheet = readFileSync(new URL("../components/OrderSheet.tsx", import.meta.url), "utf8");
 const events = readFileSync(new URL("../components/PaperChallengeHistory.tsx", import.meta.url), "utf8");
 const challenge = readFileSync(new URL("../lib/paperChallenge.ts", import.meta.url), "utf8");
 const badges = readFileSync(new URL("../components/PaperChallengeMilestoneBadges.tsx", import.meta.url), "utf8");
@@ -22,7 +23,7 @@ assert.match(events, /testID="withdraw-paper-challenge"/);
 assert.match(events, /withdrawUpcomingPaperChallenge\(current, currentWindow\.id, nowMs\)/);
 assert.match(events, /updatePaperChallengeStore\(\(current\)/);
 assert.match(challenge, /nowMs >= enrollment\.eventStartAtMs/);
-assert.match(screen, /testID=\{isEventAccountActive \? 'active-paper-event-account'/);
+assert.match(screen, /testID=\{isEventAcct \? 'active-paper-event-account'/);
 assert.match(screen, /FRESH \$100,000 · TRADE HERE TO COMPETE THIS WEEK/);
 assert.match(screen, /testID="paper-event-account-badge"/);
 assert.match(screen, /testID="paper-event-live-banner"/);
@@ -72,4 +73,27 @@ test("milestone badges and event controls stay readable with larger system text"
   const previewScrollIndex = events.lastIndexOf('<ScrollView contentContainerStyle={{ flexGrow: 1, alignItems: \'center\'');
   const shareImageActionIndex = events.indexOf('testID="share-paper-event-image-confirm"');
   assert.ok(previewScrollIndex >= 0 && previewScrollIndex < shareImageActionIndex);
+});
+
+test("account dashboard selects, scopes, and persists the active paper account", () => {
+  assert.match(screen, /visibleAccounts\.map\(\(acct\)/);
+  assert.match(screen, /acct\.id === activeId/);
+  assert.match(screen, /positions\.filter\(p => p\.accountId === activeId\)/);
+  assert.match(screen, /transactions\.filter\(t => t\.accountId === activeId\)/);
+  assert.match(screen, /orders\.filter\(o => o\.accountId === activeId\)/);
+  assert.match(screen, /await flushCache\([\s\S]*lotsRef\.current, id\)/);
+  assert.match(screen, /valueHistory\.filter\(\(point\) => new Date\(point\.date\)\.getTime\(\) >= Date\.now\(\) - range\.ms\)/);
+  assert.match(screen, /testID=\{isEventAcct \? 'active-paper-event-account'/);
+  assert.match(screen, /\{ id: 'history',\s+label: 'TRADE HISTORY'/);
+  assert.match(screen, /testID=\{`paper-tab-\$\{tab\.id\}`\}/);
+  assert.match(screen, /historyAgeMs >= range\.ms/);
+  assert.match(orderSheet, /testID="order-sheet-active-account"/);
+  assert.match(orderSheet, /Buying power \{\$fmt\(account\.cash\)\}/);
+});
+
+test("completed Event Arena records retain and expose their transaction history", () => {
+  assert.match(challenge, /transactions: eventTransactions\.map/);
+  assert.match(events, /toggle-paper-event-trades-/);
+  assert.match(events, /paper-event-trades-/);
+  assert.match(events, /event\.transactions\?\.length/);
 });

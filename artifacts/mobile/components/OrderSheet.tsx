@@ -24,6 +24,7 @@ const SILVER = '#c0c0c0';
 const DIM = 'rgba(192,192,192,0.38)';
 const BUY_COLOR = '#00e5a0';
 const SELL_COLOR = '#ff3b3b';
+const GOLD = '#ffd700';
 const CARD_BG = 'rgba(192,192,192,0.08)';
 const BORDER = 'rgba(192,192,192,0.28)';
 
@@ -207,6 +208,12 @@ export default function OrderSheet({
             {side === 'buy' ? `BUY ${symbol}` : `SELL ${symbol}`}
           </Text>
           <Text style={s.sub}>{companyName} · ${currentPrice.toFixed(2)}</Text>
+          <View testID="order-sheet-active-account" style={s.accountNotice}>
+            <Feather name="briefcase" size={13} color={GOLD} />
+            <Text style={s.accountNoticeText} numberOfLines={1}>
+              {account.name} · Buying power {$fmt(account.cash)}
+            </Text>
+          </View>
 
           {/* Order type selector */}
           <Text style={s.label}>ORDER TYPE</Text>
@@ -382,6 +389,8 @@ const s = StyleSheet.create({
   handle: { width: 36, height: 4, backgroundColor: BORDER, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
   title: { fontFamily: 'Inter_700Bold', fontSize: 17, color: '#fff', letterSpacing: 1, marginBottom: 4 },
   sub: { fontFamily: 'Inter_400Regular', fontSize: 12, color: DIM, marginBottom: 16 },
+  accountNotice: { flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start', maxWidth: '100%', marginTop: 10, marginBottom: 4, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,215,0,0.38)', backgroundColor: 'rgba(255,215,0,0.08)' },
+  accountNoticeText: { color: '#f3df91', fontFamily: 'Inter_600SemiBold', fontSize: 11, flexShrink: 1 },
   label: { fontFamily: 'Inter_600SemiBold', fontSize: 10, color: DIM, letterSpacing: 1.5, marginBottom: 8 },
   hint: { fontFamily: 'Inter_400Regular', fontSize: 11, color: 'rgba(192,192,192,0.4)', marginBottom: 14, marginTop: -4 },
   row: { flexDirection: 'row', gap: 10, marginBottom: 12, alignItems: 'center' },

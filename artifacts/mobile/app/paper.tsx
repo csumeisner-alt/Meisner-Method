@@ -8,7 +8,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ActivityIndicator,
   Alert,
-  Dimensions,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -20,6 +19,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -102,7 +102,7 @@ import {
  * Supports 3 independent strategy accounts with live P&L, charts, and tracking.
  */
 // ── Types ──────────────────────────────────────────────────────────────────
-type TabId = 'positions' | 'orders' | 'analytics' | 'dividends' | 'growth';
+type TabId = 'overview' | 'positions' | 'orders' | 'history' | 'analytics' | 'dividends' | 'growth';
 type StockInfo = BuyStockInfo;
 type PaperBuySuggestion = {
   symbol: string;
@@ -171,18 +171,28 @@ const SILVER = '#c0c0c0';
 const DIM = 'rgba(192,192,192,0.38)';
 const BUY_COLOR = '#00e5a0';
 const SELL_COLOR = '#ff3b3b';
+const GOLD = '#ffd700';
 const CARD_BG = 'rgba(192,192,192,0.08)';
 const BORDER = 'rgba(192,192,192,0.28)';
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
+  { id: 'overview',  label: 'OVERVIEW',  icon: 'grid' },
   { id: 'positions', label: 'POSITIONS', icon: 'list' },
   { id: 'orders',    label: 'ORDERS',    icon: 'clock' },
+  { id: 'history',   label: 'TRADE HISTORY', icon: 'repeat' },
   { id: 'analytics', label: 'ANALYTICS', icon: 'bar-chart-2' },
   { id: 'dividends', label: 'DIVIDENDS', icon: 'dollar-sign' },
   { id: 'growth',    label: 'GROWTH',    icon: 'trending-up' },
 ];
 
-const SCREEN_W = Dimensions.get('window').width;
+const HISTORY_RANGES = [
+  { id: '1D', ms: 86_400_000 },
+  { id: '1W', ms: 7 * 86_400_000 },
+  { id: '1M', ms: 30 * 86_400_000 },
+  { id: '3M', ms: 90 * 86_400_000 },
+  { id: '1Y', ms: 365 * 86_400_000 },
+  { id: 'ALL', ms: null },
+] as const;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -219,6 +229,7 @@ export default function PaperScreen() {
   const colors = useColors();
   const { awardAchievement } = useAchievements();
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
   const watchlist = useWatchlist();
 
   // Persisted state
@@ -251,7 +262,8 @@ export default function PaperScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   // UI
-  const [activeTab, setActiveTab] = useState<TabId>('positions');
+  const [activeTab, setActiveTab] = useState<TabId>('overview');
+  const [chartRange, setChartRange] = useState<(typeof HISTORY_RANGES)[number]['id']>('ALL');
   const [showAccountDropdown, setShowAccountDropdown] = useState(false);
   const [showTradeModal, setShowTradeModal] = useState(false);
   const [showOrderSheet, setShowOrderSheet] = useState(false);
@@ -413,12 +425,21 @@ export default function PaperScreen() {
   );
   // Realized P&L is net of fund fees: gross realized minus fees charged at close.
   const realizedPnL = computeRealizedPnL(myTxns);
-  const totalPnL = unrealizedPnL + realizedPnL;
   const totalReturn = ((portfolioValue - INITIAL_BALANCE) / INITIAL_BALANCE) * 100;
 
   const dayChange = myPositions.reduce(
     (s, p) => s + p.shares * (quotes[p.symbol]?.change ?? 0), 0,
   );
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayRealized = myTxns
+    .filter((tx) => tx.action === 'SELL' && new Date(tx.date).getTime() >= todayStart.getTime())
+    .reduce((sum, tx) => sum + (tx.realizedPnL ?? 0) - (tx.fee ?? 0), 0);
+  const todayPnL = dayChange + todayRealized;
+  const investedCapital = myPositions.reduce(
+    (sum, pos) => sum + pos.shares * (quotes[pos.symbol]?.price ?? pos.avgCost), 0,
+  );
+  const totalPnLFromEquity = portfolioValue - INITIAL_BALANCE;
 
   const accountsRef = useRef<PaperAccount[]>([]);
   const positionsRef = useRef<PaperPosition[]>([]);
@@ -797,6 +818,40 @@ export default function PaperScreen() {
     }
   }, [evaluatePendingOrders]);
 
+  // Keep the selector's equity cards current without evaluating orders from
+  // accounts that are not active in the trading workspace.
+  const fetchInactiveAccountCardQuotes = useCallback(async () => {
+    const symbols = [...new Set(
+      positions.filter((position) => position.accountId !== activeId).map((position) => position.symbol),
+    )];
+    if (symbols.length === 0) return;
+    const results = await Promise.allSettled(symbols.map(async (symbol) => {
+      const response = await fetch(`${BASE_URL}/api/stocks/quote/${symbol}`);
+      if (!response.ok) throw new Error(`Quote request failed for ${symbol}`);
+      const data = await response.json();
+      if (!Number.isFinite(data.currentPrice) || data.currentPrice <= 0) {
+        throw new Error(`Invalid quote for ${symbol}`);
+      }
+      return [symbol, {
+        price: data.currentPrice,
+        change: data.priceChange,
+        pct: data.priceChangePercent,
+      }] as const;
+    }));
+    const next: Record<string, LiveQuote> = {};
+    for (const result of results) {
+      if (result.status === 'fulfilled') next[result.value[0]] = result.value[1];
+    }
+    if (Object.keys(next).length > 0) setQuotes((current) => ({ ...current, ...next }));
+  }, [activeId, positions]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    void fetchInactiveAccountCardQuotes();
+    const timer = setInterval(() => void fetchInactiveAccountCardQuotes(), 60_000);
+    return () => clearInterval(timer);
+  }, [fetchInactiveAccountCardQuotes, loaded]);
+
   useEffect(() => {
     const enrollment = paperChallenge.enrollment;
     if (
@@ -994,6 +1049,8 @@ export default function PaperScreen() {
     activeIdRef.current = id;
     setActiveId(id);
     setShowAccountDropdown(false);
+    setChartRange('ALL');
+    await flushCache(accountsRef.current, positionsRef.current, transactionsRef.current, ordersRef.current, lotsRef.current, id);
     fetchQuotes(positions, id);
   };
 
@@ -1470,50 +1527,101 @@ export default function PaperScreen() {
           );
         })}
 
-        {/* Transaction history */}
-        {myTxns.length > 0 && (
-          <View style={[styles.card, { marginTop: 8 }]}>
-            <Text style={styles.sectionTitle}>TRADE HISTORY</Text>
-            {[...myTxns].reverse().slice(0, 20).map(tx => (
-              <View key={tx.id} style={styles.txRow}>
-                <View style={[styles.txBadge, { backgroundColor: tx.action === 'BUY' ? 'rgba(0,229,160,0.15)' : 'rgba(255,59,59,0.15)' }]}>
-                  <Text style={[styles.txBadgeText, { color: tx.action === 'BUY' ? BUY_COLOR : SELL_COLOR }]}>
-                    {tx.action}
-                  </Text>
-                </View>
-                <Text style={styles.txSym}>{tx.symbol}</Text>
-                <Text style={styles.txDetail}>{tx.shares}@ ${tx.price.toFixed(2)}</Text>
-                <View style={{ flex: 1 }} />
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={styles.txTotal}>{$fmt(tx.total)}</Text>
-                  {tx.realizedPnL != null && (() => {
-                    const net = tx.realizedPnL - (tx.fee ?? 0);
-                    return (
-                      <>
-                        <Text style={{ color: pnlColor(net), fontSize: 10, fontFamily: 'Inter_500Medium' }}>
-                          {net >= 0 ? '+' : ''}{$fmt(net)}
-                        </Text>
-                        {tx.fee != null && tx.fee > 0 && (
-                          <Text style={{ color: DIM, fontSize: 9, fontFamily: 'Inter_400Regular' }}>
-                            fee {$fmt(tx.fee)}
-                          </Text>
-                        )}
-                      </>
-                    );
-                  })()}
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
       </View>
     );
   };
 
-  const renderAnalytics = () => {
+  const renderOverview = () => {
     const valueHistory = account
-      ? buildValueHistory(account, myTxns, account.cash, myPositions, quotes)
+      ? buildValueHistory(account, myTxns, (account.cash + (account.unsettledCash ?? 0)), myPositions, quotes)
       : [];
+    const historyAgeMs = account ? Date.now() - new Date(account.createdAt).getTime() : 0;
+    const supportedRanges = HISTORY_RANGES.filter((range) => {
+      const points = range.ms == null
+        ? valueHistory
+        : valueHistory.filter((point) => new Date(point.date).getTime() >= Date.now() - range.ms);
+      return points.length >= 2 && (range.ms == null || historyAgeMs >= range.ms);
+    });
+    const activeRange = supportedRanges.some((range) => range.id === chartRange)
+      ? chartRange
+      : 'ALL';
+    const rangeMs = HISTORY_RANGES.find((range) => range.id === activeRange)?.ms;
+    const chartPoints = rangeMs == null
+      ? valueHistory
+      : valueHistory.filter((point) => new Date(point.date).getTime() >= Date.now() - rangeMs);
+
+    return (
+      <View style={{ gap: 12, paddingHorizontal: 16 }}>
+        <View style={styles.card}>
+          <View style={styles.chartHeading}>
+            <View>
+              <Text style={styles.sectionTitle}>ACCOUNT PERFORMANCE</Text>
+              <Text style={styles.chartNote}>Reconstructed from this account’s saved trades</Text>
+            </View>
+            <Text style={[styles.chartCurrentValue, { color: pnlColor(totalPnLFromEquity) }]}>
+              {totalPnLFromEquity >= 0 ? '+' : ''}{$short(totalPnLFromEquity)}
+            </Text>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rangeRow}>
+            {supportedRanges.map((range) => (
+              <TouchableOpacity
+                key={range.id}
+                testID={`paper-chart-range-${range.id}`}
+                accessibilityRole="button"
+                accessibilityState={{ selected: activeRange === range.id }}
+                onPress={() => setChartRange(range.id)}
+                style={[styles.rangeChip, activeRange === range.id && styles.rangeChipActive]}
+              >
+                <Text style={[styles.rangeChipText, activeRange === range.id && styles.rangeChipTextActive]}>
+                  {range.id}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          <PortfolioLineChart points={chartPoints} width={screenWidth - 64} height={180} />
+        </View>
+      </View>
+    );
+  };
+
+  const renderHistory = () => (
+    <View style={{ gap: 10, paddingHorizontal: 16 }}>
+      {myTxns.length === 0 ? (
+        <View style={styles.emptyWrap}>
+          <Feather name="repeat" size={38} color={DIM} />
+          <Text style={styles.emptyTitle}>No trade history</Text>
+          <Text style={styles.emptyHint}>Trades for {account?.name ?? 'this account'} will appear here.</Text>
+        </View>
+      ) : [...myTxns].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((tx) => {
+        const net = (tx.realizedPnL ?? 0) - (tx.fee ?? 0);
+        return (
+          <View key={tx.id} style={styles.historyCard}>
+            <View style={styles.historyTopRow}>
+              <View style={[styles.txBadge, { backgroundColor: tx.action === 'BUY' ? 'rgba(0,229,160,0.15)' : tx.action === 'SELL' ? 'rgba(255,59,59,0.15)' : 'rgba(255,215,0,0.12)' }]}>
+                <Text style={[styles.txBadgeText, { color: tx.action === 'BUY' ? BUY_COLOR : tx.action === 'SELL' ? SELL_COLOR : '#ffd700' }]}>{tx.action}</Text>
+              </View>
+              <Text style={styles.txSym}>{tx.symbol}</Text>
+              <Text style={styles.historyDate}>{new Date(tx.date).toLocaleString()}</Text>
+            </View>
+            <View style={styles.historyDetailRow}>
+              <Text style={styles.historyDetail}>{tx.shares} shares @ {$fmt(tx.price)}</Text>
+              <Text style={styles.txTotal}>{$fmt(tx.total)}</Text>
+            </View>
+            <View style={styles.historyDetailRow}>
+              <Text style={styles.historyAccount}>Account: {account?.name ?? '—'}</Text>
+              {tx.action === 'SELL' && (
+                <Text style={[styles.historyRealized, { color: pnlColor(net) }]}>
+                  Realized {net >= 0 ? '+' : ''}{$fmt(net)}
+                </Text>
+              )}
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+
+  const renderAnalytics = () => {
     const totalMktVal = myPositions.reduce(
       (s, p) => s + p.shares * (quotes[p.symbol]?.price ?? p.avgCost), 0,
     );
@@ -1534,14 +1642,8 @@ export default function PaperScreen() {
     return (
       <View style={{ gap: 12, paddingHorizontal: 16 }}>
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>PORTFOLIO VALUE OVER TIME</Text>
-          <Text style={styles.chartNote}>Approximate — uses trade prices for historical points</Text>
-          <PortfolioLineChart points={valueHistory} width={SCREEN_W - 64} height={180} />
-        </View>
-
-        <View style={styles.card}>
           <Text style={styles.sectionTitle}>ALLOCATION</Text>
-          <AllocationBar segments={segments} width={SCREEN_W - 64} />
+          <AllocationBar segments={segments} width={screenWidth - 64} />
           <View style={{ gap: 6, marginTop: 12 }}>
             {segments.map(s => (
               <View key={s.label} style={styles.allocRow}>
@@ -1565,7 +1667,7 @@ export default function PaperScreen() {
               { label: 'Total Return', val: pctFmt(totalReturn), color: pnlColor(totalReturn) },
               { label: 'Unrealized P&L', val: $fmt(unrealizedPnL), color: pnlColor(unrealizedPnL) },
               { label: 'Realized P&L', val: $fmt(realizedPnL), color: pnlColor(realizedPnL) },
-              { label: "Today's Change", val: $fmt(dayChange), color: pnlColor(dayChange) },
+              { label: "Today's Change", val: $fmt(todayPnL), color: pnlColor(todayPnL) },
               { label: 'Win Rate', val: `${winRate}%`, color: SILVER },
               { label: 'Total Trades', val: `${myTxns.length}`, color: SILVER },
             ].map(m => (
@@ -1612,7 +1714,7 @@ export default function PaperScreen() {
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>ANNUAL INCOME BY STOCK</Text>
-          <DividendBarChart items={items} width={SCREEN_W - 64} height={180} />
+          <DividendBarChart items={items} width={screenWidth - 64} height={180} />
         </View>
 
         {divPositions.length > 0 && (
@@ -1652,7 +1754,7 @@ export default function PaperScreen() {
         <Text style={styles.chartNote}>
           Starting from current portfolio value of {$fmt(portfolioValue)}
         </Text>
-        <GrowthProjectionChart startValue={portfolioValue} width={SCREEN_W - 64} height={220} />
+        <GrowthProjectionChart startValue={portfolioValue} width={screenWidth - 64} height={220} />
       </View>
 
       <View style={styles.card}>
@@ -1826,36 +1928,100 @@ export default function PaperScreen() {
         <Text style={styles.headerSub}>Risk-free · $100k start</Text>
       </View>
 
-      {/* Account Switcher */}
-      <TouchableOpacity
-        testID={isEventAccountActive ? 'active-paper-event-account' : undefined}
-        accessibilityLabel={isEventAccountActive
-          ? 'Event Portfolio. Fresh $100,000 event account. Trade here to compete this week.'
-          : `Paper trading account ${account?.name ?? ''}`}
-        style={[styles.accountBar, isEventAccountActive && styles.eventAccountBar]}
-        onPress={() => setShowAccountDropdown(true)}
-        activeOpacity={0.7}
-      >
-        <View style={[styles.accountDot, isEventAccountActive && styles.eventAccountDot]} />
+      <View style={styles.accountSelectorHeading}>
         <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-            <Text style={[styles.accountName, isEventAccountActive && styles.eventAccountName]}>
-              {account?.name ?? '—'}
-            </Text>
-            {isEventAccountActive && (
-              <View style={styles.eventAccountBadge}>
-                <Feather name="award" size={11} color="#000" />
-                <Text style={styles.eventAccountBadgeText}>EVENT ARENA</Text>
-              </View>
-            )}
-          </View>
-          {isEventAccountActive && (
-            <Text style={styles.eventAccountPrompt}>FRESH $100,000 · TRADE HERE TO COMPETE THIS WEEK</Text>
-          )}
+          <Text style={styles.selectorTitle}>SELECT ACCOUNT</Text>
+          <Text style={styles.selectorSubtitle}>Trading in {account?.name ?? '—'}</Text>
         </View>
-        <Text style={styles.accountVal}>{$fmt(portfolioValue)}</Text>
-        <Feather name="chevron-down" size={16} color={SILVER} style={{ marginLeft: 6 }} />
-      </TouchableOpacity>
+        <TouchableOpacity
+          testID="manage-paper-accounts"
+          accessibilityRole="button"
+          accessibilityLabel="Manage paper trading accounts"
+          onPress={() => setShowAccountDropdown(true)}
+          style={styles.manageAccountsButton}
+        >
+          <Feather name="sliders" size={16} color={GOLD} />
+        </TouchableOpacity>
+      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.accountCards}
+        style={styles.accountSelectorScroll}
+      >
+        {visibleAccounts.map((acct) => {
+          const acctPositions = positions.filter((position) => position.accountId === acct.id);
+          const acctMarketValue = acctPositions.reduce(
+            (sum, position) => sum + position.shares * (quotes[position.symbol]?.price ?? position.avgCost), 0,
+          );
+          const acctEquity = acct.cash + (acct.unsettledCash ?? 0) + acctMarketValue;
+          const acctPnL = acctEquity - INITIAL_BALANCE;
+          const isEventAcct = acct.id.startsWith('paper-event:');
+          const isActive = acct.id === activeId;
+          return (
+            <TouchableOpacity
+              key={acct.id}
+              testID={isEventAcct ? 'active-paper-event-account' : `paper-account-${acct.id}`}
+              accessibilityRole="button"
+              accessibilityState={{ selected: isActive }}
+              accessibilityLabel={`${acct.name}, equity ${$fmt(acctEquity)}, buying power ${$fmt(acct.cash)}, return ${pctFmt((acctPnL / INITIAL_BALANCE) * 100)}, ${acctPositions.length} open positions${isEventAcct ? ', Event Arena competition account' : ''}`}
+              style={[
+                styles.accountCard,
+                isActive && styles.accountCardActive,
+                isEventAcct && styles.accountCardEvent,
+                isActive && isEventAcct && styles.accountCardEventActive,
+              ]}
+              onPress={() => void switchAccount(acct.id)}
+              activeOpacity={0.78}
+            >
+              <View style={styles.accountCardTitleRow}>
+                <Text style={[styles.accountCardName, isActive && styles.accountCardNameActive]} numberOfLines={1}>
+                  {isEventAcct ? 'EVENT ARENA' : acct.name.toUpperCase()}
+                </Text>
+                {isEventAcct && <Feather name="award" size={14} color={GOLD} />}
+              </View>
+              {isEventAcct && (
+                <Text style={styles.eventAccountCardPrompt}>
+                  FRESH $100,000 · TRADE HERE TO COMPETE THIS WEEK
+                </Text>
+              )}
+              <Text style={styles.accountCardEquity}>{$fmt(acctEquity)}</Text>
+              <Text style={styles.accountCardCaption}>EQUITY</Text>
+              <View style={styles.accountCardDivider} />
+              <View style={styles.accountCardMetrics}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.accountCardMetricValue}>{$short(acct.cash)}</Text>
+                  <Text style={styles.accountCardMetricLabel}>BUYING POWER</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={[styles.accountCardMetricValue, { color: pnlColor(acctPnL) }]}>
+                    {acctPnL >= 0 ? '+' : ''}{$short(acctPnL)}
+                  </Text>
+                  <Text style={styles.accountCardMetricLabel}>
+                    {pctFmt((acctPnL / INITIAL_BALANCE) * 100)} · {acctPositions.length} OPEN
+                  </Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+        {!visibleAccounts.some((item) => item.id.startsWith('paper-event:')) && (
+          <TouchableOpacity
+            testID="paper-event-account-unavailable"
+            accessibilityRole="button"
+            accessibilityLabel="Event Arena account. Join an event in Settings to activate."
+            onPress={() => setShowAccountDropdown(true)}
+            style={[styles.accountCard, styles.accountCardEvent, styles.eventAccountPlaceholder]}
+          >
+            <View style={styles.accountCardTitleRow}>
+              <Text style={[styles.accountCardName, { color: GOLD }]}>EVENT ARENA</Text>
+              <Feather name="award" size={14} color={GOLD} />
+            </View>
+            <Text style={styles.eventPlaceholderValue}>Competition account</Text>
+            <Text style={styles.eventPlaceholderHint}>Join an event in Settings to activate</Text>
+          </TouchableOpacity>
+        )}
+      </ScrollView>
 
       {paperChallengeWindow.phase === 'active' && (
         <View
@@ -1952,42 +2118,53 @@ export default function PaperScreen() {
         </View>
       )}
 
-      {/* Summary Strip */}
-      <View style={styles.summaryStrip}>
-        {[
-          {
-            label: (account?.unsettledCash ?? 0) > 0 ? 'CASH+T+2' : 'CASH',
-            val: $short((account?.cash ?? 0) + (account?.unsettledCash ?? 0)),
-            color: SILVER,
-            sub: (account?.unsettledCash ?? 0) > 0 ? `${$short(account!.cash)} settled` : undefined,
-          },
-          { label: 'TOTAL P&L', val: (totalPnL >= 0 ? '+' : '') + $short(totalPnL), color: pnlColor(totalPnL) },
-          { label: 'RETURN', val: pctFmt(totalReturn), color: pnlColor(totalReturn) },
-          { label: 'TODAY', val: (dayChange >= 0 ? '+' : '') + $short(dayChange), color: pnlColor(dayChange) },
-        ].map((m, i) => (
-          <View key={m.label} style={[styles.summaryCell, i > 0 && { borderLeftWidth: 1, borderLeftColor: BORDER }]}>
-            <Text style={[styles.summaryVal, { color: m.color }]}>{m.val}</Text>
-            <Text style={styles.summaryLabel}>{m.label}</Text>
-            {m.sub ? <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 9, color: DIM }}>{m.sub}</Text> : null}
+      {/* Selected-account overview: all values derive from the active account only. */}
+      <View style={styles.accountOverview}>
+        <View style={styles.overviewEquityRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.overviewEyebrow}>ACCOUNT EQUITY</Text>
+            <Text style={styles.overviewEquity}>{$fmt(portfolioValue)}</Text>
           </View>
-        ))}
+          <View style={styles.overviewReturnPill}>
+            <Text style={[styles.overviewReturn, { color: pnlColor(totalPnLFromEquity) }]}>{pctFmt(totalReturn)}</Text>
+            <Text style={styles.overviewReturnCaption}>TOTAL RETURN</Text>
+          </View>
+        </View>
+        <View style={styles.overviewMetricGrid}>
+          {[
+            { label: (account?.unsettledCash ?? 0) > 0 ? 'CASH + T+2' : 'CASH BALANCE', value: $short((account?.cash ?? 0) + (account?.unsettledCash ?? 0)), color: SILVER },
+            { label: 'BUYING POWER', value: $short(account?.cash ?? 0), color: SILVER },
+            { label: 'INVESTED CAPITAL', value: $short(investedCapital), color: SILVER },
+            { label: "TODAY'S P/L", value: `${todayPnL >= 0 ? '+' : ''}${$short(todayPnL)}`, color: pnlColor(todayPnL) },
+            { label: 'TOTAL P/L', value: `${totalPnLFromEquity >= 0 ? '+' : ''}${$short(totalPnLFromEquity)}`, color: pnlColor(totalPnLFromEquity) },
+            { label: 'OPEN POSITIONS', value: `${myPositions.length}`, color: SILVER },
+          ].map((item) => (
+            <View key={item.label} style={styles.overviewMetric}>
+              <Text style={[styles.overviewMetricValue, { color: item.color }]} numberOfLines={1}>{item.value}</Text>
+              <Text style={styles.overviewMetricLabel}>{item.label}</Text>
+            </View>
+          ))}
+        </View>
       </View>
 
       {/* Tab Bar */}
-      <View style={styles.tabBar}>
-        {TABS.map(tab => (
-          <TouchableOpacity
-            key={tab.id}
-            style={[styles.tabBtn, activeTab === tab.id && styles.tabBtnActive]}
-            onPress={() => setActiveTab(tab.id)}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.tabLabel, activeTab === tab.id && styles.tabLabelActive]}>
-              {tab.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabScroll}>
+        <View style={styles.tabBar}>
+          {TABS.map(tab => (
+            <TouchableOpacity
+              key={tab.id}
+              testID={`paper-tab-${tab.id}`}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: activeTab === tab.id }}
+              style={[styles.tabBtn, activeTab === tab.id && styles.tabBtnActive]}
+              onPress={() => setActiveTab(tab.id)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.tabLabel, activeTab === tab.id && styles.tabLabelActive]}>{tab.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
 
       {/* Content */}
       <ScrollView
@@ -1996,15 +2173,17 @@ export default function PaperScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={SILVER} />}
         showsVerticalScrollIndicator={false}
       >
+        {activeTab === 'overview' && renderOverview()}
         {activeTab === 'positions' && renderPositions()}
         {activeTab === 'orders' && renderOrders()}
+        {activeTab === 'history' && renderHistory()}
         {activeTab === 'analytics' && renderAnalytics()}
         {activeTab === 'dividends' && renderDividends()}
         {activeTab === 'growth' && renderGrowth()}
       </ScrollView>
 
       {/* BUY FAB — show on positions and orders tab */}
-      {(activeTab === 'positions' || activeTab === 'orders') && (
+      {(activeTab === 'overview' || activeTab === 'positions' || activeTab === 'orders') && (
         <TouchableOpacity style={styles.fab} onPress={openBuyModal} activeOpacity={0.85}>
           <Feather name="plus" size={18} color="#000" />
           <Text style={styles.fabText}>BUY</Text>
@@ -2439,6 +2618,102 @@ const styles = StyleSheet.create({
   },
 
   // Account bar
+  accountSelectorHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  selectorTitle: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 11,
+    color: GOLD,
+    letterSpacing: 1.2,
+  },
+  selectorSubtitle: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 11,
+    color: DIM,
+    marginTop: 3,
+  },
+  manageAccountsButton: {
+    width: 38,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: CARD_BG,
+  },
+  accountSelectorScroll: { flexGrow: 0 },
+  accountCards: { paddingHorizontal: 16, paddingBottom: 10, gap: 10 },
+  accountCard: {
+    width: 206,
+    minHeight: 143,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 13,
+    backgroundColor: 'rgba(28,32,40,0.94)',
+  },
+  accountCardActive: {
+    borderColor: GOLD,
+    backgroundColor: 'rgba(43,38,24,0.96)',
+  },
+  accountCardEvent: {
+    borderColor: 'rgba(255,215,0,0.56)',
+    backgroundColor: 'rgba(50,40,20,0.78)',
+  },
+  accountCardEventActive: { borderColor: GOLD, borderWidth: 2 },
+  eventAccountPlaceholder: { justifyContent: 'center' },
+  accountCardTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
+  accountCardName: { flex: 1, fontFamily: 'Inter_700Bold', fontSize: 11, color: DIM, letterSpacing: 0.75 },
+  accountCardNameActive: { color: GOLD },
+  accountCardEquity: { marginTop: 10, fontFamily: 'Inter_700Bold', fontSize: 20, color: '#fff' },
+  accountCardCaption: { marginTop: 1, fontFamily: 'Inter_500Medium', fontSize: 9, color: DIM, letterSpacing: 0.6 },
+  eventAccountCardPrompt: { marginTop: 4, fontFamily: 'Inter_600SemiBold', fontSize: 8, lineHeight: 11, color: GOLD },
+  accountCardDivider: { height: 1, backgroundColor: BORDER, marginTop: 9, marginBottom: 8 },
+  accountCardMetrics: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  accountCardMetricValue: { fontFamily: 'Inter_700Bold', fontSize: 11, color: SILVER },
+  accountCardMetricLabel: { marginTop: 3, fontFamily: 'Inter_500Medium', fontSize: 8, color: DIM, letterSpacing: 0.25 },
+  eventPlaceholderValue: { marginTop: 12, fontFamily: 'Inter_600SemiBold', fontSize: 15, color: '#fff' },
+  eventPlaceholderHint: { marginTop: 5, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 14, color: DIM },
+  accountOverview: {
+    marginHorizontal: 16,
+    marginTop: 2,
+    marginBottom: 8,
+    padding: 13,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: 'rgba(18,21,27,0.96)',
+  },
+  overviewEquityRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  overviewEyebrow: { fontFamily: 'Inter_600SemiBold', fontSize: 9, color: DIM, letterSpacing: 1 },
+  overviewEquity: { marginTop: 4, fontFamily: 'Inter_700Bold', fontSize: 23, color: '#fff' },
+  overviewReturnPill: { alignItems: 'flex-end', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 9, backgroundColor: 'rgba(255,255,255,0.04)' },
+  overviewReturn: { fontFamily: 'Inter_700Bold', fontSize: 14 },
+  overviewReturnCaption: { marginTop: 2, fontFamily: 'Inter_500Medium', fontSize: 8, color: DIM, letterSpacing: 0.45 },
+  overviewMetricGrid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 12, borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 10 },
+  overviewMetric: { width: '33.333%', minHeight: 43, paddingVertical: 4, paddingRight: 5 },
+  overviewMetricValue: { fontFamily: 'Inter_700Bold', fontSize: 12 },
+  overviewMetricLabel: { marginTop: 3, fontFamily: 'Inter_500Medium', fontSize: 8, color: DIM, letterSpacing: 0.25 },
+  chartHeading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
+  chartCurrentValue: { fontFamily: 'Inter_700Bold', fontSize: 13 },
+  rangeRow: { flexDirection: 'row', gap: 6, paddingVertical: 8 },
+  rangeChip: { minWidth: 38, height: 30, paddingHorizontal: 9, alignItems: 'center', justifyContent: 'center', borderRadius: 8, borderWidth: 1, borderColor: BORDER },
+  rangeChipActive: { borderColor: GOLD, backgroundColor: 'rgba(255,215,0,0.13)' },
+  rangeChipText: { fontFamily: 'Inter_600SemiBold', fontSize: 10, color: DIM },
+  rangeChipTextActive: { color: GOLD },
+  historyCard: { padding: 12, borderRadius: 12, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD_BG },
+  historyTopRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  historyDate: { flex: 1, textAlign: 'right', fontFamily: 'Inter_400Regular', fontSize: 10, color: DIM },
+  historyDetailRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 8 },
+  historyDetail: { fontFamily: 'Inter_500Medium', fontSize: 11, color: SILVER },
+  historyAccount: { flex: 1, fontFamily: 'Inter_400Regular', fontSize: 10, color: DIM },
+  historyRealized: { fontFamily: 'Inter_600SemiBold', fontSize: 10 },
   accountBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2494,16 +2769,17 @@ const styles = StyleSheet.create({
   summaryLabel: { fontFamily: 'Inter_400Regular', fontSize: 9, color: DIM, marginTop: 2, letterSpacing: 0.5 },
 
   // Tab bar
+  tabScroll: { flexGrow: 0 },
   tabBar: {
     flexDirection: 'row',
     borderBottomWidth: 1,
     borderBottomColor: BORDER,
     backgroundColor: '#000',
   },
-  tabBtn: { flex: 1, alignItems: 'center', paddingVertical: 10 },
-  tabBtnActive: { borderBottomWidth: 2, borderBottomColor: SILVER },
-  tabLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 8, color: DIM, letterSpacing: 1 },
-  tabLabelActive: { color: SILVER },
+  tabBtn: { minWidth: 82, alignItems: 'center', paddingHorizontal: 12, paddingVertical: 11 },
+  tabBtnActive: { borderBottomWidth: 2, borderBottomColor: GOLD },
+  tabLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 9, color: DIM, letterSpacing: 0.45 },
+  tabLabelActive: { color: GOLD },
 
   // Cards
   card: {
