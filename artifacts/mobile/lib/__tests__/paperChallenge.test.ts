@@ -8,6 +8,7 @@ import {
   capturePaperChallengeBaseline,
   ensurePaperChallengeAccount,
   getPaperChallengeMilestones,
+  getPaperChallengePersonalBestProgress,
   getPaperChallengeReminders,
   getPaperChallengeWindow,
   loadPaperChallengeStore,
@@ -138,6 +139,46 @@ test('event milestones reward first participation, positive finishes, and strict
   assert.deepEqual(getPaperChallengeMilestones(improvedLoss, [previousEvent]), []);
 });
 
+test('live personal-best progress compares only valid earlier completed-event returns', () => {
+  const makeSummary = (eventId: string, eventStartAtMs: number, returnPercent: number): PaperChallengeSummary => ({
+    eventId,
+    eventStartAtMs,
+    eventEndAtMs: eventStartAtMs + 5,
+    joinedAtMs: eventStartAtMs,
+    accountId: `paper-event:${eventId}`,
+    accountName: 'Event Portfolio',
+    startEquity: 100_000,
+    endEquity: 100_000 * (1 + returnPercent / 100),
+    netProfit: returnPercent * 1_000,
+    returnPercent,
+    tradeCount: 0,
+    buyCount: 0,
+    sellCount: 0,
+    symbolsTraded: [],
+    realizedPnL: 0,
+    completedAtMs: eventStartAtMs + 6,
+  });
+  const history = [
+    makeSummary('older-best', 100, 3.5),
+    makeSummary('older-loss', 200, -2),
+    makeSummary('current', 300, 50),
+    makeSummary('future', 400, 100),
+    makeSummary('invalid', 150, Number.NaN),
+  ];
+
+  assert.deepEqual(getPaperChallengePersonalBestProgress(history, 300, 2.25), {
+    bestReturnPercent: 3.5,
+    gapPercentPoints: 1.25,
+  });
+  assert.deepEqual(getPaperChallengePersonalBestProgress(history, 300, 4), {
+    bestReturnPercent: 3.5,
+    gapPercentPoints: -0.5,
+  });
+  assert.equal(getPaperChallengePersonalBestProgress([history[2]], 300, 2.25), null);
+  assert.equal(getPaperChallengePersonalBestProgress(history, 300, null), null);
+  assert.equal(getPaperChallengePersonalBestProgress(history, 300, Number.NaN), null);
+});
+
 test('Event Arena wires its label, history sorting, midweek refresh, sharing, and notification toggle', async () => {
   const testDirectory = dirname(fileURLToPath(import.meta.url));
   const componentSource = await readFile(resolve(testDirectory, '../../components/PaperChallengeHistory.tsx'), 'utf8');
@@ -150,6 +191,9 @@ test('Event Arena wires its label, history sorting, midweek refresh, sharing, an
   assert.match(componentSource, /testID="retry-paper-challenge-history"/);
   assert.match(componentSource, /Could not load your saved event history/);
   assert.match(componentSource, /refreshEventPosition/);
+  assert.match(componentSource, /getPaperChallengePersonalBestProgress\(store\.history, currentWindow\.startAtMs, positionValue\.returnPercent\)/);
+  assert.match(componentSource, /positionValue && !positionValue\.usedFallbackPrice/);
+  assert.match(componentSource, /testID="paper-event-personal-best-progress"/);
   assert.match(componentSource, /Share\.share/);
   assert.match(componentSource, /setEventNotifications\(value\)/);
   assert.match(componentSource, /Sharing\.shareAsync\(uri/);

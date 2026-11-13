@@ -19,6 +19,7 @@ import { PaperEventShareCard } from '@/components/PaperEventShareCard';
 import { PaperChallengeMilestoneBadges } from '@/components/PaperChallengeMilestoneBadges';
 import {
   getPaperChallengeMilestones,
+  getPaperChallengePersonalBestProgress,
   getPaperChallengeReminders,
   getPaperChallengeWindow,
   loadPaperChallengeStore,
@@ -106,6 +107,9 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
   const currentWindow = getPaperChallengeWindow(now);
   const hasCurrentEnrollment = store.enrollment?.eventId === currentWindow.id;
   const sortedHistory = sortPaperChallengeHistory(store.history, sortMode);
+  const personalBestProgress = positionValue && !positionValue.usedFallbackPrice
+    ? getPaperChallengePersonalBestProgress(store.history, currentWindow.startAtMs, positionValue.returnPercent)
+    : null;
   const midweekAt = currentWindow.startAtMs + 2 * DAY_MS + 2.5 * 60 * 60 * 1000;
 
   const readStore = useCallback(async (isCurrent: () => boolean = () => true) => {
@@ -513,6 +517,20 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                     <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 7 }}>
                       Overall {money(positionValue.equity)} · {positionValue.profit >= 0 ? '+' : ''}{money(positionValue.profit)} ({positionValue.returnPercent >= 0 ? '+' : ''}{positionValue.returnPercent.toFixed(2)}%)
                     </Text>
+                    {personalBestProgress && (
+                      <Text
+                        testID="paper-event-personal-best-progress"
+                        style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 11, marginTop: 5 }}
+                      >
+                        Previous best {personalBestProgress.bestReturnPercent >= 0 ? '+' : ''}{personalBestProgress.bestReturnPercent.toFixed(2)}% · {
+                          personalBestProgress.gapPercentPoints > 0.005
+                            ? `${personalBestProgress.gapPercentPoints.toFixed(2)} percentage points to go`
+                            : personalBestProgress.gapPercentPoints < -0.005
+                              ? `${Math.abs(personalBestProgress.gapPercentPoints).toFixed(2)} percentage points ahead`
+                              : 'At your previous best'
+                        }
+                      </Text>
+                    )}
                     {positionValue.usedFallbackPrice && (
                       <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>
                         Some holdings use average cost because a current quote was unavailable.

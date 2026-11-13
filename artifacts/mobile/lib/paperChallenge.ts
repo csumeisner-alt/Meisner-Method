@@ -137,6 +137,30 @@ export function getPaperChallengeMilestones(
   return milestones;
 }
 
+export function getPaperChallengePersonalBestProgress(
+  history: PaperChallengeSummary[],
+  currentEventStartAtMs: number,
+  currentReturnPercent: number | null,
+): { bestReturnPercent: number; gapPercentPoints: number } | null {
+  if (
+    !Number.isFinite(currentEventStartAtMs)
+    || currentReturnPercent === null
+    || !Number.isFinite(currentReturnPercent)
+  ) return null;
+
+  const previousReturns = history
+    .filter((event) => event.eventStartAtMs < currentEventStartAtMs)
+    .map((event) => event.returnPercent)
+    .filter(Number.isFinite);
+  if (previousReturns.length === 0) return null;
+
+  const bestReturnPercent = Math.max(...previousReturns);
+  return {
+    bestReturnPercent,
+    gapPercentPoints: bestReturnPercent - currentReturnPercent,
+  };
+}
+
 export type PaperChallengeAccountState = {
   accounts: PaperAccount[];
   positions: PaperPosition[];
