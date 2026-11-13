@@ -629,7 +629,7 @@ export function DonationSidebar({
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            <PaperChallengeHistory visible={visible} />
+            <PaperChallengeHistory visible={visible} onCloseSettings={onClose} />
             <AlertManagementSection
               alerts={alerts}
               watchlistSymbols={watchlistSymbols}

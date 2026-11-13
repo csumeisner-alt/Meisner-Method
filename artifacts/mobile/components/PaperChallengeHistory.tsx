@@ -1,91 +1,343 @@
 import React, { useEffect, useState } from 'react';
-import { Text, View } from 'react-native';
+import {
+  Alert,
+  Modal,
+  Platform,
+  ScrollView,
+  Share,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import {
+  getPaperChallengeWindow,
   PAPER_CHALLENGE_STORAGE_KEY,
+  PAPER_CHALLENGE_STARTING_BALANCE,
   type PaperChallengeStore,
   type PaperChallengeSummary,
 } from '@/lib/paperChallenge';
 
-type Props = { visible: boolean };
+const NOTIFICATIONS_KEY = '@stocksense/paper_events_notifications_v1';
+const NOTIFICATION_ID_KEY = '@stocksense/paper_events_notification_id_v1';
+const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+type Props = { visible: boolean; onCloseSettings: () => void };
 
-function formatCurrency(value: number) {
-  return `${value >= 0 ? '+' : '−'}$${Math.abs(value).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+const money = (value: number) => `${value < 0 ? '−' : ''}$${Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const dateRange = (start: number, end: number) => {
+  const left = new Date(start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const right = new Date(end).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return `${left}–${right}`;
+};
+const eventAccountId = (eventId: string) => `paper-event:${eventId}`;
+
+async function readScheduledIds() {
+  const saved = await AsyncStorage.getItem(NOTIFICATION_ID_KEY);
+  if (!saved) return [];
+  try {
+    const parsed = JSON.parse(saved) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [saved];
+  } catch {
+    return [saved];
+  }
 }
 
-function formatEventDate(startMs: number, endMs: number) {
-  const start = new Date(startMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  const end = new Date(endMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  return `${start}–${end}`;
+async function scheduleUpcomingEventReminders() {
+  const Notifications = await import('expo-notifications');
+  const oldIds = await readScheduledIds();
+  await Promise.all(oldIds.map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => {})));
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('paper-event-reminders', {
+      name: 'Paper event reminders',
+      description: 'Reminders when a new paper event starts.',
+      importance: Notifications.AndroidImportance.DEFAULT,
+    });
+  }
+  let nextEvent = getPaperChallengeWindow();
+    if (nextEvent.phase !== 'upcoming') nextEvent = getPaperChallengeWindow(nextEvent.endAtMs + THREE_DAYS_MS + 1);
+  const ids: string[] = [];
+  for (let index = 0; index < 12; index += 1) {
+    const id = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'A new paper event starts today',
+        body: 'Fresh $100,000 event portfolio. Join any time before Friday’s close.',
+        data: { type: 'paper-event-start', eventId: nextEvent.id },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: new Date(nextEvent.startAtMs),
+        ...(Platform.OS === 'android' ? { channelId: 'paper-event-reminders' } : {}),
+      },
+    });
+    ids.push(id);
+    nextEvent = getPaperChallengeWindow(nextEvent.endAtMs + THREE_DAYS_MS + 1);
+  }
+  await AsyncStorage.setItem(NOTIFICATION_ID_KEY, JSON.stringify(ids));
 }
 
-export function PaperChallengeHistory({ visible }: Props) {
+export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
   const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const [eventsOpen, setEventsOpen] = useState(false);
   const [store, setStore] = useState<PaperChallengeStore>({ enrollment: null, history: [] });
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [now, setNow] = useState(Date.now());
+  const [saving, setSaving] = useState(false);
+  const currentWindow = getPaperChallengeWindow(now);
+  const hasCurrentEnrollment = store.enrollment?.eventId === currentWindow.id;
 
   useEffect(() => {
     if (!visible) return;
     let cancelled = false;
-    AsyncStorage.getItem(PAPER_CHALLENGE_STORAGE_KEY).then((raw) => {
-      if (!raw) {
-        if (!cancelled) setStore({ enrollment: null, history: [] });
-        return;
+    Promise.all([
+      AsyncStorage.getItem(PAPER_CHALLENGE_STORAGE_KEY),
+      AsyncStorage.getItem(NOTIFICATIONS_KEY),
+    ]).then(([raw, notificationValue]) => {
+      if (cancelled) return;
+      if (raw) {
+        const parsed = JSON.parse(raw) as PaperChallengeStore;
+        setStore({
+          enrollment: parsed.enrollment ?? null,
+          history: Array.isArray(parsed.history) ? parsed.history : [],
+        });
+      } else {
+        setStore({ enrollment: null, history: [] });
       }
-      const parsed = JSON.parse(raw) as PaperChallengeStore;
-      if (!cancelled) setStore({
-        enrollment: parsed.enrollment ?? null,
-        history: Array.isArray(parsed.history) ? parsed.history : [],
-      });
+      setNotificationsEnabled(notificationValue === 'true');
     }).catch(() => {
-      if (!cancelled) setStore({ enrollment: null, history: [] });
+      if (!cancelled) {
+        setStore({ enrollment: null, history: [] });
+        setNotificationsEnabled(false);
+      }
     });
     return () => { cancelled = true; };
-  }, [visible]);
+  }, [visible, eventsOpen]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const optIn = async () => {
+    if (saving || currentWindow.phase !== 'active' || store.enrollment) return;
+    setSaving(true);
+    const enrollment = {
+      eventId: currentWindow.id,
+      eventStartAtMs: currentWindow.startAtMs,
+      eventEndAtMs: currentWindow.endAtMs,
+      joinedAtMs: Date.now(),
+      accountId: eventAccountId(currentWindow.id),
+      accountName: 'Event Portfolio',
+      startEquity: PAPER_CHALLENGE_STARTING_BALANCE,
+    };
+    try {
+      const next = { ...store, enrollment };
+      await AsyncStorage.setItem(PAPER_CHALLENGE_STORAGE_KEY, JSON.stringify(next));
+      setStore(next);
+      setEventsOpen(false);
+      onCloseSettings();
+      Alert.alert('You’re in', 'Your separate event portfolio starts at $100,000. Open Paper Trading to place event trades.');
+    } catch {
+      Alert.alert('Could not join', 'Your event enrollment was not saved. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const shareSummary = async (event: PaperChallengeSummary) => {
+    const symbols = event.symbolsTraded?.length ? event.symbolsTraded.join(', ') : 'No trades';
+    const text = [
+      'Meisner Method · Paper Event Results',
+      dateRange(event.eventStartAtMs, event.eventEndAtMs),
+      `Starting balance: ${money(PAPER_CHALLENGE_STARTING_BALANCE)}`,
+      `Ending balance: ${money(event.endEquity)}`,
+      `Return: ${event.returnPercent >= 0 ? '+' : ''}${event.returnPercent.toFixed(2)}% (${money(event.netProfit)})`,
+      `Trades: ${event.buyCount ?? 0} buys, ${event.sellCount ?? 0} sells`,
+      `Realized P&L: ${money(event.realizedPnL)}`,
+      `Symbols: ${symbols}`,
+    ].join('\n');
+    try {
+      await Share.share({ title: 'Paper Event Results', message: text });
+    } catch {
+      Alert.alert('Could not share', 'The device share sheet is unavailable right now.');
+    }
+  };
+
+  const setEventNotifications = async (enabled: boolean) => {
+    if (Platform.OS === 'web') {
+      Alert.alert('Mobile notifications only', 'Enable event notifications from the mobile app.');
+      return;
+    }
+    try {
+      const Notifications = await import('expo-notifications');
+      if (!enabled) {
+        const savedIds = await readScheduledIds();
+        await Promise.all(savedIds.map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => {})));
+        await AsyncStorage.multiRemove([NOTIFICATIONS_KEY, NOTIFICATION_ID_KEY]);
+        setNotificationsEnabled(false);
+        return;
+      }
+      let permission = await Notifications.getPermissionsAsync();
+      if (!permission.granted) permission = await Notifications.requestPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Notifications are off', 'Allow notifications in your device settings to receive event reminders.');
+        return;
+      }
+      await scheduleUpcomingEventReminders();
+      await AsyncStorage.setItem(NOTIFICATIONS_KEY, 'true');
+      setNotificationsEnabled(true);
+    } catch {
+      Alert.alert('Could not update notifications', 'Please try again from the Events settings.');
+    }
+  };
 
   return (
-    <View testID="settings-paper-events" style={{ marginBottom: 20 }}>
-      <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 16 }}>
-        Paper trading events
-      </Text>
-      <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 3, marginBottom: 9 }}>
-        Past weekly results · saved on this device
-      </Text>
-      {store.enrollment && Date.now() >= store.enrollment.eventEndAtMs && (
-        <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, paddingVertical: 8 }}>
-          Your last event has ended. Open Paper Trading to calculate and save its final summary.
+    <View style={{ marginBottom: 18 }}>
+      <TouchableOpacity
+        testID="settings-events-button"
+        accessibilityRole="button"
+        accessibilityLabel="Events"
+        onPress={() => setEventsOpen(true)}
+        style={{
+          minHeight: 50,
+          paddingHorizontal: 14,
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 12,
+          backgroundColor: colors.card,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 10,
+        }}
+      >
+        <Feather name="award" size={18} color={colors.primary} />
+        <Text style={{ flex: 1, color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 14 }}>
+          Events
         </Text>
-      )}
-      {store.history.length === 0 ? (
-        <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, paddingVertical: 8 }}>
-          Completed event summaries will appear here.
-        </Text>
-      ) : store.history.slice(0, 12).map((event) => (
-        <View
-          key={event.eventId}
-          style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingVertical: 11 }}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Text style={{ flex: 1, color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 13 }}>
-              {formatEventDate(event.eventStartAtMs, event.eventEndAtMs)} · {event.accountName}
-            </Text>
-            <Text style={{ color: event.netProfit >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 13 }}>
-              {formatCurrency(event.netProfit)}
-            </Text>
+        <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+      </TouchableOpacity>
+
+      <Modal visible={eventsOpen} animationType="slide" onRequestClose={() => setEventsOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: Platform.OS === 'web' ? 24 : insets.top + 8 }}>
+          <View style={{ paddingHorizontal: 18, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={{ flex: 1, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20 }}>Events</Text>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close events" onPress={() => setEventsOpen(false)} hitSlop={10}>
+              <Feather name="x" size={22} color={colors.mutedForeground} />
+            </TouchableOpacity>
           </View>
-          <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 4 }}>
-            {event.returnPercent >= 0 ? '+' : ''}{event.returnPercent.toFixed(2)}% · {event.buyCount ?? 0} buys / {event.sellCount ?? 0} sells · realized {formatCurrency(event.realizedPnL)}
-          </Text>
-          <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>
-            Finalized {new Date(event.completedAtMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} using the latest available quotes
-          </Text>
-          {(event.symbolsTraded ?? []).length > 0 && (
-            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 3 }}>
-              Traded: {(event.symbolsTraded ?? []).join(', ')}
+          <View style={{ flex: 1, padding: 18, paddingBottom: Platform.OS === 'web' ? 24 : insets.bottom + 18 }}>
+            <View style={{ padding: 16, borderRadius: 14, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+              <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 0.7 }}>
+                {hasCurrentEnrollment ? 'YOUR EVENT PORTFOLIO' : currentWindow.phase === 'active' ? 'LIVE THIS WEEK' : 'NEXT PAPER EVENT'}
+              </Text>
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 18, marginTop: 8 }}>
+                Fresh $100,000. Five market days.
+              </Text>
+              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 19, marginTop: 6 }}>
+                {hasCurrentEnrollment
+                  ? currentWindow.phase === 'active'
+                    ? 'You joined with a separate $100,000 event portfolio. Event trades close Friday at 4:00 p.m. ET.'
+                    : 'This event has ended. Open Paper Trading to save its final results.'
+                  : `${dateRange(currentWindow.startAtMs, currentWindow.endAtMs)} · U.S. market hours · one event every other week`}
+              </Text>
+              {store.enrollment && !hasCurrentEnrollment && (
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 10 }}>
+                  Finish your previous event summary in Paper Trading before joining another.
+                </Text>
+              )}
+              {!hasCurrentEnrollment && currentWindow.phase === 'active' && (
+                <TouchableOpacity
+                  testID="join-paper-challenge"
+                  accessibilityRole="button"
+                  disabled={saving || !!store.enrollment}
+                  onPress={() => { void optIn(); }}
+                  style={{ marginTop: 14, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, backgroundColor: store.enrollment ? colors.muted : colors.primary, alignItems: 'center' }}
+                >
+                  <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>
+                    {saving ? 'JOINING…' : 'JOIN THIS EVENT'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              {hasCurrentEnrollment && currentWindow.phase === 'active' && (
+                <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 12, marginTop: 12 }}>
+                  Open Paper Trading to trade your event portfolio.
+                </Text>
+              )}
+              {hasCurrentEnrollment && currentWindow.phase === 'ended' && (
+                <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 12, marginTop: 12 }}>
+                  Open Paper Trading to finalize this event.
+                </Text>
+              )}
+            </View>
+
+            <View style={{ marginTop: 18, paddingVertical: 12, borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 14 }}>Event notifications</Text>
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 3 }}>A local reminder when the next event opens</Text>
+              </View>
+              <Switch
+                testID="paper-event-notifications-toggle"
+                value={notificationsEnabled}
+                onValueChange={(value) => { void setEventNotifications(value); }}
+                trackColor={{ false: colors.muted, true: colors.primary }}
+                thumbColor={colors.card}
+              />
+            </View>
+
+            <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 16, marginTop: 18, marginBottom: 8 }}>
+              Your past events
             </Text>
-          )}
+            <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+              {store.history.length === 0 ? (
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, paddingVertical: 12 }}>
+                  Events you join and their summaries will appear here.
+                </Text>
+              ) : store.history.map((event) => (
+                <View key={event.eventId} style={{ paddingVertical: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 13 }}>
+                        {dateRange(event.eventStartAtMs, event.eventEndAtMs)}
+                      </Text>
+                      <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 3 }}>
+                        $100,000 start · {event.buyCount ?? 0} buys · {event.sellCount ?? 0} sells
+                      </Text>
+                    </View>
+                    <Text style={{ color: event.netProfit >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 14 }}>
+                      {money(event.netProfit)}
+                    </Text>
+                    <TouchableOpacity
+                      testID={`share-paper-event-${event.eventId}`}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Share ${dateRange(event.eventStartAtMs, event.eventEndAtMs)} event summary`}
+                      onPress={() => { void shareSummary(event); }}
+                      hitSlop={8}
+                      style={{ padding: 6 }}
+                    >
+                      <Feather name="share" size={17} color={colors.primary} />
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 5 }}>
+                    End {money(event.endEquity)} · {event.returnPercent >= 0 ? '+' : ''}{event.returnPercent.toFixed(2)}% · realized {money(event.realizedPnL)}
+                  </Text>
+                  {(event.symbolsTraded ?? []).length > 0 && (
+                    <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 3 }}>
+                      Traded: {(event.symbolsTraded ?? []).join(', ')}
+                    </Text>
+                  )}
+                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>
+                    Finalized {new Date(event.completedAtMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} using latest available quotes
+                  </Text>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
         </View>
-      ))}
+      </Modal>
     </View>
   );
 }

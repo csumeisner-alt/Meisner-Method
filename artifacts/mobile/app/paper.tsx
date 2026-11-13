@@ -3,6 +3,7 @@
  * Supports 3 independent strategy accounts with live P&L, charts, and tracking.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ActivityIndicator,
@@ -36,7 +37,6 @@ import {
   PortfolioLineChart,
 } from '@/components/PaperCharts';
 import OrderSheet, { type ConfirmOrderArgs } from '@/components/OrderSheet';
-import { PaperChallengeCard } from '@/components/PaperChallengeCard';
 import {
   INITIAL_BALANCE,
   buildValueHistory,
@@ -75,9 +75,8 @@ import {
 import { useWatchlist } from '@/hooks/useWatchlist';
 import {
   buildPaperChallengeSummary,
-  getPaperChallengeWindow,
   PAPER_CHALLENGE_STORAGE_KEY,
-  type PaperChallengeEnrollment,
+  PAPER_CHALLENGE_STARTING_BALANCE,
   type PaperChallengeStore,
 } from '@/lib/paperChallenge';
 import {
@@ -224,7 +223,6 @@ export default function PaperScreen() {
   const [challengeNow, setChallengeNow] = useState(Date.now());
   const paperChallengeRef = useRef<PaperChallengeStore>({ enrollment: null, history: [] });
   const challengeFinalizingRef = useRef<string | null>(null);
-  const challengeJoiningRef = useRef(false);
 
   // Live quotes
   const [quotes, setQuotes] = useState<Record<string, LiveQuote>>({});
@@ -378,18 +376,9 @@ export default function PaperScreen() {
       + (account.unsettledCash ?? 0)
       + myPositions.reduce((s, p) => s + p.shares * (quotes[p.symbol]?.price ?? p.avgCost), 0)
     : 0;
-  const paperChallengeWindow = getPaperChallengeWindow(challengeNow);
-  const enrolledAccount = paperChallenge.enrollment
-    ? accounts.find((item) => item.id === paperChallenge.enrollment?.accountId)
-    : undefined;
-  const enrolledPositions = paperChallenge.enrollment
-    ? positions.filter((position) => position.accountId === paperChallenge.enrollment?.accountId)
-    : [];
-  const enrolledEquity = enrolledAccount
-    ? enrolledAccount.cash
-      + (enrolledAccount.unsettledCash ?? 0)
-      + enrolledPositions.reduce((sum, position) => sum + position.shares * (quotes[position.symbol]?.price ?? position.avgCost), 0)
-    : 0;
+  const visibleAccounts = accounts.filter((item) =>
+    !item.id.startsWith('paper-event:') || item.id === paperChallenge.enrollment?.accountId,
+  );
   const unrealizedPnL = myPositions.reduce(
     (s, p) => s + p.shares * ((quotes[p.symbol]?.price ?? p.avgCost) - p.avgCost), 0,
   );
@@ -409,7 +398,7 @@ export default function PaperScreen() {
   const lotsRef = useRef<PaperLot[]>([]);
   const activeIdRef = useRef<string>('');
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     let cancelled = false;
     AsyncStorage.getItem(PAPER_CHALLENGE_STORAGE_KEY).then((raw) => {
       if (cancelled) return;
@@ -431,7 +420,7 @@ export default function PaperScreen() {
       if (!cancelled) setPaperChallengeReady(true);
     });
     return () => { cancelled = true; };
-  }, []);
+  }, []));
 
   useEffect(() => {
     const timer = setInterval(() => setChallengeNow(Date.now()), 30_000);
@@ -491,6 +480,40 @@ export default function PaperScreen() {
     setOrders(data);
     await flushCache(accountsRef.current, positionsRef.current, transactionsRef.current, data, lotsRef.current, activeIdRef.current);
   }, [flushCache]);
+
+  useEffect(() => {
+    const enrollment = paperChallenge.enrollment;
+    if (!loaded || !paperChallengeReady || !enrollment) return;
+    const existingEventAccount = accountsRef.current.find((item) => item.id === enrollment.accountId);
+    if (existingEventAccount) {
+      if (activeIdRef.current !== existingEventAccount.id) {
+        void saveAll(
+          accountsRef.current,
+          positionsRef.current,
+          transactionsRef.current,
+          ordersRef.current,
+          lotsRef.current,
+          existingEventAccount.id,
+        );
+      }
+      return;
+    }
+    const eventAccount: PaperAccount = {
+      id: enrollment.accountId,
+      name: enrollment.accountName,
+      cash: PAPER_CHALLENGE_STARTING_BALANCE,
+      createdAt: new Date(enrollment.joinedAtMs).toISOString(),
+    };
+    const nextAccounts = [...accountsRef.current, eventAccount];
+    void saveAll(
+      nextAccounts,
+      positionsRef.current,
+      transactionsRef.current,
+      ordersRef.current,
+      lotsRef.current,
+      enrollment.accountId,
+    );
+  }, [loaded, paperChallenge.enrollment, paperChallengeReady, saveAll]);
 
   // ── Init ─────────────────────────────────────────────────────────────────
   const init = useCallback(async () => {
@@ -746,9 +769,20 @@ export default function PaperScreen() {
       const summary = buildPaperChallengeSummary(enrollment, endEquity, transactionsRef.current);
       const latestStore = paperChallengeRef.current;
       if (latestStore.enrollment?.eventId !== enrollment.eventId) return;
+      const fallbackAccount = accountsRef.current.find((item) => !item.id.startsWith('paper-event:'));
+      if (activeIdRef.current === enrollment.accountId && fallbackAccount) {
+        await saveAll(
+          accountsRef.current,
+          positionsRef.current,
+          transactionsRef.current,
+          ordersRef.current,
+          lotsRef.current,
+          fallbackAccount.id,
+        );
+      }
       await savePaperChallenge({
         enrollment: null,
-        history: [summary, ...latestStore.history].slice(0, 24),
+        history: [summary, ...latestStore.history],
       });
     })().catch(() => {
       challengeFinalizingRef.current = null;
@@ -762,6 +796,7 @@ export default function PaperScreen() {
     paperChallengeReady,
     positions,
     quotes,
+    saveAll,
     saveOrders,
     savePaperChallenge,
   ]);
@@ -781,45 +816,6 @@ export default function PaperScreen() {
   };
 
   // ── Account actions ───────────────────────────────────────────────────────
-  const joinPaperChallenge = async () => {
-    if (
-      !paperChallengeReady
-      || !loaded
-      || !account
-      || paperChallengeWindow.phase !== 'active'
-      || paperChallengeRef.current.enrollment
-      || challengeJoiningRef.current
-    ) return;
-    challengeJoiningRef.current = true;
-    try {
-      const joinedAtMs = Date.now();
-      const freshQuotes = await fetchQuotes(myPositions, account.id, false);
-      const startEquity = account.cash
-        + (account.unsettledCash ?? 0)
-        + myPositions.reduce(
-          (sum, position) => sum + position.shares * (freshQuotes[position.symbol]?.price ?? quotes[position.symbol]?.price ?? position.avgCost),
-          0,
-        );
-      const enrollment: PaperChallengeEnrollment = {
-        eventId: paperChallengeWindow.id,
-        eventStartAtMs: paperChallengeWindow.startAtMs,
-        eventEndAtMs: paperChallengeWindow.endAtMs,
-        joinedAtMs,
-        accountId: account.id,
-        accountName: account.name,
-        startEquity,
-      };
-      await savePaperChallenge({
-        enrollment,
-        history: paperChallengeRef.current.history,
-      });
-    } catch {
-      Alert.alert('Could not join the event', 'Your paper account was not changed. Please try again.');
-    } finally {
-      challengeJoiningRef.current = false;
-    }
-  };
-
   const switchAccount = async (id: string) => {
     activeIdRef.current = id;
     setActiveId(id);
@@ -1689,15 +1685,6 @@ export default function PaperScreen() {
         ))}
       </View>
 
-      <PaperChallengeCard
-        window={paperChallengeWindow}
-        enrollment={paperChallenge.enrollment}
-        selectedAccountName={account?.name ?? 'Selected account'}
-        currentEquity={paperChallenge.enrollment?.accountId === activeId ? portfolioValue : enrolledEquity}
-        ready={loaded && paperChallengeReady && !!account && !paperChallenge.enrollment}
-        onJoin={() => { void joinPaperChallenge(); }}
-      />
-
       {/* Tab Bar */}
       <View style={styles.tabBar}>
         {TABS.map(tab => (
@@ -1747,7 +1734,7 @@ export default function PaperScreen() {
                 <View style={styles.sheetHandle} />
                 <Text style={styles.sheetTitle}>TRADING ACCOUNTS</Text>
 
-                {accounts.map(acct => (
+                {visibleAccounts.map(acct => (
                   <View key={acct.id}>
                     <TouchableOpacity
                       style={[styles.acctRow, acct.id === activeId && styles.acctRowActive]}

@@ -1,4 +1,5 @@
 export const PAPER_CHALLENGE_STORAGE_KEY = '@stocksense/paper_events_v1';
+export const PAPER_CHALLENGE_STARTING_BALANCE = 100_000;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const EVENT_ANCHOR_DAY = Math.floor(Date.UTC(2026, 10, 16) / DAY_MS);
