@@ -19,10 +19,11 @@ export type PaperChallengeEnrollment = {
   joinedAtMs: number;
   accountId: string;
   accountName: string;
-  startEquity: number;
+  startEquity: number | null;
 };
 
-export type PaperChallengeSummary = PaperChallengeEnrollment & {
+export type PaperChallengeSummary = Omit<PaperChallengeEnrollment, 'startEquity'> & {
+  startEquity: number;
   endEquity: number;
   netProfit: number;
   returnPercent: number;
@@ -101,8 +102,20 @@ export function getPaperChallengeWindow(nowMs = Date.now()): PaperChallengeWindo
   };
 }
 
-export function buildPaperChallengeSummary(
+export function capturePaperChallengeBaseline(
   enrollment: PaperChallengeEnrollment,
+  startEquity: number,
+): PaperChallengeEnrollment {
+  if (enrollment.startEquity !== null) return enrollment;
+  return {
+    ...enrollment,
+    joinedAtMs: enrollment.eventStartAtMs,
+    startEquity,
+  };
+}
+
+export function buildPaperChallengeSummary(
+  enrollment: PaperChallengeEnrollment & { startEquity: number },
   endEquity: number,
   transactions: Array<{
     accountId: string;

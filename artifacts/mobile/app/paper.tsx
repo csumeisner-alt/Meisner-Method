@@ -75,9 +75,11 @@ import {
 import { useWatchlist } from '@/hooks/useWatchlist';
 import {
   buildPaperChallengeSummary,
+  getPaperChallengeWindow,
   PAPER_CHALLENGE_STORAGE_KEY,
   PAPER_CHALLENGE_STARTING_BALANCE,
   type PaperChallengeStore,
+  capturePaperChallengeBaseline,
 } from '@/lib/paperChallenge';
 import {
   getSearchHeatMapInstrumentsQueryKey,
@@ -87,6 +89,10 @@ import {
   type HeatMapInstrumentSuggestion,
 } from '@workspace/api-client-react';
 
+/**
+ * Paper Trading Screen — risk-free trading with $100,000 virtual cash.
+ * Supports 3 independent strategy accounts with live P&L, charts, and tracking.
+ */
 // ── Types ──────────────────────────────────────────────────────────────────
 type TabId = 'positions' | 'orders' | 'analytics' | 'dividends' | 'growth';
 type StockInfo = BuyStockInfo;
@@ -223,6 +229,7 @@ export default function PaperScreen() {
   const [challengeNow, setChallengeNow] = useState(Date.now());
   const paperChallengeRef = useRef<PaperChallengeStore>({ enrollment: null, history: [] });
   const challengeFinalizingRef = useRef<string | null>(null);
+  const challengeBaselineCapturingRef = useRef<string | null>(null);
 
   // Live quotes
   const [quotes, setQuotes] = useState<Record<string, LiveQuote>>({});
@@ -376,6 +383,7 @@ export default function PaperScreen() {
       + (account.unsettledCash ?? 0)
       + myPositions.reduce((s, p) => s + p.shares * (quotes[p.symbol]?.price ?? p.avgCost), 0)
     : 0;
+  const paperChallengeWindow = getPaperChallengeWindow(challengeNow);
   const visibleAccounts = accounts.filter((item) =>
     !item.id.startsWith('paper-event:') || item.id === paperChallenge.enrollment?.accountId,
   );
@@ -484,6 +492,10 @@ export default function PaperScreen() {
   useEffect(() => {
     const enrollment = paperChallenge.enrollment;
     if (!loaded || !paperChallengeReady || !enrollment) return;
+    if (
+      enrollment.startEquity === null
+      && (challengeNow < enrollment.eventStartAtMs || challengeNow >= enrollment.eventEndAtMs)
+    ) return;
     const existingEventAccount = accountsRef.current.find((item) => item.id === enrollment.accountId);
     if (existingEventAccount) {
       if (activeIdRef.current !== existingEventAccount.id) {
@@ -513,7 +525,7 @@ export default function PaperScreen() {
       lotsRef.current,
       enrollment.accountId,
     );
-  }, [loaded, paperChallenge.enrollment, paperChallengeReady, saveAll]);
+  }, [challengeNow, loaded, paperChallenge.enrollment, paperChallengeReady, saveAll]);
 
   // ── Init ─────────────────────────────────────────────────────────────────
   const init = useCallback(async () => {
@@ -741,7 +753,13 @@ export default function PaperScreen() {
 
   useEffect(() => {
     const enrollment = paperChallenge.enrollment;
-    if (!paperChallengeReady || !loaded || !enrollment || challengeNow < enrollment.eventEndAtMs) return;
+    if (
+      !paperChallengeReady
+      || !loaded
+      || !enrollment
+      || enrollment.startEquity === null
+      || challengeNow < enrollment.eventEndAtMs
+    ) return;
     if (challengeFinalizingRef.current === enrollment.eventId) return;
     challengeFinalizingRef.current = enrollment.eventId;
 
@@ -766,7 +784,9 @@ export default function PaperScreen() {
           (sum, position) => sum + position.shares * (latestQuotes[position.symbol]?.price ?? position.avgCost),
           0,
         );
-      const summary = buildPaperChallengeSummary(enrollment, endEquity, transactionsRef.current);
+      const startEquity = enrollment.startEquity;
+      if (startEquity === null) return;
+      const summary = buildPaperChallengeSummary({ ...enrollment, startEquity }, endEquity, transactionsRef.current);
       const latestStore = paperChallengeRef.current;
       if (latestStore.enrollment?.eventId !== enrollment.eventId) return;
       const fallbackAccount = accountsRef.current.find((item) => !item.id.startsWith('paper-event:'));
@@ -802,6 +822,68 @@ export default function PaperScreen() {
   ]);
 
   useEffect(() => {
+    const enrollment = paperChallenge.enrollment;
+    if (!paperChallengeReady || !loaded || !enrollment || enrollment.startEquity !== null) return;
+
+    if (challengeNow >= enrollment.eventEndAtMs) {
+      if (challengeFinalizingRef.current === enrollment.eventId) return;
+      challengeFinalizingRef.current = enrollment.eventId;
+      const latestStore = paperChallengeRef.current;
+      if (latestStore.enrollment?.eventId === enrollment.eventId && latestStore.enrollment.startEquity === null) {
+        void savePaperChallenge({ enrollment: null, history: latestStore.history })
+          .catch(() => { challengeFinalizingRef.current = null; });
+      } else {
+        challengeFinalizingRef.current = null;
+      }
+      return;
+    }
+
+    if (challengeNow < enrollment.eventStartAtMs || challengeBaselineCapturingRef.current === enrollment.eventId) return;
+    challengeBaselineCapturingRef.current = enrollment.eventId;
+    void (async () => {
+      const currentWindow = getPaperChallengeWindow(Date.now());
+      if (currentWindow.id !== enrollment.eventId || currentWindow.phase !== 'active') return;
+      const eventPositions = positionsRef.current.filter((position) => position.accountId === enrollment.accountId);
+      const freshQuotes = await fetchQuotes(eventPositions, enrollment.accountId, false);
+      const latestWindow = getPaperChallengeWindow(Date.now());
+      if (latestWindow.id !== enrollment.eventId || latestWindow.phase !== 'active') return;
+
+      const eventAccount = accountsRef.current.find((item) => item.id === enrollment.accountId);
+      if (!eventAccount) throw new Error('The event account is unavailable.');
+      const latestPositions = positionsRef.current.filter((position) => position.accountId === enrollment.accountId);
+      const latestQuotes = { ...quotes, ...freshQuotes };
+      const startEquity = eventAccount.cash
+        + (eventAccount.unsettledCash ?? 0)
+        + latestPositions.reduce(
+          (sum, position) => sum + position.shares * (latestQuotes[position.symbol]?.price ?? position.avgCost),
+          0,
+        );
+      const latestStore = paperChallengeRef.current;
+      if (latestStore.enrollment?.eventId !== enrollment.eventId || latestStore.enrollment.startEquity !== null) return;
+      await savePaperChallenge({
+        enrollment: capturePaperChallengeBaseline(latestStore.enrollment, startEquity),
+        history: latestStore.history,
+      });
+    })().catch(() => {
+      // Keep the opt-in so the next clock tick can retry a local baseline capture.
+    }).finally(() => {
+      if (challengeBaselineCapturingRef.current === enrollment.eventId) {
+        challengeBaselineCapturingRef.current = null;
+      }
+    });
+  }, [
+    accounts,
+    challengeNow,
+    fetchQuotes,
+    loaded,
+    paperChallenge.enrollment,
+    paperChallengeReady,
+    positions,
+    quotes,
+    savePaperChallenge,
+  ]);
+
+  useEffect(() => {
     const hasPendingOrders = orders.some(o => o.accountId === activeId && o.status === 'pending');
     // Fire even when there are no positions — pending limit/stop orders need quote polling too.
     if ((positions.length > 0 || hasPendingOrders) && activeId) {
@@ -830,7 +912,7 @@ export default function PaperScreen() {
   };
 
   const resetAccount = async (id: string) => {
-    if (paperChallengeRef.current.enrollment?.accountId === id) {
+    if (paperChallengeWindow.phase === 'active' && paperChallengeRef.current.enrollment?.accountId === id) {
       Alert.alert('Account is in an event', 'This account cannot be reset until its paper trading event is complete.');
       return;
     }

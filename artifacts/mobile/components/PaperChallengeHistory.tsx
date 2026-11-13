@@ -123,16 +123,17 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
   }, []);
 
   const optIn = async () => {
-    if (saving || currentWindow.phase !== 'active' || store.enrollment) return;
+    const eventWindow = getPaperChallengeWindow(Date.now());
+    if (saving || eventWindow.phase === 'ended' || store.enrollment) return;
     setSaving(true);
     const enrollment = {
-      eventId: currentWindow.id,
-      eventStartAtMs: currentWindow.startAtMs,
-      eventEndAtMs: currentWindow.endAtMs,
-      joinedAtMs: Date.now(),
-      accountId: eventAccountId(currentWindow.id),
+      eventId: eventWindow.id,
+      eventStartAtMs: eventWindow.startAtMs,
+      eventEndAtMs: eventWindow.endAtMs,
+      joinedAtMs: eventWindow.phase === 'upcoming' ? eventWindow.startAtMs : Date.now(),
+      accountId: eventAccountId(eventWindow.id),
       accountName: 'Event Portfolio',
-      startEquity: PAPER_CHALLENGE_STARTING_BALANCE,
+      startEquity: eventWindow.phase === 'upcoming' ? null : PAPER_CHALLENGE_STARTING_BALANCE,
     };
     try {
       const next = { ...store, enrollment };
@@ -240,8 +241,12 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
               <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 19, marginTop: 6 }}>
                 {hasCurrentEnrollment
                   ? currentWindow.phase === 'active'
-                    ? 'You joined with a separate $100,000 event portfolio. Event trades close Friday at 4:00 p.m. ET.'
-                    : 'This event has ended. Open Paper Trading to save its final results.'
+                    ? store.enrollment?.startEquity === null
+                      ? 'Your separate $100,000 event portfolio is being prepared. Event trades close Friday at 4:00 p.m. ET.'
+                      : 'You joined with a separate $100,000 event portfolio. Event trades close Friday at 4:00 p.m. ET.'
+                    : currentWindow.phase === 'upcoming'
+                      ? 'You’re signed up for a separate $100,000 event portfolio. It will be ready at Monday’s market open.'
+                      : 'This event has ended. Open Paper Trading to save its final results.'
                   : `${dateRange(currentWindow.startAtMs, currentWindow.endAtMs)} · U.S. market hours · one event every other week`}
               </Text>
               {store.enrollment && !hasCurrentEnrollment && (
@@ -249,7 +254,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                   Finish your previous event summary in Paper Trading before joining another.
                 </Text>
               )}
-              {!hasCurrentEnrollment && currentWindow.phase === 'active' && (
+              {!hasCurrentEnrollment && (currentWindow.phase === 'active' || currentWindow.phase === 'upcoming') && (
                 <TouchableOpacity
                   testID="join-paper-challenge"
                   accessibilityRole="button"
@@ -258,7 +263,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                   style={{ marginTop: 14, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, backgroundColor: store.enrollment ? colors.muted : colors.primary, alignItems: 'center' }}
                 >
                   <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>
-                    {saving ? 'JOINING…' : 'JOIN THIS EVENT'}
+                    {saving ? 'JOINING…' : currentWindow.phase === 'upcoming' ? 'OPT IN FOR NEXT EVENT' : 'JOIN THIS EVENT'}
                   </Text>
                 </TouchableOpacity>
               )}

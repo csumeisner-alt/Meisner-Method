@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   buildPaperChallengeSummary,
+  capturePaperChallengeBaseline,
   getPaperChallengeWindow,
 } from '../paperChallenge.ts';
 
@@ -15,6 +16,23 @@ test('paper event runs Monday open through Friday close, then skips a week', () 
   const offWeek = getPaperChallengeWindow(Date.parse('2026-11-25T17:00:00.000Z'));
   assert.equal(offWeek.id, '2026-11-30');
   assert.equal(offWeek.phase, 'upcoming');
+  assert.ok(offWeek.startAtMs > Date.parse('2026-11-25T17:00:00.000Z'));
+  assert.ok(offWeek.endAtMs > offWeek.startAtMs);
+
+  const pendingEnrollment = {
+    eventId: offWeek.id,
+    eventStartAtMs: offWeek.startAtMs,
+    eventEndAtMs: offWeek.endAtMs,
+    joinedAtMs: offWeek.startAtMs,
+    accountId: 'strategy-2',
+    accountName: 'Strategy 2',
+    startEquity: null,
+  };
+  const startedEnrollment = capturePaperChallengeBaseline(pendingEnrollment, 102_500);
+  assert.equal(startedEnrollment.startEquity, 102_500);
+  assert.equal(startedEnrollment.joinedAtMs, offWeek.startAtMs);
+  assert.equal(startedEnrollment.accountId, 'strategy-2');
+  assert.equal(capturePaperChallengeBaseline(startedEnrollment, 120_000), startedEnrollment);
 });
 
 test('paper event market hours follow Eastern daylight-saving time', () => {
