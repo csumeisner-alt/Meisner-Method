@@ -10,6 +10,9 @@ import {
   getPaperChallengeWindow,
   sortPaperChallengeHistory,
   type PaperChallengeSummary,
+  finalizePaperChallengeStore,
+  PAPER_CHALLENGE_STORAGE_KEY,
+  type PaperChallengeStore,
 } from '../paperChallenge.ts';
 
 test('paper event runs Monday open through Friday close, then skips a week', () => {
@@ -120,4 +123,55 @@ test('paper event summary uses account equity change and event-only trades', () 
   assert.equal(summary.sellCount, 1);
   assert.deepEqual(summary.symbolsTraded, ['AAPL']);
   assert.equal(summary.realizedPnL, 295);
+});
+
+test('event enrollment and one summary survive reloads without changing other paper accounts', () => {
+  const eventId = '2026-11-16';
+  const enrollment = {
+    eventId,
+    eventStartAtMs: Date.parse('2026-11-16T14:30:00.000Z'),
+    eventEndAtMs: Date.parse('2026-11-20T21:00:00.000Z'),
+    joinedAtMs: Date.parse('2026-11-16T14:30:00.000Z'),
+    accountId: 'paper-event:2026-11-16',
+    accountName: 'Event Portfolio',
+    startEquity: 100_000,
+  };
+  const summary = buildPaperChallengeSummary(enrollment, 101_000, [], Date.parse('2026-11-20T21:00:00.000Z'));
+  const challengeStore: PaperChallengeStore = { enrollment, history: [] };
+  const otherPaperData = {
+    accounts: [{ id: 'paper-main', name: 'Main', cash: 90_000 }],
+    transactions: [{ accountId: 'paper-main', symbol: 'MSFT', action: 'BUY', date: '2026-11-17T15:00:00.000Z' }],
+  };
+  const savedData = new Map<string, string>([
+    [PAPER_CHALLENGE_STORAGE_KEY, JSON.stringify(challengeStore)],
+    ['@stocksense/paper_v2', JSON.stringify(otherPaperData)],
+  ]);
+
+  const reloadChallengeStore = () => JSON.parse(savedData.get(PAPER_CHALLENGE_STORAGE_KEY)!) as PaperChallengeStore;
+  const afterInitialReload = reloadChallengeStore();
+  assert.deepEqual(afterInitialReload.enrollment, enrollment);
+  const beforeEventEnd = finalizePaperChallengeStore(
+    afterInitialReload,
+    summary,
+    enrollment.eventEndAtMs - 1,
+  );
+  assert.deepEqual(beforeEventEnd.enrollment, enrollment);
+  assert.deepEqual(beforeEventEnd.history, []);
+
+  savedData.set(
+    PAPER_CHALLENGE_STORAGE_KEY,
+    JSON.stringify(finalizePaperChallengeStore(afterInitialReload, summary, enrollment.eventEndAtMs)),
+  );
+  const afterFinalizationReload = reloadChallengeStore();
+  assert.equal(afterFinalizationReload.enrollment, null);
+  assert.deepEqual(afterFinalizationReload.history, [summary]);
+
+  savedData.set(
+    PAPER_CHALLENGE_STORAGE_KEY,
+    JSON.stringify(finalizePaperChallengeStore(afterFinalizationReload, summary, enrollment.eventEndAtMs)),
+  );
+  const afterReopeningPaperTrading = reloadChallengeStore();
+  assert.equal(afterReopeningPaperTrading.history.length, 1);
+  assert.deepEqual(afterReopeningPaperTrading.history[0], summary);
+  assert.deepEqual(JSON.parse(savedData.get('@stocksense/paper_v2')!), otherPaperData);
 });

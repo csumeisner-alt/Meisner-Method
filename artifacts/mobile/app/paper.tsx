@@ -75,6 +75,7 @@ import {
 import { useWatchlist } from '@/hooks/useWatchlist';
 import {
   buildPaperChallengeSummary,
+  finalizePaperChallengeStore,
   getPaperChallengeWindow,
   PAPER_CHALLENGE_STORAGE_KEY,
   PAPER_CHALLENGE_STARTING_BALANCE,
@@ -800,10 +801,7 @@ export default function PaperScreen() {
           fallbackAccount.id,
         );
       }
-      await savePaperChallenge({
-        enrollment: null,
-        history: [summary, ...latestStore.history],
-      });
+      await savePaperChallenge(finalizePaperChallengeStore(latestStore, summary, challengeNow));
     })().catch(() => {
       challengeFinalizingRef.current = null;
     });

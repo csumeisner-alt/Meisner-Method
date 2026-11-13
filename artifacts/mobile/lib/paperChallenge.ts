@@ -40,6 +40,26 @@ export type PaperChallengeStore = {
   history: PaperChallengeSummary[];
 };
 
+export function finalizePaperChallengeStore(
+  store: PaperChallengeStore,
+  summary: PaperChallengeSummary,
+  nowMs = Date.now(),
+): PaperChallengeStore {
+  if (
+    store.enrollment?.eventId !== summary.eventId
+    || nowMs < store.enrollment.eventEndAtMs
+  ) return store;
+
+  const existingSummary = store.history.find((event) => event.eventId === summary.eventId);
+  return {
+    enrollment: null,
+    history: [
+      existingSummary ?? summary,
+      ...store.history.filter((event) => event.eventId !== summary.eventId),
+    ],
+  };
+}
+
 export type PaperChallengeReminder = {
   eventId: string;
   scheduledAtMs: number;
