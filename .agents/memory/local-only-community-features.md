@@ -3,8 +3,8 @@ name: Local-only community features
 description: Product constraints for community and event features that should not collect new user data or add recurring service costs.
 ---
 
-Keep community and event participation data on-device. Each event uses a separate local portfolio with a fresh $100,000 starting balance; do not reset or overwrite regular paper accounts. The event goal is to grow the ending paper balance as much as possible; describe it as simulated and do not imply a shared leaderboard. Limit event notifications to a few useful reminders, including a midweek position update. The user does not want new data collection or additional developer service costs for these features.
+Each event uses a separate paper portfolio with a fresh $100,000 starting balance; do not reset or overwrite regular paper accounts. The user explicitly approved an opt-in shared Event Arena leaderboard using a stable anonymous installation ID, a user-chosen alias editable only before the event starts, and device-submitted/self-reported scores. No sign-in is required, and the results are not tamper-proof. Clearly label scores as self-reported and do not expose installation IDs, personal details, or private trade histories to other participants.
 
-**Why:** The user wants every participant to start each event equally, clearly understand that the goal is to maximize their simulated event balance, and avoid affecting existing account history, new data collection, ongoing costs, and excessive notifications.
+**Why:** The user explicitly changed the earlier local-only scope by requesting a live, opt-in leaderboard while preserving isolated event portfolios and anonymous participation.
 
-**How to apply:** Use local storage and avoid adding backend persistence, telemetry, paid integrations, or cross-device sync unless the user explicitly changes this scope.
+**How to apply:** Share only opt-in event identity and self-reported results. Keep permanent paper accounts private and separate; do not add sign-in or imply that scores are independently verified.
