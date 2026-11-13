@@ -345,6 +345,20 @@ export function checkRisk(args: {
   if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
     return 'A valid live price is required.';
   }
+  if (
+    (orderType === 'limit' && (!Number.isFinite(limitPrice) || (limitPrice ?? 0) <= 0)) ||
+    (orderType === 'stop' && (!Number.isFinite(stopPrice) || (stopPrice ?? 0) <= 0)) ||
+    (orderType === 'stop_limit' && (
+      !Number.isFinite(limitPrice) || (limitPrice ?? 0) <= 0 ||
+      !Number.isFinite(stopPrice) || (stopPrice ?? 0) <= 0
+    )) ||
+    (orderType === 'trailing_stop' && (
+      (trailPct == null || !Number.isFinite(trailPct) || trailPct <= 0) &&
+      (trailAbs == null || !Number.isFinite(trailAbs) || trailAbs <= 0)
+    ))
+  ) {
+    return 'Enter a valid positive price or trail amount for this order type.';
+  }
 
   // Estimate worst-case cost / proceeds for the risk check
   const estimatedPrice = orderType === 'limit' && limitPrice
@@ -368,7 +382,7 @@ export function checkRisk(args: {
   const pendingBuyCost = activePending
     .filter(o => o.side === 'buy')
     .reduce((sum, o) => {
-      const orderPrice = pendingOrderPrice(o, currentPrice);
+      const orderPrice = pendingOrderPrice(o, quotes[o.symbol]?.price ?? currentPrice);
       return sum + (Number.isFinite(orderPrice) && orderPrice > 0 ? o.shares * orderPrice : 0);
     }, 0);
 
@@ -428,6 +442,27 @@ function pendingOrderPrice(order: PaperOrder, fallbackPrice: number): number {
     return fallbackPrice + order.trailAbs;
   }
   return fallbackPrice;
+}
+
+/** Settled cash remaining after this account's pending buy reservations. */
+export function getAvailableSettledBuyingPower(
+  account: PaperAccount,
+  pendingOrders: PaperOrder[],
+  quotes: Record<string, Pick<LiveQuote, 'price'>>,
+  excludeOrderId?: string,
+): number {
+  const reserved = pendingOrders
+    .filter(order => order.accountId === account.id
+      && order.status === 'pending'
+      && order.side === 'buy'
+      && order.id !== excludeOrderId)
+    .reduce((sum, order) => {
+      const reference = quotes[order.symbol]?.price ?? order.limitPrice ?? order.stopPrice ?? 0;
+      return Number.isFinite(reference) && reference > 0
+        ? sum + order.shares * pendingOrderPrice(order, reference)
+        : sum;
+    }, 0);
+  return Math.max(0, account.cash - reserved);
 }
 
 function fmt(n: number) {

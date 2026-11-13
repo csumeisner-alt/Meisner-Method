@@ -15,6 +15,7 @@ import {
   creditDividends,
   checkRisk,
   fillOrder,
+  getAvailableSettledBuyingPower,
   SETTLEMENT_DELAY_MS,
   DIVIDEND_INTERVAL_MS,
   MAX_POSITION_FRACTION,
@@ -247,6 +248,82 @@ test('checkRisk — fails when insufficient cash', () => {
     currentPrice: 150, account, accountPositions: [], quotes: {},
   });
   assert.ok(result?.includes('Insufficient buying power'));
+});
+
+test('checkRisk rejects invalid positive-price inputs instead of validating against the quote', () => {
+  const account = mkAccount({ id: 'a1', cash: 10_000 });
+  const common = {
+    side: 'buy' as const,
+    shares: 1,
+    symbol: 'AAPL',
+    currentPrice: 100,
+    account,
+    accountPositions: [],
+    quotes: {},
+  };
+  assert.match(checkRisk({ ...common, orderType: 'limit', limitPrice: -1 }) ?? '', /valid positive price/);
+  assert.match(checkRisk({ ...common, orderType: 'stop_limit', stopPrice: 105, limitPrice: -1 }) ?? '', /valid positive price/);
+  assert.match(checkRisk({ ...common, orderType: 'trailing_stop' }) ?? '', /valid positive price/);
+});
+
+test('available settled buying power reserves pending buys only for their own account', () => {
+  const account = mkAccount({ id: 'a1', cash: 1_000 });
+  const reservedOrder = mkOrder({
+    id: 'pending-a1',
+    accountId: 'a1',
+    side: 'buy',
+    orderType: 'limit',
+    shares: 2,
+    limitPrice: 100,
+  });
+  const otherAccountOrder = { ...reservedOrder, id: 'pending-a2', accountId: 'a2' };
+  assert.equal(getAvailableSettledBuyingPower(account, [reservedOrder, otherAccountOrder], {}), 800);
+});
+
+test('risk checks reserve a pending trailing buy using its own symbol quote', () => {
+  const account = mkAccount({ id: 'a1', cash: 700 });
+  const pendingBuy = mkOrder({
+    id: 'trailing-aapl',
+    accountId: 'a1',
+    symbol: 'AAPL',
+    side: 'buy',
+    orderType: 'trailing_stop',
+    shares: 1,
+    trailPct: 10,
+  });
+  const error = checkRisk({
+    side: 'buy',
+    shares: 1,
+    orderType: 'market',
+    symbol: 'MSFT',
+    currentPrice: 200,
+    account,
+    accountPositions: [],
+    quotes: { AAPL: { price: 500 }, MSFT: { price: 200 } },
+    pendingOrders: [pendingBuy],
+  });
+  assert.match(error ?? '', /already committed/);
+});
+
+test('market and pending fills leave another account with the same ticker untouched', () => {
+  const account = mkAccount({ id: 'a1', cash: 10_000 });
+  const otherPosition = mkPosition({ id: 'p-a2', accountId: 'a2', symbol: 'AAPL', shares: 3, avgCost: 80 });
+  const order = mkOrder({ id: 'buy-a1', accountId: 'a1', symbol: 'AAPL', side: 'buy', shares: 2 });
+  const result = fillOrder({
+    order,
+    fillPrice: 100,
+    filledAt: new Date().toISOString(),
+    account,
+    positions: [otherPosition],
+    lots: [],
+    uid,
+  });
+  assert.equal(result.ok, true);
+  if (!result.ok) throw new Error('unexpected');
+  assert.equal(result.updatedAccount.id, 'a1');
+  assert.equal(result.updatedAccount.cash, 9_800);
+  assert.deepEqual(result.updatedPositions.find((position) => position.accountId === 'a2'), otherPosition);
+  assert.equal(result.updatedPositions.find((position) => position.accountId === 'a1')?.shares, 2);
 });
 
 test('checkRisk — fails when position would exceed 40% of portfolio', () => {

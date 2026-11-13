@@ -37,7 +37,10 @@ import {
   POSITION_COLORS,
   PortfolioLineChart,
 } from '@/components/PaperCharts';
-import OrderSheet, { type ConfirmOrderArgs } from '@/components/OrderSheet';
+import OrderSheet, {
+  type ConfirmOrderArgs,
+  type OrderSubmissionResult,
+} from '@/components/OrderSheet';
 import {
   INITIAL_BALANCE,
   buildValueHistory,
@@ -71,6 +74,7 @@ import {
   creditDividends,
   fifoSell,
 } from '@/lib/paperEngine';
+import { getOrderQuoteState } from '@/lib/paperOrderEntry';
 import {
   createLatestRequestGuard,
   getBuyOrderDetails,
@@ -462,6 +466,7 @@ export default function PaperScreen() {
   const lotsRef = useRef<PaperLot[]>([]);
   const activeIdRef = useRef<string>('');
   const accountValueSnapshotsRef = useRef<PaperAccountValueSnapshot[]>([]);
+  const orderSubmissionRef = useRef(false);
 
   useFocusEffect(useCallback(() => {
     let cancelled = false;
@@ -868,6 +873,7 @@ export default function PaperScreen() {
       const results = await Promise.allSettled(
         symbols.map(async sym => {
           const res = await fetch(`${BASE_URL}/api/stocks/quote/${sym}`);
+          if (!res.ok) throw new Error(`Quote request failed for ${sym}`);
           const data = await res.json();
           return { sym, data };
         }),
@@ -876,7 +882,15 @@ export default function PaperScreen() {
       for (const r of results) {
         if (r.status === 'fulfilled' && Number.isFinite(r.value.data.currentPrice) && r.value.data.currentPrice > 0) {
           const { sym, data } = r.value;
-          next[sym] = { price: data.currentPrice, change: data.priceChange, pct: data.priceChangePercent };
+          next[sym] = {
+            price: data.currentPrice,
+            change: Number.isFinite(data.priceChange) ? data.priceChange : 0,
+            pct: Number.isFinite(data.priceChangePercent) ? data.priceChangePercent : 0,
+            priceTimestamp: data.priceTimestamp ?? null,
+            marketSession: typeof data.marketSession === 'string' ? data.marketSession : undefined,
+            priceSource: typeof data.priceSource === 'string' ? data.priceSource : undefined,
+            fetchedAtMs: Date.now(),
+          };
         }
       }
       setQuotes(prev => {
@@ -916,8 +930,12 @@ export default function PaperScreen() {
       }
       return [symbol, {
         price: data.currentPrice,
-        change: data.priceChange,
-        pct: data.priceChangePercent,
+        change: Number.isFinite(data.priceChange) ? data.priceChange : 0,
+        pct: Number.isFinite(data.priceChangePercent) ? data.priceChangePercent : 0,
+        priceTimestamp: data.priceTimestamp ?? null,
+        marketSession: typeof data.marketSession === 'string' ? data.marketSession : undefined,
+        priceSource: typeof data.priceSource === 'string' ? data.priceSource : undefined,
+        fetchedAtMs: Date.now(),
       }] as const;
     }));
     const next: Record<string, LiveQuote> = {};
@@ -1133,6 +1151,31 @@ export default function PaperScreen() {
     setRefreshing(false);
   };
 
+  const refreshOrderQuote = async (symbol: string) => {
+    const normalizedSymbol = symbol.trim().toUpperCase();
+    if (!normalizedSymbol) throw new Error('Choose a stock before refreshing its quote.');
+    const response = await fetch(`${BASE_URL}/api/stocks/quote/${encodeURIComponent(normalizedSymbol)}`);
+    const data = await response.json();
+    if (!response.ok || data.error) {
+      throw new Error(data.message ?? 'The market-data provider could not refresh this quote.');
+    }
+    if (!Number.isFinite(data.currentPrice) || data.currentPrice <= 0) {
+      throw new Error('The provider did not return a valid price.');
+    }
+    setQuotes((current) => ({
+      ...current,
+      [normalizedSymbol]: {
+        price: data.currentPrice,
+        change: Number.isFinite(data.priceChange) ? data.priceChange : 0,
+        pct: Number.isFinite(data.priceChangePercent) ? data.priceChangePercent : 0,
+        priceTimestamp: data.priceTimestamp ?? null,
+        marketSession: typeof data.marketSession === 'string' ? data.marketSession : undefined,
+        priceSource: typeof data.priceSource === 'string' ? data.priceSource : undefined,
+        fetchedAtMs: Date.now(),
+      },
+    }));
+  };
+
   // ── Account actions ───────────────────────────────────────────────────────
   const switchAccount = async (id: string) => {
     activeIdRef.current = id;
@@ -1209,7 +1252,15 @@ export default function PaperScreen() {
       });
       setQuotes(prev => ({
         ...prev,
-        [sym]: { price: quote.currentPrice, change: quote.priceChange, pct: quote.priceChangePercent },
+        [sym]: {
+          price: quote.currentPrice,
+          change: Number.isFinite(quote.priceChange) ? quote.priceChange : 0,
+          pct: Number.isFinite(quote.priceChangePercent) ? quote.priceChangePercent : 0,
+          priceTimestamp: quote.priceTimestamp ?? null,
+          marketSession: typeof quote.marketSession === 'string' ? quote.marketSession : undefined,
+          priceSource: typeof quote.priceSource === 'string' ? quote.priceSource : undefined,
+          fetchedAtMs: Date.now(),
+        },
       }));
     } catch (e: any) {
       if (stockLookupRequestRef.current.isCurrent(requestId)) {
@@ -1233,145 +1284,128 @@ export default function PaperScreen() {
    * Market orders execute immediately (with slippage).
    * Non-market orders are added to the pending-orders queue.
    */
-  const handleConfirmOrder = async (args: ConfirmOrderArgs) => {
-    const currentActiveId = activeIdRef.current;
-    const enrollment = paperChallengeRef.current.enrollment;
-    if (enrollment?.accountId === currentActiveId && Date.now() >= enrollment.eventEndAtMs) {
-      Alert.alert('Event week has ended', 'Your final event results are being saved. You can trade with another paper account meanwhile.');
-      setShowOrderSheet(false);
-      setShowTradeModal(false);
-      return;
+  const handleConfirmOrder = async (args: ConfirmOrderArgs): Promise<OrderSubmissionResult> => {
+    if (orderSubmissionRef.current) {
+      return { status: 'rejected', message: 'This order is already being processed.' };
     }
-    const currentAccounts = accountsRef.current;
-    const currentPositions = positionsRef.current;
-    const currentTransactions = transactionsRef.current;
-    const currentOrders = ordersRef.current;
-    const currentLots = lotsRef.current;
-    const currentAccount = currentAccounts.find(a => a.id === currentActiveId);
-    if (!currentAccount) return;
-    const currentSelectedPos = selectedPos
-      ? currentPositions.find(p => p.id === selectedPos.id) ?? null
-      : null;
-    // Symbol is resolved exclusively from its source — buy uses the looked-up ticker,
-    // sell uses the selected position — with no cross-flow fallback so stale buy state
-    // can never silently redirect a sell to the wrong symbol.
-    const sym = args.side === 'sell'
-      ? (currentSelectedPos?.symbol ?? '')
-      : buySymbol.trim().toUpperCase();
-    if (!sym) return;
-    const companyName = args.side === 'sell'
-      ? (currentSelectedPos?.companyName ?? sym)
-      : (args.stockInfo?.companyName ?? sym);
-    const nowISO = new Date().toISOString();
-    const riskPrice = args.side === 'buy'
-      ? (stockInfo?.currentPrice ?? quotes[sym]?.price ?? 0)
-      : (quotes[sym]?.price ?? currentSelectedPos?.avgCost ?? 0);
-    const riskError = checkRisk({
-      side: args.side,
-      shares: args.shares,
-      orderType: args.orderType,
-      limitPrice: args.limitPrice,
-      stopPrice: args.stopPrice,
-      trailPct: args.trailPct,
-      trailAbs: args.trailAbs,
-      symbol: sym,
-      currentPrice: riskPrice,
-      account: currentAccount,
-      accountPositions: currentPositions.filter(p => p.accountId === currentActiveId),
-      quotes,
-      pendingOrders: currentOrders,
-      excludeOrderId: args.orderId,
-    });
-    if (riskError) {
-      Alert.alert('Order rejected', riskError);
-      return;
-    }
-
-    if (args.orderType === 'market' && args.orderId) {
-      Alert.alert('Market orders cannot be edited', 'Cancel this pending order and place a new market order instead.');
-      return;
-    }
-
-    if (args.orderType === 'market') {
-      // Execute immediately at a slippage-adjusted price
-      const basePrice = args.side === 'buy'
-        ? (stockInfo?.currentPrice ?? quotes[sym]?.price ?? 0)
-        : (quotes[sym]?.price ?? currentSelectedPos?.avgCost ?? 0);
-
-      if (!Number.isFinite(basePrice) || basePrice <= 0) {
-        Alert.alert('Order rejected', 'A live price is required before placing a market order.');
-        return;
+    orderSubmissionRef.current = true;
+    try {
+      const accountId = args.accountId;
+      const sym = args.symbol.trim().toUpperCase();
+      const companyName = args.companyName.trim() || sym;
+      const enrollment = paperChallengeRef.current.enrollment;
+      if (enrollment?.accountId === accountId && Date.now() >= enrollment.eventEndAtMs) {
+        return {
+          status: 'rejected',
+          message: 'The event week has ended. Choose another paper account to continue trading.',
+        };
       }
 
-      const fillPrice = applySlippage(basePrice, args.shares, args.side);
+      const currentAccounts = accountsRef.current;
+      const currentPositions = positionsRef.current;
+      const currentTransactions = transactionsRef.current;
+      const currentOrders = ordersRef.current;
+      const currentLots = lotsRef.current;
+      const currentAccount = currentAccounts.find((item) => item.id === accountId);
+      if (!currentAccount) {
+        return { status: 'rejected', message: 'The reviewed paper account is no longer available.' };
+      }
+      if (!sym) return { status: 'rejected', message: 'Choose a stock before submitting the order.' };
+      const currentQuote = quotes[sym];
+      if (!currentQuote || !Number.isFinite(currentQuote.price) || currentQuote.price <= 0) {
+        return { status: 'rejected', message: 'A provider quote is unavailable. No order was submitted.' };
+      }
+      if (args.orderType === 'market' && getOrderQuoteState(currentQuote) !== 'fresh') {
+        return { status: 'rejected', message: 'The provider quote is stale. Refresh it before placing a market order.' };
+      }
+      if (args.orderType === 'market' && args.orderId) {
+        return { status: 'rejected', message: 'Market orders cannot be edited. Cancel the pending order and place a new market order.' };
+      }
 
-      // Build a synthetic PaperOrder for fillOrder()
-      const syntheticOrder: PaperOrder = {
-        id: uid(),
-        accountId: currentActiveId,
-        symbol: sym,
-        companyName,
-        orderType: 'market',
+      const accountPositions = currentPositions.filter((position) => position.accountId === accountId);
+      const riskError = checkRisk({
         side: args.side,
         shares: args.shares,
-        status: 'pending',
-        placedAt: nowISO,
-      };
-
-      const fillResult = fillOrder({
-        order: syntheticOrder,
-        fillPrice,
-        filledAt: nowISO,
+        orderType: args.orderType,
+        limitPrice: args.limitPrice,
+        stopPrice: args.stopPrice,
+        trailPct: args.trailPct,
+        trailAbs: args.trailAbs,
+        symbol: sym,
+        currentPrice: currentQuote.price,
         account: currentAccount,
-        positions: currentPositions,
-        lots: currentLots,
-        uid,
+        accountPositions,
+        quotes,
+        pendingOrders: currentOrders,
+        excludeOrderId: args.orderId,
       });
+      if (riskError) return { status: 'rejected', message: riskError };
 
-      if (!fillResult.ok) {
-        // Execution-time constraint violation — surface as an alert (rare: e.g. price gap)
-        Alert.alert('Order rejected', fillResult.reason);
-        setShowOrderSheet(false);
-        invalidateStockLookup();
-        setShowTradeModal(false);
-        return;
-      }
+      const nowISO = new Date().toISOString();
+      if (args.orderType === 'market') {
+        const fillPrice = applySlippage(currentQuote.price, args.shares, args.side);
+        const existingPosition = accountPositions.find((position) => position.symbol === sym);
+        const metadata = args.stockInfo ?? existingPosition;
+        const syntheticOrder: PaperOrder = {
+          id: uid(),
+          accountId,
+          symbol: sym,
+          companyName,
+          orderType: 'market',
+          side: args.side,
+          shares: args.shares,
+          dividendYield: metadata?.dividendYield ?? 0,
+          dividendRate: metadata?.dividendRate ?? 0,
+          expenseRatio: metadata?.expenseRatio ?? 0,
+          sector: metadata?.sector ?? '',
+          status: 'pending',
+          placedAt: nowISO,
+        };
+        const fillResult = fillOrder({
+          order: syntheticOrder,
+          fillPrice,
+          filledAt: nowISO,
+          account: currentAccount,
+          positions: currentPositions,
+          lots: currentLots,
+          uid,
+        });
+        if (!fillResult.ok) return { status: 'rejected', message: fillResult.reason };
 
-      const { updatedAccount, updatedPositions, updatedLots, newTransaction } = fillResult;
-
-      // For buys, update stock metadata on the position (dividend yield, etc.)
-      let finalPositions = updatedPositions;
-      if (args.side === 'buy' && args.stockInfo) {
-        const { dividendYield, dividendRate, expenseRatio, sector } = args.stockInfo;
-        finalPositions = updatedPositions.map(p =>
-          p.symbol === sym && p.accountId === currentActiveId
-            ? { ...p, dividendYield, dividendRate, expenseRatio, sector }
-            : p,
+        const { updatedAccount, updatedPositions, updatedLots, newTransaction } = fillResult;
+        await saveAll(
+          currentAccounts.map((item) => item.id === accountId ? updatedAccount : item),
+          updatedPositions,
+          [...currentTransactions, newTransaction],
+          currentOrders,
+          updatedLots,
+          activeIdRef.current,
         );
+        if (!args.orderId) {
+          void awardAchievement('first-paper-order');
+          if (args.side === 'sell') void awardAchievement('first-paper-sell');
+        }
+        return {
+          status: 'filled',
+          message: `${args.side === 'buy' ? 'Bought' : 'Sold'} ${args.shares} ${sym} in ${currentAccount.name}.`,
+          fillPrice,
+        };
       }
 
-      await saveAll(
-        currentAccounts.map(a => a.id === currentActiveId ? updatedAccount : a),
-        finalPositions,
-        [...currentTransactions, newTransaction],
-        currentOrders,
-        updatedLots,
-        currentActiveId,
-      );
-    } else {
-      // Non-market orders are editable until they fill. Editing preserves the
-      // order ID but resets its trailing reference and fill fields.
       const priorOrder = args.orderId
-        ? currentOrders.find(o => o.id === args.orderId && o.status === 'pending')
+        ? currentOrders.find((order) => order.id === args.orderId
+          && order.accountId === accountId
+          && order.status === 'pending')
         : undefined;
       if (args.orderId && !priorOrder) {
-        Alert.alert('Order no longer editable', 'That order has already filled or was cancelled.');
-        return;
+        return { status: 'rejected', message: 'That order is no longer pending and cannot be edited.' };
       }
-      const metadata = args.stockInfo ?? priorOrder;
+      const metadata = args.stockInfo
+        ?? priorOrder
+        ?? accountPositions.find((position) => position.symbol === sym);
       const newOrder: PaperOrder = {
         id: priorOrder?.id ?? uid(),
-        accountId: currentActiveId,
+        accountId,
         symbol: sym,
         companyName,
         orderType: args.orderType,
@@ -1381,9 +1415,7 @@ export default function PaperScreen() {
         stopPrice: args.stopPrice,
         trailPct: args.trailPct,
         trailAbs: args.trailAbs,
-        trailRef: args.side === 'sell'
-          ? (quotes[sym]?.price ?? selectedPos?.avgCost)
-          : (quotes[sym]?.price ?? stockInfo?.currentPrice),
+        trailRef: currentQuote.price,
         dividendYield: metadata?.dividendYield ?? 0,
         dividendRate: metadata?.dividendRate ?? 0,
         expenseRatio: metadata?.expenseRatio ?? 0,
@@ -1392,22 +1424,25 @@ export default function PaperScreen() {
         placedAt: priorOrder?.placedAt ?? nowISO,
       };
       await saveOrders(priorOrder
-        ? currentOrders.map(o => o.id === priorOrder.id ? newOrder : o)
+        ? currentOrders.map((order) => order.id === priorOrder.id ? newOrder : order)
         : [...currentOrders, newOrder]);
+      if (!args.orderId) {
+        void awardAchievement('first-paper-order');
+        void awardAchievement('first-paper-limit');
+        if (args.side === 'sell') void awardAchievement('first-paper-sell');
+      }
+      return {
+        status: 'pending',
+        message: `${args.side === 'buy' ? 'Buy' : 'Sell'} ${args.orderType.replace('_', ' ')} for ${args.shares} ${sym} was saved to ${currentAccount.name}.`,
+      };
+    } catch (error) {
+      return {
+        status: 'rejected',
+        message: error instanceof Error ? error.message : 'The order could not be saved.',
+      };
+    } finally {
+      orderSubmissionRef.current = false;
     }
-
-    if (!args.orderId) {
-      void awardAchievement('first-paper-order');
-      if (args.orderType !== 'market') void awardAchievement('first-paper-limit');
-      if (args.side === 'sell') void awardAchievement('first-paper-sell');
-    }
-    setShowOrderSheet(false);
-    invalidateStockLookup();
-    setShowTradeModal(false);
-    setSelectedPos(null);
-    setEditingOrder(null);
-    setStockInfo(null);
-    setBuySymbol('');
   };
 
   // ── Cancel order ──────────────────────────────────────────────────────────
@@ -2687,8 +2722,9 @@ export default function PaperScreen() {
           side={tradeMode}
           symbol={tradeMode === 'buy' ? buyOrderDetails.symbol : (selectedPos?.symbol ?? '')}
           companyName={tradeMode === 'buy' ? buyOrderDetails.companyName : (selectedPos?.companyName ?? '')}
-          currentPrice={tradeMode === 'buy' ? buyOrderDetails.currentPrice : (quotes[selectedPos?.symbol ?? '']?.price ?? selectedPos?.avgCost ?? 0)}
+          currentPrice={tradeMode === 'buy' ? buyOrderDetails.currentPrice : (quotes[selectedPos?.symbol ?? '']?.price ?? 0)}
           account={account}
+          accountEquity={portfolioValue}
           accountPositions={myPositions}
           quotes={quotes}
           stockInfo={tradeMode === 'buy' ? buyOrderDetails.stockInfo : undefined}
@@ -2699,6 +2735,12 @@ export default function PaperScreen() {
             setShowOrderSheet(false);
             setEditingOrder(null);
             if (tradeMode === 'sell') setSelectedPos(null);
+          }}
+          onRefreshQuote={refreshOrderQuote}
+          onSearchStock={() => {
+            setShowOrderSheet(false);
+            setSelectedPos(null);
+            openBuyModal();
           }}
           onConfirm={handleConfirmOrder}
         />

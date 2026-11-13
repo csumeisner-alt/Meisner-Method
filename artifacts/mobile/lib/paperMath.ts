@@ -60,7 +60,19 @@ export type PaperTransaction = {
   fee?: number;
 };
 
-export type LiveQuote = { price: number; change: number; pct: number };
+export type LiveQuote = {
+  price: number;
+  change: number;
+  pct: number;
+  /** Provider quote timestamp, in Unix seconds. */
+  priceTimestamp?: number | null;
+  /** Provider-reported market state, for example REGULAR, CLOSED, or PRE. */
+  marketSession?: string;
+  /** Provider price source, such as regular, premarket, or previous_close. */
+  priceSource?: string;
+  /** Local time the app received the provider response, in Unix milliseconds. */
+  fetchedAtMs?: number;
+};
 
 export type PaperAccountValueSnapshot = {
   accountId: string;

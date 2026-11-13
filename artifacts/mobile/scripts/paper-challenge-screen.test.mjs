@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 
 const screen = readFileSync(new URL("../app/paper.tsx", import.meta.url), "utf8");
 const orderSheet = readFileSync(new URL("../components/OrderSheet.tsx", import.meta.url), "utf8");
+const orderEntry = readFileSync(new URL("../components/ProfessionalOrderEntry.tsx", import.meta.url), "utf8");
+const orderReview = readFileSync(new URL("../components/OrderEntryReview.tsx", import.meta.url), "utf8");
 const events = readFileSync(new URL("../components/PaperChallengeHistory.tsx", import.meta.url), "utf8");
 const challenge = readFileSync(new URL("../lib/paperChallenge.ts", import.meta.url), "utf8");
 const badges = readFileSync(new URL("../components/PaperChallengeMilestoneBadges.tsx", import.meta.url), "utf8");
@@ -90,8 +92,39 @@ test("account dashboard selects, scopes, and persists the active paper account",
   assert.match(screen, /\{ id: 'history',\s+label: 'TRADE HISTORY'/);
   assert.match(screen, /testID=\{`paper-tab-\$\{tab\.id\}`\}/);
   assert.doesNotMatch(screen, /historyAgeMs >= range\.ms/);
-  assert.match(orderSheet, /testID="order-sheet-active-account"/);
-  assert.match(orderSheet, /Buying power \{\$fmt\(account\.cash\)\}/);
+  assert.match(orderEntry, /testID="order-sheet-active-account"/);
+  assert.match(orderEntry, /SETTLED B\.P\./);
+  assert.match(orderReview, /CAPTURED ACCOUNT/);
+});
+
+test("paper order review captures account identity and guards duplicate submissions", () => {
+  assert.match(orderEntry, /accountId: account\.id/);
+  assert.match(orderEntry, /setReview\(\{\s*args,\s*accountName: account\.name/);
+  assert.match(orderEntry, /submittingRef\.current/);
+  assert.match(orderReview, /testID="paper-order-review"/);
+  assert.match(orderReview, /testID="paper-order-submit"/);
+  assert.match(orderEntry, /testID=\{`paper-order-side-\$\{item\}`\}/);
+  assert.match(orderEntry, /testID="paper-order-search-stock"/);
+  assert.match(orderEntry, /testID="paper-order-refresh-quote"/);
+  assert.match(orderReview, /Order pending/);
+  assert.match(screen, /const accountId = args\.accountId/);
+  assert.match(screen, /currentAccounts\.find\(\(item\) => item\.id === accountId\)/);
+  assert.match(screen, /accountPositions = currentPositions\.filter\(\(position\) => position\.accountId === accountId\)/);
+  assert.match(screen, /if \(!fillResult\.ok\) return \{ status: 'rejected'/);
+  assert.match(screen, /status: 'filled',[\s\S]*fillPrice/);
+  assert.match(screen, /status: 'pending',[\s\S]*was saved to/);
+});
+
+test("order-entry controls stay flexible for narrow screens and the Android keyboard", () => {
+  assert.match(orderEntry, /keyboardType="decimal-pad"/);
+  assert.match(orderEntry, /keyboardDismissMode=\{Platform\.OS === 'ios' \? 'interactive' : 'on-drag'\}/);
+  assert.match(orderEntry, /keyboardShouldPersistTaps="handled"/);
+  assert.match(orderEntry, /minWidth: 0/);
+  assert.match(orderEntry, /flex: 1/);
+  assert.match(orderEntry, /presentationStyle="fullScreen"/);
+  assert.match(orderEntry, /KeyboardAwareScrollViewCompat/);
+  assert.match(orderEntry, /Limit orders are not guaranteed to fill/);
+  assert.match(orderReview, /limit order may remain pending and is not guaranteed to fill/i);
 });
 
 test("completed Event Arena records retain and expose their transaction history", () => {

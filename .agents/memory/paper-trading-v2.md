@@ -52,3 +52,9 @@ Order cards need their own vertical layout; they must not reuse the horizontal p
 **Why:** The pending-order actions existed in code but were visually off-screen in the installed app, so users had no way to edit or remove orders.
 
 **How to apply:** Keep pending-order actions full-width and visible, and persist deletion by removing the order from the local cache rather than only marking it cancelled.
+
+Market orders require a fresh, timestamped provider quote. Pending orders may use a positive stale provider quote as a clearly labeled reference, but no order may use an illustrative or cost-basis substitute.
+
+**Why:** After-hours provider responses can be last-session prices; they are useful references for explicitly priced pending orders but must not be presented as executable market quotes.
+
+**How to apply:** Block market submission when the provider timestamp or response is stale; keep stale status visible for pending orders and report fills only after `fillOrder` succeeds.
