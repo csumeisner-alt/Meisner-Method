@@ -6,10 +6,12 @@ import { fileURLToPath } from 'node:url';
 import {
   buildPaperChallengeSummary,
   capturePaperChallengeBaseline,
+  ensurePaperChallengeAccount,
   getPaperChallengeReminders,
   getPaperChallengeWindow,
   sortPaperChallengeHistory,
   type PaperChallengeSummary,
+  type PaperChallengeAccountState,
   finalizePaperChallengeStore,
   getMissingPaperChallengeQuoteSymbols,
   PAPER_CHALLENGE_STORAGE_KEY,
@@ -271,6 +273,133 @@ test('a later event keeps earlier summaries and remains unique after reload', ()
   savedData.set(PAPER_CHALLENGE_STORAGE_KEY, JSON.stringify(retriedCompletion));
   const afterRetryReload = reloadStore();
   assert.deepEqual(afterRetryReload.history, [laterSummary, earlierSummary]);
+});
+
+test('each event gets a fresh account without inheriting earlier or orphaned event data', async () => {
+  const firstEvent = {
+    eventId: '2026-11-16',
+    eventStartAtMs: Date.parse('2026-11-16T14:30:00.000Z'),
+    eventEndAtMs: Date.parse('2026-11-20T21:00:00.000Z'),
+    joinedAtMs: Date.parse('2026-11-16T14:30:00.000Z'),
+    accountId: 'paper-event:2026-11-16',
+    accountName: 'Event Portfolio',
+    startEquity: 100_000,
+  };
+  const secondEvent = {
+    ...firstEvent,
+    eventId: '2026-11-30',
+    eventStartAtMs: Date.parse('2026-11-30T14:30:00.000Z'),
+    eventEndAtMs: Date.parse('2026-12-04T21:00:00.000Z'),
+    joinedAtMs: Date.parse('2026-11-30T14:30:00.000Z'),
+    accountId: 'paper-event:2026-11-30',
+    startEquity: null,
+  };
+  assert.notEqual(firstEvent.accountId, secondEvent.accountId);
+
+  const regularAccounts = [
+    { id: 'paper-main', name: 'Main', cash: 88_000, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'paper-strategy-2', name: 'Strategy 2', cash: 97_000, createdAt: '2026-01-02T00:00:00.000Z' },
+    { id: 'paper-strategy-3', name: 'Strategy 3', cash: 105_000, createdAt: '2026-01-03T00:00:00.000Z' },
+  ];
+  const position = (id: string, accountId: string, symbol: string) => ({
+    id, accountId, symbol, companyName: symbol, shares: 1, avgCost: 100,
+    openedAt: '2026-11-16T15:00:00.000Z', dividendYield: 0, sector: '',
+  });
+  const transaction = (id: string, accountId: string, symbol: string) => ({
+    id, accountId, symbol, companyName: symbol, action: 'BUY' as const,
+    shares: 1, price: 100, total: 100, date: '2026-11-16T15:00:00.000Z',
+  });
+  const order = (id: string, accountId: string, symbol: string) => ({
+    id, accountId, symbol, companyName: symbol, orderType: 'market' as const,
+    side: 'buy' as const, shares: 1, status: 'pending' as const, placedAt: '2026-11-16T15:00:00.000Z',
+  });
+  const lot = (id: string, accountId: string, symbol: string) => ({
+    id, accountId, symbol, shares: 1, cost: 100, purchasedAt: '2026-11-16T15:00:00.000Z',
+  });
+  const state: PaperChallengeAccountState = {
+    accounts: [
+      ...regularAccounts,
+      { id: firstEvent.accountId, name: 'Event Portfolio', cash: 91_500, createdAt: '2026-11-16T14:30:00.000Z' },
+    ],
+    positions: [
+      position('main-position', 'paper-main', 'MSFT'),
+      position('first-event-position', firstEvent.accountId, 'AAPL'),
+      position('orphaned-second-event-position', secondEvent.accountId, 'NVDA'),
+    ],
+    transactions: [
+      transaction('main-transaction', 'paper-main', 'MSFT'),
+      transaction('strategy-2-transaction', 'paper-strategy-2', 'AMZN'),
+      transaction('strategy-3-transaction', 'paper-strategy-3', 'GOOG'),
+      transaction('first-event-transaction', firstEvent.accountId, 'AAPL'),
+      transaction('orphaned-second-event-transaction', secondEvent.accountId, 'NVDA'),
+    ],
+    orders: [
+      order('main-order', 'paper-main', 'MSFT'),
+      order('strategy-2-order', 'paper-strategy-2', 'AMZN'),
+      order('strategy-3-order', 'paper-strategy-3', 'GOOG'),
+      order('first-event-order', firstEvent.accountId, 'AAPL'),
+      order('orphaned-second-event-order', secondEvent.accountId, 'NVDA'),
+    ],
+    lots: [
+      lot('main-lot', 'paper-main', 'MSFT'),
+      lot('strategy-2-lot', 'paper-strategy-2', 'AMZN'),
+      lot('strategy-3-lot', 'paper-strategy-3', 'GOOG'),
+      lot('first-event-lot', firstEvent.accountId, 'AAPL'),
+      lot('orphaned-second-event-lot', secondEvent.accountId, 'NVDA'),
+    ],
+  };
+
+  const initialized = ensurePaperChallengeAccount(secondEvent, state);
+  assert.equal(initialized.accounts.length, 5);
+  assert.deepEqual(initialized.accounts.slice(0, 3), regularAccounts);
+  assert.deepEqual(initialized.accounts[3], state.accounts[3]);
+  assert.deepEqual(initialized.accounts[4], {
+    id: secondEvent.accountId,
+    name: 'Event Portfolio',
+    cash: 100_000,
+    createdAt: new Date(secondEvent.joinedAtMs).toISOString(),
+  });
+  const regularIds = new Set(regularAccounts.map((account) => account.id));
+  assert.deepEqual(
+    initialized.accounts.filter((item) => regularIds.has(item.id)),
+    state.accounts.filter((item) => regularIds.has(item.id)),
+  );
+  const assertRegularRecordsUnchanged = <T extends { accountId: string }>(after: T[], before: T[], label: string) => {
+    assert.deepEqual(
+      after.filter((item) => regularIds.has(item.accountId)),
+      before.filter((item) => regularIds.has(item.accountId)),
+      `regular account ${label} should remain unchanged`,
+    );
+  };
+  assertRegularRecordsUnchanged(initialized.positions, state.positions, 'positions');
+  assertRegularRecordsUnchanged(initialized.transactions, state.transactions, 'transactions');
+  assertRegularRecordsUnchanged(initialized.orders, state.orders, 'orders');
+  assertRegularRecordsUnchanged(initialized.lots, state.lots, 'lots');
+  for (const records of [
+    initialized.positions,
+    initialized.transactions,
+    initialized.orders,
+    initialized.lots,
+  ]) {
+    assert.ok(records.every((record) => record.accountId !== secondEvent.accountId));
+    assert.ok(records.some((record) => record.accountId === firstEvent.accountId));
+    assert.ok(records.some((record) => record.accountId === 'paper-main'));
+  }
+
+  const reopening = ensurePaperChallengeAccount(secondEvent, {
+    ...initialized,
+    accounts: initialized.accounts.map((account) => account.id === secondEvent.accountId
+      ? { ...account, cash: 92_000 }
+      : account),
+    positions: [...initialized.positions, position('second-event-position', secondEvent.accountId, 'TSLA')],
+  });
+  assert.equal(reopening.accounts.find((account) => account.id === secondEvent.accountId)?.cash, 92_000);
+  assert.ok(reopening.positions.some((position) => position.accountId === secondEvent.accountId));
+
+  const testDirectory = dirname(fileURLToPath(import.meta.url));
+  const screenSource = await readFile(resolve(testDirectory, '../../app/paper.tsx'), 'utf8');
+  assert.match(screenSource, /ensurePaperChallengeAccount\(enrollment/);
+  assert.match(screenSource, /eventAccountState\.positions/);
 });
 
 test('expired enrollment remains saved until its event summary is finalized', async () => {

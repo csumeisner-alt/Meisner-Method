@@ -1,3 +1,11 @@
+import type {
+  PaperAccount,
+  PaperLot,
+  PaperOrder,
+  PaperPosition,
+  PaperTransaction,
+} from './paperMath.ts';
+
 export const PAPER_CHALLENGE_STORAGE_KEY = '@stocksense/paper_events_v1';
 export const PAPER_CHALLENGE_STARTING_BALANCE = 100_000;
 
@@ -39,6 +47,42 @@ export type PaperChallengeStore = {
   enrollment: PaperChallengeEnrollment | null;
   history: PaperChallengeSummary[];
 };
+
+export type PaperChallengeAccountState = {
+  accounts: PaperAccount[];
+  positions: PaperPosition[];
+  transactions: PaperTransaction[];
+  orders: PaperOrder[];
+  lots: PaperLot[];
+};
+
+/**
+ * Add a clean local account for an event, preserving all existing accounts.
+ * If the account already exists, its in-progress trades are left intact so
+ * reopening Paper Trading cannot reset an active event.
+ */
+export function ensurePaperChallengeAccount(
+  enrollment: PaperChallengeEnrollment,
+  state: PaperChallengeAccountState,
+): PaperChallengeAccountState {
+  if (state.accounts.some((account) => account.id === enrollment.accountId)) return state;
+
+  const account: PaperAccount = {
+    id: enrollment.accountId,
+    name: enrollment.accountName,
+    cash: PAPER_CHALLENGE_STARTING_BALANCE,
+    createdAt: new Date(enrollment.joinedAtMs).toISOString(),
+  };
+  const isOtherAccount = <T extends { accountId: string }>(record: T) => record.accountId !== account.id;
+
+  return {
+    accounts: [...state.accounts, account],
+    positions: state.positions.filter(isOtherAccount),
+    transactions: state.transactions.filter(isOtherAccount),
+    orders: state.orders.filter(isOtherAccount),
+    lots: state.lots.filter(isOtherAccount),
+  };
+}
 
 export function getMissingPaperChallengeQuoteSymbols(
   positions: Array<{ symbol: string; shares: number }>,

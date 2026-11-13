@@ -76,6 +76,7 @@ import {
 import { useWatchlist } from '@/hooks/useWatchlist';
 import {
   buildPaperChallengeSummary,
+  ensurePaperChallengeAccount,
   finalizePaperChallengeStore,
   getMissingPaperChallengeQuoteSymbols,
   getPaperChallengeWindow,
@@ -544,19 +545,21 @@ export default function PaperScreen() {
       }
       return;
     }
-    const eventAccount: PaperAccount = {
-      id: enrollment.accountId,
-      name: enrollment.accountName,
-      cash: PAPER_CHALLENGE_STARTING_BALANCE,
-      createdAt: new Date(enrollment.joinedAtMs).toISOString(),
-    };
-    const nextAccounts = [...accountsRef.current, eventAccount];
+    const eventAccountState = ensurePaperChallengeAccount(enrollment, {
+      accounts: accountsRef.current,
+      positions: positionsRef.current,
+      transactions: transactionsRef.current,
+      orders: ordersRef.current,
+      lots: lotsRef.current,
+    });
+    const eventAccount = eventAccountState.accounts.find((item) => item.id === enrollment.accountId);
+    if (!eventAccount) return;
     void saveAll(
-      nextAccounts,
-      positionsRef.current,
-      transactionsRef.current,
-      ordersRef.current,
-      lotsRef.current,
+      eventAccountState.accounts,
+      eventAccountState.positions,
+      eventAccountState.transactions,
+      eventAccountState.orders,
+      eventAccountState.lots,
       enrollment.accountId,
     );
   }, [challengeNow, loaded, paperChallenge.enrollment, paperChallengeReady, saveAll]);
