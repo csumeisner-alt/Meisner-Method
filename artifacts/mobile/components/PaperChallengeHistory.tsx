@@ -363,18 +363,18 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                 {hasCurrentEnrollment ? 'YOUR EVENT PORTFOLIO' : currentWindow.phase === 'active' ? 'LIVE THIS WEEK' : 'NEXT PAPER EVENT'}
               </Text>
               <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 18, marginTop: 8 }}>
-                Fresh $100,000. Five market days.
+                Grow your event balance.
               </Text>
               <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 19, marginTop: 6 }}>
                 {hasCurrentEnrollment
                   ? currentWindow.phase === 'active'
                     ? store.enrollment?.startEquity === null
-                      ? 'Your separate $100,000 event portfolio is being prepared. Event trades close Friday at 4:00 p.m. ET.'
-                      : 'You joined with a separate $100,000 event portfolio. Event trades close Friday at 4:00 p.m. ET.'
+                      ? 'Your goal is to grow a separate $100,000 paper portfolio as much as possible. Event trades close Friday at 4:00 p.m. ET.'
+                      : 'Your goal is to grow your separate $100,000 paper portfolio as much as possible. Event trades close Friday at 4:00 p.m. ET.'
                     : currentWindow.phase === 'upcoming'
-                      ? 'You’re signed up for a separate $100,000 event portfolio. It will be ready at Monday’s market open.'
+                      ? 'Your goal is to grow a separate $100,000 paper portfolio as much as possible. It will be ready at Monday’s market open.'
                       : 'This event has ended. Open Paper Trading to save its final results.'
-                  : `${dateRange(currentWindow.startAtMs, currentWindow.endAtMs)} · U.S. market hours · one event every other week`}
+                  : `${dateRange(currentWindow.startAtMs, currentWindow.endAtMs)} · Goal: grow your separate $100,000 paper portfolio as much as possible · U.S. market hours`}
               </Text>
               {store.enrollment && !hasCurrentEnrollment && (
                 <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 10 }}>

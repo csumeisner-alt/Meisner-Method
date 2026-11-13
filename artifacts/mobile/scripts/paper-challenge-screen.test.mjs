@@ -8,7 +8,7 @@ const challenge = readFileSync(new URL("../lib/paperChallenge.ts", import.meta.u
 assert.match(events, /eventWindow\.phase === 'upcoming' \? eventWindow\.startAtMs : Date\.now\(\)/);
 assert.match(events, /eventWindow\.phase === 'upcoming' \? null : PAPER_CHALLENGE_STARTING_BALANCE/);
 assert.match(events, /currentWindow\.phase === 'active' \|\| currentWindow\.phase === 'upcoming'/);
-assert.match(events, /separate \$100,000 event portfolio/);
+assert.match(events, /grow a separate \$100,000 paper portfolio as much as possible/i);
 assert.match(screen, /capturePaperChallengeBaseline\(latestStore\.enrollment, startEquity\)/);
 assert.match(challenge, /joinedAtMs: enrollment\.eventStartAtMs/);
 assert.match(screen, /enrollment\.startEquity === null/);
@@ -20,3 +20,7 @@ assert.match(challenge, /nowMs >= enrollment\.eventStartAtMs/);
 assert.match(screen, /testID=\{isEventAccountActive \? 'active-paper-event-account'/);
 assert.match(screen, /FRESH \$100,000 · TRADE HERE TO COMPETE THIS WEEK/);
 assert.match(screen, /testID="paper-event-account-badge"/);
+assert.match(screen, /testID="paper-event-live-banner"/);
+assert.match(screen, /LIVE EVENT · JOIN ANY TIME/);
+assert.match(screen, /testID="dismiss-paper-event-recap"/);
+assert.match(screen, /previousEnrollmentIdRef/);

@@ -25,6 +25,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { MMLogo } from '@/components/MMLogo';
+import { PaperEventShareCard } from '@/components/PaperEventShareCard';
 import { BottomTabBar } from '@/components/BottomTabBar';
 import { useAchievements } from '@/contexts/AchievementsContext';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
@@ -81,6 +82,7 @@ import {
   PAPER_CHALLENGE_STORAGE_KEY,
   PAPER_CHALLENGE_STARTING_BALANCE,
   type PaperChallengeStore,
+  type PaperChallengeSummary,
   capturePaperChallengeBaseline,
 } from '@/lib/paperChallenge';
 import {
@@ -232,7 +234,9 @@ export default function PaperScreen() {
   const [challengeRetryVersion, setChallengeRetryVersion] = useState(0);
   const [challengeFinalizationBusy, setChallengeFinalizationBusy] = useState(false);
   const [challengeFinalizationError, setChallengeFinalizationError] = useState(false);
+  const [completedEventSummary, setCompletedEventSummary] = useState<PaperChallengeSummary | null>(null);
   const paperChallengeRef = useRef<PaperChallengeStore>({ enrollment: null, history: [] });
+  const previousEnrollmentIdRef = useRef<string | null>(null);
   const challengeFinalizingRef = useRef<string | null>(null);
   const challengeFinalizationFailureRef = useRef<string | null>(null);
   const challengeBaselineCapturingRef = useRef<string | null>(null);
@@ -396,6 +400,7 @@ export default function PaperScreen() {
     && !!account
     && account.id.startsWith('paper-event:')
     && paperChallenge.enrollment?.accountId === account.id;
+  const hasCurrentEventEnrollment = paperChallenge.enrollment?.eventId === paperChallengeWindow.id;
   const visibleAccounts = accounts.filter((item) =>
     !item.id.startsWith('paper-event:') || item.id === paperChallenge.enrollment?.accountId,
   );
@@ -446,6 +451,16 @@ export default function PaperScreen() {
     const timer = setInterval(() => setChallengeNow(Date.now()), 30_000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    const currentEnrollmentId = paperChallenge.enrollment?.eventId ?? null;
+    const previousEnrollmentId = previousEnrollmentIdRef.current;
+    if (previousEnrollmentId && !currentEnrollmentId) {
+      const summary = paperChallenge.history.find((event) => event.eventId === previousEnrollmentId);
+      if (summary) setCompletedEventSummary(summary);
+    }
+    previousEnrollmentIdRef.current = currentEnrollmentId;
+  }, [paperChallenge.enrollment?.eventId, paperChallenge.history]);
 
   const savePaperChallenge = useCallback(async (next: PaperChallengeStore) => {
     await AsyncStorage.setItem(PAPER_CHALLENGE_STORAGE_KEY, JSON.stringify(next));
@@ -1809,6 +1824,51 @@ export default function PaperScreen() {
         <Feather name="chevron-down" size={16} color={SILVER} style={{ marginLeft: 6 }} />
       </TouchableOpacity>
 
+      {paperChallengeWindow.phase === 'active' && (
+        <View
+          testID="paper-event-live-banner"
+          accessibilityLiveRegion="polite"
+          style={{
+            marginHorizontal: 16,
+            marginTop: 10,
+            padding: 12,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: colors.primary,
+            backgroundColor: colors.card,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+            <Feather name="award" size={14} color={colors.primary} />
+            <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 0.7 }}>
+              {hasCurrentEventEnrollment ? 'YOUR EVENT IS LIVE' : 'LIVE EVENT · JOIN ANY TIME'}
+            </Text>
+          </View>
+          <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, lineHeight: 17, marginTop: 7 }}>
+            Goal: grow a separate $100,000 paper portfolio as much as possible.
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 4 }}>
+            {hasCurrentEventEnrollment
+              ? isEventAccountActive
+                ? 'You’re trading in the Event Portfolio. The event closes Friday at 4:00 p.m. ET.'
+                : 'Choose Event Portfolio from the account menu above to place event trades. The event closes Friday at 4:00 p.m. ET.'
+              : 'Join in Settings → Event Arena before Friday at 4:00 p.m. ET. This is simulated paper trading.'}
+          </Text>
+          {hasCurrentEventEnrollment && !isEventAccountActive && (
+            <TouchableOpacity
+              testID="switch-to-paper-event-account"
+              accessibilityRole="button"
+              onPress={() => setShowAccountDropdown(true)}
+              style={{ alignSelf: 'flex-start', marginTop: 9, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 8, backgroundColor: colors.primary }}
+            >
+              <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 10 }}>
+                CHOOSE EVENT PORTFOLIO
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
       {isPaperChallengeWaiting && (
         <View
           testID="paper-event-results-pending"
@@ -1919,6 +1979,53 @@ export default function PaperScreen() {
       )}
 
       <BottomTabBar />
+
+      <Modal
+        visible={completedEventSummary !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCompletedEventSummary(null)}
+      >
+        <View style={{
+          flex: 1,
+          backgroundColor: 'rgba(0,0,0,0.88)',
+          paddingTop: insets.top + 12,
+          paddingBottom: Math.max(insets.bottom, 12),
+          paddingHorizontal: 16,
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 1 }}>
+                EVENT COMPLETE
+              </Text>
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 18, marginTop: 4 }}>
+                Your results are in.
+              </Text>
+            </View>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss event results"
+              onPress={() => setCompletedEventSummary(null)}
+              hitSlop={10}
+            >
+              <Feather name="x" size={22} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 16 }}>
+            {completedEventSummary && <PaperEventShareCard event={completedEventSummary} />}
+          </ScrollView>
+          <TouchableOpacity
+            testID="dismiss-paper-event-recap"
+            accessibilityRole="button"
+            onPress={() => setCompletedEventSummary(null)}
+            style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: colors.primary }}
+          >
+            <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 13 }}>
+              DONE
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
 
       {/* ── Account Dropdown Modal ────────────────────────────────── */}
       <Modal visible={showAccountDropdown} transparent animationType="slide" onRequestClose={() => setShowAccountDropdown(false)}>
