@@ -2027,11 +2027,11 @@ export default function PaperScreen() {
           paddingHorizontal: 16,
         }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 1 }}>
                 EVENT COMPLETE
               </Text>
-              <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 18, marginTop: 4 }}>
+              <Text allowFontScaling style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 18, marginTop: 4 }}>
                 Your results are in.
               </Text>
             </View>

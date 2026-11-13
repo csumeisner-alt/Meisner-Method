@@ -377,12 +377,16 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
       <Modal visible={eventsOpen} animationType="slide" onRequestClose={() => setEventsOpen(false)}>
         <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: Platform.OS === 'web' ? 24 : insets.top + 8 }}>
           <View style={{ paddingHorizontal: 18, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center' }}>
-            <Text style={{ flex: 1, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20 }}>Event Arena</Text>
+            <Text allowFontScaling style={{ flex: 1, minWidth: 0, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20 }}>Event Arena</Text>
             <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close events" onPress={() => setEventsOpen(false)} hitSlop={10}>
               <Feather name="x" size={22} color={colors.mutedForeground} />
             </TouchableOpacity>
           </View>
-          <View style={{ flex: 1, padding: 18, paddingBottom: Platform.OS === 'web' ? 24 : insets.bottom + 18 }}>
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ padding: 18, paddingBottom: Platform.OS === 'web' ? 24 : insets.bottom + 18 }}
+            showsVerticalScrollIndicator={false}
+          >
             <View style={{ padding: 16, borderRadius: 14, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
               {storeLoadState === 'error' && (
                 <View style={{ marginBottom: 14, padding: 12, borderRadius: 10, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.destructive }}>
@@ -559,26 +563,28 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
               />
             </View>
 
-            <View style={{ marginTop: 18, marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={{ flex: 1, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 16 }}>Your past events</Text>
-              {([
-                { key: 'date' as const, label: 'Date' },
-                { key: 'top' as const, label: 'Top weeks' },
-              ]).map((option) => (
-                <TouchableOpacity
-                  key={option.key}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: sortMode === option.key }}
-                  onPress={() => setSortMode(option.key)}
-                  style={{ paddingVertical: 6, paddingHorizontal: 9, borderRadius: 8, backgroundColor: sortMode === option.key ? colors.primary : colors.card }}
-                >
-                  <Text style={{ color: sortMode === option.key ? colors.primaryForeground : colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>
-                    {option.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            <View style={{ marginTop: 18, marginBottom: 8 }}>
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 16 }}>Your past events</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                {([
+                  { key: 'date' as const, label: 'Date' },
+                  { key: 'top' as const, label: 'Top weeks' },
+                ]).map((option) => (
+                  <TouchableOpacity
+                    key={option.key}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: sortMode === option.key }}
+                    onPress={() => setSortMode(option.key)}
+                    style={{ paddingVertical: 6, paddingHorizontal: 9, borderRadius: 8, backgroundColor: sortMode === option.key ? colors.primary : colors.card }}
+                  >
+                    <Text style={{ color: sortMode === option.key ? colors.primaryForeground : colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
-            <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+            <View>
               {sortedHistory.length === 0 ? (
                 <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, paddingVertical: 12 }}>
                   {storeLoadState === 'ready'
@@ -589,18 +595,18 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                 </Text>
               ) : sortedHistory.map((event, index) => (
                 <View key={event.eventId} style={{ paddingVertical: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 13 }}>
-                        {sortMode === 'top' ? `#${index + 1} · ` : ''}{dateRange(event.eventStartAtMs, event.eventEndAtMs)}
-                      </Text>
-                      <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 3 }}>
-                        $100,000 start · {event.buyCount ?? 0} buys · {event.sellCount ?? 0} sells
-                      </Text>
-                    </View>
+                  <View>
+                    <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 13 }}>
+                      {sortMode === 'top' ? `#${index + 1} · ` : ''}{dateRange(event.eventStartAtMs, event.eventEndAtMs)}
+                    </Text>
+                    <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 3 }}>
+                      $100,000 start · {event.buyCount ?? 0} buys · {event.sellCount ?? 0} sells
+                    </Text>
                     <Text style={{ color: event.netProfit >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 14 }}>
                       {money(event.netProfit)}
                     </Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 6 }}>
                     <TouchableOpacity
                       testID={`share-paper-event-${event.eventId}`}
                       accessibilityRole="button"
@@ -638,8 +644,8 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                   </Text>
                 </View>
               ))}
-            </ScrollView>
-          </View>
+            </View>
+          </ScrollView>
         </View>
       </Modal>
 
@@ -650,7 +656,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
       >
         <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: Platform.OS === 'web' ? 24 : insets.top + 8 }}>
           <View style={{ paddingHorizontal: 18, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center' }}>
-            <Text style={{ flex: 1, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20 }}>Share result image</Text>
+            <Text allowFontScaling style={{ flex: 1, minWidth: 0, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20 }}>Share result image</Text>
             <TouchableOpacity
               accessibilityRole="button"
               accessibilityLabel="Close image preview"
@@ -682,7 +688,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                   onPress={() => { void shareSummaryImage(); }}
                   style={{ minHeight: 50, paddingHorizontal: 16, borderRadius: 12, backgroundColor: sharingImage ? colors.muted : colors.primary, alignItems: 'center', justifyContent: 'center' }}
                 >
-                  <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>
+                  <Text allowFontScaling style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>
                     {sharingImage ? 'Preparing image…' : 'Share image'}
                   </Text>
                 </TouchableOpacity>

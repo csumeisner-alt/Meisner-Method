@@ -38,7 +38,7 @@ export function PaperChallengeMilestoneBadges({ milestones, compact = false }: P
             flexShrink: 1,
             minHeight: compact ? 22 : 26,
             flexDirection: 'row',
-            alignItems: 'center',
+            alignItems: 'flex-start',
             gap: 5,
             paddingHorizontal: compact ? 7 : 9,
             paddingVertical: compact ? 3 : 5,
@@ -50,13 +50,14 @@ export function PaperChallengeMilestoneBadges({ milestones, compact = false }: P
         >
           <Feather name="award" size={compact ? 11 : 12} color={colors.primary} />
           <Text
+            allowFontScaling
             style={{
+              minWidth: 0,
               flexShrink: 1,
               flexWrap: 'wrap',
               color: colors.primary,
               fontFamily: 'Inter_700Bold',
               fontSize: compact ? 10 : 11,
-              lineHeight: compact ? 12 : 14,
               letterSpacing: 0.25,
             }}
           >
