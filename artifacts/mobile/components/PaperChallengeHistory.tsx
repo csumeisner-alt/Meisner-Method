@@ -22,6 +22,7 @@ import {
   sortPaperChallengeHistory,
   type PaperChallengeStore,
   type PaperChallengeSummary,
+  withdrawUpcomingPaperChallenge,
 } from '@/lib/paperChallenge';
 
 const NOTIFICATIONS_KEY = '@stocksense/paper_events_notifications_v1';
@@ -88,6 +89,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [saving, setSaving] = useState(false);
+  const [confirmWithdraw, setConfirmWithdraw] = useState(false);
   const [sortMode, setSortMode] = useState<'date' | 'top'>('date');
   const [positionValue, setPositionValue] = useState<{ equity: number; profit: number; returnPercent: number; usedFallbackPrice: boolean } | null>(null);
   const [positionLoading, setPositionLoading] = useState(false);
@@ -163,6 +165,28 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
       Alert.alert('You’re in', 'Your separate event portfolio starts at $100,000. Open Paper Trading to place event trades.');
     } catch {
       Alert.alert('Could not join', 'Your event enrollment was not saved. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const withdrawUpcomingSignup = async () => {
+    if (saving) return;
+    const nowMs = Date.now();
+    const next = withdrawUpcomingPaperChallenge(store, currentWindow.id, nowMs);
+    if (next === store) {
+      setNow(nowMs);
+      setConfirmWithdraw(false);
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await AsyncStorage.setItem(PAPER_CHALLENGE_STORAGE_KEY, JSON.stringify(next));
+      setStore(next);
+      setConfirmWithdraw(false);
+    } catch {
+      Alert.alert('Could not withdraw', 'Your event signup is unchanged. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -345,6 +369,49 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                 <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 12, marginTop: 12 }}>
                   Open Paper Trading to trade your event portfolio.
                 </Text>
+              )}
+              {hasCurrentEnrollment && currentWindow.phase === 'upcoming' && store.enrollment?.startEquity === null && (
+                confirmWithdraw ? (
+                  <View style={{ marginTop: 14, padding: 12, borderRadius: 10, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }}>
+                    <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, lineHeight: 18 }}>
+                      Withdraw this signup? Your fresh event account will not be created when the event starts.
+                    </Text>
+                    <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                      <TouchableOpacity
+                        accessibilityRole="button"
+                        disabled={saving}
+                        onPress={() => setConfirmWithdraw(false)}
+                        style={{ flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: colors.card, alignItems: 'center', opacity: saving ? 0.6 : 1 }}
+                      >
+                        <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>KEEP SIGNUP</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        testID="confirm-withdraw-paper-challenge"
+                        accessibilityRole="button"
+                        disabled={saving}
+                        onPress={() => { void withdrawUpcomingSignup(); }}
+                        style={{ flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: colors.destructive, alignItems: 'center', opacity: saving ? 0.6 : 1 }}
+                      >
+                        <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 11 }}>
+                          {saving ? 'WITHDRAWING…' : 'WITHDRAW'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    testID="withdraw-paper-challenge"
+                    accessibilityRole="button"
+                    accessibilityLabel="Withdraw from the upcoming paper event"
+                    disabled={saving}
+                    onPress={() => setConfirmWithdraw(true)}
+                    style={{ marginTop: 12, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 9, borderWidth: 1, borderColor: colors.destructive, alignItems: 'center', opacity: saving ? 0.6 : 1 }}
+                  >
+                    <Text style={{ color: colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 11 }}>
+                      {saving ? 'SAVING…' : 'WITHDRAW FROM EVENT'}
+                    </Text>
+                  </TouchableOpacity>
+                )
               )}
               {hasCurrentEnrollment && currentWindow.phase === 'ended' && (
                 <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 12, marginTop: 12 }}>

@@ -13,3 +13,10 @@ assert.match(screen, /capturePaperChallengeBaseline\(latestStore\.enrollment, st
 assert.match(challenge, /joinedAtMs: enrollment\.eventStartAtMs/);
 assert.match(screen, /enrollment\.startEquity === null/);
 assert.match(screen, /paperChallengeWindow\.phase === 'active' && paperChallengeRef\.current\.enrollment\?\.accountId === id/);
+assert.match(events, /currentWindow\.phase === 'upcoming' && store\.enrollment\?\.startEquity === null/);
+assert.match(events, /testID="withdraw-paper-challenge"/);
+assert.match(events, /withdrawUpcomingPaperChallenge\(store, currentWindow\.id, nowMs\)/);
+assert.match(challenge, /nowMs >= enrollment\.eventStartAtMs/);
+assert.match(screen, /testID=\{isEventAccountActive \? 'active-paper-event-account'/);
+assert.match(screen, /FRESH \$100,000 · TRADE HERE TO COMPETE THIS WEEK/);
+assert.match(screen, /testID="paper-event-account-badge"/);

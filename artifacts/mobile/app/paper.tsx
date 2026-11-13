@@ -385,6 +385,10 @@ export default function PaperScreen() {
       + myPositions.reduce((s, p) => s + p.shares * (quotes[p.symbol]?.price ?? p.avgCost), 0)
     : 0;
   const paperChallengeWindow = getPaperChallengeWindow(challengeNow);
+  const isEventAccountActive = paperChallengeWindow.phase === 'active'
+    && !!account
+    && account.id.startsWith('paper-event:')
+    && paperChallenge.enrollment?.accountId === account.id;
   const visibleAccounts = accounts.filter((item) =>
     !item.id.startsWith('paper-event:') || item.id === paperChallenge.enrollment?.accountId,
   );
@@ -1734,12 +1738,31 @@ export default function PaperScreen() {
 
       {/* Account Switcher */}
       <TouchableOpacity
-        style={styles.accountBar}
+        testID={isEventAccountActive ? 'active-paper-event-account' : undefined}
+        accessibilityLabel={isEventAccountActive
+          ? 'Event Portfolio. Fresh $100,000 event account. Trade here to compete this week.'
+          : `Paper trading account ${account?.name ?? ''}`}
+        style={[styles.accountBar, isEventAccountActive && styles.eventAccountBar]}
         onPress={() => setShowAccountDropdown(true)}
         activeOpacity={0.7}
       >
-        <View style={styles.accountDot} />
-        <Text style={styles.accountName}>{account?.name ?? '—'}</Text>
+        <View style={[styles.accountDot, isEventAccountActive && styles.eventAccountDot]} />
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+            <Text style={[styles.accountName, isEventAccountActive && styles.eventAccountName]}>
+              {account?.name ?? '—'}
+            </Text>
+            {isEventAccountActive && (
+              <View style={styles.eventAccountBadge}>
+                <Feather name="award" size={11} color="#000" />
+                <Text style={styles.eventAccountBadgeText}>EVENT ARENA</Text>
+              </View>
+            )}
+          </View>
+          {isEventAccountActive && (
+            <Text style={styles.eventAccountPrompt}>FRESH $100,000 · TRADE HERE TO COMPETE THIS WEEK</Text>
+          )}
+        </View>
         <Text style={styles.accountVal}>{$fmt(portfolioValue)}</Text>
         <Feather name="chevron-down" size={16} color={SILVER} style={{ marginLeft: 6 }} />
       </TouchableOpacity>
@@ -1817,7 +1840,11 @@ export default function PaperScreen() {
                 {visibleAccounts.map(acct => (
                   <View key={acct.id}>
                     <TouchableOpacity
-                      style={[styles.acctRow, acct.id === activeId && styles.acctRowActive]}
+                      style={[
+                        styles.acctRow,
+                        acct.id === activeId && styles.acctRowActive,
+                        acct.id.startsWith('paper-event:') && styles.eventAcctRow,
+                      ]}
                       onPress={() => switchAccount(acct.id)}
                       activeOpacity={0.7}
                     >
@@ -1832,7 +1859,18 @@ export default function PaperScreen() {
                             onBlur={() => { renameAccount(acct.id, renameDraft); }}
                           />
                         ) : (
-                          <Text style={styles.acctName}>{acct.name}</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                            <Text style={styles.acctName}>{acct.name}</Text>
+                            {acct.id.startsWith('paper-event:') && (
+                              <View testID="paper-event-account-badge" style={styles.eventAccountBadge}>
+                                <Feather name="award" size={10} color="#000" />
+                                <Text style={styles.eventAccountBadgeText}>FRESH EVENT ACCOUNT</Text>
+                              </View>
+                            )}
+                          </View>
+                        )}
+                        {acct.id.startsWith('paper-event:') && (
+                          <Text style={styles.eventAccountPrompt}>Separate $100,000 competition portfolio</Text>
                         )}
                         <Text style={styles.acctCash}>
                           Cash: {$fmt(acct.cash)} ·{' '}
@@ -2174,8 +2212,42 @@ const styles = StyleSheet.create({
     borderBottomColor: BORDER,
     gap: 8,
   },
+  eventAccountBar: {
+    backgroundColor: 'rgba(0,229,160,0.08)',
+    borderBottomColor: 'rgba(0,229,160,0.34)',
+    borderLeftWidth: 3,
+    borderLeftColor: BUY_COLOR,
+  },
   accountDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: BUY_COLOR },
+  eventAccountDot: { width: 10, height: 10, borderRadius: 5 },
   accountName: { fontFamily: 'Inter_600SemiBold', fontSize: 14, color: SILVER, flex: 1 },
+  eventAccountName: { color: '#fff' },
+  eventAccountBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 5,
+    backgroundColor: BUY_COLOR,
+  },
+  eventAccountBadgeText: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 8,
+    color: '#000',
+    letterSpacing: 0.45,
+  },
+  eventAccountPrompt: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 8,
+    color: BUY_COLOR,
+    letterSpacing: 0.55,
+    marginTop: 2,
+  },
+  eventAcctRow: {
+    borderColor: 'rgba(0,229,160,0.45)',
+    backgroundColor: 'rgba(0,229,160,0.06)',
+  },
   accountVal: { fontFamily: 'Inter_700Bold', fontSize: 14, color: '#fff' },
 
   // Summary strip

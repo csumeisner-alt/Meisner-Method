@@ -13,6 +13,7 @@ import {
   finalizePaperChallengeStore,
   PAPER_CHALLENGE_STORAGE_KEY,
   type PaperChallengeStore,
+  withdrawUpcomingPaperChallenge,
 } from '../paperChallenge.ts';
 
 test('paper event runs Monday open through Friday close, then skips a week', () => {
@@ -174,4 +175,30 @@ test('event enrollment and one summary survive reloads without changing other pa
   assert.equal(afterReopeningPaperTrading.history.length, 1);
   assert.deepEqual(afterReopeningPaperTrading.history[0], summary);
   assert.deepEqual(JSON.parse(savedData.get('@stocksense/paper_v2')!), otherPaperData);
+});
+
+test('upcoming signup withdrawal removes only enrollment and is locked at event start', () => {
+  const eventStartAtMs = Date.parse('2026-11-30T14:30:00.000Z');
+  const enrollment = {
+    eventId: '2026-11-30',
+    eventStartAtMs,
+    eventEndAtMs: Date.parse('2026-12-04T21:00:00.000Z'),
+    joinedAtMs: eventStartAtMs,
+    accountId: 'paper-event:2026-11-30',
+    accountName: 'Event Portfolio',
+    startEquity: null,
+  };
+  const history = [{ eventId: 'past-event' }] as unknown as PaperChallengeSummary[];
+  const store: PaperChallengeStore = { enrollment, history };
+
+  const withdrawn = withdrawUpcomingPaperChallenge(store, enrollment.eventId, eventStartAtMs - 1);
+  assert.equal(withdrawn.enrollment, null);
+  assert.strictEqual(withdrawn.history, history);
+
+  assert.strictEqual(withdrawUpcomingPaperChallenge(store, enrollment.eventId, eventStartAtMs), store);
+  assert.strictEqual(withdrawUpcomingPaperChallenge(store, 'another-event', eventStartAtMs - 1), store);
+  assert.strictEqual(withdrawUpcomingPaperChallenge({
+    enrollment: { ...enrollment, startEquity: 100_000 },
+    history,
+  }, enrollment.eventId, eventStartAtMs - 1).enrollment?.startEquity, 100_000);
 });

@@ -60,6 +60,22 @@ export function finalizePaperChallengeStore(
   };
 }
 
+export function withdrawUpcomingPaperChallenge(
+  store: PaperChallengeStore,
+  eventId: string,
+  nowMs = Date.now(),
+): PaperChallengeStore {
+  const enrollment = store.enrollment;
+  if (
+    !enrollment
+    || enrollment.eventId !== eventId
+    || enrollment.startEquity !== null
+    || nowMs >= enrollment.eventStartAtMs
+  ) return store;
+
+  return { enrollment: null, history: store.history };
+}
+
 export type PaperChallengeReminder = {
   eventId: string;
   scheduledAtMs: number;
