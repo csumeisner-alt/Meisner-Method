@@ -79,6 +79,7 @@ import {
   createEtfScoreSnapshot,
   CURRENT_ETF_SCORE_METHODOLOGY,
   findComparableEtfScoreChange,
+  paginateEtfScoreHistory,
   parseEtfScoreSnapshots,
   persistEtfScoreSnapshot,
   removeEtfScoreSnapshot,
@@ -1868,6 +1869,7 @@ function EtfAnalysisSections({
   });
   const [scoreChangeResult, setScoreChangeResult] = useState<EtfScoreChangeResult | null>(null);
   const [scoreHistoryEntries, setScoreHistoryEntries] = useState<EtfScoreHistoryEntry[]>([]);
+  const [scoreHistoryPage, setScoreHistoryPage] = useState(0);
   const [scoreHistoryReady, setScoreHistoryReady] = useState(false);
   const [currentScoreSnapshot, setCurrentScoreSnapshot] = useState<EtfScoreSnapshot | null>(null);
   const [scoreHistoryClearing, setScoreHistoryClearing] = useState(false);
@@ -1877,6 +1879,7 @@ function EtfAnalysisSections({
   const [scoreHistoryRemoveError, setScoreHistoryRemoveError] = useState('');
   const [scoreHistoryUndoSnapshot, setScoreHistoryUndoSnapshot] = useState<EtfScoreSnapshot | null>(null);
   const [scoreHistoryRestoring, setScoreHistoryRestoring] = useState(false);
+  const scoreHistoryPageView = paginateEtfScoreHistory(scoreHistoryEntries, scoreHistoryPage);
   useEffect(() => {
     if (!scoreHistoryUndoSnapshot) return;
     const timeout = setTimeout(() => setScoreHistoryUndoSnapshot(null), 8000);
@@ -1912,6 +1915,7 @@ function EtfAnalysisSections({
     let cancelled = false;
     setScoreHistoryReady(false);
     setScoreHistoryEntries([]);
+    setScoreHistoryPage(0);
     setCurrentScoreSnapshot(null);
     setScoreHistoryCleared(false);
     setScoreHistoryClearError('');
@@ -2898,7 +2902,7 @@ function EtfAnalysisSections({
               </Text>
             ) : (
               <>
-                {scoreHistoryEntries.slice(-10).reverse().map((entry) => {
+                {scoreHistoryPageView.entries.map((entry) => {
                   const changeColor = entry.status === 'available' && (entry.change ?? 0) > 0
                     ? colors.buyColor
                     : entry.status === 'available' && (entry.change ?? 0) < 0
@@ -2948,8 +2952,37 @@ function EtfAnalysisSections({
                   );
                 })}
                 <Text style={{ color: colors.mutedForeground, fontSize: 11, lineHeight: 16, marginTop: 7 }}>
-                  Showing up to 10 recent saved analyses. Point changes compare adjacent entries only when inputs are fresh and factor coverage and source context match; gaps are not interpolated.
+                  Showing {scoreHistoryPageView.start}–{scoreHistoryPageView.end} of {scoreHistoryEntries.length} saved analyses. Point changes compare adjacent entries only when inputs are fresh and factor coverage and source context match; gaps are not interpolated.
                 </Text>
+                {scoreHistoryPageView.totalPages > 1 && (
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+                    <Pressable
+                      testID="etf-score-history-newer"
+                      accessibilityRole="button"
+                      accessibilityLabel="Show newer ETF score analyses"
+                      accessibilityState={{ disabled: scoreHistoryPageView.page === 0 }}
+                      disabled={scoreHistoryPageView.page === 0}
+                      onPress={() => setScoreHistoryPage(Math.max(0, scoreHistoryPageView.page - 1))}
+                      style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 10, opacity: scoreHistoryPageView.page === 0 ? 0.45 : 1 }}
+                    >
+                      <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>Newer</Text>
+                    </Pressable>
+                    <Text accessibilityLiveRegion="polite" style={{ color: colors.mutedForeground, fontSize: 11 }}>
+                      Page {scoreHistoryPageView.page + 1} of {scoreHistoryPageView.totalPages}
+                    </Text>
+                    <Pressable
+                      testID="etf-score-history-older"
+                      accessibilityRole="button"
+                      accessibilityLabel="Show older ETF score analyses"
+                      accessibilityState={{ disabled: scoreHistoryPageView.page >= scoreHistoryPageView.totalPages - 1 }}
+                      disabled={scoreHistoryPageView.page >= scoreHistoryPageView.totalPages - 1}
+                      onPress={() => setScoreHistoryPage(Math.min(scoreHistoryPageView.totalPages - 1, scoreHistoryPageView.page + 1))}
+                      style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 10, opacity: scoreHistoryPageView.page >= scoreHistoryPageView.totalPages - 1 ? 0.45 : 1 }}
+                    >
+                      <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>Older</Text>
+                    </Pressable>
+                  </View>
+                )}
                 <Pressable
                   testID="etf-score-history-clear"
                   accessibilityRole="button"

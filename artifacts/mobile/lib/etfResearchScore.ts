@@ -347,6 +347,29 @@ export function buildEtfScoreHistory(
   });
 }
 
+export const ETF_SCORE_HISTORY_PAGE_SIZE = 10;
+
+export function paginateEtfScoreHistory<T>(
+  history: readonly T[],
+  requestedPage: number,
+): { entries: T[]; page: number; totalPages: number; start: number; end: number } {
+  const totalPages = Math.ceil(history.length / ETF_SCORE_HISTORY_PAGE_SIZE);
+  const page = totalPages === 0
+    ? 0
+    : Math.min(Math.max(0, Math.floor(requestedPage)), totalPages - 1);
+  const newestFirst = [...history].reverse();
+  const start = page * ETF_SCORE_HISTORY_PAGE_SIZE;
+  const entries = newestFirst.slice(start, start + ETF_SCORE_HISTORY_PAGE_SIZE);
+
+  return {
+    entries,
+    page,
+    totalPages,
+    start: history.length === 0 ? 0 : start + 1,
+    end: start + entries.length,
+  };
+}
+
 export function findComparableEtfScoreChange(
   current: EtfScoreSnapshot | null,
   history: readonly EtfScoreSnapshot[],

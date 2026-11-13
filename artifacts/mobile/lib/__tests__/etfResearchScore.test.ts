@@ -6,6 +6,7 @@ import {
   clearEtfScoreSnapshots,
   createEtfScoreSnapshot,
   findComparableEtfScoreChange,
+  paginateEtfScoreHistory,
   parseEtfScoreSnapshots,
   persistEtfScoreSnapshot,
   removeEtfScoreSnapshot,
@@ -682,6 +683,33 @@ test("dated ETF score history reports changes only between adjacent comparable a
   assert.deepEqual(history.map((entry) => entry.status), ["baseline", "not-comparable", "available"]);
   assert.equal(history[2]?.change, (third?.score ?? 0) - (changedSource?.score ?? 0));
   assert.equal(history[2]?.previousRecordedAt, "2026-10-20T12:00:00.000Z");
+});
+
+test("ETF score history pages expose older entries newest-first without changing saved labels", () => {
+  const history = Array.from({ length: 23 }, (_, index) => ({
+    date: `2026-10-${String(index + 1).padStart(2, "0")}`,
+    score: index,
+    status: index === 2 ? "stale-history" : "available",
+  }));
+  const original = structuredClone(history);
+
+  const newestPage = paginateEtfScoreHistory(history, 0);
+  const middlePage = paginateEtfScoreHistory(history, 1);
+  const oldestPage = paginateEtfScoreHistory(history, 2);
+
+  assert.deepEqual(newestPage.entries.map((entry) => entry.score), [22, 21, 20, 19, 18, 17, 16, 15, 14, 13]);
+  assert.deepEqual(middlePage.entries.map((entry) => entry.score), [12, 11, 10, 9, 8, 7, 6, 5, 4, 3]);
+  assert.deepEqual(oldestPage.entries.map((entry) => entry.score), [2, 1, 0]);
+  assert.deepEqual(oldestPage, {
+    entries: history.slice(0, 3).reverse(),
+    page: 2,
+    totalPages: 3,
+    start: 21,
+    end: 23,
+  });
+  assert.equal(oldestPage.entries[0]?.status, "stale-history");
+  assert.deepEqual(history, original, "browsing pages must not mutate the saved history list");
+  assert.equal(paginateEtfScoreHistory(history, 100).page, 2, "page selection clamps after history shrinks");
 });
 
 test("dated ETF score history marks factor, freshness, and time-window gaps", () => {

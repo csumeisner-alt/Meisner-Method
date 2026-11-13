@@ -230,6 +230,10 @@ test("ETF overview combines quote, deterministic research score, takeaways, and 
   assert.match(etfAnalysisSource, /MEISNER ETF RESEARCH SCORE/);
   assert.match(etfAnalysisSource, /testID="etf-score-history-list"/);
   assert.match(etfAnalysisSource, /Dated score history/);
+  assert.match(etfAnalysisSource, /paginateEtfScoreHistory\(scoreHistoryEntries, scoreHistoryPage\)/);
+  assert.match(etfAnalysisSource, /testID="etf-score-history-older"/);
+  assert.match(etfAnalysisSource, /testID="etf-score-history-newer"/);
+  assert.match(etfAnalysisSource, /Showing \{scoreHistoryPageView\.start\}–\{scoreHistoryPageView\.end\} of \{scoreHistoryEntries\.length\} saved analyses/);
   assert.match(etfAnalysisSource, /factor coverage or source context changed/);
   assert.match(etfAnalysisSource, /Point changes compare adjacent entries only when inputs are fresh/);
   assert.match(etfAnalysisSource, /Research score/);
