@@ -147,6 +147,19 @@ export function finalizePaperChallengeStore(
   };
 }
 
+export async function persistPaperChallengeFinalization(
+  store: PaperChallengeStore,
+  summary: PaperChallengeSummary,
+  nowMs: number,
+  setItem: (key: string, value: string) => Promise<void>,
+): Promise<PaperChallengeStore> {
+  const finalizedStore = finalizePaperChallengeStore(store, summary, nowMs);
+  if (finalizedStore === store) return store;
+
+  await setItem(PAPER_CHALLENGE_STORAGE_KEY, JSON.stringify(finalizedStore));
+  return finalizedStore;
+}
+
 export function withdrawUpcomingPaperChallenge(
   store: PaperChallengeStore,
   eventId: string,

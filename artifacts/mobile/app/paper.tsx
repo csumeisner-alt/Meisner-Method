@@ -77,12 +77,12 @@ import { useWatchlist } from '@/hooks/useWatchlist';
 import {
   buildPaperChallengeSummary,
   ensurePaperChallengeAccount,
-  finalizePaperChallengeStore,
   getPaperChallengeMilestones,
   getMissingPaperChallengeQuoteSymbols,
   getPaperChallengeWindow,
   PAPER_CHALLENGE_STORAGE_KEY,
   PAPER_CHALLENGE_STARTING_BALANCE,
+  persistPaperChallengeFinalization,
   type PaperChallengeStore,
   type PaperChallengeSummary,
   capturePaperChallengeBaseline,
@@ -844,7 +844,14 @@ export default function PaperScreen() {
           fallbackAccount.id,
         );
       }
-      await savePaperChallenge(finalizePaperChallengeStore(latestStore, summary, challengeNow));
+      const finalizedStore = await persistPaperChallengeFinalization(
+        latestStore,
+        summary,
+        challengeNow,
+        (key, value) => AsyncStorage.setItem(key, value),
+      );
+      paperChallengeRef.current = finalizedStore;
+      setPaperChallenge(finalizedStore);
       challengeFinalizationFailureRef.current = null;
       setChallengeFinalizationError(false);
     })().catch(() => {
