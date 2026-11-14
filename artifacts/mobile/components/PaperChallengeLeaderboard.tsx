@@ -60,6 +60,7 @@ type Props = {
   enrollment: PaperChallengeEnrollment | null;
   onEnrollmentChange: (enrollment: PaperChallengeEnrollment | null) => void;
   onRankChange?: (rank: number | null) => void;
+  openOnMount?: boolean;
 };
 
 const money = (value: number) => `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -143,7 +144,7 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
   };
 }
 
-export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChange, onRankChange }: Props) {
+export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChange, onRankChange, openOnMount = false }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
@@ -163,7 +164,9 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
   const leaderboardQuery = useGetEventArenaLeaderboard(selectedEvent.id, {
     request: installationId ? { headers: { 'X-Event-Arena-Installation-Id': installationId } } : undefined,
     query: {
-      enabled: open && installationIdReady,
+      // The refresh effect below owns loading so opening the modal does not
+      // trigger both React Query's automatic request and a manual refetch.
+      enabled: false,
       queryKey: [...getGetEventArenaLeaderboardQueryKey(selectedEvent.id), installationId ?? 'anonymous'],
       refetchOnWindowFocus: false,
     },
@@ -197,6 +200,9 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
   );
   const ownEntry = matchingOwnEntries.length === 1 ? matchingOwnEntries[0] : null;
 
+  useEffect(() => {
+    if (openOnMount) setOpen(true);
+  }, [openOnMount]);
   useEffect(() => { enrollmentRef.current = enrollment; }, [enrollment]);
   useEffect(() => {
     let mounted = true;
@@ -466,7 +472,7 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
         <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: Platform.OS === 'web' ? 24 : insets.top + 8 }}>
           <View style={{ paddingHorizontal: 18, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             {detail && (
-              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Back to leaderboard" onPress={() => setDetail(null)} hitSlop={10}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Back to leaderboard" onPress={() => setDetail(null)} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
                 <Feather name="arrow-left" size={20} color={colors.primary} />
               </TouchableOpacity>
             )}
@@ -479,12 +485,12 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
                 accessibilityRole="button"
                 accessibilityLabel="Refresh event leaderboard"
                 onPress={() => { void refresh(); }}
-                hitSlop={10}
+                style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
               >
                 <Feather name="refresh-cw" size={18} color={colors.primary} />
               </TouchableOpacity>
             )}
-            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close leaderboard" onPress={() => { setOpen(false); setDetail(null); }} hitSlop={10}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close leaderboard" onPress={() => { setOpen(false); setDetail(null); }} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
               <Feather name="x" size={22} color={colors.mutedForeground} />
             </TouchableOpacity>
           </View>
@@ -578,8 +584,10 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
                           accessibilityLabel={`Show ${year} completed event weeks, ${weeks.length} weeks`}
                           onPress={() => setArchiveYear(year)}
                           style={{
+                            minHeight: 44,
                             paddingVertical: 7,
                             paddingHorizontal: 10,
+                            justifyContent: 'center',
                             borderRadius: 8,
                             borderWidth: 1,
                             borderColor: selected ? colors.primary : colors.border,
@@ -610,8 +618,9 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
                       onPress={() => selectEvent(week)}
                       style={{
                         alignSelf: 'flex-start',
-                        paddingVertical: 8,
+                        minHeight: 44,
                         paddingHorizontal: 10,
+                        justifyContent: 'center',
                         marginBottom: 7,
                         borderRadius: 8,
                         borderWidth: 1,
@@ -696,7 +705,7 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
                           accessibilityRole="button"
                           disabled={sharingBusy}
                           onPress={() => { void updateAlias(); }}
-                          style={{ paddingVertical: 9, paddingHorizontal: 12, borderRadius: 8, backgroundColor: colors.primary, opacity: sharingBusy ? 0.6 : 1 }}
+                          style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 8, backgroundColor: colors.primary, opacity: sharingBusy ? 0.6 : 1 }}
                         >
                           <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 10 }}>{sharingBusy ? 'SAVING…' : 'SAVE ALIAS'}</Text>
                         </TouchableOpacity>
@@ -706,7 +715,7 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
                         accessibilityRole="button"
                         disabled={sharingBusy}
                         onPress={() => { void optOut(); }}
-                        style={{ paddingVertical: 9, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.destructive, opacity: sharingBusy ? 0.6 : 1 }}
+                        style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.destructive, opacity: sharingBusy ? 0.6 : 1 }}
                       >
                         <Text style={{ color: colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 10 }}>{sharingBusy ? 'UPDATING…' : 'OPT OUT'}</Text>
                       </TouchableOpacity>
@@ -717,7 +726,7 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
                       accessibilityRole="button"
                       disabled={sharingBusy || aliasDraft.trim().length < 1}
                       onPress={() => { void optIn(); }}
-                      style={{ marginTop: 10, paddingVertical: 11, borderRadius: 8, backgroundColor: sharingBusy || aliasDraft.trim().length < 1 ? colors.muted : colors.primary, alignItems: 'center' }}
+                      style={{ minHeight: 44, marginTop: 10, borderRadius: 8, backgroundColor: sharingBusy || aliasDraft.trim().length < 1 ? colors.muted : colors.primary, alignItems: 'center', justifyContent: 'center' }}
                     >
                       <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 11 }}>
                         {sharingBusy ? 'OPTING IN…' : 'OPT IN AND SHARE'}

@@ -59,9 +59,11 @@ function formatDate(timestamp: number) {
 }
 
 function statusCopy(participation: EventArenaParticipation, phase: PaperChallengeWindow['phase']) {
+  if (participation === 'joined' && phase === 'upcoming') return { title: 'You’re registered', detail: 'Your separate event account opens at the scheduled start.' };
+  if (participation === 'joined' && phase === 'ended') return { title: 'Your event has ended', detail: 'Open Paper Trading to save your final event results.' };
   if (participation === 'joined') return { title: 'You’re in this event', detail: 'Your event account is separate from every other paper portfolio.' };
-  if (participation === 'finish-previous') return { title: 'Finish your current event', detail: 'Your next entry opens after the active event is complete.' };
-  if (participation === 'results-pending') return { title: 'Results are being finalized', detail: 'Your previous event is closing out before you can enter again.' };
+  if (participation === 'finish-previous') return { title: 'Finish your current event', detail: 'Open Paper Trading to finish it before entering this event.' };
+  if (participation === 'results-pending') return { title: 'Results are being finalized', detail: 'Open Paper Trading to complete your previous event.' };
   if (participation === 'event-ended' || phase === 'ended') return { title: 'This event has ended', detail: 'The next scheduled event will be available soon.' };
   if (phase === 'upcoming') return { title: 'Entry is open', detail: 'Join now. Your event-only account begins when the window opens.' };
   return { title: 'Entry is open', detail: 'Join the live event with a fresh, isolated paper account.' };
@@ -98,6 +100,31 @@ export function EventArenaOverview({
     ? 'Closed'
     : `${countdown.days}d  ${String(countdown.hours).padStart(2, '0')}h  ${String(countdown.minutes).padStart(2, '0')}m  ${String(countdown.seconds).padStart(2, '0')}s`;
   const eventName = `Week of ${new Date(event.startAtMs).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
+  const eventTitle = `Week of ${new Date(event.startAtMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+  const stickyAction = joined && !isUpcoming
+    ? {
+        kind: livePhase === 'ended' ? 'finish' as const : 'trade' as const,
+        label: livePhase === 'ended' ? 'Finish event results' : 'Trade event account',
+        accessibilityLabel: livePhase === 'ended'
+          ? 'Open Paper Trading to finish event results'
+          : 'Open Paper Trading to trade in Event Arena',
+        onPress: onOpenTrades,
+      }
+    : participation === 'eligible' && livePhase !== 'ended'
+      ? {
+          kind: 'join' as const,
+          label: saving ? 'Joining…' : 'Join Event Arena',
+          accessibilityLabel: 'Join Event Arena',
+          onPress: onJoin,
+        }
+      : participation === 'finish-previous' || participation === 'results-pending'
+        ? {
+            kind: 'finish' as const,
+            label: 'Open Paper Trading',
+            accessibilityLabel: 'Open Paper Trading to finish the previous event',
+            onPress: onOpenTrades,
+          }
+        : null;
 
   const surface = colors.card ?? colors.background;
   const border = colors.border ?? 'rgba(120,128,135,0.25)';
@@ -113,12 +140,13 @@ export function EventArenaOverview({
   );
 
   return (
-    <ScrollView
-      style={{ flex: 1 }}
-      contentContainerStyle={[styles.scrollContent, { alignItems: 'center' }]}
-      showsVerticalScrollIndicator={false}
-      testID="event-arena-overview"
-    >
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={[styles.scrollContent, { alignItems: 'center' }]}
+        showsVerticalScrollIndicator={false}
+        testID="event-arena-overview"
+      >
       <View style={{ width: contentWidth }}>
         <View style={styles.topline}>
           <View style={styles.brandMark}><Feather name="activity" size={15} color={accent} /></View>
@@ -141,7 +169,7 @@ export function EventArenaOverview({
             <Text style={[styles.phaseLabel, { color: muted }]}>{livePhase.toUpperCase()} EVENT</Text>
             <Text style={[styles.eventId, { color: muted }]}>ID {event.id}</Text>
           </View>
-          <Text accessibilityLabel={`Event Arena ${eventName}`} style={[styles.title, { color: ink }]}>{eventName}</Text>
+          <Text accessibilityLabel={`Event Arena ${eventName}`} style={[styles.title, { color: ink }]}>{eventTitle}</Text>
           <Text style={[styles.subtitle, { color: muted }]}>{copy.title}. {copy.detail}</Text>
 
           <View style={[styles.countdownPanel, { backgroundColor: colors.background, borderColor: border }]}>
@@ -166,16 +194,20 @@ export function EventArenaOverview({
 
           {joined ? (
             <View style={styles.actionsRow}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Open event account trades"
-                testID="event-arena-open-trades"
-                onPress={onOpenTrades}
-                style={({ pressed }) => [styles.primaryButton, { backgroundColor: accent, opacity: pressed ? 0.84 : 1 }]}
-              >
-                <Feather name="trending-up" size={16} color="#171714" />
-                <Text style={styles.primaryButtonText}>Open event trades</Text>
-              </Pressable>
+              {!isUpcoming ? (
+                stickyAction ? null : <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={livePhase === 'ended' ? 'Open Paper Trading to finish event results' : 'Open Paper Trading to trade in Event Arena'}
+                  testID="event-arena-open-trades"
+                  onPress={onOpenTrades}
+                  style={({ pressed }) => [styles.primaryButton, { backgroundColor: accent, opacity: pressed ? 0.84 : 1 }]}
+                >
+                  <Feather name={livePhase === 'ended' ? 'check-circle' : 'trending-up'} size={16} color="#171714" />
+                  <Text style={styles.primaryButtonText}>{livePhase === 'ended' ? 'Finish event results' : 'Trade event account'}</Text>
+                </Pressable>
+              ) : (
+                <Text style={[styles.secondaryButtonText, { flex: 1, color: muted, paddingVertical: 10 }]}>Trading opens at the scheduled start.</Text>
+              )}
               {canWithdraw ? (
                 <Pressable
                   accessibilityRole="button"
@@ -190,7 +222,7 @@ export function EventArenaOverview({
               ) : null}
             </View>
           ) : participation === 'eligible' && livePhase !== 'ended' ? (
-            <Pressable
+            stickyAction ? null : <Pressable
               accessibilityRole="button"
               accessibilityLabel="Join Event Arena"
               testID="event-arena-join"
@@ -200,6 +232,17 @@ export function EventArenaOverview({
             >
               {saving ? <ActivityIndicator size="small" color="#171714" /> : <Feather name="arrow-up-right" size={17} color="#171714" />}
               <Text style={styles.primaryButtonText}>{saving ? 'Joining…' : 'Join Event Arena'}</Text>
+            </Pressable>
+          ) : participation === 'finish-previous' || participation === 'results-pending' ? (
+            stickyAction ? null : <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Open Paper Trading to finish the previous event"
+              testID="event-arena-finish-previous"
+              onPress={onOpenTrades}
+              style={({ pressed }) => [styles.primaryButton, styles.fullButton, { backgroundColor: accent, opacity: pressed ? 0.84 : 1 }]}
+            >
+              <Feather name="arrow-up-right" size={16} color="#171714" />
+              <Text style={styles.primaryButtonText}>Open Paper Trading</Text>
             </Pressable>
           ) : null}
         </View>
@@ -230,7 +273,7 @@ export function EventArenaOverview({
               </View>
               {!performance?.account && (
                 <Text style={[styles.emptyText, { color: muted, textAlign: 'left', marginTop: 8 }]}>
-                  Your event account is created when you open Paper Trading. Starting balance is shown above until then.
+                  Your separate event account will be ready when the event opens. Starting balance is shown above until then.
                 </Text>
               )}
               {!!performance?.account && performance.equity == null && (
@@ -238,16 +281,18 @@ export function EventArenaOverview({
                   Equity is unavailable until every held position has a valid current quote.
                 </Text>
               )}
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Open event trades"
-                testID="event-arena-open-trades-secondary"
-                onPress={onOpenTrades}
-                style={({ pressed }) => [styles.tradeLink, { borderTopColor: border, opacity: pressed ? 0.65 : 1 }]}
-              >
-                <Text style={[styles.tradeLinkText, { color: accent }]}>Review event trades</Text>
-                <Feather name="arrow-right" size={15} color={accent} />
-              </Pressable>
+              {!isUpcoming && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Open event trades"
+                  testID="event-arena-open-trades-secondary"
+                  onPress={onOpenTrades}
+                  style={({ pressed }) => [styles.tradeLink, { borderTopColor: border, opacity: pressed ? 0.65 : 1 }]}
+                >
+                  <Text style={[styles.tradeLinkText, { color: accent }]}>Open event trading</Text>
+                  <Feather name="arrow-right" size={15} color={accent} />
+                </Pressable>
+              )}
             </View>
 
             <View style={styles.sectionHeading}>
@@ -299,7 +344,35 @@ export function EventArenaOverview({
         ) : null}
         <Text style={[styles.timeNote, { color: muted }]}>Schedule shown in your local time · Countdown based on {new Date(nowMs).toLocaleTimeString()}</Text>
       </View>
-    </ScrollView>
+      </ScrollView>
+      {stickyAction ? (
+        <View style={[styles.stickyActionWrap, { backgroundColor: colors.background, borderTopColor: border }]}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={stickyAction.accessibilityLabel}
+            testID="event-arena-sticky-action"
+            onPress={stickyAction.onPress}
+            disabled={stickyAction.kind === 'join' && (saving || loading)}
+            style={({ pressed }) => [
+              styles.stickyActionButton,
+              {
+                backgroundColor: accent,
+                opacity: pressed || (stickyAction.kind === 'join' && (saving || loading)) ? 0.64 : 1,
+              },
+            ]}
+          >
+            {saving && stickyAction.kind === 'join'
+              ? <ActivityIndicator size="small" color="#171714" />
+              : stickyAction.kind === 'trade'
+                ? <Feather name="trending-up" size={16} color="#171714" />
+                : stickyAction.kind === 'finish'
+                  ? <Feather name="check-circle" size={16} color="#171714" />
+                  : <Feather name="arrow-up-right" size={17} color="#171714" />}
+            <Text style={styles.primaryButtonText}>{stickyAction.label}</Text>
+          </Pressable>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -309,18 +382,18 @@ const styles = StyleSheet.create({
   brandMark: { width: 28, height: 28, borderRadius: 9, backgroundColor: 'rgba(184,149,90,0.12)', alignItems: 'center', justifyContent: 'center' },
   eyebrow: { flex: 1, fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 1.05 },
   iconButton: { width: 44, height: 44, borderWidth: StyleSheet.hairlineWidth, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  heroCard: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 24, padding: 20, overflow: 'hidden' },
-  heroTop: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 17 },
+  heroCard: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 24, padding: 18, overflow: 'hidden' },
+  heroTop: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 12 },
   liveDot: { width: 7, height: 7, borderRadius: 4 },
   phaseLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 1 },
   eventId: { marginLeft: 'auto', fontFamily: 'Inter_500Medium', fontSize: 10 },
-  title: { fontFamily: 'Inter_600SemiBold', fontSize: 32, lineHeight: 37, letterSpacing: -1.1 },
-  subtitle: { fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 20, marginTop: 9, maxWidth: 430 },
-  countdownPanel: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 13, marginTop: 19 },
+  title: { fontFamily: 'Inter_600SemiBold', fontSize: 27, lineHeight: 32, letterSpacing: -0.8 },
+  subtitle: { fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 20, marginTop: 7, maxWidth: 430 },
+  countdownPanel: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 11, marginTop: 15 },
   countdownHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   smallLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 0.85 },
   countdownValue: { fontFamily: 'Inter_600SemiBold', fontSize: 21, letterSpacing: -0.5, marginTop: 7 },
-  dateRow: { flexDirection: 'row', alignItems: 'stretch', marginTop: 18, marginBottom: 19 },
+  dateRow: { flexDirection: 'row', alignItems: 'stretch', marginTop: 14, marginBottom: 14 },
   dateItem: { flex: 1, gap: 7 },
   dateDivider: { width: StyleSheet.hairlineWidth, marginHorizontal: 13 },
   dateValue: { fontFamily: 'Inter_500Medium', fontSize: 11, lineHeight: 16 },
@@ -360,4 +433,6 @@ const styles = StyleSheet.create({
   loadingRow: { height: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   loadingText: { fontFamily: 'Inter_400Regular', fontSize: 11 },
   timeNote: { fontFamily: 'Inter_400Regular', fontSize: 9, lineHeight: 14, textAlign: 'center', marginTop: 13 },
+  stickyActionWrap: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8, borderTopWidth: StyleSheet.hairlineWidth },
+  stickyActionButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, borderRadius: 14, paddingHorizontal: 16 },
 });

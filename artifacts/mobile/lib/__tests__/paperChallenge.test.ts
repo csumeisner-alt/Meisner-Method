@@ -24,6 +24,7 @@ import {
   withdrawUpcomingPaperChallenge,
   persistPaperChallengeFinalization,
   updatePaperChallengeStore,
+  shouldEnsurePaperChallengeAccount,
 } from '../paperChallenge.ts';
 
 test('paper event runs Monday open through Friday close, then skips a week', () => {
@@ -53,6 +54,24 @@ test('paper event runs Monday open through Friday close, then skips a week', () 
   assert.equal(startedEnrollment.joinedAtMs, offWeek.startAtMs);
   assert.equal(startedEnrollment.accountId, 'strategy-2');
   assert.equal(capturePaperChallengeBaseline(startedEnrollment, 120_000), startedEnrollment);
+});
+
+test('event accounts are created at the scheduled start, including late result recovery', () => {
+  const eventStartAtMs = Date.parse('2026-11-30T14:30:00.000Z');
+  const pendingEnrollment = {
+    eventId: '2026-11-30',
+    eventStartAtMs,
+    eventEndAtMs: Date.parse('2026-12-04T21:00:00.000Z'),
+    joinedAtMs: eventStartAtMs,
+    accountId: 'paper-event:2026-11-30',
+    accountName: 'Event Portfolio',
+    startEquity: null,
+  };
+
+  assert.equal(shouldEnsurePaperChallengeAccount(pendingEnrollment, eventStartAtMs - 1), false);
+  assert.equal(shouldEnsurePaperChallengeAccount(pendingEnrollment, eventStartAtMs), true);
+  assert.equal(shouldEnsurePaperChallengeAccount(pendingEnrollment, pendingEnrollment.eventEndAtMs + 1), true);
+  assert.equal(shouldEnsurePaperChallengeAccount({ ...pendingEnrollment, startEquity: 100_000 }, eventStartAtMs - 1), true);
 });
 
 test('paper event market hours follow Eastern daylight-saving time', () => {

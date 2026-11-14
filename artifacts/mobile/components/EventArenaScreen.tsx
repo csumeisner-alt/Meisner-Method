@@ -8,6 +8,7 @@ import {
   Share,
   Switch,
   Text,
+  useWindowDimensions,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -19,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { BottomTabBar } from '@/components/BottomTabBar';
 import { EventArenaOverview } from '@/components/EventArenaOverview';
+import { PortfolioLineChart } from '@/components/PaperCharts';
 import { PaperChallengeLeaderboard } from '@/components/PaperChallengeLeaderboard';
 import { PaperChallengeMilestoneBadges } from '@/components/PaperChallengeMilestoneBadges';
 import { PaperEventShareCard } from '@/components/PaperEventShareCard';
@@ -30,6 +32,7 @@ import {
 } from '@/lib/eventArenaHome';
 import {
   getPaperChallengeMilestones,
+  getPaperChallengeArchiveChartWidth,
   getPaperChallengeReminders,
   getPaperChallengeWindow,
   loadPaperChallengeStore,
@@ -140,6 +143,7 @@ export function EventArenaScreen() {
   const colors = useColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
   const [section, setSection] = useState<Section>('competition');
   const [store, setStore] = useState<PaperChallengeStore>({ enrollment: null, history: [] });
   const [storeState, setStoreState] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -158,9 +162,11 @@ export function EventArenaScreen() {
   const [rank, setRank] = useState<number | null>(null);
   const [sortMode, setSortMode] = useState<'date' | 'top'>('date');
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
+  const [selectedPastEventId, setSelectedPastEventId] = useState<string | null>(null);
   const [imageShareEvent, setImageShareEvent] = useState<PaperChallengeSummary | null>(null);
   const [sharingImage, setSharingImage] = useState(false);
   const imageRef = useRef<ViewShot | null>(null);
+  const accountRefreshInFlightRef = useRef(false);
   const [now, setNow] = useState(Date.now());
   const currentWindow = getPaperChallengeWindow(now);
   const hasCurrentEnrollment = store.enrollment?.eventId === currentWindow.id;
@@ -175,6 +181,7 @@ export function EventArenaScreen() {
     () => sortPaperChallengeHistory(store.history, sortMode),
     [store.history, sortMode],
   );
+  const selectedPastEvent = store.history.find((event) => event.eventId === selectedPastEventId) ?? null;
 
   const readStore = useCallback(async () => {
     setStoreState('loading');
@@ -190,6 +197,8 @@ export function EventArenaScreen() {
   }, []);
 
   const refreshAccountData = useCallback(async () => {
+    if (accountRefreshInFlightRef.current) return;
+    accountRefreshInFlightRef.current = true;
     setAccountLoading(true);
     setAccountError('');
     try {
@@ -228,6 +237,7 @@ export function EventArenaScreen() {
     } catch {
       setAccountError('Event account data could not be refreshed. Your saved trading data is unchanged.');
     } finally {
+      accountRefreshInFlightRef.current = false;
       setAccountLoading(false);
     }
   }, [currentWindow.id, store.enrollment]);
@@ -250,14 +260,19 @@ export function EventArenaScreen() {
     void (async () => {
       try {
         const currentEnrollment = store.enrollment?.eventId === currentWindow.id ? store.enrollment : null;
-        if (currentEnrollment) await ensureStoredEventAccount(currentEnrollment);
+        if (
+          currentEnrollment
+          && (currentWindow.phase !== 'upcoming' || currentEnrollment.startEquity !== null)
+        ) {
+          await ensureStoredEventAccount(currentEnrollment);
+        }
         if (!cancelled) await refreshAccountData();
       } catch {
         if (!cancelled) setAccountError('The isolated event account could not be loaded. Your saved trading data is unchanged.');
       }
     })();
     return () => { cancelled = true; };
-  }, [currentWindow.id, refreshAccountData, store.enrollment, storeState]);
+  }, [currentWindow.id, currentWindow.phase, refreshAccountData, store.enrollment, storeState]);
 
   useEffect(() => {
     if (!notificationsEnabled || Platform.OS === 'web') return;
@@ -411,7 +426,123 @@ export function EventArenaScreen() {
     }
   };
 
-  const renderPastEvents = () => (
+  const renderPastEventDetails = (event: PaperChallengeSummary) => {
+    const equityHistory = event.equityHistory ?? [];
+    const positions = event.finalPositions;
+    const transactions = event.transactions;
+    const metric = (label: string, value: string, valueColor = colors.foreground) => (
+      <View key={label} style={{ flexGrow: 1, flexBasis: '46%', minWidth: 132, padding: 11, borderRadius: 11, backgroundColor: colors.background }}>
+        <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10 }}>{label}</Text>
+        <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: valueColor, fontFamily: 'Inter_700Bold', fontSize: 14, marginTop: 4 }}>{value}</Text>
+      </View>
+    );
+    return (
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
+        <TouchableOpacity
+          testID="event-arena-past-detail-back"
+          accessibilityRole="button"
+          accessibilityLabel="Back to past events"
+          onPress={() => setSelectedPastEventId(null)}
+          style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start', paddingHorizontal: 8 }}
+        >
+          <Feather name="arrow-left" size={16} color={colors.primary} />
+          <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>Past events</Text>
+        </TouchableOpacity>
+        <View testID={`event-arena-past-detail-${event.eventId}`} style={{ marginTop: 8, padding: 15, borderRadius: 16, backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }}>
+          <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 0.7 }}>EVENT RESULTS · {event.eventId}</Text>
+          <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 18, marginTop: 5 }}>{dateRange(event.eventStartAtMs, event.eventEndAtMs)}</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 13 }}>
+            {metric('Starting value', money(event.startEquity))}
+            {metric('Final value', money(event.endEquity))}
+            {metric('Profit / loss', `${event.netProfit >= 0 ? '+' : ''}${money(event.netProfit)}`, event.netProfit >= 0 ? colors.buyColor : colors.sellColor)}
+            {metric('Return', `${event.returnPercent >= 0 ? '+' : ''}${event.returnPercent.toFixed(2)}%`, event.returnPercent >= 0 ? colors.buyColor : colors.sellColor)}
+            {metric('Completed trades', String(event.tradeCount))}
+            {metric('Final rank', event.finalRank ? `#${event.finalRank}` : 'Unavailable')}
+          </View>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={`Share ${dateRange(event.eventStartAtMs, event.eventEndAtMs)} event summary`}
+            onPress={() => { void shareSummary(event); }}
+            style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start', paddingHorizontal: 4 }}
+          >
+            <Feather name="share" size={15} color={colors.primary} />
+            <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>Share results</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ marginTop: 14, padding: 14, borderRadius: 15, backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }}>
+          <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>Recorded equity</Text>
+          {equityHistory.length >= 2 ? (
+            <>
+              <PortfolioLineChart
+                points={equityHistory}
+                width={getPaperChallengeArchiveChartWidth(screenWidth)}
+                height={180}
+                referenceLine={{ value: event.startEquity, label: 'Start' }}
+              />
+              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10 }}>
+                {equityHistory.length} saved observations · missing periods are not estimated
+              </Text>
+            </>
+          ) : (
+            <Text testID="event-arena-past-equity-unavailable" style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 7 }}>
+              {equityHistory.length === 1
+                ? 'Only one equity observation was saved, so a chart period is unavailable.'
+                : 'Equity history is unavailable for this event.'}
+            </Text>
+          )}
+        </View>
+
+        <View style={{ marginTop: 14, padding: 14, borderRadius: 15, backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }}>
+          <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>Positions at close</Text>
+          {positions === undefined ? (
+            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 7 }}>Final positions are unavailable for this older event.</Text>
+          ) : positions.length === 0 ? (
+            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 7 }}>No positions were held when this event ended.</Text>
+          ) : positions.map((position) => (
+            <View key={position.symbol} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10, paddingVertical: 10, borderTopWidth: 1, borderColor: colors.border }}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>{position.symbol} · {position.shares} shares</Text>
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>{position.companyName} · close {money(position.marketPrice)}</Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>{money(position.marketValue)}</Text>
+                <Text style={{ color: position.unrealizedPnL >= 0 ? colors.buyColor : colors.sellColor, fontFamily: 'Inter_500Medium', fontSize: 10, marginTop: 3 }}>{position.unrealizedPnL >= 0 ? '+' : ''}{money(position.unrealizedPnL)}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+
+        <View style={{ marginTop: 14, padding: 14, borderRadius: 15, backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }}>
+          <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>Completed trades</Text>
+          {transactions === undefined ? (
+            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 7 }}>Trade records are unavailable for this older event.</Text>
+          ) : transactions.length === 0 ? (
+            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 7 }}>No completed trades were recorded for this event.</Text>
+          ) : [...transactions].sort((a, b) => Date.parse(b.date) - Date.parse(a.date)).map((transaction, index) => {
+            const net = transaction.realizedPnL === undefined ? null : transaction.realizedPnL - (transaction.fee ?? 0);
+            return (
+              <View key={transaction.id ?? `${transaction.date}-${transaction.symbol}-${index}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 9, borderTopWidth: 1, borderColor: colors.border }}>
+                <Text style={{ width: 44, color: transaction.action === 'BUY' ? colors.primary : transaction.action === 'SELL' ? colors.destructive : colors.mutedForeground, fontFamily: 'Inter_700Bold', fontSize: 9 }}>{transaction.action}</Text>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>{transaction.symbol}{transaction.shares === undefined ? '' : ` · ${transaction.shares} shares`}</Text>
+                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 2 }}>{new Date(transaction.date).toLocaleString()}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>{transaction.total === undefined ? 'Unavailable' : money(transaction.total)}</Text>
+                  {transaction.action === 'SELL' && <Text style={{ color: net == null ? colors.mutedForeground : net >= 0 ? colors.buyColor : colors.sellColor, fontFamily: 'Inter_500Medium', fontSize: 9, marginTop: 2 }}>{net == null ? 'P/L unavailable' : `${net >= 0 ? '+' : ''}${money(net)}`}</Text>}
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      </ScrollView>
+    );
+  };
+
+  const renderPastEvents = () => selectedPastEvent
+    ? renderPastEventDetails(selectedPastEvent)
+    : (
     <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 28 }} showsVerticalScrollIndicator={false}>
       <View style={{ padding: 16, borderRadius: 18, backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }}>
         <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20 }}>Your event history</Text>
@@ -450,7 +581,7 @@ export function EventArenaScreen() {
             </TouchableOpacity>
           )}
         </View>
-      ) : sortedHistory.map((event, index) => (
+        ) : sortedHistory.map((event, index) => (
         <View key={event.eventId} testID={`event-arena-past-${event.eventId}`} style={{ marginTop: 12, padding: 15, borderRadius: 16, backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }}>
           <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 0.7 }}>
             {sortMode === 'top' ? `RANK #${index + 1} · ` : ''}{dateRange(event.eventStartAtMs, event.eventEndAtMs)}
@@ -459,7 +590,7 @@ export function EventArenaScreen() {
             {event.netProfit >= 0 ? '+' : ''}{money(event.netProfit)}
           </Text>
           <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, marginTop: 4 }}>
-            {money(event.endEquity)} ending equity · {event.returnPercent >= 0 ? '+' : ''}{event.returnPercent.toFixed(2)}%
+            {money(event.startEquity)} start · {money(event.endEquity)} end · {event.returnPercent >= 0 ? '+' : ''}{event.returnPercent.toFixed(2)}%
           </Text>
           <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 4 }}>
             {event.buyCount ?? 0} buys · {event.sellCount ?? 0} sells · {event.tradeCount} completed trades
@@ -495,8 +626,17 @@ export function EventArenaScreen() {
               style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 }}
             >
               <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11 }}>
-                {expandedEventId === event.eventId ? 'HIDE' : 'VIEW'} TRADES ({event.transactions?.length ?? 0})
+                {expandedEventId === event.eventId ? 'HIDE' : 'VIEW'} TRADES ({event.transactions === undefined ? 'unavailable' : event.transactions.length})
               </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              testID={`event-arena-open-past-detail-${event.eventId}`}
+              accessibilityRole="button"
+              accessibilityLabel={`View full results for ${dateRange(event.eventStartAtMs, event.eventEndAtMs)}`}
+              onPress={() => setSelectedPastEventId(event.eventId)}
+              style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 }}
+            >
+              <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11 }}>VIEW FULL RESULTS</Text>
             </TouchableOpacity>
           </View>
           {expandedEventId === event.eventId && (
@@ -552,6 +692,38 @@ export function EventArenaScreen() {
           <Feather name="activity" size={28} color={colors.mutedForeground} />
           <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 17, marginTop: 12 }}>No event account yet</Text>
           <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, textAlign: 'center', lineHeight: 18, marginTop: 6 }}>Join the scheduled competition to see event-only positions, orders, and completed trades here.</Text>
+          <TouchableOpacity
+            testID="event-arena-trades-open-competition"
+            accessibilityRole="button"
+            onPress={() => setSection('competition')}
+            style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 12, marginTop: 8 }}
+          >
+            <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 12 }}>VIEW COMPETITION</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (
+      store.enrollment.eventId === currentWindow.id
+      && currentWindow.phase === 'upcoming'
+      && store.enrollment.startEquity === null
+    ) {
+      return (
+        <View testID="event-arena-trades-awaiting-start" style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 }}>
+          <Feather name="clock" size={28} color={colors.primary} />
+          <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 17, marginTop: 12 }}>Event trading opens at the start</Text>
+          <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, textAlign: 'center', lineHeight: 18, marginTop: 6 }}>
+            Your separate Event Portfolio will be ready when the scheduled window opens. No event orders can be placed before then.
+          </Text>
+          <TouchableOpacity
+            testID="event-arena-trades-view-competition"
+            accessibilityRole="button"
+            onPress={() => setSection('competition')}
+            style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 12, marginTop: 8 }}
+          >
+            <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 12 }}>VIEW COMPETITION</Text>
+          </TouchableOpacity>
         </View>
       );
     }
@@ -567,7 +739,21 @@ export function EventArenaScreen() {
             <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>OPEN PAPER TRADING</Text>
           </TouchableOpacity>
         </View>
-        {accountError ? <Text accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 12, marginTop: 12 }}>{accountError}</Text> : null}
+        {accountError ? (
+          <View style={{ marginTop: 12 }}>
+            <Text accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 12 }}>{accountError}</Text>
+            <TouchableOpacity
+              testID="event-arena-trades-retry"
+              accessibilityRole="button"
+              accessibilityLabel="Retry loading event account data"
+              disabled={accountLoading}
+              onPress={() => { void refreshAccountData(); }}
+              style={{ minHeight: 44, alignSelf: 'flex-start', justifyContent: 'center', paddingHorizontal: 8 }}
+            >
+              <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11 }}>{accountLoading ? 'RETRYING…' : 'RETRY'}</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
         {accountLoading && <ActivityIndicator style={{ marginTop: 16 }} color={colors.primary} />}
         <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 16, marginTop: 20, marginBottom: 8 }}>Open positions</Text>
         {eventPositions.length === 0 ? (
@@ -618,8 +804,8 @@ export function EventArenaScreen() {
         saving={saving}
         onJoin={() => { void joinEvent(); }}
         onWithdraw={confirmWithdraw}
-        onRefresh={() => { void Promise.all([readStore(), refreshAccountData()]); }}
-        onOpenTrades={() => setSection('trades')}
+        onRefresh={() => { void readStore(); }}
+        onOpenTrades={() => router.push('/paper')}
       />
       {storeState === 'error' && (
         <View style={{ paddingHorizontal: 18, paddingBottom: 10 }}>
@@ -630,7 +816,7 @@ export function EventArenaScreen() {
         </View>
       )}
       {accountError ? <Text accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 11, paddingHorizontal: 20, paddingBottom: 9 }}>{accountError}</Text> : null}
-      <View style={{ marginHorizontal: 18, marginBottom: 14, paddingHorizontal: 14, minHeight: 64, borderWidth: 1, borderColor: colors.border, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.card }}>
+      <View style={{ marginHorizontal: 18, marginBottom: 8, paddingHorizontal: 12, minHeight: 54, borderWidth: 1, borderColor: colors.border, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.card }}>
         <View style={{ flex: 1 }}>
           <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 13 }}>Event notifications</Text>
           <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>Up to three reminders per event</Text>
@@ -698,6 +884,7 @@ export function EventArenaScreen() {
               enrollment={enrollment}
               onEnrollmentChange={updateLeaderboardEnrollment}
               onRankChange={setRank}
+              openOnMount
             />
           </ScrollView>
         )}

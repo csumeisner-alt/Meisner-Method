@@ -95,6 +95,7 @@ import {
   PAPER_CHALLENGE_STORAGE_KEY,
   PAPER_CHALLENGE_STARTING_BALANCE,
   persistPaperChallengeFinalization,
+  shouldEnsurePaperChallengeAccount,
   updatePaperChallengeStore,
   type PaperChallengeStore,
   type PaperChallengeSummary,
@@ -621,10 +622,23 @@ export default function PaperScreen() {
   useEffect(() => {
     const enrollment = paperChallenge.enrollment;
     if (!loaded || !paperChallengeReady || !enrollment) return;
-    if (
-      enrollment.startEquity === null
-      && (challengeNow < enrollment.eventStartAtMs || challengeNow >= enrollment.eventEndAtMs)
-    ) return;
+    if (!shouldEnsurePaperChallengeAccount(enrollment, challengeNow)) {
+      const prematureEventAccountIsSelected = enrollment.startEquity === null
+        && challengeNow < enrollment.eventStartAtMs
+        && activeIdRef.current === enrollment.accountId;
+      const fallbackAccount = accountsRef.current.find((item) => !item.id.startsWith('paper-event:'));
+      if (prematureEventAccountIsSelected && fallbackAccount) {
+        void saveAll(
+          accountsRef.current,
+          positionsRef.current,
+          transactionsRef.current,
+          ordersRef.current,
+          lotsRef.current,
+          fallbackAccount.id,
+        );
+      }
+      return;
+    }
     const existingEventAccount = accountsRef.current.find((item) => item.id === enrollment.accountId);
     if (existingEventAccount) {
       if (activeIdRef.current !== existingEventAccount.id) {
@@ -1337,6 +1351,12 @@ export default function PaperScreen() {
         return {
           status: 'rejected',
           message: 'The event week has ended. Choose another paper account to continue trading.',
+        };
+      }
+      if (enrollment?.accountId === accountId && Date.now() < enrollment.eventStartAtMs) {
+        return {
+          status: 'rejected',
+          message: 'This event has not started yet. Your event account will be ready at the scheduled opening.',
         };
       }
 

@@ -258,6 +258,13 @@ export function ensurePaperChallengeAccount(
   };
 }
 
+export function shouldEnsurePaperChallengeAccount(
+  enrollment: PaperChallengeEnrollment,
+  nowMs = Date.now(),
+): boolean {
+  return enrollment.startEquity !== null || nowMs >= enrollment.eventStartAtMs;
+}
+
 export function getMissingPaperChallengeQuoteSymbols(
   positions: Array<{ symbol: string; shares: number }>,
   quotes: Record<string, { price: number }>,
