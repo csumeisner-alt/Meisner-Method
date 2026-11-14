@@ -27,6 +27,19 @@ export function getEventArenaPodiumSlots<T extends { rank: number }>(entries: T[
   }));
 }
 
+export function getEventArenaStandingsEntries<T extends { rank: number }>(entries: T[]) {
+  return entries.filter((entry) => entry.rank > 3);
+}
+
+export function getEventArenaOwnEntry<T extends { isCurrentUser: boolean }>(
+  entries: T[],
+  optedIn: boolean,
+) {
+  if (!optedIn) return null;
+  const ownEntries = entries.filter((entry) => entry.isCurrentUser);
+  return ownEntries.length === 1 ? ownEntries[0] : null;
+}
+
 function formatRemainingTime(milliseconds: number) {
   const minutes = Math.max(1, Math.ceil(milliseconds / 60_000));
   const days = Math.floor(minutes / (24 * 60));

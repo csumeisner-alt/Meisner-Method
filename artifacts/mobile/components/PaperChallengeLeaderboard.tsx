@@ -45,11 +45,12 @@ import {
   formatEventArenaMoney,
   formatEventArenaReturn,
   formatEventArenaSignedMoney,
+  getEventArenaOwnEntry,
   getEventArenaPodiumSlots,
+  getEventArenaStandingsEntries,
   getEventArenaStatus,
 } from '@/lib/eventArenaLeaderboard';
 import {
-  getEventArenaCompetitiveBadges,
   getEventArenaCompetitiveChanges,
   getEventArenaNextRankReturnGap,
   getEventArenaWindowProgress,
@@ -117,24 +118,6 @@ const dateRangeLabel = (startAtMs: number, endAtMs: number) => {
   const end = new Date(endAtMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   return `${start}–${end}`;
 };
-
-function CompetitiveBadge({ label, color }: { label: string; color: string }) {
-  return (
-    <View style={{
-      maxWidth: '100%',
-      paddingHorizontal: 6,
-      paddingVertical: 3,
-      borderRadius: 10,
-      backgroundColor: `${color}18`,
-      borderWidth: 1,
-      borderColor: `${color}55`,
-    }}>
-      <Text allowFontScaling style={{ color, fontFamily: 'Inter_700Bold', fontSize: 8 }}>
-        {label}
-      </Text>
-    </View>
-  );
-}
 
 async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event: EventWindow) {
   const raw = await AsyncStorage.getItem('@stocksense/paper_v2');
@@ -323,7 +306,8 @@ export function PaperChallengeLeaderboard({
     () => optedIn ? entries.filter((entry) => entry.isCurrentUser) : [],
     [entries, optedIn],
   );
-  const ownEntry = matchingOwnEntries.length === 1 ? matchingOwnEntries[0] : null;
+  const ownEntry = useMemo(() => getEventArenaOwnEntry(entries, optedIn), [entries, optedIn]);
+  const standingsEntries = useMemo(() => getEventArenaStandingsEntries(entries), [entries]);
   const transferImpact: EventCashTransferImpact = getEventCashTransferImpact(
     eventAccount,
     eventOrders,
@@ -651,14 +635,10 @@ export function PaperChallengeLeaderboard({
 
   const renderEntry = (entry: LeaderboardEntry) => {
     const change = competitiveChanges.get(entry.participantToken);
-    const badges = getEventArenaCompetitiveBadges(entry.rank, entry.tradeCount, change);
     const placesMoved = change?.placesMoved ?? 0;
-    const progressAnnouncement = [
-      ...(badges.length ? [`Self-reported badges: ${badges.join(', ')}`] : []),
-      ...(change && placesMoved !== 0
-        ? [`self-reported rank movement ${placesMoved > 0 ? 'up' : 'down'} ${Math.abs(placesMoved)} ${Math.abs(placesMoved) === 1 ? 'place' : 'places'}`]
-        : []),
-    ].join('. ');
+    const progressAnnouncement = change && placesMoved !== 0
+      ? `Self-reported rank movement ${placesMoved > 0 ? 'up' : 'down'} ${Math.abs(placesMoved)} ${Math.abs(placesMoved) === 1 ? 'place' : 'places'}.`
+      : '';
     return (
     <Animated.View
       key={`${entry.rank}-${entry.alias}`}
@@ -666,9 +646,9 @@ export function PaperChallengeLeaderboard({
         opacity: reduceMotion ? 1 : rankAnimationsRef.current.get(entry.participantToken) ?? 1,
         borderBottomWidth: 1,
         borderWidth: entry.isCurrentUser ? 1 : 0,
-        borderColor: entry.isCurrentUser ? colors.goldMuted : colors.border,
+        borderColor: entry.isCurrentUser ? colors.gold : colors.border,
         borderRadius: entry.isCurrentUser ? 10 : 0,
-        backgroundColor: entry.isCurrentUser ? colors.card : 'transparent',
+        backgroundColor: entry.isCurrentUser ? `${colors.gold}10` : 'transparent',
         marginVertical: entry.isCurrentUser ? 3 : 0,
       }}
     >
@@ -678,64 +658,51 @@ export function PaperChallengeLeaderboard({
         accessibilityLabel={`Rank ${entry.rank}, ${entry.alias}${entry.isCurrentUser ? ', your score' : ''}, account value ${money(entry.equity)}, profit or loss ${signedMoney(entry.profitLoss)}, ${returnLabel(entry.returnPercent)} return, ${entry.tradeCount == null ? 'trade count unavailable' : `${entry.tradeCount} trades`}.${progressAnnouncement ? ` ${progressAnnouncement}.` : ''} View public score summary.`}
         onPress={() => setDetail(entry)}
         style={{
-          flexDirection: 'column',
-          alignItems: 'stretch',
-          paddingVertical: 12,
-          paddingHorizontal: entry.isCurrentUser ? 9 : 0,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 10,
+          minHeight: 68,
+          paddingVertical: 10,
+          paddingHorizontal: entry.isCurrentUser ? 10 : 2,
         }}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Text style={{
-            width: 34,
+        <Text style={{
+            width: 42,
             color: colors.mutedForeground,
             fontFamily: 'Inter_700Bold',
-            fontSize: 14,
+            fontSize: 17,
           }}>#{entry.rank}</Text>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Text style={{ flexShrink: 1, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 13 }} numberOfLines={1}>
-                {entry.alias}
-              </Text>
-              {entry.isCurrentUser && (
-                <Text style={{ color: colors.gold, fontFamily: 'Inter_700Bold', fontSize: 8 }}>YOU</Text>
-              )}
-            </View>
-            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>
-              {money(entry.equity)} account value
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={{ flexShrink: 1, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 16 }} numberOfLines={1}>
+              {entry.alias}
             </Text>
-          </View>
-          <View style={{ alignItems: 'flex-end', maxWidth: '42%', minWidth: 0 }}>
-            <Text adjustsFontSizeToFit numberOfLines={1} style={{ color: entry.returnPercent >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 13 }}>
-              {returnLabel(entry.returnPercent)}
-            </Text>
-            <Text adjustsFontSizeToFit numberOfLines={1} style={{ color: entry.profitLoss >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_600SemiBold', fontSize: 10, marginTop: 3 }}>
-              {signedMoney(entry.profitLoss)}
-            </Text>
-            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 9, marginTop: 2 }}>
-              {entry.tradeCount == null ? 'Trades unavailable' : `${entry.tradeCount} trades`}
-            </Text>
-          </View>
-        </View>
-        {(badges.length > 0 || placesMoved !== 0) && (
-          <View style={{ width: '100%', flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
-            {badges.map((badge) => (
-              <CompetitiveBadge
-                key={badge}
-                label={badge}
-                color={badge === 'CHAMPION' ? '#D8B45A' : badge === 'PODIUM FINISH' ? '#C68762' : badge === 'RISING STAR' ? '#A88BFF' : colors.primary}
-              />
-            ))}
-            {placesMoved !== 0 && (
-              <CompetitiveBadge
-                label={`${placesMoved > 0 ? '↑' : '↓'} ${Math.abs(placesMoved)} ${Math.abs(placesMoved) === 1 ? 'PLACE' : 'PLACES'}`}
-                color={placesMoved > 0 ? colors.primary : colors.destructive}
-              />
+            {entry.isCurrentUser && (
+              <Text style={{ color: colors.gold, fontFamily: 'Inter_700Bold', fontSize: 9 }}>YOU</Text>
             )}
-            <Text style={{ flexBasis: '100%', color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 8 }}>
-              SELF-REPORTED LEADERBOARD DATA
-            </Text>
           </View>
-        )}
+          {entry.isCurrentUser && entry.rank > 1 && (() => {
+            const returnGap = getEventArenaNextRankReturnGap(entry, entries);
+            return returnGap === null ? null : (
+              <Text testID="paper-event-next-rank-gap" style={{ color: colors.gold, fontFamily: 'Inter_500Medium', fontSize: 10, marginTop: 3 }}>
+                {returnGap.toFixed(2)} percentage points to rank #{entry.rank - 1}
+              </Text>
+            );
+          })()}
+          {change && placesMoved !== 0 && (
+            <Text style={{ color: placesMoved > 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_600SemiBold', fontSize: 10, marginTop: 3 }}>
+              {placesMoved > 0 ? '↑' : '↓'} {Math.abs(placesMoved)} {Math.abs(placesMoved) === 1 ? 'place' : 'places'}
+            </Text>
+          )}
+        </View>
+        <View style={{ alignItems: 'flex-end', maxWidth: '38%', minWidth: 0 }}>
+          <Text adjustsFontSizeToFit numberOfLines={1} style={{ color: entry.returnPercent >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 17 }}>
+            {returnLabel(entry.returnPercent)}
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 9, marginTop: 2 }}>
+            return
+          </Text>
+        </View>
       </TouchableOpacity>
     </Animated.View>
     );
@@ -744,111 +711,72 @@ export function PaperChallengeLeaderboard({
   const renderPodiumCard = (slot: (typeof podiumSlots)[number]) => {
     const entry = slot.entry;
     const change = entry ? competitiveChanges.get(entry.participantToken) : undefined;
-    const badges = entry ? getEventArenaCompetitiveBadges(entry.rank, entry.tradeCount, change) : [];
     const placesMoved = change?.placesMoved ?? 0;
-    const progressAnnouncement = [
-      ...(badges.length ? [`Self-reported badges: ${badges.join(', ')}`] : []),
-      ...(change && placesMoved !== 0
-        ? [`self-reported rank movement ${placesMoved > 0 ? 'up' : 'down'} ${Math.abs(placesMoved)} ${Math.abs(placesMoved) === 1 ? 'place' : 'places'}`]
-        : []),
-    ].join('. ');
     const medal = slot.rank === 1
-      ? { label: 'CHAMPION', color: '#D8B45A', height: compactPodium ? 202 : 218 }
+      ? { label: 'CHAMPION', color: '#D8B45A' }
       : slot.rank === 2
-        ? { label: 'RUNNER-UP', color: '#AEB9C6', height: compactPodium ? 176 : 188 }
-        : { label: 'THIRD PLACE', color: '#C68762', height: compactPodium ? 164 : 176 };
+        ? { label: 'RUNNER-UP', color: '#AEB9C6' }
+        : { label: 'THIRD PLACE', color: '#C68762' };
+    const isChampion = slot.rank === 1;
     return (
       <Animated.View
         key={slot.rank}
-        style={{ opacity: !entry || reduceMotion ? 1 : rankAnimationsRef.current.get(entry.participantToken) ?? 1 }}
+        style={{ width: isChampion ? '100%' : undefined, flex: isChampion ? undefined : 1, minWidth: 0, opacity: !entry || reduceMotion ? 1 : rankAnimationsRef.current.get(entry.participantToken) ?? 1 }}
       >
-      <TouchableOpacity
-        testID={`paper-event-podium-${slot.rank}`}
-        accessibilityRole={entry ? 'button' : 'text'}
-        accessibilityLabel={entry
-          ? `Rank ${slot.rank}, ${entry.alias}, ${returnLabel(entry.returnPercent)} return, profit or loss ${signedMoney(entry.profitLoss)}, account value ${money(entry.equity)}.${progressAnnouncement ? ` ${progressAnnouncement}.` : ''}`
-          : `Rank ${slot.rank}, waiting for competitor`}
-        disabled={!entry}
-        onPress={() => { if (entry) setDetail(entry as LeaderboardEntry); }}
-        style={{
-          flex: 1,
-          minWidth: 0,
-          height: medal.height,
-          justifyContent: 'flex-end',
-          alignItems: 'center',
-          paddingHorizontal: compactPodium ? 5 : 8,
-          paddingTop: 10,
-          paddingBottom: compactPodium ? 9 : 11,
-          borderTopLeftRadius: 14,
-          borderTopRightRadius: 14,
-          borderBottomLeftRadius: 10,
-          borderBottomRightRadius: 10,
-          borderWidth: 1,
-          borderColor: entry ? `${medal.color}88` : colors.border,
-          backgroundColor: entry ? `${medal.color}${slot.rank === 1 ? '1E' : '12'}` : colors.card,
-          opacity: entry ? 1 : 0.78,
-        }}
-      >
-        {entry ? (
-          <>
-            <View style={{
-              width: compactPodium ? 25 : 29,
-              height: compactPodium ? 25 : 29,
-              borderRadius: 16,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: `${medal.color}24`,
-              marginBottom: 5,
-            }}>
-              <Feather name="award" size={compactPodium ? 14 : 16} color={medal.color} />
-            </View>
-            <Text style={{ color: medal.color, fontFamily: 'Inter_700Bold', fontSize: compactPodium ? 7 : 8, letterSpacing: 0.4 }}>
-              {medal.label}
-            </Text>
-            <Text numberOfLines={1} adjustsFontSizeToFit style={{ maxWidth: '100%', color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: compactPodium ? 11 : 12, marginTop: 5 }}>
-              {entry.alias}
-            </Text>
-            {(badges.length > 0 || placesMoved !== 0) && (
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 3, marginTop: 4 }}>
-                {badges.map((badge) => (
-                  <CompetitiveBadge
-                    key={badge}
-                    label={badge}
-                    color={badge === 'CHAMPION' ? '#D8B45A' : badge === 'PODIUM FINISH' ? '#C68762' : badge === 'RISING STAR' ? '#A88BFF' : colors.primary}
-                  />
-                ))}
-                {placesMoved !== 0 && (
-                  <CompetitiveBadge
-                    label={`${placesMoved > 0 ? '↑' : '↓'} ${Math.abs(placesMoved)} PLACES`}
-                    color={placesMoved > 0 ? colors.primary : colors.destructive}
-                  />
-                )}
-                <Text style={{ flexBasis: '100%', color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 7, textAlign: 'center' }}>SELF-REPORTED</Text>
+        <TouchableOpacity
+          testID={`paper-event-podium-${slot.rank}`}
+          accessibilityRole={entry ? 'button' : 'text'}
+          accessibilityLabel={entry
+            ? `Rank ${slot.rank}, ${entry.alias}${entry.isCurrentUser ? ', your score' : ''}, ${returnLabel(entry.returnPercent)} return, profit or loss ${signedMoney(entry.profitLoss)}, account value ${money(entry.equity)}.${change && placesMoved !== 0 ? ` Self-reported rank movement ${placesMoved > 0 ? 'up' : 'down'} ${Math.abs(placesMoved)} ${Math.abs(placesMoved) === 1 ? 'place' : 'places'}.` : ''}`
+            : `Rank ${slot.rank}, waiting for competitor`}
+          disabled={!entry}
+          onPress={() => { if (entry) setDetail(entry as LeaderboardEntry); }}
+          style={{
+            minHeight: entry ? (isChampion ? compactPodium ? 178 : 194 : compactPodium ? 126 : 142) : 68,
+            justifyContent: 'center',
+            alignItems: 'center',
+            paddingHorizontal: isChampion ? 14 : compactPodium ? 7 : 10,
+            paddingVertical: isChampion ? 14 : 11,
+            borderRadius: isChampion ? 18 : 14,
+            borderWidth: entry?.isCurrentUser ? 2 : 1,
+            borderColor: entry?.isCurrentUser ? colors.gold : entry ? `${medal.color}88` : colors.border,
+            backgroundColor: entry?.isCurrentUser ? `${colors.gold}12` : entry ? `${medal.color}${isChampion ? '22' : '12'}` : colors.card,
+          }}
+        >
+          {entry ? (
+            <>
+              <Feather name="award" size={isChampion ? compactPodium ? 34 : 40 : 21} color={medal.color} />
+              <Text style={{ color: medal.color, fontFamily: 'Inter_700Bold', fontSize: isChampion ? 13 : 14, letterSpacing: 0.4, marginTop: isChampion ? 6 : 4 }}>
+                #{slot.rank}
+              </Text>
+              <Text style={{ color: medal.color, fontFamily: 'Inter_700Bold', fontSize: isChampion ? 10 : 8, letterSpacing: 0.7, marginTop: 2 }}>
+                {medal.label}
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, maxWidth: '100%', marginTop: isChampion ? 7 : 5 }}>
+                <Text numberOfLines={1} adjustsFontSizeToFit style={{ maxWidth: '100%', color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: isChampion ? compactPodium ? 20 : 23 : compactPodium ? 14 : 16 }}>
+                  {entry.alias}
+                </Text>
+                {entry.isCurrentUser && <Text style={{ color: colors.gold, fontFamily: 'Inter_700Bold', fontSize: 9 }}>YOU</Text>}
               </View>
-            )}
-            <Text numberOfLines={1} adjustsFontSizeToFit style={{ maxWidth: '100%', color: entry.returnPercent >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_700Bold', fontSize: compactPodium ? 13 : 15, marginTop: 6 }}>
-              {returnLabel(entry.returnPercent)}
-            </Text>
-            <Text numberOfLines={1} adjustsFontSizeToFit style={{ maxWidth: '100%', color: entry.profitLoss >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_600SemiBold', fontSize: compactPodium ? 9 : 10, marginTop: 4 }}>
-              {signedMoney(entry.profitLoss)}
-            </Text>
-            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: compactPodium ? 8 : 9, marginTop: 5 }}>
-              ACCOUNT VALUE
-            </Text>
-            <Text numberOfLines={1} adjustsFontSizeToFit style={{ maxWidth: '100%', color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: compactPodium ? 9 : 10, marginTop: 2 }}>
-              {money(entry.equity)}
-            </Text>
-          </>
-        ) : (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', width: '100%' }}>
-            <Text style={{ color: medal.color, fontFamily: 'Inter_700Bold', fontSize: compactPodium ? 11 : 12 }}>#{slot.rank}</Text>
-            <Feather name="user-plus" size={compactPodium ? 14 : 16} color={colors.mutedForeground} style={{ marginTop: 8, marginBottom: 6 }} />
-            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: compactPodium ? 8 : 9, textAlign: 'center' }}>
-              Waiting for competitor
-            </Text>
-          </View>
-        )}
-      </TouchableOpacity>
+              <Text numberOfLines={1} adjustsFontSizeToFit style={{ maxWidth: '100%', color: entry.returnPercent >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_700Bold', fontSize: isChampion ? compactPodium ? 27 : 31 : compactPodium ? 18 : 21, marginTop: isChampion ? 6 : 4 }}>
+                {returnLabel(entry.returnPercent)}
+              </Text>
+              {change && placesMoved !== 0 && (
+                <Text style={{ color: placesMoved > 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_600SemiBold', fontSize: 9, marginTop: 4 }}>
+                  {placesMoved > 0 ? '↑' : '↓'} {Math.abs(placesMoved)} {Math.abs(placesMoved) === 1 ? 'place' : 'places'}
+                </Text>
+              )}
+            </>
+          ) : (
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
+              <Text style={{ color: medal.color, fontFamily: 'Inter_700Bold', fontSize: 12 }}>#{slot.rank}</Text>
+              <Feather name="user-plus" size={13} color={colors.mutedForeground} />
+              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>
+                Compete for {slot.rank === 1 ? 'first' : slot.rank === 2 ? 'second' : 'third'}
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
       </Animated.View>
     );
   };
@@ -1093,22 +1021,29 @@ export function PaperChallengeLeaderboard({
             </ScrollView>
           ) : (
             <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: Platform.OS === 'web' ? 24 : insets.bottom + 18 }}>
-              <View testID="paper-event-leaderboard-current-event" style={{ marginBottom: 17, padding: 13, borderRadius: 13, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
-                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 10 }}>
-                  EVENT ARENA · {dateRangeLabel(event.startAtMs, event.endAtMs)}
-                </Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7, marginTop: 8 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 5, paddingHorizontal: 8, borderRadius: 20, backgroundColor: `${eventStatus.phase === 'active' ? colors.primary : colors.gold}18` }}>
+              <View testID="paper-event-leaderboard-current-event" style={{ marginBottom: 14, padding: 12, borderRadius: 13, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between', gap: 6 }}>
+                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 10 }}>
+                    EVENT ARENA · {dateRangeLabel(event.startAtMs, event.endAtMs)}
+                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 4, paddingHorizontal: 7, borderRadius: 20, backgroundColor: `${eventStatus.phase === 'active' ? colors.primary : colors.gold}18` }}>
                     <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: eventStatus.phase === 'active' ? colors.primary : colors.gold }} />
                     <Text style={{ color: eventStatus.phase === 'active' ? colors.primary : colors.gold, fontFamily: 'Inter_700Bold', fontSize: 9 }}>
                       {eventStatus.label}
                     </Text>
                   </View>
-                  <Text testID="paper-event-leaderboard-participant-count" style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 7 }}>
+                  <Text testID="paper-event-leaderboard-participant-count" style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>
                     {entries.length} {entries.length === 1 ? 'participant' : 'participants'}
                   </Text>
-                  <Text testID="paper-event-leaderboard-countdown" style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>
+                  <Text style={{ color: colors.mutedForeground, fontSize: 10 }}>·</Text>
+                  <Text testID="paper-event-leaderboard-countdown" style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>
                     {eventStatus.countdown}
+                  </Text>
+                  <Text style={{ color: colors.mutedForeground, fontSize: 10 }}>·</Text>
+                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 10 }}>
+                    {Math.round(eventProgress)}% complete
                   </Text>
                 </View>
                 <View
@@ -1116,24 +1051,17 @@ export function PaperChallengeLeaderboard({
                   accessibilityRole="progressbar"
                   accessibilityLabel={`Event progress ${Math.round(eventProgress)} percent`}
                   accessibilityValue={{ min: 0, max: 100, now: Math.round(eventProgress) }}
-                  style={{ height: 5, overflow: 'hidden', borderRadius: 4, marginTop: 10, backgroundColor: colors.border }}
+                  style={{ height: 4, overflow: 'hidden', borderRadius: 4, marginTop: 8, backgroundColor: colors.border }}
                 >
                   <View style={{ width: `${eventProgress}%`, height: '100%', borderRadius: 4, backgroundColor: eventStatus.phase === 'ended' ? colors.gold : colors.primary }} />
                 </View>
-                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 8, marginTop: 4 }}>
-                  EVENT PROGRESS · {Math.round(eventProgress)}%
-                </Text>
-                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 8 }}>
-                  Last successful update: {timeLabel(lastUpdated)}
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 9, marginTop: 6 }}>
+                  SELF-REPORTED · NOT INDEPENDENTLY VERIFIED · Updated {timeLabel(lastUpdated)}
                 </Text>
               </View>
 
-              <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7, marginBottom: 4 }}>
-                <Text style={{ flex: 1, minWidth: 90, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 17 }}>Championship standings</Text>
-                <Text style={{ color: colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 9 }}>SELF-REPORTED · UNVERIFIED</Text>
-              </View>
-              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginBottom: 12 }}>
-                Scores and event values are reported by participants and are not independently checked.
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 18, marginBottom: 10 }}>
+                Championship standings
               </Text>
               {loading && entries.length === 0 ? (
                 <View style={{ alignItems: 'center', padding: 24 }}>
@@ -1147,136 +1075,48 @@ export function PaperChallengeLeaderboard({
                     <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11 }}>RETRY</Text>
                   </TouchableOpacity>
                 </View>
-              ) : entries.length === 0 ? (
-                <>
-                  <View testID="paper-event-leaderboard-empty" style={{ alignItems: 'center', paddingVertical: 12 }}>
-                    <Feather name="users" size={22} color={colors.mutedForeground} />
-                    <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, paddingTop: 9, textAlign: 'center' }}>
-                      No participants have opted in for this event yet.
-                    </Text>
-                    <TouchableOpacity testID="refresh-empty-paper-event-leaderboard" accessibilityRole="button" onPress={() => { void refresh(); }} style={{ paddingVertical: 8, paddingHorizontal: 12, marginTop: 4 }}>
-                      <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10 }}>REFRESH</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <View testID="paper-event-leaderboard-podium" style={{ marginTop: 8 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                      <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 13 }}>Podium</Text>
-                      <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 9 }}>TOP THREE</Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: compactPodium ? 5 : 8 }}>
-                      {[2, 1, 3].map((rank) => {
-                        const slot = podiumSlots.find((item) => item.rank === rank);
-                        return slot ? renderPodiumCard(slot) : null;
-                      })}
-                    </View>
-                  </View>
-                </>
               ) : (
                 <>
-                  <View testID="paper-event-leaderboard-podium" style={{ marginTop: 2 }}>
+                  {entries.length === 0 && (
+                    <View testID="paper-event-leaderboard-empty" style={{ alignItems: 'center', paddingVertical: 12 }}>
+                      <Feather name="users" size={22} color={colors.mutedForeground} />
+                      <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, paddingTop: 9, textAlign: 'center' }}>
+                        No participants have opted in for this event yet.
+                      </Text>
+                      <TouchableOpacity testID="refresh-empty-paper-event-leaderboard" accessibilityRole="button" onPress={() => { void refresh(); }} style={{ paddingVertical: 8, paddingHorizontal: 12, marginTop: 4 }}>
+                        <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10 }}>REFRESH</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  <View testID="paper-event-leaderboard-podium" style={{ marginTop: entries.length === 0 ? 4 : 2 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                      <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 13 }}>Podium</Text>
+                      <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>Podium</Text>
                       <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 9 }}>TOP THREE</Text>
                     </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: compactPodium ? 5 : 8 }}>
-                      {[2, 1, 3].map((rank) => {
-                        const slot = podiumSlots.find((item) => item.rank === rank);
-                        return slot ? renderPodiumCard(slot) : null;
-                      })}
+                    {podiumSlots[0] && renderPodiumCard(podiumSlots[0])}
+                    <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: compactPodium ? 7 : 10, marginTop: 8 }}>
+                      {podiumSlots.slice(1).map((slot) => renderPodiumCard(slot))}
                     </View>
                   </View>
-                  {ownEntry && (
-                    <Animated.View
-                      testID="paper-event-leaderboard-your-position"
-                      style={{
-                        opacity: reduceMotion ? 1 : rankAnimationsRef.current.get(ownEntry.participantToken) ?? 1,
-                        padding: 14,
-                        marginTop: 15,
-                        marginBottom: 13,
-                        borderRadius: 13,
-                        borderWidth: 1,
-                        borderColor: ownEntry.rank <= 3 ? (ownEntry.rank === 1 ? '#D8B45A' : ownEntry.rank === 2 ? '#AEB9C6' : '#C68762') : colors.goldMuted,
-                        backgroundColor: colors.card,
-                      }}
-                    >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <Feather name="award" size={16} color={ownEntry.rank === 1 ? '#D8B45A' : ownEntry.rank === 2 ? '#AEB9C6' : ownEntry.rank === 3 ? '#C68762' : colors.gold} />
-                        <Text style={{ color: colors.gold, fontFamily: 'Inter_700Bold', fontSize: 10 }}>YOUR POSITION</Text>
-                        {ownEntry.rank <= 3 && (
-                          <Text style={{ marginLeft: 'auto', color: ownEntry.rank === 1 ? '#D8B45A' : ownEntry.rank === 2 ? '#AEB9C6' : '#C68762', fontFamily: 'Inter_700Bold', fontSize: 9 }}>
-                            {ownEntry.rank === 1 ? 'GOLD' : ownEntry.rank === 2 ? 'SILVER' : 'BRONZE'}
-                          </Text>
-                        )}
-                      </View>
-                      <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 17, marginTop: 6 }}>
-                        Rank #{ownEntry.rank} · {ownEntry.alias}
-                      </Text>
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>
-                        {getEventArenaCompetitiveBadges(
-                          ownEntry.rank,
-                          ownEntry.tradeCount,
-                          competitiveChanges.get(ownEntry.participantToken),
-                        ).map((badge) => (
-                          <CompetitiveBadge
-                            key={badge}
-                            label={badge}
-                            color={badge === 'CHAMPION' ? '#D8B45A' : badge === 'PODIUM FINISH' ? '#C68762' : badge === 'RISING STAR' ? '#A88BFF' : colors.primary}
-                          />
-                        ))}
-                        {competitiveChanges.has(ownEntry.participantToken) && competitiveChanges.get(ownEntry.participantToken)!.placesMoved !== 0 && (
-                          <CompetitiveBadge
-                            label={`${competitiveChanges.get(ownEntry.participantToken)!.placesMoved > 0 ? '↑' : '↓'} ${Math.abs(competitiveChanges.get(ownEntry.participantToken)!.placesMoved)} ${Math.abs(competitiveChanges.get(ownEntry.participantToken)!.placesMoved) === 1 ? 'PLACE' : 'PLACES'}`}
-                            color={competitiveChanges.get(ownEntry.participantToken)!.placesMoved > 0 ? colors.primary : colors.destructive}
-                          />
-                        )}
-                      </View>
-                      <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 8, marginTop: 4 }}>
-                        ACHIEVEMENTS AND MOVEMENT USE SELF-REPORTED LEADERBOARD DATA
-                      </Text>
-                      {ownEntry.rank > 1 && (() => {
-                        const returnGap = getEventArenaNextRankReturnGap(ownEntry, entries);
-                        return returnGap === null ? null : (
-                          <Text testID="paper-event-next-rank-gap" style={{ color: colors.gold, fontFamily: 'Inter_600SemiBold', fontSize: 10, marginTop: 7 }}>
-                            {returnGap.toFixed(2)} percentage points to rank #{ownEntry.rank - 1}
-                          </Text>
-                        );
-                      })()}
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 10 }}>
-                        {[
-                          { label: 'RETURN', value: returnLabel(ownEntry.returnPercent), color: ownEntry.returnPercent >= 0 ? colors.primary : colors.destructive },
-                          { label: 'PROFIT / LOSS', value: signedMoney(ownEntry.profitLoss), color: ownEntry.profitLoss >= 0 ? colors.primary : colors.destructive },
-                          { label: 'ACCOUNT VALUE', value: money(ownEntry.equity), color: colors.foreground },
-                        ].map((metric) => (
-                          <View key={metric.label} style={{ flexGrow: 1, flexBasis: 85, minWidth: 0, padding: 8, borderRadius: 9, backgroundColor: colors.background }}>
-                            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 8 }}>{metric.label}</Text>
-                            <Text adjustsFontSizeToFit numberOfLines={1} style={{ color: metric.color, fontFamily: 'Inter_700Bold', fontSize: 12, marginTop: 4 }}>{metric.value}</Text>
-                          </View>
-                        ))}
-                      </View>
-                      {averageCostFallbackByEvent[event.id] && (
-                        <Text
-                          testID="paper-event-average-cost-fallback"
-                          accessibilityRole="text"
-                          style={{ color: colors.gold, fontFamily: 'Inter_600SemiBold', fontSize: 10, lineHeight: 15, marginTop: 8 }}
-                        >
-                          A market quote was unavailable for one or more holdings, so average cost was used for those positions in your score.
-                        </Text>
-                      )}
-                    </Animated.View>
-                  )}
-                  {entries.some((entry) => entry.rank > 3) && (
+                  {standingsEntries.length > 0 && (
                     <View testID="paper-event-leaderboard-list" style={{ marginTop: 4 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 4 }}>
                         <Text style={{ flex: 1, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>Standings</Text>
                         <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 9 }}>
-                          {entries.filter((entry) => entry.rank > 3).length} MORE
+                          {standingsEntries.length} MORE
                         </Text>
                       </View>
-                      <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginBottom: 4 }}>
-                        Participants ranked below the podium
-                      </Text>
-                      {entries.filter((entry) => entry.rank > 3).map((entry) => renderEntry(entry as LeaderboardEntry))}
+                      {standingsEntries.map((entry) => renderEntry(entry as LeaderboardEntry))}
                     </View>
+                  )}
+                  {ownEntry && averageCostFallbackByEvent[event.id] && (
+                    <Text
+                      testID="paper-event-average-cost-fallback"
+                      accessibilityRole="text"
+                      style={{ color: colors.gold, fontFamily: 'Inter_500Medium', fontSize: 10, lineHeight: 15, marginTop: 10 }}
+                    >
+                      A market quote was unavailable for one or more holdings, so average cost was used for those positions in your score.
+                    </Text>
                   )}
                 </>
               )}
@@ -1295,9 +1135,6 @@ export function PaperChallengeLeaderboard({
                   </TouchableOpacity>
                 </View>
               )}
-              <Text testID="paper-event-leaderboard-last-updated" style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 10 }}>
-                Last successful update: {timeLabel(lastUpdated)}
-              </Text>
             </ScrollView>
           )}
         </View>

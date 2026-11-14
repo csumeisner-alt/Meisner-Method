@@ -70,7 +70,8 @@ test("event enrollment enables sharing with compact privacy controls", () => {
   assert.match(leaderboard, /useGetEventArenaLeaderboard/);
   assert.match(leaderboard, /X-Event-Arena-Installation-Id/);
   assert.match(leaderboard, /entry\.isCurrentUser/);
-  assert.match(leaderboard, /paper-event-leaderboard-your-position/);
+  assert.doesNotMatch(leaderboard, /paper-event-leaderboard-your-position/);
+  assert.match(leaderboard, /entry\.isCurrentUser && <Text style=\{\{ color: colors\.gold/);
   assert.match(leaderboard, /testID="paper-event-average-cost-fallback"/);
   assert.match(leaderboard, /average cost was used for those positions in your score/);
   assert.match(leaderboard, /setAverageCostFallbackByEvent\(\(current\) => \(\{ \.\.\.current, \[event\.id\]: submission\.usesAverageCost \}\)\)/);
@@ -160,24 +161,23 @@ test("Event Arena section tabs stay readable and fit narrow phone widths", () =>
 
 test("championship leaderboard shows real podium scores, event context, and below-podium standings", () => {
   assert.match(leaderboard, /getEventArenaPodiumSlots\(entries\)/);
+  assert.match(leaderboard, /getEventArenaStandingsEntries\(entries\)/);
   assert.match(leaderboard, /getEventArenaStatus\(event\.startAtMs, event\.endAtMs, countdownNow\)/);
   assert.match(leaderboard, /paper-event-leaderboard-participant-count/);
   assert.match(leaderboard, /paper-event-leaderboard-countdown/);
-  assert.match(leaderboard, /Last successful update: \{timeLabel\(lastUpdated\)\}/);
-  assert.match(leaderboard, /\[2, 1, 3\]\.map\(\(rank\)/);
+  assert.match(leaderboard, /Updated \{timeLabel\(lastUpdated\)\}/);
+  assert.match(leaderboard, /podiumSlots\[0\] && renderPodiumCard\(podiumSlots\[0\]\)/);
+  assert.match(leaderboard, /podiumSlots\.slice\(1\)\.map\(\(slot\) => renderPodiumCard\(slot\)\)/);
   assert.match(leaderboard, /paper-event-podium-\$\{slot\.rank\}/);
-  assert.match(leaderboard, /Waiting for competitor/);
+  assert.match(leaderboard, /Compete for/);
   assert.match(leaderboard, /\{returnLabel\(entry\.returnPercent\)\}/);
   assert.match(leaderboard, /\{signedMoney\(entry\.profitLoss\)\}/);
   assert.match(leaderboard, /\{money\(entry\.equity\)\}/);
-  assert.match(leaderboard, /paper-event-leaderboard-your-position/);
-  assert.match(leaderboard, /ownEntry\.rank <= 3/);
-  assert.match(leaderboard, /PROFIT \/ LOSS/);
-  assert.match(leaderboard, /ACCOUNT VALUE/);
-  assert.match(leaderboard, /entries\.filter\(\(entry\) => entry\.rank > 3\)\.map\(\(entry\) => renderEntry\(entry as LeaderboardEntry\)\)/);
+  assert.doesNotMatch(leaderboard, /paper-event-leaderboard-your-position/);
+  assert.doesNotMatch(leaderboard, /PROFIT \/ LOSS|ACCOUNT VALUE/);
+  assert.match(leaderboard, /standingsEntries\.map\(\(entry\) => renderEntry\(entry as LeaderboardEntry\)\)/);
   assert.match(leaderboard, /entry\.isCurrentUser/);
-  assert.match(leaderboard, /SELF-REPORTED · UNVERIFIED/);
-  assert.match(leaderboard, /not independently checked/);
+  assert.match(leaderboard, /SELF-REPORTED · NOT INDEPENDENTLY VERIFIED/);
   assert.match(leaderboard, /Loading leaderboard…/);
   assert.match(leaderboard, /The leaderboard could not be loaded\. Please retry\./);
   assert.match(leaderboard, /retry-paper-event-leaderboard/);
@@ -185,33 +185,41 @@ test("championship leaderboard shows real podium scores, event context, and belo
   assert.match(leaderboard, /refresh-empty-paper-event-leaderboard/);
 });
 
+test("the signed-in participant appears only in their actual ranked position", () => {
+  assert.match(leaderboard, /getEventArenaOwnEntry\(entries, optedIn\)/);
+  assert.match(leaderboard, /borderColor: entry\.isCurrentUser \? colors\.gold : colors\.border/);
+  assert.match(leaderboard, /backgroundColor: entry\.isCurrentUser \? `\$\{colors\.gold\}10` : 'transparent'/);
+  assert.match(leaderboard, /entry\.isCurrentUser && \(/);
+  assert.match(leaderboard, /entry\.isCurrentUser && <Text style=\{\{ color: colors\.gold/);
+  assert.doesNotMatch(leaderboard, /YOUR POSITION|Rank #\{ownEntry\.rank\}/);
+});
+
 test("competitive progress stays tied to successful event responses and readable mobile cards", () => {
   assert.match(leaderboard, /leaderboardQuery\.dataUpdatedAt/);
   assert.match(leaderboard, /lastResponse\?\.eventId === event\.id \? lastResponse\.entries : null/);
   assert.match(leaderboard, /previousEntries: LeaderboardEntry\[\] \| null/);
   assert.match(leaderboard, /getEventArenaCompetitiveChanges\(rankComparison\.previousEntries, entries\)/);
-  assert.match(leaderboard, /getEventArenaCompetitiveBadges\(entry\.rank, entry\.tradeCount, change\)/);
   assert.match(leaderboardProgress, /tradeCount >= 25/);
-  assert.match(leaderboard, /getEventArenaNextRankReturnGap\(ownEntry, entries\)/);
+  assert.match(leaderboard, /getEventArenaNextRankReturnGap\(entry, entries\)/);
   assert.match(leaderboard, /testID="paper-event-next-rank-gap"/);
   assert.match(leaderboard, /testID="paper-event-leaderboard-event-progress"/);
   assert.match(leaderboard, /getEventArenaWindowProgress\(event\.startAtMs, event\.endAtMs, countdownNow\)/);
-  assert.match(leaderboard, /SELF-REPORTED LEADERBOARD DATA/);
-  assert.match(leaderboard, /ACHIEVEMENTS AND MOVEMENT USE SELF-REPORTED LEADERBOARD DATA/);
+  assert.match(leaderboard, /Self-reported rank movement/);
   assert.match(leaderboard, /useReduceMotion\(\)/);
   assert.match(leaderboard, /duration: 240/);
   assert.match(leaderboard, /duration: 320/);
   assert.match(leaderboard, /opacity: reduceMotion \? 1/);
   assert.match(leaderboard, /flexWrap: 'wrap'/);
   assert.match(leaderboard, /minWidth: 0/);
-  assert.match(leaderboard, /flexDirection: 'column',\s*alignItems: 'stretch'/);
   assert.match(leaderboard, /const compactPodium = windowWidth <= 360/);
+  assert.match(leaderboard, /fontSize: isChampion \? compactPodium \? 20 : 23 : compactPodium \? 14 : 16/);
+  assert.match(leaderboard, /fontSize: isChampion \? compactPodium \? 27 : 31 : compactPodium \? 18 : 21/);
 
   // Existing endpoint, ordering, disclosure, and retry/stale-data paths stay intact.
   assert.match(leaderboard, /useGetEventArenaLeaderboard\(event\.id/);
   assert.match(leaderboard, /getEventArenaPodiumSlots\(entries\)/);
-  assert.match(leaderboard, /entries\.filter\(\(entry\) => entry\.rank > 3\)\.map\(\(entry\) => renderEntry\(entry as LeaderboardEntry\)\)/);
-  assert.match(leaderboard, /SELF-REPORTED · UNVERIFIED/);
+  assert.match(leaderboard, /standingsEntries\.map\(\(entry\) => renderEntry\(entry as LeaderboardEntry\)\)/);
+  assert.match(leaderboard, /SELF-REPORTED · NOT INDEPENDENTLY VERIFIED/);
   assert.match(leaderboard, /The leaderboard could not be loaded\. Please retry\./);
   assert.match(leaderboard, /paper-event-leaderboard-stale/);
 });

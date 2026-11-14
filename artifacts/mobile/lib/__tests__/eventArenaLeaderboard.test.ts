@@ -3,7 +3,9 @@ import test from 'node:test';
 import {
   formatEventArenaReturn,
   formatEventArenaSignedMoney,
+  getEventArenaOwnEntry,
   getEventArenaPodiumSlots,
+  getEventArenaStandingsEntries,
   getEventArenaStatus,
 } from '../eventArenaLeaderboard.ts';
 
@@ -25,6 +27,45 @@ test('podium slots follow rank order and leave missing places empty', () => {
     getEventArenaPodiumSlots([]).map(({ entry }) => entry),
     [null, null, null],
   );
+});
+
+test('podium presentation handles zero through three real participants without inventing entries', () => {
+  const participants = [1, 2, 3].map((rank) => ({
+    rank,
+    alias: `Rank ${rank}`,
+    isCurrentUser: false,
+  }));
+
+  for (let count = 0; count <= 3; count += 1) {
+    const podium = getEventArenaPodiumSlots(participants.slice(0, count));
+    assert.deepEqual(
+      podium.map(({ entry }) => entry?.alias ?? null),
+      [1, 2, 3].map((rank) => rank <= count ? `Rank ${rank}` : null),
+    );
+  }
+});
+
+test('larger fields keep the top three separate from competitive standings', () => {
+  const participants = Array.from({ length: 8 }, (_, index) => ({
+    rank: index + 1,
+    alias: `Rank ${index + 1}`,
+    isCurrentUser: index === 6,
+  }));
+
+  assert.deepEqual(getEventArenaPodiumSlots(participants).map(({ entry }) => entry?.rank), [1, 2, 3]);
+  assert.deepEqual(getEventArenaStandingsEntries(participants).map(({ rank }) => rank), [4, 5, 6, 7, 8]);
+  assert.equal(getEventArenaOwnEntry(participants, true)?.rank, 7);
+});
+
+test('current participant stays in the actual podium or standings position and respects opt-in', () => {
+  const podiumEntry = { rank: 2, alias: 'My alias', isCurrentUser: true };
+  const standingsEntry = { rank: 5, alias: 'My alias', isCurrentUser: true };
+
+  assert.equal(getEventArenaOwnEntry([podiumEntry], true), podiumEntry);
+  assert.equal(getEventArenaOwnEntry([standingsEntry], true), standingsEntry);
+  assert.equal(getEventArenaOwnEntry([standingsEntry], false), null);
+  assert.equal(getEventArenaOwnEntry([podiumEntry, standingsEntry], true), null);
+  assert.deepEqual(getEventArenaStandingsEntries([podiumEntry, standingsEntry]), [standingsEntry]);
 });
 
 test('event status and countdown use the scheduled start and end times', () => {
