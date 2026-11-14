@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, TouchableOpacity, Text, StyleSheet, Platform } from 'react-native';
+import { View, TouchableOpacity, Text, StyleSheet, Platform, useWindowDimensions } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -10,6 +10,7 @@ export function BottomTabBar() {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
+  const { fontScale } = useWindowDimensions();
 
   const isHome = pathname === '/' || pathname === '';
   const isPicks = pathname.startsWith('/picks');
@@ -40,7 +41,7 @@ export function BottomTabBar() {
     <View style={[styles.bar, { paddingBottom: botPad, borderTopColor: colors.border, backgroundColor: colors.background }]}>
       <TouchableOpacity style={styles.tab} accessibilityRole="button" accessibilityLabel="Analyze" onPress={() => go('/')} activeOpacity={0.7}>
         <Feather name="search" size={22} color={isHome ? colors.heading : colors.mutedForeground} />
-        <Text numberOfLines={1} style={[styles.label, { color: isHome ? colors.heading : colors.mutedForeground }]}>ANALYZE</Text>
+        <Text style={[styles.label, { lineHeight: 11 * fontScale, color: isHome ? colors.heading : colors.mutedForeground }]}>ANALYZE</Text>
         {isHome && <View style={[styles.dot, { backgroundColor: colors.heading }]} />}
       </TouchableOpacity>
 
@@ -48,7 +49,7 @@ export function BottomTabBar() {
 
       <TouchableOpacity style={styles.tab} accessibilityRole="button" accessibilityLabel="Top Picks" onPress={() => go('/picks')} activeOpacity={0.7}>
         <Feather name="star" size={22} color={isPicks ? colors.heading : colors.mutedForeground} />
-        <Text numberOfLines={1} style={[styles.label, { color: isPicks ? colors.heading : colors.mutedForeground }]}>TOP PICKS</Text>
+        <Text style={[styles.label, { lineHeight: 11 * fontScale, color: isPicks ? colors.heading : colors.mutedForeground }]}>TOP PICKS</Text>
         {isPicks && <View style={[styles.dot, { backgroundColor: colors.heading }]} />}
       </TouchableOpacity>
 
@@ -56,7 +57,7 @@ export function BottomTabBar() {
 
       <TouchableOpacity style={styles.tab} accessibilityRole="button" accessibilityLabel="Paper Trading" onPress={() => go('/paper')} activeOpacity={0.7}>
         <Feather name="activity" size={22} color={isPaper ? colors.heading : colors.mutedForeground} />
-        <Text numberOfLines={1} style={[styles.label, { color: isPaper ? colors.heading : colors.mutedForeground }]}>PAPER</Text>
+        <Text style={[styles.label, { lineHeight: 11 * fontScale, color: isPaper ? colors.heading : colors.mutedForeground }]}>PAPER</Text>
         {isPaper && <View style={[styles.dot, { backgroundColor: colors.heading }]} />}
       </TouchableOpacity>
 
@@ -64,7 +65,7 @@ export function BottomTabBar() {
 
       <TouchableOpacity style={styles.tab} accessibilityRole="button" accessibilityLabel="Portfolio" onPress={() => go('/portfolio')} activeOpacity={0.7}>
         <Feather name="briefcase" size={22} color={isPortfolio ? colors.heading : colors.mutedForeground} />
-        <Text numberOfLines={1} style={[styles.label, { color: isPortfolio ? colors.heading : colors.mutedForeground }]}>PORTFOLIO</Text>
+        <Text style={[styles.label, { lineHeight: 11 * fontScale, color: isPortfolio ? colors.heading : colors.mutedForeground }]}>PORTFOLIO</Text>
         {isPortfolio && <View style={[styles.dot, { backgroundColor: colors.heading }]} />}
       </TouchableOpacity>
 
@@ -79,7 +80,7 @@ export function BottomTabBar() {
         activeOpacity={0.7}
       >
         <Feather name="award" size={21} color={isEventArena ? colors.heading : colors.mutedForeground} />
-        <Text style={[styles.label, styles.eventArenaLabel, { color: isEventArena ? colors.heading : colors.mutedForeground }]}>
+        <Text style={[styles.label, styles.eventArenaLabel, { lineHeight: 11 * fontScale, color: isEventArena ? colors.heading : colors.mutedForeground }]}>
           EVENT{"\n"}ARENA
         </Text>
         {isEventArena && <View style={[styles.dot, { backgroundColor: colors.heading }]} />}

@@ -267,7 +267,8 @@ export default function PaperScreen() {
   const colors = useColors();
   const { awardAchievement } = useAchievements();
   const insets = useSafeAreaInsets();
-  const { width: screenWidth } = useWindowDimensions();
+  const { width: screenWidth, fontScale } = useWindowDimensions();
+  const compactHeroStats = screenWidth <= 360 || fontScale >= 1.3;
   const watchlist = useWatchlist();
 
   // Persisted state
@@ -2337,26 +2338,26 @@ export default function PaperScreen() {
         </View>
         <Text style={styles.heroEquity} numberOfLines={1}>{$fmt(portfolioValue)}</Text>
         <Text style={styles.heroEquityLabel}>TOTAL EQUITY</Text>
-        <View style={styles.heroStats}>
-          <View style={styles.heroStat}>
-            <Text style={[styles.heroStatValue, { color: pnlColor(todayPnL) }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+        <View style={[styles.heroStats, compactHeroStats && styles.heroStatsCompact]}>
+          <View style={[styles.heroStat, compactHeroStats && styles.heroStatCompact]}>
+            <Text allowFontScaling style={[styles.heroStatValue, compactHeroStats && styles.heroStatValueCompact, { color: pnlColor(todayPnL) }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
               {todayPnL >= 0 ? '+' : ''}{$fmt(todayPnL)}
             </Text>
-            <Text style={styles.heroStatLabel}>TODAY’S P/L</Text>
+            <Text allowFontScaling style={[styles.heroStatLabel, compactHeroStats && styles.heroStatLabelCompact]}>TODAY’S P/L</Text>
           </View>
-          <View style={styles.heroStatDivider} />
-          <View style={styles.heroStat}>
-            <Text testID="paper-account-total-return" style={[styles.heroStatValue, { color: pnlColor(totalReturn) }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+          <View style={[styles.heroStatDivider, compactHeroStats && styles.heroStatDividerCompact]} />
+          <View style={[styles.heroStat, compactHeroStats && styles.heroStatCompact]}>
+            <Text testID="paper-account-total-return" allowFontScaling style={[styles.heroStatValue, compactHeroStats && styles.heroStatValueCompact, { color: pnlColor(totalReturn) }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
               {pctFmt(totalReturn)}
             </Text>
-            <Text style={styles.heroStatLabel}>TOTAL RETURN</Text>
+            <Text allowFontScaling style={[styles.heroStatLabel, compactHeroStats && styles.heroStatLabelCompact]}>TOTAL RETURN</Text>
           </View>
-          <View style={styles.heroStatDivider} />
-          <View style={styles.heroStat}>
-            <Text testID="paper-account-buying-power" style={styles.heroStatValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+          <View style={[styles.heroStatDivider, compactHeroStats && styles.heroStatDividerCompact]} />
+          <View style={[styles.heroStat, compactHeroStats && styles.heroStatCompact]}>
+            <Text testID="paper-account-buying-power" allowFontScaling style={[styles.heroStatValue, compactHeroStats && styles.heroStatValueCompact]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
               {$fmt(account?.cash ?? 0)}
             </Text>
-            <Text style={styles.heroStatLabel}>BUYING POWER</Text>
+            <Text allowFontScaling style={[styles.heroStatLabel, compactHeroStats && styles.heroStatLabelCompact]}>BUYING POWER</Text>
           </View>
         </View>
         {visibleAccounts.length > 1 && (
@@ -2551,9 +2552,9 @@ export default function PaperScreen() {
             activeOpacity={0.85}
           >
             <Feather name="plus" size={18} color="#000" />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.buyActionTitle}>Trade</Text>
-            <Text style={styles.buyActionHint}>Trade in {selectedAccountDisplayName}</Text>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text allowFontScaling style={styles.buyActionTitle}>Trade</Text>
+            <Text allowFontScaling style={styles.buyActionHint}>Trade in {selectedAccountDisplayName}</Text>
             </View>
             <Feather name="arrow-up-right" size={17} color="#000" />
           </TouchableOpacity>
@@ -3177,10 +3178,15 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'rgba(192,192,192,0.16)',
   },
+  heroStatsCompact: { flexDirection: 'column', alignItems: 'stretch', gap: 5 },
   heroStat: { flex: 1, minWidth: 0 },
+  heroStatCompact: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 8, minHeight: 30 },
   heroStatValue: { color: '#e5e0d4', fontFamily: 'Inter_700Bold', fontSize: 12 },
+  heroStatValueCompact: { flex: 1, minWidth: 0, textAlign: 'right' },
   heroStatLabel: { color: DIM, fontFamily: 'Inter_500Medium', fontSize: 8, letterSpacing: 0.65, marginTop: 2 },
+  heroStatLabelCompact: { flex: 1, minWidth: 0, fontSize: 10, letterSpacing: 0.35, marginTop: 0, textAlign: 'left' },
   heroStatDivider: { width: 1, height: 30, backgroundColor: BORDER },
+  heroStatDividerCompact: { width: '100%', height: StyleSheet.hairlineWidth, backgroundColor: BORDER },
   accountPositionIndicators: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 5, marginTop: 7 },
   accountPositionIndicator: { width: 5, height: 5, borderRadius: 3, backgroundColor: 'rgba(192,192,192,0.3)' },
   accountPositionIndicatorActive: { width: 16, backgroundColor: GOLD },

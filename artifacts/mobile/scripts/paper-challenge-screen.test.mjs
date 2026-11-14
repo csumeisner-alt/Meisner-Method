@@ -196,6 +196,14 @@ test("Paper Trading keeps all views in readable groups and reserves space for ac
   assert.match(screen, /const totalReturn = \(\(portfolioValue - INITIAL_BALANCE\) \/ INITIAL_BALANCE\) \* 100/);
   assert.match(screen, /const portfolioValue = account \? computePaperEquity\(account, myPositions, quotes\) : 0/);
   assert.match(screen, /heroStats:[\s\S]*?flexDirection: 'row'[\s\S]*?gap: 8/);
+  assert.match(screen, /const \{ width: screenWidth, fontScale \} = useWindowDimensions\(\)/);
+  assert.match(screen, /screenWidth <= 360 \|\| fontScale >= 1\.3/);
+  assert.match(screen, /styles\.heroStatsCompact/);
+  assert.match(screen, /heroStatsCompact: \{ flexDirection: 'column'/);
+  assert.equal((screen.match(/allowFontScaling style=\{\[styles\.heroStatValue/g) ?? []).length, 3);
+  assert.equal((screen.match(/allowFontScaling style=\{\[styles\.heroStatLabel/g) ?? []).length, 3);
+  assert.match(screen, /allowFontScaling style=\{styles\.buyActionTitle\}/);
+  assert.match(screen, /allowFontScaling style=\{styles\.buyActionHint\}/);
   assert.match(screen, /const renderOverview = \(\) => \{[\s\S]*?ACCOUNT PERFORMANCE/);
   assert.match(screen, /testID="paper-account-total-return"[\s\S]*?adjustsFontSizeToFit/);
   assert.match(screen, /testID="paper-account-buying-power"[\s\S]*?adjustsFontSizeToFit/);
@@ -217,6 +225,9 @@ test("Paper Trading keeps all views in readable groups and reserves space for ac
   assert.match(screen, /Estimated from current holdings; this is not income already received/);
   assert.match(screen, /Not a forecast or actual return/);
   assert.match(bottomTabBar, /Platform\.OS === 'web' \? 34 : insets\.bottom/);
+  assert.match(bottomTabBar, /useWindowDimensions/);
+  assert.match(bottomTabBar, /lineHeight: 11 \* fontScale/);
+  assert.doesNotMatch(bottomTabBar, /numberOfLines=\{1\}/);
   assert.match(bottomTabBar, /fontSize: 9/);
   assert.match(bottomTabBar, /accessibilityLabel="Event Arena"/);
   assert.match(bottomTabBar, /EVENT\{"\\n"\}ARENA/);

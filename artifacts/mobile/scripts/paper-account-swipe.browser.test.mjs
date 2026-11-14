@@ -178,7 +178,7 @@ async function touch(browser, testID, dx = 0, dy = 0) {
     : []);
 }
 
-test("paper account swipes and screen controls work at a phone-sized touch viewport", async () => {
+test("paper account swipes and screen controls work at a narrow phone viewport", async () => {
   const bundle = await buildFixture();
   const server = createServer((request, response) => {
     if (request.url === "/bundle.js") {
@@ -222,8 +222,8 @@ test("paper account swipes and screen controls work at a phone-sized touch viewp
     await browser.send("Page.enable");
     await browser.send("Runtime.enable");
     await browser.send("Emulation.setDeviceMetricsOverride", {
-      width: 400,
-      height: 720,
+      width: 320,
+      height: 568,
       deviceScaleFactor: 1,
       mobile: true,
     });
@@ -244,6 +244,8 @@ test("paper account swipes and screen controls work at a phone-sized touch viewp
     assert.equal(await currentAccount(), "tiger");
     assert.equal(await currentReturn(), "+6.25%");
     assert.equal(await hapticCount(), 0);
+    assert.equal(await browser.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), true,
+      "The paper screen must not create horizontal overflow at 320 pixels.");
 
     await touch(browser, "paper-account-switch");
     assert.equal(await currentAccount(), "tiger", "Opening the selector must not change the active account.");
@@ -306,6 +308,22 @@ test("paper account swipes and screen controls work at a phone-sized touch viewp
     assert.equal(await currentReturn(), "-7.50%");
     assert.equal(await hapticCount(), 5, "The platform fallback must keep unsupported vibration silent.");
     await touch(browser, "paper-trading-buy-action");
+    const tradeAndNavigationBounds = await browser.evaluate(`(() => {
+      const trade = document.querySelector(${JSON.stringify(selector("paper-trading-buy-action"))})?.getBoundingClientRect();
+      const navigation = document.querySelector(${JSON.stringify(selector("bottom-tab-event-arena"))})?.getBoundingClientRect();
+      return trade && navigation && {
+        tradeTop: trade.top,
+        tradeBottom: trade.bottom,
+        navigationTop: navigation.top,
+        navigationBottom: navigation.bottom,
+        viewportHeight: window.innerHeight,
+      };
+    })()`);
+    assert.ok(tradeAndNavigationBounds, "Trade and bottom navigation must both be rendered.");
+    assert.ok(tradeAndNavigationBounds.tradeTop >= 0 && tradeAndNavigationBounds.tradeBottom <= tradeAndNavigationBounds.navigationTop,
+      "The Trade action must remain visible above the bottom navigation.");
+    assert.ok(tradeAndNavigationBounds.navigationBottom <= tradeAndNavigationBounds.viewportHeight,
+      "Bottom navigation must remain visible within the narrow viewport.");
     assert.equal(
       await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-trade-count"))})?.textContent`),
       "1",
