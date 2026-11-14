@@ -8,10 +8,12 @@ import {
   Share,
   Switch,
   Text,
+  TextInput,
   useWindowDimensions,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Feather } from '@expo/vector-icons';
 import ViewShot from 'react-native-view-shot';
@@ -159,6 +161,9 @@ export function EventArenaScreen() {
   const [accountError, setAccountError] = useState('');
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [joinAliasOpen, setJoinAliasOpen] = useState(false);
+  const [joinAliasDraft, setJoinAliasDraft] = useState('');
+  const [joinAliasError, setJoinAliasError] = useState('');
   const [rank, setRank] = useState<number | null>(null);
   const [sortMode, setSortMode] = useState<'date' | 'top'>('date');
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
@@ -287,9 +292,14 @@ export function EventArenaScreen() {
     return () => { cancelled = true; };
   }, [notificationsEnabled]);
 
-  const joinEvent = async () => {
+  const joinEvent = async (rawAlias: string) => {
     const event = getPaperChallengeWindow(Date.now());
     if (saving || storeState !== 'ready' || event.phase === 'ended' || store.enrollment) return;
+    const alias = rawAlias.trim();
+    if (!alias || alias.length > 24) {
+      setJoinAliasError('Enter an alias with 1–24 characters.');
+      return;
+    }
     setSaving(true);
     const newEnrollment: PaperChallengeEnrollment = {
       eventId: event.id,
@@ -299,6 +309,8 @@ export function EventArenaScreen() {
       accountId: `paper-event:${event.id}`,
       accountName: 'Event Portfolio',
       startEquity: event.phase === 'upcoming' ? null : PAPER_CHALLENGE_STARTING_BALANCE,
+      leaderboardAlias: alias,
+      leaderboardOptedIn: false,
     };
     try {
       const updated = await updatePaperChallengeStore((current) => {
@@ -310,6 +322,8 @@ export function EventArenaScreen() {
       });
       setStore(updated);
       if (updated.enrollment?.eventId === event.id) {
+        setJoinAliasOpen(false);
+        setJoinAliasError('');
         setSection('competition');
       }
     } catch {
@@ -802,7 +816,11 @@ export function EventArenaScreen() {
         rank={rank}
         loading={accountLoading || storeState === 'loading'}
         saving={saving}
-        onJoin={() => { void joinEvent(); }}
+        onJoin={() => {
+          setJoinAliasDraft('');
+          setJoinAliasError('');
+          setJoinAliasOpen(true);
+        }}
         onWithdraw={confirmWithdraw}
         onRefresh={() => { void readStore(); }}
         onOpenTrades={() => router.push('/paper')}
@@ -878,15 +896,13 @@ export function EventArenaScreen() {
       <View style={{ flex: 1 }}>
         {section === 'competition' && renderCompetition()}
         {section === 'leaderboard' && (
-          <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
-            <PaperChallengeLeaderboard
-              event={currentWindow}
-              enrollment={enrollment}
-              onEnrollmentChange={updateLeaderboardEnrollment}
-              onRankChange={setRank}
-              openOnMount
-            />
-          </ScrollView>
+          <PaperChallengeLeaderboard
+            event={currentWindow}
+            enrollment={enrollment}
+            onEnrollmentChange={updateLeaderboardEnrollment}
+            onRankChange={setRank}
+            embedded
+          />
         )}
         {section === 'trades' && renderTrades()}
         {section === 'past' && renderPastEvents()}
@@ -922,6 +938,66 @@ export function EventArenaScreen() {
             </>
           )}
         </View>
+      </Modal>
+
+      <Modal visible={joinAliasOpen} animationType="fade" transparent statusBarTranslucent onRequestClose={() => setJoinAliasOpen(false)}>
+        <KeyboardAvoidingView
+          behavior="padding"
+          keyboardVerticalOffset={0}
+          style={{ flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,0.62)' }}
+        >
+          <View style={{ padding: 20, borderRadius: 18, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.8 }}>EVENT ARENA ENTRY</Text>
+            <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 21, marginTop: 7 }}>Choose your alias</Text>
+            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, marginTop: 7 }}>
+              This name identifies your event entry. It stays on your device unless you separately opt in to leaderboard sharing.
+            </Text>
+            <TextInput
+              testID="event-arena-join-alias"
+              accessibilityLabel="Event Arena alias"
+              value={joinAliasDraft}
+              onChangeText={(value) => {
+                setJoinAliasDraft(value);
+                if (joinAliasError) setJoinAliasError('');
+              }}
+              autoCapitalize="words"
+              autoCorrect={false}
+              maxLength={24}
+              returnKeyType="done"
+              onSubmitEditing={() => { void joinEvent(joinAliasDraft); }}
+              placeholder="Enter an alias"
+              placeholderTextColor={colors.mutedForeground}
+              style={{ minHeight: 48, marginTop: 16, paddingHorizontal: 13, borderRadius: 10, borderWidth: 1, borderColor: joinAliasError ? colors.destructive : colors.border, backgroundColor: colors.background, color: colors.foreground, fontFamily: 'Inter_500Medium', fontSize: 16 }}
+            />
+            {joinAliasError ? (
+              <Text accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 11, marginTop: 6 }}>
+                {joinAliasError}
+              </Text>
+            ) : null}
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+              <TouchableOpacity
+                testID="cancel-event-arena-join"
+                accessibilityRole="button"
+                disabled={saving}
+                onPress={() => setJoinAliasOpen(false)}
+                style={{ flex: 1, minHeight: 48, justifyContent: 'center', alignItems: 'center', borderRadius: 10, borderWidth: 1, borderColor: colors.border, opacity: saving ? 0.6 : 1 }}
+              >
+                <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="confirm-event-arena-join"
+                accessibilityRole="button"
+                disabled={saving || joinAliasDraft.trim().length < 1}
+                onPress={() => { void joinEvent(joinAliasDraft); }}
+                style={{ flex: 1, minHeight: 48, justifyContent: 'center', alignItems: 'center', borderRadius: 10, backgroundColor: saving || joinAliasDraft.trim().length < 1 ? colors.muted : colors.primary }}
+              >
+                <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>
+                  {saving ? 'Joining…' : 'Join Event'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );

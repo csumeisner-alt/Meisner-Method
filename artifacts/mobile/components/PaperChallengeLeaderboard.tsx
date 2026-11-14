@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -61,6 +62,7 @@ type Props = {
   onEnrollmentChange: (enrollment: PaperChallengeEnrollment | null) => void;
   onRankChange?: (rank: number | null) => void;
   openOnMount?: boolean;
+  embedded?: boolean;
 };
 
 const money = (value: number) => `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -144,10 +146,11 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
   };
 }
 
-export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChange, onRankChange, openOnMount = false }: Props) {
+export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChange, onRankChange, openOnMount = false, embedded = false }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
+  const [aliasEditorOpen, setAliasEditorOpen] = useState(false);
   const [error, setError] = useState('');
   const [aliasDraft, setAliasDraft] = useState('');
   const [sharingBusy, setSharingBusy] = useState(false);
@@ -161,6 +164,7 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
   const selectedEventRef = useRef(event);
   const [installationId, setInstallationId] = useState<string | null>(null);
   const [installationIdReady, setInstallationIdReady] = useState(false);
+  const visible = embedded || open;
   const leaderboardQuery = useGetEventArenaLeaderboard(selectedEvent.id, {
     request: installationId ? { headers: { 'X-Event-Arena-Installation-Id': installationId } } : undefined,
     query: {
@@ -173,10 +177,10 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
   });
   const entries = leaderboardQuery.data?.entries ?? [];
   const lastUpdated = leaderboardQuery.data?.updatedAt ?? null;
-  const loading = refreshing || (open && !installationIdReady) || (leaderboardQuery.isLoading && entries.length === 0);
+  const loading = refreshing || (visible && !installationIdReady) || (leaderboardQuery.isLoading && entries.length === 0);
   const loadError = error || (leaderboardQuery.error ? 'The leaderboard could not be loaded. Please retry.' : '');
   const weeksQuery = useGetEventArenaLeaderboardWeeks({
-    query: { enabled: open, queryKey: getGetEventArenaLeaderboardWeeksQueryKey() },
+    query: { enabled: visible, queryKey: getGetEventArenaLeaderboardWeeksQueryKey() },
   });
   const archiveWeeks: CompletedEventWeek[] = useMemo(
     () => (weeksQuery.data?.weeks ?? [])
@@ -201,8 +205,8 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
   const ownEntry = matchingOwnEntries.length === 1 ? matchingOwnEntries[0] : null;
 
   useEffect(() => {
-    if (openOnMount) setOpen(true);
-  }, [openOnMount]);
+    if (openOnMount && !embedded) setOpen(true);
+  }, [embedded, openOnMount]);
   useEffect(() => { enrollmentRef.current = enrollment; }, [enrollment]);
   useEffect(() => {
     let mounted = true;
@@ -271,7 +275,7 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
   }, []);
 
   const refresh = useCallback(async () => {
-    if (refreshingRef.current || !open || !appIsActive || !installationIdReady) return;
+    if (refreshingRef.current || !visible || !appIsActive || !installationIdReady) return;
     const targetEvent = selectedEvent;
     const targetEventId = targetEvent.id;
     refreshingRef.current = true;
@@ -305,14 +309,14 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
       setRefreshing(false);
       refreshingRef.current = false;
     }
-  }, [appIsActive, event.id, event.phase, installationIdReady, leaderboardQuery.refetch, open, selectedEvent, sharingBusy, submitEntry]);
+  }, [appIsActive, event.id, event.phase, installationIdReady, leaderboardQuery.refetch, selectedEvent, sharingBusy, submitEntry, visible]);
 
   useEffect(() => {
-    if (!open || !appIsActive || !installationIdReady) return;
+    if (!visible || !appIsActive || !installationIdReady) return;
     void refresh();
     const timer = setInterval(() => { void refresh(); }, REFRESH_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [appIsActive, installationIdReady, open, refresh]);
+  }, [appIsActive, installationIdReady, refresh, visible]);
   const optIn = async () => {
     const currentEnrollment = enrollmentRef.current;
     const alias = aliasDraft.trim();
@@ -365,6 +369,50 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
       setError(aliasSaved
         ? 'Your alias is saved on this device; the leaderboard will retry the update.'
         : 'Could not save your alias on this device. Please retry.');
+    } finally {
+      setSharingBusy(false);
+    }
+  };
+
+  const saveAliasFromEditor = async () => {
+    const currentEnrollment = enrollmentRef.current;
+    const alias = aliasDraft.trim();
+    if (
+      !currentEnrollment
+      || currentEnrollment.eventId !== event.id
+      || aliasLocked
+      || alias.length < 1
+      || alias.length > 24
+      || sharingBusy
+    ) return;
+
+    if (currentEnrollment.leaderboardOptedIn) {
+      await updateAlias();
+      setAliasEditorOpen(false);
+      return;
+    }
+
+    setSharingBusy(true);
+    setError('');
+    try {
+      const updated = await updatePaperChallengeStore((current) => {
+        if (current.enrollment?.eventId !== event.id) return current;
+        return {
+          ...current,
+          enrollment: {
+            ...current.enrollment,
+            leaderboardAlias: alias,
+            leaderboardOptedIn: false,
+          },
+        };
+      }, {
+        getItem: (key) => AsyncStorage.getItem(key),
+        setItem: (key, value) => AsyncStorage.setItem(key, value),
+      });
+      onEnrollmentChange(updated.enrollment);
+      setAliasEditorOpen(false);
+    } catch {
+      setError('Could not save your alias on this device. Please retry.');
     } finally {
       setSharingBusy(false);
     }
@@ -440,9 +488,18 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
     </TouchableOpacity>
   );
 
+  const PageWrapper: React.ComponentType<any> = embedded ? View : Modal;
+  const pageWrapperProps = embedded
+    ? { style: { flex: 1 } }
+    : {
+        visible: open,
+        animationType: 'slide' as const,
+        onRequestClose: () => { setOpen(false); setDetail(null); },
+      };
+
   return (
     <>
-      <View style={{ marginTop: 12, padding: 14, borderRadius: 12, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+      {!embedded && <View style={{ marginTop: 12, padding: 14, borderRadius: 12, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Feather name="users" size={17} color={colors.primary} />
           <Text style={{ flex: 1, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>
@@ -466,10 +523,10 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
         >
           <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 11 }}>OPEN LEADERBOARD</Text>
         </TouchableOpacity>
-      </View>
+      </View>}
 
-      <Modal visible={open} animationType="slide" onRequestClose={() => { setOpen(false); setDetail(null); }}>
-        <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: Platform.OS === 'web' ? 24 : insets.top + 8 }}>
+      <PageWrapper {...pageWrapperProps}>
+        <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: embedded ? 0 : Platform.OS === 'web' ? 24 : insets.top + 8 }}>
           <View style={{ paddingHorizontal: 18, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             {detail && (
               <TouchableOpacity accessibilityRole="button" accessibilityLabel="Back to leaderboard" onPress={() => setDetail(null)} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
@@ -479,6 +536,25 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
             <Text allowFontScaling style={{ flex: 1, minWidth: 0, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20 }}>
               {detail ? 'Participant score' : 'Event leaderboard'}
             </Text>
+            {!detail && selectedEvent.id === event.id && enrollment?.eventId === event.id && (
+              <TouchableOpacity
+                testID="edit-paper-event-leaderboard-alias"
+                accessibilityRole="button"
+                accessibilityLabel={aliasLocked ? 'Event alias locked' : 'Change event alias'}
+                accessibilityState={{ disabled: aliasLocked }}
+                disabled={aliasLocked}
+                onPress={() => {
+                  setAliasDraft(enrollment.leaderboardAlias ?? '');
+                  setAliasEditorOpen(true);
+                }}
+                style={{ minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, borderRadius: 9, borderWidth: 1, borderColor: aliasLocked ? colors.border : colors.gold, opacity: aliasLocked ? 0.55 : 1 }}
+              >
+                <Feather name={aliasLocked ? 'lock' : 'edit-2'} size={12} color={aliasLocked ? colors.mutedForeground : colors.gold} />
+                <Text style={{ color: aliasLocked ? colors.mutedForeground : colors.gold, fontFamily: 'Inter_700Bold', fontSize: 9 }}>
+                  {aliasLocked ? 'LOCKED' : 'EDIT NAME'}
+                </Text>
+              </TouchableOpacity>
+            )}
             {!detail && (
               <TouchableOpacity
                 testID="refresh-paper-event-leaderboard"
@@ -490,9 +566,11 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
                 <Feather name="refresh-cw" size={18} color={colors.primary} />
               </TouchableOpacity>
             )}
-            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close leaderboard" onPress={() => { setOpen(false); setDetail(null); }} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
-              <Feather name="x" size={22} color={colors.mutedForeground} />
-            </TouchableOpacity>
+            {!embedded && (
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close leaderboard" onPress={() => { setOpen(false); setDetail(null); }} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+                <Feather name="x" size={22} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            )}
           </View>
 
           {detail ? (
@@ -683,33 +761,16 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
                       Opting out removes your score and holdings from the leaderboard. Your alias remains locked for this event.
                     </Text>
                   )}
-                  {(!optedIn || !aliasLocked) && (
-                    <TextInput
-                      testID="paper-event-leaderboard-alias"
-                      accessibilityLabel="Leaderboard alias"
-                      value={aliasDraft}
-                      onChangeText={setAliasDraft}
-                      editable={!sharingBusy && (!optedIn || !aliasLocked)}
-                      maxLength={24}
-                      autoCapitalize="words"
-                      placeholder="Choose an alias"
-                      placeholderTextColor={colors.mutedForeground}
-                      style={{ marginTop: 10, paddingHorizontal: 11, paddingVertical: 10, borderRadius: 8, color: colors.foreground, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, fontFamily: 'Inter_400Regular', fontSize: 14 }}
-                    />
+                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, marginTop: 10 }}>
+                    Your alias · {aliasDraft.trim() || 'Not set yet'}
+                  </Text>
+                  {!aliasDraft.trim() && !aliasLocked && (
+                    <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>
+                      Use EDIT NAME above before sharing your score.
+                    </Text>
                   )}
                   {optedIn ? (
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-                      {!aliasLocked && (
-                        <TouchableOpacity
-                          testID="save-paper-event-leaderboard-alias"
-                          accessibilityRole="button"
-                          disabled={sharingBusy}
-                          onPress={() => { void updateAlias(); }}
-                          style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 8, backgroundColor: colors.primary, opacity: sharingBusy ? 0.6 : 1 }}
-                        >
-                          <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 10 }}>{sharingBusy ? 'SAVING…' : 'SAVE ALIAS'}</Text>
-                        </TouchableOpacity>
-                      )}
                       <TouchableOpacity
                         testID="opt-out-paper-event-leaderboard"
                         accessibilityRole="button"
@@ -812,6 +873,57 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
             </ScrollView>
           )}
         </View>
+      </PageWrapper>
+
+      <Modal visible={aliasEditorOpen} animationType="fade" transparent statusBarTranslucent onRequestClose={() => setAliasEditorOpen(false)}>
+        <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={0} style={{ flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,0.62)' }}>
+          <View style={{ padding: 20, borderRadius: 18, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.8 }}>EVENT ARENA</Text>
+            <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20, marginTop: 7 }}>Change your alias</Text>
+            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, marginTop: 6 }}>
+              {optedIn
+                ? 'Your new alias will appear on this event’s leaderboard. It locks when the event starts.'
+                : 'This alias stays on your device unless you separately opt in to leaderboard sharing.'}
+            </Text>
+            <TextInput
+              testID="paper-event-leaderboard-alias"
+              accessibilityLabel="Leaderboard alias"
+              value={aliasDraft}
+              onChangeText={setAliasDraft}
+              editable={!sharingBusy}
+              maxLength={24}
+              autoCapitalize="words"
+              autoCorrect={false}
+              returnKeyType="done"
+              onSubmitEditing={() => { void saveAliasFromEditor(); }}
+              placeholder="Choose an alias"
+              placeholderTextColor={colors.mutedForeground}
+              style={{ minHeight: 48, marginTop: 16, paddingHorizontal: 13, borderRadius: 10, color: colors.foreground, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, fontFamily: 'Inter_400Regular', fontSize: 16 }}
+            />
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+              <TouchableOpacity
+                testID="cancel-paper-event-alias"
+                accessibilityRole="button"
+                disabled={sharingBusy}
+                onPress={() => setAliasEditorOpen(false)}
+                style={{ flex: 1, minHeight: 48, justifyContent: 'center', alignItems: 'center', borderRadius: 10, borderWidth: 1, borderColor: colors.border, opacity: sharingBusy ? 0.6 : 1 }}
+              >
+                <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="save-paper-event-leaderboard-alias"
+                accessibilityRole="button"
+                disabled={sharingBusy || aliasDraft.trim().length < 1}
+                onPress={() => { void saveAliasFromEditor(); }}
+                style={{ flex: 1, minHeight: 48, justifyContent: 'center', alignItems: 'center', borderRadius: 10, backgroundColor: sharingBusy || aliasDraft.trim().length < 1 ? colors.muted : colors.primary }}
+              >
+                <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>
+                  {sharingBusy ? 'Saving…' : 'Save alias'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </>
   );

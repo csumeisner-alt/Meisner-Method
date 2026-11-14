@@ -65,7 +65,7 @@ test("live leaderboard remains anonymous, opt-in, event-scoped, and privacy-limi
   assert.match(leaderboard, /The leaderboard could not be loaded\. Please retry\./);
   assert.doesNotMatch(leaderboard, /weeksQuery\.error\.message|loadError\.message|submissionError\.message/);
   assert.match(leaderboard, /useGetEventArenaLeaderboardWeeks/);
-  assert.match(leaderboard, /query: \{ enabled: open, queryKey: getGetEventArenaLeaderboardWeeksQueryKey\(\) \}/);
+  assert.match(leaderboard, /query: \{ enabled: visible, queryKey: getGetEventArenaLeaderboardWeeksQueryKey\(\) \}/);
   assert.match(leaderboard, /paper-event-leaderboard-week-picker/);
   assert.match(leaderboard, /paper-event-leaderboard-week-\$\{week\.id\}/);
   assert.match(leaderboard, /groupCompletedEventWeeksByYear\(archiveWeeks\)/);
