@@ -235,6 +235,47 @@ test("competitive progress stays tied to successful event responses and readable
   assert.match(leaderboard, /paper-event-leaderboard-stale/);
 });
 
+test("leaderboard names and large values remain readable and announced on compact phones", () => {
+  const renderEntryStart = leaderboard.indexOf("const renderEntry =");
+  const renderPodiumStart = leaderboard.indexOf("const renderPodiumCard =", renderEntryStart);
+  const positionStart = leaderboard.indexOf('testID="paper-event-leaderboard-current-user"');
+  const standingsStart = leaderboard.indexOf('testID="paper-event-leaderboard-list"', positionStart);
+  const renderEntry = leaderboard.slice(renderEntryStart, renderPodiumStart);
+  const renderPodium = leaderboard.slice(renderPodiumStart, positionStart);
+  const positionPanel = leaderboard.slice(positionStart, standingsStart);
+
+  assert.ok(renderEntryStart >= 0 && renderPodiumStart > renderEntryStart);
+  assert.ok(positionStart >= 0 && standingsStart > positionStart);
+  assert.match(renderEntry, /accessibilityLabel=\{`Rank \$\{entry\.rank\}, \$\{entry\.alias\}[\s\S]*?account value \$\{money\(entry\.equity\)\}[\s\S]*?profit or loss \$\{signedMoney\(entry\.profitLoss\)\}[\s\S]*?\$\{returnLabel\(entry\.returnPercent\)\} return/);
+  assert.match(renderPodium, /accessibilityLabel=\{entry[\s\S]*?account value \$\{money\(entry\.equity\)\}/);
+  assert.match(renderPodium, /allowFontScaling numberOfLines=\{1\} adjustsFontSizeToFit minimumFontScale=\{0\.7\}[\s\S]*?\{entry\.alias\}/);
+  assert.match(renderPodium, /\{returnLabel\(entry\.returnPercent\)\}[\s\S]*?\{money\(entry\.equity\)\} account value[\s\S]*?\{signedMoney\(entry\.profitLoss\)\} reported P\/L/);
+  assert.match(leaderboard, /<View accessible testID="paper-event-leaderboard-current-user" accessibilityLabel=\{`Your current leaderboard position is rank \$\{ownEntry\.rank\}\. Account value \$\{money\(ownEntry\.equity\)\}\. Return \$\{returnLabel\(ownEntry\.returnPercent\)\}\. Profit or loss \$\{signedMoney\(ownEntry\.profitLoss\)\}/);
+  assert.match(positionPanel, /allowFontScaling adjustsFontSizeToFit minimumFontScale=\{0\.7\} numberOfLines=\{1\}[\s\S]*?\{ownEntry\.alias\}/);
+
+  const scrollPadding = Number(leaderboard.match(/contentContainerStyle=\{\{[^}]*padding: (\d+)/)?.[1]);
+  const podiumPadding = Number(leaderboard.match(/padding: compactPodium \? (\d+) : (\d+)/)?.[1]);
+  const listPadding = Number(leaderboard.match(/paddingHorizontal: (\d+), paddingTop: 13, paddingBottom: 4, borderRadius: 18/)?.[1]);
+  const rankWidth = Number(renderEntry.match(/width: (\d+),\s*color: colors\.mutedForeground/)?.[1]);
+  const rowGap = Number(renderEntry.match(/gap: (\d+),\s*minHeight: 68/)?.[1]);
+  const metricsPercent = Number(renderEntry.match(/maxWidth: '(\d+)%'/)?.[1]) / 100;
+  assert.ok([scrollPadding, podiumPadding, listPadding, rankWidth, rowGap, metricsPercent].every(Number.isFinite));
+
+  for (const width of [320, 360, 390]) {
+    const compact = width <= 360;
+    const scrollContent = width - 2 * scrollPadding;
+    const podiumInner = scrollContent - 2 * (compact ? podiumPadding : 17);
+    const sidePodiumWidth = (podiumInner - 7) / 2;
+    const rowContent = width - 2 * scrollPadding - 2 * listPadding;
+    const metricsWidth = rowContent * metricsPercent;
+    const aliasWidth = rowContent - rankWidth - rowGap - metricsWidth;
+
+    assert.ok(sidePodiumWidth >= 120, `${width}px leaves usable space for both medal positions`);
+    assert.ok(metricsWidth >= 90, `${width}px leaves room for large financial values`);
+    assert.ok(aliasWidth >= 80, `${width}px leaves room for participant names`);
+  }
+});
+
 test("milestone badges and event controls stay readable with larger system text", () => {
   assert.match(challenge, /'first-event': 'FIRST EVENT'/);
   assert.match(challenge, /'positive-finish': 'IN THE GREEN'/);

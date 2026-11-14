@@ -668,7 +668,7 @@ export function PaperChallengeLeaderboard({
           paddingHorizontal: entry.isCurrentUser ? 10 : 2,
         }}
       >
-        <Text style={{
+        <Text allowFontScaling adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1} style={{
             width: 42,
             color: colors.mutedForeground,
             fontFamily: 'Inter_700Bold',
@@ -676,7 +676,7 @@ export function PaperChallengeLeaderboard({
           }}>#{entry.rank}</Text>
         <View style={{ flex: 1, minWidth: 0 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={{ flexShrink: 1, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 16 }} numberOfLines={1}>
+            <Text allowFontScaling adjustsFontSizeToFit minimumFontScale={0.7} style={{ flexShrink: 1, minWidth: 0, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 16 }} numberOfLines={1}>
               {entry.alias}
             </Text>
             {entry.isCurrentUser && (
@@ -698,13 +698,13 @@ export function PaperChallengeLeaderboard({
           )}
         </View>
         <View style={{ alignItems: 'flex-end', maxWidth: '38%', minWidth: 0 }}>
-          <Text adjustsFontSizeToFit numberOfLines={1} style={{ color: entry.returnPercent >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 16 }}>
+          <Text allowFontScaling adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1} style={{ color: entry.returnPercent >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 16 }}>
             {returnLabel(entry.returnPercent)}
           </Text>
-          <Text adjustsFontSizeToFit numberOfLines={1} style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 9, marginTop: 3 }}>
+          <Text allowFontScaling adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1} style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 9, marginTop: 3 }}>
             {money(entry.equity)} value
           </Text>
-          <Text adjustsFontSizeToFit numberOfLines={1} style={{ color: entry.profitLoss >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 9, marginTop: 2 }}>
+          <Text allowFontScaling adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1} style={{ color: entry.profitLoss >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 9, marginTop: 2 }}>
             {signedMoney(entry.profitLoss)} P/L
           </Text>
         </View>
@@ -773,25 +773,25 @@ export function PaperChallengeLeaderboard({
                    <View style={{ width: 36, height: 5, borderRadius: 3, backgroundColor: medal.color, marginTop: 2 }} />
                  </View>
                ) : <Feather name="award" size={23} color={medal.color} />}
-              <Text style={{ color: medal.color, fontFamily: 'Inter_700Bold', fontSize: isChampion ? 13 : 14, letterSpacing: 0.4, marginTop: isChampion ? 6 : 4 }}>
+              <Text allowFontScaling adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1} style={{ color: medal.color, fontFamily: 'Inter_700Bold', fontSize: isChampion ? 13 : 14, letterSpacing: 0.4, marginTop: isChampion ? 6 : 4 }}>
                 #{slot.rank}
               </Text>
-              <Text style={{ color: medal.color, fontFamily: 'Inter_700Bold', fontSize: isChampion ? 10 : 8, letterSpacing: 0.7, marginTop: 2 }}>
+              <Text allowFontScaling style={{ color: medal.color, fontFamily: 'Inter_700Bold', fontSize: isChampion ? 10 : 8, letterSpacing: 0.7, marginTop: 2 }}>
                 {medal.label}
               </Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, maxWidth: '100%', marginTop: isChampion ? 7 : 5 }}>
-                <Text numberOfLines={1} adjustsFontSizeToFit style={{ maxWidth: '100%', color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: isChampion ? compactPodium ? 20 : 23 : compactPodium ? 14 : 16 }}>
+                <Text allowFontScaling numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ flexShrink: 1, minWidth: 0, maxWidth: '100%', color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: isChampion ? compactPodium ? 20 : 23 : compactPodium ? 14 : 16 }}>
                   {entry.alias}
                 </Text>
                 {entry.isCurrentUser && <Text style={{ color: colors.gold, fontFamily: 'Inter_700Bold', fontSize: 9 }}>YOU</Text>}
               </View>
-              <Text numberOfLines={1} adjustsFontSizeToFit style={{ maxWidth: '100%', color: entry.returnPercent >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_700Bold', fontSize: isChampion ? compactPodium ? 27 : 31 : compactPodium ? 18 : 21, marginTop: isChampion ? 6 : 4 }}>
+              <Text allowFontScaling numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ maxWidth: '100%', color: entry.returnPercent >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_700Bold', fontSize: isChampion ? compactPodium ? 27 : 31 : compactPodium ? 18 : 21, marginTop: isChampion ? 6 : 4 }}>
                 {returnLabel(entry.returnPercent)}
               </Text>
-               <Text numberOfLines={1} adjustsFontSizeToFit style={{ maxWidth: '100%', color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: isChampion ? 12 : 10, marginTop: 4 }}>
+               <Text allowFontScaling numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ maxWidth: '100%', color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: isChampion ? 12 : 10, marginTop: 4 }}>
                  {money(entry.equity)} account value
                </Text>
-              <Text numberOfLines={1} adjustsFontSizeToFit style={{ maxWidth: '100%', color: entry.profitLoss >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 9, marginTop: 2 }}>
+              <Text allowFontScaling numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ maxWidth: '100%', color: entry.profitLoss >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 9, marginTop: 2 }}>
                  {signedMoney(entry.profitLoss)} reported P/L
                </Text>
               {change && placesMoved !== 0 && (
@@ -1182,7 +1182,7 @@ export function PaperChallengeLeaderboard({
               </ImageBackground>
 
               {ownEntry && (
-                <View testID="paper-event-leaderboard-current-user" accessibilityLabel={`Your current leaderboard position is rank ${ownEntry.rank}. Account value ${money(ownEntry.equity)}. Return ${returnLabel(ownEntry.returnPercent)}. Profit or loss ${signedMoney(ownEntry.profitLoss)}.`} style={{ marginBottom: 17, padding: 15, borderRadius: 18, borderWidth: 1.5, borderColor: 'rgba(216,180,90,0.82)', backgroundColor: 'rgba(35,31,22,0.96)' }}>
+                <View accessible testID="paper-event-leaderboard-current-user" accessibilityLabel={`Your current leaderboard position is rank ${ownEntry.rank}. Account value ${money(ownEntry.equity)}. Return ${returnLabel(ownEntry.returnPercent)}. Profit or loss ${signedMoney(ownEntry.profitLoss)}.`} style={{ marginBottom: 17, padding: 15, borderRadius: 18, borderWidth: 1.5, borderColor: 'rgba(216,180,90,0.82)', backgroundColor: 'rgba(35,31,22,0.96)' }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 11 }}>
                     <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(216,180,90,0.15)', alignItems: 'center', justifyContent: 'center' }}>
                       <Feather name="award" size={16} color="#E4C66F" />
@@ -1204,7 +1204,7 @@ export function PaperChallengeLeaderboard({
                       #{ownEntry.rank}
                     </Text>
                     <View style={{ flex: 1, minWidth: 130 }}>
-                      <Text allowFontScaling numberOfLines={1} style={{ color: '#F6F1E5', fontFamily: 'Inter_700Bold', fontSize: 17 }}>
+                      <Text allowFontScaling adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1} style={{ flexShrink: 1, minWidth: 0, color: '#F6F1E5', fontFamily: 'Inter_700Bold', fontSize: 17 }}>
                         {ownEntry.alias}
                       </Text>
                       <Text style={{ color: '#AAA9A4', fontFamily: 'Inter_500Medium', fontSize: 9, marginTop: 3, letterSpacing: 0.8 }}>YOUR EVENT ACCOUNT</Text>
