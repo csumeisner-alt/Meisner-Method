@@ -38,10 +38,12 @@ export function PortfolioLineChart({
   points,
   width,
   height,
+  referenceLine,
 }: {
   points: { date: string; value: number }[];
   width: number;
   height: number;
+  referenceLine?: { value: number; label?: string; color?: string };
 }) {
   if (points.length < 2) {
     return (
@@ -54,8 +56,8 @@ export function PortfolioLineChart({
   }
 
   const values = points.map(p => p.value);
-  const min = Math.min(...values) * 0.99;
-  const max = Math.max(...values) * 1.01;
+  const min = Math.min(...values, ...(referenceLine ? [referenceLine.value] : [])) * 0.99;
+  const max = Math.max(...values, ...(referenceLine ? [referenceLine.value] : [])) * 1.01;
   const range = max - min || 1;
   const pad = { left: 56, right: 12, top: 16, bottom: 28 };
   const w = width - pad.left - pad.right;
@@ -107,6 +109,31 @@ export function PortfolioLineChart({
 
       {/* Area fill */}
       <Path d={areaD} fill={areaColor} />
+
+      {referenceLine && (
+        <>
+          <Line
+            x1={pad.left}
+            y1={toY(referenceLine.value)}
+            x2={width - pad.right}
+            y2={toY(referenceLine.value)}
+            stroke={referenceLine.color ?? 'rgba(192,192,192,0.45)'}
+            strokeWidth={1}
+            strokeDasharray="4 4"
+          />
+          {referenceLine.label ? (
+            <SvgText
+              x={width - pad.right - 2}
+              y={toY(referenceLine.value) - 4}
+              textAnchor="end"
+              fontSize={8}
+              fill={referenceLine.color ?? 'rgba(192,192,192,0.65)'}
+            >
+              {referenceLine.label}
+            </SvgText>
+          ) : null}
+        </>
+      )}
 
       {/* Line */}
       <Path d={pathD} stroke={lineColor} strokeWidth={2} fill="none" />

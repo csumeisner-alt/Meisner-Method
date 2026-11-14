@@ -53,6 +53,7 @@ type Props = {
   event: EventWindow;
   enrollment: PaperChallengeEnrollment | null;
   onEnrollmentChange: (enrollment: PaperChallengeEnrollment | null) => void;
+  onRankChange?: (rank: number | null) => void;
 };
 
 const DEMO_ENTRIES: LeaderboardEntry[] = [
@@ -158,7 +159,7 @@ async function responseError(response: Response, fallback: string) {
   }
 }
 
-export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChange }: Props) {
+export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChange, onRankChange }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
@@ -197,8 +198,19 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
   const canOptIn = selectedEvent.id === event.id
     && enrollment?.eventId === event.id
     && event.phase !== 'ended';
+  const matchingOwnEntries = useMemo(
+    () => optedIn ? entries.filter((entry) => entry.alias === enrollment?.leaderboardAlias) : [],
+    [entries, enrollment?.leaderboardAlias, optedIn],
+  );
 
   useEffect(() => { enrollmentRef.current = enrollment; }, [enrollment]);
+  useEffect(() => {
+    if (selectedEvent.id !== event.id || matchingOwnEntries.length !== 1) {
+      onRankChange?.(null);
+      return;
+    }
+    onRankChange?.(matchingOwnEntries[0]?.rank ?? null);
+  }, [event.id, matchingOwnEntries, onRankChange, selectedEvent.id]);
   useEffect(() => {
     setArchiveYear((currentYear) => (
       archiveYears.some(({ year }) => year === currentYear)

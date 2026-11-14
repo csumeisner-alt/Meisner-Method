@@ -14,18 +14,21 @@ export function BottomTabBar() {
   const isHome = pathname === '/' || pathname === '';
   const isPicks = pathname.startsWith('/picks');
   const isPaper = pathname === '/paper';
+  const isEventArena = pathname === '/event-arena';
   const isPortfolio = pathname === '/portfolio';
 
   const botPad = Platform.OS === 'web' ? 0 : insets.bottom;
-  const tabOrder = ['/', '/picks', '/paper', '/portfolio'] as const;
+  const tabOrder = ['/', '/picks', '/paper', '/portfolio', '/event-arena'] as const;
 
-  function go(path: '/' | '/picks' | '/paper' | '/portfolio') {
+  function go(path: '/' | '/picks' | '/paper' | '/portfolio' | '/event-arena') {
     const currentTab = pathname.startsWith('/picks')
       ? '/picks'
       : pathname === '/paper'
         ? '/paper'
         : pathname === '/portfolio'
           ? '/portfolio'
+          : pathname === '/event-arena'
+            ? '/event-arena'
           : '/';
     const currentIndex = tabOrder.indexOf(currentTab);
     const targetIndex = tabOrder.indexOf(path);
@@ -63,6 +66,21 @@ export function BottomTabBar() {
         <Feather name="briefcase" size={24} color={isPortfolio ? colors.heading : colors.mutedForeground} />
         <Text style={[styles.label, { color: isPortfolio ? colors.heading : colors.mutedForeground }]}>PORTFOLIO</Text>
         {isPortfolio && <View style={[styles.dot, { backgroundColor: colors.heading }]} />}
+      </TouchableOpacity>
+
+      <View style={styles.divider} />
+
+      <TouchableOpacity
+        testID="bottom-tab-event-arena"
+        accessibilityRole="button"
+        accessibilityLabel="Event Arena"
+        style={styles.tab}
+        onPress={() => go('/event-arena')}
+        activeOpacity={0.7}
+      >
+        <Feather name="award" size={22} color={isEventArena ? colors.heading : colors.mutedForeground} />
+        <Text style={[styles.label, { color: isEventArena ? colors.heading : colors.mutedForeground }]}>EVENT ARENA</Text>
+        {isEventArena && <View style={[styles.dot, { backgroundColor: colors.heading }]} />}
       </TouchableOpacity>
     </View>
   );

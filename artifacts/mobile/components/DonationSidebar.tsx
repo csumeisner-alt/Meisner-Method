@@ -29,7 +29,6 @@ import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { useAchievements } from '@/contexts/AchievementsContext';
 import { ACHIEVEMENTS } from '@/lib/achievements';
 import { Confetti } from '@/components/Confetti';
-import { PaperChallengeHistory } from '@/components/PaperChallengeHistory';
 import {
   useAmericanMode,
   AMERICAN_MODE_THRESHOLD,
@@ -629,7 +628,6 @@ export function DonationSidebar({
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            <PaperChallengeHistory visible={visible} onCloseSettings={onClose} />
             <AlertManagementSection
               alerts={alerts}
               watchlistSymbols={watchlistSymbols}
