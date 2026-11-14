@@ -59,6 +59,7 @@ const NOTIFICATIONS_KEY = '@stocksense/paper_events_notifications_v1';
 const NOTIFICATION_ID_KEY = '@stocksense/paper_events_notification_id_v1';
 const PAPER_CACHE_KEY = '@stocksense/paper_v2';
 const PAPER_VALUE_SNAPSHOT_KEY = '@stocksense/paper_equity_snapshots_v1';
+const EVENT_ARENA_CASH_HISTORY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
 type Section = 'competition' | 'leaderboard' | 'trades' | 'past';
@@ -179,6 +180,7 @@ export function EventArenaScreen() {
   const [cashNotifications, setCashNotifications] = useState<EventCashNotification[]>([]);
   const [cashSentTransfers, setCashSentTransfers] = useState<EventCashSentTransfer[]>([]);
   const [cashHistoryDirection, setCashHistoryDirection] = useState<'received' | 'sent'>('received');
+  const [cashHistoryEventId, setCashHistoryEventId] = useState('');
   const [cashNotificationsUnread, setCashNotificationsUnread] = useState(0);
   const [cashNotificationsOpen, setCashNotificationsOpen] = useState(false);
   const [cashNotificationsLoading, setCashNotificationsLoading] = useState(false);
@@ -283,11 +285,16 @@ export function EventArenaScreen() {
     }
   }, [currentWindow.id, store.enrollment]);
 
-  const refreshCashNotifications = useCallback(async (markRead = false) => {
-    const currentEnrollment = store.enrollment?.eventId === currentWindow.id ? store.enrollment : null;
+  const refreshCashNotifications = useCallback(async (
+    markRead = false,
+    eventId = currentWindow.id,
+  ) => {
+    const isCurrentEvent = eventId === currentWindow.id;
+    const currentEnrollment = isCurrentEvent && store.enrollment?.eventId === eventId
+      ? store.enrollment
+      : null;
     if (
-      !currentEnrollment
-      || currentWindow.phase !== 'active'
+      (isCurrentEvent && (!currentEnrollment || currentWindow.phase !== 'active'))
       || (transferRefreshInFlightRef.current && !markRead)
     ) return;
     transferRefreshInFlightRef.current = true;
@@ -297,7 +304,7 @@ export function EventArenaScreen() {
     try {
       const installationId = await getInstallationId();
       const response = await fetch(
-        `${BASE_URL}/api/event-arena/${encodeURIComponent(currentWindow.id)}/transfers`,
+        `${BASE_URL}/api/event-arena/${encodeURIComponent(eventId)}/transfers`,
         { headers: {
           'X-Event-Arena-Installation-Id': installationId,
           'X-Event-Arena-Mark-Read': String(markRead),
@@ -311,7 +318,7 @@ export function EventArenaScreen() {
       const notifications = Array.isArray(result.notifications)
         ? result.notifications.filter((item) =>
           item
-          && item.eventId === currentWindow.id
+          && item.eventId === eventId
           && typeof item.id === 'string'
           && typeof item.senderAlias === 'string'
           && Number.isFinite(item.amount)
@@ -321,7 +328,7 @@ export function EventArenaScreen() {
       const sentTransfers = Array.isArray(result.sentTransfers)
         ? result.sentTransfers.filter((item) =>
           item
-          && item.eventId === currentWindow.id
+          && item.eventId === eventId
           && typeof item.id === 'string'
           && typeof item.recipientAlias === 'string'
           && Number.isFinite(item.amount)
@@ -329,22 +336,26 @@ export function EventArenaScreen() {
         )
         : [];
       let accountChanged = false;
-      for (const notification of notifications) {
-        const applied = await applyEventCashTransfer({
-          accountId: currentEnrollment.accountId,
-          transferId: notification.id,
-          amount: notification.amount,
-          direction: 'received',
-        }, {
-          getItem: (key) => AsyncStorage.getItem(key),
-          setItem: (key, value) => AsyncStorage.setItem(key, value),
-        });
-        accountChanged ||= applied.applied;
+      if (isCurrentEvent && currentEnrollment) {
+        for (const notification of notifications) {
+          const applied = await applyEventCashTransfer({
+            accountId: currentEnrollment.accountId,
+            transferId: notification.id,
+            amount: notification.amount,
+            direction: 'received',
+          }, {
+            getItem: (key) => AsyncStorage.getItem(key),
+            setItem: (key, value) => AsyncStorage.setItem(key, value),
+          });
+          accountChanged ||= applied.applied;
+        }
       }
       if (requestSequence === cashNotificationRequestSequenceRef.current) {
         setCashNotifications(notifications);
         setCashSentTransfers(sentTransfers);
-        setCashNotificationsUnread(notifications.filter((item) => !item.readAt).length);
+        if (isCurrentEvent) {
+          setCashNotificationsUnread(notifications.filter((item) => !item.readAt).length);
+        }
       }
       if (accountChanged) await refreshAccountData();
     } catch (error) {
@@ -358,6 +369,16 @@ export function EventArenaScreen() {
       }
     }
   }, [currentWindow.id, currentWindow.phase, refreshAccountData, store.enrollment]);
+
+  const openCashHistory = (eventId: string) => {
+    setCashHistoryEventId(eventId);
+    setCashHistoryDirection('received');
+    setCashNotifications([]);
+    setCashSentTransfers([]);
+    setCashNotificationsError('');
+    setCashNotificationsOpen(true);
+    void refreshCashNotifications(true, eventId);
+  };
 
   const sendEventCash = useCallback(async (args: {
     recipientParticipantToken: string;
@@ -829,6 +850,19 @@ export function EventArenaScreen() {
                 {expandedEventId === event.eventId ? 'HIDE' : 'VIEW'} TRADES ({event.transactions === undefined ? 'unavailable' : event.transactions.length})
               </Text>
             </TouchableOpacity>
+            {event.eventEndAtMs <= now
+              && event.eventEndAtMs > now - EVENT_ARENA_CASH_HISTORY_RETENTION_MS
+              && (
+                <TouchableOpacity
+                  testID={`event-arena-open-cash-history-${event.eventId}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`View sent and received cash for ${dateRange(event.eventStartAtMs, event.eventEndAtMs)}`}
+                  onPress={() => openCashHistory(event.eventId)}
+                  style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 }}
+                >
+                  <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11 }}>CASH HISTORY</Text>
+                </TouchableOpacity>
+              )}
             <TouchableOpacity
               testID={`event-arena-open-past-detail-${event.eventId}`}
               accessibilityRole="button"
@@ -1002,11 +1036,7 @@ export function EventArenaScreen() {
         rank={rank}
         loading={accountLoading || storeState === 'loading'}
         saving={saving}
-        onOpenNotifications={() => {
-          setCashHistoryDirection('received');
-          setCashNotificationsOpen(true);
-          void refreshCashNotifications(true);
-        }}
+        onOpenNotifications={() => openCashHistory(currentWindow.id)}
         unreadCashNotifications={cashNotificationsUnread}
         onJoin={() => {
           setJoinAliasDraft('');
@@ -1115,7 +1145,7 @@ export function EventArenaScreen() {
           <View style={{ paddingHorizontal: 18, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <View style={{ flex: 1 }}>
               <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20 }}>Event cash</Text>
-              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>Event {currentWindow.id}</Text>
+              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>Event {cashHistoryEventId}</Text>
             </View>
             <TouchableOpacity
               testID="event-arena-cash-notifications-close"
@@ -1164,7 +1194,7 @@ export function EventArenaScreen() {
           {cashNotificationsError ? (
             <View style={{ padding: 16 }}>
               <Text accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 12 }}>{cashNotificationsError}</Text>
-              <TouchableOpacity testID="event-arena-cash-notifications-retry" accessibilityRole="button" onPress={() => { void refreshCashNotifications(true); }} style={{ alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center' }}>
+              <TouchableOpacity testID="event-arena-cash-notifications-retry" accessibilityRole="button" onPress={() => { void refreshCashNotifications(true, cashHistoryEventId); }} style={{ alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center' }}>
                 <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11 }}>RETRY</Text>
               </TouchableOpacity>
             </View>

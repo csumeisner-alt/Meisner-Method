@@ -221,6 +221,8 @@ function createTransferDatabase() {
       };
     }
     if (sql.includes("SELECT transfer_ref, sender_alias, amount, created_at, read_at")) {
+      assert.match(sql, /WHERE event_id=\$1 AND recipient_installation_id=\$2[\s\S]*event_end_at > NOW\(\) - \(\$3 \* INTERVAL '1 day'\)/);
+      assert.equal(values?.[2], 30);
       return {
         rows: transfers.filter((item) => item.eventId === values?.[0]
           && item.recipientInstallationId === values?.[1]).map((row) => ({
@@ -514,6 +516,56 @@ test("cash inbox returns only incoming transfers for its event and opening marks
     assert.deepEqual(otherEventHistory.notifications, []);
     assert.deepEqual(otherEventHistory.sentTransfers, []);
   });
+});
+
+test("retained completed cash history stays private after leaderboard opt-out", async () => {
+  const db = createTransferDatabase();
+  db.participants.forEach((participant) => { participant.active = false; });
+  db.transfers.push({
+    eventId,
+    id: "past-transfer-ref-123",
+    senderInstallationId: installationId,
+    recipientInstallationId: "recipient-installation-123",
+    senderAlias: "MarketFox",
+    recipientAlias: "BlueWhale",
+    amount: 125,
+    createdAt: new Date("2026-11-19T15:00:00.000Z"),
+    readAt: null,
+  });
+
+  await withApi(db.query, async (baseUrl) => {
+    const pastEventUrl = `${baseUrl}/event-arena/${eventId}/transfers`;
+    const senderResponse = await fetch(pastEventUrl, {
+      headers: { "X-Event-Arena-Installation-Id": installationId },
+    });
+    const senderHistory = await senderResponse.json() as any;
+    assert.equal(senderHistory.notifications.length, 0);
+    assert.deepEqual(senderHistory.sentTransfers, [{
+      id: "past-transfer-ref-123",
+      eventId,
+      recipientAlias: "BlueWhale",
+      amount: 125,
+      createdAt: "2026-11-19T15:00:00.000Z",
+    }]);
+
+    const recipientResponse = await fetch(pastEventUrl, {
+      headers: { "X-Event-Arena-Installation-Id": "recipient-installation-123" },
+    });
+    const recipientHistory = await recipientResponse.json() as any;
+    assert.equal(recipientHistory.sentTransfers.length, 0);
+    assert.equal(recipientHistory.notifications.length, 1);
+    assert.equal(recipientHistory.notifications[0].senderAlias, "MarketFox");
+    assert.equal(recipientHistory.notifications[0].readAt, null);
+
+    const anotherEventResponse = await fetch(`${baseUrl}/event-arena/2026-11-30/transfers`, {
+      headers: { "X-Event-Arena-Installation-Id": installationId },
+    });
+    const anotherEventHistory = await anotherEventResponse.json() as any;
+    assert.deepEqual(anotherEventHistory.notifications, []);
+    assert.deepEqual(anotherEventHistory.sentTransfers, []);
+    assert.equal(JSON.stringify(senderHistory).includes(installationId), false);
+    assert.equal(JSON.stringify(recipientHistory).includes("recipient-installation-123"), false);
+  }, Date.parse("2026-12-01T17:00:00.000Z"));
 });
 
 test("expired public entries and their alias locks are deleted after the retention period", async () => {

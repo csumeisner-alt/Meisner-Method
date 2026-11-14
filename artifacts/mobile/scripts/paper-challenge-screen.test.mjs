@@ -414,6 +414,12 @@ test("Event Arena cash transfers stay event-only, confirmed, private, and idempo
   assert.match(eventArenaTransfers, /eventArenaAppliedTransferIds/);
   assert.match(eventArena, /onOpenNotifications/);
   assert.match(eventArena, /testID=\{`event-arena-cash-notification-/);
+  assert.match(eventArena, /EVENT_ARENA_CASH_HISTORY_RETENTION_MS/);
+  assert.match(eventArena, /testID=\{`event-arena-open-cash-history-\$\{event\.eventId\}`\}/);
+  assert.match(eventArena, /refreshCashNotifications\(true, eventId\)/);
+  assert.match(eventArena, /setCashHistoryEventId\(eventId\)/);
+  assert.match(eventArena, /if \(isCurrentEvent && currentEnrollment\)/);
+  assert.match(eventArena, /Event \{cashHistoryEventId\}/);
   assert.match(eventArenaOverview, /testID="event-arena-cash-notifications"/);
   assert.match(eventArenaOverview, /testID="event-arena-refresh"/);
   assert.match(eventArenaApi, /event_arena_cash_transfers/);
