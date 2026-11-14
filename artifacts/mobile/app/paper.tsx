@@ -200,8 +200,8 @@ const CARD_BG = 'rgba(192,192,192,0.08)';
 const BORDER = 'rgba(192,192,192,0.28)';
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
-  { id: 'positions', label: 'Positions', icon: 'list' },
   { id: 'overview',  label: 'Overview', icon: 'grid' },
+  { id: 'positions', label: 'Positions', icon: 'list' },
   { id: 'orders',    label: 'Orders', icon: 'clock' },
   { id: 'history',   label: 'Trade History', icon: 'repeat' },
   { id: 'analytics', label: 'Analytics', icon: 'bar-chart-2' },
@@ -215,7 +215,7 @@ const PAPER_TAB_GROUPS: {
   icon: string;
   tabs: TabId[];
 }[] = [
-  { id: 'portfolio', label: 'Portfolio', icon: 'briefcase', tabs: ['positions', 'overview'] },
+  { id: 'portfolio', label: 'Portfolio', icon: 'briefcase', tabs: ['overview', 'positions'] },
   { id: 'activity', label: 'Activity', icon: 'activity', tabs: ['orders', 'history'] },
   { id: 'insights', label: 'Insights', icon: 'bar-chart-2', tabs: ['analytics', 'dividends', 'growth'] },
 ];
@@ -1673,16 +1673,9 @@ export default function PaperScreen() {
 
   // ── Tab views ─────────────────────────────────────────────────────────────
   const renderPositions = () => {
-    const heading = (
-      <View style={styles.contentSectionHeader}>
-        <Text style={styles.contentSectionTitle}>Positions</Text>
-        <Text style={styles.sectionCount}>{myPositions.length}</Text>
-      </View>
-    );
     if (myPositions.length === 0) {
       return (
         <View style={{ paddingHorizontal: 16 }}>
-          {heading}
           <View style={styles.emptyWrap}>
             <Feather name="activity" size={36} color={DIM} />
             <Text style={styles.emptyTitle}>No open positions</Text>
@@ -1693,7 +1686,6 @@ export default function PaperScreen() {
     }
     return (
       <View style={{ gap: 4, paddingHorizontal: 16 }}>
-        {heading}
         {myPositions.map((pos, i) => {
           const q = quotes[pos.symbol];
           const price = q?.price ?? pos.avgCost;
@@ -2503,27 +2495,64 @@ export default function PaperScreen() {
           );
         })}
       </View>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.tabScroll}
-        contentContainerStyle={styles.subTabBar}
-        accessibilityRole="tablist"
-      >
-        {activeGroupTabs.map((tab) => (
-          <TouchableOpacity
-            key={tab.id}
-            testID={`paper-tab-${tab.id}`}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: activeTab === tab.id }}
-            style={[styles.tabBtn, activeTab === tab.id && styles.tabBtnActive]}
-            onPress={() => setActiveTab(tab.id)}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.tabLabel, activeTab === tab.id && styles.tabLabelActive]}>{tab.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      {activeTabGroup.id === 'portfolio' ? (
+        <View style={[styles.subTabBar, styles.portfolioSubTabBar]} accessibilityRole="tablist">
+          {activeGroupTabs.map((tab) => {
+            const selected = activeTab === tab.id;
+            return (
+              <TouchableOpacity
+                key={tab.id}
+                testID={`paper-tab-${tab.id}`}
+                accessibilityRole="tab"
+                accessibilityLabel={tab.id === 'positions' ? `Positions, ${myPositions.length} open` : tab.label}
+                accessibilityState={{ selected }}
+                style={[styles.tabBtn, styles.portfolioTabBtn, selected && styles.tabBtnActive]}
+                onPress={() => setActiveTab(tab.id)}
+                activeOpacity={0.7}
+              >
+                <Text style={[
+                  styles.portfolioTabLabel,
+                  styles.tabLabel,
+                  selected && (tab.id === 'positions' ? styles.positionsTabLabelActive : styles.tabLabelActive),
+                ]} allowFontScaling>
+                  {tab.label}
+                </Text>
+                {tab.id === 'positions' && selected && (
+                  <Text
+                    testID="paper-positions-count"
+                    allowFontScaling
+                    style={styles.sectionCount}
+                  >
+                    {myPositions.length}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ) : (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.tabScroll}
+          contentContainerStyle={styles.subTabBar}
+          accessibilityRole="tablist"
+        >
+          {activeGroupTabs.map((tab) => (
+            <TouchableOpacity
+              key={tab.id}
+              testID={`paper-tab-${tab.id}`}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: activeTab === tab.id }}
+              style={[styles.tabBtn, activeTab === tab.id && styles.tabBtnActive]}
+              onPress={() => setActiveTab(tab.id)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.tabLabel, activeTab === tab.id && styles.tabLabelActive]}>{tab.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
 
       {/* Content */}
       <ScrollView
@@ -3346,10 +3375,14 @@ const styles = StyleSheet.create({
   primaryTabLabelActive: { color: GOLD },
   tabScroll: { flexGrow: 0 },
   subTabBar: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 8, gap: 8 },
+  portfolioSubTabBar: { flexDirection: 'row', alignItems: 'stretch' },
   tabBtn: { minHeight: 38, minWidth: 78, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 10, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD_BG },
+  portfolioTabBtn: { flex: 1, minWidth: 0, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, paddingHorizontal: 8 },
+  portfolioTabLabel: { flexShrink: 1, textAlign: 'center' },
   tabBtnActive: { borderColor: GOLD, backgroundColor: 'rgba(255,215,0,0.12)' },
   tabLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 12, color: DIM },
   tabLabelActive: { color: GOLD },
+  positionsTabLabelActive: { color: '#fff' },
 
   // Cards
   card: {

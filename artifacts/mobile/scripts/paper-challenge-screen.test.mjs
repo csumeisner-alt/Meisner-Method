@@ -180,18 +180,23 @@ test("Paper Trading keeps all views in readable groups and reserves space for ac
   const positionsEnd = screen.indexOf("const renderOverview = () => {", positionsStart);
   const positions = screen.slice(positionsStart, positionsEnd);
 
-  assert.match(screen, /\{ id: 'portfolio', label: 'Portfolio'.*tabs: \['positions', 'overview'\] \}/);
+  assert.match(screen, /\{ id: 'portfolio', label: 'Portfolio'.*tabs: \['overview', 'positions'\] \}/);
   assert.match(screen, /useState<TabId>\('positions'\)/);
   assert.match(screen, /\{ id: 'activity', label: 'Activity'.*tabs: \['orders', 'history'\] \}/);
   assert.match(screen, /\{ id: 'insights', label: 'Insights'.*tabs: \['analytics', 'dividends', 'growth'\] \}/);
   assert.match(screen, /paper-tab-group-\$\{group\.id\}/);
   assert.match(screen, /activeGroupTabs\.map\(\(tab\)/);
+  assert.match(screen, /\{ id: 'overview',\s+label: 'Overview'/);
+  assert.match(screen, /\{ id: 'positions',\s+label: 'Positions'/);
+  assert.match(screen, /tabs: \['overview', 'positions'\]/);
   assert.match(screen, /testID="paper-trading-buy-action"/);
   assert.doesNotMatch(screen, /position: 'absolute',\s*right: 20,\s*bottom: 108/);
   assert.match(screen, /contentContainerStyle=\{\{ paddingBottom: 16, paddingTop: 10 \}\}/);
   assert.match(screen, /testID="paper-trading-buy-action"[\s\S]*?openBuyModal/);
   assert.doesNotMatch(overview, /INVESTED VALUE|AVAILABLE CASH|OPEN POSITIONS|TOTAL RETURN/);
-  assert.match(positions, /styles\.sectionCount\}>\{myPositions\.length\}/);
+  assert.doesNotMatch(positions, /contentSectionHeader|contentSectionTitle|sectionCount/);
+  assert.match(positions, /No open positions/);
+  assert.match(positions, /Tap Buy to place your first paper trade/);
   assert.doesNotMatch(screen, /paper-portfolio-overview-metrics/);
   assert.match(screen, /BUYING POWER/);
   assert.match(screen, /testID="paper-account-total-return"[\s\S]*?pctFmt\(totalReturn\)/);
@@ -234,6 +239,30 @@ test("Paper Trading keeps all views in readable groups and reserves space for ac
   assert.match(bottomTabBar, /fontSize: 9/);
   assert.match(bottomTabBar, /accessibilityLabel="Event Arena"/);
   assert.match(bottomTabBar, /EVENT\{"\\n"\}ARENA/);
+});
+
+test("Positions count sits in its accessible Portfolio tab and fits compact phones", () => {
+  const portfolioTabsStart = screen.indexOf("{activeTabGroup.id === 'portfolio' ? (");
+  const portfolioTabsEnd = screen.indexOf("{/* Content */}", portfolioTabsStart);
+  const portfolioTabs = screen.slice(portfolioTabsStart, portfolioTabsEnd);
+  const positionsStart = screen.indexOf("const renderPositions = () => {");
+  const positionsEnd = screen.indexOf("const renderOverview = () => {", positionsStart);
+  const positions = screen.slice(positionsStart, positionsEnd);
+
+  assert.ok(portfolioTabsStart >= 0 && portfolioTabsEnd > portfolioTabsStart);
+  assert.match(portfolioTabs, /<View style=\{\[styles\.subTabBar, styles\.portfolioSubTabBar\]\} accessibilityRole="tablist">/);
+  assert.match(portfolioTabs, /testID=\{`paper-tab-\$\{tab\.id\}`\}/);
+  assert.match(portfolioTabs, /accessibilityRole="tab"/);
+  assert.match(portfolioTabs, /accessibilityState=\{\{ selected \}\}/);
+  assert.match(portfolioTabs, /accessibilityLabel=\{tab\.id === 'positions' \? `Positions, \$\{myPositions\.length\} open` : tab\.label\}/);
+  assert.match(portfolioTabs, /tab\.id === 'positions' && selected && \([\s\S]*?testID="paper-positions-count"[\s\S]*?\{myPositions\.length\}/);
+  assert.match(portfolioTabs, /selected && \(tab\.id === 'positions' \? styles\.positionsTabLabelActive : styles\.tabLabelActive\)/);
+  assert.match(positions, /No open positions/);
+  assert.match(screen, /positions\.filter\(p => p\.accountId === activeId\)/);
+  assert.match(screen, /portfolioSubTabBar: \{ flexDirection: 'row', alignItems: 'stretch' \}/);
+  assert.match(screen, /portfolioTabBtn: \{ flex: 1, minWidth: 0, flexDirection: 'row'/);
+  assert.match(screen, /positionsTabLabelActive: \{ color: '#fff' \}/);
+  assert.match(screen, /allowFontScaling\s+style=\{styles\.sectionCount\}/);
 });
 
 test("paper dashboard switches accounts from the summary or selector and keeps account management", () => {
