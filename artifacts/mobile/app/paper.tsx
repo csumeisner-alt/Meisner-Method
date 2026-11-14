@@ -483,9 +483,6 @@ export default function PaperScreen() {
       && new Date(tx.date).getTime() >= todayStart.getTime())
     .reduce((sum, tx) => sum + (tx.realizedPnL ?? 0) - (tx.fee ?? 0), 0);
   const todayPnL = dayChange + todayRealized;
-  const investedCapital = myPositions.reduce(
-    (sum, pos) => sum + pos.shares * (quotes[pos.symbol]?.price ?? pos.avgCost), 0,
-  );
   const totalPnLFromEquity = portfolioValue - INITIAL_BALANCE;
 
   const accountsRef = useRef<PaperAccount[]>([]);
@@ -1915,19 +1912,6 @@ export default function PaperScreen() {
 
     return (
       <View style={{ gap: 12, paddingHorizontal: 16 }}>
-        <View style={styles.metricsGrid} testID="paper-portfolio-overview-metrics">
-          {[
-            { label: 'INVESTED VALUE', val: $fmt(investedCapital), color: SILVER },
-            { label: 'AVAILABLE CASH', val: $fmt(account?.cash ?? 0), color: SILVER },
-            { label: 'OPEN POSITIONS', val: `${myPositions.length}`, color: GOLD },
-            { label: 'TOTAL RETURN', val: pctFmt(totalReturn), color: pnlColor(totalReturn) },
-          ].map((metric) => (
-            <View key={metric.label} style={styles.metricBox}>
-              <Text style={[styles.metricVal, { color: metric.color }]} numberOfLines={1}>{metric.val}</Text>
-              <Text style={styles.metricLabel}>{metric.label}</Text>
-            </View>
-          ))}
-        </View>
         <View style={styles.card}>
           <View style={styles.chartHeading}>
             <View style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
@@ -2355,14 +2339,23 @@ export default function PaperScreen() {
         <Text style={styles.heroEquityLabel}>TOTAL EQUITY</Text>
         <View style={styles.heroStats}>
           <View style={styles.heroStat}>
-            <Text style={[styles.heroStatValue, { color: pnlColor(todayPnL) }]}>
+            <Text style={[styles.heroStatValue, { color: pnlColor(todayPnL) }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
               {todayPnL >= 0 ? '+' : ''}{$fmt(todayPnL)}
             </Text>
             <Text style={styles.heroStatLabel}>TODAY’S P/L</Text>
           </View>
           <View style={styles.heroStatDivider} />
           <View style={styles.heroStat}>
-            <Text style={styles.heroStatValue}>{$fmt(account?.cash ?? 0)}</Text>
+            <Text testID="paper-account-total-return" style={[styles.heroStatValue, { color: pnlColor(totalReturn) }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+              {pctFmt(totalReturn)}
+            </Text>
+            <Text style={styles.heroStatLabel}>TOTAL RETURN</Text>
+          </View>
+          <View style={styles.heroStatDivider} />
+          <View style={styles.heroStat}>
+            <Text testID="paper-account-buying-power" style={styles.heroStatValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+              {$fmt(account?.cash ?? 0)}
+            </Text>
             <Text style={styles.heroStatLabel}>BUYING POWER</Text>
           </View>
         </View>
@@ -3162,14 +3155,14 @@ const styles = StyleSheet.create({
   heroStats: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: 'rgba(192,192,192,0.16)',
   },
   heroStat: { flex: 1, minWidth: 0 },
-  heroStatValue: { color: '#e5e0d4', fontFamily: 'Inter_700Bold', fontSize: 14 },
+  heroStatValue: { color: '#e5e0d4', fontFamily: 'Inter_700Bold', fontSize: 12 },
   heroStatLabel: { color: DIM, fontFamily: 'Inter_500Medium', fontSize: 8, letterSpacing: 0.65, marginTop: 2 },
   heroStatDivider: { width: 1, height: 30, backgroundColor: BORDER },
   accountPositionIndicators: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 5, marginTop: 7 },

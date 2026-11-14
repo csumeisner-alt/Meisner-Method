@@ -170,6 +170,13 @@ test("account dashboard selects, scopes, and persists the active paper account",
 });
 
 test("Paper Trading keeps all views in readable groups and reserves space for actions", () => {
+  const overviewStart = screen.indexOf("const renderOverview = () => {");
+  const overviewEnd = screen.indexOf("const renderAnalytics = () => {", overviewStart);
+  const overview = screen.slice(overviewStart, overviewEnd);
+  const positionsStart = screen.indexOf("const renderPositions = () => {");
+  const positionsEnd = screen.indexOf("const renderOverview = () => {", positionsStart);
+  const positions = screen.slice(positionsStart, positionsEnd);
+
   assert.match(screen, /\{ id: 'portfolio', label: 'Portfolio'.*tabs: \['positions', 'overview'\] \}/);
   assert.match(screen, /useState<TabId>\('positions'\)/);
   assert.match(screen, /\{ id: 'activity', label: 'Activity'.*tabs: \['orders', 'history'\] \}/);
@@ -180,12 +187,18 @@ test("Paper Trading keeps all views in readable groups and reserves space for ac
   assert.doesNotMatch(screen, /position: 'absolute',\s*right: 20,\s*bottom: 108/);
   assert.match(screen, /contentContainerStyle=\{\{ paddingBottom: 16, paddingTop: 10 \}\}/);
   assert.match(screen, /testID="paper-trading-buy-action"[\s\S]*?openBuyModal/);
-  assert.match(screen, /testID="paper-portfolio-overview-metrics"/);
-  assert.match(screen, /INVESTED VALUE/);
-  assert.match(screen, /AVAILABLE CASH/);
-  assert.match(screen, /OPEN POSITIONS/);
-  assert.match(screen, /TOTAL RETURN/);
+  assert.doesNotMatch(overview, /INVESTED VALUE|AVAILABLE CASH|OPEN POSITIONS|TOTAL RETURN/);
+  assert.match(positions, /styles\.sectionCount\}>\{myPositions\.length\}/);
+  assert.doesNotMatch(screen, /paper-portfolio-overview-metrics/);
   assert.match(screen, /BUYING POWER/);
+  assert.match(screen, /testID="paper-account-total-return"[\s\S]*?pctFmt\(totalReturn\)/);
+  assert.match(screen, /testID="paper-account-buying-power"[\s\S]*?\$fmt\(account\?\.cash \?\? 0\)/);
+  assert.match(screen, /const totalReturn = \(\(portfolioValue - INITIAL_BALANCE\) \/ INITIAL_BALANCE\) \* 100/);
+  assert.match(screen, /const portfolioValue = account \? computePaperEquity\(account, myPositions, quotes\) : 0/);
+  assert.match(screen, /heroStats:[\s\S]*?flexDirection: 'row'[\s\S]*?gap: 8/);
+  assert.match(screen, /const renderOverview = \(\) => \{[\s\S]*?ACCOUNT PERFORMANCE/);
+  assert.match(screen, /testID="paper-account-total-return"[\s\S]*?adjustsFontSizeToFit/);
+  assert.match(screen, /testID="paper-account-buying-power"[\s\S]*?adjustsFontSizeToFit/);
   assert.match(screen, /const DIM = '#a2a8b2'/);
   for (const [tab, renderer] of [
     ["overview", "renderOverview"],
