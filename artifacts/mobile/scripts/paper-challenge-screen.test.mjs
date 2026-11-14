@@ -56,6 +56,10 @@ test("live leaderboard remains anonymous, opt-in, event-scoped, and privacy-limi
   assert.match(leaderboard, /query: \{ enabled: open, queryKey: getGetEventArenaLeaderboardWeeksQueryKey\(\) \}/);
   assert.match(leaderboard, /paper-event-leaderboard-week-picker/);
   assert.match(leaderboard, /paper-event-leaderboard-week-\$\{week\.id\}/);
+  assert.match(leaderboard, /groupCompletedEventWeeksByYear\(archiveWeeks\)/);
+  assert.match(leaderboard, /archiveYears\[0\]\?\.year/);
+  assert.match(leaderboard, /paper-event-leaderboard-year-\$\{year\}/);
+  assert.match(leaderboard, /onPress=\{\(\) => setArchiveYear\(year\)\}/);
   assert.match(leaderboard, /No completed weeks with opted-in participants yet/);
   assert.match(leaderboard, /Past event weeks are unavailable/);
   assert.match(leaderboard, /selectedEvent\.id === event\.id/);

@@ -19,6 +19,7 @@ import {
   useGetEventArenaLeaderboardWeeks,
 } from '@workspace/api-client-react';
 import { getInstallationId } from '@/lib/installation';
+import { groupCompletedEventWeeksByYear } from '@/lib/eventArenaArchive';
 import {
   PAPER_CHALLENGE_STARTING_BALANCE,
   updatePaperChallengeStore,
@@ -170,6 +171,7 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
   const [detail, setDetail] = useState<LeaderboardEntry | null>(null);
   const [showDemo, setShowDemo] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<EventWindow>(event);
+  const [archiveYear, setArchiveYear] = useState<number | null>(null);
   const [appIsActive, setAppIsActive] = useState(AppState.currentState === 'active');
   const refreshingRef = useRef(false);
   const enrollmentRef = useRef(enrollment);
@@ -179,9 +181,17 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
   });
   const demoEntries = useMemo(() => DEMO_ENTRIES, []);
   const visibleEntries = showDemo ? demoEntries : entries;
-  const archiveWeeks: CompletedEventWeek[] = (weeksQuery.data?.weeks ?? [])
-    .filter((week) => week.id !== event.id)
-    .map((week) => ({ ...week, phase: 'ended' }));
+  const archiveWeeks: CompletedEventWeek[] = useMemo(
+    () => (weeksQuery.data?.weeks ?? [])
+      .filter((week) => week.id !== event.id)
+      .map((week) => ({ ...week, phase: 'ended' })),
+    [weeksQuery.data?.weeks, event.id],
+  );
+  const archiveYears = useMemo(() => groupCompletedEventWeeksByYear(archiveWeeks), [archiveWeeks]);
+  const selectedArchiveYear = archiveYears.some(({ year }) => year === archiveYear)
+    ? archiveYear
+    : archiveYears[0]?.year ?? null;
+  const selectedYearWeeks = archiveYears.find(({ year }) => year === selectedArchiveYear)?.weeks ?? [];
   const optedIn = selectedEvent.id === event.id && enrollment?.leaderboardOptedIn === true;
   const aliasLocked = Date.now() >= selectedEvent.startAtMs;
   const canOptIn = selectedEvent.id === event.id
@@ -189,6 +199,13 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
     && event.phase !== 'ended';
 
   useEffect(() => { enrollmentRef.current = enrollment; }, [enrollment]);
+  useEffect(() => {
+    setArchiveYear((currentYear) => (
+      archiveYears.some(({ year }) => year === currentYear)
+        ? currentYear
+        : archiveYears[0]?.year ?? null
+    ));
+  }, [archiveYears]);
   useEffect(() => {
     selectedEventRef.current = event;
     setSelectedEvent(event);
@@ -505,7 +522,7 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
             <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: Platform.OS === 'web' ? 24 : insets.bottom + 18 }}>
               <View testID="paper-event-leaderboard-week-picker" style={{ marginBottom: 16 }}>
                 <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14, marginBottom: 8 }}>
-                  Event week
+                  Current event
                 </Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                   <TouchableOpacity
@@ -530,36 +547,78 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
                       Current · {dateRangeLabel(event.startAtMs, event.endAtMs)}
                     </Text>
                   </TouchableOpacity>
-                  {archiveWeeks.map((week) => {
-                    const selected = selectedEvent.id === week.id;
-                    return (
-                      <TouchableOpacity
-                        key={week.id}
-                        testID={`paper-event-leaderboard-week-${week.id}`}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected }}
-                        accessibilityLabel={`Event week ${dateRangeLabel(week.startAtMs, week.endAtMs)}, ${week.participantCount} participants`}
-                        onPress={() => selectEvent(week)}
-                        style={{
-                          paddingVertical: 8,
-                          paddingHorizontal: 10,
-                          borderRadius: 8,
-                          borderWidth: 1,
-                          borderColor: selected ? colors.primary : colors.border,
-                          backgroundColor: selected ? colors.primary : colors.card,
-                        }}
-                      >
-                        <Text style={{
-                          color: selected ? colors.primaryForeground : colors.foreground,
-                          fontFamily: 'Inter_600SemiBold',
-                          fontSize: 11,
-                        }}>
-                          {dateRangeLabel(week.startAtMs, week.endAtMs)} · {week.participantCount}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
                 </View>
+                <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14, marginTop: 14, marginBottom: 8 }}>
+                  Past event weeks
+                </Text>
+                {archiveYears.length > 0 && (
+                  <View
+                    testID="paper-event-leaderboard-year-picker"
+                    accessibilityLabel="Choose a year of completed event weeks"
+                    style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 9 }}
+                  >
+                    {archiveYears.map(({ year, weeks }) => {
+                      const selected = selectedArchiveYear === year;
+                      return (
+                        <TouchableOpacity
+                          key={year}
+                          testID={`paper-event-leaderboard-year-${year}`}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected }}
+                          accessibilityLabel={`Show ${year} completed event weeks, ${weeks.length} weeks`}
+                          onPress={() => setArchiveYear(year)}
+                          style={{
+                            paddingVertical: 7,
+                            paddingHorizontal: 10,
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: selected ? colors.primary : colors.border,
+                            backgroundColor: selected ? colors.primary : colors.card,
+                          }}
+                        >
+                          <Text style={{
+                            color: selected ? colors.primaryForeground : colors.foreground,
+                            fontFamily: 'Inter_600SemiBold',
+                            fontSize: 11,
+                          }}>
+                            {year} · {weeks.length}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+                {selectedYearWeeks.map((week) => {
+                  const selected = selectedEvent.id === week.id;
+                  return (
+                    <TouchableOpacity
+                      key={week.id}
+                      testID={`paper-event-leaderboard-week-${week.id}`}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                      accessibilityLabel={`Event week ${dateRangeLabel(week.startAtMs, week.endAtMs)}, ${week.participantCount} participants`}
+                      onPress={() => selectEvent(week)}
+                      style={{
+                        alignSelf: 'flex-start',
+                        paddingVertical: 8,
+                        paddingHorizontal: 10,
+                        marginBottom: 7,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: selected ? colors.primary : colors.border,
+                        backgroundColor: selected ? colors.primary : colors.card,
+                      }}
+                    >
+                      <Text style={{
+                        color: selected ? colors.primaryForeground : colors.foreground,
+                        fontFamily: 'Inter_600SemiBold',
+                        fontSize: 11,
+                      }}>
+                        {dateRangeLabel(week.startAtMs, week.endAtMs)} · {week.participantCount}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
                 <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 7 }}>
                   Past weeks show only participants who opted in. Opting out removes a participant’s score and holdings.
                 </Text>
