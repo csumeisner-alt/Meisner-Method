@@ -184,7 +184,7 @@ function _annualDivIncomeFallback(pos: { shares: number; dividendRate?: number; 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
 const SILVER = '#c0c0c0';
-const DIM = 'rgba(192,192,192,0.38)';
+const DIM = '#a2a8b2';
 const BUY_COLOR = '#00e5a0';
 const SELL_COLOR = '#ff3b3b';
 const GOLD = '#ffd700';
@@ -297,6 +297,7 @@ export default function PaperScreen() {
   const activeTabGroup = PAPER_TAB_GROUPS.find((group) => group.tabs.includes(activeTab)) ?? PAPER_TAB_GROUPS[0];
   const activeGroupTabs = TABS.filter((tab) => activeTabGroup.tabs.includes(tab.id));
   const [chartRange, setChartRange] = useState<(typeof HISTORY_RANGES)[number]['id']>('ALL');
+  const [showAccountDetails, setShowAccountDetails] = useState(false);
   const [showAccountDropdown, setShowAccountDropdown] = useState(false);
   const [showTradeModal, setShowTradeModal] = useState(false);
   const [showOrderSheet, setShowOrderSheet] = useState(false);
@@ -1247,6 +1248,7 @@ export default function PaperScreen() {
   const switchAccount = async (id: string) => {
     activeIdRef.current = id;
     setActiveId(id);
+    setShowAccountDetails(false);
     setShowAccountDropdown(false);
     setChartRange('ALL');
     await flushCache(accountsRef.current, positionsRef.current, transactionsRef.current, ordersRef.current, lotsRef.current, id);
@@ -1581,10 +1583,7 @@ export default function PaperScreen() {
   const renderPositions = () => {
     const heading = (
       <View style={styles.contentSectionHeader}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.contentSectionTitle}>Open positions</Text>
-          <Text style={styles.contentSectionHint}>Market value and unrealized performance</Text>
-        </View>
+        <Text style={styles.contentSectionTitle}>Positions</Text>
         <Text style={styles.sectionCount}>{myPositions.length}</Text>
       </View>
     );
@@ -1787,11 +1786,11 @@ export default function PaperScreen() {
       <View style={{ gap: 12, paddingHorizontal: 16 }}>
         <View style={styles.card}>
           <View style={styles.chartHeading}>
-            <View>
+            <View style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
               <Text style={styles.sectionTitle}>ACCOUNT PERFORMANCE</Text>
               <Text style={styles.chartNote}>Dated ranges use saved account values; ALL also includes trade history</Text>
             </View>
-            <Text style={[styles.chartCurrentValue, { color: pnlColor(totalPnLFromEquity) }]}>
+            <Text numberOfLines={1} style={[styles.chartCurrentValue, { color: pnlColor(totalPnLFromEquity) }]}>
               {totalPnLFromEquity >= 0 ? '+' : ''}{$short(totalPnLFromEquity)}
             </Text>
           </View>
@@ -2174,22 +2173,16 @@ export default function PaperScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: Platform.OS === 'android' ? insets.top + 8 : 0 }]}>
         <MMLogo size={36} />
-        <Text
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.82}
-          style={[styles.headerTitle, screenWidth <= 360 && { fontSize: 13 }, { color: colors.heading }]}
-        >
+        <Text numberOfLines={1} style={[styles.headerTitle, { color: colors.heading }]}>
           PAPER TRADE
         </Text>
         <View style={{ flex: 1 }} />
-        <Text numberOfLines={1} style={[styles.headerSub, screenWidth <= 360 && { fontSize: 9 }]}>Risk-free · $100k start</Text>
+        <Text numberOfLines={1} style={styles.headerSub}>Risk-free · $100k start</Text>
       </View>
 
       <View style={styles.accountSelectorHeading}>
         <View style={{ flex: 1 }}>
           <Text style={styles.selectorTitle}>SELECT ACCOUNT</Text>
-          <Text style={styles.selectorSubtitle}>Trading in {account?.name ?? '—'}</Text>
         </View>
         <TouchableOpacity
           testID="manage-paper-accounts"
@@ -2229,7 +2222,10 @@ export default function PaperScreen() {
                 isEventAcct && styles.accountCardEvent,
                 isActive && isEventAcct && styles.accountCardEventActive,
               ]}
-              onPress={() => void switchAccount(acct.id)}
+              onPress={() => {
+                setShowAccountDetails(false);
+                void switchAccount(acct.id);
+              }}
               activeOpacity={0.78}
             >
               <View style={styles.accountCardTitleRow}>
@@ -2253,11 +2249,9 @@ export default function PaperScreen() {
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={[styles.accountCardMetricValue, { color: pnlColor(acctPnL) }]}>
-                    {acctPnL >= 0 ? '+' : ''}{$short(acctPnL)}
+                    {pctFmt((acctPnL / INITIAL_BALANCE) * 100)}
                   </Text>
-                  <Text style={styles.accountCardMetricLabel}>
-                    {pctFmt((acctPnL / INITIAL_BALANCE) * 100)} · {acctPositions.length} OPEN
-                  </Text>
+                  <Text style={styles.accountCardMetricLabel}>TOTAL RETURN</Text>
                 </View>
               </View>
             </TouchableOpacity>
@@ -2376,38 +2370,42 @@ export default function PaperScreen() {
         </View>
       )}
 
-      {/* Selected-account overview: all values derive from the active account only. */}
-      <View style={styles.accountOverview}>
-        <View style={styles.overviewEquityRow}>
+      {/* Core account values stay on the selected account card; secondary metrics expand on demand. */}
+      <View style={styles.accountDetailsWrap}>
+        <TouchableOpacity
+          testID="paper-account-details-toggle"
+          accessibilityRole="button"
+          accessibilityLabel={showAccountDetails ? 'Hide account details' : 'Show account details'}
+          accessibilityState={{ expanded: showAccountDetails }}
+          style={styles.accountDetailsToggle}
+          onPress={() => setShowAccountDetails((shown) => !shown)}
+          activeOpacity={0.7}
+        >
           <View style={{ flex: 1 }}>
-            <Text style={styles.overviewEyebrow}>ACCOUNT EQUITY</Text>
-            <Text
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.78}
-              style={[styles.overviewEquity, screenWidth <= 360 && { fontSize: 21 }]}
-            >
-              {$fmt(portfolioValue)}
+            <Text style={styles.accountDetailsTitle}>Account details</Text>
+            <Text style={styles.accountDetailsHint}>
+              {showAccountDetails ? 'Cash, invested value and performance' : 'View cash, T+2, invested value and P/L'}
             </Text>
           </View>
-          <View style={styles.overviewReturnPill}>
-            <Text style={[styles.overviewReturn, { color: pnlColor(totalPnLFromEquity) }]}>{pctFmt(totalReturn)}</Text>
-            <Text style={styles.overviewReturnCaption}>TOTAL RETURN</Text>
+          <Feather name={showAccountDetails ? 'chevron-up' : 'chevron-down'} size={19} color={GOLD} />
+        </TouchableOpacity>
+        {showAccountDetails && (
+          <View style={styles.accountDetailsGrid}>
+            {[
+              { label: (account?.unsettledCash ?? 0) > 0 ? 'CASH + T+2' : 'CASH BALANCE', value: $short((account?.cash ?? 0) + (account?.unsettledCash ?? 0)), color: SILVER },
+              { label: 'BUYING POWER', value: $short(account?.cash ?? 0), color: SILVER },
+              { label: 'INVESTED CAPITAL', value: $short(investedCapital), color: SILVER },
+              { label: "TODAY'S P/L", value: `${todayPnL >= 0 ? '+' : ''}${$short(todayPnL)}`, color: pnlColor(todayPnL) },
+              { label: 'TOTAL P/L', value: `${totalPnLFromEquity >= 0 ? '+' : ''}${$short(totalPnLFromEquity)}`, color: pnlColor(totalPnLFromEquity) },
+              { label: 'OPEN POSITIONS', value: `${myPositions.length}`, color: SILVER },
+            ].map((item) => (
+              <View key={item.label} style={styles.overviewMetric}>
+                <Text style={[styles.overviewMetricValue, { color: item.color }]} numberOfLines={1}>{item.value}</Text>
+                <Text style={styles.overviewMetricLabel}>{item.label}</Text>
+              </View>
+            ))}
           </View>
-        </View>
-        <View style={styles.overviewMetricGrid}>
-          {[
-            { label: (account?.unsettledCash ?? 0) > 0 ? 'CASH + T+2' : 'CASH BALANCE', value: $short((account?.cash ?? 0) + (account?.unsettledCash ?? 0)), color: SILVER },
-            { label: 'BUYING POWER', value: $short(account?.cash ?? 0), color: SILVER },
-            { label: 'INVESTED CAPITAL', value: $short(investedCapital), color: SILVER },
-            { label: "TODAY'S P/L", value: `${todayPnL >= 0 ? '+' : ''}${$short(todayPnL)}`, color: pnlColor(todayPnL) },
-          ].map((item) => (
-            <View key={item.label} style={styles.overviewMetric}>
-              <Text style={[styles.overviewMetricValue, { color: item.color }]} numberOfLines={1}>{item.value}</Text>
-              <Text style={styles.overviewMetricLabel}>{item.label}</Text>
-            </View>
-          ))}
-        </View>
+        )}
       </View>
 
       {/* Primary groups and their smaller secondary navigation */}
@@ -2457,7 +2455,7 @@ export default function PaperScreen() {
       {/* Content */}
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 16, paddingTop: 16 }}
+        contentContainerStyle={{ paddingBottom: 16, paddingTop: 10 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={SILVER} />}
         showsVerticalScrollIndicator={false}
       >
@@ -2908,7 +2906,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 10,
-    gap: 10,
+    gap: 8,
     borderBottomWidth: 1,
     borderBottomColor: BORDER,
   },
@@ -2916,13 +2914,13 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_700Bold',
     fontSize: 15,
     color: SILVER,
-    letterSpacing: 2,
+    letterSpacing: 0.8,
   },
   headerSub: {
     fontFamily: 'Inter_400Regular',
     fontSize: 10,
     color: DIM,
-    letterSpacing: 0.5,
+    letterSpacing: 0.25,
   },
 
   // Account bar
@@ -2930,8 +2928,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
+    paddingTop: 6,
+    paddingBottom: 4,
   },
   selectorTitle: {
     fontFamily: 'Inter_700Bold',
@@ -2956,11 +2954,11 @@ const styles = StyleSheet.create({
     backgroundColor: CARD_BG,
   },
   accountSelectorScroll: { flexGrow: 0 },
-  accountCards: { paddingHorizontal: 16, paddingBottom: 12, gap: 12 },
+  accountCards: { paddingHorizontal: 16, paddingBottom: 8, gap: 10 },
   accountCard: {
-    width: 220,
-    minHeight: 146,
-    padding: 14,
+    width: 224,
+    minHeight: 118,
+    padding: 12,
     borderWidth: 1,
     borderColor: BORDER,
     borderRadius: 13,
@@ -2977,38 +2975,34 @@ const styles = StyleSheet.create({
   accountCardEventActive: { borderColor: GOLD, borderWidth: 2 },
   eventAccountPlaceholder: { justifyContent: 'center' },
   accountCardTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
-  accountCardName: { flex: 1, fontFamily: 'Inter_700Bold', fontSize: 12, color: DIM, letterSpacing: 0.55 },
+  accountCardName: { flex: 1, fontFamily: 'Inter_700Bold', fontSize: 12, color: DIM, letterSpacing: 0.45 },
   accountCardNameActive: { color: GOLD },
-  accountCardEquity: { marginTop: 9, fontFamily: 'Inter_700Bold', fontSize: 20, color: '#fff' },
-  accountCardCaption: { marginTop: 1, fontFamily: 'Inter_500Medium', fontSize: 9, color: DIM, letterSpacing: 0.55 },
+  accountCardEquity: { marginTop: 5, fontFamily: 'Inter_700Bold', fontSize: 20, color: '#fff' },
+  accountCardCaption: { marginTop: 1, fontFamily: 'Inter_500Medium', fontSize: 10, color: DIM, letterSpacing: 0.45 },
   eventAccountCardPrompt: { marginTop: 5, fontFamily: 'Inter_600SemiBold', fontSize: 9, lineHeight: 12, color: GOLD },
-  accountCardDivider: { height: 1, backgroundColor: BORDER, marginTop: 8, marginBottom: 8 },
+  accountCardDivider: { height: 1, backgroundColor: BORDER, marginTop: 5, marginBottom: 6 },
   accountCardMetrics: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  accountCardMetricValue: { fontFamily: 'Inter_700Bold', fontSize: 11, color: SILVER },
-  accountCardMetricLabel: { marginTop: 3, fontFamily: 'Inter_500Medium', fontSize: 8, color: DIM, letterSpacing: 0.25 },
+  accountCardMetricValue: { fontFamily: 'Inter_700Bold', fontSize: 12, color: SILVER },
+  accountCardMetricLabel: { marginTop: 2, fontFamily: 'Inter_500Medium', fontSize: 10, color: DIM, letterSpacing: 0.1 },
   eventPlaceholderValue: { marginTop: 12, fontFamily: 'Inter_600SemiBold', fontSize: 15, color: '#fff' },
   eventPlaceholderHint: { marginTop: 5, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 14, color: DIM },
-  accountOverview: {
+  accountDetailsWrap: {
     marginHorizontal: 16,
-    marginTop: 4,
-    marginBottom: 12,
-    padding: 16,
-    borderRadius: 13,
+    marginTop: 0,
+    marginBottom: 8,
+    borderRadius: 11,
     borderWidth: 1,
     borderColor: BORDER,
     backgroundColor: 'rgba(18,21,27,0.96)',
   },
-  overviewEquityRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  overviewEyebrow: { fontFamily: 'Inter_600SemiBold', fontSize: 9, color: DIM, letterSpacing: 1 },
-  overviewEquity: { marginTop: 5, fontFamily: 'Inter_700Bold', fontSize: 26, color: '#fff' },
-  overviewReturnPill: { alignItems: 'flex-end', paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.04)' },
-  overviewReturn: { fontFamily: 'Inter_700Bold', fontSize: 15 },
-  overviewReturnCaption: { marginTop: 2, fontFamily: 'Inter_500Medium', fontSize: 8, color: DIM, letterSpacing: 0.45 },
-  overviewMetricGrid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 14, borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 8 },
+  accountDetailsToggle: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 13, paddingVertical: 8 },
+  accountDetailsTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 13, color: SILVER },
+  accountDetailsHint: { marginTop: 2, fontFamily: 'Inter_400Regular', fontSize: 10, color: DIM },
+  accountDetailsGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: 12, paddingTop: 4, paddingBottom: 6, borderTopWidth: 1, borderTopColor: BORDER },
   overviewMetric: { width: '50%', minHeight: 48, paddingVertical: 7, paddingRight: 8 },
-  overviewMetricValue: { fontFamily: 'Inter_700Bold', fontSize: 13 },
-  overviewMetricLabel: { marginTop: 4, fontFamily: 'Inter_500Medium', fontSize: 9, color: DIM, letterSpacing: 0.35 },
-  chartHeading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
+  overviewMetricValue: { fontFamily: 'Inter_700Bold', fontSize: 14 },
+  overviewMetricLabel: { marginTop: 4, fontFamily: 'Inter_500Medium', fontSize: 10, color: DIM, letterSpacing: 0.25 },
+  chartHeading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, minWidth: 0 },
   chartCurrentValue: { fontFamily: 'Inter_700Bold', fontSize: 13 },
   rangeRow: { flexDirection: 'row', gap: 6, paddingVertical: 8 },
   rangeChip: { minWidth: 38, height: 30, paddingHorizontal: 9, alignItems: 'center', justifyContent: 'center', borderRadius: 8, borderWidth: 1, borderColor: BORDER },
@@ -3103,8 +3097,8 @@ const styles = StyleSheet.create({
   primaryTabLabel: { color: DIM, fontFamily: 'Inter_600SemiBold', fontSize: 11 },
   primaryTabLabelActive: { color: GOLD },
   tabScroll: { flexGrow: 0 },
-  subTabBar: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10, gap: 8 },
-  tabBtn: { minHeight: 40, minWidth: 78, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD_BG },
+  subTabBar: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 8, gap: 8 },
+  tabBtn: { minHeight: 38, minWidth: 78, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 10, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD_BG },
   tabBtnActive: { borderColor: GOLD, backgroundColor: 'rgba(255,215,0,0.12)' },
   tabLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 12, color: DIM },
   tabLabelActive: { color: GOLD },

@@ -175,15 +175,37 @@ test("Paper Trading keeps all views in readable groups and reserves space for ac
   assert.match(screen, /activeGroupTabs\.map\(\(tab\)/);
   assert.match(screen, /testID="paper-trading-buy-action"/);
   assert.doesNotMatch(screen, /position: 'absolute',\s*right: 20,\s*bottom: 108/);
-  assert.match(screen, /contentContainerStyle=\{\{ paddingBottom: 16, paddingTop: 16 \}\}/);
+  assert.match(screen, /contentContainerStyle=\{\{ paddingBottom: 16, paddingTop: 10 \}\}/);
   assert.match(screen, /testID="paper-trading-buy-action"[\s\S]*?openBuyModal/);
+  assert.match(screen, /testID="paper-account-details-toggle"/);
+  assert.match(screen, /accessibilityState=\{\{ expanded: showAccountDetails \}\}/);
+  assert.match(screen, /CASH \+ T\+2/);
+  assert.match(screen, /INVESTED CAPITAL/);
+  assert.match(screen, /TOTAL P\/L/);
+  assert.match(screen, /OPEN POSITIONS/);
+  assert.match(screen, /TOTAL RETURN/);
+  assert.match(screen, /BUYING POWER/);
+  assert.match(screen, /const DIM = '#a2a8b2'/);
+  for (const [tab, renderer] of [
+    ["overview", "renderOverview"],
+    ["positions", "renderPositions"],
+    ["orders", "renderOrders"],
+    ["history", "renderHistory"],
+    ["analytics", "renderAnalytics"],
+    ["dividends", "renderDividends"],
+    ["growth", "renderGrowth"],
+  ]) {
+    assert.ok(screen.includes(`{activeTab === '${tab}' && ${renderer}()}`), `${tab} remains reachable`);
+  }
   assert.match(screen, /posMktVal/);
   assert.match(screen, /posMetaRow/);
   assert.match(screen, /ACTUAL DIVIDENDS RECEIVED/);
   assert.match(screen, /Estimated from current holdings; this is not income already received/);
   assert.match(screen, /Not a forecast or actual return/);
   assert.match(bottomTabBar, /Platform\.OS === 'web' \? 34 : insets\.bottom/);
-  assert.match(bottomTabBar, /fontSize: 8/);
+  assert.match(bottomTabBar, /fontSize: 9/);
+  assert.match(bottomTabBar, /accessibilityLabel="Event Arena"/);
+  assert.match(bottomTabBar, /EVENT\{"\\n"\}ARENA/);
 });
 
 test("paper order review captures account identity and guards duplicate submissions", () => {
