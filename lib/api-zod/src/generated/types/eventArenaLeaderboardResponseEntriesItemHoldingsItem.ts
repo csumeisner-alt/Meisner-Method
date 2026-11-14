@@ -5,8 +5,15 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { EventArenaLeaderboardResponseEntriesItemHoldingsItemSide } from './eventArenaLeaderboardResponseEntriesItemHoldingsItemSide';
 
 export type EventArenaLeaderboardResponseEntriesItemHoldingsItem = {
   symbol: string;
   companyName: string;
+  /**
+     * Self-reported absolute market exposure as a percentage of reported Event Arena account equity; null when unavailable.
+     * @minimum 0
+     */
+  allocationPercent: number | null;
+  side: EventArenaLeaderboardResponseEntriesItemHoldingsItemSide;
 };

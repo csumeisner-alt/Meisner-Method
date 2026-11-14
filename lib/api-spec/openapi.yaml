@@ -634,10 +634,18 @@ components:
           maxItems: 100
           items:
             type: object
-            required: [symbol, companyName]
+            required: [symbol, companyName, allocationPercent, side]
             properties:
               symbol: { type: string }
               companyName: { type: string }
+              allocationPercent:
+                type: number
+                nullable: true
+                minimum: 0
+                description: Absolute market exposure as a percentage of reported Event Arena account equity; null when unavailable.
+              side:
+                type: string
+                enum: [long, short]
         eventStartAtMs: { type: integer }
         eventEndAtMs: { type: integer }
 
@@ -662,10 +670,18 @@ components:
                 type: array
                 items:
                   type: object
-                  required: [symbol, companyName]
+                  required: [symbol, companyName, allocationPercent, side]
                   properties:
                     symbol: { type: string }
                     companyName: { type: string }
+                    allocationPercent:
+                      type: number
+                      nullable: true
+                      minimum: 0
+                      description: Self-reported absolute market exposure as a percentage of reported Event Arena account equity; null when unavailable.
+                    side:
+                      type: string
+                      enum: [long, short]
               updatedAt: { type: string, format: date-time }
               isCurrentUser:
                 type: boolean

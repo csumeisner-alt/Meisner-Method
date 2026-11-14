@@ -7,8 +7,10 @@ Each event uses a separate paper portfolio with a fresh $100,000 starting balanc
 
 When a participant opts out, remove their score and holdings from public rankings but preserve only the event-scoped alias lock through that event, so opting back in cannot bypass the post-start alias lock. Tell the participant this retention occurs.
 
-Shared Event Arena scores and holding names expire 30 days after each event ends. Delete the complete public leaderboard row, including its event-scoped alias lock, at that cutoff; keep local event history untouched.
+Shared Event Arena scores and holding details expire 30 days after each event ends. Delete the complete public leaderboard row, including its event-scoped alias lock, at that cutoff; keep local event history untouched.
 
-**Why:** The user approved a 30-day public retention period while preserving isolated event portfolios and anonymous participation.
+Public holding summaries may include self-reported absolute market exposure as a percentage of reported Event Arena account equity and a Long/Short direction label. Never share raw share counts, prices, cost basis, or account identifiers.
 
-**How to apply:** Share only opt-in event identity and self-reported results. Keep permanent paper accounts private and separate; do not add sign-in or imply that scores are independently verified. On opt-out, clear public score/holding data while retaining the minimal alias lock until the event passes.
+**Why:** The user approved a 30-day public retention period while preserving isolated event portfolios and anonymous participation, and specified that public holding allocations must not expose raw position details.
+
+**How to apply:** Share only opt-in event identity and self-reported results. Holding summaries may show exposure percentage and side; never disclose raw share counts, prices, cost basis, or account identifiers. Keep permanent paper accounts private and separate; do not add sign-in or imply that scores are independently verified. On opt-out, clear public score/holding data while retaining the minimal alias lock until the event passes.

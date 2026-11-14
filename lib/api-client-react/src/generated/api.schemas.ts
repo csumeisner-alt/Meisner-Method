@@ -5,9 +5,23 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export type EventArenaScoreSubmissionHoldingsItemSide = typeof EventArenaScoreSubmissionHoldingsItemSide[keyof typeof EventArenaScoreSubmissionHoldingsItemSide];
+
+
+export const EventArenaScoreSubmissionHoldingsItemSide = {
+  long: 'long',
+  short: 'short',
+} as const;
+
 export type EventArenaScoreSubmissionHoldingsItem = {
   symbol: string;
   companyName: string;
+  /**
+     * Absolute market exposure as a percentage of reported Event Arena account equity; null when unavailable.
+     * @minimum 0
+     */
+  allocationPercent: number | null;
+  side: EventArenaScoreSubmissionHoldingsItemSide;
 };
 
 export interface EventArenaScoreSubmission {
@@ -39,9 +53,23 @@ export interface EventArenaScoreSubmission {
   eventEndAtMs: number;
 }
 
+export type EventArenaLeaderboardResponseEntriesItemHoldingsItemSide = typeof EventArenaLeaderboardResponseEntriesItemHoldingsItemSide[keyof typeof EventArenaLeaderboardResponseEntriesItemHoldingsItemSide];
+
+
+export const EventArenaLeaderboardResponseEntriesItemHoldingsItemSide = {
+  long: 'long',
+  short: 'short',
+} as const;
+
 export type EventArenaLeaderboardResponseEntriesItemHoldingsItem = {
   symbol: string;
   companyName: string;
+  /**
+     * Self-reported absolute market exposure as a percentage of reported Event Arena account equity; null when unavailable.
+     * @minimum 0
+     */
+  allocationPercent: number | null;
+  side: EventArenaLeaderboardResponseEntriesItemHoldingsItemSide;
 };
 
 export type EventArenaLeaderboardResponseEntriesItem = {

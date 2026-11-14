@@ -24,7 +24,7 @@ function validSubmission(overrides: Record<string, unknown> = {}) {
     equity: 101_250,
     returnPercent: 1.25,
     tradeCount: 3,
-    holdings: [{ symbol: "AAPL", companyName: "Apple Inc." }],
+    holdings: [{ symbol: "AAPL", companyName: "Apple Inc.", allocationPercent: 12.5, side: "long" }],
     eventStartAtMs: startAtMs,
     eventEndAtMs: endAtMs,
     ...overrides,
@@ -80,6 +80,8 @@ test("submission rejects private fields, inconsistent scores, malformed holdings
     validSubmission({ transactions: [] }),
     validSubmission({ returnPercent: 99 }),
     validSubmission({ holdings: [{ symbol: "AAPL", companyName: "Apple", shares: 1 }] }),
+    validSubmission({ holdings: [{ symbol: "AAPL", companyName: "Apple", allocationPercent: -1, side: "long" }] }),
+    validSubmission({ holdings: [{ symbol: "AAPL", companyName: "Apple", allocationPercent: 1, side: "sideways" }] }),
     validSubmission({ holdings: Array.from({ length: 101 }, (_, index) => ({ symbol: `S${index}`, companyName: "Company" })) }),
     validSubmission({ alias: "  " }),
   ]) {
@@ -96,7 +98,7 @@ test("submission rejects private fields, inconsistent scores, malformed holdings
   }
 });
 
-test("valid anonymous submission stores only event-scoped score and holding identifiers", async () => {
+test("valid anonymous submission stores only event-scoped score and public holding summary", async () => {
   let storedValues: any[] | undefined;
   await withApi(async (sql, values) => {
     if (sql.startsWith("DELETE")) return { rows: [] };
@@ -105,7 +107,7 @@ test("valid anonymous submission stores only event-scoped score and holding iden
     assert.match(sql, /event_start_at > NOW\(\)[\s\S]*alias = EXCLUDED\.alias/);
     assert.match(sql, /trade_count=EXCLUDED\.trade_count/);
     storedValues = values;
-    return { rows: [{ alias: "MarketFox", start_equity: 100_000, equity: 101_250, return_percent: 1.25, trade_count: 3, holdings: [{ symbol: "AAPL", companyName: "Apple Inc." }], updated_at: new Date("2026-11-18T17:00:00.000Z") }] };
+    return { rows: [{ alias: "MarketFox", start_equity: 100_000, equity: 101_250, return_percent: 1.25, trade_count: 3, holdings: [{ symbol: "AAPL", companyName: "Apple Inc.", allocationPercent: 12.5, side: "long" }], updated_at: new Date("2026-11-18T17:00:00.000Z") }] };
   }, async (baseUrl) => {
     const response = await fetch(`${baseUrl}/event-arena/${eventId}/leaderboard`, {
       method: "POST",
@@ -118,7 +120,31 @@ test("valid anonymous submission stores only event-scoped score and holding iden
   assert.equal(storedValues?.[0], eventId);
   assert.equal(storedValues?.[1], installationId);
   assert.equal(storedValues?.[6], 3);
-  assert.deepEqual(JSON.parse(storedValues?.[7]), [{ symbol: "AAPL", companyName: "Apple Inc." }]);
+  assert.deepEqual(JSON.parse(storedValues?.[7]), [{ symbol: "AAPL", companyName: "Apple Inc.", allocationPercent: 12.5, side: "long" }]);
+});
+
+test("submission accepts short direction and an explicitly unavailable allocation", async () => {
+  const storedHoldings: unknown[] = [];
+  await withApi(async (sql, values) => {
+    if (sql.startsWith("DELETE")) return { rows: [] };
+    storedHoldings.push(JSON.parse(String(values?.[7])));
+    return { rows: [{ updated_at: new Date("2026-11-18T17:00:00.000Z") }] };
+  }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/${eventId}/leaderboard`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(validSubmission({
+        holdings: [{ symbol: "AAPL", companyName: "Apple Inc.", allocationPercent: null, side: "short" }],
+      })),
+    });
+    assert.equal(response.status, 200);
+  });
+  assert.deepEqual(storedHoldings, [[{
+    symbol: "AAPL",
+    companyName: "Apple Inc.",
+    allocationPercent: null,
+    side: "short",
+  }]]);
 });
 
 test("leaderboard response is event-scoped and does not expose installation IDs or trade details", async () => {
@@ -138,7 +164,7 @@ test("leaderboard response is event-scoped and does not expose installation IDs 
       equity: "101250",
       return_percent: "-999",
       trade_count: "4",
-      holdings: [{ symbol: "AAPL", companyName: "Apple Inc.", shares: 3 }],
+      holdings: [{ symbol: "AAPL", companyName: "Apple Inc.", allocationPercent: 12.5, side: "short", shares: 3, price: 100, costBasis: 80 }],
       updated_at: new Date("2026-11-18T17:00:00.000Z"),
       transactions: ["must-not-leak"],
       account_name: "must-not-leak",
@@ -154,9 +180,11 @@ test("leaderboard response is event-scoped and does not expose installation IDs 
     assert.equal(result.entries[0].profitLoss, 1_250);
     assert.equal(result.entries[0].tradeCount, 4);
     assert.equal(result.entries[0].isCurrentUser, true);
-    assert.deepEqual(result.entries[0].holdings, [{ symbol: "AAPL", companyName: "Apple Inc." }]);
+    assert.deepEqual(result.entries[0].holdings, [{ symbol: "AAPL", companyName: "Apple Inc.", allocationPercent: 12.5, side: "short" }]);
     assert.equal(JSON.stringify(result).includes(installationId), false);
     assert.equal(JSON.stringify(result).includes("shares"), false);
+    assert.equal(JSON.stringify(result).includes("costBasis"), false);
+    assert.equal(JSON.stringify(result).includes('"price"'), false);
   });
   assert.equal(queries, 2);
 });

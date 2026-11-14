@@ -25,6 +25,12 @@ import {
 import { getInstallationId } from '@/lib/installation';
 import { groupCompletedEventWeeksByYear } from '@/lib/eventArenaArchive';
 import {
+  calculateEventHoldingAllocationPercent,
+  formatEventHoldingAllocation,
+  formatEventHoldingSide,
+  type EventHoldingSide,
+} from '@/lib/paperChallengeAllocation';
+import {
   PAPER_CHALLENGE_STARTING_BALANCE,
   updatePaperChallengeStore,
   type PaperChallengeEnrollment,
@@ -42,7 +48,12 @@ type EventWindow = {
 };
 type CompletedEventWeek = EventWindow & { participantCount: number };
 
-type HoldingName = { symbol: string; companyName: string };
+type HoldingName = {
+  symbol: string;
+  companyName: string;
+  allocationPercent: number | null;
+  side: EventHoldingSide;
+};
 type LeaderboardEntry = {
   rank: number;
   alias: string;
@@ -115,10 +126,19 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
       + positions.reduce((sum, position) => sum + position.shares * (quotes.get(position.symbol.toUpperCase()) ?? position.avgCost), 0)
     : PAPER_CHALLENGE_STARTING_BALANCE;
   const holdings = shareablePositions
-    .map((position) => ({
-      symbol: position.symbol.trim().toUpperCase(),
-      companyName: (position.companyName || position.symbol).trim().slice(0, 120),
-    }))
+    .map((position) => {
+      const symbol = position.symbol.trim().toUpperCase();
+      return {
+        symbol,
+        companyName: (position.companyName || position.symbol).trim().slice(0, 120),
+        allocationPercent: calculateEventHoldingAllocationPercent(
+          position.shares,
+          quotes.get(symbol),
+          equity,
+        ),
+        side: 'long' as const,
+      };
+    })
     .filter((holding, index, all) => holding.symbol && all.findIndex((candidate) => candidate.symbol === holding.symbol) === index)
     .slice(0, 100);
   const returnPercent = ((equity - startEquity) / startEquity) * 100;
@@ -598,17 +618,30 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
                 </Text>
                 <View style={{ borderTopWidth: 1, borderTopColor: colors.border, marginTop: 16, paddingTop: 12 }}>
                   <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 13 }}>Current holdings</Text>
+                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 4 }}>
+                    Self-reported allocation is absolute market exposure as a percentage of reported event account equity.
+                  </Text>
                   {detail.holdings.length === 0 ? (
                     <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 8 }}>No current holdings reported.</Text>
                   ) : detail.holdings.map((holding) => (
-                    <View key={holding.symbol} style={{ paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-                      <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 12 }}>{holding.symbol}</Text>
-                      <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 2 }}>{holding.companyName}</Text>
+                    <View key={holding.symbol} style={{ paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 12 }}>{holding.symbol}</Text>
+                        <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 2 }}>{holding.companyName}</Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 11 }}>
+                          {formatEventHoldingAllocation(holding.allocationPercent)}
+                        </Text>
+                        <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 10, marginTop: 2 }}>
+                          {formatEventHoldingSide(holding.side)}
+                        </Text>
+                      </View>
                     </View>
                   ))}
                 </View>
                 <Text style={{ color: colors.destructive, fontFamily: 'Inter_600SemiBold', fontSize: 10, lineHeight: 15, marginTop: 12 }}>
-                  Self-reported and unverified. No trade details or position sizes are shared.
+                  Self-reported and unverified. Raw share counts, prices, cost basis, account identifiers, and trade history are not shared.
                 </Text>
               </View>
             </ScrollView>
@@ -751,10 +784,10 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
                     {optedIn ? 'Leaderboard sharing is on' : 'Choose whether to share'}
                   </Text>
                   <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 5 }}>
-                    Before opting in: other event participants will see your alias, self-reported score, and current holding ticker and company names. This does not share your regular accounts or trade history.
+                    Before opting in: other event participants will see your alias, self-reported score, each current holding’s ticker and company name, its self-reported allocation percentage of your reported Event Arena account equity, and whether it is Long or Short. Raw share counts, prices, cost basis, account identifiers, regular accounts, and trade history are not shared.
                   </Text>
                   <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 5 }}>
-                    Shared scores and holding names are removed 30 days after the event ends. Your local event history stays on this device.
+                    Shared scores and holding details are removed 30 days after the event ends. Your local event history stays on this device.
                   </Text>
                   {optedIn && (
                     <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 5 }}>

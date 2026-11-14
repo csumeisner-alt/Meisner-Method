@@ -11,7 +11,12 @@ interface EventArenaDatabase {
 }
 
 type Middleware = (req: any, res: any, next: any) => void;
-type HoldingIdentifier = { symbol: string; companyName: string };
+type HoldingIdentifier = {
+  symbol: string;
+  companyName: string;
+  allocationPercent: number | null;
+  side: "long" | "short";
+};
 type EventSubmission = {
   installationId: string;
   alias: string;
@@ -155,9 +160,15 @@ function parseSubmission(body: unknown): EventSubmission | null {
     if (!rawHolding || typeof rawHolding !== "object" || Array.isArray(rawHolding)) return null;
     const holding = rawHolding as Record<string, unknown>;
     if (
-      Object.keys(holding).some((key) => key !== "symbol" && key !== "companyName")
+      Object.keys(holding).some((key) =>
+        !["symbol", "companyName", "allocationPercent", "side"].includes(key))
       || typeof holding.symbol !== "string"
       || typeof holding.companyName !== "string"
+      || (holding.allocationPercent !== null
+        && (typeof holding.allocationPercent !== "number"
+          || !Number.isFinite(holding.allocationPercent)
+          || holding.allocationPercent < 0))
+      || (holding.side !== "long" && holding.side !== "short")
     ) return null;
     const symbol = holding.symbol.trim().toUpperCase();
     const companyName = holding.companyName.trim();
@@ -169,7 +180,12 @@ function parseSubmission(body: unknown): EventSubmission | null {
     ) return null;
     if (!seenSymbols.has(symbol)) {
       seenSymbols.add(symbol);
-      cleanHoldings.push({ symbol, companyName });
+      cleanHoldings.push({
+        symbol,
+        companyName,
+        allocationPercent: holding.allocationPercent as number | null,
+        side: holding.side,
+      });
     }
   }
 
@@ -197,7 +213,18 @@ function publicEntry(row: any, rank: number, isCurrentUser: boolean) {
       item
       && typeof item.symbol === "string"
       && typeof item.companyName === "string"
-        ? [{ symbol: item.symbol, companyName: item.companyName }]
+        && (item.side === undefined || item.side === "long" || item.side === "short")
+        ? [{
+          symbol: item.symbol,
+          companyName: item.companyName,
+          allocationPercent: typeof item.allocationPercent === "number"
+            && Number.isFinite(item.allocationPercent)
+            && item.allocationPercent >= 0
+            ? item.allocationPercent
+            : null,
+          // Older persisted entries were created from positive-share positions only.
+          side: item.side === "short" ? "short" : "long",
+        }]
         : []
     ))
     : [];

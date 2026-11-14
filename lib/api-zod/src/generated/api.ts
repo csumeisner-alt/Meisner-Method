@@ -45,6 +45,8 @@ export const GetEventArenaLeaderboardHeader = zod.object({
 
 export const getEventArenaLeaderboardResponseEntriesItemTradeCountMin = 0;
 
+export const getEventArenaLeaderboardResponseEntriesItemHoldingsItemAllocationPercentMin = 0;
+
 
 
 export const GetEventArenaLeaderboardResponse = zod.object({
@@ -58,7 +60,9 @@ export const GetEventArenaLeaderboardResponse = zod.object({
   "tradeCount": zod.number().min(getEventArenaLeaderboardResponseEntriesItemTradeCountMin).nullable(),
   "holdings": zod.array(zod.object({
   "symbol": zod.string(),
-  "companyName": zod.string()
+  "companyName": zod.string(),
+  "allocationPercent": zod.number().min(getEventArenaLeaderboardResponseEntriesItemHoldingsItemAllocationPercentMin).nullable().describe('Self-reported absolute market exposure as a percentage of reported Event Arena account equity; null when unavailable.'),
+  "side": zod.enum(['long', 'short'])
 })),
   "updatedAt": zod.coerce.date(),
   "isCurrentUser": zod.boolean().describe('True only for the requesting installation\'s row; no installation ID is returned.')
@@ -85,6 +89,8 @@ export const submitEventArenaScoreBodyEquityMin = 0;
 
 export const submitEventArenaScoreBodyTradeCountMin = 0;
 
+export const submitEventArenaScoreBodyHoldingsItemAllocationPercentMin = 0;
+
 export const submitEventArenaScoreBodyHoldingsMax = 100;
 
 
@@ -98,7 +104,9 @@ export const SubmitEventArenaScoreBody = zod.object({
   "tradeCount": zod.number().min(submitEventArenaScoreBodyTradeCountMin).describe('Count of trades in the event account during this event.'),
   "holdings": zod.array(zod.object({
   "symbol": zod.string(),
-  "companyName": zod.string()
+  "companyName": zod.string(),
+  "allocationPercent": zod.number().min(submitEventArenaScoreBodyHoldingsItemAllocationPercentMin).nullable().describe('Absolute market exposure as a percentage of reported Event Arena account equity; null when unavailable.'),
+  "side": zod.enum(['long', 'short'])
 })).max(submitEventArenaScoreBodyHoldingsMax),
   "eventStartAtMs": zod.number(),
   "eventEndAtMs": zod.number()

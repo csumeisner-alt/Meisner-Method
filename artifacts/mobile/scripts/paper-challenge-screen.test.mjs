@@ -65,7 +65,7 @@ test("live leaderboard remains anonymous, opt-in, event-scoped, and privacy-limi
   assert.match(leaderboard, /transaction\.accountId === enrollment\.accountId/);
   assert.match(leaderboard, /date >= event\.startAtMs/);
   assert.match(leaderboard, /date <= event\.endAtMs/);
-  assert.match(leaderboard, /other event participants will see your alias, self-reported score, and current holding ticker and company names/);
+  assert.match(leaderboard, /each current holding’s ticker and company name, its self-reported allocation percentage of your reported Event Arena account equity, and whether it is Long or Short/);
   assert.match(leaderboard, /locked when the event started/i);
   assert.match(leaderboard, /Opt-in is saved on this device; your score will retry when the connection is available/);
   assert.match(leaderboard, /Your alias is saved on this device; the leaderboard will retry the update/);
@@ -73,6 +73,10 @@ test("live leaderboard remains anonymous, opt-in, event-scoped, and privacy-limi
   assert.doesNotMatch(leaderboard, /DEMO_ENTRIES|toggle-paper-event-leaderboard-demo|VIEW DEMO EXAMPLE/);
   assert.match(leaderboard, /testID="paper-event-leaderboard-detail"/);
   assert.match(leaderboard, /holding\.companyName/);
+  assert.match(leaderboard, /formatEventHoldingAllocation\(holding\.allocationPercent\)/);
+  assert.match(leaderboard, /formatEventHoldingSide\(holding\.side\)/);
+  assert.match(leaderboard, /calculateEventHoldingAllocationPercent/);
+  assert.match(leaderboard, /Raw share counts, prices, cost basis, account identifiers, and trade history are not shared/);
   assert.match(leaderboard, /Last successful update:/);
   assert.match(leaderboard, /The leaderboard could not be loaded\. Please retry\./);
   assert.doesNotMatch(leaderboard, /weeksQuery\.error\.message|loadError\.message|submissionError\.message/);

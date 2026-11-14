@@ -26,6 +26,23 @@ import {
   updatePaperChallengeStore,
   shouldEnsurePaperChallengeAccount,
 } from '../paperChallenge.ts';
+import {
+  calculateEventHoldingAllocationPercent,
+  formatEventHoldingAllocation,
+  formatEventHoldingSide,
+} from '../paperChallengeAllocation.ts';
+
+test('event holding allocation uses absolute market exposure over reported equity', () => {
+  assert.equal(calculateEventHoldingAllocationPercent(25, 40, 20_000), 5);
+  assert.equal(calculateEventHoldingAllocationPercent(-25, 40, 20_000), 5);
+  assert.equal(calculateEventHoldingAllocationPercent(25, null, 20_000), null);
+  assert.equal(calculateEventHoldingAllocationPercent(25, 40, 0), null);
+  assert.equal(calculateEventHoldingAllocationPercent(Number.NaN, 40, 20_000), null);
+  assert.equal(formatEventHoldingAllocation(5), '5.00%');
+  assert.equal(formatEventHoldingAllocation(null), 'Allocation unavailable');
+  assert.equal(formatEventHoldingSide('long'), 'Long');
+  assert.equal(formatEventHoldingSide('short'), 'Short');
+});
 
 test('paper event runs Monday open through Friday close, then skips a week', () => {
   const active = getPaperChallengeWindow(Date.parse('2026-11-18T17:00:00.000Z'));
