@@ -24,6 +24,9 @@ test("paper total return stays derived from the selected account's equity", asyn
   assert.match(screen, /const portfolioValue = account \? computePaperEquity\(account, myPositions, quotes\) : 0/);
   assert.match(screen, /const totalReturn = \(\(portfolioValue - INITIAL_BALANCE\) \/ INITIAL_BALANCE\) \* 100/);
   assert.match(screen, /testID="paper-account-total-return"[\s\S]*?pctFmt\(totalReturn\)/);
+  assert.match(screen, /const reset = resetPaperAccountData\(\{/);
+  assert.match(screen, /saveAll\(reset\.accounts, reset\.positions, reset\.transactions, reset\.orders, reset\.lots, activeIdRef\.current\)/);
+  assert.match(screen, /await clearAccountValueSnapshots\(id\)/);
 });
 
 function browserExecutable() {
@@ -250,6 +253,9 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
     await touch(browser, "paper-account-switch");
     assert.equal(await currentAccount(), "tiger", "Opening the selector must not change the active account.");
     assert.equal(await hapticCount(), 0, "Opening the selector must not trigger a haptic.");
+    await touch(browser, "reset-paper-account-tiger");
+    assert.equal(await currentAccount(), "tiger", "Resetting an account must keep that account selected.");
+    assert.equal(await currentReturn(), "+0.00%", "Resetting the selected account must restore its return to zero.");
     await touch(browser, "select-paper-account-borg");
     assert.equal(await currentAccount(), "borg", "Selecting an account from the list must change the active account.");
     assert.equal(await currentReturn(), "-7.50%", "The return must match the selected strategy account.");
@@ -279,7 +285,7 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
     assert.equal(await hapticCount(), 4);
     await touch(browser, "paper-current-account", 150, 0);
     assert.equal(await currentAccount(), "tiger", "A third right swipe should return to the first account.");
-    assert.equal(await currentReturn(), "+6.25%");
+    assert.equal(await currentReturn(), "+0.00%", "Returning to the reset strategy must keep its return at zero.");
     assert.equal(await hapticCount(), 5);
     await touch(browser, "paper-current-account", 150, 0);
     assert.equal(await currentAccount(), "tiger", "A right swipe at the first account should stop at the boundary.");
@@ -287,7 +293,7 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
 
     await touch(browser, "paper-current-account", 25, 0);
     assert.equal(await currentAccount(), "tiger", "A short horizontal gesture must not switch accounts.");
-    assert.equal(await currentReturn(), "+6.25%");
+    assert.equal(await currentReturn(), "+0.00%");
     assert.equal(await hapticCount(), 5, "A short gesture must remain silent.");
     await touch(browser, "paper-current-account", 8, -120);
     assert.equal(await currentAccount(), "tiger", "Vertical movement over the account summary must not switch accounts.");
@@ -299,7 +305,7 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
     await touch(browser, "paper-account-switch");
     assert.equal(await currentAccount(), "tiger", "Reopening the selector must leave the active account unchanged.");
     await touch(browser, "select-paper-account-tiger");
-    assert.equal(await currentReturn(), "+6.25%");
+    assert.equal(await currentReturn(), "+0.00%");
     assert.equal(await hapticCount(), 5, "Selecting the already-active account must remain silent.");
 
     await browser.evaluate("window.__setPaperPlatform('web')");

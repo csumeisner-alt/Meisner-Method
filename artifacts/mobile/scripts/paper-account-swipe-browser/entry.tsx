@@ -3,14 +3,32 @@ import { createRoot } from 'react-dom/client';
 import { Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { BottomTabBar } from '../../components/BottomTabBar';
 import { PaperAccountSwipeArea } from '../../components/PaperAccountSwipeArea';
+import { computePaperEquity, INITIAL_BALANCE } from '../../lib/paperMath.ts';
+import { resetPaperAccountData, type PaperAccountData } from '../../lib/paperAccountManagement.ts';
 
-const INITIAL_BALANCE = 100_000;
-const accounts = [
-  { id: 'tiger', equity: 106_250 },
-  { id: 'borg', equity: 92_500 },
-  { id: 'fireball', equity: 130_000 },
-  { id: 'paper-event:arena', equity: 101_250 },
-];
+const initialData = {
+  accounts: [
+    { id: 'tiger', name: 'Tiger', cash: 95_000, createdAt: '2026-11-01T00:00:00.000Z' },
+    { id: 'borg', name: 'Borg', cash: 90_000, createdAt: '2026-11-01T00:00:00.000Z' },
+    { id: 'fireball', name: 'Fireball', cash: 80_000, createdAt: '2026-11-01T00:00:00.000Z' },
+    { id: 'paper-event:arena', name: 'Event Arena', cash: 95_000, createdAt: '2026-11-01T00:00:00.000Z' },
+  ],
+  positions: [
+    { id: 'tiger-position', accountId: 'tiger', symbol: 'TIG', companyName: 'Tiger Co.', shares: 50, avgCost: 100, openedAt: '2026-11-01T00:00:00.000Z', dividendYield: 0, sector: 'Test' },
+    { id: 'borg-position', accountId: 'borg', symbol: 'BOR', companyName: 'Borg Co.', shares: 25, avgCost: 100, openedAt: '2026-11-01T00:00:00.000Z', dividendYield: 0, sector: 'Test' },
+    { id: 'fireball-position', accountId: 'fireball', symbol: 'FIR', companyName: 'Fireball Co.', shares: 200, avgCost: 100, openedAt: '2026-11-01T00:00:00.000Z', dividendYield: 0, sector: 'Test' },
+    { id: 'event-position', accountId: 'paper-event:arena', symbol: 'EVT', companyName: 'Event Co.', shares: 25, avgCost: 100, openedAt: '2026-11-01T00:00:00.000Z', dividendYield: 0, sector: 'Test' },
+  ],
+  transactions: [],
+  orders: [],
+  lots: [],
+};
+const quotes = {
+  TIG: { price: 225 },
+  BOR: { price: 100 },
+  FIR: { price: 250 },
+  EVT: { price: 250 },
+};
 
 // Exercise the native haptic branch while rendering the real swipe component in a phone-sized browser.
 Object.defineProperty(Platform, 'OS', { configurable: true, value: 'ios' });
@@ -20,12 +38,20 @@ testWindow.__setPaperPlatform = (os) => {
 };
 
 function PaperAccountInteractionFixture() {
+  const [data, setData] = useState<PaperAccountData>(initialData);
+  const accounts = data.accounts;
+  const positions = data.positions;
   const [activeId, setActiveId] = useState(accounts[0].id);
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [tradeCount, setTradeCount] = useState(0);
   const activeAccount = accounts.find((account) => account.id === activeId);
   if (!activeAccount) throw new Error(`Unknown paper account: ${activeId}`);
-  const totalReturn = ((activeAccount.equity - INITIAL_BALANCE) / INITIAL_BALANCE) * 100;
+  const activePositions = positions.filter((position) => position.accountId === activeId);
+  const portfolioValue = computePaperEquity(activeAccount, activePositions, quotes);
+  const totalReturn = ((portfolioValue - INITIAL_BALANCE) / INITIAL_BALANCE) * 100;
+  const resetAccount = (accountId: string) => {
+    setData((current) => resetPaperAccountData(current, accountId, new Date().toISOString()));
+  };
 
   return (
     <View style={{ flex: 1, height: '100%', backgroundColor: '#101010' }}>
@@ -57,17 +83,28 @@ function PaperAccountInteractionFixture() {
       {selectorOpen && (
         <View testID="paper-account-management">
           {accounts.map((account) => (
-            <TouchableOpacity
-              key={account.id}
-              testID={`select-paper-account-${account.id}`}
-              onPress={() => {
-                setActiveId(account.id);
-                setSelectorOpen(false);
-              }}
-              style={{ minHeight: 44, justifyContent: 'center' }}
-            >
-              <Text style={{ color: '#fff' }}>{account.id}</Text>
-            </TouchableOpacity>
+            <View key={account.id}>
+              <TouchableOpacity
+                testID={`select-paper-account-${account.id}`}
+                onPress={() => {
+                  setActiveId(account.id);
+                  setSelectorOpen(false);
+                }}
+                style={{ minHeight: 44, justifyContent: 'center' }}
+              >
+                <Text style={{ color: '#fff' }}>{account.id}</Text>
+              </TouchableOpacity>
+              {!account.id.startsWith('paper-event:') && (
+                <TouchableOpacity
+                  testID={`reset-paper-account-${account.id}`}
+                  accessibilityRole="button"
+                  onPress={() => resetAccount(account.id)}
+                  style={{ minHeight: 44, justifyContent: 'center' }}
+                >
+                  <Text style={{ color: '#ffd700' }}>Reset {account.id}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           ))}
         </View>
       )}
