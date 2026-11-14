@@ -1,4 +1,10 @@
 import { Router } from "express";
+import {
+  EVENT_ARENA_RETENTION_DAYS,
+  purgeExpiredEventArenaEntries,
+} from "../lib/eventArenaRetention.ts";
+
+export { EVENT_ARENA_RETENTION_DAYS, purgeExpiredEventArenaEntries } from "../lib/eventArenaRetention.ts";
 
 interface EventArenaDatabase {
   query(sql: string, values?: any[]): Promise<{ rows: any[] }>;
@@ -212,6 +218,7 @@ export function createEventArenaRouter(
 
   router.get("/event-arena/leaderboard-weeks", requireSchema, async (_req: any, res: any) => {
     try {
+      await purgeExpiredEventArenaEntries(db);
       const { rows } = await db.query(
         `SELECT
            event_id,
@@ -219,10 +226,13 @@ export function createEventArenaRouter(
            MAX(event_end_at) AS end_at,
            COUNT(*)::int AS participant_count
          FROM event_arena_leaderboard_entries
-         WHERE is_active=TRUE AND event_end_at <= NOW()
+         WHERE is_active=TRUE
+           AND event_end_at <= NOW()
+           AND event_end_at > NOW() - ($1 * INTERVAL '1 day')
          GROUP BY event_id
          HAVING COUNT(*) > 0
          ORDER BY MAX(event_end_at) DESC`,
+        [EVENT_ARENA_RETENTION_DAYS],
       );
       const weeks = rows.flatMap((row) => {
         const expected = expectedEventArenaWindow(row.event_id);
@@ -256,14 +266,17 @@ export function createEventArenaRouter(
       return;
     }
     try {
+      await purgeExpiredEventArenaEntries(db);
       const { rows } = await db.query(
         `SELECT
            ROW_NUMBER() OVER (ORDER BY return_percent DESC, updated_at DESC, alias ASC) AS rank,
            alias, start_equity, equity, return_percent, holdings, updated_at
          FROM event_arena_leaderboard_entries
-         WHERE event_id=$1 AND is_active=TRUE
+         WHERE event_id=$1
+           AND is_active=TRUE
+           AND event_end_at > NOW() - ($2 * INTERVAL '1 day')
          ORDER BY return_percent DESC, updated_at DESC, alias ASC`,
-        [req.params.eventId],
+        [req.params.eventId, EVENT_ARENA_RETENTION_DAYS],
       );
       res.json({ entries: rows.map(publicEntry), updatedAt: new Date(now()).toISOString() });
     } catch {
@@ -286,6 +299,7 @@ export function createEventArenaRouter(
       return;
     }
     try {
+      await purgeExpiredEventArenaEntries(db);
       const { rows } = await db.query(
         `INSERT INTO event_arena_leaderboard_entries
            (event_id, installation_id, alias, start_equity, equity, return_percent, holdings, event_start_at, event_end_at, updated_at)
@@ -318,8 +332,11 @@ export function createEventArenaRouter(
       );
       if (!rows[0]) {
         const existing = await db.query(
-          "SELECT alias FROM event_arena_leaderboard_entries WHERE event_id=$1 AND installation_id=$2",
-          [req.params.eventId, submission.installationId],
+          `SELECT alias FROM event_arena_leaderboard_entries
+           WHERE event_id=$1
+             AND installation_id=$2
+             AND event_end_at > NOW() - ($3 * INTERVAL '1 day')`,
+          [req.params.eventId, submission.installationId, EVENT_ARENA_RETENTION_DAYS],
         );
         if (existing.rows[0] && existing.rows[0].alias !== submission.alias && now() >= submission.eventStartAtMs) {
           res.status(409).json({ error: "Your leaderboard alias is locked for this event." });
@@ -340,6 +357,7 @@ export function createEventArenaRouter(
       return;
     }
     try {
+      await purgeExpiredEventArenaEntries(db);
       await db.query(
         `UPDATE event_arena_leaderboard_entries
          SET is_active=FALSE,

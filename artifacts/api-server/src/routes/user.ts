@@ -168,6 +168,10 @@ async function runSchemaMigrations(): Promise<void> {
     CREATE INDEX IF NOT EXISTS event_arena_leaderboard_rank_idx
     ON event_arena_leaderboard_entries (event_id, return_percent DESC, updated_at DESC)
   `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS event_arena_leaderboard_expiration_idx
+    ON event_arena_leaderboard_entries (event_end_at)
+  `);
 
   // Backfill missing columns for existing paper tables (idempotent).
   const paperColumns = [

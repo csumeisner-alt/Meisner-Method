@@ -597,9 +597,12 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
                   <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 5 }}>
                     Before opting in: other event participants will see your alias, self-reported score, and current holding ticker and company names. This does not share your regular accounts or trade history.
                   </Text>
+                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 5 }}>
+                    Shared scores and holding names are removed 30 days after the event ends. Your local event history stays on this device.
+                  </Text>
                   {optedIn && (
                     <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 5 }}>
-                      Opting out removes your score and holdings from the leaderboard. Your alias remains locked for this event after it starts.
+                      Opting out removes your score and holdings from the leaderboard. Your alias remains locked for this event.
                     </Text>
                   )}
                   {(!optedIn || !aliasLocked) && (

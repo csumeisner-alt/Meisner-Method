@@ -20,6 +20,7 @@ import {
 } from "./lib/alertLogic.js";
 import { runAlertCheckCycle } from "./lib/alertWorkerCycle.js";
 import { computeHealthStatus } from "./lib/alertWorkerHealth.js";
+import { purgeExpiredEventArenaEntries } from "./lib/eventArenaRetention.js";
 import { fetchYahooChartPrice } from "./lib/marketPrice.js";
 import { sendExpoPushRequest } from "./lib/expoPushRequest.js";
 
@@ -234,6 +235,21 @@ function startHealthServer(port: number): void {
 // ── Main loop ──────────────────────────────────────────────────────────────
 
 const CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const EVENT_ARENA_CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
+let lastEventArenaCleanupAt = 0;
+
+async function runEventArenaCleanupIfDue(): Promise<void> {
+  if (Date.now() - lastEventArenaCleanupAt < EVENT_ARENA_CLEANUP_INTERVAL_MS) return;
+  try {
+    await purgeExpiredEventArenaEntries(pool);
+    lastEventArenaCleanupAt = Date.now();
+    logger.info("[alert-worker] expired Event Arena entries removed");
+  } catch (err) {
+    // The API may still be applying the Event Arena table migration; retry on
+    // the next worker cycle rather than stopping alert delivery.
+    logger.warn({ err }, "[alert-worker] Event Arena cleanup failed; will retry");
+  }
+}
 
 async function main(): Promise<void> {
   logger.info("[alert-worker] starting");
@@ -249,6 +265,7 @@ async function main(): Promise<void> {
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
+    await runEventArenaCleanupIfDue();
     await runAlertCheck();
     await sleep(CHECK_INTERVAL_MS);
   }
