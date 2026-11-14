@@ -108,6 +108,33 @@ test("event enrollment enables sharing with compact privacy controls", () => {
   assert.match(eventArena, /section === 'past' && renderPastEvents\(\)/);
 });
 
+test("championship leaderboard shows real podium scores, event context, and below-podium standings", () => {
+  assert.match(leaderboard, /getEventArenaPodiumSlots\(entries\)/);
+  assert.match(leaderboard, /getEventArenaStatus\(event\.startAtMs, event\.endAtMs, countdownNow\)/);
+  assert.match(leaderboard, /paper-event-leaderboard-participant-count/);
+  assert.match(leaderboard, /paper-event-leaderboard-countdown/);
+  assert.match(leaderboard, /Last successful update: \{timeLabel\(lastUpdated\)\}/);
+  assert.match(leaderboard, /\[2, 1, 3\]\.map\(\(rank\)/);
+  assert.match(leaderboard, /paper-event-podium-\$\{slot\.rank\}/);
+  assert.match(leaderboard, /Waiting for competitor/);
+  assert.match(leaderboard, /\{returnLabel\(entry\.returnPercent\)\}/);
+  assert.match(leaderboard, /\{signedMoney\(entry\.profitLoss\)\}/);
+  assert.match(leaderboard, /\{money\(entry\.equity\)\}/);
+  assert.match(leaderboard, /paper-event-leaderboard-your-position/);
+  assert.match(leaderboard, /ownEntry\.rank <= 3/);
+  assert.match(leaderboard, /PROFIT \/ LOSS/);
+  assert.match(leaderboard, /ACCOUNT VALUE/);
+  assert.match(leaderboard, /entries\.filter\(\(entry\) => entry\.rank > 3\)\.map\(\(entry\) => renderEntry\(entry as LeaderboardEntry\)\)/);
+  assert.match(leaderboard, /entry\.isCurrentUser/);
+  assert.match(leaderboard, /SELF-REPORTED · UNVERIFIED/);
+  assert.match(leaderboard, /not independently checked/);
+  assert.match(leaderboard, /Loading leaderboard…/);
+  assert.match(leaderboard, /The leaderboard could not be loaded\. Please retry\./);
+  assert.match(leaderboard, /retry-paper-event-leaderboard/);
+  assert.match(leaderboard, /paper-event-leaderboard-stale/);
+  assert.match(leaderboard, /refresh-empty-paper-event-leaderboard/);
+});
+
 test("milestone badges and event controls stay readable with larger system text", () => {
   assert.match(challenge, /'first-event': 'FIRST EVENT'/);
   assert.match(challenge, /'positive-finish': 'IN THE GREEN'/);

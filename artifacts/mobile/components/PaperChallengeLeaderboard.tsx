@@ -8,6 +8,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
@@ -38,6 +39,13 @@ import {
   type EventCashTransferImpact,
 } from '@/lib/eventArenaTransfers';
 import type { PaperAccount, PaperOrder, PaperPosition } from '@/lib/paperMath';
+import {
+  formatEventArenaMoney,
+  formatEventArenaReturn,
+  formatEventArenaSignedMoney,
+  getEventArenaPodiumSlots,
+  getEventArenaStatus,
+} from '@/lib/eventArenaLeaderboard';
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 const REFRESH_INTERVAL_MS = 120_000;
@@ -90,11 +98,11 @@ type Props = {
   }) => Promise<void>;
 };
 
-const money = (value: number) => `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const signedMoney = (value: number) => `${value >= 0 ? '+' : '−'}${money(Math.abs(value))}`;
-const returnLabel = (value: number) => `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
+const money = formatEventArenaMoney;
+const signedMoney = formatEventArenaSignedMoney;
+const returnLabel = formatEventArenaReturn;
 const timeLabel = (value: string | null) => value
-  ? new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  ? new Date(value).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
   : 'Not updated yet';
 const dateRangeLabel = (startAtMs: number, endAtMs: number) => {
   const start = new Date(startAtMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -206,6 +214,7 @@ export function PaperChallengeLeaderboard({
 }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const [open, setOpen] = useState(false);
   const [aliasEditorOpen, setAliasEditorOpen] = useState(false);
   const [sharingInfoOpen, setSharingInfoOpen] = useState(false);
@@ -234,6 +243,7 @@ export function PaperChallengeLeaderboard({
   const [installationId, setInstallationId] = useState<string | null>(null);
   const [installationIdReady, setInstallationIdReady] = useState(false);
   const [averageCostFallbackByEvent, setAverageCostFallbackByEvent] = useState<Record<string, boolean>>({});
+  const [countdownNow, setCountdownNow] = useState(Date.now());
   const visible = embedded || open;
   const leaderboardQuery = useGetEventArenaLeaderboard(event.id, {
     request: installationId ? { headers: { 'X-Event-Arena-Installation-Id': installationId } } : undefined,
@@ -247,6 +257,9 @@ export function PaperChallengeLeaderboard({
   });
   const entries = leaderboardQuery.data?.entries ?? [];
   const lastUpdated = leaderboardQuery.data?.updatedAt ?? null;
+  const podiumSlots = useMemo(() => getEventArenaPodiumSlots(entries), [entries]);
+  const eventStatus = getEventArenaStatus(event.startAtMs, event.endAtMs, countdownNow);
+  const compactPodium = windowWidth <= 360;
   const loading = refreshing || (visible && !installationIdReady) || (leaderboardQuery.isLoading && entries.length === 0);
   const loadError = error || (leaderboardQuery.error ? 'The leaderboard could not be loaded. Please retry.' : '');
   const optedIn = enrollment?.eventId === event.id && enrollment.leaderboardOptedIn === true;
@@ -275,6 +288,10 @@ export function PaperChallengeLeaderboard({
     if (openOnMount && !embedded) setOpen(true);
   }, [embedded, openOnMount]);
   useEffect(() => { enrollmentRef.current = enrollment; }, [enrollment]);
+  useEffect(() => {
+    const timer = setInterval(() => setCountdownNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
   useEffect(() => {
     let mounted = true;
     void getInstallationId()
@@ -541,19 +558,20 @@ export function PaperChallengeLeaderboard({
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 10,
-        paddingVertical: 11,
+        gap: 8,
+        paddingVertical: 12,
         paddingHorizontal: entry.isCurrentUser ? 9 : 0,
         marginVertical: entry.isCurrentUser ? 3 : 0,
-        borderBottomWidth: entry.isCurrentUser ? 1 : 1,
+        borderBottomWidth: 1,
         borderWidth: entry.isCurrentUser ? 1 : 0,
-        borderColor: entry.isCurrentUser ? colors.gold : colors.border,
+        borderColor: entry.isCurrentUser ? colors.goldMuted : colors.border,
         borderRadius: entry.isCurrentUser ? 10 : 0,
+        backgroundColor: entry.isCurrentUser ? colors.card : 'transparent',
       }}
     >
       <Text style={{
         width: 34,
-        color: entry.rank <= 3 ? colors.gold : colors.primary,
+        color: colors.mutedForeground,
         fontFamily: 'Inter_700Bold',
         fontSize: 14,
       }}>#{entry.rank}</Text>
@@ -569,15 +587,101 @@ export function PaperChallengeLeaderboard({
         <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>
           {money(entry.equity)} account value
         </Text>
-        <Text style={{ color: entry.profitLoss >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_600SemiBold', fontSize: 10, marginTop: 2 }}>
-          {signedMoney(entry.profitLoss)} · {entry.tradeCount == null ? 'trade count unavailable' : `${entry.tradeCount} trades`}
+      </View>
+      <View style={{ alignItems: 'flex-end', maxWidth: '42%', minWidth: 0 }}>
+        <Text adjustsFontSizeToFit numberOfLines={1} style={{ color: entry.returnPercent >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 13 }}>
+          {returnLabel(entry.returnPercent)}
+        </Text>
+        <Text adjustsFontSizeToFit numberOfLines={1} style={{ color: entry.profitLoss >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_600SemiBold', fontSize: 10, marginTop: 3 }}>
+          {signedMoney(entry.profitLoss)}
+        </Text>
+        <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 9, marginTop: 2 }}>
+          {entry.tradeCount == null ? 'Trades unavailable' : `${entry.tradeCount} trades`}
         </Text>
       </View>
-      <Text style={{ color: entry.returnPercent >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 13 }}>
-        {returnLabel(entry.returnPercent)}
-      </Text>
     </TouchableOpacity>
   );
+
+  const renderPodiumCard = (slot: (typeof podiumSlots)[number]) => {
+    const entry = slot.entry;
+    const medal = slot.rank === 1
+      ? { label: 'CHAMPION', color: '#D8B45A', height: compactPodium ? 202 : 218 }
+      : slot.rank === 2
+        ? { label: 'RUNNER-UP', color: '#AEB9C6', height: compactPodium ? 176 : 188 }
+        : { label: 'THIRD PLACE', color: '#C68762', height: compactPodium ? 164 : 176 };
+    return (
+      <TouchableOpacity
+        key={slot.rank}
+        testID={`paper-event-podium-${slot.rank}`}
+        accessibilityRole={entry ? 'button' : 'text'}
+        accessibilityLabel={entry
+          ? `Rank ${slot.rank}, ${entry.alias}, ${returnLabel(entry.returnPercent)} return, profit or loss ${signedMoney(entry.profitLoss)}, account value ${money(entry.equity)}`
+          : `Rank ${slot.rank}, waiting for competitor`}
+        disabled={!entry}
+        onPress={() => { if (entry) setDetail(entry as LeaderboardEntry); }}
+        style={{
+          flex: 1,
+          minWidth: 0,
+          height: medal.height,
+          justifyContent: 'flex-end',
+          alignItems: 'center',
+          paddingHorizontal: compactPodium ? 5 : 8,
+          paddingTop: 10,
+          paddingBottom: compactPodium ? 9 : 11,
+          borderTopLeftRadius: 14,
+          borderTopRightRadius: 14,
+          borderBottomLeftRadius: 10,
+          borderBottomRightRadius: 10,
+          borderWidth: 1,
+          borderColor: entry ? `${medal.color}88` : colors.border,
+          backgroundColor: entry ? `${medal.color}12` : colors.card,
+          opacity: entry ? 1 : 0.78,
+        }}
+      >
+        {entry ? (
+          <>
+            <View style={{
+              width: compactPodium ? 25 : 29,
+              height: compactPodium ? 25 : 29,
+              borderRadius: 16,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: `${medal.color}24`,
+              marginBottom: 5,
+            }}>
+              <Feather name="award" size={compactPodium ? 14 : 16} color={medal.color} />
+            </View>
+            <Text style={{ color: medal.color, fontFamily: 'Inter_700Bold', fontSize: compactPodium ? 7 : 8, letterSpacing: 0.4 }}>
+              {medal.label}
+            </Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={{ maxWidth: '100%', color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: compactPodium ? 11 : 12, marginTop: 5 }}>
+              {entry.alias}
+            </Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={{ maxWidth: '100%', color: entry.returnPercent >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_700Bold', fontSize: compactPodium ? 13 : 15, marginTop: 6 }}>
+              {returnLabel(entry.returnPercent)}
+            </Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={{ maxWidth: '100%', color: entry.profitLoss >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_600SemiBold', fontSize: compactPodium ? 9 : 10, marginTop: 4 }}>
+              {signedMoney(entry.profitLoss)}
+            </Text>
+            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: compactPodium ? 8 : 9, marginTop: 5 }}>
+              ACCOUNT VALUE
+            </Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={{ maxWidth: '100%', color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: compactPodium ? 9 : 10, marginTop: 2 }}>
+              {money(entry.equity)}
+            </Text>
+          </>
+        ) : (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+            <Text style={{ color: medal.color, fontFamily: 'Inter_700Bold', fontSize: compactPodium ? 11 : 12 }}>#{slot.rank}</Text>
+            <Feather name="user-plus" size={compactPodium ? 14 : 16} color={colors.mutedForeground} style={{ marginTop: 8, marginBottom: 6 }} />
+            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: compactPodium ? 8 : 9, textAlign: 'center' }}>
+              Waiting for competitor
+            </Text>
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  };
 
   const openCashTransfer = () => {
     if (!detail || !canSendCash || detail.isCurrentUser) return;
@@ -819,42 +923,36 @@ export function PaperChallengeLeaderboard({
             </ScrollView>
           ) : (
             <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: Platform.OS === 'web' ? 24 : insets.bottom + 18 }}>
-              <View testID="paper-event-leaderboard-current-event" style={{ marginBottom: 12 }}>
-                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 11 }}>
-                  Current event · {dateRangeLabel(event.startAtMs, event.endAtMs)}
+              <View testID="paper-event-leaderboard-current-event" style={{ marginBottom: 17, padding: 13, borderRadius: 13, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 10 }}>
+                  EVENT ARENA · {dateRangeLabel(event.startAtMs, event.endAtMs)}
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7, marginTop: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 5, paddingHorizontal: 8, borderRadius: 20, backgroundColor: `${eventStatus.phase === 'active' ? colors.primary : colors.gold}18` }}>
+                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: eventStatus.phase === 'active' ? colors.primary : colors.gold }} />
+                    <Text style={{ color: eventStatus.phase === 'active' ? colors.primary : colors.gold, fontFamily: 'Inter_700Bold', fontSize: 9 }}>
+                      {eventStatus.label}
+                    </Text>
+                  </View>
+                  <Text testID="paper-event-leaderboard-participant-count" style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>
+                    {entries.length} {entries.length === 1 ? 'participant' : 'participants'}
+                  </Text>
+                  <Text testID="paper-event-leaderboard-countdown" style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>
+                    {eventStatus.countdown}
+                  </Text>
+                </View>
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 8 }}>
+                  Last successful update: {timeLabel(lastUpdated)}
                 </Text>
               </View>
 
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-                <Text style={{ flex: 1, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 15 }}>Rankings</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7, marginBottom: 4 }}>
+                <Text style={{ flex: 1, minWidth: 90, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 17 }}>Championship standings</Text>
                 <Text style={{ color: colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 9 }}>SELF-REPORTED · UNVERIFIED</Text>
               </View>
-              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginBottom: 8 }}>
+              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginBottom: 12 }}>
                 Scores and event values are reported by participants and are not independently checked.
               </Text>
-              {ownEntry && (
-                <View
-                  testID="paper-event-leaderboard-your-position"
-                  style={{ padding: 12, marginBottom: 10, borderRadius: 11, borderWidth: 1, borderColor: colors.gold, backgroundColor: colors.card }}
-                >
-                  <Text style={{ color: colors.gold, fontFamily: 'Inter_700Bold', fontSize: 10 }}>YOUR CURRENT POSITION</Text>
-                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 16, marginTop: 4 }}>
-                    Rank #{ownEntry.rank} · {returnLabel(ownEntry.returnPercent)}
-                  </Text>
-                  <Text style={{ color: ownEntry.profitLoss >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_600SemiBold', fontSize: 11, marginTop: 3 }}>
-                    {signedMoney(ownEntry.profitLoss)} · {money(ownEntry.equity)} account value
-                  </Text>
-                  {averageCostFallbackByEvent[event.id] && (
-                    <Text
-                      testID="paper-event-average-cost-fallback"
-                      accessibilityRole="text"
-                      style={{ color: colors.gold, fontFamily: 'Inter_600SemiBold', fontSize: 10, lineHeight: 15, marginTop: 6 }}
-                    >
-                      A market quote was unavailable for one or more holdings, so average cost was used for those positions in your score.
-                    </Text>
-                  )}
-                </View>
-              )}
               {loading && entries.length === 0 ? (
                 <View style={{ alignItems: 'center', padding: 24 }}>
                   <ActivityIndicator color={colors.primary} />
@@ -868,19 +966,106 @@ export function PaperChallengeLeaderboard({
                   </TouchableOpacity>
                 </View>
               ) : entries.length === 0 ? (
-                <View testID="paper-event-leaderboard-empty" style={{ alignItems: 'center', paddingVertical: 20 }}>
-                  <Feather name="users" size={22} color={colors.mutedForeground} />
-                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, paddingTop: 9, textAlign: 'center' }}>
-                    No participants have opted in for this event yet.
-                  </Text>
-                  <TouchableOpacity testID="refresh-empty-paper-event-leaderboard" accessibilityRole="button" onPress={() => { void refresh(); }} style={{ paddingVertical: 8, paddingHorizontal: 12, marginTop: 6 }}>
-                    <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10 }}>REFRESH</Text>
-                  </TouchableOpacity>
-                </View>
+                <>
+                  <View testID="paper-event-leaderboard-empty" style={{ alignItems: 'center', paddingVertical: 12 }}>
+                    <Feather name="users" size={22} color={colors.mutedForeground} />
+                    <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, paddingTop: 9, textAlign: 'center' }}>
+                      No participants have opted in for this event yet.
+                    </Text>
+                    <TouchableOpacity testID="refresh-empty-paper-event-leaderboard" accessibilityRole="button" onPress={() => { void refresh(); }} style={{ paddingVertical: 8, paddingHorizontal: 12, marginTop: 4 }}>
+                      <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10 }}>REFRESH</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View testID="paper-event-leaderboard-podium" style={{ marginTop: 8 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 13 }}>Podium</Text>
+                      <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 9 }}>TOP THREE</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: compactPodium ? 5 : 8 }}>
+                      {[2, 1, 3].map((rank) => {
+                        const slot = podiumSlots.find((item) => item.rank === rank);
+                        return slot ? renderPodiumCard(slot) : null;
+                      })}
+                    </View>
+                  </View>
+                </>
               ) : (
-                <View testID="paper-event-leaderboard-list">
-                  {entries.map(renderEntry)}
-                </View>
+                <>
+                  <View testID="paper-event-leaderboard-podium" style={{ marginTop: 2 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 13 }}>Podium</Text>
+                      <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 9 }}>TOP THREE</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: compactPodium ? 5 : 8 }}>
+                      {[2, 1, 3].map((rank) => {
+                        const slot = podiumSlots.find((item) => item.rank === rank);
+                        return slot ? renderPodiumCard(slot) : null;
+                      })}
+                    </View>
+                  </View>
+                  {ownEntry && (
+                    <View
+                      testID="paper-event-leaderboard-your-position"
+                      style={{
+                        padding: 14,
+                        marginTop: 15,
+                        marginBottom: 13,
+                        borderRadius: 13,
+                        borderWidth: 1,
+                        borderColor: ownEntry.rank <= 3 ? (ownEntry.rank === 1 ? '#D8B45A' : ownEntry.rank === 2 ? '#AEB9C6' : '#C68762') : colors.goldMuted,
+                        backgroundColor: colors.card,
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Feather name="award" size={16} color={ownEntry.rank === 1 ? '#D8B45A' : ownEntry.rank === 2 ? '#AEB9C6' : ownEntry.rank === 3 ? '#C68762' : colors.gold} />
+                        <Text style={{ color: colors.gold, fontFamily: 'Inter_700Bold', fontSize: 10 }}>YOUR POSITION</Text>
+                        {ownEntry.rank <= 3 && (
+                          <Text style={{ marginLeft: 'auto', color: ownEntry.rank === 1 ? '#D8B45A' : ownEntry.rank === 2 ? '#AEB9C6' : '#C68762', fontFamily: 'Inter_700Bold', fontSize: 9 }}>
+                            {ownEntry.rank === 1 ? 'GOLD' : ownEntry.rank === 2 ? 'SILVER' : 'BRONZE'}
+                          </Text>
+                        )}
+                      </View>
+                      <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 17, marginTop: 6 }}>
+                        Rank #{ownEntry.rank} · {ownEntry.alias}
+                      </Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 10 }}>
+                        {[
+                          { label: 'RETURN', value: returnLabel(ownEntry.returnPercent), color: ownEntry.returnPercent >= 0 ? colors.primary : colors.destructive },
+                          { label: 'PROFIT / LOSS', value: signedMoney(ownEntry.profitLoss), color: ownEntry.profitLoss >= 0 ? colors.primary : colors.destructive },
+                          { label: 'ACCOUNT VALUE', value: money(ownEntry.equity), color: colors.foreground },
+                        ].map((metric) => (
+                          <View key={metric.label} style={{ flexGrow: 1, flexBasis: 85, minWidth: 0, padding: 8, borderRadius: 9, backgroundColor: colors.background }}>
+                            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 8 }}>{metric.label}</Text>
+                            <Text adjustsFontSizeToFit numberOfLines={1} style={{ color: metric.color, fontFamily: 'Inter_700Bold', fontSize: 12, marginTop: 4 }}>{metric.value}</Text>
+                          </View>
+                        ))}
+                      </View>
+                      {averageCostFallbackByEvent[event.id] && (
+                        <Text
+                          testID="paper-event-average-cost-fallback"
+                          accessibilityRole="text"
+                          style={{ color: colors.gold, fontFamily: 'Inter_600SemiBold', fontSize: 10, lineHeight: 15, marginTop: 8 }}
+                        >
+                          A market quote was unavailable for one or more holdings, so average cost was used for those positions in your score.
+                        </Text>
+                      )}
+                    </View>
+                  )}
+                  {entries.some((entry) => entry.rank > 3) && (
+                    <View testID="paper-event-leaderboard-list" style={{ marginTop: 4 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 4 }}>
+                        <Text style={{ flex: 1, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>Standings</Text>
+                        <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 9 }}>
+                          {entries.filter((entry) => entry.rank > 3).length} MORE
+                        </Text>
+                      </View>
+                      <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginBottom: 4 }}>
+                        Participants ranked below the podium
+                      </Text>
+                      {entries.filter((entry) => entry.rank > 3).map((entry) => renderEntry(entry as LeaderboardEntry))}
+                    </View>
+                  )}
+                </>
               )}
               {loadError && entries.length > 0 && (
                 <View testID="paper-event-leaderboard-stale" style={{ marginTop: 9, padding: 10, borderRadius: 9, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.goldMuted }}>
