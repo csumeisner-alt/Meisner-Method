@@ -226,6 +226,10 @@ async function runSchemaMigrations(): Promise<void> {
     ON event_arena_cash_transfers (event_id, recipient_installation_id, created_at DESC)
   `);
   await pool.query(`
+    CREATE INDEX IF NOT EXISTS event_arena_cash_transfers_sender_idx
+    ON event_arena_cash_transfers (event_id, sender_installation_id, created_at DESC)
+  `);
+  await pool.query(`
     CREATE INDEX IF NOT EXISTS event_arena_cash_transfers_expiration_idx
     ON event_arena_cash_transfers (event_end_at)
   `);

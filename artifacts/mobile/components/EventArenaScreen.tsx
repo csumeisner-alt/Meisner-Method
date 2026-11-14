@@ -71,6 +71,13 @@ type EventCashNotification = {
   createdAt: string;
   readAt: string | null;
 };
+type EventCashSentTransfer = {
+  id: string;
+  eventId: string;
+  recipientAlias: string;
+  amount: number;
+  createdAt: string;
+};
 
 const SECTIONS: { id: Section; label: string; icon: React.ComponentProps<typeof Feather>['name'] }[] = [
   { id: 'competition', label: 'Competition', icon: 'award' },
@@ -170,6 +177,8 @@ export function EventArenaScreen() {
   const [accountLoading, setAccountLoading] = useState(false);
   const [accountError, setAccountError] = useState('');
   const [cashNotifications, setCashNotifications] = useState<EventCashNotification[]>([]);
+  const [cashSentTransfers, setCashSentTransfers] = useState<EventCashSentTransfer[]>([]);
+  const [cashHistoryDirection, setCashHistoryDirection] = useState<'received' | 'sent'>('received');
   const [cashNotificationsUnread, setCashNotificationsUnread] = useState(0);
   const [cashNotificationsOpen, setCashNotificationsOpen] = useState(false);
   const [cashNotificationsLoading, setCashNotificationsLoading] = useState(false);
@@ -295,13 +304,26 @@ export function EventArenaScreen() {
         } },
       );
       if (!response.ok) throw new Error('Cash notifications could not be loaded.');
-      const result = await response.json() as { notifications?: EventCashNotification[] };
+      const result = await response.json() as {
+        notifications?: EventCashNotification[];
+        sentTransfers?: EventCashSentTransfer[];
+      };
       const notifications = Array.isArray(result.notifications)
         ? result.notifications.filter((item) =>
           item
           && item.eventId === currentWindow.id
           && typeof item.id === 'string'
           && typeof item.senderAlias === 'string'
+          && Number.isFinite(item.amount)
+          && typeof item.createdAt === 'string',
+        )
+        : [];
+      const sentTransfers = Array.isArray(result.sentTransfers)
+        ? result.sentTransfers.filter((item) =>
+          item
+          && item.eventId === currentWindow.id
+          && typeof item.id === 'string'
+          && typeof item.recipientAlias === 'string'
           && Number.isFinite(item.amount)
           && typeof item.createdAt === 'string',
         )
@@ -321,6 +343,7 @@ export function EventArenaScreen() {
       }
       if (requestSequence === cashNotificationRequestSequenceRef.current) {
         setCashNotifications(notifications);
+        setCashSentTransfers(sentTransfers);
         setCashNotificationsUnread(notifications.filter((item) => !item.readAt).length);
       }
       if (accountChanged) await refreshAccountData();
@@ -377,7 +400,8 @@ export function EventArenaScreen() {
       setItem: (key, value) => AsyncStorage.setItem(key, value),
     });
     await refreshAccountData();
-  }, [currentWindow.id, currentWindow.phase, refreshAccountData, store.enrollment]);
+    void refreshCashNotifications(false);
+  }, [currentWindow.id, currentWindow.phase, refreshAccountData, refreshCashNotifications, store.enrollment]);
 
   useEffect(() => {
     void readStore();
@@ -979,6 +1003,7 @@ export function EventArenaScreen() {
         loading={accountLoading || storeState === 'loading'}
         saving={saving}
         onOpenNotifications={() => {
+          setCashHistoryDirection('received');
           setCashNotificationsOpen(true);
           void refreshCashNotifications(true);
         }}
@@ -1089,7 +1114,7 @@ export function EventArenaScreen() {
         <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: Platform.OS === 'web' ? 24 : insets.top + 8 }}>
           <View style={{ paddingHorizontal: 18, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20 }}>Cash received</Text>
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20 }}>Event cash</Text>
               <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>Event {currentWindow.id}</Text>
             </View>
             <TouchableOpacity
@@ -1102,6 +1127,39 @@ export function EventArenaScreen() {
               <Feather name="x" size={22} color={colors.mutedForeground} />
             </TouchableOpacity>
           </View>
+          <View accessibilityRole="tablist" style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 10 }}>
+            {([
+              { id: 'received' as const, label: 'Received', icon: 'corner-down-left' as const },
+              { id: 'sent' as const, label: 'Sent', icon: 'corner-up-right' as const },
+            ]).map((item) => {
+              const selected = cashHistoryDirection === item.id;
+              return (
+                <TouchableOpacity
+                  key={item.id}
+                  testID={`event-arena-cash-history-${item.id}`}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={`${item.label} event cash`}
+                  onPress={() => setCashHistoryDirection(item.id)}
+                  style={{
+                    flex: 1,
+                    minHeight: 42,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 7,
+                    borderRadius: 10,
+                    backgroundColor: selected ? colors.primary : colors.card,
+                    borderWidth: 1,
+                    borderColor: selected ? colors.primary : colors.border,
+                  }}
+                >
+                  <Feather name={item.icon} size={14} color={selected ? colors.primaryForeground : colors.mutedForeground} />
+                  <Text style={{ color: selected ? colors.primaryForeground : colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>{item.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
           {cashNotificationsLoading ? <ActivityIndicator style={{ marginTop: 20 }} color={colors.primary} /> : null}
           {cashNotificationsError ? (
             <View style={{ padding: 16 }}>
@@ -1110,27 +1168,46 @@ export function EventArenaScreen() {
                 <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11 }}>RETRY</Text>
               </TouchableOpacity>
             </View>
-          ) : cashNotifications.length === 0 && !cashNotificationsLoading ? (
-            <View testID="event-arena-cash-notifications-empty" style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-              <Feather name="bell" size={24} color={colors.mutedForeground} />
-              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 10 }}>No cash transfers received for this event.</Text>
+          ) : (cashHistoryDirection === 'received' ? cashNotifications.length : cashSentTransfers.length) === 0 && !cashNotificationsLoading ? (
+            <View testID={`event-arena-cash-${cashHistoryDirection}-empty`} style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+              <Feather name={cashHistoryDirection === 'received' ? 'corner-down-left' : 'corner-up-right'} size={24} color={colors.mutedForeground} />
+              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 10 }}>
+                {cashHistoryDirection === 'received'
+                  ? 'No cash transfers received for this event.'
+                  : 'No cash transfers sent for this event.'}
+              </Text>
             </View>
           ) : (
             <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 8, paddingBottom: insets.bottom + 20 }}>
-              {cashNotifications.map((notification) => (
-                <View key={notification.id} testID={`event-arena-cash-notification-${notification.id}`} style={{ padding: 14, borderBottomWidth: 1, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' }}>
-                    <Feather name="corner-down-left" size={16} color={colors.primary} />
+              {cashHistoryDirection === 'received'
+                ? cashNotifications.map((notification) => (
+                  <View key={notification.id} testID={`event-arena-cash-notification-${notification.id}`} style={{ padding: 14, borderBottomWidth: 1, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' }}>
+                      <Feather name="corner-down-left" size={16} color={colors.primary} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 13 }}>{notification.senderAlias} sent cash</Text>
+                      <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>
+                        Event {notification.eventId} · {new Date(notification.createdAt).toLocaleString()}
+                      </Text>
+                    </View>
+                    <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 13 }}>{money(notification.amount)}</Text>
                   </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 13 }}>{notification.senderAlias} sent cash</Text>
-                    <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>
-                      Event {notification.eventId} · {new Date(notification.createdAt).toLocaleString()}
-                    </Text>
+                ))
+                : cashSentTransfers.map((transfer) => (
+                  <View key={transfer.id} testID={`event-arena-cash-sent-${transfer.id}`} style={{ padding: 14, borderBottomWidth: 1, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' }}>
+                      <Feather name="corner-up-right" size={16} color={colors.primary} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 13 }}>You sent cash to {transfer.recipientAlias}</Text>
+                      <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>
+                        Event {transfer.eventId} · {new Date(transfer.createdAt).toLocaleString()}
+                      </Text>
+                    </View>
+                    <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 13 }}>{money(transfer.amount)}</Text>
                   </View>
-                  <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 13 }}>{money(notification.amount)}</Text>
-                </View>
-              ))}
+                ))}
             </ScrollView>
           )}
         </View>

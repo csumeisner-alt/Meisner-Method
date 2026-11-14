@@ -127,6 +127,21 @@ function createTransferDatabase() {
       }
       return { rows: [] };
     }
+    if (sql.includes("SELECT transfer_ref, recipient_alias, amount, created_at")) {
+      assert.match(sql, /WHERE event_id=\$1 AND sender_installation_id=\$2[\s\S]*event_end_at > NOW\(\) - \(\$3 \* INTERVAL '1 day'\)/);
+      assert.ok([eventId, "2026-11-30"].includes(String(values?.[0])));
+      assert.ok(["recipient-installation-123", installationId].includes(String(values?.[1])));
+      assert.equal(values?.[2], 30);
+      return {
+        rows: transfers.filter((item) => item.eventId === values?.[0]
+          && item.senderInstallationId === values?.[1]).map((row) => ({
+          transfer_ref: row.id,
+          recipient_alias: row.recipientAlias,
+          amount: row.amount,
+          created_at: row.createdAt,
+        })),
+      };
+    }
     if (sql.includes("SELECT transfer_ref, sender_alias, amount, created_at, read_at")) {
       return {
         rows: transfers.filter((item) => item.eventId === values?.[0]
@@ -251,6 +266,7 @@ test("cash inbox returns only incoming transfers for its event and opening marks
     assert.equal(unread.notifications.length, 1);
     assert.equal(unread.notifications[0].senderAlias, "MarketFox");
     assert.equal(unread.notifications[0].readAt, null);
+    assert.deepEqual(unread.sentTransfers, []);
 
     const opened = await fetch(inboxUrl, {
       headers: {
@@ -263,10 +279,26 @@ test("cash inbox returns only incoming transfers for its event and opening marks
     assert.equal(read.notifications[0].eventId, eventId);
     assert.equal(typeof read.notifications[0].readAt, "string");
 
-    const otherEvent = await fetch(`${baseUrl}/event-arena/2026-11-30/transfers`, {
-      headers: { "X-Event-Arena-Installation-Id": "recipient-installation-123" },
+    const senderHistoryResponse = await fetch(inboxUrl, {
+      headers: { "X-Event-Arena-Installation-Id": installationId },
     });
-    assert.deepEqual((await otherEvent.json() as any).notifications, []);
+    const senderHistory = await senderHistoryResponse.json() as any;
+    assert.deepEqual(senderHistory.sentTransfers, [{
+      id: db.transfers[0].id,
+      eventId,
+      recipientAlias: "BlueWhale",
+      amount: 250,
+      createdAt: "2026-11-18T17:00:00.000Z",
+    }]);
+    assert.equal(JSON.stringify(senderHistory).includes(installationId), false);
+    assert.equal(JSON.stringify(senderHistory).includes("recipient-installation-123"), false);
+
+    const otherEvent = await fetch(`${baseUrl}/event-arena/2026-11-30/transfers`, {
+      headers: { "X-Event-Arena-Installation-Id": installationId },
+    });
+    const otherEventHistory = await otherEvent.json() as any;
+    assert.deepEqual(otherEventHistory.notifications, []);
+    assert.deepEqual(otherEventHistory.sentTransfers, []);
   });
 });
 

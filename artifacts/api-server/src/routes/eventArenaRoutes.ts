@@ -697,6 +697,14 @@ export function createEventArenaRouter(
          ORDER BY created_at DESC`,
         [req.params.eventId, installationId, EVENT_ARENA_RETENTION_DAYS],
       );
+      const sent = await db.query(
+        `SELECT transfer_ref, recipient_alias, amount, created_at
+         FROM event_arena_cash_transfers
+         WHERE event_id=$1 AND sender_installation_id=$2
+           AND event_end_at > NOW() - ($3 * INTERVAL '1 day')
+         ORDER BY created_at DESC`,
+        [req.params.eventId, installationId, EVENT_ARENA_RETENTION_DAYS],
+      );
       res.json({
         notifications: rows.map((row) => ({
           id: row.transfer_ref,
@@ -705,6 +713,13 @@ export function createEventArenaRouter(
           amount: Number(row.amount),
           createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
           readAt: row.read_at instanceof Date ? row.read_at.toISOString() : row.read_at ?? null,
+        })),
+        sentTransfers: sent.rows.map((row) => ({
+          id: row.transfer_ref,
+          eventId: req.params.eventId,
+          recipientAlias: row.recipient_alias,
+          amount: Number(row.amount),
+          createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
         })),
       });
     } catch {
