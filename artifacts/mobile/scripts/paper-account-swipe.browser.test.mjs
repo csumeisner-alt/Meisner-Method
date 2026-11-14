@@ -278,6 +278,13 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
       true,
       "The championship dashboard must not cause horizontal overflow at 320 pixels.",
     );
+    const championshipContentHeight = await browser.evaluate(
+      `document.querySelector(${JSON.stringify(selector("paper-event-championship-dashboard"))})?.getBoundingClientRect().height`,
+    );
+    assert.ok(
+      championshipContentHeight <= 150,
+      `The Event Arena dashboard content should fit within the regular card's summary-row height (received ${championshipContentHeight}px).`,
+    );
     assert.equal(
       await browser.evaluate(`(() => {
         const title = document.querySelector(${JSON.stringify(selector("paper-event-championship-dashboard"))})?.firstElementChild?.children[1]?.getBoundingClientRect();

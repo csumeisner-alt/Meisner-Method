@@ -2360,7 +2360,7 @@ export default function PaperScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Switch paper trading account"
                 onPress={() => setShowAccountManagement(true)}
-                style={styles.editAccountsButton}
+                style={[styles.editAccountsButton, styles.eventChampionshipSwitchButton]}
               >
                 <Text style={styles.editAccountsText}>SWITCH</Text>
               </TouchableOpacity>
@@ -3343,16 +3343,17 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(24,24,25,0.98)',
     borderColor: 'rgba(231,198,106,0.62)',
     paddingHorizontal: 13,
-    paddingTop: 12,
-    paddingBottom: 10,
+    paddingTop: 8,
+    paddingBottom: 6,
   },
   eventChampionshipTopline: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
-    marginBottom: 7,
+    marginBottom: 4,
   },
+  eventChampionshipSwitchButton: { minHeight: 30, paddingHorizontal: 9 },
   heroTopline: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   eventHeroLabel: { color: BUY_COLOR },
   editAccountsButton: {

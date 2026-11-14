@@ -459,16 +459,17 @@ test("Event Arena account uses saved event results and links to the existing lea
   assert.match(eventAccountDashboard, /entry\.isCurrentUser/);
   assert.match(eventAccountDashboard, /summary\?\.finalRank/);
   assert.match(eventAccountDashboard, /entries\.length === 1 \? 'participant' : 'participants'/);
-  assert.match(eventAccountDashboard, /COMPETITION P\/L/);
-  assert.match(eventAccountDashboard, /COMPETITION RETURN/);
+  assert.match(eventAccountDashboard, /COMP P\/L/);
+  assert.match(eventAccountDashboard, /'RETURN'/);
   assert.match(eventAccountDashboard, /BUYING POWER/);
-  assert.match(eventAccountDashboard, /TIME UNTIL START/);
-  assert.match(eventAccountDashboard, /TIME REMAINING/);
+  assert.match(eventAccountDashboard, /'STARTS IN' : phase === 'active' \? 'TIME LEFT'/);
   assert.match(eventAccountDashboard, /VIEW LEADERBOARD/);
   assert.doesNotMatch(eventAccountDashboard, /TODAY’S P\/L/);
-  assert.match(eventAccountDashboard, /flexWrap: 'wrap'/);
-  assert.match(eventAccountDashboard, /flexBasis: '46%'/);
+  assert.match(eventAccountDashboard, /flexDirection: 'row', gap: 5, marginTop: 7/);
+  assert.match(eventAccountDashboard, /minHeight: 34/);
   assert.match(eventAccountDashboard, /minWidth: 0/);
+  assert.match(screen, /eventChampionshipSwitchButton: \{ minHeight: 30/);
+  assert.match(screen, /eventChampionshipHero:[\s\S]*?paddingTop: 8,[\s\S]*?paddingBottom: 6/);
 });
 
 test("position and order cards are compact without removing their essential values or actions", () => {

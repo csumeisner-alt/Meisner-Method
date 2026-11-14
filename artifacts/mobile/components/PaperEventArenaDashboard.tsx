@@ -165,17 +165,17 @@ export function PaperEventArenaDashboard({
       accessibilityRole="text"
       accessibilityLabel={accessibilityLabel ?? `${label}: ${value}`}
       style={{
-        flexGrow: 1,
-        flexBasis: '46%',
+        flex: 1,
         minWidth: 0,
-        padding: 9,
-        borderRadius: 10,
+        paddingHorizontal: 5,
+        paddingVertical: 6,
+        borderRadius: 8,
         borderWidth: 1,
         borderColor: 'rgba(231,198,106,0.18)',
         backgroundColor: 'rgba(255,255,255,0.035)',
       }}
     >
-      <Text allowFontScaling style={{ color: MUTED, fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 0.7 }}>
+      <Text allowFontScaling numberOfLines={1} adjustsFontSizeToFit style={{ color: MUTED, fontFamily: 'Inter_600SemiBold', fontSize: 7, letterSpacing: 0.25 }}>
         {label}
       </Text>
       <Text
@@ -183,8 +183,8 @@ export function PaperEventArenaDashboard({
         allowFontScaling
         numberOfLines={1}
         adjustsFontSizeToFit
-        minimumFontScale={0.75}
-        style={{ color, fontFamily: 'Inter_700Bold', fontSize: 15, marginTop: 4 }}
+        minimumFontScale={0.65}
+        style={{ color, fontFamily: 'Inter_700Bold', fontSize: 11, marginTop: 3 }}
       >
         {value}
       </Text>
@@ -193,52 +193,47 @@ export function PaperEventArenaDashboard({
 
   return (
     <View testID="paper-event-championship-dashboard" accessibilityLabel="Event Arena championship account summary">
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         <Feather name="award" size={15} color={GOLD} />
-        <Text style={{ flex: 1, minWidth: 0, color: GOLD, fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1 }}>
-          CHAMPIONSHIP ACCOUNT
+        <Text accessibilityLabel={eventName} numberOfLines={1} style={{ flex: 1, minWidth: 0, color: GOLD, fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 0.45 }}>
+          {eventName}
         </Text>
         <View
           testID="paper-event-account-status"
           style={{
-            paddingHorizontal: 8,
-            paddingVertical: 5,
+            paddingHorizontal: 7,
+            paddingVertical: 4,
             borderRadius: 20,
             borderWidth: 1,
             borderColor: `${statusColor}70`,
             backgroundColor: `${statusColor}15`,
           }}
         >
-          <Text accessibilityLiveRegion="polite" style={{ color: statusColor, fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 0.5 }}>
+          <Text accessibilityLiveRegion="polite" style={{ color: statusColor, fontFamily: 'Inter_700Bold', fontSize: 8, letterSpacing: 0.4 }}>
             {phaseLabel}
           </Text>
         </View>
       </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text accessibilityLabel={eventName} numberOfLines={2} style={{ color: '#e9e1ce', fontFamily: 'Inter_600SemiBold', fontSize: 12, lineHeight: 17 }}>
-            {eventName}
-          </Text>
-        </View>
+
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginTop: 4 }}>
+        <Text style={{ flexShrink: 0, color: MUTED, fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.55 }}>
+          {phase === 'ended' && summary ? 'FINAL EQUITY' : 'ACCOUNT EQUITY'}
+        </Text>
+        <Text
+          testID="paper-event-account-equity"
+          accessibilityLabel={`Event account equity ${displayedEquity == null ? 'unavailable' : money(displayedEquity)}`}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.75}
+          style={{ flex: 1, color: '#fff8e8', fontFamily: 'Inter_700Bold', fontSize: 24, letterSpacing: -0.7, textAlign: 'right' }}
+        >
+          {displayedEquity == null ? '—' : money(displayedEquity)}
+        </Text>
       </View>
 
-      <Text
-        testID="paper-event-account-equity"
-        accessibilityLabel={`Event account equity ${displayedEquity == null ? 'unavailable' : money(displayedEquity)}`}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.75}
-        style={{ color: '#fff8e8', fontFamily: 'Inter_700Bold', fontSize: 28, letterSpacing: -0.7, marginTop: 8 }}
-      >
-        {displayedEquity == null ? '—' : money(displayedEquity)}
-      </Text>
-      <Text style={{ color: MUTED, fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 1, marginTop: 1 }}>
-        {phase === 'ended' && summary ? 'FINAL ACCOUNT EQUITY' : 'CURRENT ACCOUNT EQUITY'}
-      </Text>
-
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 10 }}>
+      <View style={{ flexDirection: 'row', gap: 5, marginTop: 7 }}>
         {metric(
-          'COMPETITION P/L',
+          'COMP P/L',
           competitionPnL == null ? '—' : signedMoney(competitionPnL),
           pnlColor,
           'paper-event-competition-pnl',
@@ -247,7 +242,7 @@ export function PaperEventArenaDashboard({
             : `Competition profit or loss ${signedMoney(competitionPnL)}`,
         )}
         {metric(
-          'COMPETITION RETURN',
+          'RETURN',
           competitionReturn == null ? '—' : signedPercent(competitionReturn),
           returnColor,
           'paper-event-competition-return',
@@ -255,7 +250,7 @@ export function PaperEventArenaDashboard({
         )}
         {metric('BUYING POWER', safeMoney(buyingPower), '#f5f1e7', 'paper-event-buying-power')}
         {metric(
-          'LEADERBOARD',
+          'RANK',
           rankText,
           rankColor,
           'paper-event-account-rank',
@@ -265,61 +260,62 @@ export function PaperEventArenaDashboard({
         )}
       </View>
 
-      <View style={{ marginTop: 10, padding: 10, borderRadius: 10, backgroundColor: 'rgba(231,198,106,0.08)' }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-          <Text style={{ flex: 1, minWidth: 0, color: MUTED, fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 0.7 }}>
-            {phase === 'upcoming' ? 'TIME UNTIL START' : phase === 'active' ? 'TIME REMAINING' : 'EVENT STATUS'}
-          </Text>
-          <Text testID="paper-event-account-countdown" accessibilityRole="text" accessibilityLiveRegion="polite" style={{ color: '#fff0c5', fontFamily: 'Inter_700Bold', fontSize: 11 }}>
-            {formatPaperEventCountdown(startAtMs, endAtMs, now)}
-          </Text>
-        </View>
-        <View
-          accessibilityRole="progressbar"
-          accessibilityLabel="Event schedule progress"
-          accessibilityValue={{ min: 0, max: 100, now: Math.round(progress) }}
-          style={{ height: 5, marginTop: 8, overflow: 'hidden', borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.12)' }}
-        >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 6 }}>
+        <View style={{ flex: 1, minWidth: 0, paddingHorizontal: 7, paddingVertical: 6, borderRadius: 8, backgroundColor: 'rgba(231,198,106,0.08)' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+            <Text style={{ flexShrink: 0, color: MUTED, fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.35 }}>
+              {phase === 'upcoming' ? 'STARTS IN' : phase === 'active' ? 'TIME LEFT' : 'STATUS'}
+            </Text>
+            <Text testID="paper-event-account-countdown" accessibilityRole="text" accessibilityLiveRegion="polite" numberOfLines={1} style={{ flex: 1, color: '#fff0c5', fontFamily: 'Inter_700Bold', fontSize: 9, textAlign: 'right' }}>
+              {formatPaperEventCountdown(startAtMs, endAtMs, now)}
+            </Text>
+            {Array.isArray(leaderboard.data?.entries) && (
+              <Text
+                testID="paper-event-account-participant-count"
+                accessibilityRole="text"
+                style={{ color: MUTED, fontFamily: 'Inter_500Medium', fontSize: 8 }}
+              >
+                {entries.length} {entries.length === 1 ? 'participant' : 'participants'}
+              </Text>
+            )}
+          </View>
           <View
-            testID="paper-event-account-progress"
-            style={{ width: `${progress}%`, height: '100%', borderRadius: 4, backgroundColor: statusColor }}
-          />
-        </View>
-        {Array.isArray(leaderboard.data?.entries) && (
-          <Text
-            testID="paper-event-account-participant-count"
-            accessibilityRole="text"
-            style={{ color: MUTED, fontFamily: 'Inter_500Medium', fontSize: 10, marginTop: 7 }}
+            accessibilityRole="progressbar"
+            accessibilityLabel="Event schedule progress"
+            accessibilityValue={{ min: 0, max: 100, now: Math.round(progress) }}
+            style={{ height: 4, marginTop: 5, overflow: 'hidden', borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.12)' }}
           >
-            {entries.length} {entries.length === 1 ? 'participant' : 'participants'}
+            <View
+              testID="paper-event-account-progress"
+              style={{ width: `${progress}%`, height: '100%', borderRadius: 4, backgroundColor: statusColor }}
+            />
+          </View>
+        </View>
+        <TouchableOpacity
+          testID="paper-event-view-leaderboard"
+          accessibilityRole="button"
+          accessibilityLabel="View Event Arena leaderboard"
+          onPress={onViewLeaderboard}
+          activeOpacity={0.8}
+          style={{
+            minHeight: 34,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 5,
+            paddingHorizontal: 9,
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: 'rgba(231,198,106,0.52)',
+            backgroundColor: 'rgba(231,198,106,0.12)',
+          }}
+        >
+          <Feather name="bar-chart-2" size={12} color={GOLD} />
+          <Text style={{ color: GOLD, fontFamily: 'Inter_700Bold', fontSize: 8, letterSpacing: 0.5 }}>
+            VIEW LEADERBOARD
           </Text>
-        )}
+        </TouchableOpacity>
       </View>
-
-      <TouchableOpacity
-        testID="paper-event-view-leaderboard"
-        accessibilityRole="button"
-        accessibilityLabel="View Event Arena leaderboard"
-        onPress={onViewLeaderboard}
-        activeOpacity={0.8}
-        style={{
-          minHeight: 40,
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 7,
-          marginTop: 9,
-          borderRadius: 9,
-          borderWidth: 1,
-          borderColor: 'rgba(231,198,106,0.52)',
-          backgroundColor: 'rgba(231,198,106,0.12)',
-        }}
-      >
-        <Feather name="bar-chart-2" size={14} color={GOLD} />
-        <Text style={{ color: GOLD, fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.8 }}>
-          VIEW LEADERBOARD
-        </Text>
-      </TouchableOpacity>
     </View>
   );
 }
