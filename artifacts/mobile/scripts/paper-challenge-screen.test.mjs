@@ -49,8 +49,10 @@ test("Event Arena withdrawal confirms on web and reports save errors without cha
   assert.match(eventArena, /withdrawUpcomingPaperChallenge\(current, currentWindow\.id, nowMs\)/);
 });
 
-test("live leaderboard remains anonymous, opt-in, event-scoped, and privacy-limited", () => {
-  assert.match(events, /<PaperChallengeLeaderboard/);
+test("event enrollment enables sharing with compact privacy controls", () => {
+  assert.match(eventArena, /<PaperChallengeLeaderboard/);
+  assert.match(eventArena, /leaderboardOptedIn: true/);
+  assert.match(eventArena, /Joining turns on leaderboard sharing/);
   assert.match(leaderboard, /getInstallationId\(\)/);
   assert.match(leaderboard, /currentEnrollment\.leaderboardOptedIn/);
   assert.match(leaderboard, /REFRESH_INTERVAL_MS = 120_000/);
@@ -74,33 +76,32 @@ test("live leaderboard remains anonymous, opt-in, event-scoped, and privacy-limi
   assert.match(leaderboard, /transaction\.accountId === enrollment\.accountId/);
   assert.match(leaderboard, /date >= event\.startAtMs/);
   assert.match(leaderboard, /date <= event\.endAtMs/);
-  assert.match(leaderboard, /each current holding’s ticker and company name, its self-reported allocation percentage of your reported Event Arena account equity, and whether it is Long or Short/);
-  assert.match(leaderboard, /locked when the event started/i);
+  assert.match(leaderboard, /each current holding’s ticker and company name, estimated allocation percentage of your reported Event Arena equity, and Long or Short direction/);
+  assert.match(leaderboard, /alias remains locked for this event/i);
   assert.match(leaderboard, /Opt-in is saved on this device; your score will retry when the connection is available/);
   assert.match(leaderboard, /Your alias is saved on this device; the leaderboard will retry the update/);
   assert.match(leaderboard, /method: 'DELETE'/);
+  assert.match(leaderboard, /testID="open-paper-event-sharing-info"/);
+  assert.match(leaderboard, /testID="paper-event-leaderboard-sharing-info"/);
+  assert.match(leaderboard, /testID="opt-out-paper-event-leaderboard"/);
+  assert.match(leaderboard, /testID="opt-in-paper-event-leaderboard"/);
+  assert.match(leaderboard, /Public scores and holding details are removed 30 days after the event ends/);
+  assert.match(leaderboard, /open-paper-event-sharing-info[\s\S]*?edit-paper-event-leaderboard-alias/);
+  assert.doesNotMatch(leaderboard, /testID="paper-event-leaderboard-opt-in"/);
   assert.doesNotMatch(leaderboard, /DEMO_ENTRIES|toggle-paper-event-leaderboard-demo|VIEW DEMO EXAMPLE/);
   assert.match(leaderboard, /testID="paper-event-leaderboard-detail"/);
   assert.match(leaderboard, /holding\.companyName/);
   assert.match(leaderboard, /formatEventHoldingAllocation\(holding\.allocationPercent\)/);
   assert.match(leaderboard, /formatEventHoldingSide\(holding\.side\)/);
   assert.match(leaderboard, /calculateEventHoldingAllocationPercent/);
-  assert.match(leaderboard, /Raw share counts, prices, cost basis, account identifiers, and trade history are not shared/);
+  assert.match(leaderboard, /Raw share counts, prices, cost basis, account identifiers, regular accounts, and trade history are never shared/);
   assert.match(leaderboard, /Last successful update:/);
   assert.match(leaderboard, /The leaderboard could not be loaded\. Please retry\./);
   assert.doesNotMatch(leaderboard, /weeksQuery\.error\.message|loadError\.message|submissionError\.message/);
-  assert.match(leaderboard, /useGetEventArenaLeaderboardWeeks/);
-  assert.match(leaderboard, /query: \{ enabled: visible, queryKey: getGetEventArenaLeaderboardWeeksQueryKey\(\) \}/);
-  assert.match(leaderboard, /paper-event-leaderboard-week-picker/);
-  assert.match(leaderboard, /paper-event-leaderboard-week-\$\{week\.id\}/);
-  assert.match(leaderboard, /groupCompletedEventWeeksByYear\(archiveWeeks\)/);
-  assert.match(leaderboard, /archiveYears\[0\]\?\.year/);
-  assert.match(leaderboard, /paper-event-leaderboard-year-\$\{year\}/);
-  assert.match(leaderboard, /onPress=\{\(\) => setArchiveYear\(year\)\}/);
-  assert.match(leaderboard, /No completed weeks with opted-in participants yet/);
-  assert.match(leaderboard, /Past event weeks are unavailable/);
-  assert.match(leaderboard, /selectedEvent\.id === event\.id/);
-  assert.match(leaderboard, /Participants who opted out are not shown/);
+  assert.match(leaderboard, /paper-event-leaderboard-current-event/);
+  assert.doesNotMatch(leaderboard, /Past event weeks|leaderboard-week-picker|LeaderboardWeeks/);
+  assert.match(eventArena, /\{ id: 'past', label: 'Past Events'/);
+  assert.match(eventArena, /section === 'past' && renderPastEvents\(\)/);
 });
 
 test("milestone badges and event controls stay readable with larger system text", () => {

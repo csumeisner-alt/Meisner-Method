@@ -17,13 +17,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import {
   getGetEventArenaLeaderboardQueryKey,
-  getGetEventArenaLeaderboardWeeksQueryKey,
   submitEventArenaScore,
   useGetEventArenaLeaderboard,
-  useGetEventArenaLeaderboardWeeks,
 } from '@workspace/api-client-react';
 import { getInstallationId } from '@/lib/installation';
-import { groupCompletedEventWeeksByYear } from '@/lib/eventArenaArchive';
 import {
   calculateEventHoldingAllocationPercent,
   formatEventHoldingAllocation,
@@ -48,8 +45,6 @@ type EventWindow = {
   endAtMs: number;
   phase: 'upcoming' | 'active' | 'ended';
 };
-type CompletedEventWeek = EventWindow & { participantCount: number };
-
 type HoldingName = {
   symbol: string;
   companyName: string;
@@ -179,29 +174,27 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
   const [aliasEditorOpen, setAliasEditorOpen] = useState(false);
+  const [sharingInfoOpen, setSharingInfoOpen] = useState(false);
   const [error, setError] = useState('');
   const [aliasDraft, setAliasDraft] = useState('');
   const [sharingBusy, setSharingBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [detail, setDetail] = useState<LeaderboardEntry | null>(null);
-  const [selectedEvent, setSelectedEvent] = useState<EventWindow>(event);
-  const [archiveYear, setArchiveYear] = useState<number | null>(null);
   const [appIsActive, setAppIsActive] = useState(AppState.currentState === 'active');
   const refreshingRef = useRef(false);
   const enrollmentRef = useRef(enrollment);
-  const selectedEventRef = useRef(event);
   const averageCostFallbackSubmittedEventsRef = useRef(new Set<string>());
   const [installationId, setInstallationId] = useState<string | null>(null);
   const [installationIdReady, setInstallationIdReady] = useState(false);
   const [averageCostFallbackByEvent, setAverageCostFallbackByEvent] = useState<Record<string, boolean>>({});
   const visible = embedded || open;
-  const leaderboardQuery = useGetEventArenaLeaderboard(selectedEvent.id, {
+  const leaderboardQuery = useGetEventArenaLeaderboard(event.id, {
     request: installationId ? { headers: { 'X-Event-Arena-Installation-Id': installationId } } : undefined,
     query: {
       // The refresh effect below owns loading so opening the modal does not
       // trigger both React Query's automatic request and a manual refetch.
       enabled: false,
-      queryKey: [...getGetEventArenaLeaderboardQueryKey(selectedEvent.id), installationId ?? 'anonymous'],
+      queryKey: [...getGetEventArenaLeaderboardQueryKey(event.id), installationId ?? 'anonymous'],
       refetchOnWindowFocus: false,
     },
   });
@@ -209,25 +202,9 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
   const lastUpdated = leaderboardQuery.data?.updatedAt ?? null;
   const loading = refreshing || (visible && !installationIdReady) || (leaderboardQuery.isLoading && entries.length === 0);
   const loadError = error || (leaderboardQuery.error ? 'The leaderboard could not be loaded. Please retry.' : '');
-  const weeksQuery = useGetEventArenaLeaderboardWeeks({
-    query: { enabled: visible, queryKey: getGetEventArenaLeaderboardWeeksQueryKey() },
-  });
-  const archiveWeeks: CompletedEventWeek[] = useMemo(
-    () => (weeksQuery.data?.weeks ?? [])
-      .filter((week) => week.id !== event.id)
-      .map((week) => ({ ...week, phase: 'ended' })),
-    [weeksQuery.data?.weeks, event.id],
-  );
-  const archiveYears = useMemo(() => groupCompletedEventWeeksByYear(archiveWeeks), [archiveWeeks]);
-  const selectedArchiveYear = archiveYears.some(({ year }) => year === archiveYear)
-    ? archiveYear
-    : archiveYears[0]?.year ?? null;
-  const selectedYearWeeks = archiveYears.find(({ year }) => year === selectedArchiveYear)?.weeks ?? [];
-  const optedIn = selectedEvent.id === event.id && enrollment?.leaderboardOptedIn === true;
-  const aliasLocked = Date.now() >= selectedEvent.startAtMs;
-  const canOptIn = selectedEvent.id === event.id
-    && enrollment?.eventId === event.id
-    && event.phase !== 'ended';
+  const optedIn = enrollment?.eventId === event.id && enrollment.leaderboardOptedIn === true;
+  const aliasLocked = Date.now() >= event.startAtMs;
+  const canOptIn = enrollment?.eventId === event.id && event.phase !== 'ended';
   const matchingOwnEntries = useMemo(
     () => optedIn ? entries.filter((entry) => entry.isCurrentUser) : [],
     [entries, optedIn],
@@ -262,23 +239,12 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
     return () => { mounted = false; };
   }, [event.id]);
   useEffect(() => {
-    if (selectedEvent.id !== event.id || matchingOwnEntries.length !== 1) {
+    if (matchingOwnEntries.length !== 1) {
       onRankChange?.(null);
       return;
     }
     onRankChange?.(matchingOwnEntries[0]?.rank ?? null);
-  }, [event.id, matchingOwnEntries, onRankChange, selectedEvent.id]);
-  useEffect(() => {
-    setArchiveYear((currentYear) => (
-      archiveYears.some(({ year }) => year === currentYear)
-        ? currentYear
-        : archiveYears[0]?.year ?? null
-    ));
-  }, [archiveYears]);
-  useEffect(() => {
-    selectedEventRef.current = event;
-    setSelectedEvent(event);
-  }, [event.id, event.startAtMs, event.endAtMs]);
+  }, [event.id, matchingOwnEntries, onRankChange]);
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => setAppIsActive(state === 'active'));
     return () => subscription.remove();
@@ -322,17 +288,9 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
     await AsyncStorage.setItem(`${LAST_SUBMISSION_KEY_PREFIX}${event.id}`, String(Date.now()));
   }, [event.id, event.startAtMs, event.endAtMs]);
 
-  const selectEvent = useCallback((targetEvent: EventWindow) => {
-    selectedEventRef.current = targetEvent;
-    setSelectedEvent(targetEvent);
-    setDetail(null);
-    setError('');
-  }, []);
-
   const refresh = useCallback(async () => {
     if (refreshingRef.current || !visible || !appIsActive || !installationIdReady) return;
-    const targetEvent = selectedEvent;
-    const targetEventId = targetEvent.id;
+    const targetEventId = event.id;
     refreshingRef.current = true;
     setRefreshing(true);
     setError('');
@@ -340,7 +298,6 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
       const currentEnrollment = enrollmentRef.current;
       if (
         currentEnrollment?.eventId === targetEventId
-        && targetEventId === event.id
         && currentEnrollment.leaderboardOptedIn
         && event.phase !== 'ended'
         && !sharingBusy
@@ -351,9 +308,7 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
           try {
             await submitEntry(currentEnrollment, currentEnrollment.leaderboardAlias ?? '');
           } catch {
-            if (selectedEventRef.current.id === targetEventId) {
-              setError('Your score could not be updated. It will retry when you refresh.');
-            }
+            setError('Your score could not be updated. It will retry when you refresh.');
           }
         }
       }
@@ -364,7 +319,7 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
       setRefreshing(false);
       refreshingRef.current = false;
     }
-  }, [appIsActive, event.id, event.phase, installationIdReady, leaderboardQuery.refetch, selectedEvent, sharingBusy, submitEntry, visible]);
+  }, [appIsActive, event.id, event.phase, installationIdReady, leaderboardQuery.refetch, sharingBusy, submitEntry, visible]);
 
   useEffect(() => {
     if (!visible || !appIsActive || !installationIdReady) return;
@@ -570,8 +525,6 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
           accessibilityRole="button"
           onPress={() => {
             setDetail(null);
-            selectedEventRef.current = event;
-            setSelectedEvent(event);
             setOpen(true);
           }}
           style={{ marginTop: 11, paddingVertical: 10, borderRadius: 9, backgroundColor: colors.primary, alignItems: 'center' }}
@@ -591,24 +544,35 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
             <Text allowFontScaling style={{ flex: 1, minWidth: 0, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20 }}>
               {detail ? 'Participant score' : 'Event leaderboard'}
             </Text>
-            {!detail && selectedEvent.id === event.id && enrollment?.eventId === event.id && (
-              <TouchableOpacity
-                testID="edit-paper-event-leaderboard-alias"
-                accessibilityRole="button"
-                accessibilityLabel={aliasLocked ? 'Event alias locked' : 'Change event alias'}
-                accessibilityState={{ disabled: aliasLocked }}
-                disabled={aliasLocked}
-                onPress={() => {
-                  setAliasDraft(enrollment.leaderboardAlias ?? '');
-                  setAliasEditorOpen(true);
-                }}
-                style={{ minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, borderRadius: 9, borderWidth: 1, borderColor: aliasLocked ? colors.border : colors.gold, opacity: aliasLocked ? 0.55 : 1 }}
-              >
-                <Feather name={aliasLocked ? 'lock' : 'edit-2'} size={12} color={aliasLocked ? colors.mutedForeground : colors.gold} />
-                <Text style={{ color: aliasLocked ? colors.mutedForeground : colors.gold, fontFamily: 'Inter_700Bold', fontSize: 9 }}>
-                  {aliasLocked ? 'LOCKED' : 'EDIT NAME'}
-                </Text>
-              </TouchableOpacity>
+            {!detail && enrollment?.eventId === event.id && (
+              <>
+                <TouchableOpacity
+                  testID="open-paper-event-sharing-info"
+                  accessibilityRole="button"
+                  accessibilityLabel="Leaderboard sharing information and settings"
+                  onPress={() => { setError(''); setSharingInfoOpen(true); }}
+                  style={{ width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 19, borderWidth: 1, borderColor: colors.border }}
+                >
+                  <Feather name="info" size={17} color={colors.primary} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  testID="edit-paper-event-leaderboard-alias"
+                  accessibilityRole="button"
+                  accessibilityLabel={aliasLocked ? 'Event alias locked' : 'Change event alias'}
+                  accessibilityState={{ disabled: aliasLocked }}
+                  disabled={aliasLocked}
+                  onPress={() => {
+                    setAliasDraft(enrollment.leaderboardAlias ?? '');
+                    setAliasEditorOpen(true);
+                  }}
+                  style={{ minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, borderRadius: 9, borderWidth: 1, borderColor: aliasLocked ? colors.border : colors.gold, opacity: aliasLocked ? 0.55 : 1 }}
+                >
+                  <Feather name={aliasLocked ? 'lock' : 'edit-2'} size={12} color={aliasLocked ? colors.mutedForeground : colors.gold} />
+                  <Text style={{ color: aliasLocked ? colors.mutedForeground : colors.gold, fontFamily: 'Inter_700Bold', fontSize: 9 }}>
+                    {aliasLocked ? 'LOCKED' : 'EDIT NAME'}
+                  </Text>
+                </TouchableOpacity>
+              </>
             )}
             {!detail && (
               <TouchableOpacity
@@ -682,193 +646,11 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
             </ScrollView>
           ) : (
             <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: Platform.OS === 'web' ? 24 : insets.bottom + 18 }}>
-              <View testID="paper-event-leaderboard-week-picker" style={{ marginBottom: 16 }}>
-                <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14, marginBottom: 8 }}>
-                  Current event
+              <View testID="paper-event-leaderboard-current-event" style={{ marginBottom: 12 }}>
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 11 }}>
+                  Current event · {dateRangeLabel(event.startAtMs, event.endAtMs)}
                 </Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  <TouchableOpacity
-                    testID="paper-event-leaderboard-current-week"
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: selectedEvent.id === event.id }}
-                    onPress={() => selectEvent(event)}
-                    style={{
-                      paddingVertical: 8,
-                      paddingHorizontal: 10,
-                      borderRadius: 8,
-                      borderWidth: 1,
-                      borderColor: selectedEvent.id === event.id ? colors.primary : colors.border,
-                      backgroundColor: selectedEvent.id === event.id ? colors.primary : colors.card,
-                    }}
-                  >
-                    <Text style={{
-                      color: selectedEvent.id === event.id ? colors.primaryForeground : colors.foreground,
-                      fontFamily: 'Inter_600SemiBold',
-                      fontSize: 11,
-                    }}>
-                      Current · {dateRangeLabel(event.startAtMs, event.endAtMs)}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14, marginTop: 14, marginBottom: 8 }}>
-                  Past event weeks
-                </Text>
-                {archiveYears.length > 0 && (
-                  <View
-                    testID="paper-event-leaderboard-year-picker"
-                    accessibilityLabel="Choose a year of completed event weeks"
-                    style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 9 }}
-                  >
-                    {archiveYears.map(({ year, weeks }) => {
-                      const selected = selectedArchiveYear === year;
-                      return (
-                        <TouchableOpacity
-                          key={year}
-                          testID={`paper-event-leaderboard-year-${year}`}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected }}
-                          accessibilityLabel={`Show ${year} completed event weeks, ${weeks.length} weeks`}
-                          onPress={() => setArchiveYear(year)}
-                          style={{
-                            minHeight: 44,
-                            paddingVertical: 7,
-                            paddingHorizontal: 10,
-                            justifyContent: 'center',
-                            borderRadius: 8,
-                            borderWidth: 1,
-                            borderColor: selected ? colors.primary : colors.border,
-                            backgroundColor: selected ? colors.primary : colors.card,
-                          }}
-                        >
-                          <Text style={{
-                            color: selected ? colors.primaryForeground : colors.foreground,
-                            fontFamily: 'Inter_600SemiBold',
-                            fontSize: 11,
-                          }}>
-                            {year} · {weeks.length}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                )}
-                {selectedYearWeeks.map((week) => {
-                  const selected = selectedEvent.id === week.id;
-                  return (
-                    <TouchableOpacity
-                      key={week.id}
-                      testID={`paper-event-leaderboard-week-${week.id}`}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      accessibilityLabel={`Event week ${dateRangeLabel(week.startAtMs, week.endAtMs)}, ${week.participantCount} participants`}
-                      onPress={() => selectEvent(week)}
-                      style={{
-                        alignSelf: 'flex-start',
-                        minHeight: 44,
-                        paddingHorizontal: 10,
-                        justifyContent: 'center',
-                        marginBottom: 7,
-                        borderRadius: 8,
-                        borderWidth: 1,
-                        borderColor: selected ? colors.primary : colors.border,
-                        backgroundColor: selected ? colors.primary : colors.card,
-                      }}
-                    >
-                      <Text style={{
-                        color: selected ? colors.primaryForeground : colors.foreground,
-                        fontFamily: 'Inter_600SemiBold',
-                        fontSize: 11,
-                      }}>
-                        {dateRangeLabel(week.startAtMs, week.endAtMs)} · {week.participantCount}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 7 }}>
-                  Past weeks show only participants who opted in. Opting out removes a participant’s score and holdings.
-                </Text>
-                {weeksQuery.isLoading && (
-                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 7 }}>
-                    Loading completed weeks…
-                  </Text>
-                )}
-                {weeksQuery.error ? (
-                  <View style={{ marginTop: 8 }}>
-                    <Text testID="paper-event-leaderboard-weeks-error" style={{ color: colors.destructive, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>
-                      Past event weeks are unavailable right now.
-                    </Text>
-                    <TouchableOpacity
-                      testID="retry-paper-event-leaderboard-weeks"
-                      accessibilityRole="button"
-                      onPress={() => { void weeksQuery.refetch(); }}
-                      style={{ alignSelf: 'flex-start', paddingVertical: 7 }}
-                    >
-                      <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10 }}>RETRY PAST WEEKS</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : !weeksQuery.isLoading && archiveWeeks.length === 0 ? (
-                  <Text testID="paper-event-leaderboard-no-past-weeks" style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 7 }}>
-                    No completed weeks with opted-in participants yet.
-                  </Text>
-                ) : null}
               </View>
-
-              {canOptIn && (
-                <View testID="paper-event-leaderboard-opt-in" style={{ padding: 14, borderRadius: 12, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, marginBottom: 14 }}>
-                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>
-                    {optedIn ? 'Leaderboard sharing is on' : 'Choose whether to share'}
-                  </Text>
-                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 5 }}>
-                    Before opting in: other event participants will see your alias, self-reported score, each current holding’s ticker and company name, its self-reported allocation percentage of your reported Event Arena account equity, and whether it is Long or Short. Raw share counts, prices, cost basis, account identifiers, regular accounts, and trade history are not shared.
-                  </Text>
-                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 5 }}>
-                    Shared scores and holding details are removed 30 days after the event ends. Your local event history stays on this device.
-                  </Text>
-                  {optedIn && (
-                    <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 5 }}>
-                      Opting out removes your score and holdings from the leaderboard. Your alias remains locked for this event.
-                    </Text>
-                  )}
-                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, marginTop: 10 }}>
-                    Your alias · {aliasDraft.trim() || 'Not set yet'}
-                  </Text>
-                  {!aliasDraft.trim() && !aliasLocked && (
-                    <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>
-                      Use EDIT NAME above before sharing your score.
-                    </Text>
-                  )}
-                  {optedIn ? (
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-                      <TouchableOpacity
-                        testID="opt-out-paper-event-leaderboard"
-                        accessibilityRole="button"
-                        disabled={sharingBusy}
-                        onPress={() => { void optOut(); }}
-                        style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.destructive, opacity: sharingBusy ? 0.6 : 1 }}
-                      >
-                        <Text style={{ color: colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 10 }}>{sharingBusy ? 'UPDATING…' : 'OPT OUT'}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ) : (
-                    <TouchableOpacity
-                      testID="opt-in-paper-event-leaderboard"
-                      accessibilityRole="button"
-                      disabled={sharingBusy || aliasDraft.trim().length < 1}
-                      onPress={() => { void optIn(); }}
-                      style={{ minHeight: 44, marginTop: 10, borderRadius: 8, backgroundColor: sharingBusy || aliasDraft.trim().length < 1 ? colors.muted : colors.primary, alignItems: 'center', justifyContent: 'center' }}
-                    >
-                      <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 11 }}>
-                        {sharingBusy ? 'OPTING IN…' : 'OPT IN AND SHARE'}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                  {optedIn && aliasLocked && (
-                    <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 6 }}>
-                      Alias locked when the event started.
-                    </Text>
-                  )}
-                </View>
-              )}
 
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
                 <Text style={{ flex: 1, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 15 }}>Rankings</Text>
@@ -889,7 +671,7 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
                   <Text style={{ color: ownEntry.profitLoss >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_600SemiBold', fontSize: 11, marginTop: 3 }}>
                     {signedMoney(ownEntry.profitLoss)} · {money(ownEntry.equity)} account value
                   </Text>
-                  {averageCostFallbackByEvent[selectedEvent.id] && (
+                  {averageCostFallbackByEvent[event.id] && (
                     <Text
                       testID="paper-event-average-cost-fallback"
                       accessibilityRole="text"
@@ -916,9 +698,7 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
                 <View testID="paper-event-leaderboard-empty" style={{ alignItems: 'center', paddingVertical: 20 }}>
                   <Feather name="users" size={22} color={colors.mutedForeground} />
                   <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, paddingTop: 9, textAlign: 'center' }}>
-                  {selectedEvent.id !== event.id
-                    ? 'No opted-in participants are available for this completed week. Participants who opted out are not shown.'
-                    : 'No participants have opted in for this event yet.'}
+                    No participants have opted in for this event yet.
                   </Text>
                   <TouchableOpacity testID="refresh-empty-paper-event-leaderboard" accessibilityRole="button" onPress={() => { void refresh(); }} style={{ paddingVertical: 8, paddingHorizontal: 12, marginTop: 6 }}>
                     <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10 }}>REFRESH</Text>
@@ -960,7 +740,7 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
             <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, marginTop: 6 }}>
               {optedIn
                 ? 'Your new alias will appear on this event’s leaderboard. It locks when the event starts.'
-                : 'This alias stays on your device unless you separately opt in to leaderboard sharing.'}
+                : 'Sharing is off. You can turn it back on from the info button beside Edit Name.'}
             </Text>
             <TextInput
               testID="paper-event-leaderboard-alias"
@@ -999,6 +779,68 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
                 </Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+      <Modal visible={sharingInfoOpen} animationType="fade" transparent statusBarTranslucent onRequestClose={() => setSharingInfoOpen(false)}>
+        <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={0} style={{ flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,0.62)' }}>
+          <View testID="paper-event-leaderboard-sharing-info" style={{ maxHeight: '90%', padding: 18, borderRadius: 16, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.8 }}>EVENT ARENA PRIVACY</Text>
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20, marginTop: 7 }}>Leaderboard sharing</Text>
+              <Text style={{ color: optedIn ? colors.primary : colors.mutedForeground, fontFamily: 'Inter_700Bold', fontSize: 13, marginTop: 10 }}>
+                {optedIn ? 'Sharing is on' : 'Sharing is off'}
+              </Text>
+              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, marginTop: 7 }}>
+                When sharing is on, other event participants can see your alias, self-reported score, and each current holding’s ticker and company name, estimated allocation percentage of your reported Event Arena equity, and Long or Short direction.
+              </Text>
+              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, marginTop: 7 }}>
+                Raw share counts, prices, cost basis, account identifiers, regular accounts, and trade history are never shared. Scores are self-reported and not independently verified.
+              </Text>
+              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 7 }}>
+                Public scores and holding details are removed 30 days after the event ends. Your local event history stays on this device. Turning sharing off removes your score and holdings from the leaderboard; your alias remains locked for this event.
+              </Text>
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, marginTop: 10 }}>
+                Your event alias · {aliasDraft.trim() || 'Not set'}
+              </Text>
+              {error ? <Text accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 11, lineHeight: 16, marginTop: 8 }}>{error}</Text> : null}
+              {optedIn ? (
+                <TouchableOpacity
+                  testID="opt-out-paper-event-leaderboard"
+                  accessibilityRole="button"
+                  disabled={sharingBusy}
+                  onPress={() => { void optOut(); }}
+                  style={{ minHeight: 48, marginTop: 14, borderRadius: 10, borderWidth: 1, borderColor: colors.destructive, alignItems: 'center', justifyContent: 'center', opacity: sharingBusy ? 0.6 : 1 }}
+                >
+                  <Text style={{ color: colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 12 }}>
+                    {sharingBusy ? 'TURNING OFF…' : 'TURN OFF SHARING'}
+                  </Text>
+                </TouchableOpacity>
+              ) : canOptIn ? (
+                <TouchableOpacity
+                  testID="opt-in-paper-event-leaderboard"
+                  accessibilityRole="button"
+                  disabled={sharingBusy || aliasDraft.trim().length < 1}
+                  onPress={() => { void optIn(); }}
+                  style={{ minHeight: 48, marginTop: 14, borderRadius: 10, backgroundColor: sharingBusy || aliasDraft.trim().length < 1 ? colors.muted : colors.primary, alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>
+                    {sharingBusy ? 'TURNING ON…' : 'TURN ON SHARING'}
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 12 }}>
+                  Sharing cannot be turned on after this event has ended.
+                </Text>
+              )}
+              <TouchableOpacity
+                accessibilityRole="button"
+                onPress={() => setSharingInfoOpen(false)}
+                style={{ minHeight: 46, marginTop: 8, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>Close</Text>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>

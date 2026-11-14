@@ -313,7 +313,7 @@ export function EventArenaScreen() {
       accountName: 'Event Portfolio',
       startEquity: event.phase === 'upcoming' ? null : PAPER_CHALLENGE_STARTING_BALANCE,
       leaderboardAlias: alias,
-      leaderboardOptedIn: false,
+      leaderboardOptedIn: true,
     };
     try {
       const updated = await updatePaperChallengeStore((current) => {
@@ -975,7 +975,7 @@ export function EventArenaScreen() {
             <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.8 }}>EVENT ARENA ENTRY</Text>
             <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 21, marginTop: 7 }}>Choose your alias</Text>
             <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, marginTop: 7 }}>
-              This name identifies your event entry. It stays on your device unless you separately opt in to leaderboard sharing.
+              Joining turns on leaderboard sharing for your event alias, self-reported score, and limited holding details. You can turn sharing off from the info button beside Edit Name.
             </Text>
             <TextInput
               testID="event-arena-join-alias"
