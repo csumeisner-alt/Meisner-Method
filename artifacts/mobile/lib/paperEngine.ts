@@ -341,6 +341,7 @@ export function checkRisk(args: {
     symbol, currentPrice,
     account, accountPositions, quotes, pendingOrders = [], excludeOrderId,
   } = args;
+  const scopedPositions = accountPositions.filter((position) => position.accountId === account.id);
 
   if (!Number.isFinite(shares) || shares <= 0) {
     return 'Enter a positive number of shares.';
@@ -403,7 +404,7 @@ export function checkRisk(args: {
   const pendingCoverCash = activePending
     .filter((order) => order.intent === 'cover')
     .reduce((sum, order) => {
-      const position = accountPositions.find((item) =>
+      const position = scopedPositions.find((item) =>
         item.accountId === account.id && item.symbol === order.symbol && isShortPosition(item),
       );
       const reference = quotes[order.symbol]?.price ?? currentPrice;
@@ -421,16 +422,16 @@ export function checkRisk(args: {
     if (requiredMargin > availableCash) {
       return `Insufficient buying power for simulated short collateral. Need ${fmt(requiredMargin)}, with ${fmt(pendingBuyCost + pendingShortMargin)} already committed.`;
     }
-    const existingPos = accountPositions.find((position) =>
+    const existingPos = scopedPositions.find((position) =>
       position.symbol === symbol && isShortPosition(position),
     );
-    if (accountPositions.some((position) => position.symbol === symbol && !isShortPosition(position))) {
+    if (scopedPositions.some((position) => position.symbol === symbol && !isShortPosition(position))) {
       return `Close your existing long ${symbol} position before opening a short position.`;
     }
     const equity = account.cash
       + (account.unsettledCash ?? 0)
       + (account.shortCollateral ?? 0)
-      + accountPositions.reduce((sum, position) => {
+      + scopedPositions.reduce((sum, position) => {
         const value = position.shares * (quotes[position.symbol]?.price ?? position.avgCost);
         return sum + (isShortPosition(position) ? -value : value);
       }, 0);
@@ -444,7 +445,7 @@ export function checkRisk(args: {
       return `This would put more than 40% of your portfolio in ${symbol} (max 40%).`;
     }
   } else if (intent === 'cover') {
-    const pos = accountPositions.find((position) =>
+    const pos = scopedPositions.find((position) =>
       position.symbol === symbol && isShortPosition(position) && position.accountId === account.id,
     );
     const reservedShares = activePending
@@ -471,12 +472,12 @@ export function checkRisk(args: {
     const portfolioValue =
       account.cash +
       (account.unsettledCash ?? 0) +
-      accountPositions.reduce(
+      scopedPositions.reduce(
         (s, p) => s + (isShortPosition(p) ? -1 : 1) * p.shares * (quotes[p.symbol]?.price ?? p.avgCost),
         0,
       ) + (account.shortCollateral ?? 0);
-    const existingPos = accountPositions.find(p => p.symbol === symbol && !isShortPosition(p));
-    if (accountPositions.some((position) => position.symbol === symbol && isShortPosition(position))) {
+    const existingPos = scopedPositions.find(p => p.symbol === symbol && !isShortPosition(p));
+    if (scopedPositions.some((position) => position.symbol === symbol && isShortPosition(position))) {
       return `Cover your existing ${symbol} short position before buying shares.`;
     }
     const existingValue = existingPos
@@ -495,7 +496,7 @@ export function checkRisk(args: {
       return `This would put ${pct}% of your portfolio in ${symbol} (max 40%).`;
     }
   } else {
-    const pos = accountPositions.find(p => p.symbol === symbol);
+    const pos = scopedPositions.find(p => p.symbol === symbol);
     const reservedShares = activePending
       .filter(o => o.side === 'sell' && !o.intent && o.symbol === symbol)
       .reduce((sum, o) => sum + o.shares, 0);

@@ -158,7 +158,9 @@ export default function OrderEntryReview({
         )}
       </View>
       <View style={styles.reviewQuote}>
-        <Text style={styles.mutedLabel}>QUOTE USED FOR ESTIMATE</Text>
+        <Text style={styles.mutedLabel}>
+          {review.quoteState === 'stale' ? 'STALE · LAST AVAILABLE PRICE' : 'QUOTE USED FOR ESTIMATE'}
+        </Text>
         <Text style={styles.reviewQuotePrice}>{money(review.args.quotePrice)}</Text>
         <Text style={styles.smallNote}>{review.quoteNote}</Text>
       </View>

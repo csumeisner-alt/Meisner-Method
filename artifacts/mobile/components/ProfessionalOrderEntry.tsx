@@ -22,6 +22,7 @@ import {
   getAvailableShortShares,
   getOrderEstimatePrice,
   getOrderQuoteState,
+  type OrderQuoteState,
 } from '@/lib/paperOrderEntry';
 
 const SILVER = '#c0c0c0';
@@ -80,6 +81,7 @@ export type OrderSubmissionResult =
 
 export type ReviewSnapshot = {
   args: ConfirmOrderArgs;
+  quoteState: OrderQuoteState;
   accountName: string;
   equity: number;
   buyingPower: number;
@@ -170,17 +172,14 @@ export default function ProfessionalOrderEntry({
   const submittingRef = useRef(false);
 
   const quote = quotes[symbol];
-  const fallbackQuote: LiveQuote | undefined = quote ?? (
-    Number.isFinite(currentPrice) && currentPrice > 0
-      ? { price: currentPrice, change: 0, pct: 0 }
-      : undefined
-  );
-  const quotePrice = fallbackQuote?.price ?? 0;
-  const quoteState = getOrderQuoteState(fallbackQuote, quoteNowMs);
+  const quotePrice = quote?.price ?? 0;
+  const quoteState = getOrderQuoteState(quote, quoteNowMs);
   const sessionLabel = quoteState === 'fresh'
     ? formatProviderMarketSession(quote?.marketSession)
     : null;
-  const timestamp = quote?.priceTimestamp ? new Date(quote.priceTimestamp * 1000) : null;
+  const timestamp = Number.isFinite(quote?.priceTimestamp) && (quote?.priceTimestamp ?? 0) > 0
+    ? new Date((quote?.priceTimestamp ?? 0) * 1000)
+    : null;
   const sellPosition = selectedPos
     ?? accountPositions.find((position) => position.accountId === account.id && position.symbol === symbol)
     ?? null;
@@ -234,10 +233,6 @@ export default function ProfessionalOrderEntry({
   else if (orderType === 'trailing_stop' && !(activeTrailPct || activeTrailAbs)) inputError = 'Enter a positive trailing amount.';
   else if (activeSide === 'sell' && availableSellShares <= 0) inputError = `No ${symbol} shares are available in ${account.name} after pending sells.`;
   else if (activeSide === 'cover' && availableCoverShares <= 0) inputError = `No ${symbol} short shares are available in ${account.name} after pending covers.`;
-  else if (orderType === 'market' && quoteState !== 'fresh') inputError = quoteState === 'stale'
-    ? 'The quote is stale. Refresh it before placing a market order.'
-    : 'A current provider quote is required for a market order.';
-
   const riskError = sharesValid && !inputError
     ? checkRisk({
         side: activeSide === 'buy' || activeSide === 'cover' ? 'buy' : 'sell',
@@ -321,6 +316,7 @@ export default function ProfessionalOrderEntry({
     };
     setReview({
       args,
+      quoteState,
       accountName: account.name,
       equity: accountEquity,
       buyingPower,
@@ -374,10 +370,10 @@ export default function ProfessionalOrderEntry({
       ? 'STALE · LAST REPORTED QUOTE'
       : 'QUOTE UNAVAILABLE';
   const quoteTime = timestamp && Number.isFinite(timestamp.getTime())
-    ? timestamp.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    ? timestamp.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
     : null;
   const freshnessNote = quoteState === 'stale'
-    ? `Provider quote is stale or cannot be verified${quoteTime ? ` · last reported ${quoteTime}` : ''}.`
+    ? `Last available provider quote · freshness unverified${quoteTime ? ` · reported ${quoteTime}` : ''}.`
     : quoteState === 'unavailable'
       ? 'No provider price is available. No estimated or illustrative price is shown.'
       : quoteTime
@@ -670,7 +666,10 @@ export default function ProfessionalOrderEntry({
                 <Text style={styles.sectionLabel}>ORDER ESTIMATE</Text>
                 {quoteState === 'fresh' && <View style={styles.liveDot} />}
               </View>
-              <EstimateRow label="Reference price" value={quotePrice > 0 ? money(quotePrice) : 'Unavailable'} />
+              <EstimateRow
+                label={orderType === 'market' && quoteState === 'stale' ? 'Last available · stale' : 'Reference price'}
+                value={quotePrice > 0 ? money(quotePrice) : 'Unavailable'}
+              />
               <EstimateRow
                 label={activeSide === 'buy' || activeSide === 'cover' ? 'Estimated cost' : 'Estimated proceeds'}
                 value={sharesValid && estimatePrice > 0 ? money(estimatedValue) : '—'}

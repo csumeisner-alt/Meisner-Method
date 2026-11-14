@@ -311,7 +311,7 @@ test("position and order cards are compact without removing their essential valu
 
 test("paper order review captures account identity and guards duplicate submissions", () => {
   assert.match(orderEntry, /accountId: account\.id/);
-  assert.match(orderEntry, /setReview\(\{\s*args,\s*accountName: account\.name/);
+  assert.match(orderEntry, /setReview\(\{\s*args,\s*quoteState,\s*accountName: account\.name/);
   assert.match(orderEntry, /submittingRef\.current/);
   assert.match(orderReview, /testID="paper-order-review"/);
   assert.match(orderReview, /testID="paper-order-submit"/);

@@ -5,6 +5,22 @@ export type OrderQuoteState = 'unavailable' | 'fresh' | 'stale';
 const QUOTE_MAX_AGE_MS = 15 * 60_000;
 const QUOTE_RESPONSE_MAX_AGE_MS = 10 * 60_000;
 
+export function getMarketOrderQuoteError(
+  quote: Pick<LiveQuote, 'price'> | undefined,
+  reviewedPrice: number,
+): string | null {
+  if (!quote || !Number.isFinite(quote.price) || quote.price <= 0) {
+    return 'A provider quote is unavailable. No order was submitted.';
+  }
+  if (!Number.isFinite(reviewedPrice) || reviewedPrice <= 0) {
+    return 'A valid reviewed provider price is required.';
+  }
+  if (Math.abs(quote.price - reviewedPrice) > 1e-8) {
+    return 'The quote changed after review. Refresh it and review the updated estimate before confirming.';
+  }
+  return null;
+}
+
 export function getOrderQuoteState(
   quote: LiveQuote | undefined,
   nowMs = Date.now(),

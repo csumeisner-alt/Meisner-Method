@@ -53,8 +53,8 @@ Order cards need their own vertical layout; they must not reuse the horizontal p
 
 **How to apply:** Keep pending-order actions full-width and visible, and persist deletion by removing the order from the local cache rather than only marking it cancelled.
 
-Market orders require a fresh, timestamped provider quote. Pending orders may use a positive stale provider quote as a clearly labeled reference, but no order may use an illustrative or cost-basis substitute.
+Market orders may use a positive, finite provider quote even when stale, but only after the form and review clearly label it as the last available price and show its reported time when known. Submission must reject missing/invalid quotes and any price change since review; market risk checks and simulated slippage start from the reviewed price. Pending-order fills still require fresh quotes and keep their existing trigger rules. Never use an illustrative or cost-basis substitute as an order quote.
 
-**Why:** After-hours provider responses can be last-session prices; they are useful references for explicitly priced pending orders but must not be presented as executable market quotes.
+**Why:** Paper market orders can proceed from the provider's last valid quote only when users knowingly review stale pricing; a changed or unavailable reference cannot safely support the reviewed estimate. Pending-order execution still depends on fresh market data.
 
-**How to apply:** Block market submission when the provider timestamp or response is stale; keep stale status visible for pending orders and report fills only after `fillOrder` succeeds.
+**How to apply:** Keep the stale disclosure and explicit review step, validate the provider price again at submit, and use the reviewed reference consistently for risk and simulated fills. Keep the fresh-quote gate in the pending-order fill worker and report fills only after `fillOrder` succeeds.

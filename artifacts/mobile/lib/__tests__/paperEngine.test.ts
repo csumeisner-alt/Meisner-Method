@@ -251,6 +251,44 @@ test('checkRisk — fails when insufficient cash', () => {
   assert.ok(result?.includes('Insufficient buying power'));
 });
 
+test('market risk checks use a shared last-available reference across all trade intents and accounts', () => {
+  const account = mkAccount({ id: 'a1', cash: 10_000, shortCollateral: 300, shortCollateralRatio: 1.5 });
+  const otherAccountLong = mkPosition({
+    id: 'p-a2-long', accountId: 'a2', symbol: 'AAPL', shares: 100, avgCost: 100,
+  });
+  const otherAccountShort = mkPosition({
+    id: 'p-a2-short', accountId: 'a2', symbol: 'AAPL', shares: 100, avgCost: 100,
+    positionType: 'short',
+  });
+  const ownLong = mkPosition({ id: 'p-a1-long', accountId: 'a1', symbol: 'AAPL', shares: 2 });
+  const ownShort = mkPosition({
+    id: 'p-a1-short', accountId: 'a1', symbol: 'AAPL', shares: 2,
+    positionType: 'short', collateralPerShare: 150,
+  });
+  const sharedReference = { AAPL: { price: 100 } };
+  const common = {
+    shares: 1,
+    orderType: 'market' as const,
+    symbol: 'AAPL',
+    currentPrice: 100,
+    account,
+    quotes: sharedReference,
+  };
+
+  assert.equal(checkRisk({
+    ...common, side: 'buy', accountPositions: [otherAccountShort],
+  }), null, 'another account’s short must not block a buy');
+  assert.equal(checkRisk({
+    ...common, side: 'sell', accountPositions: [ownLong, otherAccountLong],
+  }), null, 'sell availability must be scoped to the selected account');
+  assert.equal(checkRisk({
+    ...common, side: 'sell', intent: 'short', accountPositions: [otherAccountLong],
+  }), null, 'another account’s long must not block a short');
+  assert.equal(checkRisk({
+    ...common, side: 'buy', intent: 'cover', accountPositions: [ownShort, otherAccountLong],
+  }), null, 'cover collateral and shares must use the selected account');
+});
+
 test('checkRisk rejects invalid positive-price inputs instead of validating against the quote', () => {
   const account = mkAccount({ id: 'a1', cash: 10_000 });
   const common = {

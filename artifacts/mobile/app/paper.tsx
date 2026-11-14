@@ -78,7 +78,7 @@ import {
   creditDividends,
   fifoSell,
 } from '@/lib/paperEngine';
-import { getOrderQuoteState } from '@/lib/paperOrderEntry';
+import { getMarketOrderQuoteError, getOrderQuoteState } from '@/lib/paperOrderEntry';
 import {
   renamePaperAccount,
   resetPaperAccountData,
@@ -1417,14 +1417,11 @@ export default function PaperScreen() {
       }
       if (!sym) return { status: 'rejected', message: 'Choose a stock before submitting the order.' };
       const currentQuote = quotes[sym];
-      if (!currentQuote || !Number.isFinite(currentQuote.price) || currentQuote.price <= 0) {
+      if (args.orderType === 'market') {
+        const quoteError = getMarketOrderQuoteError(currentQuote, args.quotePrice);
+        if (quoteError) return { status: 'rejected', message: quoteError };
+      } else if (!currentQuote || !Number.isFinite(currentQuote.price) || currentQuote.price <= 0) {
         return { status: 'rejected', message: 'A provider quote is unavailable. No order was submitted.' };
-      }
-      if (args.orderType === 'market' && getOrderQuoteState(currentQuote) !== 'fresh') {
-        return { status: 'rejected', message: 'The provider quote is stale. Refresh it before placing a market order.' };
-      }
-      if (args.orderType === 'market' && Math.abs(currentQuote.price - args.quotePrice) > 1e-8) {
-        return { status: 'rejected', message: 'The quote changed after review. Refresh it and review the updated estimate before confirming.' };
       }
       if (args.orderType === 'market' && args.orderId) {
         return { status: 'rejected', message: 'Market orders cannot be edited. Cancel the pending order and place a new market order.' };
@@ -1434,6 +1431,9 @@ export default function PaperScreen() {
       const riskAccount = intent === 'short'
         ? { ...currentAccount, shortCollateralRatio: args.shortCollateralRatio ?? currentAccount.shortCollateralRatio }
         : currentAccount;
+      const riskQuotes = args.orderType === 'market'
+        ? { ...quotes, [sym]: { ...currentQuote, price: args.quotePrice } }
+        : quotes;
       const riskError = checkRisk({
         side: direction,
         intent,
@@ -1444,10 +1444,10 @@ export default function PaperScreen() {
         trailPct: args.trailPct,
         trailAbs: args.trailAbs,
         symbol: sym,
-        currentPrice: currentQuote.price,
+        currentPrice: args.orderType === 'market' ? args.quotePrice : currentQuote.price,
         account: riskAccount,
         accountPositions,
-        quotes,
+        quotes: riskQuotes,
         pendingOrders: currentOrders,
         excludeOrderId: args.orderId,
       });
@@ -1455,7 +1455,7 @@ export default function PaperScreen() {
 
       const nowISO = new Date().toISOString();
       if (args.orderType === 'market') {
-        const fillPrice = applySlippage(currentQuote.price, args.shares, direction);
+        const fillPrice = applySlippage(args.quotePrice, args.shares, direction);
         const fillRiskError = checkRisk({
           side: direction,
           intent,
@@ -1469,7 +1469,7 @@ export default function PaperScreen() {
           currentPrice: fillPrice,
           account: riskAccount,
           accountPositions,
-          quotes,
+          quotes: riskQuotes,
           pendingOrders: currentOrders,
           excludeOrderId: args.orderId,
         });
