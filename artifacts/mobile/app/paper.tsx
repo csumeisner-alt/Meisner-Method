@@ -2336,13 +2336,13 @@ export default function PaperScreen() {
             {account?.id.startsWith('paper-event:') ? 'EVENT ARENA' : 'SIMULATED PORTFOLIO'}
           </Text>
           <TouchableOpacity
-            testID="paper-account-manage"
+            testID="paper-account-switch"
             accessibilityRole="button"
-            accessibilityLabel="Edit paper trading accounts"
+            accessibilityLabel="Switch paper trading account"
             onPress={() => setShowAccountManagement(true)}
             style={styles.editAccountsButton}
           >
-            <Text style={styles.editAccountsText}>EDIT</Text>
+            <Text style={styles.editAccountsText}>SWITCH</Text>
           </TouchableOpacity>
         </View>
         <View style={styles.heroIdentityRow}>
@@ -2646,7 +2646,7 @@ export default function PaperScreen() {
               <View style={styles.sheetHeadingRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.sheetTitle}>Manage portfolios</Text>
-                  <Text style={styles.sheetSub}>Swipe the summary to change accounts</Text>
+                  <Text style={styles.sheetSub}>Choose an account or swipe the summary</Text>
                 </View>
                 <TouchableOpacity
                   testID="close-paper-account-management"
@@ -2686,7 +2686,19 @@ export default function PaperScreen() {
                         isActive && isEventAcct && styles.eventAcctRowActive,
                       ]}
                     >
-                      <View style={styles.accountChoiceCopy}>
+                      <TouchableOpacity
+                        testID={`select-paper-account-${acct.id}`}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Select ${portfolioLabel}${isActive ? ', active' : ''}`}
+                        accessibilityState={{ selected: isActive }}
+                        onPress={() => {
+                          setShowAccountManagement(false);
+                          setRenameId('');
+                          void switchAccount(acct.id);
+                        }}
+                        activeOpacity={0.75}
+                        style={[styles.accountChoiceCopy, styles.accountSelectHit]}
+                      >
                         <View style={styles.accountChoiceTitleLine}>
                           <Text style={[styles.acctName, isEventAcct && styles.eventAccountName]} numberOfLines={1}>
                             {portfolioLabel}
@@ -2719,7 +2731,7 @@ export default function PaperScreen() {
                             <Text style={styles.accountChoiceLabel}>TOTAL </Text>{$fmt(acctValue)}
                           </Text>
                         </View>
-                      </View>
+                      </TouchableOpacity>
                       <View style={styles.accountManagementTools}>
                         {renameId === acct.id ? (
                           <TextInput
@@ -3131,8 +3143,8 @@ const styles = StyleSheet.create({
   heroTopline: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   eventHeroLabel: { color: BUY_COLOR },
   editAccountsButton: {
-    minHeight: 30,
-    paddingHorizontal: 9,
+    minHeight: 36,
+    paddingHorizontal: 11,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

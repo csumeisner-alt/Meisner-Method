@@ -27,6 +27,7 @@ function browserExecutable() {
 
 async function buildFixture() {
   const aliases = new Map([
+    ["expo-haptics", join(fixtureDir, "mocks/expo-haptics.ts")],
     ["expo-router", join(fixtureDir, "mocks/expo-router.ts")],
     ["react-native-safe-area-context", join(fixtureDir, "mocks/safe-area-context.tsx")],
     ["@expo/vector-icons", join(fixtureDir, "mocks/vector-icons.tsx")],
@@ -129,7 +130,7 @@ async function waitFor(browser, expression, message, timeout = 8000) {
   throw new Error(message);
 }
 
-async function touch(browser, testID, dx = 0, dy = 0) {
+async function touchPath(browser, testID, moves) {
   const point = await browser.evaluate(`(() => {
     const element = document.querySelector(${JSON.stringify(selector(testID))});
     if (!element) return null;
@@ -142,15 +143,15 @@ async function touch(browser, testID, dx = 0, dy = 0) {
     type: "touchStart",
     touchPoints: [{ id: touchId, x: point.x, y: point.y, radiusX: 4, radiusY: 4, force: 1 }],
   });
-  if (dx !== 0 || dy !== 0) {
+  if (moves.length > 0) {
     await delay(35);
-    for (const fraction of [0.35, 0.7, 1]) {
+    for (const { dx, dy } of moves) {
       await browser.send("Input.dispatchTouchEvent", {
         type: "touchMove",
         touchPoints: [{
           id: touchId,
-          x: point.x + dx * fraction,
-          y: point.y + dy * fraction,
+          x: point.x + dx,
+          y: point.y + dy,
           radiusX: 4,
           radiusY: 4,
           force: 1,
@@ -162,6 +163,12 @@ async function touch(browser, testID, dx = 0, dy = 0) {
   }
   await browser.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   await delay(50);
+}
+
+async function touch(browser, testID, dx = 0, dy = 0) {
+  return touchPath(browser, testID, dx !== 0 || dy !== 0
+    ? [0.35, 0.7, 1].map((fraction) => ({ dx: dx * fraction, dy: dy * fraction }))
+    : []);
 }
 
 test("paper account swipes and screen controls work at a phone-sized touch viewport", async () => {
@@ -223,29 +230,55 @@ test("paper account swipes and screen controls work at a phone-sized touch viewp
     const currentAccount = () => browser.evaluate(
       `document.querySelector(${JSON.stringify(selector("paper-current-account"))})?.textContent`,
     );
+    const hapticCount = () => browser.evaluate("window.__paperHapticCount ?? 0");
     assert.equal(await currentAccount(), "tiger");
+    assert.equal(await hapticCount(), 0);
+
+    await touch(browser, "paper-account-switch");
+    assert.equal(await currentAccount(), "tiger", "Opening the selector must not change the active account.");
+    assert.equal(await hapticCount(), 0, "Opening the selector must not trigger a haptic.");
+    await touch(browser, "select-paper-account-borg");
+    assert.equal(await currentAccount(), "borg", "Selecting an account from the list must change the active account.");
+    assert.equal(await hapticCount(), 0, "Selecting from the list must not trigger swipe feedback.");
+
     await touch(browser, "paper-current-account", -150, 0);
-    assert.equal(await currentAccount(), "borg", "One left swipe should advance exactly one account.");
-    await touch(browser, "paper-current-account", -150, 0);
-    assert.equal(await currentAccount(), "fireball", "A second left swipe should advance exactly one more account.");
+    assert.equal(await hapticCount(), 1, "A left swipe that changes accounts triggers one haptic.");
+    assert.equal(await currentAccount(), "fireball", "One left swipe should advance exactly one account.");
     await touch(browser, "paper-current-account", -150, 0);
     assert.equal(await currentAccount(), "fireball", "A left swipe at the last account should stop at the boundary.");
+    assert.equal(await hapticCount(), 1, "A boundary swipe must remain silent.");
+    await touch(browser, "paper-current-account", -150, 0);
+    assert.equal(await currentAccount(), "fireball", "A left swipe at the last account should stop at the boundary.");
+    assert.equal(await hapticCount(), 1, "Repeated boundary swipes must remain silent.");
     await touch(browser, "paper-current-account", 150, 0);
     assert.equal(await currentAccount(), "borg", "One right swipe should move back one account.");
+    assert.equal(await hapticCount(), 2);
     await touch(browser, "paper-current-account", 150, 0);
     assert.equal(await currentAccount(), "tiger", "A second right swipe should return to the first account.");
+    assert.equal(await hapticCount(), 3);
     await touch(browser, "paper-current-account", 150, 0);
     assert.equal(await currentAccount(), "tiger", "A right swipe at the first account should stop at the boundary.");
+    assert.equal(await hapticCount(), 3, "The opposite boundary swipe must remain silent.");
 
+    await touch(browser, "paper-current-account", 25, 0);
+    assert.equal(await currentAccount(), "tiger", "A short horizontal gesture must not switch accounts.");
+    assert.equal(await hapticCount(), 3, "A short gesture must remain silent.");
     await touch(browser, "paper-current-account", 8, -120);
     assert.equal(await currentAccount(), "tiger", "Vertical movement over the account summary must not switch accounts.");
+    assert.equal(await hapticCount(), 3, "A vertical gesture must remain silent.");
+    await touchPath(browser, "paper-current-account", [{ dx: 20, dy: 0 }, { dx: 60, dy: 120 }]);
+    assert.equal(await currentAccount(), "tiger", "A gesture that ends vertically must not switch accounts.");
+    assert.equal(await hapticCount(), 3, "A gesture ending vertically must remain silent.");
 
-    await touch(browser, "paper-account-manage");
-    assert.equal(
-      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-edit-count"))})?.textContent`),
-      "1",
-      "Edit must remain tappable after account swipes.",
-    );
+    await touch(browser, "paper-account-switch");
+    assert.equal(await currentAccount(), "tiger", "Reopening the selector must leave the active account unchanged.");
+    await touch(browser, "select-paper-account-tiger");
+    assert.equal(await hapticCount(), 3, "Selecting the already-active account must remain silent.");
+
+    await browser.evaluate("window.__setPaperPlatform('web')");
+    await touch(browser, "paper-current-account", -150, 0);
+    assert.equal(await currentAccount(), "borg", "Account swipes should still work on platforms without vibration.");
+    assert.equal(await hapticCount(), 3, "The platform fallback must keep unsupported vibration silent.");
     await touch(browser, "paper-trading-buy-action");
     assert.equal(
       await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-trade-count"))})?.textContent`),
@@ -265,7 +298,7 @@ test("paper account swipes and screen controls work at a phone-sized touch viewp
       true,
       "Vertical scrolling in the paper content must remain available.",
     );
-    assert.equal(await currentAccount(), "tiger", "Scrolling the paper content must not change the active account.");
+    assert.equal(await currentAccount(), "borg", "Scrolling the paper content must not change the active account.");
   } finally {
     browser?.close();
     chrome.kill("SIGTERM");

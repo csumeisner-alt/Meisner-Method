@@ -1,14 +1,21 @@
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { BottomTabBar } from '../../components/BottomTabBar';
 import { PaperAccountSwipeArea } from '../../components/PaperAccountSwipeArea';
 
 const accounts = [{ id: 'tiger' }, { id: 'borg' }, { id: 'fireball' }];
 
+// Exercise the native haptic branch while rendering the real swipe component in a phone-sized browser.
+Object.defineProperty(Platform, 'OS', { configurable: true, value: 'ios' });
+const testWindow = globalThis as typeof globalThis & { __setPaperPlatform?: (os: string) => void };
+testWindow.__setPaperPlatform = (os) => {
+  Object.defineProperty(Platform, 'OS', { configurable: true, value: os });
+};
+
 function PaperAccountInteractionFixture() {
   const [activeId, setActiveId] = useState(accounts[0].id);
-  const [editCount, setEditCount] = useState(0);
+  const [selectorOpen, setSelectorOpen] = useState(false);
   const [tradeCount, setTradeCount] = useState(0);
 
   return (
@@ -27,15 +34,31 @@ function PaperAccountInteractionFixture() {
           {activeId}
         </Text>
         <TouchableOpacity
-          testID="paper-account-manage"
+          testID="paper-account-switch"
           accessibilityRole="button"
-          onPress={() => setEditCount((current) => current + 1)}
+          onPress={() => setSelectorOpen(true)}
           style={{ minHeight: 44, justifyContent: 'center' }}
         >
-          <Text style={{ color: '#ffd700' }}>EDIT</Text>
+          <Text style={{ color: '#ffd700' }}>SWITCH</Text>
         </TouchableOpacity>
-        <Text testID="paper-edit-count" style={{ color: '#fff' }}>{editCount}</Text>
       </PaperAccountSwipeArea>
+      {selectorOpen && (
+        <View testID="paper-account-management">
+          {accounts.map((account) => (
+            <TouchableOpacity
+              key={account.id}
+              testID={`select-paper-account-${account.id}`}
+              onPress={() => {
+                setActiveId(account.id);
+                setSelectorOpen(false);
+              }}
+              style={{ minHeight: 44, justifyContent: 'center' }}
+            >
+              <Text style={{ color: '#fff' }}>{account.id}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
       <ScrollView testID="paper-content" style={{ flex: 1, minHeight: 0 }}>
         <View style={{ height: 1400, padding: 16 }}>
           <Text style={{ color: '#fff' }}>Scrollable paper content</Text>

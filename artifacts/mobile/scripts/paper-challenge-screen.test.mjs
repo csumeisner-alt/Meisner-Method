@@ -209,15 +209,18 @@ test("Paper Trading keeps all views in readable groups and reserves space for ac
   assert.match(bottomTabBar, /EVENT\{"\\n"\}ARENA/);
 });
 
-test("paper dashboard manages accounts from EDIT and preserves persistent trade access", () => {
+test("paper dashboard switches accounts from the summary or selector and keeps account management", () => {
   assert.match(screen, /testID="paper-account-hero"/);
-  assert.match(screen, /testID="paper-account-manage"/);
+  assert.match(screen, /testID="paper-account-switch"/);
+  assert.match(screen, /accessibilityLabel="Switch paper trading account"/);
+  assert.match(screen, />SWITCH</);
   assert.match(screen, /onPress=\{\(\) => setShowAccountManagement\(true\)\}/);
-  assert.doesNotMatch(screen, />SWITCH</);
   assert.match(screen, /<PaperAccountSwipeArea[\s\S]*?accounts=\{visibleAccounts\}[\s\S]*?activeId=\{activeId\}/);
   assert.match(accountSwipeArea, /Math\.abs\(gesture\.dx\) > 12 && Math\.abs\(gesture\.dx\) > Math\.abs\(gesture\.dy\) \* 1\.2/);
   assert.match(accountSwipeArea, /getAdjacentPaperAccountId\(current\.accounts, current\.activeId, gesture\.dx < 0 \? 1 : -1\)/);
   assert.match(accountSwipeArea, /Math\.abs\(gesture\.dx\) < 40/);
+  assert.match(accountSwipeArea, /Math\.abs\(gesture\.dx\) <= Math\.abs\(gesture\.dy\) \* 1\.2/);
+  assert.match(accountSwipeArea, /Platform\.OS !== 'web'[\s\S]*?Haptics\.impactAsync\(Haptics\.ImpactFeedbackStyle\.Light\)\.catch/);
   assert.match(screen, /testID="paper-account-position-indicator"/);
   assert.match(screen, /testID=\{`paper-account-indicator-\$\{index\}`\}/);
   assert.match(screen, /heroAccountName/);
@@ -227,11 +230,14 @@ test("paper dashboard manages accounts from EDIT and preserves persistent trade 
   assert.match(screen, /testID="paper-account-management"/);
   assert.match(screen, /visible=\{showAccountManagement\}/);
   assert.match(screen, /testID="paper-account-management-list"/);
-  assert.match(screen, /Swipe the summary to change accounts/);
+  assert.match(screen, /Choose an account or swipe the summary/);
   assert.match(screen, /\['Tiger', 'Borg', 'Fireball'\]/);
   assert.match(screen, /'Event Arena'/);
   assert.match(screen, /accountChoiceValues/);
   assert.match(screen, /activeAccountBadgeText}>ACTIVE/);
+  assert.match(screen, /testID=\{`select-paper-account-\$\{acct\.id\}`\}/);
+  assert.match(screen, /accessibilityState=\{\{ selected: isActive \}\}/);
+  assert.match(screen, /setShowAccountManagement\(false\);[\s\S]*?setRenameId\(''\);[\s\S]*?void switchAccount\(acct\.id\)/);
   assert.match(screen, /onPress=\{\(\) => \{\s*const eventAccount = visibleAccounts\.find/);
   assert.doesNotMatch(screen, /paper-account-choice-/);
   assert.match(screen, /Math\.max\(insets\.bottom, 22\)/);
