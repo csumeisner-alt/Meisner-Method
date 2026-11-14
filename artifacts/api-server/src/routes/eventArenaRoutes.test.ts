@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { once } from "node:events";
+import { randomUUID } from "node:crypto";
+import { setTimeout as sleep } from "node:timers/promises";
 import express from "express";
+import pg from "pg";
 import {
   createEventArenaRouter,
   isValidEventArenaWindow,
@@ -15,6 +18,15 @@ const eventId = "2026-11-16";
 const startAtMs = Date.parse("2026-11-16T14:30:00.000Z");
 const endAtMs = Date.parse("2026-11-20T21:00:00.000Z");
 const installationId = "installation-id-123456";
+const databaseUrl = process.env["DATABASE_URL"];
+const { Pool } = pg;
+type TestDatabase = {
+  query: (sql: string, values?: any[]) => Promise<{ rows: any[] }>;
+  connect?: () => Promise<{
+    query: (sql: string, values?: any[]) => Promise<{ rows: any[] }>;
+    release: () => void;
+  }>;
+};
 
 function validSubmission(overrides: Record<string, unknown> = {}) {
   return {
@@ -34,13 +46,14 @@ function validSubmission(overrides: Record<string, unknown> = {}) {
 }
 
 async function withApi(
-  query: (sql: string, values?: any[]) => Promise<{ rows: any[] }>,
+  database: TestDatabase | TestDatabase["query"],
   run: (baseUrl: string) => Promise<void>,
   currentTime = Date.parse("2026-11-18T17:00:00.000Z"),
 ) {
   const app = express();
   app.use(express.json());
-  app.use(createEventArenaRouter({ query }, (_req, _res, next) => next(), () => currentTime));
+  const db = typeof database === "function" ? { query: database } : database;
+  app.use(createEventArenaRouter(db, (_req, _res, next) => next(), () => currentTime));
   const server = app.listen(0);
   await once(server, "listening");
   const address = server.address();
@@ -51,6 +64,71 @@ async function withApi(
     server.close();
     await once(server, "close");
   }
+}
+
+async function ensureEventArenaTables(pool: InstanceType<typeof Pool>) {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS event_arena_leaderboard_entries (
+      event_id TEXT NOT NULL,
+      installation_id TEXT NOT NULL,
+      participant_token TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+      alias TEXT NOT NULL,
+      start_equity DOUBLE PRECISION NOT NULL,
+      equity DOUBLE PRECISION NOT NULL,
+      cash_balance DOUBLE PRECISION NOT NULL DEFAULT 100000,
+      return_percent DOUBLE PRECISION NOT NULL,
+      trade_count INTEGER,
+      holdings JSONB NOT NULL DEFAULT '[]'::jsonb,
+      event_start_at TIMESTAMPTZ NOT NULL,
+      event_end_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      PRIMARY KEY (event_id, installation_id)
+    )
+  `);
+  await pool.query(
+    "ALTER TABLE event_arena_leaderboard_entries ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE",
+  );
+  await pool.query(
+    "ALTER TABLE event_arena_leaderboard_entries ADD COLUMN IF NOT EXISTS trade_count INTEGER",
+  );
+  await pool.query(
+    "ALTER TABLE event_arena_leaderboard_entries ADD COLUMN IF NOT EXISTS participant_token TEXT",
+  );
+  await pool.query(
+    "UPDATE event_arena_leaderboard_entries SET participant_token=gen_random_uuid()::text WHERE participant_token IS NULL",
+  );
+  await pool.query(
+    "ALTER TABLE event_arena_leaderboard_entries ALTER COLUMN participant_token SET DEFAULT gen_random_uuid()::text",
+  );
+  await pool.query(
+    "ALTER TABLE event_arena_leaderboard_entries ALTER COLUMN participant_token SET NOT NULL",
+  );
+  await pool.query(
+    "ALTER TABLE event_arena_leaderboard_entries ADD COLUMN IF NOT EXISTS cash_balance DOUBLE PRECISION NOT NULL DEFAULT 100000",
+  );
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS event_arena_participant_token_idx
+    ON event_arena_leaderboard_entries (event_id, participant_token)
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS event_arena_cash_transfers (
+      event_id TEXT NOT NULL,
+      transfer_ref TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL,
+      sender_installation_id TEXT NOT NULL,
+      recipient_installation_id TEXT NOT NULL,
+      sender_alias TEXT NOT NULL,
+      recipient_alias TEXT NOT NULL,
+      amount DOUBLE PRECISION NOT NULL CHECK (amount > 0),
+      event_start_at TIMESTAMPTZ NOT NULL,
+      event_end_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      read_at TIMESTAMPTZ,
+      PRIMARY KEY (event_id, transfer_ref),
+      UNIQUE (event_id, sender_installation_id, idempotency_key)
+    )
+  `);
 }
 
 function createTransferDatabase() {
@@ -203,6 +281,142 @@ test("cash transfers are event scoped and an idempotent retry never moves cash t
     assert.equal(db.participants[2].cashBalance, 700);
   });
 });
+
+test(
+  "concurrent database-backed retries share one transfer while a score update reconciles cash",
+  { skip: !databaseUrl && "DATABASE_URL is not configured" },
+  async () => {
+    assert.ok(databaseUrl);
+    const applicationName = `event-arena-test-${randomUUID()}`;
+    const pool = new Pool({ connectionString: databaseUrl, max: 6, application_name: applicationName });
+    const senderInstallationId = `arena-sender-${randomUUID()}`;
+    const recipientInstallationId = `arena-recipient-${randomUUID()}`;
+    const senderToken = `sender-token-${randomUUID()}`;
+    const recipientToken = `recipient-token-${randomUUID()}`;
+    const idempotencyKey = `transfer-${randomUUID().replaceAll("-", "")}`;
+    const installations = [senderInstallationId, recipientInstallationId];
+
+    try {
+      await ensureEventArenaTables(pool);
+      const { rows: idempotencyIndexes } = await pool.query(
+        `SELECT indexdef FROM pg_indexes
+         WHERE tablename='event_arena_cash_transfers'
+           AND indexdef ILIKE 'CREATE UNIQUE INDEX%'
+           AND indexdef LIKE '%(event_id, sender_installation_id, idempotency_key)%'`,
+      );
+      assert.ok(idempotencyIndexes.length > 0, "the database should enforce sender-scoped idempotency keys");
+      await pool.query(
+        `INSERT INTO event_arena_leaderboard_entries
+          (event_id, installation_id, participant_token, alias, start_equity, equity,
+           cash_balance, return_percent, trade_count, holdings, event_start_at, event_end_at, updated_at)
+         VALUES
+          ($1,$2,$3,'MarketFox',1000,1000,1000,0,0,'[]'::jsonb,
+           TO_TIMESTAMP($4 / 1000.0),TO_TIMESTAMP($5 / 1000.0),NOW() - INTERVAL '1 minute'),
+          ($1,$6,$7,'BlueWhale',500,500,500,0,0,'[]'::jsonb,
+           TO_TIMESTAMP($4 / 1000.0),TO_TIMESTAMP($5 / 1000.0),NOW() - INTERVAL '1 minute')`,
+        [eventId, senderInstallationId, senderToken, startAtMs, endAtMs, recipientInstallationId, recipientToken],
+      );
+
+      await withApi(pool, async (baseUrl) => {
+        const sendTransfer = () => fetch(`${baseUrl}/event-arena/${eventId}/transfers`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(transferRequest({
+            installationId: senderInstallationId,
+            recipientParticipantToken: recipientToken,
+            idempotencyKey,
+            amount: 250,
+            availableCash: 1000,
+          })),
+        });
+        const updateScore = () => fetch(`${baseUrl}/event-arena/${eventId}/leaderboard`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(validSubmission({
+            installationId: senderInstallationId,
+            cashBalance: 1000,
+            appliedTransferIds: [],
+          })),
+        });
+
+        const blocker = await pool.connect();
+        await blocker.query("BEGIN");
+        await blocker.query(
+          `SELECT installation_id FROM event_arena_leaderboard_entries
+           WHERE event_id=$1 AND installation_id=$2 FOR UPDATE`,
+          [eventId, senderInstallationId],
+        );
+        const responsesPromise = Promise.all([
+          sendTransfer(),
+          sendTransfer(),
+          updateScore(),
+        ]);
+        try {
+          const waitDeadline = Date.now() + 5_000;
+          let waitingRequests = 0;
+          while (Date.now() < waitDeadline && waitingRequests < 3) {
+            const { rows } = await pool.query(
+              `SELECT COUNT(*)::int AS count
+               FROM pg_stat_activity
+               WHERE application_name=$1
+                 AND pid <> pg_backend_pid()
+                 AND wait_event_type='Lock'
+                 AND query LIKE '%FOR UPDATE%'`,
+              [applicationName],
+            );
+            waitingRequests = rows[0]?.count ?? 0;
+            if (waitingRequests < 3) await sleep(10);
+          }
+          assert.equal(waitingRequests, 3, "both retries and the score update should be blocked on the sender row");
+        } finally {
+          await blocker.query("ROLLBACK");
+          blocker.release();
+        }
+        const [firstResponse, retryResponse, scoreResponse] = await responsesPromise;
+        assert.equal(firstResponse.status, 200);
+        assert.equal(retryResponse.status, 200);
+        assert.equal(scoreResponse.status, 200);
+        const [first, retry] = await Promise.all([
+          firstResponse.json() as Promise<any>,
+          retryResponse.json() as Promise<any>,
+        ]);
+        assert.equal(first.transfer.id, retry.transfer.id);
+
+        const { rows: transfers } = await pool.query(
+          `SELECT transfer_ref, amount FROM event_arena_cash_transfers
+           WHERE event_id=$1 AND sender_installation_id=$2 AND idempotency_key=$3`,
+          [eventId, senderInstallationId, idempotencyKey],
+        );
+        assert.equal(transfers.length, 1);
+        assert.equal(transfers[0].transfer_ref, first.transfer.id);
+        assert.equal(Number(transfers[0].amount), 250);
+
+        const { rows: balances } = await pool.query(
+          `SELECT installation_id, cash_balance FROM event_arena_leaderboard_entries
+           WHERE event_id=$1 AND installation_id = ANY($2::text[])`,
+          [eventId, installations],
+        );
+        assert.deepEqual(
+          Object.fromEntries(balances.map((row: any) => [row.installation_id, Number(row.cash_balance)])),
+          { [senderInstallationId]: 750, [recipientInstallationId]: 750 },
+        );
+      });
+    } finally {
+      try {
+        await pool.query(
+          "DELETE FROM event_arena_cash_transfers WHERE event_id=$1 AND sender_installation_id=$2",
+          [eventId, senderInstallationId],
+        );
+        await pool.query(
+          "DELETE FROM event_arena_leaderboard_entries WHERE event_id=$1 AND installation_id = ANY($2::text[])",
+          [eventId, installations],
+        );
+      } finally {
+        await pool.end();
+      }
+    }
+  },
+);
 
 test("cash transfers reject self, ineligible recipients, insufficient cash, and inactive windows", async () => {
   const db = createTransferDatabase();
