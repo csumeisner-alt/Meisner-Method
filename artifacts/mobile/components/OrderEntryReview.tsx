@@ -82,7 +82,12 @@ export default function OrderEntryReview({
           <Text style={styles.primaryNeutralText}>DONE</Text>
         </TouchableOpacity>
         {result.status === 'rejected' && (
-          <TouchableOpacity accessibilityRole="button" style={styles.textAction} onPress={onEdit}>
+          <TouchableOpacity
+            testID="paper-order-result-edit"
+            accessibilityRole="button"
+            style={styles.textAction}
+            onPress={onEdit}
+          >
             <Text style={styles.textActionLabel}>EDIT ORDER</Text>
           </TouchableOpacity>
         )}
