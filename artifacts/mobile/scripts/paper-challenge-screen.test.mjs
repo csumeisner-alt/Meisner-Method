@@ -207,24 +207,40 @@ test("Paper Trading keeps all views in readable groups and reserves space for ac
   assert.match(bottomTabBar, /EVENT\{"\\n"\}ARENA/);
 });
 
-test("paper dashboard uses a safe-area account sheet, account hero, and persistent trade access", () => {
+test("paper dashboard manages accounts from EDIT and preserves persistent trade access", () => {
   assert.match(screen, /testID="paper-account-hero"/);
-  assert.match(screen, /testID="paper-account-switch"/);
+  assert.match(screen, /testID="paper-account-manage"/);
+  assert.match(screen, /onPress=\{\(\) => setShowAccountManagement\(true\)\}/);
+  assert.doesNotMatch(screen, />SWITCH</);
+  assert.match(screen, /const accountSwipeResponder = React\.useMemo\(\(\) => PanResponder\.create/);
+  assert.match(screen, /getAdjacentPaperAccountId\(visibleAccounts, activeId, gesture\.dx < 0 \? 1 : -1\)/);
+  assert.match(screen, /Math\.abs\(gesture\.dx\) < 40/);
+  assert.match(screen, /testID="paper-account-position-indicator"/);
+  assert.match(screen, /testID=\{`paper-account-indicator-\$\{index\}`\}/);
   assert.match(screen, /heroAccountName/);
   assert.match(screen, /heroEquity/);
   assert.match(screen, /TODAY’S P\/L/);
   assert.match(screen, /BUYING POWER/);
-  assert.match(screen, /testID="paper-account-selector-sheet"/);
+  assert.match(screen, /testID="paper-account-management"/);
+  assert.match(screen, /visible=\{showAccountManagement\}/);
+  assert.match(screen, /testID="paper-account-management-list"/);
+  assert.match(screen, /Swipe the summary to change accounts/);
   assert.match(screen, /\['Tiger', 'Borg', 'Fireball'\]/);
   assert.match(screen, /'Event Arena'/);
   assert.match(screen, /accountChoiceValues/);
-  assert.match(screen, /testID=\{accountChoiceTestId\}/);
-  assert.match(screen, /paper-account-choice-event/);
-  assert.match(screen, /onPress=\{\(\) => \{\s*void switchAccount\(acct\.id\);\s*setShowAccountDropdown\(false\);/);
+  assert.match(screen, /activeAccountBadgeText}>ACTIVE/);
+  assert.match(screen, /onPress=\{\(\) => \{\s*const eventAccount = visibleAccounts\.find/);
+  assert.doesNotMatch(screen, /paper-account-choice-/);
   assert.match(screen, /Math\.max\(insets\.bottom, 22\)/);
-  assert.match(screen, /showAccountManagement &&/);
   assert.match(screen, /testID=\{`rename-paper-account-\$\{acct\.id\}`\}/);
+  assert.match(screen, /testID=\{`rename-paper-account-input-\$\{acct\.id\}`\}/);
   assert.match(screen, /testID=\{`reset-paper-account-\$\{acct\.id\}`\}/);
+  assert.match(screen, /onSubmitEditing=\{\(\) => \{ void renameAccount\(acct\.id, renameDraft\); setRenameId\(''\); \}\}/);
+  assert.match(screen, /onBlur=\{\(\) => \{ void renameAccount\(acct\.id, renameDraft\); setRenameId\(''\); \}\}/);
+  assert.match(screen, /Alert\.alert\(\s*'Reset Account',\s*`Reset "\$\{acct\.name\}" to \$100,000\? All positions and trade history will be lost\.`/);
+  assert.match(screen, /\{ text: 'Cancel', style: 'cancel' \}/);
+  assert.match(screen, /onPress: \(\) => \{ void resetAccount\(acct\.id\); \}/);
+  assert.match(screen, /resetPaperAccountData\(\{/);
   assert.match(screen, /testID=\{`paper-tab-group-\$\{group\.id\}`\}/);
   assert.match(screen, /id: 'portfolio', label: 'Portfolio'/);
   assert.match(screen, /id: 'activity', label: 'Activity'/);
@@ -248,6 +264,25 @@ test("paper dashboard uses a safe-area account sheet, account hero, and persiste
   assert.match(screen, /MARKET VALUE/);
   assert.match(screen, /pctFmt\(pnlPct\)/);
   assert.match(screen, /SELL \{pos\.symbol\}/);
+});
+
+test("position and order cards are compact without removing their essential values or actions", () => {
+  assert.match(screen, /posCard:[\s\S]*?padding: 12/);
+  assert.match(screen, /orderCard:[\s\S]*?padding: 11/);
+  assert.match(screen, /gap: 9, paddingHorizontal: 16/);
+  assert.match(screen, /gap: 8, paddingHorizontal: 16/);
+  assert.match(screen, /testID=\{`paper-position-\$\{pos\.id\}`\}/);
+  assert.match(screen, /pos\.shares\} shares/);
+  assert.match(screen, /Avg cost \{\$fmt\(pos\.avgCost\)\}/);
+  assert.match(screen, /MARKET VALUE/);
+  assert.match(screen, /pctFmt\(pnlPct\)/);
+  assert.match(screen, /testID=\{`paper-order-\$\{o\.id\}`\}/);
+  assert.match(screen, /o\.status\.toUpperCase\(\)/);
+  assert.match(screen, /testID=\{`edit-order-\$\{o\.id\}`\}/);
+  assert.match(screen, /testID=\{`delete-order-\$\{o\.id\}`\}/);
+  assert.match(screen, /o\.status === 'pending'/);
+  assert.match(screen, /style=\{\{ flex: 1, minWidth: 0, paddingRight: 8 \}\}/);
+  assert.match(screen, /flexWrap: 'wrap', gap: 10, marginBottom: 4/);
 });
 
 test("paper order review captures account identity and guards duplicate submissions", () => {

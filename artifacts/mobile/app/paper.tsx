@@ -10,6 +10,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   RefreshControl,
@@ -75,6 +76,11 @@ import {
   fifoSell,
 } from '@/lib/paperEngine';
 import { getOrderQuoteState } from '@/lib/paperOrderEntry';
+import {
+  getAdjacentPaperAccountId,
+  renamePaperAccount,
+  resetPaperAccountData,
+} from '@/lib/paperAccountManagement';
 import {
   createLatestRequestGuard,
   getBuyOrderDetails,
@@ -298,7 +304,6 @@ export default function PaperScreen() {
   const activeTabGroup = PAPER_TAB_GROUPS.find((group) => group.tabs.includes(activeTab)) ?? PAPER_TAB_GROUPS[0];
   const activeGroupTabs = TABS.filter((tab) => activeTabGroup.tabs.includes(tab.id));
   const [chartRange, setChartRange] = useState<(typeof HISTORY_RANGES)[number]['id']>('ALL');
-  const [showAccountDropdown, setShowAccountDropdown] = useState(false);
   const [showAccountManagement, setShowAccountManagement] = useState(false);
   const [showTradeModal, setShowTradeModal] = useState(false);
   const [showOrderSheet, setShowOrderSheet] = useState(false);
@@ -460,6 +465,7 @@ export default function PaperScreen() {
   const selectedAccountDisplayName = account?.id.startsWith('paper-event:')
     ? 'Event Arena'
     : PAPER_ACCOUNT_DISPLAY_NAMES[selectedAccountIndex] ?? account?.name ?? 'Paper account';
+  const selectedAccountPosition = visibleAccounts.findIndex((item) => item.id === account?.id);
   const unrealizedPnL = myPositions.reduce(
     (s, p) => s + p.shares * ((quotes[p.symbol]?.price ?? p.avgCost) - p.avgCost), 0,
   );
@@ -1254,14 +1260,23 @@ export default function PaperScreen() {
   const switchAccount = async (id: string) => {
     activeIdRef.current = id;
     setActiveId(id);
-    setShowAccountDropdown(false);
     setChartRange('ALL');
     await flushCache(accountsRef.current, positionsRef.current, transactionsRef.current, ordersRef.current, lotsRef.current, id);
     fetchQuotes(positions, id);
   };
 
+  const accountSwipeResponder = React.useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponder: (_event, gesture) =>
+      Math.abs(gesture.dx) > 12 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.2,
+    onPanResponderRelease: (_event, gesture) => {
+      if (Math.abs(gesture.dx) < 40) return;
+      const nextId = getAdjacentPaperAccountId(visibleAccounts, activeId, gesture.dx < 0 ? 1 : -1);
+      if (nextId && nextId !== activeId) void switchAccount(nextId);
+    },
+  }), [activeId, switchAccount, visibleAccounts]);
+
   const renameAccount = async (id: string, name: string) => {
-    const updated = accounts.map(a => (a.id === id ? { ...a, name } : a));
+    const updated = renamePaperAccount(accountsRef.current, id, name);
     await saveAccounts(updated);
     setRenameId('');
   };
@@ -1271,17 +1286,17 @@ export default function PaperScreen() {
       Alert.alert('Account is in an event', 'This account cannot be reset until its paper trading event is complete.');
       return;
     }
-    const updatedAccounts = accounts.map(a =>
-      a.id === id ? { ...a, cash: INITIAL_BALANCE, unsettledCash: 0, unsettledItems: [], createdAt: new Date().toISOString() } : a,
-    );
-    const updatedPositions = positions.filter(p => p.accountId !== id);
-    const updatedTxns = transactions.filter(t => t.accountId !== id);
-    const updatedOrders = orders.filter(o => o.accountId !== id);
-    const updatedLots = lots.filter(l => l.accountId !== id);
-    await saveAll(updatedAccounts, updatedPositions, updatedTxns, updatedOrders, updatedLots, activeIdRef.current);
+    const reset = resetPaperAccountData({
+      accounts: accountsRef.current,
+      positions: positionsRef.current,
+      transactions: transactionsRef.current,
+      orders: ordersRef.current,
+      lots: lotsRef.current,
+    }, id, new Date().toISOString());
+    await saveAll(reset.accounts, reset.positions, reset.transactions, reset.orders, reset.lots, activeIdRef.current);
     await clearAccountValueSnapshots(id);
     setQuotes(prev => {
-      const remaining = new Set(updatedPositions.map(p => p.symbol));
+      const remaining = new Set(reset.positions.map(p => p.symbol));
       const next: Record<string, LiveQuote> = {};
       for (const [k, v] of Object.entries(prev)) {
         if (remaining.has(k)) next[k] = v;
@@ -1605,7 +1620,7 @@ export default function PaperScreen() {
       );
     }
     return (
-      <View style={{ gap: 14, paddingHorizontal: 16 }}>
+      <View style={{ gap: 9, paddingHorizontal: 16 }}>
         {heading}
         {myPositions.map((pos, i) => {
           const q = quotes[pos.symbol];
@@ -1630,6 +1645,7 @@ export default function PaperScreen() {
           return (
             <View key={pos.id}>
               <TouchableOpacity
+                testID={`paper-position-${pos.id}`}
                 style={[styles.posCard, isExpanded && styles.posCardExpanded]}
                 onPress={() => setExpandedPosId(isExpanded ? null : pos.id)}
                 activeOpacity={0.7}
@@ -2072,12 +2088,12 @@ export default function PaperScreen() {
     };
 
     return (
-      <View style={{ gap: 10, paddingHorizontal: 16 }}>
+      <View style={{ gap: 8, paddingHorizontal: 16 }}>
         {accountOrders.map(o => {
           const q = quotes[o.symbol];
           return (
-            <View key={o.id} style={[styles.orderCard, { opacity: o.status === 'cancelled' ? 0.5 : 1 }]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+            <View key={o.id} testID={`paper-order-${o.id}`} style={[styles.orderCard, { opacity: o.status === 'cancelled' ? 0.5 : 1 }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
                 <View style={[styles.posAccentBar, { backgroundColor: o.side === 'buy' ? BUY_COLOR : SELL_COLOR }]} />
                 <Text style={[styles.posSymbol, { flexShrink: 1 }]}>{o.symbol}</Text>
                 <View style={{ flex: 1 }} />
@@ -2088,7 +2104,7 @@ export default function PaperScreen() {
                   {typeLabel[o.orderType] ?? o.orderType}
                 </Text>
               </View>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 6 }}>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 4 }}>
                 <View>
                   <Text style={styles.posLabel}>SHARES</Text>
                   <Text style={styles.posVal}>{o.shares}</Text>
@@ -2114,7 +2130,7 @@ export default function PaperScreen() {
                   <Text style={styles.posVal}>${q.price.toFixed(2)}</Text>
                 </View>}
               </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 30 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 26 }}>
                 <Text style={[styles.posLabel, { color: statusColor(o.status) }]}>{o.status.toUpperCase()}</Text>
                 {o.filledPrice != null && (
                   <Text style={[styles.posLabel, { marginLeft: 8 }]}>@ ${o.filledPrice.toFixed(2)}</Text>
@@ -2198,23 +2214,31 @@ export default function PaperScreen() {
         <Text numberOfLines={1} style={styles.headerSub}>Risk-free · $100k start</Text>
       </View>
 
-      <View style={styles.accountHero} testID="paper-account-hero">
+      <View
+        style={styles.accountHero}
+        testID="paper-account-hero"
+        {...accountSwipeResponder.panHandlers}
+      >
         <View style={styles.heroTopline}>
           <Text style={[styles.selectorTitle, account?.id.startsWith('paper-event:') && styles.eventHeroLabel]}>
             {account?.id.startsWith('paper-event:') ? 'EVENT ARENA' : 'SIMULATED PORTFOLIO'}
           </Text>
           <TouchableOpacity
-            testID="paper-account-switch"
+            testID="paper-account-manage"
             accessibilityRole="button"
-            accessibilityLabel={`Switch account. Current account ${selectedAccountDisplayName}`}
-            onPress={() => { setShowAccountManagement(false); setShowAccountDropdown(true); }}
-            style={styles.switchAccountButton}
+            accessibilityLabel="Edit paper trading accounts"
+            onPress={() => setShowAccountManagement(true)}
+            style={styles.editAccountsButton}
           >
-            <Text style={styles.switchAccountText}>SWITCH</Text>
-            <Feather name="chevron-down" size={15} color={GOLD} />
+            <Text style={styles.editAccountsText}>EDIT</Text>
           </TouchableOpacity>
         </View>
-        <Text style={styles.heroAccountName} numberOfLines={1}>{selectedAccountDisplayName}</Text>
+        <View style={styles.heroIdentityRow}>
+          <Text style={styles.heroAccountName} numberOfLines={1}>{selectedAccountDisplayName}</Text>
+          <Text style={styles.heroAccountPosition}>
+            {selectedAccountPosition >= 0 ? `${selectedAccountPosition + 1} / ${visibleAccounts.length}` : ''}
+          </Text>
+        </View>
         <Text style={styles.heroEquity} numberOfLines={1}>{$fmt(portfolioValue)}</Text>
         <Text style={styles.heroEquityLabel}>TOTAL EQUITY</Text>
         <View style={styles.heroStats}>
@@ -2230,6 +2254,26 @@ export default function PaperScreen() {
             <Text style={styles.heroStatLabel}>BUYING POWER</Text>
           </View>
         </View>
+        {visibleAccounts.length > 1 && (
+          <View
+            testID="paper-account-position-indicator"
+            accessibilityRole="text"
+            accessibilityLabel={`Account ${selectedAccountPosition + 1} of ${visibleAccounts.length}`}
+            style={styles.accountPositionIndicators}
+          >
+            {visibleAccounts.map((item, index) => (
+              <View
+                key={item.id}
+                testID={`paper-account-indicator-${index}`}
+                style={[
+                  styles.accountPositionIndicator,
+                  item.id === activeId && styles.accountPositionIndicatorActive,
+                  item.id.startsWith('paper-event:') && styles.eventPositionIndicator,
+                ]}
+              />
+            ))}
+          </View>
+        )}
       </View>
 
       {paperChallengeWindow.phase === 'active' && (
@@ -2266,7 +2310,10 @@ export default function PaperScreen() {
             <TouchableOpacity
               testID="switch-to-paper-event-account"
               accessibilityRole="button"
-              onPress={() => setShowAccountDropdown(true)}
+              onPress={() => {
+                const eventAccount = visibleAccounts.find((item) => item.id === paperChallenge.enrollment?.accountId);
+                if (eventAccount) void switchAccount(eventAccount.id);
+              }}
               style={{ alignSelf: 'flex-start', marginTop: 9, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 8, backgroundColor: colors.primary }}
             >
               <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 10 }}>
@@ -2461,36 +2508,52 @@ export default function PaperScreen() {
         </View>
       </Modal>
 
-      {/* ── Account Dropdown Modal ────────────────────────────────── */}
-      <Modal visible={showAccountDropdown} transparent animationType="slide" onRequestClose={() => setShowAccountDropdown(false)}>
-        <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowAccountDropdown(false)} activeOpacity={1}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <TouchableOpacity activeOpacity={1}>
-              <View style={[styles.bottomSheet, styles.accountSheet, { paddingBottom: Math.max(insets.bottom, 22), marginTop: insets.top + 8 }]}>
-                <View style={styles.sheetHandle} />
-                <View style={styles.sheetHeadingRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.sheetTitle}>Choose portfolio</Text>
-                    <Text style={styles.sheetSub}>Independent simulated accounts</Text>
-                  </View>
-                  <TouchableOpacity
-                    testID="manage-paper-accounts"
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: showAccountManagement }}
-                    accessibilityLabel={showAccountManagement ? 'Close account management' : 'Manage accounts'}
-                    onPress={() => setShowAccountManagement((value) => !value)}
-                    style={styles.manageAccountsButton}
-                  >
-                    <Feather name={showAccountManagement ? 'check' : 'sliders'} size={16} color={GOLD} />
-                  </TouchableOpacity>
+      {/* ── Account Management Modal ─────────────────────────────── */}
+      <Modal
+        visible={showAccountManagement}
+        transparent
+        animationType="slide"
+        onRequestClose={() => { setShowAccountManagement(false); setRenameId(''); }}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable
+            testID="close-paper-account-management-backdrop"
+            style={StyleSheet.absoluteFillObject}
+            accessibilityLabel="Close account management"
+            onPress={() => { setShowAccountManagement(false); setRenameId(''); }}
+          />
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.accountManagementKeyboard}
+          >
+            <View
+              testID="paper-account-management"
+              style={[styles.bottomSheet, styles.accountSheet, { paddingBottom: Math.max(insets.bottom, 22) }]}
+            >
+              <View style={styles.sheetHandle} />
+              <View style={styles.sheetHeadingRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.sheetTitle}>Manage portfolios</Text>
+                  <Text style={styles.sheetSub}>Swipe the summary to change accounts</Text>
                 </View>
-                <ScrollView
-                  testID="paper-account-selector-sheet"
-                  style={styles.accountSheetScroll}
-                  contentContainerStyle={{ paddingBottom: 8 }}
-                  keyboardShouldPersistTaps="handled"
-                  showsVerticalScrollIndicator={false}
+                <TouchableOpacity
+                  testID="close-paper-account-management"
+                  accessibilityRole="button"
+                  accessibilityLabel="Close account management"
+                  onPress={() => { setShowAccountManagement(false); setRenameId(''); }}
+                  style={styles.manageAccountsButton}
                 >
+                  <Feather name="check" size={16} color={GOLD} />
+                </TouchableOpacity>
+              </View>
+              <ScrollView
+                testID="paper-account-management-list"
+                style={styles.accountSheetScroll}
+                contentContainerStyle={{ paddingBottom: 8 }}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                showsVerticalScrollIndicator={false}
+              >
                 {visibleAccounts.map((acct) => {
                   const isEventAcct = acct.id.startsWith('paper-event:');
                   const isActive = acct.id === activeId;
@@ -2502,37 +2565,34 @@ export default function PaperScreen() {
                   const portfolioLabel = isEventAcct
                     ? 'Event Arena'
                     : PAPER_ACCOUNT_DISPLAY_NAMES[accountIndex] ?? acct.name;
-                  const accountChoiceTestId = isEventAcct
-                    ? 'paper-account-choice-event'
-                    : `paper-account-choice-${accountIndex}`;
                   return (
-                  <View key={acct.id} testID={isEventAcct ? 'active-paper-event-account' : `paper-account-${acct.id}`} style={[
-                    styles.accountSheetRow,
-                    isEventAcct && styles.eventAcctRow,
-                    isActive && styles.acctRowActive,
-                    isActive && isEventAcct && styles.eventAcctRowActive,
-                  ]}>
-                    <TouchableOpacity
-                      testID={accountChoiceTestId}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: acct.id === activeId }}
-                      style={styles.accountSelectHit}
-                      onPress={() => {
-                        void switchAccount(acct.id);
-                        setShowAccountDropdown(false);
-                      }}
-                      activeOpacity={0.7}
+                    <View
+                      key={acct.id}
+                      testID={isEventAcct ? 'active-paper-event-account' : `paper-account-${acct.id}`}
+                      style={[
+                        styles.accountSheetRow,
+                        isEventAcct && styles.eventAcctRow,
+                        isActive && styles.acctRowActive,
+                        isActive && isEventAcct && styles.eventAcctRowActive,
+                      ]}
                     >
                       <View style={styles.accountChoiceCopy}>
                         <View style={styles.accountChoiceTitleLine}>
-                          <Text style={[styles.acctName, acct.id.startsWith('paper-event:') && styles.eventAccountName]}>{portfolioLabel}</Text>
-                          {acct.id === activeId && <Feather name="check-circle" size={17} color={GOLD} />}
-                          {acct.id.startsWith('paper-event:') && <Feather name="award" size={15} color={BUY_COLOR} />}
+                          <Text style={[styles.acctName, isEventAcct && styles.eventAccountName]} numberOfLines={1}>
+                            {portfolioLabel}
+                          </Text>
+                          {isActive && (
+                            <View style={styles.activeAccountBadge}>
+                              <Feather name="check" size={10} color={GOLD} />
+                              <Text style={styles.activeAccountBadgeText}>ACTIVE</Text>
+                            </View>
+                          )}
+                          {isEventAcct && <Feather name="award" size={15} color={BUY_COLOR} />}
                         </View>
-                        {acct.name !== portfolioLabel && !acct.id.startsWith('paper-event:') && (
-                          <Text style={styles.accountStoredName}>Saved as {acct.name}</Text>
+                        {acct.name !== portfolioLabel && !isEventAcct && (
+                          <Text style={styles.accountStoredName} numberOfLines={1}>Saved as {acct.name}</Text>
                         )}
-                        {acct.id.startsWith('paper-event:') && (
+                        {isEventAcct && (
                           <>
                             <View testID="paper-event-account-badge" style={styles.eventAccountBadge}>
                               <Feather name="award" size={10} color="#07140F" />
@@ -2542,23 +2602,27 @@ export default function PaperScreen() {
                           </>
                         )}
                         <View style={styles.accountChoiceValues}>
-                          <Text style={styles.accountChoiceValue}><Text style={styles.accountChoiceLabel}>CASH </Text>{$fmt(acct.cash)}</Text>
-                          <Text style={styles.accountChoiceValue}><Text style={styles.accountChoiceLabel}>TOTAL </Text>{$fmt(acctValue)}</Text>
+                          <Text style={styles.accountChoiceValue}>
+                            <Text style={styles.accountChoiceLabel}>CASH </Text>{$fmt(acct.cash)}
+                          </Text>
+                          <Text style={styles.accountChoiceValue}>
+                            <Text style={styles.accountChoiceLabel}>TOTAL </Text>{$fmt(acctValue)}
+                          </Text>
                         </View>
                       </View>
-                    </TouchableOpacity>
-                    {showAccountManagement && (
                       <View style={styles.accountManagementTools}>
                         {renameId === acct.id ? (
                           <TextInput
                             testID={`rename-paper-account-input-${acct.id}`}
+                            accessibilityLabel={`New name for ${acct.name}`}
                             style={styles.renameInput}
                             value={renameDraft}
                             onChangeText={setRenameDraft}
                             autoFocus
                             returnKeyType="done"
-                            onSubmitEditing={() => { renameAccount(acct.id, renameDraft); setRenameId(''); }}
-                            onBlur={() => { renameAccount(acct.id, renameDraft); setRenameId(''); }}
+                            maxLength={32}
+                            onSubmitEditing={() => { void renameAccount(acct.id, renameDraft); setRenameId(''); }}
+                            onBlur={() => { void renameAccount(acct.id, renameDraft); setRenameId(''); }}
                           />
                         ) : (
                           <TouchableOpacity
@@ -2584,7 +2648,7 @@ export default function PaperScreen() {
                                 { text: 'Cancel', style: 'cancel' },
                                 {
                                   text: 'Reset', style: 'destructive',
-                                  onPress: () => { resetAccount(acct.id); setShowAccountDropdown(false); },
+                                  onPress: () => { void resetAccount(acct.id); },
                                 },
                               ],
                             )
@@ -2595,8 +2659,7 @@ export default function PaperScreen() {
                           <Text style={[styles.accountManageText, { color: SELL_COLOR }]}>RESET</Text>
                         </TouchableOpacity>
                       </View>
-                    )}
-                  </View>
+                    </View>
                   );
                 })}
                 {!visibleAccounts.some((item) => item.id.startsWith('paper-event:')) && (
@@ -2607,26 +2670,13 @@ export default function PaperScreen() {
                         <Feather name="award" size={15} color={BUY_COLOR} />
                       </View>
                       <Text style={styles.eventUnavailableHint}>Join an event in Settings to activate this portfolio.</Text>
-                      <View style={styles.accountChoiceValues}>
-                        <Text style={styles.accountChoiceValue}><Text style={styles.accountChoiceLabel}>CASH </Text>—</Text>
-                        <Text style={styles.accountChoiceValue}><Text style={styles.accountChoiceLabel}>TOTAL </Text>—</Text>
-                      </View>
                     </View>
                   </View>
                 )}
-
-                <TouchableOpacity
-                  testID="close-paper-account-sheet"
-                  style={styles.closeSheetBtn}
-                  onPress={() => setShowAccountDropdown(false)}
-                >
-                  <Text style={styles.closeSheetText}>DONE</Text>
-                </TouchableOpacity>
-                </ScrollView>
-              </View>
-            </TouchableOpacity>
+              </ScrollView>
+            </View>
           </KeyboardAvoidingView>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
       {/* ── Buy Lookup Modal (company name or ticker) ─────────────── */}
@@ -2934,47 +2984,52 @@ const styles = StyleSheet.create({
   },
   accountHero: {
     marginHorizontal: 16,
-    marginTop: 10,
-    marginBottom: 11,
-    paddingHorizontal: 18,
-    paddingTop: 16,
-    paddingBottom: 15,
-    borderRadius: 17,
+    marginTop: 8,
+    marginBottom: 8,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 10,
+    borderRadius: 15,
     borderWidth: 1,
     borderColor: 'rgba(214,179,91,0.46)',
     backgroundColor: 'rgba(28,27,23,0.96)',
   },
   heroTopline: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   eventHeroLabel: { color: BUY_COLOR },
-  switchAccountButton: {
-    minHeight: 33,
-    paddingHorizontal: 10,
+  editAccountsButton: {
+    minHeight: 30,
+    paddingHorizontal: 9,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
     borderWidth: 1,
     borderColor: 'rgba(255,215,0,0.38)',
     borderRadius: 8,
     backgroundColor: 'rgba(255,215,0,0.08)',
   },
-  switchAccountText: { color: GOLD, fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 0.8 },
-  heroAccountName: { color: '#eee9dc', fontFamily: 'Inter_600SemiBold', fontSize: 16, marginTop: 8 },
-  heroEquity: { color: '#f4f0e6', fontFamily: 'Inter_700Bold', fontSize: 32, letterSpacing: -0.7, marginTop: 9 },
+  editAccountsText: { color: GOLD, fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 0.8 },
+  heroIdentityRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 3 },
+  heroAccountName: { flex: 1, color: '#eee9dc', fontFamily: 'Inter_600SemiBold', fontSize: 15 },
+  heroAccountPosition: { color: DIM, fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 0.8 },
+  heroEquity: { color: '#f4f0e6', fontFamily: 'Inter_700Bold', fontSize: 29, letterSpacing: -0.7, marginTop: 3 },
   heroEquityLabel: { color: DIM, fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 1.2, marginTop: 2 },
   heroStats: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    marginTop: 15,
-    paddingTop: 13,
+    gap: 12,
+    marginTop: 8,
+    paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: 'rgba(192,192,192,0.16)',
   },
   heroStat: { flex: 1, minWidth: 0 },
-  heroStatValue: { color: '#e5e0d4', fontFamily: 'Inter_700Bold', fontSize: 15 },
-  heroStatLabel: { color: DIM, fontFamily: 'Inter_500Medium', fontSize: 9, letterSpacing: 0.65, marginTop: 4 },
-  heroStatDivider: { width: 1, height: 34, backgroundColor: BORDER },
+  heroStatValue: { color: '#e5e0d4', fontFamily: 'Inter_700Bold', fontSize: 14 },
+  heroStatLabel: { color: DIM, fontFamily: 'Inter_500Medium', fontSize: 8, letterSpacing: 0.65, marginTop: 2 },
+  heroStatDivider: { width: 1, height: 30, backgroundColor: BORDER },
+  accountPositionIndicators: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 5, marginTop: 7 },
+  accountPositionIndicator: { width: 5, height: 5, borderRadius: 3, backgroundColor: 'rgba(192,192,192,0.3)' },
+  accountPositionIndicatorActive: { width: 16, backgroundColor: GOLD },
+  eventPositionIndicator: { backgroundColor: BUY_COLOR },
   manageAccountsButton: {
     width: 38,
     height: 38,
@@ -3170,29 +3225,29 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
     borderRadius: 12,
-    padding: 16,
-    gap: 11,
+    padding: 12,
+    gap: 9,
   },
   orderCard: {
     backgroundColor: CARD_BG,
     borderWidth: 1,
     borderColor: BORDER,
     borderRadius: 12,
-    padding: 14,
+    padding: 11,
   },
-  posColorBar: { width: 3, height: '100%', borderRadius: 2, minHeight: 50 },
-  posAccentBar: { width: 3, borderRadius: 2, minHeight: 40, marginRight: 2 },
-  posRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  posSymbol: { fontFamily: 'Inter_700Bold', fontSize: 17, color: '#fff' },
+  posColorBar: { width: 3, height: '100%', borderRadius: 2, minHeight: 42 },
+  posAccentBar: { width: 3, borderRadius: 2, minHeight: 30, marginRight: 2 },
+  posRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 },
+  posSymbol: { fontFamily: 'Inter_700Bold', fontSize: 16, color: '#fff' },
   posLabel: { fontFamily: 'Inter_400Regular', fontSize: 10, color: 'rgba(192,192,192,0.38)', letterSpacing: 1 },
   posVal: { fontFamily: 'Inter_600SemiBold', fontSize: 12, color: '#fff', marginTop: 1 },
-  posName: { fontFamily: 'Inter_400Regular', fontSize: 12, color: DIM, marginTop: 3 },
+  posName: { fontFamily: 'Inter_400Regular', fontSize: 11, color: DIM, marginTop: 2 },
   positionValue: { minWidth: 120, maxWidth: 150, alignItems: 'flex-end' },
   posMktLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 8, color: DIM, letterSpacing: 0.65, marginBottom: 2 },
-  posMktVal: { fontFamily: 'Inter_700Bold', fontSize: 16, color: '#fff' },
-  posPnl: { fontFamily: 'Inter_600SemiBold', fontSize: 11, marginTop: 3 },
-  posMetaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(192,192,192,0.12)' },
-  posMeta: { fontFamily: 'Inter_400Regular', fontSize: 11, color: DIM },
+  posMktVal: { fontFamily: 'Inter_700Bold', fontSize: 15, color: '#fff' },
+  posPnl: { fontFamily: 'Inter_600SemiBold', fontSize: 10, marginTop: 2 },
+  posMetaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, paddingTop: 6, borderTopWidth: 1, borderTopColor: 'rgba(192,192,192,0.12)' },
+  posMeta: { fontFamily: 'Inter_400Regular', fontSize: 10, color: DIM },
 
   // Transaction rows
   txRow: {
@@ -3364,6 +3419,7 @@ const styles = StyleSheet.create({
 
   // Modals
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  accountManagementKeyboard: { width: '100%', justifyContent: 'flex-end' },
   bottomSheet: {
     backgroundColor: '#111',
     borderTopLeftRadius: 20,
@@ -3374,7 +3430,7 @@ const styles = StyleSheet.create({
     paddingBottom: 36,
     maxHeight: '88%',
   },
-  accountSheet: { padding: 18, paddingTop: 14, maxHeight: '88%', marginTop: 12 },
+  accountSheet: { padding: 18, paddingTop: 14, maxHeight: '88%' },
   accountSheetScroll: { flexGrow: 0, maxHeight: '100%' },
   sheetHeadingRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
   sheetHandle: { width: 36, height: 4, backgroundColor: BORDER, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
@@ -3397,7 +3453,7 @@ const styles = StyleSheet.create({
   accountSheetRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 7,
     borderWidth: 1,
     borderColor: BORDER,
     borderRadius: 12,
@@ -3406,38 +3462,40 @@ const styles = StyleSheet.create({
   },
   accountSelectHit: { flex: 1, minWidth: 0, paddingVertical: 13, paddingHorizontal: 13 },
   accountChoiceCopy: { flex: 1, minWidth: 0 },
-  accountChoiceTitleLine: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  accountChoiceTitleLine: { flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 },
   accountStoredName: { color: DIM, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 2 },
-  accountChoiceValues: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 18, rowGap: 3, marginTop: 9 },
-  accountChoiceValue: { color: '#d9d4c9', fontFamily: 'Inter_600SemiBold', fontSize: 11 },
-  accountChoiceLabel: { color: DIM, fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 0.65 },
+  accountChoiceValues: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 3, marginTop: 7 },
+  accountChoiceValue: { color: '#d9d4c9', fontFamily: 'Inter_600SemiBold', fontSize: 10 },
+  accountChoiceLabel: { color: DIM, fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.65 },
+  activeAccountBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 5, paddingVertical: 3, borderRadius: 5, backgroundColor: 'rgba(255,215,0,0.09)' },
+  activeAccountBadgeText: { color: GOLD, fontFamily: 'Inter_700Bold', fontSize: 8, letterSpacing: 0.5 },
   accountManagementTools: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    flexWrap: 'wrap',
-    gap: 7,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    borderTopWidth: 1,
-    borderTopColor: BORDER,
-    backgroundColor: 'rgba(8,10,12,0.55)',
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    justifyContent: 'center',
+    gap: 3,
+    paddingHorizontal: 5,
+    paddingVertical: 5,
+    borderLeftWidth: 1,
+    borderLeftColor: BORDER,
+    backgroundColor: 'rgba(8,10,12,0.45)',
   },
-  accountManageButton: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 6, paddingHorizontal: 7 },
-  accountManageText: { color: DIM, fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 0.65 },
+  accountManageButton: { minWidth: 84, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 7, paddingHorizontal: 6 },
+  accountManageText: { color: DIM, fontFamily: 'Inter_700Bold', fontSize: 8, letterSpacing: 0.55 },
   accountResetConfirm: { paddingVertical: 6, paddingHorizontal: 7 },
-  eventUnavailableRow: { paddingVertical: 13, paddingHorizontal: 13 },
+  eventUnavailableRow: { paddingVertical: 12, paddingHorizontal: 13 },
   eventUnavailableHint: { color: 'rgba(0,229,160,0.76)', fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 3 },
   acctName: { fontFamily: 'Inter_600SemiBold', fontSize: 14, color: '#fff', marginBottom: 3 },
   acctCash: { fontFamily: 'Inter_400Regular', fontSize: 11, color: DIM },
   renameInput: {
     fontFamily: 'Inter_600SemiBold',
-    fontSize: 14,
+    width: 96,
+    fontSize: 12,
     color: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: SILVER,
-    paddingVertical: 2,
-    marginBottom: 3,
+    paddingVertical: 4,
+    marginHorizontal: 4,
   },
   closeSheetBtn: { marginTop: 16, alignItems: 'center', paddingVertical: 14, borderRadius: 10, borderWidth: 1, borderColor: BORDER },
   closeSheetText: { fontFamily: 'Inter_600SemiBold', fontSize: 13, color: DIM, letterSpacing: 1 },
