@@ -108,6 +108,53 @@ test("event enrollment enables sharing with compact privacy controls", () => {
   assert.match(eventArena, /section === 'past' && renderPastEvents\(\)/);
 });
 
+test("Event Arena section tabs stay readable and fit narrow phone widths", () => {
+  const sectionTabsStart = eventArena.indexOf("{SECTIONS.map((item) => {");
+  const sectionTabsEnd = eventArena.indexOf("</View>\n      </View>", sectionTabsStart);
+  const sectionTabs = eventArena.slice(sectionTabsStart, sectionTabsEnd);
+
+  assert.ok(sectionTabsStart >= 0 && sectionTabsEnd > sectionTabsStart);
+  for (const [id, label] of [
+    ["competition", "Competition"],
+    ["leaderboard", "Leaderboard"],
+    ["trades", "My Trades"],
+    ["past", "Past Events"],
+  ]) {
+    assert.match(eventArena, new RegExp(`id: '${id}', label: '${label}'`));
+  }
+  assert.match(sectionTabs, /testID=\{`event-arena-tab-\$\{item\.id\}`\}/);
+  assert.match(sectionTabs, /accessibilityRole="tab"/);
+  assert.match(sectionTabs, /accessibilityState=\{\{ selected \}\}/);
+  assert.match(sectionTabs, /accessibilityLabel=\{item\.label\}/);
+  assert.match(sectionTabs, /onPress=\{\(\) => setSection\(item\.id\)\}/);
+  assert.match(sectionTabs, /backgroundColor: selected \? colors\.primary : colors\.card/);
+  assert.match(sectionTabs, /borderColor: selected \? colors\.primary : colors\.border/);
+  assert.match(sectionTabs, /color=\{selected \? colors\.primaryForeground : colors\.mutedForeground\}/);
+  assert.match(sectionTabs, /color: selected \? colors\.primaryForeground : colors\.foreground/);
+  assert.match(sectionTabs, /alignItems: 'center', justifyContent: 'center'/);
+  assert.match(sectionTabs, /flex: 1, minWidth: 0, minHeight: SECTION_TAB_MIN_HEIGHT/);
+  assert.match(sectionTabs, /size=\{SECTION_TAB_ICON_SIZE\}/);
+  assert.match(sectionTabs, /fontSize: SECTION_TAB_LABEL_SIZE/);
+  assert.match(sectionTabs, /numberOfLines=\{1\} adjustsFontSizeToFit/);
+  assert.match(sectionTabs, /textAlign: 'center'/);
+  assert.match(eventArena, /const SECTION_TAB_MIN_HEIGHT = 60/);
+  assert.match(eventArena, /const SECTION_TAB_ICON_SIZE = 18/);
+  assert.match(eventArena, /const SECTION_TAB_LABEL_SIZE = 10/);
+  assert.match(eventArena, /flexDirection: 'row', gap: SECTION_TAB_GAP/);
+  assert.match(eventArena, /paddingHorizontal: 16, paddingBottom: 8/);
+  assert.doesNotMatch(sectionTabs, /<ScrollView/);
+  assert.equal((eventArena.match(/\{ id: '(?:competition|leaderboard|trades|past)', label:/g) ?? []).length, 4);
+
+  const gap = Number(eventArena.match(/const SECTION_TAB_GAP = (\d+)/)?.[1]);
+  const sidePadding = 16;
+  for (const screenWidth of [320, 360, 390]) {
+    const cardWidth = (screenWidth - sidePadding * 2 - gap * 3) / 4;
+    const contentWidth = cardWidth - 4;
+    assert.ok(contentWidth >= 60, `${screenWidth}px phone leaves room for each tab label and icon`);
+  }
+
+});
+
 test("championship leaderboard shows real podium scores, event context, and below-podium standings", () => {
   assert.match(leaderboard, /getEventArenaPodiumSlots\(entries\)/);
   assert.match(leaderboard, /getEventArenaStatus\(event\.startAtMs, event\.endAtMs, countdownNow\)/);

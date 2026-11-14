@@ -86,6 +86,10 @@ const SECTIONS: { id: Section; label: string; icon: React.ComponentProps<typeof 
   { id: 'trades', label: 'My Trades', icon: 'activity' },
   { id: 'past', label: 'Past Events', icon: 'archive' },
 ];
+const SECTION_TAB_GAP = 4;
+const SECTION_TAB_MIN_HEIGHT = 60;
+const SECTION_TAB_ICON_SIZE = 18;
+const SECTION_TAB_LABEL_SIZE = 10;
 
 const money = (value: number) =>
   `${value < 0 ? '−' : ''}$${Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -1094,7 +1098,7 @@ export function EventArenaScreen() {
             {participantAlias || 'MEISNER'}
           </Text>
         </View>
-        <View style={{ flexDirection: 'row', gap: 4, paddingVertical: 7 }}>
+        <View style={{ flexDirection: 'row', gap: SECTION_TAB_GAP, paddingVertical: 7 }}>
           {SECTIONS.map((item) => {
             const selected = section === item.id;
             return (
@@ -1105,10 +1109,10 @@ export function EventArenaScreen() {
                 accessibilityState={{ selected }}
                 accessibilityLabel={item.label}
                 onPress={() => setSection(item.id)}
-                style={{ flex: 1, minWidth: 0, minHeight: 52, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, paddingHorizontal: 2, borderRadius: 12, backgroundColor: selected ? colors.primary : colors.card, borderWidth: 1, borderColor: selected ? colors.primary : colors.border }}
+                style={{ flex: 1, minWidth: 0, minHeight: SECTION_TAB_MIN_HEIGHT, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, paddingHorizontal: 2, borderRadius: 12, backgroundColor: selected ? colors.primary : colors.card, borderWidth: 1, borderColor: selected ? colors.primary : colors.border }}
               >
-                <Feather name={item.icon} size={14} color={selected ? colors.primaryForeground : colors.mutedForeground} />
-                <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: selected ? colors.primaryForeground : colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 8 }}>{item.label}</Text>
+                <Feather name={item.icon} size={SECTION_TAB_ICON_SIZE} color={selected ? colors.primaryForeground : colors.mutedForeground} />
+                <Text numberOfLines={1} adjustsFontSizeToFit style={{ minWidth: 0, textAlign: 'center', color: selected ? colors.primaryForeground : colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: SECTION_TAB_LABEL_SIZE }}>{item.label}</Text>
               </TouchableOpacity>
             );
           })}
