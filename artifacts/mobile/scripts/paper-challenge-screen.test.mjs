@@ -43,7 +43,9 @@ test("Event Arena withdrawal confirms on web and reports save errors without cha
   assert.match(eventArena, /testID="event-arena-withdraw-keep"[\s\S]*?Keep Signup/);
   assert.match(eventArena, /testID="event-arena-withdraw-confirm"[\s\S]*?performWithdrawal\(\)/);
   assert.match(eventArena, /testID="event-arena-withdraw-error"[\s\S]*?Could not withdraw/);
-  assert.match(eventArena, /try \{\s*await withdrawUpcomingSignup\(\);\s*setWithdrawConfirmationOpen\(false\);\s*\} catch \{\s*const message = 'Your event signup is unchanged\. Please try again\.'/);
+  assert.match(eventArena, /try \{\s*await withdrawUpcomingSignup\(\);\s*setWithdrawConfirmationOpen\(false\);\s*\} catch \{\s*const message = 'Your event signup is unchanged\. Please try again\.';\s*if \(Platform\.OS === 'web'\) \{\s*setWithdrawError\(message\)/);
+  assert.match(eventArena, /const updated = await updatePaperChallengeStore\([\s\S]*?\);\s*setStore\(updated\);/);
+  assert.match(eventArena, /testID="event-arena-withdraw-confirm"[\s\S]*?disabled=\{saving\}[\s\S]*?onPress=\{\(\) => \{ void performWithdrawal\(\); \}\}/);
   assert.match(eventArena, /withdrawUpcomingPaperChallenge\(current, currentWindow\.id, nowMs\)/);
 });
 

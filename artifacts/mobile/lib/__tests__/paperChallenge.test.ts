@@ -867,6 +867,48 @@ test('upcoming signup withdrawal removes only enrollment and is locked at event 
   }, enrollment.eventId, eventStartAtMs - 1).enrollment?.startEquity, 100_000);
 });
 
+test('failed upcoming signup withdrawal keeps enrollment saved and can be retried', async () => {
+  const eventStartAtMs = Date.parse('2026-11-30T14:30:00.000Z');
+  const enrollment = {
+    eventId: '2026-11-30',
+    eventStartAtMs,
+    eventEndAtMs: Date.parse('2026-12-04T21:00:00.000Z'),
+    joinedAtMs: eventStartAtMs - 60_000,
+    accountId: 'paper-event:2026-11-30',
+    accountName: 'Event Portfolio',
+    startEquity: null,
+  };
+  const savedStore: PaperChallengeStore = { enrollment, history: [] };
+  let storedValue = JSON.stringify(savedStore);
+  let failNextWrite = true;
+  const storage = {
+    getItem: async (key: string) => {
+      assert.equal(key, PAPER_CHALLENGE_STORAGE_KEY);
+      return storedValue;
+    },
+    setItem: async (key: string, value: string) => {
+      assert.equal(key, PAPER_CHALLENGE_STORAGE_KEY);
+      if (failNextWrite) {
+        failNextWrite = false;
+        throw new Error('Simulated AsyncStorage write failure');
+      }
+      storedValue = value;
+    },
+  };
+  const withdraw = () => updatePaperChallengeStore(
+    (current) => withdrawUpcomingPaperChallenge(current, enrollment.eventId, eventStartAtMs - 1),
+    storage,
+  );
+
+  await assert.rejects(withdraw(), /Simulated AsyncStorage write failure/);
+  assert.deepEqual(JSON.parse(storedValue), savedStore);
+  assert.deepEqual(await loadPaperChallengeStore(storage), savedStore);
+
+  const retried = await withdraw();
+  assert.equal(retried.enrollment, null);
+  assert.deepEqual(await loadPaperChallengeStore(storage), retried);
+});
+
 test('leaderboard opt-in stays in event enrollment and does not modify paper accounts', async () => {
   const eventId = '2026-11-16';
   const enrollment = {
