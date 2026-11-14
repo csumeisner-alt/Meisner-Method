@@ -142,6 +142,66 @@ async function click(browser, testID) {
   await delay(80);
 }
 
+async function applyTextScale(browser, scale) {
+  const scaledCount = await browser.evaluate(`(() => {
+    const scale = ${scale};
+    const textElements = [...document.querySelectorAll("body *")].filter((element) =>
+      [...element.childNodes].some((node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim()),
+    );
+    for (const element of textElements) {
+      const currentSize = Number.parseFloat(getComputedStyle(element).fontSize);
+      if (!Number.isFinite(currentSize) || currentSize <= 0) continue;
+      const baseSize = Number.parseFloat(element.dataset.paperOrderBaseFontSize) || currentSize;
+      element.dataset.paperOrderBaseFontSize = String(baseSize);
+      element.style.setProperty("font-size", \`\${baseSize * scale}px\`, "important");
+    }
+    for (const input of document.querySelectorAll("input, textarea")) {
+      const currentSize = Number.parseFloat(getComputedStyle(input).fontSize);
+      if (!Number.isFinite(currentSize) || currentSize <= 0) continue;
+      const baseSize = Number.parseFloat(input.dataset.paperOrderBaseFontSize) || currentSize;
+      input.dataset.paperOrderBaseFontSize = String(baseSize);
+      input.style.setProperty("font-size", \`\${baseSize * scale}px\`, "important");
+    }
+    document.documentElement.dataset.paperOrderTextScale = String(scale);
+    return textElements.length;
+  })()`);
+  assert.ok(scaledCount > 0, "the accessibility text-scale simulation should affect rendered text");
+}
+
+async function tapCenter(browser, testID) {
+  const result = await browser.evaluate(`(() => {
+    const element = document.querySelector(${JSON.stringify(selector(testID))});
+    if (!element) return { found: false };
+    element.scrollIntoView({ block: "center", inline: "center" });
+    const rect = element.getBoundingClientRect();
+    const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    return {
+      found: true,
+      width: rect.width,
+      height: rect.height,
+      inViewport: rect.left >= -1 && rect.right <= window.innerWidth + 1
+        && rect.top >= -1 && rect.bottom <= window.innerHeight + 1,
+      centerHitsTarget: !!hit && (element === hit || element.contains(hit)),
+      focused: element.matches("input, textarea"),
+    };
+  })()`);
+  assert.ok(result?.found, `${testID} should render.`);
+  assert.ok(result.inViewport, `${testID} should be scrollable into view at its center.`);
+  assert.ok(result.width >= 44 && result.height >= 44,
+    `${testID} should retain a usable touch target: ${JSON.stringify(result)}`);
+  assert.ok(result.centerHitsTarget, `${testID} should not be covered at its center.`);
+  await browser.evaluate(`(() => {
+    const element = document.querySelector(${JSON.stringify(selector(testID))});
+    if (element.matches("input, textarea")) element.focus();
+    else element.click();
+  })()`);
+  if (result.focused) {
+    assert.equal(await browser.evaluate("document.activeElement?.getAttribute('data-testid')"),
+      testID, `${testID} should accept focus.`);
+  }
+  await delay(80);
+}
+
 async function startBrowser(bundle) {
   const server = createServer((request, response) => {
     if (request.url === "/bundle.js") {
@@ -464,6 +524,146 @@ test("order-entry cards, metrics, side controls, and inputs fit narrow phone wid
       assert.ok(layout.typeScroller.scrollWidth >= layout.typeScroller.clientWidth);
       assert.ok(layout.form.scrollWidth <= layout.form.clientWidth + 1,
         `form should not overflow horizontally at ${width}px`);
+    }
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("order entry stays readable and tappable at 1.3x text on narrow phones", async () => {
+  const fixture = await startBrowser(await buildFixture());
+  const { browser } = fixture;
+  try {
+    const text = (testID) => browser.evaluate(
+      `document.querySelector(${JSON.stringify(selector(testID))})?.textContent ?? ""`,
+    );
+    for (const width of [320, 360]) {
+      await browser.send("Emulation.setDeviceMetricsOverride", {
+        width, height: 720, deviceScaleFactor: 1, mobile: true,
+      });
+      await applyTextScale(browser, 1.3);
+      await delay(100);
+
+      const initialLayout = await browser.evaluate(`(() => {
+        const ids = [
+          "paper-order-top-bar",
+          "paper-order-account-summary",
+          "paper-order-account-metrics",
+          "paper-order-quote",
+          "paper-order-side-buy",
+          "paper-order-side-sell",
+          "paper-order-side-short",
+          "paper-order-shares",
+          "paper-order-review-button",
+        ];
+        const boxes = Object.fromEntries(ids.map((id) => {
+          const element = document.querySelector(\`[data-testid="\${id}"]\`);
+          if (!element) return [id, null];
+          const rect = element.getBoundingClientRect();
+          return [id, { left: rect.left, right: rect.right, width: rect.width, height: rect.height }];
+        }));
+        const typeScroller = document.querySelector(${JSON.stringify(selector("paper-order-type-scroller"))});
+        return {
+          viewport: window.innerWidth,
+          pageWidth: document.documentElement.scrollWidth,
+          boxes,
+          typeScroller: typeScroller ? {
+            clientWidth: typeScroller.clientWidth,
+            scrollWidth: typeScroller.scrollWidth,
+            overflowX: getComputedStyle(typeScroller).overflowX,
+          } : null,
+          textScale: document.documentElement.dataset.paperOrderTextScale,
+        };
+      })()`);
+      assert.equal(initialLayout.textScale, "1.3");
+      assert.equal(initialLayout.pageWidth, width, `page should not overflow at ${width}px with larger text`);
+      for (const [id, box] of Object.entries(initialLayout.boxes)) {
+        assert.ok(box, `${id} should render at ${width}px with larger text`);
+        assert.ok(box.left >= -1 && box.right <= width + 1,
+          `${id} should stay within the ${width}px viewport: ${JSON.stringify(box)}`);
+      }
+
+      for (const detailID of [
+        "paper-order-account-summary",
+        "paper-order-account-metrics",
+        "paper-order-quote",
+      ]) {
+        const inViewport = await browser.evaluate(`(() => {
+          const element = document.querySelector(${JSON.stringify(selector(detailID))});
+          element.scrollIntoView({ block: "center" });
+          const rect = element.getBoundingClientRect();
+          return rect.left >= -1 && rect.right <= window.innerWidth + 1
+            && rect.top >= -1 && rect.bottom <= window.innerHeight + 1;
+        })()`);
+        assert.equal(inViewport, true, `${detailID} should remain reachable at ${width}px.`);
+      }
+      assert.match(await text("paper-order-account-metrics"), /EQUITY.*SETTLED B\.P\..*CASH/s);
+      assert.match(await text("paper-order-quote"), /ACME · LIVE/);
+      assert.match(await text("paper-order-quote"), /\$100\.00/);
+
+      for (const side of ["buy", "sell", "short"]) {
+        await tapCenter(browser, `paper-order-side-${side}`);
+        await applyTextScale(browser, 1.3);
+      }
+      await tapCenter(browser, "paper-order-side-buy");
+      await applyTextScale(browser, 1.3);
+      await click(browser, "scenario-cover");
+      await applyTextScale(browser, 1.3);
+      await tapCenter(browser, "paper-order-side-cover");
+      await applyTextScale(browser, 1.3);
+      await click(browser, "scenario-buy");
+      await applyTextScale(browser, 1.3);
+      await tapCenter(browser, "paper-order-side-buy");
+      await applyTextScale(browser, 1.3);
+      await tapCenter(browser, "paper-order-shares");
+      await applyTextScale(browser, 1.3);
+
+      const scroller = await browser.evaluate(`(() => {
+        const element = document.querySelector(${JSON.stringify(selector("paper-order-type-scroller"))});
+        return {
+          clientWidth: element.clientWidth,
+          scrollWidth: element.scrollWidth,
+          overflowX: getComputedStyle(element).overflowX,
+        };
+      })()`);
+      assert.ok(scroller.scrollWidth > scroller.clientWidth,
+        "order-type choices should remain in their intentionally scrollable row");
+      assert.ok(["auto", "scroll"].includes(scroller.overflowX),
+        `order-type choices should retain horizontal scrolling: ${JSON.stringify(scroller)}`);
+      for (const [orderType, inputs] of [
+        ["limit", ["paper-order-limit-price"]],
+        ["stop", ["paper-order-stop-price"]],
+        ["stop_limit", ["paper-order-limit-price", "paper-order-stop-price"]],
+        ["trailing_stop", ["paper-order-trail-amount"]],
+      ]) {
+        await tapCenter(browser, `paper-order-type-${orderType}`);
+        await applyTextScale(browser, 1.3);
+        for (const input of inputs) {
+          await tapCenter(browser, input);
+          await applyTextScale(browser, 1.3);
+        }
+      }
+      await tapCenter(browser, "paper-order-type-market");
+      await applyTextScale(browser, 1.3);
+
+      await click(browser, "paper-order-quick-shares-1");
+      await applyTextScale(browser, 1.3);
+      await tapCenter(browser, "paper-order-review-button");
+      await waitFor(browser, `!!document.querySelector(${JSON.stringify(selector("paper-order-review"))})`,
+        `Review should open at ${width}px with larger text.`);
+      await applyTextScale(browser, 1.3);
+      await tapCenter(browser, "paper-order-submit");
+      await waitFor(browser, `!!document.querySelector(${JSON.stringify(selector("paper-order-result"))})`,
+        `The reviewed order should submit at ${width}px with larger text.`);
+      await applyTextScale(browser, 1.3);
+      assert.match(await text("paper-order-result"), /Order filled/i);
+      await tapCenter(browser, "paper-order-result-close");
+      await applyTextScale(browser, 1.3);
+      if (width !== 360) {
+        await click(browser, "scenario-sell");
+        await click(browser, "scenario-buy");
+        await applyTextScale(browser, 1.3);
+      }
     }
   } finally {
     await fixture.cleanup();

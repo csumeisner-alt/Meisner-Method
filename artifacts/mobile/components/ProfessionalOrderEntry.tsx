@@ -848,7 +848,7 @@ const styles = StyleSheet.create({
   sideShares: { flexShrink: 1, maxWidth: '100%', textAlign: 'center', fontFamily: 'Inter_400Regular', fontSize: 8 },
   typeScroller: { marginBottom: 8 },
   typeRow: { flexDirection: 'row', gap: 8, paddingRight: 6 },
-  typeChip: { minHeight: 36, borderWidth: 1, borderColor: BORDER, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
+  typeChip: { minHeight: 44, borderWidth: 1, borderColor: BORDER, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
   typeChipText: { color: DIM, fontFamily: 'Inter_600SemiBold', fontSize: 11 },
   typeHint: { color: DIM, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginBottom: 17 },
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
