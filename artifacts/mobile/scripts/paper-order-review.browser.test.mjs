@@ -297,6 +297,179 @@ test("order review discloses freshness, blocks invalid quotes, and requires re-r
   }
 });
 
+test("entry keeps short collateral conditional and quote/search content compact", async () => {
+  const fixture = await startBrowser(await buildFixture());
+  const { browser } = fixture;
+  try {
+    const text = (testID) => browser.evaluate(
+      `document.querySelector(${JSON.stringify(selector(testID))})?.textContent ?? ""`,
+    );
+    const exists = (testID) => browser.evaluate(
+      `!!document.querySelector(${JSON.stringify(selector(testID))})`,
+    );
+
+    assert.equal(await exists("paper-short-collateral-settings"), false);
+    assert.match(await text("paper-order-account-summary"), /EQUITY/);
+    assert.match(await text("paper-order-account-summary"), /SETTLED B\.P\./);
+    assert.match(await text("paper-order-account-summary"), /CASH/);
+    assert.match(await text("paper-order-quote"), /Acme Corp/);
+    assert.match(await text("paper-order-quote"), /ACME · LIVE/);
+    assert.match(await text("paper-order-quote"), /\$100\.00/);
+    assert.match(await text("paper-order-quote"), /0\.00%/);
+    assert.doesNotMatch(await text("paper-order-quote"), /freshness unverified|provider quote is current/i);
+    assert.equal(await exists("paper-order-search-stock"), true);
+
+    const searchAccess = await browser.evaluate(`(() => {
+      const topBar = document.querySelector(${JSON.stringify(selector("paper-order-top-bar"))});
+      const search = topBar?.querySelector(${JSON.stringify(selector("paper-order-search-stock"))});
+      const activity = topBar?.querySelector(${JSON.stringify(selector("paper-order-activity-mark"))});
+      if (!search || !activity) return null;
+      const searchBox = search.getBoundingClientRect();
+      const activityBox = activity.getBoundingClientRect();
+      return {
+        label: search.getAttribute("aria-label"),
+        role: search.getAttribute("role"),
+        appearsBeforeActivity: search.compareDocumentPosition(activity) & Node.DOCUMENT_POSITION_FOLLOWING,
+        gap: activityBox.left - searchBox.right,
+      };
+    })()`);
+    assert.equal(searchAccess?.label, "Search ticker or company");
+    assert.equal(searchAccess?.role, "button");
+    assert.ok(searchAccess?.appearsBeforeActivity);
+    assert.ok(searchAccess.gap >= 0 && searchAccess.gap <= 12,
+      "search should sit directly beside the activity icon");
+
+    for (const [scenario, hasSearch] of [
+      ["scenario-sell", false],
+      ["scenario-short", true],
+      ["scenario-cover", false],
+      ["scenario-buy", true],
+    ]) {
+      await click(browser, scenario);
+      const isShort = scenario === "scenario-short";
+      assert.equal(await exists("paper-short-collateral-settings"), isShort,
+        `${scenario} should ${isShort ? "show" : "hide"} short collateral controls`);
+      assert.equal(await exists("paper-short-collateral-explanation"), isShort);
+      assert.equal(await exists("paper-order-search-stock"), hasSearch,
+        `${scenario} should ${hasSearch ? "show" : "hide"} ticker search`);
+      assert.match(await text("paper-order-account-summary"), /EQUITY/);
+      assert.match(await text("paper-order-account-summary"), /SETTLED B\.P\./);
+      assert.match(await text("paper-order-account-summary"), /CASH/);
+    }
+
+    await click(browser, "quote-stale");
+    assert.doesNotMatch(await text("paper-order-quote"), /freshness unverified/i);
+    await click(browser, "paper-order-quick-shares-1");
+    await click(browser, "paper-order-review-button");
+    await waitFor(browser, `!!document.querySelector(${JSON.stringify(selector("paper-order-review"))})`,
+      "A stale quote should still be disclosed in review.");
+    assert.match(await text("paper-order-review"), /freshness unverified/i);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("editing a pending order keeps its saved details and review identity", async () => {
+  const fixture = await startBrowser(await buildFixture());
+  const { browser } = fixture;
+  try {
+    await click(browser, "scenario-edit-order");
+    const initial = await browser.evaluate(`(() => ({
+      shares: document.querySelector(${JSON.stringify(selector("paper-order-shares"))})?.value,
+      limit: document.querySelector(${JSON.stringify(selector("paper-order-limit-price"))})?.value,
+      search: !!document.querySelector(${JSON.stringify(selector("paper-order-search-stock"))}),
+      buyDisabled: document.querySelector(${JSON.stringify(selector("paper-order-side-buy"))})?.getAttribute("aria-disabled"),
+      sellDisabled: document.querySelector(${JSON.stringify(selector("paper-order-side-sell"))})?.getAttribute("aria-disabled"),
+    }))()`);
+    assert.equal(initial.shares, "2");
+    assert.equal(initial.limit, "95");
+    assert.equal(initial.search, false, "ticker search is for new orders, not edits");
+    assert.equal(initial.buyDisabled, "true");
+    assert.equal(initial.sellDisabled, "true");
+
+    await click(browser, "paper-order-type-stop");
+    assert.equal(await browser.evaluate(
+      `document.querySelector(${JSON.stringify(selector("paper-order-stop-price"))})?.value`,
+    ), "100.00");
+    await click(browser, "paper-order-review-button");
+    await waitFor(browser, `!!document.querySelector(${JSON.stringify(selector("paper-order-review"))})`,
+      "The edited order should still reach review.");
+    assert.match(await browser.evaluate(
+      `document.querySelector(${JSON.stringify(selector("paper-order-review"))})?.textContent ?? ""`,
+    ), /Stop/);
+    await click(browser, "paper-order-submit");
+    await waitFor(browser, "window.__orderFills.length === 1", "The reviewed edit should submit.");
+    assert.deepEqual(await browser.evaluate(
+      "(({ orderId, side, orderType, shares, stopPrice }) => ({ orderId, side, orderType, shares, stopPrice }))(window.__orderFills[0])",
+    ), {
+      orderId: "editable-order",
+      side: "buy",
+      orderType: "stop",
+      shares: 2,
+      stopPrice: 100,
+    });
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("order-entry cards, metrics, side controls, and inputs fit narrow phone widths", async () => {
+  const fixture = await startBrowser(await buildFixture());
+  const { browser } = fixture;
+  try {
+    for (const width of [320, 360]) {
+      await browser.send("Emulation.setDeviceMetricsOverride", {
+        width, height: 720, deviceScaleFactor: 1, mobile: true,
+      });
+      await delay(100);
+      const layout = await browser.evaluate(`(() => {
+        const ids = [
+          "paper-order-top-bar",
+          "paper-order-account-summary",
+          "paper-order-account-metrics",
+          "paper-order-quote",
+          "paper-order-side-buy",
+          "paper-order-side-sell",
+          "paper-order-side-short",
+          "paper-order-shares",
+          "paper-order-review-button",
+        ];
+        const boxes = Object.fromEntries(ids.map((id) => {
+          const element = [...document.querySelectorAll("[data-testid]")]
+            .find((node) => node.getAttribute("data-testid") === id);
+          if (!element) return [id, null];
+          const rect = element.getBoundingClientRect();
+          return [id, { left: rect.left, right: rect.right, width: rect.width }];
+        }));
+        const form = document.querySelector(${JSON.stringify(selector("paper-order-form"))});
+        const typeScroller = document.querySelector(${JSON.stringify(selector("paper-order-type-scroller"))});
+        return {
+          viewport: window.innerWidth,
+          pageWidth: document.documentElement.scrollWidth,
+          boxes,
+          typeScroller: typeScroller ? {
+            clientWidth: typeScroller.clientWidth,
+            scrollWidth: typeScroller.scrollWidth,
+          } : null,
+          form: form ? { clientWidth: form.clientWidth, scrollWidth: form.scrollWidth } : null,
+        };
+      })()`);
+      assert.equal(layout.pageWidth, width, `page should not overflow at ${width}px`);
+      for (const [id, box] of Object.entries(layout.boxes)) {
+        assert.ok(box, `${id} should render at ${width}px`);
+        assert.ok(box.left >= -1 && box.right <= width + 1,
+          `${id} should stay within the ${width}px viewport: ${JSON.stringify(box)}`);
+      }
+      assert.ok(layout.typeScroller, "order-type chips should retain their horizontal scroller");
+      assert.ok(layout.typeScroller.scrollWidth >= layout.typeScroller.clientWidth);
+      assert.ok(layout.form.scrollWidth <= layout.form.clientWidth + 1,
+        `form should not overflow horizontally at ${width}px`);
+    }
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("stale quotes are reviewable with disclosure, but missing and invalid prices are blocked", async () => {
   const fixture = await startBrowser(await buildFixture());
   const { browser } = fixture;

@@ -2,13 +2,26 @@ import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { getMarketOrderQuoteError } from '../../lib/paperOrderEntry';
 import ProfessionalOrderEntry, { type ConfirmOrderArgs, type OrderIntent } from '../../components/ProfessionalOrderEntry';
-import type { LiveQuote, PaperAccount, PaperPosition } from '../../lib/paperMath';
+import type { LiveQuote, PaperAccount, PaperOrder, PaperPosition } from '../../lib/paperMath';
 
-type Scenario = { side: OrderIntent; accountId: 'alpha' | 'beta' };
+type Scenario = { side: OrderIntent; accountId: 'alpha' | 'beta'; editing?: boolean };
 
 const accounts: Record<Scenario['accountId'], PaperAccount> = {
-  alpha: { id: 'alpha', name: 'Alpha account', cash: 10_000, createdAt: '2025-01-01' },
-  beta: { id: 'beta', name: 'Beta account', cash: 10_000, createdAt: '2025-01-01' },
+  alpha: { id: 'alpha', name: 'Alpha account', cash: 10_000, shortCollateral: 125, shortCollateralRatio: 1.5, createdAt: '2025-01-01' },
+  beta: { id: 'beta', name: 'Beta account', cash: 10_000, shortCollateral: 125, shortCollateralRatio: 1.5, createdAt: '2025-01-01' },
+};
+
+const editableOrder: PaperOrder = {
+  id: 'editable-order',
+  accountId: 'alpha',
+  symbol: 'ACME',
+  companyName: 'Acme Corp',
+  orderType: 'limit',
+  side: 'buy',
+  shares: 2,
+  limitPrice: 95,
+  status: 'pending',
+  placedAt: '2025-01-01T00:00:00.000Z',
 };
 
 const positions: PaperPosition[] = [
@@ -91,6 +104,7 @@ export default function Entry() {
         <button data-testid="scenario-sell" onClick={() => selectScenario('sell', 'alpha')}>Sell</button>
         <button data-testid="scenario-short" onClick={() => selectScenario('short', 'beta')}>Short</button>
         <button data-testid="scenario-cover" onClick={() => selectScenario('cover', 'beta')}>Cover</button>
+        <button data-testid="scenario-edit-order" onClick={() => setScenario({ side: 'buy', accountId: 'alpha', editing: true })}>Edit pending order</button>
         <button data-testid="quote-fresh" onClick={() => setQuoteMode('fresh')}>Fresh quote</button>
         <button data-testid="quote-stale" onClick={() => setQuoteMode('stale')}>Stale quote</button>
         <button data-testid="quote-missing" onClick={() => setQuoteMode('missing')}>Missing quote</button>
@@ -109,6 +123,7 @@ export default function Entry() {
         accountPositions={scenarioPositions}
         quotes={quotes}
         selectedPos={selectedPos}
+        existingOrder={scenario.editing ? editableOrder : null}
         pendingOrders={[]}
         onClose={() => undefined}
         onRefreshQuote={async () => undefined}

@@ -365,10 +365,10 @@ export default function ProfessionalOrderEntry({
   };
 
   const quoteStatus = quoteState === 'fresh'
-    ? 'PROVIDER QUOTE'
+    ? 'LIVE'
     : quoteState === 'stale'
-      ? 'STALE · LAST REPORTED QUOTE'
-      : 'QUOTE UNAVAILABLE';
+      ? 'STALE'
+      : 'NO QUOTE';
   const quoteTime = timestamp && Number.isFinite(timestamp.getTime())
     ? timestamp.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
     : null;
@@ -388,7 +388,7 @@ export default function ProfessionalOrderEntry({
       onRequestClose={() => { if (!submitting) onClose(); }}
     >
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.topBar}>
+        <View testID="paper-order-top-bar" style={styles.topBar}>
           <TouchableOpacity
             testID="paper-order-close"
             accessibilityRole="button"
@@ -403,7 +403,22 @@ export default function ProfessionalOrderEntry({
             <Text style={styles.eyebrow}>{review ? 'ORDER REVIEW' : 'PAPER ORDER'}</Text>
             <Text style={styles.topTitle}>{symbol || 'Select a stock'}</Text>
           </View>
-          <View style={styles.orderMark}><Feather name="activity" size={17} color={GOLD} /></View>
+          {!review && !result && (activeSide === 'buy' || activeSide === 'short') && !existingOrder && (
+            <TouchableOpacity
+              testID="paper-order-search-stock"
+              accessibilityRole="button"
+              accessibilityLabel="Search ticker or company"
+              accessibilityHint="Choose a stock for this order"
+              style={styles.iconButton}
+              onPress={onSearchStock}
+              disabled={submitting}
+            >
+              <Feather name="search" size={19} color={SILVER} />
+            </TouchableOpacity>
+          )}
+          <View testID="paper-order-activity-mark" style={styles.orderMark}>
+            <Feather name="activity" size={17} color={GOLD} />
+          </View>
         </View>
 
         {result || review ? (
@@ -425,13 +440,13 @@ export default function ProfessionalOrderEntry({
             bottomOffset={20}
             showsVerticalScrollIndicator={false}
           >
-            <View style={styles.accountCard}>
+            <View testID="paper-order-account-summary" style={styles.accountCard}>
               <View style={styles.accountTitleRow}>
                 <Feather name="briefcase" size={16} color={GOLD} />
                 <Text testID="order-sheet-active-account" style={styles.accountName} numberOfLines={1}>{account.name}</Text>
                 <Text style={styles.accountIdTag}>PAPER</Text>
               </View>
-              <View style={styles.metricsRow}>
+              <View testID="paper-order-account-metrics" style={styles.metricsRow}>
                 <Metric label="EQUITY" value={money(accountEquity)} />
                 <Metric label="SETTLED B.P." value={money(buyingPower)} />
                 <Metric label="CASH" value={money(account.cash)} />
@@ -439,39 +454,45 @@ export default function ProfessionalOrderEntry({
               {(account.unsettledCash ?? 0) > 0 && (
                 <Text style={styles.unsettledNote}>+ {money(account.unsettledCash ?? 0)} unsettled · not available to buy</Text>
               )}
-              {(account.shortCollateral ?? 0) > 0 && (
+              {activeSide === 'short' && (account.shortCollateral ?? 0) > 0 && (
                 <Text style={styles.unsettledNote}>{money(account.shortCollateral ?? 0)} restricted short collateral · not spendable cash</Text>
               )}
-              <Text style={[styles.unsettledNote, { marginTop: 9 }]}>SIMULATED SHORT COLLATERAL</Text>
-              <View style={styles.metricsRow}>
-                {[1.25, 1.5, 2].map((ratio) => {
-                  const selected = (account.shortCollateralRatio ?? 1.5) === ratio;
-                  return (
-                    <TouchableOpacity
-                      key={ratio}
-                      testID={`paper-short-collateral-${Math.round(ratio * 100)}`}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      style={[styles.trailToggle, selected && { borderColor: GOLD }]}
-                      onPress={() => onSetShortCollateralRatio(ratio)}
-                      disabled={selected || submitting || !!existingOrder}
-                    >
-                      <Text style={[styles.trailToggleText, selected && { color: GOLD }]}>{Math.round(ratio * 100)}%</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-              <Text style={styles.unsettledNote}>Applies to new shorts; open positions keep their reserved collateral.</Text>
+              {activeSide === 'short' && (
+                <View testID="paper-short-collateral-settings">
+                  <Text style={[styles.unsettledNote, { marginTop: 9 }]}>SIMULATED SHORT COLLATERAL</Text>
+                  <View style={styles.metricsRow}>
+                    {[1.25, 1.5, 2].map((ratio) => {
+                      const selected = (account.shortCollateralRatio ?? 1.5) === ratio;
+                      return (
+                        <TouchableOpacity
+                          key={ratio}
+                          testID={`paper-short-collateral-${Math.round(ratio * 100)}`}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected }}
+                          style={[styles.trailToggle, selected && { borderColor: GOLD }]}
+                          onPress={() => onSetShortCollateralRatio(ratio)}
+                          disabled={selected || submitting || !!existingOrder}
+                        >
+                          <Text style={[styles.trailToggleText, selected && { color: GOLD }]}>{Math.round(ratio * 100)}%</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  <Text testID="paper-short-collateral-explanation" style={styles.unsettledNote}>
+                    Applies to new shorts; open positions keep their reserved collateral.
+                  </Text>
+                </View>
+              )}
             </View>
 
             <View testID="paper-order-quote" style={styles.quoteCard}>
               <View style={styles.quoteTopRow}>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={styles.quoteName} numberOfLines={1}>{companyName || stockInfo?.companyName || symbol}</Text>
-                  <Text style={styles.quoteSymbol}>{symbol} · {quoteStatus}</Text>
+                  <Text style={styles.quoteSymbol} numberOfLines={1}>{symbol} · {quoteStatus}</Text>
                 </View>
                 <View style={styles.quotePriceWrap}>
-                  <Text style={styles.quotePrice}>{quotePrice > 0 ? money(quotePrice) : '—'}</Text>
+                  <Text style={styles.quotePrice} numberOfLines={1} adjustsFontSizeToFit>{quotePrice > 0 ? money(quotePrice) : '—'}</Text>
                   {quote && Number.isFinite(quote.change) && Number.isFinite(quote.pct) && (
                     <Text style={[styles.quoteChange, { color: quote.change >= 0 ? BUY_COLOR : SELL_COLOR }]}>
                       {quote.change >= 0 ? '+' : ''}{money(quote.change)} ({quote.pct >= 0 ? '+' : ''}{quote.pct.toFixed(2)}%)
@@ -479,7 +500,6 @@ export default function ProfessionalOrderEntry({
                   )}
                 </View>
               </View>
-              <Text style={[styles.smallNote, quoteState === 'stale' && styles.staleNote]}>{freshnessNote}</Text>
               {quoteState !== 'fresh' && (
                 <TouchableOpacity
                   testID="paper-order-refresh-quote"
@@ -494,17 +514,6 @@ export default function ProfessionalOrderEntry({
                 </TouchableOpacity>
               )}
               {!!quoteRefreshError && <Text style={styles.quoteRefreshError}>{quoteRefreshError}</Text>}
-              {(activeSide === 'buy' || activeSide === 'short') && !existingOrder && (
-                <TouchableOpacity
-                  testID="paper-order-search-stock"
-                  accessibilityRole="button"
-                  style={styles.quoteRefreshButton}
-                  onPress={onSearchStock}
-                >
-                  <Feather name="search" size={13} color={SILVER} />
-                  <Text style={styles.quoteRefreshLabel}>SEARCH TICKER OR COMPANY</Text>
-                </TouchableOpacity>
-              )}
             </View>
 
             <Text style={styles.sectionLabel}>TRADE SIDE</Text>
@@ -541,7 +550,7 @@ export default function ProfessionalOrderEntry({
             </View>
 
             <Text style={styles.sectionLabel}>ORDER TYPE</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.typeScroller}>
+            <ScrollView testID="paper-order-type-scroller" horizontal showsHorizontalScrollIndicator={false} style={styles.typeScroller}>
               <View style={styles.typeRow}>
                 {ORDER_TYPES.map((item) => (
                   <TouchableOpacity
@@ -805,7 +814,7 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: BORDER,
-    gap: 12,
+    gap: 8,
   },
   iconButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
   topHeading: { flex: 1, minWidth: 0 },
@@ -823,39 +832,37 @@ const styles = StyleSheet.create({
   metricValue: { fontFamily: 'Inter_700Bold', color: '#fff', fontSize: 12 },
   unsettledNote: { color: '#b6a36e', fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 10 },
   quoteCard: { borderWidth: 1, borderColor: BORDER, backgroundColor: '#11151a', borderRadius: 14, padding: 13, marginBottom: 18 },
-  quoteTopRow: { flexDirection: 'row', gap: 10, alignItems: 'center', marginBottom: 8 },
+  quoteTopRow: { flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 2, minWidth: 0 },
   quoteName: { color: '#fff', fontFamily: 'Inter_600SemiBold', fontSize: 13 },
   quoteSymbol: { color: DIM, fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 0.7, marginTop: 4 },
-  quotePriceWrap: { alignItems: 'flex-end' },
+  quotePriceWrap: { alignItems: 'flex-end', flexShrink: 0, maxWidth: '42%' },
   quotePrice: { color: '#fff', fontFamily: 'Inter_700Bold', fontSize: 19 },
   quoteChange: { fontFamily: 'Inter_600SemiBold', fontSize: 10, marginTop: 3 },
-  smallNote: { color: DIM, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15 },
-  staleNote: { color: GOLD },
   quoteRefreshButton: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingVertical: 8, paddingRight: 10, marginTop: 3 },
   quoteRefreshLabel: { color: SILVER, fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 0.8 },
   quoteRefreshError: { color: SELL_COLOR, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 4 },
   sectionLabel: { color: DIM, fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.5, marginBottom: 8, marginTop: 2 },
-  sideSwitch: { flexDirection: 'row', gap: 10, marginBottom: 18 },
-  sideButton: { flex: 1, minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderWidth: 1, borderColor: BORDER, borderRadius: 11, paddingHorizontal: 8 },
-  sideButtonText: { fontFamily: 'Inter_700Bold', fontSize: 13, letterSpacing: 0.8 },
-  sideShares: { fontFamily: 'Inter_400Regular', fontSize: 9 },
+  sideSwitch: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 18 },
+  sideButton: { flex: 1, minWidth: 0, minHeight: 58, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 5, borderWidth: 1, borderColor: BORDER, borderRadius: 11, paddingHorizontal: 5, paddingVertical: 7 },
+  sideButtonText: { flexShrink: 1, textAlign: 'center', fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 0.35 },
+  sideShares: { flexShrink: 1, maxWidth: '100%', textAlign: 'center', fontFamily: 'Inter_400Regular', fontSize: 8 },
   typeScroller: { marginBottom: 8 },
   typeRow: { flexDirection: 'row', gap: 8, paddingRight: 6 },
   typeChip: { minHeight: 36, borderWidth: 1, borderColor: BORDER, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
   typeChipText: { color: DIM, fontFamily: 'Inter_600SemiBold', fontSize: 11 },
   typeHint: { color: DIM, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginBottom: 17 },
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  quantityInput: { minHeight: 48, backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER, borderRadius: 10, paddingHorizontal: 14, color: '#fff', fontFamily: 'Inter_700Bold', fontSize: 20, flex: 1 },
+  quantityInput: { minHeight: 48, minWidth: 0, backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER, borderRadius: 10, paddingHorizontal: 14, color: '#fff', fontFamily: 'Inter_700Bold', fontSize: 20, flex: 1 },
   allButton: { minHeight: 48, paddingHorizontal: 16, justifyContent: 'center', borderRadius: 10, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD_BG },
   allButtonText: { color: SILVER, fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 0.9 },
   quickRow: { flexDirection: 'row', gap: 7, marginBottom: 12 },
   quickButton: { flex: 1, minWidth: 0, minHeight: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: '#15191e', borderWidth: 1, borderColor: BORDER, borderRadius: 8, paddingHorizontal: 6 },
   quickButtonText: { color: SILVER, fontFamily: 'Inter_600SemiBold', fontSize: 10 },
   shortcutLabel: { color: DIM, fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 1.1, marginBottom: 7, marginTop: 1 },
-  formInput: { minHeight: 46, backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER, borderRadius: 10, paddingHorizontal: 14, color: '#fff', fontFamily: 'Inter_600SemiBold', fontSize: 17, marginBottom: 12 },
+  formInput: { minHeight: 46, minWidth: 0, maxWidth: '100%', backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER, borderRadius: 10, paddingHorizontal: 14, color: '#fff', fontFamily: 'Inter_600SemiBold', fontSize: 17, marginBottom: 12 },
   trailToggle: { width: 44, height: 46, borderWidth: 1, borderColor: BORDER, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   trailToggleText: { color: DIM, fontFamily: 'Inter_700Bold', fontSize: 14 },
-  estimateCard: { backgroundColor: '#13171c', borderWidth: 1, borderColor: BORDER, borderRadius: 12, padding: 13, marginTop: 5, marginBottom: 12 },
+  estimateCard: { minWidth: 0, backgroundColor: '#13171c', borderWidth: 1, borderColor: BORDER, borderRadius: 12, padding: 13, marginTop: 5, marginBottom: 12 },
   estimateTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 6 },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: BUY_COLOR, marginTop: -6 },
   estimateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingVertical: 5 },
