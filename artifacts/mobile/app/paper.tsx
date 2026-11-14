@@ -2661,6 +2661,9 @@ export default function PaperScreen() {
               >
                 {visibleAccounts.map((acct) => {
                   const isEventAcct = acct.id.startsWith('paper-event:');
+                  const isEventAcctResetLocked = isEventAcct
+                    && paperChallengeWindow.phase === 'active'
+                    && paperChallenge.enrollment?.accountId === acct.id;
                   const isActive = acct.id === activeId;
                   const acctPositions = positions.filter((position) => position.accountId === acct.id);
                   const acctValue = computePaperEquity(acct, acctPositions, quotes);
@@ -2713,7 +2716,11 @@ export default function PaperScreen() {
                               <Feather name="award" size={10} color="#07140F" />
                               <Text style={styles.eventAccountBadgeText}>EVENT PORTFOLIO</Text>
                             </View>
-                            <Text style={styles.eventAccountPrompt}>FRESH $100,000 · TRADE HERE TO COMPETE THIS WEEK</Text>
+                            <Text style={styles.eventAccountPrompt}>
+                              {isEventAcctResetLocked
+                                ? 'ACTIVE EVENT · RESET LOCKED UNTIL EVENT ENDS'
+                                : 'FRESH $100,000 · TRADE HERE TO COMPETE THIS WEEK'}
+                            </Text>
                           </>
                         )}
                         <View style={styles.accountChoiceValues}>
@@ -2754,7 +2761,11 @@ export default function PaperScreen() {
                         <TouchableOpacity
                           testID={`reset-paper-account-${acct.id}`}
                           accessibilityRole="button"
-                          accessibilityLabel={`Reset ${acct.name}`}
+                          accessibilityLabel={isEventAcctResetLocked
+                            ? 'Reset unavailable until the active event ends'
+                            : `Reset ${acct.name}`}
+                          accessibilityState={{ disabled: isEventAcctResetLocked }}
+                          disabled={isEventAcctResetLocked}
                           onPress={() =>
                             Alert.alert(
                               'Reset Account',
@@ -2768,10 +2779,15 @@ export default function PaperScreen() {
                               ],
                             )
                           }
-                          style={styles.accountManageButton}
+                          style={[
+                            styles.accountManageButton,
+                            isEventAcctResetLocked && { opacity: 0.55 },
+                          ]}
                         >
-                          <Feather name="refresh-ccw" size={13} color={SELL_COLOR} />
-                          <Text style={[styles.accountManageText, { color: SELL_COLOR }]}>RESET</Text>
+                          <Feather name={isEventAcctResetLocked ? 'lock' : 'refresh-ccw'} size={13} color={isEventAcctResetLocked ? DIM : SELL_COLOR} />
+                          <Text style={[styles.accountManageText, { color: isEventAcctResetLocked ? DIM : SELL_COLOR }]}>
+                            {isEventAcctResetLocked ? 'LOCKED' : 'RESET'}
+                          </Text>
                         </TouchableOpacity>
                       </View>
                     </View>

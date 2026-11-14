@@ -257,6 +257,12 @@ test("paper dashboard switches accounts from the summary or selector and keeps a
   assert.match(screen, /testID=\{`rename-paper-account-\$\{acct\.id\}`\}/);
   assert.match(screen, /testID=\{`rename-paper-account-input-\$\{acct\.id\}`\}/);
   assert.match(screen, /testID=\{`reset-paper-account-\$\{acct\.id\}`\}/);
+  assert.match(screen, /const isEventAcctResetLocked = isEventAcct\s*&& paperChallengeWindow\.phase === 'active'\s*&& paperChallenge\.enrollment\?\.accountId === acct\.id;/);
+  assert.match(screen, /accessibilityState=\{\{ disabled: isEventAcctResetLocked \}\}/);
+  assert.match(screen, /disabled=\{isEventAcctResetLocked\}/);
+  assert.match(screen, /Reset unavailable until the active event ends/);
+  assert.match(screen, /ACTIVE EVENT · RESET LOCKED UNTIL EVENT ENDS/);
+  assert.match(screen, /if \(paperChallengeWindow\.phase === 'active' && paperChallengeRef\.current\.enrollment\?\.accountId === id\)/);
   assert.match(screen, /onSubmitEditing=\{\(\) => \{ void renameAccount\(acct\.id, renameDraft\); setRenameId\(''\); \}\}/);
   assert.match(screen, /onBlur=\{\(\) => \{ void renameAccount\(acct\.id, renameDraft\); setRenameId\(''\); \}\}/);
   assert.match(screen, /Alert\.alert\(\s*'Reset Account',\s*`Reset "\$\{acct\.name\}" to \$100,000\? All positions and trade history will be lost\.`/);
