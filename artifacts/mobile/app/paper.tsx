@@ -201,8 +201,8 @@ const CARD_BG = 'rgba(192,192,192,0.08)';
 const BORDER = 'rgba(192,192,192,0.28)';
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
-  { id: 'overview',  label: 'Overview', icon: 'grid' },
   { id: 'positions', label: 'Positions', icon: 'list' },
+  { id: 'overview',  label: 'Overview', icon: 'grid' },
   { id: 'orders',    label: 'Orders', icon: 'clock' },
   { id: 'history',   label: 'Trade History', icon: 'repeat' },
   { id: 'analytics', label: 'Analytics', icon: 'bar-chart-2' },
@@ -216,7 +216,7 @@ const PAPER_TAB_GROUPS: {
   icon: string;
   tabs: TabId[];
 }[] = [
-  { id: 'portfolio', label: 'Portfolio', icon: 'briefcase', tabs: ['overview', 'positions'] },
+  { id: 'portfolio', label: 'Portfolio', icon: 'briefcase', tabs: ['positions', 'overview'] },
   { id: 'activity', label: 'Activity', icon: 'activity', tabs: ['orders', 'history'] },
   { id: 'insights', label: 'Insights', icon: 'bar-chart-2', tabs: ['analytics', 'dividends', 'growth'] },
 ];
@@ -303,7 +303,7 @@ export default function PaperScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   // UI
-  const [activeTab, setActiveTab] = useState<TabId>('overview');
+  const [activeTab, setActiveTab] = useState<TabId>('positions');
   const activeTabGroup = PAPER_TAB_GROUPS.find((group) => group.tabs.includes(activeTab)) ?? PAPER_TAB_GROUPS[0];
   const activeGroupTabs = TABS.filter((tab) => activeTabGroup.tabs.includes(tab.id));
   const [chartRange, setChartRange] = useState<(typeof HISTORY_RANGES)[number]['id']>('ALL');
@@ -1705,7 +1705,7 @@ export default function PaperScreen() {
       );
     }
     return (
-      <View style={{ gap: 9, paddingHorizontal: 16 }}>
+      <View style={{ gap: 4, paddingHorizontal: 16 }}>
         {heading}
         {myPositions.map((pos, i) => {
           const q = quotes[pos.symbol];
@@ -1743,17 +1743,18 @@ export default function PaperScreen() {
                       <Text style={styles.posName} numberOfLines={1}>{pos.companyName}</Text>
                     </View>
                     <View style={styles.positionValue}>
-                      <Text style={styles.posMktLabel}>{isShortPosition(pos) ? 'LIABILITY' : 'MARKET VALUE'}</Text>
-                      <Text style={styles.posMktVal}>{$fmt(mktVal)}</Text>
+                      <View style={styles.posValueLine}>
+                        <Text style={styles.posMktLabel}>{isShortPosition(pos) ? 'LIABILITY' : 'MARKET VALUE'}</Text>
+                        <Text style={styles.posMktVal}>{$fmt(mktVal)}</Text>
+                      </View>
                       <Text style={[styles.posPnl, { color: pnlColor(pnl) }]} numberOfLines={1}>
                         {pnl >= 0 ? '+' : ''}{$fmt(pnl)} ({pctFmt(pnlPct)})
                       </Text>
                     </View>
                   </View>
                   <View style={styles.posMetaRow}>
-                    <Text style={styles.posMeta}>{pos.shares} shares</Text>
-                    <Text style={styles.posMeta}>{isShortPosition(pos) ? 'Entry' : 'Avg cost'} {$fmt(pos.avgCost)}</Text>
-                    <Text style={styles.posMeta}>
+                    <Text style={styles.posMeta} numberOfLines={1}>
+                      {pos.shares} sh · {isShortPosition(pos) ? 'Entry' : 'Avg'} {$fmt(pos.avgCost)} ·{' '}
                       {q ? (
                         <Text style={{ color: pnlColor(q.change * (isShortPosition(pos) ? -1 : 1)) }}>
                           ${price.toFixed(2)} ({q.pct >= 0 ? '+' : ''}{q.pct.toFixed(2)}%)
@@ -3350,7 +3351,7 @@ const styles = StyleSheet.create({
   contentSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 2 },
   contentSectionTitle: { fontFamily: 'Inter_700Bold', fontSize: 17, color: '#fff' },
   contentSectionHint: { fontFamily: 'Inter_400Regular', fontSize: 11, color: DIM, marginTop: 4 },
-  sectionCount: { minWidth: 34, textAlign: 'center', color: GOLD, fontFamily: 'Inter_700Bold', fontSize: 13, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 10, backgroundColor: 'rgba(255,215,0,0.1)' },
+  sectionCount: { minWidth: 28, textAlign: 'center', color: GOLD, fontFamily: 'Inter_700Bold', fontSize: 12, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 9, backgroundColor: 'rgba(255,215,0,0.1)' },
   chartNote: {
     fontFamily: 'Inter_400Regular',
     fontSize: 10,
@@ -3366,9 +3367,10 @@ const styles = StyleSheet.create({
     backgroundColor: CARD_BG,
     borderWidth: 1,
     borderColor: BORDER,
-    borderRadius: 12,
-    padding: 12,
-    gap: 9,
+    borderRadius: 10,
+    paddingVertical: 4,
+    paddingHorizontal: 9,
+    gap: 7,
   },
   orderCard: {
     backgroundColor: CARD_BG,
@@ -3377,19 +3379,20 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 11,
   },
-  posColorBar: { width: 3, height: '100%', borderRadius: 2, minHeight: 42 },
+  posColorBar: { width: 3, height: '100%', borderRadius: 2, minHeight: 28 },
   posAccentBar: { width: 3, borderRadius: 2, minHeight: 30, marginRight: 2 },
-  posRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 },
-  posSymbol: { fontFamily: 'Inter_700Bold', fontSize: 16, color: '#fff' },
+  posRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
+  posSymbol: { fontFamily: 'Inter_700Bold', fontSize: 15, color: '#fff' },
   posLabel: { fontFamily: 'Inter_400Regular', fontSize: 10, color: 'rgba(192,192,192,0.38)', letterSpacing: 1 },
   posVal: { fontFamily: 'Inter_600SemiBold', fontSize: 12, color: '#fff', marginTop: 1 },
-  posName: { fontFamily: 'Inter_400Regular', fontSize: 11, color: DIM, marginTop: 2 },
-  positionValue: { minWidth: 120, maxWidth: 150, alignItems: 'flex-end' },
-  posMktLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 8, color: DIM, letterSpacing: 0.65, marginBottom: 2 },
-  posMktVal: { fontFamily: 'Inter_700Bold', fontSize: 15, color: '#fff' },
-  posPnl: { fontFamily: 'Inter_600SemiBold', fontSize: 10, marginTop: 2 },
-  posMetaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, paddingTop: 6, borderTopWidth: 1, borderTopColor: 'rgba(192,192,192,0.12)' },
-  posMeta: { fontFamily: 'Inter_400Regular', fontSize: 10, color: DIM },
+  posName: { fontFamily: 'Inter_400Regular', fontSize: 10, color: DIM, marginTop: 1 },
+  positionValue: { minWidth: 110, maxWidth: 140, alignItems: 'flex-end' },
+  posValueLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4 },
+  posMktLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 7, color: DIM, letterSpacing: 0.35 },
+  posMktVal: { fontFamily: 'Inter_700Bold', fontSize: 13, color: '#fff' },
+  posPnl: { fontFamily: 'Inter_600SemiBold', fontSize: 9, marginTop: 1 },
+  posMetaRow: { flexDirection: 'row', alignItems: 'center', minWidth: 0, paddingTop: 2, borderTopWidth: 1, borderTopColor: 'rgba(192,192,192,0.12)' },
+  posMeta: { flex: 1, minWidth: 0, fontFamily: 'Inter_400Regular', fontSize: 9, color: DIM },
 
   // Transaction rows
   txRow: {

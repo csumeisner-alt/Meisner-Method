@@ -84,3 +84,4 @@
 - [Commodity intelligence scoring](commodity-intelligence-scoring.md) — missing categories stay neutral under family weights; volatility can only subtract, and the score is not a return forecast.
 - [Commodity event and report evidence](commodity-event-report-evidence.md) — scheduled dates, completed releases, published values, and comparable historical periods require separate validation.
 - [Event Arena sharing scope](local-only-community-features.md) — leaderboard is opt-in, uses anonymous device identity and a pre-event alias, and displays self-reported results as unverified.
+- [Paper Trading positions-first layout](paper-positions-first.md) — default to current positions and keep rows compact enough to target four visible on a phone.

@@ -169,7 +169,8 @@ test("account dashboard selects, scopes, and persists the active paper account",
 });
 
 test("Paper Trading keeps all views in readable groups and reserves space for actions", () => {
-  assert.match(screen, /\{ id: 'portfolio', label: 'Portfolio'.*tabs: \['overview', 'positions'\] \}/);
+  assert.match(screen, /\{ id: 'portfolio', label: 'Portfolio'.*tabs: \['positions', 'overview'\] \}/);
+  assert.match(screen, /useState<TabId>\('positions'\)/);
   assert.match(screen, /\{ id: 'activity', label: 'Activity'.*tabs: \['orders', 'history'\] \}/);
   assert.match(screen, /\{ id: 'insights', label: 'Insights'.*tabs: \['analytics', 'dividends', 'growth'\] \}/);
   assert.match(screen, /paper-tab-group-\$\{group\.id\}/);
@@ -259,8 +260,8 @@ test("paper dashboard manages accounts from EDIT and preserves persistent trade 
   assert.match(screen, /label: 'Trade History'/);
   assert.match(screen, /ACCOUNT PERFORMANCE/);
   assert.match(screen, /pos\.companyName/);
-  assert.match(screen, /pos\.shares\} shares/);
-  assert.match(screen, /isShortPosition\(pos\) \? 'Entry' : 'Avg cost'/);
+  assert.match(screen, /pos\.shares\} sh ·/);
+  assert.match(screen, /isShortPosition\(pos\) \? 'Entry' : 'Avg'/);
   assert.match(screen, /isShortPosition\(pos\) \? 'LIABILITY' : 'MARKET VALUE'/);
   assert.match(screen, /MARKET VALUE/);
   assert.match(screen, /pctFmt\(pnlPct\)/);
@@ -268,13 +269,13 @@ test("paper dashboard manages accounts from EDIT and preserves persistent trade 
 });
 
 test("position and order cards are compact without removing their essential values or actions", () => {
-  assert.match(screen, /posCard:[\s\S]*?padding: 12/);
+  assert.match(screen, /posCard:[\s\S]*?paddingVertical: 4[\s\S]*?paddingHorizontal: 9/);
   assert.match(screen, /orderCard:[\s\S]*?padding: 11/);
-  assert.match(screen, /gap: 9, paddingHorizontal: 16/);
-  assert.match(screen, /gap: 8, paddingHorizontal: 16/);
+  assert.match(screen, /gap: 4, paddingHorizontal: 16/);
+  assert.match(screen, /gap: 10, paddingHorizontal: 16/);
   assert.match(screen, /testID=\{`paper-position-\$\{pos\.id\}`\}/);
-  assert.match(screen, /pos\.shares\} shares/);
-  assert.match(screen, /isShortPosition\(pos\) \? 'Entry' : 'Avg cost'/);
+  assert.match(screen, /pos\.shares\} sh ·/);
+  assert.match(screen, /isShortPosition\(pos\) \? 'Entry' : 'Avg'/);
   assert.match(screen, /isShortPosition\(pos\) \? 'LIABILITY' : 'MARKET VALUE'/);
   assert.match(screen, /MARKET VALUE/);
   assert.match(screen, /pctFmt\(pnlPct\)/);
