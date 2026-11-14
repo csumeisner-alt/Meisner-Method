@@ -198,8 +198,13 @@ function createTransferDatabase() {
       return { rows: [] };
     }
     if (sql.startsWith("UPDATE event_arena_cash_transfers SET read_at")) {
+      const selectedIds = sql.includes("transfer_ref=ANY") ? values?.[2] as string[] : null;
       for (const row of transfers) {
-        if (row.eventId === values?.[0] && row.recipientInstallationId === values?.[1]) {
+        if (
+          row.eventId === values?.[0]
+          && row.recipientInstallationId === values?.[1]
+          && (!selectedIds || selectedIds.includes(row.id))
+        ) {
           row.readAt ??= new Date("2026-11-18T18:00:00.000Z");
         }
       }
@@ -515,6 +520,41 @@ test("cash inbox returns only incoming transfers for its event and opening marks
     const otherEventHistory = await otherEvent.json() as any;
     assert.deepEqual(otherEventHistory.notifications, []);
     assert.deepEqual(otherEventHistory.sentTransfers, []);
+  });
+});
+
+test("cash receipt acknowledgement marks only the transfers shown to the recipient", async () => {
+  const db = createTransferDatabase();
+  await withApi(db.query, async (baseUrl) => {
+    const inboxUrl = `${baseUrl}/event-arena/${eventId}/transfers`;
+    const send = async (idempotencyKey: string) => fetch(inboxUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(transferRequest({ idempotencyKey })),
+    });
+    assert.equal((await send("cash-first")).status, 200);
+    assert.equal((await send("cash-second")).status, 200);
+    const unreadResponse = await fetch(inboxUrl, {
+      headers: { "X-Event-Arena-Installation-Id": "recipient-installation-123" },
+    });
+    const unread = await unreadResponse.json() as any;
+    const acknowledgedId = unread.notifications[0].id;
+
+    const acknowledged = await fetch(`${inboxUrl}/read`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "X-Event-Arena-Installation-Id": "recipient-installation-123",
+      },
+      body: JSON.stringify({ transferIds: [acknowledgedId] }),
+    });
+    assert.equal(acknowledged.status, 200);
+    const refreshed = await fetch(inboxUrl, {
+      headers: { "X-Event-Arena-Installation-Id": "recipient-installation-123" },
+    });
+    const result = await refreshed.json() as any;
+    assert.equal(result.notifications.filter((item: any) => item.readAt === null).length, 1);
+    assert.equal(result.notifications.find((item: any) => item.id === acknowledgedId).readAt !== null, true);
   });
 });
 

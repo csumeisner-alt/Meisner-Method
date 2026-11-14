@@ -17,6 +17,8 @@ const leaderboard = readFileSync(new URL("../components/PaperChallengeLeaderboar
 const leaderboardProgress = readFileSync(new URL("../lib/eventArenaCompetitiveProgress.ts", import.meta.url), "utf8");
 const eventArena = readFileSync(new URL("../components/EventArenaScreen.tsx", import.meta.url), "utf8");
 const eventArenaOverview = readFileSync(new URL("../components/EventArenaOverview.tsx", import.meta.url), "utf8");
+const eventCashCelebration = readFileSync(new URL("../components/EventCashReceivedCelebration.tsx", import.meta.url), "utf8");
+const mobileRootLayout = readFileSync(new URL("../app/_layout.tsx", import.meta.url), "utf8");
 const eventArenaTransfers = readFileSync(new URL("../lib/eventArenaTransfers.ts", import.meta.url), "utf8");
 const eventArenaApi = readFileSync(new URL("../../api-server/src/routes/eventArenaRoutes.ts", import.meta.url), "utf8");
 const eventAccountDashboard = readFileSync(new URL("../components/PaperEventArenaDashboard.tsx", import.meta.url), "utf8");
@@ -621,4 +623,19 @@ test("Event Arena cash transfers stay event-only, confirmed, private, and idempo
   assert.match(eventArenaOverview, /testID="event-arena-cash-notifications"/);
   assert.match(eventArenaOverview, /testID="event-arena-refresh"/);
   assert.match(eventArenaApi, /event_arena_cash_transfers/);
+});
+
+test("incoming event cash is celebrated on app open and acknowledged per transfer", () => {
+  assert.match(mobileRootLayout, /<EventCashReceivedCelebration \/>/);
+  assert.match(eventCashCelebration, /loadPaperChallengeStore/);
+  assert.match(eventCashCelebration, /AppState\.addEventListener\('change'/);
+  assert.match(eventCashCelebration, /'X-Event-Arena-Mark-Read': 'false'/);
+  assert.match(eventCashCelebration, /notifications\.filter\(\(item\) => !item\.readAt\)/);
+  assert.match(eventCashCelebration, /applyEventCashTransfer\([\s\S]*?direction: 'received'/);
+  assert.match(eventCashCelebration, /testID="event-cash-received-celebration"/);
+  assert.match(eventCashCelebration, /event-cash-received-amount/);
+  assert.match(eventCashCelebration, /Someone backed your run/);
+  assert.match(eventCashCelebration, /transfers\/read/);
+  assert.match(eventCashCelebration, /transferIds: receipt\.notifications\.map\(\(item\) => item\.id\)/);
+  assert.match(eventArenaApi, /router\.post\("\/event-arena\/:eventId\/transfers\/read"/);
 });

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  DeviceEventEmitter,
   Modal,
   Platform,
   ScrollView,
@@ -469,6 +470,15 @@ export function EventArenaScreen() {
     const timer = setInterval(() => { void refreshCashNotifications(false); }, 120_000);
     return () => clearInterval(timer);
   }, [currentWindow.phase, enrollment?.accountId, refreshCashNotifications, storeState]);
+
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener('eventArenaCashReceived', (payload: { eventId?: string; accountId?: string }) => {
+      if (payload.eventId === currentWindow.id && payload.accountId === store.enrollment?.accountId) {
+        void refreshAccountData();
+      }
+    });
+    return () => subscription.remove();
+  }, [currentWindow.id, refreshAccountData, store.enrollment?.accountId]);
 
   useEffect(() => {
     if (storeState !== 'ready') return;

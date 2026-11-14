@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { AmericanModeProvider } from '@/contexts/AmericanModeContext';
 import { AchievementsProvider } from '@/contexts/AchievementsContext';
 import { AchievementsOverlay } from '@/components/AchievementsOverlay';
+import { EventCashReceivedCelebration } from '@/components/EventCashReceivedCelebration';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProviderCompat } from '@/components/KeyboardProviderCompat';
@@ -80,6 +81,7 @@ export default function RootLayout() {
                 <AchievementsProvider>
                   <RootLayoutNav />
                   <AchievementsOverlay />
+                  <EventCashReceivedCelebration />
                 </AchievementsProvider>
               </KeyboardProviderCompat>
             </GestureHandlerRootView>

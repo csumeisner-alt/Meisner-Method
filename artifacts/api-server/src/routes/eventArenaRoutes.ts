@@ -671,6 +671,35 @@ export function createEventArenaRouter(
     }
   });
 
+  router.post("/event-arena/:eventId/transfers/read", requireSchema, async (req: any, res: any) => {
+    const expectedWindow = expectedEventArenaWindow(req.params.eventId);
+    const installationId = req.get("x-event-arena-installation-id");
+    const transferIds = req.body?.transferIds;
+    if (
+      !expectedWindow
+      || !validInstallationId(installationId)
+      || !Array.isArray(transferIds)
+      || transferIds.length < 1
+      || transferIds.length > 100
+      || transferIds.some((id: unknown) => typeof id !== "string" || id.length < 1 || id.length > 128)
+    ) {
+      res.status(400).json({ error: "A valid event, installation ID, and transfer list are required." });
+      return;
+    }
+    try {
+      await purgeExpiredEventArenaEntries(db);
+      await db.query(
+        `UPDATE event_arena_cash_transfers SET read_at=COALESCE(read_at,NOW())
+         WHERE event_id=$1 AND recipient_installation_id=$2 AND transfer_ref=ANY($3::text[])
+           AND event_end_at > NOW() - ($4 * INTERVAL '1 day')`,
+        [req.params.eventId, installationId, transferIds, EVENT_ARENA_RETENTION_DAYS],
+      );
+      res.json({ markedRead: transferIds.length });
+    } catch {
+      res.status(500).json({ error: "Could not save the Event Arena cash receipt." });
+    }
+  });
+
   router.get("/event-arena/:eventId/transfers", requireSchema, async (req: any, res: any) => {
     const expectedWindow = expectedEventArenaWindow(req.params.eventId);
     const installationId = req.get("x-event-arena-installation-id");
