@@ -26,6 +26,91 @@ export const GetEventArenaLeaderboardWeeksResponse = zod.object({
 
 
 /**
+ * Scores are self-reported. Ranking uses percentage return calculated from event equity and starting equity. Equal returns sort by most recently updated, then alias alphabetically, then a stable private participant identifier.
+ * @summary Get active, opted-in scores for one Event Arena week
+ */
+export const GetEventArenaLeaderboardParams = zod.object({
+  "eventId": zod.date().describe('Scheduled Event Arena event ID; results never include other events.')
+})
+
+export const getEventArenaLeaderboardHeaderXEventArenaInstallationIdMin = 12;
+export const getEventArenaLeaderboardHeaderXEventArenaInstallationIdMax = 128;
+
+
+
+export const GetEventArenaLeaderboardHeader = zod.object({
+  "X-Event-Arena-Installation-Id": zod.string().min(getEventArenaLeaderboardHeaderXEventArenaInstallationIdMin).max(getEventArenaLeaderboardHeaderXEventArenaInstallationIdMax).optional().describe('Anonymous device identifier used only to mark the requesting participant\'s row. It is never returned.')
+})
+
+
+export const getEventArenaLeaderboardResponseEntriesItemTradeCountMin = 0;
+
+
+
+export const GetEventArenaLeaderboardResponse = zod.object({
+  "entries": zod.array(zod.object({
+  "rank": zod.number().min(1),
+  "alias": zod.string(),
+  "startEquity": zod.number(),
+  "equity": zod.number(),
+  "profitLoss": zod.number().describe('Event equity minus starting equity.'),
+  "returnPercent": zod.number().describe('Percentage return calculated from event equity and starting equity.'),
+  "tradeCount": zod.number().min(getEventArenaLeaderboardResponseEntriesItemTradeCountMin).nullable(),
+  "holdings": zod.array(zod.object({
+  "symbol": zod.string(),
+  "companyName": zod.string()
+})),
+  "updatedAt": zod.coerce.date(),
+  "isCurrentUser": zod.boolean().describe('True only for the requesting installation\'s row; no installation ID is returned.')
+})),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Submit or update an anonymous Event Arena score
+ */
+export const SubmitEventArenaScoreParams = zod.object({
+  "eventId": zod.date().describe('Scheduled Event Arena event ID; results never include other events.')
+})
+
+export const submitEventArenaScoreBodyInstallationIdMin = 12;
+export const submitEventArenaScoreBodyInstallationIdMax = 128;
+
+export const submitEventArenaScoreBodyAliasMax = 24;
+
+export const submitEventArenaScoreBodyStartEquityExclusiveMin = 0;
+
+export const submitEventArenaScoreBodyEquityMin = 0;
+
+export const submitEventArenaScoreBodyTradeCountMin = 0;
+
+export const submitEventArenaScoreBodyHoldingsMax = 100;
+
+
+
+export const SubmitEventArenaScoreBody = zod.object({
+  "installationId": zod.string().min(submitEventArenaScoreBodyInstallationIdMin).max(submitEventArenaScoreBodyInstallationIdMax).describe('Anonymous device identifier; never returned by leaderboard reads.'),
+  "alias": zod.string().min(1).max(submitEventArenaScoreBodyAliasMax),
+  "startEquity": zod.number().gt(submitEventArenaScoreBodyStartEquityExclusiveMin),
+  "equity": zod.number().min(submitEventArenaScoreBodyEquityMin),
+  "returnPercent": zod.number().describe('Percentage return from event equity and starting equity; the server recalculates it.'),
+  "tradeCount": zod.number().min(submitEventArenaScoreBodyTradeCountMin).describe('Count of trades in the event account during this event.'),
+  "holdings": zod.array(zod.object({
+  "symbol": zod.string(),
+  "companyName": zod.string()
+})).max(submitEventArenaScoreBodyHoldingsMax),
+  "eventStartAtMs": zod.number(),
+  "eventEndAtMs": zod.number()
+})
+
+export const SubmitEventArenaScoreResponse = zod.object({
+  "ok": zod.boolean(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
  * @summary Search supported non-stock heat-map instruments by name or ticker
  */
 export const searchHeatMapInstrumentsQueryQMin = 2;

@@ -18,6 +18,7 @@ type EventSubmission = {
   startEquity: number;
   equity: number;
   returnPercent: number;
+  tradeCount: number | null;
   holdings: HoldingIdentifier[];
   eventStartAtMs: number;
   eventEndAtMs: number;
@@ -110,6 +111,7 @@ function parseSubmission(body: unknown): EventSubmission | null {
     "startEquity",
     "equity",
     "returnPercent",
+    "tradeCount",
     "holdings",
     "eventStartAtMs",
     "eventEndAtMs",
@@ -120,6 +122,7 @@ function parseSubmission(body: unknown): EventSubmission | null {
   const startEquity = value.startEquity;
   const equity = value.equity;
   const returnPercent = value.returnPercent;
+  const tradeCount = value.tradeCount;
   const holdings = value.holdings;
   if (
     !validInstallationId(value.installationId)
@@ -138,6 +141,8 @@ function parseSubmission(body: unknown): EventSubmission | null {
     || !Number.isFinite(returnPercent)
     || Math.abs(returnPercent) > 100_000
     || Math.abs(returnPercent - ((equity - startEquity) / startEquity) * 100) > 0.02
+    || (tradeCount !== undefined && tradeCount !== null
+      && (typeof tradeCount !== "number" || !Number.isInteger(tradeCount) || tradeCount < 0 || tradeCount > 100_000))
     || !Array.isArray(holdings)
     || holdings.length > MAX_HOLDINGS
     || typeof value.eventStartAtMs !== "number"
@@ -175,13 +180,14 @@ function parseSubmission(body: unknown): EventSubmission | null {
     equity,
     // Score returns are self-reported but must be internally consistent.
     returnPercent: ((equity - startEquity) / startEquity) * 100,
+    tradeCount: typeof tradeCount === "number" ? tradeCount : null,
     holdings: cleanHoldings,
     eventStartAtMs: value.eventStartAtMs,
     eventEndAtMs: value.eventEndAtMs,
   };
 }
 
-function publicEntry(row: any) {
+function publicEntry(row: any, rank: number, isCurrentUser: boolean) {
   let holdings: unknown = row.holdings;
   if (typeof holdings === "string") {
     try { holdings = JSON.parse(holdings); } catch { holdings = []; }
@@ -199,14 +205,64 @@ function publicEntry(row: any) {
     ? row.updated_at.toISOString()
     : row.updated_at;
   return {
-    rank: Number(row.rank),
+    rank,
     alias: row.alias,
     startEquity: Number(row.start_equity),
     equity: Number(row.equity),
-    returnPercent: Number(row.return_percent),
+    profitLoss: Number(row.equity) - Number(row.start_equity),
+    returnPercent: ((Number(row.equity) - Number(row.start_equity)) / Number(row.start_equity)) * 100,
+    tradeCount: Number.isInteger(Number(row.trade_count)) && row.trade_count != null
+      ? Number(row.trade_count)
+      : null,
     holdings: cleanHoldings,
     updatedAt,
+    isCurrentUser,
   };
+}
+
+function compareText(a: unknown, b: unknown) {
+  const left = String(a ?? "");
+  const right = String(b ?? "");
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+/**
+ * Rank by percentage return derived from submitted equity and starting equity.
+ * Equal returns sort by newest update, alias, then private installation ID.
+ * The final key is never included in public entries.
+ */
+export function rankEventArenaEntries(rows: any[], requestingInstallationId: string | null = null) {
+  return rows
+    .map((row) => ({
+      row,
+      startEquity: Number(row.start_equity),
+      equity: Number(row.equity),
+      updatedAtMs: row.updated_at instanceof Date
+        ? row.updated_at.getTime()
+        : new Date(row.updated_at).getTime(),
+    }))
+    .filter(({ row, startEquity, equity }) =>
+      typeof row.alias === "string"
+      && Number.isFinite(startEquity)
+      && startEquity > 0
+      && Number.isFinite(equity)
+      && equity >= 0,
+    )
+    .map((entry) => ({
+      ...entry,
+      returnPercent: ((entry.equity - entry.startEquity) / entry.startEquity) * 100,
+    }))
+    .sort((a, b) =>
+      b.returnPercent - a.returnPercent
+      || b.updatedAtMs - a.updatedAtMs
+      || compareText(a.row.alias, b.row.alias)
+      || compareText(a.row.installation_id, b.row.installation_id),
+    )
+    .map(({ row }, index) => publicEntry(
+      row,
+      index + 1,
+      Boolean(requestingInstallationId && row.installation_id === requestingInstallationId),
+    ));
 }
 
 export function createEventArenaRouter(
@@ -261,24 +317,37 @@ export function createEventArenaRouter(
   });
 
   router.get("/event-arena/:eventId/leaderboard", requireSchema, async (req: any, res: any) => {
-    if (!expectedEventArenaWindow(req.params.eventId)) {
+    const expectedWindow = expectedEventArenaWindow(req.params.eventId);
+    if (!expectedWindow) {
       res.status(400).json({ error: "A scheduled Event Arena window is required." });
       return;
     }
     try {
       await purgeExpiredEventArenaEntries(db);
+      const headerInstallationId = req.get("x-event-arena-installation-id");
+      const requestingInstallationId = validInstallationId(headerInstallationId)
+        ? headerInstallationId
+        : null;
       const { rows } = await db.query(
         `SELECT
-           ROW_NUMBER() OVER (ORDER BY return_percent DESC, updated_at DESC, alias ASC) AS rank,
-           alias, start_equity, equity, return_percent, holdings, updated_at
+           installation_id, alias, start_equity, equity, trade_count, holdings, updated_at
          FROM event_arena_leaderboard_entries
          WHERE event_id=$1
            AND is_active=TRUE
-           AND event_end_at > NOW() - ($2 * INTERVAL '1 day')
-         ORDER BY return_percent DESC, updated_at DESC, alias ASC`,
-        [req.params.eventId, EVENT_ARENA_RETENTION_DAYS],
+           AND event_start_at=TO_TIMESTAMP($2 / 1000.0)
+           AND event_end_at=TO_TIMESTAMP($3 / 1000.0)
+           AND event_end_at > NOW() - ($4 * INTERVAL '1 day')`,
+        [
+          req.params.eventId,
+          expectedWindow.startAtMs,
+          expectedWindow.endAtMs,
+          EVENT_ARENA_RETENTION_DAYS,
+        ],
       );
-      res.json({ entries: rows.map(publicEntry), updatedAt: new Date(now()).toISOString() });
+      res.json({
+        entries: rankEventArenaEntries(rows, requestingInstallationId),
+        updatedAt: new Date(now()).toISOString(),
+      });
     } catch {
       res.status(500).json({ error: "Could not load the Event Arena leaderboard." });
     }
@@ -302,13 +371,14 @@ export function createEventArenaRouter(
       await purgeExpiredEventArenaEntries(db);
       const { rows } = await db.query(
         `INSERT INTO event_arena_leaderboard_entries
-           (event_id, installation_id, alias, start_equity, equity, return_percent, holdings, event_start_at, event_end_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,TO_TIMESTAMP($8 / 1000.0),TO_TIMESTAMP($9 / 1000.0),NOW())
+           (event_id, installation_id, alias, start_equity, equity, return_percent, trade_count, holdings, event_start_at, event_end_at, updated_at)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,TO_TIMESTAMP($9 / 1000.0),TO_TIMESTAMP($10 / 1000.0),NOW())
          ON CONFLICT (event_id, installation_id) DO UPDATE SET
            alias=EXCLUDED.alias,
            start_equity=EXCLUDED.start_equity,
            equity=EXCLUDED.equity,
            return_percent=EXCLUDED.return_percent,
+            trade_count=EXCLUDED.trade_count,
            holdings=EXCLUDED.holdings,
            is_active=TRUE,
            updated_at=NOW()
@@ -317,7 +387,7 @@ export function createEventArenaRouter(
            OR event_arena_leaderboard_entries.alias = EXCLUDED.alias
          )
          AND event_arena_leaderboard_entries.updated_at <= NOW() - INTERVAL '15 seconds'
-         RETURNING alias, start_equity, equity, return_percent, holdings, updated_at`,
+         RETURNING alias, start_equity, equity, return_percent, trade_count, holdings, updated_at`,
         [
           req.params.eventId,
           submission.installationId,
@@ -325,6 +395,7 @@ export function createEventArenaRouter(
           submission.startEquity,
           submission.equity,
           submission.returnPercent,
+          submission.tradeCount,
           JSON.stringify(submission.holdings),
           submission.eventStartAtMs,
           submission.eventEndAtMs,
@@ -345,7 +416,10 @@ export function createEventArenaRouter(
         res.status(429).json({ error: "Please wait before updating your Event Arena score again." });
         return;
       }
-      res.json({ ok: true, updatedAt: publicEntry({ ...rows[0], rank: 0 }).updatedAt });
+      const updatedAt = rows[0].updated_at instanceof Date
+        ? rows[0].updated_at.toISOString()
+        : rows[0].updated_at;
+      res.json({ ok: true, updatedAt });
     } catch {
       res.status(500).json({ error: "Could not save the Event Arena score." });
     }
@@ -364,6 +438,7 @@ export function createEventArenaRouter(
              start_equity=0,
              equity=0,
              return_percent=0,
+              trade_count=NULL,
              holdings='[]'::jsonb,
              updated_at=NOW()
          WHERE event_id=$1 AND installation_id=$2 AND is_active=TRUE`,

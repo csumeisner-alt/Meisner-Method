@@ -53,6 +53,69 @@ paths:
                     format: date-time
         "500":
           description: Completed Event Arena weeks could not be loaded
+  /event-arena/{eventId}/leaderboard:
+    parameters:
+      - in: path
+        name: eventId
+        required: true
+        schema:
+          type: string
+          format: date
+        description: Scheduled Event Arena event ID; results never include other events.
+    get:
+      operationId: getEventArenaLeaderboard
+      tags: [eventArena]
+      summary: Get active, opted-in scores for one Event Arena week
+      description: Scores are self-reported. Ranking uses percentage return calculated from event equity and starting equity. Equal returns sort by most recently updated, then alias alphabetically, then a stable private participant identifier.
+      parameters:
+        - in: header
+          name: X-Event-Arena-Installation-Id
+          required: false
+          schema:
+            type: string
+            minLength: 12
+            maxLength: 128
+          description: Anonymous device identifier used only to mark the requesting participant's row. It is never returned.
+      responses:
+        "200":
+          description: Active scores for the requested event only
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventArenaLeaderboardResponse"
+        "400":
+          description: The event ID is not a scheduled Event Arena week
+        "500":
+          description: The leaderboard could not be loaded
+    post:
+      operationId: submitEventArenaScore
+      tags: [eventArena]
+      summary: Submit or update an anonymous Event Arena score
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventArenaScoreSubmission"
+      responses:
+        "200":
+          description: Score saved
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, updatedAt]
+                properties:
+                  ok: { type: boolean }
+                  updatedAt: { type: string, format: date-time }
+        "400":
+          description: The score submission is invalid
+        "409":
+          description: The alias is locked for this event
+        "410":
+          description: The event has ended
+        "429":
+          description: The score was submitted too recently
   /stocks/heat-map/search:
     get:
       operationId: searchHeatMapInstruments
@@ -544,6 +607,71 @@ paths:
                 $ref: "#/components/schemas/AnalysisError"
 components:
   schemas:
+    EventArenaScoreSubmission:
+      type: object
+      required: [installationId, alias, startEquity, equity, returnPercent, tradeCount, holdings, eventStartAtMs, eventEndAtMs]
+      properties:
+        installationId:
+          type: string
+          minLength: 12
+          maxLength: 128
+          description: Anonymous device identifier; never returned by leaderboard reads.
+        alias:
+          type: string
+          minLength: 1
+          maxLength: 24
+        startEquity: { type: number, exclusiveMinimum: 0 }
+        equity: { type: number, minimum: 0 }
+        returnPercent:
+          type: number
+          description: Percentage return from event equity and starting equity; the server recalculates it.
+        tradeCount:
+          type: integer
+          minimum: 0
+          description: Count of trades in the event account during this event.
+        holdings:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            required: [symbol, companyName]
+            properties:
+              symbol: { type: string }
+              companyName: { type: string }
+        eventStartAtMs: { type: integer }
+        eventEndAtMs: { type: integer }
+
+    EventArenaLeaderboardResponse:
+      type: object
+      required: [entries, updatedAt]
+      properties:
+        entries:
+          type: array
+          items:
+            type: object
+            required: [rank, alias, startEquity, equity, profitLoss, returnPercent, tradeCount, holdings, updatedAt, isCurrentUser]
+            properties:
+              rank: { type: integer, minimum: 1 }
+              alias: { type: string }
+              startEquity: { type: number }
+              equity: { type: number }
+              profitLoss: { type: number, description: Event equity minus starting equity. }
+              returnPercent: { type: number, description: Percentage return calculated from event equity and starting equity. }
+              tradeCount: { type: integer, nullable: true, minimum: 0 }
+              holdings:
+                type: array
+                items:
+                  type: object
+                  required: [symbol, companyName]
+                  properties:
+                    symbol: { type: string }
+                    companyName: { type: string }
+              updatedAt: { type: string, format: date-time }
+              isCurrentUser:
+                type: boolean
+                description: True only for the requesting installation's row; no installation ID is returned.
+        updatedAt: { type: string, format: date-time }
+
     CommodityRelationshipInstrument:
       type: object
       required: [symbol, name, unit, venue]

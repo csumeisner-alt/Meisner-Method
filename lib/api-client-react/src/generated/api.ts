@@ -25,6 +25,8 @@ import type {
   AnalyzeStockRequest,
   CommodityRelationshipResponse,
   CryptoSupplyHistory,
+  EventArenaLeaderboardResponse,
+  EventArenaScoreSubmission,
   GetEventArenaLeaderboardWeeks200,
   GetMarketHeatMapParams,
   GetStockChart200,
@@ -39,6 +41,7 @@ import type {
   SearchHeatMapInstrumentsParams,
   SearchStockSymbolsParams,
   StockSymbolSuggestion,
+  SubmitEventArenaScore200,
   ValidateHeatMapSymbolRequest
 } from './api.schemas';
 
@@ -145,6 +148,156 @@ export function useGetEventArenaLeaderboardWeeks<TData = Awaited<ReturnType<type
 
 
 
+
+export const getGetEventArenaLeaderboardUrl = (eventId: string,) => {
+
+
+
+
+  return `/api/event-arena/${eventId}/leaderboard`
+}
+
+/**
+ * Scores are self-reported. Ranking uses percentage return calculated from event equity and starting equity. Equal returns sort by most recently updated, then alias alphabetically, then a stable private participant identifier.
+ * @summary Get active, opted-in scores for one Event Arena week
+ */
+export const getEventArenaLeaderboard = async (eventId: string, options?: RequestInit): Promise<EventArenaLeaderboardResponse> => {
+
+  return customFetch<EventArenaLeaderboardResponse>(getGetEventArenaLeaderboardUrl(eventId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetEventArenaLeaderboardQueryKey = (eventId: string,) => {
+    return [
+    `/api/event-arena/${eventId}/leaderboard`
+    ] as const;
+    }
+
+
+export const getGetEventArenaLeaderboardQueryOptions = <TData = Awaited<ReturnType<typeof getEventArenaLeaderboard>>, TError = ErrorType<void>>(eventId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEventArenaLeaderboard>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetEventArenaLeaderboardQueryKey(eventId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getEventArenaLeaderboard>>> = ({ signal }) => getEventArenaLeaderboard(eventId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: eventId !== null && eventId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getEventArenaLeaderboard>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetEventArenaLeaderboardQueryResult = NonNullable<Awaited<ReturnType<typeof getEventArenaLeaderboard>>>
+export type GetEventArenaLeaderboardQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get active, opted-in scores for one Event Arena week
+ */
+
+export function useGetEventArenaLeaderboard<TData = Awaited<ReturnType<typeof getEventArenaLeaderboard>>, TError = ErrorType<void>>(
+ eventId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEventArenaLeaderboard>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetEventArenaLeaderboardQueryOptions(eventId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSubmitEventArenaScoreUrl = (eventId: string,) => {
+
+
+
+
+  return `/api/event-arena/${eventId}/leaderboard`
+}
+
+/**
+ * @summary Submit or update an anonymous Event Arena score
+ */
+export const submitEventArenaScore = async (eventId: string,
+    eventArenaScoreSubmission: EventArenaScoreSubmission, options?: RequestInit): Promise<SubmitEventArenaScore200> => {
+
+  return customFetch<SubmitEventArenaScore200>(getSubmitEventArenaScoreUrl(eventId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(eventArenaScoreSubmission)
+  }
+);}
+
+
+
+
+
+export const getSubmitEventArenaScoreMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitEventArenaScore>>, TError,{eventId: string;data: BodyType<EventArenaScoreSubmission>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof submitEventArenaScore>>, TError,{eventId: string;data: BodyType<EventArenaScoreSubmission>}, TContext> => {
+
+const mutationKey = ['submitEventArenaScore'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof submitEventArenaScore>>, {eventId: string;data: BodyType<EventArenaScoreSubmission>}> = (props) => {
+          const {eventId,data} = props ?? {};
+
+          return  submitEventArenaScore(eventId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SubmitEventArenaScoreMutationResult = NonNullable<Awaited<ReturnType<typeof submitEventArenaScore>>>
+    export type SubmitEventArenaScoreMutationBody = BodyType<EventArenaScoreSubmission>
+    export type SubmitEventArenaScoreMutationError = ErrorType<void>
+
+    /**
+ * @summary Submit or update an anonymous Event Arena score
+ */
+export const useSubmitEventArenaScore = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitEventArenaScore>>, TError,{eventId: string;data: BodyType<EventArenaScoreSubmission>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof submitEventArenaScore>>,
+        TError,
+        {eventId: string;data: BodyType<EventArenaScoreSubmission>},
+        TContext
+      > => {
+      return useMutation(getSubmitEventArenaScoreMutationOptions(options));
+    }
 
 export const getSearchHeatMapInstrumentsUrl = (params: SearchHeatMapInstrumentsParams,) => {
   const normalizedParams = new URLSearchParams();

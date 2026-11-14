@@ -153,6 +153,7 @@ async function runSchemaMigrations(): Promise<void> {
       start_equity DOUBLE PRECISION NOT NULL,
       equity DOUBLE PRECISION NOT NULL,
       return_percent DOUBLE PRECISION NOT NULL,
+      trade_count INTEGER,
       holdings JSONB NOT NULL DEFAULT '[]'::jsonb,
       event_start_at TIMESTAMPTZ NOT NULL,
       event_end_at TIMESTAMPTZ NOT NULL,
@@ -163,6 +164,9 @@ async function runSchemaMigrations(): Promise<void> {
   `);
   await pool.query(
     "ALTER TABLE event_arena_leaderboard_entries ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE",
+  );
+  await pool.query(
+    "ALTER TABLE event_arena_leaderboard_entries ADD COLUMN IF NOT EXISTS trade_count INTEGER",
   );
   await pool.query(`
     CREATE INDEX IF NOT EXISTS event_arena_leaderboard_rank_idx

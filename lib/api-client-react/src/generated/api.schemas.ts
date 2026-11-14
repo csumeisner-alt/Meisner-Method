@@ -5,6 +5,68 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export type EventArenaScoreSubmissionHoldingsItem = {
+  symbol: string;
+  companyName: string;
+};
+
+export interface EventArenaScoreSubmission {
+  /**
+     * Anonymous device identifier; never returned by leaderboard reads.
+     * @minLength 12
+     * @maxLength 128
+     */
+  installationId: string;
+  /**
+     * @minLength 1
+     * @maxLength 24
+     */
+  alias: string;
+  /** @exclusiveMinimum 0 */
+  startEquity: number;
+  /** @minimum 0 */
+  equity: number;
+  /** Percentage return from event equity and starting equity; the server recalculates it. */
+  returnPercent: number;
+  /**
+     * Count of trades in the event account during this event.
+     * @minimum 0
+     */
+  tradeCount: number;
+  /** @maxItems 100 */
+  holdings: EventArenaScoreSubmissionHoldingsItem[];
+  eventStartAtMs: number;
+  eventEndAtMs: number;
+}
+
+export type EventArenaLeaderboardResponseEntriesItemHoldingsItem = {
+  symbol: string;
+  companyName: string;
+};
+
+export type EventArenaLeaderboardResponseEntriesItem = {
+  /** @minimum 1 */
+  rank: number;
+  alias: string;
+  startEquity: number;
+  equity: number;
+  /** Event equity minus starting equity. */
+  profitLoss: number;
+  /** Percentage return calculated from event equity and starting equity. */
+  returnPercent: number;
+  /** @minimum 0 */
+  tradeCount: number | null;
+  holdings: EventArenaLeaderboardResponseEntriesItemHoldingsItem[];
+  updatedAt: string;
+  /** True only for the requesting installation's row; no installation ID is returned. */
+  isCurrentUser: boolean;
+};
+
+export interface EventArenaLeaderboardResponse {
+  entries: EventArenaLeaderboardResponseEntriesItem[];
+  updatedAt: string;
+}
+
 export interface CommodityRelationshipInstrument {
   symbol: string;
   name: string;
@@ -1330,6 +1392,11 @@ export type GetEventArenaLeaderboardWeeks200WeeksItem = {
 
 export type GetEventArenaLeaderboardWeeks200 = {
   weeks: GetEventArenaLeaderboardWeeks200WeeksItem[];
+  updatedAt: string;
+};
+
+export type SubmitEventArenaScore200 = {
+  ok: boolean;
   updatedAt: string;
 };
 

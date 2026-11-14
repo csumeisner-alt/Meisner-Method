@@ -23,6 +23,7 @@ function validSubmission(overrides: Record<string, unknown> = {}) {
     startEquity: 100_000,
     equity: 101_250,
     returnPercent: 1.25,
+    tradeCount: 3,
     holdings: [{ symbol: "AAPL", companyName: "Apple Inc." }],
     eventStartAtMs: startAtMs,
     eventEndAtMs: endAtMs,
@@ -102,8 +103,9 @@ test("valid anonymous submission stores only event-scoped score and holding iden
     assert.match(sql, /ON CONFLICT \(event_id, installation_id\)/);
     assert.match(sql, /updated_at <= NOW\(\) - INTERVAL '15 seconds'/);
     assert.match(sql, /event_start_at > NOW\(\)[\s\S]*alias = EXCLUDED\.alias/);
+    assert.match(sql, /trade_count=EXCLUDED\.trade_count/);
     storedValues = values;
-    return { rows: [{ alias: "MarketFox", start_equity: 100_000, equity: 101_250, return_percent: 1.25, holdings: [{ symbol: "AAPL", companyName: "Apple Inc." }], updated_at: new Date("2026-11-18T17:00:00.000Z") }] };
+    return { rows: [{ alias: "MarketFox", start_equity: 100_000, equity: 101_250, return_percent: 1.25, trade_count: 3, holdings: [{ symbol: "AAPL", companyName: "Apple Inc." }], updated_at: new Date("2026-11-18T17:00:00.000Z") }] };
   }, async (baseUrl) => {
     const response = await fetch(`${baseUrl}/event-arena/${eventId}/leaderboard`, {
       method: "POST",
@@ -115,39 +117,143 @@ test("valid anonymous submission stores only event-scoped score and holding iden
   });
   assert.equal(storedValues?.[0], eventId);
   assert.equal(storedValues?.[1], installationId);
-  assert.deepEqual(JSON.parse(storedValues?.[6]), [{ symbol: "AAPL", companyName: "Apple Inc." }]);
+  assert.equal(storedValues?.[6], 3);
+  assert.deepEqual(JSON.parse(storedValues?.[7]), [{ symbol: "AAPL", companyName: "Apple Inc." }]);
 });
 
-test("leaderboard response ranks participants without exposing installation IDs or trade details", async () => {
+test("leaderboard response is event-scoped and does not expose installation IDs or trade details", async () => {
   let queries = 0;
   await withApi(async (sql, values) => {
     queries += 1;
     if (sql.startsWith("DELETE")) return { rows: [] };
-    assert.match(sql, /ROW_NUMBER\(\) OVER/);
-    assert.match(sql, /event_end_at > NOW\(\) - \(\$2 \* INTERVAL '1 day'\)/);
-    assert.deepEqual(values, [eventId, 30]);
+    assert.match(sql, /WHERE event_id=\$1[\s\S]*is_active=TRUE/);
+    assert.match(sql, /event_start_at=TO_TIMESTAMP\(\$2 \/ 1000\.0\)/);
+    assert.match(sql, /event_end_at=TO_TIMESTAMP\(\$3 \/ 1000\.0\)/);
+    assert.match(sql, /event_end_at > NOW\(\) - \(\$4 \* INTERVAL '1 day'\)/);
+    assert.deepEqual(values, [eventId, startAtMs, endAtMs, 30]);
     return { rows: [{
-      installation_id: "must-not-leak",
-      rank: "1",
+      installation_id: installationId,
       alias: "MarketFox",
       start_equity: "100000",
       equity: "101250",
-      return_percent: "1.25",
+      return_percent: "-999",
+      trade_count: "4",
       holdings: [{ symbol: "AAPL", companyName: "Apple Inc.", shares: 3 }],
       updated_at: new Date("2026-11-18T17:00:00.000Z"),
       transactions: ["must-not-leak"],
       account_name: "must-not-leak",
     }] };
   }, async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/event-arena/${eventId}/leaderboard`);
+    const response = await fetch(`${baseUrl}/event-arena/${eventId}/leaderboard`, {
+      headers: { "x-event-arena-installation-id": installationId },
+    });
     assert.equal(response.status, 200);
     const result = await response.json() as any;
-    assert.deepEqual(Object.keys(result.entries[0]), ["rank", "alias", "startEquity", "equity", "returnPercent", "holdings", "updatedAt"]);
+    assert.deepEqual(Object.keys(result.entries[0]), ["rank", "alias", "startEquity", "equity", "profitLoss", "returnPercent", "tradeCount", "holdings", "updatedAt", "isCurrentUser"]);
+    assert.equal(result.entries[0].returnPercent, 1.25);
+    assert.equal(result.entries[0].profitLoss, 1_250);
+    assert.equal(result.entries[0].tradeCount, 4);
+    assert.equal(result.entries[0].isCurrentUser, true);
     assert.deepEqual(result.entries[0].holdings, [{ symbol: "AAPL", companyName: "Apple Inc." }]);
-    assert.equal(JSON.stringify(result).includes("must-not-leak"), false);
+    assert.equal(JSON.stringify(result).includes(installationId), false);
     assert.equal(JSON.stringify(result).includes("shares"), false);
   });
   assert.equal(queries, 2);
+});
+
+test("leaderboard ranks positive, tied, and negative returns deterministically from submitted equity", async () => {
+  const participant = (id: string, alias: string, startEquity: number, equity: number, updatedAt: string) => ({
+    installation_id: id,
+    alias,
+    start_equity: startEquity,
+    equity,
+    return_percent: 999,
+    trade_count: null,
+    holdings: [],
+    updated_at: new Date(updatedAt),
+  });
+  const rows = [
+    participant("z-negative", "Loss", 100_000, 98_000, "2026-11-18T17:00:00.000Z"),
+    participant("installation-id-b", "Beta", 100_000, 102_000, "2026-11-18T17:00:00.000Z"),
+    participant("top", "Winner", 100_000, 105_000, "2026-11-18T17:00:00.000Z"),
+    participant("installation-id-z", "Alpha", 100_000, 102_000, "2026-11-18T17:00:00.000Z"),
+  ];
+  await withApi(async (sql, values) => {
+    if (sql.startsWith("DELETE")) return { rows: [] };
+    assert.deepEqual(values, [eventId, startAtMs, endAtMs, 30]);
+    return { rows };
+  }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/${eventId}/leaderboard`, {
+      headers: { "x-event-arena-installation-id": "installation-id-z" },
+    });
+    assert.equal(response.status, 200);
+    const result = await response.json() as any;
+    assert.deepEqual(result.entries.map((entry: any) => [entry.rank, entry.alias, entry.returnPercent]), [
+      [1, "Winner", 5],
+      [2, "Alpha", 2],
+      [3, "Beta", 2],
+      [4, "Loss", -2],
+    ]);
+    assert.deepEqual(result.entries.map((entry: any) => entry.isCurrentUser), [false, true, false, false]);
+    assert.ok(result.entries.every((entry: any) => entry.tradeCount === null));
+    assert.equal(JSON.stringify(result).includes("installation-id-z"), false);
+  });
+});
+
+test("empty event leaderboard returns a successful empty list", async () => {
+  await withApi(async (sql) => sql.startsWith("DELETE") ? { rows: [] } : { rows: [] }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/${eventId}/leaderboard`);
+    assert.equal(response.status, 200);
+    assert.deepEqual((await response.json() as any).entries, []);
+  });
+});
+
+test("leaderboard database failures return a generic JSON error", async () => {
+  await withApi(async (sql) => {
+    if (sql.startsWith("DELETE")) return { rows: [] };
+    throw new Error("<html>database internals</html>");
+  }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/${eventId}/leaderboard`);
+    assert.equal(response.status, 500);
+    assert.match(response.headers.get("content-type") ?? "", /application\/json/);
+    const body = await response.json() as { error: string };
+    assert.equal(body.error, "Could not load the Event Arena leaderboard.");
+    assert.doesNotMatch(JSON.stringify(body), /html|database internals/i);
+  });
+});
+
+test("archived and current event requests remain isolated by event ID and exact window", async () => {
+  const currentId = "2026-11-30";
+  const currentStart = Date.parse("2026-11-30T14:30:00.000Z");
+  const currentEnd = Date.parse("2026-12-04T21:00:00.000Z");
+  const seen: string[] = [];
+  await withApi(async (sql, values) => {
+    if (sql.startsWith("DELETE")) return { rows: [] };
+    assert.match(sql, /event_id=\$1/);
+    assert.match(sql, /is_active=TRUE/);
+    seen.push(String(values?.[0]));
+    const expectedTimes = values?.[0] === eventId
+      ? [startAtMs, endAtMs]
+      : [currentStart, currentEnd];
+    assert.deepEqual(values, [values?.[0], ...expectedTimes, 30]);
+    return {
+      rows: [{
+        installation_id: "archive-participant",
+        alias: String(values?.[0]) === eventId ? "Archived" : "Current",
+        start_equity: 100_000,
+        equity: 100_500,
+        trade_count: 1,
+        holdings: [],
+        updated_at: new Date("2026-11-25T17:00:00.000Z"),
+      }],
+    };
+  }, async (baseUrl) => {
+    const archived = await fetch(`${baseUrl}/event-arena/${eventId}/leaderboard`);
+    const current = await fetch(`${baseUrl}/event-arena/${currentId}/leaderboard`);
+    assert.equal((await archived.json() as any).entries[0].alias, "Archived");
+    assert.equal((await current.json() as any).entries[0].alias, "Current");
+  }, Date.parse("2026-11-25T17:00:00.000Z"));
+  assert.deepEqual(seen, [eventId, currentId]);
 });
 
 test("completed-week discovery lists only valid ended weeks with active opt-ins", async () => {
@@ -242,6 +348,7 @@ test("opt-out clears public score data while retaining only the event-scoped ali
     assert.match(sql, /^UPDATE event_arena_leaderboard_entries/);
     assert.match(sql, /SET is_active=FALSE/);
     assert.match(sql, /start_equity=0,[\s\S]*equity=0,[\s\S]*return_percent=0/);
+    assert.match(sql, /trade_count=NULL/);
     assert.ok(sql.includes("holdings='[]'::jsonb"));
     assert.match(sql, /WHERE event_id=\$1 AND installation_id=\$2 AND is_active=TRUE$/);
     assert.deepEqual(values, [eventId, installationId]);
