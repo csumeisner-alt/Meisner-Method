@@ -11,6 +11,7 @@ const challenge = readFileSync(new URL("../lib/paperChallenge.ts", import.meta.u
 const badges = readFileSync(new URL("../components/PaperChallengeMilestoneBadges.tsx", import.meta.url), "utf8");
 const shareCard = readFileSync(new URL("../components/PaperEventShareCard.tsx", import.meta.url), "utf8");
 const leaderboard = readFileSync(new URL("../components/PaperChallengeLeaderboard.tsx", import.meta.url), "utf8");
+const eventArena = readFileSync(new URL("../components/EventArenaScreen.tsx", import.meta.url), "utf8");
 
 assert.match(events, /eventWindow\.phase === 'upcoming' \? eventWindow\.startAtMs : Date\.now\(\)/);
 assert.match(events, /eventWindow\.phase === 'upcoming' \? null : PAPER_CHALLENGE_STARTING_BALANCE/);
@@ -33,6 +34,17 @@ assert.match(screen, /testID="paper-event-live-banner"/);
 assert.match(screen, /LIVE EVENT · JOIN ANY TIME/);
 assert.match(screen, /testID="dismiss-paper-event-recap"/);
 assert.match(screen, /previousEnrollmentIdRef/);
+
+test("Event Arena withdrawal confirms on web and reports save errors without changing the signup", () => {
+  assert.match(eventArena, /if \(Platform\.OS === 'web'\) \{\s*setWithdrawError\(''\);\s*setWithdrawConfirmationOpen\(true\)/);
+  assert.match(eventArena, /Alert\.alert\(\s*'Withdraw from this event\?'/);
+  assert.match(eventArena, /testID="event-arena-withdraw-confirmation"/);
+  assert.match(eventArena, /testID="event-arena-withdraw-keep"[\s\S]*?Keep Signup/);
+  assert.match(eventArena, /testID="event-arena-withdraw-confirm"[\s\S]*?performWithdrawal\(\)/);
+  assert.match(eventArena, /testID="event-arena-withdraw-error"[\s\S]*?Could not withdraw/);
+  assert.match(eventArena, /try \{\s*await withdrawUpcomingSignup\(\);\s*setWithdrawConfirmationOpen\(false\);\s*\} catch \{\s*const message = 'Your event signup is unchanged\. Please try again\.'/);
+  assert.match(eventArena, /withdrawUpcomingPaperChallenge\(current, currentWindow\.id, nowMs\)/);
+});
 
 test("live leaderboard remains anonymous, opt-in, event-scoped, and privacy-limited", () => {
   assert.match(events, /<PaperChallengeLeaderboard/);

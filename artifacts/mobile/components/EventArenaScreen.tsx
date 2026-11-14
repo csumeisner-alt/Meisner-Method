@@ -161,6 +161,8 @@ export function EventArenaScreen() {
   const [accountError, setAccountError] = useState('');
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [withdrawConfirmationOpen, setWithdrawConfirmationOpen] = useState(false);
+  const [withdrawError, setWithdrawError] = useState('');
   const [joinAliasOpen, setJoinAliasOpen] = useState(false);
   const [joinAliasDraft, setJoinAliasDraft] = useState('');
   const [joinAliasError, setJoinAliasError] = useState('');
@@ -346,7 +348,30 @@ export function EventArenaScreen() {
     setStore(updated);
   };
 
+  const performWithdrawal = async () => {
+    setSaving(true);
+    setWithdrawError('');
+    try {
+      await withdrawUpcomingSignup();
+      setWithdrawConfirmationOpen(false);
+    } catch {
+      const message = 'Your event signup is unchanged. Please try again.';
+      if (Platform.OS === 'web') {
+        setWithdrawError(message);
+      } else {
+        Alert.alert('Could not withdraw', message);
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const confirmWithdraw = () => {
+    if (Platform.OS === 'web') {
+      setWithdrawError('');
+      setWithdrawConfirmationOpen(true);
+      return;
+    }
     Alert.alert(
       'Withdraw from this event?',
       'Your fresh event account will not be created when the event starts.',
@@ -355,12 +380,7 @@ export function EventArenaScreen() {
         {
           text: 'Withdraw',
           style: 'destructive',
-          onPress: () => {
-            setSaving(true);
-            void withdrawUpcomingSignup()
-              .catch(() => Alert.alert('Could not withdraw', 'Your event signup is unchanged. Please try again.'))
-              .finally(() => setSaving(false));
-          },
+          onPress: () => { void performWithdrawal(); },
         },
       ],
     );
@@ -998,6 +1018,60 @@ export function EventArenaScreen() {
             </View>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal
+        visible={withdrawConfirmationOpen}
+        animationType="fade"
+        transparent
+        statusBarTranslucent
+        onRequestClose={() => {
+          if (!saving) {
+            setWithdrawConfirmationOpen(false);
+            setWithdrawError('');
+          }
+        }}
+      >
+        <View
+          accessibilityViewIsModal
+          style={{ flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,0.62)' }}
+        >
+          <View testID="event-arena-withdraw-confirmation" style={{ width: '100%', maxWidth: 440, alignSelf: 'center', padding: 20, borderRadius: 18, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.8 }}>EVENT ARENA</Text>
+            <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 21, marginTop: 7 }}>Withdraw from this event?</Text>
+            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, marginTop: 7 }}>
+              Your fresh event account will not be created when the event starts.
+            </Text>
+            {withdrawError ? (
+              <Text testID="event-arena-withdraw-error" accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 12, lineHeight: 18, marginTop: 12 }}>
+                Could not withdraw. {withdrawError}
+              </Text>
+            ) : null}
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+              <TouchableOpacity
+                testID="event-arena-withdraw-keep"
+                accessibilityRole="button"
+                disabled={saving}
+                onPress={() => {
+                  setWithdrawConfirmationOpen(false);
+                  setWithdrawError('');
+                }}
+                style={{ flex: 1, minHeight: 48, justifyContent: 'center', alignItems: 'center', borderRadius: 10, borderWidth: 1, borderColor: colors.border, opacity: saving ? 0.6 : 1 }}
+              >
+                <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>Keep Signup</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="event-arena-withdraw-confirm"
+                accessibilityRole="button"
+                disabled={saving}
+                onPress={() => { void performWithdrawal(); }}
+                style={{ flex: 1, minHeight: 48, justifyContent: 'center', alignItems: 'center', borderRadius: 10, backgroundColor: colors.destructive, opacity: saving ? 0.6 : 1 }}
+              >
+                <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>{saving ? 'Withdrawing…' : 'Withdraw'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
     </View>
   );
