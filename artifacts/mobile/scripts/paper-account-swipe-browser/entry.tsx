@@ -4,7 +4,13 @@ import { Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native
 import { BottomTabBar } from '../../components/BottomTabBar';
 import { PaperAccountSwipeArea } from '../../components/PaperAccountSwipeArea';
 
-const accounts = [{ id: 'tiger' }, { id: 'borg' }, { id: 'fireball' }];
+const INITIAL_BALANCE = 100_000;
+const accounts = [
+  { id: 'tiger', equity: 106_250 },
+  { id: 'borg', equity: 92_500 },
+  { id: 'fireball', equity: 130_000 },
+  { id: 'paper-event:arena', equity: 101_250 },
+];
 
 // Exercise the native haptic branch while rendering the real swipe component in a phone-sized browser.
 Object.defineProperty(Platform, 'OS', { configurable: true, value: 'ios' });
@@ -17,6 +23,9 @@ function PaperAccountInteractionFixture() {
   const [activeId, setActiveId] = useState(accounts[0].id);
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [tradeCount, setTradeCount] = useState(0);
+  const activeAccount = accounts.find((account) => account.id === activeId);
+  if (!activeAccount) throw new Error(`Unknown paper account: ${activeId}`);
+  const totalReturn = ((activeAccount.equity - INITIAL_BALANCE) / INITIAL_BALANCE) * 100;
 
   return (
     <View style={{ flex: 1, height: '100%', backgroundColor: '#101010' }}>
@@ -32,6 +41,9 @@ function PaperAccountInteractionFixture() {
       >
         <Text testID="paper-current-account" style={{ color: '#fff', fontSize: 24 }}>
           {activeId}
+        </Text>
+        <Text testID="paper-account-total-return" style={{ color: '#fff' }}>
+          {`${totalReturn >= 0 ? '+' : ''}${totalReturn.toFixed(2)}%`}
         </Text>
         <TouchableOpacity
           testID="paper-account-switch"
