@@ -5,6 +5,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   buildPaperChallengeSummary,
+  getPaperChallengeArchiveChartWidth,
   capturePaperChallengeBaseline,
   ensurePaperChallengeAccount,
   getPaperChallengeMilestones,
@@ -16,6 +17,7 @@ import {
   type PaperChallengeSummary,
   type PaperChallengeAccountState,
   finalizePaperChallengeStore,
+  normalizePaperChallengeStore,
   getMissingPaperChallengeQuoteSymbols,
   PAPER_CHALLENGE_STORAGE_KEY,
   type PaperChallengeStore,
@@ -99,6 +101,42 @@ test('event history sorts newest by date or strongest by return', () => {
   ];
   assert.deepEqual(sortPaperChallengeHistory(history, 'date').map((event) => event.eventId), ['newer', 'older-best', 'older-low']);
   assert.deepEqual(sortPaperChallengeHistory(history, 'top').map((event) => event.eventId), ['older-best', 'newer', 'older-low']);
+  assert.deepEqual(sortPaperChallengeHistory(history, 'low').map((event) => event.eventId), ['older-low', 'newer', 'older-best']);
+  assert.deepEqual(sortPaperChallengeHistory(history, 'positive').map((event) => event.eventId), ['newer', 'older-best']);
+  assert.deepEqual(sortPaperChallengeHistory(history, 'negative').map((event) => event.eventId), ['older-low']);
+});
+
+test('event archive chart fits a 400px mobile viewport without fabricated width', () => {
+  assert.equal(getPaperChallengeArchiveChartWidth(400), 332);
+  assert.equal(getPaperChallengeArchiveChartWidth(320), 252);
+  assert.equal(getPaperChallengeArchiveChartWidth(Number.NaN), 180);
+});
+
+test('legacy event records keep missing archive details unavailable', () => {
+  const legacyEvent = {
+    eventId: 'legacy-event',
+    eventStartAtMs: 10,
+    eventEndAtMs: 20,
+    joinedAtMs: 10,
+    accountId: 'paper-event:legacy-event',
+    accountName: 'Event Portfolio',
+    startEquity: 100_000,
+    endEquity: 100_000,
+    netProfit: 0,
+    returnPercent: 0,
+    tradeCount: 0,
+    buyCount: 0,
+    sellCount: 0,
+    symbolsTraded: [],
+    realizedPnL: 0,
+    completedAtMs: 21,
+  } satisfies PaperChallengeSummary;
+
+  const normalized = normalizePaperChallengeStore({ enrollment: null, history: [legacyEvent] });
+  assert.equal(normalized.history[0].transactions, undefined);
+  assert.equal(normalized.history[0].equityHistory, undefined);
+  assert.equal(normalized.history[0].finalPositions, undefined);
+  assert.equal(normalized.history[0].finalRank, undefined);
 });
 
 test('event milestones reward first participation, positive finishes, and strict personal bests', () => {
@@ -187,6 +225,19 @@ test('Event Arena wires its label, history sorting, midweek refresh, sharing, an
   const badgeSource = await readFile(resolve(testDirectory, '../../components/PaperChallengeMilestoneBadges.tsx'), 'utf8');
   assert.match(componentSource, /accessibilityLabel="Event Arena"/);
   assert.match(componentSource, /sortPaperChallengeHistory\(store\.history, sortMode\)/);
+  assert.match(componentSource, /testID="open-paper-event-archive"/);
+  assert.match(componentSource, /testID=\{`paper-event-card-\$\{event\.eventId\}`\}/);
+  assert.match(componentSource, /PortfolioLineChart/);
+  assert.match(componentSource, /testID="paper-event-return-active"/);
+  assert.match(componentSource, /testID=\{`paper-event-filter-\$\{option\.key\}`\}/);
+  assert.match(componentSource, /archivedPositions === undefined/);
+  assert.match(componentSource, /equityHistory\.length >= 2/);
+  assert.match(componentSource, /flexWrap: 'wrap'/);
+  assert.match(componentSource, /getPaperChallengeArchiveChartWidth\(screenWidth\)/);
+  const archiveStart = componentSource.indexOf('const renderArchive');
+  const componentRenderStart = componentSource.indexOf('\n  return (\n    <View style={{ marginBottom: 18 }}', archiveStart);
+  const archiveUi = componentSource.slice(archiveStart, componentRenderStart);
+  assert.doesNotMatch(archiveUi, /updatePaperChallengeStore|savePaperCache|setPositions|setAccounts|setTransactions/);
   assert.match(componentSource, /disabled=\{saving \|\| storeLoadState !== 'ready' \|\| \!\!store\.enrollment\}/);
   assert.match(componentSource, /testID="retry-paper-challenge-history"/);
   assert.match(componentSource, /Could not load your saved event history/);
@@ -241,6 +292,56 @@ test('paper event summary uses account equity change and event-only trades', () 
   }]);
 });
 
+test('new event archive freezes only matching event observations and closing positions', () => {
+  const eventStartAtMs = Date.parse('2026-11-16T14:30:00.000Z');
+  const completedAtMs = Date.parse('2026-11-20T21:00:00.000Z');
+  const accountId = 'paper-event:2026-11-16';
+  const summary = buildPaperChallengeSummary({
+    eventId: '2026-11-16',
+    eventStartAtMs,
+    eventEndAtMs: completedAtMs,
+    joinedAtMs: eventStartAtMs,
+    accountId,
+    accountName: 'Event Portfolio',
+    startEquity: 100_000,
+  }, 101_250, [
+    { id: 'event-sell', accountId, symbol: 'AAPL', action: 'SELL', date: '2026-11-18T15:00:00.000Z', shares: 2, price: 150, total: 300, realizedPnL: 20, fee: 1 },
+    { id: 'other-sell', accountId: 'paper-event:2026-11-30', symbol: 'MSFT', action: 'SELL', date: '2026-11-18T15:00:00.000Z', shares: 1, price: 200, total: 200 },
+  ], completedAtMs, {
+    equityHistory: [
+      { accountId, date: '2026-11-16T14:30:00.000Z', value: 100_000 },
+      { accountId, date: '2026-11-19T16:00:00.000Z', value: 100_900 },
+      { accountId: 'paper-event:2026-11-30', date: '2026-11-19T16:00:00.000Z', value: 500_000 },
+      { accountId, date: '2026-11-21T16:00:00.000Z', value: 999_999 },
+    ],
+    finalPositions: [{
+      symbol: 'AAPL',
+      companyName: 'Apple Inc.',
+      shares: 2,
+      avgCost: 140,
+      marketPrice: 150,
+      marketValue: 300,
+      unrealizedPnL: 20,
+    }],
+  });
+
+  assert.deepEqual(summary.equityHistory, [
+    { date: '2026-11-16T14:30:00.000Z', value: 100_000 },
+    { date: '2026-11-19T16:00:00.000Z', value: 100_900 },
+  ]);
+  assert.deepEqual(summary.transactions?.map((transaction) => transaction.id), ['event-sell']);
+  assert.deepEqual(summary.finalPositions, [{
+    symbol: 'AAPL',
+    companyName: 'Apple Inc.',
+    shares: 2,
+    avgCost: 140,
+    marketPrice: 150,
+    marketValue: 300,
+    unrealizedPnL: 20,
+  }]);
+  assert.equal(summary.endEquity, 101_250);
+});
+
 test('event finalization waits for every held position to have a fresh quote', () => {
   const positions = [
     { symbol: 'AAPL', shares: 2 },
@@ -269,7 +370,20 @@ test('event enrollment and one summary survive reloads without changing other pa
     accountName: 'Event Portfolio',
     startEquity: 100_000,
   };
-  const summary = buildPaperChallengeSummary(enrollment, 101_000, [], Date.parse('2026-11-20T21:00:00.000Z'));
+  const summary = {
+    ...buildPaperChallengeSummary(enrollment, 101_000, [], Date.parse('2026-11-20T21:00:00.000Z')),
+    equityHistory: [{ date: '2026-11-18T15:00:00.000Z', value: 100_500 }],
+    finalPositions: [{
+      symbol: 'AAPL',
+      companyName: 'Apple Inc.',
+      shares: 1,
+      avgCost: 100,
+      marketPrice: 101,
+      marketValue: 101,
+      unrealizedPnL: 1,
+    }],
+    finalRank: 4,
+  };
   const challengeStore: PaperChallengeStore = { enrollment, history: [] };
   const otherPaperData = {
     accounts: [{ id: 'paper-main', name: 'Main', cash: 90_000 }],

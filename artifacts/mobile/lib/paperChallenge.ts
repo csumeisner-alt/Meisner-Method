@@ -1,5 +1,6 @@
 import type {
   PaperAccount,
+  PaperAccountValueSnapshot,
   PaperLot,
   PaperOrder,
   PaperPosition,
@@ -44,6 +45,19 @@ export type PaperChallengeSummary = Omit<PaperChallengeEnrollment, 'startEquity'
   realizedPnL: number;
   completedAtMs: number;
   transactions?: PaperChallengeArchivedTransaction[];
+  equityHistory?: Array<{ date: string; value: number }>;
+  finalPositions?: PaperChallengeArchivedPosition[];
+  finalRank?: number;
+};
+
+export type PaperChallengeArchivedPosition = {
+  symbol: string;
+  companyName: string;
+  shares: number;
+  avgCost: number;
+  marketPrice: number;
+  marketValue: number;
+  unrealizedPnL: number;
 };
 
 export type PaperChallengeArchivedTransaction = {
@@ -84,9 +98,38 @@ export function normalizePaperChallengeStore(store: PaperChallengeStore): PaperC
     if (!event || typeof event.eventId !== 'string' || seenEventIds.has(event.eventId)) return false;
     seenEventIds.add(event.eventId);
     return true;
-  }).map((event) => ({
+  }).map(({ transactions, equityHistory, finalPositions, finalRank, ...event }) => ({
     ...event,
-    transactions: Array.isArray(event.transactions) ? event.transactions : [],
+    ...(Array.isArray(transactions) ? { transactions } : {}),
+    ...(Array.isArray(equityHistory)
+      ? {
+          equityHistory: equityHistory.filter((point) =>
+            !!point
+            && typeof point.date === 'string'
+            && Number.isFinite(Date.parse(point.date))
+            && Number.isFinite(point.value),
+          ).map((point) => ({ date: point.date, value: point.value }))
+            .sort((a, b) => Date.parse(a.date) - Date.parse(b.date)),
+        }
+      : {}),
+    ...(Array.isArray(finalPositions)
+      ? {
+          finalPositions: finalPositions.filter((position) =>
+            !!position
+            && typeof position.symbol === 'string'
+            && typeof position.companyName === 'string'
+            && Number.isFinite(position.shares)
+            && position.shares > 0
+            && Number.isFinite(position.avgCost)
+            && position.avgCost >= 0
+            && Number.isFinite(position.marketPrice)
+            && position.marketPrice > 0
+            && Number.isFinite(position.marketValue)
+            && Number.isFinite(position.unrealizedPnL),
+          ),
+        }
+      : {}),
+    ...(Number.isInteger(finalRank) && (finalRank ?? 0) > 0 ? { finalRank } : {}),
   }));
   return {
     enrollment: store.enrollment ?? null,
@@ -381,11 +424,23 @@ export function getPaperChallengeReminders(nowMs = Date.now()): PaperChallengeRe
 
 export function sortPaperChallengeHistory(
   history: PaperChallengeSummary[],
-  mode: 'date' | 'top',
+  mode: 'date' | 'top' | 'low' | 'positive' | 'negative',
 ): PaperChallengeSummary[] {
-  return [...history].sort((a, b) => mode === 'top'
-    ? b.returnPercent - a.returnPercent || b.eventStartAtMs - a.eventStartAtMs
-    : b.eventStartAtMs - a.eventStartAtMs);
+  const filtered = history.filter((event) =>
+    mode === 'positive' ? event.returnPercent > 0
+      : mode === 'negative' ? event.returnPercent < 0
+        : true,
+  );
+  return [...filtered].sort((a, b) => {
+    if (mode === 'top') return b.returnPercent - a.returnPercent || b.eventStartAtMs - a.eventStartAtMs;
+    if (mode === 'low') return a.returnPercent - b.returnPercent || b.eventStartAtMs - a.eventStartAtMs;
+    return b.eventStartAtMs - a.eventStartAtMs;
+  });
+}
+
+export function getPaperChallengeArchiveChartWidth(screenWidth: number): number {
+  if (!Number.isFinite(screenWidth) || screenWidth <= 0) return 180;
+  return Math.max(180, screenWidth - 68);
 }
 
 export function capturePaperChallengeBaseline(
@@ -416,6 +471,11 @@ export function buildPaperChallengeSummary(
     fee?: number;
   }>,
   completedAtMs = Date.now(),
+  archive?: {
+    equityHistory?: PaperAccountValueSnapshot[];
+    finalPositions?: PaperChallengeArchivedPosition[];
+    finalRank?: number;
+  },
 ): PaperChallengeSummary {
   const eventTransactions = transactions.filter((transaction) => {
     const timestamp = Date.parse(transaction.date);
@@ -455,5 +515,24 @@ export function buildPaperChallengeSummary(
       realizedPnL: transaction.realizedPnL,
       fee: transaction.fee,
     })),
+    ...(archive?.equityHistory
+      ? {
+          equityHistory: archive.equityHistory
+            .filter((snapshot) => snapshot.accountId === enrollment.accountId)
+            .filter((snapshot) => {
+              const timestamp = Date.parse(snapshot.date);
+              return Number.isFinite(timestamp)
+                && timestamp >= enrollment.eventStartAtMs
+                && timestamp <= completedAtMs
+                && Number.isFinite(snapshot.value);
+            })
+            .map(({ date, value }) => ({ date, value }))
+            .sort((a, b) => Date.parse(a.date) - Date.parse(b.date)),
+        }
+      : {}),
+    ...(archive?.finalPositions ? { finalPositions: archive.finalPositions } : {}),
+    ...(Number.isInteger(archive?.finalRank) && (archive?.finalRank ?? 0) > 0
+      ? { finalRank: archive!.finalRank }
+      : {}),
   };
 }

@@ -172,9 +172,10 @@ test("order-entry controls stay flexible for narrow screens and the Android keyb
   assert.match(orderReview, /limit order may remain pending and is not guaranteed to fill/i);
 });
 
-test("completed Event Arena records retain and expose their transaction history", () => {
+test("completed Event Arena records retain trades and distinguish missing legacy records", () => {
   assert.match(challenge, /transactions: eventTransactions\.map/);
   assert.match(events, /toggle-paper-event-trades-/);
   assert.match(events, /paper-event-trades-/);
-  assert.match(events, /event\.transactions\?\.length/);
+  assert.match(events, /event\.transactions === undefined/);
+  assert.match(events, /archiveTrades === undefined/);
 });

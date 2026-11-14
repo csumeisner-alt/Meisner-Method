@@ -996,7 +996,46 @@ export default function PaperScreen() {
       if (!Number.isFinite(endEquity)) throw new Error('Event account data is incomplete.');
       const startEquity = enrollment.startEquity;
       if (startEquity === null) return;
-      const summary = buildPaperChallengeSummary({ ...enrollment, startEquity }, endEquity, transactionsRef.current);
+      const completedAtMs = Date.now();
+      const eventEquityHistory = accountValueSnapshotsRef.current.filter(
+        (snapshot) => snapshot.accountId === enrollment.accountId,
+      );
+      const summary = buildPaperChallengeSummary(
+        { ...enrollment, startEquity },
+        endEquity,
+        transactionsRef.current,
+        completedAtMs,
+        {
+          equityHistory: [
+            {
+              accountId: enrollment.accountId,
+              date: new Date(enrollment.joinedAtMs).toISOString(),
+              value: startEquity,
+            },
+            ...eventEquityHistory,
+            {
+              accountId: enrollment.accountId,
+              date: new Date(completedAtMs).toISOString(),
+              value: endEquity,
+            },
+          ],
+          finalPositions: eventPositions.map((position) => {
+            const marketPrice = freshQuotes[position.symbol]?.price;
+            if (!Number.isFinite(marketPrice) || marketPrice <= 0) {
+              throw new Error(`A final price is unavailable for ${position.symbol}.`);
+            }
+            return {
+              symbol: position.symbol,
+              companyName: position.companyName,
+              shares: position.shares,
+              avgCost: position.avgCost,
+              marketPrice,
+              marketValue: position.shares * marketPrice,
+              unrealizedPnL: position.shares * (marketPrice - position.avgCost),
+            };
+          }),
+        },
+      );
       const latestStore = paperChallengeRef.current;
       if (latestStore.enrollment?.eventId !== enrollment.eventId) return;
       const fallbackAccount = accountsRef.current.find((item) => !item.id.startsWith('paper-event:'));

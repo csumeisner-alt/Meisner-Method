@@ -8,6 +8,7 @@ import {
   Switch,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -18,9 +19,11 @@ import { useColors } from '@/hooks/useColors';
 import { PaperEventShareCard } from '@/components/PaperEventShareCard';
 import { PaperChallengeMilestoneBadges } from '@/components/PaperChallengeMilestoneBadges';
 import { PaperChallengeLeaderboard } from '@/components/PaperChallengeLeaderboard';
+import { PortfolioLineChart } from '@/components/PaperCharts';
 import {
   getPaperChallengeMilestones,
   getPaperChallengePersonalBestProgress,
+  getPaperChallengeArchiveChartWidth,
   getPaperChallengeReminders,
   getPaperChallengeWindow,
   loadPaperChallengeStore,
@@ -103,17 +106,29 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
   const [now, setNow] = useState(Date.now());
   const [saving, setSaving] = useState(false);
   const [confirmWithdraw, setConfirmWithdraw] = useState(false);
-  const [sortMode, setSortMode] = useState<'date' | 'top'>('date');
+  const [sortMode, setSortMode] = useState<'date' | 'top' | 'low' | 'positive' | 'negative'>('date');
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [selectedArchiveEventId, setSelectedArchiveEventId] = useState<string | null>(null);
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
+  const modalScrollRef = useRef<ScrollView | null>(null);
+  const { width: screenWidth } = useWindowDimensions();
   const [positionValue, setPositionValue] = useState<{ equity: number; profit: number; returnPercent: number; usedFallbackPrice: boolean } | null>(null);
   const [positionLoading, setPositionLoading] = useState(false);
   const currentWindow = getPaperChallengeWindow(now);
   const hasCurrentEnrollment = store.enrollment?.eventId === currentWindow.id;
   const sortedHistory = sortPaperChallengeHistory(store.history, sortMode);
+  const selectedArchiveEvent = store.history.find((event) => event.eventId === selectedArchiveEventId) ?? null;
   const personalBestProgress = positionValue && !positionValue.usedFallbackPrice
     ? getPaperChallengePersonalBestProgress(store.history, currentWindow.startAtMs, positionValue.returnPercent)
     : null;
   const midweekAt = currentWindow.startAtMs + 2 * DAY_MS + 2.5 * 60 * 60 * 1000;
+
+  const returnToArena = () => {
+    setArchiveOpen(false);
+    setSelectedArchiveEventId(null);
+    setSortMode('date');
+    modalScrollRef.current?.scrollTo({ y: 0, animated: false });
+  };
 
   const updateLeaderboardEnrollment = useCallback((enrollment: PaperChallengeEnrollment | null) => {
     setStore((current) => ({ ...current, enrollment }));
@@ -231,7 +246,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
     const text = [
       'Meisner Method · Paper Event Results',
       dateRange(event.eventStartAtMs, event.eventEndAtMs),
-      `Starting balance: ${money(PAPER_CHALLENGE_STARTING_BALANCE)}`,
+      `Starting balance: ${money(event.startEquity)}`,
       `Ending balance: ${money(event.endEquity)}`,
       `Return: ${event.returnPercent >= 0 ? '+' : ''}${event.returnPercent.toFixed(2)}% (${money(event.netProfit)})`,
       `Trades: ${event.buyCount ?? 0} buys, ${event.sellCount ?? 0} sells`,
@@ -355,6 +370,279 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
     }
   };
 
+  const renderArchive = () => {
+    if (selectedArchiveEvent) {
+      const event = selectedArchiveEvent;
+      const equityHistory = event.equityHistory ?? [];
+      const archiveTrades = event.transactions;
+      const archivedPositions = event.finalPositions;
+      const metricTile = (label: string, value: string, valueColor = colors.foreground) => (
+        <View key={label} style={{ flexGrow: 1, flexBasis: '44%', minWidth: 128, padding: 12, borderRadius: 10, backgroundColor: colors.background }}>
+          <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10 }}>{label}</Text>
+          <Text style={{ color: valueColor, fontFamily: 'Inter_700Bold', fontSize: 14, marginTop: 4 }}>{value}</Text>
+        </View>
+      );
+      return (
+        <View testID={`paper-event-detail-${event.eventId}`} style={{ gap: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <TouchableOpacity
+              testID="paper-event-detail-back"
+              accessibilityRole="button"
+              accessibilityLabel="Back to past events"
+              onPress={() => setSelectedArchiveEventId(null)}
+              hitSlop={8}
+              style={{ padding: 4 }}
+            >
+              <Feather name="arrow-left" size={18} color={colors.primary} />
+            </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 17 }}>Event results</Text>
+              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 3 }}>
+                {dateRange(event.eventStartAtMs, event.eventEndAtMs)}
+              </Text>
+            </View>
+          </View>
+
+          <View style={{ padding: 14, borderRadius: 13, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, gap: 10 }}>
+            <Text selectable style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10 }}>
+              Event ID · {event.eventId}
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {metricTile('Starting value', money(event.startEquity))}
+              {metricTile('Final value', money(event.endEquity))}
+              {metricTile('Profit / loss', `${event.netProfit >= 0 ? '+' : ''}${money(event.netProfit)}`, event.netProfit >= 0 ? colors.primary : colors.destructive)}
+              {metricTile('Return', `${event.returnPercent >= 0 ? '+' : ''}${event.returnPercent.toFixed(2)}%`, event.returnPercent >= 0 ? colors.primary : colors.destructive)}
+              {metricTile('Recorded trades', String(event.tradeCount))}
+              {metricTile('Final rank', event.finalRank ? `#${event.finalRank}` : 'Unavailable')}
+            </View>
+            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15 }}>
+              Final ranking is shown only when it was saved with this event.
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
+              <TouchableOpacity
+                testID={`share-paper-event-${event.eventId}`}
+                accessibilityRole="button"
+                onPress={() => { void shareSummary(event); }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 5 }}
+              >
+                <Feather name="share" size={15} color={colors.primary} />
+                <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>Share summary</Text>
+              </TouchableOpacity>
+              {Platform.OS !== 'web' && (
+                <TouchableOpacity
+                  testID={`share-paper-event-image-${event.eventId}`}
+                  accessibilityRole="button"
+                  onPress={() => setImageShareEvent(event)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 5 }}
+                >
+                  <Feather name="image" size={15} color={colors.primary} />
+                  <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>Share result image</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          <View style={{ padding: 14, borderRadius: 13, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>Recorded equity</Text>
+            {equityHistory.length >= 2 ? (
+              <>
+                <PortfolioLineChart
+                  points={equityHistory}
+                  width={getPaperChallengeArchiveChartWidth(screenWidth)}
+                  height={180}
+                  referenceLine={{ value: event.startEquity, label: 'Start' }}
+                />
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10 }}>
+                  {equityHistory.length} saved observations · no missing periods are estimated
+                </Text>
+              </>
+            ) : (
+              <Text testID="paper-event-equity-unavailable" style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 7 }}>
+                {equityHistory.length === 1
+                  ? 'Only one equity observation was saved; a chart period is unavailable.'
+                  : 'Equity history is unavailable because no observations were retained.'}
+              </Text>
+            )}
+            {equityHistory.map((point, index) => (
+              <View key={`${point.date}-${index}`} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, paddingTop: 8 }}>
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10 }}>
+                  {new Date(point.date).toLocaleString()}
+                </Text>
+                <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>{money(point.value)}</Text>
+              </View>
+            ))}
+          </View>
+
+          <View style={{ padding: 14, borderRadius: 13, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>Positions at close</Text>
+            {archivedPositions === undefined ? (
+              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 7 }}>
+                Final positions are unavailable for this older event.
+              </Text>
+            ) : archivedPositions.length === 0 ? (
+              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 7 }}>
+                No positions were held when this event was finalized.
+              </Text>
+            ) : archivedPositions.map((position) => (
+              <View key={position.symbol} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>{position.symbol} · {position.shares} shares</Text>
+                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>
+                    {position.companyName} · close {money(position.marketPrice)}
+                  </Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>{money(position.marketValue)}</Text>
+                  <Text style={{ color: position.unrealizedPnL >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_400Regular', fontSize: 9, marginTop: 3 }}>
+                    {position.unrealizedPnL >= 0 ? '+' : ''}{money(position.unrealizedPnL)}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+
+          <View style={{ padding: 14, borderRadius: 13, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>Completed trades</Text>
+            {archiveTrades === undefined ? (
+              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 7 }}>
+                Trade records are unavailable for this older event.
+              </Text>
+            ) : archiveTrades.length === 0 ? (
+              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 7 }}>
+                No completed trades were recorded for this event.
+              </Text>
+            ) : [...archiveTrades].sort((a, b) => Date.parse(b.date) - Date.parse(a.date)).map((transaction, index) => {
+              const net = transaction.realizedPnL === undefined
+                ? null
+                : transaction.realizedPnL - (transaction.fee ?? 0);
+              const actionColor = transaction.action === 'BUY'
+                ? colors.primary
+                : transaction.action === 'SELL'
+                  ? colors.destructive
+                  : colors.mutedForeground;
+              return (
+                <View key={transaction.id ?? `${transaction.date}-${transaction.symbol}-${index}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                  <Text style={{ minWidth: 42, color: actionColor, fontFamily: 'Inter_700Bold', fontSize: 9 }}>{transaction.action}</Text>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>
+                      {transaction.symbol}{transaction.shares === undefined ? '' : ` · ${transaction.shares} shares`}
+                    </Text>
+                    <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 9, marginTop: 2 }}>
+                      {new Date(transaction.date).toLocaleString()}{transaction.price === undefined ? '' : ` · ${money(transaction.price)}`}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    {transaction.total === undefined ? (
+                      <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 9 }}>Value unavailable</Text>
+                    ) : (
+                      <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>{money(transaction.total)}</Text>
+                    )}
+                    {transaction.action === 'SELL' && (
+                      <Text style={{ color: net === null ? colors.mutedForeground : net >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 9, marginTop: 2 }}>
+                        {net === null ? 'P/L unavailable' : `${net >= 0 ? '+' : ''}${money(net)}`}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      );
+    }
+
+    const filters: Array<{ key: typeof sortMode; label: string }> = [
+      { key: 'date', label: 'Recent' },
+      { key: 'top', label: 'Highest return' },
+      { key: 'low', label: 'Lowest return' },
+      { key: 'positive', label: 'Positive' },
+      { key: 'negative', label: 'Negative' },
+    ];
+    return (
+      <View testID="paper-event-archive" style={{ gap: 12 }}>
+        <TouchableOpacity
+          testID="paper-event-return-active"
+          accessibilityRole="button"
+          onPress={returnToArena}
+          style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, borderRadius: 10, backgroundColor: colors.primary }}
+        >
+          <Feather name="arrow-left" size={16} color={colors.primaryForeground} />
+          <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>Return to active competition</Text>
+        </TouchableOpacity>
+        <View>
+          <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 17 }}>Past Events</Text>
+          <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 4 }}>
+            Saved event records only. Older events may not include trades, positions, or chart observations.
+          </Text>
+        </View>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
+          {filters.map((option) => (
+            <TouchableOpacity
+              key={option.key}
+              testID={`paper-event-filter-${option.key}`}
+              accessibilityRole="button"
+              accessibilityState={{ selected: sortMode === option.key }}
+              onPress={() => setSortMode(option.key)}
+              style={{ paddingVertical: 8, paddingHorizontal: 10, borderRadius: 9, backgroundColor: sortMode === option.key ? colors.primary : colors.card, borderWidth: 1, borderColor: sortMode === option.key ? colors.primary : colors.border }}
+            >
+              <Text style={{ color: sortMode === option.key ? colors.primaryForeground : colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>
+                {option.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        {storeLoadState === 'loading' ? (
+          <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, paddingVertical: 14 }}>Loading saved events…</Text>
+        ) : storeLoadState === 'error' ? (
+          <Text testID="paper-event-archive-unavailable" style={{ color: colors.destructive, fontFamily: 'Inter_600SemiBold', fontSize: 12, lineHeight: 18, paddingVertical: 12 }}>
+            Saved event history is unavailable. Return to Event Arena and retry loading before opening the archive.
+          </Text>
+        ) : sortedHistory.length === 0 ? (
+          <Text testID="paper-event-archive-empty" style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, paddingVertical: 14 }}>
+            {sortMode === 'positive' || sortMode === 'negative'
+              ? `No ${sortMode} event results are in the saved history.`
+              : 'Completed event results will appear here after they are finalized.'}
+          </Text>
+        ) : sortedHistory.map((event) => (
+          <TouchableOpacity
+            key={event.eventId}
+            testID={`paper-event-card-${event.eventId}`}
+            accessibilityRole="button"
+            accessibilityLabel={`Open event ${dateRange(event.eventStartAtMs, event.eventEndAtMs)}, return ${event.returnPercent.toFixed(2)} percent`}
+            onPress={() => setSelectedArchiveEventId(event.eventId)}
+            style={{ padding: 14, borderRadius: 13, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>{dateRange(event.eventStartAtMs, event.eventEndAtMs)}</Text>
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 4 }}>
+                  {event.eventId} · {event.tradeCount} trades
+                </Text>
+              </View>
+              <Text style={{ color: event.returnPercent >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 14 }}>
+                {event.returnPercent >= 0 ? '+' : ''}{event.returnPercent.toFixed(2)}%
+              </Text>
+            </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 11 }}>
+              {[
+                ['Start', money(event.startEquity)],
+                ['Final', money(event.endEquity)],
+                ['P/L', `${event.netProfit >= 0 ? '+' : ''}${money(event.netProfit)}`],
+                ['Rank', event.finalRank ? `#${event.finalRank}` : 'Unavailable'],
+              ].map(([label, value]) => (
+                <View key={label} style={{ flexGrow: 1, flexBasis: '43%', padding: 9, borderRadius: 8, backgroundColor: colors.background }}>
+                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 9 }}>{label}</Text>
+                  <Text style={{ color: label === 'P/L' ? event.netProfit >= 0 ? colors.primary : colors.destructive : colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 11, marginTop: 3 }}>{value}</Text>
+                </View>
+              ))}
+            </View>
+            <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10, marginTop: 10 }}>VIEW EVENT DETAILS</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    );
+  };
+
   return (
     <View style={{ marginBottom: 18 }}>
       <TouchableOpacity
@@ -381,19 +669,35 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
         <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
       </TouchableOpacity>
 
-      <Modal visible={eventsOpen} animationType="slide" onRequestClose={() => setEventsOpen(false)}>
+      <Modal visible={eventsOpen} animationType="slide" onRequestClose={() => { returnToArena(); setEventsOpen(false); }}>
         <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: Platform.OS === 'web' ? 24 : insets.top + 8 }}>
           <View style={{ paddingHorizontal: 18, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center' }}>
-            <Text allowFontScaling style={{ flex: 1, minWidth: 0, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20 }}>Event Arena</Text>
-            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close events" onPress={() => setEventsOpen(false)} hitSlop={10}>
+            {archiveOpen && (
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Back to Event Arena"
+                onPress={returnToArena}
+                hitSlop={10}
+                style={{ marginRight: 10, padding: 2 }}
+              >
+                <Feather name="arrow-left" size={20} color={colors.primary} />
+              </TouchableOpacity>
+            )}
+            <Text allowFontScaling style={{ flex: 1, minWidth: 0, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20 }}>
+              {archiveOpen ? selectedArchiveEvent ? 'Event Results' : 'Past Events' : 'Event Arena'}
+            </Text>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close events" onPress={() => { returnToArena(); setEventsOpen(false); }} hitSlop={10}>
               <Feather name="x" size={22} color={colors.mutedForeground} />
             </TouchableOpacity>
           </View>
           <ScrollView
+            ref={modalScrollRef}
             style={{ flex: 1 }}
             contentContainerStyle={{ padding: 18, paddingBottom: Platform.OS === 'web' ? 24 : insets.bottom + 18 }}
             showsVerticalScrollIndicator={false}
           >
+            {archiveOpen ? renderArchive() : (
+              <>
             <View style={{ padding: 16, borderRadius: 14, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
               {storeLoadState === 'error' && (
                 <View style={{ marginBottom: 14, padding: 12, borderRadius: 10, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.destructive }}>
@@ -577,7 +881,18 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
             </View>
 
             <View style={{ marginTop: 18, marginBottom: 8 }}>
-              <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 16 }}>Your past events</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={{ flex: 1, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 16 }}>Your past events</Text>
+                <TouchableOpacity
+                  testID="open-paper-event-archive"
+                  accessibilityRole="button"
+                  onPress={() => { setSelectedArchiveEventId(null); setArchiveOpen(true); }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 7, paddingHorizontal: 8 }}
+                >
+                  <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10 }}>FULL ARCHIVE</Text>
+                  <Feather name="chevron-right" size={14} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
                 {([
                   { key: 'date' as const, label: 'Date' },
@@ -613,7 +928,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                       {sortMode === 'top' ? `#${index + 1} · ` : ''}{dateRange(event.eventStartAtMs, event.eventEndAtMs)}
                     </Text>
                     <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 3 }}>
-                      $100,000 start · {event.buyCount ?? 0} buys · {event.sellCount ?? 0} sells
+                      Start {money(event.startEquity)} · {event.tradeCount} trades
                     </Text>
                     <Text style={{ color: event.netProfit >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 14 }}>
                       {money(event.netProfit)}
@@ -644,7 +959,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                     )}
                   </View>
                   <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 5 }}>
-                    End {money(event.endEquity)} · {event.returnPercent >= 0 ? '+' : ''}{event.returnPercent.toFixed(2)}% · realized {money(event.realizedPnL)}
+                    End {money(event.endEquity)} · {event.returnPercent >= 0 ? '+' : ''}{event.returnPercent.toFixed(2)}%
                   </Text>
                   <PaperChallengeMilestoneBadges milestones={getPaperChallengeMilestones(event, store.history)} compact />
                   {(event.symbolsTraded ?? []).length > 0 && (
@@ -664,16 +979,20 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                     style={{ alignSelf: 'flex-start', paddingVertical: 9, paddingHorizontal: 4, marginTop: 3 }}
                   >
                     <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11 }}>
-                      {expandedEventId === event.eventId ? 'HIDE' : 'VIEW'} ARCHIVED TRADES ({event.transactions?.length ?? 0})
+                      {expandedEventId === event.eventId ? 'HIDE' : 'VIEW'} ARCHIVED TRADES ({event.transactions === undefined ? 'unavailable' : event.transactions.length})
                     </Text>
                   </TouchableOpacity>
                   {expandedEventId === event.eventId && (
                     <View testID={`paper-event-trades-${event.eventId}`} style={{ marginTop: 2, padding: 10, borderRadius: 10, backgroundColor: colors.background, gap: 8 }}>
-                      {(event.transactions ?? []).length === 0 ? (
+                      {event.transactions === undefined ? (
                         <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11 }}>
-                          No transactions were recorded for this event.
+                          Trade records are unavailable for this older event.
                         </Text>
-                      ) : [...(event.transactions ?? [])]
+                      ) : event.transactions.length === 0 ? (
+                        <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11 }}>
+                          No completed trades were recorded for this event.
+                        </Text>
+                      ) : [...event.transactions]
                         .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
                         .map((transaction, transactionIndex) => {
                           const net = (transaction.realizedPnL ?? 0) - (transaction.fee ?? 0);
@@ -713,6 +1032,8 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                 </View>
               ))}
             </View>
+              </>
+            )}
           </ScrollView>
         </View>
       </Modal>
