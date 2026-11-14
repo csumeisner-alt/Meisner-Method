@@ -165,6 +165,7 @@ export function EventArenaScreen() {
   const currentWindow = getPaperChallengeWindow(now);
   const hasCurrentEnrollment = store.enrollment?.eventId === currentWindow.id;
   const enrollment = hasCurrentEnrollment ? store.enrollment : null;
+  const participantAlias = enrollment?.leaderboardAlias?.trim();
   const participation = getEventArenaParticipation(currentWindow, store.enrollment, now);
   const countdown = getEventArenaCountdown(currentWindow, now);
   const performance = enrollment
@@ -657,7 +658,15 @@ export function EventArenaScreen() {
             <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 18 }}>Event Arena</Text>
             <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 2 }}>Competition hub</Text>
           </View>
-          <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.6 }}>MEISNER</Text>
+          <Text
+            testID="event-arena-header-alias"
+            accessibilityLabel={participantAlias ? `Competition alias ${participantAlias}` : 'Meisner Method'}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            style={{ maxWidth: 140, minWidth: 0, flexShrink: 1, color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.6, textAlign: 'right' }}
+          >
+            {participantAlias || 'MEISNER'}
+          </Text>
         </View>
         <View style={{ flexDirection: 'row', gap: 4, paddingVertical: 7 }}>
           {SECTIONS.map((item) => {

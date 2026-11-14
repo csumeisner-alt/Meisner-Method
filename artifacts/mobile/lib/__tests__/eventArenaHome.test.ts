@@ -166,6 +166,9 @@ test('Event Arena is a dedicated destination with separate competition sections'
   assert.match(screen, /getEventArenaPerformance\(enrollment, currentWindow, accountData, quotes, now\)/);
   assert.match(screen, /onEnrollmentChange=\{updateLeaderboardEnrollment\}/);
   assert.match(screen, /onRankChange=\{setRank\}/);
+  assert.match(screen, /const participantAlias = enrollment\?\.leaderboardAlias\?\.trim\(\)/);
+  assert.match(screen, /testID="event-arena-header-alias"/);
+  assert.match(screen, /\{participantAlias \|\| 'MEISNER'\}/);
   assert.match(screen, /sortPaperChallengeHistory\(store\.history, sortMode\)/);
   assert.match(screen, /accountData\.transactions[\s\S]*item\.accountId === eventAccountId/);
   assert.match(overview, /points=\{chartPoints\}/);
