@@ -175,8 +175,14 @@ test("championship leaderboard shows real podium scores, event context, and belo
   assert.match(leaderboard, /\{returnLabel\(entry\.returnPercent\)\}/);
   assert.match(leaderboard, /\{signedMoney\(entry\.profitLoss\)\}/);
   assert.match(leaderboard, /\{money\(entry\.equity\)\}/);
+  assert.match(leaderboard, /\{money\(entry\.equity\)\} value/);
+  assert.match(leaderboard, /\{signedMoney\(entry\.profitLoss\)\} P\/L/);
+  assert.match(leaderboard, /testID="paper-event-leaderboard-current-user"/);
+  assert.match(leaderboard, /\{money\(ownEntry\.equity\)\}/);
+  assert.match(leaderboard, /\{returnLabel\(ownEntry\.returnPercent\)\}/);
   assert.doesNotMatch(leaderboard, /paper-event-leaderboard-your-position/);
-  assert.doesNotMatch(leaderboard, /PROFIT \/ LOSS|ACCOUNT VALUE/);
+  assert.match(leaderboard, /REPORTED ACCOUNT VALUE/);
+  assert.match(leaderboard, /\{signedMoney\(ownEntry\.profitLoss\)\}/);
   assert.match(leaderboard, /standingsEntries\.map\(\(entry\) => renderEntry\(entry as LeaderboardEntry\)\)/);
   assert.match(leaderboard, /entry\.isCurrentUser/);
   assert.match(leaderboard, /SELF-REPORTED · NOT INDEPENDENTLY VERIFIED/);
@@ -214,6 +220,9 @@ test("competitive progress stays tied to successful event responses and readable
   assert.match(leaderboard, /flexWrap: 'wrap'/);
   assert.match(leaderboard, /minWidth: 0/);
   assert.match(leaderboard, /const compactPodium = windowWidth <= 360/);
+  assert.match(leaderboard, /const widePodium = windowWidth >= 520/);
+  assert.match(leaderboard, /renderPodiumCard\(podiumSlots\[1\]\)[\s\S]*?renderPodiumCard\(podiumSlots\[0\]\)[\s\S]*?renderPodiumCard\(podiumSlots\[2\]\)/);
+  assert.match(leaderboard, /maxWidth: 1000/);
   assert.match(leaderboard, /fontSize: isChampion \? compactPodium \? 20 : 23 : compactPodium \? 14 : 16/);
   assert.match(leaderboard, /fontSize: isChampion \? compactPodium \? 27 : 31 : compactPodium \? 18 : 21/);
 
