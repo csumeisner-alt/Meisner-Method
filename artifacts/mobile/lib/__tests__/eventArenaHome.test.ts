@@ -193,3 +193,15 @@ test('Event Arena is a dedicated destination with separate competition sections'
   assert.match(paper, /shouldEnsurePaperChallengeAccount\(enrollment, challengeNow\)/);
   assert.match(paper, /Date\.now\(\) < enrollment\.eventStartAtMs/);
 });
+
+test('Event Arena signup save failures are visible on web and preserve native alerts', async () => {
+  const testDirectory = dirname(fileURLToPath(import.meta.url));
+  const screen = await readFile(resolve(testDirectory, '../../components/EventArenaScreen.tsx'), 'utf8');
+
+  assert.match(
+    screen,
+    /catch \{\s*if \(Platform\.OS === 'web'\) \{\s*setJoinAliasError\('Your event signup was not saved\. Your enrollment is unchanged\. Please try again\.'\);\s*\} else \{\s*Alert\.alert\('Could not join', 'Your event enrollment was not saved\. Please try again\.'\);\s*\}/,
+  );
+  assert.match(screen, /joinAliasError \? \(\s*<Text accessibilityRole="alert"[^>]*>[\s\S]*?\{joinAliasError\}/);
+  assert.match(screen, /const updated = await updatePaperChallengeStore[\s\S]*?setStore\(updated\);[\s\S]*?catch \{/);
+});

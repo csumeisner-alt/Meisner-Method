@@ -302,6 +302,7 @@ export function EventArenaScreen() {
       setJoinAliasError('Enter an alias with 1–24 characters.');
       return;
     }
+    setJoinAliasError('');
     setSaving(true);
     const newEnrollment: PaperChallengeEnrollment = {
       eventId: event.id,
@@ -329,7 +330,11 @@ export function EventArenaScreen() {
         setSection('competition');
       }
     } catch {
-      Alert.alert('Could not join', 'Your event enrollment was not saved. Please try again.');
+      if (Platform.OS === 'web') {
+        setJoinAliasError('Your event signup was not saved. Your enrollment is unchanged. Please try again.');
+      } else {
+        Alert.alert('Could not join', 'Your event enrollment was not saved. Please try again.');
+      }
     } finally {
       setSaving(false);
     }
