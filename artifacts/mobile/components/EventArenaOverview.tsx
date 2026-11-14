@@ -31,6 +31,8 @@ export type EventArenaOverviewProps = {
   onJoin: () => void;
   onWithdraw: () => void;
   onRefresh: () => void;
+  onOpenNotifications: () => void;
+  unreadCashNotifications: number;
   onOpenTrades: () => void;
 };
 
@@ -82,6 +84,8 @@ export function EventArenaOverview({
   onJoin,
   onWithdraw,
   onRefresh,
+  onOpenNotifications,
+  unreadCashNotifications,
   onOpenTrades,
 }: EventArenaOverviewProps) {
   const colors = useColors();
@@ -151,6 +155,24 @@ export function EventArenaOverview({
         <View style={styles.topline}>
           <View style={styles.brandMark}><Feather name="activity" size={15} color={accent} /></View>
           <Text style={[styles.eyebrow, { color: muted }]}>MEISNER METHOD  /  EVENT ARENA</Text>
+          {joined && livePhase === 'active' ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={unreadCashNotifications > 0
+                ? `Open cash notifications, ${unreadCashNotifications} unread`
+                : 'Open cash notifications'}
+              testID="event-arena-cash-notifications"
+              onPress={onOpenNotifications}
+              style={({ pressed }) => [styles.iconButton, { borderColor: border, opacity: pressed ? 0.65 : 1 }]}
+            >
+              <Feather name="bell" size={16} color={ink} />
+              {unreadCashNotifications > 0 ? (
+                <View testID="event-arena-cash-notification-badge" style={styles.notificationBadge}>
+                  <Text style={styles.notificationBadgeText}>{unreadCashNotifications > 9 ? '9+' : unreadCashNotifications}</Text>
+                </View>
+              ) : null}
+            </Pressable>
+          ) : null}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Refresh event overview"
@@ -382,6 +404,8 @@ const styles = StyleSheet.create({
   brandMark: { width: 28, height: 28, borderRadius: 9, backgroundColor: 'rgba(184,149,90,0.12)', alignItems: 'center', justifyContent: 'center' },
   eyebrow: { flex: 1, fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 1.05 },
   iconButton: { width: 44, height: 44, borderWidth: StyleSheet.hairlineWidth, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  notificationBadge: { position: 'absolute', top: -4, right: -4, minWidth: 16, height: 16, paddingHorizontal: 3, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: '#bc6863' },
+  notificationBadgeText: { color: '#fff', fontFamily: 'Inter_700Bold', fontSize: 8 },
   heroCard: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 24, padding: 18, overflow: 'hidden' },
   heroTop: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 12 },
   liveDot: { width: 7, height: 7, borderRadius: 4 },

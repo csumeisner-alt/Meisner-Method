@@ -155,9 +155,11 @@ async function runSchemaMigrations(): Promise<void> {
     CREATE TABLE IF NOT EXISTS event_arena_leaderboard_entries (
       event_id TEXT NOT NULL,
       installation_id TEXT NOT NULL,
+      participant_token TEXT NOT NULL DEFAULT gen_random_uuid()::text,
       alias TEXT NOT NULL,
       start_equity DOUBLE PRECISION NOT NULL,
       equity DOUBLE PRECISION NOT NULL,
+      cash_balance DOUBLE PRECISION NOT NULL DEFAULT 100000,
       return_percent DOUBLE PRECISION NOT NULL,
       trade_count INTEGER,
       holdings JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -174,6 +176,39 @@ async function runSchemaMigrations(): Promise<void> {
   await pool.query(
     "ALTER TABLE event_arena_leaderboard_entries ADD COLUMN IF NOT EXISTS trade_count INTEGER",
   );
+  await pool.query(
+    "ALTER TABLE event_arena_leaderboard_entries ADD COLUMN IF NOT EXISTS participant_token TEXT",
+  );
+  await pool.query(
+    "UPDATE event_arena_leaderboard_entries SET participant_token=gen_random_uuid()::text WHERE participant_token IS NULL",
+  );
+  await pool.query(
+    "ALTER TABLE event_arena_leaderboard_entries ALTER COLUMN participant_token SET DEFAULT gen_random_uuid()::text",
+  );
+  await pool.query(
+    "ALTER TABLE event_arena_leaderboard_entries ALTER COLUMN participant_token SET NOT NULL",
+  );
+  await pool.query(
+    "ALTER TABLE event_arena_leaderboard_entries ADD COLUMN IF NOT EXISTS cash_balance DOUBLE PRECISION NOT NULL DEFAULT 100000",
+  );
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS event_arena_cash_transfers (
+      event_id TEXT NOT NULL,
+      transfer_ref TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL,
+      sender_installation_id TEXT NOT NULL,
+      recipient_installation_id TEXT NOT NULL,
+      sender_alias TEXT NOT NULL,
+      recipient_alias TEXT NOT NULL,
+      amount DOUBLE PRECISION NOT NULL CHECK (amount > 0),
+      event_start_at TIMESTAMPTZ NOT NULL,
+      event_end_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      read_at TIMESTAMPTZ,
+      PRIMARY KEY (event_id, transfer_ref),
+      UNIQUE (event_id, sender_installation_id, idempotency_key)
+    )
+  `);
   await pool.query(`
     CREATE INDEX IF NOT EXISTS event_arena_leaderboard_rank_idx
     ON event_arena_leaderboard_entries (event_id, return_percent DESC, updated_at DESC)
@@ -181,6 +216,18 @@ async function runSchemaMigrations(): Promise<void> {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS event_arena_leaderboard_expiration_idx
     ON event_arena_leaderboard_entries (event_end_at)
+  `);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS event_arena_participant_token_idx
+    ON event_arena_leaderboard_entries (event_id, participant_token)
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS event_arena_cash_transfers_recipient_idx
+    ON event_arena_cash_transfers (event_id, recipient_installation_id, created_at DESC)
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS event_arena_cash_transfers_expiration_idx
+    ON event_arena_cash_transfers (event_end_at)
   `);
 
   // Backfill missing columns for existing paper tables (idempotent).

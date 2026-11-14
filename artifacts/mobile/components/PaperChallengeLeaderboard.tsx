@@ -33,6 +33,11 @@ import {
   updatePaperChallengeStore,
   type PaperChallengeEnrollment,
 } from '@/lib/paperChallenge';
+import {
+  getEventCashTransferImpact,
+  type EventCashTransferImpact,
+} from '@/lib/eventArenaTransfers';
+import type { PaperAccount, PaperOrder, PaperPosition } from '@/lib/paperMath';
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 const REFRESH_INTERVAL_MS = 120_000;
@@ -54,6 +59,7 @@ type HoldingName = {
 type LeaderboardEntry = {
   rank: number;
   alias: string;
+  participantToken: string;
   startEquity: number;
   equity: number;
   profitLoss: number;
@@ -71,6 +77,17 @@ type Props = {
   onRankChange?: (rank: number | null) => void;
   openOnMount?: boolean;
   embedded?: boolean;
+  eventAccount?: PaperAccount | null;
+  eventOrders?: PaperOrder[];
+  eventPositions?: PaperPosition[];
+  eventQuotes?: Record<string, number>;
+  onCashTransfer?: (args: {
+    recipientParticipantToken: string;
+    amount: number;
+    availableCash: number;
+    idempotencyKey: string;
+    cancelledOrderIds: string[];
+  }) => Promise<void>;
 };
 
 const money = (value: number) => `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -89,6 +106,7 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
   const raw = await AsyncStorage.getItem('@stocksense/paper_v2');
   const cache = raw ? JSON.parse(raw) as {
     accounts?: Array<{ id: string; cash: number; unsettledCash?: number }>;
+    eventArenaAppliedTransferIds?: string[];
     positions?: Array<{
       accountId: string;
       symbol: string;
@@ -161,6 +179,10 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
       holdings,
       eventStartAtMs: event.startAtMs,
       eventEndAtMs: event.endAtMs,
+      cashBalance: account ? Number(account.cash || 0) : PAPER_CHALLENGE_STARTING_BALANCE,
+      appliedTransferIds: Array.isArray(cache.eventArenaAppliedTransferIds)
+        ? cache.eventArenaAppliedTransferIds.slice(-500)
+        : [],
     },
     usesAverageCost: hasEventAverageCostFallback(
       positions.map((position) => position.symbol),
@@ -169,7 +191,19 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
   };
 }
 
-export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChange, onRankChange, openOnMount = false, embedded = false }: Props) {
+export function PaperChallengeLeaderboard({
+  event,
+  enrollment,
+  onEnrollmentChange,
+  onRankChange,
+  openOnMount = false,
+  embedded = false,
+  eventAccount = null,
+  eventOrders = [],
+  eventPositions = [],
+  eventQuotes = {},
+  onCashTransfer,
+}: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
@@ -180,6 +214,19 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
   const [sharingBusy, setSharingBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [detail, setDetail] = useState<LeaderboardEntry | null>(null);
+  const [cashTransferOpen, setCashTransferOpen] = useState(false);
+  const [cashTransferAmount, setCashTransferAmount] = useState('');
+  const [cashTransferError, setCashTransferError] = useState('');
+  const [cashTransferReceipt, setCashTransferReceipt] = useState('');
+  const [cancelledCashOrders, setCancelledCashOrders] = useState<PaperOrder[]>([]);
+  const [cashTransferBusy, setCashTransferBusy] = useState(false);
+  const [cashTransferRequestKey, setCashTransferRequestKey] = useState('');
+  const [restoredTransfer, setRestoredTransfer] = useState<{
+    idempotencyKey: string;
+    recipientParticipantToken: string;
+    amount: number;
+    cancelledOrderIds: string[];
+  } | null>(null);
   const [appIsActive, setAppIsActive] = useState(AppState.currentState === 'active');
   const refreshingRef = useRef(false);
   const enrollmentRef = useRef(enrollment);
@@ -210,6 +257,19 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
     [entries, optedIn],
   );
   const ownEntry = matchingOwnEntries.length === 1 ? matchingOwnEntries[0] : null;
+  const transferImpact: EventCashTransferImpact = getEventCashTransferImpact(
+    eventAccount,
+    eventOrders,
+    eventPositions,
+    Number(cashTransferAmount),
+    eventQuotes,
+  );
+  const pendingOrderCount = eventOrders.filter((order) => order.status === 'pending').length;
+  const canSendCash = event.phase === 'active'
+    && optedIn
+    && !!eventAccount
+    && !!onCashTransfer
+    && !!installationId;
 
   useEffect(() => {
     if (openOnMount && !embedded) setOpen(true);
@@ -233,6 +293,27 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
           && (value === 'true' || value === 'false')
         ) {
           setAverageCostFallbackByEvent((current) => ({ ...current, [event.id]: value === 'true' }));
+        }
+      })
+      .catch(() => {});
+    return () => { mounted = false; };
+  }, [event.id]);
+  useEffect(() => {
+    let mounted = true;
+    void AsyncStorage.getItem(`@stocksense/event_arena_pending_transfer:${event.id}`)
+      .then((value) => {
+        if (!mounted || !value) return;
+        try {
+          const parsed = JSON.parse(value) as typeof restoredTransfer;
+          if (
+            parsed
+            && typeof parsed.idempotencyKey === 'string'
+            && typeof parsed.recipientParticipantToken === 'string'
+            && Number.isFinite(parsed.amount)
+            && Array.isArray(parsed.cancelledOrderIds)
+          ) setRestoredTransfer(parsed);
+        } catch {
+          // A malformed retry record must not block a new transfer.
         }
       })
       .catch(() => {});
@@ -498,6 +579,68 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
     </TouchableOpacity>
   );
 
+  const openCashTransfer = () => {
+    if (!detail || !canSendCash || detail.isCurrentUser) return;
+    setCashTransferError('');
+    setCashTransferReceipt('');
+    setCancelledCashOrders([]);
+    const retry = restoredTransfer?.recipientParticipantToken === detail.participantToken
+      ? restoredTransfer
+      : null;
+    setCashTransferRequestKey(retry?.idempotencyKey ?? '');
+    setCashTransferAmount(retry ? String(retry.amount) : '');
+    setCashTransferOpen(true);
+  };
+
+  const confirmCashTransfer = async () => {
+    if (!detail || !canSendCash || cashTransferBusy || !installationId) return;
+    const amount = Math.round(Number(cashTransferAmount) * 100) / 100;
+    if (!Number.isFinite(amount) || amount < 0.01 || amount > (eventAccount?.cash ?? 0)) {
+      setCashTransferError('Enter an amount up to your current Event Arena cash.');
+      return;
+    }
+    const retry = restoredTransfer?.recipientParticipantToken === detail.participantToken
+      && Math.abs(restoredTransfer.amount - amount) < 0.001
+      ? restoredTransfer
+      : null;
+    const idempotencyKey = retry?.idempotencyKey
+      ?? cashTransferRequestKey
+      ?? `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 14)}`;
+    const cancelledOrderIds = retry?.cancelledOrderIds
+      ?? transferImpact.cancelledOrders.map((order) => order.id);
+    const request = {
+      idempotencyKey,
+      recipientParticipantToken: detail.participantToken,
+      amount,
+      cancelledOrderIds,
+    };
+    setCashTransferError('');
+    setCashTransferBusy(true);
+    try {
+      await AsyncStorage.setItem(`@stocksense/event_arena_pending_transfer:${event.id}`, JSON.stringify(request));
+      setCashTransferRequestKey(idempotencyKey);
+      setRestoredTransfer(request);
+      await onCashTransfer?.({
+        recipientParticipantToken: detail.participantToken,
+        amount,
+        availableCash: eventAccount?.cash ?? 0,
+        idempotencyKey,
+        cancelledOrderIds,
+      });
+      setCashTransferReceipt(`Sent ${money(amount)} to ${detail.alias}.`);
+      setCancelledCashOrders(transferImpact.cancelledOrders);
+      await AsyncStorage.removeItem(`@stocksense/event_arena_pending_transfer:${event.id}`);
+      setRestoredTransfer(null);
+      setCashTransferOpen(false);
+      setCashTransferAmount('');
+      setCashTransferRequestKey('');
+    } catch (error) {
+      setCashTransferError(error instanceof Error ? error.message : 'Cash was not confirmed. Retry this transfer.');
+    } finally {
+      setCashTransferBusy(false);
+    }
+  };
+
   const PageWrapper: React.ComponentType<any> = embedded ? View : Modal;
   const pageWrapperProps = embedded
     ? { style: { flex: 1 } }
@@ -639,6 +782,36 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
                     </View>
                   ))}
                 </View>
+                {canSendCash && !detail.isCurrentUser ? (
+                  <TouchableOpacity
+                    testID="event-arena-send-cash"
+                    accessibilityRole="button"
+                    accessibilityLabel={`Send event cash to ${detail.alias}`}
+                    onPress={openCashTransfer}
+                    disabled={!!restoredTransfer && restoredTransfer.recipientParticipantToken !== detail.participantToken}
+                    style={{ minHeight: 48, marginTop: 14, borderRadius: 11, backgroundColor: colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: restoredTransfer && restoredTransfer.recipientParticipantToken !== detail.participantToken ? 0.5 : 1 }}
+                  >
+                    <Feather name="send" size={15} color={colors.primaryForeground} />
+                    <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>SEND CASH</Text>
+                  </TouchableOpacity>
+                ) : null}
+                {cashTransferReceipt ? (
+                  <View testID="event-arena-cash-transfer-success" style={{ marginTop: 10, padding: 12, borderRadius: 10, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.primary }}>
+                    <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11 }}>{cashTransferReceipt}</Text>
+                    {cancelledCashOrders.length > 0 ? (
+                      <>
+                        <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 10, marginTop: 6 }}>Cancelled to restore order affordability:</Text>
+                        {cancelledCashOrders.map((order) => (
+                          <Text key={order.id} style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>
+                            {order.intent === 'short' ? 'Short' : order.intent === 'cover' ? 'Cover' : order.side.toUpperCase()} {order.symbol}
+                          </Text>
+                        ))}
+                      </>
+                    ) : (
+                      <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 5 }}>No pending cash-reserving orders were cancelled.</Text>
+                    )}
+                  </View>
+                ) : null}
                 <Text style={{ color: colors.destructive, fontFamily: 'Inter_600SemiBold', fontSize: 10, lineHeight: 15, marginTop: 12 }}>
                   Self-reported and unverified. Raw share counts, prices, cost basis, account identifiers, and trade history are not shared.
                 </Text>
@@ -731,6 +904,87 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
           )}
         </View>
       </PageWrapper>
+
+      <Modal visible={cashTransferOpen} animationType="fade" transparent statusBarTranslucent onRequestClose={() => {
+        if (!cashTransferBusy) setCashTransferOpen(false);
+      }}>
+        <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={0} style={{ flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,0.62)' }}>
+          <View testID="event-arena-send-cash-review" style={{ maxHeight: '90%', padding: 18, borderRadius: 16, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.8 }}>EVENT ARENA · {event.id}</Text>
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20, marginTop: 7 }}>Send cash to {detail?.alias}</Text>
+              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, marginTop: 6 }}>
+                Transfer from this event account only. Current event cash: {money(eventAccount?.cash ?? 0)}.
+              </Text>
+              <TextInput
+                testID="event-arena-send-cash-amount"
+                accessibilityLabel="Cash transfer amount"
+                value={cashTransferAmount}
+                onChangeText={(value) => {
+                  setCashTransferAmount(value.replace(/[^0-9.]/g, ''));
+                  setCashTransferError('');
+                }}
+                editable={!cashTransferBusy && restoredTransfer?.recipientParticipantToken !== detail?.participantToken}
+                keyboardType="decimal-pad"
+                returnKeyType="done"
+                placeholder="Amount in dollars"
+                placeholderTextColor={colors.mutedForeground}
+                style={{ minHeight: 50, marginTop: 14, paddingHorizontal: 13, borderRadius: 10, color: colors.foreground, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, fontFamily: 'Inter_600SemiBold', fontSize: 17 }}
+              />
+              {restoredTransfer && restoredTransfer.recipientParticipantToken !== detail?.participantToken ? (
+                <Text style={{ color: colors.gold, fontFamily: 'Inter_500Medium', fontSize: 11, lineHeight: 16, marginTop: 8 }}>
+                  Retry the previously confirmed request with its original participant before starting another transfer.
+                </Text>
+              ) : null}
+              {pendingOrderCount > 0 ? (
+                <Text testID="event-arena-pending-order-warning" style={{ color: colors.gold, fontFamily: 'Inter_500Medium', fontSize: 11, lineHeight: 17, marginTop: 11 }}>
+                  You have {pendingOrderCount} pending order{pendingOrderCount === 1 ? '' : 's'}. You can continue. If this transfer leaves too little cash for reserved orders, the newest affected orders will be cancelled.
+                </Text>
+              ) : null}
+              {transferImpact.cancelledOrders.length > 0 ? (
+                <View testID="event-arena-cash-transfer-order-impact" style={{ marginTop: 12, padding: 12, borderRadius: 10, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.destructive }}>
+                  <Text style={{ color: colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 11 }}>
+                    Confirming will cancel {transferImpact.cancelledOrders.length} order{transferImpact.cancelledOrders.length === 1 ? '' : 's'} to cover the remaining reservations:
+                  </Text>
+                  {transferImpact.cancelledOrders.map((order) => (
+                    <Text key={order.id} style={{ color: colors.foreground, fontFamily: 'Inter_500Medium', fontSize: 11, marginTop: 5 }}>
+                      {order.intent === 'short' ? 'Short' : order.intent === 'cover' ? 'Cover' : order.side.toUpperCase()} {order.symbol} · placed {new Date(order.placedAt).toLocaleString()}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
+              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 10 }}>
+                Regular and strategy account balances, positions, orders, and history are not changed.
+              </Text>
+              {cashTransferError ? (
+                <Text testID="event-arena-send-cash-error" accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 11, lineHeight: 16, marginTop: 9 }}>
+                  {cashTransferError}
+                </Text>
+              ) : null}
+              <View style={{ flexDirection: 'row', gap: 9, marginTop: 15 }}>
+                <TouchableOpacity
+                  testID="event-arena-send-cash-cancel"
+                  accessibilityRole="button"
+                  disabled={cashTransferBusy}
+                  onPress={() => setCashTransferOpen(false)}
+                  style={{ flex: 1, minHeight: 48, justifyContent: 'center', alignItems: 'center', borderRadius: 10, borderWidth: 1, borderColor: colors.border, opacity: cashTransferBusy ? 0.55 : 1 }}
+                >
+                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  testID="event-arena-send-cash-confirm"
+                  accessibilityRole="button"
+                  disabled={cashTransferBusy || !Number.isFinite(Number(cashTransferAmount)) || Number(cashTransferAmount) < 0.01 || Number(cashTransferAmount) > (eventAccount?.cash ?? 0)}
+                  onPress={() => { void confirmCashTransfer(); }}
+                  style={{ flex: 1, minHeight: 48, justifyContent: 'center', alignItems: 'center', borderRadius: 10, backgroundColor: colors.primary, opacity: cashTransferBusy || Number(cashTransferAmount) < 0.01 || Number(cashTransferAmount) > (eventAccount?.cash ?? 0) ? 0.55 : 1 }}
+                >
+                  <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>{cashTransferBusy ? 'SENDING…' : `SEND ${money(Number(cashTransferAmount) || 0)}`}</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       <Modal visible={aliasEditorOpen} animationType="fade" transparent statusBarTranslucent onRequestClose={() => setAliasEditorOpen(false)}>
         <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={0} style={{ flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,0.62)' }}>

@@ -52,6 +52,8 @@ import {
   parseAccountValueSnapshots,
   type PaperLot,
 } from '@/lib/paperMath';
+import { applyEventCashTransfer } from '@/lib/eventArenaTransfers';
+import { getInstallationId } from '@/lib/installation';
 
 const NOTIFICATIONS_KEY = '@stocksense/paper_events_notifications_v1';
 const NOTIFICATION_ID_KEY = '@stocksense/paper_events_notification_id_v1';
@@ -61,6 +63,14 @@ const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
 type Section = 'competition' | 'leaderboard' | 'trades' | 'past';
 type StoredPaperCache = Partial<EventArenaAccountData> & { activeId?: string; lots?: PaperLot[] };
+type EventCashNotification = {
+  id: string;
+  eventId: string;
+  senderAlias: string;
+  amount: number;
+  createdAt: string;
+  readAt: string | null;
+};
 
 const SECTIONS: { id: Section; label: string; icon: React.ComponentProps<typeof Feather>['name'] }[] = [
   { id: 'competition', label: 'Competition', icon: 'award' },
@@ -159,6 +169,11 @@ export function EventArenaScreen() {
   const [quotes, setQuotes] = useState<Record<string, number>>({});
   const [accountLoading, setAccountLoading] = useState(false);
   const [accountError, setAccountError] = useState('');
+  const [cashNotifications, setCashNotifications] = useState<EventCashNotification[]>([]);
+  const [cashNotificationsUnread, setCashNotificationsUnread] = useState(0);
+  const [cashNotificationsOpen, setCashNotificationsOpen] = useState(false);
+  const [cashNotificationsLoading, setCashNotificationsLoading] = useState(false);
+  const [cashNotificationsError, setCashNotificationsError] = useState('');
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [saving, setSaving] = useState(false);
   const [withdrawConfirmationOpen, setWithdrawConfirmationOpen] = useState(false);
@@ -174,6 +189,8 @@ export function EventArenaScreen() {
   const [sharingImage, setSharingImage] = useState(false);
   const imageRef = useRef<ViewShot | null>(null);
   const accountRefreshInFlightRef = useRef(false);
+  const transferRefreshInFlightRef = useRef(false);
+  const cashNotificationRequestSequenceRef = useRef(0);
   const [now, setNow] = useState(Date.now());
   const currentWindow = getPaperChallengeWindow(now);
   const hasCurrentEnrollment = store.enrollment?.eventId === currentWindow.id;
@@ -227,7 +244,15 @@ export function EventArenaScreen() {
       const eventPositions = currentEnrollment
         ? nextData.positions.filter((item) => item.accountId === currentEnrollment.accountId && item.shares > 0)
         : [];
-      const symbols = [...new Set(eventPositions.map((item) => item.symbol.trim().toUpperCase()).filter(Boolean))];
+      const eventOrderSymbols = currentEnrollment
+        ? nextData.orders.filter((item) =>
+          item.accountId === currentEnrollment.accountId && item.status === 'pending',
+        ).map((item) => item.symbol)
+        : [];
+      const symbols = [...new Set([
+        ...eventPositions.map((item) => item.symbol),
+        ...eventOrderSymbols,
+      ].map((symbol) => symbol.trim().toUpperCase()).filter(Boolean))];
       const quoteResults = await Promise.allSettled(symbols.map(async (symbol) => {
         const response = await fetch(`${BASE_URL}/api/stocks/quote/${encodeURIComponent(symbol)}`);
         if (!response.ok) throw new Error(`Quote unavailable for ${symbol}`);
@@ -249,6 +274,111 @@ export function EventArenaScreen() {
     }
   }, [currentWindow.id, store.enrollment]);
 
+  const refreshCashNotifications = useCallback(async (markRead = false) => {
+    const currentEnrollment = store.enrollment?.eventId === currentWindow.id ? store.enrollment : null;
+    if (
+      !currentEnrollment
+      || currentWindow.phase !== 'active'
+      || (transferRefreshInFlightRef.current && !markRead)
+    ) return;
+    transferRefreshInFlightRef.current = true;
+    const requestSequence = ++cashNotificationRequestSequenceRef.current;
+    setCashNotificationsLoading(true);
+    setCashNotificationsError('');
+    try {
+      const installationId = await getInstallationId();
+      const response = await fetch(
+        `${BASE_URL}/api/event-arena/${encodeURIComponent(currentWindow.id)}/transfers`,
+        { headers: {
+          'X-Event-Arena-Installation-Id': installationId,
+          'X-Event-Arena-Mark-Read': String(markRead),
+        } },
+      );
+      if (!response.ok) throw new Error('Cash notifications could not be loaded.');
+      const result = await response.json() as { notifications?: EventCashNotification[] };
+      const notifications = Array.isArray(result.notifications)
+        ? result.notifications.filter((item) =>
+          item
+          && item.eventId === currentWindow.id
+          && typeof item.id === 'string'
+          && typeof item.senderAlias === 'string'
+          && Number.isFinite(item.amount)
+          && typeof item.createdAt === 'string',
+        )
+        : [];
+      let accountChanged = false;
+      for (const notification of notifications) {
+        const applied = await applyEventCashTransfer({
+          accountId: currentEnrollment.accountId,
+          transferId: notification.id,
+          amount: notification.amount,
+          direction: 'received',
+        }, {
+          getItem: (key) => AsyncStorage.getItem(key),
+          setItem: (key, value) => AsyncStorage.setItem(key, value),
+        });
+        accountChanged ||= applied.applied;
+      }
+      if (requestSequence === cashNotificationRequestSequenceRef.current) {
+        setCashNotifications(notifications);
+        setCashNotificationsUnread(notifications.filter((item) => !item.readAt).length);
+      }
+      if (accountChanged) await refreshAccountData();
+    } catch (error) {
+      if (requestSequence === cashNotificationRequestSequenceRef.current) {
+        setCashNotificationsError(error instanceof Error ? error.message : 'Cash notifications could not be loaded.');
+      }
+    } finally {
+      if (requestSequence === cashNotificationRequestSequenceRef.current) {
+        setCashNotificationsLoading(false);
+        transferRefreshInFlightRef.current = false;
+      }
+    }
+  }, [currentWindow.id, currentWindow.phase, refreshAccountData, store.enrollment]);
+
+  const sendEventCash = useCallback(async (args: {
+    recipientParticipantToken: string;
+    amount: number;
+    availableCash: number;
+    idempotencyKey: string;
+    cancelledOrderIds: string[];
+  }) => {
+    const currentEnrollment = store.enrollment?.eventId === currentWindow.id ? store.enrollment : null;
+    if (!currentEnrollment || currentWindow.phase !== 'active' || !currentEnrollment.leaderboardOptedIn) {
+      throw new Error('Cash transfers are available only to active event participants.');
+    }
+    const installationId = await getInstallationId();
+    const response = await fetch(`${BASE_URL}/api/event-arena/${encodeURIComponent(currentWindow.id)}/transfers`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        installationId,
+        recipientParticipantToken: args.recipientParticipantToken,
+        amount: args.amount,
+        availableCash: args.availableCash,
+        idempotencyKey: args.idempotencyKey,
+      }),
+    });
+    const result = await response.json().catch(() => ({})) as {
+      error?: string;
+      transfer?: { id?: string; amount?: number };
+    };
+    if (!response.ok || typeof result.transfer?.id !== 'string') {
+      throw new Error(result.error || 'Cash was not confirmed. Retry this transfer.');
+    }
+    await applyEventCashTransfer({
+      accountId: currentEnrollment.accountId,
+      transferId: result.transfer.id,
+      amount: Number(result.transfer.amount),
+      direction: 'sent',
+      cancelledOrderIds: args.cancelledOrderIds,
+    }, {
+      getItem: (key) => AsyncStorage.getItem(key),
+      setItem: (key, value) => AsyncStorage.setItem(key, value),
+    });
+    await refreshAccountData();
+  }, [currentWindow.id, currentWindow.phase, refreshAccountData, store.enrollment]);
+
   useEffect(() => {
     void readStore();
     void AsyncStorage.getItem(NOTIFICATIONS_KEY)
@@ -260,6 +390,13 @@ export function EventArenaScreen() {
     const timer = setInterval(() => setNow(Date.now()), 1_000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (storeState !== 'ready' || !enrollment || currentWindow.phase !== 'active') return;
+    void refreshCashNotifications(false);
+    const timer = setInterval(() => { void refreshCashNotifications(false); }, 120_000);
+    return () => clearInterval(timer);
+  }, [currentWindow.phase, enrollment?.accountId, refreshCashNotifications, storeState]);
 
   useEffect(() => {
     if (storeState !== 'ready') return;
@@ -841,6 +978,11 @@ export function EventArenaScreen() {
         rank={rank}
         loading={accountLoading || storeState === 'loading'}
         saving={saving}
+        onOpenNotifications={() => {
+          setCashNotificationsOpen(true);
+          void refreshCashNotifications(true);
+        }}
+        unreadCashNotifications={cashNotificationsUnread}
         onJoin={() => {
           setJoinAliasDraft('');
           setJoinAliasError('');
@@ -926,6 +1068,11 @@ export function EventArenaScreen() {
             enrollment={enrollment}
             onEnrollmentChange={updateLeaderboardEnrollment}
             onRankChange={setRank}
+            eventAccount={performance?.account ?? null}
+            eventOrders={performance?.pendingOrders ?? []}
+            eventPositions={performance?.positions ?? []}
+            eventQuotes={quotes}
+            onCashTransfer={sendEventCash}
             embedded
           />
         )}
@@ -933,6 +1080,61 @@ export function EventArenaScreen() {
         {section === 'past' && renderPastEvents()}
       </View>
       <BottomTabBar />
+
+      <Modal
+        visible={cashNotificationsOpen}
+        animationType="slide"
+        onRequestClose={() => setCashNotificationsOpen(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: Platform.OS === 'web' ? 24 : insets.top + 8 }}>
+          <View style={{ paddingHorizontal: 18, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20 }}>Cash received</Text>
+              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>Event {currentWindow.id}</Text>
+            </View>
+            <TouchableOpacity
+              testID="event-arena-cash-notifications-close"
+              accessibilityRole="button"
+              accessibilityLabel="Close cash notifications"
+              onPress={() => setCashNotificationsOpen(false)}
+              style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Feather name="x" size={22} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          </View>
+          {cashNotificationsLoading ? <ActivityIndicator style={{ marginTop: 20 }} color={colors.primary} /> : null}
+          {cashNotificationsError ? (
+            <View style={{ padding: 16 }}>
+              <Text accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 12 }}>{cashNotificationsError}</Text>
+              <TouchableOpacity testID="event-arena-cash-notifications-retry" accessibilityRole="button" onPress={() => { void refreshCashNotifications(true); }} style={{ alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center' }}>
+                <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11 }}>RETRY</Text>
+              </TouchableOpacity>
+            </View>
+          ) : cashNotifications.length === 0 && !cashNotificationsLoading ? (
+            <View testID="event-arena-cash-notifications-empty" style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+              <Feather name="bell" size={24} color={colors.mutedForeground} />
+              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 10 }}>No cash transfers received for this event.</Text>
+            </View>
+          ) : (
+            <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 8, paddingBottom: insets.bottom + 20 }}>
+              {cashNotifications.map((notification) => (
+                <View key={notification.id} testID={`event-arena-cash-notification-${notification.id}`} style={{ padding: 14, borderBottomWidth: 1, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' }}>
+                    <Feather name="corner-down-left" size={16} color={colors.primary} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 13 }}>{notification.senderAlias} sent cash</Text>
+                    <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>
+                      Event {notification.eventId} · {new Date(notification.createdAt).toLocaleString()}
+                    </Text>
+                  </View>
+                  <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 13 }}>{money(notification.amount)}</Text>
+                </View>
+              ))}
+            </ScrollView>
+          )}
+        </View>
+      </Modal>
 
       <Modal visible={imageShareEvent !== null} animationType="slide" onRequestClose={() => setImageShareEvent(null)}>
         <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: Platform.OS === 'web' ? 24 : insets.top + 8 }}>

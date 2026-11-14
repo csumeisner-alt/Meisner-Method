@@ -116,6 +116,69 @@ paths:
           description: The event has ended
         "429":
           description: The score was submitted too recently
+  /event-arena/{eventId}/transfers:
+    parameters:
+      - in: path
+        name: eventId
+        required: true
+        schema:
+          type: string
+          format: date
+    post:
+      operationId: sendEventArenaCash
+      tags: [eventArena]
+      summary: Send simulated cash to an eligible participant in the active event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventArenaCashTransferRequest"
+      responses:
+        "200":
+          description: Transfer recorded once for the event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventArenaCashTransferResponse"
+        "400":
+          description: The request is invalid or the sender selected themselves
+        "403":
+          description: The sender is not an eligible event participant
+        "404":
+          description: The recipient is not an eligible participant in this event
+        "409":
+          description: The amount exceeds available event cash
+        "410":
+          description: The event is not active
+    get:
+      operationId: getEventArenaCashNotifications
+      tags: [eventArena]
+      summary: List incoming event cash transfers and optionally mark them read
+      parameters:
+        - in: header
+          name: X-Event-Arena-Installation-Id
+          required: true
+          schema:
+            type: string
+            minLength: 12
+            maxLength: 128
+          description: Anonymous recipient device identifier; it is never returned.
+        - in: header
+          name: X-Event-Arena-Mark-Read
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Incoming cash notifications for this event only
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventArenaCashNotificationsResponse"
+        "400":
+          description: The event or installation ID is invalid
   /stocks/heat-map/search:
     get:
       operationId: searchHeatMapInstruments
@@ -620,6 +683,15 @@ components:
           type: string
           minLength: 1
           maxLength: 24
+        cashBalance:
+          type: number
+          minimum: 0
+          description: Self-reported cash in the separate event account, used to reconcile transfer receipts.
+        appliedTransferIds:
+          type: array
+          maxItems: 500
+          items: { type: string, minLength: 8, maxLength: 96, pattern: "^[A-Za-z0-9_-]+$" }
+          description: Event transfer references already applied to the local account cash balance.
         startEquity: { type: number, exclusiveMinimum: 0 }
         equity: { type: number, minimum: 0 }
         returnPercent:
@@ -657,10 +729,15 @@ components:
           type: array
           items:
             type: object
-            required: [rank, alias, startEquity, equity, profitLoss, returnPercent, tradeCount, holdings, updatedAt, isCurrentUser]
+            required: [rank, alias, participantToken, startEquity, equity, profitLoss, returnPercent, tradeCount, holdings, updatedAt, isCurrentUser]
             properties:
               rank: { type: integer, minimum: 1 }
               alias: { type: string }
+              participantToken:
+                type: string
+                minLength: 16
+                maxLength: 96
+                description: Random event-scoped recipient token; never the anonymous installation ID.
               startEquity: { type: number }
               equity: { type: number }
               profitLoss: { type: number, description: Event equity minus starting equity. }
@@ -687,6 +764,58 @@ components:
                 type: boolean
                 description: True only for the requesting installation's row; no installation ID is returned.
         updatedAt: { type: string, format: date-time }
+
+    EventArenaCashTransferRequest:
+      type: object
+      required: [installationId, recipientParticipantToken, amount, availableCash, idempotencyKey]
+      properties:
+        installationId:
+          type: string
+          minLength: 12
+          maxLength: 128
+          description: Anonymous sender installation ID; never returned in public responses.
+        recipientParticipantToken:
+          type: string
+          minLength: 16
+          maxLength: 96
+        amount: { type: number, exclusiveMinimum: 0, maximum: 1000000 }
+        availableCash: { type: number, minimum: 0, maximum: 10000000 }
+        idempotencyKey:
+          type: string
+          minLength: 8
+          maxLength: 96
+          pattern: "^[A-Za-z0-9_-]+$"
+    EventArenaCashTransferResponse:
+      type: object
+      required: [ok, transfer]
+      properties:
+        ok: { type: boolean }
+        transfer:
+          type: object
+          required: [id, eventId, senderAlias, recipientAlias, amount, createdAt]
+          properties:
+            id: { type: string }
+            eventId: { type: string, format: date }
+            senderAlias: { type: string }
+            recipientAlias: { type: string }
+            amount: { type: number, exclusiveMinimum: 0 }
+            createdAt: { type: string, format: date-time }
+    EventArenaCashNotificationsResponse:
+      type: object
+      required: [notifications]
+      properties:
+        notifications:
+          type: array
+          items:
+            type: object
+            required: [id, eventId, senderAlias, amount, createdAt, readAt]
+            properties:
+              id: { type: string }
+              eventId: { type: string, format: date }
+              senderAlias: { type: string }
+              amount: { type: number, exclusiveMinimum: 0 }
+              createdAt: { type: string, format: date-time }
+              readAt: { type: string, format: date-time, nullable: true }
 
     CommodityRelationshipInstrument:
       type: object

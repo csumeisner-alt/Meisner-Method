@@ -11,6 +11,12 @@ export type EventArenaLeaderboardResponseEntriesItem = {
   /** @minimum 1 */
   rank: number;
   alias: string;
+  /**
+     * Random event-scoped recipient token; never the anonymous installation ID.
+     * @minLength 16
+     * @maxLength 96
+     */
+  participantToken: string;
   startEquity: number;
   equity: number;
   /** Event equity minus starting equity. */

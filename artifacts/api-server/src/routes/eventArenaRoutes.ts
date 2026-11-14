@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { randomUUID } from "node:crypto";
 import {
   EVENT_ARENA_RETENTION_DAYS,
   purgeExpiredEventArenaEntries,
@@ -8,6 +9,10 @@ export { EVENT_ARENA_RETENTION_DAYS, purgeExpiredEventArenaEntries } from "../li
 
 interface EventArenaDatabase {
   query(sql: string, values?: any[]): Promise<{ rows: any[] }>;
+  connect?: () => Promise<{
+    query(sql: string, values?: any[]): Promise<{ rows: any[] }>;
+    release: () => void;
+  }>;
 }
 
 type Middleware = (req: any, res: any, next: any) => void;
@@ -20,6 +25,8 @@ type HoldingIdentifier = {
 type EventSubmission = {
   installationId: string;
   alias: string;
+  cashBalance: number;
+  appliedTransferIds: string[];
   startEquity: number;
   equity: number;
   returnPercent: number;
@@ -35,6 +42,30 @@ const MAX_HOLDINGS = 100;
 
 function validInstallationId(value: unknown): value is string {
   return typeof value === "string" && value.length >= 12 && value.length <= 128;
+}
+
+function validTransferId(value: unknown): value is string {
+  return typeof value === "string" && value.length >= 8 && value.length <= 96
+    && /^[A-Za-z0-9_-]+$/.test(value);
+}
+
+async function withTransaction<T>(
+  db: EventArenaDatabase,
+  run: (client: EventArenaDatabase) => Promise<T>,
+): Promise<T> {
+  const client = db.connect ? await db.connect() : null;
+  const connection: EventArenaDatabase = client ?? db;
+  await connection.query("BEGIN");
+  try {
+    const result = await run(connection);
+    await connection.query("COMMIT");
+    return result;
+  } catch (error) {
+    await connection.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client?.release();
+  }
 }
 
 function easternParts(timestamp: number) {
@@ -113,6 +144,8 @@ function parseSubmission(body: unknown): EventSubmission | null {
   const allowedKeys = new Set([
     "installationId",
     "alias",
+    "cashBalance",
+    "appliedTransferIds",
     "startEquity",
     "equity",
     "returnPercent",
@@ -129,11 +162,18 @@ function parseSubmission(body: unknown): EventSubmission | null {
   const returnPercent = value.returnPercent;
   const tradeCount = value.tradeCount;
   const holdings = value.holdings;
+  const cashBalance = value.cashBalance;
+  const appliedTransferIds = value.appliedTransferIds ?? [];
   if (
     !validInstallationId(value.installationId)
     || alias.length < 1
     || alias.length > 24
     || /[\u0000-\u001f\u007f]/.test(alias)
+    || (cashBalance !== undefined && (typeof cashBalance !== "number"
+      || !Number.isFinite(cashBalance) || cashBalance < 0 || cashBalance > 10_000_000))
+    || !Array.isArray(appliedTransferIds)
+    || appliedTransferIds.length > 500
+    || appliedTransferIds.some((id) => !validTransferId(id))
     || typeof startEquity !== "number"
     || !Number.isFinite(startEquity)
     || startEquity <= 0
@@ -192,6 +232,8 @@ function parseSubmission(body: unknown): EventSubmission | null {
   return {
     installationId: value.installationId,
     alias,
+    cashBalance: typeof cashBalance === "number" ? cashBalance : startEquity,
+    appliedTransferIds: [...new Set(appliedTransferIds as string[])],
     startEquity,
     equity,
     // Score returns are self-reported but must be internally consistent.
@@ -234,6 +276,7 @@ function publicEntry(row: any, rank: number, isCurrentUser: boolean) {
   return {
     rank,
     alias: row.alias,
+    participantToken: row.participant_token,
     startEquity: Number(row.start_equity),
     equity: Number(row.equity),
     profitLoss: Number(row.equity) - Number(row.start_equity),
@@ -357,7 +400,7 @@ export function createEventArenaRouter(
         : null;
       const { rows } = await db.query(
         `SELECT
-           installation_id, alias, start_equity, equity, trade_count, holdings, updated_at
+           installation_id, participant_token, alias, start_equity, equity, trade_count, holdings, updated_at
          FROM event_arena_leaderboard_entries
          WHERE event_id=$1
            AND is_active=TRUE
@@ -396,10 +439,22 @@ export function createEventArenaRouter(
     }
     try {
       await purgeExpiredEventArenaEntries(db);
-      const { rows } = await db.query(
-        `INSERT INTO event_arena_leaderboard_entries
-           (event_id, installation_id, alias, start_equity, equity, return_percent, trade_count, holdings, event_start_at, event_end_at, updated_at)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,TO_TIMESTAMP($9 / 1000.0),TO_TIMESTAMP($10 / 1000.0),NOW())
+      const outcome = await withTransaction(db, async (client) => {
+        await client.query(
+          `SELECT installation_id
+           FROM event_arena_leaderboard_entries
+           WHERE event_id=$1 AND installation_id=$2
+           FOR UPDATE`,
+          [req.params.eventId, submission.installationId],
+        );
+        const { rows } = await client.query(
+          `INSERT INTO event_arena_leaderboard_entries
+            (event_id, installation_id, alias, start_equity, equity, return_percent, trade_count, holdings, event_start_at, event_end_at, updated_at, cash_balance)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,TO_TIMESTAMP($9 / 1000.0),TO_TIMESTAMP($10 / 1000.0),NOW(),
+             $11 + COALESCE((SELECT SUM(CASE WHEN recipient_installation_id=$2 THEN amount ELSE -amount END)
+               FROM event_arena_cash_transfers
+               WHERE event_id=$1 AND (sender_installation_id=$2 OR recipient_installation_id=$2)
+                 AND transfer_ref <> ALL($12::text[])),0))
          ON CONFLICT (event_id, installation_id) DO UPDATE SET
            alias=EXCLUDED.alias,
            start_equity=EXCLUDED.start_equity,
@@ -407,6 +462,7 @@ export function createEventArenaRouter(
            return_percent=EXCLUDED.return_percent,
             trade_count=EXCLUDED.trade_count,
            holdings=EXCLUDED.holdings,
+            cash_balance=EXCLUDED.cash_balance,
            is_active=TRUE,
            updated_at=NOW()
          WHERE (
@@ -426,27 +482,35 @@ export function createEventArenaRouter(
           JSON.stringify(submission.holdings),
           submission.eventStartAtMs,
           submission.eventEndAtMs,
+          submission.cashBalance,
+          submission.appliedTransferIds,
         ],
       );
-      if (!rows[0]) {
-        const existing = await db.query(
-          `SELECT alias FROM event_arena_leaderboard_entries
-           WHERE event_id=$1
-             AND installation_id=$2
-             AND event_end_at > NOW() - ($3 * INTERVAL '1 day')`,
-          [req.params.eventId, submission.installationId, EVENT_ARENA_RETENTION_DAYS],
-        );
-        if (existing.rows[0] && existing.rows[0].alias !== submission.alias && now() >= submission.eventStartAtMs) {
-          res.status(409).json({ error: "Your leaderboard alias is locked for this event." });
-          return;
+        if (!rows[0]) {
+          const existing = await client.query(
+            `SELECT alias FROM event_arena_leaderboard_entries
+             WHERE event_id=$1
+               AND installation_id=$2
+               AND event_end_at > NOW() - ($3 * INTERVAL '1 day')`,
+            [req.params.eventId, submission.installationId, EVENT_ARENA_RETENTION_DAYS],
+          );
+          if (existing.rows[0] && existing.rows[0].alias !== submission.alias && now() >= submission.eventStartAtMs) {
+            return { status: "alias" as const };
+          }
+          return { status: "rate-limit" as const };
         }
+        const updatedAt = rows[0].updated_at instanceof Date
+          ? rows[0].updated_at.toISOString()
+          : rows[0].updated_at;
+        return { status: "ok" as const, updatedAt };
+      });
+      if (outcome.status === "alias") {
+        res.status(409).json({ error: "Your leaderboard alias is locked for this event." });
+      } else if (outcome.status === "rate-limit") {
         res.status(429).json({ error: "Please wait before updating your Event Arena score again." });
-        return;
+      } else {
+        res.json({ ok: true, updatedAt: outcome.updatedAt });
       }
-      const updatedAt = rows[0].updated_at instanceof Date
-        ? rows[0].updated_at.toISOString()
-        : rows[0].updated_at;
-      res.json({ ok: true, updatedAt });
     } catch {
       res.status(500).json({ error: "Could not save the Event Arena score." });
     }
@@ -477,5 +541,180 @@ export function createEventArenaRouter(
     }
   });
 
+  router.post("/event-arena/:eventId/transfers", requireSchema, async (req: any, res: any) => {
+    const eventId = req.params.eventId;
+    const expectedWindow = expectedEventArenaWindow(eventId);
+    const body = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+    const senderInstallationId = body.installationId;
+    const recipientParticipantToken = body.recipientParticipantToken;
+    const idempotencyKey = body.idempotencyKey;
+    const amount = body.amount;
+    const availableCash = body.availableCash;
+    if (
+      !expectedWindow
+      || !validInstallationId(senderInstallationId)
+      || typeof recipientParticipantToken !== "string"
+      || recipientParticipantToken.length < 16
+      || recipientParticipantToken.length > 96
+      || !validTransferId(idempotencyKey)
+      || typeof amount !== "number"
+      || !Number.isFinite(amount)
+      || amount < 0.01
+      || amount > 1_000_000
+      || typeof availableCash !== "number"
+      || !Number.isFinite(availableCash)
+      || availableCash < 0
+      || availableCash > 10_000_000
+    ) {
+      res.status(400).json({ error: "The Event Arena cash transfer is invalid." });
+      return;
+    }
+    try {
+      await purgeExpiredEventArenaEntries(db);
+      const result = await withTransaction(db, async (client) => {
+        const previous = await client.query(
+          `SELECT transfer_ref, sender_alias, recipient_alias, amount, created_at
+           FROM event_arena_cash_transfers
+           WHERE event_id=$1 AND sender_installation_id=$2 AND idempotency_key=$3`,
+          [eventId, senderInstallationId, idempotencyKey],
+        );
+        if (previous.rows[0]) return { status: "ok" as const, row: previous.rows[0] };
+        if (now() < expectedWindow.startAtMs || now() >= expectedWindow.endAtMs) {
+          return { status: "inactive" as const };
+        }
+
+        const senderResult = await client.query(
+          `SELECT alias, cash_balance
+           FROM event_arena_leaderboard_entries
+           WHERE event_id=$1 AND installation_id=$2 AND is_active=TRUE
+             AND event_start_at=TO_TIMESTAMP($3 / 1000.0)
+             AND event_end_at=TO_TIMESTAMP($4 / 1000.0)
+             AND event_end_at > NOW() - ($5 * INTERVAL '1 day')
+           FOR UPDATE`,
+          [eventId, senderInstallationId, expectedWindow.startAtMs, expectedWindow.endAtMs, EVENT_ARENA_RETENTION_DAYS],
+        );
+        if (!senderResult.rows[0]) return { status: "sender" as const };
+
+        const afterSenderLock = await client.query(
+          `SELECT transfer_ref, sender_alias, recipient_alias, amount, created_at
+           FROM event_arena_cash_transfers
+           WHERE event_id=$1 AND sender_installation_id=$2 AND idempotency_key=$3`,
+          [eventId, senderInstallationId, idempotencyKey],
+        );
+        if (afterSenderLock.rows[0]) return { status: "ok" as const, row: afterSenderLock.rows[0] };
+
+        const recipientResult = await client.query(
+          `SELECT installation_id, alias, cash_balance
+           FROM event_arena_leaderboard_entries
+           WHERE event_id=$1 AND participant_token=$2 AND is_active=TRUE
+             AND event_start_at=TO_TIMESTAMP($3 / 1000.0)
+             AND event_end_at=TO_TIMESTAMP($4 / 1000.0)
+             AND event_end_at > NOW() - ($5 * INTERVAL '1 day')
+           FOR UPDATE`,
+          [eventId, recipientParticipantToken, expectedWindow.startAtMs, expectedWindow.endAtMs, EVENT_ARENA_RETENTION_DAYS],
+        );
+        if (!recipientResult.rows[0]) return { status: "recipient" as const };
+        if (recipientResult.rows[0].installation_id === senderInstallationId) return { status: "self" as const };
+        if (amount > availableCash + 1e-8 || amount > Number(senderResult.rows[0].cash_balance) + 1e-8) {
+          return { status: "funds" as const };
+        }
+
+        const inserted = await client.query(
+          `INSERT INTO event_arena_cash_transfers
+             (event_id, transfer_ref, idempotency_key, sender_installation_id, recipient_installation_id,
+              sender_alias, recipient_alias, amount, event_start_at, event_end_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,TO_TIMESTAMP($9 / 1000.0),TO_TIMESTAMP($10 / 1000.0))
+           RETURNING transfer_ref, sender_alias, recipient_alias, amount, created_at`,
+          [eventId, randomTransferRef(), idempotencyKey, senderInstallationId,
+            recipientResult.rows[0].installation_id, senderResult.rows[0].alias,
+            recipientResult.rows[0].alias, amount, expectedWindow.startAtMs, expectedWindow.endAtMs],
+        );
+        await client.query(
+          `UPDATE event_arena_leaderboard_entries SET cash_balance=cash_balance-$3
+           WHERE event_id=$1 AND installation_id=$2`,
+          [eventId, senderInstallationId, amount],
+        );
+        await client.query(
+          `UPDATE event_arena_leaderboard_entries SET cash_balance=cash_balance+$3
+           WHERE event_id=$1 AND installation_id=$2`,
+          [eventId, recipientResult.rows[0].installation_id, amount],
+        );
+        return { status: "ok" as const, row: inserted.rows[0] };
+      });
+
+      if (result.status === "sender") {
+        res.status(403).json({ error: "Join this event and opt in before sending cash." });
+      } else if (result.status === "recipient") {
+        res.status(404).json({ error: "That participant is no longer eligible for this event." });
+      } else if (result.status === "self") {
+        res.status(400).json({ error: "You cannot send cash to yourself." });
+      } else if (result.status === "funds") {
+        res.status(409).json({ error: "The transfer exceeds your available Event Arena cash." });
+      } else if (result.status === "inactive") {
+        res.status(410).json({ error: "Cash transfers are available only while this event is active." });
+      } else {
+        const row = result.row;
+        res.json({
+          ok: true,
+          transfer: {
+            id: row.transfer_ref,
+            eventId,
+            senderAlias: row.sender_alias,
+            recipientAlias: row.recipient_alias,
+            amount: Number(row.amount),
+            createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+          },
+        });
+      }
+    } catch {
+      res.status(500).json({ error: "Could not send Event Arena cash. Retry using the same transfer request." });
+    }
+  });
+
+  router.get("/event-arena/:eventId/transfers", requireSchema, async (req: any, res: any) => {
+    const expectedWindow = expectedEventArenaWindow(req.params.eventId);
+    const installationId = req.get("x-event-arena-installation-id");
+    if (!expectedWindow || !validInstallationId(installationId)) {
+      res.status(400).json({ error: "A valid event and installation ID are required." });
+      return;
+    }
+    const markRead = req.get("x-event-arena-mark-read") === "true";
+    try {
+      await purgeExpiredEventArenaEntries(db);
+      if (markRead) {
+        await db.query(
+          `UPDATE event_arena_cash_transfers SET read_at=COALESCE(read_at,NOW())
+           WHERE event_id=$1 AND recipient_installation_id=$2
+             AND event_end_at > NOW() - ($3 * INTERVAL '1 day')`,
+          [req.params.eventId, installationId, EVENT_ARENA_RETENTION_DAYS],
+        );
+      }
+      const { rows } = await db.query(
+        `SELECT transfer_ref, sender_alias, amount, created_at, read_at
+         FROM event_arena_cash_transfers
+         WHERE event_id=$1 AND recipient_installation_id=$2
+           AND event_end_at > NOW() - ($3 * INTERVAL '1 day')
+         ORDER BY created_at DESC`,
+        [req.params.eventId, installationId, EVENT_ARENA_RETENTION_DAYS],
+      );
+      res.json({
+        notifications: rows.map((row) => ({
+          id: row.transfer_ref,
+          eventId: req.params.eventId,
+          senderAlias: row.sender_alias,
+          amount: Number(row.amount),
+          createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+          readAt: row.read_at instanceof Date ? row.read_at.toISOString() : row.read_at ?? null,
+        })),
+      });
+    } catch {
+      res.status(500).json({ error: "Could not load Event Arena cash notifications." });
+    }
+  });
+
   return router;
+}
+
+function randomTransferRef() {
+  return randomUUID();
 }

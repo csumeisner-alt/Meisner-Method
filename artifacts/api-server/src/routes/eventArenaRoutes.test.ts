@@ -20,6 +20,8 @@ function validSubmission(overrides: Record<string, unknown> = {}) {
   return {
     installationId,
     alias: "MarketFox",
+    cashBalance: 100_000,
+    appliedTransferIds: [],
     startEquity: 100_000,
     equity: 101_250,
     returnPercent: 1.25,
@@ -51,6 +53,108 @@ async function withApi(
   }
 }
 
+function createTransferDatabase() {
+  const participants = [
+    { eventId, installationId, participantToken: "sender-participant-token-1", alias: "MarketFox", cashBalance: 1_000, active: true },
+    { eventId, installationId: "recipient-installation-123", participantToken: "recipient-participant-token-1", alias: "BlueWhale", cashBalance: 500, active: true },
+    { eventId: "2026-11-30", installationId: "recipient-installation-123", participantToken: "other-event-token-123456", alias: "BlueWhale", cashBalance: 700, active: true },
+  ];
+  const transfers: any[] = [];
+  const query = async (sql: string, values?: any[]) => {
+    if (sql.startsWith("DELETE FROM event_arena_")) return { rows: [] };
+    if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return { rows: [] };
+    if (sql.includes("WHERE event_id=$1 AND sender_installation_id=$2 AND idempotency_key=$3")) {
+      const row = transfers.find((item) => item.eventId === values?.[0]
+        && item.senderInstallationId === values?.[1] && item.idempotencyKey === values?.[2]);
+      return { rows: row ? [{
+        transfer_ref: row.id,
+        sender_alias: row.senderAlias,
+        recipient_alias: row.recipientAlias,
+        amount: row.amount,
+        created_at: row.createdAt,
+      }] : [] };
+    }
+    if (sql.includes("SELECT alias, cash_balance")) {
+      const row = participants.find((item) => item.eventId === values?.[0]
+        && item.installationId === values?.[1] && item.active);
+      return { rows: row ? [{ alias: row.alias, cash_balance: row.cashBalance }] : [] };
+    }
+    if (sql.includes("SELECT installation_id, alias, cash_balance")) {
+      const row = participants.find((item) => item.eventId === values?.[0]
+        && item.participantToken === values?.[1] && item.active);
+      return { rows: row ? [{
+        installation_id: row.installationId,
+        alias: row.alias,
+        cash_balance: row.cashBalance,
+      }] : [] };
+    }
+    if (sql.startsWith("INSERT INTO event_arena_cash_transfers")) {
+      const [targetEventId, id, idempotencyKey, senderInstallationId, recipientInstallationId, senderAlias, recipientAlias, amount] = values ?? [];
+      const row = {
+        eventId: targetEventId,
+        id,
+        idempotencyKey,
+        senderInstallationId,
+        recipientInstallationId,
+        senderAlias,
+        recipientAlias,
+        amount,
+        createdAt: new Date("2026-11-18T17:00:00.000Z"),
+        readAt: null,
+      };
+      transfers.push(row);
+      return { rows: [{
+        transfer_ref: id,
+        sender_alias: senderAlias,
+        recipient_alias: recipientAlias,
+        amount,
+        created_at: row.createdAt,
+      }] };
+    }
+    if (sql.includes("SET cash_balance=cash_balance-$3") || sql.includes("SET cash_balance=cash_balance+$3")) {
+      const participant = participants.find((item) => item.eventId === values?.[0]
+        && item.installationId === values?.[1]);
+      if (participant) participant.cashBalance += sql.includes("cash_balance-$3")
+        ? -Number(values?.[2])
+        : Number(values?.[2]);
+      return { rows: [] };
+    }
+    if (sql.startsWith("UPDATE event_arena_cash_transfers SET read_at")) {
+      for (const row of transfers) {
+        if (row.eventId === values?.[0] && row.recipientInstallationId === values?.[1]) {
+          row.readAt ??= new Date("2026-11-18T18:00:00.000Z");
+        }
+      }
+      return { rows: [] };
+    }
+    if (sql.includes("SELECT transfer_ref, sender_alias, amount, created_at, read_at")) {
+      return {
+        rows: transfers.filter((item) => item.eventId === values?.[0]
+          && item.recipientInstallationId === values?.[1]).map((row) => ({
+          transfer_ref: row.id,
+          sender_alias: row.senderAlias,
+          amount: row.amount,
+          created_at: row.createdAt,
+          read_at: row.readAt,
+        })),
+      };
+    }
+    throw new Error(`Unhandled transfer test query: ${sql}`);
+  };
+  return { participants, transfers, query };
+}
+
+function transferRequest(overrides: Record<string, unknown> = {}) {
+  return {
+    installationId,
+    recipientParticipantToken: "recipient-participant-token-1",
+    amount: 250,
+    availableCash: 300,
+    idempotencyKey: "transfer-request-123",
+    ...overrides,
+  };
+}
+
 test("only scheduled biweekly windows and exact Eastern market hours are accepted", () => {
   assert.equal(isValidEventArenaWindow(eventId, startAtMs, endAtMs), true);
   assert.equal(isValidEventArenaWindow(eventId, startAtMs + 60_000, endAtMs), false);
@@ -58,12 +162,120 @@ test("only scheduled biweekly windows and exact Eastern market hours are accepte
   assert.equal(isValidEventArenaWindow("2026-11-16", Number.NaN, endAtMs), false);
 });
 
+test("cash transfers are event scoped and an idempotent retry never moves cash twice", async () => {
+  const db = createTransferDatabase();
+  await withApi(db.query, async (baseUrl) => {
+    const send = () => fetch(`${baseUrl}/event-arena/${eventId}/transfers`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(transferRequest()),
+    });
+    const firstResponse = await send();
+    assert.equal(firstResponse.status, 200);
+    const first = await firstResponse.json() as any;
+    assert.equal(first.transfer.senderAlias, "MarketFox");
+    assert.equal(first.transfer.recipientAlias, "BlueWhale");
+    assert.equal(first.transfer.amount, 250);
+    assert.equal(JSON.stringify(first).includes(installationId), false);
+
+    const retryResponse = await send();
+    assert.equal(retryResponse.status, 200);
+    const retry = await retryResponse.json() as any;
+    assert.equal(retry.transfer.id, first.transfer.id);
+    assert.equal(db.transfers.length, 1);
+    assert.equal(db.participants[0].cashBalance, 750);
+    assert.equal(db.participants[1].cashBalance, 750);
+    assert.equal(db.participants[2].cashBalance, 700);
+  });
+});
+
+test("cash transfers reject self, ineligible recipients, insufficient cash, and inactive windows", async () => {
+  const db = createTransferDatabase();
+  await withApi(db.query, async (baseUrl) => {
+    const send = (event: string, body: Record<string, unknown>) => fetch(`${baseUrl}/event-arena/${event}/transfers`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    assert.equal((await send(eventId, transferRequest({
+      recipientParticipantToken: "sender-participant-token-1",
+    }))).status, 400);
+    assert.equal((await send(eventId, transferRequest({
+      recipientParticipantToken: "not-an-event-participant-token",
+    }))).status, 404);
+    assert.equal((await send(eventId, transferRequest({ amount: 301, availableCash: 300 }))).status, 409);
+    assert.equal(db.transfers.length, 0);
+  });
+  await withApi(db.query, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/${eventId}/transfers`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(transferRequest()),
+    });
+    assert.equal(response.status, 410);
+  }, startAtMs - 1);
+  await withApi(db.query, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/${eventId}/transfers`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(transferRequest()),
+    });
+    assert.equal(response.status, 410);
+  }, endAtMs + 1);
+  await withApi(db.query, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/${eventId}/transfers`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(transferRequest()),
+    });
+    assert.equal(response.status, 410);
+  }, endAtMs);
+  assert.equal(db.transfers.length, 0);
+});
+
+test("cash inbox returns only incoming transfers for its event and opening marks them read", async () => {
+  const db = createTransferDatabase();
+  await withApi(db.query, async (baseUrl) => {
+    const sent = await fetch(`${baseUrl}/event-arena/${eventId}/transfers`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(transferRequest()),
+    });
+    assert.equal(sent.status, 200);
+
+    const inboxUrl = `${baseUrl}/event-arena/${eventId}/transfers`;
+    const unopened = await fetch(inboxUrl, {
+      headers: { "X-Event-Arena-Installation-Id": "recipient-installation-123" },
+    });
+    const unread = await unopened.json() as any;
+    assert.equal(unread.notifications.length, 1);
+    assert.equal(unread.notifications[0].senderAlias, "MarketFox");
+    assert.equal(unread.notifications[0].readAt, null);
+
+    const opened = await fetch(inboxUrl, {
+      headers: {
+        "X-Event-Arena-Installation-Id": "recipient-installation-123",
+        "X-Event-Arena-Mark-Read": "true",
+      },
+    });
+    const read = await opened.json() as any;
+    assert.equal(read.notifications.length, 1);
+    assert.equal(read.notifications[0].eventId, eventId);
+    assert.equal(typeof read.notifications[0].readAt, "string");
+
+    const otherEvent = await fetch(`${baseUrl}/event-arena/2026-11-30/transfers`, {
+      headers: { "X-Event-Arena-Installation-Id": "recipient-installation-123" },
+    });
+    assert.deepEqual((await otherEvent.json() as any).notifications, []);
+  });
+});
+
 test("expired public entries and their alias locks are deleted after the retention period", async () => {
   let cleanupCalls = 0;
   await purgeExpiredEventArenaEntries({
     async query(sql, values) {
       cleanupCalls += 1;
-      assert.match(sql, /^DELETE FROM event_arena_leaderboard_entries/);
+      assert.match(sql, /^DELETE FROM event_arena_(leaderboard_entries|cash_transfers)/);
       assert.match(sql, /event_end_at <= NOW\(\) - \(\$1 \* INTERVAL '1 day'\)/);
       assert.deepEqual(values, [30]);
       assert.doesNotMatch(sql, /is_active/);
@@ -72,7 +284,7 @@ test("expired public entries and their alias locks are deleted after the retenti
     },
   });
   assert.equal(EVENT_ARENA_RETENTION_DAYS, 30);
-  assert.equal(cleanupCalls, 1);
+  assert.equal(cleanupCalls, 2);
 });
 
 test("submission rejects private fields, inconsistent scores, malformed holdings, and oversized payloads", async () => {
@@ -102,6 +314,8 @@ test("valid anonymous submission stores only event-scoped score and public holdi
   let storedValues: any[] | undefined;
   await withApi(async (sql, values) => {
     if (sql.startsWith("DELETE")) return { rows: [] };
+    if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return { rows: [] };
+    if (sql.startsWith("SELECT installation_id")) return { rows: [] };
     assert.match(sql, /ON CONFLICT \(event_id, installation_id\)/);
     assert.match(sql, /updated_at <= NOW\(\) - INTERVAL '15 seconds'/);
     assert.match(sql, /event_start_at > NOW\(\)[\s\S]*alias = EXCLUDED\.alias/);
@@ -127,6 +341,8 @@ test("submission accepts short direction and an explicitly unavailable allocatio
   const storedHoldings: unknown[] = [];
   await withApi(async (sql, values) => {
     if (sql.startsWith("DELETE")) return { rows: [] };
+    if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return { rows: [] };
+    if (sql.startsWith("SELECT installation_id")) return { rows: [] };
     storedHoldings.push(JSON.parse(String(values?.[7])));
     return { rows: [{ updated_at: new Date("2026-11-18T17:00:00.000Z") }] };
   }, async (baseUrl) => {
@@ -159,6 +375,7 @@ test("leaderboard response is event-scoped and does not expose installation IDs 
     assert.deepEqual(values, [eventId, startAtMs, endAtMs, 30]);
     return { rows: [{
       installation_id: installationId,
+      participant_token: "public-event-token-123456",
       alias: "MarketFox",
       start_equity: "100000",
       equity: "101250",
@@ -175,7 +392,8 @@ test("leaderboard response is event-scoped and does not expose installation IDs 
     });
     assert.equal(response.status, 200);
     const result = await response.json() as any;
-    assert.deepEqual(Object.keys(result.entries[0]), ["rank", "alias", "startEquity", "equity", "profitLoss", "returnPercent", "tradeCount", "holdings", "updatedAt", "isCurrentUser"]);
+    assert.deepEqual(Object.keys(result.entries[0]), ["rank", "alias", "participantToken", "startEquity", "equity", "profitLoss", "returnPercent", "tradeCount", "holdings", "updatedAt", "isCurrentUser"]);
+    assert.equal(result.entries[0].participantToken, "public-event-token-123456");
     assert.equal(result.entries[0].returnPercent, 1.25);
     assert.equal(result.entries[0].profitLoss, 1_250);
     assert.equal(result.entries[0].tradeCount, 4);
@@ -186,7 +404,7 @@ test("leaderboard response is event-scoped and does not expose installation IDs 
     assert.equal(JSON.stringify(result).includes("costBasis"), false);
     assert.equal(JSON.stringify(result).includes('"price"'), false);
   });
-  assert.equal(queries, 2);
+  assert.equal(queries, 3);
 });
 
 test("leaderboard ranks positive, tied, and negative returns deterministically from submitted equity", async () => {
@@ -333,7 +551,7 @@ test("completed-week discovery lists only valid ended weeks with active opt-ins"
     }]);
     assert.equal(JSON.stringify(result).includes("must-not-leak"), false);
   }, Date.parse("2026-11-25T17:00:00.000Z"));
-  assert.equal(queries, 2);
+  assert.equal(queries, 3);
 });
 
 test("completed-week discovery returns an empty list when nobody remains opted in", async () => {
@@ -349,6 +567,8 @@ test("locked aliases return conflict; fast duplicate submissions are rate limite
   let existingAlias = "MarketFox";
   await withApi(async (sql) => {
     if (sql.startsWith("DELETE")) return { rows: [] };
+    if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return { rows: [] };
+    if (sql.startsWith("SELECT installation_id")) return { rows: [] };
     if (sql.startsWith("INSERT")) return { rows: [] };
     assert.match(sql, /event_end_at > NOW\(\) - \(\$3 \* INTERVAL '1 day'\)/);
     return { rows: [{ alias: existingAlias }] };

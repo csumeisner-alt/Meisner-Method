@@ -25,6 +25,9 @@ import type {
   AnalyzeStockRequest,
   CommodityRelationshipResponse,
   CryptoSupplyHistory,
+  EventArenaCashNotificationsResponse,
+  EventArenaCashTransferRequest,
+  EventArenaCashTransferResponse,
   EventArenaLeaderboardResponse,
   EventArenaScoreSubmission,
   GetEventArenaLeaderboardWeeks200,
@@ -298,6 +301,155 @@ export const useSubmitEventArenaScore = <TError = ErrorType<void>,
       > => {
       return useMutation(getSubmitEventArenaScoreMutationOptions(options));
     }
+
+export const getSendEventArenaCashUrl = (eventId: string,) => {
+
+
+
+
+  return `/api/event-arena/${eventId}/transfers`
+}
+
+/**
+ * @summary Send simulated cash to an eligible participant in the active event
+ */
+export const sendEventArenaCash = async (eventId: string,
+    eventArenaCashTransferRequest: EventArenaCashTransferRequest, options?: RequestInit): Promise<EventArenaCashTransferResponse> => {
+
+  return customFetch<EventArenaCashTransferResponse>(getSendEventArenaCashUrl(eventId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(eventArenaCashTransferRequest)
+  }
+);}
+
+
+
+
+
+export const getSendEventArenaCashMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendEventArenaCash>>, TError,{eventId: string;data: BodyType<EventArenaCashTransferRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendEventArenaCash>>, TError,{eventId: string;data: BodyType<EventArenaCashTransferRequest>}, TContext> => {
+
+const mutationKey = ['sendEventArenaCash'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendEventArenaCash>>, {eventId: string;data: BodyType<EventArenaCashTransferRequest>}> = (props) => {
+          const {eventId,data} = props ?? {};
+
+          return  sendEventArenaCash(eventId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendEventArenaCashMutationResult = NonNullable<Awaited<ReturnType<typeof sendEventArenaCash>>>
+    export type SendEventArenaCashMutationBody = BodyType<EventArenaCashTransferRequest>
+    export type SendEventArenaCashMutationError = ErrorType<void>
+
+    /**
+ * @summary Send simulated cash to an eligible participant in the active event
+ */
+export const useSendEventArenaCash = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendEventArenaCash>>, TError,{eventId: string;data: BodyType<EventArenaCashTransferRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendEventArenaCash>>,
+        TError,
+        {eventId: string;data: BodyType<EventArenaCashTransferRequest>},
+        TContext
+      > => {
+      return useMutation(getSendEventArenaCashMutationOptions(options));
+    }
+
+export const getGetEventArenaCashNotificationsUrl = (eventId: string,) => {
+
+
+
+
+  return `/api/event-arena/${eventId}/transfers`
+}
+
+/**
+ * @summary List incoming event cash transfers and optionally mark them read
+ */
+export const getEventArenaCashNotifications = async (eventId: string, options?: RequestInit): Promise<EventArenaCashNotificationsResponse> => {
+
+  return customFetch<EventArenaCashNotificationsResponse>(getGetEventArenaCashNotificationsUrl(eventId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetEventArenaCashNotificationsQueryKey = (eventId: string,) => {
+    return [
+    `/api/event-arena/${eventId}/transfers`
+    ] as const;
+    }
+
+
+export const getGetEventArenaCashNotificationsQueryOptions = <TData = Awaited<ReturnType<typeof getEventArenaCashNotifications>>, TError = ErrorType<void>>(eventId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEventArenaCashNotifications>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetEventArenaCashNotificationsQueryKey(eventId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getEventArenaCashNotifications>>> = ({ signal }) => getEventArenaCashNotifications(eventId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: eventId !== null && eventId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getEventArenaCashNotifications>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetEventArenaCashNotificationsQueryResult = NonNullable<Awaited<ReturnType<typeof getEventArenaCashNotifications>>>
+export type GetEventArenaCashNotificationsQueryError = ErrorType<void>
+
+
+/**
+ * @summary List incoming event cash transfers and optionally mark them read
+ */
+
+export function useGetEventArenaCashNotifications<TData = Awaited<ReturnType<typeof getEventArenaCashNotifications>>, TError = ErrorType<void>>(
+ eventId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEventArenaCashNotifications>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetEventArenaCashNotificationsQueryOptions(eventId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getSearchHeatMapInstrumentsUrl = (params: SearchHeatMapInstrumentsParams,) => {
   const normalizedParams = new URLSearchParams();

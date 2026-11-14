@@ -36,6 +36,19 @@ export interface EventArenaScoreSubmission {
      * @maxLength 24
      */
   alias: string;
+  /**
+     * Self-reported cash in the separate event account, used to reconcile transfer receipts.
+     * @minimum 0
+     */
+  cashBalance?: number;
+  /**
+     * Event transfer references already applied to the local account cash balance.
+     * @maxItems 500
+     * @items.minLength 8
+     * @items.maxLength 96
+     * @items.pattern ^[A-Za-z0-9_-]+$
+     */
+  appliedTransferIds?: string[];
   /** @exclusiveMinimum 0 */
   startEquity: number;
   /** @minimum 0 */
@@ -76,6 +89,12 @@ export type EventArenaLeaderboardResponseEntriesItem = {
   /** @minimum 1 */
   rank: number;
   alias: string;
+  /**
+     * Random event-scoped recipient token; never the anonymous installation ID.
+     * @minLength 16
+     * @maxLength 96
+     */
+  participantToken: string;
   startEquity: number;
   equity: number;
   /** Event equity minus starting equity. */
@@ -93,6 +112,65 @@ export type EventArenaLeaderboardResponseEntriesItem = {
 export interface EventArenaLeaderboardResponse {
   entries: EventArenaLeaderboardResponseEntriesItem[];
   updatedAt: string;
+}
+
+export interface EventArenaCashTransferRequest {
+  /**
+     * Anonymous sender installation ID; never returned in public responses.
+     * @minLength 12
+     * @maxLength 128
+     */
+  installationId: string;
+  /**
+     * @minLength 16
+     * @maxLength 96
+     */
+  recipientParticipantToken: string;
+  /**
+     * @maximum 1000000
+     * @exclusiveMinimum 0
+     */
+  amount: number;
+  /**
+     * @minimum 0
+     * @maximum 10000000
+     */
+  availableCash: number;
+  /**
+     * @minLength 8
+     * @maxLength 96
+     * @pattern ^[A-Za-z0-9_-]+$
+     */
+  idempotencyKey: string;
+}
+
+export type EventArenaCashTransferResponseTransfer = {
+  id: string;
+  eventId: string;
+  senderAlias: string;
+  recipientAlias: string;
+  /** @exclusiveMinimum 0 */
+  amount: number;
+  createdAt: string;
+};
+
+export interface EventArenaCashTransferResponse {
+  ok: boolean;
+  transfer: EventArenaCashTransferResponseTransfer;
+}
+
+export type EventArenaCashNotificationsResponseNotificationsItem = {
+  id: string;
+  eventId: string;
+  senderAlias: string;
+  /** @exclusiveMinimum 0 */
+  amount: number;
+  createdAt: string;
+  readAt: string | null;
+};
+
+export interface EventArenaCashNotificationsResponse {
+  notifications: EventArenaCashNotificationsResponseNotificationsItem[];
 }
 
 export interface CommodityRelationshipInstrument {

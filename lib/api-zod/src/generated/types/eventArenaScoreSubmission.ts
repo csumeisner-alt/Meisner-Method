@@ -19,6 +19,19 @@ export interface EventArenaScoreSubmission {
      * @maxLength 24
      */
   alias: string;
+  /**
+     * Self-reported cash in the separate event account, used to reconcile transfer receipts.
+     * @minimum 0
+     */
+  cashBalance?: number;
+  /**
+     * Event transfer references already applied to the local account cash balance.
+     * @maxItems 500
+     * @items.minLength 8
+     * @items.maxLength 96
+     * @items.pattern ^[A-Za-z0-9_-]+$
+     */
+  appliedTransferIds?: string[];
   /** @exclusiveMinimum 0 */
   startEquity: number;
   /** @minimum 0 */

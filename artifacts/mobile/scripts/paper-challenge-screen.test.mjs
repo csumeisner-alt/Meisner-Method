@@ -14,6 +14,9 @@ const badges = readFileSync(new URL("../components/PaperChallengeMilestoneBadges
 const shareCard = readFileSync(new URL("../components/PaperEventShareCard.tsx", import.meta.url), "utf8");
 const leaderboard = readFileSync(new URL("../components/PaperChallengeLeaderboard.tsx", import.meta.url), "utf8");
 const eventArena = readFileSync(new URL("../components/EventArenaScreen.tsx", import.meta.url), "utf8");
+const eventArenaOverview = readFileSync(new URL("../components/EventArenaOverview.tsx", import.meta.url), "utf8");
+const eventArenaTransfers = readFileSync(new URL("../lib/eventArenaTransfers.ts", import.meta.url), "utf8");
+const eventArenaApi = readFileSync(new URL("../../api-server/src/routes/eventArenaRoutes.ts", import.meta.url), "utf8");
 
 assert.match(events, /eventWindow\.phase === 'upcoming' \? eventWindow\.startAtMs : Date\.now\(\)/);
 assert.match(events, /eventWindow\.phase === 'upcoming' \? null : PAPER_CHALLENGE_STARTING_BALANCE/);
@@ -362,4 +365,27 @@ test("completed Event Arena records retain trades and distinguish missing legacy
   assert.match(events, /paper-event-trades-/);
   assert.match(events, /event\.transactions === undefined/);
   assert.match(events, /archiveTrades === undefined/);
+});
+
+test("Event Arena cash transfers stay event-only, confirmed, private, and idempotent", () => {
+  assert.match(leaderboard, /participantToken: string/);
+  assert.match(leaderboard, /detail\.participantToken/);
+  assert.match(leaderboard, /event\.phase === 'active'/);
+  assert.match(leaderboard, /!detail\.isCurrentUser/);
+  assert.match(leaderboard, /testID="event-arena-send-cash"/);
+  assert.match(leaderboard, /testID="event-arena-pending-order-warning"/);
+  assert.match(leaderboard, /testID="event-arena-cash-transfer-order-impact"/);
+  assert.match(leaderboard, /event_arena_pending_transfer:\$\{event\.id\}/);
+  assert.match(leaderboard, /testID="event-arena-cash-transfer-success"/);
+  assert.match(eventArena, /recipientParticipantToken: args\.recipientParticipantToken/);
+  assert.match(eventArena, /direction: 'sent'/);
+  assert.match(eventArena, /event-arena-cash-notifications/);
+  assert.match(eventArena, /direction: 'received'/);
+  assert.match(eventArena, /X-Event-Arena-Mark-Read/);
+  assert.match(eventArenaTransfers, /eventArenaAppliedTransferIds/);
+  assert.match(eventArena, /onOpenNotifications/);
+  assert.match(eventArena, /testID=\{`event-arena-cash-notification-/);
+  assert.match(eventArenaOverview, /testID="event-arena-cash-notifications"/);
+  assert.match(eventArenaOverview, /testID="event-arena-refresh"/);
+  assert.match(eventArenaApi, /event_arena_cash_transfers/);
 });

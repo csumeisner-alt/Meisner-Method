@@ -43,6 +43,9 @@ export const GetEventArenaLeaderboardHeader = zod.object({
 })
 
 
+export const getEventArenaLeaderboardResponseEntriesItemParticipantTokenMin = 16;
+export const getEventArenaLeaderboardResponseEntriesItemParticipantTokenMax = 96;
+
 export const getEventArenaLeaderboardResponseEntriesItemTradeCountMin = 0;
 
 export const getEventArenaLeaderboardResponseEntriesItemHoldingsItemAllocationPercentMin = 0;
@@ -53,6 +56,7 @@ export const GetEventArenaLeaderboardResponse = zod.object({
   "entries": zod.array(zod.object({
   "rank": zod.number().min(1),
   "alias": zod.string(),
+  "participantToken": zod.string().min(getEventArenaLeaderboardResponseEntriesItemParticipantTokenMin).max(getEventArenaLeaderboardResponseEntriesItemParticipantTokenMax).describe('Random event-scoped recipient token; never the anonymous installation ID.'),
   "startEquity": zod.number(),
   "equity": zod.number(),
   "profitLoss": zod.number().describe('Event equity minus starting equity.'),
@@ -83,6 +87,15 @@ export const submitEventArenaScoreBodyInstallationIdMax = 128;
 
 export const submitEventArenaScoreBodyAliasMax = 24;
 
+export const submitEventArenaScoreBodyCashBalanceMin = 0;
+
+export const submitEventArenaScoreBodyAppliedTransferIdsItemMin = 8;
+export const submitEventArenaScoreBodyAppliedTransferIdsItemMax = 96;
+
+
+export const submitEventArenaScoreBodyAppliedTransferIdsItemRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+export const submitEventArenaScoreBodyAppliedTransferIdsMax = 500;
+
 export const submitEventArenaScoreBodyStartEquityExclusiveMin = 0;
 
 export const submitEventArenaScoreBodyEquityMin = 0;
@@ -98,6 +111,8 @@ export const submitEventArenaScoreBodyHoldingsMax = 100;
 export const SubmitEventArenaScoreBody = zod.object({
   "installationId": zod.string().min(submitEventArenaScoreBodyInstallationIdMin).max(submitEventArenaScoreBodyInstallationIdMax).describe('Anonymous device identifier; never returned by leaderboard reads.'),
   "alias": zod.string().min(1).max(submitEventArenaScoreBodyAliasMax),
+  "cashBalance": zod.number().min(submitEventArenaScoreBodyCashBalanceMin).optional().describe('Self-reported cash in the separate event account, used to reconcile transfer receipts.'),
+  "appliedTransferIds": zod.array(zod.string().min(submitEventArenaScoreBodyAppliedTransferIdsItemMin).max(submitEventArenaScoreBodyAppliedTransferIdsItemMax).regex(submitEventArenaScoreBodyAppliedTransferIdsItemRegExp)).max(submitEventArenaScoreBodyAppliedTransferIdsMax).optional().describe('Event transfer references already applied to the local account cash balance.'),
   "startEquity": zod.number().gt(submitEventArenaScoreBodyStartEquityExclusiveMin),
   "equity": zod.number().min(submitEventArenaScoreBodyEquityMin),
   "returnPercent": zod.number().describe('Percentage return from event equity and starting equity; the server recalculates it.'),
@@ -115,6 +130,90 @@ export const SubmitEventArenaScoreBody = zod.object({
 export const SubmitEventArenaScoreResponse = zod.object({
   "ok": zod.boolean(),
   "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Send simulated cash to an eligible participant in the active event
+ */
+export const SendEventArenaCashParams = zod.object({
+  "eventId": zod.date()
+})
+
+export const sendEventArenaCashBodyInstallationIdMin = 12;
+export const sendEventArenaCashBodyInstallationIdMax = 128;
+
+export const sendEventArenaCashBodyRecipientParticipantTokenMin = 16;
+export const sendEventArenaCashBodyRecipientParticipantTokenMax = 96;
+
+export const sendEventArenaCashBodyAmountExclusiveMin = 0;
+export const sendEventArenaCashBodyAmountMax = 1000000;
+
+export const sendEventArenaCashBodyAvailableCashMin = 0;
+export const sendEventArenaCashBodyAvailableCashMax = 10000000;
+
+export const sendEventArenaCashBodyIdempotencyKeyMin = 8;
+export const sendEventArenaCashBodyIdempotencyKeyMax = 96;
+
+
+export const sendEventArenaCashBodyIdempotencyKeyRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const SendEventArenaCashBody = zod.object({
+  "installationId": zod.string().min(sendEventArenaCashBodyInstallationIdMin).max(sendEventArenaCashBodyInstallationIdMax).describe('Anonymous sender installation ID; never returned in public responses.'),
+  "recipientParticipantToken": zod.string().min(sendEventArenaCashBodyRecipientParticipantTokenMin).max(sendEventArenaCashBodyRecipientParticipantTokenMax),
+  "amount": zod.number().gt(sendEventArenaCashBodyAmountExclusiveMin).max(sendEventArenaCashBodyAmountMax),
+  "availableCash": zod.number().min(sendEventArenaCashBodyAvailableCashMin).max(sendEventArenaCashBodyAvailableCashMax),
+  "idempotencyKey": zod.string().min(sendEventArenaCashBodyIdempotencyKeyMin).max(sendEventArenaCashBodyIdempotencyKeyMax).regex(sendEventArenaCashBodyIdempotencyKeyRegExp)
+})
+
+export const sendEventArenaCashResponseTransferAmountExclusiveMin = 0;
+
+
+
+export const SendEventArenaCashResponse = zod.object({
+  "ok": zod.boolean(),
+  "transfer": zod.object({
+  "id": zod.string(),
+  "eventId": zod.coerce.date(),
+  "senderAlias": zod.string(),
+  "recipientAlias": zod.string(),
+  "amount": zod.number().gt(sendEventArenaCashResponseTransferAmountExclusiveMin),
+  "createdAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary List incoming event cash transfers and optionally mark them read
+ */
+export const GetEventArenaCashNotificationsParams = zod.object({
+  "eventId": zod.date()
+})
+
+export const getEventArenaCashNotificationsHeaderXEventArenaInstallationIdMin = 12;
+export const getEventArenaCashNotificationsHeaderXEventArenaInstallationIdMax = 128;
+
+export const getEventArenaCashNotificationsHeaderXEventArenaMarkReadDefault = false;
+
+export const GetEventArenaCashNotificationsHeader = zod.object({
+  "X-Event-Arena-Installation-Id": zod.string().min(getEventArenaCashNotificationsHeaderXEventArenaInstallationIdMin).max(getEventArenaCashNotificationsHeaderXEventArenaInstallationIdMax).describe('Anonymous recipient device identifier; it is never returned.'),
+  "X-Event-Arena-Mark-Read": zod.boolean().default(getEventArenaCashNotificationsHeaderXEventArenaMarkReadDefault)
+})
+
+export const getEventArenaCashNotificationsResponseNotificationsItemAmountExclusiveMin = 0;
+
+
+
+export const GetEventArenaCashNotificationsResponse = zod.object({
+  "notifications": zod.array(zod.object({
+  "id": zod.string(),
+  "eventId": zod.coerce.date(),
+  "senderAlias": zod.string(),
+  "amount": zod.number().gt(getEventArenaCashNotificationsResponseNotificationsItemAmountExclusiveMin),
+  "createdAt": zod.coerce.date(),
+  "readAt": zod.coerce.date().nullable()
+}))
 })
 
 
