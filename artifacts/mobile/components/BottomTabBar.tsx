@@ -17,7 +17,7 @@ export function BottomTabBar() {
   const isEventArena = pathname === '/event-arena';
   const isPortfolio = pathname === '/portfolio';
 
-  const botPad = Platform.OS === 'web' ? 0 : insets.bottom;
+  const botPad = Platform.OS === 'web' ? 34 : insets.bottom;
   const tabOrder = ['/', '/picks', '/paper', '/portfolio', '/event-arena'] as const;
 
   function go(path: '/' | '/picks' | '/paper' | '/portfolio' | '/event-arena') {
@@ -39,32 +39,32 @@ export function BottomTabBar() {
   return (
     <View style={[styles.bar, { paddingBottom: botPad, borderTopColor: colors.border, backgroundColor: colors.background }]}>
       <TouchableOpacity style={styles.tab} onPress={() => go('/')} activeOpacity={0.7}>
-        <Feather name="search" size={24} color={isHome ? colors.heading : colors.mutedForeground} />
-        <Text style={[styles.label, { color: isHome ? colors.heading : colors.mutedForeground }]}>ANALYZE</Text>
+        <Feather name="search" size={22} color={isHome ? colors.heading : colors.mutedForeground} />
+        <Text numberOfLines={1} style={[styles.label, { color: isHome ? colors.heading : colors.mutedForeground }]}>ANALYZE</Text>
         {isHome && <View style={[styles.dot, { backgroundColor: colors.heading }]} />}
       </TouchableOpacity>
 
       <View style={styles.divider} />
 
       <TouchableOpacity style={styles.tab} onPress={() => go('/picks')} activeOpacity={0.7}>
-        <Feather name="star" size={24} color={isPicks ? colors.heading : colors.mutedForeground} />
-        <Text style={[styles.label, { color: isPicks ? colors.heading : colors.mutedForeground }]}>TOP PICKS</Text>
+        <Feather name="star" size={22} color={isPicks ? colors.heading : colors.mutedForeground} />
+        <Text numberOfLines={1} style={[styles.label, { color: isPicks ? colors.heading : colors.mutedForeground }]}>TOP PICKS</Text>
         {isPicks && <View style={[styles.dot, { backgroundColor: colors.heading }]} />}
       </TouchableOpacity>
 
       <View style={styles.divider} />
 
       <TouchableOpacity style={styles.tab} onPress={() => go('/paper')} activeOpacity={0.7}>
-        <Feather name="activity" size={24} color={isPaper ? colors.heading : colors.mutedForeground} />
-        <Text style={[styles.label, { color: isPaper ? colors.heading : colors.mutedForeground }]}>PAPER</Text>
+        <Feather name="activity" size={22} color={isPaper ? colors.heading : colors.mutedForeground} />
+        <Text numberOfLines={1} style={[styles.label, { color: isPaper ? colors.heading : colors.mutedForeground }]}>PAPER</Text>
         {isPaper && <View style={[styles.dot, { backgroundColor: colors.heading }]} />}
       </TouchableOpacity>
 
       <View style={styles.divider} />
 
       <TouchableOpacity style={styles.tab} onPress={() => go('/portfolio')} activeOpacity={0.7}>
-        <Feather name="briefcase" size={24} color={isPortfolio ? colors.heading : colors.mutedForeground} />
-        <Text style={[styles.label, { color: isPortfolio ? colors.heading : colors.mutedForeground }]}>PORTFOLIO</Text>
+        <Feather name="briefcase" size={22} color={isPortfolio ? colors.heading : colors.mutedForeground} />
+        <Text numberOfLines={1} style={[styles.label, { color: isPortfolio ? colors.heading : colors.mutedForeground }]}>PORTFOLIO</Text>
         {isPortfolio && <View style={[styles.dot, { backgroundColor: colors.heading }]} />}
       </TouchableOpacity>
 
@@ -78,8 +78,8 @@ export function BottomTabBar() {
         onPress={() => go('/event-arena')}
         activeOpacity={0.7}
       >
-        <Feather name="award" size={22} color={isEventArena ? colors.heading : colors.mutedForeground} />
-        <Text style={[styles.label, { color: isEventArena ? colors.heading : colors.mutedForeground }]}>EVENT ARENA</Text>
+        <Feather name="award" size={21} color={isEventArena ? colors.heading : colors.mutedForeground} />
+        <Text numberOfLines={1} style={[styles.label, { color: isEventArena ? colors.heading : colors.mutedForeground }]}>EVENT ARENA</Text>
         {isEventArena && <View style={[styles.dot, { backgroundColor: colors.heading }]} />}
       </TouchableOpacity>
     </View>
@@ -89,13 +89,15 @@ export function BottomTabBar() {
 const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
+    minHeight: 58,
     borderTopWidth: 1,
   },
   tab: {
     flex: 1,
+    minWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
+    paddingVertical: 8,
     gap: 4,
   },
   divider: {
@@ -106,7 +108,7 @@ const styles = StyleSheet.create({
   label: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 8,
-    letterSpacing: 0.8,
+    letterSpacing: 0.1,
   },
   dot: {
     width: 4,

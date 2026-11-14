@@ -115,6 +115,7 @@ import {
  */
 // ── Types ──────────────────────────────────────────────────────────────────
 type TabId = 'overview' | 'positions' | 'orders' | 'history' | 'analytics' | 'dividends' | 'growth';
+type PaperTabGroupId = 'portfolio' | 'activity' | 'insights';
 type StockInfo = BuyStockInfo;
 type PaperBuySuggestion = {
   symbol: string;
@@ -191,13 +192,24 @@ const CARD_BG = 'rgba(192,192,192,0.08)';
 const BORDER = 'rgba(192,192,192,0.28)';
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
-  { id: 'overview',  label: 'OVERVIEW',  icon: 'grid' },
-  { id: 'positions', label: 'POSITIONS', icon: 'list' },
-  { id: 'orders',    label: 'ORDERS',    icon: 'clock' },
-  { id: 'history',   label: 'TRADE HISTORY', icon: 'repeat' },
-  { id: 'analytics', label: 'ANALYTICS', icon: 'bar-chart-2' },
-  { id: 'dividends', label: 'DIVIDENDS', icon: 'dollar-sign' },
-  { id: 'growth',    label: 'GROWTH',    icon: 'trending-up' },
+  { id: 'overview',  label: 'Overview', icon: 'grid' },
+  { id: 'positions', label: 'Positions', icon: 'list' },
+  { id: 'orders',    label: 'Orders', icon: 'clock' },
+  { id: 'history',   label: 'Trade History', icon: 'repeat' },
+  { id: 'analytics', label: 'Analytics', icon: 'bar-chart-2' },
+  { id: 'dividends', label: 'Dividends', icon: 'dollar-sign' },
+  { id: 'growth',    label: 'Growth', icon: 'trending-up' },
+];
+
+const PAPER_TAB_GROUPS: {
+  id: PaperTabGroupId;
+  label: string;
+  icon: string;
+  tabs: TabId[];
+}[] = [
+  { id: 'portfolio', label: 'Portfolio', icon: 'briefcase', tabs: ['overview', 'positions'] },
+  { id: 'activity', label: 'Activity', icon: 'activity', tabs: ['orders', 'history'] },
+  { id: 'insights', label: 'Insights', icon: 'bar-chart-2', tabs: ['analytics', 'dividends', 'growth'] },
 ];
 
 const HISTORY_RANGES = [
@@ -282,6 +294,8 @@ export default function PaperScreen() {
 
   // UI
   const [activeTab, setActiveTab] = useState<TabId>('overview');
+  const activeTabGroup = PAPER_TAB_GROUPS.find((group) => group.tabs.includes(activeTab)) ?? PAPER_TAB_GROUPS[0];
+  const activeGroupTabs = TABS.filter((tab) => activeTabGroup.tabs.includes(tab.id));
   const [chartRange, setChartRange] = useState<(typeof HISTORY_RANGES)[number]['id']>('ALL');
   const [showAccountDropdown, setShowAccountDropdown] = useState(false);
   const [showTradeModal, setShowTradeModal] = useState(false);
@@ -1565,17 +1579,30 @@ export default function PaperScreen() {
 
   // ── Tab views ─────────────────────────────────────────────────────────────
   const renderPositions = () => {
+    const heading = (
+      <View style={styles.contentSectionHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.contentSectionTitle}>Open positions</Text>
+          <Text style={styles.contentSectionHint}>Market value and unrealized performance</Text>
+        </View>
+        <Text style={styles.sectionCount}>{myPositions.length}</Text>
+      </View>
+    );
     if (myPositions.length === 0) {
       return (
-        <View style={styles.emptyWrap}>
-          <Feather name="activity" size={40} color={DIM} />
-          <Text style={styles.emptyTitle}>No open positions</Text>
-          <Text style={styles.emptyHint}>Tap BUY to place your first paper trade</Text>
+        <View style={{ paddingHorizontal: 16 }}>
+          {heading}
+          <View style={styles.emptyWrap}>
+            <Feather name="activity" size={36} color={DIM} />
+            <Text style={styles.emptyTitle}>No open positions</Text>
+            <Text style={styles.emptyHint}>Tap Buy to place your first paper trade</Text>
+          </View>
         </View>
       );
     }
     return (
-      <View style={{ gap: 10, paddingHorizontal: 16 }}>
+      <View style={{ gap: 14, paddingHorizontal: 16 }}>
+        {heading}
         {myPositions.map((pos, i) => {
           const q = quotes[pos.symbol];
           const price = q?.price ?? pos.avgCost;
@@ -1606,13 +1633,14 @@ export default function PaperScreen() {
                 <View style={[styles.posColorBar, { backgroundColor: color }]} />
                 <View style={{ flex: 1 }}>
                   <View style={styles.posRow}>
-                    <View style={{ flex: 1 }}>
+                    <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
                       <Text style={styles.posSymbol}>{pos.symbol}</Text>
                       <Text style={styles.posName} numberOfLines={1}>{pos.companyName}</Text>
                     </View>
-                    <View style={{ alignItems: 'flex-end' }}>
+                    <View style={styles.positionValue}>
+                      <Text style={styles.posMktLabel}>MARKET VALUE</Text>
                       <Text style={styles.posMktVal}>{$fmt(mktVal)}</Text>
-                      <Text style={[styles.posPnl, { color: pnlColor(pnl) }]}>
+                      <Text style={[styles.posPnl, { color: pnlColor(pnl) }]} numberOfLines={1}>
                         {pnl >= 0 ? '+' : ''}{$fmt(pnl)} ({pctFmt(pnlPct)})
                       </Text>
                     </View>
@@ -1875,6 +1903,7 @@ export default function PaperScreen() {
           <View style={styles.metricsGrid}>
             {[
               { label: 'Total Return', val: pctFmt(totalReturn), color: pnlColor(totalReturn) },
+              { label: 'Total P&L', val: $fmt(totalPnLFromEquity), color: pnlColor(totalPnLFromEquity) },
               { label: 'Unrealized P&L', val: $fmt(unrealizedPnL), color: pnlColor(unrealizedPnL) },
               { label: 'Realized P&L', val: $fmt(realizedPnL), color: pnlColor(realizedPnL) },
               { label: "Today's Change", val: $fmt(todayPnL), color: pnlColor(todayPnL) },
@@ -1894,6 +1923,9 @@ export default function PaperScreen() {
 
   const renderDividends = () => {
     const divPositions = myPositions.filter(p => p.dividendYield > 0 || (p.dividendRate ?? 0) > 0);
+    const dividendsReceived = myTxns
+      .filter((transaction) => transaction.action === 'DIVIDEND')
+      .reduce((sum, transaction) => sum + transaction.total, 0);
     const totalAnnualDiv = divPositions.reduce(
       (s, p) => s + annualDivIncome(p, quotes[p.symbol]?.price ?? p.avgCost), 0,
     );
@@ -1916,6 +1948,15 @@ export default function PaperScreen() {
               <Text style={styles.divLabel}>Portfolio Yield</Text>
             </View>
           </View>
+          <Text style={styles.reportNote}>Estimated from current holdings; this is not income already received.</Text>
+          <View style={styles.receivedDividendRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.receivedDividendLabel}>ACTUAL DIVIDENDS RECEIVED</Text>
+              <Text style={styles.receivedDividendValue}>{$fmt(dividendsReceived)}</Text>
+              <Text style={styles.receivedDividendHint}>Simulated credits posted to this account</Text>
+            </View>
+            <Feather name="check-circle" size={17} color={BUY_COLOR} />
+          </View>
           <View style={styles.divRow}>
             <Text style={styles.divDetail}>{$fmt(totalAnnualDiv / 4)} / quarter</Text>
             <Text style={styles.divDetail}>{$fmt(totalAnnualDiv / 12)} / month</Text>
@@ -1923,7 +1964,7 @@ export default function PaperScreen() {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>ANNUAL INCOME BY STOCK</Text>
+          <Text style={styles.sectionTitle}>ESTIMATED ANNUAL INCOME BY HOLDING</Text>
           <DividendBarChart items={items} width={screenWidth - 64} height={180} />
         </View>
 
@@ -1962,7 +2003,7 @@ export default function PaperScreen() {
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>10-YEAR GROWTH PROJECTION</Text>
         <Text style={styles.chartNote}>
-          Starting from current portfolio value of {$fmt(portfolioValue)}
+          Illustrative scenarios from current account equity of {$fmt(portfolioValue)}. Not a forecast or actual return.
         </Text>
         <GrowthProjectionChart startValue={portfolioValue} width={screenWidth - 64} height={220} />
       </View>
@@ -2133,9 +2174,16 @@ export default function PaperScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: Platform.OS === 'android' ? insets.top + 8 : 0 }]}>
         <MMLogo size={36} />
-        <Text style={[styles.headerTitle, { color: colors.heading }]}>PAPER TRADE</Text>
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.82}
+          style={[styles.headerTitle, screenWidth <= 360 && { fontSize: 13 }, { color: colors.heading }]}
+        >
+          PAPER TRADE
+        </Text>
         <View style={{ flex: 1 }} />
-        <Text style={styles.headerSub}>Risk-free · $100k start</Text>
+        <Text numberOfLines={1} style={[styles.headerSub, screenWidth <= 360 && { fontSize: 9 }]}>Risk-free · $100k start</Text>
       </View>
 
       <View style={styles.accountSelectorHeading}>
@@ -2333,7 +2381,14 @@ export default function PaperScreen() {
         <View style={styles.overviewEquityRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.overviewEyebrow}>ACCOUNT EQUITY</Text>
-            <Text style={styles.overviewEquity}>{$fmt(portfolioValue)}</Text>
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.78}
+              style={[styles.overviewEquity, screenWidth <= 360 && { fontSize: 21 }]}
+            >
+              {$fmt(portfolioValue)}
+            </Text>
           </View>
           <View style={styles.overviewReturnPill}>
             <Text style={[styles.overviewReturn, { color: pnlColor(totalPnLFromEquity) }]}>{pctFmt(totalReturn)}</Text>
@@ -2346,8 +2401,6 @@ export default function PaperScreen() {
             { label: 'BUYING POWER', value: $short(account?.cash ?? 0), color: SILVER },
             { label: 'INVESTED CAPITAL', value: $short(investedCapital), color: SILVER },
             { label: "TODAY'S P/L", value: `${todayPnL >= 0 ? '+' : ''}${$short(todayPnL)}`, color: pnlColor(todayPnL) },
-            { label: 'TOTAL P/L', value: `${totalPnLFromEquity >= 0 ? '+' : ''}${$short(totalPnLFromEquity)}`, color: pnlColor(totalPnLFromEquity) },
-            { label: 'OPEN POSITIONS', value: `${myPositions.length}`, color: SILVER },
           ].map((item) => (
             <View key={item.label} style={styles.overviewMetric}>
               <Text style={[styles.overviewMetricValue, { color: item.color }]} numberOfLines={1}>{item.value}</Text>
@@ -2357,29 +2410,54 @@ export default function PaperScreen() {
         </View>
       </View>
 
-      {/* Tab Bar */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabScroll}>
-        <View style={styles.tabBar}>
-          {TABS.map(tab => (
+      {/* Primary groups and their smaller secondary navigation */}
+      <View style={styles.primaryTabs} accessibilityRole="tablist">
+        {PAPER_TAB_GROUPS.map((group) => {
+          const selected = group.id === activeTabGroup.id;
+          return (
             <TouchableOpacity
-              key={tab.id}
-              testID={`paper-tab-${tab.id}`}
+              key={group.id}
+              testID={`paper-tab-group-${group.id}`}
               accessibilityRole="tab"
-              accessibilityState={{ selected: activeTab === tab.id }}
-              style={[styles.tabBtn, activeTab === tab.id && styles.tabBtnActive]}
-              onPress={() => setActiveTab(tab.id)}
+              accessibilityState={{ selected }}
+              style={[styles.primaryTab, selected && styles.primaryTabActive]}
+              onPress={() => {
+                if (!group.tabs.includes(activeTab)) setActiveTab(group.tabs[0]);
+              }}
               activeOpacity={0.7}
             >
-              <Text style={[styles.tabLabel, activeTab === tab.id && styles.tabLabelActive]}>{tab.label}</Text>
+              <Feather name={group.icon as any} size={15} color={selected ? GOLD : DIM} />
+              <Text style={[styles.primaryTabLabel, selected && styles.primaryTabLabelActive]}>{group.label}</Text>
             </TouchableOpacity>
-          ))}
-        </View>
+          );
+        })}
+      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.tabScroll}
+        contentContainerStyle={styles.subTabBar}
+        accessibilityRole="tablist"
+      >
+        {activeGroupTabs.map((tab) => (
+          <TouchableOpacity
+            key={tab.id}
+            testID={`paper-tab-${tab.id}`}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: activeTab === tab.id }}
+            style={[styles.tabBtn, activeTab === tab.id && styles.tabBtnActive]}
+            onPress={() => setActiveTab(tab.id)}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.tabLabel, activeTab === tab.id && styles.tabLabelActive]}>{tab.label}</Text>
+          </TouchableOpacity>
+        ))}
       </ScrollView>
 
       {/* Content */}
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 120, paddingTop: 12 }}
+        contentContainerStyle={{ paddingBottom: 16, paddingTop: 16 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={SILVER} />}
         showsVerticalScrollIndicator={false}
       >
@@ -2392,12 +2470,25 @@ export default function PaperScreen() {
         {activeTab === 'growth' && renderGrowth()}
       </ScrollView>
 
-      {/* BUY FAB — show on positions and orders tab */}
+      {/* Integrated action stays in the layout instead of floating over content. */}
       {(activeTab === 'overview' || activeTab === 'positions' || activeTab === 'orders') && (
-        <TouchableOpacity style={styles.fab} onPress={openBuyModal} activeOpacity={0.85}>
-          <Feather name="plus" size={18} color="#000" />
-          <Text style={styles.fabText}>BUY</Text>
-        </TouchableOpacity>
+        <View style={styles.buyActionWrap}>
+          <TouchableOpacity
+            testID="paper-trading-buy-action"
+            accessibilityRole="button"
+            accessibilityLabel={`Buy stocks or ETFs in ${account?.name ?? 'selected account'}`}
+            style={styles.buyAction}
+            onPress={openBuyModal}
+            activeOpacity={0.85}
+          >
+            <Feather name="plus" size={18} color="#000" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.buyActionTitle}>Buy</Text>
+              <Text style={styles.buyActionHint}>Trade in {account?.name ?? 'your selected account'}</Text>
+            </View>
+            <Feather name="arrow-up-right" size={17} color="#000" />
+          </TouchableOpacity>
+        </View>
       )}
 
       <BottomTabBar />
@@ -2865,11 +2956,11 @@ const styles = StyleSheet.create({
     backgroundColor: CARD_BG,
   },
   accountSelectorScroll: { flexGrow: 0 },
-  accountCards: { paddingHorizontal: 16, paddingBottom: 10, gap: 10 },
+  accountCards: { paddingHorizontal: 16, paddingBottom: 12, gap: 12 },
   accountCard: {
-    width: 206,
-    minHeight: 143,
-    padding: 12,
+    width: 220,
+    minHeight: 146,
+    padding: 14,
     borderWidth: 1,
     borderColor: BORDER,
     borderRadius: 13,
@@ -2886,12 +2977,12 @@ const styles = StyleSheet.create({
   accountCardEventActive: { borderColor: GOLD, borderWidth: 2 },
   eventAccountPlaceholder: { justifyContent: 'center' },
   accountCardTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
-  accountCardName: { flex: 1, fontFamily: 'Inter_700Bold', fontSize: 11, color: DIM, letterSpacing: 0.75 },
+  accountCardName: { flex: 1, fontFamily: 'Inter_700Bold', fontSize: 12, color: DIM, letterSpacing: 0.55 },
   accountCardNameActive: { color: GOLD },
-  accountCardEquity: { marginTop: 10, fontFamily: 'Inter_700Bold', fontSize: 20, color: '#fff' },
-  accountCardCaption: { marginTop: 1, fontFamily: 'Inter_500Medium', fontSize: 9, color: DIM, letterSpacing: 0.6 },
-  eventAccountCardPrompt: { marginTop: 4, fontFamily: 'Inter_600SemiBold', fontSize: 8, lineHeight: 11, color: GOLD },
-  accountCardDivider: { height: 1, backgroundColor: BORDER, marginTop: 9, marginBottom: 8 },
+  accountCardEquity: { marginTop: 9, fontFamily: 'Inter_700Bold', fontSize: 20, color: '#fff' },
+  accountCardCaption: { marginTop: 1, fontFamily: 'Inter_500Medium', fontSize: 9, color: DIM, letterSpacing: 0.55 },
+  eventAccountCardPrompt: { marginTop: 5, fontFamily: 'Inter_600SemiBold', fontSize: 9, lineHeight: 12, color: GOLD },
+  accountCardDivider: { height: 1, backgroundColor: BORDER, marginTop: 8, marginBottom: 8 },
   accountCardMetrics: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   accountCardMetricValue: { fontFamily: 'Inter_700Bold', fontSize: 11, color: SILVER },
   accountCardMetricLabel: { marginTop: 3, fontFamily: 'Inter_500Medium', fontSize: 8, color: DIM, letterSpacing: 0.25 },
@@ -2899,9 +2990,9 @@ const styles = StyleSheet.create({
   eventPlaceholderHint: { marginTop: 5, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 14, color: DIM },
   accountOverview: {
     marginHorizontal: 16,
-    marginTop: 2,
-    marginBottom: 8,
-    padding: 13,
+    marginTop: 4,
+    marginBottom: 12,
+    padding: 16,
     borderRadius: 13,
     borderWidth: 1,
     borderColor: BORDER,
@@ -2909,14 +3000,14 @@ const styles = StyleSheet.create({
   },
   overviewEquityRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   overviewEyebrow: { fontFamily: 'Inter_600SemiBold', fontSize: 9, color: DIM, letterSpacing: 1 },
-  overviewEquity: { marginTop: 4, fontFamily: 'Inter_700Bold', fontSize: 23, color: '#fff' },
-  overviewReturnPill: { alignItems: 'flex-end', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 9, backgroundColor: 'rgba(255,255,255,0.04)' },
-  overviewReturn: { fontFamily: 'Inter_700Bold', fontSize: 14 },
+  overviewEquity: { marginTop: 5, fontFamily: 'Inter_700Bold', fontSize: 26, color: '#fff' },
+  overviewReturnPill: { alignItems: 'flex-end', paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.04)' },
+  overviewReturn: { fontFamily: 'Inter_700Bold', fontSize: 15 },
   overviewReturnCaption: { marginTop: 2, fontFamily: 'Inter_500Medium', fontSize: 8, color: DIM, letterSpacing: 0.45 },
-  overviewMetricGrid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 12, borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 10 },
-  overviewMetric: { width: '33.333%', minHeight: 43, paddingVertical: 4, paddingRight: 5 },
-  overviewMetricValue: { fontFamily: 'Inter_700Bold', fontSize: 12 },
-  overviewMetricLabel: { marginTop: 3, fontFamily: 'Inter_500Medium', fontSize: 8, color: DIM, letterSpacing: 0.25 },
+  overviewMetricGrid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 14, borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 8 },
+  overviewMetric: { width: '50%', minHeight: 48, paddingVertical: 7, paddingRight: 8 },
+  overviewMetricValue: { fontFamily: 'Inter_700Bold', fontSize: 13 },
+  overviewMetricLabel: { marginTop: 4, fontFamily: 'Inter_500Medium', fontSize: 9, color: DIM, letterSpacing: 0.35 },
   chartHeading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
   chartCurrentValue: { fontFamily: 'Inter_700Bold', fontSize: 13 },
   rangeRow: { flexDirection: 'row', gap: 6, paddingVertical: 8 },
@@ -2985,17 +3076,37 @@ const styles = StyleSheet.create({
   summaryVal: { fontFamily: 'Inter_700Bold', fontSize: 12, letterSpacing: 0.3 },
   summaryLabel: { fontFamily: 'Inter_400Regular', fontSize: 9, color: DIM, marginTop: 2, letterSpacing: 0.5 },
 
-  // Tab bar
-  tabScroll: { flexGrow: 0 },
-  tabBar: {
+  // Primary tab groups and secondary views
+  primaryTabs: {
     flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: BORDER,
-    backgroundColor: '#000',
+    marginHorizontal: 16,
+    marginTop: 2,
+    padding: 4,
+    gap: 4,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: 'rgba(0,0,0,0.35)',
   },
-  tabBtn: { minWidth: 82, alignItems: 'center', paddingHorizontal: 12, paddingVertical: 11 },
-  tabBtnActive: { borderBottomWidth: 2, borderBottomColor: GOLD },
-  tabLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 9, color: DIM, letterSpacing: 0.45 },
+  primaryTab: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 4,
+    borderRadius: 10,
+  },
+  primaryTabActive: { backgroundColor: 'rgba(255,215,0,0.12)' },
+  primaryTabLabel: { color: DIM, fontFamily: 'Inter_600SemiBold', fontSize: 11 },
+  primaryTabLabelActive: { color: GOLD },
+  tabScroll: { flexGrow: 0 },
+  subTabBar: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10, gap: 8 },
+  tabBtn: { minHeight: 40, minWidth: 78, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD_BG },
+  tabBtnActive: { borderColor: GOLD, backgroundColor: 'rgba(255,215,0,0.12)' },
+  tabLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 12, color: DIM },
   tabLabelActive: { color: GOLD },
 
   // Cards
@@ -3013,6 +3124,10 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     marginBottom: 12,
   },
+  contentSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 2 },
+  contentSectionTitle: { fontFamily: 'Inter_700Bold', fontSize: 17, color: '#fff' },
+  contentSectionHint: { fontFamily: 'Inter_400Regular', fontSize: 11, color: DIM, marginTop: 4 },
+  sectionCount: { minWidth: 34, textAlign: 'center', color: GOLD, fontFamily: 'Inter_700Bold', fontSize: 13, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 10, backgroundColor: 'rgba(255,215,0,0.1)' },
   chartNote: {
     fontFamily: 'Inter_400Regular',
     fontSize: 10,
@@ -3029,8 +3144,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
     borderRadius: 12,
-    padding: 14,
-    gap: 10,
+    padding: 16,
+    gap: 11,
   },
   orderCard: {
     backgroundColor: CARD_BG,
@@ -3041,15 +3156,17 @@ const styles = StyleSheet.create({
   },
   posColorBar: { width: 3, height: '100%', borderRadius: 2, minHeight: 50 },
   posAccentBar: { width: 3, borderRadius: 2, minHeight: 40, marginRight: 2 },
-  posRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 6 },
-  posSymbol: { fontFamily: 'Inter_700Bold', fontSize: 16, color: '#fff' },
+  posRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  posSymbol: { fontFamily: 'Inter_700Bold', fontSize: 17, color: '#fff' },
   posLabel: { fontFamily: 'Inter_400Regular', fontSize: 10, color: 'rgba(192,192,192,0.38)', letterSpacing: 1 },
   posVal: { fontFamily: 'Inter_600SemiBold', fontSize: 12, color: '#fff', marginTop: 1 },
-  posName: { fontFamily: 'Inter_400Regular', fontSize: 11, color: DIM, marginTop: 2 },
-  posMktVal: { fontFamily: 'Inter_700Bold', fontSize: 14, color: '#fff' },
-  posPnl: { fontFamily: 'Inter_500Medium', fontSize: 11, marginTop: 2 },
-  posMetaRow: { flexDirection: 'row', gap: 10 },
-  posMeta: { fontFamily: 'Inter_400Regular', fontSize: 10, color: DIM },
+  posName: { fontFamily: 'Inter_400Regular', fontSize: 12, color: DIM, marginTop: 3 },
+  positionValue: { minWidth: 120, maxWidth: 150, alignItems: 'flex-end' },
+  posMktLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 8, color: DIM, letterSpacing: 0.65, marginBottom: 2 },
+  posMktVal: { fontFamily: 'Inter_700Bold', fontSize: 16, color: '#fff' },
+  posPnl: { fontFamily: 'Inter_600SemiBold', fontSize: 11, marginTop: 3 },
+  posMetaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(192,192,192,0.12)' },
+  posMeta: { fontFamily: 'Inter_400Regular', fontSize: 11, color: DIM },
 
   // Transaction rows
   txRow: {
@@ -3074,10 +3191,10 @@ const styles = StyleSheet.create({
   allocPct: { fontFamily: 'Inter_400Regular', fontSize: 11, color: DIM, width: 44, textAlign: 'right' },
 
   // Metrics
-  metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  metricBox: { width: '30%', backgroundColor: 'rgba(192,192,192,0.04)', borderRadius: 8, padding: 10 },
-  metricVal: { fontFamily: 'Inter_700Bold', fontSize: 13 },
-  metricLabel: { fontFamily: 'Inter_400Regular', fontSize: 10, color: DIM, marginTop: 4 },
+  metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 10 },
+  metricBox: { width: '48%', minHeight: 68, justifyContent: 'center', backgroundColor: 'rgba(192,192,192,0.04)', borderRadius: 10, padding: 12 },
+  metricVal: { fontFamily: 'Inter_700Bold', fontSize: 14 },
+  metricLabel: { fontFamily: 'Inter_400Regular', fontSize: 11, color: DIM, marginTop: 5 },
 
   // Dividends
   divSummary: { flexDirection: 'row', marginBottom: 10 },
@@ -3085,6 +3202,11 @@ const styles = StyleSheet.create({
   divLabel: { fontFamily: 'Inter_400Regular', fontSize: 11, color: DIM, marginTop: 4 },
   divRow: { flexDirection: 'row', gap: 20 },
   divDetail: { fontFamily: 'Inter_400Regular', fontSize: 12, color: DIM },
+  reportNote: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, color: DIM, marginTop: 10 },
+  receivedDividendRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: BORDER },
+  receivedDividendLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 9, color: DIM, letterSpacing: 0.7 },
+  receivedDividendValue: { fontFamily: 'Inter_700Bold', fontSize: 18, color: SILVER, marginTop: 4 },
+  receivedDividendHint: { fontFamily: 'Inter_400Regular', fontSize: 10, color: DIM, marginTop: 3 },
   divDetailRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, borderTopWidth: 1, borderTopColor: BORDER },
   divSym: { fontFamily: 'Inter_700Bold', fontSize: 13, color: SILVER, width: 52 },
   divYield: { fontFamily: 'Inter_400Regular', fontSize: 11, color: DIM },
@@ -3196,29 +3318,23 @@ const styles = StyleSheet.create({
   },
 
   // Empty state
-  emptyWrap: { alignItems: 'center', paddingVertical: 60, gap: 12 },
+  emptyWrap: { alignItems: 'center', paddingVertical: 36, gap: 12 },
   emptyTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 16, color: DIM },
   emptyHint: { fontFamily: 'Inter_400Regular', fontSize: 13, color: 'rgba(192,192,192,0.25)', textAlign: 'center', maxWidth: 240 },
 
-  // FAB
-  fab: {
-    position: 'absolute',
-    right: 20,
-    bottom: 108,
-    backgroundColor: BUY_COLOR,
-    borderRadius: 28,
+  // Integrated trading action
+  buyActionWrap: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10 },
+  buyAction: {
+    minHeight: 58,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 15,
-    gap: 6,
-    shadowColor: BUY_COLOR,
-    shadowOpacity: 0.45,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
+    gap: 12,
+    paddingHorizontal: 16,
+    backgroundColor: BUY_COLOR,
+    borderRadius: 13,
   },
-  fabText: { fontFamily: 'Inter_700Bold', fontSize: 14, color: '#000', letterSpacing: 1 },
+  buyActionTitle: { fontFamily: 'Inter_700Bold', fontSize: 14, color: '#000' },
+  buyActionHint: { fontFamily: 'Inter_500Medium', fontSize: 10, color: 'rgba(0,0,0,0.72)', marginTop: 2 },
 
   // Modals
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },

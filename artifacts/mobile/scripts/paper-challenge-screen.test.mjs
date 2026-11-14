@@ -7,6 +7,7 @@ const orderSheet = readFileSync(new URL("../components/OrderSheet.tsx", import.m
 const orderEntry = readFileSync(new URL("../components/ProfessionalOrderEntry.tsx", import.meta.url), "utf8");
 const orderReview = readFileSync(new URL("../components/OrderEntryReview.tsx", import.meta.url), "utf8");
 const events = readFileSync(new URL("../components/PaperChallengeHistory.tsx", import.meta.url), "utf8");
+const bottomTabBar = readFileSync(new URL("../components/BottomTabBar.tsx", import.meta.url), "utf8");
 const challenge = readFileSync(new URL("../lib/paperChallenge.ts", import.meta.url), "utf8");
 const badges = readFileSync(new URL("../components/PaperChallengeMilestoneBadges.tsx", import.meta.url), "utf8");
 const shareCard = readFileSync(new URL("../components/PaperEventShareCard.tsx", import.meta.url), "utf8");
@@ -150,12 +151,31 @@ test("account dashboard selects, scopes, and persists the active paper account",
   assert.match(screen, /PAPER_VALUE_SNAPSHOT_INTERVAL_MS = 60 \* 60_000/);
   assert.match(screen, /PAPER_VALUE_SNAPSHOT_KEY/);
   assert.match(screen, /testID=\{isEventAcct \? 'active-paper-event-account'/);
-  assert.match(screen, /\{ id: 'history',\s+label: 'TRADE HISTORY'/);
+  assert.match(screen, /\{ id: 'history',\s+label: 'Trade History'/);
   assert.match(screen, /testID=\{`paper-tab-\$\{tab\.id\}`\}/);
   assert.doesNotMatch(screen, /historyAgeMs >= range\.ms/);
   assert.match(orderEntry, /testID="order-sheet-active-account"/);
   assert.match(orderEntry, /SETTLED B\.P\./);
   assert.match(orderReview, /CAPTURED ACCOUNT/);
+});
+
+test("Paper Trading keeps all views in readable groups and reserves space for actions", () => {
+  assert.match(screen, /\{ id: 'portfolio', label: 'Portfolio'.*tabs: \['overview', 'positions'\] \}/);
+  assert.match(screen, /\{ id: 'activity', label: 'Activity'.*tabs: \['orders', 'history'\] \}/);
+  assert.match(screen, /\{ id: 'insights', label: 'Insights'.*tabs: \['analytics', 'dividends', 'growth'\] \}/);
+  assert.match(screen, /paper-tab-group-\$\{group\.id\}/);
+  assert.match(screen, /activeGroupTabs\.map\(\(tab\)/);
+  assert.match(screen, /testID="paper-trading-buy-action"/);
+  assert.doesNotMatch(screen, /position: 'absolute',\s*right: 20,\s*bottom: 108/);
+  assert.match(screen, /contentContainerStyle=\{\{ paddingBottom: 16, paddingTop: 16 \}\}/);
+  assert.match(screen, /testID="paper-trading-buy-action"[\s\S]*?openBuyModal/);
+  assert.match(screen, /posMktVal/);
+  assert.match(screen, /posMetaRow/);
+  assert.match(screen, /ACTUAL DIVIDENDS RECEIVED/);
+  assert.match(screen, /Estimated from current holdings; this is not income already received/);
+  assert.match(screen, /Not a forecast or actual return/);
+  assert.match(bottomTabBar, /Platform\.OS === 'web' \? 34 : insets\.bottom/);
+  assert.match(bottomTabBar, /fontSize: 8/);
 });
 
 test("paper order review captures account identity and guards duplicate submissions", () => {
