@@ -177,9 +177,9 @@ test('Event Arena is a dedicated destination with separate competition sections'
   assert.match(screen, /No event orders can be placed before then/);
   assert.match(screen, /event-arena-open-past-detail-/);
   assert.match(screen, /Trade records are unavailable for this older event/);
-  assert.match(screen, /leaderboardAlias: alias,[\s\S]*leaderboardOptedIn: false/);
+  assert.match(screen, /leaderboardAlias: alias,[\s\S]*leaderboardOptedIn: true/);
   assert.match(screen, /testID="event-arena-join-alias"/);
-  assert.match(screen, /This name identifies your event entry[\s\S]*separately opt in to leaderboard sharing/);
+  assert.match(screen, /Joining turns on leaderboard sharing/);
   assert.match(screen, /embedded/);
   assert.match(leaderboard, /testID="edit-paper-event-leaderboard-alias"/);
   assert.match(leaderboard, /testID="save-paper-event-leaderboard-alias"/);

@@ -5,6 +5,7 @@ import {
   AppState,
   Modal,
   Pressable,
+  Platform,
   ScrollView,
   StyleSheet,
   Switch,
@@ -42,6 +43,7 @@ import Svg, {
 } from 'react-native-svg';
 import type { ColorScheme } from '@/constants/colors';
 import type { BrewActionResult } from '@/hooks/useBrewTokens';
+import { requestBrewConfirmation } from '@/lib/brewConfirmation';
 import {
   BREW_BANK_KEY_PRICE,
   DAIQUIRI_BOTTLE_PRICE,
@@ -1193,10 +1195,19 @@ export function BrewTokenBank({
   };
 
   const confirmExpensiveAction = (title: string, message: string, action: () => void) => {
-    Alert.alert(title, message, [
-      { text: 'CANCEL', style: 'cancel' },
-      { text: 'CONFIRM', onPress: action },
-    ]);
+    requestBrewConfirmation(
+      Platform.OS === 'web' ? 'web' : 'native',
+      title,
+      message,
+      action,
+      (confirmationMessage) => window.confirm(confirmationMessage),
+      (nativeTitle, nativeMessage, onConfirm) => {
+        Alert.alert(nativeTitle, nativeMessage, [
+          { text: 'CANCEL', style: 'cancel' },
+          { text: 'CONFIRM', onPress: onConfirm },
+        ]);
+      },
+    );
   };
 
   const handleBuyKey = async (confirmed = false) => {
