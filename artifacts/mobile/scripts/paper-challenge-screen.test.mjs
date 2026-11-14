@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const screen = readFileSync(new URL("../app/paper.tsx", import.meta.url), "utf8");
+const accountSwipeArea = readFileSync(new URL("../components/PaperAccountSwipeArea.tsx", import.meta.url), "utf8");
 const orderSheet = readFileSync(new URL("../components/OrderSheet.tsx", import.meta.url), "utf8");
 const orderEntry = readFileSync(new URL("../components/ProfessionalOrderEntry.tsx", import.meta.url), "utf8");
 const orderReview = readFileSync(new URL("../components/OrderEntryReview.tsx", import.meta.url), "utf8");
@@ -213,9 +214,10 @@ test("paper dashboard manages accounts from EDIT and preserves persistent trade 
   assert.match(screen, /testID="paper-account-manage"/);
   assert.match(screen, /onPress=\{\(\) => setShowAccountManagement\(true\)\}/);
   assert.doesNotMatch(screen, />SWITCH</);
-  assert.match(screen, /const accountSwipeResponder = React\.useMemo\(\(\) => PanResponder\.create/);
-  assert.match(screen, /getAdjacentPaperAccountId\(visibleAccounts, activeId, gesture\.dx < 0 \? 1 : -1\)/);
-  assert.match(screen, /Math\.abs\(gesture\.dx\) < 40/);
+  assert.match(screen, /<PaperAccountSwipeArea[\s\S]*?accounts=\{visibleAccounts\}[\s\S]*?activeId=\{activeId\}/);
+  assert.match(accountSwipeArea, /Math\.abs\(gesture\.dx\) > 12 && Math\.abs\(gesture\.dx\) > Math\.abs\(gesture\.dy\) \* 1\.2/);
+  assert.match(accountSwipeArea, /getAdjacentPaperAccountId\(current\.accounts, current\.activeId, gesture\.dx < 0 \? 1 : -1\)/);
+  assert.match(accountSwipeArea, /Math\.abs\(gesture\.dx\) < 40/);
   assert.match(screen, /testID="paper-account-position-indicator"/);
   assert.match(screen, /testID=\{`paper-account-indicator-\$\{index\}`\}/);
   assert.match(screen, /heroAccountName/);

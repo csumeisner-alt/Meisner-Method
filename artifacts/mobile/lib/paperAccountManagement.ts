@@ -1,5 +1,7 @@
 import { INITIAL_BALANCE, type PaperAccount, type PaperLot, type PaperOrder, type PaperPosition, type PaperTransaction } from './paperMath.ts';
 
+export type PaperAccountSwipeItem = Pick<PaperAccount, 'id'>;
+
 export type PaperAccountData = {
   accounts: PaperAccount[];
   positions: PaperPosition[];

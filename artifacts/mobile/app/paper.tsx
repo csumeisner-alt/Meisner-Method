@@ -10,7 +10,6 @@ import {
   Alert,
   KeyboardAvoidingView,
   Modal,
-  PanResponder,
   Platform,
   Pressable,
   RefreshControl,
@@ -28,6 +27,7 @@ import { Feather } from '@expo/vector-icons';
 import { MMLogo } from '@/components/MMLogo';
 import { PaperEventShareCard } from '@/components/PaperEventShareCard';
 import { BottomTabBar } from '@/components/BottomTabBar';
+import { PaperAccountSwipeArea } from '@/components/PaperAccountSwipeArea';
 import { useAchievements } from '@/contexts/AchievementsContext';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { useColors } from '@/hooks/useColors';
@@ -80,7 +80,6 @@ import {
 } from '@/lib/paperEngine';
 import { getOrderQuoteState } from '@/lib/paperOrderEntry';
 import {
-  getAdjacentPaperAccountId,
   renamePaperAccount,
   resetPaperAccountData,
 } from '@/lib/paperAccountManagement';
@@ -1287,16 +1286,6 @@ export default function PaperScreen() {
     fetchQuotes(positions, id);
   };
 
-  const accountSwipeResponder = React.useMemo(() => PanResponder.create({
-    onMoveShouldSetPanResponder: (_event, gesture) =>
-      Math.abs(gesture.dx) > 12 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.2,
-    onPanResponderRelease: (_event, gesture) => {
-      if (Math.abs(gesture.dx) < 40) return;
-      const nextId = getAdjacentPaperAccountId(visibleAccounts, activeId, gesture.dx < 0 ? 1 : -1);
-      if (nextId && nextId !== activeId) void switchAccount(nextId);
-    },
-  }), [activeId, switchAccount, visibleAccounts]);
-
   const renameAccount = async (id: string, name: string) => {
     const updated = renamePaperAccount(accountsRef.current, id, name);
     await saveAccounts(updated);
@@ -2335,10 +2324,12 @@ export default function PaperScreen() {
         <Text numberOfLines={1} style={styles.headerSub}>Risk-free · $100k start</Text>
       </View>
 
-      <View
+      <PaperAccountSwipeArea
         style={styles.accountHero}
         testID="paper-account-hero"
-        {...accountSwipeResponder.panHandlers}
+        accounts={visibleAccounts}
+        activeId={activeId}
+        onSwitchAccount={(id) => { void switchAccount(id); }}
       >
         <View style={styles.heroTopline}>
           <Text style={[styles.selectorTitle, account?.id.startsWith('paper-event:') && styles.eventHeroLabel]}>
@@ -2395,7 +2386,7 @@ export default function PaperScreen() {
             ))}
           </View>
         )}
-      </View>
+      </PaperAccountSwipeArea>
 
       {paperChallengeWindow.phase === 'active' && (
         <View
