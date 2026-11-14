@@ -178,11 +178,9 @@ test("Paper Trading keeps all views in readable groups and reserves space for ac
   assert.doesNotMatch(screen, /position: 'absolute',\s*right: 20,\s*bottom: 108/);
   assert.match(screen, /contentContainerStyle=\{\{ paddingBottom: 16, paddingTop: 10 \}\}/);
   assert.match(screen, /testID="paper-trading-buy-action"[\s\S]*?openBuyModal/);
-  assert.match(screen, /testID="paper-account-details-toggle"/);
-  assert.match(screen, /accessibilityState=\{\{ expanded: showAccountDetails \}\}/);
-  assert.match(screen, /CASH \+ T\+2/);
-  assert.match(screen, /INVESTED CAPITAL/);
-  assert.match(screen, /TOTAL P\/L/);
+  assert.match(screen, /testID="paper-portfolio-overview-metrics"/);
+  assert.match(screen, /INVESTED VALUE/);
+  assert.match(screen, /AVAILABLE CASH/);
   assert.match(screen, /OPEN POSITIONS/);
   assert.match(screen, /TOTAL RETURN/);
   assert.match(screen, /BUYING POWER/);
@@ -207,6 +205,49 @@ test("Paper Trading keeps all views in readable groups and reserves space for ac
   assert.match(bottomTabBar, /fontSize: 9/);
   assert.match(bottomTabBar, /accessibilityLabel="Event Arena"/);
   assert.match(bottomTabBar, /EVENT\{"\\n"\}ARENA/);
+});
+
+test("paper dashboard uses a safe-area account sheet, account hero, and persistent trade access", () => {
+  assert.match(screen, /testID="paper-account-hero"/);
+  assert.match(screen, /testID="paper-account-switch"/);
+  assert.match(screen, /heroAccountName/);
+  assert.match(screen, /heroEquity/);
+  assert.match(screen, /TODAY’S P\/L/);
+  assert.match(screen, /BUYING POWER/);
+  assert.match(screen, /testID="paper-account-selector-sheet"/);
+  assert.match(screen, /\['Tiger', 'Borg', 'Fireball'\]/);
+  assert.match(screen, /'Event Arena'/);
+  assert.match(screen, /accountChoiceValues/);
+  assert.match(screen, /testID=\{accountChoiceTestId\}/);
+  assert.match(screen, /paper-account-choice-event/);
+  assert.match(screen, /onPress=\{\(\) => \{\s*void switchAccount\(acct\.id\);\s*setShowAccountDropdown\(false\);/);
+  assert.match(screen, /Math\.max\(insets\.bottom, 22\)/);
+  assert.match(screen, /showAccountManagement &&/);
+  assert.match(screen, /testID=\{`rename-paper-account-\$\{acct\.id\}`\}/);
+  assert.match(screen, /testID=\{`reset-paper-account-\$\{acct\.id\}`\}/);
+  assert.match(screen, /testID=\{`paper-tab-group-\$\{group\.id\}`\}/);
+  assert.match(screen, /id: 'portfolio', label: 'Portfolio'/);
+  assert.match(screen, /id: 'activity', label: 'Activity'/);
+  assert.match(screen, /id: 'insights', label: 'Insights'/);
+  assert.match(screen, /testID="paper-trading-buy-action"[\s\S]*?Trade[\s\S]*?openBuyModal/);
+  assert.doesNotMatch(screen, /\(activeTab === 'overview' \|\| activeTab === 'positions' \|\| activeTab === 'orders'\) && \(\s*<View style=\{styles\.buyActionWrap\}/);
+  assert.match(screen, /positions\.filter\(p => p\.accountId === activeId\)/);
+  assert.match(screen, /myPositions\.map/);
+  assert.match(screen, /renderOverview/);
+  assert.match(screen, /renderOrders/);
+  assert.match(screen, /renderHistory/);
+  assert.match(screen, /renderAnalytics/);
+  assert.match(screen, /renderDividends/);
+  assert.match(screen, /renderGrowth/);
+  assert.match(screen, /label: 'Orders'/);
+  assert.match(screen, /label: 'Trade History'/);
+  assert.match(screen, /ACCOUNT PERFORMANCE/);
+  assert.match(screen, /pos\.companyName/);
+  assert.match(screen, /pos\.shares\} shares/);
+  assert.match(screen, /Avg cost \{\$fmt\(pos\.avgCost\)\}/);
+  assert.match(screen, /MARKET VALUE/);
+  assert.match(screen, /pctFmt\(pnlPct\)/);
+  assert.match(screen, /SELL \{pos\.symbol\}/);
 });
 
 test("paper order review captures account identity and guards duplicate submissions", () => {

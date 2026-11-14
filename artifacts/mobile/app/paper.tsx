@@ -211,6 +211,7 @@ const PAPER_TAB_GROUPS: {
   { id: 'activity', label: 'Activity', icon: 'activity', tabs: ['orders', 'history'] },
   { id: 'insights', label: 'Insights', icon: 'bar-chart-2', tabs: ['analytics', 'dividends', 'growth'] },
 ];
+const PAPER_ACCOUNT_DISPLAY_NAMES = ['Tiger', 'Borg', 'Fireball'] as const;
 
 const HISTORY_RANGES = [
   { id: '1D', ms: 86_400_000 },
@@ -297,8 +298,8 @@ export default function PaperScreen() {
   const activeTabGroup = PAPER_TAB_GROUPS.find((group) => group.tabs.includes(activeTab)) ?? PAPER_TAB_GROUPS[0];
   const activeGroupTabs = TABS.filter((tab) => activeTabGroup.tabs.includes(tab.id));
   const [chartRange, setChartRange] = useState<(typeof HISTORY_RANGES)[number]['id']>('ALL');
-  const [showAccountDetails, setShowAccountDetails] = useState(false);
   const [showAccountDropdown, setShowAccountDropdown] = useState(false);
+  const [showAccountManagement, setShowAccountManagement] = useState(false);
   const [showTradeModal, setShowTradeModal] = useState(false);
   const [showOrderSheet, setShowOrderSheet] = useState(false);
   const [tradeMode, setTradeMode] = useState<'buy' | 'sell'>('buy');
@@ -454,6 +455,11 @@ export default function PaperScreen() {
   const visibleAccounts = accounts.filter((item) =>
     !item.id.startsWith('paper-event:') || item.id === paperChallenge.enrollment?.accountId,
   );
+  const regularAccounts = visibleAccounts.filter((item) => !item.id.startsWith('paper-event:'));
+  const selectedAccountIndex = regularAccounts.findIndex((item) => item.id === account?.id);
+  const selectedAccountDisplayName = account?.id.startsWith('paper-event:')
+    ? 'Event Arena'
+    : PAPER_ACCOUNT_DISPLAY_NAMES[selectedAccountIndex] ?? account?.name ?? 'Paper account';
   const unrealizedPnL = myPositions.reduce(
     (s, p) => s + p.shares * ((quotes[p.symbol]?.price ?? p.avgCost) - p.avgCost), 0,
   );
@@ -1248,7 +1254,6 @@ export default function PaperScreen() {
   const switchAccount = async (id: string) => {
     activeIdRef.current = id;
     setActiveId(id);
-    setShowAccountDetails(false);
     setShowAccountDropdown(false);
     setChartRange('ALL');
     await flushCache(accountsRef.current, positionsRef.current, transactionsRef.current, ordersRef.current, lotsRef.current, id);
@@ -1784,6 +1789,19 @@ export default function PaperScreen() {
 
     return (
       <View style={{ gap: 12, paddingHorizontal: 16 }}>
+        <View style={styles.metricsGrid} testID="paper-portfolio-overview-metrics">
+          {[
+            { label: 'INVESTED VALUE', val: $fmt(investedCapital), color: SILVER },
+            { label: 'AVAILABLE CASH', val: $fmt(account?.cash ?? 0), color: SILVER },
+            { label: 'OPEN POSITIONS', val: `${myPositions.length}`, color: GOLD },
+            { label: 'TOTAL RETURN', val: pctFmt(totalReturn), color: pnlColor(totalReturn) },
+          ].map((metric) => (
+            <View key={metric.label} style={styles.metricBox}>
+              <Text style={[styles.metricVal, { color: metric.color }]} numberOfLines={1}>{metric.val}</Text>
+              <Text style={styles.metricLabel}>{metric.label}</Text>
+            </View>
+          ))}
+        </View>
         <View style={styles.card}>
           <View style={styles.chartHeading}>
             <View style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
@@ -2173,107 +2191,46 @@ export default function PaperScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: Platform.OS === 'android' ? insets.top + 8 : 0 }]}>
         <MMLogo size={36} />
-        <Text numberOfLines={1} style={[styles.headerTitle, { color: colors.heading }]}>
-          PAPER TRADE
+          <Text numberOfLines={1} style={[styles.headerTitle, { color: colors.heading }]}>
+          PAPER TRADING
         </Text>
         <View style={{ flex: 1 }} />
         <Text numberOfLines={1} style={styles.headerSub}>Risk-free · $100k start</Text>
       </View>
 
-      <View style={styles.accountSelectorHeading}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.selectorTitle}>SELECT ACCOUNT</Text>
-        </View>
-        <TouchableOpacity
-          testID="manage-paper-accounts"
-          accessibilityRole="button"
-          accessibilityLabel="Manage paper trading accounts"
-          onPress={() => setShowAccountDropdown(true)}
-          style={styles.manageAccountsButton}
-        >
-          <Feather name="sliders" size={16} color={GOLD} />
-        </TouchableOpacity>
-      </View>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.accountCards}
-        style={styles.accountSelectorScroll}
-      >
-        {visibleAccounts.map((acct) => {
-          const acctPositions = positions.filter((position) => position.accountId === acct.id);
-          const acctMarketValue = acctPositions.reduce(
-            (sum, position) => sum + position.shares * (quotes[position.symbol]?.price ?? position.avgCost), 0,
-          );
-          const acctEquity = acct.cash + (acct.unsettledCash ?? 0) + acctMarketValue;
-          const acctPnL = acctEquity - INITIAL_BALANCE;
-          const isEventAcct = acct.id.startsWith('paper-event:');
-          const isActive = acct.id === activeId;
-          return (
-            <TouchableOpacity
-              key={acct.id}
-              testID={isEventAcct ? 'active-paper-event-account' : `paper-account-${acct.id}`}
-              accessibilityRole="button"
-              accessibilityState={{ selected: isActive }}
-              accessibilityLabel={`${acct.name}, equity ${$fmt(acctEquity)}, buying power ${$fmt(acct.cash)}, return ${pctFmt((acctPnL / INITIAL_BALANCE) * 100)}, ${acctPositions.length} open positions${isEventAcct ? ', Event Arena competition account' : ''}`}
-              style={[
-                styles.accountCard,
-                isActive && styles.accountCardActive,
-                isEventAcct && styles.accountCardEvent,
-                isActive && isEventAcct && styles.accountCardEventActive,
-              ]}
-              onPress={() => {
-                setShowAccountDetails(false);
-                void switchAccount(acct.id);
-              }}
-              activeOpacity={0.78}
-            >
-              <View style={styles.accountCardTitleRow}>
-                <Text style={[styles.accountCardName, isActive && styles.accountCardNameActive]} numberOfLines={1}>
-                  {isEventAcct ? 'EVENT ARENA' : acct.name.toUpperCase()}
-                </Text>
-                {isEventAcct && <Feather name="award" size={14} color={GOLD} />}
-              </View>
-              {isEventAcct && (
-                <Text style={styles.eventAccountCardPrompt}>
-                  FRESH $100,000 · TRADE HERE TO COMPETE THIS WEEK
-                </Text>
-              )}
-              <Text style={styles.accountCardEquity}>{$fmt(acctEquity)}</Text>
-              <Text style={styles.accountCardCaption}>EQUITY</Text>
-              <View style={styles.accountCardDivider} />
-              <View style={styles.accountCardMetrics}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.accountCardMetricValue}>{$short(acct.cash)}</Text>
-                  <Text style={styles.accountCardMetricLabel}>BUYING POWER</Text>
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={[styles.accountCardMetricValue, { color: pnlColor(acctPnL) }]}>
-                    {pctFmt((acctPnL / INITIAL_BALANCE) * 100)}
-                  </Text>
-                  <Text style={styles.accountCardMetricLabel}>TOTAL RETURN</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-        {!visibleAccounts.some((item) => item.id.startsWith('paper-event:')) && (
+      <View style={styles.accountHero} testID="paper-account-hero">
+        <View style={styles.heroTopline}>
+          <Text style={[styles.selectorTitle, account?.id.startsWith('paper-event:') && styles.eventHeroLabel]}>
+            {account?.id.startsWith('paper-event:') ? 'EVENT ARENA' : 'SIMULATED PORTFOLIO'}
+          </Text>
           <TouchableOpacity
-            testID="paper-event-account-unavailable"
+            testID="paper-account-switch"
             accessibilityRole="button"
-            accessibilityLabel="Event Arena account. Join an event in Settings to activate."
-            onPress={() => setShowAccountDropdown(true)}
-            style={[styles.accountCard, styles.accountCardEvent, styles.eventAccountPlaceholder]}
+            accessibilityLabel={`Switch account. Current account ${selectedAccountDisplayName}`}
+            onPress={() => { setShowAccountManagement(false); setShowAccountDropdown(true); }}
+            style={styles.switchAccountButton}
           >
-            <View style={styles.accountCardTitleRow}>
-              <Text style={[styles.accountCardName, { color: GOLD }]}>EVENT ARENA</Text>
-              <Feather name="award" size={14} color={GOLD} />
-            </View>
-            <Text style={styles.eventPlaceholderValue}>Competition account</Text>
-            <Text style={styles.eventPlaceholderHint}>Join an event in Settings to activate</Text>
+            <Text style={styles.switchAccountText}>SWITCH</Text>
+            <Feather name="chevron-down" size={15} color={GOLD} />
           </TouchableOpacity>
-        )}
-      </ScrollView>
+        </View>
+        <Text style={styles.heroAccountName} numberOfLines={1}>{selectedAccountDisplayName}</Text>
+        <Text style={styles.heroEquity} numberOfLines={1}>{$fmt(portfolioValue)}</Text>
+        <Text style={styles.heroEquityLabel}>TOTAL EQUITY</Text>
+        <View style={styles.heroStats}>
+          <View style={styles.heroStat}>
+            <Text style={[styles.heroStatValue, { color: pnlColor(todayPnL) }]}>
+              {todayPnL >= 0 ? '+' : ''}{$fmt(todayPnL)}
+            </Text>
+            <Text style={styles.heroStatLabel}>TODAY’S P/L</Text>
+          </View>
+          <View style={styles.heroStatDivider} />
+          <View style={styles.heroStat}>
+            <Text style={styles.heroStatValue}>{$fmt(account?.cash ?? 0)}</Text>
+            <Text style={styles.heroStatLabel}>BUYING POWER</Text>
+          </View>
+        </View>
+      </View>
 
       {paperChallengeWindow.phase === 'active' && (
         <View
@@ -2371,43 +2328,6 @@ export default function PaperScreen() {
       )}
 
       {/* Core account values stay on the selected account card; secondary metrics expand on demand. */}
-      <View style={styles.accountDetailsWrap}>
-        <TouchableOpacity
-          testID="paper-account-details-toggle"
-          accessibilityRole="button"
-          accessibilityLabel={showAccountDetails ? 'Hide account details' : 'Show account details'}
-          accessibilityState={{ expanded: showAccountDetails }}
-          style={styles.accountDetailsToggle}
-          onPress={() => setShowAccountDetails((shown) => !shown)}
-          activeOpacity={0.7}
-        >
-          <View style={{ flex: 1 }}>
-            <Text style={styles.accountDetailsTitle}>Account details</Text>
-            <Text style={styles.accountDetailsHint}>
-              {showAccountDetails ? 'Cash, invested value and performance' : 'View cash, T+2, invested value and P/L'}
-            </Text>
-          </View>
-          <Feather name={showAccountDetails ? 'chevron-up' : 'chevron-down'} size={19} color={GOLD} />
-        </TouchableOpacity>
-        {showAccountDetails && (
-          <View style={styles.accountDetailsGrid}>
-            {[
-              { label: (account?.unsettledCash ?? 0) > 0 ? 'CASH + T+2' : 'CASH BALANCE', value: $short((account?.cash ?? 0) + (account?.unsettledCash ?? 0)), color: SILVER },
-              { label: 'BUYING POWER', value: $short(account?.cash ?? 0), color: SILVER },
-              { label: 'INVESTED CAPITAL', value: $short(investedCapital), color: SILVER },
-              { label: "TODAY'S P/L", value: `${todayPnL >= 0 ? '+' : ''}${$short(todayPnL)}`, color: pnlColor(todayPnL) },
-              { label: 'TOTAL P/L', value: `${totalPnLFromEquity >= 0 ? '+' : ''}${$short(totalPnLFromEquity)}`, color: pnlColor(totalPnLFromEquity) },
-              { label: 'OPEN POSITIONS', value: `${myPositions.length}`, color: SILVER },
-            ].map((item) => (
-              <View key={item.label} style={styles.overviewMetric}>
-                <Text style={[styles.overviewMetricValue, { color: item.color }]} numberOfLines={1}>{item.value}</Text>
-                <Text style={styles.overviewMetricLabel}>{item.label}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-      </View>
-
       {/* Primary groups and their smaller secondary navigation */}
       <View style={styles.primaryTabs} accessibilityRole="tablist">
         {PAPER_TAB_GROUPS.map((group) => {
@@ -2469,8 +2389,7 @@ export default function PaperScreen() {
       </ScrollView>
 
       {/* Integrated action stays in the layout instead of floating over content. */}
-      {(activeTab === 'overview' || activeTab === 'positions' || activeTab === 'orders') && (
-        <View style={styles.buyActionWrap}>
+      <View style={styles.buyActionWrap}>
           <TouchableOpacity
             testID="paper-trading-buy-action"
             accessibilityRole="button"
@@ -2481,13 +2400,12 @@ export default function PaperScreen() {
           >
             <Feather name="plus" size={18} color="#000" />
             <View style={{ flex: 1 }}>
-              <Text style={styles.buyActionTitle}>Buy</Text>
-              <Text style={styles.buyActionHint}>Trade in {account?.name ?? 'your selected account'}</Text>
+              <Text style={styles.buyActionTitle}>Trade</Text>
+            <Text style={styles.buyActionHint}>Trade in {selectedAccountDisplayName}</Text>
             </View>
             <Feather name="arrow-up-right" size={17} color="#000" />
           </TouchableOpacity>
-        </View>
-      )}
+      </View>
 
       <BottomTabBar />
 
@@ -2548,63 +2466,116 @@ export default function PaperScreen() {
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowAccountDropdown(false)} activeOpacity={1}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <TouchableOpacity activeOpacity={1}>
-              <View style={styles.bottomSheet}>
+              <View style={[styles.bottomSheet, styles.accountSheet, { paddingBottom: Math.max(insets.bottom, 22), marginTop: insets.top + 8 }]}>
                 <View style={styles.sheetHandle} />
-                <Text style={styles.sheetTitle}>TRADING ACCOUNTS</Text>
-
-                {visibleAccounts.map(acct => (
-                  <View key={acct.id}>
+                <View style={styles.sheetHeadingRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.sheetTitle}>Choose portfolio</Text>
+                    <Text style={styles.sheetSub}>Independent simulated accounts</Text>
+                  </View>
+                  <TouchableOpacity
+                    testID="manage-paper-accounts"
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: showAccountManagement }}
+                    accessibilityLabel={showAccountManagement ? 'Close account management' : 'Manage accounts'}
+                    onPress={() => setShowAccountManagement((value) => !value)}
+                    style={styles.manageAccountsButton}
+                  >
+                    <Feather name={showAccountManagement ? 'check' : 'sliders'} size={16} color={GOLD} />
+                  </TouchableOpacity>
+                </View>
+                <ScrollView
+                  testID="paper-account-selector-sheet"
+                  style={styles.accountSheetScroll}
+                  contentContainerStyle={{ paddingBottom: 8 }}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                >
+                {visibleAccounts.map((acct) => {
+                  const isEventAcct = acct.id.startsWith('paper-event:');
+                  const isActive = acct.id === activeId;
+                  const acctPositions = positions.filter((position) => position.accountId === acct.id);
+                  const acctValue = acct.cash + (acct.unsettledCash ?? 0) + acctPositions.reduce(
+                    (sum, position) => sum + position.shares * (quotes[position.symbol]?.price ?? position.avgCost), 0,
+                  );
+                  const accountIndex = regularAccounts.findIndex((item) => item.id === acct.id);
+                  const portfolioLabel = isEventAcct
+                    ? 'Event Arena'
+                    : PAPER_ACCOUNT_DISPLAY_NAMES[accountIndex] ?? acct.name;
+                  const accountChoiceTestId = isEventAcct
+                    ? 'paper-account-choice-event'
+                    : `paper-account-choice-${accountIndex}`;
+                  return (
+                  <View key={acct.id} testID={isEventAcct ? 'active-paper-event-account' : `paper-account-${acct.id}`} style={[
+                    styles.accountSheetRow,
+                    isEventAcct && styles.eventAcctRow,
+                    isActive && styles.acctRowActive,
+                    isActive && isEventAcct && styles.eventAcctRowActive,
+                  ]}>
                     <TouchableOpacity
-                      style={[
-                        styles.acctRow,
-                        acct.id === activeId && styles.acctRowActive,
-                        acct.id.startsWith('paper-event:') && styles.eventAcctRow,
-                      ]}
-                      onPress={() => switchAccount(acct.id)}
+                      testID={accountChoiceTestId}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: acct.id === activeId }}
+                      style={styles.accountSelectHit}
+                      onPress={() => {
+                        void switchAccount(acct.id);
+                        setShowAccountDropdown(false);
+                      }}
                       activeOpacity={0.7}
                     >
-                      <View style={{ flex: 1 }}>
+                      <View style={styles.accountChoiceCopy}>
+                        <View style={styles.accountChoiceTitleLine}>
+                          <Text style={[styles.acctName, acct.id.startsWith('paper-event:') && styles.eventAccountName]}>{portfolioLabel}</Text>
+                          {acct.id === activeId && <Feather name="check-circle" size={17} color={GOLD} />}
+                          {acct.id.startsWith('paper-event:') && <Feather name="award" size={15} color={BUY_COLOR} />}
+                        </View>
+                        {acct.name !== portfolioLabel && !acct.id.startsWith('paper-event:') && (
+                          <Text style={styles.accountStoredName}>Saved as {acct.name}</Text>
+                        )}
+                        {acct.id.startsWith('paper-event:') && (
+                          <>
+                            <View testID="paper-event-account-badge" style={styles.eventAccountBadge}>
+                              <Feather name="award" size={10} color="#07140F" />
+                              <Text style={styles.eventAccountBadgeText}>EVENT PORTFOLIO</Text>
+                            </View>
+                            <Text style={styles.eventAccountPrompt}>FRESH $100,000 · TRADE HERE TO COMPETE THIS WEEK</Text>
+                          </>
+                        )}
+                        <View style={styles.accountChoiceValues}>
+                          <Text style={styles.accountChoiceValue}><Text style={styles.accountChoiceLabel}>CASH </Text>{$fmt(acct.cash)}</Text>
+                          <Text style={styles.accountChoiceValue}><Text style={styles.accountChoiceLabel}>TOTAL </Text>{$fmt(acctValue)}</Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                    {showAccountManagement && (
+                      <View style={styles.accountManagementTools}>
                         {renameId === acct.id ? (
                           <TextInput
+                            testID={`rename-paper-account-input-${acct.id}`}
                             style={styles.renameInput}
                             value={renameDraft}
                             onChangeText={setRenameDraft}
                             autoFocus
-                            onSubmitEditing={() => { renameAccount(acct.id, renameDraft); }}
-                            onBlur={() => { renameAccount(acct.id, renameDraft); }}
+                            returnKeyType="done"
+                            onSubmitEditing={() => { renameAccount(acct.id, renameDraft); setRenameId(''); }}
+                            onBlur={() => { renameAccount(acct.id, renameDraft); setRenameId(''); }}
                           />
                         ) : (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                            <Text style={styles.acctName}>{acct.name}</Text>
-                            {acct.id.startsWith('paper-event:') && (
-                              <View testID="paper-event-account-badge" style={styles.eventAccountBadge}>
-                                <Feather name="award" size={10} color="#000" />
-                                <Text style={styles.eventAccountBadgeText}>FRESH EVENT ACCOUNT</Text>
-                              </View>
-                            )}
-                          </View>
+                          <TouchableOpacity
+                            testID={`rename-paper-account-${acct.id}`}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Rename ${acct.name}`}
+                            onPress={() => { setRenameId(acct.id); setRenameDraft(acct.name); }}
+                            style={styles.accountManageButton}
+                          >
+                            <Feather name="edit-2" size={13} color={DIM} />
+                            <Text style={styles.accountManageText}>RENAME</Text>
+                          </TouchableOpacity>
                         )}
-                        {acct.id.startsWith('paper-event:') && (
-                          <Text style={styles.eventAccountPrompt}>Separate $100,000 competition portfolio</Text>
-                        )}
-                        <Text style={styles.acctCash}>
-                          Cash: {$fmt(acct.cash)} ·{' '}
-                          {(() => {
-                            const val = acct.cash + positions
-                              .filter(p => p.accountId === acct.id)
-                              .reduce((s, p) => s + p.shares * (quotes[p.symbol]?.price ?? p.avgCost), 0);
-                            return `Total: ${$fmt(val)}`;
-                          })()}
-                        </Text>
-                      </View>
-                      <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
                         <TouchableOpacity
-                          onPress={() => { setRenameId(acct.id); setRenameDraft(acct.name); }}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <Feather name="edit-2" size={14} color={DIM} />
-                        </TouchableOpacity>
-                        <TouchableOpacity
+                          testID={`reset-paper-account-${acct.id}`}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Reset ${acct.name}`}
                           onPress={() =>
                             Alert.alert(
                               'Reset Account',
@@ -2618,22 +2589,40 @@ export default function PaperScreen() {
                               ],
                             )
                           }
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          style={styles.accountManageButton}
                         >
-                          <Feather name="refresh-ccw" size={14} color={SELL_COLOR} />
+                          <Feather name="refresh-ccw" size={13} color={SELL_COLOR} />
+                          <Text style={[styles.accountManageText, { color: SELL_COLOR }]}>RESET</Text>
                         </TouchableOpacity>
-                        {acct.id === activeId && <Feather name="check" size={16} color={BUY_COLOR} />}
                       </View>
-                    </TouchableOpacity>
+                    )}
                   </View>
-                ))}
+                  );
+                })}
+                {!visibleAccounts.some((item) => item.id.startsWith('paper-event:')) && (
+                  <View testID="paper-event-account-unavailable" style={[styles.accountSheetRow, styles.eventAcctRow, styles.eventUnavailableRow]}>
+                    <View style={styles.accountChoiceCopy}>
+                      <View style={styles.accountChoiceTitleLine}>
+                        <Text style={[styles.acctName, styles.eventAccountName]}>Event Arena</Text>
+                        <Feather name="award" size={15} color={BUY_COLOR} />
+                      </View>
+                      <Text style={styles.eventUnavailableHint}>Join an event in Settings to activate this portfolio.</Text>
+                      <View style={styles.accountChoiceValues}>
+                        <Text style={styles.accountChoiceValue}><Text style={styles.accountChoiceLabel}>CASH </Text>—</Text>
+                        <Text style={styles.accountChoiceValue}><Text style={styles.accountChoiceLabel}>TOTAL </Text>—</Text>
+                      </View>
+                    </View>
+                  </View>
+                )}
 
                 <TouchableOpacity
+                  testID="close-paper-account-sheet"
                   style={styles.closeSheetBtn}
                   onPress={() => setShowAccountDropdown(false)}
                 >
-                  <Text style={styles.closeSheetText}>CLOSE</Text>
+                  <Text style={styles.closeSheetText}>DONE</Text>
                 </TouchableOpacity>
+                </ScrollView>
               </View>
             </TouchableOpacity>
           </KeyboardAvoidingView>
@@ -2943,6 +2932,49 @@ const styles = StyleSheet.create({
     color: DIM,
     marginTop: 3,
   },
+  accountHero: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 11,
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 15,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: 'rgba(214,179,91,0.46)',
+    backgroundColor: 'rgba(28,27,23,0.96)',
+  },
+  heroTopline: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  eventHeroLabel: { color: BUY_COLOR },
+  switchAccountButton: {
+    minHeight: 33,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255,215,0,0.38)',
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,215,0,0.08)',
+  },
+  switchAccountText: { color: GOLD, fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 0.8 },
+  heroAccountName: { color: '#eee9dc', fontFamily: 'Inter_600SemiBold', fontSize: 16, marginTop: 8 },
+  heroEquity: { color: '#f4f0e6', fontFamily: 'Inter_700Bold', fontSize: 32, letterSpacing: -0.7, marginTop: 9 },
+  heroEquityLabel: { color: DIM, fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 1.2, marginTop: 2 },
+  heroStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginTop: 15,
+    paddingTop: 13,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(192,192,192,0.16)',
+  },
+  heroStat: { flex: 1, minWidth: 0 },
+  heroStatValue: { color: '#e5e0d4', fontFamily: 'Inter_700Bold', fontSize: 15 },
+  heroStatLabel: { color: DIM, fontFamily: 'Inter_500Medium', fontSize: 9, letterSpacing: 0.65, marginTop: 4 },
+  heroStatDivider: { width: 1, height: 34, backgroundColor: BORDER },
   manageAccountsButton: {
     width: 38,
     height: 38,
@@ -3342,6 +3374,9 @@ const styles = StyleSheet.create({
     paddingBottom: 36,
     maxHeight: '88%',
   },
+  accountSheet: { padding: 18, paddingTop: 14, maxHeight: '88%', marginTop: 12 },
+  accountSheetScroll: { flexGrow: 0, maxHeight: '100%' },
+  sheetHeadingRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
   sheetHandle: { width: 36, height: 4, backgroundColor: BORDER, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
   sheetTitle: { fontFamily: 'Inter_700Bold', fontSize: 16, color: '#fff', letterSpacing: 1, marginBottom: 4 },
   sheetSub: { fontFamily: 'Inter_400Regular', fontSize: 12, color: DIM, marginBottom: 16 },
@@ -3357,7 +3392,42 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
   },
-  acctRowActive: { borderColor: 'rgba(192,192,192,0.3)', backgroundColor: CARD_BG },
+  acctRowActive: { borderColor: GOLD, backgroundColor: 'rgba(255,215,0,0.10)' },
+  eventAcctRowActive: { borderColor: GOLD, backgroundColor: 'rgba(0,229,160,0.12)' },
+  accountSheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 12,
+    backgroundColor: 'rgba(26,29,34,0.92)',
+    overflow: 'hidden',
+  },
+  accountSelectHit: { flex: 1, minWidth: 0, paddingVertical: 13, paddingHorizontal: 13 },
+  accountChoiceCopy: { flex: 1, minWidth: 0 },
+  accountChoiceTitleLine: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  accountStoredName: { color: DIM, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 2 },
+  accountChoiceValues: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 18, rowGap: 3, marginTop: 9 },
+  accountChoiceValue: { color: '#d9d4c9', fontFamily: 'Inter_600SemiBold', fontSize: 11 },
+  accountChoiceLabel: { color: DIM, fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 0.65 },
+  accountManagementTools: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    flexWrap: 'wrap',
+    gap: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    borderTopWidth: 1,
+    borderTopColor: BORDER,
+    backgroundColor: 'rgba(8,10,12,0.55)',
+  },
+  accountManageButton: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 6, paddingHorizontal: 7 },
+  accountManageText: { color: DIM, fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 0.65 },
+  accountResetConfirm: { paddingVertical: 6, paddingHorizontal: 7 },
+  eventUnavailableRow: { paddingVertical: 13, paddingHorizontal: 13 },
+  eventUnavailableHint: { color: 'rgba(0,229,160,0.76)', fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 3 },
   acctName: { fontFamily: 'Inter_600SemiBold', fontSize: 14, color: '#fff', marginBottom: 3 },
   acctCash: { fontFamily: 'Inter_400Regular', fontSize: 11, color: DIM },
   renameInput: {
