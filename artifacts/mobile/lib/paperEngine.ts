@@ -12,6 +12,8 @@
  */
 
 import {
+  DEFAULT_SHORT_COLLATERAL_RATIO,
+  isShortPosition,
   type PaperAccount,
   type PaperLot,
   type PaperOrder,
@@ -269,7 +271,7 @@ export function creditDividends(
     return { updatedAccount: account, newTransactions: [] };
   }
 
-  const accountPositions = positions.filter(p => p.accountId === account.id);
+  const accountPositions = positions.filter(p => p.accountId === account.id && !isShortPosition(p));
   let totalCredit = 0;
   const txns: PaperTransaction[] = [];
 
@@ -317,6 +319,7 @@ export function creditDividends(
  */
 export function checkRisk(args: {
   side: 'buy' | 'sell';
+  intent?: 'short' | 'cover';
   shares: number;
   orderType: PaperOrder['orderType'];
   limitPrice?: number;
@@ -334,7 +337,7 @@ export function checkRisk(args: {
   excludeOrderId?: string;
 }): string | null {
   const {
-    side, shares, orderType, limitPrice, stopPrice, trailPct, trailAbs,
+    side, intent, shares, orderType, limitPrice, stopPrice, trailPct, trailAbs,
     symbol, currentPrice,
     account, accountPositions, quotes, pendingOrders = [], excludeOrderId,
   } = args;
@@ -375,20 +378,92 @@ export function checkRisk(args: {
   if (!Number.isFinite(estimatedPrice) || estimatedPrice <= 0) {
     return 'Enter a valid order price.';
   }
+  const configuredRatio = account.shortCollateralRatio ?? DEFAULT_SHORT_COLLATERAL_RATIO;
+  if (!Number.isFinite(configuredRatio) || configuredRatio < 1) {
+    return 'Simulated collateral must be at least 100% of short-sale proceeds.';
+  }
 
   const activePending = pendingOrders.filter(
     o => o.status === 'pending' && o.id !== excludeOrderId && o.accountId === account.id,
   );
   const pendingBuyCost = activePending
-    .filter(o => o.side === 'buy')
+    .filter(o => o.side === 'buy' && !o.intent)
     .reduce((sum, o) => {
       const orderPrice = pendingOrderPrice(o, quotes[o.symbol]?.price ?? currentPrice);
       return sum + (Number.isFinite(orderPrice) && orderPrice > 0 ? o.shares * orderPrice : 0);
     }, 0);
+  const pendingShortMargin = activePending
+    .filter((order) => order.intent === 'short')
+    .reduce((sum, order) => {
+      const price = pendingOrderPrice(order, quotes[order.symbol]?.price ?? currentPrice);
+      return sum + order.shares * price
+        * Math.max(0, (order.shortCollateralRatio
+          ?? account.shortCollateralRatio ?? DEFAULT_SHORT_COLLATERAL_RATIO) - 1);
+    }, 0);
+  const pendingCoverCash = activePending
+    .filter((order) => order.intent === 'cover')
+    .reduce((sum, order) => {
+      const position = accountPositions.find((item) =>
+        item.accountId === account.id && item.symbol === order.symbol && isShortPosition(item),
+      );
+      const reference = quotes[order.symbol]?.price ?? currentPrice;
+      const estimatedCost = order.shares * pendingOrderPrice(order, reference);
+      const releasePerShare = position?.collateralPerShare
+        ?? (position ? position.avgCost * configuredRatio : 0);
+      const collateralRelease = order.shares * releasePerShare;
+      return sum + Math.max(0, estimatedCost - collateralRelease);
+    }, 0);
 
-  if (side === 'buy') {
+  if (intent === 'short') {
+    const ratio = configuredRatio;
+    const requiredMargin = shares * estimatedPrice * Math.max(0, ratio - 1);
+    const availableCash = account.cash - pendingBuyCost - pendingShortMargin;
+    if (requiredMargin > availableCash) {
+      return `Insufficient buying power for simulated short collateral. Need ${fmt(requiredMargin)}, with ${fmt(pendingBuyCost + pendingShortMargin)} already committed.`;
+    }
+    const existingPos = accountPositions.find((position) =>
+      position.symbol === symbol && isShortPosition(position),
+    );
+    if (accountPositions.some((position) => position.symbol === symbol && !isShortPosition(position))) {
+      return `Close your existing long ${symbol} position before opening a short position.`;
+    }
+    const equity = account.cash
+      + (account.unsettledCash ?? 0)
+      + (account.shortCollateral ?? 0)
+      + accountPositions.reduce((sum, position) => {
+        const value = position.shares * (quotes[position.symbol]?.price ?? position.avgCost);
+        return sum + (isShortPosition(position) ? -value : value);
+      }, 0);
+    const existingValue = existingPos
+      ? existingPos.shares * (quotes[symbol]?.price ?? existingPos.avgCost)
+      : 0;
+    const pendingSymbolValue = activePending
+      .filter((order) => order.intent === 'short' && order.symbol === symbol)
+      .reduce((sum, order) => sum + order.shares * pendingOrderPrice(order, currentPrice), 0);
+    if ((existingValue + pendingSymbolValue + shares * estimatedPrice) / Math.max(equity, 1) > MAX_POSITION_FRACTION) {
+      return `This would put more than 40% of your portfolio in ${symbol} (max 40%).`;
+    }
+  } else if (intent === 'cover') {
+    const pos = accountPositions.find((position) =>
+      position.symbol === symbol && isShortPosition(position) && position.accountId === account.id,
+    );
+    const reservedShares = activePending
+      .filter((order) => order.intent === 'cover' && order.symbol === symbol)
+      .reduce((sum, order) => sum + order.shares, 0);
+    const availableShares = (pos?.shares ?? 0) - reservedShares;
+    if (!pos || availableShares < shares - 0.0001) {
+      return `You only have ${Math.max(0, availableShares)} ${symbol} short shares available to cover after pending covers.`;
+    }
+    const releasePerShare = pos.collateralPerShare
+      ?? pos.avgCost * configuredRatio;
+    const release = shares * releasePerShare;
+    const estimatedCost = shares * estimatedPrice;
+    if (estimatedCost > account.cash - pendingBuyCost - pendingShortMargin - pendingCoverCash + release) {
+      return `Insufficient account funds and released collateral to cover this order. Estimated cost ${fmt(estimatedCost)}.`;
+    }
+  } else if (side === 'buy') {
     const cost = shares * estimatedPrice;
-    const availableCash = account.cash - pendingBuyCost;
+    const availableCash = account.cash - pendingBuyCost - pendingShortMargin;
     if (cost > availableCash) {
       return `Insufficient buying power. Need ${fmt(cost)}, but ${fmt(pendingBuyCost)} is already committed to pending buys.`;
     }
@@ -397,15 +472,18 @@ export function checkRisk(args: {
       account.cash +
       (account.unsettledCash ?? 0) +
       accountPositions.reduce(
-        (s, p) => s + p.shares * (quotes[p.symbol]?.price ?? p.avgCost),
+        (s, p) => s + (isShortPosition(p) ? -1 : 1) * p.shares * (quotes[p.symbol]?.price ?? p.avgCost),
         0,
-      );
-    const existingPos = accountPositions.find(p => p.symbol === symbol);
+      ) + (account.shortCollateral ?? 0);
+    const existingPos = accountPositions.find(p => p.symbol === symbol && !isShortPosition(p));
+    if (accountPositions.some((position) => position.symbol === symbol && isShortPosition(position))) {
+      return `Cover your existing ${symbol} short position before buying shares.`;
+    }
     const existingValue = existingPos
       ? existingPos.shares * (quotes[symbol]?.price ?? existingPos.avgCost)
       : 0;
     const pendingSymbolValue = activePending
-      .filter(o => o.side === 'buy' && o.symbol === symbol)
+      .filter(o => o.side === 'buy' && !o.intent && o.symbol === symbol)
       .reduce((sum, o) => {
         const orderPrice = pendingOrderPrice(o, quotes[symbol]?.price ?? currentPrice);
         return sum + (Number.isFinite(orderPrice) && orderPrice > 0 ? o.shares * orderPrice : 0);
@@ -419,7 +497,7 @@ export function checkRisk(args: {
   } else {
     const pos = accountPositions.find(p => p.symbol === symbol);
     const reservedShares = activePending
-      .filter(o => o.side === 'sell' && o.symbol === symbol)
+      .filter(o => o.side === 'sell' && !o.intent && o.symbol === symbol)
       .reduce((sum, o) => sum + o.shares, 0);
     const availableShares = (pos?.shares ?? 0) - reservedShares;
     if (!pos || availableShares < shares) {
@@ -450,11 +528,13 @@ export function getAvailableSettledBuyingPower(
   pendingOrders: PaperOrder[],
   quotes: Record<string, Pick<LiveQuote, 'price'>>,
   excludeOrderId?: string,
+  accountPositions: PaperPosition[] = [],
 ): number {
-  const reserved = pendingOrders
+  const buyReserved = pendingOrders
     .filter(order => order.accountId === account.id
       && order.status === 'pending'
       && order.side === 'buy'
+      && !order.intent
       && order.id !== excludeOrderId)
     .reduce((sum, order) => {
       const reference = quotes[order.symbol]?.price ?? order.limitPrice ?? order.stopPrice ?? 0;
@@ -462,7 +542,36 @@ export function getAvailableSettledBuyingPower(
         ? sum + order.shares * pendingOrderPrice(order, reference)
         : sum;
     }, 0);
-  return Math.max(0, account.cash - reserved);
+  const shortMarginReserved = pendingOrders
+    .filter((order) => order.accountId === account.id
+      && order.status === 'pending'
+      && order.intent === 'short'
+      && order.id !== excludeOrderId)
+    .reduce((sum, order) => {
+      const reference = quotes[order.symbol]?.price ?? order.limitPrice ?? order.stopPrice ?? 0;
+      return Number.isFinite(reference) && reference > 0
+        ? sum + order.shares * pendingOrderPrice(order, reference)
+          * Math.max(0, (order.shortCollateralRatio
+            ?? account.shortCollateralRatio ?? DEFAULT_SHORT_COLLATERAL_RATIO) - 1)
+        : sum;
+    }, 0);
+  const coverCashReserved = pendingOrders
+    .filter((order) => order.accountId === account.id
+      && order.status === 'pending'
+      && order.intent === 'cover'
+      && order.id !== excludeOrderId)
+    .reduce((sum, order) => {
+      const reference = quotes[order.symbol]?.price ?? order.limitPrice ?? order.stopPrice ?? 0;
+      if (!Number.isFinite(reference) || reference <= 0) return sum;
+      const position = accountPositions.find((item) =>
+        item.accountId === account.id && item.symbol === order.symbol && isShortPosition(item),
+      );
+      const collateralPerShare = position?.collateralPerShare
+        ?? (position ? position.avgCost * (account.shortCollateralRatio ?? DEFAULT_SHORT_COLLATERAL_RATIO) : 0);
+      const cost = order.shares * pendingOrderPrice(order, reference);
+      return sum + Math.max(0, cost - order.shares * collateralPerShare);
+    }, 0);
+  return Math.max(0, account.cash - buyReserved - shortMarginReserved - coverCashReserved);
 }
 
 function fmt(n: number) {
@@ -513,7 +622,7 @@ export function fillOrder(args: {
   let updatedLots = [...lots];
   let newTransaction: PaperTransaction;
 
-  if (side === 'buy') {
+  if (side === 'buy' && !order.intent) {
     const total = shares * fillPrice;
     // Execution-time buying-power guard (price may have moved since placement)
     if (total > updatedAccount.cash) {
@@ -525,8 +634,12 @@ export function fillOrder(args: {
     updatedAccount = { ...updatedAccount, cash: updatedAccount.cash - total };
 
     // Update or create position
+    if (updatedPositions.some((position) => position.symbol === symbol
+      && position.accountId === accountId && isShortPosition(position))) {
+      return { ok: false, reason: `Cover your existing ${symbol} short position before buying shares.` };
+    }
     const existing = updatedPositions.find(
-      p => p.symbol === symbol && p.accountId === accountId,
+      p => p.symbol === symbol && p.accountId === accountId && !isShortPosition(p),
     );
     if (existing) {
       const totalShares = existing.shares + shares;
@@ -587,10 +700,89 @@ export function fillOrder(args: {
       total,
       date: filledAt,
     };
+  } else if (order.intent === 'short') {
+    if (updatedPositions.some((position) => position.accountId === accountId
+      && position.symbol === symbol && !isShortPosition(position))) {
+      return { ok: false, reason: `Close your existing long ${symbol} position before opening a short.` };
+    }
+    const total = shares * fillPrice;
+    const ratio = order.shortCollateralRatio
+      ?? updatedAccount.shortCollateralRatio ?? DEFAULT_SHORT_COLLATERAL_RATIO;
+    if (!Number.isFinite(ratio) || ratio < 1) {
+      return { ok: false, reason: 'Simulated collateral must be at least 100% of short-sale proceeds.' };
+    }
+    const margin = total * Math.max(0, ratio - 1);
+    if (margin > updatedAccount.cash) {
+      return { ok: false, reason: `Insufficient buying power at fill time: need ${fmt(margin)}, have ${fmt(updatedAccount.cash)}.` };
+    }
+    updatedAccount = {
+      ...updatedAccount,
+      cash: updatedAccount.cash - margin,
+      shortCollateral: (updatedAccount.shortCollateral ?? 0) + total * ratio,
+      shortCollateralRatio: updatedAccount.shortCollateralRatio ?? ratio,
+    };
+    const existing = updatedPositions.find((position) =>
+      position.accountId === accountId && position.symbol === symbol && isShortPosition(position),
+    );
+    if (existing) {
+      const newShares = existing.shares + shares;
+      const avgCost = (existing.shares * existing.avgCost + shares * fillPrice) / newShares;
+      const collateralPerShare = (
+        existing.shares * (existing.collateralPerShare ?? existing.avgCost * ratio)
+        + shares * fillPrice * ratio
+      ) / newShares;
+      updatedPositions = updatedPositions.map((position) => position.id === existing.id
+        ? { ...position, shares: newShares, avgCost, collateralPerShare }
+        : position);
+    } else {
+      updatedPositions.push({
+        id: uid(), accountId, symbol, companyName, shares, avgCost: fillPrice,
+        positionType: 'short', collateralPerShare: fillPrice * ratio,
+        openedAt: filledAt, dividendYield: 0, dividendRate: 0,
+        expenseRatio: 0, sector: order.sector ?? '',
+      });
+    }
+    newTransaction = {
+      id: uid(), accountId, symbol, companyName, action: 'SHORT_SELL',
+      shares, price: fillPrice, total, date: filledAt,
+      cashDelta: -margin,
+      shortCollateralDelta: total * ratio,
+    };
+  } else if (order.intent === 'cover') {
+    const pos = updatedPositions.find((position) =>
+      position.accountId === accountId && position.symbol === symbol && isShortPosition(position),
+    );
+    if (!pos || pos.shares < shares - 0.0001) {
+      return { ok: false, reason: `Insufficient short shares at fill time: need ${shares}, hold ${pos?.shares ?? 0} of ${symbol}.` };
+    }
+    const releasedCollateral = shares * (pos.collateralPerShare
+      ?? pos.avgCost * (account.shortCollateralRatio ?? DEFAULT_SHORT_COLLATERAL_RATIO));
+    const total = shares * fillPrice;
+    const pnl = shares * (pos.avgCost - fillPrice);
+    const fee = fundFee(shares * pos.avgCost, pos.expenseRatio, pos.openedAt, filledAt);
+    if (total > account.cash + releasedCollateral) {
+      return { ok: false, reason: `Insufficient account funds and collateral to cover at fill time. Need ${fmt(total)}.` };
+    }
+    updatedAccount = {
+      ...updatedAccount,
+      cash: updatedAccount.cash + releasedCollateral - total - fee,
+      shortCollateral: Math.max(0, (updatedAccount.shortCollateral ?? 0) - releasedCollateral),
+    };
+    const remaining = pos.shares - shares;
+    updatedPositions = remaining <= 0.0001
+      ? updatedPositions.filter((position) => position.id !== pos.id)
+      : updatedPositions.map((position) => position.id === pos.id ? { ...position, shares: remaining } : position);
+    newTransaction = {
+      id: uid(), accountId, symbol, companyName, action: 'BUY_TO_COVER',
+      shares, price: fillPrice, total, date: filledAt,
+      realizedPnL: pnl, fee,
+      cashDelta: releasedCollateral - total - fee,
+      shortCollateralDelta: -releasedCollateral,
+    };
   } else {
     // SELL — execution-time share-availability guard
     const pos = updatedPositions.find(
-      p => p.symbol === symbol && p.accountId === accountId,
+      p => p.symbol === symbol && p.accountId === accountId && !isShortPosition(p),
     );
     if (!pos || pos.shares < shares - 0.0001) {
       return {

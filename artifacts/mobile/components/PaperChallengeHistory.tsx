@@ -492,7 +492,9 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                   </Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>{money(position.marketValue)}</Text>
+                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>
+                    {position.positionType === 'short' ? 'Liability ' : ''}{money(position.marketValue)}
+                  </Text>
                   <Text style={{ color: position.unrealizedPnL >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_400Regular', fontSize: 9, marginTop: 3 }}>
                     {position.unrealizedPnL >= 0 ? '+' : ''}{money(position.unrealizedPnL)}
                   </Text>
@@ -515,9 +517,9 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
               const net = transaction.realizedPnL === undefined
                 ? null
                 : transaction.realizedPnL - (transaction.fee ?? 0);
-              const actionColor = transaction.action === 'BUY'
+              const actionColor = transaction.action === 'BUY' || transaction.action === 'BUY_TO_COVER'
                 ? colors.primary
-                : transaction.action === 'SELL'
+                : transaction.action === 'SELL' || transaction.action === 'SHORT_SELL'
                   ? colors.destructive
                   : colors.mutedForeground;
               return (
@@ -537,7 +539,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                     ) : (
                       <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>{money(transaction.total)}</Text>
                     )}
-                    {transaction.action === 'SELL' && (
+                    {(transaction.action === 'SELL' || transaction.action === 'BUY_TO_COVER') && (
                       <Text style={{ color: net === null ? colors.mutedForeground : net >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 9, marginTop: 2 }}>
                         {net === null ? 'P/L unavailable' : `${net >= 0 ? '+' : ''}${money(net)}`}
                       </Text>
@@ -996,9 +998,9 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                         .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
                         .map((transaction, transactionIndex) => {
                           const net = (transaction.realizedPnL ?? 0) - (transaction.fee ?? 0);
-                          const actionColor = transaction.action === 'BUY'
+                          const actionColor = transaction.action === 'BUY' || transaction.action === 'BUY_TO_COVER'
                             ? colors.primary
-                            : transaction.action === 'SELL'
+                            : transaction.action === 'SELL' || transaction.action === 'SHORT_SELL'
                               ? colors.destructive
                               : colors.mutedForeground;
                           return (
@@ -1018,7 +1020,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                                 <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>
                                   {money(transaction.total ?? 0)}
                                 </Text>
-                                {transaction.action === 'SELL' && (
+                                {(transaction.action === 'SELL' || transaction.action === 'BUY_TO_COVER') && (
                                   <Text style={{ color: net >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 9, marginTop: 2 }}>
                                     {net >= 0 ? '+' : ''}{money(net)}
                                   </Text>

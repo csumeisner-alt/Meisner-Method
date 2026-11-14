@@ -541,11 +541,11 @@ export function EventArenaScreen() {
           ) : positions.map((position) => (
             <View key={position.symbol} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10, paddingVertical: 10, borderTopWidth: 1, borderColor: colors.border }}>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>{position.symbol} · {position.shares} shares</Text>
+                <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>{position.symbol}{position.positionType === 'short' ? ' · SHORT' : ''} · {position.shares} shares</Text>
                 <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>{position.companyName} · close {money(position.marketPrice)}</Text>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
-                <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>{money(position.marketValue)}</Text>
+                <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>{position.positionType === 'short' ? 'Liability ' : ''}{money(position.marketValue)}</Text>
                 <Text style={{ color: position.unrealizedPnL >= 0 ? colors.buyColor : colors.sellColor, fontFamily: 'Inter_500Medium', fontSize: 10, marginTop: 3 }}>{position.unrealizedPnL >= 0 ? '+' : ''}{money(position.unrealizedPnL)}</Text>
               </View>
             </View>
@@ -562,14 +562,14 @@ export function EventArenaScreen() {
             const net = transaction.realizedPnL === undefined ? null : transaction.realizedPnL - (transaction.fee ?? 0);
             return (
               <View key={transaction.id ?? `${transaction.date}-${transaction.symbol}-${index}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 9, borderTopWidth: 1, borderColor: colors.border }}>
-                <Text style={{ width: 44, color: transaction.action === 'BUY' ? colors.primary : transaction.action === 'SELL' ? colors.destructive : colors.mutedForeground, fontFamily: 'Inter_700Bold', fontSize: 9 }}>{transaction.action}</Text>
+                <Text style={{ width: 44, color: transaction.action === 'BUY' || transaction.action === 'BUY_TO_COVER' ? colors.primary : transaction.action === 'SELL' || transaction.action === 'SHORT_SELL' ? colors.destructive : colors.mutedForeground, fontFamily: 'Inter_700Bold', fontSize: 9 }}>{transaction.action}</Text>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>{transaction.symbol}{transaction.shares === undefined ? '' : ` · ${transaction.shares} shares`}</Text>
                   <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 2 }}>{new Date(transaction.date).toLocaleString()}</Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>{transaction.total === undefined ? 'Unavailable' : money(transaction.total)}</Text>
-                  {transaction.action === 'SELL' && <Text style={{ color: net == null ? colors.mutedForeground : net >= 0 ? colors.buyColor : colors.sellColor, fontFamily: 'Inter_500Medium', fontSize: 9, marginTop: 2 }}>{net == null ? 'P/L unavailable' : `${net >= 0 ? '+' : ''}${money(net)}`}</Text>}
+                  {(transaction.action === 'SELL' || transaction.action === 'BUY_TO_COVER') && <Text style={{ color: net == null ? colors.mutedForeground : net >= 0 ? colors.buyColor : colors.sellColor, fontFamily: 'Inter_500Medium', fontSize: 9, marginTop: 2 }}>{net == null ? 'P/L unavailable' : `${net >= 0 ? '+' : ''}${money(net)}`}</Text>}
                 </View>
               </View>
             );
@@ -686,14 +686,14 @@ export function EventArenaScreen() {
                 const net = (transaction.realizedPnL ?? 0) - (transaction.fee ?? 0);
                 return (
                   <View key={transaction.id ?? `${transaction.date}-${transaction.symbol}-${transactionIndex}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-                    <Text style={{ width: 48, color: transaction.action === 'BUY' ? colors.primary : transaction.action === 'SELL' ? colors.destructive : colors.mutedForeground, fontFamily: 'Inter_700Bold', fontSize: 9 }}>{transaction.action}</Text>
+                    <Text style={{ width: 48, color: transaction.action === 'BUY' || transaction.action === 'BUY_TO_COVER' ? colors.primary : transaction.action === 'SELL' || transaction.action === 'SHORT_SELL' ? colors.destructive : colors.mutedForeground, fontFamily: 'Inter_700Bold', fontSize: 9 }}>{transaction.action}</Text>
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>{transaction.symbol} · {transaction.shares ?? 0} shares</Text>
                       <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 2 }}>{new Date(transaction.date).toLocaleString()}</Text>
                     </View>
                     <View style={{ alignItems: 'flex-end' }}>
                       <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>{money(transaction.total ?? 0)}</Text>
-                      {transaction.action === 'SELL' && <Text style={{ color: net >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 9, marginTop: 2 }}>{net >= 0 ? '+' : ''}{money(net)}</Text>}
+                      {(transaction.action === 'SELL' || transaction.action === 'BUY_TO_COVER') && <Text style={{ color: net >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 9, marginTop: 2 }}>{net >= 0 ? '+' : ''}{money(net)}</Text>}
                     </View>
                   </View>
                 );
@@ -799,8 +799,8 @@ export function EventArenaScreen() {
           <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, paddingVertical: 12 }}>No open event positions.</Text>
         ) : eventPositions.map((position) => (
           <View key={position.id} style={{ paddingVertical: 12, borderTopWidth: 1, borderColor: colors.border }}>
-            <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>{position.symbol} · {position.shares} shares</Text>
-            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 3 }}>Average cost {money(position.avgCost)} · position value {quotes[position.symbol] ? money(position.shares * quotes[position.symbol]!) : 'Quote unavailable'}</Text>
+            <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>{position.symbol}{position.positionType === 'short' ? ' · SHORT' : ''} · {position.shares} shares</Text>
+            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 3 }}>{position.positionType === 'short' ? 'Entry' : 'Average cost'} {money(position.avgCost)} · {position.positionType === 'short' ? 'liability' : 'position value'} {quotes[position.symbol] ? money(position.shares * quotes[position.symbol]!) : 'Quote unavailable'}</Text>
           </View>
         ))}
         <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 16, marginTop: 18, marginBottom: 8 }}>Pending orders</Text>
@@ -808,16 +808,16 @@ export function EventArenaScreen() {
           <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, paddingVertical: 12 }}>No pending event orders.</Text>
         ) : eventOrders.filter((order) => order.status === 'pending').map((order) => (
           <View key={order.id} style={{ paddingVertical: 11, borderTopWidth: 1, borderColor: colors.border }}>
-            <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>{order.side.toUpperCase()} · {order.symbol} · {order.shares} shares</Text>
+            <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>{order.intent === 'short' ? 'SHORT SELL' : order.intent === 'cover' ? 'BUY TO COVER' : order.side.toUpperCase()} · {order.symbol} · {order.shares} shares</Text>
             <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>{order.orderType.replace('_', ' ').toUpperCase()} · placed {new Date(order.placedAt).toLocaleString()}</Text>
           </View>
         ))}
         <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 16, marginTop: 18, marginBottom: 8 }}>Completed trades</Text>
-        {eventTransactions.filter((transaction) => transaction.action === 'BUY' || transaction.action === 'SELL').length === 0 ? (
+        {eventTransactions.filter((transaction) => transaction.action === 'BUY' || transaction.action === 'SELL' || transaction.action === 'SHORT_SELL' || transaction.action === 'BUY_TO_COVER').length === 0 ? (
           <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, paddingVertical: 12 }}>No completed event trades yet.</Text>
-        ) : eventTransactions.filter((transaction) => transaction.action === 'BUY' || transaction.action === 'SELL').map((transaction) => (
+        ) : eventTransactions.filter((transaction) => transaction.action === 'BUY' || transaction.action === 'SELL' || transaction.action === 'SHORT_SELL' || transaction.action === 'BUY_TO_COVER').map((transaction) => (
           <View key={transaction.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11, borderTopWidth: 1, borderColor: colors.border }}>
-            <Text style={{ width: 42, color: transaction.action === 'BUY' ? colors.primary : colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 10 }}>{transaction.action}</Text>
+            <Text style={{ width: 42, color: transaction.action === 'BUY' || transaction.action === 'BUY_TO_COVER' ? colors.primary : colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 10 }}>{transaction.action}</Text>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>{transaction.symbol} · {transaction.shares} shares</Text>
               <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 2 }}>{new Date(transaction.date).toLocaleString()} · {money(transaction.price)} per share</Text>

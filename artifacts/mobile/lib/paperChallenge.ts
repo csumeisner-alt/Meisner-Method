@@ -54,6 +54,7 @@ export type PaperChallengeArchivedPosition = {
   symbol: string;
   companyName: string;
   shares: number;
+  positionType?: 'long' | 'short';
   avgCost: number;
   marketPrice: number;
   marketValue: number;
@@ -63,7 +64,7 @@ export type PaperChallengeArchivedPosition = {
 export type PaperChallengeArchivedTransaction = {
   id?: string;
   symbol: string;
-  action: 'BUY' | 'SELL' | 'DIVIDEND';
+  action: 'BUY' | 'SELL' | 'SHORT_SELL' | 'BUY_TO_COVER' | 'DIVIDEND';
   shares?: number;
   price?: number;
   total?: number;
@@ -469,7 +470,7 @@ export function buildPaperChallengeSummary(
     id?: string;
     accountId: string;
     symbol: string;
-    action: 'BUY' | 'SELL' | 'DIVIDEND';
+    action: 'BUY' | 'SELL' | 'SHORT_SELL' | 'BUY_TO_COVER' | 'DIVIDEND';
     date: string;
     shares?: number;
     price?: number;
@@ -490,11 +491,13 @@ export function buildPaperChallengeSummary(
       && timestamp >= enrollment.joinedAtMs
       && timestamp <= enrollment.eventEndAtMs;
   });
-  const trades = eventTransactions.filter((transaction) => transaction.action === 'BUY' || transaction.action === 'SELL');
-  const buys = trades.filter((transaction) => transaction.action === 'BUY');
-  const sells = trades.filter((transaction) => transaction.action === 'SELL');
+  const trades = eventTransactions.filter((transaction) =>
+    transaction.action === 'BUY' || transaction.action === 'SELL'
+      || transaction.action === 'SHORT_SELL' || transaction.action === 'BUY_TO_COVER');
+  const buys = trades.filter((transaction) => transaction.action === 'BUY' || transaction.action === 'BUY_TO_COVER');
+  const sells = trades.filter((transaction) => transaction.action === 'SELL' || transaction.action === 'SHORT_SELL');
   const realizedPnL = eventTransactions.reduce(
-    (total, transaction) => total + (transaction.action === 'SELL'
+    (total, transaction) => total + (transaction.action === 'SELL' || transaction.action === 'BUY_TO_COVER'
       ? (transaction.realizedPnL ?? 0) - (transaction.fee ?? 0)
       : 0),
     0,

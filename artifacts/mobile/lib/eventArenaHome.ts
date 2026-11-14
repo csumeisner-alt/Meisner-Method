@@ -5,6 +5,7 @@ import type {
   PaperPosition,
   PaperTransaction,
 } from './paperMath.ts';
+import { isShortPosition } from './paperMath.ts';
 import {
   PAPER_CHALLENGE_STARTING_BALANCE,
   type PaperChallengeEnrollment,
@@ -127,7 +128,8 @@ export function getEventArenaPerformance(
     return item.accountId === enrollment.accountId
       && timestamp >= Math.max(enrollment.joinedAtMs, event.startAtMs)
       && timestamp <= event.endAtMs
-      && (item.action === 'BUY' || item.action === 'SELL');
+      && (item.action === 'BUY' || item.action === 'SELL'
+        || item.action === 'SHORT_SELL' || item.action === 'BUY_TO_COVER');
   });
   const pendingOrders = data.orders.filter((item) =>
     item.accountId === enrollment.accountId && item.status === 'pending',
@@ -139,7 +141,9 @@ export function getEventArenaPerformance(
   const equity = account && hasAllQuotes
     ? account.cash
       + (account.unsettledCash ?? 0)
-      + positions.reduce((sum, position) => sum + position.shares * quotes[position.symbol]!, 0)
+      + (account.shortCollateral ?? 0)
+      + positions.reduce((sum, position) =>
+        sum + position.shares * quotes[position.symbol]! * (isShortPosition(position) ? -1 : 1), 0)
     : null;
   const profitLoss = equity == null ? null : equity - startingBalance;
 

@@ -30,14 +30,16 @@ test("the selected ticker feeds the stock-information card and order-sheet props
   assert.match(paperScreen, /testID="paper-stock-info-card"/);
   assert.match(paperScreen, /stockInfo\.companyName/);
   assert.match(paperScreen, /getBuyOrderDetails\(buySymbol, stockInfo\)/);
-  assert.match(paperScreen, /symbol=\{tradeMode === 'buy' \? buyOrderDetails\.symbol/);
-  assert.match(paperScreen, /companyName=\{tradeMode === 'buy' \? buyOrderDetails\.companyName/);
-  assert.match(paperScreen, /currentPrice=\{tradeMode === 'buy' \? buyOrderDetails\.currentPrice/);
-  assert.match(paperScreen, /stockInfo=\{tradeMode === 'buy' \? buyOrderDetails\.stockInfo/);
-  assert.match(paperScreen, /testID="paper-stock-place-order-button"/);
+  assert.match(paperScreen, /symbol=\{tradeMode === 'buy' \|\| tradeMode === 'short' \? buyOrderDetails\.symbol/);
+  assert.match(paperScreen, /companyName=\{tradeMode === 'buy' \|\| tradeMode === 'short' \? buyOrderDetails\.companyName/);
+  assert.match(paperScreen, /currentPrice=\{tradeMode === 'buy' \|\| tradeMode === 'short' \? buyOrderDetails\.currentPrice/);
+  assert.match(paperScreen, /stockInfo=\{tradeMode === 'buy' \|\| tradeMode === 'short' \? buyOrderDetails\.stockInfo/);
+  assert.match(paperScreen, /testID="paper-stock-buy-button"/);
+  assert.match(paperScreen, /testID="paper-stock-sell-button"/);
+  assert.match(paperScreen, /testID="paper-stock-short-sell-button"/);
   assert.match(
     paperScreen,
-    /testID="paper-stock-place-order-button"[\s\S]*?onPress=\{\(\) => \{\s*invalidateStockLookup\(\);\s*setShowOrderSheet\(true\);\s*setShowTradeModal\(false\);/,
+    /testID="paper-stock-short-sell-button"[\s\S]*?onPress=\{\(\) => openSelectedStockOrder\('short'\)\}/,
   );
 });
 

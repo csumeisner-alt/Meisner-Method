@@ -92,6 +92,11 @@ export default function OrderEntryReview({
   if (!review) return null;
 
   const accent = review.args.side === 'buy' ? BUY_COLOR : SELL_COLOR;
+  const actionLabel = review.args.side === 'short'
+    ? 'SHORT SELL'
+    : review.args.side === 'cover'
+      ? 'BUY TO COVER'
+      : review.args.side.toUpperCase();
   const shares = review.args.shares.toLocaleString('en-US', { maximumFractionDigits: 6 });
   return (
     <ScrollView
@@ -116,7 +121,7 @@ export default function OrderEntryReview({
       <View style={[styles.reviewCard, { borderColor: `${accent}70` }]}>
         <View style={styles.reviewSideRow}>
           <View style={[styles.sideBadge, { backgroundColor: `${accent}20` }]}>
-            <Text style={[styles.sideBadgeText, { color: accent }]}>{review.args.side.toUpperCase()}</Text>
+            <Text style={[styles.sideBadgeText, { color: accent }]}>{actionLabel}</Text>
           </View>
           <Text style={styles.reviewSymbol}>{review.args.symbol}</Text>
           <Text style={styles.reviewOrderType}>{ORDER_TYPE_LABELS[review.args.orderType]}</Text>
@@ -124,13 +129,31 @@ export default function OrderEntryReview({
         <Text style={styles.reviewCompany}>{review.args.companyName}</Text>
         <ReviewRow label="Account" value={review.accountName} />
         <ReviewRow label="Shares" value={shares} />
-        <ReviewRow label="Estimated value" value={money(review.estimatedValue)} emphasize />
+        <ReviewRow
+          label={review.args.side === 'buy' || review.args.side === 'cover' ? 'Estimated cost' : 'Estimated proceeds'}
+          value={money(review.estimatedValue)}
+          emphasize
+        />
+        {review.args.side === 'short' && (
+          <>
+            <ReviewRow label="Buying-power impact" value={money(review.marginImpact)} />
+            <ReviewRow label="Restricted collateral" value={money(review.estimatedValue * review.collateralRatio)} />
+          </>
+        )}
         {review.args.limitPrice != null && <ReviewRow label="Limit price" value={money(review.args.limitPrice)} />}
         {review.args.stopPrice != null && <ReviewRow label="Stop trigger" value={money(review.args.stopPrice)} />}
         {review.args.orderType === 'limit' && (
           <View style={styles.warningLine}>
             <Feather name="info" size={14} color={GOLD} />
             <Text style={styles.warningText}>A limit order may remain pending and is not guaranteed to fill.</Text>
+          </View>
+        )}
+        {review.args.side === 'short' && (
+          <View style={styles.warningLine}>
+            <Feather name="alert-triangle" size={14} color={SELL_COLOR} />
+            <Text style={[styles.warningText, { color: SELL_COLOR }]}>
+              Short losses can exceed your initial margin and have no fixed upper limit. Borrow availability is simulated; no real shares are borrowed.
+            </Text>
           </View>
         )}
       </View>
@@ -143,12 +166,12 @@ export default function OrderEntryReview({
       <TouchableOpacity
         testID="paper-order-submit"
         accessibilityRole="button"
-        accessibilityLabel={`${submitting ? 'Submitting' : 'Confirm'} ${review.args.side} order for ${shares} shares of ${review.args.symbol}`}
+        accessibilityLabel={`${submitting ? 'Submitting' : 'Confirm'} ${actionLabel} order for ${shares} shares of ${review.args.symbol}`}
         style={[styles.primaryAction, { backgroundColor: accent }, submitting && styles.disabledButton]}
         onPress={onSubmit}
         disabled={submitting}
       >
-        <Text style={styles.primaryActionText}>{submitting ? 'SUBMITTING…' : `CONFIRM ${review.args.side.toUpperCase()}`}</Text>
+        <Text style={styles.primaryActionText}>{submitting ? 'SUBMITTING…' : `CONFIRM ${actionLabel}`}</Text>
         {submitting ? <View style={styles.spinner} /> : <Feather name="arrow-right" size={17} color="#000" />}
       </TouchableOpacity>
       <TouchableOpacity

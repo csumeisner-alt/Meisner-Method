@@ -21,6 +21,10 @@ export type PaperAccount = {
   unsettledCash?: number;
   /** Individual T+2 settlement buckets. Serialised to DB via unsettled_items JSON column. */
   unsettledItems?: UnsettledItem[];
+  /** Restricted proceeds and margin reserved for open short positions. */
+  shortCollateral?: number;
+  /** Simulated collateral as a multiple of short-sale proceeds. Defaults to 150%. */
+  shortCollateralRatio?: number;
   /** ISO date of the last monthly dividend credit so we don't double-credit. */
   lastDividendCredit?: string;
   createdAt: string;
@@ -32,6 +36,10 @@ export type PaperPosition = {
   symbol: string;
   companyName: string;
   shares: number;
+  /** Missing means long for backward compatibility with saved positions. */
+  positionType?: 'long' | 'short';
+  /** Restricted collateral held per short share, weighted across entries. */
+  collateralPerShare?: number;
   avgCost: number;
   openedAt: string;
   dividendYield: number;
@@ -49,7 +57,7 @@ export type PaperTransaction = {
   accountId: string;
   symbol: string;
   companyName: string;
-  action: 'BUY' | 'SELL' | 'DIVIDEND';
+  action: 'BUY' | 'SELL' | 'SHORT_SELL' | 'BUY_TO_COVER' | 'DIVIDEND';
   shares: number;
   price: number;
   total: number;
@@ -58,6 +66,9 @@ export type PaperTransaction = {
   realizedPnL?: number;
   /** Fund fee charged on this closing trade (0 for non-fund symbols). */
   fee?: number;
+  /** Explicit cash/collateral movements for reproducible short-side history. */
+  cashDelta?: number;
+  shortCollateralDelta?: number;
 };
 
 export type LiveQuote = {
@@ -125,6 +136,10 @@ export type PaperOrder = {
   companyName: string;
   orderType: OrderType;
   side: OrderSide;
+  /** Legacy orders infer intent from side; shorts/covers are explicit. */
+  intent?: 'short' | 'cover';
+  /** Collateral multiple captured for a pending short order. */
+  shortCollateralRatio?: number;
   shares: number;
   /** For limit and stop-limit orders. */
   limitPrice?: number;
@@ -166,6 +181,30 @@ export type PaperLot = {
 
 // ── Constants ──────────────────────────────────────────────────────────────
 export const INITIAL_BALANCE = 100_000;
+/** Simulated collateral held per dollar of short-sale proceeds. */
+export const DEFAULT_SHORT_COLLATERAL_RATIO = 1.5;
+
+export function isShortPosition(position: Pick<PaperPosition, 'positionType'>): boolean {
+  return position.positionType === 'short';
+}
+
+/** Equity = cash + unsettled + collateral + longs − short liabilities. */
+export function computePaperEquity(
+  account: PaperAccount,
+  positions: PaperPosition[],
+  quotes: Record<string, Pick<LiveQuote, 'price'>>,
+): number {
+  return account.cash
+    + (account.unsettledCash ?? 0)
+    + (account.shortCollateral ?? 0)
+    + positions
+      .filter((position) => position.accountId === account.id)
+      .reduce((total, position) => {
+        const price = quotes[position.symbol]?.price ?? position.avgCost;
+        const value = position.shares * price;
+        return total + (isShortPosition(position) ? -value : value);
+      }, 0);
+}
 
 /** Win threshold: a sell counts as a win when net (after-fee) P&L ≥ this. */
 export const WIN_THRESHOLD = 0.01;
@@ -249,7 +288,7 @@ export function computeSellWinRate(txns: PaperTransaction[]): {
   total: number;
   rate: number | null;
 } {
-  const sells = txns.filter(t => t.action === 'SELL');
+  const sells = txns.filter(t => t.action === 'SELL' || t.action === 'BUY_TO_COVER');
   const wins = sells.filter(isWinningSell).length;
   const total = sells.length;
   const losses = total - wins;
@@ -259,7 +298,7 @@ export function computeSellWinRate(txns: PaperTransaction[]): {
 /** Sum of net (after-fee) realized P&L across all SELL transactions. */
 export function computeRealizedPnL(txns: PaperTransaction[]): number {
   return txns
-    .filter(t => t.action === 'SELL')
+    .filter(t => t.action === 'SELL' || t.action === 'BUY_TO_COVER')
     .reduce((s, t) => s + sellNetPnL(t), 0);
 }
 
@@ -297,10 +336,10 @@ export function createAccountValueSnapshot(
   for (const position of accountPositions) {
     const price = quotes[position.symbol]?.price;
     if (!Number.isFinite(price) || price <= 0) return null;
-    positionValue += position.shares * price;
+    positionValue += (isShortPosition(position) ? -1 : 1) * position.shares * price;
   }
-
-  const value = account.cash + (account.unsettledCash ?? 0) + positionValue;
+  const value = account.cash + (account.unsettledCash ?? 0)
+    + (account.shortCollateral ?? 0) + positionValue;
   if (!Number.isFinite(value)) return null;
   return { accountId, date: new Date(timestamp).toISOString(), value };
 }
@@ -398,7 +437,13 @@ export function buildValueHistory(
     { date: account.createdAt, value: INITIAL_BALANCE },
   ];
   let cash = INITIAL_BALANCE;
-  const posMap: Record<string, { shares: number; avgCost: number; lastPrice: number }> = {};
+  const posMap: Record<string, {
+    shares: number;
+    avgCost: number;
+    lastPrice: number;
+    positionType?: 'long' | 'short';
+    collateral?: number;
+  }> = {};
 
   for (const tx of sorted) {
     if (tx.action === 'DIVIDEND') {
@@ -415,7 +460,7 @@ export function buildValueHistory(
         p.shares = total;
         p.lastPrice = tx.price;
       }
-    } else {
+    } else if (tx.action === 'SELL') {
       // SELL: credit proceeds net of the fund fee, mirroring the live cash update.
       cash += tx.total - (tx.fee ?? 0);
       if (posMap[tx.symbol]) {
@@ -423,16 +468,51 @@ export function buildValueHistory(
         posMap[tx.symbol].lastPrice = tx.price;
         if (posMap[tx.symbol].shares <= 0) delete posMap[tx.symbol];
       }
+    } else if (tx.action === 'SHORT_SELL') {
+      cash += tx.cashDelta ?? 0;
+      if (!posMap[tx.symbol]) {
+        posMap[tx.symbol] = {
+          shares: tx.shares,
+          avgCost: tx.price,
+          lastPrice: tx.price,
+          positionType: 'short',
+        };
+      } else {
+        const p = posMap[tx.symbol];
+        const total = p.shares + tx.shares;
+        p.avgCost = (p.shares * p.avgCost + tx.shares * tx.price) / total;
+        p.shares = total;
+        p.lastPrice = tx.price;
+      }
+      posMap[tx.symbol].collateral = (posMap[tx.symbol].collateral ?? 0)
+        + (tx.shortCollateralDelta ?? tx.total * DEFAULT_SHORT_COLLATERAL_RATIO);
+    } else if (tx.action === 'BUY_TO_COVER') {
+      cash += tx.cashDelta ?? 0;
+      if (posMap[tx.symbol]) {
+        posMap[tx.symbol].shares -= tx.shares;
+        posMap[tx.symbol].lastPrice = tx.price;
+        posMap[tx.symbol].collateral = Math.max(
+          0,
+          (posMap[tx.symbol].collateral ?? 0) - (tx.shortCollateralDelta ?? 0),
+        );
+        if (posMap[tx.symbol].shares <= 0.0001) delete posMap[tx.symbol];
+      }
     }
-    const posValue = Object.values(posMap).reduce(
-      (s, p) => s + p.shares * p.lastPrice, 0,
+    const shortCollateral = Object.values(posMap).reduce(
+      (sum, position) => sum + (position.positionType === 'short' ? position.collateral ?? 0 : 0), 0,
     );
-    points.push({ date: tx.date, value: cash + posValue });
+    const posValue = Object.values(posMap).reduce(
+      (s, p) => s + (p.positionType === 'short' ? -p.shares * p.lastPrice : p.shares * p.lastPrice), 0,
+    );
+    points.push({ date: tx.date, value: cash + shortCollateral + posValue });
   }
 
   const livePosValue = currentPositions.reduce(
-    (s, p) => s + p.shares * (quotes[p.symbol]?.price ?? p.avgCost), 0,
+    (s, p) => s + (isShortPosition(p) ? -1 : 1) * p.shares * (quotes[p.symbol]?.price ?? p.avgCost), 0,
   );
-  points.push({ date: now, value: currentCash + livePosValue });
+  points.push({
+    date: now,
+    value: currentCash + (account.shortCollateral ?? 0) + livePosValue,
+  });
   return points;
 }

@@ -77,6 +77,24 @@ export function getAvailableSellShares(
   return Math.max(0, position.shares - reserved);
 }
 
+export function getAvailableShortShares(
+  position: PaperPosition | null | undefined,
+  pendingOrders: PaperOrder[],
+  accountId: string,
+  symbol: string,
+  excludeOrderId?: string,
+): number {
+  if (!position || position.accountId !== accountId || position.symbol !== symbol || position.positionType !== 'short') return 0;
+  const reserved = pendingOrders
+    .filter((order) => order.accountId === accountId
+      && order.symbol === symbol
+      && order.intent === 'cover'
+      && order.status === 'pending'
+      && order.id !== excludeOrderId)
+    .reduce((sum, order) => sum + order.shares, 0);
+  return Math.max(0, position.shares - reserved);
+}
+
 export function formatProviderMarketSession(session: string | undefined): string | null {
   if (!session) return null;
   const normalized = session.toUpperCase();

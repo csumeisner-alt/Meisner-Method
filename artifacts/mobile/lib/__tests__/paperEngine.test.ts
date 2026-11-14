@@ -22,6 +22,7 @@ import {
 } from '../paperEngine.ts';
 
 import type { PaperAccount, PaperOrder, PaperLot, PaperPosition } from '../paperMath.ts';
+import { computePaperEquity, isShortPosition } from '../paperMath.ts';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 let _seq = 0;
@@ -278,6 +279,48 @@ test('available settled buying power reserves pending buys only for their own ac
   });
   const otherAccountOrder = { ...reservedOrder, id: 'pending-a2', accountId: 'a2' };
   assert.equal(getAvailableSettledBuyingPower(account, [reservedOrder, otherAccountOrder], {}), 800);
+});
+
+test('available buying power reserves pending short margin and cover shortfalls', () => {
+  const account = mkAccount({ id: 'a1', cash: 1_000, shortCollateralRatio: 1.5 });
+  const pendingShort = mkOrder({
+    id: 'pending-short', accountId: 'a1', symbol: 'XYZ', side: 'sell',
+    intent: 'short', shortCollateralRatio: 1.5, shares: 2,
+    orderType: 'limit', limitPrice: 100,
+  });
+  assert.equal(getAvailableSettledBuyingPower(account, [pendingShort], {}), 900);
+
+  const coverAccount = mkAccount({ id: 'a1', cash: 100 });
+  const shortPosition = mkPosition({
+    accountId: 'a1', symbol: 'XYZ', positionType: 'short',
+    shares: 2, avgCost: 100, collateralPerShare: 150,
+  });
+  const pendingCover = mkOrder({
+    id: 'pending-cover', accountId: 'a1', symbol: 'XYZ', side: 'buy',
+    intent: 'cover', shares: 2, orderType: 'limit', limitPrice: 200,
+  });
+  assert.equal(getAvailableSettledBuyingPower(
+    coverAccount, [pendingCover], { XYZ: { price: 200 } }, undefined, [shortPosition],
+  ), 0);
+});
+
+test('cover risk reserves costs for pending covers before accepting another order', () => {
+  const account = mkAccount({ id: 'a1', cash: 100 });
+  const shortPosition = mkPosition({
+    accountId: 'a1', symbol: 'AAPL', positionType: 'short',
+    shares: 4, avgCost: 100, collateralPerShare: 150,
+  });
+  const pendingCover = mkOrder({
+    id: 'pending-cover', accountId: 'a1', symbol: 'AAPL', side: 'buy',
+    intent: 'cover', shares: 2, orderType: 'limit', limitPrice: 200,
+  });
+  const error = checkRisk({
+    side: 'buy', intent: 'cover', shares: 2, orderType: 'market',
+    symbol: 'AAPL', currentPrice: 200, account,
+    accountPositions: [shortPosition], quotes: { AAPL: { price: 200 } },
+    pendingOrders: [pendingCover],
+  });
+  assert.match(error ?? '', /Insufficient account funds/);
 });
 
 test('risk checks reserve a pending trailing buy using its own symbol quote', () => {
@@ -843,6 +886,129 @@ test('round-trip: pending order does NOT fill before price crosses (no false tri
   // Price is $105 — above limit of $100 → must NOT fill
   const evalResult = evaluateOrder(restoredOrder, 105);
   assert.equal(evalResult.shouldFill, false, 'Limit buy does not trigger when price is above limit after restart');
+});
+
+test('short open reserves proceeds, records explicit intent, and marks equity with signed liability', () => {
+  const account = mkAccount({ id: 'event:week:alpha', cash: 1_000 });
+  const order = mkOrder({
+    accountId: account.id,
+    side: 'sell',
+    intent: 'short',
+    shortCollateralRatio: 1.5,
+    shares: 4,
+  });
+  const result = fillOrder({
+    order, fillPrice: 100, filledAt: '2025-01-02T00:00:00Z',
+    account, positions: [], lots: [], uid,
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) throw new Error('unexpected');
+  assert.equal(result.updatedAccount.cash, 800);
+  assert.equal(result.updatedAccount.shortCollateral, 600);
+  assert.equal(result.updatedPositions.length, 1);
+  assert.equal(isShortPosition(result.updatedPositions[0]), true);
+  assert.equal(result.updatedPositions[0].collateralPerShare, 150);
+  assert.equal(result.newTransaction.action, 'SHORT_SELL');
+  assert.equal(result.newTransaction.accountId, account.id);
+  assert.equal(computePaperEquity(result.updatedAccount, result.updatedPositions, { AAPL: { price: 80 } }), 1_080);
+  assert.equal(computePaperEquity(result.updatedAccount, result.updatedPositions, { AAPL: { price: 120 } }), 920);
+});
+
+test('short covers support partial then full close and realize P&L at actual fill prices', () => {
+  const account = mkAccount({ id: 'event:week:alpha', cash: 1_000 });
+  const opened = fillOrder({
+    order: mkOrder({
+      accountId: account.id, side: 'sell', intent: 'short',
+      shortCollateralRatio: 1.5, shares: 4,
+    }),
+    fillPrice: 100, filledAt: '2025-01-02T00:00:00Z',
+    account, positions: [], lots: [], uid,
+  });
+  if (!opened.ok) throw new Error(opened.reason);
+
+  const partial = fillOrder({
+    order: mkOrder({
+      accountId: account.id, side: 'buy', intent: 'cover', shares: 2,
+    }),
+    fillPrice: 80, filledAt: '2025-01-03T00:00:00Z',
+    account: opened.updatedAccount, positions: opened.updatedPositions,
+    lots: [], uid,
+  });
+  if (!partial.ok) throw new Error('unexpected partial cover rejection');
+  assert.equal(partial.updatedPositions[0].shares, 2);
+  assert.equal(partial.updatedAccount.cash, 940);
+  assert.equal(partial.updatedAccount.shortCollateral, 300);
+  assert.equal(partial.newTransaction.action, 'BUY_TO_COVER');
+  assert.equal(partial.newTransaction.realizedPnL, 40);
+
+  const closed = fillOrder({
+    order: mkOrder({
+      accountId: account.id, side: 'buy', intent: 'cover', shares: 2,
+    }),
+    fillPrice: 120, filledAt: '2025-01-04T00:00:00Z',
+    account: partial.updatedAccount, positions: partial.updatedPositions,
+    lots: [], uid,
+  });
+  if (!closed.ok) throw new Error('unexpected full cover rejection');
+  assert.equal(closed.updatedPositions.length, 0);
+  assert.equal(closed.updatedAccount.shortCollateral, 0);
+  assert.equal(closed.updatedAccount.cash, 1_000);
+  assert.equal(closed.newTransaction.realizedPnL, -40);
+});
+
+test('cover rejects over-covering and an ordinary SELL cannot close a short', () => {
+  const account = mkAccount({ id: 'short-only', cash: 1_000 });
+  const short = mkPosition({
+    accountId: account.id, positionType: 'short', shares: 2,
+    avgCost: 100, collateralPerShare: 150,
+  });
+  const overCover = fillOrder({
+    order: mkOrder({ accountId: account.id, side: 'buy', intent: 'cover', shares: 3 }),
+    fillPrice: 80, filledAt: '2025-01-03T00:00:00Z',
+    account: { ...account, shortCollateral: 300 }, positions: [short], lots: [], uid,
+  });
+  assert.equal(overCover.ok, false);
+  if (overCover.ok) throw new Error('over-cover unexpectedly succeeded');
+  assert.match(overCover.reason, /Insufficient short shares/);
+
+  const ordinarySell = fillOrder({
+    order: mkOrder({ accountId: account.id, side: 'sell', shares: 1 }),
+    fillPrice: 80, filledAt: '2025-01-03T00:00:00Z',
+    account, positions: [short], lots: [], uid,
+  });
+  assert.equal(ordinarySell.ok, false);
+});
+
+test('short margin includes pending reservations and is isolated by Event Arena account ID', () => {
+  const account = mkAccount({ id: 'event:week:two', cash: 10_000 });
+  const pendingBuy = mkOrder({
+    accountId: account.id, side: 'buy', shares: 99,
+    symbol: 'MSFT', orderType: 'limit', limitPrice: 100,
+  });
+  const marginError = checkRisk({
+    side: 'sell', intent: 'short', shares: 10, orderType: 'market',
+    symbol: 'AAPL', currentPrice: 100, account, accountPositions: [],
+    quotes: { AAPL: { price: 100 }, MSFT: { price: 100 } },
+    pendingOrders: [pendingBuy],
+  });
+  assert.match(marginError ?? '', /already committed/);
+
+  const ownShort = mkPosition({
+    id: 'event-two-short', accountId: account.id, symbol: 'AAPL',
+    positionType: 'short', shares: 2, avgCost: 100, collateralPerShare: 150,
+  });
+  const otherEventCover = mkOrder({
+    accountId: 'event:week:one', symbol: 'AAPL',
+    side: 'buy', intent: 'cover', shares: 2,
+  });
+  const isolatedResult = checkRisk({
+    side: 'buy', intent: 'cover', shares: 2, orderType: 'market',
+    symbol: 'AAPL', currentPrice: 80, account: { ...account, shortCollateral: 300 },
+    accountPositions: [ownShort], quotes: { AAPL: { price: 80 } },
+    pendingOrders: [otherEventCover],
+  });
+  assert.equal(isolatedResult, null, 'another event account must not reserve this account’s cover shares');
 });
 
 console.log('All tests passed ✓');

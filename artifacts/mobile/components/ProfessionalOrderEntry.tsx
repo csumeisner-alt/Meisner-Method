@@ -19,6 +19,7 @@ import {
   calculateSharesForBuyingPower,
   formatProviderMarketSession,
   getAvailableSellShares,
+  getAvailableShortShares,
   getOrderEstimatePrice,
   getOrderQuoteState,
 } from '@/lib/paperOrderEntry';
@@ -53,7 +54,8 @@ export type ConfirmOrderArgs = {
   symbol: string;
   companyName: string;
   orderType: OrderType;
-  side: 'buy' | 'sell';
+  side: OrderIntent;
+  shortCollateralRatio?: number;
   shares: number;
   limitPrice?: number;
   stopPrice?: number;
@@ -69,6 +71,8 @@ export type ConfirmOrderArgs = {
   };
 };
 
+export type OrderIntent = 'buy' | 'sell' | 'short' | 'cover';
+
 export type OrderSubmissionResult =
   | { status: 'filled'; message: string; fillPrice: number }
   | { status: 'pending'; message: string }
@@ -81,12 +85,14 @@ export type ReviewSnapshot = {
   buyingPower: number;
   cash: number;
   estimatedValue: number;
+  marginImpact: number;
+  collateralRatio: number;
   quoteNote: string;
 };
 
 type Props = {
   visible: boolean;
-  side: 'buy' | 'sell';
+  side: OrderIntent;
   symbol: string;
   companyName: string;
   currentPrice: number;
@@ -108,6 +114,7 @@ type Props = {
   onClose: () => void;
   onRefreshQuote: (symbol: string) => Promise<void>;
   onSearchStock: () => void;
+  onSetShortCollateralRatio: (ratio: number) => void;
   onConfirm: (args: ConfirmOrderArgs) => Promise<OrderSubmissionResult>;
 };
 
@@ -143,9 +150,10 @@ export default function ProfessionalOrderEntry({
   onClose,
   onRefreshQuote,
   onSearchStock,
+  onSetShortCollateralRatio,
   onConfirm,
 }: Props) {
-  const [activeSide, setActiveSide] = useState<'buy' | 'sell'>(side);
+  const [activeSide, setActiveSide] = useState<OrderIntent>(side);
   const [orderType, setOrderType] = useState<OrderType>('market');
   const [sharesText, setSharesText] = useState('');
   const [limitPriceText, setLimitPriceText] = useState('');
@@ -177,15 +185,26 @@ export default function ProfessionalOrderEntry({
     ?? accountPositions.find((position) => position.accountId === account.id && position.symbol === symbol)
     ?? null;
   const availableSellShares = getAvailableSellShares(
-    sellPosition,
+    sellPosition?.positionType === 'short' ? null : sellPosition,
+    pendingOrders,
+    account.id,
+    symbol,
+    existingOrder?.id,
+  );
+  const shortPosition = selectedPos
+    ?? accountPositions.find((position) => position.accountId === account.id
+      && position.symbol === symbol && position.positionType === 'short')
+    ?? null;
+  const availableCoverShares = getAvailableShortShares(
+    shortPosition,
     pendingOrders,
     account.id,
     symbol,
     existingOrder?.id,
   );
   const buyingPower = useMemo(
-    () => getAvailableSettledBuyingPower(account, pendingOrders, quotes, existingOrder?.id),
-    [account, pendingOrders, quotes, existingOrder?.id],
+    () => getAvailableSettledBuyingPower(account, pendingOrders, quotes, existingOrder?.id, accountPositions),
+    [account, pendingOrders, quotes, existingOrder?.id, accountPositions],
   );
   const numericShares = Number(sharesText);
   const sharesValid = Number.isFinite(numericShares) && numericShares > 0;
@@ -214,13 +233,15 @@ export default function ProfessionalOrderEntry({
   else if (orderType === 'stop_limit' && (!limitPrice || !stopPrice)) inputError = 'Enter positive stop and limit prices.';
   else if (orderType === 'trailing_stop' && !(activeTrailPct || activeTrailAbs)) inputError = 'Enter a positive trailing amount.';
   else if (activeSide === 'sell' && availableSellShares <= 0) inputError = `No ${symbol} shares are available in ${account.name} after pending sells.`;
+  else if (activeSide === 'cover' && availableCoverShares <= 0) inputError = `No ${symbol} short shares are available in ${account.name} after pending covers.`;
   else if (orderType === 'market' && quoteState !== 'fresh') inputError = quoteState === 'stale'
     ? 'The quote is stale. Refresh it before placing a market order.'
     : 'A current provider quote is required for a market order.';
 
   const riskError = sharesValid && !inputError
     ? checkRisk({
-        side: activeSide,
+        side: activeSide === 'buy' || activeSide === 'cover' ? 'buy' : 'sell',
+        intent: activeSide === 'short' ? 'short' : activeSide === 'cover' ? 'cover' : undefined,
         shares: numericShares,
         orderType,
         limitPrice,
@@ -239,13 +260,12 @@ export default function ProfessionalOrderEntry({
   const validationMessage = inputError || riskError || '';
   const canReview = visible && !!symbol && !validationMessage && !result && !submitting;
   const accent = activeSide === 'buy' ? BUY_COLOR : SELL_COLOR;
-  const heldShares = sellPosition?.shares ?? 0;
 
   useEffect(() => {
     if (!visible) return;
     setActiveSide(side);
     setOrderType(existingOrder?.orderType ?? 'market');
-    setSharesText(String(existingOrder?.shares ?? (side === 'sell' ? selectedPos?.shares ?? '' : '')));
+    setSharesText(String(existingOrder?.shares ?? (side === 'sell' ? selectedPos?.shares ?? '' : side === 'cover' ? selectedPos?.shares ?? '' : '')));
     setLimitPriceText(String(existingOrder?.limitPrice ?? (currentPrice > 0 ? currentPrice.toFixed(2) : '')));
     setStopPriceText(String(existingOrder?.stopPrice ?? (currentPrice > 0 ? currentPrice.toFixed(2) : '')));
     setTrailPctText(String(existingOrder?.trailPct ?? 5));
@@ -266,10 +286,11 @@ export default function ProfessionalOrderEntry({
     return () => clearInterval(timer);
   }, [visible]);
 
-  const chooseSide = (nextSide: 'buy' | 'sell') => {
+  const chooseSide = (nextSide: OrderIntent) => {
     if (existingOrder) return;
     setActiveSide(nextSide);
-    setSharesText(nextSide === 'sell' ? String(availableSellShares || '') : '');
+    setSharesText(nextSide === 'sell' ? String(availableSellShares || '')
+      : nextSide === 'cover' ? String(availableCoverShares || '') : '');
     setReview(null);
     setResult(null);
   };
@@ -283,13 +304,14 @@ export default function ProfessionalOrderEntry({
       companyName: companyName || stockInfo?.companyName || symbol,
       orderType,
       side: activeSide,
+      shortCollateralRatio: activeSide === 'short' ? account.shortCollateralRatio ?? 1.5 : undefined,
       shares: numericShares,
       limitPrice,
       stopPrice,
       trailPct: activeTrailPct,
       trailAbs: activeTrailAbs,
       quotePrice,
-      stockInfo: activeSide === 'buy' && stockInfo ? {
+      stockInfo: (activeSide === 'buy' || activeSide === 'short') && stockInfo ? {
         companyName: stockInfo.companyName,
         dividendYield: stockInfo.dividendYield,
         dividendRate: stockInfo.dividendRate,
@@ -304,6 +326,10 @@ export default function ProfessionalOrderEntry({
       buyingPower,
       cash: account.cash,
       estimatedValue,
+      marginImpact: activeSide === 'short'
+        ? estimatedValue * Math.max(0, (account.shortCollateralRatio ?? 1.5) - 1)
+        : 0,
+      collateralRatio: account.shortCollateralRatio ?? 1.5,
       quoteNote: freshnessNote,
     });
   };
@@ -417,6 +443,29 @@ export default function ProfessionalOrderEntry({
               {(account.unsettledCash ?? 0) > 0 && (
                 <Text style={styles.unsettledNote}>+ {money(account.unsettledCash ?? 0)} unsettled · not available to buy</Text>
               )}
+              {(account.shortCollateral ?? 0) > 0 && (
+                <Text style={styles.unsettledNote}>{money(account.shortCollateral ?? 0)} restricted short collateral · not spendable cash</Text>
+              )}
+              <Text style={[styles.unsettledNote, { marginTop: 9 }]}>SIMULATED SHORT COLLATERAL</Text>
+              <View style={styles.metricsRow}>
+                {[1.25, 1.5, 2].map((ratio) => {
+                  const selected = (account.shortCollateralRatio ?? 1.5) === ratio;
+                  return (
+                    <TouchableOpacity
+                      key={ratio}
+                      testID={`paper-short-collateral-${Math.round(ratio * 100)}`}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                      style={[styles.trailToggle, selected && { borderColor: GOLD }]}
+                      onPress={() => onSetShortCollateralRatio(ratio)}
+                      disabled={selected || submitting || !!existingOrder}
+                    >
+                      <Text style={[styles.trailToggleText, selected && { color: GOLD }]}>{Math.round(ratio * 100)}%</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <Text style={styles.unsettledNote}>Applies to new shorts; open positions keep their reserved collateral.</Text>
             </View>
 
             <View testID="paper-order-quote" style={styles.quoteCard}>
@@ -449,7 +498,7 @@ export default function ProfessionalOrderEntry({
                 </TouchableOpacity>
               )}
               {!!quoteRefreshError && <Text style={styles.quoteRefreshError}>{quoteRefreshError}</Text>}
-              {activeSide === 'buy' && !existingOrder && (
+              {(activeSide === 'buy' || activeSide === 'short') && !existingOrder && (
                 <TouchableOpacity
                   testID="paper-order-search-stock"
                   accessibilityRole="button"
@@ -464,7 +513,7 @@ export default function ProfessionalOrderEntry({
 
             <Text style={styles.sectionLabel}>TRADE SIDE</Text>
             <View style={styles.sideSwitch}>
-              {(['buy', 'sell'] as const).map((item) => {
+              {(activeSide === 'cover' ? ['cover'] as const : ['buy', 'sell', 'short'] as const).map((item) => {
                 const selected = activeSide === item;
                 const color = item === 'buy' ? BUY_COLOR : SELL_COLOR;
                 return (
@@ -482,13 +531,14 @@ export default function ProfessionalOrderEntry({
                   >
                     <Feather name={item === 'buy' ? 'trending-up' : 'trending-down'} size={16} color={selected ? '#000' : color} />
                     <Text style={[styles.sideButtonText, { color: selected ? '#000' : color }]}>
-                      {item.toUpperCase()}
+                    {item === 'short' ? 'SHORT SELL' : item === 'cover' ? 'BUY TO COVER' : item.toUpperCase()}
                     </Text>
                     {item === 'sell' && (
                       <Text style={[styles.sideShares, { color: selected ? '#000' : color }]}>
                         {availableSellShares.toLocaleString('en-US', { maximumFractionDigits: 4 })} available
                       </Text>
                     )}
+                    {item === 'short' && <Text style={[styles.sideShares, { color: selected ? '#000' : color }]}>simulated borrow</Text>}
                   </TouchableOpacity>
                 );
               })}
@@ -530,13 +580,13 @@ export default function ProfessionalOrderEntry({
                 accessibilityLabel="Number of shares"
                 maxLength={14}
               />
-              {activeSide === 'sell' && (
+              {(activeSide === 'sell' || activeSide === 'cover') && (
                 <TouchableOpacity
                   testID="paper-order-all-shares"
                   accessibilityRole="button"
                   style={styles.allButton}
-                  onPress={() => setSharesText(String(availableSellShares))}
-                  disabled={availableSellShares <= 0}
+                  onPress={() => setSharesText(String(activeSide === 'sell' ? availableSellShares : availableCoverShares))}
+                  disabled={(activeSide === 'sell' ? availableSellShares : availableCoverShares) <= 0}
                 >
                   <Text style={styles.allButtonText}>ALL</Text>
                 </TouchableOpacity>
@@ -546,10 +596,10 @@ export default function ProfessionalOrderEntry({
               {[1, 5, 10].map((quantity) => (
                 <QuickButton
                   key={quantity}
-                  label={`${activeSide === 'sell' ? Math.min(quantity, availableSellShares) : quantity} share${quantity === 1 ? '' : 's'}`}
+                  label={`${activeSide === 'sell' ? Math.min(quantity, availableSellShares) : activeSide === 'cover' ? Math.min(quantity, availableCoverShares) : quantity} share${quantity === 1 ? '' : 's'}`}
                   testID={`paper-order-quick-shares-${quantity}`}
-                  onPress={() => setSharesText(String(activeSide === 'sell' ? Math.min(quantity, availableSellShares) : quantity))}
-                  disabled={activeSide === 'sell' && availableSellShares <= 0}
+                  onPress={() => setSharesText(String(activeSide === 'sell' ? Math.min(quantity, availableSellShares) : activeSide === 'cover' ? Math.min(quantity, availableCoverShares) : quantity))}
+                  disabled={(activeSide === 'sell' && availableSellShares <= 0) || (activeSide === 'cover' && availableCoverShares <= 0)}
                 />
               ))}
             </View>
@@ -622,18 +672,28 @@ export default function ProfessionalOrderEntry({
               </View>
               <EstimateRow label="Reference price" value={quotePrice > 0 ? money(quotePrice) : 'Unavailable'} />
               <EstimateRow
-                label={activeSide === 'buy' ? 'Estimated cost' : 'Estimated proceeds'}
+                label={activeSide === 'buy' || activeSide === 'cover' ? 'Estimated cost' : 'Estimated proceeds'}
                 value={sharesValid && estimatePrice > 0 ? money(estimatedValue) : '—'}
                 strong
               />
               <EstimateRow
-                label={activeSide === 'buy' ? 'Buying power after' : 'Shares remaining'}
+                label={activeSide === 'buy' ? 'Buying power after' : activeSide === 'short' ? 'Margin reserved' : 'Shares remaining'}
                 value={activeSide === 'buy'
                   ? (sharesValid ? money(buyingPower - estimatedValue) : money(buyingPower))
-                  : `${Math.max(0, availableSellShares - (sharesValid ? numericShares : 0)).toLocaleString('en-US', { maximumFractionDigits: 4 })}`}
+                  : activeSide === 'short'
+                    ? money(sharesValid ? estimatedValue * Math.max(0, (account.shortCollateralRatio ?? 1.5) - 1) : 0)
+                    : `${Math.max(0, (activeSide === 'sell' ? availableSellShares : availableCoverShares) - (sharesValid ? numericShares : 0)).toLocaleString('en-US', { maximumFractionDigits: 4 })}`}
               />
               {activeSide === 'sell' && (
                 <Text style={styles.pendingNote}>Sell proceeds settle T+2 and are not immediately available to buy.</Text>
+              )}
+              {activeSide === 'short' && (
+                <Text style={styles.pendingNote}>
+                  Simulated {Math.round((account.shortCollateralRatio ?? 1.5) * 100)}% collateral: proceeds stay restricted, plus {Math.round(Math.max(0, (account.shortCollateralRatio ?? 1.5) - 1) * 100)}% cash margin. Borrow availability is simulated; no real shares are borrowed. Losses can exceed your initial margin with no fixed upper limit.
+                </Text>
+              )}
+              {activeSide === 'cover' && (
+                <Text style={styles.pendingNote}>Buying power impact is estimated using released short collateral. Final cost uses the actual fill price.</Text>
               )}
               {orderType !== 'market' && <Text style={styles.pendingNote}>Pending · fills only when the engine's trigger conditions are met</Text>}
             </View>
@@ -652,7 +712,9 @@ export default function ProfessionalOrderEntry({
               onPress={openReview}
               disabled={!canReview}
             >
-              <Text style={styles.primaryActionText}>{activeSide === 'buy' ? 'REVIEW BUY' : 'REVIEW SELL'}</Text>
+              <Text style={styles.primaryActionText}>
+                {activeSide === 'buy' ? 'REVIEW BUY' : activeSide === 'sell' ? 'REVIEW SELL' : activeSide === 'short' ? 'REVIEW SHORT SELL' : 'REVIEW BUY TO COVER'}
+              </Text>
               <Feather name="arrow-right" size={17} color="#000" />
             </TouchableOpacity>
             <Text style={styles.footerDisclaimer}>Paper trading only · no real brokerage order is sent</Text>

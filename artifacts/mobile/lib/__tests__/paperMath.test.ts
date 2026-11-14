@@ -9,6 +9,7 @@ import {
   buildValueHistory,
   createAccountValueSnapshot,
   computeRealizedPnL,
+  computePaperEquity,
   computeSellResult,
   computeSellWinRate,
   fundFee,
@@ -312,4 +313,45 @@ test('isWinningSell / sellNetPnL: threshold is inclusive at exactly $0.01', () =
   assert.equal(isWinningSell({ realizedPnL: 0.0099, fee: 0 }), false);
   // Fees can turn a gross win into a net loss.
   assert.equal(isWinningSell({ realizedPnL: 1, fee: 1 }), false);
+});
+
+test('paper equity treats legacy positions as long and short positions as liabilities', () => {
+  const account: PaperAccount = {
+    id: 'a1', name: 'Tiger', cash: 800, shortCollateral: 600, createdAt: DAY0,
+  };
+  const legacyLong = pos({ shares: 2, avgCost: 100 });
+  const short = pos({
+    id: 'short', symbol: 'XYZ', positionType: 'short', shares: 4, avgCost: 100,
+  });
+  assert.equal(computePaperEquity(account, [legacyLong, short], {
+    VOO: { price: 120 }, XYZ: { price: 80 },
+  }), 1_320);
+  assert.equal(computePaperEquity({ ...account, shortCollateral: 0 }, [legacyLong], {
+    VOO: { price: 120 },
+  }), 1_040);
+});
+
+test('short transaction deltas reconstruct equity without reinterpreting legacy trades', () => {
+  const account: PaperAccount = {
+    id: 'a1', name: 'Tiger', cash: 800, shortCollateral: 600, createdAt: DAY0,
+  };
+  const shortOpen: PaperTransaction = {
+    id: 'short-open', accountId: 'a1', symbol: 'XYZ', companyName: 'XYZ Corp',
+    action: 'SHORT_SELL', shares: 4, price: 100, total: 400, date: DAY365,
+    cashDelta: -200, shortCollateralDelta: 600,
+  };
+  const shortPosition = pos({
+    id: 'short', symbol: 'XYZ', positionType: 'short', shares: 4, avgCost: 100,
+  });
+  const history = buildValueHistory(
+    account, [shortOpen], account.cash, [shortPosition], { XYZ: { price: 80, change: 0, pct: 0 } }, DAY365,
+  );
+  approx(history.at(-1)!.value, 1_080);
+  const snapshot = createAccountValueSnapshot(
+    'a1', [account], [shortPosition], { XYZ: { price: 80, change: 0, pct: 0 } }, DAY365,
+  );
+  assert.equal(snapshot?.value, 1_080);
+  assert.equal(createAccountValueSnapshot(
+    'a1', [{ ...account, id: 'a2' }], [shortPosition], { XYZ: { price: 80, change: 0, pct: 0 } }, DAY365,
+  ), null, 'positions from another account must not be valued in this account');
 });

@@ -54,6 +54,7 @@ test("reset removes only the selected account's trades and restores its cash", (
     cash: 100_000,
     unsettledCash: 0,
     unsettledItems: [],
+    shortCollateral: 0,
     createdAt: "2026-11-14T12:00:00.000Z",
   });
   assert.deepEqual(reset.accounts[1], data.accounts[1]);

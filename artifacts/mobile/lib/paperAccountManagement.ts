@@ -44,6 +44,7 @@ export function resetPaperAccountData(
             cash: INITIAL_BALANCE,
             unsettledCash: 0,
             unsettledItems: [],
+            shortCollateral: 0,
             createdAt,
           }
         : account,

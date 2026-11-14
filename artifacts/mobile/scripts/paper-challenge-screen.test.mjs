@@ -260,7 +260,8 @@ test("paper dashboard manages accounts from EDIT and preserves persistent trade 
   assert.match(screen, /ACCOUNT PERFORMANCE/);
   assert.match(screen, /pos\.companyName/);
   assert.match(screen, /pos\.shares\} shares/);
-  assert.match(screen, /Avg cost \{\$fmt\(pos\.avgCost\)\}/);
+  assert.match(screen, /isShortPosition\(pos\) \? 'Entry' : 'Avg cost'/);
+  assert.match(screen, /isShortPosition\(pos\) \? 'LIABILITY' : 'MARKET VALUE'/);
   assert.match(screen, /MARKET VALUE/);
   assert.match(screen, /pctFmt\(pnlPct\)/);
   assert.match(screen, /SELL \{pos\.symbol\}/);
@@ -273,7 +274,8 @@ test("position and order cards are compact without removing their essential valu
   assert.match(screen, /gap: 8, paddingHorizontal: 16/);
   assert.match(screen, /testID=\{`paper-position-\$\{pos\.id\}`\}/);
   assert.match(screen, /pos\.shares\} shares/);
-  assert.match(screen, /Avg cost \{\$fmt\(pos\.avgCost\)\}/);
+  assert.match(screen, /isShortPosition\(pos\) \? 'Entry' : 'Avg cost'/);
+  assert.match(screen, /isShortPosition\(pos\) \? 'LIABILITY' : 'MARKET VALUE'/);
   assert.match(screen, /MARKET VALUE/);
   assert.match(screen, /pctFmt\(pnlPct\)/);
   assert.match(screen, /testID=\{`paper-order-\$\{o\.id\}`\}/);

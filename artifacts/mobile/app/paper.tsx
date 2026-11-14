@@ -41,10 +41,12 @@ import {
 import OrderSheet, {
   type ConfirmOrderArgs,
   type OrderSubmissionResult,
+  type OrderIntent,
 } from '@/components/OrderSheet';
 import {
   INITIAL_BALANCE,
   buildValueHistory,
+  computePaperEquity,
   computeRealizedPnL,
   computeSellResult,
   computeSellWinRate,
@@ -64,6 +66,7 @@ import {
   type PaperPosition,
   type PaperTransaction,
   type OrderType,
+  isShortPosition,
 } from '@/lib/paperMath';
 import {
   applySlippage,
@@ -307,7 +310,7 @@ export default function PaperScreen() {
   const [showAccountManagement, setShowAccountManagement] = useState(false);
   const [showTradeModal, setShowTradeModal] = useState(false);
   const [showOrderSheet, setShowOrderSheet] = useState(false);
-  const [tradeMode, setTradeMode] = useState<'buy' | 'sell'>('buy');
+  const [tradeMode, setTradeMode] = useState<OrderIntent>('buy');
   const [selectedPos, setSelectedPos] = useState<PaperPosition | null>(null);
   const [editingOrder, setEditingOrder] = useState<PaperOrder | null>(null);
 
@@ -444,11 +447,7 @@ export default function PaperScreen() {
 
   // Total equity includes settled cash + unsettled T+2 proceeds + market value of positions.
   // Buying power is restricted to settled cash only (enforced in fillOrder / OrderSheet risk check).
-  const portfolioValue = account
-    ? account.cash
-      + (account.unsettledCash ?? 0)
-      + myPositions.reduce((s, p) => s + p.shares * (quotes[p.symbol]?.price ?? p.avgCost), 0)
-    : 0;
+  const portfolioValue = account ? computePaperEquity(account, myPositions, quotes) : 0;
   const paperChallengeWindow = getPaperChallengeWindow(challengeNow);
   const isPaperChallengeWaiting = !!paperChallenge.enrollment
     && challengeNow >= paperChallenge.enrollment.eventEndAtMs;
@@ -467,19 +466,22 @@ export default function PaperScreen() {
     : PAPER_ACCOUNT_DISPLAY_NAMES[selectedAccountIndex] ?? account?.name ?? 'Paper account';
   const selectedAccountPosition = visibleAccounts.findIndex((item) => item.id === account?.id);
   const unrealizedPnL = myPositions.reduce(
-    (s, p) => s + p.shares * ((quotes[p.symbol]?.price ?? p.avgCost) - p.avgCost), 0,
+    (s, p) => s + p.shares * (isShortPosition(p)
+      ? p.avgCost - (quotes[p.symbol]?.price ?? p.avgCost)
+      : (quotes[p.symbol]?.price ?? p.avgCost) - p.avgCost), 0,
   );
   // Realized P&L is net of fund fees: gross realized minus fees charged at close.
   const realizedPnL = computeRealizedPnL(myTxns);
   const totalReturn = ((portfolioValue - INITIAL_BALANCE) / INITIAL_BALANCE) * 100;
 
   const dayChange = myPositions.reduce(
-    (s, p) => s + p.shares * (quotes[p.symbol]?.change ?? 0), 0,
+    (s, p) => s + p.shares * (quotes[p.symbol]?.change ?? 0) * (isShortPosition(p) ? -1 : 1), 0,
   );
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const todayRealized = myTxns
-    .filter((tx) => tx.action === 'SELL' && new Date(tx.date).getTime() >= todayStart.getTime())
+    .filter((tx) => (tx.action === 'SELL' || tx.action === 'BUY_TO_COVER')
+      && new Date(tx.date).getTime() >= todayStart.getTime())
     .reduce((sum, tx) => sum + (tx.realizedPnL ?? 0) - (tx.fee ?? 0), 0);
   const todayPnL = dayChange + todayRealized;
   const investedCapital = myPositions.reduce(
@@ -828,6 +830,7 @@ export default function PaperScreen() {
       }
       const q = newQuotes[order.symbol];
       if (!q) continue;
+      if (getOrderQuoteState(q) !== 'fresh') continue;
       const result = evaluateOrder(order, q.price);
 
       if (!result.shouldFill) {
@@ -845,6 +848,32 @@ export default function PaperScreen() {
       const fillPrice = applyOrderSlippage(order, q.price);
       const account = updatedAccounts.find(a => a.id === order.accountId);
       if (!account) continue;
+      const executionRiskError = checkRisk({
+        side: order.side,
+        intent: order.intent,
+        shares: order.shares,
+        orderType: order.orderType,
+        limitPrice: order.limitPrice,
+        stopPrice: order.stopPrice,
+        trailPct: order.trailPct,
+        trailAbs: order.trailAbs,
+        symbol: order.symbol,
+        currentPrice: fillPrice,
+        account: order.intent === 'short' && order.shortCollateralRatio != null
+          ? { ...account, shortCollateralRatio: order.shortCollateralRatio }
+          : account,
+        accountPositions: updatedPositions.filter((position) => position.accountId === order.accountId),
+        quotes: newQuotes,
+        pendingOrders: updatedOrders,
+        excludeOrderId: order.id,
+      });
+      if (executionRiskError) {
+        updatedOrders = updatedOrders.map((item) =>
+          item.id === order.id ? { ...item, status: 'cancelled' as const } : item,
+        );
+        ordersChanged = true;
+        continue;
+      }
 
       const fillResult = fillOrder({
         order,
@@ -1028,12 +1057,7 @@ export default function PaperScreen() {
           pendingIds.has(order.id) ? { ...order, status: 'cancelled' as const } : order,
         ));
       }
-      const endEquity = eventAccount.cash
-        + (eventAccount.unsettledCash ?? 0)
-        + eventPositions.reduce(
-          (sum, position) => sum + position.shares * (freshQuotes[position.symbol]?.price ?? position.avgCost),
-          0,
-        );
+      const endEquity = computePaperEquity(eventAccount, eventPositions, freshQuotes);
       if (!Number.isFinite(endEquity)) throw new Error('Event account data is incomplete.');
       const startEquity = enrollment.startEquity;
       if (startEquity === null) return;
@@ -1069,10 +1093,13 @@ export default function PaperScreen() {
               symbol: position.symbol,
               companyName: position.companyName,
               shares: position.shares,
+              positionType: isShortPosition(position) ? 'short' : 'long',
               avgCost: position.avgCost,
               marketPrice,
               marketValue: position.shares * marketPrice,
-              unrealizedPnL: position.shares * (marketPrice - position.avgCost),
+              unrealizedPnL: position.shares * (isShortPosition(position)
+                ? position.avgCost - marketPrice
+                : marketPrice - position.avgCost),
             };
           }),
         },
@@ -1175,12 +1202,7 @@ export default function PaperScreen() {
       if (!eventAccount) throw new Error('The event account is unavailable.');
       const latestPositions = positionsRef.current.filter((position) => position.accountId === enrollment.accountId);
       const latestQuotes = { ...quotes, ...freshQuotes };
-      const startEquity = eventAccount.cash
-        + (eventAccount.unsettledCash ?? 0)
-        + latestPositions.reduce(
-          (sum, position) => sum + position.shares * (latestQuotes[position.symbol]?.price ?? position.avgCost),
-          0,
-        );
+      const startEquity = computePaperEquity(eventAccount, latestPositions, latestQuotes);
       const latestStore = paperChallengeRef.current;
       if (latestStore.enrollment?.eventId !== enrollment.eventId || latestStore.enrollment.startEquity !== null) return;
       await savePaperChallenge((current) => {
@@ -1382,6 +1404,8 @@ export default function PaperScreen() {
       const accountId = args.accountId;
       const sym = args.symbol.trim().toUpperCase();
       const companyName = args.companyName.trim() || sym;
+      const intent = args.side === 'short' || args.side === 'cover' ? args.side : undefined;
+      const direction = args.side === 'buy' || args.side === 'cover' ? 'buy' : 'sell';
       const enrollment = paperChallengeRef.current.enrollment;
       if (enrollment?.accountId === accountId && Date.now() >= enrollment.eventEndAtMs) {
         return {
@@ -1413,13 +1437,20 @@ export default function PaperScreen() {
       if (args.orderType === 'market' && getOrderQuoteState(currentQuote) !== 'fresh') {
         return { status: 'rejected', message: 'The provider quote is stale. Refresh it before placing a market order.' };
       }
+      if (args.orderType === 'market' && Math.abs(currentQuote.price - args.quotePrice) > 1e-8) {
+        return { status: 'rejected', message: 'The quote changed after review. Refresh it and review the updated estimate before confirming.' };
+      }
       if (args.orderType === 'market' && args.orderId) {
         return { status: 'rejected', message: 'Market orders cannot be edited. Cancel the pending order and place a new market order.' };
       }
 
       const accountPositions = currentPositions.filter((position) => position.accountId === accountId);
+      const riskAccount = intent === 'short'
+        ? { ...currentAccount, shortCollateralRatio: args.shortCollateralRatio ?? currentAccount.shortCollateralRatio }
+        : currentAccount;
       const riskError = checkRisk({
-        side: args.side,
+        side: direction,
+        intent,
         shares: args.shares,
         orderType: args.orderType,
         limitPrice: args.limitPrice,
@@ -1428,7 +1459,7 @@ export default function PaperScreen() {
         trailAbs: args.trailAbs,
         symbol: sym,
         currentPrice: currentQuote.price,
-        account: currentAccount,
+        account: riskAccount,
         accountPositions,
         quotes,
         pendingOrders: currentOrders,
@@ -1438,8 +1469,30 @@ export default function PaperScreen() {
 
       const nowISO = new Date().toISOString();
       if (args.orderType === 'market') {
-        const fillPrice = applySlippage(currentQuote.price, args.shares, args.side);
-        const existingPosition = accountPositions.find((position) => position.symbol === sym);
+        const fillPrice = applySlippage(currentQuote.price, args.shares, direction);
+        const fillRiskError = checkRisk({
+          side: direction,
+          intent,
+          shares: args.shares,
+          orderType: args.orderType,
+          limitPrice: args.limitPrice,
+          stopPrice: args.stopPrice,
+          trailPct: args.trailPct,
+          trailAbs: args.trailAbs,
+          symbol: sym,
+          currentPrice: fillPrice,
+          account: riskAccount,
+          accountPositions,
+          quotes,
+          pendingOrders: currentOrders,
+          excludeOrderId: args.orderId,
+        });
+        if (fillRiskError) return { status: 'rejected', message: fillRiskError };
+        const existingPosition = accountPositions.find((position) =>
+          position.symbol === sym && (intent === 'cover'
+            ? isShortPosition(position)
+            : intent === 'short' ? isShortPosition(position) : !isShortPosition(position)),
+        );
         const metadata = args.stockInfo ?? existingPosition;
         const syntheticOrder: PaperOrder = {
           id: uid(),
@@ -1447,7 +1500,9 @@ export default function PaperScreen() {
           symbol: sym,
           companyName,
           orderType: 'market',
-          side: args.side,
+          side: direction,
+          intent,
+          shortCollateralRatio: args.shortCollateralRatio,
           shares: args.shares,
           dividendYield: metadata?.dividendYield ?? 0,
           dividendRate: metadata?.dividendRate ?? 0,
@@ -1480,9 +1535,12 @@ export default function PaperScreen() {
           void awardAchievement('first-paper-order');
           if (args.side === 'sell') void awardAchievement('first-paper-sell');
         }
+        const actionLabel = args.side === 'short' ? 'Short sold'
+          : args.side === 'cover' ? 'Covered'
+            : args.side === 'buy' ? 'Bought' : 'Sold';
         return {
           status: 'filled',
-          message: `${args.side === 'buy' ? 'Bought' : 'Sold'} ${args.shares} ${sym} in ${currentAccount.name}.`,
+          message: `${actionLabel} ${args.shares} ${sym} in ${currentAccount.name}.`,
           fillPrice,
         };
       }
@@ -1497,14 +1555,17 @@ export default function PaperScreen() {
       }
       const metadata = args.stockInfo
         ?? priorOrder
-        ?? accountPositions.find((position) => position.symbol === sym);
+        ?? accountPositions.find((position) => position.symbol === sym
+          && (intent === 'cover' ? isShortPosition(position) : !isShortPosition(position)));
       const newOrder: PaperOrder = {
         id: priorOrder?.id ?? uid(),
         accountId,
         symbol: sym,
         companyName,
         orderType: args.orderType,
-        side: args.side,
+        side: direction,
+        intent,
+        shortCollateralRatio: args.shortCollateralRatio,
         shares: args.shares,
         limitPrice: args.limitPrice,
         stopPrice: args.stopPrice,
@@ -1528,7 +1589,7 @@ export default function PaperScreen() {
       }
       return {
         status: 'pending',
-        message: `${args.side === 'buy' ? 'Buy' : 'Sell'} ${args.orderType.replace('_', ' ')} for ${args.shares} ${sym} was saved to ${currentAccount.name}.`,
+        message: `${args.side === 'short' ? 'Short sell' : args.side === 'cover' ? 'Buy to cover' : args.side === 'buy' ? 'Buy' : 'Sell'} ${args.orderType.replace('_', ' ')} for ${args.shares} ${sym} was saved to ${currentAccount.name}.`,
       };
     } catch (error) {
       return {
@@ -1556,11 +1617,12 @@ export default function PaperScreen() {
   const editOrder = (order: PaperOrder) => {
     if (order.status !== 'pending') return;
     setEditingOrder(order);
-    setTradeMode(order.side);
+    setTradeMode(order.intent ?? order.side);
     setBuySymbol(order.symbol);
-    if (order.side === 'sell') {
+    if (order.intent === 'cover' || order.side === 'sell' && order.intent !== 'short') {
       setSelectedPos(positionsRef.current.find(p =>
-        p.accountId === activeIdRef.current && p.symbol === order.symbol,
+        p.accountId === activeIdRef.current && p.symbol === order.symbol
+          && (order.intent === 'cover' ? isShortPosition(p) : !isShortPosition(p)),
       ) ?? null);
     } else {
       const quote = quotes[order.symbol];
@@ -1588,12 +1650,35 @@ export default function PaperScreen() {
     setShowTradeModal(true);
   };
 
+  const openSelectedStockOrder = (intent: OrderIntent) => {
+    const symbol = buyOrderDetails.symbol.trim().toUpperCase();
+    const position = positionsRef.current.find((item) => item.accountId === activeIdRef.current
+      && item.symbol === symbol
+      && (intent === 'sell' ? !isShortPosition(item) : isShortPosition(item)));
+    setEditingOrder(null);
+    setTradeMode(intent);
+    setSelectedPos(intent === 'sell' ? position ?? null : null);
+    invalidateStockLookup();
+    setShowOrderSheet(true);
+    setShowTradeModal(false);
+  };
+
   const openSellModal = (pos: PaperPosition) => {
     invalidateStockLookup();
     setEditingOrder(null);
     setTradeMode('sell');
     setSelectedPos(pos);
     // Clear any stale buy-lookup state so it cannot bleed into sell execution
+    setBuySymbol('');
+    setStockInfo(null);
+    setShowOrderSheet(true);
+  };
+
+  const openCoverModal = (pos: PaperPosition) => {
+    invalidateStockLookup();
+    setEditingOrder(null);
+    setTradeMode('cover');
+    setSelectedPos(pos);
     setBuySymbol('');
     setStockInfo(null);
     setShowOrderSheet(true);
@@ -1625,8 +1710,8 @@ export default function PaperScreen() {
         {myPositions.map((pos, i) => {
           const q = quotes[pos.symbol];
           const price = q?.price ?? pos.avgCost;
-          const pnl = pos.shares * (price - pos.avgCost);
-          const pnlPct = ((price - pos.avgCost) / pos.avgCost) * 100;
+          const pnl = pos.shares * (isShortPosition(pos) ? pos.avgCost - price : price - pos.avgCost);
+          const pnlPct = pos.avgCost > 0 ? (pnl / (pos.shares * pos.avgCost)) * 100 : 0;
           const mktVal = pos.shares * price;
           const color = POSITION_COLORS[i % POSITION_COLORS.length];
           const isExpanded = expandedPosId === pos.id;
@@ -1654,11 +1739,11 @@ export default function PaperScreen() {
                 <View style={{ flex: 1 }}>
                   <View style={styles.posRow}>
                     <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
-                      <Text style={styles.posSymbol}>{pos.symbol}</Text>
+                      <Text style={styles.posSymbol}>{pos.symbol}{isShortPosition(pos) ? '  ·  SHORT' : ''}</Text>
                       <Text style={styles.posName} numberOfLines={1}>{pos.companyName}</Text>
                     </View>
                     <View style={styles.positionValue}>
-                      <Text style={styles.posMktLabel}>MARKET VALUE</Text>
+                      <Text style={styles.posMktLabel}>{isShortPosition(pos) ? 'LIABILITY' : 'MARKET VALUE'}</Text>
                       <Text style={styles.posMktVal}>{$fmt(mktVal)}</Text>
                       <Text style={[styles.posPnl, { color: pnlColor(pnl) }]} numberOfLines={1}>
                         {pnl >= 0 ? '+' : ''}{$fmt(pnl)} ({pctFmt(pnlPct)})
@@ -1667,10 +1752,10 @@ export default function PaperScreen() {
                   </View>
                   <View style={styles.posMetaRow}>
                     <Text style={styles.posMeta}>{pos.shares} shares</Text>
-                    <Text style={styles.posMeta}>Avg cost {$fmt(pos.avgCost)}</Text>
+                    <Text style={styles.posMeta}>{isShortPosition(pos) ? 'Entry' : 'Avg cost'} {$fmt(pos.avgCost)}</Text>
                     <Text style={styles.posMeta}>
                       {q ? (
-                        <Text style={{ color: pnlColor(q.change) }}>
+                        <Text style={{ color: pnlColor(q.change * (isShortPosition(pos) ? -1 : 1)) }}>
                           ${price.toFixed(2)} ({q.pct >= 0 ? '+' : ''}{q.pct.toFixed(2)}%)
                         </Text>
                       ) : `${price.toFixed(2)}`}
@@ -1687,6 +1772,39 @@ export default function PaperScreen() {
 
               {isExpanded && (
                 <View style={styles.lotsPanel}>
+                  {isShortPosition(pos) ? (
+                    <>
+                      <Text style={styles.lotsPanelTitle}>SHORT POSITION DETAILS</Text>
+                      <View style={styles.historyDetailRow}>
+                        <Text style={styles.historyDetail}>Current price</Text>
+                        <Text style={styles.historyDetail}>{$fmt(price)}</Text>
+                      </View>
+                      <View style={styles.historyDetailRow}>
+                        <Text style={styles.historyDetail}>Current liability</Text>
+                        <Text style={styles.historyDetail}>{$fmt(mktVal)}</Text>
+                      </View>
+                      <View style={styles.historyDetailRow}>
+                        <Text style={styles.historyDetail}>Unrealized return</Text>
+                        <Text style={[styles.historyDetail, { color: pnlColor(pnl) }]}>
+                          {pnl >= 0 ? '+' : ''}{$fmt(pnl)} ({pctFmt(pnlPct)})
+                        </Text>
+                      </View>
+                      <Text style={[styles.lotsEmpty, { marginTop: 8 }]}>
+                        Borrow availability is simulated and does not represent real shares borrowed.
+                      </Text>
+                      <TouchableOpacity
+                        testID={`paper-cover-short-${pos.symbol}`}
+                        accessibilityRole="button"
+                        style={[styles.lotSellBtn, { backgroundColor: SELL_COLOR }]}
+                        onPress={() => { setExpandedPosId(null); openCoverModal(pos); }}
+                        activeOpacity={0.75}
+                      >
+                        <Feather name="corner-up-left" size={13} color="#000" />
+                        <Text style={styles.lotSellBtnText}>BUY TO COVER {pos.symbol}</Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                  <>
                   {/* Header */}
                   <Text style={styles.lotsPanelTitle}>COST BASIS LOTS</Text>
 
@@ -1753,6 +1871,8 @@ export default function PaperScreen() {
                     <Feather name="trending-down" size={13} color="#000" />
                     <Text style={styles.lotSellBtnText}>SELL {pos.symbol}</Text>
                   </TouchableOpacity>
+                  </>
+                  )}
                 </View>
               )}
             </View>
@@ -1868,8 +1988,8 @@ export default function PaperScreen() {
         return (
           <View key={tx.id} style={styles.historyCard}>
             <View style={styles.historyTopRow}>
-              <View style={[styles.txBadge, { backgroundColor: tx.action === 'BUY' ? 'rgba(0,229,160,0.15)' : tx.action === 'SELL' ? 'rgba(255,59,59,0.15)' : 'rgba(255,215,0,0.12)' }]}>
-                <Text style={[styles.txBadgeText, { color: tx.action === 'BUY' ? BUY_COLOR : tx.action === 'SELL' ? SELL_COLOR : '#ffd700' }]}>{tx.action}</Text>
+              <View style={[styles.txBadge, { backgroundColor: tx.action === 'BUY' || tx.action === 'BUY_TO_COVER' ? 'rgba(0,229,160,0.15)' : tx.action === 'SELL' || tx.action === 'SHORT_SELL' ? 'rgba(255,59,59,0.15)' : 'rgba(255,215,0,0.12)' }]}>
+                <Text style={[styles.txBadgeText, { color: tx.action === 'BUY' || tx.action === 'BUY_TO_COVER' ? BUY_COLOR : tx.action === 'SELL' || tx.action === 'SHORT_SELL' ? SELL_COLOR : '#ffd700' }]}>{tx.action}</Text>
               </View>
               <Text style={styles.txSym}>{tx.symbol}</Text>
               <Text style={styles.historyDate}>{new Date(tx.date).toLocaleString()}</Text>
@@ -1880,7 +2000,7 @@ export default function PaperScreen() {
             </View>
             <View style={styles.historyDetailRow}>
               <Text style={styles.historyAccount}>Account: {account?.name ?? '—'}</Text>
-              {tx.action === 'SELL' && (
+              {(tx.action === 'SELL' || tx.action === 'BUY_TO_COVER') && (
                 <Text style={[styles.historyRealized, { color: pnlColor(net) }]}>
                   Realized {net >= 0 ? '+' : ''}{$fmt(net)}
                 </Text>
@@ -2094,11 +2214,11 @@ export default function PaperScreen() {
           return (
             <View key={o.id} testID={`paper-order-${o.id}`} style={[styles.orderCard, { opacity: o.status === 'cancelled' ? 0.5 : 1 }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-                <View style={[styles.posAccentBar, { backgroundColor: o.side === 'buy' ? BUY_COLOR : SELL_COLOR }]} />
+                <View style={[styles.posAccentBar, { backgroundColor: o.intent === 'cover' ? BUY_COLOR : SELL_COLOR }]} />
                 <Text style={[styles.posSymbol, { flexShrink: 1 }]}>{o.symbol}</Text>
                 <View style={{ flex: 1 }} />
-                <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 11, color: o.side === 'buy' ? BUY_COLOR : SELL_COLOR, letterSpacing: 1 }}>
-                  {o.side.toUpperCase()}
+                <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 11, color: o.intent === 'cover' ? BUY_COLOR : SELL_COLOR, letterSpacing: 1 }}>
+                  {o.intent === 'short' ? 'SHORT SELL' : o.intent === 'cover' ? 'BUY TO COVER' : o.side.toUpperCase()}
                 </Text>
                 <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 11, color: DIM, marginLeft: 8 }}>
                   {typeLabel[o.orderType] ?? o.orderType}
@@ -2558,9 +2678,7 @@ export default function PaperScreen() {
                   const isEventAcct = acct.id.startsWith('paper-event:');
                   const isActive = acct.id === activeId;
                   const acctPositions = positions.filter((position) => position.accountId === acct.id);
-                  const acctValue = acct.cash + (acct.unsettledCash ?? 0) + acctPositions.reduce(
-                    (sum, position) => sum + position.shares * (quotes[position.symbol]?.price ?? position.avgCost), 0,
-                  );
+                  const acctValue = computePaperEquity(acct, acctPositions, quotes);
                   const accountIndex = regularAccounts.findIndex((item) => item.id === acct.id);
                   const portfolioLabel = isEventAcct
                     ? 'Event Arena'
@@ -2871,19 +2989,37 @@ export default function PaperScreen() {
                     </TouchableOpacity>
                   </View>
 
-                  {/* PLACE ORDER opens the full OrderSheet with order-type picker */}
-                  <TouchableOpacity
-                    testID="paper-stock-place-order-button"
-                    accessibilityRole="button"
-                    style={[styles.confirmBtn, styles.buyBtn]}
-                    onPress={() => {
-                      invalidateStockLookup();
-                      setShowOrderSheet(true);
-                      setShowTradeModal(false);
-                    }}
-                  >
-                    <Text style={styles.confirmBtnText}>PLACE ORDER →</Text>
-                  </TouchableOpacity>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <TouchableOpacity
+                      testID="paper-stock-buy-button"
+                      accessibilityRole="button"
+                      style={[styles.confirmBtn, styles.buyBtn, { flex: 1 }]}
+                      onPress={() => openSelectedStockOrder('buy')}
+                    >
+                      <Text style={styles.confirmBtnText}>BUY</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      testID="paper-stock-sell-button"
+                      accessibilityRole="button"
+                      style={[styles.confirmBtn, { flex: 1, backgroundColor: myPositions.some((position) =>
+                        position.symbol === buyOrderDetails.symbol && !isShortPosition(position),
+                      ) ? SELL_COLOR : 'rgba(255,59,59,0.25)' }]}
+                      onPress={() => openSelectedStockOrder('sell')}
+                      disabled={!myPositions.some((position) =>
+                        position.symbol === buyOrderDetails.symbol && !isShortPosition(position),
+                      )}
+                    >
+                      <Text style={styles.confirmBtnText}>SELL</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      testID="paper-stock-short-sell-button"
+                      accessibilityRole="button"
+                      style={[styles.confirmBtn, { flex: 1, backgroundColor: SELL_COLOR }]}
+                      onPress={() => openSelectedStockOrder('short')}
+                    >
+                      <Text style={styles.confirmBtnText}>SHORT SELL</Text>
+                    </TouchableOpacity>
+                  </View>
                 </>
               ) : null}
 
@@ -2907,27 +3043,33 @@ export default function PaperScreen() {
         <OrderSheet
           visible={showOrderSheet}
           side={tradeMode}
-          symbol={tradeMode === 'buy' ? buyOrderDetails.symbol : (selectedPos?.symbol ?? '')}
-          companyName={tradeMode === 'buy' ? buyOrderDetails.companyName : (selectedPos?.companyName ?? '')}
-          currentPrice={tradeMode === 'buy' ? buyOrderDetails.currentPrice : (quotes[selectedPos?.symbol ?? '']?.price ?? 0)}
+          symbol={tradeMode === 'buy' || tradeMode === 'short' ? buyOrderDetails.symbol : (selectedPos?.symbol ?? '')}
+          companyName={tradeMode === 'buy' || tradeMode === 'short' ? buyOrderDetails.companyName : (selectedPos?.companyName ?? '')}
+          currentPrice={tradeMode === 'buy' || tradeMode === 'short' ? buyOrderDetails.currentPrice : (quotes[selectedPos?.symbol ?? '']?.price ?? 0)}
           account={account}
           accountEquity={portfolioValue}
           accountPositions={myPositions}
           quotes={quotes}
-          stockInfo={tradeMode === 'buy' ? buyOrderDetails.stockInfo : undefined}
-          selectedPos={tradeMode === 'sell' ? selectedPos : null}
+          stockInfo={tradeMode === 'buy' || tradeMode === 'short' ? buyOrderDetails.stockInfo : undefined}
+          selectedPos={tradeMode === 'sell' || tradeMode === 'cover' ? selectedPos : null}
           existingOrder={editingOrder}
           pendingOrders={orders.filter(o => o.accountId === activeId)}
           onClose={() => {
             setShowOrderSheet(false);
             setEditingOrder(null);
-            if (tradeMode === 'sell') setSelectedPos(null);
+            if (tradeMode === 'sell' || tradeMode === 'cover') setSelectedPos(null);
           }}
           onRefreshQuote={refreshOrderQuote}
           onSearchStock={() => {
             setShowOrderSheet(false);
             setSelectedPos(null);
             openBuyModal();
+          }}
+          onSetShortCollateralRatio={(ratio) => {
+            if (!Number.isFinite(ratio) || ratio < 1) return;
+            void saveAccounts(accountsRef.current.map((item) => item.id === activeId
+              ? { ...item, shortCollateralRatio: ratio }
+              : item));
           }}
           onConfirm={handleConfirmOrder}
         />
