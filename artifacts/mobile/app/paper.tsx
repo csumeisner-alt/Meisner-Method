@@ -78,6 +78,7 @@ import {
   creditDividends,
   fifoSell,
 } from '@/lib/paperEngine';
+import { removePendingPaperOrder } from '@/lib/paperOrderDeletion';
 import { getMarketOrderQuoteError, getOrderQuoteState } from '@/lib/paperOrderEntry';
 import {
   renamePaperAccount,
@@ -313,6 +314,7 @@ export default function PaperScreen() {
   const [tradeMode, setTradeMode] = useState<OrderIntent>('buy');
   const [selectedPos, setSelectedPos] = useState<PaperPosition | null>(null);
   const [editingOrder, setEditingOrder] = useState<PaperOrder | null>(null);
+  const [deleteConfirmationOrder, setDeleteConfirmationOrder] = useState<PaperOrder | null>(null);
 
   // Buy modal state
   const [buySymbol, setBuySymbol] = useState('');
@@ -1597,8 +1599,27 @@ export default function PaperScreen() {
   };
 
   const deleteOrder = async (order: PaperOrder) => {
-    if (order.status !== 'pending') return;
-    await saveOrders(ordersRef.current.filter(o => o.id !== order.id));
+    const updatedOrders = removePendingPaperOrder(ordersRef.current, order, activeIdRef.current);
+    if (!updatedOrders) return;
+    await saveOrders(updatedOrders);
+  };
+
+  const requestDeleteOrder = (order: PaperOrder) => {
+    if (order.status !== 'pending' || order.accountId !== activeIdRef.current) return;
+    if (Platform.OS === 'web') {
+      setDeleteConfirmationOrder(order);
+      return;
+    }
+    Alert.alert('Delete Order', `Delete pending ${order.side} ${order.shares} ${order.symbol}?`, [
+      { text: 'No', style: 'cancel' },
+      { text: 'Delete Order', style: 'destructive', onPress: () => { void deleteOrder(order); } },
+    ]);
+  };
+
+  const confirmDeleteOrder = () => {
+    const order = deleteConfirmationOrder;
+    setDeleteConfirmationOrder(null);
+    if (order) void deleteOrder(order);
   };
 
   const editOrder = (order: PaperOrder) => {
@@ -2237,10 +2258,7 @@ export default function PaperScreen() {
                     <TouchableOpacity
                       testID={`delete-order-${o.id}`}
                       accessibilityLabel={`Delete ${o.symbol} order`}
-                      onPress={() => Alert.alert('Delete Order', `Delete pending ${o.side} ${o.shares} ${o.symbol}?`, [
-                        { text: 'No', style: 'cancel' },
-                        { text: 'Delete Order', style: 'destructive', onPress: () => deleteOrder(o) },
-                      ])}
+                      onPress={() => requestDeleteOrder(o)}
                       style={styles.orderAction}
                     >
                       <Feather name="x-circle" size={14} color={SELL_COLOR} />
@@ -2590,6 +2608,79 @@ export default function PaperScreen() {
       </View>
 
       <BottomTabBar />
+
+      {Platform.OS === 'web' && (
+        <Modal
+          visible={deleteConfirmationOrder !== null}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setDeleteConfirmationOrder(null)}
+        >
+          <View
+            testID="paper-order-delete-confirmation"
+            accessibilityRole="alert"
+            style={{
+              flex: 1,
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 20,
+              backgroundColor: 'rgba(0,0,0,0.72)',
+            }}
+          >
+            <View style={{
+              width: '100%',
+              maxWidth: 420,
+              padding: 20,
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.card,
+            }}>
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 18 }}>
+                Delete pending order?
+              </Text>
+              {deleteConfirmationOrder && (
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 14, marginTop: 10 }}>
+                  Delete pending {deleteConfirmationOrder.side} {deleteConfirmationOrder.shares} {deleteConfirmationOrder.symbol}?
+                </Text>
+              )}
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 22 }}>
+                <TouchableOpacity
+                  testID="cancel-delete-paper-order"
+                  accessibilityRole="button"
+                  onPress={() => setDeleteConfirmationOrder(null)}
+                  style={{
+                    minHeight: 44,
+                    paddingHorizontal: 16,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                  }}
+                >
+                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 13 }}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  testID="confirm-delete-paper-order"
+                  accessibilityRole="button"
+                  onPress={confirmDeleteOrder}
+                  style={{
+                    minHeight: 44,
+                    paddingHorizontal: 16,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: 10,
+                    backgroundColor: SELL_COLOR,
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontFamily: 'Inter_700Bold', fontSize: 13 }}>Delete Order</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
 
       <Modal
         visible={completedEventSummary !== null}

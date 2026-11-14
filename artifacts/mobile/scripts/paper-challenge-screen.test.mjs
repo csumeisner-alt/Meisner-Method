@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { removePendingPaperOrder } from "../lib/paperOrderDeletion.ts";
 
 const screen = readFileSync(new URL("../app/paper.tsx", import.meta.url), "utf8");
 const accountSwipeArea = readFileSync(new URL("../components/PaperAccountSwipeArea.tsx", import.meta.url), "utf8");
@@ -430,6 +431,62 @@ test("position and order cards are compact without removing their essential valu
   assert.match(screen, /o\.status === 'pending'/);
   assert.match(screen, /style=\{\{ flex: 1, minWidth: 0, paddingRight: 8 \}\}/);
   assert.match(screen, /flexWrap: 'wrap', gap: 10, marginBottom: 4/);
+});
+
+test("pending order deletion confirms on web and remains account-scoped and persistent", () => {
+  assert.match(screen, /if \(Platform\.OS === 'web'\) \{\s*setDeleteConfirmationOrder\(order\);\s*return;\s*\}/);
+  assert.match(screen, /testID="paper-order-delete-confirmation"/);
+  assert.match(screen, /testID="cancel-delete-paper-order"[\s\S]*?setDeleteConfirmationOrder\(null\)/);
+  assert.match(screen, /testID="confirm-delete-paper-order"[\s\S]*?onPress=\{confirmDeleteOrder\}/);
+  assert.match(screen, /const confirmDeleteOrder = \(\) => \{\s*const order = deleteConfirmationOrder;\s*setDeleteConfirmationOrder\(null\);\s*if \(order\) void deleteOrder\(order\);\s*\}/);
+  assert.match(screen, /testID=\{`delete-order-\$\{o\.id\}`\}[\s\S]*?onPress=\{\(\) => requestDeleteOrder\(o\)\}/);
+  assert.match(screen, /if \(order\.status !== 'pending' \|\| order\.accountId !== activeIdRef\.current\) return;/);
+  assert.match(screen, /removePendingPaperOrder\(ordersRef\.current, order, activeIdRef\.current\)/);
+  assert.match(screen, /if \(!updatedOrders\) return;\s*await saveOrders\(updatedOrders\)/);
+  assert.match(screen, /Alert\.alert\('Delete Order', `Delete pending \$\{order\.side\} \$\{order\.shares\} \$\{order\.symbol\}\?`, \[\s*\{ text: 'No', style: 'cancel' \},\s*\{ text: 'Delete Order', style: 'destructive', onPress: \(\) => \{ void deleteOrder\(order\); \} \},\s*\]\)/);
+  assert.match(screen, /orders\.filter\(o => o\.accountId === activeId\)/);
+  assert.match(screen, /o\.status === 'pending' && \(/);
+});
+
+test("cancelling the web delete prompt only closes it without deleting an order", () => {
+  const cancelStart = screen.indexOf('testID="cancel-delete-paper-order"');
+  const cancelEnd = screen.indexOf("</TouchableOpacity>", cancelStart);
+  const cancelAction = screen.slice(cancelStart, cancelEnd);
+
+  assert.ok(cancelStart >= 0 && cancelEnd > cancelStart);
+  assert.match(cancelAction, /onPress=\{\(\) => setDeleteConfirmationOrder\(null\)\}/);
+  assert.doesNotMatch(cancelAction, /deleteOrder|saveOrders|confirmDeleteOrder/);
+});
+
+test("confirmed pending-order removal preserves unrelated orders and rejects stale or ineligible orders", () => {
+  const selected = { id: "selected", accountId: "account-a", status: "pending" };
+  const orders = [
+    selected,
+    { id: "other-pending", accountId: "account-a", status: "pending" },
+    { id: "same-id-other-account", accountId: "account-b", status: "pending" },
+    { id: "already-filled", accountId: "account-a", status: "filled" },
+    { id: "already-cancelled", accountId: "account-a", status: "cancelled" },
+    { id: "completed", accountId: "account-a", status: "completed" },
+  ];
+
+  assert.deepEqual(
+    removePendingPaperOrder(orders, selected, "account-a"),
+    orders.slice(1),
+    "confirmation removes only the selected pending order",
+  );
+  assert.equal(removePendingPaperOrder(orders, selected, "account-b"), null);
+  assert.equal(
+    removePendingPaperOrder(orders, { ...selected, status: "filled" }, "account-a"),
+    null,
+  );
+  assert.equal(
+    removePendingPaperOrder(orders, { ...selected, status: "cancelled" }, "account-a"),
+    null,
+  );
+  assert.equal(
+    removePendingPaperOrder(orders, { ...selected, status: "completed" }, "account-a"),
+    null,
+  );
 });
 
 test("paper order review captures account identity and guards duplicate submissions", () => {
