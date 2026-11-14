@@ -62,6 +62,12 @@ test("live leaderboard remains anonymous, opt-in, event-scoped, and privacy-limi
   assert.match(leaderboard, /X-Event-Arena-Installation-Id/);
   assert.match(leaderboard, /entry\.isCurrentUser/);
   assert.match(leaderboard, /paper-event-leaderboard-your-position/);
+  assert.match(leaderboard, /testID="paper-event-average-cost-fallback"/);
+  assert.match(leaderboard, /average cost was used for those positions in your score/);
+  assert.match(leaderboard, /setAverageCostFallbackByEvent\(\(current\) => \(\{ \.\.\.current, \[event\.id\]: submission\.usesAverageCost \}\)\)/);
+  assert.match(leaderboard, /position\.shares \* \(quotes\.get\(position\.symbol\.toUpperCase\(\)\) \?\? position\.avgCost\)/);
+  assert.match(leaderboard, /submitEventArenaScore\(event\.id, submission\.payload\)/);
+  assert.doesNotMatch(leaderboard, /averageCostFallbackByEvent\[entry\.|averageCostFallbackByEvent\[detail\./);
   assert.match(leaderboard, /paper-event-leaderboard-stale/);
   assert.match(leaderboard, /tradeCount/);
   assert.match(leaderboard, /profitLoss/);

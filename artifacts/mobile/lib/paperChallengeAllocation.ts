@@ -10,6 +10,13 @@ export function formatEventHoldingSide(side: EventHoldingSide): 'Long' | 'Short'
   return side === 'short' ? 'Short' : 'Long';
 }
 
+export function hasEventAverageCostFallback(
+  heldSymbols: string[],
+  quotedSymbols: ReadonlySet<string>,
+): boolean {
+  return heldSymbols.some((symbol) => !quotedSymbols.has(symbol.toUpperCase()));
+}
+
 /**
  * Calculates absolute market exposure as a percentage of reported account equity.
  * Returns null instead of guessing when any required input is unavailable.

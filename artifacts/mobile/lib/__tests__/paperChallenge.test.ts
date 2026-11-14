@@ -30,6 +30,7 @@ import {
   calculateEventHoldingAllocationPercent,
   formatEventHoldingAllocation,
   formatEventHoldingSide,
+  hasEventAverageCostFallback,
 } from '../paperChallengeAllocation.ts';
 
 test('event holding allocation uses absolute market exposure over reported equity', () => {
@@ -42,6 +43,9 @@ test('event holding allocation uses absolute market exposure over reported equit
   assert.equal(formatEventHoldingAllocation(null), 'Allocation unavailable');
   assert.equal(formatEventHoldingSide('long'), 'Long');
   assert.equal(formatEventHoldingSide('short'), 'Short');
+  assert.equal(hasEventAverageCostFallback(['AAPL', 'MSFT'], new Set(['AAPL'])), true);
+  assert.equal(hasEventAverageCostFallback(['aapl'], new Set(['AAPL'])), false);
+  assert.equal(hasEventAverageCostFallback([], new Set()), false);
 });
 
 test('paper event runs Monday open through Friday close, then skips a week', () => {

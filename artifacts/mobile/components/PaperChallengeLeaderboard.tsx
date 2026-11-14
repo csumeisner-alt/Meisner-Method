@@ -28,6 +28,7 @@ import {
   calculateEventHoldingAllocationPercent,
   formatEventHoldingAllocation,
   formatEventHoldingSide,
+  hasEventAverageCostFallback,
   type EventHoldingSide,
 } from '@/lib/paperChallengeAllocation';
 import {
@@ -39,6 +40,7 @@ import {
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 const REFRESH_INTERVAL_MS = 120_000;
 const LAST_SUBMISSION_KEY_PREFIX = '@stocksense/paper_event_leaderboard_last_submit:';
+const AVERAGE_COST_FALLBACK_KEY_PREFIX = '@stocksense/paper_event_leaderboard_average_cost:';
 
 type EventWindow = {
   id: string;
@@ -154,15 +156,21 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
     throw new Error('Your event score is unavailable. Open Paper Trading and try again.');
   }
   return {
-    installationId: await getInstallationId(),
-    alias: enrollment.leaderboardAlias?.trim() ?? '',
-    startEquity,
-    equity,
-    returnPercent,
-    tradeCount,
-    holdings,
-    eventStartAtMs: event.startAtMs,
-    eventEndAtMs: event.endAtMs,
+    payload: {
+      installationId: await getInstallationId(),
+      alias: enrollment.leaderboardAlias?.trim() ?? '',
+      startEquity,
+      equity,
+      returnPercent,
+      tradeCount,
+      holdings,
+      eventStartAtMs: event.startAtMs,
+      eventEndAtMs: event.endAtMs,
+    },
+    usesAverageCost: hasEventAverageCostFallback(
+      positions.map((position) => position.symbol),
+      new Set(quotes.keys()),
+    ),
   };
 }
 
@@ -182,8 +190,10 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
   const refreshingRef = useRef(false);
   const enrollmentRef = useRef(enrollment);
   const selectedEventRef = useRef(event);
+  const averageCostFallbackSubmittedEventsRef = useRef(new Set<string>());
   const [installationId, setInstallationId] = useState<string | null>(null);
   const [installationIdReady, setInstallationIdReady] = useState(false);
+  const [averageCostFallbackByEvent, setAverageCostFallbackByEvent] = useState<Record<string, boolean>>({});
   const visible = embedded || open;
   const leaderboardQuery = useGetEventArenaLeaderboard(selectedEvent.id, {
     request: installationId ? { headers: { 'X-Event-Arena-Installation-Id': installationId } } : undefined,
@@ -237,6 +247,21 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
     return () => { mounted = false; };
   }, []);
   useEffect(() => {
+    let mounted = true;
+    void AsyncStorage.getItem(`${AVERAGE_COST_FALLBACK_KEY_PREFIX}${event.id}`)
+      .then((value) => {
+        if (
+          mounted
+          && !averageCostFallbackSubmittedEventsRef.current.has(event.id)
+          && (value === 'true' || value === 'false')
+        ) {
+          setAverageCostFallbackByEvent((current) => ({ ...current, [event.id]: value === 'true' }));
+        }
+      })
+      .catch(() => {});
+    return () => { mounted = false; };
+  }, [event.id]);
+  useEffect(() => {
     if (selectedEvent.id !== event.id || matchingOwnEntries.length !== 1) {
       onRankChange?.(null);
       return;
@@ -282,8 +307,18 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
   }, [event.id, onEnrollmentChange]);
 
   const submitEntry = useCallback(async (targetEnrollment: PaperChallengeEnrollment, alias: string) => {
-    const payload = await buildEventSubmission({ ...targetEnrollment, leaderboardAlias: alias }, event);
-    await submitEventArenaScore(event.id, payload);
+    const submission = await buildEventSubmission({ ...targetEnrollment, leaderboardAlias: alias }, event);
+    await submitEventArenaScore(event.id, submission.payload);
+    averageCostFallbackSubmittedEventsRef.current.add(event.id);
+    setAverageCostFallbackByEvent((current) => ({ ...current, [event.id]: submission.usesAverageCost }));
+    try {
+      await AsyncStorage.setItem(
+        `${AVERAGE_COST_FALLBACK_KEY_PREFIX}${event.id}`,
+        String(submission.usesAverageCost),
+      );
+    } catch {
+      // Keep the current indicator in memory even if its local persistence fails.
+    }
     await AsyncStorage.setItem(`${LAST_SUBMISSION_KEY_PREFIX}${event.id}`, String(Date.now()));
   }, [event.id, event.startAtMs, event.endAtMs]);
 
@@ -854,6 +889,15 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
                   <Text style={{ color: ownEntry.profitLoss >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_600SemiBold', fontSize: 11, marginTop: 3 }}>
                     {signedMoney(ownEntry.profitLoss)} · {money(ownEntry.equity)} account value
                   </Text>
+                  {averageCostFallbackByEvent[selectedEvent.id] && (
+                    <Text
+                      testID="paper-event-average-cost-fallback"
+                      accessibilityRole="text"
+                      style={{ color: colors.gold, fontFamily: 'Inter_600SemiBold', fontSize: 10, lineHeight: 15, marginTop: 6 }}
+                    >
+                      A market quote was unavailable for one or more holdings, so average cost was used for those positions in your score.
+                    </Text>
+                  )}
                 </View>
               )}
               {loading && entries.length === 0 ? (
