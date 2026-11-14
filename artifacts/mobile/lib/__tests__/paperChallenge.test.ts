@@ -716,3 +716,51 @@ test('upcoming signup withdrawal removes only enrollment and is locked at event 
     history,
   }, enrollment.eventId, eventStartAtMs - 1).enrollment?.startEquity, 100_000);
 });
+
+test('leaderboard opt-in stays in event enrollment and does not modify paper accounts', async () => {
+  const eventId = '2026-11-16';
+  const enrollment = {
+    eventId,
+    eventStartAtMs: Date.parse('2026-11-16T14:30:00.000Z'),
+    eventEndAtMs: Date.parse('2026-11-20T21:00:00.000Z'),
+    joinedAtMs: Date.parse('2026-11-16T14:30:00.000Z'),
+    accountId: `paper-event:${eventId}`,
+    accountName: 'Event Portfolio',
+    startEquity: 100_000,
+  };
+  const regularPaperCache = {
+    accounts: [{ id: 'paper-main', name: 'Main', cash: 81_000 }],
+    positions: [{ accountId: 'paper-main', symbol: 'MSFT', shares: 4 }],
+    transactions: [{ accountId: 'paper-main', symbol: 'MSFT', action: 'BUY' }],
+  };
+  const saved = new Map<string, string>([
+    [PAPER_CHALLENGE_STORAGE_KEY, JSON.stringify({ enrollment, history: [] })],
+    ['@stocksense/paper_v2', JSON.stringify(regularPaperCache)],
+  ]);
+  const storage = {
+    getItem: async (key: string) => saved.get(key) ?? null,
+    setItem: async (key: string, value: string) => { saved.set(key, value); },
+  };
+
+  const optedIn = await updatePaperChallengeStore((current) => ({
+    ...current,
+    enrollment: {
+      ...current.enrollment!,
+      leaderboardAlias: 'MarketFox',
+      leaderboardOptedIn: true,
+    },
+  }), storage);
+  assert.equal(optedIn.enrollment?.leaderboardAlias, 'MarketFox');
+  assert.equal(optedIn.enrollment?.leaderboardOptedIn, true);
+  assert.deepEqual(JSON.parse(saved.get('@stocksense/paper_v2')!), regularPaperCache);
+
+  const optedOut = await updatePaperChallengeStore((current) => ({
+    ...current,
+    enrollment: {
+      ...current.enrollment!,
+      leaderboardOptedIn: false,
+    },
+  }), storage);
+  assert.equal(optedOut.enrollment?.leaderboardOptedIn, false);
+  assert.deepEqual(JSON.parse(saved.get('@stocksense/paper_v2')!), regularPaperCache);
+});

@@ -25,6 +25,7 @@ import {
   removeFromWatchlist,
 } from "../lib/watchlistStore.js";
 import { createNotificationAlertRouter } from "./notificationAlertRoutes.js";
+import { createEventArenaRouter } from "./eventArenaRoutes.js";
 
 const { Pool } = pg;
 
@@ -140,6 +141,32 @@ async function runSchemaMigrations(): Promise<void> {
       purchased_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       PRIMARY KEY (id, user_id)
     )
+  `);
+
+  // Anonymous, opt-in Event Arena scores are stored separately from every
+  // permanent paper account and trade-history table.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS event_arena_leaderboard_entries (
+      event_id TEXT NOT NULL,
+      installation_id TEXT NOT NULL,
+      alias TEXT NOT NULL,
+      start_equity DOUBLE PRECISION NOT NULL,
+      equity DOUBLE PRECISION NOT NULL,
+      return_percent DOUBLE PRECISION NOT NULL,
+      holdings JSONB NOT NULL DEFAULT '[]'::jsonb,
+      event_start_at TIMESTAMPTZ NOT NULL,
+      event_end_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      PRIMARY KEY (event_id, installation_id)
+    )
+  `);
+  await pool.query(
+    "ALTER TABLE event_arena_leaderboard_entries ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE",
+  );
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS event_arena_leaderboard_rank_idx
+    ON event_arena_leaderboard_entries (event_id, return_percent DESC, updated_at DESC)
   `);
 
   // Backfill missing columns for existing paper tables (idempotent).
@@ -953,6 +980,10 @@ router.use(createNotificationAlertRouter(
   { query: (sql, values) => pool.query(sql, values) },
   requireSchema,
   randomUUID,
+));
+router.use(createEventArenaRouter(
+  { query: (sql, values) => pool.query(sql, values) },
+  requireSchema,
 ));
 
 // ── Push Token ─────────────────────────────────────────────────────────────

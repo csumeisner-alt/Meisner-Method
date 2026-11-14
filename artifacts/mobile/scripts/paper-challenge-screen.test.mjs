@@ -10,6 +10,7 @@ const events = readFileSync(new URL("../components/PaperChallengeHistory.tsx", i
 const challenge = readFileSync(new URL("../lib/paperChallenge.ts", import.meta.url), "utf8");
 const badges = readFileSync(new URL("../components/PaperChallengeMilestoneBadges.tsx", import.meta.url), "utf8");
 const shareCard = readFileSync(new URL("../components/PaperEventShareCard.tsx", import.meta.url), "utf8");
+const leaderboard = readFileSync(new URL("../components/PaperChallengeLeaderboard.tsx", import.meta.url), "utf8");
 
 assert.match(events, /eventWindow\.phase === 'upcoming' \? eventWindow\.startAtMs : Date\.now\(\)/);
 assert.match(events, /eventWindow\.phase === 'upcoming' \? null : PAPER_CHALLENGE_STARTING_BALANCE/);
@@ -32,6 +33,26 @@ assert.match(screen, /testID="paper-event-live-banner"/);
 assert.match(screen, /LIVE EVENT · JOIN ANY TIME/);
 assert.match(screen, /testID="dismiss-paper-event-recap"/);
 assert.match(screen, /previousEnrollmentIdRef/);
+
+test("live leaderboard remains anonymous, opt-in, event-scoped, and privacy-limited", () => {
+  assert.match(events, /<PaperChallengeLeaderboard/);
+  assert.match(leaderboard, /getInstallationId\(\)/);
+  assert.match(leaderboard, /currentEnrollment\.leaderboardOptedIn/);
+  assert.match(leaderboard, /REFRESH_INTERVAL_MS = 120_000/);
+  assert.match(leaderboard, /AppState\.addEventListener/);
+  assert.match(leaderboard, /setInterval\(\(\) => \{ void refresh\(\); \}, REFRESH_INTERVAL_MS\)/);
+  assert.match(leaderboard, /current\.enrollment\?\.eventId !== event\.id/);
+  assert.match(leaderboard, /event-arena\/\$\{encodeURIComponent\(event\.id\)\}\/leaderboard/);
+  assert.match(leaderboard, /other event participants will see your alias, self-reported score, and current holding ticker and company names/);
+  assert.match(leaderboard, /locked when the event started/i);
+  assert.match(leaderboard, /Opt-in is saved on this device; the score will retry when the connection is available/);
+  assert.match(leaderboard, /Your alias is saved on this device; the leaderboard will retry the update/);
+  assert.match(leaderboard, /method: 'DELETE'/);
+  assert.match(leaderboard, /DEMO ONLY · EXAMPLE ENTRIES · NOT PRODUCTION DATA/);
+  assert.match(leaderboard, /testID="paper-event-leaderboard-detail"/);
+  assert.match(leaderboard, /holding\.companyName/);
+  assert.match(leaderboard, /Last updated:/);
+});
 
 test("milestone badges and event controls stay readable with larger system text", () => {
   assert.match(challenge, /'first-event': 'FIRST EVENT'/);

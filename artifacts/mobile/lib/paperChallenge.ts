@@ -28,6 +28,8 @@ export type PaperChallengeEnrollment = {
   accountId: string;
   accountName: string;
   startEquity: number | null;
+  leaderboardAlias?: string;
+  leaderboardOptedIn?: boolean;
 };
 
 export type PaperChallengeSummary = Omit<PaperChallengeEnrollment, 'startEquity'> & {

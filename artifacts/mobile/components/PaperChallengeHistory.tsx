@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { PaperEventShareCard } from '@/components/PaperEventShareCard';
 import { PaperChallengeMilestoneBadges } from '@/components/PaperChallengeMilestoneBadges';
+import { PaperChallengeLeaderboard } from '@/components/PaperChallengeLeaderboard';
 import {
   getPaperChallengeMilestones,
   getPaperChallengePersonalBestProgress,
@@ -28,6 +29,7 @@ import {
   PAPER_CHALLENGE_MILESTONE_LABELS,
   type PaperChallengeStore,
   type PaperChallengeSummary,
+  type PaperChallengeEnrollment,
   updatePaperChallengeStore,
   withdrawUpcomingPaperChallenge,
 } from '@/lib/paperChallenge';
@@ -112,6 +114,10 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
     ? getPaperChallengePersonalBestProgress(store.history, currentWindow.startAtMs, positionValue.returnPercent)
     : null;
   const midweekAt = currentWindow.startAtMs + 2 * DAY_MS + 2.5 * 60 * 60 * 1000;
+
+  const updateLeaderboardEnrollment = useCallback((enrollment: PaperChallengeEnrollment | null) => {
+    setStore((current) => ({ ...current, enrollment }));
+  }, []);
 
   const readStore = useCallback(async (isCurrent: () => boolean = () => true) => {
     setStoreLoadState('loading');
@@ -501,6 +507,12 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                 </Text>
               )}
             </View>
+
+            <PaperChallengeLeaderboard
+              event={currentWindow}
+              enrollment={hasCurrentEnrollment ? store.enrollment : null}
+              onEnrollmentChange={updateLeaderboardEnrollment}
+            />
 
             {hasCurrentEnrollment && currentWindow.phase === 'active' && now >= midweekAt && (
               <View style={{ marginTop: 12, padding: 14, borderRadius: 12, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
