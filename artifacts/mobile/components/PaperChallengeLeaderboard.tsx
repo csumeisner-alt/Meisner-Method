@@ -14,6 +14,10 @@ import { Feather } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
+import {
+  getGetEventArenaLeaderboardWeeksQueryKey,
+  useGetEventArenaLeaderboardWeeks,
+} from '@workspace/api-client-react';
 import { getInstallationId } from '@/lib/installation';
 import {
   PAPER_CHALLENGE_STARTING_BALANCE,
@@ -31,6 +35,7 @@ type EventWindow = {
   endAtMs: number;
   phase: 'upcoming' | 'active' | 'ended';
 };
+type CompletedEventWeek = EventWindow & { participantCount: number };
 
 type HoldingName = { symbol: string; companyName: string };
 type LeaderboardEntry = {
@@ -78,6 +83,11 @@ const returnLabel = (value: number) => `${value >= 0 ? '+' : ''}${value.toFixed(
 const timeLabel = (value: string | null) => value
   ? new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
   : 'Not updated yet';
+const dateRangeLabel = (startAtMs: number, endAtMs: number) => {
+  const start = new Date(startAtMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const end = new Date(endAtMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return `${start}–${end}`;
+};
 
 async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event: EventWindow) {
   const raw = await AsyncStorage.getItem('@stocksense/paper_v2');
@@ -159,16 +169,30 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [detail, setDetail] = useState<LeaderboardEntry | null>(null);
   const [showDemo, setShowDemo] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<EventWindow>(event);
   const [appIsActive, setAppIsActive] = useState(AppState.currentState === 'active');
   const refreshingRef = useRef(false);
   const enrollmentRef = useRef(enrollment);
+  const selectedEventRef = useRef(event);
+  const weeksQuery = useGetEventArenaLeaderboardWeeks({
+    query: { enabled: open, queryKey: getGetEventArenaLeaderboardWeeksQueryKey() },
+  });
   const demoEntries = useMemo(() => DEMO_ENTRIES, []);
   const visibleEntries = showDemo ? demoEntries : entries;
-  const optedIn = enrollment?.leaderboardOptedIn === true;
-  const aliasLocked = Date.now() >= event.startAtMs;
-  const canOptIn = enrollment?.eventId === event.id && event.phase !== 'ended';
+  const archiveWeeks: CompletedEventWeek[] = (weeksQuery.data?.weeks ?? [])
+    .filter((week) => week.id !== event.id)
+    .map((week) => ({ ...week, phase: 'ended' }));
+  const optedIn = selectedEvent.id === event.id && enrollment?.leaderboardOptedIn === true;
+  const aliasLocked = Date.now() >= selectedEvent.startAtMs;
+  const canOptIn = selectedEvent.id === event.id
+    && enrollment?.eventId === event.id
+    && event.phase !== 'ended';
 
   useEffect(() => { enrollmentRef.current = enrollment; }, [enrollment]);
+  useEffect(() => {
+    selectedEventRef.current = event;
+    setSelectedEvent(event);
+  }, [event.id, event.startAtMs, event.endAtMs]);
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => setAppIsActive(state === 'active'));
     return () => subscription.remove();
@@ -207,46 +231,74 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
     await AsyncStorage.setItem(`${LAST_SUBMISSION_KEY_PREFIX}${event.id}`, String(Date.now()));
   }, [event.id, event.startAtMs, event.endAtMs]);
 
-  const fetchLeaderboard = useCallback(async () => {
-    const response = await fetch(`${BASE_URL}/api/event-arena/${encodeURIComponent(event.id)}/leaderboard`);
+  const fetchLeaderboard = useCallback(async (targetEvent: EventWindow = selectedEventRef.current) => {
+    const response = await fetch(`${BASE_URL}/api/event-arena/${encodeURIComponent(targetEvent.id)}/leaderboard`);
     if (!response.ok) throw new Error(await responseError(response, 'Could not load the leaderboard.'));
     const body = await response.json() as { entries?: LeaderboardEntry[]; updatedAt?: string };
     if (!Array.isArray(body.entries)) throw new Error('The leaderboard response was invalid.');
+    if (selectedEventRef.current.id !== targetEvent.id) return;
     setEntries(body.entries);
     setLastUpdated(body.updatedAt ?? new Date().toISOString());
-  }, [event.id, event.startAtMs, event.endAtMs]);
+  }, []);
+
+  const selectEvent = useCallback((targetEvent: EventWindow) => {
+    selectedEventRef.current = targetEvent;
+    setSelectedEvent(targetEvent);
+    setDetail(null);
+    setEntries([]);
+    setError('');
+    setLastUpdated(null);
+    setShowDemo(false);
+    setLoading(true);
+    void fetchLeaderboard(targetEvent)
+      .catch((loadError) => {
+        if (selectedEventRef.current.id === targetEvent.id) {
+          setError(loadError instanceof Error ? loadError.message : 'Could not load the leaderboard.');
+        }
+      })
+      .finally(() => {
+        if (selectedEventRef.current.id === targetEvent.id) setLoading(false);
+      });
+  }, [fetchLeaderboard]);
 
   const refresh = useCallback(async () => {
     if (refreshingRef.current || !open || !appIsActive) return;
+    const targetEvent = selectedEvent;
+    const targetEventId = targetEvent.id;
     refreshingRef.current = true;
     setLoading(true);
     setError('');
     try {
       const currentEnrollment = enrollmentRef.current;
       if (
-        currentEnrollment?.eventId === event.id
+        currentEnrollment?.eventId === targetEventId
+        && targetEventId === event.id
         && currentEnrollment.leaderboardOptedIn
         && event.phase !== 'ended'
         && !sharingBusy
       ) {
-        const rawLastSubmission = await AsyncStorage.getItem(`${LAST_SUBMISSION_KEY_PREFIX}${event.id}`);
+        const rawLastSubmission = await AsyncStorage.getItem(`${LAST_SUBMISSION_KEY_PREFIX}${targetEventId}`);
         const lastSubmission = Number(rawLastSubmission || 0);
         if (!Number.isFinite(lastSubmission) || Date.now() - lastSubmission >= REFRESH_INTERVAL_MS) {
           try {
             await submitEntry(currentEnrollment, currentEnrollment.leaderboardAlias ?? '');
           } catch (submissionError) {
-            setError(submissionError instanceof Error ? submissionError.message : 'Could not submit your event score.');
+            if (selectedEventRef.current.id === targetEventId) {
+              setError(submissionError instanceof Error ? submissionError.message : 'Could not submit your event score.');
+            }
           }
         }
       }
-      await fetchLeaderboard();
+      await fetchLeaderboard(targetEvent);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Could not load the leaderboard.');
+      if (selectedEventRef.current.id === targetEventId) {
+        setError(loadError instanceof Error ? loadError.message : 'Could not load the leaderboard.');
+      }
     } finally {
-      setLoading(false);
+      if (selectedEventRef.current.id === targetEventId) setLoading(false);
       refreshingRef.current = false;
     }
-  }, [appIsActive, event.id, event.phase, fetchLeaderboard, open, sharingBusy, submitEntry]);
+  }, [appIsActive, event.id, event.phase, fetchLeaderboard, open, selectedEvent, sharingBusy, submitEntry]);
 
   useEffect(() => {
     if (!open || !appIsActive) return;
@@ -254,7 +306,6 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
     const timer = setInterval(() => { void refresh(); }, REFRESH_INTERVAL_MS);
     return () => clearInterval(timer);
   }, [appIsActive, open, refresh]);
-
   const optIn = async () => {
     const currentEnrollment = enrollmentRef.current;
     const alias = aliasDraft.trim();
@@ -374,7 +425,14 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
         <TouchableOpacity
           testID="open-paper-event-leaderboard"
           accessibilityRole="button"
-          onPress={() => { setDetail(null); setShowDemo(false); setOpen(true); }}
+          onPress={() => {
+            setDetail(null);
+            setShowDemo(false);
+            setEntries([]);
+            selectedEventRef.current = event;
+            setSelectedEvent(event);
+            setOpen(true);
+          }}
           style={{ marginTop: 11, paddingVertical: 10, borderRadius: 9, backgroundColor: colors.primary, alignItems: 'center' }}
         >
           <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 11 }}>OPEN LEADERBOARD</Text>
@@ -445,6 +503,92 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
             </ScrollView>
           ) : (
             <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: Platform.OS === 'web' ? 24 : insets.bottom + 18 }}>
+              <View testID="paper-event-leaderboard-week-picker" style={{ marginBottom: 16 }}>
+                <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14, marginBottom: 8 }}>
+                  Event week
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  <TouchableOpacity
+                    testID="paper-event-leaderboard-current-week"
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: selectedEvent.id === event.id }}
+                    onPress={() => selectEvent(event)}
+                    style={{
+                      paddingVertical: 8,
+                      paddingHorizontal: 10,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: selectedEvent.id === event.id ? colors.primary : colors.border,
+                      backgroundColor: selectedEvent.id === event.id ? colors.primary : colors.card,
+                    }}
+                  >
+                    <Text style={{
+                      color: selectedEvent.id === event.id ? colors.primaryForeground : colors.foreground,
+                      fontFamily: 'Inter_600SemiBold',
+                      fontSize: 11,
+                    }}>
+                      Current · {dateRangeLabel(event.startAtMs, event.endAtMs)}
+                    </Text>
+                  </TouchableOpacity>
+                  {archiveWeeks.map((week) => {
+                    const selected = selectedEvent.id === week.id;
+                    return (
+                      <TouchableOpacity
+                        key={week.id}
+                        testID={`paper-event-leaderboard-week-${week.id}`}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                        accessibilityLabel={`Event week ${dateRangeLabel(week.startAtMs, week.endAtMs)}, ${week.participantCount} participants`}
+                        onPress={() => selectEvent(week)}
+                        style={{
+                          paddingVertical: 8,
+                          paddingHorizontal: 10,
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: selected ? colors.primary : colors.border,
+                          backgroundColor: selected ? colors.primary : colors.card,
+                        }}
+                      >
+                        <Text style={{
+                          color: selected ? colors.primaryForeground : colors.foreground,
+                          fontFamily: 'Inter_600SemiBold',
+                          fontSize: 11,
+                        }}>
+                          {dateRangeLabel(week.startAtMs, week.endAtMs)} · {week.participantCount}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 7 }}>
+                  Past weeks show only participants who opted in. Opting out removes a participant’s score and holdings.
+                </Text>
+                {weeksQuery.isLoading && (
+                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 7 }}>
+                    Loading completed weeks…
+                  </Text>
+                )}
+                {weeksQuery.error ? (
+                  <View style={{ marginTop: 8 }}>
+                    <Text testID="paper-event-leaderboard-weeks-error" style={{ color: colors.destructive, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>
+                      {weeksQuery.error instanceof Error ? weeksQuery.error.message : 'Past event weeks are unavailable.'}
+                    </Text>
+                    <TouchableOpacity
+                      testID="retry-paper-event-leaderboard-weeks"
+                      accessibilityRole="button"
+                      onPress={() => { void weeksQuery.refetch(); }}
+                      style={{ alignSelf: 'flex-start', paddingVertical: 7 }}
+                    >
+                      <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10 }}>RETRY PAST WEEKS</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : !weeksQuery.isLoading && archiveWeeks.length === 0 ? (
+                  <Text testID="paper-event-leaderboard-no-past-weeks" style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 7 }}>
+                    No completed weeks with opted-in participants yet.
+                  </Text>
+                ) : null}
+              </View>
+
               {canOptIn && (
                 <View testID="paper-event-leaderboard-opt-in" style={{ padding: 14, borderRadius: 12, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, marginBottom: 14 }}>
                   <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>
@@ -537,7 +681,9 @@ export function PaperChallengeLeaderboard({ event, enrollment, onEnrollmentChang
                 </View>
               ) : visibleEntries.length === 0 ? (
                 <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, paddingVertical: 16 }}>
-                  No participants have opted in for this event yet.
+                  {selectedEvent.id !== event.id
+                    ? 'No opted-in participants are available for this completed week. Participants who opted out are not shown.'
+                    : 'No participants have opted in for this event yet.'}
                 </Text>
               ) : (
                 <View testID={showDemo ? 'paper-event-leaderboard-demo-list' : 'paper-event-leaderboard-list'}>

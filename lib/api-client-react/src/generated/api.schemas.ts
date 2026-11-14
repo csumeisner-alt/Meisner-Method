@@ -1315,6 +1315,24 @@ export interface AnalysisError {
   lastUsableDate?: string | null;
 }
 
+export type GetEventArenaLeaderboardWeeks200WeeksItem = {
+  id: string;
+  /** Scheduled event start time in milliseconds since Unix epoch */
+  startAtMs: number;
+  /** Scheduled event end time in milliseconds since Unix epoch */
+  endAtMs: number;
+  /**
+     * Number of active participants who opted in
+     * @minimum 1
+     */
+  participantCount: number;
+};
+
+export type GetEventArenaLeaderboardWeeks200 = {
+  weeks: GetEventArenaLeaderboardWeeks200WeeksItem[];
+  updatedAt: string;
+};
+
 export type SearchHeatMapInstrumentsParams = {
 /**
  * @minLength 2

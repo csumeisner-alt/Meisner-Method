@@ -52,6 +52,14 @@ test("live leaderboard remains anonymous, opt-in, event-scoped, and privacy-limi
   assert.match(leaderboard, /testID="paper-event-leaderboard-detail"/);
   assert.match(leaderboard, /holding\.companyName/);
   assert.match(leaderboard, /Last updated:/);
+  assert.match(leaderboard, /useGetEventArenaLeaderboardWeeks/);
+  assert.match(leaderboard, /query: \{ enabled: open, queryKey: getGetEventArenaLeaderboardWeeksQueryKey\(\) \}/);
+  assert.match(leaderboard, /paper-event-leaderboard-week-picker/);
+  assert.match(leaderboard, /paper-event-leaderboard-week-\$\{week\.id\}/);
+  assert.match(leaderboard, /No completed weeks with opted-in participants yet/);
+  assert.match(leaderboard, /Past event weeks are unavailable/);
+  assert.match(leaderboard, /selectedEvent\.id === event\.id/);
+  assert.match(leaderboard, /Participants who opted out are not shown/);
 });
 
 test("milestone badges and event controls stay readable with larger system text", () => {

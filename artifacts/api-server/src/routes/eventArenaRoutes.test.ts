@@ -26,10 +26,11 @@ function validSubmission(overrides: Record<string, unknown> = {}) {
 async function withApi(
   query: (sql: string, values?: any[]) => Promise<{ rows: any[] }>,
   run: (baseUrl: string) => Promise<void>,
+  currentTime = Date.parse("2026-11-18T17:00:00.000Z"),
 ) {
   const app = express();
   app.use(express.json());
-  app.use(createEventArenaRouter({ query }, (_req, _res, next) => next(), () => Date.parse("2026-11-18T17:00:00.000Z")));
+  app.use(createEventArenaRouter({ query }, (_req, _res, next) => next(), () => currentTime));
   const server = app.listen(0);
   await once(server, "listening");
   const address = server.address();
@@ -115,6 +116,62 @@ test("leaderboard response ranks participants without exposing installation IDs 
     assert.deepEqual(result.entries[0].holdings, [{ symbol: "AAPL", companyName: "Apple Inc." }]);
     assert.equal(JSON.stringify(result).includes("must-not-leak"), false);
     assert.equal(JSON.stringify(result).includes("shares"), false);
+  });
+});
+
+test("completed-week discovery lists only valid ended weeks with active opt-ins", async () => {
+  await withApi(async (sql) => {
+    assert.match(sql, /WHERE is_active=TRUE AND event_end_at <= NOW\(\)/);
+    assert.match(sql, /GROUP BY event_id/);
+    assert.match(sql, /ORDER BY MAX\(event_end_at\) DESC/);
+    assert.doesNotMatch(sql, /LIMIT/);
+    return { rows: [
+      {
+        event_id: "2026-11-16",
+        start_at: new Date("2026-11-16T14:30:00.000Z"),
+        end_at: new Date("2026-11-20T21:00:00.000Z"),
+        participant_count: 2,
+        installation_id: "must-not-leak",
+      },
+      {
+        event_id: "2026-11-23",
+        start_at: new Date("2026-11-23T14:30:00.000Z"),
+        end_at: new Date("2026-11-27T21:00:00.000Z"),
+        participant_count: 1,
+      },
+      {
+        event_id: "2026-11-30",
+        start_at: new Date("2026-11-30T14:30:00.000Z"),
+        end_at: new Date("2026-12-04T21:00:00.000Z"),
+        participant_count: 1,
+      },
+      {
+        event_id: "2026-11-16",
+        start_at: new Date("2026-11-16T14:31:00.000Z"),
+        end_at: new Date("2026-11-20T21:00:00.000Z"),
+        participant_count: 1,
+      },
+    ] };
+  }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/leaderboard-weeks`);
+    assert.equal(response.status, 200);
+    const result = await response.json() as any;
+    assert.deepEqual(result.weeks, [{
+      id: "2026-11-16",
+      startAtMs: Date.parse("2026-11-16T14:30:00.000Z"),
+      endAtMs: Date.parse("2026-11-20T21:00:00.000Z"),
+      participantCount: 2,
+    }]);
+    assert.equal(JSON.stringify(result).includes("must-not-leak"), false);
+  }, Date.parse("2026-11-25T17:00:00.000Z"));
+});
+
+test("completed-week discovery returns an empty list when nobody remains opted in", async () => {
+  await withApi(async () => ({ rows: [] }), async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/leaderboard-weeks`);
+    assert.equal(response.status, 200);
+    const result = await response.json() as any;
+    assert.deepEqual(result.weeks, []);
   });
 });
 

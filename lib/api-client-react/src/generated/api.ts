@@ -25,6 +25,7 @@ import type {
   AnalyzeStockRequest,
   CommodityRelationshipResponse,
   CryptoSupplyHistory,
+  GetEventArenaLeaderboardWeeks200,
   GetMarketHeatMapParams,
   GetStockChart200,
   HealthStatus,
@@ -67,6 +68,83 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getGetEventArenaLeaderboardWeeksUrl = () => {
+
+
+
+
+  return `/api/event-arena/leaderboard-weeks`
+}
+
+/**
+ * @summary List completed Event Arena weeks with opted-in leaderboard entries
+ */
+export const getEventArenaLeaderboardWeeks = async ( options?: RequestInit): Promise<GetEventArenaLeaderboardWeeks200> => {
+
+  return customFetch<GetEventArenaLeaderboardWeeks200>(getGetEventArenaLeaderboardWeeksUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetEventArenaLeaderboardWeeksQueryKey = () => {
+    return [
+    `/api/event-arena/leaderboard-weeks`
+    ] as const;
+    }
+
+
+export const getGetEventArenaLeaderboardWeeksQueryOptions = <TData = Awaited<ReturnType<typeof getEventArenaLeaderboardWeeks>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEventArenaLeaderboardWeeks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetEventArenaLeaderboardWeeksQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getEventArenaLeaderboardWeeks>>> = ({ signal }) => getEventArenaLeaderboardWeeks({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getEventArenaLeaderboardWeeks>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetEventArenaLeaderboardWeeksQueryResult = NonNullable<Awaited<ReturnType<typeof getEventArenaLeaderboardWeeks>>>
+export type GetEventArenaLeaderboardWeeksQueryError = ErrorType<void>
+
+
+/**
+ * @summary List completed Event Arena weeks with opted-in leaderboard entries
+ */
+
+export function useGetEventArenaLeaderboardWeeks<TData = Awaited<ReturnType<typeof getEventArenaLeaderboardWeeks>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEventArenaLeaderboardWeeks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetEventArenaLeaderboardWeeksQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getSearchHeatMapInstrumentsUrl = (params: SearchHeatMapInstrumentsParams,) => {
   const normalizedParams = new URLSearchParams();

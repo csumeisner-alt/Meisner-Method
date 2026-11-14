@@ -9,6 +9,23 @@ import * as zod from 'zod';
 
 
 /**
+ * @summary List completed Event Arena weeks with opted-in leaderboard entries
+ */
+
+
+
+export const GetEventArenaLeaderboardWeeksResponse = zod.object({
+  "weeks": zod.array(zod.object({
+  "id": zod.coerce.date(),
+  "startAtMs": zod.number().describe('Scheduled event start time in milliseconds since Unix epoch'),
+  "endAtMs": zod.number().describe('Scheduled event end time in milliseconds since Unix epoch'),
+  "participantCount": zod.number().min(1).describe('Number of active participants who opted in')
+})),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
  * @summary Search supported non-stock heat-map instruments by name or ticker
  */
 export const searchHeatMapInstrumentsQueryQMin = 2;

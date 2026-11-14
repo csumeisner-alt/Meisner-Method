@@ -12,7 +12,47 @@ tags:
     description: Health operations
   - name: stocks
     description: Stock analysis operations
+  - name: eventArena
+    description: Event Arena public leaderboard operations
 paths:
+  /event-arena/leaderboard-weeks:
+    get:
+      operationId: getEventArenaLeaderboardWeeks
+      tags: [eventArena]
+      summary: List completed Event Arena weeks with opted-in leaderboard entries
+      responses:
+        "200":
+          description: Completed scheduled weeks that still have public leaderboard entries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [weeks, updatedAt]
+                properties:
+                  weeks:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, startAtMs, endAtMs, participantCount]
+                      properties:
+                        id:
+                          type: string
+                          format: date
+                        startAtMs:
+                          type: integer
+                          description: Scheduled event start time in milliseconds since Unix epoch
+                        endAtMs:
+                          type: integer
+                          description: Scheduled event end time in milliseconds since Unix epoch
+                        participantCount:
+                          type: integer
+                          minimum: 1
+                          description: Number of active participants who opted in
+                  updatedAt:
+                    type: string
+                    format: date-time
+        "500":
+          description: Completed Event Arena weeks could not be loaded
   /stocks/heat-map/search:
     get:
       operationId: searchHeatMapInstruments

@@ -95,6 +95,8 @@ export * from './etfScenarioLabel';
 export * from './etfSectorWeight';
 export * from './etfTrackingComparison';
 export * from './fundamentalAnalysis';
+export * from './getEventArenaLeaderboardWeeks200';
+export * from './getEventArenaLeaderboardWeeks200WeeksItem';
 export * from './getMarketHeatMapCategory';
 export * from './getMarketHeatMapParams';
 export * from './getMarketHeatMapPeriod';

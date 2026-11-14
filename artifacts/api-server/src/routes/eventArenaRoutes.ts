@@ -210,6 +210,46 @@ export function createEventArenaRouter(
 ) {
   const router = Router();
 
+  router.get("/event-arena/leaderboard-weeks", requireSchema, async (_req: any, res: any) => {
+    try {
+      const { rows } = await db.query(
+        `SELECT
+           event_id,
+           MIN(event_start_at) AS start_at,
+           MAX(event_end_at) AS end_at,
+           COUNT(*)::int AS participant_count
+         FROM event_arena_leaderboard_entries
+         WHERE is_active=TRUE AND event_end_at <= NOW()
+         GROUP BY event_id
+         HAVING COUNT(*) > 0
+         ORDER BY MAX(event_end_at) DESC`,
+      );
+      const weeks = rows.flatMap((row) => {
+        const expected = expectedEventArenaWindow(row.event_id);
+        const startAtMs = expected && new Date(row.start_at).getTime();
+        const endAtMs = expected && new Date(row.end_at).getTime();
+        const participantCount = Number(row.participant_count);
+        if (
+          !expected
+          || startAtMs !== expected.startAtMs
+          || endAtMs !== expected.endAtMs
+          || expected.endAtMs > now()
+          || !Number.isInteger(participantCount)
+          || participantCount < 1
+        ) return [];
+        return [{
+          id: row.event_id,
+          startAtMs,
+          endAtMs,
+          participantCount,
+        }];
+      });
+      res.json({ weeks, updatedAt: new Date(now()).toISOString() });
+    } catch {
+      res.status(500).json({ error: "Could not load completed Event Arena weeks." });
+    }
+  });
+
   router.get("/event-arena/:eventId/leaderboard", requireSchema, async (req: any, res: any) => {
     if (!expectedEventArenaWindow(req.params.eventId)) {
       res.status(400).json({ error: "A scheduled Event Arena window is required." });
