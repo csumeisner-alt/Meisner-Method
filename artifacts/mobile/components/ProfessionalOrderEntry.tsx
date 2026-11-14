@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Modal,
   Platform,
   SafeAreaView,
@@ -9,6 +10,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
@@ -155,6 +157,8 @@ export default function ProfessionalOrderEntry({
   onSetShortCollateralRatio,
   onConfirm,
 }: Props) {
+  const { width: screenWidth, fontScale } = useWindowDimensions();
+  const compactSideButtons = screenWidth <= 360 || fontScale >= 1.3;
   const [activeSide, setActiveSide] = useState<OrderIntent>(side);
   const [orderType, setOrderType] = useState<OrderType>('market');
   const [sharesText, setSharesText] = useState('');
@@ -499,20 +503,22 @@ export default function ProfessionalOrderEntry({
                     </Text>
                   )}
                 </View>
+                {quoteState !== 'fresh' && (
+                  <TouchableOpacity
+                    testID="paper-order-refresh-quote"
+                    accessibilityRole="button"
+                    accessibilityLabel={refreshingQuote ? 'Refreshing provider quote' : 'Refresh provider quote'}
+                    accessibilityState={{ disabled: refreshingQuote, busy: refreshingQuote }}
+                    style={styles.quoteRefreshButton}
+                    onPress={() => { void refreshQuote(); }}
+                    disabled={refreshingQuote}
+                  >
+                    {refreshingQuote
+                      ? <ActivityIndicator testID="paper-order-refresh-spinner" size="small" color={SILVER} />
+                      : <Feather name="refresh-cw" size={17} color={SILVER} />}
+                  </TouchableOpacity>
+                )}
               </View>
-              {quoteState !== 'fresh' && (
-                <TouchableOpacity
-                  testID="paper-order-refresh-quote"
-                  accessibilityRole="button"
-                  accessibilityLabel="Refresh provider quote"
-                  style={styles.quoteRefreshButton}
-                  onPress={() => { void refreshQuote(); }}
-                  disabled={refreshingQuote}
-                >
-                  <Feather name={refreshingQuote ? 'clock' : 'refresh-cw'} size={13} color={SILVER} />
-                  <Text style={styles.quoteRefreshLabel}>{refreshingQuote ? 'REFRESHING…' : 'REFRESH QUOTE'}</Text>
-                </TouchableOpacity>
-              )}
               {!!quoteRefreshError && <Text style={styles.quoteRefreshError}>{quoteRefreshError}</Text>}
             </View>
 
@@ -534,16 +540,34 @@ export default function ProfessionalOrderEntry({
                     onPress={() => chooseSide(item)}
                     disabled={!!existingOrder || submitting}
                   >
-                    <Feather name={item === 'buy' ? 'trending-up' : 'trending-down'} size={16} color={selected ? '#000' : color} />
-                    <Text style={[styles.sideButtonText, { color: selected ? '#000' : color }]}>
-                    {item === 'short' ? 'SHORT SELL' : item === 'cover' ? 'BUY TO COVER' : item.toUpperCase()}
-                    </Text>
+                      <View
+                        testID={`paper-order-side-${item}-main`}
+                        style={[
+                          styles.sideButtonMain,
+                          compactSideButtons && styles.sideButtonMainCompact,
+                        ]}
+                      >
+                        <Feather name={item === 'buy' ? 'trending-up' : 'trending-down'} size={16} color={selected ? '#000' : color} />
+                        <Text
+                          testID={`paper-order-side-${item}-label`}
+                          style={[styles.sideButtonText, { color: selected ? '#000' : color }]}
+                        >
+                          {item === 'short' ? 'SHORT SELL' : item === 'cover' ? 'BUY TO COVER' : item.toUpperCase()}
+                        </Text>
+                      </View>
                     {item === 'sell' && (
-                      <Text style={[styles.sideShares, { color: selected ? '#000' : color }]}>
+                        <Text
+                          testID={`paper-order-side-${item}-detail`}
+                          style={[styles.sideShares, { color: selected ? '#000' : color }]}
+                        >
                         {availableSellShares.toLocaleString('en-US', { maximumFractionDigits: 4 })} available
                       </Text>
                     )}
-                    {item === 'short' && <Text style={[styles.sideShares, { color: selected ? '#000' : color }]}>simulated borrow</Text>}
+                      {item === 'short' && (
+                        <Text testID={`paper-order-side-${item}-detail`} style={[styles.sideShares, { color: selected ? '#000' : color }]}>
+                          simulated borrow
+                        </Text>
+                      )}
                   </TouchableOpacity>
                 );
               })}
@@ -831,21 +855,22 @@ const styles = StyleSheet.create({
   metricLabel: { fontFamily: 'Inter_600SemiBold', color: DIM, fontSize: 8, letterSpacing: 0.8, marginBottom: 5 },
   metricValue: { fontFamily: 'Inter_700Bold', color: '#fff', fontSize: 12 },
   unsettledNote: { color: '#b6a36e', fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 10 },
-  quoteCard: { borderWidth: 1, borderColor: BORDER, backgroundColor: '#11151a', borderRadius: 14, padding: 13, marginBottom: 18 },
-  quoteTopRow: { flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 2, minWidth: 0 },
+  quoteCard: { borderWidth: 1, borderColor: BORDER, backgroundColor: '#11151a', borderRadius: 12, padding: 9, marginBottom: 12 },
+  quoteTopRow: { flexDirection: 'row', gap: 6, alignItems: 'center', minWidth: 0 },
   quoteName: { color: '#fff', fontFamily: 'Inter_600SemiBold', fontSize: 13 },
-  quoteSymbol: { color: DIM, fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 0.7, marginTop: 4 },
+  quoteSymbol: { color: DIM, fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 0.7, marginTop: 2 },
   quotePriceWrap: { alignItems: 'flex-end', flexShrink: 0, maxWidth: '42%' },
   quotePrice: { color: '#fff', fontFamily: 'Inter_700Bold', fontSize: 19 },
-  quoteChange: { fontFamily: 'Inter_600SemiBold', fontSize: 10, marginTop: 3 },
-  quoteRefreshButton: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingVertical: 8, paddingRight: 10, marginTop: 3 },
-  quoteRefreshLabel: { color: SILVER, fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 0.8 },
-  quoteRefreshError: { color: SELL_COLOR, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 4 },
+  quoteChange: { fontFamily: 'Inter_600SemiBold', fontSize: 10, marginTop: 1 },
+  quoteRefreshButton: { width: 44, height: 44, flexShrink: 0, alignItems: 'center', justifyContent: 'center', borderRadius: 11, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD_BG },
+  quoteRefreshError: { color: SELL_COLOR, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 6 },
   sectionLabel: { color: DIM, fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.5, marginBottom: 8, marginTop: 2 },
-  sideSwitch: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 18 },
-  sideButton: { flex: 1, minWidth: 0, minHeight: 58, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 5, borderWidth: 1, borderColor: BORDER, borderRadius: 11, paddingHorizontal: 5, paddingVertical: 7 },
-  sideButtonText: { flexShrink: 1, textAlign: 'center', fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 0.35 },
-  sideShares: { flexShrink: 1, maxWidth: '100%', textAlign: 'center', fontFamily: 'Inter_400Regular', fontSize: 8 },
+  sideSwitch: { flexDirection: 'row', flexWrap: 'nowrap', gap: 7, marginBottom: 18 },
+  sideButton: { flex: 1, minWidth: 0, minHeight: 68, flexDirection: 'column', flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'center', gap: 4, borderWidth: 1, borderColor: BORDER, borderRadius: 11, paddingHorizontal: 3, paddingVertical: 8 },
+  sideButtonMain: { width: '100%', minWidth: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  sideButtonMainCompact: { flexDirection: 'column', gap: 2 },
+  sideButtonText: { maxWidth: '100%', flexShrink: 0, textAlign: 'center', fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 0.3 },
+  sideShares: { maxWidth: '100%', textAlign: 'center', fontFamily: 'Inter_400Regular', fontSize: 9 },
   typeScroller: { marginBottom: 8 },
   typeRow: { flexDirection: 'row', gap: 8, paddingRight: 6 },
   typeChip: { minHeight: 44, borderWidth: 1, borderColor: BORDER, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },

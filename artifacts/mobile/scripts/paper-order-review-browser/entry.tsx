@@ -126,7 +126,7 @@ export default function Entry() {
         existingOrder={scenario.editing ? editableOrder : null}
         pendingOrders={[]}
         onClose={() => undefined}
-        onRefreshQuote={async () => undefined}
+        onRefreshQuote={async () => new Promise((resolve) => setTimeout(resolve, 300))}
         onSearchStock={() => undefined}
         onSetShortCollateralRatio={() => undefined}
         onConfirm={confirm}

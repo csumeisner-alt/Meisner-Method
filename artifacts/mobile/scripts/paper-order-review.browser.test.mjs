@@ -429,6 +429,116 @@ test("entry keeps short collateral conditional and quote/search content compact"
   }
 });
 
+test("quote refresh and trade-side hierarchy stay clear on narrow layouts", async () => {
+  const fixture = await startBrowser(await buildFixture());
+  const { browser } = fixture;
+  try {
+    const text = (testID) => browser.evaluate(
+      `document.querySelector(${JSON.stringify(selector(testID))})?.textContent ?? ""`,
+    );
+    const quoteHeight = await browser.evaluate(
+      `document.querySelector(${JSON.stringify(selector("paper-order-quote"))})?.getBoundingClientRect().height ?? 0`,
+    );
+    assert.ok(quoteHeight <= 100, `the compact quote card should stay short: ${quoteHeight}px`);
+    assert.match(await text("paper-order-quote"), /Acme Corp/);
+    assert.match(await text("paper-order-quote"), /ACME · LIVE/);
+    assert.match(await text("paper-order-quote"), /\$100\.00/);
+    assert.match(await text("paper-order-quote"), /0\.00%/);
+
+    await click(browser, "quote-stale");
+    const refreshButton = await browser.evaluate(`(() => {
+      const button = document.querySelector(${JSON.stringify(selector("paper-order-refresh-quote"))});
+      const box = button?.getBoundingClientRect();
+      return {
+        label: button?.getAttribute("aria-label"),
+        role: button?.getAttribute("role"),
+        width: box?.width,
+        height: box?.height,
+        text: button?.textContent?.trim(),
+      };
+    })()`);
+    assert.equal(refreshButton.label, "Refresh provider quote");
+    assert.equal(refreshButton.role, "button");
+    assert.ok(refreshButton.width >= 40 && refreshButton.width <= 48);
+    assert.ok(refreshButton.height >= 40 && refreshButton.height <= 48);
+    assert.equal(refreshButton.text, "", "the quote refresh action should be icon-only");
+
+    await click(browser, "paper-order-refresh-quote");
+    const refreshing = await browser.evaluate(`(() => {
+      const button = document.querySelector(${JSON.stringify(selector("paper-order-refresh-quote"))});
+      return {
+        label: button?.getAttribute("aria-label"),
+        disabled: button?.getAttribute("aria-disabled"),
+        hasSpinner: !!button?.querySelector(${JSON.stringify(selector("paper-order-refresh-spinner"))}),
+      };
+    })()`);
+    assert.equal(refreshing.label, "Refreshing provider quote");
+    assert.equal(refreshing.hasSpinner, true, "refreshing should show a visible loading indicator");
+    assert.ok(refreshing.disabled === "true" || refreshing.disabled === "");
+    await waitFor(browser,
+      `document.querySelector(${JSON.stringify(selector("paper-order-refresh-quote"))})?.getAttribute("aria-label") === "Refresh provider quote"`,
+      "The quote refresh button should return to its idle state.");
+    assert.match(await text("paper-order-quote"), /ACME · STALE/);
+
+    await click(browser, "quote-missing");
+    assert.match(await text("paper-order-quote"), /ACME · NO QUOTE/);
+    assert.equal(await browser.evaluate(
+      `!!document.querySelector(${JSON.stringify(selector("paper-order-refresh-quote"))})`,
+    ), true, "an unavailable quote should retain its refresh action");
+
+    for (const width of [320, 360]) {
+      await browser.send("Emulation.setDeviceMetricsOverride", {
+        width, height: 720, deviceScaleFactor: 1, mobile: true,
+      });
+      await applyTextScale(browser, 1.3);
+      for (const [scenario, expectedLabel, expectedDetail] of [
+        ["scenario-buy", "BUY", ""],
+        ["scenario-sell", "SELL", "4 available"],
+        ["scenario-short", "SHORT SELL", "simulated borrow"],
+      ]) {
+        await click(browser, scenario);
+        const side = scenario === "scenario-buy" ? "buy" : scenario === "scenario-sell" ? "sell" : "short";
+        const layout = await browser.evaluate(`(() => {
+          const button = document.querySelector(${JSON.stringify(selector(`paper-order-side-${side}`))});
+          const main = document.querySelector(${JSON.stringify(selector(`paper-order-side-${side}-main`))});
+          const label = document.querySelector(${JSON.stringify(selector(`paper-order-side-${side}-label`))});
+          const detail = document.querySelector(${JSON.stringify(selector(`paper-order-side-${side}-detail`))});
+          const buttonBox = button?.getBoundingClientRect();
+          const mainBox = main?.getBoundingClientRect();
+          const labelBox = label?.getBoundingClientRect();
+          return {
+            label: label?.textContent?.trim(),
+            detail: detail?.textContent?.trim() ?? "",
+            buttonWrap: getComputedStyle(button).flexWrap,
+            buttonDirection: getComputedStyle(button).flexDirection,
+            mainDirection: getComputedStyle(main).flexDirection,
+            mainAlign: getComputedStyle(main).alignItems,
+            mainJustify: getComputedStyle(main).justifyContent,
+            centerOffset: Math.abs((mainBox.left + mainBox.width / 2) - (buttonBox.left + buttonBox.width / 2)),
+            labelInsideButton: labelBox.left >= buttonBox.left - 1 && labelBox.right <= buttonBox.right + 1,
+            quoteHeight: document.querySelector(${JSON.stringify(selector("paper-order-quote"))})?.getBoundingClientRect().height,
+          };
+        })()`);
+        assert.equal(layout.label, expectedLabel);
+        assert.equal(layout.detail, expectedDetail);
+        assert.equal(layout.buttonWrap, "nowrap");
+        assert.equal(layout.buttonDirection, "column");
+        assert.equal(layout.mainDirection, "column");
+        assert.equal(layout.mainAlign, "center");
+        assert.equal(layout.mainJustify, "center");
+        assert.ok(layout.centerOffset <= 1, `${side} main choice should be centered: ${JSON.stringify(layout)}`);
+        assert.equal(layout.labelInsideButton, true, `${side} label should fit at ${width}px with larger text`);
+        assert.ok(layout.quoteHeight <= 120, `the quote card should remain compact at ${width}px with larger text`);
+        await applyTextScale(browser, 1.3);
+      }
+      assert.equal(await browser.evaluate("document.documentElement.scrollWidth"), width,
+        `the order form should not overflow at ${width}px with larger text`);
+    }
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("editing a pending order keeps its saved details and review identity", async () => {
   const fixture = await startBrowser(await buildFixture());
   const { browser } = fixture;
