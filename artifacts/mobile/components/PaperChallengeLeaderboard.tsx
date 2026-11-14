@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   AppState,
   Modal,
   Platform,
@@ -16,6 +17,7 @@ import { Feather } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 import {
   getGetEventArenaLeaderboardQueryKey,
   submitEventArenaScore,
@@ -46,6 +48,12 @@ import {
   getEventArenaPodiumSlots,
   getEventArenaStatus,
 } from '@/lib/eventArenaLeaderboard';
+import {
+  getEventArenaCompetitiveBadges,
+  getEventArenaCompetitiveChanges,
+  getEventArenaNextRankReturnGap,
+  getEventArenaWindowProgress,
+} from '@/lib/eventArenaCompetitiveProgress';
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 const REFRESH_INTERVAL_MS = 120_000;
@@ -109,6 +117,24 @@ const dateRangeLabel = (startAtMs: number, endAtMs: number) => {
   const end = new Date(endAtMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   return `${start}–${end}`;
 };
+
+function CompetitiveBadge({ label, color }: { label: string; color: string }) {
+  return (
+    <View style={{
+      maxWidth: '100%',
+      paddingHorizontal: 6,
+      paddingVertical: 3,
+      borderRadius: 10,
+      backgroundColor: `${color}18`,
+      borderWidth: 1,
+      borderColor: `${color}55`,
+    }}>
+      <Text allowFontScaling style={{ color, fontFamily: 'Inter_700Bold', fontSize: 8 }}>
+        {label}
+      </Text>
+    </View>
+  );
+}
 
 async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event: EventWindow) {
   const raw = await AsyncStorage.getItem('@stocksense/paper_v2');
@@ -213,6 +239,7 @@ export function PaperChallengeLeaderboard({
   onCashTransfer,
 }: Props) {
   const colors = useColors();
+  const reduceMotion = useReduceMotion();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const [open, setOpen] = useState(false);
@@ -244,6 +271,17 @@ export function PaperChallengeLeaderboard({
   const [installationIdReady, setInstallationIdReady] = useState(false);
   const [averageCostFallbackByEvent, setAverageCostFallbackByEvent] = useState<Record<string, boolean>>({});
   const [countdownNow, setCountdownNow] = useState(Date.now());
+  const [rankComparison, setRankComparison] = useState<{
+    eventId: string;
+    previousEntries: LeaderboardEntry[] | null;
+    updateAt: number;
+  } | null>(null);
+  const lastSuccessfulResponseRef = useRef<{
+    eventId: string;
+    updateAt: number;
+    entries: LeaderboardEntry[];
+  } | null>(null);
+  const rankAnimationsRef = useRef(new Map<string, Animated.Value>());
   const visible = embedded || open;
   const leaderboardQuery = useGetEventArenaLeaderboard(event.id, {
     request: installationId ? { headers: { 'X-Event-Arena-Installation-Id': installationId } } : undefined,
@@ -259,6 +297,22 @@ export function PaperChallengeLeaderboard({
   const lastUpdated = leaderboardQuery.data?.updatedAt ?? null;
   const podiumSlots = useMemo(() => getEventArenaPodiumSlots(entries), [entries]);
   const eventStatus = getEventArenaStatus(event.startAtMs, event.endAtMs, countdownNow);
+  const eventProgress = getEventArenaWindowProgress(event.startAtMs, event.endAtMs, countdownNow);
+  const activeParticipantTokens = new Set(entries.map((entry) => entry.participantToken));
+  for (const participantToken of rankAnimationsRef.current.keys()) {
+    if (!activeParticipantTokens.has(participantToken)) rankAnimationsRef.current.delete(participantToken);
+  }
+  for (const entry of entries) {
+    if (!rankAnimationsRef.current.has(entry.participantToken)) {
+      rankAnimationsRef.current.set(entry.participantToken, new Animated.Value(1));
+    }
+  }
+  const competitiveChanges = useMemo(
+    () => rankComparison?.eventId === event.id
+      ? getEventArenaCompetitiveChanges(rankComparison.previousEntries, entries)
+      : new Map(),
+    [entries, event.id, rankComparison],
+  );
   const compactPodium = windowWidth <= 360;
   const loading = refreshing || (visible && !installationIdReady) || (leaderboardQuery.isLoading && entries.length === 0);
   const loadError = error || (leaderboardQuery.error ? 'The leaderboard could not be loaded. Please retry.' : '');
@@ -288,6 +342,53 @@ export function PaperChallengeLeaderboard({
     if (openOnMount && !embedded) setOpen(true);
   }, [embedded, openOnMount]);
   useEffect(() => { enrollmentRef.current = enrollment; }, [enrollment]);
+  useEffect(() => {
+    if (!leaderboardQuery.data || leaderboardQuery.dataUpdatedAt <= 0) return;
+    const updateAt = leaderboardQuery.dataUpdatedAt;
+    const lastResponse = lastSuccessfulResponseRef.current;
+    if (lastResponse?.eventId === event.id && lastResponse.updateAt === updateAt) return;
+    const currentEntries = leaderboardQuery.data.entries ?? [];
+    setRankComparison({
+      eventId: event.id,
+      previousEntries: lastResponse?.eventId === event.id ? lastResponse.entries : null,
+      updateAt,
+    });
+    lastSuccessfulResponseRef.current = { eventId: event.id, updateAt, entries: currentEntries };
+  }, [event.id, leaderboardQuery.data, leaderboardQuery.dataUpdatedAt]);
+  useEffect(() => {
+    if (reduceMotion || rankComparison?.eventId !== event.id) return;
+    for (const [participantToken, change] of competitiveChanges) {
+      if (change.placesMoved === 0) continue;
+      let animation = rankAnimationsRef.current.get(participantToken);
+      if (!animation) {
+        animation = new Animated.Value(1);
+        rankAnimationsRef.current.set(participantToken, animation);
+      }
+      animation.stopAnimation();
+      animation.setValue(0.84);
+      Animated.timing(animation, {
+        toValue: 1,
+        duration: 240,
+        useNativeDriver: Platform.OS !== 'web',
+      }).start();
+    }
+    const champion = entries.find((entry) => entry.rank === 1);
+    const previousChampion = rankComparison.previousEntries?.find((entry) => entry.rank === 1);
+    if (champion && previousChampion && previousChampion.participantToken !== champion.participantToken) {
+      let animation = rankAnimationsRef.current.get(champion.participantToken);
+      if (!animation) {
+        animation = new Animated.Value(1);
+        rankAnimationsRef.current.set(champion.participantToken, animation);
+      }
+      animation.stopAnimation();
+      animation.setValue(0.84);
+      Animated.timing(animation, {
+        toValue: 1,
+        duration: 320,
+        useNativeDriver: Platform.OS !== 'web',
+      }).start();
+    }
+  }, [competitiveChanges, entries, event.id, rankComparison, reduceMotion]);
   useEffect(() => {
     const timer = setInterval(() => setCountdownNow(Date.now()), 30_000);
     return () => clearInterval(timer);
@@ -548,74 +649,124 @@ export function PaperChallengeLeaderboard({
     }
   };
 
-  const renderEntry = (entry: LeaderboardEntry) => (
-    <TouchableOpacity
+  const renderEntry = (entry: LeaderboardEntry) => {
+    const change = competitiveChanges.get(entry.participantToken);
+    const badges = getEventArenaCompetitiveBadges(entry.rank, entry.tradeCount, change);
+    const placesMoved = change?.placesMoved ?? 0;
+    const progressAnnouncement = [
+      ...(badges.length ? [`Self-reported badges: ${badges.join(', ')}`] : []),
+      ...(change && placesMoved !== 0
+        ? [`self-reported rank movement ${placesMoved > 0 ? 'up' : 'down'} ${Math.abs(placesMoved)} ${Math.abs(placesMoved) === 1 ? 'place' : 'places'}`]
+        : []),
+    ].join('. ');
+    return (
+    <Animated.View
       key={`${entry.rank}-${entry.alias}`}
-      testID={`event-leaderboard-entry-${entry.rank}`}
-      accessibilityRole="button"
-      accessibilityLabel={`Rank ${entry.rank}, ${entry.alias}${entry.isCurrentUser ? ', your score' : ''}, account value ${money(entry.equity)}, profit or loss ${signedMoney(entry.profitLoss)}, ${returnLabel(entry.returnPercent)} return, ${entry.tradeCount == null ? 'trade count unavailable' : `${entry.tradeCount} trades`}. View public score summary.`}
-      onPress={() => setDetail(entry)}
       style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        paddingVertical: 12,
-        paddingHorizontal: entry.isCurrentUser ? 9 : 0,
-        marginVertical: entry.isCurrentUser ? 3 : 0,
+        opacity: reduceMotion ? 1 : rankAnimationsRef.current.get(entry.participantToken) ?? 1,
         borderBottomWidth: 1,
         borderWidth: entry.isCurrentUser ? 1 : 0,
         borderColor: entry.isCurrentUser ? colors.goldMuted : colors.border,
         borderRadius: entry.isCurrentUser ? 10 : 0,
         backgroundColor: entry.isCurrentUser ? colors.card : 'transparent',
+        marginVertical: entry.isCurrentUser ? 3 : 0,
       }}
     >
-      <Text style={{
-        width: 34,
-        color: colors.mutedForeground,
-        fontFamily: 'Inter_700Bold',
-        fontSize: 14,
-      }}>#{entry.rank}</Text>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Text style={{ flexShrink: 1, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 13 }} numberOfLines={1}>
-            {entry.alias}
-          </Text>
-          {entry.isCurrentUser && (
-            <Text style={{ color: colors.gold, fontFamily: 'Inter_700Bold', fontSize: 8 }}>YOU</Text>
-          )}
+      <TouchableOpacity
+        testID={`event-leaderboard-entry-${entry.rank}`}
+        accessibilityRole="button"
+        accessibilityLabel={`Rank ${entry.rank}, ${entry.alias}${entry.isCurrentUser ? ', your score' : ''}, account value ${money(entry.equity)}, profit or loss ${signedMoney(entry.profitLoss)}, ${returnLabel(entry.returnPercent)} return, ${entry.tradeCount == null ? 'trade count unavailable' : `${entry.tradeCount} trades`}.${progressAnnouncement ? ` ${progressAnnouncement}.` : ''} View public score summary.`}
+        onPress={() => setDetail(entry)}
+        style={{
+          flexDirection: 'column',
+          alignItems: 'stretch',
+          paddingVertical: 12,
+          paddingHorizontal: entry.isCurrentUser ? 9 : 0,
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={{
+            width: 34,
+            color: colors.mutedForeground,
+            fontFamily: 'Inter_700Bold',
+            fontSize: 14,
+          }}>#{entry.rank}</Text>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={{ flexShrink: 1, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 13 }} numberOfLines={1}>
+                {entry.alias}
+              </Text>
+              {entry.isCurrentUser && (
+                <Text style={{ color: colors.gold, fontFamily: 'Inter_700Bold', fontSize: 8 }}>YOU</Text>
+              )}
+            </View>
+            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>
+              {money(entry.equity)} account value
+            </Text>
+          </View>
+          <View style={{ alignItems: 'flex-end', maxWidth: '42%', minWidth: 0 }}>
+            <Text adjustsFontSizeToFit numberOfLines={1} style={{ color: entry.returnPercent >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 13 }}>
+              {returnLabel(entry.returnPercent)}
+            </Text>
+            <Text adjustsFontSizeToFit numberOfLines={1} style={{ color: entry.profitLoss >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_600SemiBold', fontSize: 10, marginTop: 3 }}>
+              {signedMoney(entry.profitLoss)}
+            </Text>
+            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 9, marginTop: 2 }}>
+              {entry.tradeCount == null ? 'Trades unavailable' : `${entry.tradeCount} trades`}
+            </Text>
+          </View>
         </View>
-        <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>
-          {money(entry.equity)} account value
-        </Text>
-      </View>
-      <View style={{ alignItems: 'flex-end', maxWidth: '42%', minWidth: 0 }}>
-        <Text adjustsFontSizeToFit numberOfLines={1} style={{ color: entry.returnPercent >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 13 }}>
-          {returnLabel(entry.returnPercent)}
-        </Text>
-        <Text adjustsFontSizeToFit numberOfLines={1} style={{ color: entry.profitLoss >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_600SemiBold', fontSize: 10, marginTop: 3 }}>
-          {signedMoney(entry.profitLoss)}
-        </Text>
-        <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 9, marginTop: 2 }}>
-          {entry.tradeCount == null ? 'Trades unavailable' : `${entry.tradeCount} trades`}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
+        {(badges.length > 0 || placesMoved !== 0) && (
+          <View style={{ width: '100%', flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+            {badges.map((badge) => (
+              <CompetitiveBadge
+                key={badge}
+                label={badge}
+                color={badge === 'CHAMPION' ? '#D8B45A' : badge === 'PODIUM FINISH' ? '#C68762' : badge === 'RISING STAR' ? '#A88BFF' : colors.primary}
+              />
+            ))}
+            {placesMoved !== 0 && (
+              <CompetitiveBadge
+                label={`${placesMoved > 0 ? '↑' : '↓'} ${Math.abs(placesMoved)} ${Math.abs(placesMoved) === 1 ? 'PLACE' : 'PLACES'}`}
+                color={placesMoved > 0 ? colors.primary : colors.destructive}
+              />
+            )}
+            <Text style={{ flexBasis: '100%', color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 8 }}>
+              SELF-REPORTED LEADERBOARD DATA
+            </Text>
+          </View>
+        )}
+      </TouchableOpacity>
+    </Animated.View>
+    );
+  };
 
   const renderPodiumCard = (slot: (typeof podiumSlots)[number]) => {
     const entry = slot.entry;
+    const change = entry ? competitiveChanges.get(entry.participantToken) : undefined;
+    const badges = entry ? getEventArenaCompetitiveBadges(entry.rank, entry.tradeCount, change) : [];
+    const placesMoved = change?.placesMoved ?? 0;
+    const progressAnnouncement = [
+      ...(badges.length ? [`Self-reported badges: ${badges.join(', ')}`] : []),
+      ...(change && placesMoved !== 0
+        ? [`self-reported rank movement ${placesMoved > 0 ? 'up' : 'down'} ${Math.abs(placesMoved)} ${Math.abs(placesMoved) === 1 ? 'place' : 'places'}`]
+        : []),
+    ].join('. ');
     const medal = slot.rank === 1
       ? { label: 'CHAMPION', color: '#D8B45A', height: compactPodium ? 202 : 218 }
       : slot.rank === 2
         ? { label: 'RUNNER-UP', color: '#AEB9C6', height: compactPodium ? 176 : 188 }
         : { label: 'THIRD PLACE', color: '#C68762', height: compactPodium ? 164 : 176 };
     return (
-      <TouchableOpacity
+      <Animated.View
         key={slot.rank}
+        style={{ opacity: !entry || reduceMotion ? 1 : rankAnimationsRef.current.get(entry.participantToken) ?? 1 }}
+      >
+      <TouchableOpacity
         testID={`paper-event-podium-${slot.rank}`}
         accessibilityRole={entry ? 'button' : 'text'}
         accessibilityLabel={entry
-          ? `Rank ${slot.rank}, ${entry.alias}, ${returnLabel(entry.returnPercent)} return, profit or loss ${signedMoney(entry.profitLoss)}, account value ${money(entry.equity)}`
+          ? `Rank ${slot.rank}, ${entry.alias}, ${returnLabel(entry.returnPercent)} return, profit or loss ${signedMoney(entry.profitLoss)}, account value ${money(entry.equity)}.${progressAnnouncement ? ` ${progressAnnouncement}.` : ''}`
           : `Rank ${slot.rank}, waiting for competitor`}
         disabled={!entry}
         onPress={() => { if (entry) setDetail(entry as LeaderboardEntry); }}
@@ -634,7 +785,7 @@ export function PaperChallengeLeaderboard({
           borderBottomRightRadius: 10,
           borderWidth: 1,
           borderColor: entry ? `${medal.color}88` : colors.border,
-          backgroundColor: entry ? `${medal.color}12` : colors.card,
+          backgroundColor: entry ? `${medal.color}${slot.rank === 1 ? '1E' : '12'}` : colors.card,
           opacity: entry ? 1 : 0.78,
         }}
       >
@@ -657,6 +808,24 @@ export function PaperChallengeLeaderboard({
             <Text numberOfLines={1} adjustsFontSizeToFit style={{ maxWidth: '100%', color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: compactPodium ? 11 : 12, marginTop: 5 }}>
               {entry.alias}
             </Text>
+            {(badges.length > 0 || placesMoved !== 0) && (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 3, marginTop: 4 }}>
+                {badges.map((badge) => (
+                  <CompetitiveBadge
+                    key={badge}
+                    label={badge}
+                    color={badge === 'CHAMPION' ? '#D8B45A' : badge === 'PODIUM FINISH' ? '#C68762' : badge === 'RISING STAR' ? '#A88BFF' : colors.primary}
+                  />
+                ))}
+                {placesMoved !== 0 && (
+                  <CompetitiveBadge
+                    label={`${placesMoved > 0 ? '↑' : '↓'} ${Math.abs(placesMoved)} PLACES`}
+                    color={placesMoved > 0 ? colors.primary : colors.destructive}
+                  />
+                )}
+                <Text style={{ flexBasis: '100%', color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 7, textAlign: 'center' }}>SELF-REPORTED</Text>
+              </View>
+            )}
             <Text numberOfLines={1} adjustsFontSizeToFit style={{ maxWidth: '100%', color: entry.returnPercent >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_700Bold', fontSize: compactPodium ? 13 : 15, marginTop: 6 }}>
               {returnLabel(entry.returnPercent)}
             </Text>
@@ -680,6 +849,7 @@ export function PaperChallengeLeaderboard({
           </View>
         )}
       </TouchableOpacity>
+      </Animated.View>
     );
   };
 
@@ -941,6 +1111,18 @@ export function PaperChallengeLeaderboard({
                     {eventStatus.countdown}
                   </Text>
                 </View>
+                <View
+                  testID="paper-event-leaderboard-event-progress"
+                  accessibilityRole="progressbar"
+                  accessibilityLabel={`Event progress ${Math.round(eventProgress)} percent`}
+                  accessibilityValue={{ min: 0, max: 100, now: Math.round(eventProgress) }}
+                  style={{ height: 5, overflow: 'hidden', borderRadius: 4, marginTop: 10, backgroundColor: colors.border }}
+                >
+                  <View style={{ width: `${eventProgress}%`, height: '100%', borderRadius: 4, backgroundColor: eventStatus.phase === 'ended' ? colors.gold : colors.primary }} />
+                </View>
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 8, marginTop: 4 }}>
+                  EVENT PROGRESS · {Math.round(eventProgress)}%
+                </Text>
                 <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 8 }}>
                   Last successful update: {timeLabel(lastUpdated)}
                 </Text>
@@ -1004,9 +1186,10 @@ export function PaperChallengeLeaderboard({
                     </View>
                   </View>
                   {ownEntry && (
-                    <View
+                    <Animated.View
                       testID="paper-event-leaderboard-your-position"
                       style={{
+                        opacity: reduceMotion ? 1 : rankAnimationsRef.current.get(ownEntry.participantToken) ?? 1,
                         padding: 14,
                         marginTop: 15,
                         marginBottom: 13,
@@ -1028,6 +1211,36 @@ export function PaperChallengeLeaderboard({
                       <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 17, marginTop: 6 }}>
                         Rank #{ownEntry.rank} · {ownEntry.alias}
                       </Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>
+                        {getEventArenaCompetitiveBadges(
+                          ownEntry.rank,
+                          ownEntry.tradeCount,
+                          competitiveChanges.get(ownEntry.participantToken),
+                        ).map((badge) => (
+                          <CompetitiveBadge
+                            key={badge}
+                            label={badge}
+                            color={badge === 'CHAMPION' ? '#D8B45A' : badge === 'PODIUM FINISH' ? '#C68762' : badge === 'RISING STAR' ? '#A88BFF' : colors.primary}
+                          />
+                        ))}
+                        {competitiveChanges.has(ownEntry.participantToken) && competitiveChanges.get(ownEntry.participantToken)!.placesMoved !== 0 && (
+                          <CompetitiveBadge
+                            label={`${competitiveChanges.get(ownEntry.participantToken)!.placesMoved > 0 ? '↑' : '↓'} ${Math.abs(competitiveChanges.get(ownEntry.participantToken)!.placesMoved)} ${Math.abs(competitiveChanges.get(ownEntry.participantToken)!.placesMoved) === 1 ? 'PLACE' : 'PLACES'}`}
+                            color={competitiveChanges.get(ownEntry.participantToken)!.placesMoved > 0 ? colors.primary : colors.destructive}
+                          />
+                        )}
+                      </View>
+                      <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 8, marginTop: 4 }}>
+                        ACHIEVEMENTS AND MOVEMENT USE SELF-REPORTED LEADERBOARD DATA
+                      </Text>
+                      {ownEntry.rank > 1 && (() => {
+                        const returnGap = getEventArenaNextRankReturnGap(ownEntry, entries);
+                        return returnGap === null ? null : (
+                          <Text testID="paper-event-next-rank-gap" style={{ color: colors.gold, fontFamily: 'Inter_600SemiBold', fontSize: 10, marginTop: 7 }}>
+                            {returnGap.toFixed(2)} percentage points to rank #{ownEntry.rank - 1}
+                          </Text>
+                        );
+                      })()}
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 10 }}>
                         {[
                           { label: 'RETURN', value: returnLabel(ownEntry.returnPercent), color: ownEntry.returnPercent >= 0 ? colors.primary : colors.destructive },
@@ -1049,7 +1262,7 @@ export function PaperChallengeLeaderboard({
                           A market quote was unavailable for one or more holdings, so average cost was used for those positions in your score.
                         </Text>
                       )}
-                    </View>
+                    </Animated.View>
                   )}
                   {entries.some((entry) => entry.rank > 3) && (
                     <View testID="paper-event-leaderboard-list" style={{ marginTop: 4 }}>

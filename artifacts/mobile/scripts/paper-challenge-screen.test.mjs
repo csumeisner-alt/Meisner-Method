@@ -14,6 +14,7 @@ const challenge = readFileSync(new URL("../lib/paperChallenge.ts", import.meta.u
 const badges = readFileSync(new URL("../components/PaperChallengeMilestoneBadges.tsx", import.meta.url), "utf8");
 const shareCard = readFileSync(new URL("../components/PaperEventShareCard.tsx", import.meta.url), "utf8");
 const leaderboard = readFileSync(new URL("../components/PaperChallengeLeaderboard.tsx", import.meta.url), "utf8");
+const leaderboardProgress = readFileSync(new URL("../lib/eventArenaCompetitiveProgress.ts", import.meta.url), "utf8");
 const eventArena = readFileSync(new URL("../components/EventArenaScreen.tsx", import.meta.url), "utf8");
 const eventArenaOverview = readFileSync(new URL("../components/EventArenaOverview.tsx", import.meta.url), "utf8");
 const eventArenaTransfers = readFileSync(new URL("../lib/eventArenaTransfers.ts", import.meta.url), "utf8");
@@ -181,6 +182,37 @@ test("championship leaderboard shows real podium scores, event context, and belo
   assert.match(leaderboard, /retry-paper-event-leaderboard/);
   assert.match(leaderboard, /paper-event-leaderboard-stale/);
   assert.match(leaderboard, /refresh-empty-paper-event-leaderboard/);
+});
+
+test("competitive progress stays tied to successful event responses and readable mobile cards", () => {
+  assert.match(leaderboard, /leaderboardQuery\.dataUpdatedAt/);
+  assert.match(leaderboard, /lastResponse\?\.eventId === event\.id \? lastResponse\.entries : null/);
+  assert.match(leaderboard, /previousEntries: LeaderboardEntry\[\] \| null/);
+  assert.match(leaderboard, /getEventArenaCompetitiveChanges\(rankComparison\.previousEntries, entries\)/);
+  assert.match(leaderboard, /getEventArenaCompetitiveBadges\(entry\.rank, entry\.tradeCount, change\)/);
+  assert.match(leaderboardProgress, /tradeCount >= 25/);
+  assert.match(leaderboard, /getEventArenaNextRankReturnGap\(ownEntry, entries\)/);
+  assert.match(leaderboard, /testID="paper-event-next-rank-gap"/);
+  assert.match(leaderboard, /testID="paper-event-leaderboard-event-progress"/);
+  assert.match(leaderboard, /getEventArenaWindowProgress\(event\.startAtMs, event\.endAtMs, countdownNow\)/);
+  assert.match(leaderboard, /SELF-REPORTED LEADERBOARD DATA/);
+  assert.match(leaderboard, /ACHIEVEMENTS AND MOVEMENT USE SELF-REPORTED LEADERBOARD DATA/);
+  assert.match(leaderboard, /useReduceMotion\(\)/);
+  assert.match(leaderboard, /duration: 240/);
+  assert.match(leaderboard, /duration: 320/);
+  assert.match(leaderboard, /opacity: reduceMotion \? 1/);
+  assert.match(leaderboard, /flexWrap: 'wrap'/);
+  assert.match(leaderboard, /minWidth: 0/);
+  assert.match(leaderboard, /flexDirection: 'column',\s*alignItems: 'stretch'/);
+  assert.match(leaderboard, /const compactPodium = windowWidth <= 360/);
+
+  // Existing endpoint, ordering, disclosure, and retry/stale-data paths stay intact.
+  assert.match(leaderboard, /useGetEventArenaLeaderboard\(event\.id/);
+  assert.match(leaderboard, /getEventArenaPodiumSlots\(entries\)/);
+  assert.match(leaderboard, /entries\.filter\(\(entry\) => entry\.rank > 3\)\.map\(\(entry\) => renderEntry\(entry as LeaderboardEntry\)\)/);
+  assert.match(leaderboard, /SELF-REPORTED · UNVERIFIED/);
+  assert.match(leaderboard, /The leaderboard could not be loaded\. Please retry\./);
+  assert.match(leaderboard, /paper-event-leaderboard-stale/);
 });
 
 test("milestone badges and event controls stay readable with larger system text", () => {
