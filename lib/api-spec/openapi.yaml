@@ -116,6 +116,40 @@ paths:
           description: The event has ended
         "429":
           description: The score was submitted too recently
+  /event-arena/{eventId}/leaderboard/history:
+    parameters:
+      - in: path
+        name: eventId
+        required: true
+        schema:
+          type: string
+          format: date
+        description: Scheduled Event Arena event ID; history never includes other events.
+    get:
+      operationId: getEventArenaLeaderboardHistory
+      tags: [eventArena]
+      summary: Get the requesting participant's Event Arena rank history
+      description: Returns sampled timestamped snapshots for the requesting anonymous installation only. Scores and ranks are self-reported and not independently verified.
+      parameters:
+        - in: header
+          name: X-Event-Arena-Installation-Id
+          required: true
+          schema:
+            type: string
+            minLength: 12
+            maxLength: 128
+          description: Anonymous device identifier used to look up only the requesting participant's history; it is never returned.
+      responses:
+        "200":
+          description: Sampled rank and percentage-return history for the participant in this event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventArenaLeaderboardHistoryResponse"
+        "400":
+          description: The event or anonymous installation ID is invalid
+        "500":
+          description: The participant history could not be loaded
   /event-arena/{eventId}/transfers:
     parameters:
       - in: path
@@ -764,6 +798,21 @@ components:
                 type: boolean
                 description: True only for the requesting installation's row; no installation ID is returned.
         updatedAt: { type: string, format: date-time }
+
+    EventArenaLeaderboardHistoryResponse:
+      type: object
+      required: [snapshots]
+      properties:
+        snapshots:
+          type: array
+          maxItems: 120
+          items:
+            type: object
+            required: [capturedAt, rank, returnPercent]
+            properties:
+              capturedAt: { type: string, format: date-time }
+              rank: { type: integer, minimum: 1 }
+              returnPercent: { type: number, description: Self-reported percentage return at this snapshot. }
 
     EventArenaCashTransferRequest:
       type: object

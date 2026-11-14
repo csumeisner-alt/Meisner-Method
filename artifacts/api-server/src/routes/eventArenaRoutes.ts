@@ -423,6 +423,59 @@ export function createEventArenaRouter(
     }
   });
 
+  router.get("/event-arena/:eventId/leaderboard/history", requireSchema, async (req: any, res: any) => {
+    const expectedWindow = expectedEventArenaWindow(req.params.eventId);
+    const requestingInstallationId = req.get("x-event-arena-installation-id");
+    if (!expectedWindow || !validInstallationId(requestingInstallationId)) {
+      res.status(400).json({ error: "A scheduled event and valid installation ID are required." });
+      return;
+    }
+    try {
+      await purgeExpiredEventArenaEntries(db);
+      const { rows } = await db.query(
+        `WITH participant_history AS (
+           SELECT
+             snapshots.captured_at,
+             snapshots.snapshot_id,
+             snapshots.rank,
+             snapshots.return_percent,
+             NTILE(120) OVER (ORDER BY snapshots.captured_at, snapshots.snapshot_id) AS bucket
+           FROM event_arena_leaderboard_snapshots AS snapshots
+           JOIN event_arena_leaderboard_entries AS participant
+             ON participant.event_id=snapshots.event_id
+             AND participant.participant_token=snapshots.participant_token
+           WHERE snapshots.event_id=$1
+             AND participant.installation_id=$2
+             AND participant.is_active=TRUE
+             AND participant.event_start_at=TO_TIMESTAMP($3 / 1000.0)
+             AND participant.event_end_at=TO_TIMESTAMP($4 / 1000.0)
+             AND snapshots.event_start_at=TO_TIMESTAMP($3 / 1000.0)
+             AND snapshots.event_end_at=TO_TIMESTAMP($4 / 1000.0)
+             AND snapshots.event_end_at > NOW() - ($5 * INTERVAL '1 day')
+         )
+         SELECT DISTINCT ON (bucket) captured_at, rank, return_percent
+         FROM participant_history
+         ORDER BY bucket, captured_at DESC, snapshot_id DESC`,
+        [
+          req.params.eventId,
+          requestingInstallationId,
+          expectedWindow.startAtMs,
+          expectedWindow.endAtMs,
+          EVENT_ARENA_RETENTION_DAYS,
+        ],
+      );
+      res.json({
+        snapshots: rows.map((row) => ({
+          capturedAt: row.captured_at instanceof Date ? row.captured_at.toISOString() : row.captured_at,
+          rank: Number(row.rank),
+          returnPercent: Number(row.return_percent),
+        })),
+      });
+    } catch {
+      res.status(500).json({ error: "Could not load your Event Arena history." });
+    }
+  });
+
   router.post("/event-arena/:eventId/leaderboard", requireSchema, async (req: any, res: any) => {
     const submission = parseSubmission(req.body);
     if (!submission) {
@@ -499,6 +552,50 @@ export function createEventArenaRouter(
           }
           return { status: "rate-limit" as const };
         }
+        const { rows: currentParticipants } = await client.query(
+          `SELECT installation_id, participant_token, alias, start_equity, equity, trade_count, holdings, updated_at
+           FROM event_arena_leaderboard_entries
+           WHERE event_id=$1
+             AND is_active=TRUE
+             AND event_start_at=TO_TIMESTAMP($2 / 1000.0)
+             AND event_end_at=TO_TIMESTAMP($3 / 1000.0)`,
+          [req.params.eventId, submission.eventStartAtMs, submission.eventEndAtMs],
+        );
+        const rankedSnapshots = rankEventArenaEntries(currentParticipants)
+          .map((entry) => ({
+            participantToken: entry.participantToken,
+            rank: entry.rank,
+            returnPercent: entry.returnPercent,
+          }));
+        if (rankedSnapshots.length > 0) {
+          await client.query(
+            `INSERT INTO event_arena_leaderboard_snapshots
+              (event_id, participant_token, event_start_at, event_end_at, captured_at, rank, return_percent)
+             SELECT $1, snapshot.participant_token,
+               TO_TIMESTAMP($5 / 1000.0), TO_TIMESTAMP($6 / 1000.0), NOW(),
+               snapshot.rank, snapshot.return_percent
+             FROM UNNEST($2::text[], $3::integer[], $4::double precision[])
+               AS snapshot(participant_token, rank, return_percent)
+             LEFT JOIN LATERAL (
+               SELECT snapshot_id, rank, return_percent
+               FROM event_arena_leaderboard_snapshots
+               WHERE event_id=$1 AND participant_token=snapshot.participant_token
+               ORDER BY captured_at DESC, snapshot_id DESC
+               LIMIT 1
+             ) AS previous ON TRUE
+             WHERE previous.snapshot_id IS NULL
+               OR previous.rank IS DISTINCT FROM snapshot.rank
+               OR previous.return_percent IS DISTINCT FROM snapshot.return_percent`,
+            [
+              req.params.eventId,
+              rankedSnapshots.map((snapshot) => snapshot.participantToken),
+              rankedSnapshots.map((snapshot) => snapshot.rank),
+              rankedSnapshots.map((snapshot) => snapshot.returnPercent),
+              submission.eventStartAtMs,
+              submission.eventEndAtMs,
+            ],
+          );
+        }
         const updatedAt = rows[0].updated_at instanceof Date
           ? rows[0].updated_at.toISOString()
           : rows[0].updated_at;
@@ -523,18 +620,33 @@ export function createEventArenaRouter(
     }
     try {
       await purgeExpiredEventArenaEntries(db);
-      await db.query(
-        `UPDATE event_arena_leaderboard_entries
-         SET is_active=FALSE,
-             start_equity=0,
-             equity=0,
-             return_percent=0,
-              trade_count=NULL,
-             holdings='[]'::jsonb,
-             updated_at=NOW()
-         WHERE event_id=$1 AND installation_id=$2 AND is_active=TRUE`,
-        [req.params.eventId, req.query.installationId],
-      );
+      await withTransaction(db, async (client) => {
+        const { rows } = await client.query(
+          `SELECT participant_token FROM event_arena_leaderboard_entries
+           WHERE event_id=$1 AND installation_id=$2 AND is_active=TRUE
+           FOR UPDATE`,
+          [req.params.eventId, req.query.installationId],
+        );
+        if (rows[0]?.participant_token) {
+          await client.query(
+            `DELETE FROM event_arena_leaderboard_snapshots
+             WHERE event_id=$1 AND participant_token=$2`,
+            [req.params.eventId, rows[0].participant_token],
+          );
+        }
+        await client.query(
+          `UPDATE event_arena_leaderboard_entries
+           SET is_active=FALSE,
+               start_equity=0,
+               equity=0,
+               return_percent=0,
+               trade_count=NULL,
+               holdings='[]'::jsonb,
+               updated_at=NOW()
+           WHERE event_id=$1 AND installation_id=$2 AND is_active=TRUE`,
+          [req.params.eventId, req.query.installationId],
+        );
+      });
       res.json({ ok: true });
     } catch {
       res.status(500).json({ error: "Could not remove your Event Arena entry." });

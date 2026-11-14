@@ -108,6 +108,18 @@ async function ensureEventArenaTables(pool: InstanceType<typeof Pool>) {
     "ALTER TABLE event_arena_leaderboard_entries ADD COLUMN IF NOT EXISTS cash_balance DOUBLE PRECISION NOT NULL DEFAULT 100000",
   );
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS event_arena_leaderboard_snapshots (
+      snapshot_id BIGSERIAL PRIMARY KEY,
+      event_id TEXT NOT NULL,
+      participant_token TEXT NOT NULL,
+      event_start_at TIMESTAMPTZ NOT NULL,
+      event_end_at TIMESTAMPTZ NOT NULL,
+      captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      rank INTEGER NOT NULL,
+      return_percent DOUBLE PRECISION NOT NULL
+    )
+  `);
+  await pool.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS event_arena_participant_token_idx
     ON event_arena_leaderboard_entries (event_id, participant_token)
   `);
@@ -613,7 +625,7 @@ test("expired public entries and their alias locks are deleted after the retenti
   await purgeExpiredEventArenaEntries({
     async query(sql, values) {
       cleanupCalls += 1;
-      assert.match(sql, /^DELETE FROM event_arena_(leaderboard_entries|cash_transfers)/);
+      assert.match(sql, /^DELETE FROM event_arena_(leaderboard_entries|cash_transfers|leaderboard_snapshots)/);
       assert.match(sql, /event_end_at <= NOW\(\) - \(\$1 \* INTERVAL '1 day'\)/);
       assert.deepEqual(values, [30]);
       assert.doesNotMatch(sql, /is_active/);
@@ -622,7 +634,7 @@ test("expired public entries and their alias locks are deleted after the retenti
     },
   });
   assert.equal(EVENT_ARENA_RETENTION_DAYS, 30);
-  assert.equal(cleanupCalls, 2);
+  assert.equal(cleanupCalls, 3);
 });
 
 test("submission rejects private fields, inconsistent scores, malformed holdings, and oversized payloads", async () => {
@@ -673,6 +685,161 @@ test("valid anonymous submission stores only event-scoped score and public holdi
   assert.equal(storedValues?.[1], installationId);
   assert.equal(storedValues?.[6], 3);
   assert.deepEqual(JSON.parse(storedValues?.[7]), [{ symbol: "AAPL", companyName: "Apple Inc.", allocationPercent: 12.5, side: "long" }]);
+});
+
+test("accepted score submissions store ranked event snapshots without private identity", async () => {
+  const insertedSnapshotValues: unknown[][] = [];
+  await withApi(async (sql, values) => {
+    if (sql.startsWith("DELETE")) return { rows: [] };
+    if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return { rows: [] };
+    if (sql.startsWith("SELECT installation_id\n")) return { rows: [] };
+    if (sql.startsWith("INSERT INTO event_arena_leaderboard_entries")) {
+      return { rows: [{ updated_at: new Date("2026-11-18T17:00:00.000Z") }] };
+    }
+    if (sql.includes("SELECT installation_id, participant_token, alias")) {
+      return { rows: [
+        {
+          installation_id: installationId,
+          participant_token: "participant-token-marketfox",
+          alias: "MarketFox",
+          start_equity: 100_000,
+          equity: 101_000,
+          updated_at: new Date("2026-11-18T17:00:00.000Z"),
+        },
+        {
+          installation_id: "another-private-installation",
+          participant_token: "participant-token-bluewhale",
+          alias: "BlueWhale",
+          start_equity: 100_000,
+          equity: 105_000,
+          updated_at: new Date("2026-11-18T16:59:00.000Z"),
+        },
+      ] };
+    }
+    assert.match(sql, /INSERT INTO event_arena_leaderboard_snapshots/);
+    assert.match(sql, /UNNEST\(\$2::text\[\], \$3::integer\[\], \$4::double precision\[\]\)/);
+    assert.match(sql, /LEFT JOIN LATERAL/);
+    assert.match(sql, /previous\.rank IS DISTINCT FROM snapshot\.rank/);
+    insertedSnapshotValues.push(values ?? []);
+    return { rows: [] };
+  }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/${eventId}/leaderboard`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(validSubmission()),
+    });
+    assert.equal(response.status, 200);
+  });
+  assert.equal(insertedSnapshotValues.length, 1);
+  assert.deepEqual(insertedSnapshotValues[0]?.[1], [
+    "participant-token-bluewhale",
+    "participant-token-marketfox",
+  ]);
+  assert.deepEqual(insertedSnapshotValues[0]?.[2], [1, 2]);
+  assert.deepEqual(insertedSnapshotValues[0]?.[3], [5, 1]);
+  assert.equal(JSON.stringify(insertedSnapshotValues).includes(installationId), false);
+  assert.equal(JSON.stringify(insertedSnapshotValues).includes("another-private-installation"), false);
+});
+
+test(
+  "database-backed event history records, retrieves, and removes a participant's rank snapshots",
+  { skip: !databaseUrl && "DATABASE_URL is not configured" },
+  async () => {
+    assert.ok(databaseUrl);
+    const pool = new Pool({ connectionString: databaseUrl });
+    const historyEventId = "2027-11-15";
+    const historyStartAtMs = Date.parse("2027-11-15T14:30:00.000Z");
+    const historyEndAtMs = Date.parse("2027-11-19T21:00:00.000Z");
+    const historyInstallationId = `history-installation-${randomUUID()}`;
+    try {
+      await ensureEventArenaTables(pool);
+      await withApi(pool, async (baseUrl) => {
+        const submission = await fetch(`${baseUrl}/event-arena/${historyEventId}/leaderboard`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(validSubmission({
+            installationId: historyInstallationId,
+            eventStartAtMs: historyStartAtMs,
+            eventEndAtMs: historyEndAtMs,
+          })),
+        });
+        assert.equal(submission.status, 200);
+
+        const historyUrl = `${baseUrl}/event-arena/${historyEventId}/leaderboard/history`;
+        const headers = { "x-event-arena-installation-id": historyInstallationId };
+        const historyResponse = await fetch(historyUrl, { headers });
+        assert.equal(historyResponse.status, 200);
+        const history = await historyResponse.json() as any;
+        assert.equal(history.snapshots.length, 1);
+        assert.equal(history.snapshots[0].rank, 1);
+        assert.equal(history.snapshots[0].returnPercent, 1.25);
+        assert.equal(JSON.stringify(history).includes(historyInstallationId), false);
+
+        const optOut = await fetch(
+          `${baseUrl}/event-arena/${historyEventId}/leaderboard?installationId=${encodeURIComponent(historyInstallationId)}`,
+          { method: "DELETE" },
+        );
+        assert.equal(optOut.status, 200);
+        const afterOptOut = await fetch(historyUrl, { headers });
+        assert.equal(afterOptOut.status, 200);
+        assert.deepEqual(await afterOptOut.json(), { snapshots: [] });
+      }, Date.parse("2027-11-17T17:00:00.000Z"));
+    } finally {
+      await pool.query(
+        "DELETE FROM event_arena_leaderboard_snapshots WHERE event_id=$1",
+        [historyEventId],
+      );
+      await pool.query(
+        "DELETE FROM event_arena_leaderboard_entries WHERE event_id=$1",
+        [historyEventId],
+      );
+      await pool.end();
+    }
+  },
+);
+
+test("history reads only an active requesting participant's snapshots for the requested event", async () => {
+  await withApi(async (sql, values) => {
+    if (sql.startsWith("DELETE")) return { rows: [] };
+    assert.match(sql, /JOIN event_arena_leaderboard_entries AS participant/);
+    assert.match(sql, /participant\.installation_id=\$2/);
+    assert.match(sql, /participant\.is_active=TRUE/);
+    assert.match(sql, /snapshots\.event_id=\$1/);
+    assert.match(sql, /NTILE\(120\)/);
+    assert.deepEqual(values, [eventId, installationId, startAtMs, endAtMs, 30]);
+    return { rows: [
+      { captured_at: new Date("2026-11-16T15:00:00.000Z"), rank: 4, return_percent: 0.25 },
+      { captured_at: new Date("2026-11-18T17:00:00.000Z"), rank: 2, return_percent: 1.75 },
+    ] };
+  }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/${eventId}/leaderboard/history`, {
+      headers: { "x-event-arena-installation-id": installationId },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      snapshots: [
+        { capturedAt: "2026-11-16T15:00:00.000Z", rank: 4, returnPercent: 0.25 },
+        { capturedAt: "2026-11-18T17:00:00.000Z", rank: 2, returnPercent: 1.75 },
+      ],
+    });
+  });
+});
+
+test("history rejects invalid event or anonymous identity before querying private snapshots", async () => {
+  let queries = 0;
+  await withApi(async () => {
+    queries += 1;
+    return { rows: [] };
+  }, async (baseUrl) => {
+    const missingIdentity = await fetch(`${baseUrl}/event-arena/${eventId}/leaderboard/history`);
+    const invalidEvent = await fetch(
+      `${baseUrl}/event-arena/2026-11-17/leaderboard/history`,
+      { headers: { "x-event-arena-installation-id": installationId } },
+    );
+    assert.equal(missingIdentity.status, 400);
+    assert.equal(invalidEvent.status, 400);
+  });
+  assert.equal(queries, 0);
 });
 
 test("submission accepts short direction and an explicitly unavailable allocation", async () => {
@@ -742,7 +909,7 @@ test("leaderboard response is event-scoped and does not expose installation IDs 
     assert.equal(JSON.stringify(result).includes("costBasis"), false);
     assert.equal(JSON.stringify(result).includes('"price"'), false);
   });
-  assert.equal(queries, 3);
+  assert.equal(queries, 4);
 });
 
 test("leaderboard ranks positive, tied, and negative returns deterministically from submitted equity", async () => {
@@ -889,7 +1056,7 @@ test("completed-week discovery lists only valid ended weeks with active opt-ins"
     }]);
     assert.equal(JSON.stringify(result).includes("must-not-leak"), false);
   }, Date.parse("2026-11-25T17:00:00.000Z"));
-  assert.equal(queries, 3);
+  assert.equal(queries, 4);
 });
 
 test("completed-week discovery returns an empty list when nobody remains opted in", async () => {
@@ -930,7 +1097,20 @@ test("locked aliases return conflict; fast duplicate submissions are rate limite
 
 test("opt-out clears public score data while retaining only the event-scoped alias lock", async () => {
   await withApi(async (sql, values) => {
+    if (
+      sql.startsWith("DELETE FROM event_arena_leaderboard_snapshots")
+      && sql.includes("WHERE event_id=$1 AND participant_token=$2")
+    ) {
+      assert.deepEqual(values, [eventId, "participant-token-marketfox"]);
+      return { rows: [] };
+    }
     if (sql.startsWith("DELETE")) return { rows: [] };
+    if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return { rows: [] };
+    if (sql.startsWith("SELECT participant_token")) {
+      assert.match(sql, /FOR UPDATE/);
+      assert.deepEqual(values, [eventId, installationId]);
+      return { rows: [{ participant_token: "participant-token-marketfox" }] };
+    }
     assert.match(sql, /^UPDATE event_arena_leaderboard_entries/);
     assert.match(sql, /SET is_active=FALSE/);
     assert.match(sql, /start_equity=0,[\s\S]*equity=0,[\s\S]*return_percent=0/);

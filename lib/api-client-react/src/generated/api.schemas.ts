@@ -114,6 +114,19 @@ export interface EventArenaLeaderboardResponse {
   updatedAt: string;
 }
 
+export type EventArenaLeaderboardHistoryResponseSnapshotsItem = {
+  capturedAt: string;
+  /** @minimum 1 */
+  rank: number;
+  /** Self-reported percentage return at this snapshot. */
+  returnPercent: number;
+};
+
+export interface EventArenaLeaderboardHistoryResponse {
+  /** @maxItems 120 */
+  snapshots: EventArenaLeaderboardHistoryResponseSnapshotsItem[];
+}
+
 export interface EventArenaCashTransferRequest {
   /**
      * Anonymous sender installation ID; never returned in public responses.

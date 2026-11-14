@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   getEventArenaCompetitiveBadges,
   getEventArenaCompetitiveChanges,
+  getEventArenaHistoryDisplayPoints,
   getEventArenaNextRankReturnGap,
   getEventArenaWindowProgress,
   type CompetitiveEntry,
@@ -92,4 +93,25 @@ test('event progress follows the scheduled window and clamps outside it', () => 
   assert.equal(getEventArenaWindowProgress(100, 200, 200), 100);
   assert.equal(getEventArenaWindowProgress(100, 200, 250), 100);
   assert.equal(getEventArenaWindowProgress(100, 100, 100), 0);
+});
+
+test('event rank history keeps representative points across the full event window', () => {
+  const points = Array.from({ length: 25 }, (_, index) => ({
+    capturedAt: new Date(Date.UTC(2026, 10, 16, 14 + index)).toISOString(),
+    rank: 25 - index,
+    returnPercent: index / 10,
+  }));
+  const displayed = getEventArenaHistoryDisplayPoints(points, 5);
+  assert.deepEqual(displayed.map((point) => point.rank), [25, 19, 13, 7, 1]);
+  assert.equal(displayed[0]?.capturedAt, points[0]?.capturedAt);
+  assert.equal(displayed.at(-1)?.capturedAt, points.at(-1)?.capturedAt);
+  assert.deepEqual(getEventArenaHistoryDisplayPoints(points, 1), [points.at(-1)]);
+});
+
+test('event rank history drops malformed snapshots and handles empty input', () => {
+  assert.deepEqual(getEventArenaHistoryDisplayPoints([
+    { capturedAt: 'not-a-date', rank: 1, returnPercent: 3 },
+    { capturedAt: '2026-11-16T15:00:00.000Z', rank: 0, returnPercent: 3 },
+    { capturedAt: '2026-11-16T15:00:00.000Z', rank: 2, returnPercent: Number.NaN },
+  ]), []);
 });

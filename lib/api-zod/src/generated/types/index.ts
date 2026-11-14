@@ -99,6 +99,8 @@ export * from './eventArenaCashNotificationsResponseNotificationsItem';
 export * from './eventArenaCashTransferRequest';
 export * from './eventArenaCashTransferResponse';
 export * from './eventArenaCashTransferResponseTransfer';
+export * from './eventArenaLeaderboardHistoryResponse';
+export * from './eventArenaLeaderboardHistoryResponseSnapshotsItem';
 export * from './eventArenaLeaderboardResponse';
 export * from './eventArenaLeaderboardResponseEntriesItem';
 export * from './eventArenaLeaderboardResponseEntriesItemHoldingsItem';

@@ -170,6 +170,18 @@ async function runSchemaMigrations(): Promise<void> {
       PRIMARY KEY (event_id, installation_id)
     )
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS event_arena_leaderboard_snapshots (
+      snapshot_id BIGSERIAL PRIMARY KEY,
+      event_id TEXT NOT NULL,
+      participant_token TEXT NOT NULL,
+      event_start_at TIMESTAMPTZ NOT NULL,
+      event_end_at TIMESTAMPTZ NOT NULL,
+      captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      rank INTEGER NOT NULL,
+      return_percent DOUBLE PRECISION NOT NULL
+    )
+  `);
   await pool.query(
     "ALTER TABLE event_arena_leaderboard_entries ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE",
   );
@@ -220,6 +232,14 @@ async function runSchemaMigrations(): Promise<void> {
   await pool.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS event_arena_participant_token_idx
     ON event_arena_leaderboard_entries (event_id, participant_token)
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS event_arena_leaderboard_snapshots_history_idx
+    ON event_arena_leaderboard_snapshots (event_id, participant_token, captured_at, snapshot_id)
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS event_arena_leaderboard_snapshots_expiration_idx
+    ON event_arena_leaderboard_snapshots (event_end_at)
   `);
   await pool.query(`
     CREATE INDEX IF NOT EXISTS event_arena_cash_transfers_recipient_idx

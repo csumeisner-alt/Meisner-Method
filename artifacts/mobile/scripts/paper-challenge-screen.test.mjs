@@ -70,6 +70,10 @@ test("event enrollment enables sharing with compact privacy controls", () => {
   assert.match(leaderboard, /current\.enrollment\?\.eventId !== event\.id/);
   assert.match(leaderboard, /event-arena\/\$\{encodeURIComponent\(event\.id\)\}\/leaderboard/);
   assert.match(leaderboard, /useGetEventArenaLeaderboard/);
+  assert.match(leaderboard, /getEventArenaLeaderboardHistory\(event\.id/);
+  assert.match(leaderboard, /testID="paper-event-rank-history"/);
+  assert.match(leaderboard, /Self-reported rank and return snapshots\. Not independently verified\./);
+  assert.match(leaderboard, /testID="retry-paper-event-rank-history"/);
   assert.match(leaderboard, /X-Event-Arena-Installation-Id/);
   assert.match(leaderboard, /entry\.isCurrentUser/);
   assert.doesNotMatch(leaderboard, /paper-event-leaderboard-your-position/);

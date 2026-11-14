@@ -134,6 +134,37 @@ export const SubmitEventArenaScoreResponse = zod.object({
 
 
 /**
+ * Returns sampled timestamped snapshots for the requesting anonymous installation only. Scores and ranks are self-reported and not independently verified.
+ * @summary Get the requesting participant's Event Arena rank history
+ */
+export const GetEventArenaLeaderboardHistoryParams = zod.object({
+  "eventId": zod.date().describe('Scheduled Event Arena event ID; history never includes other events.')
+})
+
+export const getEventArenaLeaderboardHistoryHeaderXEventArenaInstallationIdMin = 12;
+export const getEventArenaLeaderboardHistoryHeaderXEventArenaInstallationIdMax = 128;
+
+
+
+export const GetEventArenaLeaderboardHistoryHeader = zod.object({
+  "X-Event-Arena-Installation-Id": zod.string().min(getEventArenaLeaderboardHistoryHeaderXEventArenaInstallationIdMin).max(getEventArenaLeaderboardHistoryHeaderXEventArenaInstallationIdMax).describe('Anonymous device identifier used to look up only the requesting participant\'s history; it is never returned.')
+})
+
+
+export const getEventArenaLeaderboardHistoryResponseSnapshotsMax = 120;
+
+
+
+export const GetEventArenaLeaderboardHistoryResponse = zod.object({
+  "snapshots": zod.array(zod.object({
+  "capturedAt": zod.coerce.date(),
+  "rank": zod.number().min(1),
+  "returnPercent": zod.number().describe('Self-reported percentage return at this snapshot.')
+})).max(getEventArenaLeaderboardHistoryResponseSnapshotsMax)
+})
+
+
+/**
  * @summary Send simulated cash to an eligible participant in the active event
  */
 export const SendEventArenaCashParams = zod.object({

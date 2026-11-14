@@ -28,6 +28,7 @@ import type {
   EventArenaCashNotificationsResponse,
   EventArenaCashTransferRequest,
   EventArenaCashTransferResponse,
+  EventArenaLeaderboardHistoryResponse,
   EventArenaLeaderboardResponse,
   EventArenaScoreSubmission,
   GetEventArenaLeaderboardWeeks200,
@@ -301,6 +302,84 @@ export const useSubmitEventArenaScore = <TError = ErrorType<void>,
       > => {
       return useMutation(getSubmitEventArenaScoreMutationOptions(options));
     }
+
+export const getGetEventArenaLeaderboardHistoryUrl = (eventId: string,) => {
+
+
+
+
+  return `/api/event-arena/${eventId}/leaderboard/history`
+}
+
+/**
+ * Returns sampled timestamped snapshots for the requesting anonymous installation only. Scores and ranks are self-reported and not independently verified.
+ * @summary Get the requesting participant's Event Arena rank history
+ */
+export const getEventArenaLeaderboardHistory = async (eventId: string, options?: RequestInit): Promise<EventArenaLeaderboardHistoryResponse> => {
+
+  return customFetch<EventArenaLeaderboardHistoryResponse>(getGetEventArenaLeaderboardHistoryUrl(eventId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetEventArenaLeaderboardHistoryQueryKey = (eventId: string,) => {
+    return [
+    `/api/event-arena/${eventId}/leaderboard/history`
+    ] as const;
+    }
+
+
+export const getGetEventArenaLeaderboardHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getEventArenaLeaderboardHistory>>, TError = ErrorType<void>>(eventId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEventArenaLeaderboardHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetEventArenaLeaderboardHistoryQueryKey(eventId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getEventArenaLeaderboardHistory>>> = ({ signal }) => getEventArenaLeaderboardHistory(eventId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: eventId !== null && eventId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getEventArenaLeaderboardHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetEventArenaLeaderboardHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getEventArenaLeaderboardHistory>>>
+export type GetEventArenaLeaderboardHistoryQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get the requesting participant's Event Arena rank history
+ */
+
+export function useGetEventArenaLeaderboardHistory<TData = Awaited<ReturnType<typeof getEventArenaLeaderboardHistory>>, TError = ErrorType<void>>(
+ eventId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEventArenaLeaderboardHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetEventArenaLeaderboardHistoryQueryOptions(eventId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getSendEventArenaCashUrl = (eventId: string,) => {
 

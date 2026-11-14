@@ -12,6 +12,31 @@ export type CompetitiveChange = {
   comeback: boolean;
 };
 
+export type EventArenaHistoryPoint = {
+  capturedAt: string;
+  rank: number;
+  returnPercent: number;
+};
+
+export function getEventArenaHistoryDisplayPoints(
+  points: EventArenaHistoryPoint[],
+  maxPoints = 12,
+) {
+  const validPoints = points
+    .filter((point) => Number.isFinite(Date.parse(point.capturedAt))
+      && Number.isInteger(point.rank)
+      && point.rank > 0
+      && Number.isFinite(point.returnPercent))
+    .slice()
+    .sort((a, b) => Date.parse(a.capturedAt) - Date.parse(b.capturedAt));
+  if (!Number.isInteger(maxPoints) || maxPoints <= 0 || validPoints.length <= maxPoints) return validPoints;
+  if (maxPoints === 1) return [validPoints[validPoints.length - 1]];
+  return Array.from({ length: maxPoints }, (_, index) => {
+    const pointIndex = Math.round((index * (validPoints.length - 1)) / (maxPoints - 1));
+    return validPoints[pointIndex]!;
+  });
+}
+
 export function getEventArenaCompetitiveBadges(
   rank: number,
   tradeCount: number | null,
