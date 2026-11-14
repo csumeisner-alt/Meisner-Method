@@ -19,6 +19,7 @@ const eventArena = readFileSync(new URL("../components/EventArenaScreen.tsx", im
 const eventArenaOverview = readFileSync(new URL("../components/EventArenaOverview.tsx", import.meta.url), "utf8");
 const eventArenaTransfers = readFileSync(new URL("../lib/eventArenaTransfers.ts", import.meta.url), "utf8");
 const eventArenaApi = readFileSync(new URL("../../api-server/src/routes/eventArenaRoutes.ts", import.meta.url), "utf8");
+const eventAccountDashboard = readFileSync(new URL("../components/PaperEventArenaDashboard.tsx", import.meta.url), "utf8");
 
 assert.match(events, /eventWindow\.phase === 'upcoming' \? eventWindow\.startAtMs : Date\.now\(\)/);
 assert.match(events, /eventWindow\.phase === 'upcoming' \? null : PAPER_CHALLENGE_STARTING_BALANCE/);
@@ -407,7 +408,11 @@ test("paper dashboard switches accounts from the summary or selector and keeps a
   assert.match(screen, /testID=\{`rename-paper-account-\$\{acct\.id\}`\}/);
   assert.match(screen, /testID=\{`rename-paper-account-input-\$\{acct\.id\}`\}/);
   assert.match(screen, /testID=\{`reset-paper-account-\$\{acct\.id\}`\}/);
-  assert.match(screen, /const isEventAcctResetLocked = isEventAcct\s*&& paperChallengeWindow\.phase === 'active'\s*&& paperChallenge\.enrollment\?\.accountId === acct\.id;/);
+  assert.match(screen, /const isArchivedEventAccount = isEventAcct\s*&& paperChallenge\.history\.some\(\(event\) => event\.accountId === acct\.id\);/);
+  assert.match(screen, /const isEventAcctResetLocked = isArchivedEventAccount \|\| \(isEventAcct/);
+  assert.match(screen, /COMPLETED EVENT · READ-ONLY RESULTS/);
+  assert.match(screen, /Completed Event Arena accounts are read-only/);
+  assert.match(screen, /visibleEventAccountId = paperChallenge\.enrollment\?\.accountId\s*\?\? paperChallenge\.history\[0\]\?\.accountId/);
   assert.match(screen, /accessibilityState=\{\{ disabled: isEventAcctResetLocked \}\}/);
   assert.match(screen, /disabled=\{isEventAcctResetLocked\}/);
   assert.match(screen, /Reset unavailable until the active event ends/);
@@ -443,6 +448,27 @@ test("paper dashboard switches accounts from the summary or selector and keeps a
   assert.match(screen, /MARKET VALUE/);
   assert.match(screen, /pctFmt\(pnlPct\)/);
   assert.match(screen, /SELL \{pos\.symbol\}/);
+});
+
+test("Event Arena account uses saved event results and links to the existing leaderboard", () => {
+  assert.match(screen, /<PaperEventArenaDashboard/);
+  assert.match(screen, /paperChallenge\.history\.find\(\(event\) => event\.accountId === account\?\.id\)/);
+  assert.match(screen, /pathname: '\/event-arena',\s*params: \{ section: 'leaderboard', eventId: selectedEventId \}/);
+  assert.match(eventArena, /requestedSection === 'leaderboard'\) setSection\('leaderboard'\)/);
+  assert.match(eventAccountDashboard, /useGetEventArenaLeaderboard\(eventId/);
+  assert.match(eventAccountDashboard, /entry\.isCurrentUser/);
+  assert.match(eventAccountDashboard, /summary\?\.finalRank/);
+  assert.match(eventAccountDashboard, /entries\.length === 1 \? 'participant' : 'participants'/);
+  assert.match(eventAccountDashboard, /COMPETITION P\/L/);
+  assert.match(eventAccountDashboard, /COMPETITION RETURN/);
+  assert.match(eventAccountDashboard, /BUYING POWER/);
+  assert.match(eventAccountDashboard, /TIME UNTIL START/);
+  assert.match(eventAccountDashboard, /TIME REMAINING/);
+  assert.match(eventAccountDashboard, /VIEW LEADERBOARD/);
+  assert.doesNotMatch(eventAccountDashboard, /TODAY’S P\/L/);
+  assert.match(eventAccountDashboard, /flexWrap: 'wrap'/);
+  assert.match(eventAccountDashboard, /flexBasis: '46%'/);
+  assert.match(eventAccountDashboard, /minWidth: 0/);
 });
 
 test("position and order cards are compact without removing their essential values or actions", () => {

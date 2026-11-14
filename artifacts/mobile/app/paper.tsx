@@ -3,7 +3,7 @@
  * Supports 3 independent strategy accounts with live P&L, charts, and tracking.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ActivityIndicator,
@@ -28,6 +28,7 @@ import { MMLogo } from '@/components/MMLogo';
 import { PaperEventShareCard } from '@/components/PaperEventShareCard';
 import { BottomTabBar } from '@/components/BottomTabBar';
 import { PaperAccountSwipeArea } from '@/components/PaperAccountSwipeArea';
+import { PaperEventArenaDashboard } from '@/components/PaperEventArenaDashboard';
 import { useAchievements } from '@/contexts/AchievementsContext';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { useColors } from '@/hooks/useColors';
@@ -266,6 +267,7 @@ function defaultAccounts(): PaperAccount[] {
 // ── Main Screen ────────────────────────────────────────────────────────────
 export default function PaperScreen() {
   const colors = useColors();
+  const router = useRouter();
   const { awardAchievement } = useAchievements();
   const insets = useSafeAreaInsets();
   const { width: screenWidth, fontScale } = useWindowDimensions();
@@ -458,8 +460,11 @@ export default function PaperScreen() {
     && account.id.startsWith('paper-event:')
     && paperChallenge.enrollment?.accountId === account.id;
   const hasCurrentEventEnrollment = paperChallenge.enrollment?.eventId === paperChallengeWindow.id;
+  const visibleEventAccountId = paperChallenge.enrollment?.accountId
+    ?? paperChallenge.history[0]?.accountId
+    ?? null;
   const visibleAccounts = accounts.filter((item) =>
-    !item.id.startsWith('paper-event:') || item.id === paperChallenge.enrollment?.accountId,
+    !item.id.startsWith('paper-event:') || item.id === visibleEventAccountId,
   );
   const regularAccounts = visibleAccounts.filter((item) => !item.id.startsWith('paper-event:'));
   const selectedAccountIndex = regularAccounts.findIndex((item) => item.id === account?.id);
@@ -467,6 +472,20 @@ export default function PaperScreen() {
     ? 'Event Arena'
     : PAPER_ACCOUNT_DISPLAY_NAMES[selectedAccountIndex] ?? account?.name ?? 'Paper account';
   const selectedAccountPosition = visibleAccounts.findIndex((item) => item.id === account?.id);
+  const isSelectedEventAccount = !!account?.id.startsWith('paper-event:');
+  const selectedEventEnrollment = isSelectedEventAccount
+    && paperChallenge.enrollment?.accountId === account?.id
+    ? paperChallenge.enrollment
+    : null;
+  const selectedEventSummary = isSelectedEventAccount
+    ? paperChallenge.history.find((event) => event.accountId === account?.id) ?? null
+    : null;
+  const isSelectedArchivedEventAccount = isSelectedEventAccount
+    && !selectedEventEnrollment
+    && !!selectedEventSummary;
+  const selectedEventId = selectedEventEnrollment?.eventId ?? selectedEventSummary?.eventId ?? '';
+  const selectedEventStartAtMs = selectedEventEnrollment?.eventStartAtMs ?? selectedEventSummary?.eventStartAtMs ?? Number.NaN;
+  const selectedEventEndAtMs = selectedEventEnrollment?.eventEndAtMs ?? selectedEventSummary?.eventEndAtMs ?? Number.NaN;
   const unrealizedPnL = myPositions.reduce(
     (s, p) => s + p.shares * (isShortPosition(p)
       ? p.avgCost - (quotes[p.symbol]?.price ?? p.avgCost)
@@ -1408,6 +1427,12 @@ export default function PaperScreen() {
           message: 'This event has not started yet. Your event account will be ready at the scheduled opening.',
         };
       }
+      if (accountId.startsWith('paper-event:') && enrollment?.accountId !== accountId) {
+        return {
+          status: 'rejected',
+          message: 'Completed Event Arena accounts are read-only. Choose another account to trade.',
+        };
+      }
 
       const currentAccounts = accountsRef.current;
       const currentPositions = positionsRef.current;
@@ -2320,56 +2345,86 @@ export default function PaperScreen() {
       </View>
 
       <PaperAccountSwipeArea
-        style={styles.accountHero}
+        style={[styles.accountHero, isSelectedEventAccount && styles.eventChampionshipHero]}
         testID="paper-account-hero"
         accounts={visibleAccounts}
         activeId={activeId}
         onSwitchAccount={(id) => { void switchAccount(id); }}
       >
-        <View style={styles.heroTopline}>
-          <Text style={[styles.selectorTitle, account?.id.startsWith('paper-event:') && styles.eventHeroLabel]}>
-            {account?.id.startsWith('paper-event:') ? 'EVENT ARENA' : 'SIMULATED PORTFOLIO'}
-          </Text>
-          <TouchableOpacity
-            testID="paper-account-switch"
-            accessibilityRole="button"
-            accessibilityLabel="Switch paper trading account"
-            onPress={() => setShowAccountManagement(true)}
-            style={styles.editAccountsButton}
-          >
-            <Text style={styles.editAccountsText}>SWITCH</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.heroIdentityRow}>
-          <Text style={styles.heroAccountName} numberOfLines={1}>{selectedAccountDisplayName}</Text>
-          <Text style={styles.heroAccountPosition}>
-            {selectedAccountPosition >= 0 ? `${selectedAccountPosition + 1} / ${visibleAccounts.length}` : ''}
-          </Text>
-        </View>
-        <Text style={styles.heroEquity} numberOfLines={1}>{$fmt(portfolioValue)}</Text>
-        <Text style={styles.heroEquityLabel}>TOTAL EQUITY</Text>
-        <View style={[styles.heroStats, compactHeroStats && styles.heroStatsCompact]}>
-          <View style={[styles.heroStat, compactHeroStats && styles.heroStatCompact]}>
-            <Text allowFontScaling style={[styles.heroStatValue, compactHeroStats && styles.heroStatValueCompact, { color: pnlColor(todayPnL) }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
-              {todayPnL >= 0 ? '+' : ''}{$fmt(todayPnL)}
-            </Text>
-            <Text allowFontScaling style={[styles.heroStatLabel, compactHeroStats && styles.heroStatLabelCompact]}>TODAY’S P/L</Text>
-          </View>
-          <View style={[styles.heroStatDivider, compactHeroStats && styles.heroStatDividerCompact]} />
-          <View style={[styles.heroStat, compactHeroStats && styles.heroStatCompact]}>
-            <Text testID="paper-account-total-return" allowFontScaling style={[styles.heroStatValue, compactHeroStats && styles.heroStatValueCompact, { color: pnlColor(totalReturn) }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
-              {pctFmt(totalReturn)}
-            </Text>
-            <Text allowFontScaling style={[styles.heroStatLabel, compactHeroStats && styles.heroStatLabelCompact]}>TOTAL RETURN</Text>
-          </View>
-          <View style={[styles.heroStatDivider, compactHeroStats && styles.heroStatDividerCompact]} />
-          <View style={[styles.heroStat, compactHeroStats && styles.heroStatCompact]}>
-            <Text testID="paper-account-buying-power" allowFontScaling style={[styles.heroStatValue, compactHeroStats && styles.heroStatValueCompact]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
-              {$fmt(account?.cash ?? 0)}
-            </Text>
-            <Text allowFontScaling style={[styles.heroStatLabel, compactHeroStats && styles.heroStatLabelCompact]}>BUYING POWER</Text>
-          </View>
-        </View>
+        {isSelectedEventAccount ? (
+          <>
+            <View style={styles.eventChampionshipTopline}>
+              <Text style={styles.eventHeroLabel}>EVENT ARENA</Text>
+              <TouchableOpacity
+                testID="paper-account-switch"
+                accessibilityRole="button"
+                accessibilityLabel="Switch paper trading account"
+                onPress={() => setShowAccountManagement(true)}
+                style={styles.editAccountsButton}
+              >
+                <Text style={styles.editAccountsText}>SWITCH</Text>
+              </TouchableOpacity>
+            </View>
+            <PaperEventArenaDashboard
+              eventId={selectedEventId}
+              startAtMs={selectedEventStartAtMs}
+              endAtMs={selectedEventEndAtMs}
+              enrollment={selectedEventEnrollment}
+              summary={selectedEventSummary}
+              equity={portfolioValue}
+              buyingPower={account?.cash ?? 0}
+              onViewLeaderboard={() => router.push({
+                pathname: '/event-arena',
+                params: { section: 'leaderboard', eventId: selectedEventId },
+              })}
+            />
+          </>
+        ) : (
+          <>
+            <View style={styles.heroTopline}>
+              <Text style={styles.selectorTitle}>SIMULATED PORTFOLIO</Text>
+              <TouchableOpacity
+                testID="paper-account-switch"
+                accessibilityRole="button"
+                accessibilityLabel="Switch paper trading account"
+                onPress={() => setShowAccountManagement(true)}
+                style={styles.editAccountsButton}
+              >
+                <Text style={styles.editAccountsText}>SWITCH</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.heroIdentityRow}>
+              <Text style={styles.heroAccountName} numberOfLines={1}>{selectedAccountDisplayName}</Text>
+              <Text style={styles.heroAccountPosition}>
+                {selectedAccountPosition >= 0 ? `${selectedAccountPosition + 1} / ${visibleAccounts.length}` : ''}
+              </Text>
+            </View>
+            <Text style={styles.heroEquity} numberOfLines={1}>{$fmt(portfolioValue)}</Text>
+            <Text style={styles.heroEquityLabel}>TOTAL EQUITY</Text>
+            <View style={[styles.heroStats, compactHeroStats && styles.heroStatsCompact]}>
+              <View style={[styles.heroStat, compactHeroStats && styles.heroStatCompact]}>
+                <Text allowFontScaling style={[styles.heroStatValue, compactHeroStats && styles.heroStatValueCompact, { color: pnlColor(todayPnL) }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+                  {todayPnL >= 0 ? '+' : ''}{$fmt(todayPnL)}
+                </Text>
+                <Text allowFontScaling style={[styles.heroStatLabel, compactHeroStats && styles.heroStatLabelCompact]}>TODAY’S P/L</Text>
+              </View>
+              <View style={[styles.heroStatDivider, compactHeroStats && styles.heroStatDividerCompact]} />
+              <View style={[styles.heroStat, compactHeroStats && styles.heroStatCompact]}>
+                <Text testID="paper-account-total-return" allowFontScaling style={[styles.heroStatValue, compactHeroStats && styles.heroStatValueCompact, { color: pnlColor(totalReturn) }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+                  {pctFmt(totalReturn)}
+                </Text>
+                <Text allowFontScaling style={[styles.heroStatLabel, compactHeroStats && styles.heroStatLabelCompact]}>TOTAL RETURN</Text>
+              </View>
+              <View style={[styles.heroStatDivider, compactHeroStats && styles.heroStatDividerCompact]} />
+              <View style={[styles.heroStat, compactHeroStats && styles.heroStatCompact]}>
+                <Text testID="paper-account-buying-power" allowFontScaling style={[styles.heroStatValue, compactHeroStats && styles.heroStatValueCompact]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+                  {$fmt(account?.cash ?? 0)}
+                </Text>
+                <Text allowFontScaling style={[styles.heroStatLabel, compactHeroStats && styles.heroStatLabelCompact]}>BUYING POWER</Text>
+              </View>
+            </View>
+          </>
+        )}
         {visibleAccounts.length > 1 && (
           <View
             testID="paper-account-position-indicator"
@@ -2593,17 +2648,25 @@ export default function PaperScreen() {
           <TouchableOpacity
             testID="paper-trading-buy-action"
             accessibilityRole="button"
-            accessibilityLabel={`Buy stocks or ETFs in ${account?.name ?? 'selected account'}`}
-            style={styles.buyAction}
+            accessibilityLabel={isSelectedArchivedEventAccount
+              ? 'Completed Event Arena account is read-only'
+              : `Buy stocks or ETFs in ${account?.name ?? 'selected account'}`}
+            accessibilityState={{ disabled: isSelectedArchivedEventAccount }}
+            disabled={isSelectedArchivedEventAccount}
+            style={[styles.buyAction, isSelectedArchivedEventAccount && { opacity: 0.55 }]}
             onPress={openBuyModal}
             activeOpacity={0.85}
           >
-            <Feather name="plus" size={18} color="#000" />
+            <Feather name={isSelectedArchivedEventAccount ? 'lock' : 'plus'} size={18} color="#000" />
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text allowFontScaling style={styles.buyActionTitle}>Trade</Text>
-            <Text allowFontScaling style={styles.buyActionHint}>Trade in {selectedAccountDisplayName}</Text>
+              <Text allowFontScaling style={styles.buyActionTitle}>
+                {isSelectedArchivedEventAccount ? 'Event complete' : 'Trade'}
+              </Text>
+              <Text allowFontScaling style={styles.buyActionHint}>
+                {isSelectedArchivedEventAccount ? 'Select a strategy account to trade' : `Trade in ${selectedAccountDisplayName}`}
+              </Text>
             </View>
-            <Feather name="arrow-up-right" size={17} color="#000" />
+            {!isSelectedArchivedEventAccount && <Feather name="arrow-up-right" size={17} color="#000" />}
           </TouchableOpacity>
       </View>
 
@@ -2782,9 +2845,11 @@ export default function PaperScreen() {
               >
                 {visibleAccounts.map((acct) => {
                   const isEventAcct = acct.id.startsWith('paper-event:');
-                  const isEventAcctResetLocked = isEventAcct
+                  const isArchivedEventAccount = isEventAcct
+                    && paperChallenge.history.some((event) => event.accountId === acct.id);
+                  const isEventAcctResetLocked = isArchivedEventAccount || (isEventAcct
                     && paperChallengeWindow.phase === 'active'
-                    && paperChallenge.enrollment?.accountId === acct.id;
+                    && paperChallenge.enrollment?.accountId === acct.id);
                   const isActive = acct.id === activeId;
                   const acctPositions = positions.filter((position) => position.accountId === acct.id);
                   const acctValue = computePaperEquity(acct, acctPositions, quotes);
@@ -2838,7 +2903,9 @@ export default function PaperScreen() {
                               <Text style={styles.eventAccountBadgeText}>EVENT PORTFOLIO</Text>
                             </View>
                             <Text style={styles.eventAccountPrompt}>
-                              {isEventAcctResetLocked
+                              {isArchivedEventAccount
+                                ? 'COMPLETED EVENT · READ-ONLY RESULTS'
+                                : isEventAcctResetLocked
                                 ? 'ACTIVE EVENT · RESET LOCKED UNTIL EVENT ENDS'
                                 : 'FRESH $100,000 · TRADE HERE TO COMPETE THIS WEEK'}
                             </Text>
@@ -2883,7 +2950,9 @@ export default function PaperScreen() {
                           testID={`reset-paper-account-${acct.id}`}
                           accessibilityRole="button"
                           accessibilityLabel={isEventAcctResetLocked
-                            ? 'Reset unavailable until the active event ends'
+                            ? isArchivedEventAccount
+                              ? 'Completed Event Arena account is read-only'
+                              : 'Reset unavailable until the active event ends'
                             : `Reset ${acct.name}`}
                           accessibilityState={{ disabled: isEventAcctResetLocked }}
                           disabled={isEventAcctResetLocked}
@@ -3269,6 +3338,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(214,179,91,0.46)',
     backgroundColor: 'rgba(28,27,23,0.96)',
+  },
+  eventChampionshipHero: {
+    backgroundColor: 'rgba(24,24,25,0.98)',
+    borderColor: 'rgba(231,198,106,0.62)',
+    paddingHorizontal: 13,
+    paddingTop: 12,
+    paddingBottom: 10,
+  },
+  eventChampionshipTopline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 7,
   },
   heroTopline: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   eventHeroLabel: { color: BUY_COLOR },

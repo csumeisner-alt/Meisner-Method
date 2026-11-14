@@ -41,7 +41,9 @@ async function buildFixture() {
     ["expo-router", join(fixtureDir, "mocks/expo-router.ts")],
     ["react-native-safe-area-context", join(fixtureDir, "mocks/safe-area-context.tsx")],
     ["@expo/vector-icons", join(fixtureDir, "mocks/vector-icons.tsx")],
+    ["@workspace/api-client-react", join(fixtureDir, "mocks/api-client-react.ts")],
     ["@/hooks/useColors", join(fixtureDir, "mocks/use-colors.ts")],
+    ["@/lib/installation", join(fixtureDir, "mocks/installation.ts")],
   ]);
   const result = await build({
     entryPoints: [join(fixtureDir, "entry.tsx")],
@@ -269,6 +271,79 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
     assert.equal(await currentAccount(), "paper-event:arena", "A left swipe should advance to Event Arena.");
     assert.equal(await currentReturn(), "+1.25%", "Event Arena must show its own return, not the prior strategy's.");
     assert.equal(await hapticCount(), 2, "Switching to Event Arena should trigger one haptic.");
+    await waitFor(browser, `!!document.querySelector(${JSON.stringify(selector("paper-event-championship-dashboard"))})`,
+      "The Event Arena dashboard did not render after selecting its account.");
+    assert.equal(
+      await browser.evaluate("document.documentElement.scrollWidth <= window.innerWidth"),
+      true,
+      "The championship dashboard must not cause horizontal overflow at 320 pixels.",
+    );
+    assert.equal(
+      await browser.evaluate(`(() => {
+        const title = document.querySelector(${JSON.stringify(selector("paper-event-championship-dashboard"))})?.firstElementChild?.children[1]?.getBoundingClientRect();
+        const status = document.querySelector(${JSON.stringify(selector("paper-event-account-status"))})?.getBoundingClientRect();
+        const action = document.querySelector(${JSON.stringify(selector("paper-event-view-leaderboard"))})?.getBoundingClientRect();
+        return !!title && !!status && !!action && title.right <= status.left && action.left >= 0 && action.right <= window.innerWidth;
+      })()`),
+      true,
+      "Dashboard status and leaderboard action must fit without overlapping at 320 pixels.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-event-account-rank-value"))})?.textContent`),
+      "CHAMPION · 1ST",
+      "The actual first-place result receives champion treatment.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-event-account-participant-count"))})?.textContent`),
+      "2 participants",
+      "Participant count comes from the existing leaderboard response.",
+    );
+    await browser.evaluate(`window.__setPaperLeaderboard({ data: { entries: [] }, isError: false })`);
+    await browser.evaluate("window.__setEventState('active')");
+    await waitFor(browser,
+      `document.querySelector(${JSON.stringify(selector("paper-event-account-rank-value"))})?.textContent === "NOT RANKED"`,
+      "An opted-in account without a published rank must be labeled not ranked.");
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-event-account-participant-count"))})?.textContent`),
+      "0 participants",
+      "A successful empty response reports zero participants.",
+    );
+    await browser.evaluate(`window.__setPaperLeaderboard({ data: undefined, isError: true })`);
+    await browser.evaluate("window.__setEventState('active')");
+    await waitFor(browser,
+      `document.querySelector(${JSON.stringify(selector("paper-event-account-rank-value"))})?.textContent === "UNAVAILABLE"`,
+      "A failed leaderboard request must label the ranking unavailable.");
+    await browser.evaluate("window.__setPaperLeaderboard({ data: { entries: [{ rank: 1, isCurrentUser: true }, { rank: 2, isCurrentUser: false }] }, isError: false })");
+    await browser.evaluate("window.__setPaperSharing(false)");
+    await waitFor(browser,
+      `document.querySelector(${JSON.stringify(selector("paper-event-account-rank-value"))})?.textContent === "NOT RANKED"`,
+      "An account that has not shared a score must be labeled not ranked.");
+    await browser.evaluate("window.__setPaperSharing(true)");
+    await touch(browser, "paper-event-view-leaderboard");
+    assert.equal(await browser.evaluate("window.__eventLeaderboardOpened"), true,
+      "The leaderboard action must open the existing destination.");
+    await browser.evaluate("window.__setEventState('upcoming')");
+    await waitFor(browser, `document.querySelector(${JSON.stringify(selector("paper-event-championship-dashboard"))})?.textContent.includes("UPCOMING")`,
+      "The upcoming event state did not update.");
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-event-competition-pnl-value"))})?.textContent`),
+      "—",
+      "Upcoming events must not present a competition P/L before their actual start.",
+    );
+    await browser.evaluate("window.__setEventState('ended')");
+    await waitFor(browser, `document.querySelector(${JSON.stringify(selector("paper-event-championship-dashboard"))})?.textContent.includes("COMPLETE")`,
+      "The completed event state did not update.");
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-event-competition-pnl-value"))})?.textContent`),
+      "+$6,250.00",
+      "Completed events must use the archived final result.",
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-event-account-rank-value"))})?.textContent`),
+      "SILVER · 2ND",
+      "Archived second place receives silver medal treatment.",
+    );
+    await browser.evaluate("window.__setEventState('active')");
     await touch(browser, "paper-current-account", -150, 0);
     assert.equal(await currentAccount(), "paper-event:arena", "A left swipe at the last account should stop at the boundary.");
     assert.equal(await hapticCount(), 2, "A boundary swipe must remain silent.");

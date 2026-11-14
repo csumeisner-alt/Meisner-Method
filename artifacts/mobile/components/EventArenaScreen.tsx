@@ -17,7 +17,7 @@ import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Feather } from '@expo/vector-icons';
 import ViewShot from 'react-native-view-shot';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { BottomTabBar } from '@/components/BottomTabBar';
@@ -166,6 +166,7 @@ async function scheduleUpcomingEventReminders() {
 export function EventArenaScreen() {
   const colors = useColors();
   const router = useRouter();
+  const params = useLocalSearchParams<{ section?: string | string[]; eventId?: string | string[] }>();
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
   const [section, setSection] = useState<Section>('competition');
@@ -210,6 +211,23 @@ export function EventArenaScreen() {
   const currentWindow = getPaperChallengeWindow(now);
   const hasCurrentEnrollment = store.enrollment?.eventId === currentWindow.id;
   const enrollment = hasCurrentEnrollment ? store.enrollment : null;
+  const requestedLeaderboardEventId = Array.isArray(params.eventId) ? params.eventId[0] : params.eventId;
+  const requestedArchivedEvent = requestedLeaderboardEventId
+    ? store.history.find((event) => event.eventId === requestedLeaderboardEventId) ?? null
+    : null;
+  const leaderboardEvent = requestedLeaderboardEventId === currentWindow.id
+    ? currentWindow
+    : requestedArchivedEvent
+      ? {
+          id: requestedArchivedEvent.eventId,
+          startAtMs: requestedArchivedEvent.eventStartAtMs,
+          endAtMs: requestedArchivedEvent.eventEndAtMs,
+          phase: 'ended' as const,
+        }
+      : currentWindow;
+  const leaderboardEnrollment = store.enrollment?.eventId === leaderboardEvent.id
+    ? store.enrollment
+    : null;
   const participantAlias = enrollment?.leaderboardAlias?.trim();
   const participation = getEventArenaParticipation(currentWindow, store.enrollment, now);
   const countdown = getEventArenaCountdown(currentWindow, now);
@@ -439,6 +457,11 @@ export function EventArenaScreen() {
     const timer = setInterval(() => setNow(Date.now()), 1_000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    const requestedSection = Array.isArray(params.section) ? params.section[0] : params.section;
+    if (requestedSection === 'leaderboard') setSection('leaderboard');
+  }, [params.section]);
 
   useEffect(() => {
     if (storeState !== 'ready' || !enrollment || currentWindow.phase !== 'active') return;
@@ -1123,8 +1146,8 @@ export function EventArenaScreen() {
         {section === 'competition' && renderCompetition()}
         {section === 'leaderboard' && (
           <PaperChallengeLeaderboard
-            event={currentWindow}
-            enrollment={enrollment}
+            event={leaderboardEvent}
+            enrollment={leaderboardEnrollment}
             onEnrollmentChange={updateLeaderboardEnrollment}
             onRankChange={setRank}
             eventAccount={performance?.account ?? null}
