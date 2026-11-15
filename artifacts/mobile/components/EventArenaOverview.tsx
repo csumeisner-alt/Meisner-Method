@@ -5,6 +5,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   View,
   useWindowDimensions,
@@ -37,6 +38,8 @@ export type EventArenaOverviewProps = {
   onOpenNotifications: () => void;
   unreadCashNotifications: number;
   onOpenTrades: () => void;
+  notificationsEnabled: boolean;
+  onNotificationsChange: (enabled: boolean) => void;
 };
 
 const money = (value: number | null | undefined) =>
@@ -90,6 +93,8 @@ export function EventArenaOverview({
   onOpenNotifications,
   unreadCashNotifications,
   onOpenTrades,
+  notificationsEnabled,
+  onNotificationsChange,
 }: EventArenaOverviewProps) {
   const colors = useColors();
   const { width: windowWidth } = useWindowDimensions();
@@ -105,9 +110,6 @@ export function EventArenaOverview({
   const positive = (performance?.profitLoss ?? 0) >= 0;
   const countdownMode = livePhase === 'upcoming' ? 'starts' : livePhase === 'active' ? 'ends' : 'ended';
   const countdownLabel = countdownMode === 'starts' ? 'STARTS IN' : countdownMode === 'ends' ? 'TIME REMAINING' : 'EVENT CLOSED';
-  const countdownValue = countdownMode === 'ended'
-    ? 'Closed'
-    : `${countdown.days}d  ${String(countdown.hours).padStart(2, '0')}h  ${String(countdown.minutes).padStart(2, '0')}m  ${String(countdown.seconds).padStart(2, '0')}s`;
   const eventName = `Week of ${new Date(event.startAtMs).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
   const eventTitle = `Week of ${new Date(event.startAtMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
   const championshipName = event.eventType === 'green-bull-championship'
@@ -115,7 +117,6 @@ export function EventArenaOverview({
     : isBearMarketMayhem ? 'BEAR MARKET MAYHEM'
       : event.eventType === 'penny-stock-mayhem' ? 'PENNY STOCK MAYHEM' : 'EVENT ARENA CHAMPIONSHIP';
   const startingCapital = event.startingBalance ?? enrollment?.startingBalance ?? 100_000;
-  const startingCapitalLabel = `$${startingCapital.toLocaleString('en-US', { maximumFractionDigits: 0 })} STARTING CAPITAL`;
   const stickyAction = joined && !isUpcoming
     ? {
         kind: livePhase === 'ended' ? 'finish' as const : 'trade' as const,
@@ -150,7 +151,7 @@ export function EventArenaOverview({
   const Metric = ({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) => (
     <View style={[styles.metric, { borderColor: border }]}>
       <Text style={[styles.metricLabel, { color: muted }]}>{label}</Text>
-      <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.metricValue, { color: valueColor ?? ink }]}>{value}</Text>
+      <Text numberOfLines={2} adjustsFontSizeToFit style={[styles.metricValue, { color: valueColor ?? ink }]}>{value}</Text>
     </View>
   );
 
@@ -226,9 +227,14 @@ export function EventArenaOverview({
             </Text>
           )}
           <Text accessibilityLabel={`Event Arena ${eventName}`} style={[styles.title, { color: ink }]}>{eventTitle}</Text>
-          <Text testID="event-arena-starting-capital" style={[styles.phaseLabel, { color: accent, marginTop: 5 }]}>
-            {startingCapitalLabel}
-          </Text>
+          <View testID="event-arena-starting-capital" style={[styles.capitalBand, { backgroundColor: 'rgba(184,149,90,0.11)', borderColor: 'rgba(184,149,90,0.28)' }]}>
+            <View style={[styles.capitalMark, { backgroundColor: accent }]} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={[styles.capitalLabel, { color: muted }]}>FRESH EVENT ACCOUNT</Text>
+              <Text style={[styles.capitalValue, { color: accent }]}>{money(startingCapital)}</Text>
+            </View>
+            <Text style={[styles.capitalSuffix, { color: muted }]}>STARTING CAPITAL</Text>
+          </View>
           {isBearMarketMayhem && (
             <Text testID="event-arena-bear-objective" style={{ color: '#E24550', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.8, marginTop: 7 }}>
               THE BIGGEST LOSER WINS · LOWEST RETURN RANKS FIRST
@@ -241,7 +247,33 @@ export function EventArenaOverview({
               <Text style={[styles.smallLabel, { color: muted }]}>{countdownLabel}</Text>
               <Feather name={countdownMode === 'ended' ? 'check-circle' : 'clock'} size={14} color={accent} />
             </View>
-            <Text accessibilityLabel={`${countdown.days} days, ${countdown.hours} hours, ${countdown.minutes} minutes, ${countdown.seconds} seconds`} style={[styles.countdownValue, { color: ink }]}>{countdownValue}</Text>
+            {countdownMode === 'ended' ? (
+              <Text style={[styles.closedCountdown, { color: muted }]}>Event closed</Text>
+            ) : (
+              <View
+                accessibilityLabel={`${countdown.days} days, ${countdown.hours} hours, ${countdown.minutes} minutes, ${countdown.seconds} seconds`}
+                style={styles.countdownUnits}
+              >
+                {[
+                  { label: 'DAYS', value: countdown.days },
+                  { label: 'HOURS', value: countdown.hours },
+                  { label: 'MINUTES', value: countdown.minutes },
+                  { label: 'SECONDS', value: countdown.seconds },
+                ].map((unit) => (
+                  <View
+                    key={unit.label}
+                    style={[
+                      styles.countdownUnit,
+                      { borderColor: border },
+                      unit.label !== 'SECONDS' && styles.countdownUnitDivider,
+                    ]}
+                  >
+                    <Text adjustsFontSizeToFit numberOfLines={1} style={[styles.countdownNumber, { color: ink }]}>{String(unit.value).padStart(2, '0')}</Text>
+                    <Text style={[styles.countdownUnitLabel, { color: muted }]}>{unit.label}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
           </View>
 
           <View style={styles.dateRow}>
@@ -319,21 +351,22 @@ export function EventArenaOverview({
             </View>
             <View style={[styles.accountCard, { backgroundColor: surface, borderColor: border }]}>
               <View style={styles.accountHeadline}>
-                <View>
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={[styles.smallLabel, { color: muted }]}>ACCOUNT EQUITY</Text>
-                  <Text style={[styles.equityValue, { color: ink }]}>{money(performance?.equity)}</Text>
+                  <Text adjustsFontSizeToFit numberOfLines={1} style={[styles.equityValue, { color: ink }]}>{money(performance?.equity)}</Text>
                 </View>
                 <View style={[styles.returnPill, { backgroundColor: positive ? 'rgba(77,169,135,0.13)' : 'rgba(188,104,99,0.13)' }]}>
                   <Text style={{ color: positive ? '#4da987' : '#bc6863', fontFamily: 'Inter_600SemiBold', fontSize: 13 }}>{signedPercent(performance?.returnPercent)}</Text>
                 </View>
               </View>
               <View style={styles.metricGrid}>
-                <Metric label="START BALANCE" value={money(performance?.startingBalance ?? startingCapital)} />
-                <Metric label="NET P/L" value={signedMoney(performance?.profitLoss)} valueColor={performance?.profitLoss == null ? ink : positive ? '#4da987' : '#bc6863'} />
+                <Metric label="STARTING BALANCE" value={money(performance?.startingBalance ?? startingCapital)} />
+                <Metric label="AVAILABLE CASH" value={money(performance?.account?.cash)} />
                 <Metric label="BUYING POWER" value={money(performance?.buyingPower)} />
+                <Metric label="NET P/L" value={signedMoney(performance?.profitLoss)} valueColor={performance?.profitLoss == null ? ink : positive ? '#4da987' : '#bc6863'} />
                 <Metric label="EVENT RANK" value={rank == null ? '—' : `#${rank}`} />
                 <Metric label="COMPLETED TRADES" value={performance ? String(performance.completedTradeCount) : '—'} />
-                <Metric label="EVENT ACCOUNT" value={performance?.account?.name ?? enrollment?.accountName ?? 'Ready'} />
+                <Metric label="ACCOUNT NAME" value={performance?.account?.name ?? enrollment?.accountName ?? 'Ready'} />
               </View>
               {!performance?.account && (
                 <Text style={[styles.emptyText, { color: muted, textAlign: 'left', marginTop: 8 }]}>
@@ -363,7 +396,7 @@ export function EventArenaOverview({
               <Text style={[styles.sectionTitle, { color: ink }]}>Equity history</Text>
               <Text style={[styles.sectionAside, { color: muted }]}>EVENT ACCOUNT ONLY</Text>
             </View>
-            <View style={[styles.chartCard, { backgroundColor: surface, borderColor: border }]}>
+            <View style={[styles.chartCard, { backgroundColor: 'rgba(184,149,90,0.07)', borderColor: 'rgba(184,149,90,0.25)' }]}>
               <View style={styles.chartLegend}>
                 <View style={[styles.legendLine, { backgroundColor: accent }]} />
                 <Text style={[styles.legendText, { color: muted }]}>Event equity</Text>
@@ -380,7 +413,7 @@ export function EventArenaOverview({
                 <PortfolioLineChart
                   points={chartPoints}
                   width={contentWidth - 34}
-                  height={184}
+                  height={232}
                   referenceLine={{
                     value: performance?.startingBalance ?? startingCapital,
                     label: 'START',
@@ -399,6 +432,24 @@ export function EventArenaOverview({
             </View>
           </View>
         )}
+
+        <View style={[styles.notificationsCard, { backgroundColor: surface, borderColor: border }]}>
+          <View style={[styles.notificationsIcon, { backgroundColor: 'rgba(184,149,90,0.12)' }]}>
+            <Feather name="bell" size={16} color={accent} />
+          </View>
+          <View style={styles.notificationsCopy}>
+            <Text style={[styles.notificationsTitle, { color: ink }]}>Event notifications</Text>
+            <Text style={[styles.notificationsDetail, { color: muted }]}>Up to three reminders per event</Text>
+          </View>
+          <Switch
+            testID="paper-event-notifications-toggle"
+            accessibilityLabel="Event notifications"
+            value={notificationsEnabled}
+            onValueChange={onNotificationsChange}
+            trackColor={{ false: colors.muted, true: colors.primary }}
+            thumbColor={colors.card}
+          />
+        </View>
 
         {loading ? (
           <View style={styles.loadingRow} accessibilityRole="progressbar" accessibilityLabel="Loading event overview">
@@ -442,10 +493,10 @@ export function EventArenaOverview({
 
 const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 32 },
-  topline: { flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 16 },
+  topline: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
   brandMark: { width: 28, height: 28, borderRadius: 9, backgroundColor: 'rgba(184,149,90,0.12)', alignItems: 'center', justifyContent: 'center' },
-  eyebrow: { flex: 1, fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 1.05 },
-  iconButton: { width: 44, height: 44, borderWidth: StyleSheet.hairlineWidth, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  eyebrow: { flex: 1, minWidth: 0, fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 0.75 },
+  iconButton: { width: 40, height: 40, borderWidth: StyleSheet.hairlineWidth, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   notificationBadge: { position: 'absolute', top: -4, right: -4, minWidth: 16, height: 16, paddingHorizontal: 3, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: '#bc6863' },
   notificationBadgeText: { color: '#fff', fontFamily: 'Inter_700Bold', fontSize: 8 },
   heroCard: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 24, padding: 18, overflow: 'hidden' },
@@ -453,16 +504,26 @@ const styles = StyleSheet.create({
   liveDot: { width: 7, height: 7, borderRadius: 4 },
   phaseLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 1 },
   eventId: { marginLeft: 'auto', fontFamily: 'Inter_500Medium', fontSize: 10 },
-  title: { fontFamily: 'Inter_600SemiBold', fontSize: 27, lineHeight: 32, letterSpacing: -0.8 },
+  title: { fontFamily: 'Inter_700Bold', fontSize: 30, lineHeight: 35, letterSpacing: -1.1 },
   subtitle: { fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 20, marginTop: 7, maxWidth: 430 },
-  countdownPanel: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 11, marginTop: 15 },
+  capitalBand: { flexDirection: 'row', alignItems: 'center', gap: 11, borderWidth: StyleSheet.hairlineWidth, borderRadius: 15, paddingHorizontal: 13, paddingVertical: 10, marginTop: 10, alignSelf: 'flex-start', maxWidth: '100%' },
+  capitalMark: { width: 3, height: 34, borderRadius: 2 },
+  capitalLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.85 },
+  capitalValue: { fontFamily: 'Inter_700Bold', fontSize: 18, letterSpacing: -0.3, marginTop: 2 },
+  capitalSuffix: { flexShrink: 1, maxWidth: 86, textAlign: 'right', fontFamily: 'Inter_600SemiBold', fontSize: 8, lineHeight: 12, letterSpacing: 0.5 },
+  countdownPanel: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 17, paddingHorizontal: 12, paddingVertical: 12, marginTop: 15 },
   countdownHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   smallLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 0.85 },
-  countdownValue: { fontFamily: 'Inter_600SemiBold', fontSize: 21, letterSpacing: -0.5, marginTop: 7 },
+  countdownUnits: { flexDirection: 'row', gap: 6, marginTop: 10 },
+  countdownUnit: { flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'center' },
+  countdownUnitDivider: { borderRightWidth: StyleSheet.hairlineWidth },
+  countdownNumber: { fontFamily: 'Inter_700Bold', fontSize: 24, letterSpacing: -0.8 },
+  countdownUnitLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 7, letterSpacing: 0.55, marginTop: 3 },
+  closedCountdown: { fontFamily: 'Inter_600SemiBold', fontSize: 20, marginTop: 11 },
   dateRow: { flexDirection: 'row', alignItems: 'stretch', marginTop: 14, marginBottom: 14 },
-  dateItem: { flex: 1, gap: 7 },
-  dateDivider: { width: StyleSheet.hairlineWidth, marginHorizontal: 13 },
-  dateValue: { fontFamily: 'Inter_500Medium', fontSize: 11, lineHeight: 16 },
+  dateItem: { flex: 1, minWidth: 0, gap: 7 },
+  dateDivider: { width: StyleSheet.hairlineWidth, marginHorizontal: 10 },
+  dateValue: { fontFamily: 'Inter_500Medium', fontSize: 11, lineHeight: 17, flexShrink: 1 },
   actionsRow: { flexDirection: 'row', gap: 9 },
   primaryButton: { minHeight: 48, paddingHorizontal: 16, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 },
   fullButton: { width: '100%' },
@@ -479,12 +540,12 @@ const styles = StyleSheet.create({
   equityValue: { fontFamily: 'Inter_600SemiBold', fontSize: 29, letterSpacing: -0.8, marginTop: 5 },
   returnPill: { minHeight: 32, paddingHorizontal: 10, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   metricGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  metric: { width: '50%', minHeight: 70, paddingVertical: 12, paddingRight: 9, borderTopWidth: StyleSheet.hairlineWidth },
-  metricLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 0.65 },
-  metricValue: { fontFamily: 'Inter_600SemiBold', fontSize: 14, marginTop: 7 },
+  metric: { width: '50%', minWidth: 0, minHeight: 76, paddingVertical: 12, paddingRight: 8, borderTopWidth: StyleSheet.hairlineWidth },
+  metricLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.55 },
+  metricValue: { fontFamily: 'Inter_600SemiBold', fontSize: 14, marginTop: 7, flexShrink: 1 },
   tradeLink: { height: 48, marginTop: 2, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   tradeLinkText: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
-  chartCard: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 14, overflow: 'hidden' },
+  chartCard: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 15, overflow: 'hidden', backgroundColor: 'rgba(184,149,90,0.035)' },
   chartLegend: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 7, paddingHorizontal: 5, marginBottom: 8 },
   legendLine: { width: 14, height: 2 },
   legendDashed: { width: 14, borderTopWidth: 1, borderStyle: 'dashed', marginLeft: 5 },
@@ -496,6 +557,11 @@ const styles = StyleSheet.create({
   noteIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   noteTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 13, marginBottom: 5 },
   noteText: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 17 },
+  notificationsCard: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 11, borderWidth: StyleSheet.hairlineWidth, borderRadius: 16, paddingLeft: 12, paddingRight: 8, marginTop: 23 },
+  notificationsIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  notificationsCopy: { flex: 1, minWidth: 0 },
+  notificationsTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
+  notificationsDetail: { fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 },
   loadingRow: { height: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   loadingText: { fontFamily: 'Inter_400Regular', fontSize: 11 },
   timeNote: { fontFamily: 'Inter_400Regular', fontSize: 9, lineHeight: 14, textAlign: 'center', marginTop: 13 },

@@ -8,7 +8,6 @@ import {
   Platform,
   ScrollView,
   Share,
-  Switch,
   Text,
   TextInput,
   useWindowDimensions,
@@ -1226,6 +1225,8 @@ function EventArenaScreenContent() {
         saving={saving}
         onOpenNotifications={() => openCashHistory(currentWindow.id)}
         unreadCashNotifications={cashNotificationsUnread}
+        notificationsEnabled={notificationsEnabled}
+        onNotificationsChange={(value) => { void setEventNotifications(value); }}
         onJoin={() => {
           setJoinAliasDraft('');
           setJoinAliasError('');
@@ -1244,20 +1245,6 @@ function EventArenaScreenContent() {
         </View>
       )}
       {accountError || eventConfigurationError ? <Text accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 11, paddingHorizontal: 20, paddingBottom: 9 }}>{accountError || eventConfigurationError}</Text> : null}
-      <View style={{ marginHorizontal: 18, marginBottom: 8, paddingHorizontal: 12, minHeight: 54, borderWidth: 1, borderColor: colors.border, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.card }}>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 13 }}>Event notifications</Text>
-          <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>Up to three reminders per event</Text>
-        </View>
-        <Switch
-          testID="paper-event-notifications-toggle"
-          accessibilityLabel="Event notifications"
-          value={notificationsEnabled}
-          onValueChange={(value) => { void setEventNotifications(value); }}
-          trackColor={{ false: colors.muted, true: colors.primary }}
-          thumbColor={colors.card}
-        />
-      </View>
     </View>
   );
 

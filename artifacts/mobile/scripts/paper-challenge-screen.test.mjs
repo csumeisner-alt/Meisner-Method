@@ -924,6 +924,31 @@ test("Event Arena cash transfers stay event-only, confirmed, private, and idempo
   assert.match(eventArenaApi, /event_arena_cash_transfers/);
 });
 
+test("Event Arena competition keeps its visual summary and reminders inside the scroll area", () => {
+  assert.match(
+    eventArenaOverview,
+    /<ScrollView[\s\S]*?testID="event-arena-overview"[\s\S]*?testID="paper-event-notifications-toggle"[\s\S]*?<\/ScrollView>/,
+  );
+  assert.match(eventArena, /notificationsEnabled=\{notificationsEnabled\}/);
+  assert.match(eventArena, /onNotificationsChange=\{\(value\) => \{ void setEventNotifications\(value\); \}\}/);
+
+  for (const label of [
+    "STARTING BALANCE",
+    "AVAILABLE CASH",
+    "BUYING POWER",
+    "NET P/L",
+    "EVENT RANK",
+    "COMPLETED TRADES",
+  ]) {
+    assert.ok(eventArenaOverview.includes(`label="${label}"`), `missing ${label} metric`);
+  }
+  assert.match(eventArenaOverview, /label="AVAILABLE CASH" value=\{money\(performance\?\.account\?\.cash\)\}/);
+  assert.match(eventArenaOverview, /label="BUYING POWER" value=\{money\(performance\?\.buyingPower\)\}/);
+  assert.match(eventArenaOverview, /ISOLATED/);
+  assert.match(eventArenaOverview, /height=\{232\}/);
+  assert.match(eventArenaOverview, /countdown\.days[\s\S]*?label: 'DAYS'[\s\S]*?label: 'HOURS'[\s\S]*?label: 'MINUTES'[\s\S]*?label: 'SECONDS'/);
+});
+
 test("incoming event cash is celebrated on app open and acknowledged per transfer", () => {
   assert.match(mobileRootLayout, /<EventCashReceivedCelebration \/>/);
   assert.match(eventCashCelebration, /loadPaperChallengeStore/);
