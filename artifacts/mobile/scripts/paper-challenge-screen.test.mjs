@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { removePendingPaperOrder } from "../lib/paperOrderDeletion.ts";
 
 const screen = readFileSync(new URL("../app/paper.tsx", import.meta.url), "utf8");
@@ -20,9 +20,9 @@ const eventArenaOverview = readFileSync(new URL("../components/EventArenaOvervie
 const eventCashCelebration = readFileSync(new URL("../components/EventCashReceivedCelebration.tsx", import.meta.url), "utf8");
 const mobileRootLayout = readFileSync(new URL("../app/_layout.tsx", import.meta.url), "utf8");
 const eventArenaTransfers = readFileSync(new URL("../lib/eventArenaTransfers.ts", import.meta.url), "utf8");
+const eventArenaArtworkCatalog = readFileSync(new URL("../lib/eventArenaArtwork.ts", import.meta.url), "utf8");
 const eventArenaApi = readFileSync(new URL("../../api-server/src/routes/eventArenaRoutes.ts", import.meta.url), "utf8");
 const eventAccountDashboard = readFileSync(new URL("../components/PaperEventArenaDashboard.tsx", import.meta.url), "utf8");
-const eventArenaBackground = readFileSync(new URL("../assets/event-arena-stadium.jpg", import.meta.url));
 
 assert.match(events, /eventWindow\.phase === 'upcoming' \? eventWindow\.startAtMs : Date\.now\(\)/);
 assert.match(events, /eventWindow\.phase === 'upcoming' \? null : PAPER_CHALLENGE_STARTING_BALANCE/);
@@ -800,29 +800,76 @@ test("incoming event cash is celebrated on app open and acknowledged per transfe
   assert.match(eventArenaApi, /router\.post\("\/event-arena\/:eventId\/transfers\/read"/);
 });
 
-test("the live Event Arena podium uses a compact, clean stadium background", () => {
-  const backgroundPath = new URL("../assets/event-arena-stadium.jpg", import.meta.url);
-  assert.equal(eventArenaBackground[0], 0xff);
-  assert.equal(eventArenaBackground[1], 0xd8);
-  assert.ok(statSync(backgroundPath).size < 250 * 1024, "the bundled background stays compact");
+test("all five live Event Arena backgrounds keep podium names and values readable", () => {
+  const artworks = [
+    ["stadium", "event-arena-stadium.jpg"],
+    ["neon-nightclub", "event-arena-neon-nightclub.jpg"],
+    ["mountain-summit", "event-arena-mountain-summit.jpg"],
+    ["red-showdown", "event-arena-red-showdown.jpg"],
+    ["green-stock-exchange", "event-arena-green-stock-exchange.jpg"],
+  ];
+  assert.equal((eventArenaArtworkCatalog.match(/require\('\.\.\/assets\/event-arena-[^']+\.jpg'\)/g) ?? []).length, 5);
+
   assert.match(leaderboard, /source=\{EVENT_ARENA_ARTWORK_SOURCES\[event\.artworkId \?\? LEGACY_PAPER_CHALLENGE_ARTWORK_ID\]\}/);
   assert.match(leaderboard, /resizeMode="cover"/);
   assert.match(leaderboard, /event-arena-leaderboard-artwork-\$\{event\.id\}/);
+  const artworkStart = leaderboard.indexOf("<ImageBackground");
+  const artworkEnd = leaderboard.indexOf("</ImageBackground>", artworkStart);
+  const artworkContainer = leaderboard.slice(artworkStart, artworkEnd);
+  assert.ok(artworkStart >= 0 && artworkEnd > artworkStart);
+  assert.match(artworkContainer, /backgroundColor: '#101720'/);
+  assert.match(artworkContainer, /imageStyle=\{\{ borderRadius: 24, opacity: 0\.96 \}\}/);
+  assert.match(artworkContainer, /backgroundColor: 'rgba\(7,12,20,0\.18\)'/);
+  assert.match(artworkContainer, /<LinearGradient/);
+  assert.match(artworkContainer, /testID="paper-event-leaderboard-podium"/);
+  const standingsStart = leaderboard.indexOf('<View testID="paper-event-leaderboard-list"');
+  assert.ok(standingsStart > artworkEnd, "full standings remain on their solid card below the artwork");
+  assert.match(leaderboard.slice(standingsStart, standingsStart + 260), /backgroundColor: colors\.card/);
   assert.match(eventArena, /artworkId: event\.artworkId/);
   assert.match(eventArena, /EVENT_ARENA_ARTWORK_SOURCES\[event\.artworkId \?\? LEGACY_PAPER_CHALLENGE_ARTWORK_ID\]/);
   assert.match(events, /EVENT_ARENA_ARTWORK_SOURCES\[event\.artworkId \?\? LEGACY_PAPER_CHALLENGE_ARTWORK_ID\]/);
-  for (const asset of [
-    "event-arena-neon-nightclub.jpg",
-    "event-arena-mountain-summit.jpg",
-    "event-arena-red-showdown.jpg",
-    "event-arena-green-stock-exchange.jpg",
-  ]) {
+
+  const composite = (foreground, background, alpha) => foreground.map(
+    (channel, index) => channel * alpha + background[index] * (1 - alpha),
+  );
+  const luminance = (rgb) => rgb
+    .map((channel) => {
+      const value = channel / 255;
+      return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    })
+    .reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
+  const contrast = (first, second) => {
+    const values = [luminance(first), luminance(second)].sort((a, b) => b - a);
+    return (values[0] + 0.05) / (values[1] + 0.05);
+  };
+
+  for (const [id, asset] of artworks) {
+    assert.match(eventArenaArtworkCatalog, new RegExp(`['"]?${id}['"]?: require\\('../assets/${asset.replaceAll(".", "\\.")}'\\)`));
     const path = new URL(`../assets/${asset}`, import.meta.url);
-    assert.ok(statSync(path).size > 0, `${asset} is bundled locally`);
+    const bytes = readFileSync(path);
+    assert.equal(bytes[0], 0xff, `${asset} is a bundled JPEG`);
+    assert.equal(bytes[1], 0xd8, `${asset} is a bundled JPEG`);
+    assert.ok(bytes.byteLength > 0, `${asset} is present in the mobile bundle`);
+
+    // A pure-white image pixel is the brightest possible backdrop, so this
+    // checks each selected asset against a conservative maximum-luminance case.
+    const underlying = composite([255, 255, 255], [16, 23, 32], 0.96);
+    const scrimmed = composite([7, 12, 20], underlying, 0.18);
+    for (const [cardColor, opacity] of [
+      [[13, 17, 23], 0.76],
+      [[13, 19, 29], 0.73],
+      [[26, 23, 15], 0.88],
+    ]) {
+      const cardSurface = composite(cardColor, scrimmed, opacity);
+      assert.ok(contrast([255, 255, 255], cardSurface) >= 4.5, `${id} podium text keeps strong contrast on the brightest possible image pixel`);
+    }
   }
-  assert.match(leaderboard, /backgroundColor: 'rgba\(7,12,20,0\.18\)'/);
+
   assert.match(leaderboard, /rgba\(25,139,218,0\.22\)/);
   assert.match(leaderboard, /rgba\(255,218,128,0\.18\)/);
+  assert.match(leaderboard, /isChampion \? 'rgba\(13,17,23,0\.76\)' : 'rgba\(13,19,29,0\.73\)'/);
+  assert.match(leaderboard, /const compactPodium = windowWidth <= 360/);
+  assert.match(leaderboard, /useWindowDimensions\(\)/);
   assert.match(leaderboard, /slot\.rank === 1[\s\S]*?\{ color: '#E5BF63' \}/);
   assert.match(leaderboard, /slot\.rank === 2[\s\S]*?\{ color: '#C9D4DF' \}/);
   assert.match(leaderboard, /: \{ color: '#D99A72' \}/);
@@ -837,5 +884,9 @@ test("the live Event Arena podium uses a compact, clean stadium background", () 
   assert.match(leaderboard, /\{signedMoney\(entry\.profitLoss\)\}/);
   const podiumStart = leaderboard.indexOf("const renderPodiumCard =");
   const podiumEnd = leaderboard.indexOf("\n  const openCashTransfer", podiumStart);
-  assert.doesNotMatch(leaderboard.slice(podiumStart, podiumEnd), /CHAMPION|RUNNER-UP|THIRD PLACE/);
+  const podium = leaderboard.slice(podiumStart, podiumEnd);
+  assert.doesNotMatch(podium, /CHAMPION|RUNNER-UP|THIRD PLACE/);
+  assert.match(podium, /allowFontScaling numberOfLines=\{1\} adjustsFontSizeToFit minimumFontScale=\{0\.7\}[\s\S]*?\{entry\.alias\}/);
+  assert.match(podium, /allowFontScaling numberOfLines=\{1\} adjustsFontSizeToFit minimumFontScale=\{0\.65\}[\s\S]*?\{money\(entry\.equity\)\}/);
+  assert.match(podium, /allowFontScaling numberOfLines=\{1\} adjustsFontSizeToFit minimumFontScale=\{0\.65\}[\s\S]*?\{signedMoney\(entry\.profitLoss\)\}/);
 });
