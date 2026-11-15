@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { removePendingPaperOrder } from "../lib/paperOrderDeletion.ts";
 
 const screen = readFileSync(new URL("../app/paper.tsx", import.meta.url), "utf8");
@@ -22,6 +22,7 @@ const mobileRootLayout = readFileSync(new URL("../app/_layout.tsx", import.meta.
 const eventArenaTransfers = readFileSync(new URL("../lib/eventArenaTransfers.ts", import.meta.url), "utf8");
 const eventArenaApi = readFileSync(new URL("../../api-server/src/routes/eventArenaRoutes.ts", import.meta.url), "utf8");
 const eventAccountDashboard = readFileSync(new URL("../components/PaperEventArenaDashboard.tsx", import.meta.url), "utf8");
+const eventArenaBackground = readFileSync(new URL("../assets/event-arena-stadium.jpg", import.meta.url));
 
 assert.match(events, /eventWindow\.phase === 'upcoming' \? eventWindow\.startAtMs : Date\.now\(\)/);
 assert.match(events, /eventWindow\.phase === 'upcoming' \? null : PAPER_CHALLENGE_STARTING_BALANCE/);
@@ -714,4 +715,18 @@ test("incoming event cash is celebrated on app open and acknowledged per transfe
   assert.match(eventCashCelebration, /transfers\/read/);
   assert.match(eventCashCelebration, /transferIds: receipt\.notifications\.map\(\(item\) => item\.id\)/);
   assert.match(eventArenaApi, /router\.post\("\/event-arena\/:eventId\/transfers\/read"/);
+});
+
+test("the live Event Arena podium uses a compact, clean stadium background", () => {
+  const backgroundPath = new URL("../assets/event-arena-stadium.jpg", import.meta.url);
+  assert.equal(eventArenaBackground[0], 0xff);
+  assert.equal(eventArenaBackground[1], 0xd8);
+  assert.ok(statSync(backgroundPath).size < 250 * 1024, "the bundled background stays compact");
+  assert.match(leaderboard, /source=\{require\('\.\.\/assets\/event-arena-stadium\.jpg'\)\}/);
+  assert.match(leaderboard, /resizeMode="cover"/);
+  assert.match(leaderboard, /backgroundColor: 'rgba\(7,12,20,0\.49\)'/);
+  assert.match(leaderboard, /renderPodiumCard\(podiumSlots\[0\]\)/);
+  assert.match(leaderboard, /\{money\(entry\.equity\)\}/);
+  assert.match(leaderboard, /\{returnLabel\(entry\.returnPercent\)\}/);
+  assert.match(leaderboard, /\{signedMoney\(entry\.profitLoss\)\}/);
 });
