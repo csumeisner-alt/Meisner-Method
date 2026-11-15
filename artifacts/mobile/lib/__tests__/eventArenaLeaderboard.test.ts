@@ -83,6 +83,8 @@ test('event status and countdown use the scheduled start and end times', () => {
     label: 'Live Championship',
     countdown: 'Ends in 4d 6h',
   });
+  assert.equal(getEventArenaStatus(start, end, start).phase, 'active');
+  assert.equal(getEventArenaStatus(start, end, end - 1).phase, 'active');
   assert.deepEqual(getEventArenaStatus(start, end, end), {
     phase: 'ended',
     label: 'Final Results',

@@ -98,7 +98,7 @@ test("event enrollment enables sharing with compact privacy controls", () => {
   assert.match(leaderboard, /testID="opt-out-paper-event-leaderboard"/);
   assert.match(leaderboard, /testID="opt-in-paper-event-leaderboard"/);
   assert.match(leaderboard, /Public scores and holding details are removed 30 days after the event ends/);
-  assert.match(leaderboard, /open-paper-event-sharing-info[\s\S]*?edit-paper-event-leaderboard-alias/);
+  assert.match(leaderboard, /edit-paper-event-leaderboard-alias[\s\S]*?refresh-paper-event-leaderboard[\s\S]*?open-paper-event-sharing-info/);
   assert.doesNotMatch(leaderboard, /testID="paper-event-leaderboard-opt-in"/);
   assert.doesNotMatch(leaderboard, /DEMO_ENTRIES|toggle-paper-event-leaderboard-demo|VIEW DEMO EXAMPLE/);
   assert.match(leaderboard, /testID="paper-event-leaderboard-detail"/);
@@ -169,13 +169,27 @@ test("Event Arena section tabs stay readable and fit narrow phone widths", () =>
 });
 
 test("championship leaderboard shows real podium scores, event context, and below-podium standings", () => {
+  const stadiumStart = leaderboard.indexOf("<ImageBackground");
+  const stadiumEnd = leaderboard.indexOf("</ImageBackground>", stadiumStart);
+  const stadium = leaderboard.slice(stadiumStart, stadiumEnd);
+
   assert.match(leaderboard, /getEventArenaPodiumSlots\(entries\)/);
   assert.match(leaderboard, /getEventArenaStandingsEntries\(entries\)/);
   assert.match(leaderboard, /getEventArenaStatus\(event\.startAtMs, event\.endAtMs, countdownNow\)/);
   assert.match(leaderboard, /eventStatus\.label\.toUpperCase\(\)/);
   assert.match(leaderboard, /getEventArenaReturnTone/);
-  assert.match(leaderboard, /paper-event-leaderboard-participant-count/);
-  assert.match(leaderboard, /paper-event-leaderboard-countdown/);
+  assert.ok(stadiumStart >= 0 && stadiumEnd > stadiumStart);
+  assert.match(stadium, /CHAMPIONSHIP STANDINGS/);
+  assert.match(stadium, /testID="edit-paper-event-leaderboard-alias"/);
+  assert.match(stadium, /testID="refresh-paper-event-leaderboard"/);
+  assert.match(stadium, /testID="open-paper-event-sharing-info"/);
+  assert.match(stadium, /testID="paper-event-leaderboard-participant-count"[\s\S]*?name="users"[\s\S]*?competitor/);
+  assert.match(stadium, /testID="paper-event-leaderboard-countdown"[\s\S]*?eventStatus\.countdown/);
+  assert.match(stadium, /eventStatus\.phase !== 'ended' && \(/);
+  assert.match(stadium, /eventStatus\.phase === 'active' && \([\s\S]*?paper-event-leaderboard-event-progress/);
+  assert.doesNotMatch(stadium, /% complete|Event complete/);
+  assert.doesNotMatch(leaderboard, /Event leaderboard/);
+  assert.match(leaderboard, /const options: Intl\.DateTimeFormatOptions = \{ month: 'short', day: 'numeric', year: 'numeric' \}/);
   assert.match(leaderboard, /Updated \{timeLabel\(lastUpdated\)\}/);
   assert.match(leaderboard, /podiumSlots\[0\] && renderPodiumCard\(podiumSlots\[0\]\)/);
   assert.match(leaderboard, /podiumSlots\.slice\(1\)\.map\(\(slot\) => renderPodiumCard\(slot\)\)/);
@@ -199,6 +213,17 @@ test("championship leaderboard shows real podium scores, event context, and belo
   assert.match(leaderboard, /retry-paper-event-leaderboard/);
   assert.match(leaderboard, /paper-event-leaderboard-stale/);
   assert.match(leaderboard, /refresh-empty-paper-event-leaderboard/);
+
+  const headingIndex = stadium.indexOf("CHAMPIONSHIP STANDINGS");
+  const countdownIndex = stadium.indexOf('testID="paper-event-leaderboard-countdown"');
+  const datesIndex = stadium.indexOf("dateRangeLabel(event.startAtMs, event.endAtMs)");
+  const participantCountIndex = stadium.indexOf('testID="paper-event-leaderboard-participant-count"');
+  const podiumIndex = leaderboard.indexOf('testID="paper-event-leaderboard-podium"');
+  const standingsIndex = leaderboard.indexOf('testID="paper-event-leaderboard-list"');
+  const positionIndex = leaderboard.indexOf('testID="paper-event-leaderboard-current-user"');
+  assert.ok(headingIndex >= 0 && countdownIndex > headingIndex);
+  assert.ok(datesIndex > countdownIndex && participantCountIndex > datesIndex);
+  assert.ok(podiumIndex > stadiumStart && standingsIndex > podiumIndex && positionIndex > standingsIndex);
 });
 
 test("the signed-in participant appears only in their actual ranked position", () => {
@@ -247,13 +272,13 @@ test("leaderboard names and large values remain readable and announced on compac
   const renderEntryStart = leaderboard.indexOf("const renderEntry =");
   const renderPodiumStart = leaderboard.indexOf("const renderPodiumCard =", renderEntryStart);
   const positionStart = leaderboard.indexOf('testID="paper-event-leaderboard-current-user"');
-  const standingsStart = leaderboard.indexOf('testID="paper-event-leaderboard-list"', positionStart);
+  const standingsStart = leaderboard.indexOf('testID="paper-event-leaderboard-list"');
   const renderEntry = leaderboard.slice(renderEntryStart, renderPodiumStart);
   const renderPodium = leaderboard.slice(renderPodiumStart, positionStart);
-  const positionPanel = leaderboard.slice(positionStart, standingsStart);
+  const positionPanel = leaderboard.slice(positionStart, leaderboard.indexOf("{loadError && entries.length > 0", positionStart));
 
   assert.ok(renderEntryStart >= 0 && renderPodiumStart > renderEntryStart);
-  assert.ok(positionStart >= 0 && standingsStart > positionStart);
+  assert.ok(standingsStart >= 0 && positionStart > standingsStart);
   assert.match(renderEntry, /accessibilityLabel=\{`Rank \$\{entry\.rank\}, \$\{entry\.alias\}[\s\S]*?account value \$\{money\(entry\.equity\)\}[\s\S]*?profit or loss \$\{signedMoney\(entry\.profitLoss\)\}[\s\S]*?\$\{returnLabel\(entry\.returnPercent\)\} return/);
   assert.match(renderPodium, /accessibilityLabel=\{entry[\s\S]*?account value \$\{money\(entry\.equity\)\}/);
   assert.match(renderPodium, /allowFontScaling numberOfLines=\{1\} adjustsFontSizeToFit minimumFontScale=\{0\.7\}[\s\S]*?\{entry\.alias\}/);
@@ -293,7 +318,7 @@ test("leaderboard header scrolls with its content and clears the fixed bottom ta
   const eventContentEnd = eventArena.indexOf("{section === 'trades'", eventContentStart);
 
   assert.ok(mainScrollStart >= 0 && mainScrollEnd > mainScrollStart);
-  assert.match(mainScroll, /renderLeaderboardHeader\(\)/);
+  assert.doesNotMatch(mainScroll, /renderLeaderboardHeader\(\)/);
   assert.match(mainScroll, /testID="paper-event-leaderboard-podium"/);
   assert.match(mainScroll, /testID="paper-event-leaderboard-current-user"/);
   assert.doesNotMatch(mainScroll, /paper-event-rank-history/);
