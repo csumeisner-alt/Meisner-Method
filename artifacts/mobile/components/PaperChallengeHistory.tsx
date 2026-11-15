@@ -25,6 +25,7 @@ import {
   getPaperChallengeMilestones,
   getPaperChallengePersonalBestProgress,
   getPaperChallengeArchiveChartWidth,
+  getLightningRoundSeasonSummary,
   getPaperChallengeReminders,
   getPaperChallengeWindow,
   getPaperChallengeConfiguration,
@@ -122,6 +123,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
   const currentWindow = getPaperChallengeWindow(now);
   const hasCurrentEnrollment = store.enrollment?.eventId === currentWindow.id;
   const sortedHistory = sortPaperChallengeHistory(store.history, sortMode);
+  const lightningRoundSeason = getLightningRoundSeasonSummary(store.history, now);
   const selectedArchiveEvent = store.history.find((event) => event.eventId === selectedArchiveEventId) ?? null;
   const personalBestProgress = positionValue && !positionValue.usedFallbackPrice
     ? getPaperChallengePersonalBestProgress(store.history, currentWindow.startAtMs, positionValue.returnPercent)
@@ -657,6 +659,31 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
             </TouchableOpacity>
           ))}
         </View>
+        {storeLoadState === 'ready' && lightningRoundSeason && (
+          <View testID="paper-event-lightning-season-summary" style={{ padding: 14, borderRadius: 13, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>Lightning Round season to date</Text>
+            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 4 }}>
+              {lightningRoundSeason.completedRounds} completed {lightningRoundSeason.completedRounds === 1 ? 'round' : 'rounds'} saved on this device
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 11 }}>
+              {[
+                ['Total P/L', `${lightningRoundSeason.totalProfitLoss >= 0 ? '+' : ''}${money(lightningRoundSeason.totalProfitLoss)}`],
+                ['Season return', `${lightningRoundSeason.returnPercent >= 0 ? '+' : ''}${lightningRoundSeason.returnPercent.toFixed(2)}%`],
+                ['Best rank', lightningRoundSeason.bestRank ? `#${lightningRoundSeason.bestRank}` : 'Unavailable'],
+              ].map(([label, value]) => (
+                <View key={label} style={{ flexGrow: 1, flexBasis: '30%', minWidth: 90, padding: 9, borderRadius: 9, backgroundColor: colors.background }}>
+                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 9 }}>{label}</Text>
+                  <Text style={{ color: label === 'Total P/L' && lightningRoundSeason.totalProfitLoss < 0 ? colors.destructive : colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 12, marginTop: 4 }}>
+                    {value}
+                  </Text>
+                </View>
+              ))}
+            </View>
+            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 9, lineHeight: 14, marginTop: 9 }}>
+              This summary uses only completed Lightning Round records saved here. Open any event below to review its original result, artwork, and equity history.
+            </Text>
+          </View>
+        )}
         {storeLoadState === 'loading' ? (
           <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, paddingVertical: 14 }}>Loading saved events…</Text>
         ) : storeLoadState === 'error' ? (

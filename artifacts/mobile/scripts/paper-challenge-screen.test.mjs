@@ -92,7 +92,13 @@ test("Lightning Round stays separate, off-week, and visible from the existing ar
   assert.match(lightningRound, /DOLLAR P\/L/);
   assert.match(lightningRound, /PARTICIPANT/);
   assert.match(lightningRound, /Past Lightning Rounds/);
+  assert.match(lightningRound, /getLightningRoundSeasonSummary\(store\.history, now\)/);
+  assert.match(lightningRound, /testID="lightning-round-season-summary"/);
+  assert.match(lightningRound, /weekly records below stay separate/);
   assert.match(lightningRound, /PaperEventShareCard event=\{event\}/);
+  assert.match(events, /getLightningRoundSeasonSummary\(store\.history, now\)/);
+  assert.match(events, /testID="paper-event-lightning-season-summary"/);
+  assert.match(events, /Open any event below to review its original result, artwork, and equity history/);
   assert.match(lightningRound, /trade\.accountId === enrollment\?\.accountId/);
   assert.match(lightningRound, /challengeAccountId: enrollment\?\.accountId/);
   assert.match(lightningRound, /formatProviderPriceSource/);

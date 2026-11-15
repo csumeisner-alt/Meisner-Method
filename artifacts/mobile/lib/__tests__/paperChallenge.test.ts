@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import {
   buildPaperChallengeSummary,
   getPaperChallengeArchiveChartWidth,
+  getLightningRoundSeasonSummary,
   capturePaperChallengeBaseline,
   ensurePaperChallengeAccount,
   getPaperChallengeMilestones,
@@ -536,6 +537,62 @@ test('event history sorts newest by date or strongest by return', () => {
   assert.deepEqual(sortPaperChallengeHistory(history, 'low').map((event) => event.eventId), ['older-low', 'newer', 'older-best']);
   assert.deepEqual(sortPaperChallengeHistory(history, 'positive').map((event) => event.eventId), ['newer', 'older-best']);
   assert.deepEqual(sortPaperChallengeHistory(history, 'negative').map((event) => event.eventId), ['older-low']);
+});
+
+test('Lightning Round season summary aggregates only completed local Lightning Round records', () => {
+  const makeSummary = (
+    eventId: string,
+    overrides: Partial<PaperChallengeSummary> = {},
+  ): PaperChallengeSummary => ({
+    eventId,
+    eventStartAtMs: 1_000,
+    eventEndAtMs: 2_000,
+    joinedAtMs: 1_000,
+    accountId: `paper-lightning:${eventId}`,
+    accountName: 'Lightning Round',
+    eventType: 'lightning-round',
+    startEquity: 100_000,
+    endEquity: 100_000,
+    netProfit: 0,
+    returnPercent: 0,
+    tradeCount: 0,
+    buyCount: 0,
+    sellCount: 0,
+    symbolsTraded: [],
+    realizedPnL: 0,
+    completedAtMs: 2_001,
+    ...overrides,
+  });
+  const history = [
+    makeSummary('lightning-2026-11-20', {
+      startEquity: 100_000,
+      startingBalance: 100_000,
+      netProfit: 5_000,
+      finalRank: 3,
+    }),
+    makeSummary('lightning-2026-12-04', {
+      startEquity: 200_000,
+      startingBalance: 200_000,
+      netProfit: -2_000,
+      finalRank: 1,
+      completedAtMs: 20_000,
+    }),
+    makeSummary('lightning-2026-12-18', { completedAtMs: 30_000 }),
+    makeSummary('regular-event', {
+      eventType: 'event-arena',
+      netProfit: 90_000,
+      finalRank: 1,
+    }),
+  ];
+
+  assert.deepEqual(getLightningRoundSeasonSummary(history, 25_000), {
+    completedRounds: 2,
+    totalProfitLoss: 3_000,
+    startingEquity: 300_000,
+    returnPercent: 1,
+    bestRank: 1,
+  });
+  assert.equal(getLightningRoundSeasonSummary(history, 1_500), null);
 });
 
 test('event archive chart fits a 400px mobile viewport without fabricated width', () => {

@@ -867,6 +867,44 @@ export function sortPaperChallengeHistory(
   });
 }
 
+export type LightningRoundSeasonSummary = {
+  completedRounds: number;
+  totalProfitLoss: number;
+  startingEquity: number;
+  returnPercent: number;
+  bestRank: number | null;
+};
+
+/** Aggregate only completed Lightning Round records saved in the local event history. */
+export function getLightningRoundSeasonSummary(
+  history: PaperChallengeSummary[],
+  nowMs = Date.now(),
+): LightningRoundSeasonSummary | null {
+  const completed = history.filter((event) =>
+    (event.eventType === 'lightning-round' || isLightningRoundEventId(event.eventId))
+    && Number.isFinite(event.completedAtMs)
+    && event.completedAtMs <= nowMs
+    && Number.isFinite(event.netProfit)
+    && Number.isFinite(event.startEquity)
+    && event.startEquity > 0,
+  );
+  if (completed.length === 0) return null;
+
+  const totalProfitLoss = completed.reduce((total, event) => total + event.netProfit, 0);
+  const startingEquity = completed.reduce((total, event) => total + event.startEquity, 0);
+  const ranks = completed
+    .map((event) => event.finalRank)
+    .filter((rank): rank is number => Number.isInteger(rank) && rank! > 0);
+
+  return {
+    completedRounds: completed.length,
+    totalProfitLoss,
+    startingEquity,
+    returnPercent: startingEquity > 0 ? (totalProfitLoss / startingEquity) * 100 : 0,
+    bestRank: ranks.length > 0 ? Math.min(...ranks) : null,
+  };
+}
+
 export function getPaperChallengeArchiveChartWidth(screenWidth: number): number {
   if (!Number.isFinite(screenWidth) || screenWidth <= 0) return 180;
   return Math.max(180, screenWidth - 68);

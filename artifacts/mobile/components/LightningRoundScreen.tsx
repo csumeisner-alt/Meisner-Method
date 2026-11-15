@@ -33,6 +33,7 @@ import {
 import {
   buildPaperChallengeSummary,
   ensurePaperChallengeAccount,
+  getLightningRoundSeasonSummary,
   getLatestLightningRoundAlias,
   getMissingPaperChallengeQuoteSymbols,
   getLightningRoundWindow,
@@ -574,6 +575,7 @@ export function LightningRoundScreen() {
   const pastLightningEvents = store.history.filter((event) =>
     event.eventType === 'lightning-round' || event.eventId.startsWith('lightning-'),
   );
+  const lightningRoundSeason = getLightningRoundSeasonSummary(store.history, now);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: Platform.OS === 'web' ? 10 : insets.top }}>
@@ -901,6 +903,31 @@ export function LightningRoundScreen() {
         {storeReady && scheduleReady && tab === 'past' && (
           <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: insets.bottom + 24 }}>
             <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 17, marginBottom: 10 }}>Past Lightning Rounds</Text>
+            {lightningRoundSeason && (
+              <View testID="lightning-round-season-summary" style={{ marginBottom: 14, padding: 14, borderRadius: 13, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+                <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>Season to date</Text>
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 4 }}>
+                  {lightningRoundSeason.completedRounds} completed {lightningRoundSeason.completedRounds === 1 ? 'round' : 'rounds'} · weekly records below stay separate
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 11 }}>
+                  {[
+                    ['Total P/L', signedMoney(lightningRoundSeason.totalProfitLoss)],
+                    ['Season return', formatPercent(lightningRoundSeason.returnPercent)],
+                    ['Best rank', lightningRoundSeason.bestRank ? `#${lightningRoundSeason.bestRank}` : 'Unavailable'],
+                  ].map(([label, value]) => (
+                    <View key={label} style={{ flexGrow: 1, flexBasis: '30%', minWidth: 90, padding: 9, borderRadius: 9, backgroundColor: colors.background }}>
+                      <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 9 }}>{label}</Text>
+                      <Text style={{ color: label === 'Total P/L' && lightningRoundSeason.totalProfitLoss < 0 ? colors.destructive : colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 12, marginTop: 4 }}>
+                        {value}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 9, lineHeight: 14, marginTop: 9 }}>
+                  Season return is total profit or loss divided by the starting equity across completed rounds.
+                </Text>
+              </View>
+            )}
             {pastLightningEvents.length === 0 ? (
               <View style={{ alignItems: 'center', padding: 30 }}>
                 <Feather name="archive" size={23} color={colors.mutedForeground} />
