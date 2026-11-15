@@ -11,4 +11,5 @@ export type EventArenaScoreSubmissionRankingDirection = typeof EventArenaScoreSu
 
 export const EventArenaScoreSubmissionRankingDirection = {
   'highest-return': 'highest-return',
+  'lowest-return': 'lowest-return',
 } as const;

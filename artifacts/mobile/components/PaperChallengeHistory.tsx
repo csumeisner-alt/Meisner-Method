@@ -28,6 +28,7 @@ import {
   getPaperChallengeReminders,
   getPaperChallengeWindow,
   getPaperChallengeConfiguration,
+  isPaperChallengeConfiguration,
   LEGACY_PAPER_CHALLENGE_ARTWORK_ID,
   loadPaperChallengeStore,
   PAPER_CHALLENGE_STARTING_BALANCE,
@@ -125,6 +126,11 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
   const personalBestProgress = positionValue && !positionValue.usedFallbackPrice
     ? getPaperChallengePersonalBestProgress(store.history, currentWindow.startAtMs, positionValue.returnPercent)
     : null;
+  const currentEventRules = store.enrollment?.eventId === currentWindow.id
+    ? store.enrollment
+    : currentWindow;
+  const isBearMarketMayhem = currentEventRules.eventType === 'bear-market-mayhem'
+    || currentEventRules.rankingDirection === 'lowest-return';
   const midweekAt = currentWindow.startAtMs + 2 * DAY_MS + 2.5 * 60 * 60 * 1000;
 
   const returnToArena = () => {
@@ -187,9 +193,31 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
     const eventWindow = getPaperChallengeWindow(Date.now());
     if (saving || storeLoadState !== 'ready' || eventWindow.phase === 'ended' || store.enrollment) return;
     setSaving(true);
-    const configuration = getPaperChallengeConfiguration(
+    const expected = getPaperChallengeConfiguration(
       eventWindow.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID,
     );
+    let configuration = expected;
+    try {
+      const response = await fetch(
+        `${BASE_URL}/api/event-arena/${encodeURIComponent(eventWindow.id)}/config`,
+        { method: 'POST' },
+      );
+      if (!response.ok) throw new Error('Event rules are unavailable.');
+      const payload = await response.json() as unknown;
+      if (!isPaperChallengeConfiguration(payload)) throw new Error('Saved event rules are invalid.');
+      const saved = payload as Record<string, unknown> & typeof expected;
+      if (
+        saved.artworkId !== expected.artworkId
+        || saved.eventId !== eventWindow.id
+        || saved.startAtMs !== eventWindow.startAtMs
+        || saved.endAtMs !== eventWindow.endAtMs
+      ) throw new Error('Saved event rules do not match this event.');
+      configuration = saved;
+    } catch {
+      Alert.alert('Could not join', 'The saved event rules could not be confirmed. Your enrollment was not changed.');
+      setSaving(false);
+      return;
+    }
     const enrollment = {
       eventId: eventWindow.id,
       ...configuration,
@@ -417,7 +445,9 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
             </TouchableOpacity>
             <View style={{ flex: 1 }}>
               <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 17 }}>
-                {event.eventType === 'green-bull-championship' ? 'Green Bull Championship results' : 'Event Arena results'}
+                {event.eventType === 'green-bull-championship'
+                  ? 'Green Bull Championship results'
+                  : event.eventType === 'bear-market-mayhem' ? 'Bear Market Mayhem results' : 'Event Arena results'}
               </Text>
               <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 3 }}>
                 {dateRange(event.eventStartAtMs, event.eventEndAtMs)}
@@ -757,18 +787,24 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                 {hasCurrentEnrollment ? 'YOUR EVENT PORTFOLIO' : currentWindow.phase === 'active' ? 'LIVE THIS WEEK' : 'NEXT PAPER EVENT'}
               </Text>
               <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 18, marginTop: 8 }}>
-                Grow your event balance.
+                {isBearMarketMayhem ? 'Compete to lose the most.' : 'Grow your event balance.'}
               </Text>
               <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 19, marginTop: 6 }}>
                 {hasCurrentEnrollment
                   ? currentWindow.phase === 'active'
                     ? store.enrollment?.startEquity === null
-                      ? `Your goal is to grow a separate $${(currentWindow.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE).toLocaleString('en-US')} paper portfolio as much as possible. Event trades close Friday at 4:00 p.m. ET.`
-                      : 'Your goal is to grow your separate $100,000 paper portfolio as much as possible. Event trades close Friday at 4:00 p.m. ET.'
+                      ? isBearMarketMayhem
+                        ? `Your goal is the lowest percentage return from your separate $${(store.enrollment.startingBalance ?? currentWindow.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE).toLocaleString('en-US')} paper portfolio. Event trades close Friday at 4:00 p.m. ET.`
+                        : `Your goal is to grow a separate $${(store.enrollment.startingBalance ?? currentWindow.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE).toLocaleString('en-US')} paper portfolio as much as possible. Event trades close Friday at 4:00 p.m. ET.`
+                      : isBearMarketMayhem
+                        ? 'Your goal is the lowest percentage return in your separate paper portfolio. Event trades close Friday at 4:00 p.m. ET.'
+                        : 'Your goal is to grow your separate paper portfolio as much as possible. Event trades close Friday at 4:00 p.m. ET.'
                     : currentWindow.phase === 'upcoming'
-                      ? `Your goal is to grow a separate $${(currentWindow.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE).toLocaleString('en-US')} paper portfolio as much as possible. It will be ready at Monday’s market open.`
+                      ? isBearMarketMayhem
+                        ? `Your goal is the lowest percentage return from your separate $${(currentWindow.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE).toLocaleString('en-US')} paper portfolio. It will be ready at Monday’s market open.`
+                        : `Your goal is to grow a separate $${(currentWindow.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE).toLocaleString('en-US')} paper portfolio as much as possible. It will be ready at Monday’s market open.`
                       : 'This event has ended. Open Paper Trading to save its final results.'
-                  : `${dateRange(currentWindow.startAtMs, currentWindow.endAtMs)} · Goal: grow your separate $100,000 paper portfolio as much as possible · U.S. market hours`}
+                  : `${dateRange(currentWindow.startAtMs, currentWindow.endAtMs)} · Goal: ${isBearMarketMayhem ? 'finish with the lowest percentage return' : 'grow your separate paper portfolio'} · U.S. market hours`}
               </Text>
               {store.enrollment && !hasCurrentEnrollment && (
                 <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 10 }}>

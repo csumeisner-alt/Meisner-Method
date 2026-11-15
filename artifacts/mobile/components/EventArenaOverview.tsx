@@ -96,7 +96,9 @@ export function EventArenaOverview({
   const isUpcoming = livePhase === 'upcoming';
   const canWithdraw = joined && isUpcoming && enrollment?.startEquity == null;
   const copy = statusCopy(participation, livePhase);
-  const accent = '#b8955a';
+  const isBearMarketMayhem = event.eventType === 'bear-market-mayhem'
+    || event.rankingDirection === 'lowest-return';
+  const accent = isBearMarketMayhem ? '#E24550' : '#b8955a';
   const positive = (performance?.profitLoss ?? 0) >= 0;
   const countdownMode = livePhase === 'upcoming' ? 'starts' : livePhase === 'active' ? 'ends' : 'ended';
   const countdownLabel = countdownMode === 'starts' ? 'STARTS IN' : countdownMode === 'ends' ? 'TIME REMAINING' : 'EVENT CLOSED';
@@ -107,7 +109,7 @@ export function EventArenaOverview({
   const eventTitle = `Week of ${new Date(event.startAtMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
   const championshipName = event.eventType === 'green-bull-championship'
     ? 'GREEN BULL CHAMPIONSHIP'
-    : 'EVENT ARENA CHAMPIONSHIP';
+    : isBearMarketMayhem ? 'BEAR MARKET MAYHEM' : 'EVENT ARENA CHAMPIONSHIP';
   const startingCapital = event.startingBalance ?? enrollment?.startingBalance ?? 100_000;
   const startingCapitalLabel = `$${startingCapital.toLocaleString('en-US', { maximumFractionDigits: 0 })} STARTING CAPITAL`;
   const stickyAction = joined && !isUpcoming
@@ -200,6 +202,11 @@ export function EventArenaOverview({
           <Text testID="event-arena-starting-capital" style={[styles.phaseLabel, { color: accent, marginTop: 5 }]}>
             {startingCapitalLabel}
           </Text>
+          {isBearMarketMayhem && (
+            <Text testID="event-arena-bear-objective" style={{ color: '#E24550', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.8, marginTop: 7 }}>
+              THE BIGGEST LOSER WINS · LOWEST RETURN RANKS FIRST
+            </Text>
+          )}
           <Text style={[styles.subtitle, { color: muted }]}>{copy.title}. {copy.detail}</Text>
 
           <View style={[styles.countdownPanel, { backgroundColor: colors.background, borderColor: border }]}>

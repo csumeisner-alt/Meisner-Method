@@ -144,7 +144,11 @@ function EventArenaPodiumShareCard({
   slots: Array<{ rank: number; entry: LeaderboardEntry | null }>;
 }) {
   const colors = useColors();
-  const podiumColors = ['#E5BF63', '#C9D4DF', '#D99A72'];
+  const isBearMarketMayhem = event.eventType === 'bear-market-mayhem'
+    || event.rankingDirection === 'lowest-return';
+  const podiumColors = isBearMarketMayhem
+    ? ['#F0525D', '#B9C0C9', '#A94B3D']
+    : ['#E5BF63', '#C9D4DF', '#D99A72'];
   return (
     <ImageBackground
       source={EVENT_ARENA_ARTWORK_SOURCES[event.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID]}
@@ -155,9 +159,16 @@ function EventArenaPodiumShareCard({
       <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(7,12,20,0.72)' }} />
       <View testID="paper-event-podium-share-card" style={{ padding: 20 }}>
         <Text style={{ color: '#D8B45A', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 2 }}>MEISNER METHOD</Text>
-        <Text style={{ color: '#E6D8B2', fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 1.4, marginTop: 10 }}>
-          {event.eventType === 'green-bull-championship' ? 'GREEN BULL CHAMPIONSHIP' : 'EVENT ARENA CHAMPIONSHIP'}
+        <Text style={{ color: isBearMarketMayhem ? '#FF6670' : '#E6D8B2', fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 1.4, marginTop: 10 }}>
+          {isBearMarketMayhem
+            ? 'BEAR MARKET MAYHEM'
+            : event.eventType === 'green-bull-championship' ? 'GREEN BULL CHAMPIONSHIP' : 'EVENT ARENA CHAMPIONSHIP'}
         </Text>
+        {isBearMarketMayhem && (
+          <Text style={{ color: '#F7DADD', fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 0.8, marginTop: 4 }}>
+            THE BIGGEST LOSER WINS
+          </Text>
+        )}
         <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 9, letterSpacing: 0.7, marginTop: 4 }}>
           ${Math.round(event.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE).toLocaleString('en-US')} STARTING CAPITAL
         </Text>
@@ -407,6 +418,8 @@ export function PaperChallengeLeaderboard({
   const podiumEntranceValueRef = useRef(new Animated.Value(0.94));
   const podiumEntranceEventRef = useRef<string | null>(null);
   const visible = embedded || open;
+  const isBearMarketMayhem = event.eventType === 'bear-market-mayhem'
+    || event.rankingDirection === 'lowest-return';
   const leaderboardQuery = useGetEventArenaLeaderboard(event.id, {
     request: installationId ? { headers: { 'X-Event-Arena-Installation-Id': installationId } } : undefined,
     query: {
@@ -451,7 +464,7 @@ export function PaperChallengeLeaderboard({
   const ownEntry = useMemo(() => getEventArenaOwnEntry(entries, optedIn), [entries, optedIn]);
   const standingsEntries = useMemo(() => getEventArenaStandingsEntries(entries), [entries]);
   const ownMedal = ownEntry?.rank === 1
-    ? { label: 'CHAMPION', color: '#D8B45A' }
+    ? { label: isBearMarketMayhem ? 'ANTI-CHAMPION' : 'CHAMPION', color: isBearMarketMayhem ? '#F0525D' : '#D8B45A' }
     : ownEntry?.rank === 2
       ? { label: 'RUNNER-UP', color: '#C5D0DC' }
       : ownEntry?.rank === 3
@@ -889,10 +902,10 @@ export function PaperChallengeLeaderboard({
     const change = entry ? competitiveChanges.get(entry.participantToken) : undefined;
     const placesMoved = change?.placesMoved ?? 0;
     const medal = slot.rank === 1
-      ? { color: '#E5BF63' }
+      ? { color: isBearMarketMayhem ? '#F0525D' : '#E5BF63' }
       : slot.rank === 2
         ? { color: '#C9D4DF' }
-        : { color: '#D99A72' };
+        : { color: isBearMarketMayhem ? '#A94B3D' : '#D99A72' };
     const isChampion = slot.rank === 1;
     return (
       <Animated.View
@@ -909,7 +922,7 @@ export function PaperChallengeLeaderboard({
           testID={`paper-event-podium-${slot.rank}`}
           accessibilityRole={entry ? 'button' : 'text'}
           accessibilityLabel={entry
-            ? `Rank ${entry.rank} of ${entries.length}, ${entry.alias}${entry.isCurrentUser ? ', your score' : ''}, competition return ${returnLabel(entry.returnPercent)}, current equity ${money(entry.equity)}, profit or loss ${signedMoney(entry.profitLoss)}.${change && placesMoved !== 0 ? ` Self-reported rank movement ${placesMoved > 0 ? 'up' : 'down'} ${Math.abs(placesMoved)} ${Math.abs(placesMoved) === 1 ? 'place' : 'places'}.` : ''}`
+            ? `Rank ${entry.rank} of ${entries.length}${isBearMarketMayhem && entry.rank === 1 ? ', anti-champion' : ''}, ${entry.alias}${entry.isCurrentUser ? ', your score' : ''}, competition return ${returnLabel(entry.returnPercent)}, current equity ${money(entry.equity)}, profit or loss ${signedMoney(entry.profitLoss)}.${change && placesMoved !== 0 ? ` Self-reported rank movement ${placesMoved > 0 ? 'up' : 'down'} ${Math.abs(placesMoved)} ${Math.abs(placesMoved) === 1 ? 'place' : 'places'}.` : ''}`
             : `Rank ${slot.rank}, waiting for competitor`}
           disabled={!entry}
           onPress={() => { if (entry) setDetail(entry as LeaderboardEntry); }}
@@ -923,11 +936,13 @@ export function PaperChallengeLeaderboard({
             borderWidth: entry?.isCurrentUser ? 2 : 1,
               borderColor: entry?.isCurrentUser ? colors.gold : entry ? `${medal.color}D0` : `${medal.color}72`,
               backgroundColor: entry?.isCurrentUser
-                ? 'rgba(26,23,15,0.88)'
+                ? isBearMarketMayhem ? 'rgba(45,15,20,0.92)' : 'rgba(26,23,15,0.88)'
                 : entry
-                  ? isChampion ? 'rgba(13,17,23,0.76)' : 'rgba(13,19,29,0.73)'
+                  ? isChampion && isBearMarketMayhem
+                    ? 'rgba(35,12,17,0.88)'
+                    : isChampion ? 'rgba(13,17,23,0.76)' : 'rgba(13,19,29,0.73)'
                   : 'rgba(12,18,27,0.55)',
-             shadowColor: isChampion ? colors.gold : '#000',
+              shadowColor: isChampion ? isBearMarketMayhem ? '#F0525D' : colors.gold : '#000',
               shadowOpacity: isChampion ? 0.32 : 0.16,
               shadowRadius: isChampion ? 20 : 10,
               shadowOffset: { width: 0, height: isChampion ? 10 : 7 },
@@ -936,7 +951,9 @@ export function PaperChallengeLeaderboard({
         >
           <LinearGradient
             colors={isChampion
-              ? ['rgba(229,191,99,0.30)', 'rgba(25,28,32,0.03)', 'rgba(8,13,21,0.27)']
+              ? isBearMarketMayhem
+                ? ['rgba(240,82,93,0.38)', 'rgba(50,15,22,0.10)', 'rgba(8,13,21,0.38)']
+                : ['rgba(229,191,99,0.30)', 'rgba(25,28,32,0.03)', 'rgba(8,13,21,0.27)']
               : slot.rank === 2
                 ? ['rgba(201,212,223,0.24)', 'rgba(13,19,29,0.02)', 'rgba(8,13,21,0.26)']
                 : ['rgba(217,154,114,0.25)', 'rgba(13,19,29,0.02)', 'rgba(8,13,21,0.28)']}
@@ -951,11 +968,11 @@ export function PaperChallengeLeaderboard({
             <>
                {isChampion ? (
                   <View accessible={false} style={{ width: compactPodium ? 78 : 96, height: compactPodium ? 78 : 96, alignItems: 'center', justifyContent: 'center', marginBottom: 2 }}>
-                    <Animated.View style={{ position: 'absolute', width: '100%', height: '100%', borderRadius: 50, borderWidth: 1.5, borderColor: `${medal.color}88`, backgroundColor: 'rgba(216,180,90,0.12)', shadowColor: colors.gold, shadowOpacity: reduceMotion ? 0 : 0.48, shadowRadius: 19, shadowOffset: { width: 0, height: 0 } }} />
+                    <Animated.View style={{ position: 'absolute', width: '100%', height: '100%', borderRadius: 50, borderWidth: 1.5, borderColor: `${medal.color}88`, backgroundColor: isBearMarketMayhem ? 'rgba(240,82,93,0.18)' : 'rgba(216,180,90,0.12)', shadowColor: medal.color, shadowOpacity: reduceMotion ? 0 : 0.48, shadowRadius: 19, shadowOffset: { width: 0, height: 0 } }} />
                     <View style={{ position: 'absolute', top: compactPodium ? 17 : 21, left: compactPodium ? 9 : 12, width: compactPodium ? 20 : 25, height: compactPodium ? 26 : 31, borderLeftWidth: 4, borderTopWidth: 4, borderBottomWidth: 4, borderColor: medal.color, borderTopLeftRadius: 12, borderBottomLeftRadius: 12 }} />
                     <View style={{ position: 'absolute', top: compactPodium ? 17 : 21, right: compactPodium ? 9 : 12, width: compactPodium ? 20 : 25, height: compactPodium ? 26 : 31, borderRightWidth: 4, borderTopWidth: 4, borderBottomWidth: 4, borderColor: medal.color, borderTopRightRadius: 12, borderBottomRightRadius: 12 }} />
-                    <View style={{ width: compactPodium ? 43 : 52, height: compactPodium ? 34 : 40, marginTop: 5, alignItems: 'center', justifyContent: 'center', borderRadius: 7, borderBottomLeftRadius: 22, borderBottomRightRadius: 22, borderWidth: 1, borderColor: 'rgba(255,244,210,0.72)', backgroundColor: medal.color, shadowColor: colors.gold, shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } }}>
-                      <Feather name="star" size={compactPodium ? 18 : 22} color="#3A2C12" />
+                    <View style={{ width: compactPodium ? 43 : 52, height: compactPodium ? 34 : 40, marginTop: 5, alignItems: 'center', justifyContent: 'center', borderRadius: 7, borderBottomLeftRadius: 22, borderBottomRightRadius: 22, borderWidth: 1, borderColor: isBearMarketMayhem ? '#FFADB3' : 'rgba(255,244,210,0.72)', backgroundColor: medal.color, shadowColor: medal.color, shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } }}>
+                      <Feather name={isBearMarketMayhem ? 'trending-down' : 'star'} size={compactPodium ? 18 : 22} color={isBearMarketMayhem ? '#FFF1F2' : '#3A2C12'} />
                     </View>
                     <View style={{ width: 8, height: 10, backgroundColor: medal.color }} />
                     <View style={{ width: 34, height: 6, borderRadius: 3, backgroundColor: medal.color }} />
@@ -967,7 +984,7 @@ export function PaperChallengeLeaderboard({
                   </View>
                 )}
               <Text allowFontScaling adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1} style={{ color: medal.color, fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 0.9, marginTop: isChampion ? 6 : 4 }}>
-                RANK {entry.rank} OF {entries.length}
+                {isBearMarketMayhem && isChampion ? 'ANTI-CHAMPION' : `RANK ${entry.rank} OF ${entries.length}`}
               </Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, maxWidth: '100%', marginTop: isChampion ? 7 : 5 }}>
                 <Text allowFontScaling numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ flexShrink: 1, minWidth: 0, maxWidth: '100%', color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: isChampion ? compactPodium ? 20 : 23 : compactPodium ? 14 : 16 }}>
@@ -976,7 +993,7 @@ export function PaperChallengeLeaderboard({
                 {entry.isCurrentUser && <Text style={{ color: colors.gold, fontFamily: 'Inter_700Bold', fontSize: 9 }}>YOU</Text>}
               </View>
               <Text allowFontScaling style={{ color: '#F1EEE7', fontFamily: 'Inter_700Bold', fontSize: isChampion ? 10 : 9, letterSpacing: 1.2, marginTop: isChampion ? 7 : 5 }}>
-                COMPETITION RETURN
+                {isBearMarketMayhem ? 'LOSS RETURN' : 'COMPETITION RETURN'}
               </Text>
               <Text allowFontScaling numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ maxWidth: '100%', color: returnColor(entry.returnPercent), fontFamily: 'Inter_700Bold', fontSize: isChampion ? compactPodium ? 30 : 36 : compactPodium ? 22 : 26, marginTop: 1, textShadowColor: returnColor(entry.returnPercent), textShadowOffset: { width: 0, height: 0 }, textShadowRadius: isChampion ? 10 : 7 }}>
                 {returnLabel(entry.returnPercent)}
@@ -1010,7 +1027,9 @@ export function PaperChallengeLeaderboard({
               <Text style={{ color: medal.color, fontFamily: 'Inter_700Bold', fontSize: 12 }}>#{slot.rank}</Text>
               <Feather name="user-plus" size={13} color={colors.mutedForeground} />
               <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>
-                Compete for {slot.rank === 1 ? 'first' : slot.rank === 2 ? 'second' : 'third'}
+                {isBearMarketMayhem
+                  ? slot.rank === 1 ? 'Compete to lose the most' : `Rank #${slot.rank}`
+                  : `Compete for ${slot.rank === 1 ? 'first' : slot.rank === 2 ? 'second' : 'third'}`}
               </Text>
             </View>
           )}
@@ -1338,23 +1357,29 @@ export function PaperChallengeLeaderboard({
                 source={EVENT_ARENA_ARTWORK_SOURCES[event.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID]}
                 resizeMode="cover"
                 imageStyle={{ borderRadius: 24, opacity: 0.96 }}
-                style={{ overflow: 'hidden', borderRadius: 24, borderWidth: 1, borderColor: 'rgba(214,177,94,0.34)', marginBottom: 17, padding: compactPodium ? 12 : 17, backgroundColor: '#101720' }}
+                style={{ overflow: 'hidden', borderRadius: 24, borderWidth: 1, borderColor: isBearMarketMayhem ? 'rgba(240,82,93,0.62)' : 'rgba(214,177,94,0.34)', marginBottom: 17, padding: compactPodium ? 12 : 17, backgroundColor: '#101720' }}
               >
                 <View style={{ pointerEvents: 'none', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(7,12,20,0.18)' }} />
                 <LinearGradient
-                  colors={['rgba(25,139,218,0.22)', 'rgba(8,14,24,0.03)', 'rgba(25,139,218,0.15)']}
+                  colors={isBearMarketMayhem
+                    ? ['rgba(123,22,34,0.42)', 'rgba(8,14,24,0.04)', 'rgba(90,18,28,0.3)']
+                    : ['rgba(25,139,218,0.22)', 'rgba(8,14,24,0.03)', 'rgba(25,139,218,0.15)']}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
                   style={{ pointerEvents: 'none', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
                 />
                 <LinearGradient
-                  colors={['rgba(255,218,128,0.18)', 'rgba(255,218,128,0.06)', 'transparent']}
+                  colors={isBearMarketMayhem
+                    ? ['rgba(255,106,115,0.18)', 'rgba(255,106,115,0.05)', 'transparent']
+                    : ['rgba(255,218,128,0.18)', 'rgba(255,218,128,0.06)', 'transparent']}
                   start={{ x: 0.5, y: 0 }}
                   end={{ x: 0.5, y: 1 }}
                   style={{ pointerEvents: 'none', position: 'absolute', top: 205, left: '-8%', width: '44%', height: 270, transform: [{ rotate: '12deg' }] }}
                 />
                 <LinearGradient
-                  colors={['rgba(255,218,128,0.16)', 'rgba(255,218,128,0.05)', 'transparent']}
+                  colors={isBearMarketMayhem
+                    ? ['rgba(255,106,115,0.16)', 'rgba(255,106,115,0.05)', 'transparent']
+                    : ['rgba(255,218,128,0.16)', 'rgba(255,218,128,0.05)', 'transparent']}
                   start={{ x: 0.5, y: 0 }}
                   end={{ x: 0.5, y: 1 }}
                   style={{ pointerEvents: 'none', position: 'absolute', top: 205, right: '-8%', width: '44%', height: 270, transform: [{ rotate: '-12deg' }] }}
@@ -1401,15 +1426,22 @@ export function PaperChallengeLeaderboard({
                 </View>
 
                 <View testID="paper-event-leaderboard-current-event" style={{ alignItems: 'center', marginBottom: 18 }}>
-                  <Text testID="paper-event-championship-identity" style={{ color: '#E8CB7C', fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 1.2, textAlign: 'center', marginBottom: 7 }}>
-                    {event.eventType === 'green-bull-championship' ? 'GREEN BULL CHAMPIONSHIP' : 'EVENT ARENA CHAMPIONSHIP'}
+                  <Text testID="paper-event-championship-identity" style={{ color: isBearMarketMayhem ? '#FF6670' : '#E8CB7C', fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 1.2, textAlign: 'center', marginBottom: 7 }}>
+                    {isBearMarketMayhem
+                      ? 'BEAR MARKET MAYHEM'
+                      : event.eventType === 'green-bull-championship' ? 'GREEN BULL CHAMPIONSHIP' : 'EVENT ARENA CHAMPIONSHIP'}
                   </Text>
                   <Text testID="paper-event-starting-capital" style={{ color: '#F1EEE7', fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 0.8, textAlign: 'center', marginBottom: 8 }}>
                     ${Math.round(event.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE).toLocaleString('en-US')} STARTING CAPITAL
                   </Text>
-                  <Text allowFontScaling style={{ color: '#FFF9EA', fontFamily: 'Inter_700Bold', fontSize: compactPodium ? 22 : 28, letterSpacing: 1.1, textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.85)', textShadowRadius: 8, textShadowOffset: { width: 0, height: 2 } }}>
-                    CHAMPIONSHIP STANDINGS
+                  <Text allowFontScaling style={{ color: isBearMarketMayhem ? '#FFF0F1' : '#FFF9EA', fontFamily: 'Inter_700Bold', fontSize: compactPodium ? 22 : 28, letterSpacing: 1.1, textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.85)', textShadowRadius: 8, textShadowOffset: { width: 0, height: 2 } }}>
+                    {isBearMarketMayhem ? 'THE BIGGEST LOSER WINS' : 'CHAMPIONSHIP STANDINGS'}
                   </Text>
+                  {isBearMarketMayhem && (
+                    <Text testID="paper-event-bear-ranking-objective" style={{ color: '#FFD9DC', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.1, textAlign: 'center', marginTop: 5 }}>
+                      LOWEST PERCENTAGE RETURN RANKS FIRST
+                    </Text>
+                  )}
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 10, paddingVertical: 6, paddingHorizontal: 11, borderRadius: 20, backgroundColor: eventStatus.phase === 'active' ? 'rgba(35,128,103,0.42)' : 'rgba(7,12,20,0.68)', borderWidth: 1, borderColor: eventStatus.phase === 'active' ? 'rgba(112,226,181,0.58)' : 'rgba(222,190,113,0.48)' }}>
                     <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: eventStatus.phase === 'active' ? '#61D0A7' : '#D8B45A' }} />
                     <Text style={{ color: eventStatus.phase === 'active' ? '#A1F0D0' : '#E8CB7C', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1 }}>

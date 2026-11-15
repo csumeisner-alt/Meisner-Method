@@ -20,6 +20,8 @@ export function PaperEventShareCard({ event, milestones = [] }: Props) {
   const start = new Date(event.eventStartAtMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const end = new Date(event.eventEndAtMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const symbols = event.symbolsTraded?.length ? event.symbolsTraded.join(' · ') : 'No trades this week';
+  const isBearMarketMayhem = event.eventType === 'bear-market-mayhem'
+    || event.rankingDirection === 'lowest-return';
 
   return (
     <ImageBackground
@@ -31,7 +33,7 @@ export function PaperEventShareCard({ event, milestones = [] }: Props) {
     >
       <View
         testID={`paper-event-share-card-${event.eventId}`}
-        style={{ padding: 22, borderWidth: 1, borderColor: colors.border, borderRadius: 24, backgroundColor: 'rgba(7,12,20,0.62)' }}
+        style={{ padding: 22, borderWidth: 1, borderColor: isBearMarketMayhem ? '#E24550' : colors.border, borderRadius: 24, backgroundColor: isBearMarketMayhem ? 'rgba(28,8,13,0.82)' : 'rgba(7,12,20,0.62)' }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <View style={{ width: 42, height: 42, borderRadius: 13, borderWidth: 1, borderColor: colors.primary, alignItems: 'center', justifyContent: 'center' }}>
@@ -42,7 +44,9 @@ export function PaperEventShareCard({ event, milestones = [] }: Props) {
               MEISNER METHOD
             </Text>
             <Text allowFontScaling style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 10, letterSpacing: 1.1, marginTop: 4 }}>
-              {event.eventType === 'green-bull-championship' ? 'GREEN BULL CHAMPIONSHIP · RESULTS' : 'EVENT ARENA · RESULTS'}
+              {isBearMarketMayhem
+                ? 'BEAR MARKET MAYHEM · RESULTS'
+                : event.eventType === 'green-bull-championship' ? 'GREEN BULL CHAMPIONSHIP · RESULTS' : 'EVENT ARENA · RESULTS'}
             </Text>
           </View>
         </View>
@@ -52,7 +56,7 @@ export function PaperEventShareCard({ event, milestones = [] }: Props) {
             {start} – {end}
           </Text>
           <Text allowFontScaling style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 1.1, marginTop: 16 }}>
-            EVENT RETURN
+            {isBearMarketMayhem ? 'LOSS RETURN' : 'EVENT RETURN'}
           </Text>
           <Text
             allowFontScaling
@@ -74,7 +78,9 @@ export function PaperEventShareCard({ event, milestones = [] }: Props) {
           {event.finalRank != null && Number.isInteger(event.finalRank) && event.finalRank > 0 && (
             <View
               accessible
-              accessibilityLabel={`Final rank: ${event.finalRank}`}
+              accessibilityLabel={isBearMarketMayhem && event.finalRank === 1
+                ? 'Final rank: anti-champion'
+                : `Final rank: ${event.finalRank}`}
               testID={`paper-event-share-rank-${event.eventId}`}
               style={{
                 alignSelf: 'flex-start',
@@ -86,13 +92,13 @@ export function PaperEventShareCard({ event, milestones = [] }: Props) {
                 paddingHorizontal: 11,
                 paddingVertical: 7,
                 borderWidth: 1,
-                borderColor: 'rgba(255,218,128,0.5)',
+                borderColor: isBearMarketMayhem ? 'rgba(240,82,93,0.62)' : 'rgba(255,218,128,0.5)',
                 borderRadius: 12,
-                backgroundColor: 'rgba(255,218,128,0.12)',
+                backgroundColor: isBearMarketMayhem ? 'rgba(240,82,93,0.14)' : 'rgba(255,218,128,0.12)',
               }}
             >
               <Text allowFontScaling style={{ color: '#F3D68A', fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 1 }}>
-                FINAL RANK
+                {isBearMarketMayhem && event.finalRank === 1 ? 'ANTI-CHAMPION' : 'FINAL RANK'}
               </Text>
               <Text allowFontScaling style={{ color: '#FFE8AE', fontFamily: 'Inter_700Bold', fontSize: 15 }}>
                 #{event.finalRank}

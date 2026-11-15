@@ -12,4 +12,5 @@ export type EventArenaConfigurationEventType = typeof EventArenaConfigurationEve
 export const EventArenaConfigurationEventType = {
   'event-arena': 'event-arena',
   'green-bull-championship': 'green-bull-championship',
+  'bear-market-mayhem': 'bear-market-mayhem',
 } as const;

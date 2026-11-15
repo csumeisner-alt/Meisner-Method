@@ -38,10 +38,10 @@ export const ensureEventArenaConfigurationResponseStartingBalanceExclusiveMin = 
 
 export const EnsureEventArenaConfigurationResponse = zod.object({
   "eventId": zod.coerce.date(),
-  "eventType": zod.enum(['event-arena', 'green-bull-championship']),
+  "eventType": zod.enum(['event-arena', 'green-bull-championship', 'bear-market-mayhem']),
   "artworkId": zod.enum(['stadium', 'neon-nightclub', 'mountain-summit', 'red-showdown', 'green-stock-exchange']),
   "startingBalance": zod.number().gt(ensureEventArenaConfigurationResponseStartingBalanceExclusiveMin),
-  "rankingDirection": zod.enum(['highest-return']),
+  "rankingDirection": zod.enum(['highest-return', 'lowest-return']),
   "startAtMs": zod.number(),
   "endAtMs": zod.number()
 })
@@ -135,10 +135,10 @@ export const submitEventArenaScoreBodyHoldingsMax = 100;
 export const SubmitEventArenaScoreBody = zod.object({
   "installationId": zod.string().min(submitEventArenaScoreBodyInstallationIdMin).max(submitEventArenaScoreBodyInstallationIdMax).describe('Anonymous device identifier; never returned by leaderboard reads.'),
   "alias": zod.string().min(1).max(submitEventArenaScoreBodyAliasMax),
-  "eventType": zod.enum(['event-arena', 'green-bull-championship']),
+  "eventType": zod.enum(['event-arena', 'green-bull-championship', 'bear-market-mayhem']),
   "artworkId": zod.enum(['stadium', 'neon-nightclub', 'mountain-summit', 'red-showdown', 'green-stock-exchange']),
   "startingBalance": zod.number().gt(submitEventArenaScoreBodyStartingBalanceExclusiveMin),
-  "rankingDirection": zod.enum(['highest-return']),
+  "rankingDirection": zod.enum(['highest-return', 'lowest-return']),
   "cashBalance": zod.number().min(submitEventArenaScoreBodyCashBalanceMin).optional().describe('Self-reported cash in the separate event account, used to reconcile transfer receipts.'),
   "appliedTransferIds": zod.array(zod.string().min(submitEventArenaScoreBodyAppliedTransferIdsItemMin).max(submitEventArenaScoreBodyAppliedTransferIdsItemMax).regex(submitEventArenaScoreBodyAppliedTransferIdsItemRegExp)).max(submitEventArenaScoreBodyAppliedTransferIdsMax).optional().describe('Event transfer references already applied to the local account cash balance.'),
   "startEquity": zod.number().gt(submitEventArenaScoreBodyStartEquityExclusiveMin),

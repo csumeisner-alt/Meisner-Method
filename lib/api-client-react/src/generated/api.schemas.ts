@@ -11,6 +11,7 @@ export type EventArenaScoreSubmissionEventType = typeof EventArenaScoreSubmissio
 export const EventArenaScoreSubmissionEventType = {
   'event-arena': 'event-arena',
   'green-bull-championship': 'green-bull-championship',
+  'bear-market-mayhem': 'bear-market-mayhem',
 } as const;
 
 export type EventArenaScoreSubmissionArtworkId = typeof EventArenaScoreSubmissionArtworkId[keyof typeof EventArenaScoreSubmissionArtworkId];
@@ -29,6 +30,7 @@ export type EventArenaScoreSubmissionRankingDirection = typeof EventArenaScoreSu
 
 export const EventArenaScoreSubmissionRankingDirection = {
   'highest-return': 'highest-return',
+  'lowest-return': 'lowest-return',
 } as const;
 
 export type EventArenaScoreSubmissionHoldingsItemSide = typeof EventArenaScoreSubmissionHoldingsItemSide[keyof typeof EventArenaScoreSubmissionHoldingsItemSide];
@@ -103,6 +105,7 @@ export type EventArenaConfigurationEventType = typeof EventArenaConfigurationEve
 export const EventArenaConfigurationEventType = {
   'event-arena': 'event-arena',
   'green-bull-championship': 'green-bull-championship',
+  'bear-market-mayhem': 'bear-market-mayhem',
 } as const;
 
 export type EventArenaConfigurationArtworkId = typeof EventArenaConfigurationArtworkId[keyof typeof EventArenaConfigurationArtworkId];
@@ -121,6 +124,7 @@ export type EventArenaConfigurationRankingDirection = typeof EventArenaConfigura
 
 export const EventArenaConfigurationRankingDirection = {
   'highest-return': 'highest-return',
+  'lowest-return': 'lowest-return',
 } as const;
 
 export interface EventArenaConfiguration {

@@ -149,6 +149,41 @@ test('standard and Green Bull accounts start at zero return with matching cash a
   }
 });
 
+test('Bear Market live performance uses the saved $100,000 baseline and actual isolated equity', () => {
+  const bearEnrollment: PaperChallengeEnrollment = {
+    ...enrollment,
+    eventType: 'bear-market-mayhem',
+    artworkId: 'red-showdown',
+    startingBalance: 100_000,
+    rankingDirection: 'lowest-return',
+    startEquity: 100_000,
+  };
+  const performance = getEventArenaPerformance(bearEnrollment, {
+    ...event,
+    eventType: 'bear-market-mayhem',
+    artworkId: 'red-showdown',
+    startingBalance: 100_000,
+    rankingDirection: 'lowest-return',
+  }, {
+    accounts: [{
+      id: bearEnrollment.accountId,
+      name: 'Event Portfolio',
+      cash: 65_000,
+      createdAt: new Date(event.startAtMs).toISOString(),
+    }],
+    positions: [],
+    transactions: [],
+    orders: [],
+    snapshots: [],
+  }, {}, event.startAtMs);
+
+  assert.equal(performance.startingBalance, 100_000);
+  assert.equal(performance.equity, 65_000);
+  assert.equal(performance.profitLoss, -35_000);
+  assert.equal(performance.returnPercent, -35);
+  assert.equal(performance.buyingPower, 65_000);
+});
+
 test('event equity includes T+2 cash, short collateral, long value, and short liabilities', () => {
   const account = {
     id: enrollment.accountId,

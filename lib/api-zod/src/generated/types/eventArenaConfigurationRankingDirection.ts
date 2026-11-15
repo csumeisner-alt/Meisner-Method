@@ -11,4 +11,5 @@ export type EventArenaConfigurationRankingDirection = typeof EventArenaConfigura
 
 export const EventArenaConfigurationRankingDirection = {
   'highest-return': 'highest-return',
+  'lowest-return': 'lowest-return',
 } as const;

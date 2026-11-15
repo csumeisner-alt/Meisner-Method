@@ -12,4 +12,5 @@ export type EventArenaScoreSubmissionEventType = typeof EventArenaScoreSubmissio
 export const EventArenaScoreSubmissionEventType = {
   'event-arena': 'event-arena',
   'green-bull-championship': 'green-bull-championship',
+  'bear-market-mayhem': 'bear-market-mayhem',
 } as const;

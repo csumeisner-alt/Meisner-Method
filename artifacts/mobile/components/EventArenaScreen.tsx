@@ -39,7 +39,7 @@ import {
   getPaperChallengeArchiveChartWidth,
   getPaperChallengeReminders,
   getPaperChallengeWindow,
-  getPaperChallengeConfiguration,
+  isPaperChallengeConfiguration,
   LEGACY_PAPER_CHALLENGE_ARTWORK_ID,
   loadPaperChallengeStore,
   sortPaperChallengeHistory,
@@ -47,6 +47,7 @@ import {
   updatePaperChallengeStore,
   withdrawUpcomingPaperChallenge,
   type PaperChallengeEnrollment,
+  type PaperChallengeConfiguration,
   type PaperChallengeStore,
   type PaperChallengeSummary,
 } from '@/lib/paperChallenge';
@@ -83,6 +84,33 @@ type EventCashSentTransfer = {
   amount: number;
   createdAt: string;
 };
+type SavedEventConfiguration = PaperChallengeConfiguration & {
+  eventId: string;
+  startAtMs: number;
+  endAtMs: number;
+};
+
+async function fetchSavedEventConfiguration(
+  event: ReturnType<typeof getPaperChallengeWindow>,
+): Promise<SavedEventConfiguration> {
+  const response = await fetch(
+    `${BASE_URL}/api/event-arena/${encodeURIComponent(event.id)}/config`,
+    { method: 'POST' },
+  );
+  if (!response.ok) throw new Error('Event configuration could not be saved.');
+  const payload = await response.json() as unknown;
+  if (!isPaperChallengeConfiguration(payload)) {
+    throw new Error('The saved event configuration is invalid.');
+  }
+  const saved = payload as SavedEventConfiguration;
+  if (
+    saved.eventId !== event.id
+    || saved.artworkId !== (event.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID)
+    || saved.startAtMs !== event.startAtMs
+    || saved.endAtMs !== event.endAtMs
+  ) throw new Error('The saved event configuration does not match this event.');
+  return saved as SavedEventConfiguration;
+}
 
 const SECTIONS: { id: Section; label: string; icon: React.ComponentProps<typeof Feather>['name'] }[] = [
   { id: 'competition', label: 'Competition', icon: 'award' },
@@ -187,6 +215,7 @@ export function EventArenaScreen() {
   const [accountLoading, setAccountLoading] = useState(false);
   const [accountError, setAccountError] = useState('');
   const [eventConfigurationError, setEventConfigurationError] = useState('');
+  const [savedEventConfiguration, setSavedEventConfiguration] = useState<SavedEventConfiguration | null>(null);
   const [cashNotifications, setCashNotifications] = useState<EventCashNotification[]>([]);
   const [cashSentTransfers, setCashSentTransfers] = useState<EventCashSentTransfer[]>([]);
   const [cashHistoryDirection, setCashHistoryDirection] = useState<'received' | 'sent'>('received');
@@ -223,6 +252,9 @@ export function EventArenaScreen() {
   const leaderboardEvent = requestedLeaderboardEventId === currentWindow.id
     ? {
         ...currentWindow,
+        ...(savedEventConfiguration?.eventId === currentWindow.id
+          ? savedEventConfiguration
+          : {}),
         ...(store.enrollment?.eventId === currentWindow.id
           ? {
               artworkId: store.enrollment.artworkId ?? currentWindow.artworkId,
@@ -252,7 +284,9 @@ export function EventArenaScreen() {
         startingBalance: enrollment?.startingBalance ?? currentWindow.startingBalance,
         rankingDirection: enrollment?.rankingDirection ?? currentWindow.rankingDirection,
       }
-    : currentWindow;
+    : savedEventConfiguration?.eventId === currentWindow.id
+      ? { ...currentWindow, ...savedEventConfiguration }
+      : currentWindow;
   const leaderboardEnrollment = store.enrollment?.eventId === leaderboardEvent.id
     ? store.enrollment
     : null;
@@ -494,25 +528,11 @@ export function EventArenaScreen() {
   useEffect(() => {
     if (storeState !== 'ready') return;
     let cancelled = false;
-    const expected = getPaperChallengeConfiguration(
-      currentWindow.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID,
-    );
     setEventConfigurationError('');
     void (async () => {
       try {
-        const response = await fetch(
-          `${BASE_URL}/api/event-arena/${encodeURIComponent(currentWindow.id)}/config`,
-          { method: 'POST' },
-        );
-        if (!response.ok) throw new Error('Event configuration could not be saved.');
-        const saved = await response.json() as typeof expected & { eventId?: string };
-        if (
-          saved.eventId !== currentWindow.id
-          || saved.eventType !== expected.eventType
-          || saved.artworkId !== expected.artworkId
-          || saved.startingBalance !== expected.startingBalance
-          || saved.rankingDirection !== expected.rankingDirection
-        ) throw new Error('The saved event configuration does not match this event.');
+        const saved = await fetchSavedEventConfiguration(currentWindow);
+        if (!cancelled) setSavedEventConfiguration(saved);
       } catch {
         if (!cancelled) {
           setEventConfigurationError('The shared event rules could not be confirmed. Your local enrollment remains saved.');
@@ -520,7 +540,7 @@ export function EventArenaScreen() {
       }
     })();
     return () => { cancelled = true; };
-  }, [currentWindow.artworkId, currentWindow.id, storeState]);
+  }, [currentWindow.artworkId, currentWindow.endAtMs, currentWindow.id, currentWindow.startAtMs, storeState]);
 
   useEffect(() => {
     if (storeState !== 'ready' || !enrollment || currentWindow.phase !== 'active') return;
@@ -581,20 +601,24 @@ export function EventArenaScreen() {
     }
     setJoinAliasError('');
     setSaving(true);
-    const configuration = getPaperChallengeConfiguration(event.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID);
-    const newEnrollment: PaperChallengeEnrollment = {
-      eventId: event.id,
-      ...configuration,
-      eventStartAtMs: event.startAtMs,
-      eventEndAtMs: event.endAtMs,
-      joinedAtMs: event.phase === 'upcoming' ? event.startAtMs : Date.now(),
-      accountId: `paper-event:${event.id}`,
-      accountName: 'Event Portfolio',
-      startEquity: event.phase === 'upcoming' ? null : configuration.startingBalance,
-      leaderboardAlias: alias,
-      leaderboardOptedIn: true,
-    };
     try {
+      const configuration = await fetchSavedEventConfiguration(event);
+      setSavedEventConfiguration(configuration);
+      const newEnrollment: PaperChallengeEnrollment = {
+        eventId: event.id,
+        eventType: configuration.eventType,
+        artworkId: configuration.artworkId,
+        startingBalance: configuration.startingBalance,
+        rankingDirection: configuration.rankingDirection,
+        eventStartAtMs: event.startAtMs,
+        eventEndAtMs: event.endAtMs,
+        joinedAtMs: event.phase === 'upcoming' ? event.startAtMs : Date.now(),
+        accountId: `paper-event:${event.id}`,
+        accountName: 'Event Portfolio',
+        startEquity: event.phase === 'upcoming' ? null : configuration.startingBalance,
+        leaderboardAlias: alias,
+        leaderboardOptedIn: true,
+      };
       const updated = await updatePaperChallengeStore((current) => {
         if (event.phase === 'ended' || current.enrollment) return current;
         return { ...current, enrollment: newEnrollment };
@@ -705,7 +729,9 @@ export function EventArenaScreen() {
     const symbols = event.symbolsTraded?.length ? event.symbolsTraded.join(', ') : 'No trades';
     const milestones = getPaperChallengeMilestones(event, store.history);
     const text = [
-      `Meisner Method · ${event.eventType === 'green-bull-championship' ? 'Green Bull Championship' : 'Event Arena Results'}`,
+      `Meisner Method · ${event.eventType === 'green-bull-championship'
+        ? 'Green Bull Championship'
+        : event.eventType === 'bear-market-mayhem' ? 'Bear Market Mayhem' : 'Event Arena Results'}`,
       dateRange(event.eventStartAtMs, event.eventEndAtMs),
       `Starting balance: ${money(event.startingBalance ?? event.startEquity)}`,
       `Ending balance: ${money(event.endEquity)}`,
@@ -777,7 +803,9 @@ export function EventArenaScreen() {
           <View testID={`event-arena-past-detail-${event.eventId}`} style={{ padding: 15, backgroundColor: 'rgba(8,13,21,0.45)' }}>
           <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 0.7 }}>EVENT RESULTS · {event.eventId}</Text>
           <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 0.8, marginTop: 5 }}>
-            {event.eventType === 'green-bull-championship' ? 'GREEN BULL CHAMPIONSHIP' : 'EVENT ARENA'}
+            {event.eventType === 'green-bull-championship'
+              ? 'GREEN BULL CHAMPIONSHIP'
+              : event.eventType === 'bear-market-mayhem' ? 'BEAR MARKET MAYHEM' : 'EVENT ARENA'}
           </Text>
           <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 18, marginTop: 5 }}>{dateRange(event.eventStartAtMs, event.eventEndAtMs)}</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 13 }}>
@@ -923,7 +951,9 @@ export function EventArenaScreen() {
         <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(7,12,20,0.58)' }} />
         <View testID={`event-arena-past-${event.eventId}`} style={{ padding: 15, backgroundColor: 'rgba(8,13,21,0.48)' }}>
           <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.7 }}>
-            {event.eventType === 'green-bull-championship' ? 'GREEN BULL CHAMPIONSHIP' : 'EVENT ARENA'}
+            {event.eventType === 'green-bull-championship'
+              ? 'GREEN BULL CHAMPIONSHIP'
+              : event.eventType === 'bear-market-mayhem' ? 'BEAR MARKET MAYHEM' : 'EVENT ARENA'}
           </Text>
           <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 0.7 }}>
             {sortMode === 'top' ? `RANK #${index + 1} · ` : ''}{dateRange(event.eventStartAtMs, event.eventEndAtMs)}

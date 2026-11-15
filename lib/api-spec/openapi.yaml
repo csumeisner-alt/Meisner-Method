@@ -743,14 +743,14 @@ components:
           maxLength: 24
         eventType:
           type: string
-          enum: [event-arena, green-bull-championship]
+          enum: [event-arena, green-bull-championship, bear-market-mayhem]
         artworkId:
           type: string
           enum: [stadium, neon-nightclub, mountain-summit, red-showdown, green-stock-exchange]
         startingBalance: { type: number, exclusiveMinimum: 0 }
         rankingDirection:
           type: string
-          enum: [highest-return]
+          enum: [highest-return, lowest-return]
         cashBalance:
           type: number
           minimum: 0
@@ -796,14 +796,14 @@ components:
         eventId: { type: string, format: date }
         eventType:
           type: string
-          enum: [event-arena, green-bull-championship]
+          enum: [event-arena, green-bull-championship, bear-market-mayhem]
         artworkId:
           type: string
           enum: [stadium, neon-nightclub, mountain-summit, red-showdown, green-stock-exchange]
         startingBalance: { type: number, exclusiveMinimum: 0 }
         rankingDirection:
           type: string
-          enum: [highest-return]
+          enum: [highest-return, lowest-return]
         startAtMs: { type: integer }
         endAtMs: { type: integer }
 

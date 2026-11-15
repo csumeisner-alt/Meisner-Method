@@ -176,6 +176,72 @@ test('Green Bull artwork fixes saved rules, account capital, baseline, fees, and
   assert.ok(Math.abs(archived.returnPercent - 0.2468) < 1e-12);
 });
 
+test('Red Showdown creates an isolated Bear Market event and preserves its saved rules in history', () => {
+  const configuration = getPaperChallengeConfiguration('red-showdown');
+  assert.deepEqual(configuration, {
+    eventType: 'bear-market-mayhem',
+    artworkId: 'red-showdown',
+    startingBalance: 100_000,
+    rankingDirection: 'lowest-return',
+  });
+  const scheduledEvent = getPaperChallengeWindow(Date.parse('2026-12-28T12:00:00.000Z'));
+  assert.equal(scheduledEvent.artworkId, 'red-showdown');
+  assert.equal(scheduledEvent.eventType, 'bear-market-mayhem');
+  assert.equal(scheduledEvent.startingBalance, 100_000);
+  assert.equal(scheduledEvent.rankingDirection, 'lowest-return');
+
+  const enrollment = {
+    eventId: scheduledEvent.id,
+    ...configuration,
+    eventStartAtMs: scheduledEvent.startAtMs,
+    eventEndAtMs: scheduledEvent.endAtMs,
+    joinedAtMs: scheduledEvent.startAtMs,
+    accountId: `paper-event:${scheduledEvent.id}`,
+    accountName: 'Event Portfolio',
+    startEquity: null,
+  };
+  const initialized = ensurePaperChallengeAccount(enrollment, {
+    accounts: [{ id: 'paper-main', name: 'Main', cash: 73_000, createdAt: '2026-01-01T00:00:00.000Z' }],
+    positions: [{
+      id: 'previous-event-position',
+      accountId: 'paper-event:2026-12-14',
+      symbol: 'OLD',
+      companyName: 'Old Event Position',
+      shares: 12,
+      avgCost: 10,
+      openedAt: '2026-12-14T15:00:00.000Z',
+      dividendYield: 0,
+      sector: '',
+    }],
+    transactions: [],
+    orders: [],
+    lots: [],
+  });
+  assert.equal(initialized.accounts[1]?.cash, 100_000);
+  assert.equal(initialized.accounts[0]?.cash, 73_000);
+  assert.equal(initialized.positions[0]?.accountId, 'paper-event:2026-12-14');
+  assert.equal(initialized.positions.some((position) => position.accountId === enrollment.accountId), false);
+
+  const baseline = capturePaperChallengeBaseline(enrollment, 63_000);
+  assert.equal(baseline.startEquity, 100_000);
+  const summary = buildPaperChallengeSummary(
+    { ...baseline, startEquity: 100_000 },
+    65_000,
+    [],
+    scheduledEvent.endAtMs,
+  );
+  assert.equal(summary.startingBalance, 100_000);
+  assert.equal(summary.endEquity, 65_000);
+  assert.equal(summary.netProfit, -35_000);
+  assert.equal(summary.returnPercent, -35);
+  const archived = normalizePaperChallengeStore({ enrollment: null, history: [summary] }).history[0];
+  assert.equal(archived.eventType, 'bear-market-mayhem');
+  assert.equal(archived.artworkId, 'red-showdown');
+  assert.equal(archived.startingBalance, 100_000);
+  assert.equal(archived.rankingDirection, 'lowest-return');
+  assert.equal(archived.returnPercent, -35);
+});
+
 test('event accounts are created at the scheduled start, including late result recovery', () => {
   const eventStartAtMs = Date.parse('2026-11-30T14:30:00.000Z');
   const pendingEnrollment = {
@@ -301,6 +367,25 @@ test('legacy event records keep missing archive details unavailable', () => {
   assert.equal(legacyGreenEnrollment?.eventType, 'event-arena');
   assert.equal(legacyGreenEnrollment?.startingBalance, 92_500);
   assert.equal(legacyGreenEnrollment?.startEquity, 92_500);
+
+  const legacyRedEnrollment = normalizePaperChallengeStore({
+    enrollment: {
+      eventId: '2026-12-28',
+      artworkId: 'red-showdown',
+      eventStartAtMs: 10,
+      eventEndAtMs: 20,
+      joinedAtMs: 10,
+      accountId: 'paper-event:old-red',
+      accountName: 'Event Portfolio',
+      startEquity: 100_000,
+      eventType: 'event-arena',
+      startingBalance: 100_000,
+      rankingDirection: 'highest-return',
+    },
+    history: [],
+  }).enrollment;
+  assert.equal(legacyRedEnrollment?.eventType, 'event-arena');
+  assert.equal(legacyRedEnrollment?.rankingDirection, 'highest-return');
 });
 
 test('event artwork survives enrollment normalization, summary creation, and archive finalization', () => {

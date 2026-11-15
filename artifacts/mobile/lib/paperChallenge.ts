@@ -24,8 +24,11 @@ export const PAPER_CHALLENGE_ARTWORK_IDS = [
 ] as const;
 export type PaperChallengeArtworkId = typeof PAPER_CHALLENGE_ARTWORK_IDS[number];
 export const LEGACY_PAPER_CHALLENGE_ARTWORK_ID: PaperChallengeArtworkId = 'stadium';
-export type PaperChallengeEventType = 'event-arena' | 'green-bull-championship';
-export type PaperChallengeRankingDirection = 'highest-return';
+export type PaperChallengeEventType =
+  | 'event-arena'
+  | 'green-bull-championship'
+  | 'bear-market-mayhem';
+export type PaperChallengeRankingDirection = 'highest-return' | 'lowest-return';
 
 export type PaperChallengeConfiguration = {
   eventType: PaperChallengeEventType;
@@ -38,19 +41,47 @@ export type PaperChallengeConfiguration = {
 export function getPaperChallengeConfiguration(
   artworkId: PaperChallengeArtworkId,
 ): PaperChallengeConfiguration {
-  return artworkId === 'green-stock-exchange'
-    ? {
+  if (artworkId === 'green-stock-exchange') {
+    return {
         eventType: 'green-bull-championship',
         artworkId,
         startingBalance: GREEN_BULL_STARTING_BALANCE,
         rankingDirection: 'highest-return',
-      }
-    : {
+    };
+  }
+  if (artworkId === 'red-showdown') {
+    return {
+      eventType: 'bear-market-mayhem',
+      artworkId,
+      startingBalance: PAPER_CHALLENGE_STARTING_BALANCE,
+      rankingDirection: 'lowest-return',
+    };
+  }
+  return {
         eventType: 'event-arena',
         artworkId,
         startingBalance: PAPER_CHALLENGE_STARTING_BALANCE,
         rankingDirection: 'highest-return',
-      };
+  };
+}
+
+/** Validate saved rules without deriving them from display artwork. */
+export function isPaperChallengeConfiguration(value: unknown): value is PaperChallengeConfiguration {
+  if (!value || typeof value !== 'object') return false;
+  const configuration = value as Partial<PaperChallengeConfiguration>;
+  if (!PAPER_CHALLENGE_ARTWORK_IDS.includes(configuration.artworkId as PaperChallengeArtworkId)) return false;
+  const expected = getPaperChallengeConfiguration(configuration.artworkId as PaperChallengeArtworkId);
+  if (
+    configuration.eventType === expected.eventType
+    && configuration.startingBalance === expected.startingBalance
+    && configuration.rankingDirection === expected.rankingDirection
+  ) return true;
+  // A Red Showdown event saved before Bear Market Mayhem was introduced keeps
+  // its original standard-event rules and results.
+  return configuration.artworkId === 'red-showdown'
+    && configuration.eventType === 'event-arena'
+    && configuration.startingBalance === PAPER_CHALLENGE_STARTING_BALANCE
+    && configuration.rankingDirection === 'highest-return';
 }
 
 export function normalizePaperChallengeArtworkId(value: unknown): PaperChallengeArtworkId {
@@ -185,7 +216,9 @@ export function normalizePaperChallengeStore(store: PaperChallengeStore): PaperC
     ...event
   }) => {
     const artworkId = normalizePaperChallengeArtworkId(event.artworkId);
-    const savedEventType = eventType === 'green-bull-championship' || eventType === 'event-arena'
+    const savedEventType = eventType === 'green-bull-championship'
+      || eventType === 'bear-market-mayhem'
+      || eventType === 'event-arena'
       ? eventType
       : undefined;
     // Leave legacy archives unchanged: their recorded startEquity remains the
@@ -200,7 +233,7 @@ export function normalizePaperChallengeStore(store: PaperChallengeStore): PaperC
       artworkId,
       ...(savedEventType ? { eventType: savedEventType } : {}),
       ...(savedStartingBalance !== undefined ? { startingBalance: savedStartingBalance } : {}),
-      ...(rankingDirection === 'highest-return' ? { rankingDirection } : {}),
+      ...(rankingDirection === 'highest-return' || rankingDirection === 'lowest-return' ? { rankingDirection } : {}),
       ...(Array.isArray(transactions) ? { transactions } : {}),
       ...(Array.isArray(equityHistory)
         ? {
@@ -237,6 +270,7 @@ export function normalizePaperChallengeStore(store: PaperChallengeStore): PaperC
     ? (() => {
         const artworkId = normalizePaperChallengeArtworkId(store.enrollment.artworkId);
         const eventType: PaperChallengeEventType = store.enrollment.eventType === 'green-bull-championship'
+          || store.enrollment.eventType === 'bear-market-mayhem'
           ? store.enrollment.eventType
           : 'event-arena';
         const savedStartingBalance = store.enrollment.startingBalance;
@@ -256,7 +290,9 @@ export function normalizePaperChallengeStore(store: PaperChallengeStore): PaperC
               && legacyStartingBalance > 0
               ? legacyStartingBalance
               : PAPER_CHALLENGE_STARTING_BALANCE,
-          rankingDirection: 'highest-return' as const,
+          rankingDirection: store.enrollment.rankingDirection === 'lowest-return'
+            ? 'lowest-return' as const
+            : 'highest-return' as const,
         };
       })()
     : null;

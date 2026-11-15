@@ -25,10 +25,10 @@ type HoldingIdentifier = {
 type EventSubmission = {
   installationId: string;
   alias: string;
-  eventType?: "event-arena" | "green-bull-championship";
+  eventType?: "event-arena" | "green-bull-championship" | "bear-market-mayhem";
   artworkId?: typeof EVENT_ARTWORK_IDS[number];
   startingBalance?: number;
-  rankingDirection?: "highest-return";
+  rankingDirection?: "highest-return" | "lowest-return";
   cashBalance: number;
   appliedTransferIds: string[];
   startEquity: number;
@@ -53,10 +53,10 @@ const EVENT_ARTWORK_IDS = [
 
 type EventArenaConfiguration = {
   eventId: string;
-  eventType: "event-arena" | "green-bull-championship";
+  eventType: "event-arena" | "green-bull-championship" | "bear-market-mayhem";
   artworkId: typeof EVENT_ARTWORK_IDS[number];
   startingBalance: number;
-  rankingDirection: "highest-return";
+  rankingDirection: "highest-return" | "lowest-return";
   startAtMs: number;
   endAtMs: number;
 };
@@ -152,13 +152,53 @@ export function expectedEventArenaConfiguration(eventId: string): EventArenaConf
     Math.floor((daySerial - EVENT_ANCHOR_DAY) / 14) % EVENT_ARTWORK_IDS.length
   ];
   const isGreenBull = artworkId === "green-stock-exchange";
+  const isBearMarket = artworkId === "red-showdown";
   return {
     eventId,
-    eventType: isGreenBull ? "green-bull-championship" : "event-arena",
+    eventType: isGreenBull
+      ? "green-bull-championship"
+      : isBearMarket ? "bear-market-mayhem" : "event-arena",
     artworkId,
     startingBalance: isGreenBull ? 500_000 : 100_000,
-    rankingDirection: "highest-return",
+    rankingDirection: isBearMarket ? "lowest-return" : "highest-return",
     ...window,
+  };
+}
+
+function savedEventArenaConfiguration(row: any, expected: EventArenaConfiguration): EventArenaConfiguration | null {
+  const eventType = row.event_type;
+  const artworkId = row.artwork_id;
+  const startingBalance = Number(row.starting_balance);
+  const rankingDirection = row.ranking_direction;
+  const rowStartAtMs = row.event_start_at instanceof Date
+    ? row.event_start_at.getTime()
+    : new Date(row.event_start_at).getTime();
+  const rowEndAtMs = row.event_end_at instanceof Date
+    ? row.event_end_at.getTime()
+    : new Date(row.event_end_at).getTime();
+  const isCurrentConfiguration = eventType === expected.eventType
+    && artworkId === expected.artworkId
+    && startingBalance === expected.startingBalance
+    && rankingDirection === expected.rankingDirection;
+  // A pre-existing Red Showdown event remains a standard Event Arena event.
+  const isLegacyRedConfiguration = artworkId === "red-showdown"
+    && eventType === "event-arena"
+    && startingBalance === 100_000
+    && rankingDirection === "highest-return";
+  if (
+    row.event_id !== expected.eventId
+    || rowStartAtMs !== expected.startAtMs
+    || rowEndAtMs !== expected.endAtMs
+    || (!isCurrentConfiguration && !isLegacyRedConfiguration)
+  ) return null;
+  return {
+    eventId: expected.eventId,
+    eventType,
+    artworkId,
+    startingBalance,
+    rankingDirection,
+    startAtMs: expected.startAtMs,
+    endAtMs: expected.endAtMs,
   };
 }
 
@@ -191,21 +231,7 @@ async function ensureEventArenaConfiguration(
     [eventId],
   )).rows[0];
   if (!row) return null;
-  const rowStartAtMs = row.event_start_at instanceof Date
-    ? row.event_start_at.getTime()
-    : new Date(row.event_start_at).getTime();
-  const rowEndAtMs = row.event_end_at instanceof Date
-    ? row.event_end_at.getTime()
-    : new Date(row.event_end_at).getTime();
-  if (
-    row.event_type !== expected.eventType
-    || row.artwork_id !== expected.artworkId
-    || Number(row.starting_balance) !== expected.startingBalance
-    || row.ranking_direction !== expected.rankingDirection
-    || rowStartAtMs !== expected.startAtMs
-    || rowEndAtMs !== expected.endAtMs
-  ) return null;
-  return expected;
+  return savedEventArenaConfiguration(row, expected);
 }
 
 /** Only accept the scheduled biweekly Monday-to-Friday Event Arena windows. */
@@ -263,11 +289,16 @@ function parseSubmission(body: unknown): EventSubmission | null {
     || alias.length < 1
     || alias.length > 24
     || /[\u0000-\u001f\u007f]/.test(alias)
-    || (eventType !== undefined && eventType !== "event-arena" && eventType !== "green-bull-championship")
+    || (eventType !== undefined
+      && eventType !== "event-arena"
+      && eventType !== "green-bull-championship"
+      && eventType !== "bear-market-mayhem")
     || (artworkId !== undefined && !EVENT_ARTWORK_IDS.includes(artworkId as typeof EVENT_ARTWORK_IDS[number]))
     || (startingBalance !== undefined && (typeof startingBalance !== "number"
       || !Number.isFinite(startingBalance) || startingBalance <= 0))
-    || (rankingDirection !== undefined && rankingDirection !== "highest-return")
+    || (rankingDirection !== undefined
+      && rankingDirection !== "highest-return"
+      && rankingDirection !== "lowest-return")
     || (cashBalance !== undefined && (typeof cashBalance !== "number"
       || !Number.isFinite(cashBalance) || cashBalance < 0 || cashBalance > 10_000_000))
     || !Array.isArray(appliedTransferIds)
@@ -407,7 +438,7 @@ function compareText(a: unknown, b: unknown) {
 export function rankEventArenaEntries(
   rows: any[],
   requestingInstallationId: string | null = null,
-  rankingDirection: "highest-return" = "highest-return",
+  rankingDirection: "highest-return" | "lowest-return" = "highest-return",
 ) {
   return rows
     .map((row) => ({
@@ -430,7 +461,9 @@ export function rankEventArenaEntries(
       returnPercent: ((entry.equity - entry.startEquity) / entry.startEquity) * 100,
     }))
     .sort((a, b) =>
-      (rankingDirection === "highest-return" ? b.returnPercent - a.returnPercent : 0)
+      (rankingDirection === "highest-return"
+        ? b.returnPercent - a.returnPercent
+        : a.returnPercent - b.returnPercent)
       || b.updatedAtMs - a.updatedAtMs
       || compareText(a.row.alias, b.row.alias)
       || compareText(a.row.installation_id, b.row.installation_id),
@@ -616,20 +649,6 @@ export function createEventArenaRouter(
       res.status(400).json({ error: "A scheduled Event Arena window is required." });
       return;
     }
-    const expectedConfiguration = expectedEventArenaConfiguration(req.params.eventId);
-    if (
-      !expectedConfiguration
-      || submission.startEquity !== expectedConfiguration.startingBalance
-      || (submission.eventType !== undefined && submission.eventType !== expectedConfiguration.eventType)
-      || (submission.artworkId !== undefined && submission.artworkId !== expectedConfiguration.artworkId)
-      || (submission.startingBalance !== undefined
-        && submission.startingBalance !== expectedConfiguration.startingBalance)
-      || (submission.rankingDirection !== undefined
-        && submission.rankingDirection !== expectedConfiguration.rankingDirection)
-    ) {
-      res.status(400).json({ error: "The score does not match this event's saved configuration." });
-      return;
-    }
     if (now() > submission.eventEndAtMs) {
       res.status(410).json({ error: "This Event Arena window has ended." });
       return;
@@ -638,6 +657,18 @@ export function createEventArenaRouter(
       const configuration = await ensureEventArenaConfiguration(db, req.params.eventId);
       if (!configuration) {
         res.status(409).json({ error: "This event already has a different saved configuration." });
+        return;
+      }
+      if (
+        submission.startEquity !== configuration.startingBalance
+        || (submission.eventType !== undefined && submission.eventType !== configuration.eventType)
+        || (submission.artworkId !== undefined && submission.artworkId !== configuration.artworkId)
+        || (submission.startingBalance !== undefined
+          && submission.startingBalance !== configuration.startingBalance)
+        || (submission.rankingDirection !== undefined
+          && submission.rankingDirection !== configuration.rankingDirection)
+      ) {
+        res.status(400).json({ error: "The score does not match this event's saved configuration." });
         return;
       }
       await purgeExpiredEventArenaEntries(db);

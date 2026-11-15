@@ -9,6 +9,7 @@ import {
   createEventArenaRouter,
   expectedEventArenaConfiguration,
   isValidEventArenaWindow,
+  rankEventArenaEntries,
 } from "./eventArenaRoutes.ts";
 import {
   EVENT_ARENA_RETENTION_DAYS,
@@ -61,10 +62,11 @@ async function withApi(
   database: TestDatabase | TestDatabase["query"],
   run: (baseUrl: string) => Promise<void>,
   currentTime = Date.parse("2026-11-18T17:00:00.000Z"),
+  existingConfigurations = new Map<string, any>(),
 ) {
   const app = express();
   app.use(express.json());
-  const savedConfigurations = new Map<string, any>();
+  const savedConfigurations = existingConfigurations;
   const db = typeof database === "function"
     ? {
         query: async (sql: string, values?: any[]) => {
@@ -340,6 +342,11 @@ test("event artwork resolves to an immutable championship configuration", async 
   assert.equal(greenEvent?.artworkId, "green-stock-exchange");
   assert.equal(greenEvent?.startingBalance, 500_000);
   assert.equal(greenEvent?.rankingDirection, "highest-return");
+  const bearEvent = expectedEventArenaConfiguration("2026-12-28");
+  assert.equal(bearEvent?.eventType, "bear-market-mayhem");
+  assert.equal(bearEvent?.artworkId, "red-showdown");
+  assert.equal(bearEvent?.startingBalance, 100_000);
+  assert.equal(bearEvent?.rankingDirection, "lowest-return");
 
   await withApi(async () => ({ rows: [] }), async (baseUrl) => {
     const save = () => fetch(`${baseUrl}/event-arena/2027-01-11/config`, { method: "POST" });
@@ -350,6 +357,105 @@ test("event artwork resolves to an immutable championship configuration", async 
     assert.deepEqual(firstConfiguration, await second.json());
     assert.deepEqual(firstConfiguration, greenEvent);
   });
+});
+
+test("Bear Market ranks the lowest return first while standard and Green Bull stay highest-first", () => {
+  const returns = [-35, -22, -10, 5];
+  const rows = returns.map((returnPercent, index) => ({
+    installation_id: `install-${index}`,
+    alias: `Trader${index}`,
+    start_equity: 100_000,
+    equity: 100_000 * (1 + returnPercent / 100),
+    updated_at: new Date(`2026-11-18T17:0${index}:00.000Z`),
+  }));
+  assert.deepEqual(
+    rankEventArenaEntries(rows, null, "lowest-return").map((entry) => entry.returnPercent),
+    [-35, -22, -10, 5],
+  );
+  assert.deepEqual(
+    rankEventArenaEntries(rows, null, "highest-return").map((entry) => entry.returnPercent),
+    [5, -10, -22, -35],
+  );
+  const ties = [
+    { ...rows[0], installation_id: "z-id", alias: "Same", equity: 90_000 },
+    { ...rows[1], installation_id: "a-id", alias: "Same", equity: 90_000, updated_at: rows[0]?.updated_at },
+  ];
+  assert.deepEqual(
+    rankEventArenaEntries(ties, "a-id", "lowest-return").map((entry) => entry.isCurrentUser),
+    [true, false],
+  );
+});
+
+test("a Red Showdown configuration saved before Bear Market Mayhem keeps its original rules", async () => {
+  const expected = expectedEventArenaConfiguration("2026-12-28");
+  assert.ok(expected);
+  const existing = new Map([[expected.eventId, {
+    event_id: expected.eventId,
+    event_type: "event-arena",
+    artwork_id: "red-showdown",
+    starting_balance: 100_000,
+    ranking_direction: "highest-return",
+    event_start_at: new Date(expected.startAtMs),
+    event_end_at: new Date(expected.endAtMs),
+  }]]);
+  await withApi(async () => ({ rows: [] }), async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/${expected.eventId}/config`, { method: "POST" });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      ...expected,
+      eventType: "event-arena",
+      rankingDirection: "highest-return",
+    });
+  }, Date.parse("2026-12-20T17:00:00.000Z"), existing);
+});
+
+test("Bear Market score submissions validate against the saved baseline and snapshot lowest-first ranks", async () => {
+  const redEvent = expectedEventArenaConfiguration("2026-12-28");
+  assert.ok(redEvent);
+  const snapshotValues: unknown[][] = [];
+  await withApi(async (sql, values) => {
+    if (sql.startsWith("DELETE") || ["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return { rows: [] };
+    if (sql.startsWith("SELECT installation_id\n")) return { rows: [] };
+    if (sql.startsWith("INSERT INTO event_arena_leaderboard_entries")) {
+      return { rows: [{ updated_at: new Date("2026-12-30T17:00:00.000Z") }] };
+    }
+    if (sql.includes("SELECT installation_id, participant_token, alias")) {
+      return { rows: [-35, -22, -10, 5].map((returnPercent, index) => ({
+        installation_id: `red-install-${index}`,
+        participant_token: `red-token-${index}`,
+        alias: `Bear${index}`,
+        start_equity: 100_000,
+        equity: 100_000 * (1 + returnPercent / 100),
+        updated_at: new Date(`2026-12-30T17:0${index}:00.000Z`),
+      })) };
+    }
+    if (sql.startsWith("INSERT INTO event_arena_leaderboard_snapshots")) {
+      snapshotValues.push(values ?? []);
+      return { rows: [] };
+    }
+    return { rows: [] };
+  }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/${redEvent.eventId}/leaderboard`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(validSubmission({
+        eventType: "bear-market-mayhem",
+        artworkId: "red-showdown",
+        startingBalance: 100_000,
+        rankingDirection: "lowest-return",
+        startEquity: 100_000,
+        equity: 65_000,
+        returnPercent: -35,
+        eventStartAtMs: redEvent.startAtMs,
+        eventEndAtMs: redEvent.endAtMs,
+      })),
+    });
+    assert.equal(response.status, 200);
+  }, Date.parse("2026-12-30T18:00:00.000Z"));
+  assert.equal(snapshotValues.length, 1);
+  assert.deepEqual(snapshotValues[0]?.[1], ["red-token-0", "red-token-1", "red-token-2", "red-token-3"]);
+  assert.deepEqual(snapshotValues[0]?.[2], [1, 2, 3, 4]);
+  assert.deepEqual(snapshotValues[0]?.[3], [-35, -22, -10, 5]);
 });
 
 test("Green Bull scores must start with $500,000 and report a zero initial return", async () => {

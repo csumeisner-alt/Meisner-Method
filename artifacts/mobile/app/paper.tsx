@@ -2475,7 +2475,9 @@ export default function PaperScreen() {
             <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, lineHeight: 17, marginTop: 7 }}>
             {paperChallenge.enrollment?.eventType === 'green-bull-championship'
               ? 'GREEN BULL CHAMPIONSHIP · $500,000 STARTING CAPITAL'
-              : `EVENT ARENA · $${(paperChallenge.enrollment?.startingBalance ?? paperChallengeWindow.startingBalance ?? INITIAL_BALANCE).toLocaleString('en-US', { maximumFractionDigits: 0 })} STARTING CAPITAL`}
+              : paperChallenge.enrollment?.eventType === 'bear-market-mayhem'
+                ? `BEAR MARKET MAYHEM · $${(paperChallenge.enrollment.startingBalance ?? paperChallengeWindow.startingBalance ?? INITIAL_BALANCE).toLocaleString('en-US', { maximumFractionDigits: 0 })} STARTING CAPITAL`
+                : `EVENT ARENA · $${(paperChallenge.enrollment?.startingBalance ?? paperChallengeWindow.startingBalance ?? INITIAL_BALANCE).toLocaleString('en-US', { maximumFractionDigits: 0 })} STARTING CAPITAL`}
           </Text>
           <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 4 }}>
             {hasCurrentEventEnrollment
