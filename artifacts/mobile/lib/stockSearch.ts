@@ -37,6 +37,10 @@ export interface BuyStockInfo {
   dividendRate: number;
   expenseRatio: number;
   sector: string;
+  assetType: 'stock' | 'etf' | 'unknown';
+  priceTimestamp?: number | null;
+  marketSession?: string;
+  priceSource?: string;
 }
 
 export interface LatestRequestGuard {

@@ -7,5 +7,6 @@ export const EVENT_ARENA_ARTWORK_SOURCES: Record<PaperChallengeArtworkId, ImageS
   'mountain-summit': require('../assets/event-arena-mountain-summit.jpg'),
   'red-showdown': require('../assets/event-arena-red-showdown.jpg'),
   'green-stock-exchange': require('../assets/event-arena-green-stock-exchange.jpg'),
+  'penny-stock-mayhem': require('../assets/event-arena-penny-stock-mayhem.jpg'),
   'lightning-round-arena': require('../assets/lightning-round-arena-clean.jpg'),
 };

@@ -14,7 +14,7 @@ test("company result selection looks up the selected symbol and does not submit 
     resultHandler,
     /resolveStockSearchSymbol\(\s*buySymbol,\s*buySuggestions,\s*suggestion,\s*false,\s*\)/,
   );
-  assert.match(resultHandler, /lookUpStock\(selectedSymbol\)/);
+  assert.match(resultHandler, /lookUpStock\(selectedSymbol,\s*suggestion\.instrumentType\)/);
   assert.doesNotMatch(
     resultHandler,
     /handleConfirmOrder|setShowOrderSheet|onConfirm|saveAll|saveOrders/,
@@ -47,7 +47,7 @@ test("closed or superseded stock lookups cannot update the Buy modal", () => {
   assert.match(paperScreen, /stockLookupRequestRef\.current\.begin\(\)/);
 
   const lookupHandler = paperScreen.match(
-    /const lookUpStock = async \(symbolOverride\?: string\) => \{([\s\S]*?)\n  \};/,
+    /const lookUpStock = async \(symbolOverride\?: string,\s*searchedAssetType\?: 'stock' \| 'etf'\) => \{([\s\S]*?)\n  \};/,
   )?.[1];
   assert.ok(lookupHandler, "the stock lookup handler should remain identifiable");
   assert.match(

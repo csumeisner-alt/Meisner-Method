@@ -47,7 +47,8 @@ function validSubmission(overrides: Record<string, unknown> = {}) {
     eventType: configuration?.eventType ?? "event-arena",
     artworkId: configuration?.artworkId ?? "stadium",
     startingBalance: configuration?.startingBalance ?? 100_000,
-    rankingDirection: "highest-return",
+    rankingDirection: configuration?.rankingDirection ?? "highest-return",
+    ...(configuration?.purchaseLimit != null ? { purchaseLimit: configuration.purchaseLimit } : {}),
     cashBalance: 100_000,
     appliedTransferIds: [],
     startEquity: 100_000,
@@ -90,6 +91,7 @@ async function withApi(
               artwork_id: expected.artworkId,
               starting_balance: expected.startingBalance,
               ranking_direction: expected.rankingDirection,
+              purchase_limit: expected.purchaseLimit ?? null,
               event_start_at: new Date(expected.startAtMs),
               event_end_at: new Date(expected.endAtMs),
             };
@@ -126,11 +128,13 @@ async function ensureEventArenaTables(pool: InstanceType<typeof Pool>) {
       artwork_id TEXT NOT NULL,
       starting_balance DOUBLE PRECISION NOT NULL,
       ranking_direction TEXT NOT NULL,
+      purchase_limit DOUBLE PRECISION,
       event_start_at TIMESTAMPTZ NOT NULL,
       event_end_at TIMESTAMPTZ NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  await pool.query("ALTER TABLE event_arena_events ADD COLUMN IF NOT EXISTS purchase_limit DOUBLE PRECISION");
   await pool.query(`
     CREATE TABLE IF NOT EXISTS event_arena_leaderboard_entries (
       event_id TEXT NOT NULL,
@@ -439,6 +443,7 @@ test("Lightning Round preparation recovers missed runs without duplicating or ch
           artwork_id: configuration.artworkId,
           starting_balance: configuration.startingBalance,
           ranking_direction: configuration.rankingDirection,
+          purchase_limit: configuration.purchaseLimit ?? null,
           event_start_at: new Date(configuration.startAtMs),
           event_end_at: new Date(configuration.endAtMs),
         };
@@ -500,6 +505,14 @@ test("event artwork resolves to an immutable championship configuration", async 
   assert.equal(bearEvent?.artworkId, "red-showdown");
   assert.equal(bearEvent?.startingBalance, 100_000);
   assert.equal(bearEvent?.rankingDirection, "lowest-return");
+  const pennyEvent = expectedEventArenaConfiguration("2027-01-25");
+  assert.equal(pennyEvent?.eventType, "penny-stock-mayhem");
+  assert.equal(pennyEvent?.artworkId, "penny-stock-mayhem");
+  assert.equal(pennyEvent?.startingBalance, 100_000);
+  assert.equal(pennyEvent?.rankingDirection, "highest-return");
+  assert.equal(pennyEvent?.purchaseLimit, 20);
+  assert.equal(new Date(pennyEvent!.startAtMs).toISOString(), "2027-01-25T14:30:00.000Z");
+  assert.equal(new Date(pennyEvent!.endAtMs).toISOString(), "2027-01-29T21:00:00.000Z");
 
   await withApi(async () => ({ rows: [] }), async (baseUrl) => {
     const save = () => fetch(`${baseUrl}/event-arena/2027-01-11/config`, { method: "POST" });
@@ -509,6 +522,10 @@ test("event artwork resolves to an immutable championship configuration", async 
     assert.equal(first.status, 200);
     assert.deepEqual(firstConfiguration, await second.json());
     assert.deepEqual(firstConfiguration, greenEvent);
+
+    const pennyResponse = await fetch(`${baseUrl}/event-arena/2027-01-25/config`, { method: "POST" });
+    assert.equal(pennyResponse.status, 200);
+    assert.deepEqual(await pennyResponse.json(), pennyEvent);
   });
 });
 
@@ -1069,6 +1086,36 @@ test("valid anonymous submission stores only event-scoped score and public holdi
   assert.deepEqual(JSON.parse(storedValues?.[7]), [{ symbol: "AAPL", companyName: "Apple Inc.", allocationPercent: 12.5, side: "long" }]);
 });
 
+test("Penny Stock Mayhem submissions must match the saved exclusive purchase limit", async () => {
+  const pennyEvent = expectedEventArenaConfiguration("2027-01-25");
+  assert.ok(pennyEvent);
+  for (const { purchaseLimit, status } of [
+    { purchaseLimit: 20, status: 200 },
+    { purchaseLimit: 19, status: 400 },
+    { purchaseLimit: undefined, status: 400 },
+  ]) {
+    await withApi(async (sql) => {
+      if (sql.startsWith("DELETE") || ["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return { rows: [] };
+      if (sql.startsWith("SELECT installation_id")) return { rows: [] };
+      if (sql.startsWith("INSERT INTO event_arena_leaderboard_entries")) {
+        return { rows: [{ updated_at: new Date("2027-01-27T18:00:00.000Z") }] };
+      }
+      return { rows: [] };
+    }, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/event-arena/${pennyEvent.eventId}/leaderboard`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(validSubmission({
+          eventStartAtMs: pennyEvent.startAtMs,
+          eventEndAtMs: pennyEvent.endAtMs,
+          purchaseLimit,
+        })),
+      });
+      assert.equal(response.status, status);
+    }, Date.parse("2027-01-27T18:00:00.000Z"));
+  }
+});
+
 test("accepted score submissions store ranked event snapshots without private identity", async () => {
   const insertedSnapshotValues: unknown[][] = [];
   await withApi(async (sql, values) => {
@@ -1221,6 +1268,10 @@ test(
           headers: { "content-type": "application/json" },
           body: JSON.stringify(validSubmission({
             installationId: historyInstallationId,
+            eventType: "event-arena",
+            artworkId: "neon-nightclub",
+            startingBalance: 100_000,
+            rankingDirection: "highest-return",
             eventStartAtMs: historyStartAtMs,
             eventEndAtMs: historyEndAtMs,
           })),

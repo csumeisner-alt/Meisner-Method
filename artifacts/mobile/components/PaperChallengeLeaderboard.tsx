@@ -84,6 +84,7 @@ export type PaperChallengeLeaderboardEventWindow = {
   eventType?: PaperChallengeEventType;
   startingBalance?: number;
   rankingDirection?: PaperChallengeRankingDirection;
+  purchaseLimit?: number;
 };
 type HoldingName = {
   symbol: string;
@@ -168,7 +169,9 @@ function EventArenaPodiumShareCard({
         <Text style={{ color: isBearMarketMayhem ? '#FF6670' : '#E6D8B2', fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 1.4, marginTop: 10 }}>
           {isBearMarketMayhem
             ? 'BEAR MARKET MAYHEM'
-            : event.eventType === 'lightning-round'
+            : event.eventType === 'penny-stock-mayhem'
+              ? 'PENNY STOCK MAYHEM'
+              : event.eventType === 'lightning-round'
               ? 'LIGHTNING ROUND'
               : event.eventType === 'green-bull-championship' ? 'GREEN BULL CHAMPIONSHIP' : 'EVENT ARENA CHAMPIONSHIP'}
         </Text>
@@ -287,10 +290,13 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
     throw new Error('Your isolated event account is unavailable. Open Paper Trading and try again.');
   }
   const configuration = {
-    eventType: enrollment.eventType ?? event.eventType ?? 'event-arena',
+      eventType: enrollment.eventType ?? event.eventType ?? 'event-arena',
     artworkId: enrollment.artworkId ?? event.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID,
     startingBalance: enrollment.startingBalance ?? event.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE,
     rankingDirection: enrollment.rankingDirection ?? event.rankingDirection ?? 'highest-return',
+      ...(enrollment.purchaseLimit ?? event.purchaseLimit
+        ? { purchaseLimit: enrollment.purchaseLimit ?? event.purchaseLimit }
+        : {}),
   } as const;
   const startEquity = configuration.startingBalance;
   const equity = getEventArenaAccountEquity(
@@ -438,6 +444,7 @@ export function PaperChallengeLeaderboard({
   const isBearMarketMayhem = event.eventType === 'bear-market-mayhem'
     || event.rankingDirection === 'lowest-return';
   const isLightningRound = event.eventType === 'lightning-round';
+  const isPennyStockMayhem = event.eventType === 'penny-stock-mayhem';
   const leaderboardQuery = useGetEventArenaLeaderboard(event.id, {
     request: installationId ? { headers: { 'X-Event-Arena-Installation-Id': installationId } } : undefined,
     query: {
@@ -1442,12 +1449,19 @@ export function PaperChallengeLeaderboard({
 
                 <View testID="paper-event-leaderboard-current-event" style={{ alignItems: 'center', marginBottom: 18 }}>
                   <Text testID="paper-event-championship-identity" style={{ color: isBearMarketMayhem ? '#FF6670' : '#E8CB7C', fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 1.2, textAlign: 'center', marginBottom: 7 }}>
-                    {isBearMarketMayhem
+                    {isPennyStockMayhem
+                      ? 'PENNY STOCK MAYHEM'
+                      : isBearMarketMayhem
                       ? 'BEAR MARKET MAYHEM'
                       : isLightningRound
                         ? 'LIGHTNING ROUND'
                         : event.eventType === 'green-bull-championship' ? 'GREEN BULL CHAMPIONSHIP' : 'EVENT ARENA CHAMPIONSHIP'}
                   </Text>
+                  {isPennyStockMayhem && (
+                    <Text testID="paper-event-penny-stock-objective" style={{ color: '#B7F37A', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1, textAlign: 'center', marginBottom: 8 }}>
+                      STOCKS &amp; ETFs UNDER $20
+                    </Text>
+                  )}
                   <Text testID="paper-event-starting-capital" style={{ color: '#F1EEE7', fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 0.8, textAlign: 'center', marginBottom: 8 }}>
                     ${Math.round(event.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE).toLocaleString('en-US')} STARTING CAPITAL
                   </Text>

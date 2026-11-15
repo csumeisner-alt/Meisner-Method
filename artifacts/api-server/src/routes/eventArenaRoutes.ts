@@ -25,10 +25,11 @@ type HoldingIdentifier = {
 type EventSubmission = {
   installationId: string;
   alias: string;
-  eventType?: "event-arena" | "green-bull-championship" | "bear-market-mayhem" | "lightning-round";
+  eventType?: "event-arena" | "green-bull-championship" | "bear-market-mayhem" | "penny-stock-mayhem" | "lightning-round";
   artworkId?: typeof EVENT_ARTWORK_IDS[number] | "lightning-round-arena";
   startingBalance?: number;
   rankingDirection?: "highest-return" | "lowest-return";
+  purchaseLimit?: number;
   cashBalance: number;
   appliedTransferIds: string[];
   startEquity: number;
@@ -49,14 +50,17 @@ const EVENT_ARTWORK_IDS = [
   "mountain-summit",
   "red-showdown",
   "green-stock-exchange",
+  "penny-stock-mayhem",
 ] as const;
+const PRE_PENNY_EVENT_ARTWORK_IDS = EVENT_ARTWORK_IDS.slice(0, 5);
 
 type EventArenaConfiguration = {
   eventId: string;
-  eventType: "event-arena" | "green-bull-championship" | "bear-market-mayhem" | "lightning-round";
+  eventType: "event-arena" | "green-bull-championship" | "bear-market-mayhem" | "penny-stock-mayhem" | "lightning-round";
   artworkId: typeof EVENT_ARTWORK_IDS[number] | "lightning-round-arena";
   startingBalance: number;
   rankingDirection: "highest-return" | "lowest-return";
+  purchaseLimit?: number;
   startAtMs: number;
   endAtMs: number;
 };
@@ -245,6 +249,32 @@ export function expectedEventArenaConfiguration(eventId: string): EventArenaConf
   ];
   const isGreenBull = artworkId === "green-stock-exchange";
   const isBearMarket = artworkId === "red-showdown";
+  const isPennyStockMayhem = artworkId === "penny-stock-mayhem";
+  return {
+    eventId,
+    eventType: isGreenBull
+      ? "green-bull-championship"
+      : isBearMarket ? "bear-market-mayhem"
+        : isPennyStockMayhem ? "penny-stock-mayhem" : "event-arena",
+    artworkId,
+    startingBalance: isGreenBull ? 500_000 : 100_000,
+    rankingDirection: isBearMarket ? "lowest-return" : "highest-return",
+    ...(isPennyStockMayhem ? { purchaseLimit: 20 } : {}),
+    ...window,
+  };
+}
+
+/** Resolve the former five-artwork rotation so already saved event IDs stay immutable. */
+function previousRegularEventArenaConfiguration(eventId: string): EventArenaConfiguration | null {
+  const window = expectedEventArenaWindow(eventId);
+  if (!window) return null;
+  const [year, month, day] = eventId.split("-").map(Number);
+  const daySerial = Math.floor(Date.UTC(year, month - 1, day) / DAY_MS);
+  const artworkId = PRE_PENNY_EVENT_ARTWORK_IDS[
+    Math.floor((daySerial - EVENT_ANCHOR_DAY) / 14) % PRE_PENNY_EVENT_ARTWORK_IDS.length
+  ];
+  const isGreenBull = artworkId === "green-stock-exchange";
+  const isBearMarket = artworkId === "red-showdown";
   return {
     eventId,
     eventType: isGreenBull
@@ -309,6 +339,7 @@ function savedEventArenaConfiguration(row: any, expected: EventArenaConfiguratio
   const artworkId = row.artwork_id;
   const startingBalance = Number(row.starting_balance);
   const rankingDirection = row.ranking_direction;
+  const purchaseLimit = row.purchase_limit == null ? undefined : Number(row.purchase_limit);
   const rowStartAtMs = row.event_start_at instanceof Date
     ? row.event_start_at.getTime()
     : new Date(row.event_start_at).getTime();
@@ -318,17 +349,26 @@ function savedEventArenaConfiguration(row: any, expected: EventArenaConfiguratio
   const isCurrentConfiguration = eventType === expected.eventType
     && artworkId === expected.artworkId
     && startingBalance === expected.startingBalance
-    && rankingDirection === expected.rankingDirection;
+    && rankingDirection === expected.rankingDirection
+    && purchaseLimit === expected.purchaseLimit;
+  const previous = previousRegularEventArenaConfiguration(expected.eventId);
+  const isPreviousConfiguration = !!previous
+    && eventType === previous.eventType
+    && artworkId === previous.artworkId
+    && startingBalance === previous.startingBalance
+    && rankingDirection === previous.rankingDirection
+    && purchaseLimit === undefined;
   // A pre-existing Red Showdown event remains a standard Event Arena event.
   const isLegacyRedConfiguration = artworkId === "red-showdown"
     && eventType === "event-arena"
     && startingBalance === 100_000
-    && rankingDirection === "highest-return";
+    && rankingDirection === "highest-return"
+    && purchaseLimit === undefined;
   if (
     row.event_id !== expected.eventId
     || rowStartAtMs !== expected.startAtMs
     || rowEndAtMs !== expected.endAtMs
-    || (!isCurrentConfiguration && !isLegacyRedConfiguration)
+    || (!isCurrentConfiguration && !isPreviousConfiguration && !isLegacyRedConfiguration)
   ) return null;
   return {
     eventId: expected.eventId,
@@ -336,6 +376,7 @@ function savedEventArenaConfiguration(row: any, expected: EventArenaConfiguratio
     artworkId,
     startingBalance,
     rankingDirection,
+    ...(purchaseLimit !== undefined ? { purchaseLimit } : {}),
     startAtMs: expected.startAtMs,
     endAtMs: expected.endAtMs,
   };
@@ -353,19 +394,20 @@ async function ensureEventArenaConfiguration(
     expected.artworkId,
     expected.startingBalance,
     expected.rankingDirection,
+    expected.purchaseLimit ?? null,
     expected.startAtMs,
     expected.endAtMs,
   ];
   const { rows: inserted } = await db.query(
     `INSERT INTO event_arena_events
-      (event_id, event_type, artwork_id, starting_balance, ranking_direction, event_start_at, event_end_at)
-     VALUES ($1,$2,$3,$4,$5,TO_TIMESTAMP($6 / 1000.0),TO_TIMESTAMP($7 / 1000.0))
+      (event_id, event_type, artwork_id, starting_balance, ranking_direction, purchase_limit, event_start_at, event_end_at)
+     VALUES ($1,$2,$3,$4,$5,$6,TO_TIMESTAMP($7 / 1000.0),TO_TIMESTAMP($8 / 1000.0))
      ON CONFLICT (event_id) DO NOTHING
-     RETURNING event_id, event_type, artwork_id, starting_balance, ranking_direction, event_start_at, event_end_at`,
+     RETURNING event_id, event_type, artwork_id, starting_balance, ranking_direction, purchase_limit, event_start_at, event_end_at`,
     values,
   );
   const row = inserted[0] ?? (await db.query(
-    `SELECT event_id, event_type, artwork_id, starting_balance, ranking_direction, event_start_at, event_end_at
+     `SELECT event_id, event_type, artwork_id, starting_balance, ranking_direction, purchase_limit, event_start_at, event_end_at
      FROM event_arena_events WHERE event_id=$1`,
     [eventId],
   )).rows[0];
@@ -420,6 +462,7 @@ function parseSubmission(body: unknown): EventSubmission | null {
     "artworkId",
     "startingBalance",
     "rankingDirection",
+    "purchaseLimit",
     "cashBalance",
     "appliedTransferIds",
     "startEquity",
@@ -437,6 +480,7 @@ function parseSubmission(body: unknown): EventSubmission | null {
   const artworkId = value.artworkId;
   const startingBalance = value.startingBalance;
   const rankingDirection = value.rankingDirection;
+  const purchaseLimit = value.purchaseLimit;
   const startEquity = value.startEquity;
   const equity = value.equity;
   const returnPercent = value.returnPercent;
@@ -453,6 +497,7 @@ function parseSubmission(body: unknown): EventSubmission | null {
       && eventType !== "event-arena"
       && eventType !== "green-bull-championship"
       && eventType !== "bear-market-mayhem"
+      && eventType !== "penny-stock-mayhem"
       && eventType !== "lightning-round")
     || (artworkId !== undefined
       && !EVENT_ARTWORK_IDS.includes(artworkId as typeof EVENT_ARTWORK_IDS[number])
@@ -462,6 +507,8 @@ function parseSubmission(body: unknown): EventSubmission | null {
     || (rankingDirection !== undefined
       && rankingDirection !== "highest-return"
       && rankingDirection !== "lowest-return")
+    || (purchaseLimit !== undefined && (typeof purchaseLimit !== "number"
+      || !Number.isFinite(purchaseLimit) || purchaseLimit <= 0))
     || (cashBalance !== undefined && (typeof cashBalance !== "number"
       || !Number.isFinite(cashBalance) || cashBalance < 0 || cashBalance > 10_000_000))
     || !Array.isArray(appliedTransferIds)
@@ -529,6 +576,7 @@ function parseSubmission(body: unknown): EventSubmission | null {
     ...(typeof artworkId === "string" ? { artworkId: artworkId as EventSubmission["artworkId"] } : {}),
     ...(startingBalance !== undefined ? { startingBalance } : {}),
     ...(rankingDirection !== undefined ? { rankingDirection } : {}),
+    ...(purchaseLimit !== undefined ? { purchaseLimit } : {}),
     cashBalance: typeof cashBalance === "number" ? cashBalance : startEquity,
     appliedTransferIds: [...new Set(appliedTransferIds as string[])],
     startEquity,
@@ -839,6 +887,7 @@ export function createEventArenaRouter(
           && submission.startingBalance !== configuration.startingBalance)
         || (submission.rankingDirection !== undefined
           && submission.rankingDirection !== configuration.rankingDirection)
+        || submission.purchaseLimit !== configuration.purchaseLimit
       ) {
         res.status(400).json({ error: "The score does not match this event's saved configuration." });
         return;

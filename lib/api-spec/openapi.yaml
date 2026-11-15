@@ -759,11 +759,12 @@ components:
           maxLength: 24
         eventType:
           type: string
-          enum: [event-arena, green-bull-championship, bear-market-mayhem, lightning-round]
+          enum: [event-arena, green-bull-championship, bear-market-mayhem, penny-stock-mayhem, lightning-round]
         artworkId:
           type: string
-          enum: [stadium, neon-nightclub, mountain-summit, red-showdown, green-stock-exchange, lightning-round-arena]
+          enum: [stadium, neon-nightclub, mountain-summit, red-showdown, green-stock-exchange, penny-stock-mayhem, lightning-round-arena]
         startingBalance: { type: number, exclusiveMinimum: 0 }
+        purchaseLimit: { type: number, exclusiveMinimum: 0 }
         rankingDirection:
           type: string
           enum: [highest-return, lowest-return]
@@ -812,11 +813,12 @@ components:
         eventId: { type: string, pattern: "^(lightning-)?\\d{4}-\\d{2}-\\d{2}$" }
         eventType:
           type: string
-          enum: [event-arena, green-bull-championship, bear-market-mayhem, lightning-round]
+          enum: [event-arena, green-bull-championship, bear-market-mayhem, penny-stock-mayhem, lightning-round]
         artworkId:
           type: string
-          enum: [stadium, neon-nightclub, mountain-summit, red-showdown, green-stock-exchange, lightning-round-arena]
+          enum: [stadium, neon-nightclub, mountain-summit, red-showdown, green-stock-exchange, penny-stock-mayhem, lightning-round-arena]
         startingBalance: { type: number, exclusiveMinimum: 0 }
+        purchaseLimit: { type: number, exclusiveMinimum: 0 }
         rankingDirection:
           type: string
           enum: [highest-return, lowest-return]

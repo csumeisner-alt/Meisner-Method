@@ -22,6 +22,7 @@ export function PaperEventShareCard({ event, milestones = [] }: Props) {
   const symbols = event.symbolsTraded?.length ? event.symbolsTraded.join(' · ') : 'No trades this week';
   const isBearMarketMayhem = event.eventType === 'bear-market-mayhem'
     || event.rankingDirection === 'lowest-return';
+  const isPennyStockMayhem = event.eventType === 'penny-stock-mayhem';
 
   return (
     <ImageBackground
@@ -44,12 +45,19 @@ export function PaperEventShareCard({ event, milestones = [] }: Props) {
               MEISNER METHOD
             </Text>
             <Text allowFontScaling style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 10, letterSpacing: 1.1, marginTop: 4 }}>
-              {isBearMarketMayhem
+              {isPennyStockMayhem
+                ? 'PENNY STOCK MAYHEM · RESULTS'
+                : isBearMarketMayhem
                 ? 'BEAR MARKET MAYHEM · RESULTS'
                 : event.eventType === 'lightning-round'
                   ? 'LIGHTNING ROUND · RESULTS'
                   : event.eventType === 'green-bull-championship' ? 'GREEN BULL CHAMPIONSHIP · RESULTS' : 'EVENT ARENA · RESULTS'}
             </Text>
+            {isPennyStockMayhem && (
+              <Text allowFontScaling style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 1, marginTop: 3 }}>
+                STOCKS &amp; ETFs UNDER $20
+              </Text>
+            )}
           </View>
         </View>
 

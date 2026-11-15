@@ -8,6 +8,8 @@ import {
   getAvailableSellShares,
   getOrderEstimatePrice,
   getOrderQuoteState,
+  getPennyQuoteStatus,
+  isPennyStockMayhemEligible,
 } from '../paperOrderEntry.ts';
 
 test('buying-power shortcuts round fractional shares down to an affordable amount', () => {
@@ -38,6 +40,28 @@ test('quote status distinguishes provider-backed freshness from missing or stale
   assert.equal(getOrderQuoteState({ ...fresh, priceTimestamp: now / 1000 - 60 * 60 }, now), 'stale');
   assert.equal(getOrderQuoteState({ ...fresh, priceTimestamp: null }, now), 'stale');
   assert.equal(getOrderQuoteState(undefined, now), 'unavailable');
+});
+
+test('Penny Stock Mayhem search eligibility requires verified classification, a current quote, and under $20', () => {
+  const now = 1_800_000_000_000;
+  const current = {
+    price: 19.99,
+    change: 1,
+    pct: 1,
+    priceTimestamp: now / 1000 - 60,
+    fetchedAtMs: now - 1_000,
+    marketSession: 'REGULAR',
+  };
+  assert.equal(getPennyQuoteStatus(current, now), 'current');
+  assert.equal(isPennyStockMayhemEligible('stock', current, now), true);
+  assert.equal(isPennyStockMayhemEligible('etf', current, now), true);
+  assert.equal(isPennyStockMayhemEligible('unknown', current, now), false);
+  assert.equal(isPennyStockMayhemEligible('stock', { ...current, price: 20 }, now), false);
+  assert.equal(isPennyStockMayhemEligible('stock', { ...current, price: 20.01 }, now), false);
+  assert.equal(getPennyQuoteStatus({ ...current, priceSource: 'previous_close' }, now), 'delayed');
+  assert.equal(getPennyQuoteStatus({ ...current, marketSession: 'CLOSED' }, now), 'delayed');
+  assert.equal(getPennyQuoteStatus({ ...current, priceTimestamp: now / 1000 - 3_600 }, now), 'stale');
+  assert.equal(getPennyQuoteStatus(undefined, now), 'unavailable');
 });
 
 test('market order quote guard accepts valid fresh and stale references, but not missing or changed prices', () => {

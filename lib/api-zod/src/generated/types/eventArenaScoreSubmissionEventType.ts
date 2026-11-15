@@ -13,5 +13,6 @@ export const EventArenaScoreSubmissionEventType = {
   'event-arena': 'event-arena',
   'green-bull-championship': 'green-bull-championship',
   'bear-market-mayhem': 'bear-market-mayhem',
+  'penny-stock-mayhem': 'penny-stock-mayhem',
   'lightning-round': 'lightning-round',
 } as const;

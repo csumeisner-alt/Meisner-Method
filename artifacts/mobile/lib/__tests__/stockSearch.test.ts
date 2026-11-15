@@ -57,6 +57,7 @@ test('a delayed lookup cannot replace company details from a newer lookup', asyn
     dividendRate: 0.96,
     expenseRatio: 0,
     sector: 'Technology',
+    assetType: 'stock' as const,
   };
   const microsoftInfo = {
     companyName: 'Microsoft Corporation',
@@ -65,6 +66,7 @@ test('a delayed lookup cannot replace company details from a newer lookup', asyn
     dividendRate: 3.08,
     expenseRatio: 0,
     sector: 'Technology',
+    assetType: 'stock' as const,
   };
   let stockInfo: typeof appleInfo | null = null;
 
@@ -197,6 +199,7 @@ test('a selected company carries its canonical ticker and stock information into
     dividendRate: 0.96,
     expenseRatio: 0,
     sector: 'Technology',
+    assetType: 'stock' as const,
   };
   assert.deepEqual(getBuyOrderDetails(selectedSymbol ?? '', appleInfo), {
     symbol: 'AAPL',

@@ -1,6 +1,7 @@
 import type { LiveQuote, OrderType, PaperOrder, PaperPosition } from './paperMath.ts';
 
 export type OrderQuoteState = 'unavailable' | 'fresh' | 'stale';
+export type PennyQuoteStatus = 'unavailable' | 'current' | 'delayed' | 'stale';
 
 const QUOTE_MAX_AGE_MS = 15 * 60_000;
 const QUOTE_RESPONSE_MAX_AGE_MS = 10 * 60_000;
@@ -36,6 +37,33 @@ export function getOrderQuoteState(
   const responseAgeMs = nowMs - quote.fetchedAtMs;
   if (responseAgeMs < -60_000 || responseAgeMs > QUOTE_RESPONSE_MAX_AGE_MS) return 'stale';
   return 'fresh';
+}
+
+export function getPennyQuoteStatus(
+  quote: LiveQuote | undefined,
+  nowMs = Date.now(),
+): PennyQuoteStatus {
+  const quoteState = getOrderQuoteState(quote, nowMs);
+  if (quoteState === 'unavailable') return 'unavailable';
+  if (quoteState === 'stale') return 'stale';
+  const source = (quote?.priceSource ?? '').toLowerCase().replace(/[\s-]+/g, '_');
+  if (source.includes('previous_close') || quote?.marketSession?.toUpperCase() === 'CLOSED') {
+    return 'delayed';
+  }
+  return 'current';
+}
+
+export function isPennyStockMayhemEligible(
+  assetType: string | undefined,
+  quote: LiveQuote | undefined,
+  nowMs = Date.now(),
+): boolean {
+  return (assetType === 'stock' || assetType === 'etf')
+    && getPennyQuoteStatus(quote, nowMs) === 'current'
+    && !!quote
+    && Number.isFinite(quote.price)
+    && quote.price > 0
+    && quote.price < 20;
 }
 
 export function getOrderEstimatePrice(args: {

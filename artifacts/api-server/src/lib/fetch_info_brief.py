@@ -635,6 +635,7 @@ def build_info_brief_payload(
     )
     payload = {
         "symbol": symbol,
+        "quoteType": str(info.get("quoteType") or "").strip().upper() or None,
         "companyName": name,
         "sector": info.get("sector", "") or "",
         "industry": info.get("industry", "") or "",

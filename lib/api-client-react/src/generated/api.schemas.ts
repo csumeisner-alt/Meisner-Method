@@ -12,6 +12,7 @@ export const EventArenaScoreSubmissionEventType = {
   'event-arena': 'event-arena',
   'green-bull-championship': 'green-bull-championship',
   'bear-market-mayhem': 'bear-market-mayhem',
+  'penny-stock-mayhem': 'penny-stock-mayhem',
   'lightning-round': 'lightning-round',
 } as const;
 
@@ -24,6 +25,7 @@ export const EventArenaScoreSubmissionArtworkId = {
   'mountain-summit': 'mountain-summit',
   'red-showdown': 'red-showdown',
   'green-stock-exchange': 'green-stock-exchange',
+  'penny-stock-mayhem': 'penny-stock-mayhem',
   'lightning-round-arena': 'lightning-round-arena',
 } as const;
 
@@ -70,6 +72,8 @@ export interface EventArenaScoreSubmission {
   artworkId: EventArenaScoreSubmissionArtworkId;
   /** @exclusiveMinimum 0 */
   startingBalance: number;
+  /** @exclusiveMinimum 0 */
+  purchaseLimit?: number;
   rankingDirection: EventArenaScoreSubmissionRankingDirection;
   /**
      * Self-reported cash in the separate event account, used to reconcile transfer receipts.
@@ -108,6 +112,7 @@ export const EventArenaConfigurationEventType = {
   'event-arena': 'event-arena',
   'green-bull-championship': 'green-bull-championship',
   'bear-market-mayhem': 'bear-market-mayhem',
+  'penny-stock-mayhem': 'penny-stock-mayhem',
   'lightning-round': 'lightning-round',
 } as const;
 
@@ -120,6 +125,7 @@ export const EventArenaConfigurationArtworkId = {
   'mountain-summit': 'mountain-summit',
   'red-showdown': 'red-showdown',
   'green-stock-exchange': 'green-stock-exchange',
+  'penny-stock-mayhem': 'penny-stock-mayhem',
   'lightning-round-arena': 'lightning-round-arena',
 } as const;
 
@@ -138,6 +144,8 @@ export interface EventArenaConfiguration {
   artworkId: EventArenaConfigurationArtworkId;
   /** @exclusiveMinimum 0 */
   startingBalance: number;
+  /** @exclusiveMinimum 0 */
+  purchaseLimit?: number;
   rankingDirection: EventArenaConfigurationRankingDirection;
   startAtMs: number;
   endAtMs: number;

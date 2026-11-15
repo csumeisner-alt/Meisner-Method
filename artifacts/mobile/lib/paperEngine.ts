@@ -317,6 +317,30 @@ export function creditDividends(
  * availability.  Returns `null` when the order is acceptable, or an
  * error message string the UI can display.
  */
+/** Validate the Penny Stock Mayhem long-buy rule using the actual quote and fill. */
+export function getPurchaseLimitRejectionReason(args: {
+  order: Pick<PaperOrder, 'side' | 'intent' | 'assetType'>;
+  executionQuotePrice?: number;
+  fillPrice: number;
+  maxPurchasePrice?: number;
+}): string | null {
+  const { order, executionQuotePrice, fillPrice, maxPurchasePrice } = args;
+  if (order.side !== 'buy' || order.intent || maxPurchasePrice == null) return null;
+  if (!Number.isFinite(maxPurchasePrice) || maxPurchasePrice <= 0) {
+    return 'Penny Stock Mayhem purchase rules are unavailable. No purchase was made.';
+  }
+  if (order.assetType !== 'stock' && order.assetType !== 'etf') {
+    return 'Penny Stock Mayhem requires a verified stock or ETF. No purchase was made.';
+  }
+  if (executionQuotePrice == null || !Number.isFinite(executionQuotePrice) || executionQuotePrice <= 0) {
+    return 'Penny Stock Mayhem could not verify a current execution quote. No purchase was made.';
+  }
+  if (executionQuotePrice >= maxPurchasePrice || fillPrice >= maxPurchasePrice) {
+    return `Penny Stock Mayhem buys require both the latest quote and final fill to be below $${maxPurchasePrice.toFixed(2)}. No purchase was made.`;
+  }
+  return null;
+}
+
 export function checkRisk(args: {
   side: 'buy' | 'sell';
   intent?: 'short' | 'cover';
@@ -601,6 +625,8 @@ export type FillOrderResult =
 export function fillOrder(args: {
   order: PaperOrder;
   fillPrice: number;
+  executionQuotePrice?: number;
+  maxPurchasePrice?: number;
   filledAt: string;
   account: PaperAccount;
   positions: PaperPosition[];
@@ -616,6 +642,16 @@ export function fillOrder(args: {
     !filledAt || Number.isNaN(new Date(filledAt).getTime())
   ) {
     return { ok: false, reason: 'Order contains invalid shares, price, or fill time.' };
+  }
+
+  const purchaseLimitError = getPurchaseLimitRejectionReason({
+    order,
+    executionQuotePrice: args.executionQuotePrice,
+    fillPrice,
+    maxPurchasePrice: args.maxPurchasePrice,
+  });
+  if (purchaseLimitError) {
+    return { ok: false, reason: purchaseLimitError };
   }
 
   let updatedAccount = { ...account };
@@ -651,6 +687,7 @@ export function fillOrder(args: {
               ...p,
               shares: totalShares,
               avgCost: newAvg,
+              ...(order.assetType ? { assetType: order.assetType } : {}),
               ...(order.dividendYield != null ? { dividendYield: order.dividendYield } : {}),
               ...(order.dividendRate != null ? { dividendRate: order.dividendRate } : {}),
               ...(order.expenseRatio != null ? { expenseRatio: order.expenseRatio } : {}),
@@ -668,6 +705,7 @@ export function fillOrder(args: {
           companyName,
           shares,
           avgCost: fillPrice,
+          ...(order.assetType ? { assetType: order.assetType } : {}),
           openedAt: filledAt,
           dividendYield: order.dividendYield ?? 0,
           dividendRate: order.dividendRate ?? 0,

@@ -16,6 +16,8 @@ export interface EventArenaConfiguration {
   artworkId: EventArenaConfigurationArtworkId;
   /** @exclusiveMinimum 0 */
   startingBalance: number;
+  /** @exclusiveMinimum 0 */
+  purchaseLimit?: number;
   rankingDirection: EventArenaConfigurationRankingDirection;
   startAtMs: number;
   endAtMs: number;

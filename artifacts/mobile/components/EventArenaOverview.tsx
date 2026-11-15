@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  ImageBackground,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,6 +18,8 @@ import type {
   EventArenaParticipation,
   EventArenaPerformance,
 } from '@/lib/eventArenaHome';
+import { EVENT_ARENA_ARTWORK_SOURCES } from '@/lib/eventArenaArtwork';
+import { LEGACY_PAPER_CHALLENGE_ARTWORK_ID } from '@/lib/paperChallenge';
 
 export type EventArenaOverviewProps = {
   event: PaperChallengeWindow;
@@ -109,7 +112,8 @@ export function EventArenaOverview({
   const eventTitle = `Week of ${new Date(event.startAtMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
   const championshipName = event.eventType === 'green-bull-championship'
     ? 'GREEN BULL CHAMPIONSHIP'
-    : isBearMarketMayhem ? 'BEAR MARKET MAYHEM' : 'EVENT ARENA CHAMPIONSHIP';
+    : isBearMarketMayhem ? 'BEAR MARKET MAYHEM'
+      : event.eventType === 'penny-stock-mayhem' ? 'PENNY STOCK MAYHEM' : 'EVENT ARENA CHAMPIONSHIP';
   const startingCapital = event.startingBalance ?? enrollment?.startingBalance ?? 100_000;
   const startingCapitalLabel = `$${startingCapital.toLocaleString('en-US', { maximumFractionDigits: 0 })} STARTING CAPITAL`;
   const stickyAction = joined && !isUpcoming
@@ -159,6 +163,24 @@ export function EventArenaOverview({
         testID="event-arena-overview"
       >
       <View style={{ width: contentWidth }}>
+        {event.eventType === 'penny-stock-mayhem' && (
+          <ImageBackground
+            testID="event-arena-penny-stock-artwork"
+            source={EVENT_ARENA_ARTWORK_SOURCES[event.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID]}
+            resizeMode="cover"
+            imageStyle={{ borderRadius: 16 }}
+            style={{ width: '100%', aspectRatio: 16 / 7, minHeight: 130, overflow: 'hidden', borderRadius: 16, justifyContent: 'flex-end', marginBottom: 14 }}
+          >
+            <View style={{ padding: 16, backgroundColor: 'rgba(5,10,14,0.78)' }}>
+              <Text style={{ color: '#fff', fontFamily: 'Inter_700Bold', fontSize: 22, letterSpacing: 0.7 }}>
+                PENNY STOCK MAYHEM
+              </Text>
+              <Text style={{ color: '#B7F37A', fontFamily: 'Inter_700Bold', fontSize: 12, letterSpacing: 1, marginTop: 4 }}>
+                STOCKS &amp; ETFs UNDER $20
+              </Text>
+            </View>
+          </ImageBackground>
+        )}
         <View style={styles.topline}>
           <View style={styles.brandMark}><Feather name="activity" size={15} color={accent} /></View>
           <Text style={[styles.eyebrow, { color: muted }]}>MEISNER METHOD  /  {championshipName}</Text>
@@ -198,6 +220,11 @@ export function EventArenaOverview({
             <Text style={[styles.phaseLabel, { color: muted }]}>{livePhase.toUpperCase()} EVENT</Text>
             <Text style={[styles.eventId, { color: muted }]}>ID {event.id}</Text>
           </View>
+          {event.eventType === 'penny-stock-mayhem' && (
+            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 8 }}>
+              Long buys require a verified stock or ETF and both the latest quote and final fill below $20.00. Selling or reducing long positions remains unrestricted; existing short rules are unchanged.
+            </Text>
+          )}
           <Text accessibilityLabel={`Event Arena ${eventName}`} style={[styles.title, { color: ink }]}>{eventTitle}</Text>
           <Text testID="event-arena-starting-capital" style={[styles.phaseLabel, { color: accent, marginTop: 5 }]}>
             {startingCapitalLabel}

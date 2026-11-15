@@ -18,7 +18,7 @@ type Props = {
   eventId: string;
   startAtMs: number;
   endAtMs: number;
-  eventType?: 'event-arena' | 'green-bull-championship' | 'bear-market-mayhem' | 'lightning-round';
+  eventType?: 'event-arena' | 'green-bull-championship' | 'bear-market-mayhem' | 'penny-stock-mayhem' | 'lightning-round';
   enrollment: PaperChallengeEnrollment | null;
   summary: PaperChallengeSummary | null;
   equity: number;
@@ -152,7 +152,9 @@ export function PaperEventArenaDashboard({
   const pnlColor = competitionPnL == null ? MUTED : competitionPnL >= 0 ? GREEN : RED;
   const returnColor = competitionReturn == null ? MUTED : competitionReturn >= 0 ? GREEN : RED;
   const eventName = eventId
-    ? `${eventType === 'lightning-round' ? 'LIGHTNING ROUND' : 'EVENT ARENA'} · ${eventDateRange(startAtMs, endAtMs)}`
+    ? `${eventType === 'lightning-round'
+      ? 'LIGHTNING ROUND'
+      : eventType === 'penny-stock-mayhem' ? 'PENNY STOCK MAYHEM' : 'EVENT ARENA'} · ${eventDateRange(startAtMs, endAtMs)}`
     : 'EVENT ARENA';
 
   const metric = (

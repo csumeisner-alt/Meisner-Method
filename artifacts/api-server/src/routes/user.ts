@@ -158,11 +158,15 @@ async function runSchemaMigrations(): Promise<void> {
       artwork_id TEXT NOT NULL,
       starting_balance DOUBLE PRECISION NOT NULL CHECK (starting_balance > 0),
       ranking_direction TEXT NOT NULL,
+      purchase_limit DOUBLE PRECISION,
       event_start_at TIMESTAMPTZ NOT NULL,
       event_end_at TIMESTAMPTZ NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  await pool.query(
+    "ALTER TABLE event_arena_events ADD COLUMN IF NOT EXISTS purchase_limit DOUBLE PRECISION",
+  );
   await pool.query(`
     CREATE TABLE IF NOT EXISTS event_arena_leaderboard_entries (
       event_id TEXT NOT NULL,

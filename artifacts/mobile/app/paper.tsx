@@ -75,12 +75,19 @@ import {
   checkRisk,
   evaluateOrder,
   fillOrder,
+  getPurchaseLimitRejectionReason,
   settleCash,
   creditDividends,
   fifoSell,
 } from '@/lib/paperEngine';
 import { removePendingPaperOrder } from '@/lib/paperOrderDeletion';
-import { getMarketOrderQuoteError, getOrderQuoteState } from '@/lib/paperOrderEntry';
+import {
+  getMarketOrderQuoteError,
+  getOrderQuoteState,
+  getPennyQuoteStatus,
+  formatProviderPriceSource,
+  isPennyStockMayhemEligible,
+} from '@/lib/paperOrderEntry';
 import {
   renamePaperAccount,
   resetPaperAccountData,
@@ -259,6 +266,15 @@ function $short(n: number) {
 function pctFmt(n: number, decimals = 2) {
   return `${n >= 0 ? '+' : ''}${n.toFixed(decimals)}%`;
 }
+function formatProviderTimestamp(timestamp: number | null | undefined) {
+  if (!Number.isFinite(timestamp) || (timestamp ?? 0) <= 0) return 'Provider time unavailable';
+  return new Date((timestamp as number) * 1000).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
 function pnlColor(n: number) {
   return n > 0 ? BUY_COLOR : n < 0 ? SELL_COLOR : SILVER;
 }
@@ -333,6 +349,7 @@ export default function PaperScreen() {
   const [infoLoading, setInfoLoading] = useState(false);
   const [infoError, setInfoError] = useState('');
   const [debouncedBuyQuery, setDebouncedBuyQuery] = useState('');
+  const [searchQuotes, setSearchQuotes] = useState<Record<string, LiveQuote>>({});
   const stockLookupRequestRef = useRef(createLatestRequestGuard());
   const buySearchContextRef = useRef({
     input: '',
@@ -436,6 +453,16 @@ export default function PaperScreen() {
       })
     : null;
   const buyOrderDetails = getBuyOrderDetails(buySymbol, stockInfo);
+  const selectedAccountEnrollment = getPaperChallengeEnrollmentForAccount(paperChallenge, activeId);
+  const isPennyStockMayhemFlow = selectedAccountEnrollment?.eventType === 'penny-stock-mayhem'
+    && challengeNow >= selectedAccountEnrollment.eventStartAtMs
+    && challengeNow < selectedAccountEnrollment.eventEndAtMs;
+  const activePurchaseLimit = isPennyStockMayhemFlow
+    ? selectedAccountEnrollment?.purchaseLimit ?? 20
+    : undefined;
+  const buySuggestionsKey = buySuggestions
+    .map((suggestion) => `${suggestion.instrumentType}:${suggestion.symbol}`)
+    .join('|');
 
   buySearchContextRef.current = {
     input: buySearchText,
@@ -457,6 +484,45 @@ export default function PaperScreen() {
     const timer = setTimeout(() => setDebouncedBuyQuery(query), 250);
     return () => clearTimeout(timer);
   }, [buySymbol, infoError, infoLoading, showTradeModal, stockInfo]);
+
+  useEffect(() => {
+    if (!isPennyStockMayhemFlow || buySuggestions.length === 0) {
+      setSearchQuotes({});
+      return;
+    }
+    let cancelled = false;
+    setSearchQuotes({});
+    void fetch(`${BASE_URL}/api/stocks/quotes`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ symbols: buySuggestions.map((suggestion) => suggestion.symbol) }),
+    }).then(async (response) => {
+      if (!response.ok) throw new Error('Search quotes unavailable');
+      return await response.json() as { quotes?: Array<Record<string, unknown>> };
+    }).then((payload) => {
+      if (cancelled || !Array.isArray(payload.quotes)) return;
+      const fetchedAtMs = Date.now();
+      const next: Record<string, LiveQuote> = {};
+      for (const raw of payload.quotes) {
+        const symbol = typeof raw.symbol === 'string' ? raw.symbol.toUpperCase() : '';
+        const price = Number(raw.currentPrice);
+        if (!symbol || !Number.isFinite(price) || price <= 0) continue;
+        next[symbol] = {
+          price,
+          change: Number.isFinite(Number(raw.priceChange)) ? Number(raw.priceChange) : 0,
+          pct: Number.isFinite(Number(raw.priceChangePercent)) ? Number(raw.priceChangePercent) : 0,
+          priceTimestamp: typeof raw.priceTimestamp === 'number' ? raw.priceTimestamp : null,
+          marketSession: typeof raw.marketSession === 'string' ? raw.marketSession : undefined,
+          priceSource: typeof raw.priceSource === 'string' ? raw.priceSource : undefined,
+          fetchedAtMs,
+        };
+      }
+      setSearchQuotes(next);
+    }).catch(() => {
+      if (!cancelled) setSearchQuotes({});
+    });
+    return () => { cancelled = true; };
+  }, [buySuggestionsKey, isPennyStockMayhemFlow]);
 
   // Total equity includes settled cash + unsettled T+2 proceeds + market value of positions.
   // Buying power is restricted to settled cash only (enforced in fillOrder / OrderSheet risk check).
@@ -497,7 +563,10 @@ export default function PaperScreen() {
   const regularAccounts = visibleAccounts.filter((item) => !isPaperChallengeAccountId(item.id));
   const selectedAccountIndex = regularAccounts.findIndex((item) => item.id === account?.id);
   const selectedAccountDisplayName = account && isPaperChallengeAccountId(account.id)
-    ? account.id.startsWith('paper-lightning:') ? 'Lightning Round' : 'Event Arena'
+    ? account.id.startsWith('paper-lightning:')
+      ? 'Lightning Round'
+      : getPaperChallengeEnrollmentForAccount(paperChallenge, account.id)?.eventType === 'penny-stock-mayhem'
+        ? 'Penny Stock Mayhem' : 'Event Arena'
     : PAPER_ACCOUNT_DISPLAY_NAMES[selectedAccountIndex] ?? account?.name ?? 'Paper account';
   const selectedAccountPosition = visibleAccounts.findIndex((item) => item.id === account?.id);
   const isSelectedEventAccount = !!account && isPaperChallengeAccountId(account.id);
@@ -877,6 +946,8 @@ export default function PaperScreen() {
         paperChallengeRef.current,
         order.accountId,
       );
+      const eventPurchaseLimit = eventEnrollment?.purchaseLimit
+        ?? (eventEnrollment?.eventType === 'penny-stock-mayhem' ? 20 : undefined);
       if (
         paperChallengeRef.current.history.some((event) => event.accountId === order.accountId)
         || (eventEnrollment?.accountId === order.accountId
@@ -908,6 +979,22 @@ export default function PaperScreen() {
       const fillPrice = applyOrderSlippage(order, q.price);
       const account = updatedAccounts.find(a => a.id === order.accountId);
       if (!account) continue;
+      const purchaseLimitRejection = getPurchaseLimitRejectionReason({
+        order,
+        executionQuotePrice: q.price,
+        fillPrice,
+        maxPurchasePrice: eventPurchaseLimit,
+      });
+      if (purchaseLimitRejection) {
+        console.warn('[paper] order fill rejected:', order.id, purchaseLimitRejection);
+        updatedOrders = updatedOrders.map(item =>
+          item.id === order.id
+            ? { ...item, status: 'cancelled' as const, rejectionReason: purchaseLimitRejection }
+            : item,
+        );
+        ordersChanged = true;
+        continue;
+      }
       const executionRiskError = checkRisk({
         side: order.side,
         intent: order.intent,
@@ -938,6 +1025,8 @@ export default function PaperScreen() {
       const fillResult = fillOrder({
         order,
         fillPrice,
+        executionQuotePrice: q.price,
+        maxPurchasePrice: eventPurchaseLimit,
         filledAt: nowISO,
         account,
         positions: updatedPositions,
@@ -950,7 +1039,9 @@ export default function PaperScreen() {
         // cancel the order so it doesn't keep attempting to fill on every tick.
         console.warn('[paper] order fill rejected:', order.id, fillResult.reason);
         updatedOrders = updatedOrders.map(o =>
-          o.id === order.id ? { ...o, status: 'cancelled' as const } : o,
+          o.id === order.id
+            ? { ...o, status: 'cancelled' as const, rejectionReason: fillResult.reason }
+            : o,
         );
         ordersChanged = true;
         continue;
@@ -1425,7 +1516,7 @@ export default function PaperScreen() {
     setInfoLoading(false);
   };
 
-  const lookUpStock = async (symbolOverride?: string) => {
+  const lookUpStock = async (symbolOverride?: string, searchedAssetType?: 'stock' | 'etf') => {
     const sym = (symbolOverride ?? resolvedBuySymbol ?? '').trim().toUpperCase();
     if (!sym) return;
     const requestId = stockLookupRequestRef.current.begin();
@@ -1445,6 +1536,13 @@ export default function PaperScreen() {
       if (!stockLookupRequestRef.current.isCurrent(requestId)) return;
       if (info.error) throw new Error(info.error);
       if (quote.error) throw new Error(quote.error);
+      const providerQuoteType = typeof info.quoteType === 'string' ? info.quoteType.toUpperCase() : '';
+      const providerAssetType = providerQuoteType === 'EQUITY'
+        ? 'stock'
+        : providerQuoteType === 'ETF' ? 'etf' : 'unknown';
+      const assetType = searchedAssetType && searchedAssetType !== providerAssetType
+        ? 'unknown'
+        : providerAssetType;
       setStockInfo({
         companyName: info.companyName,
         currentPrice: quote.currentPrice,
@@ -1452,6 +1550,10 @@ export default function PaperScreen() {
         dividendRate: info.dividendRate ?? 0,
         expenseRatio: info.expenseRatio ?? 0,
         sector: info.sector ?? '',
+        assetType,
+        priceTimestamp: quote.priceTimestamp ?? null,
+        marketSession: typeof quote.marketSession === 'string' ? quote.marketSession : undefined,
+        priceSource: typeof quote.priceSource === 'string' ? quote.priceSource : undefined,
       });
       setQuotes(prev => ({
         ...prev,
@@ -1499,6 +1601,8 @@ export default function PaperScreen() {
       const intent = args.side === 'short' || args.side === 'cover' ? args.side : undefined;
       const direction = args.side === 'buy' || args.side === 'cover' ? 'buy' : 'sell';
       const enrollment = getPaperChallengeEnrollmentForAccount(paperChallengeRef.current, accountId);
+      const purchaseLimit = enrollment?.purchaseLimit
+        ?? (enrollment?.eventType === 'penny-stock-mayhem' ? 20 : undefined);
       if (enrollment && Date.now() >= enrollment.eventEndAtMs) {
         return {
           status: 'rejected',
@@ -1546,6 +1650,25 @@ export default function PaperScreen() {
       const riskQuotes = args.orderType === 'market'
         ? { ...quotes, [sym]: { ...currentQuote, price: args.quotePrice } }
         : quotes;
+      if (args.orderType === 'market') {
+        const existingLongForType = accountPositions.find((position) =>
+          position.symbol === sym && !isShortPosition(position),
+        );
+        const purchaseLimitRejection = getPurchaseLimitRejectionReason({
+          order: {
+            side: direction,
+            intent,
+            assetType: args.stockInfo?.assetType ?? existingLongForType?.assetType,
+          },
+          executionQuotePrice: args.quotePrice,
+          fillPrice: applySlippage(args.quotePrice, args.shares, direction),
+          maxPurchasePrice: purchaseLimit,
+        });
+        if (purchaseLimitRejection) {
+          return { status: 'rejected', message: purchaseLimitRejection };
+        }
+      }
+
       const riskError = checkRisk({
         side: direction,
         intent,
@@ -1600,6 +1723,7 @@ export default function PaperScreen() {
           orderType: 'market',
           side: direction,
           intent,
+          assetType: metadata?.assetType,
           shortCollateralRatio: args.shortCollateralRatio,
           shares: args.shares,
           dividendYield: metadata?.dividendYield ?? 0,
@@ -1612,6 +1736,8 @@ export default function PaperScreen() {
         const fillResult = fillOrder({
           order: syntheticOrder,
           fillPrice,
+          executionQuotePrice: args.quotePrice,
+        maxPurchasePrice: purchaseLimit,
           filledAt: nowISO,
           account: currentAccount,
           positions: currentPositions,
@@ -1663,6 +1789,7 @@ export default function PaperScreen() {
         orderType: args.orderType,
         side: direction,
         intent,
+        assetType: metadata?.assetType,
         shortCollateralRatio: args.shortCollateralRatio,
         shares: args.shares,
         limitPrice: args.limitPrice,
@@ -1750,6 +1877,7 @@ export default function PaperScreen() {
         dividendRate: order.dividendRate ?? 0,
         expenseRatio: order.expenseRatio ?? 0,
         sector: order.sector ?? '',
+        assetType: order.assetType ?? 'unknown',
       });
     }
     setShowOrderSheet(true);
@@ -2376,6 +2504,11 @@ export default function PaperScreen() {
                   </View>
                 )}
               </View>
+              {o.rejectionReason && (
+                <Text testID={`paper-order-rejection-${o.id}`} style={{ color: SELL_COLOR, fontFamily: 'Inter_500Medium', fontSize: 11, lineHeight: 16, marginTop: 5 }}>
+                  {o.rejectionReason}
+                </Text>
+              )}
             </View>
           );
         })}
@@ -2555,12 +2688,15 @@ export default function PaperScreen() {
             <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 0.7 }}>
               {activeChallengeEnrollment.eventType === 'lightning-round'
                 ? 'LIGHTNING ROUND IS LIVE'
-                : 'EVENT ARENA IS LIVE'}
+                : activeChallengeEnrollment.eventType === 'penny-stock-mayhem'
+                  ? 'PENNY STOCK MAYHEM IS LIVE' : 'EVENT ARENA IS LIVE'}
             </Text>
           </View>
             <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, lineHeight: 17, marginTop: 7 }}>
             {activeChallengeEnrollment.eventType === 'lightning-round'
               ? 'LIGHTNING ROUND · $100,000 STARTING CAPITAL'
+              : activeChallengeEnrollment.eventType === 'penny-stock-mayhem'
+                ? 'PENNY STOCK MAYHEM · $100,000 STARTING CAPITAL · STOCKS & ETFs UNDER $20'
               : activeChallengeEnrollment.eventType === 'green-bull-championship'
                 ? 'GREEN BULL CHAMPIONSHIP · $500,000 STARTING CAPITAL'
                 : activeChallengeEnrollment.eventType === 'bear-market-mayhem'
@@ -2568,8 +2704,15 @@ export default function PaperScreen() {
                   : `EVENT ARENA · $${(activeChallengeEnrollment.startingBalance ?? INITIAL_BALANCE).toLocaleString('en-US', { maximumFractionDigits: 0 })} STARTING CAPITAL`}
           </Text>
           <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 4 }}>
-            {`Trade only in your separate ${activeChallengeEnrollment.eventType === 'lightning-round' ? 'Lightning Round' : 'Event Arena'} account. This paper championship closes ${activeChallengeEnrollment.eventType === 'lightning-round' ? '24 hours after it opens' : 'Friday at 4:00 p.m. ET'}.`}
+            {`Trade only in your separate ${activeChallengeEnrollment.eventType === 'lightning-round'
+              ? 'Lightning Round'
+              : activeChallengeEnrollment.eventType === 'penny-stock-mayhem' ? 'Penny Stock Mayhem' : 'Event Arena'} account. This paper championship closes ${activeChallengeEnrollment.eventType === 'lightning-round' ? '24 hours after it opens' : 'Friday at 4:00 p.m. ET'}.`}
           </Text>
+          {activeChallengeEnrollment.eventType === 'penny-stock-mayhem' && (
+            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 4 }}>
+              Long buys require a verified stock or ETF, a quote below $20, and a final fill below $20. Sells and reductions are unrestricted. Existing short-selling rules are unchanged.
+            </Text>
+          )}
           {hasCurrentEventEnrollment && !isEventAccountActive && (
             <TouchableOpacity
               testID="switch-to-paper-event-account"
@@ -3220,7 +3363,7 @@ export default function PaperScreen() {
                           suggestion,
                           false,
                         );
-                        if (selectedSymbol) void lookUpStock(selectedSymbol);
+                        if (selectedSymbol) void lookUpStock(selectedSymbol, suggestion.instrumentType);
                       }}
                       activeOpacity={0.7}
                     >
@@ -3231,6 +3374,22 @@ export default function PaperScreen() {
                             {suggestion.instrumentType === 'etf' ? `ETF · ${suggestion.exchange}` : suggestion.exchange}
                           </Text>
                         ) : null}
+                        {isPennyStockMayhemFlow && (() => {
+                          const quote = searchQuotes[suggestion.symbol];
+                          const quoteStatus = getPennyQuoteStatus(quote);
+                          const eligible = isPennyStockMayhemEligible(suggestion.instrumentType, quote);
+                          return (
+                            <Text
+                              testID={`paper-penny-search-quote-${suggestion.symbol}`}
+                              style={[styles.searchResultExchange, { marginTop: 4, color: eligible ? BUY_COLOR : DIM }]}
+                              numberOfLines={2}
+                            >
+                              {quote
+                                ? `${eligible ? 'ELIGIBLE' : 'NOT ELIGIBLE'} · $${quote.price.toFixed(2)} · ${quoteStatus.toUpperCase()} · ${formatProviderPriceSource(quote.priceSource) ?? 'Provider source unavailable'} · ${formatProviderTimestamp(quote.priceTimestamp)}`
+                                : 'Quote unavailable · eligibility unknown'}
+                            </Text>
+                          );
+                        })()}
                       </View>
                       <Text style={styles.searchResultSymbol}>{suggestion.symbol}</Text>
                       <Feather name="chevron-right" size={15} color={DIM} />
@@ -3260,6 +3419,38 @@ export default function PaperScreen() {
                     <Text style={styles.stockInfoName}>{stockInfo.companyName}</Text>
                     {stockInfo.sector ? <Text style={styles.stockInfoSector}>{stockInfo.sector}</Text> : null}
                     <Text style={styles.stockInfoPrice}>${stockInfo.currentPrice.toFixed(2)}</Text>
+                    {isPennyStockMayhemFlow && (() => {
+                      const quote = quotes[buyTicker];
+                      const quoteStatus = getPennyQuoteStatus(quote);
+                      const eligible = isPennyStockMayhemEligible(stockInfo.assetType, quote);
+                      return (
+                        <View testID="paper-penny-stock-eligibility" style={{ gap: 4, marginBottom: 8 }}>
+                          <Text style={{ color: eligible ? BUY_COLOR : SELL_COLOR, fontFamily: 'Inter_700Bold', fontSize: 11 }}>
+                            {eligible
+                              ? 'ELIGIBLE FOR A LONG BUY'
+                              : stockInfo.assetType === 'unknown'
+                                ? 'ASSET TYPE UNVERIFIED · LONG BUY UNAVAILABLE'
+                                : quoteStatus === 'unavailable'
+                                  ? 'QUOTE UNAVAILABLE · ELIGIBILITY UNKNOWN'
+                                  : quoteStatus === 'stale'
+                                    ? 'STALE QUOTE · ELIGIBILITY UNKNOWN'
+                                    : quoteStatus === 'delayed'
+                                      ? 'DELAYED QUOTE · RECHECK BEFORE BUY'
+                                      : 'NOT ELIGIBLE · PRICE MUST BE BELOW $20.00'}
+                          </Text>
+                          <Text style={styles.searchResultExchange}>
+                            {quote ? `Latest provider quote: $${quote.price.toFixed(2)}` : 'Latest provider quote unavailable'}
+                            {' · '}{stockInfo.assetType === 'stock' ? 'Verified stock' : stockInfo.assetType === 'etf' ? 'Verified ETF' : 'Unsupported or unverified asset'}
+                            {' · '}{quoteStatus.toUpperCase()}
+                            {' · '}{formatProviderPriceSource(quote?.priceSource) ?? 'Provider source unavailable'}
+                            {' · '}{formatProviderTimestamp(quote?.priceTimestamp ?? stockInfo.priceTimestamp)}
+                          </Text>
+                          <Text style={styles.searchResultExchange}>
+                            Long-buy limit: execution quote and fill must both be under $20.00. Sell or reduce long positions at any price. Existing short-selling rules are unchanged.
+                          </Text>
+                        </View>
+                      );
+                    })()}
                     {stockInfo.dividendYield > 0 && (
                       <Text style={styles.stockInfoDiv}>
                          Dividend yield: {(normalizeDividendYield(stockInfo.dividendYield, stockInfo.dividendRate, stockInfo.currentPrice) * 100).toFixed(2)}%
@@ -3360,6 +3551,7 @@ export default function PaperScreen() {
           accountPositions={myPositions}
           quotes={quotes}
           stockInfo={tradeMode === 'buy' || tradeMode === 'short' ? buyOrderDetails.stockInfo : undefined}
+          purchaseLimit={activePurchaseLimit}
           selectedPos={tradeMode === 'sell' || tradeMode === 'cover' ? selectedPos : null}
           existingOrder={editingOrder}
           pendingOrders={orders.filter(o => o.accountId === activeId)}

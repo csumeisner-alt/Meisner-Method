@@ -72,6 +72,7 @@ export type ConfirmOrderArgs = {
     dividendRate: number;
     expenseRatio: number;
     sector: string;
+    assetType: 'stock' | 'etf' | 'unknown';
   };
 };
 
@@ -93,6 +94,7 @@ export type ReviewSnapshot = {
   marginImpact: number;
   collateralRatio: number;
   quoteNote: string;
+  purchaseLimit?: number;
 };
 
 type Props = {
@@ -112,7 +114,9 @@ type Props = {
     dividendRate: number;
     expenseRatio: number;
     sector: string;
+    assetType: 'stock' | 'etf' | 'unknown';
   };
+  purchaseLimit?: number;
   selectedPos?: PaperPosition | null;
   existingOrder?: PaperOrder | null;
   pendingOrders?: PaperOrder[];
@@ -149,6 +153,7 @@ export default function ProfessionalOrderEntry({
   accountPositions,
   quotes,
   stockInfo,
+  purchaseLimit,
   selectedPos,
   existingOrder,
   pendingOrders = [],
@@ -316,6 +321,7 @@ export default function ProfessionalOrderEntry({
         dividendRate: stockInfo.dividendRate,
         expenseRatio: stockInfo.expenseRatio,
         sector: stockInfo.sector,
+        assetType: stockInfo.assetType,
       } : undefined,
     };
     setReview({
@@ -331,6 +337,7 @@ export default function ProfessionalOrderEntry({
         : 0,
       collateralRatio: account.shortCollateralRatio ?? 1.5,
       quoteNote: freshnessNote,
+      purchaseLimit: activeSide === 'buy' ? purchaseLimit : undefined,
     });
   };
 

@@ -103,7 +103,7 @@ test('paper event runs Monday open through Friday close, then skips a week', () 
   assert.equal(capturePaperChallengeBaseline(startedEnrollment, 120_000), startedEnrollment);
 });
 
-test('Event Arena artwork rotates by scheduled event and wraps after five competitions', () => {
+test('Event Arena artwork rotates by scheduled event and wraps after six competitions', () => {
   const starts = [
     '2026-11-16',
     '2026-11-30',
@@ -111,6 +111,7 @@ test('Event Arena artwork rotates by scheduled event and wraps after five compet
     '2026-12-28',
     '2027-01-11',
     '2027-01-25',
+    '2027-02-08',
   ];
   assert.deepEqual(starts.map(getPaperChallengeArtworkId), [
     ...PAPER_CHALLENGE_ARTWORK_IDS,
@@ -246,6 +247,64 @@ test('Red Showdown creates an isolated Bear Market event and preserves its saved
   assert.equal(archived.startingBalance, 100_000);
   assert.equal(archived.rankingDirection, 'lowest-return');
   assert.equal(archived.returnPercent, -35);
+});
+
+test('Penny Stock Mayhem gets a fresh standard account and archives its $20 buy limit', () => {
+  const window = getPaperChallengeWindow(Date.parse('2027-01-25T12:00:00.000Z'));
+  assert.equal(window.id, '2027-01-25');
+  assert.equal(window.artworkId, 'penny-stock-mayhem');
+  assert.equal(window.eventType, 'penny-stock-mayhem');
+  assert.equal(window.startingBalance, 100_000);
+  assert.equal(window.rankingDirection, 'highest-return');
+  assert.equal(window.purchaseLimit, 20);
+  assert.equal(new Date(window.startAtMs).toISOString(), '2027-01-25T14:30:00.000Z');
+  assert.equal(new Date(window.endAtMs).toISOString(), '2027-01-29T21:00:00.000Z');
+
+  const enrollment = {
+    eventId: window.id,
+    ...getPaperChallengeConfiguration('penny-stock-mayhem'),
+    eventStartAtMs: window.startAtMs,
+    eventEndAtMs: window.endAtMs,
+    joinedAtMs: window.startAtMs,
+    accountId: `paper-event:${window.id}`,
+    accountName: 'Event Portfolio',
+    startEquity: null,
+  };
+  const isolated = ensurePaperChallengeAccount(enrollment, {
+    accounts: [{ id: 'paper-event:2027-01-11', name: 'Previous event', cash: 12_345, createdAt: '2027-01-11T14:30:00.000Z' }],
+    positions: [{
+      id: 'previous-position',
+      accountId: 'paper-event:2027-01-11',
+      symbol: 'OLD',
+      companyName: 'Previous holding',
+      shares: 4,
+      avgCost: 10,
+      openedAt: '2027-01-12T15:00:00.000Z',
+      dividendYield: 0,
+      sector: '',
+    }],
+    transactions: [],
+    orders: [],
+    lots: [],
+  });
+  assert.equal(isolated.accounts.find((item) => item.id === enrollment.accountId)?.cash, 100_000);
+  assert.equal(isolated.positions.length, 1);
+  assert.equal(isolated.positions[0]?.accountId, 'paper-event:2027-01-11');
+  assert.equal(isolated.positions.some((item) => item.accountId === enrollment.accountId), false);
+
+  const summary = buildPaperChallengeSummary(
+    { ...enrollment, startEquity: 100_000 },
+    102_000,
+    [],
+    window.endAtMs,
+  );
+  assert.equal(summary.returnPercent, 2);
+  assert.equal(summary.purchaseLimit, 20);
+  const archived = normalizePaperChallengeStore({ enrollment: null, history: [summary] }).history[0];
+  assert.equal(archived.eventType, 'penny-stock-mayhem');
+  assert.equal(archived.artworkId, 'penny-stock-mayhem');
+  assert.equal(archived.purchaseLimit, 20);
+  assert.equal(archived.returnPercent, 2);
 });
 
 test('event accounts are created at the scheduled start, including late result recovery', () => {

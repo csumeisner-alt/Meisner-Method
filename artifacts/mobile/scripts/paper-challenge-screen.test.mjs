@@ -907,15 +907,16 @@ test("incoming event cash is celebrated on app open and acknowledged per transfe
   assert.match(eventArenaApi, /router\.post\("\/event-arena\/:eventId\/transfers\/read"/);
 });
 
-test("all five live Event Arena backgrounds keep podium names and values readable", () => {
+test("all six live Event Arena backgrounds keep podium names and values readable", () => {
   const artworks = [
     ["stadium", "event-arena-stadium.jpg"],
     ["neon-nightclub", "event-arena-neon-nightclub.jpg"],
     ["mountain-summit", "event-arena-mountain-summit.jpg"],
     ["red-showdown", "event-arena-red-showdown.jpg"],
     ["green-stock-exchange", "event-arena-green-stock-exchange.jpg"],
+    ["penny-stock-mayhem", "event-arena-penny-stock-mayhem.jpg"],
   ];
-  assert.equal((eventArenaArtworkCatalog.match(/require\('\.\.\/assets\/event-arena-[^']+\.jpg'\)/g) ?? []).length, 5);
+  assert.equal((eventArenaArtworkCatalog.match(/require\('\.\.\/assets\/event-arena-[^']+\.jpg'\)/g) ?? []).length, 6);
 
   assert.match(leaderboard, /source=\{EVENT_ARENA_ARTWORK_SOURCES\[event\.artworkId \?\? LEGACY_PAPER_CHALLENGE_ARTWORK_ID\]\}/);
   assert.match(leaderboard, /resizeMode="cover"/);
@@ -999,4 +1000,20 @@ test("all five live Event Arena backgrounds keep podium names and values readabl
   assert.match(podium, /allowFontScaling numberOfLines=\{1\} adjustsFontSizeToFit minimumFontScale=\{0\.7\}[\s\S]*?\{entry\.alias\}/);
   assert.match(podium, /allowFontScaling numberOfLines=\{1\} adjustsFontSizeToFit minimumFontScale=\{0\.65\}[\s\S]*?\{money\(entry\.equity\)\}/);
   assert.match(podium, /allowFontScaling numberOfLines=\{1\} adjustsFontSizeToFit minimumFontScale=\{0\.65\}[\s\S]*?\{signedMoney\(entry\.profitLoss\)\}/);
+});
+
+test("Penny Stock Mayhem exposes its rules and rechecks execution quotes", () => {
+  assert.match(screen, /PENNY STOCK MAYHEM/);
+  assert.match(screen, /STOCKS & ETFs UNDER \$20/);
+  assert.match(screen, /Quote unavailable · eligibility unknown/);
+  assert.match(screen, /executionQuotePrice: args\.quotePrice/);
+  assert.match(screen, /executionQuotePrice: q\.price/);
+  assert.match(screen, /maxPurchasePrice: eventPurchaseLimit/);
+  assert.match(screen, /getPurchaseLimitRejectionReason/);
+  assert.match(screen, /paper-order-rejection-/);
+  assert.match(challenge, /purchaseLimit: 20/);
+  assert.match(eventArena, /penny-stock-mayhem/);
+  assert.match(eventArenaOverview, /event-arena-penny-stock-artwork/);
+  assert.match(orderEntry, /purchaseLimit/);
+  assert.match(orderReview, /below \{money\(review\.purchaseLimit\)\}/);
 });

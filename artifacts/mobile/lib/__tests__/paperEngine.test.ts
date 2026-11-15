@@ -520,6 +520,98 @@ test('fillOrder — market buy deducts cash and creates lot', () => {
   assert.equal(result.newTransaction.total, 1_000);
 });
 
+test('Penny Stock Mayhem accepts verified $19.99 stock and ETF buys, including additions', () => {
+  for (const assetType of ['stock', 'etf'] as const) {
+    const account = mkAccount({ id: 'a1', cash: 10_000 });
+    const existing = mkPosition({ symbol: 'PENNY', shares: 2, avgCost: 10, assetType });
+    const result = fillOrder({
+      order: mkOrder({ symbol: 'PENNY', side: 'buy', shares: 1, assetType }),
+      fillPrice: 19.99,
+      executionQuotePrice: 19.99,
+      maxPurchasePrice: 20,
+      filledAt: new Date().toISOString(),
+      account,
+      positions: [existing],
+      lots: [mkLot({ symbol: 'PENNY', shares: 2, cost: 10 })],
+      uid,
+    });
+    assert.equal(result.ok, true, `${assetType} purchase below the strict threshold should fill`);
+    assert.equal(result.updatedPositions[0]?.shares, 3);
+    assert.equal(result.updatedPositions[0]?.assetType, assetType);
+    assert.equal(result.newTransaction.action, 'BUY');
+  }
+});
+
+test('Penny Stock Mayhem rejects threshold-crossing quotes, fills, and unverified assets', () => {
+  for (const [quote, fill] of [
+    [20, 19.99],
+    [20.01, 19.99],
+    [19.99, 20],
+    [19.99, 20.01],
+  ]) {
+    const result = fillOrder({
+      order: mkOrder({ side: 'buy', shares: 1, assetType: 'stock' }),
+      fillPrice: fill,
+      executionQuotePrice: quote,
+      maxPurchasePrice: 20,
+      filledAt: new Date().toISOString(),
+      account: mkAccount({ id: 'a1' }),
+      positions: [],
+      lots: [],
+      uid,
+    });
+    assert.equal(result.ok, false);
+    if (result.ok) throw new Error('Expected an over-limit purchase to be rejected.');
+    assert.match(result.reason, /both the latest quote and final fill.*below \$20\.00/i);
+  }
+
+  const unknown = fillOrder({
+    order: mkOrder({ side: 'buy', shares: 1, assetType: 'unknown' }),
+    fillPrice: 10,
+    executionQuotePrice: 10,
+    maxPurchasePrice: 20,
+    filledAt: new Date().toISOString(),
+    account: mkAccount({ id: 'a1' }),
+    positions: [],
+    lots: [],
+    uid,
+  });
+  assert.equal(unknown.ok, false);
+  if (!unknown.ok) assert.match(unknown.reason, /verified stock or ETF/);
+});
+
+test('Penny Stock Mayhem leaves above-limit sales and existing short-selling rules unchanged', () => {
+  const account = mkAccount({ id: 'a1', cash: 10_000 });
+  const position = mkPosition({ symbol: 'PENNY', shares: 5, avgCost: 10, assetType: 'stock' });
+  const sale = fillOrder({
+    order: mkOrder({ symbol: 'PENNY', side: 'sell', shares: 1 }),
+    fillPrice: 25,
+    executionQuotePrice: 25,
+    maxPurchasePrice: 20,
+    filledAt: new Date().toISOString(),
+    account,
+    positions: [position],
+    lots: [mkLot({ symbol: 'PENNY', shares: 5, cost: 10 })],
+    uid,
+  });
+  assert.equal(sale.ok, true);
+  if (sale.ok) assert.equal(sale.newTransaction.action, 'SELL');
+
+  const shortSale = fillOrder({
+    order: mkOrder({ symbol: 'PENNY', side: 'sell', intent: 'short', shares: 1 }),
+    fillPrice: 25,
+    executionQuotePrice: 25,
+    maxPurchasePrice: 20,
+    filledAt: new Date().toISOString(),
+    account,
+    positions: [],
+    lots: [],
+    uid,
+  });
+  assert.equal(shortSale.ok, true);
+  if (shortSale.ok) assert.equal(shortSale.newTransaction.action, 'SHORT_SELL');
+});
+
 test('fillOrder — buy rejects when cash is insufficient at fill time', () => {
   const account = mkAccount({ cash: 500 }); // only $500, order costs $1000
   const order = mkOrder({ side: 'buy', shares: 5 });

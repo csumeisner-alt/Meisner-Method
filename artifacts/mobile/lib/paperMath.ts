@@ -38,6 +38,8 @@ export type PaperPosition = {
   shares: number;
   /** Missing means long for backward compatibility with saved positions. */
   positionType?: 'long' | 'short';
+  /** Provider-verified stock/ETF classification; absent on legacy records. */
+  assetType?: 'stock' | 'etf' | 'unknown';
   /** Restricted collateral held per short share, weighted across entries. */
   collateralPerShare?: number;
   avgCost: number;
@@ -138,6 +140,10 @@ export type PaperOrder = {
   side: OrderSide;
   /** Legacy orders infer intent from side; shorts/covers are explicit. */
   intent?: 'short' | 'cover';
+  /** Verified market classification retained while a delayed buy is pending. */
+  assetType?: 'stock' | 'etf' | 'unknown';
+  /** Human-readable execution rejection saved with a cancelled order. */
+  rejectionReason?: string;
   /** Collateral multiple captured for a pending short order. */
   shortCollateralRatio?: number;
   shares: number;

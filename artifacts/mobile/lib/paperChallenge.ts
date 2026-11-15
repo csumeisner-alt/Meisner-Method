@@ -25,6 +25,7 @@ export const PAPER_CHALLENGE_ARTWORK_IDS = [
   'mountain-summit',
   'red-showdown',
   'green-stock-exchange',
+  'penny-stock-mayhem',
 ] as const;
 export const LIGHTNING_ROUND_ARTWORK_ID = 'lightning-round-arena' as const;
 export type PaperChallengeArtworkId =
@@ -35,6 +36,7 @@ export type PaperChallengeEventType =
   | 'event-arena'
   | 'green-bull-championship'
   | 'bear-market-mayhem'
+  | 'penny-stock-mayhem'
   | 'lightning-round';
 export type PaperChallengeRankingDirection = 'highest-return' | 'lowest-return';
 
@@ -43,6 +45,7 @@ export type PaperChallengeConfiguration = {
   artworkId: PaperChallengeArtworkId;
   startingBalance: number;
   rankingDirection: PaperChallengeRankingDirection;
+  purchaseLimit?: number;
 };
 
 /** Resolve a scheduled event's rules once from its assigned artwork. */
@@ -63,6 +66,15 @@ export function getPaperChallengeConfiguration(
       artworkId,
       startingBalance: PAPER_CHALLENGE_STARTING_BALANCE,
       rankingDirection: 'lowest-return',
+    };
+  }
+  if (artworkId === 'penny-stock-mayhem') {
+    return {
+      eventType: 'penny-stock-mayhem',
+      artworkId,
+      startingBalance: PAPER_CHALLENGE_STARTING_BALANCE,
+      rankingDirection: 'highest-return',
+      purchaseLimit: 20,
     };
   }
   if (artworkId === 'lightning-round-arena') {
@@ -91,13 +103,15 @@ export function isPaperChallengeConfiguration(value: unknown): value is PaperCha
     configuration.eventType === expected.eventType
     && configuration.startingBalance === expected.startingBalance
     && configuration.rankingDirection === expected.rankingDirection
+    && configuration.purchaseLimit === expected.purchaseLimit
   ) return true;
   // A Red Showdown event saved before Bear Market Mayhem was introduced keeps
   // its original standard-event rules and results.
   return configuration.artworkId === 'red-showdown'
     && configuration.eventType === 'event-arena'
     && configuration.startingBalance === PAPER_CHALLENGE_STARTING_BALANCE
-    && configuration.rankingDirection === 'highest-return';
+    && configuration.rankingDirection === 'highest-return'
+    && configuration.purchaseLimit === undefined;
 }
 
 export function normalizePaperChallengeArtworkId(value: unknown): PaperChallengeArtworkId {
@@ -140,6 +154,7 @@ export type PaperChallengeWindow = {
   eventType?: PaperChallengeEventType;
   startingBalance?: number;
   rankingDirection?: PaperChallengeRankingDirection;
+  purchaseLimit?: number;
 };
 
 export type PaperChallengeEnrollment = {
@@ -148,6 +163,7 @@ export type PaperChallengeEnrollment = {
   eventType?: PaperChallengeEventType;
   startingBalance?: number;
   rankingDirection?: PaperChallengeRankingDirection;
+  purchaseLimit?: number;
   eventStartAtMs: number;
   eventEndAtMs: number;
   joinedAtMs: number;
@@ -234,12 +250,14 @@ export function normalizePaperChallengeStore(store: PaperChallengeStore): PaperC
     eventType,
     startingBalance,
     rankingDirection,
+    purchaseLimit,
     ...event
   }) => {
     const artworkId = normalizePaperChallengeArtworkId(event.artworkId);
     const savedEventType = eventType === 'lightning-round'
       || eventType === 'green-bull-championship'
       || eventType === 'bear-market-mayhem'
+      || eventType === 'penny-stock-mayhem'
       || eventType === 'event-arena'
       ? eventType
       : undefined;
@@ -256,6 +274,9 @@ export function normalizePaperChallengeStore(store: PaperChallengeStore): PaperC
       ...(savedEventType ? { eventType: savedEventType } : {}),
       ...(savedStartingBalance !== undefined ? { startingBalance: savedStartingBalance } : {}),
       ...(rankingDirection === 'highest-return' || rankingDirection === 'lowest-return' ? { rankingDirection } : {}),
+      ...(typeof purchaseLimit === 'number' && Number.isFinite(purchaseLimit) && purchaseLimit > 0
+        ? { purchaseLimit }
+        : {}),
       ...(Array.isArray(transactions) ? { transactions } : {}),
       ...(Array.isArray(equityHistory)
         ? {
@@ -294,6 +315,7 @@ export function normalizePaperChallengeStore(store: PaperChallengeStore): PaperC
         const eventType: PaperChallengeEventType = store.enrollment.eventType === 'lightning-round'
           || store.enrollment.eventType === 'green-bull-championship'
           || store.enrollment.eventType === 'bear-market-mayhem'
+          || store.enrollment.eventType === 'penny-stock-mayhem'
           ? store.enrollment.eventType
           : 'event-arena';
         const savedStartingBalance = store.enrollment.startingBalance;
@@ -316,6 +338,11 @@ export function normalizePaperChallengeStore(store: PaperChallengeStore): PaperC
           rankingDirection: store.enrollment.rankingDirection === 'lowest-return'
             ? 'lowest-return' as const
             : 'highest-return' as const,
+          ...(typeof store.enrollment.purchaseLimit === 'number'
+            && Number.isFinite(store.enrollment.purchaseLimit)
+            && store.enrollment.purchaseLimit > 0
+            ? { purchaseLimit: store.enrollment.purchaseLimit }
+            : {}),
         };
       })()
     : null;

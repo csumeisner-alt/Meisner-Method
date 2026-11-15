@@ -147,6 +147,14 @@ export default function OrderEntryReview({
         )}
         {review.args.limitPrice != null && <ReviewRow label="Limit price" value={money(review.args.limitPrice)} />}
         {review.args.stopPrice != null && <ReviewRow label="Stop trigger" value={money(review.args.stopPrice)} />}
+        {review.args.side === 'buy' && review.purchaseLimit != null && (
+          <View style={styles.warningLine}>
+            <Feather name="info" size={14} color={GOLD} />
+            <Text style={styles.warningText}>
+              Both the latest execution quote and final fill must stay below {money(review.purchaseLimit)}. Sell or reduce existing longs at any price; short-selling rules are unchanged.
+            </Text>
+          </View>
+        )}
         {review.args.orderType === 'limit' && (
           <View style={styles.warningLine}>
             <Feather name="info" size={14} color={GOLD} />

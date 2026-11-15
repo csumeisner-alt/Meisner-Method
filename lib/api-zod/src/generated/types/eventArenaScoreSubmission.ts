@@ -26,6 +26,8 @@ export interface EventArenaScoreSubmission {
   artworkId: EventArenaScoreSubmissionArtworkId;
   /** @exclusiveMinimum 0 */
   startingBalance: number;
+  /** @exclusiveMinimum 0 */
+  purchaseLimit?: number;
   rankingDirection: EventArenaScoreSubmissionRankingDirection;
   /**
      * Self-reported cash in the separate event account, used to reconcile transfer receipts.

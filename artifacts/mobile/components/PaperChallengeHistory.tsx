@@ -449,6 +449,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                   ? 'Green Bull Championship results'
                   : event.eventType === 'bear-market-mayhem'
                     ? 'Bear Market Mayhem results'
+                    : event.eventType === 'penny-stock-mayhem' ? 'Penny Stock Mayhem results'
                     : event.eventType === 'lightning-round' ? 'Lightning Round results' : 'Event Arena results'}
               </Text>
               <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 3 }}>

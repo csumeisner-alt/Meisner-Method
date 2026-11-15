@@ -261,6 +261,7 @@ export function EventArenaScreen() {
               eventType: store.enrollment.eventType ?? currentWindow.eventType,
               startingBalance: store.enrollment.startingBalance ?? currentWindow.startingBalance,
               rankingDirection: store.enrollment.rankingDirection ?? currentWindow.rankingDirection,
+           purchaseLimit: store.enrollment.purchaseLimit ?? currentWindow.purchaseLimit,
             }
           : {}),
       }
@@ -274,6 +275,7 @@ export function EventArenaScreen() {
           eventType: requestedArchivedEvent.eventType,
           startingBalance: requestedArchivedEvent.startingBalance ?? requestedArchivedEvent.startEquity,
           rankingDirection: requestedArchivedEvent.rankingDirection,
+          purchaseLimit: requestedArchivedEvent.purchaseLimit,
         }
       : currentWindow;
   const currentDisplayEvent = hasCurrentEnrollment
@@ -283,6 +285,7 @@ export function EventArenaScreen() {
         eventType: enrollment?.eventType ?? currentWindow.eventType,
         startingBalance: enrollment?.startingBalance ?? currentWindow.startingBalance,
         rankingDirection: enrollment?.rankingDirection ?? currentWindow.rankingDirection,
+        purchaseLimit: enrollment?.purchaseLimit ?? currentWindow.purchaseLimit,
       }
     : savedEventConfiguration?.eventId === currentWindow.id
       ? { ...currentWindow, ...savedEventConfiguration }
@@ -733,6 +736,7 @@ export function EventArenaScreen() {
         ? 'Green Bull Championship'
         : event.eventType === 'bear-market-mayhem'
           ? 'Bear Market Mayhem'
+          : event.eventType === 'penny-stock-mayhem' ? 'Penny Stock Mayhem'
           : event.eventType === 'lightning-round' ? 'Lightning Round Results' : 'Event Arena Results'}`,
       dateRange(event.eventStartAtMs, event.eventEndAtMs),
       `Starting balance: ${money(event.startingBalance ?? event.startEquity)}`,
@@ -809,6 +813,7 @@ export function EventArenaScreen() {
               ? 'GREEN BULL CHAMPIONSHIP'
               : event.eventType === 'bear-market-mayhem'
                 ? 'BEAR MARKET MAYHEM'
+                : event.eventType === 'penny-stock-mayhem' ? 'PENNY STOCK MAYHEM'
                 : event.eventType === 'lightning-round' ? 'LIGHTNING ROUND' : 'EVENT ARENA'}
           </Text>
           <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 18, marginTop: 5 }}>{dateRange(event.eventStartAtMs, event.eventEndAtMs)}</Text>
@@ -959,6 +964,7 @@ export function EventArenaScreen() {
               ? 'GREEN BULL CHAMPIONSHIP'
               : event.eventType === 'bear-market-mayhem'
                 ? 'BEAR MARKET MAYHEM'
+                : event.eventType === 'penny-stock-mayhem' ? 'PENNY STOCK MAYHEM'
                 : event.eventType === 'lightning-round' ? 'LIGHTNING ROUND' : 'EVENT ARENA'}
           </Text>
           <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 0.7 }}>
