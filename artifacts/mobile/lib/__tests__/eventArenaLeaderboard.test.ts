@@ -5,6 +5,7 @@ import {
   formatEventArenaSignedMoney,
   getEventArenaOwnEntry,
   getEventArenaPodiumSlots,
+  getEventArenaReturnTone,
   getEventArenaStandingsEntries,
   getEventArenaStatus,
 } from '../eventArenaLeaderboard.ts';
@@ -74,19 +75,27 @@ test('event status and countdown use the scheduled start and end times', () => {
 
   assert.deepEqual(getEventArenaStatus(start, end, start - 90 * 60_000), {
     phase: 'upcoming',
-    label: 'Upcoming',
+    label: 'Upcoming Competition',
     countdown: 'Starts in 1h 30m',
   });
   assert.deepEqual(getEventArenaStatus(start, end, start + 60_000), {
     phase: 'active',
-    label: 'Live now',
+    label: 'Live Championship',
     countdown: 'Ends in 4d 6h',
   });
   assert.deepEqual(getEventArenaStatus(start, end, end), {
     phase: 'ended',
-    label: 'Complete',
+    label: 'Final Results',
     countdown: 'Event complete',
   });
+});
+
+test('return colors treat rounded zero as neutral', () => {
+  assert.equal(getEventArenaReturnTone(2.5), 'positive');
+  assert.equal(getEventArenaReturnTone(-2.5), 'negative');
+  assert.equal(getEventArenaReturnTone(0), 'neutral');
+  assert.equal(getEventArenaReturnTone(0.001), 'neutral');
+  assert.equal(getEventArenaReturnTone(-0.001), 'neutral');
 });
 
 test('rounded score labels do not show negative zero', () => {

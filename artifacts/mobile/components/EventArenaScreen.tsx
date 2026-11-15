@@ -1152,7 +1152,7 @@ export function EventArenaScreen() {
         </View>
       </View>
 
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, minHeight: 0 }}>
         {section === 'competition' && renderCompetition()}
         {section === 'leaderboard' && (
           <PaperChallengeLeaderboard

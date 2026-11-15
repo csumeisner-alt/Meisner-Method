@@ -169,6 +169,8 @@ test("championship leaderboard shows real podium scores, event context, and belo
   assert.match(leaderboard, /getEventArenaPodiumSlots\(entries\)/);
   assert.match(leaderboard, /getEventArenaStandingsEntries\(entries\)/);
   assert.match(leaderboard, /getEventArenaStatus\(event\.startAtMs, event\.endAtMs, countdownNow\)/);
+  assert.match(leaderboard, /eventStatus\.label\.toUpperCase\(\)/);
+  assert.match(leaderboard, /getEventArenaReturnTone/);
   assert.match(leaderboard, /paper-event-leaderboard-participant-count/);
   assert.match(leaderboard, /paper-event-leaderboard-countdown/);
   assert.match(leaderboard, /Updated \{timeLabel\(lastUpdated\)\}/);
@@ -182,11 +184,10 @@ test("championship leaderboard shows real podium scores, event context, and belo
   assert.match(leaderboard, /\{money\(entry\.equity\)\} value/);
   assert.match(leaderboard, /\{signedMoney\(entry\.profitLoss\)\} P\/L/);
   assert.match(leaderboard, /testID="paper-event-leaderboard-current-user"/);
-  assert.match(leaderboard, /\{money\(ownEntry\.equity\)\}/);
-  assert.match(leaderboard, /\{returnLabel\(ownEntry\.returnPercent\)\}/);
   assert.doesNotMatch(leaderboard, /paper-event-leaderboard-your-position/);
-  assert.match(leaderboard, /REPORTED ACCOUNT VALUE/);
-  assert.match(leaderboard, /\{signedMoney\(ownEntry\.profitLoss\)\}/);
+  assert.match(leaderboard, /YOUR POSITION/);
+  assert.doesNotMatch(leaderboard, /YOUR LIVE POSITION/);
+  assert.match(leaderboard, /\{ownEntry\.alias\}/);
   assert.match(leaderboard, /standingsEntries\.map\(\(entry\) => renderEntry\(entry as LeaderboardEntry\)\)/);
   assert.match(leaderboard, /entry\.isCurrentUser/);
   assert.match(leaderboard, /SELF-REPORTED · NOT INDEPENDENTLY VERIFIED/);
@@ -203,7 +204,7 @@ test("the signed-in participant appears only in their actual ranked position", (
   assert.match(leaderboard, /backgroundColor: entry\.isCurrentUser \? `\$\{colors\.gold\}10` : 'transparent'/);
   assert.match(leaderboard, /entry\.isCurrentUser && \(/);
   assert.match(leaderboard, /entry\.isCurrentUser && <Text style=\{\{ color: colors\.gold/);
-  assert.doesNotMatch(leaderboard, /YOUR POSITION|Rank #\{ownEntry\.rank\}/);
+  assert.doesNotMatch(leaderboard, /Rank #\{ownEntry\.rank\}/);
 });
 
 test("competitive progress stays tied to successful event responses and readable mobile cards", () => {
@@ -254,8 +255,9 @@ test("leaderboard names and large values remain readable and announced on compac
   assert.match(renderPodium, /accessibilityLabel=\{entry[\s\S]*?account value \$\{money\(entry\.equity\)\}/);
   assert.match(renderPodium, /allowFontScaling numberOfLines=\{1\} adjustsFontSizeToFit minimumFontScale=\{0\.7\}[\s\S]*?\{entry\.alias\}/);
   assert.match(renderPodium, /\{returnLabel\(entry\.returnPercent\)\}[\s\S]*?\{money\(entry\.equity\)\} account value[\s\S]*?\{signedMoney\(entry\.profitLoss\)\} reported P\/L/);
-  assert.match(leaderboard, /<View accessible testID="paper-event-leaderboard-current-user" accessibilityLabel=\{`Your current leaderboard position is rank \$\{ownEntry\.rank\}\. Account value \$\{money\(ownEntry\.equity\)\}\. Return \$\{returnLabel\(ownEntry\.returnPercent\)\}\. Profit or loss \$\{signedMoney\(ownEntry\.profitLoss\)\}/);
+  assert.match(leaderboard, /<View accessible[\s\S]*?testID="paper-event-leaderboard-current-user"[\s\S]*?accessibilityLabel=\{`Your leaderboard position is rank \$\{ownEntry\.rank\}, \$\{ownEntry\.alias\}\.`\}/);
   assert.match(positionPanel, /allowFontScaling adjustsFontSizeToFit minimumFontScale=\{0\.7\} numberOfLines=\{1\}[\s\S]*?\{ownEntry\.alias\}/);
+  assert.doesNotMatch(positionPanel, /money\(ownEntry\.equity\)|returnLabel\(ownEntry\.returnPercent\)|signedMoney\(ownEntry\.profitLoss\)/);
 
   const scrollPadding = Number(leaderboard.match(/contentContainerStyle=\{\{[^}]*padding: (\d+)/)?.[1]);
   const podiumPadding = Number(leaderboard.match(/padding: compactPodium \? (\d+) : (\d+)/)?.[1]);
@@ -278,6 +280,26 @@ test("leaderboard names and large values remain readable and announced on compac
     assert.ok(metricsWidth >= 90, `${width}px leaves room for large financial values`);
     assert.ok(aliasWidth >= 80, `${width}px leaves room for participant names`);
   }
+});
+
+test("leaderboard header scrolls with its content and clears the fixed bottom tabs", () => {
+  const mainScrollStart = leaderboard.indexOf("<ScrollView style={{ flex: 1, minHeight: 0 }} contentContainerStyle={{ width: '100%'");
+  const mainScrollEnd = leaderboard.indexOf("</ScrollView>", mainScrollStart);
+  const mainScroll = leaderboard.slice(mainScrollStart, mainScrollEnd);
+  const eventContentStart = eventArena.indexOf("{section === 'leaderboard' && (");
+  const eventContentEnd = eventArena.indexOf("{section === 'trades'", eventContentStart);
+
+  assert.ok(mainScrollStart >= 0 && mainScrollEnd > mainScrollStart);
+  assert.match(mainScroll, /renderLeaderboardHeader\(\)/);
+  assert.match(mainScroll, /testID="paper-event-leaderboard-podium"/);
+  assert.match(mainScroll, /testID="paper-event-leaderboard-current-user"/);
+  assert.match(mainScroll, /testID="paper-event-rank-history"/);
+  assert.match(mainScroll, /paddingBottom: embedded \? 28/);
+  assert.match(leaderboard, /style=\{\{ flex: 1, minHeight: 0, backgroundColor: colors\.background/);
+  assert.match(eventArena, /<View style=\{\{ flex: 1, minHeight: 0 \}\}>/);
+  assert.ok(eventContentStart >= 0 && eventContentEnd > eventContentStart);
+  assert.match(eventArena.slice(eventContentStart, eventContentEnd), /embedded/);
+  assert.match(eventArena, /<BottomTabBar \/>/);
 });
 
 test("milestone badges and event controls stay readable with larger system text", () => {

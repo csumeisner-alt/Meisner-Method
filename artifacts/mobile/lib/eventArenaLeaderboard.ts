@@ -1,4 +1,5 @@
 export type EventArenaPhase = 'upcoming' | 'active' | 'ended';
+export type EventArenaReturnTone = 'positive' | 'negative' | 'neutral';
 
 export type EventArenaStatus = {
   phase: EventArenaPhase;
@@ -18,6 +19,12 @@ export function formatEventArenaSignedMoney(value: number) {
 export function formatEventArenaReturn(value: number) {
   const rounded = Math.round(value * 100) / 100;
   return `${rounded >= 0 ? '+' : ''}${rounded.toFixed(2)}%`;
+}
+
+export function getEventArenaReturnTone(value: number): EventArenaReturnTone {
+  const rounded = Math.round(value * 100) / 100;
+  if (rounded === 0) return 'neutral';
+  return rounded > 0 ? 'positive' : 'negative';
 }
 
 export function getEventArenaPodiumSlots<T extends { rank: number }>(entries: T[]) {
@@ -54,16 +61,16 @@ export function getEventArenaStatus(startAtMs: number, endAtMs: number, nowMs: n
   if (nowMs < startAtMs) {
     return {
       phase: 'upcoming',
-      label: 'Upcoming',
+      label: 'Upcoming Competition',
       countdown: `Starts in ${formatRemainingTime(startAtMs - nowMs)}`,
     };
   }
   if (nowMs < endAtMs) {
     return {
       phase: 'active',
-      label: 'Live now',
+      label: 'Live Championship',
       countdown: `Ends in ${formatRemainingTime(endAtMs - nowMs)}`,
     };
   }
-  return { phase: 'ended', label: 'Complete', countdown: 'Event complete' };
+  return { phase: 'ended', label: 'Final Results', countdown: 'Event complete' };
 }
