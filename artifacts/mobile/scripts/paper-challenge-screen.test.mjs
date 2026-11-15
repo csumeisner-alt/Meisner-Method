@@ -134,8 +134,10 @@ test("Event Arena podium sharing captures only aliases and returns with the self
 
   assert.match(leaderboard, /testID="share-paper-event-podium"/);
   assert.match(leaderboard, /testID="share-paper-event-podium-confirm"/);
-  assert.match(leaderboard, /<ViewShot[\s\S]*?EventArenaPodiumShareCard event=\{event\} slots=\{podiumSlots\}/);
-  assert.match(leaderboard, /Sharing\.shareAsync\(uri,[\s\S]*?mimeType: 'image\/png'/);
+  assert.match(leaderboard, /Platform\.OS !== 'web' && entries\.length > 0[\s\S]*?testID="share-paper-event-podium"/);
+  assert.match(leaderboard, /<ViewShot[\s\S]*?options=\{\{ format: 'png', quality: 1 \}\}[\s\S]*?EventArenaPodiumShareCard event=\{event\} slots=\{podiumSlots\}/);
+  assert.match(leaderboard, /const uri = await viewShot\.capture\?\.\(\);[\s\S]*?Sharing\.shareAsync\(uri,[\s\S]*?mimeType: 'image\/png'[\s\S]*?UTI: 'public\.png'/);
+  assert.match(leaderboard, /if \(!\(await Sharing\.isAvailableAsync\(\)\)\)/);
   assert.match(shareCardSource, /EVENT_ARENA_ARTWORK_SOURCES\[event\.artworkId \?\? LEGACY_PAPER_CHALLENGE_ARTWORK_ID\]/);
   assert.match(shareCardSource, /\{slot\.entry\?\.alias \?\? 'Waiting for competitor'\}/);
   assert.match(shareCardSource, /\{returnLabel\(slot\.entry\.returnPercent\)\}/);
