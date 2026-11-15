@@ -18,6 +18,7 @@ type Props = {
   eventId: string;
   startAtMs: number;
   endAtMs: number;
+  eventType?: 'event-arena' | 'green-bull-championship' | 'bear-market-mayhem' | 'lightning-round';
   enrollment: PaperChallengeEnrollment | null;
   summary: PaperChallengeSummary | null;
   equity: number;
@@ -52,6 +53,7 @@ export function PaperEventArenaDashboard({
   eventId,
   startAtMs,
   endAtMs,
+  eventType = 'event-arena',
   enrollment,
   summary,
   equity,
@@ -150,7 +152,7 @@ export function PaperEventArenaDashboard({
   const pnlColor = competitionPnL == null ? MUTED : competitionPnL >= 0 ? GREEN : RED;
   const returnColor = competitionReturn == null ? MUTED : competitionReturn >= 0 ? GREEN : RED;
   const eventName = eventId
-    ? `EVENT ARENA · ${eventDateRange(startAtMs, endAtMs)}`
+    ? `${eventType === 'lightning-round' ? 'LIGHTNING ROUND' : 'EVENT ARENA'} · ${eventDateRange(startAtMs, endAtMs)}`
     : 'EVENT ARENA';
 
   const metric = (
@@ -192,7 +194,10 @@ export function PaperEventArenaDashboard({
   );
 
   return (
-    <View testID="paper-event-championship-dashboard" accessibilityLabel="Event Arena championship account summary">
+    <View
+      testID="paper-event-championship-dashboard"
+      accessibilityLabel={`${eventType === 'lightning-round' ? 'Lightning Round' : 'Event Arena'} championship account summary`}
+    >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         <Feather name="award" size={15} color={GOLD} />
         <Text accessibilityLabel={eventName} numberOfLines={1} style={{ flex: 1, minWidth: 0, color: GOLD, fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 0.45 }}>
@@ -214,6 +219,11 @@ export function PaperEventArenaDashboard({
           </Text>
         </View>
       </View>
+      {eventType === 'lightning-round' && (
+        <Text testID="paper-lightning-round-rules" style={{ color: MUTED, fontFamily: 'Inter_600SemiBold', fontSize: 7, letterSpacing: 0.35, marginTop: 4 }}>
+          $100,000 START · 24 HOURS · HIGHEST RETURN WINS
+        </Text>
+      )}
 
       <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginTop: 4 }}>
         <Text style={{ flexShrink: 0, color: MUTED, fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.55 }}>

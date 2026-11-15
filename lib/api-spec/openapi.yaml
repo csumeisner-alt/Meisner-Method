@@ -60,8 +60,8 @@ paths:
         required: true
         schema:
           type: string
-          format: date
-        description: Scheduled Event Arena event ID.
+          pattern: "^(lightning-)?\\d{4}-\\d{2}-\\d{2}$"
+        description: Regular scheduled event date or a prefixed Lightning Round Saturday.
     post:
       operationId: ensureEventArenaConfiguration
       tags: [eventArena]
@@ -77,6 +77,22 @@ paths:
           description: The event ID is not a scheduled event
         "500":
           description: The event configuration could not be saved
+  /event-arena/lightning-round/prepare:
+    post:
+      operationId: prepareLightningRoundEvents
+      tags: [eventArena]
+      summary: Prepare the current and upcoming weekly Lightning Round events
+      responses:
+        "200":
+          description: Idempotently prepared Lightning Round configurations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LightningRoundPreparationResponse"
+        "409":
+          description: A scheduled event has a conflicting saved configuration
+        "500":
+          description: Lightning Round events could not be prepared
   /event-arena/{eventId}/leaderboard:
     parameters:
       - in: path
@@ -84,8 +100,8 @@ paths:
         required: true
         schema:
           type: string
-          format: date
-        description: Scheduled Event Arena event ID; results never include other events.
+          pattern: "^(lightning-)?\\d{4}-\\d{2}-\\d{2}$"
+        description: Regular scheduled event date or a prefixed Lightning Round Saturday; results never include other events.
     get:
       operationId: getEventArenaLeaderboard
       tags: [eventArena]
@@ -147,8 +163,8 @@ paths:
         required: true
         schema:
           type: string
-          format: date
-        description: Scheduled Event Arena event ID; history never includes other events.
+          pattern: "^(lightning-)?\\d{4}-\\d{2}-\\d{2}$"
+        description: Regular scheduled event date or a prefixed Lightning Round Saturday; history never includes other events.
     get:
       operationId: getEventArenaLeaderboardHistory
       tags: [eventArena]
@@ -743,10 +759,10 @@ components:
           maxLength: 24
         eventType:
           type: string
-          enum: [event-arena, green-bull-championship, bear-market-mayhem]
+          enum: [event-arena, green-bull-championship, bear-market-mayhem, lightning-round]
         artworkId:
           type: string
-          enum: [stadium, neon-nightclub, mountain-summit, red-showdown, green-stock-exchange]
+          enum: [stadium, neon-nightclub, mountain-summit, red-showdown, green-stock-exchange, lightning-round-arena]
         startingBalance: { type: number, exclusiveMinimum: 0 }
         rankingDirection:
           type: string
@@ -793,19 +809,29 @@ components:
       type: object
       required: [eventId, eventType, artworkId, startingBalance, rankingDirection, startAtMs, endAtMs]
       properties:
-        eventId: { type: string, format: date }
+        eventId: { type: string, pattern: "^(lightning-)?\\d{4}-\\d{2}-\\d{2}$" }
         eventType:
           type: string
-          enum: [event-arena, green-bull-championship, bear-market-mayhem]
+          enum: [event-arena, green-bull-championship, bear-market-mayhem, lightning-round]
         artworkId:
           type: string
-          enum: [stadium, neon-nightclub, mountain-summit, red-showdown, green-stock-exchange]
+          enum: [stadium, neon-nightclub, mountain-summit, red-showdown, green-stock-exchange, lightning-round-arena]
         startingBalance: { type: number, exclusiveMinimum: 0 }
         rankingDirection:
           type: string
           enum: [highest-return, lowest-return]
         startAtMs: { type: integer }
         endAtMs: { type: integer }
+
+    LightningRoundPreparationResponse:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          minItems: 2
+          items:
+            $ref: "#/components/schemas/EventArenaConfiguration"
 
     EventArenaLeaderboardResponse:
       type: object

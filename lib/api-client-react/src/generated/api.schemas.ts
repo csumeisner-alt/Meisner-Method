@@ -12,6 +12,7 @@ export const EventArenaScoreSubmissionEventType = {
   'event-arena': 'event-arena',
   'green-bull-championship': 'green-bull-championship',
   'bear-market-mayhem': 'bear-market-mayhem',
+  'lightning-round': 'lightning-round',
 } as const;
 
 export type EventArenaScoreSubmissionArtworkId = typeof EventArenaScoreSubmissionArtworkId[keyof typeof EventArenaScoreSubmissionArtworkId];
@@ -23,6 +24,7 @@ export const EventArenaScoreSubmissionArtworkId = {
   'mountain-summit': 'mountain-summit',
   'red-showdown': 'red-showdown',
   'green-stock-exchange': 'green-stock-exchange',
+  'lightning-round-arena': 'lightning-round-arena',
 } as const;
 
 export type EventArenaScoreSubmissionRankingDirection = typeof EventArenaScoreSubmissionRankingDirection[keyof typeof EventArenaScoreSubmissionRankingDirection];
@@ -106,6 +108,7 @@ export const EventArenaConfigurationEventType = {
   'event-arena': 'event-arena',
   'green-bull-championship': 'green-bull-championship',
   'bear-market-mayhem': 'bear-market-mayhem',
+  'lightning-round': 'lightning-round',
 } as const;
 
 export type EventArenaConfigurationArtworkId = typeof EventArenaConfigurationArtworkId[keyof typeof EventArenaConfigurationArtworkId];
@@ -117,6 +120,7 @@ export const EventArenaConfigurationArtworkId = {
   'mountain-summit': 'mountain-summit',
   'red-showdown': 'red-showdown',
   'green-stock-exchange': 'green-stock-exchange',
+  'lightning-round-arena': 'lightning-round-arena',
 } as const;
 
 export type EventArenaConfigurationRankingDirection = typeof EventArenaConfigurationRankingDirection[keyof typeof EventArenaConfigurationRankingDirection];
@@ -128,6 +132,7 @@ export const EventArenaConfigurationRankingDirection = {
 } as const;
 
 export interface EventArenaConfiguration {
+  /** @pattern ^(lightning-)?\d{4}-\d{2}-\d{2}$ */
   eventId: string;
   eventType: EventArenaConfigurationEventType;
   artworkId: EventArenaConfigurationArtworkId;
@@ -136,6 +141,11 @@ export interface EventArenaConfiguration {
   rankingDirection: EventArenaConfigurationRankingDirection;
   startAtMs: number;
   endAtMs: number;
+}
+
+export interface LightningRoundPreparationResponse {
+  /** @minItems 2 */
+  events: EventArenaConfiguration[];
 }
 
 export type EventArenaLeaderboardResponseEntriesItemHoldingsItemSide = typeof EventArenaLeaderboardResponseEntriesItemHoldingsItemSide[keyof typeof EventArenaLeaderboardResponseEntriesItemHoldingsItemSide];

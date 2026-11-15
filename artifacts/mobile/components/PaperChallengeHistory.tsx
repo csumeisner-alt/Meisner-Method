@@ -447,7 +447,9 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
               <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 17 }}>
                 {event.eventType === 'green-bull-championship'
                   ? 'Green Bull Championship results'
-                  : event.eventType === 'bear-market-mayhem' ? 'Bear Market Mayhem results' : 'Event Arena results'}
+                  : event.eventType === 'bear-market-mayhem'
+                    ? 'Bear Market Mayhem results'
+                    : event.eventType === 'lightning-round' ? 'Lightning Round results' : 'Event Arena results'}
               </Text>
               <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 3 }}>
                 {dateRange(event.eventStartAtMs, event.eventEndAtMs)}

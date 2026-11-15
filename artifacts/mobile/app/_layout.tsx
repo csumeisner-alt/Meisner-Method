@@ -46,6 +46,7 @@ function RootLayoutNav() {
       <Stack.Screen name="portfolio" options={{ headerShown: false }} />
       <Stack.Screen name="paper" options={{ headerShown: false }} />
       <Stack.Screen name="event-arena" options={{ headerShown: false }} />
+      <Stack.Screen name="lightning-round" options={{ headerShown: false }} />
       <Stack.Screen name="picks" options={{ headerShown: false }} />
       <Stack.Screen name="heat-map" options={{ headerShown: false }} />
       <Stack.Screen name="heat-map-chart" options={{ headerShown: false }} />

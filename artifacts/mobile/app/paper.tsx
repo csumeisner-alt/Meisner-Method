@@ -3,7 +3,7 @@
  * Supports 3 independent strategy accounts with live P&L, charts, and tracking.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ActivityIndicator,
@@ -95,6 +95,7 @@ import {
   type BuyStockInfo,
 } from '@/lib/stockSearch';
 import { useWatchlist } from '@/hooks/useWatchlist';
+import { getInstallationId } from '@/lib/installation';
 import {
   buildPaperChallengeSummary,
   ensurePaperChallengeAccount,
@@ -107,9 +108,16 @@ import {
   persistPaperChallengeFinalization,
   shouldEnsurePaperChallengeAccount,
   updatePaperChallengeStore,
+  updatePaperChallengeEnrollment,
   type PaperChallengeStore,
   type PaperChallengeSummary,
+  type PaperChallengeEnrollment,
   capturePaperChallengeBaseline,
+  getLightningRoundWindow,
+  getPaperChallengeEnrollmentForAccount,
+  getPaperChallengeEnrollments,
+  isPaperChallengeAccountId,
+  isLightningRoundEventId,
 } from '@/lib/paperChallenge';
 import {
   getSearchHeatMapInstrumentsQueryKey,
@@ -268,6 +276,7 @@ function defaultAccounts(): PaperAccount[] {
 export default function PaperScreen() {
   const colors = useColors();
   const router = useRouter();
+  const routeParams = useLocalSearchParams<{ challengeAccountId?: string }>();
   const { awardAchievement } = useAchievements();
   const insets = useSafeAreaInsets();
   const { width: screenWidth, fontScale } = useWindowDimensions();
@@ -295,7 +304,7 @@ export default function PaperScreen() {
   const [challengeFinalizationError, setChallengeFinalizationError] = useState(false);
   const [completedEventSummary, setCompletedEventSummary] = useState<PaperChallengeSummary | null>(null);
   const paperChallengeRef = useRef<PaperChallengeStore>({ enrollment: null, history: [] });
-  const previousEnrollmentIdRef = useRef<string | null>(null);
+  const previousEnrollmentIdsRef = useRef(new Set<string>());
   const challengeFinalizingRef = useRef<string | null>(null);
   const challengeFinalizationFailureRef = useRef<string | null>(null);
   const challengeBaselineCapturingRef = useRef<string | null>(null);
@@ -453,29 +462,47 @@ export default function PaperScreen() {
   // Buying power is restricted to settled cash only (enforced in fillOrder / OrderSheet risk check).
   const portfolioValue = account ? computePaperEquity(account, myPositions, quotes) : 0;
   const paperChallengeWindow = getPaperChallengeWindow(challengeNow);
-  const isPaperChallengeWaiting = !!paperChallenge.enrollment
-    && challengeNow >= paperChallenge.enrollment.eventEndAtMs;
-  const isEventAccountActive = paperChallengeWindow.phase === 'active'
-    && !!account
-    && account.id.startsWith('paper-event:')
-    && paperChallenge.enrollment?.accountId === account.id;
-  const hasCurrentEventEnrollment = paperChallenge.enrollment?.eventId === paperChallengeWindow.id;
-  const visibleEventAccountId = paperChallenge.enrollment?.accountId
-    ?? paperChallenge.history[0]?.accountId
-    ?? null;
-  const visibleAccounts = accounts.filter((item) =>
-    !item.id.startsWith('paper-event:') || item.id === visibleEventAccountId,
+  const lightningRoundWindow = getLightningRoundWindow(challengeNow);
+  const challengeEnrollments = getPaperChallengeEnrollments(paperChallenge);
+  const isEnrollmentActive = (enrollment: PaperChallengeEnrollment) =>
+    challengeNow >= enrollment.eventStartAtMs && challengeNow < enrollment.eventEndAtMs;
+  const activeChallengeEnrollment = challengeEnrollments.find((enrollment) =>
+    enrollment.accountId === account?.id && isEnrollmentActive(enrollment),
+  ) ?? challengeEnrollments.find(isEnrollmentActive) ?? null;
+  const isPaperChallengeWaiting = challengeEnrollments.some(
+    (enrollment) => challengeNow >= enrollment.eventEndAtMs,
   );
-  const regularAccounts = visibleAccounts.filter((item) => !item.id.startsWith('paper-event:'));
+  const isEventAccountActive = !!account && challengeEnrollments.some((enrollment) =>
+    enrollment.accountId === account.id
+    && challengeNow >= enrollment.eventStartAtMs
+    && challengeNow < enrollment.eventEndAtMs,
+  );
+  const hasCurrentEventEnrollment = challengeEnrollments.some((enrollment) =>
+    enrollment.eventId === paperChallengeWindow.id || enrollment.eventId === lightningRoundWindow.id,
+  );
+  const visibleEventAccountIds = new Set([
+    ...challengeEnrollments.map((enrollment) => enrollment.accountId),
+    ...paperChallenge.history
+      .filter((event) => event.eventType !== 'lightning-round')
+      .slice(0, 1)
+      .map((event) => event.accountId),
+    ...paperChallenge.history
+      .filter((event) => event.eventType === 'lightning-round')
+      .slice(0, 1)
+      .map((event) => event.accountId),
+  ]);
+  const visibleAccounts = accounts.filter((item) =>
+    !isPaperChallengeAccountId(item.id) || visibleEventAccountIds.has(item.id),
+  );
+  const regularAccounts = visibleAccounts.filter((item) => !isPaperChallengeAccountId(item.id));
   const selectedAccountIndex = regularAccounts.findIndex((item) => item.id === account?.id);
-  const selectedAccountDisplayName = account?.id.startsWith('paper-event:')
-    ? 'Event Arena'
+  const selectedAccountDisplayName = account && isPaperChallengeAccountId(account.id)
+    ? account.id.startsWith('paper-lightning:') ? 'Lightning Round' : 'Event Arena'
     : PAPER_ACCOUNT_DISPLAY_NAMES[selectedAccountIndex] ?? account?.name ?? 'Paper account';
   const selectedAccountPosition = visibleAccounts.findIndex((item) => item.id === account?.id);
-  const isSelectedEventAccount = !!account?.id.startsWith('paper-event:');
-  const selectedEventEnrollment = isSelectedEventAccount
-    && paperChallenge.enrollment?.accountId === account?.id
-    ? paperChallenge.enrollment
+  const isSelectedEventAccount = !!account && isPaperChallengeAccountId(account.id);
+  const selectedEventEnrollment = isSelectedEventAccount && account
+    ? getPaperChallengeEnrollmentForAccount(paperChallenge, account.id)
     : null;
   const selectedEventSummary = isSelectedEventAccount
     ? paperChallenge.history.find((event) => event.accountId === account?.id) ?? null
@@ -530,12 +557,13 @@ export default function PaperScreen() {
           const saved = JSON.parse(raw) as PaperChallengeStore;
           const normalized = normalizePaperChallengeStore({
             enrollment: saved.enrollment ?? null,
+            lightningEnrollment: saved.lightningEnrollment ?? null,
             history: Array.isArray(saved.history) ? saved.history : [],
           });
           paperChallengeRef.current = normalized;
           setPaperChallenge(normalized);
         } catch {
-          paperChallengeRef.current = { enrollment: null, history: [] };
+          paperChallengeRef.current = { enrollment: null, lightningEnrollment: null, history: [] };
         }
       }
       setPaperChallengeReady(true);
@@ -551,14 +579,16 @@ export default function PaperScreen() {
   }, []);
 
   useEffect(() => {
-    const currentEnrollmentId = paperChallenge.enrollment?.eventId ?? null;
-    const previousEnrollmentId = previousEnrollmentIdRef.current;
-    if (previousEnrollmentId && !currentEnrollmentId) {
-      const summary = paperChallenge.history.find((event) => event.eventId === previousEnrollmentId);
+    const currentIds = new Set(getPaperChallengeEnrollments(paperChallenge).map((item) => item.eventId));
+    const completedId = [...previousEnrollmentIdsRef.current].find((eventId) =>
+      !currentIds.has(eventId) && paperChallenge.history.some((event) => event.eventId === eventId),
+    );
+    if (completedId) {
+      const summary = paperChallenge.history.find((event) => event.eventId === completedId);
       if (summary) setCompletedEventSummary(summary);
     }
-    previousEnrollmentIdRef.current = currentEnrollmentId;
-  }, [paperChallenge.enrollment?.eventId, paperChallenge.history]);
+    previousEnrollmentIdsRef.current = currentIds;
+  }, [paperChallenge.enrollment?.eventId, paperChallenge.lightningEnrollment?.eventId, paperChallenge.history]);
 
   const savePaperChallenge = useCallback(async (
     update: (current: PaperChallengeStore) => PaperChallengeStore,
@@ -672,14 +702,17 @@ export default function PaperScreen() {
   }, [persistAccountValueSnapshots]);
 
   useEffect(() => {
-    const enrollment = paperChallenge.enrollment;
-    if (!loaded || !paperChallengeReady || !enrollment) return;
-    if (!shouldEnsurePaperChallengeAccount(enrollment, challengeNow)) {
-      const prematureEventAccountIsSelected = enrollment.startEquity === null
-        && challengeNow < enrollment.eventStartAtMs
-        && activeIdRef.current === enrollment.accountId;
-      const fallbackAccount = accountsRef.current.find((item) => !item.id.startsWith('paper-event:'));
-      if (prematureEventAccountIsSelected && fallbackAccount) {
+    if (!loaded || !paperChallengeReady) return;
+    const enrollments = getPaperChallengeEnrollments(paperChallenge);
+    if (enrollments.length === 0) return;
+    const prematureSelected = enrollments.some((enrollment) =>
+      enrollment.startEquity === null
+      && challengeNow < enrollment.eventStartAtMs
+      && activeIdRef.current === enrollment.accountId,
+    );
+    if (prematureSelected) {
+      const fallbackAccount = accountsRef.current.find((item) => !isPaperChallengeAccountId(item.id));
+      if (fallbackAccount) {
         void saveAll(
           accountsRef.current,
           positionsRef.current,
@@ -691,38 +724,38 @@ export default function PaperScreen() {
       }
       return;
     }
-    const existingEventAccount = accountsRef.current.find((item) => item.id === enrollment.accountId);
-    if (existingEventAccount) {
-      if (activeIdRef.current !== existingEventAccount.id) {
-        void saveAll(
-          accountsRef.current,
-          positionsRef.current,
-          transactionsRef.current,
-          ordersRef.current,
-          lotsRef.current,
-          existingEventAccount.id,
-        );
-      }
-      return;
-    }
-    const eventAccountState = ensurePaperChallengeAccount(enrollment, {
+    const started = enrollments.filter((enrollment) => shouldEnsurePaperChallengeAccount(enrollment, challengeNow));
+    let nextState = {
       accounts: accountsRef.current,
       positions: positionsRef.current,
       transactions: transactionsRef.current,
       orders: ordersRef.current,
       lots: lotsRef.current,
-    });
-    const eventAccount = eventAccountState.accounts.find((item) => item.id === enrollment.accountId);
-    if (!eventAccount) return;
-    void saveAll(
-      eventAccountState.accounts,
-      eventAccountState.positions,
-      eventAccountState.transactions,
-      eventAccountState.orders,
-      eventAccountState.lots,
-      enrollment.accountId,
-    );
-  }, [challengeNow, loaded, paperChallenge.enrollment, paperChallengeReady, saveAll]);
+    };
+    const newlyCreated: string[] = [];
+    for (const enrollment of started) {
+      if (nextState.accounts.some((item) => item.id === enrollment.accountId)) continue;
+      nextState = ensurePaperChallengeAccount(enrollment, nextState);
+      newlyCreated.push(enrollment.accountId);
+    }
+    if (newlyCreated.length > 0) {
+      void saveAll(
+        nextState.accounts,
+        nextState.positions,
+        nextState.transactions,
+        nextState.orders,
+        nextState.lots,
+        newlyCreated[0] ?? activeIdRef.current,
+      );
+    }
+  }, [
+    challengeNow,
+    loaded,
+    paperChallenge.enrollment,
+    paperChallenge.lightningEnrollment,
+    paperChallengeReady,
+    saveAll,
+  ]);
 
   // ── Init ─────────────────────────────────────────────────────────────────
   const init = useCallback(async () => {
@@ -840,10 +873,14 @@ export default function PaperScreen() {
     let ordersChanged = false;
 
     for (const order of pending) {
-      const eventEnrollment = paperChallengeRef.current.enrollment;
+      const eventEnrollment = getPaperChallengeEnrollmentForAccount(
+        paperChallengeRef.current,
+        order.accountId,
+      );
       if (
-        eventEnrollment?.accountId === order.accountId
-        && Date.now() >= eventEnrollment.eventEndAtMs
+        paperChallengeRef.current.history.some((event) => event.accountId === order.accountId)
+        || (eventEnrollment?.accountId === order.accountId
+          && Date.now() >= eventEnrollment.eventEndAtMs)
       ) {
         updatedOrders = updatedOrders.map((item) =>
           item.id === order.id ? { ...item, status: 'cancelled' as const } : item,
@@ -1049,7 +1086,9 @@ export default function PaperScreen() {
   }, [fetchInactiveAccountCardQuotes, loaded]);
 
   useEffect(() => {
-    const enrollment = paperChallenge.enrollment;
+    const enrollment = getPaperChallengeEnrollments(paperChallenge).find((item) =>
+      item.startEquity !== null && challengeNow >= item.eventEndAtMs,
+    );
     if (
       !paperChallengeReady
       || !loaded
@@ -1085,6 +1124,18 @@ export default function PaperScreen() {
       const startEquity = enrollment.startEquity;
       if (startEquity === null) return;
       const completedAtMs = Date.now();
+      let finalRank: number | undefined;
+      if (enrollment.eventType === 'lightning-round' && enrollment.leaderboardOptedIn) {
+        const installationId = await getInstallationId();
+        const response = await fetch(
+          `${BASE_URL}/api/event-arena/${encodeURIComponent(enrollment.eventId)}/leaderboard`,
+          { headers: { 'X-Event-Arena-Installation-Id': installationId } },
+        );
+        if (!response.ok) throw new Error('The final Lightning Round ranking is unavailable.');
+        const payload = await response.json() as { entries?: Array<{ rank?: number; isCurrentUser?: boolean }> };
+        const rankEntry = payload.entries?.find((entry) => entry.isCurrentUser && Number.isInteger(entry.rank) && (entry.rank ?? 0) > 0);
+        finalRank = rankEntry?.rank;
+      }
       const eventEquityHistory = accountValueSnapshotsRef.current.filter(
         (snapshot) => snapshot.accountId === enrollment.accountId,
       );
@@ -1125,11 +1176,12 @@ export default function PaperScreen() {
                 : marketPrice - position.avgCost),
             };
           }),
+          ...(finalRank ? { finalRank } : {}),
         },
       );
       const latestStore = paperChallengeRef.current;
-      if (latestStore.enrollment?.eventId !== enrollment.eventId) return;
-      const fallbackAccount = accountsRef.current.find((item) => !item.id.startsWith('paper-event:'));
+      if (!getPaperChallengeEnrollments(latestStore).some((item) => item.eventId === enrollment.eventId)) return;
+      const fallbackAccount = accountsRef.current.find((item) => !isPaperChallengeAccountId(item.id));
       if (activeIdRef.current === enrollment.accountId && fallbackAccount) {
         await saveAll(
           accountsRef.current,
@@ -1166,6 +1218,7 @@ export default function PaperScreen() {
     fetchQuotes,
     loaded,
     paperChallenge.enrollment,
+    paperChallenge.lightningEnrollment,
     paperChallengeReady,
     positions,
     quotes,
@@ -1175,7 +1228,9 @@ export default function PaperScreen() {
   ]);
 
   useEffect(() => {
-    const enrollment = paperChallenge.enrollment;
+    const enrollment = getPaperChallengeEnrollments(paperChallenge).find((item) =>
+      item.startEquity === null && challengeNow >= item.eventStartAtMs,
+    );
     if (!paperChallengeReady || !loaded || !enrollment || enrollment.startEquity !== null) return;
 
     if (challengeNow >= enrollment.eventEndAtMs) {
@@ -1185,7 +1240,10 @@ export default function PaperScreen() {
       setChallengeFinalizationBusy(true);
       const latestStore = paperChallengeRef.current;
       const eventAccount = accountsRef.current.find((item) => item.id === enrollment.accountId);
-      if (!eventAccount || latestStore.enrollment?.eventId !== enrollment.eventId) {
+      if (
+        !eventAccount
+        || !getPaperChallengeEnrollments(latestStore).some((item) => item.eventId === enrollment.eventId)
+      ) {
         challengeFinalizationFailureRef.current = enrollment.eventId;
         setChallengeFinalizationError(true);
         challengeBaselineCapturingRef.current = null;
@@ -1193,14 +1251,16 @@ export default function PaperScreen() {
         return;
       }
       void savePaperChallenge((current) => {
-        const currentEnrollment = current.enrollment;
-        if (!currentEnrollment || currentEnrollment.eventId !== enrollment.eventId || currentEnrollment.startEquity !== null) {
-          return current;
-        }
-        return {
-          ...current,
-          enrollment: capturePaperChallengeBaseline(currentEnrollment, PAPER_CHALLENGE_STARTING_BALANCE),
-        };
+        const currentEnrollment = getPaperChallengeEnrollments(current)
+          .find((item) => item.eventId === enrollment.eventId);
+        if (!currentEnrollment || currentEnrollment.startEquity !== null) return current;
+        return updatePaperChallengeEnrollment(
+          current,
+          currentEnrollment.eventType ?? 'event-arena',
+          (item) => item.eventId === enrollment.eventId
+            ? capturePaperChallengeBaseline(item, PAPER_CHALLENGE_STARTING_BALANCE)
+            : item,
+        );
       }).catch(() => {
         challengeFinalizationFailureRef.current = enrollment.eventId;
         setChallengeFinalizationError(true);
@@ -1214,11 +1274,15 @@ export default function PaperScreen() {
     if (challengeNow < enrollment.eventStartAtMs || challengeBaselineCapturingRef.current === enrollment.eventId) return;
     challengeBaselineCapturingRef.current = enrollment.eventId;
     void (async () => {
-      const currentWindow = getPaperChallengeWindow(Date.now());
+      const currentWindow = isLightningRoundEventId(enrollment.eventId)
+        ? getLightningRoundWindow(Date.now())
+        : getPaperChallengeWindow(Date.now());
       if (currentWindow.id !== enrollment.eventId || currentWindow.phase !== 'active') return;
       const eventPositions = positionsRef.current.filter((position) => position.accountId === enrollment.accountId);
       const freshQuotes = await fetchQuotes(eventPositions, enrollment.accountId, false);
-      const latestWindow = getPaperChallengeWindow(Date.now());
+      const latestWindow = isLightningRoundEventId(enrollment.eventId)
+        ? getLightningRoundWindow(Date.now())
+        : getPaperChallengeWindow(Date.now());
       if (latestWindow.id !== enrollment.eventId || latestWindow.phase !== 'active') return;
 
       const eventAccount = accountsRef.current.find((item) => item.id === enrollment.accountId);
@@ -1227,16 +1291,20 @@ export default function PaperScreen() {
       const latestQuotes = { ...quotes, ...freshQuotes };
       const startEquity = computePaperEquity(eventAccount, latestPositions, latestQuotes);
       const latestStore = paperChallengeRef.current;
-      if (latestStore.enrollment?.eventId !== enrollment.eventId || latestStore.enrollment.startEquity !== null) return;
+      const currentEnrollment = getPaperChallengeEnrollments(latestStore)
+        .find((item) => item.eventId === enrollment.eventId);
+      if (!currentEnrollment || currentEnrollment.startEquity !== null) return;
       await savePaperChallenge((current) => {
-        const currentEnrollment = current.enrollment;
-        if (!currentEnrollment || currentEnrollment.eventId !== enrollment.eventId || currentEnrollment.startEquity !== null) {
-          return current;
-        }
-        return {
-          ...current,
-          enrollment: capturePaperChallengeBaseline(currentEnrollment, startEquity),
-        };
+        const savedEnrollment = getPaperChallengeEnrollments(current)
+          .find((item) => item.eventId === enrollment.eventId);
+        if (!savedEnrollment || savedEnrollment.startEquity !== null) return current;
+        return updatePaperChallengeEnrollment(
+          current,
+          savedEnrollment.eventType ?? 'event-arena',
+          (item) => item.eventId === enrollment.eventId
+            ? capturePaperChallengeBaseline(item, startEquity)
+            : item,
+        );
       });
     })().catch(() => {
       // Keep the opt-in so the next clock tick can retry a local baseline capture.
@@ -1252,6 +1320,7 @@ export default function PaperScreen() {
     fetchQuotes,
     loaded,
     paperChallenge.enrollment,
+    paperChallenge.lightningEnrollment,
     paperChallengeReady,
     positions,
     quotes,
@@ -1310,6 +1379,15 @@ export default function PaperScreen() {
     fetchQuotes(positions, id);
   };
 
+  const handledChallengeRouteRef = useRef<string | null>(null);
+  useEffect(() => {
+    const requestedId = typeof routeParams.challengeAccountId === 'string' ? routeParams.challengeAccountId : undefined;
+    if (!loaded || !requestedId || handledChallengeRouteRef.current === requestedId) return;
+    if (!accounts.some((item) => item.id === requestedId)) return;
+    handledChallengeRouteRef.current = requestedId;
+    if (activeIdRef.current !== requestedId) void switchAccount(requestedId);
+  }, [accounts, loaded, routeParams.challengeAccountId]);
+
   const renameAccount = async (id: string, name: string) => {
     const updated = renamePaperAccount(accountsRef.current, id, name);
     await saveAccounts(updated);
@@ -1317,8 +1395,9 @@ export default function PaperScreen() {
   };
 
   const resetAccount = async (id: string) => {
-    if (paperChallengeWindow.phase === 'active' && paperChallengeRef.current.enrollment?.accountId === id) {
-      Alert.alert('Account is in an event', 'This account cannot be reset until its paper trading event is complete.');
+    const activeEnrollment = getPaperChallengeEnrollmentForAccount(paperChallengeRef.current, id);
+    if (activeEnrollment && Date.now() < activeEnrollment.eventEndAtMs) {
+      Alert.alert('Account is in a championship', 'This account cannot be reset until its paper trading event is complete.');
       return;
     }
     const reset = resetPaperAccountData({
@@ -1419,23 +1498,23 @@ export default function PaperScreen() {
       const companyName = args.companyName.trim() || sym;
       const intent = args.side === 'short' || args.side === 'cover' ? args.side : undefined;
       const direction = args.side === 'buy' || args.side === 'cover' ? 'buy' : 'sell';
-      const enrollment = paperChallengeRef.current.enrollment;
-      if (enrollment?.accountId === accountId && Date.now() >= enrollment.eventEndAtMs) {
+      const enrollment = getPaperChallengeEnrollmentForAccount(paperChallengeRef.current, accountId);
+      if (enrollment && Date.now() >= enrollment.eventEndAtMs) {
         return {
           status: 'rejected',
-          message: 'The event week has ended. Choose another paper account to continue trading.',
+          message: 'This championship has ended. Choose another paper account to continue trading.',
         };
       }
-      if (enrollment?.accountId === accountId && Date.now() < enrollment.eventStartAtMs) {
+      if (enrollment && Date.now() < enrollment.eventStartAtMs) {
         return {
           status: 'rejected',
-          message: 'This event has not started yet. Your event account will be ready at the scheduled opening.',
+          message: 'This championship has not started yet. Your separate account will be ready at opening.',
         };
       }
-      if (accountId.startsWith('paper-event:') && enrollment?.accountId !== accountId) {
+      if (isPaperChallengeAccountId(accountId) && !enrollment) {
         return {
           status: 'rejected',
-          message: 'Completed Event Arena accounts are read-only. Choose another account to trade.',
+          message: 'Completed championship accounts are read-only. Choose another account to trade.',
         };
       }
 
@@ -2359,7 +2438,9 @@ export default function PaperScreen() {
         {isSelectedEventAccount ? (
           <>
             <View style={styles.eventChampionshipTopline}>
-              <Text style={styles.eventHeroLabel}>EVENT ARENA</Text>
+              <Text style={styles.eventHeroLabel}>
+                {account?.id.startsWith('paper-lightning:') ? 'LIGHTNING ROUND' : 'EVENT ARENA'}
+              </Text>
               <TouchableOpacity
                 testID="paper-account-switch"
                 accessibilityRole="button"
@@ -2378,10 +2459,13 @@ export default function PaperScreen() {
               summary={selectedEventSummary}
               equity={portfolioValue}
               buyingPower={account?.cash ?? 0}
-              onViewLeaderboard={() => router.push({
-                pathname: '/event-arena',
-                params: { section: 'leaderboard', eventId: selectedEventId },
-              })}
+              eventType={selectedEventEnrollment?.eventType ?? selectedEventSummary?.eventType ?? 'event-arena'}
+              onViewLeaderboard={() => {
+                const lightning = (selectedEventEnrollment?.eventType ?? selectedEventSummary?.eventType) === 'lightning-round';
+                router.push(lightning
+                  ? { pathname: '/lightning-round', params: { tab: 'leaderboard' } }
+                  : { pathname: '/event-arena', params: { section: 'leaderboard', eventId: selectedEventId } });
+              }}
             />
           </>
         ) : (
@@ -2444,7 +2528,7 @@ export default function PaperScreen() {
                 style={[
                   styles.accountPositionIndicator,
                   item.id === activeId && styles.accountPositionIndicatorActive,
-                  item.id.startsWith('paper-event:') && styles.eventPositionIndicator,
+                  isPaperChallengeAccountId(item.id) && styles.eventPositionIndicator,
                 ]}
               />
             ))}
@@ -2452,7 +2536,7 @@ export default function PaperScreen() {
         )}
       </PaperAccountSwipeArea>
 
-      {paperChallengeWindow.phase === 'active' && (
+      {activeChallengeEnrollment && (
         <View
           testID="paper-event-live-banner"
           accessibilityLiveRegion="polite"
@@ -2469,29 +2553,29 @@ export default function PaperScreen() {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
             <Feather name="award" size={14} color={colors.primary} />
             <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 0.7 }}>
-              {hasCurrentEventEnrollment ? 'YOUR EVENT IS LIVE' : 'LIVE EVENT · JOIN ANY TIME'}
+              {activeChallengeEnrollment.eventType === 'lightning-round'
+                ? 'LIGHTNING ROUND IS LIVE'
+                : 'EVENT ARENA IS LIVE'}
             </Text>
           </View>
             <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, lineHeight: 17, marginTop: 7 }}>
-            {paperChallenge.enrollment?.eventType === 'green-bull-championship'
-              ? 'GREEN BULL CHAMPIONSHIP · $500,000 STARTING CAPITAL'
-              : paperChallenge.enrollment?.eventType === 'bear-market-mayhem'
-                ? `BEAR MARKET MAYHEM · $${(paperChallenge.enrollment.startingBalance ?? paperChallengeWindow.startingBalance ?? INITIAL_BALANCE).toLocaleString('en-US', { maximumFractionDigits: 0 })} STARTING CAPITAL`
-                : `EVENT ARENA · $${(paperChallenge.enrollment?.startingBalance ?? paperChallengeWindow.startingBalance ?? INITIAL_BALANCE).toLocaleString('en-US', { maximumFractionDigits: 0 })} STARTING CAPITAL`}
+            {activeChallengeEnrollment.eventType === 'lightning-round'
+              ? 'LIGHTNING ROUND · $100,000 STARTING CAPITAL'
+              : activeChallengeEnrollment.eventType === 'green-bull-championship'
+                ? 'GREEN BULL CHAMPIONSHIP · $500,000 STARTING CAPITAL'
+                : activeChallengeEnrollment.eventType === 'bear-market-mayhem'
+                  ? `BEAR MARKET MAYHEM · $${(activeChallengeEnrollment.startingBalance ?? INITIAL_BALANCE).toLocaleString('en-US', { maximumFractionDigits: 0 })} STARTING CAPITAL`
+                  : `EVENT ARENA · $${(activeChallengeEnrollment.startingBalance ?? INITIAL_BALANCE).toLocaleString('en-US', { maximumFractionDigits: 0 })} STARTING CAPITAL`}
           </Text>
           <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 4 }}>
-            {hasCurrentEventEnrollment
-              ? isEventAccountActive
-                ? 'You’re trading in the Event Portfolio. The event closes Friday at 4:00 p.m. ET.'
-                : 'Choose Event Portfolio from the account menu above to place event trades. The event closes Friday at 4:00 p.m. ET.'
-              : 'Join in Settings → Event Arena before Friday at 4:00 p.m. ET. This is simulated paper trading.'}
+            {`Trade only in your separate ${activeChallengeEnrollment.eventType === 'lightning-round' ? 'Lightning Round' : 'Event Arena'} account. This paper championship closes ${activeChallengeEnrollment.eventType === 'lightning-round' ? '24 hours after it opens' : 'Friday at 4:00 p.m. ET'}.`}
           </Text>
           {hasCurrentEventEnrollment && !isEventAccountActive && (
             <TouchableOpacity
               testID="switch-to-paper-event-account"
               accessibilityRole="button"
               onPress={() => {
-                const eventAccount = visibleAccounts.find((item) => item.id === paperChallenge.enrollment?.accountId);
+                const eventAccount = visibleAccounts.find((item) => item.id === activeChallengeEnrollment?.accountId);
                 if (eventAccount) void switchAccount(eventAccount.id);
               }}
               style={{ alignSelf: 'flex-start', marginTop: 9, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 8, backgroundColor: colors.primary }}
@@ -2853,18 +2937,20 @@ export default function PaperScreen() {
                 showsVerticalScrollIndicator={false}
               >
                 {visibleAccounts.map((acct) => {
-                  const isEventAcct = acct.id.startsWith('paper-event:');
+                  const isEventAcct = isPaperChallengeAccountId(acct.id);
+                  const eventEnrollment = getPaperChallengeEnrollmentForAccount(paperChallenge, acct.id);
+                  const isLightningAcct = acct.id.startsWith('paper-lightning:');
                   const isArchivedEventAccount = isEventAcct
                     && paperChallenge.history.some((event) => event.accountId === acct.id);
                   const isEventAcctResetLocked = isArchivedEventAccount || (isEventAcct
-                    && paperChallengeWindow.phase === 'active'
-                    && paperChallenge.enrollment?.accountId === acct.id);
+                    && !!eventEnrollment
+                    && challengeNow < eventEnrollment.eventEndAtMs);
                   const isActive = acct.id === activeId;
                   const acctPositions = positions.filter((position) => position.accountId === acct.id);
                   const acctValue = computePaperEquity(acct, acctPositions, quotes);
                   const accountIndex = regularAccounts.findIndex((item) => item.id === acct.id);
                   const portfolioLabel = isEventAcct
-                    ? 'Event Arena'
+                    ? isLightningAcct ? 'Lightning Round' : 'Event Arena'
                     : PAPER_ACCOUNT_DISPLAY_NAMES[accountIndex] ?? acct.name;
                   return (
                     <View
@@ -2960,7 +3046,7 @@ export default function PaperScreen() {
                           accessibilityRole="button"
                           accessibilityLabel={isEventAcctResetLocked
                             ? isArchivedEventAccount
-                              ? 'Completed Event Arena account is read-only'
+                              ? 'Completed championship account is read-only'
                               : 'Reset unavailable until the active event ends'
                             : `Reset ${acct.name}`}
                           accessibilityState={{ disabled: isEventAcctResetLocked }}
@@ -2992,7 +3078,7 @@ export default function PaperScreen() {
                     </View>
                   );
                 })}
-                {!visibleAccounts.some((item) => item.id.startsWith('paper-event:')) && (
+                {!visibleAccounts.some((item) => isPaperChallengeAccountId(item.id)) && (
                   <View testID="paper-event-account-unavailable" style={[styles.accountSheetRow, styles.eventAcctRow, styles.eventUnavailableRow]}>
                     <View style={styles.accountChoiceCopy}>
                       <View style={styles.accountChoiceTitleLine}>
@@ -3000,6 +3086,17 @@ export default function PaperScreen() {
                         <Feather name="award" size={15} color={BUY_COLOR} />
                       </View>
                       <Text style={styles.eventUnavailableHint}>Join an event in Settings to activate this portfolio.</Text>
+                    </View>
+                  </View>
+                )}
+                {!visibleAccounts.some((item) => item.id.startsWith('paper-lightning:')) && (
+                  <View testID="paper-lightning-account-unavailable" style={[styles.accountSheetRow, styles.eventAcctRow, styles.eventUnavailableRow]}>
+                    <View style={styles.accountChoiceCopy}>
+                      <View style={styles.accountChoiceTitleLine}>
+                        <Text style={[styles.acctName, styles.eventAccountName]}>Lightning Round</Text>
+                        <Feather name="zap" size={15} color={BUY_COLOR} />
+                      </View>
+                      <Text style={styles.eventUnavailableHint}>Join Lightning Round to activate its separate portfolio.</Text>
                     </View>
                   </View>
                 )}

@@ -20,6 +20,7 @@ import { checkRisk, getAvailableSettledBuyingPower } from '@/lib/paperEngine';
 import {
   calculateSharesForBuyingPower,
   formatProviderMarketSession,
+  formatProviderPriceSource,
   getAvailableSellShares,
   getAvailableShortShares,
   getOrderEstimatePrice,
@@ -178,9 +179,8 @@ export default function ProfessionalOrderEntry({
   const quote = quotes[symbol];
   const quotePrice = quote?.price ?? 0;
   const quoteState = getOrderQuoteState(quote, quoteNowMs);
-  const sessionLabel = quoteState === 'fresh'
-    ? formatProviderMarketSession(quote?.marketSession)
-    : null;
+  const sessionLabel = formatProviderMarketSession(quote?.marketSession);
+  const sourceLabel = formatProviderPriceSource(quote?.priceSource);
   const timestamp = Number.isFinite(quote?.priceTimestamp) && (quote?.priceTimestamp ?? 0) > 0
     ? new Date((quote?.priceTimestamp ?? 0) * 1000)
     : null;
@@ -377,11 +377,11 @@ export default function ProfessionalOrderEntry({
     ? timestamp.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
     : null;
   const freshnessNote = quoteState === 'stale'
-    ? `Last available provider quote · freshness unverified${quoteTime ? ` · reported ${quoteTime}` : ''}.`
+    ? `Last available provider price${sourceLabel || sessionLabel ? ` · ${sourceLabel ?? sessionLabel}` : ''} · freshness unverified${quoteTime ? ` · reported ${quoteTime}` : ''}.`
     : quoteState === 'unavailable'
       ? 'No provider price is available. No estimated or illustrative price is shown.'
       : quoteTime
-        ? `Provider quote · ${quoteTime}${sessionLabel ? ` · ${sessionLabel}` : ''}`
+        ? `Provider quote · ${quoteTime}${sourceLabel || sessionLabel ? ` · ${sourceLabel ?? sessionLabel}` : ''}`
         : 'Provider quote is current.';
 
   return (

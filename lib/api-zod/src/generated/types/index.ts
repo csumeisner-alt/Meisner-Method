@@ -140,6 +140,7 @@ export * from './heatMapResponse';
 export * from './heatMapResponseCategory';
 export * from './heatMapResponsePeriod';
 export * from './heatMapResponseRequestedSector';
+export * from './lightningRoundPreparationResponse';
 export * from './marketInstrumentInfo';
 export * from './marketPulseResponse';
 export * from './portfolioQuote';

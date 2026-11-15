@@ -25,8 +25,8 @@ type HoldingIdentifier = {
 type EventSubmission = {
   installationId: string;
   alias: string;
-  eventType?: "event-arena" | "green-bull-championship" | "bear-market-mayhem";
-  artworkId?: typeof EVENT_ARTWORK_IDS[number];
+  eventType?: "event-arena" | "green-bull-championship" | "bear-market-mayhem" | "lightning-round";
+  artworkId?: typeof EVENT_ARTWORK_IDS[number] | "lightning-round-arena";
   startingBalance?: number;
   rankingDirection?: "highest-return" | "lowest-return";
   cashBalance: number;
@@ -53,8 +53,8 @@ const EVENT_ARTWORK_IDS = [
 
 type EventArenaConfiguration = {
   eventId: string;
-  eventType: "event-arena" | "green-bull-championship" | "bear-market-mayhem";
-  artworkId: typeof EVENT_ARTWORK_IDS[number];
+  eventType: "event-arena" | "green-bull-championship" | "bear-market-mayhem" | "lightning-round";
+  artworkId: typeof EVENT_ARTWORK_IDS[number] | "lightning-round-arena";
   startingBalance: number;
   rankingDirection: "highest-return" | "lowest-return";
   startAtMs: number;
@@ -119,6 +119,86 @@ function easternLocalToUtc(year: number, month: number, day: number, hour: numbe
   return candidate;
 }
 
+function zonedParts(timestamp: number, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(timestamp));
+  const read = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return {
+    year: Number(read("year")),
+    month: Number(read("month")),
+    day: Number(read("day")),
+    hour: Number(read("hour")),
+    minute: Number(read("minute")),
+  };
+}
+
+function zonedLocalToUtc(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  timeZone: string,
+) {
+  const target = Date.UTC(year, month - 1, day, hour, minute);
+  let candidate = target;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const local = zonedParts(candidate, timeZone);
+    candidate += target - Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute);
+  }
+  const local = zonedParts(candidate, timeZone);
+  if (
+    local.year !== year || local.month !== month || local.day !== day
+    || local.hour !== hour || local.minute !== minute
+  ) throw new Error(`The scheduled local time does not exist in ${timeZone}.`);
+  return candidate;
+}
+
+const LIGHTNING_ROUND_TIME_ZONE = process.env.LIGHTNING_ROUND_TIME_ZONE
+  || process.env.EXPO_PUBLIC_LIGHTNING_ROUND_TIME_ZONE
+  || "America/Denver";
+const LIGHTNING_ROUND_START_HOUR = Number(
+  process.env.LIGHTNING_ROUND_START_HOUR ?? process.env.EXPO_PUBLIC_LIGHTNING_ROUND_START_HOUR ?? 9,
+);
+const LIGHTNING_ROUND_START_MINUTE = Number(
+  process.env.LIGHTNING_ROUND_START_MINUTE ?? process.env.EXPO_PUBLIC_LIGHTNING_ROUND_START_MINUTE ?? 0,
+);
+const LIGHTNING_ROUND_DAY_MS = 24 * 60 * 60 * 1000;
+
+function expectedLightningRoundWindow(eventId: unknown) {
+  if (typeof eventId !== "string" || !/^lightning-\d{4}-\d{2}-\d{2}$/.test(eventId)) return null;
+  const dateText = eventId.slice("lightning-".length);
+  const date = new Date(`${dateText}T00:00:00.000Z`);
+  if (
+    !Number.isFinite(date.getTime())
+    || date.toISOString().slice(0, 10) !== dateText
+    || date.getUTCDay() !== 6
+    || !Number.isInteger(LIGHTNING_ROUND_START_HOUR)
+    || LIGHTNING_ROUND_START_HOUR < 0
+    || LIGHTNING_ROUND_START_HOUR > 23
+    || !Number.isInteger(LIGHTNING_ROUND_START_MINUTE)
+    || LIGHTNING_ROUND_START_MINUTE < 0
+    || LIGHTNING_ROUND_START_MINUTE > 59
+  ) return null;
+  const startAtMs = zonedLocalToUtc(
+    date.getUTCFullYear(),
+    date.getUTCMonth() + 1,
+    date.getUTCDate(),
+    LIGHTNING_ROUND_START_HOUR,
+    LIGHTNING_ROUND_START_MINUTE,
+    LIGHTNING_ROUND_TIME_ZONE,
+  );
+  return { startAtMs, endAtMs: startAtMs + LIGHTNING_ROUND_DAY_MS };
+}
+
 function expectedEventArenaWindow(eventId: unknown) {
   if (typeof eventId !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(eventId)) return null;
   const [year, month, day] = eventId.split("-").map(Number);
@@ -143,7 +223,22 @@ function expectedEventArenaWindow(eventId: unknown) {
   return { startAtMs: expectedStart, endAtMs: expectedEnd };
 }
 
+function expectedScheduledEventWindow(eventId: unknown) {
+  return expectedLightningRoundWindow(eventId) ?? expectedEventArenaWindow(eventId);
+}
+
 export function expectedEventArenaConfiguration(eventId: string): EventArenaConfiguration | null {
+  const lightningWindow = expectedLightningRoundWindow(eventId);
+  if (lightningWindow) {
+    return {
+      eventId,
+      eventType: "lightning-round",
+      artworkId: "lightning-round-arena",
+      startingBalance: 100_000,
+      rankingDirection: "highest-return",
+      ...lightningWindow,
+    };
+  }
   const window = expectedEventArenaWindow(eventId);
   if (!window) return null;
   const [year, month, day] = eventId.split("-").map(Number);
@@ -163,6 +258,20 @@ export function expectedEventArenaConfiguration(eventId: string): EventArenaConf
     rankingDirection: isBearMarket ? "lowest-return" : "highest-return",
     ...window,
   };
+}
+
+export function getLightningRoundScheduleIds(nowMs = Date.now()): string[] {
+  const local = zonedParts(nowMs, LIGHTNING_ROUND_TIME_ZONE);
+  const localSerial = Math.floor(Date.UTC(local.year, local.month - 1, local.day) / DAY_MS);
+  const saturdaySerial = localSerial - ((new Date(localSerial * DAY_MS).getUTCDay() - 6 + 7) % 7);
+  const saturday = new Date(saturdaySerial * DAY_MS);
+  const firstId = `lightning-${saturday.toISOString().slice(0, 10)}`;
+  const firstWindow = expectedLightningRoundWindow(firstId);
+  const selectedSerial = firstWindow && nowMs >= firstWindow.endAtMs ? saturdaySerial + 7 : saturdaySerial;
+  return [0, 7].map((offset) => {
+    const date = new Date((selectedSerial + offset) * DAY_MS);
+    return `lightning-${date.toISOString().slice(0, 10)}`;
+  });
 }
 
 function savedEventArenaConfiguration(row: any, expected: EventArenaConfiguration): EventArenaConfiguration | null {
@@ -234,7 +343,19 @@ async function ensureEventArenaConfiguration(
   return savedEventArenaConfiguration(row, expected);
 }
 
-/** Only accept the scheduled biweekly Monday-to-Friday Event Arena windows. */
+export async function prepareLightningRoundEvents(
+  db: EventArenaDatabase,
+  nowMs = Date.now(),
+): Promise<EventArenaConfiguration[]> {
+  const eventIds = getLightningRoundScheduleIds(nowMs);
+  const events = await Promise.all(eventIds.map((eventId) => ensureEventArenaConfiguration(db, eventId)));
+  if (events.some((event) => !event)) {
+    throw new Error("A Lightning Round schedule conflicts with a saved event.");
+  }
+  return events as EventArenaConfiguration[];
+}
+
+/** Accept only the independent weekly Lightning Round and regular scheduled windows. */
 export function isValidEventArenaWindow(
   eventId: unknown,
   startAtMs: unknown,
@@ -246,7 +367,7 @@ export function isValidEventArenaWindow(
     || typeof endAtMs !== "number"
     || !Number.isFinite(endAtMs)
   ) return false;
-  const expected = expectedEventArenaWindow(eventId);
+  const expected = expectedScheduledEventWindow(eventId);
   return !!expected && startAtMs === expected.startAtMs && endAtMs === expected.endAtMs;
 }
 
@@ -292,8 +413,11 @@ function parseSubmission(body: unknown): EventSubmission | null {
     || (eventType !== undefined
       && eventType !== "event-arena"
       && eventType !== "green-bull-championship"
-      && eventType !== "bear-market-mayhem")
-    || (artworkId !== undefined && !EVENT_ARTWORK_IDS.includes(artworkId as typeof EVENT_ARTWORK_IDS[number]))
+      && eventType !== "bear-market-mayhem"
+      && eventType !== "lightning-round")
+    || (artworkId !== undefined
+      && !EVENT_ARTWORK_IDS.includes(artworkId as typeof EVENT_ARTWORK_IDS[number])
+      && artworkId !== "lightning-round-arena")
     || (startingBalance !== undefined && (typeof startingBalance !== "number"
       || !Number.isFinite(startingBalance) || startingBalance <= 0))
     || (rankingDirection !== undefined
@@ -482,6 +606,15 @@ export function createEventArenaRouter(
 ) {
   const router = Router();
 
+  router.post("/event-arena/lightning-round/prepare", requireSchema, async (_req: any, res: any) => {
+    try {
+      const events = await prepareLightningRoundEvents(db, now());
+      res.json({ events });
+    } catch {
+      res.status(500).json({ error: "Could not prepare the upcoming Lightning Round events." });
+    }
+  });
+
   router.post("/event-arena/:eventId/config", requireSchema, async (req: any, res: any) => {
     const expected = expectedEventArenaConfiguration(req.params.eventId);
     if (!expected) {
@@ -545,7 +678,7 @@ export function createEventArenaRouter(
   });
 
   router.get("/event-arena/:eventId/leaderboard", requireSchema, async (req: any, res: any) => {
-    const expectedWindow = expectedEventArenaWindow(req.params.eventId);
+    const expectedWindow = expectedScheduledEventWindow(req.params.eventId);
     if (!expectedWindow) {
       res.status(400).json({ error: "A scheduled Event Arena window is required." });
       return;
@@ -587,7 +720,7 @@ export function createEventArenaRouter(
   });
 
   router.get("/event-arena/:eventId/leaderboard/history", requireSchema, async (req: any, res: any) => {
-    const expectedWindow = expectedEventArenaWindow(req.params.eventId);
+    const expectedWindow = expectedScheduledEventWindow(req.params.eventId);
     const requestingInstallationId = req.get("x-event-arena-installation-id");
     if (!expectedWindow || !validInstallationId(requestingInstallationId)) {
       res.status(400).json({ error: "A scheduled event and valid installation ID are required." });
@@ -798,7 +931,7 @@ export function createEventArenaRouter(
   });
 
   router.delete("/event-arena/:eventId/leaderboard", requireSchema, async (req: any, res: any) => {
-    if (!expectedEventArenaWindow(req.params.eventId) || !validInstallationId(req.query.installationId)) {
+    if (!expectedScheduledEventWindow(req.params.eventId) || !validInstallationId(req.query.installationId)) {
       res.status(400).json({ error: "A valid event and installation ID are required." });
       return;
     }

@@ -28,18 +28,22 @@ export const GetEventArenaLeaderboardWeeksResponse = zod.object({
 /**
  * @summary Save or retrieve the immutable configuration for a scheduled event
  */
+export const ensureEventArenaConfigurationPathEventIdRegExp = new RegExp('^(lightning-)?\\d{4}-\\d{2}-\\d{2}$');
+
+
 export const EnsureEventArenaConfigurationParams = zod.object({
-  "eventId": zod.date().describe('Scheduled Event Arena event ID.')
+  "eventId": zod.coerce.string().regex(ensureEventArenaConfigurationPathEventIdRegExp).describe('Regular scheduled event date or a prefixed Lightning Round Saturday.')
 })
 
+export const ensureEventArenaConfigurationResponseEventIdRegExp = new RegExp('^(lightning-)?\\d{4}-\\d{2}-\\d{2}$');
 export const ensureEventArenaConfigurationResponseStartingBalanceExclusiveMin = 0;
 
 
 
 export const EnsureEventArenaConfigurationResponse = zod.object({
-  "eventId": zod.coerce.date(),
-  "eventType": zod.enum(['event-arena', 'green-bull-championship', 'bear-market-mayhem']),
-  "artworkId": zod.enum(['stadium', 'neon-nightclub', 'mountain-summit', 'red-showdown', 'green-stock-exchange']),
+  "eventId": zod.string().regex(ensureEventArenaConfigurationResponseEventIdRegExp),
+  "eventType": zod.enum(['event-arena', 'green-bull-championship', 'bear-market-mayhem', 'lightning-round']),
+  "artworkId": zod.enum(['stadium', 'neon-nightclub', 'mountain-summit', 'red-showdown', 'green-stock-exchange', 'lightning-round-arena']),
   "startingBalance": zod.number().gt(ensureEventArenaConfigurationResponseStartingBalanceExclusiveMin),
   "rankingDirection": zod.enum(['highest-return', 'lowest-return']),
   "startAtMs": zod.number(),
@@ -48,11 +52,37 @@ export const EnsureEventArenaConfigurationResponse = zod.object({
 
 
 /**
+ * @summary Prepare the current and upcoming weekly Lightning Round events
+ */
+export const prepareLightningRoundEventsResponseEventsItemEventIdRegExp = new RegExp('^(lightning-)?\\d{4}-\\d{2}-\\d{2}$');
+export const prepareLightningRoundEventsResponseEventsItemStartingBalanceExclusiveMin = 0;
+
+export const prepareLightningRoundEventsResponseEventsMin = 2;
+
+
+
+export const PrepareLightningRoundEventsResponse = zod.object({
+  "events": zod.array(zod.object({
+  "eventId": zod.string().regex(prepareLightningRoundEventsResponseEventsItemEventIdRegExp),
+  "eventType": zod.enum(['event-arena', 'green-bull-championship', 'bear-market-mayhem', 'lightning-round']),
+  "artworkId": zod.enum(['stadium', 'neon-nightclub', 'mountain-summit', 'red-showdown', 'green-stock-exchange', 'lightning-round-arena']),
+  "startingBalance": zod.number().gt(prepareLightningRoundEventsResponseEventsItemStartingBalanceExclusiveMin),
+  "rankingDirection": zod.enum(['highest-return', 'lowest-return']),
+  "startAtMs": zod.number(),
+  "endAtMs": zod.number()
+})).min(prepareLightningRoundEventsResponseEventsMin)
+})
+
+
+/**
  * Scores are self-reported. Ranking uses percentage return calculated from event equity and starting equity. Equal returns sort by most recently updated, then alias alphabetically, then a stable private participant identifier.
  * @summary Get active, opted-in scores for one Event Arena week
  */
+export const getEventArenaLeaderboardPathEventIdRegExp = new RegExp('^(lightning-)?\\d{4}-\\d{2}-\\d{2}$');
+
+
 export const GetEventArenaLeaderboardParams = zod.object({
-  "eventId": zod.date().describe('Scheduled Event Arena event ID; results never include other events.')
+  "eventId": zod.coerce.string().regex(getEventArenaLeaderboardPathEventIdRegExp).describe('Regular scheduled event date or a prefixed Lightning Round Saturday; results never include other events.')
 })
 
 export const getEventArenaLeaderboardHeaderXEventArenaInstallationIdMin = 12;
@@ -100,8 +130,11 @@ export const GetEventArenaLeaderboardResponse = zod.object({
 /**
  * @summary Submit or update an anonymous Event Arena score
  */
+export const submitEventArenaScorePathEventIdRegExp = new RegExp('^(lightning-)?\\d{4}-\\d{2}-\\d{2}$');
+
+
 export const SubmitEventArenaScoreParams = zod.object({
-  "eventId": zod.date().describe('Scheduled Event Arena event ID; results never include other events.')
+  "eventId": zod.coerce.string().regex(submitEventArenaScorePathEventIdRegExp).describe('Regular scheduled event date or a prefixed Lightning Round Saturday; results never include other events.')
 })
 
 export const submitEventArenaScoreBodyInstallationIdMin = 12;
@@ -135,8 +168,8 @@ export const submitEventArenaScoreBodyHoldingsMax = 100;
 export const SubmitEventArenaScoreBody = zod.object({
   "installationId": zod.string().min(submitEventArenaScoreBodyInstallationIdMin).max(submitEventArenaScoreBodyInstallationIdMax).describe('Anonymous device identifier; never returned by leaderboard reads.'),
   "alias": zod.string().min(1).max(submitEventArenaScoreBodyAliasMax),
-  "eventType": zod.enum(['event-arena', 'green-bull-championship', 'bear-market-mayhem']),
-  "artworkId": zod.enum(['stadium', 'neon-nightclub', 'mountain-summit', 'red-showdown', 'green-stock-exchange']),
+  "eventType": zod.enum(['event-arena', 'green-bull-championship', 'bear-market-mayhem', 'lightning-round']),
+  "artworkId": zod.enum(['stadium', 'neon-nightclub', 'mountain-summit', 'red-showdown', 'green-stock-exchange', 'lightning-round-arena']),
   "startingBalance": zod.number().gt(submitEventArenaScoreBodyStartingBalanceExclusiveMin),
   "rankingDirection": zod.enum(['highest-return', 'lowest-return']),
   "cashBalance": zod.number().min(submitEventArenaScoreBodyCashBalanceMin).optional().describe('Self-reported cash in the separate event account, used to reconcile transfer receipts.'),
@@ -165,8 +198,11 @@ export const SubmitEventArenaScoreResponse = zod.object({
  * Returns sampled timestamped snapshots for the requesting anonymous installation only. Scores and ranks are self-reported and not independently verified.
  * @summary Get the requesting participant's Event Arena rank history
  */
+export const getEventArenaLeaderboardHistoryPathEventIdRegExp = new RegExp('^(lightning-)?\\d{4}-\\d{2}-\\d{2}$');
+
+
 export const GetEventArenaLeaderboardHistoryParams = zod.object({
-  "eventId": zod.date().describe('Scheduled Event Arena event ID; history never includes other events.')
+  "eventId": zod.coerce.string().regex(getEventArenaLeaderboardHistoryPathEventIdRegExp).describe('Regular scheduled event date or a prefixed Lightning Round Saturday; history never includes other events.')
 })
 
 export const getEventArenaLeaderboardHistoryHeaderXEventArenaInstallationIdMin = 12;

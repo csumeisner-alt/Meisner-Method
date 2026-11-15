@@ -16,6 +16,10 @@ import {
   PAPER_CHALLENGE_ARTWORK_IDS,
   getPaperChallengeReminders,
   getPaperChallengeWindow,
+  getLightningRoundWindow,
+  LIGHTNING_ROUND_STARTING_BALANCE,
+  isLightningRoundEventId,
+  isPaperChallengeAccountId,
   loadPaperChallengeStore,
   sortPaperChallengeHistory,
   type PaperChallengeSummary,
@@ -260,10 +264,128 @@ test('event accounts are created at the scheduled start, including late result r
   assert.equal(shouldEnsurePaperChallengeAccount({ ...pendingEnrollment, startEquity: 100_000 }, eventStartAtMs - 1), true);
 });
 
+test('Lightning Round owns a fresh account and archives independently from a concurrent regular event', () => {
+  const lightning = getLightningRoundWindow(Date.parse('2026-11-21T16:00:00.000Z'));
+  const regularEnrollment = {
+    eventId: '2026-11-16',
+    eventType: 'event-arena' as const,
+    artworkId: 'stadium' as const,
+    startingBalance: 100_000,
+    rankingDirection: 'highest-return' as const,
+    eventStartAtMs: Date.parse('2026-11-16T14:30:00.000Z'),
+    eventEndAtMs: Date.parse('2026-11-20T21:00:00.000Z'),
+    joinedAtMs: Date.parse('2026-11-16T14:30:00.000Z'),
+    accountId: 'paper-event:2026-11-16',
+    accountName: 'Event Portfolio',
+    startEquity: 100_000,
+  };
+  const lightningEnrollment = {
+    eventId: lightning.id,
+    eventType: 'lightning-round' as const,
+    artworkId: 'lightning-round-arena' as const,
+    startingBalance: 100_000,
+    rankingDirection: 'highest-return' as const,
+    eventStartAtMs: lightning.startAtMs,
+    eventEndAtMs: lightning.endAtMs,
+    joinedAtMs: lightning.startAtMs,
+    accountId: `paper-lightning:${lightning.id}`,
+    accountName: 'Lightning Round',
+    startEquity: 100_000,
+  };
+  const existingRegularAccount = {
+    id: regularEnrollment.accountId,
+    name: regularEnrollment.accountName,
+    cash: 97_000,
+    createdAt: new Date(regularEnrollment.joinedAtMs).toISOString(),
+  };
+  const initialized = ensurePaperChallengeAccount(lightningEnrollment, {
+    accounts: [existingRegularAccount],
+    positions: [{
+      id: 'regular-position',
+      accountId: regularEnrollment.accountId,
+      symbol: 'AAPL',
+      companyName: 'Apple',
+      shares: 30,
+      avgCost: 100,
+      openedAt: '2026-11-17T15:00:00.000Z',
+      dividendYield: 0,
+      sector: 'Technology',
+    }],
+    transactions: [],
+    orders: [],
+    lots: [],
+  });
+  assert.equal(initialized.accounts.find((item) => item.id === lightningEnrollment.accountId)?.cash, 100_000);
+  assert.equal(initialized.accounts.find((item) => item.id === regularEnrollment.accountId)?.cash, 97_000);
+  assert.equal(initialized.positions.length, 1);
+  assert.equal(initialized.positions[0]?.accountId, regularEnrollment.accountId);
+
+  const lightningSummary = buildPaperChallengeSummary(
+    lightningEnrollment,
+    103_000,
+    [],
+    lightning.endAtMs,
+    { finalRank: 2 },
+  );
+  const finalized = finalizePaperChallengeStore({
+    enrollment: regularEnrollment,
+    lightningEnrollment,
+    history: [],
+  }, lightningSummary, lightning.endAtMs);
+  assert.equal(finalized.enrollment?.eventId, regularEnrollment.eventId);
+  assert.equal(finalized.lightningEnrollment, null);
+  assert.equal(finalized.history[0]?.eventType, 'lightning-round');
+  assert.equal(finalized.history[0]?.eventId, lightning.id);
+  assert.equal(finalized.history[0]?.artworkId, 'lightning-round-arena');
+  assert.equal(finalized.history[0]?.finalRank, 2);
+  assert.equal(finalized.history[0]?.returnPercent, 3);
+
+  const normalized = normalizePaperChallengeStore(finalized);
+  assert.equal(normalized.history[0]?.startingBalance, LIGHTNING_ROUND_STARTING_BALANCE);
+  assert.equal(normalized.enrollment?.eventId, regularEnrollment.eventId);
+});
+
 test('paper event market hours follow Eastern daylight-saving time', () => {
   const event = getPaperChallengeWindow(Date.parse('2027-03-24T16:00:00.000Z'));
   assert.equal(new Date(event.startAtMs).toISOString(), '2027-03-22T13:30:00.000Z');
   assert.equal(new Date(event.endAtMs).toISOString(), '2027-03-26T20:00:00.000Z');
+});
+
+test('Lightning Round runs Saturday 9 a.m. Denver for exactly 24 elapsed hours across DST', () => {
+  const beforeStart = getLightningRoundWindow(Date.parse('2026-11-21T15:59:59.000Z'));
+  assert.equal(beforeStart.id, 'lightning-2026-11-21');
+  assert.equal(beforeStart.phase, 'upcoming');
+  assert.equal(beforeStart.startAtMs, Date.parse('2026-11-21T16:00:00.000Z'));
+
+  const active = getLightningRoundWindow(Date.parse('2026-11-21T16:00:00.000Z'));
+  assert.equal(active.phase, 'active');
+  assert.equal(active.eventType, 'lightning-round');
+  assert.equal(active.artworkId, 'lightning-round-arena');
+  assert.equal(active.startingBalance, LIGHTNING_ROUND_STARTING_BALANCE);
+  assert.equal(active.endAtMs - active.startAtMs, 24 * 60 * 60 * 1000);
+  assert.equal(getLightningRoundWindow(active.endAtMs - 1).id, active.id);
+  assert.equal(getLightningRoundWindow(active.endAtMs).id, 'lightning-2026-11-28');
+  assert.equal(getLightningRoundWindow(active.endAtMs).phase, 'upcoming');
+
+  const beforeDst = getLightningRoundWindow(Date.parse('2027-03-13T16:00:00.000Z'));
+  const afterDst = getLightningRoundWindow(Date.parse('2027-03-20T15:00:00.000Z'));
+  assert.equal(beforeDst.startAtMs, Date.parse('2027-03-13T16:00:00.000Z'));
+  assert.equal(beforeDst.endAtMs, Date.parse('2027-03-14T16:00:00.000Z'));
+  assert.equal(afterDst.startAtMs, Date.parse('2027-03-20T15:00:00.000Z'));
+  assert.equal(afterDst.endAtMs, Date.parse('2027-03-21T15:00:00.000Z'));
+
+  const configurable = getLightningRoundWindow(Date.parse('2026-11-21T18:29:59.000Z'), {
+    timeZone: 'America/Los_Angeles',
+    startHour: 10,
+    startMinute: 30,
+  });
+  assert.equal(configurable.phase, 'upcoming');
+  assert.equal(configurable.startAtMs, Date.parse('2026-11-21T18:30:00.000Z'));
+  assert.equal(isLightningRoundEventId('lightning-2026-11-21'), true);
+  assert.equal(isLightningRoundEventId('lightning-2026-11-22'), false);
+  assert.equal(isPaperChallengeAccountId('paper-lightning:lightning-2026-11-21'), true);
+  assert.equal(isPaperChallengeAccountId('paper-event:2026-11-16'), true);
+  assert.equal(isPaperChallengeAccountId('paper-strategy-1'), false);
 });
 
 test('event reminders stay limited to three per week and skip times that passed', () => {
@@ -1083,7 +1205,7 @@ test('each event gets a fresh account without inheriting earlier or orphaned eve
   const testDirectory = dirname(fileURLToPath(import.meta.url));
   const screenSource = await readFile(resolve(testDirectory, '../../app/paper.tsx'), 'utf8');
   assert.match(screenSource, /ensurePaperChallengeAccount\(enrollment/);
-  assert.match(screenSource, /eventAccountState\.positions/);
+  assert.match(screenSource, /nextState\.positions/);
 });
 
 test('expired enrollment remains saved until its event summary is finalized', async () => {

@@ -731,7 +731,9 @@ export function EventArenaScreen() {
     const text = [
       `Meisner Method · ${event.eventType === 'green-bull-championship'
         ? 'Green Bull Championship'
-        : event.eventType === 'bear-market-mayhem' ? 'Bear Market Mayhem' : 'Event Arena Results'}`,
+        : event.eventType === 'bear-market-mayhem'
+          ? 'Bear Market Mayhem'
+          : event.eventType === 'lightning-round' ? 'Lightning Round Results' : 'Event Arena Results'}`,
       dateRange(event.eventStartAtMs, event.eventEndAtMs),
       `Starting balance: ${money(event.startingBalance ?? event.startEquity)}`,
       `Ending balance: ${money(event.endEquity)}`,
@@ -805,7 +807,9 @@ export function EventArenaScreen() {
           <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 0.8, marginTop: 5 }}>
             {event.eventType === 'green-bull-championship'
               ? 'GREEN BULL CHAMPIONSHIP'
-              : event.eventType === 'bear-market-mayhem' ? 'BEAR MARKET MAYHEM' : 'EVENT ARENA'}
+              : event.eventType === 'bear-market-mayhem'
+                ? 'BEAR MARKET MAYHEM'
+                : event.eventType === 'lightning-round' ? 'LIGHTNING ROUND' : 'EVENT ARENA'}
           </Text>
           <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 18, marginTop: 5 }}>{dateRange(event.eventStartAtMs, event.eventEndAtMs)}</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 13 }}>
@@ -953,7 +957,9 @@ export function EventArenaScreen() {
           <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.7 }}>
             {event.eventType === 'green-bull-championship'
               ? 'GREEN BULL CHAMPIONSHIP'
-              : event.eventType === 'bear-market-mayhem' ? 'BEAR MARKET MAYHEM' : 'EVENT ARENA'}
+              : event.eventType === 'bear-market-mayhem'
+                ? 'BEAR MARKET MAYHEM'
+                : event.eventType === 'lightning-round' ? 'LIGHTNING ROUND' : 'EVENT ARENA'}
           </Text>
           <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 0.7 }}>
             {sortMode === 'top' ? `RANK #${index + 1} · ` : ''}{dateRange(event.eventStartAtMs, event.eventEndAtMs)}
@@ -1236,6 +1242,15 @@ export function EventArenaScreen() {
             <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 18 }}>Event Arena</Text>
             <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 2 }}>Competition hub</Text>
           </View>
+          <TouchableOpacity
+            testID="open-lightning-round"
+            accessibilityRole="button"
+            accessibilityLabel="Open weekly Lightning Round"
+            onPress={() => router.push('/lightning-round')}
+            style={{ minWidth: 42, minHeight: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}
+          >
+            <Feather name="zap" size={17} color={colors.primary} />
+          </TouchableOpacity>
           <Text
             testID="event-arena-header-alias"
             accessibilityLabel={participantAlias ? `Competition alias ${participantAlias}` : 'Meisner Method'}

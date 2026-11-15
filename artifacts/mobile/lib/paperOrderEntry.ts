@@ -128,3 +128,15 @@ export function formatProviderMarketSession(session: string | undefined): string
   };
   return labels[normalized] ?? null;
 }
+
+export function formatProviderPriceSource(source: string | undefined): string | null {
+  if (!source) return null;
+  const normalized = source.toLowerCase().replace(/[\s-]+/g, '_');
+  if (normalized.includes('previous_close') || normalized.includes('prev_close')) return 'Previous close';
+  if (normalized.includes('pre_market') || normalized.includes('premarket')) return 'Pre-market price';
+  if (normalized.includes('after_hours') || normalized.includes('afterhours') || normalized.includes('post_market')) {
+    return 'After-hours price';
+  }
+  if (normalized.includes('regular')) return 'Regular-session price';
+  return null;
+}

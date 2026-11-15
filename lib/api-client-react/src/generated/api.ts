@@ -39,6 +39,7 @@ import type {
   HeatMapInstrumentSuggestion,
   HeatMapQuote,
   HeatMapResponse,
+  LightningRoundPreparationResponse,
   MarketInstrumentInfo,
   MarketPulseResponse,
   PortfolioQuoteBatch,
@@ -223,6 +224,77 @@ export const useEnsureEventArenaConfiguration = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getEnsureEventArenaConfigurationMutationOptions(options));
+    }
+
+export const getPrepareLightningRoundEventsUrl = () => {
+
+
+
+
+  return `/api/event-arena/lightning-round/prepare`
+}
+
+/**
+ * @summary Prepare the current and upcoming weekly Lightning Round events
+ */
+export const prepareLightningRoundEvents = async ( options?: RequestInit): Promise<LightningRoundPreparationResponse> => {
+
+  return customFetch<LightningRoundPreparationResponse>(getPrepareLightningRoundEventsUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getPrepareLightningRoundEventsMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof prepareLightningRoundEvents>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof prepareLightningRoundEvents>>, TError,void, TContext> => {
+
+const mutationKey = ['prepareLightningRoundEvents'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof prepareLightningRoundEvents>>, void> = () => {
+
+
+          return  prepareLightningRoundEvents(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PrepareLightningRoundEventsMutationResult = NonNullable<Awaited<ReturnType<typeof prepareLightningRoundEvents>>>
+
+    export type PrepareLightningRoundEventsMutationError = ErrorType<void>
+
+    /**
+ * @summary Prepare the current and upcoming weekly Lightning Round events
+ */
+export const usePrepareLightningRoundEvents = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof prepareLightningRoundEvents>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof prepareLightningRoundEvents>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getPrepareLightningRoundEventsMutationOptions(options));
     }
 
 export const getGetEventArenaLeaderboardUrl = (eventId: string,) => {

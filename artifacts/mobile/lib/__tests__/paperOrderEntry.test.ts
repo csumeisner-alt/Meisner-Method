@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import {
   calculateSharesForBuyingPower,
   formatProviderMarketSession,
+  formatProviderPriceSource,
   getMarketOrderQuoteError,
   getAvailableSellShares,
   getOrderEstimatePrice,
@@ -69,6 +70,14 @@ test('provider sessions display only recognized states', () => {
   assert.equal(formatProviderMarketSession('PRE'), 'Pre-market');
   assert.equal(formatProviderMarketSession('REGULAR'), 'Regular session');
   assert.equal(formatProviderMarketSession('unknown'), null);
+});
+
+test('price-source labels distinguish previous close and closed-market quotes', () => {
+  assert.equal(formatProviderPriceSource('previous_close'), 'Previous close');
+  assert.equal(formatProviderPriceSource('yahoo-chart-previous-close'), 'Previous close');
+  assert.equal(formatProviderPriceSource('premarket'), 'Pre-market price');
+  assert.equal(formatProviderPriceSource('after_hours'), 'After-hours price');
+  assert.equal(formatProviderPriceSource('unknown'), null);
 });
 
 test('sell quantity shortcuts respect the selected account and pending share reservations', () => {

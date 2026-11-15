@@ -9,7 +9,16 @@ import type {
 
 export const PAPER_CHALLENGE_STORAGE_KEY = '@stocksense/paper_events_v1';
 export const PAPER_CHALLENGE_STARTING_BALANCE = 100_000;
+export const LIGHTNING_ROUND_STARTING_BALANCE = 100_000;
 export const GREEN_BULL_STARTING_BALANCE = 500_000;
+export const LIGHTNING_ROUND_TIME_ZONE =
+  process.env.EXPO_PUBLIC_LIGHTNING_ROUND_TIME_ZONE || 'America/Denver';
+export const LIGHTNING_ROUND_START_HOUR = Number(
+  process.env.EXPO_PUBLIC_LIGHTNING_ROUND_START_HOUR ?? 9,
+);
+export const LIGHTNING_ROUND_START_MINUTE = Number(
+  process.env.EXPO_PUBLIC_LIGHTNING_ROUND_START_MINUTE ?? 0,
+);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const EVENT_ANCHOR_DAY = Math.floor(Date.UTC(2026, 10, 16) / DAY_MS);
@@ -22,12 +31,16 @@ export const PAPER_CHALLENGE_ARTWORK_IDS = [
   'red-showdown',
   'green-stock-exchange',
 ] as const;
-export type PaperChallengeArtworkId = typeof PAPER_CHALLENGE_ARTWORK_IDS[number];
+export const LIGHTNING_ROUND_ARTWORK_ID = 'lightning-round-arena' as const;
+export type PaperChallengeArtworkId =
+  | typeof PAPER_CHALLENGE_ARTWORK_IDS[number]
+  | typeof LIGHTNING_ROUND_ARTWORK_ID;
 export const LEGACY_PAPER_CHALLENGE_ARTWORK_ID: PaperChallengeArtworkId = 'stadium';
 export type PaperChallengeEventType =
   | 'event-arena'
   | 'green-bull-championship'
-  | 'bear-market-mayhem';
+  | 'bear-market-mayhem'
+  | 'lightning-round';
 export type PaperChallengeRankingDirection = 'highest-return' | 'lowest-return';
 
 export type PaperChallengeConfiguration = {
@@ -57,6 +70,14 @@ export function getPaperChallengeConfiguration(
       rankingDirection: 'lowest-return',
     };
   }
+  if (artworkId === 'lightning-round-arena') {
+    return {
+      eventType: 'lightning-round',
+      artworkId,
+      startingBalance: LIGHTNING_ROUND_STARTING_BALANCE,
+      rankingDirection: 'highest-return',
+    };
+  }
   return {
         eventType: 'event-arena',
         artworkId,
@@ -69,7 +90,7 @@ export function getPaperChallengeConfiguration(
 export function isPaperChallengeConfiguration(value: unknown): value is PaperChallengeConfiguration {
   if (!value || typeof value !== 'object') return false;
   const configuration = value as Partial<PaperChallengeConfiguration>;
-  if (!PAPER_CHALLENGE_ARTWORK_IDS.includes(configuration.artworkId as PaperChallengeArtworkId)) return false;
+  if (!isPaperChallengeArtworkId(configuration.artworkId)) return false;
   const expected = getPaperChallengeConfiguration(configuration.artworkId as PaperChallengeArtworkId);
   if (
     configuration.eventType === expected.eventType
@@ -85,9 +106,12 @@ export function isPaperChallengeConfiguration(value: unknown): value is PaperCha
 }
 
 export function normalizePaperChallengeArtworkId(value: unknown): PaperChallengeArtworkId {
-  return PAPER_CHALLENGE_ARTWORK_IDS.includes(value as PaperChallengeArtworkId)
-    ? value as PaperChallengeArtworkId
-    : LEGACY_PAPER_CHALLENGE_ARTWORK_ID;
+  return isPaperChallengeArtworkId(value) ? value : LEGACY_PAPER_CHALLENGE_ARTWORK_ID;
+}
+
+function isPaperChallengeArtworkId(value: unknown): value is PaperChallengeArtworkId {
+  return value === LIGHTNING_ROUND_ARTWORK_ID
+    || PAPER_CHALLENGE_ARTWORK_IDS.includes(value as typeof PAPER_CHALLENGE_ARTWORK_IDS[number]);
 }
 
 /**
@@ -189,6 +213,8 @@ export const PAPER_CHALLENGE_MILESTONE_LABELS: Record<PaperChallengeMilestoneId,
 
 export type PaperChallengeStore = {
   enrollment: PaperChallengeEnrollment | null;
+  /** Separate slot allows Lightning Round and a regular event to overlap. */
+  lightningEnrollment?: PaperChallengeEnrollment | null;
   history: PaperChallengeSummary[];
 };
 
@@ -216,7 +242,8 @@ export function normalizePaperChallengeStore(store: PaperChallengeStore): PaperC
     ...event
   }) => {
     const artworkId = normalizePaperChallengeArtworkId(event.artworkId);
-    const savedEventType = eventType === 'green-bull-championship'
+    const savedEventType = eventType === 'lightning-round'
+      || eventType === 'green-bull-championship'
       || eventType === 'bear-market-mayhem'
       || eventType === 'event-arena'
       ? eventType
@@ -269,7 +296,8 @@ export function normalizePaperChallengeStore(store: PaperChallengeStore): PaperC
   const enrollment = store.enrollment
     ? (() => {
         const artworkId = normalizePaperChallengeArtworkId(store.enrollment.artworkId);
-        const eventType: PaperChallengeEventType = store.enrollment.eventType === 'green-bull-championship'
+        const eventType: PaperChallengeEventType = store.enrollment.eventType === 'lightning-round'
+          || store.enrollment.eventType === 'green-bull-championship'
           || store.enrollment.eventType === 'bear-market-mayhem'
           ? store.enrollment.eventType
           : 'event-arena';
@@ -296,8 +324,18 @@ export function normalizePaperChallengeStore(store: PaperChallengeStore): PaperC
         };
       })()
     : null;
+  const lightningEnrollment = store.lightningEnrollment
+    ? {
+        ...store.lightningEnrollment,
+        artworkId: normalizePaperChallengeArtworkId(store.lightningEnrollment.artworkId),
+        eventType: 'lightning-round' as const,
+        startingBalance: LIGHTNING_ROUND_STARTING_BALANCE,
+        rankingDirection: 'highest-return' as const,
+      }
+    : null;
   return {
     enrollment,
+    ...(lightningEnrollment ? { lightningEnrollment } : {}),
     history: sortPaperChallengeHistory(history, 'date'),
   };
 }
@@ -310,6 +348,7 @@ function parsePaperChallengeStore(raw: string | null): PaperChallengeStore {
   }
   return normalizePaperChallengeStore({
     enrollment: parsed.enrollment ?? null,
+    lightningEnrollment: parsed.lightningEnrollment ?? null,
     history: parsed.history ?? [],
   } as PaperChallengeStore);
 }
@@ -448,14 +487,17 @@ export function finalizePaperChallengeStore(
   summary: PaperChallengeSummary,
   nowMs = Date.now(),
 ): PaperChallengeStore {
+  const lightning = isLightningRoundEventId(summary.eventId);
+  const enrollment = lightning ? store.lightningEnrollment : store.enrollment;
   if (
-    store.enrollment?.eventId !== summary.eventId
-    || nowMs < store.enrollment.eventEndAtMs
+    enrollment?.eventId !== summary.eventId
+    || nowMs < enrollment.eventEndAtMs
   ) return store;
 
   const existingSummary = store.history.find((event) => event.eventId === summary.eventId);
   return {
-    enrollment: null,
+    ...store,
+    ...(lightning ? { lightningEnrollment: null } : { enrollment: null }),
     history: [
       existingSummary ?? summary,
       ...store.history.filter((event) => event.eventId !== summary.eventId),
@@ -479,7 +521,8 @@ export function withdrawUpcomingPaperChallenge(
   eventId: string,
   nowMs = Date.now(),
 ): PaperChallengeStore {
-  const enrollment = store.enrollment;
+  const lightning = isLightningRoundEventId(eventId);
+  const enrollment = lightning ? store.lightningEnrollment : store.enrollment;
   if (
     !enrollment
     || enrollment.eventId !== eventId
@@ -487,7 +530,10 @@ export function withdrawUpcomingPaperChallenge(
     || nowMs >= enrollment.eventStartAtMs
   ) return store;
 
-  return { enrollment: null, history: store.history };
+  return {
+    ...store,
+    ...(lightning ? { lightningEnrollment: null } : { enrollment: null }),
+  };
 }
 
 export type PaperChallengeReminder = {
@@ -559,6 +605,148 @@ export function getPaperChallengeWindow(nowMs = Date.now()): PaperChallengeWindo
     phase: nowMs < startAtMs ? 'upcoming' : nowMs <= endAtMs ? 'active' : 'ended',
     ...getPaperChallengeConfiguration(getPaperChallengeArtworkId(dateStringFromSerial(startSerial))),
   };
+}
+
+function zonedParts(
+  timestamp: number,
+  timeZone: string,
+): { year: number; month: number; day: number; hour: number; minute: number; weekday: number } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(timestamp));
+  const value = (type: string) => parts.find((part) => part.type === type)?.value ?? '';
+  return {
+    year: Number(value('year')),
+    month: Number(value('month')),
+    day: Number(value('day')),
+    hour: Number(value('hour')),
+    minute: Number(value('minute')),
+    weekday: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(value('weekday')),
+  };
+}
+
+function zonedLocalToUtc(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  timeZone: string,
+): number {
+  const targetAsUtc = Date.UTC(year, month - 1, day, hour, minute);
+  let candidate = targetAsUtc;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const local = zonedParts(candidate, timeZone);
+    candidate += targetAsUtc - Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute);
+  }
+  const resolved = zonedParts(candidate, timeZone);
+  if (
+    resolved.year !== year || resolved.month !== month || resolved.day !== day
+    || resolved.hour !== hour || resolved.minute !== minute
+  ) throw new Error(`The scheduled local time does not exist in ${timeZone}.`);
+  return candidate;
+}
+
+function localDateSerial(year: number, month: number, day: number): number {
+  return Math.floor(Date.UTC(year, month - 1, day) / DAY_MS);
+}
+
+function serialDate(serial: number): { year: number; month: number; day: number } {
+  const date = new Date(serial * DAY_MS);
+  return { year: date.getUTCFullYear(), month: date.getUTCMonth() + 1, day: date.getUTCDate() };
+}
+
+export function isLightningRoundEventId(eventId: unknown): eventId is string {
+  if (typeof eventId !== 'string' || !/^lightning-\d{4}-\d{2}-\d{2}$/.test(eventId)) return false;
+  const dateText = eventId.slice('lightning-'.length);
+  const date = new Date(`${dateText}T00:00:00.000Z`);
+  return Number.isFinite(date.getTime())
+    && date.toISOString().slice(0, 10) === dateText
+    && date.getUTCDay() === 6;
+}
+
+export function isPaperChallengeAccountId(accountId: string): boolean {
+  return accountId.startsWith('paper-event:') || accountId.startsWith('paper-lightning:');
+}
+
+function lightningWindowForDate(
+  date: { year: number; month: number; day: number },
+  timeZone: string,
+  startHour: number,
+  startMinute: number,
+  phase: 'upcoming' | 'active',
+): PaperChallengeWindow {
+  const startAtMs = zonedLocalToUtc(
+    date.year, date.month, date.day, startHour, startMinute, timeZone,
+  );
+  const localDate = `${date.year.toString().padStart(4, '0')}-${String(date.month).padStart(2, '0')}-${String(date.day).padStart(2, '0')}`;
+  return {
+    id: `lightning-${localDate}`,
+    startAtMs,
+    endAtMs: startAtMs + DAY_MS,
+    phase,
+    ...getPaperChallengeConfiguration('lightning-round-arena'),
+  };
+}
+
+/** Independent weekly Saturday championship; its duration is exactly 24 elapsed hours. */
+export function getLightningRoundWindow(
+  nowMs = Date.now(),
+  options: { timeZone?: string; startHour?: number; startMinute?: number } = {},
+): PaperChallengeWindow {
+  const timeZone = options.timeZone ?? LIGHTNING_ROUND_TIME_ZONE;
+  const startHour = options.startHour ?? LIGHTNING_ROUND_START_HOUR;
+  const startMinute = options.startMinute ?? LIGHTNING_ROUND_START_MINUTE;
+  if (
+    !Number.isInteger(startHour) || startHour < 0 || startHour > 23
+    || !Number.isInteger(startMinute) || startMinute < 0 || startMinute > 59
+  ) throw new Error('Lightning Round start time is invalid.');
+  const localNow = zonedParts(nowMs, timeZone);
+  const daySerial = localDateSerial(localNow.year, localNow.month, localNow.day);
+  const saturdaySerial = daySerial - ((localNow.weekday - 6 + 7) % 7);
+  const saturday = serialDate(saturdaySerial);
+  const thisWindow = lightningWindowForDate(saturday, timeZone, startHour, startMinute, 'active');
+
+  if (nowMs < thisWindow.startAtMs) {
+    return lightningWindowForDate(saturday, timeZone, startHour, startMinute, 'upcoming');
+  }
+  if (nowMs < thisWindow.endAtMs) return thisWindow;
+  return lightningWindowForDate(
+    serialDate(saturdaySerial + 7),
+    timeZone,
+    startHour,
+    startMinute,
+    'upcoming',
+  );
+}
+
+export function getPaperChallengeEnrollments(store: PaperChallengeStore): PaperChallengeEnrollment[] {
+  return [store.enrollment, store.lightningEnrollment ?? null]
+    .filter((enrollment): enrollment is PaperChallengeEnrollment => !!enrollment);
+}
+
+export function getPaperChallengeEnrollmentForAccount(
+  store: PaperChallengeStore,
+  accountId: string,
+): PaperChallengeEnrollment | null {
+  return getPaperChallengeEnrollments(store).find((enrollment) => enrollment.accountId === accountId) ?? null;
+}
+
+export function updatePaperChallengeEnrollment(
+  store: PaperChallengeStore,
+  eventType: PaperChallengeEventType,
+  update: (enrollment: PaperChallengeEnrollment) => PaperChallengeEnrollment,
+): PaperChallengeStore {
+  const key = eventType === 'lightning-round' ? 'lightningEnrollment' : 'enrollment';
+  const enrollment = store[key] ?? null;
+  return enrollment ? { ...store, [key]: update(enrollment) } : store;
 }
 
 export function getPaperChallengeReminders(nowMs = Date.now()): PaperChallengeReminder[] {

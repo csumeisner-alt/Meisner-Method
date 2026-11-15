@@ -39,10 +39,12 @@ import {
   LEGACY_PAPER_CHALLENGE_ARTWORK_ID,
   PAPER_CHALLENGE_STARTING_BALANCE,
   updatePaperChallengeStore,
+  updatePaperChallengeEnrollment,
   type PaperChallengeEventType,
   type PaperChallengeRankingDirection,
   type PaperChallengeEnrollment,
   type PaperChallengeArtworkId,
+  type PaperChallengeStore,
 } from '@/lib/paperChallenge';
 import { EVENT_ARENA_ARTWORK_SOURCES } from '@/lib/eventArenaArtwork';
 import {
@@ -73,7 +75,7 @@ const REFRESH_INTERVAL_MS = 120_000;
 const LAST_SUBMISSION_KEY_PREFIX = '@stocksense/paper_event_leaderboard_last_submit:';
 const AVERAGE_COST_FALLBACK_KEY_PREFIX = '@stocksense/paper_event_leaderboard_average_cost:';
 
-type EventWindow = {
+export type PaperChallengeLeaderboardEventWindow = {
   id: string;
   startAtMs: number;
   endAtMs: number;
@@ -104,7 +106,7 @@ type LeaderboardEntry = {
 };
 
 type Props = {
-  event: EventWindow;
+  event: PaperChallengeLeaderboardEventWindow;
   enrollment: PaperChallengeEnrollment | null;
   onEnrollmentChange: (enrollment: PaperChallengeEnrollment | null) => void;
   onRankChange?: (rank: number | null) => void;
@@ -136,11 +138,15 @@ const dateRangeLabel = (startAtMs: number, endAtMs: number) => {
   return `${start} – ${end}`;
 };
 
+function getEventEnrollment(store: PaperChallengeStore, eventType: PaperChallengeEventType) {
+  return eventType === 'lightning-round' ? store.lightningEnrollment ?? null : store.enrollment;
+}
+
 function EventArenaPodiumShareCard({
   event,
   slots,
 }: {
-  event: EventWindow;
+  event: PaperChallengeLeaderboardEventWindow;
   slots: Array<{ rank: number; entry: LeaderboardEntry | null }>;
 }) {
   const colors = useColors();
@@ -162,7 +168,9 @@ function EventArenaPodiumShareCard({
         <Text style={{ color: isBearMarketMayhem ? '#FF6670' : '#E6D8B2', fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 1.4, marginTop: 10 }}>
           {isBearMarketMayhem
             ? 'BEAR MARKET MAYHEM'
-            : event.eventType === 'green-bull-championship' ? 'GREEN BULL CHAMPIONSHIP' : 'EVENT ARENA CHAMPIONSHIP'}
+            : event.eventType === 'lightning-round'
+              ? 'LIGHTNING ROUND'
+              : event.eventType === 'green-bull-championship' ? 'GREEN BULL CHAMPIONSHIP' : 'EVENT ARENA CHAMPIONSHIP'}
         </Text>
         {isBearMarketMayhem && (
           <Text style={{ color: '#F7DADD', fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 0.8, marginTop: 4 }}>
@@ -235,14 +243,14 @@ function EventArenaPodiumShareCard({
           </Text>
         </View>
         <Text style={{ color: '#B9BEC5', fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 1.2, marginTop: 18, textAlign: 'center' }}>
-          MEISNER METHOD · EVENT ARENA
+          {event.eventType === 'lightning-round' ? 'MEISNER METHOD · LIGHTNING ROUND' : 'MEISNER METHOD · EVENT ARENA'}
         </Text>
       </View>
     </ImageBackground>
   );
 }
 
-async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event: EventWindow) {
+async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event: PaperChallengeLeaderboardEventWindow) {
   const raw = await AsyncStorage.getItem('@stocksense/paper_v2');
   const cache = raw ? JSON.parse(raw) as {
     accounts?: Array<{ id: string; cash: number; unsettledCash?: number; shortCollateral?: number }>;
@@ -342,6 +350,15 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
   };
 }
 
+export async function submitPaperChallengeScoreNow(
+  enrollment: PaperChallengeEnrollment,
+  event: PaperChallengeLeaderboardEventWindow,
+) {
+  const submission = await buildEventSubmission(enrollment, event);
+  await submitEventArenaScore(event.id, submission.payload);
+  return submission.payload;
+}
+
 export function PaperChallengeLeaderboard({
   event,
   enrollment,
@@ -420,6 +437,7 @@ export function PaperChallengeLeaderboard({
   const visible = embedded || open;
   const isBearMarketMayhem = event.eventType === 'bear-market-mayhem'
     || event.rankingDirection === 'lowest-return';
+  const isLightningRound = event.eventType === 'lightning-round';
   const leaderboardQuery = useGetEventArenaLeaderboard(event.id, {
     request: installationId ? { headers: { 'X-Event-Arena-Installation-Id': installationId } } : undefined,
     query: {
@@ -478,7 +496,8 @@ export function PaperChallengeLeaderboard({
     eventQuotes,
   );
   const pendingOrderCount = eventOrders.filter((order) => order.status === 'pending').length;
-  const canSendCash = event.phase === 'active'
+  const canSendCash = !isLightningRound
+    && event.phase === 'active'
     && optedIn
     && !!eventAccount
     && !!onCashTransfer
@@ -624,21 +643,19 @@ export function PaperChallengeLeaderboard({
 
   const persistSharing = useCallback(async (alias: string, enabled: boolean) => {
     const updated = await updatePaperChallengeStore((current) => {
-      if (current.enrollment?.eventId !== event.id) return current;
-      return {
-        ...current,
-        enrollment: {
-          ...current.enrollment,
-          leaderboardAlias: alias,
-          leaderboardOptedIn: enabled,
-        },
-      };
+      return updatePaperChallengeEnrollment(
+        current,
+        event.eventType ?? 'event-arena',
+        (currentEnrollment) => currentEnrollment.eventId !== event.id
+          ? currentEnrollment
+          : { ...currentEnrollment, leaderboardAlias: alias, leaderboardOptedIn: enabled },
+      );
     }, {
       getItem: (key) => AsyncStorage.getItem(key),
       setItem: (key, value) => AsyncStorage.setItem(key, value),
     });
-    onEnrollmentChange(updated.enrollment);
-  }, [event.id, onEnrollmentChange]);
+    onEnrollmentChange(getEventEnrollment(updated, event.eventType ?? 'event-arena'));
+  }, [event.eventType, event.id, onEnrollmentChange]);
 
   const submitEntry = useCallback(async (targetEnrollment: PaperChallengeEnrollment, alias: string) => {
     const submission = await buildEventSubmission({ ...targetEnrollment, leaderboardAlias: alias }, event);
@@ -774,20 +791,18 @@ export function PaperChallengeLeaderboard({
     setError('');
     try {
       const updated = await updatePaperChallengeStore((current) => {
-        if (current.enrollment?.eventId !== event.id) return current;
-        return {
-          ...current,
-          enrollment: {
-            ...current.enrollment,
-            leaderboardAlias: alias,
-            leaderboardOptedIn: false,
-          },
-        };
+        return updatePaperChallengeEnrollment(
+          current,
+          event.eventType ?? 'event-arena',
+          (currentEnrollment) => currentEnrollment.eventId !== event.id
+            ? currentEnrollment
+            : { ...currentEnrollment, leaderboardAlias: alias, leaderboardOptedIn: false },
+        );
       }, {
         getItem: (key) => AsyncStorage.getItem(key),
         setItem: (key, value) => AsyncStorage.setItem(key, value),
       });
-      onEnrollmentChange(updated.enrollment);
+      onEnrollmentChange(getEventEnrollment(updated, event.eventType ?? 'event-arena'));
       setAliasEditorOpen(false);
     } catch {
       setError('Could not save your alias on this device. Please retry.');
@@ -1429,7 +1444,9 @@ export function PaperChallengeLeaderboard({
                   <Text testID="paper-event-championship-identity" style={{ color: isBearMarketMayhem ? '#FF6670' : '#E8CB7C', fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 1.2, textAlign: 'center', marginBottom: 7 }}>
                     {isBearMarketMayhem
                       ? 'BEAR MARKET MAYHEM'
-                      : event.eventType === 'green-bull-championship' ? 'GREEN BULL CHAMPIONSHIP' : 'EVENT ARENA CHAMPIONSHIP'}
+                      : isLightningRound
+                        ? 'LIGHTNING ROUND'
+                        : event.eventType === 'green-bull-championship' ? 'GREEN BULL CHAMPIONSHIP' : 'EVENT ARENA CHAMPIONSHIP'}
                   </Text>
                   <Text testID="paper-event-starting-capital" style={{ color: '#F1EEE7', fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 0.8, textAlign: 'center', marginBottom: 8 }}>
                     ${Math.round(event.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE).toLocaleString('en-US')} STARTING CAPITAL
@@ -1686,7 +1703,7 @@ export function PaperChallengeLeaderboard({
         <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={0} style={{ flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,0.62)' }}>
           <View testID="event-arena-send-cash-review" style={{ maxHeight: '90%', padding: 18, borderRadius: 16, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
             <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-              <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.8 }}>EVENT ARENA · {event.id}</Text>
+              <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.8 }}>{isLightningRound ? 'LIGHTNING ROUND' : 'EVENT ARENA'} · {event.id}</Text>
               <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20, marginTop: 7 }}>Send cash to {detail?.alias}</Text>
               <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, marginTop: 6 }}>
                 Transfer from this event account only. Current event cash: {money(eventAccount?.cash ?? 0)}.
@@ -1764,7 +1781,7 @@ export function PaperChallengeLeaderboard({
       <Modal visible={aliasEditorOpen} animationType="fade" transparent statusBarTranslucent onRequestClose={() => setAliasEditorOpen(false)}>
         <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={0} style={{ flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,0.62)' }}>
           <View style={{ padding: 20, borderRadius: 18, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
-            <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.8 }}>EVENT ARENA</Text>
+            <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.8 }}>{isLightningRound ? 'LIGHTNING ROUND' : 'EVENT ARENA'}</Text>
             <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20, marginTop: 7 }}>Change your alias</Text>
             <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, marginTop: 6 }}>
               {optedIn
@@ -1815,7 +1832,7 @@ export function PaperChallengeLeaderboard({
         <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={0} style={{ flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,0.62)' }}>
           <View testID="paper-event-leaderboard-sharing-info" style={{ maxHeight: '90%', padding: 18, borderRadius: 16, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
             <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.8 }}>EVENT ARENA PRIVACY</Text>
+              <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.8 }}>{isLightningRound ? 'LIGHTNING ROUND PRIVACY' : 'EVENT ARENA PRIVACY'}</Text>
               <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20, marginTop: 7 }}>Leaderboard sharing</Text>
               <Text style={{ color: optedIn ? colors.primary : colors.mutedForeground, fontFamily: 'Inter_700Bold', fontSize: 13, marginTop: 10 }}>
                 {optedIn ? 'Sharing is on' : 'Sharing is off'}

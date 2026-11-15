@@ -10,7 +10,8 @@ import type { EventArenaConfigurationEventType } from './eventArenaConfiguration
 import type { EventArenaConfigurationRankingDirection } from './eventArenaConfigurationRankingDirection';
 
 export interface EventArenaConfiguration {
-  eventId: Date;
+  /** @pattern ^(lightning-)?\d{4}-\d{2}-\d{2}$ */
+  eventId: string;
   eventType: EventArenaConfigurationEventType;
   artworkId: EventArenaConfigurationArtworkId;
   /** @exclusiveMinimum 0 */

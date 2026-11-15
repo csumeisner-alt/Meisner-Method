@@ -13,4 +13,5 @@ export const EventArenaConfigurationEventType = {
   'event-arena': 'event-arena',
   'green-bull-championship': 'green-bull-championship',
   'bear-market-mayhem': 'bear-market-mayhem',
+  'lightning-round': 'lightning-round',
 } as const;

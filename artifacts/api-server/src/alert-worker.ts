@@ -21,6 +21,7 @@ import {
 import { runAlertCheckCycle } from "./lib/alertWorkerCycle.js";
 import { computeHealthStatus } from "./lib/alertWorkerHealth.js";
 import { purgeExpiredEventArenaEntries } from "./lib/eventArenaRetention.js";
+import { prepareLightningRoundEvents } from "./routes/eventArenaRoutes.js";
 import { fetchYahooChartPrice } from "./lib/marketPrice.js";
 import { sendExpoPushRequest } from "./lib/expoPushRequest.js";
 
@@ -251,6 +252,20 @@ async function runEventArenaCleanupIfDue(): Promise<void> {
   }
 }
 
+async function prepareScheduledLightningRounds(): Promise<void> {
+  try {
+    const events = await prepareLightningRoundEvents(pool);
+    logger.info(
+      { eventIds: events.map((event) => event.eventId) },
+      "[alert-worker] Lightning Round events prepared",
+    );
+  } catch (err) {
+    // Retry on the next worker cycle if the event schema is still being applied
+    // or the database is temporarily unavailable.
+    logger.warn({ err }, "[alert-worker] Lightning Round preparation failed; will retry");
+  }
+}
+
 async function main(): Promise<void> {
   logger.info("[alert-worker] starting");
 
@@ -265,6 +280,7 @@ async function main(): Promise<void> {
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
+    await prepareScheduledLightningRounds();
     await runEventArenaCleanupIfDue();
     await runAlertCheck();
     await sleep(CHECK_INTERVAL_MS);

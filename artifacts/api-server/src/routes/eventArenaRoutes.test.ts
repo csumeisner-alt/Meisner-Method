@@ -8,6 +8,7 @@ import pg from "pg";
 import {
   createEventArenaRouter,
   expectedEventArenaConfiguration,
+  getLightningRoundScheduleIds,
   isValidEventArenaWindow,
   rankEventArenaEntries,
 } from "./eventArenaRoutes.ts";
@@ -325,6 +326,51 @@ test("only scheduled biweekly windows and exact Eastern market hours are accepte
   assert.equal(isValidEventArenaWindow(eventId, startAtMs + 60_000, endAtMs), false);
   assert.equal(isValidEventArenaWindow("2026-11-23", startAtMs, endAtMs), false);
   assert.equal(isValidEventArenaWindow("2026-11-16", Number.NaN, endAtMs), false);
+});
+
+test("Lightning Round uses Saturday local starts, exact 24-hour windows, DST, and separate IDs", async () => {
+  const first = expectedEventArenaConfiguration("lightning-2026-11-21");
+  assert.deepEqual(first, {
+    eventId: "lightning-2026-11-21",
+    eventType: "lightning-round",
+    artworkId: "lightning-round-arena",
+    startingBalance: 100_000,
+    rankingDirection: "highest-return",
+    startAtMs: Date.parse("2026-11-21T16:00:00.000Z"),
+    endAtMs: Date.parse("2026-11-22T16:00:00.000Z"),
+  });
+  assert.equal(first.endAtMs - first.startAtMs, 24 * 60 * 60 * 1000);
+  assert.equal(isValidEventArenaWindow(first.eventId, first.startAtMs, first.endAtMs), true);
+  assert.equal(isValidEventArenaWindow("lightning-2026-11-22", first.startAtMs, first.endAtMs), false);
+  assert.equal(isValidEventArenaWindow(first.eventId, first.startAtMs, first.endAtMs - 1), false);
+
+  const beforeDaylightSaving = expectedEventArenaConfiguration("lightning-2027-03-13");
+  const afterDaylightSaving = expectedEventArenaConfiguration("lightning-2027-03-20");
+  assert.equal(beforeDaylightSaving?.startAtMs, Date.parse("2027-03-13T16:00:00.000Z"));
+  assert.equal(beforeDaylightSaving?.endAtMs, Date.parse("2027-03-14T16:00:00.000Z"));
+  assert.equal(afterDaylightSaving?.startAtMs, Date.parse("2027-03-20T15:00:00.000Z"));
+  assert.equal(afterDaylightSaving?.endAtMs, Date.parse("2027-03-21T15:00:00.000Z"));
+  assert.deepEqual(getLightningRoundScheduleIds(Date.parse("2026-11-21T15:59:59.000Z")), [
+    "lightning-2026-11-21",
+    "lightning-2026-11-28",
+  ]);
+  assert.deepEqual(getLightningRoundScheduleIds(Date.parse("2026-11-22T16:00:00.000Z")), [
+    "lightning-2026-11-28",
+    "lightning-2026-12-05",
+  ]);
+
+  await withApi(async () => ({ rows: [] }), async (baseUrl) => {
+    const prepare = () => fetch(`${baseUrl}/event-arena/lightning-round/prepare`, { method: "POST" });
+    const firstPrepare = await prepare();
+    const secondPrepare = await prepare();
+    assert.equal(firstPrepare.status, 200);
+    assert.equal(secondPrepare.status, 200);
+    const firstBody = await firstPrepare.json() as any;
+    const secondBody = await secondPrepare.json() as any;
+    assert.deepEqual(firstBody, secondBody);
+    assert.equal(firstBody.events.length, 2);
+    assert.ok(firstBody.events.every((event: any) => event.eventType === "lightning-round"));
+  }, Date.parse("2026-11-21T15:00:00.000Z"));
 });
 
 test("event artwork resolves to an immutable championship configuration", async () => {
@@ -968,6 +1014,86 @@ test("accepted score submissions store ranked event snapshots without private id
   assert.deepEqual(insertedSnapshotValues[0]?.[3], [5, 1]);
   assert.equal(JSON.stringify(insertedSnapshotValues).includes(installationId), false);
   assert.equal(JSON.stringify(insertedSnapshotValues).includes("another-private-installation"), false);
+});
+
+test("Lightning Round accepts isolated $100,000 scores and snapshots highest returns first", async () => {
+  const lightningEvent = expectedEventArenaConfiguration("lightning-2026-11-21");
+  assert.ok(lightningEvent);
+  const snapshotValues: unknown[][] = [];
+  const participantRows = [
+    {
+      installation_id: installationId,
+      participant_token: "participant-token-lr-current",
+      alias: "MarketFox",
+      start_equity: 100_000,
+      equity: 110_000,
+      return_percent: 10,
+      trade_count: 3,
+      holdings: [],
+      updated_at: new Date("2026-11-21T16:30:00.000Z"),
+    },
+    {
+      installation_id: "another-lightning-installation",
+      participant_token: "participant-token-lr-runner-up",
+      alias: "BlueWhale",
+      start_equity: 100_000,
+      equity: 104_000,
+      return_percent: 4,
+      trade_count: 2,
+      holdings: [],
+      updated_at: new Date("2026-11-21T16:29:00.000Z"),
+    },
+  ];
+  await withApi(async (sql, values) => {
+    if (sql.startsWith("DELETE") || ["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) {
+      return { rows: [] };
+    }
+    if (sql.startsWith("SELECT installation_id\n")) return { rows: [] };
+    if (sql.startsWith("INSERT INTO event_arena_leaderboard_entries")) {
+      assert.equal(values?.[0], lightningEvent.eventId);
+      assert.equal(values?.[3], 100_000);
+      assert.equal(values?.[4], 110_000);
+      assert.equal(values?.[5], 10);
+      return { rows: [{ updated_at: new Date("2026-11-21T16:30:00.000Z") }] };
+    }
+    if (sql.includes("SELECT installation_id, participant_token, alias")) {
+      assert.deepEqual(values, [lightningEvent.eventId, lightningEvent.startAtMs, lightningEvent.endAtMs]);
+      return { rows: participantRows };
+    }
+    assert.match(sql, /INSERT INTO event_arena_leaderboard_snapshots/);
+    snapshotValues.push(values ?? []);
+    return { rows: [] };
+  }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/${lightningEvent.eventId}/leaderboard`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(validSubmission({
+        eventType: "lightning-round",
+        artworkId: "lightning-round-arena",
+        startingBalance: 100_000,
+        rankingDirection: "highest-return",
+        cashBalance: 110_000,
+        startEquity: 100_000,
+        equity: 110_000,
+        returnPercent: 10,
+        eventStartAtMs: lightningEvent.startAtMs,
+        eventEndAtMs: lightningEvent.endAtMs,
+      })),
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      ok: true,
+      updatedAt: "2026-11-21T16:30:00.000Z",
+    });
+  }, Date.parse("2026-11-21T16:30:00.000Z"));
+
+  assert.equal(snapshotValues.length, 1);
+  assert.deepEqual(snapshotValues[0]?.[1], [
+    "participant-token-lr-current",
+    "participant-token-lr-runner-up",
+  ]);
+  assert.deepEqual(snapshotValues[0]?.[2], [1, 2]);
+  assert.deepEqual(snapshotValues[0]?.[3], [10, 4]);
 });
 
 test(

@@ -15,4 +15,5 @@ export const EventArenaScoreSubmissionArtworkId = {
   'mountain-summit': 'mountain-summit',
   'red-showdown': 'red-showdown',
   'green-stock-exchange': 'green-stock-exchange',
+  'lightning-round-arena': 'lightning-round-arena',
 } as const;
