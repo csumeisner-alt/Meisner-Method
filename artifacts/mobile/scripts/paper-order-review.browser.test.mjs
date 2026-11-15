@@ -357,6 +357,50 @@ test("order review discloses freshness, blocks invalid quotes, and requires re-r
   }
 });
 
+test("Penny stock and ETF reviews explain the $20 limit and reject a threshold quote on mobile", async () => {
+  for (const scenario of [
+    { button: "scenario-penny-stock", shouldFill: true, label: "verified stock" },
+    { button: "scenario-penny-etf", shouldFill: true, label: "verified ETF" },
+    { button: "scenario-penny-at-limit", shouldFill: false, label: "quote at $20" },
+  ]) {
+    const fixture = await startBrowser(await buildFixture());
+    const { browser } = fixture;
+    try {
+      await browser.send("Emulation.setDeviceMetricsOverride", {
+        width: 360, height: 720, deviceScaleFactor: 1, mobile: true,
+      });
+      const text = (testID) => browser.evaluate(
+        `document.querySelector(${JSON.stringify(selector(testID))})?.textContent ?? ""`,
+      );
+
+      await click(browser, scenario.button);
+      await click(browser, "paper-order-quick-shares-1");
+      await click(browser, "paper-order-review-button");
+      await waitFor(browser, `!!document.querySelector(${JSON.stringify(selector("paper-order-review"))})`,
+        `${scenario.label} should reach review at a 360px mobile viewport.`);
+      assert.match(await text("paper-order-review"),
+        /both the latest execution quote and final fill must stay below \$20\.00/i);
+
+      await click(browser, "paper-order-submit");
+      await waitFor(browser, `!!document.querySelector(${JSON.stringify(selector("paper-order-result"))})`,
+        `${scenario.label} should show a submission result.`);
+      const resultText = await text("paper-order-result");
+      if (scenario.shouldFill) {
+        assert.match(resultText, /Order filled/i);
+        assert.equal(await browser.evaluate("window.__orderFills.length"), 1,
+          `${scenario.label} below $20 should fill.`);
+      } else {
+        assert.match(resultText, /Order rejected/i);
+        assert.match(resultText, /both the latest quote and final fill.*below \$20\.00/i);
+        assert.equal(await browser.evaluate("window.__orderFills.length"), 0,
+          "A buy at the $20 threshold must not fill.");
+      }
+    } finally {
+      await fixture.cleanup();
+    }
+  }
+});
+
 test("entry keeps short collateral conditional and quote/search content compact", async () => {
   const fixture = await startBrowser(await buildFixture());
   const { browser } = fixture;

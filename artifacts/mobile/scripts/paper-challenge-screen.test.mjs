@@ -1042,7 +1042,8 @@ test("Penny Stock Mayhem exposes its rules and rechecks execution quotes", () =>
   assert.match(screen, /executionQuotePrice: q\.price/);
   assert.match(screen, /maxPurchasePrice: eventPurchaseLimit/);
   assert.match(screen, /getPurchaseLimitRejectionReason/);
-  assert.match(screen, /paper-order-rejection-/);
+  assert.match(screen, /status: 'cancelled' as const, rejectionReason: purchaseLimitRejection/);
+  assert.match(screen, /testID=\{`paper-order-rejection-\$\{o\.id\}`\}/);
   assert.match(challenge, /purchaseLimit: 20/);
   assert.match(eventArena, /penny-stock-mayhem/);
   assert.match(eventArenaOverview, /event-arena-penny-stock-artwork/);

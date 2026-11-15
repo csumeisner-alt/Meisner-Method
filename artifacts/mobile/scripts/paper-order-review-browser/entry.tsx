@@ -1,10 +1,17 @@
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { getMarketOrderQuoteError } from '../../lib/paperOrderEntry';
+import { applySlippage, getPurchaseLimitRejectionReason } from '../../lib/paperEngine';
 import ProfessionalOrderEntry, { type ConfirmOrderArgs, type OrderIntent } from '../../components/ProfessionalOrderEntry';
 import type { LiveQuote, PaperAccount, PaperOrder, PaperPosition } from '../../lib/paperMath';
 
-type Scenario = { side: OrderIntent; accountId: 'alpha' | 'beta'; editing?: boolean };
+type Scenario = {
+  side: OrderIntent;
+  accountId: 'alpha' | 'beta';
+  editing?: boolean;
+  penny?: boolean;
+  assetType?: 'stock' | 'etf';
+};
 
 const accounts: Record<Scenario['accountId'], PaperAccount> = {
   alpha: { id: 'alpha', name: 'Alpha account', cash: 10_000, shortCollateral: 125, shortCollateralRatio: 1.5, createdAt: '2025-01-01' },
@@ -87,6 +94,17 @@ export default function Entry() {
     window.__orderAttempts.push(args);
     const quoteError = getMarketOrderQuoteError(quote, args.quotePrice);
     if (quoteError) return { status: 'rejected' as const, message: quoteError };
+    if (scenario.penny && args.side === 'buy') {
+      const purchaseLimitRejection = getPurchaseLimitRejectionReason({
+        order: { side: 'buy', assetType: scenario.assetType },
+        executionQuotePrice: args.quotePrice,
+        fillPrice: applySlippage(args.quotePrice, args.shares, 'buy'),
+        maxPurchasePrice: 20,
+      });
+      if (purchaseLimitRejection) {
+        return { status: 'rejected' as const, message: purchaseLimitRejection };
+      }
+    }
     window.__orderFills.push(args);
     return { status: 'filled' as const, message: 'Order filled.', fillPrice: args.quotePrice };
   };
@@ -97,6 +115,12 @@ export default function Entry() {
     setQuotePrice(100);
   };
 
+  const selectPennyScenario = (assetType: 'stock' | 'etf', price: number) => {
+    setScenario({ side: 'buy', accountId: 'alpha', penny: true, assetType });
+    setQuoteMode('fresh');
+    setQuotePrice(price);
+  };
+
   return (
     <div>
       <div>
@@ -104,6 +128,9 @@ export default function Entry() {
         <button data-testid="scenario-sell" onClick={() => selectScenario('sell', 'alpha')}>Sell</button>
         <button data-testid="scenario-short" onClick={() => selectScenario('short', 'beta')}>Short</button>
         <button data-testid="scenario-cover" onClick={() => selectScenario('cover', 'beta')}>Cover</button>
+        <button data-testid="scenario-penny-stock" onClick={() => selectPennyScenario('stock', 19.5)}>Penny stock</button>
+        <button data-testid="scenario-penny-etf" onClick={() => selectPennyScenario('etf', 19.5)}>Penny ETF</button>
+        <button data-testid="scenario-penny-at-limit" onClick={() => selectPennyScenario('stock', 20)}>Penny at limit</button>
         <button data-testid="scenario-edit-order" onClick={() => setScenario({ side: 'buy', accountId: 'alpha', editing: true })}>Edit pending order</button>
         <button data-testid="quote-fresh" onClick={() => setQuoteMode('fresh')}>Fresh quote</button>
         <button data-testid="quote-stale" onClick={() => setQuoteMode('stale')}>Stale quote</button>
@@ -112,7 +139,7 @@ export default function Entry() {
         <button data-testid="quote-change" onClick={() => { setQuoteMode('fresh'); setQuotePrice(101); }}>Change quote</button>
       </div>
       <ProfessionalOrderEntry
-        key={`${scenario.side}-${scenario.accountId}`}
+        key={`${scenario.side}-${scenario.accountId}-${scenario.assetType ?? 'regular'}-${scenario.penny ? 'penny' : 'standard'}`}
         visible
         side={scenario.side}
         symbol="ACME"
@@ -122,6 +149,16 @@ export default function Entry() {
         accountEquity={100_000}
         accountPositions={scenarioPositions}
         quotes={quotes}
+        stockInfo={scenario.penny && scenario.assetType ? {
+          companyName: scenario.assetType === 'etf' ? 'Acme ETF' : 'Acme Corp',
+          currentPrice: quotePrice,
+          dividendYield: 0,
+          dividendRate: 0,
+          expenseRatio: scenario.assetType === 'etf' ? 0.001 : 0,
+          sector: 'Technology',
+          assetType: scenario.assetType,
+        } : undefined}
+        purchaseLimit={scenario.penny ? 20 : undefined}
         selectedPos={selectedPos}
         existingOrder={scenario.editing ? editableOrder : null}
         pendingOrders={[]}
