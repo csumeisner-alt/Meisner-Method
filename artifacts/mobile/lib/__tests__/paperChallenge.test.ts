@@ -17,6 +17,7 @@ import {
   getPaperChallengeReminders,
   getPaperChallengeWindow,
   getLightningRoundWindow,
+  hasRegularPaperChallengeOverlap,
   LIGHTNING_ROUND_STARTING_BALANCE,
   isLightningRoundEventId,
   isPaperChallengeAccountId,
@@ -351,39 +352,52 @@ test('paper event market hours follow Eastern daylight-saving time', () => {
   assert.equal(new Date(event.endAtMs).toISOString(), '2027-03-26T20:00:00.000Z');
 });
 
-test('Lightning Round runs Saturday 9 a.m. Denver for exactly 24 elapsed hours across DST', () => {
-  const beforeStart = getLightningRoundWindow(Date.parse('2026-11-21T15:59:59.000Z'));
-  assert.equal(beforeStart.id, 'lightning-2026-11-21');
-  assert.equal(beforeStart.phase, 'upcoming');
-  assert.equal(beforeStart.startAtMs, Date.parse('2026-11-21T16:00:00.000Z'));
+test('Lightning Round runs Friday 7:30 a.m. Denver only when the full window is clear', () => {
+  const regularWeek = getLightningRoundWindow(Date.parse('2026-11-20T14:29:59.000Z'));
+  assert.equal(regularWeek.id, 'lightning-2026-11-27');
+  assert.equal(regularWeek.startAtMs, Date.parse('2026-11-27T14:30:00.000Z'));
+  assert.equal(regularWeek.phase, 'upcoming');
 
-  const active = getLightningRoundWindow(Date.parse('2026-11-21T16:00:00.000Z'));
+  const regularStart = Date.parse('2026-11-16T14:30:00.000Z');
+  const regularEnd = Date.parse('2026-11-20T21:00:00.000Z');
+  assert.equal(hasRegularPaperChallengeOverlap(
+    Date.parse('2026-11-20T14:30:00.000Z'),
+    Date.parse('2026-11-21T14:30:00.000Z'),
+  ), true);
+  assert.equal(hasRegularPaperChallengeOverlap(regularEnd, regularEnd + 24 * 60 * 60 * 1000), false);
+  assert.equal(hasRegularPaperChallengeOverlap(
+    regularStart - 24 * 60 * 60 * 1000,
+    regularStart,
+  ), false);
+
+  const beforeStart = getLightningRoundWindow(Date.parse('2026-11-27T14:29:59.000Z'));
+  assert.equal(beforeStart.id, 'lightning-2026-11-27');
+  assert.equal(beforeStart.phase, 'upcoming');
+  assert.equal(beforeStart.startAtMs, Date.parse('2026-11-27T14:30:00.000Z'));
+
+  const active = getLightningRoundWindow(Date.parse('2026-11-27T14:30:00.000Z'));
   assert.equal(active.phase, 'active');
   assert.equal(active.eventType, 'lightning-round');
   assert.equal(active.artworkId, 'lightning-round-arena');
   assert.equal(active.startingBalance, LIGHTNING_ROUND_STARTING_BALANCE);
   assert.equal(active.endAtMs - active.startAtMs, 24 * 60 * 60 * 1000);
   assert.equal(getLightningRoundWindow(active.endAtMs - 1).id, active.id);
-  assert.equal(getLightningRoundWindow(active.endAtMs).id, 'lightning-2026-11-28');
+  assert.equal(getLightningRoundWindow(active.endAtMs).id, 'lightning-2026-12-11');
   assert.equal(getLightningRoundWindow(active.endAtMs).phase, 'upcoming');
 
-  const beforeDst = getLightningRoundWindow(Date.parse('2027-03-13T16:00:00.000Z'));
-  const afterDst = getLightningRoundWindow(Date.parse('2027-03-20T15:00:00.000Z'));
-  assert.equal(beforeDst.startAtMs, Date.parse('2027-03-13T16:00:00.000Z'));
-  assert.equal(beforeDst.endAtMs, Date.parse('2027-03-14T16:00:00.000Z'));
-  assert.equal(afterDst.startAtMs, Date.parse('2027-03-20T15:00:00.000Z'));
-  assert.equal(afterDst.endAtMs, Date.parse('2027-03-21T15:00:00.000Z'));
+  const beforeDst = getLightningRoundWindow(Date.parse('2027-03-05T14:29:59.000Z'));
+  const afterDst = getLightningRoundWindow(Date.parse('2027-03-19T13:29:59.000Z'));
+  assert.equal(beforeDst.id, 'lightning-2027-03-05');
+  assert.equal(beforeDst.startAtMs, Date.parse('2027-03-05T14:30:00.000Z'));
+  assert.equal(beforeDst.endAtMs, Date.parse('2027-03-06T14:30:00.000Z'));
+  assert.equal(afterDst.id, 'lightning-2027-03-19');
+  assert.equal(afterDst.startAtMs, Date.parse('2027-03-19T13:30:00.000Z'));
+  assert.equal(afterDst.endAtMs, Date.parse('2027-03-20T13:30:00.000Z'));
 
-  const configurable = getLightningRoundWindow(Date.parse('2026-11-21T18:29:59.000Z'), {
-    timeZone: 'America/Los_Angeles',
-    startHour: 10,
-    startMinute: 30,
-  });
-  assert.equal(configurable.phase, 'upcoming');
-  assert.equal(configurable.startAtMs, Date.parse('2026-11-21T18:30:00.000Z'));
+  assert.equal(isLightningRoundEventId('lightning-2026-11-27'), true);
   assert.equal(isLightningRoundEventId('lightning-2026-11-21'), true);
   assert.equal(isLightningRoundEventId('lightning-2026-11-22'), false);
-  assert.equal(isPaperChallengeAccountId('paper-lightning:lightning-2026-11-21'), true);
+  assert.equal(isPaperChallengeAccountId('paper-lightning:lightning-2026-11-27'), true);
   assert.equal(isPaperChallengeAccountId('paper-event:2026-11-16'), true);
   assert.equal(isPaperChallengeAccountId('paper-strategy-1'), false);
 });

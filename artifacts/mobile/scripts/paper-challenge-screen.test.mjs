@@ -51,7 +51,7 @@ assert.match(screen, /LIGHTNING ROUND IS LIVE/);
 assert.match(screen, /testID="dismiss-paper-event-recap"/);
 assert.match(screen, /previousEnrollmentIdsRef/);
 
-test("Lightning Round stays separate, weekly, and visible from the existing arena", () => {
+test("Lightning Round stays separate, off-week, and visible from the existing arena", () => {
   assert.match(lightningRoute, /<LightningRoundScreen \/>/);
   assert.match(mobileRootLayout, /<Stack\.Screen name="lightning-round"/);
   assert.match(eventArena, /testID="open-lightning-round"/);

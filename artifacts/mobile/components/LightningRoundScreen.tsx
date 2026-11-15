@@ -117,7 +117,7 @@ function quoteContext(quote: LiveQuote | undefined) {
 
 async function prepareLightningEvents() {
   const response = await fetch(`${BASE_URL}/api/event-arena/lightning-round/prepare`, { method: 'POST' });
-  if (!response.ok) throw new Error('Could not prepare this week’s Lightning Round.');
+  if (!response.ok) throw new Error('Could not prepare the scheduled Lightning Round.');
   const payload = await response.json() as { events?: unknown[] };
   if (!Array.isArray(payload.events)) throw new Error('The Lightning Round schedule response was invalid.');
   return payload.events;
@@ -212,7 +212,7 @@ export function LightningRoundScreen() {
           && candidate.eventType === 'lightning-round'
           && candidate.startingBalance === LIGHTNING_ROUND_STARTING_BALANCE;
       });
-      if (!matching) throw new Error('The prepared Lightning Round does not match this week’s schedule.');
+      if (!matching) throw new Error('The prepared Lightning Round does not match the schedule.');
       setStore(saved);
       setScheduleError('');
       setScheduleReady(true);
@@ -579,7 +579,7 @@ export function LightningRoundScreen() {
           </TouchableOpacity>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 17 }}>Lightning Round</Text>
-            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 2 }}>Weekly 24-hour championship</Text>
+            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 2 }}>24-hour off-week championship</Text>
           </View>
           <TouchableOpacity
             accessibilityRole="button"
@@ -627,7 +627,7 @@ export function LightningRoundScreen() {
         {!storeReady && (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
             <ActivityIndicator color={colors.primary} />
-            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 10 }}>Preparing this week’s championship…</Text>
+            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 10 }}>Preparing the next eligible championship…</Text>
           </View>
         )}
 
@@ -683,7 +683,7 @@ export function LightningRoundScreen() {
               <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(5,8,14,0.32)' }} />
               <View style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, backgroundColor: 'rgba(7,11,18,0.82)', borderWidth: 1, borderColor: 'rgba(255,213,110,0.58)' }}>
                 <Feather name="zap" size={13} color="#FFD774" />
-                <Text style={{ color: '#FFE7A6', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.1 }}>WEEKLY LIGHTNING ROUND</Text>
+                <Text style={{ color: '#FFE7A6', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.1 }}>OFF-WEEK LIGHTNING ROUND</Text>
               </View>
               <Text style={{ color: '#FFF5D8', fontFamily: 'Inter_700Bold', fontSize: screenWidth < 370 ? 28 : 34, lineHeight: screenWidth < 370 ? 34 : 39, marginTop: 12 }}>24 hours.{'\n'}One champion.</Text>
               <Text style={{ color: '#E5E8ED', fontFamily: 'Inter_500Medium', fontSize: 12, lineHeight: 18, marginTop: 8 }}>
@@ -802,7 +802,7 @@ export function LightningRoundScreen() {
               </>
             ) : showJoin ? (
               <View style={{ marginTop: 12, padding: 16, borderRadius: 16, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
-                <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 15 }}>Compete this week</Text>
+                <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 15 }}>Compete in the next round</Text>
                 <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 17, marginTop: 5 }}>
                   Join with a leaderboard alias. You’ll get a new $100,000 account that cannot use funds or positions from another account.
                 </Text>

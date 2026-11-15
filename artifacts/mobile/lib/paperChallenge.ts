@@ -11,14 +11,9 @@ export const PAPER_CHALLENGE_STORAGE_KEY = '@stocksense/paper_events_v1';
 export const PAPER_CHALLENGE_STARTING_BALANCE = 100_000;
 export const LIGHTNING_ROUND_STARTING_BALANCE = 100_000;
 export const GREEN_BULL_STARTING_BALANCE = 500_000;
-export const LIGHTNING_ROUND_TIME_ZONE =
-  process.env.EXPO_PUBLIC_LIGHTNING_ROUND_TIME_ZONE || 'America/Denver';
-export const LIGHTNING_ROUND_START_HOUR = Number(
-  process.env.EXPO_PUBLIC_LIGHTNING_ROUND_START_HOUR ?? 9,
-);
-export const LIGHTNING_ROUND_START_MINUTE = Number(
-  process.env.EXPO_PUBLIC_LIGHTNING_ROUND_START_MINUTE ?? 0,
-);
+export const LIGHTNING_ROUND_TIME_ZONE = 'America/Denver';
+export const LIGHTNING_ROUND_START_HOUR = 7;
+export const LIGHTNING_ROUND_START_MINUTE = 30;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const EVENT_ANCHOR_DAY = Math.floor(Date.UTC(2026, 10, 16) / DAY_MS);
@@ -607,6 +602,34 @@ export function getPaperChallengeWindow(nowMs = Date.now()): PaperChallengeWindo
   };
 }
 
+function regularPaperChallengeWindowForStartSerial(startSerial: number) {
+  const start = new Date(startSerial * DAY_MS);
+  const friday = new Date((startSerial + 4) * DAY_MS);
+  return {
+    startAtMs: easternLocalToUtc(
+      start.getUTCFullYear(), start.getUTCMonth() + 1, start.getUTCDate(), 9, 30,
+    ),
+    endAtMs: easternLocalToUtc(
+      friday.getUTCFullYear(), friday.getUTCMonth() + 1, friday.getUTCDate(), 16, 0,
+    ),
+  };
+}
+
+/** Check a complete window against scheduled regular Event Arena windows. */
+export function hasRegularPaperChallengeOverlap(startAtMs: number, endAtMs: number): boolean {
+  if (!Number.isFinite(startAtMs) || !Number.isFinite(endAtMs) || endAtMs <= startAtMs) return false;
+  const firstSerial = Math.floor(startAtMs / DAY_MS) - 14;
+  const lastSerial = Math.floor(endAtMs / DAY_MS) + 14;
+  for (let serial = firstSerial; serial <= lastSerial; serial += 1) {
+    const date = new Date(serial * DAY_MS);
+    const daysSinceAnchor = serial - EVENT_ANCHOR_DAY;
+    if (date.getUTCDay() !== 1 || daysSinceAnchor < 0 || daysSinceAnchor % 14 !== 0) continue;
+    const regular = regularPaperChallengeWindowForStartSerial(serial);
+    if (regular.startAtMs < endAtMs && startAtMs < regular.endAtMs) return true;
+  }
+  return false;
+}
+
 function zonedParts(
   timestamp: number,
   timeZone: string,
@@ -669,7 +692,8 @@ export function isLightningRoundEventId(eventId: unknown): eventId is string {
   const date = new Date(`${dateText}T00:00:00.000Z`);
   return Number.isFinite(date.getTime())
     && date.toISOString().slice(0, 10) === dateText
-    && date.getUTCDay() === 6;
+    // Saturdays are retained for previously saved Lightning Round archives.
+    && (date.getUTCDay() === 5 || date.getUTCDay() === 6);
 }
 
 export function isPaperChallengeAccountId(accountId: string): boolean {
@@ -696,35 +720,36 @@ function lightningWindowForDate(
   };
 }
 
-/** Independent weekly Saturday championship; its duration is exactly 24 elapsed hours. */
+/** Friday off-week bonus championship; its duration is exactly 24 elapsed hours. */
 export function getLightningRoundWindow(
   nowMs = Date.now(),
-  options: { timeZone?: string; startHour?: number; startMinute?: number } = {},
 ): PaperChallengeWindow {
-  const timeZone = options.timeZone ?? LIGHTNING_ROUND_TIME_ZONE;
-  const startHour = options.startHour ?? LIGHTNING_ROUND_START_HOUR;
-  const startMinute = options.startMinute ?? LIGHTNING_ROUND_START_MINUTE;
+  const timeZone = LIGHTNING_ROUND_TIME_ZONE;
+  const startHour = LIGHTNING_ROUND_START_HOUR;
+  const startMinute = LIGHTNING_ROUND_START_MINUTE;
   if (
     !Number.isInteger(startHour) || startHour < 0 || startHour > 23
     || !Number.isInteger(startMinute) || startMinute < 0 || startMinute > 59
   ) throw new Error('Lightning Round start time is invalid.');
   const localNow = zonedParts(nowMs, timeZone);
   const daySerial = localDateSerial(localNow.year, localNow.month, localNow.day);
-  const saturdaySerial = daySerial - ((localNow.weekday - 6 + 7) % 7);
-  const saturday = serialDate(saturdaySerial);
-  const thisWindow = lightningWindowForDate(saturday, timeZone, startHour, startMinute, 'active');
-
-  if (nowMs < thisWindow.startAtMs) {
-    return lightningWindowForDate(saturday, timeZone, startHour, startMinute, 'upcoming');
+  const thisFridaySerial = daySerial + (localNow.weekday === 6
+    ? -1
+    : (5 - localNow.weekday + 7) % 7);
+  const firstFridaySerial = Math.max(thisFridaySerial, EVENT_ANCHOR_DAY + 4);
+  for (let offset = 0; offset < 260; offset += 1) {
+    const date = serialDate(firstFridaySerial + offset * 7);
+    const candidate = lightningWindowForDate(date, timeZone, startHour, startMinute, 'upcoming');
+    if (
+      candidate.endAtMs <= nowMs
+      || hasRegularPaperChallengeOverlap(candidate.startAtMs, candidate.endAtMs)
+    ) continue;
+    return {
+      ...candidate,
+      phase: nowMs >= candidate.startAtMs ? 'active' : 'upcoming',
+    };
   }
-  if (nowMs < thisWindow.endAtMs) return thisWindow;
-  return lightningWindowForDate(
-    serialDate(saturdaySerial + 7),
-    timeZone,
-    startHour,
-    startMinute,
-    'upcoming',
-  );
+  throw new Error('No eligible Lightning Round window was found.');
 }
 
 export function getPaperChallengeEnrollments(store: PaperChallengeStore): PaperChallengeEnrollment[] {

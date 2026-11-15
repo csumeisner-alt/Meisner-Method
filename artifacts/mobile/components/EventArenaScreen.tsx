@@ -1245,7 +1245,7 @@ export function EventArenaScreen() {
           <TouchableOpacity
             testID="open-lightning-round"
             accessibilityRole="button"
-            accessibilityLabel="Open weekly Lightning Round"
+            accessibilityLabel="Open off-week Lightning Round"
             onPress={() => router.push('/lightning-round')}
             style={{ minWidth: 42, minHeight: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}
           >

@@ -9,7 +9,9 @@ import {
   createEventArenaRouter,
   expectedEventArenaConfiguration,
   getLightningRoundScheduleIds,
+  hasScheduledRegularEventOverlap,
   isValidEventArenaWindow,
+  prepareLightningRoundEvents,
   rankEventArenaEntries,
 } from "./eventArenaRoutes.ts";
 import {
@@ -71,6 +73,14 @@ async function withApi(
   const db = typeof database === "function"
     ? {
         query: async (sql: string, values?: any[]) => {
+          if (sql.includes("WHERE event_type='lightning-round'")) {
+            const cutoff = Number(values?.[0]);
+            const row = [...savedConfigurations.values()]
+              .filter((item) => item.event_type === "lightning-round"
+                && item.event_start_at.getTime() <= cutoff)
+              .sort((a, b) => b.event_start_at.getTime() - a.event_start_at.getTime())[0];
+            return { rows: row ? [{ event_id: row.event_id }] : [] };
+          }
           if (sql.startsWith("INSERT INTO event_arena_events")) {
             const expected = expectedEventArenaConfiguration(String(values?.[0]));
             assert.ok(expected);
@@ -328,36 +338,67 @@ test("only scheduled biweekly windows and exact Eastern market hours are accepte
   assert.equal(isValidEventArenaWindow("2026-11-16", Number.NaN, endAtMs), false);
 });
 
-test("Lightning Round uses Saturday local starts, exact 24-hour windows, DST, and separate IDs", async () => {
-  const first = expectedEventArenaConfiguration("lightning-2026-11-21");
+test("Lightning Round schedules only clear Friday 7:30 a.m. Denver windows", async () => {
+  const overlappingFriday = expectedEventArenaConfiguration("lightning-2026-11-20");
+  assert.equal(overlappingFriday, null);
+  const first = expectedEventArenaConfiguration("lightning-2026-11-27");
   assert.deepEqual(first, {
-    eventId: "lightning-2026-11-21",
+    eventId: "lightning-2026-11-27",
     eventType: "lightning-round",
     artworkId: "lightning-round-arena",
     startingBalance: 100_000,
     rankingDirection: "highest-return",
-    startAtMs: Date.parse("2026-11-21T16:00:00.000Z"),
-    endAtMs: Date.parse("2026-11-22T16:00:00.000Z"),
+    startAtMs: Date.parse("2026-11-27T14:30:00.000Z"),
+    endAtMs: Date.parse("2026-11-28T14:30:00.000Z"),
   });
   assert.equal(first.endAtMs - first.startAtMs, 24 * 60 * 60 * 1000);
   assert.equal(isValidEventArenaWindow(first.eventId, first.startAtMs, first.endAtMs), true);
-  assert.equal(isValidEventArenaWindow("lightning-2026-11-22", first.startAtMs, first.endAtMs), false);
+  assert.equal(isValidEventArenaWindow("lightning-2026-11-28", first.startAtMs, first.endAtMs), false);
   assert.equal(isValidEventArenaWindow(first.eventId, first.startAtMs, first.endAtMs - 1), false);
+  assert.equal(expectedEventArenaConfiguration("lightning-2026-12-04"), null);
+  assert.equal(hasScheduledRegularEventOverlap(
+    Date.parse("2026-11-20T14:30:00.000Z"),
+    Date.parse("2026-11-21T14:30:00.000Z"),
+  ), true);
+  assert.equal(hasScheduledRegularEventOverlap(
+    Date.parse("2026-11-20T21:00:00.000Z"),
+    Date.parse("2026-11-21T21:00:00.000Z"),
+  ), false);
+  assert.equal(hasScheduledRegularEventOverlap(
+    Date.parse("2026-11-15T14:30:00.000Z"),
+    Date.parse("2026-11-16T14:30:00.000Z"),
+  ), false);
+  assert.equal(hasScheduledRegularEventOverlap(
+    Date.parse("2026-11-15T14:30:00.000Z"),
+    Date.parse("2026-11-16T14:30:00.001Z"),
+  ), true);
 
-  const beforeDaylightSaving = expectedEventArenaConfiguration("lightning-2027-03-13");
-  const afterDaylightSaving = expectedEventArenaConfiguration("lightning-2027-03-20");
-  assert.equal(beforeDaylightSaving?.startAtMs, Date.parse("2027-03-13T16:00:00.000Z"));
-  assert.equal(beforeDaylightSaving?.endAtMs, Date.parse("2027-03-14T16:00:00.000Z"));
-  assert.equal(afterDaylightSaving?.startAtMs, Date.parse("2027-03-20T15:00:00.000Z"));
-  assert.equal(afterDaylightSaving?.endAtMs, Date.parse("2027-03-21T15:00:00.000Z"));
+  const beforeDaylightSaving = expectedEventArenaConfiguration("lightning-2027-03-05");
+  const afterDaylightSaving = expectedEventArenaConfiguration("lightning-2027-03-19");
+  assert.equal(beforeDaylightSaving?.startAtMs, Date.parse("2027-03-05T14:30:00.000Z"));
+  assert.equal(beforeDaylightSaving?.endAtMs, Date.parse("2027-03-06T14:30:00.000Z"));
+  assert.equal(afterDaylightSaving?.startAtMs, Date.parse("2027-03-19T13:30:00.000Z"));
+  assert.equal(afterDaylightSaving?.endAtMs, Date.parse("2027-03-20T13:30:00.000Z"));
   assert.deepEqual(getLightningRoundScheduleIds(Date.parse("2026-11-21T15:59:59.000Z")), [
-    "lightning-2026-11-21",
-    "lightning-2026-11-28",
+    "lightning-2026-11-27",
+    "lightning-2026-12-11",
   ]);
   assert.deepEqual(getLightningRoundScheduleIds(Date.parse("2026-11-22T16:00:00.000Z")), [
-    "lightning-2026-11-28",
-    "lightning-2026-12-05",
+    "lightning-2026-11-27",
+    "lightning-2026-12-11",
   ]);
+
+  let invalidWindowQueries = 0;
+  await withApi(async () => {
+    invalidWindowQueries += 1;
+    return { rows: [] };
+  }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/lightning-2026-11-20/config`, {
+      method: "POST",
+    });
+    assert.equal(response.status, 400);
+  });
+  assert.equal(invalidWindowQueries, 0);
 
   await withApi(async () => ({ rows: [] }), async (baseUrl) => {
     const prepare = () => fetch(`${baseUrl}/event-arena/lightning-round/prepare`, { method: "POST" });
@@ -370,7 +411,73 @@ test("Lightning Round uses Saturday local starts, exact 24-hour windows, DST, an
     assert.deepEqual(firstBody, secondBody);
     assert.equal(firstBody.events.length, 2);
     assert.ok(firstBody.events.every((event: any) => event.eventType === "lightning-round"));
+    assert.deepEqual(firstBody.events.map((event: any) => event.eventId), [
+      "lightning-2026-11-27",
+      "lightning-2026-12-11",
+    ]);
   }, Date.parse("2026-11-21T15:00:00.000Z"));
+});
+
+test("Lightning Round preparation recovers missed runs without duplicating or changing saved events", async () => {
+  const saved = new Map<string, any>();
+  const db: TestDatabase = {
+    query: async (sql, values) => {
+      if (sql.includes("WHERE event_type='lightning-round'")) {
+        const cutoff = Number(values?.[0]);
+        const latest = [...saved.values()]
+          .filter((row) => row.event_type === "lightning-round" && row.event_start_at.getTime() <= cutoff)
+          .sort((a, b) => b.event_start_at.getTime() - a.event_start_at.getTime())[0];
+        return { rows: latest ? [{ event_id: latest.event_id }] : [] };
+      }
+      if (sql.startsWith("INSERT INTO event_arena_events")) {
+        const configuration = expectedEventArenaConfiguration(String(values?.[0]));
+        assert.ok(configuration);
+        if (saved.has(configuration.eventId)) return { rows: [] };
+        const row = {
+          event_id: configuration.eventId,
+          event_type: configuration.eventType,
+          artwork_id: configuration.artworkId,
+          starting_balance: configuration.startingBalance,
+          ranking_direction: configuration.rankingDirection,
+          event_start_at: new Date(configuration.startAtMs),
+          event_end_at: new Date(configuration.endAtMs),
+        };
+        saved.set(configuration.eventId, row);
+        return { rows: [row] };
+      }
+      if (sql.includes("FROM event_arena_events WHERE event_id=$1")) {
+        const row = saved.get(String(values?.[0]));
+        return { rows: row ? [row] : [] };
+      }
+      throw new Error(`Unexpected schedule test query: ${sql}`);
+    },
+  };
+
+  // First run occurs after the first eligible round has already ended.
+  const recovered = await prepareLightningRoundEvents(db, Date.parse("2026-11-29T18:00:00.000Z"));
+  assert.deepEqual(recovered.map((event) => event.eventId), [
+    "lightning-2026-11-27",
+    "lightning-2026-12-11",
+    "lightning-2026-12-25",
+  ]);
+  const firstSaved = [...saved.entries()].map(([id, row]) => [id, { ...row }]);
+
+  const repeatedRuns = await Promise.all([
+    prepareLightningRoundEvents(db, Date.parse("2026-11-29T18:00:00.000Z")),
+    prepareLightningRoundEvents(db, Date.parse("2026-11-29T18:00:00.000Z")),
+  ]);
+  assert.deepEqual(repeatedRuns[0], recovered);
+  assert.deepEqual(repeatedRuns[1], recovered);
+  assert.equal(saved.size, 3);
+
+  const later = await prepareLightningRoundEvents(db, Date.parse("2026-12-20T18:00:00.000Z"));
+  assert.deepEqual(later.map((event) => event.eventId), [
+    "lightning-2026-12-11",
+    "lightning-2026-12-25",
+    "lightning-2027-01-08",
+  ]);
+  assert.equal(saved.size, 4);
+  for (const [id, row] of firstSaved) assert.deepEqual(saved.get(id), row);
 });
 
 test("event artwork resolves to an immutable championship configuration", async () => {
@@ -1017,7 +1124,7 @@ test("accepted score submissions store ranked event snapshots without private id
 });
 
 test("Lightning Round accepts isolated $100,000 scores and snapshots highest returns first", async () => {
-  const lightningEvent = expectedEventArenaConfiguration("lightning-2026-11-21");
+  const lightningEvent = expectedEventArenaConfiguration("lightning-2026-11-27");
   assert.ok(lightningEvent);
   const snapshotValues: unknown[][] = [];
   const participantRows = [

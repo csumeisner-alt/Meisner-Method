@@ -162,15 +162,9 @@ function zonedLocalToUtc(
   return candidate;
 }
 
-const LIGHTNING_ROUND_TIME_ZONE = process.env.LIGHTNING_ROUND_TIME_ZONE
-  || process.env.EXPO_PUBLIC_LIGHTNING_ROUND_TIME_ZONE
-  || "America/Denver";
-const LIGHTNING_ROUND_START_HOUR = Number(
-  process.env.LIGHTNING_ROUND_START_HOUR ?? process.env.EXPO_PUBLIC_LIGHTNING_ROUND_START_HOUR ?? 9,
-);
-const LIGHTNING_ROUND_START_MINUTE = Number(
-  process.env.LIGHTNING_ROUND_START_MINUTE ?? process.env.EXPO_PUBLIC_LIGHTNING_ROUND_START_MINUTE ?? 0,
-);
+const LIGHTNING_ROUND_TIME_ZONE = "America/Denver";
+const LIGHTNING_ROUND_START_HOUR = 7;
+const LIGHTNING_ROUND_START_MINUTE = 30;
 const LIGHTNING_ROUND_DAY_MS = 24 * 60 * 60 * 1000;
 
 function expectedLightningRoundWindow(eventId: unknown) {
@@ -180,7 +174,8 @@ function expectedLightningRoundWindow(eventId: unknown) {
   if (
     !Number.isFinite(date.getTime())
     || date.toISOString().slice(0, 10) !== dateText
-    || date.getUTCDay() !== 6
+    || date.getUTCDay() !== 5
+    || Math.floor(date.getTime() / DAY_MS) < EVENT_ANCHOR_DAY + 4
     || !Number.isInteger(LIGHTNING_ROUND_START_HOUR)
     || LIGHTNING_ROUND_START_HOUR < 0
     || LIGHTNING_ROUND_START_HOUR > 23
@@ -196,7 +191,9 @@ function expectedLightningRoundWindow(eventId: unknown) {
     LIGHTNING_ROUND_START_MINUTE,
     LIGHTNING_ROUND_TIME_ZONE,
   );
-  return { startAtMs, endAtMs: startAtMs + LIGHTNING_ROUND_DAY_MS };
+  const endAtMs = startAtMs + LIGHTNING_ROUND_DAY_MS;
+  if (hasScheduledRegularEventOverlap(startAtMs, endAtMs)) return null;
+  return { startAtMs, endAtMs };
 }
 
 function expectedEventArenaWindow(eventId: unknown) {
@@ -260,18 +257,51 @@ export function expectedEventArenaConfiguration(eventId: string): EventArenaConf
   };
 }
 
-export function getLightningRoundScheduleIds(nowMs = Date.now()): string[] {
+export function getLightningRoundScheduleIds(nowMs = Date.now(), fromEventId?: string | null): string[] {
   const local = zonedParts(nowMs, LIGHTNING_ROUND_TIME_ZONE);
   const localSerial = Math.floor(Date.UTC(local.year, local.month - 1, local.day) / DAY_MS);
-  const saturdaySerial = localSerial - ((new Date(localSerial * DAY_MS).getUTCDay() - 6 + 7) % 7);
-  const saturday = new Date(saturdaySerial * DAY_MS);
-  const firstId = `lightning-${saturday.toISOString().slice(0, 10)}`;
-  const firstWindow = expectedLightningRoundWindow(firstId);
-  const selectedSerial = firstWindow && nowMs >= firstWindow.endAtMs ? saturdaySerial + 7 : saturdaySerial;
-  return [0, 7].map((offset) => {
-    const date = new Date((selectedSerial + offset) * DAY_MS);
-    return `lightning-${date.toISOString().slice(0, 10)}`;
-  });
+  const today = new Date(localSerial * DAY_MS);
+  const currentFridaySerial = localSerial + (today.getUTCDay() === 6
+    ? -1
+    : (5 - today.getUTCDay() + 7) % 7);
+  const fromDate = typeof fromEventId === "string" && /^lightning-\d{4}-\d{2}-\d{2}$/.test(fromEventId)
+    ? new Date(`${fromEventId.slice("lightning-".length)}T00:00:00.000Z`)
+    : null;
+  const fromSerial = fromDate
+    && Number.isFinite(fromDate.getTime())
+    && fromDate.toISOString().slice(0, 10) === fromEventId?.slice("lightning-".length)
+    && fromDate.getUTCDay() === 5
+    ? Math.floor(fromDate.getTime() / DAY_MS)
+    : null;
+  // If the worker has never prepared a round, recover the recent couple of
+  // weeks. Otherwise continue from its last started round to fill any gap.
+  const firstFridaySerial = Math.max(
+    fromSerial ?? Math.max(EVENT_ANCHOR_DAY + 4, currentFridaySerial - 14),
+    EVENT_ANCHOR_DAY + 4,
+  );
+  const lastSerial = currentFridaySerial + 21;
+  const eventIds: string[] = [];
+  for (let serial = firstFridaySerial; serial <= lastSerial; serial += 7) {
+    const date = new Date(serial * DAY_MS);
+    const eventId = `lightning-${date.toISOString().slice(0, 10)}`;
+    if (expectedLightningRoundWindow(eventId)) eventIds.push(eventId);
+  }
+  return eventIds;
+}
+
+/** A regular competition takes priority whenever its scheduled window intersects. */
+export function hasScheduledRegularEventOverlap(startAtMs: number, endAtMs: number): boolean {
+  if (!Number.isFinite(startAtMs) || !Number.isFinite(endAtMs) || endAtMs <= startAtMs) return false;
+  const firstSerial = Math.floor(startAtMs / DAY_MS) - 14;
+  const lastSerial = Math.floor(endAtMs / DAY_MS) + 14;
+  for (let serial = firstSerial; serial <= lastSerial; serial += 1) {
+    const date = new Date(serial * DAY_MS);
+    const daysSinceAnchor = serial - EVENT_ANCHOR_DAY;
+    if (date.getUTCDay() !== 1 || daysSinceAnchor < 0 || daysSinceAnchor % 14 !== 0) continue;
+    const regular = expectedEventArenaWindow(date.toISOString().slice(0, 10));
+    if (regular && regular.startAtMs < endAtMs && startAtMs < regular.endAtMs) return true;
+  }
+  return false;
 }
 
 function savedEventArenaConfiguration(row: any, expected: EventArenaConfiguration): EventArenaConfiguration | null {
@@ -347,15 +377,24 @@ export async function prepareLightningRoundEvents(
   db: EventArenaDatabase,
   nowMs = Date.now(),
 ): Promise<EventArenaConfiguration[]> {
-  const eventIds = getLightningRoundScheduleIds(nowMs);
-  const events = await Promise.all(eventIds.map((eventId) => ensureEventArenaConfiguration(db, eventId)));
+  const { rows } = await db.query(
+    `SELECT event_id
+     FROM event_arena_events
+     WHERE event_type='lightning-round' AND event_start_at <= TO_TIMESTAMP($1 / 1000.0)
+     ORDER BY event_start_at DESC
+     LIMIT 1`,
+    [nowMs],
+  );
+  const latestStartedEventId = typeof rows[0]?.event_id === "string" ? rows[0].event_id : null;
+  const scheduledIds = getLightningRoundScheduleIds(nowMs, latestStartedEventId);
+  const events = await Promise.all(scheduledIds.map((eventId) => ensureEventArenaConfiguration(db, eventId)));
   if (events.some((event) => !event)) {
     throw new Error("A Lightning Round schedule conflicts with a saved event.");
   }
   return events as EventArenaConfiguration[];
 }
 
-/** Accept only the independent weekly Lightning Round and regular scheduled windows. */
+/** Accept only eligible Lightning Round and regular scheduled windows. */
 export function isValidEventArenaWindow(
   eventId: unknown,
   startAtMs: unknown,
