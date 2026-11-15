@@ -204,7 +204,7 @@ test("championship leaderboard shows real podium scores, event context, and belo
 test("the signed-in participant appears only in their actual ranked position", () => {
   assert.match(leaderboard, /getEventArenaOwnEntry\(entries, optedIn\)/);
   assert.match(leaderboard, /borderColor: entry\.isCurrentUser \? colors\.gold : colors\.border/);
-  assert.match(leaderboard, /backgroundColor: entry\.isCurrentUser \? `\$\{colors\.gold\}10` : 'transparent'/);
+  assert.match(leaderboard, /backgroundColor: entry\.isCurrentUser \? `\$\{colors\.gold\}10` : 'rgba\(255,255,255,0\.025\)'/);
   assert.match(leaderboard, /entry\.isCurrentUser && \(/);
   assert.match(leaderboard, /entry\.isCurrentUser && <Text style=\{\{ color: colors\.gold/);
   assert.doesNotMatch(leaderboard, /Rank #\{ownEntry\.rank\}/);
@@ -222,8 +222,8 @@ test("competitive progress stays tied to successful event responses and readable
   assert.match(leaderboard, /getEventArenaWindowProgress\(event\.startAtMs, event\.endAtMs, countdownNow\)/);
   assert.match(leaderboard, /Self-reported rank movement/);
   assert.match(leaderboard, /useReduceMotion\(\)/);
-  assert.match(leaderboard, /duration: 240/);
-  assert.match(leaderboard, /duration: 320/);
+  assert.match(leaderboard, /duration: 280/);
+  assert.match(leaderboard, /duration: 340/);
   assert.match(leaderboard, /opacity: reduceMotion \? 1/);
   assert.match(leaderboard, /flexWrap: 'wrap'/);
   assert.match(leaderboard, /minWidth: 0/);
@@ -726,7 +726,17 @@ test("the live Event Arena podium uses a compact, clean stadium background", () 
   assert.ok(statSync(backgroundPath).size < 250 * 1024, "the bundled background stays compact");
   assert.match(leaderboard, /source=\{require\('\.\.\/assets\/event-arena-stadium\.jpg'\)\}/);
   assert.match(leaderboard, /resizeMode="cover"/);
-  assert.match(leaderboard, /backgroundColor: 'rgba\(7,12,20,0\.49\)'/);
+  assert.match(leaderboard, /backgroundColor: 'rgba\(7,12,20,0\.18\)'/);
+  assert.match(leaderboard, /rgba\(25,139,218,0\.22\)/);
+  assert.match(leaderboard, /rgba\(255,218,128,0\.18\)/);
+  assert.match(leaderboard, /label: 'CHAMPION', color: '#E5BF63'/);
+  assert.match(leaderboard, /label: 'RUNNER-UP', color: '#C9D4DF'/);
+  assert.match(leaderboard, /label: 'THIRD PLACE', color: '#D99A72'/);
+  assert.match(leaderboard, /width: compactPodium \? 78 : 96/);
+  assert.match(leaderboard, /podiumEntranceEventRef\.current === event\.id/);
+  assert.match(leaderboard, /if \(reduceMotion\) \{\s*podiumEntranceValueRef\.current\.setValue\(1\)/);
+  assert.match(leaderboard, /ownEntry\?\.rank === 2[\s\S]*?label: 'RUNNER-UP', color: '#C5D0DC'/);
+  assert.match(leaderboard, /ownEntry\?\.rank === 3[\s\S]*?label: 'THIRD PLACE', color: '#D39470'/);
   assert.match(leaderboard, /renderPodiumCard\(podiumSlots\[0\]\)/);
   assert.match(leaderboard, /\{money\(entry\.equity\)\}/);
   assert.match(leaderboard, /\{returnLabel\(entry\.returnPercent\)\}/);

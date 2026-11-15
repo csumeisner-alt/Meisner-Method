@@ -273,6 +273,8 @@ export function PaperChallengeLeaderboard({
     entries: LeaderboardEntry[];
   } | null>(null);
   const rankAnimationsRef = useRef(new Map<string, Animated.Value>());
+  const podiumEntranceValueRef = useRef(new Animated.Value(0.94));
+  const podiumEntranceEventRef = useRef<string | null>(null);
   const visible = embedded || open;
   const leaderboardQuery = useGetEventArenaLeaderboard(event.id, {
     request: installationId ? { headers: { 'X-Event-Arena-Installation-Id': installationId } } : undefined,
@@ -317,6 +319,13 @@ export function PaperChallengeLeaderboard({
   );
   const ownEntry = useMemo(() => getEventArenaOwnEntry(entries, optedIn), [entries, optedIn]);
   const standingsEntries = useMemo(() => getEventArenaStandingsEntries(entries), [entries]);
+  const ownMedal = ownEntry?.rank === 1
+    ? { label: 'CHAMPION', color: '#D8B45A' }
+    : ownEntry?.rank === 2
+      ? { label: 'RUNNER-UP', color: '#C5D0DC' }
+      : ownEntry?.rank === 3
+        ? { label: 'THIRD PLACE', color: '#D39470' }
+        : { label: ownEntry ? `RANK ${ownEntry.rank}` : '', color: '#D8B45A' };
   const transferImpact: EventCashTransferImpact = getEventCashTransferImpact(
     eventAccount,
     eventOrders,
@@ -358,10 +367,10 @@ export function PaperChallengeLeaderboard({
         rankAnimationsRef.current.set(participantToken, animation);
       }
       animation.stopAnimation();
-      animation.setValue(0.84);
+      animation.setValue(0.96);
       Animated.timing(animation, {
         toValue: 1,
-        duration: 240,
+        duration: 280,
         useNativeDriver: Platform.OS !== 'web',
       }).start();
     }
@@ -374,14 +383,32 @@ export function PaperChallengeLeaderboard({
         rankAnimationsRef.current.set(champion.participantToken, animation);
       }
       animation.stopAnimation();
-      animation.setValue(0.84);
+      animation.setValue(0.96);
       Animated.timing(animation, {
         toValue: 1,
-        duration: 320,
+        duration: 340,
         useNativeDriver: Platform.OS !== 'web',
       }).start();
     }
   }, [competitiveChanges, entries, event.id, rankComparison, reduceMotion]);
+  useEffect(() => {
+    if (!visible || entries.length === 0 || podiumEntranceEventRef.current === event.id) return;
+    podiumEntranceEventRef.current = event.id;
+    if (reduceMotion) {
+      podiumEntranceValueRef.current.setValue(1);
+      return;
+    }
+    podiumEntranceValueRef.current.setValue(0.985);
+    const entrance = Animated.spring(podiumEntranceValueRef.current, {
+      toValue: 1,
+      damping: 20,
+      stiffness: 125,
+      mass: 1,
+      useNativeDriver: Platform.OS !== 'web',
+    });
+    entrance.start();
+    return () => entrance.stop();
+  }, [entries.length, event.id, reduceMotion, visible]);
   useEffect(() => {
     const timer = setInterval(() => setCountdownNow(Date.now()), 30_000);
     return () => clearInterval(timer);
@@ -653,12 +680,13 @@ export function PaperChallengeLeaderboard({
       key={`${entry.rank}-${entry.alias}`}
       style={{
         opacity: reduceMotion ? 1 : rankAnimationsRef.current.get(entry.participantToken) ?? 1,
-        borderBottomWidth: 1,
-        borderWidth: entry.isCurrentUser ? 1 : 0,
+        transform: [{ scale: reduceMotion ? 1 : rankAnimationsRef.current.get(entry.participantToken) ?? 1 }],
+        borderBottomWidth: 0,
+        borderWidth: entry.isCurrentUser ? 1.5 : 1,
         borderColor: entry.isCurrentUser ? colors.gold : colors.border,
-        borderRadius: entry.isCurrentUser ? 10 : 0,
-        backgroundColor: entry.isCurrentUser ? `${colors.gold}10` : 'transparent',
-        marginVertical: entry.isCurrentUser ? 3 : 0,
+        borderRadius: 14,
+        backgroundColor: entry.isCurrentUser ? `${colors.gold}10` : 'rgba(255,255,255,0.025)',
+        marginVertical: 5,
       }}
     >
       <TouchableOpacity
@@ -725,10 +753,10 @@ export function PaperChallengeLeaderboard({
     const change = entry ? competitiveChanges.get(entry.participantToken) : undefined;
     const placesMoved = change?.placesMoved ?? 0;
     const medal = slot.rank === 1
-      ? { label: 'CHAMPION', color: '#D8B45A' }
+      ? { label: 'CHAMPION', color: '#E5BF63' }
       : slot.rank === 2
-        ? { label: 'RUNNER-UP', color: '#AEB9C6' }
-        : { label: 'THIRD PLACE', color: '#C68762' };
+        ? { label: 'RUNNER-UP', color: '#C9D4DF' }
+        : { label: 'THIRD PLACE', color: '#D99A72' };
     const isChampion = slot.rank === 1;
     return (
       <Animated.View
@@ -738,6 +766,7 @@ export function PaperChallengeLeaderboard({
           flex: widePodium ? isChampion ? 1.25 : 1 : isChampion ? undefined : 1,
           minWidth: 0,
           opacity: !entry || reduceMotion ? 1 : rankAnimationsRef.current.get(entry.participantToken) ?? 1,
+        transform: [{ scale: !entry || reduceMotion ? 1 : rankAnimationsRef.current.get(entry.participantToken) ?? 1 }],
         }}
       >
          <TouchableOpacity
@@ -749,41 +778,62 @@ export function PaperChallengeLeaderboard({
           disabled={!entry}
           onPress={() => { if (entry) setDetail(entry as LeaderboardEntry); }}
           style={{
-             minHeight: entry ? (isChampion ? compactPodium ? 190 : 212 : compactPodium ? 138 : 154) : 82,
+              minHeight: entry ? (isChampion ? compactPodium ? 218 : 246 : compactPodium ? 162 : 174) : 90,
             justifyContent: 'center',
             alignItems: 'center',
-            paddingHorizontal: isChampion ? 14 : compactPodium ? 7 : 10,
-            paddingVertical: isChampion ? 14 : 11,
-             borderRadius: isChampion ? 22 : 16,
+             paddingHorizontal: isChampion ? 16 : compactPodium ? 8 : 11,
+             paddingVertical: isChampion ? 17 : 13,
+              borderRadius: isChampion ? 24 : 18,
             borderWidth: entry?.isCurrentUser ? 2 : 1,
-            borderColor: entry?.isCurrentUser ? colors.gold : entry ? `${medal.color}88` : colors.border,
-             backgroundColor: entry?.isCurrentUser ? 'rgba(26,23,15,0.96)' : entry ? 'rgba(13,19,29,0.94)' : 'rgba(12,18,27,0.78)',
+              borderColor: entry?.isCurrentUser ? colors.gold : entry ? `${medal.color}D0` : `${medal.color}72`,
+              backgroundColor: entry?.isCurrentUser
+                ? 'rgba(26,23,15,0.88)'
+                : entry
+                  ? isChampion ? 'rgba(13,17,23,0.76)' : 'rgba(13,19,29,0.73)'
+                  : 'rgba(12,18,27,0.55)',
              shadowColor: isChampion ? colors.gold : '#000',
-             shadowOpacity: isChampion ? 0.22 : 0.12,
-             shadowRadius: isChampion ? 16 : 8,
-             shadowOffset: { width: 0, height: 6 },
-             elevation: isChampion ? 5 : 2,
+              shadowOpacity: isChampion ? 0.32 : 0.16,
+              shadowRadius: isChampion ? 20 : 10,
+              shadowOffset: { width: 0, height: isChampion ? 10 : 7 },
+              elevation: isChampion ? 8 : 3,
           }}
         >
+          <LinearGradient
+            colors={isChampion
+              ? ['rgba(229,191,99,0.30)', 'rgba(25,28,32,0.03)', 'rgba(8,13,21,0.27)']
+              : slot.rank === 2
+                ? ['rgba(201,212,223,0.24)', 'rgba(13,19,29,0.02)', 'rgba(8,13,21,0.26)']
+                : ['rgba(217,154,114,0.25)', 'rgba(13,19,29,0.02)', 'rgba(8,13,21,0.28)']}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={{ pointerEvents: 'none', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: isChampion ? 24 : 18 }}
+          />
+          {isChampion && entry ? (
+            <View style={{ pointerEvents: 'none', position: 'absolute', top: 0, left: 0, right: 0, height: 4, borderTopLeftRadius: 24, borderTopRightRadius: 24, backgroundColor: 'rgba(255,229,156,0.88)' }} />
+          ) : null}
           {entry ? (
             <>
                {isChampion ? (
-                 <View accessible={false} style={{ width: compactPodium ? 68 : 84, height: compactPodium ? 68 : 84, alignItems: 'center', justifyContent: 'center', marginBottom: 2 }}>
-                   <View style={{ position: 'absolute', width: '100%', height: '100%', borderRadius: 42, borderWidth: 1, borderColor: `${medal.color}66`, backgroundColor: 'rgba(216,180,90,0.08)' }} />
-                   <View style={{ position: 'absolute', top: compactPodium ? 18 : 25, left: compactPodium ? 11 : 17, width: 18, height: 19, borderLeftWidth: 3, borderTopWidth: 3, borderBottomWidth: 3, borderColor: medal.color, borderTopLeftRadius: 10, borderBottomLeftRadius: 10 }} />
-                   <View style={{ position: 'absolute', top: compactPodium ? 18 : 25, right: compactPodium ? 11 : 17, width: 18, height: 19, borderRightWidth: 3, borderTopWidth: 3, borderBottomWidth: 3, borderColor: medal.color, borderTopRightRadius: 10, borderBottomRightRadius: 10 }} />
-                   <View style={{ width: compactPodium ? 36 : 42, height: compactPodium ? 26 : 30, marginTop: 4, alignItems: 'center', justifyContent: 'center', borderRadius: 5, borderBottomLeftRadius: 18, borderBottomRightRadius: 18, backgroundColor: medal.color }}>
-                     <Feather name="star" size={compactPodium ? 13 : 16} color="#3A2C12" />
-                   </View>
-                   <View style={{ width: 6, height: 8, backgroundColor: medal.color }} />
-                   <View style={{ width: 28, height: 5, borderRadius: 3, backgroundColor: medal.color }} />
-                   <View style={{ width: 36, height: 5, borderRadius: 3, backgroundColor: medal.color, marginTop: 2 }} />
+                  <View accessible={false} style={{ width: compactPodium ? 78 : 96, height: compactPodium ? 78 : 96, alignItems: 'center', justifyContent: 'center', marginBottom: 2 }}>
+                    <Animated.View style={{ position: 'absolute', width: '100%', height: '100%', borderRadius: 50, borderWidth: 1.5, borderColor: `${medal.color}88`, backgroundColor: 'rgba(216,180,90,0.12)', shadowColor: colors.gold, shadowOpacity: reduceMotion ? 0 : 0.48, shadowRadius: 19, shadowOffset: { width: 0, height: 0 } }} />
+                    <View style={{ position: 'absolute', top: compactPodium ? 17 : 21, left: compactPodium ? 9 : 12, width: compactPodium ? 20 : 25, height: compactPodium ? 26 : 31, borderLeftWidth: 4, borderTopWidth: 4, borderBottomWidth: 4, borderColor: medal.color, borderTopLeftRadius: 12, borderBottomLeftRadius: 12 }} />
+                    <View style={{ position: 'absolute', top: compactPodium ? 17 : 21, right: compactPodium ? 9 : 12, width: compactPodium ? 20 : 25, height: compactPodium ? 26 : 31, borderRightWidth: 4, borderTopWidth: 4, borderBottomWidth: 4, borderColor: medal.color, borderTopRightRadius: 12, borderBottomRightRadius: 12 }} />
+                    <View style={{ width: compactPodium ? 43 : 52, height: compactPodium ? 34 : 40, marginTop: 5, alignItems: 'center', justifyContent: 'center', borderRadius: 7, borderBottomLeftRadius: 22, borderBottomRightRadius: 22, borderWidth: 1, borderColor: 'rgba(255,244,210,0.72)', backgroundColor: medal.color, shadowColor: colors.gold, shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } }}>
+                      <Feather name="star" size={compactPodium ? 18 : 22} color="#3A2C12" />
+                    </View>
+                    <View style={{ width: 8, height: 10, backgroundColor: medal.color }} />
+                    <View style={{ width: 34, height: 6, borderRadius: 3, backgroundColor: medal.color }} />
+                    <View style={{ width: 44, height: 6, borderRadius: 3, backgroundColor: medal.color, marginTop: 3 }} />
                  </View>
-               ) : <Feather name="award" size={23} color={medal.color} />}
+                ) : (
+                    <View accessible={false} style={{ width: compactPodium ? 40 : 46, height: compactPodium ? 40 : 46, borderRadius: 24, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: `${medal.color}A0`, backgroundColor: `${medal.color}22`, marginBottom: 2 }}>
+                    <Feather name="award" size={compactPodium ? 22 : 26} color={medal.color} />
+                  </View>
+                )}
               <Text allowFontScaling adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1} style={{ color: medal.color, fontFamily: 'Inter_700Bold', fontSize: isChampion ? 13 : 14, letterSpacing: 0.4, marginTop: isChampion ? 6 : 4 }}>
                 #{slot.rank}
               </Text>
-              <Text allowFontScaling style={{ color: medal.color, fontFamily: 'Inter_700Bold', fontSize: isChampion ? 10 : 8, letterSpacing: 0.7, marginTop: 2 }}>
+              <Text allowFontScaling style={{ color: medal.color, fontFamily: 'Inter_700Bold', fontSize: isChampion ? 10 : 9, letterSpacing: 0.7, marginTop: 2 }}>
                 {medal.label}
               </Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, maxWidth: '100%', marginTop: isChampion ? 7 : 5 }}>
@@ -1069,15 +1119,27 @@ export function PaperChallengeLeaderboard({
               <ImageBackground
                 source={require('../assets/event-arena-stadium.jpg')}
                 resizeMode="cover"
-                imageStyle={{ borderRadius: 24, opacity: 0.77 }}
+                imageStyle={{ borderRadius: 24, opacity: 0.96 }}
                 style={{ overflow: 'hidden', borderRadius: 24, borderWidth: 1, borderColor: 'rgba(214,177,94,0.34)', marginBottom: 17, padding: compactPodium ? 12 : 17, backgroundColor: '#101720' }}
               >
-                <View style={{ pointerEvents: 'none', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(7,12,20,0.49)' }} />
+                <View style={{ pointerEvents: 'none', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(7,12,20,0.18)' }} />
                 <LinearGradient
-                  colors={['rgba(24,101,148,0.13)', 'rgba(8,14,24,0.02)', 'rgba(18,133,137,0.12)']}
+                  colors={['rgba(25,139,218,0.22)', 'rgba(8,14,24,0.03)', 'rgba(25,139,218,0.15)']}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
                   style={{ pointerEvents: 'none', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+                />
+                <LinearGradient
+                  colors={['rgba(255,218,128,0.18)', 'rgba(255,218,128,0.06)', 'transparent']}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                  style={{ pointerEvents: 'none', position: 'absolute', top: 205, left: '-8%', width: '44%', height: 270, transform: [{ rotate: '12deg' }] }}
+                />
+                <LinearGradient
+                  colors={['rgba(255,218,128,0.16)', 'rgba(255,218,128,0.05)', 'transparent']}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                  style={{ pointerEvents: 'none', position: 'absolute', top: 205, right: '-8%', width: '44%', height: 270, transform: [{ rotate: '-12deg' }] }}
                 />
                 <View testID="paper-event-leaderboard-current-event" style={{ marginBottom: 16, padding: 12, borderRadius: 15, backgroundColor: 'rgba(8,13,21,0.88)', borderWidth: 1, borderColor: 'rgba(214,177,94,0.28)' }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between', gap: 8 }}>
@@ -1174,20 +1236,25 @@ export function PaperChallengeLeaderboard({
                       <Text style={{ color: '#F4F0E7', fontFamily: 'Inter_700Bold', fontSize: 14 }}>The podium</Text>
                       <Text style={{ color: '#D5C189', fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 1.1 }}>TOP THREE</Text>
                     </View>
-                    {widePodium ? (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 }}>
-                        {renderPodiumCard(podiumSlots[1])}
-                        {podiumSlots[0] && renderPodiumCard(podiumSlots[0])}
-                        {renderPodiumCard(podiumSlots[2])}
-                      </View>
-                    ) : (
-                      <>
-                        {podiumSlots[0] && renderPodiumCard(podiumSlots[0])}
-                        <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: compactPodium ? 7 : 10, marginTop: 8 }}>
-                          {podiumSlots.slice(1).map((slot) => renderPodiumCard(slot))}
+                    <Animated.View style={{
+                      opacity: reduceMotion ? 1 : podiumEntranceValueRef.current,
+                      transform: [{ scale: reduceMotion ? 1 : podiumEntranceValueRef.current }],
+                    }}>
+                      {widePodium ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginTop: 8 }}>
+                          {renderPodiumCard(podiumSlots[1])}
+                          {podiumSlots[0] && renderPodiumCard(podiumSlots[0])}
+                          {renderPodiumCard(podiumSlots[2])}
                         </View>
-                      </>
-                    )}
+                      ) : (
+                        <>
+                          {podiumSlots[0] && renderPodiumCard(podiumSlots[0])}
+                          <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: compactPodium ? 7 : 10, marginTop: 8 }}>
+                            {podiumSlots.slice(1).map((slot) => renderPodiumCard(slot))}
+                          </View>
+                        </>
+                      )}
+                    </Animated.View>
                   </View>
                 </>
               )}
@@ -1201,18 +1268,18 @@ export function PaperChallengeLeaderboard({
                   style={{ marginBottom: 17, padding: 14, borderRadius: 16, borderWidth: 1.5, borderColor: 'rgba(216,180,90,0.82)', backgroundColor: 'rgba(35,31,22,0.96)' }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
-                    <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(216,180,90,0.15)', alignItems: 'center', justifyContent: 'center' }}>
-                      <Feather name="award" size={16} color="#E4C66F" />
+                    <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: `${ownMedal.color}24`, borderWidth: 1, borderColor: `${ownMedal.color}78`, alignItems: 'center', justifyContent: 'center' }}>
+                      <Feather name="award" size={18} color={ownMedal.color} />
                     </View>
                     <Text style={{ flex: 1, color: '#E8CD7B', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1 }}>
                       YOUR POSITION
                     </Text>
-                    <Text style={{ color: ownEntry.rank === 1 ? '#E8CD7B' : '#C6C8CB', fontFamily: 'Inter_700Bold', fontSize: 10 }}>
-                      {ownEntry.rank === 1 ? 'CHAMPION' : `RANK ${ownEntry.rank}`}
+                    <Text style={{ color: ownMedal.color, fontFamily: 'Inter_700Bold', fontSize: 10 }}>
+                      {ownMedal.label}
                     </Text>
                   </View>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 10 }}>
-                    <Text allowFontScaling adjustsFontSizeToFit numberOfLines={1} style={{ color: '#F3D875', fontFamily: 'Inter_700Bold', fontSize: 30, minWidth: 48 }}>
+                    <Text allowFontScaling adjustsFontSizeToFit numberOfLines={1} style={{ color: ownMedal.color, fontFamily: 'Inter_700Bold', fontSize: 30, minWidth: 48 }}>
                       #{ownEntry.rank}
                     </Text>
                     <Text allowFontScaling adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1} style={{ flex: 1, minWidth: 0, color: '#F6F1E5', fontFamily: 'Inter_700Bold', fontSize: 17 }}>
