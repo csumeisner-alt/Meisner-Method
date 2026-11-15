@@ -320,8 +320,43 @@ test("leaderboard names and large values remain readable and announced on compac
   }
 });
 
+test("participant score detail uses selected-entry values without changing leaderboard sections", () => {
+  const detailStart = leaderboard.indexOf('<View testID="paper-event-leaderboard-detail"');
+  const detailEnd = leaderboard.indexOf("</ScrollView>\n          ) : (", detailStart);
+  const detail = leaderboard.slice(detailStart, detailEnd);
+
+  assert.ok(detailStart >= 0 && detailEnd > detailStart);
+  assert.match(detail, /\{detail\.rank\}/);
+  assert.match(detail, /\{detail\.alias\}/);
+  assert.match(detail, /\{returnLabel\(detail\.returnPercent\)\}/);
+  assert.match(detail, /\{money\(detail\.equity\)\}/);
+  assert.match(detail, /\{signedMoney\(detail\.profitLoss\)\}/);
+  assert.match(detail, /\{detail\.tradeCount == null \? 'Not available' : detail\.tradeCount\}/);
+  assert.match(detail, /\{timeLabel\(detail\.updatedAt\)\}/);
+  assert.match(detail, /holding\.symbol/);
+  assert.match(detail, /holding\.companyName/);
+  assert.match(detail, /formatEventHoldingAllocation\(holding\.allocationPercent\)/);
+  assert.match(detail, /formatEventHoldingSide\(holding\.side\)/);
+  assert.match(detail, /allowFontScaling/);
+  assert.match(detail, /flexWrap: 'wrap'/);
+  assert.match(leaderboard, /contentContainerStyle=\{\{ width: '100%', maxWidth: 820/);
+  assert.match(detail, /testID="paper-event-detail-privacy"[\s\S]*?Self-reported and unverified[\s\S]*?trade history are not shared/);
+  assert.match(detail, /testID="event-arena-send-cash"[\s\S]*?onPress=\{openCashTransfer\}/);
+  assert.match(leaderboard, /accessibilityLabel="Back to leaderboard" onPress=\{\(\) => setDetail\(null\)\}/);
+  assert.match(leaderboard, /accessibilityLabel="Close leaderboard" onPress=\{\(\) => \{ setOpen\(false\); setDetail\(null\); \}\}/);
+
+  // The detail branch is separate; the championship podium, standings, and own-position
+  // presentation continue to render through the existing leaderboard code paths.
+  assert.match(leaderboard, /podiumSlots\[0\] && renderPodiumCard\(podiumSlots\[0\]\)/);
+  assert.match(leaderboard, /podiumSlots\.slice\(1\)\.map\(\(slot\) => renderPodiumCard\(slot\)\)/);
+  assert.match(leaderboard, /standingsEntries\.map\(\(entry\) => renderEntry\(entry as LeaderboardEntry\)\)/);
+  assert.match(leaderboard, /testID="paper-event-leaderboard-current-user"/);
+  assert.match(leaderboard, /testID="paper-event-leaderboard-podium"/);
+  assert.match(leaderboard, /testID="paper-event-leaderboard-list"/);
+});
+
 test("leaderboard header scrolls with its content and clears the fixed bottom tabs", () => {
-  const mainScrollStart = leaderboard.indexOf("<ScrollView style={{ flex: 1, minHeight: 0 }} contentContainerStyle={{ width: '100%'");
+  const mainScrollStart = leaderboard.indexOf("<ScrollView style={{ flex: 1, minHeight: 0 }} contentContainerStyle={{ width: '100%', maxWidth: 1000");
   const mainScrollEnd = leaderboard.indexOf("</ScrollView>", mainScrollStart);
   const mainScroll = leaderboard.slice(mainScrollStart, mainScrollEnd);
   const eventContentStart = eventArena.indexOf("{section === 'leaderboard' && (");

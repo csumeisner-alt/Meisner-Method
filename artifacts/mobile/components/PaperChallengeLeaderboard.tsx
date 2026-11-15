@@ -1009,85 +1009,141 @@ export function PaperChallengeLeaderboard({
           {detail && renderLeaderboardHeader()}
 
           {detail ? (
-            <ScrollView style={{ flex: 1, minHeight: 0 }} contentContainerStyle={{ padding: 18, paddingBottom: Platform.OS === 'web' ? 24 : insets.bottom + 18 }}>
-              <View testID="paper-event-leaderboard-detail" style={{ padding: 16, borderRadius: 14, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
-                <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11 }}>RANK #{detail.rank}</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 5 }}>
-                  <Text style={{ flexShrink: 1, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 22 }}>{detail.alias}</Text>
-                  {detail.isCurrentUser && <Text style={{ color: colors.gold, fontFamily: 'Inter_700Bold', fontSize: 9 }}>YOU</Text>}
-                </View>
-                <Text style={{ color: returnColor(detail.returnPercent), fontFamily: 'Inter_700Bold', fontSize: 20, marginTop: 12 }}>
-                  {returnLabel(detail.returnPercent)} event return
-                </Text>
-                <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 14, marginTop: 5 }}>
-                  Reported event value · {money(detail.equity)}
-                </Text>
-                <Text style={{ color: detail.profitLoss >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_600SemiBold', fontSize: 13, marginTop: 5 }}>
-                  Dollar profit/loss · {signedMoney(detail.profitLoss)}
-                </Text>
-                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 5 }}>
-                  Trades · {detail.tradeCount == null ? 'Not available' : detail.tradeCount}
-                </Text>
-                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 5 }}>
-                  Last updated {timeLabel(detail.updatedAt)}
-                </Text>
-                <View style={{ borderTopWidth: 1, borderTopColor: colors.border, marginTop: 16, paddingTop: 12 }}>
-                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 13 }}>Current holdings</Text>
-                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 4 }}>
-                    Self-reported allocation is absolute market exposure as a percentage of reported event account equity.
-                  </Text>
-                  {detail.holdings.length === 0 ? (
-                    <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 8 }}>No current holdings reported.</Text>
-                  ) : detail.holdings.map((holding) => (
-                    <View key={holding.symbol} style={{ paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 12 }}>{holding.symbol}</Text>
-                        <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 2 }}>{holding.companyName}</Text>
-                      </View>
-                      <View style={{ alignItems: 'flex-end' }}>
-                        <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 11 }}>
-                          {formatEventHoldingAllocation(holding.allocationPercent)}
-                        </Text>
-                        <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 10, marginTop: 2 }}>
-                          {formatEventHoldingSide(holding.side)}
-                        </Text>
-                      </View>
+            <ScrollView style={{ flex: 1, minHeight: 0 }} contentContainerStyle={{ width: '100%', maxWidth: 820, alignSelf: 'center', padding: 18, paddingBottom: Platform.OS === 'web' ? 24 : insets.bottom + 18 }}>
+              <View testID="paper-event-leaderboard-detail" style={{ overflow: 'hidden', borderRadius: 22, backgroundColor: '#101720', borderWidth: 1, borderColor: 'rgba(214,177,94,0.52)' }}>
+                <LinearGradient
+                  pointerEvents="none"
+                  colors={['rgba(229,191,99,0.16)', 'rgba(16,23,32,0.03)', 'rgba(16,23,32,0.10)']}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                  style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 220 }}
+                />
+                <View style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(214,177,94,0.22)' }}>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, backgroundColor: 'rgba(214,177,94,0.14)', borderWidth: 1, borderColor: 'rgba(214,177,94,0.42)' }}>
+                      <Feather name="award" size={13} color={colors.gold} />
+                      <Text allowFontScaling style={{ color: colors.gold, fontFamily: 'Inter_700Bold', fontSize: 10 }}>RANK #{detail.rank}</Text>
                     </View>
-                  ))}
-                </View>
-                {canSendCash && !detail.isCurrentUser ? (
-                  <TouchableOpacity
-                    testID="event-arena-send-cash"
-                    accessibilityRole="button"
-                    accessibilityLabel={`Send event cash to ${detail.alias}`}
-                    onPress={openCashTransfer}
-                    disabled={!!restoredTransfer && restoredTransfer.recipientParticipantToken !== detail.participantToken}
-                    style={{ minHeight: 48, marginTop: 14, borderRadius: 11, backgroundColor: colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: restoredTransfer && restoredTransfer.recipientParticipantToken !== detail.participantToken ? 0.5 : 1 }}
-                  >
-                    <Feather name="send" size={15} color={colors.primaryForeground} />
-                    <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>SEND CASH</Text>
-                  </TouchableOpacity>
-                ) : null}
-                {cashTransferReceipt ? (
-                  <View testID="event-arena-cash-transfer-success" style={{ marginTop: 10, padding: 12, borderRadius: 10, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.primary }}>
-                    <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11 }}>{cashTransferReceipt}</Text>
-                    {cancelledCashOrders.length > 0 ? (
-                      <>
-                        <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 10, marginTop: 6 }}>Cancelled to restore order affordability:</Text>
-                        {cancelledCashOrders.map((order) => (
-                          <Text key={order.id} style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>
-                            {order.intent === 'short' ? 'Short' : order.intent === 'cover' ? 'Cover' : order.side.toUpperCase()} {order.symbol}
-                          </Text>
-                        ))}
-                      </>
-                    ) : (
-                      <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 5 }}>No pending cash-reserving orders were cancelled.</Text>
+                    {detail.isCurrentUser && (
+                      <Text allowFontScaling style={{ color: colors.gold, fontFamily: 'Inter_700Bold', fontSize: 10 }}>YOUR SCORE</Text>
                     )}
                   </View>
-                ) : null}
-                <Text style={{ color: colors.destructive, fontFamily: 'Inter_600SemiBold', fontSize: 10, lineHeight: 15, marginTop: 12 }}>
-                  Self-reported and unverified. Raw share counts, prices, cost basis, account identifiers, and trade history are not shared.
-                </Text>
+                  <Text
+                    allowFontScaling
+                    accessibilityRole="header"
+                    style={{ flexShrink: 1, color: '#F5F1E5', fontFamily: 'Inter_700Bold', fontSize: 26, marginTop: 11 }}
+                  >
+                    {detail.alias}
+                  </Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 20 }}>
+                    <Text allowFontScaling style={{ color: '#D6B15E', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1 }}>EVENT RETURN</Text>
+                    <Text
+                      testID="paper-event-detail-return"
+                      allowFontScaling
+                      accessibilityLabel={`${returnLabel(detail.returnPercent)} event return`}
+                      style={{ color: returnColor(detail.returnPercent), fontFamily: 'Inter_700Bold', fontSize: 34 }}
+                    >
+                      {returnLabel(detail.returnPercent)}
+                    </Text>
+                  </View>
+                  <Text allowFontScaling style={{ color: '#BBC5D2', fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 2 }}>
+                    Self-reported competition performance
+                  </Text>
+                </View>
+
+                <View style={{ padding: 16 }}>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                    <View style={{ flexGrow: 1, flexBasis: '47%', minWidth: 132, padding: 13, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.045)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+                      <Text allowFontScaling style={{ color: '#AEB9C7', fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>REPORTED ACCOUNT VALUE</Text>
+                      <Text testID="paper-event-detail-equity" allowFontScaling style={{ flexShrink: 1, color: '#F5F1E5', fontFamily: 'Inter_700Bold', fontSize: 20, marginTop: 6 }}>
+                        {money(detail.equity)}
+                      </Text>
+                    </View>
+                    <View style={{ flexGrow: 1, flexBasis: '47%', minWidth: 132, padding: 13, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.045)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+                      <Text allowFontScaling style={{ color: '#AEB9C7', fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>DOLLAR PROFIT / LOSS</Text>
+                      <Text testID="paper-event-detail-profit-loss" allowFontScaling style={{ flexShrink: 1, color: profitLossColor(detail.profitLoss), fontFamily: 'Inter_700Bold', fontSize: 19, marginTop: 6 }}>
+                        {signedMoney(detail.profitLoss)}
+                      </Text>
+                    </View>
+                    <View style={{ flexGrow: 1, flexBasis: '47%', minWidth: 132, padding: 13, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.045)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+                      <Text allowFontScaling style={{ color: '#AEB9C7', fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>TRADE COUNT</Text>
+                      <Text testID="paper-event-detail-trade-count" allowFontScaling style={{ color: '#F5F1E5', fontFamily: 'Inter_700Bold', fontSize: 19, marginTop: 6 }}>
+                        {detail.tradeCount == null ? 'Not available' : detail.tradeCount}
+                      </Text>
+                    </View>
+                    <View style={{ flexGrow: 1, flexBasis: '47%', minWidth: 132, padding: 13, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.045)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+                      <Text allowFontScaling style={{ color: '#AEB9C7', fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>LAST UPDATE</Text>
+                      <Text testID="paper-event-detail-updated" allowFontScaling style={{ flexShrink: 1, color: '#F5F1E5', fontFamily: 'Inter_600SemiBold', fontSize: 13, marginTop: 6 }}>
+                        {timeLabel(detail.updatedAt)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={{ marginTop: 17, padding: 15, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.035)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Feather name="briefcase" size={15} color={colors.gold} />
+                      <Text allowFontScaling accessibilityRole="header" style={{ color: '#F5F1E5', fontFamily: 'Inter_700Bold', fontSize: 15 }}>Current holdings</Text>
+                    </View>
+                    <Text allowFontScaling style={{ color: '#AEB9C7', fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 5 }}>
+                      Self-reported allocation is absolute market exposure as a percentage of reported event account equity.
+                    </Text>
+                    {detail.holdings.length === 0 ? (
+                      <Text allowFontScaling style={{ color: '#AEB9C7', fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 12 }}>No current holdings reported.</Text>
+                    ) : detail.holdings.map((holding) => (
+                      <View key={holding.symbol} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 10, padding: 12, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' }}>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text allowFontScaling style={{ color: colors.gold, fontFamily: 'Inter_700Bold', fontSize: 13 }}>{holding.symbol}</Text>
+                          <Text allowFontScaling style={{ color: '#BBC5D2', fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 17, marginTop: 3 }}>{holding.companyName}</Text>
+                        </View>
+                        <View style={{ alignItems: 'flex-end', flexShrink: 0, maxWidth: '42%' }}>
+                          <Text allowFontScaling style={{ color: '#F5F1E5', fontFamily: 'Inter_700Bold', fontSize: 12 }}>
+                            {formatEventHoldingAllocation(holding.allocationPercent)}
+                          </Text>
+                          <Text allowFontScaling style={{ color: holding.side === 'short' ? colors.destructive : colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 10, marginTop: 4 }}>
+                            {formatEventHoldingSide(holding.side).toUpperCase()}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+
+                  <View testID="paper-event-detail-privacy" style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 13, padding: 12, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.035)' }}>
+                    <Feather name="lock" size={14} color="#D6B15E" style={{ marginTop: 1 }} />
+                    <Text allowFontScaling style={{ flex: 1, minWidth: 0, color: '#BBC5D2', fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16 }}>
+                      Self-reported and unverified. Raw share counts, prices, cost basis, account identifiers, and trade history are not shared.
+                    </Text>
+                  </View>
+                  {canSendCash && !detail.isCurrentUser ? (
+                    <TouchableOpacity
+                      testID="event-arena-send-cash"
+                      accessibilityRole="button"
+                      accessibilityLabel={`Send event cash to ${detail.alias}`}
+                      onPress={openCashTransfer}
+                      disabled={!!restoredTransfer && restoredTransfer.recipientParticipantToken !== detail.participantToken}
+                      style={{ minHeight: 48, marginTop: 14, borderRadius: 11, backgroundColor: colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: restoredTransfer && restoredTransfer.recipientParticipantToken !== detail.participantToken ? 0.5 : 1 }}
+                    >
+                      <Feather name="send" size={15} color={colors.primaryForeground} />
+                      <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>SEND CASH</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  {cashTransferReceipt ? (
+                    <View testID="event-arena-cash-transfer-success" style={{ marginTop: 10, padding: 12, borderRadius: 10, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.primary }}>
+                      <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11 }}>{cashTransferReceipt}</Text>
+                      {cancelledCashOrders.length > 0 ? (
+                        <>
+                          <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 10, marginTop: 6 }}>Cancelled to restore order affordability:</Text>
+                          {cancelledCashOrders.map((order) => (
+                            <Text key={order.id} style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>
+                              {order.intent === 'short' ? 'Short' : order.intent === 'cover' ? 'Cover' : order.side.toUpperCase()} {order.symbol}
+                            </Text>
+                          ))}
+                        </>
+                      ) : (
+                        <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 5 }}>No pending cash-reserving orders were cancelled.</Text>
+                      )}
+                    </View>
+                  ) : null}
+                </View>
               </View>
             </ScrollView>
           ) : (
