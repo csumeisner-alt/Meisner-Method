@@ -983,9 +983,6 @@ export function PaperChallengeLeaderboard({
             end={{ x: 0.5, y: 1 }}
             style={{ pointerEvents: 'none', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: isChampion ? 24 : 18 }}
           />
-          {isChampion && entry ? (
-            <View style={{ pointerEvents: 'none', position: 'absolute', top: 0, left: 0, right: 0, height: 4, borderTopLeftRadius: 24, borderTopRightRadius: 24, backgroundColor: 'rgba(255,229,156,0.88)' }} />
-          ) : null}
           {entry ? (
             <>
                {isChampion ? (

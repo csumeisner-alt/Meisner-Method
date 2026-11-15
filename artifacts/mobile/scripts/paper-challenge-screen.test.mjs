@@ -51,6 +51,30 @@ assert.match(screen, /LIGHTNING ROUND IS LIVE/);
 assert.match(screen, /testID="dismiss-paper-event-recap"/);
 assert.match(screen, /previousEnrollmentIdsRef/);
 
+test("Portfolio Overview label is centered without changing the Positions count layout", () => {
+  const portfolioTabsStart = screen.indexOf("{activeTabGroup.id === 'portfolio' ? (");
+  const portfolioTabsEnd = screen.indexOf(") : (", portfolioTabsStart);
+  const portfolioTabs = screen.slice(portfolioTabsStart, portfolioTabsEnd);
+  assert.ok(portfolioTabsStart >= 0 && portfolioTabsEnd > portfolioTabsStart);
+  assert.match(portfolioTabs, /tab\.id === 'overview' && styles\.overviewTabLabel/);
+  assert.match(screen, /overviewTabLabel: \{ flex: 1 \}/);
+  assert.match(screen, /portfolioTabLabel: \{ flexShrink: 1, textAlign: 'center' \}/);
+  assert.match(portfolioTabs, /accessibilityLabel=\{tab\.id === 'positions' \? `Positions, \$\{myPositions\.length\} open` : tab\.label\}/);
+  assert.match(portfolioTabs, /testID="paper-positions-count"[\s\S]*?\{myPositions\.length\}/);
+  assert.match(portfolioTabs, /onPress=\{\(\) => setActiveTab\(tab\.id\)\}/);
+});
+
+test("Event Arena first-place podium keeps its card treatment without a separate top accent", () => {
+  const podiumStart = leaderboard.indexOf("const renderPodiumCard =");
+  const podiumEnd = leaderboard.indexOf("\n  const openCashTransfer", podiumStart);
+  const podium = leaderboard.slice(podiumStart, podiumEnd);
+  assert.ok(podiumStart >= 0 && podiumEnd > podiumStart);
+  assert.match(podium, /borderWidth: entry\?\.isCurrentUser \? 2 : 1/);
+  assert.match(podium, /borderColor: entry\?\.isCurrentUser \? colors\.gold : entry \? `\$\{medal\.color\}D0`/);
+  assert.match(podium, /\['rgba\(229,191,99,0\.30\)'/);
+  assert.doesNotMatch(podium, /height: 4, borderTopLeftRadius: 24, borderTopRightRadius: 24/);
+});
+
 test("Lightning Round stays separate, off-week, and visible from the existing arena", () => {
   assert.match(lightningRoute, /<LightningRoundScreen \/>/);
   assert.match(mobileRootLayout, /<Stack\.Screen name="lightning-round"/);

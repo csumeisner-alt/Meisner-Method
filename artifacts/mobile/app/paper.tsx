@@ -2821,6 +2821,7 @@ export default function PaperScreen() {
               >
                 <Text style={[
                   styles.portfolioTabLabel,
+                  tab.id === 'overview' && styles.overviewTabLabel,
                   styles.tabLabel,
                   selected && (tab.id === 'positions' ? styles.positionsTabLabelActive : styles.tabLabelActive),
                 ]} allowFontScaling>
@@ -3852,6 +3853,7 @@ const styles = StyleSheet.create({
   tabBtn: { minHeight: 38, minWidth: 78, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 10, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD_BG },
   portfolioTabBtn: { flex: 1, minWidth: 0, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, paddingHorizontal: 8 },
   portfolioTabLabel: { flexShrink: 1, textAlign: 'center' },
+  overviewTabLabel: { flex: 1 },
   tabBtnActive: { borderColor: GOLD, backgroundColor: 'rgba(255,215,0,0.12)' },
   tabLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 12, color: DIM },
   tabLabelActive: { color: GOLD },
