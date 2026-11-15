@@ -121,6 +121,22 @@ test("event enrollment enables sharing with compact privacy controls", () => {
   assert.match(eventArena, /testID=\{`paper-event-trades-\$\{event\.eventId\}`\}/);
 });
 
+test("Event Arena podium sharing captures only aliases and returns with the self-reported disclosure", () => {
+  const cardStart = leaderboard.indexOf("function EventArenaPodiumShareCard(");
+  const cardEnd = leaderboard.indexOf("\nasync function buildEventSubmission", cardStart);
+  const shareCardSource = leaderboard.slice(cardStart, cardEnd);
+
+  assert.match(leaderboard, /testID="share-paper-event-podium"/);
+  assert.match(leaderboard, /testID="share-paper-event-podium-confirm"/);
+  assert.match(leaderboard, /<ViewShot[\s\S]*?EventArenaPodiumShareCard event=\{event\} slots=\{podiumSlots\}/);
+  assert.match(leaderboard, /Sharing\.shareAsync\(uri,[\s\S]*?mimeType: 'image\/png'/);
+  assert.match(shareCardSource, /EVENT_ARENA_ARTWORK_SOURCES\[event\.artworkId \?\? LEGACY_PAPER_CHALLENGE_ARTWORK_ID\]/);
+  assert.match(shareCardSource, /\{slot\.entry\?\.alias \?\? 'Waiting for competitor'\}/);
+  assert.match(shareCardSource, /\{returnLabel\(slot\.entry\.returnPercent\)\}/);
+  assert.match(shareCardSource, /Scores are self-reported and not independently verified\./);
+  assert.doesNotMatch(shareCardSource, /accountId|participantToken|installationId|holdings|transactions|tradeCount|avgCost|shares/);
+});
+
 test("Event Arena section tabs stay readable and fit narrow phone widths", () => {
   const sectionTabsStart = eventArena.indexOf("{SECTIONS.map((item) => {");
   const sectionTabsEnd = eventArena.indexOf("</View>\n      </View>", sectionTabsStart);
@@ -169,7 +185,8 @@ test("Event Arena section tabs stay readable and fit narrow phone widths", () =>
 });
 
 test("championship leaderboard shows real podium scores, event context, and below-podium standings", () => {
-  const stadiumStart = leaderboard.indexOf("<ImageBackground");
+  const stadiumMarker = leaderboard.indexOf('testID={`event-arena-leaderboard-artwork-${event.id}`}');
+  const stadiumStart = leaderboard.lastIndexOf("<ImageBackground", stadiumMarker);
   const stadiumEnd = leaderboard.indexOf("</ImageBackground>", stadiumStart);
   const stadium = leaderboard.slice(stadiumStart, stadiumEnd);
 
@@ -823,7 +840,8 @@ test("all five live Event Arena backgrounds keep podium names and values readabl
   assert.match(leaderboard, /source=\{EVENT_ARENA_ARTWORK_SOURCES\[event\.artworkId \?\? LEGACY_PAPER_CHALLENGE_ARTWORK_ID\]\}/);
   assert.match(leaderboard, /resizeMode="cover"/);
   assert.match(leaderboard, /event-arena-leaderboard-artwork-\$\{event\.id\}/);
-  const artworkStart = leaderboard.indexOf("<ImageBackground");
+  const artworkMarker = leaderboard.indexOf('testID={`event-arena-leaderboard-artwork-${event.id}`}');
+  const artworkStart = leaderboard.lastIndexOf("<ImageBackground", artworkMarker);
   const artworkEnd = leaderboard.indexOf("</ImageBackground>", artworkStart);
   const artworkContainer = leaderboard.slice(artworkStart, artworkEnd);
   assert.ok(artworkStart >= 0 && artworkEnd > artworkStart);

@@ -11,12 +11,14 @@ import {
   TouchableOpacity,
   useWindowDimensions,
   View,
+  Alert,
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import ViewShot from 'react-native-view-shot';
 import { useColors } from '@/hooks/useColors';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 import {
@@ -128,6 +130,95 @@ const dateRangeLabel = (startAtMs: number, endAtMs: number) => {
   const end = new Date(endAtMs).toLocaleDateString('en-US', options);
   return `${start} – ${end}`;
 };
+
+function EventArenaPodiumShareCard({
+  event,
+  slots,
+}: {
+  event: EventWindow;
+  slots: Array<{ rank: number; entry: LeaderboardEntry | null }>;
+}) {
+  const podiumColors = ['#E5BF63', '#C9D4DF', '#D99A72'];
+  return (
+    <ImageBackground
+      source={EVENT_ARENA_ARTWORK_SOURCES[event.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID]}
+      resizeMode="cover"
+      imageStyle={{ opacity: 0.55 }}
+      style={{ width: '100%', maxWidth: 360, overflow: 'hidden', borderRadius: 22, backgroundColor: '#101720' }}
+    >
+      <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(7,12,20,0.72)' }} />
+      <View testID="paper-event-podium-share-card" style={{ padding: 20 }}>
+        <Text style={{ color: '#D8B45A', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 2 }}>MEISNER METHOD</Text>
+        <Text style={{ color: '#E6D8B2', fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 1.4, marginTop: 10 }}>EVENT ARENA</Text>
+        <Text style={{ color: '#F7F2E8', fontFamily: 'Inter_700Bold', fontSize: 27, marginTop: 3 }}>The podium</Text>
+        <Text style={{ color: '#C5C8CD', fontFamily: 'Inter_500Medium', fontSize: 11, marginTop: 5 }}>
+          {dateRangeLabel(event.startAtMs, event.endAtMs)}
+        </Text>
+        <View style={{ gap: 9, marginTop: 22 }}>
+          {slots.map((slot) => {
+            const medalColor = podiumColors[slot.rank - 1] ?? podiumColors[0];
+            return (
+              <View
+                key={slot.rank}
+                testID={`paper-event-podium-share-rank-${slot.rank}`}
+                style={{
+                  minHeight: 66,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 12,
+                  paddingHorizontal: 13,
+                  paddingVertical: 11,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: `${medalColor}88`,
+                  backgroundColor: 'rgba(10,16,25,0.84)',
+                }}
+              >
+                <View style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: `${medalColor}A0`, backgroundColor: `${medalColor}22` }}>
+                  <Text style={{ color: medalColor, fontFamily: 'Inter_700Bold', fontSize: 15 }}>#{slot.rank}</Text>
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text
+                    allowFontScaling
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.7}
+                    numberOfLines={1}
+                    style={{ color: slot.entry ? '#F6F1E5' : '#AEB4BD', fontFamily: 'Inter_700Bold', fontSize: 15 }}
+                  >
+                    {slot.entry?.alias ?? 'Waiting for competitor'}
+                  </Text>
+                  <Text style={{ color: '#C5C8CD', fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 0.8, marginTop: 4 }}>
+                    {slot.entry ? 'SELF-REPORTED SCORE' : 'OPEN PODIUM SPOT'}
+                  </Text>
+                </View>
+                {slot.entry && (
+                  <Text
+                    allowFontScaling
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.7}
+                    numberOfLines={1}
+                    style={{ color: slot.rank === 1 ? '#F0CF75' : '#F2EEE6', fontFamily: 'Inter_700Bold', fontSize: 16, maxWidth: 92, textAlign: 'right' }}
+                  >
+                    {returnLabel(slot.entry.returnPercent)}
+                  </Text>
+                )}
+              </View>
+            );
+          })}
+        </View>
+        <View style={{ marginTop: 18, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(216,180,90,0.38)', backgroundColor: 'rgba(216,180,90,0.10)' }}>
+          <Text style={{ color: '#F0D88F', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.8 }}>SELF-REPORTED · NOT VERIFIED</Text>
+          <Text style={{ color: '#D8D8D4', fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 4 }}>
+            Scores are self-reported and not independently verified.
+          </Text>
+        </View>
+        <Text style={{ color: '#B9BEC5', fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 1.2, marginTop: 18, textAlign: 'center' }}>
+          MEISNER METHOD · EVENT ARENA
+        </Text>
+      </View>
+    </ImageBackground>
+  );
+}
 
 async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event: EventWindow) {
   const raw = await AsyncStorage.getItem('@stocksense/paper_v2');
@@ -263,6 +354,9 @@ export function PaperChallengeLeaderboard({
   const [cancelledCashOrders, setCancelledCashOrders] = useState<PaperOrder[]>([]);
   const [cashTransferBusy, setCashTransferBusy] = useState(false);
   const [cashTransferRequestKey, setCashTransferRequestKey] = useState('');
+  const [podiumImageOpen, setPodiumImageOpen] = useState(false);
+  const [sharingPodiumImage, setSharingPodiumImage] = useState(false);
+  const podiumImageRef = useRef<ViewShot | null>(null);
   const [restoredTransfer, setRestoredTransfer] = useState<{
     idempotencyKey: string;
     recipientParticipantToken: string;
@@ -916,6 +1010,30 @@ export function PaperChallengeLeaderboard({
     setCashTransferOpen(true);
   };
 
+  const sharePodiumImage = async () => {
+    const viewShot = podiumImageRef.current;
+    if (!viewShot || sharingPodiumImage || entries.length === 0) return;
+    setSharingPodiumImage(true);
+    try {
+      const uri = await viewShot.capture?.();
+      if (!uri) throw new Error('The podium image could not be rendered.');
+      const Sharing = await import('expo-sharing');
+      if (!(await Sharing.isAvailableAsync())) {
+        Alert.alert('Sharing unavailable', 'Your device cannot share an image right now.');
+        return;
+      }
+      await Sharing.shareAsync(uri, {
+        mimeType: 'image/png',
+        UTI: 'public.png',
+        dialogTitle: 'Meisner Method Event Arena Podium',
+      });
+    } catch {
+      Alert.alert('Could not share', 'The podium image is unavailable right now. Please try again.');
+    } finally {
+      setSharingPodiumImage(false);
+    }
+  };
+
   const confirmCashTransfer = async () => {
     if (!detail || !canSendCash || cashTransferBusy || !installationId) return;
     const amount = Math.round(Number(cashTransferAmount) * 100) / 100;
@@ -1347,9 +1465,23 @@ export function PaperChallengeLeaderboard({
                     </View>
                   )}
                   <View testID="paper-event-leaderboard-podium" style={{ marginTop: entries.length === 0 ? 7 : 2 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
                       <Text style={{ color: '#F4F0E7', fontFamily: 'Inter_700Bold', fontSize: 14 }}>The podium</Text>
-                      <Text style={{ color: '#D5C189', fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 1.1 }}>TOP THREE</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+                        <Text style={{ color: '#D5C189', fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 1.1 }}>TOP THREE</Text>
+                        {Platform.OS !== 'web' && entries.length > 0 && (
+                          <TouchableOpacity
+                            testID="share-paper-event-podium"
+                            accessibilityRole="button"
+                            accessibilityLabel="Preview and share the Event Arena podium image"
+                            onPress={() => setPodiumImageOpen(true)}
+                            style={{ minHeight: 40, minWidth: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 8, borderRadius: 9, borderWidth: 1, borderColor: 'rgba(216,180,90,0.48)', backgroundColor: 'rgba(216,180,90,0.10)' }}
+                          >
+                            <Feather name="image" size={14} color="#E6CA7A" />
+                            <Text style={{ color: '#E6CA7A', fontFamily: 'Inter_700Bold', fontSize: 9 }}>SHARE IMAGE</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     </View>
                     <Animated.View style={{
                       opacity: reduceMotion ? 1 : podiumEntranceValueRef.current,
@@ -1450,6 +1582,43 @@ export function PaperChallengeLeaderboard({
           )}
         </View>
       </PageWrapper>
+
+      <Modal
+        visible={podiumImageOpen}
+        animationType="slide"
+        onRequestClose={() => setPodiumImageOpen(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: Platform.OS === 'web' ? 24 : insets.top + 8 }}>
+          <View style={{ paddingHorizontal: 18, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={{ flex: 1, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20 }}>Share podium image</Text>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close podium image preview" onPress={() => setPodiumImageOpen(false)} style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}>
+              <Feather name="x" size={22} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 18 }}>
+            <ViewShot
+              ref={podiumImageRef}
+              options={{ format: 'png', quality: 1 }}
+              style={{ width: '100%', maxWidth: 360 }}
+            >
+              <EventArenaPodiumShareCard event={event} slots={podiumSlots} />
+            </ViewShot>
+          </ScrollView>
+          <View style={{ paddingHorizontal: 18, paddingTop: 10, paddingBottom: Platform.OS === 'web' ? 24 : insets.bottom + 18 }}>
+            <TouchableOpacity
+              testID="share-paper-event-podium-confirm"
+              accessibilityRole="button"
+              disabled={sharingPodiumImage}
+              onPress={() => { void sharePodiumImage(); }}
+              style={{ minHeight: 50, borderRadius: 12, backgroundColor: sharingPodiumImage ? colors.muted : colors.primary, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>
+                {sharingPodiumImage ? 'Preparing image…' : 'Share image'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={cashTransferOpen} animationType="fade" transparent statusBarTranslucent onRequestClose={() => {
         if (!cashTransferBusy) setCashTransferOpen(false);
