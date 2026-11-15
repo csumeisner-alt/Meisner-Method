@@ -333,6 +333,10 @@ test("participant score detail uses selected-entry values without changing leade
   assert.match(detail, /\{signedMoney\(detail\.profitLoss\)\}/);
   assert.match(detail, /\{detail\.tradeCount == null \? 'Not available' : detail\.tradeCount\}/);
   assert.match(detail, /\{timeLabel\(detail\.updatedAt\)\}/);
+  assert.match(detail, /visibleHoldings\.map\(\(holding\) =>/);
+  assert.match(detail, /paper-event-holdings-toggle/);
+  assert.match(detail, /accessibilityState=\{\{ expanded: holdingsExpanded \}\}/);
+  assert.match(detail, /Show all \$\{detail\.holdings\.length\} holdings/);
   assert.match(detail, /holding\.symbol/);
   assert.match(detail, /holding\.companyName/);
   assert.match(detail, /formatEventHoldingAllocation\(holding\.allocationPercent\)/);

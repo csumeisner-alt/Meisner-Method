@@ -28,6 +28,7 @@ import {
 } from '../paperChallenge.ts';
 import {
   calculateEventHoldingAllocationPercent,
+  getVisibleEventHoldings,
   formatEventHoldingAllocation,
   formatEventHoldingSide,
   hasEventAverageCostFallback,
@@ -46,6 +47,19 @@ test('event holding allocation uses absolute market exposure over reported equit
   assert.equal(hasEventAverageCostFallback(['AAPL', 'MSFT'], new Set(['AAPL'])), true);
   assert.equal(hasEventAverageCostFallback(['aapl'], new Set(['AAPL'])), false);
   assert.equal(hasEventAverageCostFallback([], new Set()), false);
+});
+
+test('event leaderboard holdings preview keeps all reported entries available', () => {
+  const holdings = Array.from({ length: 8 }, (_, index) => ({
+    symbol: `STK${index + 1}`,
+    companyName: `Company ${index + 1}`,
+    allocationPercent: index + 1,
+    side: index % 2 === 0 ? 'long' : 'short',
+  }));
+
+  assert.deepEqual(getVisibleEventHoldings(holdings, false), holdings.slice(0, 5));
+  assert.deepEqual(getVisibleEventHoldings(holdings, true), holdings);
+  assert.deepEqual(getVisibleEventHoldings(holdings.slice(0, 3), false), holdings.slice(0, 3));
 });
 
 test('paper event runs Monday open through Friday close, then skips a week', () => {

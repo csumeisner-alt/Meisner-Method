@@ -1,5 +1,14 @@
 export type EventHoldingSide = 'long' | 'short';
 
+export const EVENT_HOLDINGS_PREVIEW_LIMIT = 5;
+
+export function getVisibleEventHoldings<T>(
+  holdings: T[],
+  expanded: boolean,
+): T[] {
+  return expanded ? holdings : holdings.slice(0, EVENT_HOLDINGS_PREVIEW_LIMIT);
+}
+
 export function formatEventHoldingAllocation(allocationPercent: number | null): string {
   return allocationPercent == null
     ? 'Allocation unavailable'

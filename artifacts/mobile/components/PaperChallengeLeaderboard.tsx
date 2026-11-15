@@ -26,7 +26,9 @@ import {
 } from '@workspace/api-client-react';
 import { getInstallationId } from '@/lib/installation';
 import {
+  EVENT_HOLDINGS_PREVIEW_LIMIT,
   calculateEventHoldingAllocationPercent,
+  getVisibleEventHoldings,
   formatEventHoldingAllocation,
   formatEventHoldingSide,
   hasEventAverageCostFallback,
@@ -249,6 +251,7 @@ export function PaperChallengeLeaderboard({
   const [sharingBusy, setSharingBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [detail, setDetail] = useState<LeaderboardEntry | null>(null);
+  const [expandedHoldingsParticipantToken, setExpandedHoldingsParticipantToken] = useState<string | null>(null);
   const [cashTransferOpen, setCashTransferOpen] = useState(false);
   const [cashTransferAmount, setCashTransferAmount] = useState('');
   const [cashTransferError, setCashTransferError] = useState('');
@@ -347,6 +350,11 @@ export function PaperChallengeLeaderboard({
     && !!eventAccount
     && !!onCashTransfer
     && !!installationId;
+  const holdingsExpanded = detail != null
+    && expandedHoldingsParticipantToken === detail.participantToken;
+  const visibleHoldings = detail
+    ? getVisibleEventHoldings(detail.holdings, holdingsExpanded)
+    : [];
 
   useEffect(() => {
     if (openOnMount && !embedded) setOpen(true);
@@ -1089,7 +1097,7 @@ export function PaperChallengeLeaderboard({
                     </Text>
                     {detail.holdings.length === 0 ? (
                       <Text allowFontScaling style={{ color: '#AEB9C7', fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 12 }}>No current holdings reported.</Text>
-                    ) : detail.holdings.map((holding) => (
+                    ) : visibleHoldings.map((holding) => (
                       <View key={holding.symbol} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 10, padding: 12, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' }}>
                         <View style={{ flex: 1, minWidth: 0 }}>
                           <Text allowFontScaling style={{ color: colors.gold, fontFamily: 'Inter_700Bold', fontSize: 13 }}>{holding.symbol}</Text>
@@ -1105,6 +1113,39 @@ export function PaperChallengeLeaderboard({
                         </View>
                       </View>
                     ))}
+                    {detail.holdings.length > EVENT_HOLDINGS_PREVIEW_LIMIT && (
+                      <TouchableOpacity
+                        testID="paper-event-holdings-toggle"
+                        accessibilityRole="button"
+                        accessibilityLabel={holdingsExpanded
+                          ? 'Show fewer holdings'
+                          : `Show all ${detail.holdings.length} holdings`}
+                        accessibilityHint={holdingsExpanded
+                          ? `Hides holdings after the first ${EVENT_HOLDINGS_PREVIEW_LIMIT}.`
+                          : 'Reveals the remaining participant holdings.'}
+                        accessibilityState={{ expanded: holdingsExpanded }}
+                        onPress={() => setExpandedHoldingsParticipantToken(
+                          holdingsExpanded ? null : detail.participantToken,
+                        )}
+                        style={{
+                          minHeight: 44,
+                          marginTop: 10,
+                          paddingHorizontal: 12,
+                          borderRadius: 10,
+                          borderWidth: 1,
+                          borderColor: 'rgba(214,177,94,0.4)',
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 7,
+                        }}
+                      >
+                        <Text allowFontScaling style={{ color: colors.gold, fontFamily: 'Inter_700Bold', fontSize: 12, textAlign: 'center' }}>
+                          {holdingsExpanded ? 'Show fewer holdings' : `Show all ${detail.holdings.length} holdings`}
+                        </Text>
+                        <Feather name={holdingsExpanded ? 'chevron-up' : 'chevron-down'} size={14} color={colors.gold} />
+                      </TouchableOpacity>
+                    )}
                   </View>
 
                   <View testID="paper-event-detail-privacy" style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 13, padding: 12, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.035)' }}>
