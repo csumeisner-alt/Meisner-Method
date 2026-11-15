@@ -27,6 +27,10 @@ export function getEventArenaReturnTone(value: number): EventArenaReturnTone {
   return rounded > 0 ? 'positive' : 'negative';
 }
 
+export function getEventArenaProfitLossTone(value: number): EventArenaReturnTone {
+  return getEventArenaReturnTone(value);
+}
+
 export function getEventArenaPodiumSlots<T extends { rank: number }>(entries: T[]) {
   return ([1, 2, 3] as const).map((rank) => ({
     rank,

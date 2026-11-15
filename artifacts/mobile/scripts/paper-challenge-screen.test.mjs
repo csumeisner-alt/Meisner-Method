@@ -257,7 +257,7 @@ test("competitive progress stays tied to successful event responses and readable
   assert.match(leaderboard, /renderPodiumCard\(podiumSlots\[1\]\)[\s\S]*?renderPodiumCard\(podiumSlots\[0\]\)[\s\S]*?renderPodiumCard\(podiumSlots\[2\]\)/);
   assert.match(leaderboard, /maxWidth: 1000/);
   assert.match(leaderboard, /fontSize: isChampion \? compactPodium \? 20 : 23 : compactPodium \? 14 : 16/);
-  assert.match(leaderboard, /fontSize: isChampion \? compactPodium \? 27 : 31 : compactPodium \? 18 : 21/);
+  assert.match(leaderboard, /fontSize: isChampion \? compactPodium \? 30 : 36 : compactPodium \? 22 : 26/);
 
   // Existing endpoint, ordering, disclosure, and retry/stale-data paths stay intact.
   assert.match(leaderboard, /useGetEventArenaLeaderboard\(event\.id/);
@@ -274,15 +274,25 @@ test("leaderboard names and large values remain readable and announced on compac
   const positionStart = leaderboard.indexOf('testID="paper-event-leaderboard-current-user"');
   const standingsStart = leaderboard.indexOf('testID="paper-event-leaderboard-list"');
   const renderEntry = leaderboard.slice(renderEntryStart, renderPodiumStart);
-  const renderPodium = leaderboard.slice(renderPodiumStart, positionStart);
+  const renderPodium = leaderboard.slice(
+    renderPodiumStart,
+    leaderboard.indexOf("\n  const openCashTransfer", renderPodiumStart),
+  );
   const positionPanel = leaderboard.slice(positionStart, leaderboard.indexOf("{loadError && entries.length > 0", positionStart));
 
   assert.ok(renderEntryStart >= 0 && renderPodiumStart > renderEntryStart);
   assert.ok(standingsStart >= 0 && positionStart > standingsStart);
   assert.match(renderEntry, /accessibilityLabel=\{`Rank \$\{entry\.rank\}, \$\{entry\.alias\}[\s\S]*?account value \$\{money\(entry\.equity\)\}[\s\S]*?profit or loss \$\{signedMoney\(entry\.profitLoss\)\}[\s\S]*?\$\{returnLabel\(entry\.returnPercent\)\} return/);
-  assert.match(renderPodium, /accessibilityLabel=\{entry[\s\S]*?account value \$\{money\(entry\.equity\)\}/);
+  assert.match(renderPodium, /accessibilityLabel=\{entry[\s\S]*?Rank \$\{entry\.rank\} of \$\{entries\.length\}[\s\S]*?competition return \$\{returnLabel\(entry\.returnPercent\)\}[\s\S]*?current equity \$\{money\(entry\.equity\)\}[\s\S]*?profit or loss \$\{signedMoney\(entry\.profitLoss\)\}/);
   assert.match(renderPodium, /allowFontScaling numberOfLines=\{1\} adjustsFontSizeToFit minimumFontScale=\{0\.7\}[\s\S]*?\{entry\.alias\}/);
-  assert.match(renderPodium, /\{returnLabel\(entry\.returnPercent\)\}[\s\S]*?\{money\(entry\.equity\)\} account value[\s\S]*?\{signedMoney\(entry\.profitLoss\)\} reported P\/L/);
+  assert.match(renderPodium, /RANK \{entry\.rank\} OF \{entries\.length\}/);
+  assert.match(renderPodium, /COMPETITION RETURN[\s\S]*?\{returnLabel\(entry\.returnPercent\)\}/);
+  assert.match(renderPodium, /CURRENT EQUITY[\s\S]*?\{money\(entry\.equity\)\}/);
+  assert.match(renderPodium, /DOLLAR P\/L[\s\S]*?\{signedMoney\(entry\.profitLoss\)\}/);
+  assert.match(renderPodium, /color: profitLossColor\(entry\.profitLoss\)/);
+  assert.doesNotMatch(renderPodium, /CHAMPION|RUNNER-UP|THIRD PLACE/);
+  assert.match(renderPodium, /onPress=\{\(\) => \{ if \(entry\) setDetail\(entry as LeaderboardEntry\); \}\}/);
+  assert.match(renderEntry, /color: profitLossColor\(entry\.profitLoss\)/);
   assert.match(leaderboard, /<View accessible[\s\S]*?testID="paper-event-leaderboard-current-user"[\s\S]*?accessibilityLabel=\{`Your leaderboard position is rank \$\{ownEntry\.rank\}, \$\{ownEntry\.alias\}\.`\}/);
   assert.match(positionPanel, /allowFontScaling adjustsFontSizeToFit minimumFontScale=\{0\.7\} numberOfLines=\{1\}[\s\S]*?\{ownEntry\.alias\}/);
   assert.doesNotMatch(positionPanel, /money\(ownEntry\.equity\)|returnLabel\(ownEntry\.returnPercent\)|signedMoney\(ownEntry\.profitLoss\)/);
@@ -754,9 +764,9 @@ test("the live Event Arena podium uses a compact, clean stadium background", () 
   assert.match(leaderboard, /backgroundColor: 'rgba\(7,12,20,0\.18\)'/);
   assert.match(leaderboard, /rgba\(25,139,218,0\.22\)/);
   assert.match(leaderboard, /rgba\(255,218,128,0\.18\)/);
-  assert.match(leaderboard, /label: 'CHAMPION', color: '#E5BF63'/);
-  assert.match(leaderboard, /label: 'RUNNER-UP', color: '#C9D4DF'/);
-  assert.match(leaderboard, /label: 'THIRD PLACE', color: '#D99A72'/);
+  assert.match(leaderboard, /slot\.rank === 1[\s\S]*?\{ color: '#E5BF63' \}/);
+  assert.match(leaderboard, /slot\.rank === 2[\s\S]*?\{ color: '#C9D4DF' \}/);
+  assert.match(leaderboard, /: \{ color: '#D99A72' \}/);
   assert.match(leaderboard, /width: compactPodium \? 78 : 96/);
   assert.match(leaderboard, /podiumEntranceEventRef\.current === event\.id/);
   assert.match(leaderboard, /if \(reduceMotion\) \{\s*podiumEntranceValueRef\.current\.setValue\(1\)/);
@@ -766,4 +776,7 @@ test("the live Event Arena podium uses a compact, clean stadium background", () 
   assert.match(leaderboard, /\{money\(entry\.equity\)\}/);
   assert.match(leaderboard, /\{returnLabel\(entry\.returnPercent\)\}/);
   assert.match(leaderboard, /\{signedMoney\(entry\.profitLoss\)\}/);
+  const podiumStart = leaderboard.indexOf("const renderPodiumCard =");
+  const podiumEnd = leaderboard.indexOf("\n  const openCashTransfer", podiumStart);
+  assert.doesNotMatch(leaderboard.slice(podiumStart, podiumEnd), /CHAMPION|RUNNER-UP|THIRD PLACE/);
 });

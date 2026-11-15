@@ -49,6 +49,7 @@ import {
   getEventArenaOwnEntry,
   getEventArenaPodiumSlots,
   getEventArenaStandingsEntries,
+  getEventArenaProfitLossTone,
   getEventArenaReturnTone,
   getEventArenaStatus,
 } from '@/lib/eventArenaLeaderboard';
@@ -227,6 +228,12 @@ export function PaperChallengeLeaderboard({
   const colors = useColors();
   const returnColor = (value: number) => {
     const tone = getEventArenaReturnTone(value);
+    if (tone === 'positive') return colors.primary;
+    if (tone === 'negative') return colors.destructive;
+    return colors.foreground;
+  };
+  const profitLossColor = (value: number) => {
+    const tone = getEventArenaProfitLossTone(value);
     if (tone === 'positive') return colors.primary;
     if (tone === 'negative') return colors.destructive;
     return colors.foreground;
@@ -740,7 +747,7 @@ export function PaperChallengeLeaderboard({
           <Text allowFontScaling adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1} style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 9, marginTop: 3 }}>
             {money(entry.equity)} value
           </Text>
-          <Text allowFontScaling adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1} style={{ color: entry.profitLoss >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 9, marginTop: 2 }}>
+          <Text allowFontScaling adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1} style={{ color: profitLossColor(entry.profitLoss), fontFamily: 'Inter_500Medium', fontSize: 9, marginTop: 2 }}>
             {signedMoney(entry.profitLoss)} P/L
           </Text>
         </View>
@@ -754,10 +761,10 @@ export function PaperChallengeLeaderboard({
     const change = entry ? competitiveChanges.get(entry.participantToken) : undefined;
     const placesMoved = change?.placesMoved ?? 0;
     const medal = slot.rank === 1
-      ? { label: 'CHAMPION', color: '#E5BF63' }
+      ? { color: '#E5BF63' }
       : slot.rank === 2
-        ? { label: 'RUNNER-UP', color: '#C9D4DF' }
-        : { label: 'THIRD PLACE', color: '#D99A72' };
+        ? { color: '#C9D4DF' }
+        : { color: '#D99A72' };
     const isChampion = slot.rank === 1;
     return (
       <Animated.View
@@ -774,12 +781,12 @@ export function PaperChallengeLeaderboard({
           testID={`paper-event-podium-${slot.rank}`}
           accessibilityRole={entry ? 'button' : 'text'}
           accessibilityLabel={entry
-            ? `Rank ${slot.rank}, ${entry.alias}${entry.isCurrentUser ? ', your score' : ''}, ${returnLabel(entry.returnPercent)} return, profit or loss ${signedMoney(entry.profitLoss)}, account value ${money(entry.equity)}.${change && placesMoved !== 0 ? ` Self-reported rank movement ${placesMoved > 0 ? 'up' : 'down'} ${Math.abs(placesMoved)} ${Math.abs(placesMoved) === 1 ? 'place' : 'places'}.` : ''}`
+            ? `Rank ${entry.rank} of ${entries.length}, ${entry.alias}${entry.isCurrentUser ? ', your score' : ''}, competition return ${returnLabel(entry.returnPercent)}, current equity ${money(entry.equity)}, profit or loss ${signedMoney(entry.profitLoss)}.${change && placesMoved !== 0 ? ` Self-reported rank movement ${placesMoved > 0 ? 'up' : 'down'} ${Math.abs(placesMoved)} ${Math.abs(placesMoved) === 1 ? 'place' : 'places'}.` : ''}`
             : `Rank ${slot.rank}, waiting for competitor`}
           disabled={!entry}
           onPress={() => { if (entry) setDetail(entry as LeaderboardEntry); }}
           style={{
-              minHeight: entry ? (isChampion ? compactPodium ? 218 : 246 : compactPodium ? 162 : 174) : 90,
+              minHeight: entry ? (isChampion ? compactPodium ? 264 : 280 : compactPodium ? 218 : 228) : 90,
             justifyContent: 'center',
             alignItems: 'center',
              paddingHorizontal: isChampion ? 16 : compactPodium ? 8 : 11,
@@ -831,11 +838,8 @@ export function PaperChallengeLeaderboard({
                     <Feather name="award" size={compactPodium ? 22 : 26} color={medal.color} />
                   </View>
                 )}
-              <Text allowFontScaling adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1} style={{ color: medal.color, fontFamily: 'Inter_700Bold', fontSize: isChampion ? 13 : 14, letterSpacing: 0.4, marginTop: isChampion ? 6 : 4 }}>
-                #{slot.rank}
-              </Text>
-              <Text allowFontScaling style={{ color: medal.color, fontFamily: 'Inter_700Bold', fontSize: isChampion ? 10 : 9, letterSpacing: 0.7, marginTop: 2 }}>
-                {medal.label}
+              <Text allowFontScaling adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1} style={{ color: medal.color, fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 0.9, marginTop: isChampion ? 6 : 4 }}>
+                RANK {entry.rank} OF {entries.length}
               </Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, maxWidth: '100%', marginTop: isChampion ? 7 : 5 }}>
                 <Text allowFontScaling numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ flexShrink: 1, minWidth: 0, maxWidth: '100%', color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: isChampion ? compactPodium ? 20 : 23 : compactPodium ? 14 : 16 }}>
@@ -843,15 +847,30 @@ export function PaperChallengeLeaderboard({
                 </Text>
                 {entry.isCurrentUser && <Text style={{ color: colors.gold, fontFamily: 'Inter_700Bold', fontSize: 9 }}>YOU</Text>}
               </View>
-              <Text allowFontScaling numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ maxWidth: '100%', color: returnColor(entry.returnPercent), fontFamily: 'Inter_700Bold', fontSize: isChampion ? compactPodium ? 27 : 31 : compactPodium ? 18 : 21, marginTop: isChampion ? 6 : 4 }}>
+              <Text allowFontScaling style={{ color: '#F1EEE7', fontFamily: 'Inter_700Bold', fontSize: isChampion ? 10 : 9, letterSpacing: 1.2, marginTop: isChampion ? 7 : 5 }}>
+                COMPETITION RETURN
+              </Text>
+              <Text allowFontScaling numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ maxWidth: '100%', color: returnColor(entry.returnPercent), fontFamily: 'Inter_700Bold', fontSize: isChampion ? compactPodium ? 30 : 36 : compactPodium ? 22 : 26, marginTop: 1, textShadowColor: returnColor(entry.returnPercent), textShadowOffset: { width: 0, height: 0 }, textShadowRadius: isChampion ? 10 : 7 }}>
                 {returnLabel(entry.returnPercent)}
               </Text>
-               <Text allowFontScaling numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ maxWidth: '100%', color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: isChampion ? 12 : 10, marginTop: 4 }}>
-                 {money(entry.equity)} account value
-               </Text>
-              <Text allowFontScaling numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ maxWidth: '100%', color: entry.profitLoss >= 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 9, marginTop: 2 }}>
-                 {signedMoney(entry.profitLoss)} reported P/L
-               </Text>
+              <View style={{ width: '100%', flexDirection: 'row', gap: 6, marginTop: isChampion ? 9 : 7 }}>
+                <View style={{ flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'center', paddingVertical: 5, paddingHorizontal: 3, borderRadius: 9, backgroundColor: 'rgba(255,255,255,0.055)' }}>
+                  <Text allowFontScaling numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ maxWidth: '100%', color: '#C9CED5', fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.55 }}>
+                    CURRENT EQUITY
+                  </Text>
+                  <Text allowFontScaling numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65} style={{ maxWidth: '100%', color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: isChampion ? 12 : 10, marginTop: 2 }}>
+                    {money(entry.equity)}
+                  </Text>
+                </View>
+                <View style={{ flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'center', paddingVertical: 5, paddingHorizontal: 3, borderRadius: 9, backgroundColor: 'rgba(255,255,255,0.055)' }}>
+                  <Text allowFontScaling numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ maxWidth: '100%', color: '#C9CED5', fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.55 }}>
+                    DOLLAR P/L
+                  </Text>
+                  <Text allowFontScaling numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65} style={{ maxWidth: '100%', color: profitLossColor(entry.profitLoss), fontFamily: 'Inter_700Bold', fontSize: isChampion ? 12 : 10, marginTop: 2 }}>
+                    {signedMoney(entry.profitLoss)}
+                  </Text>
+                </View>
+              </View>
               {change && placesMoved !== 0 && (
                 <Text style={{ color: placesMoved > 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_600SemiBold', fontSize: 9, marginTop: 4 }}>
                   {placesMoved > 0 ? '↑' : '↓'} {Math.abs(placesMoved)} {Math.abs(placesMoved) === 1 ? 'place' : 'places'}

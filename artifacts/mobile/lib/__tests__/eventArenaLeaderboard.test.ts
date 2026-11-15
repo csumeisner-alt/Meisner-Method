@@ -5,6 +5,7 @@ import {
   formatEventArenaSignedMoney,
   getEventArenaOwnEntry,
   getEventArenaPodiumSlots,
+  getEventArenaProfitLossTone,
   getEventArenaReturnTone,
   getEventArenaStandingsEntries,
   getEventArenaStatus,
@@ -98,6 +99,14 @@ test('return colors treat rounded zero as neutral', () => {
   assert.equal(getEventArenaReturnTone(0), 'neutral');
   assert.equal(getEventArenaReturnTone(0.001), 'neutral');
   assert.equal(getEventArenaReturnTone(-0.001), 'neutral');
+});
+
+test('profit and loss colors match rounded money, including displayed zero', () => {
+  assert.equal(getEventArenaProfitLossTone(25), 'positive');
+  assert.equal(getEventArenaProfitLossTone(-25), 'negative');
+  assert.equal(getEventArenaProfitLossTone(0), 'neutral');
+  assert.equal(getEventArenaProfitLossTone(0.001), 'neutral');
+  assert.equal(getEventArenaProfitLossTone(-0.001), 'neutral');
 });
 
 test('rounded score labels do not show negative zero', () => {
