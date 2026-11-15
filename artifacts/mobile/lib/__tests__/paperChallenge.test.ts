@@ -494,18 +494,37 @@ test('Lightning Round runs Friday 7:30 a.m. Denver only when the full window is 
   assert.equal(isPaperChallengeAccountId('paper-strategy-1'), false);
 });
 
-test('event reminders stay limited to three per week and skip times that passed', () => {
+test('event reminders include eligible Lightning Rounds at their scheduled Denver start', () => {
   const now = Date.parse('2026-11-12T18:00:00.000Z');
   const upcoming = getPaperChallengeReminders(now);
-  assert.equal(upcoming.length, 6);
-  assert.deepEqual([...new Set(upcoming.map((reminder) => reminder.eventId))], ['2026-11-16', '2026-11-30']);
+  assert.equal(upcoming.length, 8);
+  assert.deepEqual(
+    [...new Set(upcoming.filter((reminder) => !reminder.eventId.startsWith('lightning-')).map((reminder) => reminder.eventId))],
+    ['2026-11-16', '2026-11-30'],
+  );
   assert.equal(upcoming.filter((reminder) => reminder.eventId === '2026-11-16').length, 3);
+  const lightningReminders = upcoming.filter((reminder) => reminder.kind === 'lightning-round-start');
+  assert.deepEqual(lightningReminders.map(({ eventId, scheduledAtMs }) => ({
+    eventId,
+    scheduledAtMs: new Date(scheduledAtMs).toISOString(),
+  })), [
+    { eventId: 'lightning-2026-11-27', scheduledAtMs: '2026-11-27T14:30:00.000Z' },
+    { eventId: 'lightning-2026-12-11', scheduledAtMs: '2026-12-11T14:30:00.000Z' },
+  ]);
+  assert.ok(upcoming.every((reminder, index) =>
+    index === 0 || upcoming[index - 1]!.scheduledAtMs <= reminder.scheduledAtMs));
 
   const midweekNow = Date.parse('2026-11-18T19:00:00.000Z');
   const midweek = getPaperChallengeReminders(midweekNow);
   assert.equal(midweek.filter((reminder) => reminder.eventId === '2026-11-16').length, 1);
   assert.equal(midweek.filter((reminder) => reminder.eventId === '2026-11-30').length, 3);
+  assert.ok(!midweek.some((reminder) => reminder.eventId === 'lightning-2026-11-20'));
+  assert.ok(midweek.some((reminder) => reminder.eventId === 'lightning-2026-11-27'));
   assert.ok(midweek.every((reminder) => reminder.scheduledAtMs > midweekNow));
+
+  const beforeDstStart = getPaperChallengeReminders(Date.parse('2027-03-19T13:29:59.000Z'))
+    .find((reminder) => reminder.eventId === 'lightning-2027-03-19');
+  assert.equal(beforeDstStart?.scheduledAtMs, Date.parse('2027-03-19T13:30:00.000Z'));
 });
 
 test('event history sorts newest by date or strongest by return', () => {

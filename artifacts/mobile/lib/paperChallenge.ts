@@ -563,7 +563,7 @@ export type PaperChallengeReminder = {
   scheduledAtMs: number;
   title: string;
   body: string;
-  kind: 'event-start' | 'event-midweek' | 'event-trade-reminder';
+  kind: 'event-start' | 'event-midweek' | 'event-trade-reminder' | 'lightning-round-start';
 };
 
 function easternParts(timestamp: number): { year: number; month: number; day: number; hour: number; minute: number } {
@@ -848,7 +848,20 @@ export function getPaperChallengeReminders(nowMs = Date.now()): PaperChallengeRe
     reminders.push(...eventReminders.filter((reminder) => reminder.scheduledAtMs > nowMs));
     event = getPaperChallengeWindow(event.endAtMs + 3 * DAY_MS + 1);
   }
-  return reminders;
+
+  let lightningRound = getLightningRoundWindow(nowMs);
+  for (let cycle = 0; cycle < 2; cycle += 1) {
+    reminders.push({
+      eventId: lightningRound.id,
+      scheduledAtMs: lightningRound.startAtMs,
+      title: 'Lightning Round is open',
+      body: 'The eligible off-week Lightning Round has started. Join with a fresh $100,000 paper account.',
+      kind: 'lightning-round-start',
+    });
+    lightningRound = getLightningRoundWindow(lightningRound.endAtMs + 1);
+  }
+  const upcomingReminders = reminders.filter((reminder) => reminder.scheduledAtMs > nowMs);
+  return upcomingReminders.sort((a, b) => a.scheduledAtMs - b.scheduledAtMs);
 }
 
 export function sortPaperChallengeHistory(

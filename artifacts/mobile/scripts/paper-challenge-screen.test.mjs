@@ -88,6 +88,8 @@ test("Lightning Round stays separate, off-week, and visible from the existing ar
   assert.match(lightningRound, /eventType: 'lightning-round'/);
   assert.match(lightningRound, /NEXT ROUND STARTS IN/);
   assert.match(lightningRound, /TIME LEFT IN THIS ROUND/);
+  assert.match(lightningRound, /Event notifications in Event Arena settings can remind you when an eligible round opens/);
+  assert.match(events, /Includes eligible Lightning Round starts/);
   assert.match(lightningRound, /ACCOUNT EQUITY/);
   assert.match(lightningRound, /DOLLAR P\/L/);
   assert.match(lightningRound, /PARTICIPANT/);

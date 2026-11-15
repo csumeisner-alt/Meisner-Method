@@ -723,6 +723,9 @@ export function LightningRoundScreen() {
                   ? 'Trading is open at the latest available quote, including when markets are closed.'
                   : 'The account is ready at the scheduled start. No trades are allowed before opening.'}
               </Text>
+              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 6 }}>
+                Event notifications in Event Arena settings can remind you when an eligible round opens.
+              </Text>
             </View>
 
             {isEnrolled ? (
