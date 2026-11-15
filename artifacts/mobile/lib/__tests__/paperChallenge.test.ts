@@ -434,6 +434,7 @@ test('new event archive freezes only matching event observations and closing pos
       marketValue: 300,
       unrealizedPnL: 20,
     }],
+    finalRank: 4,
   });
 
   assert.deepEqual(summary.equityHistory, [
@@ -450,6 +451,7 @@ test('new event archive freezes only matching event observations and closing pos
     marketValue: 300,
     unrealizedPnL: 20,
   }]);
+  assert.equal(summary.finalRank, 4);
   assert.equal(summary.endEquity, 101_250);
 });
 

@@ -397,6 +397,16 @@ test("milestone badges and event controls stay readable with larger system text"
   assert.match(shareCard, /testID=\{`paper-event-share-card-\$\{event\.eventId\}`\}/);
   assert.match(shareCard, /backgroundColor: 'rgba\(7,12,20,0\.62\)'/);
   assert.match(shareCard, /PaperChallengeMilestoneBadges milestones=\{milestones\}/);
+  assert.match(shareCard, /event\.finalRank != null && Number\.isInteger\(event\.finalRank\) && event\.finalRank > 0/);
+  assert.match(shareCard, /FINAL RANK/);
+  assert.match(shareCard, /accessibilityLabel=\{`Final rank: \$\{event\.finalRank\}`\}/);
+  assert.match(shareCard, /testID=\{`paper-event-share-rank-\$\{event\.eventId\}`\}/);
+  assert.match(shareCard, /flexWrap: 'wrap'/);
+  assert.match(shareCard, /borderColor: 'rgba\(255,218,128,0\.5\)'/);
+  assert.match(shareCard, /backgroundColor: 'rgba\(255,218,128,0\.12\)'/);
+  assert.match(shareCard, /color: '#FFE8AE', fontFamily: 'Inter_700Bold', fontSize: 15/);
+  assert.match(shareCard, /<Text allowFontScaling style=\{\{ color: '#F3D68A'/);
+  assert.match(shareCard, /#\{event\.finalRank\}/);
   assert.match(shareCard, /\{money\(event\.startEquity\)\}/);
   assert.match(shareCard, /\{money\(event\.endEquity\)\}/);
   assert.match(shareCard, /useWindowDimensions/);

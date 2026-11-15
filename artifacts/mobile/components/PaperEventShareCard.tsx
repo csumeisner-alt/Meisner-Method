@@ -71,6 +71,34 @@ export function PaperEventShareCard({ event, milestones = [] }: Props) {
           <Text allowFontScaling style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 15, marginTop: 2 }}>
             {money(event.netProfit)} net
           </Text>
+          {event.finalRank != null && Number.isInteger(event.finalRank) && event.finalRank > 0 && (
+            <View
+              accessible
+              accessibilityLabel={`Final rank: ${event.finalRank}`}
+              testID={`paper-event-share-rank-${event.eventId}`}
+              style={{
+                alignSelf: 'flex-start',
+                flexDirection: 'row',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                gap: 8,
+                marginTop: 12,
+                paddingHorizontal: 11,
+                paddingVertical: 7,
+                borderWidth: 1,
+                borderColor: 'rgba(255,218,128,0.5)',
+                borderRadius: 12,
+                backgroundColor: 'rgba(255,218,128,0.12)',
+              }}
+            >
+              <Text allowFontScaling style={{ color: '#F3D68A', fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 1 }}>
+                FINAL RANK
+              </Text>
+              <Text allowFontScaling style={{ color: '#FFE8AE', fontFamily: 'Inter_700Bold', fontSize: 15 }}>
+                #{event.finalRank}
+              </Text>
+            </View>
+          )}
           <PaperChallengeMilestoneBadges milestones={milestones} />
         </View>
 
