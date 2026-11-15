@@ -17,6 +17,7 @@ import {
   getPaperChallengeReminders,
   getPaperChallengeWindow,
   getLightningRoundWindow,
+  getLatestLightningRoundAlias,
   hasRegularPaperChallengeOverlap,
   LIGHTNING_ROUND_STARTING_BALANCE,
   isLightningRoundEventId,
@@ -344,6 +345,37 @@ test('Lightning Round owns a fresh account and archives independently from a con
   const normalized = normalizePaperChallengeStore(finalized);
   assert.equal(normalized.history[0]?.startingBalance, LIGHTNING_ROUND_STARTING_BALANCE);
   assert.equal(normalized.enrollment?.eventId, regularEnrollment.eventId);
+});
+
+test('Lightning Round can offer only the latest completed Lightning alias for explicit reuse', () => {
+  const history = [
+    {
+      eventId: 'lightning-2026-11-13',
+      eventType: 'lightning-round' as const,
+      eventStartAtMs: Date.parse('2026-11-13T14:30:00.000Z'),
+      leaderboardAlias: 'Earlier Alias',
+    },
+    {
+      eventId: '2026-11-16',
+      eventType: 'event-arena' as const,
+      eventStartAtMs: Date.parse('2026-11-16T14:30:00.000Z'),
+      leaderboardAlias: 'Regular Alias',
+    },
+    {
+      eventId: 'lightning-2026-11-20',
+      eventStartAtMs: Date.parse('2026-11-20T14:30:00.000Z'),
+      leaderboardAlias: '  Flash  ',
+    },
+  ];
+
+  assert.equal(getLatestLightningRoundAlias(history), 'Flash');
+  assert.equal(getLatestLightningRoundAlias([
+    {
+      eventId: 'lightning-2026-11-27',
+      eventStartAtMs: Date.parse('2026-11-27T14:30:00.000Z'),
+      leaderboardAlias: '  ',
+    },
+  ]), null);
 });
 
 test('paper event market hours follow Eastern daylight-saving time', () => {

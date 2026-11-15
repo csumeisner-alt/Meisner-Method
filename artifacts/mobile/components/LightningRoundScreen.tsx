@@ -33,6 +33,7 @@ import {
 import {
   buildPaperChallengeSummary,
   ensurePaperChallengeAccount,
+  getLatestLightningRoundAlias,
   getMissingPaperChallengeQuoteSymbols,
   getLightningRoundWindow,
   isPaperChallengeConfiguration,
@@ -172,6 +173,10 @@ export function LightningRoundScreen() {
 
   const window = useMemo(() => getLightningRoundWindow(now), [now]);
   const enrollment = store.lightningEnrollment ?? null;
+  const previousLightningAlias = useMemo(
+    () => getLatestLightningRoundAlias(store.history),
+    [store.history],
+  );
   const isEnrolled = enrollment?.eventId === window.id;
   const scheduledConfiguration = useMemo(() => ({
     id: window.id,
@@ -932,6 +937,24 @@ export function LightningRoundScreen() {
             <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 17, marginTop: 6 }}>
               Your account and trades are separate from regular Event Arena and Paper Trading. Joining opts in to sharing the alias and score on the leaderboard; you can turn that off later.
             </Text>
+            {previousLightningAlias ? (
+              <View style={{ marginTop: 10 }}>
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 11 }}>
+                  Reuse your previous Lightning Round alias?
+                </Text>
+                <TouchableOpacity
+                  testID="lightning-round-reuse-alias"
+                  accessibilityRole="button"
+                  accessibilityLabel={`Use your previous Lightning Round alias, ${previousLightningAlias}`}
+                  onPress={() => { setAlias(previousLightningAlias); setJoinError(''); }}
+                  style={{ minHeight: 44, marginTop: 6, alignItems: 'flex-start', justifyContent: 'center', paddingHorizontal: 11, borderRadius: 10, borderWidth: 1, borderColor: colors.primary, backgroundColor: colors.background }}
+                >
+                  <Text allowFontScaling style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11 }}>
+                    USE PREVIOUS ROUND’S ALIAS · {previousLightningAlias}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
             <TextInput
               testID="lightning-round-alias"
               accessibilityLabel="Lightning Round leaderboard alias"

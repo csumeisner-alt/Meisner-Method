@@ -95,6 +95,23 @@ test("Lightning Round stays separate, off-week, and visible from the existing ar
   assert.doesNotMatch(standardArtworkList, /lightning-round-arena/);
 });
 
+test("Lightning Round asks before reusing the latest completed event alias", () => {
+  assert.match(challenge, /getLatestLightningRoundAlias/);
+  assert.match(lightningRound, /getLatestLightningRoundAlias\(store\.history\)/);
+  assert.match(lightningRound, /testID="lightning-round-reuse-alias"/);
+  assert.match(lightningRound, /Reuse your previous Lightning Round alias\?/);
+  assert.match(lightningRound, /USE PREVIOUS ROUND’S ALIAS/);
+  assert.match(lightningRound, /onPress=\{\(\) => \{ setAlias\(previousLightningAlias\); setJoinError\(''\); \}\}/);
+
+  const nextEnrollmentStart = lightningRound.indexOf("const nextEnrollment: PaperChallengeEnrollment =");
+  const nextEnrollmentEnd = lightningRound.indexOf("const cache = await readPaperCache()", nextEnrollmentStart);
+  const nextEnrollment = lightningRound.slice(nextEnrollmentStart, nextEnrollmentEnd);
+  assert.match(nextEnrollment, /accountId: LIGHTNING_ACCOUNT_ID\(window\.id\)/);
+  assert.match(nextEnrollment, /leaderboardAlias: alias\.trim\(\)/);
+  assert.match(nextEnrollment, /leaderboardOptedIn: true/);
+  assert.doesNotMatch(nextEnrollment, /previousLightningAlias|store\.history/);
+});
+
 test("Event Arena withdrawal confirms on web and reports save errors without changing the signup", () => {
   assert.match(eventArena, /if \(Platform\.OS === 'web'\) \{\s*setWithdrawError\(''\);\s*setWithdrawConfirmationOpen\(true\)/);
   assert.match(eventArena, /Alert\.alert\(\s*'Withdraw from this event\?'/);

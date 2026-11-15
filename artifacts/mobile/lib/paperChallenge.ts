@@ -696,6 +696,22 @@ export function isLightningRoundEventId(eventId: unknown): eventId is string {
     && (date.getUTCDay() === 5 || date.getUTCDay() === 6);
 }
 
+export function getLatestLightningRoundAlias(
+  history: Array<Pick<PaperChallengeSummary, 'eventId' | 'eventType' | 'eventStartAtMs' | 'leaderboardAlias'>>,
+): string | null {
+  let latest: (typeof history)[number] | null = null;
+  for (const event of history) {
+    if (
+      (event.eventType !== 'lightning-round' && !isLightningRoundEventId(event.eventId))
+      || typeof event.leaderboardAlias !== 'string'
+      || !event.leaderboardAlias.trim()
+      || !Number.isFinite(event.eventStartAtMs)
+    ) continue;
+    if (!latest || event.eventStartAtMs > latest.eventStartAtMs) latest = event;
+  }
+  return latest?.leaderboardAlias?.trim() ?? null;
+}
+
 export function isPaperChallengeAccountId(accountId: string): boolean {
   return accountId.startsWith('paper-event:') || accountId.startsWith('paper-lightning:');
 }
