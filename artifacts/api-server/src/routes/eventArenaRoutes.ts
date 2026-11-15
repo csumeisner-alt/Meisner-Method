@@ -4,6 +4,12 @@ import {
   EVENT_ARENA_RETENTION_DAYS,
   purgeExpiredEventArenaEntries,
 } from "../lib/eventArenaRetention.ts";
+import {
+  getFirstLightningRoundCandidateDaySerial,
+  getRegularEventSequenceIndex,
+  getRegularEventWindowForStartDate,
+  hasRegularEventWindowOverlap,
+} from "../../../mobile/lib/paperChallengeCalendar.ts";
 
 export { EVENT_ARENA_RETENTION_DAYS, purgeExpiredEventArenaEntries } from "../lib/eventArenaRetention.ts";
 
@@ -42,7 +48,6 @@ type EventSubmission = {
 };
 
 const DAY_MS = 86_400_000;
-const EVENT_ANCHOR_DAY = Math.floor(Date.UTC(2026, 10, 16) / DAY_MS);
 const MAX_HOLDINGS = 100;
 const EVENT_ARTWORK_IDS = [
   "stadium",
@@ -91,36 +96,6 @@ async function withTransaction<T>(
   } finally {
     client?.release();
   }
-}
-
-function easternParts(timestamp: number) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date(timestamp));
-  const read = (type: string) => Number(parts.find((part) => part.type === type)?.value);
-  return {
-    year: read("year"),
-    month: read("month"),
-    day: read("day"),
-    hour: read("hour"),
-    minute: read("minute"),
-  };
-}
-
-function easternLocalToUtc(year: number, month: number, day: number, hour: number, minute: number) {
-  const target = Date.UTC(year, month - 1, day, hour, minute);
-  let candidate = target;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const local = easternParts(candidate);
-    candidate += target - Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute);
-  }
-  return candidate;
 }
 
 function zonedParts(timestamp: number, timeZone: string) {
@@ -179,7 +154,7 @@ function expectedLightningRoundWindow(eventId: unknown) {
     !Number.isFinite(date.getTime())
     || date.toISOString().slice(0, 10) !== dateText
     || date.getUTCDay() !== 5
-    || Math.floor(date.getTime() / DAY_MS) < EVENT_ANCHOR_DAY + 4
+    || Math.floor(date.getTime() / DAY_MS) < getFirstLightningRoundCandidateDaySerial()
     || !Number.isInteger(LIGHTNING_ROUND_START_HOUR)
     || LIGHTNING_ROUND_START_HOUR < 0
     || LIGHTNING_ROUND_START_HOUR > 23
@@ -201,27 +176,7 @@ function expectedLightningRoundWindow(eventId: unknown) {
 }
 
 function expectedEventArenaWindow(eventId: unknown) {
-  if (typeof eventId !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(eventId)) return null;
-  const [year, month, day] = eventId.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  if (
-    date.toISOString().slice(0, 10) !== eventId
-    || date.getUTCDay() !== 1
-  ) return null;
-  const daySerial = Math.floor(Date.UTC(year, month - 1, day) / DAY_MS);
-  const daysSinceAnchor = daySerial - EVENT_ANCHOR_DAY;
-  if (daysSinceAnchor < 0 || daysSinceAnchor % 14 !== 0) return null;
-
-  const expectedStart = easternLocalToUtc(year, month, day, 9, 30);
-  const friday = new Date(Date.UTC(year, month - 1, day + 4));
-  const expectedEnd = easternLocalToUtc(
-    friday.getUTCFullYear(),
-    friday.getUTCMonth() + 1,
-    friday.getUTCDate(),
-    16,
-    0,
-  );
-  return { startAtMs: expectedStart, endAtMs: expectedEnd };
+  return getRegularEventWindowForStartDate(eventId);
 }
 
 function expectedScheduledEventWindow(eventId: unknown) {
@@ -241,11 +196,10 @@ export function expectedEventArenaConfiguration(eventId: string): EventArenaConf
     };
   }
   const window = expectedEventArenaWindow(eventId);
-  if (!window) return null;
-  const [year, month, day] = eventId.split("-").map(Number);
-  const daySerial = Math.floor(Date.UTC(year, month - 1, day) / DAY_MS);
+  const sequenceIndex = getRegularEventSequenceIndex(eventId);
+  if (!window || sequenceIndex === null) return null;
   const artworkId = EVENT_ARTWORK_IDS[
-    Math.floor((daySerial - EVENT_ANCHOR_DAY) / 14) % EVENT_ARTWORK_IDS.length
+    sequenceIndex % EVENT_ARTWORK_IDS.length
   ];
   const isGreenBull = artworkId === "green-stock-exchange";
   const isBearMarket = artworkId === "red-showdown";
@@ -267,11 +221,10 @@ export function expectedEventArenaConfiguration(eventId: string): EventArenaConf
 /** Resolve the former five-artwork rotation so already saved event IDs stay immutable. */
 function previousRegularEventArenaConfiguration(eventId: string): EventArenaConfiguration | null {
   const window = expectedEventArenaWindow(eventId);
-  if (!window) return null;
-  const [year, month, day] = eventId.split("-").map(Number);
-  const daySerial = Math.floor(Date.UTC(year, month - 1, day) / DAY_MS);
+  const sequenceIndex = getRegularEventSequenceIndex(eventId);
+  if (!window || sequenceIndex === null) return null;
   const artworkId = PRE_PENNY_EVENT_ARTWORK_IDS[
-    Math.floor((daySerial - EVENT_ANCHOR_DAY) / 14) % PRE_PENNY_EVENT_ARTWORK_IDS.length
+    sequenceIndex % PRE_PENNY_EVENT_ARTWORK_IDS.length
   ];
   const isGreenBull = artworkId === "green-stock-exchange";
   const isBearMarket = artworkId === "red-showdown";
@@ -306,8 +259,8 @@ export function getLightningRoundScheduleIds(nowMs = Date.now(), fromEventId?: s
   // If the worker has never prepared a round, recover the recent couple of
   // weeks. Otherwise continue from its last started round to fill any gap.
   const firstFridaySerial = Math.max(
-    fromSerial ?? Math.max(EVENT_ANCHOR_DAY + 4, currentFridaySerial - 14),
-    EVENT_ANCHOR_DAY + 4,
+    fromSerial ?? Math.max(getFirstLightningRoundCandidateDaySerial(), currentFridaySerial - 14),
+    getFirstLightningRoundCandidateDaySerial(),
   );
   const lastSerial = currentFridaySerial + 21;
   const eventIds: string[] = [];
@@ -321,17 +274,7 @@ export function getLightningRoundScheduleIds(nowMs = Date.now(), fromEventId?: s
 
 /** A regular competition takes priority whenever its scheduled window intersects. */
 export function hasScheduledRegularEventOverlap(startAtMs: number, endAtMs: number): boolean {
-  if (!Number.isFinite(startAtMs) || !Number.isFinite(endAtMs) || endAtMs <= startAtMs) return false;
-  const firstSerial = Math.floor(startAtMs / DAY_MS) - 14;
-  const lastSerial = Math.floor(endAtMs / DAY_MS) + 14;
-  for (let serial = firstSerial; serial <= lastSerial; serial += 1) {
-    const date = new Date(serial * DAY_MS);
-    const daysSinceAnchor = serial - EVENT_ANCHOR_DAY;
-    if (date.getUTCDay() !== 1 || daysSinceAnchor < 0 || daysSinceAnchor % 14 !== 0) continue;
-    const regular = expectedEventArenaWindow(date.toISOString().slice(0, 10));
-    if (regular && regular.startAtMs < endAtMs && startAtMs < regular.endAtMs) return true;
-  }
-  return false;
+  return hasRegularEventWindowOverlap(startAtMs, endAtMs);
 }
 
 function savedEventArenaConfiguration(row: any, expected: EventArenaConfiguration): EventArenaConfiguration | null {

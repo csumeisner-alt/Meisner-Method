@@ -6,6 +6,12 @@ import type {
   PaperPosition,
   PaperTransaction,
 } from './paperMath.ts';
+import {
+  getFirstLightningRoundCandidateDaySerial,
+  getRegularEventSequenceIndex,
+  getRegularEventWindowForCurrentDate,
+  hasRegularEventWindowOverlap,
+} from './paperChallengeCalendar.ts';
 
 export const PAPER_CHALLENGE_STORAGE_KEY = '@stocksense/paper_events_v1';
 export const PAPER_CHALLENGE_STARTING_BALANCE = 100_000;
@@ -16,8 +22,6 @@ export const LIGHTNING_ROUND_START_HOUR = 7;
 export const LIGHTNING_ROUND_START_MINUTE = 30;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const EVENT_ANCHOR_DAY = Math.floor(Date.UTC(2026, 10, 16) / DAY_MS);
-const MARKET_TIME_ZONE = 'America/New_York';
 
 export const PAPER_CHALLENGE_ARTWORK_IDS = [
   'stadium',
@@ -134,14 +138,9 @@ export function getPaperChallengeArtworkId(eventId: string): PaperChallengeArtwo
   if (!Number.isFinite(eventDate.getTime()) || eventDate.toISOString().slice(0, 10) !== eventId) {
     return LEGACY_PAPER_CHALLENGE_ARTWORK_ID;
   }
-  const eventDay = Math.floor(Date.UTC(
-    eventDate.getUTCFullYear(),
-    eventDate.getUTCMonth(),
-    eventDate.getUTCDate(),
-  ) / DAY_MS);
-  const daysSinceAnchor = eventDay - EVENT_ANCHOR_DAY;
-  if (daysSinceAnchor < 0) return LEGACY_PAPER_CHALLENGE_ARTWORK_ID;
-  const artworkIndex = Math.floor(daysSinceAnchor / 14) % PAPER_CHALLENGE_ARTWORK_IDS.length;
+  const sequenceIndex = getRegularEventSequenceIndex(eventId);
+  if (sequenceIndex === null) return LEGACY_PAPER_CHALLENGE_ARTWORK_ID;
+  const artworkIndex = sequenceIndex % PAPER_CHALLENGE_ARTWORK_IDS.length;
   return PAPER_CHALLENGE_ARTWORK_IDS[artworkIndex];
 }
 
@@ -566,95 +565,25 @@ export type PaperChallengeReminder = {
   kind: 'event-start' | 'event-midweek' | 'event-trade-reminder' | 'lightning-round-start';
 };
 
-function easternParts(timestamp: number): { year: number; month: number; day: number; hour: number; minute: number } {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: MARKET_TIME_ZONE,
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(new Date(timestamp));
-  const value = (type: string) => Number(parts.find((part) => part.type === type)?.value);
-  return { year: value('year'), month: value('month'), day: value('day'), hour: value('hour'), minute: value('minute') };
-}
-
-function easternLocalToUtc(year: number, month: number, day: number, hour: number, minute: number): number {
-  const targetAsUtc = Date.UTC(year, month - 1, day, hour, minute);
-  let candidate = targetAsUtc;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const local = easternParts(candidate);
-    const representedAsUtc = Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute);
-    candidate += targetAsUtc - representedAsUtc;
-  }
-  return candidate;
-}
-
 function dateStringFromSerial(serial: number): string {
   return new Date(serial * DAY_MS).toISOString().slice(0, 10);
 }
 
-function eventStartSerialForDay(daySerial: number): number {
-  if (daySerial < EVENT_ANCHOR_DAY) return EVENT_ANCHOR_DAY;
-  const daysSinceAnchor = daySerial - EVENT_ANCHOR_DAY;
-  const twoWeekCycle = Math.floor(daysSinceAnchor / 14);
-  const dayInCycle = daysSinceAnchor % 14;
-  return EVENT_ANCHOR_DAY + (twoWeekCycle + (dayInCycle >= 7 ? 1 : 0)) * 14;
-}
-
 export function getPaperChallengeWindow(nowMs = Date.now()): PaperChallengeWindow {
-  const local = easternParts(nowMs);
-  const daySerial = Math.floor(Date.UTC(local.year, local.month - 1, local.day) / DAY_MS);
-  const daysSinceAnchor = daySerial - EVENT_ANCHOR_DAY;
-  const isThisCycleEventWeek = daysSinceAnchor >= 0 && daysSinceAnchor % 14 < 7;
-  const startSerial = isThisCycleEventWeek
-    ? EVENT_ANCHOR_DAY + Math.floor(daysSinceAnchor / 14) * 14
-    : eventStartSerialForDay(daySerial);
-  const startDate = new Date(startSerial * DAY_MS);
-  const year = startDate.getUTCFullYear();
-  const month = startDate.getUTCMonth() + 1;
-  const day = startDate.getUTCDate();
-  const fridaySerial = startSerial + 4;
-  const friday = new Date(fridaySerial * DAY_MS);
-  const startAtMs = easternLocalToUtc(year, month, day, 9, 30);
-  const endAtMs = easternLocalToUtc(friday.getUTCFullYear(), friday.getUTCMonth() + 1, friday.getUTCDate(), 16, 0);
+  const regular = getRegularEventWindowForCurrentDate(nowMs);
 
   return {
-    id: dateStringFromSerial(startSerial),
-    startAtMs,
-    endAtMs,
-    phase: nowMs < startAtMs ? 'upcoming' : nowMs <= endAtMs ? 'active' : 'ended',
-    ...getPaperChallengeConfiguration(getPaperChallengeArtworkId(dateStringFromSerial(startSerial))),
-  };
-}
-
-function regularPaperChallengeWindowForStartSerial(startSerial: number) {
-  const start = new Date(startSerial * DAY_MS);
-  const friday = new Date((startSerial + 4) * DAY_MS);
-  return {
-    startAtMs: easternLocalToUtc(
-      start.getUTCFullYear(), start.getUTCMonth() + 1, start.getUTCDate(), 9, 30,
-    ),
-    endAtMs: easternLocalToUtc(
-      friday.getUTCFullYear(), friday.getUTCMonth() + 1, friday.getUTCDate(), 16, 0,
-    ),
+    id: regular.eventId,
+    startAtMs: regular.startAtMs,
+    endAtMs: regular.endAtMs,
+    phase: nowMs < regular.startAtMs ? 'upcoming' : nowMs <= regular.endAtMs ? 'active' : 'ended',
+    ...getPaperChallengeConfiguration(getPaperChallengeArtworkId(regular.eventId)),
   };
 }
 
 /** Check a complete window against scheduled regular Event Arena windows. */
 export function hasRegularPaperChallengeOverlap(startAtMs: number, endAtMs: number): boolean {
-  if (!Number.isFinite(startAtMs) || !Number.isFinite(endAtMs) || endAtMs <= startAtMs) return false;
-  const firstSerial = Math.floor(startAtMs / DAY_MS) - 14;
-  const lastSerial = Math.floor(endAtMs / DAY_MS) + 14;
-  for (let serial = firstSerial; serial <= lastSerial; serial += 1) {
-    const date = new Date(serial * DAY_MS);
-    const daysSinceAnchor = serial - EVENT_ANCHOR_DAY;
-    if (date.getUTCDay() !== 1 || daysSinceAnchor < 0 || daysSinceAnchor % 14 !== 0) continue;
-    const regular = regularPaperChallengeWindowForStartSerial(serial);
-    if (regular.startAtMs < endAtMs && startAtMs < regular.endAtMs) return true;
-  }
-  return false;
+  return hasRegularEventWindowOverlap(startAtMs, endAtMs);
 }
 
 function zonedParts(
@@ -779,7 +708,7 @@ export function getLightningRoundWindow(
   const thisFridaySerial = daySerial + (localNow.weekday === 6
     ? -1
     : (5 - localNow.weekday + 7) % 7);
-  const firstFridaySerial = Math.max(thisFridaySerial, EVENT_ANCHOR_DAY + 4);
+  const firstFridaySerial = Math.max(thisFridaySerial, getFirstLightningRoundCandidateDaySerial());
   for (let offset = 0; offset < 260; offset += 1) {
     const date = serialDate(firstFridaySerial + offset * 7);
     const candidate = lightningWindowForDate(date, timeZone, startHour, startMinute, 'upcoming');
