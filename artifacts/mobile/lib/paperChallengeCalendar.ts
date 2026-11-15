@@ -18,6 +18,22 @@ export const REGULAR_EVENT_CALENDAR = {
   timeZone: 'America/New_York',
 } as const;
 
+export const REGULAR_EVENT_CALENDAR_ERROR =
+  'Event Arena is unavailable because regular competitions overlap. The event duration must be shorter than the schedule cadence.';
+
+/** Return a user-safe explanation when the configured regular schedule overlaps itself. */
+export function getRegularEventCalendarError(): string | null {
+  const { cadenceDays, durationDays } = REGULAR_EVENT_CALENDAR;
+  if (
+    !Number.isInteger(cadenceDays)
+    || cadenceDays <= 0
+    || !Number.isInteger(durationDays)
+    || durationDays <= 0
+    || durationDays >= cadenceDays
+  ) return REGULAR_EVENT_CALENDAR_ERROR;
+  return null;
+}
+
 const EVENT_ANCHOR_DAY = Math.floor(
   Date.parse(`${REGULAR_EVENT_CALENDAR.anchorStartDate}T00:00:00.000Z`) / DAY_MS,
 );
@@ -98,6 +114,7 @@ function windowForStartSerial(startSerial: number): RegularEventWindow {
 
 /** Return the regular-event sequence index for a scheduled date, or null. */
 export function getRegularEventSequenceIndex(eventId: unknown): number | null {
+  if (getRegularEventCalendarError()) return null;
   if (typeof eventId !== 'string') return null;
   const daySerial = parseDateSerial(eventId);
   if (daySerial === null) return null;
@@ -154,6 +171,7 @@ export function getFirstLightningRoundCandidateDaySerial(): number {
 /** Check an entire candidate window against all scheduled regular Event Arena windows. */
 export function hasRegularEventWindowOverlap(startAtMs: number, endAtMs: number): boolean {
   if (!Number.isFinite(startAtMs) || !Number.isFinite(endAtMs) || endAtMs <= startAtMs) return false;
+  if (getRegularEventCalendarError()) return true;
   const firstSerial = Math.floor(startAtMs / DAY_MS) - REGULAR_EVENT_CALENDAR.durationDays - 2;
   const lastSerial = Math.floor(endAtMs / DAY_MS) + 1;
   for (let serial = firstSerial; serial <= lastSerial; serial += 1) {

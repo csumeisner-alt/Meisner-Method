@@ -5,6 +5,7 @@ import {
   purgeExpiredEventArenaEntries,
 } from "../lib/eventArenaRetention.ts";
 import {
+  getRegularEventCalendarError,
   getFirstLightningRoundCandidateDaySerial,
   getRegularEventSequenceIndex,
   getRegularEventWindowForStartDate,
@@ -181,6 +182,13 @@ function expectedEventArenaWindow(eventId: unknown) {
 
 function expectedScheduledEventWindow(eventId: unknown) {
   return expectedLightningRoundWindow(eventId) ?? expectedEventArenaWindow(eventId);
+}
+
+function rejectInvalidRegularEventCalendar(res: any): boolean {
+  const error = getRegularEventCalendarError();
+  if (!error) return false;
+  res.status(503).json({ error });
+  return true;
 }
 
 export function expectedEventArenaConfiguration(eventId: string): EventArenaConfiguration | null {
@@ -362,6 +370,8 @@ export async function prepareLightningRoundEvents(
   db: EventArenaDatabase,
   nowMs = Date.now(),
 ): Promise<EventArenaConfiguration[]> {
+  const calendarError = getRegularEventCalendarError();
+  if (calendarError) throw new Error(calendarError);
   const { rows } = await db.query(
     `SELECT event_id
      FROM event_arena_events
@@ -637,6 +647,7 @@ export function createEventArenaRouter(
   const router = Router();
 
   router.post("/event-arena/lightning-round/prepare", requireSchema, async (_req: any, res: any) => {
+    if (rejectInvalidRegularEventCalendar(res)) return;
     try {
       const events = await prepareLightningRoundEvents(db, now());
       res.json({ events });
@@ -646,6 +657,7 @@ export function createEventArenaRouter(
   });
 
   router.post("/event-arena/:eventId/config", requireSchema, async (req: any, res: any) => {
+    if (rejectInvalidRegularEventCalendar(res)) return;
     const expected = expectedEventArenaConfiguration(req.params.eventId);
     if (!expected) {
       res.status(400).json({ error: "A scheduled Event Arena window is required." });
@@ -664,6 +676,7 @@ export function createEventArenaRouter(
   });
 
   router.get("/event-arena/leaderboard-weeks", requireSchema, async (_req: any, res: any) => {
+    if (rejectInvalidRegularEventCalendar(res)) return;
     try {
       await purgeExpiredEventArenaEntries(db);
       const { rows } = await db.query(
@@ -708,6 +721,7 @@ export function createEventArenaRouter(
   });
 
   router.get("/event-arena/:eventId/leaderboard", requireSchema, async (req: any, res: any) => {
+    if (rejectInvalidRegularEventCalendar(res)) return;
     const expectedWindow = expectedScheduledEventWindow(req.params.eventId);
     if (!expectedWindow) {
       res.status(400).json({ error: "A scheduled Event Arena window is required." });
@@ -750,6 +764,7 @@ export function createEventArenaRouter(
   });
 
   router.get("/event-arena/:eventId/leaderboard/history", requireSchema, async (req: any, res: any) => {
+    if (rejectInvalidRegularEventCalendar(res)) return;
     const expectedWindow = expectedScheduledEventWindow(req.params.eventId);
     const requestingInstallationId = req.get("x-event-arena-installation-id");
     if (!expectedWindow || !validInstallationId(requestingInstallationId)) {
@@ -803,6 +818,7 @@ export function createEventArenaRouter(
   });
 
   router.post("/event-arena/:eventId/leaderboard", requireSchema, async (req: any, res: any) => {
+    if (rejectInvalidRegularEventCalendar(res)) return;
     const submission = parseSubmission(req.body);
     if (!submission) {
       res.status(400).json({ error: "The Event Arena score submission is invalid." });
@@ -962,6 +978,7 @@ export function createEventArenaRouter(
   });
 
   router.delete("/event-arena/:eventId/leaderboard", requireSchema, async (req: any, res: any) => {
+    if (rejectInvalidRegularEventCalendar(res)) return;
     if (!expectedScheduledEventWindow(req.params.eventId) || !validInstallationId(req.query.installationId)) {
       res.status(400).json({ error: "A valid event and installation ID are required." });
       return;
@@ -1002,6 +1019,7 @@ export function createEventArenaRouter(
   });
 
   router.post("/event-arena/:eventId/transfers", requireSchema, async (req: any, res: any) => {
+    if (rejectInvalidRegularEventCalendar(res)) return;
     const eventId = req.params.eventId;
     const expectedWindow = expectedEventArenaWindow(eventId);
     const body = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
@@ -1132,6 +1150,7 @@ export function createEventArenaRouter(
   });
 
   router.post("/event-arena/:eventId/transfers/read", requireSchema, async (req: any, res: any) => {
+    if (rejectInvalidRegularEventCalendar(res)) return;
     const expectedWindow = expectedEventArenaWindow(req.params.eventId);
     const installationId = req.get("x-event-arena-installation-id");
     const transferIds = req.body?.transferIds;
@@ -1161,6 +1180,7 @@ export function createEventArenaRouter(
   });
 
   router.get("/event-arena/:eventId/transfers", requireSchema, async (req: any, res: any) => {
+    if (rejectInvalidRegularEventCalendar(res)) return;
     const expectedWindow = expectedEventArenaWindow(req.params.eventId);
     const installationId = req.get("x-event-arena-installation-id");
     if (!expectedWindow || !validInstallationId(installationId)) {

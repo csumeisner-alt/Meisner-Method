@@ -15,6 +15,10 @@ import {
   rankEventArenaEntries,
 } from "./eventArenaRoutes.ts";
 import {
+  getRegularEventCalendarError,
+  REGULAR_EVENT_CALENDAR,
+} from "../../../mobile/lib/paperChallengeCalendar.ts";
+import {
   EVENT_ARENA_RETENTION_DAYS,
   purgeExpiredEventArenaEntries,
 } from "../lib/eventArenaRetention.ts";
@@ -340,6 +344,44 @@ test("only scheduled biweekly windows and exact Eastern market hours are accepte
   assert.equal(isValidEventArenaWindow(eventId, startAtMs + 60_000, endAtMs), false);
   assert.equal(isValidEventArenaWindow("2026-11-23", startAtMs, endAtMs), false);
   assert.equal(isValidEventArenaWindow("2026-11-16", Number.NaN, endAtMs), false);
+});
+
+test("overlapping regular-event calendar settings are rejected before scheduling", async () => {
+  const calendar = REGULAR_EVENT_CALENDAR as unknown as {
+    cadenceDays: number;
+    durationDays: number;
+  };
+  const originalDurationDays = calendar.durationDays;
+  let databaseQueries = 0;
+  try {
+    assert.equal(getRegularEventCalendarError(), null);
+    for (const durationDays of [calendar.cadenceDays, calendar.cadenceDays + 1]) {
+      calendar.durationDays = durationDays;
+      assert.equal(getRegularEventCalendarError(),
+        "Event Arena is unavailable because regular competitions overlap. The event duration must be shorter than the schedule cadence.");
+      assert.equal(expectedEventArenaConfiguration("2026-11-16"), null);
+      assert.equal(expectedEventArenaConfiguration("lightning-2026-11-27"), null);
+      await withApi(async () => {
+        databaseQueries += 1;
+        return { rows: [] };
+      }, async (baseUrl) => {
+        const configResponse = await fetch(`${baseUrl}/event-arena/2026-11-16/config`, {
+          method: "POST",
+        });
+        assert.equal(configResponse.status, 503);
+        assert.deepEqual(await configResponse.json(), { error: getRegularEventCalendarError() });
+
+        const prepareResponse = await fetch(`${baseUrl}/event-arena/lightning-round/prepare`, {
+          method: "POST",
+        });
+        assert.equal(prepareResponse.status, 503);
+        assert.deepEqual(await prepareResponse.json(), { error: getRegularEventCalendarError() });
+      });
+    }
+    assert.equal(databaseQueries, 0);
+  } finally {
+    calendar.durationDays = originalDurationDays;
+  }
 });
 
 test("Lightning Round schedules only clear Friday 7:30 a.m. Denver windows", async () => {

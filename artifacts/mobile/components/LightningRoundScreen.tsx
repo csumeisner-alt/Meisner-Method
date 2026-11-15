@@ -25,6 +25,7 @@ import {
 import { PaperEventShareCard } from '@/components/PaperEventShareCard';
 import { getInstallationId } from '@/lib/installation';
 import { formatProviderMarketSession, formatProviderPriceSource } from '@/lib/paperOrderEntry';
+import { getRegularEventCalendarError } from '@/lib/paperChallengeCalendar';
 import { EVENT_ARENA_ARTWORK_SOURCES } from '@/lib/eventArenaArtwork';
 import {
   getEventArenaPerformance,
@@ -139,6 +140,29 @@ async function readPaperCache(): Promise<PaperCache> {
 }
 
 export function LightningRoundScreen() {
+  const calendarError = getRegularEventCalendarError();
+  if (calendarError) return <LightningRoundCalendarUnavailable message={calendarError} />;
+  return <LightningRoundScreenContent />;
+}
+
+function LightningRoundCalendarUnavailable({ message }: { message: string }) {
+  const colors = useColors();
+  return (
+    <View style={{ flex: 1, justifyContent: 'space-between', backgroundColor: colors.background }}>
+      <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 24 }}>
+        <Text style={{ color: colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 19 }}>
+          Lightning Round is temporarily unavailable
+        </Text>
+        <Text testID="lightning-round-calendar-error" accessibilityRole="alert" style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 20, marginTop: 10 }}>
+          {message}
+        </Text>
+      </View>
+      <BottomTabBar />
+    </View>
+  );
+}
+
+function LightningRoundScreenContent() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();

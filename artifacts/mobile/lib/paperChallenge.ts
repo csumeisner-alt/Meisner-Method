@@ -8,6 +8,7 @@ import type {
 } from './paperMath.ts';
 import {
   getFirstLightningRoundCandidateDaySerial,
+  getRegularEventCalendarError,
   getRegularEventSequenceIndex,
   getRegularEventWindowForCurrentDate,
   hasRegularEventWindowOverlap,
@@ -696,6 +697,8 @@ function lightningWindowForDate(
 export function getLightningRoundWindow(
   nowMs = Date.now(),
 ): PaperChallengeWindow {
+  const calendarError = getRegularEventCalendarError();
+  if (calendarError) throw new Error(calendarError);
   const timeZone = LIGHTNING_ROUND_TIME_ZONE;
   const startHour = LIGHTNING_ROUND_START_HOUR;
   const startMinute = LIGHTNING_ROUND_START_MINUTE;
@@ -747,6 +750,7 @@ export function updatePaperChallengeEnrollment(
 }
 
 export function getPaperChallengeReminders(nowMs = Date.now()): PaperChallengeReminder[] {
+  if (getRegularEventCalendarError()) return [];
   let event = getPaperChallengeWindow(nowMs);
   if (event.phase === 'ended') event = getPaperChallengeWindow(event.endAtMs + 3 * DAY_MS + 1);
   const reminders: PaperChallengeReminder[] = [];

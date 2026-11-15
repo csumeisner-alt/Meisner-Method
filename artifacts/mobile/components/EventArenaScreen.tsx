@@ -59,6 +59,7 @@ import {
 } from '@/lib/paperMath';
 import { applyEventCashTransfer } from '@/lib/eventArenaTransfers';
 import { getInstallationId } from '@/lib/installation';
+import { getRegularEventCalendarError } from '@/lib/paperChallengeCalendar';
 
 const NOTIFICATIONS_KEY = '@stocksense/paper_events_notifications_v1';
 const NOTIFICATION_ID_KEY = '@stocksense/paper_events_notification_id_v1';
@@ -196,6 +197,29 @@ async function scheduleUpcomingEventReminders() {
 }
 
 export function EventArenaScreen() {
+  const calendarError = getRegularEventCalendarError();
+  if (calendarError) return <EventArenaCalendarUnavailable message={calendarError} />;
+  return <EventArenaScreenContent />;
+}
+
+function EventArenaCalendarUnavailable({ message }: { message: string }) {
+  const colors = useColors();
+  return (
+    <View style={{ flex: 1, justifyContent: 'space-between', backgroundColor: colors.background }}>
+      <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 24 }}>
+        <Text style={{ color: colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 19 }}>
+          Event Arena is temporarily unavailable
+        </Text>
+        <Text testID="event-arena-calendar-error" accessibilityRole="alert" style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 20, marginTop: 10 }}>
+          {message}
+        </Text>
+      </View>
+      <BottomTabBar />
+    </View>
+  );
+}
+
+function EventArenaScreenContent() {
   const colors = useColors();
   const router = useRouter();
   const params = useLocalSearchParams<{ section?: string | string[]; eventId?: string | string[] }>();

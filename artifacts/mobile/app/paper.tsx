@@ -103,6 +103,7 @@ import {
 } from '@/lib/stockSearch';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import { getInstallationId } from '@/lib/installation';
+import { getRegularEventCalendarError } from '@/lib/paperChallengeCalendar';
 import {
   buildPaperChallengeSummary,
   ensurePaperChallengeAccount,
@@ -527,8 +528,9 @@ export default function PaperScreen() {
   // Total equity includes settled cash + unsettled T+2 proceeds + market value of positions.
   // Buying power is restricted to settled cash only (enforced in fillOrder / OrderSheet risk check).
   const portfolioValue = account ? computePaperEquity(account, myPositions, quotes) : 0;
+  const regularCalendarError = getRegularEventCalendarError();
   const paperChallengeWindow = getPaperChallengeWindow(challengeNow);
-  const lightningRoundWindow = getLightningRoundWindow(challengeNow);
+  const lightningRoundWindow = regularCalendarError ? null : getLightningRoundWindow(challengeNow);
   const challengeEnrollments = getPaperChallengeEnrollments(paperChallenge);
   const isEnrollmentActive = (enrollment: PaperChallengeEnrollment) =>
     challengeNow >= enrollment.eventStartAtMs && challengeNow < enrollment.eventEndAtMs;
@@ -544,7 +546,7 @@ export default function PaperScreen() {
     && challengeNow < enrollment.eventEndAtMs,
   );
   const hasCurrentEventEnrollment = challengeEnrollments.some((enrollment) =>
-    enrollment.eventId === paperChallengeWindow.id || enrollment.eventId === lightningRoundWindow.id,
+    enrollment.eventId === paperChallengeWindow.id || enrollment.eventId === lightningRoundWindow?.id,
   );
   const visibleEventAccountIds = new Set([
     ...challengeEnrollments.map((enrollment) => enrollment.accountId),
@@ -1363,6 +1365,7 @@ export default function PaperScreen() {
     }
 
     if (challengeNow < enrollment.eventStartAtMs || challengeBaselineCapturingRef.current === enrollment.eventId) return;
+    if (getRegularEventCalendarError()) return;
     challengeBaselineCapturingRef.current = enrollment.eventId;
     void (async () => {
       const currentWindow = isLightningRoundEventId(enrollment.eventId)

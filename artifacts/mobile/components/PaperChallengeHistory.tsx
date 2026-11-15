@@ -42,6 +42,7 @@ import {
   withdrawUpcomingPaperChallenge,
 } from '@/lib/paperChallenge';
 import { EVENT_ARENA_ARTWORK_SOURCES } from '@/lib/eventArenaArtwork';
+import { getRegularEventCalendarError } from '@/lib/paperChallengeCalendar';
 
 const NOTIFICATIONS_KEY = '@stocksense/paper_events_notifications_v1';
 const NOTIFICATION_ID_KEY = '@stocksense/paper_events_notification_id_v1';
@@ -120,6 +121,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
   const { width: screenWidth } = useWindowDimensions();
   const [positionValue, setPositionValue] = useState<{ equity: number; profit: number; returnPercent: number; usedFallbackPrice: boolean } | null>(null);
   const [positionLoading, setPositionLoading] = useState(false);
+  const calendarError = getRegularEventCalendarError();
   const currentWindow = getPaperChallengeWindow(now);
   const hasCurrentEnrollment = store.enrollment?.eventId === currentWindow.id;
   const sortedHistory = sortPaperChallengeHistory(store.history, sortMode);
@@ -192,6 +194,10 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
   }, []);
 
   const optIn = async () => {
+    if (calendarError) {
+      Alert.alert('Event Arena unavailable', calendarError);
+      return;
+    }
     const eventWindow = getPaperChallengeWindow(Date.now());
     if (saving || storeLoadState !== 'ready' || eventWindow.phase === 'ended' || store.enrollment) return;
     setSaving(true);
@@ -792,6 +798,11 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
             {archiveOpen ? renderArchive() : (
               <>
             <View style={{ padding: 16, borderRadius: 14, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+              {calendarError ? (
+                <Text testID="paper-event-calendar-error" accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_600SemiBold', fontSize: 12, lineHeight: 18, marginBottom: 12 }}>
+                  {calendarError}
+                </Text>
+              ) : null}
               {storeLoadState === 'error' && (
                 <View style={{ marginBottom: 14, padding: 12, borderRadius: 10, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.destructive }}>
                   <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, lineHeight: 18 }}>
@@ -843,7 +854,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                     : 'Finish your previous event summary in Paper Trading before joining another.'}
                 </Text>
               )}
-              {!hasCurrentEnrollment && (currentWindow.phase === 'active' || currentWindow.phase === 'upcoming') && (
+              {!calendarError && !hasCurrentEnrollment && (currentWindow.phase === 'active' || currentWindow.phase === 'upcoming') && (
                 <TouchableOpacity
                   testID="join-paper-challenge"
                   accessibilityRole="button"
