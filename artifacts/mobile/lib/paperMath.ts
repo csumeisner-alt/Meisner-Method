@@ -134,6 +134,8 @@ export type OrderStatus = 'pending' | 'filled' | 'cancelled';
 export type PaperOrder = {
   id: string;
   accountId: string;
+  /** Associates a queued market order with its Lightning Round enrollment. */
+  lightningRoundEventId?: string;
   symbol: string;
   companyName: string;
   orderType: OrderType;

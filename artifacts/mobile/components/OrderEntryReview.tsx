@@ -161,6 +161,14 @@ export default function OrderEntryReview({
             <Text style={styles.warningText}>A limit order may remain pending and is not guaranteed to fill.</Text>
           </View>
         )}
+        {review.lightningPreparation && (
+          <View testID="lightning-round-order-review-note" style={styles.warningLine}>
+            <Feather name="clock" size={14} color={GOLD} />
+            <Text style={styles.warningText}>
+              PENDING — EXECUTES AT EVENT START. Cash, buying power, positions, account equity, and P/L stay unchanged until then. The actual execution price may differ from this estimate.
+            </Text>
+          </View>
+        )}
         {review.args.side === 'short' && (
           <View style={styles.warningLine}>
             <Feather name="alert-triangle" size={14} color={SELL_COLOR} />

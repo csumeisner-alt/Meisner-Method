@@ -94,6 +94,7 @@ export type ReviewSnapshot = {
   marginImpact: number;
   collateralRatio: number;
   quoteNote: string;
+  lightningPreparation: boolean;
   purchaseLimit?: number;
 };
 
@@ -119,6 +120,8 @@ type Props = {
   purchaseLimit?: number;
   selectedPos?: PaperPosition | null;
   existingOrder?: PaperOrder | null;
+  /** Restrict this sheet to long market buys during Lightning preparation. */
+  marketOnly?: boolean;
   pendingOrders?: PaperOrder[];
   onClose: () => void;
   onRefreshQuote: (symbol: string) => Promise<void>;
@@ -156,6 +159,7 @@ export default function ProfessionalOrderEntry({
   purchaseLimit,
   selectedPos,
   existingOrder,
+  marketOnly = false,
   pendingOrders = [],
   onClose,
   onRefreshQuote,
@@ -267,8 +271,8 @@ export default function ProfessionalOrderEntry({
 
   useEffect(() => {
     if (!visible) return;
-    setActiveSide(side);
-    setOrderType(existingOrder?.orderType ?? 'market');
+    setActiveSide(marketOnly ? 'buy' : side);
+    setOrderType(marketOnly ? 'market' : existingOrder?.orderType ?? 'market');
     setSharesText(String(existingOrder?.shares ?? (side === 'sell' ? selectedPos?.shares ?? '' : side === 'cover' ? selectedPos?.shares ?? '' : '')));
     setLimitPriceText(String(existingOrder?.limitPrice ?? (currentPrice > 0 ? currentPrice.toFixed(2) : '')));
     setStopPriceText(String(existingOrder?.stopPrice ?? (currentPrice > 0 ? currentPrice.toFixed(2) : '')));
@@ -337,6 +341,7 @@ export default function ProfessionalOrderEntry({
         : 0,
       collateralRatio: account.shortCollateralRatio ?? 1.5,
       quoteNote: freshnessNote,
+      lightningPreparation: marketOnly,
       purchaseLimit: activeSide === 'buy' ? purchaseLimit : undefined,
     });
   };
@@ -529,8 +534,8 @@ export default function ProfessionalOrderEntry({
               {!!quoteRefreshError && <Text style={styles.quoteRefreshError}>{quoteRefreshError}</Text>}
             </View>
 
-            <Text style={styles.sectionLabel}>TRADE SIDE</Text>
-            <View style={styles.sideSwitch}>
+            {!marketOnly && <Text style={styles.sectionLabel}>TRADE SIDE</Text>}
+            {!marketOnly && <View style={styles.sideSwitch}>
               {(activeSide === 'cover' ? ['cover'] as const : ['buy', 'sell', 'short'] as const).map((item) => {
                 const selected = activeSide === item;
                 const color = item === 'buy' ? BUY_COLOR : SELL_COLOR;
@@ -578,12 +583,12 @@ export default function ProfessionalOrderEntry({
                   </TouchableOpacity>
                 );
               })}
-            </View>
+            </View>}
 
             <Text style={styles.sectionLabel}>ORDER TYPE</Text>
             <ScrollView testID="paper-order-type-scroller" horizontal showsHorizontalScrollIndicator={false} style={styles.typeScroller}>
               <View style={styles.typeRow}>
-                {ORDER_TYPES.map((item) => (
+                {ORDER_TYPES.filter((item) => !marketOnly || item.type === 'market').map((item) => (
                   <TouchableOpacity
                     key={item.type}
                     testID={`paper-order-type-${item.type}`}
@@ -594,7 +599,7 @@ export default function ProfessionalOrderEntry({
                       orderType === item.type && { borderColor: accent, backgroundColor: `${accent}16` },
                     ]}
                     onPress={() => { setOrderType(item.type); setReview(null); }}
-                    disabled={!!existingOrder && item.type === 'market'}
+                    disabled={!!existingOrder && item.type === 'market' && !marketOnly}
                   >
                     <Text style={[styles.typeChipText, orderType === item.type && { color: accent }]}>{item.label}</Text>
                   </TouchableOpacity>
@@ -716,8 +721,12 @@ export default function ProfessionalOrderEntry({
                 strong
               />
               <EstimateRow
-                label={activeSide === 'buy' ? 'Buying power after' : activeSide === 'short' ? 'Margin reserved' : 'Shares remaining'}
-                value={activeSide === 'buy'
+                label={marketOnly
+                  ? 'Buying power now'
+                  : activeSide === 'buy' ? 'Buying power after' : activeSide === 'short' ? 'Margin reserved' : 'Shares remaining'}
+                value={marketOnly
+                  ? money(buyingPower)
+                  : activeSide === 'buy'
                   ? (sharesValid ? money(buyingPower - estimatedValue) : money(buyingPower))
                   : activeSide === 'short'
                     ? money(sharesValid ? estimatedValue * Math.max(0, (account.shortCollateralRatio ?? 1.5) - 1) : 0)
@@ -733,6 +742,11 @@ export default function ProfessionalOrderEntry({
               )}
               {activeSide === 'cover' && (
                 <Text style={styles.pendingNote}>Buying power impact is estimated using released short collateral. Final cost uses the actual fill price.</Text>
+              )}
+              {marketOnly && (
+                <Text testID="lightning-round-order-pending-note" style={styles.pendingNote}>
+                  PENDING — EXECUTES AT EVENT START. No cash or buying power is reserved now. The actual execution price may differ.
+                </Text>
               )}
               {orderType !== 'market' && <Text style={styles.pendingNote}>Pending · fills only when the engine's trigger conditions are met</Text>}
             </View>

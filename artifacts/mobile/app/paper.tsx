@@ -89,6 +89,15 @@ import {
   isPennyStockMayhemEligible,
 } from '@/lib/paperOrderEntry';
 import {
+  canExecuteLightningRoundStagedOrder,
+  cancelLightningRoundStagedOrders,
+  getLightningRoundStartEquityFromSnapshots,
+  getLightningRoundQueuedOrders,
+  isLightningRoundPreparationOpen,
+  isLightningRoundStagedOrder,
+  isLightningRoundQualified,
+} from '@/lib/lightningRoundPreparation';
+import {
   renamePaperAccount,
   resetPaperAccountData,
 } from '@/lib/paperAccountManagement';
@@ -276,6 +285,14 @@ function formatProviderTimestamp(timestamp: number | null | undefined) {
     minute: '2-digit',
   });
 }
+function lightningCountdownLabel(ms: number) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const days = Math.floor(total / 86_400);
+  const hours = Math.floor((total % 86_400) / 3_600);
+  const minutes = Math.floor((total % 3_600) / 60);
+  const seconds = total % 60;
+  return `${days}d ${String(hours).padStart(2, '0')}h ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}s`;
+}
 function pnlColor(n: number) {
   return n > 0 ? BUY_COLOR : n < 0 ? SELL_COLOR : SILVER;
 }
@@ -343,6 +360,9 @@ export default function PaperScreen() {
   const [selectedPos, setSelectedPos] = useState<PaperPosition | null>(null);
   const [editingOrder, setEditingOrder] = useState<PaperOrder | null>(null);
   const [deleteConfirmationOrder, setDeleteConfirmationOrder] = useState<PaperOrder | null>(null);
+  const [finalLightningCancelOrder, setFinalLightningCancelOrder] = useState<PaperOrder | null>(null);
+  const [finalLightningCancelError, setFinalLightningCancelError] = useState('');
+  const [finalLightningCancelling, setFinalLightningCancelling] = useState(false);
 
   // Buy modal state
   const [buySymbol, setBuySymbol] = useState('');
@@ -455,6 +475,27 @@ export default function PaperScreen() {
     : null;
   const buyOrderDetails = getBuyOrderDetails(buySymbol, stockInfo);
   const selectedAccountEnrollment = getPaperChallengeEnrollmentForAccount(paperChallenge, activeId);
+  const lightningEnrollmentForDisplay = paperChallenge.lightningEnrollment ?? null;
+  const activeLightningEnrollment = lightningEnrollmentForDisplay?.accountId === activeId
+    ? lightningEnrollmentForDisplay
+    : null;
+  const lightningQueuedOrders = lightningEnrollmentForDisplay
+    ? getLightningRoundQueuedOrders(
+      orders,
+      lightningEnrollmentForDisplay.eventId,
+      lightningEnrollmentForDisplay.accountId,
+    )
+    : [];
+  const lightningIsQualified = lightningEnrollmentForDisplay
+    ? isLightningRoundQualified(
+      orders,
+      lightningEnrollmentForDisplay.eventId,
+      lightningEnrollmentForDisplay.accountId,
+    )
+    : false;
+  const isLightningPreparationOpen = !!lightningEnrollmentForDisplay
+    && isLightningRoundPreparationOpen(lightningEnrollmentForDisplay.eventStartAtMs, challengeNow);
+  const isLightningPreparationAccount = !!activeLightningEnrollment && isLightningPreparationOpen;
   const isPennyStockMayhemFlow = selectedAccountEnrollment?.eventType === 'penny-stock-mayhem'
     && challengeNow >= selectedAccountEnrollment.eventStartAtMs
     && challengeNow < selectedAccountEnrollment.eventEndAtMs;
@@ -535,6 +576,10 @@ export default function PaperScreen() {
   const isEnrollmentActive = (enrollment: PaperChallengeEnrollment) =>
     challengeNow >= enrollment.eventStartAtMs && challengeNow < enrollment.eventEndAtMs;
   const activeChallengeEnrollment = challengeEnrollments.find((enrollment) =>
+    enrollment.eventType === 'lightning-round'
+    && enrollment.accountId === account?.id
+    && isEnrollmentActive(enrollment),
+  ) ?? challengeEnrollments.find((enrollment) =>
     enrollment.accountId === account?.id && isEnrollmentActive(enrollment),
   ) ?? challengeEnrollments.find(isEnrollmentActive) ?? null;
   const isPaperChallengeWaiting = challengeEnrollments.some(
@@ -585,7 +630,9 @@ export default function PaperScreen() {
   const selectedEventStartAtMs = selectedEventEnrollment?.eventStartAtMs ?? selectedEventSummary?.eventStartAtMs ?? Number.NaN;
   const selectedEventEndAtMs = selectedEventEnrollment?.eventEndAtMs ?? selectedEventSummary?.eventEndAtMs ?? Number.NaN;
   const activeAccountStartingBalance = isSelectedEventAccount
-    ? selectedEventEnrollment?.startingBalance
+    ? selectedEventEnrollment?.eventType === 'lightning-round'
+      ? selectedEventEnrollment.startEquity ?? portfolioValue
+      : selectedEventEnrollment?.startingBalance
       ?? selectedEventSummary?.startingBalance
       ?? PAPER_CHALLENGE_STARTING_BALANCE
     : INITIAL_BALANCE;
@@ -777,6 +824,8 @@ export default function PaperScreen() {
     const enrollments = getPaperChallengeEnrollments(paperChallenge);
     if (enrollments.length === 0) return;
     const prematureSelected = enrollments.some((enrollment) =>
+      enrollment.eventType !== 'lightning-round'
+      &&
       enrollment.startEquity === null
       && challengeNow < enrollment.eventStartAtMs
       && activeIdRef.current === enrollment.accountId,
@@ -948,11 +997,40 @@ export default function PaperScreen() {
         paperChallengeRef.current,
         order.accountId,
       );
-      const eventPurchaseLimit = eventEnrollment?.purchaseLimit
-        ?? (eventEnrollment?.eventType === 'penny-stock-mayhem' ? 20 : undefined);
+      const stagedLightningEnrollment = paperChallengeRef.current.lightningEnrollment;
+      const isStagedLightningOrder = isLightningRoundStagedOrder(order);
+      const matchingLightningEnrollment = isStagedLightningOrder
+        && stagedLightningEnrollment?.eventId === order.lightningRoundEventId
+        && stagedLightningEnrollment?.accountId === order.accountId
+        ? stagedLightningEnrollment
+        : null;
+      const eventPurchaseLimit = matchingLightningEnrollment
+        ? undefined
+        : eventEnrollment?.purchaseLimit
+          ?? (eventEnrollment?.eventType === 'penny-stock-mayhem' ? 20 : undefined);
+      if (isStagedLightningOrder) {
+        if (!matchingLightningEnrollment) continue;
+        if (Date.now() >= matchingLightningEnrollment.eventEndAtMs) {
+          updatedOrders = updatedOrders.map((item) =>
+            item.id === order.id ? { ...item, status: 'cancelled' as const } : item,
+          );
+          ordersChanged = true;
+          continue;
+        }
+        if (!canExecuteLightningRoundStagedOrder(order, matchingLightningEnrollment, Date.now())) {
+          // Preparation orders never execute early. Wait for the persisted
+          // event-start equity baseline before handing them to the paper engine.
+          continue;
+        }
+      }
       if (
-        paperChallengeRef.current.history.some((event) => event.accountId === order.accountId)
-        || (eventEnrollment?.accountId === order.accountId
+        (
+          paperChallengeRef.current.history.some((event) => event.accountId === order.accountId)
+          && !isStagedLightningOrder
+          && paperChallengeRef.current.lightningEnrollment?.accountId !== order.accountId
+        )
+        || (!isStagedLightningOrder
+          && eventEnrollment?.accountId === order.accountId
           && Date.now() >= eventEnrollment.eventEndAtMs)
       ) {
         updatedOrders = updatedOrders.map((item) =>
@@ -1018,7 +1096,9 @@ export default function PaperScreen() {
       });
       if (executionRiskError) {
         updatedOrders = updatedOrders.map((item) =>
-          item.id === order.id ? { ...item, status: 'cancelled' as const } : item,
+          item.id === order.id
+            ? { ...item, status: 'cancelled' as const, rejectionReason: executionRiskError }
+            : item,
         );
         ordersChanged = true;
         continue;
@@ -1203,8 +1283,13 @@ export default function PaperScreen() {
         throw new Error('Current event quotes are unavailable.');
       }
 
-      const pendingEventOrders = ordersRef.current.filter(
-        (order) => order.accountId === enrollment.accountId && order.status === 'pending',
+      const pendingEventOrders = ordersRef.current.filter((order) =>
+        order.accountId === enrollment.accountId
+        && order.status === 'pending'
+        && (enrollment.eventType !== 'lightning-round'
+          || order.lightningRoundEventId === enrollment.eventId)
+        && !(paperChallengeRef.current.lightningEnrollment?.accountId === enrollment.accountId
+          && isLightningRoundStagedOrder(order, paperChallengeRef.current.lightningEnrollment.eventId)),
       );
       if (pendingEventOrders.length > 0) {
         const pendingIds = new Set(pendingEventOrders.map((order) => order.id));
@@ -1275,7 +1360,10 @@ export default function PaperScreen() {
       const latestStore = paperChallengeRef.current;
       if (!getPaperChallengeEnrollments(latestStore).some((item) => item.eventId === enrollment.eventId)) return;
       const fallbackAccount = accountsRef.current.find((item) => !isPaperChallengeAccountId(item.id));
-      if (activeIdRef.current === enrollment.accountId && fallbackAccount) {
+      const lightningEnrollmentStillUsesAccount = paperChallengeRef.current.lightningEnrollment?.accountId
+        === enrollment.accountId
+        && challengeNow < paperChallengeRef.current.lightningEnrollment.eventEndAtMs;
+      if (activeIdRef.current === enrollment.accountId && fallbackAccount && !lightningEnrollmentStillUsesAccount) {
         await saveAll(
           accountsRef.current,
           positionsRef.current,
@@ -1321,7 +1409,12 @@ export default function PaperScreen() {
   ]);
 
   useEffect(() => {
-    const enrollment = getPaperChallengeEnrollments(paperChallenge).find((item) =>
+    const enrollments = getPaperChallengeEnrollments(paperChallenge);
+    const enrollment = enrollments.find((item) =>
+      item.eventType === 'lightning-round'
+      && item.startEquity === null
+      && challengeNow >= item.eventStartAtMs,
+    ) ?? enrollments.find((item) =>
       item.startEquity === null && challengeNow >= item.eventStartAtMs,
     );
     if (!paperChallengeReady || !loaded || !enrollment || enrollment.startEquity !== null) return;
@@ -1343,6 +1436,21 @@ export default function PaperScreen() {
         setChallengeFinalizationBusy(false);
         return;
       }
+      const missedLightningBaseline = enrollment.eventType === 'lightning-round'
+        ? getLightningRoundStartEquityFromSnapshots(
+          accountValueSnapshotsRef.current,
+          enrollment.accountId,
+          enrollment.eventStartAtMs,
+          enrollment.eventEndAtMs,
+        )
+        : null;
+      if (enrollment.eventType === 'lightning-round' && missedLightningBaseline === null) {
+        challengeFinalizationFailureRef.current = enrollment.eventId;
+        setChallengeFinalizationError(true);
+        challengeBaselineCapturingRef.current = null;
+        setChallengeFinalizationBusy(false);
+        return;
+      }
       void savePaperChallenge((current) => {
         const currentEnrollment = getPaperChallengeEnrollments(current)
           .find((item) => item.eventId === enrollment.eventId);
@@ -1351,7 +1459,7 @@ export default function PaperScreen() {
           current,
           currentEnrollment.eventType ?? 'event-arena',
           (item) => item.eventId === enrollment.eventId
-            ? capturePaperChallengeBaseline(item, PAPER_CHALLENGE_STARTING_BALANCE)
+            ? capturePaperChallengeBaseline(item, missedLightningBaseline ?? PAPER_CHALLENGE_STARTING_BALANCE)
             : item,
         );
       }).catch(() => {
@@ -1603,7 +1711,13 @@ export default function PaperScreen() {
       const companyName = args.companyName.trim() || sym;
       const intent = args.side === 'short' || args.side === 'cover' ? args.side : undefined;
       const direction = args.side === 'buy' || args.side === 'cover' ? 'buy' : 'sell';
-      const enrollment = getPaperChallengeEnrollmentForAccount(paperChallengeRef.current, accountId);
+      const lightningEnrollment = paperChallengeRef.current.lightningEnrollment?.accountId === accountId
+        ? paperChallengeRef.current.lightningEnrollment
+        : null;
+      const enrollment = lightningEnrollment
+        ?? getPaperChallengeEnrollmentForAccount(paperChallengeRef.current, accountId);
+      const preparingLightningOrder = !!lightningEnrollment
+        && Date.now() < lightningEnrollment.eventStartAtMs;
       const purchaseLimit = enrollment?.purchaseLimit
         ?? (enrollment?.eventType === 'penny-stock-mayhem' ? 20 : undefined);
       if (enrollment && Date.now() >= enrollment.eventEndAtMs) {
@@ -1612,10 +1726,26 @@ export default function PaperScreen() {
           message: 'This championship has ended. Choose another paper account to continue trading.',
         };
       }
-      if (enrollment && Date.now() < enrollment.eventStartAtMs) {
+      if (enrollment && Date.now() < enrollment.eventStartAtMs && !preparingLightningOrder) {
         return {
           status: 'rejected',
           message: 'This championship has not started yet. Your separate account will be ready at opening.',
+        };
+      }
+      if (preparingLightningOrder && !isLightningRoundPreparationOpen(
+        lightningEnrollment.eventStartAtMs,
+        Date.now(),
+      )) {
+        return {
+          status: 'rejected',
+          message: 'Lightning Round order preparation opens 72 hours before the scheduled start.',
+        };
+      }
+      if (preparingLightningOrder
+        && (args.orderType !== 'market' || args.side !== 'buy' || intent)) {
+        return {
+          status: 'rejected',
+          message: 'Lightning Round preparation accepts market buy orders only.',
         };
       }
       if (isPaperChallengeAccountId(accountId) && !enrollment) {
@@ -1642,11 +1772,21 @@ export default function PaperScreen() {
       } else if (!currentQuote || !Number.isFinite(currentQuote.price) || currentQuote.price <= 0) {
         return { status: 'rejected', message: 'A provider quote is unavailable. No order was submitted.' };
       }
-      if (args.orderType === 'market' && args.orderId) {
+      const existingLightningOrder = args.orderId
+        ? currentOrders.find((order) => order.id === args.orderId
+          && isLightningRoundStagedOrder(order, lightningEnrollment?.eventId))
+        : undefined;
+      if (args.orderType === 'market' && args.orderId && !existingLightningOrder) {
         return { status: 'rejected', message: 'Market orders cannot be edited. Cancel the pending order and place a new market order.' };
+      }
+      if (preparingLightningOrder && args.orderId && !existingLightningOrder) {
+        return { status: 'rejected', message: 'Only this Lightning Round’s queued orders can be edited.' };
       }
 
       const accountPositions = currentPositions.filter((position) => position.accountId === accountId);
+      const riskPendingOrders = preparingLightningOrder
+        ? currentOrders.filter((order) => !isLightningRoundStagedOrder(order))
+        : currentOrders;
       const riskAccount = intent === 'short'
         ? { ...currentAccount, shortCollateralRatio: args.shortCollateralRatio ?? currentAccount.shortCollateralRatio }
         : currentAccount;
@@ -1686,12 +1826,53 @@ export default function PaperScreen() {
         account: riskAccount,
         accountPositions,
         quotes: riskQuotes,
-        pendingOrders: currentOrders,
+        pendingOrders: riskPendingOrders,
         excludeOrderId: args.orderId,
       });
       if (riskError) return { status: 'rejected', message: riskError };
 
       const nowISO = new Date().toISOString();
+      if (preparingLightningOrder && lightningEnrollment) {
+        const existingOrder = existingLightningOrder;
+        const metadata = args.stockInfo ?? (existingOrder ? {
+          companyName: existingOrder.companyName,
+          dividendYield: existingOrder.dividendYield ?? 0,
+          dividendRate: existingOrder.dividendRate ?? 0,
+          expenseRatio: existingOrder.expenseRatio ?? 0,
+          sector: existingOrder.sector ?? '',
+          assetType: existingOrder.assetType ?? 'unknown',
+        } : undefined);
+        const stagedOrder: PaperOrder = {
+          ...(existingOrder ?? {}),
+          id: existingOrder?.id ?? uid(),
+          accountId,
+          lightningRoundEventId: lightningEnrollment.eventId,
+          symbol: sym,
+          companyName,
+          orderType: 'market',
+          side: 'buy',
+          intent: undefined,
+          assetType: metadata?.assetType,
+          shares: args.shares,
+          dividendYield: metadata?.dividendYield ?? 0,
+          dividendRate: metadata?.dividendRate ?? 0,
+          expenseRatio: metadata?.expenseRatio ?? 0,
+          sector: metadata?.sector ?? '',
+          status: 'pending',
+          placedAt: existingOrder?.placedAt ?? nowISO,
+          rejectionReason: undefined,
+          filledPrice: undefined,
+          filledAt: undefined,
+        };
+        const updatedOrders = existingOrder
+          ? currentOrders.map((order) => order.id === existingOrder.id ? stagedOrder : order)
+          : [...currentOrders, stagedOrder];
+        await saveOrders(updatedOrders);
+        return {
+          status: 'pending',
+          message: `${args.shares} ${sym} market buy queued for Lightning Round. It will remain pending until the event starts.`,
+        };
+      }
       if (args.orderType === 'market') {
         const fillPrice = applySlippage(args.quotePrice, args.shares, direction);
         const fillRiskError = checkRisk({
@@ -1845,6 +2026,24 @@ export default function PaperScreen() {
 
   const requestDeleteOrder = (order: PaperOrder) => {
     if (order.status !== 'pending' || order.accountId !== activeIdRef.current) return;
+    if (isLightningRoundStagedOrder(order)) {
+      const enrollment = paperChallengeRef.current.lightningEnrollment;
+      if (!enrollment || enrollment.eventId !== order.lightningRoundEventId) return;
+      const otherValidOrders = getLightningRoundQueuedOrders(
+        ordersRef.current,
+        enrollment.eventId,
+        enrollment.accountId,
+      ).filter((candidate) => candidate.id !== order.id);
+      if (otherValidOrders.length > 0) {
+        void saveOrders(ordersRef.current.map((item) => item.id === order.id
+          ? { ...item, status: 'cancelled' as const }
+          : item));
+      } else {
+        setFinalLightningCancelError('');
+        setFinalLightningCancelOrder(order);
+      }
+      return;
+    }
     if (Platform.OS === 'web') {
       setDeleteConfirmationOrder(order);
       return;
@@ -1861,8 +2060,36 @@ export default function PaperScreen() {
     if (order) void deleteOrder(order);
   };
 
+  const confirmFinalLightningCancellation = async () => {
+    const order = finalLightningCancelOrder;
+    const enrollment = paperChallengeRef.current.lightningEnrollment;
+    if (!order || !enrollment || enrollment.eventId !== order.lightningRoundEventId) {
+      setFinalLightningCancelOrder(null);
+      return;
+    }
+    try {
+      setFinalLightningCancelling(true);
+      const cancelledOrders = cancelLightningRoundStagedOrders(
+        ordersRef.current,
+        enrollment.eventId,
+        enrollment.accountId,
+      );
+      await saveOrders(cancelledOrders);
+      await savePaperChallenge((current) => current.lightningEnrollment?.eventId === enrollment.eventId
+        ? { ...current, lightningEnrollment: null }
+        : current);
+      setFinalLightningCancelOrder(null);
+      setFinalLightningCancelError('');
+    } catch {
+      setFinalLightningCancelError('Your order and registration could not be cancelled. Nothing else was changed; please try again.');
+    } finally {
+      setFinalLightningCancelling(false);
+    }
+  };
+
   const editOrder = (order: PaperOrder) => {
     if (order.status !== 'pending') return;
+    if (isLightningRoundStagedOrder(order) && !isLightningPreparationOpen) return;
     setEditingOrder(order);
     setTradeMode(order.intent ?? order.side);
     setBuySymbol(order.symbol);
@@ -1886,6 +2113,23 @@ export default function PaperScreen() {
     setShowOrderSheet(true);
   };
 
+  const changeLightningOrderSymbol = (order: PaperOrder) => {
+    if (
+      !isLightningPreparationOpen
+      || !activeLightningEnrollment
+      || order.lightningRoundEventId !== activeLightningEnrollment.eventId
+      || order.status !== 'pending'
+    ) return;
+    invalidateStockLookup();
+    setEditingOrder(order);
+    setTradeMode('buy');
+    setBuySymbol('');
+    setDebouncedBuyQuery('');
+    setStockInfo(null);
+    setInfoError('');
+    setShowTradeModal(true);
+  };
+
   // ── Open modals ───────────────────────────────────────────────────────────
   const openBuyModal = () => {
     invalidateStockLookup();
@@ -1903,7 +2147,7 @@ export default function PaperScreen() {
     const position = positionsRef.current.find((item) => item.accountId === activeIdRef.current
       && item.symbol === symbol
       && (intent === 'sell' ? !isShortPosition(item) : isShortPosition(item)));
-    setEditingOrder(null);
+    if (!editingOrder || !isLightningRoundStagedOrder(editingOrder)) setEditingOrder(null);
     setTradeMode(intent);
     setSelectedPos(intent === 'sell' ? position ?? null : null);
     invalidateStockLookup();
@@ -2439,8 +2683,21 @@ export default function PaperScreen() {
       <View style={{ gap: 8, paddingHorizontal: 16 }}>
         {accountOrders.map(o => {
           const q = quotes[o.symbol];
+          const isLightningStaged = isLightningRoundStagedOrder(o);
           return (
             <View key={o.id} testID={`paper-order-${o.id}`} style={[styles.orderCard, { opacity: o.status === 'cancelled' ? 0.5 : 1 }]}>
+              {isLightningStaged && (
+                <View style={{ marginBottom: 7 }}>
+                  <Text style={{ color: o.status === 'pending' ? colors.primary : colors.mutedForeground, fontFamily: 'Inter_700Bold', fontSize: 10 }}>
+                    {o.status === 'pending' ? 'PENDING — EXECUTES AT EVENT START' : o.rejectionReason ? 'ORDER REJECTED' : o.status.toUpperCase()}
+                  </Text>
+                  {o.status === 'pending' && (
+                    <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 3 }}>
+                      Estimated value: {q ? $fmt(o.shares * q.price) : 'unavailable'} · actual execution price may differ.
+                    </Text>
+                  )}
+                </View>
+              )}
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
                 <View style={[styles.posAccentBar, { backgroundColor: o.intent === 'cover' ? BUY_COLOR : SELL_COLOR }]} />
                 <Text style={[styles.posSymbol, { flexShrink: 1 }]}>{o.symbol}</Text>
@@ -2672,6 +2929,150 @@ export default function PaperScreen() {
         )}
       </PaperAccountSwipeArea>
 
+      {lightningEnrollmentForDisplay && challengeNow < lightningEnrollmentForDisplay.eventStartAtMs && (
+        <View
+          testID="lightning-round-preparation-banner"
+          accessibilityLiveRegion="polite"
+          style={{
+            marginHorizontal: 16,
+            marginTop: 10,
+            padding: 14,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: isLightningPreparationAccount ? colors.primary : colors.border,
+            backgroundColor: colors.card,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Feather name="zap" size={16} color={colors.primary} />
+            <Text style={{ flex: 1, color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 15, letterSpacing: 0.4 }}>
+              ONE MORE STEP TO ENTER!
+            </Text>
+          </View>
+          <Text testID="lightning-round-event-countdown" style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 24, marginTop: 8 }}>
+            {lightningCountdownLabel(lightningEnrollmentForDisplay.eventStartAtMs - challengeNow)}
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, marginTop: 6 }}>
+            At least one active market order is required to enter. Queued orders stay pending and do not affect cash, buying power, positions, account equity, or P/L until the competition starts. The final execution price may differ from this estimate.
+          </Text>
+          <View
+            testID="lightning-round-qualification-status"
+            style={{
+              marginTop: 10,
+              padding: 10,
+              borderRadius: 9,
+              backgroundColor: colors.background,
+              borderWidth: 1,
+              borderColor: lightningIsQualified ? colors.primary : colors.border,
+            }}
+          >
+            <Text style={{
+              color: lightningIsQualified ? colors.primary : colors.mutedForeground,
+              fontFamily: 'Inter_700Bold',
+              fontSize: 11,
+              lineHeight: 16,
+            }}>
+              {lightningIsQualified
+                ? "YOU'RE QUALIFIED — YOUR MARKET ORDER IS QUEUED."
+                : 'NOT QUALIFIED — ADD AT LEAST ONE ACTIVE MARKET ORDER.'}
+            </Text>
+            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 4 }}>
+              {challengeNow < lightningEnrollmentForDisplay.eventStartAtMs - 72 * 60 * 60 * 1000
+                ? `Order preparation opens in ${lightningCountdownLabel(lightningEnrollmentForDisplay.eventStartAtMs - 72 * 60 * 60 * 1000 - challengeNow)}.`
+                : isLightningPreparationAccount
+                  ? 'Order preparation is open and closes exactly when the round starts.'
+                  : 'Select your Event Arena account to prepare orders.'}
+            </Text>
+          </View>
+          {activeId !== lightningEnrollmentForDisplay.accountId ? (
+            <TouchableOpacity
+              testID="select-lightning-round-account"
+              accessibilityRole="button"
+              onPress={() => { void switchAccount(lightningEnrollmentForDisplay.accountId); }}
+              style={{ minHeight: 44, marginTop: 10, alignItems: 'center', justifyContent: 'center', borderRadius: 9, backgroundColor: colors.primary }}
+            >
+              <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 11 }}>OPEN EVENT ARENA ACCOUNT</Text>
+            </TouchableOpacity>
+          ) : isLightningPreparationOpen ? (
+            <TouchableOpacity
+              testID="add-lightning-round-order"
+              accessibilityRole="button"
+              onPress={openBuyModal}
+              style={{ minHeight: 44, marginTop: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: 9, backgroundColor: colors.primary }}
+            >
+              <Feather name="plus" size={15} color={colors.primaryForeground} />
+              <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 11 }}>ADD MARKET ORDER</Text>
+            </TouchableOpacity>
+          ) : null}
+          {lightningEnrollmentForDisplay.accountId === activeId && orders
+            .filter((order) => order.accountId === lightningEnrollmentForDisplay.accountId
+              && order.lightningRoundEventId === lightningEnrollmentForDisplay.eventId)
+            .sort((left, right) => Date.parse(right.placedAt) - Date.parse(left.placedAt))
+            .map((order) => {
+              const estimate = quotes[order.symbol]?.price;
+              const isQueued = getLightningRoundQueuedOrders(
+                [order],
+                lightningEnrollmentForDisplay.eventId,
+                lightningEnrollmentForDisplay.accountId,
+              ).length > 0;
+              return (
+                <View
+                  key={order.id}
+                  testID={`lightning-round-prepared-order-${order.id}`}
+                  style={{ marginTop: 9, padding: 11, borderRadius: 9, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }}
+                >
+                  <Text style={{ color: isQueued ? colors.primary : colors.mutedForeground, fontFamily: 'Inter_700Bold', fontSize: 10, lineHeight: 15 }}>
+                    {isQueued ? 'PENDING — EXECUTES AT EVENT START' : order.rejectionReason ? 'ORDER REJECTED' : order.status.toUpperCase()}
+                  </Text>
+                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 13, marginTop: 4 }}>
+                    {order.shares} {order.symbol} · estimated {Number.isFinite(estimate) && (estimate ?? 0) > 0
+                      ? $fmt(order.shares * (estimate as number))
+                      : 'value unavailable'}
+                  </Text>
+                  {order.rejectionReason && (
+                    <Text accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 4 }}>
+                      {order.rejectionReason}
+                    </Text>
+                  )}
+                  {isQueued && (
+                    <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 3 }}>
+                      Estimated value only. Actual execution price may differ.
+                    </Text>
+                  )}
+                  {isQueued && isLightningPreparationAccount && (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 7 }}>
+                      <TouchableOpacity
+                        testID={`edit-lightning-order-${order.id}`}
+                        accessibilityRole="button"
+                        onPress={() => editOrder(order)}
+                        style={{ minHeight: 36, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', borderRadius: 7, borderWidth: 1, borderColor: colors.border }}
+                      >
+                        <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 9 }}>EDIT QUANTITY</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        testID={`change-lightning-order-symbol-${order.id}`}
+                        accessibilityRole="button"
+                        onPress={() => changeLightningOrderSymbol(order)}
+                        style={{ minHeight: 36, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', borderRadius: 7, borderWidth: 1, borderColor: colors.border }}
+                      >
+                        <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 9 }}>CHANGE SYMBOL</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        testID={`cancel-lightning-order-${order.id}`}
+                        accessibilityRole="button"
+                        onPress={() => requestDeleteOrder(order)}
+                        style={{ minHeight: 36, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', borderRadius: 7, borderWidth: 1, borderColor: colors.destructive }}
+                      >
+                        <Text style={{ color: colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 9 }}>CANCEL ORDER</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+        </View>
+      )}
+
       {activeChallengeEnrollment && (
         <View
           testID="paper-event-live-banner"
@@ -2697,7 +3098,7 @@ export default function PaperScreen() {
           </View>
             <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, lineHeight: 17, marginTop: 7 }}>
             {activeChallengeEnrollment.eventType === 'lightning-round'
-              ? 'LIGHTNING ROUND · $100,000 STARTING CAPITAL'
+              ? 'LIGHTNING ROUND · SHARED EVENT ARENA ACCOUNT'
               : activeChallengeEnrollment.eventType === 'penny-stock-mayhem'
                 ? 'PENNY STOCK MAYHEM · $100,000 STARTING CAPITAL · STOCKS & ETFs UNDER $20'
               : activeChallengeEnrollment.eventType === 'green-bull-championship'
@@ -2707,9 +3108,9 @@ export default function PaperScreen() {
                   : `EVENT ARENA · $${(activeChallengeEnrollment.startingBalance ?? INITIAL_BALANCE).toLocaleString('en-US', { maximumFractionDigits: 0 })} STARTING CAPITAL`}
           </Text>
           <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 4 }}>
-            {`Trade only in your separate ${activeChallengeEnrollment.eventType === 'lightning-round'
-              ? 'Lightning Round'
-              : activeChallengeEnrollment.eventType === 'penny-stock-mayhem' ? 'Penny Stock Mayhem' : 'Event Arena'} account. This paper championship closes ${activeChallengeEnrollment.eventType === 'lightning-round' ? '24 hours after it opens' : 'Friday at 4:00 p.m. ET'}.`}
+            {activeChallengeEnrollment.eventType === 'lightning-round'
+              ? 'Trades use your existing Event Arena account; no separate Lightning Round balance or portfolio is created. The round closes 24 hours after it opens.'
+              : `Trade only in your separate ${activeChallengeEnrollment.eventType === 'penny-stock-mayhem' ? 'Penny Stock Mayhem' : 'Event Arena'} account. This paper championship closes Friday at 4:00 p.m. ET.`}
           </Text>
           {activeChallengeEnrollment.eventType === 'penny-stock-mayhem' && (
             <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 4 }}>
@@ -2900,10 +3301,10 @@ export default function PaperScreen() {
             <Feather name={isSelectedArchivedEventAccount ? 'lock' : 'plus'} size={18} color="#000" />
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text allowFontScaling style={styles.buyActionTitle}>
-                {isSelectedArchivedEventAccount ? 'Event complete' : 'Trade'}
+                {isSelectedArchivedEventAccount ? 'Event complete' : isLightningPreparationAccount ? 'Prepare order' : 'Trade'}
               </Text>
               <Text allowFontScaling style={styles.buyActionHint}>
-                {isSelectedArchivedEventAccount ? 'Select a strategy account to trade' : `Trade in ${selectedAccountDisplayName}`}
+                {isSelectedArchivedEventAccount ? 'Select a strategy account to trade' : isLightningPreparationAccount ? 'Queue a market buy for event start' : `Trade in ${selectedAccountDisplayName}`}
               </Text>
             </View>
             {!isSelectedArchivedEventAccount && <Feather name="arrow-up-right" size={17} color="#000" />}
@@ -2911,6 +3312,77 @@ export default function PaperScreen() {
       </View>
 
       <BottomTabBar />
+
+      <Modal
+        visible={finalLightningCancelOrder !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!finalLightningCancelling) {
+            setFinalLightningCancelOrder(null);
+            setFinalLightningCancelError('');
+          }
+        }}
+      >
+        <View
+          testID="lightning-round-leave-confirmation"
+          accessibilityRole="alert"
+          style={{
+            flex: 1,
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+            backgroundColor: 'rgba(0,0,0,0.72)',
+          }}
+        >
+          <View style={{
+            width: '100%',
+            maxWidth: 420,
+            padding: 20,
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: colors.border,
+            backgroundColor: colors.card,
+          }}>
+            <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 18 }}>
+              LEAVE LIGHTNING ROUND?
+            </Text>
+            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 19, marginTop: 9 }}>
+              Cancelling your final valid market order also removes your registration. You will need to join again to enter this round.
+            </Text>
+            {finalLightningCancelError ? (
+              <Text testID="lightning-round-leave-error" accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 17, marginTop: 10 }}>
+                {finalLightningCancelError}
+              </Text>
+            ) : null}
+            <View style={{ gap: 9, marginTop: 20 }}>
+              <TouchableOpacity
+                testID="keep-lightning-round-order"
+                accessibilityRole="button"
+                disabled={finalLightningCancelling}
+                onPress={() => {
+                  setFinalLightningCancelOrder(null);
+                  setFinalLightningCancelError('');
+                }}
+                style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 10, borderWidth: 1, borderColor: colors.border }}
+              >
+                <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>KEEP MY ORDER</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="confirm-lightning-round-leave"
+                accessibilityRole="button"
+                disabled={finalLightningCancelling}
+                onPress={() => { void confirmFinalLightningCancellation(); }}
+                style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: colors.destructive, opacity: finalLightningCancelling ? 0.65 : 1 }}
+              >
+                <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>
+                  {finalLightningCancelling ? 'CANCELLING…' : 'CANCEL ORDER & LEAVE'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {Platform.OS === 'web' && (
         <Modal
@@ -3558,7 +4030,11 @@ export default function PaperScreen() {
           purchaseLimit={activePurchaseLimit}
           selectedPos={tradeMode === 'sell' || tradeMode === 'cover' ? selectedPos : null}
           existingOrder={editingOrder}
-          pendingOrders={orders.filter(o => o.accountId === activeId)}
+          pendingOrders={orders.filter((order) =>
+            order.accountId === activeId
+            && !(isLightningPreparationAccount && isLightningRoundStagedOrder(order)),
+          )}
+          marketOnly={isLightningPreparationAccount}
           onClose={() => {
             setShowOrderSheet(false);
             setEditingOrder(null);

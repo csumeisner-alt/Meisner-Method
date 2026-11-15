@@ -465,6 +465,11 @@ export function ensurePaperChallengeAccount(
   enrollment: PaperChallengeEnrollment,
   state: PaperChallengeAccountState,
 ): PaperChallengeAccountState {
+  // Lightning Round borrows an existing Event Arena account; it must never
+  // provision a seeded portfolio of its own.
+  if (enrollment.eventType === 'lightning-round' || isLightningRoundEventId(enrollment.eventId)) {
+    return state;
+  }
   if (state.accounts.some((account) => account.id === enrollment.accountId)) return state;
 
   const account: PaperAccount = {
@@ -488,6 +493,7 @@ export function shouldEnsurePaperChallengeAccount(
   enrollment: PaperChallengeEnrollment,
   nowMs = Date.now(),
 ): boolean {
+  if (enrollment.eventType === 'lightning-round' || isLightningRoundEventId(enrollment.eventId)) return false;
   return enrollment.startEquity !== null || nowMs >= enrollment.eventStartAtMs;
 }
 
@@ -916,7 +922,12 @@ export function buildPaperChallengeSummary(
       : 0),
     0,
   );
-  const startingBalance = enrollment.startingBalance ?? enrollment.startEquity;
+  const startingBalance = enrollment.eventType === 'lightning-round'
+    ? enrollment.startEquity
+    : enrollment.startingBalance ?? enrollment.startEquity;
+  if (!Number.isFinite(startingBalance) || (startingBalance ?? 0) <= 0) {
+    throw new Error('A valid event starting equity is required to save results.');
+  }
   const netProfit = endEquity - startingBalance;
   return {
     ...enrollment,

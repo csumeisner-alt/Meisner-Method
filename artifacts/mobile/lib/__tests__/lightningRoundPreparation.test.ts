@@ -1,0 +1,167 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+  canExecuteLightningRoundStagedOrder,
+  cancelLightningRoundStagedOrders,
+  getLightningRoundPreparationOpensAt,
+  getLightningRoundQueuedOrders,
+  getLightningRoundStartEquityFromSnapshots,
+  getReusableEventArenaAccountId,
+  isLightningRoundPreparationOpen,
+  isLightningRoundQualified,
+} from '../lightningRoundPreparation.ts';
+import type { PaperOrder } from '../paperMath.ts';
+import type { PaperChallengeEnrollment } from '../paperChallenge.ts';
+
+const eventStartAtMs = Date.parse('2026-11-20T16:00:00.000Z');
+const eventEndAtMs = eventStartAtMs + 24 * 60 * 60 * 1000;
+const accountId = 'paper-event:2026-11-16';
+const eventId = 'lightning-round:2026-11-20';
+
+const enrollment: PaperChallengeEnrollment = {
+  eventId,
+  eventType: 'lightning-round',
+  eventStartAtMs,
+  eventEndAtMs,
+  joinedAtMs: eventStartAtMs - 7 * 24 * 60 * 60 * 1000,
+  accountId,
+  accountName: 'Event Portfolio',
+  startingBalance: 100_000,
+  startEquity: 75_000,
+};
+
+function stagedOrder(id: string, overrides: Partial<PaperOrder> = {}): PaperOrder {
+  return {
+    id,
+    accountId,
+    lightningRoundEventId: eventId,
+    symbol: 'AAPL',
+    companyName: 'Apple',
+    orderType: 'market',
+    side: 'buy',
+    shares: 5,
+    status: 'pending',
+    placedAt: new Date(eventStartAtMs - 1000).toISOString(),
+    ...overrides,
+  };
+}
+
+test('preparation opens at exactly 72 hours and closes before the official start', () => {
+  const opensAt = getLightningRoundPreparationOpensAt(eventStartAtMs);
+  assert.equal(opensAt, eventStartAtMs - 72 * 60 * 60 * 1000);
+  assert.equal(isLightningRoundPreparationOpen(eventStartAtMs, opensAt - 1), false);
+  assert.equal(isLightningRoundPreparationOpen(eventStartAtMs, opensAt), true);
+  assert.equal(isLightningRoundPreparationOpen(eventStartAtMs, eventStartAtMs - 1), true);
+  assert.equal(isLightningRoundPreparationOpen(eventStartAtMs, eventStartAtMs), false);
+});
+
+test('qualification tracks multiple valid queued orders and ignores rejected or unrelated orders', () => {
+  const orders = [
+    stagedOrder('one'),
+    stagedOrder('two', { symbol: 'MSFT', shares: 2 }),
+    stagedOrder('cancelled', { status: 'cancelled' }),
+    stagedOrder('rejected', { status: 'cancelled', rejectionReason: 'Insufficient buying power.' }),
+    stagedOrder('other-event', { lightningRoundEventId: 'another-event' }),
+    stagedOrder('other-account', { accountId: 'paper-event:another' }),
+    stagedOrder('invalid', { shares: 0 }),
+  ];
+  assert.deepEqual(getLightningRoundQueuedOrders(orders, eventId, accountId).map((order) => order.id), ['one', 'two']);
+  assert.equal(isLightningRoundQualified(orders, eventId, accountId), true);
+
+  const afterEditingAndCancellingOne = orders
+    .filter((order) => order.id !== 'one')
+    .map((order) => order.id === 'two' ? { ...order, symbol: 'NVDA', shares: 3 } : order);
+  assert.equal(isLightningRoundQualified(afterEditingAndCancellingOne, eventId, accountId), true);
+  assert.equal(getLightningRoundQueuedOrders(afterEditingAndCancellingOne, eventId, accountId)[0]?.symbol, 'NVDA');
+
+  const finalOrderRejected = afterEditingAndCancellingOne.map((order) =>
+    order.id === 'two' ? { ...order, status: 'cancelled' as const, rejectionReason: 'Quote became unavailable.' } : order,
+  );
+  assert.equal(isLightningRoundQualified(finalOrderRejected, eventId, accountId), false);
+});
+
+test('final unenrollment cancellation touches only this round’s staged orders', () => {
+  const unrelated = stagedOrder('unrelated', { lightningRoundEventId: 'other-event' });
+  const otherAccount = stagedOrder('other-account', { accountId: 'paper-event:other' });
+  const orders = [stagedOrder('first'), stagedOrder('second'), unrelated, otherAccount];
+  const cancelled = cancelLightningRoundStagedOrders(orders, eventId, accountId);
+  assert.deepEqual(cancelled.slice(0, 2).map((order) => order.status), ['cancelled', 'cancelled']);
+  assert.equal(cancelled[2], unrelated);
+  assert.equal(cancelled[3], otherAccount);
+});
+
+test('staged orders become executable only for their enrolled account at event start', () => {
+  const order = stagedOrder('ready');
+  assert.equal(canExecuteLightningRoundStagedOrder(order, enrollment, eventStartAtMs - 1), false);
+  assert.equal(canExecuteLightningRoundStagedOrder(order, enrollment, eventStartAtMs), true);
+  assert.equal(canExecuteLightningRoundStagedOrder(order, enrollment, eventEndAtMs - 1), true);
+  assert.equal(canExecuteLightningRoundStagedOrder(order, enrollment, eventEndAtMs), false);
+  assert.equal(canExecuteLightningRoundStagedOrder(
+    order,
+    { ...enrollment, accountId: 'paper-event:another' },
+    eventStartAtMs,
+  ), false);
+  assert.equal(canExecuteLightningRoundStagedOrder(
+    { ...order, status: 'filled' },
+    enrollment,
+    eventStartAtMs,
+  ), false);
+  assert.equal(canExecuteLightningRoundStagedOrder(
+    order,
+    { ...enrollment, startEquity: null },
+    eventStartAtMs,
+  ), false);
+});
+
+test('missed starting equity uses a nearby saved account snapshot, not a seeded balance', () => {
+  const snapshots = [
+    { accountId, date: new Date(eventStartAtMs - 30 * 60 * 1000).toISOString(), value: 74_000 },
+    { accountId: 'paper-event:other', date: new Date(eventStartAtMs + 1000).toISOString(), value: 20_000 },
+    { accountId, date: new Date(eventStartAtMs + 90 * 1000).toISOString(), value: 75_500 },
+    { accountId, date: new Date(eventStartAtMs - 2 * 60 * 60 * 1000).toISOString(), value: 70_000 },
+  ];
+  assert.equal(
+    getLightningRoundStartEquityFromSnapshots(snapshots, accountId, eventStartAtMs, eventEndAtMs),
+    75_500,
+  );
+  assert.equal(
+    getLightningRoundStartEquityFromSnapshots(
+      snapshots.slice(0, 1),
+      accountId,
+      eventStartAtMs,
+      eventEndAtMs,
+    ),
+    74_000,
+  );
+  assert.equal(
+    getLightningRoundStartEquityFromSnapshots(
+      snapshots.slice(3),
+      accountId,
+      eventStartAtMs,
+      eventEndAtMs,
+    ),
+    null,
+  );
+});
+
+test('registration chooses an existing Event Arena account and never invents one', () => {
+  const accounts = [
+    { id: 'paper-event:2026-11-16', name: 'Event Portfolio', cash: 75_000, createdAt: '2026-11-16T00:00:00.000Z' },
+    { id: 'tiger', name: 'Tiger', cash: 100_000, createdAt: '2026-10-01T00:00:00.000Z' },
+  ];
+  assert.equal(getReusableEventArenaAccountId({
+    accounts,
+    activeId: 'tiger',
+    currentEventEnrollment: enrollment,
+    history: [],
+  }), 'paper-event:2026-11-16');
+  assert.equal(getReusableEventArenaAccountId({
+    accounts: [accounts[0]!],
+    activeId: 'missing',
+    history: [],
+  }), accounts[0]!.id);
+  assert.equal(getReusableEventArenaAccountId({
+    accounts: [],
+    history: [],
+  }), null);
+});

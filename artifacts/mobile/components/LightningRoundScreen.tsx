@@ -32,8 +32,12 @@ import {
   type EventArenaAccountData,
 } from '@/lib/eventArenaHome';
 import {
+  getLightningRoundQueuedOrders,
+  getLightningRoundStartEquityFromSnapshots,
+  getReusableEventArenaAccountId,
+} from '@/lib/lightningRoundPreparation';
+import {
   buildPaperChallengeSummary,
-  ensurePaperChallengeAccount,
   getLightningRoundSeasonSummary,
   getLatestLightningRoundAlias,
   getMissingPaperChallengeQuoteSymbols,
@@ -44,7 +48,6 @@ import {
   LIGHTNING_ROUND_TIME_ZONE,
   loadPaperChallengeStore,
   persistPaperChallengeFinalization,
-  updatePaperChallengeEnrollment,
   updatePaperChallengeStore,
   type PaperChallengeEnrollment,
   type PaperChallengeStore,
@@ -59,7 +62,6 @@ import {
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 const PAPER_CACHE_KEY = '@stocksense/paper_v2';
-const LIGHTNING_ACCOUNT_ID = (eventId: string) => `paper-lightning:${eventId}`;
 const money = (value: number) =>
   `${value < 0 ? '−' : ''}$${Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const signedMoney = (value: number) => `${value >= 0 ? '+' : '−'}${money(Math.abs(value))}`;
@@ -406,9 +408,17 @@ function LightningRoundScreenContent() {
       try {
         const endEquity = computePaperEquity(eventAccount, positions, quotes);
         if (!Number.isFinite(endEquity)) throw new Error('The completed account equity is unavailable.');
-        const startingEquity = enrollment.startEquity
-          ?? enrollment.startingBalance
-          ?? LIGHTNING_ROUND_STARTING_BALANCE;
+        const recoveredStartEquity = enrollment.startEquity
+          ?? getLightningRoundStartEquityFromSnapshots(
+            accountData.snapshots,
+            enrollment.accountId,
+            enrollment.eventStartAtMs,
+            enrollment.eventEndAtMs,
+          );
+        if (!Number.isFinite(recoveredStartEquity) || (recoveredStartEquity ?? 0) <= 0) {
+          throw new Error('The Lightning Round starting account value could not be recovered from saved snapshots.');
+        }
+        const startingEquity = recoveredStartEquity!;
         const completedEnrollment = {
           ...enrollment,
           joinedAtMs: enrollment.startEquity === null
@@ -506,12 +516,13 @@ function LightningRoundScreenContent() {
   const tradeHistory = useMemo(() => accountData.transactions
     .filter((trade) => trade.accountId === enrollment?.accountId)
     .sort((a, b) => Date.parse(b.date) - Date.parse(a.date)), [accountData.transactions, enrollment?.accountId]);
-  const pendingOrders = useMemo(() => accountData.orders
-    .filter((order) => order.accountId === enrollment?.accountId && order.status === 'pending')
-    .sort((a, b) => Date.parse(b.placedAt) - Date.parse(a.placedAt)), [accountData.orders, enrollment?.accountId]);
+  const pendingOrders = useMemo(() => enrollment
+    ? getLightningRoundQueuedOrders(accountData.orders, enrollment.eventId, enrollment.accountId)
+      .sort((a, b) => Date.parse(b.placedAt) - Date.parse(a.placedAt))
+    : [], [accountData.orders, enrollment?.accountId, enrollment?.eventId]);
   const openAccount = () => router.push({
     pathname: '/paper',
-    params: { challengeAccountId: enrollment?.accountId ?? LIGHTNING_ACCOUNT_ID(window.id) },
+    params: { challengeAccountId: enrollment?.accountId },
   });
 
   const joinRound = async () => {
@@ -540,7 +551,18 @@ function LightningRoundScreenContent() {
       if (latest.lightningEnrollment && latest.lightningEnrollment.eventId !== window.id) {
         throw new Error('Finish saving the prior Lightning Round result before joining another week.');
       }
-      const joinedAtMs = now < window.startAtMs ? window.startAtMs : now;
+      const cache = await readPaperCache();
+      const accountId = getReusableEventArenaAccountId({
+        accounts: cache.accounts ?? [],
+        activeId: cache.activeId,
+        currentEventEnrollment: latest.enrollment,
+        history: latest.history,
+      });
+      const existingAccount = cache.accounts?.find((item) => item.id === accountId);
+      if (!accountId || !existingAccount) {
+        throw new Error('Open Paper Trading once to set up your existing account before joining.');
+      }
+      const joinedAtMs = window.startAtMs;
       const nextEnrollment: PaperChallengeEnrollment = {
         eventId: window.id,
         eventType: 'lightning-round',
@@ -550,37 +572,30 @@ function LightningRoundScreenContent() {
         eventStartAtMs: window.startAtMs,
         eventEndAtMs: window.endAtMs,
         joinedAtMs,
-        accountId: LIGHTNING_ACCOUNT_ID(window.id),
-        accountName: 'Lightning Round',
-        startEquity: window.phase === 'active' ? LIGHTNING_ROUND_STARTING_BALANCE : null,
+        accountId,
+        accountName: existingAccount.name,
+        startEquity: null,
         leaderboardAlias: alias.trim(),
         leaderboardOptedIn: true,
       };
-      const cache = await readPaperCache();
-      const initialized = ensurePaperChallengeAccount(nextEnrollment, {
-        accounts: cache.accounts ?? [],
-        positions: cache.positions ?? [],
-        transactions: cache.transactions ?? [],
-        orders: cache.orders ?? [],
-        lots: cache.lots ?? [],
-      });
       await AsyncStorage.setItem(PAPER_CACHE_KEY, JSON.stringify({
         ...cache,
-        accounts: initialized.accounts,
-        positions: initialized.positions,
-        transactions: initialized.transactions,
-        orders: initialized.orders,
-        lots: initialized.lots,
+        activeId: accountId,
       }));
       const updated = await updatePaperChallengeStore((current) =>
-        updatePaperChallengeEnrollment(current, 'lightning-round', () => nextEnrollment), {
+        current.lightningEnrollment && current.lightningEnrollment.eventId !== window.id
+          ? current
+          : { ...current, lightningEnrollment: nextEnrollment }, {
         getItem: (key) => AsyncStorage.getItem(key),
         setItem: (key, value) => AsyncStorage.setItem(key, value),
       });
+      if (updated.lightningEnrollment?.eventId !== window.id) {
+        throw new Error('The Lightning Round registration could not be saved.');
+      }
       setStore(updated);
       setJoinOpen(false);
       setAlias('');
-      setTab('overview');
+      router.push({ pathname: '/paper', params: { challengeAccountId: accountId } });
     } catch (error) {
       setJoinError(error instanceof Error ? error.message : 'Could not join Lightning Round.');
     } finally {
@@ -604,12 +619,11 @@ function LightningRoundScreenContent() {
     : countdownLabel(window.startAtMs - now);
   const formattedDates = eventDateRange(window.startAtMs, window.endAtMs);
   const account = performance?.account ?? null;
-  const startCapital = enrollment?.startingBalance ?? LIGHTNING_ROUND_STARTING_BALANCE;
   const priorRoundNeedsArchive = !!enrollment
     && enrollment.eventId !== window.id
     && now >= enrollment.eventEndAtMs;
   const showJoin = !isEnrolled && !priorRoundNeedsArchive && window.phase !== 'ended';
-  const canOpenTradeAccount = isEnrolled && window.phase === 'active';
+  const canOpenTradeAccount = isEnrolled;
   const containerWidth = Math.min(screenWidth, 860);
   const pastLightningEvents = store.history.filter((event) =>
     event.eventType === 'lightning-round' || event.eventId.startsWith('lightning-'),
@@ -733,11 +747,11 @@ function LightningRoundScreenContent() {
               </View>
               <Text style={{ color: '#FFF5D8', fontFamily: 'Inter_700Bold', fontSize: screenWidth < 370 ? 28 : 34, lineHeight: screenWidth < 370 ? 34 : 39, marginTop: 12 }}>24 hours.{'\n'}One champion.</Text>
               <Text style={{ color: '#E5E8ED', fontFamily: 'Inter_500Medium', fontSize: 12, lineHeight: 18, marginTop: 8 }}>
-                Start with $100,000 in an isolated paper account. The highest percentage return wins.
+                Use your existing Event Arena paper account. The highest percentage return wins.
               </Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16 }}>
                 {[
-                  ['CAPITAL', '$100,000'],
+                  ['ACCOUNT', 'Event Arena'],
                   ['DURATION', '24 hours'],
                   ['OBJECTIVE', 'Highest return'],
                 ].map(([label, value]) => (
@@ -760,7 +774,7 @@ function LightningRoundScreenContent() {
               <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 6 }}>
                 {window.phase === 'active'
                   ? 'Trading is open at the latest available quote, including when markets are closed.'
-                  : 'The account is ready at the scheduled start. No trades are allowed before opening.'}
+                  : 'Prepare market orders during the final 72 hours. They remain pending until the scheduled start.'}
               </Text>
               <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 6 }}>
                 Event notifications in Event Arena settings can remind you when an eligible round opens.
@@ -788,7 +802,7 @@ function LightningRoundScreenContent() {
                     ))}
                   </View>
                   <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 10 }}>
-                    Score uses account equity against the $100,000 starting balance. Positions, cash, orders, and trades stay separate from other paper accounts.
+                    Score compares account equity with its value at the scheduled start. Your existing Event Arena portfolio is used; no separate balance or account is created.
                   </Text>
                   {canOpenTradeAccount && (
                     <TouchableOpacity
@@ -798,12 +812,14 @@ function LightningRoundScreenContent() {
                       style={{ minHeight: 46, marginTop: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, backgroundColor: colors.primary }}
                     >
                       <Feather name="trending-up" size={15} color={colors.primaryForeground} />
-                      <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>TRADE IN YOUR ACCOUNT</Text>
+                      <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>
+                        {window.phase === 'active' ? 'TRADE IN EVENT ARENA' : 'PREPARE YOUR ORDERS'}
+                      </Text>
                     </TouchableOpacity>
                   )}
                   {window.phase === 'upcoming' && (
                     <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 10, marginTop: 11 }}>
-                      Your isolated account opens automatically at the scheduled start.
+                      Order preparation opens 72 hours before the scheduled start.
                     </Text>
                   )}
                   {accountLoading && <ActivityIndicator style={{ marginTop: 10 }} color={colors.primary} />}
@@ -853,7 +869,7 @@ function LightningRoundScreenContent() {
               <View style={{ marginTop: 12, padding: 16, borderRadius: 16, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
                 <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 15 }}>Compete in the next round</Text>
                 <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 17, marginTop: 5 }}>
-                  Join with a leaderboard alias. You’ll get a new $100,000 account that cannot use funds or positions from another account.
+                  Join with a competition display name. Your existing Event Arena paper account and its current balance and positions will be used.
                 </Text>
                 <TouchableOpacity
                   testID="lightning-round-join"
@@ -863,7 +879,7 @@ function LightningRoundScreenContent() {
                 >
                   <Feather name="zap" size={14} color={colors.primaryForeground} />
                   <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>
-                    {window.phase === 'active' ? 'JOIN LIVE ROUND' : 'JOIN UPCOMING ROUND'}
+                  {window.phase === 'active' ? 'JOIN LIVE ROUND' : 'JOIN UPCOMING ROUND'}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -907,7 +923,7 @@ function LightningRoundScreenContent() {
             <View style={{ padding: 15, borderRadius: 15, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
               <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 15 }}>Lightning Round trades</Text>
               <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 4 }}>
-                Only fills recorded in this round’s isolated account appear here.
+                Only trades recorded during this round appear here in your shared Event Arena account.
               </Text>
               {canOpenTradeAccount && (
                 <TouchableOpacity accessibilityRole="button" onPress={openAccount} style={{ minHeight: 42, alignSelf: 'flex-start', justifyContent: 'center', marginTop: 6 }}>
@@ -935,8 +951,15 @@ function LightningRoundScreenContent() {
             ))}
             {pendingOrders.map((order) => (
               <View key={order.id} testID={`lightning-round-pending-order-${order.id}`} style={{ marginTop: 8, padding: 13, borderRadius: 13, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
-                <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11 }}>PENDING · {order.intent} {order.symbol}</Text>
-                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 4 }}>{order.shares} shares · placed {new Date(order.placedAt).toLocaleString()}</Text>
+                <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11 }}>PENDING — EXECUTES AT EVENT START</Text>
+                <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 11, marginTop: 4 }}>
+                  {order.shares} {order.symbol} · estimated {quotes[order.symbol]
+                    ? money(order.shares * quotes[order.symbol].price)
+                    : 'value unavailable'}
+                </Text>
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 3 }}>
+                  Actual execution price may differ from this estimate.
+                </Text>
               </View>
             ))}
           </ScrollView>
@@ -1002,14 +1025,14 @@ function LightningRoundScreenContent() {
         >
           <View style={{ padding: 20, borderRadius: 18, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
             <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.8 }}>LIGHTNING ROUND ENTRY</Text>
-            <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20, marginTop: 7 }}>Choose a leaderboard alias</Text>
+            <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 20, marginTop: 7 }}>Choose a competition display name</Text>
             <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 17, marginTop: 6 }}>
-              Your account and trades are separate from regular Event Arena and Paper Trading. Joining opts in to sharing the alias and score on the leaderboard; you can turn that off later.
+              This name appears on the leaderboard. Your existing Event Arena account is used; no separate balance or trading account is created.
             </Text>
             {previousLightningAlias ? (
               <View style={{ marginTop: 10 }}>
                 <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 11 }}>
-                  Reuse your previous Lightning Round alias?
+                  Reuse your previous display name?
                 </Text>
                 <TouchableOpacity
                   testID="lightning-round-reuse-alias"
@@ -1032,7 +1055,7 @@ function LightningRoundScreenContent() {
               autoCapitalize="words"
               autoCorrect={false}
               maxLength={24}
-              placeholder="Choose an alias"
+              placeholder="Competition display name"
               placeholderTextColor={colors.mutedForeground}
               style={{ minHeight: 48, paddingHorizontal: 12, marginTop: 15, borderRadius: 11, borderWidth: 1, borderColor: colors.border, color: colors.foreground, fontFamily: 'Inter_500Medium', fontSize: 14, backgroundColor: colors.background }}
             />

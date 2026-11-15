@@ -326,7 +326,7 @@ test('event accounts are created at the scheduled start, including late result r
   assert.equal(shouldEnsurePaperChallengeAccount({ ...pendingEnrollment, startEquity: 100_000 }, eventStartAtMs - 1), true);
 });
 
-test('Lightning Round owns a fresh account and archives independently from a concurrent regular event', () => {
+test('Lightning Round reuses account data and archives independently from a concurrent regular event', () => {
   const lightning = getLightningRoundWindow(Date.parse('2026-11-21T16:00:00.000Z'));
   const regularEnrollment = {
     eventId: '2026-11-16',
@@ -360,7 +360,7 @@ test('Lightning Round owns a fresh account and archives independently from a con
     cash: 97_000,
     createdAt: new Date(regularEnrollment.joinedAtMs).toISOString(),
   };
-  const initialized = ensurePaperChallengeAccount(lightningEnrollment, {
+  const existingState = {
     accounts: [existingRegularAccount],
     positions: [{
       id: 'regular-position',
@@ -376,10 +376,11 @@ test('Lightning Round owns a fresh account and archives independently from a con
     transactions: [],
     orders: [],
     lots: [],
-  });
-  assert.equal(initialized.accounts.find((item) => item.id === lightningEnrollment.accountId)?.cash, 100_000);
-  assert.equal(initialized.accounts.find((item) => item.id === regularEnrollment.accountId)?.cash, 97_000);
-  assert.equal(initialized.positions.length, 1);
+  };
+  const initialized = ensurePaperChallengeAccount(lightningEnrollment, existingState);
+  assert.equal(initialized, existingState);
+  assert.equal(initialized.accounts[0]?.cash, 97_000);
+  assert.equal(initialized.accounts.some((item) => item.id.startsWith('paper-lightning:')), false);
   assert.equal(initialized.positions[0]?.accountId, regularEnrollment.accountId);
 
   const lightningSummary = buildPaperChallengeSummary(

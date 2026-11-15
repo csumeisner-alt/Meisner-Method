@@ -152,8 +152,10 @@ export function getEventArenaPerformance(
   const pendingOrders = data.orders.filter((item) =>
     item.accountId === enrollment.accountId && item.status === 'pending',
   );
-  const startingBalance = enrollment.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE;
   const equity = account ? getEventArenaAccountEquity(account, positions, quotes) : null;
+  const startingBalance = enrollment.eventType === 'lightning-round'
+    ? enrollment.startEquity ?? equity ?? enrollment.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE
+    : enrollment.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE;
   const profitLoss = equity == null ? null : equity - startingBalance;
 
   return {

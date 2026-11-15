@@ -75,7 +75,7 @@ test("Event Arena first-place podium keeps its card treatment without a separate
   assert.doesNotMatch(podium, /height: 4, borderTopLeftRadius: 24, borderTopRightRadius: 24/);
 });
 
-test("Lightning Round stays separate, off-week, and visible from the existing arena", () => {
+test("Lightning Round uses an existing Event Arena account and preserves its archive", () => {
   assert.match(lightningRoute, /<LightningRoundScreen \/>/);
   assert.match(mobileRootLayout, /<Stack\.Screen name="lightning-round"/);
   assert.match(eventArena, /testID="open-lightning-round"/);
@@ -83,7 +83,9 @@ test("Lightning Round stays separate, off-week, and visible from the existing ar
   assert.match(lightningRound, /payload\.available === false/);
   assert.match(lightningRound, /payload\.message \|\| 'No eligible Lightning Round dates are currently available\.'/);
   assert.match(lightningRound, /getLightningRoundWindow\(now\)/);
-  assert.match(lightningRound, /paper-lightning:\$\{eventId\}/);
+  assert.match(lightningRound, /getReusableEventArenaAccountId\(/);
+  assert.match(lightningRound, /activeId: accountId/);
+  assert.doesNotMatch(lightningRound, /LIGHTNING_ACCOUNT_ID|paper-lightning:\$\{eventId\}/);
   assert.match(lightningRound, /eventId: window\.id/);
   assert.match(lightningRound, /startingBalance: LIGHTNING_ROUND_STARTING_BALANCE/);
   assert.match(lightningRound, /rankingDirection: 'highest-return'/);
@@ -107,7 +109,7 @@ test("Lightning Round stays separate, off-week, and visible from the existing ar
   assert.match(lightningRound, /challengeAccountId: enrollment\?\.accountId/);
   assert.match(lightningRound, /formatProviderPriceSource/);
   assert.match(lightningRound, /Provider time unavailable/);
-  assert.match(lightningRound, /ensurePaperChallengeAccount/);
+  assert.doesNotMatch(lightningRound, /ensurePaperChallengeAccount/);
   assert.match(lightningRound, /persistPaperChallengeFinalization/);
   assert.match(lightningRound, /lightning-round-archive-status/);
   assert.match(lightningRound, /submitPaperChallengeScoreNow/);
@@ -129,21 +131,66 @@ test("Lightning Round stays separate, off-week, and visible from the existing ar
   assert.doesNotMatch(standardArtworkList, /lightning-round-arena/);
 });
 
-test("Lightning Round asks before reusing the latest completed event alias", () => {
+test("Lightning Round requests a display name and joins the shared account", () => {
   assert.match(challenge, /getLatestLightningRoundAlias/);
   assert.match(lightningRound, /getLatestLightningRoundAlias\(store\.history\)/);
   assert.match(lightningRound, /testID="lightning-round-reuse-alias"/);
-  assert.match(lightningRound, /Reuse your previous Lightning Round alias\?/);
+  assert.match(lightningRound, /Choose a competition display name/);
+  assert.match(lightningRound, /Reuse your previous display name\?/);
   assert.match(lightningRound, /USE PREVIOUS ROUND’S ALIAS/);
   assert.match(lightningRound, /onPress=\{\(\) => \{ setAlias\(previousLightningAlias\); setJoinError\(''\); \}\}/);
 
   const nextEnrollmentStart = lightningRound.indexOf("const nextEnrollment: PaperChallengeEnrollment =");
-  const nextEnrollmentEnd = lightningRound.indexOf("const cache = await readPaperCache()", nextEnrollmentStart);
+  const nextEnrollmentEnd = lightningRound.indexOf("await AsyncStorage.setItem(PAPER_CACHE_KEY", nextEnrollmentStart);
   const nextEnrollment = lightningRound.slice(nextEnrollmentStart, nextEnrollmentEnd);
-  assert.match(nextEnrollment, /accountId: LIGHTNING_ACCOUNT_ID\(window\.id\)/);
+  assert.match(nextEnrollment, /accountId,/);
+  assert.match(nextEnrollment, /accountName: existingAccount\.name/);
   assert.match(nextEnrollment, /leaderboardAlias: alias\.trim\(\)/);
   assert.match(nextEnrollment, /leaderboardOptedIn: true/);
   assert.doesNotMatch(nextEnrollment, /previousLightningAlias|store\.history/);
+  assert.match(lightningRound, /router\.push\(\{ pathname: '\/paper', params: \{ challengeAccountId: accountId \} \}\)/);
+});
+
+test("Lightning Round preparation exposes qualification, order edits, and final-order confirmation", () => {
+  assert.match(screen, /ONE MORE STEP TO ENTER!/);
+  assert.match(screen, /YOU'RE QUALIFIED — YOUR MARKET ORDER IS QUEUED\./);
+  assert.match(screen, /NOT QUALIFIED — ADD AT LEAST ONE ACTIVE MARKET ORDER\./);
+  assert.match(screen, /PENDING — EXECUTES AT EVENT START/);
+  assert.match(screen, /actual execution price may differ/i);
+  assert.match(screen, /LEAVE LIGHTNING ROUND\?/);
+  assert.match(screen, /KEEP MY ORDER/);
+  assert.match(screen, /CANCEL ORDER & LEAVE/);
+  assert.match(screen, /cancelLightningRoundStagedOrders\(/);
+  assert.match(screen, /isLightningRoundPreparationOpen\(/);
+  assert.match(screen, /canExecuteLightningRoundStagedOrder\(/);
+  const stagedSubmitStart = screen.indexOf("if (preparingLightningOrder && lightningEnrollment) {");
+  const stagedSubmitEnd = screen.indexOf("if (args.orderType === 'market')", stagedSubmitStart);
+  const stagedSubmit = screen.slice(stagedSubmitStart, stagedSubmitEnd);
+  assert.ok(stagedSubmitStart >= 0 && stagedSubmitEnd > stagedSubmitStart);
+  assert.match(stagedSubmit, /await saveOrders\(updatedOrders\)/);
+  assert.doesNotMatch(stagedSubmit, /saveAll\(|savePositions\(|saveTransactions\(/);
+
+  const finalCancelStart = screen.indexOf("const confirmFinalLightningCancellation = async () =>");
+  const finalCancelEnd = screen.indexOf("const editOrder =", finalCancelStart);
+  const finalCancel = screen.slice(finalCancelStart, finalCancelEnd);
+  assert.ok(finalCancelStart >= 0 && finalCancelEnd > finalCancelStart);
+  assert.match(finalCancel, /await saveOrders\(cancelledOrders\)[\s\S]*?lightningEnrollment: null/);
+  assert.doesNotMatch(finalCancel, /history:/);
+
+  const deleteRequestStart = screen.indexOf("const requestDeleteOrder = (order: PaperOrder) =>");
+  const deleteRequestEnd = screen.indexOf("const confirmDeleteOrder", deleteRequestStart);
+  const deleteRequest = screen.slice(deleteRequestStart, deleteRequestEnd);
+  assert.match(deleteRequest, /otherValidOrders\.length > 0/);
+  assert.match(deleteRequest, /setFinalLightningCancelOrder\(order\)/);
+  assert.match(screen, /testID="lightning-round-leave-error"/);
+
+  const evaluatorStart = screen.indexOf("const evaluatePendingOrders = useCallback(");
+  const evaluatorEnd = screen.indexOf("const fetchQuotes = useCallback(", evaluatorStart);
+  const evaluator = screen.slice(evaluatorStart, evaluatorEnd);
+  assert.match(evaluator, /canExecuteLightningRoundStagedOrder\(order, matchingLightningEnrollment, Date\.now\(\)\)/);
+  assert.match(evaluator, /if \(!q\) continue;[\s\S]*?getOrderQuoteState\(q\) !== 'fresh'\) continue;/);
+  assert.match(evaluator, /status: 'cancelled' as const, rejectionReason: executionRiskError/);
+  assert.match(evaluator, /status: 'cancelled' as const, rejectionReason: fillResult\.reason/);
 });
 
 test("Event Arena withdrawal confirms on web and reports save errors without changing the signup", () => {
@@ -574,7 +621,7 @@ test("account dashboard selects, scopes, and persists the active paper account",
   assert.match(screen, /acct\.id === activeId/);
   assert.match(screen, /positions\.filter\(p => p\.accountId === activeId\)/);
   assert.match(screen, /transactions\.filter\(t => t\.accountId === activeId\)/);
-  assert.match(screen, /orders\.filter\(o => o\.accountId === activeId\)/);
+  assert.match(screen, /orders\s*\.filter\(o => o\.accountId === activeId\)/);
   assert.match(screen, /await flushCache\([\s\S]*lotsRef\.current, id\)/);
   assert.match(screen, /getCoveredAccountValueHistory\(\s*currentAccountSnapshots,\s*account\.id,\s*range\.ms/);
   assert.match(screen, /mergeAccountValueHistory\(tradeHistory, currentAccountSnapshots, account\.id\)/);
@@ -814,7 +861,7 @@ test("pending order deletion confirms on web and remains account-scoped and pers
   assert.match(screen, /removePendingPaperOrder\(ordersRef\.current, order, activeIdRef\.current\)/);
   assert.match(screen, /if \(!updatedOrders\) return;\s*await saveOrders\(updatedOrders\)/);
   assert.match(screen, /Alert\.alert\('Delete Order', `Delete pending \$\{order\.side\} \$\{order\.shares\} \$\{order\.symbol\}\?`, \[\s*\{ text: 'No', style: 'cancel' \},\s*\{ text: 'Delete Order', style: 'destructive', onPress: \(\) => \{ void deleteOrder\(order\); \} \},\s*\]\)/);
-  assert.match(screen, /orders\.filter\(o => o\.accountId === activeId\)/);
+  assert.match(screen, /orders\s*\.filter\(o => o\.accountId === activeId/);
   assert.match(screen, /o\.status === 'pending' && \(/);
 });
 
