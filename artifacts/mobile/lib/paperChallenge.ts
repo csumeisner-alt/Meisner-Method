@@ -9,6 +9,7 @@ import type {
 
 export const PAPER_CHALLENGE_STORAGE_KEY = '@stocksense/paper_events_v1';
 export const PAPER_CHALLENGE_STARTING_BALANCE = 100_000;
+export const GREEN_BULL_STARTING_BALANCE = 500_000;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const EVENT_ANCHOR_DAY = Math.floor(Date.UTC(2026, 10, 16) / DAY_MS);
@@ -23,6 +24,34 @@ export const PAPER_CHALLENGE_ARTWORK_IDS = [
 ] as const;
 export type PaperChallengeArtworkId = typeof PAPER_CHALLENGE_ARTWORK_IDS[number];
 export const LEGACY_PAPER_CHALLENGE_ARTWORK_ID: PaperChallengeArtworkId = 'stadium';
+export type PaperChallengeEventType = 'event-arena' | 'green-bull-championship';
+export type PaperChallengeRankingDirection = 'highest-return';
+
+export type PaperChallengeConfiguration = {
+  eventType: PaperChallengeEventType;
+  artworkId: PaperChallengeArtworkId;
+  startingBalance: number;
+  rankingDirection: PaperChallengeRankingDirection;
+};
+
+/** Resolve a scheduled event's rules once from its assigned artwork. */
+export function getPaperChallengeConfiguration(
+  artworkId: PaperChallengeArtworkId,
+): PaperChallengeConfiguration {
+  return artworkId === 'green-stock-exchange'
+    ? {
+        eventType: 'green-bull-championship',
+        artworkId,
+        startingBalance: GREEN_BULL_STARTING_BALANCE,
+        rankingDirection: 'highest-return',
+      }
+    : {
+        eventType: 'event-arena',
+        artworkId,
+        startingBalance: PAPER_CHALLENGE_STARTING_BALANCE,
+        rankingDirection: 'highest-return',
+      };
+}
 
 export function normalizePaperChallengeArtworkId(value: unknown): PaperChallengeArtworkId {
   return PAPER_CHALLENGE_ARTWORK_IDS.includes(value as PaperChallengeArtworkId)
@@ -58,11 +87,17 @@ export type PaperChallengeWindow = {
   endAtMs: number;
   phase: 'upcoming' | 'active' | 'ended';
   artworkId?: PaperChallengeArtworkId;
+  eventType?: PaperChallengeEventType;
+  startingBalance?: number;
+  rankingDirection?: PaperChallengeRankingDirection;
 };
 
 export type PaperChallengeEnrollment = {
   eventId: string;
   artworkId?: PaperChallengeArtworkId;
+  eventType?: PaperChallengeEventType;
+  startingBalance?: number;
+  rankingDirection?: PaperChallengeRankingDirection;
   eventStartAtMs: number;
   eventEndAtMs: number;
   joinedAtMs: number;
@@ -139,45 +174,91 @@ export function normalizePaperChallengeStore(store: PaperChallengeStore): PaperC
     if (!event || typeof event.eventId !== 'string' || seenEventIds.has(event.eventId)) return false;
     seenEventIds.add(event.eventId);
     return true;
-  }).map(({ transactions, equityHistory, finalPositions, finalRank, ...event }) => ({
-    ...event,
-    artworkId: normalizePaperChallengeArtworkId(event.artworkId),
-    ...(Array.isArray(transactions) ? { transactions } : {}),
-    ...(Array.isArray(equityHistory)
-      ? {
-          equityHistory: equityHistory.filter((point) =>
-            !!point
-            && typeof point.date === 'string'
-            && Number.isFinite(Date.parse(point.date))
-            && Number.isFinite(point.value),
-          ).map((point) => ({ date: point.date, value: point.value }))
-            .sort((a, b) => Date.parse(a.date) - Date.parse(b.date)),
-        }
-      : {}),
-    ...(Array.isArray(finalPositions)
-      ? {
-          finalPositions: finalPositions.filter((position) =>
-            !!position
-            && typeof position.symbol === 'string'
-            && typeof position.companyName === 'string'
-            && Number.isFinite(position.shares)
-            && position.shares > 0
-            && Number.isFinite(position.avgCost)
-            && position.avgCost >= 0
-            && Number.isFinite(position.marketPrice)
-            && position.marketPrice > 0
-            && Number.isFinite(position.marketValue)
-            && Number.isFinite(position.unrealizedPnL),
-          ),
-        }
-      : {}),
-    ...(Number.isInteger(finalRank) && (finalRank ?? 0) > 0 ? { finalRank } : {}),
-  }));
+  }).map(({
+    transactions,
+    equityHistory,
+    finalPositions,
+    finalRank,
+    eventType,
+    startingBalance,
+    rankingDirection,
+    ...event
+  }) => {
+    const artworkId = normalizePaperChallengeArtworkId(event.artworkId);
+    const savedEventType = eventType === 'green-bull-championship' || eventType === 'event-arena'
+      ? eventType
+      : undefined;
+    // Leave legacy archives unchanged: their recorded startEquity remains the
+    // baseline, and missing rules are never inferred from display artwork.
+    const savedStartingBalance = typeof startingBalance === 'number'
+      && Number.isFinite(startingBalance)
+      && startingBalance > 0
+      ? startingBalance
+      : undefined;
+    return {
+      ...event,
+      artworkId,
+      ...(savedEventType ? { eventType: savedEventType } : {}),
+      ...(savedStartingBalance !== undefined ? { startingBalance: savedStartingBalance } : {}),
+      ...(rankingDirection === 'highest-return' ? { rankingDirection } : {}),
+      ...(Array.isArray(transactions) ? { transactions } : {}),
+      ...(Array.isArray(equityHistory)
+        ? {
+            equityHistory: equityHistory.filter((point) =>
+              !!point
+              && typeof point.date === 'string'
+              && Number.isFinite(Date.parse(point.date))
+              && Number.isFinite(point.value),
+            ).map((point) => ({ date: point.date, value: point.value }))
+              .sort((a, b) => Date.parse(a.date) - Date.parse(b.date)),
+          }
+        : {}),
+      ...(Array.isArray(finalPositions)
+        ? {
+            finalPositions: finalPositions.filter((position) =>
+              !!position
+              && typeof position.symbol === 'string'
+              && typeof position.companyName === 'string'
+              && Number.isFinite(position.shares)
+              && position.shares > 0
+              && Number.isFinite(position.avgCost)
+              && position.avgCost >= 0
+              && Number.isFinite(position.marketPrice)
+              && position.marketPrice > 0
+              && Number.isFinite(position.marketValue)
+              && Number.isFinite(position.unrealizedPnL),
+            ),
+          }
+        : {}),
+      ...(Number.isInteger(finalRank) && (finalRank ?? 0) > 0 ? { finalRank } : {}),
+    };
+  });
   const enrollment = store.enrollment
-    ? {
-        ...store.enrollment,
-        artworkId: normalizePaperChallengeArtworkId(store.enrollment.artworkId),
-      }
+    ? (() => {
+        const artworkId = normalizePaperChallengeArtworkId(store.enrollment.artworkId);
+        const eventType: PaperChallengeEventType = store.enrollment.eventType === 'green-bull-championship'
+          ? store.enrollment.eventType
+          : 'event-arena';
+        const savedStartingBalance = store.enrollment.startingBalance;
+        const legacyStartingBalance = store.enrollment.startEquity;
+        return {
+          ...store.enrollment,
+          artworkId,
+          // Older enrollments were standard $100,000 events. Missing config
+          // stays standard even when their saved display artwork is green.
+          eventType,
+          startingBalance: typeof savedStartingBalance === 'number'
+            && Number.isFinite(savedStartingBalance)
+            && savedStartingBalance > 0
+            ? savedStartingBalance
+            : typeof legacyStartingBalance === 'number'
+              && Number.isFinite(legacyStartingBalance)
+              && legacyStartingBalance > 0
+              ? legacyStartingBalance
+              : PAPER_CHALLENGE_STARTING_BALANCE,
+          rankingDirection: 'highest-return' as const,
+        };
+      })()
     : null;
   return {
     enrollment,
@@ -292,7 +373,7 @@ export function ensurePaperChallengeAccount(
   const account: PaperAccount = {
     id: enrollment.accountId,
     name: enrollment.accountName,
-    cash: PAPER_CHALLENGE_STARTING_BALANCE,
+    cash: enrollment.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE,
     createdAt: new Date(enrollment.joinedAtMs).toISOString(),
   };
   const isOtherAccount = <T extends { accountId: string }>(record: T) => record.accountId !== account.id;
@@ -440,7 +521,7 @@ export function getPaperChallengeWindow(nowMs = Date.now()): PaperChallengeWindo
     startAtMs,
     endAtMs,
     phase: nowMs < startAtMs ? 'upcoming' : nowMs <= endAtMs ? 'active' : 'ended',
-    artworkId: getPaperChallengeArtworkId(dateStringFromSerial(startSerial)),
+    ...getPaperChallengeConfiguration(getPaperChallengeArtworkId(dateStringFromSerial(startSerial))),
   };
 }
 
@@ -454,7 +535,7 @@ export function getPaperChallengeReminders(nowMs = Date.now()): PaperChallengeRe
         eventId: event.id,
         scheduledAtMs: event.startAtMs,
         title: 'Event Arena is open',
-        body: 'Your fresh $100,000 event portfolio is ready. Join or place your first trade.',
+        body: `Your fresh $${(event.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE).toLocaleString('en-US')} event portfolio is ready. Join or place your first trade.`,
         kind: 'event-start',
       },
       {
@@ -507,7 +588,7 @@ export function capturePaperChallengeBaseline(
   return {
     ...enrollment,
     joinedAtMs: enrollment.eventStartAtMs,
-    startEquity,
+    startEquity: enrollment.startingBalance ?? startEquity,
   };
 }
 
@@ -550,13 +631,18 @@ export function buildPaperChallengeSummary(
       : 0),
     0,
   );
-  const netProfit = endEquity - enrollment.startEquity;
+  const startingBalance = enrollment.startingBalance ?? enrollment.startEquity;
+  const netProfit = endEquity - startingBalance;
   return {
     ...enrollment,
+    startEquity: startingBalance,
+    startingBalance,
     artworkId: normalizePaperChallengeArtworkId(enrollment.artworkId),
+    eventType: enrollment.eventType ?? 'event-arena',
+    rankingDirection: enrollment.rankingDirection ?? 'highest-return',
     endEquity,
     netProfit,
-    returnPercent: enrollment.startEquity > 0 ? netProfit / enrollment.startEquity * 100 : 0,
+    returnPercent: startingBalance > 0 ? netProfit / startingBalance * 100 : 0,
     tradeCount: trades.length,
     buyCount: buys.length,
     sellCount: sells.length,

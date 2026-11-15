@@ -25,6 +25,10 @@ type HoldingIdentifier = {
 type EventSubmission = {
   installationId: string;
   alias: string;
+  eventType?: "event-arena" | "green-bull-championship";
+  artworkId?: typeof EVENT_ARTWORK_IDS[number];
+  startingBalance?: number;
+  rankingDirection?: "highest-return";
   cashBalance: number;
   appliedTransferIds: string[];
   startEquity: number;
@@ -39,6 +43,23 @@ type EventSubmission = {
 const DAY_MS = 86_400_000;
 const EVENT_ANCHOR_DAY = Math.floor(Date.UTC(2026, 10, 16) / DAY_MS);
 const MAX_HOLDINGS = 100;
+const EVENT_ARTWORK_IDS = [
+  "stadium",
+  "neon-nightclub",
+  "mountain-summit",
+  "red-showdown",
+  "green-stock-exchange",
+] as const;
+
+type EventArenaConfiguration = {
+  eventId: string;
+  eventType: "event-arena" | "green-bull-championship";
+  artworkId: typeof EVENT_ARTWORK_IDS[number];
+  startingBalance: number;
+  rankingDirection: "highest-return";
+  startAtMs: number;
+  endAtMs: number;
+};
 
 function validInstallationId(value: unknown): value is string {
   return typeof value === "string" && value.length >= 12 && value.length <= 128;
@@ -122,6 +143,71 @@ function expectedEventArenaWindow(eventId: unknown) {
   return { startAtMs: expectedStart, endAtMs: expectedEnd };
 }
 
+export function expectedEventArenaConfiguration(eventId: string): EventArenaConfiguration | null {
+  const window = expectedEventArenaWindow(eventId);
+  if (!window) return null;
+  const [year, month, day] = eventId.split("-").map(Number);
+  const daySerial = Math.floor(Date.UTC(year, month - 1, day) / DAY_MS);
+  const artworkId = EVENT_ARTWORK_IDS[
+    Math.floor((daySerial - EVENT_ANCHOR_DAY) / 14) % EVENT_ARTWORK_IDS.length
+  ];
+  const isGreenBull = artworkId === "green-stock-exchange";
+  return {
+    eventId,
+    eventType: isGreenBull ? "green-bull-championship" : "event-arena",
+    artworkId,
+    startingBalance: isGreenBull ? 500_000 : 100_000,
+    rankingDirection: "highest-return",
+    ...window,
+  };
+}
+
+async function ensureEventArenaConfiguration(
+  db: EventArenaDatabase,
+  eventId: string,
+): Promise<EventArenaConfiguration | null> {
+  const expected = expectedEventArenaConfiguration(eventId);
+  if (!expected) return null;
+  const values = [
+    expected.eventId,
+    expected.eventType,
+    expected.artworkId,
+    expected.startingBalance,
+    expected.rankingDirection,
+    expected.startAtMs,
+    expected.endAtMs,
+  ];
+  const { rows: inserted } = await db.query(
+    `INSERT INTO event_arena_events
+      (event_id, event_type, artwork_id, starting_balance, ranking_direction, event_start_at, event_end_at)
+     VALUES ($1,$2,$3,$4,$5,TO_TIMESTAMP($6 / 1000.0),TO_TIMESTAMP($7 / 1000.0))
+     ON CONFLICT (event_id) DO NOTHING
+     RETURNING event_id, event_type, artwork_id, starting_balance, ranking_direction, event_start_at, event_end_at`,
+    values,
+  );
+  const row = inserted[0] ?? (await db.query(
+    `SELECT event_id, event_type, artwork_id, starting_balance, ranking_direction, event_start_at, event_end_at
+     FROM event_arena_events WHERE event_id=$1`,
+    [eventId],
+  )).rows[0];
+  if (!row) return null;
+  const rowStartAtMs = row.event_start_at instanceof Date
+    ? row.event_start_at.getTime()
+    : new Date(row.event_start_at).getTime();
+  const rowEndAtMs = row.event_end_at instanceof Date
+    ? row.event_end_at.getTime()
+    : new Date(row.event_end_at).getTime();
+  if (
+    row.event_type !== expected.eventType
+    || row.artwork_id !== expected.artworkId
+    || Number(row.starting_balance) !== expected.startingBalance
+    || row.ranking_direction !== expected.rankingDirection
+    || rowStartAtMs !== expected.startAtMs
+    || rowEndAtMs !== expected.endAtMs
+  ) return null;
+  return expected;
+}
+
 /** Only accept the scheduled biweekly Monday-to-Friday Event Arena windows. */
 export function isValidEventArenaWindow(
   eventId: unknown,
@@ -144,6 +230,10 @@ function parseSubmission(body: unknown): EventSubmission | null {
   const allowedKeys = new Set([
     "installationId",
     "alias",
+    "eventType",
+    "artworkId",
+    "startingBalance",
+    "rankingDirection",
     "cashBalance",
     "appliedTransferIds",
     "startEquity",
@@ -157,6 +247,10 @@ function parseSubmission(body: unknown): EventSubmission | null {
   if (Object.keys(value).some((key) => !allowedKeys.has(key))) return null;
 
   const alias = typeof value.alias === "string" ? value.alias.trim() : "";
+  const eventType = value.eventType;
+  const artworkId = value.artworkId;
+  const startingBalance = value.startingBalance;
+  const rankingDirection = value.rankingDirection;
   const startEquity = value.startEquity;
   const equity = value.equity;
   const returnPercent = value.returnPercent;
@@ -169,6 +263,11 @@ function parseSubmission(body: unknown): EventSubmission | null {
     || alias.length < 1
     || alias.length > 24
     || /[\u0000-\u001f\u007f]/.test(alias)
+    || (eventType !== undefined && eventType !== "event-arena" && eventType !== "green-bull-championship")
+    || (artworkId !== undefined && !EVENT_ARTWORK_IDS.includes(artworkId as typeof EVENT_ARTWORK_IDS[number]))
+    || (startingBalance !== undefined && (typeof startingBalance !== "number"
+      || !Number.isFinite(startingBalance) || startingBalance <= 0))
+    || (rankingDirection !== undefined && rankingDirection !== "highest-return")
     || (cashBalance !== undefined && (typeof cashBalance !== "number"
       || !Number.isFinite(cashBalance) || cashBalance < 0 || cashBalance > 10_000_000))
     || !Array.isArray(appliedTransferIds)
@@ -232,6 +331,10 @@ function parseSubmission(body: unknown): EventSubmission | null {
   return {
     installationId: value.installationId,
     alias,
+    ...(eventType !== undefined ? { eventType } : {}),
+    ...(typeof artworkId === "string" ? { artworkId: artworkId as EventSubmission["artworkId"] } : {}),
+    ...(startingBalance !== undefined ? { startingBalance } : {}),
+    ...(rankingDirection !== undefined ? { rankingDirection } : {}),
     cashBalance: typeof cashBalance === "number" ? cashBalance : startEquity,
     appliedTransferIds: [...new Set(appliedTransferIds as string[])],
     startEquity,
@@ -301,7 +404,11 @@ function compareText(a: unknown, b: unknown) {
  * Equal returns sort by newest update, alias, then private installation ID.
  * The final key is never included in public entries.
  */
-export function rankEventArenaEntries(rows: any[], requestingInstallationId: string | null = null) {
+export function rankEventArenaEntries(
+  rows: any[],
+  requestingInstallationId: string | null = null,
+  rankingDirection: "highest-return" = "highest-return",
+) {
   return rows
     .map((row) => ({
       row,
@@ -323,7 +430,7 @@ export function rankEventArenaEntries(rows: any[], requestingInstallationId: str
       returnPercent: ((entry.equity - entry.startEquity) / entry.startEquity) * 100,
     }))
     .sort((a, b) =>
-      b.returnPercent - a.returnPercent
+      (rankingDirection === "highest-return" ? b.returnPercent - a.returnPercent : 0)
       || b.updatedAtMs - a.updatedAtMs
       || compareText(a.row.alias, b.row.alias)
       || compareText(a.row.installation_id, b.row.installation_id),
@@ -341,6 +448,24 @@ export function createEventArenaRouter(
   now: () => number = Date.now,
 ) {
   const router = Router();
+
+  router.post("/event-arena/:eventId/config", requireSchema, async (req: any, res: any) => {
+    const expected = expectedEventArenaConfiguration(req.params.eventId);
+    if (!expected) {
+      res.status(400).json({ error: "A scheduled Event Arena window is required." });
+      return;
+    }
+    try {
+      const configuration = await ensureEventArenaConfiguration(db, req.params.eventId);
+      if (!configuration) {
+        res.status(409).json({ error: "This event already has a different saved configuration." });
+        return;
+      }
+      res.json(configuration);
+    } catch {
+      res.status(500).json({ error: "Could not save the Event Arena configuration." });
+    }
+  });
 
   router.get("/event-arena/leaderboard-weeks", requireSchema, async (_req: any, res: any) => {
     try {
@@ -393,6 +518,11 @@ export function createEventArenaRouter(
       return;
     }
     try {
+      const configuration = await ensureEventArenaConfiguration(db, req.params.eventId);
+      if (!configuration) {
+        res.status(409).json({ error: "This event already has a different saved configuration." });
+        return;
+      }
       await purgeExpiredEventArenaEntries(db);
       const headerInstallationId = req.get("x-event-arena-installation-id");
       const requestingInstallationId = validInstallationId(headerInstallationId)
@@ -415,7 +545,7 @@ export function createEventArenaRouter(
         ],
       );
       res.json({
-        entries: rankEventArenaEntries(rows, requestingInstallationId),
+        entries: rankEventArenaEntries(rows, requestingInstallationId, configuration.rankingDirection),
         updatedAt: new Date(now()).toISOString(),
       });
     } catch {
@@ -486,11 +616,30 @@ export function createEventArenaRouter(
       res.status(400).json({ error: "A scheduled Event Arena window is required." });
       return;
     }
+    const expectedConfiguration = expectedEventArenaConfiguration(req.params.eventId);
+    if (
+      !expectedConfiguration
+      || submission.startEquity !== expectedConfiguration.startingBalance
+      || (submission.eventType !== undefined && submission.eventType !== expectedConfiguration.eventType)
+      || (submission.artworkId !== undefined && submission.artworkId !== expectedConfiguration.artworkId)
+      || (submission.startingBalance !== undefined
+        && submission.startingBalance !== expectedConfiguration.startingBalance)
+      || (submission.rankingDirection !== undefined
+        && submission.rankingDirection !== expectedConfiguration.rankingDirection)
+    ) {
+      res.status(400).json({ error: "The score does not match this event's saved configuration." });
+      return;
+    }
     if (now() > submission.eventEndAtMs) {
       res.status(410).json({ error: "This Event Arena window has ended." });
       return;
     }
     try {
+      const configuration = await ensureEventArenaConfiguration(db, req.params.eventId);
+      if (!configuration) {
+        res.status(409).json({ error: "This event already has a different saved configuration." });
+        return;
+      }
       await purgeExpiredEventArenaEntries(db);
       const outcome = await withTransaction(db, async (client) => {
         await client.query(
@@ -561,7 +710,11 @@ export function createEventArenaRouter(
              AND event_end_at=TO_TIMESTAMP($3 / 1000.0)`,
           [req.params.eventId, submission.eventStartAtMs, submission.eventEndAtMs],
         );
-        const rankedSnapshots = rankEventArenaEntries(currentParticipants)
+        const rankedSnapshots = rankEventArenaEntries(
+          currentParticipants,
+          null,
+          configuration.rankingDirection,
+        )
           .map((entry) => ({
             participantToken: entry.participantToken,
             rank: entry.rank,

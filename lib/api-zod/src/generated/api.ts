@@ -26,6 +26,28 @@ export const GetEventArenaLeaderboardWeeksResponse = zod.object({
 
 
 /**
+ * @summary Save or retrieve the immutable configuration for a scheduled event
+ */
+export const EnsureEventArenaConfigurationParams = zod.object({
+  "eventId": zod.date().describe('Scheduled Event Arena event ID.')
+})
+
+export const ensureEventArenaConfigurationResponseStartingBalanceExclusiveMin = 0;
+
+
+
+export const EnsureEventArenaConfigurationResponse = zod.object({
+  "eventId": zod.coerce.date(),
+  "eventType": zod.enum(['event-arena', 'green-bull-championship']),
+  "artworkId": zod.enum(['stadium', 'neon-nightclub', 'mountain-summit', 'red-showdown', 'green-stock-exchange']),
+  "startingBalance": zod.number().gt(ensureEventArenaConfigurationResponseStartingBalanceExclusiveMin),
+  "rankingDirection": zod.enum(['highest-return']),
+  "startAtMs": zod.number(),
+  "endAtMs": zod.number()
+})
+
+
+/**
  * Scores are self-reported. Ranking uses percentage return calculated from event equity and starting equity. Equal returns sort by most recently updated, then alias alphabetically, then a stable private participant identifier.
  * @summary Get active, opted-in scores for one Event Arena week
  */
@@ -87,6 +109,8 @@ export const submitEventArenaScoreBodyInstallationIdMax = 128;
 
 export const submitEventArenaScoreBodyAliasMax = 24;
 
+export const submitEventArenaScoreBodyStartingBalanceExclusiveMin = 0;
+
 export const submitEventArenaScoreBodyCashBalanceMin = 0;
 
 export const submitEventArenaScoreBodyAppliedTransferIdsItemMin = 8;
@@ -111,6 +135,10 @@ export const submitEventArenaScoreBodyHoldingsMax = 100;
 export const SubmitEventArenaScoreBody = zod.object({
   "installationId": zod.string().min(submitEventArenaScoreBodyInstallationIdMin).max(submitEventArenaScoreBodyInstallationIdMax).describe('Anonymous device identifier; never returned by leaderboard reads.'),
   "alias": zod.string().min(1).max(submitEventArenaScoreBodyAliasMax),
+  "eventType": zod.enum(['event-arena', 'green-bull-championship']),
+  "artworkId": zod.enum(['stadium', 'neon-nightclub', 'mountain-summit', 'red-showdown', 'green-stock-exchange']),
+  "startingBalance": zod.number().gt(submitEventArenaScoreBodyStartingBalanceExclusiveMin),
+  "rankingDirection": zod.enum(['highest-return']),
   "cashBalance": zod.number().min(submitEventArenaScoreBodyCashBalanceMin).optional().describe('Self-reported cash in the separate event account, used to reconcile transfer receipts.'),
   "appliedTransferIds": zod.array(zod.string().min(submitEventArenaScoreBodyAppliedTransferIdsItemMin).max(submitEventArenaScoreBodyAppliedTransferIdsItemMax).regex(submitEventArenaScoreBodyAppliedTransferIdsItemRegExp)).max(submitEventArenaScoreBodyAppliedTransferIdsMax).optional().describe('Event transfer references already applied to the local account cash balance.'),
   "startEquity": zod.number().gt(submitEventArenaScoreBodyStartEquityExclusiveMin),

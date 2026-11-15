@@ -25,9 +25,9 @@ const eventArenaApi = readFileSync(new URL("../../api-server/src/routes/eventAre
 const eventAccountDashboard = readFileSync(new URL("../components/PaperEventArenaDashboard.tsx", import.meta.url), "utf8");
 
 assert.match(events, /eventWindow\.phase === 'upcoming' \? eventWindow\.startAtMs : Date\.now\(\)/);
-assert.match(events, /eventWindow\.phase === 'upcoming' \? null : PAPER_CHALLENGE_STARTING_BALANCE/);
+assert.match(events, /startEquity: eventWindow\.phase === 'upcoming' \? null : configuration\.startingBalance/);
 assert.match(events, /currentWindow\.phase === 'active' \|\| currentWindow\.phase === 'upcoming'/);
-assert.match(events, /grow a separate \$100,000 paper portfolio as much as possible/i);
+assert.match(events, /grow a separate \$\$\{\(currentWindow\.startingBalance \?\? PAPER_CHALLENGE_STARTING_BALANCE\)\.toLocaleString\('en-US'\)\} paper portfolio as much as possible/i);
 assert.match(screen, /capturePaperChallengeBaseline\(currentEnrollment, startEquity\)/);
 assert.match(screen, /updatePaperChallengeStore\(update/);
 assert.match(challenge, /joinedAtMs: enrollment\.eventStartAtMs/);
@@ -39,7 +39,8 @@ assert.match(events, /withdrawUpcomingPaperChallenge\(current, currentWindow\.id
 assert.match(events, /updatePaperChallengeStore\(\(current\)/);
 assert.match(challenge, /nowMs >= enrollment\.eventStartAtMs/);
 assert.match(screen, /testID=\{isEventAcct \? 'active-paper-event-account'/);
-assert.match(screen, /FRESH \$100,000 · TRADE HERE TO COMPETE THIS WEEK/);
+assert.match(screen, /GREEN BULL CHAMPIONSHIP · \$500,000 STARTING CAPITAL/);
+assert.match(screen, /EVENT ARENA · \$\$\{/);
 assert.match(screen, /testID="paper-event-account-badge"/);
 assert.match(screen, /testID="paper-event-live-banner"/);
 assert.match(screen, /LIVE EVENT · JOIN ANY TIME/);
@@ -79,7 +80,12 @@ test("event enrollment enables sharing with compact privacy controls", () => {
   assert.match(leaderboard, /testID="paper-event-average-cost-fallback"/);
   assert.match(leaderboard, /average cost was used for those positions in your score/);
   assert.match(leaderboard, /setAverageCostFallbackByEvent\(\(current\) => \(\{ \.\.\.current, \[event\.id\]: submission\.usesAverageCost \}\)\)/);
-  assert.match(leaderboard, /position\.shares \* \(quotes\.get\(position\.symbol\.toUpperCase\(\)\) \?\? position\.avgCost\)/);
+  assert.match(leaderboard, /getEventArenaAccountEquity/);
+  assert.match(leaderboard, /Object\.fromEntries\(quotes\)/);
+  assert.match(leaderboard, /Current quotes are unavailable for your event account/);
+  assert.match(leaderboard, /startingBalance: enrollment\.startingBalance \?\? event\.startingBalance/);
+assert.match(leaderboard, /GREEN BULL CHAMPIONSHIP/);
+assert.match(leaderboard, /STARTING CAPITAL/);
   assert.match(leaderboard, /submitEventArenaScore\(event\.id, submission\.payload\)/);
   assert.doesNotMatch(leaderboard, /averageCostFallbackByEvent\[entry\.|averageCostFallbackByEvent\[detail\./);
   assert.match(leaderboard, /paper-event-leaderboard-stale/);
@@ -506,7 +512,7 @@ test("Paper Trading keeps all views in readable groups and reserves space for ac
   assert.match(screen, /BUYING POWER/);
   assert.match(screen, /testID="paper-account-total-return"[\s\S]*?pctFmt\(totalReturn\)/);
   assert.match(screen, /testID="paper-account-buying-power"[\s\S]*?\$fmt\(account\?\.cash \?\? 0\)/);
-  assert.match(screen, /const totalReturn = \(\(portfolioValue - INITIAL_BALANCE\) \/ INITIAL_BALANCE\) \* 100/);
+  assert.match(screen, /const totalReturn = \(\(portfolioValue - activeAccountStartingBalance\) \/ activeAccountStartingBalance\) \* 100/);
   assert.match(screen, /const portfolioValue = account \? computePaperEquity\(account, myPositions, quotes\) : 0/);
   assert.match(screen, /heroStats:[\s\S]*?flexDirection: 'row'[\s\S]*?gap: 8/);
   assert.match(screen, /const \{ width: screenWidth, fontScale \} = useWindowDimensions\(\)/);
@@ -853,7 +859,8 @@ test("all five live Event Arena backgrounds keep podium names and values readabl
   const standingsStart = leaderboard.indexOf('<View testID="paper-event-leaderboard-list"');
   assert.ok(standingsStart > artworkEnd, "full standings remain on their solid card below the artwork");
   assert.match(leaderboard.slice(standingsStart, standingsStart + 260), /backgroundColor: colors\.card/);
-  assert.match(eventArena, /artworkId: event\.artworkId/);
+  assert.match(eventArena, /getPaperChallengeConfiguration\(event\.artworkId/);
+  assert.match(eventArena, /\.\.\.configuration,/);
   assert.match(eventArena, /EVENT_ARENA_ARTWORK_SOURCES\[event\.artworkId \?\? LEGACY_PAPER_CHALLENGE_ARTWORK_ID\]/);
   assert.match(events, /EVENT_ARENA_ARTWORK_SOURCES\[event\.artworkId \?\? LEGACY_PAPER_CHALLENGE_ARTWORK_ID\]/);
 

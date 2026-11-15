@@ -7,6 +7,7 @@ import express from "express";
 import pg from "pg";
 import {
   createEventArenaRouter,
+  expectedEventArenaConfiguration,
   isValidEventArenaWindow,
 } from "./eventArenaRoutes.ts";
 import {
@@ -29,9 +30,20 @@ type TestDatabase = {
 };
 
 function validSubmission(overrides: Record<string, unknown> = {}) {
+  const eventStartAtMs = typeof overrides.eventStartAtMs === "number"
+    ? overrides.eventStartAtMs
+    : startAtMs;
+  const eventIdForStart = Number.isFinite(eventStartAtMs)
+    ? new Date(eventStartAtMs).toISOString().slice(0, 10)
+    : eventId;
+  const configuration = expectedEventArenaConfiguration(eventIdForStart);
   return {
     installationId,
     alias: "MarketFox",
+    eventType: configuration?.eventType ?? "event-arena",
+    artworkId: configuration?.artworkId ?? "stadium",
+    startingBalance: configuration?.startingBalance ?? 100_000,
+    rankingDirection: "highest-return",
     cashBalance: 100_000,
     appliedTransferIds: [],
     startEquity: 100_000,
@@ -52,7 +64,34 @@ async function withApi(
 ) {
   const app = express();
   app.use(express.json());
-  const db = typeof database === "function" ? { query: database } : database;
+  const savedConfigurations = new Map<string, any>();
+  const db = typeof database === "function"
+    ? {
+        query: async (sql: string, values?: any[]) => {
+          if (sql.startsWith("INSERT INTO event_arena_events")) {
+            const expected = expectedEventArenaConfiguration(String(values?.[0]));
+            assert.ok(expected);
+            const row = {
+              event_id: expected.eventId,
+              event_type: expected.eventType,
+              artwork_id: expected.artworkId,
+              starting_balance: expected.startingBalance,
+              ranking_direction: expected.rankingDirection,
+              event_start_at: new Date(expected.startAtMs),
+              event_end_at: new Date(expected.endAtMs),
+            };
+            if (savedConfigurations.has(expected.eventId)) return { rows: [] };
+            savedConfigurations.set(expected.eventId, row);
+            return { rows: [row] };
+          }
+          if (sql.includes("FROM event_arena_events WHERE event_id=$1")) {
+            const row = savedConfigurations.get(String(values?.[0]));
+            return { rows: row ? [row] : [] };
+          }
+          return database(sql, values);
+        },
+      }
+    : database;
   app.use(createEventArenaRouter(db, (_req, _res, next) => next(), () => currentTime));
   const server = app.listen(0);
   await once(server, "listening");
@@ -67,6 +106,18 @@ async function withApi(
 }
 
 async function ensureEventArenaTables(pool: InstanceType<typeof Pool>) {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS event_arena_events (
+      event_id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL,
+      artwork_id TEXT NOT NULL,
+      starting_balance DOUBLE PRECISION NOT NULL,
+      ranking_direction TEXT NOT NULL,
+      event_start_at TIMESTAMPTZ NOT NULL,
+      event_end_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS event_arena_leaderboard_entries (
       event_id TEXT NOT NULL,
@@ -272,6 +323,78 @@ test("only scheduled biweekly windows and exact Eastern market hours are accepte
   assert.equal(isValidEventArenaWindow(eventId, startAtMs + 60_000, endAtMs), false);
   assert.equal(isValidEventArenaWindow("2026-11-23", startAtMs, endAtMs), false);
   assert.equal(isValidEventArenaWindow("2026-11-16", Number.NaN, endAtMs), false);
+});
+
+test("event artwork resolves to an immutable championship configuration", async () => {
+  assert.deepEqual(expectedEventArenaConfiguration("2026-11-16"), {
+    eventId: "2026-11-16",
+    eventType: "event-arena",
+    artworkId: "stadium",
+    startingBalance: 100_000,
+    rankingDirection: "highest-return",
+    startAtMs,
+    endAtMs,
+  });
+  const greenEvent = expectedEventArenaConfiguration("2027-01-11");
+  assert.equal(greenEvent?.eventType, "green-bull-championship");
+  assert.equal(greenEvent?.artworkId, "green-stock-exchange");
+  assert.equal(greenEvent?.startingBalance, 500_000);
+  assert.equal(greenEvent?.rankingDirection, "highest-return");
+
+  await withApi(async () => ({ rows: [] }), async (baseUrl) => {
+    const save = () => fetch(`${baseUrl}/event-arena/2027-01-11/config`, { method: "POST" });
+    const first = await save();
+    const firstConfiguration = await first.json();
+    const second = await save();
+    assert.equal(first.status, 200);
+    assert.deepEqual(firstConfiguration, await second.json());
+    assert.deepEqual(firstConfiguration, greenEvent);
+  });
+});
+
+test("Green Bull scores must start with $500,000 and report a zero initial return", async () => {
+  const insertedScores: any[][] = [];
+  await withApi(async (sql, values) => {
+    if (sql.startsWith("DELETE")) return { rows: [] };
+    if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return { rows: [] };
+    if (sql.startsWith("SELECT installation_id")) return { rows: [] };
+    if (sql.startsWith("INSERT INTO event_arena_leaderboard_entries")) {
+      insertedScores.push(values ?? []);
+      return { rows: [{ updated_at: new Date("2027-01-13T17:00:00.000Z") }] };
+    }
+    if (sql.includes("SELECT installation_id, participant_token, alias")) return { rows: [] };
+    return { rows: [] };
+  }, async (baseUrl) => {
+    const submit = (overrides: Record<string, unknown>) => fetch(
+      `${baseUrl}/event-arena/2027-01-11/leaderboard`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(validSubmission({
+          eventType: "green-bull-championship",
+          artworkId: "green-stock-exchange",
+          startingBalance: 500_000,
+          startEquity: 500_000,
+          equity: 500_000,
+          returnPercent: 0,
+          cashBalance: 500_000,
+          eventStartAtMs: Date.parse("2027-01-11T14:30:00.000Z"),
+          eventEndAtMs: Date.parse("2027-01-15T21:00:00.000Z"),
+          ...overrides,
+        })),
+      },
+    );
+    const wrongBaseline = await submit({ startEquity: 100_000, startingBalance: 100_000 });
+    assert.equal(wrongBaseline.status, 400);
+    assert.equal(insertedScores.length, 0);
+
+    const initialScore = await submit({});
+    assert.equal(initialScore.status, 200);
+    assert.equal(insertedScores.length, 1);
+    assert.equal(insertedScores[0]?.[3], 500_000);
+    assert.equal(insertedScores[0]?.[4], 500_000);
+    assert.equal(insertedScores[0]?.[5], 0);
+  }, Date.parse("2027-01-13T17:00:00.000Z"));
 });
 
 test("cash transfers are event scoped and an idempotent retry never moves cash twice", async () => {

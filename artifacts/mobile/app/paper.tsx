@@ -486,6 +486,11 @@ export default function PaperScreen() {
   const selectedEventId = selectedEventEnrollment?.eventId ?? selectedEventSummary?.eventId ?? '';
   const selectedEventStartAtMs = selectedEventEnrollment?.eventStartAtMs ?? selectedEventSummary?.eventStartAtMs ?? Number.NaN;
   const selectedEventEndAtMs = selectedEventEnrollment?.eventEndAtMs ?? selectedEventSummary?.eventEndAtMs ?? Number.NaN;
+  const activeAccountStartingBalance = isSelectedEventAccount
+    ? selectedEventEnrollment?.startingBalance
+      ?? selectedEventSummary?.startingBalance
+      ?? PAPER_CHALLENGE_STARTING_BALANCE
+    : INITIAL_BALANCE;
   const unrealizedPnL = myPositions.reduce(
     (s, p) => s + p.shares * (isShortPosition(p)
       ? p.avgCost - (quotes[p.symbol]?.price ?? p.avgCost)
@@ -493,7 +498,7 @@ export default function PaperScreen() {
   );
   // Realized P&L is net of fund fees: gross realized minus fees charged at close.
   const realizedPnL = computeRealizedPnL(myTxns);
-  const totalReturn = ((portfolioValue - INITIAL_BALANCE) / INITIAL_BALANCE) * 100;
+  const totalReturn = ((portfolioValue - activeAccountStartingBalance) / activeAccountStartingBalance) * 100;
 
   const dayChange = myPositions.reduce(
     (s, p) => s + p.shares * (quotes[p.symbol]?.change ?? 0) * (isShortPosition(p) ? -1 : 1), 0,
@@ -505,7 +510,7 @@ export default function PaperScreen() {
       && new Date(tx.date).getTime() >= todayStart.getTime())
     .reduce((sum, tx) => sum + (tx.realizedPnL ?? 0) - (tx.fee ?? 0), 0);
   const todayPnL = dayChange + todayRealized;
-  const totalPnLFromEquity = portfolioValue - INITIAL_BALANCE;
+  const totalPnLFromEquity = portfolioValue - activeAccountStartingBalance;
 
   const accountsRef = useRef<PaperAccount[]>([]);
   const positionsRef = useRef<PaperPosition[]>([]);
@@ -2467,8 +2472,10 @@ export default function PaperScreen() {
               {hasCurrentEventEnrollment ? 'YOUR EVENT IS LIVE' : 'LIVE EVENT · JOIN ANY TIME'}
             </Text>
           </View>
-          <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, lineHeight: 17, marginTop: 7 }}>
-            Goal: grow a separate $100,000 paper portfolio as much as possible.
+            <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, lineHeight: 17, marginTop: 7 }}>
+            {paperChallenge.enrollment?.eventType === 'green-bull-championship'
+              ? 'GREEN BULL CHAMPIONSHIP · $500,000 STARTING CAPITAL'
+              : `EVENT ARENA · $${(paperChallenge.enrollment?.startingBalance ?? paperChallengeWindow.startingBalance ?? INITIAL_BALANCE).toLocaleString('en-US', { maximumFractionDigits: 0 })} STARTING CAPITAL`}
           </Text>
           <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 4 }}>
             {hasCurrentEventEnrollment

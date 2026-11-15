@@ -105,6 +105,11 @@ export function EventArenaOverview({
     : `${countdown.days}d  ${String(countdown.hours).padStart(2, '0')}h  ${String(countdown.minutes).padStart(2, '0')}m  ${String(countdown.seconds).padStart(2, '0')}s`;
   const eventName = `Week of ${new Date(event.startAtMs).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
   const eventTitle = `Week of ${new Date(event.startAtMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+  const championshipName = event.eventType === 'green-bull-championship'
+    ? 'GREEN BULL CHAMPIONSHIP'
+    : 'EVENT ARENA CHAMPIONSHIP';
+  const startingCapital = event.startingBalance ?? enrollment?.startingBalance ?? 100_000;
+  const startingCapitalLabel = `$${startingCapital.toLocaleString('en-US', { maximumFractionDigits: 0 })} STARTING CAPITAL`;
   const stickyAction = joined && !isUpcoming
     ? {
         kind: livePhase === 'ended' ? 'finish' as const : 'trade' as const,
@@ -154,7 +159,7 @@ export function EventArenaOverview({
       <View style={{ width: contentWidth }}>
         <View style={styles.topline}>
           <View style={styles.brandMark}><Feather name="activity" size={15} color={accent} /></View>
-          <Text style={[styles.eyebrow, { color: muted }]}>MEISNER METHOD  /  EVENT ARENA</Text>
+          <Text style={[styles.eyebrow, { color: muted }]}>MEISNER METHOD  /  {championshipName}</Text>
           {joined && livePhase === 'active' ? (
             <Pressable
               accessibilityRole="button"
@@ -192,6 +197,9 @@ export function EventArenaOverview({
             <Text style={[styles.eventId, { color: muted }]}>ID {event.id}</Text>
           </View>
           <Text accessibilityLabel={`Event Arena ${eventName}`} style={[styles.title, { color: ink }]}>{eventTitle}</Text>
+          <Text testID="event-arena-starting-capital" style={[styles.phaseLabel, { color: accent, marginTop: 5 }]}>
+            {startingCapitalLabel}
+          </Text>
           <Text style={[styles.subtitle, { color: muted }]}>{copy.title}. {copy.detail}</Text>
 
           <View style={[styles.countdownPanel, { backgroundColor: colors.background, borderColor: border }]}>
@@ -286,7 +294,7 @@ export function EventArenaOverview({
                 </View>
               </View>
               <View style={styles.metricGrid}>
-                <Metric label="START BALANCE" value={money(performance?.startingBalance ?? enrollment?.startEquity ?? 100_000)} />
+                <Metric label="START BALANCE" value={money(performance?.startingBalance ?? startingCapital)} />
                 <Metric label="NET P/L" value={signedMoney(performance?.profitLoss)} valueColor={performance?.profitLoss == null ? ink : positive ? '#4da987' : '#bc6863'} />
                 <Metric label="BUYING POWER" value={money(performance?.buyingPower)} />
                 <Metric label="EVENT RANK" value={rank == null ? '—' : `#${rank}`} />
@@ -326,7 +334,7 @@ export function EventArenaOverview({
                 <View style={[styles.legendLine, { backgroundColor: accent }]} />
                 <Text style={[styles.legendText, { color: muted }]}>Event equity</Text>
                 <View style={[styles.legendDashed, { borderColor: muted }]} />
-                <Text style={[styles.legendText, { color: muted }]}>Start balance · {money(performance?.startingBalance ?? enrollment?.startEquity ?? 100_000)}</Text>
+                <Text style={[styles.legendText, { color: muted }]}>Start balance · {money(performance?.startingBalance ?? startingCapital)}</Text>
               </View>
               {chartPoints.length < 2 ? (
                 <View style={styles.emptyChart}>
@@ -340,7 +348,7 @@ export function EventArenaOverview({
                   width={contentWidth - 34}
                   height={184}
                   referenceLine={{
-                    value: performance?.startingBalance ?? enrollment?.startEquity ?? 100_000,
+                    value: performance?.startingBalance ?? startingCapital,
                     label: 'START',
                     color: 'rgba(184,149,90,0.78)',
                   }}

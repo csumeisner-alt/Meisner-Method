@@ -42,7 +42,7 @@ export function PaperEventShareCard({ event, milestones = [] }: Props) {
               MEISNER METHOD
             </Text>
             <Text allowFontScaling style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 10, letterSpacing: 1.1, marginTop: 4 }}>
-              EVENT ARENA · RESULTS
+              {event.eventType === 'green-bull-championship' ? 'GREEN BULL CHAMPIONSHIP · RESULTS' : 'EVENT ARENA · RESULTS'}
             </Text>
           </View>
         </View>

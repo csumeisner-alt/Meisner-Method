@@ -112,6 +112,24 @@ export function getEventArenaChartHistory(
     .map(({ date, value }) => ({ date, value }));
 }
 
+export function getEventArenaAccountEquity(
+  account: Pick<PaperAccount, 'id' | 'cash' | 'unsettledCash' | 'shortCollateral'>,
+  positions: Array<Pick<PaperPosition, 'accountId' | 'symbol' | 'shares' | 'positionType'>>,
+  quotes: Record<string, number>,
+): number | null {
+  const accountPositions = positions.filter((position) =>
+    position.accountId === account.id && position.shares > 0,
+  );
+  if (accountPositions.some((position) =>
+    !Number.isFinite(quotes[position.symbol]) || quotes[position.symbol] <= 0,
+  )) return null;
+  return account.cash
+    + (account.unsettledCash ?? 0)
+    + (account.shortCollateral ?? 0)
+    + accountPositions.reduce((sum, position) =>
+      sum + position.shares * quotes[position.symbol]! * (isShortPosition(position) ? -1 : 1), 0);
+}
+
 export function getEventArenaPerformance(
   enrollment: PaperChallengeEnrollment,
   event: PaperChallengeWindow,
@@ -134,17 +152,8 @@ export function getEventArenaPerformance(
   const pendingOrders = data.orders.filter((item) =>
     item.accountId === enrollment.accountId && item.status === 'pending',
   );
-  const startingBalance = enrollment.startEquity ?? PAPER_CHALLENGE_STARTING_BALANCE;
-  const hasAllQuotes = positions.every((position) =>
-    Number.isFinite(quotes[position.symbol]) && quotes[position.symbol] > 0,
-  );
-  const equity = account && hasAllQuotes
-    ? account.cash
-      + (account.unsettledCash ?? 0)
-      + (account.shortCollateral ?? 0)
-      + positions.reduce((sum, position) =>
-        sum + position.shares * quotes[position.symbol]! * (isShortPosition(position) ? -1 : 1), 0)
-    : null;
+  const startingBalance = enrollment.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE;
+  const equity = account ? getEventArenaAccountEquity(account, positions, quotes) : null;
   const profitLoss = equity == null ? null : equity - startingBalance;
 
   return {

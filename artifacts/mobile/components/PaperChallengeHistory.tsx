@@ -27,6 +27,7 @@ import {
   getPaperChallengeArchiveChartWidth,
   getPaperChallengeReminders,
   getPaperChallengeWindow,
+  getPaperChallengeConfiguration,
   LEGACY_PAPER_CHALLENGE_ARTWORK_ID,
   loadPaperChallengeStore,
   PAPER_CHALLENGE_STARTING_BALANCE,
@@ -186,15 +187,18 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
     const eventWindow = getPaperChallengeWindow(Date.now());
     if (saving || storeLoadState !== 'ready' || eventWindow.phase === 'ended' || store.enrollment) return;
     setSaving(true);
+    const configuration = getPaperChallengeConfiguration(
+      eventWindow.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID,
+    );
     const enrollment = {
       eventId: eventWindow.id,
-      artworkId: eventWindow.artworkId,
+      ...configuration,
       eventStartAtMs: eventWindow.startAtMs,
       eventEndAtMs: eventWindow.endAtMs,
       joinedAtMs: eventWindow.phase === 'upcoming' ? eventWindow.startAtMs : Date.now(),
       accountId: eventAccountId(eventWindow.id),
       accountName: 'Event Portfolio',
-      startEquity: eventWindow.phase === 'upcoming' ? null : PAPER_CHALLENGE_STARTING_BALANCE,
+      startEquity: eventWindow.phase === 'upcoming' ? null : configuration.startingBalance,
     };
     try {
       const next = await updatePaperChallengeStore((current) => {
@@ -208,7 +212,10 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
       if (next.enrollment?.eventId !== enrollment.eventId) return;
       setEventsOpen(false);
       onCloseSettings();
-      Alert.alert('You’re in', 'Your separate event portfolio starts at $100,000. Open Paper Trading to place event trades.');
+      Alert.alert(
+        'You’re in',
+        `Your separate event portfolio starts at $${configuration.startingBalance.toLocaleString('en-US')}. Open Paper Trading to place event trades.`,
+      );
     } catch {
       Alert.alert('Could not join', 'Your event enrollment was not saved. Please try again.');
     } finally {
@@ -302,8 +309,14 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
         return;
       }
       const cache = JSON.parse(raw) as {
-        accounts?: Array<{ id: string; cash: number; unsettledCash?: number }>;
-        positions?: Array<{ accountId: string; symbol: string; shares: number; avgCost: number }>;
+        accounts?: Array<{ id: string; cash: number; unsettledCash?: number; shortCollateral?: number }>;
+        positions?: Array<{
+          accountId: string;
+          symbol: string;
+          shares: number;
+          avgCost: number;
+          positionType?: 'long' | 'short';
+        }>;
       };
       const account = cache.accounts?.find((item) => item.id === enrollment.accountId);
       if (!account) {
@@ -326,8 +339,11 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
       }
       const equity = account.cash
         + (account.unsettledCash ?? 0)
-        + positions.reduce((sum, position) => sum + position.shares * (quotes.get(position.symbol) ?? position.avgCost), 0);
-      const startingBalance = enrollment.startEquity ?? PAPER_CHALLENGE_STARTING_BALANCE;
+        + (account.shortCollateral ?? 0)
+        + positions.reduce((sum, position) =>
+          sum + position.shares * (quotes.get(position.symbol) ?? position.avgCost)
+            * (position.positionType === 'short' ? -1 : 1), 0);
+      const startingBalance = enrollment.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE;
       const profit = equity - startingBalance;
       setPositionValue({
         equity,
@@ -400,7 +416,9 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
               <Feather name="arrow-left" size={18} color={colors.primary} />
             </TouchableOpacity>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 17 }}>Event results</Text>
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 17 }}>
+                {event.eventType === 'green-bull-championship' ? 'Green Bull Championship results' : 'Event Arena results'}
+              </Text>
               <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 3 }}>
                 {dateRange(event.eventStartAtMs, event.eventEndAtMs)}
               </Text>
@@ -420,7 +438,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
               Event ID · {event.eventId}
             </Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {metricTile('Starting value', money(event.startEquity))}
+              {metricTile('Starting value', money(event.startingBalance ?? event.startEquity))}
               {metricTile('Final value', money(event.endEquity))}
               {metricTile('Profit / loss', `${event.netProfit >= 0 ? '+' : ''}${money(event.netProfit)}`, event.netProfit >= 0 ? colors.primary : colors.destructive)}
               {metricTile('Return', `${event.returnPercent >= 0 ? '+' : ''}${event.returnPercent.toFixed(2)}%`, event.returnPercent >= 0 ? colors.primary : colors.destructive)}
@@ -463,7 +481,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                   points={equityHistory}
                   width={getPaperChallengeArchiveChartWidth(screenWidth)}
                   height={180}
-                  referenceLine={{ value: event.startEquity, label: 'Start' }}
+                  referenceLine={{ value: event.startingBalance ?? event.startEquity, label: 'Start' }}
                 />
                 <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10 }}>
                   {equityHistory.length} saved observations · no missing periods are estimated
@@ -745,10 +763,10 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                 {hasCurrentEnrollment
                   ? currentWindow.phase === 'active'
                     ? store.enrollment?.startEquity === null
-                      ? 'Your goal is to grow a separate $100,000 paper portfolio as much as possible. Event trades close Friday at 4:00 p.m. ET.'
+                      ? `Your goal is to grow a separate $${(currentWindow.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE).toLocaleString('en-US')} paper portfolio as much as possible. Event trades close Friday at 4:00 p.m. ET.`
                       : 'Your goal is to grow your separate $100,000 paper portfolio as much as possible. Event trades close Friday at 4:00 p.m. ET.'
                     : currentWindow.phase === 'upcoming'
-                      ? 'Your goal is to grow a separate $100,000 paper portfolio as much as possible. It will be ready at Monday’s market open.'
+                      ? `Your goal is to grow a separate $${(currentWindow.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE).toLocaleString('en-US')} paper portfolio as much as possible. It will be ready at Monday’s market open.`
                       : 'This event has ended. Open Paper Trading to save its final results.'
                   : `${dateRange(currentWindow.startAtMs, currentWindow.endAtMs)} · Goal: grow your separate $100,000 paper portfolio as much as possible · U.S. market hours`}
               </Text>

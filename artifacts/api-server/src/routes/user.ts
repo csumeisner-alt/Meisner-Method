@@ -152,6 +152,18 @@ async function runSchemaMigrations(): Promise<void> {
   // Anonymous, opt-in Event Arena scores are stored separately from every
   // permanent paper account and trade-history table.
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS event_arena_events (
+      event_id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL,
+      artwork_id TEXT NOT NULL,
+      starting_balance DOUBLE PRECISION NOT NULL CHECK (starting_balance > 0),
+      ranking_direction TEXT NOT NULL,
+      event_start_at TIMESTAMPTZ NOT NULL,
+      event_end_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS event_arena_leaderboard_entries (
       event_id TEXT NOT NULL,
       installation_id TEXT NOT NULL,

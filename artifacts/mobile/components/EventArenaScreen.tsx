@@ -39,9 +39,9 @@ import {
   getPaperChallengeArchiveChartWidth,
   getPaperChallengeReminders,
   getPaperChallengeWindow,
+  getPaperChallengeConfiguration,
   LEGACY_PAPER_CHALLENGE_ARTWORK_ID,
   loadPaperChallengeStore,
-  PAPER_CHALLENGE_STARTING_BALANCE,
   sortPaperChallengeHistory,
   ensurePaperChallengeAccount,
   updatePaperChallengeStore,
@@ -186,6 +186,7 @@ export function EventArenaScreen() {
   const [quotes, setQuotes] = useState<Record<string, number>>({});
   const [accountLoading, setAccountLoading] = useState(false);
   const [accountError, setAccountError] = useState('');
+  const [eventConfigurationError, setEventConfigurationError] = useState('');
   const [cashNotifications, setCashNotifications] = useState<EventCashNotification[]>([]);
   const [cashSentTransfers, setCashSentTransfers] = useState<EventCashSentTransfer[]>([]);
   const [cashHistoryDirection, setCashHistoryDirection] = useState<'received' | 'sent'>('received');
@@ -222,9 +223,14 @@ export function EventArenaScreen() {
   const leaderboardEvent = requestedLeaderboardEventId === currentWindow.id
     ? {
         ...currentWindow,
-        artworkId: store.enrollment?.eventId === currentWindow.id
-          ? store.enrollment.artworkId ?? currentWindow.artworkId
-          : currentWindow.artworkId,
+        ...(store.enrollment?.eventId === currentWindow.id
+          ? {
+              artworkId: store.enrollment.artworkId ?? currentWindow.artworkId,
+              eventType: store.enrollment.eventType ?? currentWindow.eventType,
+              startingBalance: store.enrollment.startingBalance ?? currentWindow.startingBalance,
+              rankingDirection: store.enrollment.rankingDirection ?? currentWindow.rankingDirection,
+            }
+          : {}),
       }
     : requestedArchivedEvent
       ? {
@@ -233,8 +239,20 @@ export function EventArenaScreen() {
           endAtMs: requestedArchivedEvent.eventEndAtMs,
           phase: 'ended' as const,
           artworkId: requestedArchivedEvent.artworkId,
+          eventType: requestedArchivedEvent.eventType,
+          startingBalance: requestedArchivedEvent.startingBalance ?? requestedArchivedEvent.startEquity,
+          rankingDirection: requestedArchivedEvent.rankingDirection,
         }
       : currentWindow;
+  const currentDisplayEvent = hasCurrentEnrollment
+    ? {
+        ...currentWindow,
+        artworkId: enrollment?.artworkId ?? currentWindow.artworkId,
+        eventType: enrollment?.eventType ?? currentWindow.eventType,
+        startingBalance: enrollment?.startingBalance ?? currentWindow.startingBalance,
+        rankingDirection: enrollment?.rankingDirection ?? currentWindow.rankingDirection,
+      }
+    : currentWindow;
   const leaderboardEnrollment = store.enrollment?.eventId === leaderboardEvent.id
     ? store.enrollment
     : null;
@@ -474,6 +492,37 @@ export function EventArenaScreen() {
   }, [params.section]);
 
   useEffect(() => {
+    if (storeState !== 'ready') return;
+    let cancelled = false;
+    const expected = getPaperChallengeConfiguration(
+      currentWindow.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID,
+    );
+    setEventConfigurationError('');
+    void (async () => {
+      try {
+        const response = await fetch(
+          `${BASE_URL}/api/event-arena/${encodeURIComponent(currentWindow.id)}/config`,
+          { method: 'POST' },
+        );
+        if (!response.ok) throw new Error('Event configuration could not be saved.');
+        const saved = await response.json() as typeof expected & { eventId?: string };
+        if (
+          saved.eventId !== currentWindow.id
+          || saved.eventType !== expected.eventType
+          || saved.artworkId !== expected.artworkId
+          || saved.startingBalance !== expected.startingBalance
+          || saved.rankingDirection !== expected.rankingDirection
+        ) throw new Error('The saved event configuration does not match this event.');
+      } catch {
+        if (!cancelled) {
+          setEventConfigurationError('The shared event rules could not be confirmed. Your local enrollment remains saved.');
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentWindow.artworkId, currentWindow.id, storeState]);
+
+  useEffect(() => {
     if (storeState !== 'ready' || !enrollment || currentWindow.phase !== 'active') return;
     void refreshCashNotifications(false);
     const timer = setInterval(() => { void refreshCashNotifications(false); }, 120_000);
@@ -532,15 +581,16 @@ export function EventArenaScreen() {
     }
     setJoinAliasError('');
     setSaving(true);
+    const configuration = getPaperChallengeConfiguration(event.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID);
     const newEnrollment: PaperChallengeEnrollment = {
       eventId: event.id,
-      artworkId: event.artworkId,
+      ...configuration,
       eventStartAtMs: event.startAtMs,
       eventEndAtMs: event.endAtMs,
       joinedAtMs: event.phase === 'upcoming' ? event.startAtMs : Date.now(),
       accountId: `paper-event:${event.id}`,
       accountName: 'Event Portfolio',
-      startEquity: event.phase === 'upcoming' ? null : PAPER_CHALLENGE_STARTING_BALANCE,
+      startEquity: event.phase === 'upcoming' ? null : configuration.startingBalance,
       leaderboardAlias: alias,
       leaderboardOptedIn: true,
     };
@@ -655,9 +705,9 @@ export function EventArenaScreen() {
     const symbols = event.symbolsTraded?.length ? event.symbolsTraded.join(', ') : 'No trades';
     const milestones = getPaperChallengeMilestones(event, store.history);
     const text = [
-      'Meisner Method · Event Arena Results',
+      `Meisner Method · ${event.eventType === 'green-bull-championship' ? 'Green Bull Championship' : 'Event Arena Results'}`,
       dateRange(event.eventStartAtMs, event.eventEndAtMs),
-      `Starting balance: ${money(PAPER_CHALLENGE_STARTING_BALANCE)}`,
+      `Starting balance: ${money(event.startingBalance ?? event.startEquity)}`,
       `Ending balance: ${money(event.endEquity)}`,
       `Return: ${event.returnPercent >= 0 ? '+' : ''}${event.returnPercent.toFixed(2)}% (${money(event.netProfit)})`,
       `Trades: ${event.buyCount ?? 0} buys, ${event.sellCount ?? 0} sells`,
@@ -726,9 +776,12 @@ export function EventArenaScreen() {
           <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(7,12,20,0.58)' }} />
           <View testID={`event-arena-past-detail-${event.eventId}`} style={{ padding: 15, backgroundColor: 'rgba(8,13,21,0.45)' }}>
           <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 0.7 }}>EVENT RESULTS · {event.eventId}</Text>
+          <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 0.8, marginTop: 5 }}>
+            {event.eventType === 'green-bull-championship' ? 'GREEN BULL CHAMPIONSHIP' : 'EVENT ARENA'}
+          </Text>
           <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 18, marginTop: 5 }}>{dateRange(event.eventStartAtMs, event.eventEndAtMs)}</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 13 }}>
-            {metric('Starting value', money(event.startEquity))}
+          {metric('Starting value', money(event.startingBalance ?? event.startEquity))}
             {metric('Final value', money(event.endEquity))}
             {metric('Profit / loss', `${event.netProfit >= 0 ? '+' : ''}${money(event.netProfit)}`, event.netProfit >= 0 ? colors.buyColor : colors.sellColor)}
             {metric('Return', `${event.returnPercent >= 0 ? '+' : ''}${event.returnPercent.toFixed(2)}%`, event.returnPercent >= 0 ? colors.buyColor : colors.sellColor)}
@@ -755,7 +808,7 @@ export function EventArenaScreen() {
                 points={equityHistory}
                 width={getPaperChallengeArchiveChartWidth(screenWidth)}
                 height={180}
-                referenceLine={{ value: event.startEquity, label: 'Start' }}
+                referenceLine={{ value: event.startingBalance ?? event.startEquity, label: 'Start' }}
               />
               <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10 }}>
                 {equityHistory.length} saved observations · missing periods are not estimated
@@ -869,6 +922,9 @@ export function EventArenaScreen() {
         >
         <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(7,12,20,0.58)' }} />
         <View testID={`event-arena-past-${event.eventId}`} style={{ padding: 15, backgroundColor: 'rgba(8,13,21,0.48)' }}>
+          <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.7 }}>
+            {event.eventType === 'green-bull-championship' ? 'GREEN BULL CHAMPIONSHIP' : 'EVENT ARENA'}
+          </Text>
           <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 0.7 }}>
             {sortMode === 'top' ? `RANK #${index + 1} · ` : ''}{dateRange(event.eventStartAtMs, event.eventEndAtMs)}
           </Text>
@@ -876,7 +932,7 @@ export function EventArenaScreen() {
             {event.netProfit >= 0 ? '+' : ''}{money(event.netProfit)}
           </Text>
           <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, marginTop: 4 }}>
-            {money(event.startEquity)} start · {money(event.endEquity)} end · {event.returnPercent >= 0 ? '+' : ''}{event.returnPercent.toFixed(2)}%
+            {money(event.startingBalance ?? event.startEquity)} start · {money(event.endEquity)} end · {event.returnPercent >= 0 ? '+' : ''}{event.returnPercent.toFixed(2)}%
           </Text>
           <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 4 }}>
             {event.buyCount ?? 0} buys · {event.sellCount ?? 0} sells · {event.tradeCount} completed trades
@@ -1093,7 +1149,7 @@ export function EventArenaScreen() {
   const renderCompetition = () => (
     <View style={{ flex: 1 }}>
       <EventArenaOverview
-        event={currentWindow}
+        event={currentDisplayEvent}
         nowMs={now}
         enrollment={enrollment}
         participation={participation}
@@ -1121,7 +1177,7 @@ export function EventArenaScreen() {
           </TouchableOpacity>
         </View>
       )}
-      {accountError ? <Text accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 11, paddingHorizontal: 20, paddingBottom: 9 }}>{accountError}</Text> : null}
+      {accountError || eventConfigurationError ? <Text accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 11, paddingHorizontal: 20, paddingBottom: 9 }}>{accountError || eventConfigurationError}</Text> : null}
       <View style={{ marginHorizontal: 18, marginBottom: 8, paddingHorizontal: 12, minHeight: 54, borderWidth: 1, borderColor: colors.border, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.card }}>
         <View style={{ flex: 1 }}>
           <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 13 }}>Event notifications</Text>

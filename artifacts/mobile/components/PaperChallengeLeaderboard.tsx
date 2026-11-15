@@ -33,13 +33,14 @@ import {
   getVisibleEventHoldings,
   formatEventHoldingAllocation,
   formatEventHoldingSide,
-  hasEventAverageCostFallback,
   type EventHoldingSide,
 } from '@/lib/paperChallengeAllocation';
 import {
   LEGACY_PAPER_CHALLENGE_ARTWORK_ID,
   PAPER_CHALLENGE_STARTING_BALANCE,
   updatePaperChallengeStore,
+  type PaperChallengeEventType,
+  type PaperChallengeRankingDirection,
   type PaperChallengeEnrollment,
   type PaperChallengeArtworkId,
 } from '@/lib/paperChallenge';
@@ -48,7 +49,8 @@ import {
   getEventCashTransferImpact,
   type EventCashTransferImpact,
 } from '@/lib/eventArenaTransfers';
-import type { PaperAccount, PaperOrder, PaperPosition } from '@/lib/paperMath';
+import { isShortPosition, type PaperAccount, type PaperOrder, type PaperPosition } from '@/lib/paperMath';
+import { getEventArenaAccountEquity } from '@/lib/eventArenaHome';
 import {
   formatEventArenaMoney,
   formatEventArenaReturn,
@@ -77,6 +79,9 @@ type EventWindow = {
   endAtMs: number;
   phase: 'upcoming' | 'active' | 'ended';
   artworkId?: PaperChallengeArtworkId;
+  eventType?: PaperChallengeEventType;
+  startingBalance?: number;
+  rankingDirection?: PaperChallengeRankingDirection;
 };
 type HoldingName = {
   symbol: string;
@@ -138,6 +143,7 @@ function EventArenaPodiumShareCard({
   event: EventWindow;
   slots: Array<{ rank: number; entry: LeaderboardEntry | null }>;
 }) {
+  const colors = useColors();
   const podiumColors = ['#E5BF63', '#C9D4DF', '#D99A72'];
   return (
     <ImageBackground
@@ -149,7 +155,12 @@ function EventArenaPodiumShareCard({
       <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(7,12,20,0.72)' }} />
       <View testID="paper-event-podium-share-card" style={{ padding: 20 }}>
         <Text style={{ color: '#D8B45A', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 2 }}>MEISNER METHOD</Text>
-        <Text style={{ color: '#E6D8B2', fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 1.4, marginTop: 10 }}>EVENT ARENA</Text>
+        <Text style={{ color: '#E6D8B2', fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 1.4, marginTop: 10 }}>
+          {event.eventType === 'green-bull-championship' ? 'GREEN BULL CHAMPIONSHIP' : 'EVENT ARENA CHAMPIONSHIP'}
+        </Text>
+        <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 9, letterSpacing: 0.7, marginTop: 4 }}>
+          ${Math.round(event.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE).toLocaleString('en-US')} STARTING CAPITAL
+        </Text>
         <Text style={{ color: '#F7F2E8', fontFamily: 'Inter_700Bold', fontSize: 27, marginTop: 3 }}>The podium</Text>
         <Text style={{ color: '#C5C8CD', fontFamily: 'Inter_500Medium', fontSize: 11, marginTop: 5 }}>
           {dateRangeLabel(event.startAtMs, event.endAtMs)}
@@ -223,7 +234,7 @@ function EventArenaPodiumShareCard({
 async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event: EventWindow) {
   const raw = await AsyncStorage.getItem('@stocksense/paper_v2');
   const cache = raw ? JSON.parse(raw) as {
-    accounts?: Array<{ id: string; cash: number; unsettledCash?: number }>;
+    accounts?: Array<{ id: string; cash: number; unsettledCash?: number; shortCollateral?: number }>;
     eventArenaAppliedTransferIds?: string[];
     positions?: Array<{
       accountId: string;
@@ -231,6 +242,7 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
       companyName?: string;
       shares: number;
       avgCost: number;
+      positionType?: 'long' | 'short';
     }>;
     transactions?: Array<{ accountId: string; date: string }>;
   } : {};
@@ -239,7 +251,7 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
     item.accountId === enrollment.accountId && Number.isFinite(item.shares) && item.shares > 0,
   );
   const shareablePositions = positions.slice(0, 100);
-  const symbols = [...new Set(shareablePositions.map((position) => position.symbol.trim().toUpperCase()))];
+  const symbols = [...new Set(positions.map((position) => position.symbol.trim().toUpperCase()))];
   const quoteResults = await Promise.allSettled(symbols.map(async (symbol) => {
     const response = await fetch(`${BASE_URL}/api/stocks/quote/${encodeURIComponent(symbol)}`);
     if (!response.ok) throw new Error(`Quote unavailable for ${symbol}`);
@@ -252,12 +264,24 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
   quoteResults.forEach((result) => {
     if (result.status === 'fulfilled') quotes.set(result.value[0], result.value[1]);
   });
-  const startEquity = enrollment.startEquity ?? PAPER_CHALLENGE_STARTING_BALANCE;
-  const equity = account
-    ? Number(account.cash || 0)
-      + Number(account.unsettledCash || 0)
-      + positions.reduce((sum, position) => sum + position.shares * (quotes.get(position.symbol.toUpperCase()) ?? position.avgCost), 0)
-    : PAPER_CHALLENGE_STARTING_BALANCE;
+  if (!account) {
+    throw new Error('Your isolated event account is unavailable. Open Paper Trading and try again.');
+  }
+  const configuration = {
+    eventType: enrollment.eventType ?? event.eventType ?? 'event-arena',
+    artworkId: enrollment.artworkId ?? event.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID,
+    startingBalance: enrollment.startingBalance ?? event.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE,
+    rankingDirection: enrollment.rankingDirection ?? event.rankingDirection ?? 'highest-return',
+  } as const;
+  const startEquity = configuration.startingBalance;
+  const equity = getEventArenaAccountEquity(
+    account as PaperAccount,
+    positions,
+    Object.fromEntries(quotes),
+  );
+  if (equity == null) {
+    throw new Error('Current quotes are unavailable for your event account. Your score was not updated.');
+  }
   const holdings = shareablePositions
     .map((position) => {
       const symbol = position.symbol.trim().toUpperCase();
@@ -265,11 +289,11 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
         symbol,
         companyName: (position.companyName || position.symbol).trim().slice(0, 120),
         allocationPercent: calculateEventHoldingAllocationPercent(
-          position.shares,
+          Math.abs(position.shares),
           quotes.get(symbol),
           equity,
         ),
-        side: 'long' as const,
+        side: isShortPosition(position) ? 'short' as const : 'long' as const,
       };
     })
     .filter((holding, index, all) => holding.symbol && all.findIndex((candidate) => candidate.symbol === holding.symbol) === index)
@@ -290,6 +314,7 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
     payload: {
       installationId: await getInstallationId(),
       alias: enrollment.leaderboardAlias?.trim() ?? '',
+      ...configuration,
       startEquity,
       equity,
       returnPercent,
@@ -297,15 +322,12 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
       holdings,
       eventStartAtMs: event.startAtMs,
       eventEndAtMs: event.endAtMs,
-      cashBalance: account ? Number(account.cash || 0) : PAPER_CHALLENGE_STARTING_BALANCE,
+      cashBalance: Number(account.cash || 0),
       appliedTransferIds: Array.isArray(cache.eventArenaAppliedTransferIds)
         ? cache.eventArenaAppliedTransferIds.slice(-500)
         : [],
     },
-    usesAverageCost: hasEventAverageCostFallback(
-      positions.map((position) => position.symbol),
-      new Set(quotes.keys()),
-    ),
+    usesAverageCost: false,
   };
 }
 
@@ -1379,6 +1401,12 @@ export function PaperChallengeLeaderboard({
                 </View>
 
                 <View testID="paper-event-leaderboard-current-event" style={{ alignItems: 'center', marginBottom: 18 }}>
+                  <Text testID="paper-event-championship-identity" style={{ color: '#E8CB7C', fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 1.2, textAlign: 'center', marginBottom: 7 }}>
+                    {event.eventType === 'green-bull-championship' ? 'GREEN BULL CHAMPIONSHIP' : 'EVENT ARENA CHAMPIONSHIP'}
+                  </Text>
+                  <Text testID="paper-event-starting-capital" style={{ color: '#F1EEE7', fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 0.8, textAlign: 'center', marginBottom: 8 }}>
+                    ${Math.round(event.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE).toLocaleString('en-US')} STARTING CAPITAL
+                  </Text>
                   <Text allowFontScaling style={{ color: '#FFF9EA', fontFamily: 'Inter_700Bold', fontSize: compactPodium ? 22 : 28, letterSpacing: 1.1, textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.85)', textShadowRadius: 8, textShadowOffset: { width: 0, height: 2 } }}>
                     CHAMPIONSHIP STANDINGS
                   </Text>

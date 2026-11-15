@@ -28,6 +28,7 @@ import type {
   EventArenaCashNotificationsResponse,
   EventArenaCashTransferRequest,
   EventArenaCashTransferResponse,
+  EventArenaConfiguration,
   EventArenaLeaderboardHistoryResponse,
   EventArenaLeaderboardResponse,
   EventArenaScoreSubmission,
@@ -152,6 +153,77 @@ export function useGetEventArenaLeaderboardWeeks<TData = Awaited<ReturnType<type
 
 
 
+
+export const getEnsureEventArenaConfigurationUrl = (eventId: string,) => {
+
+
+
+
+  return `/api/event-arena/${eventId}/config`
+}
+
+/**
+ * @summary Save or retrieve the immutable configuration for a scheduled event
+ */
+export const ensureEventArenaConfiguration = async (eventId: string, options?: RequestInit): Promise<EventArenaConfiguration> => {
+
+  return customFetch<EventArenaConfiguration>(getEnsureEventArenaConfigurationUrl(eventId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getEnsureEventArenaConfigurationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ensureEventArenaConfiguration>>, TError,{eventId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof ensureEventArenaConfiguration>>, TError,{eventId: string}, TContext> => {
+
+const mutationKey = ['ensureEventArenaConfiguration'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof ensureEventArenaConfiguration>>, {eventId: string}> = (props) => {
+          const {eventId} = props ?? {};
+
+          return  ensureEventArenaConfiguration(eventId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type EnsureEventArenaConfigurationMutationResult = NonNullable<Awaited<ReturnType<typeof ensureEventArenaConfiguration>>>
+
+    export type EnsureEventArenaConfigurationMutationError = ErrorType<void>
+
+    /**
+ * @summary Save or retrieve the immutable configuration for a scheduled event
+ */
+export const useEnsureEventArenaConfiguration = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ensureEventArenaConfiguration>>, TError,{eventId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof ensureEventArenaConfiguration>>,
+        TError,
+        {eventId: string},
+        TContext
+      > => {
+      return useMutation(getEnsureEventArenaConfigurationMutationOptions(options));
+    }
 
 export const getGetEventArenaLeaderboardUrl = (eventId: string,) => {
 

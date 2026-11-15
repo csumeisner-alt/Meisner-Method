@@ -5,6 +5,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   getEventArenaChartHistory,
+  getEventArenaAccountEquity,
   getEventArenaCountdown,
   getEventArenaParticipation,
   getEventArenaPerformance,
@@ -112,6 +113,80 @@ test('performance uses only the enrolled event account and counts completed even
   assert.deepEqual(performance.pendingOrders.map((order) => order.id), ['pending-event']);
   assert.deepEqual(performance.positions.map((position) => position.id), ['event-aapl']);
   assert.deepEqual(performance.chartPoints, [{ date: '2026-11-16T14:30:00.000Z', value: 100_000 }]);
+});
+
+test('standard and Green Bull accounts start at zero return with matching cash and buying power', () => {
+  for (const [eventType, startingBalance] of [
+    ['event-arena', 100_000],
+    ['green-bull-championship', 500_000],
+  ] as const) {
+    const configuredEnrollment: PaperChallengeEnrollment = {
+      ...enrollment,
+      eventType,
+      artworkId: eventType === 'green-bull-championship' ? 'green-stock-exchange' : 'stadium',
+      startingBalance,
+      rankingDirection: 'highest-return',
+      startEquity: startingBalance,
+    };
+    const account = {
+      id: enrollment.accountId,
+      name: 'Event Portfolio',
+      cash: startingBalance,
+      createdAt: new Date(event.startAtMs).toISOString(),
+    };
+    const performance = getEventArenaPerformance(configuredEnrollment, event, {
+      accounts: [account],
+      positions: [],
+      transactions: [],
+      orders: [],
+      snapshots: [],
+    }, {}, event.startAtMs);
+    assert.equal(performance.startingBalance, startingBalance);
+    assert.equal(performance.buyingPower, startingBalance);
+    assert.equal(performance.equity, startingBalance);
+    assert.equal(performance.profitLoss, 0);
+    assert.equal(performance.returnPercent, 0);
+  }
+});
+
+test('event equity includes T+2 cash, short collateral, long value, and short liabilities', () => {
+  const account = {
+    id: enrollment.accountId,
+    name: 'Event Portfolio',
+    cash: 400_000,
+    unsettledCash: 1_000,
+    shortCollateral: 100_000,
+    createdAt: new Date(event.startAtMs).toISOString(),
+  };
+  const positions = [
+    { id: 'long', accountId: enrollment.accountId, symbol: 'AAA', shares: 2, positionType: 'long' as const },
+    { id: 'short', accountId: enrollment.accountId, symbol: 'BBB', shares: 4, positionType: 'short' as const },
+  ];
+  assert.equal(getEventArenaAccountEquity(account, positions, { AAA: 50, BBB: 20 }), 501_020);
+  const greenPerformance = getEventArenaPerformance({
+    ...enrollment,
+    eventType: 'green-bull-championship',
+    artworkId: 'green-stock-exchange',
+    startingBalance: 500_000,
+    startEquity: 500_000,
+  }, event, {
+    accounts: [account],
+    positions: positions.map((position) => ({
+      ...position,
+      companyName: position.symbol,
+      avgCost: 20,
+      openedAt: new Date(event.startAtMs).toISOString(),
+      dividendYield: 0,
+      sector: '',
+    })),
+    transactions: [],
+    orders: [],
+    snapshots: [],
+  }, { AAA: 50, BBB: 20 }, event.startAtMs);
+  assert.equal(greenPerformance.equity, 501_020);
+  assert.equal(greenPerformance.buyingPower, 400_000);
+  assert.equal(greenPerformance.profitLoss, 1_020);
+  assert.equal(greenPerformance.returnPercent?.toFixed(3), '0.204');
 });
 
 test('equity is unavailable rather than estimated when a held position has no valid quote', () => {

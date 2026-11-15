@@ -5,7 +5,10 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { EventArenaScoreSubmissionArtworkId } from './eventArenaScoreSubmissionArtworkId';
+import type { EventArenaScoreSubmissionEventType } from './eventArenaScoreSubmissionEventType';
 import type { EventArenaScoreSubmissionHoldingsItem } from './eventArenaScoreSubmissionHoldingsItem';
+import type { EventArenaScoreSubmissionRankingDirection } from './eventArenaScoreSubmissionRankingDirection';
 
 export interface EventArenaScoreSubmission {
   /**
@@ -19,6 +22,11 @@ export interface EventArenaScoreSubmission {
      * @maxLength 24
      */
   alias: string;
+  eventType: EventArenaScoreSubmissionEventType;
+  artworkId: EventArenaScoreSubmissionArtworkId;
+  /** @exclusiveMinimum 0 */
+  startingBalance: number;
+  rankingDirection: EventArenaScoreSubmissionRankingDirection;
   /**
      * Self-reported cash in the separate event account, used to reconcile transfer receipts.
      * @minimum 0

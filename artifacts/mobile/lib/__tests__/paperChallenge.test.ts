@@ -11,6 +11,8 @@ import {
   getPaperChallengeMilestones,
   getPaperChallengePersonalBestProgress,
   getPaperChallengeArtworkId,
+  getPaperChallengeConfiguration,
+  GREEN_BULL_STARTING_BALANCE,
   PAPER_CHALLENGE_ARTWORK_IDS,
   getPaperChallengeReminders,
   getPaperChallengeWindow,
@@ -110,6 +112,68 @@ test('Event Arena artwork rotates by scheduled event and wraps after five compet
   ]);
   assert.equal(getPaperChallengeArtworkId('2026-11-02'), 'stadium');
   assert.equal(getPaperChallengeArtworkId('not-an-event'), 'stadium');
+});
+
+test('Green Bull artwork fixes saved rules, account capital, baseline, fees, and archive results', () => {
+  const configuration = getPaperChallengeConfiguration('green-stock-exchange');
+  assert.deepEqual(configuration, {
+    eventType: 'green-bull-championship',
+    artworkId: 'green-stock-exchange',
+    startingBalance: GREEN_BULL_STARTING_BALANCE,
+    rankingDirection: 'highest-return',
+  });
+  assert.equal(getPaperChallengeConfiguration('stadium').startingBalance, 100_000);
+  const scheduledGreenEvent = getPaperChallengeWindow(Date.parse('2027-01-11T12:00:00.000Z'));
+  assert.equal(scheduledGreenEvent.id, '2027-01-11');
+  assert.equal(scheduledGreenEvent.artworkId, 'green-stock-exchange');
+  assert.equal(scheduledGreenEvent.startingBalance, 500_000);
+
+  const enrollment = {
+    eventId: '2027-01-11',
+    ...configuration,
+    eventStartAtMs: Date.parse('2027-01-11T14:30:00.000Z'),
+    eventEndAtMs: Date.parse('2027-01-15T21:00:00.000Z'),
+    joinedAtMs: Date.parse('2027-01-11T14:30:00.000Z'),
+    accountId: 'paper-event:2027-01-11',
+    accountName: 'Event Portfolio',
+    startEquity: null,
+  };
+  const initialized = ensurePaperChallengeAccount(enrollment, {
+    accounts: [{ id: 'paper-main', name: 'Main', cash: 73_000, createdAt: '2026-01-01T00:00:00.000Z' }],
+    positions: [],
+    transactions: [],
+    orders: [],
+    lots: [],
+  });
+  assert.equal(initialized.accounts[1]?.cash, 500_000);
+  assert.equal(initialized.accounts[0]?.cash, 73_000);
+  const baseline = capturePaperChallengeBaseline(enrollment, 503_000);
+  assert.equal(baseline.startEquity, 500_000);
+
+  const summary = buildPaperChallengeSummary(
+    { ...baseline, startEquity: 500_000 },
+    501_234,
+    [{
+      accountId: enrollment.accountId,
+      symbol: 'VOO',
+      action: 'SELL',
+      date: '2027-01-12T15:00:00.000Z',
+      realizedPnL: 1_000,
+      fee: 10,
+    }],
+    enrollment.eventEndAtMs,
+  );
+  assert.equal(summary.startingBalance, 500_000);
+  assert.equal(summary.startEquity, 500_000);
+  assert.equal(summary.netProfit, 1_234);
+  assert.ok(Math.abs(summary.returnPercent - 0.2468) < 1e-12);
+  assert.equal(summary.realizedPnL, 990);
+
+  const archived = normalizePaperChallengeStore({ enrollment: null, history: [summary] }).history[0];
+  assert.equal(archived.eventType, 'green-bull-championship');
+  assert.equal(archived.artworkId, 'green-stock-exchange');
+  assert.equal(archived.startingBalance, 500_000);
+  assert.ok(Math.abs(archived.returnPercent - 0.2468) < 1e-12);
 });
 
 test('event accounts are created at the scheduled start, including late result recovery', () => {
@@ -213,6 +277,30 @@ test('legacy event records keep missing archive details unavailable', () => {
   assert.equal(normalized.history[0].finalPositions, undefined);
   assert.equal(normalized.history[0].finalRank, undefined);
   assert.equal(normalized.history[0].artworkId, 'stadium');
+  const legacyGreenArt = normalizePaperChallengeStore({
+    enrollment: null,
+    history: [{ ...legacyEvent, eventId: 'old-green-art', artworkId: 'green-stock-exchange' }],
+  }).history[0];
+  assert.equal(legacyGreenArt.eventType, undefined);
+  assert.equal(legacyGreenArt.startingBalance, undefined);
+  assert.equal(legacyGreenArt.startEquity, 100_000);
+
+  const legacyGreenEnrollment = normalizePaperChallengeStore({
+    enrollment: {
+      eventId: '2027-01-11',
+      artworkId: 'green-stock-exchange',
+      eventStartAtMs: 10,
+      eventEndAtMs: 20,
+      joinedAtMs: 10,
+      accountId: 'paper-event:legacy-green',
+      accountName: 'Event Portfolio',
+      startEquity: 92_500,
+    },
+    history: [],
+  }).enrollment;
+  assert.equal(legacyGreenEnrollment?.eventType, 'event-arena');
+  assert.equal(legacyGreenEnrollment?.startingBalance, 92_500);
+  assert.equal(legacyGreenEnrollment?.startEquity, 92_500);
 });
 
 test('event artwork survives enrollment normalization, summary creation, and archive finalization', () => {
@@ -656,7 +744,10 @@ test('a failed event-store read does not write over history and retry restores i
     (current) => ({ ...current, enrollment }),
     storage,
   );
-  assert.deepEqual(joined.enrollment, enrollment);
+  assert.deepEqual(
+    joined.enrollment,
+    normalizePaperChallengeStore({ enrollment, history: [] }).enrollment,
+  );
   assert.deepEqual(joined.history, [previousSummary]);
   assert.deepEqual(JSON.parse(storedValue), joined);
 });
@@ -983,7 +1074,7 @@ test('failed upcoming signup withdrawal keeps enrollment saved and can be retrie
 
   await assert.rejects(withdraw(), /Simulated AsyncStorage write failure/);
   assert.deepEqual(JSON.parse(storedValue), savedStore);
-  assert.deepEqual(await loadPaperChallengeStore(storage), savedStore);
+  assert.deepEqual(await loadPaperChallengeStore(storage), normalizePaperChallengeStore(savedStore));
 
   const retried = await withdraw();
   assert.equal(retried.enrollment, null);

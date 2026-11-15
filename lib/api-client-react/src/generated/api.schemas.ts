@@ -5,6 +5,32 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export type EventArenaScoreSubmissionEventType = typeof EventArenaScoreSubmissionEventType[keyof typeof EventArenaScoreSubmissionEventType];
+
+
+export const EventArenaScoreSubmissionEventType = {
+  'event-arena': 'event-arena',
+  'green-bull-championship': 'green-bull-championship',
+} as const;
+
+export type EventArenaScoreSubmissionArtworkId = typeof EventArenaScoreSubmissionArtworkId[keyof typeof EventArenaScoreSubmissionArtworkId];
+
+
+export const EventArenaScoreSubmissionArtworkId = {
+  stadium: 'stadium',
+  'neon-nightclub': 'neon-nightclub',
+  'mountain-summit': 'mountain-summit',
+  'red-showdown': 'red-showdown',
+  'green-stock-exchange': 'green-stock-exchange',
+} as const;
+
+export type EventArenaScoreSubmissionRankingDirection = typeof EventArenaScoreSubmissionRankingDirection[keyof typeof EventArenaScoreSubmissionRankingDirection];
+
+
+export const EventArenaScoreSubmissionRankingDirection = {
+  'highest-return': 'highest-return',
+} as const;
+
 export type EventArenaScoreSubmissionHoldingsItemSide = typeof EventArenaScoreSubmissionHoldingsItemSide[keyof typeof EventArenaScoreSubmissionHoldingsItemSide];
 
 
@@ -36,6 +62,11 @@ export interface EventArenaScoreSubmission {
      * @maxLength 24
      */
   alias: string;
+  eventType: EventArenaScoreSubmissionEventType;
+  artworkId: EventArenaScoreSubmissionArtworkId;
+  /** @exclusiveMinimum 0 */
+  startingBalance: number;
+  rankingDirection: EventArenaScoreSubmissionRankingDirection;
   /**
      * Self-reported cash in the separate event account, used to reconcile transfer receipts.
      * @minimum 0
@@ -64,6 +95,43 @@ export interface EventArenaScoreSubmission {
   holdings: EventArenaScoreSubmissionHoldingsItem[];
   eventStartAtMs: number;
   eventEndAtMs: number;
+}
+
+export type EventArenaConfigurationEventType = typeof EventArenaConfigurationEventType[keyof typeof EventArenaConfigurationEventType];
+
+
+export const EventArenaConfigurationEventType = {
+  'event-arena': 'event-arena',
+  'green-bull-championship': 'green-bull-championship',
+} as const;
+
+export type EventArenaConfigurationArtworkId = typeof EventArenaConfigurationArtworkId[keyof typeof EventArenaConfigurationArtworkId];
+
+
+export const EventArenaConfigurationArtworkId = {
+  stadium: 'stadium',
+  'neon-nightclub': 'neon-nightclub',
+  'mountain-summit': 'mountain-summit',
+  'red-showdown': 'red-showdown',
+  'green-stock-exchange': 'green-stock-exchange',
+} as const;
+
+export type EventArenaConfigurationRankingDirection = typeof EventArenaConfigurationRankingDirection[keyof typeof EventArenaConfigurationRankingDirection];
+
+
+export const EventArenaConfigurationRankingDirection = {
+  'highest-return': 'highest-return',
+} as const;
+
+export interface EventArenaConfiguration {
+  eventId: string;
+  eventType: EventArenaConfigurationEventType;
+  artworkId: EventArenaConfigurationArtworkId;
+  /** @exclusiveMinimum 0 */
+  startingBalance: number;
+  rankingDirection: EventArenaConfigurationRankingDirection;
+  startAtMs: number;
+  endAtMs: number;
 }
 
 export type EventArenaLeaderboardResponseEntriesItemHoldingsItemSide = typeof EventArenaLeaderboardResponseEntriesItemHoldingsItemSide[keyof typeof EventArenaLeaderboardResponseEntriesItemHoldingsItemSide];

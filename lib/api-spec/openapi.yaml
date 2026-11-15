@@ -53,6 +53,30 @@ paths:
                     format: date-time
         "500":
           description: Completed Event Arena weeks could not be loaded
+  /event-arena/{eventId}/config:
+    parameters:
+      - in: path
+        name: eventId
+        required: true
+        schema:
+          type: string
+          format: date
+        description: Scheduled Event Arena event ID.
+    post:
+      operationId: ensureEventArenaConfiguration
+      tags: [eventArena]
+      summary: Save or retrieve the immutable configuration for a scheduled event
+      responses:
+        "200":
+          description: Saved event configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventArenaConfiguration"
+        "400":
+          description: The event ID is not a scheduled event
+        "500":
+          description: The event configuration could not be saved
   /event-arena/{eventId}/leaderboard:
     parameters:
       - in: path
@@ -706,7 +730,7 @@ components:
   schemas:
     EventArenaScoreSubmission:
       type: object
-      required: [installationId, alias, startEquity, equity, returnPercent, tradeCount, holdings, eventStartAtMs, eventEndAtMs]
+      required: [installationId, alias, eventType, artworkId, startingBalance, rankingDirection, startEquity, equity, returnPercent, tradeCount, holdings, eventStartAtMs, eventEndAtMs]
       properties:
         installationId:
           type: string
@@ -717,6 +741,16 @@ components:
           type: string
           minLength: 1
           maxLength: 24
+        eventType:
+          type: string
+          enum: [event-arena, green-bull-championship]
+        artworkId:
+          type: string
+          enum: [stadium, neon-nightclub, mountain-summit, red-showdown, green-stock-exchange]
+        startingBalance: { type: number, exclusiveMinimum: 0 }
+        rankingDirection:
+          type: string
+          enum: [highest-return]
         cashBalance:
           type: number
           minimum: 0
@@ -754,6 +788,24 @@ components:
                 enum: [long, short]
         eventStartAtMs: { type: integer }
         eventEndAtMs: { type: integer }
+
+    EventArenaConfiguration:
+      type: object
+      required: [eventId, eventType, artworkId, startingBalance, rankingDirection, startAtMs, endAtMs]
+      properties:
+        eventId: { type: string, format: date }
+        eventType:
+          type: string
+          enum: [event-arena, green-bull-championship]
+        artworkId:
+          type: string
+          enum: [stadium, neon-nightclub, mountain-summit, red-showdown, green-stock-exchange]
+        startingBalance: { type: number, exclusiveMinimum: 0 }
+        rankingDirection:
+          type: string
+          enum: [highest-return]
+        startAtMs: { type: integer }
+        endAtMs: { type: integer }
 
     EventArenaLeaderboardResponse:
       type: object

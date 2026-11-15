@@ -22,7 +22,8 @@ let nextTouchId = 1;
 test("paper total return stays derived from the selected account's equity", async () => {
   const screen = await readFile(join(mobileDir, "app/paper.tsx"), "utf8");
   assert.match(screen, /const portfolioValue = account \? computePaperEquity\(account, myPositions, quotes\) : 0/);
-  assert.match(screen, /const totalReturn = \(\(portfolioValue - INITIAL_BALANCE\) \/ INITIAL_BALANCE\) \* 100/);
+  assert.match(screen, /const activeAccountStartingBalance = isSelectedEventAccount[\s\S]*?: INITIAL_BALANCE/);
+  assert.match(screen, /const totalReturn = \(\(portfolioValue - activeAccountStartingBalance\) \/ activeAccountStartingBalance\) \* 100/);
   assert.match(screen, /testID="paper-account-total-return"[\s\S]*?pctFmt\(totalReturn\)/);
   assert.match(screen, /const reset = resetPaperAccountData\(\{/);
   assert.match(screen, /saveAll\(reset\.accounts, reset\.positions, reset\.transactions, reset\.orders, reset\.lots, activeIdRef\.current\)/);
