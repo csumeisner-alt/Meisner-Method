@@ -10,6 +10,8 @@ import {
   ensurePaperChallengeAccount,
   getPaperChallengeMilestones,
   getPaperChallengePersonalBestProgress,
+  getPaperChallengeArtworkId,
+  PAPER_CHALLENGE_ARTWORK_IDS,
   getPaperChallengeReminders,
   getPaperChallengeWindow,
   loadPaperChallengeStore,
@@ -66,12 +68,14 @@ test('paper event runs Monday open through Friday close, then skips a week', () 
   const active = getPaperChallengeWindow(Date.parse('2026-11-18T17:00:00.000Z'));
   assert.equal(active.id, '2026-11-16');
   assert.equal(active.phase, 'active');
+  assert.equal(active.artworkId, 'stadium');
   assert.equal(new Date(active.startAtMs).toISOString(), '2026-11-16T14:30:00.000Z');
   assert.equal(new Date(active.endAtMs).toISOString(), '2026-11-20T21:00:00.000Z');
 
   const offWeek = getPaperChallengeWindow(Date.parse('2026-11-25T17:00:00.000Z'));
   assert.equal(offWeek.id, '2026-11-30');
   assert.equal(offWeek.phase, 'upcoming');
+  assert.equal(offWeek.artworkId, 'neon-nightclub');
   assert.ok(offWeek.startAtMs > Date.parse('2026-11-25T17:00:00.000Z'));
   assert.ok(offWeek.endAtMs > offWeek.startAtMs);
 
@@ -89,6 +93,23 @@ test('paper event runs Monday open through Friday close, then skips a week', () 
   assert.equal(startedEnrollment.joinedAtMs, offWeek.startAtMs);
   assert.equal(startedEnrollment.accountId, 'strategy-2');
   assert.equal(capturePaperChallengeBaseline(startedEnrollment, 120_000), startedEnrollment);
+});
+
+test('Event Arena artwork rotates by scheduled event and wraps after five competitions', () => {
+  const starts = [
+    '2026-11-16',
+    '2026-11-30',
+    '2026-12-14',
+    '2026-12-28',
+    '2027-01-11',
+    '2027-01-25',
+  ];
+  assert.deepEqual(starts.map(getPaperChallengeArtworkId), [
+    ...PAPER_CHALLENGE_ARTWORK_IDS,
+    PAPER_CHALLENGE_ARTWORK_IDS[0],
+  ]);
+  assert.equal(getPaperChallengeArtworkId('2026-11-02'), 'stadium');
+  assert.equal(getPaperChallengeArtworkId('not-an-event'), 'stadium');
 });
 
 test('event accounts are created at the scheduled start, including late result recovery', () => {
@@ -191,6 +212,42 @@ test('legacy event records keep missing archive details unavailable', () => {
   assert.equal(normalized.history[0].equityHistory, undefined);
   assert.equal(normalized.history[0].finalPositions, undefined);
   assert.equal(normalized.history[0].finalRank, undefined);
+  assert.equal(normalized.history[0].artworkId, 'stadium');
+});
+
+test('event artwork survives enrollment normalization, summary creation, and archive finalization', () => {
+  const enrollment = {
+    eventId: '2026-12-14',
+    artworkId: 'mountain-summit' as const,
+    eventStartAtMs: Date.parse('2026-12-14T14:30:00.000Z'),
+    eventEndAtMs: Date.parse('2026-12-18T21:00:00.000Z'),
+    joinedAtMs: Date.parse('2026-12-14T14:30:00.000Z'),
+    accountId: 'paper-event:2026-12-14',
+    accountName: 'Event Portfolio',
+    startEquity: 100_000,
+  };
+  const normalizedEnrollment = normalizePaperChallengeStore({
+    enrollment: { ...enrollment, artworkId: undefined },
+    history: [],
+  }).enrollment;
+  assert.equal(normalizedEnrollment?.artworkId, 'stadium', 'legacy enrollments get the stable legacy choice');
+
+  const normalized = normalizePaperChallengeStore({ enrollment, history: [] });
+  const summary = buildPaperChallengeSummary(
+    normalized.enrollment as typeof enrollment,
+    101_000,
+    [],
+    enrollment.eventEndAtMs,
+  );
+  const completed = finalizePaperChallengeStore(
+    { enrollment: normalized.enrollment, history: [] },
+    summary,
+    enrollment.eventEndAtMs,
+  );
+  assert.equal(summary.artworkId, 'mountain-summit');
+  assert.equal(completed.enrollment, null);
+  assert.equal(completed.history[0].artworkId, 'mountain-summit');
+  assert.equal(normalizePaperChallengeStore(completed).history[0].artworkId, 'mountain-summit');
 });
 
 test('event milestones reward first participation, positive finishes, and strict personal bests', () => {
@@ -487,6 +544,7 @@ test('event enrollment and one summary survive reloads without changing other pa
 test('event summary retries after storage failure without losing enrollment or duplicating history', async () => {
   const enrollment = {
     eventId: '2026-11-16',
+    artworkId: 'stadium' as const,
     eventStartAtMs: Date.parse('2026-11-16T14:30:00.000Z'),
     eventEndAtMs: Date.parse('2026-11-20T21:00:00.000Z'),
     joinedAtMs: Date.parse('2026-11-16T14:30:00.000Z'),
@@ -548,6 +606,7 @@ test('event summary retries after storage failure without losing enrollment or d
 test('a failed event-store read does not write over history and retry restores it', async () => {
   const enrollment = {
     eventId: '2026-11-16',
+    artworkId: 'stadium' as const,
     eventStartAtMs: Date.parse('2026-11-16T14:30:00.000Z'),
     eventEndAtMs: Date.parse('2026-11-20T21:00:00.000Z'),
     joinedAtMs: Date.parse('2026-11-16T14:30:00.000Z'),
@@ -863,6 +922,7 @@ test('upcoming signup withdrawal removes only enrollment and is locked at event 
   const eventStartAtMs = Date.parse('2026-11-30T14:30:00.000Z');
   const enrollment = {
     eventId: '2026-11-30',
+    artworkId: 'neon-nightclub' as const,
     eventStartAtMs,
     eventEndAtMs: Date.parse('2026-12-04T21:00:00.000Z'),
     joinedAtMs: eventStartAtMs,
@@ -889,6 +949,7 @@ test('failed upcoming signup withdrawal keeps enrollment saved and can be retrie
   const eventStartAtMs = Date.parse('2026-11-30T14:30:00.000Z');
   const enrollment = {
     eventId: '2026-11-30',
+    artworkId: 'neon-nightclub' as const,
     eventStartAtMs,
     eventEndAtMs: Date.parse('2026-12-04T21:00:00.000Z'),
     joinedAtMs: eventStartAtMs - 60_000,

@@ -798,8 +798,21 @@ test("the live Event Arena podium uses a compact, clean stadium background", () 
   assert.equal(eventArenaBackground[0], 0xff);
   assert.equal(eventArenaBackground[1], 0xd8);
   assert.ok(statSync(backgroundPath).size < 250 * 1024, "the bundled background stays compact");
-  assert.match(leaderboard, /source=\{require\('\.\.\/assets\/event-arena-stadium\.jpg'\)\}/);
+  assert.match(leaderboard, /source=\{EVENT_ARENA_ARTWORK_SOURCES\[event\.artworkId \?\? LEGACY_PAPER_CHALLENGE_ARTWORK_ID\]\}/);
   assert.match(leaderboard, /resizeMode="cover"/);
+  assert.match(leaderboard, /event-arena-leaderboard-artwork-\$\{event\.id\}/);
+  assert.match(eventArena, /artworkId: event\.artworkId/);
+  assert.match(eventArena, /EVENT_ARENA_ARTWORK_SOURCES\[event\.artworkId \?\? LEGACY_PAPER_CHALLENGE_ARTWORK_ID\]/);
+  assert.match(events, /EVENT_ARENA_ARTWORK_SOURCES\[event\.artworkId \?\? LEGACY_PAPER_CHALLENGE_ARTWORK_ID\]/);
+  for (const asset of [
+    "event-arena-neon-nightclub.jpg",
+    "event-arena-mountain-summit.jpg",
+    "event-arena-red-showdown.jpg",
+    "event-arena-green-stock-exchange.jpg",
+  ]) {
+    const path = new URL(`../assets/${asset}`, import.meta.url);
+    assert.ok(statSync(path).size > 0, `${asset} is bundled locally`);
+  }
   assert.match(leaderboard, /backgroundColor: 'rgba\(7,12,20,0\.18\)'/);
   assert.match(leaderboard, /rgba\(25,139,218,0\.22\)/);
   assert.match(leaderboard, /rgba\(255,218,128,0\.18\)/);

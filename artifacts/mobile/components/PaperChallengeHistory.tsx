@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  ImageBackground,
   Modal,
   Platform,
   ScrollView,
@@ -26,6 +27,7 @@ import {
   getPaperChallengeArchiveChartWidth,
   getPaperChallengeReminders,
   getPaperChallengeWindow,
+  LEGACY_PAPER_CHALLENGE_ARTWORK_ID,
   loadPaperChallengeStore,
   PAPER_CHALLENGE_STARTING_BALANCE,
   sortPaperChallengeHistory,
@@ -36,6 +38,7 @@ import {
   updatePaperChallengeStore,
   withdrawUpcomingPaperChallenge,
 } from '@/lib/paperChallenge';
+import { EVENT_ARENA_ARTWORK_SOURCES } from '@/lib/eventArenaArtwork';
 
 const NOTIFICATIONS_KEY = '@stocksense/paper_events_notifications_v1';
 const NOTIFICATION_ID_KEY = '@stocksense/paper_events_notification_id_v1';
@@ -185,6 +188,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
     setSaving(true);
     const enrollment = {
       eventId: eventWindow.id,
+      artworkId: eventWindow.artworkId,
       eventStartAtMs: eventWindow.startAtMs,
       eventEndAtMs: eventWindow.endAtMs,
       joinedAtMs: eventWindow.phase === 'upcoming' ? eventWindow.startAtMs : Date.now(),
@@ -403,7 +407,15 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
             </View>
           </View>
 
-          <View style={{ padding: 14, borderRadius: 13, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, gap: 10 }}>
+          <ImageBackground
+            testID={`paper-event-history-artwork-${event.eventId}`}
+            source={EVENT_ARENA_ARTWORK_SOURCES[event.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID]}
+            resizeMode="cover"
+            imageStyle={{ borderRadius: 13, opacity: 0.68 }}
+            style={{ overflow: 'hidden', borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: '#101720' }}
+          >
+          <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(7,12,20,0.58)' }} />
+          <View style={{ padding: 14, backgroundColor: 'rgba(8,13,21,0.45)', gap: 10 }}>
             <Text selectable style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10 }}>
               Event ID · {event.eventId}
             </Text>
@@ -441,6 +453,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
               )}
             </View>
           </View>
+          </ImageBackground>
 
           <View style={{ padding: 14, borderRadius: 13, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
             <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>Recorded equity</Text>
@@ -815,7 +828,12 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
             </View>
 
             <PaperChallengeLeaderboard
-              event={currentWindow}
+              event={{
+                ...currentWindow,
+                artworkId: hasCurrentEnrollment
+                  ? store.enrollment?.artworkId ?? currentWindow.artworkId
+                  : currentWindow.artworkId,
+              }}
               enrollment={hasCurrentEnrollment ? store.enrollment : null}
               onEnrollmentChange={updateLeaderboardEnrollment}
             />

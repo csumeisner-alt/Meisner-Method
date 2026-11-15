@@ -35,10 +35,13 @@ import {
   type EventHoldingSide,
 } from '@/lib/paperChallengeAllocation';
 import {
+  LEGACY_PAPER_CHALLENGE_ARTWORK_ID,
   PAPER_CHALLENGE_STARTING_BALANCE,
   updatePaperChallengeStore,
   type PaperChallengeEnrollment,
+  type PaperChallengeArtworkId,
 } from '@/lib/paperChallenge';
+import { EVENT_ARENA_ARTWORK_SOURCES } from '@/lib/eventArenaArtwork';
 import {
   getEventCashTransferImpact,
   type EventCashTransferImpact,
@@ -71,6 +74,7 @@ type EventWindow = {
   startAtMs: number;
   endAtMs: number;
   phase: 'upcoming' | 'active' | 'ended';
+  artworkId?: PaperChallengeArtworkId;
 };
 type HoldingName = {
   symbol: string;
@@ -1190,7 +1194,8 @@ export function PaperChallengeLeaderboard({
           ) : (
             <ScrollView style={{ flex: 1, minHeight: 0 }} contentContainerStyle={{ width: '100%', maxWidth: 1000, alignSelf: 'center', padding: 16, paddingBottom: embedded ? 28 : Platform.OS === 'web' ? 24 : insets.bottom + 24 }}>
               <ImageBackground
-                source={require('../assets/event-arena-stadium.jpg')}
+                testID={`event-arena-leaderboard-artwork-${event.id}`}
+                source={EVENT_ARENA_ARTWORK_SOURCES[event.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID]}
                 resizeMode="cover"
                 imageStyle={{ borderRadius: 24, opacity: 0.96 }}
                 style={{ overflow: 'hidden', borderRadius: 24, borderWidth: 1, borderColor: 'rgba(214,177,94,0.34)', marginBottom: 17, padding: compactPodium ? 12 : 17, backgroundColor: '#101720' }}

@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   DeviceEventEmitter,
+  ImageBackground,
   Modal,
   Platform,
   ScrollView,
@@ -38,6 +39,7 @@ import {
   getPaperChallengeArchiveChartWidth,
   getPaperChallengeReminders,
   getPaperChallengeWindow,
+  LEGACY_PAPER_CHALLENGE_ARTWORK_ID,
   loadPaperChallengeStore,
   PAPER_CHALLENGE_STARTING_BALANCE,
   sortPaperChallengeHistory,
@@ -48,6 +50,7 @@ import {
   type PaperChallengeStore,
   type PaperChallengeSummary,
 } from '@/lib/paperChallenge';
+import { EVENT_ARENA_ARTWORK_SOURCES } from '@/lib/eventArenaArtwork';
 import {
   INITIAL_BALANCE,
   parseAccountValueSnapshots,
@@ -217,13 +220,19 @@ export function EventArenaScreen() {
     ? store.history.find((event) => event.eventId === requestedLeaderboardEventId) ?? null
     : null;
   const leaderboardEvent = requestedLeaderboardEventId === currentWindow.id
-    ? currentWindow
+    ? {
+        ...currentWindow,
+        artworkId: store.enrollment?.eventId === currentWindow.id
+          ? store.enrollment.artworkId ?? currentWindow.artworkId
+          : currentWindow.artworkId,
+      }
     : requestedArchivedEvent
       ? {
           id: requestedArchivedEvent.eventId,
           startAtMs: requestedArchivedEvent.eventStartAtMs,
           endAtMs: requestedArchivedEvent.eventEndAtMs,
           phase: 'ended' as const,
+          artworkId: requestedArchivedEvent.artworkId,
         }
       : currentWindow;
   const leaderboardEnrollment = store.enrollment?.eventId === leaderboardEvent.id
@@ -525,6 +534,7 @@ export function EventArenaScreen() {
     setSaving(true);
     const newEnrollment: PaperChallengeEnrollment = {
       eventId: event.id,
+      artworkId: event.artworkId,
       eventStartAtMs: event.startAtMs,
       eventEndAtMs: event.endAtMs,
       joinedAtMs: event.phase === 'upcoming' ? event.startAtMs : Date.now(),
@@ -706,7 +716,15 @@ export function EventArenaScreen() {
           <Feather name="arrow-left" size={16} color={colors.primary} />
           <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>Past events</Text>
         </TouchableOpacity>
-        <View testID={`event-arena-past-detail-${event.eventId}`} style={{ marginTop: 8, padding: 15, borderRadius: 16, backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }}>
+        <ImageBackground
+          testID={`event-arena-past-artwork-${event.eventId}`}
+          source={EVENT_ARENA_ARTWORK_SOURCES[event.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID]}
+          resizeMode="cover"
+          imageStyle={{ borderRadius: 16, opacity: 0.68 }}
+          style={{ overflow: 'hidden', marginTop: 8, borderRadius: 16, borderColor: colors.border, borderWidth: 1, backgroundColor: '#101720' }}
+        >
+          <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(7,12,20,0.58)' }} />
+          <View testID={`event-arena-past-detail-${event.eventId}`} style={{ padding: 15, backgroundColor: 'rgba(8,13,21,0.45)' }}>
           <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 0.7 }}>EVENT RESULTS · {event.eventId}</Text>
           <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 18, marginTop: 5 }}>{dateRange(event.eventStartAtMs, event.eventEndAtMs)}</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 13 }}>
@@ -726,7 +744,8 @@ export function EventArenaScreen() {
             <Feather name="share" size={15} color={colors.primary} />
             <Text style={{ color: colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>Share results</Text>
           </TouchableOpacity>
-        </View>
+          </View>
+        </ImageBackground>
 
         <View style={{ marginTop: 14, padding: 14, borderRadius: 15, backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }}>
           <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>Recorded equity</Text>
@@ -840,7 +859,16 @@ export function EventArenaScreen() {
           )}
         </View>
         ) : sortedHistory.map((event, index) => (
-        <View key={event.eventId} testID={`event-arena-past-${event.eventId}`} style={{ marginTop: 12, padding: 15, borderRadius: 16, backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }}>
+        <ImageBackground
+          key={event.eventId}
+          testID={`event-arena-past-artwork-card-${event.eventId}`}
+          source={EVENT_ARENA_ARTWORK_SOURCES[event.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID]}
+          resizeMode="cover"
+          imageStyle={{ borderRadius: 16, opacity: 0.62 }}
+          style={{ overflow: 'hidden', marginTop: 12, borderRadius: 16, borderColor: colors.border, borderWidth: 1, backgroundColor: '#101720' }}
+        >
+        <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(7,12,20,0.58)' }} />
+        <View testID={`event-arena-past-${event.eventId}`} style={{ padding: 15, backgroundColor: 'rgba(8,13,21,0.48)' }}>
           <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 0.7 }}>
             {sortMode === 'top' ? `RANK #${index + 1} · ` : ''}{dateRange(event.eventStartAtMs, event.eventEndAtMs)}
           </Text>
@@ -936,6 +964,7 @@ export function EventArenaScreen() {
             Finalized {new Date(event.completedAtMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} using latest available quotes
           </Text>
         </View>
+        </ImageBackground>
       ))}
     </ScrollView>
   );

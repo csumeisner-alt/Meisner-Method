@@ -14,15 +14,55 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const EVENT_ANCHOR_DAY = Math.floor(Date.UTC(2026, 10, 16) / DAY_MS);
 const MARKET_TIME_ZONE = 'America/New_York';
 
+export const PAPER_CHALLENGE_ARTWORK_IDS = [
+  'stadium',
+  'neon-nightclub',
+  'mountain-summit',
+  'red-showdown',
+  'green-stock-exchange',
+] as const;
+export type PaperChallengeArtworkId = typeof PAPER_CHALLENGE_ARTWORK_IDS[number];
+export const LEGACY_PAPER_CHALLENGE_ARTWORK_ID: PaperChallengeArtworkId = 'stadium';
+
+export function normalizePaperChallengeArtworkId(value: unknown): PaperChallengeArtworkId {
+  return PAPER_CHALLENGE_ARTWORK_IDS.includes(value as PaperChallengeArtworkId)
+    ? value as PaperChallengeArtworkId
+    : LEGACY_PAPER_CHALLENGE_ARTWORK_ID;
+}
+
+/**
+ * Assign art by the scheduled competition sequence so every participant sees
+ * the same background, regardless of when or on which device they enroll.
+ * Records created before the rotation anchor retain the original stadium art.
+ */
+export function getPaperChallengeArtworkId(eventId: string): PaperChallengeArtworkId {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(eventId)) return LEGACY_PAPER_CHALLENGE_ARTWORK_ID;
+  const eventDate = new Date(`${eventId}T00:00:00.000Z`);
+  if (!Number.isFinite(eventDate.getTime()) || eventDate.toISOString().slice(0, 10) !== eventId) {
+    return LEGACY_PAPER_CHALLENGE_ARTWORK_ID;
+  }
+  const eventDay = Math.floor(Date.UTC(
+    eventDate.getUTCFullYear(),
+    eventDate.getUTCMonth(),
+    eventDate.getUTCDate(),
+  ) / DAY_MS);
+  const daysSinceAnchor = eventDay - EVENT_ANCHOR_DAY;
+  if (daysSinceAnchor < 0) return LEGACY_PAPER_CHALLENGE_ARTWORK_ID;
+  const artworkIndex = Math.floor(daysSinceAnchor / 14) % PAPER_CHALLENGE_ARTWORK_IDS.length;
+  return PAPER_CHALLENGE_ARTWORK_IDS[artworkIndex];
+}
+
 export type PaperChallengeWindow = {
   id: string;
   startAtMs: number;
   endAtMs: number;
   phase: 'upcoming' | 'active' | 'ended';
+  artworkId?: PaperChallengeArtworkId;
 };
 
 export type PaperChallengeEnrollment = {
   eventId: string;
+  artworkId?: PaperChallengeArtworkId;
   eventStartAtMs: number;
   eventEndAtMs: number;
   joinedAtMs: number;
@@ -101,6 +141,7 @@ export function normalizePaperChallengeStore(store: PaperChallengeStore): PaperC
     return true;
   }).map(({ transactions, equityHistory, finalPositions, finalRank, ...event }) => ({
     ...event,
+    artworkId: normalizePaperChallengeArtworkId(event.artworkId),
     ...(Array.isArray(transactions) ? { transactions } : {}),
     ...(Array.isArray(equityHistory)
       ? {
@@ -132,8 +173,14 @@ export function normalizePaperChallengeStore(store: PaperChallengeStore): PaperC
       : {}),
     ...(Number.isInteger(finalRank) && (finalRank ?? 0) > 0 ? { finalRank } : {}),
   }));
+  const enrollment = store.enrollment
+    ? {
+        ...store.enrollment,
+        artworkId: normalizePaperChallengeArtworkId(store.enrollment.artworkId),
+      }
+    : null;
   return {
-    enrollment: store.enrollment ?? null,
+    enrollment,
     history: sortPaperChallengeHistory(history, 'date'),
   };
 }
@@ -393,6 +440,7 @@ export function getPaperChallengeWindow(nowMs = Date.now()): PaperChallengeWindo
     startAtMs,
     endAtMs,
     phase: nowMs < startAtMs ? 'upcoming' : nowMs <= endAtMs ? 'active' : 'ended',
+    artworkId: getPaperChallengeArtworkId(dateStringFromSerial(startSerial)),
   };
 }
 
@@ -505,6 +553,7 @@ export function buildPaperChallengeSummary(
   const netProfit = endEquity - enrollment.startEquity;
   return {
     ...enrollment,
+    artworkId: normalizePaperChallengeArtworkId(enrollment.artworkId),
     endEquity,
     netProfit,
     returnPercent: enrollment.startEquity > 0 ? netProfit / enrollment.startEquity * 100 : 0,
