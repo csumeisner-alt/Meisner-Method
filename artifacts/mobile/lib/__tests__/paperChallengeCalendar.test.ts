@@ -10,7 +10,11 @@ import {
   REGULAR_EVENT_CALENDAR,
   REGULAR_EVENT_CALENDAR_ERROR,
 } from '../paperChallengeCalendar.ts';
-import { getLightningRoundWindow, getPaperChallengeReminders } from '../paperChallenge.ts';
+import {
+  findLightningRoundWindow,
+  getLightningRoundWindow,
+  getPaperChallengeReminders,
+} from '../paperChallenge.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -41,6 +45,28 @@ test('regular event duration must remain shorter than cadence', () => {
   }
 });
 
+test('Lightning Round lookup reports no eligible window without throwing', () => {
+  const calendar = REGULAR_EVENT_CALENDAR as unknown as {
+    cadenceDays: number;
+    durationDays: number;
+  };
+  const originalCadenceDays = calendar.cadenceDays;
+  const originalDurationDays = calendar.durationDays;
+  try {
+    calendar.cadenceDays = 7;
+    calendar.durationDays = 6;
+    assert.equal(getRegularEventCalendarError(), null);
+    assert.equal(findLightningRoundWindow(Date.parse('2026-11-21T16:00:00.000Z')), null);
+    assert.throws(
+      () => getLightningRoundWindow(Date.parse('2026-11-21T16:00:00.000Z')),
+      /No eligible Lightning Round window was found/,
+    );
+  } finally {
+    calendar.cadenceDays = originalCadenceDays;
+    calendar.durationDays = originalDurationDays;
+  }
+});
+
 test('Event Arena screen exposes the shared calendar error accessibly', async () => {
   const source = await readFile(resolve(here, '../../components/EventArenaScreen.tsx'), 'utf8');
   const historySource = await readFile(resolve(here, '../../components/PaperChallengeHistory.tsx'), 'utf8');
@@ -53,4 +79,6 @@ test('Event Arena screen exposes the shared calendar error accessibly', async ()
   assert.match(historySource, /!calendarError && !hasCurrentEnrollment/);
   assert.match(lightningSource, /getRegularEventCalendarError\(\)/);
   assert.match(lightningSource, /testID="lightning-round-calendar-error"/);
+  assert.match(lightningSource, /testID="lightning-round-unavailable"/);
+  assert.match(lightningSource, /every candidate Friday overlaps a regular Event Arena event/);
 });

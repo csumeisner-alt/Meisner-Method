@@ -693,10 +693,10 @@ function lightningWindowForDate(
   };
 }
 
-/** Friday off-week bonus championship; its duration is exactly 24 elapsed hours. */
-export function getLightningRoundWindow(
+/** Return the next Friday off-week championship, or null if none is eligible. */
+export function findLightningRoundWindow(
   nowMs = Date.now(),
-): PaperChallengeWindow {
+): PaperChallengeWindow | null {
   const calendarError = getRegularEventCalendarError();
   if (calendarError) throw new Error(calendarError);
   const timeZone = LIGHTNING_ROUND_TIME_ZONE;
@@ -724,6 +724,15 @@ export function getLightningRoundWindow(
       phase: nowMs >= candidate.startAtMs ? 'active' : 'upcoming',
     };
   }
+  return null;
+}
+
+/** Friday off-week bonus championship; its duration is exactly 24 elapsed hours. */
+export function getLightningRoundWindow(
+  nowMs = Date.now(),
+): PaperChallengeWindow {
+  const window = findLightningRoundWindow(nowMs);
+  if (window) return window;
   throw new Error('No eligible Lightning Round window was found.');
 }
 
@@ -782,8 +791,8 @@ export function getPaperChallengeReminders(nowMs = Date.now()): PaperChallengeRe
     event = getPaperChallengeWindow(event.endAtMs + 3 * DAY_MS + 1);
   }
 
-  let lightningRound = getLightningRoundWindow(nowMs);
-  for (let cycle = 0; cycle < 2; cycle += 1) {
+  let lightningRound = findLightningRoundWindow(nowMs);
+  for (let cycle = 0; cycle < 2 && lightningRound; cycle += 1) {
     reminders.push({
       eventId: lightningRound.id,
       scheduledAtMs: lightningRound.startAtMs,
@@ -791,7 +800,7 @@ export function getPaperChallengeReminders(nowMs = Date.now()): PaperChallengeRe
       body: 'The eligible off-week Lightning Round has started. Join with a fresh $100,000 paper account.',
       kind: 'lightning-round-start',
     });
-    lightningRound = getLightningRoundWindow(lightningRound.endAtMs + 1);
+    lightningRound = findLightningRoundWindow(lightningRound.endAtMs + 1);
   }
   const upcomingReminders = reminders.filter((reminder) => reminder.scheduledAtMs > nowMs);
   return upcomingReminders.sort((a, b) => a.scheduledAtMs - b.scheduledAtMs);

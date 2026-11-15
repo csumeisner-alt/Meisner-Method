@@ -389,6 +389,9 @@ export async function prepareLightningRoundEvents(
   return events as EventArenaConfiguration[];
 }
 
+export const LIGHTNING_ROUND_UNAVAILABLE_MESSAGE =
+  "No eligible Lightning Round dates are available because every upcoming Friday overlaps a regular Event Arena event.";
+
 /** Accept only eligible Lightning Round and regular scheduled windows. */
 export function isValidEventArenaWindow(
   eventId: unknown,
@@ -650,7 +653,11 @@ export function createEventArenaRouter(
     if (rejectInvalidRegularEventCalendar(res)) return;
     try {
       const events = await prepareLightningRoundEvents(db, now());
-      res.json({ events });
+      res.json({
+        events,
+        available: events.length > 0,
+        ...(events.length > 0 ? {} : { message: LIGHTNING_ROUND_UNAVAILABLE_MESSAGE }),
+      });
     } catch {
       res.status(500).json({ error: "Could not prepare the upcoming Lightning Round events." });
     }

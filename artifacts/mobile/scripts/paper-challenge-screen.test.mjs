@@ -80,6 +80,8 @@ test("Lightning Round stays separate, off-week, and visible from the existing ar
   assert.match(mobileRootLayout, /<Stack\.Screen name="lightning-round"/);
   assert.match(eventArena, /testID="open-lightning-round"/);
   assert.match(lightningRound, /event-arena\/lightning-round\/prepare[\s\S]*?method: 'POST'/);
+  assert.match(lightningRound, /payload\.available === false/);
+  assert.match(lightningRound, /payload\.message \|\| 'No eligible Lightning Round dates are currently available\.'/);
   assert.match(lightningRound, /getLightningRoundWindow\(now\)/);
   assert.match(lightningRound, /paper-lightning:\$\{eventId\}/);
   assert.match(lightningRound, /eventId: window\.id/);

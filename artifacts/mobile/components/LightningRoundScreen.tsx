@@ -37,6 +37,7 @@ import {
   getLightningRoundSeasonSummary,
   getLatestLightningRoundAlias,
   getMissingPaperChallengeQuoteSymbols,
+  findLightningRoundWindow,
   getLightningRoundWindow,
   isPaperChallengeConfiguration,
   LIGHTNING_ROUND_STARTING_BALANCE,
@@ -121,7 +122,14 @@ function quoteContext(quote: LiveQuote | undefined) {
 async function prepareLightningEvents() {
   const response = await fetch(`${BASE_URL}/api/event-arena/lightning-round/prepare`, { method: 'POST' });
   if (!response.ok) throw new Error('Could not prepare the scheduled Lightning Round.');
-  const payload = await response.json() as { events?: unknown[] };
+  const payload = await response.json() as {
+    events?: unknown[];
+    available?: boolean;
+    message?: string;
+  };
+  if (payload.available === false) {
+    throw new Error(payload.message || 'No eligible Lightning Round dates are currently available.');
+  }
   if (!Array.isArray(payload.events)) throw new Error('The Lightning Round schedule response was invalid.');
   return payload.events;
 }
@@ -142,6 +150,13 @@ async function readPaperCache(): Promise<PaperCache> {
 export function LightningRoundScreen() {
   const calendarError = getRegularEventCalendarError();
   if (calendarError) return <LightningRoundCalendarUnavailable message={calendarError} />;
+  if (!findLightningRoundWindow()) {
+    return (
+      <LightningRoundCalendarUnavailable
+        message="No upcoming dates are available because every candidate Friday overlaps a regular Event Arena event. Check back later."
+      />
+    );
+  }
   return <LightningRoundScreenContent />;
 }
 
@@ -150,10 +165,10 @@ function LightningRoundCalendarUnavailable({ message }: { message: string }) {
   return (
     <View style={{ flex: 1, justifyContent: 'space-between', backgroundColor: colors.background }}>
       <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 24 }}>
-        <Text style={{ color: colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 19 }}>
-          Lightning Round is temporarily unavailable
+        <Text testID="lightning-round-unavailable" accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 19 }}>
+          Lightning Round unavailable
         </Text>
-        <Text testID="lightning-round-calendar-error" accessibilityRole="alert" style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 20, marginTop: 10 }}>
+        <Text testID="lightning-round-calendar-error" style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 20, marginTop: 10 }}>
           {message}
         </Text>
       </View>

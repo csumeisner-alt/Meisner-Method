@@ -121,7 +121,7 @@ import {
   type PaperChallengeSummary,
   type PaperChallengeEnrollment,
   capturePaperChallengeBaseline,
-  getLightningRoundWindow,
+  findLightningRoundWindow,
   getPaperChallengeEnrollmentForAccount,
   getPaperChallengeEnrollments,
   isPaperChallengeAccountId,
@@ -530,7 +530,7 @@ export default function PaperScreen() {
   const portfolioValue = account ? computePaperEquity(account, myPositions, quotes) : 0;
   const regularCalendarError = getRegularEventCalendarError();
   const paperChallengeWindow = getPaperChallengeWindow(challengeNow);
-  const lightningRoundWindow = regularCalendarError ? null : getLightningRoundWindow(challengeNow);
+  const lightningRoundWindow = regularCalendarError ? null : findLightningRoundWindow(challengeNow);
   const challengeEnrollments = getPaperChallengeEnrollments(paperChallenge);
   const isEnrollmentActive = (enrollment: PaperChallengeEnrollment) =>
     challengeNow >= enrollment.eventStartAtMs && challengeNow < enrollment.eventEndAtMs;
@@ -1369,15 +1369,15 @@ export default function PaperScreen() {
     challengeBaselineCapturingRef.current = enrollment.eventId;
     void (async () => {
       const currentWindow = isLightningRoundEventId(enrollment.eventId)
-        ? getLightningRoundWindow(Date.now())
+        ? findLightningRoundWindow(Date.now())
         : getPaperChallengeWindow(Date.now());
-      if (currentWindow.id !== enrollment.eventId || currentWindow.phase !== 'active') return;
+      if (!currentWindow || currentWindow.id !== enrollment.eventId || currentWindow.phase !== 'active') return;
       const eventPositions = positionsRef.current.filter((position) => position.accountId === enrollment.accountId);
       const freshQuotes = await fetchQuotes(eventPositions, enrollment.accountId, false);
       const latestWindow = isLightningRoundEventId(enrollment.eventId)
-        ? getLightningRoundWindow(Date.now())
+        ? findLightningRoundWindow(Date.now())
         : getPaperChallengeWindow(Date.now());
-      if (latestWindow.id !== enrollment.eventId || latestWindow.phase !== 'active') return;
+      if (!latestWindow || latestWindow.id !== enrollment.eventId || latestWindow.phase !== 'active') return;
 
       const eventAccount = accountsRef.current.find((item) => item.id === enrollment.accountId);
       if (!eventAccount) throw new Error('The event account is unavailable.');

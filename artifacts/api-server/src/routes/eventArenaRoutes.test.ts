@@ -11,6 +11,7 @@ import {
   getLightningRoundScheduleIds,
   hasScheduledRegularEventOverlap,
   isValidEventArenaWindow,
+  LIGHTNING_ROUND_UNAVAILABLE_MESSAGE,
   prepareLightningRoundEvents,
   rankEventArenaEntries,
 } from "./eventArenaRoutes.ts";
@@ -380,6 +381,40 @@ test("overlapping regular-event calendar settings are rejected before scheduling
     }
     assert.equal(databaseQueries, 0);
   } finally {
+    calendar.durationDays = originalDurationDays;
+  }
+});
+
+test("Lightning Round preparation explains when every candidate date is unavailable", async () => {
+  const calendar = REGULAR_EVENT_CALENDAR as unknown as {
+    cadenceDays: number;
+    durationDays: number;
+  };
+  const originalCadenceDays = calendar.cadenceDays;
+  const originalDurationDays = calendar.durationDays;
+  let insertQueries = 0;
+  try {
+    calendar.cadenceDays = 7;
+    calendar.durationDays = 6;
+    assert.equal(getRegularEventCalendarError(), null);
+    assert.deepEqual(getLightningRoundScheduleIds(Date.parse("2026-11-21T15:00:00.000Z")), []);
+    await withApi(async (sql) => {
+      if (sql.startsWith("INSERT INTO event_arena_events")) insertQueries += 1;
+      return { rows: [] };
+    }, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/event-arena/lightning-round/prepare`, {
+        method: "POST",
+      });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), {
+        events: [],
+        available: false,
+        message: LIGHTNING_ROUND_UNAVAILABLE_MESSAGE,
+      });
+      assert.equal(insertQueries, 0);
+    }, Date.parse("2026-11-21T15:00:00.000Z"));
+  } finally {
+    calendar.cadenceDays = originalCadenceDays;
     calendar.durationDays = originalDurationDays;
   }
 });
