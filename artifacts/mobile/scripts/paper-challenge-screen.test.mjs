@@ -392,6 +392,13 @@ test("milestone badges and event controls stay readable with larger system text"
   assert.doesNotMatch(badges, /lineHeight:/, "milestone line height must grow with the system font");
   assert.match(badges, /fontSize: compact \? 10 : 11/);
   assert.match(shareCard, /width: '100%', maxWidth: 360, minWidth: 0/);
+  assert.match(shareCard, /source=\{EVENT_ARENA_ARTWORK_SOURCES\[event\.artworkId \?\? LEGACY_PAPER_CHALLENGE_ARTWORK_ID\]\}/);
+  assert.match(shareCard, /testID=\{`paper-event-share-artwork-\$\{event\.eventId\}`\}/);
+  assert.match(shareCard, /testID=\{`paper-event-share-card-\$\{event\.eventId\}`\}/);
+  assert.match(shareCard, /backgroundColor: 'rgba\(7,12,20,0\.62\)'/);
+  assert.match(shareCard, /PaperChallengeMilestoneBadges milestones=\{milestones\}/);
+  assert.match(shareCard, /\{money\(event\.startEquity\)\}/);
+  assert.match(shareCard, /\{money\(event\.endEquity\)\}/);
   assert.match(shareCard, /useWindowDimensions/);
   assert.match(shareCard, /fontScale >= 1\.3/);
   assert.match(shareCard, /flexDirection: largeText \? 'column' : 'row'/);

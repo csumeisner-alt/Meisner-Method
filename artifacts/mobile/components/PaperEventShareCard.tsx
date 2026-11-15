@@ -1,9 +1,13 @@
 import React from 'react';
-import { Text, useWindowDimensions, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { ImageBackground, Text, useWindowDimensions, View } from 'react-native';
 import { PaperChallengeMilestoneBadges } from '@/components/PaperChallengeMilestoneBadges';
 import { useColors } from '@/hooks/useColors';
-import type { PaperChallengeMilestoneId, PaperChallengeSummary } from '@/lib/paperChallenge';
+import {
+  LEGACY_PAPER_CHALLENGE_ARTWORK_ID,
+  type PaperChallengeMilestoneId,
+  type PaperChallengeSummary,
+} from '@/lib/paperChallenge';
+import { EVENT_ARENA_ARTWORK_SOURCES } from '@/lib/eventArenaArtwork';
 
 type Props = { event: PaperChallengeSummary; milestones?: PaperChallengeMilestoneId[] };
 
@@ -18,12 +22,16 @@ export function PaperEventShareCard({ event, milestones = [] }: Props) {
   const symbols = event.symbolsTraded?.length ? event.symbolsTraded.join(' · ') : 'No trades this week';
 
   return (
-    <View style={{ width: '100%', maxWidth: 360, minWidth: 0, borderRadius: 24, overflow: 'hidden' }}>
-      <LinearGradient
-        colors={[colors.card, colors.background]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={{ padding: 22, borderWidth: 1, borderColor: colors.border, borderRadius: 24 }}
+    <ImageBackground
+      testID={`paper-event-share-artwork-${event.eventId}`}
+      source={EVENT_ARENA_ARTWORK_SOURCES[event.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID]}
+      resizeMode="cover"
+      imageStyle={{ borderRadius: 24, opacity: 0.82 }}
+      style={{ width: '100%', maxWidth: 360, minWidth: 0, borderRadius: 24, overflow: 'hidden' }}
+    >
+      <View
+        testID={`paper-event-share-card-${event.eventId}`}
+        style={{ padding: 22, borderWidth: 1, borderColor: colors.border, borderRadius: 24, backgroundColor: 'rgba(7,12,20,0.62)' }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <View style={{ width: 42, height: 42, borderRadius: 13, borderWidth: 1, borderColor: colors.primary, alignItems: 'center', justifyContent: 'center' }}>
@@ -95,7 +103,7 @@ export function PaperEventShareCard({ event, milestones = [] }: Props) {
             PAPER TRADING · SIMULATED RESULTS
           </Text>
         </View>
-      </LinearGradient>
-    </View>
+      </View>
+    </ImageBackground>
   );
 }
