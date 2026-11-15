@@ -20,12 +20,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '@/hooks/useColors';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 import {
-  getEventArenaLeaderboardHistory,
   getGetEventArenaLeaderboardQueryKey,
   submitEventArenaScore,
   useGetEventArenaLeaderboard,
 } from '@workspace/api-client-react';
-import type { EventArenaLeaderboardHistoryResponseSnapshotsItem } from '@workspace/api-client-react';
 import { getInstallationId } from '@/lib/installation';
 import {
   calculateEventHoldingAllocationPercent,
@@ -55,7 +53,6 @@ import {
   getEventArenaStatus,
 } from '@/lib/eventArenaLeaderboard';
 import {
-  getEventArenaHistoryDisplayPoints,
   getEventArenaCompetitiveChanges,
   getEventArenaNextRankReturnGap,
   getEventArenaWindowProgress,
@@ -250,10 +247,6 @@ export function PaperChallengeLeaderboard({
   const [cashTransferReceipt, setCashTransferReceipt] = useState('');
   const [cancelledCashOrders, setCancelledCashOrders] = useState<PaperOrder[]>([]);
   const [cashTransferBusy, setCashTransferBusy] = useState(false);
-  const [eventHistory, setEventHistory] = useState<EventArenaLeaderboardHistoryResponseSnapshotsItem[]>([]);
-  const [eventHistoryEventId, setEventHistoryEventId] = useState<string | null>(null);
-  const [eventHistoryError, setEventHistoryError] = useState(false);
-  const [eventHistoryLoading, setEventHistoryLoading] = useState(false);
   const [cashTransferRequestKey, setCashTransferRequestKey] = useState('');
   const [restoredTransfer, setRestoredTransfer] = useState<{
     idempotencyKey: string;
@@ -280,7 +273,6 @@ export function PaperChallengeLeaderboard({
     entries: LeaderboardEntry[];
   } | null>(null);
   const rankAnimationsRef = useRef(new Map<string, Animated.Value>());
-  const eventHistoryRequestRef = useRef(0);
   const visible = embedded || open;
   const leaderboardQuery = useGetEventArenaLeaderboard(event.id, {
     request: installationId ? { headers: { 'X-Event-Arena-Installation-Id': installationId } } : undefined,
@@ -324,37 +316,6 @@ export function PaperChallengeLeaderboard({
     [entries, optedIn],
   );
   const ownEntry = useMemo(() => getEventArenaOwnEntry(entries, optedIn), [entries, optedIn]);
-  const displayedEventHistory = useMemo(
-    () => getEventArenaHistoryDisplayPoints(eventHistory),
-    [eventHistory],
-  );
-  const loadEventHistory = useCallback(async (enabled = optedIn) => {
-    const requestId = ++eventHistoryRequestRef.current;
-    if (!enabled || !installationId) {
-      setEventHistory([]);
-      setEventHistoryEventId(event.id);
-      setEventHistoryError(false);
-      setEventHistoryLoading(false);
-      return;
-    }
-    setEventHistoryLoading(true);
-    setEventHistoryError(false);
-    try {
-      const response = await getEventArenaLeaderboardHistory(event.id, {
-        headers: { 'X-Event-Arena-Installation-Id': installationId },
-      });
-      if (requestId !== eventHistoryRequestRef.current) return;
-      setEventHistory(response.snapshots);
-      setEventHistoryEventId(event.id);
-    } catch {
-      if (requestId !== eventHistoryRequestRef.current) return;
-      setEventHistory([]);
-      setEventHistoryError(true);
-      setEventHistoryEventId(event.id);
-    } finally {
-      if (requestId === eventHistoryRequestRef.current) setEventHistoryLoading(false);
-    }
-  }, [event.id, installationId, optedIn]);
   const standingsEntries = useMemo(() => getEventArenaStandingsEntries(entries), [entries]);
   const transferImpact: EventCashTransferImpact = getEventCashTransferImpact(
     eventAccount,
@@ -544,14 +505,13 @@ export function PaperChallengeLeaderboard({
         }
       }
       await leaderboardQuery.refetch({ throwOnError: true });
-      await loadEventHistory(currentEnrollment?.leaderboardOptedIn === true);
     } catch {
       // The query error is shown with a generic retry message; keep its last successful data.
     } finally {
       setRefreshing(false);
       refreshingRef.current = false;
     }
-  }, [appIsActive, event.id, event.phase, installationIdReady, leaderboardQuery.refetch, loadEventHistory, sharingBusy, submitEntry, visible]);
+  }, [appIsActive, event.id, event.phase, installationIdReady, leaderboardQuery.refetch, sharingBusy, submitEntry, visible]);
 
   useEffect(() => {
     if (!visible || !appIsActive || !installationIdReady) return;
@@ -582,7 +542,6 @@ export function PaperChallengeLeaderboard({
       await AsyncStorage.removeItem(`${LAST_SUBMISSION_KEY_PREFIX}${event.id}`);
       await submitEntry(currentEnrollment, alias);
       await leaderboardQuery.refetch({ throwOnError: true });
-      await loadEventHistory(true);
     } catch {
       setError(sharingSaved
         ? 'Opt-in is saved on this device; your score will retry when the connection is available.'
@@ -608,7 +567,6 @@ export function PaperChallengeLeaderboard({
       await AsyncStorage.removeItem(`${LAST_SUBMISSION_KEY_PREFIX}${event.id}`);
       await submitEntry(currentEnrollment, alias);
       await leaderboardQuery.refetch({ throwOnError: true });
-      await loadEventHistory(true);
     } catch {
       setError(aliasSaved
         ? 'Your alias is saved on this device; the leaderboard will retry the update.'
@@ -676,7 +634,6 @@ export function PaperChallengeLeaderboard({
       if (!response.ok) throw new Error();
       await persistSharing(currentEnrollment.leaderboardAlias ?? '', false);
       await AsyncStorage.removeItem(`${LAST_SUBMISSION_KEY_PREFIX}${event.id}`);
-      await loadEventHistory(false);
       await leaderboardQuery.refetch({ throwOnError: true });
     } catch {
       setError('Could not opt out right now. Please retry.');
@@ -1270,83 +1227,6 @@ export function PaperChallengeLeaderboard({
                       </Text>
                     );
                   })()}
-                </View>
-              )}
-
-              {ownEntry && (
-                <View testID="paper-event-rank-history" style={{ marginBottom: 17, padding: 14, borderRadius: 16, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Feather name="trending-up" size={15} color={colors.gold} />
-                    <Text style={{ flex: 1, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>
-                      Your event history
-                    </Text>
-                    <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 9 }}>
-                      {displayedEventHistory.length} POINTS
-                    </Text>
-                  </View>
-                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 6 }}>
-                    Self-reported rank and return snapshots. Not independently verified.
-                  </Text>
-                  {eventHistoryError ? (
-                    <View style={{ marginTop: 10 }}>
-                      <Text accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 11 }}>
-                        Your history could not be loaded.
-                      </Text>
-                      <TouchableOpacity
-                        testID="retry-paper-event-rank-history"
-                        accessibilityRole="button"
-                        onPress={() => { void loadEventHistory(true); }}
-                        style={{ alignSelf: 'flex-start', paddingVertical: 8 }}
-                      >
-                        <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10 }}>RETRY</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ) : eventHistoryLoading && eventHistoryEventId !== event.id ? (
-                    <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 10 }}>
-                      Loading your event history…
-                    </Text>
-                  ) : displayedEventHistory.length === 0 ? (
-                    <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 10 }}>
-                      History will appear after your first successful score refresh.
-                    </Text>
-                  ) : (
-                    <>
-                      {displayedEventHistory.length > 1 && (() => {
-                        const first = displayedEventHistory[0]!;
-                        const latest = displayedEventHistory[displayedEventHistory.length - 1]!;
-                        const placesMoved = first.rank - latest.rank;
-                        const movementText = placesMoved === 0
-                          ? 'Your rank is unchanged'
-                          : `Moved ${placesMoved > 0 ? 'up' : 'down'} ${Math.abs(placesMoved)} ${Math.abs(placesMoved) === 1 ? 'place' : 'places'}`;
-                        return (
-                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 8, marginTop: 10, marginBottom: 5, padding: 10, borderRadius: 10, backgroundColor: colors.background }}>
-                            <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>{movementText} since your first snapshot</Text>
-                            <Text style={{ color: latest.returnPercent >= first.returnPercent ? colors.primary : colors.destructive, fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>
-                              Return {latest.returnPercent >= first.returnPercent ? '+' : ''}{(latest.returnPercent - first.returnPercent).toFixed(2)} pts
-                            </Text>
-                          </View>
-                        );
-                      })()}
-                      {displayedEventHistory.map((snapshot, index) => (
-                        <View
-                          key={`${snapshot.capturedAt}-${index}`}
-                          accessible
-                          accessibilityLabel={`${timeLabel(snapshot.capturedAt)}, rank ${snapshot.rank}, return ${returnLabel(snapshot.returnPercent)}, self-reported`}
-                          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 35, borderTopWidth: 1, borderTopColor: colors.border }}
-                        >
-                          <Text style={{ flex: 1, color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 10 }}>
-                            {timeLabel(snapshot.capturedAt)}
-                          </Text>
-                          <Text style={{ width: 45, textAlign: 'right', color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 11 }}>
-                            #{snapshot.rank}
-                          </Text>
-                          <Text style={{ width: 75, textAlign: 'right', color: returnColor(snapshot.returnPercent), fontFamily: 'Inter_700Bold', fontSize: 11 }}>
-                            {returnLabel(snapshot.returnPercent)}
-                          </Text>
-                        </View>
-                      ))}
-                    </>
-                  )}
                 </View>
               )}
 

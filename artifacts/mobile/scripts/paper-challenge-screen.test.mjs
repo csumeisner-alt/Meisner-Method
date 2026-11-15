@@ -71,10 +71,7 @@ test("event enrollment enables sharing with compact privacy controls", () => {
   assert.match(leaderboard, /current\.enrollment\?\.eventId !== event\.id/);
   assert.match(leaderboard, /event-arena\/\$\{encodeURIComponent\(event\.id\)\}\/leaderboard/);
   assert.match(leaderboard, /useGetEventArenaLeaderboard/);
-  assert.match(leaderboard, /getEventArenaLeaderboardHistory\(event\.id/);
-  assert.match(leaderboard, /testID="paper-event-rank-history"/);
-  assert.match(leaderboard, /Self-reported rank and return snapshots\. Not independently verified\./);
-  assert.match(leaderboard, /testID="retry-paper-event-rank-history"/);
+  assert.doesNotMatch(leaderboard, /getEventArenaLeaderboardHistory|paper-event-rank-history|Your event history|Self-reported rank and return snapshots|retry-paper-event-rank-history|displayedEventHistory|eventHistory/);
   assert.match(leaderboard, /X-Event-Arena-Installation-Id/);
   assert.match(leaderboard, /entry\.isCurrentUser/);
   assert.doesNotMatch(leaderboard, /paper-event-leaderboard-your-position/);
@@ -117,6 +114,11 @@ test("event enrollment enables sharing with compact privacy controls", () => {
   assert.doesNotMatch(leaderboard, /Past event weeks|leaderboard-week-picker|LeaderboardWeeks/);
   assert.match(eventArena, /\{ id: 'past', label: 'Past Events'/);
   assert.match(eventArena, /section === 'past' && renderPastEvents\(\)/);
+  assert.match(eventArena, /const renderPastEventDetails = \(event: PaperChallengeSummary\)/);
+  assert.match(eventArena, /<PortfolioLineChart[\s\S]*?points=\{equityHistory\}/);
+  assert.match(eventArena, /event\.finalPositions/);
+  assert.match(eventArena, /Completed trades/);
+  assert.match(eventArena, /testID=\{`paper-event-trades-\$\{event\.eventId\}`\}/);
 });
 
 test("Event Arena section tabs stay readable and fit narrow phone widths", () => {
@@ -294,7 +296,7 @@ test("leaderboard header scrolls with its content and clears the fixed bottom ta
   assert.match(mainScroll, /renderLeaderboardHeader\(\)/);
   assert.match(mainScroll, /testID="paper-event-leaderboard-podium"/);
   assert.match(mainScroll, /testID="paper-event-leaderboard-current-user"/);
-  assert.match(mainScroll, /testID="paper-event-rank-history"/);
+  assert.doesNotMatch(mainScroll, /paper-event-rank-history/);
   assert.match(mainScroll, /paddingBottom: embedded \? 28/);
   assert.match(leaderboard, /style=\{\{ flex: 1, minHeight: 0, backgroundColor: colors\.background/);
   assert.match(eventArena, /<View style=\{\{ flex: 1, minHeight: 0 \}\}>/);
