@@ -707,13 +707,24 @@ test(
           PRIMARY KEY (event_id,installation_id)
         );
         CREATE TABLE event_arena_leaderboard_entries (
-          event_id TEXT NOT NULL, installation_id TEXT NOT NULL, participant_token TEXT NOT NULL,
+          event_id TEXT NOT NULL, installation_id TEXT NOT NULL,
+          participant_token TEXT NOT NULL DEFAULT gen_random_uuid()::text,
           alias TEXT NOT NULL, start_equity DOUBLE PRECISION NOT NULL, equity DOUBLE PRECISION NOT NULL,
           return_percent DOUBLE PRECISION NOT NULL, trade_count INTEGER, holdings JSONB NOT NULL,
           event_start_at TIMESTAMPTZ NOT NULL, event_end_at TIMESTAMPTZ NOT NULL,
           updated_at TIMESTAMPTZ NOT NULL, cash_balance DOUBLE PRECISION NOT NULL,
-          is_active BOOLEAN NOT NULL, PRIMARY KEY (event_id,installation_id)
+          is_active BOOLEAN NOT NULL DEFAULT TRUE, PRIMARY KEY (event_id,installation_id)
         );
+        CREATE TABLE event_arena_leaderboard_snapshots (
+          snapshot_id BIGSERIAL PRIMARY KEY, event_id TEXT NOT NULL,
+          participant_token TEXT NOT NULL, event_start_at TIMESTAMPTZ NOT NULL,
+          event_end_at TIMESTAMPTZ NOT NULL, captured_at TIMESTAMPTZ NOT NULL,
+          rank INTEGER NOT NULL, return_percent DOUBLE PRECISION NOT NULL,
+          is_final BOOLEAN NOT NULL DEFAULT FALSE
+        );
+        CREATE UNIQUE INDEX event_arena_final_snapshot_idx
+          ON event_arena_leaderboard_snapshots (event_id,participant_token)
+          WHERE is_final=TRUE;
       `);
 
       const executionDatabase = (
@@ -1011,6 +1022,232 @@ test(
       assert.equal(finalState.order_status, "filled");
       assert.equal(finalState.participant_status, "entered");
       assert.equal(finalState.preserved_history_count, 1);
+
+      const standingsIds = {
+        event: `lr-final-${randomUUID()}`,
+        participants: [
+          { installationId: `final-user-a-${randomUUID()}`, symbol: "AAPL", price: 120, optedIn: true },
+          { installationId: `final-user-b-${randomUUID()}`, symbol: "MSFT", price: 110, optedIn: true },
+          { installationId: `final-user-c-${randomUUID()}`, symbol: "GOOGL", price: 130, optedIn: false },
+        ],
+      };
+      await firstPool.query(
+        `INSERT INTO event_arena_events
+          (event_id,event_type,artwork_id,starting_balance,ranking_direction,event_start_at,event_end_at)
+         VALUES ($1,'lightning-round','stadium',100000,'highest-return',$2,$3)`,
+        [standingsIds.event, new Date(startAt), new Date(endAt)],
+      );
+      for (const [index, participant] of standingsIds.participants.entries()) {
+        const participantAccountId = `final-account-${index}-${randomUUID()}`;
+        await firstPool.query(
+          `INSERT INTO event_arena_lightning_participants
+            (event_id,installation_id,account_id,alias,status,leaderboard_opted_in,event_start_at,event_end_at)
+           VALUES ($1,$2,$3,$4,'entered',$5,$6,$7)`,
+          [
+            standingsIds.event,
+            participant.installationId,
+            participantAccountId,
+            `FinalPlayer${index}`,
+            participant.optedIn,
+            new Date(startAt),
+            new Date(endAt),
+          ],
+        );
+        await firstPool.query(
+          `INSERT INTO paper_accounts (id,user_id,name,cash,created_at)
+           VALUES ($1,$2,'Shared Event Arena',99800,$3)`,
+          [participantAccountId, participant.installationId, new Date(startAt)],
+        );
+        await firstPool.query(
+          `INSERT INTO paper_positions
+            (id,user_id,account_id,symbol,company_name,shares,position_type,avg_cost,opened_at)
+           VALUES ($1,$2,$3,$4,$4,2,'long',100,$5)`,
+          [`final-position-${index}-${randomUUID()}`, participant.installationId,
+            participantAccountId, participant.symbol, new Date(startAt)],
+        );
+        await firstPool.query(
+          `INSERT INTO paper_lots (id,user_id,account_id,symbol,shares,cost,purchased_at)
+           VALUES ($1,$2,$3,$4,2,200,$5)`,
+          [`final-lot-${index}-${randomUUID()}`, participant.installationId,
+            participantAccountId, participant.symbol, new Date(startAt)],
+        );
+        await firstPool.query(
+          `INSERT INTO paper_transactions
+            (id,user_id,account_id,symbol,company_name,action,shares,price,total,date,lightning_round_event_id)
+           VALUES ($1,$2,$3,$4,$4,'BUY',2,100,200,$5,$6)`,
+          [`final-transaction-${index}-${randomUUID()}`, participant.installationId,
+            participantAccountId, participant.symbol, new Date(startAt + 1000), standingsIds.event],
+        );
+        await firstPool.query(
+          `INSERT INTO paper_orders
+            (id,user_id,account_id,symbol,company_name,order_type,side,shares,status,placed_at,
+             filled_price,filled_at,lightning_round_event_id)
+           VALUES ($1,$2,$3,$4,$4,'market','buy',2,'filled',$5,100,$6,$7)`,
+          [`final-order-${index}-${randomUUID()}`, participant.installationId,
+            participantAccountId, participant.symbol, new Date(startAt), new Date(startAt + 1000),
+            standingsIds.event],
+        );
+      }
+
+      const firstFinalizationAttempt = await processDueLightningRoundOrders(
+        executionDatabase(firstPool),
+        {
+          now: () => endAt + 1000,
+          makeId: randomUUID,
+          fetchPrice: async (symbol) => symbol === "AAPL" ? null : 100,
+        },
+      );
+      assert.ok(firstFinalizationAttempt.events >= 1);
+      assert.equal(
+        (await firstPool.query(
+          "SELECT finalized_at FROM event_arena_events WHERE event_id=$1",
+          [standingsIds.event],
+        )).rows[0].finalized_at,
+        null,
+        "an unavailable final quote must leave the event eligible for a later worker cycle",
+      );
+      assert.equal(
+        Number((await firstPool.query(
+          "SELECT COUNT(*)::int AS count FROM event_arena_leaderboard_snapshots WHERE event_id=$1",
+          [standingsIds.event],
+        )).rows[0].count),
+        0,
+      );
+
+      let notifyFinalQuoteStarted!: () => void;
+      const finalQuoteStarted = new Promise<void>((resolve) => { notifyFinalQuoteStarted = resolve; });
+      let resumeFinalQuote!: () => void;
+      const finalQuoteGate = new Promise<void>((resolve) => { resumeFinalQuote = resolve; });
+      const firstFinalizer = processDueLightningRoundOrders(
+        executionDatabase(firstPool),
+        {
+          now: () => endAt + 2000,
+          makeId: randomUUID,
+          fetchPrice: async (symbol) => {
+            if (symbol === "AAPL") {
+              notifyFinalQuoteStarted();
+              await finalQuoteGate;
+            }
+            return standingsIds.participants.find((participant) => participant.symbol === symbol)?.price ?? null;
+          },
+        },
+      );
+      await finalQuoteStarted;
+      const competingFinalizer = processDueLightningRoundOrders(
+        executionDatabase(secondPool),
+        {
+          now: () => endAt + 2000,
+          makeId: randomUUID,
+          fetchPrice: async (symbol) =>
+            standingsIds.participants.find((participant) => participant.symbol === symbol)?.price ?? null,
+        },
+      );
+
+      let finalizerLockWaitObserved = false;
+      let finalizerResults: PromiseSettledResult<
+        Awaited<ReturnType<typeof processDueLightningRoundOrders>>
+      >[];
+      try {
+        for (let attempt = 0; attempt < 100; attempt += 1) {
+          const { rows } = await adminPool.query(
+            "SELECT wait_event_type,wait_event FROM pg_stat_activity WHERE pid=$1",
+            [secondBackendPid!],
+          );
+          if (rows[0]?.wait_event_type === "Lock" && rows[0]?.wait_event === "advisory") {
+            finalizerLockWaitObserved = true;
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+      } finally {
+        resumeFinalQuote();
+        finalizerResults = await Promise.allSettled([firstFinalizer, competingFinalizer]);
+      }
+      assert.ok(finalizerLockWaitObserved, "the competing finalizer should wait on the PostgreSQL advisory lock");
+      const finalizerError = finalizerResults.find((result) => result.status === "rejected");
+      if (finalizerError?.status === "rejected") throw finalizerError.reason;
+
+      const savedStandings = await firstPool.query(
+        `SELECT participant.installation_id,participant.leaderboard_opted_in,
+                participant.final_result,entry.participant_token,entry.return_percent,
+                snapshot.rank,snapshot.is_final
+         FROM event_arena_lightning_participants AS participant
+         LEFT JOIN event_arena_leaderboard_entries AS entry
+           ON entry.event_id=participant.event_id AND entry.installation_id=participant.installation_id
+         LEFT JOIN event_arena_leaderboard_snapshots AS snapshot
+           ON snapshot.event_id=entry.event_id AND snapshot.participant_token=entry.participant_token
+         WHERE participant.event_id=$1
+         ORDER BY participant.installation_id`,
+        [standingsIds.event],
+      );
+      assert.equal(savedStandings.rows.length, standingsIds.participants.length);
+      for (const row of savedStandings.rows) {
+        const participant = standingsIds.participants.find((item) => item.installationId === row.installation_id);
+        assert.ok(participant);
+        assert.ok(row.final_result, "each entered participant should have a persisted personal result");
+        assert.deepEqual(row.final_result.finalPrices, { [participant.symbol]: participant.price });
+        if (participant.optedIn) {
+          assert.ok(row.participant_token);
+          assert.ok(row.is_final);
+          assert.equal(Number(row.final_result.finalRank), participant.symbol === "AAPL" ? 1 : 2);
+          assert.equal(Number(row.rank), Number(row.final_result.finalRank));
+          assert.equal(Number(row.return_percent), participant.symbol === "AAPL" ? 0.04 : 0.02);
+        } else {
+          assert.equal(row.participant_token, null, "opted-out participants must not be published");
+          assert.equal(row.final_result.finalRank, null);
+        }
+      }
+      assert.equal(
+        Number((await firstPool.query(
+          `SELECT COUNT(*)::int AS count FROM event_arena_leaderboard_snapshots
+           WHERE event_id=$1 AND is_final=TRUE`,
+          [standingsIds.event],
+        )).rows[0].count),
+        2,
+        "only opted-in participants should receive one final snapshot each",
+      );
+      const frozenResults = savedStandings.rows.map((row) => ({
+        installationId: row.installation_id,
+        finalResult: row.final_result,
+        rank: row.rank,
+        returnPercent: row.return_percent,
+      }));
+
+      const finalRetry = await processDueLightningRoundOrders(
+        executionDatabase(recoveryPool),
+        {
+          now: () => endAt + 60_000,
+          makeId: randomUUID,
+          fetchPrice: async () => 999,
+        },
+      );
+      assert.equal(finalRetry.events, 0, "a finalized event must not be reprocessed");
+      const retryStandings = await firstPool.query(
+        `SELECT participant.installation_id,participant.final_result,snapshot.rank,entry.return_percent
+         FROM event_arena_lightning_participants AS participant
+         LEFT JOIN event_arena_leaderboard_entries AS entry
+           ON entry.event_id=participant.event_id AND entry.installation_id=participant.installation_id
+         LEFT JOIN event_arena_leaderboard_snapshots AS snapshot
+           ON snapshot.event_id=entry.event_id AND snapshot.participant_token=entry.participant_token
+         WHERE participant.event_id=$1
+         ORDER BY participant.installation_id`,
+        [standingsIds.event],
+      );
+      assert.deepEqual(retryStandings.rows.map((row) => ({
+        installationId: row.installation_id,
+        finalResult: row.final_result,
+        rank: row.rank,
+        returnPercent: row.return_percent,
+      })), frozenResults, "later quotes must not alter frozen results or ranks");
+      assert.equal(
+        Number((await firstPool.query(
+          `SELECT COUNT(*)::int AS count FROM event_arena_leaderboard_snapshots
+           WHERE event_id=$1 AND is_final=TRUE`,
+          [standingsIds.event],
+        )).rows[0].count),
+        2,
+        "retries must leave exactly one final snapshot per opted-in participant",
+      );
     } finally {
       await Promise.all([
         firstPool?.end(),
