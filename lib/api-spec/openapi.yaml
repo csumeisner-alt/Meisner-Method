@@ -253,6 +253,112 @@ paths:
                 $ref: "#/components/schemas/EventArenaCashNotificationsResponse"
         "400":
           description: The event or installation ID is invalid
+  /event-arena/device-pairing:
+    post:
+      operationId: createEventArenaDevicePairing
+      tags: [eventArena]
+      summary: Save an Event Arena paper snapshot and create a one-use device code
+      parameters:
+        - in: header
+          name: X-Event-Arena-Device-Token
+          required: true
+          schema: { type: string, minLength: 32, maxLength: 128 }
+        - in: header
+          name: X-Event-Arena-Revision
+          required: false
+          schema: { type: integer, minimum: 0 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventArenaDeviceSnapshot"
+      responses:
+        "200":
+          description: Snapshot saved and one-use code created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [code, expiresAt, revision]
+                properties:
+                  code: { type: string }
+                  expiresAt: { type: string, format: date-time }
+                  revision: { type: integer, minimum: 1 }
+        "400": { description: The snapshot is invalid }
+        "409": { description: The shared account changed on another device }
+  /event-arena/device-pairing/redeem:
+    post:
+      operationId: redeemEventArenaDevicePairing
+      tags: [eventArena]
+      summary: Redeem a one-use code and restore its Event Arena snapshot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RedeemEventArenaDevicePairingRequest"
+      responses:
+        "200":
+          description: The shared Event Arena snapshot and revision
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventArenaDeviceSyncResponse"
+        "400": { description: The code or device token is invalid }
+        "404": { description: The transfer code was not found }
+        "409": { description: The transfer code was already used on another device }
+        "410": { description: The transfer code expired }
+  /event-arena/device-sync:
+    get:
+      operationId: getEventArenaDeviceSync
+      tags: [eventArena]
+      summary: Load the shared Event Arena paper snapshot
+      parameters:
+        - in: header
+          name: X-Event-Arena-Device-Token
+          required: true
+          schema: { type: string, minLength: 32, maxLength: 128 }
+      responses:
+        "200":
+          description: Shared Event Arena snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventArenaDeviceSyncResponse"
+        "401": { description: Device token is invalid }
+    put:
+      operationId: syncEventArenaDeviceState
+      tags: [eventArena]
+      summary: Save a revision-checked Event Arena paper snapshot
+      parameters:
+        - in: header
+          name: X-Event-Arena-Device-Token
+          required: true
+          schema: { type: string, minLength: 32, maxLength: 128 }
+        - in: header
+          name: X-Event-Arena-Revision
+          required: true
+          schema: { type: integer, minimum: 0 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventArenaDeviceSnapshot"
+      responses:
+        "200":
+          description: Shared snapshot saved
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revision]
+                properties:
+                  revision: { type: integer, minimum: 1 }
+        "400": { description: The snapshot is invalid }
+        "401": { description: Device token is invalid }
+        "409": { description: The shared account changed on another device }
   /stocks/heat-map/search:
     get:
       operationId: searchHeatMapInstruments
@@ -744,6 +850,35 @@ paths:
                 $ref: "#/components/schemas/AnalysisError"
 components:
   schemas:
+    RedeemEventArenaDevicePairingRequest:
+      type: object
+      required: [code, deviceToken]
+      properties:
+        code: { type: string, minLength: 32, maxLength: 64 }
+        deviceToken: { type: string, minLength: 32, maxLength: 128 }
+    EventArenaDeviceSnapshot:
+      type: object
+      required: [snapshot]
+      properties:
+        snapshot:
+          type: object
+          required: [sourceInstallationId, accounts, positions, transactions, orders, lots, challengeStore]
+          properties:
+            sourceInstallationId: { type: string, minLength: 12, maxLength: 128 }
+            accounts: { type: array, items: { type: object, additionalProperties: true } }
+            positions: { type: array, items: { type: object, additionalProperties: true } }
+            transactions: { type: array, items: { type: object, additionalProperties: true } }
+            orders: { type: array, items: { type: object, additionalProperties: true } }
+            lots: { type: array, items: { type: object, additionalProperties: true } }
+            challengeStore: { type: object, additionalProperties: true }
+        activeId: { type: string }
+    EventArenaDeviceSyncResponse:
+      type: object
+      required: [revision, snapshot]
+      properties:
+        revision: { type: integer, minimum: 1 }
+        snapshot:
+          $ref: "#/components/schemas/EventArenaDeviceSnapshot/properties/snapshot"
     EventArenaScoreSubmission:
       type: object
       required: [installationId, alias, eventType, artworkId, startingBalance, rankingDirection, startEquity, equity, returnPercent, tradeCount, holdings, eventStartAtMs, eventEndAtMs]

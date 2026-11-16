@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ImageBackground, Text, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   getGetEventArenaLeaderboardQueryKey,
   useGetEventArenaLeaderboard,
@@ -14,6 +15,7 @@ import {
   getPaperEventDashboardRank,
 } from '@/lib/paperEventDashboard';
 import { getInstallationId } from '@/lib/installation';
+import { getEventArenaParticipantId } from '@/lib/eventArenaDeviceSync';
 import { EVENT_ARENA_ARTWORK_SOURCES } from '@/lib/eventArenaArtwork';
 
 type Props = {
@@ -74,7 +76,7 @@ export function PaperEventArenaDashboard({
 
   useEffect(() => {
     let mounted = true;
-    void getInstallationId()
+    void getEventArenaParticipantId(AsyncStorage, getInstallationId)
       .then((id) => { if (mounted) setInstallationId(id); })
       .catch(() => { if (mounted) setInstallationId(null); })
       .finally(() => { if (mounted) setInstallationIdReady(true); });

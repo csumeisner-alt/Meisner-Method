@@ -5,6 +5,82 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export interface RedeemEventArenaDevicePairingRequest {
+  /**
+     * @minLength 32
+     * @maxLength 64
+     */
+  code: string;
+  /**
+     * @minLength 32
+     * @maxLength 128
+     */
+  deviceToken: string;
+}
+
+export type EventArenaDeviceSnapshotSnapshotAccountsItem = { [key: string]: unknown };
+
+export type EventArenaDeviceSnapshotSnapshotPositionsItem = { [key: string]: unknown };
+
+export type EventArenaDeviceSnapshotSnapshotTransactionsItem = { [key: string]: unknown };
+
+export type EventArenaDeviceSnapshotSnapshotOrdersItem = { [key: string]: unknown };
+
+export type EventArenaDeviceSnapshotSnapshotLotsItem = { [key: string]: unknown };
+
+export type EventArenaDeviceSnapshotSnapshotChallengeStore = { [key: string]: unknown };
+
+export type EventArenaDeviceSnapshotSnapshot = {
+  /**
+     * @minLength 12
+     * @maxLength 128
+     */
+  sourceInstallationId: string;
+  accounts: EventArenaDeviceSnapshotSnapshotAccountsItem[];
+  positions: EventArenaDeviceSnapshotSnapshotPositionsItem[];
+  transactions: EventArenaDeviceSnapshotSnapshotTransactionsItem[];
+  orders: EventArenaDeviceSnapshotSnapshotOrdersItem[];
+  lots: EventArenaDeviceSnapshotSnapshotLotsItem[];
+  challengeStore: EventArenaDeviceSnapshotSnapshotChallengeStore;
+};
+
+export interface EventArenaDeviceSnapshot {
+  snapshot: EventArenaDeviceSnapshotSnapshot;
+  activeId?: string;
+}
+
+export type EventArenaDeviceSyncResponseSnapshotAccountsItem = { [key: string]: unknown };
+
+export type EventArenaDeviceSyncResponseSnapshotPositionsItem = { [key: string]: unknown };
+
+export type EventArenaDeviceSyncResponseSnapshotTransactionsItem = { [key: string]: unknown };
+
+export type EventArenaDeviceSyncResponseSnapshotOrdersItem = { [key: string]: unknown };
+
+export type EventArenaDeviceSyncResponseSnapshotLotsItem = { [key: string]: unknown };
+
+export type EventArenaDeviceSyncResponseSnapshotChallengeStore = { [key: string]: unknown };
+
+export type EventArenaDeviceSyncResponseSnapshot = {
+  /**
+     * @minLength 12
+     * @maxLength 128
+     */
+  sourceInstallationId: string;
+  accounts: EventArenaDeviceSyncResponseSnapshotAccountsItem[];
+  positions: EventArenaDeviceSyncResponseSnapshotPositionsItem[];
+  transactions: EventArenaDeviceSyncResponseSnapshotTransactionsItem[];
+  orders: EventArenaDeviceSyncResponseSnapshotOrdersItem[];
+  lots: EventArenaDeviceSyncResponseSnapshotLotsItem[];
+  challengeStore: EventArenaDeviceSyncResponseSnapshotChallengeStore;
+};
+
+export interface EventArenaDeviceSyncResponse {
+  /** @minimum 1 */
+  revision: number;
+  snapshot: EventArenaDeviceSyncResponseSnapshot;
+}
+
 export type EventArenaScoreSubmissionEventType = typeof EventArenaScoreSubmissionEventType[keyof typeof EventArenaScoreSubmissionEventType];
 
 
@@ -1607,6 +1683,18 @@ export type GetEventArenaLeaderboardWeeks200 = {
 export type SubmitEventArenaScore200 = {
   ok: boolean;
   updatedAt: string;
+};
+
+export type CreateEventArenaDevicePairing200 = {
+  code: string;
+  expiresAt: string;
+  /** @minimum 1 */
+  revision: number;
+};
+
+export type SyncEventArenaDeviceState200 = {
+  /** @minimum 1 */
+  revision: number;
 };
 
 export type SearchHeatMapInstrumentsParams = {

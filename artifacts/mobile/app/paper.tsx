@@ -5,6 +5,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Crypto from 'expo-crypto';
+import { KeyboardAvoidingView as KeyboardControllerAvoidingView } from 'react-native-keyboard-controller';
 import {
   ActivityIndicator,
   Alert,
@@ -115,6 +117,17 @@ import {
 } from '@/lib/stockSearch';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import { getInstallationId } from '@/lib/installation';
+import {
+  buildEventArenaDeviceSnapshot,
+  EVENT_ARENA_DEVICE_DIRTY_KEY,
+  EVENT_ARENA_DEVICE_REVISION_KEY,
+  EVENT_ARENA_DEVICE_TOKEN_KEY,
+  EVENT_ARENA_SOURCE_INSTALLATION_ID_KEY,
+  getEventArenaParticipantId,
+  mergeEventArenaDeviceSnapshot,
+  syncEventArenaDeviceSnapshot,
+  type EventArenaDeviceSyncResponse,
+} from '@/lib/eventArenaDeviceSync';
 import { useApi } from '@/hooks/useApi';
 import { getRegularEventCalendarError } from '@/lib/paperChallengeCalendar';
 import {
@@ -364,6 +377,11 @@ export default function PaperScreen() {
   const activeGroupTabs = TABS.filter((tab) => activeTabGroup.tabs.includes(tab.id));
   const [chartRange, setChartRange] = useState<(typeof HISTORY_RANGES)[number]['id']>('ALL');
   const [showAccountManagement, setShowAccountManagement] = useState(false);
+  const [deviceTransferMode, setDeviceTransferMode] = useState<'create' | 'restore' | null>(null);
+  const [deviceTransferCode, setDeviceTransferCode] = useState('');
+  const [deviceTransferCodeInput, setDeviceTransferCodeInput] = useState('');
+  const [deviceTransferBusy, setDeviceTransferBusy] = useState(false);
+  const [deviceTransferError, setDeviceTransferError] = useState('');
   const [showTradeModal, setShowTradeModal] = useState(false);
   const [showOrderSheet, setShowOrderSheet] = useState(false);
   const [lightningTradeOfferWindow, setLightningTradeOfferWindow] = useState<PaperChallengeWindow | null>(null);
@@ -684,6 +702,18 @@ export default function PaperScreen() {
   const ordersRef = useRef<PaperOrder[]>([]);
   const lotsRef = useRef<PaperLot[]>([]);
   const activeIdRef = useRef<string>('');
+  const eventArenaDeviceTokenRef = useRef('');
+  const eventArenaDeviceRevisionRef = useRef(0);
+  const eventArenaSourceInstallationIdRef = useRef('');
+  const eventArenaDeviceSyncEnabledRef = useRef(false);
+  const pushEventArenaSnapshotRef = useRef<(data: {
+    accounts: PaperAccount[];
+    positions: PaperPosition[];
+    transactions: PaperTransaction[];
+    orders: PaperOrder[];
+    lots: PaperLot[];
+    challengeStore: PaperChallengeStore;
+  }) => Promise<void>>(async () => {});
   const accountValueSnapshotsRef = useRef<PaperAccountValueSnapshot[]>([]);
   const orderSubmissionRef = useRef(false);
   const tradeEntryCheckInFlightRef = useRef(false);
@@ -746,6 +776,16 @@ export default function PaperScreen() {
     });
     paperChallengeRef.current = next;
     setPaperChallenge(next);
+    if (eventArenaDeviceSyncEnabledRef.current) {
+      void pushEventArenaSnapshotRef.current({
+        accounts: accountsRef.current,
+        positions: positionsRef.current,
+        transactions: transactionsRef.current,
+        orders: ordersRef.current,
+        lots: lotsRef.current,
+        challengeStore: next,
+      });
+    }
     return next;
   }, []);
 
@@ -757,12 +797,55 @@ export default function PaperScreen() {
   }, [challengeFinalizationBusy, isPaperChallengeWaiting]);
 
   // ── Storage helpers ───────────────────────────────────────────────────────
+  const pushEventArenaSnapshot = useCallback((data: {
+    accounts: PaperAccount[];
+    positions: PaperPosition[];
+    transactions: PaperTransaction[];
+    orders: PaperOrder[];
+    lots: PaperLot[];
+    challengeStore: PaperChallengeStore;
+  }) => {
+    if (!eventArenaDeviceSyncEnabledRef.current) return Promise.resolve();
+    return syncEventArenaDeviceSnapshot(
+      AsyncStorage,
+      { ...data, activeId: activeIdRef.current },
+      data.challengeStore,
+      (snapshot, token, revision) => apiFetch<{ revision: number }>('/api/event-arena/device-sync', {
+        method: 'PUT',
+        headers: {
+          'X-Event-Arena-Device-Token': token,
+          'X-Event-Arena-Revision': String(revision),
+        },
+        body: JSON.stringify({ snapshot }),
+      }),
+    ).then((revision) => {
+      if (revision !== null) eventArenaDeviceRevisionRef.current = revision;
+      setDeviceTransferError('');
+    }).catch(() => {
+      setDeviceTransferError('This device saved your changes locally, but could not sync the shared Event Arena account.');
+    });
+  }, [apiFetch]);
+  pushEventArenaSnapshotRef.current = pushEventArenaSnapshot;
+
   const flushCache = useCallback((
     accts: PaperAccount[], pos: PaperPosition[], txns: PaperTransaction[],
     ords: PaperOrder[], ls: PaperLot[], aid: string,
   ): Promise<void> => {
     return (async () => {
+      if (eventArenaDeviceSyncEnabledRef.current) {
+        await AsyncStorage.setItem(EVENT_ARENA_DEVICE_DIRTY_KEY, 'true').catch(() => {
+          setDeviceTransferError('Shared Event Arena changes may not sync until local storage is available.');
+        });
+      }
       await writePaperCache({ accounts: accts, positions: pos, transactions: txns, orders: ords, lots: ls, activeId: aid });
+      await pushEventArenaSnapshot({
+        accounts: accts,
+        positions: pos,
+        transactions: txns,
+        orders: ords,
+        lots: ls,
+        challengeStore: paperChallengeRef.current,
+      });
       const enrollment = paperChallengeRef.current.lightningEnrollment;
       if (!enrollment || !shouldSyncLightningRoundPreparation({
         enrollmentAccountId: enrollment.accountId,
@@ -772,7 +855,7 @@ export default function PaperScreen() {
       })) return;
       const account = accts.find((item) => item.id === enrollment.accountId);
       if (!account) return;
-      const installationId = await getInstallationId();
+      const installationId = await getEventArenaParticipantId(AsyncStorage, getInstallationId);
       try {
         await apiFetch(`/api/event-arena/lightning-round/${encodeURIComponent(enrollment.eventId)}/state`, {
           method: 'PUT',
@@ -791,7 +874,7 @@ export default function PaperScreen() {
         setLightningPreparationMessage('Your account is saved on this device, but Lightning Round preparation could not sync.');
       }
     })();
-  }, [apiFetch]);
+  }, [apiFetch, pushEventArenaSnapshot]);
 
   /** Save all mutable slices at once — avoids repeated flushCache calls on complex updates. */
   const saveAll = useCallback(async (
@@ -825,7 +908,7 @@ export default function PaperScreen() {
     let cancelled = false;
     void (async () => {
       try {
-        const installationId = await getInstallationId();
+        const installationId = await getEventArenaParticipantId(AsyncStorage, getInstallationId);
         const state = await apiFetch<{
           participant?: { status?: string; failureReason?: string | null };
           account?: PaperAccount | null;
@@ -908,6 +991,128 @@ export default function PaperScreen() {
     setOrders(data);
     await flushCache(accountsRef.current, positionsRef.current, transactionsRef.current, data, lotsRef.current, activeIdRef.current);
   }, [flushCache]);
+
+  const createEventArenaTransferCode = useCallback(async () => {
+    setDeviceTransferBusy(true);
+    setDeviceTransferError('');
+    try {
+      const savedToken = eventArenaDeviceTokenRef.current
+        || await AsyncStorage.getItem(EVENT_ARENA_DEVICE_TOKEN_KEY)
+        || Crypto.randomUUID().replace(/-/g, '');
+      await AsyncStorage.setItem(EVENT_ARENA_DEVICE_TOKEN_KEY, savedToken);
+      eventArenaDeviceTokenRef.current = savedToken;
+      const sourceInstallationId = await getEventArenaParticipantId(
+        AsyncStorage,
+        getInstallationId,
+      );
+      eventArenaSourceInstallationIdRef.current = sourceInstallationId;
+      const snapshot = buildEventArenaDeviceSnapshot({
+        accounts: accountsRef.current,
+        positions: positionsRef.current,
+        transactions: transactionsRef.current,
+        orders: ordersRef.current,
+        lots: lotsRef.current,
+        activeId: activeIdRef.current,
+      }, paperChallengeRef.current, sourceInstallationId);
+      if (snapshot.accounts.length === 0) {
+        throw new Error('Join an Event Arena event before transferring its account.');
+      }
+      const storedRevision = Number(await AsyncStorage.getItem(EVENT_ARENA_DEVICE_REVISION_KEY));
+      if (Number.isInteger(storedRevision) && storedRevision > 0) {
+        eventArenaDeviceRevisionRef.current = storedRevision;
+      }
+      const headers: Record<string, string> = {
+        'X-Event-Arena-Device-Token': savedToken,
+      };
+      if (eventArenaDeviceRevisionRef.current > 0) {
+        headers['X-Event-Arena-Revision'] = String(eventArenaDeviceRevisionRef.current);
+      }
+      const result = await apiFetch<{ code: string; expiresAt: string; revision: number }>(
+        '/api/event-arena/device-pairing',
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ snapshot }),
+        },
+      );
+      eventArenaDeviceRevisionRef.current = result.revision;
+      eventArenaDeviceSyncEnabledRef.current = true;
+      await Promise.all([
+        AsyncStorage.setItem(EVENT_ARENA_DEVICE_REVISION_KEY, String(result.revision)),
+        AsyncStorage.setItem(EVENT_ARENA_SOURCE_INSTALLATION_ID_KEY, sourceInstallationId),
+        AsyncStorage.setItem(EVENT_ARENA_DEVICE_DIRTY_KEY, 'false'),
+      ]);
+      setDeviceTransferCode(result.code);
+      setDeviceTransferMode('create');
+    } catch (error) {
+      setDeviceTransferError(error instanceof Error ? error.message : 'Could not create a transfer code.');
+    } finally {
+      setDeviceTransferBusy(false);
+    }
+  }, [apiFetch]);
+
+  const restoreEventArenaTransfer = useCallback(async () => {
+    const code = deviceTransferCodeInput.trim();
+    if (!code) {
+      setDeviceTransferError('Enter the transfer code from your other device.');
+      return;
+    }
+    setDeviceTransferBusy(true);
+    setDeviceTransferError('');
+    try {
+      const deviceToken = eventArenaDeviceTokenRef.current
+        || await AsyncStorage.getItem(EVENT_ARENA_DEVICE_TOKEN_KEY)
+        || Crypto.randomUUID().replace(/-/g, '');
+      await AsyncStorage.setItem(EVENT_ARENA_DEVICE_TOKEN_KEY, deviceToken);
+      const restored = await apiFetch<EventArenaDeviceSyncResponse>('/api/event-arena/device-pairing/redeem', {
+        method: 'POST',
+        body: JSON.stringify({ code, deviceToken }),
+      });
+      const merged = mergeEventArenaDeviceSnapshot({
+        accounts: accountsRef.current,
+        positions: positionsRef.current,
+        transactions: transactionsRef.current,
+        orders: ordersRef.current,
+        lots: lotsRef.current,
+        activeId: activeIdRef.current,
+      }, paperChallengeRef.current, restored.snapshot, { protectConflicts: true });
+      const activeEventAccount = restored.snapshot.challengeStore.lightningEnrollment?.accountId
+        ?? restored.snapshot.challengeStore.enrollment?.accountId
+        ?? restored.snapshot.accounts[0]?.id
+        ?? merged.cache.activeId;
+      const nextCache = { ...merged.cache, activeId: activeEventAccount };
+      const nextChallengeStore = await updatePaperChallengeStore(() => merged.challengeStore, {
+        getItem: (key) => AsyncStorage.getItem(key),
+        setItem: (key, value) => AsyncStorage.setItem(key, value),
+      });
+      paperChallengeRef.current = nextChallengeStore;
+      setPaperChallenge(nextChallengeStore);
+      eventArenaDeviceTokenRef.current = deviceToken;
+      eventArenaDeviceRevisionRef.current = restored.revision;
+      eventArenaSourceInstallationIdRef.current = restored.snapshot.sourceInstallationId;
+      eventArenaDeviceSyncEnabledRef.current = true;
+      await Promise.all([
+        AsyncStorage.setItem(EVENT_ARENA_DEVICE_REVISION_KEY, String(restored.revision)),
+        AsyncStorage.setItem(EVENT_ARENA_SOURCE_INSTALLATION_ID_KEY, restored.snapshot.sourceInstallationId),
+        AsyncStorage.setItem(EVENT_ARENA_DEVICE_DIRTY_KEY, 'false'),
+      ]);
+      await saveAll(
+        nextCache.accounts,
+        nextCache.positions,
+        nextCache.transactions,
+        nextCache.orders,
+        nextCache.lots,
+        nextCache.activeId,
+      );
+      setDeviceTransferCodeInput('');
+      setDeviceTransferMode(null);
+      setShowAccountManagement(false);
+    } catch (error) {
+      setDeviceTransferError(error instanceof Error ? error.message : 'Could not restore the Event Arena account.');
+    } finally {
+      setDeviceTransferBusy(false);
+    }
+  }, [apiFetch, deviceTransferCodeInput, saveAll]);
 
   const persistAccountValueSnapshots = useCallback(async (
     next: PaperAccountValueSnapshot[],
@@ -1069,6 +1274,94 @@ export default function PaperScreen() {
       });
     }
 
+    let syncAfterInit = true;
+    const savedDeviceToken = await AsyncStorage.getItem(EVENT_ARENA_DEVICE_TOKEN_KEY).catch(() => null);
+    if (savedDeviceToken) {
+      const savedRevision = Number(await AsyncStorage.getItem(EVENT_ARENA_DEVICE_REVISION_KEY).catch(() => '0'));
+      const storedSourceInstallationId = await AsyncStorage.getItem(EVENT_ARENA_SOURCE_INSTALLATION_ID_KEY).catch(() => null);
+      const dirty = await AsyncStorage.getItem(EVENT_ARENA_DEVICE_DIRTY_KEY).catch(() => null);
+      eventArenaDeviceTokenRef.current = savedDeviceToken;
+      eventArenaDeviceRevisionRef.current = Number.isInteger(savedRevision) && savedRevision >= 0 ? savedRevision : 0;
+      eventArenaSourceInstallationIdRef.current = storedSourceInstallationId ?? await getInstallationId();
+      eventArenaDeviceSyncEnabledRef.current = true;
+      try {
+        if (dirty === 'true') {
+          const snapshot = buildEventArenaDeviceSnapshot({
+            accounts: accountsRef.current,
+            positions: positionsRef.current,
+            transactions: transactionsRef.current,
+            orders: ordersRef.current,
+            lots: lotsRef.current,
+            activeId: activeIdRef.current,
+          }, paperChallengeRef.current, eventArenaSourceInstallationIdRef.current);
+          const saved = await apiFetch<{ revision: number }>('/api/event-arena/device-sync', {
+            method: 'PUT',
+            headers: {
+              'X-Event-Arena-Device-Token': savedDeviceToken,
+              'X-Event-Arena-Revision': String(eventArenaDeviceRevisionRef.current),
+            },
+            body: JSON.stringify({ snapshot }),
+          });
+          eventArenaDeviceRevisionRef.current = saved.revision;
+          await Promise.all([
+            AsyncStorage.setItem(EVENT_ARENA_DEVICE_REVISION_KEY, String(saved.revision)),
+            AsyncStorage.setItem(EVENT_ARENA_DEVICE_DIRTY_KEY, 'false'),
+          ]);
+        } else {
+          const remote = await apiFetch<EventArenaDeviceSyncResponse>('/api/event-arena/device-sync', {
+            headers: { 'X-Event-Arena-Device-Token': savedDeviceToken },
+          });
+          const merged = mergeEventArenaDeviceSnapshot({
+            accounts: accountsRef.current,
+            positions: positionsRef.current,
+            transactions: transactionsRef.current,
+            orders: ordersRef.current,
+            lots: lotsRef.current,
+            activeId: activeIdRef.current,
+          }, paperChallengeRef.current, remote.snapshot);
+          const hadLocalEventAccount = (cached?.accounts ?? []).some((item) => isPaperChallengeAccountId(item.id));
+          const restoredEventAccountId = remote.snapshot.challengeStore.lightningEnrollment?.accountId
+            ?? remote.snapshot.challengeStore.enrollment?.accountId
+            ?? remote.snapshot.accounts[0]?.id;
+          const nextActiveId = hadLocalEventAccount
+            ? merged.cache.activeId
+            : restoredEventAccountId ?? merged.cache.activeId;
+          const restoredCache = { ...merged.cache, activeId: nextActiveId };
+          accountsRef.current = restoredCache.accounts;
+          positionsRef.current = restoredCache.positions;
+          transactionsRef.current = restoredCache.transactions;
+          ordersRef.current = restoredCache.orders;
+          lotsRef.current = restoredCache.lots;
+          activeIdRef.current = restoredCache.activeId;
+          setAccounts(restoredCache.accounts);
+          setPositions(restoredCache.positions);
+          setTransactions(restoredCache.transactions);
+          setOrders(restoredCache.orders);
+          setLots(restoredCache.lots);
+          setActiveId(restoredCache.activeId);
+          await writePaperCache(restoredCache);
+          const challengeStore = await updatePaperChallengeStore(() => merged.challengeStore, {
+            getItem: (key) => AsyncStorage.getItem(key),
+            setItem: (key, value) => AsyncStorage.setItem(key, value),
+          });
+          paperChallengeRef.current = challengeStore;
+          setPaperChallenge(challengeStore);
+          eventArenaDeviceRevisionRef.current = remote.revision;
+          eventArenaSourceInstallationIdRef.current = remote.snapshot.sourceInstallationId;
+          await Promise.all([
+            AsyncStorage.setItem(EVENT_ARENA_DEVICE_REVISION_KEY, String(remote.revision)),
+            AsyncStorage.setItem(EVENT_ARENA_SOURCE_INSTALLATION_ID_KEY, remote.snapshot.sourceInstallationId),
+          ]);
+        }
+        setDeviceTransferError('');
+      } catch {
+        syncAfterInit = false;
+        setDeviceTransferError(
+          'The shared Event Arena account could not be refreshed. Existing local data was left unchanged.',
+        );
+      }
+    }
+
     const nowISO = new Date().toISOString();
     const currentAccounts = accountsRef.current;
     const currentPositions = positionsRef.current;
@@ -1099,11 +1392,23 @@ export default function PaperScreen() {
       lots: lotsRef.current,
       activeId: id,
     });
+    if (syncAfterInit && eventArenaDeviceSyncEnabledRef.current) {
+      await pushEventArenaSnapshot({
+        accounts: settledAccounts,
+        positions: currentPositions,
+        transactions: finalTxns,
+        orders: ordersRef.current,
+        lots: lotsRef.current,
+        challengeStore: paperChallengeRef.current,
+      });
+    }
     setErrorMsg('');
     setLoaded(true);
-  }, []);
+  }, [apiFetch, pushEventArenaSnapshot]);
 
-  useEffect(() => { init(); }, [init]);
+  useEffect(() => {
+    if (paperChallengeReady) void init();
+  }, [init, paperChallengeReady]);
 
   // ── Pending-order evaluation ──────────────────────────────────────────────
   /**
@@ -1473,7 +1778,7 @@ export default function PaperScreen() {
       const completedAtMs = Date.now();
       let finalRank: number | undefined;
       if (enrollment.eventType === 'lightning-round' && enrollment.leaderboardOptedIn) {
-        const installationId = await getInstallationId();
+        const installationId = await getEventArenaParticipantId(AsyncStorage, getInstallationId);
         const response = await fetch(
           `${BASE_URL}/api/event-arena/${encodeURIComponent(enrollment.eventId)}/leaderboard`,
           { headers: { 'X-Event-Arena-Installation-Id': installationId } },
@@ -2243,7 +2548,7 @@ export default function PaperScreen() {
     }
     try {
       setFinalLightningCancelling(true);
-      const installationId = await getInstallationId();
+      const installationId = await getEventArenaParticipantId(AsyncStorage, getInstallationId);
       await apiFetch(`/api/event-arena/lightning-round/${encodeURIComponent(enrollment.eventId)}/leave`, {
         method: 'POST',
         headers: { 'X-Event-Arena-Installation-Id': installationId },
@@ -2275,7 +2580,7 @@ export default function PaperScreen() {
     try {
       setLeavingLightning(true);
       setLeaveLightningError('');
-      const installationId = await getInstallationId();
+      const installationId = await getEventArenaParticipantId(AsyncStorage, getInstallationId);
       await apiFetch(`/api/event-arena/lightning-round/${encodeURIComponent(enrollment.eventId)}/leave`, {
         method: 'POST',
         headers: { 'X-Event-Arena-Installation-Id': installationId },
@@ -4175,9 +4480,144 @@ export default function PaperScreen() {
                     </View>
                   </View>
                 )}
+                <View style={{ gap: 9, paddingTop: 12, paddingBottom: 8 }}>
+                  <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 1 }}>
+                    EVENT ARENA DEVICE TRANSFER
+                  </Text>
+                  {visibleAccounts.some((item) => isPaperChallengeAccountId(item.id)) && (
+                    <TouchableOpacity
+                      testID="create-event-arena-transfer-code"
+                      accessibilityRole="button"
+                      accessibilityLabel="Create a one-time Event Arena transfer code"
+                      onPress={() => {
+                        setShowAccountManagement(false);
+                        void createEventArenaTransferCode();
+                      }}
+                      disabled={deviceTransferBusy}
+                      style={{ minHeight: 46, borderRadius: 12, borderWidth: 1, borderColor: colors.primary, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 }}
+                    >
+                      <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 12 }}>
+                        {deviceTransferBusy ? 'PREPARING CODE…' : 'PAIR ANOTHER DEVICE'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    testID="open-event-arena-restore"
+                    accessibilityRole="button"
+                    accessibilityLabel="Restore an Event Arena account with a transfer code"
+                    onPress={() => {
+                      setDeviceTransferError('');
+                      setDeviceTransferCodeInput('');
+                      setDeviceTransferMode('restore');
+                    }}
+                    style={{ minHeight: 46, borderRadius: 12, backgroundColor: 'rgba(192,192,192,0.12)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 }}
+                  >
+                    <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>
+                      RESTORE WITH A CODE
+                    </Text>
+                  </TouchableOpacity>
+                  {deviceTransferError ? (
+                    <Text testID="event-arena-device-sync-error" accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 17 }}>
+                      {deviceTransferError}
+                    </Text>
+                  ) : null}
+                </View>
               </ScrollView>
             </View>
           </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={deviceTransferMode !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!deviceTransferBusy) setDeviceTransferMode(null);
+        }}
+      >
+        <View style={[styles.modalOverlay, { justifyContent: 'center', paddingHorizontal: 20 }]}>
+          <Pressable
+            testID="close-event-arena-device-transfer-backdrop"
+            style={StyleSheet.absoluteFillObject}
+            accessibilityLabel="Close Event Arena device transfer"
+            onPress={() => {
+              if (!deviceTransferBusy) setDeviceTransferMode(null);
+            }}
+          />
+          <KeyboardControllerAvoidingView behavior="padding" keyboardVerticalOffset={0}>
+            <View testID="event-arena-device-transfer" style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 18, padding: 20, gap: 14 }}>
+              <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 18 }}>
+                {deviceTransferMode === 'create' ? 'Pair another device' : 'Restore Event Arena'}
+              </Text>
+              {deviceTransferMode === 'create' ? (
+                <>
+                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 19 }}>
+                    Enter this one-use code on your other device within 10 minutes. Your original account stays unchanged.
+                  </Text>
+                  <Text
+                    testID="event-arena-device-transfer-code"
+                    selectable
+                    style={{ color: colors.foreground, backgroundColor: 'rgba(192,192,192,0.1)', borderRadius: 10, padding: 14, fontFamily: 'Inter_700Bold', fontSize: 15, textAlign: 'center' }}
+                  >
+                    {deviceTransferBusy ? 'Preparing secure code…' : deviceTransferCode}
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 19 }}>
+                    On your other device, open Event Arena account settings and create a one-time transfer code.
+                  </Text>
+                  <TextInput
+                    testID="event-arena-device-transfer-code-input"
+                    accessibilityLabel="One-time Event Arena transfer code"
+                    value={deviceTransferCodeInput}
+                    onChangeText={setDeviceTransferCodeInput}
+                    placeholder="Paste transfer code"
+                    placeholderTextColor={colors.mutedForeground}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    maxLength={64}
+                    returnKeyType="done"
+                    editable={!deviceTransferBusy}
+                    style={{ minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, color: colors.foreground, fontFamily: 'Inter_500Medium', fontSize: 14 }}
+                  />
+                </>
+              )}
+              {deviceTransferError ? (
+                <Text testID="event-arena-device-transfer-error" accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 17 }}>
+                  {deviceTransferError}
+                </Text>
+              ) : null}
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                {deviceTransferMode === 'restore' && (
+                  <TouchableOpacity
+                    testID="submit-event-arena-device-restore"
+                    accessibilityRole="button"
+                    onPress={() => { void restoreEventArenaTransfer(); }}
+                    disabled={deviceTransferBusy}
+                    style={{ flex: 1, minHeight: 46, borderRadius: 11, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', opacity: deviceTransferBusy ? 0.65 : 1 }}
+                  >
+                    <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>
+                      {deviceTransferBusy ? 'RESTORING…' : 'RESTORE ACCOUNT'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  testID="close-event-arena-device-transfer"
+                  accessibilityRole="button"
+                  onPress={() => {
+                    if (deviceTransferBusy) return;
+                    setDeviceTransferMode(null);
+                    setDeviceTransferError('');
+                  }}
+                  style={{ flex: 1, minHeight: 46, borderRadius: 11, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>DONE</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </KeyboardControllerAvoidingView>
         </View>
       </Modal>
 

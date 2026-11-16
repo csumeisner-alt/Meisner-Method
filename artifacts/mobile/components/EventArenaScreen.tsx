@@ -58,6 +58,12 @@ import {
 } from '@/lib/paperMath';
 import { applyEventCashTransfer } from '@/lib/eventArenaTransfers';
 import { getInstallationId } from '@/lib/installation';
+import {
+  createEventArenaDeviceSyncSender,
+  EVENT_ARENA_DEVICE_TOKEN_KEY,
+  getEventArenaParticipantId,
+  syncStoredEventArenaDeviceSnapshot,
+} from '@/lib/eventArenaDeviceSync';
 import { registerEventArenaPushDevice } from '@/lib/eventArenaPushRegistration';
 import { getRegularEventCalendarError } from '@/lib/paperChallengeCalendar';
 
@@ -67,6 +73,19 @@ const PAPER_CACHE_KEY = '@stocksense/paper_v2';
 const PAPER_VALUE_SNAPSHOT_KEY = '@stocksense/paper_equity_snapshots_v1';
 const EVENT_ARENA_CASH_HISTORY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
+
+async function syncPairedEventArenaState(): Promise<boolean> {
+  if (!await AsyncStorage.getItem(EVENT_ARENA_DEVICE_TOKEN_KEY)) return true;
+  try {
+    await syncStoredEventArenaDeviceSnapshot(
+      AsyncStorage,
+      createEventArenaDeviceSyncSender(BASE_URL),
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 type Section = 'competition' | 'leaderboard' | 'trades' | 'past';
 type StoredPaperCache = Partial<EventArenaAccountData> & { activeId?: string; lots?: PaperLot[] };
@@ -426,7 +445,7 @@ function EventArenaScreenContent() {
     setCashNotificationsLoading(true);
     setCashNotificationsError('');
     try {
-      const installationId = await getInstallationId();
+      const installationId = await getEventArenaParticipantId(AsyncStorage, getInstallationId);
       const response = await fetch(
         `${BASE_URL}/api/event-arena/${encodeURIComponent(eventId)}/transfers`,
         { headers: {
@@ -481,7 +500,12 @@ function EventArenaScreenContent() {
           setCashNotificationsUnread(notifications.filter((item) => !item.readAt).length);
         }
       }
-      if (accountChanged) await refreshAccountData();
+      if (accountChanged) {
+        await refreshAccountData();
+        if (!await syncPairedEventArenaState()) {
+          setCashNotificationsError('The transfer was saved locally, but the shared account did not sync.');
+        }
+      }
     } catch (error) {
       if (requestSequence === cashNotificationRequestSequenceRef.current) {
         setCashNotificationsError(error instanceof Error ? error.message : 'Cash notifications could not be loaded.');
@@ -515,7 +539,7 @@ function EventArenaScreenContent() {
     if (!currentEnrollment || currentWindow.phase !== 'active' || !currentEnrollment.leaderboardOptedIn) {
       throw new Error('Cash transfers are available only to active event participants.');
     }
-    const installationId = await getInstallationId();
+    const installationId = await getEventArenaParticipantId(AsyncStorage, getInstallationId);
     const response = await fetch(`${BASE_URL}/api/event-arena/${encodeURIComponent(currentWindow.id)}/transfers`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -545,6 +569,9 @@ function EventArenaScreenContent() {
       setItem: (key, value) => AsyncStorage.setItem(key, value),
     });
     await refreshAccountData();
+    if (!await syncPairedEventArenaState()) {
+      setCashNotificationsError('The transfer was saved locally, but the shared account did not sync.');
+    }
     void refreshCashNotifications(false);
   }, [currentWindow.id, currentWindow.phase, refreshAccountData, refreshCashNotifications, store.enrollment]);
 
@@ -672,6 +699,9 @@ function EventArenaScreenContent() {
       });
       setStore(updated);
       if (updated.enrollment?.eventId === event.id) {
+        if (!await syncPairedEventArenaState()) {
+          setAccountError('Your signup is saved on this device, but could not sync to the paired device.');
+        }
         setJoinAliasOpen(false);
         setJoinAliasError('');
         setSection('competition');
@@ -698,6 +728,9 @@ function EventArenaScreenContent() {
       },
     );
     setStore(updated);
+      if (!await syncPairedEventArenaState()) {
+        setAccountError('Your withdrawal is saved on this device, but could not sync to the paired device.');
+      }
   };
 
   const performWithdrawal = async () => {

@@ -15,6 +15,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { applyEventCashTransfer } from '@/lib/eventArenaTransfers';
 import { getInstallationId } from '@/lib/installation';
+import {
+  createEventArenaDeviceSyncSender,
+  EVENT_ARENA_DEVICE_TOKEN_KEY,
+  getEventArenaParticipantId,
+  syncStoredEventArenaDeviceSnapshot,
+} from '@/lib/eventArenaDeviceSync';
 import { getPaperChallengeWindow, loadPaperChallengeStore } from '@/lib/paperChallenge';
 
 const PAPER_CACHE_KEY = '@stocksense/paper_v2';
@@ -55,7 +61,7 @@ export function EventCashReceivedCelebration() {
       const event = getPaperChallengeWindow(Date.now());
       if (!enrollment || enrollment.eventId !== event.id) return;
 
-      const installationId = await getInstallationId();
+      const installationId = await getEventArenaParticipantId(AsyncStorage, getInstallationId);
       const response = await fetch(`${BASE_URL}/api/event-arena/${encodeURIComponent(event.id)}/transfers`, {
         headers: {
           'X-Event-Arena-Installation-Id': installationId,
@@ -88,7 +94,19 @@ export function EventCashReceivedCelebration() {
         });
         accountChanged ||= applied.applied;
       }
-      if (accountChanged) DeviceEventEmitter.emit('eventArenaCashReceived', { eventId: event.id, accountId: enrollment.accountId });
+      if (accountChanged) {
+        if (await AsyncStorage.getItem(EVENT_ARENA_DEVICE_TOKEN_KEY)) {
+          try {
+            await syncStoredEventArenaDeviceSnapshot(
+              AsyncStorage,
+              createEventArenaDeviceSyncSender(BASE_URL),
+            );
+          } catch {
+            setError('The transfer was applied locally, but the shared account did not sync.');
+          }
+        }
+        DeviceEventEmitter.emit('eventArenaCashReceived', { eventId: event.id, accountId: enrollment.accountId });
+      }
 
       const unread = notifications.filter((item) => !item.readAt);
       if (unread.length > 0) setReceipt({ eventId: event.id, notifications: unread });
@@ -126,7 +144,7 @@ export function EventCashReceivedCelebration() {
     setSaving(true);
     setError('');
     try {
-      const installationId = await getInstallationId();
+      const installationId = await getEventArenaParticipantId(AsyncStorage, getInstallationId);
       const response = await fetch(
         `${BASE_URL}/api/event-arena/${encodeURIComponent(receipt.eventId)}/transfers/read`,
         {

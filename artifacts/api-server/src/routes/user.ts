@@ -26,6 +26,7 @@ import {
 } from "../lib/watchlistStore.js";
 import { createNotificationAlertRouter } from "./notificationAlertRoutes.js";
 import { createEventArenaRouter } from "./eventArenaRoutes.js";
+import { createPaperRouter } from "./paperRoutes.js";
 
 const { Pool } = pg;
 
@@ -276,6 +277,32 @@ async function runSchemaMigrations(): Promise<void> {
       read_at TIMESTAMPTZ,
       PRIMARY KEY (event_id, transfer_ref),
       UNIQUE (event_id, sender_installation_id, idempotency_key)
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS event_arena_device_sync (
+      sync_id TEXT PRIMARY KEY,
+      source_installation_id TEXT NOT NULL,
+      revision INTEGER NOT NULL DEFAULT 0,
+      challenge_store JSONB NOT NULL DEFAULT '{"enrollment":null,"lightningEnrollment":null,"history":[]}'::jsonb,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS event_arena_device_sync_tokens (
+      token_hash TEXT PRIMARY KEY,
+      sync_id TEXT NOT NULL REFERENCES event_arena_device_sync(sync_id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS event_arena_device_pairing_codes (
+      code_hash TEXT PRIMARY KEY,
+      sync_id TEXT NOT NULL REFERENCES event_arena_device_sync(sync_id) ON DELETE CASCADE,
+      expires_at TIMESTAMPTZ NOT NULL,
+      consumed_at TIMESTAMPTZ,
+      redeemed_token_hash TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
   await pool.query(`
@@ -1165,6 +1192,7 @@ router.use(createEventArenaRouter(
   { query: (sql, values) => pool.query(sql, values) },
   requireSchema,
 ));
+router.use(createPaperRouter(pool, requireSchema));
 
 // ── Push Token ─────────────────────────────────────────────────────────────
 router.post("/user/push-token", requireAuth, async (req: any, res) => {

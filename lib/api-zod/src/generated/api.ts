@@ -322,6 +322,158 @@ export const GetEventArenaCashNotificationsResponse = zod.object({
 
 
 /**
+ * @summary Save an Event Arena paper snapshot and create a one-use device code
+ */
+export const createEventArenaDevicePairingHeaderXEventArenaDeviceTokenMin = 32;
+export const createEventArenaDevicePairingHeaderXEventArenaDeviceTokenMax = 128;
+
+export const createEventArenaDevicePairingHeaderXEventArenaRevisionMin = 0;
+
+
+
+export const CreateEventArenaDevicePairingHeader = zod.object({
+  "X-Event-Arena-Device-Token": zod.string().min(createEventArenaDevicePairingHeaderXEventArenaDeviceTokenMin).max(createEventArenaDevicePairingHeaderXEventArenaDeviceTokenMax),
+  "X-Event-Arena-Revision": zod.number().min(createEventArenaDevicePairingHeaderXEventArenaRevisionMin).optional()
+})
+
+export const createEventArenaDevicePairingBodySnapshotSourceInstallationIdMin = 12;
+export const createEventArenaDevicePairingBodySnapshotSourceInstallationIdMax = 128;
+
+
+
+export const CreateEventArenaDevicePairingBody = zod.object({
+  "snapshot": zod.object({
+  "sourceInstallationId": zod.string().min(createEventArenaDevicePairingBodySnapshotSourceInstallationIdMin).max(createEventArenaDevicePairingBodySnapshotSourceInstallationIdMax),
+  "accounts": zod.array(zod.record(zod.string(), zod.unknown())),
+  "positions": zod.array(zod.record(zod.string(), zod.unknown())),
+  "transactions": zod.array(zod.record(zod.string(), zod.unknown())),
+  "orders": zod.array(zod.record(zod.string(), zod.unknown())),
+  "lots": zod.array(zod.record(zod.string(), zod.unknown())),
+  "challengeStore": zod.record(zod.string(), zod.unknown())
+}),
+  "activeId": zod.string().optional()
+})
+
+
+
+
+export const CreateEventArenaDevicePairingResponse = zod.object({
+  "code": zod.string(),
+  "expiresAt": zod.coerce.date(),
+  "revision": zod.number().min(1)
+})
+
+
+/**
+ * @summary Redeem a one-use code and restore its Event Arena snapshot
+ */
+export const redeemEventArenaDevicePairingBodyCodeMin = 32;
+export const redeemEventArenaDevicePairingBodyCodeMax = 64;
+
+export const redeemEventArenaDevicePairingBodyDeviceTokenMin = 32;
+export const redeemEventArenaDevicePairingBodyDeviceTokenMax = 128;
+
+
+
+export const RedeemEventArenaDevicePairingBody = zod.object({
+  "code": zod.string().min(redeemEventArenaDevicePairingBodyCodeMin).max(redeemEventArenaDevicePairingBodyCodeMax),
+  "deviceToken": zod.string().min(redeemEventArenaDevicePairingBodyDeviceTokenMin).max(redeemEventArenaDevicePairingBodyDeviceTokenMax)
+})
+
+
+export const redeemEventArenaDevicePairingResponseSnapshotSourceInstallationIdMin = 12;
+export const redeemEventArenaDevicePairingResponseSnapshotSourceInstallationIdMax = 128;
+
+
+
+export const RedeemEventArenaDevicePairingResponse = zod.object({
+  "revision": zod.number().min(1),
+  "snapshot": zod.object({
+  "sourceInstallationId": zod.string().min(redeemEventArenaDevicePairingResponseSnapshotSourceInstallationIdMin).max(redeemEventArenaDevicePairingResponseSnapshotSourceInstallationIdMax),
+  "accounts": zod.array(zod.record(zod.string(), zod.unknown())),
+  "positions": zod.array(zod.record(zod.string(), zod.unknown())),
+  "transactions": zod.array(zod.record(zod.string(), zod.unknown())),
+  "orders": zod.array(zod.record(zod.string(), zod.unknown())),
+  "lots": zod.array(zod.record(zod.string(), zod.unknown())),
+  "challengeStore": zod.record(zod.string(), zod.unknown())
+})
+})
+
+
+/**
+ * @summary Load the shared Event Arena paper snapshot
+ */
+export const getEventArenaDeviceSyncHeaderXEventArenaDeviceTokenMin = 32;
+export const getEventArenaDeviceSyncHeaderXEventArenaDeviceTokenMax = 128;
+
+
+
+export const GetEventArenaDeviceSyncHeader = zod.object({
+  "X-Event-Arena-Device-Token": zod.string().min(getEventArenaDeviceSyncHeaderXEventArenaDeviceTokenMin).max(getEventArenaDeviceSyncHeaderXEventArenaDeviceTokenMax)
+})
+
+
+export const getEventArenaDeviceSyncResponseSnapshotSourceInstallationIdMin = 12;
+export const getEventArenaDeviceSyncResponseSnapshotSourceInstallationIdMax = 128;
+
+
+
+export const GetEventArenaDeviceSyncResponse = zod.object({
+  "revision": zod.number().min(1),
+  "snapshot": zod.object({
+  "sourceInstallationId": zod.string().min(getEventArenaDeviceSyncResponseSnapshotSourceInstallationIdMin).max(getEventArenaDeviceSyncResponseSnapshotSourceInstallationIdMax),
+  "accounts": zod.array(zod.record(zod.string(), zod.unknown())),
+  "positions": zod.array(zod.record(zod.string(), zod.unknown())),
+  "transactions": zod.array(zod.record(zod.string(), zod.unknown())),
+  "orders": zod.array(zod.record(zod.string(), zod.unknown())),
+  "lots": zod.array(zod.record(zod.string(), zod.unknown())),
+  "challengeStore": zod.record(zod.string(), zod.unknown())
+})
+})
+
+
+/**
+ * @summary Save a revision-checked Event Arena paper snapshot
+ */
+export const syncEventArenaDeviceStateHeaderXEventArenaDeviceTokenMin = 32;
+export const syncEventArenaDeviceStateHeaderXEventArenaDeviceTokenMax = 128;
+
+export const syncEventArenaDeviceStateHeaderXEventArenaRevisionMin = 0;
+
+
+
+export const SyncEventArenaDeviceStateHeader = zod.object({
+  "X-Event-Arena-Device-Token": zod.string().min(syncEventArenaDeviceStateHeaderXEventArenaDeviceTokenMin).max(syncEventArenaDeviceStateHeaderXEventArenaDeviceTokenMax),
+  "X-Event-Arena-Revision": zod.number().min(syncEventArenaDeviceStateHeaderXEventArenaRevisionMin)
+})
+
+export const syncEventArenaDeviceStateBodySnapshotSourceInstallationIdMin = 12;
+export const syncEventArenaDeviceStateBodySnapshotSourceInstallationIdMax = 128;
+
+
+
+export const SyncEventArenaDeviceStateBody = zod.object({
+  "snapshot": zod.object({
+  "sourceInstallationId": zod.string().min(syncEventArenaDeviceStateBodySnapshotSourceInstallationIdMin).max(syncEventArenaDeviceStateBodySnapshotSourceInstallationIdMax),
+  "accounts": zod.array(zod.record(zod.string(), zod.unknown())),
+  "positions": zod.array(zod.record(zod.string(), zod.unknown())),
+  "transactions": zod.array(zod.record(zod.string(), zod.unknown())),
+  "orders": zod.array(zod.record(zod.string(), zod.unknown())),
+  "lots": zod.array(zod.record(zod.string(), zod.unknown())),
+  "challengeStore": zod.record(zod.string(), zod.unknown())
+}),
+  "activeId": zod.string().optional()
+})
+
+
+
+
+export const SyncEventArenaDeviceStateResponse = zod.object({
+  "revision": zod.number().min(1)
+})
+
+
+/**
  * @summary Search supported non-stock heat-map instruments by name or ticker
  */
 export const searchHeatMapInstrumentsQueryQMin = 2;

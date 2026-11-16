@@ -61,8 +61,28 @@ import {
   type PaperLot,
 } from '@/lib/paperMath';
 
+import {
+  createEventArenaDeviceSyncSender,
+  EVENT_ARENA_DEVICE_TOKEN_KEY,
+  getEventArenaParticipantId,
+  syncStoredEventArenaDeviceSnapshot,
+} from '@/lib/eventArenaDeviceSync';
+
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 const PAPER_CACHE_KEY = '@stocksense/paper_v2';
+
+async function syncPairedEventArenaState(): Promise<boolean> {
+  if (!await AsyncStorage.getItem(EVENT_ARENA_DEVICE_TOKEN_KEY)) return true;
+  try {
+    await syncStoredEventArenaDeviceSnapshot(
+      AsyncStorage,
+      createEventArenaDeviceSyncSender(BASE_URL),
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
 const money = (value: number) =>
   `${value < 0 ? '−' : ''}$${Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const signedMoney = (value: number) => `${value >= 0 ? '+' : '−'}${money(Math.abs(value))}`;
@@ -361,7 +381,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
       };
       if (enrollment && Date.now() >= enrollment.eventStartAtMs) {
         try {
-          const installationId = await getInstallationId();
+          const installationId = await getEventArenaParticipantId(AsyncStorage, getInstallationId);
           const remote = await apiFetch<{
             participant?: { status?: string; failureReason?: string | null };
             account?: EventArenaAccountData['accounts'][number] | null;
@@ -398,6 +418,9 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
               ],
               activeId: enrollment.accountId,
             }));
+            if (!await syncPairedEventArenaState()) {
+              setStoreError('Lightning Round data is saved locally, but the shared account did not sync.');
+            }
           }
           setServerParticipantFailure(
             remote.participant?.status === 'rejected'
@@ -465,7 +488,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
     scoreSyncingRef.current = true;
     try {
       await submitPaperChallengeScoreNow(enrollment, scheduledConfiguration);
-      const installationId = await getInstallationId();
+      const installationId = await getEventArenaParticipantId(AsyncStorage, getInstallationId);
       const response = await fetch(
         `${BASE_URL}/api/event-arena/${encodeURIComponent(window.id)}/leaderboard?installationId=${encodeURIComponent(installationId)}`,
         { headers: { 'X-Event-Arena-Installation-Id': installationId } },
@@ -553,7 +576,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
         };
         let finalRank: number | undefined;
         if (enrollment.leaderboardOptedIn) {
-          const installationId = await getInstallationId();
+          const installationId = await getEventArenaParticipantId(AsyncStorage, getInstallationId);
           const response = await fetch(
             `${BASE_URL}/api/event-arena/${encodeURIComponent(enrollment.eventId)}/leaderboard`,
             { headers: { 'X-Event-Arena-Installation-Id': installationId } },
@@ -611,6 +634,9 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
           setItem: (key, value) => AsyncStorage.setItem(key, value),
         });
         setStore(finalized);
+        if (!await syncPairedEventArenaState()) {
+          setStoreError('The completed Lightning Round is saved locally, but could not sync to the paired device.');
+        }
       } catch (error) {
         setArchiveError(error instanceof Error ? error.message : 'Could not save the completed Lightning Round result.');
       } finally {
@@ -748,7 +774,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
         leaderboardAlias: alias.trim(),
         leaderboardOptedIn: true,
       };
-      const installationId = await getInstallationId();
+      const installationId = await getEventArenaParticipantId(AsyncStorage, getInstallationId);
       await apiFetch(`/api/event-arena/lightning-round/${encodeURIComponent(window.id)}/state`, {
         method: 'PUT',
         headers: { 'X-Event-Arena-Installation-Id': installationId },
@@ -776,6 +802,9 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
         throw new Error('The Lightning Round registration could not be saved.');
       }
       setStore(updated);
+      if (!await syncPairedEventArenaState()) {
+        setStoreError('Your Lightning Round enrollment is saved locally, but could not sync to the paired device.');
+      }
       setJoinOpen(false);
       setAlias('');
       router.push({ pathname: '/paper', params: { challengeAccountId: accountId } });
@@ -794,7 +823,12 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
     }), {
       getItem: (key) => AsyncStorage.getItem(key),
       setItem: (key, value) => AsyncStorage.setItem(key, value),
-    }).then(setStore);
+    }).then(async (updated) => {
+      setStore(updated);
+      if (!await syncPairedEventArenaState()) {
+        setStoreError('Your Lightning Round update is saved locally, but could not sync to the paired device.');
+      }
+    });
   }, []);
 
   const changeTab = (nextTab: ScreenTab) => setTab(nextTab);

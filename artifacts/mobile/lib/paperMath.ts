@@ -189,6 +189,16 @@ export type PaperLot = {
   purchasedAt: string;
 };
 
+/** Server snapshot used only for paired Event Arena device recovery. */
+export type PaperAccountSyncSnapshot = {
+  sourceInstallationId: string;
+  accounts: PaperAccount[];
+  positions: PaperPosition[];
+  transactions: PaperTransaction[];
+  orders: PaperOrder[];
+  lots: PaperLot[];
+};
+
 // ── Constants ──────────────────────────────────────────────────────────────
 export const INITIAL_BALANCE = 100_000;
 /** Simulated collateral held per dollar of short-sale proceeds. */

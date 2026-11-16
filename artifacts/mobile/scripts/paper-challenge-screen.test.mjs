@@ -258,7 +258,7 @@ test("event enrollment enables sharing with compact privacy controls", () => {
   assert.match(eventArena, /<PaperChallengeLeaderboard/);
   assert.match(eventArena, /leaderboardOptedIn: true/);
   assert.match(eventArena, /Joining turns on leaderboard sharing/);
-  assert.match(leaderboard, /getInstallationId\(\)/);
+  assert.match(leaderboard, /getEventArenaParticipantId\(AsyncStorage, getInstallationId\)/);
   assert.match(leaderboard, /currentEnrollment\.leaderboardOptedIn/);
   assert.match(leaderboard, /REFRESH_INTERVAL_MS = 120_000/);
   assert.match(leaderboard, /AppState\.addEventListener/);

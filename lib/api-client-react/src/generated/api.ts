@@ -24,11 +24,14 @@ import type {
   AnalysisResult,
   AnalyzeStockRequest,
   CommodityRelationshipResponse,
+  CreateEventArenaDevicePairing200,
   CryptoSupplyHistory,
   EventArenaCashNotificationsResponse,
   EventArenaCashTransferRequest,
   EventArenaCashTransferResponse,
   EventArenaConfiguration,
+  EventArenaDeviceSnapshot,
+  EventArenaDeviceSyncResponse,
   EventArenaLeaderboardHistoryResponse,
   EventArenaLeaderboardResponse,
   EventArenaScoreSubmission,
@@ -44,10 +47,12 @@ import type {
   MarketPulseResponse,
   PortfolioQuoteBatch,
   PortfolioQuoteBatchRequest,
+  RedeemEventArenaDevicePairingRequest,
   SearchHeatMapInstrumentsParams,
   SearchStockSymbolsParams,
   StockSymbolSuggestion,
   SubmitEventArenaScore200,
+  SyncEventArenaDeviceState200,
   ValidateHeatMapSymbolRequest
 } from './api.schemas';
 
@@ -673,6 +678,296 @@ export function useGetEventArenaCashNotifications<TData = Awaited<ReturnType<typ
 
 
 
+
+export const getCreateEventArenaDevicePairingUrl = () => {
+
+
+
+
+  return `/api/event-arena/device-pairing`
+}
+
+/**
+ * @summary Save an Event Arena paper snapshot and create a one-use device code
+ */
+export const createEventArenaDevicePairing = async (eventArenaDeviceSnapshot: EventArenaDeviceSnapshot, options?: RequestInit): Promise<CreateEventArenaDevicePairing200> => {
+
+  return customFetch<CreateEventArenaDevicePairing200>(getCreateEventArenaDevicePairingUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(eventArenaDeviceSnapshot)
+  }
+);}
+
+
+
+
+
+export const getCreateEventArenaDevicePairingMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEventArenaDevicePairing>>, TError,{data: BodyType<EventArenaDeviceSnapshot>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createEventArenaDevicePairing>>, TError,{data: BodyType<EventArenaDeviceSnapshot>}, TContext> => {
+
+const mutationKey = ['createEventArenaDevicePairing'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createEventArenaDevicePairing>>, {data: BodyType<EventArenaDeviceSnapshot>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createEventArenaDevicePairing(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateEventArenaDevicePairingMutationResult = NonNullable<Awaited<ReturnType<typeof createEventArenaDevicePairing>>>
+    export type CreateEventArenaDevicePairingMutationBody = BodyType<EventArenaDeviceSnapshot>
+    export type CreateEventArenaDevicePairingMutationError = ErrorType<void>
+
+    /**
+ * @summary Save an Event Arena paper snapshot and create a one-use device code
+ */
+export const useCreateEventArenaDevicePairing = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEventArenaDevicePairing>>, TError,{data: BodyType<EventArenaDeviceSnapshot>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createEventArenaDevicePairing>>,
+        TError,
+        {data: BodyType<EventArenaDeviceSnapshot>},
+        TContext
+      > => {
+      return useMutation(getCreateEventArenaDevicePairingMutationOptions(options));
+    }
+
+export const getRedeemEventArenaDevicePairingUrl = () => {
+
+
+
+
+  return `/api/event-arena/device-pairing/redeem`
+}
+
+/**
+ * @summary Redeem a one-use code and restore its Event Arena snapshot
+ */
+export const redeemEventArenaDevicePairing = async (redeemEventArenaDevicePairingRequest: RedeemEventArenaDevicePairingRequest, options?: RequestInit): Promise<EventArenaDeviceSyncResponse> => {
+
+  return customFetch<EventArenaDeviceSyncResponse>(getRedeemEventArenaDevicePairingUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(redeemEventArenaDevicePairingRequest)
+  }
+);}
+
+
+
+
+
+export const getRedeemEventArenaDevicePairingMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof redeemEventArenaDevicePairing>>, TError,{data: BodyType<RedeemEventArenaDevicePairingRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof redeemEventArenaDevicePairing>>, TError,{data: BodyType<RedeemEventArenaDevicePairingRequest>}, TContext> => {
+
+const mutationKey = ['redeemEventArenaDevicePairing'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof redeemEventArenaDevicePairing>>, {data: BodyType<RedeemEventArenaDevicePairingRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  redeemEventArenaDevicePairing(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RedeemEventArenaDevicePairingMutationResult = NonNullable<Awaited<ReturnType<typeof redeemEventArenaDevicePairing>>>
+    export type RedeemEventArenaDevicePairingMutationBody = BodyType<RedeemEventArenaDevicePairingRequest>
+    export type RedeemEventArenaDevicePairingMutationError = ErrorType<void>
+
+    /**
+ * @summary Redeem a one-use code and restore its Event Arena snapshot
+ */
+export const useRedeemEventArenaDevicePairing = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof redeemEventArenaDevicePairing>>, TError,{data: BodyType<RedeemEventArenaDevicePairingRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof redeemEventArenaDevicePairing>>,
+        TError,
+        {data: BodyType<RedeemEventArenaDevicePairingRequest>},
+        TContext
+      > => {
+      return useMutation(getRedeemEventArenaDevicePairingMutationOptions(options));
+    }
+
+export const getGetEventArenaDeviceSyncUrl = () => {
+
+
+
+
+  return `/api/event-arena/device-sync`
+}
+
+/**
+ * @summary Load the shared Event Arena paper snapshot
+ */
+export const getEventArenaDeviceSync = async ( options?: RequestInit): Promise<EventArenaDeviceSyncResponse> => {
+
+  return customFetch<EventArenaDeviceSyncResponse>(getGetEventArenaDeviceSyncUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetEventArenaDeviceSyncQueryKey = () => {
+    return [
+    `/api/event-arena/device-sync`
+    ] as const;
+    }
+
+
+export const getGetEventArenaDeviceSyncQueryOptions = <TData = Awaited<ReturnType<typeof getEventArenaDeviceSync>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEventArenaDeviceSync>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetEventArenaDeviceSyncQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getEventArenaDeviceSync>>> = ({ signal }) => getEventArenaDeviceSync({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getEventArenaDeviceSync>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetEventArenaDeviceSyncQueryResult = NonNullable<Awaited<ReturnType<typeof getEventArenaDeviceSync>>>
+export type GetEventArenaDeviceSyncQueryError = ErrorType<void>
+
+
+/**
+ * @summary Load the shared Event Arena paper snapshot
+ */
+
+export function useGetEventArenaDeviceSync<TData = Awaited<ReturnType<typeof getEventArenaDeviceSync>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEventArenaDeviceSync>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetEventArenaDeviceSyncQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSyncEventArenaDeviceStateUrl = () => {
+
+
+
+
+  return `/api/event-arena/device-sync`
+}
+
+/**
+ * @summary Save a revision-checked Event Arena paper snapshot
+ */
+export const syncEventArenaDeviceState = async (eventArenaDeviceSnapshot: EventArenaDeviceSnapshot, options?: RequestInit): Promise<SyncEventArenaDeviceState200> => {
+
+  return customFetch<SyncEventArenaDeviceState200>(getSyncEventArenaDeviceStateUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(eventArenaDeviceSnapshot)
+  }
+);}
+
+
+
+
+
+export const getSyncEventArenaDeviceStateMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncEventArenaDeviceState>>, TError,{data: BodyType<EventArenaDeviceSnapshot>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof syncEventArenaDeviceState>>, TError,{data: BodyType<EventArenaDeviceSnapshot>}, TContext> => {
+
+const mutationKey = ['syncEventArenaDeviceState'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof syncEventArenaDeviceState>>, {data: BodyType<EventArenaDeviceSnapshot>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  syncEventArenaDeviceState(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SyncEventArenaDeviceStateMutationResult = NonNullable<Awaited<ReturnType<typeof syncEventArenaDeviceState>>>
+    export type SyncEventArenaDeviceStateMutationBody = BodyType<EventArenaDeviceSnapshot>
+    export type SyncEventArenaDeviceStateMutationError = ErrorType<void>
+
+    /**
+ * @summary Save a revision-checked Event Arena paper snapshot
+ */
+export const useSyncEventArenaDeviceState = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncEventArenaDeviceState>>, TError,{data: BodyType<EventArenaDeviceSnapshot>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof syncEventArenaDeviceState>>,
+        TError,
+        {data: BodyType<EventArenaDeviceSnapshot>},
+        TContext
+      > => {
+      return useMutation(getSyncEventArenaDeviceStateMutationOptions(options));
+    }
 
 export const getSearchHeatMapInstrumentsUrl = (params: SearchHeatMapInstrumentsParams,) => {
   const normalizedParams = new URLSearchParams();

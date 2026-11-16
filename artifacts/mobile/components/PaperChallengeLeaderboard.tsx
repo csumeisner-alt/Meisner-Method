@@ -27,6 +27,7 @@ import {
   useGetEventArenaLeaderboard,
 } from '@workspace/api-client-react';
 import { getInstallationId } from '@/lib/installation';
+import { getEventArenaParticipantId } from '@/lib/eventArenaDeviceSync';
 import {
   EVENT_HOLDINGS_PREVIEW_LIMIT,
   calculateEventHoldingAllocationPercent,
@@ -383,7 +384,7 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
   }
   return {
     payload: {
-      installationId: await getInstallationId(),
+      installationId: await getEventArenaParticipantId(AsyncStorage, getInstallationId),
       alias: enrollment.leaderboardAlias?.trim() ?? '',
       ...configuration,
       startEquity,
@@ -638,7 +639,7 @@ export function PaperChallengeLeaderboard({
   }, []);
   useEffect(() => {
     let mounted = true;
-    void getInstallationId()
+    void getEventArenaParticipantId(AsyncStorage, getInstallationId)
       .then((id) => { if (mounted) setInstallationId(id); })
       .catch(() => { if (mounted) setInstallationId(null); })
       .finally(() => { if (mounted) setInstallationIdReady(true); });
@@ -872,7 +873,7 @@ export function PaperChallengeLeaderboard({
     setSharingBusy(true);
     setError('');
     try {
-      const installationId = await getInstallationId();
+      const installationId = await getEventArenaParticipantId(AsyncStorage, getInstallationId);
       const response = await fetch(
         `${BASE_URL}/api/event-arena/${encodeURIComponent(event.id)}/leaderboard?installationId=${encodeURIComponent(installationId)}`,
         { method: 'DELETE' },

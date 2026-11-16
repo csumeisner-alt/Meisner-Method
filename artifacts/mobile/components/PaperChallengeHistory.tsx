@@ -45,6 +45,11 @@ import { EVENT_ARENA_ARTWORK_SOURCES } from '@/lib/eventArenaArtwork';
 import { getRegularEventCalendarError } from '@/lib/paperChallengeCalendar';
 import { getInstallationId } from '@/lib/installation';
 import { registerEventArenaPushDevice } from '@/lib/eventArenaPushRegistration';
+import {
+  createEventArenaDeviceSyncSender,
+  EVENT_ARENA_DEVICE_TOKEN_KEY,
+  syncStoredEventArenaDeviceSnapshot,
+} from '@/lib/eventArenaDeviceSync';
 
 const NOTIFICATIONS_KEY = '@stocksense/paper_events_notifications_v1';
 const NOTIFICATION_ID_KEY = '@stocksense/paper_events_notification_id_v1';
@@ -52,6 +57,19 @@ const PAPER_CACHE_KEY = '@stocksense/paper_v2';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 type Props = { visible: boolean; onCloseSettings: () => void };
+
+async function syncPairedEventArenaState(): Promise<boolean> {
+  if (!await AsyncStorage.getItem(EVENT_ARENA_DEVICE_TOKEN_KEY)) return true;
+  try {
+    await syncStoredEventArenaDeviceSnapshot(
+      AsyncStorage,
+      createEventArenaDeviceSyncSender(BASE_URL),
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const money = (value: number) => `${value < 0 ? '−' : ''}$${Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const dateRange = (start: number, end: number) => {
@@ -263,6 +281,9 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
       });
       setStore(next);
       if (next.enrollment?.eventId !== enrollment.eventId) return;
+      if (!await syncPairedEventArenaState()) {
+        Alert.alert('Sync delayed', 'Your signup is saved on this device, but could not sync to the paired device.');
+      }
       setEventsOpen(false);
       onCloseSettings();
       Alert.alert(
@@ -296,6 +317,9 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
         },
       );
       setStore(updated);
+      if (!await syncPairedEventArenaState()) {
+        Alert.alert('Sync delayed', 'Your withdrawal is saved on this device, but could not sync to the paired device.');
+      }
       setConfirmWithdraw(false);
     } catch {
       Alert.alert('Could not withdraw', 'Your event signup is unchanged. Please try again.');
