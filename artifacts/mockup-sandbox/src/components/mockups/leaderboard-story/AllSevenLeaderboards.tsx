@@ -128,7 +128,6 @@ function PhoneScreen({ event, index }: { event: EventConfig; index: number }) {
             : `linear-gradient(180deg, rgba(4,8,14,.49), rgba(5,9,15,.82) 34%, rgba(5,9,15,.88)), url("/__mockup/images/leaderboard-events/${event.artwork}.jpg")` } as React.CSSProperties}>
             <div className="mm-actions"><span><Glyph name="refresh" size={16} /></span><span><Glyph name="info" size={16} /></span></div>
             <div className="mm-event-title">
-              {event.pennyMayhem && <img className="mm-penny-mark" src="/__mockup/images/leaderboard-events/mm-mark-foreground.png" alt="Meisner Method gold M mark" />}
               {event.pennyMayhem ? (
                 <div className="mm-penny-lockup" aria-label="Penny Stock Mayhem. Stocks and ETFs under $20.">
                   <div className="mm-penny-title">
@@ -236,7 +235,6 @@ export function AllSevenLeaderboards({ onlyPenny = false }: { onlyPenny?: boolea
         .mm-screen-scroll { flex:1; min-height:0; overflow:auto; scrollbar-width:none; background:#111419; }.mm-screen-scroll::-webkit-scrollbar{display:none;}
         .mm-event-hero { position:relative; overflow:hidden; min-height:0; margin:0 0 14px; padding:12px 17px 15px; background-size:cover; background-position:center; border:1px solid color-mix(in srgb,var(--event-accent) 43%,transparent); border-radius:0 0 26px 26px; box-shadow:inset 0 -28px 50px #04070c88; }
          .mm-penny-hero { background-position:center 34%; border-color:#9ab76b91; box-shadow:inset 0 -34px 62px #030907c9, inset 0 0 48px #5a9d4b18; }
-         .mm-penny-mark { width:34px;height:34px;object-fit:contain;margin:0 auto 5px;filter:drop-shadow(0 2px 8px #000b); }
          .mm-penny-lockup { width:min(100%,320px);margin:2px auto 7px; }
          .mm-penny-title { display:flex;flex-direction:column;align-items:center;line-height:.9;text-align:center;filter:drop-shadow(0 7px 8px #000b); }
          .mm-penny-title span { color:transparent;background:linear-gradient(180deg,#ffffff 0%,#e2e9ed 26%,#87939d 47%,#f7fbff 59%,#9ca8b1 77%,#eef2f4 100%);background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:clamp(25px,7.3vw,33px);font-weight:950;letter-spacing:1.15px;text-shadow:0 2px 0 #59646d,0 4px 0 #303b44; }

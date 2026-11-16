@@ -9,7 +9,7 @@ Keep Penny Stock Mayhem visually distinct as a premium cinematic financial champ
 - Use a substantial brushed-steel `STOCKS & ETFs UNDER $20` nameplate with restrained emerald edge light; make `$20` prominent.
 - Keep the bull realistic and sharply defined with controlled emerald lighting, and use recognizable copper U.S. pennies rather than generic gold coins.
 - Favor a dark, layered stock-market arena, restrained sparks and reflections, and strong mobile readability.
-- Remove the floating Meisner mark above the leaderboard title. If branding is used elsewhere, use the existing logo asset rather than recreating it.
+- Do not include the Meisner mark or logo in Penny Stock Mayhem artwork or above the leaderboard title.
 - Keep changes within Penny Stock Mayhem visuals; do not alter rules, scheduling, capital, trading, enrollment, rankings, or other event themes.
 
 **Why:** The user explicitly requested this direction to make the event feel more premium and less cartoonish.
