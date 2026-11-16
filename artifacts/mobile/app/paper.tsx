@@ -2891,7 +2891,14 @@ export default function PaperScreen() {
                       >
                         {pos.symbol}{isShortPosition(pos) ? '  ·  SHORT' : ''}
                       </Text>
-                      <Text style={styles.posName} allowFontScaling>{pos.companyName}</Text>
+                      <Text
+                        style={styles.posName}
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                        allowFontScaling
+                      >
+                        {pos.companyName}
+                      </Text>
                     </View>
                     <View style={styles.positionValue}>
                       <Text style={styles.posMktLabel} numberOfLines={1} allowFontScaling>
@@ -5335,8 +5342,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
     borderRadius: 10,
-    minHeight: 78,
-    paddingVertical: 5,
+    minHeight: 64,
+    paddingVertical: 3,
     paddingHorizontal: 9,
     gap: 6,
   },
@@ -5349,7 +5356,7 @@ const styles = StyleSheet.create({
   },
   posColorBar: { width: 3, height: '100%', borderRadius: 2, minHeight: 44 },
   posAccentBar: { width: 3, borderRadius: 2, minHeight: 30, marginRight: 2 },
-  posContent: { flex: 1, minWidth: 0, gap: 3, justifyContent: 'center' },
+  posContent: { flex: 1, minWidth: 0, gap: 2, justifyContent: 'center' },
   posTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minWidth: 0, gap: 8 },
   posIdentity: { flex: 1, minWidth: 0, paddingRight: 4 },
   posSymbol: { fontFamily: 'Inter_700Bold', fontSize: 15, color: '#fff' },
@@ -5359,7 +5366,7 @@ const styles = StyleSheet.create({
   positionValue: { width: '48%', maxWidth: '56%', minWidth: 0, alignItems: 'flex-end' },
   posMktLabel: { width: '100%', fontFamily: 'Inter_600SemiBold', fontSize: 8, lineHeight: 11, color: DIM, letterSpacing: 0.35, textAlign: 'right' },
   posMktVal: { width: '100%', fontFamily: 'Inter_700Bold', fontSize: 16, lineHeight: 20, color: '#fff', textAlign: 'right' },
-  posMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, minWidth: 0, paddingTop: 3, borderTopWidth: 1, borderTopColor: 'rgba(192,192,192,0.12)' },
+  posMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, minWidth: 0, paddingTop: 2, borderTopWidth: 1, borderTopColor: 'rgba(192,192,192,0.12)' },
   posMeta: { flex: 1, minWidth: 0, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 14, color: DIM },
   posPnl: { width: '48%', minWidth: 0, fontFamily: 'Inter_600SemiBold', fontSize: 11.5, lineHeight: 15, textAlign: 'right' },
 
