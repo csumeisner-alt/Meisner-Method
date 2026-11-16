@@ -44,7 +44,7 @@ export const ensureEventArenaConfigurationResponsePurchaseLimitExclusiveMin = 0;
 
 export const EnsureEventArenaConfigurationResponse = zod.object({
   "eventId": zod.string().regex(ensureEventArenaConfigurationResponseEventIdRegExp),
-  "eventType": zod.enum(['event-arena', 'green-bull-championship', 'bear-market-mayhem', 'penny-stock-mayhem', 'lightning-round']),
+  "eventType": zod.enum(['event-arena', 'green-bull-championship', 'bear-market-mayhem', 'penny-stock-mayhem', 'mountain-championship', 'lightning-round']),
   "artworkId": zod.enum(['stadium', 'neon-nightclub', 'mountain-summit', 'red-showdown', 'green-stock-exchange', 'penny-stock-mayhem', 'lightning-round-arena']),
   "startingBalance": zod.number().gt(ensureEventArenaConfigurationResponseStartingBalanceExclusiveMin),
   "purchaseLimit": zod.number().gt(ensureEventArenaConfigurationResponsePurchaseLimitExclusiveMin).optional(),
@@ -69,7 +69,7 @@ export const prepareLightningRoundEventsResponseEventsMin = 2;
 export const PrepareLightningRoundEventsResponse = zod.object({
   "events": zod.array(zod.object({
   "eventId": zod.string().regex(prepareLightningRoundEventsResponseEventsItemEventIdRegExp),
-  "eventType": zod.enum(['event-arena', 'green-bull-championship', 'bear-market-mayhem', 'penny-stock-mayhem', 'lightning-round']),
+  "eventType": zod.enum(['event-arena', 'green-bull-championship', 'bear-market-mayhem', 'penny-stock-mayhem', 'mountain-championship', 'lightning-round']),
   "artworkId": zod.enum(['stadium', 'neon-nightclub', 'mountain-summit', 'red-showdown', 'green-stock-exchange', 'penny-stock-mayhem', 'lightning-round-arena']),
   "startingBalance": zod.number().gt(prepareLightningRoundEventsResponseEventsItemStartingBalanceExclusiveMin),
   "purchaseLimit": zod.number().gt(prepareLightningRoundEventsResponseEventsItemPurchaseLimitExclusiveMin).optional(),
@@ -176,7 +176,7 @@ export const submitEventArenaScoreBodyHoldingsMax = 100;
 export const SubmitEventArenaScoreBody = zod.object({
   "installationId": zod.string().min(submitEventArenaScoreBodyInstallationIdMin).max(submitEventArenaScoreBodyInstallationIdMax).describe('Anonymous device identifier; never returned by leaderboard reads.'),
   "alias": zod.string().min(1).max(submitEventArenaScoreBodyAliasMax),
-  "eventType": zod.enum(['event-arena', 'green-bull-championship', 'bear-market-mayhem', 'penny-stock-mayhem', 'lightning-round']),
+  "eventType": zod.enum(['event-arena', 'green-bull-championship', 'bear-market-mayhem', 'penny-stock-mayhem', 'mountain-championship', 'lightning-round']),
   "artworkId": zod.enum(['stadium', 'neon-nightclub', 'mountain-summit', 'red-showdown', 'green-stock-exchange', 'penny-stock-mayhem', 'lightning-round-arena']),
   "startingBalance": zod.number().gt(submitEventArenaScoreBodyStartingBalanceExclusiveMin),
   "purchaseLimit": zod.number().gt(submitEventArenaScoreBodyPurchaseLimitExclusiveMin).optional(),

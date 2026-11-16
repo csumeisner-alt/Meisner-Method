@@ -13,7 +13,11 @@ import {
 } from "../../../mobile/lib/paperChallengeCalendar.ts";
 import { fetchYahooChartPrice } from "../lib/marketPrice.ts";
 import { calculateLightningRoundScore } from "../lib/lightningRoundScore.ts";
-import { LIGHTNING_ROUND_PREPARATION_MS } from "../../../mobile/lib/paperChallenge.ts";
+import {
+  isMountainChampionshipTransferLocked,
+  LIGHTNING_ROUND_PREPARATION_MS,
+  MOUNTAIN_CHAMPIONSHIP_TRANSFER_LOCK_MESSAGE,
+} from "../../../mobile/lib/paperChallenge.ts";
 
 export { EVENT_ARENA_RETENTION_DAYS, purgeExpiredEventArenaEntries } from "../lib/eventArenaRetention.ts";
 
@@ -35,7 +39,7 @@ type HoldingIdentifier = {
 type EventSubmission = {
   installationId: string;
   alias: string;
-  eventType?: "event-arena" | "green-bull-championship" | "bear-market-mayhem" | "penny-stock-mayhem" | "lightning-round";
+  eventType?: "event-arena" | "green-bull-championship" | "bear-market-mayhem" | "penny-stock-mayhem" | "mountain-championship" | "lightning-round";
   artworkId?: typeof EVENT_ARTWORK_IDS[number] | "lightning-round-arena";
   startingBalance?: number;
   rankingDirection?: "highest-return" | "lowest-return";
@@ -65,7 +69,7 @@ const PRE_PENNY_EVENT_ARTWORK_IDS = EVENT_ARTWORK_IDS.slice(0, 5);
 
 type EventArenaConfiguration = {
   eventId: string;
-  eventType: "event-arena" | "green-bull-championship" | "bear-market-mayhem" | "penny-stock-mayhem" | "lightning-round";
+  eventType: "event-arena" | "green-bull-championship" | "bear-market-mayhem" | "penny-stock-mayhem" | "mountain-championship" | "lightning-round";
   artworkId: typeof EVENT_ARTWORK_IDS[number] | "lightning-round-arena";
   startingBalance: number;
   rankingDirection: "highest-return" | "lowest-return";
@@ -214,12 +218,14 @@ export function expectedEventArenaConfiguration(eventId: string): EventArenaConf
   const isGreenBull = artworkId === "green-stock-exchange";
   const isBearMarket = artworkId === "red-showdown";
   const isPennyStockMayhem = artworkId === "penny-stock-mayhem";
+  const isMountainChampionship = artworkId === "mountain-summit";
   return {
     eventId,
     eventType: isGreenBull
       ? "green-bull-championship"
       : isBearMarket ? "bear-market-mayhem"
-        : isPennyStockMayhem ? "penny-stock-mayhem" : "event-arena",
+        : isPennyStockMayhem ? "penny-stock-mayhem"
+          : isMountainChampionship ? "mountain-championship" : "event-arena",
     artworkId,
     startingBalance: isGreenBull ? 500_000 : 100_000,
     rankingDirection: isBearMarket ? "lowest-return" : "highest-return",
@@ -323,9 +329,13 @@ function savedEventArenaConfiguration(row: any, expected: EventArenaConfiguratio
     || rowEndAtMs !== expected.endAtMs
     || (!isCurrentConfiguration && !isPreviousConfiguration && !isLegacyRedConfiguration)
   ) return null;
+  const normalizeLegacyMountainType = expected.eventType === "mountain-championship"
+    && isPreviousConfiguration
+    && eventType === "event-arena"
+    && artworkId === "mountain-summit";
   return {
     eventId: expected.eventId,
-    eventType,
+    eventType: normalizeLegacyMountainType ? expected.eventType : eventType,
     artworkId,
     startingBalance,
     rankingDirection,
@@ -456,6 +466,7 @@ function parseSubmission(body: unknown): EventSubmission | null {
       && eventType !== "green-bull-championship"
       && eventType !== "bear-market-mayhem"
       && eventType !== "penny-stock-mayhem"
+      && eventType !== "mountain-championship"
       && eventType !== "lightning-round")
     || (artworkId !== undefined
       && !EVENT_ARTWORK_IDS.includes(artworkId as typeof EVENT_ARTWORK_IDS[number])
@@ -1538,6 +1549,7 @@ export function createEventArenaRouter(
     if (rejectInvalidRegularEventCalendar(res)) return;
     const eventId = req.params.eventId;
     const expectedWindow = expectedEventArenaWindow(eventId);
+    const expectedConfiguration = expectedEventArenaConfiguration(eventId);
     const body = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
     const senderInstallationId = body.installationId;
     const recipientParticipantToken = body.recipientParticipantToken;
@@ -1563,6 +1575,16 @@ export function createEventArenaRouter(
       res.status(400).json({ error: "The Event Arena cash transfer is invalid." });
       return;
     }
+    const transferNow = now();
+    if (expectedConfiguration && isMountainChampionshipTransferLocked(
+      expectedConfiguration.eventType,
+      eventId,
+      expectedConfiguration.endAtMs,
+      transferNow,
+    )) {
+      res.status(409).json({ error: MOUNTAIN_CHAMPIONSHIP_TRANSFER_LOCK_MESSAGE });
+      return;
+    }
     try {
       await purgeExpiredEventArenaEntries(db);
       const result = await withTransaction(db, async (client) => {
@@ -1573,7 +1595,7 @@ export function createEventArenaRouter(
           [eventId, senderInstallationId, idempotencyKey],
         );
         if (previous.rows[0]) return { status: "ok" as const, row: previous.rows[0] };
-        if (now() < expectedWindow.startAtMs || now() >= expectedWindow.endAtMs) {
+        if (transferNow < expectedWindow.startAtMs || transferNow >= expectedWindow.endAtMs) {
           return { status: "inactive" as const };
         }
 

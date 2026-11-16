@@ -17,6 +17,7 @@ import {
 } from "./eventArenaRoutes.ts";
 import {
   getRegularEventCalendarError,
+  getRegularEventPreparationStartAtMs,
   REGULAR_EVENT_CALENDAR,
 } from "../../../mobile/lib/paperChallengeCalendar.ts";
 import {
@@ -233,11 +234,15 @@ async function ensureEventArenaTables(pool: InstanceType<typeof Pool>) {
   `);
 }
 
-function createTransferDatabase() {
+function createTransferDatabase(additionalEventIds: string[] = []) {
   const participants = [
     { eventId, installationId, participantToken: "sender-participant-token-1", alias: "MarketFox", cashBalance: 1_000, active: true },
     { eventId, installationId: "recipient-installation-123", participantToken: "recipient-participant-token-1", alias: "BlueWhale", cashBalance: 500, active: true },
     { eventId: "2026-11-30", installationId: "recipient-installation-123", participantToken: "other-event-token-123456", alias: "BlueWhale", cashBalance: 700, active: true },
+    ...additionalEventIds.flatMap((id) => [
+      { eventId: id, installationId, participantToken: `sender-${id}-participant-token`, alias: "MarketFox", cashBalance: 1_000, active: true },
+      { eventId: id, installationId: "recipient-installation-123", participantToken: `recipient-${id}-participant-token`, alias: "BlueWhale", cashBalance: 500, active: true },
+    ]),
   ];
   const transfers: any[] = [];
   const query = async (sql: string, values?: any[]) => {
@@ -605,6 +610,11 @@ test("event artwork resolves to an immutable championship configuration", async 
   assert.equal(pennyEvent?.startingBalance, 100_000);
   assert.equal(pennyEvent?.rankingDirection, "highest-return");
   assert.equal(pennyEvent?.purchaseLimit, 20);
+  const mountainEvent = expectedEventArenaConfiguration("2026-12-14");
+  assert.equal(mountainEvent?.eventType, "mountain-championship");
+  assert.equal(mountainEvent?.artworkId, "mountain-summit");
+  assert.equal(mountainEvent?.startingBalance, 100_000);
+  assert.equal(mountainEvent?.rankingDirection, "highest-return");
   assert.equal(new Date(pennyEvent!.startAtMs).toISOString(), "2027-01-25T14:30:00.000Z");
   assert.equal(new Date(pennyEvent!.endAtMs).toISOString(), "2027-01-29T21:00:00.000Z");
 
@@ -621,6 +631,118 @@ test("event artwork resolves to an immutable championship configuration", async 
     assert.equal(pennyResponse.status, 200);
     assert.deepEqual(await pennyResponse.json(), pennyEvent);
   });
+});
+
+test("a previously saved Mountain configuration resolves to its stable event type", async () => {
+  const expected = expectedEventArenaConfiguration("2026-12-14");
+  assert.ok(expected);
+  const existing = new Map([[expected.eventId, {
+    event_id: expected.eventId,
+    event_type: "event-arena",
+    artwork_id: "mountain-summit",
+    starting_balance: 100_000,
+    ranking_direction: "highest-return",
+    event_start_at: new Date(expected.startAtMs),
+    event_end_at: new Date(expected.endAtMs),
+  }]]);
+  await withApi(async () => ({ rows: [] }), async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/${expected.eventId}/config`, { method: "POST" });
+    assert.equal(response.status, 200);
+    const result = await response.json() as any;
+    assert.equal(result.eventType, "mountain-championship");
+    assert.equal(result.artworkId, "mountain-summit");
+  }, Date.parse("2026-12-10T17:00:00.000Z"), existing);
+});
+
+test("Mountain Championship transfers are rejected across preparation and competition boundaries", async () => {
+  const mountain = expectedEventArenaConfiguration("2026-12-14");
+  assert.ok(mountain);
+  const preparationStart = getRegularEventPreparationStartAtMs(mountain.eventId);
+  assert.ok(preparationStart);
+  const db = createTransferDatabase([mountain.eventId]);
+  const beforeBalances = db.participants
+    .filter((participant) => participant.eventId === mountain.eventId)
+    .map((participant) => participant.cashBalance);
+  for (const [time, expectedStatus] of [
+    [preparationStart - 1, 410],
+    [preparationStart, 409],
+    [mountain.startAtMs, 409],
+    [mountain.endAtMs - 1, 409],
+    [mountain.endAtMs, 410],
+    [mountain.endAtMs + 1, 410],
+  ]) {
+    await withApi(db.query, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/event-arena/${mountain.eventId}/transfers`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(transferRequest()),
+      });
+      assert.equal(response.status, expectedStatus, `transfer response at ${new Date(time).toISOString()}`);
+      if (expectedStatus === 409) {
+        assert.deepEqual(await response.json(), {
+          error: "Cash transfers are disabled during the Mountain Championship preparation period and competition.",
+        });
+      }
+    }, time);
+  }
+
+  db.transfers.push({
+    eventId: mountain.eventId,
+    id: "old-transfer-ref-123",
+    idempotencyKey: "transfer-request-123",
+    senderInstallationId: installationId,
+    recipientInstallationId: "recipient-installation-123",
+    senderAlias: "MarketFox",
+    recipientAlias: "BlueWhale",
+    amount: 100,
+    createdAt: new Date("2026-12-16T17:00:00.000Z"),
+    readAt: null,
+  });
+  await withApi(db.query, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/${mountain.eventId}/transfers`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(transferRequest()),
+    });
+    assert.equal(response.status, 409, "a preexisting idempotency record cannot bypass the lock");
+  }, mountain.startAtMs + 60_000);
+
+  assert.equal(db.transfers.length, 1, "an idempotent retry is rejected rather than returned as success");
+  assert.deepEqual(
+    db.participants.filter((participant) => participant.eventId === mountain.eventId)
+      .map((participant) => participant.cashBalance),
+    beforeBalances,
+  );
+});
+
+test("cash transfers remain available for Green Bull, Red Bear, and Penny Stock events", async () => {
+  const unaffectedEvents = [
+    "2026-12-28",
+    "2027-01-11",
+    "2027-01-25",
+  ].map((id) => expectedEventArenaConfiguration(id));
+  assert.ok(unaffectedEvents.every((event) => event));
+  const db = createTransferDatabase(unaffectedEvents.map((event) => event!.eventId));
+
+  for (const event of unaffectedEvents) {
+    assert.ok(event);
+    const senderToken = `sender-${event.eventId}-participant-token`;
+    await withApi(db.query, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/event-arena/${event.eventId}/transfers`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(transferRequest({
+          recipientParticipantToken: `recipient-${event.eventId}-participant-token`,
+          idempotencyKey: `transfer-${event.eventId.replaceAll("-", "")}`,
+        })),
+      });
+      assert.equal(response.status, 200, `${event.eventType} remains transferable`);
+    }, event.startAtMs + 60_000);
+    const balances = db.participants
+      .filter((participant) => participant.eventId === event.eventId)
+      .map((participant) => participant.cashBalance);
+    assert.deepEqual(balances, [750, 750], `${event.eventType} still transfers cash normally (${senderToken})`);
+  }
 });
 
 test("Bear Market ranks the lowest return first while standard and Green Bull stay highest-first", () => {

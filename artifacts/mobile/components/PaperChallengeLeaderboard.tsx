@@ -39,6 +39,7 @@ import {
 import {
   LEGACY_PAPER_CHALLENGE_ARTWORK_ID,
   PAPER_CHALLENGE_STARTING_BALANCE,
+  isMountainChampionshipTransferLocked,
   updatePaperChallengeStore,
   updatePaperChallengeEnrollment,
   type PaperChallengeEventType,
@@ -52,6 +53,7 @@ import {
   getEventCashTransferImpact,
   type EventCashTransferImpact,
 } from '@/lib/eventArenaTransfers';
+import { EventArenaTransferLockNotice } from '@/components/EventArenaTransferLockNotice';
 import {
   isShortPosition,
   type PaperAccount,
@@ -132,6 +134,7 @@ type Props = {
     idempotencyKey: string;
     cancelledOrderIds: string[];
   }) => Promise<void>;
+  cashTransfersLocked?: boolean;
 };
 
 const money = formatEventArenaMoney;
@@ -426,6 +429,7 @@ export function PaperChallengeLeaderboard({
   eventPositions = [],
   eventQuotes = {},
   onCashTransfer,
+  cashTransfersLocked,
 }: Props) {
   const colors = useColors();
   const returnColor = (value: number) => {
@@ -458,6 +462,7 @@ export function PaperChallengeLeaderboard({
   const [cashTransferReceipt, setCashTransferReceipt] = useState('');
   const [cancelledCashOrders, setCancelledCashOrders] = useState<PaperOrder[]>([]);
   const [cashTransferBusy, setCashTransferBusy] = useState(false);
+  const [transferLockNoticeOpen, setTransferLockNoticeOpen] = useState(false);
   const [cashTransferRequestKey, setCashTransferRequestKey] = useState('');
   const [podiumImageOpen, setPodiumImageOpen] = useState(false);
   const [sharingPodiumImage, setSharingPodiumImage] = useState(false);
@@ -494,6 +499,12 @@ export function PaperChallengeLeaderboard({
     || event.rankingDirection === 'lowest-return';
   const isLightningRound = event.eventType === 'lightning-round';
   const isPennyStockMayhem = event.eventType === 'penny-stock-mayhem';
+  const isTransferLocked = cashTransfersLocked ?? isMountainChampionshipTransferLocked(
+    event.eventType,
+    event.id,
+    event.endAtMs,
+    countdownNow,
+  );
   const leaderboardQuery = useGetEventArenaLeaderboard(event.id, {
     request: installationId ? { headers: { 'X-Event-Arena-Installation-Id': installationId } } : undefined,
     query: {
@@ -553,6 +564,7 @@ export function PaperChallengeLeaderboard({
   );
   const pendingOrderCount = eventOrders.filter((order) => order.status === 'pending').length;
   const canSendCash = !isLightningRound
+    && !isTransferLocked
     && event.phase === 'active'
     && optedIn
     && !!eventAccount
@@ -1107,6 +1119,10 @@ export function PaperChallengeLeaderboard({
   };
 
   const openCashTransfer = () => {
+    if (isTransferLocked) {
+      setTransferLockNoticeOpen(true);
+      return;
+    }
     if (!detail || !canSendCash || detail.isCurrentUser) return;
     setCashTransferError('');
     setCashTransferReceipt('');
@@ -1144,6 +1160,10 @@ export function PaperChallengeLeaderboard({
   };
 
   const confirmCashTransfer = async () => {
+    if (isTransferLocked) {
+      setTransferLockNoticeOpen(true);
+      return;
+    }
     if (!detail || !canSendCash || cashTransferBusy || !installationId) return;
     const amount = Math.round(Number(cashTransferAmount) * 100) / 100;
     if (!Number.isFinite(amount) || amount < 0.01 || amount > (eventAccount?.cash ?? 0)) {
@@ -1389,17 +1409,19 @@ export function PaperChallengeLeaderboard({
                       Self-reported and unverified. Raw share counts, prices, cost basis, account identifiers, and trade history are not shared.
                     </Text>
                   </View>
-                  {canSendCash && !detail.isCurrentUser ? (
+                  {(canSendCash || isTransferLocked) && !detail.isCurrentUser ? (
                     <TouchableOpacity
                       testID="event-arena-send-cash"
                       accessibilityRole="button"
-                      accessibilityLabel={`Send event cash to ${detail.alias}`}
+                      accessibilityLabel={isTransferLocked
+                        ? 'Mountain Championship transfers are locked'
+                        : `Send event cash to ${detail.alias}`}
                       onPress={openCashTransfer}
-                      disabled={!!restoredTransfer && restoredTransfer.recipientParticipantToken !== detail.participantToken}
-                      style={{ minHeight: 48, marginTop: 14, borderRadius: 11, backgroundColor: colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: restoredTransfer && restoredTransfer.recipientParticipantToken !== detail.participantToken ? 0.5 : 1 }}
+                      disabled={!isTransferLocked && !!restoredTransfer && restoredTransfer.recipientParticipantToken !== detail.participantToken}
+                      style={{ minHeight: 48, marginTop: 14, borderRadius: 11, backgroundColor: isTransferLocked ? colors.card : colors.primary, borderWidth: isTransferLocked ? 1 : 0, borderColor: isTransferLocked ? colors.gold : 'transparent', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: restoredTransfer && restoredTransfer.recipientParticipantToken !== detail.participantToken && !isTransferLocked ? 0.5 : 1 }}
                     >
-                      <Feather name="send" size={15} color={colors.primaryForeground} />
-                      <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>SEND CASH</Text>
+                      <Feather name={isTransferLocked ? 'lock' : 'send'} size={15} color={isTransferLocked ? colors.gold : colors.primaryForeground} />
+                      <Text style={{ color: isTransferLocked ? colors.gold : colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>{isTransferLocked ? 'CASH TRANSFERS LOCKED' : 'SEND CASH'}</Text>
                     </TouchableOpacity>
                   ) : null}
                   {cashTransferReceipt ? (
@@ -1763,6 +1785,11 @@ export function PaperChallengeLeaderboard({
         </View>
       </Modal>
 
+      <EventArenaTransferLockNotice
+        visible={transferLockNoticeOpen}
+        onDismiss={() => setTransferLockNoticeOpen(false)}
+      />
+
       <Modal visible={cashTransferOpen} animationType="fade" transparent statusBarTranslucent onRequestClose={() => {
         if (!cashTransferBusy) setCashTransferOpen(false);
       }}>
@@ -1832,9 +1859,9 @@ export function PaperChallengeLeaderboard({
                 <TouchableOpacity
                   testID="event-arena-send-cash-confirm"
                   accessibilityRole="button"
-                  disabled={cashTransferBusy || !Number.isFinite(Number(cashTransferAmount)) || Number(cashTransferAmount) < 0.01 || Number(cashTransferAmount) > (eventAccount?.cash ?? 0)}
+                  disabled={isTransferLocked || cashTransferBusy || !Number.isFinite(Number(cashTransferAmount)) || Number(cashTransferAmount) < 0.01 || Number(cashTransferAmount) > (eventAccount?.cash ?? 0)}
                   onPress={() => { void confirmCashTransfer(); }}
-                  style={{ flex: 1, minHeight: 48, justifyContent: 'center', alignItems: 'center', borderRadius: 10, backgroundColor: colors.primary, opacity: cashTransferBusy || Number(cashTransferAmount) < 0.01 || Number(cashTransferAmount) > (eventAccount?.cash ?? 0) ? 0.55 : 1 }}
+                  style={{ flex: 1, minHeight: 48, justifyContent: 'center', alignItems: 'center', borderRadius: 10, backgroundColor: colors.primary, opacity: isTransferLocked || cashTransferBusy || Number(cashTransferAmount) < 0.01 || Number(cashTransferAmount) > (eventAccount?.cash ?? 0) ? 0.55 : 1 }}
                 >
                   <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>{cashTransferBusy ? 'SENDING…' : `SEND ${money(Number(cashTransferAmount) || 0)}`}</Text>
                 </TouchableOpacity>

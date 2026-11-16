@@ -20,6 +20,7 @@ const eventArena = readFileSync(new URL("../components/EventArenaScreen.tsx", im
 const lightningInvitation = readFileSync(new URL("../components/LightningRoundInvitation.tsx", import.meta.url), "utf8");
 const eventArenaOverview = readFileSync(new URL("../components/EventArenaOverview.tsx", import.meta.url), "utf8");
 const eventCashCelebration = readFileSync(new URL("../components/EventCashReceivedCelebration.tsx", import.meta.url), "utf8");
+const eventArenaTransferLockNotice = readFileSync(new URL("../components/EventArenaTransferLockNotice.tsx", import.meta.url), "utf8");
 const mobileRootLayout = readFileSync(new URL("../app/_layout.tsx", import.meta.url), "utf8");
 const eventArenaTransfers = readFileSync(new URL("../lib/eventArenaTransfers.ts", import.meta.url), "utf8");
 const eventArenaArtworkCatalog = readFileSync(new URL("../lib/eventArenaArtwork.ts", import.meta.url), "utf8");
@@ -1101,6 +1102,25 @@ test("Event Arena cash transfers stay event-only, confirmed, private, and idempo
   assert.match(eventArenaOverview, /testID="event-arena-cash-notifications"/);
   assert.match(eventArenaOverview, /testID="event-arena-refresh"/);
   assert.match(eventArenaApi, /event_arena_cash_transfers/);
+});
+
+test("Mountain Championship blocks send and receive actions with an accessible lock notice", () => {
+  assert.match(challenge, /eventType: 'mountain-championship'/);
+  assert.match(challenge, /getRegularEventPreparationStartAtMs\(eventId\)/);
+  assert.match(leaderboard, /cashTransfersLocked/);
+  assert.match(leaderboard, /if \(isTransferLocked\) \{\s*setTransferLockNoticeOpen\(true\)/);
+  assert.match(leaderboard, /disabled=\{isTransferLocked \|\| cashTransferBusy/);
+  assert.match(eventArena, /isMountainChampionshipTransferLocked\([\s\S]*?currentWindow\.eventType/);
+  assert.match(eventArena, /isCurrentEvent && isMountainChampionshipTransferLocked/);
+  assert.match(eventArena, /setCashTransferLockNoticeOpen\(true\);\s*return;\s*}\s*setCashHistoryEventId\(eventId\)/);
+  assert.match(eventArena, /<EventArenaTransferLockNotice/);
+  assert.match(eventArenaOverview, /mountainTransferLockActive/);
+  assert.match(challenge, /MOUNTAIN_CHAMPIONSHIP_TRANSFER_LOCK_TITLE = 'COMPETITION ACCOUNT LOCKED'/);
+  assert.match(challenge, /Cash transfers are disabled during the Mountain Championship preparation period and competition\./);
+  assert.match(eventArenaTransferLockNotice, /MOUNTAIN_CHAMPIONSHIP_TRANSFER_LOCK_TITLE/);
+  assert.match(eventArenaTransferLockNotice, /name="award"/);
+  assert.match(eventArenaTransferLockNotice, /name="lock"/);
+  assert.match(eventArenaTransferLockNotice, />OK</);
 });
 
 test("Event Arena competition keeps its visual summary and reminders inside the scroll area", () => {

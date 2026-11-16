@@ -130,6 +130,21 @@ export function getRegularEventWindowForStartDate(eventId: unknown): RegularEven
   return daySerial === null ? null : windowForStartSerial(daySerial);
 }
 
+/** Start of the scheduled event's preparation/availability period. */
+export function getRegularEventPreparationStartAtMs(eventId: unknown): number | null {
+  const sequenceIndex = getRegularEventSequenceIndex(eventId);
+  const eventSerial = typeof eventId === 'string' ? parseDateSerial(eventId) : null;
+  if (sequenceIndex === null || eventSerial === null) return null;
+  const preparationDate = new Date((eventSerial - REGULAR_EVENT_CALENDAR.availabilityDays) * DAY_MS);
+  return easternLocalToUtc(
+    preparationDate.getUTCFullYear(),
+    preparationDate.getUTCMonth() + 1,
+    preparationDate.getUTCDate(),
+    0,
+    0,
+  );
+}
+
 /** Return the regular-event window shown for the local calendar date. */
 export function getRegularEventWindowForCurrentDate(nowMs = Date.now()): {
   eventId: string;

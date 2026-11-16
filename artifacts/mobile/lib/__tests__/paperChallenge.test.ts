@@ -13,6 +13,8 @@ import {
   getPaperChallengePersonalBestProgress,
   getPaperChallengeArtworkId,
   getPaperChallengeConfiguration,
+  isMountainChampionshipTransferLocked,
+  isPaperChallengeConfiguration,
   GREEN_BULL_STARTING_BALANCE,
   PAPER_CHALLENGE_ARTWORK_IDS,
   getPaperChallengeReminders,
@@ -39,6 +41,7 @@ import {
   updatePaperChallengeStore,
   shouldEnsurePaperChallengeAccount,
 } from '../paperChallenge.ts';
+import { getRegularEventPreparationStartAtMs } from '../paperChallengeCalendar.ts';
 import {
   calculateEventHoldingAllocationPercent,
   getVisibleEventHoldings,
@@ -184,6 +187,45 @@ test('Green Bull artwork fixes saved rules, account capital, baseline, fees, and
   assert.equal(archived.artworkId, 'green-stock-exchange');
   assert.equal(archived.startingBalance, 500_000);
   assert.ok(Math.abs(archived.returnPercent - 0.2468) < 1e-12);
+});
+
+test('Mountain Championship uses a stable event type and locks transfers only in its schedule window', () => {
+  const configuration = getPaperChallengeConfiguration('mountain-summit');
+  assert.deepEqual(configuration, {
+    eventType: 'mountain-championship',
+    artworkId: 'mountain-summit',
+    startingBalance: 100_000,
+    rankingDirection: 'highest-return',
+  });
+  const event = getPaperChallengeWindow(Date.parse('2026-12-16T17:00:00.000Z'));
+  assert.equal(event.id, '2026-12-14');
+  assert.equal(event.eventType, 'mountain-championship');
+
+  const preparationStart = getRegularEventPreparationStartAtMs(event.id);
+  assert.equal(preparationStart, Date.parse('2026-12-07T05:00:00.000Z'));
+  const eventEnd = Date.parse('2026-12-18T21:00:00.000Z');
+  assert.equal(isMountainChampionshipTransferLocked('mountain-championship', event.id, eventEnd, preparationStart - 1), false);
+  assert.equal(isMountainChampionshipTransferLocked('mountain-championship', event.id, eventEnd, preparationStart), true);
+  assert.equal(isMountainChampionshipTransferLocked('mountain-championship', event.id, eventEnd, event.startAtMs), true);
+  assert.equal(isMountainChampionshipTransferLocked('mountain-championship', event.id, eventEnd, eventEnd - 1), true);
+  assert.equal(isMountainChampionshipTransferLocked('mountain-championship', event.id, eventEnd, eventEnd), false);
+
+  for (const eventType of [
+    'event-arena',
+    'green-bull-championship',
+    'bear-market-mayhem',
+    'penny-stock-mayhem',
+    'lightning-round',
+  ] as const) {
+    assert.equal(isMountainChampionshipTransferLocked(eventType, event.id, eventEnd, event.startAtMs), false);
+  }
+  assert.equal(isMountainChampionshipTransferLocked('event-arena', event.id, eventEnd, event.startAtMs), false);
+  assert.equal(isPaperChallengeConfiguration({
+    eventType: 'event-arena',
+    artworkId: 'mountain-summit',
+    startingBalance: 100_000,
+    rankingDirection: 'highest-return',
+  }), true, 'legacy saved Mountain events remain readable');
 });
 
 test('Red Showdown creates an isolated Bear Market event and preserves its saved rules in history', () => {

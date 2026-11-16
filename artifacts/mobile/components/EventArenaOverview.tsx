@@ -20,7 +20,10 @@ import type {
   EventArenaPerformance,
 } from '@/lib/eventArenaHome';
 import { EVENT_ARENA_ARTWORK_SOURCES } from '@/lib/eventArenaArtwork';
-import { LEGACY_PAPER_CHALLENGE_ARTWORK_ID } from '@/lib/paperChallenge';
+import {
+  isMountainChampionshipTransferLocked,
+  LEGACY_PAPER_CHALLENGE_ARTWORK_ID,
+} from '@/lib/paperChallenge';
 
 export type EventArenaOverviewProps = {
   event: PaperChallengeWindow;
@@ -37,6 +40,7 @@ export type EventArenaOverviewProps = {
   onRefresh: () => void;
   onOpenNotifications: () => void;
   unreadCashNotifications: number;
+  cashTransfersLocked?: boolean;
   onOpenTrades: () => void;
   notificationsEnabled: boolean;
   onNotificationsChange: (enabled: boolean) => void;
@@ -92,6 +96,7 @@ export function EventArenaOverview({
   onRefresh,
   onOpenNotifications,
   unreadCashNotifications,
+  cashTransfersLocked,
   onOpenTrades,
   notificationsEnabled,
   onNotificationsChange,
@@ -101,6 +106,12 @@ export function EventArenaOverview({
   const contentWidth = Math.max(0, Math.min(windowWidth - 32, 560));
   const livePhase = nowMs < event.startAtMs ? 'upcoming' : nowMs <= event.endAtMs ? 'active' : 'ended';
   const joined = participation === 'joined' && enrollment?.eventId === event.id;
+  const mountainTransferLockActive = cashTransfersLocked ?? isMountainChampionshipTransferLocked(
+    event.eventType,
+    event.id,
+    event.endAtMs,
+    nowMs,
+  );
   const isUpcoming = livePhase === 'upcoming';
   const canWithdraw = joined && isUpcoming && enrollment?.startEquity == null;
   const copy = statusCopy(participation, livePhase);
@@ -115,7 +126,8 @@ export function EventArenaOverview({
   const championshipName = event.eventType === 'green-bull-championship'
     ? 'GREEN BULL CHAMPIONSHIP'
     : isBearMarketMayhem ? 'BEAR MARKET MAYHEM'
-      : event.eventType === 'penny-stock-mayhem' ? 'PENNY STOCK MAYHEM' : 'EVENT ARENA CHAMPIONSHIP';
+      : event.eventType === 'penny-stock-mayhem' ? 'PENNY STOCK MAYHEM'
+        : event.eventType === 'mountain-championship' ? 'MOUNTAIN CHAMPIONSHIP' : 'EVENT ARENA CHAMPIONSHIP';
   const startingCapital = event.startingBalance ?? enrollment?.startingBalance ?? 100_000;
   const stickyAction = joined && !isUpcoming
     ? {
@@ -185,17 +197,19 @@ export function EventArenaOverview({
         <View style={styles.topline}>
           <View style={styles.brandMark}><Feather name="activity" size={15} color={accent} /></View>
           <Text style={[styles.eyebrow, { color: muted }]}>MEISNER METHOD  /  {championshipName}</Text>
-          {joined && livePhase === 'active' ? (
+          {joined && (livePhase === 'active' || mountainTransferLockActive) ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={unreadCashNotifications > 0
+              accessibilityLabel={mountainTransferLockActive
+                ? 'Open Mountain Championship cash transfer notice'
+                : unreadCashNotifications > 0
                 ? `Open cash notifications, ${unreadCashNotifications} unread`
                 : 'Open cash notifications'}
               testID="event-arena-cash-notifications"
               onPress={onOpenNotifications}
               style={({ pressed }) => [styles.iconButton, { borderColor: border, opacity: pressed ? 0.65 : 1 }]}
             >
-              <Feather name="bell" size={16} color={ink} />
+              <Feather name={mountainTransferLockActive ? 'lock' : 'bell'} size={16} color={ink} />
               {unreadCashNotifications > 0 ? (
                 <View testID="event-arena-cash-notification-badge" style={styles.notificationBadge}>
                   <Text style={styles.notificationBadgeText}>{unreadCashNotifications > 9 ? '9+' : unreadCashNotifications}</Text>

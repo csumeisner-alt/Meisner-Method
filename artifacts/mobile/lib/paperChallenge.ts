@@ -9,6 +9,7 @@ import type {
 import {
   getFirstLightningRoundCandidateDaySerial,
   getRegularEventCalendarError,
+  getRegularEventPreparationStartAtMs,
   getRegularEventSequenceIndex,
   getRegularEventWindowForCurrentDate,
   hasRegularEventWindowOverlap,
@@ -47,6 +48,7 @@ export type PaperChallengeEventType =
   | 'green-bull-championship'
   | 'bear-market-mayhem'
   | 'penny-stock-mayhem'
+  | 'mountain-championship'
   | 'lightning-round';
 export type PaperChallengeRankingDirection = 'highest-return' | 'lowest-return';
 
@@ -87,6 +89,14 @@ export function getPaperChallengeConfiguration(
       purchaseLimit: 20,
     };
   }
+  if (artworkId === 'mountain-summit') {
+    return {
+      eventType: 'mountain-championship',
+      artworkId,
+      startingBalance: PAPER_CHALLENGE_STARTING_BALANCE,
+      rankingDirection: 'highest-return',
+    };
+  }
   if (artworkId === 'lightning-round-arena') {
     return {
       eventType: 'lightning-round',
@@ -117,11 +127,30 @@ export function isPaperChallengeConfiguration(value: unknown): value is PaperCha
   ) return true;
   // A Red Showdown event saved before Bear Market Mayhem was introduced keeps
   // its original standard-event rules and results.
-  return configuration.artworkId === 'red-showdown'
-    && configuration.eventType === 'event-arena'
+  const legacyStandardConfiguration = configuration.eventType === 'event-arena'
     && configuration.startingBalance === PAPER_CHALLENGE_STARTING_BALANCE
     && configuration.rankingDirection === 'highest-return'
     && configuration.purchaseLimit === undefined;
+  return legacyStandardConfiguration
+    && (configuration.artworkId === 'red-showdown' || configuration.artworkId === 'mountain-summit');
+}
+
+export const MOUNTAIN_CHAMPIONSHIP_TRANSFER_LOCK_TITLE = 'COMPETITION ACCOUNT LOCKED';
+export const MOUNTAIN_CHAMPIONSHIP_TRANSFER_LOCK_MESSAGE =
+  'Cash transfers are disabled during the Mountain Championship preparation period and competition.';
+
+/** Transfers are locked from the existing event-availability start through the event end. */
+export function isMountainChampionshipTransferLocked(
+  eventType: PaperChallengeEventType | undefined,
+  eventId: string,
+  eventEndAtMs: number,
+  nowMs = Date.now(),
+): boolean {
+  if (eventType !== 'mountain-championship' || !Number.isFinite(nowMs) || !Number.isFinite(eventEndAtMs)) {
+    return false;
+  }
+  const preparationStartAtMs = getRegularEventPreparationStartAtMs(eventId);
+  return preparationStartAtMs !== null && nowMs >= preparationStartAtMs && nowMs < eventEndAtMs;
 }
 
 export function normalizePaperChallengeArtworkId(value: unknown): PaperChallengeArtworkId {
@@ -263,6 +292,7 @@ export function normalizePaperChallengeStore(store: PaperChallengeStore): PaperC
       || eventType === 'green-bull-championship'
       || eventType === 'bear-market-mayhem'
       || eventType === 'penny-stock-mayhem'
+      || eventType === 'mountain-championship'
       || eventType === 'event-arena'
       ? eventType
       : undefined;
@@ -321,6 +351,7 @@ export function normalizePaperChallengeStore(store: PaperChallengeStore): PaperC
           || store.enrollment.eventType === 'green-bull-championship'
           || store.enrollment.eventType === 'bear-market-mayhem'
           || store.enrollment.eventType === 'penny-stock-mayhem'
+          || store.enrollment.eventType === 'mountain-championship'
           ? store.enrollment.eventType
           : 'event-arena';
         const savedStartingBalance = store.enrollment.startingBalance;

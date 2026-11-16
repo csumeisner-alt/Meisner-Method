@@ -38,9 +38,11 @@ import {
   getPaperChallengeArchiveChartWidth,
   getPaperChallengeReminders,
   getPaperChallengeWindow,
+  isMountainChampionshipTransferLocked,
   isPaperChallengeConfiguration,
   LEGACY_PAPER_CHALLENGE_ARTWORK_ID,
   loadPaperChallengeStore,
+  MOUNTAIN_CHAMPIONSHIP_TRANSFER_LOCK_MESSAGE,
   sortPaperChallengeHistory,
   ensurePaperChallengeAccount,
   updatePaperChallengeStore,
@@ -67,6 +69,7 @@ import {
 import { registerEventArenaPushDevice } from '@/lib/eventArenaPushRegistration';
 import { getRegularEventCalendarError } from '@/lib/paperChallengeCalendar';
 import { LightningRoundInvitation } from '@/components/LightningRoundInvitation';
+import { EventArenaTransferLockNotice } from '@/components/EventArenaTransferLockNotice';
 
 const NOTIFICATIONS_KEY = '@stocksense/paper_events_notifications_v1';
 const NOTIFICATION_ID_KEY = '@stocksense/paper_events_notification_id_v1';
@@ -279,6 +282,7 @@ function EventArenaScreenContent() {
   const [cashHistoryEventId, setCashHistoryEventId] = useState('');
   const [cashNotificationsUnread, setCashNotificationsUnread] = useState(0);
   const [cashNotificationsOpen, setCashNotificationsOpen] = useState(false);
+  const [cashTransferLockNoticeOpen, setCashTransferLockNoticeOpen] = useState(false);
   const [cashNotificationsLoading, setCashNotificationsLoading] = useState(false);
   const [cashNotificationsError, setCashNotificationsError] = useState('');
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
@@ -439,6 +443,12 @@ function EventArenaScreenContent() {
       : null;
     if (
       (isCurrentEvent && (!currentEnrollment || currentWindow.phase !== 'active'))
+      || (isCurrentEvent && isMountainChampionshipTransferLocked(
+        currentWindow.eventType,
+        currentWindow.id,
+        currentWindow.endAtMs,
+        now,
+      ))
       || (transferRefreshInFlightRef.current && !markRead)
     ) return;
     transferRefreshInFlightRef.current = true;
@@ -517,9 +527,18 @@ function EventArenaScreenContent() {
         transferRefreshInFlightRef.current = false;
       }
     }
-  }, [currentWindow.id, currentWindow.phase, refreshAccountData, store.enrollment]);
+  }, [currentWindow.endAtMs, currentWindow.eventType, currentWindow.id, currentWindow.phase, now, refreshAccountData, store.enrollment]);
 
   const openCashHistory = (eventId: string) => {
+    if (eventId === currentWindow.id && isMountainChampionshipTransferLocked(
+      currentWindow.eventType,
+      currentWindow.id,
+      currentWindow.endAtMs,
+      now,
+    )) {
+      setCashTransferLockNoticeOpen(true);
+      return;
+    }
     setCashHistoryEventId(eventId);
     setCashHistoryDirection('received');
     setCashNotifications([]);
@@ -537,6 +556,15 @@ function EventArenaScreenContent() {
     cancelledOrderIds: string[];
   }) => {
     const currentEnrollment = store.enrollment?.eventId === currentWindow.id ? store.enrollment : null;
+    if (isMountainChampionshipTransferLocked(
+      currentWindow.eventType,
+      currentWindow.id,
+      currentWindow.endAtMs,
+      now,
+    )) {
+      setCashTransferLockNoticeOpen(true);
+      throw new Error(MOUNTAIN_CHAMPIONSHIP_TRANSFER_LOCK_MESSAGE);
+    }
     if (!currentEnrollment || currentWindow.phase !== 'active' || !currentEnrollment.leaderboardOptedIn) {
       throw new Error('Cash transfers are available only to active event participants.');
     }
@@ -574,7 +602,7 @@ function EventArenaScreenContent() {
       setCashNotificationsError('The transfer was saved locally, but the shared account did not sync.');
     }
     void refreshCashNotifications(false);
-  }, [currentWindow.id, currentWindow.phase, refreshAccountData, refreshCashNotifications, store.enrollment]);
+  }, [currentWindow.endAtMs, currentWindow.eventType, currentWindow.id, currentWindow.phase, now, refreshAccountData, refreshCashNotifications, store.enrollment]);
 
   useEffect(() => {
     void readStore();
@@ -1286,6 +1314,12 @@ function EventArenaScreenContent() {
         saving={saving}
         onOpenNotifications={() => openCashHistory(currentWindow.id)}
         unreadCashNotifications={cashNotificationsUnread}
+        cashTransfersLocked={isMountainChampionshipTransferLocked(
+          currentWindow.eventType,
+          currentWindow.id,
+          currentWindow.endAtMs,
+          now,
+        )}
         notificationsEnabled={notificationsEnabled}
         onNotificationsChange={(value) => { void setEventNotifications(value); }}
         onJoin={() => {
@@ -1362,6 +1396,12 @@ function EventArenaScreenContent() {
             eventPositions={performance?.positions ?? []}
             eventQuotes={quotes}
             onCashTransfer={sendEventCash}
+            cashTransfersLocked={isMountainChampionshipTransferLocked(
+              currentWindow.eventType,
+              currentWindow.id,
+              currentWindow.endAtMs,
+              now,
+            )}
             embedded
           />
         )}
@@ -1369,6 +1409,11 @@ function EventArenaScreenContent() {
         {section === 'past' && renderPastEvents()}
       </View>
       <BottomTabBar />
+
+      <EventArenaTransferLockNotice
+        visible={cashTransferLockNoticeOpen}
+        onDismiss={() => setCashTransferLockNoticeOpen(false)}
+      />
 
       <Modal
         visible={cashNotificationsOpen}

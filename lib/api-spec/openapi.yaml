@@ -222,7 +222,7 @@ paths:
         "404":
           description: The recipient is not an eligible participant in this event
         "409":
-          description: The amount exceeds available event cash
+          description: The amount exceeds available event cash or competition transfers are locked
         "410":
           description: The event is not active
     get:
@@ -894,7 +894,7 @@ components:
           maxLength: 24
         eventType:
           type: string
-          enum: [event-arena, green-bull-championship, bear-market-mayhem, penny-stock-mayhem, lightning-round]
+          enum: [event-arena, green-bull-championship, bear-market-mayhem, penny-stock-mayhem, mountain-championship, lightning-round]
         artworkId:
           type: string
           enum: [stadium, neon-nightclub, mountain-summit, red-showdown, green-stock-exchange, penny-stock-mayhem, lightning-round-arena]
@@ -948,7 +948,7 @@ components:
         eventId: { type: string, pattern: "^(lightning-)?\\d{4}-\\d{2}-\\d{2}$" }
         eventType:
           type: string
-          enum: [event-arena, green-bull-championship, bear-market-mayhem, penny-stock-mayhem, lightning-round]
+          enum: [event-arena, green-bull-championship, bear-market-mayhem, penny-stock-mayhem, mountain-championship, lightning-round]
         artworkId:
           type: string
           enum: [stadium, neon-nightclub, mountain-summit, red-showdown, green-stock-exchange, penny-stock-mayhem, lightning-round-arena]
