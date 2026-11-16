@@ -6,6 +6,7 @@ import {
   getPaperEventDashboardPhase,
   getPaperEventDashboardProgress,
   getPaperEventDashboardRank,
+  getPaperEventDashboardRankText,
 } from '../paperEventDashboard.ts';
 
 const start = 1_000_000;
@@ -70,4 +71,24 @@ test('only actual positive ranks receive a podium or placement label', () => {
   assert.deepEqual(getPaperEventDashboardRank(8), { label: '#8 PLACE', medal: null });
   assert.equal(getPaperEventDashboardRank(null), null);
   assert.equal(getPaperEventDashboardRank(0), null);
+});
+
+test('rank status resolves loading, no-rank, upcoming, and unavailable states', () => {
+  const base = {
+    phase: 'active' as const,
+    optedIn: true,
+    rank: null,
+    hasResponse: false,
+    unavailable: false,
+  };
+  assert.equal(getPaperEventDashboardRankText(base), 'LOADING RANK');
+  assert.equal(getPaperEventDashboardRankText({ ...base, hasResponse: true }), 'NOT RANKED');
+  assert.equal(getPaperEventDashboardRankText({ ...base, unavailable: true }), 'UNAVAILABLE');
+  assert.equal(getPaperEventDashboardRankText({ ...base, rank: 4 }), '#4 PLACE');
+  assert.equal(getPaperEventDashboardRankText({ ...base, phase: 'upcoming' }), 'UPCOMING');
+  assert.equal(getPaperEventDashboardRankText({ ...base, optedIn: false }), 'NOT RANKED');
+  assert.equal(
+    getPaperEventDashboardRankText({ ...base, phase: 'unavailable' }),
+    'UNAVAILABLE',
+  );
 });

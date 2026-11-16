@@ -13,6 +13,7 @@ import {
   getPaperEventDashboardPhase,
   getPaperEventDashboardProgress,
   getPaperEventDashboardRank,
+  getPaperEventDashboardRankText,
 } from '@/lib/paperEventDashboard';
 import { getInstallationId } from '@/lib/installation';
 import { getEventArenaParticipantId } from '@/lib/eventArenaDeviceSync';
@@ -73,6 +74,8 @@ export function PaperEventArenaDashboard({
   const [installationId, setInstallationId] = useState<string | null>(null);
   const [installationIdReady, setInstallationIdReady] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const [rankTimedOut, setRankTimedOut] = useState(false);
+  const [rankRetryVersion, setRankRetryVersion] = useState(0);
 
   useEffect(() => {
     let mounted = true;
@@ -81,7 +84,7 @@ export function PaperEventArenaDashboard({
       .catch(() => { if (mounted) setInstallationId(null); })
       .finally(() => { if (mounted) setInstallationIdReady(true); });
     return () => { mounted = false; };
-  }, []);
+  }, [rankRetryVersion]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1_000);
@@ -105,12 +108,36 @@ export function PaperEventArenaDashboard({
   const phase = getPaperEventDashboardPhase(startAtMs, endAtMs, now);
   const lightningPromotionPhase = getLightningRoundCardPromotionPhase(lightningRoundPromotionWindow, now);
   const progress = getPaperEventDashboardProgress(startAtMs, endAtMs, now);
-  const rank = phase === 'ended' && summary?.finalRank != null
+  const rank = phase === 'upcoming'
+    ? null
+    : phase === 'ended' && summary?.finalRank != null
     ? summary.finalRank
     : enrollment?.leaderboardOptedIn && ownEntry.length === 1
       ? ownEntry[0].rank
       : null;
   const rankTreatment = getPaperEventDashboardRank(rank);
+  useEffect(() => {
+    setRankTimedOut(false);
+    if (
+      !enrollment?.leaderboardOptedIn
+      || phase === 'upcoming'
+      || leaderboard.data
+      || leaderboard.isError
+      || !leaderboard.isPending
+    ) return;
+    const timer = setTimeout(() => setRankTimedOut(true), 15_000);
+    return () => clearTimeout(timer);
+  }, [
+    enrollment?.leaderboardOptedIn,
+    eventId,
+    installationId,
+    installationIdReady,
+    leaderboard.data,
+    leaderboard.isError,
+    leaderboard.isPending,
+    phase,
+    rankRetryVersion,
+  ]);
   const rawStartingEquity = summary?.startEquity ?? enrollment?.startEquity ?? null;
   const startingEquity = rawStartingEquity !== null
     && Number.isFinite(rawStartingEquity)
@@ -145,14 +172,16 @@ export function PaperEventArenaDashboard({
         ? 'COMPLETE'
         : 'SCHEDULE UNAVAILABLE';
   const statusColor = phase === 'active' ? GREEN : GOLD;
-  const rankText = rankTreatment?.label
-    ?? (enrollment?.leaderboardOptedIn
-      ? leaderboard.data
-        ? 'NOT RANKED'
-        : leaderboard.isError || (installationIdReady && !installationId)
-          ? 'UNAVAILABLE'
-          : 'LOADING RANK'
-      : 'NOT RANKED');
+  const rankText = getPaperEventDashboardRankText({
+    phase,
+    optedIn: enrollment?.leaderboardOptedIn ?? false,
+    rank,
+    hasResponse: Boolean(leaderboard.data),
+    unavailable: leaderboard.isError
+      || rankTimedOut
+      || (installationIdReady && !installationId)
+      || (!leaderboard.isPending && !leaderboard.data),
+  });
   const rankColor = rankTreatment?.medal === 'GOLD'
     ? '#ffe08a'
     : rankTreatment?.medal === 'SILVER'
@@ -367,6 +396,23 @@ export function PaperEventArenaDashboard({
             : `Leaderboard ranking ${rankText.toLowerCase()}`,
         )}
       </View>
+      {rankText === 'UNAVAILABLE' && (
+        <TouchableOpacity
+          testID="paper-event-rank-retry"
+          accessibilityRole="button"
+          accessibilityLabel="Retry Event Arena rank"
+          onPress={() => {
+            setRankTimedOut(false);
+            setRankRetryVersion((version) => version + 1);
+            if (installationId) void leaderboard.refetch();
+          }}
+          style={{ alignSelf: 'flex-end', paddingHorizontal: 8, paddingVertical: 5 }}
+        >
+          <Text style={{ color: GOLD, fontFamily: 'Inter_600SemiBold', fontSize: 9 }}>
+            RETRY RANK
+          </Text>
+        </TouchableOpacity>
+      )}
 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 6 }}>
         <View style={{ flex: 1, minWidth: 0, paddingHorizontal: 7, paddingVertical: 6, borderRadius: 8, backgroundColor: 'rgba(231,198,106,0.08)' }}>

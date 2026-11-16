@@ -1162,6 +1162,10 @@ test("position and order cards are compact without removing their essential valu
   assert.match(screen, /testID=\{`edit-order-\$\{o\.id\}`\}/);
   assert.match(screen, /testID=\{`delete-order-\$\{o\.id\}`\}/);
   assert.match(screen, /o\.status === 'pending'/);
+  assert.match(screen, /\(o\.orderType === 'limit' \|\| o\.orderType === 'stop_limit'\) && o\.limitPrice != null/);
+  assert.match(screen, /\(o\.orderType === 'stop' \|\| o\.orderType === 'stop_limit'\) && o\.stopPrice != null/);
+  assert.match(screen, /o\.orderType === 'trailing_stop' && o\.trailPct != null/);
+  assert.match(screen, /o\.orderType === 'trailing_stop' && o\.trailAbs != null/);
   assert.match(screen, /posIdentity: \{ flex: 1, minWidth: 0, paddingRight: 4 \}/);
   assert.match(screen, /flexWrap: 'wrap', gap: 10, marginBottom: 4/);
 });

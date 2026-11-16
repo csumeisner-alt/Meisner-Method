@@ -520,6 +520,27 @@ test('fillOrder — market buy deducts cash and creates lot', () => {
   assert.equal(result.newTransaction.total, 1_000);
 });
 
+test('fillOrder — refuses to apply an already-filled order again', () => {
+  const account = mkAccount({ id: 'account-repeat', cash: 10_000 });
+  const alreadyFilled = mkOrder({
+    id: 'order-already-filled',
+    accountId: account.id,
+    status: 'filled',
+  });
+  const result = fillOrder({
+    order: alreadyFilled,
+    fillPrice: 200,
+    filledAt: new Date().toISOString(),
+    account,
+    positions: [],
+    lots: [],
+    uid,
+  });
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.match(result.reason, /Only a pending order/);
+  assert.equal(account.cash, 10_000);
+});
+
 test('Penny Stock Mayhem accepts verified $19.99 stock and ETF buys, including additions', () => {
   for (const assetType of ['stock', 'etf'] as const) {
     const account = mkAccount({ id: 'a1', cash: 10_000 });

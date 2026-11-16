@@ -226,6 +226,29 @@ export function computePaperEquity(
       }, 0);
 }
 
+/** Require a current provider observation before saving a market-value sample. */
+export function isFreshPaperQuote(
+  quote: LiveQuote | undefined,
+  nowMs: number = Date.now(),
+): quote is LiveQuote {
+  if (
+    !quote
+    || !Number.isFinite(quote.price)
+    || quote.price <= 0
+    || !Number.isFinite(nowMs)
+    || !Number.isFinite(quote.priceTimestamp)
+    || (quote.priceTimestamp ?? 0) <= 0
+    || !Number.isFinite(quote.fetchedAtMs)
+  ) return false;
+
+  const providerAgeMs = nowMs - (quote.priceTimestamp as number) * 1000;
+  const responseAgeMs = nowMs - (quote.fetchedAtMs as number);
+  return providerAgeMs >= -60_000
+    && providerAgeMs <= 15 * 60_000
+    && responseAgeMs >= -60_000
+    && responseAgeMs <= 10 * 60_000;
+}
+
 /** Win threshold: a sell counts as a win when net (after-fee) P&L ≥ this. */
 export const WIN_THRESHOLD = 0.01;
 
@@ -344,19 +367,25 @@ export function createAccountValueSnapshot(
   positions: PaperPosition[],
   quotes: Record<string, LiveQuote>,
   date: string = new Date().toISOString(),
+  nowMs: number = Date.now(),
 ): PaperAccountValueSnapshot | null {
   const account = accounts.find((item) => item.id === accountId);
   const timestamp = new Date(date).getTime();
-  if (!account || !Number.isFinite(timestamp) || !Number.isFinite(account.cash)) return null;
+  if (
+    !account
+    || !Number.isFinite(timestamp)
+    || timestamp > nowMs + 60_000
+    || !Number.isFinite(account.cash)
+  ) return null;
 
   const accountPositions = positions.filter((position) =>
     position.accountId === accountId && position.shares > 0,
   );
   let positionValue = 0;
   for (const position of accountPositions) {
-    const price = quotes[position.symbol]?.price;
-    if (!Number.isFinite(price) || price <= 0) return null;
-    positionValue += (isShortPosition(position) ? -1 : 1) * position.shares * price;
+    const quote = quotes[position.symbol];
+    if (!isFreshPaperQuote(quote, nowMs)) return null;
+    positionValue += (isShortPosition(position) ? -1 : 1) * position.shares * quote.price;
   }
   const value = account.cash + (account.unsettledCash ?? 0)
     + (account.shortCollateral ?? 0) + positionValue;
@@ -429,11 +458,17 @@ export function mergeAccountValueHistory(
 ): { date: string; value: number }[] {
   const byDate = new Map(tradeHistory.map((point) => [point.date, point]));
   for (const snapshot of snapshots) {
-    if (snapshot.accountId === accountId && Number.isFinite(snapshot.value)) {
+    if (
+      snapshot.accountId === accountId
+      && Number.isFinite(new Date(snapshot.date).getTime())
+      && Number.isFinite(snapshot.value)
+    ) {
       byDate.set(snapshot.date, { date: snapshot.date, value: snapshot.value });
     }
   }
-  return [...byDate.values()].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  return [...byDate.values()]
+    .filter((point) => Number.isFinite(new Date(point.date).getTime()))
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 }
 
 // ── Value history ────────────────────────────────────────────────────────────
@@ -450,12 +485,18 @@ export function buildValueHistory(
   quotes: Record<string, LiveQuote>,
   now: string = new Date().toISOString(),
 ): { date: string; value: number }[] {
-  const sorted = [...txns].sort(
+  const sorted = txns
+    .filter((transaction) =>
+      transaction.accountId === account.id
+      && Number.isFinite(new Date(transaction.date).getTime()),
+    )
+    .sort(
     (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
   );
-  const points: { date: string; value: number }[] = [
-    { date: account.createdAt, value: INITIAL_BALANCE },
-  ];
+  const createdAtIsValid = Number.isFinite(new Date(account.createdAt).getTime());
+  const points: { date: string; value: number }[] = createdAtIsValid
+    ? [{ date: account.createdAt, value: INITIAL_BALANCE }]
+    : [];
   let cash = INITIAL_BALANCE;
   const posMap: Record<string, {
     shares: number;
@@ -527,12 +568,22 @@ export function buildValueHistory(
     points.push({ date: tx.date, value: cash + shortCollateral + posValue });
   }
 
-  const livePosValue = currentPositions.reduce(
-    (s, p) => s + (isShortPosition(p) ? -1 : 1) * p.shares * (quotes[p.symbol]?.price ?? p.avgCost), 0,
+  const nowMs = new Date(now).getTime();
+  const accountPositions = currentPositions.filter((position) =>
+    position.accountId === account.id && position.shares > 0,
   );
-  points.push({
-    date: now,
-    value: currentCash + (account.shortCollateral ?? 0) + livePosValue,
-  });
+  const liveQuotesAreFresh = Number.isFinite(nowMs)
+    && accountPositions.every((position) => isFreshPaperQuote(quotes[position.symbol], nowMs));
+  if (liveQuotesAreFresh) {
+    const livePosValue = accountPositions.reduce(
+      (sum, position) =>
+        sum + (isShortPosition(position) ? -1 : 1) * position.shares * quotes[position.symbol]!.price,
+      0,
+    );
+    points.push({
+      date: now,
+      value: currentCash + (account.shortCollateral ?? 0) + livePosValue,
+    });
+  }
   return points;
 }

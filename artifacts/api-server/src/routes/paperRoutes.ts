@@ -64,6 +64,14 @@ function optionalString(value: unknown, field: string, maxLength = 200): string 
   return value == null ? null : stringValue(value, field, maxLength);
 }
 
+function assertUniqueIds(items: Array<{ id: string }>, label: string) {
+  const ids = new Set<string>();
+  for (const item of items) {
+    if (ids.has(item.id)) throw new Error(`${label} contains a duplicate ID.`);
+    ids.add(item.id);
+  }
+}
+
 function validateSnapshot(value: unknown) {
   if (!isRecord(value)) throw new Error("The Event Arena snapshot is invalid.");
   const sourceInstallationId = stringValue(value.sourceInstallationId, "sourceInstallationId", 128);
@@ -107,6 +115,7 @@ function validateSnapshot(value: unknown) {
     };
   });
   if (accounts.length === 0) throw new Error("The snapshot has no Event Arena accounts.");
+  assertUniqueIds(accounts, "accounts");
   const accountIds = new Set(accounts.map((account) => account.id));
   const accountId = (item: any, field: string) => {
     const id = stringValue(item.accountId, field, 200);
@@ -197,6 +206,10 @@ function validateSnapshot(value: unknown) {
       purchasedAt: isoDate(lot.purchasedAt, `lots[${index}].purchasedAt`),
     };
   });
+  assertUniqueIds(positions, "positions");
+  assertUniqueIds(transactions, "transactions");
+  assertUniqueIds(orders, "orders");
+  assertUniqueIds(lots, "lots");
 
   const challengeStore = value.challengeStore;
   if (

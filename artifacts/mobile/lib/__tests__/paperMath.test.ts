@@ -31,6 +31,13 @@ const approx = (a: number, b: number, msg?: string) =>
 
 const DAY0 = '2025-01-01T00:00:00.000Z';
 const DAY365 = '2026-01-01T00:00:00.000Z'; // exactly 365 days after DAY0 (2025 is not a leap year)
+const freshQuote = (price: number, at: string) => ({
+  price,
+  change: 0,
+  pct: 0,
+  priceTimestamp: new Date(at).getTime() / 1000,
+  fetchedAtMs: new Date(at).getTime(),
+});
 
 test('normalizeDividendYield: provider percent-like values become decimal fractions', () => {
   approx(normalizeDividendYield(0.43, 1, 230.36), 0.0043);
@@ -141,10 +148,11 @@ test('buildValueHistory: reconstructed final equity matches live equity (fee inc
 
   // Remaining 3 shares, current quote 120.
   const remaining: PaperPosition = pos({ shares: 3 });
-  const quotes = { VOO: { price: 120, change: 0, pct: 0 } };
+  const chartAt = '2026-06-01T00:00:00.000Z';
+  const quotes = { VOO: freshQuote(120, chartAt) };
 
   const history = buildValueHistory(
-    account, [buy, sell], liveCash, [remaining], quotes, '2026-06-01T00:00:00.000Z',
+    account, [buy, sell], liveCash, [remaining], quotes, chartAt,
   );
 
   // Independently computed live equity.
@@ -196,12 +204,25 @@ test('account value snapshots use live quotes and never estimate missing positio
     'a1',
     [account],
     positions,
-    { VOO: { price: 120, change: 0, pct: 0 } },
+    { VOO: freshQuote(120, DAY365) },
     DAY365,
+    new Date(DAY365).getTime(),
   );
   assert.deepEqual(snapshot, { accountId: 'a1', date: DAY365, value: 765 });
-  assert.equal(createAccountValueSnapshot('a1', [account], positions, {}, DAY365), null);
-  assert.equal(createAccountValueSnapshot('a2', [account], positions, {}, DAY365), null);
+  assert.equal(createAccountValueSnapshot(
+    'a1', [account], positions, {}, DAY365, new Date(DAY365).getTime(),
+  ), null);
+  assert.equal(createAccountValueSnapshot(
+    'a2', [account], positions, {}, DAY365, new Date(DAY365).getTime(),
+  ), null);
+  assert.equal(createAccountValueSnapshot(
+    'a1',
+    [account],
+    positions,
+    { VOO: freshQuote(120, DAY0) },
+    DAY365,
+    new Date(DAY365).getTime(),
+  ), null, 'a stale provider price must not be saved as current equity');
 });
 
 test('snapshot parsing and hourly upserts keep account histories separate', () => {
@@ -267,10 +288,30 @@ test('ALL account history keeps legacy transaction points alongside saved snapsh
     [
       { accountId: 'a1', date: '2025-06-01T00:00:00.000Z', value: 101_000 },
       { accountId: 'a2', date: '2025-07-01T00:00:00.000Z', value: 99_000 },
+      { accountId: 'a1', date: 'not-a-date', value: 105_000 },
     ],
     'a1',
   );
   assert.deepEqual(merged.map((point) => point.value), [INITIAL_BALANCE, 101_000]);
+});
+
+test('ALL history ignores transactions from other accounts and omits stale live valuations', () => {
+  const account: PaperAccount = { id: 'a1', name: 'Selected', cash: 500, createdAt: DAY0 };
+  const selectedBuy: PaperTransaction = {
+    id: 'selected-buy', accountId: 'a1', symbol: 'VOO', companyName: 'Fund',
+    action: 'BUY', shares: 1, price: 100, total: 100, date: DAY365,
+  };
+  const otherAccountBuy = { ...selectedBuy, id: 'other-buy', accountId: 'a2', total: 50 };
+  const history = buildValueHistory(
+    account,
+    [selectedBuy, otherAccountBuy],
+    400,
+    [pos({ accountId: 'a1', shares: 1 })],
+    { VOO: freshQuote(120, DAY0) },
+    DAY365,
+  );
+  assert.equal(history.length, 2, 'stale current quotes do not add a live-valued point');
+  assert.equal(history[1]?.value, INITIAL_BALANCE);
 });
 
 // ── Win rate ───────────────────────────────────────────────────────────────────
@@ -317,7 +358,7 @@ test('isWinningSell / sellNetPnL: threshold is inclusive at exactly $0.01', () =
 
 test('paper equity treats legacy positions as long and short positions as liabilities', () => {
   const account: PaperAccount = {
-    id: 'a1', name: 'Tiger', cash: 800, shortCollateral: 600, createdAt: DAY0,
+    id: 'a1', name: 'Tiger', cash: 800, unsettledCash: 50, shortCollateral: 600, createdAt: DAY0,
   };
   const legacyLong = pos({ shares: 2, avgCost: 100 });
   const short = pos({
@@ -325,10 +366,10 @@ test('paper equity treats legacy positions as long and short positions as liabil
   });
   assert.equal(computePaperEquity(account, [legacyLong, short], {
     VOO: { price: 120 }, XYZ: { price: 80 },
-  }), 1_320);
+  }), 1_370);
   assert.equal(computePaperEquity({ ...account, shortCollateral: 0 }, [legacyLong], {
     VOO: { price: 120 },
-  }), 1_040);
+  }), 1_090);
 });
 
 test('short transaction deltas reconstruct equity without reinterpreting legacy trades', () => {
@@ -344,14 +385,14 @@ test('short transaction deltas reconstruct equity without reinterpreting legacy 
     id: 'short', symbol: 'XYZ', positionType: 'short', shares: 4, avgCost: 100,
   });
   const history = buildValueHistory(
-    account, [shortOpen], account.cash, [shortPosition], { XYZ: { price: 80, change: 0, pct: 0 } }, DAY365,
+    account, [shortOpen], account.cash, [shortPosition], { XYZ: freshQuote(80, DAY365) }, DAY365,
   );
   approx(history.at(-1)!.value, 1_080);
   const snapshot = createAccountValueSnapshot(
-    'a1', [account], [shortPosition], { XYZ: { price: 80, change: 0, pct: 0 } }, DAY365,
+    'a1', [account], [shortPosition], { XYZ: freshQuote(80, DAY365) }, DAY365, new Date(DAY365).getTime(),
   );
   assert.equal(snapshot?.value, 1_080);
   assert.equal(createAccountValueSnapshot(
-    'a1', [{ ...account, id: 'a2' }], [shortPosition], { XYZ: { price: 80, change: 0, pct: 0 } }, DAY365,
+    'a1', [{ ...account, id: 'a2' }], [shortPosition], { XYZ: freshQuote(80, DAY365) }, DAY365, new Date(DAY365).getTime(),
   ), null, 'positions from another account must not be valued in this account');
 });

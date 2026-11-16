@@ -76,3 +76,19 @@ export function getPaperEventDashboardRank(rank: number | null) {
   if (rank === 3) return { label: 'BRONZE · 3RD', medal: 'BRONZE' } as const;
   return { label: `#${rank} PLACE`, medal: null } as const;
 }
+
+export function getPaperEventDashboardRankText(args: {
+  phase: PaperEventDashboardPhase;
+  optedIn: boolean;
+  rank: number | null;
+  hasResponse: boolean;
+  unavailable: boolean;
+}): string {
+  if (args.phase === 'upcoming') return 'UPCOMING';
+  const rankTreatment = getPaperEventDashboardRank(args.rank);
+  if (rankTreatment) return rankTreatment.label;
+  if (!args.optedIn) return 'NOT RANKED';
+  if (args.hasResponse) return 'NOT RANKED';
+  if (args.unavailable || args.phase === 'unavailable') return 'UNAVAILABLE';
+  return 'LOADING RANK';
+}

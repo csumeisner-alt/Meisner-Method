@@ -298,3 +298,26 @@ test("invalid snapshots are rejected before creating a paired account", async ()
     assert.equal(db.metadata.size, 0);
   });
 });
+
+test("device sync rejects duplicate order and execution IDs instead of storing duplicate effects", async () => {
+  await withApi(async (baseUrl, db) => {
+    for (const invalidSnapshot of [
+      {
+        ...snapshot,
+        transactions: [snapshot.transactions[0], { ...snapshot.transactions[0], symbol: "TSLA" }],
+      },
+      {
+        ...snapshot,
+        orders: [snapshot.orders[0], { ...snapshot.orders[0], symbol: "TSLA" }],
+      },
+    ]) {
+      const response = await fetch(`${baseUrl}/event-arena/device-pairing`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-event-arena-device-token": sourceToken },
+        body: JSON.stringify({ snapshot: invalidSnapshot }),
+      });
+      assert.equal(response.status, 400);
+    }
+    assert.equal(db.metadata.size, 0, "invalid duplicate identities must not create server snapshots");
+  });
+});

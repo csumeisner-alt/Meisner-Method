@@ -636,6 +636,10 @@ export function fillOrder(args: {
   const { order, fillPrice, filledAt, account, positions, lots, uid } = args;
   const { accountId, symbol, companyName, shares, side } = order;
 
+  if (order.status !== 'pending') {
+    return { ok: false, reason: 'Only a pending order can be filled.' };
+  }
+
   if (
     !Number.isFinite(shares) || shares <= 0 ||
     !Number.isFinite(fillPrice) || fillPrice <= 0 ||

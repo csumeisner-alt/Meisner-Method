@@ -3403,19 +3403,19 @@ export default function PaperScreen() {
                   <Text style={styles.posLabel}>SHARES</Text>
                   <Text style={styles.posVal}>{o.shares}</Text>
                 </View>
-                {o.limitPrice != null && <View>
+                {(o.orderType === 'limit' || o.orderType === 'stop_limit') && o.limitPrice != null && <View>
                   <Text style={styles.posLabel}>LIMIT</Text>
                   <Text style={styles.posVal}>${o.limitPrice.toFixed(2)}</Text>
                 </View>}
-                {o.stopPrice != null && <View>
+                {(o.orderType === 'stop' || o.orderType === 'stop_limit') && o.stopPrice != null && <View>
                   <Text style={styles.posLabel}>STOP</Text>
                   <Text style={styles.posVal}>${o.stopPrice.toFixed(2)}</Text>
                 </View>}
-                {o.trailPct != null && <View>
+                {o.orderType === 'trailing_stop' && o.trailPct != null && <View>
                   <Text style={styles.posLabel}>TRAIL</Text>
                   <Text style={styles.posVal}>{o.trailPct}%</Text>
                 </View>}
-                {o.trailAbs != null && <View>
+                {o.orderType === 'trailing_stop' && o.trailAbs != null && <View>
                   <Text style={styles.posLabel}>TRAIL $</Text>
                   <Text style={styles.posVal}>${o.trailAbs.toFixed(2)}</Text>
                 </View>}
