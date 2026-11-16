@@ -717,7 +717,6 @@ export default function PaperScreen() {
   const accountValueSnapshotsRef = useRef<PaperAccountValueSnapshot[]>([]);
   const orderSubmissionRef = useRef(false);
   const tradeEntryCheckInFlightRef = useRef(false);
-  const pendingTradeEntryRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (!lightningTradeOfferWindow) return;
@@ -2053,7 +2052,6 @@ export default function PaperScreen() {
     activeIdRef.current = id;
     setActiveId(id);
     setChartRange('ALL');
-    pendingTradeEntryRef.current = null;
     setLightningTradeOfferWindow(null);
     setLightningPreparationMessage('');
     await flushCache(accountsRef.current, positionsRef.current, transactionsRef.current, ordersRef.current, lotsRef.current, id);
@@ -2602,11 +2600,8 @@ export default function PaperScreen() {
     }
   };
 
-  const continuePendingTradeEntry = () => {
-    const continueTrade = pendingTradeEntryRef.current;
-    pendingTradeEntryRef.current = null;
+  const dismissLightningTradeOffer = () => {
     setLightningTradeOfferWindow(null);
-    continueTrade?.();
   };
 
   const requestTradeEntry = (continueTrade: () => void) => {
@@ -2659,7 +2654,6 @@ export default function PaperScreen() {
           return;
         }
 
-        pendingTradeEntryRef.current = continueTrade;
         setLightningTradeOfferNow(nowMs);
         setLightningTradeOfferWindow(event);
       } catch {
@@ -3935,13 +3929,13 @@ export default function PaperScreen() {
         transparent
         animationType="fade"
         statusBarTranslucent
-        onRequestClose={continuePendingTradeEntry}
+        onRequestClose={dismissLightningTradeOffer}
       >
         <View style={{ flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,0.72)' }}>
           <Pressable
-            accessibilityLabel="Continue to trade without joining"
+            accessibilityLabel="Dismiss Lightning Round enrollment offer"
             style={StyleSheet.absoluteFillObject}
-            onPress={continuePendingTradeEntry}
+            onPress={dismissLightningTradeOffer}
           />
           {lightningTradeOfferWindow && (
             <View
@@ -3965,6 +3959,9 @@ export default function PaperScreen() {
               </Text>
               <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, textAlign: 'center', marginTop: 6 }}>
                 Use your existing Event Arena paper account. The highest percentage return wins.
+              </Text>
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, lineHeight: 18, textAlign: 'center', marginTop: 10 }}>
+                During preparation, you must join before trading in this account. NOT NOW cancels this trade attempt.
               </Text>
 
               <View style={{ marginTop: 16, padding: 13, borderRadius: 12, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }}>
@@ -3998,7 +3995,6 @@ export default function PaperScreen() {
                 testID="join-lightning-round-from-trade"
                 accessibilityRole="button"
                 onPress={() => {
-                  pendingTradeEntryRef.current = null;
                   setLightningTradeOfferWindow(null);
                   router.push({ pathname: '/lightning-round', params: { join: 'trade' } });
                 }}
@@ -4009,7 +4005,7 @@ export default function PaperScreen() {
               <TouchableOpacity
                 testID="not-now-lightning-round-from-trade"
                 accessibilityRole="button"
-                onPress={continuePendingTradeEntry}
+                onPress={dismissLightningTradeOffer}
                 style={{ minHeight: 44, marginTop: 3, alignItems: 'center', justifyContent: 'center' }}
               >
                 <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_700Bold', fontSize: 11 }}>NOT NOW</Text>

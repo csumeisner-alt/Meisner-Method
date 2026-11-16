@@ -169,7 +169,7 @@ test("Lightning Round requests a display name and joins the shared account", () 
   assert.match(lightningRound, /router\.push\(\{ pathname: '\/paper', params: \{ challengeAccountId: accountId \} \}\)/);
 });
 
-test("trade-entry promotion resumes the request or reuses the existing Lightning Round join flow", () => {
+test("declining the trade-entry offer cancels it, while enrollment uses the existing join flow", () => {
   assert.match(lightningPreparation, /shouldOfferLightningRoundTradeEnrollment/);
   assert.match(lightningPreparation, /args\.accountId\.startsWith\('paper-event:'\)/);
   assert.match(lightningPreparation, /args\.event\.eventType === 'lightning-round'/);
@@ -179,12 +179,22 @@ test("trade-entry promotion resumes the request or reuses the existing Lightning
   assert.match(screen, /LIGHTNING ROUND IS APPROACHING!/);
   assert.match(screen, /24 hours\. One champion\./);
   assert.match(screen, /Use your existing Event Arena paper account\. The highest percentage return wins\./);
+  assert.match(screen, /During preparation, you must join before trading in this account\. NOT NOW cancels this trade attempt\./);
   assert.match(screen, /EVENT STARTS IN/);
   assert.match(screen, /STARTING CAPITAL[\s\S]*?\$100,000/);
   assert.match(screen, /DURATION[\s\S]*?24 hours/);
   assert.match(screen, /WINNER[\s\S]*?Highest % return/);
-  assert.match(screen, /const continuePendingTradeEntry = \(\) => \{[\s\S]*?continueTrade\?\.\(\)/);
-  assert.match(screen, /testID="not-now-lightning-round-from-trade"[\s\S]*?onPress=\{continuePendingTradeEntry\}/);
+  const dismissStart = screen.indexOf("const dismissLightningTradeOffer = () => {");
+  const dismissEnd = screen.indexOf("\n  };", dismissStart);
+  const dismiss = screen.slice(dismissStart, dismissEnd);
+  assert.ok(dismissStart >= 0 && dismissEnd > dismissStart);
+  assert.match(dismiss, /setLightningTradeOfferWindow\(null\)/);
+  assert.doesNotMatch(dismiss, /continueTrade|pendingTradeEntryRef|setShowTradeModal|setShowOrderSheet/);
+  assert.doesNotMatch(screen, /pendingTradeEntryRef|continuePendingTradeEntry/);
+  assert.match(screen, /onRequestClose=\{dismissLightningTradeOffer\}/);
+  assert.match(screen, /accessibilityLabel="Dismiss Lightning Round enrollment offer"[\s\S]*?onPress=\{dismissLightningTradeOffer\}/);
+  assert.match(screen, /testID="not-now-lightning-round-from-trade"[\s\S]*?onPress=\{dismissLightningTradeOffer\}/);
+  assert.match(screen, /testID="join-lightning-round-from-trade"[\s\S]*?router\.push\(\{ pathname: '\/lightning-round', params: \{ join: 'trade' \} \}\)/);
   assert.match(screen, /router\.push\(\{ pathname: '\/lightning-round', params: \{ join: 'trade' \} \}\)/);
   assert.match(screen, /const openBuyModal = \(\) => \{\s*requestTradeEntry\(/);
   assert.match(screen, /const openSellModal = \(pos: PaperPosition\) => \{\s*requestTradeEntry\(/);
