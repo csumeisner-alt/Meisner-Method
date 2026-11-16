@@ -9,6 +9,7 @@ import { Platform } from 'react-native';
 import { KeyboardProviderCompat } from '@/components/KeyboardProviderCompat';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { installLightningRoundNotificationResponseHandler } from '@/lib/lightningRoundNotificationResponse';
 import {
   Inter_400Regular,
   Inter_500Medium,
@@ -36,36 +37,27 @@ function RootLayoutNav() {
   useEffect(() => {
     if (Platform.OS === 'web') return;
     let active = true;
-    let subscription: { remove: () => void } | undefined;
-    let clearLastResponse: (() => Promise<void>) | undefined;
-    const handledResponses = new Set<string>();
-    const handleResponse = (response: import('expo-notifications').NotificationResponse) => {
-      const request = response.notification.request;
-      const data = request.content.data as { type?: unknown; eventId?: unknown };
-      if (!active || data.type !== 'lightning-round-standings') return;
-      if (handledResponses.has(request.identifier)) return;
-      handledResponses.add(request.identifier);
-      router.push({
-        pathname: '/lightning-round',
-        params: {
-          tab: 'past',
-          ...(typeof data.eventId === 'string' ? { eventId: data.eventId } : {}),
-        },
-      });
-      void clearLastResponse?.().catch(() => {});
-    };
+    let stopHandlingResponses: (() => void) | undefined;
 
     void import('expo-notifications').then(async (Notifications) => {
       if (!active) return;
-      clearLastResponse = () => Notifications.clearLastNotificationResponseAsync();
-      subscription = Notifications.addNotificationResponseReceivedListener(handleResponse);
-      const lastResponse = await Notifications.getLastNotificationResponseAsync();
-      if (lastResponse) handleResponse(lastResponse);
+      stopHandlingResponses = installLightningRoundNotificationResponseHandler(
+        Notifications,
+        (eventId) => {
+          router.push({
+            pathname: '/lightning-round',
+            params: {
+              tab: 'past',
+              ...(eventId ? { eventId } : {}),
+            },
+          });
+        },
+      );
     }).catch(() => {});
 
     return () => {
       active = false;
-      subscription?.remove();
+      stopHandlingResponses?.();
     };
   }, []);
 
