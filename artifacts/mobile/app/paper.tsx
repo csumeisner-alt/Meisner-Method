@@ -9,6 +9,7 @@ import * as Crypto from 'expo-crypto';
 import { KeyboardAvoidingView as KeyboardControllerAvoidingView } from 'react-native-keyboard-controller';
 import {
   ActivityIndicator,
+  Animated,
   Alert,
   KeyboardAvoidingView,
   Modal,
@@ -34,6 +35,7 @@ import { PaperEventArenaDashboard } from '@/components/PaperEventArenaDashboard'
 import { useAchievements } from '@/contexts/AchievementsContext';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { useColors } from '@/hooks/useColors';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 import {
   AllocationBar,
   DividendBarChart,
@@ -154,8 +156,12 @@ import {
   findLightningRoundWindow,
   getPaperChallengeEnrollmentForAccount,
   getPaperChallengeEnrollments,
+  getPaperEventLiveNoticeDismissalKey,
+  isDismissiblePaperEventLiveNotice,
   isPaperChallengeAccountId,
   isLightningRoundEventId,
+  loadPaperEventLiveNoticeDismissal,
+  persistPaperEventLiveNoticeDismissal,
 } from '@/lib/paperChallenge';
 import {
   getSearchHeatMapInstrumentsQueryKey,
@@ -330,6 +336,7 @@ function defaultAccounts(): PaperAccount[] {
 // ── Main Screen ────────────────────────────────────────────────────────────
 export default function PaperScreen() {
   const colors = useColors();
+  const reduceMotion = useReduceMotion();
   const { apiFetch } = useApi();
   const router = useRouter();
   const routeParams = useLocalSearchParams<{ challengeAccountId?: string }>();
@@ -397,6 +404,10 @@ export default function PaperScreen() {
   const [leaveLightningError, setLeaveLightningError] = useState('');
   const [leavingLightning, setLeavingLightning] = useState(false);
   const [lightningPreparationMessage, setLightningPreparationMessage] = useState('');
+  const [dismissedPaperEventNoticeKey, setDismissedPaperEventNoticeKey] = useState<string | null>(null);
+  const [loadedPaperEventNoticeKey, setLoadedPaperEventNoticeKey] = useState<string | null>(null);
+  const [dismissingPaperEventNotice, setDismissingPaperEventNotice] = useState(false);
+  const paperEventNoticeMotion = useRef(new Animated.Value(1)).current;
 
   // Buy modal state
   const [buySymbol, setBuySymbol] = useState('');
@@ -621,6 +632,70 @@ export default function PaperScreen() {
   ) ?? challengeEnrollments.find((enrollment) =>
     enrollment.accountId === account?.id && isEnrollmentActive(enrollment),
   ) ?? challengeEnrollments.find(isEnrollmentActive) ?? null;
+  const standardEventNoticeKey = activeChallengeEnrollment
+    && isDismissiblePaperEventLiveNotice(activeChallengeEnrollment.eventType)
+    ? getPaperEventLiveNoticeDismissalKey(
+      activeChallengeEnrollment.accountId,
+      activeChallengeEnrollment.eventId,
+    )
+    : null;
+  const showActiveChallengeNotice = !!activeChallengeEnrollment
+    && (standardEventNoticeKey === null
+      || (loadedPaperEventNoticeKey === standardEventNoticeKey
+        && dismissedPaperEventNoticeKey !== standardEventNoticeKey));
+
+  useEffect(() => {
+    let cancelled = false;
+    paperEventNoticeMotion.stopAnimation();
+    paperEventNoticeMotion.setValue(1);
+    setDismissingPaperEventNotice(false);
+    if (!standardEventNoticeKey) {
+      setLoadedPaperEventNoticeKey(null);
+      return () => { cancelled = true; };
+    }
+
+    setLoadedPaperEventNoticeKey(null);
+    void loadPaperEventLiveNoticeDismissal(AsyncStorage, standardEventNoticeKey)
+      .then((dismissed) => {
+        if (cancelled) return;
+        setDismissedPaperEventNoticeKey(dismissed ? standardEventNoticeKey : null);
+        setLoadedPaperEventNoticeKey(standardEventNoticeKey);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setDismissedPaperEventNoticeKey(null);
+        setLoadedPaperEventNoticeKey(standardEventNoticeKey);
+      });
+    return () => { cancelled = true; };
+  }, [paperEventNoticeMotion, standardEventNoticeKey]);
+
+  const dismissStandardEventNotice = () => {
+    if (!standardEventNoticeKey || dismissingPaperEventNotice) return;
+    setDismissingPaperEventNotice(true);
+    const persistDismissal = async () => {
+      try {
+        await persistPaperEventLiveNoticeDismissal(AsyncStorage, standardEventNoticeKey);
+        setDismissedPaperEventNoticeKey(standardEventNoticeKey);
+      } catch {
+        paperEventNoticeMotion.setValue(1);
+        Alert.alert('Could not dismiss notice', 'The Event Arena notice is unchanged. Please try again.');
+      } finally {
+        setDismissingPaperEventNotice(false);
+      }
+    };
+    if (reduceMotion) {
+      void persistDismissal();
+      return;
+    }
+    Animated.timing(paperEventNoticeMotion, {
+      toValue: 0,
+      duration: 180,
+      useNativeDriver: Platform.OS !== 'web',
+    }).start(({ finished }) => {
+      if (finished) void persistDismissal();
+      else setDismissingPaperEventNotice(false);
+    });
+  };
   const isPaperChallengeWaiting = challengeEnrollments.some(
     (enrollment) => challengeNow >= enrollment.eventEndAtMs,
   );
@@ -3689,28 +3764,60 @@ export default function PaperScreen() {
         </View>
       )}
 
-      {activeChallengeEnrollment && (
-        <View
+      {showActiveChallengeNotice && activeChallengeEnrollment && (
+        <Animated.View
           testID="paper-event-live-banner"
           accessibilityLiveRegion="polite"
-          style={{
-            marginHorizontal: 16,
-            marginTop: 10,
-            padding: 12,
-            borderRadius: 10,
-            borderWidth: 1,
-            borderColor: colors.primary,
-            backgroundColor: colors.card,
-          }}
+          style={[
+            {
+              marginHorizontal: 16,
+              marginTop: 10,
+              padding: 12,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: colors.primary,
+              backgroundColor: colors.card,
+            },
+            standardEventNoticeKey
+              ? {
+                  opacity: paperEventNoticeMotion,
+                  transform: [{
+                    translateY: paperEventNoticeMotion.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [-4, 0],
+                    }),
+                  }],
+                }
+              : null,
+          ]}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
             <Feather name="award" size={14} color={colors.primary} />
-            <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 0.7 }}>
+            <Text style={[{
+              color: colors.primary,
+              fontFamily: 'Inter_700Bold',
+              fontSize: 11,
+              letterSpacing: 0.7,
+            }, standardEventNoticeKey ? { flex: 1 } : null]}>
               {activeChallengeEnrollment.eventType === 'lightning-round'
                 ? 'LIGHTNING ROUND IS LIVE'
                 : activeChallengeEnrollment.eventType === 'penny-stock-mayhem'
                   ? 'PENNY STOCK MAYHEM IS LIVE' : 'EVENT ARENA IS LIVE'}
             </Text>
+            {standardEventNoticeKey && (
+              <TouchableOpacity
+                testID="dismiss-paper-event-live-banner"
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss Event Arena live notice"
+                accessibilityHint="Hides this notice for this Event Arena account and event"
+                disabled={dismissingPaperEventNotice}
+                onPress={dismissStandardEventNotice}
+                hitSlop={8}
+                style={{ width: 44, height: 44, marginVertical: -15, marginRight: -8, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Feather name="x" size={16} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            )}
           </View>
             <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, lineHeight: 17, marginTop: 7 }}>
             {activeChallengeEnrollment.eventType === 'lightning-round'
@@ -3757,7 +3864,7 @@ export default function PaperScreen() {
               </Text>
             </TouchableOpacity>
           )}
-        </View>
+        </Animated.View>
       )}
 
       {isPaperChallengeWaiting && (

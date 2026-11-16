@@ -16,6 +16,7 @@ import {
 } from './paperChallengeCalendar.ts';
 
 export const PAPER_CHALLENGE_STORAGE_KEY = '@stocksense/paper_events_v1';
+export const PAPER_EVENT_LIVE_NOTICE_DISMISSAL_PREFIX = '@stocksense/paper_event_live_notice_dismissal_v1';
 export const PAPER_CHALLENGE_STARTING_BALANCE = 100_000;
 export const LIGHTNING_ROUND_STARTING_BALANCE = 100_000;
 export const GREEN_BULL_STARTING_BALANCE = 500_000;
@@ -267,6 +268,31 @@ type PaperChallengeStorage = {
   getItem: (key: string) => Promise<string | null>;
   setItem: (key: string, value: string) => Promise<void>;
 };
+
+type PaperEventLiveNoticeStorage = Pick<PaperChallengeStorage, 'getItem' | 'setItem'>;
+
+export function getPaperEventLiveNoticeDismissalKey(accountId: string, eventId: string): string | null {
+  if (!accountId || !eventId) return null;
+  return `${PAPER_EVENT_LIVE_NOTICE_DISMISSAL_PREFIX}:${encodeURIComponent(accountId)}:${encodeURIComponent(eventId)}`;
+}
+
+export function isDismissiblePaperEventLiveNotice(eventType: PaperChallengeEventType | undefined): boolean {
+  return eventType === 'event-arena';
+}
+
+export async function loadPaperEventLiveNoticeDismissal(
+  storage: Pick<PaperEventLiveNoticeStorage, 'getItem'>,
+  key: string,
+): Promise<boolean> {
+  return (await storage.getItem(key)) === 'dismissed';
+}
+
+export async function persistPaperEventLiveNoticeDismissal(
+  storage: Pick<PaperEventLiveNoticeStorage, 'setItem'>,
+  key: string,
+): Promise<void> {
+  await storage.setItem(key, 'dismissed');
+}
 
 let paperChallengeWriteQueue: Promise<void> = Promise.resolve();
 

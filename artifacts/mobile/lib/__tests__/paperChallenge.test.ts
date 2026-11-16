@@ -18,6 +18,7 @@ import {
   GREEN_BULL_STARTING_BALANCE,
   PAPER_CHALLENGE_ARTWORK_IDS,
   getPaperChallengeReminders,
+  getPaperEventLiveNoticeDismissalKey,
   getPaperChallengeWindow,
   getLightningRoundWindow,
   findPreparedLightningRoundWindow,
@@ -27,7 +28,9 @@ import {
   LIGHTNING_ROUND_STARTING_BALANCE,
   isLightningRoundEventId,
   isPaperChallengeAccountId,
+  isDismissiblePaperEventLiveNotice,
   loadPaperChallengeStore,
+  loadPaperEventLiveNoticeDismissal,
   sortPaperChallengeHistory,
   type PaperChallengeSummary,
   type PaperChallengeAccountState,
@@ -35,6 +38,7 @@ import {
   normalizePaperChallengeStore,
   getMissingPaperChallengeQuoteSymbols,
   PAPER_CHALLENGE_STORAGE_KEY,
+  persistPaperEventLiveNoticeDismissal,
   type PaperChallengeStore,
   withdrawUpcomingPaperChallenge,
   persistPaperChallengeFinalization,
@@ -49,6 +53,44 @@ import {
   formatEventHoldingSide,
   hasEventAverageCostFallback,
 } from '../paperChallengeAllocation.ts';
+
+test('Event Arena live notice dismissal persists per account and event only', async () => {
+  const storage = new Map<string, string>();
+  const storagePort = {
+    getItem: async (key: string) => storage.get(key) ?? null,
+    setItem: async (key: string, value: string) => { storage.set(key, value); },
+  };
+  const firstAccountEvent = getPaperEventLiveNoticeDismissalKey('paper-event:account-a', '2026-11-16');
+  const otherAccountEvent = getPaperEventLiveNoticeDismissalKey('paper-event:account-b', '2026-11-16');
+  const laterEvent = getPaperEventLiveNoticeDismissalKey('paper-event:account-a', '2026-11-23');
+
+  assert.ok(firstAccountEvent);
+  assert.ok(otherAccountEvent);
+  assert.ok(laterEvent);
+  assert.notEqual(firstAccountEvent, otherAccountEvent);
+  assert.notEqual(firstAccountEvent, laterEvent);
+  assert.equal(await loadPaperEventLiveNoticeDismissal(storagePort, firstAccountEvent), false);
+
+  await persistPaperEventLiveNoticeDismissal(storagePort, firstAccountEvent);
+  assert.equal(await loadPaperEventLiveNoticeDismissal(storagePort, firstAccountEvent), true);
+  assert.equal(await loadPaperEventLiveNoticeDismissal(storagePort, otherAccountEvent), false);
+  assert.equal(await loadPaperEventLiveNoticeDismissal(storagePort, laterEvent), false);
+  assert.equal(getPaperEventLiveNoticeDismissalKey('', '2026-11-16'), null);
+  assert.equal(getPaperEventLiveNoticeDismissalKey('paper-event:account-a', ''), null);
+});
+
+test('only standard Event Arena notices can be dismissed', () => {
+  assert.equal(isDismissiblePaperEventLiveNotice('event-arena'), true);
+  for (const eventType of [
+    'lightning-round',
+    'penny-stock-mayhem',
+    'green-bull-championship',
+    'bear-market-mayhem',
+    'mountain-championship',
+  ] as const) {
+    assert.equal(isDismissiblePaperEventLiveNotice(eventType), false, `${eventType} stays unchanged`);
+  }
+});
 
 test('event holding allocation uses absolute market exposure over reported equity', () => {
   assert.equal(calculateEventHoldingAllocationPercent(25, 40, 20_000), 5);
