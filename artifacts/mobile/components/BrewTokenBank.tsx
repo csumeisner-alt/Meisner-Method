@@ -539,6 +539,7 @@ const SMARTPRO_VOICE_CLIPS: readonly DaiquiriVoiceClip[] = [
   { source: require('../assets/smartpro-voice/smartpro-04.m4a'), durationMs: 3_669 },
   { source: require('../assets/smartpro-voice/smartpro-05.m4a'), durationMs: 2_345 },
   { source: require('../assets/smartpro-voice/smartpro-06.m4a'), durationMs: 5_225 },
+  { source: require('../assets/smartpro-voice/smartpro-07.m4a'), durationMs: 2_917 },
 ];
 
 const MACHINE_STATUS_LINES = [

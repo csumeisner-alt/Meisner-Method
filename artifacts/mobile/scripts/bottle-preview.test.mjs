@@ -54,10 +54,10 @@ test("tapping each unlocked bottle opens its preview and plays the animation wit
 test("SmartPro redemption plays one random supplied clip only after success", async () => {
   const clips = bankSource.match(/const SMARTPRO_VOICE_CLIPS:[\s\S]*?\n\];/)?.[0];
   assert.ok(clips);
-  const clipPaths = [...clips.matchAll(/smartpro-voice\/(smartpro-0[1-6]\.m4a)/g)]
+  const clipPaths = [...clips.matchAll(/smartpro-voice\/(smartpro-0[1-7]\.m4a)/g)]
     .map((match) => match[1]);
-  assert.equal(clipPaths.length, 6);
-  assert.equal(new Set(clipPaths).size, 6);
+  assert.equal(clipPaths.length, 7);
+  assert.equal(new Set(clipPaths).size, 7);
   for (const clipPath of clipPaths) {
     assert.ok(existsSync(resolve(mobileDir, "assets/smartpro-voice", clipPath)));
   }
@@ -523,7 +523,7 @@ test("Brew Bank browser purchases update and persist the rendered economy only a
     );
     const playedSources = await browser.evaluate(`window.__brewAudioPlayedSources.slice()`);
     assert.equal(playedSources.length, 1);
-    assert.match(playedSources[0], /smartpro-voice\/smartpro-0[1-6]\.m4a$/);
+    assert.match(playedSources[0], /smartpro-voice\/smartpro-0[1-7]\.m4a$/);
   } finally {
     browser?.close();
     chrome.kill("SIGTERM");
