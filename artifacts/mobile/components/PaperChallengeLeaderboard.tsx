@@ -188,15 +188,104 @@ function EventArenaPodiumShareCard({
         ) : (
           <Text style={{ color: '#D8B45A', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 2 }}>MEISNER METHOD</Text>
         )}
-        <Text style={{ color: isBearMarketMayhem ? '#FF6670' : '#E6D8B2', fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 1.4, marginTop: 10 }}>
-          {isBearMarketMayhem
-            ? 'BEAR MARKET MAYHEM'
-            : event.eventType === 'penny-stock-mayhem'
-              ? 'PENNY STOCK MAYHEM'
+        {isPennyStockMayhem ? (
+          <View
+            testID="paper-event-penny-stock-podium-share-hero"
+            accessibilityLabel="Penny Stock Mayhem. Stocks and ETFs under $20."
+            style={{ alignItems: 'center', marginTop: 8 }}
+          >
+            <Text
+              allowFontScaling
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
+              numberOfLines={1}
+              style={{
+                width: '100%',
+                color: '#E9EEF2',
+                fontFamily: 'Inter_700Bold',
+                fontSize: 27,
+                letterSpacing: 1,
+                textAlign: 'center',
+                textShadowColor: '#FFFFFF',
+                textShadowOffset: { width: 0, height: -1 },
+                textShadowRadius: 2,
+              }}
+            >
+              PENNY STOCK
+            </Text>
+            <Text
+              allowFontScaling
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
+              numberOfLines={1}
+              style={{
+                color: '#F3424D',
+                fontFamily: 'Inter_700Bold',
+                fontSize: 39,
+                letterSpacing: 3,
+                lineHeight: 44,
+                textAlign: 'center',
+                textShadowColor: '#8E101A',
+                textShadowOffset: { width: 0, height: 3 },
+                textShadowRadius: 7,
+              }}
+            >
+              MAYHEM
+            </Text>
+            <LinearGradient
+              colors={['#D4DDD8', '#347A51', '#102A21', '#79A88C']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={{
+                width: '100%',
+                minHeight: 44,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 7,
+                marginTop: 6,
+                paddingHorizontal: 8,
+                borderRadius: 9,
+                borderWidth: 1,
+                borderColor: '#D0DDD4',
+                shadowColor: '#65D58A',
+                shadowOpacity: 0.32,
+                shadowRadius: 9,
+                shadowOffset: { width: 0, height: 0 },
+              }}
+            >
+              <Text
+                allowFontScaling
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+                numberOfLines={1}
+                style={{ flexShrink: 1, color: '#F1F5F2', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.25, textShadowColor: 'rgba(0,0,0,0.75)', textShadowRadius: 3 }}
+              >
+                STOCKS &amp; ETFs UNDER
+              </Text>
+              <Text
+                allowFontScaling
+                style={{ color: '#F2F5F3', fontFamily: 'Inter_700Bold', fontSize: 25, lineHeight: 30, textShadowColor: '#FFFFFF', textShadowOffset: { width: 0, height: -1 }, textShadowRadius: 2 }}
+              >
+                $20
+              </Text>
+            </LinearGradient>
+            <Image
+              source={require('../assets/event-arena-penny-stock-mayhem-clean.jpg')}
+              resizeMode="contain"
+              accessibilityLabel="Charging bull with copper pennies in a green championship arena"
+              style={{ width: '100%', height: 148, marginTop: 7 }}
+            />
+          </View>
+        ) : (
+          <Text style={{ color: isBearMarketMayhem ? '#FF6670' : '#E6D8B2', fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 1.4, marginTop: 10 }}>
+            {isBearMarketMayhem
+              ? 'BEAR MARKET MAYHEM'
               : event.eventType === 'lightning-round'
-              ? 'LIGHTNING ROUND'
-              : event.eventType === 'green-bull-championship' ? 'GREEN BULL CHAMPIONSHIP' : 'EVENT ARENA CHAMPIONSHIP'}
-        </Text>
+                ? 'LIGHTNING ROUND'
+                : event.eventType === 'green-bull-championship' ? 'GREEN BULL CHAMPIONSHIP' : 'EVENT ARENA CHAMPIONSHIP'}
+          </Text>
+        )}
         {isBearMarketMayhem && (
           <Text style={{ color: '#F7DADD', fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 0.8, marginTop: 4 }}>
             THE BIGGEST LOSER WINS
@@ -274,7 +363,11 @@ function EventArenaPodiumShareCard({
           </Text>
         </View>
         <Text style={{ color: '#B9BEC5', fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 1.2, marginTop: 18, textAlign: 'center' }}>
-          {event.eventType === 'lightning-round' ? 'MEISNER METHOD · LIGHTNING ROUND' : 'MEISNER METHOD · EVENT ARENA'}
+          {event.eventType === 'lightning-round'
+            ? 'MEISNER METHOD · LIGHTNING ROUND'
+            : isPennyStockMayhem
+              ? 'MEISNER METHOD · PENNY STOCK MAYHEM'
+              : 'MEISNER METHOD · EVENT ARENA'}
         </Text>
       </View>
     </ImageBackground>

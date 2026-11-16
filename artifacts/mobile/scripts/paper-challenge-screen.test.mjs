@@ -429,6 +429,12 @@ test("Event Arena podium sharing captures only aliases and returns with the self
   assert.match(leaderboard, /const uri = await viewShot\.capture\?\.\(\);[\s\S]*?Sharing\.shareAsync\(uri,[\s\S]*?mimeType: 'image\/png'[\s\S]*?UTI: 'public\.png'/);
   assert.match(leaderboard, /if \(!\(await Sharing\.isAvailableAsync\(\)\)\)/);
   assert.match(shareCardSource, /EVENT_ARENA_ARTWORK_SOURCES\[event\.artworkId \?\? LEGACY_PAPER_CHALLENGE_ARTWORK_ID\]/);
+  assert.match(shareCardSource, /testID="paper-event-penny-stock-podium-share-hero"/);
+  assert.match(shareCardSource, /PENNY STOCK[\s\S]*?MAYHEM[\s\S]*?STOCKS &amp; ETFs UNDER[\s\S]*?\$20/);
+  assert.match(shareCardSource, /mm-mark-foreground\.png/);
+  assert.match(shareCardSource, /event-arena-penny-stock-mayhem-clean\.jpg/);
+  assert.match(shareCardSource, /MEISNER METHOD · PENNY STOCK MAYHEM/);
+  assert.match(shareCardSource, /event\.eventType === 'lightning-round'[\s\S]*?'MEISNER METHOD · LIGHTNING ROUND'/);
   assert.match(shareCardSource, /\{slot\.entry\?\.alias \?\? 'Waiting for competitor'\}/);
   assert.match(shareCardSource, /\{returnLabel\(slot\.entry\.returnPercent\)\}/);
   assert.match(shareCardSource, /Scores are self-reported and not independently verified\./);
