@@ -54,7 +54,9 @@ import {
 } from "../lib/marketHeatMap.js";
 import {
   createMarketPulseService,
+  getMarketPulseErrorCategory,
 } from "../lib/marketPulseService.ts";
+import type { MarketPulseRefreshObservation } from "../lib/marketPulseService.ts";
 import { createMarketPulseStore } from "../lib/marketPulseStore.js";
 import { createMarketPulseRouter } from "./marketPulse.js";
 
@@ -75,6 +77,7 @@ const TOP_PICKS_TTL = 4 * 60 * 60 * 1000;
 const HEAT_MAP_TTL = 2 * 60 * 1000;
 const MARKET_BREADTH_TTL = 60 * 1000;
 const MARKET_PULSE_SESSION_TTL = 30 * 1000;
+const MARKET_PULSE_FRESHNESS_LIMIT_SECONDS = 5 * 60;
 const CRYPTO_SUPPLY_HISTORY_TTL = 6 * 60 * 60 * 1000;
 const COMMODITY_NEWS_TTL = 30 * 60 * 1000;
 const COMMODITY_RELATIONSHIP_HISTORY_TTL = 10 * 60 * 1000;
@@ -88,6 +91,12 @@ let marketBreadthCache: { data: HeatMapResponse; ts: number } | null = null;
 let marketBreadthRequest: Promise<HeatMapResponse> | null = null;
 let marketPulseSessionCache: { marketOpen: boolean; ts: number } | null = null;
 let marketPulseSessionRequest: Promise<boolean> | null = null;
+let lastMarketPulseProviderTimestamp: number | null = null;
+let lastMarketPulseRefreshError: unknown = null;
+let marketPulseRefreshFailureActive = false;
+let consecutiveMarketPulseRefreshFailures = 0;
+let marketPulseStaleActive = false;
+let marketPulseFreshnessCheckSequence = 0;
 const cryptoSupplyHistoryCache = new Map<
   string,
   { data: CryptoSupplyHistoryPayload; expiresAt: number }
@@ -528,13 +537,87 @@ const marketPulseService = createMarketPulseService({
   },
   store: marketPulseStore,
   onRestored: (data) => {
+    lastMarketPulseProviderTimestamp = data.priceTimestamp;
     logger.info(
       { priceTimestamp: data.priceTimestamp, updatedAt: data.updatedAt },
       "Restored market-pulse cache",
     );
   },
   onRestoreFailure: (err) => logger.warn({ err }, "Failed to restore market-pulse cache"),
-  onRefreshFailure: (err) => logger.warn({ err }, "Background market-pulse refresh failed"),
+  onRefreshFailure: (err, consecutiveFailures) => {
+    if (!marketPulseRefreshFailureActive) {
+      const priceTimestamp = lastMarketPulseProviderTimestamp;
+      logger.warn({
+        provider: "Yahoo",
+        success: false,
+        priceTimestamp,
+        quoteAgeSeconds: priceTimestamp === null
+          ? null
+          : Math.max(0, Math.floor(Date.now() / 1000) - priceTimestamp),
+        timestampAdvanced: false,
+        marketOpen: marketPulseSessionCache?.marketOpen ?? null,
+        errorCategory: getMarketPulseErrorCategory(err),
+        consecutiveFailures,
+      }, "Market-pulse quote refresh failed");
+    }
+    marketPulseRefreshFailureActive = true;
+    consecutiveMarketPulseRefreshFailures = consecutiveFailures;
+    lastMarketPulseRefreshError = err;
+  },
+  onRefreshSuccess: (observation: MarketPulseRefreshObservation) => {
+    lastMarketPulseProviderTimestamp = observation.priceTimestamp;
+    if (marketPulseRefreshFailureActive) {
+      logger.info({
+        provider: "Yahoo",
+        success: true,
+        ...observation,
+        consecutiveFailures: consecutiveMarketPulseRefreshFailures,
+      }, "Market-pulse quote refresh recovered");
+      marketPulseRefreshFailureActive = false;
+      consecutiveMarketPulseRefreshFailures = 0;
+      lastMarketPulseRefreshError = null;
+    }
+
+    const sequence = ++marketPulseFreshnessCheckSequence;
+    void fetchMarketPulseSession().then((marketOpen) => {
+      if (sequence !== marketPulseFreshnessCheckSequence) return;
+      const quoteAgeSeconds = Math.max(
+        0,
+        Math.floor(Date.now() / 1000) - observation.priceTimestamp,
+      );
+      const stale = marketOpen && quoteAgeSeconds > MARKET_PULSE_FRESHNESS_LIMIT_SECONDS;
+      if (stale && !marketPulseStaleActive) {
+        logger.warn({
+          provider: "Yahoo",
+          success: true,
+          marketOpen,
+          stale: true,
+          freshnessLimitSeconds: MARKET_PULSE_FRESHNESS_LIMIT_SECONDS,
+          priceTimestamp: observation.priceTimestamp,
+          updatedAt: observation.updatedAt,
+          quoteAgeSeconds,
+          previousPriceTimestamp: observation.previousPriceTimestamp,
+          timestampAdvanced: observation.timestampAdvanced,
+        }, "Market-pulse quote became stale during regular session");
+      } else if (!stale && marketPulseStaleActive) {
+        logger.info({
+          provider: "Yahoo",
+          success: true,
+          marketOpen,
+          stale: false,
+          priceTimestamp: observation.priceTimestamp,
+          updatedAt: observation.updatedAt,
+          quoteAgeSeconds,
+          previousPriceTimestamp: observation.previousPriceTimestamp,
+          timestampAdvanced: observation.timestampAdvanced,
+          recoveredBy: marketOpen ? "fresh_quote" : "market_closed",
+        }, "Market-pulse stale state cleared");
+      }
+      marketPulseStaleActive = stale;
+    }).catch(() => {
+      // The endpoint's existing error handler reports market-session failures.
+    });
+  },
   onPersistFailure: (err) => logger.warn({ err }, "Failed to persist market-pulse snapshot"),
   onWarmed: (data, elapsedMs) => {
     logger.info(
@@ -546,7 +629,13 @@ const marketPulseService = createMarketPulseService({
 router.use(createMarketPulseRouter(
   marketPulseService,
   fetchMarketPulseSession,
-  (err) => logger.error({ err }, "Market-pulse quote fetch failed"),
+  (err) => {
+    if (err === lastMarketPulseRefreshError) return;
+    logger.error({
+      errorCategory: getMarketPulseErrorCategory(err),
+      marketOpen: marketPulseSessionCache?.marketOpen ?? null,
+    }, "Market-pulse endpoint request failed");
+  },
 ));
 
 export function warmMarketPulseCache(): void {

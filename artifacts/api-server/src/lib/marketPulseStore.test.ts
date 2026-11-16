@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createMarketPulseStore } from "./marketPulseStore.ts";
-import { createMarketPulseService } from "./marketPulseService.ts";
+import {
+  createMarketPulseService,
+  getMarketPulseErrorCategory,
+} from "./marketPulseService.ts";
 
 test("market pulse store writes and restores the exact quote and fetch timestamps", async () => {
   const rows = new Map<string, Record<string, unknown>>();
@@ -179,4 +182,107 @@ test("a refresh does not replace a newer snapshot already held by the instance",
   await service.warm();
 
   assert.deepEqual(await service.getSnapshot(), newerSnapshot);
+});
+
+test("market-pulse refresh observations report quote age and timestamp advancement", async () => {
+  let nowMs = 1_760_000_300_000;
+  let snapshot = {
+    changePercent: -1.25,
+    priceTimestamp: 1_760_000_000,
+    updatedAt: 1_760_000_300,
+  };
+  const observations: Array<{
+    priceTimestamp: number;
+    updatedAt: number;
+    previousPriceTimestamp: number | null;
+    quoteAgeSeconds: number;
+    timestampAdvanced: boolean | null;
+  }> = [];
+  const service = createMarketPulseService({
+    fetchSnapshot: async () => snapshot,
+    store: {
+      read: async () => null,
+      write: async (data) => data,
+    },
+    now: () => nowMs,
+    onRefreshSuccess: (observation) => observations.push(observation),
+  });
+
+  await service.getSnapshot();
+  nowMs += 60_000;
+  snapshot = { ...snapshot, updatedAt: nowMs / 1000 };
+  await service.warm();
+  nowMs += 60_000;
+  snapshot = {
+    ...snapshot,
+    priceTimestamp: 1_760_000_120,
+    updatedAt: nowMs / 1000,
+  };
+  await service.warm();
+
+  assert.deepEqual(observations, [
+    {
+      priceTimestamp: 1_760_000_000,
+      updatedAt: 1_760_000_300,
+      previousPriceTimestamp: null,
+      quoteAgeSeconds: 300,
+      timestampAdvanced: null,
+    },
+    {
+      priceTimestamp: 1_760_000_000,
+      updatedAt: 1_760_000_360,
+      previousPriceTimestamp: 1_760_000_000,
+      quoteAgeSeconds: 360,
+      timestampAdvanced: false,
+    },
+    {
+      priceTimestamp: 1_760_000_120,
+      updatedAt: 1_760_000_420,
+      previousPriceTimestamp: 1_760_000_000,
+      quoteAgeSeconds: 300,
+      timestampAdvanced: true,
+    },
+  ]);
+});
+
+test("market-pulse refresh failures report consecutive attempts and useful categories", async () => {
+  let nowMs = 1_760_000_000_000;
+  let unavailable = true;
+  const failureCounts: number[] = [];
+  const successObservations: Array<{ priceTimestamp: number; quoteAgeSeconds: number }> = [];
+  const snapshot = {
+    changePercent: 0.75,
+    priceTimestamp: 1_760_000_000,
+    updatedAt: 1_760_000_000,
+  };
+  const service = createMarketPulseService({
+    fetchSnapshot: async () => {
+      if (unavailable) {
+        throw Object.assign(new Error("request timed out"), { code: "ETIMEDOUT" });
+      }
+      return snapshot;
+    },
+    store: {
+      read: async () => null,
+      write: async (data) => data,
+    },
+    now: () => nowMs,
+    random: () => 0.5,
+    onRefreshFailure: (_error, consecutiveFailures) => failureCounts.push(consecutiveFailures),
+    onRefreshSuccess: ({ priceTimestamp, quoteAgeSeconds }) => {
+      successObservations.push({ priceTimestamp, quoteAgeSeconds });
+    },
+  });
+
+  await assert.rejects(service.getSnapshot(), /request timed out/);
+  assert.deepEqual(failureCounts, [1]);
+  assert.equal(getMarketPulseErrorCategory(Object.assign(new Error(), { code: "ETIMEDOUT" })), "timeout");
+  assert.equal(getMarketPulseErrorCategory(Object.assign(new Error(), { code: "ECONNRESET" })), "network");
+  assert.equal(getMarketPulseErrorCategory(new Error("Invalid JSON response")), "invalid_response");
+
+  unavailable = false;
+  nowMs += 1_000;
+  await service.getSnapshot();
+  assert.deepEqual(failureCounts, [1]);
+  assert.deepEqual(successObservations, [{ priceTimestamp: 1_760_000_000, quoteAgeSeconds: 1 }]);
 });

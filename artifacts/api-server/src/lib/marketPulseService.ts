@@ -8,6 +8,14 @@ export interface MarketPulseStore {
   write(data: MarketPulseResponse): Promise<MarketPulseResponse | null>;
 }
 
+export interface MarketPulseRefreshObservation {
+  priceTimestamp: number;
+  updatedAt: number;
+  previousPriceTimestamp: number | null;
+  quoteAgeSeconds: number;
+  timestampAdvanced: boolean | null;
+}
+
 interface MarketPulseServiceOptions {
   fetchSnapshot: () => Promise<unknown>;
   store: MarketPulseStore;
@@ -15,7 +23,8 @@ interface MarketPulseServiceOptions {
   random?: () => number;
   onRestored?: (data: MarketPulseResponse) => void;
   onRestoreFailure?: (err: unknown) => void;
-  onRefreshFailure?: (err: unknown) => void;
+  onRefreshFailure?: (err: unknown, consecutiveFailures: number) => void;
+  onRefreshSuccess?: (observation: MarketPulseRefreshObservation) => void;
   onPersistFailure?: (err: unknown) => void;
   onWarmed?: (data: MarketPulseResponse, elapsedMs: number) => void;
 }
@@ -31,6 +40,22 @@ function retryDelay(failures: number, random: () => number): number {
   return minDelay + sample * (maxDelay - minDelay);
 }
 
+export function getMarketPulseErrorCategory(error: unknown): string {
+  const value = error && typeof error === "object"
+    ? error as { code?: unknown; name?: unknown; message?: unknown }
+    : null;
+  const code = typeof value?.code === "string" ? value.code.toUpperCase() : "";
+  const message = typeof value?.message === "string" ? value.message : "";
+
+  if (/TIMEOUT|TIMEDOUT/.test(code) || /timed?\s*out|timeout/i.test(message)) return "timeout";
+  if (/^(ECONN|ENOTFOUND|EAI_AGAIN|EHOSTUNREACH|ENETUNREACH)/.test(code)
+    || /network|connection|unreachable|fetch failed/i.test(message)) return "network";
+  if (/invalid|malformed|json|parse/i.test(message)) return "invalid_response";
+  if (/rate.?limit|too many requests|\b429\b/i.test(message)) return "rate_limited";
+  if (typeof value?.name === "string" && value.name !== "Error") return value.name.slice(0, 64);
+  return "provider_error";
+}
+
 export function createMarketPulseService({
   fetchSnapshot,
   store,
@@ -39,6 +64,7 @@ export function createMarketPulseService({
   onRestored,
   onRestoreFailure,
   onRefreshFailure,
+  onRefreshSuccess,
   onPersistFailure,
   onWarmed,
 }: MarketPulseServiceOptions) {
@@ -51,7 +77,7 @@ export function createMarketPulseService({
   let restoreFailures = 0;
   let restoreRetryAt = 0;
 
-  function refresh(logFailure: boolean): Promise<MarketPulseResponse> {
+  function refresh(): Promise<MarketPulseResponse> {
     if (refreshRequest) return refreshRequest;
     if (now() < refreshRetryAt) {
       return Promise.reject(lastRefreshError ?? new Error("Market-pulse refresh is in backoff"));
@@ -61,6 +87,16 @@ export function createMarketPulseService({
       if (!isMarketPulseResponse(raw)) {
         throw new Error("Market data provider returned an invalid market-pulse response");
       }
+      const previousPriceTimestamp = cache?.data.priceTimestamp ?? null;
+      const observation: MarketPulseRefreshObservation = {
+        priceTimestamp: raw.priceTimestamp,
+        updatedAt: raw.updatedAt,
+        previousPriceTimestamp,
+        quoteAgeSeconds: Math.max(0, Math.floor(now() / 1000) - raw.priceTimestamp),
+        timestampAdvanced: previousPriceTimestamp === null
+          ? null
+          : raw.priceTimestamp > previousPriceTimestamp,
+      };
       let snapshotToServe = raw;
       try {
         const persisted = await store.write(raw);
@@ -74,6 +110,7 @@ export function createMarketPulseService({
       if (!cache || snapshotToServe.priceTimestamp >= cache.data.priceTimestamp) {
         cache = { data: snapshotToServe, ts: now() };
       }
+      onRefreshSuccess?.(observation);
       return cache.data;
     })();
     refreshRequest = request;
@@ -89,7 +126,7 @@ export function createMarketPulseService({
         refreshFailures += 1;
         refreshRetryAt = now() + retryDelay(refreshFailures, random);
         lastRefreshError = err;
-        if (logFailure) onRefreshFailure?.(err);
+        onRefreshFailure?.(err, refreshFailures);
       },
     );
     return request;
@@ -124,19 +161,19 @@ export function createMarketPulseService({
     await restore();
     if (cache) {
       if (now() - cache.ts >= MARKET_PULSE_TTL && !refreshRequest) {
-        void refresh(true).catch(() => {});
+        void refresh().catch(() => {});
       }
       return cache.data;
     }
     if (refreshRequest) return refreshRequest;
-    return refresh(false);
+    return refresh();
   }
 
   async function warm(): Promise<void> {
     const startedAt = now();
     await restore();
     try {
-      const data = await refresh(true);
+      const data = await refresh();
       onWarmed?.(data, now() - startedAt);
     } catch {
       // Startup must continue when Yahoo is unavailable. Any restored
