@@ -752,8 +752,40 @@ export function findPreparedLightningRoundWindow(
   events: unknown[],
   nowMs = Date.now(),
 ): PaperChallengeWindow | null {
+  const windows = parsePreparedLightningRoundWindows(events);
+  const active = windows.find((event) => event.startAtMs <= nowMs && nowMs < event.endAtMs);
+  if (active) return { ...active, phase: 'active' };
+  const upcoming = windows.filter((event) => event.startAtMs > nowMs);
+  upcoming.sort((a, b) => a.startAtMs - b.startAtMs);
+  return upcoming[0] ?? null;
+}
+
+/** Select the official prepared event while its invitation is in its 72h/48h display window. */
+export function findPreparedLightningRoundInvitationWindow(
+  events: unknown[],
+  nowMs = Date.now(),
+): PaperChallengeWindow | null {
+  if (!Number.isFinite(nowMs)) return null;
+  const windows = parsePreparedLightningRoundWindows(events);
+  const preparationMs = 72 * 60 * 60 * 1000;
+  const postEventMs = 48 * 60 * 60 * 1000;
+  const eligible = windows
+    .filter((event) =>
+      nowMs >= event.startAtMs - preparationMs
+      && nowMs < event.endAtMs + postEventMs,
+    )
+    .sort((a, b) => a.startAtMs - b.startAtMs);
+  const event = eligible[0];
+  if (!event) return null;
+  return {
+    ...event,
+    phase: nowMs < event.startAtMs ? 'upcoming' : nowMs < event.endAtMs ? 'active' : 'ended',
+  };
+}
+
+function parsePreparedLightningRoundWindows(events: unknown[]): PaperChallengeWindow[] {
   const configuration = getPaperChallengeConfiguration(LIGHTNING_ROUND_ARTWORK_ID);
-  const windows = events.map((event) => {
+  return events.map((event) => {
     if (!event || typeof event !== 'object' || Array.isArray(event)) {
       throw new Error('The prepared Lightning Round schedule was invalid.');
     }
@@ -779,12 +811,7 @@ export function findPreparedLightningRoundWindow(
       ...configuration,
       phase: 'upcoming' as const,
     };
-  }).filter((event) => event.endAtMs > nowMs);
-
-  const active = windows.find((event) => event.startAtMs <= nowMs);
-  if (active) return { ...active, phase: 'active' };
-  windows.sort((a, b) => a.startAtMs - b.startAtMs);
-  return windows[0] ?? null;
+  });
 }
 
 export function getPaperChallengeEnrollments(store: PaperChallengeStore): PaperChallengeEnrollment[] {

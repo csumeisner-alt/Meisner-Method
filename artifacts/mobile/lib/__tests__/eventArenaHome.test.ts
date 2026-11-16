@@ -259,6 +259,7 @@ test('event chart includes only real snapshots for this event account inside eve
 test('Event Arena is a dedicated destination with separate competition sections', async () => {
   const testDirectory = dirname(fileURLToPath(import.meta.url));
   const screen = await readFile(resolve(testDirectory, '../../components/EventArenaScreen.tsx'), 'utf8');
+  const lightningInvitation = await readFile(resolve(testDirectory, '../../components/LightningRoundInvitation.tsx'), 'utf8');
   const overview = await readFile(resolve(testDirectory, '../../components/EventArenaOverview.tsx'), 'utf8');
   const route = await readFile(resolve(testDirectory, '../../app/event-arena.tsx'), 'utf8');
   const paper = await readFile(resolve(testDirectory, '../../app/paper.tsx'), 'utf8');
@@ -278,8 +279,8 @@ test('Event Arena is a dedicated destination with separate competition sections'
   assert.match(screen, /onEnrollmentChange=\{updateLeaderboardEnrollment\}/);
   assert.match(screen, /onRankChange=\{setRank\}/);
   assert.match(screen, /const participantAlias = enrollment\?\.leaderboardAlias\?\.trim\(\)/);
-  assert.match(screen, /testID="event-arena-header-alias"/);
-  assert.match(screen, /\{participantAlias \|\| 'MEISNER'\}/);
+  assert.match(lightningInvitation, /testID="event-arena-header-alias"/);
+  assert.match(lightningInvitation, /\{alias \|\| 'MEISNER'\}/);
   assert.match(overview, /testID="event-arena-sticky-action"/);
   assert.match(screen, /sortPaperChallengeHistory\(store\.history, sortMode\)/);
   assert.match(screen, /accountData\.transactions[\s\S]*item\.accountId === eventAccountId/);

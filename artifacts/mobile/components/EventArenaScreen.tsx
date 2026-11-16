@@ -66,6 +66,7 @@ import {
 } from '@/lib/eventArenaDeviceSync';
 import { registerEventArenaPushDevice } from '@/lib/eventArenaPushRegistration';
 import { getRegularEventCalendarError } from '@/lib/paperChallengeCalendar';
+import { LightningRoundInvitation } from '@/components/LightningRoundInvitation';
 
 const NOTIFICATIONS_KEY = '@stocksense/paper_events_notifications_v1';
 const NOTIFICATION_ID_KEY = '@stocksense/paper_events_notification_id_v1';
@@ -1319,25 +1320,14 @@ function EventArenaScreenContent() {
             <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 18 }}>Event Arena</Text>
             <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 2 }}>Competition hub</Text>
           </View>
-          <TouchableOpacity
-            testID="open-lightning-round"
-            accessibilityRole="button"
-            accessibilityLabel="Open off-week Lightning Round"
-            onPress={() => router.push('/lightning-round')}
-            style={{ minWidth: 42, minHeight: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}
-          >
-            <Feather name="zap" size={17} color={colors.primary} />
-          </TouchableOpacity>
-          <Text
-            testID="event-arena-header-alias"
-            accessibilityLabel={participantAlias ? `Competition alias ${participantAlias}` : 'Meisner Method'}
-            numberOfLines={1}
-            ellipsizeMode="tail"
-            style={{ maxWidth: 140, minWidth: 0, flexShrink: 1, color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.6, textAlign: 'right' }}
-          >
-            {participantAlias || 'MEISNER'}
-          </Text>
         </View>
+        <LightningRoundInvitation
+          alias={participantAlias || ''}
+          enrolledEvent={store.lightningEnrollment ?? null}
+          enrollmentReady={storeState !== 'loading'}
+          now={now}
+          onOpen={() => router.push('/lightning-round')}
+        />
         <View style={{ flexDirection: 'row', gap: SECTION_TAB_GAP, paddingVertical: 7 }}>
           {SECTIONS.map((item) => {
             const selected = section === item.id;

@@ -19,6 +19,7 @@ import {
   getPaperChallengeWindow,
   getLightningRoundWindow,
   findPreparedLightningRoundWindow,
+  findPreparedLightningRoundInvitationWindow,
   getLatestLightningRoundAlias,
   hasRegularPaperChallengeOverlap,
   LIGHTNING_ROUND_STARTING_BALANCE,
@@ -519,6 +520,35 @@ test('prepared Lightning Round dates override a mismatching local calendar', () 
     'active',
   );
   assert.equal(findPreparedLightningRoundWindow([], now), null);
+});
+
+test('Lightning invitation follows the prepared event at exact 72-hour and 48-hour boundaries', () => {
+  const startAtMs = Date.parse('2026-12-11T14:30:00.000Z');
+  const endAtMs = Date.parse('2026-12-12T14:30:00.000Z');
+  const prepared = [{
+    eventId: 'lightning-2026-12-11',
+    eventType: 'lightning-round',
+    artworkId: 'lightning-round-arena',
+    startingBalance: LIGHTNING_ROUND_STARTING_BALANCE,
+    rankingDirection: 'highest-return',
+    startAtMs,
+    endAtMs,
+  }];
+  const preparationStartsAt = startAtMs - 72 * 60 * 60 * 1000;
+  const invitationEndsAt = endAtMs + 48 * 60 * 60 * 1000;
+
+  assert.equal(findPreparedLightningRoundInvitationWindow(prepared, preparationStartsAt - 1), null);
+  assert.equal(
+    findPreparedLightningRoundInvitationWindow(prepared, preparationStartsAt)?.id,
+    'lightning-2026-12-11',
+  );
+  assert.equal(findPreparedLightningRoundInvitationWindow(prepared, startAtMs)?.phase, 'active');
+  assert.equal(findPreparedLightningRoundInvitationWindow(prepared, endAtMs)?.phase, 'ended');
+  assert.equal(
+    findPreparedLightningRoundInvitationWindow(prepared, invitationEndsAt - 1)?.id,
+    'lightning-2026-12-11',
+  );
+  assert.equal(findPreparedLightningRoundInvitationWindow(prepared, invitationEndsAt), null);
 });
 
 test('event reminders include eligible Lightning Rounds at their scheduled Denver start', () => {

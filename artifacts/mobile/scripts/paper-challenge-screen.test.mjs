@@ -17,6 +17,7 @@ const shareCard = readFileSync(new URL("../components/PaperEventShareCard.tsx", 
 const leaderboard = readFileSync(new URL("../components/PaperChallengeLeaderboard.tsx", import.meta.url), "utf8");
 const leaderboardProgress = readFileSync(new URL("../lib/eventArenaCompetitiveProgress.ts", import.meta.url), "utf8");
 const eventArena = readFileSync(new URL("../components/EventArenaScreen.tsx", import.meta.url), "utf8");
+const lightningInvitation = readFileSync(new URL("../components/LightningRoundInvitation.tsx", import.meta.url), "utf8");
 const eventArenaOverview = readFileSync(new URL("../components/EventArenaOverview.tsx", import.meta.url), "utf8");
 const eventCashCelebration = readFileSync(new URL("../components/EventCashReceivedCelebration.tsx", import.meta.url), "utf8");
 const mobileRootLayout = readFileSync(new URL("../app/_layout.tsx", import.meta.url), "utf8");
@@ -80,7 +81,7 @@ test("Event Arena first-place podium keeps its card treatment without a separate
 test("Lightning Round uses an existing Event Arena account and preserves its archive", () => {
   assert.match(lightningRoute, /<LightningRoundScreen \/>/);
   assert.match(mobileRootLayout, /<Stack\.Screen name="lightning-round"/);
-  assert.match(eventArena, /testID="open-lightning-round"/);
+  assert.match(lightningInvitation, /testID="open-lightning-round"/);
   assert.match(lightningRound, /event-arena\/lightning-round\/prepare[\s\S]*?method: 'POST'/);
   assert.match(lightningRound, /payload\.available === false/);
   assert.match(lightningRound, /payload\.message \|\| 'No eligible Lightning Round dates are currently available\.'/);
@@ -148,6 +149,20 @@ test("Lightning Round promotion reuses the account card and opens its existing s
   assert.match(eventAccountDashboard, /VIEW EVENT/);
   assert.match(eventAccountDashboard, /testID="paper-event-view-leaderboard"/);
   assert.match(eventAccountDashboard, /testID="paper-event-account-equity"/);
+});
+
+test("Event Arena header invitation uses the prepared schedule and existing Lightning Round route", () => {
+  assert.match(eventArena, /<LightningRoundInvitation[\s\S]*?onOpen=\{\(\) => router\.push\('\/lightning-round'\)\}/);
+  assert.match(lightningInvitation, /event-arena\/lightning-round\/prepare[\s\S]*?method: 'POST'/);
+  assert.match(lightningInvitation, /findPreparedLightningRoundInvitationWindow\(preparedEvents, now\)/);
+  assert.match(lightningInvitation, /markLightningRoundInvitationSeen\(/);
+  assert.match(lightningInvitation, /enrollmentReady && phase/);
+  assert.match(lightningInvitation, /useReduceMotionPreference/);
+  assert.match(lightningInvitation, /duration: 2_200/);
+  assert.match(lightningInvitation, /flexShrink: 0/);
+  assert.match(lightningInvitation, /minHeight: 54/);
+  assert.match(lightningInvitation, /24-HOUR CHAMPIONSHIP/);
+  assert.match(lightningInvitation, /LIGHTNING ROUND/);
 });
 
 test("Lightning Round championship header preserves accessible actions and bundled individual emblems", () => {
