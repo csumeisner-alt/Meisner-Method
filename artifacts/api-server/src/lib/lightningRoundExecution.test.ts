@@ -217,7 +217,7 @@ class MemoryDatabase implements LightningExecutionDatabase {
       const participant = state.participants.find((row) =>
         row.event_id === values[0] && row.installation_id === values[1],
       );
-      if (participant && participant.final_result == null) {
+      if (participant) {
         participant.final_result = JSON.parse(values[2]);
         return { rows: [{ final_result: participant.final_result }] };
       }
@@ -1111,7 +1111,7 @@ test(
         {
           now: () => standingsEndAt + 1000,
           makeId: randomUUID,
-          fetchPrice: async (symbol) => symbol === "AAPL" ? null : 100,
+          fetchPrice: async (symbol) => symbol === "AAPL" ? 110 : null,
         },
       );
       assert.ok(firstFinalizationAttempt.events >= 1);
@@ -1129,6 +1129,21 @@ test(
           [standingsIds.event],
         )).rows[0].count),
         0,
+      );
+      const incompleteStandings = await firstPool.query(
+        `SELECT participant.final_result,entry.installation_id AS leaderboard_installation_id
+         FROM event_arena_lightning_participants AS participant
+         LEFT JOIN event_arena_leaderboard_entries AS entry
+           ON entry.event_id=participant.event_id AND entry.installation_id=participant.installation_id
+         WHERE participant.event_id=$1`,
+        [standingsIds.event],
+      );
+      assert.equal(incompleteStandings.rows.length, standingsIds.participants.length);
+      assert.ok(
+        incompleteStandings.rows.every((row) =>
+          row.final_result === null && row.leaderboard_installation_id === null,
+        ),
+        "a successful earlier quote must not persist a partial result or leaderboard entry",
       );
 
       let notifyFinalQuoteStarted!: () => void;

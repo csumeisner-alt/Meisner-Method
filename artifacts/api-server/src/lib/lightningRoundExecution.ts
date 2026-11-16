@@ -185,8 +185,6 @@ async function freezeParticipantResult(
   startingBalance: number,
   fetchPrice: (symbol: string) => Promise<number | null>,
 ): Promise<LightningRoundFinalResult | null> {
-  const alreadySaved = finalResultFromRow(participant.final_result);
-  if (alreadySaved) return alreadySaved;
   const { rows: activityRows } = await db.query(
     `SELECT symbol,company_name,action,shares,price,total,fee,date
      FROM paper_transactions
@@ -233,14 +231,7 @@ async function freezeParticipantResult(
     finalPositions: score.finalPositions,
     completedAtMs: endAtMs,
   };
-  const { rows: savedRows } = await db.query(
-    `UPDATE event_arena_lightning_participants
-     SET final_result=$3::jsonb,updated_at=NOW()
-     WHERE event_id=$1 AND installation_id=$2 AND final_result IS NULL
-     RETURNING final_result`,
-    [eventId, participant.installation_id, JSON.stringify(result)],
-  );
-  return finalResultFromRow(savedRows[0]?.final_result) ?? result;
+  return result;
 }
 
 async function finalizeEventStandings(
@@ -348,7 +339,7 @@ async function finalizeEventStandings(
     await db.query(
       `UPDATE event_arena_lightning_participants
        SET final_result=$3::jsonb
-       WHERE event_id=$1 AND installation_id=$2 AND final_result IS NOT NULL`,
+       WHERE event_id=$1 AND installation_id=$2`,
       [
         event.event_id,
         participant.installation_id,
