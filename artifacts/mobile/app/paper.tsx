@@ -27,6 +27,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { MMLogo } from '@/components/MMLogo';
 import { PaperEventShareCard } from '@/components/PaperEventShareCard';
 import { BottomTabBar } from '@/components/BottomTabBar';
@@ -85,6 +86,7 @@ import {
   fifoSell,
 } from '@/lib/paperEngine';
 import { removePendingPaperOrder } from '@/lib/paperOrderDeletion';
+import { createPaperOrderFillHapticNotifier } from '@/lib/paperOrderFillHaptics';
 import {
   getMarketOrderQuoteError,
   getOrderQuoteState,
@@ -353,6 +355,13 @@ export default function PaperScreen() {
   const [transactions, setTransactions] = useState<PaperTransaction[]>([]);
   const [orders, setOrders] = useState<PaperOrder[]>([]);
   const [lots, setLots] = useState<PaperLot[]>([]);
+  const paperOrderFillHapticNotifierRef = useRef<ReturnType<typeof createPaperOrderFillHapticNotifier> | null>(null);
+  if (!paperOrderFillHapticNotifierRef.current) {
+    paperOrderFillHapticNotifierRef.current = createPaperOrderFillHapticNotifier(
+      Platform.OS,
+      () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light),
+    );
+  }
   const [accountValueSnapshots, setAccountValueSnapshots] = useState<PaperAccountValueSnapshot[]>([]);
   const [snapshotStorageError, setSnapshotStorageError] = useState('');
 
@@ -1650,6 +1659,13 @@ export default function PaperScreen() {
       updatedOrders = updatedOrders.map(o =>
         o.id === order.id ? { ...o, status: 'filled', filledPrice: fillPrice, filledAt: nowISO } : o,
       );
+      if (!isPaperChallengeAccountId(order.accountId)) {
+        paperOrderFillHapticNotifierRef.current?.({
+          orderId: order.id,
+          previousStatus: order.status,
+          status: 'filled',
+        });
+      }
       ordersChanged = true;
     }
 
@@ -2505,6 +2521,13 @@ export default function PaperScreen() {
           updatedLots,
           activeIdRef.current,
         );
+        if (!isPaperChallengeAccountId(accountId)) {
+          paperOrderFillHapticNotifierRef.current?.({
+            orderId: `market-${syntheticOrder.id}`,
+            previousStatus: syntheticOrder.status,
+            status: 'filled',
+          });
+        }
         if (!args.orderId) {
           void awardAchievement('first-paper-order');
           if (args.side === 'sell') void awardAchievement('first-paper-sell');
