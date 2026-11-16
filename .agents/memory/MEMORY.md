@@ -86,6 +86,7 @@
 - [Commodity intelligence scoring](commodity-intelligence-scoring.md) — missing categories stay neutral under family weights; volatility can only subtract, and the score is not a return forecast.
 - [Commodity event and report evidence](commodity-event-report-evidence.md) — scheduled dates, completed releases, published values, and comparable historical periods require separate validation.
 - [Event Arena sharing scope](local-only-community-features.md) — standard events start at $100K; Green Stock Exchange configures new $500K Green Bull events; saved rules protect legacy results.
+- [Penny Stock Mayhem art direction](penny-stock-mayhem-art-direction.md) — keep Penny visuals cinematic and realistic with silver/red titles, a steel under-$20 nameplate, emerald lighting, and copper pennies.
 - [Paper Trading positions-first layout](paper-positions-first.md) — default to current positions and keep rows compact enough to target four visible on a phone.
 - [Event Arena device recovery](event-arena-device-recovery.md) — preserve guest access with one-use device pairing; never overwrite unrelated accounts or replay restored orders.
 - [PostgreSQL worker test fixtures](postgres-worker-test-fixtures.md) — match production indexes/defaults and seed coherent ledger state in isolated PostgreSQL schemas.

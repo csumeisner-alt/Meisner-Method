@@ -235,6 +235,8 @@ test("Penny Stock leaderboard artwork, countdown, and podium fit narrow and stan
         const card = get("event-arena-leaderboard-artwork-fixture-penny-stock-mayhem");
         const image = artwork?.querySelector("img");
         const imageLayer = artwork?.querySelector("div[style*='background-image']");
+          const imageBox = box(artwork);
+          const hasFloatingMark = !!hero?.querySelector("img[src*='mm-mark-foreground']");
         const labels = [...(podium?.querySelectorAll("[data-testid^='paper-event-podium-']") ?? [])];
         const textFits = (element) => {
           if (!element) return false;
@@ -247,6 +249,8 @@ test("Penny Stock leaderboard artwork, countdown, and podium fit narrow and stan
           bannerText: banner?.textContent?.replace(/\\s+/g, " ").trim(),
           imageLabel: image?.getAttribute("aria-label") || artwork?.getAttribute("aria-label"),
           imageLoaded: !!image && image.complete && image.naturalWidth > 0 && image.naturalHeight > 0,
+          imageBoxRatio: imageBox?.width && imageBox?.height ? imageBox.width / imageBox.height : null,
+          hasFloatingMark,
           imageFit: imageLayer ? getComputedStyle(imageLayer).backgroundSize : null,
           eventName: get("paper-event-penny-stock-hero")?.getAttribute("aria-label"),
           countdownText: countdown?.textContent?.replace(/\\s+/g, " ").trim(),
@@ -265,6 +269,8 @@ test("Penny Stock leaderboard artwork, countdown, and podium fit narrow and stan
       assert.match(layout.bannerText, /STOCKS\s*&\s*ETFs UNDER\s*\$20/);
       assert.equal(layout.imageLabel, "Charging bull with copper pennies in a green championship arena");
       assert.equal(layout.imageLoaded, true, `The Penny Stock artwork must load at ${width}px.`);
+      assert.ok(Math.abs(layout.imageBoxRatio - 1) < 0.05, "The full square artwork should remain visible without cropping.");
+      assert.equal(layout.hasFloatingMark, false, "The Penny Stock title should not have a floating Meisner mark above it.");
       assert.equal(layout.imageFit, "contain", "The bull and pennies must retain their full artwork bounds.");
       assert.match(layout.countdownText, /TIME REMAINING/);
       assert.equal(layout.podiumHeading, true);
