@@ -465,8 +465,14 @@ test("Event Arena podium sharing captures only aliases and returns with the self
   assert.match(leaderboard, /testID="share-paper-event-podium-confirm"/);
   assert.match(leaderboard, /Platform\.OS !== 'web' && entries\.length > 0[\s\S]*?testID="share-paper-event-podium"/);
   assert.match(leaderboard, /<ViewShot[\s\S]*?options=\{\{ format: 'png', quality: 1 \}\}[\s\S]*?EventArenaPodiumShareCard event=\{event\} slots=\{podiumSlots\}/);
-  assert.match(leaderboard, /const uri = await viewShot\.capture\?\.\(\);[\s\S]*?Sharing\.shareAsync\(uri,[\s\S]*?mimeType: 'image\/png'[\s\S]*?UTI: 'public\.png'/);
-  assert.match(leaderboard, /if \(!\(await Sharing\.isAvailableAsync\(\)\)\)/);
+  assert.match(leaderboard, /const uri = await viewShot\.capture\?\.\(\);[\s\S]*?NativeShare\.default\.open\(\{[\s\S]*?url: uri,[\s\S]*?type: 'image\/png',[\s\S]*?message: getPodiumShareCaption\(event\)/);
+  assert.match(leaderboard, /Meisner Method · \$\{getPodiumEventName\(event\)\} · \$\{dateRangeLabel\(event\.startAtMs, event\.endAtMs\)\}/);
+  assert.match(leaderboard, /Scores are self-reported and not independently verified\./);
+  assert.match(leaderboard, /failOnCancel: false/);
+  const captionStart = leaderboard.indexOf('function getPodiumShareCaption');
+  const captionEnd = leaderboard.indexOf('\nfunction getEventEnrollment', captionStart);
+  const captionSource = leaderboard.slice(captionStart, captionEnd);
+  assert.doesNotMatch(captionSource, /account|position|cash|balance|symbol|holding|trade history/i);
   assert.match(shareCardSource, /EVENT_ARENA_ARTWORK_SOURCES\[event\.artworkId \?\? LEGACY_PAPER_CHALLENGE_ARTWORK_ID\]/);
   assert.match(shareCardSource, /testID="paper-event-penny-stock-podium-share-hero"/);
   assert.match(shareCardSource, /PENNY STOCK[\s\S]*?MAYHEM[\s\S]*?STOCKS &amp; ETFs UNDER[\s\S]*?\$20/);

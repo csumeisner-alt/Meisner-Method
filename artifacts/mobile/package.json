@@ -70,6 +70,7 @@
     "expo-speech": "~14.0.8",
     "expo-store-review": "~9.0.9",
     "expo-video": "~3.0.16",
+    "react-native-share": "12.3.1",
     "react-native-view-shot": "4.0.3"
   }
 }

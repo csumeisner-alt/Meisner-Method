@@ -151,6 +151,25 @@ const dateRangeLabel = (startAtMs: number, endAtMs: number) => {
   return `${start} – ${end}`;
 };
 
+function getPodiumEventName(event: PaperChallengeLeaderboardEventWindow) {
+  if (event.eventType === 'lightning-round' || event.artworkId === 'lightning-round-arena') return 'Lightning Round';
+  if (event.eventType === 'penny-stock-mayhem' || event.artworkId === 'penny-stock-mayhem') return 'Penny Stock Mayhem';
+  if (event.eventType === 'bear-market-mayhem' || event.rankingDirection === 'lowest-return' || event.artworkId === 'red-showdown') return 'Bear Market Mayhem';
+  if (event.eventType === 'green-bull-championship' || event.artworkId === 'green-stock-exchange') return 'Green Bull Championship';
+  if (event.eventType === 'mountain-championship' || event.artworkId === 'mountain-summit') return 'Mountain Championship';
+  return 'Event Arena Championship';
+}
+
+function getPodiumShareCaption(event: PaperChallengeLeaderboardEventWindow) {
+  const isLightningRound = event.eventType === 'lightning-round' || event.artworkId === 'lightning-round-arena';
+  return [
+    `Meisner Method · ${getPodiumEventName(event)} · ${dateRangeLabel(event.startAtMs, event.endAtMs)}`,
+    isLightningRound
+      ? 'Lightning Round scores use event-tagged fills and current market prices.'
+      : 'Scores are self-reported and not independently verified.',
+  ].join('\n');
+}
+
 function getEventEnrollment(store: PaperChallengeStore, eventType: PaperChallengeEventType) {
   return eventType === 'lightning-round' ? store.lightningEnrollment ?? null : store.enrollment;
 }
@@ -1261,15 +1280,13 @@ export function PaperChallengeLeaderboard({
     try {
       const uri = await viewShot.capture?.();
       if (!uri) throw new Error('The podium image could not be rendered.');
-      const Sharing = await import('expo-sharing');
-      if (!(await Sharing.isAvailableAsync())) {
-        Alert.alert('Sharing unavailable', 'Your device cannot share an image right now.');
-        return;
-      }
-      await Sharing.shareAsync(uri, {
-        mimeType: 'image/png',
-        UTI: 'public.png',
-        dialogTitle: 'Meisner Method Event Arena Podium',
+      const NativeShare = await import('react-native-share');
+      await NativeShare.default.open({
+        url: uri,
+        type: 'image/png',
+        message: getPodiumShareCaption(event),
+        title: 'Meisner Method Event Arena Podium',
+        failOnCancel: false,
       });
     } catch {
       Alert.alert('Could not share', 'The podium image is unavailable right now. Please try again.');
