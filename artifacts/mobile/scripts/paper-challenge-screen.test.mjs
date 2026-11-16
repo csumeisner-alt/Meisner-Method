@@ -475,9 +475,9 @@ test("Event Arena podium sharing captures only aliases and returns with the self
   assert.doesNotMatch(captionSource, /account|position|cash|balance|symbol|holding|trade history/i);
   assert.match(shareCardSource, /EVENT_ARENA_ARTWORK_SOURCES\[event\.artworkId \?\? LEGACY_PAPER_CHALLENGE_ARTWORK_ID\]/);
   assert.match(shareCardSource, /testID="paper-event-penny-stock-podium-share-hero"/);
-  assert.match(shareCardSource, /PENNY STOCK[\s\S]*?MAYHEM[\s\S]*?STOCKS &amp; ETFs UNDER[\s\S]*?\$20/);
+  assert.match(shareCardSource, /<PennyMayhemTitle compact \/>[\s\S]*?<PennyMayhemNameplate compact \/>/);
   assert.doesNotMatch(shareCardSource, /mm-mark-foreground\.png/);
-  assert.match(shareCardSource, /event-arena-penny-stock-mayhem-cinematic\.jpg/);
+  assert.match(shareCardSource, /event-arena-penny-stock-mayhem-premium\.jpg/);
   assert.match(shareCardSource, /MEISNER METHOD · PENNY STOCK MAYHEM/);
   assert.match(shareCardSource, /event\.eventType === 'lightning-round'[\s\S]*?'MEISNER METHOD · LIGHTNING ROUND'/);
   assert.match(shareCardSource, /\{slot\.entry\?\.alias \?\? 'Waiting for competitor'\}/);
@@ -1325,7 +1325,7 @@ test("all six live Event Arena backgrounds keep podium names and values readable
   assert.match(artworkContainer, /<LinearGradient/);
   assert.match(artworkContainer, /testID="paper-event-penny-stock-hero"/);
   assert.match(artworkContainer, /testID="paper-event-penny-stock-art"/);
-  assert.match(artworkContainer, /PENNY STOCK[\s\S]*?MAYHEM[\s\S]*?STOCKS &amp; ETFs UNDER[\s\S]*?\$20/);
+  assert.match(artworkContainer, /<PennyMayhemTitle[\s\S]*?<PennyMayhemNameplate/);
   assert.match(artworkContainer, /resizeMode="contain"[\s\S]*?width: '100%'[\s\S]*?aspectRatio: 1/);
   assert.match(artworkContainer, /paper-event-penny-stock-hero[\s\S]*?paper-event-leaderboard-countdown/);
   assert.match(artworkContainer, /paper-event-leaderboard-participant-count/);
@@ -1423,13 +1423,13 @@ test("Penny Stock Mayhem uses cinematic leaderboard artwork without a floating l
   assert.match(eventArenaOverview, /mm-mark-foreground\.png/);
   assert.match(eventArenaOverview, /STOCKS &amp; ETFs UNDER \$20/);
   assert.match(eventArenaOverview, /money\(startingCapital\)\} STARTING CAPITAL/);
-  assert.match(leaderboard, /isPennyStockMayhem\s+\?\s+require\('\.\.\/assets\/event-arena-penny-stock-mayhem-cinematic\.jpg'\)/);
+  assert.match(leaderboard, /isPennyStockMayhem\s+\?\s+require\('\.\.\/assets\/event-arena-penny-stock-mayhem-premium\.jpg'\)/);
   assert.match(leaderboard, /paper-event-leaderboard-countdown[\s\S]*?eventStatus\.countdown/);
   assert.match(leaderboard, /paper-event-leaderboard-participant-count[\s\S]*?entries\.length/);
   assert.match(leaderboard, /dateRangeLabel\(event\.startAtMs, event\.endAtMs\)/);
   assert.doesNotMatch(leaderboard, /mm-mark-foreground\.png/);
-  assert.match(leaderboardMockup, /event-arena-penny-stock-mayhem-clean/);
-  assert.match(leaderboardMockup, /mm-mark-foreground\.png/);
+  assert.match(leaderboardMockup, /event-arena-penny-stock-mayhem-premium/);
+  assert.doesNotMatch(leaderboardMockup, /mm-mark-foreground\.png/);
   assert.match(leaderboardMockup, /mm-penny-hero/);
   assert.match(leaderboardMockup, /event-arena-stadium/);
   assert.match(leaderboardMockup, /event-arena-neon-nightclub/);

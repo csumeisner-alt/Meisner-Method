@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -48,6 +48,7 @@ async function buildFixture() {
     define: { "process.env.EXPO_PUBLIC_DOMAIN": JSON.stringify("fixture.invalid") },
     loader: { ".jpg": "dataurl", ".png": "dataurl" },
     mainFields: ["browser", "module", "main"],
+    resolveExtensions: [".web.tsx", ".web.ts", ".web.jsx", ".web.js", ".tsx", ".ts", ".jsx", ".js", ".json"],
     conditions: ["browser"],
     plugins: [{
       name: "penny-stock-leaderboard-browser-fixture",
@@ -117,7 +118,13 @@ function connectDebugger(webSocketUrl) {
 }
 
 async function startBrowser(bundle) {
+  const interBold = await readFile(require.resolve("@expo-google-fonts/inter/700Bold/Inter_700Bold.ttf", { paths: [mobileDir] }));
   const server = createServer((request, response) => {
+    if (request.url === "/inter-bold.ttf") {
+      response.writeHead(200, { "content-type": "font/ttf" });
+      response.end(interBold);
+      return;
+    }
     if (request.url === "/bundle.js") {
       response.writeHead(200, { "content-type": "text/javascript; charset=utf-8" });
       response.end(bundle);
@@ -126,7 +133,10 @@ async function startBrowser(bundle) {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     response.end(`<!doctype html><html><head>
       <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-      <style>html,body,#root{width:100%;height:100%;margin:0;padding:0;overflow:hidden}</style>
+      <style>
+        @font-face{font-family:Inter_700Bold;src:url('/inter-bold.ttf') format('truetype');font-weight:700;font-display:block}
+        html,body,#root{width:100%;height:100%;margin:0;padding:0;overflow:hidden}
+      </style>
       </head><body><div id="root"></div><script src="/bundle.js"></script></body></html>`);
   });
   await new Promise((resolveListen, rejectListen) => {
@@ -186,6 +196,7 @@ async function startBrowser(bundle) {
     );
     assert.equal(rendered, true,
       `The real Penny Stock leaderboard should render from fixture data. ${await browser.evaluate("JSON.stringify({errors:window.__fixtureErrors,body:document.body?.innerText,root:document.querySelector('#root')?.innerHTML?.slice(0,2000)})")}`);
+    await browser.evaluate("document.fonts.ready.then(() => true)");
     return {
       browser,
       cleanup: async () => {
@@ -214,7 +225,7 @@ test("Penny Stock leaderboard artwork, countdown, and podium fit narrow and stan
   const fixture = await startBrowser(await buildFixture());
   const { browser } = fixture;
   try {
-    for (const width of [320, 390]) {
+    for (const width of [320, 375, 390]) {
       await browser.send("Emulation.setDeviceMetricsOverride", {
         width, height: 760, deviceScaleFactor: 1, mobile: true,
       });
@@ -261,6 +272,8 @@ test("Penny Stock leaderboard artwork, countdown, and podium fit narrow and stan
             countdown: box(countdown), podium: box(podium), card: box(card),
           },
           textFits: [title, banner, countdown, podium, ...labels].map(textFits),
+          titleGlyphsFit: [...(title?.querySelectorAll("svg text") ?? [])].every(textFits),
+          bannerGlyphsFit: [...(banner?.querySelectorAll("svg text") ?? [])].every(textFits),
           scrollWidth: document.documentElement.scrollWidth,
         };
       })()`);
@@ -272,6 +285,8 @@ test("Penny Stock leaderboard artwork, countdown, and podium fit narrow and stan
       assert.ok(Math.abs(layout.imageBoxRatio - 1) < 0.05, "The full square artwork should remain visible without cropping.");
       assert.equal(layout.hasFloatingMark, false, "The Penny Stock title should not have a floating Meisner mark above it.");
       assert.equal(layout.imageFit, "contain", "The bull and pennies must retain their full artwork bounds.");
+      assert.equal(layout.titleGlyphsFit, true, "The visible title lettering must fit, not just its wrapper.");
+      assert.equal(layout.bannerGlyphsFit, true, "The visible rule wording and $20 must not clip.");
       assert.match(layout.countdownText, /TIME REMAINING/);
       assert.equal(layout.podiumHeading, true);
       assert.equal(layout.podiumNames.length, 3, "All three fixture competitors must appear on the podium.");
@@ -289,6 +304,10 @@ test("Penny Stock leaderboard artwork, countdown, and podium fit narrow and stan
       assert.ok(layout.bounds.banner.bottom <= layout.bounds.artwork.top + 1);
       assert.ok(layout.bounds.artwork.bottom <= layout.bounds.countdown.top + 1);
       assert.ok(layout.bounds.countdown.bottom <= layout.bounds.podium.top + 1);
+      if (process.env.PENNY_SCREENSHOT_DIR) {
+        const capture = await browser.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
+        await writeFile(join(process.env.PENNY_SCREENSHOT_DIR, `penny-mobile-${width}.png`), Buffer.from(capture.result.data, "base64"));
+      }
     }
     const errors = await browser.evaluate("window.__fixtureErrors");
     assert.deepEqual(errors, [], "The visual fixture must render without browser errors.");

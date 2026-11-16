@@ -49,7 +49,7 @@ const events: EventConfig[] = [
     accent: '#a6e28a',
   },
   {
-    artwork: 'event-arena-penny-stock-mayhem-clean',
+    artwork: 'event-arena-penny-stock-mayhem-premium',
     name: 'Penny Stock Mayhem',
     subtitle: 'Stocks & ETFs Under $20',
     capital: '$100,000',
@@ -96,6 +96,30 @@ function PodiumMedal({ accent }: { accent: string }) {
   );
 }
 
+function PennyTrophy() {
+  return (
+    <svg width="96" height="96" viewBox="0 0 100 100" aria-hidden="true">
+      <defs>
+        <linearGradient id="ptGold" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stopColor="#7A5A1E"/><stop offset=".22" stopColor="#E9CB7A"/><stop offset=".4" stopColor="#FFF3C8"/><stop offset=".6" stopColor="#C99A3F"/><stop offset=".85" stopColor="#8E6A26"/><stop offset="1" stopColor="#D9B762"/></linearGradient>
+        <linearGradient id="ptPlinth" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#2C3A33"/><stop offset="1" stopColor="#0D1612"/></linearGradient>
+        <linearGradient id="ptEm" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stopColor="#0E5A35"/><stop offset=".5" stopColor="#3FCB84"/><stop offset="1" stopColor="#0E5A35"/></linearGradient>
+      </defs>
+      <ellipse cx="50" cy="93" rx="30" ry="3" fill="#000" opacity=".35"/>
+      <path d="M27 20 C12 20 12 44 33 47" stroke="url(#ptGold)" strokeWidth="4" fill="none" strokeLinecap="round"/>
+      <path d="M73 20 C88 20 88 44 67 47" stroke="url(#ptGold)" strokeWidth="4" fill="none" strokeLinecap="round"/>
+      <path d="M25 12 H75 V22 C75 41 64 53 50 54 C36 53 25 41 25 22 Z" fill="url(#ptGold)" stroke="#6A4C16" strokeWidth=".8"/>
+      <ellipse cx="50" cy="12" rx="25" ry="3.2" fill="#FFF0BE" stroke="#8E6A26" strokeWidth=".6"/>
+      <path d="M33 18 C33 34 38 44 44 48" stroke="#fff" strokeOpacity=".55" strokeWidth="2.2" fill="none" strokeLinecap="round"/>
+      <rect x="27" y="25" width="46" height="2.4" fill="url(#ptEm)" opacity=".9"/>
+      <path d="M46 54 H54 L53 66 H47 Z" fill="url(#ptGold)"/>
+      <ellipse cx="50" cy="60" rx="6.5" ry="2.4" fill="url(#ptGold)" stroke="#6A4C16" strokeWidth=".5"/>
+      <path d="M38 66 H62 L65 72 H35 Z" fill="url(#ptGold)" stroke="#6A4C16" strokeWidth=".5"/>
+      <rect x="30" y="72" width="40" height="18" rx="1.5" fill="url(#ptPlinth)" stroke="#C99A3F" strokeWidth=".8"/>
+      <rect x="30" y="78.5" width="40" height="1.6" fill="url(#ptEm)"/>
+    </svg>
+  );
+}
+
 function PhoneScreen({ event, index }: { event: EventConfig; index: number }) {
   const bear = index === 3;
   return (
@@ -124,20 +148,30 @@ function PhoneScreen({ event, index }: { event: EventConfig; index: number }) {
 
         <main className="mm-screen-scroll">
           <section className={`mm-event-hero ${event.pennyMayhem ? 'mm-penny-hero' : ''}`} style={{ '--event-accent': event.accent, backgroundImage: event.pennyMayhem
-            ? `linear-gradient(180deg, rgba(4,8,14,.12), rgba(5,9,15,.32) 23%, rgba(5,9,15,.84) 47%, rgba(5,9,15,.93)), url("/__mockup/images/leaderboard-events/${event.artwork}.jpg")`
+            ? 'radial-gradient(120% 60% at 50% 0%, #10241a 0%, #07110d 60%)'
             : `linear-gradient(180deg, rgba(4,8,14,.49), rgba(5,9,15,.82) 34%, rgba(5,9,15,.88)), url("/__mockup/images/leaderboard-events/${event.artwork}.jpg")` } as React.CSSProperties}>
             <div className="mm-actions"><span><Glyph name="refresh" size={16} /></span><span><Glyph name="info" size={16} /></span></div>
             <div className="mm-event-title">
               {event.pennyMayhem ? (
                 <div className="mm-penny-lockup" aria-label="Penny Stock Mayhem. Stocks and ETFs under $20.">
-                  <div className="mm-penny-title">
-                    <span>PENNY STOCK</span>
-                    <strong>MAYHEM</strong>
-                  </div>
-                  <div className="mm-penny-banner">
+                  <svg className="mm-penny-svg" viewBox="0 0 300 152" role="img" aria-label="Penny Stock Mayhem">
+                    <defs>
+                      <linearGradient id="pmPlat" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#FBFCFD"/><stop offset=".3" stopColor="#D9E0E4"/><stop offset=".48" stopColor="#7F8B94"/><stop offset=".53" stopColor="#E9EEF1"/><stop offset=".78" stopColor="#A4AFB7"/><stop offset="1" stopColor="#ECF0F2"/></linearGradient>
+                      <linearGradient id="pmCrim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#FF9AA0"/><stop offset=".22" stopColor="#F2323F"/><stop offset=".5" stopColor="#B10C1C"/><stop offset=".56" stopColor="#E92636"/><stop offset=".85" stopColor="#7E0713"/><stop offset="1" stopColor="#C81C2B"/></linearGradient>
+                    </defs>
+                    <g fontFamily="'Oswald','DM Sans',sans-serif" fontWeight="700" textAnchor="middle">
+                      <text x="151" y="57" fontSize="60" textLength="290" lengthAdjust="spacingAndGlyphs" fill="#0B1114" opacity=".55">PENNY STOCK</text>
+                      <text x="150" y="55" fontSize="60" textLength="290" lengthAdjust="spacingAndGlyphs" fill="url(#pmPlat)" stroke="#5E6A72" strokeWidth=".6">PENNY STOCK</text>
+                      <text x="151" y="148" fontSize="94" textLength="290" lengthAdjust="spacingAndGlyphs" fill="#14040A" opacity=".6">MAYHEM</text>
+                      <text x="150" y="146" fontSize="94" textLength="290" lengthAdjust="spacingAndGlyphs" fill="url(#pmCrim)" stroke="#FF8A92" strokeOpacity=".35" strokeWidth=".7">MAYHEM</text>
+                    </g>
+                  </svg>
+                  <div className="mm-penny-banner" aria-label="Stocks and ETFs under $20">
+                    <i className="r1"/><i className="r2"/><i className="r3"/><i className="r4"/>
                     <span>STOCKS &amp; ETFs UNDER</span>
                     <strong>$20</strong>
                   </div>
+                  <img className="mm-penny-art" src={`/__mockup/images/leaderboard-events/${event.artwork}.jpg`} alt="Charging bull with copper pennies in a green championship arena" />
                 </div>
               ) : (
                 <>
@@ -159,7 +193,7 @@ function PhoneScreen({ event, index }: { event: EventConfig; index: number }) {
 
             <div className="mm-podium-heading"><b>The podium</b><span>TOP THREE</span></div>
             <div className={`mm-winner ${bear ? 'bear' : ''}`}>
-              <PodiumMedal accent={event.accent} />
+              {event.pennyMayhem ? <PennyTrophy /> : <PodiumMedal accent={event.accent} />}
               <small>RANK 1 OF 1</small>
               <div className="mm-winner-name">Squidward <span className="mm-alias-mark"><Glyph name="star" size={12} /></span> <em>YOU</em></div>
               <label>COMPETITION RETURN</label>
@@ -208,7 +242,7 @@ export function AllSevenLeaderboards({ onlyPenny = false }: { onlyPenny?: boolea
   return (
     <div className="mm-gallery">
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@700&family=DM+Sans:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
         * { box-sizing: border-box; }
         .mm-gallery { min-height: 100dvh; padding: 36px 24px 58px; color: #f3f0e8; background: #111318; font-family: 'DM Sans', sans-serif; }
         .mm-gallery-intro { max-width: 1240px; margin: 0 auto 28px; display:flex; align-items:end; justify-content:space-between; gap:20px; }
@@ -234,14 +268,14 @@ export function AllSevenLeaderboards({ onlyPenny = false }: { onlyPenny?: boolea
         .mm-tab.selected { background:#dfb956; border-color:#e6c771; color:#272318; }.mm-tab.selected span { color:#28251d; }
         .mm-screen-scroll { flex:1; min-height:0; overflow:auto; scrollbar-width:none; background:#111419; }.mm-screen-scroll::-webkit-scrollbar{display:none;}
         .mm-event-hero { position:relative; overflow:hidden; min-height:0; margin:0 0 14px; padding:12px 17px 15px; background-size:cover; background-position:center; border:1px solid color-mix(in srgb,var(--event-accent) 43%,transparent); border-radius:0 0 26px 26px; box-shadow:inset 0 -28px 50px #04070c88; }
-         .mm-penny-hero { background-position:center 34%; border-color:#9ab76b91; box-shadow:inset 0 -34px 62px #030907c9, inset 0 0 48px #5a9d4b18; }
-         .mm-penny-lockup { width:min(100%,320px);margin:2px auto 7px; }
-         .mm-penny-title { display:flex;flex-direction:column;align-items:center;line-height:.9;text-align:center;filter:drop-shadow(0 7px 8px #000b); }
-         .mm-penny-title span { color:transparent;background:linear-gradient(180deg,#ffffff 0%,#e2e9ed 26%,#87939d 47%,#f7fbff 59%,#9ca8b1 77%,#eef2f4 100%);background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:clamp(25px,7.3vw,33px);font-weight:950;letter-spacing:1.15px;text-shadow:0 2px 0 #59646d,0 4px 0 #303b44; }
-         .mm-penny-title strong { color:transparent;background:linear-gradient(180deg,#ffc1c3 0%,#ff626b 25%,#e52331 55%,#a50d1b 78%,#ff626b 100%);background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:clamp(38px,10vw,46px);font-weight:950;letter-spacing:3px;line-height:1.04;text-shadow:0 2px 0 #89121b,0 4px 0 #5c0b13; }
-         .mm-penny-banner { min-height:47px;margin-top:8px;padding:5px 10px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid #d8e2db;border-radius:9px;background:linear-gradient(125deg,#e1e8e4 0%,#5b8169 24%,#12251c 52%,#316747 76%,#9eb6a3 100%);box-shadow:0 0 20px #55d7792b,inset 0 1px #fff9; }
-         .mm-penny-banner span { color:#f2f6f3;font-size:10px;font-weight:900;letter-spacing:.45px;text-shadow:0 2px 4px #000c; }
-         .mm-penny-banner strong { color:#fff;font-size:27px;font-weight:950;line-height:1;text-shadow:0 1px 0 #aebbb3,0 3px 6px #000b; }
+         .mm-penny-hero { background-color:#07110d; border-color:#9ab76b91; box-shadow:inset 0 -34px 62px #030907c9, inset 0 0 48px #5a9d4b18; }
+         .mm-penny-lockup { width:100%;margin:2px auto 12px; }
+         .mm-penny-svg { display:block;width:100%;height:auto;filter:drop-shadow(0 6px 8px #000a); }
+         .mm-penny-banner { position:relative;margin-top:9px;padding:9px 16px 8px;display:flex;align-items:center;justify-content:space-between;gap:10px;border-radius:4px;border:1.5px solid #2fa56abf;outline:2px solid #0a2418;background:repeating-linear-gradient(180deg,#ffffff1f 0 1px,transparent 1px 3px),linear-gradient(100deg,#ffffff00 20%,#ffffff45 38%,#ffffff00 50%),linear-gradient(180deg,#e7ecea,#a9b3af 45%,#8d9894 55%,#c9d1cd);box-shadow:inset 0 1px #fff,inset 0 -1px #4c5753,0 6px 14px #0009; }
+         .mm-penny-banner i { position:absolute;width:5px;height:5px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#f1f4f2,#6e7975 70%); }.mm-penny-banner .r1{top:4px;left:4px}.mm-penny-banner .r2{top:4px;right:4px}.mm-penny-banner .r3{bottom:4px;left:4px}.mm-penny-banner .r4{bottom:4px;right:4px}
+         .mm-penny-banner span { color:#141c19;font:800 14px 'DM Sans',sans-serif;letter-spacing:.6px;text-shadow:0 1px 0 #ffffffb0; }
+         .mm-penny-banner strong { padding-left:12px;border-left:1px solid #5f6a66;box-shadow:-1px 0 #ffffffb0;color:#0f1714;font:800 40px/1 'DM Sans',sans-serif;letter-spacing:-1px;text-shadow:0 1px 0 #ffffffb0,0 0 1px #0e5a35; }
+         .mm-penny-art { display:block;width:100%;aspect-ratio:1;object-fit:contain;margin-top:10px;border-radius:14px; }
          .mm-penny-hero .mm-capital { color:#f5d987;font-size:10px;letter-spacing:.75px;text-shadow:0 2px 7px #000; }
          .mm-penny-hero .mm-upcoming,.mm-penny-hero .mm-countdown,.mm-penny-hero .mm-event-meta span { background:#07110edb;border-color:#ffffff35;backdrop-filter:blur(8px); }
          .mm-penny-hero .mm-countdown { box-shadow:0 0 22px #75d66320; }

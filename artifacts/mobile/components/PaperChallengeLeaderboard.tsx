@@ -54,6 +54,7 @@ import {
   getEventCashTransferImpact,
   type EventCashTransferImpact,
 } from '@/lib/eventArenaTransfers';
+import { PennyMayhemNameplate, PennyMayhemTitle, PennyMayhemTrophy } from '@/components/PennyMayhemBrand';
 import { EventArenaTransferLockNotice } from '@/components/EventArenaTransferLockNotice';
 import {
   isShortPosition,
@@ -191,7 +192,7 @@ function EventArenaPodiumShareCard({
   return (
     <ImageBackground
       source={isPennyStockMayhem
-        ? require('../assets/event-arena-penny-stock-mayhem-cinematic.jpg')
+        ? require('../assets/event-arena-penny-stock-mayhem-premium.jpg')
         : EVENT_ARENA_ARTWORK_SOURCES[event.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID]}
       resizeMode="cover"
       imageStyle={{ opacity: 0.55 }}
@@ -208,100 +209,10 @@ function EventArenaPodiumShareCard({
             accessibilityLabel="Penny Stock Mayhem. Stocks and ETFs under $20."
             style={{ alignItems: 'center', marginTop: 8 }}
           >
-            <Text
-              allowFontScaling
-              adjustsFontSizeToFit
-              minimumFontScale={0.8}
-              numberOfLines={1}
-              style={{
-                width: '100%',
-                color: '#DDE3E6',
-                fontFamily: 'Inter_700Bold',
-                fontSize: 31,
-                letterSpacing: 1.35,
-                textAlign: 'center',
-                textShadowColor: '#3E484E',
-                textShadowOffset: { width: 0, height: 3 },
-                textShadowRadius: 1,
-              }}
-            >
-              PENNY STOCK
-            </Text>
-            <Text
-              allowFontScaling
-              adjustsFontSizeToFit
-              minimumFontScale={0.8}
-              numberOfLines={1}
-              style={{
-                color: '#E73542',
-                fontFamily: 'Inter_700Bold',
-                fontSize: 43,
-                letterSpacing: 3.2,
-                lineHeight: 49,
-                textAlign: 'center',
-                textShadowColor: '#54131A',
-                textShadowOffset: { width: 0, height: 4 },
-                textShadowRadius: 2,
-              }}
-            >
-              MAYHEM
-            </Text>
-            <LinearGradient
-              colors={['#E1E6E3', '#8B9690', '#39423E', '#D1D7D3']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={{
-                width: '100%',
-                minHeight: 54,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: 2,
-                marginTop: 8,
-                borderRadius: 5,
-                borderWidth: 1,
-                borderColor: '#C5CECA',
-                shadowColor: '#087B49',
-                shadowOpacity: 0.2,
-                shadowRadius: 5,
-                shadowOffset: { width: 0, height: 0 },
-              }}
-            >
-              <View
-                style={{
-                  width: '100%',
-                  minHeight: 48,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                  paddingHorizontal: 12,
-                  borderRadius: 3,
-                  borderWidth: 1,
-                  borderColor: '#64716B',
-                  borderTopColor: '#EEF1EF',
-                  backgroundColor: '#17221D',
-                }}
-              >
-                <Text
-                  allowFontScaling
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.75}
-                  numberOfLines={1}
-                  style={{ flexShrink: 1, color: '#D8DFDB', fontFamily: 'Inter_700Bold', fontSize: 12, letterSpacing: 0.6 }}
-                >
-                  STOCKS &amp; ETFs UNDER
-                </Text>
-                <Text
-                  allowFontScaling
-                  style={{ color: '#F1F4F2', fontFamily: 'Inter_700Bold', fontSize: 31, lineHeight: 36, textShadowColor: '#68766F', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 1 }}
-                >
-                  $20
-                </Text>
-              </View>
-            </LinearGradient>
+            <PennyMayhemTitle compact />
+            <PennyMayhemNameplate compact />
             <Image
-              source={require('../assets/event-arena-penny-stock-mayhem-cinematic.jpg')}
+              source={require('../assets/event-arena-penny-stock-mayhem-premium.jpg')}
               resizeMode="contain"
               accessibilityLabel="Charging bull with copper pennies in a green championship arena"
               style={{ width: '100%', height: 180, marginTop: 7 }}
@@ -1184,7 +1095,9 @@ export function PaperChallengeLeaderboard({
           />
           {entry ? (
             <>
-               {isChampion ? (
+               {isChampion && isPennyStockMayhem ? (
+                  <PennyMayhemTrophy size={compactPodium ? 82 : 100} />
+                ) : isChampion ? (
                   <View accessible={false} style={{ width: compactPodium ? 78 : 96, height: compactPodium ? 78 : 96, alignItems: 'center', justifyContent: 'center', marginBottom: 2 }}>
                     <Animated.View style={{ position: 'absolute', width: '100%', height: '100%', borderRadius: 50, borderWidth: 1.5, borderColor: `${medal.color}88`, backgroundColor: isBearMarketMayhem ? 'rgba(240,82,93,0.18)' : 'rgba(216,180,90,0.12)', shadowColor: medal.color, shadowOpacity: reduceMotion ? 0 : 0.48, shadowRadius: 19, shadowOffset: { width: 0, height: 0 } }} />
                     <View style={{ position: 'absolute', top: compactPodium ? 17 : 21, left: compactPodium ? 9 : 12, width: compactPodium ? 20 : 25, height: compactPodium ? 26 : 31, borderLeftWidth: 4, borderTopWidth: 4, borderBottomWidth: 4, borderColor: medal.color, borderTopLeftRadius: 12, borderBottomLeftRadius: 12 }} />
@@ -1585,7 +1498,7 @@ export function PaperChallengeLeaderboard({
               <ImageBackground
                 testID={`event-arena-leaderboard-artwork-${event.id}`}
                 source={isPennyStockMayhem
-                  ? require('../assets/event-arena-penny-stock-mayhem-cinematic.jpg')
+                  ? require('../assets/event-arena-penny-stock-mayhem-premium.jpg')
                   : EVENT_ARENA_ARTWORK_SOURCES[event.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID]}
                 resizeMode="cover"
                 imageStyle={{ borderRadius: 24, opacity: isPennyStockMayhem ? 0 : 0.96 }}
@@ -1670,102 +1583,11 @@ export function PaperChallengeLeaderboard({
                       accessibilityLabel="Penny Stock Mayhem. Stocks and ETFs under $20."
                       style={{ width: '100%', alignItems: 'center', marginBottom: 15, paddingTop: 3 }}
                     >
-                      <Text
-                        testID="paper-event-championship-identity"
-                        accessibilityRole="header"
-                        allowFontScaling
-                        adjustsFontSizeToFit
-                        minimumFontScale={0.78}
-                        numberOfLines={1}
-                        style={{
-                          width: '100%',
-                          color: '#DDE3E6',
-                          fontFamily: 'Inter_700Bold',
-                          fontSize: compactPodium ? 32 : 39,
-                          letterSpacing: compactPodium ? 1 : 1.7,
-                          textAlign: 'center',
-                          textShadowColor: '#3E484E',
-                          textShadowOffset: { width: 0, height: 3 },
-                          textShadowRadius: 1,
-                        }}
-                      >
-                        PENNY STOCK
-                      </Text>
-                      <Text
-                        allowFontScaling
-                        adjustsFontSizeToFit
-                        minimumFontScale={0.8}
-                        numberOfLines={1}
-                        style={{
-                          color: '#E73542',
-                          fontFamily: 'Inter_700Bold',
-                          fontSize: compactPodium ? 43 : 51,
-                          letterSpacing: compactPodium ? 3 : 3.8,
-                          lineHeight: compactPodium ? 48 : 57,
-                          textAlign: 'center',
-                          textShadowColor: '#54131A',
-                          textShadowOffset: { width: 0, height: 4 },
-                          textShadowRadius: 2,
-                        }}
-                      >
-                        MAYHEM
-                      </Text>
-                      <LinearGradient
-                        testID="paper-event-penny-stock-rule-banner"
-                        accessibilityLabel="Stocks and ETFs under $20"
-                        colors={['#E1E6E3', '#8B9690', '#39423E', '#D1D7D3']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={{
-                          width: '100%',
-                          minHeight: 56,
-                          padding: 2,
-                          marginTop: 8,
-                          borderRadius: 5,
-                          borderWidth: 1,
-                          borderColor: '#C5CECA',
-                          shadowColor: '#087B49',
-                          shadowOpacity: 0.2,
-                          shadowRadius: 5,
-                          shadowOffset: { width: 0, height: 0 },
-                        }}
-                      >
-                        <View
-                          style={{
-                            width: '100%',
-                            minHeight: 50,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: 8,
-                            paddingHorizontal: compactPodium ? 8 : 12,
-                            borderRadius: 3,
-                            borderWidth: 1,
-                            borderColor: '#64716B',
-                            borderTopColor: '#EEF1EF',
-                            backgroundColor: '#17221D',
-                          }}
-                        >
-                          <Text
-                            allowFontScaling
-                            adjustsFontSizeToFit
-                            minimumFontScale={0.75}
-                            numberOfLines={1}
-                            style={{ flexShrink: 1, color: '#D8DFDB', fontFamily: 'Inter_700Bold', fontSize: compactPodium ? 10 : 12, letterSpacing: compactPodium ? 0.35 : 0.6 }}
-                          >
-                            STOCKS &amp; ETFs UNDER
-                          </Text>
-                          <Text
-                            allowFontScaling
-                            style={{ color: '#F1F4F2', fontFamily: 'Inter_700Bold', fontSize: compactPodium ? 27 : 31, lineHeight: compactPodium ? 32 : 36, textShadowColor: '#68766F', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 1 }}
-                          >
-                            $20
-                          </Text>
-                        </View>
-                      </LinearGradient>
+                      <PennyMayhemTitle testID="paper-event-championship-identity" compact={compactPodium} />
+                      <PennyMayhemNameplate testID="paper-event-penny-stock-rule-banner" compact={compactPodium} />
                       <Image
                         testID="paper-event-penny-stock-art"
-                        source={require('../assets/event-arena-penny-stock-mayhem-cinematic.jpg')}
+                        source={require('../assets/event-arena-penny-stock-mayhem-premium.jpg')}
                         resizeMode="contain"
                         accessibilityLabel="Charging bull with copper pennies in a green championship arena"
                         style={{
