@@ -1119,14 +1119,23 @@ test("Event Arena account uses saved event results and links to the existing lea
 });
 
 test("position and order cards are compact without removing their essential values or actions", () => {
-  assert.match(screen, /posCard:[\s\S]*?minHeight: 90,[\s\S]*?paddingVertical: 8[\s\S]*?paddingHorizontal: 9/);
+  const positionCardStyleStart = screen.indexOf("  posCard: {");
+  const positionCardStyleEnd = screen.indexOf("\n  orderCard:", positionCardStyleStart);
+  const positionCardStyle = screen.slice(positionCardStyleStart, positionCardStyleEnd);
+  assert.ok(positionCardStyleStart >= 0 && positionCardStyleEnd > positionCardStyleStart);
+  assert.match(positionCardStyle, /minHeight: 78,[\s\S]*?paddingVertical: 5[\s\S]*?paddingHorizontal: 9/);
+  assert.doesNotMatch(positionCardStyle, /\bheight:/);
+  assert.match(screen, /posContent: \{ flex: 1, minWidth: 0, gap: 3, justifyContent: 'center' \}/);
+  assert.match(screen, /posMetaRow: \{[\s\S]*?minWidth: 0, paddingTop: 3/);
   assert.match(screen, /<View style=\{styles\.posTopRow\}>[\s\S]*?styles\.posSymbol[\s\S]*?styles\.posName[\s\S]*?styles\.posMktLabel[\s\S]*?styles\.posMktVal/);
   assert.match(screen, /<View style=\{styles\.posMetaRow\}>[\s\S]*?styles\.posMeta[\s\S]*?styles\.posPnl/);
   assert.match(screen, /positionValue: \{ width: '48%', maxWidth: '56%', minWidth: 0/);
-  assert.match(screen, /<Text\s+style=\{styles\.posSymbol\}[\s\S]*?numberOfLines=\{1\}[\s\S]*?adjustsFontSizeToFit/);
-  assert.match(screen, /<Text style=\{styles\.posName\} numberOfLines=\{1\}>/);
-  assert.match(screen, /style=\{styles\.posMktVal\}[\s\S]*?numberOfLines=\{1\}[\s\S]*?adjustsFontSizeToFit[\s\S]*?minimumFontScale=\{0\.75\}/);
-  assert.match(screen, /style=\{\[styles\.posPnl,[\s\S]*?numberOfLines=\{1\}[\s\S]*?adjustsFontSizeToFit[\s\S]*?minimumFontScale=\{0\.75\}/);
+  assert.match(screen, /<Text\s+style=\{styles\.posSymbol\}[\s\S]*?numberOfLines=\{1\}[\s\S]*?adjustsFontSizeToFit[\s\S]*?allowFontScaling/);
+  assert.match(screen, /<Text style=\{styles\.posName\} allowFontScaling>\{pos\.companyName\}<\/Text>/);
+  assert.match(screen, /posName: \{[\s\S]*?flexShrink: 1/);
+  assert.match(screen, /style=\{styles\.posMktVal\}[\s\S]*?numberOfLines=\{1\}[\s\S]*?adjustsFontSizeToFit[\s\S]*?minimumFontScale=\{0\.75\}[\s\S]*?allowFontScaling/);
+  assert.match(screen, /style=\{\[styles\.posPnl,[\s\S]*?numberOfLines=\{1\}[\s\S]*?adjustsFontSizeToFit[\s\S]*?minimumFontScale=\{0\.75\}[\s\S]*?allowFontScaling/);
+  assert.match(screen, /style=\{styles\.posMeta\}[\s\S]*?numberOfLines=\{1\}[\s\S]*?adjustsFontSizeToFit[\s\S]*?minimumFontScale=\{0\.8\}[\s\S]*?allowFontScaling/);
   assert.match(screen, /orderCard:[\s\S]*?padding: 11/);
   assert.match(screen, /gap: 4, paddingHorizontal: 16/);
   assert.match(screen, /gap: 10, paddingHorizontal: 16/);
