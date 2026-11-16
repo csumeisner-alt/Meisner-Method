@@ -1098,6 +1098,10 @@ test("Event Arena account uses saved event results and links to the existing lea
 
 test("position and order cards are compact without removing their essential values or actions", () => {
   assert.match(screen, /posCard:[\s\S]*?paddingVertical: 4[\s\S]*?paddingHorizontal: 9/);
+  assert.match(screen, /posMktVal: \{[^}]*fontSize: 16/);
+  assert.match(screen, /posPnlAmount: \{[^}]*fontSize: 12/);
+  assert.match(screen, /posPnlPercent: \{[^}]*fontSize: 11\.5/);
+  assert.match(screen, /<Text style=\{styles\.posPnlAmount\}>[\s\S]*?<Text style=\{styles\.posPnlPercent\}>/);
   assert.match(screen, /orderCard:[\s\S]*?padding: 11/);
   assert.match(screen, /gap: 4, paddingHorizontal: 16/);
   assert.match(screen, /gap: 10, paddingHorizontal: 16/);

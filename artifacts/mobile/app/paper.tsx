@@ -2887,7 +2887,8 @@ export default function PaperScreen() {
                         <Text style={styles.posMktVal}>{$fmt(mktVal)}</Text>
                       </View>
                       <Text style={[styles.posPnl, { color: pnlColor(pnl) }]} numberOfLines={1}>
-                        {pnl >= 0 ? '+' : ''}{$fmt(pnl)} ({pctFmt(pnlPct)})
+                        <Text style={styles.posPnlAmount}>{pnl >= 0 ? '+' : ''}{$fmt(pnl)}</Text>
+                        <Text style={styles.posPnlPercent}> ({pctFmt(pnlPct)})</Text>
                       </Text>
                     </View>
                   </View>
@@ -5326,11 +5327,13 @@ const styles = StyleSheet.create({
   posLabel: { fontFamily: 'Inter_400Regular', fontSize: 10, color: 'rgba(192,192,192,0.38)', letterSpacing: 1 },
   posVal: { fontFamily: 'Inter_600SemiBold', fontSize: 12, color: '#fff', marginTop: 1 },
   posName: { fontFamily: 'Inter_400Regular', fontSize: 10, color: DIM, marginTop: 1 },
-  positionValue: { minWidth: 110, maxWidth: 140, alignItems: 'flex-end' },
+  positionValue: { minWidth: 120, maxWidth: 160, alignItems: 'flex-end' },
   posValueLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4 },
-  posMktLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 7, color: DIM, letterSpacing: 0.35 },
-  posMktVal: { fontFamily: 'Inter_700Bold', fontSize: 13, color: '#fff' },
-  posPnl: { fontFamily: 'Inter_600SemiBold', fontSize: 9, marginTop: 1 },
+  posMktLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 8, lineHeight: 18, color: DIM, letterSpacing: 0.25 },
+  posMktVal: { fontFamily: 'Inter_700Bold', fontSize: 16, lineHeight: 18, color: '#fff' },
+  posPnl: { fontFamily: 'Inter_600SemiBold', fontSize: 12, lineHeight: 14, marginTop: 1 },
+  posPnlAmount: { fontFamily: 'Inter_700Bold', fontSize: 12 },
+  posPnlPercent: { fontFamily: 'Inter_600SemiBold', fontSize: 11.5 },
   posMetaRow: { flexDirection: 'row', alignItems: 'center', minWidth: 0, paddingTop: 2, borderTopWidth: 1, borderTopColor: 'rgba(192,192,192,0.12)' },
   posMeta: { flex: 1, minWidth: 0, fontFamily: 'Inter_400Regular', fontSize: 9, color: DIM },
 
