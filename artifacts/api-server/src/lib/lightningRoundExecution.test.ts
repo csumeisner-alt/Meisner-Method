@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { env } from "node:process";
 import test from "node:test";
+import pg from "pg";
 import {
   processDueLightningRoundOrders,
   type LightningExecutionDatabase,
 } from "./lightningRoundExecution.ts";
 
+const { Pool } = pg;
+const databaseUrl = env["TEST_DATABASE_URL"] ?? env["DATABASE_URL"];
 const eventId = "lr-2026-11-15";
 const accountId = "paper-event:shared";
 const installationId = "installation-test";
@@ -619,3 +624,403 @@ test("database interface remains compatible with a standalone worker connection"
   assert.equal(typeof (db as LightningExecutionDatabase).connect, "function");
   assert.equal((await process(db, async () => 150)).filled, 1);
 });
+
+test(
+  "PostgreSQL serializes independent workers and rolls back interrupted Lightning Round fills",
+  { skip: !databaseUrl && "TEST_DATABASE_URL or DATABASE_URL is not configured" },
+  async (t) => {
+    assert.ok(databaseUrl);
+    const schema = `lightning_round_test_${randomUUID().replaceAll("-", "")}`;
+    const adminPool = new Pool({ connectionString: databaseUrl, max: 2 });
+    let firstPool: InstanceType<typeof Pool> | undefined;
+    let secondPool: InstanceType<typeof Pool> | undefined;
+    let recoveryPool: InstanceType<typeof Pool> | undefined;
+    let schemaCreated = false;
+
+    try {
+      try {
+        await adminPool.query("SELECT 1");
+      } catch {
+        t.skip("The configured PostgreSQL test database is unavailable");
+        return;
+      }
+
+      await adminPool.query(`CREATE SCHEMA "${schema}"`);
+      schemaCreated = true;
+      const poolOptions = {
+        connectionString: databaseUrl,
+        max: 1,
+        options: `-c search_path=${schema}`,
+      };
+      firstPool = new Pool(poolOptions);
+      secondPool = new Pool(poolOptions);
+
+      await firstPool.query(`
+        CREATE TABLE paper_accounts (
+          id TEXT NOT NULL, user_id TEXT NOT NULL, name TEXT NOT NULL,
+          cash DOUBLE PRECISION NOT NULL, short_collateral DOUBLE PRECISION NOT NULL DEFAULT 0,
+          short_collateral_ratio DOUBLE PRECISION NOT NULL DEFAULT 1.5,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), unsettled_items JSONB NOT NULL DEFAULT '[]',
+          PRIMARY KEY (id,user_id)
+        );
+        CREATE TABLE paper_positions (
+          id TEXT NOT NULL, user_id TEXT NOT NULL, account_id TEXT NOT NULL, symbol TEXT NOT NULL,
+          company_name TEXT, shares DOUBLE PRECISION NOT NULL, position_type TEXT NOT NULL DEFAULT 'long',
+          collateral_per_share DOUBLE PRECISION, avg_cost DOUBLE PRECISION NOT NULL,
+          opened_at TIMESTAMPTZ, dividend_yield DOUBLE PRECISION DEFAULT 0,
+          dividend_rate DOUBLE PRECISION DEFAULT 0, expense_ratio DOUBLE PRECISION DEFAULT 0,
+          sector TEXT, PRIMARY KEY (id,user_id)
+        );
+        CREATE TABLE paper_lots (
+          id TEXT NOT NULL, user_id TEXT NOT NULL, account_id TEXT NOT NULL, symbol TEXT NOT NULL,
+          shares DOUBLE PRECISION NOT NULL, cost DOUBLE PRECISION NOT NULL,
+          purchased_at TIMESTAMPTZ NOT NULL, PRIMARY KEY (id,user_id)
+        );
+        CREATE TABLE paper_transactions (
+          id TEXT NOT NULL, user_id TEXT NOT NULL, account_id TEXT NOT NULL, symbol TEXT NOT NULL,
+          company_name TEXT, action TEXT NOT NULL, shares DOUBLE PRECISION NOT NULL,
+          price DOUBLE PRECISION NOT NULL, total DOUBLE PRECISION NOT NULL,
+          date TIMESTAMPTZ NOT NULL, fee DOUBLE PRECISION DEFAULT 0, realized_pnl DOUBLE PRECISION,
+          cash_delta DOUBLE PRECISION, short_collateral_delta DOUBLE PRECISION,
+          lightning_round_event_id TEXT, PRIMARY KEY (id,user_id)
+        );
+        CREATE TABLE paper_orders (
+          id TEXT NOT NULL, user_id TEXT NOT NULL, account_id TEXT NOT NULL, symbol TEXT NOT NULL,
+          company_name TEXT, order_type TEXT NOT NULL, side TEXT NOT NULL, intent TEXT,
+          shares DOUBLE PRECISION NOT NULL, status TEXT NOT NULL, placed_at TIMESTAMPTZ NOT NULL,
+          filled_price DOUBLE PRECISION, filled_at TIMESTAMPTZ,
+          lightning_round_event_id TEXT, rejection_reason TEXT, asset_type TEXT,
+          dividend_yield DOUBLE PRECISION, dividend_rate DOUBLE PRECISION,
+          expense_ratio DOUBLE PRECISION, sector TEXT, PRIMARY KEY (id,user_id)
+        );
+        CREATE TABLE event_arena_events (
+          event_id TEXT PRIMARY KEY, event_type TEXT NOT NULL, artwork_id TEXT NOT NULL,
+          starting_balance DOUBLE PRECISION NOT NULL, ranking_direction TEXT NOT NULL,
+          event_start_at TIMESTAMPTZ NOT NULL, event_end_at TIMESTAMPTZ NOT NULL,
+          finalized_at TIMESTAMPTZ
+        );
+        CREATE TABLE event_arena_lightning_participants (
+          event_id TEXT NOT NULL, installation_id TEXT NOT NULL, account_id TEXT NOT NULL,
+          alias TEXT NOT NULL, status TEXT NOT NULL, leaderboard_opted_in BOOLEAN NOT NULL DEFAULT TRUE,
+          failure_reason TEXT, final_result JSONB, event_start_at TIMESTAMPTZ NOT NULL,
+          event_end_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (event_id,installation_id)
+        );
+        CREATE TABLE event_arena_leaderboard_entries (
+          event_id TEXT NOT NULL, installation_id TEXT NOT NULL, participant_token TEXT NOT NULL,
+          alias TEXT NOT NULL, start_equity DOUBLE PRECISION NOT NULL, equity DOUBLE PRECISION NOT NULL,
+          return_percent DOUBLE PRECISION NOT NULL, trade_count INTEGER, holdings JSONB NOT NULL,
+          event_start_at TIMESTAMPTZ NOT NULL, event_end_at TIMESTAMPTZ NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL, cash_balance DOUBLE PRECISION NOT NULL,
+          is_active BOOLEAN NOT NULL, PRIMARY KEY (event_id,installation_id)
+        );
+      `);
+
+      const executionDatabase = (
+        pool: InstanceType<typeof Pool>,
+        throwAfterFilledOrder = false,
+      ): LightningExecutionDatabase => ({
+        query: (sql, values = []) => pool.query(sql, values),
+        connect: async () => {
+          const client = await pool.connect();
+          return {
+            query: async (sql, values = []) => {
+              const result = await client.query(sql, values);
+              if (throwAfterFilledOrder && sql.includes("SET status='filled'")) {
+                throwAfterFilledOrder = false;
+                throw new Error("Simulated worker interruption after fill writes");
+              }
+              return result;
+            },
+            release: () => client.release(),
+          };
+        },
+      });
+
+      const now = Date.parse("2033-05-18T16:05:00.000Z");
+      const startAt = Date.parse("2033-05-18T16:00:00.000Z");
+      const endAt = startAt + 24 * 60 * 60 * 1000;
+      const seedParticipant = async (
+        id: string,
+        historyEventId: string,
+        historyInstallationId: string,
+      ) => {
+        const userId = `installation-${id}`;
+        const accountId = `account-${id}`;
+        await firstPool!.query(
+          `INSERT INTO event_arena_events
+            (event_id,event_type,artwork_id,starting_balance,ranking_direction,event_start_at,event_end_at)
+           VALUES ($1,'lightning-round','stadium',100000,'highest-return',$2,$3)`,
+          [id, new Date(startAt), new Date(endAt)],
+        );
+        await firstPool!.query(
+          `INSERT INTO event_arena_lightning_participants
+            (event_id,installation_id,account_id,alias,status,event_start_at,event_end_at)
+           VALUES ($1,$2,$3,'MarketFox','queued',$4,$5)`,
+          [id, userId, accountId, new Date(startAt), new Date(endAt)],
+        );
+        await firstPool!.query(
+          `INSERT INTO paper_accounts (id,user_id,name,cash,created_at)
+           VALUES ($1,$2,'Shared Event Arena',100000,$3)`,
+          [accountId, userId, new Date(startAt)],
+        );
+        await firstPool!.query(
+          `INSERT INTO paper_positions
+            (id,user_id,account_id,symbol,company_name,shares,position_type,avg_cost,opened_at,sector)
+           VALUES ($1,$2,$3,'MSFT','Microsoft',4,'long',200,$4,'Technology')`,
+          [`position-${id}`, userId, accountId, new Date(startAt)],
+        );
+        await firstPool!.query(
+          `INSERT INTO paper_lots (id,user_id,account_id,symbol,shares,cost,purchased_at)
+           VALUES ($1,$2,$3,'MSFT',4,200,$4)`,
+          [`lot-${id}`, userId, accountId, new Date(startAt)],
+        );
+        await firstPool!.query(
+          `INSERT INTO paper_transactions
+            (id,user_id,account_id,symbol,company_name,action,shares,price,total,date)
+           VALUES ($1,$2,$3,'MSFT','Microsoft','BUY',4,200,800,$4)`,
+          [`transaction-${id}`, userId, accountId, new Date(startAt)],
+        );
+        await firstPool!.query(
+          `INSERT INTO paper_orders
+            (id,user_id,account_id,symbol,company_name,order_type,side,shares,status,placed_at,lightning_round_event_id)
+           VALUES ($1,$2,$3,'AAPL','Apple','market','buy',2,'pending',$4,$5)`,
+          [`order-${id}`, userId, accountId, new Date(startAt), id],
+        );
+        await firstPool!.query(
+          `INSERT INTO event_arena_events
+            (event_id,event_type,artwork_id,starting_balance,ranking_direction,event_start_at,event_end_at,finalized_at)
+           VALUES ($1,'event-arena','stadium',100000,'highest-return',$2,$3,$3)`,
+          [historyEventId, new Date(startAt - 10 * 24 * 60 * 60 * 1000), new Date(startAt)],
+        );
+        await firstPool!.query(
+          `INSERT INTO event_arena_leaderboard_entries
+            (event_id,installation_id,participant_token,alias,start_equity,equity,return_percent,
+             trade_count,holdings,event_start_at,event_end_at,updated_at,cash_balance,is_active)
+           VALUES ($1,$2,$3,'SavedHistory',100000,101000,1,1,'[]'::jsonb,$4,$5,$5,100000,TRUE)`,
+          [
+            historyEventId,
+            historyInstallationId,
+            `token-${historyInstallationId}`,
+            new Date(startAt - 10 * 24 * 60 * 60 * 1000),
+            new Date(startAt),
+          ],
+        );
+        return { userId, accountId };
+      };
+
+      const concurrentIds = {
+        event: `lr-concurrent-${randomUUID()}`,
+        historyEvent: `arena-history-${randomUUID()}`,
+        historyInstallation: `history-user-${randomUUID()}`,
+      };
+      const concurrentAccount = await seedParticipant(
+        concurrentIds.event,
+        concurrentIds.historyEvent,
+        concurrentIds.historyInstallation,
+      );
+
+      const firstConnection = await firstPool.connect();
+      const secondConnection = await secondPool.connect();
+      let firstBackendPid: number;
+      let secondBackendPid: number;
+      try {
+        firstBackendPid = Number((await firstConnection.query("SELECT pg_backend_pid() AS pid")).rows[0].pid);
+        secondBackendPid = Number((await secondConnection.query("SELECT pg_backend_pid() AS pid")).rows[0].pid);
+      } finally {
+        firstConnection.release();
+        secondConnection.release();
+      }
+      assert.notEqual(firstBackendPid!, secondBackendPid!, "worker pools must use independent PostgreSQL connections");
+
+      let notifyPriceStarted!: () => void;
+      const priceStarted = new Promise<void>((resolve) => { notifyPriceStarted = resolve; });
+      let resumePrice!: () => void;
+      const priceGate = new Promise<void>((resolve) => { resumePrice = resolve; });
+      const firstWorker = processDueLightningRoundOrders(
+        executionDatabase(firstPool),
+        {
+          now: () => now,
+          makeId: randomUUID,
+          fetchPrice: async () => {
+            notifyPriceStarted();
+            await priceGate;
+            return 150;
+          },
+        },
+      );
+      await priceStarted;
+      const secondWorker = processDueLightningRoundOrders(
+        executionDatabase(secondPool),
+        { now: () => now, makeId: randomUUID, fetchPrice: async () => 150 },
+      );
+
+      let lockWaitObserved = false;
+      let workerResults: PromiseSettledResult<Awaited<ReturnType<typeof processDueLightningRoundOrders>>>[];
+      try {
+        for (let attempt = 0; attempt < 100; attempt += 1) {
+          const { rows } = await adminPool.query(
+            "SELECT wait_event_type,wait_event FROM pg_stat_activity WHERE pid=$1",
+            [secondBackendPid!],
+          );
+          if (rows[0]?.wait_event_type === "Lock" && rows[0]?.wait_event === "advisory") {
+            lockWaitObserved = true;
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+      } finally {
+        resumePrice();
+        workerResults = await Promise.allSettled([firstWorker, secondWorker]);
+      }
+      assert.ok(lockWaitObserved, "the second worker should wait on the PostgreSQL advisory lock");
+      const rejectedWorker = workerResults.find((result) => result.status === "rejected");
+      if (rejectedWorker?.status === "rejected") throw rejectedWorker.reason;
+      const [firstResult, secondResult] = workerResults.map((result) =>
+        result.status === "fulfilled" ? result.value : undefined,
+      );
+      assert.ok(firstResult && secondResult);
+      assert.equal(firstResult.filled + secondResult.filled, 1);
+      assert.equal(
+        Number((await firstPool.query(
+          "SELECT COUNT(*)::int AS count FROM paper_transactions WHERE user_id=$1 AND lightning_round_event_id=$2",
+          [concurrentAccount.userId, concurrentIds.event],
+        )).rows[0].count),
+        1,
+      );
+      assert.deepEqual(
+        (await firstPool.query(
+          "SELECT shares FROM paper_positions WHERE user_id=$1 AND account_id=$2 AND symbol='AAPL'",
+          [concurrentAccount.userId, concurrentAccount.accountId],
+        )).rows.map((row) => Number(row.shares)),
+        [2],
+      );
+      assert.deepEqual(
+        (await firstPool.query(
+          "SELECT shares FROM paper_lots WHERE user_id=$1 AND account_id=$2 AND symbol='AAPL'",
+          [concurrentAccount.userId, concurrentAccount.accountId],
+        )).rows.map((row) => Number(row.shares)),
+        [2],
+      );
+      assert.equal(
+        (await firstPool.query(
+          "SELECT status FROM paper_orders WHERE id=$1",
+          [`order-${concurrentIds.event}`],
+        )).rows[0].status,
+        "filled",
+      );
+
+      const recoveryIds = {
+        event: `lr-recovery-${randomUUID()}`,
+        historyEvent: `arena-history-${randomUUID()}`,
+        historyInstallation: `history-user-${randomUUID()}`,
+      };
+      const recoveryAccount = await seedParticipant(
+        recoveryIds.event,
+        recoveryIds.historyEvent,
+        recoveryIds.historyInstallation,
+      );
+
+      await assert.rejects(
+        processDueLightningRoundOrders(
+          executionDatabase(firstPool, true),
+          { now: () => now, makeId: randomUUID, fetchPrice: async () => 150 },
+        ),
+        /Simulated worker interruption after fill writes/,
+      );
+
+      const rollbackState = await firstPool.query(
+        `SELECT
+          (SELECT cash FROM paper_accounts WHERE id=$1 AND user_id=$2) AS cash,
+          (SELECT jsonb_agg(jsonb_build_object('symbol',symbol,'shares',shares,'avgCost',avg_cost) ORDER BY symbol)
+             FROM paper_positions WHERE account_id=$1 AND user_id=$2) AS positions,
+          (SELECT jsonb_agg(jsonb_build_object('symbol',symbol,'shares',shares,'cost',cost) ORDER BY symbol)
+             FROM paper_lots WHERE account_id=$1 AND user_id=$2) AS lots,
+          (SELECT jsonb_agg(jsonb_build_object('id',id,'symbol',symbol,'eventId',lightning_round_event_id) ORDER BY id)
+             FROM paper_transactions WHERE account_id=$1 AND user_id=$2) AS transactions,
+          (SELECT jsonb_build_object('status',status,'filledPrice',filled_price,'filledAt',filled_at)
+             FROM paper_orders WHERE id=$3 AND user_id=$2) AS order`,
+        [recoveryAccount.accountId, recoveryAccount.userId, `order-${recoveryIds.event}`],
+      );
+      const rolledBack = rollbackState.rows[0];
+      assert.equal(Number(rolledBack.cash), 100_000);
+      assert.deepEqual(rolledBack.positions, [{ symbol: "MSFT", shares: 4, avgCost: 200 }]);
+      assert.deepEqual(rolledBack.lots, [{ symbol: "MSFT", shares: 4, cost: 200 }]);
+      assert.deepEqual(rolledBack.transactions, [{
+        id: `transaction-${recoveryIds.event}`,
+        symbol: "MSFT",
+        eventId: null,
+      }]);
+      assert.equal(rolledBack.order.status, "pending");
+      assert.equal(rolledBack.order.filledPrice, null);
+      assert.equal(rolledBack.order.filledAt, null);
+      assert.equal(
+        (await firstPool.query(
+          "SELECT status FROM event_arena_lightning_participants WHERE event_id=$1 AND installation_id=$2",
+          [recoveryIds.event, recoveryAccount.userId],
+        )).rows[0].status,
+        "queued",
+      );
+
+      recoveryPool = new Pool(poolOptions);
+      const recoveryResult = await processDueLightningRoundOrders(
+        executionDatabase(recoveryPool),
+        { now: () => now, makeId: randomUUID, fetchPrice: async () => 150 },
+      );
+      assert.equal(recoveryResult.filled, 1, "a fresh worker should complete the rolled-back order once");
+      const retryResult = await processDueLightningRoundOrders(
+        executionDatabase(recoveryPool),
+        { now: () => now, makeId: randomUUID, fetchPrice: async () => 150 },
+      );
+      assert.equal(retryResult.filled, 0, "a later worker retry must not create another fill");
+
+      const recovered = await recoveryPool.query(
+        `SELECT
+          (SELECT cash FROM paper_accounts WHERE id=$1 AND user_id=$2) AS cash,
+          (SELECT jsonb_agg(jsonb_build_object('symbol',symbol,'shares',shares) ORDER BY symbol)
+             FROM paper_positions WHERE account_id=$1 AND user_id=$2) AS positions,
+          (SELECT jsonb_agg(jsonb_build_object('symbol',symbol,'shares',shares) ORDER BY symbol)
+             FROM paper_lots WHERE account_id=$1 AND user_id=$2) AS lots,
+          (SELECT COUNT(*)::int FROM paper_transactions
+             WHERE account_id=$1 AND user_id=$2 AND lightning_round_event_id=$3) AS fill_count,
+          (SELECT status FROM paper_orders WHERE id=$4 AND user_id=$2) AS order_status,
+          (SELECT status FROM event_arena_lightning_participants
+             WHERE event_id=$3 AND installation_id=$2) AS participant_status,
+          (SELECT COUNT(*)::int FROM event_arena_leaderboard_entries
+             WHERE event_id=$5 AND installation_id=$6) AS preserved_history_count`,
+        [
+          recoveryAccount.accountId,
+          recoveryAccount.userId,
+          recoveryIds.event,
+          `order-${recoveryIds.event}`,
+          recoveryIds.historyEvent,
+          recoveryIds.historyInstallation,
+        ],
+      );
+      const finalState = recovered.rows[0];
+      assert.ok(Number(finalState.cash) < 100_000);
+      assert.deepEqual(finalState.positions, [
+        { symbol: "AAPL", shares: 2 },
+        { symbol: "MSFT", shares: 4 },
+      ]);
+      assert.deepEqual(finalState.lots, [
+        { symbol: "AAPL", shares: 2 },
+        { symbol: "MSFT", shares: 4 },
+      ]);
+      assert.equal(finalState.fill_count, 1);
+      assert.equal(finalState.order_status, "filled");
+      assert.equal(finalState.participant_status, "entered");
+      assert.equal(finalState.preserved_history_count, 1);
+    } finally {
+      await Promise.all([
+        firstPool?.end(),
+        secondPool?.end(),
+        recoveryPool?.end(),
+      ]);
+      if (schemaCreated) {
+        await adminPool.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+      }
+      await adminPool.end();
+    }
+  },
+);
