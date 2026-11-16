@@ -73,6 +73,18 @@ assert.match(eventLiveNotice, /LIGHTNING ROUND IS LIVE/);
 assert.match(screen, /testID="dismiss-paper-event-recap"/);
 assert.match(screen, /previousEnrollmentIdsRef/);
 
+test("Paper Trading shows the local cache before waiting for Event Arena sync", () => {
+  const initStart = screen.indexOf("const init = useCallback(async () =>");
+  const initEnd = screen.indexOf("\n  }, [apiFetch, pushEventArenaSnapshot]);", initStart);
+  const init = screen.slice(initStart, initEnd);
+
+  assert.ok(initStart >= 0 && initEnd > initStart);
+  assert.ok(init.indexOf("readPaperCache()") < init.indexOf("setLoaded(true)"));
+  assert.ok(init.indexOf("setLoaded(true)") < init.indexOf("apiFetch<EventArenaDeviceSyncResponse>"));
+  assert.match(init, /void \(async\s*\(\s*\)\s*=> \{[\s\S]*?apiFetch<EventArenaDeviceSyncResponse>/);
+  assert.match(init, /if \(await AsyncStorage\.getItem\(EVENT_ARENA_DEVICE_DIRTY_KEY\)[\s\S]*?return;/);
+});
+
 test("Portfolio Overview label is centered without changing the Positions count layout", () => {
   const portfolioTabsStart = screen.indexOf("{activeTabGroup.id === 'portfolio' ? (");
   const portfolioTabsEnd = screen.indexOf(") : (", portfolioTabsStart);

@@ -1258,9 +1258,13 @@ export default function PaperScreen() {
 
     // Paper trading is guest-local: load the exact state used by order
     // execution and never replace it with an unauthenticated server response.
-    const [cached, rawSnapshots] = await Promise.all([
+    const [cached, rawSnapshots, savedDeviceToken, rawRevision, storedSourceInstallationId, initialDirty] = await Promise.all([
       readPaperCache(),
       AsyncStorage.getItem(PAPER_VALUE_SNAPSHOT_KEY).catch(() => null),
+      AsyncStorage.getItem(EVENT_ARENA_DEVICE_TOKEN_KEY).catch(() => null),
+      AsyncStorage.getItem(EVENT_ARENA_DEVICE_REVISION_KEY).catch(() => '0'),
+      AsyncStorage.getItem(EVENT_ARENA_SOURCE_INSTALLATION_ID_KEY).catch(() => null),
+      AsyncStorage.getItem(EVENT_ARENA_DEVICE_DIRTY_KEY).catch(() => null),
     ]);
     let savedSnapshots: PaperAccountValueSnapshot[] = [];
     try {
@@ -1299,104 +1303,11 @@ export default function PaperScreen() {
       setOrders([]);
       setLots([]);
       setActiveId(localActiveId);
-      await writePaperCache({
-        accounts: localAccounts,
-        positions: [],
-        transactions: [],
-        orders: [],
-        lots: [],
-        activeId: localActiveId,
-      });
     }
 
-    let syncAfterInit = true;
-    const savedDeviceToken = await AsyncStorage.getItem(EVENT_ARENA_DEVICE_TOKEN_KEY).catch(() => null);
-    if (savedDeviceToken) {
-      const savedRevision = Number(await AsyncStorage.getItem(EVENT_ARENA_DEVICE_REVISION_KEY).catch(() => '0'));
-      const storedSourceInstallationId = await AsyncStorage.getItem(EVENT_ARENA_SOURCE_INSTALLATION_ID_KEY).catch(() => null);
-      const dirty = await AsyncStorage.getItem(EVENT_ARENA_DEVICE_DIRTY_KEY).catch(() => null);
-      eventArenaDeviceTokenRef.current = savedDeviceToken;
-      eventArenaDeviceRevisionRef.current = Number.isInteger(savedRevision) && savedRevision >= 0 ? savedRevision : 0;
-      eventArenaSourceInstallationIdRef.current = storedSourceInstallationId ?? await getInstallationId();
-      eventArenaDeviceSyncEnabledRef.current = true;
-      try {
-        if (dirty === 'true') {
-          const snapshot = buildEventArenaDeviceSnapshot({
-            accounts: accountsRef.current,
-            positions: positionsRef.current,
-            transactions: transactionsRef.current,
-            orders: ordersRef.current,
-            lots: lotsRef.current,
-            activeId: activeIdRef.current,
-          }, paperChallengeRef.current, eventArenaSourceInstallationIdRef.current);
-          const saved = await apiFetch<{ revision: number }>('/api/event-arena/device-sync', {
-            method: 'PUT',
-            headers: {
-              'X-Event-Arena-Device-Token': savedDeviceToken,
-              'X-Event-Arena-Revision': String(eventArenaDeviceRevisionRef.current),
-            },
-            body: JSON.stringify({ snapshot }),
-          });
-          eventArenaDeviceRevisionRef.current = saved.revision;
-          await Promise.all([
-            AsyncStorage.setItem(EVENT_ARENA_DEVICE_REVISION_KEY, String(saved.revision)),
-            AsyncStorage.setItem(EVENT_ARENA_DEVICE_DIRTY_KEY, 'false'),
-          ]);
-        } else {
-          const remote = await apiFetch<EventArenaDeviceSyncResponse>('/api/event-arena/device-sync', {
-            headers: { 'X-Event-Arena-Device-Token': savedDeviceToken },
-          });
-          const merged = mergeEventArenaDeviceSnapshot({
-            accounts: accountsRef.current,
-            positions: positionsRef.current,
-            transactions: transactionsRef.current,
-            orders: ordersRef.current,
-            lots: lotsRef.current,
-            activeId: activeIdRef.current,
-          }, paperChallengeRef.current, remote.snapshot);
-          const hadLocalEventAccount = (cached?.accounts ?? []).some((item) => isPaperChallengeAccountId(item.id));
-          const restoredEventAccountId = remote.snapshot.challengeStore.lightningEnrollment?.accountId
-            ?? remote.snapshot.challengeStore.enrollment?.accountId
-            ?? remote.snapshot.accounts[0]?.id;
-          const nextActiveId = hadLocalEventAccount
-            ? merged.cache.activeId
-            : restoredEventAccountId ?? merged.cache.activeId;
-          const restoredCache = { ...merged.cache, activeId: nextActiveId };
-          accountsRef.current = restoredCache.accounts;
-          positionsRef.current = restoredCache.positions;
-          transactionsRef.current = restoredCache.transactions;
-          ordersRef.current = restoredCache.orders;
-          lotsRef.current = restoredCache.lots;
-          activeIdRef.current = restoredCache.activeId;
-          setAccounts(restoredCache.accounts);
-          setPositions(restoredCache.positions);
-          setTransactions(restoredCache.transactions);
-          setOrders(restoredCache.orders);
-          setLots(restoredCache.lots);
-          setActiveId(restoredCache.activeId);
-          await writePaperCache(restoredCache);
-          const challengeStore = await updatePaperChallengeStore(() => merged.challengeStore, {
-            getItem: (key) => AsyncStorage.getItem(key),
-            setItem: (key, value) => AsyncStorage.setItem(key, value),
-          });
-          paperChallengeRef.current = challengeStore;
-          setPaperChallenge(challengeStore);
-          eventArenaDeviceRevisionRef.current = remote.revision;
-          eventArenaSourceInstallationIdRef.current = remote.snapshot.sourceInstallationId;
-          await Promise.all([
-            AsyncStorage.setItem(EVENT_ARENA_DEVICE_REVISION_KEY, String(remote.revision)),
-            AsyncStorage.setItem(EVENT_ARENA_SOURCE_INSTALLATION_ID_KEY, remote.snapshot.sourceInstallationId),
-          ]);
-        }
-        setDeviceTransferError('');
-      } catch {
-        syncAfterInit = false;
-        setDeviceTransferError(
-          'The shared Event Arena account could not be refreshed. Existing local data was left unchanged.',
-        );
-      }
-    }
-
+    // Render from the device cache first. Shared Event Arena reconciliation is
+    // best-effort and must not hold the whole Paper Trading screen behind a
+    // network request.
     const nowISO = new Date().toISOString();
     const currentAccounts = accountsRef.current;
     const currentPositions = positionsRef.current;
@@ -1419,26 +1330,152 @@ export default function PaperScreen() {
     setAccounts(settledAccounts);
     setTransactions(finalTxns);
     setActiveId(id);
-    await writePaperCache({
+    const settledCache: PaperCache = {
       accounts: settledAccounts,
       positions: currentPositions,
       transactions: finalTxns,
       orders: ordersRef.current,
       lots: lotsRef.current,
       activeId: id,
-    });
-    if (syncAfterInit && eventArenaDeviceSyncEnabledRef.current) {
-      await pushEventArenaSnapshot({
-        accounts: settledAccounts,
-        positions: currentPositions,
-        transactions: finalTxns,
-        orders: ordersRef.current,
-        lots: lotsRef.current,
-        challengeStore: paperChallengeRef.current,
-      });
+    };
+    void writePaperCache(settledCache);
+    const initialActiveId = id;
+    const savedRevision = Number(rawRevision);
+    if (savedDeviceToken) {
+      eventArenaDeviceTokenRef.current = savedDeviceToken;
+      eventArenaDeviceRevisionRef.current = Number.isInteger(savedRevision) && savedRevision >= 0
+        ? savedRevision
+        : 0;
+      if (storedSourceInstallationId) {
+        eventArenaSourceInstallationIdRef.current = storedSourceInstallationId;
+      }
+      // Enable local saves to mark the shared snapshot dirty before the screen
+      // becomes interactive; the actual network reconciliation stays async.
+      eventArenaDeviceSyncEnabledRef.current = true;
     }
     setErrorMsg('');
     setLoaded(true);
+
+    void (async () => {
+      try {
+        if (!savedDeviceToken) return;
+
+        eventArenaSourceInstallationIdRef.current = storedSourceInstallationId ?? await getInstallationId();
+
+        const currentDirty = await AsyncStorage.getItem(EVENT_ARENA_DEVICE_DIRTY_KEY)
+          .catch(() => initialDirty);
+        if (currentDirty === 'true') {
+          await pushEventArenaSnapshot({
+            accounts: accountsRef.current,
+            positions: positionsRef.current,
+            transactions: transactionsRef.current,
+            orders: ordersRef.current,
+            lots: lotsRef.current,
+            challengeStore: paperChallengeRef.current,
+          });
+          return;
+        }
+
+        const remote = await apiFetch<EventArenaDeviceSyncResponse>('/api/event-arena/device-sync', {
+          headers: { 'X-Event-Arena-Device-Token': savedDeviceToken },
+        });
+        // A local trade made while the fetch was in flight owns the newer
+        // account state; its save path will push that state to the server.
+        if (await AsyncStorage.getItem(EVENT_ARENA_DEVICE_DIRTY_KEY).catch(() => null) === 'true') return;
+
+        const mergeResult: { current: ReturnType<typeof mergeEventArenaDeviceSnapshot> | null } = {
+          current: null,
+        };
+        const challengeStore = await updatePaperChallengeStore((currentChallengeStore) => {
+          mergeResult.current = mergeEventArenaDeviceSnapshot({
+            accounts: accountsRef.current,
+            positions: positionsRef.current,
+            transactions: transactionsRef.current,
+            orders: ordersRef.current,
+            lots: lotsRef.current,
+            activeId: activeIdRef.current,
+          }, currentChallengeStore, remote.snapshot);
+          return mergeResult.current.challengeStore;
+        }, {
+          getItem: (key) => AsyncStorage.getItem(key),
+          setItem: (key, value) => AsyncStorage.setItem(key, value),
+        });
+        const merged = mergeResult.current;
+        if (!merged) return;
+        // Recheck after the asynchronous challenge-store write before applying
+        // the account snapshot, so a concurrent local trade is never replaced.
+        if (await AsyncStorage.getItem(EVENT_ARENA_DEVICE_DIRTY_KEY).catch(() => null) === 'true') return;
+
+        const hadLocalEventAccount = (cached?.accounts ?? []).some((item) => isPaperChallengeAccountId(item.id));
+        const restoredEventAccountId = remote.snapshot.challengeStore.lightningEnrollment?.accountId
+          ?? remote.snapshot.challengeStore.enrollment?.accountId
+          ?? remote.snapshot.accounts[0]?.id;
+        const userChangedAccount = activeIdRef.current !== initialActiveId;
+        const nextActiveId = hadLocalEventAccount || userChangedAccount
+          ? activeIdRef.current
+          : restoredEventAccountId ?? merged.cache.activeId;
+
+        // Apply cash settlement/dividend credits to any event account restored
+        // from the server, just as the synchronous startup path did before.
+        const eventAccountIds = new Set(merged.cache.accounts
+          .filter((item) => isPaperChallengeAccountId(item.id))
+          .map((item) => item.id));
+        let restoredAccounts = merged.cache.accounts;
+        const restoredTransactions = [...merged.cache.transactions];
+        const syncNowISO = new Date().toISOString();
+        for (const restoredAccount of merged.cache.accounts) {
+          if (!eventAccountIds.has(restoredAccount.id)) continue;
+          const settled = settleCash(restoredAccount, syncNowISO).updated;
+          const accountPositions = merged.cache.positions.filter((item) => item.accountId === restoredAccount.id);
+          const credited = creditDividends(accountPositions, settled, {}, syncNowISO, uid);
+          restoredAccounts = restoredAccounts.map((item) =>
+            item.id === credited.updatedAccount.id ? credited.updatedAccount : item,
+          );
+          restoredTransactions.push(...credited.newTransactions);
+        }
+        const restoredCache: PaperCache = {
+          ...merged.cache,
+          accounts: restoredAccounts,
+          transactions: restoredTransactions,
+          activeId: nextActiveId,
+        };
+
+        accountsRef.current = restoredCache.accounts;
+        positionsRef.current = restoredCache.positions;
+        transactionsRef.current = restoredCache.transactions;
+        ordersRef.current = restoredCache.orders;
+        lotsRef.current = restoredCache.lots;
+        activeIdRef.current = restoredCache.activeId;
+        paperChallengeRef.current = challengeStore;
+        setAccounts(restoredCache.accounts);
+        setPositions(restoredCache.positions);
+        setTransactions(restoredCache.transactions);
+        setOrders(restoredCache.orders);
+        setLots(restoredCache.lots);
+        setActiveId(restoredCache.activeId);
+        setPaperChallenge(challengeStore);
+        eventArenaDeviceRevisionRef.current = remote.revision;
+        eventArenaSourceInstallationIdRef.current = remote.snapshot.sourceInstallationId;
+        await Promise.all([
+          writePaperCache(restoredCache),
+          AsyncStorage.setItem(EVENT_ARENA_DEVICE_REVISION_KEY, String(remote.revision)),
+          AsyncStorage.setItem(EVENT_ARENA_SOURCE_INSTALLATION_ID_KEY, remote.snapshot.sourceInstallationId),
+        ]);
+        setDeviceTransferError('');
+        await pushEventArenaSnapshot({
+          accounts: restoredCache.accounts,
+          positions: restoredCache.positions,
+          transactions: restoredCache.transactions,
+          orders: restoredCache.orders,
+          lots: restoredCache.lots,
+          challengeStore,
+        });
+      } catch {
+        setDeviceTransferError(
+          'The shared Event Arena account could not be refreshed. Existing local data was left unchanged.',
+        );
+      }
+    })();
   }, [apiFetch, pushEventArenaSnapshot]);
 
   useEffect(() => {
