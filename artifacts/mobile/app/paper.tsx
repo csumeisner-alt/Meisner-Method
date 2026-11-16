@@ -33,6 +33,7 @@ import { PaperEventShareCard } from '@/components/PaperEventShareCard';
 import { BottomTabBar } from '@/components/BottomTabBar';
 import { PaperAccountSwipeArea } from '@/components/PaperAccountSwipeArea';
 import { PaperEventArenaDashboard } from '@/components/PaperEventArenaDashboard';
+import { PaperEventLiveNotice } from '@/components/PaperEventLiveNotice';
 import { useAchievements } from '@/contexts/AchievementsContext';
 import { AmericanSteelBackground } from '@/components/AmericanSteelBackground';
 import { useColors } from '@/hooks/useColors';
@@ -158,12 +159,8 @@ import {
   findLightningRoundWindow,
   getPaperChallengeEnrollmentForAccount,
   getPaperChallengeEnrollments,
-  getPaperEventLiveNoticeDismissalKey,
-  isDismissiblePaperEventLiveNotice,
   isPaperChallengeAccountId,
   isLightningRoundEventId,
-  loadPaperEventLiveNoticeDismissal,
-  persistPaperEventLiveNoticeDismissal,
 } from '@/lib/paperChallenge';
 import {
   getSearchHeatMapInstrumentsQueryKey,
@@ -413,10 +410,6 @@ export default function PaperScreen() {
   const [leaveLightningError, setLeaveLightningError] = useState('');
   const [leavingLightning, setLeavingLightning] = useState(false);
   const [lightningPreparationMessage, setLightningPreparationMessage] = useState('');
-  const [dismissedPaperEventNoticeKey, setDismissedPaperEventNoticeKey] = useState<string | null>(null);
-  const [loadedPaperEventNoticeKey, setLoadedPaperEventNoticeKey] = useState<string | null>(null);
-  const [dismissingPaperEventNotice, setDismissingPaperEventNotice] = useState(false);
-  const paperEventNoticeMotion = useRef(new Animated.Value(1)).current;
 
   // Buy modal state
   const [buySymbol, setBuySymbol] = useState('');
@@ -641,70 +634,6 @@ export default function PaperScreen() {
   ) ?? challengeEnrollments.find((enrollment) =>
     enrollment.accountId === account?.id && isEnrollmentActive(enrollment),
   ) ?? challengeEnrollments.find(isEnrollmentActive) ?? null;
-  const standardEventNoticeKey = activeChallengeEnrollment
-    && isDismissiblePaperEventLiveNotice(activeChallengeEnrollment.eventType)
-    ? getPaperEventLiveNoticeDismissalKey(
-      activeChallengeEnrollment.accountId,
-      activeChallengeEnrollment.eventId,
-    )
-    : null;
-  const showActiveChallengeNotice = !!activeChallengeEnrollment
-    && (standardEventNoticeKey === null
-      || (loadedPaperEventNoticeKey === standardEventNoticeKey
-        && dismissedPaperEventNoticeKey !== standardEventNoticeKey));
-
-  useEffect(() => {
-    let cancelled = false;
-    paperEventNoticeMotion.stopAnimation();
-    paperEventNoticeMotion.setValue(1);
-    setDismissingPaperEventNotice(false);
-    if (!standardEventNoticeKey) {
-      setLoadedPaperEventNoticeKey(null);
-      return () => { cancelled = true; };
-    }
-
-    setLoadedPaperEventNoticeKey(null);
-    void loadPaperEventLiveNoticeDismissal(AsyncStorage, standardEventNoticeKey)
-      .then((dismissed) => {
-        if (cancelled) return;
-        setDismissedPaperEventNoticeKey(dismissed ? standardEventNoticeKey : null);
-        setLoadedPaperEventNoticeKey(standardEventNoticeKey);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setDismissedPaperEventNoticeKey(null);
-        setLoadedPaperEventNoticeKey(standardEventNoticeKey);
-      });
-    return () => { cancelled = true; };
-  }, [paperEventNoticeMotion, standardEventNoticeKey]);
-
-  const dismissStandardEventNotice = () => {
-    if (!standardEventNoticeKey || dismissingPaperEventNotice) return;
-    setDismissingPaperEventNotice(true);
-    const persistDismissal = async () => {
-      try {
-        await persistPaperEventLiveNoticeDismissal(AsyncStorage, standardEventNoticeKey);
-        setDismissedPaperEventNoticeKey(standardEventNoticeKey);
-      } catch {
-        paperEventNoticeMotion.setValue(1);
-        Alert.alert('Could not dismiss notice', 'The Event Arena notice is unchanged. Please try again.');
-      } finally {
-        setDismissingPaperEventNotice(false);
-      }
-    };
-    if (reduceMotion) {
-      void persistDismissal();
-      return;
-    }
-    Animated.timing(paperEventNoticeMotion, {
-      toValue: 0,
-      duration: 180,
-      useNativeDriver: Platform.OS !== 'web',
-    }).start(({ finished }) => {
-      if (finished) void persistDismissal();
-      else setDismissingPaperEventNotice(false);
-    });
-  };
   const isPaperChallengeWaiting = challengeEnrollments.some(
     (enrollment) => challengeNow >= enrollment.eventEndAtMs,
   );
@@ -3787,107 +3716,17 @@ export default function PaperScreen() {
         </View>
       )}
 
-      {showActiveChallengeNotice && activeChallengeEnrollment && (
-        <Animated.View
-          testID="paper-event-live-banner"
-          accessibilityLiveRegion="polite"
-          style={[
-            {
-              marginHorizontal: 16,
-              marginTop: 10,
-              padding: 12,
-              borderRadius: 10,
-              borderWidth: 1,
-              borderColor: colors.primary,
-              backgroundColor: colors.card,
-            },
-            standardEventNoticeKey
-              ? {
-                  opacity: paperEventNoticeMotion,
-                  transform: [{
-                    translateY: paperEventNoticeMotion.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [-4, 0],
-                    }),
-                  }],
-                }
-              : null,
-          ]}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-            <Feather name="award" size={14} color={colors.primary} />
-            <Text style={[{
-              color: colors.primary,
-              fontFamily: 'Inter_700Bold',
-              fontSize: 11,
-              letterSpacing: 0.7,
-            }, standardEventNoticeKey ? { flex: 1 } : null]}>
-              {activeChallengeEnrollment.eventType === 'lightning-round'
-                ? 'LIGHTNING ROUND IS LIVE'
-                : activeChallengeEnrollment.eventType === 'penny-stock-mayhem'
-                  ? 'PENNY STOCK MAYHEM IS LIVE' : 'EVENT ARENA IS LIVE'}
-            </Text>
-            {standardEventNoticeKey && (
-              <TouchableOpacity
-                testID="dismiss-paper-event-live-banner"
-                accessibilityRole="button"
-                accessibilityLabel="Dismiss Event Arena live notice"
-                accessibilityHint="Hides this notice for this Event Arena account and event"
-                disabled={dismissingPaperEventNotice}
-                onPress={dismissStandardEventNotice}
-                hitSlop={8}
-                style={{ width: 44, height: 44, marginVertical: -15, marginRight: -8, alignItems: 'center', justifyContent: 'center' }}
-              >
-                <Feather name="x" size={16} color={colors.mutedForeground} />
-              </TouchableOpacity>
-            )}
-          </View>
-            <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, lineHeight: 17, marginTop: 7 }}>
-            {activeChallengeEnrollment.eventType === 'lightning-round'
-              ? 'LIGHTNING ROUND · SHARED EVENT ARENA ACCOUNT'
-              : activeChallengeEnrollment.eventType === 'penny-stock-mayhem'
-                ? 'PENNY STOCK MAYHEM · $100,000 STARTING CAPITAL · STOCKS & ETFs UNDER $20'
-              : activeChallengeEnrollment.eventType === 'green-bull-championship'
-                ? 'GREEN BULL CHAMPIONSHIP · $500,000 STARTING CAPITAL'
-                : activeChallengeEnrollment.eventType === 'bear-market-mayhem'
-                  ? `BEAR MARKET MAYHEM · $${(activeChallengeEnrollment.startingBalance ?? INITIAL_BALANCE).toLocaleString('en-US', { maximumFractionDigits: 0 })} STARTING CAPITAL`
-                  : `EVENT ARENA · $${(activeChallengeEnrollment.startingBalance ?? INITIAL_BALANCE).toLocaleString('en-US', { maximumFractionDigits: 0 })} STARTING CAPITAL`}
-          </Text>
-          <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 4 }}>
-            {activeChallengeEnrollment.eventType === 'lightning-round'
-              ? 'Trades use your existing Event Arena account; no separate Lightning Round balance or portfolio is created. The round closes 24 hours after it opens.'
-              : `Trade only in your separate ${activeChallengeEnrollment.eventType === 'penny-stock-mayhem' ? 'Penny Stock Mayhem' : 'Event Arena'} account. This paper championship closes Friday at 4:00 p.m. ET.`}
-          </Text>
-          {activeChallengeEnrollment.eventType === 'penny-stock-mayhem' && (
-            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 4 }}>
-              Long buys require a verified stock or ETF, a quote below $20, and a final fill below $20. Sells and reductions are unrestricted. Existing short-selling rules are unchanged.
-            </Text>
-          )}
-          {activeChallengeEnrollment.eventType === 'lightning-round' && lightningEntryFailure ? (
-            <Text
-              testID="lightning-round-entry-failure"
-              accessibilityRole="alert"
-              style={{ color: colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 10, lineHeight: 15, marginTop: 8 }}
-            >
-              NOT ENTERED — {lightningEntryFailure}
-            </Text>
-          ) : null}
-          {hasCurrentEventEnrollment && !isEventAccountActive && (
-            <TouchableOpacity
-              testID="switch-to-paper-event-account"
-              accessibilityRole="button"
-              onPress={() => {
-                const eventAccount = visibleAccounts.find((item) => item.id === activeChallengeEnrollment?.accountId);
-                if (eventAccount) void switchAccount(eventAccount.id);
-              }}
-              style={{ alignSelf: 'flex-start', marginTop: 9, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 8, backgroundColor: colors.primary }}
-            >
-              <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 10 }}>
-                CHOOSE EVENT PORTFOLIO
-              </Text>
-            </TouchableOpacity>
-          )}
-        </Animated.View>
+      {activeChallengeEnrollment && (
+        <PaperEventLiveNotice
+          enrollment={activeChallengeEnrollment}
+          hasCurrentEventEnrollment={hasCurrentEventEnrollment}
+          isEventAccountActive={isEventAccountActive}
+          lightningEntryFailure={lightningEntryFailure}
+          onSwitchToPaperEventAccount={() => {
+            const eventAccount = visibleAccounts.find((item) => item.id === activeChallengeEnrollment.accountId);
+            if (eventAccount) void switchAccount(eventAccount.id);
+          }}
+        />
       )}
 
       {isPaperChallengeWaiting && (

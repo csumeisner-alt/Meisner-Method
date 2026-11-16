@@ -16,6 +16,7 @@ const orderReview = readFileSync(new URL("../components/OrderEntryReview.tsx", i
 const events = readFileSync(new URL("../components/PaperChallengeHistory.tsx", import.meta.url), "utf8");
 const bottomTabBar = readFileSync(new URL("../components/BottomTabBar.tsx", import.meta.url), "utf8");
 const challenge = readFileSync(new URL("../lib/paperChallenge.ts", import.meta.url), "utf8");
+const eventLiveNotice = readFileSync(new URL("../components/PaperEventLiveNotice.tsx", import.meta.url), "utf8");
 const lightningPreparation = readFileSync(new URL("../lib/lightningRoundPreparation.ts", import.meta.url), "utf8");
 const badges = readFileSync(new URL("../components/PaperChallengeMilestoneBadges.tsx", import.meta.url), "utf8");
 const shareCard = readFileSync(new URL("../components/PaperEventShareCard.tsx", import.meta.url), "utf8");
@@ -54,24 +55,21 @@ assert.match(events, /withdrawUpcomingPaperChallenge\(current, currentWindow\.id
 assert.match(events, /updatePaperChallengeStore\(\(current\)/);
 assert.match(challenge, /nowMs >= enrollment\.eventStartAtMs/);
 assert.match(screen, /testID=\{isEventAcct \? 'active-paper-event-account'/);
-assert.match(screen, /GREEN BULL CHAMPIONSHIP · \$500,000 STARTING CAPITAL/);
-assert.match(screen, /EVENT ARENA · \$\$\{/);
+assert.match(eventLiveNotice, /GREEN BULL CHAMPIONSHIP · \$500,000 STARTING CAPITAL/);
+assert.match(eventLiveNotice, /EVENT ARENA · \$\$\{/);
 assert.match(screen, /testID="paper-event-account-badge"/);
-assert.match(screen, /testID="paper-event-live-banner"/);
-assert.match(screen, /showActiveChallengeNotice && activeChallengeEnrollment/);
-assert.match(screen, /getPaperEventLiveNoticeDismissalKey\(\s*activeChallengeEnrollment\.accountId,\s*activeChallengeEnrollment\.eventId/);
-assert.match(screen, /isDismissiblePaperEventLiveNotice\(activeChallengeEnrollment\.eventType\)/);
-assert.match(screen, /loadPaperEventLiveNoticeDismissal\(AsyncStorage, standardEventNoticeKey\)/);
-assert.match(screen, /persistPaperEventLiveNoticeDismissal\(AsyncStorage, standardEventNoticeKey\)/);
-assert.match(screen, /testID="dismiss-paper-event-live-banner"[\s\S]*?accessibilityLabel="Dismiss Event Arena live notice"[\s\S]*?width: 44, height: 44/);
-assert.match(screen, /paperEventNoticeMotion[\s\S]*?duration: 180/);
+assert.match(screen, /<PaperEventLiveNotice[\s\S]*?enrollment=\{activeChallengeEnrollment\}/);
+assert.match(eventLiveNotice, /getPaperEventLiveNoticeDismissalKey\(enrollment\.accountId, enrollment\.eventId\)/);
+assert.match(eventLiveNotice, /isDismissiblePaperEventLiveNotice\(enrollment\.eventType\)/);
+assert.match(eventLiveNotice, /loadPaperEventLiveNoticeDismissal\(AsyncStorage, dismissalKey\)/);
+assert.match(eventLiveNotice, /persistPaperEventLiveNoticeDismissal\(AsyncStorage, dismissalKey\)/);
+assert.match(eventLiveNotice, /testID="paper-event-live-banner"/);
+assert.match(eventLiveNotice, /testID="dismiss-paper-event-live-banner"[\s\S]*?accessibilityLabel="Dismiss Event Arena live notice"[\s\S]*?width: 44, height: 44/);
+assert.match(eventLiveNotice, /duration: 180/);
 assert.match(screen, /testID="paper-account-hero"[\s\S]*?<PaperEventArenaDashboard/);
-assert.ok(screen.indexOf('testID="paper-account-hero"') < screen.indexOf('{showActiveChallengeNotice && activeChallengeEnrollment && ('));
-const liveNoticeStart = screen.indexOf('{showActiveChallengeNotice && activeChallengeEnrollment && (');
-const liveNoticeEnd = screen.indexOf('</Animated.View>', liveNoticeStart);
-const liveNotice = screen.slice(liveNoticeStart, liveNoticeEnd);
-assert.doesNotMatch(liveNotice, /activePaperEvent|PAPER_CHALLENGE_STORAGE_KEY|installationId/);
-assert.match(screen, /LIGHTNING ROUND IS LIVE/);
+assert.ok(screen.indexOf('testID="paper-account-hero"') < screen.indexOf('<PaperEventLiveNotice'));
+assert.doesNotMatch(eventLiveNotice, /activePaperEvent|PAPER_CHALLENGE_STORAGE_KEY|installationId/);
+assert.match(eventLiveNotice, /LIGHTNING ROUND IS LIVE/);
 assert.match(screen, /testID="dismiss-paper-event-recap"/);
 assert.match(screen, /previousEnrollmentIdsRef/);
 
@@ -364,7 +362,7 @@ test("Lightning Round preparation exposes qualification, order edits, and final-
   assert.match(deleteRequest, /otherValidOrders\.length > 0/);
   assert.match(deleteRequest, /setFinalLightningCancelOrder\(order\)/);
   assert.match(screen, /testID="lightning-round-leave-error"/);
-  assert.match(screen, /testID="lightning-round-entry-failure"/);
+  assert.match(eventLiveNotice, /testID="lightning-round-entry-failure"/);
 
   const evaluatorStart = screen.indexOf("const evaluatePendingOrders = useCallback(");
   const evaluatorEnd = screen.indexOf("const fetchQuotes = useCallback(", evaluatorStart);
@@ -1026,7 +1024,7 @@ test("paper dashboard switches accounts from the summary or selector and keeps a
   assert.match(screen, /testID=\{`select-paper-account-\$\{acct\.id\}`\}/);
   assert.match(screen, /accessibilityState=\{\{ selected: isActive \}\}/);
   assert.match(screen, /setShowAccountManagement\(false\);[\s\S]*?setRenameId\(''\);[\s\S]*?void switchAccount\(acct\.id\)/);
-  assert.match(screen, /onPress=\{\(\) => \{\s*const eventAccount = visibleAccounts\.find/);
+  assert.match(screen, /onSwitchToPaperEventAccount=\{\(\) => \{[\s\S]*?const eventAccount = visibleAccounts\.find/);
   assert.doesNotMatch(screen, /paper-account-choice-/);
   assert.match(screen, /Math\.max\(insets\.bottom, 22\)/);
   assert.match(screen, /testID=\{`rename-paper-account-\$\{acct\.id\}`\}/);
@@ -1402,8 +1400,8 @@ test("all six live Event Arena backgrounds keep podium names and values readable
 });
 
 test("Penny Stock Mayhem exposes its rules and rechecks execution quotes", () => {
-  assert.match(screen, /PENNY STOCK MAYHEM/);
-  assert.match(screen, /STOCKS & ETFs UNDER \$20/);
+  assert.match(eventLiveNotice, /PENNY STOCK MAYHEM/);
+  assert.match(eventLiveNotice, /STOCKS & ETFs UNDER \$20/);
   assert.match(screen, /Quote unavailable · eligibility unknown/);
   assert.match(screen, /executionQuotePrice: args\.quotePrice/);
   assert.match(screen, /executionQuotePrice: q\.price/);

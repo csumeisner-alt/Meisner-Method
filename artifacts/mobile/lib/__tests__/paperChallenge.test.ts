@@ -73,6 +73,10 @@ test('Event Arena live notice dismissal persists per account and event only', as
 
   await persistPaperEventLiveNoticeDismissal(storagePort, firstAccountEvent);
   assert.equal(await loadPaperEventLiveNoticeDismissal(storagePort, firstAccountEvent), true);
+  const restartedStoragePort = {
+    getItem: async (key: string) => storage.get(key) ?? null,
+  };
+  assert.equal(await loadPaperEventLiveNoticeDismissal(restartedStoragePort, firstAccountEvent), true);
   assert.equal(await loadPaperEventLiveNoticeDismissal(storagePort, otherAccountEvent), false);
   assert.equal(await loadPaperEventLiveNoticeDismissal(storagePort, laterEvent), false);
   assert.equal(getPaperEventLiveNoticeDismissalKey('', '2026-11-16'), null);
