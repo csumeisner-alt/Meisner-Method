@@ -1429,3 +1429,11 @@ test("Penny Stock Mayhem uses its clean branded artwork in a focused story previ
   assert.match(leaderboardMockup, /event-arena-neon-nightclub/);
   assert.match(pennyLeaderboardPreview, /AllSevenLeaderboards onlyPenny/);
 });
+
+test("Penny Stock leaderboard exposes fixture-stable artwork and rule banner targets", () => {
+  assert.match(leaderboard, /testID="paper-event-penny-stock-hero"/);
+  assert.match(leaderboard, /testID="paper-event-penny-stock-rule-banner"/);
+  assert.match(leaderboard, /testID="paper-event-penny-stock-art"/);
+  assert.match(leaderboard, /testID="paper-event-leaderboard-countdown"/);
+  assert.match(leaderboard, /testID="paper-event-leaderboard-podium"/);
+});

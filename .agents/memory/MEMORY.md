@@ -65,6 +65,7 @@
 - [Heat-map screener deduplication](heat-map-screener-deduplication.md) — breadth serialization bypasses the normal symbol-keyed map; dedupe screener rows by ticker, keeping the first-ranked quote.
 - [React Native Web alerts](react-native-web-alerts.md) — `Alert.alert` is a no-op in the browser preview; critical confirmation flows need a web-specific path.
 - [React Native Web ImageBackground tests](rn-web-imagebackground-testid.md) — put test IDs on a wrapping View; ImageBackground may assign them to its image layer instead of the content container.
+- [React Native Web image fit checks](rn-web-image-fit-checks.md) — verify `resizeMode` on the visible background-image layer; the hidden accessibility `<img>` does not expose the fit mode.
 - [React Native Web chart hit-testing](react-native-web-chart-hit-testing.md) — `Pressable` may omit local touch coordinates; derive them from page coordinates and the target bounds.
 - [React Native Web section scrolling](rn-web-section-scrolling.md) — measure target and scroll frame, then use nonanimated `scrollTo` for reliable section jumps.
 - [Yahoo crypto max-supply semantics](yahoo-crypto-max-supply.md) — explicit `maxSupply: 0` means no fixed cap; missing or null max supply is unreported, not uncapped.

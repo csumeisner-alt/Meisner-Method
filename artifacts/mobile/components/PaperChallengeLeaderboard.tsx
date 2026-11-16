@@ -1687,6 +1687,7 @@ export function PaperChallengeLeaderboard({
                         MAYHEM
                       </Text>
                       <LinearGradient
+                        testID="paper-event-penny-stock-rule-banner"
                         colors={['#D4DDD8', '#347A51', '#102A21', '#79A88C']}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 1 }}
