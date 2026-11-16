@@ -1222,9 +1222,15 @@ test("all six live Event Arena backgrounds keep podium names and values readable
   const artworkContainer = leaderboard.slice(artworkStart, artworkEnd);
   assert.ok(artworkStart >= 0 && artworkEnd > artworkStart);
   assert.match(artworkContainer, /backgroundColor: isPennyStockMayhem \? '#07110D' : '#101720'/);
-  assert.match(artworkContainer, /imageStyle=\{\{ borderRadius: 24, opacity: 0\.96 \}\}/);
-  assert.match(artworkContainer, /backgroundColor: isPennyStockMayhem \? 'rgba\(3,10,7,0\.36\)' : 'rgba\(7,12,20,0\.18\)'/);
+  assert.match(artworkContainer, /imageStyle=\{\{ borderRadius: 24, opacity: isPennyStockMayhem \? 0 : 0\.96 \}\}/);
+  assert.match(artworkContainer, /backgroundColor: isPennyStockMayhem \? 'transparent' : 'rgba\(7,12,20,0\.18\)'/);
   assert.match(artworkContainer, /<LinearGradient/);
+  assert.match(artworkContainer, /testID="paper-event-penny-stock-hero"/);
+  assert.match(artworkContainer, /testID="paper-event-penny-stock-art"/);
+  assert.match(artworkContainer, /PENNY STOCK[\s\S]*?MAYHEM[\s\S]*?STOCKS &amp; ETFs UNDER[\s\S]*?\$20/);
+  assert.match(artworkContainer, /resizeMode="contain"[\s\S]*?width: '100%'[\s\S]*?height: Math\.min\(196, Math\.max\(136, windowWidth \* 0\.46\)\)/);
+  assert.match(artworkContainer, /paper-event-penny-stock-hero[\s\S]*?paper-event-leaderboard-countdown/);
+  assert.match(artworkContainer, /paper-event-leaderboard-participant-count/);
   assert.match(artworkContainer, /testID="paper-event-leaderboard-podium"/);
   const standingsStart = leaderboard.indexOf('<View testID="paper-event-leaderboard-list"');
   assert.ok(standingsStart > artworkEnd, "full standings remain on their solid card below the artwork");

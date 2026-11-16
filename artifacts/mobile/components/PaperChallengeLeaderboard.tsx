@@ -1467,15 +1467,15 @@ export function PaperChallengeLeaderboard({
                   ? require('../assets/event-arena-penny-stock-mayhem-clean.jpg')
                   : EVENT_ARENA_ARTWORK_SOURCES[event.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID]}
                 resizeMode="cover"
-                imageStyle={{ borderRadius: 24, opacity: 0.96 }}
+                imageStyle={{ borderRadius: 24, opacity: isPennyStockMayhem ? 0 : 0.96 }}
                 style={{ overflow: 'hidden', borderRadius: 24, borderWidth: 1, borderColor: isBearMarketMayhem ? 'rgba(240,82,93,0.62)' : isPennyStockMayhem ? 'rgba(173,202,119,0.62)' : 'rgba(214,177,94,0.34)', marginBottom: 17, padding: compactPodium ? 12 : 17, backgroundColor: isPennyStockMayhem ? '#07110D' : '#101720' }}
               >
-                <View style={{ pointerEvents: 'none', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: isPennyStockMayhem ? 'rgba(3,10,7,0.36)' : 'rgba(7,12,20,0.18)' }} />
+                <View style={{ pointerEvents: 'none', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: isPennyStockMayhem ? 'transparent' : 'rgba(7,12,20,0.18)' }} />
                 <LinearGradient
                   colors={isBearMarketMayhem
                     ? ['rgba(123,22,34,0.42)', 'rgba(8,14,24,0.04)', 'rgba(90,18,28,0.3)']
                     : isPennyStockMayhem
-                      ? ['rgba(91,190,88,0.2)', 'rgba(8,14,24,0.02)', 'rgba(60,143,82,0.2)']
+                      ? ['transparent', 'transparent', 'transparent']
                       : ['rgba(25,139,218,0.22)', 'rgba(8,14,24,0.03)', 'rgba(25,139,218,0.15)']}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
@@ -1485,7 +1485,7 @@ export function PaperChallengeLeaderboard({
                   colors={isBearMarketMayhem
                     ? ['rgba(255,106,115,0.18)', 'rgba(255,106,115,0.05)', 'transparent']
                     : isPennyStockMayhem
-                      ? ['rgba(203,236,130,0.16)', 'rgba(102,208,113,0.05)', 'transparent']
+                      ? ['transparent', 'transparent', 'transparent']
                       : ['rgba(255,218,128,0.18)', 'rgba(255,218,128,0.06)', 'transparent']}
                   start={{ x: 0.5, y: 0 }}
                   end={{ x: 0.5, y: 1 }}
@@ -1495,7 +1495,7 @@ export function PaperChallengeLeaderboard({
                   colors={isBearMarketMayhem
                     ? ['rgba(255,106,115,0.16)', 'rgba(255,106,115,0.05)', 'transparent']
                     : isPennyStockMayhem
-                      ? ['rgba(203,236,130,0.14)', 'rgba(102,208,113,0.05)', 'transparent']
+                      ? ['transparent', 'transparent', 'transparent']
                       : ['rgba(255,218,128,0.16)', 'rgba(255,218,128,0.05)', 'transparent']}
                   start={{ x: 0.5, y: 0 }}
                   end={{ x: 0.5, y: 1 }}
@@ -1544,23 +1544,113 @@ export function PaperChallengeLeaderboard({
 
                 <View testID="paper-event-leaderboard-current-event" style={{ alignItems: 'center', marginBottom: 18 }}>
                   {isPennyStockMayhem && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                      <Image source={require('../assets/images/mm-mark-foreground.png')} style={{ width: 25, height: 25 }} resizeMode="contain" />
-                      <Text style={{ color: '#E8CB7C', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.7 }}>MEISNER METHOD</Text>
+                    <View
+                      testID="paper-event-penny-stock-hero"
+                      accessibilityLabel="Penny Stock Mayhem. Stocks and ETFs under $20."
+                      style={{ width: '100%', alignItems: 'center', marginBottom: 15, paddingTop: 3 }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                        <Image source={require('../assets/images/mm-mark-foreground.png')} style={{ width: 22, height: 22 }} resizeMode="contain" />
+                        <Text style={{ color: '#E8CB7C', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.7 }}>MEISNER METHOD</Text>
+                      </View>
+                      <Text
+                        testID="paper-event-championship-identity"
+                        accessibilityRole="header"
+                        allowFontScaling
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.78}
+                        numberOfLines={1}
+                        style={{
+                          width: '100%',
+                          color: '#E9EEF2',
+                          fontFamily: 'Inter_700Bold',
+                          fontSize: compactPodium ? 29 : 34,
+                          letterSpacing: compactPodium ? 0.9 : 1.5,
+                          textAlign: 'center',
+                          textShadowColor: '#FFFFFF',
+                          textShadowOffset: { width: 0, height: -1 },
+                          textShadowRadius: 2,
+                        }}
+                      >
+                        PENNY STOCK
+                      </Text>
+                      <Text
+                        allowFontScaling
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.8}
+                        numberOfLines={1}
+                        style={{
+                          color: '#F3424D',
+                          fontFamily: 'Inter_700Bold',
+                          fontSize: compactPodium ? 38 : 44,
+                          letterSpacing: compactPodium ? 2.8 : 4,
+                          lineHeight: compactPodium ? 42 : 49,
+                          textAlign: 'center',
+                          textShadowColor: '#8E101A',
+                          textShadowOffset: { width: 0, height: 3 },
+                          textShadowRadius: 7,
+                        }}
+                      >
+                        MAYHEM
+                      </Text>
+                      <LinearGradient
+                        colors={['#D4DDD8', '#347A51', '#102A21', '#79A88C']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={{
+                          width: '100%',
+                          minHeight: 44,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 7,
+                          marginTop: 6,
+                          paddingHorizontal: compactPodium ? 8 : 12,
+                          borderRadius: 9,
+                          borderWidth: 1,
+                          borderColor: '#D0DDD4',
+                          shadowColor: '#65D58A',
+                          shadowOpacity: 0.32,
+                          shadowRadius: 9,
+                          shadowOffset: { width: 0, height: 0 },
+                        }}
+                      >
+                        <Text
+                          allowFontScaling
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.75}
+                          numberOfLines={1}
+                          style={{ flexShrink: 1, color: '#F1F5F2', fontFamily: 'Inter_700Bold', fontSize: compactPodium ? 10 : 12, letterSpacing: compactPodium ? 0.25 : 0.65, textShadowColor: 'rgba(0,0,0,0.75)', textShadowRadius: 3 }}
+                        >
+                          STOCKS &amp; ETFs UNDER
+                        </Text>
+                        <Text
+                          allowFontScaling
+                          style={{ color: '#F2F5F3', fontFamily: 'Inter_700Bold', fontSize: compactPodium ? 24 : 28, lineHeight: compactPodium ? 30 : 34, textShadowColor: '#FFFFFF', textShadowOffset: { width: 0, height: -1 }, textShadowRadius: 2 }}
+                        >
+                          $20
+                        </Text>
+                      </LinearGradient>
+                      <Image
+                        testID="paper-event-penny-stock-art"
+                        source={require('../assets/event-arena-penny-stock-mayhem-clean.jpg')}
+                        resizeMode="contain"
+                        accessibilityLabel="Charging bull with copper pennies in a green championship arena"
+                        style={{
+                          width: '100%',
+                          height: Math.min(196, Math.max(136, windowWidth * 0.46)),
+                          marginTop: 7,
+                        }}
+                      />
                     </View>
                   )}
-                  <Text testID="paper-event-championship-identity" style={{ color: isBearMarketMayhem ? '#FF6670' : '#E8CB7C', fontFamily: 'Inter_700Bold', fontSize: isPennyStockMayhem ? 18 : 11, letterSpacing: isPennyStockMayhem ? 1.5 : 1.2, textAlign: 'center', marginBottom: 7, textShadowColor: isPennyStockMayhem ? 'rgba(0,0,0,0.88)' : 'transparent', textShadowRadius: 7 }}>
-                    {isPennyStockMayhem
-                      ? 'PENNY STOCK MAYHEM'
-                      : isBearMarketMayhem
+                  {!isPennyStockMayhem && (
+                    <Text testID="paper-event-championship-identity" style={{ color: isBearMarketMayhem ? '#FF6670' : '#E8CB7C', fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 1.2, textAlign: 'center', marginBottom: 7, textShadowColor: 'transparent', textShadowRadius: 7 }}>
+                    {isBearMarketMayhem
                       ? 'BEAR MARKET MAYHEM'
                       : isLightningRound
                         ? 'LIGHTNING ROUND'
                         : event.eventType === 'green-bull-championship' ? 'GREEN BULL CHAMPIONSHIP' : 'EVENT ARENA CHAMPIONSHIP'}
-                  </Text>
-                  {isPennyStockMayhem && (
-                    <Text testID="paper-event-penny-stock-objective" style={{ color: '#C9F995', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1, textAlign: 'center', marginBottom: 8 }}>
-                      STOCKS &amp; ETFs UNDER $20
                     </Text>
                   )}
                   <Text testID="paper-event-starting-capital" style={{ color: '#F1EEE7', fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 0.8, textAlign: 'center', marginBottom: 8 }}>
