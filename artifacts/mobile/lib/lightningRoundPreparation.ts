@@ -21,20 +21,24 @@ export function getReusableEventArenaAccountId(args: {
   history: PaperChallengeSummary[];
 }): string | null {
   const accountIds = new Set(args.accounts.map((account) => account.id));
+  const isExistingEventArenaAccount = (id: string) => id.startsWith('paper-event:');
   if (args.currentEventEnrollment
     && args.currentEventEnrollment.eventType !== 'lightning-round'
+    && isExistingEventArenaAccount(args.currentEventEnrollment.accountId)
     && accountIds.has(args.currentEventEnrollment.accountId)) {
     return args.currentEventEnrollment.accountId;
   }
   const latestHistoricalEvent = [...args.history]
-    .filter((event) => event.eventType !== 'lightning-round' && accountIds.has(event.accountId))
+    .filter((event) => event.eventType !== 'lightning-round'
+      && isExistingEventArenaAccount(event.accountId)
+      && accountIds.has(event.accountId))
     .sort((left, right) => right.eventStartAtMs - left.eventStartAtMs)[0];
   if (latestHistoricalEvent) return latestHistoricalEvent.accountId;
   const existingEventAccount = [...args.accounts]
-    .filter((account) => account.id.startsWith('paper-event:'))
+    .filter((account) => isExistingEventArenaAccount(account.id))
     .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))[0];
   if (existingEventAccount) return existingEventAccount.id;
-  return args.activeId && accountIds.has(args.activeId) ? args.activeId : args.accounts[0]?.id ?? null;
+  return null;
 }
 
 /** Recover a missed start baseline from the closest persisted account snapshot. */
@@ -67,6 +71,17 @@ export function isLightningRoundPreparationOpen(eventStartAtMs: number, nowMs: n
     && Number.isFinite(nowMs)
     && nowMs >= getLightningRoundPreparationOpensAt(eventStartAtMs)
     && nowMs < eventStartAtMs;
+}
+
+export function shouldSyncLightningRoundPreparation(args: {
+  enrollmentAccountId: string;
+  selectedAccountId: string;
+  eventStartAtMs: number;
+  nowMs: number;
+}): boolean {
+  return args.enrollmentAccountId === args.selectedAccountId
+    && args.selectedAccountId.startsWith('paper-event:')
+    && isLightningRoundPreparationOpen(args.eventStartAtMs, args.nowMs);
 }
 
 /** Offer enrollment only from the existing Event Arena account during an eligible Lightning Round's preparation window. */

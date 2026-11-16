@@ -97,6 +97,7 @@ import {
   isLightningRoundPreparationOpen,
   isLightningRoundStagedOrder,
   isLightningRoundQualified,
+  shouldSyncLightningRoundPreparation,
   shouldOfferLightningRoundTradeEnrollment,
 } from '@/lib/lightningRoundPreparation';
 import {
@@ -374,6 +375,10 @@ export default function PaperScreen() {
   const [finalLightningCancelOrder, setFinalLightningCancelOrder] = useState<PaperOrder | null>(null);
   const [finalLightningCancelError, setFinalLightningCancelError] = useState('');
   const [finalLightningCancelling, setFinalLightningCancelling] = useState(false);
+  const [leaveLightningOpen, setLeaveLightningOpen] = useState(false);
+  const [leaveLightningError, setLeaveLightningError] = useState('');
+  const [leavingLightning, setLeavingLightning] = useState(false);
+  const [lightningPreparationMessage, setLightningPreparationMessage] = useState('');
 
   // Buy modal state
   const [buySymbol, setBuySymbol] = useState('');
@@ -486,10 +491,12 @@ export default function PaperScreen() {
     : null;
   const buyOrderDetails = getBuyOrderDetails(buySymbol, stockInfo);
   const selectedAccountEnrollment = getPaperChallengeEnrollmentForAccount(paperChallenge, activeId);
-  const lightningEnrollmentForDisplay = paperChallenge.lightningEnrollment ?? null;
-  const activeLightningEnrollment = lightningEnrollmentForDisplay?.accountId === activeId
-    ? lightningEnrollmentForDisplay
+  const savedLightningEnrollment = paperChallenge.lightningEnrollment ?? null;
+  const activeLightningEnrollment = savedLightningEnrollment?.accountId === activeId
+    && isPaperChallengeAccountId(activeId)
+    ? savedLightningEnrollment
     : null;
+  const lightningEnrollmentForDisplay = activeLightningEnrollment;
   const lightningQueuedOrders = lightningEnrollmentForDisplay
     ? getLightningRoundQueuedOrders(
       orders,
@@ -757,22 +764,32 @@ export default function PaperScreen() {
     return (async () => {
       await writePaperCache({ accounts: accts, positions: pos, transactions: txns, orders: ords, lots: ls, activeId: aid });
       const enrollment = paperChallengeRef.current.lightningEnrollment;
-      if (!enrollment || Date.now() >= enrollment.eventStartAtMs) return;
+      if (!enrollment || !shouldSyncLightningRoundPreparation({
+        enrollmentAccountId: enrollment.accountId,
+        selectedAccountId: aid,
+        eventStartAtMs: enrollment.eventStartAtMs,
+        nowMs: Date.now(),
+      })) return;
       const account = accts.find((item) => item.id === enrollment.accountId);
       if (!account) return;
       const installationId = await getInstallationId();
-      await apiFetch(`/api/event-arena/lightning-round/${encodeURIComponent(enrollment.eventId)}/state`, {
-        method: 'PUT',
-        headers: { 'X-Event-Arena-Installation-Id': installationId },
-        body: JSON.stringify({
-          alias: enrollment.leaderboardAlias ?? enrollment.accountName,
-          account,
-          positions: pos.filter((item) => item.accountId === enrollment.accountId),
-          transactions: txns.filter((item) => item.accountId === enrollment.accountId),
-          orders: ords.filter((item) => item.accountId === enrollment.accountId),
-          lots: ls.filter((item) => item.accountId === enrollment.accountId),
-        }),
-      });
+      try {
+        await apiFetch(`/api/event-arena/lightning-round/${encodeURIComponent(enrollment.eventId)}/state`, {
+          method: 'PUT',
+          headers: { 'X-Event-Arena-Installation-Id': installationId },
+          body: JSON.stringify({
+            alias: enrollment.leaderboardAlias ?? enrollment.accountName,
+            account,
+            positions: pos.filter((item) => item.accountId === enrollment.accountId),
+            transactions: txns.filter((item) => item.accountId === enrollment.accountId),
+            orders: ords.filter((item) => item.accountId === enrollment.accountId),
+            lots: ls.filter((item) => item.accountId === enrollment.accountId),
+          }),
+        });
+        setLightningPreparationMessage('');
+      } catch {
+        setLightningPreparationMessage('Your account is saved on this device, but Lightning Round preparation could not sync.');
+      }
     })();
   }, [apiFetch]);
 
@@ -801,6 +818,8 @@ export default function PaperScreen() {
       !loaded
       || !paperChallengeReady
       || !enrollment
+      || enrollment.accountId !== activeId
+      || !isPaperChallengeAccountId(activeId)
       || challengeNow < enrollment.eventStartAtMs
     ) return;
     let cancelled = false;
@@ -864,6 +883,7 @@ export default function PaperScreen() {
     paperChallenge.lightningEnrollment?.eventId,
     paperChallenge.lightningEnrollment?.eventStartAtMs,
     paperChallenge.lightningEnrollment?.accountId,
+    activeId,
     paperChallengeReady,
     saveAll,
   ]);
@@ -1720,6 +1740,9 @@ export default function PaperScreen() {
     activeIdRef.current = id;
     setActiveId(id);
     setChartRange('ALL');
+    pendingTradeEntryRef.current = null;
+    setLightningTradeOfferWindow(null);
+    setLightningPreparationMessage('');
     await flushCache(accountsRef.current, positionsRef.current, transactionsRef.current, ordersRef.current, lotsRef.current, id);
     fetchQuotes(positions, id);
   };
@@ -2212,21 +2235,57 @@ export default function PaperScreen() {
     }
     try {
       setFinalLightningCancelling(true);
+      const installationId = await getInstallationId();
+      await apiFetch(`/api/event-arena/lightning-round/${encodeURIComponent(enrollment.eventId)}/leave`, {
+        method: 'POST',
+        headers: { 'X-Event-Arena-Installation-Id': installationId },
+      });
       const cancelledOrders = cancelLightningRoundStagedOrders(
         ordersRef.current,
         enrollment.eventId,
         enrollment.accountId,
       );
-      await saveOrders(cancelledOrders);
       await savePaperChallenge((current) => current.lightningEnrollment?.eventId === enrollment.eventId
         ? { ...current, lightningEnrollment: null }
         : current);
+      await saveOrders(cancelledOrders);
       setFinalLightningCancelOrder(null);
       setFinalLightningCancelError('');
     } catch {
       setFinalLightningCancelError('Your order and registration could not be cancelled. Nothing else was changed; please try again.');
     } finally {
       setFinalLightningCancelling(false);
+    }
+  };
+
+  const confirmLeaveLightningRound = async () => {
+    const enrollment = paperChallengeRef.current.lightningEnrollment;
+    if (!enrollment || enrollment.accountId !== activeIdRef.current) {
+      setLeaveLightningOpen(false);
+      return;
+    }
+    try {
+      setLeavingLightning(true);
+      setLeaveLightningError('');
+      const installationId = await getInstallationId();
+      await apiFetch(`/api/event-arena/lightning-round/${encodeURIComponent(enrollment.eventId)}/leave`, {
+        method: 'POST',
+        headers: { 'X-Event-Arena-Installation-Id': installationId },
+      });
+      const cancelledOrders = cancelLightningRoundStagedOrders(
+        ordersRef.current,
+        enrollment.eventId,
+        enrollment.accountId,
+      );
+      await savePaperChallenge((current) => current.lightningEnrollment?.eventId === enrollment.eventId
+        ? { ...current, lightningEnrollment: null }
+        : current);
+      await saveOrders(cancelledOrders);
+      setLeaveLightningOpen(false);
+    } catch {
+      setLeaveLightningError('We could not remove your registration. Your account and orders were not changed; please try again.');
+    } finally {
+      setLeavingLightning(false);
     }
   };
 
@@ -3195,9 +3254,11 @@ export default function PaperScreen() {
               fontSize: 11,
               lineHeight: 16,
             }}>
-              {lightningIsQualified
-                ? "YOU'RE QUALIFIED — YOUR MARKET ORDER IS QUEUED."
-                : 'NOT QUALIFIED — ADD AT LEAST ONE ACTIVE MARKET ORDER.'}
+              {!isLightningPreparationOpen
+                ? 'ORDER PREPARATION IS NOT OPEN YET.'
+                : lightningIsQualified
+                  ? "YOU'RE QUALIFIED — YOUR MARKET ORDER IS QUEUED."
+                  : 'NOT QUALIFIED — ADD AT LEAST ONE ACTIVE MARKET ORDER.'}
             </Text>
             <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 4 }}>
               {challengeNow < lightningEnrollmentForDisplay.eventStartAtMs - 72 * 60 * 60 * 1000
@@ -3227,6 +3288,17 @@ export default function PaperScreen() {
               <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 11 }}>ADD MARKET ORDER</Text>
             </TouchableOpacity>
           ) : null}
+          <TouchableOpacity
+            testID="leave-lightning-round"
+            accessibilityRole="button"
+            onPress={() => {
+              setLeaveLightningError('');
+              setLeaveLightningOpen(true);
+            }}
+            style={{ minHeight: 40, marginTop: 8, alignItems: 'center', justifyContent: 'center', borderRadius: 9, borderWidth: 1, borderColor: colors.destructive }}
+          >
+            <Text style={{ color: colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 10 }}>LEAVE LIGHTNING ROUND</Text>
+          </TouchableOpacity>
           {lightningEnrollmentForDisplay.accountId === activeId && orders
             .filter((order) => order.accountId === lightningEnrollmentForDisplay.accountId
               && order.lightningRoundEventId === lightningEnrollmentForDisplay.eventId)
@@ -3698,6 +3770,61 @@ export default function PaperScreen() {
               >
                 <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>
                   {finalLightningCancelling ? 'CANCELLING…' : 'CANCEL ORDER & LEAVE'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={leaveLightningOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!leavingLightning) {
+            setLeaveLightningOpen(false);
+            setLeaveLightningError('');
+          }
+        }}
+      >
+        <View
+          testID="lightning-round-unenroll-confirmation"
+          accessibilityRole="alert"
+          style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,0.72)' }}
+        >
+          <View style={{ width: '100%', maxWidth: 420, padding: 20, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card }}>
+            <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 18 }}>LEAVE LIGHTNING ROUND?</Text>
+            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 19, marginTop: 9 }}>
+              You will be removed from this competition and will need to enroll again if registration is still open.
+            </Text>
+            {leaveLightningError ? (
+              <Text testID="lightning-round-unenroll-error" accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 17, marginTop: 10 }}>
+                {leaveLightningError}
+              </Text>
+            ) : null}
+            <View style={{ gap: 9, marginTop: 20 }}>
+              <TouchableOpacity
+                testID="keep-lightning-enrollment"
+                accessibilityRole="button"
+                disabled={leavingLightning}
+                onPress={() => {
+                  setLeaveLightningOpen(false);
+                  setLeaveLightningError('');
+                }}
+                style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 10, borderWidth: 1, borderColor: colors.border }}
+              >
+                <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>KEEP ME ENROLLED</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="confirm-leave-lightning-enrollment"
+                accessibilityRole="button"
+                disabled={leavingLightning}
+                onPress={() => { void confirmLeaveLightningRound(); }}
+                style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: colors.destructive, opacity: leavingLightning ? 0.65 : 1 }}
+              >
+                <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>
+                  {leavingLightning ? 'LEAVING…' : 'LEAVE EVENT'}
                 </Text>
               </TouchableOpacity>
             </View>

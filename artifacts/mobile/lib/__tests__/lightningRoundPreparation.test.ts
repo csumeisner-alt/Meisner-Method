@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   canExecuteLightningRoundStagedOrder,
@@ -10,6 +11,7 @@ import {
   getReusableEventArenaAccountId,
   isLightningRoundPreparationOpen,
   isLightningRoundQualified,
+  shouldSyncLightningRoundPreparation,
   shouldOfferLightningRoundTradeEnrollment,
 } from '../lightningRoundPreparation.ts';
 import type { PaperOrder } from '../paperMath.ts';
@@ -62,6 +64,20 @@ test('preparation opens at exactly 72 hours and closes before the official start
   assert.equal(isLightningRoundPreparationOpen(eventStartAtMs, opensAt), true);
   assert.equal(isLightningRoundPreparationOpen(eventStartAtMs, eventStartAtMs - 1), true);
   assert.equal(isLightningRoundPreparationOpen(eventStartAtMs, eventStartAtMs), false);
+});
+
+test('snapshot sync requires the matching Event Arena account and an open preparation window', () => {
+  const opensAt = getLightningRoundPreparationOpensAt(eventStartAtMs);
+  const args = {
+    enrollmentAccountId: accountId,
+    selectedAccountId: accountId,
+    eventStartAtMs,
+    nowMs: opensAt,
+  };
+  assert.equal(shouldSyncLightningRoundPreparation(args), true);
+  assert.equal(shouldSyncLightningRoundPreparation({ ...args, selectedAccountId: 'paper-strategy-1' }), false);
+  assert.equal(shouldSyncLightningRoundPreparation({ ...args, nowMs: opensAt - 1 }), false);
+  assert.equal(shouldSyncLightningRoundPreparation({ ...args, nowMs: eventStartAtMs }), false);
 });
 
 test('trade-entry enrollment offer honors the official window, account, event, and enrollment', () => {
@@ -228,4 +244,21 @@ test('registration chooses an existing Event Arena account and never invents one
     accounts: [],
     history: [],
   }), null);
+  assert.equal(getReusableEventArenaAccountId({
+    accounts: [{ id: 'tiger', name: 'Tiger', cash: 100_000, createdAt: '2026-10-01T00:00:00.000Z' }],
+    activeId: 'tiger',
+    history: [],
+  }), null);
+});
+
+test('Paper Trading scopes Lightning Round status to its Event Arena account and supports explicit unenrollment', () => {
+  const source = readFileSync('app/paper.tsx', 'utf8');
+  assert.ok(source.includes('const lightningEnrollmentForDisplay = activeLightningEnrollment'));
+  assert.ok(source.includes('shouldSyncLightningRoundPreparation({'));
+  assert.ok(source.includes('enrollment.accountId !== activeId'));
+  assert.ok(source.includes('LEAVE LIGHTNING ROUND'));
+  assert.ok(source.includes('You will be removed from this competition and will need to enroll again if registration is still open.'));
+  assert.ok(source.includes('KEEP ME ENROLLED'));
+  assert.ok(source.includes('LEAVE EVENT'));
+  assert.ok(source.includes('/leave`'));
 });

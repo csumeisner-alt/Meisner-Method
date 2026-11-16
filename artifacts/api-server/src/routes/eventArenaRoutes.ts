@@ -667,6 +667,60 @@ export function createEventArenaRouter(
     }
   });
 
+  router.post("/event-arena/lightning-round/:eventId/leave", requireSchema, async (req: any, res: any) => {
+    const installationId = req.get("x-event-arena-installation-id");
+    const configuration = expectedLightningRoundWindow(req.params.eventId);
+    if (!validInstallationId(installationId) || !configuration) {
+      res.status(400).json({ error: "A scheduled Lightning Round and valid installation ID are required." });
+      return;
+    }
+    if (now() >= configuration.startAtMs) {
+      res.status(409).json({ error: "Lightning Round registration is closed." });
+      return;
+    }
+    try {
+      let registrationClosed = false;
+      let removed = false;
+      await withTransaction(db, async (client) => {
+        await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [req.params.eventId]);
+        if (now() >= configuration.startAtMs) {
+          registrationClosed = true;
+          return;
+        }
+        const { rows } = await client.query(
+          `SELECT account_id FROM event_arena_lightning_participants
+           WHERE event_id=$1 AND installation_id=$2 AND status='queued'
+           FOR UPDATE`,
+          [req.params.eventId, installationId],
+        );
+        if (now() >= configuration.startAtMs) {
+          registrationClosed = true;
+          return;
+        }
+        const accountId = rows[0]?.account_id;
+        if (!accountId) return;
+        await client.query(
+          `UPDATE paper_orders SET status='cancelled',rejection_reason='Lightning Round enrollment cancelled'
+           WHERE user_id=$1 AND account_id=$2 AND lightning_round_event_id=$3 AND status='pending'`,
+          [installationId, accountId, req.params.eventId],
+        );
+        await client.query(
+          `DELETE FROM event_arena_lightning_participants
+           WHERE event_id=$1 AND installation_id=$2 AND status='queued'`,
+          [req.params.eventId, installationId],
+        );
+        removed = true;
+      });
+      if (registrationClosed) {
+        res.status(409).json({ error: "Lightning Round registration is closed." });
+        return;
+      }
+      res.json({ ok: true, eventId: req.params.eventId, removed });
+    } catch {
+      res.status(500).json({ error: "Could not leave the Lightning Round." });
+    }
+  });
+
   router.put("/event-arena/lightning-round/:eventId/state", requireSchema, async (req: any, res: any) => {
     const installationId = req.get("x-event-arena-installation-id");
     const configuration = expectedLightningRoundWindow(req.params.eventId);

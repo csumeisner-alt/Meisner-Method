@@ -1463,6 +1463,55 @@ test("Lightning Round preparation cannot forge fills and preserves server-tagged
   assert.deepEqual(insertedOrders.map((item) => item.values[0]), ["current-queue"]);
 });
 
+test("Lightning Round unenrollment cancels only staged pending orders and preserves history", async () => {
+  const lightningEvent = expectedEventArenaConfiguration("lightning-2026-11-27");
+  assert.ok(lightningEvent);
+  const statements: Array<{ sql: string; values?: unknown[] }> = [];
+  const accountId = "paper-event:shared";
+  const savedConfigurations = new Map([[lightningEvent.eventId, {
+    event_id: lightningEvent.eventId,
+    event_type: lightningEvent.eventType,
+    artwork_id: lightningEvent.artworkId,
+    starting_balance: lightningEvent.startingBalance,
+    ranking_direction: lightningEvent.rankingDirection,
+    purchase_limit: lightningEvent.purchaseLimit ?? null,
+    event_start_at: new Date(lightningEvent.startAtMs),
+    event_end_at: new Date(lightningEvent.endAtMs),
+  }]]);
+  await withApi(async (sql, values = []) => {
+    statements.push({ sql, values });
+    if (sql.includes("SELECT account_id FROM event_arena_lightning_participants")) {
+      return { rows: [{ account_id: accountId }] };
+    }
+    return { rows: [] };
+  }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/lightning-round/${lightningEvent.eventId}/leave`, {
+      method: "POST",
+      headers: { "x-event-arena-installation-id": installationId },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { ok: true, eventId: lightningEvent.eventId, removed: true });
+  }, lightningEvent.startAtMs - 1, savedConfigurations);
+  const cancelOrders = statements.find((item) => item.sql.startsWith("UPDATE paper_orders"));
+  assert.match(cancelOrders?.sql ?? "", /status='cancelled'/);
+  assert.match(cancelOrders?.sql ?? "", /status='pending'/);
+  assert.deepEqual(cancelOrders?.values, [installationId, accountId, lightningEvent.eventId]);
+  assert.ok(statements.some((item) => item.sql.startsWith("DELETE FROM event_arena_lightning_participants")));
+  assert.equal(statements.some((item) => item.sql.startsWith("DELETE FROM paper_transactions")), false);
+  assert.equal(statements.some((item) => item.sql.startsWith("DELETE FROM paper_positions")), false);
+
+  await withApi(async () => {
+    throw new Error("A closed registration must not mutate data.");
+  }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/lightning-round/${lightningEvent.eventId}/leave`, {
+      method: "POST",
+      headers: { "x-event-arena-installation-id": installationId },
+    });
+    assert.equal(response.status, 409);
+    assert.deepEqual(await response.json(), { error: "Lightning Round registration is closed." });
+  }, lightningEvent.startAtMs, savedConfigurations);
+});
+
 test(
   "database-backed event history records, retrieves, and removes a participant's rank snapshots",
   { skip: !databaseUrl && "DATABASE_URL is not configured" },
