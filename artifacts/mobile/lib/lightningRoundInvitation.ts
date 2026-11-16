@@ -67,6 +67,10 @@ export function shouldShowLightningRoundInvitationCountdown(width: number): bool
   return Number.isFinite(width) && width >= 420;
 }
 
+export function shouldShowLightningRoundInvitationAction(width: number): boolean {
+  return Number.isFinite(width) && width >= 420;
+}
+
 export function formatLightningRoundInvitationCountdown(
   window: Pick<PaperChallengeWindow, 'startAtMs' | 'endAtMs'>,
   phase: LightningRoundInvitationPhase,

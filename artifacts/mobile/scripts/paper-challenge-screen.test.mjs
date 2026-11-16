@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { removePendingPaperOrder } from "../lib/paperOrderDeletion.ts";
 import { getEventArenaHeaderColumnWidth } from "../lib/eventArenaHeaderLayout.ts";
-import { shouldRenderLightningRoundInvitationButton } from "../lib/lightningRoundInvitation.ts";
+import {
+  shouldRenderLightningRoundInvitationButton,
+  shouldShowLightningRoundInvitationAction,
+} from "../lib/lightningRoundInvitation.ts";
 
 const screen = readFileSync(new URL("../app/paper.tsx", import.meta.url), "utf8");
 const accountSwipeArea = readFileSync(new URL("../components/PaperAccountSwipeArea.tsx", import.meta.url), "utf8");
@@ -187,6 +190,8 @@ test("Event Arena header keeps its alias aligned and omits the invitation outsid
   assert.match(lightningInvitation, /<TouchableOpacity[\s\S]*?testID="open-lightning-round"/);
   assert.match(lightningInvitation, /<View style=\{\[styles\.headerActions,[\s\S]*?<Alias alias=\{alias\} width=\{width\} \/>[\s\S]*?<Animated\.View/);
   assert.match(lightningInvitation, /getEventArenaHeaderColumnWidth\(width\)/);
+  assert.match(lightningInvitation, /shouldShowLightningRoundInvitationAction\(width\)/);
+  assert.match(lightningInvitation, /\{showAction \? \([\s\S]*?styles\.action[\s\S]*?\) : null\}/);
   assert.match(lightningInvitation, /headerActions: \{[\s\S]*?flexShrink: 0[\s\S]*?alignItems: 'flex-end'/);
   const eligibleRenderStart = lightningInvitation.indexOf('<View style={[styles.headerActions');
   const eligibleRenderEnd = lightningInvitation.indexOf('</View>\n  );', eligibleRenderStart);
@@ -197,6 +202,11 @@ test("Event Arena header keeps its alias aligned and omits the invitation outsid
   assert.equal(shouldRenderLightningRoundInvitationButton(true, null, true), false);
   assert.equal(shouldRenderLightningRoundInvitationButton(false, 'active', true), false);
   assert.equal(shouldRenderLightningRoundInvitationButton(true, 'active', false), false);
+  assert.equal(shouldShowLightningRoundInvitationAction(320), false);
+  assert.equal(shouldShowLightningRoundInvitationAction(360), false);
+  assert.equal(shouldShowLightningRoundInvitationAction(400), false);
+  assert.equal(shouldShowLightningRoundInvitationAction(420), true);
+  assert.equal(shouldShowLightningRoundInvitationAction(568), true);
 
   for (const screenWidth of [320, 360, 390, 430]) {
     const contentWidth = screenWidth - 32;
@@ -486,6 +496,53 @@ test("Event Arena section tabs stay readable and fit narrow phone widths", () =>
     assert.ok(contentWidth >= 60, `${screenWidth}px phone leaves room for each tab label and icon`);
   }
 
+});
+
+test("Event Arena header and all four tabs remain separated in landscape and split-screen sizes", () => {
+  const sectionTabsStart = eventArena.indexOf('testID="event-arena-section-tabs"');
+  const bottomTabsStart = eventArena.indexOf("<BottomTabBar />", sectionTabsStart);
+  const headerSource = eventArena.slice(eventArena.indexOf('testID="event-arena-header-row"'), sectionTabsStart);
+  const tabsSource = eventArena.slice(sectionTabsStart, bottomTabsStart);
+  const cases = [
+    { label: "compact landscape", width: 568, height: 320, topInset: 24, bottomInset: 0 },
+    { label: "split-screen", width: 400, height: 480, topInset: 24, bottomInset: 0 },
+    { label: "narrow split-screen", width: 320, height: 480, topInset: 24, bottomInset: 0 },
+  ];
+
+  assert.ok(sectionTabsStart >= 0 && bottomTabsStart > sectionTabsStart);
+  assert.match(headerSource, /<Text numberOfLines=\{1\} adjustsFontSizeToFit minimumFontScale=\{0\.75\}[\s\S]*?>Event Arena<\/Text>/);
+  assert.match(headerSource, /<LightningRoundInvitation[\s\S]*?alias=\{participantAlias \|\| ''\}/);
+  assert.match(tabsSource, /testID="event-arena-section-tabs" style=\{\{ flexDirection: 'row'/);
+  assert.match(lightningInvitation, /headerDim: \{[\s\S]*?position: 'absolute'[\s\S]*?\}/);
+  assert.match(lightningInvitation, /<Animated\.View pointerEvents="none" style=\{\[styles\.headerDim/);
+  assert.match(lightningInvitation, /<Animated\.View pointerEvents="none" style=\{\[styles\.energySweep/);
+  assert.match(lightningInvitation, /<Animated\.View pointerEvents="none" style=\{\[styles\.borderPulse/);
+  assert.match(eventArena, /style=\{\{ flex: 1, minHeight: 0 \}\}/);
+
+  const gap = Number(eventArena.match(/const SECTION_TAB_GAP = (\d+)/)?.[1]);
+  const minTabHeight = Number(eventArena.match(/const SECTION_TAB_MIN_HEIGHT = (\d+)/)?.[1]);
+  for (const { label, width, height, topInset, bottomInset } of cases) {
+    const rightColumnWidth = getEventArenaHeaderColumnWidth(width);
+    const titleColumnWidth = width - 32 - 44 - 8 - rightColumnWidth;
+    const aliasWidth = Math.max(54, Math.min(116, width * 0.2));
+    const tabWidth = (width - 32 - gap * 3) / 4;
+    const headerHeight = 73;
+    const tabsHeight = 4 + minTabHeight;
+    const bottomBarHeight = 66;
+    const availableContentHeight = height - topInset - bottomInset - headerHeight - tabsHeight - bottomBarHeight;
+
+    assert.ok(Number.isFinite(gap) && Number.isFinite(minTabHeight));
+    assert.ok(titleColumnWidth >= 88, `${label} keeps the title separate from the alias`);
+    assert.ok(aliasWidth <= rightColumnWidth, `${label} keeps the alias inside its own header column`);
+    assert.ok(tabWidth - 4 >= 60, `${label} keeps all four tab targets wide enough`);
+    assert.equal(shouldShowLightningRoundInvitationAction(width), width >= 420);
+    if (width >= 420) {
+      assert.ok(rightColumnWidth - 103 >= 72, `${label} keeps invitation title space beside the action`);
+    }
+    assert.ok(availableContentHeight > 0, `${label} keeps the header and tab row above the bottom bar`);
+    assert.equal((tabsSource.match(/testID=\{`event-arena-tab-\$\{item\.id\}`\}/g) ?? []).length, 1);
+    assert.match(tabsSource, /flex: 1, minWidth: 0, minHeight: SECTION_TAB_MIN_HEIGHT/);
+  }
 });
 
 test("championship leaderboard shows real podium scores, event context, and below-podium standings", () => {

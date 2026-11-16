@@ -23,6 +23,7 @@ import {
   getLightningRoundInvitationPhase,
   getLightningRoundInvitationRevealMode,
   markLightningRoundInvitationSeen,
+  shouldShowLightningRoundInvitationAction,
   shouldRenderLightningRoundInvitationButton,
   shouldShowLightningRoundInvitationCountdown,
 } from '@/lib/lightningRoundInvitation';
@@ -144,6 +145,7 @@ export function LightningRoundInvitation({ alias, enrolledEvent, enrollmentReady
   }
 
   const showCountdown = shouldShowLightningRoundInvitationCountdown(width);
+  const showAction = shouldShowLightningRoundInvitationAction(width);
   const isEnrolled = enrolledEvent?.eventId === schedule.id;
   const action = getLightningRoundInvitationAction(isEnrolled, phase);
   const countdown = formatLightningRoundInvitationCountdown(schedule, phase, now);
@@ -182,10 +184,12 @@ export function LightningRoundInvitation({ alias, enrolledEvent, enrollmentReady
             <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={styles.subtitle}>24-HOUR CHAMPIONSHIP</Text>
             {showCountdown ? <Text numberOfLines={1} style={styles.countdown}>{countdown}</Text> : null}
           </View>
-          <Animated.View style={[styles.action, { opacity: actionOpacity }]}>
-            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={styles.actionText}>{action}</Text>
-            <Feather name="arrow-up-right" size={12} color={T.goldBright} />
-          </Animated.View>
+          {showAction ? (
+            <Animated.View style={[styles.action, { opacity: actionOpacity }]}>
+              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={styles.actionText}>{action}</Text>
+              <Feather name="arrow-up-right" size={12} color={T.goldBright} />
+            </Animated.View>
+          ) : null}
           {isRevealing ? (
             <>
               <Animated.View pointerEvents="none" style={[styles.energySweep, { opacity: sweepOpacity, transform: [{ translateX: sweepX }, { rotate: '14deg' }] }]} />
