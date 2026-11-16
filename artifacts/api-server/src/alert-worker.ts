@@ -26,6 +26,10 @@ import { fetchYahooChartPrice } from "./lib/marketPrice.js";
 import { sendExpoPushRequest } from "./lib/expoPushRequest.js";
 import { processDueLightningRoundOrders } from "./lib/lightningRoundExecution.js";
 import {
+  runLightningRoundCompletionCycle,
+  type LightningRoundCompletionNotice,
+} from "./lib/lightningRoundCompletionWorker.js";
+import {
   getLightningRoundPreparationAtMs,
   runLightningRoundReminderCycle,
   type LightningRoundReminderPush,
@@ -306,6 +310,43 @@ async function executeDueLightningRoundOrders(): Promise<void> {
   }
 }
 
+async function sendLightningRoundCompletionNotice(notice: LightningRoundCompletionNotice) {
+  const pushRes = await sendExpoPushRequest({
+    to: notice.pushToken,
+    title: "Lightning Round results are ready",
+    body: "Your final result is ready to review in Past Lightning Rounds.",
+    sound: "default",
+    priority: "high",
+    channelId: "paper-event-reminders",
+    collapseId: `lightning-final-${notice.eventId}-${notice.installationId}`,
+    data: {
+      type: "lightning-round-standings",
+      eventId: notice.eventId,
+    },
+  });
+  const body = await pushRes.json().catch(() => null);
+  const result = classifyExpoPushResponse(
+    pushRes.ok,
+    Array.isArray((body as any)?.data) ? body : { data: [] },
+  );
+  return {
+    accepted: result.accepted,
+    ...(result.permanentFailure ? { permanentFailure: true } : {}),
+    ...(result.uncertain ? { uncertain: true } : {}),
+  };
+}
+
+async function sendDueLightningRoundCompletionNotices(): Promise<void> {
+  try {
+    const stats = await runLightningRoundCompletionCycle(pool, sendLightningRoundCompletionNotice);
+    if (stats.due > 0) {
+      logger.info({ ...stats }, "[alert-worker] Lightning Round completion notices processed");
+    }
+  } catch (err) {
+    logger.warn({ err }, "[alert-worker] Lightning Round completion notices failed; will retry");
+  }
+}
+
 async function sendLightningRoundPreparationReminder(reminder: LightningRoundReminderPush) {
   const pushRes = await sendExpoPushRequest({
     to: reminder.pushToken,
@@ -364,6 +405,7 @@ async function main(): Promise<void> {
     await prepareScheduledLightningRounds();
     await sendDueLightningRoundPreparationReminders();
     await executeDueLightningRoundOrders();
+    await sendDueLightningRoundCompletionNotices();
     await runEventArenaCleanupIfDue();
     await runAlertCheck();
     await sleep(CHECK_INTERVAL_MS);

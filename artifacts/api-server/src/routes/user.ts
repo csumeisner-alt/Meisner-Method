@@ -278,6 +278,15 @@ async function runSchemaMigrations(): Promise<void> {
     )
   `);
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS event_arena_lightning_completion_deliveries (
+      event_id TEXT NOT NULL,
+      installation_id TEXT NOT NULL,
+      delivery_started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      accepted_at TIMESTAMPTZ,
+      PRIMARY KEY (event_id, installation_id)
+    )
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS event_arena_cash_transfers (
       event_id TEXT NOT NULL,
       transfer_ref TEXT NOT NULL,

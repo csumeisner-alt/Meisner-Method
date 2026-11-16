@@ -1009,7 +1009,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
                   : 'Prepare market orders during the final 72 hours. They remain pending until the scheduled start.'}
               </Text>
               <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 6 }}>
-                Event notifications in Event Arena settings can remind you when an eligible round opens.
+                Event notifications in Event Arena settings can remind you when an eligible round opens and when your final result is ready.
               </Text>
             </View>
 
