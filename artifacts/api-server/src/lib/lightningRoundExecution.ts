@@ -11,6 +11,7 @@ import type {
   PaperPosition,
   PaperTransaction,
 } from "../../../mobile/lib/paperMath.ts";
+import { calculateLightningRoundScore } from "./lightningRoundScore.ts";
 
 type QueryResult = { rows: any[] };
 export interface LightningExecutionDatabase {
@@ -39,6 +40,48 @@ type ExecutionOptions = {
   fetchPrice: (symbol: string) => Promise<number | null>;
   makeId?: () => string;
 };
+
+type LightningRoundFinalResult = {
+  eventId: string;
+  startEquity: number;
+  equity: number;
+  cashBalance: number;
+  returnPercent: number;
+  tradeCount: number;
+  holdings: Array<{
+    symbol: string;
+    companyName: string;
+    allocationPercent: number;
+    side: "long";
+  }>;
+  finalPrices: Record<string, number>;
+  finalPositions: Array<{
+    symbol: string;
+    companyName: string;
+    shares: number;
+    avgCost: number;
+    marketPrice: number;
+    marketValue: number;
+    unrealizedPnL: number;
+  }>;
+  completedAtMs: number;
+  finalRank?: number | null;
+};
+
+function finalResultFromRow(value: unknown): LightningRoundFinalResult | null {
+  let parsed = value;
+  if (typeof parsed === "string") {
+    try { parsed = JSON.parse(parsed); } catch { return null; }
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const result = parsed as LightningRoundFinalResult;
+  return Number.isFinite(result.equity)
+    && Number.isFinite(result.completedAtMs)
+    && result.finalPrices && typeof result.finalPrices === "object"
+    && Array.isArray(result.finalPositions)
+    ? result
+    : null;
+}
 
 function asIso(value: unknown): string {
   if (value instanceof Date) return value.toISOString();
@@ -131,6 +174,194 @@ function transactionFromRow(row: any): PaperTransaction {
       ? { lightningRoundEventId: row.lightning_round_event_id }
       : {}),
   };
+}
+
+async function freezeParticipantResult(
+  db: LightningExecutionDatabase,
+  participant: any,
+  eventId: string,
+  startAtMs: number,
+  endAtMs: number,
+  startingBalance: number,
+  fetchPrice: (symbol: string) => Promise<number | null>,
+): Promise<LightningRoundFinalResult | null> {
+  const alreadySaved = finalResultFromRow(participant.final_result);
+  if (alreadySaved) return alreadySaved;
+  const { rows: activityRows } = await db.query(
+    `SELECT symbol,company_name,action,shares,price,total,fee,date
+     FROM paper_transactions
+     WHERE user_id=$1 AND account_id=$2 AND lightning_round_event_id=$3
+       AND date >= TO_TIMESTAMP($4 / 1000.0) AND date <= TO_TIMESTAMP($5 / 1000.0)
+     ORDER BY date ASC,id ASC`,
+    [participant.installation_id, participant.account_id, eventId, startAtMs, endAtMs],
+  );
+  if (activityRows.length === 0) return null;
+  const activity = activityRows.map((row) => ({
+    symbol: String(row.symbol),
+    company_name: row.company_name,
+    action: String(row.action),
+    shares: Number(row.shares),
+    price: Number(row.price),
+    total: Number(row.total),
+    fee: row.fee == null ? null : Number(row.fee),
+    date: row.date instanceof Date ? row.date.toISOString() : row.date,
+  }));
+  const symbols = [...new Set(activity.map((item) => item.symbol))];
+  const priceResults = await Promise.all(symbols.map(async (symbol) => {
+    try {
+      const price = await fetchPrice(symbol);
+      return [symbol, Number.isFinite(price) && (price ?? 0) > 0 ? price : null] as const;
+    } catch {
+      return [symbol, null] as const;
+    }
+  }));
+  const prices: Record<string, number> = {};
+  for (const [symbol, price] of priceResults) {
+    if (price != null) prices[symbol] = price;
+  }
+  const score = calculateLightningRoundScore(activity, prices, startingBalance);
+  if (!score) return null;
+  const result: LightningRoundFinalResult = {
+    eventId,
+    startEquity: score.startEquity,
+    equity: score.equity,
+    cashBalance: score.cashBalance,
+    returnPercent: score.returnPercent,
+    tradeCount: score.tradeCount,
+    holdings: score.holdings,
+    finalPrices: score.finalPrices,
+    finalPositions: score.finalPositions,
+    completedAtMs: endAtMs,
+  };
+  const { rows: savedRows } = await db.query(
+    `UPDATE event_arena_lightning_participants
+     SET final_result=$3::jsonb,updated_at=NOW()
+     WHERE event_id=$1 AND installation_id=$2 AND final_result IS NULL
+     RETURNING final_result`,
+    [eventId, participant.installation_id, JSON.stringify(result)],
+  );
+  return finalResultFromRow(savedRows[0]?.final_result) ?? result;
+}
+
+async function finalizeEventStandings(
+  db: LightningExecutionDatabase,
+  event: any,
+  startAtMs: number,
+  endAtMs: number,
+  fetchPrice: (symbol: string) => Promise<number | null>,
+): Promise<boolean> {
+  const { rows: participants } = await db.query(
+    `SELECT event_id,installation_id,account_id,alias,status,leaderboard_opted_in,final_result
+     FROM event_arena_lightning_participants
+     WHERE event_id=$1 AND status='entered'
+     ORDER BY installation_id
+     FOR UPDATE`,
+    [event.event_id],
+  );
+  const finalResults = new Map<string, LightningRoundFinalResult>();
+  for (const participant of participants) {
+    const result = await freezeParticipantResult(
+      db,
+      participant,
+      event.event_id,
+      startAtMs,
+      endAtMs,
+      Number(event.starting_balance),
+      fetchPrice,
+    );
+    if (!result) return false;
+    finalResults.set(participant.installation_id, result);
+  }
+
+  for (const participant of participants) {
+    if (participant.leaderboard_opted_in === false) continue;
+    const result = finalResults.get(participant.installation_id)!;
+    await db.query(
+      `INSERT INTO event_arena_leaderboard_entries
+        (event_id,installation_id,alias,start_equity,equity,return_percent,trade_count,holdings,
+         event_start_at,event_end_at,updated_at,cash_balance)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,TO_TIMESTAMP($9 / 1000.0),
+         TO_TIMESTAMP($10 / 1000.0),TO_TIMESTAMP($10 / 1000.0),$11)
+       ON CONFLICT (event_id,installation_id) DO UPDATE SET
+         alias=EXCLUDED.alias,start_equity=EXCLUDED.start_equity,equity=EXCLUDED.equity,
+         return_percent=EXCLUDED.return_percent,trade_count=EXCLUDED.trade_count,
+         holdings=EXCLUDED.holdings,updated_at=EXCLUDED.updated_at,cash_balance=EXCLUDED.cash_balance`,
+      [
+        event.event_id,
+        participant.installation_id,
+        participant.alias,
+        result.startEquity,
+        result.equity,
+        result.returnPercent,
+        result.tradeCount,
+        JSON.stringify(result.holdings),
+        startAtMs,
+        endAtMs,
+        result.cashBalance,
+      ],
+    );
+  }
+
+  const { rows: rankedRows } = await db.query(
+    `SELECT installation_id,participant_token,rank,return_percent
+     FROM (
+       SELECT entry.installation_id,entry.participant_token,entry.return_percent,
+         ROW_NUMBER() OVER (
+           ORDER BY entry.return_percent DESC,entry.alias ASC,entry.installation_id ASC
+         )::int AS rank
+       FROM event_arena_leaderboard_entries AS entry
+       JOIN event_arena_lightning_participants AS participant
+         ON participant.event_id=entry.event_id
+         AND participant.installation_id=entry.installation_id
+       WHERE entry.event_id=$1 AND entry.is_active=TRUE AND participant.status='entered'
+         AND participant.leaderboard_opted_in=TRUE
+     ) AS ranked
+     ORDER BY rank`,
+    [event.event_id],
+  );
+  if (rankedRows.length > 0) {
+    await db.query(
+      `INSERT INTO event_arena_leaderboard_snapshots
+        (event_id,participant_token,event_start_at,event_end_at,captured_at,rank,return_percent,is_final)
+       SELECT $1,snapshot.participant_token,TO_TIMESTAMP($4 / 1000.0),
+         TO_TIMESTAMP($5 / 1000.0),TO_TIMESTAMP($5 / 1000.0),snapshot.rank,
+         snapshot.return_percent,TRUE
+       FROM UNNEST($2::text[],$3::integer[],$6::double precision[])
+         AS snapshot(participant_token,rank,return_percent)
+       ON CONFLICT (event_id,participant_token) WHERE is_final=TRUE DO NOTHING`,
+      [
+        event.event_id,
+        rankedRows.map((row) => row.participant_token),
+        rankedRows.map((row) => Number(row.rank)),
+        startAtMs,
+        endAtMs,
+        rankedRows.map((row) => Number(row.return_percent)),
+      ],
+    );
+  }
+  const rankByInstallation = new Map(
+    rankedRows.map((row) => [row.installation_id, Number(row.rank)] as const),
+  );
+  for (const participant of participants) {
+    const result = finalResults.get(participant.installation_id)!;
+    const finalRank = rankByInstallation.get(participant.installation_id) ?? null;
+    await db.query(
+      `UPDATE event_arena_lightning_participants
+       SET final_result=$3::jsonb
+       WHERE event_id=$1 AND installation_id=$2 AND final_result IS NOT NULL`,
+      [
+        event.event_id,
+        participant.installation_id,
+        JSON.stringify({ ...result, finalRank }),
+      ],
+    );
+  }
+  await db.query(
+    `UPDATE event_arena_events SET finalized_at=TO_TIMESTAMP($2 / 1000.0)
+     WHERE event_id=$1 AND finalized_at IS NULL`,
+    [event.event_id, endAtMs],
+  );
+  return true;
 }
 
 function validQueuedOrder(order: PaperOrder, eventId: string): string | null {
@@ -426,16 +657,19 @@ async function runEvent(
         WHERE event_id=$1
           AND (
             status='queued'
-            OR (status='entered' AND EXISTS (
-              SELECT 1 FROM paper_orders AS pending_order
-              WHERE pending_order.user_id=event_arena_lightning_participants.installation_id
-                AND pending_order.account_id=event_arena_lightning_participants.account_id
-                AND pending_order.lightning_round_event_id=event_arena_lightning_participants.event_id
-                AND pending_order.status='pending'
+            OR (status='entered' AND (
+              event_end_at <= TO_TIMESTAMP($2 / 1000.0)
+              OR EXISTS (
+                SELECT 1 FROM paper_orders AS pending_order
+                WHERE pending_order.user_id=event_arena_lightning_participants.installation_id
+                  AND pending_order.account_id=event_arena_lightning_participants.account_id
+                  AND pending_order.lightning_round_event_id=event_arena_lightning_participants.event_id
+                  AND pending_order.status='pending'
+              )
             ))
           )
        ORDER BY installation_id FOR UPDATE`,
-      [event.event_id],
+      [event.event_id, now()],
     );
     const allResults: LightningExecutionOrderResult[] = [];
     for (const participant of participants) {
@@ -449,6 +683,15 @@ async function runEvent(
         options.makeId ?? randomUUID,
         now,
       ));
+    }
+    if (now() >= endAt) {
+      await finalizeEventStandings(
+        connection,
+        event,
+        startAt,
+        endAt,
+        options.fetchPrice,
+      );
     }
     await connection.query("COMMIT");
     return { results: allResults, participantCount: participants.length };
@@ -466,23 +709,26 @@ export async function processDueLightningRoundOrders(
 ): Promise<LightningExecutionCycleResult> {
   const now = options.now ?? Date.now;
   const { rows: events } = await db.query(
-    `SELECT event_id,event_start_at,event_end_at
+    `SELECT event_id,event_start_at,event_end_at,starting_balance,ranking_direction
      FROM event_arena_events
-     WHERE event_type='lightning-round'
+     WHERE event_type='lightning-round' AND finalized_at IS NULL
        AND event_start_at <= TO_TIMESTAMP($1 / 1000.0)
-       AND EXISTS (
-         SELECT 1 FROM event_arena_lightning_participants AS participants
-         WHERE participants.event_id=event_arena_events.event_id
-            AND (
-              participants.status='queued'
-              OR (participants.status='entered' AND EXISTS (
-                SELECT 1 FROM paper_orders AS pending_order
-                WHERE pending_order.user_id=participants.installation_id
-                  AND pending_order.account_id=participants.account_id
-                  AND pending_order.lightning_round_event_id=participants.event_id
-                  AND pending_order.status='pending'
-              ))
-            )
+       AND (
+         event_end_at <= TO_TIMESTAMP($1 / 1000.0)
+         OR EXISTS (
+           SELECT 1 FROM event_arena_lightning_participants AS participants
+           WHERE participants.event_id=event_arena_events.event_id
+             AND (
+               participants.status='queued'
+               OR (participants.status='entered' AND EXISTS (
+                 SELECT 1 FROM paper_orders AS pending_order
+                 WHERE pending_order.user_id=participants.installation_id
+                   AND pending_order.account_id=participants.account_id
+                   AND pending_order.lightning_round_event_id=participants.event_id
+                   AND pending_order.status='pending'
+               ))
+             )
+         )
        )
      ORDER BY event_start_at ASC`,
     [now()],

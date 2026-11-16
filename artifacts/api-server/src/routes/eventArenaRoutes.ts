@@ -949,7 +949,7 @@ export function createEventArenaRouter(
     }
     try {
       const { rows: participants } = await db.query(
-        `SELECT event_id,installation_id,account_id,alias,status,failure_reason
+        `SELECT event_id,installation_id,account_id,alias,status,failure_reason,final_result
          FROM event_arena_lightning_participants WHERE event_id=$1 AND installation_id=$2`,
         [req.params.eventId, installationId],
       );
@@ -998,6 +998,7 @@ export function createEventArenaRouter(
           alias: participant.alias,
           status: participant.status,
           failureReason: participant.failure_reason ?? null,
+          finalResult: participant.final_result ?? null,
         },
         account: accounts.rows[0] ? {
           id: accounts.rows[0].id,
@@ -1334,6 +1335,10 @@ export function createEventArenaRouter(
       }
       await purgeExpiredEventArenaEntries(db);
       const outcome = await withTransaction(db, async (client) => {
+        if (configuration.eventType === "lightning-round") {
+          await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [req.params.eventId]);
+          if (now() >= submission.eventEndAtMs) return { status: "ended" as const };
+        }
         await client.query(
           `SELECT installation_id
            FROM event_arena_leaderboard_entries
@@ -1393,6 +1398,14 @@ export function createEventArenaRouter(
           }
           return { status: "rate-limit" as const };
         }
+        if (configuration.eventType === "lightning-round") {
+          await client.query(
+            `UPDATE event_arena_lightning_participants
+             SET leaderboard_opted_in=TRUE
+             WHERE event_id=$1 AND installation_id=$2`,
+            [req.params.eventId, submission.installationId],
+          );
+        }
         const { rows: currentParticipants } = await client.query(
           `SELECT installation_id, participant_token, alias, start_equity, equity, trade_count, holdings, updated_at
            FROM event_arena_leaderboard_entries
@@ -1406,6 +1419,7 @@ export function createEventArenaRouter(
                     WHERE participant.event_id=event_arena_leaderboard_entries.event_id
                       AND participant.installation_id=event_arena_leaderboard_entries.installation_id
                       AND participant.status='entered'
+                      AND participant.leaderboard_opted_in=TRUE
                   )`
                : ""}`,
           [req.params.eventId, submission.eventStartAtMs, submission.eventEndAtMs],
@@ -1458,6 +1472,8 @@ export function createEventArenaRouter(
         res.status(409).json({ error: "Your leaderboard alias is locked for this event." });
       } else if (outcome.status === "rate-limit") {
         res.status(429).json({ error: "Please wait before updating your Event Arena score again." });
+      } else if (outcome.status === "ended") {
+        res.status(410).json({ error: "This Lightning Round has ended." });
       } else {
         res.json({ ok: true, updatedAt: outcome.updatedAt });
       }
@@ -1475,6 +1491,9 @@ export function createEventArenaRouter(
     try {
       await purgeExpiredEventArenaEntries(db);
       await withTransaction(db, async (client) => {
+        if (req.params.eventId.startsWith("lightning-")) {
+          await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [req.params.eventId]);
+        }
         const { rows } = await client.query(
           `SELECT participant_token FROM event_arena_leaderboard_entries
            WHERE event_id=$1 AND installation_id=$2 AND is_active=TRUE
@@ -1500,6 +1519,14 @@ export function createEventArenaRouter(
            WHERE event_id=$1 AND installation_id=$2 AND is_active=TRUE`,
           [req.params.eventId, req.query.installationId],
         );
+        if (req.params.eventId.startsWith("lightning-")) {
+          await client.query(
+            `UPDATE event_arena_lightning_participants
+             SET leaderboard_opted_in=FALSE
+             WHERE event_id=$1 AND installation_id=$2`,
+            [req.params.eventId, req.query.installationId],
+          );
+        }
       });
       res.json({ ok: true });
     } catch {

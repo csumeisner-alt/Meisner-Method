@@ -142,10 +142,12 @@ async function ensureEventArenaTables(pool: InstanceType<typeof Pool>) {
       purchase_limit DOUBLE PRECISION,
       event_start_at TIMESTAMPTZ NOT NULL,
       event_end_at TIMESTAMPTZ NOT NULL,
+      finalized_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
   await pool.query("ALTER TABLE event_arena_events ADD COLUMN IF NOT EXISTS purchase_limit DOUBLE PRECISION");
+  await pool.query("ALTER TABLE event_arena_events ADD COLUMN IF NOT EXISTS finalized_at TIMESTAMPTZ");
   await pool.query(`
     CREATE TABLE IF NOT EXISTS event_arena_leaderboard_entries (
       event_id TEXT NOT NULL,
@@ -195,12 +197,21 @@ async function ensureEventArenaTables(pool: InstanceType<typeof Pool>) {
       event_end_at TIMESTAMPTZ NOT NULL,
       captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       rank INTEGER NOT NULL,
-      return_percent DOUBLE PRECISION NOT NULL
+      return_percent DOUBLE PRECISION NOT NULL,
+      is_final BOOLEAN NOT NULL DEFAULT FALSE
     )
   `);
+  await pool.query(
+    "ALTER TABLE event_arena_leaderboard_snapshots ADD COLUMN IF NOT EXISTS is_final BOOLEAN NOT NULL DEFAULT FALSE",
+  );
   await pool.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS event_arena_participant_token_idx
     ON event_arena_leaderboard_entries (event_id, participant_token)
+  `);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS event_arena_final_snapshot_idx
+    ON event_arena_leaderboard_snapshots (event_id, participant_token)
+    WHERE is_final=TRUE
   `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS event_arena_cash_transfers (
@@ -1286,6 +1297,7 @@ test("Lightning Round accepts isolated $100,000 scores and snapshots highest ret
     if (sql.startsWith("DELETE") || ["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) {
       return { rows: [] };
     }
+    if (sql.includes("pg_advisory_xact_lock")) return { rows: [] };
     if (sql.startsWith("SELECT installation_id\n")) return { rows: [] };
     if (sql.includes("SELECT status,failure_reason,account_id FROM event_arena_lightning_participants")) {
       return { rows: [{ status: "entered", account_id: "paper-event:shared" }] };
@@ -1314,6 +1326,8 @@ test("Lightning Round accepts isolated $100,000 scores and snapshots highest ret
       assert.equal(values?.[6], 1);
       return { rows: [{ updated_at: new Date(submittedAt) }] };
     }
+    if (sql.startsWith("UPDATE event_arena_lightning_participants")
+      && sql.includes("leaderboard_opted_in=TRUE")) return { rows: [] };
     if (sql.includes("SELECT installation_id, participant_token, alias")) {
       assert.match(sql, /participant\.status='entered'/);
       assert.deepEqual(values, [lightningEvent.eventId, lightningEvent.startAtMs, lightningEvent.endAtMs]);
@@ -1461,6 +1475,51 @@ test("Lightning Round preparation cannot forge fills and preserves server-tagged
   ));
   const insertedOrders = statements.filter((item) => item.sql.startsWith("INSERT INTO paper_orders"));
   assert.deepEqual(insertedOrders.map((item) => item.values[0]), ["current-queue"]);
+});
+
+test("Lightning Round state returns the immutable server-finalized archive data", async () => {
+  const lightningEvent = expectedEventArenaConfiguration("lightning-2026-11-27");
+  assert.ok(lightningEvent);
+  const finalResult = {
+    eventId: lightningEvent.eventId,
+    equity: 100_020,
+    completedAtMs: lightningEvent.endAtMs,
+    finalRank: 2,
+    finalPrices: { AAPL: 110 },
+    finalPositions: [{
+      symbol: "AAPL",
+      companyName: "Apple",
+      shares: 2,
+      avgCost: 100,
+      marketPrice: 110,
+      marketValue: 220,
+      unrealizedPnL: 20,
+    }],
+  };
+  await withApi(async (sql) => {
+    if (sql.includes("SELECT event_id,installation_id,account_id,alias,status,failure_reason,final_result")) {
+      return {
+        rows: [{
+          event_id: lightningEvent.eventId,
+          installation_id: installationId,
+          account_id: "paper-event:shared",
+          alias: "MarketFox",
+          status: "entered",
+          failure_reason: null,
+          final_result: finalResult,
+        }],
+      };
+    }
+    return { rows: [] };
+  }, async (baseUrl) => {
+    const response = await fetch(
+      `${baseUrl}/event-arena/lightning-round/${lightningEvent.eventId}/state`,
+      { headers: { "x-event-arena-installation-id": installationId } },
+    );
+    assert.equal(response.status, 200);
+    const payload = await response.json() as any;
+    assert.deepEqual(payload.participant.finalResult, finalResult);
+  }, lightningEvent.startAtMs + 1);
 });
 
 test("Lightning Round unenrollment cancels only staged pending orders and preserves history", async () => {
@@ -1872,6 +1931,10 @@ test("locked aliases return conflict; fast duplicate submissions are rate limite
 
 test("opt-out clears public score data while retaining only the event-scoped alias lock", async () => {
   await withApi(async (sql, values) => {
+    if (sql.includes("pg_advisory_xact_lock")) {
+      assert.deepEqual(values, [eventId]);
+      return { rows: [] };
+    }
     if (
       sql.startsWith("DELETE FROM event_arena_leaderboard_snapshots")
       && sql.includes("WHERE event_id=$1 AND participant_token=$2")
@@ -1886,6 +1949,11 @@ test("opt-out clears public score data while retaining only the event-scoped ali
       assert.deepEqual(values, [eventId, installationId]);
       return { rows: [{ participant_token: "participant-token-marketfox" }] };
     }
+    if (sql.startsWith("UPDATE event_arena_lightning_participants")) {
+      assert.match(sql, /SET leaderboard_opted_in=FALSE/);
+      assert.deepEqual(values, [eventId, installationId]);
+      return { rows: [] };
+    }
     assert.match(sql, /^UPDATE event_arena_leaderboard_entries/);
     assert.match(sql, /SET is_active=FALSE/);
     assert.match(sql, /start_equity=0,[\s\S]*equity=0,[\s\S]*return_percent=0/);
@@ -1899,6 +1967,32 @@ test("opt-out clears public score data while retaining only the event-scoped ali
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { ok: true });
   });
+});
+
+test("Lightning Round opt-out is saved even before a leaderboard score exists", async () => {
+  const eventId = "lightning-2026-11-27";
+  let savedOptOut = false;
+  await withApi(async (sql, values) => {
+    if (sql.includes("pg_advisory_xact_lock")) return { rows: [] };
+    if (sql.startsWith("SELECT participant_token")) return { rows: [] };
+    if (sql.startsWith("UPDATE event_arena_leaderboard_entries")) return { rows: [] };
+    if (sql.startsWith("UPDATE event_arena_lightning_participants")) {
+      assert.match(sql, /SET leaderboard_opted_in=FALSE/);
+      assert.deepEqual(values, [eventId, installationId]);
+      savedOptOut = true;
+      return { rows: [] };
+    }
+    if (sql.startsWith("DELETE")) return { rows: [] };
+    if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return { rows: [] };
+    throw new Error(`Unexpected query during Lightning Round opt-out: ${sql}`);
+  }, async (baseUrl) => {
+    const response = await fetch(
+      `${baseUrl}/event-arena/${eventId}/leaderboard?installationId=${installationId}`,
+      { method: "DELETE" },
+    );
+    assert.equal(response.status, 200);
+  });
+  assert.equal(savedOptOut, true);
 });
 
 test("Event Arena reminder preferences can be enabled and disabled per installation", async () => {

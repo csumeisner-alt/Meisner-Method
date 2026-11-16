@@ -103,6 +103,21 @@ type QuoteResponse = {
   priceSource?: string;
   fetchedAtMs?: number;
 };
+type LightningRoundFinalResult = {
+  eventId: string;
+  equity: number;
+  completedAtMs: number;
+  finalRank?: number | null;
+  finalPositions: Array<{
+    symbol: string;
+    companyName: string;
+    shares: number;
+    avgCost: number;
+    marketPrice: number;
+    marketValue: number;
+    unrealizedPnL: number;
+  }>;
+};
 
 function countdownLabel(ms: number) {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -305,6 +320,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
   const [rank, setRank] = useState<number | null>(null);
   const [scoreSyncError, setScoreSyncError] = useState('');
   const [serverParticipantFailure, setServerParticipantFailure] = useState('');
+  const [serverFinalResult, setServerFinalResult] = useState<LightningRoundFinalResult | null>(null);
   const [tab, setTab] = useState<ScreenTab>('overview');
   const [archiveSaving, setArchiveSaving] = useState(false);
   const [archiveError, setArchiveError] = useState('');
@@ -319,6 +335,11 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
     [store.history],
   );
   const isEnrolled = enrollment?.eventId === window.id;
+  const participantEntered = accountData.orders.some((order) =>
+    order.accountId === enrollment?.accountId
+    && order.lightningRoundEventId === enrollment?.eventId
+    && order.status === 'filled',
+  );
   const scheduledConfiguration = useMemo(() => ({
     id: window.id,
     startAtMs: window.startAtMs,
@@ -384,7 +405,11 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
         try {
           const installationId = await getEventArenaParticipantId(AsyncStorage, getInstallationId);
           const remote = await apiFetch<{
-            participant?: { status?: string; failureReason?: string | null };
+            participant?: {
+              status?: string;
+              failureReason?: string | null;
+              finalResult?: LightningRoundFinalResult | null;
+            };
             account?: EventArenaAccountData['accounts'][number] | null;
             positions?: EventArenaAccountData['positions'];
             transactions?: EventArenaAccountData['transactions'];
@@ -427,6 +452,11 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
             remote.participant?.status === 'rejected'
               ? remote.participant.failureReason || 'No opening order filled, so you were not entered.'
               : '',
+          );
+          setServerFinalResult(
+            remote.participant?.finalResult?.eventId === enrollment.eventId
+              ? remote.participant.finalResult
+              : null,
           );
         } catch {
           // The local cache remains usable while the scheduled worker or API is unavailable.
@@ -537,6 +567,13 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
       setArchiveError('The completed Lightning Round account is missing, so its result cannot be archived.');
       return;
     }
+    const finalResult = serverFinalResult?.eventId === enrollment.eventId
+      ? serverFinalResult
+      : null;
+    if (participantEntered && !finalResult) {
+      setArchiveError('The server is still saving the final Lightning Round prices and ranking. This screen will retry automatically.');
+      return;
+    }
     const eventPortfolioForArchive = getLightningRoundEventPortfolio(
       accountData.transactions,
       enrollment.eventId,
@@ -553,7 +590,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
       positionType: 'long' as const,
       avgCost: position.avgCost,
     }));
-    const missingSymbols = getMissingPaperChallengeQuoteSymbols(positions, quotes);
+    const missingSymbols = finalResult ? [] : getMissingPaperChallengeQuoteSymbols(positions, quotes);
     if (missingSymbols.length > 0) {
       archiveAttemptedEventRef.current = enrollment.eventId;
       setArchiveError(`Could not freeze the result because quotes are unavailable for ${missingSymbols.join(', ')}.`);
@@ -565,7 +602,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
     setArchiveError('');
     void (async () => {
       try {
-        const endEquity = eventPortfolioForArchive.equity;
+        const endEquity = finalResult?.equity ?? eventPortfolioForArchive.equity;
         if (endEquity === null || !Number.isFinite(endEquity)) {
           throw new Error('The event-only Lightning Round account value is unavailable.');
         }
@@ -575,8 +612,8 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
           joinedAtMs: enrollment.eventStartAtMs,
           startEquity: startingEquity,
         };
-        let finalRank: number | undefined;
-        if (enrollment.leaderboardOptedIn) {
+        let finalRank: number | undefined = finalResult?.finalRank ?? undefined;
+        if (!finalResult && enrollment.leaderboardOptedIn) {
           const installationId = await getEventArenaParticipantId(AsyncStorage, getInstallationId);
           const response = await fetch(
             `${BASE_URL}/api/event-arena/${encodeURIComponent(enrollment.eventId)}/leaderboard`,
@@ -588,7 +625,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
             entry.isCurrentUser && Number.isInteger(entry.rank) && (entry.rank ?? 0) > 0,
           )?.rank;
         }
-        const completedAtMs = Date.now();
+        const completedAtMs = finalResult?.completedAtMs ?? Date.now();
         const summary = buildPaperChallengeSummary(
           completedEnrollment,
           endEquity,
@@ -609,24 +646,29 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
                 value: endEquity,
               },
             ],
-            finalPositions: positions.map((position) => {
-              const marketPrice = quotes[position.symbol]?.price;
-              if (!Number.isFinite(marketPrice) || (marketPrice ?? 0) <= 0) {
-                throw new Error(`A final price is unavailable for ${position.symbol}.`);
-              }
-              return {
-                symbol: position.symbol,
-                companyName: position.companyName,
-                shares: position.shares,
-                positionType: isShortPosition(position) ? 'short' : 'long',
-                avgCost: position.avgCost,
-                marketPrice: marketPrice!,
-                marketValue: position.shares * marketPrice!,
-                unrealizedPnL: position.shares * (isShortPosition(position)
-                  ? position.avgCost - marketPrice!
-                  : marketPrice! - position.avgCost),
-              };
-            }),
+            finalPositions: finalResult
+              ? finalResult.finalPositions.map((position) => ({
+                  ...position,
+                  positionType: 'long' as const,
+                }))
+              : positions.map((position) => {
+                  const marketPrice = quotes[position.symbol]?.price;
+                  if (!Number.isFinite(marketPrice) || (marketPrice ?? 0) <= 0) {
+                    throw new Error(`A final price is unavailable for ${position.symbol}.`);
+                  }
+                  return {
+                    symbol: position.symbol,
+                    companyName: position.companyName,
+                    shares: position.shares,
+                    positionType: isShortPosition(position) ? 'short' : 'long',
+                    avgCost: position.avgCost,
+                    marketPrice: marketPrice!,
+                    marketValue: position.shares * marketPrice!,
+                    unrealizedPnL: position.shares * (isShortPosition(position)
+                      ? position.avgCost - marketPrice!
+                      : marketPrice! - position.avgCost),
+                  };
+                }),
             ...(finalRank ? { finalRank } : {}),
           },
         );
@@ -653,6 +695,8 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
     quotes,
     archiveRetry,
     storeReady,
+    serverFinalResult,
+    participantEntered,
   ]);
 
   const performance = useMemo(() => enrollment
@@ -703,7 +747,6 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
     ? getLightningRoundQueuedOrders(accountData.orders, enrollment.eventId, enrollment.accountId)
       .sort((a, b) => Date.parse(b.placedAt) - Date.parse(a.placedAt))
     : [], [accountData.orders, enrollment?.accountId, enrollment?.eventId]);
-  const participantEntered = lightningOrders.some((order) => order.status === 'filled');
   const participantFailureReason = lightningOrders.find((order) => order.rejectionReason)?.rejectionReason
     || serverParticipantFailure;
   const openAccount = () => router.push({

@@ -19,6 +19,8 @@ type MemoryState = {
   positions: any[];
   lots: any[];
   transactions: any[];
+  leaderboardEntries: any[];
+  snapshots: any[];
 };
 
 function seedState(orders: any[] = []): MemoryState {
@@ -28,12 +30,18 @@ function seedState(orders: any[] = []): MemoryState {
       event_start_at: new Date(startAt),
       event_end_at: new Date(endAt),
       event_type: "lightning-round",
+      starting_balance: 100_000,
+      ranking_direction: "highest-return",
+      finalized_at: null,
     }],
     participants: [{
       event_id: eventId,
       installation_id: installationId,
       account_id: accountId,
+      alias: "MarketFox",
       status: "queued",
+      leaderboard_opted_in: true,
+      final_result: null,
       event_start_at: new Date(startAt),
       event_end_at: new Date(endAt),
     }],
@@ -97,6 +105,8 @@ function seedState(orders: any[] = []): MemoryState {
       date: new Date(startAt - 10_000),
       lightning_round_event_id: null,
     }],
+    leaderboardEntries: [],
+    snapshots: [],
   };
 }
 
@@ -137,17 +147,26 @@ class MemoryDatabase implements LightningExecutionDatabase {
       return {
         rows: state.events.filter((event) =>
           event.event_type === "lightning-round"
+          && event.finalized_at == null
           && event.event_start_at.getTime() <= now
-          && state.participants.some((participant) =>
-            participant.event_id === event.event_id
-            && (participant.status === "queued"
-              || (participant.status === "entered" && state.orders.some((order) =>
-                order.user_id === participant.installation_id
-                && order.account_id === participant.account_id
-                && order.lightning_round_event_id === event.event_id
-                && order.status === "pending",
-              ))),
-          ),
+          && (event.event_end_at.getTime() <= now
+            || state.participants.some((participant) =>
+              participant.event_id === event.event_id
+              && (participant.status === "queued"
+                || (participant.status === "entered" && state.orders.some((order) =>
+                  order.user_id === participant.installation_id
+                  && order.account_id === participant.account_id
+                  && order.lightning_round_event_id === event.event_id
+                  && order.status === "pending",
+                ))),
+            )),
+        ),
+      };
+    }
+    if (sql.includes("SELECT event_id,installation_id,account_id,alias,status,leaderboard_opted_in,final_result")) {
+      return {
+        rows: state.participants.filter((participant) =>
+          participant.event_id === values[0] && participant.status === "entered",
         ),
       };
     }
@@ -157,14 +176,123 @@ class MemoryDatabase implements LightningExecutionDatabase {
         rows: state.participants.filter((participant) =>
           participant.event_id === values[0]
           && (participant.status === "queued"
-            || (participant.status === "entered" && state.orders.some((order) =>
-              order.user_id === participant.installation_id
-              && order.account_id === participant.account_id
-              && order.lightning_round_event_id === participant.event_id
-              && order.status === "pending",
+            || (participant.status === "entered" && (
+              participant.event_end_at.getTime() <= Number(values[1])
+              || state.orders.some((order) =>
+                order.user_id === participant.installation_id
+                && order.account_id === participant.account_id
+                && order.lightning_round_event_id === participant.event_id
+                && order.status === "pending",
+              )
             ))),
         ),
       };
+    }
+    if (sql.includes("FROM paper_transactions")
+      && sql.includes("lightning_round_event_id=$3")) {
+      return {
+        rows: state.transactions.filter((transaction) =>
+          transaction.user_id === values[0]
+          && transaction.account_id === values[1]
+          && transaction.lightning_round_event_id === values[2]
+          && new Date(transaction.date).getTime() >= Number(values[3])
+          && new Date(transaction.date).getTime() <= Number(values[4]),
+        ),
+      };
+    }
+    if (sql.startsWith("UPDATE event_arena_lightning_participants")
+      && sql.includes("SET final_result=$3::jsonb,updated_at=NOW()")) {
+      const participant = state.participants.find((row) =>
+        row.event_id === values[0] && row.installation_id === values[1],
+      );
+      if (participant && participant.final_result == null) {
+        participant.final_result = JSON.parse(values[2]);
+        return { rows: [{ final_result: participant.final_result }] };
+      }
+      return { rows: [] };
+    }
+    if (sql.startsWith("INSERT INTO event_arena_leaderboard_entries")) {
+      let entry = state.leaderboardEntries.find((row) =>
+        row.event_id === values[0] && row.installation_id === values[1],
+      );
+      if (!entry) {
+        entry = {
+          event_id: values[0],
+          installation_id: values[1],
+          participant_token: `token-${values[1]}`,
+          alias: values[2],
+          start_equity: values[3],
+          equity: values[4],
+          return_percent: values[5],
+          trade_count: values[6],
+          holdings: JSON.parse(values[7]),
+          event_start_at: new Date(Number(values[8])),
+          event_end_at: new Date(Number(values[9])),
+          updated_at: new Date(Number(values[9])),
+          cash_balance: values[10],
+          is_active: true,
+        };
+        state.leaderboardEntries.push(entry);
+      } else {
+        Object.assign(entry, {
+          alias: values[2],
+          start_equity: values[3],
+          equity: values[4],
+          return_percent: values[5],
+          trade_count: values[6],
+          holdings: JSON.parse(values[7]),
+          updated_at: new Date(Number(values[9])),
+          cash_balance: values[10],
+        });
+      }
+      return { rows: [] };
+    }
+    if (sql.includes("SELECT installation_id,participant_token,rank,return_percent")) {
+      const rows = state.leaderboardEntries
+        .filter((entry) => entry.event_id === values[0] && entry.is_active)
+        .sort((a, b) =>
+          Number(b.return_percent) - Number(a.return_percent)
+          || String(a.alias).localeCompare(String(b.alias))
+          || String(a.installation_id).localeCompare(String(b.installation_id)),
+        );
+      return {
+        rows: rows.map((entry, index) => ({
+          installation_id: entry.installation_id,
+          participant_token: entry.participant_token,
+          rank: index + 1,
+          return_percent: entry.return_percent,
+        })),
+      };
+    }
+    if (sql.startsWith("INSERT INTO event_arena_leaderboard_snapshots")) {
+      const [event, tokens, ranks, start, end, returns] = values;
+      for (let index = 0; index < tokens.length; index += 1) {
+        if (state.snapshots.some((row) => row.event_id === event && row.participant_token === tokens[index])) continue;
+        state.snapshots.push({
+          event_id: event,
+          participant_token: tokens[index],
+          rank: ranks[index],
+          return_percent: returns[index],
+          event_start_at: new Date(Number(start)),
+          event_end_at: new Date(Number(end)),
+          captured_at: new Date(Number(end)),
+          is_final: true,
+        });
+      }
+      return { rows: [] };
+    }
+    if (sql.startsWith("UPDATE event_arena_lightning_participants")
+      && sql.includes("SET final_result=$3::jsonb")) {
+      const participant = state.participants.find((row) =>
+        row.event_id === values[0] && row.installation_id === values[1],
+      );
+      if (participant) participant.final_result = JSON.parse(values[2]);
+      return { rows: [] };
+    }
+    if (sql.startsWith("UPDATE event_arena_events SET finalized_at")) {
+      const event = state.events.find((row) => row.event_id === values[0]);
+      if (event && event.finalized_at == null) event.finalized_at = new Date(Number(values[1]));
+      return { rows: [] };
     }
     if (sql.includes("FROM paper_accounts")) {
       return {
@@ -286,6 +414,26 @@ function process(db: MemoryDatabase, fetchPrice: (symbol: string) => Promise<num
   return processDueLightningRoundOrders(db, { fetchPrice, now, makeId: fixedId });
 }
 
+function seedEnteredState(): MemoryState {
+  const state = seedState([{ status: "filled", filled_price: 100, filled_at: new Date(startAt + 1000) }]);
+  state.participants[0]!.status = "entered";
+  state.transactions.push({
+    id: "lightning-buy",
+    user_id: installationId,
+    account_id: accountId,
+    symbol: "AAPL",
+    company_name: "Apple",
+    action: "BUY",
+    shares: 2,
+    price: 100,
+    total: 200,
+    fee: 0,
+    date: new Date(startAt + 1000),
+    lightning_round_event_id: eventId,
+  });
+  return state;
+}
+
 test("Lightning Round worker cannot execute before the official start", async () => {
   const state = seedState([{}]);
   const db = new MemoryDatabase(state);
@@ -388,6 +536,8 @@ test("Lightning Round scoring is derived only from event-tagged transactions", a
   assert.ok(score);
   assert.equal(score.equity, 1_020);
   assert.equal(score.tradeCount, 1);
+  assert.deepEqual(score.finalPrices, { AAPL: 110 });
+  assert.equal(score.finalPositions[0]?.marketPrice, 110);
   assert.deepEqual(score.holdings.map((position) => position.symbol), ["AAPL"]);
   assert.equal(
     calculateLightningRoundScore(
@@ -397,6 +547,70 @@ test("Lightning Round scoring is derived only from event-tagged transactions", a
     ),
     null,
   );
+});
+
+test("event-end standings freeze tagged trades, final prices, and ranks once across retries", async () => {
+  const state = seedEnteredState();
+  const db = new MemoryDatabase(state);
+  let quoteCalls = 0;
+
+  const waiting = await process(
+    db,
+    async () => { quoteCalls += 1; return null; },
+    () => endAt + 1000,
+  );
+  assert.equal(waiting.events, 1);
+  assert.equal(state.participants[0]?.final_result, null);
+  assert.equal(state.events[0]?.finalized_at, null);
+  assert.equal(state.snapshots.length, 0);
+
+  const completed = await process(
+    db,
+    async (symbol) => {
+      quoteCalls += 1;
+      assert.equal(symbol, "AAPL");
+      return 110;
+    },
+    () => endAt + 2000,
+  );
+  assert.equal(completed.events, 1);
+  assert.equal(state.participants[0]?.final_result.equity, 100_020);
+  assert.deepEqual(state.participants[0]?.final_result.finalPrices, { AAPL: 110 });
+  assert.equal(state.participants[0]?.final_result.finalRank, 1);
+  assert.equal(state.leaderboardEntries.length, 1);
+  assert.equal(state.leaderboardEntries[0]?.equity, 100_020);
+  assert.equal(state.snapshots.length, 1);
+  assert.equal(state.snapshots[0]?.rank, 1);
+  assert.equal(state.snapshots[0]?.return_percent, 0.02);
+  assert.equal(state.snapshots[0]?.is_final, true);
+  assert.equal(state.events[0]?.finalized_at.getTime(), endAt);
+  assert.equal(quoteCalls, 2);
+
+  const savedResult = structuredClone(state.participants[0]?.final_result);
+  const retry = await process(
+    db,
+    async () => { quoteCalls += 1; return 999; },
+    () => endAt + 60_000,
+  );
+  assert.equal(retry.events, 0);
+  assert.deepEqual(state.participants[0]?.final_result, savedResult);
+  assert.equal(state.snapshots.length, 1);
+  assert.equal(state.leaderboardEntries[0]?.equity, 100_020);
+  assert.equal(quoteCalls, 2);
+});
+
+test("server finalizes an entered participant's personal result without publishing an opted-out score", async () => {
+  const state = seedEnteredState();
+  state.participants[0]!.leaderboard_opted_in = false;
+  const db = new MemoryDatabase(state);
+
+  await process(db, async () => 110, () => endAt + 1000);
+
+  assert.equal(state.events[0]?.finalized_at.getTime(), endAt);
+  assert.equal(state.participants[0]?.final_result.equity, 100_020);
+  assert.equal(state.participants[0]?.final_result.finalRank, null);
+  assert.equal(state.leaderboardEntries.length, 0);
+  assert.equal(state.snapshots.length, 0);
 });
 
 test("database interface remains compatible with a standalone worker connection", async () => {

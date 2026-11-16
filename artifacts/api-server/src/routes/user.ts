@@ -172,11 +172,15 @@ async function runSchemaMigrations(): Promise<void> {
       purchase_limit DOUBLE PRECISION,
       event_start_at TIMESTAMPTZ NOT NULL,
       event_end_at TIMESTAMPTZ NOT NULL,
+      finalized_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
   await pool.query(
     "ALTER TABLE event_arena_events ADD COLUMN IF NOT EXISTS purchase_limit DOUBLE PRECISION",
+  );
+  await pool.query(
+    "ALTER TABLE event_arena_events ADD COLUMN IF NOT EXISTS finalized_at TIMESTAMPTZ",
   );
   await pool.query(`
     CREATE TABLE IF NOT EXISTS event_arena_leaderboard_entries (
@@ -206,9 +210,13 @@ async function runSchemaMigrations(): Promise<void> {
       event_end_at TIMESTAMPTZ NOT NULL,
       captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       rank INTEGER NOT NULL,
-      return_percent DOUBLE PRECISION NOT NULL
+      return_percent DOUBLE PRECISION NOT NULL,
+      is_final BOOLEAN NOT NULL DEFAULT FALSE
     )
   `);
+  await pool.query(
+    "ALTER TABLE event_arena_leaderboard_snapshots ADD COLUMN IF NOT EXISTS is_final BOOLEAN NOT NULL DEFAULT FALSE",
+  );
   await pool.query(
     "ALTER TABLE event_arena_leaderboard_entries ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE",
   );
@@ -237,7 +245,9 @@ async function runSchemaMigrations(): Promise<void> {
       account_id TEXT NOT NULL,
       alias TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','entered','rejected')),
+      leaderboard_opted_in BOOLEAN NOT NULL DEFAULT TRUE,
       failure_reason TEXT,
+      final_result JSONB,
       event_start_at TIMESTAMPTZ NOT NULL,
       event_end_at TIMESTAMPTZ NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -245,6 +255,12 @@ async function runSchemaMigrations(): Promise<void> {
       PRIMARY KEY (event_id, installation_id)
     )
   `);
+  await pool.query(
+    "ALTER TABLE event_arena_lightning_participants ADD COLUMN IF NOT EXISTS final_result JSONB",
+  );
+  await pool.query(
+    "ALTER TABLE event_arena_lightning_participants ADD COLUMN IF NOT EXISTS leaderboard_opted_in BOOLEAN NOT NULL DEFAULT TRUE",
+  );
   await pool.query(`
     CREATE TABLE IF NOT EXISTS event_arena_reminder_preferences (
       installation_id TEXT PRIMARY KEY,
@@ -324,6 +340,11 @@ async function runSchemaMigrations(): Promise<void> {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS event_arena_leaderboard_snapshots_expiration_idx
     ON event_arena_leaderboard_snapshots (event_end_at)
+  `);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS event_arena_final_snapshot_idx
+    ON event_arena_leaderboard_snapshots (event_id, participant_token)
+    WHERE is_final=TRUE
   `);
   await pool.query(`
     CREATE INDEX IF NOT EXISTS event_arena_cash_transfers_recipient_idx

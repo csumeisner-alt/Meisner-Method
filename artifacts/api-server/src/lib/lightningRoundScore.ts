@@ -14,6 +14,16 @@ export type LightningRoundScore = {
   cashBalance: number;
   returnPercent: number;
   tradeCount: number;
+  finalPrices: Record<string, number>;
+  finalPositions: Array<{
+    symbol: string;
+    companyName: string;
+    shares: number;
+    avgCost: number;
+    marketPrice: number;
+    marketValue: number;
+    unrealizedPnL: number;
+  }>;
   holdings: Array<{
     symbol: string;
     companyName: string;
@@ -88,6 +98,23 @@ export function calculateLightningRoundScore(
     cashBalance,
     returnPercent: ((equity - startingBalance) / startingBalance) * 100,
     tradeCount: activity.length,
+    finalPrices: Object.fromEntries(held.map((position) => [
+      position.symbol,
+      prices[position.symbol],
+    ])),
+    finalPositions: held.map((position) => {
+      const marketPrice = prices[position.symbol];
+      const marketValue = position.shares * marketPrice;
+      return {
+        symbol: position.symbol,
+        companyName: position.companyName,
+        shares: position.shares,
+        avgCost: position.cost / position.shares,
+        marketPrice,
+        marketValue,
+        unrealizedPnL: marketValue - position.cost,
+      };
+    }),
     holdings: held.map((position) => ({
       symbol: position.symbol,
       companyName: position.companyName,
