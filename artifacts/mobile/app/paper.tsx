@@ -342,7 +342,7 @@ export default function PaperScreen() {
   const reduceMotion = useReduceMotion();
   const { apiFetch } = useApi();
   const router = useRouter();
-  const routeParams = useLocalSearchParams<{ challengeAccountId?: string }>();
+  const routeParams = useLocalSearchParams<{ challengeAccountId?: string; tab?: string }>();
   const { awardAchievement } = useAchievements();
   const insets = useSafeAreaInsets();
   const { width: screenWidth, fontScale } = useWindowDimensions();
@@ -2128,6 +2128,10 @@ export default function PaperScreen() {
     handledChallengeRouteRef.current = requestedId;
     if (activeIdRef.current !== requestedId) void switchAccount(requestedId);
   }, [accounts, loaded, routeParams.challengeAccountId]);
+
+  useEffect(() => {
+    if (loaded && routeParams.tab === 'positions') setActiveTab('positions');
+  }, [loaded, routeParams.tab]);
 
   const renameAccount = async (id: string, name: string) => {
     const updated = renamePaperAccount(accountsRef.current, id, name);

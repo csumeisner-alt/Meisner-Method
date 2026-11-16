@@ -1350,7 +1350,18 @@ function EventArenaScreenContent() {
     <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: Platform.OS === 'web' ? 12 : insets.top }}>
       <View style={{ paddingHorizontal: 16, paddingBottom: 4, borderBottomWidth: 1, borderBottomColor: colors.border }}>
         <View testID="event-arena-header-row" style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            onPress={() => router.replace({
+              pathname: '/paper',
+              params: {
+                tab: 'positions',
+                ...(enrollment ? { challengeAccountId: enrollment.accountId } : {}),
+              },
+            })}
+            style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
+          >
             <Feather name="arrow-left" size={19} color={colors.foreground} />
           </TouchableOpacity>
           <View style={{ flex: 1, minWidth: 0 }}>

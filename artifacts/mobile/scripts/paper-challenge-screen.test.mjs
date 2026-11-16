@@ -242,6 +242,28 @@ test("Event Arena header keeps its alias aligned and omits the invitation outsid
   }
 });
 
+test("Event Arena back always opens Paper Trading positions and selects its saved enrollment account", () => {
+  const headerStart = eventArena.indexOf('testID="event-arena-header-row"');
+  const headerEnd = eventArena.indexOf('testID="event-arena-section-tabs"', headerStart);
+  const header = eventArena.slice(headerStart, headerEnd);
+  const accountRouteStart = screen.indexOf("const handledChallengeRouteRef = useRef<string | null>(null);");
+  const accountRouteEnd = screen.indexOf("\n  const renameAccount", accountRouteStart);
+  const accountRoute = screen.slice(accountRouteStart, accountRouteEnd);
+
+  assert.ok(headerStart >= 0 && headerEnd > headerStart);
+  assert.match(header, /accessibilityLabel="Go back"[\s\S]*?router\.replace\(\{\s*pathname: '\/paper'/);
+  assert.match(header, /tab: 'positions'/);
+  assert.match(header, /\.\.\.\(enrollment \? \{ challengeAccountId: enrollment\.accountId \} : \{\}\)/);
+  assert.doesNotMatch(header, /router\.back\(\)/);
+
+  assert.match(screen, /useLocalSearchParams<\{ challengeAccountId\?: string; tab\?: string \}>\(\)/);
+  assert.match(screen, /if \(loaded && routeParams\.tab === 'positions'\) setActiveTab\('positions'\)/);
+  assert.match(accountRoute, /if \(!loaded \|\| !requestedId \|\| handledChallengeRouteRef\.current === requestedId\) return/);
+  assert.match(accountRoute, /if \(!accounts\.some\(\(item\) => item\.id === requestedId\)\) return/);
+  assert.match(accountRoute, /if \(activeIdRef\.current !== requestedId\) void switchAccount\(requestedId\)/);
+  assert.doesNotMatch(accountRoute, /ensurePaperChallengeAccount|resetPaperAccountData|saveAll/);
+});
+
 test("Lightning Round championship header preserves accessible actions and bundled individual emblems", () => {
   assert.match(lightningRound, /onBack=\{\(\) => router\.back\(\)\}/);
   assert.match(lightningRound, /onArchive=\{\(\) => changeTab\('past'\)\}/);
