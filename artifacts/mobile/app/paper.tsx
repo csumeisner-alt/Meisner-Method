@@ -1408,10 +1408,17 @@ export default function PaperScreen() {
       if (!eventAccount) throw new Error('The event account is unavailable.');
       const isLightningRound = enrollment.eventType === 'lightning-round';
       const eventTransactions = transactionsRef.current.filter((transaction) =>
-        transaction.lightningRoundEventId === enrollment.eventId,
+        transaction.accountId === enrollment.accountId
+          && transaction.lightningRoundEventId === enrollment.eventId,
       );
       const eventOnlyPositions = isLightningRound
-        ? getLightningRoundEventPortfolio(eventTransactions, enrollment.eventId, {}, LIGHTNING_ROUND_STARTING_BALANCE)
+        ? getLightningRoundEventPortfolio(
+          eventTransactions,
+          enrollment.eventId,
+          enrollment.accountId,
+          {},
+          LIGHTNING_ROUND_STARTING_BALANCE,
+        )
           .positions.map((position) => ({
             id: `${enrollment.eventId}:${position.symbol}`,
             accountId: enrollment.accountId,
@@ -1434,6 +1441,7 @@ export default function PaperScreen() {
         ? getLightningRoundEventPortfolio(
           eventTransactions,
           enrollment.eventId,
+          enrollment.accountId,
           Object.fromEntries(Object.entries(freshQuotes).map(([symbol, quote]) => [symbol, quote.price])),
           LIGHTNING_ROUND_STARTING_BALANCE,
         )

@@ -154,9 +154,21 @@ export function isLightningRoundQualified(
   ) || getLightningRoundQueuedOrders(orders, eventId, accountId).length > 0;
 }
 
+export function getLightningRoundEventTransactions(
+  transactions: PaperTransaction[],
+  eventId: string,
+  accountId: string,
+): PaperTransaction[] {
+  return transactions.filter((transaction) =>
+    transaction.accountId === accountId
+    && transaction.lightningRoundEventId === eventId,
+  );
+}
+
 export function getLightningRoundEventPortfolio(
   transactions: PaperTransaction[],
   eventId: string,
+  accountId: string,
   quotes: Record<string, number>,
   startingBalance = 100_000,
 ): {
@@ -170,11 +182,8 @@ export function getLightningRoundEventPortfolio(
     avgCost: number;
   }>;
 } {
-  const eventTrades = transactions
-    .filter((transaction) =>
-      transaction.lightningRoundEventId === eventId
-      && transaction.action !== 'DIVIDEND',
-    )
+  const eventTrades = getLightningRoundEventTransactions(transactions, eventId, accountId)
+    .filter((transaction) => transaction.action !== 'DIVIDEND')
     .sort((left, right) => Date.parse(left.date) - Date.parse(right.date));
   const holdings = new Map<string, {
     symbol: string;

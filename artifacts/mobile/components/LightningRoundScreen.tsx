@@ -33,6 +33,7 @@ import {
 } from '@/lib/eventArenaHome';
 import {
   getLightningRoundEventPortfolio,
+  getLightningRoundEventTransactions,
   getLightningRoundQueuedOrders,
   getReusableEventArenaAccountId,
   isLightningRoundPreparationOpen,
@@ -515,6 +516,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
     const eventPortfolioForArchive = getLightningRoundEventPortfolio(
       accountData.transactions,
       enrollment.eventId,
+      enrollment.accountId,
       Object.fromEntries(Object.entries(quotes).map(([symbol, quote]) => [symbol, quote.price])),
       LIGHTNING_ROUND_STARTING_BALANCE,
     );
@@ -635,10 +637,11 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
     ? getLightningRoundEventPortfolio(
       accountData.transactions,
       enrollment.eventId,
+      enrollment.accountId,
       Object.fromEntries(Object.entries(quotes).map(([symbol, quote]) => [symbol, quote.price])),
       LIGHTNING_ROUND_STARTING_BALANCE,
     )
-    : null, [accountData.transactions, enrollment?.eventId, quotes]);
+    : null, [accountData.transactions, enrollment?.accountId, enrollment?.eventId, quotes]);
   const eventPositions = eventPortfolio?.positions.map((position) => ({
     id: `${enrollment?.eventId}:${position.symbol}`,
     accountId: enrollment?.accountId ?? '',
@@ -655,9 +658,13 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
   const returnPercent = dollarProfitLoss == null
     ? null
     : dollarProfitLoss / LIGHTNING_ROUND_STARTING_BALANCE * 100;
-  const tradeHistory = useMemo(() => accountData.transactions
-    .filter((trade) => trade.lightningRoundEventId === enrollment?.eventId)
-    .sort((a, b) => Date.parse(b.date) - Date.parse(a.date)), [accountData.transactions, enrollment?.eventId]);
+  const tradeHistory = useMemo(() => enrollment
+    ? getLightningRoundEventTransactions(
+      accountData.transactions,
+      enrollment.eventId,
+      enrollment.accountId,
+    ).sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
+    : [], [accountData.transactions, enrollment?.accountId, enrollment?.eventId]);
   const lightningOrders = useMemo(() => accountData.orders
     .filter((order) =>
       order.accountId === enrollment?.accountId

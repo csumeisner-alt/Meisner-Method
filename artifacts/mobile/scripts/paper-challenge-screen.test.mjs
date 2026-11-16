@@ -107,7 +107,8 @@ test("Lightning Round uses an existing Event Arena account and preserves its arc
   assert.match(events, /getLightningRoundSeasonSummary\(store\.history, now\)/);
   assert.match(events, /testID="paper-event-lightning-season-summary"/);
   assert.match(events, /Open any event below to review its original result, artwork, and equity history/);
-  assert.match(lightningRound, /trade\.lightningRoundEventId === enrollment\?\.eventId/);
+  assert.match(lightningRound, /getLightningRoundEventTransactions\(/);
+  assert.match(lightningRound, /getLightningRoundEventTransactions\(\s*accountData\.transactions,\s*enrollment\.eventId,\s*enrollment\.accountId/);
   assert.match(lightningRound, /getLightningRoundEventPortfolio\(/);
   assert.match(lightningRound, /challengeAccountId: enrollment\?\.accountId/);
   assert.match(lightningRound, /formatProviderPriceSource/);

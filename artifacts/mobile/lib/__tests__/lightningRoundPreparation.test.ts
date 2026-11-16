@@ -5,6 +5,7 @@ import {
   canExecuteLightningRoundStagedOrder,
   cancelLightningRoundStagedOrders,
   getLightningRoundEventPortfolio,
+  getLightningRoundEventTransactions,
   getLightningRoundPreparationOpensAt,
   getLightningRoundQueuedOrders,
   getLightningRoundStartEquityFromSnapshots,
@@ -136,7 +137,7 @@ test('qualification tracks multiple valid queued orders and ignores rejected or 
   ], eventId, accountId), true);
 });
 
-test('Lightning Round portfolio uses only transactions tagged to this event', () => {
+test('Lightning Round history and portfolio require both the event and enrolled account', () => {
   const eventTrades = [
     {
       id: 'event-buy', accountId, lightningRoundEventId: eventId, symbol: 'AAPL',
@@ -148,9 +149,19 @@ test('Lightning Round portfolio uses only transactions tagged to this event', ()
       companyName: 'Microsoft', action: 'BUY' as const, shares: 50, price: 200, total: 10_000,
       date: new Date(eventStartAtMs + 1_000).toISOString(),
     },
+    {
+      id: 'other-account-same-event', accountId: 'paper-event:other',
+      lightningRoundEventId: eventId, symbol: 'TSLA',
+      companyName: 'Tesla', action: 'BUY' as const, shares: 100, price: 300, total: 30_000,
+      date: new Date(eventStartAtMs + 2_000).toISOString(),
+    },
   ];
   assert.deepEqual(
-    getLightningRoundEventPortfolio(eventTrades, eventId, { AAPL: 120 }),
+    getLightningRoundEventTransactions(eventTrades, eventId, accountId).map((trade) => trade.id),
+    ['event-buy'],
+  );
+  assert.deepEqual(
+    getLightningRoundEventPortfolio(eventTrades, eventId, accountId, { AAPL: 120 }),
     {
       cashBalance: 99_000,
       equity: 100_200,

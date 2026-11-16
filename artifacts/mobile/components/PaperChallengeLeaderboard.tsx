@@ -288,12 +288,14 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
   const transactions = Array.isArray(cache.transactions) ? cache.transactions : [];
   const isLightningRound = (enrollment.eventType ?? event.eventType) === 'lightning-round';
   const eventTransactions = transactions.filter((transaction) =>
-    transaction.lightningRoundEventId === event.id,
+    transaction.accountId === enrollment.accountId
+      && transaction.lightningRoundEventId === event.id,
   );
   const eventPositions = isLightningRound
     ? getLightningRoundEventPortfolio(
       eventTransactions,
       event.id,
+      enrollment.accountId,
       {},
       enrollment.startingBalance ?? event.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE,
     ).positions.map((position) => ({
@@ -337,6 +339,7 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
     ? getLightningRoundEventPortfolio(
       eventTransactions,
       event.id,
+      enrollment.accountId,
       Object.fromEntries(quotes),
       enrollment.startingBalance ?? event.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE,
     )
