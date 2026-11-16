@@ -97,6 +97,7 @@ import {
   isLightningRoundPreparationOpen,
   isLightningRoundStagedOrder,
   isLightningRoundQualified,
+  shouldOfferLightningRoundTradeEnrollment,
 } from '@/lib/lightningRoundPreparation';
 import {
   renamePaperAccount,
@@ -122,7 +123,9 @@ import {
   getMissingPaperChallengeQuoteSymbols,
   getPaperChallengeWindow,
   LIGHTNING_ROUND_STARTING_BALANCE,
+  findPreparedLightningRoundWindow,
   normalizePaperChallengeStore,
+  loadPaperChallengeStore,
   PAPER_CHALLENGE_STORAGE_KEY,
   PAPER_CHALLENGE_STARTING_BALANCE,
   persistPaperChallengeFinalization,
@@ -132,6 +135,7 @@ import {
   type PaperChallengeStore,
   type PaperChallengeSummary,
   type PaperChallengeEnrollment,
+  type PaperChallengeWindow,
   capturePaperChallengeBaseline,
   findLightningRoundWindow,
   getPaperChallengeEnrollmentForAccount,
@@ -361,6 +365,8 @@ export default function PaperScreen() {
   const [showAccountManagement, setShowAccountManagement] = useState(false);
   const [showTradeModal, setShowTradeModal] = useState(false);
   const [showOrderSheet, setShowOrderSheet] = useState(false);
+  const [lightningTradeOfferWindow, setLightningTradeOfferWindow] = useState<PaperChallengeWindow | null>(null);
+  const [lightningTradeOfferNow, setLightningTradeOfferNow] = useState(Date.now());
   const [tradeMode, setTradeMode] = useState<OrderIntent>('buy');
   const [selectedPos, setSelectedPos] = useState<PaperPosition | null>(null);
   const [editingOrder, setEditingOrder] = useState<PaperOrder | null>(null);
@@ -673,6 +679,14 @@ export default function PaperScreen() {
   const activeIdRef = useRef<string>('');
   const accountValueSnapshotsRef = useRef<PaperAccountValueSnapshot[]>([]);
   const orderSubmissionRef = useRef(false);
+  const tradeEntryCheckInFlightRef = useRef(false);
+  const pendingTradeEntryRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    if (!lightningTradeOfferWindow) return;
+    const timer = setInterval(() => setLightningTradeOfferNow(Date.now()), 1_000);
+    return () => clearInterval(timer);
+  }, [lightningTradeOfferWindow]);
 
   useFocusEffect(useCallback(() => {
     let cancelled = false;
@@ -2216,30 +2230,101 @@ export default function PaperScreen() {
     }
   };
 
+  const continuePendingTradeEntry = () => {
+    const continueTrade = pendingTradeEntryRef.current;
+    pendingTradeEntryRef.current = null;
+    setLightningTradeOfferWindow(null);
+    continueTrade?.();
+  };
+
+  const requestTradeEntry = (continueTrade: () => void) => {
+    const requestedAccountId = account?.id;
+    if (!requestedAccountId?.startsWith('paper-event:')) {
+      continueTrade();
+      return;
+    }
+    if (tradeEntryCheckInFlightRef.current || lightningTradeOfferWindow) return;
+
+    tradeEntryCheckInFlightRef.current = true;
+    void (async () => {
+      try {
+        const latestStore = await loadPaperChallengeStore({
+          getItem: (key) => AsyncStorage.getItem(key),
+        });
+        paperChallengeRef.current = latestStore;
+        setPaperChallenge(latestStore);
+
+        const response = await fetch(`${BASE_URL}/api/event-arena/lightning-round/prepare`, {
+          method: 'POST',
+        });
+        if (!response.ok) {
+          continueTrade();
+          return;
+        }
+        const payload = await response.json() as {
+          events?: unknown[];
+          available?: boolean;
+        };
+        if (payload.available === false || !Array.isArray(payload.events)) {
+          continueTrade();
+          return;
+        }
+
+        const nowMs = Date.now();
+        const event = findPreparedLightningRoundWindow(payload.events, nowMs);
+        const enrollment = event
+          ? getPaperChallengeEnrollments(latestStore).find((item) =>
+            item.eventType === 'lightning-round' && item.eventId === event.id,
+          ) ?? null
+          : null;
+        if (!event || !shouldOfferLightningRoundTradeEnrollment({
+          accountId: requestedAccountId,
+          event,
+          nowMs,
+          enrollment,
+        })) {
+          continueTrade();
+          return;
+        }
+
+        pendingTradeEntryRef.current = continueTrade;
+        setLightningTradeOfferNow(nowMs);
+        setLightningTradeOfferWindow(event);
+      } catch {
+        // Keep trade entry available if the schedule or local enrollment cannot be checked.
+        continueTrade();
+      } finally {
+        tradeEntryCheckInFlightRef.current = false;
+      }
+    })();
+  };
+
   const editOrder = (order: PaperOrder) => {
     if (order.status !== 'pending') return;
     if (isLightningRoundStagedOrder(order) && !isLightningPreparationOpen) return;
-    setEditingOrder(order);
-    setTradeMode(order.intent ?? order.side);
-    setBuySymbol(order.symbol);
-    if (order.intent === 'cover' || order.side === 'sell' && order.intent !== 'short') {
-      setSelectedPos(positionsRef.current.find(p =>
-        p.accountId === activeIdRef.current && p.symbol === order.symbol
-          && (order.intent === 'cover' ? isShortPosition(p) : !isShortPosition(p)),
-      ) ?? null);
-    } else {
-      const quote = quotes[order.symbol];
-      setStockInfo({
-        companyName: order.companyName,
-        currentPrice: quote?.price ?? order.limitPrice ?? order.stopPrice ?? 0,
-        dividendYield: order.dividendYield ?? 0,
-        dividendRate: order.dividendRate ?? 0,
-        expenseRatio: order.expenseRatio ?? 0,
-        sector: order.sector ?? '',
-        assetType: order.assetType ?? 'unknown',
-      });
-    }
-    setShowOrderSheet(true);
+    requestTradeEntry(() => {
+      setEditingOrder(order);
+      setTradeMode(order.intent ?? order.side);
+      setBuySymbol(order.symbol);
+      if (order.intent === 'cover' || order.side === 'sell' && order.intent !== 'short') {
+        setSelectedPos(positionsRef.current.find(p =>
+          p.accountId === activeIdRef.current && p.symbol === order.symbol
+            && (order.intent === 'cover' ? isShortPosition(p) : !isShortPosition(p)),
+        ) ?? null);
+      } else {
+        const quote = quotes[order.symbol];
+        setStockInfo({
+          companyName: order.companyName,
+          currentPrice: quote?.price ?? order.limitPrice ?? order.stopPrice ?? 0,
+          dividendYield: order.dividendYield ?? 0,
+          dividendRate: order.dividendRate ?? 0,
+          expenseRatio: order.expenseRatio ?? 0,
+          sector: order.sector ?? '',
+          assetType: order.assetType ?? 'unknown',
+        });
+      }
+      setShowOrderSheet(true);
+    });
   };
 
   const changeLightningOrderSymbol = (order: PaperOrder) => {
@@ -2261,14 +2346,16 @@ export default function PaperScreen() {
 
   // ── Open modals ───────────────────────────────────────────────────────────
   const openBuyModal = () => {
-    invalidateStockLookup();
-    setEditingOrder(null);
-    setTradeMode('buy');
-    setBuySymbol('');
-    setDebouncedBuyQuery('');
-    setStockInfo(null);
-    setInfoError('');
-    setShowTradeModal(true);
+    requestTradeEntry(() => {
+      invalidateStockLookup();
+      setEditingOrder(null);
+      setTradeMode('buy');
+      setBuySymbol('');
+      setDebouncedBuyQuery('');
+      setStockInfo(null);
+      setInfoError('');
+      setShowTradeModal(true);
+    });
   };
 
   const openSelectedStockOrder = (intent: OrderIntent) => {
@@ -2285,24 +2372,28 @@ export default function PaperScreen() {
   };
 
   const openSellModal = (pos: PaperPosition) => {
-    invalidateStockLookup();
-    setEditingOrder(null);
-    setTradeMode('sell');
-    setSelectedPos(pos);
-    // Clear any stale buy-lookup state so it cannot bleed into sell execution
-    setBuySymbol('');
-    setStockInfo(null);
-    setShowOrderSheet(true);
+    requestTradeEntry(() => {
+      invalidateStockLookup();
+      setEditingOrder(null);
+      setTradeMode('sell');
+      setSelectedPos(pos);
+      // Clear any stale buy-lookup state so it cannot bleed into sell execution
+      setBuySymbol('');
+      setStockInfo(null);
+      setShowOrderSheet(true);
+    });
   };
 
   const openCoverModal = (pos: PaperPosition) => {
-    invalidateStockLookup();
-    setEditingOrder(null);
-    setTradeMode('cover');
-    setSelectedPos(pos);
-    setBuySymbol('');
-    setStockInfo(null);
-    setShowOrderSheet(true);
+    requestTradeEntry(() => {
+      invalidateStockLookup();
+      setEditingOrder(null);
+      setTradeMode('cover');
+      setSelectedPos(pos);
+      setBuySymbol('');
+      setStockInfo(null);
+      setShowOrderSheet(true);
+    });
   };
 
   // ── Tab views ─────────────────────────────────────────────────────────────
@@ -3453,6 +3544,95 @@ export default function PaperScreen() {
       </View>
 
       <BottomTabBar />
+
+      <Modal
+        visible={lightningTradeOfferWindow !== null}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={continuePendingTradeEntry}
+      >
+        <View style={{ flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,0.72)' }}>
+          <Pressable
+            accessibilityLabel="Continue to trade without joining"
+            style={StyleSheet.absoluteFillObject}
+            onPress={continuePendingTradeEntry}
+          />
+          {lightningTradeOfferWindow && (
+            <View
+              testID="lightning-round-trade-offer"
+              style={{
+                padding: 20,
+                borderRadius: 18,
+                backgroundColor: colors.card,
+                borderWidth: 1,
+                borderColor: 'rgba(255,215,0,0.55)',
+              }}
+            >
+              <View style={{ alignItems: 'center', marginBottom: 8 }}>
+                <Feather name="zap" size={23} color={GOLD} />
+              </View>
+              <Text style={{ color: GOLD, fontFamily: 'Inter_700Bold', fontSize: 17, textAlign: 'center', letterSpacing: 0.5 }}>
+                LIGHTNING ROUND IS APPROACHING!
+              </Text>
+              <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 17, textAlign: 'center', marginTop: 14 }}>
+                24 hours. One champion.
+              </Text>
+              <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, textAlign: 'center', marginTop: 6 }}>
+                Use your existing Event Arena paper account. The highest percentage return wins.
+              </Text>
+
+              <View style={{ marginTop: 16, padding: 13, borderRadius: 12, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }}>
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 0.9 }}>
+                  EVENT STARTS IN
+                </Text>
+                <Text
+                  testID="lightning-round-trade-countdown"
+                  accessibilityLiveRegion="polite"
+                  style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 22, marginTop: 5 }}
+                >
+                  {lightningCountdownLabel(lightningTradeOfferWindow.startAtMs - lightningTradeOfferNow)}
+                </Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginTop: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 8 }}>STARTING CAPITAL</Text>
+                    <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 11, marginTop: 3 }}>$100,000</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 8 }}>DURATION</Text>
+                    <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 11, marginTop: 3 }}>24 hours</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 8 }}>WINNER</Text>
+                    <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 11, marginTop: 3 }}>Highest % return</Text>
+                  </View>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                testID="join-lightning-round-from-trade"
+                accessibilityRole="button"
+                onPress={() => {
+                  pendingTradeEntryRef.current = null;
+                  setLightningTradeOfferWindow(null);
+                  router.push({ pathname: '/lightning-round', params: { join: 'trade' } });
+                }}
+                style={{ minHeight: 48, marginTop: 15, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: colors.primary }}
+              >
+                <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>JOIN LIGHTNING ROUND</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="not-now-lightning-round-from-trade"
+                accessibilityRole="button"
+                onPress={continuePendingTradeEntry}
+                style={{ minHeight: 44, marginTop: 3, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_700Bold', fontSize: 11 }}>NOT NOW</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </Modal>
 
       <Modal
         visible={finalLightningCancelOrder !== null}

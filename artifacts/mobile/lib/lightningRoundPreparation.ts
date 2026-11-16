@@ -4,7 +4,11 @@ import type {
   PaperOrder,
   PaperTransaction,
 } from './paperMath.ts';
-import type { PaperChallengeEnrollment, PaperChallengeSummary } from './paperChallenge.ts';
+import type {
+  PaperChallengeEnrollment,
+  PaperChallengeSummary,
+  PaperChallengeWindow,
+} from './paperChallenge.ts';
 
 export const LIGHTNING_ROUND_PREPARATION_WINDOW_MS = 72 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
@@ -63,6 +67,20 @@ export function isLightningRoundPreparationOpen(eventStartAtMs: number, nowMs: n
     && Number.isFinite(nowMs)
     && nowMs >= getLightningRoundPreparationOpensAt(eventStartAtMs)
     && nowMs < eventStartAtMs;
+}
+
+/** Offer enrollment only from the existing Event Arena account during an eligible Lightning Round's preparation window. */
+export function shouldOfferLightningRoundTradeEnrollment(args: {
+  accountId: string;
+  event: PaperChallengeWindow;
+  nowMs: number;
+  enrollment?: PaperChallengeEnrollment | null;
+}): boolean {
+  return args.accountId.startsWith('paper-event:')
+    && args.event.eventType === 'lightning-round'
+    && args.event.phase === 'upcoming'
+    && args.enrollment?.eventId !== args.event.id
+    && isLightningRoundPreparationOpen(args.event.startAtMs, args.nowMs);
 }
 
 export function isLightningRoundStagedOrder(

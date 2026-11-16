@@ -10,14 +10,22 @@ import {
   getReusableEventArenaAccountId,
   isLightningRoundPreparationOpen,
   isLightningRoundQualified,
+  shouldOfferLightningRoundTradeEnrollment,
 } from '../lightningRoundPreparation.ts';
 import type { PaperOrder } from '../paperMath.ts';
-import type { PaperChallengeEnrollment } from '../paperChallenge.ts';
+import type { PaperChallengeEnrollment, PaperChallengeWindow } from '../paperChallenge.ts';
 
 const eventStartAtMs = Date.parse('2026-11-20T16:00:00.000Z');
 const eventEndAtMs = eventStartAtMs + 24 * 60 * 60 * 1000;
 const accountId = 'paper-event:2026-11-16';
-const eventId = 'lightning-round:2026-11-20';
+const eventId = 'lightning-2026-11-20';
+const lightningWindow: PaperChallengeWindow = {
+  id: eventId,
+  startAtMs: eventStartAtMs,
+  endAtMs: eventEndAtMs,
+  phase: 'upcoming',
+  eventType: 'lightning-round',
+};
 
 const enrollment: PaperChallengeEnrollment = {
   eventId,
@@ -54,6 +62,34 @@ test('preparation opens at exactly 72 hours and closes before the official start
   assert.equal(isLightningRoundPreparationOpen(eventStartAtMs, opensAt), true);
   assert.equal(isLightningRoundPreparationOpen(eventStartAtMs, eventStartAtMs - 1), true);
   assert.equal(isLightningRoundPreparationOpen(eventStartAtMs, eventStartAtMs), false);
+});
+
+test('trade-entry enrollment offer honors the official window, account, event, and enrollment', () => {
+  const opensAt = getLightningRoundPreparationOpensAt(eventStartAtMs);
+  const eligible = (nowMs: number, overrides: {
+    accountId?: string;
+    event?: PaperChallengeWindow;
+    enrollment?: PaperChallengeEnrollment | null;
+  } = {}) => shouldOfferLightningRoundTradeEnrollment({
+    accountId: overrides.accountId ?? accountId,
+    event: overrides.event ?? lightningWindow,
+    nowMs,
+    enrollment: overrides.enrollment,
+  });
+
+  assert.equal(eligible(opensAt - 1), false);
+  assert.equal(eligible(opensAt), true);
+  assert.equal(eligible(eventStartAtMs - 1), true);
+  assert.equal(eligible(eventStartAtMs), false);
+  assert.equal(eligible(opensAt, { enrollment }), false);
+  assert.equal(eligible(opensAt, { accountId: 'paper-strategy-1' }), false);
+  assert.equal(eligible(opensAt, { accountId: 'paper-lightning:lightning-2026-11-20' }), false);
+  assert.equal(eligible(opensAt, {
+    event: { ...lightningWindow, eventType: 'event-arena' },
+  }), false);
+  assert.equal(eligible(opensAt, {
+    event: { ...lightningWindow, phase: 'active' },
+  }), false);
 });
 
 test('qualification tracks multiple valid queued orders and ignores rejected or unrelated orders', () => {

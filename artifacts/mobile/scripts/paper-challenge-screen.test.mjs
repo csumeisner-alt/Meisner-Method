@@ -11,6 +11,7 @@ const orderReview = readFileSync(new URL("../components/OrderEntryReview.tsx", i
 const events = readFileSync(new URL("../components/PaperChallengeHistory.tsx", import.meta.url), "utf8");
 const bottomTabBar = readFileSync(new URL("../components/BottomTabBar.tsx", import.meta.url), "utf8");
 const challenge = readFileSync(new URL("../lib/paperChallenge.ts", import.meta.url), "utf8");
+const lightningPreparation = readFileSync(new URL("../lib/lightningRoundPreparation.ts", import.meta.url), "utf8");
 const badges = readFileSync(new URL("../components/PaperChallengeMilestoneBadges.tsx", import.meta.url), "utf8");
 const shareCard = readFileSync(new URL("../components/PaperEventShareCard.tsx", import.meta.url), "utf8");
 const leaderboard = readFileSync(new URL("../components/PaperChallengeLeaderboard.tsx", import.meta.url), "utf8");
@@ -165,6 +166,34 @@ test("Lightning Round requests a display name and joins the shared account", () 
   assert.match(nextEnrollment, /leaderboardOptedIn: true/);
   assert.doesNotMatch(nextEnrollment, /previousLightningAlias|store\.history/);
   assert.match(lightningRound, /router\.push\(\{ pathname: '\/paper', params: \{ challengeAccountId: accountId \} \}\)/);
+});
+
+test("trade-entry promotion resumes the request or reuses the existing Lightning Round join flow", () => {
+  assert.match(lightningPreparation, /shouldOfferLightningRoundTradeEnrollment/);
+  assert.match(lightningPreparation, /args\.accountId\.startsWith\('paper-event:'\)/);
+  assert.match(lightningPreparation, /args\.event\.eventType === 'lightning-round'/);
+  assert.match(lightningPreparation, /args\.enrollment\?\.eventId !== args\.event\.id/);
+  assert.match(screen, /findPreparedLightningRoundWindow\(payload\.events, nowMs\)/);
+  assert.match(screen, /shouldOfferLightningRoundTradeEnrollment\(\{[\s\S]*?accountId: requestedAccountId/);
+  assert.match(screen, /LIGHTNING ROUND IS APPROACHING!/);
+  assert.match(screen, /24 hours\. One champion\./);
+  assert.match(screen, /Use your existing Event Arena paper account\. The highest percentage return wins\./);
+  assert.match(screen, /EVENT STARTS IN/);
+  assert.match(screen, /STARTING CAPITAL[\s\S]*?\$100,000/);
+  assert.match(screen, /DURATION[\s\S]*?24 hours/);
+  assert.match(screen, /WINNER[\s\S]*?Highest % return/);
+  assert.match(screen, /const continuePendingTradeEntry = \(\) => \{[\s\S]*?continueTrade\?\.\(\)/);
+  assert.match(screen, /testID="not-now-lightning-round-from-trade"[\s\S]*?onPress=\{continuePendingTradeEntry\}/);
+  assert.match(screen, /router\.push\(\{ pathname: '\/lightning-round', params: \{ join: 'trade' \} \}\)/);
+  assert.match(screen, /const openBuyModal = \(\) => \{\s*requestTradeEntry\(/);
+  assert.match(screen, /const openSellModal = \(pos: PaperPosition\) => \{\s*requestTradeEntry\(/);
+  assert.match(screen, /const openCoverModal = \(pos: PaperPosition\) => \{\s*requestTradeEntry\(/);
+  assert.match(lightningRound, /routeParams\.join !== 'trade'/);
+  assert.match(lightningRound, /setJoinOpen\(true\)/);
+  assert.match(lightningRound, /leaderboardAlias: alias\.trim\(\)/);
+  assert.match(lightningRound, /router\.push\(\{ pathname: '\/paper', params: \{ challengeAccountId: accountId \} \}\)/);
+  assert.match(lightningRound, /joiningRef\.current/);
+  assert.match(lightningRound, /current\.lightningEnrollment\s*\?\s*current/);
 });
 
 test("Lightning Round preparation exposes qualification, order edits, and final-order confirmation", () => {

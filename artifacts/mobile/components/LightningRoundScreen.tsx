@@ -35,6 +35,7 @@ import {
   getLightningRoundEventPortfolio,
   getLightningRoundQueuedOrders,
   getReusableEventArenaAccountId,
+  isLightningRoundPreparationOpen,
 } from '@/lib/lightningRoundPreparation';
 import {
   buildPaperChallengeSummary,
@@ -260,7 +261,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
   const { apiFetch } = useApi();
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
-  const routeParams = useLocalSearchParams<{ tab?: string }>();
+  const routeParams = useLocalSearchParams<{ tab?: string; join?: string }>();
   const [store, setStore] = useState<PaperChallengeStore>({ enrollment: null, history: [] });
   const [storeReady, setStoreReady] = useState(false);
   const [storeError, setStoreError] = useState('');
@@ -278,6 +279,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
   const [alias, setAlias] = useState('');
   const [joinError, setJoinError] = useState('');
   const [joining, setJoining] = useState(false);
+  const joiningRef = useRef(false);
   const [rank, setRank] = useState<number | null>(null);
   const [scoreSyncError, setScoreSyncError] = useState('');
   const [serverParticipantFailure, setServerParticipantFailure] = useState('');
@@ -287,6 +289,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
   const [archiveRetry, setArchiveRetry] = useState(0);
   const archiveAttemptedEventRef = useRef<string | null>(null);
   const scoreSyncingRef = useRef(false);
+  const tradeJoinPromptOpenedRef = useRef(false);
 
   const enrollment = store.lightningEnrollment ?? null;
   const previousLightningAlias = useMemo(
@@ -310,6 +313,25 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
       setTab(routeParams.tab);
     }
   }, [routeParams.tab]);
+
+  useEffect(() => {
+    if (
+      routeParams.join !== 'trade'
+      || !storeReady
+      || tradeJoinPromptOpenedRef.current
+    ) return;
+    tradeJoinPromptOpenedRef.current = true;
+    if (store.lightningEnrollment?.eventId === window.id) {
+      router.replace({ pathname: '/paper', params: { challengeAccountId: store.lightningEnrollment.accountId } });
+      return;
+    }
+    if (
+      window.phase === 'upcoming'
+      && isLightningRoundPreparationOpen(window.startAtMs, now)
+    ) {
+      setJoinOpen(true);
+    }
+  }, [now, routeParams.join, store.lightningEnrollment?.accountId, store.lightningEnrollment?.eventId, storeReady, window.id, window.phase, window.startAtMs]);
 
   useEffect(() => {
     let cancelled = false;
@@ -656,10 +678,12 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
   });
 
   const joinRound = async () => {
+    if (joiningRef.current) return;
     if (!alias.trim()) {
       setJoinError('Choose an alias to appear on the leaderboard.');
       return;
     }
+    joiningRef.current = true;
     setJoining(true);
     setJoinError('');
     try {
@@ -678,6 +702,15 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
         || matching?.artworkId !== 'lightning-round-arena'
       ) throw new Error('This event’s saved schedule does not match.');
       const latest = await loadPaperChallengeStore({ getItem: (key) => AsyncStorage.getItem(key) });
+      if (latest.lightningEnrollment?.eventId === window.id) {
+        setStore(latest);
+        setJoinOpen(false);
+        router.replace({
+          pathname: '/paper',
+          params: { challengeAccountId: latest.lightningEnrollment.accountId },
+        });
+        return;
+      }
       if (latest.lightningEnrollment && latest.lightningEnrollment.eventId !== window.id) {
         throw new Error('Finish saving the prior Lightning Round result before joining another week.');
       }
@@ -726,7 +759,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
         activeId: accountId,
       }));
       const updated = await updatePaperChallengeStore((current) =>
-        current.lightningEnrollment && current.lightningEnrollment.eventId !== window.id
+        current.lightningEnrollment
           ? current
           : { ...current, lightningEnrollment: nextEnrollment }, {
         getItem: (key) => AsyncStorage.getItem(key),
@@ -742,6 +775,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
     } catch (error) {
       setJoinError(error instanceof Error ? error.message : 'Could not join Lightning Round.');
     } finally {
+      joiningRef.current = false;
       setJoining(false);
     }
   };
