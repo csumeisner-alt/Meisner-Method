@@ -742,6 +742,46 @@ export function getLightningRoundWindow(
   throw new Error('No eligible Lightning Round window was found.');
 }
 
+/** Select the current or next Lightning Round directly from prepared API records. */
+export function findPreparedLightningRoundWindow(
+  events: unknown[],
+  nowMs = Date.now(),
+): PaperChallengeWindow | null {
+  const configuration = getPaperChallengeConfiguration(LIGHTNING_ROUND_ARTWORK_ID);
+  const windows = events.map((event) => {
+    if (!event || typeof event !== 'object' || Array.isArray(event)) {
+      throw new Error('The prepared Lightning Round schedule was invalid.');
+    }
+    const candidate = event as Record<string, unknown>;
+    if (
+      !isLightningRoundEventId(candidate.eventId)
+      || candidate.eventType !== configuration.eventType
+      || candidate.artworkId !== configuration.artworkId
+      || candidate.startingBalance !== configuration.startingBalance
+      || candidate.rankingDirection !== configuration.rankingDirection
+      || typeof candidate.startAtMs !== 'number'
+      || !Number.isFinite(candidate.startAtMs)
+      || typeof candidate.endAtMs !== 'number'
+      || !Number.isFinite(candidate.endAtMs)
+      || candidate.endAtMs - candidate.startAtMs !== DAY_MS
+    ) {
+      throw new Error('The prepared Lightning Round schedule was invalid.');
+    }
+    return {
+      id: candidate.eventId,
+      startAtMs: candidate.startAtMs,
+      endAtMs: candidate.endAtMs,
+      ...configuration,
+      phase: 'upcoming' as const,
+    };
+  }).filter((event) => event.endAtMs > nowMs);
+
+  const active = windows.find((event) => event.startAtMs <= nowMs);
+  if (active) return { ...active, phase: 'active' };
+  windows.sort((a, b) => a.startAtMs - b.startAtMs);
+  return windows[0] ?? null;
+}
+
 export function getPaperChallengeEnrollments(store: PaperChallengeStore): PaperChallengeEnrollment[] {
   return [store.enrollment, store.lightningEnrollment ?? null]
     .filter((enrollment): enrollment is PaperChallengeEnrollment => !!enrollment);

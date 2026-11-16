@@ -82,7 +82,8 @@ test("Lightning Round uses an existing Event Arena account and preserves its arc
   assert.match(lightningRound, /event-arena\/lightning-round\/prepare[\s\S]*?method: 'POST'/);
   assert.match(lightningRound, /payload\.available === false/);
   assert.match(lightningRound, /payload\.message \|\| 'No eligible Lightning Round dates are currently available\.'/);
-  assert.match(lightningRound, /getLightningRoundWindow\(now\)/);
+  assert.match(lightningRound, /findPreparedLightningRoundWindow\(preparedEvents, now\)/);
+  assert.doesNotMatch(lightningRound, /getLightningRoundWindow\(now\)/);
   assert.match(lightningRound, /getReusableEventArenaAccountId\(/);
   assert.match(lightningRound, /activeId: accountId/);
   assert.doesNotMatch(lightningRound, /LIGHTNING_ACCOUNT_ID|paper-lightning:\$\{eventId\}/);

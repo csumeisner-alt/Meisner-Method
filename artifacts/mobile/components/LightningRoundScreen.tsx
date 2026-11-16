@@ -26,7 +26,6 @@ import {
 import { PaperEventShareCard } from '@/components/PaperEventShareCard';
 import { getInstallationId } from '@/lib/installation';
 import { formatProviderMarketSession, formatProviderPriceSource } from '@/lib/paperOrderEntry';
-import { getRegularEventCalendarError } from '@/lib/paperChallengeCalendar';
 import { EVENT_ARENA_ARTWORK_SOURCES } from '@/lib/eventArenaArtwork';
 import {
   getEventArenaPerformance,
@@ -39,11 +38,10 @@ import {
 } from '@/lib/lightningRoundPreparation';
 import {
   buildPaperChallengeSummary,
+  findPreparedLightningRoundWindow,
   getLightningRoundSeasonSummary,
   getLatestLightningRoundAlias,
   getMissingPaperChallengeQuoteSymbols,
-  findLightningRoundWindow,
-  getLightningRoundWindow,
   isPaperChallengeConfiguration,
   LIGHTNING_ROUND_STARTING_BALANCE,
   LIGHTNING_ROUND_TIME_ZONE,
@@ -52,6 +50,7 @@ import {
   updatePaperChallengeStore,
   type PaperChallengeEnrollment,
   type PaperChallengeStore,
+  type PaperChallengeWindow,
 } from '@/lib/paperChallenge';
 import {
   isShortPosition,
@@ -150,19 +149,88 @@ async function readPaperCache(): Promise<PaperCache> {
 }
 
 export function LightningRoundScreen() {
-  const calendarError = getRegularEventCalendarError();
-  if (calendarError) return <LightningRoundCalendarUnavailable message={calendarError} />;
-  if (!findLightningRoundWindow()) {
+  const colors = useColors();
+  const [now, setNow] = useState(Date.now());
+  const [preparedEvents, setPreparedEvents] = useState<unknown[] | null>(null);
+  const [scheduleError, setScheduleError] = useState('');
+  const [scheduleRetry, setScheduleRetry] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void prepareLightningEvents().then((events) => {
+      if (cancelled) return;
+      setPreparedEvents(events);
+      setScheduleError('');
+    }).catch((error: unknown) => {
+      if (cancelled) return;
+      setPreparedEvents(null);
+      setScheduleError(error instanceof Error ? error.message : 'Could not prepare the schedule.');
+    });
+    return () => { cancelled = true; };
+  }, [scheduleRetry]);
+
+  const scheduleSelection = useMemo(() => {
+    if (!preparedEvents) return null;
+    try {
+      return { window: findPreparedLightningRoundWindow(preparedEvents, now), error: '' };
+    } catch (error) {
+      return {
+        window: null,
+        error: error instanceof Error ? error.message : 'The prepared Lightning Round schedule was invalid.',
+      };
+    }
+  }, [now, preparedEvents]);
+
+  const retry = () => {
+    setPreparedEvents(null);
+    setScheduleError('');
+    setScheduleRetry((value) => value + 1);
+  };
+  if (scheduleError || scheduleSelection?.error) {
     return (
-      <LightningRoundCalendarUnavailable
-        message="No upcoming dates are available because every candidate Friday overlaps a regular Event Arena event. Check back later."
+      <LightningRoundScheduleUnavailable
+        message={scheduleError || scheduleSelection?.error || ''}
+        onRetry={retry}
       />
     );
   }
-  return <LightningRoundScreenContent />;
+  if (!preparedEvents) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'space-between', backgroundColor: colors.background }}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }}>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 10 }}>
+            Preparing the next eligible championship…
+          </Text>
+        </View>
+        <BottomTabBar />
+      </View>
+    );
+  }
+  const window = scheduleSelection?.window ?? null;
+  if (!window) {
+    return (
+      <LightningRoundScheduleUnavailable
+        message="No eligible Lightning Round dates are currently available. Check back later."
+        onRetry={retry}
+      />
+    );
+  }
+  return <LightningRoundScreenContent window={window} now={now} />;
 }
 
-function LightningRoundCalendarUnavailable({ message }: { message: string }) {
+function LightningRoundScheduleUnavailable({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}) {
   const colors = useColors();
   return (
     <View style={{ flex: 1, justifyContent: 'space-between', backgroundColor: colors.background }}>
@@ -173,24 +241,29 @@ function LightningRoundCalendarUnavailable({ message }: { message: string }) {
         <Text testID="lightning-round-calendar-error" style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 20, marginTop: 10 }}>
           {message}
         </Text>
+        <TouchableOpacity
+          testID="retry-lightning-round-schedule"
+          accessibilityRole="button"
+          onPress={onRetry}
+          style={{ minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start', marginTop: 12 }}
+        >
+          <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 12 }}>RETRY</Text>
+        </TouchableOpacity>
       </View>
       <BottomTabBar />
     </View>
   );
 }
 
-function LightningRoundScreenContent() {
+function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWindow; now: number }) {
   const colors = useColors();
   const { apiFetch } = useApi();
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
   const routeParams = useLocalSearchParams<{ tab?: string }>();
-  const [now, setNow] = useState(Date.now());
   const [store, setStore] = useState<PaperChallengeStore>({ enrollment: null, history: [] });
   const [storeReady, setStoreReady] = useState(false);
-  const [scheduleReady, setScheduleReady] = useState(false);
-  const [scheduleError, setScheduleError] = useState('');
-  const [scheduleRetry, setScheduleRetry] = useState(0);
+  const [storeError, setStoreError] = useState('');
   const [accountData, setAccountData] = useState<EventArenaAccountData>({
     accounts: [],
     positions: [],
@@ -215,7 +288,6 @@ function LightningRoundScreenContent() {
   const archiveAttemptedEventRef = useRef<string | null>(null);
   const scoreSyncingRef = useRef(false);
 
-  const window = useMemo(() => getLightningRoundWindow(now), [now]);
   const enrollment = store.lightningEnrollment ?? null;
   const previousLightningAlias = useMemo(
     () => getLatestLightningRoundAlias(store.history),
@@ -234,11 +306,6 @@ function LightningRoundScreenContent() {
   }), [window.endAtMs, window.id, window.phase, window.startAtMs]);
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
     if (routeParams.tab === 'leaderboard' || routeParams.tab === 'trades' || routeParams.tab === 'past' || routeParams.tab === 'overview') {
       setTab(routeParams.tab);
     }
@@ -246,34 +313,17 @@ function LightningRoundScreenContent() {
 
   useEffect(() => {
     let cancelled = false;
-    void Promise.all([
-      loadPaperChallengeStore({ getItem: (key) => AsyncStorage.getItem(key) }),
-      prepareLightningEvents(),
-    ]).then(([saved, events]) => {
+    void loadPaperChallengeStore({ getItem: (key) => AsyncStorage.getItem(key) }).then((saved) => {
       if (cancelled) return;
-      const matching = events.find((event) => {
-        if (!event || typeof event !== 'object') return false;
-        const candidate = event as Record<string, unknown>;
-        return candidate.eventId === window.id
-          && candidate.startAtMs === window.startAtMs
-          && candidate.endAtMs === window.endAtMs
-          && candidate.artworkId === 'lightning-round-arena'
-          && candidate.eventType === 'lightning-round'
-          && candidate.startingBalance === LIGHTNING_ROUND_STARTING_BALANCE;
-      });
-      if (!matching) throw new Error('The prepared Lightning Round does not match the schedule.');
       setStore(saved);
-      setScheduleError('');
-      setScheduleReady(true);
       setStoreReady(true);
     }).catch((error: unknown) => {
       if (cancelled) return;
-      setScheduleError(error instanceof Error ? error.message : 'Could not prepare the schedule.');
-      setScheduleReady(false);
+      setStoreError(error instanceof Error ? error.message : 'Could not load your Lightning Round history.');
       setStoreReady(true);
     });
     return () => { cancelled = true; };
-  }, [scheduleRetry, window.endAtMs, window.id, window.startAtMs]);
+  }, []);
 
   const refreshAccount = useCallback(async () => {
     setAccountLoading(true);
@@ -384,7 +434,6 @@ function LightningRoundScreenContent() {
     if (
       scoreSyncingRef.current
       || !storeReady
-      || !scheduleReady
       || tab === 'leaderboard'
       || window.phase !== 'active'
       || enrollment?.eventId !== window.id
@@ -412,12 +461,11 @@ function LightningRoundScreenContent() {
     } finally {
       scoreSyncingRef.current = false;
     }
-  }, [enrollment, scheduleReady, scheduledConfiguration, storeReady, tab, window.id, window.phase]);
+  }, [enrollment, scheduledConfiguration, storeReady, tab, window.id, window.phase]);
 
   useEffect(() => {
     if (
       !storeReady
-      || !scheduleReady
       || tab === 'leaderboard'
       || window.phase !== 'active'
       || enrollment?.eventId !== window.id
@@ -426,7 +474,7 @@ function LightningRoundScreenContent() {
     void syncEventScore();
     const timer = setInterval(() => { void syncEventScore(); }, 60_000);
     return () => clearInterval(timer);
-  }, [enrollment, scheduleReady, storeReady, syncEventScore, tab, window.id, window.phase]);
+  }, [enrollment, storeReady, syncEventScore, tab, window.id, window.phase]);
 
   useEffect(() => {
     if (
@@ -786,13 +834,10 @@ function LightningRoundScreenContent() {
           </View>
         )}
 
-        {storeReady && scheduleError ? (
+        {storeReady && storeError ? (
           <View style={{ margin: 16, padding: 16, borderRadius: 14, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.destructive }}>
             <Text accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 13 }}>Lightning Round unavailable</Text>
-            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, marginTop: 6 }}>{scheduleError}</Text>
-              <TouchableOpacity accessibilityRole="button" onPress={() => { setScheduleReady(false); setStoreReady(false); setScheduleRetry((value) => value + 1); }} style={{ minHeight: 42, justifyContent: 'center', alignSelf: 'flex-start' }}>
-              <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11 }}>RETRY</Text>
-            </TouchableOpacity>
+            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, marginTop: 6 }}>{storeError}</Text>
           </View>
         ) : null}
 
@@ -822,7 +867,7 @@ function LightningRoundScreenContent() {
           </View>
         )}
 
-        {storeReady && scheduleReady && tab === 'overview' && (
+        {storeReady && !storeError && tab === 'overview' && (
           <ScrollView
             testID="lightning-round-overview"
             contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: insets.bottom + 28 }}
@@ -1006,7 +1051,7 @@ function LightningRoundScreenContent() {
           </ScrollView>
         )}
 
-        {storeReady && scheduleReady && tab === 'leaderboard' && (
+        {storeReady && !storeError && tab === 'leaderboard' && (
           <View style={{ flex: 1 }}>
             <PaperChallengeLeaderboard
               event={scheduledConfiguration}
@@ -1022,7 +1067,7 @@ function LightningRoundScreenContent() {
           </View>
         )}
 
-        {storeReady && scheduleReady && tab === 'trades' && (
+        {storeReady && !storeError && tab === 'trades' && (
           <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: insets.bottom + 22 }}>
             <View style={{ padding: 15, borderRadius: 15, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
               <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 15 }}>Lightning Round trades</Text>
@@ -1081,7 +1126,7 @@ function LightningRoundScreenContent() {
           </ScrollView>
         )}
 
-        {storeReady && scheduleReady && tab === 'past' && (
+        {storeReady && !storeError && tab === 'past' && (
           <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: insets.bottom + 24 }}>
             <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 17, marginBottom: 10 }}>Past Lightning Rounds</Text>
             {lightningRoundSeason && (

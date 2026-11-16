@@ -17,6 +17,7 @@ globalThis.fetch = async () => ({
       artworkId: 'lightning-round-arena',
       eventType: 'lightning-round',
       startingBalance: LIGHTNING_ROUND_STARTING_BALANCE,
+      rankingDirection: 'highest-return',
     }],
   }),
 }) as Response;

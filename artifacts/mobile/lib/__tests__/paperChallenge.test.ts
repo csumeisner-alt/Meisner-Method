@@ -18,6 +18,7 @@ import {
   getPaperChallengeReminders,
   getPaperChallengeWindow,
   getLightningRoundWindow,
+  findPreparedLightningRoundWindow,
   getLatestLightningRoundAlias,
   hasRegularPaperChallengeOverlap,
   LIGHTNING_ROUND_STARTING_BALANCE,
@@ -493,6 +494,31 @@ test('Lightning Round runs Friday 7:30 a.m. Denver only when the full window is 
   assert.equal(isPaperChallengeAccountId('paper-lightning:lightning-2026-11-27'), true);
   assert.equal(isPaperChallengeAccountId('paper-event:2026-11-16'), true);
   assert.equal(isPaperChallengeAccountId('paper-strategy-1'), false);
+});
+
+test('prepared Lightning Round dates override a mismatching local calendar', () => {
+  const now = Date.parse('2026-11-20T14:00:00.000Z');
+  const localWindow = getLightningRoundWindow(now);
+  const serverWindow = {
+    eventId: 'lightning-2026-12-11',
+    eventType: 'lightning-round',
+    artworkId: 'lightning-round-arena',
+    startingBalance: LIGHTNING_ROUND_STARTING_BALANCE,
+    rankingDirection: 'highest-return',
+    startAtMs: Date.parse('2026-12-11T14:30:00.000Z'),
+    endAtMs: Date.parse('2026-12-12T14:30:00.000Z'),
+  };
+
+  assert.equal(localWindow.id, 'lightning-2026-11-27');
+  const prepared = findPreparedLightningRoundWindow([serverWindow], now);
+  assert.equal(prepared?.id, serverWindow.eventId);
+  assert.equal(prepared?.startAtMs, serverWindow.startAtMs);
+  assert.equal(prepared?.phase, 'upcoming');
+  assert.equal(
+    findPreparedLightningRoundWindow([serverWindow], serverWindow.startAtMs)?.phase,
+    'active',
+  );
+  assert.equal(findPreparedLightningRoundWindow([], now), null);
 });
 
 test('event reminders include eligible Lightning Rounds at their scheduled Denver start', () => {

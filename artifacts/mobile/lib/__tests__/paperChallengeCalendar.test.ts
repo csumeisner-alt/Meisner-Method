@@ -77,8 +77,9 @@ test('Event Arena screen exposes the shared calendar error accessibly', async ()
   assert.match(historySource, /getRegularEventCalendarError\(\)/);
   assert.match(historySource, /testID="paper-event-calendar-error"/);
   assert.match(historySource, /!calendarError && !hasCurrentEnrollment/);
-  assert.match(lightningSource, /getRegularEventCalendarError\(\)/);
+  assert.doesNotMatch(lightningSource, /getRegularEventCalendarError\(\)/);
   assert.match(lightningSource, /testID="lightning-round-calendar-error"/);
   assert.match(lightningSource, /testID="lightning-round-unavailable"/);
-  assert.match(lightningSource, /every candidate Friday overlaps a regular Event Arena event/);
+  assert.match(lightningSource, /findPreparedLightningRoundWindow/);
+  assert.match(lightningSource, /No eligible Lightning Round dates are currently available/);
 });
