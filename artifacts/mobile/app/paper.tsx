@@ -2875,31 +2875,49 @@ export default function PaperScreen() {
                 activeOpacity={0.7}
               >
                 <View style={[styles.posColorBar, { backgroundColor: color }]} />
-                <View style={{ flex: 1 }}>
-                  <View style={styles.posRow}>
-                    <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
-                      <Text style={styles.posSymbol}>{pos.symbol}{isShortPosition(pos) ? '  ·  SHORT' : ''}</Text>
+                <View style={styles.posContent}>
+                  <View style={styles.posTopRow}>
+                    <View style={styles.posIdentity}>
+                      <Text
+                        style={styles.posSymbol}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.8}
+                      >
+                        {pos.symbol}{isShortPosition(pos) ? '  ·  SHORT' : ''}
+                      </Text>
                       <Text style={styles.posName} numberOfLines={1}>{pos.companyName}</Text>
                     </View>
                     <View style={styles.positionValue}>
-                      <View style={styles.posValueLine}>
-                        <Text style={styles.posMktLabel}>{isShortPosition(pos) ? 'LIABILITY' : 'MARKET VALUE'}</Text>
-                        <Text style={styles.posMktVal}>{$fmt(mktVal)}</Text>
-                      </View>
-                      <Text style={[styles.posPnl, { color: pnlColor(pnl) }]} numberOfLines={1}>
-                        <Text style={styles.posPnlAmount}>{pnl >= 0 ? '+' : ''}{$fmt(pnl)}</Text>
-                        <Text style={styles.posPnlPercent}> ({pctFmt(pnlPct)})</Text>
+                      <Text style={styles.posMktLabel} numberOfLines={1}>
+                        {isShortPosition(pos) ? 'LIABILITY' : 'MARKET VALUE'}
+                      </Text>
+                      <Text
+                        style={styles.posMktVal}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.75}
+                      >
+                        {$fmt(mktVal)}
                       </Text>
                     </View>
                   </View>
                   <View style={styles.posMetaRow}>
-                    <Text style={styles.posMeta} numberOfLines={1}>
-                      {pos.shares} sh · {isShortPosition(pos) ? 'Entry' : 'Avg'} {$fmt(pos.avgCost)} ·{' '}
-                      {q ? (
-                        <Text style={{ color: pnlColor(q.change * (isShortPosition(pos) ? -1 : 1)) }}>
-                          ${price.toFixed(2)} ({q.pct >= 0 ? '+' : ''}{q.pct.toFixed(2)}%)
-                        </Text>
-                      ) : `${price.toFixed(2)}`}
+                    <Text
+                      style={styles.posMeta}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.8}
+                    >
+                      {pos.shares} sh · {isShortPosition(pos) ? 'Entry' : 'Avg.'} {$fmt(pos.avgCost)}
+                    </Text>
+                    <Text
+                      style={[styles.posPnl, { color: pnlColor(pnl) }]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.75}
+                    >
+                      {pnl >= 0 ? '+' : ''}{$fmt(pnl)} ({pctFmt(pnlPct)})
                     </Text>
                   </View>
                 </View>
@@ -3906,7 +3924,7 @@ export default function PaperScreen() {
       {/* Content */}
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 16, paddingTop: 10 }}
+        contentContainerStyle={{ paddingBottom: 24, paddingTop: 10 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={SILVER} />}
         showsVerticalScrollIndicator={false}
       >
@@ -5309,9 +5327,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
     borderRadius: 10,
-    paddingVertical: 4,
+    minHeight: 90,
+    paddingVertical: 8,
     paddingHorizontal: 9,
-    gap: 7,
+    gap: 6,
   },
   orderCard: {
     backgroundColor: CARD_BG,
@@ -5320,22 +5339,21 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 11,
   },
-  posColorBar: { width: 3, height: '100%', borderRadius: 2, minHeight: 28 },
+  posColorBar: { width: 3, height: '100%', borderRadius: 2, minHeight: 44 },
   posAccentBar: { width: 3, borderRadius: 2, minHeight: 30, marginRight: 2 },
-  posRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
+  posContent: { flex: 1, minWidth: 0, gap: 5, justifyContent: 'center' },
+  posTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minWidth: 0, gap: 8 },
+  posIdentity: { flex: 1, minWidth: 0, paddingRight: 4 },
   posSymbol: { fontFamily: 'Inter_700Bold', fontSize: 15, color: '#fff' },
   posLabel: { fontFamily: 'Inter_400Regular', fontSize: 10, color: 'rgba(192,192,192,0.38)', letterSpacing: 1 },
   posVal: { fontFamily: 'Inter_600SemiBold', fontSize: 12, color: '#fff', marginTop: 1 },
   posName: { fontFamily: 'Inter_400Regular', fontSize: 10, color: DIM, marginTop: 1 },
-  positionValue: { minWidth: 120, maxWidth: 160, alignItems: 'flex-end' },
-  posValueLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4 },
-  posMktLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 8, lineHeight: 18, color: DIM, letterSpacing: 0.25 },
-  posMktVal: { fontFamily: 'Inter_700Bold', fontSize: 16, lineHeight: 18, color: '#fff' },
-  posPnl: { fontFamily: 'Inter_600SemiBold', fontSize: 12, lineHeight: 14, marginTop: 1 },
-  posPnlAmount: { fontFamily: 'Inter_700Bold', fontSize: 12 },
-  posPnlPercent: { fontFamily: 'Inter_600SemiBold', fontSize: 11.5 },
-  posMetaRow: { flexDirection: 'row', alignItems: 'center', minWidth: 0, paddingTop: 2, borderTopWidth: 1, borderTopColor: 'rgba(192,192,192,0.12)' },
-  posMeta: { flex: 1, minWidth: 0, fontFamily: 'Inter_400Regular', fontSize: 9, color: DIM },
+  positionValue: { width: '48%', maxWidth: '56%', minWidth: 0, alignItems: 'flex-end' },
+  posMktLabel: { width: '100%', fontFamily: 'Inter_600SemiBold', fontSize: 8, lineHeight: 11, color: DIM, letterSpacing: 0.35, textAlign: 'right' },
+  posMktVal: { width: '100%', fontFamily: 'Inter_700Bold', fontSize: 16, lineHeight: 20, color: '#fff', textAlign: 'right' },
+  posMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, minWidth: 0, paddingTop: 5, borderTopWidth: 1, borderTopColor: 'rgba(192,192,192,0.12)' },
+  posMeta: { flex: 1, minWidth: 0, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 14, color: DIM },
+  posPnl: { width: '48%', minWidth: 0, fontFamily: 'Inter_600SemiBold', fontSize: 11.5, lineHeight: 15, textAlign: 'right' },
 
   // Transaction rows
   txRow: {

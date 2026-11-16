@@ -921,7 +921,7 @@ test("Paper Trading keeps all views in readable groups and reserves space for ac
   assert.match(screen, /tabs: \['overview', 'positions'\]/);
   assert.match(screen, /testID="paper-trading-buy-action"/);
   assert.doesNotMatch(screen, /position: 'absolute',\s*right: 20,\s*bottom: 108/);
-  assert.match(screen, /contentContainerStyle=\{\{ paddingBottom: 16, paddingTop: 10 \}\}/);
+  assert.match(screen, /contentContainerStyle=\{\{ paddingBottom: 24, paddingTop: 10 \}\}/);
   assert.match(screen, /testID="paper-trading-buy-action"[\s\S]*?openBuyModal/);
   assert.doesNotMatch(overview, /INVESTED VALUE|AVAILABLE CASH|OPEN POSITIONS|TOTAL RETURN/);
   assert.doesNotMatch(positions, /contentSectionHeader|contentSectionTitle|sectionCount/);
@@ -1067,7 +1067,7 @@ test("paper dashboard switches accounts from the summary or selector and keeps a
   assert.match(screen, /ACCOUNT PERFORMANCE/);
   assert.match(screen, /pos\.companyName/);
   assert.match(screen, /pos\.shares\} sh ·/);
-  assert.match(screen, /isShortPosition\(pos\) \? 'Entry' : 'Avg'/);
+  assert.match(screen, /isShortPosition\(pos\) \? 'Entry' : 'Avg\.'/);
   assert.match(screen, /isShortPosition\(pos\) \? 'LIABILITY' : 'MARKET VALUE'/);
   assert.match(screen, /MARKET VALUE/);
   assert.match(screen, /pctFmt\(pnlPct\)/);
@@ -1097,26 +1097,41 @@ test("Event Arena account uses saved event results and links to the existing lea
 });
 
 test("position and order cards are compact without removing their essential values or actions", () => {
-  assert.match(screen, /posCard:[\s\S]*?paddingVertical: 4[\s\S]*?paddingHorizontal: 9/);
-  assert.match(screen, /posMktVal: \{[^}]*fontSize: 16/);
-  assert.match(screen, /posPnlAmount: \{[^}]*fontSize: 12/);
-  assert.match(screen, /posPnlPercent: \{[^}]*fontSize: 11\.5/);
-  assert.match(screen, /<Text style=\{styles\.posPnlAmount\}>[\s\S]*?<Text style=\{styles\.posPnlPercent\}>/);
+  assert.match(screen, /posCard:[\s\S]*?minHeight: 90,[\s\S]*?paddingVertical: 8[\s\S]*?paddingHorizontal: 9/);
+  assert.match(screen, /<View style=\{styles\.posTopRow\}>[\s\S]*?styles\.posSymbol[\s\S]*?styles\.posName[\s\S]*?styles\.posMktLabel[\s\S]*?styles\.posMktVal/);
+  assert.match(screen, /<View style=\{styles\.posMetaRow\}>[\s\S]*?styles\.posMeta[\s\S]*?styles\.posPnl/);
+  assert.match(screen, /positionValue: \{ width: '48%', maxWidth: '56%', minWidth: 0/);
+  assert.match(screen, /<Text\s+style=\{styles\.posSymbol\}[\s\S]*?numberOfLines=\{1\}[\s\S]*?adjustsFontSizeToFit/);
+  assert.match(screen, /<Text style=\{styles\.posName\} numberOfLines=\{1\}>/);
+  assert.match(screen, /style=\{styles\.posMktVal\}[\s\S]*?numberOfLines=\{1\}[\s\S]*?adjustsFontSizeToFit[\s\S]*?minimumFontScale=\{0\.75\}/);
+  assert.match(screen, /style=\{\[styles\.posPnl,[\s\S]*?numberOfLines=\{1\}[\s\S]*?adjustsFontSizeToFit[\s\S]*?minimumFontScale=\{0\.75\}/);
   assert.match(screen, /orderCard:[\s\S]*?padding: 11/);
   assert.match(screen, /gap: 4, paddingHorizontal: 16/);
   assert.match(screen, /gap: 10, paddingHorizontal: 16/);
   assert.match(screen, /testID=\{`paper-position-\$\{pos\.id\}`\}/);
+  assert.match(screen, /myPositions\.map\(\(pos, i\)/);
+  assert.match(screen, /const pnl = pos\.shares \* \(isShortPosition\(pos\) \? pos\.avgCost - price : price - pos\.avgCost\)/);
+  assert.match(screen, /const pnlPct = pos\.avgCost > 0 \? \(pnl \/ \(pos\.shares \* pos\.avgCost\)\) \* 100 : 0/);
+  assert.match(screen, /const mktVal = pos\.shares \* price/);
+  assert.match(screen, /\$fmt\(mktVal\)/);
+  assert.match(screen, /pnlColor\(pnl\)/);
+  assert.match(screen, /pnl >= 0 \? '\+' : ''\}\{\$fmt\(pnl\)\} \(\{pctFmt\(pnlPct\)\}\)/);
   assert.match(screen, /pos\.shares\} sh ·/);
-  assert.match(screen, /isShortPosition\(pos\) \? 'Entry' : 'Avg'/);
+  assert.match(screen, /isShortPosition\(pos\) \? 'Entry' : 'Avg\.'/);
   assert.match(screen, /isShortPosition\(pos\) \? 'LIABILITY' : 'MARKET VALUE'/);
   assert.match(screen, /MARKET VALUE/);
   assert.match(screen, /pctFmt\(pnlPct\)/);
+  assert.match(screen, /const price = q\?\.price \?\? pos\.avgCost/);
+  const positionsScrollIndex = screen.indexOf("contentContainerStyle={{ paddingBottom: 24, paddingTop: 10 }}");
+  const tradeButtonIndex = screen.indexOf('testID="paper-trading-buy-action"', positionsScrollIndex);
+  const bottomTabsIndex = screen.indexOf("<BottomTabBar />", tradeButtonIndex);
+  assert.ok(positionsScrollIndex >= 0 && positionsScrollIndex < tradeButtonIndex && tradeButtonIndex < bottomTabsIndex);
   assert.match(screen, /testID=\{`paper-order-\$\{o\.id\}`\}/);
   assert.match(screen, /o\.status\.toUpperCase\(\)/);
   assert.match(screen, /testID=\{`edit-order-\$\{o\.id\}`\}/);
   assert.match(screen, /testID=\{`delete-order-\$\{o\.id\}`\}/);
   assert.match(screen, /o\.status === 'pending'/);
-  assert.match(screen, /style=\{\{ flex: 1, minWidth: 0, paddingRight: 8 \}\}/);
+  assert.match(screen, /posIdentity: \{ flex: 1, minWidth: 0, paddingRight: 4 \}/);
   assert.match(screen, /flexWrap: 'wrap', gap: 10, marginBottom: 4/);
 });
 
