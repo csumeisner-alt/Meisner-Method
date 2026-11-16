@@ -626,7 +626,7 @@ test("database interface remains compatible with a standalone worker connection"
 });
 
 test(
-  "PostgreSQL serializes independent workers and rolls back interrupted Lightning Round fills",
+  "PostgreSQL serializes Lightning Round workers and preserves tied final ranks",
   { skip: !databaseUrl && "TEST_DATABASE_URL or DATABASE_URL is not configured" },
   async (t) => {
     assert.ok(databaseUrl);
@@ -1026,7 +1026,7 @@ test(
       const standingsIds = {
         event: `lr-final-${randomUUID()}`,
         participants: [
-          { installationId: `final-user-a-${randomUUID()}`, symbol: "AAPL", price: 120, optedIn: true },
+          { installationId: `final-user-a-${randomUUID()}`, symbol: "AAPL", price: 110, optedIn: true },
           { installationId: `final-user-b-${randomUUID()}`, symbol: "MSFT", price: 110, optedIn: true },
           { installationId: `final-user-c-${randomUUID()}`, symbol: "GOOGL", price: 130, optedIn: false },
         ],
@@ -1047,7 +1047,7 @@ test(
             standingsIds.event,
             participant.installationId,
             participantAccountId,
-            `FinalPlayer${index}`,
+            participant.optedIn ? "TiedPlayer" : `FinalPlayer${index}`,
             participant.optedIn,
             new Date(startAt),
             new Date(endAt),
@@ -1181,6 +1181,11 @@ test(
         [standingsIds.event],
       );
       assert.equal(savedStandings.rows.length, standingsIds.participants.length);
+      const expectedTiedOrder = standingsIds.participants
+        .filter((participant) => participant.optedIn)
+        .map((participant) => participant.installationId)
+        .sort();
+      const tiedRanks: number[] = [];
       for (const row of savedStandings.rows) {
         const participant = standingsIds.participants.find((item) => item.installationId === row.installation_id);
         assert.ok(participant);
@@ -1189,14 +1194,17 @@ test(
         if (participant.optedIn) {
           assert.ok(row.participant_token);
           assert.ok(row.is_final);
-          assert.equal(Number(row.final_result.finalRank), participant.symbol === "AAPL" ? 1 : 2);
+          const expectedRank = expectedTiedOrder.indexOf(participant.installationId) + 1;
+          tiedRanks.push(Number(row.final_result.finalRank));
+          assert.equal(Number(row.final_result.finalRank), expectedRank);
           assert.equal(Number(row.rank), Number(row.final_result.finalRank));
-          assert.equal(Number(row.return_percent), participant.symbol === "AAPL" ? 0.04 : 0.02);
+          assert.equal(Number(row.return_percent), 0.02);
         } else {
           assert.equal(row.participant_token, null, "opted-out participants must not be published");
           assert.equal(row.final_result.finalRank, null);
         }
       }
+      assert.deepEqual(tiedRanks.sort(), [1, 2], "equal returns must receive stable, distinct ranks");
       assert.equal(
         Number((await firstPool.query(
           `SELECT COUNT(*)::int AS count FROM event_arena_leaderboard_snapshots
