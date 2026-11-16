@@ -89,6 +89,10 @@ import {
 import { removePendingPaperOrder } from '@/lib/paperOrderDeletion';
 import { createPaperOrderFillHapticNotifier } from '@/lib/paperOrderFillHaptics';
 import {
+  createPaperOrderFillAlertNotifier,
+  type PaperOrderFillAlert,
+} from '@/lib/paperOrderFillAlerts';
+import {
   getMarketOrderQuoteError,
   getOrderQuoteState,
   getPennyQuoteStatus,
@@ -359,6 +363,21 @@ export default function PaperScreen() {
       () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light),
     );
   }
+  const [paperOrderFillAlerts, setPaperOrderFillAlerts] = useState<PaperOrderFillAlert[]>([]);
+  const paperOrderFillAlertNotifierRef = useRef<ReturnType<typeof createPaperOrderFillAlertNotifier> | null>(null);
+  if (!paperOrderFillAlertNotifierRef.current) {
+    paperOrderFillAlertNotifierRef.current = createPaperOrderFillAlertNotifier((alert) => {
+      setPaperOrderFillAlerts((current) => [...current, alert]);
+    });
+  }
+  const visiblePaperOrderFillAlert = paperOrderFillAlerts[0] ?? null;
+  useEffect(() => {
+    if (!visiblePaperOrderFillAlert) return;
+    const timeout = setTimeout(() => {
+      setPaperOrderFillAlerts((current) => current.filter((alert) => alert.orderId !== visiblePaperOrderFillAlert.orderId));
+    }, 4_000);
+    return () => clearTimeout(timeout);
+  }, [visiblePaperOrderFillAlert?.orderId]);
   const [accountValueSnapshots, setAccountValueSnapshots] = useState<PaperAccountValueSnapshot[]>([]);
   const [snapshotStorageError, setSnapshotStorageError] = useState('');
 
@@ -1595,6 +1614,15 @@ export default function PaperScreen() {
           status: 'filled',
         });
       }
+      paperOrderFillAlertNotifierRef.current?.({
+        orderId: order.id,
+        symbol: order.symbol,
+        shares: order.shares,
+        previousStatus: order.status,
+        status: 'filled',
+        isEventAccount: isPaperChallengeAccountId(order.accountId),
+        isLightningRoundOrder: isLightningRoundStagedOrder(order) || Boolean(order.lightningRoundEventId),
+      });
       ordersChanged = true;
     }
 
@@ -3448,6 +3476,18 @@ export default function PaperScreen() {
         <Text numberOfLines={1} style={styles.headerSub}>Risk-free · $100k start</Text>
       </View>
 
+      {visiblePaperOrderFillAlert && (
+        <View
+          testID="paper-order-fill-alert"
+          accessibilityRole="alert"
+          accessibilityLiveRegion="polite"
+          style={styles.paperOrderFillAlert}
+        >
+          <Feather name="check-circle" size={16} color={BUY_COLOR} />
+          <Text style={styles.paperOrderFillAlertText}>{visiblePaperOrderFillAlert.message}</Text>
+        </View>
+      )}
+
       <PaperAccountSwipeArea
         style={[styles.accountHero, isSelectedEventAccount && styles.eventChampionshipHero]}
         testID="paper-account-hero"
@@ -4958,6 +4998,26 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: DIM,
     letterSpacing: 0.25,
+  },
+  paperOrderFillAlert: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    marginHorizontal: 16,
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(0,229,160,0.38)',
+    backgroundColor: 'rgba(0,229,160,0.1)',
+  },
+  paperOrderFillAlertText: {
+    flex: 1,
+    color: SILVER,
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 12,
+    lineHeight: 17,
   },
 
   // Account bar
