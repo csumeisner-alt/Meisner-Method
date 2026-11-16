@@ -475,18 +475,6 @@ export function EventArenaOverview({
                   Equity is unavailable until every held position has a valid current quote.
                 </Text>
               )}
-              {!isUpcoming && (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Open event trades"
-                  testID="event-arena-open-trades-secondary"
-                  onPress={onOpenTrades}
-                  style={({ pressed }) => [styles.tradeLink, { borderTopColor: border, opacity: pressed ? 0.65 : 1 }]}
-                >
-                  <Text style={[styles.tradeLinkText, { color: accent }]}>Open event trading</Text>
-                  <Feather name="arrow-right" size={15} color={accent} />
-                </Pressable>
-              )}
             </View>
 
             <View style={styles.sectionHeading}>
@@ -643,8 +631,6 @@ const styles = StyleSheet.create({
   metric: { width: '50%', minWidth: 0, minHeight: 58, paddingVertical: 8, paddingRight: 8, borderTopWidth: StyleSheet.hairlineWidth },
   metricLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.55 },
   metricValue: { fontFamily: 'Inter_600SemiBold', fontSize: 14, marginTop: 4, flexShrink: 1 },
-  tradeLink: { height: 48, marginTop: 2, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  tradeLinkText: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   chartCard: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 15, overflow: 'hidden', backgroundColor: 'rgba(184,149,90,0.035)' },
   chartLegend: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 7, paddingHorizontal: 5, marginBottom: 8 },
   legendLine: { width: 14, height: 2 },

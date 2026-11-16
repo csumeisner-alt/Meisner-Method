@@ -1530,7 +1530,7 @@ test("Penny Stock leaderboard exposes fixture-stable artwork and rule banner tar
   assert.match(leaderboard, /testID="paper-event-leaderboard-podium"/);
 });
 
-test("Event Arena account card stays compact and retains its account details and trading action", () => {
+test("Event Arena account card stays compact without a duplicate trading action", () => {
   const accountCardStart = eventArenaOverview.indexOf("style={[styles.accountCard");
   const accountCardEnd = eventArenaOverview.indexOf("\n            </View>\n\n            <View style={styles.sectionHeading}>", accountCardStart);
   assert.ok(accountCardStart >= 0 && accountCardEnd > accountCardStart);
@@ -1556,5 +1556,6 @@ test("Event Arena account card stays compact and retains its account details and
   assert.match(accountCard, /ACCOUNT EQUITY/);
   assert.match(accountCard, /signedPercent\(performance\?\.returnPercent\)/);
   assert.match(eventArenaOverview, /<Text style=\{\[styles\.isolationText,[\s\S]*?\}>ISOLATED<\/Text>/);
-  assert.match(accountCard, /testID="event-arena-open-trades-secondary"[\s\S]*?Open event trading/);
+  assert.doesNotMatch(accountCard, /event-arena-open-trades-secondary|Open event trading|styles\.tradeLink/);
+  assert.match(eventArenaOverview, /testID="event-arena-open-trades"[\s\S]*?Trade event account/);
 });
