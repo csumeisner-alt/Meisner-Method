@@ -1328,7 +1328,10 @@ function EventArenaScreenContent() {
           setJoinAliasOpen(true);
         }}
         onWithdraw={confirmWithdraw}
-        onRefresh={() => { void readStore(); }}
+        onRefresh={() => {
+          void readStore();
+          void refreshAccountData();
+        }}
         onOpenTrades={() => router.push('/paper')}
       />
       {storeState === 'error' && (

@@ -324,6 +324,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
   const [tab, setTab] = useState<ScreenTab>('overview');
   const [archiveSaving, setArchiveSaving] = useState(false);
   const [archiveError, setArchiveError] = useState('');
+  const [archiveWaitingMessage, setArchiveWaitingMessage] = useState('');
   const [archiveRetry, setArchiveRetry] = useState(0);
   const archiveAttemptedEventRef = useRef<string | null>(null);
   const scoreSyncingRef = useRef(false);
@@ -564,6 +565,7 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
     const eventAccount = accountData.accounts.find((item) => item.id === enrollment.accountId);
     if (!eventAccount) {
       archiveAttemptedEventRef.current = enrollment.eventId;
+      setArchiveWaitingMessage('');
       setArchiveError('The completed Lightning Round account is missing, so its result cannot be archived.');
       return;
     }
@@ -571,7 +573,8 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
       ? serverFinalResult
       : null;
     if (participantEntered && !finalResult) {
-      setArchiveError('The server is still saving the final Lightning Round prices and ranking. This screen will retry automatically.');
+      setArchiveWaitingMessage('The server is waiting for closing prices before it can publish final standings. This screen will check again automatically.');
+      setArchiveError('');
       return;
     }
     const eventPortfolioForArchive = getLightningRoundEventPortfolio(
@@ -592,13 +595,14 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
     }));
     const missingSymbols = finalResult ? [] : getMissingPaperChallengeQuoteSymbols(positions, quotes);
     if (missingSymbols.length > 0) {
-      archiveAttemptedEventRef.current = enrollment.eventId;
-      setArchiveError(`Could not freeze the result because quotes are unavailable for ${missingSymbols.join(', ')}.`);
+      setArchiveWaitingMessage(`Final prices are still unavailable for ${missingSymbols.join(', ')}. Your event remains open while the quotes are retried.`);
+      setArchiveError('');
       return;
     }
 
     archiveAttemptedEventRef.current = enrollment.eventId;
     setArchiveSaving(true);
+    setArchiveWaitingMessage('');
     setArchiveError('');
     void (async () => {
       try {
@@ -676,11 +680,13 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
           getItem: (key) => AsyncStorage.getItem(key),
           setItem: (key, value) => AsyncStorage.setItem(key, value),
         });
+        setArchiveWaitingMessage('');
         setStore(finalized);
         if (!await syncPairedEventArenaState()) {
           setStoreError('The completed Lightning Round is saved locally, but could not sync to the paired device.');
         }
       } catch (error) {
+        setArchiveWaitingMessage('');
         setArchiveError(error instanceof Error ? error.message : 'Could not save the completed Lightning Round result.');
       } finally {
         setArchiveSaving(false);
@@ -933,26 +939,38 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
           </View>
         ) : null}
 
-        {storeReady && enrollment && now >= enrollment.eventEndAtMs && (archiveSaving || archiveError) && (
+        {storeReady && enrollment && now >= enrollment.eventEndAtMs && (archiveSaving || archiveWaitingMessage || archiveError) && (
           <View testID="lightning-round-archive-status" style={{ marginHorizontal: 14, marginTop: 9, padding: 12, borderRadius: 13, backgroundColor: colors.card, borderWidth: 1, borderColor: archiveError ? colors.destructive : colors.border }}>
             <Text accessibilityLiveRegion="polite" style={{ color: archiveError ? colors.destructive : colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11 }}>
-              {archiveSaving ? 'Saving your final Lightning Round result…' : 'Lightning Round result needs attention'}
+              {archiveSaving
+                ? 'Saving your final Lightning Round result…'
+                : archiveWaitingMessage
+                  ? 'Final standings are waiting for prices'
+                  : 'Lightning Round result needs attention'}
             </Text>
-            {archiveError ? (
+            {(archiveError || archiveWaitingMessage) ? (
               <>
-                <Text accessibilityRole="alert" style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 5 }}>{archiveError}</Text>
+                <Text
+                  accessibilityRole={archiveError ? 'alert' : undefined}
+                  style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 5 }}
+                >
+                  {archiveError || archiveWaitingMessage}
+                </Text>
                 <TouchableOpacity
                   testID="retry-lightning-round-archive"
                   accessibilityRole="button"
                   onPress={() => {
                     archiveAttemptedEventRef.current = null;
                     setArchiveError('');
+                    setArchiveWaitingMessage('');
                     setArchiveRetry((value) => value + 1);
                     void refreshAccount();
                   }}
                   style={{ minHeight: 38, alignSelf: 'flex-start', justifyContent: 'center' }}
                 >
-                  <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10 }}>RETRY RESULT SAVE</Text>
+                  <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10 }}>
+                    {archiveWaitingMessage ? 'RETRY FINAL PRICES' : 'RETRY RESULT SAVE'}
+                  </Text>
                 </TouchableOpacity>
               </>
             ) : <ActivityIndicator style={{ marginTop: 7, alignSelf: 'flex-start' }} color={colors.primary} />}

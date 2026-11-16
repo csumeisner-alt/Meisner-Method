@@ -126,6 +126,9 @@ test("Lightning Round uses an existing Event Arena account and preserves its arc
   assert.doesNotMatch(lightningRound, /ensurePaperChallengeAccount/);
   assert.match(lightningRound, /persistPaperChallengeFinalization/);
   assert.match(lightningRound, /lightning-round-archive-status/);
+  assert.match(lightningRound, /Final standings are waiting for prices/);
+  assert.match(lightningRound, /waiting for closing prices before it can publish final standings/);
+  assert.match(lightningRound, /RETRY FINAL PRICES/);
   assert.match(lightningRound, /submitPaperChallengeScoreNow/);
   assert.match(lightningRound, /tab === 'leaderboard' && \(/);
   assert.match(leaderboard, /updatePaperChallengeEnrollment\(/);
@@ -145,6 +148,19 @@ test("Lightning Round uses an existing Event Arena account and preserves its arc
   const standardArtworkList = challenge.match(/export const PAPER_CHALLENGE_ARTWORK_IDS = \[([\s\S]*?)\] as const/)?.[1] ?? '';
   assert.match(standardArtworkList, /'green-stock-exchange'/);
   assert.doesNotMatch(standardArtworkList, /lightning-round-arena/);
+});
+
+test("unavailable final quotes remain retryable and Event Arena refresh reloads prices", () => {
+  const missingQuotesStart = lightningRound.indexOf("if (missingSymbols.length > 0)");
+  const missingQuotesEnd = lightningRound.indexOf("\n    }", missingQuotesStart);
+  assert.ok(missingQuotesStart >= 0 && missingQuotesEnd > missingQuotesStart);
+  assert.match(lightningRound.slice(missingQuotesStart, missingQuotesEnd), /setArchiveWaitingMessage\(/);
+  assert.match(lightningRound.slice(missingQuotesStart, missingQuotesEnd), /setArchiveError\(''\)/);
+  assert.doesNotMatch(lightningRound.slice(missingQuotesStart, missingQuotesEnd), /archiveAttemptedEventRef\.current = enrollment\.eventId/);
+
+  const refreshCallback = eventArena.slice(eventArena.indexOf("onRefresh={() => {"), eventArena.indexOf("\n        onOpenTrades", eventArena.indexOf("onRefresh={() => {")));
+  assert.match(refreshCallback, /readStore\(\)/);
+  assert.match(refreshCallback, /refreshAccountData\(\)/);
 });
 
 test("Lightning Round promotion reuses the account card and opens its existing screen", () => {
