@@ -1283,6 +1283,28 @@ test("Event Arena competition keeps its visual summary and reminders inside the 
   assert.match(eventArenaOverview, /countdown\.days[\s\S]*?label: 'DAYS'[\s\S]*?label: 'HOURS'[\s\S]*?label: 'MINUTES'[\s\S]*?label: 'SECONDS'/);
 });
 
+test("Event Arena phase indicator pulses only while active and respects reduced motion", () => {
+  assert.match(eventArenaOverview, /import \{ useReduceMotion \} from '@\/hooks\/useReduceMotion'/);
+  assert.match(eventArenaOverview, /const reduceMotion = useReduceMotion\(\)/);
+  assert.match(eventArenaOverview, /const shouldAnimateStatus = livePhase === 'active' && !reduceMotion/);
+  assert.match(eventArenaOverview, /if \(!shouldAnimateStatus\) return/);
+  assert.match(eventArenaOverview, /Animated\.loop\([\s\S]*?duration: 1_600[\s\S]*?duration: 1_600/);
+  assert.match(eventArenaOverview, /useNativeDriver: Platform\.OS !== 'web'/);
+
+  const phaseIndicatorStart = eventArenaOverview.indexOf('testID="event-arena-phase-dot"');
+  const phaseIndicatorEnd = eventArenaOverview.indexOf('testID="event-arena-phase-label"', phaseIndicatorStart);
+  assert.ok(phaseIndicatorStart >= 0 && phaseIndicatorEnd > phaseIndicatorStart);
+  const phaseDot = eventArenaOverview.slice(phaseIndicatorStart, phaseIndicatorEnd);
+  const phaseLabelEnd = eventArenaOverview.indexOf('</Animated.Text>', phaseIndicatorEnd);
+  assert.ok(phaseLabelEnd > phaseIndicatorEnd);
+  const phaseLabel = eventArenaOverview.slice(phaseIndicatorEnd, phaseLabelEnd);
+  assert.match(phaseDot, /shouldAnimateStatus && \{/);
+  assert.match(phaseLabel, /shouldAnimateStatus && \{/);
+  assert.match(phaseDot, /livePhase === 'active' \? '#4da987' : accent/);
+  assert.match(phaseDot, /statusPulse\.interpolate/);
+  assert.match(phaseLabel, /statusPulse\.interpolate/);
+});
+
 test("incoming event cash is celebrated on app open and acknowledged per transfer", () => {
   assert.match(mobileRootLayout, /<EventCashReceivedCelebration \/>/);
   assert.match(eventCashCelebration, /loadPaperChallengeStore/);

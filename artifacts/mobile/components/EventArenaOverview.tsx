@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Image,
   ImageBackground,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,6 +17,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '@/hooks/useColors';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { PortfolioLineChart } from '@/components/PaperCharts';
 import type { PaperChallengeEnrollment, PaperChallengeWindow } from '@/lib/paperChallenge';
 import type {
@@ -103,9 +107,36 @@ export function EventArenaOverview({
   onNotificationsChange,
 }: EventArenaOverviewProps) {
   const colors = useColors();
+  const reduceMotion = useReduceMotion();
+  const statusPulse = useRef(new Animated.Value(0)).current;
   const { width: windowWidth } = useWindowDimensions();
   const contentWidth = Math.max(0, Math.min(windowWidth - 32, 560));
   const livePhase = nowMs < event.startAtMs ? 'upcoming' : nowMs <= event.endAtMs ? 'active' : 'ended';
+  const shouldAnimateStatus = livePhase === 'active' && !reduceMotion;
+  useEffect(() => {
+    statusPulse.stopAnimation();
+    statusPulse.setValue(0);
+    if (!shouldAnimateStatus) return;
+
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(statusPulse, {
+          toValue: 1,
+          duration: 1_600,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: Platform.OS !== 'web',
+        }),
+        Animated.timing(statusPulse, {
+          toValue: 0,
+          duration: 1_600,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: Platform.OS !== 'web',
+        }),
+      ]),
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, [shouldAnimateStatus, statusPulse]);
   const joined = participation === 'joined' && enrollment?.eventId === event.id;
   const mountainTransferLockActive = cashTransfersLocked ?? isMountainChampionshipTransferLocked(
     event.eventType,
@@ -249,8 +280,29 @@ export function EventArenaOverview({
 
         <View style={[styles.heroCard, { backgroundColor: surface, borderColor: border }]}>
           <View style={styles.heroTop}>
-            <View style={[styles.liveDot, { backgroundColor: livePhase === 'active' ? '#4da987' : accent }]} />
-            <Text style={[styles.phaseLabel, { color: muted }]}>{livePhase.toUpperCase()} EVENT</Text>
+            <Animated.View
+              testID="event-arena-phase-dot"
+              style={[
+                styles.liveDot,
+                { backgroundColor: livePhase === 'active' ? '#4da987' : accent },
+                shouldAnimateStatus && {
+                  opacity: statusPulse.interpolate({ inputRange: [0, 1], outputRange: [0.78, 1] }),
+                  transform: [{ scale: statusPulse.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) }],
+                },
+              ]}
+            />
+            <Animated.Text
+              testID="event-arena-phase-label"
+              style={[
+                styles.phaseLabel,
+                { color: muted },
+                shouldAnimateStatus && {
+                  opacity: statusPulse.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }),
+                },
+              ]}
+            >
+              {livePhase.toUpperCase()} EVENT
+            </Animated.Text>
             <Text style={[styles.eventId, { color: muted }]}>ID {event.id}</Text>
           </View>
           {isPennyStockMayhem && (
