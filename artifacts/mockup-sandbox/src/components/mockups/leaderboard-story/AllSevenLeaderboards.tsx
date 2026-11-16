@@ -129,8 +129,23 @@ function PhoneScreen({ event, index }: { event: EventConfig; index: number }) {
             <div className="mm-actions"><span><Glyph name="refresh" size={16} /></span><span><Glyph name="info" size={16} /></span></div>
             <div className="mm-event-title">
               {event.pennyMayhem && <img className="mm-penny-mark" src="/__mockup/images/leaderboard-events/mm-mark-foreground.png" alt="Meisner Method gold M mark" />}
-              <p className="mm-event-name">{event.name}</p>
-              {event.objective && <p className="mm-event-objective">{event.objective}</p>}
+              {event.pennyMayhem ? (
+                <div className="mm-penny-lockup" aria-label="Penny Stock Mayhem. Stocks and ETFs under $20.">
+                  <div className="mm-penny-title">
+                    <span>PENNY STOCK</span>
+                    <strong>MAYHEM</strong>
+                  </div>
+                  <div className="mm-penny-banner">
+                    <span>STOCKS &amp; ETFs UNDER</span>
+                    <strong>$20</strong>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <p className="mm-event-name">{event.name}</p>
+                  {event.objective && <p className="mm-event-objective">{event.objective}</p>}
+                </>
+              )}
               <p className="mm-capital">{event.capital} STARTING CAPITAL</p>
               {!event.pennyMayhem && <h1>{event.subtitle}</h1>}
               {event.rankRule && <p className="mm-rank-rule">{event.rankRule}</p>}
@@ -221,9 +236,14 @@ export function AllSevenLeaderboards({ onlyPenny = false }: { onlyPenny?: boolea
         .mm-screen-scroll { flex:1; min-height:0; overflow:auto; scrollbar-width:none; background:#111419; }.mm-screen-scroll::-webkit-scrollbar{display:none;}
         .mm-event-hero { position:relative; overflow:hidden; min-height:0; margin:0 0 14px; padding:12px 17px 15px; background-size:cover; background-position:center; border:1px solid color-mix(in srgb,var(--event-accent) 43%,transparent); border-radius:0 0 26px 26px; box-shadow:inset 0 -28px 50px #04070c88; }
          .mm-penny-hero { background-position:center 34%; border-color:#9ab76b91; box-shadow:inset 0 -34px 62px #030907c9, inset 0 0 48px #5a9d4b18; }
-         .mm-penny-mark { width:34px;height:34px;object-fit:contain;margin:0 auto 4px;filter:drop-shadow(0 2px 8px #000b); }
-         .mm-penny-hero .mm-event-name { color:#fff8dc;font-size:17px;letter-spacing:1.3px;text-shadow:0 2px 8px #000; }
-         .mm-penny-hero .mm-event-objective { color:#c8f69a;font-size:10px;letter-spacing:1px;text-shadow:0 2px 7px #000; }
+         .mm-penny-mark { width:34px;height:34px;object-fit:contain;margin:0 auto 5px;filter:drop-shadow(0 2px 8px #000b); }
+         .mm-penny-lockup { width:min(100%,320px);margin:2px auto 7px; }
+         .mm-penny-title { display:flex;flex-direction:column;align-items:center;line-height:.9;text-align:center;filter:drop-shadow(0 7px 8px #000b); }
+         .mm-penny-title span { color:transparent;background:linear-gradient(180deg,#ffffff 0%,#e2e9ed 26%,#87939d 47%,#f7fbff 59%,#9ca8b1 77%,#eef2f4 100%);background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:clamp(25px,7.3vw,33px);font-weight:950;letter-spacing:1.15px;text-shadow:0 2px 0 #59646d,0 4px 0 #303b44; }
+         .mm-penny-title strong { color:transparent;background:linear-gradient(180deg,#ffc1c3 0%,#ff626b 25%,#e52331 55%,#a50d1b 78%,#ff626b 100%);background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:clamp(38px,10vw,46px);font-weight:950;letter-spacing:3px;line-height:1.04;text-shadow:0 2px 0 #89121b,0 4px 0 #5c0b13; }
+         .mm-penny-banner { min-height:47px;margin-top:8px;padding:5px 10px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid #d8e2db;border-radius:9px;background:linear-gradient(125deg,#e1e8e4 0%,#5b8169 24%,#12251c 52%,#316747 76%,#9eb6a3 100%);box-shadow:0 0 20px #55d7792b,inset 0 1px #fff9; }
+         .mm-penny-banner span { color:#f2f6f3;font-size:10px;font-weight:900;letter-spacing:.45px;text-shadow:0 2px 4px #000c; }
+         .mm-penny-banner strong { color:#fff;font-size:27px;font-weight:950;line-height:1;text-shadow:0 1px 0 #aebbb3,0 3px 6px #000b; }
          .mm-penny-hero .mm-capital { color:#f5d987;font-size:10px;letter-spacing:.75px;text-shadow:0 2px 7px #000; }
          .mm-penny-hero .mm-upcoming,.mm-penny-hero .mm-countdown,.mm-penny-hero .mm-event-meta span { background:#07110edb;border-color:#ffffff35;backdrop-filter:blur(8px); }
          .mm-penny-hero .mm-countdown { box-shadow:0 0 22px #75d66320; }
