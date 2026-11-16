@@ -54,6 +54,7 @@ async function buildFixture() {
     platform: "browser",
     target: "es2022",
     jsx: "automatic",
+    loader: { ".jpg": "dataurl" },
     mainFields: ["browser", "module", "main"],
     conditions: ["browser"],
     plugins: [{
@@ -351,6 +352,29 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
       "SILVER · 2ND",
       "Archived second place receives silver medal treatment.",
     );
+    await browser.evaluate("window.__setLightningPromotion(true)");
+    await waitFor(browser,
+      `!!document.querySelector(${JSON.stringify(selector("paper-lightning-round-promotion"))})`,
+      "The timed Lightning Round promotion did not replace the dashboard card.");
+    const lightningPromotionText = await browser.evaluate(
+      `document.querySelector(${JSON.stringify(selector("paper-lightning-round-promotion"))})?.textContent`,
+    );
+    assert.ok(
+      lightningPromotionText?.includes("$100,000 STARTING CAPITAL"),
+      `The promotion must clearly show its starting capital (card: ${JSON.stringify(lightningPromotionText)}).`,
+    );
+    assert.equal(
+      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-event-championship-dashboard"))})?.getBoundingClientRect().height <= 160`),
+      true,
+      "The promotion must keep the existing card's compact dimensions.",
+    );
+    await touch(browser, "paper-open-lightning-round-promotion");
+    assert.equal(await browser.evaluate("window.__lightningRoundOpened"), true,
+      "The promotion action must open the existing Lightning Round destination.");
+    await browser.evaluate("window.__setLightningPromotion(false)");
+    await waitFor(browser,
+      `!!document.querySelector(${JSON.stringify(selector("paper-event-view-leaderboard"))})`,
+      "The normal Event Arena dashboard did not return when the promotion ended.");
     await browser.evaluate("window.__setEventState('active')");
     await touch(browser, "paper-current-account", -150, 0);
     assert.equal(await currentAccount(), "paper-event:arena", "A left swipe at the last account should stop at the boundary.");

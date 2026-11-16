@@ -1,6 +1,30 @@
 import { getEventArenaWindowProgress } from './eventArenaCompetitiveProgress.ts';
 
 export type PaperEventDashboardPhase = 'upcoming' | 'active' | 'ended' | 'unavailable';
+export type LightningRoundCardPromotionPhase = 'preparation' | 'active' | 'post-event';
+
+const HOUR_MS = 60 * 60 * 1000;
+const LIGHTNING_ROUND_PROMOTION_LEAD_MS = 72 * HOUR_MS;
+const LIGHTNING_ROUND_POST_EVENT_MS = 24 * HOUR_MS;
+
+export function getLightningRoundCardPromotionPhase(
+  schedule: { startAtMs: number; endAtMs: number } | null | undefined,
+  nowMs: number,
+): LightningRoundCardPromotionPhase | null {
+  if (
+    !schedule
+    || !Number.isFinite(schedule.startAtMs)
+    || !Number.isFinite(schedule.endAtMs)
+    || !Number.isFinite(nowMs)
+    || schedule.endAtMs <= schedule.startAtMs
+  ) return null;
+
+  if (nowMs < schedule.startAtMs - LIGHTNING_ROUND_PROMOTION_LEAD_MS) return null;
+  if (nowMs >= schedule.endAtMs + LIGHTNING_ROUND_POST_EVENT_MS) return null;
+  if (nowMs < schedule.startAtMs) return 'preparation';
+  if (nowMs < schedule.endAtMs) return 'active';
+  return 'post-event';
+}
 
 export function getPaperEventDashboardPhase(
   startAtMs: number,

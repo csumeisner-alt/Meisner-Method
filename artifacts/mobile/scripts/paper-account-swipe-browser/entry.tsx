@@ -35,6 +35,8 @@ const quotes = {
 Object.defineProperty(Platform, 'OS', { configurable: true, value: 'ios' });
 const testWindow = globalThis as typeof globalThis & {
   __eventLeaderboardOpened?: boolean;
+  __lightningRoundOpened?: boolean;
+  __setLightningPromotion?: (enabled: boolean) => void;
   __setPaperSharing?: (enabled: boolean) => void;
   __setEventState?: (phase: 'upcoming' | 'active' | 'ended') => void;
   __setPaperPlatform?: (os: string) => void;
@@ -52,6 +54,7 @@ function PaperAccountInteractionFixture() {
   const [tradeCount, setTradeCount] = useState(0);
   const [eventPhase, setEventPhase] = useState<'upcoming' | 'active' | 'ended'>('active');
   const [sharing, setSharing] = useState(true);
+  const [lightningPromotion, setLightningPromotion] = useState(false);
   const [, setFixtureRefresh] = useState(0);
   const activeAccount = accounts.find((account) => account.id === activeId);
   if (!activeAccount) throw new Error(`Unknown paper account: ${activeId}`);
@@ -62,6 +65,9 @@ function PaperAccountInteractionFixture() {
     setData((current) => resetPaperAccountData(current, accountId, new Date().toISOString()));
   };
   const now = Date.now();
+  const lightningPromotionWindow = lightningPromotion
+    ? { startAtMs: now + 48 * 60 * 60 * 1000, endAtMs: now + 72 * 60 * 60 * 1000 }
+    : null;
   const eventTimes = eventPhase === 'upcoming'
     ? { startAtMs: now + 86_400_000, endAtMs: now + 4 * 86_400_000 }
     : eventPhase === 'ended'
@@ -93,6 +99,8 @@ function PaperAccountInteractionFixture() {
     setEventPhase(phase);
     setFixtureRefresh((current) => current + 1);
   };
+  testWindow.__lightningRoundOpened = false;
+  testWindow.__setLightningPromotion = setLightningPromotion;
   testWindow.__setPaperSharing = setSharing;
 
   return (
@@ -139,6 +147,8 @@ function PaperAccountInteractionFixture() {
             summary={completedSummary}
             equity={portfolioValue}
             buyingPower={activeAccount.cash}
+            lightningRoundPromotionWindow={lightningPromotionWindow}
+            onOpenLightningRound={() => { testWindow.__lightningRoundOpened = true; }}
             onViewLeaderboard={() => { testWindow.__eventLeaderboardOpened = true; }}
           />
         )}

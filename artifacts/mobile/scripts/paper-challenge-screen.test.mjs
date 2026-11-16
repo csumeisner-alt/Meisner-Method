@@ -134,6 +134,18 @@ test("Lightning Round uses an existing Event Arena account and preserves its arc
   assert.doesNotMatch(standardArtworkList, /lightning-round-arena/);
 });
 
+test("Lightning Round promotion reuses the account card and opens its existing screen", () => {
+  assert.match(screen, /findLightningRoundWindow\(challengeNow - 24 \* 60 \* 60 \* 1000\)/);
+  assert.match(screen, /onOpenLightningRound=\{\(\) => router\.push\('\/lightning-round'\)\}/);
+  assert.match(eventAccountDashboard, /getLightningRoundCardPromotionPhase\(lightningRoundPromotionWindow, now\)/);
+  assert.match(eventAccountDashboard, /EVENT_ARENA_ARTWORK_SOURCES\['lightning-round-arena'\]/);
+  assert.match(eventAccountDashboard, /testID="paper-open-lightning-round-promotion"/);
+  assert.match(eventAccountDashboard, /JOIN EVENT/);
+  assert.match(eventAccountDashboard, /VIEW EVENT/);
+  assert.match(eventAccountDashboard, /testID="paper-event-view-leaderboard"/);
+  assert.match(eventAccountDashboard, /testID="paper-event-account-equity"/);
+});
+
 test("Lightning Round requests a display name and joins the shared account", () => {
   assert.match(challenge, /getLatestLightningRoundAlias/);
   assert.match(lightningRound, /getLatestLightningRoundAlias\(store\.history\)/);

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   formatPaperEventCountdown,
+  getLightningRoundCardPromotionPhase,
   getPaperEventDashboardPhase,
   getPaperEventDashboardProgress,
   getPaperEventDashboardRank,
@@ -9,6 +10,40 @@ import {
 
 const start = 1_000_000;
 const end = 1_100_000;
+const lightningStart = 10_000_000;
+const lightningEnd = lightningStart + 24 * 60 * 60 * 1000;
+
+test('Lightning Round card promotion uses exact preparation, event, and post-event boundaries', () => {
+  const schedule = { startAtMs: lightningStart, endAtMs: lightningEnd };
+  const lead = 72 * 60 * 60 * 1000;
+  const postEvent = 24 * 60 * 60 * 1000;
+
+  assert.equal(getLightningRoundCardPromotionPhase(schedule, lightningStart - lead - 1), null);
+  assert.equal(getLightningRoundCardPromotionPhase(schedule, lightningStart - lead), 'preparation');
+  assert.equal(getLightningRoundCardPromotionPhase(schedule, lightningStart - 1), 'preparation');
+  assert.equal(getLightningRoundCardPromotionPhase(schedule, lightningStart), 'active');
+  assert.equal(getLightningRoundCardPromotionPhase(schedule, lightningEnd - 1), 'active');
+  assert.equal(getLightningRoundCardPromotionPhase(schedule, lightningEnd), 'post-event');
+  assert.equal(getLightningRoundCardPromotionPhase(schedule, lightningEnd + postEvent - 1), 'post-event');
+  assert.equal(getLightningRoundCardPromotionPhase(schedule, lightningEnd + postEvent), null);
+});
+
+test('missing or invalid Lightning Round schedules leave the normal card unpromoted', () => {
+  assert.equal(getLightningRoundCardPromotionPhase(null, lightningStart), null);
+  assert.equal(getLightningRoundCardPromotionPhase(undefined, lightningStart), null);
+  assert.equal(
+    getLightningRoundCardPromotionPhase({ startAtMs: lightningStart, endAtMs: lightningStart }, lightningStart),
+    null,
+  );
+  assert.equal(
+    getLightningRoundCardPromotionPhase({ startAtMs: Number.NaN, endAtMs: lightningEnd }, lightningStart),
+    null,
+  );
+  assert.equal(
+    getLightningRoundCardPromotionPhase({ startAtMs: lightningStart, endAtMs: lightningEnd }, Number.NaN),
+    null,
+  );
+});
 
 test('dashboard phase and countdown use the saved event timestamps', () => {
   assert.equal(getPaperEventDashboardPhase(start, end, start - 1), 'upcoming');

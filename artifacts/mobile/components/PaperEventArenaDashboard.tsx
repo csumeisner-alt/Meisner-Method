@@ -1,18 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
+import { ImageBackground, Text, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import {
   getGetEventArenaLeaderboardQueryKey,
   useGetEventArenaLeaderboard,
 } from '@workspace/api-client-react';
-import type { PaperChallengeEnrollment, PaperChallengeSummary } from '@/lib/paperChallenge';
+import type { PaperChallengeEnrollment, PaperChallengeSummary, PaperChallengeWindow } from '@/lib/paperChallenge';
 import {
   formatPaperEventCountdown,
+  getLightningRoundCardPromotionPhase,
   getPaperEventDashboardPhase,
   getPaperEventDashboardProgress,
   getPaperEventDashboardRank,
 } from '@/lib/paperEventDashboard';
 import { getInstallationId } from '@/lib/installation';
+import { EVENT_ARENA_ARTWORK_SOURCES } from '@/lib/eventArenaArtwork';
 
 type Props = {
   eventId: string;
@@ -24,6 +26,9 @@ type Props = {
   equity: number;
   buyingPower: number;
   onViewLeaderboard: () => void;
+  lightningRoundPromotionWindow?: Pick<PaperChallengeWindow, 'startAtMs' | 'endAtMs'> | null;
+  isLightningRoundEnrolled?: boolean;
+  onOpenLightningRound?: () => void;
 };
 
 const GOLD = '#e7c66a';
@@ -59,6 +64,9 @@ export function PaperEventArenaDashboard({
   equity,
   buyingPower,
   onViewLeaderboard,
+  lightningRoundPromotionWindow = null,
+  isLightningRoundEnrolled = false,
+  onOpenLightningRound,
 }: Props) {
   const [installationId, setInstallationId] = useState<string | null>(null);
   const [installationIdReady, setInstallationIdReady] = useState(false);
@@ -93,6 +101,7 @@ export function PaperEventArenaDashboard({
   const entries = leaderboard.data?.entries ?? [];
   const ownEntry = entries.filter((entry) => entry.isCurrentUser);
   const phase = getPaperEventDashboardPhase(startAtMs, endAtMs, now);
+  const lightningPromotionPhase = getLightningRoundCardPromotionPhase(lightningRoundPromotionWindow, now);
   const progress = getPaperEventDashboardProgress(startAtMs, endAtMs, now);
   const rank = phase === 'ended' && summary?.finalRank != null
     ? summary.finalRank
@@ -198,8 +207,92 @@ export function PaperEventArenaDashboard({
   return (
     <View
       testID="paper-event-championship-dashboard"
-      accessibilityLabel={`${eventType === 'lightning-round' ? 'Lightning Round' : 'Event Arena'} championship account summary`}
+      accessibilityLabel={lightningPromotionPhase
+        ? 'Lightning Round championship promotion'
+        : `${eventType === 'lightning-round' ? 'Lightning Round' : 'Event Arena'} championship account summary`}
     >
+      {lightningPromotionPhase ? (
+        <View
+          testID="paper-lightning-round-promotion"
+          style={{
+            minHeight: 150,
+            justifyContent: 'space-between',
+            overflow: 'hidden',
+            padding: 11,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: 'rgba(112,218,255,0.75)',
+            backgroundColor: '#05234f',
+          }}
+        >
+          <ImageBackground
+            source={EVENT_ARENA_ARTWORK_SOURCES['lightning-round-arena']}
+            imageStyle={{ borderRadius: 10 }}
+            style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
+          />
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              left: 0,
+              backgroundColor: 'rgba(2,15,43,0.48)',
+            }}
+          />
+          <View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Feather name="zap" size={16} color="#9be8ff" />
+              <Text
+                accessibilityRole="header"
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                style={{ flex: 1, color: '#ffffff', fontFamily: 'Inter_700Bold', fontSize: 16, letterSpacing: 0.55 }}
+              >
+                LIGHTNING ROUND CHAMPIONSHIP
+              </Text>
+            </View>
+            <Text
+              testID="paper-lightning-round-promotion-countdown"
+              accessibilityRole="text"
+              accessibilityLiveRegion="polite"
+              numberOfLines={1}
+              style={{ color: '#d9f6ff', fontFamily: 'Inter_700Bold', fontSize: 11, marginTop: 8 }}
+            >
+              {formatPaperEventCountdown(lightningRoundPromotionWindow!.startAtMs, lightningRoundPromotionWindow!.endAtMs, now)}
+            </Text>
+            <Text style={{ color: '#aeeaff', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.55, marginTop: 5 }}>
+              $100,000 STARTING CAPITAL
+            </Text>
+          </View>
+          <TouchableOpacity
+            testID="paper-open-lightning-round-promotion"
+            accessibilityRole="button"
+            accessibilityLabel={isLightningRoundEnrolled ? 'View Lightning Round event' : 'Join Lightning Round event'}
+            onPress={onOpenLightningRound}
+            activeOpacity={0.82}
+            style={{
+              minHeight: 34,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              paddingHorizontal: 10,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: 'rgba(198,243,255,0.95)',
+              backgroundColor: 'rgba(10,121,190,0.82)',
+            }}
+          >
+            <Feather name={isLightningRoundEnrolled ? 'eye' : 'arrow-right-circle'} size={13} color="#ffffff" />
+            <Text style={{ color: '#ffffff', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 0.65 }}>
+              {isLightningRoundEnrolled ? 'VIEW EVENT' : 'JOIN EVENT'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+      <>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         <Feather name="award" size={15} color={GOLD} />
         <Text accessibilityLabel={eventName} numberOfLines={1} style={{ flex: 1, minWidth: 0, color: GOLD, fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 0.45 }}>
@@ -328,6 +421,8 @@ export function PaperEventArenaDashboard({
           </Text>
         </TouchableOpacity>
       </View>
+      </>
+      )}
     </View>
   );
 }

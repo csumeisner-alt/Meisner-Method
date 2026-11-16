@@ -577,6 +577,9 @@ export default function PaperScreen() {
   const regularCalendarError = getRegularEventCalendarError();
   const paperChallengeWindow = getPaperChallengeWindow(challengeNow);
   const lightningRoundWindow = regularCalendarError ? null : findLightningRoundWindow(challengeNow);
+  const lightningRoundPromotionWindow = regularCalendarError
+    ? null
+    : findLightningRoundWindow(challengeNow - 24 * 60 * 60 * 1000);
   const challengeEnrollments = getPaperChallengeEnrollments(paperChallenge);
   const isEnrollmentActive = (enrollment: PaperChallengeEnrollment) =>
     challengeNow >= enrollment.eventStartAtMs && challengeNow < enrollment.eventEndAtMs;
@@ -2979,6 +2982,9 @@ export default function PaperScreen() {
               equity={portfolioValue}
               buyingPower={account?.cash ?? 0}
               eventType={selectedEventEnrollment?.eventType ?? selectedEventSummary?.eventType ?? 'event-arena'}
+              lightningRoundPromotionWindow={lightningRoundPromotionWindow}
+              isLightningRoundEnrolled={paperChallenge.lightningEnrollment?.eventId === lightningRoundPromotionWindow?.id}
+              onOpenLightningRound={() => router.push('/lightning-round')}
               onViewLeaderboard={() => {
                 const lightning = (selectedEventEnrollment?.eventType ?? selectedEventSummary?.eventType) === 'lightning-round';
                 router.push(lightning
