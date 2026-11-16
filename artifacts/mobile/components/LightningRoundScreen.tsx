@@ -24,6 +24,7 @@ import {
   submitPaperChallengeScoreNow,
 } from '@/components/PaperChallengeLeaderboard';
 import { PaperEventShareCard } from '@/components/PaperEventShareCard';
+import { LIGHTNING_EMBLEMS, LightningRoundHeader, LightningRoundTabButton, LightningRoundTabStrip } from '@/components/LightningRoundHeader';
 import { getInstallationId } from '@/lib/installation';
 import { formatProviderMarketSession, formatProviderPriceSource } from '@/lib/paperOrderEntry';
 import { EVENT_ARENA_ARTWORK_SOURCES } from '@/lib/eventArenaArtwork';
@@ -851,56 +852,29 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: Platform.OS === 'web' ? 10 : insets.top }}>
       <View style={{ maxWidth: containerWidth, width: '100%', flex: 1, alignSelf: 'center' }}>
-        <View style={{ minHeight: 52, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 9, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} style={{ width: 42, height: 42, alignItems: 'center', justifyContent: 'center' }}>
-            <Feather name="arrow-left" size={19} color={colors.foreground} />
-          </TouchableOpacity>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 17 }}>Lightning Round</Text>
-            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 2 }}>24-hour off-week championship</Text>
-          </View>
-          <TouchableOpacity
-            accessibilityRole="button"
-            accessibilityLabel="Open Past Events"
-            onPress={() => changeTab('past')}
-            style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}
-          >
-            <Feather name="archive" size={18} color={colors.primary} />
-          </TouchableOpacity>
-        </View>
+        <LightningRoundHeader
+          subtitle="24-hour off-week championship"
+          onBack={() => router.back()}
+          onArchive={() => changeTab('past')}
+        />
 
-        <View style={{ flexDirection: 'row', gap: 4, paddingHorizontal: 10, paddingVertical: 8 }}>
+        <LightningRoundTabStrip>
           {([
-            { id: 'overview' as const, label: 'Round', icon: 'zap' as const },
-            { id: 'leaderboard' as const, label: 'Leaderboard', icon: 'users' as const },
-            { id: 'trades' as const, label: 'My Trades', icon: 'activity' as const },
-            { id: 'past' as const, label: 'Past Events', icon: 'archive' as const },
+            { id: 'overview' as const, label: 'Round' },
+            { id: 'leaderboard' as const, label: 'Leaderboard' },
+            { id: 'trades' as const, label: 'My Trades' },
+            { id: 'past' as const, label: 'Past Events' },
           ]).map((item) => (
-            <TouchableOpacity
+            <LightningRoundTabButton
               key={item.id}
               testID={`lightning-round-tab-${item.id}`}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: tab === item.id }}
+              label={item.label}
+              emblem={LIGHTNING_EMBLEMS[item.id]}
+              selected={tab === item.id}
               onPress={() => changeTab(item.id)}
-              style={{
-                minHeight: 47,
-                flex: 1,
-                minWidth: 0,
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 3,
-                borderRadius: 11,
-                backgroundColor: tab === item.id ? colors.primary : colors.card,
-                borderWidth: 1,
-                borderColor: tab === item.id ? colors.primary : colors.border,
-                paddingHorizontal: 2,
-              }}
-            >
-              <Feather name={item.icon} size={14} color={tab === item.id ? colors.primaryForeground : colors.mutedForeground} />
-              <Text numberOfLines={1} style={{ color: tab === item.id ? colors.primaryForeground : colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 9 }}>{item.label}</Text>
-            </TouchableOpacity>
+            />
           ))}
-        </View>
+        </LightningRoundTabStrip>
 
         {!storeReady && (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>

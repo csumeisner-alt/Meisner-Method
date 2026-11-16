@@ -27,6 +27,7 @@ const alertWorker = readFileSync(new URL("../../api-server/src/alert-worker.ts",
 const eventAccountDashboard = readFileSync(new URL("../components/PaperEventArenaDashboard.tsx", import.meta.url), "utf8");
 const lightningRound = readFileSync(new URL("../components/LightningRoundScreen.tsx", import.meta.url), "utf8");
 const lightningRoute = readFileSync(new URL("../app/lightning-round.tsx", import.meta.url), "utf8");
+const lightningHeader = readFileSync(new URL("../components/LightningRoundHeader.tsx", import.meta.url), "utf8");
 
 assert.match(events, /eventWindow\.phase === 'upcoming' \? eventWindow\.startAtMs : Date\.now\(\)/);
 assert.match(events, /startEquity: eventWindow\.phase === 'upcoming' \? null : configuration\.startingBalance/);
@@ -147,6 +148,36 @@ test("Lightning Round promotion reuses the account card and opens its existing s
   assert.match(eventAccountDashboard, /VIEW EVENT/);
   assert.match(eventAccountDashboard, /testID="paper-event-view-leaderboard"/);
   assert.match(eventAccountDashboard, /testID="paper-event-account-equity"/);
+});
+
+test("Lightning Round championship header preserves accessible actions and bundled individual emblems", () => {
+  assert.match(lightningRound, /onBack=\{\(\) => router\.back\(\)\}/);
+  assert.match(lightningRound, /onArchive=\{\(\) => changeTab\('past'\)\}/);
+  assert.match(lightningRound, /testID=\{`lightning-round-tab-\$\{item\.id\}`\}/);
+  assert.match(lightningRound, /emblem=\{LIGHTNING_EMBLEMS\[item\.id\]\}/);
+  assert.match(lightningRound, /selected=\{tab === item\.id\}/);
+  assert.match(lightningRound, /onPress=\{\(\) => changeTab\(item\.id\)\}/);
+  assert.match(lightningHeader, /title = 'LIGHTNING ROUND'/);
+  assert.match(lightningHeader, /accessibilityRole="header"/);
+  assert.match(lightningHeader, /accessibilityLabel="Go back" onPress=\{onBack\}/);
+  assert.match(lightningHeader, /accessibilityLabel="Open Past Events" onPress=\{onArchive\}/);
+  assert.match(lightningHeader, /width: 44, height: 44/);
+  assert.match(lightningHeader, /accessibilityRole="tab"/);
+  assert.match(lightningHeader, /accessibilityLabel=\{label\}/);
+  assert.match(lightningHeader, /accessibilityState=\{\{ selected \}\}/);
+  assert.match(lightningHeader, /aria-selected=\{selected\}/);
+  assert.match(lightningHeader, /<Text style=\{\[styles\.tabLabel,[\s\S]*?\{label\}<\/Text>/);
+  assert.match(lightningHeader, /useReduceMotion\(\)/);
+  assert.match(lightningHeader, /return \(\) => animation\.stop\(\)/);
+  for (const name of ["round", "leaderboard", "trades", "past"]) {
+    const image = readFileSync(new URL(`../assets/lightning-round-emblems/${name}.png`, import.meta.url));
+    assert.deepEqual([...image.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+    assert.equal(image.readUInt32BE(16), 192);
+    assert.equal(image.readUInt32BE(20), 192);
+    assert.ok(image.byteLength < 60_000, `${name} stays optimized for mobile`);
+    assert.ok(lightningHeader.includes(`require('../assets/lightning-round-emblems/${name}.png')`));
+  }
+  assert.doesNotMatch(lightningHeader, /https?:|c612e031/);
 });
 
 test("Lightning Round requests a display name and joins the shared account", () => {

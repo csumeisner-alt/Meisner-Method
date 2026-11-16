@@ -48,8 +48,9 @@ async function buildFixture() {
     platform: "browser",
     target: "es2022",
     jsx: "automatic",
-    define: { "process.env.EXPO_PUBLIC_DOMAIN": '"lightning-round.test"' },
-    loader: { ".jpg": "dataurl", ".png": "dataurl" },
+    define: { "process.env.EXPO_PUBLIC_DOMAIN": '"lightning-round.test"', global: "globalThis" },
+    loader: { ".jpg": "dataurl", ".png": "dataurl", ".js": "jsx" },
+    resolveExtensions: [".web.tsx", ".web.ts", ".web.jsx", ".web.js", ".tsx", ".ts", ".jsx", ".js", ".json"],
     mainFields: ["browser", "module", "main"],
     conditions: ["browser"],
     plugins: [{
@@ -318,6 +319,54 @@ test("signed-in Lightning Round reads mixed device history and opens saved archi
     assert.equal(await browser.evaluate(`!!document.querySelector(${JSON.stringify(selector("lightning-round-past-event-lightning-2026-11-06"))})`), true);
     assert.equal(await browser.evaluate(`!!document.querySelector(${JSON.stringify(selector("lightning-round-past-event-lightning-2026-10-23"))})`), true);
     assert.equal(await browser.evaluate(`!!document.querySelector(${JSON.stringify(selector("lightning-round-past-event-regular-event"))})`), false);
+
+    // Exercise the production header, not a duplicate test-only navigation row.
+    for (const width of [320, 360, 390, 430]) {
+      await browser.send("Emulation.setDeviceMetricsOverride", {
+        width, height: 720, deviceScaleFactor: 1, mobile: true,
+      });
+      await delay(80);
+      const tabs = await browser.evaluate(`Array.from(document.querySelectorAll('[data-testid^="lightning-round-tab-"]')).map(element => {
+        const bounds = element.getBoundingClientRect();
+        const image = element.querySelector('img');
+        return { label: element.getAttribute('aria-label') || element.textContent, role: element.getAttribute('role'),
+          x: bounds.x, right: bounds.right, width: bounds.width, height: bounds.height,
+          loaded: !!image && image.complete && image.naturalWidth > 0 };
+      })`);
+      assert.equal(tabs.length, 4);
+      assert.deepEqual(tabs.map((tab) => tab.label), ["Round", "Leaderboard", "My Trades", "Past Events"]);
+      for (const tab of tabs) {
+        assert.equal(tab.role, "tab");
+        assert.ok(tab.x >= 0 && tab.right <= width + 1, `${tab.label} fits at ${width}px`);
+        assert.ok(tab.width >= 44 && tab.height >= 44, `${tab.label} has a comfortable tap target`);
+        assert.equal(tab.loaded, true, `${tab.label} artwork loaded at ${width}px`);
+      }
+      assert.ok(Math.max(...tabs.map((tab) => tab.height)) - Math.min(...tabs.map((tab) => tab.height)) < 1);
+    }
+
+    for (const [id, content] of [
+      ["overview", "NEXT ROUND STARTS IN|TIME LEFT IN THIS ROUND"],
+      ["leaderboard", "test-paper-challenge-leaderboard"],
+      ["trades", "Lightning Round trades"],
+      ["past", "Past Lightning Rounds"],
+    ]) {
+      await clickTestID(browser, `lightning-round-tab-${id}`);
+      await waitFor(browser,
+        id === "leaderboard"
+          ? `!!document.querySelector(${JSON.stringify(selector(content))})`
+          : `new RegExp(${JSON.stringify(content)}).test(document.body.innerText)`,
+        `The ${id} tab did not open its existing destination.`);
+      assert.equal(await browser.evaluate(
+        `document.querySelector(${JSON.stringify(selector(`lightning-round-tab-${id}`))})?.getAttribute('aria-selected')`,
+      ), "true");
+    }
+    await clickTestID(browser, "lightning-round-tab-trades");
+    await browser.evaluate(`document.querySelector('[aria-label="Open Past Events"]').click()`);
+    await waitFor(browser,
+      `!!document.querySelector(${JSON.stringify(selector("lightning-round-season-summary"))})`,
+      "The header archive control did not open Past Events.");
+    await browser.evaluate(`document.querySelector('[aria-label="Go back"]').click()`);
+    assert.equal(await browser.evaluate("document.documentElement.dataset.lightningBackCount"), "1");
 
     await clickTestID(browser, "fixture-open-event-history");
     await clickTestID(browser, "settings-events-button");

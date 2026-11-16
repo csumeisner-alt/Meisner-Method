@@ -1,5 +1,9 @@
 export const router = {
-  back() {},
+  back() {
+    document.documentElement.dataset.lightningBackCount = String(
+      Number(document.documentElement.dataset.lightningBackCount ?? 0) + 1,
+    );
+  },
   push() {},
   replace() {},
 };
