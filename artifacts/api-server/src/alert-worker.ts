@@ -25,6 +25,11 @@ import { prepareLightningRoundEvents } from "./routes/eventArenaRoutes.js";
 import { fetchYahooChartPrice } from "./lib/marketPrice.js";
 import { sendExpoPushRequest } from "./lib/expoPushRequest.js";
 import { processDueLightningRoundOrders } from "./lib/lightningRoundExecution.js";
+import {
+  getLightningRoundPreparationAtMs,
+  runLightningRoundReminderCycle,
+  type LightningRoundReminderPush,
+} from "./lib/lightningRoundReminderWorker.js";
 
 const { Pool } = pg;
 
@@ -239,6 +244,7 @@ function startHealthServer(port: number): void {
 const CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const EVENT_ARENA_CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 let lastEventArenaCleanupAt = 0;
+const lightningRoundReminderTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 async function runEventArenaCleanupIfDue(): Promise<void> {
   if (Date.now() - lastEventArenaCleanupAt < EVENT_ARENA_CLEANUP_INTERVAL_MS) return;
@@ -260,10 +266,28 @@ async function prepareScheduledLightningRounds(): Promise<void> {
       { eventIds: events.map((event) => event.eventId) },
       "[alert-worker] Lightning Round events prepared",
     );
+    scheduleLightningRoundPreparationReminders(events);
   } catch (err) {
     // Retry on the next worker cycle if the event schema is still being applied
     // or the database is temporarily unavailable.
     logger.warn({ err }, "[alert-worker] Lightning Round preparation failed; will retry");
+  }
+}
+
+function scheduleLightningRoundPreparationReminders(
+  events: Array<{ eventId: string; eventType: string; startAtMs: number }>,
+): void {
+  for (const event of events) {
+    if (event.eventType !== "lightning-round" || lightningRoundReminderTimers.has(event.eventId)) continue;
+    const scheduledAtMs = getLightningRoundPreparationAtMs(event.startAtMs);
+    const delayMs = scheduledAtMs - Date.now();
+    if (!Number.isFinite(delayMs) || delayMs <= 0) continue;
+    const timer = setTimeout(() => {
+      lightningRoundReminderTimers.delete(event.eventId);
+      void sendDueLightningRoundPreparationReminders();
+    }, delayMs);
+    timer.unref?.();
+    lightningRoundReminderTimers.set(event.eventId, timer);
   }
 }
 
@@ -282,6 +306,47 @@ async function executeDueLightningRoundOrders(): Promise<void> {
   }
 }
 
+async function sendLightningRoundPreparationReminder(reminder: LightningRoundReminderPush) {
+  const pushRes = await sendExpoPushRequest({
+    to: reminder.pushToken,
+    title: "Lightning Round order prep is open",
+    body: "You can now prepare market orders for the upcoming Lightning Round.",
+    sound: "default",
+    priority: "high",
+    channelId: "paper-event-reminders",
+    collapseId: `lightning-prep-${reminder.eventId}-${reminder.installationId}`,
+    data: {
+      type: "lightning-round-preparation",
+      eventId: reminder.eventId,
+      eventStartAtMs: reminder.eventStartAtMs,
+    },
+  });
+  const body = await pushRes.json().catch(() => null);
+  const result = classifyExpoPushResponse(
+    pushRes.ok,
+    Array.isArray((body as any)?.data) ? body : { data: [] },
+  );
+  return {
+    accepted: result.accepted,
+    ...(result.permanentFailure ? { permanentFailure: true } : {}),
+    ...(result.uncertain ? { uncertain: true } : {}),
+  };
+}
+
+async function sendDueLightningRoundPreparationReminders(): Promise<void> {
+  try {
+    const stats = await runLightningRoundReminderCycle(
+      pool,
+      sendLightningRoundPreparationReminder,
+    );
+    if (stats.due > 0) {
+      logger.info({ ...stats }, "[alert-worker] Lightning Round preparation reminders processed");
+    }
+  } catch (err) {
+    logger.warn({ err }, "[alert-worker] Lightning Round preparation reminders failed; will retry");
+  }
+}
+
 async function main(): Promise<void> {
   logger.info("[alert-worker] starting");
 
@@ -297,6 +362,7 @@ async function main(): Promise<void> {
   // eslint-disable-next-line no-constant-condition
   while (true) {
     await prepareScheduledLightningRounds();
+    await sendDueLightningRoundPreparationReminders();
     await executeDueLightningRoundOrders();
     await runEventArenaCleanupIfDue();
     await runAlertCheck();

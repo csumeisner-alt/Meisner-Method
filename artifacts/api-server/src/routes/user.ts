@@ -245,6 +245,22 @@ async function runSchemaMigrations(): Promise<void> {
     )
   `);
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS event_arena_reminder_preferences (
+      installation_id TEXT PRIMARY KEY,
+      enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS event_arena_reminder_deliveries (
+      event_id TEXT NOT NULL,
+      installation_id TEXT NOT NULL,
+      delivery_started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      accepted_at TIMESTAMPTZ,
+      PRIMARY KEY (event_id, installation_id)
+    )
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS event_arena_cash_transfers (
       event_id TEXT NOT NULL,
       transfer_ref TEXT NOT NULL,

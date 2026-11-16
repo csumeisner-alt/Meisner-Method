@@ -43,6 +43,8 @@ import {
 } from '@/lib/paperChallenge';
 import { EVENT_ARENA_ARTWORK_SOURCES } from '@/lib/eventArenaArtwork';
 import { getRegularEventCalendarError } from '@/lib/paperChallengeCalendar';
+import { getInstallationId } from '@/lib/installation';
+import { registerEventArenaPushDevice } from '@/lib/eventArenaPushRegistration';
 
 const NOTIFICATIONS_KEY = '@stocksense/paper_events_notifications_v1';
 const NOTIFICATION_ID_KEY = '@stocksense/paper_events_notification_id_v1';
@@ -68,6 +70,19 @@ async function readScheduledIds() {
   } catch {
     return [saved];
   }
+}
+
+async function syncEventReminderPreference(enabled: boolean) {
+  const installationId = await getInstallationId();
+  const response = await fetch(`${BASE_URL}/api/event-arena/reminder-preference`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Event-Arena-Installation-Id': installationId,
+    },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!response.ok) throw new Error('Event Arena reminder settings could not be saved.');
 }
 
 async function scheduleUpcomingEventReminders() {
@@ -168,8 +183,10 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
     let cancelled = false;
     void readStore(() => !cancelled);
     void AsyncStorage.getItem(NOTIFICATIONS_KEY)
-      .then((notificationValue) => {
-        if (!cancelled) setNotificationsEnabled(notificationValue === 'true');
+      .then(async (notificationValue) => {
+        const enabled = notificationValue === 'true';
+        if (!cancelled) setNotificationsEnabled(enabled);
+        if (Platform.OS !== 'web') await syncEventReminderPreference(enabled);
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -407,6 +424,7 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
     try {
       const Notifications = await import('expo-notifications');
       if (!enabled) {
+        await syncEventReminderPreference(false);
         const savedIds = await readScheduledIds();
         await Promise.all(savedIds.map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => {})));
         await AsyncStorage.multiRemove([NOTIFICATIONS_KEY, NOTIFICATION_ID_KEY]);
@@ -419,6 +437,14 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
         Alert.alert('Notifications are off', 'Allow notifications in your device settings to receive event reminders.');
         return;
       }
+      const pushReady = await registerEventArenaPushDevice(Platform.OS === 'ios' ? 'ios' : 'android');
+      if (!pushReady) {
+        Alert.alert(
+          'Push reminders unavailable',
+          'This build cannot register remote reminders. Your on-device Event Arena reminders will still work.',
+        );
+      }
+      await syncEventReminderPreference(true);
       await AsyncStorage.setItem(NOTIFICATIONS_KEY, 'true');
       setNotificationsEnabled(true);
     } catch {

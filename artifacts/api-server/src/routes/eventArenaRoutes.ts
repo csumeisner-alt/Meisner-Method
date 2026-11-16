@@ -13,6 +13,7 @@ import {
 } from "../../../mobile/lib/paperChallengeCalendar.ts";
 import { fetchYahooChartPrice } from "../lib/marketPrice.ts";
 import { calculateLightningRoundScore } from "../lib/lightningRoundScore.ts";
+import { LIGHTNING_ROUND_PREPARATION_MS } from "../../../mobile/lib/paperChallenge.ts";
 
 export { EVENT_ARENA_RETENTION_DAYS, purgeExpiredEventArenaEntries } from "../lib/eventArenaRetention.ts";
 
@@ -148,8 +149,6 @@ const LIGHTNING_ROUND_TIME_ZONE = "America/Denver";
 const LIGHTNING_ROUND_START_HOUR = 7;
 const LIGHTNING_ROUND_START_MINUTE = 30;
 const LIGHTNING_ROUND_DAY_MS = 24 * 60 * 60 * 1000;
-const LIGHTNING_ROUND_PREPARATION_MS = 72 * 60 * 60 * 1000;
-
 function expectedLightningRoundWindow(eventId: unknown) {
   if (typeof eventId !== "string" || !/^lightning-\d{4}-\d{2}-\d{2}$/.test(eventId)) return null;
   const dateText = eventId.slice("lightning-".length);
@@ -718,6 +717,46 @@ export function createEventArenaRouter(
       res.json({ ok: true, eventId: req.params.eventId, removed });
     } catch {
       res.status(500).json({ error: "Could not leave the Lightning Round." });
+    }
+  });
+
+  router.put("/event-arena/reminder-preference", requireSchema, async (req: any, res: any) => {
+    const installationId = req.get("x-event-arena-installation-id");
+    const enabled = req.body?.enabled;
+    if (!validInstallationId(installationId) || typeof enabled !== "boolean") {
+      res.status(400).json({ error: "A valid installation ID and enabled boolean are required." });
+      return;
+    }
+    try {
+      await db.query(
+        `INSERT INTO event_arena_reminder_preferences (installation_id, enabled, updated_at)
+         VALUES ($1,$2,NOW())
+         ON CONFLICT (installation_id) DO UPDATE
+         SET enabled=EXCLUDED.enabled, updated_at=NOW()`,
+        [installationId, enabled],
+      );
+      res.json({ enabled });
+    } catch {
+      res.status(500).json({ error: "Could not update Event Arena reminder settings." });
+    }
+  });
+
+  router.delete("/event-arena/lightning-round/:eventId/participant", requireSchema, async (req: any, res: any) => {
+    const installationId = req.get("x-event-arena-installation-id");
+    const configuration = expectedLightningRoundWindow(req.params.eventId);
+    if (!validInstallationId(installationId) || !configuration) {
+      res.status(400).json({ error: "A scheduled Lightning Round and valid installation ID are required." });
+      return;
+    }
+    try {
+      await db.query(
+        `DELETE FROM event_arena_lightning_participants
+         WHERE event_id=$1 AND installation_id=$2 AND status='queued' AND event_start_at > NOW()`,
+        [req.params.eventId, installationId],
+      );
+      res.json({ ok: true });
+    } catch {
+      res.status(500).json({ error: "Could not remove your Lightning Round entry." });
     }
   });
 

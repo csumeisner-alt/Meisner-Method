@@ -21,6 +21,11 @@ export const GREEN_BULL_STARTING_BALANCE = 500_000;
 export const LIGHTNING_ROUND_TIME_ZONE = 'America/Denver';
 export const LIGHTNING_ROUND_START_HOUR = 7;
 export const LIGHTNING_ROUND_START_MINUTE = 30;
+export const LIGHTNING_ROUND_PREPARATION_MS = 72 * 60 * 60 * 1000;
+
+export function getLightningRoundPreparationAtMs(eventStartAtMs: number): number {
+  return eventStartAtMs - LIGHTNING_ROUND_PREPARATION_MS;
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

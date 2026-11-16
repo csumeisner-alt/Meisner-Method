@@ -1900,3 +1900,58 @@ test("opt-out clears public score data while retaining only the event-scoped ali
     assert.deepEqual(await response.json(), { ok: true });
   });
 });
+
+test("Event Arena reminder preferences can be enabled and disabled per installation", async () => {
+  const saved: Array<{ installationId: unknown; enabled: unknown }> = [];
+  await withApi(async (sql, values) => {
+    assert.match(sql, /INSERT INTO event_arena_reminder_preferences/);
+    assert.match(sql, /ON CONFLICT \(installation_id\) DO UPDATE/);
+    saved.push({ installationId: values?.[0], enabled: values?.[1] });
+    return { rows: [] };
+  }, async (baseUrl) => {
+    for (const enabled of [true, false]) {
+      const response = await fetch(`${baseUrl}/event-arena/reminder-preference`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Event-Arena-Installation-Id": installationId,
+        },
+        body: JSON.stringify({ enabled }),
+      });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { enabled });
+    }
+    const invalid = await fetch(`${baseUrl}/event-arena/reminder-preference`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Event-Arena-Installation-Id": installationId,
+      },
+      body: JSON.stringify({ enabled: "yes" }),
+    });
+    assert.equal(invalid.status, 400);
+  });
+  assert.deepEqual(saved, [
+    { installationId, enabled: true },
+    { installationId, enabled: false },
+  ]);
+});
+
+test("withdrawing from an upcoming Lightning Round removes its queued participant record", async () => {
+  let removed = false;
+  await withApi(async (sql, values) => {
+    assert.match(sql, /DELETE FROM event_arena_lightning_participants/);
+    assert.match(sql, /status='queued' AND event_start_at > NOW\(\)/);
+    assert.deepEqual(values, ["lightning-2026-11-27", installationId]);
+    removed = true;
+    return { rows: [] };
+  }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/lightning-round/lightning-2026-11-27/participant`, {
+      method: "DELETE",
+      headers: { "X-Event-Arena-Installation-Id": installationId },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { ok: true });
+  });
+  assert.equal(removed, true);
+});

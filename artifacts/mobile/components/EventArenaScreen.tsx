@@ -58,6 +58,7 @@ import {
 } from '@/lib/paperMath';
 import { applyEventCashTransfer } from '@/lib/eventArenaTransfers';
 import { getInstallationId } from '@/lib/installation';
+import { registerEventArenaPushDevice } from '@/lib/eventArenaPushRegistration';
 import { getRegularEventCalendarError } from '@/lib/paperChallengeCalendar';
 
 const NOTIFICATIONS_KEY = '@stocksense/paper_events_notifications_v1';
@@ -163,6 +164,19 @@ async function readScheduledIds() {
   } catch {
     return [saved];
   }
+}
+
+async function syncEventReminderPreference(enabled: boolean) {
+  const installationId = await getInstallationId();
+  const response = await fetch(`${BASE_URL}/api/event-arena/reminder-preference`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Event-Arena-Installation-Id': installationId,
+    },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!response.ok) throw new Error('Event Arena reminder settings could not be saved.');
 }
 
 async function scheduleUpcomingEventReminders() {
@@ -537,7 +551,11 @@ function EventArenaScreenContent() {
   useEffect(() => {
     void readStore();
     void AsyncStorage.getItem(NOTIFICATIONS_KEY)
-      .then((value) => setNotificationsEnabled(value === 'true'))
+      .then(async (value) => {
+        const enabled = value === 'true';
+        setNotificationsEnabled(enabled);
+        if (Platform.OS !== 'web') await syncEventReminderPreference(enabled);
+      })
       .catch(() => {});
   }, [readStore]);
 
@@ -732,6 +750,7 @@ function EventArenaScreenContent() {
     try {
       const Notifications = await import('expo-notifications');
       if (!enabled) {
+        await syncEventReminderPreference(false);
         const ids = await readScheduledIds();
         await Promise.all(ids.map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => {})));
         await AsyncStorage.multiRemove([NOTIFICATIONS_KEY, NOTIFICATION_ID_KEY]);
@@ -744,6 +763,14 @@ function EventArenaScreenContent() {
         Alert.alert('Notifications are off', 'Allow notifications in your device settings to receive event reminders.');
         return;
       }
+      const pushReady = await registerEventArenaPushDevice(Platform.OS === 'ios' ? 'ios' : 'android');
+      if (!pushReady) {
+        Alert.alert(
+          'Push reminders unavailable',
+          'This build cannot register remote reminders. Your on-device Event Arena reminders will still work.',
+        );
+      }
+      await syncEventReminderPreference(true);
       await AsyncStorage.setItem(NOTIFICATIONS_KEY, 'true');
       setNotificationsEnabled(true);
     } catch {
