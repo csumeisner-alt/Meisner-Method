@@ -57,6 +57,8 @@ export type PaperPosition = {
 export type PaperTransaction = {
   id: string;
   accountId: string;
+  /** Marks fills that belong to a Lightning Round, not other shared-account activity. */
+  lightningRoundEventId?: string;
   symbol: string;
   companyName: string;
   action: 'BUY' | 'SELL' | 'SHORT_SELL' | 'BUY_TO_COVER' | 'DIVIDEND';

@@ -105,6 +105,9 @@ async function runSchemaMigrations(): Promise<void> {
       date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       realized_pnl DOUBLE PRECISION,
       fee DOUBLE PRECISION DEFAULT 0,
+      cash_delta DOUBLE PRECISION,
+      short_collateral_delta DOUBLE PRECISION,
+      lightning_round_event_id TEXT,
       PRIMARY KEY (id, user_id)
     )
   `);
@@ -129,6 +132,13 @@ async function runSchemaMigrations(): Promise<void> {
       trail_ref DOUBLE PRECISION,
       status TEXT NOT NULL DEFAULT 'pending',
       filled_price DOUBLE PRECISION,
+      lightning_round_event_id TEXT,
+      rejection_reason TEXT,
+      asset_type TEXT,
+      dividend_yield DOUBLE PRECISION DEFAULT 0,
+      dividend_rate DOUBLE PRECISION DEFAULT 0,
+      expense_ratio DOUBLE PRECISION DEFAULT 0,
+      sector TEXT,
       placed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       filled_at TIMESTAMPTZ,
       PRIMARY KEY (id, user_id)
@@ -220,6 +230,21 @@ async function runSchemaMigrations(): Promise<void> {
     "ALTER TABLE event_arena_leaderboard_entries ADD COLUMN IF NOT EXISTS cash_balance DOUBLE PRECISION NOT NULL DEFAULT 100000",
   );
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS event_arena_lightning_participants (
+      event_id TEXT NOT NULL,
+      installation_id TEXT NOT NULL,
+      account_id TEXT NOT NULL,
+      alias TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','entered','rejected')),
+      failure_reason TEXT,
+      event_start_at TIMESTAMPTZ NOT NULL,
+      event_end_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (event_id, installation_id)
+    )
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS event_arena_cash_transfers (
       event_id TEXT NOT NULL,
       transfer_ref TEXT NOT NULL,
@@ -304,8 +329,16 @@ async function runSchemaMigrations(): Promise<void> {
     ["paper_transactions", "fee", "DOUBLE PRECISION DEFAULT 0"],
     ["paper_transactions", "cash_delta", "DOUBLE PRECISION"],
     ["paper_transactions", "short_collateral_delta", "DOUBLE PRECISION"],
+    ["paper_transactions", "lightning_round_event_id", "TEXT"],
     ["paper_orders", "intent", "TEXT"],
     ["paper_orders", "short_collateral_ratio", "DOUBLE PRECISION"],
+    ["paper_orders", "lightning_round_event_id", "TEXT"],
+    ["paper_orders", "rejection_reason", "TEXT"],
+    ["paper_orders", "asset_type", "TEXT"],
+    ["paper_orders", "dividend_yield", "DOUBLE PRECISION DEFAULT 0"],
+    ["paper_orders", "dividend_rate", "DOUBLE PRECISION DEFAULT 0"],
+    ["paper_orders", "expense_ratio", "DOUBLE PRECISION DEFAULT 0"],
+    ["paper_orders", "sector", "TEXT"],
   ] as const;
   for (const [table, column, type] of paperColumns) {
     await pool.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column} ${type}`);

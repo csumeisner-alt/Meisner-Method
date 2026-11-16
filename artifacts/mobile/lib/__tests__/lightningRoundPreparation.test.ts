@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   canExecuteLightningRoundStagedOrder,
   cancelLightningRoundStagedOrders,
+  getLightningRoundEventPortfolio,
   getLightningRoundPreparationOpensAt,
   getLightningRoundQueuedOrders,
   getLightningRoundStartEquityFromSnapshots,
@@ -78,6 +79,33 @@ test('qualification tracks multiple valid queued orders and ignores rejected or 
     order.id === 'two' ? { ...order, status: 'cancelled' as const, rejectionReason: 'Quote became unavailable.' } : order,
   );
   assert.equal(isLightningRoundQualified(finalOrderRejected, eventId, accountId), false);
+  assert.equal(isLightningRoundQualified([
+    stagedOrder('filled', { status: 'filled', filledPrice: 100 }),
+  ], eventId, accountId), true);
+});
+
+test('Lightning Round portfolio uses only transactions tagged to this event', () => {
+  const eventTrades = [
+    {
+      id: 'event-buy', accountId, lightningRoundEventId: eventId, symbol: 'AAPL',
+      companyName: 'Apple', action: 'BUY' as const, shares: 10, price: 100, total: 1_000,
+      date: new Date(eventStartAtMs).toISOString(),
+    },
+    {
+      id: 'unrelated-buy', accountId, lightningRoundEventId: 'other-event', symbol: 'MSFT',
+      companyName: 'Microsoft', action: 'BUY' as const, shares: 50, price: 200, total: 10_000,
+      date: new Date(eventStartAtMs + 1_000).toISOString(),
+    },
+  ];
+  assert.deepEqual(
+    getLightningRoundEventPortfolio(eventTrades, eventId, { AAPL: 120 }),
+    {
+      cashBalance: 99_000,
+      equity: 100_200,
+      tradeCount: 1,
+      positions: [{ symbol: 'AAPL', companyName: 'Apple', shares: 10, avgCost: 100 }],
+    },
+  );
 });
 
 test('final unenrollment cancellation touches only this round’s staged orders', () => {

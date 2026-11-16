@@ -17,6 +17,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView as KeyboardControllerAvoidingView } from 'react-native-keyboard-controller';
 import { useColors } from '@/hooks/useColors';
+import { useApi } from '@/hooks/useApi';
 import { BottomTabBar } from '@/components/BottomTabBar';
 import {
   PaperChallengeLeaderboard,
@@ -32,8 +33,8 @@ import {
   type EventArenaAccountData,
 } from '@/lib/eventArenaHome';
 import {
+  getLightningRoundEventPortfolio,
   getLightningRoundQueuedOrders,
-  getLightningRoundStartEquityFromSnapshots,
   getReusableEventArenaAccountId,
 } from '@/lib/lightningRoundPreparation';
 import {
@@ -53,7 +54,6 @@ import {
   type PaperChallengeStore,
 } from '@/lib/paperChallenge';
 import {
-  computePaperEquity,
   isShortPosition,
   parseAccountValueSnapshots,
   type LiveQuote,
@@ -181,6 +181,7 @@ function LightningRoundCalendarUnavailable({ message }: { message: string }) {
 
 function LightningRoundScreenContent() {
   const colors = useColors();
+  const { apiFetch } = useApi();
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
   const routeParams = useLocalSearchParams<{ tab?: string }>();
@@ -206,6 +207,7 @@ function LightningRoundScreenContent() {
   const [joining, setJoining] = useState(false);
   const [rank, setRank] = useState<number | null>(null);
   const [scoreSyncError, setScoreSyncError] = useState('');
+  const [serverParticipantFailure, setServerParticipantFailure] = useState('');
   const [tab, setTab] = useState<ScreenTab>('overview');
   const [archiveSaving, setArchiveSaving] = useState(false);
   const [archiveError, setArchiveError] = useState('');
@@ -277,13 +279,62 @@ function LightningRoundScreenContent() {
     setAccountLoading(true);
     try {
       const cache = await readPaperCache();
-      const nextData: EventArenaAccountData = {
+      let nextData: EventArenaAccountData = {
         accounts: cache.accounts ?? [],
         positions: cache.positions ?? [],
         transactions: cache.transactions ?? [],
         orders: cache.orders ?? [],
         snapshots: cache.snapshots ?? [],
       };
+      if (enrollment && Date.now() >= enrollment.eventStartAtMs) {
+        try {
+          const installationId = await getInstallationId();
+          const remote = await apiFetch<{
+            participant?: { status?: string; failureReason?: string | null };
+            account?: EventArenaAccountData['accounts'][number] | null;
+            positions?: EventArenaAccountData['positions'];
+            transactions?: EventArenaAccountData['transactions'];
+            orders?: EventArenaAccountData['orders'];
+            lots?: PaperLot[];
+          }>(`/api/event-arena/lightning-round/${encodeURIComponent(enrollment.eventId)}/state`, {
+            headers: { 'X-Event-Arena-Installation-Id': installationId },
+          });
+          if (remote.account) {
+            nextData = {
+              ...nextData,
+              accounts: [...nextData.accounts.filter((item) => item.id !== enrollment.accountId), remote.account],
+              positions: [
+                ...nextData.positions.filter((item) => item.accountId !== enrollment.accountId),
+                ...(remote.positions ?? []),
+              ],
+              transactions: [
+                ...nextData.transactions.filter((item) => item.accountId !== enrollment.accountId),
+                ...(remote.transactions ?? []),
+              ],
+              orders: [
+                ...nextData.orders.filter((item) => item.accountId !== enrollment.accountId),
+                ...(remote.orders ?? []),
+              ],
+            };
+            await AsyncStorage.setItem(PAPER_CACHE_KEY, JSON.stringify({
+              ...cache,
+              ...nextData,
+              lots: [
+                ...(cache.lots ?? []).filter((item) => item.accountId !== enrollment.accountId),
+                ...(remote.lots ?? []),
+              ],
+              activeId: enrollment.accountId,
+            }));
+          }
+          setServerParticipantFailure(
+            remote.participant?.status === 'rejected'
+              ? remote.participant.failureReason || 'No opening order filled, so you were not entered.'
+              : '',
+          );
+        } catch {
+          // The local cache remains usable while the scheduled worker or API is unavailable.
+        }
+      }
       setAccountData(nextData);
       const accountId = enrollment?.accountId;
       const symbols = accountId
@@ -321,7 +372,7 @@ function LightningRoundScreenContent() {
     } finally {
       setAccountLoading(false);
     }
-  }, [enrollment?.accountId]);
+  }, [apiFetch, enrollment?.accountId, enrollment?.eventId, enrollment?.eventStartAtMs]);
 
   useEffect(() => {
     void refreshAccount();
@@ -391,9 +442,21 @@ function LightningRoundScreenContent() {
       setArchiveError('The completed Lightning Round account is missing, so its result cannot be archived.');
       return;
     }
-    const positions = accountData.positions.filter((position) =>
-      position.accountId === enrollment.accountId && position.shares > 0,
+    const eventPortfolioForArchive = getLightningRoundEventPortfolio(
+      accountData.transactions,
+      enrollment.eventId,
+      Object.fromEntries(Object.entries(quotes).map(([symbol, quote]) => [symbol, quote.price])),
+      LIGHTNING_ROUND_STARTING_BALANCE,
     );
+    const positions = eventPortfolioForArchive.positions.map((position) => ({
+      id: `${enrollment.eventId}:${position.symbol}`,
+      accountId: enrollment.accountId,
+      symbol: position.symbol,
+      companyName: position.companyName,
+      shares: position.shares,
+      positionType: 'long' as const,
+      avgCost: position.avgCost,
+    }));
     const missingSymbols = getMissingPaperChallengeQuoteSymbols(positions, quotes);
     if (missingSymbols.length > 0) {
       archiveAttemptedEventRef.current = enrollment.eventId;
@@ -406,24 +469,14 @@ function LightningRoundScreenContent() {
     setArchiveError('');
     void (async () => {
       try {
-        const endEquity = computePaperEquity(eventAccount, positions, quotes);
-        if (!Number.isFinite(endEquity)) throw new Error('The completed account equity is unavailable.');
-        const recoveredStartEquity = enrollment.startEquity
-          ?? getLightningRoundStartEquityFromSnapshots(
-            accountData.snapshots,
-            enrollment.accountId,
-            enrollment.eventStartAtMs,
-            enrollment.eventEndAtMs,
-          );
-        if (!Number.isFinite(recoveredStartEquity) || (recoveredStartEquity ?? 0) <= 0) {
-          throw new Error('The Lightning Round starting account value could not be recovered from saved snapshots.');
+        const endEquity = eventPortfolioForArchive.equity;
+        if (endEquity === null || !Number.isFinite(endEquity)) {
+          throw new Error('The event-only Lightning Round account value is unavailable.');
         }
-        const startingEquity = recoveredStartEquity!;
+        const startingEquity = LIGHTNING_ROUND_STARTING_BALANCE;
         const completedEnrollment = {
           ...enrollment,
-          joinedAtMs: enrollment.startEquity === null
-            ? enrollment.eventStartAtMs
-            : enrollment.joinedAtMs,
+          joinedAtMs: enrollment.eventStartAtMs,
           startEquity: startingEquity,
         };
         let finalRank: number | undefined;
@@ -443,7 +496,9 @@ function LightningRoundScreenContent() {
         const summary = buildPaperChallengeSummary(
           completedEnrollment,
           endEquity,
-          accountData.transactions,
+          accountData.transactions.filter((transaction) =>
+            transaction.lightningRoundEventId === enrollment.eventId,
+          ),
           completedAtMs,
           {
             equityHistory: [
@@ -452,7 +507,6 @@ function LightningRoundScreenContent() {
                 date: new Date(completedEnrollment.joinedAtMs).toISOString(),
                 value: startingEquity,
               },
-              ...accountData.snapshots.filter((snapshot) => snapshot.accountId === enrollment.accountId),
               {
                 accountId: enrollment.accountId,
                 date: new Date(completedAtMs).toISOString(),
@@ -493,8 +547,6 @@ function LightningRoundScreenContent() {
     })();
   }, [
     accountData.accounts,
-    accountData.positions,
-    accountData.snapshots,
     accountData.transactions,
     accountLoading,
     enrollment,
@@ -509,17 +561,47 @@ function LightningRoundScreenContent() {
       Object.entries(quotes).map(([symbol, quote]) => [symbol, quote.price]),
     ), now)
     : null, [accountData, enrollment, now, quotes, window]);
-  const eventPositions = performance?.positions ?? [];
-  const accountEquity = performance?.equity ?? null;
-  const dollarProfitLoss = performance?.profitLoss ?? null;
-  const returnPercent = performance?.returnPercent ?? null;
+  const eventPortfolio = useMemo(() => enrollment
+    ? getLightningRoundEventPortfolio(
+      accountData.transactions,
+      enrollment.eventId,
+      Object.fromEntries(Object.entries(quotes).map(([symbol, quote]) => [symbol, quote.price])),
+      LIGHTNING_ROUND_STARTING_BALANCE,
+    )
+    : null, [accountData.transactions, enrollment?.eventId, quotes]);
+  const eventPositions = eventPortfolio?.positions.map((position) => ({
+    id: `${enrollment?.eventId}:${position.symbol}`,
+    accountId: enrollment?.accountId ?? '',
+    symbol: position.symbol,
+    companyName: position.companyName,
+    shares: position.shares,
+    positionType: 'long' as const,
+    avgCost: position.avgCost,
+  })) ?? [];
+  const accountEquity = eventPortfolio?.equity ?? null;
+  const dollarProfitLoss = accountEquity == null
+    ? null
+    : accountEquity - LIGHTNING_ROUND_STARTING_BALANCE;
+  const returnPercent = dollarProfitLoss == null
+    ? null
+    : dollarProfitLoss / LIGHTNING_ROUND_STARTING_BALANCE * 100;
   const tradeHistory = useMemo(() => accountData.transactions
-    .filter((trade) => trade.accountId === enrollment?.accountId)
-    .sort((a, b) => Date.parse(b.date) - Date.parse(a.date)), [accountData.transactions, enrollment?.accountId]);
+    .filter((trade) => trade.lightningRoundEventId === enrollment?.eventId)
+    .sort((a, b) => Date.parse(b.date) - Date.parse(a.date)), [accountData.transactions, enrollment?.eventId]);
+  const lightningOrders = useMemo(() => accountData.orders
+    .filter((order) =>
+      order.accountId === enrollment?.accountId
+      && order.lightningRoundEventId === enrollment?.eventId,
+    )
+    .sort((a, b) => Date.parse(b.placedAt) - Date.parse(a.placedAt)),
+  [accountData.orders, enrollment?.accountId, enrollment?.eventId]);
   const pendingOrders = useMemo(() => enrollment
     ? getLightningRoundQueuedOrders(accountData.orders, enrollment.eventId, enrollment.accountId)
       .sort((a, b) => Date.parse(b.placedAt) - Date.parse(a.placedAt))
     : [], [accountData.orders, enrollment?.accountId, enrollment?.eventId]);
+  const participantEntered = lightningOrders.some((order) => order.status === 'filled');
+  const participantFailureReason = lightningOrders.find((order) => order.rejectionReason)?.rejectionReason
+    || serverParticipantFailure;
   const openAccount = () => router.push({
     pathname: '/paper',
     params: { challengeAccountId: enrollment?.accountId },
@@ -578,6 +660,19 @@ function LightningRoundScreenContent() {
         leaderboardAlias: alias.trim(),
         leaderboardOptedIn: true,
       };
+      const installationId = await getInstallationId();
+      await apiFetch(`/api/event-arena/lightning-round/${encodeURIComponent(window.id)}/state`, {
+        method: 'PUT',
+        headers: { 'X-Event-Arena-Installation-Id': installationId },
+        body: JSON.stringify({
+          alias: alias.trim(),
+          account: existingAccount,
+          positions: (cache.positions ?? []).filter((item) => item.accountId === accountId),
+          transactions: (cache.transactions ?? []).filter((item) => item.accountId === accountId),
+          orders: (cache.orders ?? []).filter((item) => item.accountId === accountId),
+          lots: (cache.lots ?? []).filter((item) => item.accountId === accountId),
+        }),
+      });
       await AsyncStorage.setItem(PAPER_CACHE_KEY, JSON.stringify({
         ...cache,
         activeId: accountId,
@@ -802,8 +897,17 @@ function LightningRoundScreenContent() {
                     ))}
                   </View>
                   <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 10 }}>
-                    Score compares account equity with its value at the scheduled start. Your existing Event Arena portfolio is used; no separate balance or account is created.
+                    Score starts at $100,000 and counts only fills tagged to this Lightning Round. Your existing Event Arena account is still used for trading.
                   </Text>
+                  {participantEntered ? (
+                    <Text testID="lightning-round-entry-status" style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10, marginTop: 8 }}>
+                      ENTERED — AT LEAST ONE OPENING ORDER FILLED.
+                    </Text>
+                  ) : participantFailureReason ? (
+                    <Text testID="lightning-round-entry-status" accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 10, lineHeight: 15, marginTop: 8 }}>
+                      NOT ENTERED — {participantFailureReason}
+                    </Text>
+                  ) : null}
                   {canOpenTradeAccount && (
                     <TouchableOpacity
                       testID="lightning-round-open-trading"
@@ -855,7 +959,7 @@ function LightningRoundScreenContent() {
                     <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', fontSize: 9 }}>PARTICIPANT</Text>
                     <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 12, marginTop: 4 }}>{enrollment.leaderboardAlias || 'Your account'}</Text>
                     <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 }}>
-                      {performance.completedTradeCount} completed trades · {pendingOrders.length} pending orders
+                      {eventPortfolio?.tradeCount ?? 0} event trades · {pendingOrders.length} pending orders
                     </Text>
                     {scoreSyncError ? (
                       <Text accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 5 }}>
@@ -888,7 +992,7 @@ function LightningRoundScreenContent() {
             <View style={{ marginTop: 12, padding: 13, borderRadius: 14, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
               <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>How the score works</Text>
               <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 16, marginTop: 5 }}>
-                Ranking is by percentage return on account equity. Quotes use the existing provider pipeline; when markets are closed, the screen labels the available session or previous-close price and its provider timestamp.
+                Ranking is by return on the $100,000 event portfolio and counts only fills attributed to this Lightning Round. Quotes use the latest available provider price.
               </Text>
             </View>
             <TouchableOpacity
@@ -949,17 +1053,29 @@ function LightningRoundScreenContent() {
                 </Text>
               </View>
             ))}
-            {pendingOrders.map((order) => (
+            {lightningOrders.map((order) => (
               <View key={order.id} testID={`lightning-round-pending-order-${order.id}`} style={{ marginTop: 8, padding: 13, borderRadius: 13, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
-                <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11 }}>PENDING — EXECUTES AT EVENT START</Text>
+                <Text style={{ color: order.status === 'filled' ? colors.primary : order.rejectionReason ? colors.destructive : colors.mutedForeground, fontFamily: 'Inter_700Bold', fontSize: 11 }}>
+                  {order.status === 'filled'
+                    ? `FILLED AT ${money(order.filledPrice ?? 0)}`
+                    : order.rejectionReason
+                      ? 'ORDER REJECTED'
+                      : 'PENDING — EXECUTES AT EVENT START'}
+                </Text>
                 <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 11, marginTop: 4 }}>
                   {order.shares} {order.symbol} · estimated {quotes[order.symbol]
                     ? money(order.shares * quotes[order.symbol].price)
                     : 'value unavailable'}
                 </Text>
-                <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 3 }}>
-                  Actual execution price may differ from this estimate.
-                </Text>
+                {order.rejectionReason ? (
+                  <Text accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 3 }}>
+                    {order.rejectionReason}
+                  </Text>
+                ) : order.status === 'pending' ? (
+                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 3 }}>
+                    Actual execution price may differ from this estimate.
+                  </Text>
+                ) : null}
               </View>
             ))}
           </ScrollView>

@@ -51,8 +51,15 @@ import {
   getEventCashTransferImpact,
   type EventCashTransferImpact,
 } from '@/lib/eventArenaTransfers';
-import { isShortPosition, type PaperAccount, type PaperOrder, type PaperPosition } from '@/lib/paperMath';
+import {
+  isShortPosition,
+  type PaperAccount,
+  type PaperOrder,
+  type PaperPosition,
+  type PaperTransaction,
+} from '@/lib/paperMath';
 import { getEventArenaAccountEquity } from '@/lib/eventArenaHome';
+import { getLightningRoundEventPortfolio } from '@/lib/lightningRoundPreparation';
 import {
   formatEventArenaMoney,
   formatEventArenaReturn,
@@ -221,7 +228,9 @@ function EventArenaPodiumShareCard({
                     {slot.entry?.alias ?? 'Waiting for competitor'}
                   </Text>
                   <Text style={{ color: '#C5C8CD', fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 0.8, marginTop: 4 }}>
-                    {slot.entry ? 'SELF-REPORTED SCORE' : 'OPEN PODIUM SPOT'}
+                    {slot.entry
+                      ? event.eventType === 'lightning-round' ? 'SERVER-CALCULATED SCORE' : 'SELF-REPORTED SCORE'
+                      : 'OPEN PODIUM SPOT'}
                   </Text>
                 </View>
                 {slot.entry && (
@@ -240,9 +249,13 @@ function EventArenaPodiumShareCard({
           })}
         </View>
         <View style={{ marginTop: 18, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(216,180,90,0.38)', backgroundColor: 'rgba(216,180,90,0.10)' }}>
-          <Text style={{ color: '#F0D88F', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.8 }}>SELF-REPORTED · NOT VERIFIED</Text>
+          <Text style={{ color: '#F0D88F', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.8 }}>
+            {event.eventType === 'lightning-round' ? 'SERVER-CALCULATED · EVENT FILLS ONLY' : 'SELF-REPORTED · NOT VERIFIED'}
+          </Text>
           <Text style={{ color: '#D8D8D4', fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 4 }}>
-            Scores are self-reported and not independently verified.
+            {event.eventType === 'lightning-round'
+              ? 'Lightning Round returns use only fills attributed to this event and current market prices.'
+              : 'Scores are self-reported and not independently verified.'}
           </Text>
         </View>
         <Text style={{ color: '#B9BEC5', fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 1.2, marginTop: 18, textAlign: 'center' }}>
@@ -266,12 +279,33 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
       avgCost: number;
       positionType?: 'long' | 'short';
     }>;
-    transactions?: Array<{ accountId: string; date: string }>;
+    transactions?: PaperTransaction[];
   } : {};
   const account = cache.accounts?.find((item) => item.id === enrollment.accountId);
-  const positions = (cache.positions ?? []).filter((item) =>
+  const accountPositions = (cache.positions ?? []).filter((item) =>
     item.accountId === enrollment.accountId && Number.isFinite(item.shares) && item.shares > 0,
   );
+  const transactions = Array.isArray(cache.transactions) ? cache.transactions : [];
+  const isLightningRound = (enrollment.eventType ?? event.eventType) === 'lightning-round';
+  const eventTransactions = transactions.filter((transaction) =>
+    transaction.lightningRoundEventId === event.id,
+  );
+  const eventPositions = isLightningRound
+    ? getLightningRoundEventPortfolio(
+      eventTransactions,
+      event.id,
+      {},
+      enrollment.startingBalance ?? event.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE,
+    ).positions.map((position) => ({
+      accountId: enrollment.accountId,
+      symbol: position.symbol,
+      companyName: position.companyName,
+      shares: position.shares,
+      avgCost: position.avgCost,
+      positionType: 'long' as const,
+    }))
+    : accountPositions;
+  const positions = eventPositions;
   const shareablePositions = positions.slice(0, 100);
   const symbols = [...new Set(positions.map((position) => position.symbol.trim().toUpperCase()))];
   const quoteResults = await Promise.allSettled(symbols.map(async (symbol) => {
@@ -299,11 +333,21 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
         : {}),
   } as const;
   const startEquity = configuration.startingBalance;
-  const equity = getEventArenaAccountEquity(
-    account as PaperAccount,
-    positions,
-    Object.fromEntries(quotes),
-  );
+  const eventPortfolio = isLightningRound
+    ? getLightningRoundEventPortfolio(
+      eventTransactions,
+      event.id,
+      Object.fromEntries(quotes),
+      enrollment.startingBalance ?? event.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE,
+    )
+    : null;
+  const equity = isLightningRound
+    ? eventPortfolio?.equity ?? null
+    : getEventArenaAccountEquity(
+      account as PaperAccount,
+      positions,
+      Object.fromEntries(quotes),
+    );
   if (equity == null) {
     throw new Error('Current quotes are unavailable for your event account. Your score was not updated.');
   }
@@ -324,8 +368,7 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
     .filter((holding, index, all) => holding.symbol && all.findIndex((candidate) => candidate.symbol === holding.symbol) === index)
     .slice(0, 100);
   const returnPercent = ((equity - startEquity) / startEquity) * 100;
-  const transactions = Array.isArray(cache.transactions) ? cache.transactions : [];
-  const tradeCount = transactions.filter((transaction) => {
+  const tradeCount = isLightningRound ? eventTransactions.length : transactions.filter((transaction) => {
     const date = typeof transaction.date === 'string' ? Date.parse(transaction.date) : Number.NaN;
     return transaction.accountId === enrollment.accountId
       && Number.isFinite(date)
@@ -347,8 +390,10 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
       holdings,
       eventStartAtMs: event.startAtMs,
       eventEndAtMs: event.endAtMs,
-      cashBalance: Number(account.cash || 0),
-      appliedTransferIds: Array.isArray(cache.eventArenaAppliedTransferIds)
+      cashBalance: isLightningRound
+        ? eventPortfolio?.cashBalance ?? startEquity
+        : Number(account.cash || 0),
+      appliedTransferIds: !isLightningRound && Array.isArray(cache.eventArenaAppliedTransferIds)
         ? cache.eventArenaAppliedTransferIds.slice(-500)
         : [],
     },
@@ -1176,10 +1221,14 @@ export function PaperChallengeLeaderboard({
           <Text style={{ flex: 1, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 14 }}>
             Live Event Leaderboard
           </Text>
-          <Text style={{ color: colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 9 }}>UNVERIFIED</Text>
+          <Text style={{ color: isLightningRound ? colors.primary : colors.destructive, fontFamily: 'Inter_700Bold', fontSize: 9 }}>
+            {isLightningRound ? 'SERVER-CALCULATED' : 'UNVERIFIED'}
+          </Text>
         </View>
         <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 5 }}>
-          Compare self-reported scores from opted-in participants. Results are not independently verified.
+          {isLightningRound
+            ? 'Compare returns calculated from this Lightning Round’s event-tagged fills.'
+            : 'Compare self-reported scores from opted-in participants. Results are not independently verified.'}
         </Text>
         <TouchableOpacity
           testID="open-paper-event-leaderboard"
@@ -1515,7 +1564,9 @@ export function PaperChallengeLeaderboard({
                     </View>
                   )}
                   <Text allowFontScaling style={{ color: '#C5C8CD', fontFamily: 'Inter_400Regular', fontSize: 9, textAlign: 'center', marginTop: 9 }}>
-                    SELF-REPORTED · NOT INDEPENDENTLY VERIFIED · Updated {timeLabel(lastUpdated)}
+                    {isLightningRound
+                      ? 'SERVER-CALCULATED FROM EVENT FILLS'
+                      : 'SELF-REPORTED · NOT INDEPENDENTLY VERIFIED'} · Updated {timeLabel(lastUpdated)}
                   </Text>
                 </View>
               {loading && entries.length === 0 ? (
@@ -1849,10 +1900,10 @@ export function PaperChallengeLeaderboard({
                 {optedIn ? 'Sharing is on' : 'Sharing is off'}
               </Text>
               <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, marginTop: 7 }}>
-                When sharing is on, other event participants can see your alias, self-reported score, and each current holding’s ticker and company name, estimated allocation percentage of your reported Event Arena equity, and Long or Short direction.
+                When sharing is on, other event participants can see your alias, {isLightningRound ? 'server-calculated event score' : 'self-reported score'}, and each current holding’s ticker and company name, estimated allocation percentage of your {isLightningRound ? 'event-only portfolio' : 'reported Event Arena equity'}, and Long or Short direction.
               </Text>
               <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, marginTop: 7 }}>
-                Raw share counts, prices, cost basis, account identifiers, regular accounts, and trade history are never shared. Scores are self-reported and not independently verified.
+                Raw share counts, prices, cost basis, account identifiers, regular accounts, and trade history are never shared. {isLightningRound ? 'The score is calculated from event-tagged fills and current prices.' : 'Scores are self-reported and not independently verified.'}
               </Text>
               <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 7 }}>
                 Public scores and holding details are removed 30 days after the event ends. Your local event history stays on this device. Turning sharing off removes your score and holdings from the leaderboard; your alias remains locked for this event.

@@ -11,6 +11,8 @@ import {
   getRegularEventWindowForStartDate,
   hasRegularEventWindowOverlap,
 } from "../../../mobile/lib/paperChallengeCalendar.ts";
+import { fetchYahooChartPrice } from "../lib/marketPrice.ts";
+import { calculateLightningRoundScore } from "../lib/lightningRoundScore.ts";
 
 export { EVENT_ARENA_RETENTION_DAYS, purgeExpiredEventArenaEntries } from "../lib/eventArenaRetention.ts";
 
@@ -146,6 +148,7 @@ const LIGHTNING_ROUND_TIME_ZONE = "America/Denver";
 const LIGHTNING_ROUND_START_HOUR = 7;
 const LIGHTNING_ROUND_START_MINUTE = 30;
 const LIGHTNING_ROUND_DAY_MS = 24 * 60 * 60 * 1000;
+const LIGHTNING_ROUND_PREPARATION_MS = 72 * 60 * 60 * 1000;
 
 function expectedLightningRoundWindow(eventId: unknown) {
   if (typeof eventId !== "string" || !/^lightning-\d{4}-\d{2}-\d{2}$/.test(eventId)) return null;
@@ -646,6 +649,7 @@ export function createEventArenaRouter(
   db: EventArenaDatabase,
   requireSchema: Middleware,
   now: () => number = Date.now,
+  fetchLightningPrice: (symbol: string) => Promise<number | null> = fetchYahooChartPrice,
 ) {
   const router = Router();
 
@@ -660,6 +664,296 @@ export function createEventArenaRouter(
       });
     } catch {
       res.status(500).json({ error: "Could not prepare the upcoming Lightning Round events." });
+    }
+  });
+
+  router.put("/event-arena/lightning-round/:eventId/state", requireSchema, async (req: any, res: any) => {
+    const installationId = req.get("x-event-arena-installation-id");
+    const configuration = expectedLightningRoundWindow(req.params.eventId);
+    if (!validInstallationId(installationId) || !configuration) {
+      res.status(400).json({ error: "A scheduled Lightning Round and valid installation ID are required." });
+      return;
+    }
+    const currentTime = now();
+    if (
+      currentTime < configuration.startAtMs - LIGHTNING_ROUND_PREPARATION_MS
+      || currentTime >= configuration.startAtMs
+    ) {
+      res.status(409).json({ error: "Lightning Round account preparation is closed." });
+      return;
+    }
+    const body = req.body && typeof req.body === "object" && !Array.isArray(req.body)
+      ? req.body as Record<string, any>
+      : null;
+    const account = body?.account;
+    const alias = typeof body?.alias === "string" ? body.alias.trim() : "";
+    const accountId = typeof account?.id === "string" ? account.id : "";
+    const positions = body?.positions;
+    const transactions = body?.transactions;
+    const orders = body?.orders;
+    const lots = body?.lots;
+    const arraysValid = [positions, transactions, orders, lots].every((value) =>
+      Array.isArray(value) && value.length <= 2_000,
+    );
+    const invalidCurrentEventOrder = Array.isArray(orders) && orders.some((order: any) =>
+      order?.lightningRoundEventId === req.params.eventId
+      && (
+        !["pending", "cancelled"].includes(order.status)
+        || order.orderType !== "market"
+        || order.side !== "buy"
+        || Boolean(order.intent)
+        || typeof order.symbol !== "string"
+        || !/^[A-Z0-9.^=-]{1,15}$/.test(order.symbol)
+        || !Number.isFinite(order.shares)
+        || order.shares <= 0
+      ),
+    );
+    if (
+      !account || typeof account !== "object" || Array.isArray(account)
+      || accountId.length < 1 || accountId.length > 200
+      || typeof account.name !== "string" || account.name.length > 120
+      || typeof account.cash !== "number" || !Number.isFinite(account.cash) || account.cash < 0
+      || alias.length < 1 || alias.length > 24 || /[\u0000-\u001f\u007f]/.test(alias)
+      || !arraysValid
+      || [...positions, ...transactions, ...orders, ...lots].some((item: any) =>
+        !item || typeof item !== "object" || item.accountId !== accountId,
+      )
+      || invalidCurrentEventOrder
+    ) {
+      res.status(400).json({ error: "The Lightning Round account snapshot is invalid." });
+      return;
+    }
+
+    try {
+      const savedConfiguration = await ensureEventArenaConfiguration(db, req.params.eventId);
+      if (!savedConfiguration || savedConfiguration.startAtMs !== configuration.startAtMs) {
+        res.status(409).json({ error: "This Lightning Round schedule does not match its saved configuration." });
+        return;
+      }
+      let preparationClosed = false;
+      await withTransaction(db, async (client) => {
+        await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [req.params.eventId]);
+        if (now() >= configuration.startAtMs) {
+          preparationClosed = true;
+          return;
+        }
+        await client.query(
+          `INSERT INTO event_arena_lightning_participants
+            (event_id,installation_id,account_id,alias,status,failure_reason,event_start_at,event_end_at,updated_at)
+           VALUES ($1,$2,$3,$4,'queued',NULL,TO_TIMESTAMP($5 / 1000.0),TO_TIMESTAMP($6 / 1000.0),NOW())
+           ON CONFLICT (event_id,installation_id) DO UPDATE SET
+             account_id=EXCLUDED.account_id,alias=EXCLUDED.alias,status='queued',
+             failure_reason=NULL,updated_at=NOW()
+           WHERE event_arena_lightning_participants.status='queued'`,
+          [
+            req.params.eventId, installationId, accountId, alias,
+            configuration.startAtMs, configuration.endAtMs,
+          ],
+        );
+        await client.query(
+          `INSERT INTO paper_accounts
+            (id,user_id,name,cash,short_collateral,short_collateral_ratio,created_at,unsettled_items,last_dividend_credit)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)
+           ON CONFLICT (id,user_id) DO UPDATE SET
+             name=EXCLUDED.name,cash=EXCLUDED.cash,short_collateral=EXCLUDED.short_collateral,
+             short_collateral_ratio=EXCLUDED.short_collateral_ratio,
+             unsettled_items=EXCLUDED.unsettled_items,last_dividend_credit=EXCLUDED.last_dividend_credit`,
+          [
+            accountId, installationId, account.name, account.cash,
+            Number.isFinite(account.shortCollateral) ? account.shortCollateral : 0,
+            Number.isFinite(account.shortCollateralRatio) ? account.shortCollateralRatio : 1.5,
+            account.createdAt ?? new Date(currentTime).toISOString(),
+            JSON.stringify(Array.isArray(account.unsettledItems) ? account.unsettledItems : []),
+            account.lastDividendCredit ?? null,
+          ],
+        );
+        await client.query("DELETE FROM paper_positions WHERE user_id=$1 AND account_id=$2", [installationId, accountId]);
+        for (const position of positions) {
+          await client.query(
+            `INSERT INTO paper_positions
+              (id,user_id,account_id,symbol,company_name,shares,avg_cost,position_type,collateral_per_share,
+               opened_at,dividend_yield,dividend_rate,expense_ratio,sector)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+            [
+              position.id, installationId, accountId, position.symbol, position.companyName ?? "",
+              position.shares, position.avgCost, position.positionType === "short" ? "short" : "long",
+              position.collateralPerShare ?? null, position.openedAt, position.dividendYield ?? 0,
+              position.dividendRate ?? 0, position.expenseRatio ?? 0, position.sector ?? "",
+            ],
+          );
+        }
+        await client.query(
+          "DELETE FROM paper_transactions WHERE user_id=$1 AND account_id=$2 AND lightning_round_event_id IS NULL",
+          [installationId, accountId],
+        );
+        for (const transaction of transactions.filter((item: any) => !item.lightningRoundEventId)) {
+          await client.query(
+            `INSERT INTO paper_transactions
+              (id,user_id,account_id,symbol,company_name,action,shares,price,total,date,realized_pnl,fee,
+               cash_delta,short_collateral_delta,lightning_round_event_id)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+            [
+              transaction.id, installationId, accountId, transaction.symbol, transaction.companyName ?? "",
+              transaction.action, transaction.shares, transaction.price, transaction.total, transaction.date,
+              transaction.realizedPnL ?? null, transaction.fee ?? 0, transaction.cashDelta ?? null,
+              transaction.shortCollateralDelta ?? null, null,
+            ],
+          );
+        }
+        await client.query(
+          "DELETE FROM paper_orders WHERE user_id=$1 AND account_id=$2 AND lightning_round_event_id IS NULL",
+          [installationId, accountId],
+        );
+        await client.query(
+          "DELETE FROM paper_orders WHERE user_id=$1 AND account_id=$2 AND lightning_round_event_id=$3",
+          [installationId, accountId, req.params.eventId],
+        );
+        for (const order of orders.filter((item: any) =>
+          !item.lightningRoundEventId || item.lightningRoundEventId === req.params.eventId,
+        )) {
+          await client.query(
+            `INSERT INTO paper_orders
+              (id,user_id,account_id,symbol,company_name,order_type,side,intent,short_collateral_ratio,
+               shares,limit_price,stop_price,trail_pct,trail_abs,trail_ref,status,filled_price,filled_at,
+               placed_at,lightning_round_event_id,rejection_reason,asset_type,dividend_yield,dividend_rate,
+               expense_ratio,sector)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
+            [
+              order.id, installationId, accountId, order.symbol, order.companyName ?? "",
+              order.orderType, order.side, order.intent ?? null, order.shortCollateralRatio ?? null,
+              order.shares, order.limitPrice ?? null, order.stopPrice ?? null, order.trailPct ?? null,
+              order.trailAbs ?? null, order.trailRef ?? null, order.status, order.filledPrice ?? null,
+              order.filledAt ?? null, order.placedAt, order.lightningRoundEventId ?? null,
+              order.rejectionReason ?? null, order.assetType ?? null, order.dividendYield ?? 0,
+              order.dividendRate ?? 0, order.expenseRatio ?? 0, order.sector ?? null,
+            ],
+          );
+        }
+        await client.query("DELETE FROM paper_lots WHERE user_id=$1 AND account_id=$2", [installationId, accountId]);
+        for (const lot of lots) {
+          await client.query(
+            `INSERT INTO paper_lots (id,user_id,account_id,symbol,shares,cost,purchased_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+            [lot.id, installationId, accountId, lot.symbol, lot.shares, lot.cost, lot.purchasedAt],
+          );
+        }
+      });
+      if (preparationClosed) {
+        res.status(409).json({ error: "Lightning Round account preparation is closed." });
+        return;
+      }
+      res.json({ ok: true, eventId: req.params.eventId, accountId });
+    } catch {
+      res.status(500).json({ error: "Could not save the Lightning Round account snapshot." });
+    }
+  });
+
+  router.get("/event-arena/lightning-round/:eventId/state", requireSchema, async (req: any, res: any) => {
+    const installationId = req.get("x-event-arena-installation-id");
+    if (!validInstallationId(installationId) || !expectedLightningRoundWindow(req.params.eventId)) {
+      res.status(400).json({ error: "A scheduled Lightning Round and valid installation ID are required." });
+      return;
+    }
+    try {
+      const { rows: participants } = await db.query(
+        `SELECT event_id,installation_id,account_id,alias,status,failure_reason
+         FROM event_arena_lightning_participants WHERE event_id=$1 AND installation_id=$2`,
+        [req.params.eventId, installationId],
+      );
+      const participant = participants[0];
+      if (!participant) {
+        res.status(404).json({ error: "Lightning Round participation was not found." });
+        return;
+      }
+      const accountId = participant.account_id;
+      const [accounts, positions, transactions, orders, lots] = await Promise.all([
+        db.query(
+          `SELECT id,name,cash,short_collateral,short_collateral_ratio,created_at,unsettled_items,last_dividend_credit
+           FROM paper_accounts WHERE id=$1 AND user_id=$2`,
+          [accountId, installationId],
+        ),
+        db.query(
+          `SELECT id,account_id,symbol,company_name,shares,position_type,collateral_per_share,avg_cost,opened_at,
+                  dividend_yield,dividend_rate,expense_ratio,sector
+           FROM paper_positions WHERE account_id=$1 AND user_id=$2`,
+          [accountId, installationId],
+        ),
+        db.query(
+          `SELECT id,account_id,symbol,company_name,action,shares,price,total,date,realized_pnl,fee,
+                  cash_delta,short_collateral_delta,lightning_round_event_id
+           FROM paper_transactions WHERE account_id=$1 AND user_id=$2 ORDER BY date ASC`,
+          [accountId, installationId],
+        ),
+        db.query(
+          `SELECT id,account_id,symbol,company_name,order_type,side,intent,short_collateral_ratio,shares,
+                  limit_price,stop_price,trail_pct,trail_abs,trail_ref,status,filled_price,filled_at,placed_at,
+                  lightning_round_event_id,rejection_reason,asset_type,dividend_yield,dividend_rate,expense_ratio,sector
+           FROM paper_orders WHERE account_id=$1 AND user_id=$2 ORDER BY placed_at ASC`,
+          [accountId, installationId],
+        ),
+        db.query(
+          `SELECT id,account_id,symbol,shares,cost,purchased_at
+           FROM paper_lots WHERE account_id=$1 AND user_id=$2 ORDER BY purchased_at ASC`,
+          [accountId, installationId],
+        ),
+      ]);
+      const iso = (value: any) => value instanceof Date ? value.toISOString() : value;
+      res.json({
+        participant: {
+          eventId: participant.event_id,
+          accountId,
+          alias: participant.alias,
+          status: participant.status,
+          failureReason: participant.failure_reason ?? null,
+        },
+        account: accounts.rows[0] ? {
+          id: accounts.rows[0].id,
+          name: accounts.rows[0].name,
+          cash: Number(accounts.rows[0].cash),
+          shortCollateral: Number(accounts.rows[0].short_collateral ?? 0),
+          shortCollateralRatio: Number(accounts.rows[0].short_collateral_ratio ?? 1.5),
+          createdAt: iso(accounts.rows[0].created_at),
+          unsettledItems: accounts.rows[0].unsettled_items ?? [],
+          lastDividendCredit: iso(accounts.rows[0].last_dividend_credit),
+        } : null,
+        positions: positions.rows.map((row: any) => ({
+          id: row.id, accountId: row.account_id, symbol: row.symbol, companyName: row.company_name ?? "",
+          shares: Number(row.shares), positionType: row.position_type, collateralPerShare: row.collateral_per_share == null ? undefined : Number(row.collateral_per_share),
+          avgCost: Number(row.avg_cost), openedAt: iso(row.opened_at), dividendYield: Number(row.dividend_yield ?? 0),
+          dividendRate: Number(row.dividend_rate ?? 0), expenseRatio: Number(row.expense_ratio ?? 0), sector: row.sector ?? "",
+        })),
+        transactions: transactions.rows.map((row: any) => ({
+          id: row.id, accountId: row.account_id, symbol: row.symbol, companyName: row.company_name ?? "",
+          action: row.action, shares: Number(row.shares), price: Number(row.price), total: Number(row.total),
+          date: iso(row.date), realizedPnL: row.realized_pnl == null ? undefined : Number(row.realized_pnl),
+          fee: Number(row.fee ?? 0), cashDelta: row.cash_delta == null ? undefined : Number(row.cash_delta),
+          shortCollateralDelta: row.short_collateral_delta == null ? undefined : Number(row.short_collateral_delta),
+          lightningRoundEventId: row.lightning_round_event_id ?? undefined,
+        })),
+        orders: orders.rows.map((row: any) => ({
+          id: row.id, accountId: row.account_id, symbol: row.symbol, companyName: row.company_name ?? "",
+          orderType: row.order_type, side: row.side, ...(row.intent ? { intent: row.intent } : {}),
+          shortCollateralRatio: row.short_collateral_ratio == null ? undefined : Number(row.short_collateral_ratio),
+          shares: Number(row.shares), limitPrice: row.limit_price == null ? undefined : Number(row.limit_price),
+          stopPrice: row.stop_price == null ? undefined : Number(row.stop_price), trailPct: row.trail_pct == null ? undefined : Number(row.trail_pct),
+          trailAbs: row.trail_abs == null ? undefined : Number(row.trail_abs), trailRef: row.trail_ref == null ? undefined : Number(row.trail_ref),
+          status: row.status, filledPrice: row.filled_price == null ? undefined : Number(row.filled_price),
+          filledAt: iso(row.filled_at), placedAt: iso(row.placed_at),
+          lightningRoundEventId: row.lightning_round_event_id ?? undefined,
+          rejectionReason: row.rejection_reason ?? undefined,
+          assetType: row.asset_type ?? undefined,
+          dividendYield: row.dividend_yield == null ? undefined : Number(row.dividend_yield),
+          dividendRate: row.dividend_rate == null ? undefined : Number(row.dividend_rate),
+          expenseRatio: row.expense_ratio == null ? undefined : Number(row.expense_ratio),
+          sector: row.sector ?? undefined,
+        })),
+        lots: lots.rows.map((row: any) => ({
+          id: row.id, accountId: row.account_id, symbol: row.symbol, shares: Number(row.shares),
+          cost: Number(row.cost), purchasedAt: iso(row.purchased_at),
+        })),
+      });
+    } catch {
+      res.status(500).json({ error: "Could not load Lightning Round execution results." });
     }
   });
 
@@ -745,6 +1039,14 @@ export function createEventArenaRouter(
       const requestingInstallationId = validInstallationId(headerInstallationId)
         ? headerInstallationId
         : null;
+      const lightningOnlyEntered = configuration.eventType === "lightning-round"
+        ? ` AND EXISTS (
+             SELECT 1 FROM event_arena_lightning_participants AS participant
+             WHERE participant.event_id=event_arena_leaderboard_entries.event_id
+               AND participant.installation_id=event_arena_leaderboard_entries.installation_id
+               AND participant.status='entered'
+           )`
+        : "";
       const { rows } = await db.query(
         `SELECT
            installation_id, participant_token, alias, start_equity, equity, trade_count, holdings, updated_at
@@ -753,7 +1055,8 @@ export function createEventArenaRouter(
            AND is_active=TRUE
            AND event_start_at=TO_TIMESTAMP($2 / 1000.0)
            AND event_end_at=TO_TIMESTAMP($3 / 1000.0)
-           AND event_end_at > NOW() - ($4 * INTERVAL '1 day')`,
+           AND event_end_at > NOW() - ($4 * INTERVAL '1 day')
+           ${lightningOnlyEntered}`,
         [
           req.params.eventId,
           expectedWindow.startAtMs,
@@ -858,6 +1161,84 @@ export function createEventArenaRouter(
         res.status(400).json({ error: "The score does not match this event's saved configuration." });
         return;
       }
+      let verifiedSubmission = submission;
+      if (configuration.eventType === "lightning-round") {
+        const { rows: participantRows } = await db.query(
+          `SELECT status,failure_reason,account_id FROM event_arena_lightning_participants
+           WHERE event_id=$1 AND installation_id=$2`,
+          [req.params.eventId, submission.installationId],
+        );
+        const participant = participantRows[0];
+        if (participant?.status !== "entered") {
+          res.status(409).json({
+            error: participant?.failure_reason
+              || "Your Lightning Round order has not filled, so you are not entered yet.",
+          });
+          return;
+        }
+        const accountId = participantRows[0].account_id;
+        if (!accountId) {
+          res.status(409).json({ error: "The Lightning Round shared account is unavailable." });
+          return;
+        }
+        const { rows: scopedActivity } = await db.query(
+          `SELECT symbol,company_name,action,shares,price,total,fee,date
+           FROM paper_transactions
+           WHERE user_id=$1 AND account_id=$2 AND lightning_round_event_id=$3
+             AND date >= TO_TIMESTAMP($4 / 1000.0) AND date <= TO_TIMESTAMP($5 / 1000.0)
+           ORDER BY date ASC,id ASC`,
+          [
+            submission.installationId,
+            accountId,
+            req.params.eventId,
+            configuration.startAtMs,
+            configuration.endAtMs,
+          ],
+        );
+        if (scopedActivity.length === 0) {
+          res.status(409).json({ error: "No opening fill was found for this Lightning Round." });
+          return;
+        }
+        const symbols = [...new Set(scopedActivity.map((row) => String(row.symbol)))];
+        const priceResults = await Promise.all(symbols.map(async (symbol) => {
+          try {
+            return [symbol, await fetchLightningPrice(symbol)] as const;
+          } catch {
+            return [symbol, null] as const;
+          }
+        }));
+        const prices: Record<string, number> = {};
+        for (const [symbol, price] of priceResults) {
+          if (price != null && Number.isFinite(price) && price > 0) prices[symbol] = price;
+        }
+        const score = calculateLightningRoundScore(
+          scopedActivity.map((row) => ({
+            symbol: String(row.symbol),
+            company_name: row.company_name,
+            action: String(row.action),
+            shares: Number(row.shares),
+            price: Number(row.price),
+            total: Number(row.total),
+            fee: row.fee == null ? null : Number(row.fee),
+            date: row.date instanceof Date ? row.date.toISOString() : row.date,
+          })),
+          prices,
+          configuration.startingBalance,
+        );
+        if (!score) {
+          res.status(503).json({ error: "The event-only Lightning Round score is unavailable until all held symbols have valid prices." });
+          return;
+        }
+        verifiedSubmission = {
+          ...submission,
+          startEquity: score.startEquity,
+          equity: score.equity,
+          cashBalance: score.cashBalance,
+          returnPercent: score.returnPercent,
+          tradeCount: score.tradeCount,
+          holdings: score.holdings,
+        };
+      }
       await purgeExpiredEventArenaEntries(db);
       const outcome = await withTransaction(db, async (client) => {
         await client.query(
@@ -893,17 +1274,17 @@ export function createEventArenaRouter(
          RETURNING alias, start_equity, equity, return_percent, trade_count, holdings, updated_at`,
         [
           req.params.eventId,
-          submission.installationId,
-          submission.alias,
-          submission.startEquity,
-          submission.equity,
-          submission.returnPercent,
-          submission.tradeCount,
-          JSON.stringify(submission.holdings),
-          submission.eventStartAtMs,
-          submission.eventEndAtMs,
-          submission.cashBalance,
-          submission.appliedTransferIds,
+          verifiedSubmission.installationId,
+          verifiedSubmission.alias,
+          verifiedSubmission.startEquity,
+          verifiedSubmission.equity,
+          verifiedSubmission.returnPercent,
+          verifiedSubmission.tradeCount,
+          JSON.stringify(verifiedSubmission.holdings),
+          verifiedSubmission.eventStartAtMs,
+          verifiedSubmission.eventEndAtMs,
+          verifiedSubmission.cashBalance,
+          verifiedSubmission.appliedTransferIds,
         ],
       );
         if (!rows[0]) {
@@ -925,7 +1306,15 @@ export function createEventArenaRouter(
            WHERE event_id=$1
              AND is_active=TRUE
              AND event_start_at=TO_TIMESTAMP($2 / 1000.0)
-             AND event_end_at=TO_TIMESTAMP($3 / 1000.0)`,
+             AND event_end_at=TO_TIMESTAMP($3 / 1000.0)
+             ${configuration.eventType === "lightning-round"
+               ? `AND EXISTS (
+                    SELECT 1 FROM event_arena_lightning_participants AS participant
+                    WHERE participant.event_id=event_arena_leaderboard_entries.event_id
+                      AND participant.installation_id=event_arena_leaderboard_entries.installation_id
+                      AND participant.status='entered'
+                  )`
+               : ""}`,
           [req.params.eventId, submission.eventStartAtMs, submission.eventEndAtMs],
         );
         const rankedSnapshots = rankEventArenaEntries(

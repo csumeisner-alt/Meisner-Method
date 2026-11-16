@@ -72,6 +72,7 @@ async function withApi(
   run: (baseUrl: string) => Promise<void>,
   currentTime = Date.parse("2026-11-18T17:00:00.000Z"),
   existingConfigurations = new Map<string, any>(),
+  fetchLightningPrice?: (symbol: string) => Promise<number | null>,
 ) {
   const app = express();
   app.use(express.json());
@@ -112,7 +113,12 @@ async function withApi(
         },
       }
     : database;
-  app.use(createEventArenaRouter(db, (_req, _res, next) => next(), () => currentTime));
+  app.use(createEventArenaRouter(
+    db,
+    (_req, _res, next) => next(),
+    () => currentTime,
+    fetchLightningPrice,
+  ));
   const server = app.listen(0);
   await once(server, "listening");
   const address = server.address();
@@ -1250,6 +1256,7 @@ test("accepted score submissions store ranked event snapshots without private id
 test("Lightning Round accepts isolated $100,000 scores and snapshots highest returns first", async () => {
   const lightningEvent = expectedEventArenaConfiguration("lightning-2026-11-27");
   assert.ok(lightningEvent);
+  const submittedAt = lightningEvent.startAtMs + 30 * 60_000;
   const snapshotValues: unknown[][] = [];
   const participantRows = [
     {
@@ -1257,22 +1264,22 @@ test("Lightning Round accepts isolated $100,000 scores and snapshots highest ret
       participant_token: "participant-token-lr-current",
       alias: "MarketFox",
       start_equity: 100_000,
-      equity: 110_000,
-      return_percent: 10,
-      trade_count: 3,
+      equity: 100_020,
+      return_percent: 0.02,
+      trade_count: 1,
       holdings: [],
-      updated_at: new Date("2026-11-21T16:30:00.000Z"),
+      updated_at: new Date(submittedAt),
     },
     {
       installation_id: "another-lightning-installation",
       participant_token: "participant-token-lr-runner-up",
       alias: "BlueWhale",
       start_equity: 100_000,
-      equity: 104_000,
-      return_percent: 4,
+      equity: 100_010,
+      return_percent: 0.01,
       trade_count: 2,
       holdings: [],
-      updated_at: new Date("2026-11-21T16:29:00.000Z"),
+      updated_at: new Date(submittedAt - 60_000),
     },
   ];
   await withApi(async (sql, values) => {
@@ -1280,14 +1287,35 @@ test("Lightning Round accepts isolated $100,000 scores and snapshots highest ret
       return { rows: [] };
     }
     if (sql.startsWith("SELECT installation_id\n")) return { rows: [] };
+    if (sql.includes("SELECT status,failure_reason,account_id FROM event_arena_lightning_participants")) {
+      return { rows: [{ status: "entered", account_id: "paper-event:shared" }] };
+    }
+    if (sql.includes("FROM paper_transactions")
+      && sql.includes("lightning_round_event_id=$3")) {
+      assert.match(sql, /date >= TO_TIMESTAMP\(\$4 \/ 1000\.0\)/);
+      return {
+        rows: [{
+          symbol: "AAPL",
+          company_name: "Apple Inc.",
+          action: "BUY",
+          shares: 2,
+          price: 100,
+          total: 200,
+          fee: 0,
+          date: new Date(lightningEvent.startAtMs + 1000),
+        }],
+      };
+    }
     if (sql.startsWith("INSERT INTO event_arena_leaderboard_entries")) {
       assert.equal(values?.[0], lightningEvent.eventId);
       assert.equal(values?.[3], 100_000);
-      assert.equal(values?.[4], 110_000);
-      assert.equal(values?.[5], 10);
-      return { rows: [{ updated_at: new Date("2026-11-21T16:30:00.000Z") }] };
+      assert.equal(values?.[4], 100_020);
+      assert.equal(values?.[5], 0.02);
+      assert.equal(values?.[6], 1);
+      return { rows: [{ updated_at: new Date(submittedAt) }] };
     }
     if (sql.includes("SELECT installation_id, participant_token, alias")) {
+      assert.match(sql, /participant\.status='entered'/);
       assert.deepEqual(values, [lightningEvent.eventId, lightningEvent.startAtMs, lightningEvent.endAtMs]);
       return { rows: participantRows };
     }
@@ -1314,9 +1342,9 @@ test("Lightning Round accepts isolated $100,000 scores and snapshots highest ret
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
       ok: true,
-      updatedAt: "2026-11-21T16:30:00.000Z",
+      updatedAt: new Date(submittedAt).toISOString(),
     });
-  }, Date.parse("2026-11-21T16:30:00.000Z"));
+  }, submittedAt, new Map(), async () => 110);
 
   assert.equal(snapshotValues.length, 1);
   assert.deepEqual(snapshotValues[0]?.[1], [
@@ -1324,7 +1352,115 @@ test("Lightning Round accepts isolated $100,000 scores and snapshots highest ret
     "participant-token-lr-runner-up",
   ]);
   assert.deepEqual(snapshotValues[0]?.[2], [1, 2]);
-  assert.deepEqual(snapshotValues[0]?.[3], [10, 4]);
+  assert.deepEqual(snapshotValues[0]?.[3], [0.02, 0.01]);
+});
+
+test("Lightning Round leaderboard rejects participants without a successful opening fill", async () => {
+  const lightningEvent = expectedEventArenaConfiguration("lightning-2026-11-27");
+  assert.ok(lightningEvent);
+  await withApi(async (sql) => {
+    if (sql.includes("SELECT status,failure_reason,account_id FROM event_arena_lightning_participants")) {
+      return { rows: [{ status: "rejected", failure_reason: "No valid market price was available." }] };
+    }
+    throw new Error(`Unexpected query for a participant who did not enter: ${sql}`);
+  }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/${lightningEvent.eventId}/leaderboard`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(validSubmission({
+        eventType: "lightning-round",
+        artworkId: "lightning-round-arena",
+        eventStartAtMs: lightningEvent.startAtMs,
+        eventEndAtMs: lightningEvent.endAtMs,
+      })),
+    });
+    assert.equal(response.status, 409);
+    assert.deepEqual(await response.json(), { error: "No valid market price was available." });
+  }, lightningEvent.startAtMs + 1, new Map(), async () => 110);
+});
+
+test("Lightning Round preparation cannot forge fills and preserves server-tagged history", async () => {
+  const lightningEvent = expectedEventArenaConfiguration("lightning-2026-11-27");
+  assert.ok(lightningEvent);
+  const currentTime = lightningEvent.startAtMs - 1;
+  const statements: Array<{ sql: string; values: any[] }> = [];
+  const accountId = "paper-event:shared";
+  const payload = {
+    alias: "MarketFox",
+    account: {
+      id: accountId,
+      name: "Shared Event Arena",
+      cash: 100_000,
+      createdAt: new Date(currentTime).toISOString(),
+    },
+    positions: [],
+    transactions: [
+      {
+        id: "ordinary-trade", accountId, symbol: "MSFT", companyName: "Microsoft",
+        action: "BUY", shares: 1, price: 100, total: 100,
+        date: new Date(currentTime).toISOString(),
+      },
+      {
+        id: "forged-lightning-trade", accountId, symbol: "AAPL", companyName: "Apple",
+        action: "BUY", shares: 50, price: 100, total: 5_000,
+        date: new Date(currentTime).toISOString(), lightningRoundEventId: lightningEvent.eventId,
+      },
+    ],
+    orders: [
+      {
+        id: "current-queue", accountId, symbol: "AAPL", companyName: "Apple",
+        orderType: "market", side: "buy", shares: 2, status: "pending",
+        placedAt: new Date(currentTime).toISOString(), lightningRoundEventId: lightningEvent.eventId,
+      },
+      {
+        id: "previous-round-fill", accountId, symbol: "MSFT", companyName: "Microsoft",
+        orderType: "market", side: "buy", shares: 1, status: "filled",
+        placedAt: new Date(currentTime - 1000).toISOString(), lightningRoundEventId: "prior-lightning-round",
+      },
+    ],
+    lots: [],
+  };
+  await withApi(async (sql, values = []) => {
+    statements.push({ sql, values });
+    return { rows: [] };
+  }, async (baseUrl) => {
+    const route = `${baseUrl}/event-arena/lightning-round/${lightningEvent.eventId}/state`;
+    const headers = {
+      "content-type": "application/json",
+      "x-event-arena-installation-id": installationId,
+    };
+    const forgedFill = await fetch(route, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({
+        ...payload,
+        orders: payload.orders.map((order) =>
+          order.id === "current-queue" ? { ...order, status: "filled", filledPrice: 100 } : order,
+        ),
+      }),
+    });
+    assert.equal(forgedFill.status, 400);
+
+    const response = await fetch(route, { method: "PUT", headers, body: JSON.stringify(payload) });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { ok: true, eventId: lightningEvent.eventId, accountId });
+  }, currentTime);
+  const transactionDelete = statements.find((item) => item.sql.startsWith("DELETE FROM paper_transactions"));
+  assert.match(transactionDelete?.sql ?? "", /lightning_round_event_id IS NULL/);
+  const transactionInserts = statements.filter((item) => item.sql.startsWith("INSERT INTO paper_transactions"));
+  assert.equal(transactionInserts.length, 1);
+  assert.equal(transactionInserts[0]?.values[0], "ordinary-trade");
+  assert.equal(transactionInserts[0]?.values[14], null);
+  assert.ok(statements.some((item) =>
+    item.sql.startsWith("DELETE FROM paper_orders")
+      && item.sql.includes("lightning_round_event_id IS NULL"),
+  ));
+  assert.ok(statements.some((item) =>
+    item.sql.startsWith("DELETE FROM paper_orders")
+      && item.values[2] === lightningEvent.eventId,
+  ));
+  const insertedOrders = statements.filter((item) => item.sql.startsWith("INSERT INTO paper_orders"));
+  assert.deepEqual(insertedOrders.map((item) => item.values[0]), ["current-queue"]);
 });
 
 test(

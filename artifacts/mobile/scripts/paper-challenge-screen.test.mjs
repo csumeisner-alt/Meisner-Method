@@ -105,7 +105,8 @@ test("Lightning Round uses an existing Event Arena account and preserves its arc
   assert.match(events, /getLightningRoundSeasonSummary\(store\.history, now\)/);
   assert.match(events, /testID="paper-event-lightning-season-summary"/);
   assert.match(events, /Open any event below to review its original result, artwork, and equity history/);
-  assert.match(lightningRound, /trade\.accountId === enrollment\?\.accountId/);
+  assert.match(lightningRound, /trade\.lightningRoundEventId === enrollment\?\.eventId/);
+  assert.match(lightningRound, /getLightningRoundEventPortfolio\(/);
   assert.match(lightningRound, /challengeAccountId: enrollment\?\.accountId/);
   assert.match(lightningRound, /formatProviderPriceSource/);
   assert.match(lightningRound, /Provider time unavailable/);
@@ -125,6 +126,8 @@ test("Lightning Round uses an existing Event Arena account and preserves its arc
   assert.match(eventArenaApi, /lightning-round-arena/);
   assert.match(alertWorker, /async function prepareScheduledLightningRounds\(\): Promise<void>[\s\S]*?prepareLightningRoundEvents\(pool\)/);
   assert.match(alertWorker, /while \(true\) \{\s*await prepareScheduledLightningRounds\(\)/);
+  assert.match(alertWorker, /processDueLightningRoundOrders/);
+  assert.match(eventArenaApi, /event_arena_lightning_participants/);
 
   const standardArtworkList = challenge.match(/export const PAPER_CHALLENGE_ARTWORK_IDS = \[([\s\S]*?)\] as const/)?.[1] ?? '';
   assert.match(standardArtworkList, /'green-stock-exchange'/);
@@ -183,11 +186,13 @@ test("Lightning Round preparation exposes qualification, order edits, and final-
   assert.match(deleteRequest, /otherValidOrders\.length > 0/);
   assert.match(deleteRequest, /setFinalLightningCancelOrder\(order\)/);
   assert.match(screen, /testID="lightning-round-leave-error"/);
+  assert.match(screen, /testID="lightning-round-entry-failure"/);
 
   const evaluatorStart = screen.indexOf("const evaluatePendingOrders = useCallback(");
   const evaluatorEnd = screen.indexOf("const fetchQuotes = useCallback(", evaluatorStart);
   const evaluator = screen.slice(evaluatorStart, evaluatorEnd);
   assert.match(evaluator, /canExecuteLightningRoundStagedOrder\(order, matchingLightningEnrollment, Date\.now\(\)\)/);
+  assert.match(evaluator, /if \(isStagedLightningOrder\) \{[\s\S]*?server worker, not this foreground loop, owns staged fills\.[\s\S]*?Avoid a second foreground fill after the server has started processing\.[\s\S]*?continue;\s*\}/);
   assert.match(evaluator, /if \(!q\) continue;[\s\S]*?getOrderQuoteState\(q\) !== 'fresh'\) continue;/);
   assert.match(evaluator, /status: 'cancelled' as const, rejectionReason: executionRiskError/);
   assert.match(evaluator, /status: 'cancelled' as const, rejectionReason: fillResult\.reason/);
@@ -240,7 +245,7 @@ assert.match(leaderboard, /STARTING CAPITAL/);
   assert.match(leaderboard, /transaction\.accountId === enrollment\.accountId/);
   assert.match(leaderboard, /date >= event\.startAtMs/);
   assert.match(leaderboard, /date <= event\.endAtMs/);
-  assert.match(leaderboard, /each current holding’s ticker and company name, estimated allocation percentage of your reported Event Arena equity, and Long or Short direction/);
+  assert.match(leaderboard, /estimated allocation percentage of your \{isLightningRound \? 'event-only portfolio' : 'reported Event Arena equity'\}, and Long or Short direction/);
   assert.match(leaderboard, /alias remains locked for this event/i);
   assert.match(leaderboard, /Opt-in is saved on this device; your score will retry when the connection is available/);
   assert.match(leaderboard, /Your alias is saved on this device; the leaderboard will retry the update/);

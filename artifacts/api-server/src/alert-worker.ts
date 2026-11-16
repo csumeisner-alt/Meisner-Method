@@ -24,6 +24,7 @@ import { purgeExpiredEventArenaEntries } from "./lib/eventArenaRetention.js";
 import { prepareLightningRoundEvents } from "./routes/eventArenaRoutes.js";
 import { fetchYahooChartPrice } from "./lib/marketPrice.js";
 import { sendExpoPushRequest } from "./lib/expoPushRequest.js";
+import { processDueLightningRoundOrders } from "./lib/lightningRoundExecution.js";
 
 const { Pool } = pg;
 
@@ -266,6 +267,21 @@ async function prepareScheduledLightningRounds(): Promise<void> {
   }
 }
 
+async function executeDueLightningRoundOrders(): Promise<void> {
+  try {
+    const summary = await processDueLightningRoundOrders(pool, {
+      fetchPrice: fetchCurrentPrice,
+    });
+    if (summary.events > 0) {
+      logger.info({ ...summary }, "[alert-worker] Lightning Round opening orders processed");
+    }
+  } catch (err) {
+    // The worker retries due events on its next cycle. The execution batch is
+    // transactional and order status is the idempotency guard.
+    logger.warn({ err }, "[alert-worker] Lightning Round order execution failed; will retry");
+  }
+}
+
 async function main(): Promise<void> {
   logger.info("[alert-worker] starting");
 
@@ -281,6 +297,7 @@ async function main(): Promise<void> {
   // eslint-disable-next-line no-constant-condition
   while (true) {
     await prepareScheduledLightningRounds();
+    await executeDueLightningRoundOrders();
     await runEventArenaCleanupIfDue();
     await runAlertCheck();
     await sleep(CHECK_INTERVAL_MS);

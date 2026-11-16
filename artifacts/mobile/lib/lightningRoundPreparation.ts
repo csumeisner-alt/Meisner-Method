@@ -1,4 +1,9 @@
-import type { PaperAccount, PaperAccountValueSnapshot, PaperOrder } from './paperMath.ts';
+import type {
+  PaperAccount,
+  PaperAccountValueSnapshot,
+  PaperOrder,
+  PaperTransaction,
+} from './paperMath.ts';
 import type { PaperChallengeEnrollment, PaperChallengeSummary } from './paperChallenge.ts';
 
 export const LIGHTNING_ROUND_PREPARATION_WINDOW_MS = 72 * 60 * 60 * 1000;
@@ -109,7 +114,86 @@ export function isLightningRoundQualified(
   eventId: string,
   accountId: string,
 ): boolean {
-  return getLightningRoundQueuedOrders(orders, eventId, accountId).length > 0;
+  return orders.some((order) =>
+    order.accountId === accountId
+    && order.lightningRoundEventId === eventId
+    && order.status === 'filled',
+  ) || getLightningRoundQueuedOrders(orders, eventId, accountId).length > 0;
+}
+
+export function getLightningRoundEventPortfolio(
+  transactions: PaperTransaction[],
+  eventId: string,
+  quotes: Record<string, number>,
+  startingBalance = 100_000,
+): {
+  cashBalance: number;
+  equity: number | null;
+  tradeCount: number;
+  positions: Array<{
+    symbol: string;
+    companyName: string;
+    shares: number;
+    avgCost: number;
+  }>;
+} {
+  const eventTrades = transactions
+    .filter((transaction) =>
+      transaction.lightningRoundEventId === eventId
+      && transaction.action !== 'DIVIDEND',
+    )
+    .sort((left, right) => Date.parse(left.date) - Date.parse(right.date));
+  const holdings = new Map<string, {
+    symbol: string;
+    companyName: string;
+    shares: number;
+    totalCost: number;
+  }>();
+  let cashBalance = startingBalance;
+  for (const trade of eventTrades) {
+    const existing = holdings.get(trade.symbol);
+    if (trade.action === 'BUY') {
+      cashBalance -= trade.total;
+      const currentShares = existing?.shares ?? 0;
+      holdings.set(trade.symbol, {
+        symbol: trade.symbol,
+        companyName: trade.companyName,
+        shares: currentShares + trade.shares,
+        totalCost: (existing?.totalCost ?? 0) + trade.shares * trade.price,
+      });
+    } else if (trade.action === 'SELL' && existing) {
+      cashBalance += trade.total - (trade.fee ?? 0);
+      const remainingShares = Math.max(0, existing.shares - trade.shares);
+      if (remainingShares <= 0.0001) {
+        holdings.delete(trade.symbol);
+      } else {
+        const averageCost = existing.totalCost / existing.shares;
+        holdings.set(trade.symbol, {
+          ...existing,
+          shares: remainingShares,
+          totalCost: averageCost * remainingShares,
+        });
+      }
+    }
+  }
+  const positions = [...holdings.values()].map((position) => ({
+    symbol: position.symbol,
+    companyName: position.companyName,
+    shares: position.shares,
+    avgCost: position.totalCost / position.shares,
+  }));
+  const hasMissingQuote = positions.some((position) =>
+    !Number.isFinite(quotes[position.symbol]) || quotes[position.symbol] <= 0,
+  );
+  return {
+    cashBalance,
+    equity: hasMissingQuote
+      ? null
+      : cashBalance + positions.reduce((sum, position) =>
+        sum + position.shares * quotes[position.symbol]!, 0),
+    tradeCount: eventTrades.length,
+    positions,
+  };
 }
 
 export function cancelLightningRoundStagedOrders(
