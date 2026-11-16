@@ -532,6 +532,15 @@ const DAIQUIRI_VOICE_CLIPS: readonly DaiquiriVoiceClip[] = [
   { source: require('../assets/daiquiri-voice/voice05.m4a'), durationMs: 2_670 },
 ];
 
+const SMARTPRO_VOICE_CLIPS: readonly DaiquiriVoiceClip[] = [
+  { source: require('../assets/smartpro-voice/smartpro-01.m4a'), durationMs: 6_920 },
+  { source: require('../assets/smartpro-voice/smartpro-02.m4a'), durationMs: 3_135 },
+  { source: require('../assets/smartpro-voice/smartpro-03.m4a'), durationMs: 2_670 },
+  { source: require('../assets/smartpro-voice/smartpro-04.m4a'), durationMs: 3_669 },
+  { source: require('../assets/smartpro-voice/smartpro-05.m4a'), durationMs: 2_345 },
+  { source: require('../assets/smartpro-voice/smartpro-06.m4a'), durationMs: 5_225 },
+];
+
 const MACHINE_STATUS_LINES = [
   'RUNNING THE NUMBERS',
   'CONSULTING THE RESERVE',
@@ -626,6 +635,7 @@ export function BrewTokenBank({
   const quickReviveVoiceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const staminUpVoiceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const daiquiriVoiceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const smartProVoiceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const displayedTokensRef = useRef(tokens);
   const lossPlayerRef = useRef<AudioPlayerHandle | null>(null);
   const machinePlayerRef = useRef<AudioPlayerHandle | null>(null);
@@ -633,6 +643,7 @@ export function BrewTokenBank({
   const quickReviveVoicePlayerRef = useRef<AudioPlayerHandle | null>(null);
   const staminUpVoicePlayerRef = useRef<AudioPlayerHandle | null>(null);
   const daiquiriVoicePlayerRef = useRef<AudioPlayerHandle | null>(null);
+  const smartProVoicePlayerRef = useRef<AudioPlayerHandle | null>(null);
   const activeLossPhraseRef = useRef<LossPhrase | null>(null);
   const shopBusyRef = useRef(false);
   const resolvingRef = useRef(false);
@@ -727,6 +738,13 @@ export function BrewTokenBank({
     daiquiriVoiceTimerRef.current = null;
     try { daiquiriVoicePlayerRef.current?.remove(); } catch (_) {}
     daiquiriVoicePlayerRef.current = null;
+  };
+
+  const stopSmartProVoice = () => {
+    if (smartProVoiceTimerRef.current) clearTimeout(smartProVoiceTimerRef.current);
+    smartProVoiceTimerRef.current = null;
+    try { smartProVoicePlayerRef.current?.remove(); } catch (_) {}
+    smartProVoicePlayerRef.current = null;
   };
 
   const stopMachineStatus = () => {
@@ -884,6 +902,7 @@ export function BrewTokenBank({
     stopQuickReviveVoice();
     stopStaminUpVoice();
     stopDaiquiriVoice();
+    stopSmartProVoice();
   }, []);
 
   useEffect(() => {
@@ -1349,6 +1368,22 @@ export function BrewTokenBank({
     }
   };
 
+  const playSmartProVoice = async () => {
+    if (!soundEnabled || Constants.appOwnership === 'expo') return;
+    stopSmartProVoice();
+    const clip = SMARTPRO_VOICE_CLIPS[Math.floor(Math.random() * SMARTPRO_VOICE_CLIPS.length)]!;
+    try {
+      const { createAudioPlayer, setAudioModeAsync } = await import('expo-audio');
+      await setAudioModeAsync({ playsInSilentMode: false, allowsRecording: false });
+      const player = createAudioPlayer(clip.source, { downloadFirst: true });
+      smartProVoicePlayerRef.current = player;
+      player.play();
+      smartProVoiceTimerRef.current = setTimeout(stopSmartProVoice, clip.durationMs + 250);
+    } catch {
+      // The SmartPro sale and bottle animation remain usable if audio is unavailable.
+    }
+  };
+
   const handleRedeemDaiquiri = async () => {
     if (!daiquiriUnlocked || daiquiriBottles < 1 || daiquiriArmed || quickReviveArmed || staminUpArmed || resolvingRef.current || shopBusyRef.current) return;
     const redeemed = await runShopAction(onRedeemDaiquiri);
@@ -1449,6 +1484,7 @@ export function BrewTokenBank({
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     }
     triggerBottleBurst('smartPro', 'vault');
+    void playSmartProVoice();
   };
 
   const handleUnlockNeonGucciPhrases = async (confirmed = false) => {
@@ -1582,6 +1618,7 @@ export function BrewTokenBank({
     stopLossVoice(true);
     stopMachineSound();
     stopDaiquiriVoice();
+    stopSmartProVoice();
     stopWinSound();
     stopQuickReviveVoice();
     stopStaminUpVoice();

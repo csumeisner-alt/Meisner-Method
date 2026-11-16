@@ -51,6 +51,26 @@ test("tapping each unlocked bottle opens its preview and plays the animation wit
   assert.doesNotMatch(inspectionHandler, /onBuy|onRedeem/);
 });
 
+test("SmartPro redemption plays one random supplied clip only after success", async () => {
+  const clips = bankSource.match(/const SMARTPRO_VOICE_CLIPS:[\s\S]*?\n\];/)?.[0];
+  assert.ok(clips);
+  const clipPaths = [...clips.matchAll(/smartpro-voice\/(smartpro-0[1-6]\.m4a)/g)]
+    .map((match) => match[1]);
+  assert.equal(clipPaths.length, 6);
+  assert.equal(new Set(clipPaths).size, 6);
+  for (const clipPath of clipPaths) {
+    assert.ok(existsSync(resolve(mobileDir, "assets/smartpro-voice", clipPath)));
+  }
+
+  const handler = bankSource.match(
+    /const handleRedeemSmartPro = async \(\) => \{[\s\S]*?\n  \};/,
+  )?.[0];
+  assert.ok(handler);
+  assert.match(handler, /if \(!redeemed\.ok\)[\s\S]*?return;/);
+  assert.match(handler, /triggerBottleBurst\('smartPro', 'vault'\);[\s\S]*?void playSmartProVoice\(\);/);
+  assert.match(bankSource, /SMARTPRO_VOICE_CLIPS\[Math\.floor\(Math\.random\(\) \* SMARTPRO_VOICE_CLIPS\.length\)\]/);
+});
+
 test("web confirmation invokes a Brew Bank purchase only after confirmation", () => {
   let economy = { tokens: 40, recipes: 0, keys: 0 };
   let prompt = "";
@@ -164,7 +184,7 @@ async function buildBrewBankBundle() {
       import { Text } from "react-native";
       export const Feather = ({ name, ...props }) => React.createElement(Text, props, name);
     `],
-    ["expo-constants", `export default { appOwnership: "expo", statusBarHeight: 0 };`],
+    ["expo-constants", `export default { appOwnership: "standalone", statusBarHeight: 0 };`],
     ["expo-haptics", `
       export const ImpactFeedbackStyle = { Medium: "medium" };
       export const NotificationFeedbackType = { Success: "success", Warning: "warning" };
@@ -177,7 +197,7 @@ async function buildBrewBankBundle() {
       import { View } from "react-native";
       export const LinearGradient = (props) => React.createElement(View, props);
     `],
-    ["expo-audio", `export const createAudioPlayer = () => ({ play() {}, remove() {} }); export const setAudioModeAsync = async () => {};`],
+    ["expo-audio", `export const createAudioPlayer = (source) => ({ play() { window.__brewAudioPlayedSources.push(source); }, remove() {} }); export const setAudioModeAsync = async () => {};`],
     ["react-native-safe-area-context", `export const useSafeAreaInsets = () => ({ top: 0, right: 0, bottom: 0, left: 0 });`],
     ["react-native-svg", `
       import React from "react";
@@ -235,8 +255,8 @@ async function buildBrewBankBundle() {
           loader: "tsx",
           resolveDir: mobileDir,
         }));
-        buildApi.onLoad({ filter: /.*/, namespace: "brew-bank-audio" }, () => ({
-          contents: "module.exports = 0;",
+        buildApi.onLoad({ filter: /.*/, namespace: "brew-bank-audio" }, ({ path }) => ({
+          contents: `module.exports = ${JSON.stringify(path)};`,
           loader: "js",
         }));
       },
@@ -331,8 +351,8 @@ test("Brew Bank browser purchases update and persist the rendered economy only a
     staminUpUnlocked: false,
     staminUpBottles: 0,
     staminUpArmed: false,
-    smartProUnlocked: false,
-    smartProBottles: 0,
+    smartProUnlocked: true,
+    smartProBottles: 1,
     smartProSaleExpiresAt: null,
     darkBrewTokens: 0,
     claimedQuoteViewIds: [],
@@ -341,6 +361,7 @@ test("Brew Bank browser purchases update and persist the rendered economy only a
     <div id="root"></div>
     <script>
       localStorage.setItem(${JSON.stringify(BREW_ECONOMY_SNAPSHOT_KEY)}, ${JSON.stringify(JSON.stringify(initialSnapshot))});
+      window.__brewAudioPlayedSources = [];
       window.__brewErrors = [];
       window.addEventListener("error", (event) => window.__brewErrors.push(String(event.error ?? event.message)));
       window.addEventListener("unhandledrejection", (event) => window.__brewErrors.push(String(event.reason)));
@@ -480,6 +501,29 @@ test("Brew Bank browser purchases update and persist the rendered economy only a
     snapshot = await readEconomy();
     assert.equal(snapshot.brewTokens, 55);
     assert.equal(snapshot.bankKeys, 1);
+
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `(() => {
+        const button = document.querySelector('[aria-label^="Redeem a SmartPro Soda"]');
+        return button && !button.disabled;
+      })()`,
+      "The stocked SmartPro bottle did not become available for redemption.",
+    );
+    await browser.evaluate(`document.querySelector('[aria-label^="Redeem a SmartPro Soda"]').click()`);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `JSON.parse(localStorage.getItem(${JSON.stringify(BREW_ECONOMY_SNAPSHOT_KEY)}))?.smartProBottles === 0`,
+      "Redeeming SmartPro did not consume exactly one bottle.",
+    );
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `window.__brewAudioPlayedSources.length === 1`,
+      "A successful SmartPro redemption did not play a bundled audio clip.",
+    );
+    const playedSources = await browser.evaluate(`window.__brewAudioPlayedSources.slice()`);
+    assert.equal(playedSources.length, 1);
+    assert.match(playedSources[0], /smartpro-voice\/smartpro-0[1-6]\.m4a$/);
   } finally {
     browser?.close();
     chrome.kill("SIGTERM");
