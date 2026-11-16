@@ -965,7 +965,7 @@ export function createEventArenaRouter(
         [req.params.eventId, installationId],
       );
       const participant = participants[0];
-      if (!participant) {
+      if (!participant || participant.installation_id !== installationId) {
         res.status(404).json({ error: "Lightning Round participation was not found." });
         return;
       }

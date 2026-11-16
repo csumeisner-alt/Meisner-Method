@@ -1317,6 +1317,19 @@ test(
         });
         assert.equal(payload.participant.finalResult.finalRank, frozenBeforeApiRead.rows[0].rank);
         assert.deepEqual(await readFrozenResult(), frozenBeforeApiRead);
+
+        const unauthorizedResponse = await fetch(
+          `http://127.0.0.1:${address.port}/event-arena/lightning-round/${standingsIds.event}/state`,
+          { headers: { "x-event-arena-installation-id": `different-${randomUUID()}` } },
+        );
+        assert.equal(unauthorizedResponse.status, 404);
+        const unauthorizedPayload = await unauthorizedResponse.json();
+        assert.deepEqual(unauthorizedPayload, {
+          error: "Lightning Round participation was not found.",
+        });
+        assert.equal(JSON.stringify(unauthorizedPayload).includes(apiParticipant.installationId), false);
+        assert.equal(JSON.stringify(unauthorizedPayload).includes(apiParticipant.symbol), false);
+        assert.deepEqual(await readFrozenResult(), frozenBeforeApiRead);
       } finally {
         server.close();
         await once(server, "close");

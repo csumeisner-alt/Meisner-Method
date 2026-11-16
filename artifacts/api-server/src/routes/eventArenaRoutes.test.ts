@@ -1644,6 +1644,43 @@ test("Lightning Round state returns the immutable server-finalized archive data"
   }, lightningEvent.startAtMs + 1);
 });
 
+test("Lightning Round state hides results if the database returns another installation", async () => {
+  const lightningEvent = expectedEventArenaConfiguration("lightning-2026-11-27");
+  assert.ok(lightningEvent);
+  let privateQueries = 0;
+  await withApi(async (sql) => {
+    if (sql.includes("SELECT event_id,installation_id,account_id,alias,status,failure_reason,final_result")) {
+      return {
+        rows: [{
+          event_id: lightningEvent.eventId,
+          installation_id: "different-installation-123456",
+          account_id: "private-paper-account",
+          alias: "PrivateAlias",
+          status: "entered",
+          failure_reason: null,
+          final_result: {
+            finalRank: 1,
+            finalPrices: { AAPL: 999 },
+          },
+        }],
+      };
+    }
+    privateQueries += 1;
+    return { rows: [] };
+  }, async (baseUrl) => {
+    const response = await fetch(
+      `${baseUrl}/event-arena/lightning-round/${lightningEvent.eventId}/state`,
+      { headers: { "x-event-arena-installation-id": installationId } },
+    );
+    assert.equal(response.status, 404);
+    const payload = await response.json();
+    assert.deepEqual(payload, { error: "Lightning Round participation was not found." });
+    assert.equal(JSON.stringify(payload).includes("PrivateAlias"), false);
+    assert.equal(JSON.stringify(payload).includes("999"), false);
+  }, lightningEvent.startAtMs + 1);
+  assert.equal(privateQueries, 0, "private account tables must not be queried for a mismatched participant");
+});
+
 test("Lightning Round unenrollment cancels only staged pending orders and preserves history", async () => {
   const lightningEvent = expectedEventArenaConfiguration("lightning-2026-11-27");
   assert.ok(lightningEvent);
