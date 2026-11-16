@@ -829,22 +829,26 @@ export default function PaperScreen() {
   const flushCache = useCallback((
     accts: PaperAccount[], pos: PaperPosition[], txns: PaperTransaction[],
     ords: PaperOrder[], ls: PaperLot[], aid: string,
+    options: { syncGeneralDeviceSnapshot?: boolean } = {},
   ): Promise<void> => {
     return (async () => {
-      if (eventArenaDeviceSyncEnabledRef.current) {
+      const syncGeneralDeviceSnapshot = options.syncGeneralDeviceSnapshot !== false;
+      if (syncGeneralDeviceSnapshot && eventArenaDeviceSyncEnabledRef.current) {
         await AsyncStorage.setItem(EVENT_ARENA_DEVICE_DIRTY_KEY, 'true').catch(() => {
           setDeviceTransferError('Shared Event Arena changes may not sync until local storage is available.');
         });
       }
       await writePaperCache({ accounts: accts, positions: pos, transactions: txns, orders: ords, lots: ls, activeId: aid });
-      await pushEventArenaSnapshot({
-        accounts: accts,
-        positions: pos,
-        transactions: txns,
-        orders: ords,
-        lots: ls,
-        challengeStore: paperChallengeRef.current,
-      });
+      if (syncGeneralDeviceSnapshot) {
+        await pushEventArenaSnapshot({
+          accounts: accts,
+          positions: pos,
+          transactions: txns,
+          orders: ords,
+          lots: ls,
+          challengeStore: paperChallengeRef.current,
+        });
+      }
       const enrollment = paperChallengeRef.current.lightningEnrollment;
       if (!enrollment || !shouldSyncLightningRoundPreparation({
         enrollmentAccountId: enrollment.accountId,
@@ -2054,7 +2058,17 @@ export default function PaperScreen() {
     setChartRange('ALL');
     setLightningTradeOfferWindow(null);
     setLightningPreparationMessage('');
-    await flushCache(accountsRef.current, positionsRef.current, transactionsRef.current, ordersRef.current, lotsRef.current, id);
+    // Account selection is local-only and is excluded from the shared snapshot;
+    // do not queue a general Event Arena snapshot as part of the transition.
+    await flushCache(
+      accountsRef.current,
+      positionsRef.current,
+      transactionsRef.current,
+      ordersRef.current,
+      lotsRef.current,
+      id,
+      { syncGeneralDeviceSnapshot: false },
+    );
     fetchQuotes(positions, id);
   };
 

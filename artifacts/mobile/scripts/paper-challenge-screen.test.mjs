@@ -726,7 +726,6 @@ test("account dashboard selects, scopes, and persists the active paper account",
   assert.match(screen, /positions\.filter\(p => p\.accountId === activeId\)/);
   assert.match(screen, /transactions\.filter\(t => t\.accountId === activeId\)/);
   assert.match(screen, /orders\s*\.filter\(o => o\.accountId === activeId\)/);
-  assert.match(screen, /await flushCache\([\s\S]*lotsRef\.current, id\)/);
   assert.match(screen, /getCoveredAccountValueHistory\(\s*currentAccountSnapshots,\s*account\.id,\s*range\.ms/);
   assert.match(screen, /mergeAccountValueHistory\(tradeHistory, currentAccountSnapshots, account\.id\)/);
   assert.match(screen, /PAPER_VALUE_SNAPSHOT_INTERVAL_MS = 60 \* 60_000/);
@@ -738,6 +737,33 @@ test("account dashboard selects, scopes, and persists the active paper account",
   assert.match(orderEntry, /testID="order-sheet-active-account"/);
   assert.match(orderEntry, /SETTLED B\.P\./);
   assert.match(orderReview, /CAPTURED ACCOUNT/);
+});
+
+test("account switching saves the selection without queuing a general Event Arena snapshot", () => {
+  const pushStart = screen.indexOf("const pushEventArenaSnapshot = useCallback(");
+  const pushEnd = screen.indexOf("pushEventArenaSnapshotRef.current = pushEventArenaSnapshot;", pushStart);
+  const flushStart = screen.indexOf("const flushCache = useCallback(");
+  const flushEnd = screen.indexOf("\n  }, [apiFetch, pushEventArenaSnapshot]);", flushStart);
+  const switchStart = screen.indexOf("const switchAccount = async (id: string) => {");
+  const switchEnd = screen.indexOf("\n  };\n\n  const handledChallengeRouteRef", switchStart);
+  const pushEventArenaSnapshot = screen.slice(pushStart, pushEnd);
+  const flushCache = screen.slice(flushStart, flushEnd);
+  const switchAccount = screen.slice(switchStart, switchEnd);
+
+  assert.ok(pushStart >= 0 && pushEnd > pushStart);
+  assert.ok(flushStart >= 0 && flushEnd > flushStart);
+  assert.ok(switchStart >= 0 && switchEnd > switchStart);
+  assert.match(pushEventArenaSnapshot, /if \(!eventArenaDeviceSyncEnabledRef\.current\) return Promise\.resolve\(\)/);
+  assert.match(flushCache, /options\.syncGeneralDeviceSnapshot !== false/);
+  assert.match(flushCache, /if \(syncGeneralDeviceSnapshot && eventArenaDeviceSyncEnabledRef\.current\)/);
+  assert.match(flushCache, /if \(syncGeneralDeviceSnapshot\) \{\s*await pushEventArenaSnapshot/);
+  assert.match(flushCache, /await writePaperCache\(\{ accounts: accts, positions: pos, transactions: txns, orders: ords, lots: ls, activeId: aid \}\)/);
+  assert.match(flushCache, /enrollmentAccountId: enrollment\.accountId,\s*selectedAccountId: aid/);
+  assert.match(flushCache, /positions: pos\.filter\(\(item\) => item\.accountId === enrollment\.accountId\)/);
+  assert.match(flushCache, /transactions: txns\.filter\(\(item\) => item\.accountId === enrollment\.accountId\)/);
+  assert.match(flushCache, /orders: ords\.filter\(\(item\) => item\.accountId === enrollment\.accountId\)/);
+  assert.match(switchAccount, /await flushCache\([\s\S]*\{\s*syncGeneralDeviceSnapshot: false\s*\},\s*\)/);
+  assert.doesNotMatch(switchAccount, /pushEventArenaSnapshot/);
 });
 
 test("Paper Trading keeps all views in readable groups and reserves space for actions", () => {
