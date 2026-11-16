@@ -3,6 +3,14 @@ import type { PaperChallengeWindow } from './paperChallenge.ts';
 export type LightningRoundInvitationPhase = 'preparation' | 'active' | 'post-event';
 export type LightningRoundInvitationAction = 'JOIN' | 'ENTER' | 'VIEW EVENT';
 
+export function shouldRenderLightningRoundInvitationButton(
+  enrollmentReady: boolean,
+  phase: LightningRoundInvitationPhase | null,
+  hasSchedule: boolean,
+): boolean {
+  return enrollmentReady && phase !== null && hasSchedule;
+}
+
 export function getLightningRoundInvitationPhase(
   window: Pick<PaperChallengeWindow, 'startAtMs' | 'endAtMs'> | null | undefined,
   nowMs: number,

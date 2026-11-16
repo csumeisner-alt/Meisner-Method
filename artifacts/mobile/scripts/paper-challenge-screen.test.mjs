@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { removePendingPaperOrder } from "../lib/paperOrderDeletion.ts";
+import { getEventArenaHeaderColumnWidth } from "../lib/eventArenaHeaderLayout.ts";
+import { shouldRenderLightningRoundInvitationButton } from "../lib/lightningRoundInvitation.ts";
 
 const screen = readFileSync(new URL("../app/paper.tsx", import.meta.url), "utf8");
 const accountSwipeArea = readFileSync(new URL("../components/PaperAccountSwipeArea.tsx", import.meta.url), "utf8");
@@ -163,9 +165,44 @@ test("Event Arena header invitation uses the prepared schedule and existing Ligh
   assert.match(lightningInvitation, /useReduceMotionPreference/);
   assert.match(lightningInvitation, /duration: 2_200/);
   assert.match(lightningInvitation, /flexShrink: 0/);
-  assert.match(lightningInvitation, /minHeight: 54/);
+  assert.match(lightningInvitation, /minHeight: 50/);
   assert.match(lightningInvitation, /24-HOUR CHAMPIONSHIP/);
   assert.match(lightningInvitation, /LIGHTNING ROUND/);
+});
+
+test("Event Arena header keeps its alias aligned and omits the invitation outside eligibility", () => {
+  const headerRowStart = eventArena.indexOf('testID="event-arena-header-row"');
+  const invitationStart = eventArena.indexOf("<LightningRoundInvitation", headerRowStart);
+  const tabsStart = eventArena.indexOf('testID="event-arena-section-tabs"', invitationStart);
+  assert.ok(headerRowStart >= 0 && invitationStart > headerRowStart && tabsStart > invitationStart);
+  const header = eventArena.slice(headerRowStart, tabsStart);
+  assert.match(header, /accessibilityLabel="Go back"/);
+  assert.match(header, /Event Arena<\/Text>[\s\S]*?Competition hub/);
+  assert.match(header, /<LightningRoundInvitation[\s\S]*?alias=\{participantAlias \|\| ''\}/);
+  assert.doesNotMatch(header, /paddingVertical: 7|marginTop: [1-9]\d{1,}/);
+  assert.match(eventArena, /paddingBottom: 4, borderBottomWidth/);
+  assert.match(eventArena, /paddingTop: 4 \}\}>\s*\{SECTIONS\.map/);
+  assert.match(lightningInvitation, /if \(!shouldRenderLightningRoundInvitationButton\(enrollmentReady, phase, schedule !== null\) \|\| !phase \|\| !schedule\) \{\s*return <Alias alias=\{alias\} width=\{width\} \/>;\s*\}/);
+  assert.doesNotMatch(lightningInvitation, /return \(\s*<View style=\{styles\.row\}>\s*<Alias/);
+  assert.match(lightningInvitation, /<TouchableOpacity[\s\S]*?testID="open-lightning-round"/);
+  assert.match(lightningInvitation, /<View style=\{\[styles\.headerActions,[\s\S]*?<Alias alias=\{alias\} width=\{width\} \/>[\s\S]*?<Animated\.View/);
+  assert.match(lightningInvitation, /getEventArenaHeaderColumnWidth\(width\)/);
+  assert.match(lightningInvitation, /headerActions: \{[\s\S]*?flexShrink: 0[\s\S]*?alignItems: 'flex-end'/);
+  const eligibleRenderStart = lightningInvitation.indexOf('<View style={[styles.headerActions');
+  const eligibleRenderEnd = lightningInvitation.indexOf('</View>\n  );', eligibleRenderStart);
+  const eligibleRender = lightningInvitation.slice(eligibleRenderStart, eligibleRenderEnd);
+  assert.equal((eligibleRender.match(/<Alias alias=\{alias\} width=\{width\} \/>/g) ?? []).length, 1);
+  assert.equal(shouldRenderLightningRoundInvitationButton(true, 'preparation', true), true);
+  assert.equal(shouldRenderLightningRoundInvitationButton(true, 'active', true), true);
+  assert.equal(shouldRenderLightningRoundInvitationButton(true, null, true), false);
+  assert.equal(shouldRenderLightningRoundInvitationButton(false, 'active', true), false);
+  assert.equal(shouldRenderLightningRoundInvitationButton(true, 'active', false), false);
+
+  for (const screenWidth of [320, 360, 390, 430]) {
+    const contentWidth = screenWidth - 32;
+    const titleWidth = contentWidth - 44 - 8 - getEventArenaHeaderColumnWidth(screenWidth);
+    assert.ok(titleWidth >= 88, `${screenWidth}px leaves room for the title beside the invitation`);
+  }
 });
 
 test("Lightning Round championship header preserves accessible actions and bundled individual emblems", () => {
@@ -431,7 +468,7 @@ test("Event Arena section tabs stay readable and fit narrow phone widths", () =>
   assert.match(eventArena, /const SECTION_TAB_ICON_SIZE = 18/);
   assert.match(eventArena, /const SECTION_TAB_LABEL_SIZE = 10/);
   assert.match(eventArena, /flexDirection: 'row', gap: SECTION_TAB_GAP/);
-  assert.match(eventArena, /paddingHorizontal: 16, paddingBottom: 8/);
+  assert.match(eventArena, /paddingHorizontal: 16, paddingBottom: 4/);
   assert.doesNotMatch(sectionTabs, /<ScrollView/);
   assert.equal((eventArena.match(/\{ id: '(?:competition|leaderboard|trades|past)', label:/g) ?? []).length, 4);
 

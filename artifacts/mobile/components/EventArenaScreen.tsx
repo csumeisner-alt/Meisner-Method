@@ -1345,24 +1345,24 @@ function EventArenaScreenContent() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: Platform.OS === 'web' ? 12 : insets.top }}>
-      <View style={{ paddingHorizontal: 16, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-        <View style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+      <View style={{ paddingHorizontal: 16, paddingBottom: 4, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        <View testID="event-arena-header-row" style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <TouchableOpacity accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
             <Feather name="arrow-left" size={19} color={colors.foreground} />
           </TouchableOpacity>
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 18 }}>Event Arena</Text>
-            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 2 }}>Competition hub</Text>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 18 }}>Event Arena</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 2 }}>Competition hub</Text>
           </View>
+          <LightningRoundInvitation
+            alias={participantAlias || ''}
+            enrolledEvent={store.lightningEnrollment ?? null}
+            enrollmentReady={storeState !== 'loading'}
+            now={now}
+            onOpen={() => router.push('/lightning-round')}
+          />
         </View>
-        <LightningRoundInvitation
-          alias={participantAlias || ''}
-          enrolledEvent={store.lightningEnrollment ?? null}
-          enrollmentReady={storeState !== 'loading'}
-          now={now}
-          onOpen={() => router.push('/lightning-round')}
-        />
-        <View style={{ flexDirection: 'row', gap: SECTION_TAB_GAP, paddingVertical: 7 }}>
+        <View testID="event-arena-section-tabs" style={{ flexDirection: 'row', gap: SECTION_TAB_GAP, paddingTop: 4 }}>
           {SECTIONS.map((item) => {
             const selected = section === item.id;
             return (

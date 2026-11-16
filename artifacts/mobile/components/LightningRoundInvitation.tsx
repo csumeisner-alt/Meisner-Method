@@ -23,8 +23,10 @@ import {
   getLightningRoundInvitationPhase,
   getLightningRoundInvitationRevealMode,
   markLightningRoundInvitationSeen,
+  shouldRenderLightningRoundInvitationButton,
   shouldShowLightningRoundInvitationCountdown,
 } from '@/lib/lightningRoundInvitation';
+import { getEventArenaHeaderColumnWidth } from '@/lib/eventArenaHeaderLayout';
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 const T = {
@@ -58,6 +60,7 @@ async function fetchPreparedEvents(): Promise<unknown[]> {
 
 export function LightningRoundInvitation({ alias, enrolledEvent, enrollmentReady, now, onOpen }: Props) {
   const { width } = useWindowDimensions();
+  const headerColumnWidth = getEventArenaHeaderColumnWidth(width);
   const motion = useReduceMotionPreference();
   const [preparedEvents, setPreparedEvents] = useState<unknown[] | null>(null);
   const [revealedEventId, setRevealedEventId] = useState<string | null>(null);
@@ -136,12 +139,8 @@ export function LightningRoundInvitation({ alias, enrolledEvent, enrollmentReady
     return () => animation.stop();
   }, [isRevealing, progress, schedule?.id]);
 
-  if (!enrollmentReady || !phase || !schedule) {
-    return (
-      <View style={styles.row}>
-        <Alias alias={alias} width={width} />
-      </View>
-    );
+  if (!shouldRenderLightningRoundInvitationButton(enrollmentReady, phase, schedule !== null) || !phase || !schedule) {
+    return <Alias alias={alias} width={width} />;
   }
 
   const showCountdown = shouldShowLightningRoundInvitationCountdown(width);
@@ -161,9 +160,10 @@ export function LightningRoundInvitation({ alias, enrolledEvent, enrollmentReady
     : 0;
 
   return (
-    <View style={styles.row} testID="lightning-round-invitation-row">
+    <View style={[styles.headerActions, { width: headerColumnWidth }]} testID="lightning-round-invitation-row">
       <Animated.View pointerEvents="none" style={[styles.headerDim, { opacity: dimOpacity }]} />
-      <Animated.View style={{ flex: 1, minWidth: 0, transform: [{ scale }] }}>
+      <Alias alias={alias} width={width} />
+      <Animated.View style={{ width: '100%', minWidth: 0, transform: [{ scale }] }}>
         <TouchableOpacity
           testID="open-lightning-round"
           accessibilityRole="button"
@@ -194,7 +194,6 @@ export function LightningRoundInvitation({ alias, enrolledEvent, enrollmentReady
           ) : null}
         </TouchableOpacity>
       </Animated.View>
-      <Alias alias={alias} width={width} />
     </View>
   );
 }
@@ -215,13 +214,13 @@ function Alias({ alias, width }: { alias: string; width: number }) {
 }
 
 const styles = {
-  row: {
+  headerActions: {
     position: 'relative' as const,
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 8,
-    paddingVertical: 7,
-    minHeight: 62,
+    flexShrink: 0,
+    alignItems: 'flex-end' as const,
+    justifyContent: 'center' as const,
+    gap: 4,
+    paddingVertical: 4,
   },
   headerDim: {
     position: 'absolute' as const,
@@ -232,7 +231,7 @@ const styles = {
     backgroundColor: '#020714',
   },
   button: {
-    minHeight: 54,
+    minHeight: 50,
     minWidth: 0,
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
