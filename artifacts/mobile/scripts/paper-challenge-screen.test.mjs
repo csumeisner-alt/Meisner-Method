@@ -1482,3 +1482,32 @@ test("Penny Stock leaderboard exposes fixture-stable artwork and rule banner tar
   assert.match(leaderboard, /testID="paper-event-leaderboard-countdown"/);
   assert.match(leaderboard, /testID="paper-event-leaderboard-podium"/);
 });
+
+test("Event Arena account card stays compact and retains its account details and trading action", () => {
+  const accountCardStart = eventArenaOverview.indexOf("style={[styles.accountCard");
+  const accountCardEnd = eventArenaOverview.indexOf("\n            </View>\n\n            <View style={styles.sectionHeading}>", accountCardStart);
+  assert.ok(accountCardStart >= 0 && accountCardEnd > accountCardStart);
+  const accountCard = eventArenaOverview.slice(accountCardStart, accountCardEnd);
+  const metricGridStart = accountCard.indexOf('<View style={styles.metricGrid}>');
+  const metricGridEnd = accountCard.indexOf('</View>', metricGridStart);
+  const metrics = accountCard.slice(metricGridStart, metricGridEnd);
+
+  assert.match(eventArenaOverview, /accountCard: \{[^}]*padding: 12/);
+  assert.match(eventArenaOverview, /metric: \{[^}]*minHeight: 58[^}]*paddingVertical: 8/);
+  assert.match(accountCard, /ACCOUNT NAME[\s\S]*?testID="event-arena-account-name"/);
+  assert.doesNotMatch(metrics, /label="ACCOUNT NAME"/);
+  for (const label of [
+    'STARTING BALANCE',
+    'AVAILABLE CASH',
+    'BUYING POWER',
+    'NET P/L',
+    'EVENT RANK',
+    'COMPLETED TRADES',
+  ]) {
+    assert.ok(metrics.includes(`label="${label}"`), `${label} remains in the compact metric grid`);
+  }
+  assert.match(accountCard, /ACCOUNT EQUITY/);
+  assert.match(accountCard, /signedPercent\(performance\?\.returnPercent\)/);
+  assert.match(eventArenaOverview, /<Text style=\{\[styles\.isolationText,[\s\S]*?\}>ISOLATED<\/Text>/);
+  assert.match(accountCard, /testID="event-arena-open-trades-secondary"[\s\S]*?Open event trading/);
+});

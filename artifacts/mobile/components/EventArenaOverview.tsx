@@ -436,6 +436,18 @@ export function EventArenaOverview({
               <View style={styles.isolationTag}><Feather name="lock" size={11} color={accent} /><Text style={[styles.isolationText, { color: accent }]}>ISOLATED</Text></View>
             </View>
             <View style={[styles.accountCard, { backgroundColor: surface, borderColor: border }]}>
+              <View style={styles.accountNameRow}>
+                <Text style={[styles.accountNameLabel, { color: muted }]}>ACCOUNT NAME</Text>
+                <Text
+                  testID="event-arena-account-name"
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
+                  style={[styles.accountName, { color: ink }]}
+                >
+                  {performance?.account?.name ?? enrollment?.accountName ?? 'Ready'}
+                </Text>
+              </View>
               <View style={styles.accountHeadline}>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={[styles.smallLabel, { color: muted }]}>ACCOUNT EQUITY</Text>
@@ -452,7 +464,6 @@ export function EventArenaOverview({
                 <Metric label="NET P/L" value={signedMoney(performance?.profitLoss)} valueColor={performance?.profitLoss == null ? ink : positive ? '#4da987' : '#bc6863'} />
                 <Metric label="EVENT RANK" value={rank == null ? '—' : `#${rank}`} />
                 <Metric label="COMPLETED TRADES" value={performance ? String(performance.completedTradeCount) : '—'} />
-                <Metric label="ACCOUNT NAME" value={performance?.account?.name ?? enrollment?.accountName ?? 'Ready'} />
               </View>
               {!performance?.account && (
                 <Text style={[styles.emptyText, { color: muted, textAlign: 'left', marginTop: 8 }]}>
@@ -621,14 +632,17 @@ const styles = StyleSheet.create({
   sectionAside: { fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 0.75 },
   isolationTag: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, height: 25, borderRadius: 8, backgroundColor: 'rgba(184,149,90,0.1)' },
   isolationText: { fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 0.7 },
-  accountCard: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 20, padding: 16 },
-  accountHeadline: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 15 },
-  equityValue: { fontFamily: 'Inter_600SemiBold', fontSize: 29, letterSpacing: -0.8, marginTop: 5 },
-  returnPill: { minHeight: 32, paddingHorizontal: 10, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  accountCard: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 20, padding: 12 },
+  accountNameRow: { minHeight: 20, flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5 },
+  accountNameLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.55 },
+  accountName: { flex: 1, minWidth: 0, textAlign: 'right', fontFamily: 'Inter_600SemiBold', fontSize: 11 },
+  accountHeadline: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  equityValue: { fontFamily: 'Inter_600SemiBold', fontSize: 27, letterSpacing: -0.8, marginTop: 3 },
+  returnPill: { minHeight: 30, paddingHorizontal: 9, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   metricGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  metric: { width: '50%', minWidth: 0, minHeight: 76, paddingVertical: 12, paddingRight: 8, borderTopWidth: StyleSheet.hairlineWidth },
+  metric: { width: '50%', minWidth: 0, minHeight: 58, paddingVertical: 8, paddingRight: 8, borderTopWidth: StyleSheet.hairlineWidth },
   metricLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.55 },
-  metricValue: { fontFamily: 'Inter_600SemiBold', fontSize: 14, marginTop: 7, flexShrink: 1 },
+  metricValue: { fontFamily: 'Inter_600SemiBold', fontSize: 14, marginTop: 4, flexShrink: 1 },
   tradeLink: { height: 48, marginTop: 2, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   tradeLinkText: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   chartCard: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 15, overflow: 'hidden', backgroundColor: 'rgba(184,149,90,0.035)' },
