@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  Image,
   ImageBackground,
   Pressable,
   ScrollView,
@@ -11,6 +12,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '@/hooks/useColors';
 import { PortfolioLineChart } from '@/components/PaperCharts';
 import type { PaperChallengeEnrollment, PaperChallengeWindow } from '@/lib/paperChallenge';
@@ -19,7 +21,6 @@ import type {
   EventArenaParticipation,
   EventArenaPerformance,
 } from '@/lib/eventArenaHome';
-import { EVENT_ARENA_ARTWORK_SOURCES } from '@/lib/eventArenaArtwork';
 import {
   isMountainChampionshipTransferLocked,
   LEGACY_PAPER_CHALLENGE_ARTWORK_ID,
@@ -117,6 +118,7 @@ export function EventArenaOverview({
   const copy = statusCopy(participation, livePhase);
   const isBearMarketMayhem = event.eventType === 'bear-market-mayhem'
     || event.rankingDirection === 'lowest-return';
+  const isPennyStockMayhem = event.eventType === 'penny-stock-mayhem';
   const accent = isBearMarketMayhem ? '#E24550' : '#b8955a';
   const positive = (performance?.profitLoss ?? 0) >= 0;
   const countdownMode = livePhase === 'upcoming' ? 'starts' : livePhase === 'active' ? 'ends' : 'ended';
@@ -176,27 +178,15 @@ export function EventArenaOverview({
         testID="event-arena-overview"
       >
       <View style={{ width: contentWidth }}>
-        {event.eventType === 'penny-stock-mayhem' && (
-          <ImageBackground
-            testID="event-arena-penny-stock-artwork"
-            source={EVENT_ARENA_ARTWORK_SOURCES[event.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID]}
-            resizeMode="cover"
-            imageStyle={{ borderRadius: 16 }}
-            style={{ width: '100%', aspectRatio: 16 / 7, minHeight: 130, overflow: 'hidden', borderRadius: 16, justifyContent: 'flex-end', marginBottom: 14 }}
-          >
-            <View style={{ padding: 16, backgroundColor: 'rgba(5,10,14,0.78)' }}>
-              <Text style={{ color: '#fff', fontFamily: 'Inter_700Bold', fontSize: 22, letterSpacing: 0.7 }}>
-                PENNY STOCK MAYHEM
-              </Text>
-              <Text style={{ color: '#B7F37A', fontFamily: 'Inter_700Bold', fontSize: 12, letterSpacing: 1, marginTop: 4 }}>
-                STOCKS &amp; ETFs UNDER $20
-              </Text>
-            </View>
-          </ImageBackground>
-        )}
         <View style={styles.topline}>
-          <View style={styles.brandMark}><Feather name="activity" size={15} color={accent} /></View>
-          <Text style={[styles.eyebrow, { color: muted }]}>MEISNER METHOD  /  {championshipName}</Text>
+          <View style={styles.brandMark}>
+            {isPennyStockMayhem
+              ? <Image source={require('../assets/images/mm-mark-foreground.png')} style={{ width: 26, height: 26 }} resizeMode="contain" />
+              : <Feather name="activity" size={15} color={accent} />}
+          </View>
+          <Text style={[styles.eyebrow, { color: muted }]}>
+            {isPennyStockMayhem ? 'MEISNER METHOD  /  EVENT ARENA' : `MEISNER METHOD  /  ${championshipName}`}
+          </Text>
           {joined && (livePhase === 'active' || mountainTransferLockActive) ? (
             <Pressable
               accessibilityRole="button"
@@ -229,26 +219,56 @@ export function EventArenaOverview({
           </Pressable>
         </View>
 
+        {isPennyStockMayhem && (
+          <ImageBackground
+            testID="event-arena-penny-stock-artwork"
+            source={require('../assets/event-arena-penny-stock-mayhem-clean.jpg')}
+            resizeMode="cover"
+            imageStyle={{ borderRadius: 18 }}
+            style={{ width: '100%', aspectRatio: 16 / 9, minHeight: 180, overflow: 'hidden', borderRadius: 18, justifyContent: 'flex-end', marginBottom: 14, backgroundColor: '#07100C' }}
+          >
+            <LinearGradient
+              pointerEvents="none"
+              colors={['rgba(3,8,7,0.08)', 'rgba(3,8,7,0.16)', 'rgba(3,8,7,0.82)']}
+              locations={[0, 0.48, 1]}
+              style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
+            />
+            <View style={{ paddingHorizontal: 16, paddingBottom: 15, paddingTop: 28 }}>
+              <Text style={{ color: '#FFFFFF', fontFamily: 'Inter_700Bold', fontSize: 22, letterSpacing: 0.75, textShadowColor: 'rgba(0,0,0,0.9)', textShadowRadius: 9 }}>
+                PENNY STOCK MAYHEM
+              </Text>
+              <Text style={{ color: '#C9F995', fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 1, marginTop: 5, textShadowColor: 'rgba(0,0,0,0.85)', textShadowRadius: 7 }}>
+                STOCKS &amp; ETFs UNDER $20
+              </Text>
+              <Text testID="event-arena-starting-capital" style={{ color: '#F3D77E', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.95, marginTop: 8, textShadowColor: 'rgba(0,0,0,0.9)', textShadowRadius: 7 }}>
+                {money(startingCapital)} STARTING CAPITAL
+              </Text>
+            </View>
+          </ImageBackground>
+        )}
+
         <View style={[styles.heroCard, { backgroundColor: surface, borderColor: border }]}>
           <View style={styles.heroTop}>
             <View style={[styles.liveDot, { backgroundColor: livePhase === 'active' ? '#4da987' : accent }]} />
             <Text style={[styles.phaseLabel, { color: muted }]}>{livePhase.toUpperCase()} EVENT</Text>
             <Text style={[styles.eventId, { color: muted }]}>ID {event.id}</Text>
           </View>
-          {event.eventType === 'penny-stock-mayhem' && (
+          {isPennyStockMayhem && (
             <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 8 }}>
               Long buys require a verified stock or ETF and both the latest quote and final fill below $20.00. Selling or reducing long positions remains unrestricted; existing short rules are unchanged.
             </Text>
           )}
-          <Text accessibilityLabel={`Event Arena ${eventName}`} style={[styles.title, { color: ink }]}>{eventTitle}</Text>
-          <View testID="event-arena-starting-capital" style={[styles.capitalBand, { backgroundColor: 'rgba(184,149,90,0.11)', borderColor: 'rgba(184,149,90,0.28)' }]}>
+          {!isPennyStockMayhem && (
+            <Text accessibilityLabel={`Event Arena ${eventName}`} style={[styles.title, { color: ink }]}>{eventTitle}</Text>
+          )}
+          {!isPennyStockMayhem && <View testID="event-arena-starting-capital" style={[styles.capitalBand, { backgroundColor: 'rgba(184,149,90,0.11)', borderColor: 'rgba(184,149,90,0.28)' }]}>
             <View style={[styles.capitalMark, { backgroundColor: accent }]} />
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={[styles.capitalLabel, { color: muted }]}>FRESH EVENT ACCOUNT</Text>
               <Text style={[styles.capitalValue, { color: accent }]}>{money(startingCapital)}</Text>
             </View>
             <Text style={[styles.capitalSuffix, { color: muted }]}>STARTING CAPITAL</Text>
-          </View>
+          </View>}
           {isBearMarketMayhem && (
             <Text testID="event-arena-bear-objective" style={{ color: '#E24550', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.8, marginTop: 7 }}>
               THE BIGGEST LOSER WINS · LOWEST RETURN RANKS FIRST

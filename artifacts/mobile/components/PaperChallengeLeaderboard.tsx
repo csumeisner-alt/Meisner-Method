@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Animated,
   AppState,
+  Image,
   ImageBackground,
   Modal,
   Platform,
@@ -164,19 +165,29 @@ function EventArenaPodiumShareCard({
   const colors = useColors();
   const isBearMarketMayhem = event.eventType === 'bear-market-mayhem'
     || event.rankingDirection === 'lowest-return';
+  const isPennyStockMayhem = event.eventType === 'penny-stock-mayhem';
   const podiumColors = isBearMarketMayhem
     ? ['#F0525D', '#B9C0C9', '#A94B3D']
     : ['#E5BF63', '#C9D4DF', '#D99A72'];
   return (
     <ImageBackground
-      source={EVENT_ARENA_ARTWORK_SOURCES[event.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID]}
+      source={isPennyStockMayhem
+        ? require('../assets/event-arena-penny-stock-mayhem-clean.jpg')
+        : EVENT_ARENA_ARTWORK_SOURCES[event.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID]}
       resizeMode="cover"
       imageStyle={{ opacity: 0.55 }}
       style={{ width: '100%', maxWidth: 360, overflow: 'hidden', borderRadius: 22, backgroundColor: '#101720' }}
     >
-      <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(7,12,20,0.72)' }} />
+      <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: isPennyStockMayhem ? 'rgba(4,13,9,0.72)' : 'rgba(7,12,20,0.72)' }} />
       <View testID="paper-event-podium-share-card" style={{ padding: 20 }}>
-        <Text style={{ color: '#D8B45A', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 2 }}>MEISNER METHOD</Text>
+        {isPennyStockMayhem ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+            <Image source={require('../assets/images/mm-mark-foreground.png')} style={{ width: 24, height: 24 }} resizeMode="contain" />
+            <Text style={{ color: '#D8B45A', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 2 }}>MEISNER METHOD</Text>
+          </View>
+        ) : (
+          <Text style={{ color: '#D8B45A', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 2 }}>MEISNER METHOD</Text>
+        )}
         <Text style={{ color: isBearMarketMayhem ? '#FF6670' : '#E6D8B2', fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 1.4, marginTop: 10 }}>
           {isBearMarketMayhem
             ? 'BEAR MARKET MAYHEM'
@@ -1019,13 +1030,15 @@ export function PaperChallengeLeaderboard({
             borderWidth: entry?.isCurrentUser ? 2 : 1,
               borderColor: entry?.isCurrentUser ? colors.gold : entry ? `${medal.color}D0` : `${medal.color}72`,
               backgroundColor: entry?.isCurrentUser
-                ? isBearMarketMayhem ? 'rgba(45,15,20,0.92)' : 'rgba(26,23,15,0.88)'
+                ? isBearMarketMayhem ? 'rgba(45,15,20,0.92)' : isPennyStockMayhem ? 'rgba(11,32,21,0.92)' : 'rgba(26,23,15,0.88)'
                 : entry
                   ? isChampion && isBearMarketMayhem
                     ? 'rgba(35,12,17,0.88)'
-                    : isChampion ? 'rgba(13,17,23,0.76)' : 'rgba(13,19,29,0.73)'
+                    : isChampion && isPennyStockMayhem
+                      ? 'rgba(9,28,20,0.82)'
+                      : isChampion ? 'rgba(13,17,23,0.76)' : isPennyStockMayhem ? 'rgba(10,23,17,0.78)' : 'rgba(13,19,29,0.73)'
                   : 'rgba(12,18,27,0.55)',
-              shadowColor: isChampion ? isBearMarketMayhem ? '#F0525D' : colors.gold : '#000',
+              shadowColor: isChampion ? isBearMarketMayhem ? '#F0525D' : isPennyStockMayhem ? '#62D57A' : colors.gold : '#000',
               shadowOpacity: isChampion ? 0.32 : 0.16,
               shadowRadius: isChampion ? 20 : 10,
               shadowOffset: { width: 0, height: isChampion ? 10 : 7 },
@@ -1036,7 +1049,9 @@ export function PaperChallengeLeaderboard({
             colors={isChampion
               ? isBearMarketMayhem
                 ? ['rgba(240,82,93,0.38)', 'rgba(50,15,22,0.10)', 'rgba(8,13,21,0.38)']
-                : ['rgba(229,191,99,0.30)', 'rgba(25,28,32,0.03)', 'rgba(8,13,21,0.27)']
+                : isPennyStockMayhem
+                  ? ['rgba(229,191,99,0.30)', 'rgba(52,132,78,0.12)', 'rgba(8,13,21,0.34)']
+                  : ['rgba(229,191,99,0.30)', 'rgba(25,28,32,0.03)', 'rgba(8,13,21,0.27)']
               : slot.rank === 2
                 ? ['rgba(201,212,223,0.24)', 'rgba(13,19,29,0.02)', 'rgba(8,13,21,0.26)']
                 : ['rgba(217,154,114,0.25)', 'rgba(13,19,29,0.02)', 'rgba(8,13,21,0.28)']}
@@ -1448,16 +1463,20 @@ export function PaperChallengeLeaderboard({
             <ScrollView style={{ flex: 1, minHeight: 0 }} contentContainerStyle={{ width: '100%', maxWidth: 1000, alignSelf: 'center', padding: 16, paddingBottom: embedded ? 28 : Platform.OS === 'web' ? 24 : insets.bottom + 24 }}>
               <ImageBackground
                 testID={`event-arena-leaderboard-artwork-${event.id}`}
-                source={EVENT_ARENA_ARTWORK_SOURCES[event.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID]}
+                source={isPennyStockMayhem
+                  ? require('../assets/event-arena-penny-stock-mayhem-clean.jpg')
+                  : EVENT_ARENA_ARTWORK_SOURCES[event.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID]}
                 resizeMode="cover"
                 imageStyle={{ borderRadius: 24, opacity: 0.96 }}
-                style={{ overflow: 'hidden', borderRadius: 24, borderWidth: 1, borderColor: isBearMarketMayhem ? 'rgba(240,82,93,0.62)' : 'rgba(214,177,94,0.34)', marginBottom: 17, padding: compactPodium ? 12 : 17, backgroundColor: '#101720' }}
+                style={{ overflow: 'hidden', borderRadius: 24, borderWidth: 1, borderColor: isBearMarketMayhem ? 'rgba(240,82,93,0.62)' : isPennyStockMayhem ? 'rgba(173,202,119,0.62)' : 'rgba(214,177,94,0.34)', marginBottom: 17, padding: compactPodium ? 12 : 17, backgroundColor: isPennyStockMayhem ? '#07110D' : '#101720' }}
               >
-                <View style={{ pointerEvents: 'none', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(7,12,20,0.18)' }} />
+                <View style={{ pointerEvents: 'none', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: isPennyStockMayhem ? 'rgba(3,10,7,0.36)' : 'rgba(7,12,20,0.18)' }} />
                 <LinearGradient
                   colors={isBearMarketMayhem
                     ? ['rgba(123,22,34,0.42)', 'rgba(8,14,24,0.04)', 'rgba(90,18,28,0.3)']
-                    : ['rgba(25,139,218,0.22)', 'rgba(8,14,24,0.03)', 'rgba(25,139,218,0.15)']}
+                    : isPennyStockMayhem
+                      ? ['rgba(91,190,88,0.2)', 'rgba(8,14,24,0.02)', 'rgba(60,143,82,0.2)']
+                      : ['rgba(25,139,218,0.22)', 'rgba(8,14,24,0.03)', 'rgba(25,139,218,0.15)']}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
                   style={{ pointerEvents: 'none', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
@@ -1465,7 +1484,9 @@ export function PaperChallengeLeaderboard({
                 <LinearGradient
                   colors={isBearMarketMayhem
                     ? ['rgba(255,106,115,0.18)', 'rgba(255,106,115,0.05)', 'transparent']
-                    : ['rgba(255,218,128,0.18)', 'rgba(255,218,128,0.06)', 'transparent']}
+                    : isPennyStockMayhem
+                      ? ['rgba(203,236,130,0.16)', 'rgba(102,208,113,0.05)', 'transparent']
+                      : ['rgba(255,218,128,0.18)', 'rgba(255,218,128,0.06)', 'transparent']}
                   start={{ x: 0.5, y: 0 }}
                   end={{ x: 0.5, y: 1 }}
                   style={{ pointerEvents: 'none', position: 'absolute', top: 205, left: '-8%', width: '44%', height: 270, transform: [{ rotate: '12deg' }] }}
@@ -1473,7 +1494,9 @@ export function PaperChallengeLeaderboard({
                 <LinearGradient
                   colors={isBearMarketMayhem
                     ? ['rgba(255,106,115,0.16)', 'rgba(255,106,115,0.05)', 'transparent']
-                    : ['rgba(255,218,128,0.16)', 'rgba(255,218,128,0.05)', 'transparent']}
+                    : isPennyStockMayhem
+                      ? ['rgba(203,236,130,0.14)', 'rgba(102,208,113,0.05)', 'transparent']
+                      : ['rgba(255,218,128,0.16)', 'rgba(255,218,128,0.05)', 'transparent']}
                   start={{ x: 0.5, y: 0 }}
                   end={{ x: 0.5, y: 1 }}
                   style={{ pointerEvents: 'none', position: 'absolute', top: 205, right: '-8%', width: '44%', height: 270, transform: [{ rotate: '-12deg' }] }}
@@ -1520,7 +1543,13 @@ export function PaperChallengeLeaderboard({
                 </View>
 
                 <View testID="paper-event-leaderboard-current-event" style={{ alignItems: 'center', marginBottom: 18 }}>
-                  <Text testID="paper-event-championship-identity" style={{ color: isBearMarketMayhem ? '#FF6670' : '#E8CB7C', fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 1.2, textAlign: 'center', marginBottom: 7 }}>
+                  {isPennyStockMayhem && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                      <Image source={require('../assets/images/mm-mark-foreground.png')} style={{ width: 25, height: 25 }} resizeMode="contain" />
+                      <Text style={{ color: '#E8CB7C', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.7 }}>MEISNER METHOD</Text>
+                    </View>
+                  )}
+                  <Text testID="paper-event-championship-identity" style={{ color: isBearMarketMayhem ? '#FF6670' : '#E8CB7C', fontFamily: 'Inter_700Bold', fontSize: isPennyStockMayhem ? 18 : 11, letterSpacing: isPennyStockMayhem ? 1.5 : 1.2, textAlign: 'center', marginBottom: 7, textShadowColor: isPennyStockMayhem ? 'rgba(0,0,0,0.88)' : 'transparent', textShadowRadius: 7 }}>
                     {isPennyStockMayhem
                       ? 'PENNY STOCK MAYHEM'
                       : isBearMarketMayhem
@@ -1530,16 +1559,18 @@ export function PaperChallengeLeaderboard({
                         : event.eventType === 'green-bull-championship' ? 'GREEN BULL CHAMPIONSHIP' : 'EVENT ARENA CHAMPIONSHIP'}
                   </Text>
                   {isPennyStockMayhem && (
-                    <Text testID="paper-event-penny-stock-objective" style={{ color: '#B7F37A', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1, textAlign: 'center', marginBottom: 8 }}>
+                    <Text testID="paper-event-penny-stock-objective" style={{ color: '#C9F995', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1, textAlign: 'center', marginBottom: 8 }}>
                       STOCKS &amp; ETFs UNDER $20
                     </Text>
                   )}
                   <Text testID="paper-event-starting-capital" style={{ color: '#F1EEE7', fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 0.8, textAlign: 'center', marginBottom: 8 }}>
                     ${Math.round(event.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE).toLocaleString('en-US')} STARTING CAPITAL
                   </Text>
-                  <Text allowFontScaling style={{ color: isBearMarketMayhem ? '#FFF0F1' : '#FFF9EA', fontFamily: 'Inter_700Bold', fontSize: compactPodium ? 22 : 28, letterSpacing: 1.1, textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.85)', textShadowRadius: 8, textShadowOffset: { width: 0, height: 2 } }}>
-                    {isBearMarketMayhem ? 'THE BIGGEST LOSER WINS' : 'CHAMPIONSHIP STANDINGS'}
-                  </Text>
+                  {!isPennyStockMayhem && (
+                    <Text allowFontScaling style={{ color: isBearMarketMayhem ? '#FFF0F1' : '#FFF9EA', fontFamily: 'Inter_700Bold', fontSize: compactPodium ? 22 : 28, letterSpacing: 1.1, textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.85)', textShadowRadius: 8, textShadowOffset: { width: 0, height: 2 } }}>
+                      {isBearMarketMayhem ? 'THE BIGGEST LOSER WINS' : 'CHAMPIONSHIP STANDINGS'}
+                    </Text>
+                  )}
                   {isBearMarketMayhem && (
                     <Text testID="paper-event-bear-ranking-objective" style={{ color: '#FFD9DC', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.1, textAlign: 'center', marginTop: 5 }}>
                       LOWEST PERCENTAGE RETURN RANKS FIRST
@@ -1673,7 +1704,7 @@ export function PaperChallengeLeaderboard({
               </ImageBackground>
 
               {standingsEntries.length > 0 && (
-                    <View testID="paper-event-leaderboard-list" style={{ marginTop: 3, paddingHorizontal: 14, paddingTop: 13, paddingBottom: 4, borderRadius: 18, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+                    <View testID="paper-event-leaderboard-list" style={{ marginTop: 3, paddingHorizontal: 14, paddingTop: 13, paddingBottom: 4, borderRadius: 18, backgroundColor: isPennyStockMayhem ? 'rgba(7,17,13,0.95)' : colors.card, borderWidth: 1, borderColor: isPennyStockMayhem ? 'rgba(184,149,90,0.5)' : colors.border }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 8 }}>
                         <Text style={{ flex: 1, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 15 }}>Full standings</Text>
                         <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 9, letterSpacing: 0.8 }}>

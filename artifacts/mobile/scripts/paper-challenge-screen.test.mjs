@@ -24,6 +24,8 @@ const eventArenaTransferLockNotice = readFileSync(new URL("../components/EventAr
 const mobileRootLayout = readFileSync(new URL("../app/_layout.tsx", import.meta.url), "utf8");
 const eventArenaTransfers = readFileSync(new URL("../lib/eventArenaTransfers.ts", import.meta.url), "utf8");
 const eventArenaArtworkCatalog = readFileSync(new URL("../lib/eventArenaArtwork.ts", import.meta.url), "utf8");
+const leaderboardMockup = readFileSync(new URL("../../mockup-sandbox/src/components/mockups/leaderboard-story/AllSevenLeaderboards.tsx", import.meta.url), "utf8");
+const pennyLeaderboardPreview = readFileSync(new URL("../../mockup-sandbox/src/components/mockups/leaderboard-story/PennyStockMayhem.tsx", import.meta.url), "utf8");
 const eventArenaApi = readFileSync(new URL("../../api-server/src/routes/eventArenaRoutes.ts", import.meta.url), "utf8");
 const alertWorker = readFileSync(new URL("../../api-server/src/alert-worker.ts", import.meta.url), "utf8");
 const eventAccountDashboard = readFileSync(new URL("../components/PaperEventArenaDashboard.tsx", import.meta.url), "utf8");
@@ -1170,11 +1172,11 @@ test("all six live Event Arena backgrounds keep podium names and values readable
     ["mountain-summit", "event-arena-mountain-summit.jpg"],
     ["red-showdown", "event-arena-red-showdown.jpg"],
     ["green-stock-exchange", "event-arena-green-stock-exchange.jpg"],
-    ["penny-stock-mayhem", "event-arena-penny-stock-mayhem.jpg"],
+    ["penny-stock-mayhem", "event-arena-penny-stock-mayhem-clean.jpg"],
   ];
   assert.equal((eventArenaArtworkCatalog.match(/require\('\.\.\/assets\/event-arena-[^']+\.jpg'\)/g) ?? []).length, 6);
 
-  assert.match(leaderboard, /source=\{EVENT_ARENA_ARTWORK_SOURCES\[event\.artworkId \?\? LEGACY_PAPER_CHALLENGE_ARTWORK_ID\]\}/);
+  assert.match(leaderboard, /:\s*EVENT_ARENA_ARTWORK_SOURCES\[event\.artworkId \?\? LEGACY_PAPER_CHALLENGE_ARTWORK_ID\]/);
   assert.match(leaderboard, /resizeMode="cover"/);
   assert.match(leaderboard, /event-arena-leaderboard-artwork-\$\{event\.id\}/);
   const artworkMarker = leaderboard.indexOf('testID={`event-arena-leaderboard-artwork-${event.id}`}');
@@ -1182,14 +1184,14 @@ test("all six live Event Arena backgrounds keep podium names and values readable
   const artworkEnd = leaderboard.indexOf("</ImageBackground>", artworkStart);
   const artworkContainer = leaderboard.slice(artworkStart, artworkEnd);
   assert.ok(artworkStart >= 0 && artworkEnd > artworkStart);
-  assert.match(artworkContainer, /backgroundColor: '#101720'/);
+  assert.match(artworkContainer, /backgroundColor: isPennyStockMayhem \? '#07110D' : '#101720'/);
   assert.match(artworkContainer, /imageStyle=\{\{ borderRadius: 24, opacity: 0\.96 \}\}/);
-  assert.match(artworkContainer, /backgroundColor: 'rgba\(7,12,20,0\.18\)'/);
+  assert.match(artworkContainer, /backgroundColor: isPennyStockMayhem \? 'rgba\(3,10,7,0\.36\)' : 'rgba\(7,12,20,0\.18\)'/);
   assert.match(artworkContainer, /<LinearGradient/);
   assert.match(artworkContainer, /testID="paper-event-leaderboard-podium"/);
   const standingsStart = leaderboard.indexOf('<View testID="paper-event-leaderboard-list"');
   assert.ok(standingsStart > artworkEnd, "full standings remain on their solid card below the artwork");
-  assert.match(leaderboard.slice(standingsStart, standingsStart + 260), /backgroundColor: colors\.card/);
+  assert.match(leaderboard.slice(standingsStart, standingsStart + 300), /backgroundColor: isPennyStockMayhem \? 'rgba\(7,17,13,0\.95\)' : colors\.card/);
   assert.match(eventArena, /const configuration = await fetchSavedEventConfiguration\(event\)/);
   assert.match(eventArena, /eventType: configuration\.eventType/);
   assert.match(eventArena, /rankingDirection: configuration\.rankingDirection/);
@@ -1234,7 +1236,7 @@ test("all six live Event Arena backgrounds keep podium names and values readable
 
   assert.match(leaderboard, /rgba\(25,139,218,0\.22\)/);
   assert.match(leaderboard, /rgba\(255,218,128,0\.18\)/);
-  assert.match(leaderboard, /isChampion \? 'rgba\(13,17,23,0\.76\)' : 'rgba\(13,19,29,0\.73\)'/);
+  assert.match(leaderboard, /isChampion \? 'rgba\(13,17,23,0\.76\)' : isPennyStockMayhem \? 'rgba\(10,23,17,0\.78\)' : 'rgba\(13,19,29,0\.73\)'/);
   assert.match(leaderboard, /const compactPodium = windowWidth <= 360/);
   assert.match(leaderboard, /useWindowDimensions\(\)/);
   assert.match(leaderboard, /const podiumColors = isBearMarketMayhem\s+\? \['#F0525D', '#B9C0C9', '#A94B3D'\]\s+: \['#E5BF63', '#C9D4DF', '#D99A72'\]/);
@@ -1273,4 +1275,22 @@ test("Penny Stock Mayhem exposes its rules and rechecks execution quotes", () =>
   assert.match(eventArenaOverview, /event-arena-penny-stock-artwork/);
   assert.match(orderEntry, /purchaseLimit/);
   assert.match(orderReview, /below \{money\(review\.purchaseLimit\)\}/);
+});
+
+test("Penny Stock Mayhem uses its clean branded artwork in a focused story preview", () => {
+  assert.match(eventArenaArtworkCatalog, /'penny-stock-mayhem': require\('\.\.\/assets\/event-arena-penny-stock-mayhem-clean\.jpg'\)/);
+  assert.match(eventArenaOverview, /mm-mark-foreground\.png/);
+  assert.match(eventArenaOverview, /STOCKS &amp; ETFs UNDER \$20/);
+  assert.match(eventArenaOverview, /money\(startingCapital\)\} STARTING CAPITAL/);
+  assert.match(leaderboard, /isPennyStockMayhem\s+\?\s+require\('\.\.\/assets\/event-arena-penny-stock-mayhem-clean\.jpg'\)/);
+  assert.match(leaderboard, /paper-event-leaderboard-countdown[\s\S]*?eventStatus\.countdown/);
+  assert.match(leaderboard, /paper-event-leaderboard-participant-count[\s\S]*?entries\.length/);
+  assert.match(leaderboard, /dateRangeLabel\(event\.startAtMs, event\.endAtMs\)/);
+  assert.match(leaderboard, /mm-mark-foreground\.png/);
+  assert.match(leaderboardMockup, /event-arena-penny-stock-mayhem-clean/);
+  assert.match(leaderboardMockup, /mm-mark-foreground\.png/);
+  assert.match(leaderboardMockup, /mm-penny-hero/);
+  assert.match(leaderboardMockup, /event-arena-stadium/);
+  assert.match(leaderboardMockup, /event-arena-neon-nightclub/);
+  assert.match(pennyLeaderboardPreview, /AllSevenLeaderboards onlyPenny/);
 });

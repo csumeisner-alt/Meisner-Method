@@ -14,6 +14,7 @@ export const modules: ModuleMap = {
   "./components/mockups/final-seal/FinalSealStoryCard.tsx": () => import("../components/mockups/final-seal/FinalSealStoryCard.tsx"),
   "./components/mockups/hybrid-neon-gucci/ActiveTheme.tsx": () => import("../components/mockups/hybrid-neon-gucci/ActiveTheme.tsx"),
   "./components/mockups/leaderboard-story/AllSevenLeaderboards.tsx": () => import("../components/mockups/leaderboard-story/AllSevenLeaderboards.tsx"),
+  "./components/mockups/leaderboard-story/PennyStockMayhem.tsx": () => import("../components/mockups/leaderboard-story/PennyStockMayhem.tsx"),
   "./components/mockups/neon-gucci-celebration/Current.tsx": () => import("../components/mockups/neon-gucci-celebration/Current.tsx"),
   "./components/mockups/premium-flag-collection/Current.tsx": () => import("../components/mockups/premium-flag-collection/Current.tsx"),
   "./components/mockups/quick-revive-redesign/QuickReviveGlowSurge.tsx": () => import("../components/mockups/quick-revive-redesign/QuickReviveGlowSurge.tsx"),

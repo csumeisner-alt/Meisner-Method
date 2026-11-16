@@ -8,6 +8,7 @@ type EventConfig = {
   accent: string;
   rankRule?: string;
   objective?: string;
+  pennyMayhem?: boolean;
 };
 
 const events: EventConfig[] = [
@@ -48,12 +49,13 @@ const events: EventConfig[] = [
     accent: '#a6e28a',
   },
   {
-    artwork: 'event-arena-penny-stock-mayhem',
+    artwork: 'event-arena-penny-stock-mayhem-clean',
     name: 'Penny Stock Mayhem',
     subtitle: 'Stocks & ETFs Under $20',
     capital: '$100,000',
     accent: '#b2ed7c',
     objective: 'STOCKS & ETFs UNDER $20',
+    pennyMayhem: true,
   },
   {
     artwork: 'lightning-round-arena-clean',
@@ -121,13 +123,16 @@ function PhoneScreen({ event, index }: { event: EventConfig; index: number }) {
         </header>
 
         <main className="mm-screen-scroll">
-          <section className="mm-event-hero" style={{ '--event-accent': event.accent, backgroundImage: `linear-gradient(180deg, rgba(4,8,14,.49), rgba(5,9,15,.82) 34%, rgba(5,9,15,.88)), url("/__mockup/images/leaderboard-events/${event.artwork}.jpg")` } as React.CSSProperties}>
+          <section className={`mm-event-hero ${event.pennyMayhem ? 'mm-penny-hero' : ''}`} style={{ '--event-accent': event.accent, backgroundImage: event.pennyMayhem
+            ? `linear-gradient(180deg, rgba(4,8,14,.12), rgba(5,9,15,.32) 23%, rgba(5,9,15,.84) 47%, rgba(5,9,15,.93)), url("/__mockup/images/leaderboard-events/${event.artwork}.jpg")`
+            : `linear-gradient(180deg, rgba(4,8,14,.49), rgba(5,9,15,.82) 34%, rgba(5,9,15,.88)), url("/__mockup/images/leaderboard-events/${event.artwork}.jpg")` } as React.CSSProperties}>
             <div className="mm-actions"><span><Glyph name="refresh" size={16} /></span><span><Glyph name="info" size={16} /></span></div>
             <div className="mm-event-title">
+              {event.pennyMayhem && <img className="mm-penny-mark" src="/__mockup/images/leaderboard-events/mm-mark-foreground.png" alt="Meisner Method gold M mark" />}
               <p className="mm-event-name">{event.name}</p>
               {event.objective && <p className="mm-event-objective">{event.objective}</p>}
               <p className="mm-capital">{event.capital} STARTING CAPITAL</p>
-              <h1>{event.subtitle}</h1>
+              {!event.pennyMayhem && <h1>{event.subtitle}</h1>}
               {event.rankRule && <p className="mm-rank-rule">{event.rankRule}</p>}
               <div className="mm-upcoming"><i /> UPCOMING COMPETITION</div>
               <div className="mm-countdown"><small>COUNTDOWN TO START</small><strong>Starts in 18h 15m</strong></div>
@@ -184,7 +189,8 @@ function PhoneScreen({ event, index }: { event: EventConfig; index: number }) {
   );
 }
 
-export function AllSevenLeaderboards() {
+export function AllSevenLeaderboards({ onlyPenny = false }: { onlyPenny?: boolean } = {}) {
+  const visibleEvents = onlyPenny ? events.filter((event) => event.pennyMayhem) : events;
   return (
     <div className="mm-gallery">
       <style>{`
@@ -214,6 +220,16 @@ export function AllSevenLeaderboards() {
         .mm-tab.selected { background:#dfb956; border-color:#e6c771; color:#272318; }.mm-tab.selected span { color:#28251d; }
         .mm-screen-scroll { flex:1; min-height:0; overflow:auto; scrollbar-width:none; background:#111419; }.mm-screen-scroll::-webkit-scrollbar{display:none;}
         .mm-event-hero { position:relative; overflow:hidden; min-height:0; margin:0 0 14px; padding:12px 17px 15px; background-size:cover; background-position:center; border:1px solid color-mix(in srgb,var(--event-accent) 43%,transparent); border-radius:0 0 26px 26px; box-shadow:inset 0 -28px 50px #04070c88; }
+         .mm-penny-hero { background-position:center 34%; border-color:#9ab76b91; box-shadow:inset 0 -34px 62px #030907c9, inset 0 0 48px #5a9d4b18; }
+         .mm-penny-mark { width:34px;height:34px;object-fit:contain;margin:0 auto 4px;filter:drop-shadow(0 2px 8px #000b); }
+         .mm-penny-hero .mm-event-name { color:#fff8dc;font-size:17px;letter-spacing:1.3px;text-shadow:0 2px 8px #000; }
+         .mm-penny-hero .mm-event-objective { color:#c8f69a;font-size:10px;letter-spacing:1px;text-shadow:0 2px 7px #000; }
+         .mm-penny-hero .mm-capital { color:#f5d987;font-size:10px;letter-spacing:.75px;text-shadow:0 2px 7px #000; }
+         .mm-penny-hero .mm-upcoming,.mm-penny-hero .mm-countdown,.mm-penny-hero .mm-event-meta span { background:#07110edb;border-color:#ffffff35;backdrop-filter:blur(8px); }
+         .mm-penny-hero .mm-countdown { box-shadow:0 0 22px #75d66320; }
+         .mm-penny-hero .mm-winner:not(.bear) { border-color:#d9bd68;background:linear-gradient(145deg,#a7d65b25,#153626ed 48%,#0a1512f2);box-shadow:0 7px 22px #000a,0 0 25px #5dd27624,inset 0 1px #ffe8a353; }
+         .mm-penny-hero .mm-empty-podium div { border-color:#a8c99550;background:#08140fbd; }
+         .mm-penny-hero .mm-position { border-color:#b99b4e;background:#12221abf;box-shadow:0 0 22px #6fd56d13,inset 0 1px #ffffff12; }
         .mm-actions { display:flex; gap:8px; justify-content:flex-end; height:29px; }.mm-actions span { width:30px;height:30px;display:grid;place-items:center;border:1px solid #ffffff43;border-radius:50%;background:#080d16a8;color:#f0eee8; }
         .mm-event-title { display:flex; flex-direction:column; align-items:center; text-align:center; padding-top:0; }
         .mm-event-name { margin:1px 0 3px; color:var(--event-accent); font-size:11px; font-weight:800; letter-spacing:1.18px; text-transform:uppercase; }
@@ -254,11 +270,11 @@ export function AllSevenLeaderboards() {
         @media(max-width:520px){.mm-gallery{padding:22px 12px 40px}.mm-gallery-intro{display:block;margin-bottom:18px}.mm-gallery-intro span{display:block;text-align:left;margin-top:8px}.mm-gallery-grid{grid-template-columns:minmax(0,390px);gap:28px}.mm-phone{height:min(844px,calc(100dvh - 34px));min-height:730px;border-width:5px;border-radius:31px}.mm-event-hero{padding-left:13px;padding-right:13px}.mm-empty-podium div{gap:3px}.mm-empty-podium span:last-child{font-size:7px}}
       `}</style>
       <div className="mm-gallery-intro">
-        <div><p>MEISNER METHOD · EVENT ARENA</p><h2>Leaderboard screens</h2></div>
-        <span>Seven event configurations · one reference state</span>
+          <div><p>MEISNER METHOD · EVENT ARENA</p><h2>{onlyPenny ? 'Penny Stock Mayhem' : 'Leaderboard screens'}</h2></div>
+          <span>{onlyPenny ? 'Cinematic story-card preview' : 'Seven event configurations · one reference state'}</span>
       </div>
       <div className="mm-gallery-grid">
-        {events.map((event, index) => <PhoneScreen event={event} index={index} key={event.artwork} />)}
+          {visibleEvents.map((event) => <PhoneScreen event={event} index={events.indexOf(event)} key={event.artwork} />)}
       </div>
     </div>
   );
