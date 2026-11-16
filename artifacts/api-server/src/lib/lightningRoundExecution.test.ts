@@ -1,8 +1,15 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { once } from "node:events";
 import { env } from "node:process";
 import test from "node:test";
+import express from "express";
 import pg from "pg";
+import {
+  createEventArenaRouter,
+  expectedEventArenaConfiguration,
+  getLightningRoundScheduleIds,
+} from "../routes/eventArenaRoutes.ts";
 import {
   processDueLightningRoundOrders,
   type LightningExecutionDatabase,
@@ -661,6 +668,7 @@ test(
           cash DOUBLE PRECISION NOT NULL, short_collateral DOUBLE PRECISION NOT NULL DEFAULT 0,
           short_collateral_ratio DOUBLE PRECISION NOT NULL DEFAULT 1.5,
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), unsettled_items JSONB NOT NULL DEFAULT '[]',
+          last_dividend_credit TIMESTAMPTZ,
           PRIMARY KEY (id,user_id)
         );
         CREATE TABLE paper_positions (
@@ -687,7 +695,10 @@ test(
         CREATE TABLE paper_orders (
           id TEXT NOT NULL, user_id TEXT NOT NULL, account_id TEXT NOT NULL, symbol TEXT NOT NULL,
           company_name TEXT, order_type TEXT NOT NULL, side TEXT NOT NULL, intent TEXT,
+          short_collateral_ratio DOUBLE PRECISION,
           shares DOUBLE PRECISION NOT NULL, status TEXT NOT NULL, placed_at TIMESTAMPTZ NOT NULL,
+          limit_price DOUBLE PRECISION, stop_price DOUBLE PRECISION, trail_pct DOUBLE PRECISION,
+          trail_abs DOUBLE PRECISION, trail_ref DOUBLE PRECISION,
           filled_price DOUBLE PRECISION, filled_at TIMESTAMPTZ,
           lightning_round_event_id TEXT, rejection_reason TEXT, asset_type TEXT,
           dividend_yield DOUBLE PRECISION, dividend_rate DOUBLE PRECISION,
@@ -1023,8 +1034,14 @@ test(
       assert.equal(finalState.participant_status, "entered");
       assert.equal(finalState.preserved_history_count, 1);
 
+      const scheduledEventId = getLightningRoundScheduleIds(Date.now()).at(-1);
+      assert.ok(scheduledEventId, "an upcoming Lightning Round schedule should be available");
+      const archivedConfiguration = expectedEventArenaConfiguration(scheduledEventId);
+      assert.ok(archivedConfiguration);
+      const standingsStartAt = archivedConfiguration.startAtMs;
+      const standingsEndAt = archivedConfiguration.endAtMs;
       const standingsIds = {
-        event: `lr-final-${randomUUID()}`,
+        event: archivedConfiguration.eventId,
         participants: [
           { installationId: `final-user-a-${randomUUID()}`, symbol: "AAPL", price: 110, optedIn: true },
           { installationId: `final-user-b-${randomUUID()}`, symbol: "MSFT", price: 110, optedIn: true },
@@ -1035,7 +1052,7 @@ test(
         `INSERT INTO event_arena_events
           (event_id,event_type,artwork_id,starting_balance,ranking_direction,event_start_at,event_end_at)
          VALUES ($1,'lightning-round','stadium',100000,'highest-return',$2,$3)`,
-        [standingsIds.event, new Date(startAt), new Date(endAt)],
+        [standingsIds.event, new Date(standingsStartAt), new Date(standingsEndAt)],
       );
       for (const [index, participant] of standingsIds.participants.entries()) {
         const participantAccountId = `final-account-${index}-${randomUUID()}`;
@@ -1049,34 +1066,34 @@ test(
             participantAccountId,
             participant.optedIn ? "TiedPlayer" : `FinalPlayer${index}`,
             participant.optedIn,
-            new Date(startAt),
-            new Date(endAt),
+            new Date(standingsStartAt),
+            new Date(standingsEndAt),
           ],
         );
         await firstPool.query(
           `INSERT INTO paper_accounts (id,user_id,name,cash,created_at)
            VALUES ($1,$2,'Shared Event Arena',99800,$3)`,
-          [participantAccountId, participant.installationId, new Date(startAt)],
+          [participantAccountId, participant.installationId, new Date(standingsStartAt)],
         );
         await firstPool.query(
           `INSERT INTO paper_positions
             (id,user_id,account_id,symbol,company_name,shares,position_type,avg_cost,opened_at)
            VALUES ($1,$2,$3,$4,$4,2,'long',100,$5)`,
           [`final-position-${index}-${randomUUID()}`, participant.installationId,
-            participantAccountId, participant.symbol, new Date(startAt)],
+            participantAccountId, participant.symbol, new Date(standingsStartAt)],
         );
         await firstPool.query(
           `INSERT INTO paper_lots (id,user_id,account_id,symbol,shares,cost,purchased_at)
            VALUES ($1,$2,$3,$4,2,200,$5)`,
           [`final-lot-${index}-${randomUUID()}`, participant.installationId,
-            participantAccountId, participant.symbol, new Date(startAt)],
+            participantAccountId, participant.symbol, new Date(standingsStartAt)],
         );
         await firstPool.query(
           `INSERT INTO paper_transactions
             (id,user_id,account_id,symbol,company_name,action,shares,price,total,date,lightning_round_event_id)
            VALUES ($1,$2,$3,$4,$4,'BUY',2,100,200,$5,$6)`,
           [`final-transaction-${index}-${randomUUID()}`, participant.installationId,
-            participantAccountId, participant.symbol, new Date(startAt + 1000), standingsIds.event],
+            participantAccountId, participant.symbol, new Date(standingsStartAt + 1000), standingsIds.event],
         );
         await firstPool.query(
           `INSERT INTO paper_orders
@@ -1084,7 +1101,7 @@ test(
              filled_price,filled_at,lightning_round_event_id)
            VALUES ($1,$2,$3,$4,$4,'market','buy',2,'filled',$5,100,$6,$7)`,
           [`final-order-${index}-${randomUUID()}`, participant.installationId,
-            participantAccountId, participant.symbol, new Date(startAt), new Date(startAt + 1000),
+            participantAccountId, participant.symbol, new Date(standingsStartAt), new Date(standingsStartAt + 1000),
             standingsIds.event],
         );
       }
@@ -1092,7 +1109,7 @@ test(
       const firstFinalizationAttempt = await processDueLightningRoundOrders(
         executionDatabase(firstPool),
         {
-          now: () => endAt + 1000,
+          now: () => standingsEndAt + 1000,
           makeId: randomUUID,
           fetchPrice: async (symbol) => symbol === "AAPL" ? null : 100,
         },
@@ -1121,7 +1138,7 @@ test(
       const firstFinalizer = processDueLightningRoundOrders(
         executionDatabase(firstPool),
         {
-          now: () => endAt + 2000,
+          now: () => standingsEndAt + 2000,
           makeId: randomUUID,
           fetchPrice: async (symbol) => {
             if (symbol === "AAPL") {
@@ -1136,7 +1153,7 @@ test(
       const competingFinalizer = processDueLightningRoundOrders(
         executionDatabase(secondPool),
         {
-          now: () => endAt + 2000,
+          now: () => standingsEndAt + 2000,
           makeId: randomUUID,
           fetchPrice: async (symbol) =>
             standingsIds.participants.find((participant) => participant.symbol === symbol)?.price ?? null,
@@ -1224,7 +1241,7 @@ test(
       const finalRetry = await processDueLightningRoundOrders(
         executionDatabase(recoveryPool),
         {
-          now: () => endAt + 60_000,
+          now: () => standingsEndAt + 60_000,
           makeId: randomUUID,
           fetchPrice: async () => 999,
         },
@@ -1247,6 +1264,49 @@ test(
         rank: row.rank,
         returnPercent: row.return_percent,
       })), frozenResults, "later quotes must not alter frozen results or ranks");
+
+      const apiParticipant = standingsIds.participants.find((participant) => participant.optedIn)!;
+      const readFrozenResult = () => firstPool.query(
+        `SELECT participant.final_result,snapshot.rank
+         FROM event_arena_lightning_participants AS participant
+         JOIN event_arena_leaderboard_entries AS entry
+           ON entry.event_id=participant.event_id AND entry.installation_id=participant.installation_id
+         JOIN event_arena_leaderboard_snapshots AS snapshot
+           ON snapshot.event_id=entry.event_id AND snapshot.participant_token=entry.participant_token
+         WHERE participant.event_id=$1 AND participant.installation_id=$2 AND snapshot.is_final=TRUE`,
+        [standingsIds.event, apiParticipant.installationId],
+      );
+      const frozenBeforeApiRead = await readFrozenResult();
+      assert.equal(frozenBeforeApiRead.rows.length, 1);
+
+      const app = express();
+      app.use(express.json());
+      app.use(createEventArenaRouter(
+        firstPool,
+        (_req, _res, next) => next(),
+        () => standingsEndAt + 60_000,
+      ));
+      const server = app.listen(0);
+      await once(server, "listening");
+      try {
+        const address = server.address();
+        assert.ok(address && typeof address === "object");
+        const response = await fetch(
+          `http://127.0.0.1:${address.port}/event-arena/lightning-round/${standingsIds.event}/state`,
+          { headers: { "x-event-arena-installation-id": apiParticipant.installationId } },
+        );
+        assert.equal(response.status, 200);
+        const payload = await response.json() as any;
+        assert.deepEqual(payload.participant.finalResult.finalPrices, {
+          [apiParticipant.symbol]: apiParticipant.price,
+        });
+        assert.equal(payload.participant.finalResult.finalRank, frozenBeforeApiRead.rows[0].rank);
+        assert.deepEqual(await readFrozenResult(), frozenBeforeApiRead);
+      } finally {
+        server.close();
+        await once(server, "close");
+      }
+
       assert.equal(
         Number((await firstPool.query(
           `SELECT COUNT(*)::int AS count FROM event_arena_leaderboard_snapshots
