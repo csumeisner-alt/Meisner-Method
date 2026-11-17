@@ -20,7 +20,7 @@ export const PAPER_EVENT_LIVE_NOTICE_DISMISSAL_PREFIX = '@stocksense/paper_event
 export const PAPER_CHALLENGE_STARTING_BALANCE = 100_000;
 export const LIGHTNING_ROUND_STARTING_BALANCE = 100_000;
 export const GREEN_BULL_STARTING_BALANCE = 500_000;
-export const MOUNTAIN_CHAMPIONSHIP_STARTING_BALANCE = 250_000;
+export const NEON_NIGHTCLUB_STARTING_BALANCE = 250_000;
 export const LIGHTNING_ROUND_TIME_ZONE = 'America/Denver';
 export const LIGHTNING_ROUND_START_HOUR = 7;
 export const LIGHTNING_ROUND_START_MINUTE = 30;
@@ -66,6 +66,14 @@ export type PaperChallengeConfiguration = {
 export function getPaperChallengeConfiguration(
   artworkId: PaperChallengeArtworkId,
 ): PaperChallengeConfiguration {
+  if (artworkId === 'neon-nightclub') {
+    return {
+      eventType: 'event-arena',
+      artworkId,
+      startingBalance: NEON_NIGHTCLUB_STARTING_BALANCE,
+      rankingDirection: 'highest-return',
+    };
+  }
   if (artworkId === 'green-stock-exchange') {
     return {
         eventType: 'green-bull-championship',
@@ -95,7 +103,7 @@ export function getPaperChallengeConfiguration(
     return {
       eventType: 'mountain-championship',
       artworkId,
-      startingBalance: MOUNTAIN_CHAMPIONSHIP_STARTING_BALANCE,
+      startingBalance: PAPER_CHALLENGE_STARTING_BALANCE,
       rankingDirection: 'highest-return',
     };
   }
@@ -133,14 +141,12 @@ export function isPaperChallengeConfiguration(value: unknown): value is PaperCha
     && configuration.startingBalance === PAPER_CHALLENGE_STARTING_BALANCE
     && configuration.rankingDirection === 'highest-return'
     && configuration.purchaseLimit === undefined;
-  const legacyMountainConfiguration = configuration.artworkId === 'mountain-summit'
-    && configuration.eventType === 'mountain-championship'
-    && configuration.startingBalance === PAPER_CHALLENGE_STARTING_BALANCE
-    && configuration.rankingDirection === 'highest-return'
-    && configuration.purchaseLimit === undefined;
   return (legacyStandardConfiguration
-    && (configuration.artworkId === 'red-showdown' || configuration.artworkId === 'mountain-summit'))
-    || legacyMountainConfiguration;
+    && (
+      configuration.artworkId === 'red-showdown'
+      || configuration.artworkId === 'mountain-summit'
+      || configuration.artworkId === 'neon-nightclub'
+    ));
 }
 
 export const MOUNTAIN_CHAMPIONSHIP_TRANSFER_LOCK_TITLE = 'COMPETITION ACCOUNT LOCKED';

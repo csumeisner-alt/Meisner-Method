@@ -16,7 +16,7 @@ import {
   isMountainChampionshipTransferLocked,
   isPaperChallengeConfiguration,
   GREEN_BULL_STARTING_BALANCE,
-  MOUNTAIN_CHAMPIONSHIP_STARTING_BALANCE,
+  NEON_NIGHTCLUB_STARTING_BALANCE,
   PAPER_CHALLENGE_ARTWORK_IDS,
   getPaperChallengeReminders,
   getPaperEventLiveNoticeDismissalKey,
@@ -174,6 +174,44 @@ test('Event Arena artwork rotates by scheduled event and wraps after six competi
   assert.equal(getPaperChallengeArtworkId('not-an-event'), 'stadium');
 });
 
+test('Neon Nightclub starts new accounts at $250,000 and keeps saved balances intact', () => {
+  const configuration = getPaperChallengeConfiguration('neon-nightclub');
+  assert.deepEqual(configuration, {
+    eventType: 'event-arena',
+    artworkId: 'neon-nightclub',
+    startingBalance: NEON_NIGHTCLUB_STARTING_BALANCE,
+    rankingDirection: 'highest-return',
+  });
+  const event = getPaperChallengeWindow(Date.parse('2026-12-01T17:00:00.000Z'));
+  assert.equal(event.id, '2026-11-30');
+  assert.equal(event.artworkId, 'neon-nightclub');
+  assert.equal(event.startingBalance, 250_000);
+
+  const enrollment = {
+    eventId: event.id,
+    ...configuration,
+    eventStartAtMs: event.startAtMs,
+    eventEndAtMs: event.endAtMs,
+    joinedAtMs: event.startAtMs,
+    accountId: `paper-event:${event.id}`,
+    accountName: 'Event Portfolio',
+    startEquity: null,
+  };
+  const initialized = ensurePaperChallengeAccount(enrollment, {
+    accounts: [],
+    positions: [],
+    transactions: [],
+    orders: [],
+    lots: [],
+  });
+  assert.equal(initialized.accounts[0]?.cash, 250_000);
+
+  assert.equal(isPaperChallengeConfiguration({
+    ...configuration,
+    startingBalance: 100_000,
+  }), true, 'previously saved Neon Nightclub events keep their original balance');
+});
+
 test('Green Bull artwork fixes saved rules, account capital, baseline, fees, and archive results', () => {
   const configuration = getPaperChallengeConfiguration('green-stock-exchange');
   assert.deepEqual(configuration, {
@@ -241,13 +279,13 @@ test('Mountain Championship uses a stable event type and locks transfers only in
   assert.deepEqual(configuration, {
     eventType: 'mountain-championship',
     artworkId: 'mountain-summit',
-    startingBalance: MOUNTAIN_CHAMPIONSHIP_STARTING_BALANCE,
+    startingBalance: 100_000,
     rankingDirection: 'highest-return',
   });
   const event = getPaperChallengeWindow(Date.parse('2026-12-16T17:00:00.000Z'));
   assert.equal(event.id, '2026-12-14');
   assert.equal(event.eventType, 'mountain-championship');
-  assert.equal(event.startingBalance, 250_000);
+  assert.equal(event.startingBalance, 100_000);
 
   const preparationStart = getRegularEventPreparationStartAtMs(event.id);
   assert.equal(preparationStart, Date.parse('2026-12-07T05:00:00.000Z'));
