@@ -17,6 +17,7 @@ import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollV
 import OrderEntryReview from './OrderEntryReview';
 import type { LiveQuote, OrderType, PaperAccount, PaperOrder, PaperPosition } from '@/lib/paperMath';
 import { checkRisk, getAvailableSettledBuyingPower } from '@/lib/paperEngine';
+import { isPaperChallengeAccountId } from '@/lib/paperChallenge';
 import {
   calculateSharesForBuyingPower,
   formatProviderMarketSession,
@@ -733,7 +734,11 @@ export default function ProfessionalOrderEntry({
                     : `${Math.max(0, (activeSide === 'sell' ? availableSellShares : availableCoverShares) - (sharesValid ? numericShares : 0)).toLocaleString('en-US', { maximumFractionDigits: 4 })}`}
               />
               {activeSide === 'sell' && (
-                <Text style={styles.pendingNote}>Sell proceeds settle T+2 and are not immediately available to buy.</Text>
+                <Text style={styles.pendingNote}>
+                  {isPaperChallengeAccountId(account.id)
+                    ? 'Event portfolio sell proceeds are available immediately.'
+                    : 'Sell proceeds settle the next market business day (T+1) and are not immediately available to buy.'}
+                </Text>
               )}
               {activeSide === 'short' && (
                 <Text style={styles.pendingNote}>

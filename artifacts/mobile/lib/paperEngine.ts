@@ -6,7 +6,7 @@
  *  - Order evaluation (limit, stop, stop-limit, trailing stop)
  *  - Slippage simulation
  *  - FIFO cost-basis sell
- *  - T+2 cash settlement
+ *  - T+1 cash settlement for regular paper portfolios; instant settlement for event portfolios
  *  - Monthly dividend credits
  *  - Risk checks (buying power, max position size, share availability)
  */
@@ -24,16 +24,95 @@ import {
   fundFee,
   normalizeDividendYield,
 } from './paperMath.ts';
+import { isPaperChallengeAccountId } from './paperChallenge.ts';
 
 // ── Constants ─────────────────────────────────────────────────────────────
 /** Maximum fraction of portfolio value a single position may represent (40 %). */
 export const MAX_POSITION_FRACTION = 0.4;
 
-/** T+2 settlement: 2 calendar days in milliseconds. */
-export const SETTLEMENT_DELAY_MS = 2 * 24 * 60 * 60 * 1000;
-
 /** How many milliseconds between monthly dividend credits (~30 days). */
 export const DIVIDEND_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000;
+
+const UTC_DAY_MS = 24 * 60 * 60 * 1000;
+
+function utcDateKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function observedFixedHoliday(year: number, month: number, day: number): string {
+  const date = new Date(Date.UTC(year, month, day));
+  if (date.getUTCDay() === 6) date.setUTCDate(date.getUTCDate() - 1);
+  else if (date.getUTCDay() === 0) date.setUTCDate(date.getUTCDate() + 1);
+  return utcDateKey(date);
+}
+
+function nthWeekdayOfMonth(year: number, month: number, weekday: number, occurrence: number): string {
+  const firstDay = new Date(Date.UTC(year, month, 1)).getUTCDay();
+  const day = 1 + ((weekday - firstDay + 7) % 7) + (occurrence - 1) * 7;
+  return utcDateKey(new Date(Date.UTC(year, month, day)));
+}
+
+function lastWeekdayOfMonth(year: number, month: number, weekday: number): string {
+  const lastDate = new Date(Date.UTC(year, month + 1, 0));
+  const day = lastDate.getUTCDate() - ((lastDate.getUTCDay() - weekday + 7) % 7);
+  return utcDateKey(new Date(Date.UTC(year, month, day)));
+}
+
+function easterSunday(year: number): Date {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function getUsMarketHolidays(year: number): Set<string> {
+  const holidays = new Set([
+    observedFixedHoliday(year, 0, 1),   // New Year's Day
+    nthWeekdayOfMonth(year, 0, 1, 3),   // Martin Luther King Jr. Day
+    nthWeekdayOfMonth(year, 1, 1, 3),   // Presidents Day
+    lastWeekdayOfMonth(year, 4, 1),     // Memorial Day
+    observedFixedHoliday(year, 6, 4),   // Independence Day
+    nthWeekdayOfMonth(year, 8, 1, 1),  // Labor Day
+    nthWeekdayOfMonth(year, 10, 4, 4), // Thanksgiving
+    observedFixedHoliday(year, 11, 25), // Christmas
+  ]);
+  if (year >= 2022) holidays.add(observedFixedHoliday(year, 5, 19)); // Juneteenth
+  const goodFriday = easterSunday(year);
+  goodFriday.setUTCDate(goodFriday.getUTCDate() - 2);
+  holidays.add(utcDateKey(goodFriday));
+  return holidays;
+}
+
+function isUsMarketSettlementDay(date: Date): boolean {
+  const weekday = date.getUTCDay();
+  if (weekday === 0 || weekday === 6) return false;
+  const key = utcDateKey(date);
+  const year = date.getUTCFullYear();
+  return ![year - 1, year, year + 1].some((holidayYear) =>
+    getUsMarketHolidays(holidayYear).has(key),
+  );
+}
+
+/** Return the next U.S. equity-market business day, preserving the fill time. */
+export function getTPlusOneSettlementDate(filledAt: string): string {
+  const date = new Date(filledAt);
+  if (!Number.isFinite(date.getTime())) throw new RangeError('Invalid paper trade fill time.');
+  do {
+    date.setUTCDate(date.getUTCDate() + 1);
+  } while (!isUsMarketSettlementDay(date));
+  return date.toISOString();
+}
 
 // ── Slippage ──────────────────────────────────────────────────────────────
 /**
@@ -202,7 +281,7 @@ export function fifoSell(
   return { realizedPnL, fee, updatedLots: [...others, ...updatedMatching] };
 }
 
-// ── T+2 settlement ────────────────────────────────────────────────────────
+// ── Sell settlement ────────────────────────────────────────────────────────
 export type SettleResult = {
   /** Account with newly-settled cash folded into .cash. */
   updated: PaperAccount;
@@ -217,6 +296,20 @@ export type SettleResult = {
 export function settleCash(account: PaperAccount, nowISO: string): SettleResult {
   const now = new Date(nowISO).getTime();
   const items: UnsettledItem[] = account.unsettledItems ?? [];
+  if (isPaperChallengeAccountId(account.id)) {
+    const settled = items.length > 0
+      ? items.reduce((sum, item) => sum + item.amount, 0)
+      : account.unsettledCash ?? 0;
+    return {
+      updated: {
+        ...account,
+        cash: account.cash + settled,
+        unsettledCash: 0,
+        unsettledItems: [],
+      },
+      settled,
+    };
+  }
   let settled = 0;
   const remaining: UnsettledItem[] = [];
 
@@ -615,8 +708,8 @@ export type FillOrderResult =
  * Execute a filled order: update the account, position, lots, and produce a
  * transaction record.
  *
- * For sells, proceeds are placed in `unsettledItems` with a 2-day
- * settlement date rather than being credited to cash immediately.
+ * For regular portfolio sells, proceeds are placed in `unsettledItems` with a
+ * T+1 settlement date. Event portfolio proceeds are credited immediately.
  *
  * Returns `{ ok: false, reason }` when execution-time constraints cannot be
  * satisfied (insufficient cash for a buy; no available shares for a sell),
@@ -863,15 +956,23 @@ export function fillOrder(args: {
     const proceeds = total - fee; // net of fund fee
     updatedLots = afterSellLots;
 
-    // T+2 settlement — proceeds go into unsettledItems instead of cash
-    const settlesAt = new Date(new Date(filledAt).getTime() + SETTLEMENT_DELAY_MS).toISOString();
-    const existingItems = updatedAccount.unsettledItems ?? [];
-    const newItem: UnsettledItem = { amount: proceeds, settlesAt };
-    updatedAccount = {
-      ...updatedAccount,
-      unsettledCash: (updatedAccount.unsettledCash ?? 0) + proceeds,
-      unsettledItems: [...existingItems, newItem],
-    };
+    if (isPaperChallengeAccountId(accountId)) {
+      const accountWithSettledEventCash = settleCash(updatedAccount, filledAt).updated;
+      updatedAccount = {
+        ...accountWithSettledEventCash,
+        cash: accountWithSettledEventCash.cash + proceeds,
+      };
+    } else {
+      // T+1 settlement — proceeds remain unavailable until the next market day.
+      const settlesAt = getTPlusOneSettlementDate(filledAt);
+      const existingItems = updatedAccount.unsettledItems ?? [];
+      const newItem: UnsettledItem = { amount: proceeds, settlesAt };
+      updatedAccount = {
+        ...updatedAccount,
+        unsettledCash: (updatedAccount.unsettledCash ?? 0) + proceeds,
+        unsettledItems: [...existingItems, newItem],
+      };
+    }
 
     // Update or remove position
     if (pos) {

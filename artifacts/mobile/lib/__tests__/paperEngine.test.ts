@@ -16,7 +16,7 @@ import {
   checkRisk,
   fillOrder,
   getAvailableSettledBuyingPower,
-  SETTLEMENT_DELAY_MS,
+  getTPlusOneSettlementDate,
   DIVIDEND_INTERVAL_MS,
   MAX_POSITION_FRACTION,
 } from '../paperEngine.ts';
@@ -181,7 +181,7 @@ test('fifoSell — no lots for symbol returns 0 P&L', () => {
 // ── settleCash ────────────────────────────────────────────────────────────
 test('settleCash — settles items whose date has passed', () => {
   const pastISO = new Date(Date.now() - 1000).toISOString();
-  const futureISO = new Date(Date.now() + SETTLEMENT_DELAY_MS).toISOString();
+  const futureISO = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
   const account = mkAccount({
     cash: 1000,
     unsettledCash: 600,
@@ -198,11 +198,22 @@ test('settleCash — settles items whose date has passed', () => {
 });
 
 test('settleCash — nothing settles when all dates are in future', () => {
-  const futureISO = new Date(Date.now() + SETTLEMENT_DELAY_MS).toISOString();
+  const futureISO = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
   const account = mkAccount({ cash: 1000, unsettledCash: 500, unsettledItems: [{ amount: 500, settlesAt: futureISO }] });
   const { updated, settled } = settleCash(account, new Date().toISOString());
   assert.equal(settled, 0);
   assert.equal(updated.cash, 1000);
+});
+
+test('T+1 settlement skips weekends and U.S. market holidays', () => {
+  assert.equal(
+    getTPlusOneSettlementDate('2026-11-20T15:30:00.000Z'),
+    '2026-11-23T15:30:00.000Z',
+  );
+  assert.equal(
+    getTPlusOneSettlementDate('2026-11-25T15:30:00.000Z'),
+    '2026-11-27T15:30:00.000Z',
+  );
 });
 
 // ── creditDividends ────────────────────────────────────────────────────────
@@ -686,23 +697,62 @@ test('fillOrder — delayed buy preserves position metadata', () => {
   assert.equal(result.updatedPositions[0].sector, 'Technology');
 });
 
-test('fillOrder — market sell creates T+2 unsettled item, not immediate cash', () => {
+test('fillOrder — regular portfolio sale is unavailable until T+1', () => {
   const account = mkAccount({ cash: 0 });
   const pos = mkPosition({ shares: 10, avgCost: 100 });
   const lot = mkLot({ shares: 10, cost: 100 });
   const order = mkOrder({ side: 'sell', shares: 5, symbol: 'AAPL', accountId: 'a1' });
+  const filledAt = '2026-11-17T12:00:00.000Z';
   const result = fillOrder({
-    order, fillPrice: 150, filledAt: new Date().toISOString(),
+    order, fillPrice: 150, filledAt,
     account, positions: [pos], lots: [lot], uid,
   });
   assert.equal(result.ok, true);
   if (!result.ok) throw new Error('unexpected');
-  // Cash should NOT increase (T+2)
+  // Cash should NOT increase until T+1.
   assert.equal(result.updatedAccount.cash, 0);
   const items = result.updatedAccount.unsettledItems ?? [];
   assert.equal(items.length, 1);
   assert.ok((items[0].amount ?? 0) > 0);
+  assert.equal(items[0].settlesAt, getTPlusOneSettlementDate(filledAt));
   assert.equal(result.newTransaction.action, 'SELL');
+});
+
+test('fillOrder — all event portfolio sales are available immediately', () => {
+  for (const accountId of ['paper-event:future-event', 'paper-lightning:lightning-event']) {
+    const account = mkAccount({
+      id: accountId,
+      cash: 0,
+      unsettledCash: 80,
+      unsettledItems: [{ amount: 80, settlesAt: '2099-01-01T00:00:00.000Z' }],
+    });
+    const position = mkPosition({ accountId, shares: 10, avgCost: 100 });
+    const lot = mkLot({ accountId, shares: 10, cost: 100 });
+    const order = mkOrder({ accountId, side: 'sell', shares: 5, symbol: 'AAPL' });
+    const result = fillOrder({
+      order, fillPrice: 150, filledAt: '2026-11-17T12:00:00.000Z',
+      account, positions: [position], lots: [lot], uid,
+    });
+    assert.equal(result.ok, true);
+    if (!result.ok) throw new Error('unexpected');
+    assert.ok(result.updatedAccount.cash > 0);
+    assert.equal(result.updatedAccount.unsettledCash, 0);
+    assert.deepEqual(result.updatedAccount.unsettledItems, []);
+  }
+});
+
+test('settleCash — legacy event proceeds become immediately available', () => {
+  const eventAccount = mkAccount({
+    id: 'paper-event:legacy',
+    cash: 100,
+    unsettledCash: 250,
+    unsettledItems: [{ amount: 250, settlesAt: '2099-01-01T00:00:00.000Z' }],
+  });
+  const { updated, settled } = settleCash(eventAccount, '2026-11-17T12:00:00.000Z');
+  assert.equal(settled, 250);
+  assert.equal(updated.cash, 350);
+  assert.equal(updated.unsettledCash, 0);
+  assert.deepEqual(updated.unsettledItems, []);
 });
 
 test('fillOrder — sell rejects when no position exists (over-sell guard)', () => {
@@ -934,9 +984,9 @@ test('round-trip: limit sell — order survives cache serialization and fills wh
   assert.equal(fillResult.newTransaction.action, 'SELL', 'Transaction action is SELL');
   assert.equal(fillResult.updatedPositions.length, 0, 'Position closed after full sell');
   assert.equal(fillResult.updatedLots.length, 0, 'Lot consumed after full sell');
-  // T+2: cash doesn't settle immediately
-  assert.equal(fillResult.updatedAccount.cash, 0, 'Cash not immediately credited (T+2)');
-  assert.ok((fillResult.updatedAccount.unsettledCash ?? 0) > 0, 'Proceeds in unsettled cash (T+2)');
+  // T+1: cash doesn't settle immediately for regular paper portfolios.
+  assert.equal(fillResult.updatedAccount.cash, 0, 'Cash not immediately credited (T+1)');
+  assert.ok((fillResult.updatedAccount.unsettledCash ?? 0) > 0, 'Proceeds in unsettled cash (T+1)');
 });
 
 test('round-trip: trailing-stop sell — trail ref updates persist through serialization, order fills on reversal', () => {

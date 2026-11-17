@@ -184,7 +184,7 @@ test('Bear Market live performance uses the saved $100,000 baseline and actual i
   assert.equal(performance.buyingPower, 65_000);
 });
 
-test('event equity includes T+2 cash, short collateral, long value, and short liabilities', () => {
+test('event equity includes unsettled cash, short collateral, long value, and short liabilities', () => {
   const account = {
     id: enrollment.accountId,
     name: 'Event Portfolio',

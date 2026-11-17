@@ -670,7 +670,7 @@ export default function PaperScreen() {
     return () => { cancelled = true; };
   }, [buySuggestionsKey, isPennyStockMayhemFlow]);
 
-  // Total equity includes settled cash + unsettled T+2 proceeds + market value of positions.
+  // Total equity includes settled cash + unsettled T+1 proceeds + market value of positions.
   // Buying power is restricted to settled cash only (enforced in fillOrder / OrderSheet risk check).
   const portfolioValue = account ? computePaperEquity(account, myPositions, quotes) : 0;
   const regularCalendarError = getRegularEventCalendarError();

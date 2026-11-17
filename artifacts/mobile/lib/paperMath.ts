@@ -9,7 +9,7 @@
 /** A scheduled settlement event: cash from a sell that hasn't cleared yet. */
 export type UnsettledItem = {
   amount: number;
-  settlesAt: string; // ISO — 2 calendar days after the sell
+  settlesAt: string; // ISO — next U.S. market business day after a regular portfolio sell
 };
 
 export type PaperAccount = {
@@ -19,7 +19,7 @@ export type PaperAccount = {
   cash: number;
   /** Sum of unsettled sell proceeds (display only — updated by settleCash). */
   unsettledCash?: number;
-  /** Individual T+2 settlement buckets. Serialised to DB via unsettled_items JSON column. */
+  /** Individual T+1 settlement buckets. Serialised to DB via unsettled_items JSON column. */
   unsettledItems?: UnsettledItem[];
   /** Restricted proceeds and margin reserved for open short positions. */
   shortCollateral?: number;

@@ -22,7 +22,7 @@
 - [Clerk Google SSO transfer flow](clerk-sso-transfer-flow.md) — must handle 'transferable' verifications via create({transfer:true})+finalize(); dev e2e blocked by captcha/allowlist; workspace secret key is prod-instance.
 - [Schema migration gate](schema-migration-gate.md) — after-the-fact columns are migrated once at boot behind a cached promise; any endpoint referencing them must sit behind `requireSchema` (awaits migration, 503 while failing).
 - [Paper table migration](paper-table-migration.md) — paper-trading migrations must create the base tables, not just add columns; missing `paper_positions` or `sector` column caused production 500s.
-- [Paper trading engine v2](paper-trading-v2.md) — orders/lots/T+2/FIFO/slippage/dividends; trailing stop uses trailRef not currentPrice; `.ts` extension needed for Node ESM; syncToServer takes 6 args now.
+- [Paper trading engine v2](paper-trading-v2.md) — regular sells settle T+1; every event portfolio settles instantly; FIFO/slippage/dividends and order lifecycle stay in the shared engine.
 - [Patriot Mode premium theme](patriot-mode-premium-theme.md) — use brushed steel and gold as the persistent premium language; reserve flag colors for brief entry motion.
 - [Market heat-map flame motion](market-heat-map-flame-motion.md) — keep the breadth badge calm and campfire-like, with staggered flame tongues that rise and fade.
 - [Yahoo stock-screener paging](yahoo-stock-screener-paging.md) — Yahoo’s most-active screen may return 25 rows per call; use offsets to collect a larger sample.

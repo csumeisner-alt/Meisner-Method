@@ -1,6 +1,6 @@
 ---
 name: Paper trading engine v2 architecture
-description: Key decisions, file layout, and gotchas for the upgraded paper trading engine (orders, lots, T+2, dividends, slippage, FIFO, risk checks).
+description: Key decisions, file layout, and gotchas for the upgraded paper trading engine (orders, lots, T+1, dividends, slippage, FIFO, risk checks).
 ---
 
 # Paper Trading Engine v2
@@ -15,9 +15,11 @@ description: Key decisions, file layout, and gotchas for the upgraded paper trad
 
 ## Key decisions
 
-**Why:** Sell proceeds go into `unsettledItems` (T+2), not `account.cash`, so `account.cash` = true buying power. UI shows `CASH+T+2` label when there's unsettled cash.
+Regular paper portfolio sells settle T+1 on the next U.S. market business day; proceeds remain in `unsettledItems` and are excluded from buying power. Every Event Arena portfolio, including Lightning Round and future event types, receives sell proceeds immediately.
 
-**How to apply:** Any new feature that reads buying power must use `account.cash` (settled only), not `account.cash + account.unsettledCash`.
+**Why:** The user asked to reflect T+1 settlement for ordinary simulations while keeping event competition proceeds immediately available, independent of event type.
+
+**How to apply:** New order-fill paths should identify event accounts through `isPaperChallengeAccountId`; do not infer settlement from a specific event type. Ordinary buying-power checks use settled `account.cash`, not `account.cash + account.unsettledCash`.
 
 **Why:** Trailing stop trail amount is computed from `trailRef` (the high/low water mark), not from `currentPrice`. Bug was: using `currentPrice * pct` made the trigger math wrong.
 
