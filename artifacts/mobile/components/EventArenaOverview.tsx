@@ -150,8 +150,7 @@ export function EventArenaOverview({
   const isBearMarketMayhem = event.eventType === 'bear-market-mayhem'
     || event.rankingDirection === 'lowest-return';
   const isPennyStockMayhem = event.eventType === 'penny-stock-mayhem';
-  const isMountainChampionship = event.eventType === 'mountain-championship'
-    || event.artworkId === 'mountain-summit';
+  const isMountainChampionship = event.eventType === 'mountain-championship';
   const specialRules = [
     ...(isPennyStockMayhem
       ? [{

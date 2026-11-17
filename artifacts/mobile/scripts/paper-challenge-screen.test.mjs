@@ -1539,6 +1539,7 @@ test("Event Arena overview shows concise special rules only for restricted event
   assert.match(eventArenaOverview, /verified stock or ETF[\s\S]*?final fill below \$20/);
   assert.match(eventArenaOverview, /Lowest portfolio return ranks first/);
   assert.match(eventArenaOverview, /Cash transfers are disabled during the preparation period and competition/);
+  assert.match(eventArenaOverview, /const isMountainChampionship = event\.eventType === 'mountain-championship'/);
   assert.match(challenge, /NEON_NIGHTCLUB_STARTING_BALANCE = 250_000/);
   assert.match(challenge, /artworkId === 'mountain-summit'[\s\S]*?startingBalance: PAPER_CHALLENGE_STARTING_BALANCE/);
 });
