@@ -547,6 +547,18 @@ test("Event Arena podium sharing captures only aliases and returns with the self
   assert.doesNotMatch(shareCardSource, /accountId|participantToken|installationId|holdings|transactions|tradeCount|avgCost|shares/);
 });
 
+test("Event Arena trade rows emphasize totals and show colored realized profit or loss", () => {
+  const tradesStart = eventArena.indexOf("const renderTrades = () =>");
+  const tradesEnd = eventArena.indexOf("\n  const renderCompetition =", tradesStart);
+  const tradesSource = eventArena.slice(tradesStart, tradesEnd);
+
+  assert.match(tradesSource, /fontSize: 14 \}\}>\{money\(transaction\.total\)\}/);
+  assert.match(tradesSource, /transaction\.realizedPnL === undefined[\s\S]*?transaction\.realizedPnL - \(transaction\.fee \?\? 0\)/);
+  assert.match(tradesSource, /const isClosingTrade = transaction\.action === 'SELL' \|\| transaction\.action === 'BUY_TO_COVER'/);
+  assert.match(tradesSource, /net >= 0 \? colors\.buyColor : colors\.sellColor/);
+  assert.match(tradesSource, /net == null \? 'P\/L unavailable' : `P\/L \$\{net >= 0 \? '\+' : ''\}\$\{money\(net\)\}`/);
+});
+
 test("Event Arena section tabs stay readable and fit narrow phone widths", () => {
   const sectionTabsStart = eventArena.indexOf("{SECTIONS.map((item) => {");
   const sectionTabsEnd = eventArena.indexOf("</View>\n      </View>", sectionTabsStart);
