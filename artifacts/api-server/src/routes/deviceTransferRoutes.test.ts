@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import express from "express";
+import pg from "pg";
 import test from "node:test";
 import {
   DEVICE_TRANSFER_CATEGORIES,
   stableDeviceTransferJson,
 } from "../../../../lib/api-zod/src/deviceTransferManifest.ts";
 import { createDeviceTransferRouter } from "./deviceTransferRoutes.ts";
+
+const { Pool } = pg;
 
 class MemoryTransferDatabase {
   codes = new Map<string, any>();
@@ -482,5 +485,202 @@ test("price alerts are recreated on the authorized phone once without copying th
     assert.equal(replace.status, 200);
     assert.equal(db.alerts.size, 1, "explicit replacement removes only the destination's conflicting alert set");
   });
+});
+
+const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
+
+test("PostgreSQL serializes competing redemptions and makes alert restore retries idempotent", {
+  skip: !databaseUrl && "TEST_DATABASE_URL or DATABASE_URL is not configured",
+}, async () => {
+  assert.ok(databaseUrl);
+  const setupPool = new Pool({ connectionString: databaseUrl });
+  const schema = `device_transfer_test_${randomUUID().replaceAll("-", "")}`;
+  let db: InstanceType<typeof Pool> | undefined;
+  let server: ReturnType<typeof express.application.listen> | undefined;
+  let interruptedRestoreResponse = true;
+
+  try {
+    await setupPool.query(`CREATE SCHEMA "${schema}"`);
+    db = new Pool({
+      connectionString: databaseUrl,
+      options: `-c search_path=${schema}`,
+      max: 4,
+    });
+
+    // Match the production tables and constraints used by these route paths,
+    // while keeping every integration-test row inside its own schema.
+    await db.query(`
+      CREATE TABLE event_arena_device_sync (
+        sync_id TEXT PRIMARY KEY,
+        source_installation_id TEXT NOT NULL,
+        revision INTEGER NOT NULL DEFAULT 0,
+        challenge_store JSONB NOT NULL DEFAULT '{"enrollment":null,"lightningEnrollment":null,"history":[]}'::jsonb,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE app_device_transfer_codes (
+        code_hash TEXT PRIMARY KEY,
+        bundle_id TEXT NOT NULL,
+        bundle JSONB NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        destination_token_hash TEXT,
+        event_arena_sync_id TEXT REFERENCES event_arena_device_sync(sync_id) ON DELETE SET NULL,
+        alert_restore_result JSONB,
+        consumed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE push_devices (
+        installation_id TEXT PRIMARY KEY,
+        expo_push_token TEXT NOT NULL,
+        platform TEXT NOT NULL DEFAULT 'android',
+        enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE price_alerts (
+        id TEXT NOT NULL PRIMARY KEY,
+        user_id TEXT,
+        installation_id TEXT,
+        symbol TEXT NOT NULL,
+        direction TEXT NOT NULL CHECK (direction IN ('above','below')),
+        target_price DOUBLE PRECISION NOT NULL,
+        push_token TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        fired_at TIMESTAMPTZ,
+        paused BOOLEAN NOT NULL DEFAULT FALSE
+      );
+    `);
+
+    const integrationBundle = structuredClone(bundle);
+    const alertCategory = integrationBundle.categories.find((item) => item.id === "price-alerts");
+    assert.ok(alertCategory);
+    alertCategory.data["@stocksense/price_alerts_v1"] = JSON.stringify([
+      {
+        id: "source-alert-1",
+        symbol: "AAPL",
+        direction: "above",
+        targetPrice: 250,
+        createdAt: "2026-11-16T14:00:00.000Z",
+        firedAt: null,
+        paused: true,
+      },
+      {
+        id: "source-alert-2",
+        symbol: "MSFT",
+        direction: "below",
+        targetPrice: 400,
+        createdAt: "2026-11-16T15:00:00.000Z",
+        firedAt: null,
+        paused: false,
+      },
+    ]);
+
+    const code = randomBytes(32).toString("base64url");
+    const codeHash = hash(code);
+    const destinationTokens = [
+      randomBytes(32).toString("base64url"),
+      randomBytes(32).toString("base64url"),
+    ];
+    const installationId = `test-${randomUUID()}`;
+    const pushToken = "ExponentPushToken[012345678901234567890123456789]";
+
+    await db.query(
+      `INSERT INTO app_device_transfer_codes (code_hash,bundle_id,bundle,expires_at)
+       VALUES ($1,$2,$3::jsonb,NOW() + INTERVAL '10 minutes')`,
+      [codeHash, integrationBundle.bundleId, JSON.stringify(integrationBundle)],
+    );
+
+    const app = express();
+    app.use(express.json());
+    app.use((req, res, next) => {
+      if (req.path === "/device-transfer/restore-alerts" && interruptedRestoreResponse) {
+        res.json = (() => {
+          interruptedRestoreResponse = false;
+          res.destroy();
+          return res;
+        }) as typeof res.json;
+      }
+      next();
+    });
+    app.use(createDeviceTransferRouter(db, (_req, _res, next) => next()));
+    server = app.listen(0);
+    await once(server, "listening");
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    const redeem = (destinationToken: string) => fetch(`${baseUrl}/device-transfer/redeem`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code, destinationToken }),
+    });
+    const redemptionResults = await Promise.all(destinationTokens.map(async (token) => ({
+      token,
+      response: await redeem(token),
+    })));
+    const accepted = redemptionResults.filter(({ response }) => response.status === 200);
+    const rejected = redemptionResults.filter(({ response }) => response.status === 409);
+    assert.equal(accepted.length, 1, "exactly one competing destination must redeem the code");
+    assert.equal(rejected.length, 1, "the competing destination must be rejected");
+    const winner = accepted[0]!;
+    const originalBundleResponse = await winner.response.json();
+    assert.deepEqual(originalBundleResponse, { bundle: integrationBundle, eventArenaSync: null });
+
+    const storedRedemption = await db.query(
+      "SELECT destination_token_hash FROM app_device_transfer_codes WHERE code_hash=$1",
+      [codeHash],
+    );
+    assert.equal(storedRedemption.rows[0]?.destination_token_hash, hash(winner.token));
+
+    // An accepted destination remains idempotent even after the original code expires.
+    await db.query(
+      "UPDATE app_device_transfer_codes SET expires_at=NOW() - INTERVAL '1 second' WHERE code_hash=$1",
+      [codeHash],
+    );
+    const redemptionRetry = await redeem(winner.token);
+    assert.equal(redemptionRetry.status, 200);
+    assert.deepEqual(await redemptionRetry.json(), originalBundleResponse);
+
+    const restoreAlerts = () => fetch(`${baseUrl}/device-transfer/restore-alerts`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        code,
+        destinationToken: winner.token,
+        installationId,
+        pushToken,
+        replaceExisting: false,
+      }),
+    });
+
+    // Drop the first response only after the route's transaction has committed.
+    await assert.rejects(() => restoreAlerts(), "the first restore response is interrupted");
+    const restored = await restoreAlerts();
+    assert.equal(restored.status, 200);
+    const restoredBody = await restored.json() as { alerts: Array<{ id: string; symbol: string }> };
+    assert.equal(restoredBody.alerts.length, 2);
+    assert.deepEqual(restoredBody.alerts.map((alert) => alert.symbol).sort(), ["AAPL", "MSFT"]);
+    assert.equal(new Set(restoredBody.alerts.map((alert) => alert.id)).size, 2);
+
+    const alertRows = await db.query(
+      "SELECT id,symbol FROM price_alerts WHERE installation_id=$1 ORDER BY symbol",
+      [installationId],
+    );
+    assert.equal(alertRows.rows.length, 2, "retry must not create duplicate alert rows");
+    assert.deepEqual(alertRows.rows.map((alert: any) => alert.symbol), ["AAPL", "MSFT"]);
+    const savedRestoreResult = await db.query(
+      "SELECT alert_restore_result FROM app_device_transfer_codes WHERE code_hash=$1",
+      [codeHash],
+    );
+    assert.equal(savedRestoreResult.rows[0]?.alert_restore_result.length, 2);
+  } finally {
+    if (server) {
+      server.close();
+      await once(server, "close");
+    }
+    await db?.end();
+    await setupPool.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+    await setupPool.end();
+  }
 });
 
