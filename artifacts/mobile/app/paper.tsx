@@ -175,6 +175,7 @@ import {
   useSearchStockSymbols,
   createDeviceTransfer,
   redeemDeviceTransfer,
+  completeDeviceTransfer,
   restoreDeviceTransferAlerts,
   type HeatMapInstrumentSuggestion,
 } from '@workspace/api-client-react';
@@ -188,6 +189,7 @@ import {
   hasDeviceTransferDestinationChanged,
   replaceDeviceTransferCategoryData,
 } from '@/lib/deviceTransfer';
+import { stableDeviceTransferJson } from '../../../lib/api-zod/src/deviceTransferManifest.ts';
 
 /**
  * Paper Trading Screen — risk-free trading with $100,000 virtual cash.
@@ -1354,6 +1356,28 @@ export default function PaperScreen() {
         restoredCache.activeId ?? '',
       );
     }
+    const destinationToken = await AsyncStorage.getItem(DEVICE_TRANSFER_DESTINATION_KEY);
+    if (!destinationToken) {
+      throw new Error('Saved data is on this phone, but restore confirmation is pending. Re-enter the same transfer code to safely retry.');
+    }
+    const categoryResults = bundle.categories.map((category) => {
+      const result = results.find((item) => item.id === category.id);
+      if (!result || result.status === 'failed') {
+        throw new Error('Saved data is on this phone, but restore confirmation is pending. Re-enter the same transfer code to safely retry.');
+      }
+      return { id: category.id, status: result.status };
+    });
+    try {
+      await completeDeviceTransfer({
+        code: restoreCode,
+        destinationToken,
+        bundleId: bundle.bundleId,
+        categoryResults,
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? ` ${error.message}` : '';
+      throw new Error(`Saved data is on this phone, but the server has not confirmed the restore. Re-enter the same transfer code to safely retry.${detail}`);
+    }
     setDeviceTransferResults(results);
     setDeviceTransferPreview(null);
     setDeviceTransferMode('result');
@@ -1371,10 +1395,21 @@ export default function PaperScreen() {
     setDeviceTransferPreview(null);
     setDeviceTransferResults([]);
     try {
-      const destinationToken = await AsyncStorage.getItem(DEVICE_TRANSFER_DESTINATION_KEY)
-        ?? Crypto.randomUUID().replace(/-/g, '');
+      // Derive the retry credential from the high-entropy transfer code so
+      // reinstalling the app does not lose the server-side restore session.
+      const destinationToken = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        `meisner-device-transfer:${code}`,
+      );
       await AsyncStorage.setItem(DEVICE_TRANSFER_DESTINATION_KEY, destinationToken);
       const response = await redeemDeviceTransfer({ code, destinationToken });
+      const receivedHash = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        stableDeviceTransferJson(response.bundle),
+      );
+      if (receivedHash !== response.bundleSha256) {
+        throw new Error('The saved-data backup failed its integrity check. No data was restored.');
+      }
       setDeviceTransferRestoreCode(code);
       const preview = await preflightDeviceTransfer(AsyncStorage, response.bundle);
       setDeviceTransferPreview(preview);
@@ -1382,7 +1417,7 @@ export default function PaperScreen() {
       if (preview.categories.some((category) => category.status === 'conflict')) {
         setDeviceTransferMode('review');
       } else {
-        await applyAndFinishDeviceTransfer(response.bundle, null, response.eventArenaSync ?? null, code, preview);
+        await applyAndFinishDeviceTransfer(preview.bundle, null, response.eventArenaSync ?? null, code, preview);
       }
       setDeviceTransferCodeInput('');
     } catch (error) {
@@ -5031,7 +5066,7 @@ export default function PaperScreen() {
               {deviceTransferMode === 'create' ? (
                 <>
                   <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 19 }}>
-                    Enter this one-use code on your new phone within 10 minutes. Your original phone stays unchanged.
+                    Save this code outside the app before uninstalling. Enter it on the phone you are restoring within 30 days; it can resume after reinstalling Meisner Method. Keep it private because anyone with the code can restore this backup. Your original phone stays unchanged.
                   </Text>
                   <Text
                     testID="saved-data-device-transfer-code"
@@ -5044,7 +5079,7 @@ export default function PaperScreen() {
               ) : deviceTransferMode === 'restore' ? (
                 <>
                   <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 19 }}>
-                    Create a one-use transfer code on your original phone. It expires after 10 minutes. Restoring price alerts may ask to enable notifications on this phone.
+                    Enter the code saved from your original phone. It remains valid for 30 days and can resume a restore after reinstalling the app. Restoring price alerts may ask to enable notifications on this phone.
                   </Text>
                   <TextInput
                     testID="saved-data-device-transfer-code-input"

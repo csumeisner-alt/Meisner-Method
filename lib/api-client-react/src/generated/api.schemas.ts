@@ -10,6 +10,7 @@ export type DeviceTransferBundleVersion = typeof DeviceTransferBundleVersion[key
 
 export const DeviceTransferBundleVersion = {
   NUMBER_1: 1,
+  NUMBER_2: 2,
 } as const;
 
 export type DeviceTransferBundleCategoriesItemData = {[key: string]: string};
@@ -48,6 +49,40 @@ export interface RedeemDeviceTransferRequest {
      * @maxLength 128
      */
   destinationToken: string;
+}
+
+export type CompleteDeviceTransferRequestCategoryResultsItemStatus = typeof CompleteDeviceTransferRequestCategoryResultsItemStatus[keyof typeof CompleteDeviceTransferRequestCategoryResultsItemStatus];
+
+
+export const CompleteDeviceTransferRequestCategoryResultsItemStatus = {
+  restored: 'restored',
+  unchanged: 'unchanged',
+  skipped: 'skipped',
+} as const;
+
+export type CompleteDeviceTransferRequestCategoryResultsItem = {
+  id: string;
+  status: CompleteDeviceTransferRequestCategoryResultsItemStatus;
+};
+
+export interface CompleteDeviceTransferRequest {
+  /**
+     * @minLength 32
+     * @maxLength 64
+     */
+  code: string;
+  /**
+     * @minLength 32
+     * @maxLength 128
+     */
+  destinationToken: string;
+  /**
+     * @minLength 8
+     * @maxLength 128
+     */
+  bundleId: string;
+  /** @maxItems 20 */
+  categoryResults: CompleteDeviceTransferRequestCategoryResultsItem[];
 }
 
 export interface RestoreDeviceTransferAlertsRequest {
@@ -1809,7 +1844,13 @@ export type RedeemDeviceTransfer200EventArenaSync = {
 
 export type RedeemDeviceTransfer200 = {
   bundle: DeviceTransferBundle;
+  /** @pattern ^[a-f0-9]{64}$ */
+  bundleSha256: string;
   eventArenaSync?: RedeemDeviceTransfer200EventArenaSync;
+};
+
+export type CompleteDeviceTransfer200 = {
+  completed: boolean;
 };
 
 export type RestoreDeviceTransferAlerts200 = {

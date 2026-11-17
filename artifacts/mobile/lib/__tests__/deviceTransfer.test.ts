@@ -65,7 +65,10 @@ test("manifest identifies portable, server-owned, rebuildable, and device-bound 
   assert.ok(DEVICE_TRANSFER_MANIFEST.some((entry) => entry.portability === "rebuildable"));
   assert.ok(DEVICE_TRANSFER_MANIFEST.some((entry) => entry.portability === "device-bound"));
   assert.ok(DEVICE_TRANSFER_MANIFEST.some((entry) => entry.keys?.includes("@stocksense/installation_id")));
-  assert.equal(validateDeviceTransferBundle(makeBundle()).categories[0]?.id, "watchlist");
+  const migrated = validateDeviceTransferBundle(makeBundle());
+  assert.equal(migrated.version, 2);
+  assert.equal(migrated.categories[0]?.version, 2);
+  assert.equal(migrated.categories[0]?.id, "watchlist");
 });
 
 test("bundle validation rejects unknown keys and broken financial relationships", () => {
@@ -191,6 +194,93 @@ test("source bundle preserves local values, and exact repeated imports are idemp
   const repeated = await applyDeviceTransfer(destination, bundle, null);
   assert.equal(repeated.results.find((item) => item.id === "watchlist")?.status, "unchanged");
   assert.equal(await source.getItem(watchlistKey), sourceWatchlist);
+});
+
+test("a fresh install restores a version-one backup through the current schema", async () => {
+  const timestamp = "2026-11-16T10:00:00.000Z";
+  const legacyBundle = {
+    version: 1,
+    bundleId: "reinstall-bundle-123",
+    exportedAt: "2026-11-17T12:00:00.000Z",
+    categories: [
+      {
+        id: "paper-and-event-arena",
+        version: 1,
+        data: {
+          "@stocksense/paper_v2": JSON.stringify({
+            accounts: [{ id: "account-1", name: "Practice", cash: 95_000, createdAt: timestamp }],
+            positions: [],
+            transactions: [],
+            orders: [],
+            lots: [],
+            activeId: "account-1",
+          }),
+          "@stocksense/paper_equity_snapshots_v1": JSON.stringify([
+            { accountId: "account-1", date: timestamp, value: 100_000 },
+          ]),
+        },
+      },
+      {
+        id: "portfolio-history",
+        version: 1,
+        data: {
+          "@stocksense/portfolio_trades_v1": JSON.stringify([
+            { id: "trade-1", symbol: "AAPL", type: "buy", shares: 2, pricePerShare: 101, date: timestamp },
+          ]),
+        },
+      },
+      { id: "watchlist", version: 1, data: { [watchlistKey]: sourceWatchlist } },
+      {
+        id: "theme-and-brew-progress",
+        version: 1,
+        data: {
+          "@stocksense/facts_read_v1": "8",
+          "@stocksense/brew_tokens_v1": "3",
+          "@stocksense/brew_sound_enabled_v1": "false",
+        },
+      },
+      {
+        id: "price-alerts",
+        version: 1,
+        data: {
+          "@stocksense/price_alerts_v1": JSON.stringify([{
+            id: "alert-1",
+            symbol: "AAPL",
+            direction: "above",
+            targetPrice: 250,
+            createdAt: timestamp,
+            firedAt: null,
+            paused: false,
+          }]),
+        },
+      },
+      {
+        id: "achievements",
+        version: 1,
+        data: {
+          "@meisnermethod/achievements_v1": JSON.stringify(["first-quote"]),
+          "@meisnermethod/analyze_search_count_v1": "4",
+        },
+      },
+      { id: "custom-heat-map", version: 1, data: { "meisner.heat-map.custom-symbols.v1": JSON.stringify(["AAPL", "MSFT"]) } },
+      { id: "research-and-comparisons", version: 1, data: { "@stocksense/pinned_comp_symbol": "SPY" } },
+      { id: "saved-display-preferences", version: 1, data: { "@stocksense/watchlist_collapsed": "1" } },
+    ],
+  };
+
+  // The empty destination represents AsyncStorage after a full uninstall.
+  const reinstalledAppStorage = new MemoryStorage();
+  const restored = await applyDeviceTransfer(reinstalledAppStorage, legacyBundle, null);
+  assert.equal(restored.results.filter((result) => result.status === "restored").length, 9);
+  assert.equal(await reinstalledAppStorage.getItem(watchlistKey), sourceWatchlist);
+  assert.match(await reinstalledAppStorage.getItem("@stocksense/paper_v2") ?? "", /account-1/);
+  assert.match(await reinstalledAppStorage.getItem("@stocksense/portfolio_trades_v1") ?? "", /trade-1/);
+  assert.equal(await reinstalledAppStorage.getItem("@stocksense/facts_read_v1"), "8");
+  assert.match(await reinstalledAppStorage.getItem("@stocksense/price_alerts_v1") ?? "", /alert-1/);
+  assert.match(await reinstalledAppStorage.getItem("@meisnermethod/achievements_v1") ?? "", /first-quote/);
+  assert.equal(await reinstalledAppStorage.getItem("meisner.heat-map.custom-symbols.v1"), '["AAPL","MSFT"]');
+  assert.equal(await reinstalledAppStorage.getItem("@stocksense/pinned_comp_symbol"), "SPY");
+  assert.equal(await reinstalledAppStorage.getItem("@stocksense/watchlist_collapsed"), "1");
 });
 
 test("conflicting financial categories require a choice and are never merged", async () => {

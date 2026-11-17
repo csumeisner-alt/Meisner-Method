@@ -10,5 +10,7 @@ import type { RedeemDeviceTransfer200EventArenaSync } from './redeemDeviceTransf
 
 export type RedeemDeviceTransfer200 = {
   bundle: DeviceTransferBundle;
+  /** @pattern ^[a-f0-9]{64}$ */
+  bundleSha256: string;
   eventArenaSync?: RedeemDeviceTransfer200EventArenaSync;
 };

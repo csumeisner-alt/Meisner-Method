@@ -474,7 +474,7 @@ export const SyncEventArenaDeviceStateResponse = zod.object({
 
 
 /**
- * @summary Validate a saved-data bundle and create a one-use phone transfer code
+ * @summary Validate and persist a saved-data backup before creating a 30-day transfer code
  */
 export const createDeviceTransferHeaderXEventArenaDeviceTokenMin = 32;
 export const createDeviceTransferHeaderXEventArenaDeviceTokenMax = 128;
@@ -495,7 +495,7 @@ export const createDeviceTransferBodyBundleCategoriesMax = 9;
 
 export const CreateDeviceTransferBody = zod.object({
   "bundle": zod.object({
-  "version": zod.literal(1),
+  "version": zod.union([zod.literal(1),zod.literal(2)]),
   "bundleId": zod.string().min(createDeviceTransferBodyBundleBundleIdMin).max(createDeviceTransferBodyBundleBundleIdMax),
   "exportedAt": zod.coerce.date(),
   "categories": zod.array(zod.object({
@@ -540,6 +540,7 @@ export const redeemDeviceTransferResponseBundleBundleIdMax = 128;
 
 export const redeemDeviceTransferResponseBundleCategoriesMax = 9;
 
+export const redeemDeviceTransferResponseBundleSha256RegExp = new RegExp('^[a-f0-9]{64}$');
 export const redeemDeviceTransferResponseEventArenaSyncSourceInstallationIdMin = 12;
 export const redeemDeviceTransferResponseEventArenaSyncSourceInstallationIdMax = 128;
 
@@ -549,7 +550,7 @@ export const redeemDeviceTransferResponseEventArenaSyncRevisionMin = 0;
 
 export const RedeemDeviceTransferResponse = zod.object({
   "bundle": zod.object({
-  "version": zod.literal(1),
+  "version": zod.union([zod.literal(1),zod.literal(2)]),
   "bundleId": zod.string().min(redeemDeviceTransferResponseBundleBundleIdMin).max(redeemDeviceTransferResponseBundleBundleIdMax),
   "exportedAt": zod.coerce.date(),
   "categories": zod.array(zod.object({
@@ -558,10 +559,42 @@ export const RedeemDeviceTransferResponse = zod.object({
   "data": zod.record(zod.string(), zod.string())
 })).max(redeemDeviceTransferResponseBundleCategoriesMax)
 }),
+  "bundleSha256": zod.string().regex(redeemDeviceTransferResponseBundleSha256RegExp),
   "eventArenaSync": zod.object({
   "sourceInstallationId": zod.string().min(redeemDeviceTransferResponseEventArenaSyncSourceInstallationIdMin).max(redeemDeviceTransferResponseEventArenaSyncSourceInstallationIdMax),
   "revision": zod.number().min(redeemDeviceTransferResponseEventArenaSyncRevisionMin)
 }).nullish()
+})
+
+
+/**
+ * @summary Confirm that the destination finished restoring a saved-data backup
+ */
+export const completeDeviceTransferBodyCodeMin = 32;
+export const completeDeviceTransferBodyCodeMax = 64;
+
+export const completeDeviceTransferBodyDestinationTokenMin = 32;
+export const completeDeviceTransferBodyDestinationTokenMax = 128;
+
+export const completeDeviceTransferBodyBundleIdMin = 8;
+export const completeDeviceTransferBodyBundleIdMax = 128;
+
+export const completeDeviceTransferBodyCategoryResultsMax = 20;
+
+
+
+export const CompleteDeviceTransferBody = zod.object({
+  "code": zod.string().min(completeDeviceTransferBodyCodeMin).max(completeDeviceTransferBodyCodeMax),
+  "destinationToken": zod.string().min(completeDeviceTransferBodyDestinationTokenMin).max(completeDeviceTransferBodyDestinationTokenMax),
+  "bundleId": zod.string().min(completeDeviceTransferBodyBundleIdMin).max(completeDeviceTransferBodyBundleIdMax),
+  "categoryResults": zod.array(zod.object({
+  "id": zod.string(),
+  "status": zod.enum(['restored', 'unchanged', 'skipped'])
+})).max(completeDeviceTransferBodyCategoryResultsMax)
+})
+
+export const CompleteDeviceTransferResponse = zod.object({
+  "completed": zod.boolean()
 })
 
 

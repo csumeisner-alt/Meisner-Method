@@ -363,7 +363,7 @@ paths:
     post:
       operationId: createDeviceTransfer
       tags: [deviceTransfer]
-      summary: Validate a saved-data bundle and create a one-use phone transfer code
+      summary: Validate and persist a saved-data backup before creating a 30-day transfer code
       parameters:
         - in: header
           name: X-Event-Arena-Device-Token
@@ -378,7 +378,7 @@ paths:
               $ref: "#/components/schemas/CreateDeviceTransferRequest"
       responses:
         "200":
-          description: Short-lived code for the saved-data bundle
+          description: Transfer code returned only after the stored backup is read back and verified
           content:
             application/json:
               schema:
@@ -402,15 +402,16 @@ paths:
               $ref: "#/components/schemas/RedeemDeviceTransferRequest"
       responses:
         "200":
-          description: Validated saved-data bundle for this destination phone
+          description: Integrity-checked saved-data bundle for this destination phone
           content:
             application/json:
               schema:
                 type: object
-                required: [bundle]
+                required: [bundle, bundleSha256]
                 properties:
                   bundle:
                     $ref: "#/components/schemas/DeviceTransferBundle"
+                  bundleSha256: { type: string, pattern: "^[a-f0-9]{64}$" }
                   eventArenaSync:
                     type: object
                     nullable: true
@@ -422,6 +423,32 @@ paths:
         "404": { description: The transfer code was not found }
         "409": { description: The code was already redeemed by another phone }
         "410": { description: The transfer code expired }
+        "422": { description: The saved-data backup failed its integrity check }
+  /device-transfer/complete:
+    post:
+      operationId: completeDeviceTransfer
+      tags: [deviceTransfer]
+      summary: Confirm that the destination finished restoring a saved-data backup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompleteDeviceTransferRequest"
+      responses:
+        "200":
+          description: Restore completion recorded; the server-side backup was removed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [completed]
+                properties:
+                  completed: { type: boolean }
+        "400": { description: The restore confirmation is incomplete or invalid }
+        "404": { description: The transfer code was not found }
+        "409": { description: The phone or bundle does not match the transfer }
+        "422": { description: The saved-data backup failed its integrity check }
   /device-transfer/restore-alerts:
     post:
       operationId: restoreDeviceTransferAlerts
@@ -944,7 +971,7 @@ components:
       type: object
       required: [version, bundleId, exportedAt, categories]
       properties:
-        version: { type: integer, enum: [1] }
+        version: { type: integer, enum: [1, 2] }
         bundleId: { type: string, minLength: 8, maxLength: 128 }
         exportedAt: { type: string, format: date-time }
         categories:
@@ -971,6 +998,22 @@ components:
       properties:
         code: { type: string, minLength: 32, maxLength: 64 }
         destinationToken: { type: string, minLength: 32, maxLength: 128 }
+    CompleteDeviceTransferRequest:
+      type: object
+      required: [code, destinationToken, bundleId, categoryResults]
+      properties:
+        code: { type: string, minLength: 32, maxLength: 64 }
+        destinationToken: { type: string, minLength: 32, maxLength: 128 }
+        bundleId: { type: string, minLength: 8, maxLength: 128 }
+        categoryResults:
+          type: array
+          maxItems: 20
+          items:
+            type: object
+            required: [id, status]
+            properties:
+              id: { type: string }
+              status: { type: string, enum: [restored, unchanged, skipped] }
     RestoreDeviceTransferAlertsRequest:
       type: object
       required: [code, destinationToken, installationId, replaceExisting]

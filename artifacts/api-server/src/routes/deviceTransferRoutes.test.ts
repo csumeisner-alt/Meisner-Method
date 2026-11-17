@@ -3,6 +3,10 @@ import { createHash } from "node:crypto";
 import { once } from "node:events";
 import express from "express";
 import test from "node:test";
+import {
+  DEVICE_TRANSFER_CATEGORIES,
+  stableDeviceTransferJson,
+} from "../../../../lib/api-zod/src/deviceTransferManifest.ts";
 import { createDeviceTransferRouter } from "./deviceTransferRoutes.ts";
 
 class MemoryTransferDatabase {
@@ -11,6 +15,7 @@ class MemoryTransferDatabase {
   eventSync = new Map<string, { source_installation_id: string; revision: number }>();
   pushDevices = new Map<string, string>();
   alerts = new Map<string, any>();
+  failBackupReadback = false;
 
   async query(sql: string, values: any[] = []) {
     const query = sql.replace(/\s+/g, " ").trim();
@@ -23,28 +28,56 @@ class MemoryTransferDatabase {
       this.codes.set(values[0], {
         bundle_id: values[1],
         bundle: JSON.parse(values[2]),
-        expires_at: new Date(values[3]),
-        event_arena_sync_id: values[4],
+        bundle_sha256: values[3],
+        expires_at: new Date(values[4]),
+        event_arena_sync_id: values[5],
         destination_token_hash: null,
         alert_restore_result: null,
         consumed_at: null,
+        restored_at: null,
       });
       return { rows: [] };
     }
-    if (query.startsWith("SELECT bundle,destination_token_hash,alert_restore_result FROM app_device_transfer_codes")) {
+    if (query.startsWith("SELECT bundle,bundle_sha256 FROM app_device_transfer_codes")) {
+      const row = this.codes.get(values[0]);
+      return { rows: row && !this.failBackupReadback
+        ? [{ bundle: row.bundle, bundle_sha256: row.bundle_sha256 }]
+        : [] };
+    }
+    if (query.startsWith("SELECT bundle,bundle_sha256,expires_at,destination_token_hash,event_arena_sync_id,restored_at")) {
       const row = this.codes.get(values[0]);
       return { rows: row ? [row] : [] };
+    }
+    if (query.startsWith("SELECT bundle,bundle_sha256,bundle_id,destination_token_hash,restored_at")) {
+      const row = this.codes.get(values[0]);
+      return { rows: row ? [row] : [] };
+    }
+    if (query.startsWith("SELECT bundle,bundle_sha256,destination_token_hash,alert_restore_result,restored_at")) {
+      const row = this.codes.get(values[0]);
+      return { rows: row ? [row] : [] };
+    }
+    if (query.startsWith("UPDATE app_device_transfer_codes SET bundle=$2::jsonb,bundle_sha256=$3")) {
+      const row = this.codes.get(values[0]);
+      if (row) {
+        row.bundle = JSON.parse(values[1]);
+        row.bundle_sha256 = values[2];
+      }
+      return { rows: [] };
+    }
+    if (query.startsWith("UPDATE app_device_transfer_codes SET restored_at=NOW(),bundle=NULL")) {
+      const row = this.codes.get(values[0]);
+      if (row) {
+        row.restored_at = new Date();
+        row.bundle = null;
+      }
+      return { rows: [] };
     }
     if (query.startsWith("UPDATE app_device_transfer_codes SET alert_restore_result")) {
       const row = this.codes.get(values[0]);
       if (row) row.alert_restore_result = JSON.parse(values[1]);
       return { rows: [] };
     }
-    if (query.startsWith("SELECT bundle,expires_at,destination_token_hash,event_arena_sync_id")) {
-      const row = this.codes.get(values[0]);
-      return { rows: row ? [row] : [] };
-    }
-    if (query.startsWith("UPDATE app_device_transfer_codes")) {
+    if (query.startsWith("UPDATE app_device_transfer_codes SET destination_token_hash")) {
       const row = this.codes.get(values[0]);
       if (row) {
         row.destination_token_hash = values[1];
@@ -159,6 +192,23 @@ const bundle = {
     },
   ],
 };
+const migratedBundle = {
+  ...bundle,
+  version: 2,
+  categories: bundle.categories.map((category) => ({ ...category, version: 2 })),
+};
+const completeLegacyBundle = {
+  ...bundle,
+  categories: DEVICE_TRANSFER_CATEGORIES.map((entry) =>
+    bundle.categories.find((category) => category.id === entry.id)
+      ?? { id: entry.id, version: 1, data: {} },
+  ),
+};
+const completeMigratedBundle = {
+  ...completeLegacyBundle,
+  version: 2,
+  categories: completeLegacyBundle.categories.map((category) => ({ ...category, version: 2 })),
+};
 const destinationToken = "d".repeat(64);
 
 test("device transfer validates bundles, preserves the source bundle, and permits only same-phone retry", async () => {
@@ -192,7 +242,7 @@ test("device transfer validates bundles, preserves the source bundle, and permit
     });
     const restored = await redeem();
     assert.equal(restored.status, 200);
-    assert.deepEqual((await restored.json() as any).bundle, bundle);
+    assert.deepEqual((await restored.json() as any).bundle, migratedBundle);
     assert.equal((await redeem()).status, 200, "the same destination can safely retry after interruption");
     const secondPhone = await fetch(`${baseUrl}/device-transfer/redeem`, {
       method: "POST",
@@ -200,7 +250,110 @@ test("device transfer validates bundles, preserves the source bundle, and permit
       body: JSON.stringify({ code: pairing.code, destinationToken: "e".repeat(64) }),
     });
     assert.equal(secondPhone.status, 409);
-    assert.deepEqual(db.codes.get(hash(pairing.code)).bundle, bundle);
+    assert.deepEqual(db.codes.get(hash(pairing.code)).bundle, migratedBundle);
+  });
+});
+
+test("a v1 backup survives a simulated uninstall and is deleted only after restore confirmation", async () => {
+  await withApi(async (baseUrl, db) => {
+    const create = await fetch(`${baseUrl}/device-transfer/create`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ bundle: completeLegacyBundle }),
+    });
+    assert.equal(create.status, 200);
+    const { code } = await create.json() as { code: string };
+    const stored = db.codes.get(hash(code));
+    assert.deepEqual(stored.bundle, completeMigratedBundle, "older app data is migrated before it is backed up");
+    assert.equal(stored.bundle_sha256, hash(stableDeviceTransferJson(completeMigratedBundle)));
+
+    // The credential is reproducible from the one-use code after local app
+    // storage has been erased by uninstalling and reinstalling the app.
+    const destinationToken = hash(`meisner-device-transfer:${code}`);
+    const redeem = () => fetch(`${baseUrl}/device-transfer/redeem`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code, destinationToken }),
+    });
+    const first = await redeem();
+    assert.equal(first.status, 200);
+    const response = await first.json() as any;
+    assert.deepEqual(response.bundle, completeMigratedBundle);
+    assert.equal(response.bundleSha256, hash(stableDeviceTransferJson(completeMigratedBundle)));
+    assert.ok(stored.bundle, "the server backup remains until completion is confirmed");
+
+    const afterReinstall = await redeem();
+    assert.equal(afterReinstall.status, 200, "same-code retry resumes on a fresh installation");
+    assert.deepEqual((await afterReinstall.json() as any).bundle, completeMigratedBundle);
+    const incomplete = await fetch(`${baseUrl}/device-transfer/complete`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        code, destinationToken, bundleId: completeMigratedBundle.bundleId,
+        categoryResults: [{ id: "watchlist", status: "restored" }],
+      }),
+    });
+    assert.equal(incomplete.status, 400);
+    assert.ok(stored.bundle, "invalid confirmation cannot remove the backup");
+
+    const completed = await fetch(`${baseUrl}/device-transfer/complete`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        code,
+        destinationToken,
+        bundleId: completeMigratedBundle.bundleId,
+        categoryResults: completeMigratedBundle.categories.map(({ id }) => ({ id, status: "restored" })),
+      }),
+    });
+    assert.equal(completed.status, 200);
+    assert.equal(db.codes.get(hash(code)).restored_at instanceof Date, true);
+    assert.equal(db.codes.get(hash(code)).bundle, null, "backup is removed only after confirmation");
+
+    const lostAckRetry = await fetch(`${baseUrl}/device-transfer/complete`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        code,
+        destinationToken,
+        bundleId: completeMigratedBundle.bundleId,
+        categoryResults: completeMigratedBundle.categories.map(({ id }) => ({ id, status: "restored" })),
+      }),
+    });
+    assert.equal(lostAckRetry.status, 200, "completion retries are idempotent after a lost response");
+    assert.equal((await redeem()).status, 410, "a completed transfer code cannot restore a second time");
+  });
+});
+
+test("a changed server backup fails its integrity check before redemption", async () => {
+  await withApi(async (baseUrl, db) => {
+    const create = await fetch(`${baseUrl}/device-transfer/create`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ bundle }),
+    });
+    const { code } = await create.json() as { code: string };
+    db.codes.get(hash(code)).bundle.categories[0].data["@stocksense/portfolio_trades_v1"] = "[]";
+    const response = await fetch(`${baseUrl}/device-transfer/redeem`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code, destinationToken }),
+    });
+    assert.equal(response.status, 422);
+    assert.equal(db.codes.get(hash(code)).destination_token_hash, null);
+  });
+});
+
+test("the server does not return a code unless it can read back the stored backup", async () => {
+  await withApi(async (baseUrl, db) => {
+    db.failBackupReadback = true;
+    const response = await fetch(`${baseUrl}/device-transfer/create`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ bundle }),
+    });
+    assert.equal(response.status, 500);
+    assert.equal(JSON.stringify(await response.json()).includes('"code"'), false);
   });
 });
 

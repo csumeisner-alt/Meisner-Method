@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { Router } from "express";
 import {
+  stableDeviceTransferJson,
   validateDeviceTransferBundle,
   type ValidatedDeviceTransferBundle,
 } from "../../../../lib/api-zod/src/deviceTransferManifest.ts";
@@ -14,10 +15,39 @@ type TransferDatabase = {
 };
 type Middleware = (req: any, res: any, next: any) => void;
 
-const CODE_TTL_MS = 10 * 60_000;
+const CODE_TTL_MS = 30 * 24 * 60 * 60_000;
 
 function hashSecret(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function bundleIntegrityHash(bundle: unknown): string {
+  return hashSecret(stableDeviceTransferJson(bundle));
+}
+
+function parseJsonColumn(value: unknown): unknown {
+  return typeof value === "string" ? JSON.parse(value) : value;
+}
+
+async function getVerifiedBundle(
+  client: Pick<TransferDatabase, "query">,
+  codeHash: string,
+  row: { bundle: unknown; bundle_sha256?: unknown },
+): Promise<ValidatedDeviceTransferBundle> {
+  const bundle = validateDeviceTransferBundle(parseJsonColumn(row.bundle));
+  const digest = bundleIntegrityHash(bundle);
+  if (row.bundle_sha256 === null || row.bundle_sha256 === undefined) {
+    // Backfill legacy rows once, after validating and migrating their schema.
+    await client.query(
+      "UPDATE app_device_transfer_codes SET bundle=$2::jsonb,bundle_sha256=$3 WHERE code_hash=$1",
+      [codeHash, JSON.stringify(bundle), digest],
+    );
+    return bundle;
+  }
+  if (typeof row.bundle_sha256 !== "string" || row.bundle_sha256 !== digest) {
+    throw Object.assign(new Error("The saved-data backup failed its integrity check."), { status: 422 });
+  }
+  return bundle;
 }
 
 function validSecret(value: unknown): value is string {
@@ -80,9 +110,12 @@ export function createDeviceTransferRouter(db: TransferDatabase, requireSchema: 
     }
     const code = randomBytes(24).toString("base64url");
     const expiresAt = new Date(Date.now() + CODE_TTL_MS);
+    const codeHash = hashSecret(code);
+    const bundleSha256 = bundleIntegrityHash(bundle);
     try {
       await db.query(
-        "DELETE FROM app_device_transfer_codes WHERE expires_at < NOW() - INTERVAL '1 day'",
+        `DELETE FROM app_device_transfer_codes
+         WHERE restored_at IS NOT NULL AND expires_at < NOW() - INTERVAL '1 day'`,
       );
       const sourceToken = req.get("x-event-arena-device-token");
       let eventArenaSyncId: string | null = null;
@@ -95,10 +128,20 @@ export function createDeviceTransferRouter(db: TransferDatabase, requireSchema: 
       }
       await db.query(
         `INSERT INTO app_device_transfer_codes
-           (code_hash, bundle_id, bundle, expires_at, event_arena_sync_id)
-         VALUES ($1,$2,$3::jsonb,$4,$5)`,
-        [hashSecret(code), bundle.bundleId, JSON.stringify(bundle), expiresAt.toISOString(), eventArenaSyncId],
+           (code_hash, bundle_id, bundle, bundle_sha256, expires_at, event_arena_sync_id)
+         VALUES ($1,$2,$3::jsonb,$4,$5,$6)`,
+        [codeHash, bundle.bundleId, JSON.stringify(bundle), bundleSha256, expiresAt.toISOString(), eventArenaSyncId],
       );
+      const stored = await db.query(
+        "SELECT bundle,bundle_sha256 FROM app_device_transfer_codes WHERE code_hash=$1",
+        [codeHash],
+      );
+      if (!stored.rows[0]) throw new Error("Stored transfer backup could not be retrieved.");
+      const storedBundle = validateDeviceTransferBundle(parseJsonColumn(stored.rows[0].bundle));
+      if (bundleIntegrityHash(storedBundle) !== bundleSha256
+        || stored.rows[0].bundle_sha256 !== bundleSha256) {
+        throw new Error("Stored transfer backup failed its integrity check.");
+      }
       res.json({ code, expiresAt: expiresAt.toISOString(), bundleId: bundle.bundleId });
     } catch {
       res.status(500).json({ error: "Could not prepare the saved-data transfer code." });
@@ -115,24 +158,28 @@ export function createDeviceTransferRouter(db: TransferDatabase, requireSchema: 
     try {
       const bundle = await withTransaction(db, async (client) => {
         const result = await client.query(
-          `SELECT bundle,expires_at,destination_token_hash,event_arena_sync_id
+          `SELECT bundle,bundle_sha256,expires_at,destination_token_hash,event_arena_sync_id,restored_at
            FROM app_device_transfer_codes WHERE code_hash=$1 FOR UPDATE`,
           [hashSecret(code)],
         );
         const row = result.rows[0];
         if (!row) throw Object.assign(new Error("Transfer code not found."), { status: 404 });
+        if (row.restored_at || row.bundle == null) {
+          throw Object.assign(new Error("This transfer has already been completed."), { status: 410 });
+        }
+        const expiresAtMs = row.expires_at instanceof Date
+          ? row.expires_at.getTime()
+          : Date.parse(row.expires_at);
+        if (!Number.isFinite(expiresAtMs) || expiresAtMs < Date.now()) {
+          throw Object.assign(new Error("Transfer code expired."), { status: 410 });
+        }
+        const bundle = await getVerifiedBundle(client, hashSecret(code), row);
 
         const destinationHash = hashSecret(destinationToken);
         if (row.destination_token_hash && row.destination_token_hash !== destinationHash) {
           throw Object.assign(new Error("Transfer code already used on another phone."), { status: 409 });
         }
         if (!row.destination_token_hash) {
-          const expiresAtMs = row.expires_at instanceof Date
-            ? row.expires_at.getTime()
-            : Date.parse(row.expires_at);
-          if (!Number.isFinite(expiresAtMs) || expiresAtMs < Date.now()) {
-            throw Object.assign(new Error("Transfer code expired."), { status: 410 });
-          }
           await client.query(
             `UPDATE app_device_transfer_codes
              SET destination_token_hash=$2,consumed_at=NOW()
@@ -167,20 +214,81 @@ export function createDeviceTransferRouter(db: TransferDatabase, requireSchema: 
           }
         }
         return {
-          bundle: validateDeviceTransferBundle(
-            typeof row.bundle === "string" ? JSON.parse(row.bundle) : row.bundle,
-          ),
+          bundle,
+          bundleSha256: bundleIntegrityHash(bundle),
           eventArenaSync,
         };
       });
       res.json(bundle);
     } catch (error: any) {
-      const status = [404, 409, 410].includes(error?.status) ? error.status : 500;
+      const status = [404, 409, 410, 422].includes(error?.status) ? error.status : 500;
       res.status(status).json({
         error: status === 404 ? "Transfer code not found."
           : status === 409 ? "Transfer code already used on another phone."
             : status === 410 ? "Transfer code expired."
+              : status === 422 ? "The saved-data backup failed its integrity check."
               : "Could not restore the saved-data bundle.",
+      });
+    }
+  });
+
+  router.post("/device-transfer/complete", requireSchema, async (req: any, res: any) => {
+    const { code, destinationToken, bundleId, categoryResults } = req.body ?? {};
+    if (typeof code !== "string" || code.length < 32 || code.length > 64
+      || !validSecret(destinationToken) || typeof bundleId !== "string"
+      || !Array.isArray(categoryResults) || categoryResults.length > 20
+      || categoryResults.some((item: any) =>
+        !item || typeof item.id !== "string"
+        || !["restored", "unchanged", "skipped"].includes(item.status))) {
+      res.status(400).json({ error: "The restore confirmation is invalid." });
+      return;
+    }
+    try {
+      const completed = await withTransaction(db, async (client) => {
+        const codeHash = hashSecret(code);
+        const result = await client.query(
+          `SELECT bundle,bundle_sha256,bundle_id,destination_token_hash,restored_at
+           FROM app_device_transfer_codes WHERE code_hash=$1 FOR UPDATE`,
+          [codeHash],
+        );
+        const row = result.rows[0];
+        if (!row) throw Object.assign(new Error("Transfer code not found."), { status: 404 });
+        if (row.destination_token_hash !== hashSecret(destinationToken)) {
+          throw Object.assign(new Error("This phone is not authorized to confirm the transfer."), { status: 409 });
+        }
+        if (row.restored_at) return true;
+        if (!row.bundle || row.bundle_id !== bundleId) {
+          throw Object.assign(new Error("The restore confirmation does not match this backup."), { status: 409 });
+        }
+        const bundle = await getVerifiedBundle(client, codeHash, row);
+        const expected = new Set(bundle.categories.map((category) => category.id));
+        const received = new Set<string>();
+        for (const item of categoryResults) {
+          if (!expected.has(item.id) || received.has(item.id)) {
+            throw Object.assign(new Error("The restore confirmation categories do not match the backup."), { status: 400 });
+          }
+          received.add(item.id);
+        }
+        if (received.size !== expected.size) {
+          throw Object.assign(new Error("The restore confirmation is missing saved-data categories."), { status: 400 });
+        }
+        await client.query(
+          `UPDATE app_device_transfer_codes
+           SET restored_at=NOW(),bundle=NULL
+           WHERE code_hash=$1`,
+          [codeHash],
+        );
+        return true;
+      });
+      res.json({ completed });
+    } catch (error: any) {
+      const status = [400, 404, 409, 422].includes(error?.status) ? error.status : 500;
+      res.status(status).json({
+        error: status === 404 ? "Transfer code not found."
+          : status === 409 ? "This phone cannot confirm that transfer."
+            : status === 422 ? "The saved-data backup failed its integrity check."
+              : status === 400 ? "The restore confirmation is incomplete or invalid."
+                : "Could not confirm the saved-data restore.",
       });
     }
   });
@@ -197,7 +305,7 @@ export function createDeviceTransferRouter(db: TransferDatabase, requireSchema: 
     try {
       const alerts = await withTransaction(db, async (client) => {
         const result = await client.query(
-          `SELECT bundle,destination_token_hash,alert_restore_result
+          `SELECT bundle,bundle_sha256,destination_token_hash,alert_restore_result,restored_at
            FROM app_device_transfer_codes WHERE code_hash=$1 FOR UPDATE`,
           [hashSecret(code)],
         );
@@ -206,9 +314,10 @@ export function createDeviceTransferRouter(db: TransferDatabase, requireSchema: 
         if (!row.destination_token_hash || row.destination_token_hash !== hashSecret(destinationToken)) {
           throw Object.assign(new Error("This phone has not redeemed the transfer code."), { status: 409 });
         }
-        const bundle = validateDeviceTransferBundle(
-          typeof row.bundle === "string" ? JSON.parse(row.bundle) : row.bundle,
-        );
+        if (row.restored_at || row.bundle == null) {
+          throw Object.assign(new Error("This transfer has already been completed."), { status: 410 });
+        }
+        const bundle = await getVerifiedBundle(client, hashSecret(code), row);
         const category = bundle.categories.find((item) => item.id === "price-alerts");
         const raw = category?.data["@stocksense/price_alerts_v1"];
         const sourceAlerts = raw ? JSON.parse(raw) as Array<{
@@ -271,12 +380,14 @@ export function createDeviceTransferRouter(db: TransferDatabase, requireSchema: 
       });
       res.json({ alerts });
     } catch (error: any) {
-      const status = [400, 404, 409].includes(error?.status) ? error.status : 500;
+      const status = [400, 404, 409, 410, 422].includes(error?.status) ? error.status : 500;
       res.status(status).json({
         error: status === 400 ? "A registered destination notification token is required for saved alerts."
           : status === 404 ? "Transfer code not found."
-          : status === 409 ? "The transfer code is not authorized for this phone."
-            : "Could not restore price alerts.",
+            : status === 409 ? "The transfer code is not authorized for this phone."
+              : status === 410 ? "This transfer has already been completed."
+                : status === 422 ? "The saved-data backup failed its integrity check."
+                  : "Could not restore price alerts.",
       });
     }
   });

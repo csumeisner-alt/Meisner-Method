@@ -11,4 +11,5 @@ export type DeviceTransferBundleVersion = typeof DeviceTransferBundleVersion[key
 
 export const DeviceTransferBundleVersion = {
   NUMBER_1: 1,
+  NUMBER_2: 2,
 } as const;

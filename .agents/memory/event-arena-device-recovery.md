@@ -8,3 +8,9 @@ Keep cross-device Event Arena recovery guest-friendly and use a one-time device 
 **Why:** The user wants recovery but does not want a broad sign-in system or risk to existing account data.
 
 **How to apply:** Keep pairing isolated from normal paper accounts and existing Lightning Round execution. Preserve account IDs, enrollment tags, trades, positions, queued orders, and completed history; import only the matched Event Arena account and never replay restored orders.
+
+For full app reinstall recovery, the saved-data backup must live on the server until restore completion is confirmed. The destination recovery credential must be reproducible from the private transfer code rather than relying on device-local storage that uninstall may erase.
+
+**Why:** Android uninstall can remove local storage and device-bound keys, so a randomly generated local credential would strand a backup after reinstall. Without a durable device identity, the high-entropy code itself is the bearer authorization.
+
+**How to apply:** Keep the code private and time-limited, verify stored backup integrity before import, allow safe same-code retries until confirmation, and do not delete the backup before that confirmation.

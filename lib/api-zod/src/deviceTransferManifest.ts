@@ -3,7 +3,7 @@
  * transfer. Keep this as the single source of truth for mobile export/import
  * and server validation.
  */
-export const DEVICE_TRANSFER_MANIFEST_VERSION = 1 as const;
+export const DEVICE_TRANSFER_MANIFEST_VERSION = 2 as const;
 
 export type DeviceTransferPortability =
   | "portable"
@@ -30,7 +30,7 @@ export const DEVICE_TRANSFER_MANIFEST: readonly DeviceTransferManifestEntry[] = 
     id: "paper-and-event-arena",
     label: "Paper Trading and Event Arena",
     source: "AsyncStorage: paper_v2, paper_equity_snapshots_v1, paper_events_v1",
-    version: 1,
+    version: 2,
     portability: "portable",
     validation: "JSON records have unique IDs and every linked record references an included account.",
     exclusions: ["Live quotes", "Leaderboard identity and cash-transfer records remain installation-scoped."],
@@ -45,7 +45,7 @@ export const DEVICE_TRANSFER_MANIFEST: readonly DeviceTransferManifestEntry[] = 
     id: "portfolio-history",
     label: "Portfolio trade history",
     source: "AsyncStorage: portfolio_trades_v1; authenticated records remain in the signed-in account",
-    version: 1,
+    version: 2,
     portability: "portable",
     validation: "Trade rows are valid JSON with unique IDs, recognized trade sides, and finite values.",
     exclusions: ["Portfolio quotes and derived holdings/analytics are rebuilt from trades."],
@@ -56,7 +56,7 @@ export const DEVICE_TRANSFER_MANIFEST: readonly DeviceTransferManifestEntry[] = 
     id: "watchlist",
     label: "Watchlist",
     source: "AsyncStorage guest cache; signed-in watchlists remain on the user account",
-    version: 1,
+    version: 2,
     portability: "portable",
     validation: "Ordered symbols are unique and include a creation timestamp.",
     exclusions: ["Quote cache is rebuilt; custom-named lists do not exist."],
@@ -67,7 +67,7 @@ export const DEVICE_TRANSFER_MANIFEST: readonly DeviceTransferManifestEntry[] = 
     id: "theme-and-brew-progress",
     label: "Patriot Mode and Brew Bank",
     source: "AsyncStorage fact counters, Brew economy snapshot/legacy keys, sound and haptics preferences",
-    version: 1,
+    version: 2,
     portability: "portable",
     validation: "Counters and balances are non-negative; the versioned Brew snapshot must parse.",
     exclusions: ["Temporary bank access and timed sale expirations are preserved as dates, not device schedules."],
@@ -103,7 +103,7 @@ export const DEVICE_TRANSFER_MANIFEST: readonly DeviceTransferManifestEntry[] = 
     id: "price-alerts",
     label: "Price alert rules",
     source: "AsyncStorage alert cache; alert records are recreated for the destination installation",
-    version: 1,
+    version: 2,
     portability: "portable",
     validation: "Alerts have unique IDs, valid symbols, finite targets, and no device tokens.",
     exclusions: ["The destination must grant notification permission and register its own push token."],
@@ -114,7 +114,7 @@ export const DEVICE_TRANSFER_MANIFEST: readonly DeviceTransferManifestEntry[] = 
     id: "achievements",
     label: "Achievements and premium flag",
     source: "AsyncStorage achievement IDs, Analyze progress, and selected flag",
-    version: 1,
+    version: 2,
     portability: "portable",
     validation: "Achievement IDs and selected flag values are checked against the app catalog.",
     exclusions: [],
@@ -129,7 +129,7 @@ export const DEVICE_TRANSFER_MANIFEST: readonly DeviceTransferManifestEntry[] = 
     id: "custom-heat-map",
     label: "Custom heat map",
     source: "AsyncStorage: custom-symbols.v1",
-    version: 1,
+    version: 2,
     portability: "portable",
     validation: "Symbol order is a bounded JSON list with no duplicate entries.",
     exclusions: ["Instrument quotes are rebuilt."],
@@ -140,7 +140,7 @@ export const DEVICE_TRANSFER_MANIFEST: readonly DeviceTransferManifestEntry[] = 
     id: "research-and-comparisons",
     label: "Saved research and comparisons",
     source: "AsyncStorage ETF/commodity snapshots, comparison focus, pinned symbol, chart drawings and analysis preferences",
-    version: 1,
+    version: 2,
     portability: "portable",
     validation: "Each saved value is valid JSON or a bounded scalar preference; chart drawings use the documented key prefix.",
     exclusions: ["Quotes and generated analysis are not saved; only user-selected comparisons, preferences, and snapshots move."],
@@ -160,7 +160,7 @@ export const DEVICE_TRANSFER_MANIFEST: readonly DeviceTransferManifestEntry[] = 
     id: "saved-display-preferences",
     label: "Saved display and reminder preferences",
     source: "AsyncStorage collapsed panels, onboarding hints, review cooldown, and Event Arena reminder preference",
-    version: 1,
+    version: 2,
     portability: "portable",
     validation: "Known scalar preferences use their documented values.",
     exclusions: ["Scheduled notification identifiers are not transferred; destination schedules its own reminders."],
@@ -256,6 +256,24 @@ export type ValidatedDeviceTransferBundle = {
     data: Record<string, string>;
   }>;
 };
+
+/**
+ * Canonical JSON is used for backup integrity hashes. Object key order is
+ * normalized while array order and values remain unchanged.
+ */
+export function stableDeviceTransferJson(value: unknown): string {
+  const normalize = (item: unknown): unknown => {
+    if (Array.isArray(item)) return item.map(normalize);
+    if (item && typeof item === "object") {
+      return Object.fromEntries(Object.entries(item as Record<string, unknown>)
+        .filter(([, child]) => child !== undefined)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, child]) => [key, normalize(child)]));
+    }
+    return item;
+  };
+  return JSON.stringify(normalize(value));
+}
 
 const MAX_BUNDLE_BYTES = 2_000_000;
 const MAX_CATEGORY_KEYS = 300;
@@ -597,16 +615,36 @@ function validateCategoryData(entry: DeviceTransferManifestEntry, data: Record<s
   }
 }
 
+/**
+ * Version-one bundles used the same saved-data shapes but did not declare
+ * migration metadata. Upgrade their manifest and category versions in one
+ * explicit, deterministic step before validating the current schema.
+ */
+export function migrateDeviceTransferBundle(value: unknown): unknown {
+  if (!isRecord(value) || value.version !== 1) return value;
+  if (!Array.isArray(value.categories)) return value;
+  return {
+    ...value,
+    version: DEVICE_TRANSFER_MANIFEST_VERSION,
+    categories: value.categories.map((category) =>
+      isRecord(category) && category.version === 1
+        ? { ...category, version: 2 }
+        : category,
+    ),
+  };
+}
+
 /** Strict allowlist and shape validation used by both API and mobile code. */
 export function validateDeviceTransferBundle(value: unknown): ValidatedDeviceTransferBundle {
-  if (!isRecord(value) || value.version !== DEVICE_TRANSFER_MANIFEST_VERSION
-    || typeof value.bundleId !== "string" || value.bundleId.length < 8 || value.bundleId.length > 128
-    || typeof value.exportedAt !== "string" || !Number.isFinite(Date.parse(value.exportedAt))
-    || !Array.isArray(value.categories) || value.categories.length > DEVICE_TRANSFER_CATEGORIES.length) {
+  const migrated = migrateDeviceTransferBundle(value);
+  if (!isRecord(migrated) || migrated.version !== DEVICE_TRANSFER_MANIFEST_VERSION
+    || typeof migrated.bundleId !== "string" || migrated.bundleId.length < 8 || migrated.bundleId.length > 128
+    || typeof migrated.exportedAt !== "string" || !Number.isFinite(Date.parse(migrated.exportedAt))
+    || !Array.isArray(migrated.categories) || migrated.categories.length > DEVICE_TRANSFER_CATEGORIES.length) {
     throw new Error("The device transfer bundle is invalid or unsupported.");
   }
   const ids = new Set<string>();
-  const categories = value.categories.map((category) => {
+  const categories = migrated.categories.map((category) => {
     if (!isRecord(category) || typeof category.id !== "string" || !PORTABLE_IDS.has(category.id)
       || ids.has(category.id) || typeof category.version !== "number" || !Number.isInteger(category.version)
       || !isRecord(category.data) || Object.keys(category.data).length > MAX_CATEGORY_KEYS) {
@@ -625,8 +663,8 @@ export function validateDeviceTransferBundle(value: unknown): ValidatedDeviceTra
   });
   const bundle = {
     version: DEVICE_TRANSFER_MANIFEST_VERSION,
-    bundleId: value.bundleId,
-    exportedAt: value.exportedAt,
+    bundleId: migrated.bundleId,
+    exportedAt: migrated.exportedAt,
     categories,
   } as ValidatedDeviceTransferBundle;
   if (JSON.stringify(bundle).length > MAX_BUNDLE_BYTES) throw new Error("The device transfer bundle is too large.");

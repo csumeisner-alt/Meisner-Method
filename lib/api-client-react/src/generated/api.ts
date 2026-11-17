@@ -24,6 +24,8 @@ import type {
   AnalysisResult,
   AnalyzeStockRequest,
   CommodityRelationshipResponse,
+  CompleteDeviceTransfer200,
+  CompleteDeviceTransferRequest,
   CreateDeviceTransfer200,
   CreateDeviceTransferRequest,
   CreateEventArenaDevicePairing200,
@@ -984,7 +986,7 @@ export const getCreateDeviceTransferUrl = () => {
 }
 
 /**
- * @summary Validate a saved-data bundle and create a one-use phone transfer code
+ * @summary Validate and persist a saved-data backup before creating a 30-day transfer code
  */
 export const createDeviceTransfer = async (createDeviceTransferRequest: CreateDeviceTransferRequest, options?: RequestInit): Promise<CreateDeviceTransfer200> => {
 
@@ -1033,7 +1035,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CreateDeviceTransferMutationError = ErrorType<void>
 
     /**
- * @summary Validate a saved-data bundle and create a one-use phone transfer code
+ * @summary Validate and persist a saved-data backup before creating a 30-day transfer code
  */
 export const useCreateDeviceTransfer = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDeviceTransfer>>, TError,{data: BodyType<CreateDeviceTransferRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -1115,6 +1117,77 @@ export const useRedeemDeviceTransfer = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getRedeemDeviceTransferMutationOptions(options));
+    }
+
+export const getCompleteDeviceTransferUrl = () => {
+
+
+
+
+  return `/api/device-transfer/complete`
+}
+
+/**
+ * @summary Confirm that the destination finished restoring a saved-data backup
+ */
+export const completeDeviceTransfer = async (completeDeviceTransferRequest: CompleteDeviceTransferRequest, options?: RequestInit): Promise<CompleteDeviceTransfer200> => {
+
+  return customFetch<CompleteDeviceTransfer200>(getCompleteDeviceTransferUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(completeDeviceTransferRequest)
+  }
+);}
+
+
+
+
+
+export const getCompleteDeviceTransferMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeDeviceTransfer>>, TError,{data: BodyType<CompleteDeviceTransferRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof completeDeviceTransfer>>, TError,{data: BodyType<CompleteDeviceTransferRequest>}, TContext> => {
+
+const mutationKey = ['completeDeviceTransfer'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof completeDeviceTransfer>>, {data: BodyType<CompleteDeviceTransferRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  completeDeviceTransfer(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CompleteDeviceTransferMutationResult = NonNullable<Awaited<ReturnType<typeof completeDeviceTransfer>>>
+    export type CompleteDeviceTransferMutationBody = BodyType<CompleteDeviceTransferRequest>
+    export type CompleteDeviceTransferMutationError = ErrorType<void>
+
+    /**
+ * @summary Confirm that the destination finished restoring a saved-data backup
+ */
+export const useCompleteDeviceTransfer = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeDeviceTransfer>>, TError,{data: BodyType<CompleteDeviceTransferRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof completeDeviceTransfer>>,
+        TError,
+        {data: BodyType<CompleteDeviceTransferRequest>},
+        TContext
+      > => {
+      return useMutation(getCompleteDeviceTransferMutationOptions(options));
     }
 
 export const getRestoreDeviceTransferAlertsUrl = () => {

@@ -344,6 +344,9 @@ async function runSchemaMigrations(): Promise<void> {
     )
   `);
   await pool.query("ALTER TABLE app_device_transfer_codes ADD COLUMN IF NOT EXISTS alert_restore_result JSONB");
+  await pool.query("ALTER TABLE app_device_transfer_codes ADD COLUMN IF NOT EXISTS bundle_sha256 TEXT");
+  await pool.query("ALTER TABLE app_device_transfer_codes ADD COLUMN IF NOT EXISTS restored_at TIMESTAMPTZ");
+  await pool.query("ALTER TABLE app_device_transfer_codes ALTER COLUMN bundle DROP NOT NULL");
   await pool.query(`
     CREATE INDEX IF NOT EXISTS app_device_transfer_expiration_idx
     ON app_device_transfer_codes (expires_at)
