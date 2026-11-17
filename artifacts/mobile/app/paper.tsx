@@ -115,6 +115,7 @@ import {
   renamePaperAccount,
   resetPaperAccountData,
 } from '@/lib/paperAccountManagement';
+import { createPaperQuoteRequestCache } from '@/lib/paperQuoteRefresh';
 import {
   createLatestRequestGuard,
   getBuyOrderDetails,
@@ -383,6 +384,9 @@ export default function PaperScreen() {
 
   // Load state
   const [loaded, setLoaded] = useState(false);
+  const loadedRef = useRef(false);
+  loadedRef.current = loaded;
+  const [isFocused, setIsFocused] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [lightningEntryFailure, setLightningEntryFailure] = useState('');
   const [paperChallenge, setPaperChallenge] = useState<PaperChallengeStore>({ enrollment: null, history: [] });
@@ -401,6 +405,7 @@ export default function PaperScreen() {
   // Live quotes
   const [quotes, setQuotes] = useState<Record<string, LiveQuote>>({});
   const [loadingQuotes, setLoadingQuotes] = useState(false);
+  const [quoteRefreshError, setQuoteRefreshError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   // UI
@@ -474,6 +479,13 @@ export default function PaperScreen() {
   const account = accounts.find(a => a.id === activeId);
   const myPositions = positions.filter(p => p.accountId === activeId);
   const myTxns = transactions.filter(t => t.accountId === activeId);
+  const activeQuoteSignature = [
+    activeId,
+    ...myPositions.map((position) => position.symbol.trim().toUpperCase()),
+    ...orders
+      .filter((order) => order.accountId === activeId && order.status === 'pending')
+      .map((order) => order.symbol.trim().toUpperCase()),
+  ].sort().join('|');
   const buySearchText = buySymbol.trim();
   const buyTicker = buySymbol.trim().toUpperCase();
   const buyTickerIsWatched = stockInfo ? watchlist.isWatched(buyTicker) : false;
@@ -735,6 +747,7 @@ export default function PaperScreen() {
   const lotsRef = useRef<PaperLot[]>([]);
   const activeIdRef = useRef<string>('');
   const eventArenaDeviceTokenRef = useRef('');
+  const eventArenaDeviceSyncInFlightRef = useRef<Promise<void> | null>(null);
   const eventArenaDeviceRevisionRef = useRef(0);
   const eventArenaSourceInstallationIdRef = useRef('');
   const eventArenaDeviceSyncEnabledRef = useRef(false);
@@ -749,6 +762,36 @@ export default function PaperScreen() {
   const accountValueSnapshotsRef = useRef<PaperAccountValueSnapshot[]>([]);
   const orderSubmissionRef = useRef(false);
   const tradeEntryCheckInFlightRef = useRef(false);
+  const quoteRefreshCountRef = useRef(0);
+  const quoteRefreshRunRef = useRef(0);
+  const quoteRequestCacheRef = useRef<ReturnType<typeof createPaperQuoteRequestCache> | null>(null);
+  if (!quoteRequestCacheRef.current) {
+    quoteRequestCacheRef.current = createPaperQuoteRequestCache(async (symbol) => {
+      const response = await fetch(`${BASE_URL}/api/stocks/quote/${encodeURIComponent(symbol)}`);
+      if (!response.ok) throw new Error(`Quote request failed for ${symbol}`);
+      const data = await response.json();
+      if (!Number.isFinite(data.currentPrice) || data.currentPrice <= 0) {
+        throw new Error(`Invalid quote for ${symbol}`);
+      }
+      return {
+        price: data.currentPrice,
+        change: Number.isFinite(data.priceChange) ? data.priceChange : 0,
+        pct: Number.isFinite(data.priceChangePercent) ? data.priceChangePercent : 0,
+        priceTimestamp: data.priceTimestamp ?? null,
+        marketSession: typeof data.marketSession === 'string' ? data.marketSession : undefined,
+        priceSource: typeof data.priceSource === 'string' ? data.priceSource : undefined,
+        fetchedAtMs: Date.now(),
+      };
+    });
+  }
+  const didFocusOnceRef = useRef(false);
+  const initRef = useRef<(backgroundRefresh?: boolean) => Promise<void>>(async () => {});
+  const fetchQuotesRef = useRef<(
+    pos: PaperPosition[],
+    accountId: string,
+    evaluateOrders?: boolean,
+    forceRefresh?: boolean,
+  ) => Promise<Record<string, LiveQuote>>>(async () => ({}));
 
   useEffect(() => {
     if (!lightningTradeOfferWindow) return;
@@ -934,6 +977,7 @@ export default function PaperScreen() {
     const enrollment = paperChallenge.lightningEnrollment;
     if (
       !loaded
+      || !isFocused
       || !paperChallengeReady
       || !enrollment
       || enrollment.accountId !== activeId
@@ -1002,6 +1046,7 @@ export default function PaperScreen() {
     paperChallenge.lightningEnrollment?.eventStartAtMs,
     paperChallenge.lightningEnrollment?.accountId,
     activeId,
+    isFocused,
     paperChallengeReady,
     saveAll,
   ]);
@@ -1194,7 +1239,7 @@ export default function PaperScreen() {
   }, [persistAccountValueSnapshots]);
 
   useEffect(() => {
-    if (!loaded || !paperChallengeReady) return;
+    if (!loaded || !isFocused || !paperChallengeReady) return;
     const enrollments = getPaperChallengeEnrollments(paperChallenge);
     if (enrollments.length === 0) return;
     const prematureSelected = enrollments.some((enrollment) =>
@@ -1244,6 +1289,7 @@ export default function PaperScreen() {
     }
   }, [
     challengeNow,
+    isFocused,
     loaded,
     paperChallenge.enrollment,
     paperChallenge.lightningEnrollment,
@@ -1252,13 +1298,17 @@ export default function PaperScreen() {
   ]);
 
   // ── Init ─────────────────────────────────────────────────────────────────
-  const init = useCallback(async () => {
+  const init = useCallback(async (backgroundRefresh = false) => {
     setErrorMsg('');
-    setLoaded(false);
+    if (!backgroundRefresh) setLoaded(false);
+    if (backgroundRefresh) {
+      await paperCacheWriteQueue.catch(() => {});
+    }
+    const selectedBeforeRefresh = activeIdRef.current;
 
     // Paper trading is guest-local: load the exact state used by order
     // execution and never replace it with an unauthenticated server response.
-    const [cached, rawSnapshots, savedDeviceToken, rawRevision, storedSourceInstallationId, initialDirty] = await Promise.all([
+    const [cached, rawSnapshots, storedDeviceToken, rawRevision, storedSourceInstallationId, initialDirty] = await Promise.all([
       readPaperCache(),
       AsyncStorage.getItem(PAPER_VALUE_SNAPSHOT_KEY).catch(() => null),
       AsyncStorage.getItem(EVENT_ARENA_DEVICE_TOKEN_KEY).catch(() => null),
@@ -1266,29 +1316,42 @@ export default function PaperScreen() {
       AsyncStorage.getItem(EVENT_ARENA_SOURCE_INSTALLATION_ID_KEY).catch(() => null),
       AsyncStorage.getItem(EVENT_ARENA_DEVICE_DIRTY_KEY).catch(() => null),
     ]);
-    let savedSnapshots: PaperAccountValueSnapshot[] = [];
+    let savedSnapshots: PaperAccountValueSnapshot[] | null = null;
     try {
-      savedSnapshots = parseAccountValueSnapshots(rawSnapshots ? JSON.parse(rawSnapshots) : null);
+      if (rawSnapshots !== null) {
+        savedSnapshots = parseAccountValueSnapshots(JSON.parse(rawSnapshots));
+      } else if (!backgroundRefresh) {
+        savedSnapshots = [];
+      }
     } catch {
       // A damaged chart-history record must not block account and trade recovery.
     }
-    accountValueSnapshotsRef.current = savedSnapshots;
-    setAccountValueSnapshots(savedSnapshots);
+    if (savedSnapshots) {
+      accountValueSnapshotsRef.current = savedSnapshots;
+      setAccountValueSnapshots(savedSnapshots);
+    }
     if (cached && cached.accounts.length > 0) {
+      const preferredActiveId = backgroundRefresh
+        && cached.accounts.some((item) => item.id === selectedBeforeRefresh)
+        ? selectedBeforeRefresh
+        : cached.activeId;
+      const cachedActiveId = cached.accounts.some((item) => item.id === preferredActiveId)
+        ? preferredActiveId
+        : cached.accounts[0].id;
       accountsRef.current = cached.accounts;
       positionsRef.current = cached.positions;
       transactionsRef.current = cached.transactions;
       ordersRef.current = cached.orders ?? [];
       lotsRef.current = cached.lots ?? [];
-      activeIdRef.current = cached.activeId;
+      activeIdRef.current = cachedActiveId;
       setAccounts(cached.accounts);
       setPositions(cached.positions);
       setTransactions(cached.transactions);
       setOrders(cached.orders ?? []);
       setLots(cached.lots ?? []);
-      setActiveId(cached.activeId);
+      setActiveId(cachedActiveId);
     }
-    else {
+    else if (!backgroundRefresh) {
       const localAccounts = defaultAccounts();
       const localActiveId = localAccounts[0].id;
       accountsRef.current = localAccounts;
@@ -1323,7 +1386,7 @@ export default function PaperScreen() {
     const finalTxns = extraTxns.length > 0
       ? [...currentTransactions, ...extraTxns]
       : currentTransactions;
-    const id = activeIdRef.current || settledAccounts[0].id;
+    const id = activeIdRef.current || settledAccounts[0]?.id || '';
     accountsRef.current = settledAccounts;
     transactionsRef.current = finalTxns;
     activeIdRef.current = id;
@@ -1340,12 +1403,15 @@ export default function PaperScreen() {
     };
     void writePaperCache(settledCache);
     const initialActiveId = id;
-    const savedRevision = Number(rawRevision);
+    const savedDeviceToken = storedDeviceToken || eventArenaDeviceTokenRef.current;
     if (savedDeviceToken) {
       eventArenaDeviceTokenRef.current = savedDeviceToken;
-      eventArenaDeviceRevisionRef.current = Number.isInteger(savedRevision) && savedRevision >= 0
-        ? savedRevision
-        : 0;
+      const parsedRevision = rawRevision === null ? Number.NaN : Number(rawRevision);
+      eventArenaDeviceRevisionRef.current = Number.isInteger(parsedRevision) && parsedRevision >= 0
+        ? parsedRevision
+        : backgroundRefresh
+          ? eventArenaDeviceRevisionRef.current
+          : 0;
       if (storedSourceInstallationId) {
         eventArenaSourceInstallationIdRef.current = storedSourceInstallationId;
       }
@@ -1356,11 +1422,14 @@ export default function PaperScreen() {
     setErrorMsg('');
     setLoaded(true);
 
-    void (async () => {
+    if (!eventArenaDeviceSyncInFlightRef.current) {
+      const syncPromise = (async () => {
       try {
         if (!savedDeviceToken) return;
 
-        eventArenaSourceInstallationIdRef.current = storedSourceInstallationId ?? await getInstallationId();
+        eventArenaSourceInstallationIdRef.current = storedSourceInstallationId
+          ?? eventArenaSourceInstallationIdRef.current
+          ?? await getInstallationId();
 
         const currentDirty = await AsyncStorage.getItem(EVENT_ARENA_DEVICE_DIRTY_KEY)
           .catch(() => initialDirty);
@@ -1411,7 +1480,9 @@ export default function PaperScreen() {
           ?? remote.snapshot.challengeStore.enrollment?.accountId
           ?? remote.snapshot.accounts[0]?.id;
         const userChangedAccount = activeIdRef.current !== initialActiveId;
-        const nextActiveId = hadLocalEventAccount || userChangedAccount
+        const savedSelectionStillExists = backgroundRefresh
+          && merged.cache.accounts.some((item) => item.id === initialActiveId);
+        const nextActiveId = savedSelectionStillExists || hadLocalEventAccount || userChangedAccount
           ? activeIdRef.current
           : restoredEventAccountId ?? merged.cache.activeId;
 
@@ -1475,12 +1546,20 @@ export default function PaperScreen() {
           'The shared Event Arena account could not be refreshed. Existing local data was left unchanged.',
         );
       }
-    })();
+      })();
+      eventArenaDeviceSyncInFlightRef.current = syncPromise;
+      void syncPromise.finally(() => {
+        if (eventArenaDeviceSyncInFlightRef.current === syncPromise) {
+          eventArenaDeviceSyncInFlightRef.current = null;
+        }
+      });
+    }
   }, [apiFetch, pushEventArenaSnapshot]);
 
   useEffect(() => {
     if (paperChallengeReady) void init();
   }, [init, paperChallengeReady]);
+  initRef.current = init;
 
   // ── Pending-order evaluation ──────────────────────────────────────────────
   /**
@@ -1682,6 +1761,7 @@ export default function PaperScreen() {
     pos: PaperPosition[],
     accountId: string,
     evaluateOrders = true,
+    forceRefresh = false,
   ): Promise<Record<string, LiveQuote>> => {
     // Fetch quotes for positions of the active account PLUS any pending-order symbols
     const posSymbols = pos.filter(p => p.accountId === accountId).map(p => p.symbol);
@@ -1689,45 +1769,36 @@ export default function PaperScreen() {
       .filter(o => o.accountId === accountId && o.status === 'pending')
       .map(o => o.symbol);
     const symbols = [...new Set([...posSymbols, ...orderSymbols])];
+    const refreshRun = ++quoteRefreshRunRef.current;
     if (symbols.length === 0) {
+      if (refreshRun === quoteRefreshRunRef.current) setQuoteRefreshError(false);
       await recordAccountValueSnapshot(accountId, {});
       return {};
     }
+    quoteRefreshCountRef.current += 1;
     setLoadingQuotes(true);
     try {
       const results = await Promise.allSettled(
         symbols.map(async sym => {
-          const res = await fetch(`${BASE_URL}/api/stocks/quote/${sym}`);
-          if (!res.ok) throw new Error(`Quote request failed for ${sym}`);
-          const data = await res.json();
-          return { sym, data };
+          const quote = await quoteRequestCacheRef.current!(sym, forceRefresh);
+          setQuotes((current) => current[sym] === quote ? current : { ...current, [sym]: quote });
+          return { sym, quote };
         }),
       );
       const next: Record<string, LiveQuote> = {};
       for (const r of results) {
-        if (r.status === 'fulfilled' && Number.isFinite(r.value.data.currentPrice) && r.value.data.currentPrice > 0) {
-          const { sym, data } = r.value;
-          next[sym] = {
-            price: data.currentPrice,
-            change: Number.isFinite(data.priceChange) ? data.priceChange : 0,
-            pct: Number.isFinite(data.priceChangePercent) ? data.priceChangePercent : 0,
-            priceTimestamp: data.priceTimestamp ?? null,
-            marketSession: typeof data.marketSession === 'string' ? data.marketSession : undefined,
-            priceSource: typeof data.priceSource === 'string' ? data.priceSource : undefined,
-            fetchedAtMs: Date.now(),
-          };
-        }
+        if (r.status === 'fulfilled') next[r.value.sym] = r.value.quote;
       }
-      setQuotes(prev => {
-        const merged = { ...prev, ...next };
-        return merged;
-      });
+      if (refreshRun === quoteRefreshRunRef.current) {
+        setQuoteRefreshError(results.some((result) => result.status === 'rejected'));
+      }
       // Evaluate pending orders with the freshly-fetched quotes
       if (evaluateOrders) evaluatePendingOrders({ ...quotes, ...next });
       await recordAccountValueSnapshot(accountId, next);
       return next;
     } finally {
-      setLoadingQuotes(false);
+      quoteRefreshCountRef.current = Math.max(0, quoteRefreshCountRef.current - 1);
+      setLoadingQuotes(quoteRefreshCountRef.current > 0);
     }
   }, [evaluatePendingOrders, recordAccountValueSnapshot]);
 
@@ -1747,21 +1818,9 @@ export default function PaperScreen() {
       return;
     }
     const results = await Promise.allSettled(symbols.map(async (symbol) => {
-      const response = await fetch(`${BASE_URL}/api/stocks/quote/${symbol}`);
-      if (!response.ok) throw new Error(`Quote request failed for ${symbol}`);
-      const data = await response.json();
-      if (!Number.isFinite(data.currentPrice) || data.currentPrice <= 0) {
-        throw new Error(`Invalid quote for ${symbol}`);
-      }
-      return [symbol, {
-        price: data.currentPrice,
-        change: Number.isFinite(data.priceChange) ? data.priceChange : 0,
-        pct: Number.isFinite(data.priceChangePercent) ? data.priceChangePercent : 0,
-        priceTimestamp: data.priceTimestamp ?? null,
-        marketSession: typeof data.marketSession === 'string' ? data.marketSession : undefined,
-        priceSource: typeof data.priceSource === 'string' ? data.priceSource : undefined,
-        fetchedAtMs: Date.now(),
-      }] as const;
+      const quote = await quoteRequestCacheRef.current!(symbol);
+      setQuotes((current) => current[symbol] === quote ? current : { ...current, [symbol]: quote });
+      return [symbol, quote] as const;
     }));
     const next: Record<string, LiveQuote> = {};
     for (const result of results) {
@@ -1770,15 +1829,14 @@ export default function PaperScreen() {
     for (const inactiveAccount of inactiveAccounts) {
       void recordAccountValueSnapshot(inactiveAccount.id, next);
     }
-    if (Object.keys(next).length > 0) setQuotes((current) => ({ ...current, ...next }));
   }, [accounts, activeId, positions, recordAccountValueSnapshot]);
 
   useEffect(() => {
-    if (!loaded) return;
+    if (!loaded || !isFocused) return;
     void fetchInactiveAccountCardQuotes();
     const timer = setInterval(() => void fetchInactiveAccountCardQuotes(), 60_000);
     return () => clearInterval(timer);
-  }, [fetchInactiveAccountCardQuotes, loaded]);
+  }, [fetchInactiveAccountCardQuotes, isFocused, loaded]);
 
   useEffect(() => {
     const enrollment = getPaperChallengeEnrollments(paperChallenge).find((item) =>
@@ -1787,6 +1845,7 @@ export default function PaperScreen() {
     if (
       !paperChallengeReady
       || !loaded
+      || !isFocused
       || !enrollment
       || enrollment.startEquity === null
       || challengeNow < enrollment.eventEndAtMs
@@ -1961,6 +2020,7 @@ export default function PaperScreen() {
     challengeNow,
     challengeRetryVersion,
     fetchQuotes,
+    isFocused,
     loaded,
     paperChallenge.enrollment,
     paperChallenge.lightningEnrollment,
@@ -1981,7 +2041,7 @@ export default function PaperScreen() {
     ) ?? enrollments.find((item) =>
       item.startEquity === null && challengeNow >= item.eventStartAtMs,
     );
-    if (!paperChallengeReady || !loaded || !enrollment || enrollment.startEquity !== null) return;
+    if (!paperChallengeReady || !loaded || !isFocused || !enrollment || enrollment.startEquity !== null) return;
 
     if (challengeNow >= enrollment.eventEndAtMs) {
       if (challengeFinalizationFailureRef.current === enrollment.eventId) return;
@@ -2084,6 +2144,7 @@ export default function PaperScreen() {
     challengeNow,
     challengeRetryVersion,
     fetchQuotes,
+    isFocused,
     loaded,
     paperChallenge.enrollment,
     paperChallenge.lightningEnrollment,
@@ -2094,21 +2155,44 @@ export default function PaperScreen() {
   ]);
 
   useEffect(() => {
-    if (activeId) fetchQuotes(positions, activeId);
-  }, [activeId, positions.length, orders.length]);
+    if (!loaded || !isFocused || !activeId) return;
+    void fetchQuotes(positionsRef.current, activeIdRef.current)
+      .catch(() => setQuoteRefreshError(true));
+  }, [activeQuoteSignature, fetchQuotes, isFocused, loaded]);
+
+  initRef.current = init;
+  fetchQuotesRef.current = fetchQuotes;
+  useFocusEffect(useCallback(() => {
+    setIsFocused(true);
+    if (didFocusOnceRef.current && loadedRef.current) {
+      void (async () => {
+        await initRef.current(true);
+        if (!loadedRef.current) return;
+        await fetchQuotesRef.current(positionsRef.current, activeIdRef.current, true, true);
+      })().catch(() => setQuoteRefreshError(true));
+    }
+    didFocusOnceRef.current = true;
+    return () => setIsFocused(false);
+  }, []));
 
   useEffect(() => {
-    if (!loaded || !activeId) return;
+    if (!loaded || !isFocused || !activeId) return;
     const timer = setInterval(() => {
-      void fetchQuotes(positionsRef.current, activeIdRef.current, false);
+      void fetchQuotes(positionsRef.current, activeIdRef.current, false)
+        .catch(() => setQuoteRefreshError(true));
     }, PAPER_VALUE_SNAPSHOT_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [activeId, fetchQuotes, loaded]);
+  }, [activeId, fetchQuotes, isFocused, loaded]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchQuotes(positions, activeId);
-    setRefreshing(false);
+    try {
+      await fetchQuotes(positionsRef.current, activeIdRef.current, true, true);
+    } catch {
+      setQuoteRefreshError(true);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const refreshOrderQuote = async (symbol: string) => {
@@ -2154,7 +2238,6 @@ export default function PaperScreen() {
       id,
       { syncGeneralDeviceSnapshot: false },
     );
-    fetchQuotes(positions, id);
   };
 
   const handledChallengeRouteRef = useRef<string | null>(null);
@@ -3509,7 +3592,55 @@ export default function PaperScreen() {
     return (
       <AmericanSteelBackground>
         <SafeAreaView style={[styles.screen, { backgroundColor: 'transparent' }]}>
-        <ActivityIndicator color={SILVER} size="large" style={{ flex: 1 }} />
+          <View style={[styles.header, { paddingTop: Platform.OS === 'android' ? insets.top + 8 : 0 }]}>
+            <MMLogo size={36} />
+            <Text numberOfLines={1} style={[styles.headerTitle, { color: colors.heading }]}>PAPER TRADING</Text>
+            <View style={{ flex: 1 }} />
+            <Text numberOfLines={1} style={styles.headerSub}>Risk-free · $100k start</Text>
+          </View>
+          <View
+            testID="paper-loading-account-skeleton"
+            accessibilityLabel="Loading paper account"
+            style={styles.loadingAccountCard}
+          >
+            <View style={styles.loadingSkeletonRow}>
+              <View style={[styles.loadingSkeletonBlock, { width: '36%', height: 11 }]} />
+              <View style={[styles.loadingSkeletonBlock, { width: '24%', height: 11 }]} />
+            </View>
+            <View style={[styles.loadingSkeletonBlock, { width: '62%', height: 28, marginTop: 14 }]} />
+            <View style={styles.loadingSkeletonDivider} />
+            <View style={styles.loadingSkeletonMetrics}>
+              {Array.from({ length: 4 }, (_, index) => (
+                <View key={index} style={styles.loadingSkeletonMetric}>
+                  <View style={[styles.loadingSkeletonBlock, { width: '58%', height: 9 }]} />
+                  <View style={[styles.loadingSkeletonBlock, { width: '76%', height: 14, marginTop: 8 }]} />
+                </View>
+              ))}
+            </View>
+          </View>
+          <View
+            testID="paper-loading-positions-skeleton"
+            accessibilityLabel="Loading paper positions"
+            style={styles.loadingContent}
+          >
+            <View style={styles.loadingSkeletonRow}>
+              <View style={[styles.loadingSkeletonBlock, { width: '25%', height: 13 }]} />
+              <View style={[styles.loadingSkeletonBlock, { width: '25%', height: 13 }]} />
+            </View>
+            <View style={styles.loadingSkeletonRow}>
+              <View style={[styles.loadingSkeletonBlock, { width: '32%', height: 36 }]} />
+              <View style={[styles.loadingSkeletonBlock, { width: '32%', height: 36 }]} />
+            </View>
+            {[0, 1].map((row) => (
+              <View key={row} style={styles.loadingPositionRow}>
+                <View style={[styles.loadingSkeletonBlock, { width: '25%', height: 14 }]} />
+                <View style={[styles.loadingSkeletonBlock, { width: '18%', height: 14 }]} />
+                <View style={[styles.loadingSkeletonBlock, { width: '22%', height: 14 }]} />
+              </View>
+            ))}
+          </View>
+          <View style={{ flex: 1 }} />
+          <BottomTabBar />
         </SafeAreaView>
       </AmericanSteelBackground>
     );
@@ -3522,7 +3653,7 @@ export default function PaperScreen() {
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
           <Text style={{ color: SILVER, fontSize: 15, textAlign: 'center', marginBottom: 20 }}>{errorMsg}</Text>
           <TouchableOpacity
-            onPress={init}
+            onPress={() => { void init(); }}
             style={{ backgroundColor: BUY_COLOR, borderRadius: 10, paddingVertical: 12, paddingHorizontal: 28 }}
             activeOpacity={0.8}
           >
@@ -3544,8 +3675,29 @@ export default function PaperScreen() {
           PAPER TRADING
         </Text>
         <View style={{ flex: 1 }} />
+        {loadingQuotes && (
+          <ActivityIndicator
+            testID="paper-refresh-indicator"
+            accessibilityLabel="Refreshing paper trading prices"
+            size="small"
+            color={SILVER}
+          />
+        )}
         <Text numberOfLines={1} style={styles.headerSub}>Risk-free · $100k start</Text>
       </View>
+
+      {quoteRefreshError && (
+        <View
+          testID="paper-quote-refresh-error"
+          accessibilityRole="alert"
+          style={styles.paperRefreshNotice}
+        >
+          <Feather name="alert-circle" size={13} color={DIM} />
+          <Text style={styles.paperRefreshNoticeText}>
+            Some prices are unavailable. Previously loaded values remain visible.
+          </Text>
+        </View>
+      )}
 
       {visiblePaperOrderFillAlert && (
         <View
@@ -5069,6 +5221,75 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: DIM,
     letterSpacing: 0.25,
+  },
+  paperRefreshNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginHorizontal: 16,
+    marginTop: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: 'rgba(192,192,192,0.08)',
+  },
+  paperRefreshNoticeText: {
+    flex: 1,
+    color: DIM,
+    fontFamily: 'Inter_400Regular',
+    fontSize: 10,
+    lineHeight: 14,
+  },
+  loadingAccountCard: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 15,
+    backgroundColor: 'rgba(192,192,192,0.04)',
+  },
+  loadingContent: {
+    gap: 13,
+    marginHorizontal: 16,
+    marginTop: 13,
+  },
+  loadingSkeletonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 14,
+  },
+  loadingSkeletonBlock: {
+    borderRadius: 6,
+    backgroundColor: 'rgba(192,192,192,0.12)',
+  },
+  loadingSkeletonDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginTop: 15,
+    backgroundColor: BORDER,
+  },
+  loadingSkeletonMetrics: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 6,
+  },
+  loadingSkeletonMetric: {
+    width: '50%',
+    minHeight: 52,
+    justifyContent: 'center',
+    paddingRight: 10,
+  },
+  loadingPositionRow: {
+    minHeight: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 11,
+    backgroundColor: 'rgba(192,192,192,0.04)',
   },
   paperOrderFillAlert: {
     flexDirection: 'row',

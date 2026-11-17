@@ -1,8 +1,11 @@
 export function useRouter() {
+  const navigate = (route: { pathname: string }) => {
+    (window as typeof window & { __paperNavigation?: string }).__paperNavigation = route.pathname;
+  };
   return {
-    replace: (route: { pathname: string }) => {
-      (window as typeof window & { __paperNavigation?: string }).__paperNavigation = route.pathname;
-    },
+    replace: navigate,
+    push: navigate,
+    navigate,
   };
 }
 

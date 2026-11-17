@@ -7,6 +7,7 @@ import {
   shouldRenderLightningRoundInvitationButton,
   shouldShowLightningRoundInvitationAction,
 } from "../lib/lightningRoundInvitation.ts";
+import { getPaperTabNavigationAction } from "../lib/paperTabNavigation.ts";
 
 const screen = readFileSync(new URL("../app/paper.tsx", import.meta.url), "utf8");
 const accountSwipeArea = readFileSync(new URL("../components/PaperAccountSwipeArea.tsx", import.meta.url), "utf8");
@@ -74,15 +75,41 @@ assert.match(screen, /testID="dismiss-paper-event-recap"/);
 assert.match(screen, /previousEnrollmentIdsRef/);
 
 test("Paper Trading shows the local cache before waiting for Event Arena sync", () => {
-  const initStart = screen.indexOf("const init = useCallback(async () =>");
+  const initStart = screen.indexOf("const init = useCallback(async (backgroundRefresh = false) =>");
   const initEnd = screen.indexOf("\n  }, [apiFetch, pushEventArenaSnapshot]);", initStart);
   const init = screen.slice(initStart, initEnd);
 
   assert.ok(initStart >= 0 && initEnd > initStart);
   assert.ok(init.indexOf("readPaperCache()") < init.indexOf("setLoaded(true)"));
   assert.ok(init.indexOf("setLoaded(true)") < init.indexOf("apiFetch<EventArenaDeviceSyncResponse>"));
-  assert.match(init, /void \(async\s*\(\s*\)\s*=> \{[\s\S]*?apiFetch<EventArenaDeviceSyncResponse>/);
+  assert.match(init, /if \(!backgroundRefresh\) setLoaded\(false\)/);
+  assert.match(init, /const syncPromise = \(async \(\) => \{[\s\S]*?apiFetch<EventArenaDeviceSyncResponse>/);
   assert.match(init, /if \(await AsyncStorage\.getItem\(EVENT_ARENA_DEVICE_DIRTY_KEY\)[\s\S]*?return;/);
+});
+
+test("Paper Trading keeps its selected account and view mounted between app tabs", () => {
+  assert.equal(getPaperTabNavigationAction("/paper", "/event-arena"), "push");
+  assert.equal(getPaperTabNavigationAction("/event-arena", "/paper"), "navigate");
+  assert.equal(getPaperTabNavigationAction("/paper", "/paper"), "none");
+  assert.equal(getPaperTabNavigationAction("/portfolio", "/event-arena"), "replace");
+
+  assert.match(bottomTabBar, /case 'push':\s*router\.push\(target\)/);
+  assert.match(bottomTabBar, /case 'navigate':\s*router\.navigate\(target\)/);
+  assert.match(screen, /const cachedActiveId = cached\.accounts\.some\(\(item\) => item\.id === preferredActiveId\)/);
+  assert.match(screen, /didFocusOnceRef\.current && loadedRef\.current/);
+  assert.match(screen, /testID="paper-loading-account-skeleton"/);
+  assert.match(screen, /testID="paper-loading-positions-skeleton"/);
+  assert.match(screen, /testID="paper-refresh-indicator"/);
+  assert.match(screen, /testID="paper-quote-refresh-error"/);
+});
+
+test("Paper Trading refreshes quotes incrementally without replacing failed values", () => {
+  assert.match(screen, /const refreshRun = \+\+quoteRefreshRunRef\.current;[\s\S]*?if \(symbols\.length === 0\)/);
+  assert.match(screen, /quoteRequestCacheRef\.current!\(sym, forceRefresh\)/);
+  assert.match(screen, /setQuotes\(\(current\) => current\[sym\] === quote \? current : \{ \.\.\.current, \[sym\]: quote \}\)/);
+  assert.match(screen, /setQuoteRefreshError\(results\.some\(\(result\) => result\.status === 'rejected'\)\)/);
+  assert.match(screen, /const myPositions = positions\.filter\(p => p\.accountId === activeId\)/);
+  assert.match(screen, /const currentAccount = currentAccounts\.find\(\(item\) => item\.id === accountId\)/);
 });
 
 test("Portfolio Overview label is centered without changing the Positions count layout", () => {

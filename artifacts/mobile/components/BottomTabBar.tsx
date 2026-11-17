@@ -4,6 +4,7 @@ import { usePathname, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
+import { getPaperTabNavigationAction } from '@/lib/paperTabNavigation';
 
 export function BottomTabBar() {
   const colors = useColors();
@@ -34,7 +35,19 @@ export function BottomTabBar() {
     const currentIndex = tabOrder.indexOf(currentTab);
     const targetIndex = tabOrder.indexOf(path);
     const transition = targetIndex < currentIndex ? 'left' : 'right';
-    router.replace({ pathname: path, params: { transition } });
+    const target = { pathname: path, params: { transition } };
+    switch (getPaperTabNavigationAction(currentTab, path)) {
+      case 'none':
+        return;
+      case 'push':
+        router.push(target);
+        return;
+      case 'navigate':
+        router.navigate(target);
+        return;
+      default:
+        router.replace(target);
+    }
   }
 
   return (
