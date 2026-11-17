@@ -106,6 +106,24 @@ async function withApi(
             savedConfigurations.set(expected.eventId, row);
             return { rows: [row] };
           }
+          if (sql.startsWith("UPDATE event_arena_events")) {
+            const eventId = String(values?.[0]);
+            const row = savedConfigurations.get(eventId);
+            if (
+              row
+              && row.event_type === "event-arena"
+              && row.artwork_id === "neon-nightclub"
+              && Number(row.starting_balance) === 100_000
+              && row.ranking_direction === "highest-return"
+              && row.purchase_limit == null
+              && row.event_start_at.getTime() > Number(values?.[2])
+            ) {
+              row.starting_balance = Number(values?.[1]);
+              savedConfigurations.set(eventId, row);
+              return { rows: [row] };
+            }
+            return { rows: [] };
+          }
           if (sql.includes("FROM event_arena_events WHERE event_id=$1")) {
             const row = savedConfigurations.get(String(values?.[0]));
             return { rows: row ? [row] : [] };
@@ -615,6 +633,10 @@ test("event artwork resolves to an immutable championship configuration", async 
   assert.equal(mountainEvent?.artworkId, "mountain-summit");
   assert.equal(mountainEvent?.startingBalance, 100_000);
   assert.equal(mountainEvent?.rankingDirection, "highest-return");
+  const neonEvent = expectedEventArenaConfiguration("2026-11-30");
+  assert.equal(neonEvent?.eventType, "event-arena");
+  assert.equal(neonEvent?.artworkId, "neon-nightclub");
+  assert.equal(neonEvent?.startingBalance, 250_000);
   assert.equal(new Date(pennyEvent!.startAtMs).toISOString(), "2027-01-25T14:30:00.000Z");
   assert.equal(new Date(pennyEvent!.endAtMs).toISOString(), "2027-01-29T21:00:00.000Z");
 
@@ -631,6 +653,39 @@ test("event artwork resolves to an immutable championship configuration", async 
     assert.equal(pennyResponse.status, 200);
     assert.deepEqual(await pennyResponse.json(), pennyEvent);
   });
+});
+
+test("unstarted Neon Nightclub configurations increase to $250,000 without changing started events", async () => {
+  const expected = expectedEventArenaConfiguration("2026-11-30");
+  assert.ok(expected);
+  const makeSavedNeonConfig = () => ({
+    event_id: expected.eventId,
+    event_type: "event-arena",
+    artwork_id: "neon-nightclub",
+    starting_balance: 100_000,
+    ranking_direction: "highest-return",
+    purchase_limit: null,
+    event_start_at: new Date(expected.startAtMs),
+    event_end_at: new Date(expected.endAtMs),
+  });
+  const upcoming = new Map([[expected.eventId, makeSavedNeonConfig()]]);
+  await withApi(async () => ({ rows: [] }), async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/${expected.eventId}/config`, { method: "POST" });
+    assert.equal(response.status, 200);
+    const config = await response.json() as any;
+    assert.equal(config.artworkId, "neon-nightclub");
+    assert.equal(config.startingBalance, 250_000);
+    assert.equal(upcoming.get(expected.eventId)?.starting_balance, 250_000);
+  }, expected.startAtMs - 86_400_000, upcoming);
+
+  const alreadyStarted = new Map([[expected.eventId, makeSavedNeonConfig()]]);
+  await withApi(async () => ({ rows: [] }), async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/event-arena/${expected.eventId}/config`, { method: "POST" });
+    assert.equal(response.status, 200);
+    const config = await response.json() as any;
+    assert.equal(config.startingBalance, 100_000);
+    assert.equal(alreadyStarted.get(expected.eventId)?.starting_balance, 100_000);
+  }, expected.startAtMs + 1, alreadyStarted);
 });
 
 test("a previously saved Mountain configuration resolves to its stable event type", async () => {

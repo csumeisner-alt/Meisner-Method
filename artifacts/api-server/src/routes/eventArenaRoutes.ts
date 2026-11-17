@@ -216,6 +216,7 @@ export function expectedEventArenaConfiguration(eventId: string): EventArenaConf
     sequenceIndex % EVENT_ARTWORK_IDS.length
   ];
   const isGreenBull = artworkId === "green-stock-exchange";
+  const isNeonNightclub = artworkId === "neon-nightclub";
   const isBearMarket = artworkId === "red-showdown";
   const isPennyStockMayhem = artworkId === "penny-stock-mayhem";
   const isMountainChampionship = artworkId === "mountain-summit";
@@ -227,7 +228,7 @@ export function expectedEventArenaConfiguration(eventId: string): EventArenaConf
         : isPennyStockMayhem ? "penny-stock-mayhem"
           : isMountainChampionship ? "mountain-championship" : "event-arena",
     artworkId,
-    startingBalance: isGreenBull ? 500_000 : 100_000,
+    startingBalance: isGreenBull ? 500_000 : isNeonNightclub ? 250_000 : 100_000,
     rankingDirection: isBearMarket ? "lowest-return" : "highest-return",
     ...(isPennyStockMayhem ? { purchaseLimit: 20 } : {}),
     ...window,
@@ -348,6 +349,7 @@ function savedEventArenaConfiguration(row: any, expected: EventArenaConfiguratio
 async function ensureEventArenaConfiguration(
   db: EventArenaDatabase,
   eventId: string,
+  nowMs = Date.now(),
 ): Promise<EventArenaConfiguration | null> {
   const expected = expectedEventArenaConfiguration(eventId);
   if (!expected) return null;
@@ -369,11 +371,48 @@ async function ensureEventArenaConfiguration(
      RETURNING event_id, event_type, artwork_id, starting_balance, ranking_direction, purchase_limit, event_start_at, event_end_at`,
     values,
   );
-  const row = inserted[0] ?? (await db.query(
+  let row = inserted[0] ?? (await db.query(
      `SELECT event_id, event_type, artwork_id, starting_balance, ranking_direction, purchase_limit, event_start_at, event_end_at
      FROM event_arena_events WHERE event_id=$1`,
     [eventId],
   )).rows[0];
+  if (!row) return null;
+
+  const rowStartAtMs = row.event_start_at instanceof Date
+    ? row.event_start_at.getTime()
+    : new Date(row.event_start_at).getTime();
+  const isUnstartedNeonNightclubConfig = expected.artworkId === "neon-nightclub"
+    && nowMs < expected.startAtMs
+    && row.event_id === expected.eventId
+    && row.event_type === "event-arena"
+    && row.artwork_id === "neon-nightclub"
+    && Number(row.starting_balance) === 100_000
+    && row.ranking_direction === "highest-return"
+    && row.purchase_limit == null
+    && rowStartAtMs === expected.startAtMs;
+  if (isUnstartedNeonNightclubConfig) {
+    const { rows: promotedRows } = await db.query(
+      `UPDATE event_arena_events
+       SET starting_balance=$2
+       WHERE event_id=$1
+         AND event_type='event-arena'
+         AND artwork_id='neon-nightclub'
+         AND starting_balance=100000
+         AND ranking_direction='highest-return'
+         AND purchase_limit IS NULL
+         AND event_start_at > TO_TIMESTAMP($3 / 1000.0)
+       RETURNING event_id, event_type, artwork_id, starting_balance, ranking_direction, purchase_limit, event_start_at, event_end_at`,
+      [eventId, expected.startingBalance, nowMs],
+    );
+    if (promotedRows[0]) row = promotedRows[0];
+    else {
+      row = (await db.query(
+        `SELECT event_id, event_type, artwork_id, starting_balance, ranking_direction, purchase_limit, event_start_at, event_end_at
+         FROM event_arena_events WHERE event_id=$1`,
+        [eventId],
+      )).rows[0];
+    }
+  }
   if (!row) return null;
   return savedEventArenaConfiguration(row, expected);
 }
@@ -394,7 +433,7 @@ export async function prepareLightningRoundEvents(
   );
   const latestStartedEventId = typeof rows[0]?.event_id === "string" ? rows[0].event_id : null;
   const scheduledIds = getLightningRoundScheduleIds(nowMs, latestStartedEventId);
-  const events = await Promise.all(scheduledIds.map((eventId) => ensureEventArenaConfiguration(db, eventId)));
+  const events = await Promise.all(scheduledIds.map((eventId) => ensureEventArenaConfiguration(db, eventId, nowMs)));
   if (events.some((event) => !event)) {
     throw new Error("A Lightning Round schedule conflicts with a saved event.");
   }
@@ -829,7 +868,7 @@ export function createEventArenaRouter(
     }
 
     try {
-      const savedConfiguration = await ensureEventArenaConfiguration(db, req.params.eventId);
+      const savedConfiguration = await ensureEventArenaConfiguration(db, req.params.eventId, now());
       if (!savedConfiguration || savedConfiguration.startAtMs !== configuration.startAtMs) {
         res.status(409).json({ error: "This Lightning Round schedule does not match its saved configuration." });
         return;
@@ -1070,7 +1109,7 @@ export function createEventArenaRouter(
       return;
     }
     try {
-      const configuration = await ensureEventArenaConfiguration(db, req.params.eventId);
+      const configuration = await ensureEventArenaConfiguration(db, req.params.eventId, now());
       if (!configuration) {
         res.status(409).json({ error: "This event already has a different saved configuration." });
         return;
@@ -1134,7 +1173,7 @@ export function createEventArenaRouter(
       return;
     }
     try {
-      const configuration = await ensureEventArenaConfiguration(db, req.params.eventId);
+      const configuration = await ensureEventArenaConfiguration(db, req.params.eventId, now());
       if (!configuration) {
         res.status(409).json({ error: "This event already has a different saved configuration." });
         return;
@@ -1248,7 +1287,7 @@ export function createEventArenaRouter(
       return;
     }
     try {
-      const configuration = await ensureEventArenaConfiguration(db, req.params.eventId);
+      const configuration = await ensureEventArenaConfiguration(db, req.params.eventId, now());
       if (!configuration) {
         res.status(409).json({ error: "This event already has a different saved configuration." });
         return;

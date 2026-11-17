@@ -309,7 +309,10 @@ export async function persistPaperEventLiveNoticeDismissal(
 
 let paperChallengeWriteQueue: Promise<void> = Promise.resolve();
 
-export function normalizePaperChallengeStore(store: PaperChallengeStore): PaperChallengeStore {
+export function normalizePaperChallengeStore(
+  store: PaperChallengeStore,
+  nowMs = Date.now(),
+): PaperChallengeStore {
   const seenEventIds = new Set<string>();
   const history = store.history.filter((event) => {
     if (!event || typeof event.eventId !== 'string' || seenEventIds.has(event.eventId)) return false;
@@ -395,21 +398,28 @@ export function normalizePaperChallengeStore(store: PaperChallengeStore): PaperC
           : 'event-arena';
         const savedStartingBalance = store.enrollment.startingBalance;
         const legacyStartingBalance = store.enrollment.startEquity;
+        const startingBalance = typeof savedStartingBalance === 'number'
+          && Number.isFinite(savedStartingBalance)
+          && savedStartingBalance > 0
+          ? savedStartingBalance
+          : typeof legacyStartingBalance === 'number'
+            && Number.isFinite(legacyStartingBalance)
+            && legacyStartingBalance > 0
+            ? legacyStartingBalance
+            : PAPER_CHALLENGE_STARTING_BALANCE;
+        const isUnstartedNeonNightclub = artworkId === 'neon-nightclub'
+          && eventType === 'event-arena'
+          && startingBalance === PAPER_CHALLENGE_STARTING_BALANCE
+          && store.enrollment.startEquity == null
+          && Number.isFinite(store.enrollment.eventStartAtMs)
+          && nowMs < store.enrollment.eventStartAtMs;
         return {
           ...store.enrollment,
           artworkId,
           // Older enrollments were standard $100,000 events. Missing config
           // stays standard even when their saved display artwork is green.
           eventType,
-          startingBalance: typeof savedStartingBalance === 'number'
-            && Number.isFinite(savedStartingBalance)
-            && savedStartingBalance > 0
-            ? savedStartingBalance
-            : typeof legacyStartingBalance === 'number'
-              && Number.isFinite(legacyStartingBalance)
-              && legacyStartingBalance > 0
-              ? legacyStartingBalance
-              : PAPER_CHALLENGE_STARTING_BALANCE,
+          startingBalance: isUnstartedNeonNightclub ? NEON_NIGHTCLUB_STARTING_BALANCE : startingBalance,
           rankingDirection: store.enrollment.rankingDirection === 'lowest-return'
             ? 'lowest-return' as const
             : 'highest-return' as const,

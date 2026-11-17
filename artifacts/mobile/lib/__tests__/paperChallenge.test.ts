@@ -206,6 +206,37 @@ test('Neon Nightclub starts new accounts at $250,000 and keeps saved balances in
   });
   assert.equal(initialized.accounts[0]?.cash, 250_000);
 
+  const savedUpcomingEnrollment = {
+    eventId: event.id,
+    ...configuration,
+    startingBalance: 100_000,
+    eventStartAtMs: event.startAtMs,
+    eventEndAtMs: event.endAtMs,
+    joinedAtMs: event.startAtMs - 86_400_000,
+    accountId: `paper-event:${event.id}`,
+    accountName: 'Event Portfolio',
+    startEquity: null,
+  };
+  const normalizedUpcoming = normalizePaperChallengeStore(
+    { enrollment: savedUpcomingEnrollment, history: [] },
+    event.startAtMs - 1,
+  );
+  assert.equal(normalizedUpcoming.enrollment?.startingBalance, 250_000);
+  assert.equal(normalizedUpcoming.enrollment?.startEquity, null);
+
+  const normalizedStarted = normalizePaperChallengeStore(
+    {
+      enrollment: {
+        ...savedUpcomingEnrollment,
+        eventStartAtMs: event.startAtMs,
+        startEquity: 100_000,
+      },
+      history: [],
+    },
+    event.startAtMs,
+  );
+  assert.equal(normalizedStarted.enrollment?.startingBalance, 100_000);
+
   assert.equal(isPaperChallengeConfiguration({
     ...configuration,
     startingBalance: 100_000,
