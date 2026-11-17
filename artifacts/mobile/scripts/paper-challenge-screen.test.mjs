@@ -995,7 +995,7 @@ test("Paper Trading keeps all views in readable groups and reserves space for ac
   assert.match(screen, /const totalReturn = \(\(portfolioValue - activeAccountStartingBalance\) \/ activeAccountStartingBalance\) \* 100/);
   assert.match(screen, /const portfolioValue = account \? computePaperEquity\(account, myPositions, quotes\) : 0/);
   assert.match(screen, /heroStats:[\s\S]*?flexDirection: 'row'[\s\S]*?gap: 8/);
-  assert.match(screen, /const \{ width: screenWidth, fontScale \} = useWindowDimensions\(\)/);
+  assert.match(screen, /const \{ width: screenWidth, height: screenHeight, fontScale \} = useWindowDimensions\(\)/);
   assert.match(screen, /screenWidth <= 360 \|\| fontScale >= 1\.3/);
   assert.match(screen, /styles\.heroStatsCompact/);
   assert.match(screen, /heroStatsCompact: \{ flexDirection: 'column'/);

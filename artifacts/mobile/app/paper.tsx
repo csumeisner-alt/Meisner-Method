@@ -363,7 +363,7 @@ export default function PaperScreen() {
   const { awardAchievement } = useAchievements();
   const { pushToken: currentPushToken, requestPermissionAndGetToken } = usePushNotifications();
   const insets = useSafeAreaInsets();
-  const { width: screenWidth, fontScale } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight, fontScale } = useWindowDimensions();
   const compactHeroStats = screenWidth <= 360 || fontScale >= 1.3;
   const watchlist = useWatchlist();
 
@@ -5056,13 +5056,18 @@ export default function PaperScreen() {
             }}
           />
           <KeyboardControllerAvoidingView behavior="padding" keyboardVerticalOffset={0}>
-            <View testID="saved-data-device-transfer" style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 18, padding: 20, gap: 14, maxHeight: '88%' }}>
+            <View testID="saved-data-device-transfer" style={{ width: '100%', backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 18, padding: 20, gap: 12, maxHeight: screenHeight * 0.88 }}>
               <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 18 }}>
                 {deviceTransferMode === 'create' ? 'Transfer saved data'
                   : deviceTransferMode === 'review' ? 'Review saved data'
                     : deviceTransferMode === 'result' ? 'Transfer results'
                       : 'Restore with a code'}
               </Text>
+              <ScrollView
+                style={{ flexShrink: 1, maxHeight: screenHeight * 0.64 }}
+                contentContainerStyle={{ gap: 14, paddingBottom: 2 }}
+                keyboardShouldPersistTaps="handled"
+              >
               {deviceTransferMode === 'create' ? (
                 <>
                   <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 19 }}>
@@ -5101,7 +5106,7 @@ export default function PaperScreen() {
                   <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 19 }}>
                     Some categories already contain data on this phone. Keep that data, or replace only the conflicting categories. Financial histories are never combined.
                   </Text>
-                  <ScrollView style={{ maxHeight: 340 }} contentContainerStyle={{ gap: 8 }}>
+                  <View style={{ gap: 8 }}>
                     {deviceTransferPreview?.categories.map((category) => (
                       <View key={category.id} style={{ padding: 10, borderRadius: 10, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }}>
                         <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 13 }}>
@@ -5112,10 +5117,10 @@ export default function PaperScreen() {
                         </Text>
                       </View>
                     ))}
-                  </ScrollView>
+                  </View>
                 </>
               ) : (
-                <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ gap: 8 }}>
+                <View style={{ gap: 8 }}>
                   <Text
                     testID="saved-data-transfer-result-summary"
                     accessibilityRole="alert"
@@ -5137,8 +5142,9 @@ export default function PaperScreen() {
                       </Text>
                     </View>
                   ))}
-                </ScrollView>
+                </View>
               )}
+              </ScrollView>
               {deviceTransferError ? (
                 <Text testID="saved-data-device-transfer-error" accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 17 }}>
                   {deviceTransferError}
@@ -5151,9 +5157,9 @@ export default function PaperScreen() {
                     accessibilityRole="button"
                     onPress={() => { void restoreAllDataTransfer(); }}
                     disabled={deviceTransferBusy}
-                    style={{ flex: 1, minHeight: 46, borderRadius: 11, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', opacity: deviceTransferBusy ? 0.65 : 1 }}
+                    style={{ flex: 1, minHeight: 50, borderRadius: 11, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, opacity: deviceTransferBusy ? 0.65 : 1 }}
                   >
-                    <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>
+                    <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 11, textAlign: 'center' }}>
                       {deviceTransferBusy ? 'CHECKING…' : 'REVIEW RESTORE'}
                     </Text>
                   </TouchableOpacity>
@@ -5165,18 +5171,18 @@ export default function PaperScreen() {
                       accessibilityRole="button"
                       onPress={() => { void confirmAllDataTransfer('keep-destination'); }}
                       disabled={deviceTransferBusy}
-                      style={{ flex: 1, minHeight: 46, borderRadius: 11, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', opacity: deviceTransferBusy ? 0.65 : 1 }}
+                      style={{ flex: 1, minHeight: 50, borderRadius: 11, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, opacity: deviceTransferBusy ? 0.65 : 1 }}
                     >
-                      <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 11 }}>KEEP THIS PHONE</Text>
+                      <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 10, textAlign: 'center' }}>KEEP THIS PHONE</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       testID="replace-conflicting-transfer-data"
                       accessibilityRole="button"
                       onPress={() => { void confirmAllDataTransfer('replace-conflicts'); }}
                       disabled={deviceTransferBusy}
-                      style={{ flex: 1, minHeight: 46, borderRadius: 11, backgroundColor: colors.destructive, alignItems: 'center', justifyContent: 'center', opacity: deviceTransferBusy ? 0.65 : 1 }}
+                      style={{ flex: 1, minHeight: 50, borderRadius: 11, backgroundColor: colors.destructive, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, opacity: deviceTransferBusy ? 0.65 : 1 }}
                     >
-                      <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 11 }}>REPLACE CONFLICTS</Text>
+                      <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 10, textAlign: 'center' }}>REPLACE CONFLICTS</Text>
                     </TouchableOpacity>
                   </>
                 )}
@@ -5190,9 +5196,9 @@ export default function PaperScreen() {
                     setDeviceTransferPreview(null);
                     setDeviceTransferRestoreCode('');
                   }}
-                  style={{ flex: 1, minHeight: 46, borderRadius: 11, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
+                  style={{ flex: 1, minHeight: 50, borderRadius: 11, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 }}
                 >
-                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>
+                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 12, textAlign: 'center' }}>
                     {deviceTransferMode === 'review' ? 'CANCEL' : 'DONE'}
                   </Text>
                 </TouchableOpacity>
