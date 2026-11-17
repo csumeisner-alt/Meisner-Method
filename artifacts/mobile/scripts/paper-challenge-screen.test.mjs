@@ -137,6 +137,8 @@ test("Event Arena first-place podium keeps its card treatment without a separate
 });
 
 test("Lightning Round uses an existing Event Arena account and preserves its archive", () => {
+  assert.doesNotMatch(screen, /testID="paper-lightning-account-unavailable"/);
+  assert.doesNotMatch(screen, /Join Lightning Round to activate its separate portfolio/);
   assert.match(lightningRoute, /<LightningRoundScreen \/>/);
   assert.match(mobileRootLayout, /<Stack\.Screen name="lightning-round"/);
   assert.match(lightningInvitation, /testID="open-lightning-round"/);

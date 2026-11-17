@@ -4970,17 +4970,6 @@ export default function PaperScreen() {
                     </View>
                   </View>
                 )}
-                {!visibleAccounts.some((item) => item.id.startsWith('paper-lightning:')) && (
-                  <View testID="paper-lightning-account-unavailable" style={[styles.accountSheetRow, styles.eventAcctRow, styles.eventUnavailableRow]}>
-                    <View style={styles.accountChoiceCopy}>
-                      <View style={styles.accountChoiceTitleLine}>
-                        <Text style={[styles.acctName, styles.eventAccountName]}>Lightning Round</Text>
-                        <Feather name="zap" size={15} color={BUY_COLOR} />
-                      </View>
-                      <Text style={styles.eventUnavailableHint}>Join Lightning Round to activate its separate portfolio.</Text>
-                    </View>
-                  </View>
-                )}
                 <View style={{ gap: 9, paddingTop: 12, paddingBottom: 8 }}>
                   <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 1 }}>
                     SAVED DATA TRANSFER
