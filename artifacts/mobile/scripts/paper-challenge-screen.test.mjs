@@ -1533,6 +1533,15 @@ test("Penny Stock Mayhem exposes its rules and rechecks execution quotes", () =>
   assert.match(orderReview, /below \{money\(review\.purchaseLimit\)\}/);
 });
 
+test("Event Arena overview shows concise special rules only for restricted events", () => {
+  assert.match(eventArenaOverview, /testID="event-arena-special-rules"/);
+  assert.match(eventArenaOverview, /testID=\{`event-arena-rule-\$\{rule\.id\}`\}/);
+  assert.match(eventArenaOverview, /verified stock or ETF[\s\S]*?final fill below \$20/);
+  assert.match(eventArenaOverview, /Lowest portfolio return ranks first/);
+  assert.match(eventArenaOverview, /Cash transfers are disabled during the preparation period and competition/);
+  assert.match(challenge, /MOUNTAIN_CHAMPIONSHIP_STARTING_BALANCE = 250_000/);
+});
+
 test("Penny Stock Mayhem uses cinematic leaderboard artwork without a floating logo", () => {
   assert.match(eventArenaArtworkCatalog, /'penny-stock-mayhem': require\('\.\.\/assets\/event-arena-penny-stock-mayhem-clean\.jpg'\)/);
   assert.match(eventArenaOverview, /mm-mark-foreground\.png/);

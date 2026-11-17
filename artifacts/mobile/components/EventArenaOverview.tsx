@@ -150,6 +150,22 @@ export function EventArenaOverview({
   const isBearMarketMayhem = event.eventType === 'bear-market-mayhem'
     || event.rankingDirection === 'lowest-return';
   const isPennyStockMayhem = event.eventType === 'penny-stock-mayhem';
+  const isMountainChampionship = event.eventType === 'mountain-championship'
+    || event.artworkId === 'mountain-summit';
+  const specialRules = [
+    ...(isPennyStockMayhem
+      ? [{
+          id: 'penny-stock',
+          text: 'Buys require a verified stock or ETF with both the latest quote and final fill below $20. Selling or reducing long positions remains unrestricted; existing short rules still apply.',
+        }]
+      : []),
+    ...(isBearMarketMayhem
+      ? [{ id: 'bear-market', text: 'Lowest portfolio return ranks first; the largest loss can win.' }]
+      : []),
+    ...(isMountainChampionship
+      ? [{ id: 'mountain-transfers', text: 'Cash transfers are disabled during the preparation period and competition.' }]
+      : []),
+  ];
   const accent = isBearMarketMayhem ? '#E24550' : '#b8955a';
   const positive = (performance?.profitLoss ?? 0) >= 0;
   const countdownMode = livePhase === 'upcoming' ? 'starts' : livePhase === 'active' ? 'ends' : 'ended';
@@ -305,11 +321,6 @@ export function EventArenaOverview({
             </Animated.Text>
             <Text style={[styles.eventId, { color: muted }]}>ID {event.id}</Text>
           </View>
-          {isPennyStockMayhem && (
-            <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 8 }}>
-              Long buys require a verified stock or ETF and both the latest quote and final fill below $20.00. Selling or reducing long positions remains unrestricted; existing short rules are unchanged.
-            </Text>
-          )}
           {!isPennyStockMayhem && (
             <Text accessibilityLabel={`Event Arena ${eventName}`} style={[styles.title, { color: ink }]}>{eventTitle}</Text>
           )}
@@ -321,10 +332,26 @@ export function EventArenaOverview({
             </View>
             <Text style={[styles.capitalSuffix, { color: muted }]}>STARTING CAPITAL</Text>
           </View>}
-          {isBearMarketMayhem && (
-            <Text testID="event-arena-bear-objective" style={{ color: '#E24550', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.8, marginTop: 7 }}>
-              THE BIGGEST LOSER WINS · LOWEST RETURN RANKS FIRST
-            </Text>
+          {specialRules.length > 0 && (
+            <View
+              testID="event-arena-special-rules"
+              accessibilityLabel="Special event rules"
+              style={[styles.specialRules, { backgroundColor: colors.background, borderColor: border }]}
+            >
+              <View style={styles.specialRulesHeading}>
+                <Feather name="alert-circle" size={13} color={accent} />
+                <Text style={[styles.specialRulesTitle, { color: muted }]}>SPECIAL RULES</Text>
+              </View>
+              {specialRules.map((rule) => (
+                <Text
+                  key={rule.id}
+                  testID={`event-arena-rule-${rule.id}`}
+                  style={[styles.specialRuleText, { color: ink }]}
+                >
+                  {rule.text}
+                </Text>
+              ))}
+            </View>
           )}
           <Text style={[styles.subtitle, { color: muted }]}>{copy.title}. {copy.detail}</Text>
 
@@ -591,6 +618,10 @@ const styles = StyleSheet.create({
   eventId: { marginLeft: 'auto', fontFamily: 'Inter_500Medium', fontSize: 10 },
   title: { fontFamily: 'Inter_700Bold', fontSize: 30, lineHeight: 35, letterSpacing: -1.1 },
   subtitle: { fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 20, marginTop: 7, maxWidth: 430 },
+  specialRules: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 13, padding: 11, marginTop: 10, gap: 7 },
+  specialRulesHeading: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  specialRulesTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 0.8 },
+  specialRuleText: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16 },
   capitalBand: { flexDirection: 'row', alignItems: 'center', gap: 11, borderWidth: StyleSheet.hairlineWidth, borderRadius: 15, paddingHorizontal: 13, paddingVertical: 10, marginTop: 10, alignSelf: 'flex-start', maxWidth: '100%' },
   capitalMark: { width: 3, height: 34, borderRadius: 2 },
   capitalLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.85 },
