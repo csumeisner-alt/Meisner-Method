@@ -5,6 +5,94 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export type DeviceTransferBundleVersion = typeof DeviceTransferBundleVersion[keyof typeof DeviceTransferBundleVersion];
+
+
+export const DeviceTransferBundleVersion = {
+  NUMBER_1: 1,
+} as const;
+
+export type DeviceTransferBundleCategoriesItemData = {[key: string]: string};
+
+export type DeviceTransferBundleCategoriesItem = {
+  id: string;
+  /** @minimum 1 */
+  version: number;
+  data: DeviceTransferBundleCategoriesItemData;
+};
+
+export interface DeviceTransferBundle {
+  version: DeviceTransferBundleVersion;
+  /**
+     * @minLength 8
+     * @maxLength 128
+     */
+  bundleId: string;
+  exportedAt: string;
+  /** @maxItems 9 */
+  categories: DeviceTransferBundleCategoriesItem[];
+}
+
+export interface CreateDeviceTransferRequest {
+  bundle: DeviceTransferBundle;
+}
+
+export interface RedeemDeviceTransferRequest {
+  /**
+     * @minLength 32
+     * @maxLength 64
+     */
+  code: string;
+  /**
+     * @minLength 32
+     * @maxLength 128
+     */
+  destinationToken: string;
+}
+
+export interface RestoreDeviceTransferAlertsRequest {
+  /**
+     * @minLength 32
+     * @maxLength 64
+     */
+  code: string;
+  /**
+     * @minLength 32
+     * @maxLength 128
+     */
+  destinationToken: string;
+  /**
+     * @minLength 12
+     * @maxLength 128
+     */
+  installationId: string;
+  /**
+     * @minLength 20
+     * @maxLength 256
+     */
+  pushToken?: string;
+  replaceExisting: boolean;
+}
+
+export type DeviceTransferAlertDirection = typeof DeviceTransferAlertDirection[keyof typeof DeviceTransferAlertDirection];
+
+
+export const DeviceTransferAlertDirection = {
+  above: 'above',
+  below: 'below',
+} as const;
+
+export interface DeviceTransferAlert {
+  id: string;
+  symbol: string;
+  direction: DeviceTransferAlertDirection;
+  /** @exclusiveMinimum 0 */
+  targetPrice: number;
+  createdAt: string;
+  firedAt: string | null;
+  paused: boolean;
+}
+
 export interface RedeemEventArenaDevicePairingRequest {
   /**
      * @minLength 32
@@ -1697,6 +1785,35 @@ export type CreateEventArenaDevicePairing200 = {
 export type SyncEventArenaDeviceState200 = {
   /** @minimum 1 */
   revision: number;
+};
+
+export type CreateDeviceTransfer200 = {
+  /**
+     * @minLength 32
+     * @maxLength 64
+     */
+  code: string;
+  expiresAt: string;
+  bundleId: string;
+};
+
+export type RedeemDeviceTransfer200EventArenaSync = {
+  /**
+     * @minLength 12
+     * @maxLength 128
+     */
+  sourceInstallationId: string;
+  /** @minimum 0 */
+  revision: number;
+} | null;
+
+export type RedeemDeviceTransfer200 = {
+  bundle: DeviceTransferBundle;
+  eventArenaSync?: RedeemDeviceTransfer200EventArenaSync;
+};
+
+export type RestoreDeviceTransferAlerts200 = {
+  alerts: DeviceTransferAlert[];
 };
 
 export type SearchHeatMapInstrumentsParams = {

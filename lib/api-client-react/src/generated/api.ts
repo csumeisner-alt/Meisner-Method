@@ -24,6 +24,8 @@ import type {
   AnalysisResult,
   AnalyzeStockRequest,
   CommodityRelationshipResponse,
+  CreateDeviceTransfer200,
+  CreateDeviceTransferRequest,
   CreateEventArenaDevicePairing200,
   CryptoSupplyHistory,
   EventArenaCashNotificationsResponse,
@@ -47,7 +49,11 @@ import type {
   MarketPulseResponse,
   PortfolioQuoteBatch,
   PortfolioQuoteBatchRequest,
+  RedeemDeviceTransfer200,
+  RedeemDeviceTransferRequest,
   RedeemEventArenaDevicePairingRequest,
+  RestoreDeviceTransferAlerts200,
+  RestoreDeviceTransferAlertsRequest,
   SearchHeatMapInstrumentsParams,
   SearchStockSymbolsParams,
   StockSymbolSuggestion,
@@ -967,6 +973,219 @@ export const useSyncEventArenaDeviceState = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getSyncEventArenaDeviceStateMutationOptions(options));
+    }
+
+export const getCreateDeviceTransferUrl = () => {
+
+
+
+
+  return `/api/device-transfer/create`
+}
+
+/**
+ * @summary Validate a saved-data bundle and create a one-use phone transfer code
+ */
+export const createDeviceTransfer = async (createDeviceTransferRequest: CreateDeviceTransferRequest, options?: RequestInit): Promise<CreateDeviceTransfer200> => {
+
+  return customFetch<CreateDeviceTransfer200>(getCreateDeviceTransferUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createDeviceTransferRequest)
+  }
+);}
+
+
+
+
+
+export const getCreateDeviceTransferMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDeviceTransfer>>, TError,{data: BodyType<CreateDeviceTransferRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createDeviceTransfer>>, TError,{data: BodyType<CreateDeviceTransferRequest>}, TContext> => {
+
+const mutationKey = ['createDeviceTransfer'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createDeviceTransfer>>, {data: BodyType<CreateDeviceTransferRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createDeviceTransfer(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateDeviceTransferMutationResult = NonNullable<Awaited<ReturnType<typeof createDeviceTransfer>>>
+    export type CreateDeviceTransferMutationBody = BodyType<CreateDeviceTransferRequest>
+    export type CreateDeviceTransferMutationError = ErrorType<void>
+
+    /**
+ * @summary Validate a saved-data bundle and create a one-use phone transfer code
+ */
+export const useCreateDeviceTransfer = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDeviceTransfer>>, TError,{data: BodyType<CreateDeviceTransferRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createDeviceTransfer>>,
+        TError,
+        {data: BodyType<CreateDeviceTransferRequest>},
+        TContext
+      > => {
+      return useMutation(getCreateDeviceTransferMutationOptions(options));
+    }
+
+export const getRedeemDeviceTransferUrl = () => {
+
+
+
+
+  return `/api/device-transfer/redeem`
+}
+
+/**
+ * @summary Redeem a phone transfer code for its validated saved-data bundle
+ */
+export const redeemDeviceTransfer = async (redeemDeviceTransferRequest: RedeemDeviceTransferRequest, options?: RequestInit): Promise<RedeemDeviceTransfer200> => {
+
+  return customFetch<RedeemDeviceTransfer200>(getRedeemDeviceTransferUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(redeemDeviceTransferRequest)
+  }
+);}
+
+
+
+
+
+export const getRedeemDeviceTransferMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof redeemDeviceTransfer>>, TError,{data: BodyType<RedeemDeviceTransferRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof redeemDeviceTransfer>>, TError,{data: BodyType<RedeemDeviceTransferRequest>}, TContext> => {
+
+const mutationKey = ['redeemDeviceTransfer'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof redeemDeviceTransfer>>, {data: BodyType<RedeemDeviceTransferRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  redeemDeviceTransfer(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RedeemDeviceTransferMutationResult = NonNullable<Awaited<ReturnType<typeof redeemDeviceTransfer>>>
+    export type RedeemDeviceTransferMutationBody = BodyType<RedeemDeviceTransferRequest>
+    export type RedeemDeviceTransferMutationError = ErrorType<void>
+
+    /**
+ * @summary Redeem a phone transfer code for its validated saved-data bundle
+ */
+export const useRedeemDeviceTransfer = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof redeemDeviceTransfer>>, TError,{data: BodyType<RedeemDeviceTransferRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof redeemDeviceTransfer>>,
+        TError,
+        {data: BodyType<RedeemDeviceTransferRequest>},
+        TContext
+      > => {
+      return useMutation(getRedeemDeviceTransferMutationOptions(options));
+    }
+
+export const getRestoreDeviceTransferAlertsUrl = () => {
+
+
+
+
+  return `/api/device-transfer/restore-alerts`
+}
+
+/**
+ * @summary Recreate saved price alerts for the destination phone
+ */
+export const restoreDeviceTransferAlerts = async (restoreDeviceTransferAlertsRequest: RestoreDeviceTransferAlertsRequest, options?: RequestInit): Promise<RestoreDeviceTransferAlerts200> => {
+
+  return customFetch<RestoreDeviceTransferAlerts200>(getRestoreDeviceTransferAlertsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(restoreDeviceTransferAlertsRequest)
+  }
+);}
+
+
+
+
+
+export const getRestoreDeviceTransferAlertsMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof restoreDeviceTransferAlerts>>, TError,{data: BodyType<RestoreDeviceTransferAlertsRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof restoreDeviceTransferAlerts>>, TError,{data: BodyType<RestoreDeviceTransferAlertsRequest>}, TContext> => {
+
+const mutationKey = ['restoreDeviceTransferAlerts'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof restoreDeviceTransferAlerts>>, {data: BodyType<RestoreDeviceTransferAlertsRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  restoreDeviceTransferAlerts(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RestoreDeviceTransferAlertsMutationResult = NonNullable<Awaited<ReturnType<typeof restoreDeviceTransferAlerts>>>
+    export type RestoreDeviceTransferAlertsMutationBody = BodyType<RestoreDeviceTransferAlertsRequest>
+    export type RestoreDeviceTransferAlertsMutationError = ErrorType<void>
+
+    /**
+ * @summary Recreate saved price alerts for the destination phone
+ */
+export const useRestoreDeviceTransferAlerts = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof restoreDeviceTransferAlerts>>, TError,{data: BodyType<RestoreDeviceTransferAlertsRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof restoreDeviceTransferAlerts>>,
+        TError,
+        {data: BodyType<RestoreDeviceTransferAlertsRequest>},
+        TContext
+      > => {
+      return useMutation(getRestoreDeviceTransferAlertsMutationOptions(options));
     }
 
 export const getSearchHeatMapInstrumentsUrl = (params: SearchHeatMapInstrumentsParams,) => {

@@ -359,6 +359,96 @@ paths:
         "400": { description: The snapshot is invalid }
         "401": { description: Device token is invalid }
         "409": { description: The shared account changed on another device }
+  /device-transfer/create:
+    post:
+      operationId: createDeviceTransfer
+      tags: [deviceTransfer]
+      summary: Validate a saved-data bundle and create a one-use phone transfer code
+      parameters:
+        - in: header
+          name: X-Event-Arena-Device-Token
+          required: false
+          schema: { type: string, minLength: 32, maxLength: 128 }
+          description: Optional source pairing proof; lets the destination continue the existing Event Arena sync.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDeviceTransferRequest"
+      responses:
+        "200":
+          description: Short-lived code for the saved-data bundle
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [code, expiresAt, bundleId]
+                properties:
+                  code: { type: string, minLength: 32, maxLength: 64 }
+                  expiresAt: { type: string, format: date-time }
+                  bundleId: { type: string }
+        "400": { description: The bundle is invalid or unsupported }
+  /device-transfer/redeem:
+    post:
+      operationId: redeemDeviceTransfer
+      tags: [deviceTransfer]
+      summary: Redeem a phone transfer code for its validated saved-data bundle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RedeemDeviceTransferRequest"
+      responses:
+        "200":
+          description: Validated saved-data bundle for this destination phone
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [bundle]
+                properties:
+                  bundle:
+                    $ref: "#/components/schemas/DeviceTransferBundle"
+                  eventArenaSync:
+                    type: object
+                    nullable: true
+                    required: [sourceInstallationId, revision]
+                    properties:
+                      sourceInstallationId: { type: string, minLength: 12, maxLength: 128 }
+                      revision: { type: integer, minimum: 0 }
+        "400": { description: The code or destination is invalid }
+        "404": { description: The transfer code was not found }
+        "409": { description: The code was already redeemed by another phone }
+        "410": { description: The transfer code expired }
+  /device-transfer/restore-alerts:
+    post:
+      operationId: restoreDeviceTransferAlerts
+      tags: [deviceTransfer]
+      summary: Recreate saved price alerts for the destination phone
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RestoreDeviceTransferAlertsRequest"
+      responses:
+        "200":
+          description: Alerts restored with destination-specific record IDs
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [alerts]
+                properties:
+                  alerts:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DeviceTransferAlert"
+        "400": { description: Invalid phone notification registration }
+        "404": { description: Transfer code was not found }
+        "409": { description: Transfer code was not redeemed by this phone }
   /stocks/heat-map/search:
     get:
       operationId: searchHeatMapInstruments
@@ -850,6 +940,57 @@ paths:
                 $ref: "#/components/schemas/AnalysisError"
 components:
   schemas:
+    DeviceTransferBundle:
+      type: object
+      required: [version, bundleId, exportedAt, categories]
+      properties:
+        version: { type: integer, enum: [1] }
+        bundleId: { type: string, minLength: 8, maxLength: 128 }
+        exportedAt: { type: string, format: date-time }
+        categories:
+          type: array
+          maxItems: 9
+          items:
+            type: object
+            required: [id, version, data]
+            properties:
+              id: { type: string }
+              version: { type: integer, minimum: 1 }
+              data:
+                type: object
+                additionalProperties: { type: string }
+    CreateDeviceTransferRequest:
+      type: object
+      required: [bundle]
+      properties:
+        bundle:
+          $ref: "#/components/schemas/DeviceTransferBundle"
+    RedeemDeviceTransferRequest:
+      type: object
+      required: [code, destinationToken]
+      properties:
+        code: { type: string, minLength: 32, maxLength: 64 }
+        destinationToken: { type: string, minLength: 32, maxLength: 128 }
+    RestoreDeviceTransferAlertsRequest:
+      type: object
+      required: [code, destinationToken, installationId, replaceExisting]
+      properties:
+        code: { type: string, minLength: 32, maxLength: 64 }
+        destinationToken: { type: string, minLength: 32, maxLength: 128 }
+        installationId: { type: string, minLength: 12, maxLength: 128 }
+        pushToken: { type: string, minLength: 20, maxLength: 256 }
+        replaceExisting: { type: boolean }
+    DeviceTransferAlert:
+      type: object
+      required: [id, symbol, direction, targetPrice, createdAt, firedAt, paused]
+      properties:
+        id: { type: string }
+        symbol: { type: string }
+        direction: { type: string, enum: [above, below] }
+        targetPrice: { type: number, exclusiveMinimum: 0 }
+        createdAt: { type: string, format: date-time }
+        firedAt: { type: string, format: date-time, nullable: true }
+        paused: { type: boolean }
     RedeemEventArenaDevicePairingRequest:
       type: object
       required: [code, deviceToken]

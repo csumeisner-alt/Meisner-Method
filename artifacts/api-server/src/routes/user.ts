@@ -331,6 +331,24 @@ async function runSchemaMigrations(): Promise<void> {
     )
   `);
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS app_device_transfer_codes (
+      code_hash TEXT PRIMARY KEY,
+      bundle_id TEXT NOT NULL,
+      bundle JSONB NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      destination_token_hash TEXT,
+      event_arena_sync_id TEXT REFERENCES event_arena_device_sync(sync_id) ON DELETE SET NULL,
+      alert_restore_result JSONB,
+      consumed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query("ALTER TABLE app_device_transfer_codes ADD COLUMN IF NOT EXISTS alert_restore_result JSONB");
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS app_device_transfer_expiration_idx
+    ON app_device_transfer_codes (expires_at)
+  `);
+  await pool.query(`
     CREATE INDEX IF NOT EXISTS event_arena_leaderboard_rank_idx
     ON event_arena_leaderboard_entries (event_id, return_percent DESC, updated_at DESC)
   `);

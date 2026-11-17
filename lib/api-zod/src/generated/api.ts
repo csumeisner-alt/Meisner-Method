@@ -474,6 +474,140 @@ export const SyncEventArenaDeviceStateResponse = zod.object({
 
 
 /**
+ * @summary Validate a saved-data bundle and create a one-use phone transfer code
+ */
+export const createDeviceTransferHeaderXEventArenaDeviceTokenMin = 32;
+export const createDeviceTransferHeaderXEventArenaDeviceTokenMax = 128;
+
+
+
+export const CreateDeviceTransferHeader = zod.object({
+  "X-Event-Arena-Device-Token": zod.string().min(createDeviceTransferHeaderXEventArenaDeviceTokenMin).max(createDeviceTransferHeaderXEventArenaDeviceTokenMax).optional().describe('Optional source pairing proof; lets the destination continue the existing Event Arena sync.')
+})
+
+export const createDeviceTransferBodyBundleBundleIdMin = 8;
+export const createDeviceTransferBodyBundleBundleIdMax = 128;
+
+
+export const createDeviceTransferBodyBundleCategoriesMax = 9;
+
+
+
+export const CreateDeviceTransferBody = zod.object({
+  "bundle": zod.object({
+  "version": zod.literal(1),
+  "bundleId": zod.string().min(createDeviceTransferBodyBundleBundleIdMin).max(createDeviceTransferBodyBundleBundleIdMax),
+  "exportedAt": zod.coerce.date(),
+  "categories": zod.array(zod.object({
+  "id": zod.string(),
+  "version": zod.number().min(1),
+  "data": zod.record(zod.string(), zod.string())
+})).max(createDeviceTransferBodyBundleCategoriesMax)
+})
+})
+
+export const createDeviceTransferResponseCodeMin = 32;
+export const createDeviceTransferResponseCodeMax = 64;
+
+
+
+export const CreateDeviceTransferResponse = zod.object({
+  "code": zod.string().min(createDeviceTransferResponseCodeMin).max(createDeviceTransferResponseCodeMax),
+  "expiresAt": zod.coerce.date(),
+  "bundleId": zod.string()
+})
+
+
+/**
+ * @summary Redeem a phone transfer code for its validated saved-data bundle
+ */
+export const redeemDeviceTransferBodyCodeMin = 32;
+export const redeemDeviceTransferBodyCodeMax = 64;
+
+export const redeemDeviceTransferBodyDestinationTokenMin = 32;
+export const redeemDeviceTransferBodyDestinationTokenMax = 128;
+
+
+
+export const RedeemDeviceTransferBody = zod.object({
+  "code": zod.string().min(redeemDeviceTransferBodyCodeMin).max(redeemDeviceTransferBodyCodeMax),
+  "destinationToken": zod.string().min(redeemDeviceTransferBodyDestinationTokenMin).max(redeemDeviceTransferBodyDestinationTokenMax)
+})
+
+export const redeemDeviceTransferResponseBundleBundleIdMin = 8;
+export const redeemDeviceTransferResponseBundleBundleIdMax = 128;
+
+
+export const redeemDeviceTransferResponseBundleCategoriesMax = 9;
+
+export const redeemDeviceTransferResponseEventArenaSyncSourceInstallationIdMin = 12;
+export const redeemDeviceTransferResponseEventArenaSyncSourceInstallationIdMax = 128;
+
+export const redeemDeviceTransferResponseEventArenaSyncRevisionMin = 0;
+
+
+
+export const RedeemDeviceTransferResponse = zod.object({
+  "bundle": zod.object({
+  "version": zod.literal(1),
+  "bundleId": zod.string().min(redeemDeviceTransferResponseBundleBundleIdMin).max(redeemDeviceTransferResponseBundleBundleIdMax),
+  "exportedAt": zod.coerce.date(),
+  "categories": zod.array(zod.object({
+  "id": zod.string(),
+  "version": zod.number().min(1),
+  "data": zod.record(zod.string(), zod.string())
+})).max(redeemDeviceTransferResponseBundleCategoriesMax)
+}),
+  "eventArenaSync": zod.object({
+  "sourceInstallationId": zod.string().min(redeemDeviceTransferResponseEventArenaSyncSourceInstallationIdMin).max(redeemDeviceTransferResponseEventArenaSyncSourceInstallationIdMax),
+  "revision": zod.number().min(redeemDeviceTransferResponseEventArenaSyncRevisionMin)
+}).nullish()
+})
+
+
+/**
+ * @summary Recreate saved price alerts for the destination phone
+ */
+export const restoreDeviceTransferAlertsBodyCodeMin = 32;
+export const restoreDeviceTransferAlertsBodyCodeMax = 64;
+
+export const restoreDeviceTransferAlertsBodyDestinationTokenMin = 32;
+export const restoreDeviceTransferAlertsBodyDestinationTokenMax = 128;
+
+export const restoreDeviceTransferAlertsBodyInstallationIdMin = 12;
+export const restoreDeviceTransferAlertsBodyInstallationIdMax = 128;
+
+export const restoreDeviceTransferAlertsBodyPushTokenMin = 20;
+export const restoreDeviceTransferAlertsBodyPushTokenMax = 256;
+
+
+
+export const RestoreDeviceTransferAlertsBody = zod.object({
+  "code": zod.string().min(restoreDeviceTransferAlertsBodyCodeMin).max(restoreDeviceTransferAlertsBodyCodeMax),
+  "destinationToken": zod.string().min(restoreDeviceTransferAlertsBodyDestinationTokenMin).max(restoreDeviceTransferAlertsBodyDestinationTokenMax),
+  "installationId": zod.string().min(restoreDeviceTransferAlertsBodyInstallationIdMin).max(restoreDeviceTransferAlertsBodyInstallationIdMax),
+  "pushToken": zod.string().min(restoreDeviceTransferAlertsBodyPushTokenMin).max(restoreDeviceTransferAlertsBodyPushTokenMax).optional(),
+  "replaceExisting": zod.boolean()
+})
+
+export const restoreDeviceTransferAlertsResponseAlertsItemTargetPriceExclusiveMin = 0;
+
+
+
+export const RestoreDeviceTransferAlertsResponse = zod.object({
+  "alerts": zod.array(zod.object({
+  "id": zod.string(),
+  "symbol": zod.string(),
+  "direction": zod.enum(['above', 'below']),
+  "targetPrice": zod.number().gt(restoreDeviceTransferAlertsResponseAlertsItemTargetPriceExclusiveMin),
+  "createdAt": zod.coerce.date(),
+  "firedAt": zod.coerce.date().nullable(),
+  "paused": zod.boolean()
+}))
+})
+
+
+/**
  * @summary Search supported non-stock heat-map instruments by name or ticker
  */
 export const searchHeatMapInstrumentsQueryQMin = 2;

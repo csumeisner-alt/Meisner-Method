@@ -8,10 +8,14 @@ const arena = readFileSync(new URL('../components/EventArenaScreen.tsx', import.
 const leaderboard = readFileSync(new URL('../components/PaperChallengeLeaderboard.tsx', import.meta.url), 'utf8');
 
 test('Paper account management exposes guest pairing and code restore controls', () => {
-  assert.match(paper, /testID="create-event-arena-transfer-code"/);
+  assert.match(paper, /testID="create-saved-data-transfer-code"/);
   assert.match(paper, /testID="open-event-arena-restore"/);
-  assert.match(paper, /testID="event-arena-device-transfer-code-input"/);
+  assert.match(paper, /testID="saved-data-device-transfer-code-input"/);
+  assert.match(paper, /testID="replace-conflicting-transfer-data"/);
+  assert.match(paper, /createDeviceTransfer\(\{ bundle \}/);
+  assert.match(paper, /redeemDeviceTransfer\(\{ code, destinationToken \}/);
   assert.match(paper, /\/api\/event-arena\/device-pairing\/redeem/);
+  assert.match(paper, /await restoreLegacyEventArenaTransfer\(\)/);
   assert.match(paper, /saveAll\(\s*nextCache\.accounts/);
 });
 

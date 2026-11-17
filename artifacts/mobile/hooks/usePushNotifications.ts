@@ -37,6 +37,7 @@ export function usePushNotifications() {
   );
   const [registrationError, setRegistrationError] = useState<string | null>(null);
   const cancelledRef = useRef(false);
+  const pushTokenRef = useRef<string | null>(null);
 
   const obtainToken = useCallback(async (Notifications: NotificationsModule): Promise<boolean> => {
     try {
@@ -68,6 +69,7 @@ export function usePushNotifications() {
         throw new Error('The notification service did not confirm this phone.');
       }
       if (!cancelledRef.current) {
+        pushTokenRef.current = expoPushToken;
         setPushToken(expoPushToken);
         setRegistrationError(null);
       }
@@ -176,6 +178,7 @@ export function usePushNotifications() {
       const perm = await Notifications.requestPermissionsAsync();
       const granted: boolean = perm.granted ?? perm.status === 'granted';
       if (!granted) {
+        pushTokenRef.current = null;
         setStatus(perm.canAskAgain === false ? 'denied' : 'unknown');
         return false;
       }
@@ -187,6 +190,11 @@ export function usePushNotifications() {
     }
   }, [obtainToken]);
 
+  const requestPermissionAndGetToken = useCallback(async (): Promise<string | null> => {
+    const granted = await requestPermission();
+    return granted ? pushTokenRef.current : null;
+  }, [requestPermission]);
+
   /** Deep-link to the app's notification settings (for the denied state). */
   const openNotificationSettings = useCallback(() => {
     Linking.openSettings().catch(() => {});
@@ -197,6 +205,7 @@ export function usePushNotifications() {
     status,
     registrationError,
     requestPermission,
+    requestPermissionAndGetToken,
     openNotificationSettings,
     // Back-compat convenience flags
     permissionDenied: status === 'denied',

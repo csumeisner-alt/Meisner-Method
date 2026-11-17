@@ -126,6 +126,7 @@ import {
   type BuyStockInfo,
 } from '@/lib/stockSearch';
 import { useWatchlist } from '@/hooks/useWatchlist';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { getInstallationId } from '@/lib/installation';
 import {
   buildEventArenaDeviceSnapshot,
@@ -172,8 +173,21 @@ import {
   getSearchStockSymbolsQueryKey,
   useSearchHeatMapInstruments,
   useSearchStockSymbols,
+  createDeviceTransfer,
+  redeemDeviceTransfer,
+  restoreDeviceTransferAlerts,
   type HeatMapInstrumentSuggestion,
 } from '@workspace/api-client-react';
+import {
+  applyDeviceTransfer,
+  createDeviceTransferBundle,
+  preflightDeviceTransfer,
+  DEVICE_TRANSFER_DESTINATION_KEY,
+  type DeviceTransferCategoryResult,
+  type DeviceTransferPreview,
+  hasDeviceTransferDestinationChanged,
+  replaceDeviceTransferCategoryData,
+} from '@/lib/deviceTransfer';
 
 /**
  * Paper Trading Screen — risk-free trading with $100,000 virtual cash.
@@ -345,6 +359,7 @@ export default function PaperScreen() {
   const router = useRouter();
   const routeParams = useLocalSearchParams<{ challengeAccountId?: string; tab?: string }>();
   const { awardAchievement } = useAchievements();
+  const { pushToken: currentPushToken, requestPermissionAndGetToken } = usePushNotifications();
   const insets = useSafeAreaInsets();
   const { width: screenWidth, fontScale } = useWindowDimensions();
   const compactHeroStats = screenWidth <= 360 || fontScale >= 1.3;
@@ -414,9 +429,16 @@ export default function PaperScreen() {
   const activeGroupTabs = TABS.filter((tab) => activeTabGroup.tabs.includes(tab.id));
   const [chartRange, setChartRange] = useState<(typeof HISTORY_RANGES)[number]['id']>('ALL');
   const [showAccountManagement, setShowAccountManagement] = useState(false);
-  const [deviceTransferMode, setDeviceTransferMode] = useState<'create' | 'restore' | null>(null);
+  const [deviceTransferMode, setDeviceTransferMode] = useState<'create' | 'restore' | 'review' | 'result' | null>(null);
   const [deviceTransferCode, setDeviceTransferCode] = useState('');
   const [deviceTransferCodeInput, setDeviceTransferCodeInput] = useState('');
+  const [deviceTransferRestoreCode, setDeviceTransferRestoreCode] = useState('');
+  const [deviceTransferPreview, setDeviceTransferPreview] = useState<DeviceTransferPreview | null>(null);
+  const [deviceTransferResults, setDeviceTransferResults] = useState<DeviceTransferCategoryResult[]>([]);
+  const [deviceTransferEventArenaSync, setDeviceTransferEventArenaSync] = useState<{
+    sourceInstallationId: string;
+    revision: number;
+  } | null>(null);
   const [deviceTransferBusy, setDeviceTransferBusy] = useState(false);
   const [deviceTransferError, setDeviceTransferError] = useState('');
   const [showTradeModal, setShowTradeModal] = useState(false);
@@ -1131,7 +1153,25 @@ export default function PaperScreen() {
     }
   }, [apiFetch]);
 
-  const restoreEventArenaTransfer = useCallback(async () => {
+  const createAllDataTransferCode = useCallback(async () => {
+    setDeviceTransferBusy(true);
+    setDeviceTransferError('');
+    try {
+      const bundle = await createDeviceTransferBundle(AsyncStorage, Crypto.randomUUID());
+      const eventArenaToken = await AsyncStorage.getItem(EVENT_ARENA_DEVICE_TOKEN_KEY);
+      const result = await createDeviceTransfer({ bundle }, eventArenaToken
+        ? { headers: { 'X-Event-Arena-Device-Token': eventArenaToken } }
+        : undefined);
+      setDeviceTransferCode(result.code);
+      setDeviceTransferMode('create');
+    } catch (error) {
+      setDeviceTransferError(error instanceof Error ? error.message : 'Could not create a saved-data transfer code.');
+    } finally {
+      setDeviceTransferBusy(false);
+    }
+  }, []);
+
+  const restoreLegacyEventArenaTransfer = useCallback(async () => {
     const code = deviceTransferCodeInput.trim();
     if (!code) {
       setDeviceTransferError('Enter the transfer code from your other device.');
@@ -1193,6 +1233,190 @@ export default function PaperScreen() {
       setDeviceTransferBusy(false);
     }
   }, [apiFetch, deviceTransferCodeInput, saveAll]);
+
+  const applyAndFinishDeviceTransfer = useCallback(async (
+    bundle: NonNullable<DeviceTransferPreview['bundle']>,
+    choice: 'keep-destination' | 'replace-conflicts' | null,
+    eventArenaSync: { sourceInstallationId: string; revision: number } | null,
+    restoreCode: string,
+    reviewedPreview?: DeviceTransferPreview,
+  ) => {
+    let bundleToApply = bundle;
+    let alertOverride: DeviceTransferCategoryResult | null = null;
+    const alertCategory = bundle.categories.find((category) => category.id === 'price-alerts');
+    const rawAlerts = alertCategory?.data['@stocksense/price_alerts_v1'];
+    if (rawAlerts) {
+      const localPreview = await preflightDeviceTransfer(AsyncStorage, bundle);
+      if (reviewedPreview && hasDeviceTransferDestinationChanged(reviewedPreview, localPreview)) {
+        setDeviceTransferPreview(localPreview);
+        setDeviceTransferMode('review');
+        setDeviceTransferError('Saved data changed on this phone. Review the updated conflict list before continuing.');
+        return;
+      }
+      const alertPreview = localPreview.categories.find((category) => category.id === 'price-alerts');
+      const keepingLocalAlerts = alertPreview?.status === 'conflict' && choice === 'keep-destination';
+      const replaceExistingAlerts = alertPreview?.status === 'conflict' && choice === 'replace-conflicts';
+      const sourceAlerts = JSON.parse(rawAlerts) as unknown[];
+      if (!keepingLocalAlerts && (sourceAlerts.length > 0 || replaceExistingAlerts)) {
+        try {
+          let destinationPushToken = currentPushToken;
+          if (sourceAlerts.length > 0 && !destinationPushToken) {
+            destinationPushToken = await requestPermissionAndGetToken();
+          }
+          if (sourceAlerts.length > 0 && !destinationPushToken) {
+            bundleToApply = replaceDeviceTransferCategoryData(bundle, 'price-alerts', {});
+            alertOverride = {
+              id: 'price-alerts',
+              label: 'Price alert rules',
+              status: 'skipped',
+              reason: 'Price alerts were not copied because this phone did not register notification access.',
+            };
+          } else {
+            const destinationToken = await AsyncStorage.getItem(DEVICE_TRANSFER_DESTINATION_KEY);
+            if (!destinationToken) throw new Error('This phone is not linked to the transfer code.');
+            const restoredAlerts = await restoreDeviceTransferAlerts({
+              code: restoreCode,
+              destinationToken,
+              installationId: await getInstallationId(),
+              ...(destinationPushToken ? { pushToken: destinationPushToken } : {}),
+              replaceExisting: replaceExistingAlerts,
+            });
+            bundleToApply = replaceDeviceTransferCategoryData(bundle, 'price-alerts', {
+              '@stocksense/price_alerts_v1': JSON.stringify(restoredAlerts.alerts),
+            });
+          }
+        } catch (error) {
+          bundleToApply = replaceDeviceTransferCategoryData(bundle, 'price-alerts', {});
+          alertOverride = {
+            id: 'price-alerts',
+            label: 'Price alert rules',
+            status: 'failed',
+            reason: error instanceof Error
+              ? `Price alerts were not copied: ${error.message}`
+              : 'Price alerts could not be registered on this phone.',
+          };
+        }
+      }
+    }
+
+    const applied = await applyDeviceTransfer(AsyncStorage, bundleToApply, choice, reviewedPreview);
+    if (applied.needsReview) {
+      setDeviceTransferPreview(applied.preview);
+      setDeviceTransferMode('review');
+      setDeviceTransferError('Saved data changed on this phone. Review the updated conflict list before continuing.');
+      return;
+    }
+    const results = alertOverride
+      ? applied.results.map((result) => result.id === alertOverride!.id ? alertOverride! : result)
+      : applied.results;
+    if (results.some((result) => result.status === 'failed')) {
+      setDeviceTransferResults(results);
+      setDeviceTransferMode('result');
+      return;
+    }
+
+    const eventArenaResult = results.find((result) => result.id === 'paper-and-event-arena');
+    const eventArenaSourceData = bundle.categories.find((category) => category.id === 'paper-and-event-arena')
+      ?.data['@stocksense/paper_v2'];
+    if (eventArenaSync && eventArenaSourceData
+      && eventArenaResult?.status !== 'skipped' && eventArenaResult?.status !== 'failed') {
+      const destinationToken = await AsyncStorage.getItem(DEVICE_TRANSFER_DESTINATION_KEY);
+      if (destinationToken) {
+        eventArenaDeviceTokenRef.current = destinationToken;
+        eventArenaDeviceRevisionRef.current = eventArenaSync.revision;
+        eventArenaSourceInstallationIdRef.current = eventArenaSync.sourceInstallationId;
+        eventArenaDeviceSyncEnabledRef.current = true;
+        await Promise.all([
+          AsyncStorage.setItem(EVENT_ARENA_DEVICE_TOKEN_KEY, destinationToken),
+          AsyncStorage.setItem(EVENT_ARENA_DEVICE_REVISION_KEY, String(eventArenaSync.revision)),
+          AsyncStorage.setItem(EVENT_ARENA_SOURCE_INSTALLATION_ID_KEY, eventArenaSync.sourceInstallationId),
+          AsyncStorage.setItem(EVENT_ARENA_DEVICE_DIRTY_KEY, 'true'),
+        ]);
+      }
+    }
+
+    const nextChallengeStore = await loadPaperChallengeStore({
+      getItem: (key) => AsyncStorage.getItem(key),
+    });
+    paperChallengeRef.current = nextChallengeStore;
+    setPaperChallenge(nextChallengeStore);
+    setPaperChallengeReady(true);
+
+    const rawPaperCache = await AsyncStorage.getItem(PAPER_CACHE_KEY);
+    if (rawPaperCache) {
+      const restoredCache = JSON.parse(rawPaperCache) as PaperCache;
+      await saveAll(
+        restoredCache.accounts ?? [],
+        restoredCache.positions ?? [],
+        restoredCache.transactions ?? [],
+        restoredCache.orders ?? [],
+        restoredCache.lots ?? [],
+        restoredCache.activeId ?? '',
+      );
+    }
+    setDeviceTransferResults(results);
+    setDeviceTransferPreview(null);
+    setDeviceTransferMode('result');
+    setDeviceTransferRestoreCode('');
+  }, [currentPushToken, requestPermissionAndGetToken, saveAll]);
+
+  const restoreAllDataTransfer = useCallback(async () => {
+    const code = deviceTransferCodeInput.trim();
+    if (!code) {
+      setDeviceTransferError('Enter the transfer code from your other phone.');
+      return;
+    }
+    setDeviceTransferBusy(true);
+    setDeviceTransferError('');
+    setDeviceTransferPreview(null);
+    setDeviceTransferResults([]);
+    try {
+      const destinationToken = await AsyncStorage.getItem(DEVICE_TRANSFER_DESTINATION_KEY)
+        ?? Crypto.randomUUID().replace(/-/g, '');
+      await AsyncStorage.setItem(DEVICE_TRANSFER_DESTINATION_KEY, destinationToken);
+      const response = await redeemDeviceTransfer({ code, destinationToken });
+      setDeviceTransferRestoreCode(code);
+      const preview = await preflightDeviceTransfer(AsyncStorage, response.bundle);
+      setDeviceTransferPreview(preview);
+      setDeviceTransferEventArenaSync(response.eventArenaSync ?? null);
+      if (preview.categories.some((category) => category.status === 'conflict')) {
+        setDeviceTransferMode('review');
+      } else {
+        await applyAndFinishDeviceTransfer(response.bundle, null, response.eventArenaSync ?? null, code, preview);
+      }
+      setDeviceTransferCodeInput('');
+    } catch (error) {
+      const status = (error as { status?: number; response?: { status?: number } })?.status
+        ?? (error as { response?: { status?: number } })?.response?.status;
+      if (status === 404) {
+        setDeviceTransferBusy(false);
+        await restoreLegacyEventArenaTransfer();
+        return;
+      }
+      setDeviceTransferError(error instanceof Error ? error.message : 'Could not restore the saved data.');
+    } finally {
+      setDeviceTransferBusy(false);
+    }
+  }, [applyAndFinishDeviceTransfer, deviceTransferCodeInput, restoreLegacyEventArenaTransfer]);
+
+  const confirmAllDataTransfer = useCallback(async (choice: 'keep-destination' | 'replace-conflicts') => {
+    if (!deviceTransferPreview) return;
+    setDeviceTransferBusy(true);
+    setDeviceTransferError('');
+    try {
+      await applyAndFinishDeviceTransfer(
+        deviceTransferPreview.bundle,
+        choice,
+        deviceTransferEventArenaSync,
+        deviceTransferRestoreCode,
+        deviceTransferPreview,
+      );
+    } catch (error) {
+      setDeviceTransferError(error instanceof Error ? error.message : 'Could not finish restoring the saved data.');
+    } finally {
+      setDeviceTransferBusy(false);
+    }
+  }, [applyAndFinishDeviceTransfer, deviceTransferEventArenaSync, deviceTransferPreview, deviceTransferRestoreCode]);
 
   const persistAccountValueSnapshots = useCallback(async (
     next: PaperAccountValueSnapshot[],
@@ -4724,32 +4948,33 @@ export default function PaperScreen() {
                 )}
                 <View style={{ gap: 9, paddingTop: 12, paddingBottom: 8 }}>
                   <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 1 }}>
-                    EVENT ARENA DEVICE TRANSFER
+                    SAVED DATA TRANSFER
                   </Text>
-                  {visibleAccounts.some((item) => isPaperChallengeAccountId(item.id)) && (
-                    <TouchableOpacity
-                      testID="create-event-arena-transfer-code"
-                      accessibilityRole="button"
-                      accessibilityLabel="Create a one-time Event Arena transfer code"
-                      onPress={() => {
-                        setShowAccountManagement(false);
-                        void createEventArenaTransferCode();
-                      }}
-                      disabled={deviceTransferBusy}
-                      style={{ minHeight: 46, borderRadius: 12, borderWidth: 1, borderColor: colors.primary, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 }}
-                    >
-                      <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 12 }}>
-                        {deviceTransferBusy ? 'PREPARING CODE…' : 'PAIR ANOTHER DEVICE'}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
+                  <TouchableOpacity
+                    testID="create-saved-data-transfer-code"
+                    accessibilityRole="button"
+                    accessibilityLabel="Create a one-time code to transfer saved app data"
+                    onPress={() => {
+                      setShowAccountManagement(false);
+                      void createAllDataTransferCode();
+                    }}
+                    disabled={deviceTransferBusy}
+                    style={{ minHeight: 46, borderRadius: 12, borderWidth: 1, borderColor: colors.primary, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 }}
+                  >
+                    <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 12 }}>
+                      {deviceTransferBusy ? 'PREPARING CODE…' : 'TRANSFER SAVED DATA'}
+                    </Text>
+                  </TouchableOpacity>
                   <TouchableOpacity
                     testID="open-event-arena-restore"
                     accessibilityRole="button"
-                    accessibilityLabel="Restore an Event Arena account with a transfer code"
+                    accessibilityLabel="Restore saved app data with a transfer code"
                     onPress={() => {
                       setDeviceTransferError('');
                       setDeviceTransferCodeInput('');
+                      setDeviceTransferRestoreCode('');
+                      setDeviceTransferPreview(null);
+                      setDeviceTransferResults([]);
                       setDeviceTransferMode('restore');
                     }}
                     style={{ minHeight: 46, borderRadius: 12, backgroundColor: 'rgba(192,192,192,0.12)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 }}
@@ -4775,7 +5000,11 @@ export default function PaperScreen() {
         transparent
         animationType="fade"
         onRequestClose={() => {
-          if (!deviceTransferBusy) setDeviceTransferMode(null);
+          if (!deviceTransferBusy) {
+            setDeviceTransferMode(null);
+            setDeviceTransferRestoreCode('');
+            setDeviceTransferPreview(null);
+          }
         }}
       >
         <View style={[styles.modalOverlay, { justifyContent: 'center', paddingHorizontal: 20 }]}>
@@ -4784,35 +5013,42 @@ export default function PaperScreen() {
             style={StyleSheet.absoluteFillObject}
             accessibilityLabel="Close Event Arena device transfer"
             onPress={() => {
-              if (!deviceTransferBusy) setDeviceTransferMode(null);
+              if (!deviceTransferBusy) {
+                setDeviceTransferMode(null);
+                setDeviceTransferRestoreCode('');
+                setDeviceTransferPreview(null);
+              }
             }}
           />
           <KeyboardControllerAvoidingView behavior="padding" keyboardVerticalOffset={0}>
-            <View testID="event-arena-device-transfer" style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 18, padding: 20, gap: 14 }}>
+            <View testID="saved-data-device-transfer" style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 18, padding: 20, gap: 14, maxHeight: '88%' }}>
               <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 18 }}>
-                {deviceTransferMode === 'create' ? 'Pair another device' : 'Restore Event Arena'}
+                {deviceTransferMode === 'create' ? 'Transfer saved data'
+                  : deviceTransferMode === 'review' ? 'Review saved data'
+                    : deviceTransferMode === 'result' ? 'Transfer results'
+                      : 'Restore with a code'}
               </Text>
               {deviceTransferMode === 'create' ? (
                 <>
                   <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 19 }}>
-                    Enter this one-use code on your other device within 10 minutes. Your original account stays unchanged.
+                    Enter this one-use code on your new phone within 10 minutes. Your original phone stays unchanged.
                   </Text>
                   <Text
-                    testID="event-arena-device-transfer-code"
+                    testID="saved-data-device-transfer-code"
                     selectable
                     style={{ color: colors.foreground, backgroundColor: 'rgba(192,192,192,0.1)', borderRadius: 10, padding: 14, fontFamily: 'Inter_700Bold', fontSize: 15, textAlign: 'center' }}
                   >
                     {deviceTransferBusy ? 'Preparing secure code…' : deviceTransferCode}
                   </Text>
                 </>
-              ) : (
+              ) : deviceTransferMode === 'restore' ? (
                 <>
                   <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 19 }}>
-                    On your other device, open Event Arena account settings and create a one-time transfer code.
+                    Create a one-use transfer code on your original phone. It expires after 10 minutes. Restoring price alerts may ask to enable notifications on this phone.
                   </Text>
                   <TextInput
-                    testID="event-arena-device-transfer-code-input"
-                    accessibilityLabel="One-time Event Arena transfer code"
+                    testID="saved-data-device-transfer-code-input"
+                    accessibilityLabel="One-time saved data transfer code"
                     value={deviceTransferCodeInput}
                     onChangeText={setDeviceTransferCodeInput}
                     placeholder="Paste transfer code"
@@ -4825,37 +5061,105 @@ export default function PaperScreen() {
                     style={{ minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, color: colors.foreground, fontFamily: 'Inter_500Medium', fontSize: 14 }}
                   />
                 </>
+              ) : deviceTransferMode === 'review' ? (
+                <>
+                  <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 19 }}>
+                    Some categories already contain data on this phone. Keep that data, or replace only the conflicting categories. Financial histories are never combined.
+                  </Text>
+                  <ScrollView style={{ maxHeight: 340 }} contentContainerStyle={{ gap: 8 }}>
+                    {deviceTransferPreview?.categories.map((category) => (
+                      <View key={category.id} style={{ padding: 10, borderRadius: 10, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }}>
+                        <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 13 }}>
+                          {category.label} · {category.status === 'conflict' ? 'Needs a choice' : category.status === 'ready' ? 'Ready' : 'Unchanged'}
+                        </Text>
+                        <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 3 }}>
+                          {category.reason}
+                        </Text>
+                      </View>
+                    ))}
+                  </ScrollView>
+                </>
+              ) : (
+                <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ gap: 8 }}>
+                  <Text
+                    testID="saved-data-transfer-result-summary"
+                    accessibilityRole="alert"
+                    style={{ color: deviceTransferResults.some((result) => result.status === 'failed') ? colors.destructive : colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18 }}
+                  >
+                    {deviceTransferResults.some((result) => result.status === 'failed')
+                      ? 'Some categories could not be restored. Review the results before retrying.'
+                      : deviceTransferResults.some((result) => result.status === 'skipped')
+                        ? 'This transfer is partial: account data stays with your sign-in, quotes refresh automatically, and this phone registers its own notifications.'
+                        : 'Each supported category reports its restore status. Some settings reload after you reopen the app.'}
+                  </Text>
+                  {deviceTransferResults.map((result) => (
+                    <View key={result.id} style={{ padding: 10, borderRadius: 10, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }}>
+                      <Text style={{ color: result.status === 'failed' ? colors.destructive : colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 13 }}>
+                        {result.label} · {result.status}
+                      </Text>
+                      <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 3 }}>
+                        {result.reason}
+                      </Text>
+                    </View>
+                  ))}
+                </ScrollView>
               )}
               {deviceTransferError ? (
-                <Text testID="event-arena-device-transfer-error" accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 17 }}>
+                <Text testID="saved-data-device-transfer-error" accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 17 }}>
                   {deviceTransferError}
                 </Text>
               ) : null}
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 {deviceTransferMode === 'restore' && (
                   <TouchableOpacity
-                    testID="submit-event-arena-device-restore"
+                    testID="submit-saved-data-device-restore"
                     accessibilityRole="button"
-                    onPress={() => { void restoreEventArenaTransfer(); }}
+                    onPress={() => { void restoreAllDataTransfer(); }}
                     disabled={deviceTransferBusy}
                     style={{ flex: 1, minHeight: 46, borderRadius: 11, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', opacity: deviceTransferBusy ? 0.65 : 1 }}
                   >
                     <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>
-                      {deviceTransferBusy ? 'RESTORING…' : 'RESTORE ACCOUNT'}
+                      {deviceTransferBusy ? 'CHECKING…' : 'REVIEW RESTORE'}
                     </Text>
                   </TouchableOpacity>
                 )}
+                {deviceTransferMode === 'review' && (
+                  <>
+                    <TouchableOpacity
+                      testID="keep-destination-transfer-data"
+                      accessibilityRole="button"
+                      onPress={() => { void confirmAllDataTransfer('keep-destination'); }}
+                      disabled={deviceTransferBusy}
+                      style={{ flex: 1, minHeight: 46, borderRadius: 11, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', opacity: deviceTransferBusy ? 0.65 : 1 }}
+                    >
+                      <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 11 }}>KEEP THIS PHONE</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      testID="replace-conflicting-transfer-data"
+                      accessibilityRole="button"
+                      onPress={() => { void confirmAllDataTransfer('replace-conflicts'); }}
+                      disabled={deviceTransferBusy}
+                      style={{ flex: 1, minHeight: 46, borderRadius: 11, backgroundColor: colors.destructive, alignItems: 'center', justifyContent: 'center', opacity: deviceTransferBusy ? 0.65 : 1 }}
+                    >
+                      <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 11 }}>REPLACE CONFLICTS</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
                 <TouchableOpacity
-                  testID="close-event-arena-device-transfer"
+                  testID="close-saved-data-device-transfer"
                   accessibilityRole="button"
                   onPress={() => {
                     if (deviceTransferBusy) return;
                     setDeviceTransferMode(null);
                     setDeviceTransferError('');
+                    setDeviceTransferPreview(null);
+                    setDeviceTransferRestoreCode('');
                   }}
                   style={{ flex: 1, minHeight: 46, borderRadius: 11, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
                 >
-                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>DONE</Text>
+                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>
+                    {deviceTransferMode === 'review' ? 'CANCEL' : 'DONE'}
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>

@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { Router } from "express";
+import { createDeviceTransferRouter } from "./deviceTransferRoutes.ts";
 
 type QueryResult = { rows: any[] };
 type PaperDatabase = {
@@ -422,6 +423,7 @@ async function loadPaperSnapshot(db: PaperDatabase, syncId: string, metadata: an
 
 export function createPaperRouter(db: PaperDatabase, requireSchema: Middleware) {
   const router = Router();
+  router.use(createDeviceTransferRouter(db, requireSchema));
 
   router.post("/event-arena/device-pairing", requireSchema, async (req: any, res: any) => {
     const token = req.get("x-event-arena-device-token");

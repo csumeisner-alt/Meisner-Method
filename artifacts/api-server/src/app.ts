@@ -38,6 +38,9 @@ app.use(
 app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 
 app.use(cors({ credentials: true, origin: true }));
+// Device bundles contain saved records and are capped/validated by their
+// transfer endpoints. Give only this route family a bounded larger JSON body.
+app.use("/api/device-transfer", express.json({ limit: "2.5mb" }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
