@@ -361,6 +361,20 @@ test("One-Stock full-card artwork and event details fit phone and desktop layout
           const rect = element.getBoundingClientRect();
           return rect.width > 0 && rect.height > 0 && rect.left >= -1 && rect.right <= window.innerWidth + 1;
         };
+        const podiumHoldingDetails = [1, 2, 3].map((rank) => {
+          const card = get("paper-event-podium-" + rank);
+          const ticker = get("one-stock-podium-ticker-" + rank);
+          const position = get("one-stock-podium-position-" + rank);
+          const cash = get("one-stock-podium-cash-" + rank);
+          return {
+            label: card?.getAttribute("aria-label"),
+            ticker: ticker?.textContent?.trim(),
+            position: position?.textContent?.trim(),
+            cash: cash?.textContent?.trim(),
+            detailBounds: box(get("one-stock-podium-holding-" + rank)),
+            textFits: [ticker, position, cash].map(textFits),
+          };
+        });
         return {
           viewport: window.innerWidth,
           artLabel: art?.getAttribute("aria-label"),
@@ -373,6 +387,7 @@ test("One-Stock full-card artwork and event details fit phone and desktop layout
           dateText: dates?.textContent?.replace(/\\s+/g, " ").trim(),
           participantText: participants?.textContent?.replace(/\\s+/g, " ").trim(),
           eventStatusText: status?.textContent?.replace(/\\s+/g, " ").trim(),
+          podiumHoldingDetails,
           cardContainsHero: Boolean(art && title && art.contains(title)),
           cardContainsPodium: Boolean(art && podium && art.contains(podium)),
           standingsRemainSeparate: Boolean(art && (!standings || !art.contains(standings))),
@@ -394,6 +409,23 @@ test("One-Stock full-card artwork and event details fit phone and desktop layout
       assert.match(layout.dateText, /\d{4}/);
       assert.match(layout.participantText, /competitor/);
       assert.match(layout.eventStatusText, /LIVE CHAMPIONSHIP/);
+      assert.deepEqual(
+        layout.podiumHoldingDetails.map(({ ticker, position, cash }) => [ticker, position, cash]),
+        [
+          ["VERYLONGTICKER", "$107,074.25", "$5,325.75"],
+          ["HOLDING CASH", "$0.00", "$108,100.00"],
+          ["XYZ", "$100,000.00", "$4,600.00"],
+        ],
+        "all One-Stock podium cards show the ticker or cash-only state, position value, and cash",
+      );
+      for (const [index, detail] of layout.podiumHoldingDetails.entries()) {
+        assert.match(detail.label, /competition return[\s\S]*current equity[\s\S]*profit or loss[\s\S]*current holding[\s\S]*position market value[\s\S]*cash remaining/,
+          `rank ${index + 1} includes the holding details in its accessible label`);
+        assert.deepEqual(detail.textFits, [true, true, true],
+          `rank ${index + 1} holding details fit at ${viewport.width}px: ${JSON.stringify(detail)}`);
+        assert.ok(detail.detailBounds.left >= layout.bounds.art.left - 1);
+        assert.ok(detail.detailBounds.right <= layout.bounds.art.right + 1);
+      }
       assert.equal(layout.cardContainsHero, true, "the title and event information sit over the full-card background");
       assert.equal(layout.cardContainsPodium, true, "the background continues behind the podium");
       assert.equal(layout.standingsRemainSeparate, true, "the existing full standings card stays below the hero");

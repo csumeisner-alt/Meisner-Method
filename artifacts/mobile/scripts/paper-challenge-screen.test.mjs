@@ -777,6 +777,8 @@ test("leaderboard names and large values remain readable and announced on compac
   assert.match(renderPodium, /CURRENT EQUITY[\s\S]*?\{money\(entry\.equity\)\}/);
   assert.match(renderPodium, /DOLLAR P\/L[\s\S]*?\{signedMoney\(entry\.profitLoss\)\}/);
   assert.match(renderPodium, /color: profitLossColor\(entry\.profitLoss\)/);
+  assert.match(renderPodium, /isOneStockChallenge && \([\s\S]*?one-stock-podium-holding-\$\{slot\.rank\}[\s\S]*?oneStockHolding\?\.symbol \?\? 'HOLDING CASH'[\s\S]*?\{oneStockPositionValue\}[\s\S]*?\{money\(entry\.cashBalance\)\}/);
+  assert.match(renderPodium, /isOneStockChallenge \? `, current holding \$\{oneStockHolding\?\.symbol \?\? 'cash'\}[\s\S]*?cash remaining \$\{money\(entry\.cashBalance\)\}` : ''/);
   assert.match(renderPodium, /isBearMarketMayhem && isChampion \? 'ANTI-CHAMPION'/);
   assert.doesNotMatch(renderPodium, /RUNNER-UP|THIRD PLACE/);
   assert.match(leaderboard, /THE BIGGEST LOSER WINS/);

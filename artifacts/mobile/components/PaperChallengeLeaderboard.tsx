@@ -1051,6 +1051,10 @@ export function PaperChallengeLeaderboard({
 
   const renderPodiumCard = (slot: (typeof podiumSlots)[number]) => {
     const entry = slot.entry;
+    const oneStockHolding = entry?.holdings[0];
+    const oneStockPositionValue = oneStockHolding
+      ? oneStockHolding.marketValue == null ? '—' : money(oneStockHolding.marketValue)
+      : money(0);
     const change = entry ? competitiveChanges.get(entry.participantToken) : undefined;
     const placesMoved = change?.placesMoved ?? 0;
     const medal = slot.rank === 1
@@ -1074,7 +1078,7 @@ export function PaperChallengeLeaderboard({
           testID={`paper-event-podium-${slot.rank}`}
           accessibilityRole={entry ? 'button' : 'text'}
           accessibilityLabel={entry
-            ? `Rank ${entry.rank} of ${entries.length}${isBearMarketMayhem && entry.rank === 1 ? ', anti-champion' : ''}, ${entry.alias}${entry.isCurrentUser ? ', your score' : ''}, competition return ${returnLabel(entry.returnPercent)}, current equity ${money(entry.equity)}, profit or loss ${signedMoney(entry.profitLoss)}.${change && placesMoved !== 0 ? ` Self-reported rank movement ${placesMoved > 0 ? 'up' : 'down'} ${Math.abs(placesMoved)} ${Math.abs(placesMoved) === 1 ? 'place' : 'places'}.` : ''}`
+            ? `Rank ${entry.rank} of ${entries.length}${isBearMarketMayhem && entry.rank === 1 ? ', anti-champion' : ''}, ${entry.alias}${entry.isCurrentUser ? ', your score' : ''}, competition return ${returnLabel(entry.returnPercent)}, current equity ${money(entry.equity)}, profit or loss ${signedMoney(entry.profitLoss)}${isOneStockChallenge ? `, current holding ${oneStockHolding?.symbol ?? 'cash'}, position market value ${oneStockHolding?.marketValue == null ? oneStockHolding ? 'unavailable' : money(0) : money(oneStockHolding.marketValue)}, cash remaining ${money(entry.cashBalance)}` : ''}.${change && placesMoved !== 0 ? ` Self-reported rank movement ${placesMoved > 0 ? 'up' : 'down'} ${Math.abs(placesMoved)} ${Math.abs(placesMoved) === 1 ? 'place' : 'places'}.` : ''}`
             : `Rank ${slot.rank}, waiting for competitor`}
           disabled={!entry}
           onPress={() => { if (entry) setDetail(entry as LeaderboardEntry); }}
@@ -1171,6 +1175,59 @@ export function PaperChallengeLeaderboard({
                   </Text>
                 </View>
               </View>
+              {isOneStockChallenge && (
+                <View
+                  testID={`one-stock-podium-holding-${slot.rank}`}
+                  style={{
+                    width: '100%',
+                    minWidth: 0,
+                    marginTop: 7,
+                    paddingVertical: 6,
+                    paddingHorizontal: compactPodium ? 6 : 8,
+                    borderRadius: 9,
+                    borderWidth: 1,
+                    borderColor: 'rgba(229,191,99,0.35)',
+                    backgroundColor: 'rgba(8,13,21,0.48)',
+                  }}
+                >
+                  <Text
+                    testID={`one-stock-podium-ticker-${slot.rank}`}
+                    allowFontScaling
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.65}
+                    numberOfLines={1}
+                    style={{ maxWidth: '100%', color: medal.color, fontFamily: 'Inter_700Bold', fontSize: isChampion ? 11 : 10, letterSpacing: 0.6, textAlign: 'center' }}
+                  >
+                    {oneStockHolding?.symbol ?? 'HOLDING CASH'}
+                  </Text>
+                  <View style={{ width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 3, marginTop: 4 }}>
+                    <Text style={{ flexShrink: 0, color: '#C9CED5', fontFamily: 'Inter_600SemiBold', fontSize: 8 }}>POSITION</Text>
+                    <Text
+                      testID={`one-stock-podium-position-${slot.rank}`}
+                      allowFontScaling
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.6}
+                      numberOfLines={1}
+                      style={{ flex: 1, minWidth: 0, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 9, textAlign: 'right' }}
+                    >
+                      {oneStockPositionValue}
+                    </Text>
+                  </View>
+                  <View style={{ width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 3, marginTop: 2 }}>
+                    <Text style={{ flexShrink: 0, color: '#C9CED5', fontFamily: 'Inter_600SemiBold', fontSize: 8 }}>CASH</Text>
+                    <Text
+                      testID={`one-stock-podium-cash-${slot.rank}`}
+                      allowFontScaling
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.6}
+                      numberOfLines={1}
+                      style={{ flex: 1, minWidth: 0, color: colors.foreground, fontFamily: 'Inter_700Bold', fontSize: 9, textAlign: 'right' }}
+                    >
+                      {money(entry.cashBalance)}
+                    </Text>
+                  </View>
+                </View>
+              )}
               {change && placesMoved !== 0 && (
                 <Text style={{ color: placesMoved > 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_600SemiBold', fontSize: 9, marginTop: 4 }}>
                   {placesMoved > 0 ? '↑' : '↓'} {Math.abs(placesMoved)} {Math.abs(placesMoved) === 1 ? 'place' : 'places'}
