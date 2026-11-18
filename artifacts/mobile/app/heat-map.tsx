@@ -4,6 +4,7 @@ import {
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions,
 } from 'react-native';
 import { Gesture, GestureDetector, type GestureType } from 'react-native-gesture-handler';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useFocusEffect, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -686,6 +687,7 @@ export default function HeatMapScreen() {
   const [customReorderAnnouncement, setCustomReorderAnnouncement] = useState('');
   const [draggingSymbol, setDraggingSymbol] = useState<string | null>(null);
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
+  const [addTickerOpen, setAddTickerOpen] = useState(false);
   const customSymbolsRef = useRef(customSymbols);
   const persistedCustomSymbolsRef = useRef<string[]>([]);
   const customSymbolsWriteQueue = useRef<Promise<void>>(Promise.resolve());
@@ -892,13 +894,27 @@ export default function HeatMapScreen() {
     && instrumentSearchStates.every(({ query }) => query.isError);
   const instrumentSearchIsSettled = isCurrentCustomInstrumentSearch
     && instrumentSearchStates.every(({ query }) => !query.isFetching);
-  const customAssetChoices = searchText.length > 0
+  const matchingCustomAssetChoices = searchText.length > 0
     ? searchCustomHeatMapAssets(searchText)
     : customAssetType === 'stocks'
       ? []
       : CUSTOM_HEAT_MAP_ASSETS[customAssetType].map((asset) => ({ asset, assetType: customAssetType }));
+  const customAssetChoices = matchingCustomAssetChoices.filter(({ assetType }) => assetType === customAssetType);
   const visibleInstrumentSuggestions = customInstrumentSuggestions.filter(
-    (suggestion) => !customAssetChoices.some(({ asset }) => asset.symbol === suggestion.symbol),
+    (suggestion) => (
+      suggestion.category === (
+        customAssetType === 'etfs'
+          ? 'etf'
+          : customAssetType === 'commodities'
+            ? 'commodity'
+            : customAssetType === 'futures'
+              ? 'future'
+              : customAssetType === 'cryptocurrency'
+                ? 'cryptocurrency'
+                : ''
+      )
+      && !customAssetChoices.some(({ asset }) => asset.symbol === suggestion.symbol)
+    ),
   );
   const params = useMemo(() => ({
     category,
@@ -915,6 +931,28 @@ export default function HeatMapScreen() {
       queryKey: getGetMarketHeatMapQueryKey(queryKeyParams),
     },
   });
+  const savedCustomMapAssets = useMemo(() => customSymbols.map((symbol) => {
+    const quote = mapQuery.data?.quotes.find((item) => item.symbol === symbol);
+    const catalogMatch = Object.entries(CUSTOM_HEAT_MAP_ASSETS)
+      .flatMap(([assetType, assets]) => assets.map((asset) => ({ assetType, asset })))
+      .find(({ asset }) => asset.symbol === symbol);
+    const assetType = quote?.assetType
+      ?? (catalogMatch ? catalogMatch.assetType : 'stock');
+    const categoryLabel = assetType === 'stock'
+      ? 'Stock'
+      : assetType === 'etf'
+        ? 'ETF'
+        : assetType === 'commodity'
+          ? 'Commodity'
+          : assetType === 'future'
+            ? 'Future'
+            : 'Crypto';
+    return {
+      symbol,
+      name: quote?.name ?? catalogMatch?.asset.name ?? symbol,
+      categoryLabel,
+    };
+  }), [customSymbols, mapQuery.data?.quotes]);
   const mapQueryRefetch = useRef(mapQuery.refetch);
   mapQueryRefetch.current = mapQuery.refetch;
   const refetchHeatMap = useCallback(async () => {
@@ -1211,10 +1249,6 @@ export default function HeatMapScreen() {
     const delays = getHeatMapRevealDelays(symbols.length, HEX_REVEAL_SPREAD_MS);
     return new Map(symbols.map((symbol, index) => [symbol, delays[index] ?? 0]));
   }, [tileSymbolKey]);
-  const editFallbackSymbols = category === 'custom' && isEditingCustomMap && !responseMatches
-    ? customSymbols
-    : [];
-
   const contentWidth = Math.max(0, viewportWidth - 36);
   const tileWidth = getHeatMapTileWidth(contentWidth);
   const tileHeight = tileWidth * Math.sqrt(3) / 2;
@@ -1230,6 +1264,7 @@ export default function HeatMapScreen() {
   const canAddCustomSymbol = storageReady
     && !storageLoadError
     && Boolean(symbolInput.trim())
+    && !customSymbols.includes(symbolInput.trim().toUpperCase())
     && !validateSymbol.isPending
     && customSymbols.length < MAX_CUSTOM_HEAT_MAP_SYMBOLS;
 
@@ -1322,7 +1357,6 @@ export default function HeatMapScreen() {
       setFormError(`A custom map can contain at most ${MAX_CUSTOM_HEAT_MAP_SYMBOLS} tickers.`); return;
     }
     setFormError('');
-    setSymbolInput(symbol);
     Keyboard.dismiss();
     if (isSupportedCustomMapCommoditySymbol(symbol)) {
       const next = appendCustomHeatMapSymbolInSavedOrder(customSymbols, symbol);
@@ -1330,8 +1364,7 @@ export default function HeatMapScreen() {
       catch { setFormError(`Couldn't save ${symbol} on this device. Try again.`); return; }
       awardCustomMapMilestones(next.length);
       setLastRemovedTicker(null);
-      setSymbolInput('');
-      setCustomBatchFeedback({ message: `Added ${symbol} to your custom map.`, kind: 'success' });
+      setCustomBatchFeedback({ message: `Added ${symbol} to your Watch Map.`, kind: 'success' });
       return;
     }
     try {
@@ -1342,8 +1375,8 @@ export default function HeatMapScreen() {
         catch { setFormError(`Couldn't save ${quote.symbol} on this device. Try again.`); return; }
         awardCustomMapMilestones(next.length);
         setLastRemovedTicker(null);
+        setCustomBatchFeedback({ message: `Added ${quote.symbol} to your Watch Map.`, kind: 'success' });
       }
-      setSymbolInput('');
     } catch (error) {
       setFormError(`${symbol}: ${getCustomHeatMapValidationFailureReason(error)} It wasn't added.`);
     }
@@ -1638,25 +1671,54 @@ export default function HeatMapScreen() {
           </View>
           <Text style={[styles.summaryNote, { color: colors.mutedForeground }]}>Breadth and average use the {PERIODS.find((item) => item.id === period)?.label} return where available; missing history is excluded.</Text>
 
-          {category === 'custom' && <View style={[styles.customPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={styles.customHeader}>
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Your watch map</Text>
-              {sectors.length === 0 && customSymbols.length > 0 && <TouchableOpacity
-                testID="heat-map-custom-edit"
+          {category === 'custom' && <>
+            <View style={[styles.watchMapControl, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <TouchableOpacity
+                testID="heat-map-add-ticker-open"
                 accessibilityRole="button"
-                accessibilityLabel={isEditingCustomMap ? 'Done editing custom heat map' : 'Edit custom heat map'}
-                accessibilityState={{ selected: isEditingCustomMap }}
-                onPress={() => setIsEditingCustomMap((current) => !current)}
-                style={[styles.editButton, { borderColor: colors.border, backgroundColor: colors.background }]}
+                accessibilityLabel="Add ticker to Watch Map"
+                onPress={() => setAddTickerOpen(true)}
+                style={[styles.watchMapAddButton, { backgroundColor: colors.primary }]}
               >
-                <MaterialCommunityIcons name={isEditingCustomMap ? 'check' : 'pencil-outline'} size={13} color={colors.primary} />
-                <Text style={[styles.editButtonText, { color: colors.primary }]}>{isEditingCustomMap ? 'Done' : 'Edit'}</Text>
-              </TouchableOpacity>}
+                <MaterialCommunityIcons name="plus" size={20} color={colors.primaryForeground} />
+                <Text style={[styles.watchMapAddText, { color: colors.primaryForeground }]}>Add Ticker</Text>
+              </TouchableOpacity>
+              <View
+                testID="heat-map-custom-count"
+                accessible
+                accessibilityRole="text"
+                accessibilityLabel={`${customSymbols.length} of ${MAX_CUSTOM_HEAT_MAP_SYMBOLS} assets saved`}
+                style={[styles.watchMapCount, { borderColor: colors.border, backgroundColor: colors.background }]}
+              >
+                <Text style={[styles.watchMapCountText, { color: colors.foreground }]}>{customSymbols.length}/{MAX_CUSTOM_HEAT_MAP_SYMBOLS}</Text>
+              </View>
+              <TouchableOpacity
+                testID="heat-map-manage-open"
+                accessibilityRole="button"
+                accessibilityLabel="Manage Watch Map assets"
+                onPress={() => setAddTickerOpen(true)}
+                style={[styles.watchMapManageButton, { borderColor: colors.border, backgroundColor: colors.background }]}
+              >
+                <MaterialCommunityIcons name="playlist-edit" size={19} color={colors.primary} />
+              </TouchableOpacity>
             </View>
-            <Text style={[styles.customHint, { color: colors.mutedForeground }]}>Build a mixed map of stocks, ETFs, commodities, futures, and crypto. {customSymbols.length}/{MAX_CUSTOM_HEAT_MAP_SYMBOLS}; saved on this device.</Text>
+            {lastRemovedTicker && !addTickerOpen && <View style={[styles.undoBanner, { backgroundColor: colors.card, borderColor: colors.border, marginTop: -4, marginBottom: 8 }]}>
+              <Text style={[styles.undoMessage, { color: colors.foreground }]}>{lastRemovedTicker.symbol} removed</Text>
+              <TouchableOpacity
+                testID="heat-map-custom-undo"
+                accessibilityRole="button"
+                accessibilityLabel={`Undo removing ${lastRemovedTicker.symbol}`}
+                disabled={removingSymbol !== null || validateSymbol.isPending}
+                onPress={() => void restoreLastRemovedTicker()}
+                style={[styles.undoButton, { borderColor: colors.primary, opacity: removingSymbol !== null || validateSymbol.isPending ? 0.55 : 1 }]}
+              >
+                <MaterialCommunityIcons name="undo-variant" size={14} color={colors.primary} />
+                <Text style={[styles.undoButtonText, { color: colors.primary }]}>Undo</Text>
+              </TouchableOpacity>
+            </View>}
             {customSymbols.length > 1 && <Text
               testID="heat-map-drag-reorder-hint"
-              style={[styles.editFallbackHint, { color: colors.mutedForeground }]}
+              style={[styles.editFallbackHint, { color: colors.mutedForeground, marginTop: 5, marginBottom: 8 }]}
             >
               {returnSort === 'default'
                 ? 'Long-press a hexagon and drag it to change its position.'
@@ -1665,10 +1727,45 @@ export default function HeatMapScreen() {
             {customReorderAnnouncement !== '' && <Text
               testID="heat-map-custom-reorder-announcement"
               accessibilityLiveRegion="polite"
-              style={[styles.editFallbackHint, { color: colors.mutedForeground }]}
+              style={[styles.editFallbackHint, { color: colors.mutedForeground, marginBottom: 8 }]}
             >
               {customReorderAnnouncement}
             </Text>}
+            <Modal visible={addTickerOpen} transparent animationType="slide" onRequestClose={() => { Keyboard.dismiss(); setAddTickerOpen(false); }}>
+              <View testID="heat-map-add-ticker-modal-root" style={styles.addTickerModalRoot}>
+                <Pressable
+                  testID="heat-map-add-ticker-backdrop"
+                  accessibilityRole="button"
+                  accessibilityLabel="Close Add to Watch Map"
+                  onPress={() => { Keyboard.dismiss(); setAddTickerOpen(false); }}
+                  style={styles.addTickerBackdrop}
+                />
+                <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={0} style={styles.addTickerKeyboard}>
+                  <View testID="heat-map-add-ticker-modal" style={[styles.addTickerSheet, { backgroundColor: colors.background, borderColor: colors.border, paddingTop: Math.max(insets.top, 12) + 8, paddingBottom: Math.max(insets.bottom, 14) }]}>
+                    <View style={styles.addTickerHeader}>
+                      <View style={styles.addTickerHeaderCopy}>
+                        <Text style={[styles.addTickerTitle, { color: colors.heading }]}>Add to Watch Map</Text>
+                        <Text style={[styles.addTickerSubtitle, { color: colors.mutedForeground }]}>Find and track the markets that matter to you.</Text>
+                      </View>
+                      <TouchableOpacity
+                        testID="heat-map-add-ticker-close"
+                        accessibilityRole="button"
+                        accessibilityLabel="Close Add to Watch Map"
+                        onPress={() => { Keyboard.dismiss(); setAddTickerOpen(false); }}
+                        style={[styles.addTickerClose, { borderColor: colors.border, backgroundColor: colors.card }]}
+                      >
+                        <MaterialCommunityIcons name="close" size={20} color={colors.foreground} />
+                      </TouchableOpacity>
+                    </View>
+                    <ScrollView
+                      testID="heat-map-add-ticker-scroll"
+                      style={styles.addTickerScroll}
+                      contentContainerStyle={styles.addTickerScrollContent}
+                      keyboardShouldPersistTaps="handled"
+                      keyboardDismissMode="on-drag"
+                      showsVerticalScrollIndicator
+                    >
+          <View style={styles.addTickerBody}>
             {lastRemovedTicker && <View testID="heat-map-custom-undo-banner" style={[styles.undoBanner, { backgroundColor: colors.background, borderColor: colors.border }]}>
               <Text style={[styles.undoMessage, { color: colors.foreground }]}>{lastRemovedTicker.symbol} removed</Text>
               <TouchableOpacity
@@ -1707,22 +1804,21 @@ export default function HeatMapScreen() {
             </ScrollView>
             <Text style={[styles.searchHint, styles.customAssetTypeHint, { color: colors.mutedForeground }]}>
               {searchText
-                ? 'Matching instruments appear across all types. Choose a type above to browse.'
+                ? `Searching ${CUSTOM_HEAT_MAP_ASSET_TYPES.find((item) => item.id === customAssetType)?.label.toLowerCase() ?? 'markets'} by name or ticker.`
                 : `Search by name or ticker, or browse supported ${CUSTOM_HEAT_MAP_ASSET_TYPES.find((item) => item.id === customAssetType)?.label.toLowerCase()}.`}
             </Text>
             <View style={styles.addRow}><TextInput testID="heat-map-custom-input" accessibilityLabel="Search supported instruments or enter a ticker" value={symbolInput} editable={storageReady && !storageLoadError && !isAddingSelectedAssets} onFocus={() => setIsEditingCustomMap(false)} onChangeText={(value) => { setSymbolInput(value); setFormError(''); setCustomBatchFeedback(null); }}
-              placeholder="Search name or enter ticker" placeholderTextColor={colors.mutedForeground} autoCapitalize="none" autoCorrect={false} maxLength={80}
+              placeholder="Search company, asset name, or ticker..." placeholderTextColor={colors.mutedForeground} autoCapitalize="none" autoCorrect={false} maxLength={80}
               returnKeyType="done" onSubmitEditing={() => void addSymbol()} style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.input }]} />
-              <TouchableOpacity testID="heat-map-custom-add" accessibilityRole="button" accessibilityLabel="Add ticker to custom map"
+              <TouchableOpacity testID="heat-map-custom-add" accessibilityRole="button" accessibilityLabel={customSymbols.includes(symbolInput.trim().toUpperCase()) ? `${symbolInput.trim().toUpperCase()} already added` : 'Add entered ticker to Watch Map'}
                 disabled={!canAddCustomSymbol || isAddingSelectedAssets} onPress={() => void addSymbol()}
-                style={[styles.addButton, { backgroundColor: colors.primary, opacity: canAddCustomSymbol && !isAddingSelectedAssets ? 1 : 0.55 }]}>
-                {validateSymbol.isPending ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : <MaterialCommunityIcons name="plus" size={20} color={colors.primaryForeground} />}
+                style={[styles.addTickerDirectButton, { backgroundColor: colors.primary, opacity: canAddCustomSymbol && !isAddingSelectedAssets ? 1 : 0.55 }]}>
+                {validateSymbol.isPending
+                  ? <ActivityIndicator size="small" color={colors.primaryForeground} />
+                  : <><MaterialCommunityIcons name={customSymbols.includes(symbolInput.trim().toUpperCase()) ? 'check' : 'plus'} size={17} color={colors.primaryForeground} /><Text style={[styles.addTickerDirectText, { color: colors.primaryForeground }]}>{customSymbols.includes(symbolInput.trim().toUpperCase()) ? 'Added' : 'Add'}</Text></>}
               </TouchableOpacity></View>
-            {(customAssetType !== 'stocks' || searchText.length > 0) && <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
+            {customAssetType !== 'stocks' && <View
               style={[styles.suggestionsPanel, { backgroundColor: colors.background, borderColor: colors.border }]}
-              contentContainerStyle={styles.customAssetChoices}
               testID="heat-map-custom-asset-choices"
             >
               {customAssetChoices.map((asset) => {
@@ -1731,37 +1827,63 @@ export default function HeatMapScreen() {
                 const assetTypeLabel = CUSTOM_HEAT_MAP_ASSET_TYPES.find((item) => item.id === asset.assetType)?.label ?? 'Instrument';
                 const selectionAtLimit = !selected
                   && customSymbols.length + selectedCustomAssetSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS;
-                return <TouchableOpacity
+                const canAddAsset = !alreadyAdded
+                  && storageReady
+                  && !storageLoadError
+                  && customSymbols.length < MAX_CUSTOM_HEAT_MAP_SYMBOLS
+                  && !isAddingSelectedAssets
+                  && !validateSymbol.isPending;
+                const cryptoLogoCode = asset.assetType === 'cryptocurrency'
+                  ? getHeatMapCryptoLogoCode(asset.asset.symbol)
+                  : null;
+                return <View
                   key={`${asset.assetType}-${asset.asset.symbol}`}
-                  testID={`heat-map-custom-pick-${asset.asset.symbol}`}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: selected, disabled: alreadyAdded || selectionAtLimit || isAddingSelectedAssets }}
-                  accessibilityLabel={`${alreadyAdded ? 'Already added' : selected ? 'Deselect' : 'Select'} ${asset.asset.name}, ${asset.asset.symbol}, ${assetTypeLabel}`}
-                  disabled={alreadyAdded || selectionAtLimit || isAddingSelectedAssets}
-                  onPress={() => toggleCustomAssetSelection(asset.asset.symbol)}
-                  style={[
-                    styles.customAssetChoice,
-                    {
-                      borderColor: alreadyAdded ? colors.border : selected ? colors.primary : colors.border,
-                      backgroundColor: alreadyAdded ? colors.secondary : selected ? colors.primary : colors.card,
-                      opacity: alreadyAdded || selectionAtLimit || isAddingSelectedAssets ? 0.65 : 1,
-                    },
-                  ]}
+                  style={[styles.customAssetRow, { borderBottomColor: colors.border }]}
                 >
-                  <Text numberOfLines={1} style={[styles.customAssetChoiceName, { color: selected ? colors.primaryForeground : colors.foreground }]}>{asset.asset.name}</Text>
-                  <Text style={[styles.customAssetChoiceType, { color: selected ? colors.primaryForeground : colors.mutedForeground }]}>{assetTypeLabel}</Text>
-                  <View style={styles.customAssetChoiceFooter}>
-                    <Text style={[styles.customAssetChoiceSymbol, { color: selected ? colors.primaryForeground : colors.primary }]}>{alreadyAdded ? 'Added' : selected ? 'Selected' : asset.asset.symbol}</Text>
-                    {!alreadyAdded && <MaterialCommunityIcons
-                      name={selected ? 'checkbox-marked' : 'checkbox-blank-outline'}
-                      size={15}
-                      color={selected ? colors.primaryForeground : colors.primary}
-                    />}
+                  {cryptoLogoCode
+                    ? <HeatMapCryptoLogo code={cryptoLogoCode} testID={`heat-map-curated-crypto-logo-${asset.asset.symbol}`} />
+                    : <View style={[styles.assetResultGlyph, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+                        <MaterialCommunityIcons
+                          name={asset.assetType === 'etfs' ? 'chart-box-outline' : asset.assetType === 'futures' ? 'chart-timeline-variant' : 'gold'}
+                          size={18}
+                          color={colors.primary}
+                        />
+                      </View>}
+                  <View style={styles.suggestionCopy}>
+                    <Text numberOfLines={1} style={[styles.suggestionName, { color: colors.foreground }]}>{asset.asset.name}</Text>
+                    <Text numberOfLines={1} style={[styles.suggestionExchange, { color: colors.mutedForeground }]}>{asset.asset.symbol} · {assetTypeLabel}</Text>
                   </View>
-                </TouchableOpacity>;
+                  <TouchableOpacity
+                    testID={`heat-map-custom-add-asset-${asset.asset.symbol}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={alreadyAdded ? `${asset.asset.symbol} already added` : `Add ${asset.asset.name}, ${asset.asset.symbol}`}
+                    accessibilityState={{ disabled: !canAddAsset }}
+                    disabled={!canAddAsset}
+                    onPress={() => void addSymbol(asset.asset.symbol)}
+                    style={[styles.assetAddButton, { borderColor: alreadyAdded ? colors.border : colors.primary, backgroundColor: alreadyAdded ? colors.secondary : colors.primary, opacity: canAddAsset || alreadyAdded ? 1 : 0.55 }]}
+                  >
+                    {alreadyAdded
+                      ? <MaterialCommunityIcons name="check" size={15} color={colors.mutedForeground} />
+                      : <MaterialCommunityIcons name="plus" size={15} color={colors.primaryForeground} />}
+                    <Text style={[styles.assetAddText, { color: alreadyAdded ? colors.mutedForeground : colors.primaryForeground }]}>{alreadyAdded ? 'Added' : 'Add'}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    testID={`heat-map-custom-pick-${asset.asset.symbol}`}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: selected, disabled: alreadyAdded || selectionAtLimit || isAddingSelectedAssets }}
+                    accessibilityLabel={`${alreadyAdded ? 'Already added' : selected ? 'Deselect' : 'Select'} ${asset.asset.name}, ${asset.asset.symbol}, ${assetTypeLabel} for batch adding`}
+                    disabled={alreadyAdded || selectionAtLimit || isAddingSelectedAssets}
+                    onPress={() => toggleCustomAssetSelection(asset.asset.symbol)}
+                    style={[styles.assetSelectButton, { opacity: alreadyAdded || selectionAtLimit || isAddingSelectedAssets ? 0.55 : 1 }]}
+                  >
+                    <MaterialCommunityIcons name={selected ? 'checkbox-marked' : 'checkbox-blank-outline'} size={19} color={selected ? colors.primary : colors.mutedForeground} />
+                  </TouchableOpacity>
+                </View>;
               })}
-              {customAssetChoices.length === 0 && <Text style={[styles.searchHint, { color: colors.mutedForeground }]}>No supported instruments match. You can still enter a ticker.</Text>}
-            </ScrollView>}
+              {customAssetChoices.length === 0 && <Text style={[styles.searchHint, { color: colors.mutedForeground }]}>
+                {searchText ? 'No supported matches in this category. Try another name or ticker.' : 'No curated instruments are available in this category.'}
+              </Text>}
+            </View>}
             {selectedCustomAssetSymbols.length > 0 && <View style={styles.batchAddRow}>
               <Text style={[styles.batchAddHint, { color: colors.mutedForeground }]}>
                 {selectedCustomAssetSymbols.length} selected · {Math.max(0, MAX_CUSTOM_HEAT_MAP_SYMBOLS - customSymbols.length - selectedCustomAssetSymbols.length)} spaces left
@@ -1788,7 +1910,7 @@ export default function HeatMapScreen() {
                 </Text>
               </TouchableOpacity>
             </View>}
-            {isCustomSearchInput && <View testID="heat-map-custom-suggestions" style={[styles.suggestionsPanel, { backgroundColor: colors.background, borderColor: colors.border }]}>
+            {customAssetType === 'stocks' && isCustomSearchInput && <View testID="heat-map-custom-suggestions" style={[styles.suggestionsPanel, { backgroundColor: colors.background, borderColor: colors.border }]}>
               <Text style={[styles.stockSearchHeading, { color: colors.mutedForeground }]}>Stocks</Text>
               {customSuggestions.map((suggestion, index) => {
                 const { alreadyAdded, selected, selectionAtLimit } = getStockSearchSuggestionSelectionState(
@@ -1812,14 +1934,17 @@ export default function HeatMapScreen() {
                     onPress={() => void addSymbol(suggestion.symbol)}
                     style={styles.stockSuggestionAdd}
                   >
+                    <View style={[styles.assetResultGlyph, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+                      <MaterialCommunityIcons name="chart-line" size={18} color={colors.primary} />
+                    </View>
                     <View style={styles.suggestionCopy}>
                       <Text numberOfLines={1} style={[styles.suggestionName, { color: colors.foreground }]}>{suggestion.name}</Text>
-                      <Text numberOfLines={1} style={[styles.suggestionExchange, { color: colors.mutedForeground }]}>{suggestion.exchange}</Text>
+                      <Text numberOfLines={1} style={[styles.suggestionExchange, { color: colors.mutedForeground }]}>Stock · {suggestion.exchange}</Text>
                     </View>
                     <Text style={[styles.suggestionSymbol, { color: alreadyAdded ? colors.mutedForeground : colors.primary }]}>
                       {alreadyAdded ? 'Added' : suggestion.symbol}
                     </Text>
-                    {!alreadyAdded && <MaterialCommunityIcons name="plus" size={17} color={colors.primary} />}
+                    {!alreadyAdded && <><MaterialCommunityIcons name="plus" size={16} color={colors.primary} /><Text style={[styles.resultAddLabel, { color: colors.primary }]}>Add</Text></>}
                   </TouchableOpacity>
                   {!alreadyAdded && <TouchableOpacity
                     testID={`heat-map-custom-select-${suggestion.symbol}`}
@@ -1849,10 +1974,20 @@ export default function HeatMapScreen() {
                 {customSearchFeedback.message}
               </Text>}
             </View>}
-            {isCustomSearchInput && <View testID="heat-map-custom-instrument-suggestions" style={[styles.suggestionsPanel, { backgroundColor: colors.background, borderColor: colors.border }]}>
-              <Text style={[styles.stockSearchHeading, { color: colors.mutedForeground }]}>ETFs, commodities, futures & crypto</Text>
+            {customAssetType !== 'stocks' && isCustomSearchInput && <View testID="heat-map-custom-instrument-suggestions" style={[styles.suggestionsPanel, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <Text style={[styles.stockSearchHeading, { color: colors.mutedForeground }]}>{CUSTOM_HEAT_MAP_ASSET_TYPES.find((item) => item.id === customAssetType)?.label}</Text>
               {visibleInstrumentSuggestions.map((suggestion, index) => {
                 const alreadyAdded = customSymbols.includes(suggestion.symbol);
+                const cryptoLogoCode = suggestion.category === 'cryptocurrency'
+                  ? getHeatMapCryptoLogoCode(suggestion.symbol)
+                  : null;
+                const instrumentDisplay = suggestion.category === 'commodity' || suggestion.category === 'future'
+                  ? getHeatMapInstrumentDisplay({
+                      symbol: suggestion.symbol,
+                      name: suggestion.name,
+                      assetType: suggestion.category,
+                    })
+                  : null;
                 const categoryLabel = suggestion.category === 'etf'
                   ? 'ETF'
                   : suggestion.category === 'commodity'
@@ -1869,12 +2004,19 @@ export default function HeatMapScreen() {
                   onPress={() => void addSymbol(suggestion.symbol)}
                   style={[styles.suggestionRow, index < visibleInstrumentSuggestions.length - 1 && { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth }, alreadyAdded && { opacity: 0.65 }]}
                 >
+                  {cryptoLogoCode
+                    ? <HeatMapCryptoLogo code={cryptoLogoCode} testID={`heat-map-search-crypto-logo-${suggestion.symbol}`} />
+                    : instrumentDisplay
+                      ? <HeatMapInstrumentIcon kind={instrumentDisplay.icon} colors={colors} testID={`heat-map-search-instrument-icon-${suggestion.symbol}`} />
+                      : <View style={[styles.assetResultGlyph, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+                          <MaterialCommunityIcons name={suggestion.category === 'etf' ? 'chart-box-outline' : 'finance'} size={18} color={colors.primary} />
+                        </View>}
                   <View style={styles.suggestionCopy}>
                     <Text numberOfLines={1} style={[styles.suggestionName, { color: colors.foreground }]}>{suggestion.name}</Text>
                     <Text numberOfLines={1} style={[styles.suggestionExchange, { color: colors.mutedForeground }]}>{categoryLabel} · {suggestion.exchange}</Text>
                   </View>
-                  <Text style={[styles.suggestionSymbol, { color: colors.primary }]}>{alreadyAdded ? 'Added' : suggestion.symbol}</Text>
-                  {!alreadyAdded && <MaterialCommunityIcons name="plus" size={17} color={colors.primary} />}
+                  <Text style={[styles.suggestionSymbol, { color: alreadyAdded ? colors.mutedForeground : colors.primary }]}>{alreadyAdded ? 'Added' : suggestion.symbol}</Text>
+                  {!alreadyAdded && <><MaterialCommunityIcons name="plus" size={16} color={colors.primary} /><Text style={[styles.resultAddLabel, { color: colors.primary }]}>Add</Text></>}
                 </TouchableOpacity>;
               })}
               {visibleInstrumentSuggestions.length === 0 && instrumentSearchIsFetching && <View style={styles.searchStatus}>
@@ -1934,22 +2076,58 @@ export default function HeatMapScreen() {
             >
               {customBatchFeedback.message}
             </Text>}
-            {!!editFallbackSymbols.length && <View style={styles.editFallbackList}>
-              <Text style={[styles.editFallbackHint, { color: colors.mutedForeground }]}>No visible hexagon for these tickers. Tap to remove:</Text>
-              <View style={styles.editFallbackItems}>{editFallbackSymbols.map((symbol) => <TouchableOpacity
-                key={symbol}
-                testID={`heat-map-remove-unavailable-${symbol}`}
-                accessibilityRole="button"
-                accessibilityLabel={`Remove ${symbol} from your custom heat map`}
-                disabled={removingSymbol !== null}
-                onPress={() => void removeSymbol(symbol)}
-                style={[styles.editFallbackItem, { borderColor: colors.border, opacity: removingSymbol === symbol ? 0.6 : 1 }]}
-              >
-                <Text style={[styles.editFallbackTicker, { color: colors.foreground }]}>{symbol}</Text>
-                <MaterialCommunityIcons name="close" size={13} color={colors.sellColor} />
-              </TouchableOpacity>)}</View>
-            </View>}
-          </View>}
+            <View testID="heat-map-my-watch-map" style={[styles.myWatchMap, { borderTopColor: colors.border }]}>
+              <View style={styles.myWatchMapHeader}>
+                <View>
+                  <Text style={[styles.myWatchMapTitle, { color: colors.foreground }]}>My Watch Map</Text>
+                  <Text style={[styles.myWatchMapHint, { color: colors.mutedForeground }]}>Saved on this device · updates the hexagon map instantly</Text>
+                </View>
+                <Text testID="heat-map-my-watch-map-count" style={[styles.myWatchMapCount, { color: colors.primary }]}>
+                  {customSymbols.length}/{MAX_CUSTOM_HEAT_MAP_SYMBOLS}
+                </Text>
+              </View>
+              {customSymbols.length >= MAX_CUSTOM_HEAT_MAP_SYMBOLS && <Text testID="heat-map-capacity-message" style={[styles.capacityMessage, { color: colors.gold }]}>
+                Your map is full. Remove an asset before adding another.
+              </Text>}
+              {savedCustomMapAssets.length === 0
+                ? <Text style={[styles.searchHint, styles.savedMapEmpty, { color: colors.mutedForeground }]}>Your saved assets will appear here.</Text>
+                : savedCustomMapAssets.map((asset) => <View
+                    key={asset.symbol}
+                    testID={`heat-map-saved-asset-${asset.symbol}`}
+                    style={[styles.savedAssetRow, { borderTopColor: colors.border }]}
+                  >
+                    <View style={[styles.assetResultGlyph, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+                      <MaterialCommunityIcons
+                        name={asset.categoryLabel === 'Crypto' ? 'bitcoin' : asset.categoryLabel === 'Future' ? 'chart-timeline-variant' : asset.categoryLabel === 'Commodity' ? 'gold' : 'chart-line'}
+                        size={18}
+                        color={colors.primary}
+                      />
+                    </View>
+                    <View style={styles.suggestionCopy}>
+                      <Text numberOfLines={1} style={[styles.suggestionName, { color: colors.foreground }]}>{asset.name}</Text>
+                      <Text numberOfLines={1} style={[styles.suggestionExchange, { color: colors.mutedForeground }]}>{asset.symbol} · {asset.categoryLabel}</Text>
+                    </View>
+                    <TouchableOpacity
+                      testID={`heat-map-remove-unavailable-${asset.symbol}`}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove ${asset.name}, ${asset.symbol}, from My Watch Map`}
+                      disabled={removingSymbol !== null}
+                      onPress={() => void removeSymbol(asset.symbol)}
+                      style={[styles.savedAssetRemove, { borderColor: colors.border, opacity: removingSymbol === asset.symbol ? 0.55 : 1 }]}
+                    >
+                      {removingSymbol === asset.symbol
+                        ? <ActivityIndicator size="small" color={colors.sellColor} />
+                        : <MaterialCommunityIcons name="minus-circle-outline" size={19} color={colors.sellColor} />}
+                    </TouchableOpacity>
+                  </View>)}
+            </View>
+          </View>
+                    </ScrollView>
+                  </View>
+                </KeyboardAvoidingView>
+              </View>
+            </Modal>
+          </>}
 
           {!!staleQuotes.length && <View style={[styles.notice, styles.staleNotice, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <MaterialCommunityIcons name="clock-alert-outline" size={15} color={colors.gold} />
@@ -2309,21 +2487,52 @@ const styles = StyleSheet.create({
   summaryCount: { alignItems: 'center', minWidth: 52 },
   countValue: { fontFamily: 'Inter_700Bold', fontSize: 14, marginTop: 5 },
   summaryNote: { fontFamily: 'Inter_400Regular', fontSize: 9, lineHeight: 14, textAlign: 'right', marginTop: 7, marginBottom: 15 },
-  customPanel: { borderWidth: 1, borderRadius: 15, padding: 14, marginBottom: 16 },
-  customHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  sectionTitle: { fontFamily: 'Inter_700Bold', fontSize: 15 },
-  customHint: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 4 },
-  customAssetTypeRail: { marginTop: 12, flexGrow: 0 },
-  customAssetTypeOptions: { gap: 7, paddingRight: 2 },
-  customAssetTypeOption: { minHeight: 31, borderWidth: 1, borderRadius: 16, paddingHorizontal: 11, alignItems: 'center', justifyContent: 'center' },
-  customAssetTypeText: { fontFamily: 'Inter_600SemiBold', fontSize: 10 },
-  customAssetTypeHint: { marginTop: 2, paddingHorizontal: 0, paddingVertical: 5 },
+  watchMapControl: { minHeight: 54, borderWidth: 1, borderRadius: 14, padding: 6, marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  watchMapAddButton: { flex: 1, minHeight: 42, borderRadius: 10, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
+  watchMapAddText: { fontFamily: 'Inter_700Bold', fontSize: 13 },
+  watchMapCount: { minWidth: 57, height: 38, borderWidth: 1, borderRadius: 10, paddingHorizontal: 7, alignItems: 'center', justifyContent: 'center' },
+  watchMapCountText: { fontFamily: 'Inter_700Bold', fontSize: 12 },
+  watchMapManageButton: { width: 42, height: 38, borderWidth: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  addTickerModalRoot: { flex: 1, alignItems: 'center', justifyContent: Platform.OS === 'web' ? 'center' : 'flex-end' },
+  addTickerBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.72)' },
+  addTickerKeyboard: { width: '100%', maxWidth: 760, height: Platform.OS === 'web' ? '92%' : '96%' },
+  addTickerSheet: { flex: 1, borderWidth: 1, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: Platform.OS === 'web' ? 24 : 0, borderBottomRightRadius: Platform.OS === 'web' ? 24 : 0, overflow: 'hidden', elevation: 18 },
+  addTickerHeader: { minHeight: 78, paddingHorizontal: 18, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  addTickerHeaderCopy: { flex: 1, minWidth: 0 },
+  addTickerTitle: { fontFamily: 'Inter_700Bold', fontSize: 21, letterSpacing: -0.35 },
+  addTickerSubtitle: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 3 },
+  addTickerClose: { width: 44, height: 44, borderWidth: 1, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  addTickerScroll: { flex: 1 },
+  addTickerScrollContent: { paddingHorizontal: 18, paddingBottom: 22 },
+  addTickerBody: { paddingBottom: 10 },
+  customAssetTypeRail: { marginTop: 2, flexGrow: 0, marginBottom: 5 },
+  customAssetTypeOptions: { gap: 7, paddingRight: 4 },
+  customAssetTypeOption: { minHeight: 42, borderWidth: 1, borderRadius: 12, paddingHorizontal: 13, alignItems: 'center', justifyContent: 'center' },
+  customAssetTypeText: { fontFamily: 'Inter_600SemiBold', fontSize: 11 },
+  customAssetTypeHint: { marginTop: 2, paddingHorizontal: 0, paddingVertical: 4, fontSize: 11 },
   customAssetChoices: { gap: 7, padding: 8 },
   customAssetChoice: { width: 150, minHeight: 68, borderWidth: 1, borderRadius: 9, paddingHorizontal: 9, paddingVertical: 7, justifyContent: 'center' },
   customAssetChoiceName: { fontFamily: 'Inter_600SemiBold', fontSize: 10 },
   customAssetChoiceType: { fontFamily: 'Inter_400Regular', fontSize: 8, marginTop: 3 },
   customAssetChoiceSymbol: { fontFamily: 'Inter_700Bold', fontSize: 9, marginTop: 2 },
   customAssetChoiceFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 5 },
+  customAssetRow: { minHeight: 66, borderBottomWidth: StyleSheet.hairlineWidth, paddingHorizontal: 10, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 9 },
+  assetResultGlyph: { width: 34, height: 34, flexShrink: 0, borderWidth: 1, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  assetAddButton: { minWidth: 70, minHeight: 38, borderWidth: 1, borderRadius: 10, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  assetAddText: { fontFamily: 'Inter_700Bold', fontSize: 10 },
+  assetSelectButton: { width: 40, height: 42, alignItems: 'center', justifyContent: 'center' },
+  addTickerDirectButton: { minWidth: 76, height: 48, borderRadius: 11, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
+  addTickerDirectText: { fontFamily: 'Inter_700Bold', fontSize: 12 },
+  resultAddLabel: { fontFamily: 'Inter_700Bold', fontSize: 10 },
+  myWatchMap: { marginTop: 19, paddingTop: 14, borderTopWidth: 1 },
+  myWatchMapHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 },
+  myWatchMapTitle: { fontFamily: 'Inter_700Bold', fontSize: 15 },
+  myWatchMapHint: { fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 },
+  myWatchMapCount: { fontFamily: 'Inter_700Bold', fontSize: 12 },
+  capacityMessage: { fontFamily: 'Inter_600SemiBold', fontSize: 11, lineHeight: 16, marginVertical: 6 },
+  savedMapEmpty: { paddingHorizontal: 0, paddingVertical: 14 },
+  savedAssetRow: { minHeight: 60, borderTopWidth: StyleSheet.hairlineWidth, paddingVertical: 7, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  savedAssetRemove: { width: 42, height: 42, borderWidth: 1, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   batchAddRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 8 },
   batchAddHint: { flex: 1, fontFamily: 'Inter_500Medium', fontSize: 10 },
   batchAddButton: { minHeight: 36, borderRadius: 10, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },

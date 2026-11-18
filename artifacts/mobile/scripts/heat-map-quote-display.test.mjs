@@ -69,6 +69,16 @@ test("heat-map queries and renders only the active category, period, and custom 
   assert.match(screenSource, /testID="heat-map-custom-asset-choices"/);
 });
 
+test("custom Watch Map management opens as a category-filtered modal", () => {
+  assert.match(screenSource, /testID="heat-map-add-ticker-open"/);
+  assert.match(screenSource, /Modal visible=\{addTickerOpen\} transparent/);
+  assert.match(screenSource, /testID="heat-map-add-ticker-close"/);
+  assert.match(screenSource, /testID="heat-map-my-watch-map"/);
+  assert.match(screenSource, /testID="heat-map-capacity-message"/);
+  assert.match(screenSource, /MAX_CUSTOM_HEAT_MAP_SYMBOLS/);
+  assert.match(screenSource, /suggestion\.category === \([\s\S]*?customAssetType === 'cryptocurrency'/);
+});
+
 test("heat-map keeps the six-hex loader for an incomplete quick snapshot", () => {
   assert.equal(hasUsableHeatMapPerformanceSnapshot([
     { price: 12, returnPercent: 0.5 },
@@ -172,7 +182,7 @@ test("custom heat-map search offers company and category-aware asset suggestions
   assert.match(screenSource, /getSearchStockSymbolsQueryKey\(\{ q: debouncedSymbolSearch \}\)/);
   assert.match(screenSource, /getStockSearchQueryFromKey\(stockSearch\.queryKey\)/);
   assert.match(screenSource, /isStockSearchCurrent\(\{/);
-  assert.match(screenSource, /placeholder="Search name or enter ticker"/);
+  assert.match(screenSource, /placeholder="Search company, asset name, or ticker\.\.\."/);
   assert.match(screenSource, /\{suggestion\.name\}/);
   assert.match(screenSource, /\{suggestion\.symbol\}/);
   assert.match(screenSource, /onPress=\{\(\) => toggleCustomAssetSelection\(asset\.asset\.symbol\)\}/);
@@ -191,10 +201,10 @@ test("custom map removal uses an edit toggle and animated, tappable hexagons ins
   assert.match(screenSource, /editing=\{category === 'custom' && isEditingCustomMap\}/);
   assert.match(screenSource, /testID=\{`heat-map-remove-tile-\$\{quote\.symbol\}`\}/);
   assert.match(screenSource, /onRemove=\{\(\) => void removeSymbol\(quote\.symbol\)\}/);
-  assert.match(screenSource, /editFallbackSymbols\.map\(\(symbol\)/);
+  assert.match(screenSource, /savedCustomMapAssets\.map\(\(asset\)/);
   assert.match(screenSource, /removeCustomHeatMapSymbolFromSavedOrder\(customSymbols, symbol\)/);
   assert.match(screenSource, /await AsyncStorage\.setItem\(STORAGE_KEY, JSON\.stringify\(next\)\)/);
-  assert.match(screenSource, /testID=\{`heat-map-remove-unavailable-\$\{symbol\}`\}/);
+  assert.match(screenSource, /testID=\{`heat-map-remove-unavailable-\$\{asset\.symbol\}`\}/);
   assert.match(screenSource, /testID=\{`heat-map-unavailable-hex-\$\{symbol\}`\}/);
   assert.doesNotMatch(screenSource, /styles\.chipList|styles\.symbolChip|styles\.chipText/);
 });
