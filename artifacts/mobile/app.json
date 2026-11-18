@@ -53,6 +53,7 @@
             "buildArchs": [
               "arm64-v8a"
             ],
+            "enableMinifyInReleaseBuilds": true,
             "packagingOptions": {
               "pickFirst": [
                 "META-INF/versions/9/OSGI-INF/MANIFEST.MF",
