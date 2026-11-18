@@ -1530,12 +1530,13 @@ export function PaperChallengeLeaderboard({
               >
                 <View style={{ pointerEvents: 'none', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: isPennyStockMayhem || isOneStockChallenge ? 'transparent' : 'rgba(7,12,20,0.18)' }} />
                 {isOneStockChallenge && (
-                  <Image
+                  <ImageBackground
                     testID="paper-event-one-stock-hero-art"
                     source={EVENT_ARENA_ARTWORK_SOURCES['one-stock-challenge']}
-                    resizeMode="contain"
-                    accessibilityLabel="The One-Stock Challenge artwork with its title, bull, bear, trading screens, and central chess pawn."
-                    style={{ width: '100%', aspectRatio: 1, borderRadius: 14, marginBottom: 15 }}
+                    resizeMode="cover"
+                    accessibilityLabel="A black chess pawn with gold trim centered in a blue trading arena above a reflective chessboard."
+                    imageStyle={{ borderRadius: 16 }}
+                    style={{ width: '100%', maxWidth: 560, alignSelf: 'center', aspectRatio: 1122 / 1402, overflow: 'hidden', borderRadius: 16, marginBottom: 15, backgroundColor: colors.background }}
                   />
                 )}
                 <LinearGradient
@@ -1551,7 +1552,7 @@ export function PaperChallengeLeaderboard({
                 <LinearGradient
                   colors={isBearMarketMayhem
                     ? ['rgba(255,106,115,0.18)', 'rgba(255,106,115,0.05)', 'transparent']
-                    : isPennyStockMayhem
+                    : isPennyStockMayhem || isOneStockChallenge
                       ? ['transparent', 'transparent', 'transparent']
                       : ['rgba(255,218,128,0.18)', 'rgba(255,218,128,0.06)', 'transparent']}
                   start={{ x: 0.5, y: 0 }}
@@ -1561,7 +1562,7 @@ export function PaperChallengeLeaderboard({
                 <LinearGradient
                   colors={isBearMarketMayhem
                     ? ['rgba(255,106,115,0.16)', 'rgba(255,106,115,0.05)', 'transparent']
-                    : isPennyStockMayhem
+                    : isPennyStockMayhem || isOneStockChallenge
                       ? ['transparent', 'transparent', 'transparent']
                       : ['rgba(255,218,128,0.16)', 'rgba(255,218,128,0.05)', 'transparent']}
                   start={{ x: 0.5, y: 0 }}
@@ -1632,7 +1633,7 @@ export function PaperChallengeLeaderboard({
                     </View>
                   )}
                   {!isPennyStockMayhem && (
-                    <Text testID="paper-event-championship-identity" style={{ color: isBearMarketMayhem ? '#FF6670' : '#E8CB7C', fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 1.2, textAlign: 'center', marginBottom: 7, textShadowColor: 'transparent', textShadowRadius: 7 }}>
+                    <Text testID="paper-event-championship-identity" style={{ color: isBearMarketMayhem ? '#FF6670' : isOneStockChallenge ? colors.primary : '#E8CB7C', fontFamily: 'Inter_700Bold', fontSize: isOneStockChallenge ? 18 : 11, letterSpacing: isOneStockChallenge ? 1.15 : 1.2, textAlign: 'center', marginBottom: isOneStockChallenge ? 5 : 7, textShadowColor: 'transparent', textShadowRadius: 7 }}>
                     {isBearMarketMayhem
                       ? 'BEAR MARKET MAYHEM'
                       : isOneStockChallenge
@@ -1642,10 +1643,19 @@ export function PaperChallengeLeaderboard({
                         : event.eventType === 'green-bull-championship' ? 'GREEN BULL CHAMPIONSHIP' : 'EVENT ARENA CHAMPIONSHIP'}
                     </Text>
                   )}
-                  <Text testID="paper-event-starting-capital" style={{ color: '#F1EEE7', fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 0.8, textAlign: 'center', marginBottom: 8 }}>
+                  {isOneStockChallenge && (
+                    <Text
+                      testID="paper-event-one-stock-description"
+                      allowFontScaling
+                      style={{ maxWidth: 480, color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: compactPodium ? 11 : 13, lineHeight: 19, textAlign: 'center', marginBottom: 9 }}
+                    >
+                      One participant. One stock. One winning position.
+                    </Text>
+                  )}
+                  <Text testID="paper-event-starting-capital" style={{ color: '#F1EEE7', fontFamily: 'Inter_600SemiBold', fontSize: isOneStockChallenge ? 11 : 10, letterSpacing: 0.8, textAlign: 'center', marginBottom: 8 }}>
                     ${Math.round(event.startingBalance ?? PAPER_CHALLENGE_STARTING_BALANCE).toLocaleString('en-US')} STARTING CAPITAL
                   </Text>
-                  {!isPennyStockMayhem && (
+                  {!isPennyStockMayhem && !isOneStockChallenge && (
                     <Text allowFontScaling style={{ color: isBearMarketMayhem ? '#FFF0F1' : '#FFF9EA', fontFamily: 'Inter_700Bold', fontSize: compactPodium ? 22 : 28, letterSpacing: 1.1, textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.85)', textShadowRadius: 8, textShadowOffset: { width: 0, height: 2 } }}>
                       {isBearMarketMayhem ? 'THE BIGGEST LOSER WINS' : 'CHAMPIONSHIP STANDINGS'}
                     </Text>
@@ -1655,7 +1665,7 @@ export function PaperChallengeLeaderboard({
                       LOWEST PERCENTAGE RETURN RANKS FIRST
                     </Text>
                   )}
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 10, paddingVertical: 6, paddingHorizontal: 11, borderRadius: 20, backgroundColor: eventStatus.phase === 'active' ? 'rgba(35,128,103,0.42)' : 'rgba(7,12,20,0.68)', borderWidth: 1, borderColor: eventStatus.phase === 'active' ? 'rgba(112,226,181,0.58)' : 'rgba(222,190,113,0.48)' }}>
+                  <View testID="paper-event-leaderboard-status" style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 10, paddingVertical: 6, paddingHorizontal: 11, borderRadius: 20, backgroundColor: eventStatus.phase === 'active' ? 'rgba(35,128,103,0.42)' : 'rgba(7,12,20,0.68)', borderWidth: 1, borderColor: eventStatus.phase === 'active' ? 'rgba(112,226,181,0.58)' : 'rgba(222,190,113,0.48)' }}>
                     <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: eventStatus.phase === 'active' ? '#61D0A7' : '#D8B45A' }} />
                     <Text style={{ color: eventStatus.phase === 'active' ? '#A1F0D0' : '#E8CB7C', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1 }}>
                       {eventStatus.label.toUpperCase()}
@@ -1672,7 +1682,7 @@ export function PaperChallengeLeaderboard({
                     </View>
                   )}
                   <View style={{ width: '100%', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 11 }}>
-                    <View style={{ minHeight: 34, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 18, backgroundColor: 'rgba(7,12,20,0.58)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
+                    <View testID="paper-event-leaderboard-date-range" style={{ minHeight: 34, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 18, backgroundColor: 'rgba(7,12,20,0.58)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
                       <Feather name="calendar" size={12} color="#D8C993" />
                       <Text allowFontScaling style={{ color: '#F1EEE7', fontFamily: 'Inter_600SemiBold', fontSize: 10 }}>
                         {dateRangeLabel(event.startAtMs, event.endAtMs)}

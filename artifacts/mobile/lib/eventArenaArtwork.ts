@@ -8,6 +8,6 @@ export const EVENT_ARENA_ARTWORK_SOURCES: Record<PaperChallengeArtworkId, ImageS
   'red-showdown': require('../assets/event-arena-red-showdown.jpg'),
   'green-stock-exchange': require('../assets/event-arena-green-stock-exchange.jpg'),
   'penny-stock-mayhem': require('../assets/event-arena-penny-stock-mayhem-clean.jpg'),
-  'one-stock-challenge': require('../assets/event-arena-one-stock-challenge.jpg'),
+  'one-stock-challenge': require('../assets/event-arena-one-stock-challenge.png'),
   'lightning-round-arena': require('../assets/lightning-round-arena-clean.jpg'),
 };

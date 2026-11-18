@@ -1436,9 +1436,9 @@ test("all seven live Event Arena artworks keep podium names and values readable"
     ["red-showdown", "event-arena-red-showdown.jpg"],
     ["green-stock-exchange", "event-arena-green-stock-exchange.jpg"],
     ["penny-stock-mayhem", "event-arena-penny-stock-mayhem-clean.jpg"],
-    ["one-stock-challenge", "event-arena-one-stock-challenge.jpg"],
+    ["one-stock-challenge", "event-arena-one-stock-challenge.png"],
   ];
-  assert.equal((eventArenaArtworkCatalog.match(/require\('\.\.\/assets\/event-arena-[^']+\.jpg'\)/g) ?? []).length, 7);
+  assert.equal((eventArenaArtworkCatalog.match(/require\('\.\.\/assets\/event-arena-[^']+\.jpg'\)/g) ?? []).length, 6);
 
   assert.match(leaderboard, /:\s*EVENT_ARENA_ARTWORK_SOURCES\[event\.artworkId \?\? LEGACY_PAPER_CHALLENGE_ARTWORK_ID\]/);
   assert.match(leaderboard, /resizeMode="cover"/);
@@ -1457,7 +1457,18 @@ test("all seven live Event Arena artworks keep podium names and values readable"
   assert.match(artworkContainer, /testID="paper-event-one-stock-hero-art"/);
   assert.match(artworkContainer, /THE ONE-STOCK CHALLENGE/);
   assert.match(artworkContainer, /<PennyMayhemTitle[\s\S]*?<PennyMayhemNameplate/);
-  assert.match(artworkContainer, /resizeMode="contain"[\s\S]*?width: '100%'[\s\S]*?aspectRatio: 1/);
+  assert.match(artworkContainer, /testID="paper-event-one-stock-hero-art"[\s\S]*?resizeMode="cover"[\s\S]*?maxWidth: 560[\s\S]*?aspectRatio: 1122 \/ 1402/);
+  assert.match(artworkContainer, /One participant\. One stock\. One winning position\./);
+  assert.match(artworkContainer, /!isPennyStockMayhem && !isOneStockChallenge/);
+  assert.ok(
+    artworkContainer.indexOf('testID="paper-event-one-stock-hero-art"')
+      < artworkContainer.indexOf('testID="paper-event-championship-identity"')
+      && artworkContainer.indexOf('testID="paper-event-championship-identity"')
+        < artworkContainer.indexOf('testID="paper-event-one-stock-description"')
+      && artworkContainer.indexOf('testID="paper-event-one-stock-description"')
+        < artworkContainer.indexOf('testID="paper-event-starting-capital"'),
+    "the One-Stock image, title, description, and capital appear in order",
+  );
   assert.match(artworkContainer, /paper-event-penny-stock-hero[\s\S]*?paper-event-leaderboard-countdown/);
   assert.match(artworkContainer, /paper-event-leaderboard-participant-count/);
   assert.match(artworkContainer, /testID="paper-event-leaderboard-podium"/);
@@ -1488,9 +1499,16 @@ test("all seven live Event Arena artworks keep podium names and values readable"
     assert.match(eventArenaArtworkCatalog, new RegExp(`['"]?${id}['"]?: require\\('../assets/${asset.replaceAll(".", "\\.")}'\\)`));
     const path = new URL(`../assets/${asset}`, import.meta.url);
     const bytes = readFileSync(path);
-    assert.equal(bytes[0], 0xff, `${asset} is a bundled JPEG`);
-    assert.equal(bytes[1], 0xd8, `${asset} is a bundled JPEG`);
+    if (asset.endsWith('.png')) {
+      assert.equal(bytes.subarray(0, 8).toString('hex'), '89504e470d0a1a0a', `${asset} is a bundled PNG`);
+      assert.equal(bytes.readUInt32BE(16), 1122, `${asset} retains the supplied image width`);
+      assert.equal(bytes.readUInt32BE(20), 1402, `${asset} retains the supplied image height`);
+    } else {
+      assert.equal(bytes[0], 0xff, `${asset} is a bundled JPEG`);
+      assert.equal(bytes[1], 0xd8, `${asset} is a bundled JPEG`);
+    }
     assert.ok(bytes.byteLength > 0, `${asset} is present in the mobile bundle`);
+    if (id === 'one-stock-challenge') continue;
 
     // A pure-white image pixel is the brightest possible backdrop, so this
     // checks each selected asset against a conservative maximum-luminance case.
@@ -1555,6 +1573,8 @@ test("Event Arena overview shows concise special rules only for restricted event
   assert.match(eventArenaOverview, /ONE PARTICIPANT\. ONE STOCK\. ONE OPEN POSITION\./);
   assert.match(eventArenaOverview, /ONE_STOCK_CHALLENGE_RULE_COPY/);
   assert.match(eventArenaOverview, /testID="event-arena-one-stock-artwork"/);
+  assert.match(eventArenaOverview, /event-arena-one-stock-challenge\.png/);
+  assert.match(eventArenaOverview, /resizeMode="cover"[\s\S]*?aspectRatio: 1122 \/ 1402/);
   assert.match(eventArenaOverview, /verified stock or ETF[\s\S]*?final fill below \$20/);
   assert.match(eventArenaOverview, /Lowest portfolio return ranks first/);
   assert.match(eventArenaOverview, /Cash transfers are disabled during the preparation period and competition/);
@@ -1585,8 +1605,10 @@ test("One-Stock leaderboard and final result cards use the event artwork", () =>
   assert.match(leaderboardMockup, /oneStockChallenge: true/);
   assert.match(leaderboardMockup, /OPEN HOLDING/);
   assert.match(leaderboardMockup, /REMAINING CASH/);
-  assert.match(leaderboardMockup, /\/__mockup\/images\/leaderboard-events\/\$\{event\.artwork\}\.jpg/);
-  assert.match(endEventStoryMockup, /event-arena-one-stock-challenge\.jpg/);
+  assert.match(leaderboardMockup, /artworkPath = `\/__mockup\/images\/leaderboard-events\/\$\{event\.artwork\}\.\$\{event\.artworkExtension \?\? 'jpg'\}`/);
+  assert.match(leaderboardMockup, /mm-one-stock-title/);
+  assert.match(leaderboardMockup, /One participant\. One stock\. One winning position\./);
+  assert.match(endEventStoryMockup, /event-arena-one-stock-challenge\.png/);
   assert.match(endEventStoryMockup, /THE ONE-STOCK CHALLENGE/);
 
   assert.match(shareCard, /EVENT_ARENA_ARTWORK_SOURCES\[event\.artworkId \?\? LEGACY_PAPER_CHALLENGE_ARTWORK_ID\]/);

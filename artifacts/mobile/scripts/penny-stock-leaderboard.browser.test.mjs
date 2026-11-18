@@ -117,7 +117,12 @@ function connectDebugger(webSocketUrl) {
   });
 }
 
-async function startBrowser(bundle) {
+async function startBrowser(bundle, {
+  path = "/",
+  readyTestId = "paper-event-penny-stock-hero",
+  width = 320,
+  mobile = true,
+} = {}) {
   const interBold = await readFile(require.resolve("@expo-google-fonts/inter/700Bold/Inter_700Bold.ttf", { paths: [mobileDir] }));
   const server = createServer((request, response) => {
     if (request.url === "/inter-bold.ttf") {
@@ -178,24 +183,24 @@ async function startBrowser(bundle) {
         window.addEventListener("unhandledrejection", (event) => window.__fixtureErrors.push(String(event.reason)));`,
     });
     await browser.send("Emulation.setDeviceMetricsOverride", {
-      width: 320, height: 760, deviceScaleFactor: 1, mobile: true,
+      width, height: 760, deviceScaleFactor: 1, mobile,
     });
     const address = server.address();
     assert.ok(address && typeof address === "object");
-    await browser.send("Page.navigate", { url: `http://127.0.0.1:${address.port}/` });
+    await browser.send("Page.navigate", { url: `http://127.0.0.1:${address.port}${path}` });
     const started = Date.now();
     while (Date.now() - started < 8000) {
       const ready = await browser.evaluate(
-        `!!document.querySelector(${JSON.stringify(selector("paper-event-penny-stock-hero"))})`,
+        `!!document.querySelector(${JSON.stringify(selector(readyTestId))})`,
       );
       if (ready) break;
       await wait(40);
     }
     const rendered = await browser.evaluate(
-      `!!document.querySelector(${JSON.stringify(selector("paper-event-penny-stock-hero"))})`,
+      `!!document.querySelector(${JSON.stringify(selector(readyTestId))})`,
     );
     assert.equal(rendered, true,
-      `The real Penny Stock leaderboard should render from fixture data. ${await browser.evaluate("JSON.stringify({errors:window.__fixtureErrors,body:document.body?.innerText,root:document.querySelector('#root')?.innerHTML?.slice(0,2000)})")}`);
+      `The real Event Arena leaderboard should render from fixture data. ${await browser.evaluate("JSON.stringify({errors:window.__fixtureErrors,body:document.body?.innerText,root:document.querySelector('#root')?.innerHTML?.slice(0,2000)})")}`);
     await browser.evaluate("document.fonts.ready.then(() => true)");
     return {
       browser,
@@ -311,6 +316,101 @@ test("Penny Stock leaderboard artwork, countdown, and podium fit narrow and stan
     }
     const errors = await browser.evaluate("window.__fixtureErrors");
     assert.deepEqual(errors, [], "The visual fixture must render without browser errors.");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("One-Stock hero artwork and event details fit phone and desktop layouts", async () => {
+  const fixture = await startBrowser(await buildFixture(), {
+    path: "/?scenario=one-stock",
+    readyTestId: "paper-event-one-stock-description",
+    width: 320,
+  });
+  const { browser } = fixture;
+  try {
+    for (const viewport of [
+      { width: 320, mobile: true },
+      { width: 390, mobile: true },
+      { width: 1280, mobile: false },
+    ]) {
+      await browser.send("Emulation.setDeviceMetricsOverride", {
+        width: viewport.width, height: 900, deviceScaleFactor: 1, mobile: viewport.mobile,
+      });
+      await wait(100);
+      const layout = await browser.evaluate(`(() => {
+        const get = (id) => document.querySelector(${JSON.stringify("[data-testid=")} + JSON.stringify(id) + ${JSON.stringify("]")});
+        const box = (element) => {
+          if (!element) return null;
+          const rect = element.getBoundingClientRect();
+          return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height };
+        };
+        const art = get("paper-event-one-stock-hero-art");
+        const imageLayer = art?.querySelector("div[style*='background-image']");
+        const title = get("paper-event-championship-identity");
+        const description = get("paper-event-one-stock-description");
+        const capital = get("paper-event-starting-capital");
+        const countdown = get("paper-event-leaderboard-countdown");
+        const dates = get("paper-event-leaderboard-date-range");
+        const participants = get("paper-event-leaderboard-participant-count");
+        const status = get("paper-event-leaderboard-status");
+        const textFits = (element) => {
+          if (!element) return false;
+          const rect = element.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0 && rect.left >= -1 && rect.right <= window.innerWidth + 1;
+        };
+        return {
+          viewport: window.innerWidth,
+          artLabel: art?.getAttribute("aria-label"),
+          artFit: imageLayer ? getComputedStyle(imageLayer).backgroundSize : null,
+          artSource: imageLayer ? getComputedStyle(imageLayer).backgroundImage : null,
+          titleText: title?.textContent?.trim(),
+          descriptionText: description?.textContent?.replace(/\\s+/g, " ").trim(),
+          capitalText: capital?.textContent?.replace(/\\s+/g, " ").trim(),
+          countdownText: countdown?.textContent?.replace(/\\s+/g, " ").trim(),
+          dateText: dates?.textContent?.replace(/\\s+/g, " ").trim(),
+          participantText: participants?.textContent?.replace(/\\s+/g, " ").trim(),
+          eventStatusText: status?.textContent?.replace(/\\s+/g, " ").trim(),
+          bounds: {
+            art: box(art), title: box(title), description: box(description),
+            capital: box(capital), countdown: box(countdown), dates: box(dates), participants: box(participants),
+          },
+          textFits: [title, description, capital, countdown, dates, participants].map(textFits),
+          scrollWidth: document.documentElement.scrollWidth,
+        };
+      })()`);
+      assert.equal(layout.viewport, viewport.width);
+      assert.equal(layout.artFit, "cover");
+      assert.match(layout.artSource, /data:image\/png/);
+      assert.equal(layout.artLabel, "A black chess pawn with gold trim centered in a blue trading arena above a reflective chessboard.");
+      assert.equal(layout.titleText, "THE ONE-STOCK CHALLENGE");
+      assert.equal(layout.descriptionText, "One participant. One stock. One winning position.");
+      assert.match(layout.capitalText, /\$100,000 STARTING CAPITAL/);
+      assert.match(layout.countdownText, /TIME REMAINING/);
+      assert.match(layout.dateText, /\d{4}/);
+      assert.match(layout.participantText, /competitor/);
+      assert.match(layout.eventStatusText, /LIVE CHAMPIONSHIP/);
+      assert.ok(Math.abs(layout.bounds.art.width / layout.bounds.art.height - (1122 / 1402)) < 0.02,
+        "The supplied portrait artwork should retain its full framing.");
+      assert.ok(layout.bounds.art.width <= 560 + 1, "The artwork remains capped instead of stretching across desktop.");
+      assert.ok(layout.bounds.art.bottom <= layout.bounds.title.top + 1);
+      assert.ok(layout.bounds.title.bottom <= layout.bounds.description.top + 1);
+      assert.ok(layout.bounds.description.bottom <= layout.bounds.capital.top + 1);
+      assert.ok(layout.bounds.capital.bottom <= layout.bounds.countdown.top + 1);
+      assert.ok(layout.bounds.countdown.bottom <= layout.bounds.dates.top + 1);
+      assert.ok(
+        layout.bounds.dates.bottom <= layout.bounds.participants.top + 1
+          || layout.bounds.participants.bottom <= layout.bounds.dates.top + 1
+          || layout.bounds.dates.right <= layout.bounds.participants.left + 1
+          || layout.bounds.participants.right <= layout.bounds.dates.left + 1,
+        "The date and competitor pills should not overlap whether stacked or side-by-side.",
+      );
+      assert.deepEqual(layout.textFits, [true, true, true, true, true, true],
+        `Event text must fit at ${viewport.width}px: ${JSON.stringify(layout)}`);
+      assert.equal(layout.scrollWidth, viewport.width, `The page must not scroll sideways at ${viewport.width}px.`);
+    }
+    assert.deepEqual(await browser.evaluate("window.__fixtureErrors"), [],
+      "The One-Stock hero must render without browser errors.");
   } finally {
     await fixture.cleanup();
   }

@@ -305,10 +305,10 @@ export function EventArenaOverview({
         {isOneStockChallenge && (
           <Image
             testID="event-arena-one-stock-artwork"
-            source={require('../assets/event-arena-one-stock-challenge.jpg')}
-            resizeMode="contain"
-            accessibilityLabel="The One-Stock Challenge championship artwork: a bull, bear, rising market chart, and a single chess pawn beneath the title."
-            style={{ width: '100%', aspectRatio: 1, borderRadius: 18, marginBottom: 14, backgroundColor: '#06131A' }}
+            source={require('../assets/event-arena-one-stock-challenge.png')}
+            resizeMode="cover"
+            accessibilityLabel="A black chess pawn with gold trim centered in a blue trading arena above a reflective chessboard."
+            style={{ width: '100%', maxWidth: 560, alignSelf: 'center', aspectRatio: 1122 / 1402, borderRadius: 18, marginBottom: 14, backgroundColor: '#06131A' }}
           />
         )}
 

@@ -3,17 +3,29 @@ import { createRoot } from 'react-dom/client';
 import { PaperChallengeLeaderboard } from '../../components/PaperChallengeLeaderboard';
 
 const now = Date.now();
-const event = {
-  id: 'fixture-penny-stock-mayhem',
-  startAtMs: now - 60 * 60 * 1000,
-  endAtMs: now + 12 * 60 * 60 * 1000,
-  phase: 'active' as const,
-  artworkId: 'penny-stock-mayhem' as const,
-  eventType: 'penny-stock-mayhem' as const,
-  startingBalance: 100_000,
-  rankingDirection: 'highest-return' as const,
-  purchaseLimit: 20,
-};
+const oneStock = new URLSearchParams(window.location.search).get('scenario') === 'one-stock';
+const event = oneStock
+  ? {
+      id: 'fixture-one-stock-challenge',
+      startAtMs: now - 60 * 60 * 1000,
+      endAtMs: now + 12 * 60 * 60 * 1000,
+      phase: 'active' as const,
+      artworkId: 'one-stock-challenge' as const,
+      eventType: 'one-stock-challenge' as const,
+      startingBalance: 100_000,
+      rankingDirection: 'highest-return' as const,
+    }
+  : {
+      id: 'fixture-penny-stock-mayhem',
+      startAtMs: now - 60 * 60 * 1000,
+      endAtMs: now + 12 * 60 * 60 * 1000,
+      phase: 'active' as const,
+      artworkId: 'penny-stock-mayhem' as const,
+      eventType: 'penny-stock-mayhem' as const,
+      startingBalance: 100_000,
+      rankingDirection: 'highest-return' as const,
+      purchaseLimit: 20,
+    };
 
 createRoot(document.getElementById('root')!).render(
   <PaperChallengeLeaderboard

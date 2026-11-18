@@ -54,7 +54,7 @@ async function buildFixture() {
     platform: "browser",
     target: "es2022",
     jsx: "automatic",
-    loader: { ".jpg": "dataurl" },
+    loader: { ".jpg": "dataurl", ".png": "dataurl" },
     mainFields: ["browser", "module", "main"],
     conditions: ["browser"],
     plugins: [{

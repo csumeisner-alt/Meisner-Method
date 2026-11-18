@@ -14,7 +14,7 @@ export function EndOfEventStory() {
     <main className="event-story" aria-label="Sample One-Stock Challenge end-of-event story card">
       <img
         className="event-story__art"
-        src="/__mockup/images/leaderboard-events/event-arena-one-stock-challenge.jpg"
+        src="/__mockup/images/leaderboard-events/event-arena-one-stock-challenge.png"
         alt=""
       />
       <div className="event-story__shade" />
@@ -23,7 +23,7 @@ export function EndOfEventStory() {
         <div className="event-story__mark" aria-hidden="true">M</div>
         <div>
           <p className="event-story__brand-name">MEISNER METHOD</p>
-          <p className="event-story__brand-subtitle">ONE-STOCK CHALLENGE · RESULTS</p>
+          <p className="event-story__brand-subtitle">EVENT ARENA · RESULTS</p>
         </div>
         <span className="event-story__complete">EVENT COMPLETE</span>
       </header>
