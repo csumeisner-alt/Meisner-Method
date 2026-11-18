@@ -1650,7 +1650,7 @@ export function PaperChallengeLeaderboard({
                     accessibilityLabel="Refresh event leaderboard"
                     accessibilityState={{ busy: refreshing }}
                     onPress={() => { void refresh(); }}
-                    style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', backgroundColor: 'rgba(7,12,20,0.62)' }}
+                    style={{ width: isOneStockChallenge ? 44 : 36, height: isOneStockChallenge ? 44 : 36, alignItems: 'center', justifyContent: 'center', borderRadius: isOneStockChallenge ? 22 : 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', backgroundColor: isOneStockChallenge ? 'rgba(7,12,20,0.76)' : 'rgba(7,12,20,0.62)' }}
                   >
                     <Feather name="refresh-cw" size={16} color="#F1EEE7" />
                   </TouchableOpacity>
@@ -1771,7 +1771,7 @@ export function PaperChallengeLeaderboard({
                   </Text>
                 </View>
               {loading && entries.length === 0 ? (
-                <View accessibilityLabel="Loading leaderboard" style={{ padding: 15, borderRadius: 17, backgroundColor: 'rgba(8,13,21,0.84)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' }}>
+                <View testID="paper-event-leaderboard-loading" accessibilityLabel="Loading leaderboard" style={{ padding: 15, borderRadius: 17, backgroundColor: isOneStockChallenge ? 'rgba(8,13,21,0.92)' : 'rgba(8,13,21,0.84)', borderWidth: 1, borderColor: isOneStockChallenge ? 'rgba(255,255,255,0.24)' : 'rgba(255,255,255,0.12)' }}>
                   {[0, 1, 2].map((item) => (
                     <View key={item} style={{ minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: item < 2 ? 1 : 0, borderBottomColor: 'rgba(255,255,255,0.08)' }}>
                       <View style={{ width: 29, height: 29, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.13)' }} />
@@ -1785,21 +1785,21 @@ export function PaperChallengeLeaderboard({
                   <Text style={{ color: '#D4D5D4', fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 10, textAlign: 'center' }}>Loading leaderboard…</Text>
                 </View>
               ) : loadError && entries.length === 0 ? (
-                <View style={{ padding: 14, borderRadius: 10, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.destructive }}>
-                  <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>{loadError}</Text>
-                  <TouchableOpacity testID="retry-paper-event-leaderboard" accessibilityRole="button" onPress={() => { void refresh(); }} style={{ alignSelf: 'flex-start', paddingVertical: 8 }}>
+                <View testID="paper-event-leaderboard-error" style={{ padding: 14, borderRadius: 10, backgroundColor: isOneStockChallenge ? 'rgba(7,13,20,0.94)' : colors.card, borderWidth: 1, borderColor: isOneStockChallenge ? 'rgba(255,190,190,0.72)' : colors.destructive }}>
+                  <Text style={{ color: isOneStockChallenge ? '#FFF1EF' : colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 12, lineHeight: isOneStockChallenge ? 18 : undefined }}>{loadError}</Text>
+                  <TouchableOpacity testID="retry-paper-event-leaderboard" accessibilityRole="button" onPress={() => { void refresh(); }} style={{ minHeight: isOneStockChallenge ? 44 : undefined, minWidth: isOneStockChallenge ? 44 : undefined, alignItems: isOneStockChallenge ? 'center' : undefined, justifyContent: isOneStockChallenge ? 'center' : undefined, alignSelf: 'flex-start', paddingHorizontal: isOneStockChallenge ? 12 : 0, paddingVertical: 8 }}>
                     <Text style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 11 }}>RETRY</Text>
                   </TouchableOpacity>
                 </View>
               ) : (
                 <>
                   {entries.length === 0 && (
-                    <View testID="paper-event-leaderboard-empty" style={{ alignItems: 'center', paddingVertical: 18, paddingHorizontal: 12, borderRadius: 16, backgroundColor: 'rgba(7,13,20,0.8)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.13)' }}>
+                    <View testID="paper-event-leaderboard-empty" style={{ alignItems: 'center', paddingVertical: 18, paddingHorizontal: 12, borderRadius: 16, backgroundColor: isOneStockChallenge ? 'rgba(7,13,20,0.92)' : 'rgba(7,13,20,0.8)', borderWidth: 1, borderColor: isOneStockChallenge ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.13)' }}>
                       <Feather name="users" size={23} color="#D8B45A" />
                       <Text allowFontScaling style={{ color: '#E2E2DE', fontFamily: 'Inter_400Regular', fontSize: 12, paddingTop: 10, textAlign: 'center', lineHeight: 18 }}>
                         No participants have opted in for this event yet.
                       </Text>
-                      <TouchableOpacity testID="refresh-empty-paper-event-leaderboard" accessibilityRole="button" onPress={() => { void refresh(); }} style={{ paddingVertical: 8, paddingHorizontal: 12, marginTop: 4 }}>
+                      <TouchableOpacity testID="refresh-empty-paper-event-leaderboard" accessibilityRole="button" onPress={() => { void refresh(); }} style={{ minHeight: isOneStockChallenge ? 44 : undefined, minWidth: isOneStockChallenge ? 44 : undefined, alignItems: 'center', justifyContent: 'center', paddingVertical: 8, paddingHorizontal: 12, marginTop: 4 }}>
                         <Text style={{ color: '#E6CA7A', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1 }}>REFRESH</Text>
                       </TouchableOpacity>
                     </View>

@@ -713,6 +713,15 @@ test("championship leaderboard shows real podium scores, event context, and belo
   assert.ok(podiumIndex > stadiumStart && standingsIndex > podiumIndex && positionIndex > standingsIndex);
 });
 
+test("One-Stock empty-state contrast and larger controls do not alter other event styling", () => {
+  assert.match(leaderboard, /width: isOneStockChallenge \? 44 : 36[\s\S]*?height: isOneStockChallenge \? 44 : 36/);
+  assert.match(leaderboard, /testID="paper-event-leaderboard-loading"[\s\S]*?backgroundColor: isOneStockChallenge \? 'rgba\(8,13,21,0\.92\)' : 'rgba\(8,13,21,0\.84\)'/);
+  assert.match(leaderboard, /testID="paper-event-leaderboard-error"[\s\S]*?backgroundColor: isOneStockChallenge \? 'rgba\(7,13,20,0\.94\)' : colors\.card/);
+  assert.match(leaderboard, /testID="paper-event-leaderboard-empty"[\s\S]*?backgroundColor: isOneStockChallenge \? 'rgba\(7,13,20,0\.92\)' : 'rgba\(7,13,20,0\.8\)'/);
+  assert.match(leaderboard, /minHeight: isOneStockChallenge \? 44 : undefined/);
+  assert.match(leaderboard, /minWidth: isOneStockChallenge \? 44 : undefined/);
+});
+
 test("the signed-in participant appears only in their actual ranked position", () => {
   assert.match(leaderboard, /getEventArenaOwnEntry\(entries, optedIn\)/);
   assert.match(leaderboard, /borderColor: entry\.isCurrentUser \? colors\.gold : colors\.border/);

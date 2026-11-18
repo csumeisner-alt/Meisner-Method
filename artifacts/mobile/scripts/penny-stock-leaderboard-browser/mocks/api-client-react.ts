@@ -85,20 +85,35 @@ const entries = [
 ];
 const response = { entries, updatedAt: '2026-11-16T12:00:00.000Z' };
 const dataUpdatedAt = Date.now();
+const refetchers = new Map<string, () => Promise<unknown>>();
 
 export function getGetEventArenaLeaderboardQueryKey(eventId: string) {
   return ['event-arena-leaderboard', eventId];
 }
 
 export function useGetEventArenaLeaderboard(eventId: string) {
-  const responseEntries = eventId.includes('one-stock') ? oneStockEntries : entries;
+  const scenario = eventId.match(/-(empty|loading|error)$/)?.[1];
+  const responseEntries = eventId.includes('one-stock')
+    ? scenario === 'empty' || scenario === 'loading' || scenario === 'error' ? [] : oneStockEntries
+    : entries;
   const response = { entries: responseEntries, updatedAt: '2026-11-16T12:00:00.000Z' };
+  let refetch = refetchers.get(eventId);
+  if (!refetch) {
+    refetch = async () => {
+      const browserWindow = globalThis as typeof globalThis & { __leaderboardRefetchCount?: number };
+      browserWindow.__leaderboardRefetchCount = (browserWindow.__leaderboardRefetchCount ?? 0) + 1;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      if (scenario === 'error') throw new Error('Fixture leaderboard request failed.');
+      return { data: response };
+    };
+    refetchers.set(eventId, refetch);
+  }
   return {
     data: response,
     dataUpdatedAt,
-    isLoading: false,
-    error: null,
-    refetch: async () => ({ data: response }),
+    isLoading: scenario === 'loading',
+    error: scenario === 'error' ? new Error('Fixture leaderboard request failed.') : null,
+    refetch,
   };
 }
 

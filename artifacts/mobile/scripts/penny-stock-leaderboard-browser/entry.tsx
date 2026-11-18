@@ -3,10 +3,11 @@ import { createRoot } from 'react-dom/client';
 import { PaperChallengeLeaderboard } from '../../components/PaperChallengeLeaderboard';
 
 const now = Date.now();
-const oneStock = new URLSearchParams(window.location.search).get('scenario') === 'one-stock';
+const scenario = new URLSearchParams(window.location.search).get('scenario') ?? '';
+const oneStock = scenario.startsWith('one-stock');
 const event = oneStock
   ? {
-      id: 'fixture-one-stock-challenge',
+      id: `fixture-one-stock-challenge${scenario === 'one-stock' ? '' : `-${scenario.slice('one-stock-'.length)}`}`,
       startAtMs: now - 60 * 60 * 1000,
       endAtMs: now + 12 * 60 * 60 * 1000,
       phase: 'active' as const,

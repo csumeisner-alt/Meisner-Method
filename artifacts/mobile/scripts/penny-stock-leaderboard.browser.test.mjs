@@ -461,3 +461,124 @@ test("One-Stock full-card artwork and event details fit phone and desktop layout
     await fixture.cleanup();
   }
 });
+
+test("One-Stock empty, loading, and retry states stay readable and usable over the artwork", async () => {
+  const bundle = await buildFixture();
+  const viewports = [
+    { width: 320, mobile: true },
+    { width: 390, mobile: true },
+    { width: 1280, mobile: false },
+  ];
+  const states = [
+    {
+      scenario: "one-stock-empty",
+      statusId: "paper-event-leaderboard-empty",
+      statusControlId: "refresh-empty-paper-event-leaderboard",
+      statusText: /No participants have opted in for this event yet\./,
+    },
+    {
+      scenario: "one-stock-loading",
+      statusId: "paper-event-leaderboard-loading",
+      statusControlId: "refresh-paper-event-leaderboard",
+      statusText: /Loading leaderboard/,
+    },
+    {
+      scenario: "one-stock-error",
+      statusId: "paper-event-leaderboard-error",
+      statusControlId: "retry-paper-event-leaderboard",
+      statusText: /The leaderboard could not be loaded\. Please retry\./,
+    },
+  ];
+
+  for (const state of states) {
+    const fixture = await startBrowser(bundle, {
+      path: `/?scenario=${state.scenario}`,
+      readyTestId: "paper-event-one-stock-description",
+      width: viewports[0].width,
+    });
+    const { browser } = fixture;
+    try {
+      for (const viewport of viewports) {
+        await browser.send("Emulation.setDeviceMetricsOverride", {
+          width: viewport.width, height: 900, deviceScaleFactor: 1, mobile: viewport.mobile,
+        });
+        await wait(120);
+        let statusRendered = false;
+        for (let attempt = 0; attempt < 80; attempt += 1) {
+          statusRendered = await browser.evaluate(
+            `!!document.querySelector(${JSON.stringify(selector(state.statusId))})`,
+          );
+          if (statusRendered) break;
+          await wait(25);
+        }
+        assert.equal(statusRendered, true,
+          `${state.scenario} should render its status card. ${await browser.evaluate("document.body?.innerText")}`);
+        const layout = await browser.evaluate(`(() => {
+          const get = (id) => document.querySelector(${JSON.stringify("[data-testid=")} + JSON.stringify(id) + ${JSON.stringify("]")});
+          const box = (element) => {
+            if (!element) return null;
+            const rect = element.getBoundingClientRect();
+            return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height };
+          };
+          const art = get("paper-event-one-stock-hero-art");
+          const status = get(${JSON.stringify(state.statusId)});
+          const refresh = get("refresh-paper-event-leaderboard");
+          const statusControl = get(${JSON.stringify(state.statusControlId)});
+          const background = status ? getComputedStyle(status).backgroundColor : "";
+          return {
+            viewport: window.innerWidth,
+            statusText: status?.textContent?.replace(/\\s+/g, " ").trim(),
+            bounds: {
+              art: box(art), status: box(status), refresh: box(refresh), statusControl: box(statusControl),
+            },
+            statusBackground: background,
+            refreshRole: refresh?.getAttribute("role"),
+            statusControlRole: statusControl?.getAttribute("role"),
+            refreshPointerEvents: refresh ? getComputedStyle(refresh).pointerEvents : null,
+            statusControlPointerEvents: statusControl ? getComputedStyle(statusControl).pointerEvents : null,
+            scrollWidth: document.documentElement.scrollWidth,
+          };
+        })()`);
+        assert.equal(layout.viewport, viewport.width);
+        assert.equal(typeof layout.statusText, "string", `The ${state.scenario} message should be exposed: ${JSON.stringify(layout)}`);
+        assert.match(layout.statusText, state.statusText);
+        assert.ok(layout.statusBackground.startsWith("rgba(") && !layout.statusBackground.endsWith(", 0)"),
+          `${state.scenario} needs a readable dark panel over the artwork: ${JSON.stringify(layout)}`);
+        assert.equal(layout.refreshRole, "button");
+        assert.equal(layout.statusControlRole, "button");
+        assert.notEqual(layout.refreshPointerEvents, "none");
+        assert.notEqual(layout.statusControlPointerEvents, "none");
+        assert.ok(layout.bounds.refresh.width >= 44 && layout.bounds.refresh.height >= 44,
+          `The One-Stock refresh target should be at least 44px: ${JSON.stringify(layout)}`);
+        assert.ok(layout.bounds.statusControl.width >= 44 && layout.bounds.statusControl.height >= 44,
+          `The ${state.scenario} action should be at least 44px: ${JSON.stringify(layout)}`);
+        for (const part of ["status", "refresh", "statusControl"]) {
+          const bounds = layout.bounds[part];
+          assert.ok(bounds.width > 0 && bounds.height > 0, `${part} must be visible at ${viewport.width}px.`);
+          assert.ok(bounds.left >= layout.bounds.art.left - 1 && bounds.right <= layout.bounds.art.right + 1,
+            `${part} must stay within the One-Stock artwork at ${viewport.width}px.`);
+          assert.ok(bounds.left >= -1 && bounds.right <= viewport.width + 1,
+            `${part} must stay within the viewport at ${viewport.width}px.`);
+        }
+        assert.equal(layout.scrollWidth, viewport.width,
+          `${state.scenario} must not cause horizontal overflow at ${viewport.width}px.`);
+
+        await wait(60);
+        const beforeClick = await browser.evaluate("window.__leaderboardRefetchCount ?? 0");
+        await browser.evaluate(`document.querySelector(${JSON.stringify(selector("refresh-paper-event-leaderboard"))})?.click()`);
+        await wait(60);
+        const afterRefresh = await browser.evaluate("window.__leaderboardRefetchCount ?? 0");
+        assert.equal(afterRefresh, beforeClick + 1, "The artwork refresh control must trigger a leaderboard request.");
+        await browser.evaluate(`document.querySelector(${JSON.stringify(selector(state.statusControlId))})?.click()`);
+        await wait(60);
+        const afterStatusAction = await browser.evaluate("window.__leaderboardRefetchCount ?? 0");
+        assert.equal(afterStatusAction, afterRefresh + 1,
+          `The ${state.scenario} action must remain usable over the artwork.`);
+      }
+      assert.deepEqual(await browser.evaluate("window.__fixtureErrors"), [],
+        `${state.scenario} must render without browser errors.`);
+    } finally {
+      await fixture.cleanup();
+    }
+  }
+});

@@ -92,3 +92,4 @@
 - [Event Arena device recovery](event-arena-device-recovery.md) — preserve guest access with one-use device pairing; never overwrite unrelated accounts or replay restored orders.
 - [PostgreSQL worker test fixtures](postgres-worker-test-fixtures.md) — match production indexes/defaults and seed coherent ledger state in isolated PostgreSQL schemas.
 - [Lightning Round cash transfers](lightning-round-cash-transfers.md) — keep transfers disabled for Lightning Round unless the user changes this rule.
+- [Browser query mocks](browser-query-mock-stability.md) — keep mocked query callbacks referentially stable when components include them in refresh-effect dependencies.
