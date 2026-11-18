@@ -848,6 +848,8 @@ function EventArenaScreenContent() {
         ? 'Green Bull Championship'
         : event.eventType === 'bear-market-mayhem'
           ? 'Bear Market Mayhem'
+          : event.eventType === 'one-stock-challenge'
+            ? 'The One-Stock Challenge'
           : event.eventType === 'penny-stock-mayhem' ? 'Penny Stock Mayhem'
           : event.eventType === 'lightning-round' ? 'Lightning Round Results' : 'Event Arena Results'}`,
       dateRange(event.eventStartAtMs, event.eventEndAtMs),
@@ -925,6 +927,7 @@ function EventArenaScreenContent() {
               ? 'GREEN BULL CHAMPIONSHIP'
               : event.eventType === 'bear-market-mayhem'
                 ? 'BEAR MARKET MAYHEM'
+              : event.eventType === 'one-stock-challenge' ? 'THE ONE-STOCK CHALLENGE'
                 : event.eventType === 'penny-stock-mayhem' ? 'PENNY STOCK MAYHEM'
                 : event.eventType === 'lightning-round' ? 'LIGHTNING ROUND' : 'EVENT ARENA'}
           </Text>
@@ -1076,6 +1079,7 @@ function EventArenaScreenContent() {
               ? 'GREEN BULL CHAMPIONSHIP'
               : event.eventType === 'bear-market-mayhem'
                 ? 'BEAR MARKET MAYHEM'
+              : event.eventType === 'one-stock-challenge' ? 'THE ONE-STOCK CHALLENGE'
                 : event.eventType === 'penny-stock-mayhem' ? 'PENNY STOCK MAYHEM'
                 : event.eventType === 'lightning-round' ? 'LIGHTNING ROUND' : 'EVENT ARENA'}
           </Text>

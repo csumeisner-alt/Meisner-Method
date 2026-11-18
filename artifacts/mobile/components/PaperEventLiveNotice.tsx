@@ -16,6 +16,8 @@ import {
   getPaperEventLiveNoticeDismissalKey,
   isDismissiblePaperEventLiveNotice,
   loadPaperEventLiveNoticeDismissal,
+  ONE_STOCK_CHALLENGE_REJECTION_MESSAGE,
+  ONE_STOCK_CHALLENGE_RULE_COPY,
   persistPaperEventLiveNoticeDismissal,
   type PaperChallengeEnrollment,
 } from '@/lib/paperChallenge';
@@ -140,7 +142,9 @@ export function PaperEventLiveNotice({
           {enrollment.eventType === 'lightning-round'
             ? 'LIGHTNING ROUND IS LIVE'
             : enrollment.eventType === 'penny-stock-mayhem'
-              ? 'PENNY STOCK MAYHEM IS LIVE' : 'EVENT ARENA IS LIVE'}
+              ? 'PENNY STOCK MAYHEM IS LIVE'
+              : enrollment.eventType === 'one-stock-challenge'
+                ? 'THE ONE-STOCK CHALLENGE IS LIVE' : 'EVENT ARENA IS LIVE'}
         </Text>
         {dismissalKey && (
           <TouchableOpacity
@@ -162,6 +166,8 @@ export function PaperEventLiveNotice({
           ? 'LIGHTNING ROUND · SHARED EVENT ARENA ACCOUNT'
           : enrollment.eventType === 'penny-stock-mayhem'
             ? 'PENNY STOCK MAYHEM · $100,000 STARTING CAPITAL · STOCKS & ETFs UNDER $20'
+            : enrollment.eventType === 'one-stock-challenge'
+              ? 'THE ONE-STOCK CHALLENGE · $100,000 STARTING CAPITAL'
           : enrollment.eventType === 'green-bull-championship'
             ? 'GREEN BULL CHAMPIONSHIP · $500,000 STARTING CAPITAL'
             : enrollment.eventType === 'bear-market-mayhem'
@@ -171,11 +177,22 @@ export function PaperEventLiveNotice({
       <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 4 }}>
         {enrollment.eventType === 'lightning-round'
           ? 'Trades use your existing Event Arena account; no separate Lightning Round balance or portfolio is created. The round closes 24 hours after it opens.'
-          : `Trade only in your separate ${enrollment.eventType === 'penny-stock-mayhem' ? 'Penny Stock Mayhem' : 'Event Arena'} account. This paper championship closes Friday at 4:00 p.m. ET.`}
+          : enrollment.eventType === 'one-stock-challenge'
+            ? ONE_STOCK_CHALLENGE_RULE_COPY
+            : `Trade only in your separate ${enrollment.eventType === 'penny-stock-mayhem' ? 'Penny Stock Mayhem' : 'Event Arena'} account. This paper championship closes Friday at 4:00 p.m. ET.`}
       </Text>
       {enrollment.eventType === 'penny-stock-mayhem' && (
         <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 4 }}>
           Long buys require a verified stock or ETF, a quote below $20, and a final fill below $20. Sells and reductions are unrestricted. Existing short-selling rules are unchanged.
+        </Text>
+      )}
+      {enrollment.eventType === 'one-stock-challenge' && (
+        <Text
+          testID="one-stock-live-reminder"
+          accessibilityLabel={ONE_STOCK_CHALLENGE_REJECTION_MESSAGE}
+          style={{ color: colors.gold, fontFamily: 'Inter_700Bold', fontSize: 11, lineHeight: 16, marginTop: 6 }}
+        >
+          ONE PARTICIPANT. ONE STOCK. ONE OPEN POSITION. Close your current position before selecting a different stock or ETF.
         </Text>
       )}
       {enrollment.eventType === 'lightning-round' && lightningEntryFailure ? (

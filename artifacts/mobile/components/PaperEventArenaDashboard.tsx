@@ -23,7 +23,7 @@ type Props = {
   eventId: string;
   startAtMs: number;
   endAtMs: number;
-  eventType?: 'event-arena' | 'green-bull-championship' | 'bear-market-mayhem' | 'penny-stock-mayhem' | 'mountain-championship' | 'lightning-round';
+  eventType?: 'event-arena' | 'green-bull-championship' | 'bear-market-mayhem' | 'penny-stock-mayhem' | 'mountain-championship' | 'one-stock-challenge' | 'lightning-round';
   enrollment: PaperChallengeEnrollment | null;
   summary: PaperChallengeSummary | null;
   equity: number;

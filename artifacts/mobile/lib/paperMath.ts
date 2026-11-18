@@ -61,6 +61,7 @@ export type PaperTransaction = {
   lightningRoundEventId?: string;
   symbol: string;
   companyName: string;
+  assetType?: 'stock' | 'etf' | 'unknown';
   action: 'BUY' | 'SELL' | 'SHORT_SELL' | 'BUY_TO_COVER' | 'DIVIDEND';
   shares: number;
   price: number;

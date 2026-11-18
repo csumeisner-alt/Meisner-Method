@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { EventArenaLeaderboardResponseEntriesItemHoldingsItemAssetType } from './eventArenaLeaderboardResponseEntriesItemHoldingsItemAssetType';
 import type { EventArenaLeaderboardResponseEntriesItemHoldingsItemSide } from './eventArenaLeaderboardResponseEntriesItemHoldingsItemSide';
 
 export type EventArenaLeaderboardResponseEntriesItemHoldingsItem = {
@@ -15,5 +16,11 @@ export type EventArenaLeaderboardResponseEntriesItemHoldingsItem = {
      * @minimum 0
      */
   allocationPercent: number | null;
+  /**
+     * Self-reported current market value of the open position.
+     * @minimum 0
+     */
+  marketValue?: number | null;
+  assetType?: EventArenaLeaderboardResponseEntriesItemHoldingsItemAssetType;
   side: EventArenaLeaderboardResponseEntriesItemHoldingsItemSide;
 };

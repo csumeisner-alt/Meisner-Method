@@ -44,8 +44,8 @@ export const ensureEventArenaConfigurationResponsePurchaseLimitExclusiveMin = 0;
 
 export const EnsureEventArenaConfigurationResponse = zod.object({
   "eventId": zod.string().regex(ensureEventArenaConfigurationResponseEventIdRegExp),
-  "eventType": zod.enum(['event-arena', 'green-bull-championship', 'bear-market-mayhem', 'penny-stock-mayhem', 'mountain-championship', 'lightning-round']),
-  "artworkId": zod.enum(['stadium', 'neon-nightclub', 'mountain-summit', 'red-showdown', 'green-stock-exchange', 'penny-stock-mayhem', 'lightning-round-arena']),
+  "eventType": zod.enum(['event-arena', 'green-bull-championship', 'bear-market-mayhem', 'penny-stock-mayhem', 'mountain-championship', 'one-stock-challenge', 'lightning-round']),
+  "artworkId": zod.enum(['stadium', 'neon-nightclub', 'mountain-summit', 'red-showdown', 'green-stock-exchange', 'penny-stock-mayhem', 'one-stock-challenge', 'lightning-round-arena']),
   "startingBalance": zod.number().gt(ensureEventArenaConfigurationResponseStartingBalanceExclusiveMin),
   "purchaseLimit": zod.number().gt(ensureEventArenaConfigurationResponsePurchaseLimitExclusiveMin).optional(),
   "rankingDirection": zod.enum(['highest-return', 'lowest-return']),
@@ -69,8 +69,8 @@ export const prepareLightningRoundEventsResponseEventsMin = 2;
 export const PrepareLightningRoundEventsResponse = zod.object({
   "events": zod.array(zod.object({
   "eventId": zod.string().regex(prepareLightningRoundEventsResponseEventsItemEventIdRegExp),
-  "eventType": zod.enum(['event-arena', 'green-bull-championship', 'bear-market-mayhem', 'penny-stock-mayhem', 'mountain-championship', 'lightning-round']),
-  "artworkId": zod.enum(['stadium', 'neon-nightclub', 'mountain-summit', 'red-showdown', 'green-stock-exchange', 'penny-stock-mayhem', 'lightning-round-arena']),
+  "eventType": zod.enum(['event-arena', 'green-bull-championship', 'bear-market-mayhem', 'penny-stock-mayhem', 'mountain-championship', 'one-stock-challenge', 'lightning-round']),
+  "artworkId": zod.enum(['stadium', 'neon-nightclub', 'mountain-summit', 'red-showdown', 'green-stock-exchange', 'penny-stock-mayhem', 'one-stock-challenge', 'lightning-round-arena']),
   "startingBalance": zod.number().gt(prepareLightningRoundEventsResponseEventsItemStartingBalanceExclusiveMin),
   "purchaseLimit": zod.number().gt(prepareLightningRoundEventsResponseEventsItemPurchaseLimitExclusiveMin).optional(),
   "rankingDirection": zod.enum(['highest-return', 'lowest-return']),
@@ -106,7 +106,11 @@ export const getEventArenaLeaderboardResponseEntriesItemParticipantTokenMax = 96
 
 export const getEventArenaLeaderboardResponseEntriesItemTradeCountMin = 0;
 
+export const getEventArenaLeaderboardResponseEntriesItemCashBalanceMin = 0;
+
 export const getEventArenaLeaderboardResponseEntriesItemHoldingsItemAllocationPercentMin = 0;
+
+export const getEventArenaLeaderboardResponseEntriesItemHoldingsItemMarketValueMin = 0;
 
 
 
@@ -120,10 +124,13 @@ export const GetEventArenaLeaderboardResponse = zod.object({
   "profitLoss": zod.number().describe('Event equity minus starting equity.'),
   "returnPercent": zod.number().describe('Percentage return calculated from event equity and starting equity.'),
   "tradeCount": zod.number().min(getEventArenaLeaderboardResponseEntriesItemTradeCountMin).nullable(),
+  "cashBalance": zod.number().min(getEventArenaLeaderboardResponseEntriesItemCashBalanceMin).describe('Self-reported remaining event-account cash after recorded transfers.'),
   "holdings": zod.array(zod.object({
   "symbol": zod.string(),
   "companyName": zod.string(),
   "allocationPercent": zod.number().min(getEventArenaLeaderboardResponseEntriesItemHoldingsItemAllocationPercentMin).nullable().describe('Self-reported absolute market exposure as a percentage of reported Event Arena account equity; null when unavailable.'),
+  "marketValue": zod.number().min(getEventArenaLeaderboardResponseEntriesItemHoldingsItemMarketValueMin).nullish().describe('Self-reported current market value of the open position.'),
+  "assetType": zod.enum(['stock', 'etf', 'unknown']).optional(),
   "side": zod.enum(['long', 'short'])
 })),
   "updatedAt": zod.coerce.date(),
@@ -169,6 +176,8 @@ export const submitEventArenaScoreBodyTradeCountMin = 0;
 
 export const submitEventArenaScoreBodyHoldingsItemAllocationPercentMin = 0;
 
+export const submitEventArenaScoreBodyHoldingsItemMarketValueMin = 0;
+
 export const submitEventArenaScoreBodyHoldingsMax = 100;
 
 
@@ -176,8 +185,8 @@ export const submitEventArenaScoreBodyHoldingsMax = 100;
 export const SubmitEventArenaScoreBody = zod.object({
   "installationId": zod.string().min(submitEventArenaScoreBodyInstallationIdMin).max(submitEventArenaScoreBodyInstallationIdMax).describe('Anonymous device identifier; never returned by leaderboard reads.'),
   "alias": zod.string().min(1).max(submitEventArenaScoreBodyAliasMax),
-  "eventType": zod.enum(['event-arena', 'green-bull-championship', 'bear-market-mayhem', 'penny-stock-mayhem', 'mountain-championship', 'lightning-round']),
-  "artworkId": zod.enum(['stadium', 'neon-nightclub', 'mountain-summit', 'red-showdown', 'green-stock-exchange', 'penny-stock-mayhem', 'lightning-round-arena']),
+  "eventType": zod.enum(['event-arena', 'green-bull-championship', 'bear-market-mayhem', 'penny-stock-mayhem', 'mountain-championship', 'one-stock-challenge', 'lightning-round']),
+  "artworkId": zod.enum(['stadium', 'neon-nightclub', 'mountain-summit', 'red-showdown', 'green-stock-exchange', 'penny-stock-mayhem', 'one-stock-challenge', 'lightning-round-arena']),
   "startingBalance": zod.number().gt(submitEventArenaScoreBodyStartingBalanceExclusiveMin),
   "purchaseLimit": zod.number().gt(submitEventArenaScoreBodyPurchaseLimitExclusiveMin).optional(),
   "rankingDirection": zod.enum(['highest-return', 'lowest-return']),
@@ -191,6 +200,8 @@ export const SubmitEventArenaScoreBody = zod.object({
   "symbol": zod.string(),
   "companyName": zod.string(),
   "allocationPercent": zod.number().min(submitEventArenaScoreBodyHoldingsItemAllocationPercentMin).nullable().describe('Absolute market exposure as a percentage of reported Event Arena account equity; null when unavailable.'),
+  "marketValue": zod.number().min(submitEventArenaScoreBodyHoldingsItemMarketValueMin).nullish().describe('Current reported market value from the event account position and quote.'),
+  "assetType": zod.enum(['stock', 'etf', 'unknown']).optional(),
   "side": zod.enum(['long', 'short'])
 })).max(submitEventArenaScoreBodyHoldingsMax),
   "eventStartAtMs": zod.number(),

@@ -21,6 +21,10 @@ export const PAPER_CHALLENGE_STARTING_BALANCE = 100_000;
 export const LIGHTNING_ROUND_STARTING_BALANCE = 100_000;
 export const GREEN_BULL_STARTING_BALANCE = 500_000;
 export const NEON_NIGHTCLUB_STARTING_BALANCE = 250_000;
+export const ONE_STOCK_CHALLENGE_REJECTION_MESSAGE =
+  'One-Stock Challenge allows only one open stock or ETF position at a time. Close your current position before selecting another.';
+export const ONE_STOCK_CHALLENGE_RULE_COPY =
+  'You can change your pick whenever you want, but you must completely close your current position before opening a different stock or ETF.';
 export const LIGHTNING_ROUND_TIME_ZONE = 'America/Denver';
 export const LIGHTNING_ROUND_START_HOUR = 7;
 export const LIGHTNING_ROUND_START_MINUTE = 30;
@@ -39,6 +43,7 @@ export const PAPER_CHALLENGE_ARTWORK_IDS = [
   'red-showdown',
   'green-stock-exchange',
   'penny-stock-mayhem',
+  'one-stock-challenge',
 ] as const;
 export const LIGHTNING_ROUND_ARTWORK_ID = 'lightning-round-arena' as const;
 export type PaperChallengeArtworkId =
@@ -51,6 +56,7 @@ export type PaperChallengeEventType =
   | 'bear-market-mayhem'
   | 'penny-stock-mayhem'
   | 'mountain-championship'
+  | 'one-stock-challenge'
   | 'lightning-round';
 export type PaperChallengeRankingDirection = 'highest-return' | 'lowest-return';
 
@@ -97,6 +103,14 @@ export function getPaperChallengeConfiguration(
       startingBalance: PAPER_CHALLENGE_STARTING_BALANCE,
       rankingDirection: 'highest-return',
       purchaseLimit: 20,
+    };
+  }
+  if (artworkId === 'one-stock-challenge') {
+    return {
+      eventType: 'one-stock-challenge',
+      artworkId,
+      startingBalance: PAPER_CHALLENGE_STARTING_BALANCE,
+      rankingDirection: 'highest-return',
     };
   }
   if (artworkId === 'mountain-summit') {
@@ -335,6 +349,7 @@ export function normalizePaperChallengeStore(
       || eventType === 'bear-market-mayhem'
       || eventType === 'penny-stock-mayhem'
       || eventType === 'mountain-championship'
+      || eventType === 'one-stock-challenge'
       || eventType === 'event-arena'
       ? eventType
       : undefined;
@@ -394,6 +409,7 @@ export function normalizePaperChallengeStore(
           || store.enrollment.eventType === 'bear-market-mayhem'
           || store.enrollment.eventType === 'penny-stock-mayhem'
           || store.enrollment.eventType === 'mountain-championship'
+          || store.enrollment.eventType === 'one-stock-challenge'
           ? store.enrollment.eventType
           : 'event-arena';
         const savedStartingBalance = store.enrollment.startingBalance;

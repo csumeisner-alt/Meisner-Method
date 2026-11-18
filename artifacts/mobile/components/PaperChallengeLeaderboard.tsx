@@ -102,6 +102,8 @@ type HoldingName = {
   symbol: string;
   companyName: string;
   allocationPercent: number | null;
+  marketValue?: number | null;
+  assetType?: 'stock' | 'etf' | 'unknown';
   side: EventHoldingSide;
 };
 type LeaderboardEntry = {
@@ -112,6 +114,7 @@ type LeaderboardEntry = {
   equity: number;
   profitLoss: number;
   returnPercent: number;
+  cashBalance: number;
   tradeCount: number | null;
   holdings: HoldingName[];
   updatedAt: string;
@@ -154,6 +157,7 @@ const dateRangeLabel = (startAtMs: number, endAtMs: number) => {
 
 function getPodiumEventName(event: PaperChallengeLeaderboardEventWindow) {
   if (event.eventType === 'lightning-round' || event.artworkId === 'lightning-round-arena') return 'Lightning Round';
+  if (event.eventType === 'one-stock-challenge' || event.artworkId === 'one-stock-challenge') return 'The One-Stock Challenge';
   if (event.eventType === 'penny-stock-mayhem' || event.artworkId === 'penny-stock-mayhem') return 'Penny Stock Mayhem';
   if (event.eventType === 'bear-market-mayhem' || event.rankingDirection === 'lowest-return' || event.artworkId === 'red-showdown') return 'Bear Market Mayhem';
   if (event.eventType === 'green-bull-championship' || event.artworkId === 'green-stock-exchange') return 'Green Bull Championship';
@@ -327,6 +331,7 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
       shares: number;
       avgCost: number;
       positionType?: 'long' | 'short';
+      assetType?: 'stock' | 'etf' | 'unknown';
     }>;
     transactions?: PaperTransaction[];
   } : {};
@@ -406,9 +411,14 @@ async function buildEventSubmission(enrollment: PaperChallengeEnrollment, event:
   const holdings = shareablePositions
     .map((position) => {
       const symbol = position.symbol.trim().toUpperCase();
+      const currentPrice = quotes.get(symbol);
       return {
         symbol,
         companyName: (position.companyName || position.symbol).trim().slice(0, 120),
+        marketValue: typeof currentPrice === 'number' && Number.isFinite(currentPrice)
+          ? Math.abs(position.shares) * currentPrice
+          : null,
+        assetType: ('assetType' in position ? position.assetType : undefined) ?? 'unknown',
         allocationPercent: calculateEventHoldingAllocationPercent(
           Math.abs(position.shares),
           quotes.get(symbol),
@@ -544,6 +554,7 @@ export function PaperChallengeLeaderboard({
     || event.rankingDirection === 'lowest-return';
   const isLightningRound = event.eventType === 'lightning-round';
   const isPennyStockMayhem = event.eventType === 'penny-stock-mayhem';
+  const isOneStockChallenge = event.eventType === 'one-stock-challenge';
   const isTransferLocked = cashTransfersLocked ?? isMountainChampionshipTransferLocked(
     event.eventType,
     event.id,
@@ -969,7 +980,7 @@ export function PaperChallengeLeaderboard({
       <TouchableOpacity
         testID={`event-leaderboard-entry-${entry.rank}`}
         accessibilityRole="button"
-        accessibilityLabel={`Rank ${entry.rank}, ${entry.alias}${entry.isCurrentUser ? ', your score' : ''}, account value ${money(entry.equity)}, profit or loss ${signedMoney(entry.profitLoss)}, ${returnLabel(entry.returnPercent)} return, ${entry.tradeCount == null ? 'trade count unavailable' : `${entry.tradeCount} trades`}.${progressAnnouncement ? ` ${progressAnnouncement}.` : ''} View public score summary.`}
+        accessibilityLabel={`Rank ${entry.rank}, ${entry.alias}${entry.isCurrentUser ? ', your score' : ''}, account value ${money(entry.equity)}, profit or loss ${signedMoney(entry.profitLoss)}, ${returnLabel(entry.returnPercent)} return${isOneStockChallenge ? `, current holding ${entry.holdings[0]?.symbol ?? 'cash'}, position market value ${entry.holdings[0]?.marketValue == null ? 'unavailable' : money(entry.holdings[0].marketValue)}, cash remaining ${money(entry.cashBalance)}` : ''}, ${entry.tradeCount == null ? 'trade count unavailable' : `${entry.tradeCount} trades`}.${progressAnnouncement ? ` ${progressAnnouncement}.` : ''} View public score summary.`}
         onPress={() => setDetail(entry)}
         style={{
           flexDirection: 'row',
@@ -1003,6 +1014,19 @@ export function PaperChallengeLeaderboard({
               </Text>
             );
           })()}
+          {isOneStockChallenge && (
+            <View
+              testID={`one-stock-leaderboard-holding-${entry.rank}`}
+              style={{ alignSelf: 'flex-start', width: '100%', flexShrink: 1, marginTop: 5, paddingVertical: 5, paddingHorizontal: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.primary, backgroundColor: colors.card }}
+            >
+              <Text numberOfLines={1} style={{ color: colors.primary, fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.6 }}>
+                {entry.holdings[0]?.symbol ?? 'HOLDING CASH'}
+              </Text>
+              <Text numberOfLines={1} style={{ color: colors.foreground, fontFamily: 'Inter_500Medium', fontSize: 9, marginTop: 2 }}>
+                Position {entry.holdings[0]?.marketValue == null ? '—' : money(entry.holdings[0].marketValue)} · Cash {money(entry.cashBalance)}
+              </Text>
+            </View>
+          )}
           {change && placesMoved !== 0 && (
             <Text style={{ color: placesMoved > 0 ? colors.primary : colors.destructive, fontFamily: 'Inter_600SemiBold', fontSize: 10, marginTop: 3 }}>
               {placesMoved > 0 ? '↑' : '↓'} {Math.abs(placesMoved)} {Math.abs(placesMoved) === 1 ? 'place' : 'places'}
@@ -1501,14 +1525,23 @@ export function PaperChallengeLeaderboard({
                   ? require('../assets/event-arena-penny-stock-mayhem-premium.jpg')
                   : EVENT_ARENA_ARTWORK_SOURCES[event.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID]}
                 resizeMode="cover"
-                imageStyle={{ borderRadius: 24, opacity: isPennyStockMayhem ? 0 : 0.96 }}
-                style={{ overflow: 'hidden', borderRadius: 24, borderWidth: 1, borderColor: isBearMarketMayhem ? 'rgba(240,82,93,0.62)' : isPennyStockMayhem ? 'rgba(173,202,119,0.62)' : 'rgba(214,177,94,0.34)', marginBottom: 17, padding: compactPodium ? 12 : 17, backgroundColor: isPennyStockMayhem ? '#07110D' : '#101720' }}
+                imageStyle={{ borderRadius: 24, opacity: isPennyStockMayhem || isOneStockChallenge ? 0 : 0.96 }}
+                style={{ overflow: 'hidden', borderRadius: 24, borderWidth: 1, borderColor: isBearMarketMayhem ? 'rgba(240,82,93,0.62)' : isPennyStockMayhem ? 'rgba(173,202,119,0.62)' : isOneStockChallenge ? colors.primary : 'rgba(214,177,94,0.34)', marginBottom: 17, padding: compactPodium ? 12 : 17, backgroundColor: isPennyStockMayhem ? '#07110D' : isOneStockChallenge ? colors.background : '#101720' }}
               >
-                <View style={{ pointerEvents: 'none', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: isPennyStockMayhem ? 'transparent' : 'rgba(7,12,20,0.18)' }} />
+                <View style={{ pointerEvents: 'none', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: isPennyStockMayhem || isOneStockChallenge ? 'transparent' : 'rgba(7,12,20,0.18)' }} />
+                {isOneStockChallenge && (
+                  <Image
+                    testID="paper-event-one-stock-hero-art"
+                    source={EVENT_ARENA_ARTWORK_SOURCES['one-stock-challenge']}
+                    resizeMode="contain"
+                    accessibilityLabel="The One-Stock Challenge artwork with its title, bull, bear, trading screens, and central chess pawn."
+                    style={{ width: '100%', aspectRatio: 1, borderRadius: 14, marginBottom: 15 }}
+                  />
+                )}
                 <LinearGradient
                   colors={isBearMarketMayhem
                     ? ['rgba(123,22,34,0.42)', 'rgba(8,14,24,0.04)', 'rgba(90,18,28,0.3)']
-                    : isPennyStockMayhem
+                    : isPennyStockMayhem || isOneStockChallenge
                       ? ['transparent', 'transparent', 'transparent']
                       : ['rgba(25,139,218,0.22)', 'rgba(8,14,24,0.03)', 'rgba(25,139,218,0.15)']}
                   start={{ x: 0, y: 0 }}
@@ -1602,6 +1635,8 @@ export function PaperChallengeLeaderboard({
                     <Text testID="paper-event-championship-identity" style={{ color: isBearMarketMayhem ? '#FF6670' : '#E8CB7C', fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 1.2, textAlign: 'center', marginBottom: 7, textShadowColor: 'transparent', textShadowRadius: 7 }}>
                     {isBearMarketMayhem
                       ? 'BEAR MARKET MAYHEM'
+                      : isOneStockChallenge
+                        ? 'THE ONE-STOCK CHALLENGE'
                       : isLightningRound
                         ? 'LIGHTNING ROUND'
                         : event.eventType === 'green-bull-championship' ? 'GREEN BULL CHAMPIONSHIP' : 'EVENT ARENA CHAMPIONSHIP'}

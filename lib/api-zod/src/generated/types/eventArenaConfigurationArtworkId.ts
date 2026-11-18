@@ -16,5 +16,6 @@ export const EventArenaConfigurationArtworkId = {
   'red-showdown': 'red-showdown',
   'green-stock-exchange': 'green-stock-exchange',
   'penny-stock-mayhem': 'penny-stock-mayhem',
+  'one-stock-challenge': 'one-stock-challenge',
   'lightning-round-arena': 'lightning-round-arena',
 } as const;

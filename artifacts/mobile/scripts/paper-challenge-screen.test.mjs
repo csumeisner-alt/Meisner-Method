@@ -1427,7 +1427,7 @@ test("incoming event cash is celebrated on app open and acknowledged per transfe
   assert.match(eventArenaApi, /router\.post\("\/event-arena\/:eventId\/transfers\/read"/);
 });
 
-test("all six live Event Arena backgrounds keep podium names and values readable", () => {
+test("all seven live Event Arena artworks keep podium names and values readable", () => {
   const artworks = [
     ["stadium", "event-arena-stadium.jpg"],
     ["neon-nightclub", "event-arena-neon-nightclub.jpg"],
@@ -1435,8 +1435,9 @@ test("all six live Event Arena backgrounds keep podium names and values readable
     ["red-showdown", "event-arena-red-showdown.jpg"],
     ["green-stock-exchange", "event-arena-green-stock-exchange.jpg"],
     ["penny-stock-mayhem", "event-arena-penny-stock-mayhem-clean.jpg"],
+    ["one-stock-challenge", "event-arena-one-stock-challenge.jpg"],
   ];
-  assert.equal((eventArenaArtworkCatalog.match(/require\('\.\.\/assets\/event-arena-[^']+\.jpg'\)/g) ?? []).length, 6);
+  assert.equal((eventArenaArtworkCatalog.match(/require\('\.\.\/assets\/event-arena-[^']+\.jpg'\)/g) ?? []).length, 7);
 
   assert.match(leaderboard, /:\s*EVENT_ARENA_ARTWORK_SOURCES\[event\.artworkId \?\? LEGACY_PAPER_CHALLENGE_ARTWORK_ID\]/);
   assert.match(leaderboard, /resizeMode="cover"/);
@@ -1446,12 +1447,14 @@ test("all six live Event Arena backgrounds keep podium names and values readable
   const artworkEnd = leaderboard.indexOf("</ImageBackground>", artworkStart);
   const artworkContainer = leaderboard.slice(artworkStart, artworkEnd);
   assert.ok(artworkStart >= 0 && artworkEnd > artworkStart);
-  assert.match(artworkContainer, /backgroundColor: isPennyStockMayhem \? '#07110D' : '#101720'/);
-  assert.match(artworkContainer, /imageStyle=\{\{ borderRadius: 24, opacity: isPennyStockMayhem \? 0 : 0\.96 \}\}/);
-  assert.match(artworkContainer, /backgroundColor: isPennyStockMayhem \? 'transparent' : 'rgba\(7,12,20,0\.18\)'/);
+  assert.match(artworkContainer, /backgroundColor: isPennyStockMayhem \? '#07110D' : isOneStockChallenge \? colors\.background : '#101720'/);
+  assert.match(artworkContainer, /imageStyle=\{\{ borderRadius: 24, opacity: isPennyStockMayhem \|\| isOneStockChallenge \? 0 : 0\.96 \}\}/);
+  assert.match(artworkContainer, /backgroundColor: isPennyStockMayhem \|\| isOneStockChallenge \? 'transparent' : 'rgba\(7,12,20,0\.18\)'/);
   assert.match(artworkContainer, /<LinearGradient/);
   assert.match(artworkContainer, /testID="paper-event-penny-stock-hero"/);
   assert.match(artworkContainer, /testID="paper-event-penny-stock-art"/);
+  assert.match(artworkContainer, /testID="paper-event-one-stock-hero-art"/);
+  assert.match(artworkContainer, /THE ONE-STOCK CHALLENGE/);
   assert.match(artworkContainer, /<PennyMayhemTitle[\s\S]*?<PennyMayhemNameplate/);
   assert.match(artworkContainer, /resizeMode="contain"[\s\S]*?width: '100%'[\s\S]*?aspectRatio: 1/);
   assert.match(artworkContainer, /paper-event-penny-stock-hero[\s\S]*?paper-event-leaderboard-countdown/);
@@ -1548,12 +1551,23 @@ test("Penny Stock Mayhem exposes its rules and rechecks execution quotes", () =>
 test("Event Arena overview shows concise special rules only for restricted events", () => {
   assert.match(eventArenaOverview, /testID="event-arena-special-rules"/);
   assert.match(eventArenaOverview, /testID=\{`event-arena-rule-\$\{rule\.id\}`\}/);
+  assert.match(eventArenaOverview, /ONE PARTICIPANT\. ONE STOCK\. ONE OPEN POSITION\./);
+  assert.match(eventArenaOverview, /ONE_STOCK_CHALLENGE_RULE_COPY/);
+  assert.match(eventArenaOverview, /testID="event-arena-one-stock-artwork"/);
   assert.match(eventArenaOverview, /verified stock or ETF[\s\S]*?final fill below \$20/);
   assert.match(eventArenaOverview, /Lowest portfolio return ranks first/);
   assert.match(eventArenaOverview, /Cash transfers are disabled during the preparation period and competition/);
   assert.match(eventArenaOverview, /const isMountainChampionship = event\.eventType === 'mountain-championship'/);
   assert.match(challenge, /NEON_NIGHTCLUB_STARTING_BALANCE = 250_000/);
   assert.match(challenge, /artworkId === 'mountain-summit'[\s\S]*?startingBalance: PAPER_CHALLENGE_STARTING_BALANCE/);
+});
+
+test("One-Stock Challenge leaderboard highlights ticker or cash, position value, and remaining cash", () => {
+  assert.match(leaderboard, /testID=\{`one-stock-leaderboard-holding-\$\{entry\.rank\}`\}/);
+  assert.match(leaderboard, /\{entry\.holdings\[0\]\?\.symbol \?\? 'HOLDING CASH'\}/);
+  assert.match(leaderboard, /Position \{entry\.holdings\[0\]\?\.marketValue == null \? '—' : money\(entry\.holdings\[0\]\.marketValue\)\}/);
+  assert.match(leaderboard, /Cash \{money\(entry\.cashBalance\)\}/);
+  assert.match(leaderboard, /current holding \$\{entry\.holdings\[0\]\?\.symbol \?\? 'cash'\}[\s\S]*?cash remaining \$\{money\(entry\.cashBalance\)\}/);
 });
 
 test("Penny Stock Mayhem uses cinematic leaderboard artwork without a floating logo", () => {

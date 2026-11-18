@@ -15,5 +15,6 @@ export const EventArenaScoreSubmissionEventType = {
   'bear-market-mayhem': 'bear-market-mayhem',
   'penny-stock-mayhem': 'penny-stock-mayhem',
   'mountain-championship': 'mountain-championship',
+  'one-stock-challenge': 'one-stock-challenge',
   'lightning-round': 'lightning-round',
 } as const;

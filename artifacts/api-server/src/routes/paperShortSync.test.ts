@@ -25,10 +25,10 @@ test("paper sync normalizes short state and keeps account identities on every re
 });
 
 test("paper sync writes and reads collateral, intent, and account-scoped history", () => {
-  assert.match(source, /INSERT INTO paper_positions[\s\S]*?position_type, collateral_per_share/);
+  assert.match(source, /INSERT INTO paper_positions[\s\S]*?position_type, asset_type, collateral_per_share/);
   assert.match(source, /INSERT INTO paper_transactions[\s\S]*?cash_delta, short_collateral_delta/);
   assert.match(source, /INSERT INTO paper_orders[\s\S]*?intent, short_collateral_ratio/);
-  assert.match(source, /SELECT id, account_id, symbol, company_name, shares, avg_cost, position_type, collateral_per_share/);
+  assert.match(source, /SELECT id, account_id, symbol, company_name, shares, avg_cost, position_type, asset_type, collateral_per_share/);
   assert.match(source, /SELECT id, account_id, symbol, company_name, order_type, side, shares, intent, short_collateral_ratio/);
   assert.match(source, /shortCollateralDelta: r\.short_collateral_delta/);
 });

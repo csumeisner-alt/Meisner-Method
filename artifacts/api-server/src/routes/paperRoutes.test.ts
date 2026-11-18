@@ -96,8 +96,8 @@ class MemoryPaperDatabase {
       this.positions.push({
         id: values[0], user_id: values[1], account_id: values[2], symbol: values[3],
         company_name: values[4], shares: values[5], avg_cost: values[6], position_type: values[7],
-        collateral_per_share: values[8], opened_at: new Date(values[9]), dividend_yield: values[10],
-        dividend_rate: values[11], expense_ratio: values[12], sector: values[13],
+        asset_type: values[8], collateral_per_share: values[9], opened_at: new Date(values[10]), dividend_yield: values[11],
+        dividend_rate: values[12], expense_ratio: values[13], sector: values[14],
       });
       return { rows: [] };
     }
@@ -110,7 +110,7 @@ class MemoryPaperDatabase {
         id: values[0], user_id: values[1], account_id: values[2], symbol: values[3],
         company_name: values[4], action: values[5], shares: values[6], price: values[7],
         total: values[8], date: new Date(values[9]), realized_pnl: values[10], fee: values[11],
-        cash_delta: values[12], short_collateral_delta: values[13], lightning_round_event_id: values[14],
+        asset_type: values[12], cash_delta: values[13], short_collateral_delta: values[14], lightning_round_event_id: values[15],
       });
       return { rows: [] };
     }
@@ -319,5 +319,128 @@ test("device sync rejects duplicate order and execution IDs instead of storing d
       assert.equal(response.status, 400);
     }
     assert.equal(db.metadata.size, 0, "invalid duplicate identities must not create server snapshots");
+  });
+});
+
+test("One-Stock Challenge server snapshots allow one eligible holding and reject bypasses", async () => {
+  const accountId = "paper-event:2027-02-08";
+  const enrollment = {
+    eventId: "2027-02-08",
+    eventType: "one-stock-challenge",
+    accountId,
+    eventStartAtMs: Date.parse("2027-02-08T14:30:00.000Z"),
+    eventEndAtMs: Date.parse("2027-02-12T21:00:00.000Z"),
+  };
+  const base = {
+    ...snapshot,
+    accounts: [{ ...snapshot.accounts[0], id: accountId }],
+    positions: [],
+    transactions: [],
+    orders: [],
+    lots: [],
+    challengeStore: { enrollment, lightningEnrollment: null, history: [] },
+  };
+  const buy = (id: string, symbol: string, shares: number, assetType: "stock" | "etf" = "stock") => ({
+    id,
+    accountId,
+    symbol,
+    companyName: symbol,
+    action: "BUY",
+    shares,
+    price: 100,
+    total: shares * 100,
+    date: "2027-02-08T15:00:00.000Z",
+    assetType,
+  });
+  const sell = (id: string, symbol: string, shares: number) => ({
+    id,
+    accountId,
+    symbol,
+    companyName: symbol,
+    action: "SELL",
+    shares,
+    price: 110,
+    total: shares * 110,
+    date: "2027-02-08T16:00:00.000Z",
+    assetType: "stock",
+  });
+  const position = (symbol: string, shares: number, assetType: "stock" | "etf" = "stock") => ({
+    id: `position-${symbol}`,
+    accountId,
+    symbol,
+    companyName: symbol,
+    shares,
+    avgCost: 100,
+    assetType,
+    openedAt: "2027-02-08T15:00:00.000Z",
+  });
+  const validStates = [
+    { transactions: [buy("first-stock", "AAPL", 2)], positions: [position("AAPL", 2)] },
+    { transactions: [buy("first-etf", "VOO", 2, "etf")], positions: [position("VOO", 2, "etf")] },
+    { transactions: [buy("add-one", "AAPL", 2), buy("add-two", "AAPL", 1)], positions: [position("AAPL", 3)] },
+    { transactions: [buy("partial-buy", "AAPL", 3), sell("partial-sell", "AAPL", 1)], positions: [position("AAPL", 2)] },
+    {
+      transactions: [
+        buy("close-buy", "AAPL", 2),
+        sell("close-sell", "AAPL", 2),
+        { ...buy("switch-buy", "VOO", 1, "etf"), date: "2027-02-08T17:00:00.000Z" },
+      ],
+      positions: [position("VOO", 1, "etf")],
+    },
+  ];
+  const invalidStates = [
+    {
+      transactions: [buy("two-a", "AAPL", 1), buy("two-b", "MSFT", 1)],
+      positions: [position("AAPL", 1), { ...position("MSFT", 1), id: "position-MSFT" }],
+      orders: [],
+    },
+    {
+      transactions: [buy("pending-a", "AAPL", 1)],
+      positions: [position("AAPL", 1)],
+      orders: [{
+        id: "pending-other", accountId, symbol: "MSFT", companyName: "MSFT",
+        orderType: "limit", side: "buy", assetType: "stock", shares: 1,
+        status: "pending", placedAt: "2027-02-08T16:00:00.000Z",
+      }],
+    },
+    {
+      transactions: [{
+        ...buy("short", "AAPL", 1),
+        action: "SHORT_SELL",
+      }],
+      positions: [{ ...position("AAPL", 1), positionType: "short" }],
+      orders: [],
+    },
+    {
+      transactions: [{ ...buy("unknown-asset", "XYZ", 1, "stock"), assetType: "unknown" }],
+      positions: [{ ...position("XYZ", 1, "stock"), assetType: "unknown" }],
+      orders: [],
+    },
+  ];
+
+  await withApi(async (baseUrl, db) => {
+    for (const [index, state] of validStates.entries()) {
+      const response = await fetch(`${baseUrl}/event-arena/device-pairing`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-event-arena-device-token": String(index + 1).padStart(64, "0"),
+        },
+        body: JSON.stringify({ snapshot: { ...base, ...state, sourceInstallationId: `${sourceInstallationId}-${index}` } }),
+      });
+      assert.equal(response.status, 200, `valid one-stock state ${index} should sync`);
+    }
+    for (const [index, state] of invalidStates.entries()) {
+      const response = await fetch(`${baseUrl}/event-arena/device-pairing`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-event-arena-device-token": String(index + 20).padStart(64, "0"),
+        },
+        body: JSON.stringify({ snapshot: { ...base, ...state, sourceInstallationId: `${sourceInstallationId}-invalid-${index}` } }),
+      });
+      assert.equal(response.status, 400, `invalid one-stock state ${index} must be rejected by the server`);
+    }
+    assert.equal(db.metadata.size, validStates.length, "invalid trades must not create server snapshots");
   });
 });

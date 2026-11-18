@@ -28,6 +28,7 @@ import type {
 import {
   isMountainChampionshipTransferLocked,
   LEGACY_PAPER_CHALLENGE_ARTWORK_ID,
+  ONE_STOCK_CHALLENGE_RULE_COPY,
 } from '@/lib/paperChallenge';
 
 export type EventArenaOverviewProps = {
@@ -150,8 +151,15 @@ export function EventArenaOverview({
   const isBearMarketMayhem = event.eventType === 'bear-market-mayhem'
     || event.rankingDirection === 'lowest-return';
   const isPennyStockMayhem = event.eventType === 'penny-stock-mayhem';
+  const isOneStockChallenge = event.eventType === 'one-stock-challenge';
   const isMountainChampionship = event.eventType === 'mountain-championship';
   const specialRules = [
+    ...(isOneStockChallenge
+      ? [
+          { id: 'one-stock-rule', text: 'ONE PARTICIPANT. ONE STOCK. ONE OPEN POSITION.' },
+          { id: 'one-stock-switching', text: ONE_STOCK_CHALLENGE_RULE_COPY },
+        ]
+      : []),
     ...(isPennyStockMayhem
       ? [{
           id: 'penny-stock',
@@ -171,7 +179,9 @@ export function EventArenaOverview({
   const countdownLabel = countdownMode === 'starts' ? 'STARTS IN' : countdownMode === 'ends' ? 'TIME REMAINING' : 'EVENT CLOSED';
   const eventName = `Week of ${new Date(event.startAtMs).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
   const eventTitle = `Week of ${new Date(event.startAtMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
-  const championshipName = event.eventType === 'green-bull-championship'
+  const championshipName = isOneStockChallenge
+    ? 'THE ONE-STOCK CHALLENGE'
+    : event.eventType === 'green-bull-championship'
     ? 'GREEN BULL CHAMPIONSHIP'
     : isBearMarketMayhem ? 'BEAR MARKET MAYHEM'
       : event.eventType === 'penny-stock-mayhem' ? 'PENNY STOCK MAYHEM'
@@ -291,6 +301,15 @@ export function EventArenaOverview({
               </Text>
             </View>
           </ImageBackground>
+        )}
+        {isOneStockChallenge && (
+          <Image
+            testID="event-arena-one-stock-artwork"
+            source={require('../assets/event-arena-one-stock-challenge.jpg')}
+            resizeMode="contain"
+            accessibilityLabel="The One-Stock Challenge championship artwork: a bull, bear, rising market chart, and a single chess pawn beneath the title."
+            style={{ width: '100%', aspectRatio: 1, borderRadius: 18, marginBottom: 14, backgroundColor: '#06131A' }}
+          />
         )}
 
         <View style={[styles.heroCard, { backgroundColor: surface, borderColor: border }]}>

@@ -134,6 +134,9 @@ function validateSnapshot(value: unknown) {
       shares: finiteNumber(position.shares, `positions[${index}].shares`, 0),
       avgCost: finiteNumber(position.avgCost, `positions[${index}].avgCost`, 0),
       positionType: position.positionType === "short" ? "short" : "long",
+      assetType: position.assetType === "stock" || position.assetType === "etf" || position.assetType === "unknown"
+        ? position.assetType
+        : null,
       collateralPerShare: optionalNumber(position.collateralPerShare, `positions[${index}].collateralPerShare`),
       openedAt: isoDate(position.openedAt, `positions[${index}].openedAt`),
       dividendYield: optionalNumber(position.dividendYield, `positions[${index}].dividendYield`) ?? 0,
@@ -155,6 +158,9 @@ function validateSnapshot(value: unknown) {
       price: finiteNumber(transaction.price, `transactions[${index}].price`, 0),
       total: finiteNumber(transaction.total, `transactions[${index}].total`, 0),
       date: isoDate(transaction.date, `transactions[${index}].date`),
+      assetType: transaction.assetType === "stock" || transaction.assetType === "etf" || transaction.assetType === "unknown"
+        ? transaction.assetType
+        : null,
       realizedPnL: optionalNumber(transaction.realizedPnL, `transactions[${index}].realizedPnL`),
       fee: optionalNumber(transaction.fee, `transactions[${index}].fee`) ?? 0,
       cashDelta: optionalNumber(transaction.cashDelta, `transactions[${index}].cashDelta`),
@@ -228,6 +234,71 @@ function validateSnapshot(value: unknown) {
   if (activeEnrollments.some((enrollment: any) =>
     !isEventAccountId(enrollment.accountId) || !accountIds.has(enrollment.accountId),
   )) throw new Error("An enrollment does not match a snapshot account.");
+  const oneStockEnrollment = activeEnrollments.find((enrollment: any) =>
+    enrollment.eventType === "one-stock-challenge",
+  ) as any;
+  if (oneStockEnrollment) {
+    const oneStockAccountId = oneStockEnrollment.accountId as string;
+    const openPositions = positions.filter((position) =>
+      position.accountId === oneStockAccountId && position.shares > 0.0001,
+    );
+    const openSymbols = new Set(openPositions.map((position) => position.symbol));
+    if (
+      openSymbols.size > 1
+      || openPositions.some((position) =>
+        position.positionType !== "long" || (position.assetType !== "stock" && position.assetType !== "etf"),
+      )
+    ) throw new Error("One-Stock Challenge allows only one open stock or ETF position at a time. Close your current position before selecting another.");
+
+    let heldSymbol: string | null = null;
+    let heldShares = 0;
+    const accountTransactions = transactions
+      .filter((transaction) => transaction.accountId === oneStockAccountId)
+      .sort((left, right) => Date.parse(left.date) - Date.parse(right.date));
+    for (const transaction of accountTransactions) {
+      if (transaction.action === "BUY") {
+        if (transaction.assetType !== "stock" && transaction.assetType !== "etf") {
+          throw new Error("One-Stock Challenge buys require a verified stock or ETF.");
+        }
+        if (heldShares > 0.0001 && heldSymbol !== transaction.symbol) {
+          throw new Error("One-Stock Challenge allows only one open stock or ETF position at a time. Close your current position before selecting another.");
+        }
+        heldSymbol = transaction.symbol;
+        heldShares += transaction.shares;
+      } else if (transaction.action === "SELL") {
+        if (heldSymbol !== transaction.symbol || heldShares < transaction.shares - 0.0001) {
+          throw new Error("One-Stock Challenge sell history does not match its open position.");
+        }
+        heldShares -= transaction.shares;
+        if (heldShares <= 0.0001) {
+          heldSymbol = null;
+          heldShares = 0;
+        }
+      } else if (transaction.action === "SHORT_SELL" || transaction.action === "BUY_TO_COVER") {
+        throw new Error("Short selling is not available in the One-Stock Challenge.");
+      }
+    }
+    if (openPositions.length > 0) {
+      if (
+        openPositions[0]!.symbol !== heldSymbol
+        || Math.abs(openPositions[0]!.shares - heldShares) > 0.0001
+      ) throw new Error("One-Stock Challenge position does not match its trade history.");
+    } else if (heldShares > 0.0001) {
+      throw new Error("One-Stock Challenge position does not match its trade history.");
+    }
+
+    const pendingBuys = orders.filter((order) =>
+      order.accountId === oneStockAccountId && order.status === "pending" && order.side === "buy" && !order.intent,
+    );
+    const pendingBuySymbols = new Set(pendingBuys.map((order) => order.symbol));
+    if (
+      orders.some((order) => order.accountId === oneStockAccountId
+        && order.status === "pending" && (order.intent === "short" || order.intent === "cover"))
+      || pendingBuys.some((order) => order.assetType !== "stock" && order.assetType !== "etf")
+      || pendingBuySymbols.size > 1
+      || (heldSymbol && [...pendingBuySymbols].some((symbol) => symbol !== heldSymbol))
+    ) throw new Error("One-Stock Challenge allows only one open stock or ETF position at a time. Close your current position before selecting another.");
+  }
 
   const serializedBytes = JSON.stringify(value).length;
   if (serializedBytes > MAX_SNAPSHOT_BYTES) throw new Error("The Event Arena snapshot is too large.");
@@ -276,12 +347,12 @@ async function replacePaperSnapshot(db: PaperDatabase, syncId: string, snapshot:
   for (const position of snapshot.positions) {
     await db.query(
       `INSERT INTO paper_positions
-        (id,user_id,account_id,symbol,company_name,shares,avg_cost,position_type,collateral_per_share,
+        (id,user_id,account_id,symbol,company_name,shares,avg_cost,position_type,asset_type,collateral_per_share,
          opened_at,dividend_yield,dividend_rate,expense_ratio,sector)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
       [
         position.id, syncId, position.accountId, position.symbol, position.companyName,
-        position.shares, position.avgCost, position.positionType, position.collateralPerShare,
+        position.shares, position.avgCost, position.positionType, position.assetType, position.collateralPerShare,
         position.openedAt, position.dividendYield, position.dividendRate, position.expenseRatio,
         position.sector,
       ],
@@ -292,12 +363,12 @@ async function replacePaperSnapshot(db: PaperDatabase, syncId: string, snapshot:
     await db.query(
       `INSERT INTO paper_transactions
         (id,user_id,account_id,symbol,company_name,action,shares,price,total,date,realized_pnl,fee,
-         cash_delta,short_collateral_delta,lightning_round_event_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+         asset_type,cash_delta,short_collateral_delta,lightning_round_event_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
       [
         transaction.id, syncId, transaction.accountId, transaction.symbol, transaction.companyName,
         transaction.action, transaction.shares, transaction.price, transaction.total, transaction.date,
-        transaction.realizedPnL, transaction.fee, transaction.cashDelta,
+        transaction.realizedPnL, transaction.fee, transaction.assetType, transaction.cashDelta,
         transaction.shortCollateralDelta, transaction.lightningRoundEventId,
       ],
     );
@@ -339,13 +410,13 @@ async function loadPaperSnapshot(db: PaperDatabase, syncId: string, metadata: an
       [syncId],
     ),
     db.query(
-      `SELECT id,account_id,symbol,company_name,shares,avg_cost,position_type,collateral_per_share,
+      `SELECT id,account_id,symbol,company_name,shares,avg_cost,position_type,asset_type,collateral_per_share,
               opened_at,dividend_yield,dividend_rate,expense_ratio,sector
        FROM paper_positions WHERE user_id=$1`,
       [syncId],
     ),
     db.query(
-      `SELECT id,account_id,symbol,company_name,action,shares,price,total,date,realized_pnl,fee,
+      `SELECT id,account_id,symbol,company_name,action,shares,price,total,date,asset_type,realized_pnl,fee,
               cash_delta,short_collateral_delta,lightning_round_event_id
        FROM paper_transactions WHERE user_id=$1 ORDER BY date ASC`,
       [syncId],
@@ -379,6 +450,7 @@ async function loadPaperSnapshot(db: PaperDatabase, syncId: string, metadata: an
         id: row.id, accountId: row.account_id, symbol: row.symbol,
         companyName: row.company_name ?? "", shares: Number(row.shares),
         avgCost: Number(row.avg_cost), positionType: row.position_type,
+        assetType: row.asset_type ?? undefined,
         collateralPerShare: row.collateral_per_share == null ? undefined : Number(row.collateral_per_share),
         openedAt: iso(row.opened_at), dividendYield: Number(row.dividend_yield ?? 0),
         dividendRate: Number(row.dividend_rate ?? 0), expenseRatio: Number(row.expense_ratio ?? 0),
@@ -388,6 +460,7 @@ async function loadPaperSnapshot(db: PaperDatabase, syncId: string, metadata: an
         id: row.id, accountId: row.account_id, symbol: row.symbol,
         companyName: row.company_name ?? "", action: row.action, shares: Number(row.shares),
         price: Number(row.price), total: Number(row.total), date: iso(row.date),
+        assetType: row.asset_type ?? undefined,
         realizedPnL: row.realized_pnl == null ? undefined : Number(row.realized_pnl),
         fee: Number(row.fee ?? 0), cashDelta: row.cash_delta == null ? undefined : Number(row.cash_delta),
         shortCollateralDelta: row.short_collateral_delta == null ? undefined : Number(row.short_collateral_delta),

@@ -25,6 +25,11 @@ export type EventArenaLeaderboardResponseEntriesItem = {
   returnPercent: number;
   /** @minimum 0 */
   tradeCount: number | null;
+  /**
+     * Self-reported remaining event-account cash after recorded transfers.
+     * @minimum 0
+     */
+  cashBalance: number;
   holdings: EventArenaLeaderboardResponseEntriesItemHoldingsItem[];
   updatedAt: Date;
   /** True only for the requesting installation's row; no installation ID is returned. */

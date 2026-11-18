@@ -34,12 +34,14 @@ type HoldingIdentifier = {
   symbol: string;
   companyName: string;
   allocationPercent: number | null;
+  marketValue?: number | null;
+  assetType?: "stock" | "etf" | "unknown";
   side: "long" | "short";
 };
 type EventSubmission = {
   installationId: string;
   alias: string;
-  eventType?: "event-arena" | "green-bull-championship" | "bear-market-mayhem" | "penny-stock-mayhem" | "mountain-championship" | "lightning-round";
+  eventType?: "event-arena" | "green-bull-championship" | "bear-market-mayhem" | "penny-stock-mayhem" | "mountain-championship" | "one-stock-challenge" | "lightning-round";
   artworkId?: typeof EVENT_ARTWORK_IDS[number] | "lightning-round-arena";
   startingBalance?: number;
   rankingDirection?: "highest-return" | "lowest-return";
@@ -64,12 +66,14 @@ const EVENT_ARTWORK_IDS = [
   "red-showdown",
   "green-stock-exchange",
   "penny-stock-mayhem",
+  "one-stock-challenge",
 ] as const;
 const PRE_PENNY_EVENT_ARTWORK_IDS = EVENT_ARTWORK_IDS.slice(0, 5);
+const PRE_ONE_STOCK_EVENT_ARTWORK_IDS = EVENT_ARTWORK_IDS.slice(0, 6);
 
 type EventArenaConfiguration = {
   eventId: string;
-  eventType: "event-arena" | "green-bull-championship" | "bear-market-mayhem" | "penny-stock-mayhem" | "mountain-championship" | "lightning-round";
+  eventType: "event-arena" | "green-bull-championship" | "bear-market-mayhem" | "penny-stock-mayhem" | "mountain-championship" | "one-stock-challenge" | "lightning-round";
   artworkId: typeof EVENT_ARTWORK_IDS[number] | "lightning-round-arena";
   startingBalance: number;
   rankingDirection: "highest-return" | "lowest-return";
@@ -219,6 +223,7 @@ export function expectedEventArenaConfiguration(eventId: string): EventArenaConf
   const isNeonNightclub = artworkId === "neon-nightclub";
   const isBearMarket = artworkId === "red-showdown";
   const isPennyStockMayhem = artworkId === "penny-stock-mayhem";
+  const isOneStockChallenge = artworkId === "one-stock-challenge";
   const isMountainChampionship = artworkId === "mountain-summit";
   return {
     eventId,
@@ -226,7 +231,8 @@ export function expectedEventArenaConfiguration(eventId: string): EventArenaConf
       ? "green-bull-championship"
       : isBearMarket ? "bear-market-mayhem"
         : isPennyStockMayhem ? "penny-stock-mayhem"
-          : isMountainChampionship ? "mountain-championship" : "event-arena",
+          : isMountainChampionship ? "mountain-championship"
+            : isOneStockChallenge ? "one-stock-challenge" : "event-arena",
     artworkId,
     startingBalance: isGreenBull ? 500_000 : isNeonNightclub ? 250_000 : 100_000,
     rankingDirection: isBearMarket ? "lowest-return" : "highest-return",
@@ -235,26 +241,28 @@ export function expectedEventArenaConfiguration(eventId: string): EventArenaConf
   };
 }
 
-/** Resolve the former five-artwork rotation so already saved event IDs stay immutable. */
-function previousRegularEventArenaConfiguration(eventId: string): EventArenaConfiguration | null {
+/** Resolve previous rotations so already saved event IDs stay immutable. */
+function previousRegularEventArenaConfigurations(eventId: string): EventArenaConfiguration[] {
   const window = expectedEventArenaWindow(eventId);
   const sequenceIndex = getRegularEventSequenceIndex(eventId);
-  if (!window || sequenceIndex === null) return null;
-  const artworkId = PRE_PENNY_EVENT_ARTWORK_IDS[
-    sequenceIndex % PRE_PENNY_EVENT_ARTWORK_IDS.length
-  ];
-  const isGreenBull = artworkId === "green-stock-exchange";
-  const isBearMarket = artworkId === "red-showdown";
-  return {
-    eventId,
-    eventType: isGreenBull
-      ? "green-bull-championship"
-      : isBearMarket ? "bear-market-mayhem" : "event-arena",
-    artworkId,
-    startingBalance: isGreenBull ? 500_000 : 100_000,
-    rankingDirection: isBearMarket ? "lowest-return" : "highest-return",
-    ...window,
-  };
+  if (!window || sequenceIndex === null) return [];
+  return [PRE_ONE_STOCK_EVENT_ARTWORK_IDS, PRE_PENNY_EVENT_ARTWORK_IDS].map((rotation) => {
+    const artworkId = rotation[sequenceIndex % rotation.length];
+    const isGreenBull = artworkId === "green-stock-exchange";
+    const isBearMarket = artworkId === "red-showdown";
+    const isMountainChampionship = artworkId === "mountain-summit";
+    return {
+      eventId,
+      eventType: isGreenBull
+        ? "green-bull-championship"
+        : isBearMarket ? "bear-market-mayhem"
+          : isMountainChampionship ? "mountain-championship" : "event-arena",
+      artworkId,
+      startingBalance: isGreenBull ? 500_000 : 100_000,
+      rankingDirection: isBearMarket ? "lowest-return" : "highest-return",
+      ...window,
+    };
+  });
 }
 
 export function getLightningRoundScheduleIds(nowMs = Date.now(), fromEventId?: string | null): string[] {
@@ -311,16 +319,24 @@ function savedEventArenaConfiguration(row: any, expected: EventArenaConfiguratio
     && startingBalance === expected.startingBalance
     && rankingDirection === expected.rankingDirection
     && purchaseLimit === expected.purchaseLimit;
-  const previous = previousRegularEventArenaConfiguration(expected.eventId);
-  const isPreviousConfiguration = !!previous
-    && eventType === previous.eventType
-    && artworkId === previous.artworkId
-    && startingBalance === previous.startingBalance
-    && rankingDirection === previous.rankingDirection
-    && purchaseLimit === undefined;
+  const previousConfigurations = previousRegularEventArenaConfigurations(expected.eventId);
+  const previous = previousConfigurations.find((candidate) =>
+    eventType === candidate.eventType
+    && artworkId === candidate.artworkId
+    && startingBalance === candidate.startingBalance
+    && rankingDirection === candidate.rankingDirection
+    && purchaseLimit === undefined,
+  );
+  const isPreviousConfiguration = !!previous;
   // A pre-existing Red Showdown event remains a standard Event Arena event.
   const isLegacyRedConfiguration = artworkId === "red-showdown"
     && eventType === "event-arena"
+    && startingBalance === 100_000
+    && rankingDirection === "highest-return"
+    && purchaseLimit === undefined;
+  const isLegacyMountainConfiguration = expected.eventType === "mountain-championship"
+    && eventType === "event-arena"
+    && artworkId === "mountain-summit"
     && startingBalance === 100_000
     && rankingDirection === "highest-return"
     && purchaseLimit === undefined;
@@ -328,12 +344,9 @@ function savedEventArenaConfiguration(row: any, expected: EventArenaConfiguratio
     row.event_id !== expected.eventId
     || rowStartAtMs !== expected.startAtMs
     || rowEndAtMs !== expected.endAtMs
-    || (!isCurrentConfiguration && !isPreviousConfiguration && !isLegacyRedConfiguration)
+    || (!isCurrentConfiguration && !isPreviousConfiguration && !isLegacyRedConfiguration && !isLegacyMountainConfiguration)
   ) return null;
-  const normalizeLegacyMountainType = expected.eventType === "mountain-championship"
-    && isPreviousConfiguration
-    && eventType === "event-arena"
-    && artworkId === "mountain-summit";
+  const normalizeLegacyMountainType = isLegacyMountainConfiguration;
   return {
     eventId: expected.eventId,
     eventType: normalizeLegacyMountainType ? expected.eventType : eventType,
@@ -506,6 +519,7 @@ function parseSubmission(body: unknown): EventSubmission | null {
       && eventType !== "bear-market-mayhem"
       && eventType !== "penny-stock-mayhem"
       && eventType !== "mountain-championship"
+      && eventType !== "one-stock-challenge"
       && eventType !== "lightning-round")
     || (artworkId !== undefined
       && !EVENT_ARTWORK_IDS.includes(artworkId as typeof EVENT_ARTWORK_IDS[number])
@@ -549,13 +563,22 @@ function parseSubmission(body: unknown): EventSubmission | null {
     const holding = rawHolding as Record<string, unknown>;
     if (
       Object.keys(holding).some((key) =>
-        !["symbol", "companyName", "allocationPercent", "side"].includes(key))
+        !["symbol", "companyName", "allocationPercent", "marketValue", "assetType", "side"].includes(key))
       || typeof holding.symbol !== "string"
       || typeof holding.companyName !== "string"
       || (holding.allocationPercent !== null
         && (typeof holding.allocationPercent !== "number"
           || !Number.isFinite(holding.allocationPercent)
           || holding.allocationPercent < 0))
+      || (holding.marketValue !== undefined
+        && holding.marketValue !== null
+        && (typeof holding.marketValue !== "number"
+          || !Number.isFinite(holding.marketValue)
+          || holding.marketValue < 0))
+      || (holding.assetType !== undefined
+        && holding.assetType !== "stock"
+        && holding.assetType !== "etf"
+        && holding.assetType !== "unknown")
       || (holding.side !== "long" && holding.side !== "short")
     ) return null;
     const symbol = holding.symbol.trim().toUpperCase();
@@ -572,6 +595,10 @@ function parseSubmission(body: unknown): EventSubmission | null {
         symbol,
         companyName,
         allocationPercent: holding.allocationPercent as number | null,
+        ...(holding.marketValue !== undefined
+          ? { marketValue: holding.marketValue as number | null }
+          : {}),
+        ...(holding.assetType !== undefined ? { assetType: holding.assetType } : {}),
         side: holding.side,
       });
     }
@@ -617,6 +644,14 @@ function publicEntry(row: any, rank: number, isCurrentUser: boolean) {
             && item.allocationPercent >= 0
             ? item.allocationPercent
             : null,
+          marketValue: typeof item.marketValue === "number"
+            && Number.isFinite(item.marketValue)
+            && item.marketValue >= 0
+            ? item.marketValue
+            : null,
+          assetType: item.assetType === "stock" || item.assetType === "etf" || item.assetType === "unknown"
+            ? item.assetType
+            : undefined,
           // Older persisted entries were created from positive-share positions only.
           side: item.side === "short" ? "short" : "long",
         }]
@@ -637,6 +672,7 @@ function publicEntry(row: any, rank: number, isCurrentUser: boolean) {
     tradeCount: Number.isInteger(Number(row.trade_count)) && row.trade_count != null
       ? Number(row.trade_count)
       : null,
+    cashBalance: Number.isFinite(Number(row.cash_balance)) ? Number(row.cash_balance) : 0,
     holdings: cleanHoldings,
     updatedAt,
     isCurrentUser,
@@ -1193,7 +1229,7 @@ export function createEventArenaRouter(
         : "";
       const { rows } = await db.query(
         `SELECT
-           installation_id, participant_token, alias, start_equity, equity, trade_count, holdings, updated_at
+           installation_id, participant_token, alias, start_equity, equity, cash_balance, trade_count, holdings, updated_at
          FROM event_arena_leaderboard_entries
          WHERE event_id=$1
            AND is_active=TRUE
@@ -1303,6 +1339,13 @@ export function createEventArenaRouter(
         || submission.purchaseLimit !== configuration.purchaseLimit
       ) {
         res.status(400).json({ error: "The score does not match this event's saved configuration." });
+        return;
+      }
+      if (configuration.eventType === "one-stock-challenge"
+        && (submission.holdings.length > 1 || submission.holdings.some((holding) =>
+          holding.side !== "long" || (holding.assetType !== "stock" && holding.assetType !== "etf"),
+        ))) {
+        res.status(400).json({ error: "The One-Stock Challenge leaderboard accepts only one verified long stock or ETF holding." });
         return;
       }
       let verifiedSubmission = submission;

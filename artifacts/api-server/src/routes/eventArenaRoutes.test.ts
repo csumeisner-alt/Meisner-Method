@@ -628,6 +628,12 @@ test("event artwork resolves to an immutable championship configuration", async 
   assert.equal(pennyEvent?.startingBalance, 100_000);
   assert.equal(pennyEvent?.rankingDirection, "highest-return");
   assert.equal(pennyEvent?.purchaseLimit, 20);
+  const oneStockEvent = expectedEventArenaConfiguration("2027-02-08");
+  assert.equal(oneStockEvent?.eventType, "one-stock-challenge");
+  assert.equal(oneStockEvent?.artworkId, "one-stock-challenge");
+  assert.equal(oneStockEvent?.startingBalance, 100_000);
+  assert.equal(oneStockEvent?.rankingDirection, "highest-return");
+  assert.equal(oneStockEvent?.purchaseLimit, undefined);
   const mountainEvent = expectedEventArenaConfiguration("2026-12-14");
   assert.equal(mountainEvent?.eventType, "mountain-championship");
   assert.equal(mountainEvent?.artworkId, "mountain-summit");
@@ -1387,6 +1393,40 @@ test("Penny Stock Mayhem submissions must match the saved exclusive purchase lim
   }
 });
 
+test("One-Stock Challenge scores reject multiple, short, or unverified holdings", async () => {
+  const oneStockEvent = expectedEventArenaConfiguration("2027-02-08");
+  assert.ok(oneStockEvent);
+  const invalidHoldings = [
+    [
+      { symbol: "AAPL", companyName: "Apple", allocationPercent: 10, marketValue: 10_000, assetType: "stock", side: "long" },
+      { symbol: "VOO", companyName: "Vanguard S&P 500 ETF", allocationPercent: 10, marketValue: 10_000, assetType: "etf", side: "long" },
+    ],
+    [{ symbol: "AAPL", companyName: "Apple", allocationPercent: 10, marketValue: 10_000, assetType: "stock", side: "short" }],
+    [{ symbol: "AAPL", companyName: "Apple", allocationPercent: 10, marketValue: 10_000, assetType: "unknown", side: "long" }],
+  ];
+  let scoreWrites = 0;
+  await withApi(async (sql) => {
+    if (sql.startsWith("DELETE") || ["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return { rows: [] };
+    if (sql.startsWith("SELECT installation_id")) return { rows: [] };
+    if (sql.startsWith("INSERT INTO event_arena_leaderboard_entries")) scoreWrites += 1;
+    return { rows: [{ updated_at: new Date("2027-02-10T17:00:00.000Z") }] };
+  }, async (baseUrl) => {
+    for (const holdings of invalidHoldings) {
+      const response = await fetch(`${baseUrl}/event-arena/${oneStockEvent.eventId}/leaderboard`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(validSubmission({
+          eventStartAtMs: oneStockEvent.startAtMs,
+          eventEndAtMs: oneStockEvent.endAtMs,
+          holdings,
+        })),
+      });
+      assert.equal(response.status, 400);
+    }
+  }, Date.parse("2027-02-10T17:00:00.000Z"));
+  assert.equal(scoreWrites, 0, "invalid One-Stock Challenge summaries must not reach score persistence");
+});
+
 test("accepted score submissions store ranked event snapshots without private identity", async () => {
   const insertedSnapshotValues: unknown[][] = [];
   await withApi(async (sql, values) => {
@@ -1791,9 +1831,14 @@ test(
   async () => {
     assert.ok(databaseUrl);
     const pool = new Pool({ connectionString: databaseUrl });
-    const historyEventId = "2027-11-15";
-    const historyStartAtMs = Date.parse("2027-11-15T14:30:00.000Z");
-    const historyEndAtMs = Date.parse("2027-11-19T21:00:00.000Z");
+    const eventSequenceIndex = 100 + Number.parseInt(randomUUID().slice(0, 8), 16) % 10_000;
+    const historyEventId = new Date(
+      Date.parse("2026-11-16T00:00:00.000Z") + eventSequenceIndex * 14 * 86_400_000,
+    ).toISOString().slice(0, 10);
+    const historyConfiguration = expectedEventArenaConfiguration(historyEventId);
+    assert.ok(historyConfiguration);
+    const historyStartAtMs = historyConfiguration.startAtMs;
+    const historyEndAtMs = historyConfiguration.endAtMs;
     const historyInstallationId = `history-installation-${randomUUID()}`;
     try {
       await ensureEventArenaTables(pool);
@@ -1803,15 +1848,23 @@ test(
           headers: { "content-type": "application/json" },
           body: JSON.stringify(validSubmission({
             installationId: historyInstallationId,
-            eventType: "event-arena",
-            artworkId: "neon-nightclub",
-            startingBalance: 100_000,
-            rankingDirection: "highest-return",
             eventStartAtMs: historyStartAtMs,
             eventEndAtMs: historyEndAtMs,
+            startEquity: historyConfiguration.startingBalance,
+            equity: historyConfiguration.startingBalance * 1.0125,
+            returnPercent: 1.25,
+            cashBalance: historyConfiguration.startingBalance,
+            holdings: [{
+              symbol: "AAPL",
+              companyName: "Apple Inc.",
+              allocationPercent: 12.5,
+              marketValue: 12_500,
+              assetType: "stock",
+              side: "long",
+            }],
           })),
         });
-        assert.equal(submission.status, 200);
+        assert.equal(submission.status, 200, await submission.text());
 
         const historyUrl = `${baseUrl}/event-arena/${historyEventId}/leaderboard/history`;
         const headers = { "x-event-arena-installation-id": historyInstallationId };
@@ -1831,7 +1884,7 @@ test(
         const afterOptOut = await fetch(historyUrl, { headers });
         assert.equal(afterOptOut.status, 200);
         assert.deepEqual(await afterOptOut.json(), { snapshots: [] });
-      }, Date.parse("2027-11-17T17:00:00.000Z"));
+      }, historyStartAtMs + 60 * 60 * 1000);
     } finally {
       await pool.query(
         "DELETE FROM event_arena_leaderboard_snapshots WHERE event_id=$1",
@@ -1841,6 +1894,7 @@ test(
         "DELETE FROM event_arena_leaderboard_entries WHERE event_id=$1",
         [historyEventId],
       );
+      await pool.query("DELETE FROM event_arena_events WHERE event_id=$1", [historyEventId]);
       await pool.end();
     }
   },
@@ -1932,6 +1986,7 @@ test("leaderboard response is event-scoped and does not expose installation IDs 
       alias: "MarketFox",
       start_equity: "100000",
       equity: "101250",
+      cash_balance: "90000",
       return_percent: "-999",
       trade_count: "4",
       holdings: [{ symbol: "AAPL", companyName: "Apple Inc.", allocationPercent: 12.5, side: "short", shares: 3, price: 100, costBasis: 80 }],
@@ -1945,13 +2000,14 @@ test("leaderboard response is event-scoped and does not expose installation IDs 
     });
     assert.equal(response.status, 200);
     const result = await response.json() as any;
-    assert.deepEqual(Object.keys(result.entries[0]), ["rank", "alias", "participantToken", "startEquity", "equity", "profitLoss", "returnPercent", "tradeCount", "holdings", "updatedAt", "isCurrentUser"]);
+    assert.deepEqual(Object.keys(result.entries[0]), ["rank", "alias", "participantToken", "startEquity", "equity", "profitLoss", "returnPercent", "tradeCount", "cashBalance", "holdings", "updatedAt", "isCurrentUser"]);
     assert.equal(result.entries[0].participantToken, "public-event-token-123456");
     assert.equal(result.entries[0].returnPercent, 1.25);
     assert.equal(result.entries[0].profitLoss, 1_250);
     assert.equal(result.entries[0].tradeCount, 4);
+    assert.equal(result.entries[0].cashBalance, 90_000);
     assert.equal(result.entries[0].isCurrentUser, true);
-    assert.deepEqual(result.entries[0].holdings, [{ symbol: "AAPL", companyName: "Apple Inc.", allocationPercent: 12.5, side: "short" }]);
+    assert.deepEqual(result.entries[0].holdings, [{ symbol: "AAPL", companyName: "Apple Inc.", allocationPercent: 12.5, marketValue: null, side: "short" }]);
     assert.equal(JSON.stringify(result).includes(installationId), false);
     assert.equal(JSON.stringify(result).includes("shares"), false);
     assert.equal(JSON.stringify(result).includes("costBasis"), false);

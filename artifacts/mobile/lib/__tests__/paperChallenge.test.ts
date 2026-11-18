@@ -156,7 +156,7 @@ test('paper event runs Monday open through Friday close, then skips a week', () 
   assert.equal(capturePaperChallengeBaseline(startedEnrollment, 120_000), startedEnrollment);
 });
 
-test('Event Arena artwork rotates by scheduled event and wraps after six competitions', () => {
+test('Event Arena artwork rotates through all seven events and then wraps', () => {
   const starts = [
     '2026-11-16',
     '2026-11-30',
@@ -165,6 +165,7 @@ test('Event Arena artwork rotates by scheduled event and wraps after six competi
     '2027-01-11',
     '2027-01-25',
     '2027-02-08',
+    '2027-02-22',
   ];
   assert.deepEqual(starts.map(getPaperChallengeArtworkId), [
     ...PAPER_CHALLENGE_ARTWORK_IDS,

@@ -82,6 +82,7 @@ async function runSchemaMigrations(): Promise<void> {
       company_name TEXT,
       shares DOUBLE PRECISION NOT NULL DEFAULT 0,
       position_type TEXT NOT NULL DEFAULT 'long',
+      asset_type TEXT,
       collateral_per_share DOUBLE PRECISION,
       avg_cost DOUBLE PRECISION NOT NULL DEFAULT 0,
       opened_at TIMESTAMPTZ,
@@ -104,6 +105,7 @@ async function runSchemaMigrations(): Promise<void> {
       price DOUBLE PRECISION NOT NULL DEFAULT 0,
       total DOUBLE PRECISION NOT NULL DEFAULT 0,
       date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      asset_type TEXT,
       realized_pnl DOUBLE PRECISION,
       fee DOUBLE PRECISION DEFAULT 0,
       cash_delta DOUBLE PRECISION,
@@ -404,6 +406,7 @@ async function runSchemaMigrations(): Promise<void> {
     ["paper_positions", "company_name", "TEXT"],
     ["paper_positions", "shares", "DOUBLE PRECISION"],
     ["paper_positions", "position_type", "TEXT NOT NULL DEFAULT 'long'"],
+    ["paper_positions", "asset_type", "TEXT"],
     ["paper_positions", "collateral_per_share", "DOUBLE PRECISION"],
     ["paper_positions", "avg_cost", "DOUBLE PRECISION"],
     ["paper_positions", "opened_at", "TIMESTAMPTZ"],
@@ -419,6 +422,7 @@ async function runSchemaMigrations(): Promise<void> {
     ["paper_transactions", "price", "DOUBLE PRECISION"],
     ["paper_transactions", "total", "DOUBLE PRECISION"],
     ["paper_transactions", "date", "TIMESTAMPTZ"],
+    ["paper_transactions", "asset_type", "TEXT"],
     ["paper_transactions", "realized_pnl", "DOUBLE PRECISION"],
     ["paper_transactions", "fee", "DOUBLE PRECISION DEFAULT 0"],
     ["paper_transactions", "cash_delta", "DOUBLE PRECISION"],
@@ -672,7 +676,7 @@ router.delete("/user/paper/accounts/:id", requireAuth, async (req: any, res) => 
 router.get("/user/paper/positions", requireAuth, requireSchema, async (req: any, res) => {
   try {
     const { rows } = await pool.query(
-      "SELECT id, account_id, symbol, company_name, shares, avg_cost, position_type, collateral_per_share, opened_at, dividend_yield, dividend_rate, expense_ratio, sector FROM paper_positions WHERE user_id=$1",
+      "SELECT id, account_id, symbol, company_name, shares, avg_cost, position_type, asset_type, collateral_per_share, opened_at, dividend_yield, dividend_rate, expense_ratio, sector FROM paper_positions WHERE user_id=$1",
       [req.userId],
     );
     res.json(rows.map((r: any) => ({
@@ -683,6 +687,9 @@ router.get("/user/paper/positions", requireAuth, requireSchema, async (req: any,
       shares: Number(r.shares),
       avgCost: Number(r.avg_cost),
       positionType: r.position_type === 'short' ? 'short' : 'long',
+      assetType: r.asset_type === 'stock' || r.asset_type === 'etf' || r.asset_type === 'unknown'
+        ? r.asset_type
+        : undefined,
       collateralPerShare: r.collateral_per_share != null ? Number(r.collateral_per_share) : undefined,
       openedAt: r.opened_at instanceof Date ? r.opened_at.toISOString() : r.opened_at,
       dividendYield: Number(r.dividend_yield),
@@ -696,13 +703,13 @@ router.get("/user/paper/positions", requireAuth, requireSchema, async (req: any,
 });
 
 router.post("/user/paper/positions", requireAuth, requireSchema, async (req: any, res) => {
-  const { id, accountId, symbol, companyName, shares, avgCost, positionType, collateralPerShare, openedAt, dividendYield, dividendRate, expenseRatio, sector } = req.body;
+  const { id, accountId, symbol, companyName, shares, avgCost, positionType, assetType, collateralPerShare, openedAt, dividendYield, dividendRate, expenseRatio, sector } = req.body;
   try {
     await pool.query(
-      `INSERT INTO paper_positions (id, user_id, account_id, symbol, company_name, shares, avg_cost, position_type, collateral_per_share, opened_at, dividend_yield, dividend_rate, expense_ratio, sector)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-       ON CONFLICT (id, user_id) DO UPDATE SET shares=$6, avg_cost=$7, position_type=$8, collateral_per_share=$9, dividend_rate=$12, expense_ratio=$13`,
-      [id, req.userId, accountId, symbol, companyName, shares, avgCost, positionType === 'short' ? 'short' : 'long', collateralPerShare ?? null, openedAt, dividendYield ?? 0, dividendRate ?? 0, expenseRatio ?? 0, sector ?? ""],
+      `INSERT INTO paper_positions (id, user_id, account_id, symbol, company_name, shares, avg_cost, position_type, asset_type, collateral_per_share, opened_at, dividend_yield, dividend_rate, expense_ratio, sector)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       ON CONFLICT (id, user_id) DO UPDATE SET shares=$6, avg_cost=$7, position_type=$8, asset_type=$9, collateral_per_share=$10, dividend_rate=$13, expense_ratio=$14`,
+      [id, req.userId, accountId, symbol, companyName, shares, avgCost, positionType === 'short' ? 'short' : 'long', ['stock', 'etf', 'unknown'].includes(assetType) ? assetType : null, collateralPerShare ?? null, openedAt, dividendYield ?? 0, dividendRate ?? 0, expenseRatio ?? 0, sector ?? ""],
     );
     res.json({ ok: true });
   } catch (e: any) {
@@ -723,7 +730,7 @@ router.delete("/user/paper/positions/:id", requireAuth, async (req: any, res) =>
 router.get("/user/paper/transactions", requireAuth, requireSchema, async (req: any, res) => {
   try {
     const { rows } = await pool.query(
-      "SELECT id, account_id, symbol, company_name, action, shares, price, total, date, realized_pnl, fee, cash_delta, short_collateral_delta FROM paper_transactions WHERE user_id=$1 ORDER BY date ASC",
+      "SELECT id, account_id, symbol, company_name, action, shares, price, total, date, asset_type, realized_pnl, fee, cash_delta, short_collateral_delta FROM paper_transactions WHERE user_id=$1 ORDER BY date ASC",
       [req.userId],
     );
     res.json(rows.map((r: any) => ({
@@ -736,6 +743,9 @@ router.get("/user/paper/transactions", requireAuth, requireSchema, async (req: a
       price: Number(r.price),
       total: Number(r.total),
       date: r.date instanceof Date ? r.date.toISOString() : r.date,
+      assetType: r.asset_type === 'stock' || r.asset_type === 'etf' || r.asset_type === 'unknown'
+        ? r.asset_type
+        : undefined,
       realizedPnL: r.realized_pnl != null ? Number(r.realized_pnl) : undefined,
       fee: r.fee != null ? Number(r.fee) : undefined,
       cashDelta: r.cash_delta != null ? Number(r.cash_delta) : undefined,
@@ -747,13 +757,13 @@ router.get("/user/paper/transactions", requireAuth, requireSchema, async (req: a
 });
 
 router.post("/user/paper/transactions", requireAuth, requireSchema, async (req: any, res) => {
-  const { id, accountId, symbol, companyName, action, shares, price, total, date, realizedPnL, fee, cashDelta, shortCollateralDelta } = req.body;
+  const { id, accountId, symbol, companyName, action, shares, price, total, date, assetType, realizedPnL, fee, cashDelta, shortCollateralDelta } = req.body;
   try {
     await pool.query(
-      `INSERT INTO paper_transactions (id, user_id, account_id, symbol, company_name, action, shares, price, total, date, realized_pnl, fee, cash_delta, short_collateral_delta)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      `INSERT INTO paper_transactions (id, user_id, account_id, symbol, company_name, action, shares, price, total, date, asset_type, realized_pnl, fee, cash_delta, short_collateral_delta)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        ON CONFLICT (id, user_id) DO NOTHING`,
-      [id, req.userId, accountId, symbol, companyName, action, shares, price, total, date, realizedPnL ?? null, fee ?? 0, cashDelta ?? null, shortCollateralDelta ?? null],
+      [id, req.userId, accountId, symbol, companyName, action, shares, price, total, date, ['stock', 'etf', 'unknown'].includes(assetType) ? assetType : null, realizedPnL ?? null, fee ?? 0, cashDelta ?? null, shortCollateralDelta ?? null],
     );
     res.json({ ok: true });
   } catch (e: any) {
@@ -890,6 +900,9 @@ function validateSyncPayload(body: any) {
       shares: reqNumber(p.shares, `positions[${i}].shares`),
       avgCost: reqNumber(p.avgCost, `positions[${i}].avgCost`),
       positionType: p.positionType === 'short' ? 'short' : 'long',
+      assetType: p.assetType === 'stock' || p.assetType === 'etf' || p.assetType === 'unknown'
+        ? p.assetType
+        : null,
       collateralPerShare: p.collateralPerShare == null
         ? null
         : reqNumber(p.collateralPerShare, `positions[${i}].collateralPerShare`),
@@ -913,6 +926,9 @@ function validateSyncPayload(body: any) {
       price: reqNumber(t.price, `transactions[${i}].price`),
       total: reqNumber(t.total, `transactions[${i}].total`),
       date: reqString(t.date, `transactions[${i}].date`),
+      assetType: t.assetType === 'stock' || t.assetType === 'etf' || t.assetType === 'unknown'
+        ? t.assetType
+        : null,
       realizedPnL: t.realizedPnL == null ? null : reqNumber(t.realizedPnL, `transactions[${i}].realizedPnL`),
       fee: optNumber(t.fee, `transactions[${i}].fee`, 0),
       cashDelta: t.cashDelta == null ? null : reqNumber(t.cashDelta, `transactions[${i}].cashDelta`),
@@ -1006,9 +1022,9 @@ router.post("/user/paper/sync", requireAuth, requireSchema, async (req: any, res
     // Sync positions
     await client.query("DELETE FROM paper_positions WHERE user_id=$1", [req.userId]);
     for (const p of positions) {
-      await client.query(
-        "INSERT INTO paper_positions (id, user_id, account_id, symbol, company_name, shares, avg_cost, position_type, collateral_per_share, opened_at, dividend_yield, dividend_rate, expense_ratio, sector) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
-        [p.id, req.userId, p.accountId, p.symbol, p.companyName, p.shares, p.avgCost, p.positionType, p.collateralPerShare, p.openedAt, p.dividendYield, p.dividendRate, p.expenseRatio, p.sector],
+    await client.query(
+        "INSERT INTO paper_positions (id, user_id, account_id, symbol, company_name, shares, avg_cost, position_type, asset_type, collateral_per_share, opened_at, dividend_yield, dividend_rate, expense_ratio, sector) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",
+        [p.id, req.userId, p.accountId, p.symbol, p.companyName, p.shares, p.avgCost, p.positionType, p.assetType, p.collateralPerShare, p.openedAt, p.dividendYield, p.dividendRate, p.expenseRatio, p.sector],
       );
     }
 
@@ -1016,8 +1032,8 @@ router.post("/user/paper/sync", requireAuth, requireSchema, async (req: any, res
     await client.query("DELETE FROM paper_transactions WHERE user_id=$1", [req.userId]);
     for (const t of transactions) {
       await client.query(
-        "INSERT INTO paper_transactions (id, user_id, account_id, symbol, company_name, action, shares, price, total, date, realized_pnl, fee, cash_delta, short_collateral_delta) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
-        [t.id, req.userId, t.accountId, t.symbol, t.companyName, t.action, t.shares, t.price, t.total, t.date, t.realizedPnL, t.fee, t.cashDelta, t.shortCollateralDelta],
+        "INSERT INTO paper_transactions (id, user_id, account_id, symbol, company_name, action, shares, price, total, date, asset_type, realized_pnl, fee, cash_delta, short_collateral_delta) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",
+        [t.id, req.userId, t.accountId, t.symbol, t.companyName, t.action, t.shares, t.price, t.total, t.date, t.assetType, t.realizedPnL, t.fee, t.cashDelta, t.shortCollateralDelta],
       );
     }
 

@@ -153,6 +153,7 @@ import {
   loadPaperChallengeStore,
   PAPER_CHALLENGE_STORAGE_KEY,
   PAPER_CHALLENGE_STARTING_BALANCE,
+  ONE_STOCK_CHALLENGE_REJECTION_MESSAGE,
   persistPaperChallengeFinalization,
   shouldEnsurePaperChallengeAccount,
   updatePaperChallengeStore,
@@ -720,7 +721,9 @@ export default function PaperScreen() {
     ? account.id.startsWith('paper-lightning:')
       ? 'Lightning Round'
       : getPaperChallengeEnrollmentForAccount(paperChallenge, account.id)?.eventType === 'penny-stock-mayhem'
-        ? 'Penny Stock Mayhem' : 'Event Arena'
+        ? 'Penny Stock Mayhem'
+        : getPaperChallengeEnrollmentForAccount(paperChallenge, account.id)?.eventType === 'one-stock-challenge'
+          ? 'The One-Stock Challenge' : 'Event Arena'
     : PAPER_ACCOUNT_DISPLAY_NAMES[selectedAccountIndex] ?? account?.name ?? 'Paper account';
   const selectedAccountPosition = visibleAccounts.findIndex((item) => item.id === account?.id);
   const isSelectedEventAccount = !!account && isPaperChallengeAccountId(account.id);
@@ -1953,6 +1956,7 @@ export default function PaperScreen() {
         fillPrice,
         executionQuotePrice: q.price,
         maxPurchasePrice: eventPurchaseLimit,
+        oneStockChallenge: eventEnrollment?.eventType === 'one-stock-challenge',
         filledAt: nowISO,
         account,
         positions: updatedPositions,
@@ -2687,6 +2691,35 @@ export default function PaperScreen() {
         return { status: 'rejected', message: 'The reviewed paper account is no longer available.' };
       }
       if (!sym) return { status: 'rejected', message: 'Choose a stock before submitting the order.' };
+      if (enrollment?.eventType === 'one-stock-challenge') {
+        if (intent) {
+          return { status: 'rejected', message: 'Short selling is not available in the One-Stock Challenge.' };
+        }
+        const openPositions = currentPositions.filter((position) =>
+          position.accountId === accountId && position.shares > 0.0001,
+        );
+        if (openPositions.some((position) => position.positionType === 'short')) {
+          return { status: 'rejected', message: 'Short selling is not available in the One-Stock Challenge.' };
+        }
+        if (args.side === 'buy') {
+          const existingPosition = openPositions.find((position) => position.symbol === sym);
+          const buyAssetType = args.stockInfo?.assetType ?? existingPosition?.assetType;
+          if (buyAssetType !== 'stock' && buyAssetType !== 'etf') {
+            return { status: 'rejected', message: 'One-Stock Challenge buys require a verified stock or ETF.' };
+          }
+          const conflictingPendingBuy = currentOrders.some((order) =>
+            order.accountId === accountId
+            && order.status === 'pending'
+            && order.side === 'buy'
+            && !order.intent
+            && order.id !== args.orderId
+            && order.symbol !== sym,
+          );
+          if (openPositions.some((position) => position.symbol !== sym) || conflictingPendingBuy) {
+            return { status: 'rejected', message: ONE_STOCK_CHALLENGE_REJECTION_MESSAGE };
+          }
+        }
+      }
       const currentQuote = quotes[sym];
       if (args.orderType === 'market') {
         const quoteError = getMarketOrderQuoteError(currentQuote, args.quotePrice);
@@ -2844,6 +2877,7 @@ export default function PaperScreen() {
           fillPrice,
           executionQuotePrice: args.quotePrice,
         maxPurchasePrice: purchaseLimit,
+          oneStockChallenge: enrollment?.eventType === 'one-stock-challenge',
           filledAt: nowISO,
           account: currentAccount,
           positions: currentPositions,

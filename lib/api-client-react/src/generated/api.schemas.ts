@@ -213,6 +213,7 @@ export const EventArenaScoreSubmissionEventType = {
   'bear-market-mayhem': 'bear-market-mayhem',
   'penny-stock-mayhem': 'penny-stock-mayhem',
   'mountain-championship': 'mountain-championship',
+  'one-stock-challenge': 'one-stock-challenge',
   'lightning-round': 'lightning-round',
 } as const;
 
@@ -226,6 +227,7 @@ export const EventArenaScoreSubmissionArtworkId = {
   'red-showdown': 'red-showdown',
   'green-stock-exchange': 'green-stock-exchange',
   'penny-stock-mayhem': 'penny-stock-mayhem',
+  'one-stock-challenge': 'one-stock-challenge',
   'lightning-round-arena': 'lightning-round-arena',
 } as const;
 
@@ -235,6 +237,15 @@ export type EventArenaScoreSubmissionRankingDirection = typeof EventArenaScoreSu
 export const EventArenaScoreSubmissionRankingDirection = {
   'highest-return': 'highest-return',
   'lowest-return': 'lowest-return',
+} as const;
+
+export type EventArenaScoreSubmissionHoldingsItemAssetType = typeof EventArenaScoreSubmissionHoldingsItemAssetType[keyof typeof EventArenaScoreSubmissionHoldingsItemAssetType];
+
+
+export const EventArenaScoreSubmissionHoldingsItemAssetType = {
+  stock: 'stock',
+  etf: 'etf',
+  unknown: 'unknown',
 } as const;
 
 export type EventArenaScoreSubmissionHoldingsItemSide = typeof EventArenaScoreSubmissionHoldingsItemSide[keyof typeof EventArenaScoreSubmissionHoldingsItemSide];
@@ -253,6 +264,12 @@ export type EventArenaScoreSubmissionHoldingsItem = {
      * @minimum 0
      */
   allocationPercent: number | null;
+  /**
+     * Current reported market value from the event account position and quote.
+     * @minimum 0
+     */
+  marketValue?: number | null;
+  assetType?: EventArenaScoreSubmissionHoldingsItemAssetType;
   side: EventArenaScoreSubmissionHoldingsItemSide;
 };
 
@@ -314,6 +331,7 @@ export const EventArenaConfigurationEventType = {
   'bear-market-mayhem': 'bear-market-mayhem',
   'penny-stock-mayhem': 'penny-stock-mayhem',
   'mountain-championship': 'mountain-championship',
+  'one-stock-challenge': 'one-stock-challenge',
   'lightning-round': 'lightning-round',
 } as const;
 
@@ -327,6 +345,7 @@ export const EventArenaConfigurationArtworkId = {
   'red-showdown': 'red-showdown',
   'green-stock-exchange': 'green-stock-exchange',
   'penny-stock-mayhem': 'penny-stock-mayhem',
+  'one-stock-challenge': 'one-stock-challenge',
   'lightning-round-arena': 'lightning-round-arena',
 } as const;
 
@@ -357,6 +376,15 @@ export interface LightningRoundPreparationResponse {
   events: EventArenaConfiguration[];
 }
 
+export type EventArenaLeaderboardResponseEntriesItemHoldingsItemAssetType = typeof EventArenaLeaderboardResponseEntriesItemHoldingsItemAssetType[keyof typeof EventArenaLeaderboardResponseEntriesItemHoldingsItemAssetType];
+
+
+export const EventArenaLeaderboardResponseEntriesItemHoldingsItemAssetType = {
+  stock: 'stock',
+  etf: 'etf',
+  unknown: 'unknown',
+} as const;
+
 export type EventArenaLeaderboardResponseEntriesItemHoldingsItemSide = typeof EventArenaLeaderboardResponseEntriesItemHoldingsItemSide[keyof typeof EventArenaLeaderboardResponseEntriesItemHoldingsItemSide];
 
 
@@ -373,6 +401,12 @@ export type EventArenaLeaderboardResponseEntriesItemHoldingsItem = {
      * @minimum 0
      */
   allocationPercent: number | null;
+  /**
+     * Self-reported current market value of the open position.
+     * @minimum 0
+     */
+  marketValue?: number | null;
+  assetType?: EventArenaLeaderboardResponseEntriesItemHoldingsItemAssetType;
   side: EventArenaLeaderboardResponseEntriesItemHoldingsItemSide;
 };
 
@@ -394,6 +428,11 @@ export type EventArenaLeaderboardResponseEntriesItem = {
   returnPercent: number;
   /** @minimum 0 */
   tradeCount: number | null;
+  /**
+     * Self-reported remaining event-account cash after recorded transfers.
+     * @minimum 0
+     */
+  cashBalance: number;
   holdings: EventArenaLeaderboardResponseEntriesItemHoldingsItem[];
   updatedAt: string;
   /** True only for the requesting installation's row; no installation ID is returned. */

@@ -720,6 +720,7 @@ export function fillOrder(args: {
   fillPrice: number;
   executionQuotePrice?: number;
   maxPurchasePrice?: number;
+  oneStockChallenge?: boolean;
   filledAt: string;
   account: PaperAccount;
   positions: PaperPosition[];
@@ -749,6 +750,21 @@ export function fillOrder(args: {
   });
   if (purchaseLimitError) {
     return { ok: false, reason: purchaseLimitError };
+  }
+  if (args.oneStockChallenge) {
+    if (order.intent) {
+      return { ok: false, reason: 'Short selling is not available in the One-Stock Challenge.' };
+    }
+    if (side === 'buy' && order.assetType !== 'stock' && order.assetType !== 'etf') {
+      return { ok: false, reason: 'One-Stock Challenge buys require a verified stock or ETF.' };
+    }
+    if (side === 'buy' && positions.some((position) =>
+      position.accountId === accountId
+      && position.shares > 0.0001
+      && position.symbol !== symbol,
+    )) {
+      return { ok: false, reason: 'One-Stock Challenge allows only one open stock or ETF position at a time. Close your current position before selecting another.' };
+    }
   }
 
   let updatedAccount = { ...account };
@@ -830,6 +846,7 @@ export function fillOrder(args: {
       accountId,
       symbol,
       companyName,
+      assetType: order.assetType,
       action: 'BUY',
       shares,
       price: fillPrice,
@@ -879,7 +896,7 @@ export function fillOrder(args: {
       });
     }
     newTransaction = {
-      id: uid(), accountId, symbol, companyName, action: 'SHORT_SELL',
+      id: uid(), accountId, symbol, companyName, assetType: order.assetType, action: 'SHORT_SELL',
       shares, price: fillPrice, total, date: filledAt,
       cashDelta: -margin,
       shortCollateralDelta: total * ratio,
@@ -909,7 +926,7 @@ export function fillOrder(args: {
       ? updatedPositions.filter((position) => position.id !== pos.id)
       : updatedPositions.map((position) => position.id === pos.id ? { ...position, shares: remaining } : position);
     newTransaction = {
-      id: uid(), accountId, symbol, companyName, action: 'BUY_TO_COVER',
+      id: uid(), accountId, symbol, companyName, assetType: pos.assetType, action: 'BUY_TO_COVER',
       shares, price: fillPrice, total, date: filledAt,
       realizedPnL: pnl, fee,
       cashDelta: releasedCollateral - total - fee,
@@ -991,6 +1008,7 @@ export function fillOrder(args: {
       accountId,
       symbol,
       companyName,
+      assetType: pos.assetType,
       action: 'SELL',
       shares,
       price: fillPrice,

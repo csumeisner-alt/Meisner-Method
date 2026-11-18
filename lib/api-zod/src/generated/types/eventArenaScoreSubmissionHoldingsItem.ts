@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { EventArenaScoreSubmissionHoldingsItemAssetType } from './eventArenaScoreSubmissionHoldingsItemAssetType';
 import type { EventArenaScoreSubmissionHoldingsItemSide } from './eventArenaScoreSubmissionHoldingsItemSide';
 
 export type EventArenaScoreSubmissionHoldingsItem = {
@@ -15,5 +16,11 @@ export type EventArenaScoreSubmissionHoldingsItem = {
      * @minimum 0
      */
   allocationPercent: number | null;
+  /**
+     * Current reported market value from the event account position and quote.
+     * @minimum 0
+     */
+  marketValue?: number | null;
+  assetType?: EventArenaScoreSubmissionHoldingsItemAssetType;
   side: EventArenaScoreSubmissionHoldingsItemSide;
 };

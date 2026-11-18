@@ -531,6 +531,90 @@ test('fillOrder — market buy deducts cash and creates lot', () => {
   assert.equal(result.newTransaction.total, 1_000);
 });
 
+test('One-Stock Challenge allows same-ticker additions, partial closes, and a new ticker only after full close', () => {
+  const account = mkAccount({ id: 'paper-event:one-stock', cash: 10_000 });
+  const firstEtf = fillOrder({
+    order: mkOrder({ accountId: account.id, symbol: 'VOO', side: 'buy', shares: 2, assetType: 'etf' }),
+    fillPrice: 100,
+    filledAt: '2027-02-08T15:00:00.000Z',
+    account,
+    positions: [],
+    lots: [],
+    uid,
+    oneStockChallenge: true,
+  });
+  if (!firstEtf.ok) throw new Error('The first verified ETF should be eligible.');
+  assert.equal(firstEtf.ok, true);
+
+  const added = fillOrder({
+    order: mkOrder({ accountId: account.id, symbol: 'VOO', side: 'buy', shares: 1, assetType: 'etf' }),
+    fillPrice: 105,
+    filledAt: '2027-02-08T15:05:00.000Z',
+    account: firstEtf.updatedAccount,
+    positions: firstEtf.updatedPositions,
+    lots: firstEtf.updatedLots,
+    uid,
+    oneStockChallenge: true,
+  });
+  if (!added.ok) throw new Error('Buying more of the same holding should be allowed.');
+  assert.equal(added.ok, true);
+  assert.equal(added.updatedPositions.length, 1);
+  assert.equal(added.updatedPositions[0]?.shares, 3);
+
+  const secondTicker = fillOrder({
+    order: mkOrder({ accountId: account.id, symbol: 'AAPL', side: 'buy', shares: 1, assetType: 'stock' }),
+    fillPrice: 100,
+    filledAt: '2027-02-08T15:10:00.000Z',
+    account: added.updatedAccount,
+    positions: added.updatedPositions,
+    lots: added.updatedLots,
+    uid,
+    oneStockChallenge: true,
+  });
+  assert.equal(secondTicker.ok, false);
+  if (!secondTicker.ok) assert.match(secondTicker.reason, /One-Stock Challenge allows only one open stock or ETF position/);
+
+  const partial = fillOrder({
+    order: mkOrder({ accountId: account.id, symbol: 'VOO', side: 'sell', shares: 1 }),
+    fillPrice: 110,
+    filledAt: '2027-02-08T15:15:00.000Z',
+    account: added.updatedAccount,
+    positions: added.updatedPositions,
+    lots: added.updatedLots,
+    uid,
+    oneStockChallenge: true,
+  });
+  if (!partial.ok) throw new Error('Partial sells should remain allowed.');
+  assert.equal(partial.ok, true);
+  assert.equal(partial.updatedPositions[0]?.shares, 2);
+
+  const closed = fillOrder({
+    order: mkOrder({ accountId: account.id, symbol: 'VOO', side: 'sell', shares: 2 }),
+    fillPrice: 110,
+    filledAt: '2027-02-08T15:20:00.000Z',
+    account: partial.updatedAccount,
+    positions: partial.updatedPositions,
+    lots: partial.updatedLots,
+    uid,
+    oneStockChallenge: true,
+  });
+  if (!closed.ok) throw new Error('The current holding should be fully sellable.');
+  assert.equal(closed.ok, true);
+  assert.equal(closed.updatedPositions.length, 0);
+
+  const switched = fillOrder({
+    order: mkOrder({ accountId: account.id, symbol: 'AAPL', side: 'buy', shares: 1, assetType: 'stock' }),
+    fillPrice: 90,
+    filledAt: '2027-02-08T15:25:00.000Z',
+    account: closed.updatedAccount,
+    positions: closed.updatedPositions,
+    lots: closed.updatedLots,
+    uid,
+    oneStockChallenge: true,
+  });
+  assert.equal(switched.ok, true, 'a different verified stock is allowed after the previous position closes');
+});
+
 test('fillOrder — refuses to apply an already-filled order again', () => {
   const account = mkAccount({ id: 'account-repeat', cash: 10_000 });
   const alreadyFilled = mkOrder({
