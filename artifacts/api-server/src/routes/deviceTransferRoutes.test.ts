@@ -520,12 +520,14 @@ test("PostgreSQL serializes competing redemptions and makes alert restore retrie
       CREATE TABLE app_device_transfer_codes (
         code_hash TEXT PRIMARY KEY,
         bundle_id TEXT NOT NULL,
-        bundle JSONB NOT NULL,
+         bundle JSONB,
+         bundle_sha256 TEXT,
         expires_at TIMESTAMPTZ NOT NULL,
         destination_token_hash TEXT,
         event_arena_sync_id TEXT REFERENCES event_arena_device_sync(sync_id) ON DELETE SET NULL,
         alert_restore_result JSONB,
         consumed_at TIMESTAMPTZ,
+         restored_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       CREATE TABLE push_devices (
@@ -551,7 +553,7 @@ test("PostgreSQL serializes competing redemptions and makes alert restore retrie
       );
     `);
 
-    const integrationBundle = structuredClone(bundle);
+    const integrationBundle = structuredClone(migratedBundle);
     const alertCategory = integrationBundle.categories.find((item) => item.id === "price-alerts");
     assert.ok(alertCategory);
     alertCategory.data["@stocksense/price_alerts_v1"] = JSON.stringify([
@@ -624,7 +626,11 @@ test("PostgreSQL serializes competing redemptions and makes alert restore retrie
     assert.equal(rejected.length, 1, "the competing destination must be rejected");
     const winner = accepted[0]!;
     const originalBundleResponse = await winner.response.json();
-    assert.deepEqual(originalBundleResponse, { bundle: integrationBundle, eventArenaSync: null });
+    assert.deepEqual(originalBundleResponse, {
+      bundle: integrationBundle,
+      bundleSha256: hash(stableDeviceTransferJson(integrationBundle)),
+      eventArenaSync: null,
+    });
 
     const storedRedemption = await db.query(
       "SELECT destination_token_hash FROM app_device_transfer_codes WHERE code_hash=$1",
@@ -637,6 +643,8 @@ test("PostgreSQL serializes competing redemptions and makes alert restore retrie
       "UPDATE app_device_transfer_codes SET expires_at=NOW() - INTERVAL '1 second' WHERE code_hash=$1",
       [codeHash],
     );
+    const otherDestinationRetry = await redeem(rejected[0]!.token);
+    assert.equal(otherDestinationRetry.status, 409, "an expired code remains bound to its original destination");
     const redemptionRetry = await redeem(winner.token);
     assert.equal(redemptionRetry.status, 200);
     assert.deepEqual(await redemptionRetry.json(), originalBundleResponse);

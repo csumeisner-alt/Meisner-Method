@@ -170,15 +170,16 @@ export function createDeviceTransferRouter(db: TransferDatabase, requireSchema: 
         const expiresAtMs = row.expires_at instanceof Date
           ? row.expires_at.getTime()
           : Date.parse(row.expires_at);
-        if (!Number.isFinite(expiresAtMs) || expiresAtMs < Date.now()) {
+        const destinationHash = hashSecret(destinationToken);
+        const alreadyRedeemedForDestination = row.destination_token_hash === destinationHash;
+        if (row.destination_token_hash && !alreadyRedeemedForDestination) {
+          throw Object.assign(new Error("Transfer code already used on another phone."), { status: 409 });
+        }
+        if (!alreadyRedeemedForDestination && (!Number.isFinite(expiresAtMs) || expiresAtMs < Date.now())) {
           throw Object.assign(new Error("Transfer code expired."), { status: 410 });
         }
         const bundle = await getVerifiedBundle(client, hashSecret(code), row);
 
-        const destinationHash = hashSecret(destinationToken);
-        if (row.destination_token_hash && row.destination_token_hash !== destinationHash) {
-          throw Object.assign(new Error("Transfer code already used on another phone."), { status: 409 });
-        }
         if (!row.destination_token_hash) {
           await client.query(
             `UPDATE app_device_transfer_codes
