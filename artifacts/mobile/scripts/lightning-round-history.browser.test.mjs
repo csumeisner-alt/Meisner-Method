@@ -189,6 +189,15 @@ test("signed-in Lightning Round reads mixed device history and opens saved archi
     netProfit: 5_000,
     returnPercent: 5,
     finalRank: 3,
+    tradingFingerprintObservation: {
+      version: 1,
+      observationId: "positive-trade-consistency",
+      headline: "Your results came from consistency",
+      supportingSentence: "3 of 3 trades with reported realized results were profitable (100%).",
+      score: 87.5,
+      scoreParts: { magnitude: 1, uniqueness: 1, reliability: 0.375 },
+      evidence: { positiveTradeCount: 3, realizedTradeCount: 3, positiveTradeSharePercent: 100 },
+    },
     tradeCount: 1,
     symbolsTraded: ["LUMN"],
     equityHistory: [
@@ -394,11 +403,38 @@ test("signed-in Lightning Round reads mixed device history and opens saved archi
     assert.match(detail, /Lumen Technologies · close \$1,050\.00/);
     assert.match(detail, /BUY/);
     assert.match(detail, /\$100,000\.00/);
+    const fingerprintTestId = "trading-fingerprint-lightning-2026-11-06";
+    assert.equal(
+      await browser.evaluate(`!!document.querySelector(${JSON.stringify(selector(fingerprintTestId))})`),
+      true,
+      "The saved Trading Fingerprint should appear in the completed event summary.",
+    );
+    const fingerprintText = await browser.evaluate(
+      `document.querySelector(${JSON.stringify(selector(fingerprintTestId))})?.textContent`,
+    );
+    assert.match(fingerprintText, /YOUR TRADING FINGERPRINT/);
+    assert.match(fingerprintText, /Your results came from consistency/);
+    assert.match(fingerprintText, /3 of 3 trades.*100%/);
     assert.equal(
       await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-event-history-artwork-lightning-2026-11-06"))}) !== null`),
       true,
       "The opened result should retain its saved artwork.",
     );
+    for (const width of [320, 360, 400]) {
+      await browser.send("Emulation.setDeviceMetricsOverride", {
+        width, height: 720, deviceScaleFactor: 1, mobile: true,
+      });
+      await delay(50);
+      const bounds = await browser.evaluate(`(() => {
+        const element = document.querySelector(${JSON.stringify(selector(fingerprintTestId))});
+        if (!element) return null;
+        const rect = element.getBoundingClientRect();
+        return { x: rect.x, right: rect.right, width: rect.width, viewport: innerWidth, document: document.documentElement.scrollWidth };
+      })()`);
+      assert.ok(bounds, `The fingerprint card should remain visible at ${width}px.`);
+      assert.ok(bounds.x >= 0 && bounds.right <= width + 1, `The fingerprint card fits at ${width}px.`);
+      assert.ok(bounds.document <= width + 1, `The event summary has no horizontal overflow at ${width}px.`);
+    }
   } finally {
     browser?.close();
     chrome.kill("SIGTERM");

@@ -55,6 +55,7 @@ import {
   type PaperChallengeStore,
   type PaperChallengeWindow,
 } from '@/lib/paperChallenge';
+import type { SavedTradingFingerprintObservation } from '@/lib/eventArenaTradingFingerprintObservation';
 import {
   isShortPosition,
   parseAccountValueSnapshots,
@@ -108,6 +109,7 @@ type LightningRoundFinalResult = {
   equity: number;
   completedAtMs: number;
   finalRank?: number | null;
+  tradingFingerprintObservation?: SavedTradingFingerprintObservation;
   finalPositions: Array<{
     symbol: string;
     companyName: string;
@@ -673,6 +675,9 @@ function LightningRoundScreenContent({ window, now }: { window: PaperChallengeWi
                       : marketPrice! - position.avgCost),
                   };
                 }),
+            ...(finalResult?.tradingFingerprintObservation
+              ? { tradingFingerprintObservation: finalResult.tradingFingerprintObservation }
+              : {}),
             ...(finalRank ? { finalRank } : {}),
           },
         );

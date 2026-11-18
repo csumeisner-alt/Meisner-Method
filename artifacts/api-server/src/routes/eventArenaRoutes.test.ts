@@ -1702,6 +1702,15 @@ test("Lightning Round state returns the immutable server-finalized archive data"
     equity: 100_020,
     completedAtMs: lightningEvent.endAtMs,
     finalRank: 2,
+    tradingFingerprintObservation: {
+      version: 1,
+      observationId: "positive-trade-consistency",
+      headline: "Your results came from consistency",
+      supportingSentence: "3 of 3 trades with reported realized results were profitable (100%).",
+      score: 87.5,
+      scoreParts: { magnitude: 1, uniqueness: 1, reliability: 0.375 },
+      evidence: { positiveTradeCount: 3, realizedTradeCount: 3, positiveTradeSharePercent: 100 },
+    },
     finalPrices: { AAPL: 110 },
     finalPositions: [{
       symbol: "AAPL",

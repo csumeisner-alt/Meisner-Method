@@ -7,6 +7,12 @@ import type {
   PaperTransaction,
 } from './paperMath.ts';
 import {
+  buildSavedTradingFingerprintObservation,
+  isTradingFingerprintEventType,
+  normalizeSavedTradingFingerprintObservation,
+  type SavedTradingFingerprintObservation,
+} from './eventArenaTradingFingerprintObservation.ts';
+import {
   getFirstLightningRoundCandidateDaySerial,
   getRegularEventCalendarError,
   getRegularEventPreparationStartAtMs,
@@ -251,6 +257,7 @@ export type PaperChallengeSummary = Omit<PaperChallengeEnrollment, 'startEquity'
   equityHistory?: Array<{ date: string; value: number }>;
   finalPositions?: PaperChallengeArchivedPosition[];
   finalRank?: number;
+  tradingFingerprintObservation?: SavedTradingFingerprintObservation;
 };
 
 export type PaperChallengeArchivedPosition = {
@@ -337,6 +344,7 @@ export function normalizePaperChallengeStore(
     equityHistory,
     finalPositions,
     finalRank,
+    tradingFingerprintObservation,
     eventType,
     startingBalance,
     rankingDirection,
@@ -360,6 +368,7 @@ export function normalizePaperChallengeStore(
       && startingBalance > 0
       ? startingBalance
       : undefined;
+    const savedFingerprint = normalizeSavedTradingFingerprintObservation(tradingFingerprintObservation);
     return {
       ...event,
       artworkId,
@@ -399,6 +408,7 @@ export function normalizePaperChallengeStore(
           }
         : {}),
       ...(Number.isInteger(finalRank) && (finalRank ?? 0) > 0 ? { finalRank } : {}),
+      ...(savedFingerprint ? { tradingFingerprintObservation: savedFingerprint } : {}),
     };
   });
   const enrollment = store.enrollment
@@ -1065,19 +1075,25 @@ export function buildPaperChallengeSummary(
     total?: number;
     realizedPnL?: number;
     fee?: number;
+    lightningRoundEventId?: string;
+    executionStatus?: string;
   }>,
   completedAtMs = Date.now(),
   archive?: {
     equityHistory?: PaperAccountValueSnapshot[];
     finalPositions?: PaperChallengeArchivedPosition[];
     finalRank?: number;
+    tradingFingerprintObservation?: SavedTradingFingerprintObservation;
   },
 ): PaperChallengeSummary {
   const eventTransactions = transactions.filter((transaction) => {
     const timestamp = Date.parse(transaction.date);
     return transaction.accountId === enrollment.accountId
       && timestamp >= enrollment.joinedAtMs
-      && timestamp <= enrollment.eventEndAtMs;
+      && timestamp <= enrollment.eventEndAtMs
+      && (enrollment.eventType === 'lightning-round'
+        ? transaction.lightningRoundEventId === enrollment.eventId
+        : !transaction.lightningRoundEventId);
   });
   const trades = eventTransactions.filter((transaction) =>
     transaction.action === 'BUY' || transaction.action === 'SELL'
@@ -1096,13 +1112,29 @@ export function buildPaperChallengeSummary(
   if (!Number.isFinite(startingBalance) || (startingBalance ?? 0) <= 0) {
     throw new Error('A valid event starting equity is required to save results.');
   }
+  const eventType = enrollment.eventType ?? 'event-arena';
+  const savedTradingFingerprint = isTradingFingerprintEventType(eventType)
+    ? archive?.tradingFingerprintObservation ?? buildSavedTradingFingerprintObservation({
+        participantId: enrollment.accountId,
+        accountId: enrollment.accountId,
+        eventId: enrollment.eventId,
+        eventType,
+        eventStartAtMs: enrollment.eventStartAtMs,
+        eventEndAtMs: enrollment.eventEndAtMs,
+        startingEquity: startingBalance,
+        transactions: eventTransactions,
+        equityHistory: archive?.equityHistory
+          ?.filter((snapshot) => snapshot.accountId === enrollment.accountId)
+          .map(({ date, value }) => ({ date, value })),
+      })
+    : undefined;
   const netProfit = endEquity - startingBalance;
   return {
     ...enrollment,
     startEquity: startingBalance,
     startingBalance,
     artworkId: normalizePaperChallengeArtworkId(enrollment.artworkId),
-    eventType: enrollment.eventType ?? 'event-arena',
+    eventType,
     rankingDirection: enrollment.rankingDirection ?? 'highest-return',
     endEquity,
     netProfit,
@@ -1142,6 +1174,9 @@ export function buildPaperChallengeSummary(
     ...(archive?.finalPositions ? { finalPositions: archive.finalPositions } : {}),
     ...(Number.isInteger(archive?.finalRank) && (archive?.finalRank ?? 0) > 0
       ? { finalRank: archive!.finalRank }
+      : {}),
+    ...(savedTradingFingerprint
+      ? { tradingFingerprintObservation: savedTradingFingerprint }
       : {}),
   };
 }

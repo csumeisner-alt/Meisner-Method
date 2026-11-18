@@ -1,7 +1,9 @@
 import React from 'react';
 import { ImageBackground, Text, useWindowDimensions, View } from 'react-native';
 import { PaperChallengeMilestoneBadges } from '@/components/PaperChallengeMilestoneBadges';
+import { TradingFingerprintSection } from '@/components/TradingFingerprintSection';
 import { useColors } from '@/hooks/useColors';
+import { isTradingFingerprintEventType } from '@/lib/eventArenaTradingFingerprintObservation';
 import {
   LEGACY_PAPER_CHALLENGE_ARTWORK_ID,
   type PaperChallengeMilestoneId,
@@ -143,6 +145,13 @@ export function PaperEventShareCard({ event, milestones = [] }: Props) {
             {symbols}
           </Text>
         </View>
+
+        {isTradingFingerprintEventType(event.eventType) && (
+          <TradingFingerprintSection
+            eventId={event.eventId}
+            observation={event.tradingFingerprintObservation}
+          />
+        )}
 
         <View style={{ marginTop: 22, paddingTop: 13, borderTopWidth: 1, borderTopColor: colors.border }}>
           <Text allowFontScaling style={{ color: colors.mutedForeground, fontFamily: 'Inter_500Medium', fontSize: 9, letterSpacing: 1 }}>

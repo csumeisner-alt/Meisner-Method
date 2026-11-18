@@ -201,7 +201,19 @@ const snapshot = {
   challengeStore: {
     enrollment: null,
     lightningEnrollment: null,
-    history: [{ eventId: "2026-11-16", accountId: "paper-event:2026-11-16" }],
+    history: [{
+      eventId: "2026-11-16",
+      accountId: "paper-event:2026-11-16",
+      tradingFingerprintObservation: {
+        version: 1,
+        observationId: "positive-trade-consistency",
+        headline: "Your results came from consistency",
+        supportingSentence: "3 of 3 trades with reported realized results were profitable (100%).",
+        score: 87.5,
+        scoreParts: { magnitude: 1, uniqueness: 1, reliability: 0.375 },
+        evidence: { positiveTradeCount: 3, realizedTradeCount: 3, positiveTradeSharePercent: 100 },
+      },
+    }],
   },
 };
 
@@ -235,6 +247,10 @@ test("pairing restores paper state once and retains Lightning Round order identi
     assert.equal(body.snapshot.orders[0].status, "pending");
     assert.equal(body.snapshot.orders[0].lightningRoundEventId, "lightning-2026-11-20");
     assert.equal(body.snapshot.challengeStore.history[0].eventId, "2026-11-16");
+    assert.equal(
+      body.snapshot.challengeStore.history[0].tradingFingerprintObservation.supportingSentence,
+      "3 of 3 trades with reported realized results were profitable (100%).",
+    );
 
     assert.equal((await restore()).status, 200);
     const secondDevice = await fetch(`${baseUrl}/event-arena/device-pairing/redeem`, {
@@ -284,6 +300,10 @@ test("revision conflicts do not overwrite the shared Event Arena account", async
     assert.equal(state.snapshot.accounts[0].cash, 80_000);
     assert.equal(state.snapshot.orders[0].status, "filled");
     assert.equal(state.snapshot.orders[0].lightningRoundEventId, "lightning-2026-11-20");
+    assert.equal(
+      state.snapshot.challengeStore.history[0].tradingFingerprintObservation.headline,
+      "Your results came from consistency",
+    );
   });
 });
 

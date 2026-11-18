@@ -611,6 +611,96 @@ test("event-end standings freeze tagged trades, final prices, and ranks once acr
   assert.equal(quoteCalls, 2);
 });
 
+test("Lightning Round fingerprint uses only this participant's tagged fills inside the round", async () => {
+  const state = seedEnteredState();
+  state.transactions.push(
+    ...[
+      { id: "event-sell-1", symbol: "AAA", hour: 1, shares: 0.5, price: 110, realized_pnl: 5 },
+      { id: "event-sell-2", symbol: "BBB", hour: 2, shares: 0.5, price: 120, realized_pnl: 10 },
+      { id: "event-sell-3", symbol: "CCC", hour: 3, shares: 1, price: 130, realized_pnl: 30 },
+    ].map((item) => ({
+      id: item.id,
+      user_id: installationId,
+      account_id: accountId,
+      symbol: item.symbol,
+      company_name: "Apple",
+      action: "SELL",
+      shares: item.shares,
+      price: item.price,
+      total: item.shares * item.price,
+      realized_pnl: item.realized_pnl,
+      fee: 0,
+      date: new Date(startAt + item.hour * 60 * 60 * 1000),
+      lightning_round_event_id: eventId,
+    })),
+    {
+      id: "regular-account-transaction",
+      user_id: installationId,
+      account_id: accountId,
+      symbol: "MSFT",
+      action: "SELL",
+      shares: 1,
+      price: 10,
+      total: 10,
+      realized_pnl: 90_000,
+      fee: 0,
+      date: new Date(startAt + 2 * 60 * 60 * 1000),
+      lightning_round_event_id: null,
+    },
+    {
+      id: "other-round-transaction",
+      user_id: installationId,
+      account_id: accountId,
+      symbol: "NVDA",
+      action: "SELL",
+      shares: 1,
+      price: 10,
+      total: 10,
+      realized_pnl: 80_000,
+      fee: 0,
+      date: new Date(startAt + 2 * 60 * 60 * 1000),
+      lightning_round_event_id: "lightning-another",
+    },
+    {
+      id: "other-participant-transaction",
+      user_id: "other-installation",
+      account_id: accountId,
+      symbol: "GOOG",
+      action: "SELL",
+      shares: 1,
+      price: 10,
+      total: 10,
+      realized_pnl: 70_000,
+      fee: 0,
+      date: new Date(startAt + 2 * 60 * 60 * 1000),
+      lightning_round_event_id: eventId,
+    },
+    {
+      id: "outside-round-transaction",
+      user_id: installationId,
+      account_id: accountId,
+      symbol: "META",
+      action: "SELL",
+      shares: 1,
+      price: 10,
+      total: 10,
+      realized_pnl: 60_000,
+      fee: 0,
+      date: new Date(endAt + 1),
+      lightning_round_event_id: eventId,
+    },
+  );
+
+  await process(new MemoryDatabase(state), async () => 110, () => endAt + 1000);
+
+  const saved = state.participants[0]?.final_result;
+  assert.equal(saved?.tradeCount, 4);
+  assert.equal(saved?.tradingFingerprintObservation?.observationId, "positive-trade-consistency");
+  assert.equal(saved?.tradingFingerprintObservation?.evidence.positiveTradeCount, 3);
+  assert.equal(saved?.tradingFingerprintObservation?.evidence.realizedTradeCount, 3);
+  assert.match(saved?.tradingFingerprintObservation?.supportingSentence ?? "", /3 of 3 trades/);
+});
+
 test("server finalizes an entered participant's personal result without publishing an opted-out score", async () => {
   const state = seedEnteredState();
   state.participants[0]!.leaderboard_opted_in = false;

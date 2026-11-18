@@ -18,6 +18,7 @@ import ViewShot from 'react-native-view-shot';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { PaperEventShareCard } from '@/components/PaperEventShareCard';
+import { TradingFingerprintSection } from '@/components/TradingFingerprintSection';
 import { PaperChallengeMilestoneBadges } from '@/components/PaperChallengeMilestoneBadges';
 import { PaperChallengeLeaderboard } from '@/components/PaperChallengeLeaderboard';
 import { PortfolioLineChart } from '@/components/PaperCharts';
@@ -43,6 +44,7 @@ import {
 } from '@/lib/paperChallenge';
 import { EVENT_ARENA_ARTWORK_SOURCES } from '@/lib/eventArenaArtwork';
 import { getRegularEventCalendarError } from '@/lib/paperChallengeCalendar';
+import { isTradingFingerprintEventType } from '@/lib/eventArenaTradingFingerprintObservation';
 import { getInstallationId } from '@/lib/installation';
 import { registerEventArenaPushDevice } from '@/lib/eventArenaPushRegistration';
 import {
@@ -562,6 +564,12 @@ export function PaperChallengeHistory({ visible, onCloseSettings }: Props) {
                 </TouchableOpacity>
               )}
             </View>
+            {isTradingFingerprintEventType(event.eventType) && (
+              <TradingFingerprintSection
+                eventId={event.eventId}
+                observation={event.tradingFingerprintObservation}
+              />
+            )}
           </View>
           </ImageBackground>
 

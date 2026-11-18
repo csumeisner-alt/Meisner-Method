@@ -147,6 +147,7 @@ import {
   getPaperChallengeMilestones,
   getMissingPaperChallengeQuoteSymbols,
   getPaperChallengeWindow,
+  finalizePaperChallengeStore,
   LIGHTNING_ROUND_STARTING_BALANCE,
   findPreparedLightningRoundWindow,
   normalizePaperChallengeStore,
@@ -154,7 +155,6 @@ import {
   PAPER_CHALLENGE_STORAGE_KEY,
   PAPER_CHALLENGE_STARTING_BALANCE,
   ONE_STOCK_CHALLENGE_REJECTION_MESSAGE,
-  persistPaperChallengeFinalization,
   shouldEnsurePaperChallengeAccount,
   updatePaperChallengeStore,
   updatePaperChallengeEnrollment,
@@ -2259,16 +2259,9 @@ export default function PaperScreen() {
           fallbackAccount.id,
         );
       }
-      const finalizedStore = await persistPaperChallengeFinalization(
-        summary,
-        challengeNow,
-        {
-          getItem: (key) => AsyncStorage.getItem(key),
-          setItem: (key, value) => AsyncStorage.setItem(key, value),
-        },
+      await savePaperChallenge((current) =>
+        finalizePaperChallengeStore(current, summary, challengeNow),
       );
-      paperChallengeRef.current = finalizedStore;
-      setPaperChallenge(finalizedStore);
       challengeFinalizationFailureRef.current = null;
       setChallengeFinalizationError(false);
     })().catch(() => {

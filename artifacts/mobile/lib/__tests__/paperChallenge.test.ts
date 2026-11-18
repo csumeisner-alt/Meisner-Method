@@ -46,6 +46,10 @@ import {
   updatePaperChallengeStore,
   shouldEnsurePaperChallengeAccount,
 } from '../paperChallenge.ts';
+import {
+  isTradingFingerprintEventType,
+  TRADING_FINGERPRINT_NEUTRAL_FALLBACK,
+} from '../eventArenaTradingFingerprintObservation.ts';
 import { getRegularEventPreparationStartAtMs } from '../paperChallengeCalendar.ts';
 import {
   calculateEventHoldingAllocationPercent,
@@ -1032,6 +1036,7 @@ test('Event Arena wires its label, history sorting, midweek refresh, sharing, an
   const testDirectory = dirname(fileURLToPath(import.meta.url));
   const componentSource = await readFile(resolve(testDirectory, '../../components/PaperChallengeHistory.tsx'), 'utf8');
   const cardSource = await readFile(resolve(testDirectory, '../../components/PaperEventShareCard.tsx'), 'utf8');
+  const fingerprintSource = await readFile(resolve(testDirectory, '../../components/TradingFingerprintSection.tsx'), 'utf8');
   const paperScreenSource = await readFile(resolve(testDirectory, '../../app/paper.tsx'), 'utf8');
   const badgeSource = await readFile(resolve(testDirectory, '../../components/PaperChallengeMilestoneBadges.tsx'), 'utf8');
   assert.match(componentSource, /accessibilityLabel="Event Arena"/);
@@ -1062,6 +1067,12 @@ test('Event Arena wires its label, history sorting, midweek refresh, sharing, an
   assert.match(componentSource, /share-paper-event-image-/);
   assert.match(cardSource, /MEISNER METHOD/);
   assert.match(cardSource, /EVENT RETURN/);
+  assert.match(cardSource, /TradingFingerprintSection/);
+  assert.match(componentSource, /TradingFingerprintSection/);
+  assert.match(fingerprintSource, /YOUR TRADING FINGERPRINT/);
+  assert.match(fingerprintSource, /backgroundColor: '#171A1F'/);
+  assert.match(fingerprintSource, /borderColor: 'rgba\(205, 170, 91, 0\.42\)'/);
+  assert.match(fingerprintSource, /flexDirection: 'row'/);
   assert.match(componentSource, /getPaperChallengeMilestones\(event, store\.history\)/);
   assert.match(componentSource, /PaperChallengeMilestoneBadges milestones=\{getPaperChallengeMilestones\(event, store\.history\)\} compact/);
   assert.match(paperScreenSource, /milestones=\{getPaperChallengeMilestones\(completedEventSummary, paperChallenge\.history\)\}/);
@@ -1101,6 +1112,112 @@ test('paper event summary uses account equity change and event-only trades', () 
     realizedPnL: 300,
     fee: 5,
   }]);
+});
+
+test('finalized summaries save the strongest observation and preserve it after reload', () => {
+  const eventStartAtMs = Date.parse('2026-11-16T14:30:00.000Z');
+  const eventEndAtMs = Date.parse('2026-11-20T21:00:00.000Z');
+  const accountId = 'paper-event:2026-11-16';
+  const enrollment = {
+    eventId: '2026-11-16',
+    eventType: 'event-arena' as const,
+    eventStartAtMs,
+    eventEndAtMs,
+    joinedAtMs: eventStartAtMs,
+    accountId,
+    accountName: 'Event Portfolio',
+    startEquity: 100_000,
+  };
+  const summary = buildPaperChallengeSummary(enrollment, 100_060, [
+    { id: 'sell-a', accountId, symbol: 'AAA', action: 'SELL', date: '2026-11-17T10:00:00.000Z', shares: 1, price: 110, total: 110, realizedPnL: 10 },
+    { id: 'sell-b', accountId, symbol: 'BBB', action: 'SELL', date: '2026-11-18T10:00:00.000Z', shares: 1, price: 120, total: 120, realizedPnL: 20 },
+    { id: 'sell-c', accountId, symbol: 'CCC', action: 'SELL', date: '2026-11-19T10:00:00.000Z', shares: 1, price: 130, total: 130, realizedPnL: 30 },
+    { id: 'other-account-sell', accountId: 'paper-event:other', symbol: 'ZZZ', action: 'SELL', date: '2026-11-19T10:00:00.000Z', shares: 1, price: 1, total: 1, realizedPnL: 90_000 },
+    { id: 'other-round-sell', accountId, symbol: 'YYY', action: 'SELL', date: '2026-11-19T10:00:00.000Z', shares: 1, price: 1, total: 1, realizedPnL: 80_000, lightningRoundEventId: 'lightning-other' },
+  ], eventEndAtMs);
+
+  assert.equal(summary.tradingFingerprintObservation?.observationId, 'positive-trade-consistency');
+  assert.equal(summary.tradingFingerprintObservation?.evidence.positiveTradeCount, 3);
+  assert.equal(summary.tradingFingerprintObservation?.evidence.realizedTradeCount, 3);
+  assert.match(summary.tradingFingerprintObservation?.supportingSentence ?? '', /3 of 3 trades/);
+  assert.deepEqual(summary.transactions?.map((transaction) => transaction.id), ['sell-a', 'sell-b', 'sell-c']);
+
+  const completed = finalizePaperChallengeStore({ enrollment, history: [] }, summary, eventEndAtMs);
+  const reloaded = normalizePaperChallengeStore(JSON.parse(JSON.stringify(completed)));
+  const changedRetry = {
+    ...summary,
+    tradingFingerprintObservation: {
+      ...summary.tradingFingerprintObservation!,
+      headline: 'Changed after finalization',
+    },
+  };
+  const retried = finalizePaperChallengeStore(
+    { ...reloaded, enrollment },
+    changedRetry,
+    eventEndAtMs,
+  );
+
+  assert.deepEqual(
+    retried.history[0]?.tradingFingerprintObservation,
+    summary.tradingFingerprintObservation,
+  );
+});
+
+test('Lightning Round summary excludes regular and other-round fills and stores the neutral fallback', () => {
+  const eventStartAtMs = Date.parse('2026-11-20T14:30:00.000Z');
+  const eventEndAtMs = eventStartAtMs + 24 * 60 * 60 * 1000;
+  const accountId = 'paper-event:shared';
+  const summary = buildPaperChallengeSummary({
+    eventId: 'lightning-2026-11-20',
+    eventType: 'lightning-round',
+    eventStartAtMs,
+    eventEndAtMs,
+    joinedAtMs: eventStartAtMs,
+    accountId,
+    accountName: 'Shared Event Arena',
+    startEquity: 100_000,
+  }, 100_010, [
+    { id: 'mandatory-enrollment-buy', accountId, symbol: 'AAA', action: 'BUY', date: new Date(eventStartAtMs + 1000).toISOString(), shares: 1, price: 100, total: 100, lightningRoundEventId: 'lightning-2026-11-20' },
+    { id: 'round-close', accountId, symbol: 'AAA', action: 'SELL', date: new Date(eventStartAtMs + 2 * 60 * 60 * 1000).toISOString(), shares: 1, price: 110, total: 110, realizedPnL: 10, lightningRoundEventId: 'lightning-2026-11-20' },
+    ...['a', 'b', 'c'].map((suffix, index) => ({
+      id: `other-round-close-${suffix}`,
+      accountId,
+      symbol: `SYM${suffix.toUpperCase()}`,
+      action: 'SELL' as const,
+      date: new Date(eventStartAtMs + (index + 3) * 60 * 60 * 1000).toISOString(),
+      shares: 1,
+      price: 110,
+      total: 110,
+      realizedPnL: 100,
+      lightningRoundEventId: 'lightning-other',
+    })),
+    { id: 'regular-account-close', accountId, symbol: 'REG', action: 'SELL', date: new Date(eventStartAtMs + 8 * 60 * 60 * 1000).toISOString(), shares: 1, price: 110, total: 110, realizedPnL: 10_000 },
+  ], eventEndAtMs);
+
+  assert.deepEqual(summary.transactions?.map((transaction) => transaction.id), [
+    'mandatory-enrollment-buy',
+    'round-close',
+  ]);
+  assert.equal(summary.tradeCount, 2);
+  assert.equal(summary.tradingFingerprintObservation?.observationId, null);
+  assert.equal(
+    summary.tradingFingerprintObservation?.supportingSentence,
+    TRADING_FINGERPRINT_NEUTRAL_FALLBACK,
+  );
+});
+
+test('Trading Fingerprint is enabled only for the requested event formats', () => {
+  for (const eventType of [
+    'event-arena',
+    'penny-stock-mayhem',
+    'one-stock-challenge',
+    'lightning-round',
+  ] as const) {
+    assert.equal(isTradingFingerprintEventType(eventType), true);
+  }
+  assert.equal(isTradingFingerprintEventType(undefined), true, 'legacy events default to Event Arena');
+  assert.equal(isTradingFingerprintEventType('green-bull-championship'), false);
+  assert.equal(isTradingFingerprintEventType('bear-market-mayhem'), false);
 });
 
 test('new event archive freezes only matching event observations and closing positions', () => {
@@ -1617,8 +1734,8 @@ test('expired enrollment remains saved until its event summary is finalized', as
   const testDirectory = dirname(fileURLToPath(import.meta.url));
   const source = await readFile(resolve(testDirectory, '../../app/paper.tsx'), 'utf8');
   assert.doesNotMatch(source, /savePaperChallenge\(\{ enrollment: null, history: latestStore\.history \}\)/);
-  assert.match(source, /const finalizedStore = await persistPaperChallengeFinalization\(/);
-  assert.match(source, /paperChallengeRef\.current = finalizedStore;\s*setPaperChallenge\(finalizedStore\)/);
+  assert.match(source, /await savePaperChallenge\(\(current\) =>\s*finalizePaperChallengeStore\(current, summary, challengeNow\)/);
+  assert.match(source, /void pushEventArenaSnapshotRef\.current\(\{/);
   assert.match(source, /paper-event-results-pending/);
   assert.match(source, /retry-paper-event-results/);
 });

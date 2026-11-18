@@ -11,6 +11,10 @@ import type {
   PaperPosition,
   PaperTransaction,
 } from "../../../mobile/lib/paperMath.ts";
+import {
+  buildSavedTradingFingerprintObservation,
+  type SavedTradingFingerprintObservation,
+} from "../../../mobile/lib/eventArenaTradingFingerprintObservation.ts";
 import { calculateLightningRoundScore } from "./lightningRoundScore.ts";
 
 type QueryResult = { rows: any[] };
@@ -64,6 +68,7 @@ type LightningRoundFinalResult = {
     marketValue: number;
     unrealizedPnL: number;
   }>;
+  tradingFingerprintObservation: SavedTradingFingerprintObservation;
   completedAtMs: number;
   finalRank?: number | null;
 };
@@ -186,7 +191,7 @@ async function freezeParticipantResult(
   fetchPrice: (symbol: string) => Promise<number | null>,
 ): Promise<LightningRoundFinalResult | null> {
   const { rows: activityRows } = await db.query(
-    `SELECT symbol,company_name,action,shares,price,total,fee,date
+    `SELECT id,symbol,company_name,action,shares,price,total,realized_pnl,fee,date,lightning_round_event_id
      FROM paper_transactions
      WHERE user_id=$1 AND account_id=$2 AND lightning_round_event_id=$3
        AND date >= TO_TIMESTAMP($4 / 1000.0) AND date <= TO_TIMESTAMP($5 / 1000.0)
@@ -219,6 +224,31 @@ async function freezeParticipantResult(
   }
   const score = calculateLightningRoundScore(activity, prices, startingBalance);
   if (!score) return null;
+  const tradingFingerprintObservation = buildSavedTradingFingerprintObservation({
+    participantId: String(participant.installation_id),
+    accountId: String(participant.account_id),
+    eventId,
+    eventType: "lightning-round",
+    eventStartAtMs: startAtMs,
+    eventEndAtMs: endAtMs,
+    startingEquity: startingBalance,
+    transactions: activityRows.map((row) => ({
+      id: String(row.id ?? ""),
+      accountId: String(participant.account_id),
+      symbol: String(row.symbol),
+      companyName: String(row.company_name ?? ""),
+      action: row.action,
+      shares: Number(row.shares),
+      price: Number(row.price),
+      total: Number(row.total),
+      date: asIso(row.date),
+      ...(row.realized_pnl == null ? {} : { realizedPnL: Number(row.realized_pnl) }),
+      fee: Number(row.fee ?? 0),
+      ...(row.lightning_round_event_id
+        ? { lightningRoundEventId: String(row.lightning_round_event_id) }
+        : {}),
+    })),
+  });
   const result: LightningRoundFinalResult = {
     eventId,
     startEquity: score.startEquity,
@@ -229,6 +259,7 @@ async function freezeParticipantResult(
     holdings: score.holdings,
     finalPrices: score.finalPrices,
     finalPositions: score.finalPositions,
+    tradingFingerprintObservation,
     completedAtMs: endAtMs,
   };
   return result;

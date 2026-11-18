@@ -1,5 +1,12 @@
 import type { PaperChallengeEventType } from './paperChallenge.ts';
-import type { EventArenaTradingFingerprint } from './eventArenaTradingFingerprint.ts';
+import {
+  analyzeEventArenaTradingFingerprint,
+  type EventArenaTradingFingerprint,
+  type EventArenaTradingFingerprintInput,
+  type FingerprintEquitySnapshot,
+  type FingerprintTradeRecord,
+} from './eventArenaTradingFingerprint.ts';
+import type { PaperTransaction } from './paperMath.ts';
 
 export const TRADING_FINGERPRINT_NEUTRAL_FALLBACK =
   'Your trading fingerprint is still developing. More completed trades will reveal more about your trading style.';
@@ -47,6 +54,38 @@ export type TradingFingerprintObservationSelection = {
   sentence: string;
 };
 
+export type SavedTradingFingerprintObservation = {
+  version: 1;
+  observationId: TradingFingerprintObservationId | null;
+  headline: string;
+  supportingSentence: string;
+  score: number | null;
+  scoreParts: TradingFingerprintObservation['scoreParts'] | null;
+  evidence: Readonly<Record<string, number | string>>;
+};
+
+export type TradingFingerprintEventInput = Omit<
+  EventArenaTradingFingerprintInput,
+  'transactions' | 'equityHistory'
+> & {
+  transactions: readonly {
+    id?: string;
+    accountId: string;
+    symbol: string;
+    companyName?: string;
+    action: PaperTransaction['action'];
+    shares?: number;
+    price?: number;
+    total?: number;
+    date: string;
+    realizedPnL?: number;
+    fee?: number;
+    lightningRoundEventId?: string;
+    executionStatus?: string;
+  }[];
+  equityHistory?: readonly Omit<FingerprintEquitySnapshot, 'participantId' | 'accountId' | 'eventId'>[];
+};
+
 const FALLBACK_SENTENCE = TRADING_FINGERPRINT_NEUTRAL_FALLBACK;
 const SCORE_WEIGHTS = { magnitude: 0.45, uniqueness: 0.35, reliability: 0.2 } as const;
 const OBSERVATION_TIE_BREAK_ORDER: readonly TradingFingerprintObservationId[] = [
@@ -59,6 +98,145 @@ const OBSERVATION_TIE_BREAK_ORDER: readonly TradingFingerprintObservationId[] = 
   'event-paced-trading',
   'positive-trade-consistency',
 ];
+const OBSERVATION_HEADLINES: Record<TradingFingerprintObservationId, string> = {
+  'one-trade-made-a-difference': 'One trade made the difference',
+  'patient-profitable-trades': 'Your patience paid off',
+  'recovered-drawdown': 'You turned the competition around',
+  'positive-trade-consistency': 'Your results came from consistency',
+  'symbol-result-concentration': 'One ticker shaped your results',
+  'winning-trade-streak': 'You built a winning streak',
+  'losing-trade-streak': 'Your results included a difficult streak',
+  'event-paced-trading': 'You traded at a fast pace',
+};
+
+export function isTradingFingerprintEventType(
+  eventType: PaperChallengeEventType | undefined,
+): boolean {
+  return eventType === undefined
+    || eventType === 'event-arena'
+    || eventType === 'penny-stock-mayhem'
+    || eventType === 'one-stock-challenge'
+    || eventType === 'lightning-round';
+}
+
+export function toSavedTradingFingerprintObservation(
+  selection: TradingFingerprintObservationSelection,
+): SavedTradingFingerprintObservation {
+  const selected = selection.selected;
+  return {
+    version: 1,
+    observationId: selected?.id ?? null,
+    headline: selected ? OBSERVATION_HEADLINES[selected.id] : 'Still developing',
+    supportingSentence: selected?.sentence ?? FALLBACK_SENTENCE,
+    score: selected?.score ?? null,
+    scoreParts: selected?.scoreParts ?? null,
+    evidence: selected?.evidence ?? {},
+  };
+}
+
+/** Generate the save-ready observation once, as part of event finalization. */
+export function buildSavedTradingFingerprintObservation(
+  input: TradingFingerprintEventInput,
+): SavedTradingFingerprintObservation {
+  const transactions: FingerprintTradeRecord[] = input.transactions.map((transaction) => ({
+    id: transaction.id ?? '',
+    accountId: transaction.accountId,
+    symbol: transaction.symbol,
+    companyName: transaction.companyName ?? '',
+    action: transaction.action,
+    shares: transaction.shares ?? Number.NaN,
+    price: transaction.price ?? Number.NaN,
+    total: transaction.total ?? Number.NaN,
+    date: transaction.date,
+    ...(transaction.realizedPnL !== undefined ? { realizedPnL: transaction.realizedPnL } : {}),
+    ...(transaction.fee !== undefined ? { fee: transaction.fee } : {}),
+    ...(transaction.lightningRoundEventId
+      ? { lightningRoundEventId: transaction.lightningRoundEventId }
+      : {}),
+    participantId: input.participantId,
+    eventId: input.eventId,
+    ...(transaction.executionStatus ? { executionStatus: transaction.executionStatus } : {}),
+  }));
+  const equityHistory: FingerprintEquitySnapshot[] | undefined = input.equityHistory?.map((snapshot) => ({
+    ...snapshot,
+    participantId: input.participantId,
+    accountId: input.accountId,
+    eventId: input.eventId,
+  }));
+  const analyzedInput: EventArenaTradingFingerprintInput = {
+    participantId: input.participantId,
+    accountId: input.accountId,
+    eventId: input.eventId,
+    eventType: input.eventType,
+    eventStartAtMs: input.eventStartAtMs,
+    eventEndAtMs: input.eventEndAtMs,
+    startingEquity: input.startingEquity,
+    transactions,
+    ...(equityHistory ? { equityHistory } : {}),
+  };
+  return toSavedTradingFingerprintObservation(
+    selectTradingFingerprintObservation(
+      analyzeEventArenaTradingFingerprint(analyzedInput),
+      input.eventType,
+    ),
+  );
+}
+
+/** Sanitize JSON-restored archive values before they reach the result card. */
+export function normalizeSavedTradingFingerprintObservation(
+  value: unknown,
+): SavedTradingFingerprintObservation | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const candidate = value as Partial<SavedTradingFingerprintObservation>;
+  const validIds: TradingFingerprintObservationId[] = [
+    'one-trade-made-a-difference',
+    'patient-profitable-trades',
+    'recovered-drawdown',
+    'positive-trade-consistency',
+    'symbol-result-concentration',
+    'winning-trade-streak',
+    'losing-trade-streak',
+    'event-paced-trading',
+  ];
+  if (
+    candidate.version !== 1
+    || (candidate.observationId !== null && !validIds.includes(candidate.observationId as TradingFingerprintObservationId))
+    || typeof candidate.headline !== 'string'
+    || candidate.headline.length > 80
+    || typeof candidate.supportingSentence !== 'string'
+    || candidate.supportingSentence.length > 400
+    || !candidate.evidence
+    || typeof candidate.evidence !== 'object'
+    || Array.isArray(candidate.evidence)
+  ) return undefined;
+  const evidenceEntries = Object.entries(candidate.evidence);
+  if (evidenceEntries.length > 20 || evidenceEntries.some(([, entry]) =>
+    typeof entry === 'string' ? entry.length > 120 : !Number.isFinite(entry),
+  )) return undefined;
+  const evidence = Object.fromEntries(evidenceEntries) as Record<string, number | string>;
+  const scoreParts = candidate.scoreParts;
+  const validScoreParts = scoreParts === null || (
+    !!scoreParts
+    && Number.isFinite(scoreParts.magnitude) && scoreParts.magnitude >= 0 && scoreParts.magnitude <= 1
+    && Number.isFinite(scoreParts.uniqueness) && scoreParts.uniqueness >= 0 && scoreParts.uniqueness <= 1
+    && Number.isFinite(scoreParts.reliability) && scoreParts.reliability >= 0 && scoreParts.reliability <= 1
+  );
+  if (
+    !validScoreParts
+    || (candidate.score !== null && (!Number.isFinite(candidate.score) || candidate.score! < 0 || candidate.score! > 100))
+    || (candidate.observationId === null && (candidate.score !== null || scoreParts !== null))
+    || (candidate.observationId !== null && (candidate.score === null || scoreParts === null))
+  ) return undefined;
+  return {
+    version: 1,
+    observationId: candidate.observationId as TradingFingerprintObservationId | null,
+    headline: candidate.headline,
+    supportingSentence: candidate.supportingSentence,
+    score: candidate.score ?? null,
+    scoreParts: scoreParts ?? null,
+    evidence,
+  };
+}
 
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
