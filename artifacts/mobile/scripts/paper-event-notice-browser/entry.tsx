@@ -10,8 +10,8 @@ function EventNoticeFixture() {
   const enrollment = {
     accountId,
     eventId,
-    eventType: 'event-arena' as const,
-    accountName: 'Event Arena',
+    eventType: eventId === '2026-11-16' ? 'one-stock-challenge' as const : 'event-arena' as const,
+    accountName: eventId === '2026-11-16' ? 'One-Stock Challenge' : 'Event Arena',
     startingBalance: 100_000,
     startEquity: 100_000,
     eventStartAtMs: now - 60_000,

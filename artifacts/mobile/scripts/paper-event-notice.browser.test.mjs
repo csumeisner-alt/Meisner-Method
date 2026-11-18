@@ -141,7 +141,7 @@ async function clickTestID(browser, testID) {
   assert.equal(clicked, true, `Expected ${testID} to be rendered and clickable.`);
 }
 
-test("Event Arena notice dismissal survives reload and stays scoped to its account and event", async () => {
+test("One-Stock and Event Arena notice dismissal survives reload and stays account/event scoped", async () => {
   const bundle = await buildFixture();
   const server = createServer((request, response) => {
     if (request.url === "/bundle.js") {
@@ -190,7 +190,10 @@ test("Event Arena notice dismissal survives reload and stays scoped to its accou
     await browser.send("Page.navigate", { url });
     await waitFor(browser,
       `!!document.querySelector(${JSON.stringify(selector("dismiss-paper-event-live-banner"))})`,
-      "The standard Event Arena notice and accessible close button did not appear.");
+      "The One-Stock notice and accessible close button did not appear.");
+    assert.equal(await browser.evaluate(
+      `document.body.innerText.includes("THE ONE-STOCK CHALLENGE IS LIVE")`),
+    true, "The One-Stock reminder should be shown before dismissal.");
 
     const closeButton = await browser.evaluate(`(() => {
       const button = document.querySelector('[aria-label="Dismiss Event Arena live notice"]');
