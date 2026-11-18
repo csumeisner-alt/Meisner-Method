@@ -1519,34 +1519,32 @@ export function PaperChallengeLeaderboard({
             </ScrollView>
           ) : (
             <ScrollView style={{ flex: 1, minHeight: 0 }} contentContainerStyle={{ width: '100%', maxWidth: 1000, alignSelf: 'center', padding: 16, paddingBottom: embedded ? 28 : Platform.OS === 'web' ? 24 : insets.bottom + 24 }}>
+              <View
+                testID={isOneStockChallenge ? 'paper-event-one-stock-hero-art' : undefined}
+                style={{ width: '100%' }}
+              >
               <ImageBackground
-                testID={`event-arena-leaderboard-artwork-${event.id}`}
+                testID={!isOneStockChallenge ? `event-arena-leaderboard-artwork-${event.id}` : undefined}
                 source={isPennyStockMayhem
                   ? require('../assets/event-arena-penny-stock-mayhem-premium.jpg')
-                  : EVENT_ARENA_ARTWORK_SOURCES[event.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID]}
+                  : isOneStockChallenge
+                    ? EVENT_ARENA_ARTWORK_SOURCES['one-stock-challenge']
+                    : EVENT_ARENA_ARTWORK_SOURCES[event.artworkId ?? LEGACY_PAPER_CHALLENGE_ARTWORK_ID]}
                 resizeMode="cover"
-                imageStyle={{ borderRadius: 24, opacity: isPennyStockMayhem || isOneStockChallenge ? 0 : 0.96 }}
-                style={{ overflow: 'hidden', borderRadius: 24, borderWidth: 1, borderColor: isBearMarketMayhem ? 'rgba(240,82,93,0.62)' : isPennyStockMayhem ? 'rgba(173,202,119,0.62)' : isOneStockChallenge ? colors.primary : 'rgba(214,177,94,0.34)', marginBottom: 17, padding: compactPodium ? 12 : 17, backgroundColor: isPennyStockMayhem ? '#07110D' : isOneStockChallenge ? colors.background : '#101720' }}
+                imageStyle={{ borderRadius: 24, opacity: isPennyStockMayhem ? 0 : isOneStockChallenge ? 1 : 0.96 }}
+                style={{ overflow: 'hidden', borderRadius: 24, borderWidth: 1, borderColor: isBearMarketMayhem ? 'rgba(240,82,93,0.62)' : isPennyStockMayhem ? 'rgba(173,202,119,0.62)' : isOneStockChallenge ? 'rgba(216,180,90,0.5)' : 'rgba(214,177,94,0.34)', marginBottom: 17, padding: compactPodium ? 12 : 17, backgroundColor: isPennyStockMayhem ? '#07110D' : isOneStockChallenge ? '#07111E' : '#101720' }}
               >
-                <View style={{ pointerEvents: 'none', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: isPennyStockMayhem || isOneStockChallenge ? 'transparent' : 'rgba(7,12,20,0.18)' }} />
-                {isOneStockChallenge && (
-                  <ImageBackground
-                    testID="paper-event-one-stock-hero-art"
-                    source={EVENT_ARENA_ARTWORK_SOURCES['one-stock-challenge']}
-                    resizeMode="cover"
-                    accessibilityLabel="A black chess pawn with gold trim centered in a blue trading arena above a reflective chessboard."
-                    imageStyle={{ borderRadius: 16 }}
-                    style={{ width: '100%', maxWidth: 560, alignSelf: 'center', aspectRatio: 1122 / 1402, overflow: 'hidden', borderRadius: 16, marginBottom: 15, backgroundColor: colors.background }}
-                  />
-                )}
+                <View style={{ pointerEvents: 'none', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: isPennyStockMayhem ? 'transparent' : isOneStockChallenge ? 'rgba(4,10,20,0.08)' : 'rgba(7,12,20,0.18)' }} />
                 <LinearGradient
                   colors={isBearMarketMayhem
                     ? ['rgba(123,22,34,0.42)', 'rgba(8,14,24,0.04)', 'rgba(90,18,28,0.3)']
-                    : isPennyStockMayhem || isOneStockChallenge
+                    : isOneStockChallenge
+                      ? ['rgba(3,12,25,0.72)', 'rgba(4,14,28,0.34)', 'rgba(3,9,19,0.86)']
+                      : isPennyStockMayhem
                       ? ['transparent', 'transparent', 'transparent']
                       : ['rgba(25,139,218,0.22)', 'rgba(8,14,24,0.03)', 'rgba(25,139,218,0.15)']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
+                  start={isOneStockChallenge ? { x: 0.5, y: 0 } : { x: 0, y: 0 }}
+                  end={isOneStockChallenge ? { x: 0.5, y: 1 } : { x: 1, y: 1 }}
                   style={{ pointerEvents: 'none', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
                 />
                 <LinearGradient
@@ -1633,7 +1631,7 @@ export function PaperChallengeLeaderboard({
                     </View>
                   )}
                   {!isPennyStockMayhem && (
-                    <Text testID="paper-event-championship-identity" style={{ color: isBearMarketMayhem ? '#FF6670' : isOneStockChallenge ? colors.primary : '#E8CB7C', fontFamily: 'Inter_700Bold', fontSize: isOneStockChallenge ? 18 : 11, letterSpacing: isOneStockChallenge ? 1.15 : 1.2, textAlign: 'center', marginBottom: isOneStockChallenge ? 5 : 7, textShadowColor: 'transparent', textShadowRadius: 7 }}>
+                    <Text testID="paper-event-championship-identity" style={{ color: isBearMarketMayhem ? '#FF6670' : '#E8CB7C', fontFamily: 'Inter_700Bold', fontSize: isOneStockChallenge ? 18 : 11, letterSpacing: isOneStockChallenge ? 1.15 : 1.2, textAlign: 'center', marginBottom: isOneStockChallenge ? 5 : 7, textShadowColor: 'transparent', textShadowRadius: 7 }}>
                     {isBearMarketMayhem
                       ? 'BEAR MARKET MAYHEM'
                       : isOneStockChallenge
@@ -1791,6 +1789,7 @@ export function PaperChallengeLeaderboard({
                 </>
               )}
               </ImageBackground>
+              </View>
 
               {standingsEntries.length > 0 && (
                     <View testID="paper-event-leaderboard-list" style={{ marginTop: 3, paddingHorizontal: 14, paddingTop: 13, paddingBottom: 4, borderRadius: 18, backgroundColor: isPennyStockMayhem ? 'rgba(7,17,13,0.95)' : colors.card, borderWidth: 1, borderColor: isPennyStockMayhem ? 'rgba(184,149,90,0.5)' : colors.border }}>

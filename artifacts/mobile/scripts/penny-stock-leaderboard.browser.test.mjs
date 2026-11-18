@@ -321,7 +321,7 @@ test("Penny Stock leaderboard artwork, countdown, and podium fit narrow and stan
   }
 });
 
-test("One-Stock hero artwork and event details fit phone and desktop layouts", async () => {
+test("One-Stock full-card artwork and event details fit phone and desktop layouts", async () => {
   const fixture = await startBrowser(await buildFixture(), {
     path: "/?scenario=one-stock",
     readyTestId: "paper-event-one-stock-description",
@@ -354,6 +354,8 @@ test("One-Stock hero artwork and event details fit phone and desktop layouts", a
         const dates = get("paper-event-leaderboard-date-range");
         const participants = get("paper-event-leaderboard-participant-count");
         const status = get("paper-event-leaderboard-status");
+        const podium = get("paper-event-leaderboard-podium");
+        const standings = get("paper-event-leaderboard-list");
         const textFits = (element) => {
           if (!element) return false;
           const rect = element.getBoundingClientRect();
@@ -371,6 +373,9 @@ test("One-Stock hero artwork and event details fit phone and desktop layouts", a
           dateText: dates?.textContent?.replace(/\\s+/g, " ").trim(),
           participantText: participants?.textContent?.replace(/\\s+/g, " ").trim(),
           eventStatusText: status?.textContent?.replace(/\\s+/g, " ").trim(),
+          cardContainsHero: Boolean(art && title && art.contains(title)),
+          cardContainsPodium: Boolean(art && podium && art.contains(podium)),
+          standingsRemainSeparate: Boolean(art && (!standings || !art.contains(standings))),
           bounds: {
             art: box(art), title: box(title), description: box(description),
             capital: box(capital), countdown: box(countdown), dates: box(dates), participants: box(participants),
@@ -382,7 +387,6 @@ test("One-Stock hero artwork and event details fit phone and desktop layouts", a
       assert.equal(layout.viewport, viewport.width);
       assert.equal(layout.artFit, "cover");
       assert.match(layout.artSource, /data:image\/png/);
-      assert.equal(layout.artLabel, "A black chess pawn with gold trim centered in a blue trading arena above a reflective chessboard.");
       assert.equal(layout.titleText, "THE ONE-STOCK CHALLENGE");
       assert.equal(layout.descriptionText, "One participant. One stock. One winning position.");
       assert.match(layout.capitalText, /\$100,000 STARTING CAPITAL/);
@@ -390,10 +394,16 @@ test("One-Stock hero artwork and event details fit phone and desktop layouts", a
       assert.match(layout.dateText, /\d{4}/);
       assert.match(layout.participantText, /competitor/);
       assert.match(layout.eventStatusText, /LIVE CHAMPIONSHIP/);
-      assert.ok(Math.abs(layout.bounds.art.width / layout.bounds.art.height - (1122 / 1402)) < 0.02,
-        "The supplied portrait artwork should retain its full framing.");
-      assert.ok(layout.bounds.art.width <= 560 + 1, "The artwork remains capped instead of stretching across desktop.");
-      assert.ok(layout.bounds.art.bottom <= layout.bounds.title.top + 1);
+      assert.equal(layout.cardContainsHero, true, "the title and event information sit over the full-card background");
+      assert.equal(layout.cardContainsPodium, true, "the background continues behind the podium");
+      assert.equal(layout.standingsRemainSeparate, true, "the existing full standings card stays below the hero");
+      assert.ok(layout.bounds.art.width >= Math.min(viewport.width - 34, 960), "the background fills the card width within its existing desktop cap.");
+      assert.ok(layout.bounds.art.width <= 1000 + 1, "the card keeps its existing desktop width cap.");
+      assert.ok(layout.bounds.art.height > 400,
+        "the background spans the event information and podium, not just a portrait image.");
+      assert.ok(layout.bounds.title.top >= layout.bounds.art.top);
+      assert.ok(layout.bounds.title.top - layout.bounds.art.top < 200,
+        "the event title remains near the top of the full-card artwork.");
       assert.ok(layout.bounds.title.bottom <= layout.bounds.description.top + 1);
       assert.ok(layout.bounds.description.bottom <= layout.bounds.capital.top + 1);
       assert.ok(layout.bounds.capital.bottom <= layout.bounds.countdown.top + 1);
@@ -408,6 +418,10 @@ test("One-Stock hero artwork and event details fit phone and desktop layouts", a
       assert.deepEqual(layout.textFits, [true, true, true, true, true, true],
         `Event text must fit at ${viewport.width}px: ${JSON.stringify(layout)}`);
       assert.equal(layout.scrollWidth, viewport.width, `The page must not scroll sideways at ${viewport.width}px.`);
+      if (process.env.PENNY_SCREENSHOT_DIR) {
+        const capture = await browser.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
+        await writeFile(join(process.env.PENNY_SCREENSHOT_DIR, `one-stock-${viewport.width}.png`), Buffer.from(capture.result.data, "base64"));
+      }
     }
     assert.deepEqual(await browser.evaluate("window.__fixtureErrors"), [],
       "The One-Stock hero must render without browser errors.");

@@ -655,8 +655,8 @@ test("Event Arena header and all four tabs remain separated in landscape and spl
 });
 
 test("championship leaderboard shows real podium scores, event context, and below-podium standings", () => {
-  const stadiumMarker = leaderboard.indexOf('testID={`event-arena-leaderboard-artwork-${event.id}`}');
-  const stadiumStart = leaderboard.lastIndexOf("<ImageBackground", stadiumMarker);
+  const stadiumMarker = leaderboard.indexOf("testID={isOneStockChallenge ? 'paper-event-one-stock-hero-art'");
+  const stadiumStart = leaderboard.indexOf("<ImageBackground", stadiumMarker);
   const stadiumEnd = leaderboard.indexOf("</ImageBackground>", stadiumStart);
   const stadium = leaderboard.slice(stadiumStart, stadiumEnd);
 
@@ -1443,32 +1443,35 @@ test("all seven live Event Arena artworks keep podium names and values readable"
   assert.match(leaderboard, /:\s*EVENT_ARENA_ARTWORK_SOURCES\[event\.artworkId \?\? LEGACY_PAPER_CHALLENGE_ARTWORK_ID\]/);
   assert.match(leaderboard, /resizeMode="cover"/);
   assert.match(leaderboard, /event-arena-leaderboard-artwork-\$\{event\.id\}/);
-  const artworkMarker = leaderboard.indexOf('testID={`event-arena-leaderboard-artwork-${event.id}`}');
-  const artworkStart = leaderboard.lastIndexOf("<ImageBackground", artworkMarker);
+  const artworkMarker = leaderboard.indexOf("testID={isOneStockChallenge ? 'paper-event-one-stock-hero-art'");
+  const artworkStart = leaderboard.indexOf("<ImageBackground", artworkMarker);
   const artworkEnd = leaderboard.indexOf("</ImageBackground>", artworkStart);
   const artworkContainer = leaderboard.slice(artworkStart, artworkEnd);
   assert.ok(artworkStart >= 0 && artworkEnd > artworkStart);
-  assert.match(artworkContainer, /backgroundColor: isPennyStockMayhem \? '#07110D' : isOneStockChallenge \? colors\.background : '#101720'/);
-  assert.match(artworkContainer, /imageStyle=\{\{ borderRadius: 24, opacity: isPennyStockMayhem \|\| isOneStockChallenge \? 0 : 0\.96 \}\}/);
-  assert.match(artworkContainer, /backgroundColor: isPennyStockMayhem \|\| isOneStockChallenge \? 'transparent' : 'rgba\(7,12,20,0\.18\)'/);
+  assert.match(leaderboard.slice(artworkMarker - 100, artworkStart), /testID=\{isOneStockChallenge \? 'paper-event-one-stock-hero-art'/);
+  assert.match(artworkContainer, /source=\{isPennyStockMayhem[\s\S]*?isOneStockChallenge[\s\S]*?EVENT_ARENA_ARTWORK_SOURCES\['one-stock-challenge'\]/);
+  assert.match(artworkContainer, /backgroundColor: isPennyStockMayhem \? '#07110D' : isOneStockChallenge \? '#07111E' : '#101720'/);
+  assert.match(artworkContainer, /isOneStockChallenge \? 'rgba\(216,180,90,0\.5\)'/);
+  assert.match(artworkContainer, /imageStyle=\{\{ borderRadius: 24, opacity: isPennyStockMayhem \? 0 : isOneStockChallenge \? 1 : 0\.96 \}\}/);
+  assert.match(artworkContainer, /backgroundColor: isPennyStockMayhem \? 'transparent' : isOneStockChallenge \? 'rgba\(4,10,20,0\.08\)' : 'rgba\(7,12,20,0\.18\)'/);
+  assert.match(artworkContainer, /'rgba\(3,12,25,0\.72\)', 'rgba\(4,14,28,0\.34\)', 'rgba\(3,9,19,0\.86\)'/);
+  assert.match(artworkContainer, /start=\{isOneStockChallenge \? \{ x: 0\.5, y: 0 \} : \{ x: 0, y: 0 \}\}/);
   assert.match(artworkContainer, /<LinearGradient/);
   assert.match(artworkContainer, /testID="paper-event-penny-stock-hero"/);
   assert.match(artworkContainer, /testID="paper-event-penny-stock-art"/);
-  assert.match(artworkContainer, /testID="paper-event-one-stock-hero-art"/);
   assert.match(artworkContainer, /THE ONE-STOCK CHALLENGE/);
+  assert.match(artworkContainer, /color: isBearMarketMayhem \? '#FF6670' : '#E8CB7C'/);
   assert.match(artworkContainer, /<PennyMayhemTitle[\s\S]*?<PennyMayhemNameplate/);
-  assert.match(artworkContainer, /testID="paper-event-one-stock-hero-art"[\s\S]*?resizeMode="cover"[\s\S]*?maxWidth: 560[\s\S]*?aspectRatio: 1122 \/ 1402/);
   assert.match(artworkContainer, /One participant\. One stock\. One winning position\./);
   assert.match(artworkContainer, /!isPennyStockMayhem && !isOneStockChallenge/);
   assert.ok(
-    artworkContainer.indexOf('testID="paper-event-one-stock-hero-art"')
-      < artworkContainer.indexOf('testID="paper-event-championship-identity"')
-      && artworkContainer.indexOf('testID="paper-event-championship-identity"')
-        < artworkContainer.indexOf('testID="paper-event-one-stock-description"')
+    artworkContainer.indexOf('testID="paper-event-championship-identity"')
+      < artworkContainer.indexOf('testID="paper-event-one-stock-description"')
       && artworkContainer.indexOf('testID="paper-event-one-stock-description"')
         < artworkContainer.indexOf('testID="paper-event-starting-capital"'),
-    "the One-Stock image, title, description, and capital appear in order",
+    "the One-Stock title, description, and capital remain in order over the full-card image",
   );
+  assert.doesNotMatch(artworkContainer, /aspectRatio:\s*1122\s*\/\s*1402/, "the separate portrait artwork must be removed");
   assert.match(artworkContainer, /paper-event-penny-stock-hero[\s\S]*?paper-event-leaderboard-countdown/);
   assert.match(artworkContainer, /paper-event-leaderboard-participant-count/);
   assert.match(artworkContainer, /testID="paper-event-leaderboard-podium"/);
