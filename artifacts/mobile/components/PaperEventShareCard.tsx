@@ -49,6 +49,8 @@ export function PaperEventShareCard({ event, milestones = [] }: Props) {
                 ? 'PENNY STOCK MAYHEM · RESULTS'
                 : isBearMarketMayhem
                 ? 'BEAR MARKET MAYHEM · RESULTS'
+                : event.eventType === 'one-stock-challenge'
+                  ? 'ONE-STOCK CHALLENGE · RESULTS'
                 : event.eventType === 'lightning-round'
                   ? 'LIGHTNING ROUND · RESULTS'
                   : event.eventType === 'green-bull-championship' ? 'GREEN BULL CHAMPIONSHIP · RESULTS' : 'EVENT ARENA · RESULTS'}

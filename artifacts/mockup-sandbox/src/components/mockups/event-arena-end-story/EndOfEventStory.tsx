@@ -1,20 +1,20 @@
 const sample = {
-  dates: 'NOV 9 — NOV 16, 2026',
-  startingBalance: '$250,000.00',
-  endingBalance: '$287,500.00',
-  netProfit: '+$37,500.00',
-  returnPercent: '+15.00%',
+  dates: 'FEB 8 — FEB 12, 2027',
+  startingBalance: '$100,000.00',
+  endingBalance: '$112,500.00',
+  netProfit: '+$12,500.00',
+  returnPercent: '+12.50%',
   rank: '#3',
-  trades: '23 completed trades',
-  symbols: 'NVDA · VOO · SPXL · META',
+  trades: '12 completed trades',
+  symbols: 'AAPL',
 };
 
 export function EndOfEventStory() {
   return (
-    <main className="event-story" aria-label="Sample Event Arena end-of-event story card">
+    <main className="event-story" aria-label="Sample One-Stock Challenge end-of-event story card">
       <img
         className="event-story__art"
-        src="/__mockup/images/event-arena-neon-nightclub-story.jpg"
+        src="/__mockup/images/leaderboard-events/event-arena-one-stock-challenge.jpg"
         alt=""
       />
       <div className="event-story__shade" />
@@ -23,14 +23,14 @@ export function EndOfEventStory() {
         <div className="event-story__mark" aria-hidden="true">M</div>
         <div>
           <p className="event-story__brand-name">MEISNER METHOD</p>
-          <p className="event-story__brand-subtitle">EVENT ARENA · RESULTS</p>
+          <p className="event-story__brand-subtitle">ONE-STOCK CHALLENGE · RESULTS</p>
         </div>
         <span className="event-story__complete">EVENT COMPLETE</span>
       </header>
 
       <section className="event-story__event" aria-label="Event and date">
-        <p className="event-story__eyebrow">NEON NIGHTCLUB</p>
-        <h1>Your week.<br />Your result.</h1>
+        <p className="event-story__eyebrow">THE ONE-STOCK CHALLENGE</p>
+        <h1>One stock.<br />One final result.</h1>
         <p className="event-story__dates">{sample.dates}</p>
       </section>
 
@@ -111,11 +111,11 @@ export function EndOfEventStory() {
           width: 40px;
           height: 40px;
           flex: 0 0 auto;
-          border: 1px solid rgba(78, 224, 255, .9);
+          border: 1px solid rgba(246, 193, 92, .9);
           border-radius: 13px;
-          color: #8af1ff;
+          color: #ffe2a2;
           background: rgba(4, 17, 34, .64);
-          box-shadow: 0 0 24px rgba(37, 193, 255, .2);
+          box-shadow: 0 0 24px rgba(246, 193, 92, .2);
           font-size: 22px;
           font-weight: 800;
         }
@@ -142,9 +142,9 @@ export function EndOfEventStory() {
         .event-story__complete {
           margin-left: auto;
           padding: 7px 9px;
-          border: 1px solid rgba(117, 242, 255, .34);
+          border: 1px solid rgba(246, 193, 92, .4);
           border-radius: 999px;
-          color: #b9fbff;
+          color: #ffe5a8;
           background: rgba(4, 22, 38, .46);
           font-size: 7px;
           font-weight: 800;
@@ -153,7 +153,7 @@ export function EndOfEventStory() {
         }
         .event-story__event { margin-top: 32px; }
         .event-story__eyebrow {
-          color: #8defff;
+          color: #f2c66d;
           font-size: 9px;
           font-weight: 800;
           letter-spacing: .2em;
@@ -176,7 +176,7 @@ export function EndOfEventStory() {
         .event-story__result {
           margin-top: 28px;
           padding: 19px 18px 17px;
-          border: 1px solid rgba(179, 144, 255, .35);
+          border: 1px solid rgba(235, 191, 99, .38);
           border-radius: 22px;
           background: linear-gradient(145deg, rgba(19, 18, 42, .82), rgba(10, 13, 31, .76));
           box-shadow: 0 18px 48px rgba(0, 0, 0, .28), inset 0 1px rgba(255, 255, 255, .07);
@@ -184,12 +184,12 @@ export function EndOfEventStory() {
         }
         .event-story__return {
           margin: 3px 0 0;
-          color: #b9fbff;
+          color: #ffe2a2;
           font-size: clamp(54px, 14vw, 68px);
           font-weight: 800;
           line-height: 1;
           letter-spacing: -.065em;
-          text-shadow: 0 0 34px rgba(55, 216, 255, .24);
+          text-shadow: 0 0 34px rgba(235, 191, 99, .24);
         }
         .event-story__profit {
           margin: 8px 0 0;
@@ -292,7 +292,7 @@ export function EndOfEventStory() {
         .event-story__footer-line {
           width: 100%;
           height: 1px;
-          background: linear-gradient(90deg, transparent, rgba(157, 132, 255, .46), transparent);
+           background: linear-gradient(90deg, transparent, rgba(235, 191, 99, .46), transparent);
         }
         .event-story__footer p {
           color: rgba(218, 219, 243, .66);

@@ -6,9 +6,12 @@ type EventConfig = {
   subtitle: string;
   capital: string;
   accent: string;
+  dateRange?: string;
+  startLabel?: string;
   rankRule?: string;
   objective?: string;
   pennyMayhem?: boolean;
+  oneStockChallenge?: boolean;
 };
 
 const events: EventConfig[] = [
@@ -56,6 +59,17 @@ const events: EventConfig[] = [
     accent: '#b2ed7c',
     objective: 'STOCKS & ETFs UNDER $20',
     pennyMayhem: true,
+  },
+  {
+    artwork: 'event-arena-one-stock-challenge',
+    name: 'The One-Stock Challenge',
+    subtitle: 'One Stock · One Open Position',
+    capital: '$100,000',
+    accent: '#e8c45e',
+    objective: 'ONE PARTICIPANT. ONE STOCK. ONE OPEN POSITION.',
+    dateRange: 'Feb 8, 2027 – Feb 12, 2027',
+    startLabel: 'Feb 8, 2027',
+    oneStockChallenge: true,
   },
   {
     artwork: 'lightning-round-arena-clean',
@@ -147,12 +161,23 @@ function PhoneScreen({ event, index }: { event: EventConfig; index: number }) {
         </header>
 
         <main className="mm-screen-scroll">
-          <section className={`mm-event-hero ${event.pennyMayhem ? 'mm-penny-hero' : ''}`} style={{ '--event-accent': event.accent, backgroundImage: event.pennyMayhem
-            ? 'radial-gradient(120% 60% at 50% 0%, #10241a 0%, #07110d 60%)'
-            : `linear-gradient(180deg, rgba(4,8,14,.49), rgba(5,9,15,.82) 34%, rgba(5,9,15,.88)), url("/__mockup/images/leaderboard-events/${event.artwork}.jpg")` } as React.CSSProperties}>
+          <section className={`mm-event-hero ${event.pennyMayhem ? 'mm-penny-hero' : ''} ${event.oneStockChallenge ? 'mm-one-stock-hero' : ''}`} style={{ '--event-accent': event.accent, backgroundImage: event.oneStockChallenge
+            ? 'linear-gradient(160deg, #07141d, #0b2028)'
+            : event.pennyMayhem
+              ? 'radial-gradient(120% 60% at 50% 0%, #10241a 0%, #07110d 60%)'
+              : `linear-gradient(180deg, rgba(4,8,14,.49), rgba(5,9,15,.82) 34%, rgba(5,9,15,.88)), url("/__mockup/images/leaderboard-events/${event.artwork}.jpg")` } as React.CSSProperties}>
             <div className="mm-actions"><span><Glyph name="refresh" size={16} /></span><span><Glyph name="info" size={16} /></span></div>
             <div className="mm-event-title">
-              {event.pennyMayhem ? (
+              {event.oneStockChallenge ? (
+                <div className="mm-one-stock-lockup">
+                  <img
+                    className="mm-one-stock-art"
+                    src={`/__mockup/images/leaderboard-events/${event.artwork}.jpg`}
+                    alt="The One-Stock Challenge artwork with a chess piece between a bull and bear"
+                  />
+                  <p>{event.objective}</p>
+                </div>
+              ) : event.pennyMayhem ? (
                 <div className="mm-penny-lockup" aria-label="Penny Stock Mayhem. Stocks and ETFs under $20.">
                   <svg className="mm-penny-svg" viewBox="0 0 300 152" role="img" aria-label="Penny Stock Mayhem">
                     <defs>
@@ -183,9 +208,9 @@ function PhoneScreen({ event, index }: { event: EventConfig; index: number }) {
               {!event.pennyMayhem && <h1>{event.subtitle}</h1>}
               {event.rankRule && <p className="mm-rank-rule">{event.rankRule}</p>}
               <div className="mm-upcoming"><i /> UPCOMING COMPETITION</div>
-              <div className="mm-countdown"><small>COUNTDOWN TO START</small><strong>Starts in 18h 15m</strong></div>
+                <div className="mm-countdown"><small>COUNTDOWN TO START</small><strong>{event.startLabel ? `Starts ${event.startLabel}` : 'Starts in 18h 15m'}</strong></div>
               <div className="mm-event-meta">
-                <span><Glyph name="calendar" size={13} /> Nov 16, 2026 – Nov 20, 2026</span>
+                <span><Glyph name="calendar" size={13} /> {event.dateRange ?? 'Nov 16, 2026 – Nov 20, 2026'}</span>
                 <span><Glyph name="users" size={14} /> <b>1</b> competitor</span>
               </div>
               <p className="mm-disclaimer">SELF-REPORTED · NOT INDEPENDENTLY VERIFIED · Updated Nov 15, 2:15 PM</p>
@@ -202,6 +227,12 @@ function PhoneScreen({ event, index }: { event: EventConfig; index: number }) {
                 <div><span>CURRENT EQUITY</span><b>{event.capital}.00</b></div>
                 <div><span>DOLLAR P/L</span><b>+$0.00</b></div>
               </div>
+            {event.oneStockChallenge && (
+              <div className="mm-one-stock-holding">
+                <div><span>OPEN HOLDING</span><b>AAPL</b><small>Position $18,420.00</small></div>
+                <div><span>REMAINING CASH</span><b>$81,580.00</b></div>
+              </div>
+            )}
             </div>
             <div className="mm-empty-podium">
               <div><b>#2</b><span className="mm-person-add">＋</span><span>Compete for second</span></div>
@@ -282,6 +313,17 @@ export function AllSevenLeaderboards({ onlyPenny = false }: { onlyPenny?: boolea
          .mm-penny-hero .mm-winner:not(.bear) { border-color:#d9bd68;background:linear-gradient(145deg,#a7d65b25,#153626ed 48%,#0a1512f2);box-shadow:0 7px 22px #000a,0 0 25px #5dd27624,inset 0 1px #ffe8a353; }
          .mm-penny-hero .mm-empty-podium div { border-color:#a8c99550;background:#08140fbd; }
          .mm-penny-hero .mm-position { border-color:#b99b4e;background:#12221abf;box-shadow:0 0 22px #6fd56d13,inset 0 1px #ffffff12; }
+         .mm-one-stock-hero { background-color:#07141d; border-color:#d6ae5e; box-shadow:inset 0 -34px 62px #03080bc9, inset 0 0 48px #52d1df13; }
+         .mm-one-stock-lockup { width:min(100%,250px); margin:3px auto 7px; }
+         .mm-one-stock-art { display:block; width:100%; aspect-ratio:1; object-fit:contain; border-radius:13px; box-shadow:0 8px 24px #0008; }
+         .mm-one-stock-lockup p { margin:7px 0 0; color:#ffe0a0; font-size:8px; font-weight:800; letter-spacing:.55px; }
+         .mm-one-stock-hero .mm-capital { color:#f5d987; text-shadow:0 2px 7px #000; }
+         .mm-one-stock-hero .mm-upcoming,.mm-one-stock-hero .mm-countdown,.mm-one-stock-hero .mm-event-meta span { background:#07110edb; border-color:#ffffff35; backdrop-filter:blur(8px); }
+         .mm-one-stock-holding { width:100%; display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:8px; }
+         .mm-one-stock-holding div { min-width:0; padding:7px 5px; border:1px solid #e5c56d55; border-radius:10px; background:#07131ad9; display:flex; flex-direction:column; align-items:center; gap:3px; }
+         .mm-one-stock-holding span { color:#d8c991; font:700 7px 'Space Mono',monospace; letter-spacing:.25px; }
+         .mm-one-stock-holding b { color:#fff3c7; font-size:12px; font-weight:800; }
+         .mm-one-stock-holding small { color:#c7d2d4; font-size:8px; text-align:center; }
         .mm-actions { display:flex; gap:8px; justify-content:flex-end; height:29px; }.mm-actions span { width:30px;height:30px;display:grid;place-items:center;border:1px solid #ffffff43;border-radius:50%;background:#080d16a8;color:#f0eee8; }
         .mm-event-title { display:flex; flex-direction:column; align-items:center; text-align:center; padding-top:0; }
         .mm-event-name { margin:1px 0 3px; color:var(--event-accent); font-size:11px; font-weight:800; letter-spacing:1.18px; text-transform:uppercase; }
@@ -323,7 +365,7 @@ export function AllSevenLeaderboards({ onlyPenny = false }: { onlyPenny?: boolea
       `}</style>
       <div className="mm-gallery-intro">
           <div><p>MEISNER METHOD · EVENT ARENA</p><h2>{onlyPenny ? 'Penny Stock Mayhem' : 'Leaderboard screens'}</h2></div>
-          <span>{onlyPenny ? 'Cinematic story-card preview' : 'Seven event configurations · one reference state'}</span>
+          <span>{onlyPenny ? 'Cinematic story-card preview' : 'Eight event configurations · one reference state'}</span>
       </div>
       <div className="mm-gallery-grid">
           {visibleEvents.map((event) => <PhoneScreen event={event} index={events.indexOf(event)} key={event.artwork} />)}

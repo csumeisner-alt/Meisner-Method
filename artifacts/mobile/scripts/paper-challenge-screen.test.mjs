@@ -33,6 +33,7 @@ const eventArenaTransfers = readFileSync(new URL("../lib/eventArenaTransfers.ts"
 const eventArenaArtworkCatalog = readFileSync(new URL("../lib/eventArenaArtwork.ts", import.meta.url), "utf8");
 const leaderboardMockup = readFileSync(new URL("../../mockup-sandbox/src/components/mockups/leaderboard-story/AllSevenLeaderboards.tsx", import.meta.url), "utf8");
 const pennyLeaderboardPreview = readFileSync(new URL("../../mockup-sandbox/src/components/mockups/leaderboard-story/PennyStockMayhem.tsx", import.meta.url), "utf8");
+const endEventStoryMockup = readFileSync(new URL("../../mockup-sandbox/src/components/mockups/event-arena-end-story/EndOfEventStory.tsx", import.meta.url), "utf8");
 const eventArenaApi = readFileSync(new URL("../../api-server/src/routes/eventArenaRoutes.ts", import.meta.url), "utf8");
 const alertWorker = readFileSync(new URL("../../api-server/src/alert-worker.ts", import.meta.url), "utf8");
 const eventAccountDashboard = readFileSync(new URL("../components/PaperEventArenaDashboard.tsx", import.meta.url), "utf8");
@@ -1562,12 +1563,37 @@ test("Event Arena overview shows concise special rules only for restricted event
   assert.match(challenge, /artworkId === 'mountain-summit'[\s\S]*?startingBalance: PAPER_CHALLENGE_STARTING_BALANCE/);
 });
 
+test("One-Stock live reminder can be dismissed and stays scoped to its account and event", () => {
+  assert.match(challenge, /eventType === 'event-arena' \|\| eventType === 'one-stock-challenge'/);
+  assert.match(eventLiveNotice, /isDismissiblePaperEventLiveNotice\(enrollment\.eventType\)/);
+  assert.match(eventLiveNotice, /getPaperEventLiveNoticeDismissalKey\(enrollment\.accountId, enrollment\.eventId\)/);
+  assert.match(eventLiveNotice, /testID="dismiss-paper-event-live-banner"/);
+  assert.match(eventLiveNotice, /persistPaperEventLiveNoticeDismissal\(AsyncStorage, dismissalKey\)/);
+});
+
 test("One-Stock Challenge leaderboard highlights ticker or cash, position value, and remaining cash", () => {
   assert.match(leaderboard, /testID=\{`one-stock-leaderboard-holding-\$\{entry\.rank\}`\}/);
   assert.match(leaderboard, /\{entry\.holdings\[0\]\?\.symbol \?\? 'HOLDING CASH'\}/);
   assert.match(leaderboard, /Position \{entry\.holdings\[0\]\?\.marketValue == null \? '—' : money\(entry\.holdings\[0\]\.marketValue\)\}/);
   assert.match(leaderboard, /Cash \{money\(entry\.cashBalance\)\}/);
   assert.match(leaderboard, /current holding \$\{entry\.holdings\[0\]\?\.symbol \?\? 'cash'\}[\s\S]*?cash remaining \$\{money\(entry\.cashBalance\)\}/);
+});
+
+test("One-Stock leaderboard and final result cards use the event artwork", () => {
+  assert.match(leaderboardMockup, /artwork: 'event-arena-one-stock-challenge'/);
+  assert.match(leaderboardMockup, /name: 'The One-Stock Challenge'/);
+  assert.match(leaderboardMockup, /oneStockChallenge: true/);
+  assert.match(leaderboardMockup, /OPEN HOLDING/);
+  assert.match(leaderboardMockup, /REMAINING CASH/);
+  assert.match(leaderboardMockup, /\/__mockup\/images\/leaderboard-events\/\$\{event\.artwork\}\.jpg/);
+  assert.match(endEventStoryMockup, /event-arena-one-stock-challenge\.jpg/);
+  assert.match(endEventStoryMockup, /THE ONE-STOCK CHALLENGE/);
+
+  assert.match(shareCard, /EVENT_ARENA_ARTWORK_SOURCES\[event\.artworkId \?\? LEGACY_PAPER_CHALLENGE_ARTWORK_ID\]/);
+  assert.match(shareCard, /event\.eventType === 'one-stock-challenge'[\s\S]*?ONE-STOCK CHALLENGE · RESULTS/);
+  assert.match(events, /event\.eventType === 'one-stock-challenge'[\s\S]*?One-Stock Challenge results/);
+  assert.match(events, /source=\{EVENT_ARENA_ARTWORK_SOURCES\[event\.artworkId \?\? LEGACY_PAPER_CHALLENGE_ARTWORK_ID\]\}/);
+  assert.match(eventArena, /source=\{EVENT_ARENA_ARTWORK_SOURCES\[event\.artworkId \?\? LEGACY_PAPER_CHALLENGE_ARTWORK_ID\]\}/);
 });
 
 test("Penny Stock Mayhem uses cinematic leaderboard artwork without a floating logo", () => {

@@ -84,8 +84,9 @@ test('Event Arena live notice dismissal persists per account and event only', as
   assert.equal(getPaperEventLiveNoticeDismissalKey('paper-event:account-a', ''), null);
 });
 
-test('only standard Event Arena notices can be dismissed', () => {
+test('standard Event Arena and One-Stock notices can be dismissed', () => {
   assert.equal(isDismissiblePaperEventLiveNotice('event-arena'), true);
+  assert.equal(isDismissiblePaperEventLiveNotice('one-stock-challenge'), true);
   for (const eventType of [
     'lightning-round',
     'penny-stock-mayhem',

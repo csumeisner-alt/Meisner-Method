@@ -304,7 +304,7 @@ export function getPaperEventLiveNoticeDismissalKey(accountId: string, eventId: 
 }
 
 export function isDismissiblePaperEventLiveNotice(eventType: PaperChallengeEventType | undefined): boolean {
-  return eventType === 'event-arena';
+  return eventType === 'event-arena' || eventType === 'one-stock-challenge';
 }
 
 export async function loadPaperEventLiveNoticeDismissal(
