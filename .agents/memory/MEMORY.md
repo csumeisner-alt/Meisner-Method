@@ -91,3 +91,4 @@
 - [Paper Trading positions-first layout](paper-positions-first.md) — default to current positions and keep rows compact enough to target four visible on a phone.
 - [Event Arena device recovery](event-arena-device-recovery.md) — preserve guest access with one-use device pairing; never overwrite unrelated accounts or replay restored orders.
 - [PostgreSQL worker test fixtures](postgres-worker-test-fixtures.md) — match production indexes/defaults and seed coherent ledger state in isolated PostgreSQL schemas.
+- [Lightning Round cash transfers](lightning-round-cash-transfers.md) — keep transfers disabled for Lightning Round unless the user changes this rule.
