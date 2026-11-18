@@ -29,11 +29,17 @@ module.exports = function withExpoAudioForegroundServicesDisabled(config) {
     const manifest = configWithManifest.modResults.manifest;
     manifest.$ ??= {};
     manifest.$["xmlns:tools"] = "http://schemas.android.com/tools";
-    manifest.service ??= [];
+    const application = Array.isArray(manifest.application)
+      ? manifest.application[0]
+      : manifest.application;
+    if (!application) {
+      throw new Error("Android manifest is missing its <application> element.");
+    }
+    application.service ??= [];
     manifest["uses-permission"] ??= [];
 
     for (const name of FOREGROUND_SERVICE_NAMES) {
-      addRemovalDirective(manifest.service, name);
+      addRemovalDirective(application.service, name);
     }
 
     for (const name of FOREGROUND_SERVICE_PERMISSIONS) {
