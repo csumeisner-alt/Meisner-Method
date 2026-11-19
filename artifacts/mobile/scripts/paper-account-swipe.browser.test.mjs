@@ -21,10 +21,12 @@ let nextTouchId = 1;
 
 test("paper total return stays derived from the selected account's equity", async () => {
   const screen = await readFile(join(mobileDir, "app/paper.tsx"), "utf8");
+  const layout = await readFile(join(mobileDir, "components/PaperPortfolioLayout.tsx"), "utf8");
   assert.match(screen, /const portfolioValue = account \? computePaperEquity\(account, myPositions, quotes\) : 0/);
   assert.match(screen, /const activeAccountStartingBalance = isSelectedEventAccount[\s\S]*?: INITIAL_BALANCE/);
   assert.match(screen, /const totalReturn = \(\(portfolioValue - activeAccountStartingBalance\) \/ activeAccountStartingBalance\) \* 100/);
-  assert.match(screen, /testID="paper-account-total-return"[\s\S]*?pctFmt\(totalReturn\)/);
+  assert.match(screen, /<PaperPortfolioSummary[\s\S]*?totalReturn=\{totalReturn\}/);
+  assert.match(layout, /testID="paper-account-total-return"[\s\S]*?\{totalReturnText\}/);
   assert.match(screen, /const reset = resetPaperAccountData\(\{/);
   assert.match(screen, /saveAll\(reset\.accounts, reset\.positions, reset\.transactions, reset\.orders, reset\.lots, activeIdRef\.current\)/);
   assert.match(screen, /await clearAccountValueSnapshots\(id\)/);
@@ -436,7 +438,7 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
     assert.ok(tradeAndNavigationBounds.tradeTop >= 0 && tradeAndNavigationBounds.tradeBottom <= tradeAndNavigationBounds.navigationTop,
       "The Trade action must remain visible above the bottom navigation.");
     assert.ok(tradeAndNavigationBounds.navigationBottom <= tradeAndNavigationBounds.viewportHeight,
-      "Bottom navigation must remain visible within the narrow viewport.");
+      `Bottom navigation must remain visible within the narrow viewport: ${JSON.stringify(tradeAndNavigationBounds)}`);
     assert.equal(
       await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-trade-count"))})?.textContent`),
       "1",
@@ -450,13 +452,179 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
     );
 
     await touch(browser, "paper-content", 0, -220);
-    assert.equal(
-      await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-content"))})?.scrollTop > 0`),
-      true,
-      "Vertical scrolling in the paper content must remain available.",
-    );
+    const scrollState = await browser.evaluate(`(() => {
+      const content = document.querySelector(${JSON.stringify(selector("paper-content"))});
+      const bounds = (id) => {
+        const rect = document.querySelector(${JSON.stringify(selector(""))}.replace('data-testid=""', 'data-testid="' + id + '"'))?.getBoundingClientRect();
+        return rect && { top: rect.top, bottom: rect.bottom, height: rect.height };
+      };
+      return content && {
+        top: content.scrollTop,
+        height: content.clientHeight,
+        contentHeight: content.scrollHeight,
+        hero: bounds('paper-account-hero'),
+        groups: bounds('paper-tab-group-portfolio'),
+        overview: bounds('paper-tab-overview'),
+        action: bounds('paper-trading-buy-action'),
+        bottom: bounds('bottom-tab-event-arena'),
+      };
+    })()`);
+    assert.ok(scrollState && scrollState.top > 0,
+      `Vertical scrolling in the paper content must remain available: ${JSON.stringify(scrollState)}`);
     assert.equal(await currentAccount(), "borg", "Scrolling the paper content must not change the active account.");
     assert.equal(await currentReturn(), "-7.50%", "Scrolling must not change the selected account's return.");
+
+    await browser.evaluate("window.__setPaperStressScenario(true)");
+    assert.equal(await currentAccount(), "tiger");
+    assert.equal(await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-positions-count"))})?.textContent`), "1");
+
+    const setViewport = async (width, positionId = "tiger-stress-a") => {
+      await browser.send("Emulation.setDeviceMetricsOverride", {
+        width,
+        height: 720,
+        deviceScaleFactor: 1,
+        mobile: true,
+      });
+      await delay(60);
+      const rowTestId = `paper-position-${positionId}`;
+      const symbolTestId = `paper-position-symbol-${positionId}`;
+      const nameTestId = `paper-position-name-${positionId}`;
+      const marketTestId = `paper-position-market-value-${positionId}`;
+      const quantityTestId = `paper-position-quantity-cost-${positionId}`;
+      const pnlTestId = `paper-position-pnl-${positionId}`;
+      const layout = await browser.evaluate(`(() => {
+        const get = (id) => document.querySelector('[data-testid="' + id + '"]');
+        const bounds = (node) => {
+          if (!node) return null;
+          const { left, right, top, bottom, width, height } = node.getBoundingClientRect();
+          return { left, right, top, bottom, width, height, clientWidth: node.clientWidth, scrollWidth: node.scrollWidth };
+        };
+        const hero = bounds(get('paper-account-hero'));
+        const equity = bounds(get('paper-account-equity'));
+        const today = bounds(get('paper-account-today-pnl'));
+        const total = bounds(get('paper-account-total-return'));
+        const buying = bounds(get('paper-account-buying-power'));
+        const switcher = bounds(get('paper-account-switch'));
+        const row = bounds(get(${JSON.stringify(rowTestId)}));
+        const symbol = bounds(get(${JSON.stringify(symbolTestId)}));
+        const name = bounds(get(${JSON.stringify(nameTestId)}));
+        const market = bounds(get(${JSON.stringify(marketTestId)}));
+        const quantity = bounds(get(${JSON.stringify(quantityTestId)}));
+        const pnl = bounds(get(${JSON.stringify(pnlTestId)}));
+        const groupTabs = [...document.querySelectorAll('[data-testid^="paper-tab-group-"]')].map(bounds);
+        const action = bounds(get('paper-trading-buy-action'));
+        const bottom = bounds(get('bottom-tab-event-arena'));
+        return {
+          documentWidth: document.documentElement.scrollWidth,
+          viewportWidth: window.innerWidth,
+          viewportHeight: window.innerHeight,
+          hero, equity, today, total, buying, switcher, row, symbol, name, market, quantity, pnl,
+          groupTabs, action, bottom,
+        };
+      })()`);
+      assert.equal(layout.documentWidth <= width, true, `${width}px viewport must not scroll horizontally.`);
+      assert.ok(layout.hero && layout.equity && layout.switcher, "The portfolio summary and account switcher must render.");
+      assert.ok(layout.equity.left >= layout.hero.left && layout.equity.right <= layout.hero.right,
+        `A very large equity value must stay inside its account card: ${JSON.stringify({
+          viewport: width,
+          hero: layout.hero,
+          equity: layout.equity,
+        })}`);
+      assert.ok(layout.equity.scrollWidth <= layout.equity.clientWidth + 1,
+        `The equity amount must fit its text column without clipping at ${width}px.`);
+      assert.ok(layout.switcher.left >= layout.hero.left && layout.switcher.right <= layout.hero.right,
+        "Account switching must stay inside the summary card.");
+      assert.ok(layout.today && layout.total && layout.buying, "All three account metrics must remain visible.");
+      for (const [name, bounds] of Object.entries({
+        todayPnl: layout.today,
+        totalReturn: layout.total,
+        buyingPower: layout.buying,
+      })) {
+        assert.ok(bounds.left >= layout.hero.left && bounds.right <= layout.hero.right,
+          `${name} must remain inside the account summary at ${width}px.`);
+        assert.ok(bounds.scrollWidth <= bounds.clientWidth + 1,
+          `${name} must fit its text column without clipping at ${width}px.`);
+      }
+      assert.ok(layout.row && layout.symbol && layout.name && layout.market && layout.quantity && layout.pnl,
+        "The stress position must retain every intended value column.");
+      for (const [name, bounds] of Object.entries({
+        symbol: layout.symbol,
+        companyName: layout.name,
+        marketValue: layout.market,
+        quantityAndAverage: layout.quantity,
+        pnl: layout.pnl,
+      })) {
+        assert.ok(bounds.left >= layout.row.left && bounds.right <= layout.row.right,
+          `${name} must remain within the position row at ${width}px.`);
+      }
+      for (const [name, bounds] of Object.entries({
+        marketValue: layout.market,
+        quantityAndAverage: layout.quantity,
+        pnl: layout.pnl,
+      })) {
+        assert.ok(bounds.scrollWidth <= bounds.clientWidth + 1,
+          `${name} must fit its text column without clipping at ${width}px: ${JSON.stringify(bounds)}`);
+      }
+      assert.ok(layout.name.right <= layout.market.left,
+        "A long company name must truncate before the market-value column.");
+      assert.ok(layout.quantity.right <= layout.pnl.left,
+        "Quantity and average cost must not overlap P/L.");
+      assert.equal(layout.groupTabs.length, 3);
+      assert.ok(layout.groupTabs.every((bounds) => bounds.left >= 0 && bounds.right <= width),
+        "Portfolio, Activity, and Insights must remain inside the viewport.");
+      assert.ok(layout.action && layout.bottom && layout.action.right <= width,
+        "The trading action must stay within the viewport.");
+      assert.ok(layout.bottom.bottom <= layout.viewportHeight,
+        "The bottom navigation must stay in the phone's visible layout.");
+      return layout;
+    };
+
+    for (const width of [320, 360, 375, 390, 430]) await setViewport(width);
+
+    assert.ok((await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-account-buying-power"))})?.textContent`)).includes("123,456,789,012.34"),
+      "The large starting account balance remains associated with Tiger.");
+    assert.ok((await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-account-today-pnl"))})?.textContent`)).includes("+"),
+      "Tiger's large positive P/L remains visible.");
+    await touch(browser, "paper-current-account", -150, 0);
+    assert.equal(await currentAccount(), "borg");
+    assert.equal(await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-positions-count"))})?.textContent`), "1");
+    assert.ok((await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-account-today-pnl"))})?.textContent`)).includes("-"),
+      "Borg's large negative P/L remains associated with Borg.");
+    assert.ok((await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-account-buying-power"))})?.textContent`)).includes("900,000,000,000.00"),
+      "Borg's buying power remains associated with Borg.");
+    for (const width of [320, 390]) await setViewport(width, "borg-stress-a");
+
+    await touch(browser, "paper-current-account", -150, 0);
+    assert.equal(await currentAccount(), "fireball");
+    assert.equal(await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-positions-count"))})?.textContent`), "2");
+    assert.ok((await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-account-today-pnl"))})?.textContent`)).includes("+"),
+      "Fireball's positive P/L remains associated with Fireball.");
+    assert.equal(await browser.evaluate(`document.querySelectorAll('[data-testid^="paper-position-fireball-stress-"]').length`), 2,
+      "Different account position counts must remain account-scoped.");
+    for (const width of [320, 390]) {
+      await setViewport(width, "fireball-stress-a");
+      await setViewport(width, "fireball-stress-b");
+    }
+
+    await touch(browser, "paper-tab-group-activity");
+    assert.equal(await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-active-view"))})?.textContent`), "orders");
+    await touch(browser, "paper-tab-history");
+    assert.equal(await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-active-view"))})?.textContent`), "history");
+    await touch(browser, "paper-tab-group-insights");
+    assert.equal(await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-active-view"))})?.textContent`), "analytics");
+    await touch(browser, "paper-tab-growth");
+    assert.equal(await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-active-view"))})?.textContent`), "growth");
+    await touch(browser, "paper-tab-group-portfolio");
+    assert.equal(await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-active-view"))})?.textContent`), "overview");
+    await touch(browser, "paper-tab-positions");
+    assert.equal(await browser.evaluate(`document.querySelectorAll('[data-testid^="paper-position-fireball-stress-"]').length`), 2);
+
+    await touch(browser, "paper-current-account", 150, 0);
+    await touch(browser, "paper-current-account", 150, 0);
+    await setViewport(320);
+    await touch(browser, "paper-trading-buy-action");
+    assert.equal(await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-trade-count"))})?.textContent`), "2",
+      "The trade action must remain tappable at the narrowest width.");
   } finally {
     browser?.close();
     chrome.kill("SIGTERM");

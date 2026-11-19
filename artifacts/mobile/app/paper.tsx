@@ -32,6 +32,12 @@ import { MMLogo } from '@/components/MMLogo';
 import { PaperEventShareCard } from '@/components/PaperEventShareCard';
 import { BottomTabBar } from '@/components/BottomTabBar';
 import { PaperAccountSwipeArea } from '@/components/PaperAccountSwipeArea';
+import {
+  PaperPortfolioNavigation,
+  PaperPortfolioSummary,
+  PaperPositionRow,
+  PaperTradingAction,
+} from '@/components/PaperPortfolioLayout';
 import { PaperEventArenaDashboard } from '@/components/PaperEventArenaDashboard';
 import { PaperEventLiveNotice } from '@/components/PaperEventLiveNotice';
 import { useAchievements } from '@/contexts/AchievementsContext';
@@ -364,8 +370,7 @@ export default function PaperScreen() {
   const { awardAchievement } = useAchievements();
   const { pushToken: currentPushToken, requestPermissionAndGetToken } = usePushNotifications();
   const insets = useSafeAreaInsets();
-  const { width: screenWidth, height: screenHeight, fontScale } = useWindowDimensions();
-  const compactHeroStats = screenWidth <= 360 || fontScale >= 1.3;
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const watchlist = useWatchlist();
 
   // Persisted state
@@ -434,8 +439,6 @@ export default function PaperScreen() {
 
   // UI
   const [activeTab, setActiveTab] = useState<TabId>('positions');
-  const activeTabGroup = PAPER_TAB_GROUPS.find((group) => group.tabs.includes(activeTab)) ?? PAPER_TAB_GROUPS[0];
-  const activeGroupTabs = TABS.filter((tab) => activeTabGroup.tabs.includes(tab.id));
   const [chartRange, setChartRange] = useState<(typeof HISTORY_RANGES)[number]['id']>('ALL');
   const [showAccountManagement, setShowAccountManagement] = useState(false);
   const [deviceTransferMode, setDeviceTransferMode] = useState<'create' | 'restore' | 'review' | 'result' | null>(null);
@@ -3283,77 +3286,20 @@ export default function PaperScreen() {
 
           return (
             <View key={pos.id}>
-              <TouchableOpacity
-                testID={`paper-position-${pos.id}`}
-                style={[styles.posCard, isExpanded && styles.posCardExpanded]}
+              <PaperPositionRow
+                id={pos.id}
+                symbol={pos.symbol}
+                companyName={pos.companyName}
+                isShort={isShortPosition(pos)}
+                shares={pos.shares}
+                avgCost={pos.avgCost}
+                marketValue={mktVal}
+                pnl={pnl}
+                pnlPercent={pnlPct}
+                color={color}
+                expanded={isExpanded}
                 onPress={() => setExpandedPosId(isExpanded ? null : pos.id)}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.posColorBar, { backgroundColor: color }]} />
-                <View style={styles.posContent}>
-                  <View style={styles.posTopRow}>
-                    <View style={styles.posIdentity}>
-                      <Text
-                        style={styles.posSymbol}
-                        numberOfLines={1}
-                        adjustsFontSizeToFit
-                        minimumFontScale={0.8}
-                        allowFontScaling
-                      >
-                        {pos.symbol}{isShortPosition(pos) ? '  ·  SHORT' : ''}
-                      </Text>
-                      <Text
-                        style={styles.posName}
-                        numberOfLines={1}
-                        ellipsizeMode="tail"
-                        allowFontScaling
-                      >
-                        {pos.companyName}
-                      </Text>
-                    </View>
-                    <View style={styles.positionValue}>
-                      <Text style={styles.posMktLabel} numberOfLines={1} allowFontScaling>
-                        {isShortPosition(pos) ? 'LIABILITY' : 'MARKET VALUE'}
-                      </Text>
-                      <Text
-                        style={styles.posMktVal}
-                        numberOfLines={1}
-                        adjustsFontSizeToFit
-                        minimumFontScale={0.75}
-                        allowFontScaling
-                      >
-                        {$fmt(mktVal)}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.posMetaRow}>
-                    <Text
-                      style={styles.posMeta}
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
-                      minimumFontScale={0.8}
-                      allowFontScaling
-                    >
-                      {pos.shares} sh · {isShortPosition(pos) ? 'Entry' : 'Avg.'} {$fmt(pos.avgCost)}
-                    </Text>
-                    <Text
-                      style={[styles.posPnl, { color: pnlColor(pnl) }]}
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
-                      minimumFontScale={0.75}
-                      allowFontScaling
-                    >
-                      {pnl >= 0 ? '+' : ''}{$fmt(pnl)} ({pctFmt(pnlPct)})
-                    </Text>
-                  </View>
-                </View>
-                <Feather
-                  name={isExpanded ? 'chevron-down' : 'chevron-right'}
-                  size={14}
-                  color={DIM}
-                  style={{ marginLeft: 8 }}
-                />
-              </TouchableOpacity>
+              />
 
               {isExpanded && (
                 <View style={styles.lotsPanel}>
@@ -4003,7 +3949,11 @@ export default function PaperScreen() {
       )}
 
       <PaperAccountSwipeArea
-        style={[styles.accountHero, isSelectedEventAccount && styles.eventChampionshipHero]}
+        style={[
+          styles.accountHero,
+          !isSelectedEventAccount && screenWidth <= 360 && styles.compactAccountHero,
+          isSelectedEventAccount && styles.eventChampionshipHero,
+        ]}
         testID="paper-account-hero"
         accounts={visibleAccounts}
         activeId={activeId}
@@ -4046,50 +3996,16 @@ export default function PaperScreen() {
             />
           </>
         ) : (
-          <>
-            <View style={styles.heroTopline}>
-              <Text style={styles.selectorTitle}>SIMULATED PORTFOLIO</Text>
-              <TouchableOpacity
-                testID="paper-account-switch"
-                accessibilityRole="button"
-                accessibilityLabel="Switch paper trading account"
-                onPress={() => setShowAccountManagement(true)}
-                style={styles.editAccountsButton}
-              >
-                <Text style={styles.editAccountsText}>SWITCH</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.heroIdentityRow}>
-              <Text style={styles.heroAccountName} numberOfLines={1}>{selectedAccountDisplayName}</Text>
-              <Text style={styles.heroAccountPosition}>
-                {selectedAccountPosition >= 0 ? `${selectedAccountPosition + 1} / ${visibleAccounts.length}` : ''}
-              </Text>
-            </View>
-            <Text style={styles.heroEquity} numberOfLines={1}>{$fmt(portfolioValue)}</Text>
-            <Text style={styles.heroEquityLabel}>TOTAL EQUITY</Text>
-            <View style={[styles.heroStats, compactHeroStats && styles.heroStatsCompact]}>
-              <View style={[styles.heroStat, compactHeroStats && styles.heroStatCompact]}>
-                <Text allowFontScaling style={[styles.heroStatValue, compactHeroStats && styles.heroStatValueCompact, { color: pnlColor(todayPnL) }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
-                  {todayPnL >= 0 ? '+' : ''}{$fmt(todayPnL)}
-                </Text>
-                <Text allowFontScaling style={[styles.heroStatLabel, compactHeroStats && styles.heroStatLabelCompact]}>TODAY’S P/L</Text>
-              </View>
-              <View style={[styles.heroStatDivider, compactHeroStats && styles.heroStatDividerCompact]} />
-              <View style={[styles.heroStat, compactHeroStats && styles.heroStatCompact]}>
-                <Text testID="paper-account-total-return" allowFontScaling style={[styles.heroStatValue, compactHeroStats && styles.heroStatValueCompact, { color: pnlColor(totalReturn) }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
-                  {pctFmt(totalReturn)}
-                </Text>
-                <Text allowFontScaling style={[styles.heroStatLabel, compactHeroStats && styles.heroStatLabelCompact]}>TOTAL RETURN</Text>
-              </View>
-              <View style={[styles.heroStatDivider, compactHeroStats && styles.heroStatDividerCompact]} />
-              <View style={[styles.heroStat, compactHeroStats && styles.heroStatCompact]}>
-                <Text testID="paper-account-buying-power" allowFontScaling style={[styles.heroStatValue, compactHeroStats && styles.heroStatValueCompact]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
-                  {$fmt(account?.cash ?? 0)}
-                </Text>
-                <Text allowFontScaling style={[styles.heroStatLabel, compactHeroStats && styles.heroStatLabelCompact]}>BUYING POWER</Text>
-              </View>
-            </View>
-          </>
+          <PaperPortfolioSummary
+            accountName={selectedAccountDisplayName}
+            accountPosition={selectedAccountPosition}
+            accountCount={visibleAccounts.length}
+            equity={portfolioValue}
+            todayPnL={todayPnL}
+            totalReturn={totalReturn}
+            buyingPower={account?.cash ?? 0}
+            onSwitchAccount={() => setShowAccountManagement(true)}
+          />
         )}
         {visibleAccounts.length > 1 && (
           <View
@@ -4334,87 +4250,15 @@ export default function PaperScreen() {
       )}
 
       {/* Core account values stay on the selected account card; secondary metrics expand on demand. */}
-      {/* Primary groups and their smaller secondary navigation */}
-      <View style={styles.primaryTabs} accessibilityRole="tablist">
-        {PAPER_TAB_GROUPS.map((group) => {
-          const selected = group.id === activeTabGroup.id;
-          return (
-            <TouchableOpacity
-              key={group.id}
-              testID={`paper-tab-group-${group.id}`}
-              accessibilityRole="tab"
-              accessibilityState={{ selected }}
-              style={[styles.primaryTab, selected && styles.primaryTabActive]}
-              onPress={() => {
-                if (!group.tabs.includes(activeTab)) setActiveTab(group.tabs[0]);
-              }}
-              activeOpacity={0.7}
-            >
-              <Feather name={group.icon as any} size={15} color={selected ? GOLD : DIM} />
-              <Text style={[styles.primaryTabLabel, selected && styles.primaryTabLabelActive]}>{group.label}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-      {activeTabGroup.id === 'portfolio' ? (
-        <View style={[styles.subTabBar, styles.portfolioSubTabBar]} accessibilityRole="tablist">
-          {activeGroupTabs.map((tab) => {
-            const selected = activeTab === tab.id;
-            return (
-              <TouchableOpacity
-                key={tab.id}
-                testID={`paper-tab-${tab.id}`}
-                accessibilityRole="tab"
-                accessibilityLabel={tab.id === 'positions' ? `Positions, ${myPositions.length} open` : tab.label}
-                accessibilityState={{ selected }}
-                style={[styles.tabBtn, styles.portfolioTabBtn, selected && styles.tabBtnActive]}
-                onPress={() => setActiveTab(tab.id)}
-                activeOpacity={0.7}
-              >
-                <Text style={[
-                  styles.portfolioTabLabel,
-                  tab.id === 'overview' && styles.overviewTabLabel,
-                  styles.tabLabel,
-                  selected && (tab.id === 'positions' ? styles.positionsTabLabelActive : styles.tabLabelActive),
-                ]} allowFontScaling>
-                  {tab.label}
-                </Text>
-                {tab.id === 'positions' && selected && (
-                  <Text
-                    testID="paper-positions-count"
-                    allowFontScaling
-                    style={styles.sectionCount}
-                  >
-                    {myPositions.length}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      ) : (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.tabScroll}
-          contentContainerStyle={styles.subTabBar}
-          accessibilityRole="tablist"
-        >
-          {activeGroupTabs.map((tab) => (
-            <TouchableOpacity
-              key={tab.id}
-              testID={`paper-tab-${tab.id}`}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: activeTab === tab.id }}
-              style={[styles.tabBtn, activeTab === tab.id && styles.tabBtnActive]}
-              onPress={() => setActiveTab(tab.id)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.tabLabel, activeTab === tab.id && styles.tabLabelActive]}>{tab.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
+      <PaperPortfolioNavigation
+        groups={PAPER_TAB_GROUPS}
+        tabs={TABS}
+        activeTabGroupId={PAPER_TAB_GROUPS.find((group) => group.tabs.includes(activeTab))?.id ?? 'portfolio'}
+        activeTabId={activeTab}
+        positionsCount={myPositions.length}
+        onSelectGroup={(id) => setActiveTab(id as TabId)}
+        onSelectTab={(id) => setActiveTab(id as TabId)}
+      />
 
       {/* Content */}
       <ScrollView
@@ -4437,31 +4281,19 @@ export default function PaperScreen() {
       </ScrollView>
 
       {/* Integrated action stays in the layout instead of floating over content. */}
-      <View style={styles.buyActionWrap}>
-          <TouchableOpacity
-            testID="paper-trading-buy-action"
-            accessibilityRole="button"
-            accessibilityLabel={isSelectedArchivedEventAccount
-              ? 'Completed Event Arena account is read-only'
-              : `Buy stocks or ETFs in ${account?.name ?? 'selected account'}`}
-            accessibilityState={{ disabled: isSelectedArchivedEventAccount }}
-            disabled={isSelectedArchivedEventAccount}
-            style={[styles.buyAction, isSelectedArchivedEventAccount && { opacity: 0.55 }]}
-            onPress={openBuyModal}
-            activeOpacity={0.85}
-          >
-            <Feather name={isSelectedArchivedEventAccount ? 'lock' : 'plus'} size={18} color="#000" />
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text allowFontScaling style={styles.buyActionTitle}>
-                {isSelectedArchivedEventAccount ? 'Event complete' : isLightningPreparationAccount ? 'Prepare order' : 'Trade'}
-              </Text>
-              <Text allowFontScaling style={styles.buyActionHint}>
-                {isSelectedArchivedEventAccount ? 'Select a strategy account to trade' : isLightningPreparationAccount ? 'Queue a market buy for event start' : `Trade in ${selectedAccountDisplayName}`}
-              </Text>
-            </View>
-            {!isSelectedArchivedEventAccount && <Feather name="arrow-up-right" size={17} color="#000" />}
-          </TouchableOpacity>
-      </View>
+      <PaperTradingAction
+        title={isSelectedArchivedEventAccount ? 'Event complete' : isLightningPreparationAccount ? 'Prepare order' : 'Trade'}
+        hint={isSelectedArchivedEventAccount
+          ? 'Select a strategy account to trade'
+          : isLightningPreparationAccount
+            ? 'Queue a market buy for event start'
+            : `Trade in ${selectedAccountDisplayName}`}
+        disabled={isSelectedArchivedEventAccount}
+        accessibilityLabel={isSelectedArchivedEventAccount
+          ? 'Completed Event Arena account is read-only'
+          : `Buy stocks or ETFs in ${account?.name ?? 'selected account'}`}
+        onPress={openBuyModal}
+      />
 
       <BottomTabBar />
 
@@ -5690,12 +5522,6 @@ const styles = StyleSheet.create({
     paddingTop: 6,
     paddingBottom: 4,
   },
-  selectorTitle: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 11,
-    color: GOLD,
-    letterSpacing: 1.2,
-  },
   selectorSubtitle: {
     fontFamily: 'Inter_400Regular',
     fontSize: 11,
@@ -5714,6 +5540,13 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(214,179,91,0.46)',
     backgroundColor: 'rgba(28,27,23,0.96)',
   },
+  compactAccountHero: {
+    marginTop: 6,
+    marginBottom: 4,
+    paddingHorizontal: 12,
+    paddingTop: 6,
+    paddingBottom: 6,
+  },
   eventChampionshipHero: {
     backgroundColor: 'rgba(24,24,25,0.98)',
     borderColor: 'rgba(231,198,106,0.62)',
@@ -5729,7 +5562,6 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   eventChampionshipSwitchButton: { minHeight: 30, paddingHorizontal: 9 },
-  heroTopline: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   eventHeroLabel: { color: BUY_COLOR },
   editAccountsButton: {
     minHeight: 36,
@@ -5743,29 +5575,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,215,0,0.08)',
   },
   editAccountsText: { color: GOLD, fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 0.8 },
-  heroIdentityRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 3 },
-  heroAccountName: { flex: 1, color: '#eee9dc', fontFamily: 'Inter_600SemiBold', fontSize: 15 },
-  heroAccountPosition: { color: DIM, fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 0.8 },
-  heroEquity: { color: '#f4f0e6', fontFamily: 'Inter_700Bold', fontSize: 29, letterSpacing: -0.7, marginTop: 3 },
-  heroEquityLabel: { color: DIM, fontFamily: 'Inter_600SemiBold', fontSize: 9, letterSpacing: 1.2, marginTop: 2 },
-  heroStats: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(192,192,192,0.16)',
-  },
-  heroStatsCompact: { flexDirection: 'column', alignItems: 'stretch', gap: 5 },
-  heroStat: { flex: 1, minWidth: 0 },
-  heroStatCompact: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 8, minHeight: 30 },
-  heroStatValue: { color: '#e5e0d4', fontFamily: 'Inter_700Bold', fontSize: 12 },
-  heroStatValueCompact: { flex: 1, minWidth: 0, textAlign: 'right' },
-  heroStatLabel: { color: DIM, fontFamily: 'Inter_500Medium', fontSize: 8, letterSpacing: 0.65, marginTop: 2 },
-  heroStatLabelCompact: { flex: 1, minWidth: 0, fontSize: 10, letterSpacing: 0.35, marginTop: 0, textAlign: 'left' },
-  heroStatDivider: { width: 1, height: 30, backgroundColor: BORDER },
-  heroStatDividerCompact: { width: '100%', height: StyleSheet.hairlineWidth, backgroundColor: BORDER },
   accountPositionIndicators: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 5, marginTop: 7 },
   accountPositionIndicator: { width: 5, height: 5, borderRadius: 3, backgroundColor: 'rgba(192,192,192,0.3)' },
   accountPositionIndicatorActive: { width: 16, backgroundColor: GOLD },
@@ -5897,44 +5706,6 @@ const styles = StyleSheet.create({
   summaryVal: { fontFamily: 'Inter_700Bold', fontSize: 12, letterSpacing: 0.3 },
   summaryLabel: { fontFamily: 'Inter_400Regular', fontSize: 9, color: DIM, marginTop: 2, letterSpacing: 0.5 },
 
-  // Primary tab groups and secondary views
-  primaryTabs: {
-    flexDirection: 'row',
-    marginHorizontal: 16,
-    marginTop: 2,
-    padding: 4,
-    gap: 4,
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-  },
-  primaryTab: {
-    flex: 1,
-    minWidth: 0,
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingHorizontal: 4,
-    borderRadius: 10,
-  },
-  primaryTabActive: { backgroundColor: 'rgba(255,215,0,0.12)' },
-  primaryTabLabel: { color: DIM, fontFamily: 'Inter_600SemiBold', fontSize: 11 },
-  primaryTabLabelActive: { color: GOLD },
-  tabScroll: { flexGrow: 0 },
-  subTabBar: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 8, gap: 8 },
-  portfolioSubTabBar: { flexDirection: 'row', alignItems: 'stretch' },
-  tabBtn: { minHeight: 38, minWidth: 78, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 10, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD_BG },
-  portfolioTabBtn: { flex: 1, minWidth: 0, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, paddingHorizontal: 8 },
-  portfolioTabLabel: { flexShrink: 1, textAlign: 'center' },
-  overviewTabLabel: { flex: 1 },
-  tabBtnActive: { borderColor: GOLD, backgroundColor: 'rgba(255,215,0,0.12)' },
-  tabLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 12, color: DIM },
-  tabLabelActive: { color: GOLD },
-  positionsTabLabelActive: { color: '#fff' },
-
   // Cards
   card: {
     backgroundColor: CARD_BG,
@@ -5953,7 +5724,6 @@ const styles = StyleSheet.create({
   contentSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 2 },
   contentSectionTitle: { fontFamily: 'Inter_700Bold', fontSize: 17, color: '#fff' },
   contentSectionHint: { fontFamily: 'Inter_400Regular', fontSize: 11, color: DIM, marginTop: 4 },
-  sectionCount: { minWidth: 28, textAlign: 'center', color: GOLD, fontFamily: 'Inter_700Bold', fontSize: 12, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 9, backgroundColor: 'rgba(255,215,0,0.1)' },
   chartNote: {
     fontFamily: 'Inter_400Regular',
     fontSize: 10,
@@ -5962,19 +5732,6 @@ const styles = StyleSheet.create({
     marginTop: -6,
   },
 
-  // Position cards
-  posCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 10,
-    minHeight: 64,
-    paddingVertical: 3,
-    paddingHorizontal: 9,
-    gap: 6,
-  },
   orderCard: {
     backgroundColor: CARD_BG,
     borderWidth: 1,
@@ -5984,19 +5741,9 @@ const styles = StyleSheet.create({
   },
   posColorBar: { width: 3, height: '100%', borderRadius: 2, minHeight: 44 },
   posAccentBar: { width: 3, borderRadius: 2, minHeight: 30, marginRight: 2 },
-  posContent: { flex: 1, minWidth: 0, gap: 2, justifyContent: 'center' },
-  posTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minWidth: 0, gap: 8 },
-  posIdentity: { flex: 1, minWidth: 0, paddingRight: 4 },
   posSymbol: { fontFamily: 'Inter_700Bold', fontSize: 15, color: '#fff' },
   posLabel: { fontFamily: 'Inter_400Regular', fontSize: 10, color: 'rgba(192,192,192,0.38)', letterSpacing: 1 },
   posVal: { fontFamily: 'Inter_600SemiBold', fontSize: 12, color: '#fff', marginTop: 1 },
-  posName: { fontFamily: 'Inter_400Regular', fontSize: 10, color: DIM, marginTop: 1, flexShrink: 1 },
-  positionValue: { width: '48%', maxWidth: '56%', minWidth: 0, alignItems: 'flex-end' },
-  posMktLabel: { width: '100%', fontFamily: 'Inter_600SemiBold', fontSize: 8, lineHeight: 11, color: DIM, letterSpacing: 0.35, textAlign: 'right' },
-  posMktVal: { width: '100%', fontFamily: 'Inter_700Bold', fontSize: 16, lineHeight: 20, color: '#fff', textAlign: 'right' },
-  posMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, minWidth: 0, paddingTop: 2, borderTopWidth: 1, borderTopColor: 'rgba(192,192,192,0.12)' },
-  posMeta: { flex: 1, minWidth: 0, fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 14, color: DIM },
-  posPnl: { width: '48%', minWidth: 0, fontFamily: 'Inter_600SemiBold', fontSize: 11.5, lineHeight: 15, textAlign: 'right' },
 
   // Transaction rows
   txRow: {
@@ -6048,13 +5795,6 @@ const styles = StyleSheet.create({
   yoyCell: { flex: 1, alignItems: 'center', backgroundColor: 'rgba(192,192,192,0.04)', borderRadius: 8, padding: 8 },
   yoyVal: { fontFamily: 'Inter_700Bold', fontSize: 11 },
   yoyYear: { fontFamily: 'Inter_400Regular', fontSize: 9, color: DIM, marginTop: 3 },
-
-  // Position card expanded state
-  posCardExpanded: {
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
-    borderBottomWidth: 0,
-  },
 
   // Cost-basis lots panel
   lotsPanel: {
@@ -6152,19 +5892,6 @@ const styles = StyleSheet.create({
   emptyTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 16, color: DIM },
   emptyHint: { fontFamily: 'Inter_400Regular', fontSize: 13, color: 'rgba(192,192,192,0.25)', textAlign: 'center', maxWidth: 240 },
 
-  // Integrated trading action
-  buyActionWrap: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10 },
-  buyAction: {
-    minHeight: 58,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 16,
-    backgroundColor: BUY_COLOR,
-    borderRadius: 13,
-  },
-  buyActionTitle: { fontFamily: 'Inter_700Bold', fontSize: 14, color: '#000' },
-  buyActionHint: { fontFamily: 'Inter_500Medium', fontSize: 10, color: 'rgba(0,0,0,0.72)', marginTop: 2 },
 
   // Modals
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
