@@ -38,6 +38,7 @@ test("heat-map routes are registered and reject invalid inputs before provider a
     };
 
     const app = express();
+    app.use(express.json());
     app.use(router);
     server = app.listen(0, "127.0.0.1");
     await once(server, "listening");
@@ -80,6 +81,11 @@ test("heat-map routes are registered and reject invalid inputs before provider a
         error: "INVALID_SYMBOLS",
         message: "Use up to 40 valid ticker symbols.",
       },
+      {
+        path: "/stocks/heat-map/search?q=ab&category=stocks",
+        error: "INVALID_QUERY",
+        message: "Enter 2 to 80 characters and choose ETFs, commodities, futures, or cryptocurrency.",
+      },
     ];
 
     for (const route of routes) {
@@ -90,6 +96,20 @@ test("heat-map routes are registered and reject invalid inputs before provider a
         message: route.message,
       });
     }
+
+    const validationResponse = await fetch(
+      `http://127.0.0.1:${address.port}/stocks/heat-map/validate`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol: "bad symbol" }),
+      },
+    );
+    assert.equal(validationResponse.status, 400, "ticker validation should reject an invalid symbol");
+    assert.deepEqual(await validationResponse.json(), {
+      error: "INVALID_SYMBOL",
+      message: "Enter one valid ticker symbol.",
+    });
   } finally {
     if (server) {
       server.close();
