@@ -146,10 +146,69 @@ test("keeps server errors distinct from missing routes", async () => {
     baseUrl: "https://published.example",
     paths: ["/stocks/info/{symbol}"],
     fetchImpl: async () => ({ status: 503, body: null }),
+    retryDelayMs: 0,
   });
 
   assert.equal(report.results[0].result, "unconfirmed");
   assert.equal(report.results[0].status, 503);
+  assert.equal(report.results[0].attempts, 3);
+});
+
+test("retries transient network failures and succeeds when the API recovers", async () => {
+  let attempts = 0;
+  const report = await runApiRoutePreflight({
+    baseUrl: "https://published.example",
+    paths: ["/stocks/info/{symbol}"],
+    fetchImpl: async () => {
+      attempts += 1;
+      if (attempts < 3) throw new TypeError("temporary connection failure");
+      return { status: 200, body: null };
+    },
+    retryDelayMs: 0,
+  });
+
+  assert.equal(attempts, 3);
+  assert.equal(report.results[0].result, "available");
+  assert.equal(report.results[0].attempts, 3);
+});
+
+test("retries transient server responses and preserves a persistent 404", async () => {
+  let serverAttempts = 0;
+  let missingAttempts = 0;
+  const report = await runApiRoutePreflight({
+    baseUrl: "https://published.example",
+    paths: ["/stocks/info/{symbol}", "/stocks/quote/{symbol}"],
+    fetchImpl: async (url) => {
+      if (url.pathname.endsWith("/info/AAPL")) {
+        serverAttempts += 1;
+        return { status: serverAttempts < 2 ? 503 : 200, body: null };
+      }
+      missingAttempts += 1;
+      return { status: 404, body: null };
+    },
+    retryDelayMs: 0,
+  });
+
+  assert.equal(serverAttempts, 2);
+  assert.equal(missingAttempts, 1);
+  assert.deepEqual(report.results.map(({ result }) => result), ["available", "missing"]);
+});
+
+test("returns a failed result after exhausting network retries", async () => {
+  let attempts = 0;
+  const report = await runApiRoutePreflight({
+    baseUrl: "https://published.example",
+    paths: ["/stocks/info/{symbol}"],
+    fetchImpl: async () => {
+      attempts += 1;
+      throw new TypeError("connection refused");
+    },
+    retryDelayMs: 0,
+  });
+
+  assert.equal(attempts, 3);
+  assert.equal(report.results[0].result, "failed");
+  assert.equal(report.results[0].attempts, 3);
 });
 
 test("formats missing route findings with the exact GET path and 404 status", () => {

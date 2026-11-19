@@ -7,6 +7,8 @@ import { dirname, resolve } from "node:path";
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const OPENAPI_PATH = resolve(SCRIPT_DIR, "../../../lib/api-spec/openapi.yaml");
 const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_MAX_ATTEMPTS = 3;
+const DEFAULT_RETRY_DELAY_MS = 500;
 const REQUEST_CONCURRENCY = 2;
 
 const SAMPLE_QUERY_PARAMETERS = {
@@ -175,41 +177,76 @@ export function buildProbeUrl(baseUrl, path) {
   return url;
 }
 
-async function checkRoute({ baseUrl, path, fetchImpl, timeoutMs }) {
-  const url = buildProbeUrl(baseUrl, path);
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetchImpl(url, {
-      method: "GET",
-      headers: { accept: "application/json" },
-      signal: controller.signal,
-    });
-    try {
-      await response.body?.cancel();
-    } catch {
-      // The response status is sufficient to establish the route result.
-    }
+function isRetryableStatus(status) {
+  return status === 408 || status === 429 || status >= 500;
+}
 
-    return {
-      path,
-      url: url.toString(),
-      status: response.status,
-      result: response.status === 404
-        ? "missing"
-        : response.status >= 200 && response.status < 300
-          ? "available"
-          : "unconfirmed",
-    };
-  } catch (error) {
-    const detail = error?.name === "AbortError"
-      ? `timed out after ${timeoutMs}ms`
-      : error instanceof Error
-        ? error.message
-        : String(error);
-    return { path, url: url.toString(), result: "failed", detail };
-  } finally {
-    clearTimeout(timeout);
+function wait(milliseconds) {
+  return new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
+}
+
+async function checkRoute({
+  baseUrl,
+  path,
+  fetchImpl,
+  timeoutMs,
+  maxAttempts,
+  retryDelayMs,
+}) {
+  const url = buildProbeUrl(baseUrl, path);
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetchImpl(url, {
+        method: "GET",
+        headers: { accept: "application/json" },
+        signal: controller.signal,
+      });
+      try {
+        await response.body?.cancel();
+      } catch {
+        // The response status is sufficient to establish the route result.
+      }
+
+      const retryable = isRetryableStatus(response.status) && attempt < maxAttempts;
+      if (retryable) {
+        await wait(retryDelayMs * attempt);
+        continue;
+      }
+
+      return {
+        path,
+        url: url.toString(),
+        status: response.status,
+        attempts: attempt,
+        result: response.status === 404
+          ? "missing"
+          : response.status >= 200 && response.status < 300
+            ? "available"
+            : "unconfirmed",
+      };
+    } catch (error) {
+      if (attempt < maxAttempts) {
+        await wait(retryDelayMs * attempt);
+        continue;
+      }
+
+      const detail = error?.name === "AbortError"
+        ? `timed out after ${timeoutMs}ms`
+        : error instanceof Error
+          ? error.message
+          : String(error);
+      return {
+        path,
+        url: url.toString(),
+        attempts: attempt,
+        result: "failed",
+        detail,
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 }
 
@@ -219,7 +256,15 @@ export async function runApiRoutePreflight({
   openApiSource,
   fetchImpl = fetch,
   timeoutMs = Number(process.env.API_ROUTE_PREFLIGHT_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS,
+  maxAttempts = DEFAULT_MAX_ATTEMPTS,
+  retryDelayMs = DEFAULT_RETRY_DELAY_MS,
 } = {}) {
+  if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
+    throw new Error("API route preflight maxAttempts must be a positive integer");
+  }
+  if (!Number.isFinite(retryDelayMs) || retryDelayMs < 0) {
+    throw new Error("API route preflight retryDelayMs must be a non-negative number");
+  }
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
   const routes = paths ?? getExpectedMobileGetPaths(
     openApiSource ?? await readFile(OPENAPI_PATH, "utf8"),
@@ -235,6 +280,8 @@ export async function runApiRoutePreflight({
         path: routes[index],
         fetchImpl,
         timeoutMs,
+        maxAttempts,
+        retryDelayMs,
       });
     }
   }
