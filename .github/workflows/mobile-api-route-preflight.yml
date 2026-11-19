@@ -1,0 +1,31 @@
+name: Mobile API route preflight
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  route-preflight:
+    name: Check published mobile API routes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the release
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run read-only route preflight
+        run: pnpm --filter @workspace/mobile run smoke:api-routes
+        env:
+          API_ROUTE_PREFLIGHT_BASE_URL: ${{ vars.API_ROUTE_PREFLIGHT_BASE_URL }}
