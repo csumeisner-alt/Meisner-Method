@@ -147,6 +147,24 @@ const TIPS = [
 
 const REFRESH_INTERVAL = 60_000;
 
+function AnalyzeScrollGesture({
+  gesture,
+  children,
+}: {
+  gesture: ReturnType<typeof Gesture.Native>;
+  children: React.ReactElement;
+}) {
+  return (
+    <GestureDetector gesture={gesture}>
+      {Platform.OS === 'web'
+        // RNGH's React 19 web adapter cannot inspect a child with an explicit ref.
+        ? <View style={{ flex: 1 }}>{children}</View>
+        // On Android the native gesture must attach to the actual ScrollView.
+        : children}
+    </GestureDetector>
+  );
+}
+
 function formatPrice(p: number) {
   if (p >= 1000) return `$${p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   if (p >= 1) return `$${p.toFixed(2)}`;
@@ -180,7 +198,21 @@ export default function HomeScreen() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [scrollEnabled, setScrollEnabled] = useState(true);
+  const scrollEnabledRef = useRef(true);
   const scrollGesture = useMemo(() => Gesture.Native(), []);
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const scroller = analyzeScroll.ref.current?.getScrollableNode() as HTMLElement | undefined;
+    if (!scroller) return;
+    // touch-action is decided at touch-down, before the long hold activates.
+    // A non-passive listener must already exist so the first active-drag move
+    // can prevent the browser from cancelling the pan to start native scrolling.
+    const preventDragScroll = (event: TouchEvent) => {
+      if (!scrollEnabledRef.current && event.cancelable) event.preventDefault();
+    };
+    scroller.addEventListener('touchmove', preventDragScroll, { passive: false, capture: true });
+    return () => scroller.removeEventListener('touchmove', preventDragScroll, { capture: true });
+  }, [analyzeScroll.ref]);
   const stockSearchQueryKey = getSearchStockSymbolsQueryKey({ q: debouncedQuery });
   const stockSearch = useSearchStockSymbols(
     { q: debouncedQuery },
@@ -812,8 +844,7 @@ export default function HomeScreen() {
         />
       </View>
 
-      <GestureDetector gesture={scrollGesture}>
-        <View style={{ flex: 1 }}>
+      <AnalyzeScrollGesture gesture={scrollGesture}>
           <ScrollView
             testID="main-tab-scroll-analyze"
             ref={analyzeScroll.ref}
@@ -923,7 +954,10 @@ export default function HomeScreen() {
                 onRemove={watchlist.remove}
                 onReorder={handleWatchReorder}
                 onOpenAlert={openAlertModal}
-                onDragActive={(active) => setScrollEnabled(!active)}
+                onDragActive={(active) => {
+                  scrollEnabledRef.current = !active;
+                  setScrollEnabled(!active);
+                }}
                 colors={colors}
                 formatPrice={formatPrice}
                 formatPct={formatPct}
@@ -1027,8 +1061,7 @@ export default function HomeScreen() {
           For informational purposes only. Not financial advice.
         </Text>
           </ScrollView>
-        </View>
-      </GestureDetector>
+      </AnalyzeScrollGesture>
       <BottomTabBar />
 
       <DonationSidebar

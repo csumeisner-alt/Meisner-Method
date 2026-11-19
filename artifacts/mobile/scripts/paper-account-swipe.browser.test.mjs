@@ -176,6 +176,10 @@ async function touchPath(browser, testID, moves) {
       await delay(25);
     }
     await delay(35);
+  } else {
+    // A real tap is not instantaneous; yielding lets Chromium dispatch the
+    // touch-down and React Native Web's press responder before touch-up.
+    await delay(35);
   }
   await browser.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   await delay(50);
@@ -282,13 +286,39 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
       true,
       "The championship dashboard must not cause horizontal overflow at 320 pixels.",
     );
-    const championshipContentHeight = await browser.evaluate(
-      `document.querySelector(${JSON.stringify(selector("paper-event-championship-dashboard"))})?.getBoundingClientRect().height`,
-    );
-    assert.ok(
-      championshipContentHeight <= 150,
-      `The Event Arena dashboard content should fit within the regular card's summary-row height (received ${championshipContentHeight}px).`,
-    );
+    // An intrinsic summary must grow for a two-column metric grid; a maximum
+    // height assertion would reintroduce the Android overflow from the report.
+    const eventGeometry = await browser.evaluate(`(() => {
+      const bounds = (id) => {
+        const node = document.querySelector('[data-testid="' + id + '"]');
+        if (!node) return null;
+        const { left, right, top, bottom, height } = node.getBoundingClientRect();
+        return { left, right, top, bottom, height };
+      };
+      return {
+        hero: bounds('paper-account-hero'),
+        dashboard: bounds('paper-event-championship-dashboard'),
+        dots: bounds('paper-account-position-indicator'),
+        navigation: bounds('paper-tab-group-portfolio'),
+        metrics: ['paper-event-competition-pnl', 'paper-event-competition-return',
+          'paper-event-buying-power', 'paper-event-account-rank',
+          'paper-event-account-countdown', 'paper-event-view-leaderboard'].map(bounds),
+      };
+    })()`);
+    assert.ok(eventGeometry.hero && eventGeometry.dashboard && eventGeometry.dots && eventGeometry.navigation);
+    assert.ok(eventGeometry.dashboard.height > 0);
+    for (const metric of eventGeometry.metrics) {
+      assert.ok(metric && metric.height > 0, 'Every event metric and action must have intrinsic height.');
+      assert.ok(metric.top >= eventGeometry.dashboard.top && metric.bottom <= eventGeometry.dashboard.bottom + 1,
+        `Event metric/action must remain inside the dashboard: ${JSON.stringify(eventGeometry)}`);
+      assert.ok(metric.left >= eventGeometry.hero.left && metric.right <= eventGeometry.hero.right);
+    }
+    assert.ok(eventGeometry.dashboard.bottom <= eventGeometry.dots.top + 1,
+      'Account indicators must follow all event metrics and actions.');
+    assert.ok(eventGeometry.dots.bottom <= eventGeometry.hero.bottom + 1,
+      'Account indicators must remain inside the summary card.');
+    assert.ok(eventGeometry.hero.bottom <= eventGeometry.navigation.top + 1,
+      'The expanded event summary must end before the portfolio navigation.');
     assert.equal(
       await browser.evaluate(`(() => {
         const title = document.querySelector(${JSON.stringify(selector("paper-event-championship-dashboard"))})?.firstElementChild?.children[1]?.getBoundingClientRect();
@@ -606,8 +636,30 @@ test("paper account swipes and screen controls work at a narrow phone viewport",
       await setViewport(width, "fireball-stress-b");
     }
 
+    // React Native Web's parent PanResponder suppresses follow-up clicks for
+    // 250ms after a successful swipe so the swipe itself cannot activate a
+    // control underneath it. Let that intentional click guard expire before
+    // checking the next distinct tap.
+    await delay(300);
+    await browser.evaluate(`(() => {
+      window.__paperLastTapEvents = [];
+      for (const type of ['touchstart', 'touchend', 'pointerdown', 'pointerup', 'pointercancel', 'click']) {
+        document.addEventListener(type, (event) => window.__paperLastTapEvents.push({
+          type,
+          target: event.target?.closest('[data-testid]')?.getAttribute('data-testid') ?? null,
+          prevented: event.defaultPrevented,
+        }), { capture: true });
+      }
+    })()`);
     await touch(browser, "paper-tab-group-activity");
-    assert.equal(await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-active-view"))})?.textContent`), "orders");
+    const activitySelection = await browser.evaluate(`({
+      activeView: document.querySelector(${JSON.stringify(selector("paper-active-view"))})?.textContent ?? null,
+      tabs: [...document.querySelectorAll('[data-testid^="paper-tab-group-"]')].map((tab) => ({
+        id: tab.getAttribute('data-testid'), selected: tab.getAttribute('aria-selected')
+      })),
+      events: window.__paperLastTapEvents,
+    })`);
+    assert.equal(activitySelection.activeView, "orders", JSON.stringify(activitySelection));
     await touch(browser, "paper-tab-history");
     assert.equal(await browser.evaluate(`document.querySelector(${JSON.stringify(selector("paper-active-view"))})?.textContent`), "history");
     await touch(browser, "paper-tab-group-insights");

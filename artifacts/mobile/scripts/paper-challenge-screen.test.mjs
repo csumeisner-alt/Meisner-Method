@@ -1226,7 +1226,8 @@ test("Event Arena account uses saved event results and links to the existing lea
   assert.match(eventAccountDashboard, /'STARTS IN' : phase === 'active' \? 'TIME LEFT'/);
   assert.match(eventAccountDashboard, /VIEW LEADERBOARD/);
   assert.doesNotMatch(eventAccountDashboard, /TODAY’S P\/L/);
-  assert.match(eventAccountDashboard, /flexDirection: 'row', gap: 5, marginTop: 7/);
+  assert.match(eventAccountDashboard, /flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 7/);
+  assert.match(eventAccountDashboard, /flexBasis: compactMetrics \? '46%' : '22%'/);
   assert.match(eventAccountDashboard, /minHeight: 34/);
   assert.match(eventAccountDashboard, /minWidth: 0/);
   assert.match(screen, /eventChampionshipSwitchButton: \{ minHeight: 30/);

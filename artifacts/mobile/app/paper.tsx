@@ -5630,6 +5630,7 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
   accountHero: {
+    flexShrink: 0,
     marginHorizontal: 16,
     marginTop: 8,
     marginBottom: 8,

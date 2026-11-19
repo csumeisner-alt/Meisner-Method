@@ -1,4 +1,5 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { reserveInteraction, releaseInteraction } from '@/lib/interactionOwnership';
 import {
   PanResponder,
   Platform,
@@ -30,16 +31,24 @@ export function PaperAccountSwipeArea({
 }: PaperAccountSwipeAreaProps) {
   const latestProps = useRef({ accounts, activeId, onSwitchAccount });
   latestProps.current = { accounts, activeId, onSwitchAccount };
+  const owner = useRef({});
+  const startingAccount = useRef(activeId);
+  useEffect(() => () => releaseInteraction(owner.current), []);
 
   const responder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponderCapture: (_event, gesture) =>
+      Math.abs(gesture.dx) > 12 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.2,
     onMoveShouldSetPanResponder: (_event, gesture) =>
       Math.abs(gesture.dx) > 12 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.2,
     onPanResponderRelease: (_event, gesture) => {
+      releaseInteraction(owner.current);
       if (
         Math.abs(gesture.dx) < 40
         || Math.abs(gesture.dx) <= Math.abs(gesture.dy) * 1.2
       ) return;
       const current = latestProps.current;
+      if (current.activeId !== startingAccount.current) return;
       const nextId = getAdjacentPaperAccountId(current.accounts, current.activeId, gesture.dx < 0 ? 1 : -1);
       if (nextId && nextId !== current.activeId) {
         current.onSwitchAccount(nextId);
@@ -48,10 +57,27 @@ export function PaperAccountSwipeArea({
         }
       }
     },
+    onPanResponderTerminationRequest: () => false,
+    onPanResponderTerminate: () => releaseInteraction(owner.current),
   }), []);
 
   return (
-    <View testID={testID} style={style} {...responder.panHandlers}>
+    <View
+      testID={testID}
+      collapsable={false}
+      style={[
+        { flexShrink: 0 },
+        style,
+        Platform.OS === 'web' && ({ touchAction: 'pan-y' } as ViewStyle),
+      ]}
+      onTouchStart={() => {
+        startingAccount.current = latestProps.current.activeId;
+        reserveInteraction(owner.current);
+      }}
+      onTouchEnd={() => releaseInteraction(owner.current)}
+      onTouchCancel={() => releaseInteraction(owner.current)}
+      {...responder.panHandlers}
+    >
       {children}
     </View>
   );

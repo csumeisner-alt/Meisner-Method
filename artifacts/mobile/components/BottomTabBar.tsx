@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
 import { getMainTabNavigationPlan, type MainTabRoute } from '@/lib/mainTabNavigation';
+import { claimMainTabNavigation } from '@/lib/interactionOwnership';
 
 export function BottomTabBar() {
   const colors = useColors();
@@ -23,6 +24,7 @@ export function BottomTabBar() {
   function go(path: MainTabRoute) {
     const plan = getMainTabNavigationPlan(pathname, path);
     if (!plan) return;
+    if (!claimMainTabNavigation()) return;
     switch (plan.action) {
       case 'none':
         return;

@@ -559,11 +559,18 @@ export function getGetHeatMapDetailEtfHistoryFitQueryKey(symbol: string) {
   return [`/api/stocks/heat-map/detail/${symbol}/etf-history-fit`];
 }
 
-export function getHeatMapDetailSummary(symbol: string, options?: RequestInit) {
-  return mockHeatMapDetailFetch<Record<string, unknown>>(
+export function getStockInfo(symbol: string, options?: RequestInit) {
+  return getHeatMapDetailSummary(symbol, options);
+}
+
+export async function getHeatMapDetailSummary(symbol: string, options?: RequestInit) {
+  const payload = await mockHeatMapDetailFetch<Record<string, unknown>>(
     `/api/stocks/heat-map/detail/${symbol}/summary`,
     options?.signal ?? null,
   );
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
+  // Match the real required identity field; preserve deliberate mismatches.
+  return { symbol, ...payload };
 }
 
 export function getHeatMapDetailEtfFundData(symbol: string, options?: RequestInit) {

@@ -441,6 +441,7 @@ export function PaperTradingAction({
 
 const styles = StyleSheet.create({
   selectorTitle: {
+    flexShrink: 1,
     fontFamily: 'Inter_700Bold' as const,
     fontSize: 11,
     color: GOLD,
@@ -507,6 +508,9 @@ const styles = StyleSheet.create({
   },
   heroStat: { flex: 1, minWidth: 0 },
   heroStatCompact: {
+    flex: 0,
+    flexGrow: 0,
+    flexShrink: 0,
     flexDirection: 'row-reverse' as const,
     alignItems: 'center' as const,
     justifyContent: 'space-between' as const,

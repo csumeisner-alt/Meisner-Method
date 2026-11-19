@@ -19,6 +19,7 @@ import {
   getHeatMapDetailEtfFundData,
   getHeatMapDetailEtfHistoryFit,
   getHeatMapDetailSummary,
+  getStockInfo,
   useGetCryptoSupplyHistory,
   useGetHeatMapDetailEtfFundData,
   useGetHeatMapDetailEtfHistoryFit,
@@ -49,6 +50,7 @@ import {
 } from '@/lib/heatMapInstrumentDisplay';
 import { formatHeatMapQuoteAge, shouldShowHeatMapQuotePrice } from '@/lib/heatMapQuoteDisplay';
 import { formatHeatMapCryptoPrice } from '@/lib/heatMapCryptoPrice';
+import { requestHeatMapSummary } from '@/lib/heatMapSummaryRequest';
 
 function requestWithTimeout<T>(
   querySignal: AbortSignal,
@@ -131,6 +133,7 @@ function RangeBar({
   high,
   price,
   loading,
+  failed = false,
   colors,
   testID,
   formatValue = formatPrice,
@@ -140,6 +143,7 @@ function RangeBar({
   high: number | null;
   price: number;
   loading: boolean;
+  failed?: boolean;
   colors: ReturnType<typeof useColors>;
   testID: string;
   formatValue?: (value: number) => string;
@@ -163,7 +167,7 @@ function RangeBar({
         </>
       ) : (
         <Text style={[styles.rangeUnavailable, { color: colors.mutedForeground }]}>
-          {loading ? 'Loading range…' : 'Range unavailable'}
+          {loading ? 'Loading range…' : failed ? 'Could not load range' : 'Not reported by provider'}
         </Text>
       )}
     </View>
@@ -427,14 +431,16 @@ export function HeatMapDetailModal({
       queryKey: getGetHeatMapDetailSummaryQueryKey(symbol ?? ''),
       queryFn: ({ signal }) => requestWithTimeout(
         signal,
-        10_000,
-        (requestSignal) => getHeatMapDetailSummary(symbol ?? '', { signal: requestSignal }),
+        14_000,
+        (requestSignal) => requestHeatMapSummary(
+          () => getHeatMapDetailSummary(symbol ?? '', { signal: requestSignal }),
+          () => getStockInfo(symbol ?? '', { signal: requestSignal }),
+        ),
       ),
       enabled: visible && symbol !== null,
       staleTime: 30_000,
       gcTime: 10 * 60_000,
-      retry: 1,
-      retryDelay: 1_000,
+      retry: 0,
       refetchOnWindowFocus: false,
     },
   });
@@ -470,7 +476,9 @@ export function HeatMapDetailModal({
       refetchOnWindowFocus: false,
     },
   });
-  const summaryStats = summaryQuery.data ? parseHeatMapDetailStats(summaryQuery.data) : null;
+  const summaryStats = summaryQuery.data?.symbol === symbol
+    ? parseHeatMapDetailStats(summaryQuery.data)
+    : null;
   const baseEtfProfile = summaryStats?.etfProfile ?? null;
   const fundData = fundDataQuery.data;
   const marketHistoryFit = historyFitQuery.data;
@@ -801,6 +809,7 @@ export function HeatMapDetailModal({
                 high={stats?.dayHigh ?? null}
                 price={quote.price}
                 loading={loading}
+                failed={loadError}
                 colors={colors}
                 formatValue={formatQuotePrice}
               />
@@ -811,6 +820,7 @@ export function HeatMapDetailModal({
                 high={stats?.fiftyTwoWeekHigh ?? null}
                 price={quote.price}
                 loading={loading}
+                failed={loadError}
                 colors={colors}
                 formatValue={formatQuotePrice}
               />
@@ -861,6 +871,11 @@ export function HeatMapDetailModal({
                   <Text style={[styles.retryText, { color: colors.primary }]}>Retry</Text>
                 </Pressable>
               </View>
+            )}
+            {stats && !loading && !loadError && (
+              <Text testID="heat-map-detail-provider-note" style={[styles.emptyStats, { color: colors.mutedForeground }]}>
+                Missing figures (—) were not reported by the provider.
+              </Text>
             )}
             {displayedStats.length > 0 ? (
               <View testID="heat-map-detail-stats" style={styles.statsGrid}>

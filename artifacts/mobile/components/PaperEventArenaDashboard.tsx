@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ImageBackground, Text, TouchableOpacity, View } from 'react-native';
+import { ImageBackground, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -71,6 +71,8 @@ export function PaperEventArenaDashboard({
   isLightningRoundEnrolled = false,
   onOpenLightningRound,
 }: Props) {
+  const { width, fontScale } = useWindowDimensions();
+  const compactMetrics = width <= 360 || fontScale >= 1.3;
   const [installationId, setInstallationId] = useState<string | null>(null);
   const [installationIdReady, setInstallationIdReady] = useState(false);
   const [now, setNow] = useState(Date.now());
@@ -210,7 +212,9 @@ export function PaperEventArenaDashboard({
       accessibilityRole="text"
       accessibilityLabel={accessibilityLabel ?? `${label}: ${value}`}
       style={{
-        flex: 1,
+        flexGrow: 1,
+        flexShrink: 0,
+        flexBasis: compactMetrics ? '46%' : '22%',
         minWidth: 0,
         paddingHorizontal: 5,
         paddingVertical: 6,
@@ -368,7 +372,7 @@ export function PaperEventArenaDashboard({
         </Text>
       </View>
 
-      <View style={{ flexDirection: 'row', gap: 5, marginTop: 7 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 7 }}>
         {metric(
           'COMP P/L',
           competitionPnL == null ? '—' : signedMoney(competitionPnL),
@@ -414,8 +418,8 @@ export function PaperEventArenaDashboard({
         </TouchableOpacity>
       )}
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 6 }}>
-        <View style={{ flex: 1, minWidth: 0, paddingHorizontal: 7, paddingVertical: 6, borderRadius: 8, backgroundColor: 'rgba(231,198,106,0.08)' }}>
+      <View style={{ flexDirection: compactMetrics ? 'column' : 'row', alignItems: 'stretch', gap: 7, marginTop: 6 }}>
+        <View style={{ flex: compactMetrics ? 0 : 1, flexShrink: 0, minWidth: 0, paddingHorizontal: 7, paddingVertical: 6, borderRadius: 8, backgroundColor: 'rgba(231,198,106,0.08)' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
             <Text style={{ flexShrink: 0, color: MUTED, fontFamily: 'Inter_600SemiBold', fontSize: 8, letterSpacing: 0.35 }}>
               {phase === 'upcoming' ? 'STARTS IN' : phase === 'active' ? 'TIME LEFT' : 'STATUS'}

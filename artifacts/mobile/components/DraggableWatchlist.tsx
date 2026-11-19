@@ -36,6 +36,9 @@ import { Gesture, GestureDetector, type GestureType } from 'react-native-gesture
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { syncLocalOrder } from '@/lib/watchlistFilter';
+import { useFocusEffect } from 'expo-router';
+import { finishWatchlistDrag } from '@/lib/watchlistDrag';
+import { reserveInteraction, releaseInteraction } from '@/lib/interactionOwnership';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -345,43 +348,79 @@ export function DraggableWatchlist({
   const draggedIdx = useSharedValue(-1);
   const hoverIdx = useSharedValue(-1);
   const dragTranslationY = useSharedValue(0);
+  const dragSession = useRef<{ symbol: string; order: string[] } | null>(null);
+  const screenFocused = useRef(true);
+  const owner = useRef({});
+  const orderedKey = orderedItems.map((item) => item.symbol).join(',');
+
+  const cancelDrag = useCallback(() => {
+    dragSession.current = null;
+    draggedIdx.value = -1;
+    hoverIdx.value = -1;
+    dragTranslationY.value = 0;
+    setGhostSymbol(null);
+    releaseInteraction(owner.current);
+    onDragActiveRef.current?.(false);
+  }, [draggedIdx, hoverIdx, dragTranslationY]);
+
+  useFocusEffect(useCallback(() => {
+    screenFocused.current = true;
+    return () => {
+      screenFocused.current = false;
+      cancelDrag();
+    };
+  }, [cancelDrag]));
+  useEffect(() => {
+    cancelDrag();
+  }, [itemKey, cancelDrag]);
 
   // ── JS callbacks invoked from worklets via runOnJS ──
   const triggerHaptic = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
   }, []);
 
   const setDragActive = useCallback((active: boolean) => {
     onDragActiveRef.current?.(active);
   }, []);
 
-  const startGhost = useCallback((idx: number) => {
-    const sym = orderedItemsRef.current[idx]?.symbol ?? null;
-    setGhostSymbol(sym);
-  }, []);
+  const startGhost = useCallback((symbol: string, order: string[]) => {
+    if (!screenFocused.current || orderedItemsRef.current.map((item) => item.symbol).join(',') !== order.join(',')) {
+      cancelDrag();
+      return;
+    }
+    dragSession.current = { symbol, order };
+    reserveInteraction(owner.current);
+    setGhostSymbol(symbol);
+  }, [cancelDrag]);
 
-  const endDrag = useCallback((from: number, to: number) => {
+  const endDrag = useCallback((symbol: string, to: number, succeeded: boolean) => {
+    const session = dragSession.current;
+    dragSession.current = null;
     setGhostSymbol(null);
+    releaseInteraction(owner.current);
     onDragActiveRef.current?.(false);
-    const currentItems = orderedItemsRef.current;
-    if (from < 0 || from >= currentItems.length || to < 0 || to >= currentItems.length || from === to) return;
-    const newOrder = currentItems.map((item) => item.symbol);
-    const [moved] = newOrder.splice(from, 1);
-    newOrder.splice(to, 0, moved);
+    if (!session || session.symbol !== symbol) return;
+    const newOrder = finishWatchlistDrag(
+      orderedItemsRef.current.map((item) => item.symbol), session.order, symbol, to, succeeded,
+    );
+    if (!newOrder) return;
     setLocalOrder(newOrder);
     onReorderRef.current(newOrder);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
   }, []);
 
   const rowDragGestures = useMemo(
-    () => Array.from({ length: n }, (_, index) => {
+    () => orderedItems.map((item, index) => {
+      const symbol = item.symbol;
+      const order = orderedItems.map((entry) => entry.symbol);
       const startDrag = () => {
+        'worklet';
         draggedIdx.value = index;
         hoverIdx.value = index;
         dragTranslationY.value = 0;
         runOnJS(triggerHaptic)();
         runOnJS(setDragActive)(true);
-        runOnJS(startGhost)(index);
+        runOnJS(startGhost)(symbol, order);
       };
       const pan = Gesture.Pan()
         .simultaneousWithExternalGesture(scrollGesture)
@@ -391,14 +430,14 @@ export function DraggableWatchlist({
           const absoluteY = index * ITEM_HEIGHT + event.translationY;
           hoverIdx.value = Math.max(0, Math.min(n - 1, Math.round(absoluteY / ITEM_HEIGHT)));
         })
-        .onFinalize(() => {
+        .onFinalize((_event, succeeded) => {
           const from = draggedIdx.value;
           const to = hoverIdx.value;
           if (from !== index) return;
           draggedIdx.value = -1;
           hoverIdx.value = -1;
           dragTranslationY.value = 0;
-          runOnJS(endDrag)(from, to);
+          runOnJS(endDrag)(symbol, to, succeeded);
         });
 
       if (Platform.OS !== 'web') {
@@ -411,10 +450,21 @@ export function DraggableWatchlist({
         .minDuration(320)
         .maxDistance(24)
         .simultaneousWithExternalGesture(scrollGesture)
-        .onStart(startDrag);
+        .onStart(startDrag)
+        .onEnd((_event, succeeded) => {
+          // A stationary hold may end without the web pan ever activating.
+          // Moving beyond maxDistance fails the long press while the simultaneous
+          // pan continues: that is not the end of the drag session.
+          if (!succeeded || dragTranslationY.value !== 0) return;
+          if (draggedIdx.value !== index) return;
+          draggedIdx.value = -1;
+          hoverIdx.value = -1;
+          dragTranslationY.value = 0;
+          runOnJS(endDrag)(symbol, index, false);
+        });
       return Gesture.Simultaneous(longPress, pan);
     }),
-    [draggedIdx, dragTranslationY, endDrag, hoverIdx, n, scrollGesture, setDragActive, startGhost, triggerHaptic],
+    [draggedIdx, dragTranslationY, endDrag, hoverIdx, orderedKey, n, scrollGesture, setDragActive, startGhost, triggerHaptic],
   );
 
   const ghostQuote = ghostSymbol ? quotes.get(ghostSymbol) : undefined;

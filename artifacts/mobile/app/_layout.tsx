@@ -72,7 +72,12 @@ function RootLayoutNav() {
             const transition = (route.params as { transition?: 'left' | 'right' } | undefined)?.transition;
             return {
               headerShown: false,
-              animation: transition === 'left' ? 'slide_from_left' : 'slide_from_right',
+              // Moving an existing singular route while native-stack is animating
+              // can detach the screen beneath an in-flight Android transition.
+              animation: ['index', 'picks', 'paper', 'portfolio', 'event-arena'].includes(route.name)
+                ? 'none'
+                : transition === 'left' ? 'slide_from_left' : 'slide_from_right',
+              gestureEnabled: !['index', 'picks', 'paper', 'portfolio', 'event-arena'].includes(route.name),
             };
           }}
         >

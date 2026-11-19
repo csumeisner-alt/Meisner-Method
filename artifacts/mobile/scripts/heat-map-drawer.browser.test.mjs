@@ -440,6 +440,11 @@ test("heat-map drawer interaction, late responses, and narrow-phone layout rende
         ],
       });
     })()`);
+    await waitFor(
+      (expression) => browser.evaluate(expression),
+      `!!document.querySelector(${JSON.stringify(selector("heat-map-open-detail-GC=F"))})`,
+      "The updated commodity quotes should render before tapping the detail tile.",
+    );
     await clickTestID(browser, "heat-map-open-detail-GC=F");
     await waitFor(
       (expression) => browser.evaluate(expression),
