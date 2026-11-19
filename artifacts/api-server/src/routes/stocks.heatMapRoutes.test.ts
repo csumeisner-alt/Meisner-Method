@@ -8,7 +8,7 @@ import express from "express";
 import { build } from "esbuild";
 import test from "node:test";
 
-test("heat-map detail routes are registered and reject invalid symbols before provider access", async () => {
+test("heat-map routes are registered and reject invalid inputs before provider access", async () => {
   const routesDirectory = dirname(fileURLToPath(import.meta.url));
   const bundleDirectory = await mkdtemp(join(routesDirectory, ".heat-map-router-test-"));
   let server: ReturnType<ReturnType<typeof express>["listen"]> | undefined;
@@ -45,18 +45,49 @@ test("heat-map detail routes are registered and reject invalid symbols before pr
     assert.ok(address && typeof address !== "string");
 
     const routes = [
-      "/stocks/heat-map/quote/bad%20symbol",
-      "/stocks/heat-map/detail/bad%20symbol/summary",
-      "/stocks/heat-map/detail/bad%20symbol/etf-fund-data",
-      "/stocks/heat-map/detail/bad%20symbol/etf-history-fit",
-    ];
-
-    for (const path of routes) {
-      const response = await fetch(`http://127.0.0.1:${address.port}${path}`);
-      assert.equal(response.status, 400, `${path} should resolve to symbol validation`);
-      assert.deepEqual(await response.json(), {
+      {
+        path: "/stocks/heat-map/quote/bad%20symbol",
         error: "INVALID_SYMBOL",
         message: "Use one valid ticker symbol.",
+      },
+      {
+        path: "/stocks/heat-map/detail/bad%20symbol/summary",
+        error: "INVALID_SYMBOL",
+        message: "Use one valid ticker symbol.",
+      },
+      {
+        path: "/stocks/heat-map/detail/bad%20symbol/etf-fund-data",
+        error: "INVALID_SYMBOL",
+        message: "Use one valid ticker symbol.",
+      },
+      {
+        path: "/stocks/heat-map/detail/bad%20symbol/etf-history-fit",
+        error: "INVALID_SYMBOL",
+        message: "Use one valid ticker symbol.",
+      },
+      {
+        path: "/stocks/heat-map?category=not-a-category",
+        error: "INVALID_CATEGORY",
+        message: "Choose stocks, ETFs, commodities, futures, cryptocurrency, or custom.",
+      },
+      {
+        path: "/stocks/heat-map?category=stocks&period=2d",
+        error: "INVALID_PERIOD",
+        message: "Choose 1d, 1w, 1m, 3m, 6m, 1y, 3y, 5y, or max.",
+      },
+      {
+        path: "/stocks/heat-map?category=custom&symbols=AAPL%2FMSFT",
+        error: "INVALID_SYMBOLS",
+        message: "Use up to 40 valid ticker symbols.",
+      },
+    ];
+
+    for (const route of routes) {
+      const response = await fetch(`http://127.0.0.1:${address.port}${route.path}`);
+      assert.equal(response.status, 400, `${route.path} should return a validation error`);
+      assert.deepEqual(await response.json(), {
+        error: route.error,
+        message: route.message,
       });
     }
   } finally {
