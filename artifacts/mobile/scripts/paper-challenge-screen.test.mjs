@@ -136,6 +136,32 @@ test("Paper Trading refreshes quotes incrementally without replacing failed valu
   assert.match(screen, /const currentAccount = currentAccounts\.find\(\(item\) => item\.id === accountId\)/);
 });
 
+test("offline recovery refreshes prices and order submission requires a fresh provider quote", () => {
+  const orderStart = screen.indexOf("const handleConfirmOrder = async");
+  const orderEnd = screen.indexOf("\n  };", orderStart);
+  const orderHandler = screen.slice(orderStart, orderEnd);
+  assert.ok(orderStart >= 0 && orderEnd > orderStart);
+  assert.match(screen, /Network\.addNetworkStateListener/);
+  assert.match(screen, /didNetworkReconnect\(knownOffline, offline\)/);
+  assert.match(screen, /if \(reconnected && appIsActive\) \{[\s\S]*?refresh\(true\);[\s\S]*?fetchInactiveAccountCardQuotes\(true\)/);
+  assert.match(screen, /const hasStalePortfolioQuotes = \[\.\.\.new Set\([\s\S]*?isFreshPaperQuote\(quotes\[symbol\]\)/);
+  assert.match(screen, /Some prices may be outdated or unavailable/);
+  assert.match(orderHandler, /const currentAccounts = accountsRef\.current/);
+  assert.match(orderHandler, /const currentPositions = positionsRef\.current/);
+  assert.match(orderHandler, /requestPaperPreloadQuote\(sym, true\)/);
+  assert.match(orderHandler, /getOrderQuoteState\(currentQuote\) !== 'fresh'/);
+  assert.doesNotMatch(orderHandler, /getPaperPortfolioPreloadState\(\)\.portfolios/);
+  assert.match(screen, /const q = newQuotes\[order\.symbol\];[\s\S]*?getOrderQuoteState\(q\) !== 'fresh'/);
+});
+
+test("Event Arena warns about stale quotes and queues a forced refresh after network recovery", () => {
+  assert.match(eventArena, /Network\.addNetworkStateListener/);
+  assert.match(eventArena, /didNetworkReconnect\(knownOffline, offline\)/);
+  assert.match(eventArena, /if \(accountRefreshForceQueuedRef\.current\)[\s\S]*?refreshAccountDataRef\.current\(true\)/);
+  assert.match(eventArena, /Event Arena prices may be outdated\. The last valid quotes remain visible\./);
+  assert.match(eventArena, /store\.lightningEnrollment\]\)/);
+});
+
 test("Portfolio Overview label is centered without changing the Positions count layout", () => {
   const portfolioTabsStart = paperLayout.indexOf("export function PaperPortfolioNavigation");
   const portfolioTabsEnd = paperLayout.indexOf("export function PaperPositionRow", portfolioTabsStart);

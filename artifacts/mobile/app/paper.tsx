@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
+import * as Network from 'expo-network';
 import { KeyboardAvoidingView as KeyboardControllerAvoidingView } from 'react-native-keyboard-controller';
 import {
   ActivityIndicator,
@@ -68,6 +69,7 @@ import {
   createAccountValueSnapshot,
   fundFee,
   getCoveredAccountValueHistory,
+  isFreshPaperQuote,
   mergeAccountValueHistory,
   normalizeDividendYield,
   parseAccountValueSnapshots,
@@ -217,6 +219,7 @@ import {
   replaceDeviceTransferCategoryData,
 } from '@/lib/deviceTransfer';
 import { stableDeviceTransferJson } from '../../../lib/api-zod/src/deviceTransferManifest.ts';
+import { didNetworkReconnect, isNetworkOffline } from '@/lib/networkConnectivity';
 
 /**
  * Paper Trading Screen — risk-free trading with $100,000 virtual cash.
@@ -433,6 +436,8 @@ export default function PaperScreen() {
   );
   const [loadingQuotes, setLoadingQuotes] = useState(false);
   const [quoteRefreshError, setQuoteRefreshError] = useState(false);
+  const [inactiveQuoteRefreshError, setInactiveQuoteRefreshError] = useState(false);
+  const [quoteRefreshNetworkOffline, setQuoteRefreshNetworkOffline] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => subscribePaperPortfolioPreload((state) => {
@@ -522,6 +527,12 @@ export default function PaperScreen() {
       .filter((order) => order.accountId === activeId && order.status === 'pending')
       .map((order) => order.symbol.trim().toUpperCase()),
   ].sort().join('|');
+  const hasStalePortfolioQuotes = [...new Set([
+    ...positions.map((position) => position.symbol.trim().toUpperCase()),
+    ...orders
+      .filter((order) => order.status === 'pending')
+      .map((order) => order.symbol.trim().toUpperCase()),
+  ])].some((symbol) => !isFreshPaperQuote(quotes[symbol]));
   const buySearchText = buySymbol.trim();
   const buyTicker = buySymbol.trim().toUpperCase();
   const buyTickerIsWatched = stockInfo ? watchlist.isWatched(buyTicker) : false;
@@ -2116,6 +2127,7 @@ export default function PaperScreen() {
         .map((position) => position.symbol),
     )];
     if (symbols.length === 0) {
+      setInactiveQuoteRefreshError(false);
       for (const inactiveAccount of inactiveAccounts) {
         void recordAccountValueSnapshot(inactiveAccount.id, {});
       }
@@ -2127,6 +2139,7 @@ export default function PaperScreen() {
       setQuotes(shared.quotes);
       return [symbol, quote] as const;
     }));
+    setInactiveQuoteRefreshError(results.some((result) => result.status === 'rejected'));
     void persistPaperPreloadQuotes(AsyncStorage, getPaperPortfolioPreloadState().quotes);
     const next: Record<string, LiveQuote> = {};
     for (const result of results) {
@@ -2493,11 +2506,30 @@ export default function PaperScreen() {
   useEffect(() => {
     if (!loaded || !isFocused || !activeId) return;
     let appIsActive = AppState.currentState === 'active';
+    let knownOffline: boolean | null = null;
     const refresh = (forceRefresh = false) => {
       if (!appIsActive) return;
       void fetchQuotes(positionsRef.current, activeIdRef.current, false, forceRefresh)
         .catch(() => setQuoteRefreshError(true));
     };
+    const refreshNetworkState = (state: Network.NetworkState) => {
+      const offline = isNetworkOffline(state);
+      const reconnected = didNetworkReconnect(knownOffline, offline);
+      knownOffline = offline;
+      setQuoteRefreshNetworkOffline(offline);
+      if (reconnected && appIsActive) {
+        refresh(true);
+        void fetchInactiveAccountCardQuotes(true).catch(() => {});
+      }
+    };
+    let receivedNetworkEvent = false;
+    const networkSubscription = Network.addNetworkStateListener((state) => {
+      receivedNetworkEvent = true;
+      refreshNetworkState(state);
+    });
+    void Network.getNetworkStateAsync().then((state) => {
+      if (!receivedNetworkEvent) refreshNetworkState(state);
+    }).catch(() => {});
     const timer = setInterval(() => refresh(), PAPER_QUOTE_REFRESH_INTERVAL_MS);
     const subscription = AppState.addEventListener('change', (state) => {
       const resumed = !appIsActive && state === 'active';
@@ -2507,8 +2539,9 @@ export default function PaperScreen() {
     return () => {
       clearInterval(timer);
       subscription.remove();
+      networkSubscription.remove();
     };
-  }, [activeId, fetchQuotes, isFocused, loaded]);
+  }, [activeId, fetchInactiveAccountCardQuotes, fetchQuotes, isFocused, loaded]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -3988,7 +4021,10 @@ export default function PaperScreen() {
         <Text numberOfLines={1} style={styles.headerSub}>Risk-free · $100k start</Text>
       </View>
 
-      {quoteRefreshError && (
+      {(quoteRefreshError || inactiveQuoteRefreshError || (
+        quoteRefreshNetworkOffline
+        && (positions.length > 0 || orders.some((order) => order.status === 'pending'))
+      ) || hasStalePortfolioQuotes) && (
         <View
           testID="paper-quote-refresh-error"
           accessibilityRole="alert"
@@ -3996,7 +4032,7 @@ export default function PaperScreen() {
         >
           <Feather name="alert-circle" size={13} color={DIM} />
           <Text style={styles.paperRefreshNoticeText}>
-            Some prices are unavailable. Previously loaded values remain visible.
+            Some prices may be outdated or unavailable; affected values use the last quote or a cost-basis estimate.
           </Text>
         </View>
       )}

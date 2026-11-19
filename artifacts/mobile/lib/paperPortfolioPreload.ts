@@ -114,26 +114,50 @@ export function parsePaperPortfolioPreloadCache(
       || typeof cache.updatedAt !== 'string'
       || !Number.isFinite(Date.parse(cache.updatedAt))
       || !Array.isArray(cache.portfolios)
+      || cache.portfolios.length > 3
     ) return null;
 
-    const portfolios = cache.portfolios.filter((item): item is PaperPortfolioPreloadSummary =>
-      !!item
-      && typeof item === 'object'
-      && !!item.account
-      && typeof item.account.id === 'string'
-      && Array.isArray(item.positions)
-      && Number.isFinite(item.realizedPnL)
-      && !!item.performance
-      && Number.isFinite(item.performance.trades)
-      && Number.isFinite(item.performance.wins)
-      && Number.isFinite(item.performance.losses)
-      && (item.performance.winRate === null || Number.isFinite(item.performance.winRate)),
-    );
+    const portfolios: PaperPortfolioPreloadSummary[] = [];
+    const accountIds = new Set<string>();
+    for (const candidate of cache.portfolios) {
+      if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return null;
+      const item = candidate as Partial<PaperPortfolioPreloadSummary>;
+      const account = item.account;
+      if (
+        !account
+        || typeof account.id !== 'string'
+        || !account.id.trim()
+        || isPaperChallengeAccountId(account.id)
+        || accountIds.has(account.id)
+        || typeof account.name !== 'string'
+        || !Number.isFinite(account.cash)
+        || (account.unsettledCash !== undefined && !Number.isFinite(account.unsettledCash))
+        || (account.shortCollateral !== undefined && !Number.isFinite(account.shortCollateral))
+        || !Array.isArray(item.positions)
+        || !item.positions.every((position) =>
+          !!position
+          && position.accountId === account.id
+          && typeof position.symbol === 'string'
+          && !!position.symbol.trim()
+          && Number.isFinite(position.shares)
+          && Number.isFinite(position.avgCost),
+        )
+        || !Number.isFinite(item.realizedPnL)
+        || !item.performance
+        || !Number.isFinite(item.performance.trades)
+        || !Number.isFinite(item.performance.wins)
+        || !Number.isFinite(item.performance.losses)
+        || (item.performance.winRate !== null && !Number.isFinite(item.performance.winRate))
+      ) return null;
+
+      accountIds.add(account.id);
+      portfolios.push(item as PaperPortfolioPreloadSummary);
+    }
 
     return {
       version: 1,
       updatedAt: cache.updatedAt,
-      portfolios: portfolios.slice(0, 3),
+      portfolios,
     };
   } catch {
     return null;
@@ -210,6 +234,7 @@ export async function preloadPaperPortfolioQuotes(
   for (const result of results) {
     if (result.status !== 'fulfilled' || !isValidQuote(result.value[1])) continue;
     const [symbol, quote] = result.value;
+    if ((next[symbol]?.fetchedAtMs ?? 0) > (quote.fetchedAtMs ?? 0)) continue;
     next[symbol] = normalizeQuote(quote);
   }
   return next;

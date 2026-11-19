@@ -162,6 +162,42 @@ test('quote and summary caches reject malformed values but keep valid recent pri
   assert.equal(parsePaperPortfolioPreloadCache('{broken'), null);
 });
 
+test('preload summaries reject account or Event Arena data from another account', () => {
+  const valid = buildPaperPortfolioPreloadSummaries({
+    accounts: [account('one', 100)],
+    positions: [position('one-a', 'one', 'AAA', 1)],
+    transactions: [],
+  } as Parameters<typeof buildPaperPortfolioPreloadSummaries>[0]);
+  const contaminated = createPaperPortfolioPreloadCache([{
+    ...valid[0],
+    positions: [
+      ...valid[0].positions,
+      position('wrong-account', 'two', 'BBB', 2),
+    ],
+  }]);
+  const eventPortfolio = createPaperPortfolioPreloadCache([{
+    ...valid[0],
+    account: account('paper-event:event-1', 100),
+  }]);
+
+  assert.equal(parsePaperPortfolioPreloadCache(JSON.stringify(contaminated)), null);
+  assert.equal(parsePaperPortfolioPreloadCache(JSON.stringify(eventPortfolio)), null);
+});
+
+test('slower quote responses cannot overwrite a newer cached observation', async () => {
+  const newer = quote(150, 1_800_000_000_100);
+  const older = quote(120, 1_800_000_000_050);
+  const portfolios = buildPaperPortfolioPreloadSummaries({
+    accounts: [account('one', 100)],
+    positions: [position('one-a', 'one', 'AAA', 1)],
+    transactions: [],
+  } as Parameters<typeof buildPaperPortfolioPreloadSummaries>[0]);
+
+  const quotes = await preloadPaperPortfolioQuotes(portfolios, { AAA: newer }, async () => older);
+  assert.equal(quotes.AAA.price, 150);
+  assert.equal(quotes.AAA.fetchedAtMs, newer.fetchedAtMs);
+});
+
 test('merging an unchanged cached quote preserves the published state reference', () => {
   publishPaperPortfolioPreload([], { AAA: quote(125) });
   const state = getPaperPortfolioPreloadState();
@@ -191,4 +227,31 @@ test('first-launch cache creation shares the same three unchanged starting accou
   assert.equal(saved.has(PAPER_CACHE_KEY), true);
   assert.deepEqual(first.positions, []);
   assert.deepEqual(first.transactions, []);
+});
+
+test('reopening the local cache restores the selected account and keeps ledgers separate', async () => {
+  const original = {
+    accounts: [account('one', 900), account('two', 700), account('three', 500)],
+    positions: [
+      position('one-position', 'one', 'AAA', 1),
+      position('two-position', 'two', 'BBB', 2),
+    ],
+    transactions: [],
+    orders: [],
+    lots: [],
+    activeId: 'two',
+  };
+  const saved = new Map<string, string>([[PAPER_CACHE_KEY, JSON.stringify(original)]]);
+  const reopened = await loadOrCreatePaperCache({
+    async getItem(key: string) { return saved.get(key) ?? null; },
+    async setItem(key: string, value: string) { saved.set(key, value); },
+  });
+
+  assert.equal(reopened?.activeId, 'two');
+  assert.equal(reopened?.accounts.find((item) => item.id === 'two')?.cash, 700);
+  assert.deepEqual(
+    reopened?.positions.filter((item) => item.accountId === reopened.activeId).map((item) => item.symbol),
+    ['BBB'],
+  );
+  assert.deepEqual(reopened?.positions.filter((item) => item.accountId === 'one').map((item) => item.symbol), ['AAA']);
 });

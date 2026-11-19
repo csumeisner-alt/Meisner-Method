@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createPaperQuoteRequestCache } from '../paperQuoteRefresh.ts';
 import type { LiveQuote } from '../paperMath.ts';
+import { didNetworkReconnect, isNetworkOffline } from '../networkConnectivity.ts';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -66,4 +67,14 @@ test('a failed forced refresh keeps the last good quote available until retry', 
   now += 5_001;
   assert.equal((await requestQuote('NVDA')).price, 350);
   assert.equal(requests, 3);
+});
+
+test('network recovery is detected and does not treat an unknown state as confirmed offline', () => {
+  assert.equal(isNetworkOffline({ isConnected: false }), true);
+  assert.equal(isNetworkOffline({ isConnected: true, isInternetReachable: false }), true);
+  assert.equal(isNetworkOffline({ isConnected: true }), false);
+  assert.equal(isNetworkOffline({}), false);
+  assert.equal(didNetworkReconnect(true, false), true);
+  assert.equal(didNetworkReconnect(false, false), false);
+  assert.equal(didNetworkReconnect(null, false), false);
 });

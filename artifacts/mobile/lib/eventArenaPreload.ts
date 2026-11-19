@@ -40,6 +40,10 @@ export type EventArenaPreloadInput = {
 };
 
 export type EventArenaQuoteRequest = (symbol: string, forceRefresh?: boolean) => Promise<LiveQuote>;
+export type EventArenaQuoteRefreshResult = {
+  quotes: Record<string, LiveQuote>;
+  failedSymbols: string[];
+};
 
 const emptyAccountData = (): EventArenaAccountData => ({
   accounts: [],
@@ -104,6 +108,12 @@ export function buildEventArenaPreloadState(input: EventArenaPreloadInput): Even
   const store = normalizePaperChallengeStore(input.store, input.nowMs);
   const accountIds = new Set(
     getPaperChallengeEnrollments(store)
+      .filter((enrollment) => {
+        const prefix = enrollment.eventType === 'lightning-round'
+          ? 'paper-lightning:'
+          : 'paper-event:';
+        return enrollment.accountId === `${prefix}${enrollment.eventId}`;
+      })
       .map((enrollment) => enrollment.accountId)
       .filter((accountId) => isPaperChallengeAccountId(accountId)),
   );
@@ -150,20 +160,25 @@ export async function refreshEventArenaQuotes(
   cachedQuotes: Record<string, LiveQuote>,
   requestQuote: EventArenaQuoteRequest,
   forceRefresh = false,
-): Promise<Record<string, LiveQuote>> {
+): Promise<EventArenaQuoteRefreshResult> {
   const uniqueSymbols = [...new Set(symbols.map((symbol) => symbol.trim().toUpperCase()).filter(Boolean))];
   const results = await Promise.allSettled(
     uniqueSymbols.map(async (symbol) => [symbol, await requestQuote(symbol, forceRefresh)] as const),
   );
   const next = { ...cachedQuotes };
-  for (const result of results) {
-    if (result.status !== 'fulfilled' || !isValidQuote(result.value[1])) continue;
+  const failedSymbols: string[] = [];
+  for (let index = 0; index < results.length; index += 1) {
+    const result = results[index];
+    if (result.status !== 'fulfilled' || !isValidQuote(result.value[1])) {
+      failedSymbols.push(uniqueSymbols[index]);
+      continue;
+    }
     const [symbol, quote] = result.value;
     const previous = next[symbol];
     if ((previous?.fetchedAtMs ?? 0) > (quote.fetchedAtMs ?? 0)) continue;
     next[symbol] = quote;
   }
-  return next;
+  return { quotes: next, failedSymbols };
 }
 
 let sharedState = emptyState();

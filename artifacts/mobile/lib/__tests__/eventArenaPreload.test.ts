@@ -124,6 +124,35 @@ test('active preload keeps regular and Lightning Round accounts isolated', () =>
   assert.equal(state.performance?.positions[0]?.accountId, regular.accountId);
 });
 
+test('Event Arena preload rejects account records whose IDs belong to another event', () => {
+  const current = enrollment('event-active', 'paper-event:event-active', 100_000);
+  const state = buildEventArenaPreloadState({
+    store: { ...emptyStore, enrollment: current },
+    accountData: accountData({
+      accounts: [
+        account(current.accountId, 90_000),
+        account('paper-event:event-other', 80_000),
+      ],
+      positions: [
+        position('current-position', current.accountId, 'AAA', 1),
+        position('other-position', 'paper-event:event-other', 'BBB', 1),
+      ],
+      transactions: [
+        { id: 'other-trade', accountId: 'paper-event:event-other', symbol: 'BBB', companyName: 'BBB', action: 'BUY', shares: 1, price: 100, total: 100, date: day },
+      ],
+    }),
+    quotes: { AAA: quote(110, 10), BBB: quote(120, 10) },
+    currentEvent: window('event-active', 1_000, 3_000, 'active'),
+    lightningWindow: null,
+    nowMs: 2_000,
+  });
+
+  assert.deepEqual(state.accountData.accounts.map((item) => item.id), [current.accountId]);
+  assert.deepEqual(state.accountData.positions.map((item) => item.id), ['current-position']);
+  assert.deepEqual(state.accountData.transactions, []);
+  assert.deepEqual(Object.keys(state.quotes), ['AAA']);
+});
+
 test('upcoming enrollment loads registration and countdown without creating its event account', () => {
   const upcoming = enrollment('event-upcoming', 'paper-event:event-upcoming', null);
   const state = buildEventArenaPreloadState({
@@ -193,15 +222,26 @@ test('quote refresh runs distinct symbols concurrently and retains good cached p
 
   assert.deepEqual([...requested].sort(), ['AAA', 'BBB']);
   assert.ok(maxActive > 1);
-  assert.equal(result.AAA.price, 110);
-  assert.equal(result.BBB.price, 80);
+  assert.equal(result.quotes.AAA.price, 110);
+  assert.equal(result.quotes.BBB.price, 80);
+  assert.deepEqual(result.failedSymbols, ['BBB']);
 });
 
 test('quote refresh can force a provider request after foreground return', async () => {
   const forceFlags: boolean[] = [];
-  await refreshEventArenaQuotes(['AAA'], {}, async (_symbol, forceRefresh) => {
+  const result = await refreshEventArenaQuotes(['AAA'], {}, async (_symbol, forceRefresh) => {
     forceFlags.push(forceRefresh ?? false);
     return quote(110, 20);
   }, true);
   assert.deepEqual(forceFlags, [true]);
+  assert.deepEqual(result.failedSymbols, []);
+});
+
+test('slower Event Arena quote responses cannot replace a newer observation', async () => {
+  const result = await refreshEventArenaQuotes(['AAA'], {
+    AAA: quote(150, 20),
+  }, async () => quote(120, 10));
+
+  assert.equal(result.quotes.AAA.price, 150);
+  assert.deepEqual(result.failedSymbols, []);
 });

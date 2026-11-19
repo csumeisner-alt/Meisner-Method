@@ -94,12 +94,13 @@ export function EventArenaPreloader() {
 
         const symbols = eventArenaPreloadSymbols(preloadState);
         if (symbols.length === 0) return;
-        const refreshedQuotes = await refreshEventArenaQuotes(
+        const refreshed = await refreshEventArenaQuotes(
           symbols,
           quotes,
           requestPaperPreloadQuote,
         );
         if (cancelled) return;
+        const refreshedQuotes = refreshed.quotes;
         mergePaperPreloadQuotes(refreshedQuotes);
         mergeEventArenaPreloadQuotes(refreshedQuotes);
         await persistPaperPreloadQuotes(AsyncStorage, getPaperPortfolioPreloadState().quotes);

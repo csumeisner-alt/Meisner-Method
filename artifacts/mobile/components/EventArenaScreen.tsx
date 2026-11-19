@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Network from 'expo-network';
 import { Feather } from '@expo/vector-icons';
 import ViewShot from 'react-native-view-shot';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -85,6 +86,7 @@ import { getRegularEventCalendarError } from '@/lib/paperChallengeCalendar';
 import { LightningRoundInvitation } from '@/components/LightningRoundInvitation';
 import { EventArenaTransferLockNotice } from '@/components/EventArenaTransferLockNotice';
 import { useRetainedTabScroll } from '@/lib/useRetainedTabScroll';
+import { didNetworkReconnect, isNetworkOffline } from '@/lib/networkConnectivity';
 
 const PAPER_CACHE_KEY = '@stocksense/paper_v2';
 const PAPER_VALUE_SNAPSHOT_KEY = '@stocksense/paper_equity_snapshots_v1';
@@ -241,6 +243,7 @@ function EventArenaScreenContent() {
   const [quotes, setQuotes] = useState<Record<string, number>>(() => eventArenaQuotePrices(initialPreload.quotes));
   const [accountLoading, setAccountLoading] = useState(false);
   const [accountError, setAccountError] = useState('');
+  const [quoteRefreshWarning, setQuoteRefreshWarning] = useState(false);
   const [eventConfigurationError, setEventConfigurationError] = useState('');
   const [savedEventConfiguration, setSavedEventConfiguration] = useState<SavedEventConfiguration | null>(null);
   const [cashNotifications, setCashNotifications] = useState<EventCashNotification[]>([]);
@@ -278,6 +281,10 @@ function EventArenaScreenContent() {
   const [sharingImage, setSharingImage] = useState(false);
   const imageRef = useRef<ViewShot | null>(null);
   const accountRefreshInFlightRef = useRef(false);
+  const accountRefreshForceQueuedRef = useRef(false);
+  const refreshAccountDataRef = useRef<(forceQuoteRefresh?: boolean, showRefreshIndicator?: boolean) => Promise<void>>(
+    async () => {},
+  );
   const storeReadInFlightRef = useRef(false);
   const storeHasLoadedRef = useRef(initialPreload.ready);
   const accountDataHasLoadedRef = useRef(initialPreload.ready);
@@ -390,7 +397,10 @@ function EventArenaScreenContent() {
     forceQuoteRefresh = false,
     showRefreshIndicator = false,
   ) => {
-    if (accountRefreshInFlightRef.current) return;
+    if (accountRefreshInFlightRef.current) {
+      if (forceQuoteRefresh) accountRefreshForceQueuedRef.current = true;
+      return;
+    }
     accountRefreshInFlightRef.current = true;
     if (showRefreshIndicator || !accountDataHasLoadedRef.current) setAccountLoading(true);
     setAccountError('');
@@ -438,12 +448,14 @@ function EventArenaScreenContent() {
         ...eventPositions.map((item) => item.symbol),
         ...eventOrderSymbols,
       ].map((symbol) => symbol.trim().toUpperCase()).filter(Boolean))];
-      const refreshedQuotes = await refreshEventArenaQuotes(
+      const quoteRefresh = await refreshEventArenaQuotes(
         symbols,
         getPaperPortfolioPreloadState().quotes,
         requestPaperPreloadQuote,
         forceQuoteRefresh,
       );
+      const refreshedQuotes = quoteRefresh.quotes;
+      setQuoteRefreshWarning(quoteRefresh.failedSymbols.length > 0);
       mergePaperPreloadQuotes(refreshedQuotes);
       mergeEventArenaPreloadQuotes(refreshedQuotes);
       setQuotes((current) => {
@@ -457,12 +469,18 @@ function EventArenaScreenContent() {
       void persistPaperPreloadQuotes(AsyncStorage, getPaperPortfolioPreloadState().quotes);
     } catch {
       setAccountError('Event account data could not be refreshed. Your saved trading data is unchanged.');
+      if (accountData.positions.length > 0) setQuoteRefreshWarning(true);
     } finally {
       accountRefreshInFlightRef.current = false;
       setAccountDataReady(true);
       setAccountLoading(false);
+      if (accountRefreshForceQueuedRef.current) {
+        accountRefreshForceQueuedRef.current = false;
+        void Promise.resolve().then(() => refreshAccountDataRef.current(true));
+      }
     }
-  }, [currentWindow.id, store.enrollment]);
+  }, [accountData.positions.length, currentWindow.id, store.enrollment, store.lightningEnrollment]);
+  refreshAccountDataRef.current = refreshAccountData;
 
   const refreshCashNotifications = useCallback(async (
     markRead = false,
@@ -643,12 +661,28 @@ function EventArenaScreenContent() {
   useEffect(() => {
     if (!isScreenFocused) return;
     let appIsActive = AppState.currentState === 'active';
+    let knownOffline: boolean | null = null;
     const refreshInBackground = (forceQuoteRefresh = false) => {
       if (!appIsActive) return;
       setNow(Date.now());
       void readStore();
       void refreshAccountData(forceQuoteRefresh);
     };
+    const updateNetworkState = (state: Network.NetworkState) => {
+      const offline = isNetworkOffline(state);
+      const reconnected = didNetworkReconnect(knownOffline, offline);
+      knownOffline = offline;
+      if (offline && accountData.positions.length > 0) setQuoteRefreshWarning(true);
+      if (reconnected) refreshInBackground(true);
+    };
+    let receivedNetworkEvent = false;
+    const networkSubscription = Network.addNetworkStateListener((state) => {
+      receivedNetworkEvent = true;
+      updateNetworkState(state);
+    });
+    void Network.getNetworkStateAsync().then((state) => {
+      if (!receivedNetworkEvent) updateNetworkState(state);
+    }).catch(() => {});
     refreshInBackground(true);
     const interval = setInterval(refreshInBackground, EVENT_ARENA_BACKGROUND_REFRESH_INTERVAL_MS);
     const appStateSubscription = AppState.addEventListener('change', (state) => {
@@ -659,8 +693,9 @@ function EventArenaScreenContent() {
     return () => {
       clearInterval(interval);
       appStateSubscription.remove();
+      networkSubscription.remove();
     };
-  }, [isScreenFocused, readStore, refreshAccountData]);
+  }, [accountData.positions.length, isScreenFocused, readStore, refreshAccountData]);
 
   useFocusEffect(useCallback(() => {
     setIsScreenFocused(true);
@@ -1292,9 +1327,11 @@ function EventArenaScreenContent() {
             <Text style={{ color: colors.primaryForeground, fontFamily: 'Inter_700Bold', fontSize: 12 }}>OPEN PAPER TRADING</Text>
           </TouchableOpacity>
         </View>
-        {accountError ? (
+        {(accountError || quoteRefreshWarning) ? (
           <View style={{ marginTop: 12 }}>
-            <Text accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 12 }}>{accountError}</Text>
+            <Text accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 12 }}>
+              {accountError || 'Event Arena prices may be outdated. The last valid quotes remain visible.'}
+            </Text>
             <TouchableOpacity
               testID="event-arena-trades-retry"
               accessibilityRole="button"
@@ -1399,7 +1436,7 @@ function EventArenaScreenContent() {
           </TouchableOpacity>
         </View>
       )}
-      {accountError || eventConfigurationError ? <Text accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 11, paddingHorizontal: 20, paddingBottom: 9 }}>{accountError || eventConfigurationError}</Text> : null}
+      {accountError || quoteRefreshWarning || eventConfigurationError ? <Text accessibilityRole="alert" style={{ color: colors.destructive, fontFamily: 'Inter_500Medium', fontSize: 11, paddingHorizontal: 20, paddingBottom: 9 }}>{accountError || (quoteRefreshWarning ? 'Event Arena prices may be outdated. The last valid quotes remain visible.' : eventConfigurationError)}</Text> : null}
     </View>
   );
 
