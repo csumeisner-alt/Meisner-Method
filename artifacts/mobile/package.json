@@ -9,6 +9,7 @@
     "build": "node scripts/build.js",
     "serve": "node server/serve.js",
     "smoke:analysis": "node scripts/smoke-test-analysis.mjs",
+    "smoke:api-routes": "node scripts/smoke-test-api-routes.mjs",
     "eas-build-pre-install": "node scripts/smoke-test-analysis.mjs",
     "test": "node --experimental-strip-types --test lib/__tests__/*.test.ts scripts/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
